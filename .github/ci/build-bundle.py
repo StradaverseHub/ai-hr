@@ -305,11 +305,53 @@ def unpack(archive, manifest_path, destination, runtime_source, producer_source=
     finally:
         owned.close()
 
+
+def verify_directory(destination, manifest_path, runtime_source, producer_source=None):
+    """Read-only full installed inventory/package verification; no cached PASS or activation."""
+    destination, manifest_path, runtime_source = map(lambda p:Path(p).absolute(), [destination,manifest_path,runtime_source])
+    require(destination.resolve()==destination and destination.is_dir() and not destination.is_symlink(), "canonical installed build required")
+    root_before=destination.lstat()
+    require(root_before.st_uid==os.getuid() and stat.S_IMODE(root_before.st_mode)&0o022==0, "private owned installed root required")
+    m=read_manifest(manifest_path)
+    targets={}
+    for alias in m['aliases']:
+        actual,target=package_identity(runtime_source,alias['package'],producer_source=producer_source)
+        require(actual=={key:alias[key] for key in actual}, "installed external package differs")
+        targets[alias['path']]=target
+    files={row['path']:row for row in m['files']}
+    directories=set(m['directories'])
+    seen_files=set();seen_dirs=set();seen_aliases=set()
+    def walk(base):
+        for path in sorted(base.iterdir()):
+            relative=path.relative_to(destination).as_posix()
+            before=path.lstat()
+            if stat.S_ISLNK(before.st_mode):
+                require(relative in targets and path.resolve(strict=True)==targets[relative], "unexpected or changed installed alias")
+                seen_aliases.add(relative)
+            elif stat.S_ISDIR(before.st_mode):
+                require(relative in directories and before.st_uid==os.getuid() and stat.S_IMODE(before.st_mode)&0o022==0, "unexpected installed directory")
+                seen_dirs.add(relative);walk(path)
+            else:
+                require(relative in files, "unexpected installed file")
+                row=files[relative];regular(path)
+                require(before.st_size==row['size'] and stat.S_IMODE(before.st_mode)==row['mode'] and digest_file(path)==row['sha256'], "installed file bytes or mode differ")
+                require(identity(path.stat())==identity(before), "installed file changed while hashing")
+                seen_files.add(relative)
+    walk(destination)
+    require(seen_files==set(files) and seen_dirs==directories and seen_aliases==set(targets), "installed build inventory differs")
+    require((destination/'BUILD_ID').read_text().strip()==m['nextBuildId'], "installed build ID differs")
+    # Reopen package trees after the complete read, just as unpack does.
+    for alias in m['aliases']:
+        actual,target=package_identity(runtime_source,alias['package'],producer_source=producer_source)
+        require(actual=={key:alias[key] for key in actual} and target==targets[alias['path']], "runtime package changed while verifying")
+    require(identity(destination.lstat())==identity(root_before), "installed root changed while verifying")
+    return m
+
 if __name__=='__main__':
     try:
         mode,*args=sys.argv[1:]
-        require((mode=='pack' and len(args)==2) or (mode=='unpack' and len(args)==4) or (mode=='unpack-with-origin' and len(args)==5),'usage: build-bundle.py pack SOURCE OUTPUT | unpack ARCHIVE MANIFEST DESTINATION RUNTIME_SOURCE | unpack-with-origin ARCHIVE MANIFEST DESTINATION RUNTIME_SOURCE PRODUCER_SOURCE')
-        result=pack(*args) if mode=='pack' else unpack(*args)
+        require((mode=='pack' and len(args)==2) or (mode=='unpack' and len(args)==4) or (mode=='unpack-with-origin' and len(args)==5) or (mode=='verify-directory' and len(args)==4),'usage: build-bundle.py pack SOURCE OUTPUT | unpack ARCHIVE MANIFEST DESTINATION RUNTIME_SOURCE | unpack-with-origin ARCHIVE MANIFEST DESTINATION RUNTIME_SOURCE PRODUCER_SOURCE | verify-directory NEXT_DIRECTORY MANIFEST RUNTIME_SOURCE PRODUCER_SOURCE')
+        result=pack(*args) if mode=='pack' else verify_directory(*args) if mode=='verify-directory' else unpack(*args)
         print(json.dumps({'kind':result['kind'],'files':len(result['files']),'archiveBytes':result['archiveBytes'],'unpackedBytes':result['unpackedBytes'],'releaseAuthorized':False}))
     except (ValueError,OSError,KeyError,TypeError,json.JSONDecodeError,tarfile.TarError,EOFError) as error:
         print(str(error),file=sys.stderr);sys.exit(1)

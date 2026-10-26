@@ -1,6 +1,12 @@
 # Staging artifact activation preparation
 
-Status: atomic primitive verified on an actual hosted Linux runner at6d130cb5b1510269bd94c05e32bdfb4e8e1e98ed. The existing deploy spine still builds remotely; build-artifact installation is not wired into deploy.sh or enabled on staging. Main/live deployment stays disabled. This document records the next activation boundary rather than a completed release.
+Status: atomic primitive verified on an actual hosted Linux runner at6d130cb5b1510269bd94c05e32bdfb4e8e1e98ed. The existing deploy spine still builds remotely; an opt-in build-artifact installation path is now prepared in deploy.sh but is not integrated with the operator or enabled on staging. Main/live deployment stays disabled. This document records the next activation boundary rather than a completed release.
+
+## Opt-in installation source prepared — verification pending
+
+The isolated review branch now contains an opt-in installation path in the existing deployment spine. It uses a fresh installation UUID independently of the original CI build-record UUID, a bounded private operator grant, source/package/environment/runtime verification, full staged byte inventory, native recipient checks, atomic exchange, service restart and post-activation runtime/health confirmation. Original CI successful-build bytes and timestamps are preserved. CI mode pins Node20 instead of following a newer optional host toolchain.
+
+This source is not enabled through the CI operator yet and has never installed an artifact on staging. Full source checksum, migration-ledger arrival, owned-resource cleanup and complete operator integration remain unfinished. The source grants no full-PASS baseline or deployment proof. The next bounded hosted diagnostic exercises private grant/store/input refusals and read-only inventory tampering, with no application build, database, network-to-staging or service operation.
 
 ## Atomic directory primitive
 
@@ -35,7 +41,7 @@ Next bind the operator's fully authenticated build packet to a private immutable
 The current server read-only presence check found no NEXT_PUBLIC_* runtime variables, no server-actions encryption key and no other explicit compiled config.env keys. Values were not printed. This makes the previously observed build tuple plausible for installation; it does not certify any future deployment environment, which must be checked again.
 
 Normal compiler-cache execution, full reviewed current gate/controller adoption, database critical-path work and a complete under600second release from submission remain unproven.
-\nLocal protocol evidence retains208 controller checks (206 initially passed; only2 timing/context failures rerun sequentially and passed) and9 typed-controller checks (7 initially passed; only2 private-IPC failures rerun with their required capability and passed). No timeout or production guard was relaxed. Initial new transport guard/fixture failures are retained in the checkpoint rather than erased. The subsequent exact-source hosted Linux verification is recorded below.\n
+Local protocol evidence retains208 controller checks (206 initially passed; only2 timing/context failures rerun sequentially and passed) and9 typed-controller checks (7 initially passed; only2 private-IPC failures rerun with their required capability and passed). No timeout or production guard was relaxed. Initial new transport guard/fixture failures are retained in the checkpoint rather than erased. The subsequent exact-source hosted Linux verification is recorded below.
 ## Actual hosted Linux result — 26 October 2026 MYT
 
 [Filesystem-only run40262820862](https://github.com/StradaverseHub/ai-hr/actions/runs/40262820862) succeeded on the frozen source/controller6d130cb5b1510269bd94c05e32bdfb4e8e1e98ed. Independent API/job/artifact review found exactly one executed job, filesystem-activation; every application diagnostic job was skipped.

@@ -221,4 +221,65 @@ class BundleTests(unittest.TestCase):
         m,archive,manifest=self.packed();data=manifest.read_bytes();manifest.write_bytes(b'{"format":1,'+data[1:])
         self.refuses_extract(archive,manifest)
 
+
+    def test_verify_installed_inventory_is_read_only_and_preserves_origin(self):
+        m,archive,manifest=self.packed();bundle.unpack(archive,manifest,self.destination,self.target)
+        before={str(p.relative_to(self.destination)):(p.lstat().st_ino,p.lstat().st_mtime_ns,os.readlink(p) if p.is_symlink() else None if p.is_dir() else p.read_bytes()) for p in self.destination.rglob('*')}
+        self.assertEqual(bundle.verify_directory(self.destination,manifest,self.target,str(self.source)),m)
+        after={str(p.relative_to(self.destination)):(p.lstat().st_ino,p.lstat().st_mtime_ns,os.readlink(p) if p.is_symlink() else None if p.is_dir() else p.read_bytes()) for p in self.destination.rglob('*')}
+        self.assertEqual(before,after)
+
+    def test_verify_refuses_tampering_without_deleting_or_changing_selected_tree(self):
+        m,archive,manifest=self.packed()
+        def alias_change(root):
+            p=root/'node_modules/fontkit-aaaaaaaa';p.unlink();p.symlink_to(self.target/'node_modules/sharp')
+        mutations=[
+            lambda root:(root/'server/app/page.js').write_bytes(b'changed compiled output'),
+            lambda root:(root/'extra').write_text('unexpected'),
+            lambda root:(root/'static/chunks/app.js').unlink(),
+            lambda root:(root/'extra-directory').mkdir(),
+            lambda root:(root/'server').chmod(0o777),
+            lambda root:root.chmod(0o777),
+            lambda root:(root/'BUILD_ID').write_text('another-build\n'),
+            alias_change
+        ]
+        for i,mutate in enumerate(mutations):
+            with self.subTest(mutation=i):
+                target=self.root/f'received-{i}';bundle.unpack(archive,manifest,target,self.target);mutate(target)
+                before={str(p.relative_to(target)):p.lstat().st_ino for p in target.rglob('*')}
+                with self.assertRaises((ValueError,OSError)):
+                    bundle.verify_directory(target,manifest,self.target,str(self.source))
+                self.assertTrue(target.exists())
+                self.assertEqual(before,{str(p.relative_to(target)):p.lstat().st_ino for p in target.rglob('*')})
+
+    def test_verify_rechecks_external_packages_and_refuses_changed_runtime_code(self):
+        m,archive,manifest=self.packed();bundle.unpack(archive,manifest,self.destination,self.target)
+        (self.target/'node_modules/.store/sharp/index.js').write_text('changed actual package code')
+        with self.assertRaisesRegex(ValueError,'external package differs'):
+            bundle.verify_directory(self.destination,manifest,self.target,str(self.source))
+        self.assertTrue((self.destination/'BUILD_ID').exists())
+
+    def test_verify_refuses_an_alias_of_the_selected_directory(self):
+        m,archive,manifest=self.packed();bundle.unpack(archive,manifest,self.destination,self.target)
+        alias=self.root/'destination-alias';alias.symlink_to(self.destination,target_is_directory=True)
+        with self.assertRaisesRegex(ValueError,'canonical installed'):
+            bundle.verify_directory(alias,manifest,self.target,str(self.source))
+        self.assertTrue(self.destination.exists())
+
+    def test_verify_replacement_during_read_refuses_without_removing_either_tree(self):
+        m,archive,manifest=self.packed();bundle.unpack(archive,manifest,self.destination,self.target)
+        original=bundle.package_identity;calls=0;moved=self.root/'moved-verified'
+        def replace_on_final_check(*args,**kwargs):
+            nonlocal calls
+            calls+=1
+            if calls==3:
+                self.destination.rename(moved);self.destination.mkdir(mode=0o700)
+                (self.destination/'foreign').write_text('preserve')
+            return original(*args,**kwargs)
+        with mock.patch.object(bundle,'package_identity',side_effect=replace_on_final_check):
+            with self.assertRaisesRegex(ValueError,'installed root changed'):
+                bundle.verify_directory(self.destination,manifest,self.target,str(self.source))
+        self.assertEqual((self.destination/'foreign').read_text(),'preserve')
+        self.assertTrue((moved/'BUILD_ID').exists())
+
 if __name__=='__main__':unittest.main()

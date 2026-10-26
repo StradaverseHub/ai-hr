@@ -85,6 +85,8 @@ function assertDotenvCompileKeys(source){
  }
 }
 
+export {assertDotenvCompileKeys as assertBuildDotenvCompileKeys};
+
 /** Invoke with the candidate's installed tsx loader; imports resolve from the real candidate. */
 export async function produceBuild({source=process.cwd(),output,purpose='release'}){
  const environment=process.env;

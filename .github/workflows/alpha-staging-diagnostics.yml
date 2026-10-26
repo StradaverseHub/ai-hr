@@ -12,7 +12,7 @@ on:
         required: true
         type: string
       filesystem_activation_probe:
-        description: Private Linux directory activation/recovery only; no app tests, build, DB, SSH or staging
+        description: Private Linux activation, byte inventory and installer refusal fixtures; no app build, DB, SSH or staging
         required: false
         default: false
         type: boolean
@@ -750,6 +750,12 @@ jobs:
           set -euo pipefail
           python3 .github/ci/build-activate.test.py --evidence "$RUNNER_TEMP/filesystem-activation.json" 2>&1 | tee "$RUNNER_TEMP/filesystem-activation.log"
           node --test --test-reporter=spec .github/ci/staging-transport.test.mjs 2>&1 | tee "$RUNNER_TEMP/staging-transport.log"
+      - name: Private installer authority and read-only byte inventory refusals
+        run: |
+          set -euo pipefail
+          bash -n deploy/deploy.sh
+          node --test --test-reporter=spec .github/ci/staging-build-install.test.mjs 2>&1 | tee "$RUNNER_TEMP/staging-build-install.log"
+          python3 .github/ci/build-bundle.test.py -v 2>&1 | tee "$RUNNER_TEMP/build-bundle.log"
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -758,5 +764,7 @@ jobs:
             ${{ runner.temp }}/filesystem-activation.json
             ${{ runner.temp }}/filesystem-activation.log
             ${{ runner.temp }}/staging-transport.log
+            ${{ runner.temp }}/staging-build-install.log
+            ${{ runner.temp }}/build-bundle.log
           if-no-files-found: error
           retention-days: 3
