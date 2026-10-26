@@ -70,6 +70,11 @@ describe('installation email settings lifecycle',()=>{
   await expect(f.run({op:'save',actor:other,revision:(await f.view()).revision,config,password:''})).rejects.toMatchObject({code:'invalid'});
  });
  it('rejects unsafe transports, header injection and URL hosts',()=>{
-  for(const bad of [{security:'starttls'},{security:'none'},{host:'https://smtp.test'},{fromName:'HR\r\nBcc: victim@test'},{user:''}])expect(emailConfigSchema.safeParse({...config,...bad}).success).toBe(false);
+  for(const bad of [{security:'none'},{host:'https://smtp.test'},{fromName:'HR\r\nBcc: victim@test'},{user:''}])expect(emailConfigSchema.safeParse({...config,...bad}).success).toBe(false);
+ });
+ it('preserves required STARTTLS through the legacy settings test and active projection',async()=>{
+  const f=fixture();const saved=await f.run({op:'save',actor,revision:(await f.view()).revision,config:{...config,security:'starttls',port:587},password:'fictional-secret'}) as Awaited<ReturnType<typeof f.view>>;
+  await f.run({op:'test',actor,draftId:saved.draft!.id});expect(f.d.test).toHaveBeenCalledWith(expect.objectContaining({ssl:'false',starttls:'true',port:'587'}));
+  await f.run({op:'apply',actor,draftId:saved.draft!.id,received:true});expect((await f.view()).active).toMatchObject({security:'starttls',port:587});
  });
 });

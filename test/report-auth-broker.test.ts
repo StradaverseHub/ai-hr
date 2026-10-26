@@ -12,6 +12,8 @@ import {openReportInspection,reportProofDigest} from '../lib/internal-auth/repor
 import {encryptRecord} from '../lib/internal-auth/crypto';
 import {parseCredential,type Credential} from '../lib/internal-auth/credential';
 import type {AuthSql} from '../lib/internal-auth/record-store';
+import type {StoredEmailRelay} from '../lib/identity/email-relay';
+import {EmailSettingsError} from '../lib/identity/email-model';
 import {XLSX_EMAIL_ATTACHMENT_CONTENT_TYPE} from '../lib/email-attachment';
 const origin='https://broker.test',tenant=randomUUID(),owner=randomUUID(),recipient=randomUUID(),person=randomUUID(),ownerSubject=randomUUID(),recipientSubject=randomUUID();
 const nonce={occurrenceId:randomUUID(),leaseToken:randomUUID()},now=Date.now(),stamp='a'.repeat(64);
@@ -25,7 +27,7 @@ beforeEach(()=>{vi.stubEnv('AUTH_PROVIDER','internal');vi.stubEnv('AUTH_PUBLIC_O
 afterEach(()=>vi.unstubAllEnvs());
 function fixture(){
  const context=structuredClone(baseContext),credentials=new Map<string,Credential>([[ownerSubject,credential(ownerSubject,'owner@example.test')],[recipientSubject,credential(recipientSubject,'recipient@example.test')]]),events:string[]=[];
- let revision='R'.repeat(43),active:typeof relay|null=relay,lockStatus='ready',startStatus='started',inTransaction=false,started=false,clock=now;
+ let revision='R'.repeat(43),active:StoredEmailRelay|null=relay,lockStatus='ready',startStatus='started',inTransaction=false,started=false,clock=now;
  const unsafe=vi.fn(async(statement:string,args:unknown[]=[])=>{
   if(!inTransaction)throw new Error('Escaped transaction');events.push(statement);
   if(statement.includes('current_user as name'))return [{name:'ai_hr_app',rolsuper:false,rolbypassrls:false,privileged:false}];
@@ -47,10 +49,38 @@ function fixture(){
  };
  const authorizeArtifact=vi.fn(async()=>{expect(inTransaction).toBe(false);events.push('RENDERER');return {accessStamp:stamp,artifact};});
  const d:ReportBrokerDependencies={transaction,authorizeArtifact,now:()=>clock};
- return {context,credentials,events,unsafe,d,authorizeArtifact,get started(){return started;},set revision(value:string){revision=value;},set active(value:typeof relay|null){active=value;},set lockStatus(value:string){lockStatus=value;},set startStatus(value:string){startStatus=value;},set clock(value:number){clock=value;}};
+ return {context,credentials,events,unsafe,d,authorizeArtifact,get started(){return started;},get inTransaction(){return inTransaction;},set revision(value:string){revision=value;},set active(value:StoredEmailRelay|null){active=value;},set lockStatus(value:string){lockStatus=value;},set startStatus(value:string){startStatus=value;},set clock(value:number){clock=value;}};
 }
 async function inspected(f:ReturnType<typeof fixture>){const result=await executeReportBrokerRequest({phase:'inspect',...nonce},f.d);if(!('ok' in result)||!result.ok||result.phase!=='inspect')throw new Error('Expected inspection');return result;}
 function request(proof:string){return {phase:'start' as const,...nonce,inspectionProof:proof,expectedArtifact:artifact};}
+const oauth:StoredEmailRelay={config:{...relay.config,host:'smtp.office365.com',port:587,security:'starttls',user:'sender@example.test',authentication:'microsoft365',oauth2:{tenantId:randomUUID(),clientId:randomUUID()}},password:'synthetic-application-secret'};
+const delivery=()=>({config:oauth.config,accessToken:'synthetic-short-token',accessTokenExpiresAt:now+3600000});
+describe('application-token handoff and fresh authorization after token acquisition',()=>{
+ it('commits the snapshot before requesting a token and rechecks all authority before starting, returning no client secret',async()=>{
+  const f=fixture();f.active=oauth;const inspection=await inspected(f);f.events.length=0;
+  f.d.prepareRelay=vi.fn(async value=>{expect(f.inTransaction).toBe(false);expect(f.started).toBe(false);expect(value).toEqual(oauth);expect(f.events.at(-1)).toBe('COMMIT');f.events.push('TOKEN');return delivery();});
+  const result=await executeReportBrokerRequest(request(inspection.inspectionProof),f.d);
+  expect(result).toEqual({ok:true,phase:'start',target,artifact,relay:delivery()});expect(f.started).toBe(true);expect(f.events.filter(e=>e==='BEGIN')).toHaveLength(2);
+  expect(f.events.indexOf('TOKEN')).toBeLessThan(f.events.findIndex(e=>e.includes('internal_auth_report_start')));expect(JSON.stringify(result)).not.toContain(oauth.password);expect(f.events.at(-1)).toBe('COMMIT');
+ });
+ it.each(['revision','secret','disabled','contact','permissions','expiredProof','expiredToken','wrongConfig','provider'] as const)('does not mark started or disclose relay after %s changes during acquisition',async kind=>{
+  const f=fixture();f.active=oauth;const inspection=await inspected(f);
+  f.d.prepareRelay=async()=>{
+   expect(f.inTransaction).toBe(false);expect(f.started).toBe(false);
+   if(kind==='revision')f.revision='S'.repeat(43);
+   if(kind==='secret')f.active={...oauth,password:'replacement-secret'};
+   if(kind==='disabled')f.credentials.get(recipientSubject)!.enabled=false;
+   if(kind==='contact')f.context.target.email='other@example.test';
+   if(kind==='permissions')f.context.target.ownerGrants=[];
+   if(kind==='expiredProof')f.clock=now+60000;
+   if(kind==='expiredToken')return {...delivery(),accessTokenExpiresAt:now+60000};
+   if(kind==='wrongConfig')return {...delivery(),config:{...oauth.config,from:'other@example.test'}};
+   if(kind==='provider')throw new EmailSettingsError('authenticationFailed');
+   return delivery();
+  };
+  const result=await executeReportBrokerRequest(request(inspection.inspectionProof),f.d);expect(result).toMatchObject({ok:false});expect(result).not.toHaveProperty('relay');expect(f.started).toBe(false);expect(f.events.some(e=>e.includes('internal_auth_report_start'))).toBe(false);
+ });
+});
 describe('closed model and canonical credential structural projection',()=>{
  it.each([{phase:'inspect',...nonce,email:target.email},{phase:'start',...nonce,inspectionProof:'A',expectedArtifact:artifact,verified:true},{phase:'status',occurrenceId:nonce.occurrenceId},{phase:'read',key:'email-state'}])('refuses extra authority/unknown variants: %j',value=>{expect(reportBrokerRequest.safeParse(value).success).toBe(false);});
  it('retains canonical nullable/false values and rejects malformed private records without inventing defaults',()=>{

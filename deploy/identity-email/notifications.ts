@@ -23,9 +23,9 @@ export interface WorkflowEmailDependencies {
 /** Compare the secret reference as well as the public SMTP fields; a changed realm is not managed. */
 export function activeWorkflowRelay(state:EmailState,realm:{smtpServer?:Record<string,string>}):{config:EmailConfig;vaultKey:string|null}|null {
   const active=state.active,s=realm.smtpServer;
-  if(!active||!s||!emailConfigSchema.safeParse(active.config).success)return null;
+  if(!active||!s||!emailConfigSchema.safeParse(active.config).success||active.config.authentication==='microsoft365')return null;
   const c=active.config;
-  const expected={host:c.host,port:String(c.port),ssl:'true',starttls:'false',auth:String(c.auth),authType:'basic',from:c.from,fromDisplayName:c.fromName,replyTo:c.replyTo,user:c.auth?c.user:''};
+  const expected={host:c.host,port:String(c.port),ssl:String(c.security==='tls'),starttls:String(c.security==='starttls'),auth:String(c.auth),authType:'basic',from:c.from,fromDisplayName:c.fromName,replyTo:c.replyTo,user:c.auth?c.user:''};
   if(Object.entries(expected).some(([k,v])=>s[k]!==v))return null;
   if(c.auth&&(!active.vaultKey||s.password!=='${vault.'+active.vaultKey+'}'))return null;
   return active;
