@@ -57,6 +57,18 @@ async function isSelf(tx: Tx, employmentId: string) {
 }
 async function isAdmin(tx: Tx, cycleId: string) { const [r] = await tx.execute<{ok:boolean}>(sql`select app.onehr_cycle_admin(${cycleId}::uuid) as ok`); return !!r?.ok; }
 async function isManager(tx: Tx, reviewId: string) { const [r] = await tx.execute<{ok:boolean}>(sql`select app.onehr_manager(${reviewId}::uuid) as ok`); return !!r?.ok; }
+/** D-TM-01 (0620): a line manager reads panel membership through the definer projection, never raw rater rows,
+ * so answers, remarks and principle comments stay out of reach. Dates map as drizzle maps a timestamptz column. */
+type PanelMember={requestId:string;peerEmploymentId:string;relationship:string;submittedAt:Date|null;archivedAt:Date|null;resetAt:Date|null;archiveReason:string|null};
+type PanelMemberRow={request_id:string;peer_employment_id:string;relationship:string;submitted_at:string|null;archived_at:string|null;reset_at:string|null;archive_reason:string|null};
+const panelAt=(v:string|null)=>v==null?null:new Date(v);
+const panelMember=(r:PanelMemberRow):PanelMember=>({requestId:r.request_id,peerEmploymentId:r.peer_employment_id,relationship:r.relationship,submittedAt:panelAt(r.submitted_at),archivedAt:panelAt(r.archived_at),resetAt:panelAt(r.reset_at),archiveReason:r.archive_reason});
+async function managerPanel(tx:Tx,reviewId:string){return (await tx.execute<PanelMemberRow>(sql`select * from app.onehr_manager_panel(${reviewId}::uuid)`)).map(panelMember);}
+async function managerPanelPeers(tx:Tx,reviewId:string){
+ const rows=await tx.execute<PanelMemberRow&{peer_name:string}>(sql`select m.*,f.peer_name from app.onehr_manager_panel(${reviewId}::uuid) m join peer_feedback_request f on f.id=m.request_id where m.archived_at is null order by f.peer_name,m.request_id`);
+ return rows.map(r=>{const m=panelMember(r);return {requestId:m.requestId,employmentId:m.peerEmploymentId,name:r.peer_name,relationship:m.relationship,submittedAt:m.submittedAt,archivedAt:m.archivedAt,resetAt:m.resetAt,archiveReason:m.archiveReason};});
+}
+async function setManagerPanelMember(tx:Tx,requestId:string,archived:boolean,relationship:string|null=null){await tx.execute(sql`select app.onehr_manager_panel_member(${requestId}::uuid,${archived}::boolean,${relationship}::text)`);}
 async function canWritePlanRemark(tx:Tx,reviewId:string){const [r]=await tx.execute<{ok:boolean}>(sql`select app.assessment_plan_remark_writer(${reviewId}::uuid) as ok`);return !!r?.ok;}
 async function requireAdmin(tx: Tx, cycleId: string) { if (!await isAdmin(tx,cycleId)) throw Error('Performance administrator access is required.'); }
 async function loadCycle(tx: Tx, cycleId: string, lock = false) {
@@ -371,7 +383,7 @@ export async function assignOnehrPanelTx(tx:Tx,ctx:SessionContext,reviewId:strin
     }else await writable(tx,r,'f360',expected,'manager');
     if(!r.cycle.policy.modules.tm)throw Error('Talent assessment is disabled.');
     if(/^\d+$/.test(r.row.grade)&&inputs.length>r.cycle.policy.panelTarget)throw Error('The panel exceeds the configured assessor limit.');
-    const prior=await tx.select().from(onehrPanel).where(eq(onehrPanel.reviewId,reviewId));
+    const prior:PanelMember[]=admin?await tx.select().from(onehrPanel).where(eq(onehrPanel.reviewId,reviewId)):await managerPanel(tx,reviewId);
     const omitted=prior.filter(p=>!p.archivedAt&&!inputs.some(i=>i.employmentId===p.peerEmploymentId));
     if(omitted.some(p=>p.submittedAt))throw Error('Submitted reviewers must remain on the panel.');
     const [subject]=await tx.select({name:person.fullName,personId:person.id}).from(employment).innerJoin(person,eq(person.id,employment.personId)).where(eq(employment.id,r.row.employmentId));
@@ -388,14 +400,14 @@ export async function assignOnehrPanelTx(tx:Tx,ctx:SessionContext,reviewId:strin
       if(!/^\d+$/.test(r.row.grade)&&(inputs.length!==1||peer.id!==r.native.reviewerEmploymentId||input.relationship!=='line_manager'))throw Error('A letter-grade subject is assessed only by their line manager.');
       const existing=prior.find(p=>p.peerEmploymentId===peer.id);
       if(existing){if(existing.submittedAt){if(existing.archivedAt)throw Error('Restore archived submitted feedback through the panel controls.');if(existing.relationship!==input.relationship){if(!admin)throw Error('Only scoped HR may change a submitted reviewer relationship.');await tx.update(onehrPanel).set({relationship:input.relationship}).where(eq(onehrPanel.requestId,existing.requestId));}continue;}
-       await tx.update(onehrPanel).set({archivedAt:null,relationship:input.relationship}).where(eq(onehrPanel.requestId,existing.requestId));
+       if(admin)await tx.update(onehrPanel).set({archivedAt:null,relationship:input.relationship}).where(eq(onehrPanel.requestId,existing.requestId));else await setManagerPanelMember(tx,existing.requestId,false,input.relationship);
        await tx.update(peerFeedbackRequest).set({status:'pending'}).where(eq(peerFeedbackRequest.id,existing.requestId));continue;
       }
       const [request]=await tx.insert(peerFeedbackRequest).values({tenantId:ctx.tenantId,reviewId,subjectEmploymentId:r.row.employmentId,peerEmploymentId:peer.id,subjectName:subject.name,peerName:peer.name,cycleName:r.cycle.native.name,requestedByUserId:ctx.userId}).returning();
       await tx.insert(onehrPanel).values({tenantId:ctx.tenantId,requestId:request.id,reviewId,subjectEmploymentId:r.row.employmentId,peerEmploymentId:peer.id,relationship:input.relationship});
       await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'peer-feedback-request',aggregateId:request.id,eventType:'peer-feedback-request.created',actor:actorOf(ctx),payload:{reviewId}});
     }
-    for(const p of omitted){await tx.update(onehrPanel).set({archivedAt:new Date()}).where(eq(onehrPanel.requestId,p.requestId));await tx.update(peerFeedbackRequest).set({status:'declined'}).where(eq(peerFeedbackRequest.id,p.requestId));}
+    for(const p of omitted){if(admin)await tx.update(onehrPanel).set({archivedAt:new Date()}).where(eq(onehrPanel.requestId,p.requestId));else await setManagerPanelMember(tx,p.requestId,true);await tx.update(peerFeedbackRequest).set({status:'declined'}).where(eq(peerFeedbackRequest.id,p.requestId));}
     await touchReview(tx,reviewId,{});await audit(tx,ctx,reviewId,'panel-assigned',{count:inputs.length,removed:omitted.length,before:prior.map(p=>({requestId:p.requestId,employmentId:p.peerEmploymentId,relationship:p.relationship,archived:!!p.archivedAt,submitted:!!p.submittedAt})),after:inputs.map(p=>({employmentId:p.employmentId,relationship:p.relationship}))});
 }
 export async function changeAssessmentPanelState(ctx:SessionContext,reviewId:string,expected:number,requestId:string,operation:'archive'|'restore'|'reset',reason=''){
@@ -1232,7 +1244,7 @@ export async function getOnehrReviewTx(tx:Tx,ctx:SessionContext,reviewId:string)
     const [evidencePeople]=evidence.length?await tx.execute<{names:Record<string,string>}>(sql`select app.assessment_evidence_people(array[${sql.join(evidence.map(e=>sql`${e.id}::uuid`),sql`, `)}]::uuid[]) as names`):[];
     const attachmentLinks=await assessmentKpiFilesTx(tx,reviewId);
     const attachments=r.cycle.policy.modules.evidence?await tx.select({id:performanceAttachment.id,fileName:performanceAttachment.fileName,sizeBytes:performanceAttachment.sizeBytes,evidenceId:performanceAttachment.evidenceId,canRemove:sql<boolean>`app.assessment_file_removable(${performanceAttachment.id})`}).from(performanceAttachment).where(and(isNull(performanceAttachment.removedAt),sql`(${performanceAttachment.reviewId}=${reviewId}::uuid ${attachmentLinks.length?sql`or ${inArray(performanceAttachment.id,attachmentLinks.map(l=>l.attachmentId))}`:sql``} or ${performanceAttachment.evidenceId} in (select id from performance_onehr_evidence where employment_id=${r.row.employmentId}::uuid))`)).orderBy(asc(performanceAttachment.createdAt),asc(performanceAttachment.id)):[];
-    const peers=manager||admin?await tx.select({requestId:onehrPanel.requestId,employmentId:onehrPanel.peerEmploymentId,name:peerFeedbackRequest.peerName,relationship:onehrPanel.relationship,submittedAt:onehrPanel.submittedAt,archivedAt:onehrPanel.archivedAt,resetAt:onehrPanel.resetAt,archiveReason:onehrPanel.archiveReason}).from(onehrPanel).innerJoin(peerFeedbackRequest,eq(peerFeedbackRequest.id,onehrPanel.requestId)).where(and(eq(onehrPanel.reviewId,reviewId),admin?undefined:isNull(onehrPanel.archivedAt))).orderBy(asc(peerFeedbackRequest.peerName),asc(onehrPanel.requestId)):[];
+    const peers=admin?await tx.select({requestId:onehrPanel.requestId,employmentId:onehrPanel.peerEmploymentId,name:peerFeedbackRequest.peerName,relationship:onehrPanel.relationship,submittedAt:onehrPanel.submittedAt,archivedAt:onehrPanel.archivedAt,resetAt:onehrPanel.resetAt,archiveReason:onehrPanel.archiveReason}).from(onehrPanel).innerJoin(peerFeedbackRequest,eq(peerFeedbackRequest.id,onehrPanel.requestId)).where(eq(onehrPanel.reviewId,reviewId)).orderBy(asc(peerFeedbackRequest.peerName),asc(onehrPanel.requestId)):manager?await managerPanelPeers(tx,reviewId):[];
     const aiState=await assessmentAiStateTx(tx,ctx),aiEnabled=(self||manager||moderator)&&aiState.moduleHeld&&aiState.providerConfigured,aiFeatures=aiState.features;
     const drafts=await tx.select().from(assessmentDraft).where(and(eq(assessmentDraft.reviewId,reviewId),eq(assessmentDraft.actorUserId,ctx.userId!)));
     const [ownReviewer]=await tx.select({remark:assessmentReviewerRemark.remark}).from(assessmentReviewerRemark).where(and(eq(assessmentReviewerRemark.reviewId,reviewId),eq(assessmentReviewerRemark.actorUserId,ctx.userId!)));
