@@ -1,6 +1,6 @@
 # Staging artifact activation preparation
 
-Status: isolated source preparation. The existing deploy spine still builds remotely; build-artifact installation is not wired into deploy.sh or enabled on staging. Main/live deployment stays disabled. This document records the next activation boundary rather than a completed release.
+Status: atomic primitive verified on an actual hosted Linux runner at6d130cb5b1510269bd94c05e32bdfb4e8e1e98ed. The existing deploy spine still builds remotely; build-artifact installation is not wired into deploy.sh or enabled on staging. Main/live deployment stays disabled. This document records the next activation boundary rather than a completed release.
 
 ## Atomic directory primitive
 
@@ -35,4 +35,13 @@ Next bind the operator's fully authenticated build packet to a private immutable
 The current server read-only presence check found no NEXT_PUBLIC_* runtime variables, no server-actions encryption key and no other explicit compiled config.env keys. Values were not printed. This makes the previously observed build tuple plausible for installation; it does not certify any future deployment environment, which must be checked again.
 
 Normal compiler-cache execution, full reviewed current gate/controller adoption, database critical-path work and a complete under600second release from submission remain unproven.
-\nLocal protocol evidence retains208 controller checks (206 initially passed; only2 timing/context failures rerun sequentially and passed) and9 typed-controller checks (7 initially passed; only2 private-IPC failures rerun with their required capability and passed). No timeout or production guard was relaxed. Initial new transport guard/fixture failures are retained in the checkpoint rather than erased. Linux kernel execution remains pending at this source commit.\n
+\nLocal protocol evidence retains208 controller checks (206 initially passed; only2 timing/context failures rerun sequentially and passed) and9 typed-controller checks (7 initially passed; only2 private-IPC failures rerun with their required capability and passed). No timeout or production guard was relaxed. Initial new transport guard/fixture failures are retained in the checkpoint rather than erased. The subsequent exact-source hosted Linux verification is recorded below.\n
+## Actual hosted Linux result — 26 October 2026 MYT
+
+[Filesystem-only run40262820862](https://github.com/StradaverseHub/ai-hr/actions/runs/40262820862) succeeded on the frozen source/controller6d130cb5b1510269bd94c05e32bdfb4e8e1e98ed. Independent API/job/artifact review found exactly one executed job, filesystem-activation; every application diagnostic job was skipped.
+
+Actual Linuxx86_64/glibc2.39:9 filesystem cases passed,0failed,0skipped, with6 actual renameat2 exchanges covering activation and rollback. Concurrent readers observed both build IDs and no missing active directory. Cross-filesystem, both symlink directions, wrong IDs, missing metadata, unsafe permissions/locations and ambiguous replay refused. All owned temporary fixtures were removed. The5 private transport cases also passed with no failure/cancellation/skip/todo.
+
+The authenticated artifact is12625281796,1455bytes, ZIP SHA25606eac192d945daf936b000d8d5e73142364cd38a91d60f7809577ca4d226aa2b. Its exact three-member inventory, raw logs, counts and Python producer identity reconcile with the successful first-attempt job121378642214. Private originals and independent review remain in scratchpad/staging-activation-20261026/.
+
+Submission before the dispatch request through job completion:20.859296s. Occupied runner time:16s, not authoritative billed minutes. No app dependencies/compiler/build/test suites, PostgreSQL, SSH or staging operations ran. This result proves the filesystem/transport diagnostic only; it is not an application gate, installation or under600second complete release.
