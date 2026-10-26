@@ -26,3 +26,14 @@ export const ProfileModuleActionCompletedReceipt=z.object({action:z.literal(OWN_
  requestId:z.uuid(),requestedEventId:z.uuid(),employmentId:z.uuid(),currentStatus:z.enum(['pending','approved','rejected']),semantics:z.literal('submitted_not_approved')}).strict();
 export const ProfileModuleActionRetiredReceipt=z.object({action:z.literal(OWN_PROFILE_CHANGE_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),state:z.enum(['discarded','expired','refused'])}).strict();
 export const ProfileModuleActionReviewIndexResult=z.object({kind:z.literal('profile_module_review_index'),reviews:z.array(z.object({action:z.literal(OWN_PROFILE_CHANGE_ACTION),actionId:z.uuid(),state:z.enum(['awaiting_confirmation','completed','discarded','expired','refused']),createdAt:z.iso.datetime(),expiresAt:z.iso.datetime()}).strict()).max(25).refine(rows=>new Set(rows.map(row=>row.actionId)).size===rows.length)}).strict();
+
+/** Claims DRAFT custody only; submission remains a separate human action. */
+import {OWN_CLAIM_DRAFT_ACTION,OwnClaimDraftHumanContent} from './own-claim-contract';
+export const ClaimModuleActionPrepare=OwnClaimDraftHumanContent;
+export const ClaimModuleActionConfirmation=z.object({action:z.literal(OWN_CLAIM_DRAFT_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),reviewedDigest:digest}).strict();
+export const ClaimModuleActionPreparedReview=z.object({action:z.literal(OWN_CLAIM_DRAFT_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),reviewedDigest:digest,
+ createdAt:z.iso.datetime(),expiresAt:z.iso.datetime(),content:OwnClaimDraftHumanContent,provisionalAmount:z.string().regex(/^\d+\.\d{2}$/),provisionalQuantityKm:z.string().regex(/^-?\d+\.\d{2}$/).nullable(),provisionalTaxable:z.boolean(),consequence:z.literal('draft_only_no_submission_or_reimbursement')}).strict();
+export const ClaimModuleActionCompletedReceipt=z.object({action:z.literal(OWN_CLAIM_DRAFT_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),state:z.literal('completed'),
+ draftId:z.uuid(),savedEventId:z.uuid(),employmentId:z.uuid(),currentStatus:z.enum(['draft','pending','approved','rejected','cancelled','paid']),semantics:z.literal('draft_saved_not_submitted_or_reimbursed')}).strict();
+export const ClaimModuleActionRetiredReceipt=z.object({action:z.literal(OWN_CLAIM_DRAFT_ACTION),contractVersion:z.literal(1),actionId:z.uuid(),state:z.enum(['discarded','expired','refused'])}).strict();
+export const ClaimModuleActionReviewIndexResult=z.object({kind:z.literal('claim_module_review_index'),reviews:z.array(z.object({action:z.literal(OWN_CLAIM_DRAFT_ACTION),actionId:z.uuid(),state:z.enum(['awaiting_confirmation','completed','discarded','expired','refused']),createdAt:z.iso.datetime(),expiresAt:z.iso.datetime()}).strict()).max(25).refine(rows=>new Set(rows.map(row=>row.actionId)).size===rows.length)}).strict();
