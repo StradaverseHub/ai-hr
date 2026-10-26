@@ -20,6 +20,7 @@ import type { SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import type { ConverseResult } from '../lib/ai/types';
 import { askAssistant } from '../core/assistant';
+import { loadAiWorkspace } from '../core/ai-workspace';
 import { grantAssistant } from '../core/assistant-grant';
 import { ASSISTANT_TOOLS, toolsFor } from '../core/assistant-tools';
 import { hireEmployee } from '../core/org';
@@ -52,6 +53,7 @@ beforeEach(async () => {
   converse.mockReset();
   // resolveActiveAiConfig falls back to an env key when no tenant config is stored. `converse` is mocked,
   // so the key is never sent anywhere; the stub only makes a config exist.
+  vi.stubEnv('AI_CONFIG_SECRET', 'fictional-dispatch-disclosure-only');
   vi.stubEnv('OPENAI_API_KEY', 'fixture-never-sent');
   vi.stubEnv('ANTHROPIC_API_KEY', '');
   vi.stubEnv('GOOGLE_API_KEY', '');
@@ -160,7 +162,8 @@ describe('a tool call the exchange did not offer is never dispatched', () => {
     const { ctx, net } = await employeeWithReleasedPayslip(true);
     expect(toolsFor(ctx).map((t) => t.spec.name)).toContain('my_payslip_summary');
 
-    converse.mockResolvedValueOnce(toolUse([{ id: 'c1', name: 'my_payslip_summary', input: { limit: 12 } }])).mockResolvedValueOnce(end);
+    converse.mockResolvedValueOnce(toolUse([{ id: 'c1', name: 'my_payslip_summary', input: { limit: 12 } }]))
+      .mockResolvedValueOnce({ ...end, text: `Fictional released net pay: ${net}.` });
 
     const res = await askAssistant(ctx, { question: 'What was my last net pay?' });
     const audit = await auditOf(res.exchangeId);
@@ -168,6 +171,16 @@ describe('a tool call the exchange did not offer is never dispatched', () => {
     expect(audit[0].refusal).toBeUndefined();
     expect(toolTurn()[0].isError).toBeUndefined();
     expect(sentToModel()).toContain(net);
+    const [stored] = await owner.db.select().from(schema.assistantExchange).where(eq(schema.assistantExchange.id, res.exchangeId));
+    expect(stored.disclosureReceipt).toBeTruthy();
+    const reopened = await loadAiWorkspace(ctx);
+    expect(reopened.history[0]).toMatchObject({ id: res.exchangeId, answer: res.answer, answerVisibility: 'current' });
+    expect(JSON.stringify(reopened)).not.toContain(stored.disclosureReceipt!);
+    // Actual command -> source receipt -> canonical replay -> module revocation, no forged backfill.
+    await setModule(base.tenantId, 'payroll', null);
+    const retired = await loadAiWorkspace(ctx);
+    expect(retired.history[0]).toMatchObject({ id: res.exchangeId, answer: null, answerVisibility: 'unavailable' });
+    expect(JSON.stringify(retired)).not.toContain(net);
   });
 });
 

@@ -82,7 +82,7 @@ export default async function AssistantPage({
           ) : (
             // No answer text is NOT an empty answer — it is an exchange that ended without one, and the
             // stop reason below says which way. Rendering nothing here would read as "it had no reply".
-            <p className="mt-2 text-sm italic text-muted-foreground">{t('noAnswer')}</p>
+            <p className="mt-2 text-sm italic text-muted-foreground">{t(h.answerVisibility === 'unavailable' ? 'workspace.answerUnavailable' : 'noAnswer')}</p>
           )}
 
           {/* §2.5 — every terminal state that is not `end` is VISIBLE. `refusal` is its own case rather

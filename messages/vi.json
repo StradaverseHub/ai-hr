@@ -16225,6 +16225,7 @@
       "taskHint": "Chọn câu hỏi, chỉnh sửa rồi nhấn Hỏi.",
       "question": "Câu hỏi của bạn",
       "working": "Đang xử lý…",
+      "answerUnavailable": "Không thể hiển thị câu trả lời đã lưu vì chưa xác minh lại được quyền truy cập nguồn hoặc dữ kiện. Hãy hỏi lại để nhận câu trả lời hiện tại.",
       "history": "Câu hỏi gần đây của bạn",
       "leave_available_label": "Số dư nghỉ phép của tôi",
       "leave_available_prompt": "Hiện tôi còn bao nhiêu ngày phép có thể sử dụng?",

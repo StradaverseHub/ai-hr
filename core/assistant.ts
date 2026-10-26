@@ -32,6 +32,8 @@
  * prefix for every later request and quietly multiplies the cost of the feature. Both are built from
  * constants and the caller's ROLE only. Read the comment on SYSTEM before adding a line to it.
  */
+import { randomUUID } from 'node:crypto';
+import { assistantSourceDigest, sealAssistantDisclosure, type AssistantSourceRead } from '../lib/ai/assistant-disclosure';
 import { and, count, eq, gte, sql } from 'drizzle-orm';
 import { captureAgentReadBatch, serializeAgentReadResult } from '../lib/ai/agent-read-batch';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
@@ -271,6 +273,8 @@ export async function askAssistant(
   const turns: AiTurn[] = [{ role: 'user', content: question }];
   const audit: { name: string; input: unknown; rowCount: number | null; refusal?: string }[] = [];
 
+  const sourceReads: AssistantSourceRead[] = [];
+  let sourcesComplete = true;
   let answer = '';
   let stop: AiStop = 'other';
   let turnCount = 0;
@@ -319,7 +323,8 @@ export async function askAssistant(
         toolCalls: [...capturedCalls],
         providerState: res.providerState,
       });
-      const results = await runTools(ctx, offered, capturedCalls, audit);
+      const results = await runTools(ctx, offered, capturedCalls, audit, sourceReads);
+      if (results.some(result => result.isError)) sourcesComplete = false;
       turns.push({ role: 'tool', results });
 
       if (i === MAX_TURNS - 1) hitTurnCap = true;
@@ -352,6 +357,7 @@ export async function askAssistant(
     spend,
     period,
     error: failure,
+    sourceReads: sourcesComplete ? sourceReads : undefined,
   });
 
   return { exchangeId, answer, stop, turns: turnCount, hitTurnCap, toolsUsed: audit.map((a) => a.name) };
@@ -367,6 +373,7 @@ async function runTools(
   offered: readonly AssistantTool[],
   calls: readonly AiToolCall[],
   audit: { name: string; input: unknown; rowCount: number | null; refusal?: string }[],
+  sourceReads: AssistantSourceRead[],
 ): Promise<AiToolResult[]> {
   return withAssistantRead(ctx, null, session => Promise.all(
     calls.map(async (call): Promise<AiToolResult> => {
@@ -390,6 +397,7 @@ async function runTools(
       try {
         const outcome = await tool.run(ctx, call.input, session);
         const content = serializeAgentReadResult(outcome);
+        sourceReads.push(Object.freeze({ name: call.name, input: call.input, digest: assistantSourceDigest(outcome) }));
         const rowCount = rowCountOf(outcome);
         audit.push({
           name: call.name,
@@ -426,16 +434,22 @@ async function persist(
     spend: AiUsage;
     period: string;
     error: string | null;
+    sourceReads?: readonly AssistantSourceRead[];
   },
 ): Promise<string> {
+  const id = randomUUID();
+  const disclosureReceipt = sealAssistantDisclosure({ tenantId: ctx.tenantId, userId: p.appUserId,
+    exchangeId: id, question: p.question, answer: p.answer }, p.sourceReads);
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .insert(assistantExchange)
       .values({
         tenantId: ctx.tenantId,
         appUserId: p.appUserId,
+        id,
         question: p.question,
         answer: p.answer || null,
+        disclosureReceipt,
         toolCalls: p.audit,
         turnCount: p.turnCount,
         hitTurnCap: p.hitTurnCap,

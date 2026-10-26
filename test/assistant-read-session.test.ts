@@ -6,7 +6,7 @@ import * as tenantDb from '../db/client';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import * as canonical from '../core/read';
-import { withAssistantRead, type AssistantReadSession } from '../core/assistant-read-session';
+import { withAssistantRead, withAssistantReadTx, type AssistantReadSession } from '../core/assistant-read-session';
 import { ASSISTANT_TOOLS } from '../core/assistant-tools';
 import { grantAssistant, revokeAssistant } from '../core/assistant-grant';
 import { lockAccessConfigurationTx } from '../core/access-configuration-lock';
@@ -65,6 +65,17 @@ describe('explicit Assistant read ownership', () => {
       expect(observed).toHaveLength(2); expect(new Set(observed).size).toBe(1);
       expect(JSON.stringify(result)).not.toContain('Fictional Private Peer');
     } finally { connection.mockRestore(); transactions.mockRestore(); }
+  });
+  it('joins only an explicitly read-only actual carrier and refuses write-mode or cross-principal joins', async () => {
+    const { ctx } = await fixture(); let consumed = 0;
+    await expect(withTenant(ctx, tx => withAssistantReadTx(ctx, tx, async () => { consumed++; }))).rejects.toThrow('data access');
+    expect(consumed).toBe(0);
+    await withTenant(ctx, async tx => {
+      await tx.execute(sql`SET TRANSACTION READ ONLY`);
+      expect(await withAssistantReadTx(ctx, tx, session => session.myEmployments())).toHaveLength(1);
+      await expect(withAssistantReadTx({ ...ctx, userId: randomUUID() }, tx, async () => { consumed++; })).rejects.toThrow('data access');
+    });
+    expect(consumed).toBe(0);
   });
   it('exposes no query handle and rejects forged, cross-principal and escaped method sessions', async () => {
     const { ctx } = await fixture();

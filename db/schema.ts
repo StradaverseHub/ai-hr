@@ -9608,6 +9608,8 @@ export const assistantExchange = pgTable(
     question: text('question').notNull(),
     /** NULL when refused, errored, or still in flight. */
     answer: text('answer'),
+    /** Sealed canonical-source fingerprints, bound to owner, exchange and exact question/answer. */
+    disclosureReceipt: text('disclosure_receipt'),
     /** [{ name, input, rowCount }] — the tool INPUTS and how many rows came back, never the rows. */
     toolCalls: jsonb('tool_calls')
       .$type<{ name: string; input: unknown; rowCount: number | null; refusal?: string }[]>()
@@ -9633,6 +9635,7 @@ export const assistantExchange = pgTable(
     // one the database actually has, which is the drift a later `db:generate` turns into a spurious
     // migration.
     index('assistant_exchange_user_asked_idx').on(t.tenantId, t.appUserId, t.askedAt.desc()),
+    check('assistant_exchange_disclosure_size_ck', sql`${t.disclosureReceipt} IS NULL OR octet_length(${t.disclosureReceipt}) <= 786432`),
     check(
       'assistant_exchange_stop_ck',
       sql`${t.stop} IS NULL OR ${t.stop} IN ('end', 'tool_use', 'max_tokens', 'refusal', 'other')`,

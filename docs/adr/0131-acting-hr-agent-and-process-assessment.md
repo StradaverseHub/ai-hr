@@ -2476,3 +2476,51 @@ stored answers or prepared provider fields. Historical canonical provenance/repl
 remaining relevant writer protection, retention/erasure and authenticated own-leave
 exposure, provider capability/settlement evaluations and all-module governed agents
 remain required. No final gate, deployment or production-readiness claim is made.
+
+
+### Historical answer source receipts and actual workspace replay (unverified source)
+
+The actual Assistant now records a private list of canonical tool-result fingerprints
+while dispatching its bounded reads. Final persistence seals that evidence with the
+existing operator secret custody, domain-separated to tenant, login and server-generated
+exchange ID, and to a digest of the exact question/answer. Only captured lookup inputs
+and result fingerprints are sealed; result rows are not duplicated into the receipt or
+audit. Complete source-free exchanges can carry an explicit empty manifest. Unknown,
+unparseable or failed tool calls make the evidence incomplete and cannot receive a
+receipt. Missing secret custody, excessive evidence and sealing failure leave no proof.
+This is trusted-command provenance, not a claim that arbitrary model prose is true.
+
+A fourth draft, `assistant-disclosure.sql`, adds the nullable sealed receipt and matching
+size constraint, mirrored by the source schema. It is UNALLOCATED, UNJOURNALED and
+UNAPPLIED. No number is claimed and existing0601 ordering remains unresolved; CI received
+one compact coordination notice. Existing rows are deliberately not backfilled as
+proven. No database was contacted or changed for this source work.
+
+The actual workspace loader now owns a READ ONLY transaction and explicitly joins it to
+the closed read service. Every stored answer must authenticate its receipt and replay
+its canonical reads using current calling-user, module, Assistant grant/pause and RLS
+checks. Exact current result fingerprints must match. Changed facts, reduced scope,
+missing/legacy/corrupt/swapped receipts and unavailable readers withhold the answer.
+The audit remains unchanged. Page props contain neither the sealed receipt nor tool
+lookup inputs. One per-request replay cache deduplicates exact lookups/fingerprints,
+with a total128-read workspace budget; it is not shared across users or transactions.
+A fresh source-free receipt has no canonical-read dependency but still requires current
+Assistant access. Six locales explain unavailable saved answers and invite a new query.
+The explicit transaction join refuses write-mode callers and exposes no query handle.
+
+Authored UNRUN cases cover sealed body/owner/exchange swaps, malformed/unknown/oversized
+proof, missing custody after warm encryption, captured-input immutability and distinct
+ciphertexts. Actual DB cases cover positive canonical replay, reduced role scope,
+changed source facts, forged stored prose and legacy-body withholding without audit
+removal. The existing actual Assistant/payslip dispatch case now exercises real command
+persistence -> sealed receipt -> workspace replay -> payroll-module revocation. Only
+model responses are scripted there; actual canonical readers and RLS remain real.
+
+Static AST syntax and diff checks only. Normal complete-set admission for first pure
+receipt checks/changed-input compiler refused occupied or uncertain operator leases,
+holding none and starting no tests/compiler/DB work. The earlier7102-input compiler pass
+still applies only to its older source. These new tests/SQL/runtime paths remain UNRUN.
+Historical replay does not close prepared provider-field admission, all transitive
+writer races, raw storage/retention/erasure or deterministic adjudication of model facts.
+These and the remaining own-leave/provider/all-module governance requirements still
+block the one combined final gate and deployment; no production-readiness claim.

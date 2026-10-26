@@ -16225,6 +16225,7 @@
       "taskHint": "选择一个问题，编辑后再点击提问。",
       "question": "你的问题",
       "working": "处理中…",
+      "answerUnavailable": "无法重新验证来源访问权限或事实，因此此保存的回答暂不可用。请重新提问以获取当前回答。",
       "history": "你最近的问题",
       "leave_available_label": "我的假期余额",
       "leave_available_prompt": "我目前有多少可用假期？",

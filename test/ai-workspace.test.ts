@@ -1,20 +1,43 @@
 /** Actual workspace principal/grant/history custody cases, authored UNRUN. No provider requests. */
+import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadAiWorkspace } from '../core/ai-workspace';
 import { grantAssistant, revokeAssistant } from '../core/assistant-grant';
 import { ASSISTANT_TOOLS } from '../core/assistant-tools';
+import { assistantSourceDigest, sealAssistantDisclosure } from '../lib/ai/assistant-disclosure';
+import { hireEmployee } from '../core/org';
 import { AI_WORKSPACE_TASKS } from '../lib/ai/workspace-tasks';
 import { MODULE_CATALOG } from '../packs/catalog';
 import * as schema from '../db/schema';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
+import { adminCtx, closeAll, createAppUser, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 let base: Base;
 beforeAll(migrateTestDb);
-beforeEach(async () => { await resetDb(); base = await seedBase(); await setModule(base.tenantId, 'assistant', 'active'); });
-afterAll(closeAll);
+beforeEach(async () => { vi.stubEnv('AI_CONFIG_SECRET', 'fictional-workspace-disclosure-only'); await resetDb(); base = await seedBase(); await setModule(base.tenantId, 'assistant', 'active'); });
+afterAll(async () => { vi.unstubAllEnvs(); await closeAll(); });
 async function grant() { const ctx = adminCtx(base); await grantAssistant(ctx, { appUserId: ctx.userId! }); return ctx; }
 const exchange = (tenantId: string, appUserId: string, text: string) => owner.db.insert(schema.assistantExchange)
   .values({ tenantId, appUserId, question: text, answer: text, stop: 'end' }).returning({ id: schema.assistantExchange.id });
+
+async function profileReceipt() {
+  const admin = await grant();
+  const make = (name: string) => hireEmployee(admin, { person: { fullName: name, primaryEmail: `${randomUUID()}@fixture.test` },
+    companyId: base.companyId, departmentId: base.deptA, employmentType: 'full_time', hiredOn: '2020-01-01' });
+  const mine = await make('Fictional Caller'), peer = await make('HISTORICAL_PEER_PRIVATE_SENTINEL');
+  const userId = await createAppUser(base.tenantId, mine.personId, 'hr_admin');
+  await grantAssistant(admin, { appUserId: userId });
+  const ctx = { ...await entitledCtx(base), userId, personId: mine.personId };
+  const input = { employment_id: peer.employmentId };
+  const tool = ASSISTANT_TOOLS.find(tool => tool.spec.name === 'employee_profile')!;
+  const outcome = await tool.run(ctx, input); expect(outcome.ok).toBe(true);
+  const id = randomUUID(), question = 'What is this employee profile?', answer = 'HISTORICAL_PEER_PRIVATE_SENTINEL';
+  const receipt = sealAssistantDisclosure({ tenantId: base.tenantId, userId, exchangeId: id, question, answer },
+    [{ name: tool.spec.name, input, digest: assistantSourceDigest(outcome) }]);
+  expect(receipt).toBeTruthy();
+  await owner.db.insert(schema.assistantExchange).values({ id, tenantId: base.tenantId, appUserId: userId, question, answer,
+    disclosureReceipt: receipt, stop: 'end', toolCalls: [{ name: tool.spec.name, input, rowCount: 1 }] });
+  return { ctx, peer, id, receipt, tool };
+}
 
 describe('actual AI workspace source read', () => {
   it('keeps personal history separate from broad HR visibility and other tenants', async () => {
@@ -30,6 +53,45 @@ describe('actual AI workspace source read', () => {
     expect(JSON.stringify(workspace)).not.toContain('OTHER_');
     expect(workspace).not.toHaveProperty('apiKey');
     expect(workspace).not.toHaveProperty('providerOptions');
+  });
+  it('withholds legacy answer bodies without deleting or fabricating their audit evidence', async () => {
+    const ctx = await grant();
+    const [row] = await owner.db.insert(schema.assistantExchange).values({ tenantId: base.tenantId, appUserId: ctx.userId!,
+      question: 'Old question', answer: 'LEGACY_PRIVATE_ANSWER_SENTINEL', stop: 'end' }).returning({ id: schema.assistantExchange.id });
+    const workspace = await loadAiWorkspace(ctx);
+    expect(workspace.history).toMatchObject([{ id: row.id, answer: null, answerVisibility: 'unavailable' }]);
+    expect(JSON.stringify(workspace)).not.toContain('LEGACY_PRIVATE_ANSWER_SENTINEL');
+    const [retained] = await owner.db.select().from(schema.assistantExchange).where(eq(schema.assistantExchange.id, row.id));
+    expect(retained.answer).toBe('LEGACY_PRIVATE_ANSWER_SENTINEL');
+  });
+  it('replays actual canonical fields and returns neither receipt nor lookup inputs in page props', async () => {
+    const { ctx, id, receipt, peer } = await profileReceipt();
+    const workspace = await loadAiWorkspace(ctx);
+    expect(workspace.history).toMatchObject([{ id, answer: 'HISTORICAL_PEER_PRIVATE_SENTINEL', answerVisibility: 'current' }]);
+    expect(JSON.stringify(workspace)).not.toContain(receipt!);
+    expect(JSON.stringify(workspace)).not.toContain(peer.employmentId);
+    expect(workspace.history[0]).not.toHaveProperty('disclosureReceipt');
+    expect(workspace.history[0].toolCalls).toEqual([{ name: 'employee_profile' }]);
+  });
+  it('withholds an unchanged stored peer answer after actual role scope is reduced', async () => {
+    const { ctx, id } = await profileReceipt();
+    expect((await loadAiWorkspace(ctx)).history[0].answer).toBe('HISTORICAL_PEER_PRIVATE_SENTINEL');
+    await owner.db.update(schema.roleAssignment).set({ role: 'employee' }).where(eq(schema.roleAssignment.appUserId, ctx.userId!));
+    const reduced = { ...ctx, roles: ['employee'] };
+    const workspace = await loadAiWorkspace(reduced);
+    expect(workspace.history).toMatchObject([{ id, answer: null, answerVisibility: 'unavailable' }]);
+    expect(JSON.stringify(workspace)).not.toContain('HISTORICAL_PEER_PRIVATE_SENTINEL');
+  });
+  it('withholds answers when canonical facts drift or the exact stored answer is swapped', async () => {
+    const { ctx, peer, id } = await profileReceipt();
+    await owner.db.update(schema.person).set({ fullName: 'Changed canonical name' }).where(eq(schema.person.id, peer.personId));
+    expect((await loadAiWorkspace(ctx)).history[0]).toMatchObject({ answer: null, answerVisibility: 'unavailable' });
+    await owner.db.update(schema.person).set({ fullName: 'HISTORICAL_PEER_PRIVATE_SENTINEL' }).where(eq(schema.person.id, peer.personId));
+    expect((await loadAiWorkspace(ctx)).history[0].answer).toBe('HISTORICAL_PEER_PRIVATE_SENTINEL');
+    await owner.db.update(schema.assistantExchange).set({ answer: 'FORGED_REPLACEMENT_SENTINEL' }).where(eq(schema.assistantExchange.id, id));
+    const workspace = await loadAiWorkspace(ctx);
+    expect(workspace.history[0].answerVisibility).toBe('unavailable');
+    expect(JSON.stringify(workspace)).not.toContain('FORGED_REPLACEMENT_SENTINEL');
   });
   it('bounds personal history to ten records in a stable newest-first order', async () => {
     const ctx = await grant();

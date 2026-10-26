@@ -16225,6 +16225,7 @@
       "taskHint": "Pilih soalan, sunting, kemudian pilih Tanya.",
       "question": "Soalan anda",
       "working": "Sedang diproses…",
+      "answerUnavailable": "Jawapan tersimpan ini tidak tersedia kerana akses sumber atau faktanya tidak dapat disahkan semula. Tanya semula untuk jawapan terkini.",
       "history": "Soalan terkini anda",
       "leave_available_label": "Baki cuti saya",
       "leave_available_prompt": "Berapakah baki cuti yang boleh saya gunakan sekarang?",
