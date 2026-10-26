@@ -1,6 +1,7 @@
 /** Private staging alias and strict source-pending transport. No release/gate authority. */
 import {existsSync,lstatSync,realpathSync} from 'node:fs';
 import {isAbsolute,join,resolve} from 'node:path';
+import {PACKET_MODE_ARGS} from './rsync-packet-capability.mjs';
 export const STAGING=Object.freeze({host:'aihr-staging',port:'',user:'',directory:'/opt/ai-hr',stateDirectory:'/var/tmp/aihr-deploy'});
 const sha=value=>typeof value==='string'&&/^[a-f0-9]{40}$/.test(value);
 const quote=value=>"'"+value.replaceAll("'","'\"'\"'")+"'";
@@ -26,7 +27,7 @@ export function stagingTransport(candidatePath,environment=process.env){
   packetRsyncArgs:(packet,destination)=>{
    if(!isAbsolute(packet)||realpathSync(packet)!==packet||!lstatSync(packet).isDirectory()||lstatSync(packet).isSymbolicLink())throw Error('Canonical private verified packet required');
    if(typeof destination!=='string'||!/^\/[A-Za-z0-9_./-]+\/\.aihr-ci-builds\/[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}\/packet$/.test(destination)||destination.split('/').some(p=>p==='.'||p==='..'))throw Error('Private installation packet destination differs');
-   return ['-a','--chmod=D700,F600','-e',['ssh',...args].map(quote).join(' '),'--',packet+'/',STAGING.host+':'+destination+'/'];
+   return [...PACKET_MODE_ARGS,'-e',['ssh',...args].map(quote).join(' '),'--',packet+'/',STAGING.host+':'+destination+'/'];
   },
   rsyncArgs:(official,source)=>{
    // Reuse the actual candidate filter, changing only its transport and fixed destination.

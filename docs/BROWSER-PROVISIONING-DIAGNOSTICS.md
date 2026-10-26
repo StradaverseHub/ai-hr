@@ -48,3 +48,22 @@ release: normal-workflow adoption requires measured results, source review, cove
 verification-policy binding, then a complete frozen submission-to-staging measurement including
 queue, setup, authentication, installation, migrations, restart, source/build arrival and cleanup.
 Keep the currently active release candidate and controller unchanged during this experiment.
+
+## Early operator packet capability
+
+The actual 2127 release authenticated all archives and changed source/pending state before the
+Mac's system rsync refused `--chmod=D700,F600`. A private local reproduction using
+`/usr/bin/rsync` returned that same refusal. The prepared operator change exercises the same
+shared packet flags on two tiny local files **before** remote access or archive verification,
+requiring actual 0700 directories, a regular single-link 0600 packet and identical bytes.
+An incompatible binary fails before any staging change. Compatible transports retain every
+original source, packet, authority, migration, runtime and cleanup guard.
+
+Six tiny local boundary checks passed, including actual GNU rsync and false-success refusals.
+The existing Linux source-transfer fixture cannot run directly on this Mac: it intentionally
+uses Linux `/usr/bin/rsync`; an initial direct invocation also lacked its required typed-loader
+and source cwd. Those invocation failures remain separate from passing capability cases.
+`probe_scope=operator-transport` runs just the new permission cases and existing private Linux
+transport boundaries on a free standard runner, with the actual frozen candidate release helper.
+It does not rerun browser installation, application tests, compiler/build or deployment.
+This operator change is prepared source, not yet normal-workflow or staging-release verified.
