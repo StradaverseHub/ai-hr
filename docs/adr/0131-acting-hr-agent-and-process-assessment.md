@@ -1132,6 +1132,24 @@ journey, denied-access/prompt-injection tests, audited effects where allowed, me
 loop and rollback are demonstrated. An empty registry entry or chatbot persona is not completion.
 
 
+### Owner clarification: one Assistant, enforced module specialisation
+
+**Decision (2026-10-27 KL):** The owner accepted one conversational Assistant with a shared
+orchestrator and typed module specialists. The twenty catalogue bindings are internal logical
+capabilities, not twenty permanently running model processes. Own-leave is an action of the Leave
+specialist; it must not be presented as a twenty-first independent agent.
+
+Specialisation is enforced through closed module tools, canonical service boundaries, minimal
+current-user context, domain-specific independent evaluations and versioned promotion/rollback.
+A role prompt alone proves no specialist competence. The same underlying model may serve several
+specialists; a separate model requires measured justification. Orchestration never unions authority.
+Access rights alone are insufficient for effects: the canonical owner also checks current subject
+and scope, state, dependencies, business rules, exact human-confirmed input, idempotency and receipts.
+Harness engineering may improve routing, context, tool use and prompts; it cannot change HR rules,
+compute payroll money, grant privileges, weaken security or treat model self-ratings as outcomes.
+Read bindings and declaration coverage alone do not complete the required action adapters or their
+human journeys. Explicitly read-only modules remain read-only rather than inventing mutations.
+
 ### Owner requirements: low communication/token cost and responsive interaction
 
 **Decision (2026-10-26 KL):** Token use, communication cost and response latency are core acceptance
