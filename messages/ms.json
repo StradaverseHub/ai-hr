@@ -2432,7 +2432,14 @@
         "reason_scalar_invalid": "Peraturan medan kanonik memerlukan nilai lain.",
         "reason_conflicting_field": "Beberapa medan asal menuju destinasi sama. Selesaikan konflik.",
         "missingFields": "Medan wajib tiada: {fields}",
-        "conflictingFields": "Destinasi bercanggah: {fields}"
+        "conflictingFields": "Destinasi bercanggah: {fields}",
+        "clearAction": "Terima padanan jelas di halaman ini ({count})",
+        "clearRule": "Hanya padanan medan kanonik tepat, pemotongan ruang tepi dan normalisasi pilihan dikenali layak. Medan kabur, formula, identiti berulang dan suntingan anda perlu semakan individu. Penyertaan rekod kekal berasingan.",
+        "clearReview": "Semak padanan jelas",
+        "clearCount": "Tindakan ini menandakan {count} medan jelas sebagai disemak. Ia tidak menyertakan rekod, mengecualikan data atau menjalankan import.",
+        "clearConfirm": "Terima {count} medan ini",
+        "clearCancel": "Batal",
+        "excludeField": "Kecualikan medan ini; kekalkan bukti asal"
       }
     },
     "wizard": {

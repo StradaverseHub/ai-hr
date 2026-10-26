@@ -2432,7 +2432,14 @@
         "reason_scalar_invalid": "Quy tắc trường chuẩn yêu cầu giá trị khác.",
         "reason_conflicting_field": "Nhiều trường gốc cùng trỏ tới một đích. Hãy giải quyết xung đột.",
         "missingFields": "Thiếu trường bắt buộc: {fields}",
-        "conflictingFields": "Các trường đích xung đột: {fields}"
+        "conflictingFields": "Các trường đích xung đột: {fields}",
+        "clearAction": "Chấp nhận các mục khớp rõ trên trang ({count})",
+        "clearRule": "Chỉ áp dụng cho trường chuẩn khớp chính xác, bỏ khoảng trắng hai đầu và chuẩn hóa lựa chọn đã biết. Trường mơ hồ, công thức, định danh trùng và phần bạn sửa vẫn cần xem xét riêng. Việc bao gồm hồ sơ là bước riêng.",
+        "clearReview": "Xem xét mục khớp rõ",
+        "clearCount": "Thao tác này đánh dấu {count} trường rõ hiện tại là đã xem xét. Không bao gồm hồ sơ, loại dữ liệu hay chạy nhập.",
+        "clearConfirm": "Chấp nhận {count} trường này",
+        "clearCancel": "Hủy",
+        "excludeField": "Loại trường này; giữ bằng chứng gốc"
       }
     },
     "wizard": {

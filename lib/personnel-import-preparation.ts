@@ -4,6 +4,7 @@
  */
 import {personnelImportHeaderCandidates,personnelImportField,personnelImportFields,personnelColumnLabel,normalizePersonnelImportValue,personnelScalarIssue,type PersonnelImportHeaderOptions} from './personnel-import-contract';
 import {buildPersonnelCsv,parseStrictPersonnelCsvWithSource,parsePersonnelCsv,PERSONNEL_CSV_FRAME} from './personnel-csv';
+import {normalizeEmployeeCode,isValidEmployeeCode} from './employee-code';
 import {MAX_IMPORT_CSV_BYTES} from './import-file';
 import type {PersonnelWorksheetSource} from './personnel-import-assistance-source';
 export const PERSONNEL_PREPARATION_LIMITS=Object.freeze({rows:500,columns:128,cells:16000,bytes:MAX_IMPORT_CSV_BYTES});
@@ -31,11 +32,16 @@ function field(id:string,label:string,cells:readonly PreparationCell[],candidate
  if(descriptor?.type==='date'&&trimmed&&!/^\d{4}-\d{2}(?:-\d{2})?$/.test(trimmed))reasons.push('ambiguous_date');
  if(descriptor&&['number','currency'].includes(descriptor.type)&&trimmed&&!/^-?\d+(?:\.\d+)?$/.test(trimmed))reasons.push('ambiguous_number');
  if(descriptor&&(descriptor.sensitivity==='identity'||descriptor.sensitivity==='bank'||descriptor.ownerField==='employeeCode')&&cells.some(cell=>typeof cell.raw==='number'))reasons.push('identity_review');
- if(cells.some(cell=>cell.formula))reasons.push('formula_review');if(descriptor&&personnelScalarIssue(descriptor,suggestedValue))reasons.push('scalar_invalid');
+ if(cells.some(cell=>cell.formula))reasons.push('formula_review');if(descriptor?.ownerField==='employeeCode'&&trimmed&&!isValidEmployeeCode(trimmed))reasons.push('scalar_invalid');if(descriptor&&personnelScalarIssue(descriptor,suggestedValue))reasons.push('scalar_invalid');
  return deep({id,label,cells:[...cells],candidates:[...candidates],suggestedField,suggestedValue,reasons});
 }
+/** Comparison only; original values never change. These are the same keys used by core/import.ts:
+ * normalizeEmployeeCode for Employee ID, and trimmed lowercase for the canonical primary email.
+ * Do not extend this to names, personal email or other identity fields without an owning policy.
+ */
+function identityKey(column:string,value:string){const descriptor=personnelImportField(column);if(descriptor?.ownerField==='employeeCode')return normalizeEmployeeCode(value);if(descriptor?.ownerField==='primaryEmail')return value.trim().toLowerCase();return null;}
 function markedDuplicates(records:readonly PreparationRecord[]){
- const occurrences=new Map<string,string[]>();for(const record of records)for(const item of record.fields){const descriptor=item.suggestedField?personnelImportField(item.suggestedField):null;if(!descriptor||(descriptor.ownerField!=='employeeCode'&&descriptor.form?.widget!=='email')||!item.suggestedValue)continue;const key=item.suggestedField+'\u0000'+item.suggestedValue;occurrences.set(key,[...(occurrences.get(key)??[]),item.id]);}
+ const occurrences=new Map<string,string[]>();for(const record of records)for(const item of record.fields){const descriptor=item.suggestedField?personnelImportField(item.suggestedField):null;if(!descriptor||(descriptor.ownerField!=='employeeCode'&&descriptor.ownerField!=='primaryEmail')||!item.suggestedValue)continue;const key=item.suggestedField+'\u0000'+identityKey(item.suggestedField!,item.suggestedValue);occurrences.set(key,[...(occurrences.get(key)??[]),item.id]);}
  const duplicateIds=new Set([...occurrences.values()].filter(ids=>ids.length>1).flat());return records.map(record=>deep({...record,fields:record.fields.map(item=>duplicateIds.has(item.id)?{...item,reasons:[...item.reasons,'duplicate_record' as const]}:item)}));
 }
 export function preparePersonnelImportMatrix(input:{revisionId:string;matrix:readonly(readonly unknown[])[];rowNumbers?:readonly number[];coordinateKind?:string;source?:PersonnelWorksheetSource;text?:string},headerOptions:PersonnelImportHeaderOptions):PersonnelPreparation{
@@ -98,9 +104,21 @@ export function applyPersonnelImportPreparation(preparation:PersonnelPreparation
   if(preparation.options.columns.some(column=>(mode==='create'?personnelImportField(column)?.import.requiredCreate:personnelImportField(column)?.import.requiredUpdate)&&!output[column]?.trim()))throw Error('Preparation required field missing.');records.push(output);
  }
  if(!records.length)throw Error('Preparation contains no reviewed records.');
- const identity=personnelImportFields('employee').filter(field=>field.ownerField==='employeeCode'||field.form?.widget==='email').map(field=>field.import.column!);
- for(const column of identity){const seen=new Set<string>();for(const record of records){const value=record[column]?.trim();if(value&&seen.has(value))throw Error('Preparation duplicate identity needs review.');if(value)seen.add(value);}}
+ const identity=personnelImportFields('employee').filter(field=>field.ownerField==='employeeCode'||field.ownerField==='primaryEmail').map(field=>field.import.column!);
+ for(const column of identity){const seen=new Set<string>();for(const record of records){const value=identityKey(column,record[column]??'');if(value&&seen.has(value))throw Error('Preparation duplicate identity needs review.');if(value)seen.add(value);}}
  const columns=preparation.columns.filter(column=>records.some(record=>Object.prototype.hasOwnProperty.call(record,column))),text=buildPersonnelCsv('employee',[columns.map(column=>personnelColumnLabel(column,'employee')),...records.map(record=>columns.map(column=>record[column]??''))]);
  if(bytes(text)>PERSONNEL_PREPARATION_LIMITS.bytes)throw Error('Preparation exceeds limits.');
  return deep({text,sourceRevisionId:expectedRevision,revisionId:nextRevisionId,changesCount:changes.filter(change=>change.changed).length+exclusions,reviewedFieldsCount:changes.length,unresolvedCount:0 as const,evidence:preparation.original,recordEvidence:preparation.records,extraEvidence:preparation.extras,decisions,changes,excludedCount:exclusions});
+}
+
+/** Explicit review convenience, never automatic acceptance or a canonical validation result.
+ * Current manual choices, draft edits, exclusions, cross-page duplicates and destination conflicts
+ * stay outside this set. The caller must show the count/rule and require a separate human action.
+ */
+export function personnelPreparationClearMatches(preparation:Extract<PersonnelPreparation,{state:'needs_review'}>,recordIds:readonly string[],current:{records:Readonly<Record<string,'include'|'exclude'>>;fields:PreparationDecisions['fields']},drafts:Readonly<Record<string,{field:string;value:string}>>={}){
+ const allowed=new Set<PreparationReason>(['canonical_header','trim','canonical_choice']),wanted=new Set(recordIds),identityOccurrences=new Map<string,string[]>(),destinations=new Map<string,Map<string,number>>();
+ for(const record of preparation.records){if(current.records[record.id]==='exclude')continue;const counts=new Map<string,number>();destinations.set(record.id,counts);for(const item of record.fields){const selected=drafts[item.id]??current.fields[item.id]??{field:item.suggestedField??'',value:item.suggestedValue};if(!selected.field||selected.field==='exclude')continue;counts.set(selected.field,(counts.get(selected.field)??0)+1);const key=identityKey(selected.field,selected.value);if(key){const composite=selected.field+'\u0000'+key;identityOccurrences.set(composite,[...(identityOccurrences.get(composite)??[]),item.id]);}}}
+ const duplicateIds=new Set([...identityOccurrences.values()].filter(ids=>ids.length>1).flat()),matches:PreparationField[]=[];
+ for(const record of preparation.records){if(!wanted.has(record.id)||current.records[record.id]==='exclude')continue;for(const item of record.fields){if(current.fields[item.id]||Object.prototype.hasOwnProperty.call(drafts,item.id)||!item.suggestedField||item.candidates.length!==1||item.reasons.some(reason=>!allowed.has(reason))||duplicateIds.has(item.id)||(destinations.get(record.id)?.get(item.suggestedField)??0)!==1)continue;matches.push(item);}}
+ return Object.freeze(matches);
 }

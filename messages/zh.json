@@ -2432,7 +2432,14 @@
         "reason_scalar_invalid": "标准字段规则要求其他值。",
         "reason_conflicting_field": "多个原始字段指向同一目标，请解决冲突。",
         "missingFields": "缺少必填字段：{fields}",
-        "conflictingFields": "目标字段冲突：{fields}"
+        "conflictingFields": "目标字段冲突：{fields}",
+        "clearAction": "接受本页明确匹配项（{count}）",
+        "clearRule": "仅适用于准确的标准字段匹配、首尾空格整理及已知选项规范化。歧义字段、公式、重复身份和您的编辑仍需逐项审核。是否纳入记录另行决定。",
+        "clearReview": "审核明确匹配项",
+        "clearCount": "此操作会将当前 {count} 个明确字段标记为已审核，不会纳入记录、排除数据或运行导入。",
+        "clearConfirm": "接受这 {count} 个字段",
+        "clearCancel": "取消",
+        "excludeField": "排除此字段；保留原始证据"
       }
     },
     "wizard": {

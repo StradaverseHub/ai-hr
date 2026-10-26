@@ -2432,7 +2432,14 @@
         "reason_scalar_invalid": "The canonical field rules need a different value.",
         "reason_conflicting_field": "Multiple original fields target the same destination. Resolve the conflict.",
         "missingFields": "Missing required fields: {fields}",
-        "conflictingFields": "Conflicting destinations: {fields}"
+        "conflictingFields": "Conflicting destinations: {fields}",
+        "clearAction": "Accept clear matches on this page ({count})",
+        "clearRule": "Only exact canonical field matches, surrounding-space trimming and known choice normalization qualify. Ambiguous fields, formulas, duplicate identities and your edits stay for individual review. Record inclusion stays separate.",
+        "clearReview": "Review clear matches",
+        "clearCount": "This action will mark {count} currently clear fields as reviewed. It will not include records, exclude data or run an import.",
+        "clearConfirm": "Accept these {count} fields",
+        "clearCancel": "Cancel",
+        "excludeField": "Exclude this field; keep its original evidence"
       }
     },
     "wizard": {
