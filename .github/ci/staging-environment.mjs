@@ -54,8 +54,8 @@ export function fingerprintStagingEnvironment(source,{systemctl=argv=>{
   noCompileKeys(values.Environment);
   assert(values.PassEnvironment===''||/^[A-Za-z_][A-Za-z0-9_]*(?: [A-Za-z_][A-Za-z0-9_]*)*$/.test(values.PassEnvironment),'Unsupported inherited environment syntax');
   const starts=[...values.ExecStart.matchAll(/(?:^|[;{])\s*path=([^;]+?)\s*;/g)],argv=[...values.ExecStart.matchAll(/argv\[\]=([^;]+?)\s*;/g)];
-  assert(starts.length===1&&argv.length===1&&starts[0][1]==='/opt/node20/bin/node'
-   &&argv[0][1].startsWith('/opt/node20/bin/node '+source+'/node_modules/next/dist/bin/next start '),'Pinned configured service command required');
+  assert(starts.length===1&&argv.length===1&&starts[0][1]==='/opt/node22/bin/node'
+   &&argv[0][1].startsWith('/opt/node22/bin/node '+source+'/node_modules/next/dist/bin/next start '),'Pinned configured service command required');
   // systemd adds PID/start-time/status fields after execution; only configuration belongs in this digest.
   values.ExecStart={path:starts[0][1],argv:argv[0][1]};
   const files=[];
@@ -91,5 +91,5 @@ export function fingerprintStagingEnvironment(source,{systemctl=argv=>{
 export function stagingEnvironmentProbeCommand(){
  const imports="import assert from 'node:assert/strict';import * as fs from 'node:fs';import * as cp from 'node:child_process';import * as crypto from 'node:crypto';import * as path from 'node:path';\n";
  const code=imports+fingerprintStagingEnvironment.toString()+"\nconst source='/opt/ai-hr';console.log(JSON.stringify({baselineBuildId:fs.readFileSync(path.join(source,'.next/BUILD_ID'),'utf8').trim(),environmentSha256:fingerprintStagingEnvironment(source)}));\n";
- return "cd /opt/ai-hr && /opt/node20/bin/node --input-type=module <<'AIHR_STAGING_ENV_NODE'\n"+code+'AIHR_STAGING_ENV_NODE';
+ return "cd /opt/ai-hr && /opt/node22/bin/node --input-type=module <<'AIHR_STAGING_ENV_NODE'\n"+code+'AIHR_STAGING_ENV_NODE';
 }

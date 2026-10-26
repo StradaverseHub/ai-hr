@@ -10,7 +10,7 @@ import {cleanHead} from './release-ci.mjs';
 import {STAGING_BUILD_RUNTIME} from './build-production.mjs';
 import {stagingTransport} from './staging-transport.mjs';
 const hash=value=>createHash('sha256').update(value).digest('hex');
-export const DEPLOY_RUNTIME_SELECTION='  [ -x /opt/node20/bin/node ] || { echo "CI build installation requires its pinned Node20 runtime" >&2; exit 1; }\n  export PATH="/opt/node20/bin:$PATH"';
+export const DEPLOY_RUNTIME_SELECTION='  [ -x /opt/node22/bin/node ] || { echo "CI build installation requires its pinned Node22 runtime" >&2; exit 1; }\n  export PATH="/opt/node22/bin:$PATH"';
 export function validateCandidateRuntimeSelection(source){
  const branch='\nif [ -n "$AIHR_SELECTED_CI_BUILD_INSTALL" ]; then\n'+DEPLOY_RUNTIME_SELECTION+'\nelif [ -d /opt/node24/bin ];';
  assert(source.split(branch).length===2,'Candidate CI runtime selection differs; review preflight protocol');
@@ -34,9 +34,9 @@ export function validateStagingProfile(report,checker){
  assert(report&&Object.keys(report).sort().join(',')==='checkerSha256,errors,kind,ok,profile,releaseAuthorized,runtime','Unexpected profile report');
  assert(report.kind==='STAGING_PROFILE_PREFLIGHT_ONLY'&&report.releaseAuthorized===false&&report.checkerSha256===hash(checker.toString()),'Customer checker binding differs');
  assert(['demo','customer'].includes(report.profile)&&Array.isArray(report.errors)&&report.errors.length<=64&&report.errors.every(e=>typeof e==='string'&&e.length>0&&e.length<=1000),'Invalid profile result');
- assert(isDeepStrictEqual(report.runtime,STAGING_BUILD_RUNTIME),'Actual deploy toolchain differs from pinned CI native build');
  assert(typeof report.ok==='boolean'&&report.ok===(report.errors.length===0),'Inconsistent customer preflight result');
  if(!report.ok){const error=new Error('Staging deployment profile refused before CI archive download/source transfer: '+report.errors.join('; '));error.preflight=report;throw error;}
+ assert(isDeepStrictEqual(report.runtime,STAGING_BUILD_RUNTIME),'Actual deploy toolchain differs from pinned CI native build');
  return report;
 }
 export async function probeStagingProfile({candidatePath,ssh}){

@@ -129,8 +129,8 @@ readonly AIHR_SELECTED_DEPLOY_REF="$AIHR_DEPLOY_REF"
 # pnpm/node are found even when /opt/node20/bin isn't on the invoking shell's PATH).
 # Prefer a supported isolated runtime. Retain the legacy path only for the existing demo.
 if [ -n "$AIHR_SELECTED_CI_BUILD_INSTALL" ]; then
-  [ -x /opt/node20/bin/node ] || { echo "CI build installation requires its pinned Node20 runtime" >&2; exit 1; }
-  export PATH="/opt/node20/bin:$PATH"
+  [ -x /opt/node22/bin/node ] || { echo "CI build installation requires its pinned Node22 runtime" >&2; exit 1; }
+  export PATH="/opt/node22/bin:$PATH"
 elif [ -d /opt/node24/bin ]; then export PATH="/opt/node24/bin:$PATH"
 elif [ -d /opt/node22/bin ]; then export PATH="/opt/node22/bin:$PATH"
 elif [ -d /opt/node20/bin ]; then export PATH="/opt/node20/bin:$PATH"

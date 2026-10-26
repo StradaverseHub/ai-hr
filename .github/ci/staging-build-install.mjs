@@ -70,14 +70,14 @@ function selected(installId,sourceRef,buildRecordId,{allowCleanup=false}={}){
 export function assertServiceDescriptor(text,source){
  const paths=[...text.matchAll(/(?:^|[;{])\s*path=([^;]+?)\s*;/g)].map(m=>m[1]);
  const argv=[...text.matchAll(/argv\[\]=([^;]+?)\s*;/g)].map(m=>m[1]);
- assert(paths.length===1&&paths[0]==='/opt/node20/bin/node'&&argv.length===1
-  &&argv[0].startsWith('/opt/node20/bin/node '+source+'/node_modules/next/dist/bin/next start '),'Active service runtime/start command differs from the build contract');
+ assert(paths.length===1&&paths[0]==='/opt/node22/bin/node'&&argv.length===1
+  &&argv[0].startsWith('/opt/node22/bin/node '+source+'/node_modules/next/dist/bin/next start '),'Active service runtime/start command differs from the build contract');
  return true;
 }
 function runtimeContract(source,grant){
  const runtime={node:process.versions.node,abi:process.versions.modules,platform:process.platform,arch:process.arch,glibc:process.report.getReport().header.glibcVersionRuntime,next:JSON.parse(readFileSync(join(source,'node_modules/next/package.json'))).version};
  assertBuildRuntime(runtime,process.env);assertBuildDotenvCompileKeys(source);assert(isDeepStrictEqual(runtime,grant.build.runtime),'Actual recipient runtime differs');
- assert(realpathSync(process.execPath)===realpathSync('/opt/node20/bin/node'),'Deployment and active-service Node executables must match');
+ assert(realpathSync(process.execPath)===realpathSync('/opt/node22/bin/node'),'Deployment and active-service Node executables must match');
  const service=execFileSync('systemctl',['show','aihr','--property=ExecStart','--value'],{encoding:'utf8',timeout:10000});
  assertServiceDescriptor(service,source);
  assert(execFileSync('systemctl',['show','aihr','--property=WorkingDirectory','--value'],{encoding:'utf8',timeout:10000}).trim()===source,'Service working directory differs');

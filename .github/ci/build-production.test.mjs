@@ -4,9 +4,9 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {assertBuildRuntime,assertBuildInvocation,assertCiCandidateBuildInvocation,assertDiagnosticBuildInvocation,assertSuccessfulObservation,STAGING_BUILD_RUNTIME} from './build-production.mjs';
 const environment={GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',AIHR_CI_HEAD:'a'.repeat(40),AIHR_CI_CONTROL_HEAD:'b'.repeat(40),GITHUB_SHA:'b'.repeat(40),GITHUB_RUN_ATTEMPT:'1',GITHUB_RUN_ID:'123',GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/alpha'};
-test('Only the observed staging tuple passes; public/key compile overrides refuse',()=>{
+test('Only the pinned target tuple passes; public/key compile overrides refuse',()=>{
  assert.equal(assertBuildRuntime({...STAGING_BUILD_RUNTIME},{}),true);
- for(const [key,value]of Object.entries({node:'22.0.0',abi:'127',platform:'darwin',arch:'arm64',glibc:'2.35',next:'16.2.7'}))assert.throws(()=>assertBuildRuntime({...STAGING_BUILD_RUNTIME,[key]:value},{}),/runtime mismatch/);
+ for(const [key,value]of Object.entries({node:'22.0.0',abi:'115',platform:'darwin',arch:'arm64',glibc:'2.35',next:'16.2.7'}))assert.throws(()=>assertBuildRuntime({...STAGING_BUILD_RUNTIME,[key]:value},{}),/runtime mismatch/);
  for(const key of ['NEXT_PUBLIC_API','NEXT_SERVER_ACTIONS_ENCRYPTION_KEY'])for(const value of ['', 'fixture'])assert.throws(()=>assertBuildRuntime({...STAGING_BUILD_RUNTIME},{[key]:value}),/compile environment/);
  assert.equal(assertBuildRuntime({...STAGING_BUILD_RUNTIME},{UNRELATED:'fixture',NEXT_PUBLIC_UNUSED:undefined}),true);
 });
@@ -59,3 +59,5 @@ test('normal build-only context accepts review/PR production compilation but can
  assert.throws(()=>assertCiCandidateBuildInvocation({...push,GITHUB_REF:'refs/heads/main'}));
  assert.throws(()=>assertCiCandidateBuildInvocation({...push,AIHR_CI_HEAD:'f'.repeat(40)}));
 });
+
+test('legacy Node20 packet runtime cannot be relabelled as the future Node22 target',()=>{assert.throws(()=>assertBuildRuntime({...STAGING_BUILD_RUNTIME,node:'20.20.2',abi:'115'},{}),/runtime mismatch/);});

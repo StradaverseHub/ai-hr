@@ -349,7 +349,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
       - uses: ./automation/.github/actions/setup-alpha
-        with: {node: '20.20.2', mobile: 'false', capacity_profile: bounded-canonical-build}
+        with: {node: '22.23.3', mobile: 'false', capacity_profile: bounded-canonical-build}
       - name: Bind compiler cache to CI build context
         id: next-cache-context
         continue-on-error: true

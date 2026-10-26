@@ -72,7 +72,7 @@ export async function operatorRelease({candidatePath,runId,execute=false}){
  // Preserve official learning only after actual service/build/source/ledger arrival.
  try{
   const record=recordReleaseLearning({worktree:candidatePath,sha:evidence.sha,buildId:status.built_build_id,previousRef:baseline,receipt:{...evidence,tier:'ci',result:'PASS'},status,
-   mirror:record=>ssh('cd /opt/ai-hr && AIHR_IMPACT_STATE_DIR=/var/tmp/aihr-deploy/impact-learning /opt/node20/bin/node --import tsx scripts/gate-learning-cli.ts record-release',{input:JSON.stringify(record)})});
+   mirror:record=>ssh('cd /opt/ai-hr && AIHR_IMPACT_STATE_DIR=/var/tmp/aihr-deploy/impact-learning /opt/node22/bin/node --import tsx scripts/gate-learning-cli.ts record-release',{input:JSON.stringify(record)})});
   save('release-learning.json',record);
  }catch(error){save('release-learning-warning.json',{error:String(error)});console.warn('Release learning requires retry; arrival evidence is retained: '+String(error));}
  // Coordinating owner still performs alpha/board handback. Immutable original CI/audit evidence is retained.
