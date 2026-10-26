@@ -74,7 +74,11 @@ final class AppAttestProofStore: @unchecked Sendable {
     return SHA256.hash(data: Data(("aihr-app-attest-proof-v1:" + keyId).utf8)).map { String(format: "%02x", $0) }.joined()
   }
   private func save(_ record: Record, _ account: String) throws {
-    let data = try JSONEncoder().encode(record)
+    let encoder = JSONEncoder()
+    // Base64 may consist almost entirely of '/'. Escaping every slash would nearly double a valid
+    // 64 KiB artifact and strand it above the bounded record size after the one-use vendor call.
+    encoder.outputFormatting = [.withoutEscapingSlashes]
+    let data = try encoder.encode(record)
     guard data.count <= 92160 else { throw AppAttestProofError.storageUnavailable }
     try persistence.write(data, account: account)
   }
