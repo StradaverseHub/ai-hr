@@ -23939,6 +23939,7 @@
   },
   "letters": {
     "notifications": {
+      "created": "Đã tạo lô nháp thư",
       "acknowledged": "Nhân viên đã xác nhận nhận thư",
       "signed": "Nhân viên đã ký xác nhận",
       "returned": "Thư được trả lại để chỉnh sửa",

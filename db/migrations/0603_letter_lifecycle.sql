@@ -835,12 +835,12 @@ BEGIN
  SELECT * INTO j FROM public.letter_job WHERE id=NEW.letter_job_id AND tenant_id=NEW.tenant_id;
  SELECT * INTO e FROM public.domain_event WHERE id=j.source_event_id AND tenant_id=j.tenant_id AND aggregate_type='letter' AND aggregate_id=j.letter_id;
  SELECT coalesce((p.policy->>'portalNotifications')::boolean,false),l.batch_id INTO portal,batch FROM public.letter_record l JOIN public.letter_generation_batch b ON b.id=l.batch_id AND b.tenant_id=l.tenant_id JOIN public.letter_policy_version p ON p.id=b.policy_version_id AND p.tenant_id=b.tenant_id WHERE l.id=j.letter_id AND l.tenant_id=j.tenant_id;
- expected_kind:='letter.'||CASE j.kind WHEN 'notification' THEN CASE WHEN j.payload->>'purpose'='recipientAcknowledgement' THEN CASE j.payload->>'outcome' WHEN 'acknowledged' THEN 'acknowledged' WHEN 'signed' THEN 'signed' ELSE NULL END WHEN j.payload->>'purpose'='creatorDecision' THEN CASE j.payload->>'outcome' WHEN 'returned' THEN 'returned' WHEN 'rejected' THEN 'rejected' WHEN 'approved' THEN 'approved' ELSE NULL END WHEN j.payload ? 'artifactId' THEN 'issued' ELSE 'approval' END WHEN 'approvalReminder' THEN 'approvalReminder' WHEN 'escalation' THEN 'escalation' WHEN 'acknowledgementReminder' THEN 'acknowledgementReminder' ELSE NULL END;
- target_path:=CASE WHEN j.payload->>'purpose'='recipientAcknowledgement' THEN '/letters/register/'||j.letter_id::text WHEN j.payload->>'purpose'='creatorDecision' THEN '/letters/generate/'||batch::text ELSE (CASE WHEN j.payload ? 'artifactId' THEN '/me/letters/' ELSE '/letters/approval/' END)||j.letter_id::text END;
+ expected_kind:='letter.'||CASE j.kind WHEN 'notification' THEN CASE WHEN j.payload->>'purpose'='draftCreated' THEN 'created' WHEN j.payload->>'purpose'='recipientAcknowledgement' THEN CASE j.payload->>'outcome' WHEN 'acknowledged' THEN 'acknowledged' WHEN 'signed' THEN 'signed' ELSE NULL END WHEN j.payload->>'purpose'='creatorDecision' THEN CASE j.payload->>'outcome' WHEN 'returned' THEN 'returned' WHEN 'rejected' THEN 'rejected' WHEN 'approved' THEN 'approved' ELSE NULL END WHEN j.payload ? 'artifactId' THEN 'issued' ELSE 'approval' END WHEN 'approvalReminder' THEN 'approvalReminder' WHEN 'escalation' THEN 'escalation' WHEN 'acknowledgementReminder' THEN 'acknowledgementReminder' ELSE NULL END;
+ target_path:=CASE WHEN j.payload->>'purpose'='draftCreated' THEN '/letters/generate/'||batch::text WHEN j.payload->>'purpose'='recipientAcknowledgement' THEN '/letters/register/'||j.letter_id::text WHEN j.payload->>'purpose'='creatorDecision' THEN '/letters/generate/'||batch::text ELSE (CASE WHEN j.payload ? 'artifactId' THEN '/me/letters/' ELSE '/letters/approval/' END)||j.letter_id::text END;
  IF j.id IS NULL OR e.id IS NULL OR j.recipient_user_id IS DISTINCT FROM NEW.recipient_user_id
   OR NEW.portal_visible IS DISTINCT FROM portal OR NEW.company_id IS DISTINCT FROM j.company_id OR NEW.source_event_id IS DISTINCT FROM e.id OR NEW.link_path IS DISTINCT FROM target_path
   OR expected_kind IS NULL OR NEW.kind IS DISTINCT FROM expected_kind
-  OR NEW.severity::text IS DISTINCT FROM (CASE WHEN expected_kind IN ('letter.issued','letter.approved','letter.acknowledged','letter.signed') THEN 'info' ELSE 'action' END)
+  OR NEW.severity::text IS DISTINCT FROM (CASE WHEN expected_kind IN ('letter.issued','letter.approved','letter.acknowledged','letter.signed','letter.created') THEN 'info' ELSE 'action' END)
   OR NEW.title IS DISTINCT FROM 'letters.notifications.'||substring(NEW.kind FROM 8)
   OR NEW.body IS DISTINCT FROM 'letters.notifications.body' OR NEW.read_at IS NOT NULL
  THEN RAISE EXCEPTION 'Letter notification identity is invalid' USING ERRCODE='42501';END IF;
@@ -932,6 +932,7 @@ BEGIN
  IF l.state NOT IN ('issued','void') AND NOT app.letter_automation_source_current_at(wanted_tenant,l.id) THEN RETURN false;END IF;
  SELECT config.policy INTO p FROM public.letter_generation_batch b JOIN public.letter_policy_version config ON config.id=b.policy_version_id AND config.tenant_id=b.tenant_id WHERE b.id=l.batch_id AND b.tenant_id=l.tenant_id;
  IF p IS NULL OR (p->>'emailNotifications')::boolean IS NOT TRUE OR NOT EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=j.recipient_user_id AND u.tenant_id=j.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)) THEN RETURN false;END IF;
+ IF j.payload->>'purpose'='draftCreated' THEN RETURN app.letter_draft_created_job_current(wanted_tenant,wanted_job);END IF;
  IF j.payload->>'purpose'='recipientAcknowledgement' THEN RETURN app.letter_acknowledgement_job_current(wanted_tenant,wanted_job);END IF;
  IF j.payload->>'purpose'='creatorDecision' THEN
   IF j.kind<>'notification' OR j.recipient_user_id<>l.created_by OR l.state NOT IN ('returned','rejected','approved') OR j.payload->>'outcome' IS DISTINCT FROM l.state OR j.payload->>'revisionId' IS DISTINCT FROM l.current_revision_id::text THEN RETURN false;END IF;
@@ -1144,6 +1145,9 @@ DECLARE j public.letter_job;rule public.letter_automation_rule_version;b public.
 BEGIN
  IF app.current_user_id() IS NOT NULL OR NOT app.letter_notification_storage_owner() OR row_data->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text THEN RETURN false;END IF;
  IF table_name='letter_job' THEN
+  IF row_data->>'kind'='notification' AND row_data->'payload'->>'purpose'='draftCreated' THEN
+   RETURN row_data->>'status'='queued' AND (row_data->>'attempts')::integer=0 AND row_data->>'lease_token' IS NULL AND row_data->>'lease_until' IS NULL AND app.letter_draft_created_notice_valid(app.current_tenant_id(),row_data);
+  END IF;
   IF row_data->>'kind'<>'eventDraft' OR row_data->>'letter_id' IS NOT NULL OR row_data->>'status'<>'queued' OR (row_data->>'attempts')::integer<>0 OR row_data->>'lease_token' IS NOT NULL OR row_data->>'lease_until' IS NOT NULL THEN RETURN false;END IF;
   SELECT * INTO rule FROM public.letter_automation_rule_version WHERE id=(row_data->'payload'->>'ruleVersionId')::uuid AND tenant_id=app.current_tenant_id();
   subject:=(row_data->'payload'->>'employmentId')::uuid;
@@ -1389,3 +1393,23 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.queue_letter_acknowledgement_notices(uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.queue_letter_acknowledgement_notices(uuid,uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.letter_draft_created_notice_valid(wanted_tenant uuid,row_data jsonb) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.letter_record l JOIN public.letter_generation_batch b ON b.id=l.batch_id AND b.tenant_id=l.tenant_id
+  JOIN public.domain_event source ON source.id=(row_data->>'source_event_id')::uuid AND source.tenant_id=l.tenant_id AND source.aggregate_type='letter' AND source.aggregate_id=l.id
+  WHERE l.id=(row_data->>'letter_id')::uuid AND l.tenant_id=wanted_tenant AND row_data->>'tenant_id'=wanted_tenant::text AND row_data->>'company_id'=l.company_id::text
+   AND row_data->>'kind'='notification' AND row_data->>'status'<>'cancelled' AND row_data->'payload'->>'purpose'='draftCreated'
+   AND row_data->>'recipient_user_id'=l.created_by::text AND row_data->'payload'->>'batchId'=b.id::text AND source.payload->>'batchId'=b.id::text
+   AND row_data->>'dedupe_key'=b.id::text||':created:'||l.created_by::text
+   AND (source.event_type='letter.draft.batch-created' AND source.actor_type='user' AND source.actor_id=l.created_by OR
+    source.event_type='letter.automation.source-bound' AND source.actor_type='system' AND source.actor_id IS NULL AND source.payload->>'responsibleUserId'=l.created_by::text
+     AND source.payload->>'jobId'=b.operation_key::text AND EXISTS(SELECT 1 FROM public.letter_job parent WHERE parent.id=b.operation_key AND parent.tenant_id=b.tenant_id AND parent.kind='eventDraft' AND parent.status='completed' AND parent.payload->>'batchId'=b.id::text))
+   AND app.letter_automation_owner_eligible_at(wanted_tenant,l.created_by,l.company_id,l.confidential))
+$$;
+REVOKE ALL ON FUNCTION app.letter_draft_created_notice_valid(uuid,jsonb) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.letter_draft_created_job_current(wanted_tenant uuid,wanted_job uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT coalesce((SELECT app.letter_draft_created_notice_valid(wanted_tenant,to_jsonb(j)) FROM public.letter_job j WHERE j.id=wanted_job AND j.tenant_id=wanted_tenant),false)
+$$;
+REVOKE ALL ON FUNCTION app.letter_draft_created_job_current(uuid,uuid) FROM PUBLIC,ai_hr_app;

@@ -28,3 +28,8 @@ it.each(['en','ms','zh','ta','th','vi'] as const)('renders a returned-letter tas
 it.each(['en','ms','zh','ta','th','vi'] as const)('renders employee acknowledgement notices without internal keys in %s',locale=>{
  const messages=catalogues[locale],t=createTranslator({locale,messages,namespace:'notifications'});render(<NextIntlClientProvider locale={locale} messages={messages}><NotificationCenter unread={2} items={(['acknowledged','signed'] as const).map(kind=>({id:kind,kind:'letter.'+kind,title:'letters.notifications.'+kind,body:'letters.notifications.body',linkPath:'/letters/register/fixture',severity:'info',readAt:null,createdAt:new Date()}))}/></NextIntlClientProvider>);fireEvent.click(screen.getByRole('button',{name:t('ariaBell',{total:2,unread:2,tasks:0})}));expect(screen.getByText(messages.letters.notifications.acknowledged)).toBeTruthy();expect(screen.getByText(messages.letters.notifications.signed)).toBeTruthy();
 });
+
+
+it.each(['en','ms','zh','ta','th','vi'] as const)('renders batch creation notices in %s',locale=>{
+ const messages=catalogues[locale],t=createTranslator({locale,messages,namespace:'notifications'});render(<NextIntlClientProvider locale={locale} messages={messages}><NotificationCenter unread={1} items={[{id:'created',kind:'letter.created',title:'letters.notifications.created',body:'letters.notifications.body',linkPath:'/letters/generate/fixture',severity:'info',readAt:null,createdAt:new Date()}]}/></NextIntlClientProvider>);fireEvent.click(screen.getByRole('button',{name:t('ariaBell',{total:1,unread:1,tasks:0})}));expect(screen.getByText(messages.letters.notifications.created)).toBeTruthy();expect(screen.queryByText('letters.notifications.created')).toBeNull();
+});

@@ -23939,6 +23939,7 @@
   },
   "letters": {
     "notifications": {
+      "created": "Kelompok draf surat dicipta",
       "acknowledged": "Pekerja mengakui penerimaan surat",
       "signed": "Pekerja menandatangani pengakuan penerimaan",
       "returned": "Surat dipulangkan untuk pembetulan",

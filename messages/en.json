@@ -23939,6 +23939,7 @@
   },
   "letters": {
     "notifications": {
+      "created": "Letter draft batch created",
       "acknowledged": "Employee acknowledged the letter",
       "signed": "Employee signed the acknowledgement",
       "returned": "Letter returned for correction",
