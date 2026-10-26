@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as principal from '../core/ai-principal';
 import { loadAiWorkspace } from '../core/ai-workspace';
 import { grantAssistant, revokeAssistant } from '../core/assistant-grant';
 import { ASSISTANT_TOOLS } from '../core/assistant-tools';
@@ -116,6 +117,21 @@ describe('actual AI workspace source read', () => {
     const result=await loadAiWorkspace(ctx,{selectedExchangeId:genericId});
     expect(result.history.find(row=>row.id===genericId)).toMatchObject({answer:null,grounded:{mode:'generic',views:[]}});
     expect(JSON.stringify(result)).not.toContain(answer);
+  });
+  it('captures the selected exchange before the first await so a retained options object cannot retarget facts',async()=>{
+    const {ctx,id}=await profileReceipt();const secondId=randomUUID(),question='Second question',answer='SECOND_RAW_MODEL_SENTINEL';
+    const receipt=sealAssistantDisclosure({tenantId:ctx.tenantId,userId:ctx.userId!,exchangeId:secondId,question,answer},[]);
+    await owner.db.insert(schema.assistantExchange).values({id:secondId,tenantId:ctx.tenantId,appUserId:ctx.userId!,question,answer,disclosureReceipt:receipt,stop:'end'});
+    let entered!:()=>void,release!:()=>void;const started=new Promise<void>(resolve=>{entered=resolve;}),resume=new Promise<void>(resolve=>{release=resolve;});
+    const original=principal.assertAiPrincipalTx;let held=false;
+    const carrier=vi.spyOn(principal,'assertAiPrincipalTx').mockImplementation(async(tx,current)=>{
+      if(!held){held=true;entered();await resume;}return original(tx,current);
+    });
+    const options={selectedExchangeId:id,includeHistory:true,includeGovernance:false};
+    try{const pending=loadAiWorkspace(ctx,options);await started;options.selectedExchangeId=secondId;options.includeHistory=false;release();
+      const result=await pending;expect(result.history.find(row=>row.id===id)?.grounded?.mode).toBe('grounded');
+      expect(result.history.find(row=>row.id===secondId)?.grounded).toBeNull();expect(JSON.stringify(result)).not.toContain(answer);
+    }finally{release();carrier.mockRestore();}
   });
   it('bounds personal history to ten records in a stable newest-first order', async () => {
     const ctx = await grant();

@@ -14,7 +14,7 @@ import { agentReviewWorkspaceTx } from './module-agent-releases';
 import {workspaceGroundedAnswers} from './workspace-grounded-answers';
 
 export async function loadAiWorkspace(ctx: SessionContext, options:{includeHistory?:boolean;includeGovernance?:boolean;selectedExchangeId?:string}={}) {
-  const includeHistory=options.includeHistory!==false,includeGovernance=options.includeGovernance!==false;
+  const includeHistory=options.includeHistory!==false,includeGovernance=options.includeGovernance!==false,selectedExchangeId=options.selectedExchangeId;
   const captured = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   if (!captured.userId) return { access: { allowed: false, reason: 'no_user' } as AssistantAccess, taskIds: [], history: [],jobModules:[],agentReview:null };
   const userId = captured.userId;
@@ -39,7 +39,7 @@ export async function loadAiWorkspace(ctx: SessionContext, options:{includeHisto
       const replay = workspaceGroundedAnswers(fresh, session);
       const history = [];
       for (const row of rows) {
-        const selected=options.selectedExchangeId===row.id;
+        const selected=selectedExchangeId===row.id;
         const grounded=selected&&row.answer?await replay({tenantId:captured.tenantId,userId,
           exchangeId:row.id,question:row.question,answer:row.answer},row.disclosureReceipt):null;
         // Raw model text remains audit-only: authentic source provenance never certifies its meaning.

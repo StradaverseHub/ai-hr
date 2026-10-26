@@ -1,3 +1,3 @@
 /** GENERATED static source manifest. Regenerate/check after all integration; no runtime source reads. */
-export const MODULE_AGENT_SOURCE_DIGEST = "16ea7c21b1c071da064c15d7b87d6109f9535d356f40540d6e7cd38639e069e9" as const;
-export const MODULE_AGENT_SOURCE_FILE_COUNT = 5727 as const;
+export const MODULE_AGENT_SOURCE_DIGEST = "11638960eab89efc45dcd41a277a7748339bf34d3dd388efaa7ef1d1ef25c822" as const;
+export const MODULE_AGENT_SOURCE_FILE_COUNT = 5728 as const;
