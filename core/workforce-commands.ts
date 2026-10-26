@@ -49,3 +49,7 @@ import {assertAiPrincipalTx} from './ai-principal';
 export async function prepareReviewedReportingLineTx(tx:Tx,ctx:SessionContext,p:org.ReviewedReportingLineSelection){ctx=captureCommandContext(ctx);p=structuredClone(p);await assertAiPrincipalTx(tx,ctx);return org.prepareReviewedReportingLineTx(tx,ctx,p);}
 export async function setReviewedReportingLineTx(tx:Tx,ctx:SessionContext,p:org.ReviewedReportingLineSelection,expectedReviewedDigest:string){ctx=captureCommandContext(ctx);p=structuredClone(p);const expected=expectedReviewedDigest;await assertAiPrincipalTx(tx,ctx);return org.setReviewedReportingLineTx(tx,ctx,p,expected);}
 export async function readReviewedReportingLineReferenceTx(tx:Tx,ctx:SessionContext,p:{reportingLineId:string;setEventId:string;subordinateEmploymentId:string}){ctx=captureCommandContext(ctx);p={...p};await assertAiPrincipalTx(tx,ctx);return org.readReviewedReportingLineReferenceTx(tx,ctx,p);}
+
+/** Minimal structural-choice readers remain on the actual Workforce principal/transaction. */
+export async function searchReviewedReportingLineChoicesTx(tx:Tx,ctx:SessionContext,p:Parameters<typeof org.searchReviewedReportingLineChoicesTx>[2]){ctx=captureCommandContext(ctx);p={...p};await assertAiPrincipalTx(tx,ctx);return org.searchReviewedReportingLineChoicesTx(tx,ctx,p);}
+export async function reviewedReportingLineLabelsTx(tx:Tx,ctx:SessionContext,p:Parameters<typeof org.reviewedReportingLineLabelsTx>[2]){ctx=captureCommandContext(ctx);p={...p};await assertAiPrincipalTx(tx,ctx);return org.reviewedReportingLineLabelsTx(tx,ctx,p);}

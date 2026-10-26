@@ -1301,6 +1301,25 @@ export async function readReviewedReportingLineReferenceTx(tx:Tx,supplied:Sessio
  return{reportingLineId:row.id,setEventId:event.id,subordinateEmploymentId:row.subordinateEmploymentId,managerEmploymentId:row.managerEmploymentId,lineType:row.lineType as 'administrative'|'functional',validFrom:row.validFrom,validTo:row.validTo,superseded:row.supersededAt!==null};
 }
 
+/** Bounded literal human search for the structural-change chooser. This exposes no graph paths,
+ * financial facts or broad Employee DTO; row purpose is checked IN the query before labels leave. */
+export async function searchReviewedReportingLineChoicesTx(tx:Tx,supplied:SessionContext,selection:{role:'subordinate'|'manager';query:string;subordinateEmploymentId?:string}){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},p={...selection,query:selection.query.trim()};
+ if(p.query.length<2||p.query.length>80||!['subordinate','manager'].includes(p.role)||p.role==='manager'&&!p.subordinateEmploymentId)throw new Error('Reporting choices unavailable');
+ await tx.execute(sql`select app.access_workforce_write_lock()`);
+ if(p.role==='manager')await assertWorkforceEmploymentTx(tx,ctx,p.subordinateEmploymentId!,'maintain');
+ const pattern='%'+p.query.replace(/[\\%_]/g,value=>'\\'+value)+'%',purpose=p.role==='subordinate'?'workforce.maintain':'workforce.view';
+ const rows=await tx.select({employmentId:employment.id,employeeCode:employment.employeeCode,name:person.fullName,companyName:sql<string>`coalesce(${company.companyLabel},${company.legalName})`}).from(employment).innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId))).innerJoin(company,and(eq(company.id,employment.companyId),eq(company.tenantId,employment.tenantId))).where(and(eq(employment.tenantId,ctx.tenantId),sql`app.access_workforce_employment(${employment.id},${purpose})`,p.role==='manager'?sql`${employment.id}<>${p.subordinateEmploymentId}::uuid`:undefined,sql`(${person.fullName} ilike ${pattern} escape ${'\\'} or coalesce(${employment.employeeCode},'') ilike ${pattern} escape ${'\\'})`)).orderBy(sql`coalesce(${company.companyLabel},${company.legalName})`,sql`${employment.employeeCode} nulls last`,employment.id).limit(21);
+ return{items:rows.slice(0,20),truncated:rows.length>20};
+}
+/** Exact trusted native references only. A failed label authorization returns no partial names. */
+export async function reviewedReportingLineLabelsTx(tx:Tx,supplied:SessionContext,selection:{subordinateEmploymentId:string;managerEmploymentId:string;previousManagerEmploymentId:string|null}){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},p={...selection};
+ await assertWorkforceEmploymentTx(tx,ctx,p.subordinateEmploymentId,'maintain');await assertWorkforceEmploymentTx(tx,ctx,p.managerEmploymentId,'view');if(p.previousManagerEmploymentId)await assertWorkforceEmploymentTx(tx,ctx,p.previousManagerEmploymentId,'view');
+ const one=async(id:string,purpose:'workforce.maintain'|'workforce.view')=>{const [row]=await tx.select({employmentId:employment.id,employeeCode:employment.employeeCode,name:person.fullName,companyName:sql<string>`coalesce(${company.companyLabel},${company.legalName})`}).from(employment).innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId))).innerJoin(company,and(eq(company.id,employment.companyId),eq(company.tenantId,employment.tenantId))).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.id,id),sql`app.access_workforce_employment(${employment.id},${purpose})`)).limit(1);if(!row)throw new Error('Reporting choices unavailable');return row;};
+ return{subordinate:await one(p.subordinateEmploymentId,'workforce.maintain'),manager:await one(p.managerEmploymentId,'workforce.view'),previousManager:p.previousManagerEmploymentId?await one(p.previousManagerEmploymentId,'workforce.view'):null};
+}
+
 /** Bounded dated assignment facts for caller-held report snapshots. Uses the same exclusive end and
  * supersession rule as getAssignmentAsOf; callers never substitute today's placement. */
 export async function assignmentVersionsForReportTx(tx:Tx,employmentIds:readonly string[],from:string,to:string){

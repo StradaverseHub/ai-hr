@@ -181,10 +181,45 @@ export function parseClaimSubmissionModuleActionBrowserResult(packet:ClaimSubmis
  return result;
 }
 type ClaimSubmissionOwners<Session>=Readonly<{list(session:Session):Promise<unknown>;prepare(session:Session,input:z.infer<typeof ClaimSubmissionModuleActionPrepare>):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:z.infer<typeof ClaimSubmissionModuleActionConfirmation>):Promise<unknown>;discard(session:Session,input:z.infer<typeof ClaimSubmissionModuleActionConfirmation>):Promise<unknown>}>;
-const SharedBrowserPacket=z.union([ModuleActionBrowserPacket,ProfileModuleActionBrowserPacket,PerformanceModuleActionBrowserPacket,ClaimModuleActionBrowserPacket,TestingModuleActionBrowserPacket,ClaimSubmissionModuleActionBrowserPacket]);
+/** HR caller and target are distinct. Searches disclose only bounded authorised labels; no IDs
+ * typed as guess-fields, graph extraction, delegated authority or source fingerprints. */
+import {REVIEWED_REPORTING_LINE_ACTION as ORG_ACTION} from './reviewed-reporting-line-contract';
+import {OrgActionPrepare,OrgActionConfirmation,OrgActionRetirement,OrgActionPreparedReview,OrgActionCompletedReceipt,OrgActionRetirementReceipt,OrgActionReviewIndexResult} from './org-action-review-contract';
+export const OrgActionSearch=z.discriminatedUnion('role',[
+ z.object({role:z.literal('subordinate'),query:z.string().trim().min(2).max(80)}).strict(),
+ z.object({role:z.literal('manager'),query:z.string().trim().min(2).max(80),subordinateEmploymentId:z.uuid()}).strict(),
+]);
+export const OrgEmployeeChoice=z.object({employmentId:z.uuid(),employeeCode:z.string().max(100).nullable(),name:z.string().min(1).max(240),companyName:z.string().min(1).max(240)}).strict();
+const OrgLabels=z.object({subordinate:OrgEmployeeChoice,manager:OrgEmployeeChoice,previousManager:OrgEmployeeChoice.nullable()}).strict();
+export const OrgActionChoices=z.object({kind:z.literal('org_choices'),selection:OrgActionSearch,items:z.array(OrgEmployeeChoice).max(20).refine(rows=>new Set(rows.map(r=>r.employmentId)).size===rows.length),truncated:z.boolean()}).strict();
+export const OrgModuleActionBrowserPacket=z.discriminatedUnion('operation',[
+ z.object({action:z.literal(ORG_ACTION),operation:z.literal('choices'),selection:OrgActionSearch}).strict(),
+ z.object({action:z.literal(ORG_ACTION),operation:z.literal('list')}).strict(),
+ z.object({action:z.literal(ORG_ACTION),operation:z.literal('prepare'),input:OrgActionPrepare}).strict(),
+ z.object({action:z.literal(ORG_ACTION),operation:z.literal('reopen'),actionId:z.uuid()}).strict(),
+ z.object({action:z.literal(ORG_ACTION),operation:z.literal('confirm'),confirmation:OrgActionConfirmation}).strict(),
+ z.object({action:z.literal(ORG_ACTION),operation:z.literal('discard'),confirmation:OrgActionRetirement}).strict(),
+]);
+export type OrgModuleActionBrowserPacket=z.infer<typeof OrgModuleActionBrowserPacket>;
+export const OrgModuleActionBrowserResult=z.discriminatedUnion('kind',[OrgActionChoices,OrgActionReviewIndexResult,z.object({kind:z.literal('prepared'),review:OrgActionPreparedReview.extend({labels:OrgLabels})}).strict(),z.object({kind:z.literal('completed'),receipt:OrgActionCompletedReceipt.extend({labels:OrgLabels.pick({subordinate:true,manager:true})})}).strict(),z.object({kind:z.literal('retired'),receipt:OrgActionRetirementReceipt}).strict()]);
+export type OrgModuleActionBrowserResult=z.infer<typeof OrgModuleActionBrowserResult>;
+export function parseOrgModuleActionBrowserResult(packet:OrgModuleActionBrowserPacket,value:unknown):OrgModuleActionBrowserResult{
+ const result=OrgModuleActionBrowserResult.parse(value),op=packet.operation;
+ const allowed=op==='choices'?result.kind==='org_choices':op==='list'?result.kind==='org_module_review_index':op==='prepare'?result.kind==='prepared':op==='discard'?result.kind==='retired':op==='confirm'?result.kind==='completed'||result.kind==='retired':result.kind==='prepared'||result.kind==='completed'||result.kind==='retired';if(!allowed)throw Error('Module action response unavailable.');
+ const id=result.kind==='prepared'?result.review.actionId:result.kind==='completed'||result.kind==='retired'?result.receipt.actionId:null,expected=op==='reopen'?packet.actionId:op==='confirm'||op==='discard'?packet.confirmation.actionId:null;if(expected&&id!==expected)throw Error('Module action response unavailable.');
+ if(op==='choices'&&(result.kind!=='org_choices'||JSON.stringify(result.selection)!==JSON.stringify(packet.selection)))throw Error('Module action response unavailable.');
+ if(result.kind==='org_choices'&&result.selection.role==='manager'){const target=result.selection.subordinateEmploymentId;if(result.items.some(row=>row.employmentId===target))throw Error('Module action response unavailable.');}
+ if(result.kind==='org_module_review_index'&&result.reviews.some(row=>Date.parse(row.expiresAt)<=Date.parse(row.createdAt)))throw Error('Module action response unavailable.');
+ if(result.kind==='prepared'){const r=result.review;if(op==='prepare'&&JSON.stringify(r.content)!==JSON.stringify(packet.input)||r.review.subordinateEmploymentId!==r.content.subordinateEmploymentId||r.review.lineType!==r.content.lineType||r.review.after.managerEmploymentId!==r.content.managerEmploymentId||r.review.after.validFrom!==r.content.validFrom||r.labels.subordinate.employmentId!==r.content.subordinateEmploymentId||r.labels.manager.employmentId!==r.content.managerEmploymentId||(r.labels.previousManager?.employmentId??null)!==(r.review.before?.managerEmploymentId??null)||Date.parse(r.expiresAt)<=Date.parse(r.createdAt))throw Error('Module action response unavailable.');}
+ if(result.kind==='completed'){const r=result.receipt;if(r.labels.subordinate.employmentId!==r.receipt.subordinateEmploymentId||r.labels.manager.employmentId!==r.receipt.managerEmploymentId)throw Error('Module action response unavailable.');}
+ return result;
+}
+type OrgOwners<Session>=Readonly<{choices(session:Session,selection:z.infer<typeof OrgActionSearch>):Promise<unknown>;list(session:Session):Promise<unknown>;prepare(session:Session,input:z.infer<typeof OrgActionPrepare>):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:z.infer<typeof OrgActionConfirmation>):Promise<unknown>;discard(session:Session,input:z.infer<typeof OrgActionRetirement>):Promise<unknown>}>;
+const SharedBrowserPacket=z.union([ModuleActionBrowserPacket,ProfileModuleActionBrowserPacket,PerformanceModuleActionBrowserPacket,ClaimModuleActionBrowserPacket,TestingModuleActionBrowserPacket,ClaimSubmissionModuleActionBrowserPacket,OrgModuleActionBrowserPacket]);
 type SharedBrowserPacket=z.infer<typeof SharedBrowserPacket>;
 export type ModuleActionBrowserOwners<Session>=Readonly<{
  authenticate():Promise<Session>;
+ org?:OrgOwners<Session>;
  testing?:TestingOwners<Session>;
  claimSubmission?:ClaimSubmissionOwners<Session>;
  claims?:ClaimOwners<Session>;
@@ -223,7 +258,8 @@ export function createModuleActionBrowserHandler<Session>(owners:ModuleActionBro
   let input:SharedBrowserPacket;try{input=await packet(request);}catch{return unavailable(400);}
   let session:Session;try{session=await owners.authenticate();}catch{return unavailable(401);}
   if(request.signal.aborted)return unavailable(408);
-  try{if('action' in input&&input.action===OWN_CLAIM_SUBMISSION_ACTION){const submission=owners.claimSubmission;if(!submission)return unavailable(503);const result=input.operation==='list'?await submission.list(session):input.operation==='prepare'?await submission.prepare(session,input.input):input.operation==='reopen'?await submission.reopen(session,input.actionId):input.operation==='confirm'?await submission.confirm(session,input.confirmation):await submission.discard(session,input.confirmation);return Response.json(parseClaimSubmissionModuleActionBrowserResult(input,result),{status:200,headers:responseHeaders});}
+  try{if('action' in input&&input.action===ORG_ACTION){const org=owners.org;if(!org)return unavailable(503);const result=input.operation==='choices'?await org.choices(session,input.selection):input.operation==='list'?await org.list(session):input.operation==='prepare'?await org.prepare(session,input.input):input.operation==='reopen'?await org.reopen(session,input.actionId):input.operation==='confirm'?await org.confirm(session,input.confirmation):await org.discard(session,input.confirmation);const checked=parseOrgModuleActionBrowserResult(input,result);if(new TextEncoder().encode(JSON.stringify(checked)).byteLength>20480)return unavailable(503);return Response.json(checked,{status:200,headers:responseHeaders});}
+   if('action' in input&&input.action===OWN_CLAIM_SUBMISSION_ACTION){const submission=owners.claimSubmission;if(!submission)return unavailable(503);const result=input.operation==='list'?await submission.list(session):input.operation==='prepare'?await submission.prepare(session,input.input):input.operation==='reopen'?await submission.reopen(session,input.actionId):input.operation==='confirm'?await submission.confirm(session,input.confirmation):await submission.discard(session,input.confirmation);return Response.json(parseClaimSubmissionModuleActionBrowserResult(input,result),{status:200,headers:responseHeaders});}
    if('action' in input&&input.action===MODULE_TESTING_EXECUTION_ACTION){const testing=owners.testing;if(!testing)return unavailable(503);const result=input.operation==='read_execution'?await testing.readExecution(session,input.executionId):input.operation==='list'?await testing.list(session):input.operation==='prepare'?await testing.prepare(session,input.input):input.operation==='reopen'?await testing.reopen(session,input.actionId):input.operation==='confirm'?await testing.confirm(session,input.confirmation):await testing.discard(session,input.confirmation);return Response.json(parseTestingModuleActionBrowserResult(input,result),{status:200,headers:responseHeaders});}
    if('action' in input&&input.action===OWN_CLAIM_DRAFT_ACTION){const claims=owners.claims;if(!claims)return unavailable(503);const result=input.operation==='read_draft'?await claims.readDraft(session,{employmentId:input.employmentId,draftId:input.draftId}):input.operation==='list'?await claims.list(session):input.operation==='prepare'?await claims.prepare(session,input.input):input.operation==='reopen'?await claims.reopen(session,input.actionId):input.operation==='confirm'?await claims.confirm(session,input.confirmation):await claims.discard(session,input.confirmation);return Response.json(parseClaimModuleActionBrowserResult(input,result),{status:200,headers:responseHeaders});}
    if('action' in input&&(input.action===MODULE_REVIEW_ACK_ACTION||input.action===MODULE_ONEHR_ACK_ACTION)){const performance=owners.performance;if(!performance)return unavailable(503);const result=input.operation==='list'?await performance.list(session,input.action):input.operation==='prepare'?await performance.prepare(session,input.input):input.operation==='reopen'?await performance.reopen(session,input.action,input.actionId):input.operation==='confirm'?await performance.confirm(session,input.confirmation):await performance.discard(session,input.confirmation);return Response.json(parsePerformanceModuleActionBrowserResult(input,result),{status:200,headers:responseHeaders});}

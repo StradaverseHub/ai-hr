@@ -2,7 +2,7 @@
 import 'server-only';
 import {withTenant,type SessionContext} from '../../db/client';
 import {appOrigin} from '../../lib/real-auth';
-import {TestingActionChoices,ClaimActionChoices,PerformanceActionChoices,createModuleActionBrowserHandler} from '../../lib/assistant-actions/module-action-http';
+import {OrgActionSearch,OrgActionChoices,TestingActionChoices,ClaimActionChoices,PerformanceActionChoices,createModuleActionBrowserHandler} from '../../lib/assistant-actions/module-action-http';
 import {authenticateOwnLeaveBrowserSession} from './own-leave-server';
 import {resolveOwnNotificationServerIdentity} from './own-notification-preferences-source';
 import {prepareModuleActionReview,confirmModuleActionReview,reopenModuleActionReview,discardModuleActionReview,listModuleActionReviews,prepareProfileModuleActionReview,confirmProfileModuleActionReview,reopenProfileModuleActionReview,discardProfileModuleActionReview,listProfileModuleActionReviews,prepareReviewModuleActionReview,confirmReviewModuleActionReview,reopenReviewModuleActionReview,discardReviewModuleActionReview,listReviewModuleActionReviews,prepareOnehrModuleActionReview,confirmOnehrModuleActionReview,reopenOnehrModuleActionReview,discardOnehrModuleActionReview,listOnehrModuleActionReviews} from './module-action-review-store';
@@ -20,6 +20,9 @@ import {prepareClaimModuleActionReview,confirmClaimModuleActionReview,reopenClai
 import {ownTestingWorkStatusesTx,readOwnTestingExecutionEditableTx} from '../system-testing-workspace';
 import {prepareTestingModuleActionReview,confirmTestingModuleActionReview,reopenTestingModuleActionReview,discardTestingModuleActionReview,listTestingModuleActionReviews} from './module-action-review-store';
 import {prepareClaimSubmissionModuleActionReview,confirmClaimSubmissionModuleActionReview,reopenClaimSubmissionModuleActionReview,discardClaimSubmissionModuleActionReview,listClaimSubmissionModuleActionReviews} from './module-action-review-store';
+import {prepareOrgActionReview,confirmOrgActionReview,reopenOrgActionReview,discardOrgActionReview,listOrgActionReviews} from './org-action-review-store';
+import {searchReviewedReportingLineChoicesTx,reviewedReportingLineLabelsTx} from '../workforce-commands';
+import {z} from 'zod';
 import {MODULE_REVIEW_ACK_ACTION} from '../../lib/assistant-actions/module-action-review-contract';
 /** Minimal source choices only after fresh authority; this read does not prepare or execute effects. */
 export async function readNotificationModuleActionChoices(supplied:SessionContext):Promise<{kind:'choices';employments:{employmentId:string;employeeCode:string|null;companyName:string}[]}|{kind:'unavailable'}>{
@@ -71,11 +74,20 @@ export async function readTestingModuleActionChoices(supplied:SessionContext):Pr
 export async function readTestingModuleActionExecution(supplied:SessionContext,id:string){
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};return withTenant(ctx,async tx=>({kind:'testing_execution_edit' as const,source:await readOwnTestingExecutionEditableTx(tx,ctx,id)}));
 }
+/** Every Org choice/label read repeats current real HR admission. No own-employment prerequisite. */
+async function orgActor(tx:Parameters<typeof assertAiPrincipalTx>[0],ctx:SessionContext){await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlementsError:undefined,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};await assertMayUseAssistant(fresh,tx);assertModuleEnabled(fresh,'org');await assertAiActionUnpausedTx(tx,fresh,'hr_assistant');return fresh;}
+export async function readOrgModuleActionAvailability(supplied:SessionContext){const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};try{return await withTenant(ctx,async tx=>{await orgActor(tx,ctx);return{kind:'available' as const};});}catch{return{kind:'unavailable' as const};}}
+export async function readOrgModuleActionChoices(supplied:SessionContext,value:z.infer<typeof OrgActionSearch>){const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},selection=OrgActionSearch.parse(value);return withTenant(ctx,async tx=>{const fresh=await orgActor(tx,ctx);return OrgActionChoices.parse({kind:'org_choices',selection,...await searchReviewedReportingLineChoicesTx(tx,fresh,selection)});});}
+async function orgLabels(supplied:SessionContext,selection:Parameters<typeof reviewedReportingLineLabelsTx>[2]){const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},p={...selection};return withTenant(ctx,async tx=>reviewedReportingLineLabelsTx(tx,await orgActor(tx,ctx),p));}
+/** Exact trusted native references become human labels only after fresh purpose checks. A failure
+ * after an already committed confirmation remains transport uncertainty, never evidence of rollback. */
+async function presentOrgResult(ctx:SessionContext,result:Awaited<ReturnType<typeof reopenOrgActionReview>>){if(result.kind==='prepared'){const r=result.review;return{...result,review:{...r,labels:await orgLabels(ctx,{subordinateEmploymentId:r.content.subordinateEmploymentId,managerEmploymentId:r.content.managerEmploymentId,previousManagerEmploymentId:r.review.before?.managerEmploymentId??null})}};}if(result.kind==='completed'){const r=result.receipt.receipt,{subordinate,manager}=await orgLabels(ctx,{subordinateEmploymentId:r.subordinateEmploymentId,managerEmploymentId:r.managerEmploymentId,previousManagerEmploymentId:null});return{...result,receipt:{...result.receipt,labels:{subordinate,manager}}};}return result;}
 /** Resolve verified identity outside EACH effect/reopen transaction, never from a packet, cached
  * tenant config or encrypted body. Listing/retirement requires no provider-identity admission. */
 export async function handleConfiguredModuleActionBrowserCommand(request:Request):Promise<Response>{
  let publicOrigin:string|undefined;try{publicOrigin=appOrigin();}catch{publicOrigin=undefined;}
  return createModuleActionBrowserHandler({authenticate:authenticateOwnLeaveBrowserSession,
+  org:{choices:(session,selection)=>readOrgModuleActionChoices(session.ctx,selection),list:session=>listOrgActionReviews(session.ctx),prepare:async(session,input)=>presentOrgResult(session.ctx,await prepareOrgActionReview(session.ctx,input)),reopen:async(session,id)=>presentOrgResult(session.ctx,await reopenOrgActionReview(session.ctx,id)),confirm:async(session,input)=>presentOrgResult(session.ctx,await confirmOrgActionReview(session.ctx,input)),discard:(session,input)=>discardOrgActionReview(session.ctx,input)},
   testing:{list:session=>listTestingModuleActionReviews(session.ctx),readExecution:(session,id)=>readTestingModuleActionExecution(session.ctx,id),prepare:(session,input)=>prepareTestingModuleActionReview(session.ctx,input),reopen:(session,id)=>reopenTestingModuleActionReview(session.ctx,id),confirm:(session,input)=>confirmTestingModuleActionReview(session.ctx,input),discard:(session,input)=>discardTestingModuleActionReview(session.ctx,input)},
   claimSubmission:{list:session=>listClaimSubmissionModuleActionReviews(session.ctx),prepare:(session,input)=>prepareClaimSubmissionModuleActionReview(session.ctx,input),reopen:(session,id)=>reopenClaimSubmissionModuleActionReview(session.ctx,id),confirm:(session,input)=>confirmClaimSubmissionModuleActionReview(session.ctx,input),discard:(session,input)=>discardClaimSubmissionModuleActionReview(session.ctx,input)},
   claims:{readDraft:(session,input)=>readClaimModuleActionDraft(session.ctx,input),list:session=>listClaimModuleActionReviews(session.ctx),prepare:(session,input)=>prepareClaimModuleActionReview(session.ctx,input),reopen:(session,id)=>reopenClaimModuleActionReview(session.ctx,id),confirm:(session,input)=>confirmClaimModuleActionReview(session.ctx,input),discard:(session,input)=>discardClaimModuleActionReview(session.ctx,input)},
