@@ -6,6 +6,12 @@ Measure elapsed time from submission of a clean, frozen candidate through queuei
 
 Business, financial, authorization, tenant-isolation and data-integrity coverage remains mandatory. Include full regression whenever the validated release policy requires it. A focused development check is useful evidence about its selected scope, not proof of the complete release goal. Keep main/live deployment disabled until its separate installation is ready.
 
+## Version9 smaller database batches — implementation awaiting measurement
+
+The measured version8 attempt below exceeded the target in database execution, while its slowest no-DB job occupied334s. Version9 therefore changes only the database batch cap from64to32files and raises standard-runner matrix admission from20to40 (explicit4/8/16/20/32/40 choices). The current complete inventory derives32DB+4no-DB units and the same three browser engines. Each job retains two workers,2GiB PostgreSQL, JIT on, all cases/assertions and genuine resource/cleanup guards. No paid larger runner or per-job capacity increase is involved. Unknown files remain mandatory with positive timing hints.
+
+The new topology and policy fingerprint intentionally invalidate older topology receipts; old authentic passes remain evidence at their original sources. A fresh complete representative timing run is necessary to measure this scheduling change, rather than rerunning unaffected tests for the earlier controller repair. Every planned chunk must finish before any repair. Source tests check exact old/new file union, bounded batch membership, unchanged resources, complete derived evidence sets, free standard labels and refusal of the old wider topology. Smaller-batch timing, release authority and under600s deployment remain unproven.
+
 ## Complete public-runner attempt: all test units passed, 701.09 seconds before deployment — 26 October MYT
 
 The exact frozen candidate04de4ed6bb079e92a613f17eaffc361bded5a8c5 completed every planned job in [40290170108](https://github.com/StradaverseHub/ai-hr/actions/runs/40290170108). Independent authenticated API/archive/source reconstruction verified **all23test units,1,965Node/DOM files (993DB/972no-DB),48browser-file executions and28,005passing cases**, with no omitted, skipped, pending or failing cases. Database resource evidence passed the unchanged guards. All three browsers, migration checks, whole compiler and canonical production-build job succeeded. Every executing job used standard ubuntu-24.04; no paid runner or Mac slot was used.

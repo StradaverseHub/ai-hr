@@ -1,1 +1,1 @@
-export const CI_POLICY='aihr-staging-ci/v8';
+export const CI_POLICY='aihr-staging-ci/v9';

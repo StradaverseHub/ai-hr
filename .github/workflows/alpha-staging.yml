@@ -15,8 +15,8 @@ on:
       test_parallelism:
         description: Standard runner concurrency; complete test coverage stays unchanged
         type: choice
-        default: '20'
-        options: ['4', '8', '16', '20']
+        default: '40'
+        options: ['4', '8', '16', '20', '32', '40']
       diagnostics_only:
         description: Measure disposable runner resources without the full CI gate
         required: false
@@ -442,7 +442,7 @@ jobs:
     timeout-minutes: 120
     strategy:
       fail-fast: false
-      max-parallel: ${{ fromJSON(inputs.test_parallelism || '20') }}
+      max-parallel: ${{ fromJSON(inputs.test_parallelism || '40') }}
       matrix: ${{ fromJSON(needs.plan.outputs.test_matrix) }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803

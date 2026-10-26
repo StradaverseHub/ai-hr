@@ -7,6 +7,7 @@ const postgres = fileURLToPath(new URL('./postgres.sh', import.meta.url));
 import {capturePostgresEvidence,validatePostgresEvidence} from './postgres-evidence.mjs';
 import {hostHealth} from './host-health.mjs';
 import {createPlan} from './plan.mjs';
+import {DB_BATCH_FILES} from './manifest.mjs';
 if (process.env.GITHUB_ACTIONS !== 'true' || process.env.CI !== 'true' || process.platform !== 'linux') throw Error('GitHub runners only; never the shared developer cluster');
 const [id, destination] = process.argv.slice(2), plan = createPlan(), unit = plan.units.find(u => u.id === id);
 if (!unit || !destination) throw Error('Unknown CI unit or missing evidence directory');
@@ -19,7 +20,7 @@ try {
   writeFileSync(join(dir, `health-before-${id}.json`), JSON.stringify(report.healthBefore,null,2)+'\n', {flag:'wx'});
   if (!report.healthBefore.ok) throw Error('Runner disk headroom too low: '+JSON.stringify(report.healthBefore));
   if(unit.kind==='db'&&(process.env.AIHR_CI_PG_MEMORY_GIB!=='2'||process.env.AIHR_CI_PG_JIT!=='on'))throw Error('Full CI requires measured 2 GiB/default-JIT database budget');
-  const batchSize = unit.kind === 'db' ? 64 : Math.max(1, unit.files.length);
+  const batchSize = unit.kind === 'db' ? DB_BATCH_FILES : Math.max(1, unit.files.length);
   for (let offset = 0; offset < unit.files.length; offset += batchSize) {
     const files = unit.files.slice(offset, offset + batchSize), path = join(dir, `${id}-batch-${offset}.json`);
     if (unit.kind === 'db') {

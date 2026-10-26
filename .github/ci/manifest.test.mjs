@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildUnits,requiredEvidence,DB_BATCH_FILES,NODB_BATCH_FILES} from './manifest.mjs';
+import {buildUnits,requiredEvidence,DB_BATCH_FILES,NODB_BATCH_FILES,CI_EXECUTION} from './manifest.mjs';
+import {balanceDatabaseFiles} from './db-scheduling.mjs';
+import {readFileSync} from 'node:fs';
 const names=(kind,n)=>Array.from({length:n},(_,i)=>`test/${kind}-${String(i).padStart(4,'0')}.test.ts`);
 const browsers=['test/layout.browser.test.tsx'];
 function fixture(dbCount=981,nodbCount=963){const db=names('db',dbCount),nodb=names('nodb',nodbCount);const suite=[...db,...nodb].sort();return {suite,units:buildUnits(suite,{db,nodb},browsers)};}
@@ -8,8 +10,8 @@ test('Actual pilot scale produces complete bounded batches without a fixed unit 
  const p=fixture(),db=p.units.filter(u=>u.kind==='db'),nodb=p.units.filter(u=>u.kind==='nodb');
  assert.equal(db.length,Math.ceil(981/DB_BATCH_FILES));assert.equal(nodb.length,Math.ceil(963/NODB_BATCH_FILES));
  assert.deepEqual(p.units.filter(u=>u.kind!=='browser').flatMap(u=>u.files).sort(),p.suite);
- assert.ok(db.every(u=>u.files.length>0&&u.files.length<=64));
- assert.equal(requiredEvidence(p).units.length,23);assert.equal(requiredEvidence(p).jobs.length,31);assert.equal(requiredEvidence(p).artifacts.length,26);
+ assert.ok(db.every(u=>u.files.length>0&&u.files.length<=DB_BATCH_FILES));
+ const count=db.length+nodb.length+3;assert.equal(requiredEvidence(p).units.length,count);assert.equal(requiredEvidence(p).jobs.length,count+8);assert.equal(requiredEvidence(p).artifacts.length,count+3);
 });
 test('Batch membership and content identity survive different input ordering',()=>{
  const p=fixture(),db=p.units.filter(u=>u.kind==='db').flatMap(u=>u.files),nodb=p.units.filter(u=>u.kind==='nodb').flatMap(u=>u.files);
@@ -17,7 +19,7 @@ test('Batch membership and content identity survive different input ordering',()
 });
 test('Small inventory derives fewer required jobs; growing suite adds coverage, not empty jobs',()=>{
  const small=fixture(1,1),larger=fixture(65,257);
- assert.equal(requiredEvidence(small).units.length,5);assert.equal(requiredEvidence(larger).units.length,7);
+ assert.equal(requiredEvidence(small).units.length,5);assert.equal(requiredEvidence(larger).units.length,Math.ceil(65/DB_BATCH_FILES)+Math.ceil(257/NODB_BATCH_FILES)+3);
  assert.notDeepEqual(requiredEvidence(small).artifacts,requiredEvidence(larger).artifacts);
 });
 test('Content changes invalidate batch identities even when counts stay equal',()=>{
@@ -37,4 +39,21 @@ test('Classifier omissions, duplicates and invented paths cannot reduce the trus
  const db=names('db',2),nodb=names('nodb',1),suite=[...db,...nodb];
  for(const groups of [{db:db.slice(1),nodb},{db:[...db,db[0]],nodb},{db:[db[0],'test/foreign.test.ts'],nodb}])assert.throws(()=>buildUnits(suite,groups,browsers));
  assert.throws(()=>buildUnits(['test/../bad.test.ts'],{db:['test/../bad.test.ts'],nodb:[]},browsers));
+});
+
+test('measured 993-file database inventory changes isolation boundaries without removing any case file or increasing per-job resources',()=>{
+ const p=fixture(993,972),units=p.units.filter(u=>u.kind==='db'),files=names('db',993),before=balanceDatabaseFiles(files,64);
+ assert.equal(DB_BATCH_FILES,32);assert.equal(before.length,16);assert.equal(units.length,32);
+ assert.deepEqual(units.flatMap(u=>u.files).sort(),before.flat().sort());
+ assert(units.every(u=>u.files.length>0&&u.files.length<=32));
+ assert.equal(p.units.filter(u=>u.kind==='nodb').length,4);assert.equal(p.units.filter(u=>u.kind==='browser').length,3);
+ assert.equal(requiredEvidence(p).jobs.length,47);assert.equal(requiredEvidence(p).artifacts.length,42);
+ assert.equal(CI_EXECUTION.workers,2);assert.deepEqual(CI_EXECUTION.postgres,{memoryBytes:2*1024**3,jit:'on'});
+});
+test('increased matrix admission keeps every job on a free standard runner and refuses an old wider unit as current coverage',()=>{
+ const yaml=readFileSync(new URL('../workflows/alpha-staging.yml',import.meta.url),'utf8');
+ const runners=[...yaml.matchAll(/^    runs-on: (.+)$/gm)].map(m=>m[1]);assert(runners.length>=10);assert(runners.every(r=>r==='ubuntu-24.04'));
+ assert(yaml.includes("options: ['4', '8', '16', '20', '32', '40']")&&yaml.includes("default: '40'")&&yaml.includes("fromJSON(inputs.test_parallelism || '40')"));
+ const p=fixture(993,972),db=names('db',993),old=balanceDatabaseFiles(db,64);p.units=p.units.filter(u=>u.kind!=='db').concat(old.map(files=>({id:'db-old',kind:'db',files})));
+ assert.throws(()=>requiredEvidence(p));
 });
