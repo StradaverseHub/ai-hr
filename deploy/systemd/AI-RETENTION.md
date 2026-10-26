@@ -25,6 +25,11 @@ helper `app.agent_signal_custody_visible(text,uuid,uuid,uuid)`. The migration/fu
 has that privilege. A separately provisioned table owner needs only explicit EXECUTE on this helper;
 never substitute PUBLIC EXECUTE, app-role membership, candidate-table SELECT or BYPASSRLS. The runner
 checks this function privilege before processing custody and grants itself nothing.
+The connection must own all ten custody tables checked by the runner, including the employee-import
+comparison parent and its admitted-run membership table. Expired comparison metadata is deleted after
+its 30-day lifetime; at most 100 parents are selected per tenant per pass, with at most 128 declared
+run links cascading per parent. Aggregate deletion counts report direct parents, not cascaded links.
+Canonical HR records, import completion events and provider billing runs remain untouched.
 
 The runner emits only aggregate counts, whether expired work remains, and the oldest expired age in
 seconds. It prints no tenant/user IDs, review text, feedback text or connection identity. An invalid

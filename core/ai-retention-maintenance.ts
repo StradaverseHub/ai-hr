@@ -4,13 +4,14 @@
 import { sql,type SQL } from 'drizzle-orm';
 import type { Tx } from '../db/client';
 
-export type AiRetentionResult = Readonly<{ tenants: number; busy: number; reviews: number; feedback: number; jobs:number;jobFeedback:number;candidateProvenance:number;plans:number;importAssistance:number }>;
+export type AiRetentionResult = Readonly<{ tenants: number; busy: number; reviews: number; feedback: number; jobs:number;jobFeedback:number;candidateProvenance:number;plans:number;importAssistance:number;importEvaluations:number }>;
 const extraCustody=[
  {key:'plans',id:'id',table:sql`public.ai_agent_plan_proposal`,expiry:sql`expires_at`},
  {key:'jobFeedback',id:'id',table:sql`public.ai_agent_job_feedback`,expiry:sql`expires_at`},
  {key:'candidateProvenance',id:'candidate_id',table:sql`public.ai_agent_candidate_provenance`,expiry:sql`created_at+interval '720 hours'`},
  {key:'jobs',id:'id',table:sql`public.ai_agent_job_receipt`,expiry:sql`coalesce(expires_at,created_at+interval '720 hours')`},
- {key:'importAssistance',id:'id',table:sql`public.personnel_import_assistance_attempt`,expiry:sql`expires_at`}
+ {key:'importAssistance',id:'id',table:sql`public.personnel_import_assistance_attempt`,expiry:sql`expires_at`},
+ {key:'importEvaluations',id:'id',table:sql`public.employee_import_evaluation_attempt`,expiry:sql`expires_at`}
 ] as const;
 /** Static table/expiry inventory only; no caller SQL or identifiers are accepted. */
 export function expiredAiCustodyQueueSql():SQL{return sql`select tenant_id,expires_at from app.assistant_own_leave_review where state='awaiting_confirmation' and expires_at<=now()
@@ -33,12 +34,13 @@ export async function retireExpiredAiCustodyTx(tx: Tx): Promise<AiRetentionResul
       and current_setting('transaction_isolation')='read committed'
       and current_setting('transaction_read_only')='off'
       and has_function_privilege(current_user,'app.agent_signal_custody_visible(text,uuid,uuid,uuid)','EXECUTE')
-      and (select count(*)=8 and bool_and(r.rolsuper or c.relowner=r.oid)
+      and (select count(*)=10 and bool_and(r.rolsuper or c.relowner=r.oid)
         from pg_catalog.pg_roles r cross join pg_catalog.pg_class c where r.rolname=current_user
         and c.oid in ('app.assistant_own_leave_review'::regclass,
           'app.assistant_own_leave_review_content'::regclass,'public.ai_agent_feedback'::regclass,
           'public.ai_agent_plan_proposal'::regclass,'public.ai_agent_job_feedback'::regclass,'public.ai_agent_candidate_provenance'::regclass,
-          'public.ai_agent_job_receipt'::regclass,'public.personnel_import_assistance_attempt'::regclass)) as allowed`);
+          'public.ai_agent_job_receipt'::regclass,'public.personnel_import_assistance_attempt'::regclass,
+          'public.employee_import_evaluation_attempt'::regclass,'public.employee_import_evaluation_run_membership'::regclass)) as allowed`);
     if (role?.allowed !== true) return unavailable();
     // Each statement is bounded independently; never weaken another owner's timeout or role/session.
     const bounds = await tx.execute(sql`select name,set_config(name,(case
@@ -52,7 +54,7 @@ export async function retireExpiredAiCustodyTx(tx: Tx): Promise<AiRetentionResul
     ) expired group by tenant_id order by min(expires_at),tenant_id limit 10`);
     if (tenants.length > 10) return unavailable();
     let busy = 0, reviews = 0, feedback = 0;
-    const removed={jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0};
+    const removed={jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0};
     for (const tenant of tenants) {
       if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(tenant.tenant_id)) return unavailable();
       const [lock] = await tx.execute<{ owned: boolean }>(sql`select pg_try_advisory_xact_lock(
