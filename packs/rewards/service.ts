@@ -471,7 +471,7 @@ export async function postRewardUnit(ctx: SessionContext, unitId: string, revisi
 
 type ReviewedRewardPostSelection={unitId:string;revision:number;batchId:string|null};
 const captureRewardPostContext=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
-async function reviewedRewardPostAuthorityTx(tx:Tx,ctx:SessionContext,unitId:string){
+async function reviewedRewardPostPrincipalTx(tx:Tx,ctx:SessionContext){
  const grants=ctx.grants??(ctx.roles??[]).map(role=>({role,companyId:null}));const roles=ctx.roles??Array.from(new Set(grants.map(g=>g.role)));
  const [proof]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.app_user u where u.id=${ctx.userId??null}::uuid
   and u.tenant_id=${ctx.tenantId}::uuid and u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id()
@@ -479,12 +479,30 @@ async function reviewedRewardPostAuthorityTx(tx:Tx,ctx:SessionContext,unitId:str
   and current_setting('transaction_isolation')='read committed' and app.principal_snapshot_current()
   and current_setting('app.roles',true)=${roles.join(',')} and current_setting('app.grants',true)::jsonb=${JSON.stringify(grants)}::jsonb) as allowed`);
  if(!proof?.allowed)throw new RewardError('Current Rewards principal is unavailable.');
+}
+async function reviewedRewardPostAuthorityTx(tx:Tx,ctx:SessionContext,unitId:string){
+ await reviewedRewardPostPrincipalTx(tx,ctx);
  idSchema.parse(unitId);
  const [nominee]=await tx.select({id:rewardUnit.id,companyId:rewardUnit.companyId,parentUnitId:rewardUnit.parentUnitId,deletedAt:rewardUnit.deletedAt})
   .from(rewardUnit).where(eq(rewardUnit.id,unitId));
  if(!nominee||nominee.deletedAt)throw new RewardError('Reward unit not found or access has been removed.');
  const assigned=await rolesFor(tx,unitId);if(!assigned.includes('payroll'))throw new RewardError('The assigned payroll role is required.');
  await requireAdmin(tx,nominee.companyId);return nominee;
+}
+/** Advisory post-selection metadata only. No entries, compensation, budgets or hidden-person
+ * arrays are loaded. Native prepare remains the sole posting eligibility/calculation owner. */
+export async function reviewedRewardPostChoiceMetadataTx(tx:Tx,supplied:SessionContext){
+ const ctx=captureRewardPostContext(supplied);await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);await reviewedRewardPostPrincipalTx(tx,ctx);
+ const nominees=await tx.select({id:rewardUnit.id}).from(rewardUnit).where(and(eq(rewardUnit.tenantId,ctx.tenantId),isNull(rewardUnit.deletedAt),eq(rewardUnit.status,'approved'),sql`exists(select 1 from app.reward_roles(${rewardUnit.id}) as assigned(role) where assigned.role='payroll')`,sql`app.reward_admin(${rewardUnit.companyId})`)).orderBy(asc(rewardUnit.id)).limit(21);
+ const units=[];
+ for(const nominated of nominees.slice(0,20)){
+  const owned=await reviewedRewardPostAuthorityTx(tx,ctx,nominated.id);
+  const [row]=await tx.select({unitId:rewardUnit.id,revision:rewardUnit.revision,companyName:company.legalName,name:businessUnitDisplayName,cycleName:rewardCycle.name,year:rewardCycle.year,kind:rewardUnit.kind}).from(rewardUnit).innerJoin(company,eq(company.id,rewardUnit.companyId)).innerJoin(rewardCycle,eq(rewardCycle.id,rewardUnit.cycleId)).innerJoin(businessUnit,eq(businessUnit.id,rewardUnit.businessUnitId)).where(and(eq(rewardUnit.id,owned.id),eq(rewardUnit.status,'approved'),isNull(rewardUnit.deletedAt)));
+  if(!row)throw new RewardError('The selected Rewards metadata changed.');
+  const batches=await tx.select({id:payrollBatch.id,payPeriod:payrollBatch.payPeriod}).from(payrollBatch).where(and(eq(payrollBatch.tenantId,ctx.tenantId),eq(payrollBatch.companyId,owned.companyId),eq(payrollBatch.status,'draft'))).orderBy(desc(payrollBatch.payPeriod),asc(payrollBatch.id)).limit(21);
+  units.push({...row,batches:batches.slice(0,20),batchesTruncated:batches.length>20});
+ }
+ return {units,truncated:nominees.length>20};
 }
 export async function lockReviewedRewardPostSourceTx(tx:Tx,supplied:SessionContext,unitId:string){
  const ctx=captureRewardPostContext(supplied),id=idSchema.parse(unitId);
