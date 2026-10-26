@@ -126,4 +126,34 @@ describe('stored Apple online assertion transaction',()=>{
       await owner.db.execute(sql`drop function app.test_key_counter_veto()`);
     }
   });
+  it.each(['expiry','employment'] as const)('rechecks %s after an observably blocked key acquisition',async(change)=>{
+    const f=await fixture();let begin=await service.begin(f.ctx,f.input);
+    if(change==='expiry'){
+      // Seed a short-lived challenge only in this disposable database; no production TTL override.
+      const row=await challenge(begin.challenge.id),now=Date.now();
+      await owner.db.delete(schema.mobileIntegrityChallenge).where(eq(schema.mobileIntegrityChallenge.id,row.id));
+      await owner.db.insert(schema.mobileIntegrityChallenge).values({...row,issuedAt:new Date(now-118000),expiresAt:new Date(now+2000)});
+      begin=await service.begin(f.ctx,f.input);
+    }
+    let entered!:()=>void,release!:()=>void;const started=new Promise<void>(resolve=>{entered=resolve;}),held=new Promise<void>(resolve=>{release=resolve;});
+    const holding=owner.db.transaction(async tx=>{
+      await tx.select().from(schema.mobileIntegrityKey).where(eq(schema.mobileIntegrityKey.id,f.input.keyId)).for('update');
+      entered();await held;
+    });
+    const operation=vi.fn(async()=>null);
+    try{
+      await started;
+      const pending=service.consume(f.ctx,f.input,{challengeId:begin.challenge.id,assertion:assertion(begin.context,f.privateKey)},operation);
+      const result=Promise.allSettled([pending]);
+      try{
+        await waitForOwnedKeyLock();
+        if(change==='expiry')await owner.db.execute(sql`select pg_sleep(greatest(0,extract(epoch from (${begin.challenge.expiresAt}::timestamptz-clock_timestamp())))+0.05)`);
+        else await owner.db.update(schema.employment).set({hiredOn:'2099-01-01'}).where(eq(schema.employment.id,f.input.employmentId));
+      }finally{release();}
+      await holding;
+      const [outcome]=await result;expect(outcome.status).toBe('rejected');
+      if(change==='expiry')expect(outcome).toMatchObject({reason:{reason:'expired'}});
+      expect(operation).not.toHaveBeenCalled();expect(await counter(f.input.keyId)).toBe(0);expect((await challenge(begin.challenge.id)).consumedAt).toBeNull();
+    }finally{release();await holding.catch(()=>{});}
+  });
 });

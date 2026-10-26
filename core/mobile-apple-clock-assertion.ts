@@ -54,12 +54,17 @@ export function createAppleClockAssertionService(settings:unknown){
         employmentId:p.employmentId,deviceKeyId:p.keyId},challenge:{id:challenge.id,nonce:challenge.nonce,expiresAt:Date.parse(challenge.expiresAt)},
       command:p.command,evidence:p.evidence});
   }
-  async function key(tx:Tx,ctx:SessionContext,p:Snapshot,lock:boolean){
+  async function own(tx:Tx,ctx:SessionContext,p:Snapshot){
     if(!ctx.userId||!ctx.personId||!(await myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:true})).some(e=>e.employmentId===p.employmentId))
       throw new OwnClockEmploymentUnavailableError();
+  }
+  async function key(tx:Tx,ctx:SessionContext,p:Snapshot,lock:boolean){
+    await own(tx,ctx,p);
     const query=tx.select().from(mobileIntegrityKey).where(and(eq(mobileIntegrityKey.id,p.keyId),eq(mobileIntegrityKey.tenantId,ctx.tenantId),
-      eq(mobileIntegrityKey.actorId,ctx.userId))).limit(1);
+      eq(mobileIntegrityKey.actorId,ctx.userId!))).limit(1);
     const [row]=await (lock?query.for('update'):query);
+    // Eligibility can change on a different row while this SELECT waits for the key lock.
+    if(lock)await own(tx,ctx,p);
     if(!row||row.revokedAt||row.platform!=='ios'||row.appInstallationId!==p.appInstallationId||row.appId!==config.target.appId||row.environment!==config.target.environment)
       throw new AppleClockAssertionError('key_unavailable');
     const required=config.target.requiredMetadata,metadata=row.metadata as {validationCategory?:number;bundleVersion?:string}|null;
