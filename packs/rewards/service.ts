@@ -71,8 +71,8 @@ function assertRevision(unit: typeof rewardUnit.$inferSelect, revision: number) 
 function assertUnlocked(unit: typeof rewardUnit.$inferSelect) {
   if (unit.status !== 'draft') throw new RewardError('Return the unit to draft before changing its approved inputs.');
 }
-async function stamp(tx: Tx, ctx: SessionContext, unitId: string, event: string, payload: Record<string, unknown> = {}) {
-  await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'reward-unit', aggregateId: unitId, eventType: `reward-unit.${event}`, actor: actorOf(ctx), payload });
+async function stamp(tx: Tx, ctx: SessionContext, unitId: string, event: string, payload: Record<string, unknown> = {}, returnEventId = false) {
+  return appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'reward-unit', aggregateId: unitId, eventType: `reward-unit.${event}`, actor: actorOf(ctx), payload }, {returnId:returnEventId});
 }
 async function touch(tx: Tx, unitId: string) {
   await tx.update(rewardUnit).set({ revision: sql`${rewardUnit.revision}+1`, approvedDigest: null, updatedAt: new Date() }).where(eq(rewardUnit.id, unitId));
@@ -396,35 +396,39 @@ export async function rewardPayrollChoices(ctx: SessionContext, unitId: string) 
   });
 }
 
-export async function postRewardUnit(ctx: SessionContext, unitId: string, revision: number, batchId?: string) {
-  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-  if (batchId) idSchema.parse(batchId);
-  assertModuleGate(ctx, 'payroll');
-  return withRewardsTenant(ctx, async tx => {
-    // Posting can enact an approved grade change. Own the graph interval before funding/source,
-    // credit/Payroll or employment locks rather than upgrading at the later grade-writer call.
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
-    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+async function prepareRewardPostTx(tx:Tx,ctx:SessionContext,unitId:string,revision:number,batchId?:string,reviewed=false){
     idSchema.parse(unitId); await funding(tx, unitId, true);
     const { unit, roles, entries } = await load(tx, unitId, true); assertRevision(unit, revision);
     if (!roles.includes('payroll')) throw new RewardError('The assigned payroll role is required.');
     await requireAdmin(tx, unit.companyId); // The existing salary and grade writers are administrator-owned.
-    if (unit.status === 'posted') return { alreadyPosted: true };
+    if (unit.status === 'posted') return { alreadyPosted: true as const,unit,roles,entries };
     if (unit.status !== 'approved' || unit.approvedDigest !== digest(unit, entries)) throw new RewardError('Only the unchanged, fully approved review can be posted.');
     const result = await calculateUnit(tx, unit, entries);
     if (result.flags.some(f => f.severity === 'block')) throw new RewardError('The approved review no longer passes validation.');
     const hasBonus = result.rows.some(e => e.bonusCents + e.lumpCents > 0);
     if (hasBonus && !batchId) throw new RewardError('Select a draft payroll batch for the bonus and lump-sum awards.');
     if (batchId) {
-      const [batch] = await tx.select().from(payrollBatch).where(eq(payrollBatch.id, batchId)).for('update');
+      const query=tx.select().from(payrollBatch).where(eq(payrollBatch.id,batchId));
+      const [batch]=await (reviewed ? query.for('update',{noWait:true}) : query.for('update'));
       if (!batch || batch.companyId !== unit.companyId || batch.status !== 'draft') throw new RewardError('The payroll batch must be a draft in this company.');
     }
+    return {alreadyPosted:false as const,unit,roles,entries,result};
+}
+
+async function currentRewardPostEmployeeTx(tx:Tx,unit:typeof rewardUnit.$inferSelect,e:Awaited<ReturnType<typeof calculateUnit>>['rows'][number],reviewed=false){
+      const [emp] = await tx.select().from(employment).where(eq(employment.id, e.source.employmentId)).for('update',reviewed?{noWait:true}:undefined);
+      if (!emp || emp.companyId !== unit.companyId || emp.terminatedOn || emp.gradeId !== e.source.gradeId) throw new RewardError('An employee changed company, grade or employment status. Return and refresh the review.');
+      const [cur] = await tx.select().from(compensation).where(and(eq(compensation.employmentId, emp.id), isNull(compensation.validTo), isNull(compensation.supersededAt))).for('update',reviewed?{noWait:true}:undefined);
+      if (!cur || cur.id !== e.source.compensationId || moneyToCents(cur.basicSalary) !== e.source.basicCents || cur.currency !== e.source.currency || cur.payMode !== e.source.payMode) throw new RewardError('Salary data changed after the snapshot. Return and refresh the review.');
+      return {emp,cur};
+}
+
+async function postRewardEffectTx(tx:Tx,ctx:SessionContext,unitId:string,revision:number,batchId:string|undefined,
+ prepared:Extract<Awaited<ReturnType<typeof prepareRewardPostTx>>,{alreadyPosted:false}>,returnEventId=false){
+ const {unit,result}=prepared;
     // Deterministic lock order makes simultaneous reward units on the same people serialize.
     for (const e of [...result.rows].sort((a, b) => a.source.employmentId.localeCompare(b.source.employmentId))) {
-      const [emp] = await tx.select().from(employment).where(eq(employment.id, e.source.employmentId)).for('update');
-      if (!emp || emp.companyId !== unit.companyId || emp.terminatedOn || emp.gradeId !== e.source.gradeId) throw new RewardError('An employee changed company, grade or employment status. Return and refresh the review.');
-      const [cur] = await tx.select().from(compensation).where(and(eq(compensation.employmentId, emp.id), isNull(compensation.validTo), isNull(compensation.supersededAt))).for('update');
-      if (!cur || cur.id !== e.source.compensationId || moneyToCents(cur.basicSalary) !== e.source.basicCents || cur.currency !== e.source.currency || cur.payMode !== e.source.payMode) throw new RewardError('Salary data changed after the snapshot. Return and refresh the review.');
+      const {emp,cur}=await currentRewardPostEmployeeTx(tx,unit,e);
       if (e.newBasicCents !== e.source.basicCents) {
         if (unit.policy.effectiveFrom <= cur.validFrom) throw new RewardError('The salary effective date must follow the current salary record.');
         const comp = await setCompensation(ctx, { employmentId: emp.id, basicSalary: e.newBasicCents / 100, effectiveFrom: unit.policy.effectiveFrom, remarks: `Approved Reward Desk review ${unitId}` }, tx);
@@ -445,9 +449,107 @@ export async function postRewardUnit(ctx: SessionContext, unitId: string, revisi
       }
     }
     await tx.update(rewardUnit).set({ status: 'posted', fundingCents: unit.kind === 'annual' ? { standard: result.budgets.standard.pools.reduce((n, amount, i) => n + Math.max(0, amount - result.budgets.standard.used[i]), 0), h: result.budgets.h.pools.reduce((n, amount, i) => n + Math.max(0, amount - result.budgets.h.used[i]), 0) } : unit.fundingCents, postedBatchId: batchId ?? null, postedAt: new Date(), updatedAt: new Date() }).where(eq(rewardUnit.id, unitId));
-    await stamp(tx, ctx, unitId, 'posted', { batchId: batchId ?? null, revision });
-    return { alreadyPosted: false };
+    const postedEventId=await stamp(tx, ctx, unitId, 'posted', { batchId: batchId ?? null, revision },returnEventId);
+    return { alreadyPosted: false, ...(returnEventId?{postedEventId}: {}) };
+}
+
+export async function postRewardUnit(ctx: SessionContext, unitId: string, revision: number, batchId?: string) {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  if (batchId) idSchema.parse(batchId);
+  assertModuleGate(ctx, 'payroll');
+  return withRewardsTenant(ctx, async tx => {
+    // Posting can enact an approved grade change. Own the graph interval before funding/source,
+    // credit/Payroll or employment locks rather than upgrading at the later grade-writer call.
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+    const prepared=await prepareRewardPostTx(tx,ctx,unitId,revision,batchId);
+    if(prepared.alreadyPosted)return {alreadyPosted:true};
+    return postRewardEffectTx(tx,ctx,unitId,revision,batchId,prepared);
+
   });
+}
+
+type ReviewedRewardPostSelection={unitId:string;revision:number;batchId:string|null};
+const captureRewardPostContext=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
+async function reviewedRewardPostAuthorityTx(tx:Tx,ctx:SessionContext,unitId:string){
+ const grants=ctx.grants??(ctx.roles??[]).map(role=>({role,companyId:null}));const roles=ctx.roles??Array.from(new Set(grants.map(g=>g.role)));
+ const [proof]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.app_user u where u.id=${ctx.userId??null}::uuid
+  and u.tenant_id=${ctx.tenantId}::uuid and u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id()
+  and u.person_id is not distinct from ${ctx.personId??null}::uuid and u.archived_at is null and not app.login_blocked(u.id)
+  and current_setting('transaction_isolation')='read committed' and app.principal_snapshot_current()
+  and current_setting('app.roles',true)=${roles.join(',')} and current_setting('app.grants',true)::jsonb=${JSON.stringify(grants)}::jsonb) as allowed`);
+ if(!proof?.allowed)throw new RewardError('Current Rewards principal is unavailable.');
+ idSchema.parse(unitId);
+ const [nominee]=await tx.select({id:rewardUnit.id,companyId:rewardUnit.companyId,parentUnitId:rewardUnit.parentUnitId,deletedAt:rewardUnit.deletedAt})
+  .from(rewardUnit).where(eq(rewardUnit.id,unitId));
+ if(!nominee||nominee.deletedAt)throw new RewardError('Reward unit not found or access has been removed.');
+ const assigned=await rolesFor(tx,unitId);if(!assigned.includes('payroll'))throw new RewardError('The assigned payroll role is required.');
+ await requireAdmin(tx,nominee.companyId);return nominee;
+}
+async function reviewedRewardPostPreflightTx(tx:Tx,supplied:SessionContext,selection:ReviewedRewardPostSelection){
+ const ctx=captureRewardPostContext(supplied),p=structuredClone(selection);if(p.batchId)idSchema.parse(p.batchId);
+ await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+ // Minimal selection/current native role and company authority BEFORE funding, private entries or employee locks.
+ const nominee=await reviewedRewardPostAuthorityTx(tx,ctx,p.unitId);
+ if(nominee.parentUnitId)await tx.select({id:rewardUnit.id}).from(rewardUnit).where(eq(rewardUnit.id,nominee.parentUnitId)).for('update',{noWait:true});
+ await tx.select({id:rewardUnit.id}).from(rewardUnit).where(eq(rewardUnit.id,p.unitId)).for('update',{noWait:true});
+ const current=await reviewedRewardPostAuthorityTx(tx,ctx,p.unitId);if(JSON.stringify(current)!==JSON.stringify(nominee))throw new RewardError('The reward unit source changed.');
+ const prepared=await prepareRewardPostTx(tx,ctx,p.unitId,p.revision,p.batchId??undefined,true);
+ if(prepared.alreadyPosted)throw new RewardError('Reopen the recorded posting instead of preparing another.');
+ const {unit,result,roles,entries}=prepared;
+ await tx.select({id:rewardEntry.id}).from(rewardEntry).where(eq(rewardEntry.unitId,unit.id)).orderBy(asc(rewardEntry.id)).for('update',{noWait:true});
+ // The canonical unit lock protects all native entry writers. Re-read exact rows after explicit ownership
+ // as well, so no directly changed version can be reviewed and then silently enacted.
+ const locked=await load(tx,unit.id);if(JSON.stringify(locked.entries)!==JSON.stringify(entries))throw new RewardError('The reward entries changed.');
+ const sourceRows=[];
+ for(const row of [...result.rows].sort((a,b)=>a.source.employmentId.localeCompare(b.source.employmentId))){
+  const {emp,cur}=await currentRewardPostEmployeeTx(tx,unit,row,true);
+  let input:typeof payrollInput.$inferSelect|undefined;
+  if(p.batchId&&row.bonusCents+row.lumpCents){const [existing]=await tx.select().from(payrollInput).where(and(eq(payrollInput.batchId,p.batchId),eq(payrollInput.employmentId,emp.id))).for('update',{noWait:true});input=existing;}
+  sourceRows.push({employmentId:emp.id,compensationId:cur.id,payrollInputId:input?.id??null});
+ }
+ const [batch]=p.batchId?await tx.select({id:payrollBatch.id,payPeriod:payrollBatch.payPeriod}).from(payrollBatch).where(eq(payrollBatch.id,p.batchId)):[];
+ const visible=result.rows.filter(row=>visibleEntry(row,roles,ctx.personId));
+ const [cycle]=await tx.select({id:rewardCycle.id,name:rewardCycle.name,year:rewardCycle.year}).from(rewardCycle).where(eq(rewardCycle.id,unit.cycleId));
+ const [bu]=await tx.select({name:businessUnitDisplayName}).from(businessUnit).where(eq(businessUnit.id,unit.businessUnitId));
+ if(!cycle||!bu)throw new RewardError('The reward cycle or business unit changed.');
+ const review={unitId:unit.id,revision:unit.revision,companyId:unit.companyId,businessUnitId:unit.businessUnitId,name:bu.name,cycleName:cycle.name,year:cycle.year,kind:unit.kind,effectiveFrom:unit.policy.effectiveFrom,
+  batch:batch??null,hiddenCount:entries.length-visible.length,
+  rows:visible.map(row=>({entryId:row.id,employmentId:row.source.employmentId,employeeCode:row.source.employeeCode,name:row.source.name,currency:row.source.currency,
+   basicCents:row.source.basicCents,newBasicCents:row.newBasicCents,promotionGrade:row.recommendation.promotionGrade,
+   bonusCents:row.bonusCents,lumpCents:row.lumpCents})),
+  scope:'whole_approved_unit_including_restricted_records' as const,consequence:'salary_grade_and_draft_payroll_inputs_not_processed_or_paid' as const};
+ const versions=await tx.execute(sql`select
+  (select jsonb_agg(jsonb_build_array(u.id,u.xmin::text) order by u.id) from public.reward_unit u where u.id=${unit.id}::uuid or u.id=${unit.parentUnitId}::uuid or u.parent_unit_id=${unit.parentUnitId}::uuid) as units,
+  (select jsonb_agg(jsonb_build_array(e.id,e.xmin::text) order by e.id) from public.reward_entry e where e.unit_id=${unit.id}::uuid) as entries,
+  (select jsonb_agg(jsonb_build_array(e.id,e.xmin::text) order by e.id) from public.employment e where e.id=any(${result.rows.map(row=>row.source.employmentId)}::uuid[])) as employments,
+  (select jsonb_agg(jsonb_build_array(c.id,c.xmin::text) order by c.id) from public.compensation c where c.id=any(${sourceRows.map(row=>row.compensationId)}::uuid[])) as compensations,
+  (select jsonb_agg(jsonb_build_array(g.id,g.xmin::text) order by g.id) from public.job_grade g) as grades,
+  (select b.xmin::text from public.payroll_batch b where b.id=${p.batchId}::uuid) as batch,
+  (select jsonb_agg(jsonb_build_array(i.id,i.xmin::text) order by i.id) from public.payroll_input i where i.batch_id=${p.batchId}::uuid and i.employment_id=any(${result.rows.map(row=>row.source.employmentId)}::uuid[])) as inputs`);
+ const available=await funding(tx,unit.id);
+ const reviewedDigest=createHash('sha256').update(JSON.stringify(['reviewed-rewards-post:v1',{tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId??null},p,unit,entries,result,sourceRows,versions,available,review])).digest('hex');
+ return{ctx,p,prepared,review,reviewedDigest};
+}
+export async function prepareReviewedRewardPostTx(tx:Tx,ctx:SessionContext,p:ReviewedRewardPostSelection){const prepared=await reviewedRewardPostPreflightTx(tx,ctx,p);return{review:prepared.review,reviewedDigest:prepared.reviewedDigest};}
+export async function postReviewedRewardUnitTx(tx:Tx,ctx:SessionContext,p:ReviewedRewardPostSelection,reviewedDigest:string){
+ const prepared=await reviewedRewardPostPreflightTx(tx,ctx,p);if(prepared.reviewedDigest!==reviewedDigest)throw new RewardError('The approved posting source changed.');
+ const effect=await postRewardEffectTx(tx,prepared.ctx,prepared.p.unitId,prepared.p.revision,prepared.p.batchId??undefined,prepared.prepared,true);
+ if(!effect.postedEventId)throw new RewardError('The native posting event is unavailable.');
+ const receipt=await readReviewedRewardPostReferenceTx(tx,prepared.ctx,{unitId:prepared.p.unitId,postedEventId:effect.postedEventId});
+ if(!receipt)throw new RewardError('The canonical posting reference is unavailable.');return receipt;
+}
+/** Exact original-actor native unit posting plus CURRENT root metadata. No old salary text, hidden
+ * employee/input IDs, payslip/payment claim, or automatic second posting on a completed retry. */
+export async function readReviewedRewardPostReferenceTx(tx:Tx,supplied:SessionContext,reference:{unitId:string;postedEventId:string}){
+ const ctx=captureRewardPostContext(supplied),p={...reference};await tx.execute(sql`select app.access_workforce_write_lock()`);
+ await reviewedRewardPostAuthorityTx(tx,ctx,p.unitId);
+ const [row]=await tx.execute<{unitId:string;postedEventId:string;currentStatus:typeof rewardUnit.$inferSelect['status'];currentRevision:number;postedRevision:number;postedBatchId:string|null}>(sql`select u.id as "unitId",d.id as "postedEventId",u.status as "currentStatus",u.revision as "currentRevision",(d.payload->>'revision')::integer as "postedRevision",u.posted_batch_id as "postedBatchId"
+  from public.reward_unit u join public.domain_event d on d.tenant_id=u.tenant_id and d.aggregate_id=u.id
+  where u.id=${p.unitId}::uuid and u.tenant_id=${ctx.tenantId}::uuid and u.deleted_at is null and d.id=${p.postedEventId}::uuid
+   and d.aggregate_type='reward-unit' and d.event_type='reward-unit.posted' and d.actor_type='user' and d.actor_id=${ctx.userId}::uuid
+   and (d.payload->>'batchId')::uuid is not distinct from u.posted_batch_id`);
+ return row??null;
 }
 
 export async function createOffcycleReview(ctx: SessionContext, parentId: string, raw: { kind: 'adhoc' | 'midyear'; entryIds: string[]; effectiveFrom: string; exceptionReason: string }) {
