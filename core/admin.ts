@@ -375,11 +375,12 @@ type Role =
   | 'hr_admin'
   | 'super_admin'
   | 'payroll_partner'
-  | 'performance_comp_partner';
+  | 'performance_comp_partner'
+  | 'performance_partner';
 
-/** Roles that carry a company scope (ADR-0049): hr_admin plus the two job-function partners. Every
+/** Roles that carry a company scope (ADR-0049, ADR-0142): hr_admin plus the job-function partners. Every
  *  other role is normalized to a null (group-wide / inert) company_id by assignRole. */
-const SCOPABLE_ROLES = new Set<Role>(['hr_admin', 'payroll_partner', 'performance_comp_partner']);
+const SCOPABLE_ROLES = new Set<Role>(['hr_admin', 'payroll_partner', 'performance_comp_partner', 'performance_partner']);
 
 /** Resolve a create-form Default Payroll Cycle name to a canonical DEFAULT_PAYROLL_CYCLES name. The picker
  *  only ever offers the six seeded names, so an unknown/blank value falls back to 'Monthly' (the column
@@ -2518,6 +2519,7 @@ export function listUsers(ctx: SessionContext, opts: { includeArchived?: boolean
       const mine = u.personId ? emps.filter((e) => e.personId === u.personId) : [];
       return {
         ...u,
+        hasEmployment: mine.length>0,
         roles: roles.filter((r) => r.appUserId === u.id),
         // Blocked purely by the employment dates — archivedAt is reported separately so the UI can
         // tell the two causes apart and only offer Restore for the manual one.

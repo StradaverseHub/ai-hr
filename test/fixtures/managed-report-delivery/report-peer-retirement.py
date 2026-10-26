@@ -10,6 +10,7 @@ spec = importlib.util.spec_from_file_location('peer_under_test', sys.argv.pop(1)
 peer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(peer)
 UNIT = 'aihr-report-auth@4-connection.service'
+TOKEN_UNIT = 'aihr-smtp-token@aihr-isolation-probe.service'
 PATH = '/aihrmanagedmail.slice/aihrmanagedmail-dispatch.slice/' + UNIT
 IDENTITY = {'version': 1, 'unit': UNIT, 'invocationId': 'a' * 32, 'cgroup': PATH, 'replyBytes': 18}
 class Retirement(unittest.TestCase):
@@ -152,7 +153,7 @@ class EffectiveServiceCredentials(unittest.TestCase):
     def test_namespace_calls_do_not_supply_passwd_group_defaults(self):
         tree=ast.parse(pathlib.Path(spec.origin).with_name('verify-internal-report-isolation.py').read_text())
         calls=[node for node in ast.walk(tree) if isinstance(node,ast.Call) and isinstance(node.func,ast.Name) and node.func.id=='process_environment_denial']
-        self.assertEqual(len(calls),2)
+        self.assertEqual(len(calls),3)
         self.assertTrue(all(len(node.args)==4 for node in calls))
 
 class ResourceConfiguration(unittest.TestCase):
@@ -163,11 +164,12 @@ class ResourceConfiguration(unittest.TestCase):
         cls.probe=importlib.util.module_from_spec(probe_spec);probe_spec.loader.exec_module(cls.probe)
     def run_checks(self, overrides=None):
         broker='aihr-report-auth@aihr-isolation-probe.service';renderer='aihr-report-renderer@aihr-isolation-probe.service'
-        caps={'aihr-internal-report.service':192*1024*1024,broker:192*1024*1024,'aihrmanagedmail-dispatch.slice':192*1024*1024,renderer:512*1024*1024,'aihrmanagedmail.slice':768*1024*1024}
+        caps={'aihr-internal-report.service':192*1024*1024,broker:192*1024*1024,'aihrmanagedmail-dispatch.slice':192*1024*1024,renderer:512*1024*1024,'aihrmanagedmail.slice':768*1024*1024,TOKEN_UNIT:32*1024*1024}
         values={(unit,'MemoryMax'):str(value) for unit,value in caps.items()}
         for unit,template in [(broker,'aihr-report-auth@.service'),(renderer,'aihr-report-renderer@.service')]:
             values.update({(unit,'LoadState'):'loaded',(unit,'ActiveState'):'inactive',(unit,'MainPID'):'0',(unit,'FragmentPath'):'/etc/systemd/system/'+template})
         values.update({('aihr-internal-report.service','Slice'):'aihrmanagedmail-dispatch.slice',(broker,'Slice'):'aihrmanagedmail-dispatch.slice',(broker,'SupplementaryGroups'):'aihr-report-clients'})
+        values.update({(TOKEN_UNIT,'DynamicUser'):'yes',(TOKEN_UNIT,'EnvironmentFiles'):'',(TOKEN_UNIT,'Slice'):'aihrmanagedmail-dispatch.slice'})
         values.update(overrides or {});calls=[]
         def command(args):
             self.assertEqual(args[:2],['systemctl','show']);self.assertEqual(args[-1],'--value');self.assertEqual(len(args),5)
@@ -179,12 +181,12 @@ class ResourceConfiguration(unittest.TestCase):
     def test_reads_valid_inactive_configuration_instances_and_all_existing_limits(self):
         calls,caps,broker,renderer=self.run_checks()
         self.assertCountEqual([(unit,prop) for unit,prop in calls if prop=='MemoryMax'],[(unit,'MemoryMax') for unit in caps])
-        self.assertCountEqual([(unit,prop) for unit,prop in calls if prop=='Slice'],[('aihr-internal-report.service','Slice'),(broker,'Slice')])
+        self.assertCountEqual([(unit,prop) for unit,prop in calls if prop=='Slice'],[('aihr-internal-report.service','Slice'),(broker,'Slice'),(TOKEN_UNIT,'Slice')])
         self.assertIn((broker,'SupplementaryGroups'),calls)
     def test_each_resource_slice_and_group_mismatch_still_refuses(self):
         broker='aihr-report-auth@aihr-isolation-probe.service';renderer='aihr-report-renderer@aihr-isolation-probe.service'
-        mismatches=[{(unit,'MemoryMax'):'1'} for unit in ['aihr-internal-report.service',broker,'aihrmanagedmail-dispatch.slice',renderer,'aihrmanagedmail.slice']]
-        mismatches += [{('aihr-internal-report.service','Slice'):'foreign.slice'},{(broker,'Slice'):'foreign.slice'},{(broker,'SupplementaryGroups'):''}]
+        mismatches=[{(unit,'MemoryMax'):'1'} for unit in ['aihr-internal-report.service',broker,'aihrmanagedmail-dispatch.slice',renderer,'aihrmanagedmail.slice',TOKEN_UNIT]]
+        mismatches += [{('aihr-internal-report.service','Slice'):'foreign.slice'},{(broker,'Slice'):'foreign.slice'},{(broker,'SupplementaryGroups'):''},{(TOKEN_UNIT,'Slice'):'foreign.slice'},{(TOKEN_UNIT,'DynamicUser'):'no'},{(TOKEN_UNIT,'EnvironmentFiles'):'/fictional/private.env'}]
         for mismatch in mismatches:
             with self.assertRaises(Exception):self.run_checks(mismatch)
     def test_configuration_instances_cannot_be_active_rebound_or_from_a_different_fragment(self):

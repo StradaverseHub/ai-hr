@@ -90,18 +90,24 @@ MIGRATE_ONLY=0
 CUSTOMER=0
 DEMO_FORCED=0
 TESTING_BUILD_RECORD=''
+CI_BUILD_INSTALL=''
 for arg in "$@"; do
   case "$arg" in
     --reseed) RESEED=1 ;;
     --migrate-only) MIGRATE_ONLY=1 ;;
     --customer) CUSTOMER=1 ;;
     --demo) DEMO_FORCED=1 ;;
+    --ci-build=*)
+      if [ -n "$CI_BUILD_INSTALL" ]; then echo 'Duplicate CI build installation argument' >&2; exit 1; fi
+      CI_BUILD_INSTALL="${arg#--ci-build=}"
+      if ! [[ "$CI_BUILD_INSTALL" =~ ^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$ ]]; then echo 'Invalid CI installation UUID' >&2; exit 1; fi
+      ;;
     --testing-build-record=*)
       if [ -n "$TESTING_BUILD_RECORD" ]; then echo 'Duplicate System Testing build record argument' >&2; exit 1; fi
       TESTING_BUILD_RECORD="${arg#--testing-build-record=}"
       if ! [[ "$TESTING_BUILD_RECORD" =~ ^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$ ]]; then echo 'Invalid System Testing build record UUID' >&2; exit 1; fi
       ;;
-    *) echo "✗ Unknown argument: $arg (expected --reseed, --migrate-only, --customer, --demo or --testing-build-record=UUID)"; exit 1 ;;
+    *) echo "✗ Unknown argument: $arg (expected --reseed, --migrate-only, --customer, --demo or --testing-build-record=UUID / --ci-build=UUID)"; exit 1 ;;
   esac
 done
 if [ "$CUSTOMER" = "1" ] && [ "$DEMO_FORCED" = "1" ]; then
@@ -109,13 +115,23 @@ if [ "$CUSTOMER" = "1" ] && [ "$DEMO_FORCED" = "1" ]; then
   exit 1
 fi
 # Arguments and the announcing source ref cannot be replaced by stale private env settings below.
+if [ -n "$CI_BUILD_INSTALL" ]; then
+  if [ -z "$TESTING_BUILD_RECORD" ] || [ "$RESEED" = "1" ] || [ "$MIGRATE_ONLY" = "1" ]; then
+    echo 'CI installation requires its original System Testing record and a complete non-reseed deployment' >&2
+    exit 1
+  fi
+fi
+readonly AIHR_SELECTED_CI_BUILD_INSTALL="$CI_BUILD_INSTALL"
 readonly AIHR_SELECTED_TESTING_BUILD_RECORD="$TESTING_BUILD_RECORD"
 readonly AIHR_SELECTED_DEPLOY_REF="$AIHR_DEPLOY_REF"
 
 # Use the isolated Node toolchain if present (keeps the host's system Node untouched, and means
 # pnpm/node are found even when /opt/node20/bin isn't on the invoking shell's PATH).
 # Prefer a supported isolated runtime. Retain the legacy path only for the existing demo.
-if [ -d /opt/node24/bin ]; then export PATH="/opt/node24/bin:$PATH"
+if [ -n "$AIHR_SELECTED_CI_BUILD_INSTALL" ]; then
+  [ -x /opt/node22/bin/node ] || { echo "CI build installation requires its pinned Node22 runtime" >&2; exit 1; }
+  export PATH="/opt/node22/bin:$PATH"
+elif [ -d /opt/node24/bin ]; then export PATH="/opt/node24/bin:$PATH"
 elif [ -d /opt/node22/bin ]; then export PATH="/opt/node22/bin:$PATH"
 elif [ -d /opt/node20/bin ]; then export PATH="/opt/node20/bin:$PATH"
 fi
@@ -341,6 +357,10 @@ dstate phase build
 # (r394 took the app down that way, 12:05 MYT). After a failed build, redeploy; never restart.
 # atelier-css-fix — a warm Turbopack cache kept a stale CSS import graph and shipped no Atelier styles.
 # Clear it when the CSS inputs changed; record them only after the build below succeeds.
+if [ -n "$AIHR_SELECTED_CI_BUILD_INSTALL" ]; then
+  dstate phase ci-build-verify
+  node --import tsx .github/ci/staging-build-install.mjs stage "$AIHR_SELECTED_DEPLOY_REF" "$AIHR_SELECTED_CI_BUILD_INSTALL" "$AIHR_SELECTED_TESTING_BUILD_RECORD"
+else
 . deploy/css-cache-guard.sh
 aihr_css_cache_guard
 if [ -n "$AIHR_SELECTED_TESTING_BUILD_RECORD" ]; then
@@ -358,6 +378,8 @@ aihr_css_cache_record
 # `deploy-state.sh status` compares it against the .next/BUILD_ID physically on disk, which is how a
 # later deploy that died before finishing its own build is distinguishable from a clean one.
 dstate built
+
+fi
 
 echo "▸ Applying database migrations (as ai_hr_owner)…"
 dstate phase migrate
@@ -448,6 +470,13 @@ fi
 echo "▸ Refreshing system knowledge-base guides…"
 node --env-file=.env.production --import tsx db/seed-guides.ts --all
 
+if [ -n "$AIHR_SELECTED_CI_BUILD_INSTALL" ]; then
+  echo "▸ Activating the verified CI build…"
+  dstate phase ci-build-activate
+  node --import tsx .github/ci/staging-build-install.mjs activate "$AIHR_SELECTED_DEPLOY_REF" "$AIHR_SELECTED_CI_BUILD_INSTALL" "$AIHR_SELECTED_TESTING_BUILD_RECORD"
+  dstate built
+fi
+
 echo "▸ Restarting service…"
 dstate phase restart
 # Detect the unit directly. The old `list-unit-files | grep -q` form was fragile (under set -o
@@ -458,13 +487,26 @@ if systemctl cat aihr.service >/dev/null 2>&1; then
   if sudo -n systemctl restart aihr 2>/dev/null; then
     echo "✅ Deployed + restarted. Logs: journalctl -u aihr -f"
   else
+    if [ -n "$AIHR_SELECTED_CI_BUILD_INSTALL" ]; then
+      echo "CI build activation requires a successful service restart; previous build remains retained for explicit recovery" >&2
+      exit 1
+    fi
     echo "⚠️  Build + migrations are done, but restarting the service needs privileges this shell lacks."
     echo "    Finish with:  sudo systemctl restart aihr"
     echo "    (or install deploy/aihr-sudoers once for passwordless restarts — see DEPLOY.md)"
   fi
 else
+  if [ -n "$AIHR_SELECTED_CI_BUILD_INSTALL" ]; then
+    echo "CI installation requires the existing staging service" >&2
+    exit 1
+  fi
   echo "ℹ️  No 'aihr' systemd service yet — install deploy/aihr.service (see DEPLOY.md), or run manually:"
   echo "     pnpm exec next start -H 0.0.0.0 -p \${PORT:-3000}"
+fi
+
+if [ -n "$AIHR_SELECTED_CI_BUILD_INSTALL" ]; then
+  dstate phase ci-build-health
+  node --import tsx .github/ci/staging-build-install.mjs confirm-runtime "$AIHR_SELECTED_DEPLOY_REF" "$AIHR_SELECTED_CI_BUILD_INSTALL" "$AIHR_SELECTED_TESTING_BUILD_RECORD"
 fi
 
 # The other place this script legitimately ends, and the LAST line on purpose. See the trap at the top:

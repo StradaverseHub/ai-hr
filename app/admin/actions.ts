@@ -1494,7 +1494,8 @@ export async function assignRoleAction(formData: FormData) {
         | 'hr_admin'
         | 'super_admin'
         | 'payroll_partner'
-        | 'performance_comp_partner',
+        | 'performance_comp_partner'
+        | 'performance_partner',
       companyId: (formData.get('companyId') as string) || undefined,
     });
   } catch (e) {
@@ -1518,16 +1519,16 @@ export async function revokeRoleAction(formData: FormData) {
 export async function inviteUserAction(formData: FormData) {
   const s = await getSession();
   try {
-    // personId is REQUIRED (0279). It was previously dropped here even though app_invitation.personId
-    // exists and inviteUser accepts it, which is how nameless, unattached logins got created. ADR-0072
-    // is invitation-only with no self sign-up, so the invitee always already has a person row.
-    const personId = String(formData.get('personId') ?? '').trim();
-    if (!personId) throw new Error('Select the employee this invitation is for.');
+    const standalone=formData.get('accountType')==='standalone';
+    const personId=String(formData.get('personId')??'').trim();
+    const fullName=String(formData.get('fullName')??'').trim();
+    if(!standalone&&!personId)throw new Error('Select the person this invitation is for.');
+    if(standalone&&!fullName)throw new Error('Enter the new user’s full name.');
     await inviteUser(s, {
       email: String(formData.get('email') ?? '').trim(),
       role: String(formData.get('role') ?? 'employee'),
-      companyId: (formData.get('companyId') as string) || null,
-      personId,
+      companyId: formData.get('companyId')==='group'?null:(formData.get('companyId') as string)||null,
+      ...(standalone?{fullName}:{personId}),
     });
   } catch (e) {
     fail(USERS, e);

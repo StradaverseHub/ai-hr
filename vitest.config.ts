@@ -1,6 +1,7 @@
 import { availableParallelism } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
+import DurationSequencer from './scripts/test-duration-sequencer.mjs';
 
 // One database is stamped per worker in test/global-setup.ts, which reads the same number from
 // VITEST_MAX_WORKERS — keep the two in step. Two cores are left for Postgres itself, which is doing the
@@ -46,6 +47,7 @@ export default defineConfig({
     },
   },
   test: {
+    ...(process.env.AIHR_TEST_DURATION_ORDER==='true'?{sequence:{sequencer:DurationSequencer}}:{}),
     // r390 — @workos-inc/authkit-nextjs ships ESM that imports `next/cache` with no extension. Next's bundler
     // resolves that; Node's strict ESM resolver does not, so loading the SDK as an external dependency fails
     // with "Cannot find module …/next/cache". Inlining it lets vite resolve it like Next does. middleware.ts

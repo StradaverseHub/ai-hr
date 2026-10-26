@@ -20,6 +20,10 @@ describe('internal installer owned worker stop',()=>{
   stopInternalReportWorkers(command);
   expect(command.mock.calls.filter(args=>args[0]==='stop')).toEqual([['stop',sender,broker]]);
  });
+ it('also drains the private token capability and its active helper during upgrade or rollback',()=>{
+  const socket='aihr-smtp-token.socket',worker='aihr-smtp-token@fictional.service',command=fake({[socket]:loaded,[worker]:loaded,'aihr-auth-prune.service':loaded});
+  stopInternalReportWorkers(command);expect(command.mock.calls.filter(args=>args[0]==='stop')).toEqual([['stop',socket,worker]]);
+ });
  it.each(['LoadState=not-found\nActiveState=inactive','LoadState=not-found\nActiveState=inactive\nMainPID=0'])('does not issue failing stop for an absent inactive socket (%s)',state=>{
   const command=fake({[socket]:state,[sender]:loaded});
   expect(()=>stopInternalReportWorkers(command)).not.toThrow();

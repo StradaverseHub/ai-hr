@@ -29,20 +29,22 @@ export async function listManualIdentityEnrollments(ctx:SessionContext) {
     return await withTenant(ctx,async tx=>await tx.execute(sql`select * from app.manual_identity_list(${issuer})`) as unknown as ManualIdentityEnrollment[]);
   } catch(e) {throw manualIdentityError(e);}
 }
-export type CreateManualAccountInput={id:string;personId:string;username:string;email:string;role:string;companyId:string|null;password:string;ownershipAttested:boolean};
+export type CreateManualAccountInput={id:string;personId:string|null;fullName?:string;username:string;email:string;role:string;companyId:string|null;password:string;ownershipAttested:boolean};
 
 export async function createManualAccount(ctx:SessionContext,input:CreateManualAccountInput,provider?:ManualAccountProvider) {
   try {
     const issuer=await authorized(ctx);
     const username=input.username.trim().toLowerCase(),email=input.email.trim().toLowerCase();
-    if(!input.ownershipAttested||!canonicalUuid.test(input.id)||!canonicalUuid.test(input.personId)||
+    if(!input.ownershipAttested||!canonicalUuid.test(input.id)||(input.personId===null ? !input.fullName?.trim() || input.fullName.trim().length>200 : !canonicalUuid.test(input.personId))||
       (input.companyId!==null&&!canonicalUuid.test(input.companyId))||!ROLES.has(input.role)||
       !/^[a-z0-9][a-z0-9._@+-]{2,63}$/.test(username)||username.startsWith('service-account-')||
       email.length>255||!/^\S+@[^\s@]+\.[^\s@]+$/.test(email)|| (input.role==='super_admin'&&input.companyId!==null))throw new ManualIdentityError('invalid');
     validateTemporaryPassword(input.password,username,email);
     if(internalSelected()) { try { validatePassword(input.password,username,email); } catch { throw new ManualIdentityError('invalid'); } }
     // Intent and attestation commit before any provider mutation. No credential is a SQL parameter.
-    await withTenant(ctx,tx=>tx.execute(sql`select * from app.manual_identity_reserve(${input.id}::uuid,${issuer},${input.personId}::uuid,${username},${email},${input.role},${input.companyId}::uuid)`));
+    await withTenant(ctx,tx=>input.personId===null
+      ? tx.execute(sql`select * from app.manual_identity_reserve_new_person(${input.id}::uuid,${issuer},${input.fullName!.trim()},${username},${email},${input.role},${input.companyId}::uuid)`)
+      : tx.execute(sql`select * from app.manual_identity_reserve(${input.id}::uuid,${issuer},${input.personId}::uuid,${username},${email},${input.role},${input.companyId}::uuid)`));
     return await resumeManualAccount(ctx,input.id,input.password,provider);
   } catch(e) {throw manualIdentityError(e);}
 }

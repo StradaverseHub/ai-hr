@@ -18,4 +18,13 @@ describe('manual identity server-action authority and secret handling',()=>{
   m.create.mockRejectedValue(new Error('Private-password-12345 provider detail'));
   await expect(createManualAccountAction(form)).rejects.toThrow('manualError=unavailable');
  });
+ it('uses only an explicit standalone choice for new-person creation and maps group scope to null',async()=>{
+  const form=new FormData();Object.entries({id:'request',accountType:'standalone',personId:'ignored-forged-person',fullName:'External user',username:'external',email:'external@example.test',role:'hr_admin',companyId:'group',password:'Private-password-12345',ownershipAttested:'true'}).forEach(([k,v])=>form.set(k,v));
+  await expect(createManualAccountAction(form)).rejects.toThrow('manualSuccess=created');
+  expect(m.create).toHaveBeenCalledWith(ctx,expect.objectContaining({personId:null,fullName:'External user',role:'hr_admin',companyId:null}));
+  form.delete('accountType');form.delete('personId');
+  await expect(createManualAccountAction(form)).rejects.toThrow('manualSuccess=created');
+  expect(m.create).toHaveBeenLastCalledWith(ctx,expect.objectContaining({personId:''}));
+ });
+
 });

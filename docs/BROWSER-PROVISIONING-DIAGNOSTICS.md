@@ -1,0 +1,168 @@
+# Browser tooling transport measurement
+
+The complete staging CI run [40323273298](https://github.com/StradaverseHub/ai-hr/actions/runs/40323273298)
+passed 28,096 test cases but took 903 seconds before deployment. Chromium's original
+`playwright install --with-deps` step took 720 seconds. In the earlier complete run
+40318458523, APT fetched 25.9 MB from the runner's Azure Ubuntu archive in 273 seconds;
+browser binary downloads took approximately nine seconds. These observations justify measuring
+package transport before changing tests, browser engines or runner sizes.
+
+On the isolated diagnostic branch, the existing registered workflow file
+`alpha-staging-browser-checks.yml` runs as `browser-provisioning-diagnostics`. This avoids
+changing main or alpha merely to register another workflow. It is manual-only and uses six independent free standard
+`ubuntu-24.04` jobs: Chromium, Firefox and WebKit, each with the original runner archive and
+the official Ubuntu primary archive over HTTPS. The candidate and lockfile are frozen.
+Each variant executes the same complete `pnpm exec playwright install --with-deps` command.
+It retains actual exit status, elapsed wall time, raw setup logs, installed package inventory,
+source/lock hashes, original archive configuration and a native multilingual raster probe.
+It has no staging credentials, database service, application test selection or gate receipt.
+Its results cannot authorize release.
+
+The transport helper accepts only the expected Ubuntu 24.04 deb822 archive configuration.
+It changes only Azure archive URI values (including GitHub's exact three-entry
+`mirror+file:/etc/apt/apt-mirrors.txt` configuration) to `https://archive.ubuntu.com/ubuntu/`, preserving
+the existing suites, components and explicit Ubuntu archive keyring. Unknown layouts and
+signature/freshness overrides refuse the experiment. No packages, fonts, engine, assertion,
+dependency version or verification requirement are removed. The original signature chain
+continues to authenticate APT indexes and package checksums.
+
+References: [Ubuntu package archives](https://ubuntu.com/project/docs/how-ubuntu-is-made/concepts/package-archive/),
+[APT source configuration](https://manpages.ubuntu.com/manpages/resolute/man5/sources.list.5.html),
+[Playwright CI installation](https://playwright.dev/docs/ci).
+
+Initial diagnostic [40329802693](https://github.com/StradaverseHub/ai-hr/actions/runs/40329802693)
+resolved the candidate but all six tooling jobs refused before installation: the managed
+suite capacity profile correctly rejected this separately named diagnostic. The original failure
+is retained. The repair uses the existing browser diagnostic's supported `legacy` preparation;
+the capacity guard is unchanged. Only the six unexecuted comparisons need execution.
+
+The second attempt 40330361736 completed dependency setup but refused before browser installation:
+the expected direct Azure URI is represented by GitHub's mirror-list indirection. The official
+[runner image source](https://github.com/actions/runner-images/blob/main/images/ubuntu/scripts/build/configure-apt-sources.sh)
+defines that exact file and three ordered official endpoints. The repair recognizes only that
+bounded layout, preserves a separate security-pocket stanza and captures original sources before
+validation. Both actual failed attempts remain failures, with no browser performance claim.
+
+The mirror comparison has not yet produced measurements. A faster diagnostic is not proof of a faster complete
+release: normal-workflow adoption requires measured results, source review, coverage and
+verification-policy binding, then a complete frozen submission-to-staging measurement including
+queue, setup, authentication, installation, migrations, restart, source/build arrival and cleanup.
+Keep the currently active release candidate and controller unchanged during this experiment.
+
+## Early operator packet capability
+
+The actual 2127 release authenticated all archives and changed source/pending state before the
+Mac's system rsync refused `--chmod=D700,F600`. A private local reproduction using
+`/usr/bin/rsync` returned that same refusal. The prepared operator change exercises the same
+shared packet flags on two tiny local files **before** remote access or archive verification,
+requiring actual 0700 directories, a regular single-link 0600 packet and identical bytes.
+An incompatible binary fails before any staging change. Compatible transports retain every
+original source, packet, authority, migration, runtime and cleanup guard.
+
+Six tiny local boundary checks passed, including actual GNU rsync and false-success refusals.
+The existing Linux source-transfer fixture cannot run directly on this Mac: it intentionally
+uses Linux `/usr/bin/rsync`; an initial direct invocation also lacked its required typed-loader
+and source cwd. Those invocation failures remain separate from passing capability cases.
+`probe_scope=operator-transport` runs just the new permission cases and existing private Linux
+transport boundaries on a free standard runner, with the actual frozen candidate release helper.
+It does not rerun browser installation, application tests, compiler/build or deployment.
+This operator change is prepared source, not yet normal-workflow or staging-release verified.
+
+## Official preinstalled image alternative
+
+The first five authenticated mirror measurements on image `20261023.334.3` showed Firefox
+runner/primary 25.858/35.059 seconds and WebKit 37.304/68.126 seconds, with byte-identical
+paired package inventories and equal browser versions. Chromium primary took46.777 seconds;
+its runner comparison was still installing after twelve minutes. A universal primary-mirror
+speedup is therefore unproven. Normal release transport remains unchanged.
+
+`probe_scope=browser-image` measures the official Playwright 1.62.1 Noble image, matching the
+frozen lockfile and pinned to OCI index digest
+`sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e`.
+The public Microsoft registry returned that digest over HTTPS on26October2026. Three independent
+free standard Ubuntu jobs retain actual container initialization/pull timing in their GitHub
+job records, install the same frozen web/mobile dependencies with Node22.23.3/pnpm10.33.2,
+and run the same native browser/raster probes. The image contains all three engines and system
+dependencies, so the diagnostic performs no APT installation. This tests a different provisioning
+method; it does not claim application/browser-suite equivalence or release authority. A successful
+tooling result still requires complete original browser coverage and resource/cleanup evidence
+before normal adoption. See [official image guidance](https://playwright.dev/docs/docker).
+
+Initial image run40334233921 queued from13:51:08 until resolve started14:00:58, a590second
+admission wait. The container initialization steps then took26–28seconds; unchanged web/mobile
+dependency installation took22–23seconds. Chromium and WebKit native/raster probes passed.
+Firefox refused because GitHub supplies `HOME=/github/home`, owned by `pwuser`, while the job
+executes as root. The failure explicitly identifies the supported `HOME=/root` workaround.
+Only the native launch step receives that corrected home; no browser sandbox flag, assertion or
+user-namespace guard is disabled. `probe_scope=browser-image-firefox` reruns only that failed
+engine. The original failure and two passing engine records remain intact. Queue time is retained
+in the end-to-end evidence, and no sub-ten-minute claim follows from fast container initialization.
+
+Firefox-only follow-up40336625875 succeeded on the same digest/version with the corrected owned
+home. The original Chromium/WebKit outcomes are retained at9c632b90a; Firefox's repaired origin
+is separate. `probe_scope=browser-image-suite` now executes the complete original canonical
+browser unit in each of the three engines, with every original file/assertion and two-worker
+policy. It uses the actual `run-unit.mjs` manifest reconstruction, closed database endpoints,
+original disk headroom guard and before/after health records. No APT install, test removal,
+time-budget exclusion or release receipt is introduced. Raw full-browser reports use diagnostic
+artifact names and cannot substitute for a trusted complete normal staging witness.
+
+Complete suite run [40337303924](https://github.com/StradaverseHub/ai-hr/actions/runs/40337303924)
+succeeded at controller `fb2ada14640b987c2058fe01df863c2d86a7fcfa`, candidate2127, baseline2127.
+All six report/binding archives were independently authenticated by GitHub digest/size. The strict
+existing `verifyUnitReport` independently accepted18original files and259passing assertions in
+each engine (54file executions/777assertions total), with no failed/pending/todo/omitted cases and
+healthy before/after resource records. The complete diagnostic took160seconds including its
+queue, resolve, image pull, unchanged web/mobile install, all browser cases, artifacts and cleanup.
+Individual jobs took133–143seconds; image initialization27–37seconds, dependency install13–18,
+and original browser cases36–42. This is browser-only evidence, not full CI or deployment.
+
+The prepared v13 normal workflow now uses that same pinned image and shared dependency setup,
+keeps all three original units, two workers and the existing mandatory disk/health guard, and
+retains the Firefox owned-home repair. It removes repeated APT/browser installation from those
+jobs only. Package/image version drift refuses before tests. The other test, compiler, build,
+migration, report verification, deployment and cleanup requirements remain mandatory. The early
+rsync capability cases join mandatory controller checks. This version is not yet published to
+main/alpha or accepted as a complete representative release; a fresh controller check and full
+new-policy measurement remain required. No normal runner size or spending limit is increased.
+
+The complete v13 review run [40339649435](https://github.com/StradaverseHub/ai-hr/actions/runs/40339649435)
+then passed at exact source/controller `ec0359c2b169c0b6e3e78c2660c447af98f17a0f`:
+1,972 Node/DOM files, 54 browser file executions and 28,096 assertions across50complete unit
+reports. All59jobs terminated (58success, only optional runner diagnostic skipped). Independent
+API/ZIP/source-plan/raw-report verification matched the actual emitted receipt exactly; every
+database resource/cleanup proof passed. Actual submission14:26:17.471→last job14:33:32 was
+434.529seconds (7m14.5s). This review controller is deliberately refused by trusted release-origin
+validation; this result is complete CI evidence, not deployment or an under-ten-minute release.
+
+A private prefetch prototype staged all55immutable archives while that same gate ran. Final API
+IDs/digests/sizes were independently revalidated before safe extraction and report acceptance.
+The initial52downloads overlapped CI and took31.359seconds. The prototype never emitted a release
+acceptance or changed branches/server state; durable normal-operator prefetch integration is not
+implemented. Its raw observations remain under this worktree's ignored `scratchpad` directory.
+
+## Next measured serial test boundary
+
+The v13 tail contains individual files, not merely oversized batches:
+`attendance-policy-storage-attested-financial.test.ts` took236.198seconds, and
+`r395-write-path-equivalence.test.ts` took223.202seconds. Reducing a batch's file cap cannot
+split either duration. The prepared financial change registers the exact original matrix in two
+independent files (cash9/TOIL9), preserving the complete callback, date/money/TOIL guards, imports,
+per-case reset and live fixture getters against the original frozen32case source oracle. No
+production code, SQL or assertion changes. A registration-level probe executes the actual table
+expression and verifies the disjoint exact18row union; source checks refuse missing/duplicated
+partitions, changed filters, assertions, clock values or resets. An initial misplaced filter was
+caught by that functional probe and corrected before Linux execution; a subsequent probe-boundary
+selection error was repaired only in that failed probe. Ten source controls and the repaired
+registration probe pass; actual new Linux financial-file execution is still pending.
+
+
+### Financial partition verification and measured R395 follow-up
+
+Focused Linux run [40345479694](https://github.com/StradaverseHub/ai-hr/actions/runs/40345479694), source/controller `e136a9e24aa5c6686ca435276d23321a56cd2996`, passed the exact original 18 unique financial assertion full names: cash 9 and TOIL 9, no failed/pending/todo cases. Raw before/after reports show the original 236.198-second file became 119.312 and 121.011 seconds. This is a focused development measurement, not a new full gate or staging arrival. Both health observations passed; private PostgreSQL retained 2 GiB/JIT on, peaked at 751,976,448 bytes and recorded zero OOM events. The focused runner completed its owned stop path with exit zero.
+
+The same full v13 raw reports identify the R395 generic permission-context comparisons as the next serial test tail: primary 223.202 seconds, secondary approximately 142 seconds. The helper already batches statements inside each context; repeated per-statement policy installation was ruled out. Moving its fast person/employment cases would not address the measured tail.
+
+The follow-up partitions the original 24 generic contexts into three disjoint groups of eight, weighted using the actual v13 per-case times. Primary retains employee context 0 and group HR-admin context 16; secondary and tertiary independently repeat those two original controls so the unchanged non-vacuity thresholds remain meaningful. All original 88 cases remain, with six explicitly additional controls (two repeated contexts and a non-vacuity assertion in each added partition). Original SQL, old/new policy setup, callbacks, rollback, mutation refusal, fixture restoration and thresholds remain mechanically checked against the frozen source. Each fixture report has its own bounded partition label. Estimated sums are scheduling hypotheses only; actual three-file Linux runtime and exact assertion coverage must be checked before accepting a speed improvement. This does not change application SQL, runner memory, database JIT, worker count or release authority.
+
+R395 follow-up run [40347954154](https://github.com/StradaverseHub/ai-hr/actions/runs/40347954154), exact source/controller `c706b67dafe79d7becfd307041e2863577173c25`, passed 94/94 cases. Independent raw-report comparison found no missing prior cases and exactly the declared extra two supplemental controls and third-partition non-vacuity assertion. File times were primary 131.338s, secondary 142.578s, tertiary 107.714s, versus original primary 223.202s. This reduces the longest indivisible file; it does not prove a whole-gate improvement, since two-worker scheduling and extra fixture setup still affect total time. Both host observations passed. PostgreSQL retained 2 GiB/JIT on, peaked at 644,505,600 bytes, and had zero OOM events; process and owned stop path exited zero. Duration hints now record the two focused runs at their actual source/artifact origins so these new long files participate in deterministic full-matrix balancing. Hints never determine coverage or passing status. Policy v14 marks the changed grouping and optional final-byte transport boundary; complete v14 validation remains required.

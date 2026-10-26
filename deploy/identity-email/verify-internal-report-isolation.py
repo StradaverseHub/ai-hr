@@ -15,6 +15,7 @@ import uuid
 
 SOCKET = '/run/aihr-report-auth.sock'
 RENDERER = '/run/aihr-report-renderer.sock'
+TOKEN = '/run/aihr-smtp-token.sock'
 DIRECTORY = '/var/lib/aihr-report-renderer/render'
 
 def command(args):
@@ -143,6 +144,57 @@ def resource_configuration_checks():
     for unit in ['aihr-internal-report.service',broker]:
         assert command(['systemctl','show',unit,'--property=Slice','--value'])=='aihrmanagedmail-dispatch.slice'
     assert 'aihr-report-clients' in command(['systemctl','show',broker,'--property=SupplementaryGroups','--value']).split()
+    token='aihr-smtp-token@aihr-isolation-probe.service'
+    assert command(['systemctl','show',token,'--property=DynamicUser','--value'])=='yes'
+    assert command(['systemctl','show',token,'--property=EnvironmentFiles','--value'])==''
+    assert int(command(['systemctl','show',token,'--property=MemoryMax','--value']))==32*1024*1024
+    assert command(['systemctl','show',token,'--property=Slice','--value'])=='aihrmanagedmail-dispatch.slice'
+
+def token_configuration_checks(web, broker, web_pid, web_pin):
+    info=os.lstat(TOKEN);assert stat.S_ISSOCK(info.st_mode) and info.st_uid==broker.pw_uid and stat.S_IMODE(info.st_mode)==0o600
+    denied_root_peer(TOKEN,{'op':'status'})
+    for user in ['aihr-identity-email','aihr-report-renderer','nobody']:
+        as_user(user,"import socket\ns=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)\ntry:s.connect(%r)\nexcept PermissionError:pass\nelse:raise RuntimeError('non-broker reached token capability')" % TOKEN)
+    result=as_user(web,"import json,socket\ns=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);s.settimeout(15);s.connect(%r);s.sendall(b'{\"op\":\"status\"}');s.shutdown(socket.SHUT_WR);b=s.recv(4096);assert json.loads(b)=={'available':True};print('available')" % TOKEN)
+    assert result=='available'
+    def active_helpers():
+        rows=command(['systemctl','list-units','--no-legend','--plain','--state=active,activating','aihr-smtp-token@*.service']).splitlines()
+        units=[row.split()[0] for row in rows];assert len(units)<=1
+        return units
+    deadline=time.monotonic()+5
+    while active_helpers():
+        assert time.monotonic()<deadline;time.sleep(0.02)
+    source="import socket,sys\ns=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);s.connect(%r);print('ready',flush=True);sys.stdin.buffer.read(1);s.close()" % TOKEN
+    child=subprocess.Popen(['/usr/sbin/runuser','-u',web,'--','/usr/bin/python3','-I','-c',source],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,start_new_session=True)
+    owned=None
+    try:
+        with selectors.DefaultSelector() as selector:
+            selector.register(child.stdout,selectors.EVENT_READ);assert selector.select(5)
+            assert child.stdout.readline(16)==b'ready\n'
+        deadline=time.monotonic()+5
+        while not owned:
+            units=active_helpers()
+            if units:owned=units[0];break
+            assert time.monotonic()<deadline;time.sleep(0.02)
+        while command(['systemctl','show',owned,'--property=ActiveState','--value'])!='active':
+            assert time.monotonic()<deadline;time.sleep(0.02)
+        pid=int(command(['systemctl','show',owned,'--property=MainPID','--value']));pin=process_pin(pid)
+        assert pin[2]>0 and pin[2] not in [broker.pw_uid,pwd.getpwnam('aihr-identity-email').pw_uid,pwd.getpwnam('aihr-report-renderer').pw_uid]
+        with open('/proc/'+str(pid)+'/environ','rb') as stream:environment=stream.read(131073)
+        assert len(environment)<=131072 and not any(part.startswith(prefix) for part in environment.split(b'\0') for prefix in [b'DATABASE_URL=',b'MIGRATION_DATABASE_URL=',b'AUTH_SESSION_KEY=',b'IDENTITY_EMAIL_DATABASE_URL='])
+        del environment
+        process_environment_denial(pid,pin,web_pid,web_pin)
+    finally:
+        if child.stdin:child.stdin.close()
+        try:child.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            if child.poll() is None:os.killpg(child.pid,signal.SIGKILL)
+            child.wait(timeout=5)
+        if child.stdout:child.stdout.close()
+        if owned:
+            deadline=time.monotonic()+15
+            while owned in active_helpers():
+                assert time.monotonic()<deadline;time.sleep(0.05)
 
 def main():
     parser = argparse.ArgumentParser();parser.add_argument('--web-unit', required=True);args = parser.parse_args()
@@ -165,6 +217,7 @@ except PermissionError:pass
 else:raise RuntimeError('broker key configuration readable')
 """)
     namespace_environment_checks(web_pid,web_pin,mail,renderer)
+    token_configuration_checks(web,broker,web_pid,web_pin)
     clients = grp.getgrnam('aihr-report-clients');files = grp.getgrnam('aihr-report-files')
     assert files.gr_gid not in os.getgrouplist(web,broker.pw_gid)
     assert clients.gr_gid not in os.getgrouplist(web,broker.pw_gid) # service-only supplementary group

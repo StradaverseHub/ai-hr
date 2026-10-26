@@ -5,6 +5,7 @@ import {appendFileSync, mkdirSync, readFileSync, realpathSync, writeFileSync} fr
 import {isAbsolute, join, relative, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {hostHealth} from './host-health.mjs';
+import {capturePostgresEvidence, validatePostgresEvidence} from './postgres-evidence.mjs';
 
 const postgres = fileURLToPath(new URL('./postgres.sh', import.meta.url));
 const hash = text => createHash('sha256').update(text).digest('hex');
@@ -81,7 +82,7 @@ function checkedTrackedFiles(cwd, files) {
   }
 }
 
-function testEnvironment(kind) {
+function testEnvironment(kind, profileDirectory) {
   const env = {...process.env, VITEST_MAX_WORKERS: '2', VITEST_MAX_WORKERS_NODB: '2', TEST_DB_NAMESPACE: 'aifocus'};
   const urls = [
     'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev', 'postgres://postgres@127.0.0.1:5433/ai_hr_dev',
@@ -89,6 +90,7 @@ function testEnvironment(kind) {
   ];
   databaseKeys.forEach((key, index) => { env[key] = kind === 'DB' ? urls[index] : closed; });
   if (kind === 'NODB') env.GATE_NODB_PROOF = '1';
+  if (kind === 'DB' && process.env.AIHR_FOCUSED_PROFILE === 'true') env.AIHR_TEST_PROFILE_DIR = profileDirectory;
   return env;
 }
 
@@ -111,7 +113,7 @@ export function runFocused(destination) {
   const report = {kind: 'FOCUSED_ONLY', releaseEligible: false, schemaVersion: 1, sha, controller,
     runId: process.env.GITHUB_RUN_ID, attempt: process.env.GITHUB_RUN_ATTEMPT,
     runtime: {node: process.versions.node, platform: process.platform, arch: process.arch},
-    files, groups, manifestHash: hash(JSON.stringify(files)), classifierHash: hash(readFileSync(classifier)),
+    startedAt: new Date().toISOString(), files, groups, manifestHash: hash(JSON.stringify(files)), classifierHash: hash(readFileSync(classifier)),
     batches: [], exitCode: 1};
   const pgEnv = {...process.env, AIHR_CI_UNIT: 'db-1'};
   let touchedDatabase = false;
@@ -121,9 +123,9 @@ export function runFocused(destination) {
     for (const kind of ['NODB', 'DB']) {
       const selected = groups[kind];
       if (!selected.length) continue;
-      const batch = {kind, files: selected, exitCode: 1}; report.batches.push(batch);
+      const batch = {kind, files: selected, exitCode: 1, startedAt: new Date().toISOString()}; report.batches.push(batch);
       try {
-        const env = testEnvironment(kind);
+        const env = testEnvironment(kind, join(dir, 'harness-profile'));
         if (kind === 'DB') {
           if (!hostHealth().ok) throw Error('Runner disk headroom below guard before DB batch');
           touchedDatabase = true;
@@ -140,12 +142,17 @@ export function runFocused(destination) {
         batch.assertions = verifyFocusedResult(JSON.parse(readFileSync(resultPath, 'utf8')), selected, cwd);
         batch.exitCode = 0;
       } catch (error) { batch.error = error instanceof Error ? error.message : 'Focused batch failed'; }
+      finally { batch.endedAt = new Date().toISOString(); }
     }
     assertCandidate(cwd, sha);
     report.exitCode = report.batches.every(batch => batch.exitCode === 0) ? 0 : 1;
   } catch (error) { report.error = error instanceof Error ? error.message : 'Focused checks failed'; }
   finally {
     if (touchedDatabase) {
+      try {
+        report.databaseTerminalEvidence = capturePostgresEvidence('db-1');
+        validatePostgresEvidence(report.databaseTerminalEvidence, {postgres: {memoryBytes: Number(process.env.AIHR_CI_PG_MEMORY_GIB ?? '1') * 1073741824, jit: process.env.AIHR_CI_PG_JIT ?? 'on'}});
+      } catch (error) { report.databaseTelemetryError = String(error); report.exitCode = 1; }
       const stats = spawnSync('bash', [postgres, 'stats'], {encoding: 'utf8', env: pgEnv});
       if (stats.status !== 0) report.exitCode = 1;
       writeFileSync(join(dir, 'postgres-stats.txt'), (stats.stdout ?? '') + (stats.stderr ?? ''), {flag: 'wx'});
@@ -159,6 +166,7 @@ export function runFocused(destination) {
       }
       if (spawnSync('bash', [postgres, 'stop'], {stdio: 'inherit', env: pgEnv}).status !== 0) report.exitCode = 1;
     }
+    report.endedAt = new Date().toISOString();
     report.healthAfter = hostHealth();
     writeFileSync(join(dir, 'focused.json'), JSON.stringify(report, null, 2) + '\n', {flag: 'wx'});
     appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Focused development checks\nCandidate: ${sha}\nController: ${controller}\nSelected files: ${files.length}\nExit: ${report.exitCode}\n\nFOCUSED ONLY — no release receipt, full coverage or deployment approval.\n`);

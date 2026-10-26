@@ -1,0 +1,11 @@
+[Unit]
+Description=Private Microsoft SMTP token capability
+[Socket]
+ListenStream=/run/aihr-smtp-token.sock
+SocketUser=@WEB_USER@
+SocketMode=0600
+Accept=yes
+MaxConnections=1
+RemoveOnStop=yes
+[Install]
+WantedBy=sockets.target

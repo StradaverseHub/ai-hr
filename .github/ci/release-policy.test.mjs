@@ -67,3 +67,12 @@ for(const [name,change] of [
  const p=proof(),r=p.reports.find(r=>r.id.startsWith('db-'));change(r);
  assert.throws(()=>verifyReports(p.plan,p.reports));assert.throws(()=>validateProof(p));
 });
+
+test('v3 authenticates one supplemental compiler graph artifact without replacing required test evidence',()=>{
+ const p=proof().expectedPlan,a=artifacts(),aux={...a[0],id:9999,name:'whole-compiler-state-v1'};
+ assert.equal(validateArtifacts([...a,aux],expected,p),true);
+ assert.throws(()=>validateArtifacts([...a.slice(1),aux],expected,p));
+ assert.throws(()=>validateArtifacts([...a,{...aux,name:'arbitrary-cache'}],expected,p));
+ assert.throws(()=>validateArtifacts([...a,aux,{...aux,id:9998}],expected,p));
+ assert.throws(()=>validateArtifacts([...a,{...aux,workflow_run:{...aux.workflow_run,head_sha:'d'.repeat(40)}}],expected,p));
+});
