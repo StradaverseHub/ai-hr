@@ -159,10 +159,10 @@ CREATE POLICY letter_generation_batch_insert ON letter_generation_batch FOR INSE
 GRANT SELECT,INSERT ON letter_generation_batch TO ai_hr_app;
 --> statement-breakpoint
 ALTER TABLE letter_job ENABLE ROW LEVEL SECURITY;
-CREATE POLICY letter_job_read ON letter_job FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND (app.letter_permission(company_id,'read')));
+CREATE POLICY letter_job_read ON letter_job FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND (letter_id IS NOT NULL AND app.letter_permission(company_id,'read') AND app.letter_can_read(letter_id) OR letter_id IS NULL AND app.letter_permission(company_id,'settings')));
 CREATE POLICY letter_job_insert ON letter_job FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND (app.letter_permission(company_id,'generate') OR app.letter_permission(company_id,'approve') OR app.letter_permission(company_id,'issue')));
 GRANT SELECT,INSERT ON letter_job TO ai_hr_app;
-CREATE POLICY letter_job_update ON letter_job FOR UPDATE USING(tenant_id=app.current_tenant_id() AND (app.letter_permission(company_id,'generate') OR app.letter_permission(company_id,'approve') OR app.letter_permission(company_id,'issue'))) WITH CHECK(tenant_id=app.current_tenant_id() AND (app.letter_permission(company_id,'generate') OR app.letter_permission(company_id,'approve') OR app.letter_permission(company_id,'issue')));
+CREATE POLICY letter_job_update ON letter_job FOR UPDATE USING(tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND app.letter_can_read(letter_id) AND (app.letter_permission(company_id,'generate') OR app.letter_permission(company_id,'approve') OR app.letter_permission(company_id,'issue'))) WITH CHECK(tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND app.letter_can_read(letter_id) AND (app.letter_permission(company_id,'generate') OR app.letter_permission(company_id,'approve') OR app.letter_permission(company_id,'issue')));
 GRANT UPDATE ON letter_job TO ai_hr_app;
 --> statement-breakpoint
 ALTER TABLE letter_template_field ENABLE ROW LEVEL SECURITY;
