@@ -19,7 +19,7 @@ export async function assertReviewedPayrollScopeCompanyTx(tx:Tx,supplied:Session
  and app.can_admin_payroll_for(c.id) and app.is_admin_for(c.id)) as allowed`);if(row?.allowed!==true)throw new ReviewedPayrollSelectionUnavailable();
 }
 export type ReviewedPayrollScopeSelection={companyId:string;scope:{departmentIds?:readonly string[];employmentIds?:readonly string[]}|null};
-/** Exact captured IDs, current company and field visibility. Missing/hidden/changed bindings refuse
+/** Exact captured IDs, current company and Workforce purpose/record visibility. Missing/hidden/changed bindings refuse
  * the WHOLE projection: never invent a name, omit a selected person or retarget the human's scope.
  * The effect owner must already own its actual config/period and filed-month preflight interval. */
 export async function readReviewedPayrollRunScopeLabelsTx(tx:Tx,supplied:SessionContext,input:ReviewedPayrollScopeSelection){
