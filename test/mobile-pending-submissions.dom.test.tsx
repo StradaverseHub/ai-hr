@@ -8,6 +8,8 @@ import {afterEach,describe,expect,it,vi} from 'vitest';
 import {SignInRequiredError} from '../mobile/lib/errors';
 
 function fixture(){
+  let owner=1;
+  const handlers=new Map<string,()=>void>();
   const item={employmentId:'own',company:'Own company',kind:'clock',requestId:'pending-reference',createdAt:Date.now(),hasEvidence:true};
   const list=vi.fn(async()=>[item]);
   const reconcile=vi.fn<(...args:unknown[])=>Promise<any>>(async()=>({kind:'clock',requestId:item.requestId,receipt:null,abandoned:true}));
@@ -21,19 +23,26 @@ function fixture(){
     'expo-router':{router},'./design':{DesignText:Text,useTenantDesign:()=>({palette:{text:'black'}})},
     './submission-recovery':{listOwnedPendingSubmissions:list,reconcileOwnedPendingSubmission:reconcile},
     './session':{useSession:()=>({signOut,setEmploymentId})},'./errors':{SignInRequiredError},
+    './auth':{authGeneration:()=>owner},'./config':{identityNamespace:()=>'https://hr.example.com'},
     './journey-drafts':{useJourneyDrafts:()=>drafts,removeLocalFile:remove},
     './i18n':{appLocale:()=>'en',t:(key:string,values?:{n:number})=>key==='pendingCount'?`${key} ${values?.n}`:key},
     './ui':{Screen:Container,Card:Container,Muted:Text,Row:()=>null,Title:({children}:React.PropsWithChildren)=><h1>{children}</h1>,
       LoadState:({loading,error}:any)=><span>{loading?'loading':error?'load error':''}</span>,
-      Button:({title,onPress,disabled}:any)=><button disabled={disabled} onClick={onPress}>{title}</button>},
+      Button:({title,onPress,disabled}:any)=>{handlers.set(title,onPress);return <button disabled={disabled} onClick={onPress}>{title}</button>;}},
   };
   const output={exports:{} as {PendingSubmissions:React.ComponentType<{intent?:'review'|'logout'|'company'}>}};
   runInNewContext(transpileModule(readFileSync('mobile/lib/pending-submissions.tsx','utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX}}).outputText,
     {module:output,exports:output.exports,Date,require:(name:string)=>{if(name in ports)return ports[name];throw new Error(name);}});
-  return {View:output.exports.PendingSubmissions,item,list,reconcile,signOut,setEmploymentId,remove,router,drafts,dialog:()=>dialog};
+  return {View:output.exports.PendingSubmissions,item,list,reconcile,signOut,setEmploymentId,remove,router,drafts,handlers,changeAccount:()=>{owner++;},dialog:()=>dialog};
 }
 afterEach(cleanup);
 describe('pending-aware voluntary exit',()=>{
+  it('hides the previous account inventory synchronously and rejects its retained exit callback',async()=>{
+    const f=fixture(),ui=render(<f.View intent="logout"/>);await screen.findByText('pendingCount 1');const obsolete=f.handlers.get('pendingKeepLogout')!;
+    f.list.mockReturnValueOnce(new Promise(()=>{}));f.changeAccount();ui.rerender(<f.View intent="logout"/>);
+    expect(screen.queryByText('pendingAttendance')).toBeNull();act(()=>obsolete());expect(f.signOut).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('pendingKeepLogout'));expect(f.signOut).toHaveBeenCalledOnce();
+  });
   it('keeps logout available even if local verification never completes',()=>{
     const f=fixture();f.list.mockReturnValueOnce(new Promise(()=>{}));render(<f.View intent="logout"/>);
     fireEvent.click(screen.getByText('pendingKeepLogout'));expect(f.signOut).toHaveBeenCalledOnce();expect(f.reconcile).not.toHaveBeenCalled();

@@ -8,6 +8,7 @@ import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { t } from '../lib/i18n';
 import { SessionProvider, useSession } from '../lib/session';
+import {authGeneration} from '../lib/auth';
 import { Button, colors } from '../lib/ui';
 
 function ThemedStack() {
@@ -34,7 +35,7 @@ function Gate() {
         {error && <Text style={styles.problem}>{t('genericError')}</Text>}
         <View style={styles.actions}>
           <Button title={t('unlockButton')} disabled={unlocking} onPress={() => void unlock()} />
-          <Button title={t('signOut')} onPress={() => Alert.alert(t('signOut'),t('pendingLockedLogout'),[{text:t('cancel'),style:'cancel'},{text:t('signOut'),onPress:()=>void signOut()}])} kind="quiet" />
+          <Button title={t('signOut')} onPress={() => {const owner=authGeneration();Alert.alert(t('signOut'),t('pendingLockedLogout'),[{text:t('cancel'),style:'cancel'},{text:t('signOut'),onPress:()=>{if(authGeneration()===owner)void signOut();}}]);}} kind="quiet" />
         </View>
       </View>
     );

@@ -84,6 +84,10 @@ export async function abandonNativeClock(ctx:SessionContext,employmentId:string,
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+employmentId},0))`);
     const receipt=await nativeClockReceiptTx(tx,ctx,employmentId,requestId);
     if(receipt)return {receipt,abandoned:false};
+    const [used]=await tx.select({id:attendanceClockCapture.id}).from(attendanceClockCapture).where(and(
+      eq(attendanceClockCapture.employmentId,employmentId),eq(attendanceClockCapture.requestId,requestId),
+    )).limit(1);
+    if(used)throw new ClockContextChangedError('The retained clock reference cannot be abandoned under this actor.');
     await abandonSubmissionTx(tx,ctx,employmentId,'clock',requestId);
     return {receipt:null,abandoned:true};
   });

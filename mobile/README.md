@@ -342,7 +342,26 @@ original authorized actor; decrypted temporary files and editable drafts are sti
 to save prevents transmission and says nothing was sent. Attachments are capped at 2 MiB for clock
 and 10 MiB for leave; only one unresolved command of each kind is admitted per scope.
 
-Pending claims are not accepted attendance or approved leave. This implementation does not enable
-offline punch capture or cold-offline identity restoration. Real-device kill/upload/relaunch,
-OS-protected key and backup/restore acceptance, bounded retention/cleanup and pending-aware voluntary
-logout remain release work; model/adapter tests do not replace those checks.
+The Pending requests screen shows the available own-employment count after fresh identity verification.
+Me's voluntary logout/company-change paths offer receipt checks, review of the original submission,
+explicit server-confirmed discard, or keeping encrypted requests while leaving. An unavailable count
+is not displayed as zero, and leaving never waits for the inventory request. Forced revocation still
+closes access immediately. Locked/setup screens retain privacy and explain that review requires returning
+to the original account; setup links never authorize access to its pending evidence.
+
+`POST /api/mobile/v1/submission-abandon` is ordered under the same lock as its clock/leave writer.
+An accepted receipt wins without altering attendance, approval or leave balances. Otherwise, an immutable
+actor/employment/kind/reference-scoped abandonment prevents late delivery from recording. The receipt
+lookup's optional `abandoned` field recovers a lost discard response. Local evidence is resolved only
+after a terminal server result. This is not withdrawal of accepted leave or correction of attendance.
+
+New pending data uses a 64 MiB installation budget. Resolution can still commit at that cap, permitting
+cleanup; authenticated orphan/inactive-slot cleanup never evicts a referenced pending attachment. Temporary
+decrypted upload copies are removed when each attempt ends. Unresolved encrypted claims have no silent
+expiry: explicit server reconciliation/abandonment closes them. OS uninstall/key loss cannot provide a
+server decision and follows the quarantine/reset rules above. Device-bound at-rest encryption and app
+actor checks do not replace the hardware integrity work under M04.
+
+Pending claims are not accepted attendance or approved leave. Offline punch capture and cold-offline
+identity restoration remain disabled. Real-device kill/upload/relaunch, OS-protected key and backup/restore
+acceptance remain release work; model/adapter tests do not replace those checks.

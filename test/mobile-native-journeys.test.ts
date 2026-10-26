@@ -67,6 +67,15 @@ describe('server-ordered pending submission abandonment',()=>{
     expect(await owner.db.select().from(schema.attendancePunch)).toHaveLength(1);
     expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'mobile.submission.abandoned'))).toHaveLength(0);
   });
+  it('does not claim abandonment when a retained capture has no attributable receipt',async()=>{
+    const a=await hire('Unattributed Capture');caller=a.ctx;const command=intent();
+    expect((await call(clock.POST,'clock',command)).body.outcome).toBe('accepted');
+    const [recorded]=await owner.db.select().from(schema.attendanceClockCapture).where(and(eq(schema.attendanceClockCapture.employmentId,a.employmentId),eq(schema.attendanceClockCapture.requestId,command.requestId))).limit(1);
+    const orphanId=randomUUID();await owner.db.insert(schema.attendanceClockCapture).values({...recorded,id:randomUUID(),requestId:orphanId});
+    expect((await abandon('clock',orphanId)).status).toBe(500);
+    expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'mobile.submission.abandoned'))).toHaveLength(0);
+    expect(await owner.db.select().from(schema.attendanceClockCapture)).toHaveLength(2);
+  });
   it('prevents a discarded leave intent from creating a request or attachment',async()=>{
     const a=await hire('Discard Leave');caller=a.ctx;await fund(a.employmentId);const command=application();
     expect((await abandon('leave',command.requestId)).body.abandoned).toBe(true);

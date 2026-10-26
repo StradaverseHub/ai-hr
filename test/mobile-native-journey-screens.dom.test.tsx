@@ -28,10 +28,18 @@ function fixture(){
   function Probe(){drafts=provider.useJourneyDrafts();return null;}
   const options={employmentId:'own',items:[{id:'annual',name:'Annual leave',durations:['full_day','half_day_am','hourly'],allowedMimeTypes:[],maxDocBytes:10485760,requiresDocument:false,emergencySplit:false}]};
   function App({kind,refreshToken=0}:{kind:'clock'|'leave'|'team';refreshToken?:number}){return <provider.JourneyDraftProvider><Probe/>{kind==='clock'?<ClockPanel refreshToken={refreshToken}/>:kind==='team'?<TeamPanel refreshToken={refreshToken}/>:<LeaveRequestForm options={options} today="2026-01-01" onSubmitted={reload}/>}</provider.JourneyDraftProvider>;}
-  return {App,post,get,capture,reload,stage,resolve,teamState,drafts:()=>drafts};
+  return {App,post,get,capture,reload,stage,resolve,remove,teamState,drafts:()=>drafts};
 }
 afterEach(cleanup);
 describe('native clock job',()=>{
+  it('cleans the decrypted upload copy after an uncertain response while retaining the original review evidence',async()=>{
+    const f=fixture();render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('slideRecord');
+    const original={uri:'original-photo',name:'photo.jpg',mimeType:'image/jpeg',size:3},upload={...original,uri:'upload-copy'};
+    act(()=>f.drafts().putClock({...f.drafts().clock,photo:original}));
+    f.stage.mockImplementationOnce(async(command:string)=>({command,file:upload}));f.post.mockRejectedValueOnce(new errors.UnavailableError());
+    fireEvent.click(screen.getByText('slideRecord'));await screen.findByText('checkReceipt');
+    expect(f.remove).toHaveBeenCalledWith(upload);expect(f.remove).not.toHaveBeenCalledWith(original);expect(f.drafts().clock.photo).toEqual(original);
+  });
   it('never sends a clock command when its durable save fails',async()=>{
     const f=fixture();render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('slideRecord');
     f.stage.mockRejectedValueOnce(new Error('Disk full'));fireEvent.click(screen.getByText('slideRecord'));

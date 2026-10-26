@@ -6,7 +6,7 @@ import {mobileEmployment} from '@/lib/mobile-api/request';
 import {mobileInput} from '@/lib/mobile-api/body';
 
 /** Explicitly prevents an unaccepted request from recording; accepted facts keep their original receipt. */
-export const POST=mobileRoute(SubmissionAbandonResponse,async(s,req)=>{
+export const POST = mobileRoute(SubmissionAbandonResponse,async(s,req)=>{
   const employmentId=await mobileEmployment(s,req);
   if(!employmentId)throw new MobileBadRequest('Own employment required');
   const parsed=SubmissionAbandonCommand.safeParse(await mobileInput(req,512));

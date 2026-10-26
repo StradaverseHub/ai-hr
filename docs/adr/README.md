@@ -85,4 +85,4 @@ See also: [Malaysia localization — spec mapping & gap closure](../architecture
 
 - [ADR-0140: Operator customer workspace](0140-operator-customer-workspace.md)
 
-- [ADR-0141: Server-ordered mobile submission abandonment](0141-mobile-submission-abandonment.md)
+- [ADR-0143: Server-ordered mobile submission abandonment](0143-mobile-submission-abandonment.md)

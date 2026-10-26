@@ -79,3 +79,18 @@ approved leave merely by being stored on a phone.
 M03–M15 retain their original acceptance requirements. Hardware attestation, stronger geolocation,
 offline adjudication, broader leave/approvals/documents/notifications/claims and accessibility/locales
 are not declared complete by this foundation.
+
+## Verified foundation and M06 follow-up
+
+[Run 40388034577](https://github.com/StradaverseHub/ai-hr/actions/runs/40388034577) successfully completed
+the complete official gate for frozen `9634f36148af78a46f7b99bc734a6121aeb5cb6a`, controlled by
+`67be2710c35035af433bdb2fcdfb2cb30277ceda`. All 59 jobs reached terminal state: the required compiler,
+build, migrations, complete unit inventory, all three browser engines, final verifier and deployment
+hold passed; optional diagnostics stayed skipped. Its 50 unit reports contain 2,032 file executions
+and 28,156 test executions with zero failing tests. Original run 40381186567 remains failed at its
+actual source; it was not relabelled. No staging deployment or branch alignment follows merely from CI.
+
+The isolated follow-up implements server-ordered abandonment, pending-aware voluntary exit and bounded
+quarantine cleanup under [ADR-0143](../adr/0143-mobile-submission-abandonment.md). Its first 24 database
+cases and subsequent 65 consumer checks passed, with further unattributed-record and terminal-response
+coverage added before final validation. These follow-up changes are not covered by run 40388034577.

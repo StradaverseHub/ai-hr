@@ -54,9 +54,11 @@ export function LeaveRequestForm({options,today,onSubmitted}:{options:LeaveOptio
   async function submit(){
     if(!draft||!options.employmentId||flight.current||!recovery.ready||AppState.currentState!=='active')return;flight.current=true;const owner=authGeneration();
     let sent=false;
+    let uploadFile:LocalAttachment|undefined;
     putLeave({...draft,phase:'submitting',message:undefined});
     try{
       const staged=await recovery.stage(JSON.stringify(draft.command),draft.document);assertAuthGeneration(owner);
+      uploadFile=staged.file;
       if(!putLeave({...draft,document:staged.file,phase:'submitting'},draft.command.requestId))return;
       const form=new FormData();form.append('command',staged.command);if(staged.file)appendAttachment(form,'document',staged.file);
       sent=true;const result=await apiPost('leave-requests',form,{employmentId:options.employmentId});assertAuthGeneration(owner);
@@ -68,7 +70,7 @@ export function LeaveRequestForm({options,today,onSubmitted}:{options:LeaveOptio
       if(e instanceof RequestRejectedError&&[400,403,404,413,415,422].includes(e.status))try{await recovery.resolve(draft.command.requestId);refused=true;}catch{}
       putLeave(refused?{...draft,phase:'edit',message:t('genericError'),command:{...draft.command,requestId:randomUUID(),overrideConsent:[]}}:{...draft,phase:'uncertain',message:t(sent?'leaveUncertain':e instanceof SubmissionJournalFull?'pendingStorageFull':'submissionSaveFailed')},draft.command.requestId);
       if(e instanceof SignInRequiredError)void signOut();
-    }finally{flight.current=false;}
+    }finally{removeLocalFile(uploadFile);flight.current=false;}
   }
   async function recover(){
     if(!draft||!options.employmentId||flight.current)return;flight.current=true;const owner=authGeneration();

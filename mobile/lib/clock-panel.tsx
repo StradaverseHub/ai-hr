@@ -71,9 +71,11 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
     if(current.deviceRequired&&!draft.deviceToken)return;
     flight.current=true;const owner=authGeneration();
     let sent=false;
+    let uploadFile:ClockDraft['photo'];
     putClock({...draft,phase:'submitting',message:undefined});
     try{
       const staged=await recovery.stage(JSON.stringify({action:draft.action,requestId:draft.requestId,lat:draft.geo.lat,lng:draft.geo.lng,accuracy:draft.geo.accuracy,sampledAt:draft.geo.sampledAt,deviceToken:draft.deviceToken}),draft.photo);assertAuthGeneration(owner);
+      uploadFile=staged.file;
       if(!putClock({...draft,photo:staged.file,phase:'submitting'},draft.requestId))return;
       const form=new FormData();form.append('command',staged.command);if(staged.file)appendAttachment(form,'photo',staged.file);
       sent=true;const result=await apiPost('clock',form,{employmentId:identity});assertAuthGeneration(owner);
@@ -88,7 +90,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
       else putClock({...draft,phase:'uncertain',message:t(sent?'clockUncertain':e instanceof SubmissionJournalFull?'pendingStorageFull':'submissionSaveFailed')},draft.requestId);
       if(e instanceof SignInRequiredError)void signOut();
     }
-    finally{flight.current=false;}
+    finally{removeLocalFile(uploadFile);flight.current=false;}
   }
   async function recover(){
     if(flight.current||!identity||!draft?.requestId)return;
