@@ -4,12 +4,14 @@ import {join, relative, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {validatePostgresEvidence} from './postgres-evidence.mjs';
 import {createPlan, hash} from './plan.mjs';
+import {validatePdfSetupProof} from './pdf-tools.mjs';
 export function verifyUnitReport(plan, report) {
   const unit = plan.units.find(u => u.id === report?.id);
   if (!unit) throw Error('Unknown CI unit');
   let tests = 0;
   if (report.schemaVersion !== 1 || report.sha !== plan.sha || report.fingerprint !== plan.fingerprint
     || JSON.stringify(report.files) !== JSON.stringify(unit.files) || report.exitCode !== 0 || !Array.isArray(report.batches)) throw Error('Stale, failed or altered CI unit');
+  if(plan.pdfTooling&&unit.kind!=='browser')validatePdfSetupProof(plan,unit,report.pdfToolSetup);
   if(unit.kind==='db')validatePostgresEvidence(report.databaseTerminalEvidence,plan.execution);
   const files = [];
   for (const batch of report.batches) {

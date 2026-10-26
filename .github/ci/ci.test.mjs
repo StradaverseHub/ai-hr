@@ -35,3 +35,9 @@ test('manual workflow input inventories stay nonempty, unique and within GitHub 
   assert(names.length>0&&names.length<=25,'Manual workflow exceeds GitHub input limit: '+name);assert.equal(new Set(names).size,names.length);
  }
 });
+
+test('independent v12 report verification rejects absent or foreign per-unit dependency setup proof',()=>{
+ const {plan,report}=sample();plan.pdfTooling={strategy:'audited-external-pdf-suite-v1'};plan.units[0].pdfTools=false;assert.throws(()=>verifyReports(plan,[report]));
+ report.pdfToolSetup={kind:'NO_EXTERNAL_PDF_TOOLS_REQUIRED_FOR_COMPLETE_UNIT',candidate:plan.sha,controller:plan.controller,fingerprint:plan.fingerprint,unit:plan.units[0].id,pdfToolsRequired:false,steps:[],releaseAuthorized:false};assert.equal(verifyReports(plan,[report]).tests,1);
+ for(const key of ['candidate','controller','fingerprint','unit']){const wrong=structuredClone(report);wrong.pdfToolSetup[key]='foreign';assert.throws(()=>verifyReports(plan,[wrong]));}
+});

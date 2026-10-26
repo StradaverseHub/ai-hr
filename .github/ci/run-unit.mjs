@@ -8,6 +8,7 @@ import {capturePostgresEvidence,validatePostgresEvidence} from './postgres-evide
 import {hostHealth} from './host-health.mjs';
 import {createPlan} from './plan.mjs';
 import {DB_BATCH_FILES} from './manifest.mjs';
+import {validatePdfSetupProof} from './pdf-tools.mjs';
 if (process.env.GITHUB_ACTIONS !== 'true' || process.env.CI !== 'true' || process.platform !== 'linux') throw Error('GitHub runners only; never the shared developer cluster');
 const [id, destination] = process.argv.slice(2), plan = createPlan(), unit = plan.units.find(u => u.id === id);
 if (!unit || !destination) throw Error('Unknown CI unit or missing evidence directory');
@@ -16,6 +17,7 @@ const report = {healthBefore: null, schemaVersion: 1, sha: plan.sha, fingerprint
 const closed = 'postgres://nobody:nothing@127.0.0.1:1/no_database';
 let failure = false;
 try {
+  if(unit.kind!=='browser'){report.pdfToolSetup=JSON.parse(readFileSync(join(process.env.RUNNER_TEMP,'pdf-tools-setup.json'),'utf8'));validatePdfSetupProof(plan,unit,report.pdfToolSetup);}
   report.healthBefore = hostHealth();
   writeFileSync(join(dir, `health-before-${id}.json`), JSON.stringify(report.healthBefore,null,2)+'\n', {flag:'wx'});
   if (!report.healthBefore.ok) throw Error('Runner disk headroom too low: '+JSON.stringify(report.healthBefore));

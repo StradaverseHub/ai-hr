@@ -1,6 +1,7 @@
 /** Coverage topology is deterministic; scheduler concurrency never changes batch membership. */
 import {createHash} from 'node:crypto';
 import {balanceDatabaseFiles,DB_SCHEDULING} from './db-scheduling.mjs';
+import {PDF_TOOL_CONSUMERS} from './pdf-tool-scope.mjs';
 export const CI_EXECUTION={workers:2,postgres:{memoryBytes:2*1024**3,jit:'on'},scheduling:DB_SCHEDULING};
 export const DB_BATCH_FILES=24;
 export const NODB_BATCH_FILES=256;
@@ -17,10 +18,13 @@ export function buildUnits(suite,groups,browserFiles){
  const units=[];
  for(const kind of ['nodb','db']){
   const files=groups[kind].slice().sort(),size=kind==='db'?DB_BATCH_FILES:NODB_BATCH_FILES;
-  const batches=kind==='db'?balanceDatabaseFiles(files,size):Array.from({length:Math.ceil(files.length/size)},(_,i)=>files.slice(i*size,(i+1)*size));
-  for(const batch of batches)units.push({id:`${kind}-${hash(batch).slice(0,16)}`,kind,files:batch});
+  if(kind==='db'&&files.some(f=>PDF_TOOL_CONSUMERS.includes(f)))throw Error('Audited PDF tool consumers must retain their no-DB classification');
+  const ordinary=kind==='nodb'?files.filter(f=>!PDF_TOOL_CONSUMERS.includes(f)):files,pdf=kind==='nodb'?files.filter(f=>PDF_TOOL_CONSUMERS.includes(f)):[];
+  const batches=kind==='db'?balanceDatabaseFiles(files,size):Array.from({length:Math.ceil(ordinary.length/size)},(_,i)=>ordinary.slice(i*size,(i+1)*size));
+  if(pdf.length)batches.push(pdf);
+  for(const batch of batches)units.push({id:`${kind}-${hash(batch).slice(0,16)}`,kind,files:batch,pdfTools:batch.some(f=>PDF_TOOL_CONSUMERS.includes(f))});
  }
- for(const engine of BROWSER_ENGINES)units.push({id:`browser-${engine}`,kind:'browser',engine,files:browser.slice()});
+ for(const engine of BROWSER_ENGINES)units.push({id:`browser-${engine}`,kind:'browser',engine,files:browser.slice(),pdfTools:false});
  if(new Set(units.map(u=>u.id)).size!==units.length||units.length>256)throw Error('Invalid or excessive batch identity inventory');
  return units;
 }

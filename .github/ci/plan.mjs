@@ -3,6 +3,7 @@ import {execFileSync} from 'node:child_process';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {CI_POLICY} from './policy-version.mjs';
+import {inspectPdfToolScope} from './pdf-tool-scope.mjs';
 import {buildUnits,hash,CI_EXECUTION} from './manifest.mjs';
 export {hash};
 export function createPlan(cwd = process.cwd()) {
@@ -28,8 +29,9 @@ export function createPlan(cwd = process.cwd()) {
   }
   if (JSON.stringify([...groups.db, ...groups.nodb].sort()) !== JSON.stringify(suite)) throw Error('Classifier does not partition the suite exactly');
   const browsers = tracked.filter(f => f.endsWith('.browser.test.tsx')).sort();
+  const pdfTooling=inspectPdfToolScope(cwd);
   const units = buildUnits(suite,groups,browsers);
-  const body = {schemaVersion: 2, policyVersion: CI_POLICY, sha, controller: process.env.AIHR_CI_CONTROL_HEAD ?? 'local', migrationBase: process.env.AIHR_CI_MIGRATION_BASE ?? null, runtime:{node:process.versions.node,platform:process.platform,arch:process.arch}, execution:CI_EXECUTION, suite, units};
+  const body = {schemaVersion: 2, policyVersion: CI_POLICY, sha, controller: process.env.AIHR_CI_CONTROL_HEAD ?? 'local', migrationBase: process.env.AIHR_CI_MIGRATION_BASE ?? null, runtime:{node:process.versions.node,platform:process.platform,arch:process.arch}, execution:CI_EXECUTION, pdfTooling, suite, units};
   return {...body, fingerprint: hash(body)};
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) console.log(JSON.stringify(createPlan(), null, 2));

@@ -6,7 +6,17 @@ Measure elapsed time from submission of a clean, frozen candidate through queuei
 
 Business, financial, authorization, tenant-isolation and data-integrity coverage remains mandatory. Include full regression whenever the validated release policy requires it. A focused development check is useful evidence about its selected scope, not proof of the complete release goal. Keep main/live deployment disabled until its separate installation is ready.
 
-## Version11 preparation: retain complete coverage and remove redundant package-index refreshes
+## Version12 preparation: dedicate the external PDF tools to their complete consumer suite
+
+The actual v11 setup pilot [40315403985](https://github.com/StradaverseHub/ai-hr/actions/runs/40315403985), exact `fd773b2683135a9694390d53e393b3d784cf0faa`, passed all tool/native-render controls but took113.376s for setup. Its existing-index attempt spent57.116s before genuine404package misses; index refresh8.241s and retry38.014s then succeeded. This did not establish a speedup. The prototype and its evidence remain retained; v12 removes that unsuccessful cached-index-first approach.
+
+The complete tracked executable/SQL source audit found two conservative test consumers: payslip-pdf and r379-pcb2ii-pdf, both genuinely classified no-DB. Four other references are documentation comments in immutable-byte-pinned library files. The source audit scans all relevant tracked roots case-insensitively; a missing/changed inventory, changed comment-only exemption or discovered new tool reference stops planning for review. This is an audited current dependency scope, not a claim to solve arbitrary computed JavaScript dependencies.
+
+The two complete test files now form one dedicated no-DB unit with all Poppler binaries, private Python venv/PyMuPDF and real PDF save/reopen/text/raster proof. Ordinary no-DB and database units retain all their files and assertions without that external tool installation. The real unit runner and independent report verifier require exact candidate/unit/fingerprint-bound setup proof; partial/missing/foreign proof cannot become PASS. Unexpected runtime dependencies still fail the actual tests; skipped/pending cases remain forbidden. Every required file, whole compiler/build/migration check and three browser engines remain mandatory, with unchanged two workers,24-file DB cap,2GiBPG/JIT and free standard runners.
+
+Source/command-boundary controls pass. The fresh Linux normal-path dependency probe, integrated v12 whole witness, trusted-controller publication and actual verified deployment remain pending. No v10 or v11 result is relabelled. CI's staging-baseline variable was updated only after independent read-only verification of the handed-back Operator application SHAab665101b; both deployment-enable switches remain false. Root changed no staging runtime/configuration or shared branch.
+
+## Version11 original preparation — actual result and replacement above
 
 The integrated review branch now normally includes the verified Operator release at published `f8b7bedf8107123c689b0b39e8b241285def4485` (application `ab665101b8c3a108ddffb02f10381305422e118e`). Its application, tests, migration SQL and journal were byte-compared against that released source. Mainwt WIP, shared branches and staging were not changed by this integration.
 

@@ -57,3 +57,10 @@ test('increased matrix admission keeps every job on a free standard runner and r
  const p=fixture(993,972),db=names('db',993),old=balanceDatabaseFiles(db,64);p.units=p.units.filter(u=>u.kind!=='db').concat(old.map(files=>({id:'db-old',kind:'db',files})));
  assert.throws(()=>requiredEvidence(p));
 });
+
+test('dedicated PDF suite moves complete files only, preserving all ordinary, database and browser coverage',()=>{
+ const pdf=['test/payslip-pdf.test.ts','test/r379-pcb2ii-pdf.test.ts'],db=names('db',65),nodb=[...names('nodb',257),...pdf],suite=[...db,...nodb].sort();
+ const units=buildUnits(suite,{db,nodb},browsers),special=units.filter(u=>u.pdfTools);assert.equal(special.length,1);assert.equal(special[0].kind,'nodb');assert.deepEqual(special[0].files,pdf);assert(units.filter(u=>!u.pdfTools).every(u=>!u.files.some(f=>pdf.includes(f))));
+ assert.deepEqual(units.filter(u=>u.kind!=='browser').flatMap(u=>u.files).sort(),suite);assert.equal(units.filter(u=>u.kind==='db').length,Math.ceil(65/DB_BATCH_FILES));assert.equal(units.filter(u=>u.kind==='nodb').length,3);assert.equal(units.filter(u=>u.kind==='browser').length,3);assert.equal(requiredEvidence({suite,units}).units.length,units.length);
+ const altered=structuredClone(units);altered.find(u=>u.pdfTools).pdfTools=false;assert.throws(()=>requiredEvidence({suite,units:altered}));assert.throws(()=>buildUnits(suite,{db:[...db,pdf[0]],nodb:nodb.filter(f=>f!==pdf[0])},browsers));
+});

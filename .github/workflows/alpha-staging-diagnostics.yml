@@ -846,14 +846,34 @@ jobs:
           for(const [key,value] of Object.entries(p))if(!['filesystem_activation_probe','installer_fixture_phase','candidate_ref','expected_sha'].includes(key))assert(key==='next_build_cache_phase'?value==='disabled':value===false||value==='');
           NODE
       - name: Verify missing-package, cache-miss, native failure and no-omission controls
-        run: node --test --test-reporter=spec .github/ci/pdf-tools.test.mjs
-      - name: Prepare and validate the actual standard Linux PDF toolchain
-        run: node .github/ci/pdf-tools.mjs
+        run: node --test --test-reporter=spec .github/ci/pdf-tool-scope.test.mjs .github/ci/pdf-tools.test.mjs .github/ci/manifest.test.mjs
+      - name: Reconstruct complete source and exercise actual normal unit dependency paths
+        env: {AIHR_CI_CLASSIFIER_RUNTIME: native}
+        run: |
+          set -euo pipefail
+          node --experimental-strip-types .github/ci/plan.mjs > "$RUNNER_TEMP/pdf-tooling-complete-plan.json"
+          ORDINARY=$(node -e 'const p=JSON.parse(require("fs").readFileSync(process.argv[1]));const u=p.units.find(u=>u.kind!=="browser"&&!u.pdfTools);if(!u)throw Error("No complete ordinary unit");process.stdout.write(u.id)' "$RUNNER_TEMP/pdf-tooling-complete-plan.json")
+          PDF=$(node -e 'const p=JSON.parse(require("fs").readFileSync(process.argv[1]));const u=p.units.filter(u=>u.pdfTools);if(u.length!==1)throw Error("One complete PDF unit required");process.stdout.write(u[0].id)' "$RUNNER_TEMP/pdf-tooling-complete-plan.json")
+          ORDINARY_TEMP=$(mktemp -d "$RUNNER_TEMP/pdf-ordinary-XXXXXX")
+          PDF_TEMP=$(mktemp -d "$RUNNER_TEMP/pdf-required-XXXXXX")
+          RUNNER_TEMP="$ORDINARY_TEMP" node .github/ci/pdf-tools.mjs --unit "$ORDINARY"
+          cp "$ORDINARY_TEMP/pdf-tools-setup.json" "$RUNNER_TEMP/pdf-tools-not-required.json"
+          RUNNER_TEMP="$PDF_TEMP" node .github/ci/pdf-tools.mjs --unit "$PDF"
+          cp "$PDF_TEMP/pdf-tools-setup.json" "$RUNNER_TEMP/pdf-tools-required.json"
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {pdfSetupUnit,validatePdfSetupProof} from './.github/ci/pdf-tools.mjs';
+          const p=JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/pdf-tooling-complete-plan.json'));
+          for(const name of ['pdf-tools-not-required.json','pdf-tools-required.json']){const proof=JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/'+name));validatePdfSetupProof(p,pdfSetupUnit(p,proof.unit),proof);}
+          NODE
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: diagnostic-pdf-tools-setup
-          path: ${{ runner.temp }}/pdf-tools-setup.json
+          path: |
+            ${{ runner.temp }}/pdf-tooling-complete-plan.json
+            ${{ runner.temp }}/pdf-tools-not-required.json
+            ${{ runner.temp }}/pdf-tools-required.json
           if-no-files-found: error
           retention-days: 3
 
