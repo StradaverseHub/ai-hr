@@ -14,7 +14,7 @@ import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {setAiAllowance} from '../core/ai-management';
 import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
 import {prepareOwnProfileChangeSourceTx,confirmOwnProfileChangeSourceTx,reconcileOwnProfileChangeSourceTx,OwnProfileChangeSourceUnavailable} from '../core/assistant-actions/own-profile-change-source';
-import {OwnProfileChangeNomination,OwnProfileChangeHumanContent,OwnProfileChangeConfirmation,type OwnProfileChangePreparedSource} from '../lib/assistant-actions/own-profile-change-contract';
+import {OWN_PROFILE_CHANGE_ACTION,OwnProfileChangeNomination,OwnProfileChangeHumanContent,OwnProfileChangeConfirmation,type OwnProfileChangePreparedSource} from '../lib/assistant-actions/own-profile-change-contract';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base,ctx:SessionContext,subject:{personId:string;employmentId:string},human:OwnProfileChangeHumanContent;
@@ -26,16 +26,16 @@ beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{
  const userId=await createAppUser(b.tenantId,subject.personId,'employee');await grantAssistant(group(),{appUserId:userId});
  ctx={...await entitledCtx(b,['employee']),userId,personId:subject.personId,grants:[{role:'employee',companyId:null}]};
  await saveProfileEditPolicy(group(),{keys:[preferred,phone],withdrawnReason:'Fictional approved policy'});
- const workspace=await readOwnProfileWorkspace(ctx,{employmentId:subject.employmentId});human={action:'profile.change.request',contractVersion:1,employmentId:subject.employmentId,proposal:{v:2,fields:[{fieldId:preferred,before:workspace.baselines[preferred],value:'PRIVATE human requested name'}],registers:[]}};
+ const workspace=await readOwnProfileWorkspace(ctx,{employmentId:subject.employmentId});human={action:OWN_PROFILE_CHANGE_ACTION,contractVersion:1,employmentId:subject.employmentId,proposal:{v:2,fields:[{fieldId:preferred,before:workspace.baselines[preferred],value:'PRIVATE human requested name'}],registers:[]}};
 });
 const prepare=(actor=ctx,value:unknown=human)=>withTenant(actor,tx=>prepareOwnProfileChangeSourceTx(tx,actor,value));
-const confirm=(review:OwnProfileChangePreparedSource,actor=ctx,content:unknown=review.content)=>withTenant(actor,tx=>confirmOwnProfileChangeSourceTx(tx,actor,content,{action:'profile.change.request',contractVersion:1,reviewedDigest:review.reviewedDigest}));
+const confirm=(review:OwnProfileChangePreparedSource,actor=ctx,content:unknown=review.content)=>withTenant(actor,tx=>confirmOwnProfileChangeSourceTx(tx,actor,content,{action:OWN_PROFILE_CHANGE_ACTION,contractVersion:1,reviewedDigest:review.reviewedDigest}));
 async function state(){return{requests:await owner.db.select().from(s.profileChangeRequest).where(eq(s.profileChangeRequest.tenantId,b.tenantId)).orderBy(s.profileChangeRequest.id),events:await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.tenantId,b.tenantId)).orderBy(s.domainEvent.id),master:await owner.db.select().from(s.person).where(eq(s.person.id,subject.personId))};}
 describe('separate own-profile nomination/human/confirmation contracts',()=>{
  it('refuses model values, arbitrary patches and content/actor selectors in the confirmation packet',()=>{
-  expect(OwnProfileChangeNomination.safeParse({action:'profile.change.request',contractVersion:1,employmentId:subject.employmentId,fieldIds:[preferred],value:'invented'}).success).toBe(false);
+  expect(OwnProfileChangeNomination.safeParse({action:OWN_PROFILE_CHANGE_ACTION,contractVersion:1,employmentId:subject.employmentId,fieldIds:[preferred],value:'invented'}).success).toBe(false);
   expect(OwnProfileChangeHumanContent.safeParse({...human,proposal:{preferredName:'invented'}}).success).toBe(false);
-  expect(OwnProfileChangeConfirmation.safeParse({action:'profile.change.request',contractVersion:1,reviewedDigest:'a'.repeat(64),employmentId:subject.employmentId,proposal:human.proposal,clicked:true}).success).toBe(false);
+  expect(OwnProfileChangeConfirmation.safeParse({action:OWN_PROFILE_CHANGE_ACTION,contractVersion:1,reviewedDigest:'a'.repeat(64),employmentId:subject.employmentId,proposal:human.proposal,clicked:true}).success).toBe(false);
  });
 });
 describe('unmounted own ESS canonical approval-request source',()=>{
@@ -61,7 +61,7 @@ describe('unmounted own ESS canonical approval-request source',()=>{
   const first=await confirm(review),secondUser=await createAppUser(b.tenantId,subject.personId,'employee');await grantAssistant(group(),{appUserId:secondUser});const otherLogin={...ctx,userId:secondUser},secondReview=await prepare(otherLogin);const pending=await state();await expect(confirm(secondReview,otherLogin)).rejects.toBeInstanceOf(OwnProfileChangeSourceUnavailable);expect(await state()).toEqual(pending);expect(await withTenant(otherLogin,tx=>readOwnProfileChangeSubmissionReferenceTx(tx,otherLogin,first.requestId,first.requestedEventId))).toBeNull();
  });
  it('rolls the native request and exact event back when the enclosing future-custody transaction fails, then safely retries',async()=>{
-  const review=await prepare(),before=await state(),injected=Error('fictional custody completion failure');await expect(withTenant(ctx,async tx=>{await confirmOwnProfileChangeSourceTx(tx,ctx,review.content,{action:'profile.change.request',contractVersion:1,reviewedDigest:review.reviewedDigest});throw injected;})).rejects.toBe(injected);expect(await state()).toEqual(before);const retried=await confirm(review);expect(retried.replayed).toBe(false);expect((await state()).requests).toHaveLength(1);
+  const review=await prepare(),before=await state(),injected=Error('fictional custody completion failure');await expect(withTenant(ctx,async tx=>{await confirmOwnProfileChangeSourceTx(tx,ctx,review.content,{action:OWN_PROFILE_CHANGE_ACTION,contractVersion:1,reviewedDigest:review.reviewedDigest});throw injected;})).rejects.toBe(injected);expect(await state()).toEqual(before);const retried=await confirm(review);expect(retried.replayed).toBe(false);expect((await state()).requests).toHaveLength(1);
  });
  it('reconciles an approved native receipt without another execution or a false Assistant approval claim',async()=>{
   const review=await prepare(),submitted=await confirm(review);await decideProfileChange(group(),{requestId:submitted.requestId,decision:'approved'});const before=await state();const reopened=await withTenant(ctx,tx=>reconcileOwnProfileChangeSourceTx(tx,ctx,submitted));expect(reopened).toMatchObject({kind:'submitted',requestId:submitted.requestId,requestedEventId:submitted.requestedEventId,currentStatus:'approved',replayed:true});expect(await state()).toEqual(before);await expect(confirm(review)).rejects.toBeInstanceOf(OwnProfileChangeSourceUnavailable);expect(await state()).toEqual(before);
@@ -73,7 +73,7 @@ describe('unmounted own ESS canonical approval-request source',()=>{
   const timeout=setTimeout(()=>{const failure=Error('profile source handshake timed out');failReady(failure);pidFail(failure);release();},10000);
   const holder=withTenant(group(),async tx=>{await lockAccessConfigurationTx(tx,b.tenantId);ready();await finish;});void holder.catch(failReady);
   let request:ReturnType<typeof confirm>|undefined;
-  try{await start;request=withTenant(retainedCtx,async tx=>{const [row]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);pidReady(row.pid);return confirmOwnProfileChangeSourceTx(tx,retainedCtx,retained,{action:'profile.change.request',contractVersion:1,reviewedDigest:review.reviewedDigest});});void request.catch(pidFail);
+  try{await start;request=withTenant(retainedCtx,async tx=>{const [row]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);pidReady(row.pid);return confirmOwnProfileChangeSourceTx(tx,retainedCtx,retained,{action:OWN_PROFILE_CHANGE_ACTION,contractVersion:1,reviewedDigest:review.reviewedDigest});});void request.catch(pidFail);
    const pid=await pidPromise;let waiting=false;for(let tries=0;tries<100;tries++){const [row]=await owner.db.execute<{waiting:boolean}>(sql`select exists(select 1 from pg_locks where pid=${pid} and locktype='advisory' and not granted) as waiting`);if(row.waiting){waiting=true;break;}await new Promise(yes=>setTimeout(yes,10));}
    expect(waiting).toBe(true);retained.employmentId=randomUUID();retained.proposal.fields[0].value='PRIVATE retarget attempt';retainedCtx.personId=randomUUID();retainedCtx.grants[0].companyId=randomUUID();expect((await state()).requests).toHaveLength(0);
   }finally{release();clearTimeout(timeout);await holder;}

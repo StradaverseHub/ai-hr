@@ -6,7 +6,7 @@ import type {SessionContext,Tx} from '../../db/client';
 import {prepareOwnProfileChangeRequestReviewTx,requestReviewedOwnProfileChangeTx,readOwnProfileChangeSubmissionReferenceTx} from '../profile';
 import {assertAiActionUnpausedTx} from '../ai-governance';
 import {readOwnLeaveActorTx} from './own-leave-actor';
-import {OwnProfileChangeHumanContent,OwnProfileChangeConfirmation,OwnProfileChangePreparedSource,OwnProfileChangeSourceReceipt} from '../../lib/assistant-actions/own-profile-change-contract';
+import {OWN_PROFILE_CHANGE_ACTION,OwnProfileChangeHumanContent,OwnProfileChangeConfirmation,OwnProfileChangePreparedSource,OwnProfileChangeSourceReceipt} from '../../lib/assistant-actions/own-profile-change-contract';
 export class OwnProfileChangeSourceUnavailable extends Error{constructor(){super('The profile request is unavailable.');this.name='OwnProfileChangeSourceUnavailable';}}
 const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))});
 async function actorTx(tx:Tx,ctx:SessionContext){
@@ -19,7 +19,7 @@ export async function prepareOwnProfileChangeSourceTx(tx:Tx,supplied:SessionCont
  const ctx=capture(supplied);let human:OwnProfileChangeHumanContent;
  try{human=OwnProfileChangeHumanContent.parse(structuredClone(humanValue));}catch{throw new OwnProfileChangeSourceUnavailable();}
  try{const actor=await actorTx(tx,ctx),review=await prepareOwnProfileChangeRequestReviewTx(tx,actor,{employmentId:human.employmentId,proposed:human.proposal});
-  return OwnProfileChangePreparedSource.parse({kind:'prepared_source',content:{action:'profile.change.request',contractVersion:1,employmentId:review.employmentId,proposal:review.proposal},reviewedDigest:review.reviewedDigest,consequence:'request_hr_review'});
+  return OwnProfileChangePreparedSource.parse({kind:'prepared_source',content:{action:OWN_PROFILE_CHANGE_ACTION,contractVersion:1,employmentId:review.employmentId,proposal:review.proposal},reviewedDigest:review.reviewedDigest,consequence:'request_hr_review'});
  }catch{throw new OwnProfileChangeSourceUnavailable();}
 }
 /** `storedHumanValue` MUST come from the future trusted custody owner, not this confirmation packet
