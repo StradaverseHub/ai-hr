@@ -3,7 +3,7 @@ import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {and,asc,desc,eq,gt,gte,inArray,isNull,lte,or,sql,ilike,getTableColumns,type SQL} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {actorOf,appendEvent} from '../db/events';
-import {company,appUser,roleEnum,letterCapabilityGrant,letterAutomationRuleVersion,letterAsset,letterPolicyVersion,letterMergeFieldVersion,letterTemplate,letterTemplateVersion,letterTemplateField,employment,person,assignment,position,department,compensation,letterGenerationBatch,letterRecord,letterRevision,letterCounter,letterJob,letterApprovalDecision,letterArtifact,employeeDocument,letterRecipientEvent,letterAccessToken} from '../db/schema';
+import {company,appUser,roleEnum,letterCapabilityGrant,letterAutomationRuleVersion,letterAsset,letterPolicyVersion,letterMergeFieldVersion,letterTemplate,letterTemplateVersion,letterTemplateField,employment,person,assignment,position,department,compensation,letterGenerationBatch,letterRecord,letterRevision,letterCounter,letterJob,letterApprovalDecision,letterArtifact,letterRecipientEvent,letterAccessToken} from '../db/schema';
 import {assertModuleGate} from './module-gate';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {lockPayrollHistoryReadTx} from './payroll-history-lock';
@@ -16,6 +16,7 @@ import {readLetterAutomationSourcesTx,readRegisteredLetterAutomationSourceTx} fr
 import {resolveEntitlementsTx} from './entitlements';
 import {letterStageEnteredAt} from './letter-stage-clock';
 import {renderLetterPdf} from '../lib/letter-pdf';
+import {fileLetterArtifactTx} from './employee-documents';
 import {PDFDocument} from 'pdf-lib';
 import {readNotificationEmailTransport,type NotificationEmailTransport} from './notification-email-delivery';
 import {letterVerificationUrl,letterVerificationWords} from '../lib/letter-verification';
@@ -500,12 +501,10 @@ export function issueLetter(ctx:SessionContext,input:{letterId:string;expectedRe
  if(record.state==='issued')return {letterId:record.id,artifactId:artifact.id,alreadyIssued:true};
  if(record.lockVersion!==input.expectedLockVersion)throw new LetterWorkflowError('stale');if(record.state!=='approved')throw new LetterWorkflowError('state');await assertLetterAutomationSource(tx,record.id);
  if(hash(artifact.content)!==artifact.contentHash)throw new LetterWorkflowError('configuration','artifactHash');
- const batch=await staffBatchTx(tx,record.id),[template]=await tx.select().from(letterTemplateVersion).where(eq(letterTemplateVersion.id,batch.templateVersionId)),[configuration]=await tx.select().from(letterPolicyVersion).where(eq(letterPolicyVersion.id,batch.policyVersionId)),policy=validateLetterPolicy(configuration.policy);
- const documentId=randomUUID();
- // A single immutable artifact owns the bytes. The employee folder stores a protected identity link.
- await tx.insert(employeeDocument).values({id:documentId,tenantId:ctx.tenantId,employmentId:record.employmentId,letterArtifactId:artifact.id,title:template.name,category:template.category,description:record.reference,content:Buffer.alloc(0),fileName:record.reference.replace(/[^A-Za-z0-9._-]/g,'_')+'.pdf',mimeType:'application/pdf',sizeBytes:artifact.content.length,uploadedByUserId:ctx.userId!,updatedByUserId:ctx.userId!});
+ const batch=await staffBatchTx(tx,record.id),[configuration]=await tx.select().from(letterPolicyVersion).where(eq(letterPolicyVersion.id,batch.policyVersionId)),policy=validateLetterPolicy(configuration.policy);
+ const documentId=await fileLetterArtifactTx(tx,ctx,{letterId:record.id,artifactId:artifact.id});
  await tx.update(letterRecord).set({state:'issued',lockVersion:record.lockVersion+1}).where(eq(letterRecord.id,record.id));
- const [subject]=await tx.select({personId:employment.personId}).from(employment).where(eq(employment.id,record.employmentId));const recipients=await tx.select({id:appUser.id}).from(appUser).where(and(eq(appUser.personId,subject.personId),isNull(appUser.archivedAt),sql`not app.login_blocked(${appUser.id})`));
+ const recipients=await tx.execute<{id:string}>(sql`select * from app.letter_employee_accounts(${record.id}::uuid)`);
  const sourceEventId=await event(tx,ctx,record.id,'issued',{revisionId:record.currentRevisionId,artifactId:artifact.id,artifactHash:artifact.contentHash,documentId,recipientCount:recipients.length});
  for(const recipient of recipients){
   const key=`${record.id}:${artifact.id}:issued:${recipient.id}`;

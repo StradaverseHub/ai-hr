@@ -1265,3 +1265,73 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.letter_automation_source_current(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.letter_automation_source_current(uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- Explicit issuance authority covers ready/sealed letters, not unrelated drafts or
+-- generic Personnel records. Confidential access remains enforced by letter_can_read.
+CREATE OR REPLACE FUNCTION app.letter_staff_scope(co uuid,creator uuid,batch uuid,subject uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT app.is_admin_for(co) OR creator=app.current_user_id()
+ OR (app.letter_permission(co,'issue') AND EXISTS(SELECT 1 FROM public.letter_record l WHERE l.id=subject AND l.tenant_id=app.current_tenant_id() AND l.company_id=co AND l.state IN ('approved','issued','void')))
+ OR (app.letter_permission(co,'approve') AND (
+  EXISTS(SELECT 1 FROM public.letter_generation_batch b JOIN public.letter_policy_version p ON p.id=b.policy_version_id,
+   LATERAL jsonb_array_elements(p.policy->'stages') stage
+   WHERE b.id=batch AND b.tenant_id=app.current_tenant_id() AND b.company_id=co AND p.tenant_id=b.tenant_id AND (stage->'userIds' ? app.current_user_id()::text OR p.policy->>'escalationUserId'=app.current_user_id()::text))
+  OR EXISTS(SELECT 1 FROM public.letter_approval_decision d WHERE d.letter_id=subject AND d.tenant_id=app.current_tenant_id() AND d.action='delegate' AND d.delegated_to=app.current_user_id())))
+$$;
+--> statement-breakpoint
+-- Employee Document owner port: immutable artifact metadata only; no Personnel
+-- record, document bytes, email address or arbitrary upload authority is returned.
+CREATE FUNCTION app.letter_document_filing_target(subject uuid,sealed uuid)
+RETURNS TABLE(employment_id uuid,title text,category text,description text,file_name text,size_bytes integer,document_id uuid)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT l.employment_id,t.name,t.category,l.reference,regexp_replace(l.reference,'[^A-Za-z0-9._-]','_','g')||'.pdf',octet_length(a.content),
+  (SELECT d.id FROM public.employee_document d WHERE d.letter_artifact_id=a.id AND d.tenant_id=l.tenant_id AND d.employment_id=l.employment_id)
+ FROM public.letter_record l JOIN public.letter_artifact a ON a.letter_id=l.id AND a.tenant_id=l.tenant_id AND a.revision_id=l.current_revision_id
+ JOIN public.letter_generation_batch b ON b.id=l.batch_id AND b.tenant_id=l.tenant_id JOIN public.letter_template_version t ON t.id=b.template_version_id AND t.tenant_id=l.tenant_id
+ JOIN public.employment e ON e.id=l.employment_id AND e.tenant_id=l.tenant_id AND e.company_id=l.company_id
+ WHERE l.id=subject AND a.id=sealed AND l.tenant_id=app.current_tenant_id() AND l.state='approved' AND app.principal_snapshot_current()
+  AND app.letter_permission(l.company_id,'read') AND app.letter_permission(l.company_id,'issue') AND app.letter_can_read(l.id) AND app.letter_automation_source_current(l.id)
+$$;
+REVOKE ALL ON FUNCTION app.letter_document_filing_target(uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_document_filing_target(uuid,uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.letter_document_pointer_allowed(row_data jsonb) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT row_data->>'tenant_id'=app.current_tenant_id()::text AND row_data->>'uploaded_by_user_id'=app.current_user_id()::text AND row_data->>'updated_by_user_id'=app.current_user_id()::text
+  AND row_data->>'mime_type'='application/pdf' AND octet_length((row_data->>'content')::bytea)=0
+  AND (row_data->>'created_at')::timestamptz=now() AND (row_data->>'updated_at')::timestamptz=now()
+  AND EXISTS(SELECT 1 FROM public.letter_artifact a CROSS JOIN LATERAL app.letter_document_filing_target(a.letter_id,a.id) target
+   WHERE a.id=(row_data->>'letter_artifact_id')::uuid AND a.tenant_id=app.current_tenant_id() AND target.employment_id::text=row_data->>'employment_id'
+    AND target.title=row_data->>'title' AND target.category=row_data->>'category' AND target.description=row_data->>'description' AND target.file_name=row_data->>'file_name' AND target.size_bytes=(row_data->>'size_bytes')::integer)
+$$;
+REVOKE ALL ON FUNCTION app.letter_document_pointer_allowed(jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_document_pointer_allowed(jsonb) TO ai_hr_app;
+--> statement-breakpoint
+DROP POLICY access_workforce_document_insert ON employee_document;
+CREATE POLICY access_workforce_document_insert ON employee_document AS RESTRICTIVE FOR INSERT TO ai_hr_app
+ WITH CHECK(app.access_workforce_employment(employment_id,'workforce.maintain') OR letter_artifact_id IS NOT NULL AND app.letter_document_pointer_allowed(to_jsonb(employee_document)));
+CREATE OR REPLACE FUNCTION app.access_workforce_document_write() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF TG_OP='INSERT' AND NEW.letter_artifact_id IS NOT NULL AND app.letter_document_pointer_allowed(to_jsonb(NEW)) THEN RETURN NEW;END IF;
+ IF NOT app.access_workforce_storage_owner() THEN
+  IF TG_OP='UPDATE' THEN
+   IF NEW.id IS DISTINCT FROM OLD.id OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.employment_id IS DISTINCT FROM OLD.employment_id THEN RAISE EXCEPTION 'Document subject cannot be reassigned' USING ERRCODE='42501';END IF;
+  END IF;
+  IF TG_OP<>'INSERT' THEN
+   IF OLD.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT app.access_workforce_employment(OLD.employment_id,'workforce.maintain') THEN RAISE EXCEPTION 'Workforce maintenance unavailable' USING ERRCODE='42501';END IF;
+  END IF;
+  IF TG_OP<>'DELETE' THEN
+   IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT app.access_workforce_employment(NEW.employment_id,'workforce.maintain') THEN RAISE EXCEPTION 'Workforce maintenance unavailable' USING ERRCODE='42501';END IF;
+  END IF;
+ END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;
+END $$;
+--> statement-breakpoint
+CREATE FUNCTION app.letter_employee_accounts(subject uuid) RETURNS TABLE(id uuid)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT u.id FROM public.letter_record l JOIN public.employment e ON e.id=l.employment_id AND e.tenant_id=l.tenant_id AND e.company_id=l.company_id JOIN public.app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id
+ WHERE l.id=subject AND l.tenant_id=app.current_tenant_id() AND l.state='issued' AND app.principal_snapshot_current() AND app.letter_permission(l.company_id,'read') AND app.letter_permission(l.company_id,'issue') AND app.letter_can_read(l.id) AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+$$;
+REVOKE ALL ON FUNCTION app.letter_employee_accounts(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_employee_accounts(uuid) TO ai_hr_app;
