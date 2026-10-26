@@ -1340,9 +1340,8 @@ export async function revokeRole(ctx: SessionContext, p: { roleAssignmentId: str
 export function listPositions(
   ctx: SessionContext,
   opts: { includeArchived?: boolean; companyIds?: string[] } = {},
-) {
-  return withTenant(ctx, (tx) =>
-    tx
+ outerTx?:Tx) {
+  const run=(tx:Tx)=>tx
       .select({
         id: position.id,
         companyId: position.companyId,
@@ -1369,16 +1368,15 @@ export function listPositions(
             : undefined,
         ),
       )
-      .orderBy(position.title),
-  );
+      .orderBy(position.title);
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 export function listCostCenters(
   ctx: SessionContext,
   opts: { includeArchived?: boolean; companyIds?: string[] } = {},
-) {
-  return withTenant(ctx, (tx) =>
-    tx
+ outerTx?:Tx) {
+  const run=(tx:Tx)=>tx
       .select({
         id: costCenter.id,
         companyId: costCenter.companyId,
@@ -1403,8 +1401,8 @@ export function listCostCenters(
             : undefined,
         ),
       )
-      .orderBy(costCenter.code),
-  );
+      .orderBy(costCenter.code);
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 /** Business Unit master list (ADR-0068), cost_center-shaped. `inUse` = at least one department links to it
@@ -1412,9 +1410,8 @@ export function listCostCenters(
 export function listBusinessUnits(
   ctx: SessionContext,
   opts: { includeArchived?: boolean; companyIds?: string[] } = {},
-) {
-  return withTenant(ctx, (tx) =>
-    tx
+ outerTx?:Tx) {
+  const run=(tx:Tx)=>tx
       .select({
         id: businessUnit.id,
         companyId: businessUnit.companyId,
@@ -1439,8 +1436,8 @@ export function listBusinessUnits(
             : undefined,
         ),
       )
-      .orderBy(businessUnit.code),
-  );
+      .orderBy(businessUnit.code);
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 // ── System Labels reads (description-bearing) ───────────────────────────────────────────────────────

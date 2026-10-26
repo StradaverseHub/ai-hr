@@ -691,9 +691,8 @@ export function getCompanyCurrency(ctx: SessionContext, companyId: string): Prom
 export function listCompanies(
   ctx: SessionContext,
   opts: { includeArchived?: boolean; adminOnly?: boolean } = {},
-) {
-  return withTenant(ctx, (tx) =>
-    tx
+ outerTx?:Tx) {
+  const run=(tx:Tx)=>tx
       .select({
         id: company.id,
         name: company.legalName,
@@ -740,8 +739,8 @@ export function listCompanies(
           opts.adminOnly ? sql`app.is_admin_for(company.id)` : undefined,
         ),
       )
-      .orderBy(company.legalName),
-  );
+      .orderBy(company.legalName);
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 /**
@@ -777,9 +776,8 @@ export function companyDeleteStatus(
 export function listDepartments(
   ctx: SessionContext,
   opts: { includeArchived?: boolean; companyIds?: string[] } = {},
-) {
-  return withTenant(ctx, (tx) =>
-    tx
+ outerTx?:Tx) {
+  const run=(tx:Tx)=>tx
       .select({
         id: department.id,
         name: department.name,
@@ -810,8 +808,8 @@ export function listDepartments(
             : undefined,
         ),
       )
-      .orderBy(department.name),
-  );
+      .orderBy(department.name);
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 export type PayrollRunEmployeeRow = {
@@ -2659,9 +2657,8 @@ export function employeeDetail(ctx: SessionContext, employmentId: string,purpose
 }
 
 /** ADR-0041 2E: the tenant grade catalog, most-senior first (rank asc), then name. */
-export function listJobGrades(ctx: SessionContext, opts: { includeArchived?: boolean } = {}) {
-  return withTenant(ctx, (tx) =>
-    tx
+export function listJobGrades(ctx: SessionContext, opts: { includeArchived?: boolean } = {}, outerTx?:Tx) {
+  const run=(tx:Tx)=>tx
       .select({
         id: jobGrade.id,
         code: jobGrade.code,
@@ -2703,8 +2700,8 @@ export function listJobGrades(ctx: SessionContext, opts: { includeArchived?: boo
       })
       .from(jobGrade)
       .where(opts.includeArchived ? undefined : isNull(jobGrade.archivedAt))
-      .orderBy(jobGrade.rank, jobGrade.name),
-  );
+      .orderBy(jobGrade.rank, jobGrade.name);
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 /**

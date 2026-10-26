@@ -534,7 +534,11 @@ export async function transferEmployee(
    *  describing two different placements. */
   outerTx?: Tx,
 ) {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const run = async (tx: Tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     const [cur] = await tx
       .select()
@@ -1081,7 +1085,11 @@ export async function editDelegation(
     orgScope?: DelegationOrgScope | null;
   },
 ) {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [old] = await tx
       .update(reportingLine)
       .set({ supersededAt: sql`now()` })
@@ -1146,7 +1154,11 @@ export async function setReportingLine(
    *  movement commits atomically with the assignment / grade / pay legs. */
   outerTx?: Tx,
 ) {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const run = async (tx: Tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // Delegation retains its independent relationship/decision owner. Structural edges do not.
     if(p.lineType!=='delegate')await assertWorkforceEmploymentTx(tx,ctx,p.subordinateEmploymentId,'maintain');
     if (p.subordinateEmploymentId === p.managerEmploymentId) throw new ReportingCycleError();
@@ -1264,7 +1276,11 @@ export async function endReportingLine(
   ctx: SessionContext,
   p: { reportingLineId: string; endDate: string },
 ) {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [line]=await tx.select({subject:reportingLine.subordinateEmploymentId,type:reportingLine.lineType}).from(reportingLine).where(eq(reportingLine.id,p.reportingLineId)).limit(1);
     if(line&&line.type!=='delegate')await assertWorkforceEmploymentTx(tx,ctx,line.subject,'maintain');
     const [ended] = await tx
@@ -1841,7 +1857,11 @@ export async function setEmploymentAssignment(
    *  so a Promotion/Demotion can pair this with setEmploymentGrade atomically. */
   outerTx?: Tx,
 ) {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const run = async (tx: Tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     if(p.companyId)await assertWorkforceCompanyTx(tx,ctx,p.companyId,'maintain');
     const [cur] = await tx
@@ -2104,7 +2124,11 @@ export async function changeEmploymentCompany(
     locationId?: string | null;
   },
 ) {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     await assertWorkforceCompanyTx(tx,ctx,p.newCompanyId,'maintain');
     await lockLabelCriteriaTx(tx,ctx.tenantId);
@@ -2317,6 +2341,10 @@ export async function transferEmploymentCompanyTx(
     movement: MovementTag;
   },
 ) {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
   await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
   await assertWorkforceCompanyTx(tx,ctx,p.newCompanyId,'maintain');
   await lockLabelCriteriaTx(tx,ctx.tenantId);
