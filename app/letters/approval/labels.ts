@@ -3,5 +3,6 @@ import {LETTER_APPROVAL_LABEL_KEYS,type LetterApprovalLabels} from '@/lib/letter
 import {templateLabels} from '../templates/labels';
 export async function approvalLabels(){
  const t=await getTranslations('letters.approval'),template=await templateLabels();
- return {copy:Object.fromEntries(LETTER_APPROVAL_LABEL_KEYS.map(key=>[key,t(key)])) as LetterApprovalLabels,picker:template.picker,document:template.editor,errors:{...template.errors,signatureRequired:t('signatureRequired')}};
+ const errors:Record<string,string>={...template.errors,signatureRequired:t('signatureRequired')};
+ return {copy:Object.fromEntries(LETTER_APPROVAL_LABEL_KEYS.map(key=>[key,t(key)])) as LetterApprovalLabels,picker:template.picker,document:template.editor,errors};
 }
