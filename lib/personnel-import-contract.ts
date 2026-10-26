@@ -183,7 +183,7 @@ export function personnelFieldChoices(field:PersonnelFieldDescriptor) {
   if(field.allowedValuesOwner==='person.maritalStatus')return MARITAL_STATUSES.map(value=>({value,labelKey:PERSON_MARITAL_LABEL_KEYS[value]}));
   return [];
 }
-function normalizePersonnelImportValue(column:string,raw:string,sheet:PersonnelImportSheet,resolvers:readonly PersonnelLabelResolver[]) {
+export function normalizePersonnelImportValue(column:string,raw:string,sheet:PersonnelImportSheet,resolvers:readonly PersonnelLabelResolver[]) {
   const field=personnelImportField(column,sheet);if(!field||!raw)return raw;
   const options=personnelFieldChoices(field);if(!options.length)return raw;
   const matches=options.filter(option=>normalized(option.value)===normalized(raw)||resolvers.some(resolve=>normalized(resolve(option.labelKey,option.value))===normalized(raw)));
