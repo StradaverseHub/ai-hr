@@ -3,7 +3,7 @@ import {execFileSync} from 'node:child_process';
 import {readFileSync} from 'node:fs';
 import {expect,it} from 'vitest';
 it('pins Microsoft app-only grant, verified TLS, bounded responses, lifetime and the no-redirect policy in the installed Python leaf',()=>{
- const output=execFileSync('python3',['-I','-c',String.raw`
+ const output=execFileSync('python3',['-I','-B','-c',String.raw`
 import importlib.util,json,urllib.parse
 s=importlib.util.spec_from_file_location('token','deploy/identity-email/smtp-token-peer.py');m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
 request={'tenantId':'11111111-1111-4111-8111-111111111111','clientId':'22222222-2222-4222-8222-222222222222','clientSecret':'fictional-secret'}
