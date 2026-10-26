@@ -6,7 +6,7 @@ import {and,eq,sql,type SQL} from 'drizzle-orm';
 import {z} from 'zod';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {employment} from '../../db/schema';
-import {lockLeaveDependenciesTx} from '../../packs/leave/service';
+import {lockLeaveDependenciesTx,lockLeaveDependencyReadConfigurationTx} from '../../packs/leave/service';
 import {assertAiPrincipalTx} from '../ai-principal';
 import {assertMayUseAssistant} from '../assistant-grant';
 import {assertAiActionUnpausedTx} from '../ai-governance';
@@ -47,14 +47,19 @@ async function subject(tx:Tx,id:string){const [row]=await tx.execute<{subject:un
 /** Capability is resolved afresh by the eventual HTTP owner outside this transaction. It is never
  * part of the human input, encrypted body or persisted completion. No hidden identity/network call. */
 export async function prepareModuleActionReview(supplied:SessionContext,input:unknown,cap:OwnNotificationServerIdentity){const ctx=capture(supplied),parsed=ModuleActionPrepare.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{
- const fresh=await guard(tx,ctx);await lockLeaveDependenciesTx(tx,fresh.tenantId,[p.intent.employmentId]);
- const [own]=await tx.select({companyId:employment.companyId}).from(employment).where(and(eq(employment.id,p.intent.employmentId),eq(employment.tenantId,fresh.tenantId),eq(employment.personId,fresh.personId!)));if(!own)return fail();
+ const fresh=await guard(tx,ctx);await lockLeaveDependencyReadConfigurationTx(tx,fresh.tenantId);
+ if(!fresh.personId)return fail();
+ // A posted UUID nominates no resource authority. Establish the actual own-person/RLS binding
+ // before taking its employee barrier, then refuse drift instead of locking a retargeted subject.
+ const nominate=()=>tx.select({id:employment.id,companyId:employment.companyId}).from(employment).where(and(eq(employment.id,p.intent.employmentId),eq(employment.tenantId,fresh.tenantId),eq(employment.personId,fresh.personId!))).limit(1);
+ const [nominated]=await nominate();if(!nominated)return fail();await lockLeaveDependenciesTx(tx,fresh.tenantId,[nominated.id]);
+ const [own]=await nominate();if(!own||own.id!==nominated.id||own.companyId!==nominated.companyId)return fail();
  const review=await prepareOwnNotificationPreferencesTx(tx,fresh,p.intent,cap),body=Body.parse({intent:p.intent,review}),binding=Binding.parse({tenantId:fresh.tenantId,userId:fresh.userId,personId:fresh.personId,employmentId:p.intent.employmentId,companyId:own.companyId});
  const now=new Date(),m=Metadata.parse({actionId:randomUUID(),action:MODULE_NOTIFICATION_ACTION,contractVersion:1,binding,intentDigest:hash(body.intent),reviewedDigest:reviewed(binding,body),state:'awaiting_confirmation',createdAt:now.toISOString(),expiresAt:new Date(now.getTime()+600000).toISOString()}),sealed=seal(m,body);
  const stored=await read(tx,sql`select app.assistant_module_action_review_prepare(${MODULE_NOTIFICATION_ACTION},${m.actionId}::uuid,${binding.personId}::uuid,${binding.employmentId}::uuid,${binding.companyId}::uuid,${m.intentDigest},${m.reviewedDigest},${sealed.kid},${sealed.wrappedDek},${sealed.ciphertext}) as review`);bound(stored,fresh,m.actionId,p.intent.employmentId);return pending(stored);
  });}catch{return fail();}}
 export async function confirmModuleActionReview(supplied:SessionContext,input:unknown,cap:OwnNotificationServerIdentity){const ctx=capture(supplied),parsed=ModuleActionConfirmation.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{
- const fresh=await guard(tx,ctx),nominated=await subject(tx,p.actionId);await lockLeaveDependenciesTx(tx,fresh.tenantId,[nominated]);
+ const fresh=await guard(tx,ctx);await lockLeaveDependencyReadConfigurationTx(tx,fresh.tenantId);const nominated=await subject(tx,p.actionId);await lockLeaveDependenciesTx(tx,fresh.tenantId,[nominated]);
  const stored=await read(tx,sql`select app.assistant_module_action_review_read(${p.actionId}::uuid,${MODULE_NOTIFICATION_ACTION}) as review`);bound(stored,fresh,p.actionId,nominated);
  if(stored.metadata.state==='completed')return completed(tx,fresh,stored,cap);if(stored.metadata.state!=='awaiting_confirmation')return retired(stored);
  if(stored.metadata.reviewedDigest!==p.reviewedDigest)return fail();const body=unseal(stored),native=await confirmOwnNotificationPreferencesTx(tx,fresh,body.intent,body.review.reviewDigest,cap);
@@ -62,7 +67,7 @@ export async function confirmModuleActionReview(supplied:SessionContext,input:un
  });}catch{return fail();}}
 /** Reopen is read/reconciliation only, never an effect or automatic confirmation retry. */
 export async function reopenModuleActionReview(supplied:SessionContext,actionId:unknown,cap:OwnNotificationServerIdentity){const ctx=capture(supplied),parsed=z.uuid().safeParse(actionId);if(!parsed.success)return fail();const id=parsed.data;try{return await withTenant(ctx,async tx=>{
- const fresh=await guard(tx,ctx),nominated=await subject(tx,id);await lockLeaveDependenciesTx(tx,fresh.tenantId,[nominated]);const stored=await read(tx,sql`select app.assistant_module_action_review_read(${id}::uuid,${MODULE_NOTIFICATION_ACTION}) as review`);bound(stored,fresh,id,nominated);return stored.metadata.state==='awaiting_confirmation'?pending(stored):stored.metadata.state==='completed'?completed(tx,fresh,stored,cap):retired(stored);
+ const fresh=await guard(tx,ctx);await lockLeaveDependencyReadConfigurationTx(tx,fresh.tenantId);const nominated=await subject(tx,id);await lockLeaveDependenciesTx(tx,fresh.tenantId,[nominated]);const stored=await read(tx,sql`select app.assistant_module_action_review_read(${id}::uuid,${MODULE_NOTIFICATION_ACTION}) as review`);bound(stored,fresh,id,nominated);return stored.metadata.state==='awaiting_confirmation'?pending(stored):stored.metadata.state==='completed'?completed(tx,fresh,stored,cap):retired(stored);
  });}catch{return fail();}}
 /** Retirement has fresh actual caller/custody authority but no Assistant grant/pause requirement. */
 export async function discardModuleActionReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=ModuleActionConfirmation.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);const stored=await read(tx,sql`select app.assistant_module_action_review_read(${p.actionId}::uuid,${MODULE_NOTIFICATION_ACTION},true,${p.reviewedDigest}) as review`);bound(stored,ctx,p.actionId);return retired(stored);});}catch{return fail();}}
