@@ -18,6 +18,7 @@ import { Suspense } from 'react';
 import { Providers } from './providers';
 import { OperatorShell } from '@/components/operator-shell';
 import { Sidebar } from '@/components/sidebar';
+import {letterNavigation} from '@/core/letter-navigation';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { LanguageSwitcher } from '@/components/language-switcher';
 import { Toaster } from '@/components/ui/sonner';
@@ -162,6 +163,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     viewerIdentity(session),canConfigureAccess(session),
     isAdmin(session)?Promise.resolve(false):workforceViewScope(session).then(scope=>scope.canOpen),
   ]);
+  const letterDestinations=await letterNavigation(session,scopeIds);
   const onboarded = await getOnboardingStatus(session);
   const tours = toursForRoles(session.roles);
   const canApprove = isAdmin(session) || (session.roles ?? []).includes('manager');
@@ -237,6 +239,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           <NavIndexProvider>
           <div data-app-shell className="flex h-full gap-3 lg:gap-4 monolith:gap-0!">
             <Sidebar
+              letterDestinations={letterDestinations}
               canConfigureLoginPresentation={isGroupAdmin(session)}
               // ADR-0049: a partner is an admin who sees a subset, so it gets the admin nav group;
               // each page's route guard (requirePayrollAccess / requirePerfCompAccess) 403/redirects

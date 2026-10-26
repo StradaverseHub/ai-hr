@@ -5,6 +5,7 @@ import {withTenant,type SessionContext} from '../db/client';
 import {saveLetterPolicy,getLetterPolicy,listLetterPolicies,saveLetterPermission,readLetterPermissions,addLetterAsset,listLetterSignatories,letterCompanyAccess,listLetterSettingAssets,readLetterAsset} from '../core/letters';
 import type {LetterPolicy} from '../lib/letter-workflow';
 import type {NotificationEmailTransport} from '../core/notification-email-delivery';
+import {letterNavigation} from '../core/letter-navigation';
 import type {NotificationEmailStatus} from '../lib/notification-email-model';
 import {closeAll,createAppUser,entitledCtx,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base,ctx:SessionContext,signerId:string,signerPersonId:string;
@@ -47,4 +48,13 @@ it('does not let an ordinary approver enumerate a different owner’s signatures
  const content=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jh2kAAAAASUVORK5CYII=','base64');await addLetterAsset({...ctx,userId:signerId,personId:signerPersonId},{companyId:b.companyId,kind:'signature',name:'Existing private signature',content});
  const [person]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional ordinary approver',primaryEmail:'ordinary-approver@fixture.test'}).returning(),userId=await createAppUser(b.tenantId,person.id,'employee');for(const capability of ['read','approve'] as const)await saveLetterPermission(ctx,{companyId:b.companyId,role:'employee',capability,allowed:true});const reviewer={...ctx,userId,personId:person.id,roles:['employee']};
  await expect(listLetterSettingAssets(reviewer,{companyId:b.companyId,kind:'signature',ownerUserId:signerId})).rejects.toMatchObject({code:'permission'});expect(await withTenant(reviewer,tx=>tx.execute(sql`select * from app.letter_setting_asset_page(${b.companyId}::uuid,'signature',${signerId}::uuid,null,null,25)`))).toHaveLength(0);
+});
+
+it('resolves real navigation permissions only in the selected company and immediately removes revoked access',async()=>{
+ const [person]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional scoped configuration user',primaryEmail:'nav-settings@fixture.test'}).returning(),userId=await createAppUser(b.tenantId,person.id,'employee'),[other]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional other company'}).returning();
+ await saveLetterPermission(ctx,{companyId:b.companyId,role:'employee',capability:'settings',allowed:true});const editor={...ctx,userId,personId:person.id,roles:['employee']};expect(await letterNavigation(editor,[b.companyId])).toEqual(['/letters/settings']);expect(await letterNavigation(editor,[other.id])).toEqual([]);await saveLetterPermission(ctx,{companyId:b.companyId,role:'employee',capability:'settings',allowed:false});expect(await letterNavigation(editor,[b.companyId])).toEqual([]);
+});
+
+it('refuses activation of a reference format whose company code is unavailable without allocating a counter',async()=>{
+ await expect(saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',enabled:true,policy:{...policy(),referenceFormat:'{COMPANY}/{YYYY}/{SEQ:6}'},expectedOrdinal:0})).rejects.toMatchObject({code:'configuration',detail:'companyCode'});expect(await owner.db.select().from(s.letterPolicyVersion)).toHaveLength(0);expect(await owner.db.select().from(s.letterCounter)).toHaveLength(0);
 });

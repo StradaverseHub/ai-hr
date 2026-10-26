@@ -35,7 +35,7 @@ export function validateLetterReferenceFormat(format:string){
 }
 export function letterReference(format:string,input:{year:string;companyCode:string;sequence:string}){
  validateLetterReferenceFormat(format);
- if(!/^\d{4}$/.test(input.year)||!/^\d{1,18}$/.test(input.sequence)||BigInt(input.sequence)<=BigInt(0)||format.includes('{COMPANY}')&&!input.companyCode.trim()||input.companyCode.length>100)throw new LetterWorkflowError('invalid','reference');
+ if(!/^\d{4}$/.test(input.year)||!/^\d{1,18}$/.test(input.sequence)||BigInt(input.sequence)<=BigInt(0)||format.includes('{COMPANY}')&&(!input.companyCode.trim()||input.companyCode.length>100))throw new LetterWorkflowError('invalid','reference');
  return format.replace(/\{YYYY\}/g,input.year).replace(/\{COMPANY\}/g,input.companyCode).replace(/\{SEQ:([4-8])\}/,(_token,width:string)=>input.sequence.padStart(Number(width),'0'));
 }
 export function validateLetterPolicy(input:unknown):LetterPolicy{

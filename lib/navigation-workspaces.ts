@@ -43,6 +43,7 @@ export function navigationPlacement(href:string):NavigationPlacement | undefined
   if(peopleConfig.has(path))return modulePlacement('people','config');
   if(path==='/personnel')return modulePlacement('people','mine');
   if(path.startsWith('/me/letters'))return modulePlacement('people','mine');
+  if(path.startsWith('/letters/settings'))return modulePlacement('people','config');
   if(path.startsWith('/letters'))return modulePlacement('people','hr');
   if(path==='/manage/my-team')return modulePlacement('people','team');
   if(path.startsWith('/admin/personnel')||path.startsWith('/admin/job-descriptions')||path==='/admin/notice-board')return modulePlacement('people','hr');

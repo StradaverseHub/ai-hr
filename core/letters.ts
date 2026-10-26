@@ -95,6 +95,7 @@ export function saveLetterPolicy(ctx:SessionContext,input:{companyId:string;cate
  await permission(tx,input.companyId,'settings');await lockCompany(tx,input.companyId);const policy=validateLetterPolicy(input.policy),category=text(input.category,100);
  if(typeof input.enabled!=='boolean')throw new LetterWorkflowError('invalid','enabled');
  if(input.enabled)try{letterVerificationUrl('A'.repeat(43),'en');}catch{throw new LetterWorkflowError('configuration','publicOrigin');}
+ if(input.enabled){const [entity]=await tx.select({code:company.companyLabel}).from(company).where(eq(company.id,input.companyId));try{if(letterReference(policy.referenceFormat,{year:'2000',companyCode:entity?.code??'',sequence:'999999999999999999'}).length>200)throw new Error('referenceLength');}catch{throw new LetterWorkflowError('configuration','companyCode');}}
  if((policy.portalNotifications||policy.emailNotifications)&&!isModuleEnabled(ctx,'notifications',input.companyId))throw new LetterWorkflowError('configuration','notifications');
  if(policy.emailNotifications){const status=await readNotificationEmailTransport(options.transport);if(status?.ready!==true||status.letters!==true)throw new LetterWorkflowError('configuration','emailTransport');}
  const users=[...new Set(policy.stages.flatMap(stage=>stage.userIds).concat(policy.escalationUserId?[policy.escalationUserId]:[]))];
@@ -113,6 +114,11 @@ export function listLetterPolicies(ctx:SessionContext,input:{companyId:string;cu
 });}
 export function getLetterPolicy(ctx:SessionContext,input:{companyId:string;category:string}){return letters(ctx,false,async tx=>{
  await permission(tx,input.companyId,'settings');const [row]=await tx.select().from(letterPolicyVersion).where(and(eq(letterPolicyVersion.companyId,input.companyId),eq(letterPolicyVersion.category,text(input.category,100)))).orderBy(desc(letterPolicyVersion.ordinal)).limit(1);if(!row)return null;const policy=validateLetterPolicy(row.policy),people=await tx.execute<{id:string;name:string}>(sql`select * from app.letter_policy_people(${row.id}::uuid)`),[appearance]=await tx.execute<{letterhead_name:string|null;signature_name:string|null}>(sql`select * from app.letter_policy_appearance(${row.id}::uuid)`);return {...row,policy,people:Array.from(people,row=>({id:row.id,name:row.name})),appearance:appearance??{letterhead_name:null,signature_name:null}};
+});}
+export function readLetterSettingsReadiness(ctx:SessionContext,companyId:string,options:{transport?:NotificationEmailTransport}={}){return letters(ctx,false,async tx=>{
+ await permission(tx,companyId,'settings');let publicOrigin=true;try{letterVerificationUrl('A'.repeat(43),'en');}catch{publicOrigin=false;}
+ const notifications=isModuleEnabled(ctx,'notifications',companyId),status=notifications?await readNotificationEmailTransport(options.transport):null;
+ return {publicOrigin,notifications,email:notifications&&status?.ready===true&&status.letters===true};
 });}
 export function readLetterPermissions(ctx:SessionContext,companyId:string){return letters(ctx,false,async tx=>{
  await permission(tx,companyId,'settings');return tx.select({role:letterCapabilityGrant.role,capability:letterCapabilityGrant.capability,allowed:letterCapabilityGrant.allowed}).from(letterCapabilityGrant).where(eq(letterCapabilityGrant.companyId,companyId)).orderBy(asc(letterCapabilityGrant.role),asc(letterCapabilityGrant.capability));
