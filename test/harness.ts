@@ -1,4 +1,3 @@
-import {isResetLockError} from './reset-lock-error';
 import {profileTestPhase} from './profile';
 import { createEntitlementTemplate, createEligibilityRule } from '../core/entitlement-template';
 import type { ServiceBand } from '../core/leave-compute';
@@ -12,6 +11,7 @@ import * as schema from '../db/schema';
 import { legacyEnabledModulesIn, legacyEnabledSettingsIn } from '../packs/catalog';
 import { resolveEntitlementsTx } from '../core/entitlements';
 import type { EntitlementSnapshot } from '../core/entitlement-types';
+import { isFixtureResetLockError } from './harness-reset-errors';
 
 // Owner connection (postgres) — bypasses RLS, used only for setup/seed/reset.
 export const owner = createDb(process.env.TEST_MIGRATION_DATABASE_URL!);
@@ -235,11 +235,15 @@ async function truncateAllTables(): Promise<void> {
         // Fixture-only reset emits thousands of expected cascade NOTICEs. Keep WARNING/ERROR visible;
         // LOCAL restores the original message level before any test or migration assertion runs.
         await tx.execute(sql`SET LOCAL client_min_messages = 'warning'`);
+        // Refuse a lingering transaction before TRUNCATE holds a partial lock set.
+        // Both statements stay in this transaction, so successful locks survive through the reset.
+        await tx.execute(sql.raw(`LOCK TABLE ${ALL_TABLES.join(', ')} IN ACCESS EXCLUSIVE MODE NOWAIT`));
         await tx.execute(sql.raw(sqlText));
       });
       return;
     } catch (e) {
-      if (!isResetLockError(e) || attempt === ATTEMPTS) throw e;
+      // DrizzleQueryError.message contains SQL; only the underlying lock conflict is retryable.
+      if (!isFixtureResetLockError(e) || attempt === ATTEMPTS) throw e;
       // Last try: clear anything else still attached to this database, then go again.
       if (attempt === ATTEMPTS - 1) {
         await owner.db

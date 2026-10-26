@@ -3,7 +3,7 @@ import {DrizzleQueryError} from 'drizzle-orm/errors';
 import {isResetLockError} from './reset-lock-error';
 
 describe('fixture reset retry recognizes the underlying PostgreSQL failure',()=>{
-  it.each(['40P01','55P03','57014'])('retries intended SQLSTATE %s inside the actual Drizzle wrapper',code=>{
+  it.each(['40P01','55P03'])('retries intended SQLSTATE %s inside the actual Drizzle wrapper',code=>{
     const cause=Object.assign(new Error('Localized PostgreSQL message'),{code});
     const wrapped=new DrizzleQueryError('TRUNCATE fixture RESTART IDENTITY CASCADE',[],cause);
     expect(/lock_timeout|deadlock detected|canceling statement/i.test(wrapped.message)).toBe(false);
@@ -12,12 +12,15 @@ describe('fixture reset retry recognizes the underlying PostgreSQL failure',()=>
   it('follows a nested error without relying on English text',()=>{
     expect(isResetLockError(new Error('outer',{cause:new DrizzleQueryError('TRUNCATE fixture',[],Object.assign(new Error('Localized PostgreSQL message'),{code:'40P01'}))}))).toBe(true);
   });
-  it.each(['42501','42P01','23503','53200'])('does not retry unrelated SQLSTATE %s even when query text contains lock words',code=>{
+  it.each(['42501','42P01','23503','53200','57014'])('does not retry unrelated SQLSTATE %s even when query text contains lock words',code=>{
     const wrapped=new DrizzleQueryError('TRUNCATE lock_timeout_log',[],Object.assign(new Error('unrelated'),{code}));
     expect(isResetLockError(wrapped)).toBe(false);
   });
-  it('preserves direct legacy lock/deadlock/cancel messages without a SQLSTATE',()=>{
-    for(const message of ['lock_timeout','deadlock detected','canceling statement due to lock timeout'])expect(isResetLockError(new Error(message))).toBe(true);
+  it('recognizes only explicit legacy lock-conflict messages without a SQLSTATE',()=>{
+    for(const message of ['could not obtain lock on relation','deadlock detected','canceling statement due to lock timeout'])expect(isResetLockError(new Error(message))).toBe(true);
+  });
+  it('does not retry bare timeout words or general cancellation without a lock conflict',()=>{
+    for(const message of ['lock_timeout','canceling statement','canceling statement due to statement timeout'])expect(isResetLockError(new Error(message))).toBe(false);
   });
   it('never treats a missing-cause wrapper SQL string as a lock error',()=>{
     expect(isResetLockError(new DrizzleQueryError('TRUNCATE lock_timeout_log',[],undefined))).toBe(false);

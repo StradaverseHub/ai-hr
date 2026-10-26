@@ -1,5 +1,5 @@
 import { JourneyDraftProvider } from '../lib/journey-drafts';
-import { CompanyConnectionProvider, useCompanyConnection } from '../lib/company-connection';
+import { CompanyConnectionProvider, WorkplaceReviewBoundary, useCompanyConnection } from '../lib/company-connection';
 import { TenantDesignProvider, useTenantDesign } from '../lib/design';
 import { Stack, router } from 'expo-router';
 import { useEffect } from 'react';
@@ -47,7 +47,7 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <CompanyConnectionProvider><SessionProvider>
         <StatusBar style="dark" />
-        <JourneyDraftProvider><Gate /></JourneyDraftProvider>
+        <JourneyDraftProvider><WorkplaceReviewBoundary><Gate /></WorkplaceReviewBoundary></JourneyDraftProvider>
       </SessionProvider></CompanyConnectionProvider>
     </SafeAreaProvider>
   );
