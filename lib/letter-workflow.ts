@@ -5,6 +5,12 @@ export type LetterCapability=typeof LETTER_CAPABILITIES[number];
 export const LETTER_STATES=['draft','submitted','returned','rejected','approved','issued','void','withdrawn'] as const;
 export type LetterState=typeof LETTER_STATES[number];
 export type LetterAcknowledgementMode='none'|'acknowledge'|'signature';
+export type LetterTemplatePresentation={letterheadAssetId:string|null;signatoryUserId:string};
+/** A template's approved presentation is independent of later reference/retention/reminder settings. */
+export function validateLetterTemplatePresentation(input:unknown):LetterTemplatePresentation{
+ const parsed=z.object({letterheadAssetId:z.uuid().nullable(),signatoryUserId:z.uuid()}).strict().safeParse(input);
+ if(!parsed.success)throw new LetterWorkflowError('invalid','presentation');return parsed.data;
+}
 export type LetterPolicy={
  version:1;stages:{key:string;label:string;userIds:string[];allowDelegation:boolean}[];
  signatoryUserId:string;signingMode:'authenticated'|'stamp';signatureAssetId:string|null;letterheadAssetId:string|null;

@@ -1,11 +1,15 @@
 import {describe,expect,it} from 'vitest';
 import {randomUUID} from 'node:crypto';
-import {validateLetterPolicy,letterReference,letterStageDecision,assertLetterAcknowledgement,type LetterPolicy,type LetterWorkflowHead} from '../lib/letter-workflow';
+import {validateLetterPolicy,validateLetterTemplatePresentation,letterReference,letterStageDecision,assertLetterAcknowledgement,type LetterPolicy,type LetterWorkflowHead} from '../lib/letter-workflow';
 const creator=randomUUID(),officer=randomUUID(),manager=randomUUID(),signatory=randomUUID();
 const policy:LetterPolicy={version:1,stages:[{key:'officer',label:'HR Officer',userIds:[officer],allowDelegation:true},{key:'manager',label:'HR Manager',userIds:[manager],allowDelegation:true},{key:'signatory',label:'Authorised Signatory',userIds:[signatory],allowDelegation:false}],signatoryUserId:signatory,signingMode:'authenticated',signatureAssetId:null,letterheadAssetId:null,referenceFormat:'HR/{YYYY}/{SEQ:6}',retentionDays:365,sensitiveLinkMinutes:15,acknowledgement:'acknowledge',approvalDueHours:48,acknowledgementDueDays:7,reminderHours:24,escalationUserId:manager,portalNotifications:true,emailNotifications:false};
 const head:LetterWorkflowHead={state:'submitted',revisionId:randomUUID(),lockVersion:1,stageIndex:0,createdBy:creator};
 const input=(actorId:string,changes:Record<string,unknown>={})=>({actorId,expectedRevisionId:head.revisionId,expectedLockVersion:1,decision:{action:'approve' as const,comment:'',confirmSignature:false},...changes});
 describe('configured letter approval and exact-artifact acknowledgement',()=>{
+ it('accepts only immutable asset and signatory identities in template presentation',()=>{
+  expect(validateLetterTemplatePresentation({letterheadAssetId:null,signatoryUserId:signatory})).toEqual({letterheadAssetId:null,signatoryUserId:signatory});
+  for(const value of [{letterheadAssetId:'https://outside.fixture.test/head.png',signatoryUserId:signatory},{letterheadAssetId:null,signatoryUserId:signatory,signatureImage:'private bytes'},{letterheadAssetId:null,signatoryUserId:null}])expect(()=>validateLetterTemplatePresentation(value)).toThrow('presentation');
+ });
  it('validates a configured ordered chain and requires an individual final signatory',()=>{
   expect(validateLetterPolicy(policy)).toEqual(policy);expect(()=>validateLetterPolicy({...policy,stages:[...policy.stages.slice(0,2),{...policy.stages[2],allowDelegation:true}]})).toThrow('signatoryStage');expect(()=>validateLetterPolicy({...policy,signingMode:'stamp'})).toThrow('signatureAsset');
  });

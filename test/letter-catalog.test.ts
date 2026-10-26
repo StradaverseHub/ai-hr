@@ -2,7 +2,7 @@ import {afterAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {and,asc,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
-import {saveLetterField,saveLetterTemplate,decideLetterTemplate,setLetterTemplateActive,saveLetterPolicy,saveLetterPermission,addLetterAsset,letterAssetChoices,listLetterFields,letterCompanyAccess,listLetterTemplates,getLetterTemplate,listLetterTemplateVersions,previewLetterTemplate,letterFieldDependencies,letterPolicyHistory,getLetterField,letterFieldHistory} from '../core/letters';
+import {saveLetterField,saveLetterTemplate,decideLetterTemplate,setLetterTemplateActive,saveLetterPolicy,saveLetterPermission,addLetterAsset,letterAssetChoices,listLetterFields,letterCompanyAccess,listLetterTemplates,getLetterTemplate,listLetterTemplateVersions,previewLetterTemplate,letterFieldDependencies,letterPolicyHistory,getLetterField,letterFieldHistory,listLetterTemplateHeads,listLetterSignatories} from '../core/letters';
 import {hireEmployee} from '../core/org';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {LetterPolicy} from '../lib/letter-workflow';
@@ -45,6 +45,21 @@ describe('versioned Letters configuration and template owner',()=>{
  });
  it('requires a configured public verification origin before enabling an issuance policy',async()=>{
   vi.stubEnv('NEXT_PUBLIC_WORKOS_REDIRECT_URI','');await expect(saveLetterPolicy(author,{companyId:b.companyId,category:'confirmation',enabled:true,policy:policy()})).rejects.toMatchObject({code:'configuration',detail:'publicOrigin'});expect(await owner.db.select().from(s.letterPolicyVersion)).toHaveLength(0);
+ });
+
+ it('binds presentation to eligible company signers and immutable letterhead assets',async()=>{
+  const mapping=await saveLetterField(author,{companyId:b.companyId,definition:field,active:true}),content=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jh2kAAAAASUVORK5CYII=','base64');
+  const head=await addLetterAsset(author,{companyId:b.companyId,kind:'letterhead',name:'Fictional letterhead',content}),signature=await addLetterAsset(approver,{companyId:b.companyId,kind:'signature',name:'Private signature',content});
+  expect((await listLetterTemplateHeads(author,{companyId:b.companyId})).rows).toEqual([{id:head.id,name:'Fictional letterhead'}]);
+  const signers=await listLetterSignatories(author,{companyId:b.companyId,search:'Fictional letter approver',limit:1});expect(signers.rows).toEqual([{id:approver.userId!,name:'Fictional letter approver'}]);expect(signers.nextCursor).toBeNull();
+  const input={companyId:b.companyId,code:'PRESENTATION',name:'Presented letter',category:'confirmation',effectiveFrom:todayInKualaLumpur(),document,fieldVersionIds:[mapping.id]},presentation={letterheadAssetId:head.id,signatoryUserId:approver.userId!};
+  const saved=await saveLetterTemplate(author,{...input,presentation});expect(await getLetterTemplate(author,saved.versionId)).toMatchObject({version:{presentation}});
+  await expect(saveLetterTemplate(author,{...input,code:'SIGNATURE',presentation:{...presentation,letterheadAssetId:signature.id}})).rejects.toMatchObject({code:'configuration',detail:'letterhead'});
+  await expect(withTenant(author,tx=>tx.insert(s.letterTemplateVersion).values({tenantId:b.tenantId,companyId:b.companyId,templateId:saved.templateId,ordinal:2,name:input.name,category:input.category,document:document as (typeof s.letterTemplateVersion.$inferInsert)['document'],effectiveFrom:input.effectiveFrom,createdBy:author.userId!,presentation:{...presentation,letterheadAssetId:signature.id}})))).rejects.toMatchObject({cause:{code:'23514'}});
+  await expect(withTenant(author,tx=>tx.update(s.letterTemplateVersion).set({presentation:{...presentation,letterheadAssetId:null}}).where(eq(s.letterTemplateVersion.id,saved.versionId)))).rejects.toMatchObject({cause:{message:expect.stringMatching(/immutable/)}});
+  await saveLetterPermission(author,{companyId:b.companyId,role:'hr_admin',capability:'approve',allowed:false});
+  expect((await listLetterSignatories(author,{companyId:b.companyId})).rows).toEqual([]);
+  await expect(saveLetterTemplate(author,{...input,code:'INELIGIBLE',presentation})).rejects.toMatchObject({code:'configuration',detail:'signatory'});expect(await owner.db.select().from(s.letterTemplateVersion)).toHaveLength(1);
  });
  it('requires a separate template approver and preserves the exact approved version when editing',async()=>{
   const first=await draft();expect((await owner.db.select().from(s.letterTemplateVersion))[0].status).toBe('draft');

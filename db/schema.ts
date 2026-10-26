@@ -10930,6 +10930,7 @@ export const letterTemplate=pgTable('letter_template',{
 export const letterTemplateVersion=pgTable('letter_template_version',{
  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),templateId:uuid('template_id').notNull().references(()=>letterTemplate.id),ordinal:integer('ordinal').notNull(),
  name:text('name').notNull(),category:text('category').notNull(),document:jsonb('document').notNull().$type<import('../lib/letter-model').LetterDocument>(),effectiveFrom:date('effective_from').notNull(),
+ presentation:jsonb('presentation').$type<import('../lib/letter-workflow').LetterTemplatePresentation>(),
  status:text('status').notNull().$type<'draft'|'submitted'|'approved'|'rejected'>().default('draft'),createdBy:uuid('created_by').notNull().references(()=>appUser.id),approvedBy:uuid('approved_by').references(()=>appUser.id),approvedAt:timestamp('approved_at',{withTimezone:true}),createdAt:createdAt(),
 },t=>[uniqueIndex('letter_template_version_uq').on(t.templateId,t.ordinal)]);
 export const letterTemplateField=pgTable('letter_template_field',{

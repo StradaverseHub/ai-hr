@@ -1,9 +1,10 @@
 import {afterAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {randomUUID,createHash} from 'node:crypto';
 import {and,asc,eq} from 'drizzle-orm';
+import {PDFDocument,PDFRawStream,PDFName} from 'pdf-lib';
 import * as s from '../db/schema';
 import type {SessionContext} from '../db/client';
-import {saveLetterField,saveLetterTemplate,decideLetterTemplate,saveLetterPolicy,createLetterDraftBatch,getLetterGenerationBatch,refreshLetterDraft,submitLetterBatch,setLetterTemplateActive,withdrawLetterDraft,decideLetter,issueLetter,voidLetter,listMyLetters,getMyLetter,createMyLetterAccess,downloadMyLetter,acknowledgeMyLetter,listLetterRegister,listLetterApprovalQueue,getStaffLetter,letterAudit,downloadStaffLetter,bulkDecideLetters,setLetterRetention,getLetterTemplate,readLetterReport,saveLetterPermission,letterReportDepartments} from '../core/letters';
+import {saveLetterField,saveLetterTemplate,decideLetterTemplate,saveLetterPolicy,createLetterDraftBatch,getLetterGenerationBatch,refreshLetterDraft,submitLetterBatch,setLetterTemplateActive,withdrawLetterDraft,decideLetter,issueLetter,voidLetter,listMyLetters,getMyLetter,createMyLetterAccess,downloadMyLetter,acknowledgeMyLetter,listLetterRegister,listLetterApprovalQueue,getStaffLetter,letterAudit,downloadStaffLetter,bulkDecideLetters,setLetterRetention,getLetterTemplate,readLetterReport,saveLetterPermission,letterReportDepartments,addLetterAsset} from '../core/letters';
 import {getEmployeeDocument,updateEmployeeDocumentMeta,deleteEmployeeDocument} from '../core/employee-documents';
 import {client} from '../db/client';
 import {hireEmployee} from '../core/org';
@@ -26,6 +27,22 @@ beforeEach(async()=>{
  await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',policy,enabled:true});
 });afterAll(async()=>{vi.unstubAllEnvs();await closeAll();});
 describe('letter generation snapshots and complete-batch readiness',()=>{
+
+ it('preserves approved presentation while taking current workflow settings and refuses a changed final signatory',async()=>{
+  const original=(await getLetterTemplate(ctx,templateVersionId))!,presentation={letterheadAssetId:null,signatoryUserId:reviewer.userId!};
+  const next=await saveLetterTemplate(ctx,{companyId:b.companyId,templateId,expectedRevision:templateRevision,code:original.root.code,name:original.version.name,category:original.version.category,effectiveFrom:today(),document:original.version.document,fieldVersionIds:original.fields.map(field=>field.id),presentation});
+  await decideLetterTemplate(ctx,{versionId:next.versionId,expectedStatus:'draft',action:'submit'});await decideLetterTemplate(reviewer,{versionId:next.versionId,expectedStatus:'submitted',action:'approve'});
+  const [previousPolicy]=await owner.db.select().from(s.letterPolicyVersion),content=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jh2kAAAAASUVORK5CYII=','base64'),head=await addLetterAsset(ctx,{companyId:b.companyId,kind:'letterhead',name:'New company default',content});
+  const settings=await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',enabled:true,policy:{...previousPolicy.policy,letterheadAssetId:head.id,retentionDays:548,referenceFormat:'NEW/{YYYY}/{SEQ:6}'}});
+  const batch=await createLetterDraftBatch(ctx,{companyId:b.companyId,templateVersionId:next.versionId,employmentIds:[employees[0]],customValues:custom([employees[0]]),operationKey:randomUUID()});await submitLetterBatch(ctx,batch.batchId);
+  const data=(await getLetterGenerationBatch(ctx,batch.batchId))!,row=data.rows[0];expect(data.batch.policyVersionId).toBe(settings.id);expect(row.record.reference).toMatch(/^NEW\//);expect(row.record.retainUntil).toBe(new Date(Date.parse(today()+'T00:00:00Z')+548*86400000).toISOString().slice(0,10));
+  const decision=await decideLetter(reviewer,{letterId:row.record.id,expectedRevisionId:row.revision!.id,expectedLockVersion:row.record.lockVersion,decision:{action:'approve',comment:'Reviewed the approved presentation',confirmSignature:true}}),[artifact]=await owner.db.select().from(s.letterArtifact).where(eq(s.letterArtifact.id,decision.artifactId!));
+  const pdf=await PDFDocument.load(artifact.content),images=pdf.context.enumerateIndirectObjects().filter(([,object])=>object instanceof PDFRawStream&&object.dict.get(PDFName.of('Subtype'))===PDFName.of('Image'));expect(images).toHaveLength(1); // QR only: the template explicitly selected no letterhead.
+  expect((await getLetterTemplate(ctx,next.versionId))!.version.presentation).toEqual(presentation);
+  const [otherPerson]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional replacement signer'}).returning(),other=await createAppUser(b.tenantId,otherPerson.id,'hr_admin');
+  await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',enabled:true,policy:{...previousPolicy.policy,signatoryUserId:other,stages:[{key:'signatory',label:'Replacement signer',userIds:[other],allowDelegation:false}]}});
+  await expect(createLetterDraftBatch(ctx,{companyId:b.companyId,templateVersionId:next.versionId,employmentIds:[employees[1]],customValues:custom([employees[1]]),operationKey:randomUUID()})).rejects.toMatchObject({code:'configuration',detail:'templateSignatory'});expect(await owner.db.select().from(s.letterGenerationBatch)).toHaveLength(1);
+ });
  it('uses the current effective approved version for new batches and preserves an in-flight older snapshot',async()=>{
   const original=await getLetterTemplate(ctx,templateVersionId),created=await createLetterDraftBatch(ctx,{companyId:b.companyId,templateVersionId,employmentIds:[employees[0]],customValues:custom([employees[0]]),operationKey:randomUUID()}),before=(await getLetterGenerationBatch(ctx,created.batchId))!.rows[0].revision;
   const next=await saveLetterTemplate(ctx,{companyId:b.companyId,templateId,expectedRevision:templateRevision,code:'GENERATION',name:'Version two',category:'confirmation',effectiveFrom:today(),document:original!.version.document,fieldVersionIds:original!.fields.map(field=>field.id)});await decideLetterTemplate(ctx,{versionId:next.versionId,expectedStatus:'draft',action:'submit'});await decideLetterTemplate(reviewer,{versionId:next.versionId,expectedStatus:'submitted',action:'approve'});

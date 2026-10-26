@@ -10,7 +10,7 @@ import {lockPayrollHistoryReadTx} from './payroll-history-lock';
 import {isModuleEnabled} from './entitlements';
 import {validateLetterFields,validateLetterDocument,usedLetterFields,renderLetterDocument,LetterModelError,type LetterField,type LetterValue,type LetterDocument} from '../lib/letter-model';
 import {letterDocumentFromEditor} from '../lib/letter-editor';
-import {LETTER_CAPABILITIES,validateLetterPolicy,LetterWorkflowError,letterReference,letterStageDecision,assertLetterAcknowledgement,type LetterCapability,type LetterStageDecision} from '../lib/letter-workflow';
+import {LETTER_CAPABILITIES,validateLetterPolicy,validateLetterTemplatePresentation,LetterWorkflowError,letterReference,letterStageDecision,assertLetterAcknowledgement,type LetterCapability,type LetterStageDecision} from '../lib/letter-workflow';
 import {renderLetterPdf} from '../lib/letter-pdf';
 import {letterVerificationUrl,letterVerificationWords} from '../lib/letter-verification';
 import {isCalendarDate} from '../lib/calendar-date';
@@ -43,6 +43,15 @@ async function lockCompany(tx:Tx,co:string){const [row]=await tx.select({id:comp
 export function letterCompanyAccess(ctx:SessionContext){return letters(ctx,false,async tx=>{
  const rows=await tx.select({id:company.id,name:company.legalName,code:company.companyLabel,currency:company.currency,read:sql<boolean>`app.letter_permission(${company.id},'read')`,template:sql<boolean>`app.letter_permission(${company.id},'template')`,generate:sql<boolean>`app.letter_permission(${company.id},'generate')`,approve:sql<boolean>`app.letter_permission(${company.id},'approve')`,issue:sql<boolean>`app.letter_permission(${company.id},'issue')`,report:sql<boolean>`app.letter_permission(${company.id},'report')`,settings:sql<boolean>`app.letter_permission(${company.id},'settings')`}).from(company).where(isNull(company.archivedAt)).orderBy(asc(company.legalName),asc(company.id));
  return rows.filter(row=>LETTER_CAPABILITIES.some(cap=>row[cap]));
+});}
+/** Pickers expose safe metadata and an explicit cursor; signature bytes never enter template forms. */
+export function listLetterTemplateHeads(ctx:SessionContext,input:{companyId:string;search?:string;cursor?:string;limit?:number}){return letters(ctx,false,async tx=>{
+ await anyPermission(tx,input.companyId,['read','template']);const limit=letterListLimit(input.limit);if(input.cursor)uuid(input.cursor);const search=input.search?.trim();if(search&&search.length>200)throw new LetterWorkflowError('invalid','search');const needle=search?'%'+search.replace(/[\\%_]/g,'\\$&')+'%':undefined;
+ const rows=await tx.select({id:letterAsset.id,name:letterAsset.name}).from(letterAsset).where(and(eq(letterAsset.companyId,input.companyId),eq(letterAsset.kind,'letterhead'),input.cursor?gt(letterAsset.id,input.cursor):undefined,needle?ilike(letterAsset.name,needle):undefined)).orderBy(asc(letterAsset.id)).limit(limit+1);return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].id:null};
+});}
+export function listLetterSignatories(ctx:SessionContext,input:{companyId:string;search?:string;cursor?:string;limit?:number}){return letters(ctx,false,async tx=>{
+ await anyPermission(tx,input.companyId,['read','template']);const limit=letterListLimit(input.limit);if(input.cursor)uuid(input.cursor);const search=input.search?.trim();if(search&&search.length>200)throw new LetterWorkflowError('invalid','search');const needle=search?'%'+search.replace(/[\\%_]/g,'\\$&')+'%':null;
+ const rows=await tx.execute<{id:string;name:string}>(sql`select * from app.letter_signatory_choices(${input.companyId}::uuid,${input.cursor??null}::uuid,${needle},${limit+1})`);return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].id:null};
 });}
 export function saveLetterPermission(ctx:SessionContext,input:{companyId:string;capability:LetterCapability;role:string;allowed:boolean}){return letters(ctx,true,async tx=>{
  await permission(tx,input.companyId,'settings');await lockCompany(tx,input.companyId);
@@ -94,9 +103,14 @@ async function templateFields(tx:Tx,ids:string[],co:string):Promise<{id:string;d
  if(rows.some(row=>row.definition.sensitive)){const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.can_admin_payroll_for(${co}::uuid) as ok`);if(!allowed?.ok)throw new LetterWorkflowError('permission');}return rows;
 }
 type LetterTemplateContent={document:unknown;editor?:never;language?:never}|{editor:unknown;language:LetterDocument['language'];document?:never};
-export function saveLetterTemplate(ctx:SessionContext,input:{companyId:string;templateId?:string;expectedRevision?:number;code:string;name:string;category:string;effectiveFrom:string;fieldVersionIds:string[]}&LetterTemplateContent){return letters(ctx,true,async tx=>{
+export function saveLetterTemplate(ctx:SessionContext,input:{companyId:string;templateId?:string;expectedRevision?:number;code:string;name:string;category:string;effectiveFrom:string;fieldVersionIds:string[];presentation?:unknown}&LetterTemplateContent){return letters(ctx,true,async tx=>{
  await permission(tx,input.companyId,'template');await lockCompany(tx,input.companyId);if(!isCalendarDate(input.effectiveFrom))throw new LetterWorkflowError('invalid','effectiveFrom');
  if('editor' in input&&'document' in input)throw new LetterWorkflowError('invalid','document');
+ const presentation=input.presentation===undefined?null:validateLetterTemplatePresentation(input.presentation);
+ if(presentation){
+  const [signer]=await tx.execute<{ok:boolean}>(sql`select app.letter_permission_for_user(${presentation.signatoryUserId}::uuid,${input.companyId}::uuid,'read') and app.letter_permission_for_user(${presentation.signatoryUserId}::uuid,${input.companyId}::uuid,'approve') as ok`);if(!signer?.ok)throw new LetterWorkflowError('configuration','signatory');
+  if(presentation.letterheadAssetId){const [head]=await tx.select({id:letterAsset.id}).from(letterAsset).where(and(eq(letterAsset.id,presentation.letterheadAssetId),eq(letterAsset.companyId,input.companyId),eq(letterAsset.kind,'letterhead')));if(!head)throw new LetterWorkflowError('configuration','letterhead');}
+ }
  const fields=await templateFields(tx,input.fieldVersionIds,input.companyId),definitions=fields.map(row=>row.definition);
  // Resolve editor tokens against fresh scoped mappings inside the same transaction as the version write.
  const document=input.editor!==undefined?letterDocumentFromEditor(input.editor,definitions,input.language!):validateLetterDocument(input.document,definitions),used=new Set(usedLetterFields(document));
@@ -104,7 +118,7 @@ export function saveLetterTemplate(ctx:SessionContext,input:{companyId:string;te
  if(input.templateId){const [found]=await tx.select().from(letterTemplate).where(and(eq(letterTemplate.id,uuid(input.templateId)),eq(letterTemplate.companyId,input.companyId))).for('update');if(!found||found.revision!==input.expectedRevision)throw new LetterWorkflowError('stale');root=found;}
  else{[root]=await tx.insert(letterTemplate).values({tenantId:ctx.tenantId,companyId:input.companyId,code:text(input.code,80),createdBy:ctx.userId!}).returning();}
  const [latest]=await tx.select({ordinal:letterTemplateVersion.ordinal}).from(letterTemplateVersion).where(eq(letterTemplateVersion.templateId,root.id)).orderBy(desc(letterTemplateVersion.ordinal)).limit(1);
- const [version]=await tx.insert(letterTemplateVersion).values({tenantId:ctx.tenantId,companyId:input.companyId,templateId:root.id,ordinal:(latest?.ordinal??0)+1,name:text(input.name,200),category:text(input.category,100),document,effectiveFrom:input.effectiveFrom,createdBy:ctx.userId!}).returning();
+ const [version]=await tx.insert(letterTemplateVersion).values({tenantId:ctx.tenantId,companyId:input.companyId,templateId:root.id,ordinal:(latest?.ordinal??0)+1,name:text(input.name,200),category:text(input.category,100),document,presentation,effectiveFrom:input.effectiveFrom,createdBy:ctx.userId!}).returning();
  const bindings=fields.filter(field=>used.has(field.definition.key));if(bindings.length)await tx.insert(letterTemplateField).values(bindings.map(field=>({tenantId:ctx.tenantId,templateVersionId:version.id,fieldVersionId:field.id})));
  await tx.update(letterTemplate).set({revision:root.revision+1}).where(eq(letterTemplate.id,root.id));
  await event(tx,ctx,root.id,'template.versioned',{companyId:input.companyId,versionId:version.id,ordinal:version.ordinal});return {templateId:root.id,versionId:version.id,revision:root.revision+1};
@@ -200,6 +214,7 @@ export function createLetterDraftBatch(ctx:SessionContext,input:{companyId:strin
  const template=await generationTemplate(tx,input.companyId,input.templateVersionId,true,true);
  const [configured]=await tx.select().from(letterPolicyVersion).where(and(eq(letterPolicyVersion.companyId,input.companyId),eq(letterPolicyVersion.category,template.version.category))).orderBy(desc(letterPolicyVersion.ordinal)).limit(1);
  if(!configured?.enabled)throw new LetterWorkflowError('configuration','policy');const policy=validateLetterPolicy(configured.policy);
+ if(template.version.presentation&&template.version.presentation.signatoryUserId!==policy.signatoryUserId)throw new LetterWorkflowError('configuration','templateSignatory');
  await assertLetterChain(tx,input.companyId,policy,ctx.userId!);
  // Validate every selected identity before creating any draft; unknown and foreign identities are identical refusals.
  for(const id of ids){await assertWorkforceEmploymentTx(tx,ctx,id,'view');const [row]=await tx.select({id:employment.id}).from(employment).where(and(eq(employment.id,id),eq(employment.companyId,input.companyId))).for('share');if(!row)throw new LetterWorkflowError('permission');}
@@ -275,7 +290,7 @@ async function decideLetterTx(ctx:SessionContext,tx:Tx,input:LetterDecisionInput
   async function asset(id:string|null,kind:'signature'|'letterhead'){
    if(!id)return undefined;const [row]=await tx.select().from(letterAsset).where(and(eq(letterAsset.id,id),eq(letterAsset.companyId,record.companyId),eq(letterAsset.kind,kind)));if(!row||kind==='signature'&&row.ownerUserId!==ctx.userId!||hash(row.content)!==row.contentHash)throw new LetterWorkflowError('configuration','asset');return row.content;
   }
-  const stamp=await asset(policy.signatureAssetId,'signature'),letterhead=await asset(policy.letterheadAssetId,'letterhead');
+  const stamp=await asset(policy.signatureAssetId,'signature'),letterhead=await asset(template.presentation?template.presentation.letterheadAssetId:policy.letterheadAssetId,'letterhead');
   if(policy.signingMode==='stamp'&&!stamp)throw new LetterWorkflowError('configuration','signatureAsset');
   const language=revision.document.language,timestamp=new Intl.DateTimeFormat(language,{dateStyle:'long',timeStyle:'long',timeZone:'Asia/Kuala_Lumpur'}).format(decision.createdAt);
   const verificationToken=randomBytes(32).toString('base64url'),verificationUrl=letterVerificationUrl(verificationToken,language);

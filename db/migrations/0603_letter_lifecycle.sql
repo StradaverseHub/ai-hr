@@ -35,7 +35,7 @@ CREATE TABLE letter_template (
 --> statement-breakpoint
 CREATE TABLE letter_template_version (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),company_id uuid NOT NULL REFERENCES company(id),template_id uuid NOT NULL REFERENCES letter_template(id),ordinal integer NOT NULL CHECK(ordinal>0),
- name text NOT NULL CHECK(length(name) BETWEEN 1 AND 200),category text NOT NULL CHECK(length(category) BETWEEN 1 AND 100),document jsonb NOT NULL,effective_from date NOT NULL,
+ name text NOT NULL CHECK(length(name) BETWEEN 1 AND 200),category text NOT NULL CHECK(length(category) BETWEEN 1 AND 100),document jsonb NOT NULL,effective_from date NOT NULL,presentation jsonb,
  status text NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','submitted','approved','rejected')),created_by uuid NOT NULL REFERENCES app_user(id),approved_by uuid REFERENCES app_user(id),approved_at timestamptz,created_at timestamptz NOT NULL DEFAULT now(),CONSTRAINT letter_template_version_uq UNIQUE(template_id,ordinal)
 );
 --> statement-breakpoint
@@ -97,7 +97,7 @@ CREATE INDEX letter_record_scope_idx ON letter_record(tenant_id,company_id,emplo
 --> statement-breakpoint
 CREATE FUNCTION app.letter_permission_for_user(subject uuid,co uuid,cap text) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
- SELECT cap IN ('read','template','generate','approve','issue','report','settings') AND EXISTS(SELECT 1 FROM public.company c JOIN public.app_user u ON u.tenant_id=c.tenant_id AND u.id=subject AND u.archived_at IS NULL
+ SELECT cap IN ('read','template','generate','approve','issue','report','settings') AND EXISTS(SELECT 1 FROM public.company c JOIN public.app_user u ON u.tenant_id=c.tenant_id AND u.id=subject AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
   WHERE c.id=co AND c.tenant_id=app.current_tenant_id() AND c.archived_at IS NULL
   AND EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=c.tenant_id AND r.app_user_id=u.id AND (r.company_id IS NULL OR r.company_id=c.id)
     AND coalesce((SELECT g.allowed FROM public.letter_capability_grant g WHERE g.tenant_id=c.tenant_id AND g.company_id=c.id AND g.capability=cap AND g.role=r.role::text),r.role::text IN ('super_admin','hr_admin'))))
@@ -283,6 +283,16 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'Letter template identity mismatch';END IF;
   SELECT coalesce(max(x.ordinal),0)+1 INTO next_ordinal FROM public.letter_template_version x WHERE x.template_id=NEW.template_id;
   IF NEW.ordinal<>next_ordinal OR NEW.status<>'draft' OR NEW.approved_by IS NOT NULL OR NEW.approved_at IS NOT NULL THEN RAISE EXCEPTION 'Create a fresh letter template draft';END IF;
+  IF NEW.presentation IS NOT NULL THEN
+   IF jsonb_typeof(NEW.presentation)<>'object' OR (SELECT count(*) FROM jsonb_object_keys(NEW.presentation))<>2
+    OR NOT (NEW.presentation ?& ARRAY['letterheadAssetId','signatoryUserId']) OR jsonb_typeof(NEW.presentation->'signatoryUserId')<>'string'
+    OR jsonb_typeof(NEW.presentation->'letterheadAssetId') NOT IN ('string','null')
+   THEN RAISE EXCEPTION 'Invalid letter presentation' USING ERRCODE='check_violation';END IF;
+   IF NOT app.letter_permission_for_user((NEW.presentation->>'signatoryUserId')::uuid,NEW.company_id,'approve')
+    OR NOT app.letter_permission_for_user((NEW.presentation->>'signatoryUserId')::uuid,NEW.company_id,'read')
+    OR (NEW.presentation->>'letterheadAssetId' IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.letter_asset a WHERE a.id=(NEW.presentation->>'letterheadAssetId')::uuid AND a.tenant_id=NEW.tenant_id AND a.company_id=NEW.company_id AND a.kind='letterhead'))
+   THEN RAISE EXCEPTION 'Letter presentation identity mismatch' USING ERRCODE='check_violation';END IF;
+  END IF;
  ELSIF TG_TABLE_NAME='letter_template_field' THEN
   IF NOT EXISTS(SELECT 1 FROM public.letter_template_version x JOIN public.letter_merge_field_version f ON f.id=NEW.field_version_id WHERE x.id=NEW.template_version_id AND x.tenant_id=NEW.tenant_id AND f.tenant_id=x.tenant_id AND f.company_id=x.company_id AND x.status='draft' AND f.active AND f.id=app.letter_field_latest_version(x.company_id,f.key) AND (NOT coalesce((f.definition->>'sensitive')::boolean,true) OR app.can_admin_payroll_for(x.company_id))) THEN RAISE EXCEPTION 'Letter field binding mismatch';END IF;
  ELSIF TG_TABLE_NAME='letter_generation_batch' THEN
@@ -290,6 +300,7 @@ BEGIN
   SELECT * INTO p FROM public.letter_policy_version WHERE id=NEW.policy_version_id;
   IF v.id IS NULL OR p.id IS NULL OR v.tenant_id<>NEW.tenant_id OR p.tenant_id<>NEW.tenant_id OR v.company_id<>NEW.company_id OR p.company_id<>NEW.company_id OR p.category<>v.category OR NOT p.enabled OR v.status<>'approved'
    OR v.effective_from>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date OR EXISTS(SELECT 1 FROM public.letter_template t WHERE t.id=v.template_id AND t.deactivated)
+   OR (v.presentation IS NOT NULL AND v.presentation->>'signatoryUserId' IS DISTINCT FROM p.policy->>'signatoryUserId')
    OR EXISTS(SELECT 1 FROM public.letter_template_version n WHERE n.template_id=v.template_id AND n.status='approved' AND n.effective_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND n.ordinal>v.ordinal)
   THEN RAISE EXCEPTION 'An effective approved template and configured policy are required';END IF;
   IF NEW.source_event_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.domain_event e WHERE e.id=NEW.source_event_id AND e.tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'Letter source event mismatch';END IF;
@@ -542,3 +553,17 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
 $$;
 REVOKE ALL ON FUNCTION app.letter_field_in_use(uuid,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.letter_field_in_use(uuid,text) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Purpose-limited picker: names of eligible signers, never login subjects or signature bytes.
+CREATE FUNCTION app.letter_signatory_choices(co uuid,after_id uuid,wanted_search text,row_limit integer)
+RETURNS TABLE(id uuid,name text) LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT u.id,p.full_name FROM public.app_user u JOIN public.person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id
+ WHERE u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+ AND (app.letter_permission(co,'template') OR app.letter_permission(co,'read'))
+ AND app.letter_permission_for_user(u.id,co,'read') AND app.letter_permission_for_user(u.id,co,'approve')
+ AND (after_id IS NULL OR u.id>after_id) AND (wanted_search IS NULL OR p.full_name ILIKE wanted_search)
+ ORDER BY u.id LIMIT greatest(1,least(coalesce(row_limit,101),101))
+$$;
+REVOKE ALL ON FUNCTION app.letter_signatory_choices(uuid,uuid,text,integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_signatory_choices(uuid,uuid,text,integer) TO ai_hr_app;
