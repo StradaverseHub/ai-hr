@@ -1,18 +1,10 @@
 /** Operator-owned, one-pass maintenance only. Not an agent, app route or provider executor. */
-<<<<<<< HEAD
-import { createDb, type Tx } from '../db/client';
-import { sql } from 'drizzle-orm';
-import { retireExpiredAiCustodyTx } from '../core/ai-retention-maintenance';
-
-export async function runAiRetentionTick(owner: ReturnType<typeof createDb>) {
-=======
 import type {Tx} from '../db/client';
 import {createMaintenanceDb,type MaintenanceDatabase} from '../db/maintenance-client';
 import { sql } from 'drizzle-orm';
 import { retireExpiredAiCustodyTx } from '../core/ai-retention-maintenance';
 
 export async function runAiRetentionTick(owner: MaintenanceDatabase) {
->>>>>>> 644f3ff60 (Decouple retention runner from application database singleton [skip ci])
   return owner.db.transaction(async tx => {
     // The maintenance owner first proves physical database ownership and bounds statements. Never
     // run this aggregate with an app principal or bypass the same expired-only RLS policies.
@@ -35,15 +27,9 @@ async function main() {
   // No DATABASE_URL fallback or synthetic tenant/admin session. Provisioning owns this credential.
   const url = process.env.MIGRATION_DATABASE_URL;
   if (!url) throw new Error('AI retention maintenance could not be confirmed.');
-<<<<<<< HEAD
-  const owner = createDb(url, { max: 1 });
-  try { console.log(JSON.stringify(await runAiRetentionTick(owner))); }
-  finally { await owner.client.end({ timeout: 5 }); }
-=======
   const owner = createMaintenanceDb(url);
   try { console.log(JSON.stringify(await runAiRetentionTick(owner))); }
   finally { await owner.close(); }
->>>>>>> 644f3ff60 (Decouple retention runner from application database singleton [skip ci])
 }
 if (process.argv[1]?.endsWith('ai-retention-runner.ts')) {
   main().catch(() => { console.error('AI retention maintenance could not be confirmed.'); process.exitCode = 1; });
