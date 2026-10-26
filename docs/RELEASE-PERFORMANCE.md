@@ -6,6 +6,16 @@ Measure elapsed time from submission of a clean, frozen candidate through queuei
 
 Business, financial, authorization, tenant-isolation and data-integrity coverage remains mandatory. Include full regression whenever the validated release policy requires it. A focused development check is useful evidence about its selected scope, not proof of the complete release goal. Keep main/live deployment disabled until its separate installation is ready.
 
+## Current hosted setup result and budget — 26 October MYT
+
+The owner reaffirmed that this efficiency chat runs/tests with `gh`-dispatched GitHub-hosted Actions and does not wait for Mac slots. Mobile retains its local runtime and staging release window. The separate local optimization requirement remains open.
+
+[Setup-only40272063969](https://github.com/StradaverseHub/ai-hr/actions/runs/40272063969), exact source/controllera629b54a0e5111203d5a4fbf87578d048519baf5, passed real normal full dependency setup and290 controller controls. Conditional cleanup took42.643 s versus the earlier separate99.027 s observation, retaining25.36 GiB after all web/mobile dependencies and leaving the test20 GiB admission unchanged. Complete diagnostic submission-to-last-job was155.461389 s;152 occupied runner-seconds is not a bill. No app tests, compiler, build, database, staging mutation or Mac slot. [Contract, provenance and limits](CI-BUILD-EFFICIENCY.md#capacity-aware-normal-suite-preparation--hosted-setup-verified-full-gate-pending).
+
+Fresh pre-pilot billing UI supersedes the historical values below: **2,902/3,000 included minutes used,98 remaining and0 USD billable**, reset6 days away. Preserve included standard capacity; an old full matrix's approximately293 occupied minutes would exceed that remainder. No paid setting or token scope was changed.
+
+Read-only analysis of the authentic failed40188791293 reports found981 unique reported DB files, with historical file intervals of1,032.173 s for the original attendance monolith,609.756 s for r395 write-path equivalence and536.639 s for onehr service. Summed file intervals16,520.691 s overlap workers and are not workflow wall time. These are old-candidate observations, not current lower bounds or current PASS evidence. Current attendance split/fixture work has separate legitimate paired results below. The remaining database critical path needs isolated query/test scheduling measurements and adoption of actual peer reset repair; faster setup alone does not establish the ten-minute release goal. Do not manufacture a full baseline or repeat authentic completed passes blindly.
+
 ## Canonical application build/cache measured — 26 October MYT
 
 [Fresh-runner warm 40251838329](https://github.com/StradaverseHub/ai-hr/actions/runs/40251838329) genuinely passed the canonical production build in 191.107 s, versus 297.573 s in the retained original successful build phase. The first workflow40250429043 remains FAILURE because its later plain-Node20 collector could not import a typed helper; that original failure is preserved. A real old-RED/new-GREEN typed-import launcher check now runs before expensive work. Missing graph data was regenerated with only the actual application compiler in 130.168 s/run40251477042, without repeating the cold production build. Normal main/alpha release source was not changed.
