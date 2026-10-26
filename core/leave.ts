@@ -6,7 +6,7 @@ import type {AssignedApprovalMetadata} from '../lib/assigned-work';
  */
 // `isNotNull` and `ne` left with the expireAgedLeave sweep (c459bff9) — it was the only caller of either.
 import { aliasedTable, and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, lte, or, sql, type SQL } from 'drizzle-orm';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import {cancellationSplitGroupSql} from './leave-group-origin-sql';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { lockAccessConfigurationTx } from './access-configuration-lock';
@@ -5611,6 +5611,7 @@ async function finalizeLeaveApproval(
   mixed = false,
   perDateOutcome?: PerDateOutcome,
   payrollChangedDates?: readonly string[],
+  returnEventId = false,
 ) {
   // Unpaid-leave payroll-impact: fetch the type's code + payroll-signal gate once — plus (cdf9ca48) the
   // balance source, which the gate and the debit below both need. Both approval paths (multi-step final
@@ -5777,7 +5778,7 @@ async function finalizeLeaveApproval(
       effectiveOn: req.startDate,
     });
   }
-  await appendEvent(tx, {
+  return appendEvent(tx, {
     tenantId: ctx.tenantId,
     aggregateType: 'leave-request',
     aggregateId: req.id,
@@ -5814,7 +5815,7 @@ async function finalizeLeaveApproval(
           }
         : {}),
     },
-  });
+  }, { returnId: returnEventId });
 }
 
 /** Terminal rejection: status flip + event (no ledger write). */
@@ -5824,12 +5825,13 @@ async function finalizeLeaveRejection(
   req: DecidableLeave,
   deciderEmploymentId?: string,
   extra?: Record<string, unknown>,
+  returnEventId = false,
 ) {
   await tx
     .update(leaveRequest)
     .set({ status: 'rejected', decidedByEmploymentId: deciderEmploymentId ?? null, decidedAt: sql`now()` })
     .where(eq(leaveRequest.id, req.id));
-  await appendEvent(tx, {
+  return appendEvent(tx, {
     tenantId: ctx.tenantId,
     aggregateType: 'leave-request',
     aggregateId: req.id,
@@ -5837,7 +5839,7 @@ async function finalizeLeaveRejection(
     actor: actorOf(ctx),
     subjectEmploymentId: req.employmentId,
     payload: { decision: 'rejected', deciderEmploymentId: deciderEmploymentId ?? null, ...(extra ?? {}) },
-  });
+  }, { returnId: returnEventId });
 }
 
 /**
@@ -5955,6 +5957,8 @@ export async function decideLeave(
     rejectReason?: string;
   },
 ) {
+  p = structuredClone(p);
+  ctx = captureLeaveDecisionContext(ctx);
   // Partial Leave Approval (0131): refuse a blank reject reason BEFORE opening the transaction, so a missing
   // reason persists nothing (no status flip, no ledger row, no event). Trim to reject whitespace-only input.
   const rejectReason = p.rejectReason?.trim() || null;
@@ -5972,6 +5976,15 @@ export async function decideLeave(
       .where(eq(leaveApprovalStep.leaveRequestId, req.id))
       .orderBy(asc(leaveApprovalStep.stepIndex));
 
+    return decideLeaveEffectTx(tx, ctx, p, rejectReason, req, steps);
+  });
+}
+
+/** One canonical effect owner for ordinary and human-reviewed decisions. Supplied rows are locked by
+ * the caller in this SAME transaction; this is not an exported callback or generic effect executor. */
+async function decideLeaveEffectTx(tx: Tx, ctx: SessionContext,
+ p: { decision: 'approved' | 'rejected'; deciderEmploymentId?: string }, rejectReason: string | null,
+ req: typeof leaveRequest.$inferSelect, steps: (typeof leaveApprovalStep.$inferSelect)[], returnEventId = false) {
     // Multi-step chain: decide the current step. r301 — the rule for WHICH step, WHO may clear it and WHAT
     // happens next lives in decideCurrentChainStep, shared with decideLeaveCancellation's copied chain, so
     // a cancellation walks its levels by this exact rule rather than a second copy of it.
@@ -5992,12 +6005,12 @@ export async function decideLeave(
       const { current } = stepOutcome;
       if (stepOutcome.outcome === 'rejected') {
         // Partial Leave Approval (0131): stamp the mandatory reject reason onto the rejected event payload.
-        await finalizeLeaveRejection(tx, ctx, req, p.deciderEmploymentId, { step: current.stepIndex, kind: current.approverKind, rejectReason });
-        return { status: 'rejected' as const };
+        const eventId = await finalizeLeaveRejection(tx, ctx, req, p.deciderEmploymentId, { step: current.stepIndex, kind: current.approverKind, rejectReason }, returnEventId);
+        return { status: 'rejected' as const, ...(returnEventId ? { eventId, stepId: current.id, stepIndex: current.stepIndex } : {}) };
       }
       if (stepOutcome.outcome === 'advanced') {
         const { next } = stepOutcome;
-        await appendEvent(tx, {
+        const eventId = await appendEvent(tx, {
           tenantId: ctx.tenantId,
           aggregateType: 'leave-request',
           aggregateId: req.id,
@@ -6005,20 +6018,112 @@ export async function decideLeave(
           actor: actorOf(ctx),
           subjectEmploymentId: req.employmentId,
           payload: { step: current.stepIndex, kind: current.approverKind, nextKind: next.approverKind },
-        });
-        return { status: 'pending' as const, advancedTo: next.approverKind };
+        }, { returnId: returnEventId });
+        return { status: 'pending' as const, advancedTo: next.approverKind, ...(returnEventId ? { eventId, stepId: current.id, stepIndex: current.stepIndex } : {}) };
       }
-      await finalizeLeaveApproval(tx, ctx, req, p.deciderEmploymentId);
-      return { status: 'approved' as const };
+      const eventId = await finalizeLeaveApproval(tx, ctx, req, p.deciderEmploymentId, undefined, false, undefined, undefined, returnEventId);
+      return { status: 'approved' as const, ...(returnEventId ? { eventId, stepId: current.id, stepIndex: current.stepIndex } : {}) };
     }
 
     // Single-step (no chain) — original behavior.
     await assertCanDecide(tx, ctx, req.employmentId, 'leave request', scopeOf('leave.application'));
-    if (p.decision === 'approved') await finalizeLeaveApproval(tx, ctx, req, p.deciderEmploymentId);
-    // Partial Leave Approval (0131): stamp the mandatory reject reason onto the rejected event payload.
-    else await finalizeLeaveRejection(tx, ctx, req, p.deciderEmploymentId, { rejectReason });
-    return { status: p.decision };
-  });
+    const eventId = p.decision === 'approved'
+      ? await finalizeLeaveApproval(tx, ctx, req, p.deciderEmploymentId, undefined, false, undefined, undefined, returnEventId)
+      : await finalizeLeaveRejection(tx, ctx, req, p.deciderEmploymentId, { rejectReason }, returnEventId);
+    return { status: p.decision, ...(returnEventId ? { eventId, stepId: null, stepIndex: null } : {}) };
+}
+
+/** UNMOUNTED reviewed assigned-work source. IDs nominate only; canonical authority is checked
+ * BEFORE private request facts or subject/row ownership. The enclosing human command owns this Tx. */
+export type ReviewedLeaveDecisionSelection = { leaveRequestId: string; currentStepId: string | null;
+ decision: 'approved' | 'rejected'; rejectReason: string | null };
+const captureLeaveDecisionContext = (ctx: SessionContext): SessionContext => ({ ...ctx,
+ roles: ctx.roles?.slice(), grants: ctx.grants?.map(g => ({ ...g })) });
+async function reviewedLeaveDecisionPreflightTx(tx: Tx, supplied: SessionContext, selection: ReviewedLeaveDecisionSelection) {
+ const ctx = captureLeaveDecisionContext(supplied), p = structuredClone(selection);
+ await lockAccessConfigurationTx(tx, ctx.tenantId);
+ await assertAssignedWorkPrincipalTx(tx, ctx);
+ await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
+ const nominate = async () => {
+  const [row] = await tx.select({ id: leaveRequest.id, employmentId: leaveRequest.employmentId, status: leaveRequest.status })
+   .from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
+  if (!row || row.status !== 'pending') throw new Error('Leave decision source unavailable');
+  const steps = await tx.select({ id: leaveApprovalStep.id, status: leaveApprovalStep.status, stepIndex: leaveApprovalStep.stepIndex, approverKind: leaveApprovalStep.approverKind, approverEmploymentId: leaveApprovalStep.approverEmploymentId, approverAlternates: leaveApprovalStep.approverAlternates }).from(leaveApprovalStep).where(eq(leaveApprovalStep.leaveRequestId, row.id)).orderBy(asc(leaveApprovalStep.stepIndex), asc(leaveApprovalStep.id));
+  const current = steps.find(step => step.status === 'pending');
+  if (steps.length && !current || (current?.id ?? null) !== p.currentStepId) throw new Error('Leave decision source changed');
+  if (current) await assertCanDecideLeaveStep(tx, ctx, row.employmentId, current.approverKind, 'leave request', current.approverEmploymentId, current.approverAlternates);
+  else await assertCanDecide(tx, ctx, row.employmentId, 'leave request', scopeOf('leave.application'));
+  const permittedSteps = await tx.select().from(leaveApprovalStep).where(eq(leaveApprovalStep.leaveRequestId, row.id)).orderBy(asc(leaveApprovalStep.stepIndex), asc(leaveApprovalStep.id));
+  return { row, steps: permittedSteps };
+ };
+ const before = await nominate();
+ await lockLeaveDependenciesTx(tx, ctx.tenantId, [before.row.employmentId]);
+ // NOWAIT is reviewed-only. Ordinary decision waiting/return semantics remain unchanged.
+ const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1).for('update', { noWait: true });
+ if (!req || req.employmentId !== before.row.employmentId) throw new Error('Leave decision source changed');
+ await tx.select({ id: leaveApprovalStep.id }).from(leaveApprovalStep).where(eq(leaveApprovalStep.leaveRequestId, req.id)).orderBy(asc(leaveApprovalStep.stepIndex), asc(leaveApprovalStep.id)).for('update', { noWait: true });
+ const after = await nominate();
+ if (JSON.stringify(before) !== JSON.stringify(after)) throw new Error('Leave decision source changed');
+ if (p.decision === 'rejected' && !p.rejectReason?.trim() || p.decision === 'approved' && p.rejectReason !== null) throw new MissingRejectReasonError();
+ const [type] = await tx.select({ id: leaveType.id, name: leaveType.name, balanceSourceTypeId: leaveType.balanceSourceTypeId }).from(leaveType).where(eq(leaveType.id, req.leaveTypeId)).limit(1);
+ if (!type) throw new Error('Leave decision type unavailable');
+ const balance = await leaveBalance(tx, req.employmentId, type.balanceSourceTypeId ?? req.leaveTypeId);
+ const versions = await tx.execute(sql`select q.xmin::text as request_version, t.xmin::text as type_version,
+  (select jsonb_agg(jsonb_build_array(s.id,s.xmin::text) order by s.step_index,s.id) from public.leave_approval_step s where s.leave_request_id=q.id) as step_versions
+  from public.leave_request q join public.leave_type t on t.id=q.leave_type_id where q.id=${req.id}::uuid`);
+ const current = after.steps.find(step => step.status === 'pending');
+ const review = { leaveRequestId: req.id, employmentId: req.employmentId, leaveTypeId: req.leaveTypeId,
+  leaveTypeName: type.name, startDate: req.startDate, endDate: req.endDate, days: req.days,
+  durationType: req.durationType, hours: req.hours, fromTime: req.fromTime, toTime: req.toTime,
+  applicantReason: req.reason, employeeRemark: req.employeeRemark,
+  currentStepId: current?.id ?? null, stepIndex: current?.stepIndex ?? null,
+  decision: p.decision, rejectReason: p.rejectReason,
+  outcome: p.decision === 'rejected' ? 'rejection_if_confirmed' as const : after.steps.some(step => step.status === 'pending' && step.stepIndex > (current?.stepIndex ?? -1)) ? 'step_decision_if_confirmed' as const : 'approval_if_native_checks_pass' as const };
+ const reviewedDigest = createHash('sha256').update(JSON.stringify(['reviewed-leave-decision:v1',
+  { tenantId: ctx.tenantId, userId: ctx.userId, personId: ctx.personId ?? null }, p, req, after.steps, versions, balance, review])).digest('hex');
+ return { ctx, p, req, steps: after.steps, review: { ...review, reviewedDigest } };
+}
+export async function prepareReviewedLeaveDecisionTx(tx: Tx, ctx: SessionContext, p: ReviewedLeaveDecisionSelection) {
+ return (await reviewedLeaveDecisionPreflightTx(tx, ctx, p)).review;
+}
+export async function decideReviewedLeaveTx(tx: Tx, ctx: SessionContext, p: ReviewedLeaveDecisionSelection, reviewedDigest: string) {
+ const prepared = await reviewedLeaveDecisionPreflightTx(tx, ctx, p);
+ if (prepared.review.reviewedDigest !== reviewedDigest) throw new Error('Leave decision review changed');
+ const effect = await decideLeaveEffectTx(tx, prepared.ctx, { decision: prepared.p.decision }, prepared.p.rejectReason,
+  prepared.req, prepared.steps, true);
+ if (!effect.eventId) throw new Error('Leave decision event unavailable');
+ const reference = await readReviewedLeaveDecisionReferenceTx(tx, prepared.ctx, { leaveRequestId: prepared.req.id, decisionEventId: effect.eventId, decisionStepId: effect.stepId ?? null });
+ if (!reference || reference.currentStatus !== effect.status || reference.decision !== prepared.p.decision) throw new Error('Leave decision canonical reference unavailable');
+ return reference;
+}
+/** Exact original-actor/native event plus current permitted request status, never repeats an effect.
+ * Historical step snapshot authorizes its own recorded decision, not the next person's task. */
+export async function readReviewedLeaveDecisionReferenceTx(tx: Tx, supplied: SessionContext,
+ reference: { leaveRequestId: string; decisionEventId: string; decisionStepId: string | null }) {
+ const ctx = captureLeaveDecisionContext(supplied), p = structuredClone(reference);
+ await lockAccessConfigurationTx(tx, ctx.tenantId); await assertAssignedWorkPrincipalTx(tx, ctx);
+ await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
+ const [row] = await tx.select({ employmentId: leaveRequest.employmentId, status: leaveRequest.status }).from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
+ if (!row) return null;
+ const steps = await tx.select().from(leaveApprovalStep).where(eq(leaveApprovalStep.leaveRequestId, p.leaveRequestId)).orderBy(asc(leaveApprovalStep.stepIndex));
+ const step = steps.find(s => s.id === p.decisionStepId);
+ if (steps.length && !step || !steps.length && p.decisionStepId !== null) return null;
+ if (step) await assertCanDecideLeaveStep(tx, ctx, row.employmentId, step.approverKind, 'leave request', step.approverEmploymentId, step.approverAlternates);
+ else await assertCanDecide(tx, ctx, row.employmentId, 'leave request', scopeOf('leave.application'));
+ const [event] = await tx.execute<{ eventType: string }>(sql`select d.event_type as "eventType" from public.domain_event d
+  join public.leave_request q on q.id=d.aggregate_id and q.tenant_id=d.tenant_id
+  left join public.leave_approval_step s on s.id=${p.decisionStepId}::uuid and s.leave_request_id=q.id
+  where d.id=${p.decisionEventId}::uuid and q.id=${p.leaveRequestId}::uuid and d.tenant_id=${ctx.tenantId}::uuid
+   and d.actor_type='user' and d.actor_id=${ctx.userId}::uuid and d.aggregate_type='leave-request'
+   and d.subject_employment_id=q.employment_id and d.event_type in ('leave-request.approved','leave-request.rejected','leave-request.step.approved')
+   and d.occurred_at=coalesce(s.decided_at,q.decided_at)
+   and (s.id is null or s.status=case when d.event_type='leave-request.rejected' then 'rejected'::public.leave_request_status else 'approved'::public.leave_request_status end)
+   and (d.event_type not in ('leave-request.step.approved','leave-request.rejected') or s.id is null or (d.payload->>'step')::integer=s.step_index)
+   and (d.event_type<>'leave-request.approved' or s.id is null or not exists(select 1 from public.leave_approval_step later where later.leave_request_id=q.id and later.step_index>s.step_index))`);
+ if (!event) return null;
+ return { leaveRequestId: p.leaveRequestId, employmentId: row.employmentId, decisionEventId: p.decisionEventId,
+  decisionStepId: p.decisionStepId, stepIndex: step?.stepIndex ?? null,
+  decision: event.eventType === 'leave-request.rejected' ? 'rejected' as const : 'approved' as const, currentStatus: row.status };
 }
 
 // ═════════════ Partial Leave Approval — single-request per-date decision (ADR-0068) ═════════════
