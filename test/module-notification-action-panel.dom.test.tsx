@@ -50,3 +50,11 @@ describe('closed bounded module action responses',()=>{
   await expect(readModuleNotificationActionResponse(json({error:'unavailable',sql:'PRIVATE'},503),'prepare')).rejects.toThrow('Notification action unavailable');const privateCard=prepared();Object.assign(privateCard.review.review,{reviewDigest:'PRIVATE native fingerprint'});await expect(readModuleNotificationActionResponse(json(privateCard),'prepare')).rejects.toThrow('Notification action unavailable');await expect(readModuleNotificationActionResponse(json(prepared()),'confirm',action)).rejects.toThrow('Notification action unavailable');await expect(readModuleNotificationActionResponse(new Response('not json',{headers:{'Content-Type':'application/json','Content-Length':'32769'}}),'list')).rejects.toThrow('Notification action unavailable');
  });
 });
+
+it.each([false,true])('discards metadata without reopening private content after availability loss (known uncertainty=%s)',async known=>{
+ const card=prepared(),entry=(actionId:string)=>({action:MODULE_NOTIFICATION_ACTION,actionId,state:'awaiting_confirmation',createdAt:card.review.createdAt,expiresAt:card.review.expiresAt});
+ fetcher.mockResolvedValueOnce(json({kind:'module_review_index',reviews:known?[entry(otherAction),entry(action)]:[entry(action)]})).mockResolvedValueOnce(json({kind:'retired',receipt:{action:MODULE_NOTIFICATION_ACTION,contractVersion:1,actionId:action,state:'discarded'}}));
+ render(<ModuleNotificationActionPanel choices={{kind:'unavailable'}} resumeActionId={known?action:undefined}/>);expect(fetcher).not.toHaveBeenCalled();fireEvent.click(screen.getByRole('button',{name:'find'}));const buttons=await screen.findAllByRole('button',{name:'discard'}) as HTMLButtonElement[];
+ if(known){expect(buttons[0].disabled).toBe(true);fireEvent.click(buttons[0]);expect(fetcher).toHaveBeenCalledTimes(1);}
+ fireEvent.click(buttons[known?1:0]);await screen.findByText('retired_discarded');expect(packets()).toEqual([{operation:'list'},{operation:'discard',confirmation:{action:MODULE_NOTIFICATION_ACTION,contractVersion:1,actionId:action}}]);expect(screen.queryByRole('heading',{name:'reviewTitle'})).toBeNull();
+});

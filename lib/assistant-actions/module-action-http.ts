@@ -1,5 +1,6 @@
 /** Strict human browser transport. No model tools, posted actor, source receipt or executor. */
 import {z} from 'zod';
+import {ModuleActionRetirementRequest,ProfileModuleActionRetirementRequest,ClaimModuleActionRetirementRequest,ReviewModuleActionRetirementRequest,OnehrModuleActionRetirementRequest,TestingModuleActionRetirementRequest,ClaimSubmissionModuleActionRetirementRequest} from './module-action-review-contract';
 import {executionInputSchema,EXECUTION_STATUSES} from '../system-testing/model';
 import {MODULE_TESTING_EXECUTION_ACTION,TestingModuleActionPrepare,TestingModuleActionConfirmation,TestingModuleActionPreparedReview,TestingModuleActionCompletedReceipt,TestingModuleActionRetiredReceipt,TestingModuleActionReviewIndexResult} from './module-action-review-contract';
 import {OWN_CLAIM_SUBMISSION_ACTION} from './own-claim-submission-contract';
@@ -12,7 +13,7 @@ export const ModuleActionBrowserPacket=z.discriminatedUnion('operation',[
  z.object({operation:z.literal('prepare'),input:ModuleActionPrepare}).strict(),
  z.object({operation:z.literal('reopen'),actionId:z.uuid()}).strict(),
  z.object({operation:z.literal('confirm'),confirmation:ModuleActionConfirmation}).strict(),
- z.object({operation:z.literal('discard'),confirmation:ModuleActionConfirmation}).strict(),
+ z.object({operation:z.literal('discard'),confirmation:ModuleActionRetirementRequest}).strict(),
 ]);
 export type ModuleActionBrowserPacket=z.infer<typeof ModuleActionBrowserPacket>;
 export const ModuleActionBrowserResult=z.discriminatedUnion('kind',[
@@ -35,7 +36,7 @@ export const ProfileModuleActionBrowserPacket=z.discriminatedUnion('operation',[
  z.object({action:z.literal('ess.profile.request'),operation:z.literal('prepare'),input:ProfileModuleActionPrepare}).strict(),
  z.object({action:z.literal('ess.profile.request'),operation:z.literal('reopen'),actionId:z.uuid()}).strict(),
  z.object({action:z.literal('ess.profile.request'),operation:z.literal('confirm'),confirmation:ProfileModuleActionConfirmation}).strict(),
- z.object({action:z.literal('ess.profile.request'),operation:z.literal('discard'),confirmation:ProfileModuleActionConfirmation}).strict(),
+ z.object({action:z.literal('ess.profile.request'),operation:z.literal('discard'),confirmation:ProfileModuleActionRetirementRequest}).strict(),
 ]);
 export type ProfileModuleActionBrowserPacket=z.infer<typeof ProfileModuleActionBrowserPacket>;
 export const ProfileModuleActionBrowserResult=z.discriminatedUnion('kind',[
@@ -59,20 +60,20 @@ export const ProfileActionChoices=z.discriminatedUnion('kind',[
  z.object({kind:z.literal('unavailable')}).strict(),
 ]);
 export type ProfileActionChoices=z.infer<typeof ProfileActionChoices>;
-type ProfileOwners<Session>=Readonly<{list(session:Session):Promise<unknown>;prepare(session:Session,input:z.infer<typeof ProfileModuleActionPrepare>):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:z.infer<typeof ProfileModuleActionConfirmation>):Promise<unknown>;discard(session:Session,input:z.infer<typeof ProfileModuleActionConfirmation>):Promise<unknown>}>;
+type ProfileOwners<Session>=Readonly<{list(session:Session):Promise<unknown>;prepare(session:Session,input:z.infer<typeof ProfileModuleActionPrepare>):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:z.infer<typeof ProfileModuleActionConfirmation>):Promise<unknown>;discard(session:Session,input:z.infer<typeof ProfileModuleActionRetirementRequest>):Promise<unknown>}>;
 export const ReviewModuleActionBrowserPacket=z.discriminatedUnion('operation',[
  z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),operation:z.literal('list')}).strict(),
  z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),operation:z.literal('prepare'),input:ReviewModuleActionPrepare}).strict(),
  z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),operation:z.literal('reopen'),actionId:z.uuid()}).strict(),
  z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),operation:z.literal('confirm'),confirmation:ReviewModuleActionConfirmation}).strict(),
- z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),operation:z.literal('discard'),confirmation:ReviewModuleActionConfirmation}).strict(),
+ z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),operation:z.literal('discard'),confirmation:ReviewModuleActionRetirementRequest}).strict(),
 ]);
 export const OnehrModuleActionBrowserPacket=z.discriminatedUnion('operation',[
  z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),operation:z.literal('list')}).strict(),
  z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),operation:z.literal('prepare'),input:OnehrModuleActionPrepare}).strict(),
  z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),operation:z.literal('reopen'),actionId:z.uuid()}).strict(),
  z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),operation:z.literal('confirm'),confirmation:OnehrModuleActionConfirmation}).strict(),
- z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),operation:z.literal('discard'),confirmation:OnehrModuleActionConfirmation}).strict(),
+ z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),operation:z.literal('discard'),confirmation:OnehrModuleActionRetirementRequest}).strict(),
 ]);
 export const PerformanceModuleActionBrowserPacket=z.union([ReviewModuleActionBrowserPacket,OnehrModuleActionBrowserPacket]);
 export type PerformanceModuleActionBrowserPacket=z.infer<typeof PerformanceModuleActionBrowserPacket>;
@@ -100,7 +101,7 @@ type PerformanceOwners<Session>=Readonly<{
  prepare(session:Session,input:z.infer<typeof ReviewModuleActionPrepare>|z.infer<typeof OnehrModuleActionPrepare>):Promise<unknown>;
  reopen(session:Session,action:typeof MODULE_REVIEW_ACK_ACTION|typeof MODULE_ONEHR_ACK_ACTION,id:string):Promise<unknown>;
  confirm(session:Session,input:z.infer<typeof ReviewModuleActionConfirmation>|z.infer<typeof OnehrModuleActionConfirmation>):Promise<unknown>;
- discard(session:Session,input:z.infer<typeof ReviewModuleActionConfirmation>|z.infer<typeof OnehrModuleActionConfirmation>):Promise<unknown>;
+ discard(session:Session,input:z.infer<typeof ReviewModuleActionRetirementRequest>|z.infer<typeof OnehrModuleActionRetirementRequest>):Promise<unknown>;
 }>;
 const ClaimChoiceField=z.object({id:z.uuid(),fieldKey:z.string().min(1).max(200),label:z.string().min(1).max(240),kind:z.enum(['text','number','money','date','select','boolean']),required:z.boolean(),options:z.array(z.string().max(240)).max(128),sortOrder:z.number().int()}).strict();
 export const ClaimDraftEditResult=z.object({kind:z.literal('draft_edit'),draft:z.object({type:z.object({id:z.uuid(),code:z.string().max(100),name:z.string().min(1).max(240),isMileage:z.boolean(),requiresReceipt:z.boolean(),items:z.array(z.object({id:z.uuid(),code:z.string().max(100),name:z.string().min(1).max(240)}).strict()).max(128),fields:z.array(ClaimChoiceField).max(128).refine(rows=>new Set(rows.map(row=>row.fieldKey)).size===rows.length&&new Set(rows.map(row=>row.id)).size===rows.length)}).strict(),draftId:z.uuid(),employmentId:z.uuid(),claimTypeId:z.uuid(),claimItemId:z.uuid().nullable(),draftRevision:z.string().regex(/^[0-9]+$/),enteredAmount:z.number().finite(),quantityKm:z.number().finite().nullable(),incurredOn:z.iso.date(),description:z.string().max(4000).nullable(),fieldValues:z.record(z.string().max(200),z.union([z.string().max(4000),z.number().finite(),z.boolean(),z.null()])),receipts:z.array(z.object({id:z.uuid(),fileName:z.string().max(1000),mimeType:z.string().max(240),sizeBytes:z.number().int().nonnegative()}).strict()).max(25)}).strict()}).strict();
@@ -110,7 +111,7 @@ export const ClaimModuleActionBrowserPacket=z.discriminatedUnion('operation',[
  z.object({action:z.literal(OWN_CLAIM_DRAFT_ACTION),operation:z.literal('prepare'),input:ClaimModuleActionPrepare.refine(value=>value.draftId===null||typeof value.expectedDraftRevision==='string','Load the current draft first')}).strict(),
  z.object({action:z.literal(OWN_CLAIM_DRAFT_ACTION),operation:z.literal('reopen'),actionId:z.uuid()}).strict(),
  z.object({action:z.literal(OWN_CLAIM_DRAFT_ACTION),operation:z.literal('confirm'),confirmation:ClaimModuleActionConfirmation}).strict(),
- z.object({action:z.literal(OWN_CLAIM_DRAFT_ACTION),operation:z.literal('discard'),confirmation:ClaimModuleActionConfirmation}).strict(),
+ z.object({action:z.literal(OWN_CLAIM_DRAFT_ACTION),operation:z.literal('discard'),confirmation:ClaimModuleActionRetirementRequest}).strict(),
 ]);
 export type ClaimModuleActionBrowserPacket=z.infer<typeof ClaimModuleActionBrowserPacket>;
 export const ClaimModuleActionBrowserResult=z.discriminatedUnion('kind',[ClaimDraftEditResult,ClaimModuleActionReviewIndexResult,z.object({kind:z.literal('prepared'),review:ClaimModuleActionPreparedReview}).strict(),z.object({kind:z.literal('completed'),receipt:ClaimModuleActionCompletedReceipt}).strict(),z.object({kind:z.literal('retired'),receipt:ClaimModuleActionRetiredReceipt}).strict()]);
@@ -130,7 +131,7 @@ export const ClaimActionChoices=z.discriminatedUnion('kind',[
  z.object({kind:z.literal('unavailable')}).strict(),
 ]);
 export type ClaimActionChoices=z.infer<typeof ClaimActionChoices>;
-type ClaimOwners<Session>=Readonly<{readDraft(session:Session,input:{employmentId:string;draftId:string}):Promise<unknown>;list(session:Session):Promise<unknown>;prepare(session:Session,input:z.infer<typeof ClaimModuleActionPrepare>):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:z.infer<typeof ClaimModuleActionConfirmation>):Promise<unknown>;discard(session:Session,input:z.infer<typeof ClaimModuleActionConfirmation>):Promise<unknown>}>;
+type ClaimOwners<Session>=Readonly<{readDraft(session:Session,input:{employmentId:string;draftId:string}):Promise<unknown>;list(session:Session):Promise<unknown>;prepare(session:Session,input:z.infer<typeof ClaimModuleActionPrepare>):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:z.infer<typeof ClaimModuleActionConfirmation>):Promise<unknown>;discard(session:Session,input:z.infer<typeof ClaimModuleActionRetirementRequest>):Promise<unknown>}>;
 /** 4 x 16000 UTF-16 code units can JSON-escape to 384000 bytes. This closed Testing
  * prepare envelope keeps the full native scope; other action/operation caps remain 20 KiB. */
 export const TESTING_ACTION_TRANSPORT_BYTES=524288;
@@ -145,7 +146,7 @@ export const TestingModuleActionBrowserPacket=z.discriminatedUnion('operation',[
  z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),operation:z.literal('prepare'),input:TestingModuleActionPrepare}).strict(),
  z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),operation:z.literal('reopen'),actionId:z.uuid()}).strict(),
  z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),operation:z.literal('confirm'),confirmation:TestingModuleActionConfirmation}).strict(),
- z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),operation:z.literal('discard'),confirmation:TestingModuleActionConfirmation}).strict(),
+ z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),operation:z.literal('discard'),confirmation:TestingModuleActionRetirementRequest}).strict(),
 ]);
 export type TestingModuleActionBrowserPacket=z.infer<typeof TestingModuleActionBrowserPacket>;
 export const TestingModuleActionBrowserResult=z.discriminatedUnion('kind',[TestingExecutionEditResult,TestingModuleActionReviewIndexResult,z.object({kind:z.literal('prepared'),review:TestingModuleActionPreparedReview}).strict(),z.object({kind:z.literal('completed'),receipt:TestingModuleActionCompletedReceipt}).strict(),z.object({kind:z.literal('retired'),receipt:TestingModuleActionRetiredReceipt}).strict()]);
@@ -159,7 +160,7 @@ export function parseTestingModuleActionBrowserResult(packet:TestingModuleAction
  if(op==='prepare'&&(result.kind!=='prepared'||JSON.stringify(result.review.review.humanObservation)!==JSON.stringify(packet.input.intent.observation)))throw Error('Module action response unavailable.');
  return result;
 }
-type TestingOwners<Session>=Readonly<{list(session:Session):Promise<unknown>;readExecution(session:Session,id:string):Promise<unknown>;prepare(session:Session,input:z.infer<typeof TestingModuleActionPrepare>):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:z.infer<typeof TestingModuleActionConfirmation>):Promise<unknown>;discard(session:Session,input:z.infer<typeof TestingModuleActionConfirmation>):Promise<unknown>}>;
+type TestingOwners<Session>=Readonly<{list(session:Session):Promise<unknown>;readExecution(session:Session,id:string):Promise<unknown>;prepare(session:Session,input:z.infer<typeof TestingModuleActionPrepare>):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:z.infer<typeof TestingModuleActionConfirmation>):Promise<unknown>;discard(session:Session,input:z.infer<typeof TestingModuleActionRetirementRequest>):Promise<unknown>}>;
 /** Existing-draft submit is separate from draft save and every model nomination. Request is
  * references + explicit human intent only; native source owns values, pricing, limits and receipts. */
 export const ClaimSubmissionModuleActionBrowserPacket=z.discriminatedUnion('operation',[
@@ -167,7 +168,7 @@ export const ClaimSubmissionModuleActionBrowserPacket=z.discriminatedUnion('oper
  z.object({action:z.literal(OWN_CLAIM_SUBMISSION_ACTION),operation:z.literal('prepare'),input:ClaimSubmissionModuleActionPrepare}).strict(),
  z.object({action:z.literal(OWN_CLAIM_SUBMISSION_ACTION),operation:z.literal('reopen'),actionId:z.uuid()}).strict(),
  z.object({action:z.literal(OWN_CLAIM_SUBMISSION_ACTION),operation:z.literal('confirm'),confirmation:ClaimSubmissionModuleActionConfirmation}).strict(),
- z.object({action:z.literal(OWN_CLAIM_SUBMISSION_ACTION),operation:z.literal('discard'),confirmation:ClaimSubmissionModuleActionConfirmation}).strict(),
+ z.object({action:z.literal(OWN_CLAIM_SUBMISSION_ACTION),operation:z.literal('discard'),confirmation:ClaimSubmissionModuleActionRetirementRequest}).strict(),
 ]);
 export type ClaimSubmissionModuleActionBrowserPacket=z.infer<typeof ClaimSubmissionModuleActionBrowserPacket>;
 export const ClaimSubmissionModuleActionBrowserResult=z.discriminatedUnion('kind',[ClaimSubmissionModuleActionReviewIndexResult,z.object({kind:z.literal('prepared'),review:ClaimSubmissionModuleActionPreparedReview}).strict(),z.object({kind:z.literal('completed'),receipt:ClaimSubmissionModuleActionCompletedReceipt}).strict(),z.object({kind:z.literal('retired'),receipt:ClaimSubmissionModuleActionRetiredReceipt}).strict()]);
@@ -180,7 +181,7 @@ export function parseClaimSubmissionModuleActionBrowserResult(packet:ClaimSubmis
  if(op==='prepare'&&(result.kind!=='prepared'||JSON.stringify(result.review.content)!==JSON.stringify(packet.input)))throw Error('Module action response unavailable.');
  return result;
 }
-type ClaimSubmissionOwners<Session>=Readonly<{list(session:Session):Promise<unknown>;prepare(session:Session,input:z.infer<typeof ClaimSubmissionModuleActionPrepare>):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:z.infer<typeof ClaimSubmissionModuleActionConfirmation>):Promise<unknown>;discard(session:Session,input:z.infer<typeof ClaimSubmissionModuleActionConfirmation>):Promise<unknown>}>;
+type ClaimSubmissionOwners<Session>=Readonly<{list(session:Session):Promise<unknown>;prepare(session:Session,input:z.infer<typeof ClaimSubmissionModuleActionPrepare>):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:z.infer<typeof ClaimSubmissionModuleActionConfirmation>):Promise<unknown>;discard(session:Session,input:z.infer<typeof ClaimSubmissionModuleActionRetirementRequest>):Promise<unknown>}>;
 /** HR caller and target are distinct. Searches disclose only bounded authorised labels; no IDs
  * typed as guess-fields, graph extraction, delegated authority or source fingerprints. */
 import {REVIEWED_REPORTING_LINE_ACTION as ORG_ACTION} from './reviewed-reporting-line-contract';
@@ -282,7 +283,7 @@ export type ModuleActionBrowserOwners<Session>=Readonly<{
  prepare(session:Session,input:z.infer<typeof ModuleActionPrepare>):Promise<unknown>;
  reopen(session:Session,actionId:string):Promise<unknown>;
  confirm(session:Session,input:z.infer<typeof ModuleActionConfirmation>):Promise<unknown>;
- discard(session:Session,input:z.infer<typeof ModuleActionConfirmation>):Promise<unknown>;
+ discard(session:Session,input:z.infer<typeof ModuleActionRetirementRequest>):Promise<unknown>;
 }>;
 const responseHeaders={'Cache-Control':'private, no-store','Vary':'Cookie, Authorization','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'};
 const unavailable=(status:number)=>Response.json({error:'unavailable'},{status,headers:responseHeaders});

@@ -63,3 +63,5 @@ describe('unmounted real-session own-leave section composition',()=>{
   cleanup();owners.choices.mockClear();render(await OwnLeaveCommandSection({resumeActionId:'PRIVATE_MALFORMED_ACTION'}));expect(owners.choices).not.toHaveBeenCalled();expect(document.body.textContent).not.toContain('PRIVATE_MALFORMED_ACTION');
  });
 });
+
+it('keeps login-only cleanup visible after person unlinking without querying or inventing an own employment',async()=>{owners.session.mockResolvedValue({...session(),personId:null});const client=panel(await OwnLeaveCommandSection())!;expect(client).not.toBeNull();expect(client.props.employments).toEqual([]);expect(owners.tenant).not.toHaveBeenCalled();expect(owners.choices).not.toHaveBeenCalled();expect(Object.keys(client.props).sort()).toEqual(['employments','messages','resumeActionId']);});

@@ -21,8 +21,8 @@ export async function ModuleNotificationActionSection({resumeActionId:value}:{re
   const session=await getBrowserCommandSession();
   // Capture the selected principal before another await can expose a retained cache object to mutation.
   const ctx={...session,roles:session.roles?.slice(),grants:session.grants?.map(grant=>({...grant}))};
-  const locale=await getLocale();if(!ctx.userId||!ctx.personId||!isLocale(locale))return unavailable();
-  const choices=Choices.parse(await readNotificationModuleActionChoices(ctx));
+  const locale=await getLocale();if(!ctx.userId||!isLocale(locale))return unavailable();
+  const choices=Choices.parse(ctx.personId?await readNotificationModuleActionChoices(ctx):{kind:'unavailable'});
   const permittedChoices=choices.kind==='choices'?{kind:choices.kind,employments:[...choices.employments].sort((a,b)=>a.employmentId.localeCompare(b.employmentId))}:{kind:choices.kind};
   const grants=(ctx.grants??[]).map(grant=>[grant.role,grant.companyId]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
   const key=createHash('sha256').update(JSON.stringify(['notification-action-panel:v1',ctx.tenantId,ctx.userId,ctx.personId,[...(ctx.roles??[])].sort(),grants,locale,resume.data??null,permittedChoices])).digest('hex');

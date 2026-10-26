@@ -17,7 +17,7 @@ export async function ModuleProfileActionSection({resumeActionId:value}:{resumeA
   // a shared mutable session object can retarget a retained editor across a login/scope change.
   const grants=(ctx.grants??[]).map(grant=>[grant.role,grant.companyId]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
   const principal=createHash('sha256').update(JSON.stringify(['profile-human-editor:v1',ctx.tenantId,ctx.userId,ctx.personId,[...(ctx.roles??[])].sort(),grants])).digest('hex');
-  const locale=await getLocale();if(!ctx.userId||!ctx.personId||!isLocale(locale))return unavailable();const choices=ProfileActionChoices.parse(await readProfileModuleActionChoices(ctx));
+  const locale=await getLocale();if(!ctx.userId||!isLocale(locale))return unavailable();const choices=ProfileActionChoices.parse(ctx.personId?await readProfileModuleActionChoices(ctx):{kind:'unavailable'});
   const keyChoices=choices.kind==='choices'?{kind:choices.kind,employments:choices.employments.map(row=>({...row,fields:[...row.fields].sort((a,b)=>a.fieldId.localeCompare(b.fieldId))})).sort((a,b)=>a.employmentId.localeCompare(b.employmentId))}:choices;
   const key=createHash('sha256').update(JSON.stringify([principal,locale,resume.data??null,keyChoices])).digest('hex');return <ModuleProfileActionPanel key={key} choices={choices} resumeActionId={resume.data}/>;
  }catch{return unavailable();}

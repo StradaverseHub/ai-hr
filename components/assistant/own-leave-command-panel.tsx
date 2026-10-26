@@ -68,7 +68,7 @@ export function OwnLeaveCommandPanel({employments,messages:m,resumeActionId}:{
  const employee=employments.find(row=>row.id===employmentId),types=employee?.leaveTypes??[];
  const clearText=()=>{setReason('');setRemark('');setEmploymentId('');setLeaveTypeId('');setDate('');};
  async function dispatch(operation:Operation,packet:unknown,actionId?:string){
-  if(inFlight.current)return;inFlight.current=true;setBusy(operation);setError('');if(operation!=='list')setIndex(null);
+  if(inFlight.current||state.kind==='uncertain'&&(operation!=='list'&&(operation!=='reopen'&&operation!=='discard'||!actionId||state.actionId!==null&&actionId!==state.actionId)))return;inFlight.current=true;setBusy(operation);setError('');if(operation!=='list')setIndex(null);
   const abort=new AbortController();controller.current=abort;const timer=setTimeout(()=>abort.abort(),15000);
   try{
    const response=await fetch(endpoint,{method:'POST',mode:'same-origin',credentials:'same-origin',cache:'no-store',redirect:'error',signal:abort.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify(packet)});
@@ -76,7 +76,7 @@ export function OwnLeaveCommandPanel({employments,messages:m,resumeActionId}:{
    if((operation==='list'&&result.kind!=='review_index')||(operation!=='list'&&result.kind==='review_index'))throw unavailable();
    if(result.kind==='review_index')setIndex(result.reviews);
    else if(result.kind==='prepared'){if(operation!=='prepare'&&operation!=='reopen')throw unavailable();clearText();setState({kind:'review',review:result.review});}
-   else if(result.kind==='completed'){if(operation==='prepare')throw unavailable();clearText();setState({kind:'completed',receipt:result.receipt});}
+   else if(result.kind==='completed'){if(operation==='prepare'||operation==='discard')throw unavailable();clearText();setState({kind:'completed',receipt:result.receipt});}
    else if(result.kind==='retired'){if(operation==='prepare')throw unavailable();clearText();setState({kind:'retired',receipt:result.receipt});}
    else if(operation==='prepare'){setState({kind:'draft'});setError(result.kind==='needs_employee_remark'?m.needsRemark:result.kind==='needs_selection'?m.invalidSelection:m.unavailable);}
    else{setState({kind:'uncertain',actionId:actionId??null});setError(m.unavailable);}
@@ -141,7 +141,7 @@ export function OwnLeaveCommandPanel({employments,messages:m,resumeActionId}:{
     return <li key={row.actionId} className="space-y-2 border-t border-border pt-3 first:border-t-0 first:pt-0">
      <p className="text-sm font-medium">{stateLabel}</p>
      <dl className="grid gap-2 text-xs sm:grid-cols-2">{field(m.savedCreated,f.dateTime(new Date(row.createdAt),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'}))}{field(m.savedExpires,f.dateTime(new Date(row.expiresAt),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'}))}</dl>
-     <Button type="button" variant="secondary" disabled={busy!==null||restricted} onClick={()=>void dispatch('reopen',{operation:'reopen',actionId:row.actionId},row.actionId)} className="min-h-11" aria-label={`${m.openSavedReview}: ${stateLabel}, ${f.dateTime(new Date(row.createdAt),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'})}`}>{m.openSavedReview}</Button>
+     <Button type="button" variant="secondary" disabled={busy!==null||restricted} onClick={()=>void dispatch('reopen',{operation:'reopen',actionId:row.actionId},row.actionId)} className="min-h-11" aria-label={`${m.openSavedReview}: ${stateLabel}, ${f.dateTime(new Date(row.createdAt),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'})}`}>{m.openSavedReview}</Button>{row.state!=='completed'&&<Button type="button" variant="secondary" disabled={busy!==null||restricted} onClick={()=>void dispatch('discard',{operation:'discard',confirmation:{actionId:row.actionId,contractVersion:1}},row.actionId)} className="min-h-11">{m.discard}</Button>}
     </li>;
    })}</ul>}
   </section>}

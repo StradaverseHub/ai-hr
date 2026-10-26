@@ -21,8 +21,9 @@ export async function OwnLeaveCommandSection({resumeActionId:resumeValue}:{resum
   const session=await getBrowserCommandSession();
   const ctx={...session,roles:session.roles?.slice(),grants:session.grants?.map(grant=>({...grant}))};
   const locale=await getLocale();if(!isLocale(locale))return unavailable();
-  const choices=await withTenant(ctx,tx=>readOwnLeaveChoicesTx(tx,ctx,locale));
-  if(!ctx.userId||!ctx.personId)return unavailable();
+  if(!ctx.userId)return unavailable();
+  // Login-only privacy recovery survives a removed Person link; this never prepares an effect.
+  const choices=ctx.personId?await withTenant(ctx,tx=>readOwnLeaveChoicesTx(tx,ctx,locale)):{kind:'unavailable' as const};
   const employments=choices.kind==='choices'?choices.employments:[];
   // A server-derived opaque React identity prevents cross-login or changed-resume state reuse.
   // This key grants no authority and contains no private text, raw session IDs or posted actor data.

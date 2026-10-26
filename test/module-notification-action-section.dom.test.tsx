@@ -43,3 +43,5 @@ describe('current-principal Notification action composition',()=>{
   const page=await AssistantNotificationPreferencesPage({searchParams:Promise.resolve({review})}),elements=allElements(page);expect(elements.some(node=>(node.props as {href?:string}).href==='/assistant?job=notifications')).toBe(true);expect(elements.some(node=>node.type===ModuleNotificationActionSection&&(node.props as {resumeActionId?:unknown}).resumeActionId===review)).toBe(true);expect(source.session).not.toHaveBeenCalled();expect(source.choices).not.toHaveBeenCalled();
  });
 });
+
+it('keeps login-only review recovery reachable after a removed Person link without loading native effect choices',async()=>{source.session.mockResolvedValue({...session(),personId:null});const result=await ModuleNotificationActionSection();expect(result.props.choices).toEqual({kind:'unavailable'});expect(source.choices).not.toHaveBeenCalled();expect(Object.keys(result.props)).not.toContain('ctx');expect(result.key).toMatch(/^[a-f0-9]{64}$/);});

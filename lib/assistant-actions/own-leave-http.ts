@@ -3,7 +3,7 @@
  * store/command owners; do not release before source/security/migration/experience acceptance. */
 import { z } from 'zod';
 import { isSameOriginBrowserRequest } from '../request-origin';
-import { OwnLeaveConfirmation, OwnLeaveFinalReceipt, OwnLeaveHumanSelection, OwnLeaveHumanText,
+import { OwnLeaveRetirementRequest, OwnLeaveConfirmation, OwnLeaveFinalReceipt, OwnLeaveHumanSelection, OwnLeaveHumanText,
   OwnLeaveNomination, OwnLeavePreparedReview } from './own-leave-contract';
 
 /** Metadata discovery only. No business text, digests, subjects or source-record references. */
@@ -21,7 +21,7 @@ const Packet = z.discriminatedUnion('operation', [
     selection: OwnLeaveHumanSelection, humanText: OwnLeaveHumanText }).strict(),
   z.object({ operation: z.literal('reopen'), actionId: z.string().uuid() }).strict(),
   z.object({ operation: z.literal('confirm'), confirmation: OwnLeaveConfirmation }).strict(),
-  z.object({ operation: z.literal('discard'), confirmation: OwnLeaveConfirmation }).strict(),
+  z.object({ operation: z.literal('discard'), confirmation: OwnLeaveRetirementRequest }).strict(),
 ]);
 const PublicResult = z.discriminatedUnion('kind', [
   OwnLeaveReviewIndexResult,
@@ -38,7 +38,7 @@ export type OwnLeaveBrowserOwners<Session> = Readonly<{
   prepare(session: Session, packet: Extract<Packet, { operation: 'prepare' }>): Promise<unknown>;
   reopen(session: Session, actionId: string): Promise<unknown>;
   confirm(session: Session, confirmation: z.infer<typeof OwnLeaveConfirmation>): Promise<unknown>;
-  discard(session: Session, confirmation: z.infer<typeof OwnLeaveConfirmation>): Promise<unknown>;
+  discard(session: Session, confirmation: z.infer<typeof OwnLeaveRetirementRequest>): Promise<unknown>;
 }>;
 const headers = { 'Cache-Control': 'private, no-store', 'Vary': 'Cookie, Authorization',
   'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' };
