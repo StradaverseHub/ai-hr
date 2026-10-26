@@ -464,7 +464,8 @@
     "jobDescriptions": "Huraian Kerja",
     "rewardsAccess": "Akses Ganjaran",
     "peopleGeneral": "Umum",
-    "loginPresentation": "Paparan log masuk & pelayar"
+    "loginPresentation": "Paparan log masuk & pelayar",
+    "myLetters": "Surat Saya"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -10273,7 +10274,8 @@
         "roster": "Pengurus dan ke atas; apa yang dipaparkan mengikut garis pelaporan sebenar anda.",
         "workflowEmail": "Pentadbir kumpulan diperlukan untuk menukar kategori bagi seluruh organisasi.",
         "workforceRecords": "Memerlukan kebenaran melihat rekod pekerja yang berkuat kuasa bagi syarikat dipilih. Tidak memberikan akses penggajian atau kelulusan.",
-        "loginPresentation": "Hanya pentadbir kumpulan boleh mengubah paparan log masuk."
+        "loginPresentation": "Hanya pentadbir kumpulan boleh mengubah paparan log masuk.",
+        "myLetters": "Hanya surat yang dikeluarkan kepada individu yang log masuk bagi pekerjaan semasa dan terdahulu. Peranan berkeistimewaan tidak meluaskan Surat Saya."
       },
       "scopedTo": "Diskopkan kepada {company} dan anak syarikatnya",
       "screen": {
@@ -23913,5 +23915,46 @@
     "network": "Pelayan HR persendirian mungkin memerlukan Wi-Fi syarikat atau VPN.",
     "invalid": "Pautan persediaan ini tidak sah atau telah tamat tempoh. Minta pautan baharu daripada pentadbir.",
     "checking": "Menyediakan persediaan tempat kerja…"
+  },
+  "letters": {
+    "mine": {
+      "title": "Surat Saya",
+      "description": "Surat yang dikeluarkan untuk pekerjaan semasa dan terdahulu anda.",
+      "unavailable": "Tidak tersedia",
+      "issuedOn": "Dikeluarkan pada {date}",
+      "void": "Batal",
+      "issued": "Dikeluarkan",
+      "details": "Lihat butiran",
+      "next": "Surat seterusnya",
+      "status": "Status",
+      "issueDate": "Tarikh dikeluarkan",
+      "confirmationDate": "Tarikh pengesahan",
+      "acknowledged": "Diakui",
+      "pendingAcknowledgement": "Menunggu pengakuan",
+      "viewed": "Dibuka",
+      "new": "Baharu",
+      "open": "Buka PDF",
+      "opening": "Sedang membuka…",
+      "artifactIdentity": "Identiti PDF",
+      "voidHelp": "Surat ini telah dibatalkan. Sejarahnya dikekalkan; PDF tidak lagi tersedia.",
+      "sign": "Tandatangan secara elektronik",
+      "acknowledge": "Akui penerimaan",
+      "confirmationHelp": "Pengesahan akaun anda direkodkan untuk PDF yang tepat ini. Membuka surat tidak mengakui penerimaannya.",
+      "signatureIntent": "Saya telah menyemak surat ini dan berniat menandatangani PDF yang tepat ini secara elektronik.",
+      "acknowledgementIntent": "Saya telah menyemak dan mengakui penerimaan surat yang tepat ini.",
+      "saving": "Sedang menyimpan…",
+      "recorded": "Pengesahan anda telah direkodkan.",
+      "alreadyRecorded": "Pengesahan terdahulu anda sudah direkodkan. Tiada pengesahan baharu dibuat.",
+      "signed": "Ditandatangani",
+      "empty": "Tiada surat yang dikeluarkan tersedia untuk anda.",
+      "errors": {
+        "invalid": "Semak maklumat yang dihantar dan cuba lagi.",
+        "permission": "Surat atau kebenaran ini tidak tersedia.",
+        "stale": "Surat telah berubah. Semak PDF semasa sebelum mengesahkan.",
+        "state": "Tindakan ini tidak lagi tersedia untuk surat ini.",
+        "unavailable": "Surat tidak tersedia buat sementara waktu. Cuba sebentar lagi."
+      },
+      "download": "Muat turun PDF"
+    }
   }
 }

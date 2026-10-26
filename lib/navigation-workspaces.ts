@@ -42,6 +42,7 @@ export function navigationPlacement(href:string):NavigationPlacement | undefined
   if(system.has(path))return {area:'system'};
   if(peopleConfig.has(path))return modulePlacement('people','config');
   if(path==='/personnel')return modulePlacement('people','mine');
+  if(path.startsWith('/me/letters'))return modulePlacement('people','mine');
   if(path==='/manage/my-team')return modulePlacement('people','team');
   if(path.startsWith('/admin/personnel')||path.startsWith('/admin/job-descriptions')||path==='/admin/notice-board')return modulePlacement('people','hr');
   if(path.startsWith('/control-tower'))return modulePlacement('controlTower','hr');

@@ -464,7 +464,8 @@
     "jobDescriptions": "职位说明",
     "rewardsAccess": "薪酬评审访问权限",
     "peopleGeneral": "常规",
-    "loginPresentation": "登录页与浏览器外观"
+    "loginPresentation": "登录页与浏览器外观",
+    "myLetters": "我的信函"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -10273,7 +10274,8 @@
         "roster": "经理及以上；显示内容取决于你实际的汇报线。",
         "workflowEmail": "只有集团管理员可更改整个组织的类别设置。",
         "workforceRecords": "须具备所选公司的有效员工资料查看权限，不授予薪资或审批权限。",
-        "loginPresentation": "仅集团管理员可更改登录页外观。"
+        "loginPresentation": "仅集团管理员可更改登录页外观。",
+        "myLetters": "仅限登录本人当前及以往任职期间的已发出信函。特权角色不会扩大“我的信函”的范围。"
       },
       "scopedTo": "范围限定为 {company} 及其子公司",
       "screen": {
@@ -23913,5 +23915,46 @@
     "network": "私有 HR 服务器可能需要连接公司 Wi-Fi 或 VPN。",
     "invalid": "此设置链接无效或已过期。请向管理员索取新链接。",
     "checking": "正在准备工作单位设置…"
+  },
+  "letters": {
+    "mine": {
+      "title": "我的信函",
+      "description": "查看您当前和以往任职期间收到的已发出信函。",
+      "unavailable": "不可用",
+      "issuedOn": "发出日期：{date}",
+      "void": "已作废",
+      "issued": "已发出",
+      "details": "查看详情",
+      "next": "下一页信函",
+      "status": "状态",
+      "issueDate": "发出日期",
+      "confirmationDate": "确认日期",
+      "acknowledged": "已确认收悉",
+      "pendingAcknowledgement": "待确认收悉",
+      "viewed": "已打开",
+      "new": "新信函",
+      "open": "打开 PDF",
+      "opening": "正在打开…",
+      "artifactIdentity": "PDF 标识",
+      "voidHelp": "此信函已撤销。历史记录将保留，但 PDF 已不可用。",
+      "sign": "电子签署",
+      "acknowledge": "确认收悉",
+      "confirmationHelp": "系统会将您登录后的确认记录关联至此确切的 PDF。打开信函不代表确认收悉。",
+      "signatureIntent": "我已审阅此信函，并有意对这份确切的 PDF 进行电子签署。",
+      "acknowledgementIntent": "我已审阅并确认收到此确切的信函。",
+      "saving": "正在保存…",
+      "recorded": "您的确认已记录。",
+      "alreadyRecorded": "您先前的确认已记录，未创建新的确认。",
+      "signed": "已签署",
+      "empty": "暂无您可访问的已发出信函。",
+      "errors": {
+        "invalid": "请检查提交的信息后重试。",
+        "permission": "此信函或访问权限不可用。",
+        "stale": "信函已变更。请在确认前审阅当前 PDF。",
+        "state": "此信函已无法执行该操作。",
+        "unavailable": "信函功能暂时不可用，请稍后重试。"
+      },
+      "download": "下载 PDF"
+    }
   }
 }

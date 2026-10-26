@@ -246,6 +246,7 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
   ['/admin/system-testing', 'system_testing'] as const,
   ['/system-testing', 'system_testing'] as const,
   ['/me/payslip', 'payroll'] as const,
+  ['/me/letters', 'employees'] as const,
   ['/me/tax-relief', 'payroll'] as const,
   ['/me/ea', 'payroll'] as const,
   ['/me/tp3', 'payroll'] as const,
@@ -703,6 +704,7 @@ export function Sidebar({
   const additionalRows: ChildItem[] = [
     {href:'/admin/personnel/profile-changes',labelKey:'profileChanges',icon:ListChecks,adminOnly:true},
     {href:'/me/payslip',labelKey:'myPayslips',icon:Wallet,ownedSubpaths:['/me/payslip']},
+    {href:'/me/letters',labelKey:'myLetters',icon:FileBarChart,ownedSubpaths:['/me/letters']},
     {href:'/me/tax-relief',labelKey:'taxRelief',icon:Receipt},
     {href:'/me/tp3',labelKey:'myTp3',icon:Receipt},
     {href:'/me/ea',labelKey:'myEa',icon:Receipt,ownedSubpaths:['/me/ea']},

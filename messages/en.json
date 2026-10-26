@@ -464,7 +464,8 @@
     "jobDescriptions": "Job Description",
     "rewardsAccess": "Rewards Access",
     "peopleGeneral": "General",
-    "loginPresentation": "Login & browser appearance"
+    "loginPresentation": "Login & browser appearance",
+    "myLetters": "My Letters"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -10273,7 +10274,8 @@
         "roster": "Managers and above; what appears follows your actual reporting lines.",
         "workflowEmail": "A group administrator is required to change categories for the whole organisation.",
         "workforceRecords": "Requires effective Workforce view permission for the selected company. Does not grant payroll or approval access.",
-        "loginPresentation": "Group administrators only. Settings affect only their own organization; the installation chooses its default login organization."
+        "loginPresentation": "Group administrators only. Settings affect only their own organization; the installation chooses its default login organization.",
+        "myLetters": "Only the signed-in person’s issued letters across current and historical employments. Privileged roles do not widen My Letters."
       },
       "scopedTo": "Scoped to {company} and its sub-companies",
       "screen": {
@@ -23913,5 +23915,46 @@
     "network": "A private HR server may require your company Wi-Fi or VPN.",
     "invalid": "This setup link is invalid or expired. Ask your administrator for a new link.",
     "checking": "Preparing your workplace setup…"
+  },
+  "letters": {
+    "mine": {
+      "title": "My Letters",
+      "description": "Your issued letters across your current and previous employments.",
+      "unavailable": "Unavailable",
+      "issuedOn": "Issued on {date}",
+      "void": "Void",
+      "issued": "Issued",
+      "details": "View details",
+      "next": "Next letters",
+      "status": "Status",
+      "issueDate": "Issue date",
+      "confirmationDate": "Confirmation date",
+      "acknowledged": "Acknowledged",
+      "pendingAcknowledgement": "Pending acknowledgement",
+      "viewed": "Opened",
+      "new": "New",
+      "open": "Open PDF",
+      "opening": "Opening…",
+      "artifactIdentity": "PDF identity",
+      "voidHelp": "This letter has been revoked. Its history is retained; the PDF is no longer available.",
+      "sign": "Sign electronically",
+      "acknowledge": "Acknowledge",
+      "confirmationHelp": "Your signed-in confirmation is recorded against this exact PDF. Opening a letter does not acknowledge it.",
+      "signatureIntent": "I have reviewed this letter and intend to sign this exact PDF electronically.",
+      "acknowledgementIntent": "I have reviewed and acknowledge receipt of this exact letter.",
+      "saving": "Saving…",
+      "recorded": "Your confirmation has been recorded.",
+      "alreadyRecorded": "Your earlier confirmation is already recorded. No new confirmation was created.",
+      "signed": "Signed",
+      "empty": "No issued letters are available for you.",
+      "errors": {
+        "invalid": "Check the submitted information and try again.",
+        "permission": "This letter or permission is unavailable.",
+        "stale": "The letter has changed. Review the current PDF before confirming.",
+        "state": "This action is no longer available for this letter.",
+        "unavailable": "Letters are temporarily unavailable. Try again shortly."
+      },
+      "download": "Download PDF"
+    }
   }
 }

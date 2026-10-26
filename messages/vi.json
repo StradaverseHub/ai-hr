@@ -464,7 +464,8 @@
     "jobDescriptions": "Mô tả công việc",
     "rewardsAccess": "Quyền truy cập đãi ngộ",
     "peopleGeneral": "Chung",
-    "loginPresentation": "Giao diện đăng nhập & trình duyệt"
+    "loginPresentation": "Giao diện đăng nhập & trình duyệt",
+    "myLetters": "Thư của tôi"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -10273,7 +10274,8 @@
         "roster": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
         "workflowEmail": "Cần quản trị viên cấp tập đoàn để thay đổi danh mục cho toàn tổ chức.",
         "workforceRecords": "Cần có quyền xem hồ sơ nhân viên có hiệu lực cho công ty đã chọn. Không cấp quyền truy cập lương hoặc phê duyệt.",
-        "loginPresentation": "Chỉ quản trị viên tập đoàn có thể đổi giao diện đăng nhập."
+        "loginPresentation": "Chỉ quản trị viên tập đoàn có thể đổi giao diện đăng nhập.",
+        "myLetters": "Chỉ các thư đã phát hành cho người đăng nhập trong công việc hiện tại và trước đây. Vai trò đặc quyền không mở rộng phạm vi Thư của tôi."
       },
       "scopedTo": "Phạm vi đến {company} và các công ty con của nó",
       "screen": {
@@ -23913,5 +23915,46 @@
     "network": "Máy chủ HR riêng có thể yêu cầu Wi-Fi công ty hoặc VPN.",
     "invalid": "Liên kết thiết lập không hợp lệ hoặc đã hết hạn. Hãy yêu cầu quản trị viên cung cấp liên kết mới.",
     "checking": "Đang chuẩn bị thiết lập nơi làm việc…"
+  },
+  "letters": {
+    "mine": {
+      "title": "Thư của tôi",
+      "description": "Các thư đã phát hành cho bạn trong thời gian làm việc hiện tại và trước đây.",
+      "unavailable": "Không có dữ liệu",
+      "issuedOn": "Phát hành ngày {date}",
+      "void": "Đã hủy",
+      "issued": "Đã phát hành",
+      "details": "Xem chi tiết",
+      "next": "Các thư tiếp theo",
+      "status": "Trạng thái",
+      "issueDate": "Ngày phát hành",
+      "confirmationDate": "Ngày xác nhận",
+      "acknowledged": "Đã xác nhận nhận thư",
+      "pendingAcknowledgement": "Chờ xác nhận nhận thư",
+      "viewed": "Đã mở",
+      "new": "Mới",
+      "open": "Mở PDF",
+      "opening": "Đang mở…",
+      "artifactIdentity": "Định danh PDF",
+      "voidHelp": "Thư này đã bị thu hồi. Lịch sử được giữ lại; không thể truy cập PDF nữa.",
+      "sign": "Ký điện tử",
+      "acknowledge": "Xác nhận nhận thư",
+      "confirmationHelp": "Xác nhận bằng tài khoản đăng nhập được ghi nhận cho đúng bản PDF này. Mở thư không đồng nghĩa với xác nhận nhận thư.",
+      "signatureIntent": "Tôi đã xem xét thư này và có ý định ký điện tử vào đúng bản PDF này.",
+      "acknowledgementIntent": "Tôi đã xem xét và xác nhận đã nhận đúng thư này.",
+      "saving": "Đang lưu…",
+      "recorded": "Xác nhận của bạn đã được ghi nhận.",
+      "alreadyRecorded": "Xác nhận trước đó của bạn đã được ghi nhận. Không tạo xác nhận mới.",
+      "signed": "Đã ký",
+      "empty": "Chưa có thư đã phát hành cho bạn.",
+      "errors": {
+        "invalid": "Kiểm tra thông tin đã gửi và thử lại.",
+        "permission": "Không có thư này hoặc quyền truy cập.",
+        "stale": "Thư đã thay đổi. Hãy xem PDF hiện tại trước khi xác nhận.",
+        "state": "Không thể thực hiện thao tác này với thư nữa.",
+        "unavailable": "Tính năng thư tạm thời không khả dụng. Vui lòng thử lại sau."
+      },
+      "download": "Tải PDF"
+    }
   }
 }
