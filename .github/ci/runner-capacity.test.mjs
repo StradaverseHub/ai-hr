@@ -119,3 +119,13 @@ test('suite shell checks the actual Docker filesystem before SDK mutation and do
   const low=spawnSync('/bin/bash',[script],{env:{...e,AIHR_CI_CAPACITY_PROFILE:'bounded-suite-ready',AIHR_DOCKER_LOW:'1'},encoding:'utf8'});assert.equal(low.status,2,low.stderr);assert(low.stderr.includes('Insufficient capacity'));
  }finally{rmSync(dir,{recursive:true,force:true});}
 });
+
+test('focused setup uses the same suite margins only in its actual first-attempt manual closed-DB context',()=>{
+ const e={GITHUB_ACTIONS:'true',CI:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',GITHUB_RUN_ATTEMPT:'1',GITHUB_JOB:'selected-tests',GITHUB_EVENT_NAME:'workflow_dispatch',
+  GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-focused-checks.yml@refs/heads/codex/test-suite-efficiency-review-20261025',GITHUB_SHA:'a'.repeat(40),AIHR_CI_CONTROL_HEAD:'a'.repeat(40),AIHR_FOCUSED_SUITE_CAPACITY:'true',
+  ...Object.fromEntries(['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'].map(k=>[k,'postgres://nobody:nothing@127.0.0.1:1/no_database']))};
+ for(const profile of ['bounded-suite-setup','bounded-suite-ready']){
+  assert(validateCapacityScope(profile,e));
+  for(const change of [{AIHR_FOCUSED_SUITE_CAPACITY:'false'},{GITHUB_RUN_ATTEMPT:'2'},{GITHUB_EVENT_NAME:'push'},{GITHUB_JOB:'linux-build'},{GITHUB_WORKFLOW_REF:e.GITHUB_WORKFLOW_REF.replace('alpha-focused-checks','other')},{DATABASE_URL:'postgres://live'},{GITHUB_REPOSITORY_ID:'1'},{AIHR_CI_CONTROL_HEAD:'b'.repeat(40)}])assert.throws(()=>validateCapacityScope(profile,{...e,...change}));
+ }
+});
