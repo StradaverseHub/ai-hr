@@ -30,7 +30,8 @@ export const onehrLabel = {
   /**
    * A login's name when only its person id is known (actor names, reviewer pickers): the label of any of
    * that person's employments the caller administers for OneHR, lowest employment id first. Null when none.
+   * The employments come from app.onehr_employment (VF-07): the partner reads no employment row of others.
    */
   fullNameForPerson: (personId: Ref) =>
-    sql<string | null>`(select l.full_name from app.onehr_person_labels(array(select e.id from employment e where e.person_id=${personId} and e.tenant_id=app.current_tenant_id() order by e.id)) l order by l.employment_id limit 1)`,
+    sql<string | null>`(select l.full_name from app.onehr_person_labels(array(select e.id from app.onehr_employment e where e.person_id=${personId} and e.tenant_id=app.current_tenant_id() order by e.id)) l order by l.employment_id limit 1)`,
 };

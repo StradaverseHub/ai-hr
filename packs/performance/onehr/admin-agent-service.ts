@@ -26,7 +26,7 @@ export async function adminHomeTx(tx:Tx){
  const [rights]=await tx.execute<{admin:boolean}>(sql`select app.is_admin() as admin`);
  const companies=await tx.select({id:company.id}).from(company).where(and(isNull(company.archivedAt),sql`app.onehr_admin(${company.id})`));
  const cycles=await tx.select({id:reviewCycle.id,name:reviewCycle.name,status:reviewCycle.status}).from(reviewCycle).innerJoin(onehrCycle,eq(onehrCycle.cycleId,reviewCycle.id)).where(sql`app.onehr_cycle_admin(${reviewCycle.id})`).orderBy(desc(reviewCycle.periodEnd),desc(reviewCycle.createdAt),desc(reviewCycle.id)).limit(20);
- const [people]=await tx.execute<{n:number}>(sql`select count(*)::int as n from employment e where e.tenant_id=app.current_tenant_id() and app.onehr_admin(e.company_id) and (e.terminated_on is null or e.terminated_on>${todayInKualaLumpur()}::date)`);
+ const [people]=await tx.execute<{n:number}>(sql`select count(*)::int as n from app.onehr_employment e where e.tenant_id=app.current_tenant_id() and app.onehr_admin(e.company_id) and (e.terminated_on is null or e.terminated_on>${todayInKualaLumpur()}::date)`);
  const [active]=await tx.select({id:reviewCycle.id,name:reviewCycle.name,status:reviewCycle.status}).from(reviewCycle).innerJoin(onehrCycle,eq(onehrCycle.cycleId,reviewCycle.id)).where(sql`app.onehr_cycle_admin(${reviewCycle.id}) and ${reviewCycle.status} in ('open','calibration')`).orderBy(desc(reviewCycle.periodEnd),desc(reviewCycle.createdAt),desc(reviewCycle.id)).limit(1);
  return {admin:rights.admin,companies:companies.length,people:people.n,cycles,active:active??null};
 }

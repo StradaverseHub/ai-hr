@@ -34,7 +34,12 @@ ADR-0135's configurable capabilities are the intended long-term home, but they a
    - The generic performance/compensation gates (`requirePerfCompAccess`, `canAdminPerfCtx`, `isAdminOrPerfCompCtx`, `PERFCOMP_ROLES`) are **unchanged**, so the role cannot reach generic cycles, merit actions or compensation.
 
 3. **Kernel data, least privilege.**
-   - `employment` and `assignment` gain **SELECT-only** permissive policies for OneHR administration scope. No write policy changes.
+   - `employment` and `assignment` are **not** readable by the role beyond the self and relationship visibility every employee has (VF-07, owner decision APR-017). Their rows carry termination type, reason and code, notice and blacklist details, cost allocation, payroll policy and similar, so the role has no policy on either table.
+   - OneHR administration reads only the columns it needs through two SECURITY DEFINER projections scoped to the partner's companies (live grant, descendants, current tenant):
+     - `app.onehr_employment_facts`: id, tenant, person, company, employee code, grade, hired, confirmation and terminated dates;
+     - `app.onehr_assignment_facts`: id, tenant, employment, department, position and the validity columns.
+   - Services read them through the invoker views `app.onehr_employment` and `app.onehr_assignment`. The row the caller can read wins, so HR administrators read exactly the rows they read before; the projection only adds the partner's companies.
+   - OneHR satellite policies that read `employment` for administration scope (participation, draft plans, release, rating records, reminder recipients) and the partner's own review and panel-request policies read the view or projection instead. No write policy changes.
    - `person` RLS is **not** widened, because a person row carries date of birth, address, gender and marital status. OneHR administration services read names and employee codes through one SECURITY DEFINER projection, `app.onehr_person_labels`. It returns only label columns for employments in companies the caller administers for OneHR, and all actors use it, so HR administrators see the same labels as before.
    - `performance_review` gains a **SELECT-only** policy for rows of OneHR-native cycles in scope.
    - `review_cycle` gains an UPDATE policy limited to OneHR-native cycles in scope, solely so existing row locks (`FOR UPDATE`) succeed.

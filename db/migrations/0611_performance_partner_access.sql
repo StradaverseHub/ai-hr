@@ -8,8 +8,13 @@
 -- What the role gets (all of it OneHR-native-cycle scoped, company + descendants, live grant):
 --   1. app.assessment_admin_for admits it  → onehr_admin / onehr_cycle_admin / calibration access and every
 --      OneHR satellite policy follow (ADR-0142 §2).
---   2. SELECT-only reads of employment / assignment in its companies, and of performance_review rows of
---      OneHR-native cycles (§3). No write policy on any of those tables changes.
+--   2. NO read of an employment or assignment row beyond the self/relationship visibility every employee has
+--      (VF-07, APR-017): a row carries termination and blacklist reasons, cost allocation, payroll policy and
+--      the like. OneHR administration reads the few columns it needs through ONE definer projection per table
+--      (app.onehr_employment_facts / app.onehr_assignment_facts), exposed as the invoker views
+--      app.onehr_employment / app.onehr_assignment: the row the caller can read wins, the projection only
+--      fills in the partner's companies. SELECT-only reads of performance_review rows of OneHR-native cycles
+--      (§3). No write policy on any of those tables changes.
 --   3. review_cycle: an UPDATE policy for OneHR-native cycles in scope, solely so the existing
 --      `SELECT … FOR UPDATE` locks in the OneHR services succeed, plus a BEFORE UPDATE trigger that refuses
 --      any actual change made with no authority but this role (§3). Row locks do not fire UPDATE triggers.
@@ -73,17 +78,63 @@ REVOKE ALL ON FUNCTION app.onehr_partner_panel_request(uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_partner_panel_request(uuid,uuid) TO ai_hr_app;
 --> statement-breakpoint
 
--- ── 3. Kernel reads: SELECT-only, partner scope only ──────────────────────────────────────────────────
--- Additional PERMISSIVE policies OR with the existing FOR ALL policies for SELECT only. INSERT / UPDATE /
--- DELETE still evaluate only employment_rls / assignment_rls / performance_review_rls (0099/0515), which this
--- file does not touch, so the partner gains no write on any of them.
-CREATE POLICY employment_onehr_partner_read ON employment FOR SELECT
- USING (tenant_id = app.current_tenant_id() AND company_id = ANY ((SELECT app.onehr_partner_company_ids())::uuid[]));
+-- ── 3. Kernel reads: a column projection, never the employment / assignment row (VF-07, APR-017) ──────
+-- The partner gets NO policy on employment or assignment. Those rows carry termination type, reason and
+-- code, notice and blacklist details, cost allocation, payroll policy, card and schedule settings: none of
+-- it is OneHR administration's business. What OneHR administration does read is listed column by column,
+-- with its consumer, and nothing else leaves these functions:
+--   employment: id + tenant_id (keys and tenant pins), person_id (labels via app.onehr_person_labels, login
+--     and self checks), company_id (OneHR scope and grouping), employee_code (lists, reports, KPI import and
+--     reminder preview matching), grade_id (panel eligibility, career grade), hired_on + confirmation_date
+--     (participation eligibility), terminated_on (active-employee filters; the date, never the reason).
+--   assignment: id + tenant_id + employment_id (keys), department_id (department labels and filters,
+--     catalogue profile and KPI library matching), position_id (catalogue profile title matching),
+--     valid_from + valid_to + superseded_at (the current-assignment pick).
+-- Scope is exactly the rows the retired employment_onehr_partner_read / assignment_onehr_partner_read
+-- policies admitted: employments in the partner's companies (app.onehr_partner_company_ids: live grant,
+-- descendants, archive and login block), current tenant only. Any other actor gets an empty set from a
+-- one-time filter, without walking employment.
+CREATE FUNCTION app.onehr_employment_facts() RETURNS TABLE(id uuid, tenant_id uuid, person_id uuid, company_id uuid, employee_code text, grade_id uuid, hired_on date, confirmation_date date, terminated_on date)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT e.id, e.tenant_id, e.person_id, e.company_id, e.employee_code, e.grade_id, e.hired_on, e.confirmation_date, e.terminated_on
+ FROM employment e
+ WHERE cardinality((SELECT app.onehr_partner_company_ids())) > 0
+  AND e.tenant_id = app.current_tenant_id() AND e.company_id = ANY ((SELECT app.onehr_partner_company_ids())::uuid[])
+$$;
+REVOKE ALL ON FUNCTION app.onehr_employment_facts() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_employment_facts() TO ai_hr_app;
 --> statement-breakpoint
-CREATE POLICY assignment_onehr_partner_read ON assignment FOR SELECT
- USING (tenant_id = app.current_tenant_id() AND cardinality((SELECT app.onehr_partner_company_ids())) > 0 AND EXISTS (SELECT 1 FROM employment e
-  WHERE e.id = assignment.employment_id AND e.tenant_id = assignment.tenant_id
-   AND e.company_id = ANY ((SELECT app.onehr_partner_company_ids())::uuid[])));
+CREATE FUNCTION app.onehr_assignment_facts() RETURNS TABLE(id uuid, tenant_id uuid, employment_id uuid, department_id uuid, position_id uuid, valid_from date, valid_to date, superseded_at timestamptz)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT a.id, a.tenant_id, a.employment_id, a.department_id, a.position_id, a.valid_from, a.valid_to, a.superseded_at
+ FROM assignment a JOIN employment e ON e.id = a.employment_id AND e.tenant_id = a.tenant_id
+ WHERE cardinality((SELECT app.onehr_partner_company_ids())) > 0
+  AND a.tenant_id = app.current_tenant_id() AND e.company_id = ANY ((SELECT app.onehr_partner_company_ids())::uuid[])
+$$;
+REVOKE ALL ON FUNCTION app.onehr_assignment_facts() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_assignment_facts() TO ai_hr_app;
+--> statement-breakpoint
+-- What OneHR administration reads in place of employment / assignment (packs/performance/onehr/
+-- employment-projection.ts). security_invoker: the first arm is the caller's own RLS-filtered row, so every
+-- actor who is not a performance partner reads exactly the rows it read before; the second arm adds only the
+-- projection rows the caller cannot read itself. The readable row wins; both arms carry the same columns.
+CREATE VIEW app.onehr_employment WITH (security_invoker = true) AS
+ SELECT e.id, e.tenant_id, e.person_id, e.company_id, e.employee_code, e.grade_id, e.hired_on, e.confirmation_date, e.terminated_on
+ FROM public.employment e
+ UNION ALL
+ SELECT f.id, f.tenant_id, f.person_id, f.company_id, f.employee_code, f.grade_id, f.hired_on, f.confirmation_date, f.terminated_on
+ FROM app.onehr_employment_facts() f WHERE NOT EXISTS (SELECT 1 FROM public.employment v WHERE v.id = f.id);
+REVOKE ALL ON app.onehr_employment FROM PUBLIC;
+GRANT SELECT ON app.onehr_employment TO ai_hr_app;
+--> statement-breakpoint
+CREATE VIEW app.onehr_assignment WITH (security_invoker = true) AS
+ SELECT a.id, a.tenant_id, a.employment_id, a.department_id, a.position_id, a.valid_from, a.valid_to, a.superseded_at
+ FROM public.assignment a
+ UNION ALL
+ SELECT f.id, f.tenant_id, f.employment_id, f.department_id, f.position_id, f.valid_from, f.valid_to, f.superseded_at
+ FROM app.onehr_assignment_facts() f WHERE NOT EXISTS (SELECT 1 FROM public.assignment v WHERE v.id = f.id);
+REVOKE ALL ON app.onehr_assignment FROM PUBLIC;
+GRANT SELECT ON app.onehr_assignment TO ai_hr_app;
 --> statement-breakpoint
 -- OneHR-native cycles only: a generic cycle's performance_review row carries the merit/bonus recommendation
 -- (ADR-0049 §3), which is exactly what this role must never read.
@@ -95,8 +146,8 @@ CREATE POLICY performance_review_onehr_partner_read ON performance_review FOR SE
     -- The cycle must be one the partner administers too, not only the subject's employer (VF-04): a company-A
     -- partner never reads a company-X or group-wide cycle's rows because the subject happens to work in A.
     AND (c.company_id = ANY ((SELECT app.onehr_partner_company_ids())::uuid[]) OR (c.company_id IS NULL AND app.onehr_partner_for(NULL))))
-  AND EXISTS (SELECT 1 FROM employment e WHERE e.id = performance_review.employment_id AND e.tenant_id = performance_review.tenant_id
-   AND e.company_id = ANY ((SELECT app.onehr_partner_company_ids())::uuid[])));
+  -- The subject works in a partner company, which is exactly the projection's set (VF-07).
+  AND EXISTS (SELECT 1 FROM app.onehr_employment_facts() e WHERE e.id = performance_review.employment_id));
 --> statement-breakpoint
 
 -- peer_feedback_request is a performance-pack satellite (packs/performance/index.ts) that OneHR panel
@@ -108,18 +159,51 @@ CREATE POLICY performance_review_onehr_partner_read ON performance_review FOR SE
 CREATE POLICY peer_feedback_request_onehr_partner_read ON peer_feedback_request FOR SELECT
  USING (tenant_id = app.current_tenant_id() AND cardinality((SELECT app.onehr_partner_company_ids())) > 0 AND app.onehr_partner_panel_request(review_id, subject_employment_id));
 --> statement-breakpoint
--- VF-05: a partner's row names the partner as requester and a peer it can see in this tenant (the employment
--- read below is RLS-bound, so a peer outside the partner's companies is refused). UPDATE cannot pin the
--- requester (a policy has no OLD), so it re-checks the peer and the review scope only.
+-- VF-05: a partner's row names the partner as requester and a peer it can see in this tenant (the read below
+-- is app.onehr_employment: the caller's own RLS-bound rows plus the partner-company projection, so a peer
+-- outside the partner's companies is refused). UPDATE cannot pin the requester (a policy has no OLD), so it
+-- re-checks the peer and the review scope only.
 CREATE POLICY peer_feedback_request_onehr_partner_insert ON peer_feedback_request FOR INSERT
  WITH CHECK (tenant_id = app.current_tenant_id() AND cardinality((SELECT app.onehr_partner_company_ids())) > 0 AND app.onehr_partner_panel_request(review_id, subject_employment_id)
   AND requested_by_user_id = app.current_user_id()
-  AND EXISTS (SELECT 1 FROM employment p WHERE p.id = peer_feedback_request.peer_employment_id AND p.tenant_id = peer_feedback_request.tenant_id));
+  AND EXISTS (SELECT 1 FROM app.onehr_employment p WHERE p.id = peer_feedback_request.peer_employment_id AND p.tenant_id = peer_feedback_request.tenant_id));
 --> statement-breakpoint
 CREATE POLICY peer_feedback_request_onehr_partner_update ON peer_feedback_request FOR UPDATE
  USING (tenant_id = app.current_tenant_id() AND cardinality((SELECT app.onehr_partner_company_ids())) > 0 AND app.onehr_partner_panel_request(review_id, subject_employment_id))
  WITH CHECK (tenant_id = app.current_tenant_id() AND cardinality((SELECT app.onehr_partner_company_ids())) > 0 AND app.onehr_partner_panel_request(review_id, subject_employment_id)
-  AND EXISTS (SELECT 1 FROM employment p WHERE p.id = peer_feedback_request.peer_employment_id AND p.tenant_id = peer_feedback_request.tenant_id));
+  AND EXISTS (SELECT 1 FROM app.onehr_employment p WHERE p.id = peer_feedback_request.peer_employment_id AND p.tenant_id = peer_feedback_request.tenant_id));
+--> statement-breakpoint
+
+-- ── 3a. OneHR satellite policies that read employment for ADMINISTRATION scope (VF-07) ──────────────────
+-- 0540 wrote these against `employment` under the caller's RLS, which HR (and perf-comp partners) can read
+-- in scope and the performance partner now cannot. Each is restated byte-for-byte from its latest definition
+-- except `employment` -> app.onehr_employment, so HR's answer is unchanged (the readable row wins) and the
+-- partner's admin answer is what it was with the retired employment policy. Deliberately untouched: reads
+-- that are a SELF test (`… is_self_person`: the partner's own employment stays readable, so they answer as
+-- before), reads bound to app.visible_employment_ids() (kpi_library_read: the retired policy never changed
+-- that set), and the manager / moderator arms of onehr_evidence_insert / _update, which never served
+-- administration and now answer for a partner exactly as for any other manager or moderator.
+-- 0540:31-33 — participation overrides (setAssessmentParticipation).
+ALTER POLICY assessment_participation_admin ON performance_assessment_participation
+ USING(tenant_id=app.current_tenant_id() AND app.onehr_cycle_admin(cycle_id) AND EXISTS(SELECT 1 FROM app.onehr_employment e WHERE e.id=employment_id AND e.tenant_id=performance_assessment_participation.tenant_id AND app.onehr_admin(e.company_id)))
+ WITH CHECK(tenant_id=app.current_tenant_id() AND app.onehr_cycle_admin(cycle_id) AND EXISTS(SELECT 1 FROM app.onehr_employment e JOIN review_cycle c ON c.id=cycle_id WHERE e.id=employment_id AND e.tenant_id=performance_assessment_participation.tenant_id AND app.onehr_admin(e.company_id) AND (c.company_id IS NULL OR c.company_id=e.company_id)));
+--> statement-breakpoint
+-- 0540:360 — the administrator arm of a draft plan's visibility (the plan reviewer who also administers it).
+ALTER POLICY onehr_plan_access ON performance_onehr_plan USING(tenant_id=app.current_tenant_id() AND (employment_id=ANY((SELECT app.visible_employment_ids())::uuid[]) OR app.assessment_plan_reviewer(id)) AND (status<>'draft' OR EXISTS(SELECT 1 FROM app.onehr_employment e WHERE e.id=performance_onehr_plan.employment_id AND e.tenant_id=performance_onehr_plan.tenant_id AND (app.is_self_person(e.person_id) OR app.onehr_admin(e.company_id) AND EXISTS(SELECT 1 FROM performance_onehr_review r WHERE r.review_id=performance_onehr_plan.review_id AND r.tenant_id=e.tenant_id AND app.onehr_cycle_admin(r.cycle_id))))));
+--> statement-breakpoint
+-- 0540:571-573 — release records.
+ALTER POLICY assessment_release_admin ON performance_assessment_release
+ USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM performance_onehr_review r JOIN app.onehr_employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id WHERE r.review_id=performance_assessment_release.review_id AND r.tenant_id=performance_assessment_release.tenant_id AND app.onehr_cycle_admin(r.cycle_id) AND app.onehr_admin(e.company_id) AND NOT app.is_self_person(e.person_id)))
+ WITH CHECK(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM performance_onehr_review r JOIN app.onehr_employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id WHERE r.review_id=performance_assessment_release.review_id AND r.tenant_id=performance_assessment_release.tenant_id AND app.onehr_cycle_admin(r.cycle_id) AND app.onehr_admin(e.company_id) AND NOT app.is_self_person(e.person_id)));
+--> statement-breakpoint
+-- 0540:708-711 — rating records.
+ALTER POLICY assessment_rating_record_read ON performance_assessment_rating_record USING(
+ tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM performance_onehr_review r JOIN app.onehr_employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id
+ WHERE r.review_id=performance_assessment_rating_record.review_id AND r.tenant_id=performance_assessment_rating_record.tenant_id
+ AND app.onehr_cycle_admin(r.cycle_id) AND app.onehr_admin(r.company_id) AND app.onehr_admin(e.company_id) AND NOT app.is_self_person(e.person_id)));
+--> statement-breakpoint
+-- 0540:1522 — a queued reminder's employment must be the recipient's own (queueAssessmentReminders).
+ALTER POLICY assessment_reminder_recipient_admin ON performance_assessment_reminder_recipient WITH CHECK(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM performance_assessment_reminder_run r JOIN app_user u ON u.id=user_id AND u.tenant_id=r.tenant_id WHERE r.id=run_id AND r.tenant_id=performance_assessment_reminder_recipient.tenant_id AND (employment_id IS NULL OR EXISTS(SELECT 1 FROM app.onehr_employment e WHERE e.id=employment_id AND e.person_id=u.person_id AND e.tenant_id=u.tenant_id))) AND (source_event_id IS NULL OR EXISTS(SELECT 1 FROM domain_event ev WHERE ev.id=source_event_id AND ev.tenant_id=performance_assessment_reminder_recipient.tenant_id AND ev.aggregate_id=performance_assessment_reminder_recipient.id AND ev.event_type='assessment.reminder-queued')));
 --> statement-breakpoint
 
 -- ── 3b. onehr_cycle_admin: OneHR-native only for the partner (VF-06) ──────────────────────────────────

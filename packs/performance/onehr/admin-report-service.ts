@@ -2,7 +2,7 @@ import {and,asc,eq,inArray,isNull,sql} from 'drizzle-orm';
 import {z} from 'zod';
 import type {SessionContext,Tx} from '../../../db/client';
 import {withPerformanceTenant} from '../../../core/module-gate';
-import {company,employment,onehrCycle,reviewCycle} from '../../../db/schema';
+import {company,onehrCycle,reviewCycle} from '../../../db/schema';
 import {todayInKualaLumpur} from '../../../lib/hr-date';
 import {toCsv} from '../../../lib/csv';
 import {policySchema} from './model';
@@ -10,6 +10,7 @@ import {assessmentParticipantsTx} from './participation-service';
 import {profitAchievementsTx} from './profit-service';
 import {profitCurveFor} from './calibration-curve-model';
 import {getAssessmentProgress,getAssessmentAssessorProgress} from './progress-service';
+import {onehrEmployment} from './employment-projection';
 import {auditAssessmentAdminTx} from './admin-context';
 import {adminReportParams,buildAdminReport,type AdminReportParams,type AdminReportData} from './admin-report-model';
 /** Read-only cycle authorization also works for archived cycles; never acquire the editing lock. */
@@ -51,7 +52,8 @@ export async function getAssessmentAdminReport(ctx:SessionContext,cycleId:string
   const people=await withPerformanceTenant(ctx,async tx=>{
    await assessmentAdminReadCycleTx(tx,cycleId);const participants=await assessmentParticipantsTx(tx,cycleId),ids=participants.map(p=>p.employmentId),today=todayInKualaLumpur();
    if(!ids.length)return [];
-   const metadata=await tx.select({id:employment.id,code:employment.employeeCode,department:sql<string>`coalesce((select d.name from assignment a join department d on d.id=a.department_id and d.tenant_id=a.tenant_id where a.employment_id=employment.id and a.tenant_id=employment.tenant_id and a.superseded_at is null and a.valid_from<=${today}::date and (a.valid_to is null or a.valid_to>${today}::date) order by a.valid_from desc,a.id limit 1),'')`}).from(employment).where(inArray(employment.id,ids));
+   // VF-07: employment and assignment through the OneHR projection views (HR: its own rows, unchanged).
+   const metadata=await tx.select({id:onehrEmployment.id,code:onehrEmployment.employeeCode,department:sql<string>`coalesce((select d.name from app.onehr_assignment a join department d on d.id=a.department_id and d.tenant_id=a.tenant_id where a.employment_id=onehr_employment.id and a.tenant_id=onehr_employment.tenant_id and a.superseded_at is null and a.valid_from<=${today}::date and (a.valid_to is null or a.valid_to>${today}::date) order by a.valid_from desc,a.id limit 1),'')`}).from(onehrEmployment).where(inArray(onehrEmployment.id,ids));
    const byId=new Map(metadata.map(r=>[r.id,r]));return participants.flatMap(p=>{const c=base.companies.find(c=>c.id===p.companyId),m=byId.get(p.employmentId);return c&&m?[{...p,code:m.code,department:m.department,company:c.name,group:c.group}]:[];});
   });
   if(p.kind==='participants')data.participants=people;

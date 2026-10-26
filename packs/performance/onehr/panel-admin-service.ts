@@ -2,13 +2,14 @@ import { createHash } from 'node:crypto';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { SessionContext, Tx } from '../../../db/client';
-import { assessmentRelease, company, employment, jobGrade, onehrPanel, onehrResult, onehrReview, performanceReview, person } from '../../../db/schema';
+import { assessmentRelease, company, jobGrade, onehrPanel, onehrResult, onehrReview, performanceReview, person } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
 import { todayInKualaLumpur } from '../../../lib/hr-date';
 import { loadAssessmentAdminCycleTx, auditAssessmentAdminTx } from './admin-context';
 import { additivePanelPlan, buildPanelCandidates, panelImportRows, type PanelPerson, type PanelRelationship } from './panel-build-model';
 import { assignOnehrPanelTx, changeAssessmentPanelStateTx } from './service';
 import { onehrLabel } from './person-labels';
+import { onehrEmployment } from './employment-projection';
 
 async function applyOrValidate(tx:Tx,apply:boolean,write:(tx:Tx)=>Promise<void>){
  if(apply){await write(tx);return;}
@@ -16,23 +17,24 @@ async function applyOrValidate(tx:Tx,apply:boolean,write:(tx:Tx)=>Promise<void>)
  try{await tx.transaction(async check=>{await write(check);throw previewRollback;});}catch(error){if(error!==previewRollback)throw error;}
 }
 const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+// VF-07: employment and assignment through the OneHR projection views (HR: its own rows, unchanged).
 async function population(tx:Tx,cycleId:string){
  const today=todayInKualaLumpur();
- const rows=await tx.select({id:employment.id,personId:employment.personId,code:employment.employeeCode,name:onehrLabel.labelOrPerson(person.fullName,employment.id),companyId:employment.companyId,groupId:sql<string>`coalesce(${company.parentCompanyId},${company.id})`,grade:jobGrade.code,joinedOn:employment.hiredOn,
-  department:sql<string>`coalesce((select d.name from assignment a join department d on d.id=a.department_id and d.tenant_id=a.tenant_id where a.employment_id=${employment.id} and a.superseded_at is null and a.valid_from<=${today}::date and (a.valid_to is null or a.valid_to>${today}::date) order by a.valid_from desc,a.id limit 1),'')`,
-  managerId:sql<string|null>`coalesce((select pr.reviewer_employment_id from performance_review pr where pr.employment_id=${employment.id} and pr.cycle_id=${cycleId}::uuid),(select l.manager_employment_id from reporting_line l where l.subordinate_employment_id=${employment.id} and l.line_type='administrative' and l.superseded_at is null and l.valid_from<=${today}::date and (l.valid_to is null or l.valid_to>${today}::date) order by l.valid_from desc,l.id limit 1))`,
-  participates:sql<boolean>`exists(select 1 from performance_onehr_review r where r.employment_id=${employment.id} and r.cycle_id=${cycleId}::uuid and app.assessment_review_participates(r.review_id))`,
-  canAssess:sql<boolean>`exists(select 1 from app_user u where u.tenant_id=${employment.tenantId} and u.person_id=${employment.personId} and u.archived_at is null and not app.login_blocked(u.id))`,
+ const rows=await tx.select({id:onehrEmployment.id,personId:onehrEmployment.personId,code:onehrEmployment.employeeCode,name:onehrLabel.labelOrPerson(person.fullName,onehrEmployment.id),companyId:onehrEmployment.companyId,groupId:sql<string>`coalesce(${company.parentCompanyId},${company.id})`,grade:jobGrade.code,joinedOn:onehrEmployment.hiredOn,
+  department:sql<string>`coalesce((select d.name from app.onehr_assignment a join department d on d.id=a.department_id and d.tenant_id=a.tenant_id where a.employment_id=${onehrEmployment.id} and a.superseded_at is null and a.valid_from<=${today}::date and (a.valid_to is null or a.valid_to>${today}::date) order by a.valid_from desc,a.id limit 1),'')`,
+  managerId:sql<string|null>`coalesce((select pr.reviewer_employment_id from performance_review pr where pr.employment_id=${onehrEmployment.id} and pr.cycle_id=${cycleId}::uuid),(select l.manager_employment_id from reporting_line l where l.subordinate_employment_id=${onehrEmployment.id} and l.line_type='administrative' and l.superseded_at is null and l.valid_from<=${today}::date and (l.valid_to is null or l.valid_to>${today}::date) order by l.valid_from desc,l.id limit 1))`,
+  participates:sql<boolean>`exists(select 1 from performance_onehr_review r where r.employment_id=${onehrEmployment.id} and r.cycle_id=${cycleId}::uuid and app.assessment_review_participates(r.review_id))`,
+  canAssess:sql<boolean>`exists(select 1 from app_user u where u.tenant_id=${onehrEmployment.tenantId} and u.person_id=${onehrEmployment.personId} and u.archived_at is null and not app.login_blocked(u.id))`,
  // ADR-0142: a person row the caller can read (HR) keeps its old meaning; a performance partner, who cannot
  // read person, gets the label projection instead. Same row set as the former INNER JOIN for HR.
- }).from(employment).leftJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId)).leftJoin(jobGrade,eq(jobGrade.id,employment.gradeId)).where(sql`${employment.employeeCode} is not null and (${employment.terminatedOn} is null or ${employment.terminatedOn}>${today}::date) and (${person.id} is not null or ${onehrLabel.visible(employment.id)})`).orderBy(asc(employment.employeeCode),asc(employment.id));
+ }).from(onehrEmployment).leftJoin(person,eq(person.id,onehrEmployment.personId)).innerJoin(company,eq(company.id,onehrEmployment.companyId)).leftJoin(jobGrade,eq(jobGrade.id,onehrEmployment.gradeId)).where(sql`${onehrEmployment.employeeCode} is not null and (${onehrEmployment.terminatedOn} is null or ${onehrEmployment.terminatedOn}>${today}::date) and (${person.id} is not null or ${onehrLabel.visible(onehrEmployment.id)})`).orderBy(asc(onehrEmployment.employeeCode),asc(onehrEmployment.id));
  return rows.map(r=>({...r,code:r.code!,grade:/^\d+$/.test((r.grade??'').replace(/^JG\s*/i,''))?Number(r.grade!.replace(/^JG\s*/i,'')):null,service:Math.max(0,(Date.parse(today)-Date.parse(r.joinedOn))/(365.25*86400000))})) satisfies PanelPerson[];
 }
 async function state(tx:Tx,cycleId:string){
- const reviews=await tx.select({id:onehrReview.reviewId,employmentId:onehrReview.employmentId,revision:onehrReview.revision,grade:onehrReview.grade,finalized:sql<boolean>`${performanceReview.closedAt} is not null or ${onehrResult.id} is not null`,released:sql<boolean>`case when ${assessmentRelease.reviewId} is not null then ${assessmentRelease.feedbackReleasedAt} is not null else ${onehrResult.feedbackReleasedAt} is not null end`,self:sql<boolean>`app.is_self_person(${employment.personId})`})
-  .from(onehrReview).innerJoin(performanceReview,eq(performanceReview.id,onehrReview.reviewId)).innerJoin(employment,eq(employment.id,onehrReview.employmentId)).leftJoin(onehrResult,eq(onehrResult.reviewId,onehrReview.reviewId)).leftJoin(assessmentRelease,eq(assessmentRelease.reviewId,onehrReview.reviewId))
-  .where(and(eq(onehrReview.cycleId,cycleId),sql`app.onehr_admin(${onehrReview.companyId}) and app.onehr_admin(${employment.companyId})`)).orderBy(asc(onehrReview.reviewId)).for('update',{of:onehrReview});
- const panels=await tx.select({requestId:onehrPanel.requestId,reviewId:onehrPanel.reviewId,employmentId:onehrPanel.peerEmploymentId,personId:employment.personId,relationship:onehrPanel.relationship,archivedAt:onehrPanel.archivedAt,submittedAt:onehrPanel.submittedAt}).from(onehrPanel).innerJoin(onehrReview,eq(onehrReview.reviewId,onehrPanel.reviewId)).innerJoin(employment,eq(employment.id,onehrPanel.peerEmploymentId)).where(eq(onehrReview.cycleId,cycleId)).orderBy(asc(onehrPanel.requestId));
+ const reviews=await tx.select({id:onehrReview.reviewId,employmentId:onehrReview.employmentId,revision:onehrReview.revision,grade:onehrReview.grade,finalized:sql<boolean>`${performanceReview.closedAt} is not null or ${onehrResult.id} is not null`,released:sql<boolean>`case when ${assessmentRelease.reviewId} is not null then ${assessmentRelease.feedbackReleasedAt} is not null else ${onehrResult.feedbackReleasedAt} is not null end`,self:sql<boolean>`app.is_self_person(${onehrEmployment.personId})`})
+  .from(onehrReview).innerJoin(performanceReview,eq(performanceReview.id,onehrReview.reviewId)).innerJoin(onehrEmployment,eq(onehrEmployment.id,onehrReview.employmentId)).leftJoin(onehrResult,eq(onehrResult.reviewId,onehrReview.reviewId)).leftJoin(assessmentRelease,eq(assessmentRelease.reviewId,onehrReview.reviewId))
+  .where(and(eq(onehrReview.cycleId,cycleId),sql`app.onehr_admin(${onehrReview.companyId}) and app.onehr_admin(${onehrEmployment.companyId})`)).orderBy(asc(onehrReview.reviewId)).for('update',{of:onehrReview});
+ const panels=await tx.select({requestId:onehrPanel.requestId,reviewId:onehrPanel.reviewId,employmentId:onehrPanel.peerEmploymentId,personId:onehrEmployment.personId,relationship:onehrPanel.relationship,archivedAt:onehrPanel.archivedAt,submittedAt:onehrPanel.submittedAt}).from(onehrPanel).innerJoin(onehrReview,eq(onehrReview.reviewId,onehrPanel.reviewId)).innerJoin(onehrEmployment,eq(onehrEmployment.id,onehrPanel.peerEmploymentId)).where(eq(onehrReview.cycleId,cycleId)).orderBy(asc(onehrPanel.requestId));
  return {reviews,panels};
 }
 export async function buildAssessmentPanels(ctx:SessionContext,cycleId:string,mode:'missing'|'topup',token?:string){

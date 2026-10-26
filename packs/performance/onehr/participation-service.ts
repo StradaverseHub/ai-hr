@@ -2,19 +2,20 @@ import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { SessionContext, Tx } from '../../../db/client';
 import { actorOf, appendEvent } from '../../../db/events';
-import { assessmentParticipationSnapshot, employment, onehrCycle, onehrResult, onehrReview, performanceReview, person, reviewCycle } from '../../../db/schema';
+import { assessmentParticipationSnapshot, onehrCycle, onehrResult, onehrReview, performanceReview, person, reviewCycle } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
 import { todayInKualaLumpur } from '../../../lib/hr-date';
 import { ensureAssessmentCycleReviewTx, initializeOnehrCycleTx } from '../service';
 import { assessmentParticipation, serviceBeyondYear, type ParticipationOverride, type ParticipationReason } from './participation-model';
 import { onehrLabel } from './person-labels';
+import { onehrEmployment } from './employment-projection';
 
 function defaultParticipation(e:{hiredOn:string;confirmationDate:string|null;terminatedOn:string|null},openedOn:string){
  return assessmentParticipation({left:!!e.terminatedOn&&e.terminatedOn<=todayInKualaLumpur(),yearsOfService:serviceBeyondYear(e.hiredOn,openedOn)?2:0,confirmationDate:e.confirmationDate},openedOn);
 }
 async function participantCandidates(tx:Tx,ids:string[]){
  if(!ids.length)return [];
- return tx.select({id:employment.id,hiredOn:employment.hiredOn,confirmationDate:employment.confirmationDate,terminatedOn:employment.terminatedOn}).from(employment).where(inArray(employment.id,ids));
+ return tx.select({id:onehrEmployment.id,hiredOn:onehrEmployment.hiredOn,confirmationDate:onehrEmployment.confirmationDate,terminatedOn:onehrEmployment.terminatedOn}).from(onehrEmployment).where(inArray(onehrEmployment.id,ids));
 }
 /** Preview and opening share the source confirmation predicate; standard cycles keep native eligibility. */
 export async function previewAssessmentParticipantsTx(tx:Tx,ids:string[],openedOn:string){
@@ -41,10 +42,11 @@ export async function assessmentParticipantsTx(tx:Tx,cycleId:string){
  if(!cycle)return [];
  // ADR-0142: the person row when the caller can read it (HR: unchanged rows, names and cost), else the label
  // projection (performance partner, who cannot read person). Same companies as the onehr_admin filter.
- const name=onehrLabel.labelOrPerson(person.fullName,employment.id);
- const rows=await tx.select({employmentId:employment.id,name,companyId:employment.companyId,hiredOn:employment.hiredOn,confirmationDate:employment.confirmationDate,terminatedOn:employment.terminatedOn,snapshot:assessmentParticipationSnapshot})
-  .from(employment).leftJoin(person,eq(person.id,employment.personId)).leftJoin(assessmentParticipationSnapshot,and(eq(assessmentParticipationSnapshot.employmentId,employment.id),eq(assessmentParticipationSnapshot.cycleId,cycleId)))
-  .where(and(cycle.companyId?eq(employment.companyId,cycle.companyId):undefined,isNull(employment.terminatedOn),sql`app.onehr_admin(${employment.companyId})`,sql`(${person.id} is not null or ${onehrLabel.visible(employment.id)})`)).orderBy(asc(name),asc(employment.id));
+ // VF-07: employment the same way, through app.onehr_employment (HR: its own rows, unchanged).
+ const name=onehrLabel.labelOrPerson(person.fullName,onehrEmployment.id);
+ const rows=await tx.select({employmentId:onehrEmployment.id,name,companyId:onehrEmployment.companyId,hiredOn:onehrEmployment.hiredOn,confirmationDate:onehrEmployment.confirmationDate,terminatedOn:onehrEmployment.terminatedOn,snapshot:assessmentParticipationSnapshot})
+  .from(onehrEmployment).leftJoin(person,eq(person.id,onehrEmployment.personId)).leftJoin(assessmentParticipationSnapshot,and(eq(assessmentParticipationSnapshot.employmentId,onehrEmployment.id),eq(assessmentParticipationSnapshot.cycleId,cycleId)))
+  .where(and(cycle.companyId?eq(onehrEmployment.companyId,cycle.companyId):undefined,isNull(onehrEmployment.terminatedOn),sql`app.onehr_admin(${onehrEmployment.companyId})`,sql`(${person.id} is not null or ${onehrLabel.visible(onehrEmployment.id)})`)).orderBy(asc(name),asc(onehrEmployment.id));
  return rows.map(({snapshot,...e})=>{
   const original=snapshot?{takingPart:snapshot.eligibleAtOpen,reason:snapshot.reason as ParticipationReason}:defaultParticipation(e,cycle.openedOn??todayInKualaLumpur());
   const override=snapshot?.override as ParticipationOverride;
@@ -62,7 +64,7 @@ export async function setAssessmentParticipation(ctx:SessionContext,cycleId:stri
   if(!config||!['open','calibration'].includes(cycle.status))throw Error('Change participants only in an open assessment cycle.');
   if(config.revision!==expectedCycle)throw Error('The cycle changed. Reload before changing participants.');
   const [e]=await participantCandidates(tx,[employmentId]);
-  const [allowed]=await tx.execute<{ok:boolean}>(sql`select exists(select 1 from employment e where e.id=${employmentId}::uuid and e.tenant_id=app.current_tenant_id() and app.onehr_admin(e.company_id) and (${cycle.companyId}::uuid is null or e.company_id=${cycle.companyId}::uuid)) as ok`);
+  const [allowed]=await tx.execute<{ok:boolean}>(sql`select exists(select 1 from app.onehr_employment e where e.id=${employmentId}::uuid and e.tenant_id=app.current_tenant_id() and app.onehr_admin(e.company_id) and (${cycle.companyId}::uuid is null or e.company_id=${cycle.companyId}::uuid)) as ok`);
   if(!e||!allowed?.ok||e.terminatedOn&&e.terminatedOn<=todayInKualaLumpur())throw Error('Choose an active employee in this cycle and your authorized company scope.');
   const [existingReview]=await tx.select({id:performanceReview.id}).from(performanceReview).where(and(eq(performanceReview.cycleId,cycleId),eq(performanceReview.employmentId,employmentId)));
   if(existingReview){await tx.select({id:onehrReview.reviewId}).from(onehrReview).where(eq(onehrReview.reviewId,existingReview.id)).for('update');const [frozen]=await tx.select({id:onehrResult.id}).from(onehrResult).where(eq(onehrResult.reviewId,existingReview.id));if(frozen)throw Error('A finalized assessment retains its participation and history.');}

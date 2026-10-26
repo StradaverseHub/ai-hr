@@ -7,7 +7,8 @@
  *                 person columns beyond self, no other company, no review_cycle or performance_review
  *                 write (the trigger refuses while the row lock still succeeds), no cycle create/open/close,
  *                 no conversion of a generic cycle, and a revoked grant stops at the next request;
- *   equivalence — HR administrators read the same labels through app.onehr_person_labels as from person.
+ *   equivalence — HR administrators read the same labels through app.onehr_person_labels as from person, and the
+ *                 same employment / assignment rows through app.onehr_employment / app.onehr_assignment (VF-07).
  *
  * Fixture style follows test/onehr-service.test.ts (OneHR cycle) and test/partner-roles.test.ts (a grant
  * written as the owner, then a hand-built SessionContext carrying exactly that grant).
@@ -436,5 +437,80 @@ describe('OneHR performance partner (ADR-0142)', () => {
     expect((await read(hr)).units).toBeGreaterThan(0);
     expect(await read(partner)).toEqual({ units: 0, members: 0, entries: 0 });
     expect(unitId).toBeTruthy();
+  });
+
+  // ───────────────────────────── adversarial review VF-07 (APR-017) ─────────────────────────────
+  // The partner reads no employment or assignment row but its own; OneHR administration reads these columns.
+  const employmentFacts = ['company_id', 'confirmation_date', 'employee_code', 'grade_id', 'hired_on', 'id', 'person_id', 'tenant_id', 'terminated_on'];
+  const assignmentFacts = ['department_id', 'employment_id', 'id', 'position_id', 'superseded_at', 'tenant_id', 'valid_from', 'valid_to'];
+  const rowsOf = async (ctx: SessionContext, query: ReturnType<typeof sql>) =>
+    (await withTenant(ctx, (tx) => tx.execute(query))) as unknown as Record<string, unknown>[];
+
+  it('reads no employment or assignment row but its own, and the projection carries only its listed columns (VF-07)', async () => {
+    const companyEmployments = (await owner.db.select({ id: schema.employment.id }).from(schema.employment).where(eq(schema.employment.companyId, b.companyId))).map((e) => e.id).sort();
+    const companyAssignments = (await owner.db.select({ id: schema.assignment.id }).from(schema.assignment).innerJoin(schema.employment, eq(schema.employment.id, schema.assignment.employmentId)).where(eq(schema.employment.companyId, b.companyId))).map((x) => x.id).sort();
+    // Non-vacuous: HR reads every employment and assignment row of the partner's company.
+    expect(companyEmployments.length).toBeGreaterThan(1);
+    expect((await withTenant(a, (tx) => tx.select().from(schema.employment).where(eq(schema.employment.companyId, b.companyId)))).map((e) => e.id).sort()).toEqual(companyEmployments);
+    expect((await withTenant(a, (tx) => tx.select().from(schema.assignment))).some((x) => x.employmentId === subject.employmentId)).toBe(true);
+
+    // A direct select returns exactly the partner's own rows (self visibility), never a colleague's.
+    expect((await withTenant(partner, (tx) => tx.select().from(schema.employment))).map((e) => e.id)).toEqual([partnerPerson.employmentId]);
+    const ownAssignments = await withTenant(partner, (tx) => tx.select().from(schema.assignment));
+    expect(ownAssignments.length).toBeGreaterThan(0);
+    expect(ownAssignments.every((x) => x.employmentId === partnerPerson.employmentId)).toBe(true);
+
+    // The projection: the partner's companies, exactly these columns. No termination type / reason / code,
+    // blacklist, cost allocation, payroll policy, card, cost centre, business unit or location.
+    const facts = await rowsOf(partner, sql`select * from app.onehr_employment_facts()`);
+    expect(facts.map((f) => f.id).sort()).toEqual(companyEmployments);
+    for (const f of facts) expect(Object.keys(f).sort()).toEqual(employmentFacts);
+    const viewed = await rowsOf(partner, sql`select * from app.onehr_employment`);
+    expect(viewed.map((f) => f.id).sort()).toEqual(companyEmployments);
+    for (const f of viewed) expect(Object.keys(f).sort()).toEqual(employmentFacts);
+    const assignments = await rowsOf(partner, sql`select * from app.onehr_assignment_facts()`);
+    expect(assignments.map((x) => x.id).sort()).toEqual(companyAssignments);
+    for (const x of assignments) expect(Object.keys(x).sort()).toEqual(assignmentFacts);
+    const assignmentView = await rowsOf(partner, sql`select * from app.onehr_assignment`);
+    expect(assignmentView.map((x) => x.id).sort()).toEqual(companyAssignments);
+    for (const x of assignmentView) expect(Object.keys(x).sort()).toEqual(assignmentFacts);
+    expect(JSON.stringify([...facts, ...viewed, ...assignments, ...assignmentView])).not.toMatch(/termination_|blacklist|cost_allocation|payroll_policy|card_id|cost_center|business_unit|location_id|employment_type/);
+    // Nothing of another company, by any route.
+    expect(viewed.some((f) => f.id === otherEmployee.employmentId)).toBe(false);
+    expect(assignmentView.some((x) => x.employment_id === otherEmployee.employmentId)).toBe(false);
+  });
+
+  it('gives HR administrators exactly their employment and assignment rows through the views (VF-07 equivalence)', async () => {
+    const ecols = sql.raw(employmentFacts.join(','));
+    const acols = sql.raw(assignmentFacts.join(','));
+    const same = async (ctx: SessionContext) => {
+      const table = await rowsOf(ctx, sql`select ${ecols} from employment order by id`);
+      expect(table.length).toBeGreaterThan(1);
+      expect(await rowsOf(ctx, sql`select ${ecols} from app.onehr_employment order by id`)).toEqual(table);
+      const assigned = await rowsOf(ctx, sql`select ${acols} from assignment order by id`);
+      expect(assigned.length).toBeGreaterThan(1);
+      expect(await rowsOf(ctx, sql`select ${acols} from app.onehr_assignment order by id`)).toEqual(assigned);
+    };
+    await same(a);
+    // HR holds no partner grant, so the projection itself is empty for it: every row HR reads is its own.
+    expect(await rowsOf(a, sql`select * from app.onehr_employment_facts()`)).toEqual([]);
+    expect(await rowsOf(a, sql`select * from app.onehr_assignment_facts()`)).toEqual([]);
+    // An HR administrator who also holds the partner grant: the projection is non-empty, and the readable
+    // row still wins once (no duplicate from the projection arm).
+    await owner.db.insert(schema.roleAssignment).values({ tenantId: b.tenantId, appUserId: a.userId!, companyId: b.companyId, role: 'performance_partner' });
+    expect((await rowsOf(a, sql`select * from app.onehr_employment_facts()`)).length).toBeGreaterThan(1);
+    await same(a);
+  });
+
+  it('overrides participation in its company cycle, never for another company (VF-07, participation policy)', async () => {
+    const view = (await perf.getOnehrCycle(partner, onehrCycleId))!;
+    const before = view.participants.find((p) => p.employmentId === peers[1].employmentId);
+    expect(before, 'the partner lists a participant of its company').toBeDefined();
+    expect(before!.takingPart).toBe(true);
+    await perf.setAssessmentParticipation(partner, onehrCycleId, view.revision, peers[1].employmentId, before!.revision, 'remove');
+    const [row] = await owner.db.select().from(schema.assessmentParticipationSnapshot).where(and(eq(schema.assessmentParticipationSnapshot.cycleId, onehrCycleId), eq(schema.assessmentParticipationSnapshot.employmentId, peers[1].employmentId)));
+    expect(row.override).toBe('remove');
+    expect((await perf.getOnehrCycle(partner, onehrCycleId))!.participants.find((p) => p.employmentId === peers[1].employmentId)).toMatchObject({ takingPart: false, reason: 'removed' });
+    expect(await refusal(perf.setAssessmentParticipation(partner, onehrCycleId, view.revision + 1, otherEmployee.employmentId, null, 'add'))).toMatch(/authorized company scope/);
   });
 });
