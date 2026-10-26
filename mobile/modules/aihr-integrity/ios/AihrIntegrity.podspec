@@ -10,7 +10,8 @@ Pod::Spec.new do |s|
   }
   s.source         = { git: '' }
   s.static_framework = true
-  s.frameworks = 'DeviceCheck'
+  s.frameworks = 'DeviceCheck', 'Security'
+  s.resource_bundles = {'AihrIntegrity_privacy' => ['PrivacyInfo.xcprivacy']}
 
   s.dependency 'ExpoModulesCore'
 

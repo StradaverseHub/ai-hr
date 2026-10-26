@@ -2,9 +2,19 @@ import ExpoModulesCore
 import Foundation
 import Darwin
 import DeviceCheck
+import Security
+
+private final class KeyRequests: @unchecked Sendable {
+  let lock = NSLock()
+  var active = Set<String>()
+  var uncommitted = [String: String]()
+}
+private enum KeyStorageError: Error { case unavailable, invalidKey }
 
 // Platform primitives only. No result from this module is a server-verified trust verdict.
 public class AihrIntegrityModule: Module {
+  private static let requests = KeyRequests()
+  private static let runtimeId = UUID().uuidString.lowercased()
   public func definition() -> ModuleDefinition {
     Name("AihrIntegrity")
 
@@ -23,16 +33,37 @@ public class AihrIntegrityModule: Module {
       let wall = Date().timeIntervalSince1970 * 1000
       let after = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
       return ["source": "ios_continuous", "elapsedBeforeNs": String(before),
-        "elapsedAfterNs": String(after), "wallTimeMs": wall,
-        "bootId": self.bootSessionId().map { $0 as Any } ?? NSNull()]
+        "elapsedAfterNs": String(after), "wallTimeMs": wall, "localOnly": true,
+        "runtimeId": Self.runtimeId, "bootId": NSNull()]
     }
 
-    AsyncFunction("generateAppleKey") { (promise: Promise) in
+    AsyncFunction("appleKeyInfo") { (alias: String, promise: Promise) in
+      guard self.validAlias(alias) else { self.invalid(promise); return }
+      do { promise.resolve(try self.cachedKey(alias)) } catch { self.rejectStorage(error, promise) }
+    }
+
+    AsyncFunction("generateAppleKey") { (alias: String, promise: Promise) in
       guard DCAppAttestService.shared.isSupported else { self.unsupported(promise); return }
+      guard self.validAlias(alias) else { self.invalid(promise); return }
+      let state = Self.requests
+      state.lock.lock()
+      guard !state.active.contains(alias), state.active.count < 4, state.uncommitted.count < 4 || state.uncommitted[alias] != nil else {
+        state.lock.unlock(); promise.reject("ERR_INTEGRITY_IN_PROGRESS", "Retain the pending enrollment"); return
+      }
+      state.active.insert(alias)
+      let unfinished = state.uncommitted[alias]
+      state.lock.unlock()
+      do {
+        if let cached = try self.cachedKey(alias) { self.finish(alias); promise.resolve(cached); return }
+        if let unfinished { try self.saveKey(unfinished, alias); self.finish(alias); promise.resolve(unfinished); return }
+      } catch { self.finish(alias, retain: true); self.rejectStorage(error, promise); return }
       DCAppAttestService.shared.generateKey { id, error in
-        guard error == nil else { self.reject(error, promise); return }
-        guard let id, !id.isEmpty, id.utf8.count <= 512 else { self.unavailable(promise); return }
-        promise.resolve(id)
+        guard error == nil else { self.finish(alias); self.reject(error, promise); return }
+        guard let id, self.validKeyId(id) else { self.finish(alias); self.unavailable(promise); return }
+        state.lock.lock(); state.uncommitted[alias] = id; state.lock.unlock()
+        // Commit the identifier before resolving JS, even if its caller's UI deadline has passed.
+        do { try self.saveKey(id, alias); self.finish(alias); promise.resolve(id) }
+        catch { self.finish(alias, retain: true); self.rejectStorage(error, promise) }
       }
     }
 
@@ -68,20 +99,40 @@ public class AihrIntegrityModule: Module {
   private func validKeyId(_ id: String) -> Bool {
     return !id.isEmpty && id.utf8.count <= 512 && !id.contains("\0")
   }
+  private func validAlias(_ alias: String) -> Bool {
+    return alias.utf8.count == 69 && alias.range(of: "^aihr_[0-9a-f]{64}$", options: .regularExpression) != nil
+  }
+  private func finish(_ alias: String, retain: Bool = false) {
+    let state = Self.requests
+    state.lock.lock(); state.active.remove(alias); if !retain { state.uncommitted.removeValue(forKey: alias) }; state.lock.unlock()
+  }
+  private func cachedKey(_ alias: String) throws -> String? {
+    let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: "aihr.integrity.app-attest.v1", kSecAttrAccount as String: alias,
+      kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
+    var result: CFTypeRef?
+    let status = SecItemCopyMatching(query as CFDictionary, &result)
+    if status == errSecItemNotFound { return nil }
+    guard status == errSecSuccess else { throw KeyStorageError.unavailable }
+    guard let data = result as? Data, data.count <= 512, let id = String(data: data, encoding: .utf8), validKeyId(id) else { throw KeyStorageError.invalidKey }
+    return id
+  }
+  private func saveKey(_ id: String, _ alias: String) throws {
+    let item: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: "aihr.integrity.app-attest.v1", kSecAttrAccount as String: alias,
+      kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly, kSecValueData as String: Data(id.utf8)]
+    let status = SecItemAdd(item as CFDictionary, nil)
+    if status == errSecDuplicateItem { guard try cachedKey(alias) == id else { throw KeyStorageError.invalidKey }; return }
+    guard status == errSecSuccess else { throw KeyStorageError.unavailable }
+  }
+  private func rejectStorage(_ error: Error, _ promise: Promise) {
+    if let storage = error as? KeyStorageError, case .invalidKey = storage { promise.reject("ERR_INTEGRITY_INVALID_KEY", "Device integrity key is unavailable") }
+    else { unavailable(promise) }
+  }
   private func hashData(_ value: String) -> Data? {
     guard value.utf8.count == 44, let data = Data(base64Encoded: value), data.count == 32,
       data.base64EncodedString() == value else { return nil }
     return data
-  }
-  private func bootSessionId() -> String? {
-    // May be unavailable on a device. Never invent a boot identity from wall time.
-    var size: size_t = 0
-    guard sysctlbyname("kern.bootsessionuuid", nil, &size, nil, 0) == 0, size > 1, size <= 128 else { return nil }
-    var bytes = [CChar](repeating: 0, count: Int(size))
-    let capacity = bytes.count
-    let code = bytes.withUnsafeMutableBytes { raw in sysctlbyname("kern.bootsessionuuid", raw.baseAddress, &size, nil, 0) }
-    guard code == 0, size > 1, size <= size_t(capacity), bytes[Int(size) - 1] == 0 else { return nil }
-    return UUID(uuidString: String(cString: bytes))?.uuidString.lowercased()
   }
   private func invalid(_ promise: Promise) { promise.reject("ERR_INTEGRITY_INVALID_INPUT", "Invalid integrity input") }
   private func unsupported(_ promise: Promise) { promise.reject("ERR_INTEGRITY_UNSUPPORTED", "Device integrity capability is unsupported") }

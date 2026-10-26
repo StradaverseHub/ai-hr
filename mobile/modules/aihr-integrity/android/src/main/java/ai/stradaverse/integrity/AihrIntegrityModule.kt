@@ -26,6 +26,10 @@ import java.security.spec.ECGenParameterSpec
 
 // Platform outputs are evidence for server verification, never a local "verified" verdict.
 class AihrIntegrityModule : Module() {
+  companion object {
+    private val keyCreationLock = Any()
+    private val runtimeId = java.util.UUID.randomUUID().toString()
+  }
   @Volatile private var provider: StandardIntegrityManager.StandardIntegrityTokenProvider? = null
   private var providerGeneration = 0L
   private val providerLock = Any()
@@ -47,11 +51,12 @@ class AihrIntegrityModule : Module() {
       val after = SystemClock.elapsedRealtimeNanos()
       val boot = try { Settings.Global.getInt(context().contentResolver, Settings.Global.BOOT_COUNT).takeIf { it >= 0 }?.toString() } catch (_: Exception) { null }
       mapOf("source" to "android_elapsed_realtime", "elapsedBeforeNs" to before.toString(),
-        "elapsedAfterNs" to after.toString(), "wallTimeMs" to wall.toDouble(), "bootId" to boot)
+        "elapsedAfterNs" to after.toString(), "wallTimeMs" to wall.toDouble(), "bootId" to boot,
+        "localOnly" to true, "runtimeId" to runtimeId)
     }
 
     AsyncFunction("createAndroidKey") { alias: String, challenge: String, strongBox: Boolean ->
-      safely {
+      safely { synchronized(keyCreationLock) {
         validAlias(alias)
         val nonce = decode(challenge, 32, 32)
         val store = store()
@@ -67,7 +72,7 @@ class AihrIntegrityModule : Module() {
         }
         KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore").apply { initialize(spec.build()); generateKeyPair() }
         keyInfo(alias)
-      }
+      } }
     }
 
     AsyncFunction("androidKeyInfo") { alias: String -> safely { validAlias(alias); keyInfo(alias) } }
@@ -117,7 +122,8 @@ class AihrIntegrityModule : Module() {
       } catch (_: Exception) { reject(promise, "ERR_INTEGRITY_UNAVAILABLE") }
     }
 
-    AsyncFunction("generateAppleKey") { promise: Promise -> reject(promise, "ERR_INTEGRITY_UNSUPPORTED") }
+    AsyncFunction("appleKeyInfo") { _: String, promise: Promise -> reject(promise, "ERR_INTEGRITY_UNSUPPORTED") }
+    AsyncFunction("generateAppleKey") { _: String, promise: Promise -> reject(promise, "ERR_INTEGRITY_UNSUPPORTED") }
     AsyncFunction("attestAppleKey") { _: String, _: String, promise: Promise -> reject(promise, "ERR_INTEGRITY_UNSUPPORTED") }
     AsyncFunction("assertAppleKey") { _: String, _: String, promise: Promise -> reject(promise, "ERR_INTEGRITY_UNSUPPORTED") }
   }

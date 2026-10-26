@@ -25,6 +25,17 @@ Research scope: current official Apple, Android/Google Play and Expo SDK 57 docu
 
 ## Required device/protocol spikes before offline rollout
 
+Native implementation follow-up, 27 October: Apple's `serverUnavailable` guidance requires retaining
+both the same key and the same `clientDataHash`; retrying with a fresh challenge/hash is not equivalent.
+[Primary guidance](https://developer.apple.com/documentation/devicecheck/dcerror-swift.struct/serverunavailable).
+iOS 18 explicitly removed `kern.bootsessionuuid` access, so the native spike does not probe it or
+invent a replacement from wall time. [Release notes](https://developer.apple.com/documentation/ios-ipados-release-notes/ios-ipados-18-release-notes).
+Apple's required-reason rules also restrict off-device raw uptime/boot-time information; only elapsed
+app-event durations are used by the proposed timing transport. Raw snapshots remain local, with an
+opaque process identifier and unknown continuity after restart where no valid boot binding exists.
+[API reason rules](https://developer.apple.com/documentation/bundleresources/app-privacy-configuration/nsprivacyaccessedapitypes/nsprivacyaccessedapitype).
+These constraints refine the protocol; they do not establish a hardware or signed-build acceptance pass.
+
 1. iOS release/TestFlight build: initial key attestation online, then generate and persist ordered assertions in airplane mode; reconnect, validate counters/challenges; repeat after force quit, update, reinstall and restore.
 2. Both OSes: anchor a native sleep-inclusive clock, sleep for a shift, alter wall time/timezone, kill/relaunch, reboot, and upload out of order. Measure drift and uncertainty; validate bounded expiry and no silent loss.
 3. Location: denied/once-only/revoked/approximate permission, services off, indoor uncertainty, stale/future timestamps, Android mock flag, iOS Xcode simulation versus third-party provider, accessory receiver. Record capability/unknown values without assuming a clean device.

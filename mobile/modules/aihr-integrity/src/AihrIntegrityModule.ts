@@ -1,8 +1,4 @@
-import { NativeModule, requireNativeModule } from 'expo';
-
-declare class AihrIntegrityModule extends NativeModule<{}> {
-  hello(): string;
-  setValueAsync(value: string): Promise<void>;
-}
-
-export default requireNativeModule<AihrIntegrityModule>('AihrIntegrity');
+import {requireOptionalNativeModule} from 'expo';
+import type {NativeIntegrityModule} from './AihrIntegrity.types';
+// Older binaries / Expo Go have no bridge. Never substitute an extractable JavaScript key.
+export default requireOptionalNativeModule<NativeIntegrityModule>('AihrIntegrity');
