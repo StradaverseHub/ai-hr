@@ -21292,7 +21292,8 @@
         "publicHoliday": "Ngày lễ",
         "replacementHoliday": "Ngày nghỉ lễ bù"
       }
-    }
+    },
+    "positionSearch": "Tìm chức danh"
   },
   "systemTestingWorkspace": {
     "title": "Kiểm thử hệ thống",

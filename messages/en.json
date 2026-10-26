@@ -21292,7 +21292,8 @@
         "publicHoliday": "Public Holiday",
         "replacementHoliday": "Replacement Public Holiday"
       }
-    }
+    },
+    "positionSearch": "Search positions"
   },
   "systemTestingWorkspace": {
     "title": "System Testing",

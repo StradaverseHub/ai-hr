@@ -21292,7 +21292,8 @@
         "publicHoliday": "Cuti umum",
         "replacementHoliday": "Cuti umum gantian"
       }
-    }
+    },
+    "positionSearch": "Cari jawatan"
   },
   "systemTestingWorkspace": {
     "title": "Ujian Sistem",

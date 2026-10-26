@@ -21292,7 +21292,8 @@
         "publicHoliday": "பொது விடுமுறை",
         "replacementHoliday": "மாற்றுப் பொது விடுமுறை"
       }
-    }
+    },
+    "positionSearch": "பதவிகளைத் தேடு"
   },
   "systemTestingWorkspace": {
     "title": "கணினி சோதனை",

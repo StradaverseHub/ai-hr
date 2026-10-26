@@ -21292,7 +21292,8 @@
         "publicHoliday": "วันหยุดนักขัตฤกษ์",
         "replacementHoliday": "วันหยุดนักขัตฤกษ์ชดเชย"
       }
-    }
+    },
+    "positionSearch": "ค้นหาตำแหน่ง"
   },
   "systemTestingWorkspace": {
     "title": "การทดสอบระบบ",

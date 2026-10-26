@@ -21292,7 +21292,8 @@
         "publicHoliday": "公共假日",
         "replacementHoliday": "补假日"
       }
-    }
+    },
+    "positionSearch": "搜索职位"
   },
   "systemTestingWorkspace": {
     "title": "系统测试",
