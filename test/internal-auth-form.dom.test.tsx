@@ -28,14 +28,15 @@ describe('embedded browser forms', () => {
     fetcher.mockResolvedValueOnce(Response.json({ step: 'enroll', challenge: 'a'.repeat(43), secret: 'MANUALKEY', qr: 'data:image/png;base64,fixture' }))
       .mockResolvedValueOnce(Response.json({ step: 'complete', recoveryCodes: Array.from({ length: 8 }, (_, i) => 'PRIVATE-CODE-' + i) }));
     view({ mode: 'invite', invitation: 'i'.repeat(43) }); const user = userEvent.setup();
+    expect(screen.getByText('alpha')).toBeVisible();
     await user.type(screen.getByLabelText(en.internalAuth.username), 'new.user');
     await user.type(screen.getByLabelText(en.internalAuth.newPassword), 'A private secure phrase 775!');
     await user.type(screen.getByLabelText(en.internalAuth.confirmation), 'A private secure phrase 775!');
     await user.click(screen.getByRole('button', { name: en.internalAuth.continue }));
-    expect(await screen.findByText('MANUALKEY')).toBeInTheDocument(); expect(screen.getByAltText(en.internalAuth.qrAlt)).toBeInTheDocument();
+    expect(await screen.findByText('MANUALKEY')).toBeInTheDocument(); expect(screen.getByText('alpha')).toBeVisible(); expect(screen.getByAltText(en.internalAuth.qrAlt)).toBeInTheDocument();
     await user.type(screen.getByLabelText(en.internalAuth.code), '123456');
     await user.click(screen.getByRole('button', { name: en.internalAuth.continue }));
-    expect(await screen.findByRole('heading', { name: en.internalAuth.codesTitle })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: en.internalAuth.codesTitle })).toBeInTheDocument(); expect(screen.getByText('alpha')).toBeVisible();
     expect(screen.getByRole('checkbox', { name: en.internalAuth.codesSaved })).toBeRequired();
     expect(fetcher.mock.calls[1][0]).toBe('/login/api/mfa');
     expect(JSON.parse(String(fetcher.mock.calls[1][1]?.body))).toEqual({ code: '123456', challenge: 'a'.repeat(43), token: 'i'.repeat(43) });

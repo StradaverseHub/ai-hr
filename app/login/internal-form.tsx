@@ -56,6 +56,7 @@ export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'lo
         <h1 id="internal-auth-title">{state.step === 'login' ? copy('welcome') : t(title)}</h1>
         {state.step === 'login' && <p>{copy('signInSubtitle')}</p>}
       </header>
+      {organization && (mode==='invite'||mode==='accept') && <p className="text-sm text-muted-foreground">{t('organization')}: <strong className="font-medium text-foreground">{organization}</strong></p>}
       {error && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{t(`errors.${errors.includes(error) ? error : 'unavailable'}`)}</p>}
       {state.step === 'resetDone' ? <div className="space-y-4"><p role="status" className="text-sm">{t('resetDoneHelp')}</p><a href="/login" className="text-sm underline">{t('back')}</a></div> : state.step === 'sent' ? <div className="space-y-4"><p role="status" className="text-sm leading-relaxed">{t('sentHelp')}</p><a className="text-sm underline" href="/login">{t('back')}</a></div>
       : state.step === 'reset' && !resetToken ? <a href="/login" className="text-sm underline">{t('back')}</a>

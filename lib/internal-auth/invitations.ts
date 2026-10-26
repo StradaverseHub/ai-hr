@@ -27,7 +27,8 @@ export async function startInvitation(token: string, username: string, password:
   if (!invitation) throw new InternalAuthError('invalidChallenge');
   const org = await readRecord<Organization>(client, `tenant:${invitation.tenant_id}`);
   username = username.trim().toLowerCase();
-  if (!org || !/^[a-z0-9][a-z0-9._@+-]{2,63}$/.test(username)) throw new InternalAuthError('invalidChallenge');
+  if (!org || org.tenantId !== invitation.tenant_id) throw new InternalAuthError('unavailable');
+  if (!/^[a-z0-9][a-z0-9._@+-]{2,63}$/.test(username)) throw new InternalAuthError('invalidChallenge');
   try { validatePassword(password, username, invitation.email); } catch { throw new InternalAuthError('passwordPolicy'); }
   if (await readRecord(client, loginKey(org.code, username))) throw new InternalAuthError('conflict');
   const c: Credential = { subject: randomUUID(), tenantId: org.tenantId, issuer: internalIssuer(org.tenantId), organization: org.code,

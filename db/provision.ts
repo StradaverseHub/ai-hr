@@ -46,6 +46,7 @@ import { seedPayrollCycleCatalog } from '../core/payroll-cycle';
 import { seedProfileOptions } from '../core/profile-options';
 import {seedEmployeeHomeCardCatalog} from '../core/dashboard-card-config';
 import { seedGuides } from './seed-guides';
+import {internalSelected} from '../lib/internal-auth/config';
 
 /** Mirrors core/auth.ts INVITE_TTL_DAYS and scripts/auth/bootstrap-invite.ts — one invitation lifetime. */
 export const INVITE_TTL_DAYS = 7;
@@ -318,6 +319,10 @@ export async function provisionTenant(tx: Tx, input: ProvisionInput): Promise<Pr
       .insert(tenant)
       .values({ workosOrgId: `org_pending_${crypto.randomUUID()}`, name })
       .returning({ id: tenant.id });
+    if(internalSelected()){
+      const {initializeProvisionedLoginOrganization}=await import('./provision-internal-auth');
+      await initializeProvisionedLoginOrganization(tx,t.id,name);
+    }
     return t.id;
   });
 
