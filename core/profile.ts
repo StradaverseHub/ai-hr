@@ -8,7 +8,7 @@ import {pgSqlState} from '../lib/db-error';
 import {isOwnPersonTx,ownPersonPredicate} from './own-person';
 import {lockAccessConfigurationTx,lockProfileValueWritesTx} from './access-configuration-lock';
 import {isProfilePhotoProposal} from '../lib/profile-photo-proposal';
-import {resolveProfileRouteTx,assertProfileRouteDecisionTx,profileRouteReaderPredicate,ProfileRoutingError,type ProfileRouteDecisionSubject} from './profile-routing';
+import {readProfileRoutingPolicy,resolveProfileRouteTx,assertProfileRouteDecisionTx,profileRouteReaderPredicate,ProfileRoutingError,type ProfileRouteDecisionSubject} from './profile-routing';
 import type {ProfilePresentationPolicy} from './profile-edit-policy';
 import {projectOwnProfileProposal,ownProfileProposalIsIntact} from '../lib/personnel-ess-visibility';
 import {freshProfileEditPolicyTx} from './profile-edit-policy';
@@ -378,14 +378,17 @@ async function canonicalProfileChangeReviewTx(tx:Tx,prepared:Awaited<ReturnType<
  if(!ownProfileProposalIsIntact(proposed,policy.visible))throw new EssProfileError('fieldClosed');
  // Only safe row-version metadata enters the source fingerprint. Never hash a hidden current
  // bank/identity/salary value into a client-review token. The canonical validator retains its locks.
- const [versions]=await tx.select({employment:sql<string>`${employment}.xmin::text`,person:sql<string>`${person}.xmin::text`,company:sql<string>`${company}.xmin::text`}).from(employment).innerJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId)).where(and(eq(employment.id,checked.subject.id),eq(employment.tenantId,ctx.tenantId),eq(person.id,ctx.personId!))).limit(1);
+ const [versions]=await tx.select({employment:sql<string>`${employment}.xmin::text`,person:sql<string>`${person}.xmin::text`,company:sql<string>`${company}.xmin::text`}).from(employment).innerJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId)).where(and(eq(employment.id,checked.subject.id),eq(employment.tenantId,ctx.tenantId),eq(person.id,ctx.personId!),eq(person.tenantId,ctx.tenantId),eq(company.tenantId,ctx.tenantId))).limit(1);
  if(!versions)throw new EssProfileError('unavailable');
- const dependentVersions=checked.rows.dependents.length?await tx.select({id:employeeDependent.id,revision:sql<string>`xmin::text`}).from(employeeDependent).where(inArray(employeeDependent.id,checked.rows.dependents.map(row=>row.id))).orderBy(employeeDependent.id):[];
- const qualificationVersions=checked.rows.qualifications.length?await tx.select({id:employeeQualification.id,revision:sql<string>`xmin::text`}).from(employeeQualification).where(inArray(employeeQualification.id,checked.rows.qualifications.map(row=>row.id))).orderBy(employeeQualification.id):[];
- const emergencyVersions=checked.rows.emergency.length?await tx.select({id:personEmergencyContact.id,revision:sql<string>`xmin::text`}).from(personEmergencyContact).where(inArray(personEmergencyContact.id,checked.rows.emergency.map(row=>row.id))).orderBy(personEmergencyContact.id):[];
+ const dependentVersions=checked.rows.dependents.length?await tx.select({id:employeeDependent.id,revision:sql<string>`xmin::text`}).from(employeeDependent).where(and(eq(employeeDependent.tenantId,ctx.tenantId),inArray(employeeDependent.id,checked.rows.dependents.map(row=>row.id)))).orderBy(employeeDependent.id):[];
+ const qualificationVersions=checked.rows.qualifications.length?await tx.select({id:employeeQualification.id,revision:sql<string>`xmin::text`}).from(employeeQualification).where(and(eq(employeeQualification.tenantId,ctx.tenantId),inArray(employeeQualification.id,checked.rows.qualifications.map(row=>row.id)))).orderBy(employeeQualification.id):[];
+ const emergencyVersions=checked.rows.emergency.length?await tx.select({id:personEmergencyContact.id,revision:sql<string>`xmin::text`}).from(personEmergencyContact).where(and(eq(personEmergencyContact.tenantId,ctx.tenantId),inArray(personEmergencyContact.id,checked.rows.emergency.map(row=>row.id)))).orderBy(personEmergencyContact.id):[];
  if(dependentVersions.length!==checked.rows.dependents.length||qualificationVersions.length!==checked.rows.qualifications.length||emergencyVersions.length!==checked.rows.emergency.length)throw new EssProfileError('unavailable');
+ const changed=[...proposed.fields,...proposed.registers.flatMap(row=>row.fields)];
+ if(changed.some(change=>!['person','compliance','dependent','qualification','emergency'].includes(personnelField(change.fieldId)!.ess.binding!.owner))&&!checked.rows.snapshotSupported)throw new EssProfileError('unavailable');
  const projection=projectOwnProfileProposal(proposed,policy.visible) as EssProfileProposal;
- const reviewedDigest=createHash('sha256').update(JSON.stringify(['own-profile-change-request:v1',{tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId,employmentId:checked.subject.id,companyId:checked.subject.companyId,country:checked.subject.country},projection,profileVisibilityFingerprint(getSetting(ctx,'ess.profile_change_fields')),versions,{statutory:checked.rows.snapshot?{id:checked.rows.snapshot.rowId,revision:checked.rows.snapshot.revision}:null,dependentVersions,qualificationVersions,emergencyVersions},route])).digest('hex');
+ const routing=readProfileRoutingPolicy(ctx);
+ const reviewedDigest=createHash('sha256').update(JSON.stringify(['own-profile-change-request:v1',{tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId,employmentId:checked.subject.id,companyId:checked.subject.companyId,country:checked.subject.country},projection,profileVisibilityFingerprint(getSetting(ctx,'ess.profile_change_fields')),versions,{statutory:checked.rows.snapshot?{id:checked.rows.snapshot.rowId,revision:checked.rows.snapshot.revision}:null,dependentVersions,qualificationVersions,emergencyVersions},{revision:routing.revision,enabled:routing.enabled},route])).digest('hex');
  return {employmentId:checked.subject.id,proposal:projection,reviewedDigest};
 }
 /** Read-only canonical review owner for a human-authored v2 approval request. No action custody,
@@ -393,6 +396,7 @@ async function canonicalProfileChangeReviewTx(tx:Tx,prepared:Awaited<ReturnType<
 export async function prepareOwnProfileChangeRequestReviewTx(tx:Tx,ctx:SessionContext,p:OwnProfileChangeInput){
  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  if(!ctx.personId)throw new EssProfileError('permission');
+ await assertAiPrincipalTx(tx,ctx);
  return canonicalProfileChangeReviewTx(tx,await prepareProfileChangeRequestTx(tx,ctx,p));
 }
 async function requestProfileChangeOwnerTx(tx:Tx,ctx:SessionContext,p:OwnProfileChangeInput,expectedReviewedDigest?:string){
@@ -404,7 +408,8 @@ async function requestProfileChangeOwnerTx(tx:Tx,ctx:SessionContext,p:OwnProfile
   if(matching.length===1){
    if(expectedReviewedDigest!==undefined){
     const [existing]=await tx.select({routeId:profileChangeRequest.routeId,routeRevision:profileChangeRequest.routeRevision,routeApproverUserId:profileChangeRequest.routeApproverUserId,routeApproverEmploymentId:profileChangeRequest.routeApproverEmploymentId,routeContext:profileChangeRequest.routeContext}).from(profileChangeRequest).where(eq(profileChangeRequest.id,matching[0].id)).limit(1);
-    if(!existing||JSON.stringify(existing)!==JSON.stringify({routeId:route?.routeId??null,routeRevision:route?.routeRevision??null,routeApproverUserId:route?.routeApproverUserId??null,routeApproverEmploymentId:route?.routeApproverEmploymentId??null,routeContext:route?.routeContext??null}))throw new EssProfileError('stale');
+    const context=existing?.routeContext as {asOf?:unknown;companyId?:unknown;fingerprint?:unknown}|null;
+    if(!existing||existing.routeId!==(route?.routeId??null)||existing.routeRevision!==(route?.routeRevision??null)||existing.routeApproverUserId!==(route?.routeApproverUserId??null)||existing.routeApproverEmploymentId!==(route?.routeApproverEmploymentId??null)||(route?context?.asOf!==route.routeContext.asOf||context?.companyId!==route.routeContext.companyId||context?.fingerprint!==route.routeContext.fingerprint:context!==null))throw new EssProfileError('stale');
    }
    return {requestId:matching[0].id,requestedEventId:undefined,replayed:true};
   }
@@ -425,7 +430,7 @@ export type OwnProfileChangeSubmissionReference={requestId:string;requestedEvent
  * are selected or returned by this receipt reader. A reference means submitted, never approved. */
 export async function readOwnProfileChangeSubmissionReferenceTx(tx:Tx,ctx:SessionContext,requestId:string,expectedEventId?:string):Promise<OwnProfileChangeSubmissionReference|null>{
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
- if(!ctx.userId||!ctx.personId)return null;
+ if(!ctx.userId||!ctx.personId||! /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)||expectedEventId!==undefined&&! /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(expectedEventId))return null;
  await assertAiPrincipalTx(tx,ctx);if(!await isOwnPersonTx(tx,ctx))return null;
  const [request]=await tx.select({id:profileChangeRequest.id,employmentId:profileChangeRequest.employmentId,status:profileChangeRequest.status}).from(profileChangeRequest).innerJoin(employment,and(eq(employment.id,profileChangeRequest.employmentId),eq(employment.tenantId,profileChangeRequest.tenantId))).where(and(eq(profileChangeRequest.tenantId,ctx.tenantId),eq(profileChangeRequest.personId,ctx.personId),eq(employment.personId,ctx.personId),eq(profileChangeRequest.id,requestId))).limit(1);
  if(!request)return null;
