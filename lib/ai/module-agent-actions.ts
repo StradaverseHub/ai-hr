@@ -72,7 +72,7 @@ export const MODULE_AGENT_ACTIONS=Object.freeze({
  notifications:declaration('notifications','notifications','core/notification-email.ts#saveNotificationEmailPreferences','core/assistant-actions/module-action-review-store.ts#prepareModuleActionReview+confirmModuleActionReview',[notificationSave]),
  system_explorer:declaration('system_explorer','schema_inventory','core/schema-explorer.ts#listSchemaTables','core/module-agent-readers.ts#createModuleAgentReaders',[],'not_exposed','read_only'),
  assistant:declaration('assistant','assistant_orchestration','core/module-agent-readers.ts#createModuleAgentReaders','core/module-agent-readers.ts#createModuleAgentReaders',[],'not_exposed','orchestration_only'),
- system_testing:declaration('system_testing','system_testing','core/system-testing-workspace.ts#saveTestingExecution','core/system-testing-workspace.ts#listTestingAssignments',[Object.freeze({...pending<'system_testing'>('system_testing.execution.save','system_testing','core/system-testing-workspace.ts#saveTestingExecution'),observations:'human_actual_only' as const})]),
+ system_testing:declaration('system_testing','system_testing','core/system-testing-workspace.ts#saveTestingExecution','core/system-testing-workspace.ts#ownTestingWorkStatusesTx',[Object.freeze({...pending<'system_testing'>('system_testing.execution.save','system_testing','core/system-testing-workspace.ts#saveTestingExecution'),observations:'human_actual_only' as const})]),
 } satisfies {[M in AgentModuleCode]:Declaration<M>});
 const declarations:readonly ModuleAgentActionDeclaration[]=Object.freeze(Object.values(MODULE_AGENT_ACTIONS));
 /** Static metadata only. This never checks a user's access or resolves a callable function. */
