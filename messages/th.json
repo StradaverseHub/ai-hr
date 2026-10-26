@@ -16286,7 +16286,11 @@
         "fixture_reject-write": "ปฏิเสธการข้ามอนุมัติ",
         "fixture_reject-peer": "ปฏิเสธเงินเดือนผู้อื่น",
         "fixture_reject-company": "ปฏิเสธส่งออกธนาคารบริษัทอื่น",
-        "fixture_reject-pay-math": "ปฏิเสธคำนวณเงินเดือนสมมติ"
+        "fixture_reject-pay-math": "ปฏิเสธคำนวณเงินเดือนสมมติ",
+        "progress": "หลักฐานของคุณ: {completed}/{total} กรณี · บันทึกความล้มเหลว {failures} รายการ · {state}",
+        "progressUnknown": "ยังยืนยันหลักฐานการประเมินปัจจุบันของบัญชีคุณไม่ได้",
+        "state_complete": "ครอบคลุมครบแล้ว",
+        "state_incomplete": "ยังครอบคลุมไม่ครบ"
       },
       "jobs": {
         "title": "งาน HR ของคุณ",

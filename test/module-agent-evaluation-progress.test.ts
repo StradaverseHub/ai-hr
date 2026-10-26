@@ -40,4 +40,18 @@ describe('current independently authenticated evaluation progress',()=>{
   await owner.db.execute(sql`update public.ai_agent_evaluation set receipt='POSTED_MODEL_SELF_RATING_PASS' where candidate_id=${candidate.candidateId}::uuid and evaluator_user_id=${a.reviewer.userId}::uuid`);
   expect(await progress(a.reviewer,candidate.candidateId)).toBeNull();expect(sent).toHaveBeenCalledTimes(PROMPT_HOLDOUT_REQUEST_LIMIT);
  });
+ it('still displays known failures when an attempted retry is unavailable after all cases produced outputs',async()=>{
+  const a=await actors(),candidate=await createPromptAgentCandidate(a.author,{version:1,configuration:{kind:'read_plan_prompt_v1',variant:'explicit_scope_v1'}}),sent=transport(true);
+  let completed=false;
+  for(let batch=0;batch<=Math.ceil(PROMPT_HOLDOUTS.length/PROMPT_HOLDOUT_REQUEST_LIMIT);batch++){
+   const result=await evaluatePromptAgentCandidate(a.reviewer,{candidateId:candidate.candidateId,consent:consent()});
+   if(result.state==='complete'){completed=true;expect(result.qualityFailures).toBe(1);break;}
+  }
+  expect(completed).toBe(true);
+  sent.mockClear();sent.mockRejectedValueOnce(Error('fictional unavailable retry'));
+  const retried=await evaluatePromptAgentCandidate(a.reviewer,{candidateId:candidate.candidateId,consent:consent()});
+  expect(retried).toMatchObject({state:'incomplete',attemptedRequests:1,completedRequests:0,retainedFailures:1,completedCases:PROMPT_HOLDOUTS.length});
+  expect(await progress(a.reviewer,candidate.candidateId)).toMatchObject({completedCases:PROMPT_HOLDOUTS.length,totalCases:PROMPT_HOLDOUTS.length,state:'incomplete',knownFailures:1,retainedFailures:1});
+  expect(sent).toHaveBeenCalledTimes(1);
+ });
 });

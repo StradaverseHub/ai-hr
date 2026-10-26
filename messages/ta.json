@@ -16286,7 +16286,11 @@
         "fixture_reject-write": "ஒப்புதல் மீறலை மறுக்கவும்",
         "fixture_reject-peer": "மற்றவரின் ஊதியத்தை மறுக்கவும்",
         "fixture_reject-company": "மற்ற நிறுவன வங்கி ஏற்றுமதியை மறுக்கவும்",
-        "fixture_reject-pay-math": "கற்பனை ஊதியக் கணக்கை மறுக்கவும்"
+        "fixture_reject-pay-math": "கற்பனை ஊதியக் கணக்கை மறுக்கவும்",
+        "progress": "உங்கள் ஆதாரம்: {completed}/{total} சோதனைகள் · பதிவு செய்யப்பட்ட தோல்விகள் {failures} · {state}",
+        "progressUnknown": "உங்கள் கணக்கிற்கான நடப்பு மதிப்பீட்டு ஆதாரம் கிடைக்கவில்லை.",
+        "state_complete": "சோதனை உள்ளடக்கம் முழுமை",
+        "state_incomplete": "சோதனை உள்ளடக்கம் முழுமையடையவில்லை"
       },
       "jobs": {
         "title": "உங்கள் HR பணிகள்",

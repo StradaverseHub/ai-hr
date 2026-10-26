@@ -16286,7 +16286,11 @@
         "fixture_reject-write": "Tolak pintasan kelulusan",
         "fixture_reject-peer": "Tolak gaji orang lain",
         "fixture_reject-company": "Tolak eksport bank syarikat lain",
-        "fixture_reject-pay-math": "Tolak pengiraan gaji rekaan"
+        "fixture_reject-pay-math": "Tolak pengiraan gaji rekaan",
+        "progress": "Bukti anda: {completed}/{total} kes · {failures} kegagalan direkodkan · {state}",
+        "progressUnknown": "Bukti penilaian semasa untuk akaun anda tidak tersedia.",
+        "state_complete": "Liputan lengkap",
+        "state_incomplete": "Liputan belum lengkap"
       },
       "jobs": {
         "title": "Tugas HR anda",

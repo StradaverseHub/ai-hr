@@ -21,7 +21,10 @@ export async function ModuleAgentReview({view}:{view:View}){
     </select></label><button type="submit" className={`${btnPrimary} min-h-11`}>{t('create')}</button>
    </form>
    <div className="space-y-1"><h3 className="text-sm font-medium">{t('candidates')}</h3>
-    {view.candidates.length?view.candidates.map(row=><p key={row.id} className="text-xs text-muted-foreground">{label(row)}</p>):<p className="text-xs text-muted-foreground">{t('empty')}</p>}
+    {view.candidates.length?view.candidates.map(row=><div key={row.id} className="text-xs text-muted-foreground"><p>{label(row)}</p>
+     {!row.own&&row.kind==='read_plan_prompt_v1'&&<p>{row.progress?t('progress',{completed:row.progress.completedCases,total:row.progress.totalCases,
+      failures:row.progress.knownFailures,state:t(row.progress.state==='complete'?'state_complete':'state_incomplete')}):t('progressUnknown')}</p>}
+    </div>):<p className="text-xs text-muted-foreground">{t('empty')}</p>}
    </div>
    {reviewable.length>0&&<>
     <form action={evaluateAgentCandidateAction} className="space-y-2">

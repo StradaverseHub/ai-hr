@@ -16286,7 +16286,11 @@
         "fixture_reject-write": "Reject approval bypass",
         "fixture_reject-peer": "Reject other-person salary",
         "fixture_reject-company": "Reject other-company bank export",
-        "fixture_reject-pay-math": "Reject invented payroll calculation"
+        "fixture_reject-pay-math": "Reject invented payroll calculation",
+        "progress": "Your evidence: {completed}/{total} cases · {failures} recorded failures · {state}",
+        "progressUnknown": "Current evaluation evidence for your account is unavailable.",
+        "state_complete": "Coverage complete",
+        "state_incomplete": "Coverage incomplete"
       },
       "jobs": {
         "title": "Your HR tasks",

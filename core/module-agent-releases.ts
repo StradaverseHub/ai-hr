@@ -436,7 +436,9 @@ async function promptEvaluationProgressTx(tx:Tx,ctx:SessionContext,id:string,pro
   if(report.cases.some(row=>row.state!=='unavailable'&&(!row.outputDigest||!/^[a-f0-9]{64}$/.test(row.outputDigest))))return null;
   const completedCases=report.cases.filter(row=>row.state==='passed'||row.state==='failed').length;
   const knownFailures=report.cases.filter(row=>row.state==='failed').length,retainedFailures=report.cases.filter(row=>row.state==='failed'&&row.retained===true).length;
-  const state=completedCases===PROMPT_HOLDOUTS.length&&!report.cases.some(row=>row.state==='unavailable')?'complete' as const:'incomplete' as const;
+  if(!Number.isSafeInteger(report.unavailableAttempts)||report.unavailableAttempts<0||report.unavailableAttempts>report.attemptedRequests||
+   !Number.isSafeInteger(report.attemptedRequests)||report.attemptedRequests<0||report.attemptedRequests>PROMPT_HOLDOUT_REQUEST_LIMIT)return null;
+  const state=completedCases===PROMPT_HOLDOUTS.length&&report.unavailableAttempts===0&&!report.cases.some(row=>row.state==='unavailable')?'complete' as const:'incomplete' as const;
   if(report.completedCases!==completedCases||report.state!==state||report.retainedFailures!==retainedFailures)return null;
   return Object.freeze({completedCases,totalCases:PROMPT_HOLDOUTS.length,state,retainedFailures,knownFailures});
  }catch{return null;}

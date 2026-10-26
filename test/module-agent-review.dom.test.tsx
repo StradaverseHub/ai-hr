@@ -1,0 +1,35 @@
+/** @vitest-environment jsdom */
+/** Presentation only; metadata fixtures are not evaluation, role or provider proof. */
+import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
+import {cleanup,render,screen} from '@testing-library/react';
+import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import viCopy from '../messages/vi.json';
+const state=vi.hoisted(()=>({locale:'en'}));const copies:Record<string,typeof en>={en,ms,zh,ta,th,vi:viCopy};
+vi.mock('next-intl/server',()=>({getLocale:async()=>state.locale,getTranslations:async(namespace:string)=>(key:string,args?:Record<string,string|number>)=>{
+ let value:unknown=copies[state.locale];for(const part of [...namespace.split('.'),...key.split('.')])value=(value as Record<string,unknown>)[part];
+ if(typeof value!=='string')throw Error('Missing fixture translation');return value.replace(/\{(\w+)\}/g,(_whole,name:string)=>String(args?.[name]??'{'+name+'}'));
+}}));
+vi.mock('../app/assistant/agent-review-actions',()=>({createAgentCandidateAction:async()=>{},evaluateAgentCandidateAction:async()=>{},promoteAgentCandidateAction:async()=>{},rollbackAgentCandidateAction:async()=>{},tryAgentCandidateAction:async()=>{}}));
+import {ModuleAgentReview} from '../components/assistant/module-agent-review';
+import {PROMPT_HOLDOUTS,PROMPT_HOLDOUT_REQUEST_LIMIT} from '../lib/ai/module-agent-prompt-candidate';
+type View=Parameters<typeof ModuleAgentReview>[0]['view'];
+function view(progress:View['candidates'][number]['progress']):View{return {sourceDigest:'fictional-source',nextVersion:2,lastTrial:null,
+ candidates:[{id:'candidate',version:1,kind:'read_plan_prompt_v1',own:false,attempts:1,progress}],promotions:[]};}
+beforeEach(()=>{state.locale='en';});afterEach(cleanup);
+describe('human evaluation scope, consent and authenticated progress',()=>{
+ it.each(['en','ms','zh','ta','th','vi'])('%s shows only its fixed trial questions and the real per-click request cap',async locale=>{
+  state.locale=locale;const result=render(await ModuleAgentReview({view:view({completedCases:12,totalCases:144,state:'incomplete',retainedFailures:1,knownFailures:1})}));
+  result.container.querySelector('details')!.open=true;
+  const trial=result.container.querySelector<HTMLSelectElement>('select[name="fixtureId"]')!;
+  expect([...trial.options].map(option=>option.value)).toEqual(PROMPT_HOLDOUTS.filter(row=>row.locale===locale).map(row=>row.id));
+  expect(trial.options).toHaveLength(24);
+  const scope=copies[locale].assistant.workspace.agentReview;
+  expect(result.container.textContent).toContain(scope.consent.replace('{requests}',String(PROMPT_HOLDOUT_REQUEST_LIMIT)));
+  expect(result.container.textContent).toContain(scope.progress.replace('{completed}','12').replace('{total}','144').replace('{failures}','1').replace('{state}',scope.state_incomplete));
+  for(const checkbox of result.container.querySelectorAll<HTMLInputElement>('input[name="consented"]'))expect(checkbox.required).toBe(true);
+  expect(screen.getAllByRole('button').length).toBeGreaterThan(0);
+ });
+ it('keeps absent authenticated evidence unknown rather than displaying zero completed or failed cases',async()=>{
+  const result=render(await ModuleAgentReview({view:view(null)}));expect(result.container.textContent).toContain(en.assistant.workspace.agentReview.progressUnknown);
+  expect(result.container.textContent).not.toContain('0/144');
+ });
+});

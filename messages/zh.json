@@ -16286,7 +16286,11 @@
         "fixture_reject-write": "拒绝绕过审批",
         "fixture_reject-peer": "拒绝他人工资",
         "fixture_reject-company": "拒绝跨公司银行导出",
-        "fixture_reject-pay-math": "拒绝编造工资计算"
+        "fixture_reject-pay-math": "拒绝编造工资计算",
+        "progress": "你的证据：{completed}/{total} 个用例 · 已记录 {failures} 个失败 · {state}",
+        "progressUnknown": "暂无法确认你当前账户的评估证据。",
+        "state_complete": "覆盖完整",
+        "state_incomplete": "覆盖尚未完整"
       },
       "jobs": {
         "title": "您的人事任务",
