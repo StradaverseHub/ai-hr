@@ -57,3 +57,29 @@ test('large authenticated archive starts first while results retain the original
  const r=await downloadCiArchives(list,dir,{concurrency:1,start:a=>{started.push(a.id);return transport({bytes:data.get(a.id)})(a);}});
  assert.deepEqual(started,[2,3,1]);assert.deepEqual(r.artifacts.map(a=>a.id),[1,2,3]);assert.equal(r.scheduling,'largest-authenticated-archive-first');
 });
+
+test('authenticated prefetched bytes avoid repeat transport and keep separate immutable output',async t=>{
+ const cache=directory(t),dir=directory(t),a=artifact();writeFileSync(join(cache,a.name+'.zip'),payload,{mode:0o600});let starts=0;
+ const r=await downloadCiArchives([a],dir,{prefetchDirectory:cache,start:()=>{starts++;throw Error('no repeated transfer');}});
+ assert.equal(starts,0);assert.equal(r.releaseAuthorized,false);assert.equal(r.artifacts[0].reusedPrefetch,true);
+ assert.deepEqual(readCiArchive(a,join(dir,a.name+'.zip')),payload);assert.deepEqual(readFileSync(join(cache,a.name+'.zip')),payload);
+ assert.notEqual(statSync(join(cache,a.name+'.zip')).ino,statSync(join(dir,a.name+'.zip')).ino);
+});
+test('partial prefetch fetches missing artifacts only and preserves authenticated inventory order',async t=>{
+ const cache=directory(t),dir=directory(t),list=[artifact(1),artifact(2)];writeFileSync(join(cache,list[0].name+'.zip'),payload,{mode:0o600});const starts=[];
+ const r=await downloadCiArchives(list,dir,{prefetchDirectory:cache,start:a=>{starts.push(a.id);return transport()(a);}});
+ assert.deepEqual(starts,[2]);assert.deepEqual(r.artifacts.map(a=>a.id),[1,2]);assert(r.artifacts[0].reusedPrefetch);assert(!r.artifacts[1].reusedPrefetch);
+});
+test('altered prefetch is refused against final API metadata without silently redownloading',async t=>{
+ for(const bytes of [payload.subarray(1),Buffer.alloc(payload.length,65),Buffer.concat([payload,Buffer.from('x')])]){
+  const cache=directory(t),dir=directory(t),a=artifact();writeFileSync(join(cache,a.name+'.zip'),bytes,{mode:0o600});let starts=0;
+  await assert.rejects(downloadCiArchives([a],dir,{prefetchDirectory:cache,start:()=>{starts++;throw Error('must refuse');}}));assert.equal(starts,0);
+ }
+});
+test('prefetch symlinks, public files/directories and output alias refuse',async t=>{
+ const cache=directory(t),dir=directory(t),a=artifact(),target=join(cache,'target');writeFileSync(target,payload,{mode:0o600});symlinkSync(target,join(cache,a.name+'.zip'));
+ await assert.rejects(downloadCiArchives([a],dir,{prefetchDirectory:cache,start:transport()}));
+ const publicCache=directory(t);writeFileSync(join(publicCache,a.name+'.zip'),payload,{mode:0o644});await assert.rejects(downloadCiArchives([a],directory(t),{prefetchDirectory:publicCache,start:transport()}));
+ chmodSync(publicCache,0o755);await assert.rejects(downloadCiArchives([a],directory(t),{prefetchDirectory:publicCache,start:transport()}));
+ await assert.rejects(downloadCiArchives([a],cache,{prefetchDirectory:cache,start:transport()}));
+});

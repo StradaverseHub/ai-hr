@@ -39,7 +39,7 @@ export async function verifyCi({candidatePath,runId,baseline}){
  const dir=join(controllerRoot,'scratchpad',`validated-ci-${runId}-${randomUUID()}`);mkdirSync(dir,{recursive:true,mode:0o700});
  const save=(name,value)=>writeFileSync(join(dir,name),JSON.stringify(value,null,2)+'\n',{flag:'wx',mode:0o600});
  save('run.json',run);save('jobs.json',jobs);save('artifacts.json',artifacts);
- try{save('archive-downloads.json',await downloadCiArchives(artifacts,dir));}
+ try{save('archive-downloads.json',await downloadCiArchives(artifacts,dir,{prefetchDirectory:process.env.AIHR_CI_PREFETCH_DIR||undefined}));}
  catch(error){save('archive-downloads-failed.json',error.report??{error:String(error),releaseAuthorized:false});throw error;}
  for(const artifact of artifacts){
   const path=join(dir,artifact.name+'.zip'),bytes=readCiArchive(artifact,path);

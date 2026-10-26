@@ -17,11 +17,24 @@ function owner(dir,original){
  if(original)assert(s.dev===original.dev&&s.ino===original.ino,'Archive directory changed');return s;
 }
 const startGithub=a=>spawn('gh',['api',`repos/${REPOSITORY}/actions/artifacts/${a.id}/zip`],{stdio:['ignore','pipe','pipe']});
-async function one(a,dir,identity,{start,timeoutMs}){
+async function one(a,dir,identity,{start,timeoutMs,prefetch}){
  owner(dir,identity);const path=join(dir,a.name+'.zip'),began=Date.now();
  const fd=await open(path,constants.O_CREAT|constants.O_EXCL|constants.O_WRONLY|constants.O_NOFOLLOW,0o600);
  let child,timer,terminal,timedOut=false,bytes=0;const hash=createHash('sha256');
  try{
+  if(prefetch){
+   owner(prefetch.dir,prefetch.identity);
+   const cachedPath=join(prefetch.dir,a.name+'.zip');let cached;
+   try{cached=lstatSync(cachedPath);}catch(error){if(error.code!=='ENOENT')throw error;}
+   if(cached){
+    assert(cached.isFile()&&!cached.isSymbolicLink()&&cached.uid===process.getuid()&&(cached.mode&0o777)===0o600,'Private regular prefetched archive required');
+    // API-authenticated final metadata is authoritative, never the cache's own claims.
+    const payload=readCiArchive(a,cachedPath);owner(prefetch.dir,prefetch.identity);
+    let offset=0;while(offset<payload.length){const {bytesWritten}=await fd.write(payload,offset,payload.length-offset);assert(bytesWritten>0,'Archive copy made no progress');offset+=bytesWritten;}
+    owner(dir,identity);const stat=await fd.stat();assert(stat.isFile()&&stat.nlink===1&&stat.size===payload.length&&(stat.mode&0o777)===0o600,'Copied archive file changed');
+    return {id:a.id,name:a.name,path,bytes:payload.length,digest:a.digest,startedAt:new Date(began).toISOString(),completedAt:new Date().toISOString(),elapsedMs:Date.now()-began,status:'verified',reusedPrefetch:true};
+   }
+  }
   child=start(a);assert(child?.stdout&&child?.stderr&&typeof child.kill==='function','Archive transport must expose bounded child streams');
   terminal=new Promise(resolve=>{child.once('error',error=>resolve({error}));child.once('close',(code,signal)=>resolve({code,signal}));});
   // Drain diagnostics without accumulating credentials, network responses or unbounded stderr.
@@ -41,15 +54,16 @@ async function one(a,dir,identity,{start,timeoutMs}){
  }finally{clearTimeout(timer);await fd.close();}
 }
 /** At most four streams; partial failures remain private evidence and never become extracted inputs. */
-export async function downloadCiArchives(artifacts,directory,{concurrency=4,timeoutMs=120000,start=startGithub}={}){
+export async function downloadCiArchives(artifacts,directory,{concurrency=4,timeoutMs=120000,start=startGithub,prefetchDirectory}={}){
  assert(Array.isArray(artifacts)&&artifacts.length>0&&artifacts.length<=512,'Bounded complete archive inventory required');
  assert(Number.isSafeInteger(concurrency)&&concurrency>=1&&concurrency<=4&&Number.isSafeInteger(timeoutMs)&&timeoutMs>0&&timeoutMs<=120000,'Invalid archive concurrency/deadline');
  artifacts.forEach(metadata);assert(new Set(artifacts.map(a=>a.name)).size===artifacts.length&&new Set(artifacts.map(a=>a.id)).size===artifacts.length,'Duplicate archive identity');
  const dir=resolve(directory),identity=owner(dir),space=statfsSync(dir);const total=artifacts.reduce((n,a)=>n+a.size_in_bytes,0);
  assert(Number.isSafeInteger(total)&&space.bavail*space.bsize>=total+64*1024**2,'Insufficient archive disk headroom');
+ const prefetch=prefetchDirectory===undefined?null:{dir:resolve(prefetchDirectory)};if(prefetch){assert(prefetch.dir!==dir,'Prefetch and output directories must differ');prefetch.identity=owner(prefetch.dir);}
  const queue=artifacts.map((a,index)=>({a:Object.freeze({...a}),index})).sort((x,y)=>y.a.size_in_bytes-x.a.size_in_bytes||x.index-y.index);
  const started=Date.now(),results=Array(artifacts.length),errors=[];let next=0;
- async function worker(){for(;;){const position=next++;if(position>=queue.length)return;const {a,index}=queue[position];try{results[index]=await one(a,dir,identity,{start,timeoutMs});}catch(error){errors.push(error);results[index]={id:a.id,name:a.name,status:'failed',error:String(error)};}}}
+ async function worker(){for(;;){const position=next++;if(position>=queue.length)return;const {a,index}=queue[position];try{results[index]=await one(a,dir,identity,{start,timeoutMs,prefetch});}catch(error){errors.push(error);results[index]={id:a.id,name:a.name,status:'failed',error:String(error)};}}}
  await Promise.all(Array.from({length:Math.min(concurrency,artifacts.length)},worker));owner(dir,identity);
  const report={kind:'BOUNDED_AUTHENTICATED_ARCHIVE_BYTES_NOT_RELEASE_ACCEPTANCE',concurrency,scheduling:'largest-authenticated-archive-first',elapsedMs:Date.now()-started,artifacts:results,releaseAuthorized:false};
  if(errors.length){const error=new AggregateError(errors,'One or more authenticated archive transfers failed');error.report=report;throw error;}

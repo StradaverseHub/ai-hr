@@ -39,3 +39,25 @@ The earlier independently verified build-byte transport and application cache ex
 ## Source verification checkpoint
 
 The prior version4 resolve-controller command passed191 private controller checks. The existing fake-transport operator probes passed5, the tiny typed-source binding probe passed1 and the bounded ZIP extractor probes passed6. These are203 integrity/protocol checks, not application cases or a full release gate. YAML parsed successfully; structural comparison changed only resolution checks, controller checks and the normal build job. Test/browser/compiler/migration/receipt/deployment-hold jobs, triggers and permissions remain identical. The first packet probe had2 failures caused by the macOS temporary-path alias; the fixture now canonicalizes its owned path without relaxing the verifier, and the current checks pass.
+
+## Overlap artifact byte transport with CI (v14 prepared path)
+
+`prefetch-ci.mjs` observes the exact same-repository normal-workflow run and stages immutable artifact ZIP bytes while jobs execute. It does not extract artifacts, issue a receipt, accept release evidence, move branches, access staging or cancel CI. Incomplete and failed runs remain incomplete/failed. Each snapshot checks run/controller/repository/workflow/attempt, bounded allowed artifact names and byte metadata, provenance, and that previously observed artifact IDs/digests/sizes have not changed or disappeared. A review-branch byte cache still cannot authorize a release.
+
+From the clean frozen controller, with the clean frozen candidate and existing baseline, start byte staging after the single authorized dispatch:
+
+```sh
+AIHR_CI_CLASSIFIER_RUNTIME=native node /ABSOLUTE/CONTROLLER/.github/ci/prefetch-ci.mjs \
+  /ABSOLUTE/CANDIDATE RUN_ID BASELINE_SHA /ABSOLUTE/NEW_PRIVATE_CACHE
+```
+
+The cache parent must exist; the command creates a new private directory. It checks every ten seconds and stops its own observer after 45 minutes without cancelling the CI run. Failed observations/transfers retain private raw evidence; they are never accepted as complete coverage. Artifact transfer is bounded to four children and 120 seconds each. Reuse a successful cache only after the CI run is terminal, using the normal official adapter:
+
+```sh
+AIHR_CI_PREFETCH_DIR=/ABSOLUTE/PRIVATE_CACHE node --import tsx \
+  /ABSOLUTE/CONTROLLER/.github/ci/operator-release.mjs verify /ABSOLUTE/CANDIDATE RUN_ID
+```
+
+Use the existing authorized `deploy` mode only with the exclusive runtime window and all normal installation prerequisites satisfied. The release verifier first re-authenticates the final successful run, complete jobs and complete artifacts through the API. It treats the cache as untrusted bytes, checks private real directory/file ownership and exact final API digest/size, and copies authentic bytes into a separate private evidence directory without hardlinks. Missing cache entries download normally; corrupt or redirected entries refuse rather than silently substituting another result. Existing strict extraction, independently reconstructed full coverage, build/source/runtime binding, alpha guard, prelaunch revalidation and final source/build/ledger/health/cleanup checks all remain mandatory. No cached API snapshot is release authority.
+
+The transport regression reproduced an unnecessary second transfer on the previous implementation, then passed with zero transfers on the new reuse path. An actual source-bound v13 inventory of 55 artifacts was freshly authenticated through the API and reused from its original prefetch cache with zero network transfers; private local copying took 327 ms, followed by all 55 digest reads. This is transport evidence only, not an executed v14 complete release or an end-to-end ten-minute result. The two full-file test partitions likewise require a fresh final full-policy witness before deployment.
