@@ -8469,6 +8469,23 @@ async function reviewedPayrollCloseAuthorityTx(tx:Tx,ctx:SessionContext,batchId:
  if(scope?.allowed!==true)throw new PayrollPermissionDeniedError('payroll.close');
  await assertPayrollPermission(tx,ctx,'payroll.close',nominee.companyId);return nominee;
 }
+/** CLOSE-only current metadata, never employee/payslip/config/amount rows. The caller's fresh
+ * Assistant source guard runs first; this owner repeats native carrier, company and granular CLOSE
+ * authority before names. Unknown company budget refuses rather than implying extra permitted runs. */
+export async function reviewedPayrollCloseChoiceMetadataTx(tx:Tx,supplied:SessionContext){
+ const ctx=capturePayrollCloseContext(supplied),grants=ctx.grants??(ctx.roles??[]).map(role=>({role,companyId:null})),roles=ctx.roles??[...new Set(grants.map(g=>g.role))];
+ await lockAccessConfigurationTx(tx,ctx.tenantId);
+ const [carrier]=await tx.execute<{allowed:boolean}>(sql`select app.current_tenant_id()=${ctx.tenantId}::uuid and app.current_user_id()=${ctx.userId??null}::uuid and app.principal_snapshot_current() and current_setting('transaction_isolation')='read committed' and current_setting('app.roles',true)=${roles.join(',')} and current_setting('app.grants',true)::jsonb=${JSON.stringify(grants)}::jsonb as allowed`);if(carrier?.allowed!==true)throw new PayrollPermissionDeniedError('payroll.close');
+ const nominees=await tx.select({id:company.id}).from(company).where(and(eq(company.tenantId,ctx.tenantId),sql`app.can_admin_payroll_for(${company.id})`)).orderBy(company.id).limit(129);if(nominees.length>128)throw new Error('Payroll close choices unavailable');
+ const permitted:string[]=[];for(const row of nominees)if(await resolvePayrollPermission(tx,ctx,'payroll.close',row.id))permitted.push(row.id);
+ if(!permitted.length)return{batches:[],truncated:false};
+ const selected=await tx.select({id:payrollBatch.id}).from(payrollBatch).where(and(eq(payrollBatch.tenantId,ctx.tenantId),eq(payrollBatch.status,'processed'),inArray(payrollBatch.companyId,permitted))).orderBy(desc(payrollBatch.payPeriod),desc(payrollBatch.runSeq),payrollBatch.id).limit(21);
+ const batches=[];for(const row of selected.slice(0,20)){
+  const owned=await reviewedPayrollCloseAuthorityTx(tx,ctx,row.id);
+  const [metadata]=await tx.select({batchId:payrollBatch.id,companyName:company.legalName,payPeriod:payrollBatch.payPeriod,runType:payrollBatch.runType,runSeq:payrollBatch.runSeq,cycleName:payrollCycle.name}).from(payrollBatch).innerJoin(company,eq(company.id,payrollBatch.companyId)).leftJoin(payrollCycle,eq(payrollCycle.id,payrollBatch.payrollCycleId)).where(and(eq(payrollBatch.id,owned.id),eq(payrollBatch.status,'processed')));if(!metadata)throw new Error('Payroll close choice changed');batches.push(metadata);
+ }
+ return{batches,truncated:selected.length>20};
+}
 /** Only deterministic representation, never payroll computation. Map/Set observations stay private. */
 function payrollCloseSourceValue(value:unknown):unknown{
  if(value instanceof Date)return value.toISOString();

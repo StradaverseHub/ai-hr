@@ -10,6 +10,10 @@ import {RewardsPostActionChoices} from '../../lib/assistant-actions/module-actio
 import {assertReviewedRewardsPostActorTx} from './reviewed-rewards-post-source';
 import {reviewedRewardPostChoiceMetadataTx} from '../../packs/rewards/service';
 import {prepareRewardsPostReview,confirmRewardsPostReview,reopenRewardsPostReview,discardRewardsPostReview,listRewardsPostReviews} from './rewards-post-review-store';
+import {PayrollCloseActionChoices} from '../../lib/assistant-actions/module-action-http';
+import {assertReviewedPayrollCloseActorTx} from './reviewed-payroll-close-source';
+import {reviewedPayrollCloseChoiceMetadataTx} from '../../packs/payroll/service';
+import {preparePayrollCloseReview,confirmPayrollCloseReview,reopenPayrollCloseReview,discardPayrollCloseReview,listPayrollCloseReviews} from './payroll-close-review-store';
 import {withTenant,type SessionContext} from '../../db/client';
 import {appOrigin} from '../../lib/real-auth';
 import {AttendanceActionChoices,AttendanceClockSelection,AttendanceClockSource,AssignedLeaveActionChoices,ToilRequestActionChoices,LifecycleAckActionAvailability,KnowledgeActionAvailability,OrgActionSearch,OrgActionChoices,TestingActionChoices,ClaimActionChoices,PerformanceActionChoices,createModuleActionBrowserHandler} from '../../lib/assistant-actions/module-action-http';
@@ -130,6 +134,7 @@ export async function handleConfiguredModuleActionBrowserCommand(request:Request
  let publicOrigin:string|undefined;try{publicOrigin=appOrigin();}catch{publicOrigin=undefined;}
  return createModuleActionBrowserHandler({authenticate:authenticateOwnLeaveBrowserSession,
   rewardsPost:{list:session=>listRewardsPostReviews(session.ctx),prepare:(session,input)=>prepareRewardsPostReview(session.ctx,input),reopen:(session,id)=>reopenRewardsPostReview(session.ctx,id),confirm:(session,input)=>confirmRewardsPostReview(session.ctx,input),discard:(session,input)=>discardRewardsPostReview(session.ctx,input)},
+  payrollClose:{list:session=>listPayrollCloseReviews(session.ctx),prepare:(session,input)=>preparePayrollCloseReview(session.ctx,input),reopen:(session,id)=>reopenPayrollCloseReview(session.ctx,id),confirm:(session,input)=>confirmPayrollCloseReview(session.ctx,input),discard:(session,input)=>discardPayrollCloseReview(session.ctx,input)},
   payComponent:{list:session=>listPayComponentReviews(session.ctx),prepare:(session,input)=>preparePayComponentReview(session.ctx,input),reopen:(session,id)=>reopenPayComponentReview(session.ctx,id),confirm:(session,input)=>confirmPayComponentReview(session.ctx,input),discard:(session,input)=>discardPayComponentReview(session.ctx,input)},
   attendance:{clockSource:(session,input)=>readAttendanceCorrectionModuleClockSource(session.ctx,input),list:session=>listAttendanceCorrectionReviews(session.ctx),prepare:(session,input)=>prepareAttendanceCorrectionReview(session.ctx,input),reopen:(session,id)=>reopenAttendanceCorrectionReview(session.ctx,id),confirm:(session,input)=>confirmAttendanceCorrectionReview(session.ctx,input),discard:(session,input)=>discardAttendanceCorrectionReview(session.ctx,input)},
   assignedDecision:{list:session=>listLeaveDecisionReviews(session.ctx),prepare:(session,input)=>prepareLeaveDecisionReview(session.ctx,input),reopen:(session,id)=>reopenLeaveDecisionReview(session.ctx,id),confirm:(session,input)=>confirmLeaveDecisionReview(session.ctx,input),discard:(session,input)=>discardLeaveDecisionReview(session.ctx,input)},
@@ -165,4 +170,11 @@ export async function readRewardsPostModuleActionChoices(supplied:SessionContext
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};try{return await withTenant(ctx,async tx=>{
  const fresh=await assertReviewedRewardsPostActorTx(tx,ctx),metadata=await reviewedRewardPostChoiceMetadataTx(tx,fresh),result=RewardsPostActionChoices.parse({kind:'choices',...metadata});if(Buffer.byteLength(JSON.stringify(result))>49152)throw Error();return result;
  });}catch{return RewardsPostActionChoices.parse({kind:'unavailable'});}
+}
+
+/** Same actual Tx/current principal for label choices. No nested native read or employee data. */
+export async function readPayrollCloseModuleActionChoices(supplied:SessionContext){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};try{return await withTenant(ctx,async tx=>{
+ const fresh=await assertReviewedPayrollCloseActorTx(tx,ctx),result=PayrollCloseActionChoices.parse({kind:'choices',...await reviewedPayrollCloseChoiceMetadataTx(tx,fresh)});if(Buffer.byteLength(JSON.stringify(result))>49152)throw Error();return result;
+ });}catch{return PayrollCloseActionChoices.parse({kind:'unavailable'});}
 }
