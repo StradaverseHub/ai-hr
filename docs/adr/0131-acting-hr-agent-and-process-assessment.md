@@ -1721,3 +1721,18 @@ opening, earned, expiry, A2C, cohort, same-Tx and scope acceptance suites are re
 syntax is not a runtime/concurrency/performance result. Ordered advisory sets are not a global table
 lock. Other organization/calendar/roster, old import, credit, raw storage and authority writers still
 need integration and actual security proof before universal protection or Assistant effects.
+
+
+Legacy ledger import participant — source preparation (UNRUN)
+
+`commitLeaveImport` captures the input file/context, then owns Access, shared leave
+configuration and the nominated employment inside each actual row transaction.
+Its existing analyzer can now join that transaction, including catalogue, visible
+identity and ledger reads. It freshly resolves the original raw row, refuses any
+invalid or changed identity/type/entry/days/date/dedupe binding, and skips a duplicate
+found under ownership. Counts advance only after commit. Rows and the summary keep
+separate transactions; a busy first employee must not strand an independent row.
+The authored actual two-employee regression checks that behavior and release/retry
+idempotency and summary counts. It and all existing import consumers remain UNRUN.
+No compiler, database, application or release verification is claimed. Tenant/module
+facts and other nonparticipating owners still require complete fencing and proof.

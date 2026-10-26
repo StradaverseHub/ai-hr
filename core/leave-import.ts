@@ -46,11 +46,13 @@ import { NRIC_AMBIGUOUS_MESSAGE } from '../lib/nric-policy-message';
 import { publicErrorMessage } from '@/lib/public-error';
 import { eq, inArray, isNull } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type Tx, type SessionContext } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { employment, person, employeeStatutoryMy, leaveType, leaveLedger } from '../db/schema';
 import { isGroupAdmin, hasGrantFor, withEffectiveGrants } from '../lib/authz-model';
 import { listLeaveTypes } from './read';
+import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { LeaveDependencyUnavailable, lockLeaveDependenciesTx } from './leave-dependency-lock';
 import { isReplacementLeaveType } from './ess-view';
 import { leaveCreditRegisterLive } from './leave-credit-live';
 import {
@@ -111,12 +113,13 @@ type ResolvedRow = {
 async function analyze(
   ctx: SessionContext,
   records: LeaveImportRecord[],
+  existingTx?: Tx,
 ): Promise<{ preview: LeaveImportPreview; resolved: ResolvedRow[] }> {
   const effective = withEffectiveGrants(ctx);
   const groupAdmin = isGroupAdmin(effective);
 
   // Leave types (non-archived) matched by code, case-insensitive. listLeaveTypes lives in core/read.
-  const types = await listLeaveTypes(ctx);
+  const types = await listLeaveTypes(ctx, {}, existingTx);
   const typeByCode = new Map(types.map((t) => [t.code.toLowerCase(), t.id]));
   // 3fb1a611 (r299) — the Replacement Leave type(s): an imported row on one is a balance with no credit behind
   // it (no date worked, no expiry, no place in the expiring-first order), the same ghost Leave Adjustments now
@@ -133,7 +136,7 @@ async function analyze(
   // NOT active-only: leave history migration routinely includes people who have since left (their final
   // unconsumed balance matters for final-pay reconciliation). Match ALL employments; terminated ones are
   // flagged, never conflated with "not found".
-  const { emps, existingKeys, openedYears } = await withTenant(ctx, async (tx) => {
+  const readSource = async (tx: Tx) => {
     const rows = await tx
       .select({
         id: employment.id,
@@ -181,7 +184,8 @@ async function analyze(
         .map((l) => `${l.employmentId}|${l.leaveTypeId}|${l.effectiveOn.slice(0, 4)}`),
     );
     return { emps: rows, existingKeys, openedYears };
-  });
+  };
+  const { emps, existingKeys, openedYears } = await (existingTx ? readSource(existingTx) : withTenant(ctx, readSource));
 
   // Keep every candidate. Duplicated NRICs and multiple employments must never let
   // iteration order decide whose leave balance changes. An explicit Employee ID wins.
@@ -367,11 +371,13 @@ export async function commitLeaveImport(
   ctx: SessionContext,
   p: { records: LeaveImportRecord[]; source?: LeaveImportSource },
 ): Promise<LeaveImportResult> {
+  p = { ...p, records: p.records.map(record => ({ ...record })) };
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   const { resolved } = await analyze(ctx, p.records);
   // Skip = a valid row that already exists in the ledger (already-imported warning) — never written.
   const alreadyImported = (r: ResolvedRow) => r.result.warnings.some((w) => w.startsWith('Already imported'));
   const writable = resolved.filter((r) => r.result.ok && !alreadyImported(r));
-  const skipped = resolved.filter((r) => r.result.ok && alreadyImported(r)).length;
+  let skipped = resolved.filter((r) => r.result.ok && alreadyImported(r)).length;
 
   const failed: LeaveImportResult['failed'] = [];
   let imported = 0;
@@ -383,8 +389,20 @@ export async function commitLeaveImport(
   // failing every subsequent insert AND the summary event too — the not-atomic-by-design requirement.
   for (const r of writable) {
     try {
-      await withTenant(ctx, (tx) =>
-        tx.insert(leaveLedger).values({
+      const written = await withTenant(ctx, async (tx) => {
+        await lockAccessConfigurationTx(tx, ctx.tenantId);
+        await lockLeaveDependenciesTx(tx, ctx.tenantId, [r.employmentId]);
+        // The earlier preview nominates a row; all authorizing source reads and duplicate checks
+        // join this actual row transaction after ownership. Do not lock a whole file or retarget.
+        const raw = p.records[r.result.rowNum - 1];
+        if (!raw) throw new LeaveDependencyUnavailable();
+        const { resolved: freshRows } = await analyze(ctx, [raw], tx);
+        const fresh = freshRows[0];
+        if (!fresh?.result.ok || fresh.employmentId !== r.employmentId || fresh.leaveTypeId !== r.leaveTypeId
+          || fresh.entryType !== r.entryType || fresh.days !== r.days || fresh.effectiveOn !== r.effectiveOn
+          || fresh.dedupeKey !== r.dedupeKey) throw new LeaveDependencyUnavailable();
+        if (alreadyImported(fresh)) return false;
+        await tx.insert(leaveLedger).values({
           tenantId: ctx.tenantId,
           employmentId: r.employmentId,
           leaveTypeId: r.leaveTypeId,
@@ -392,9 +410,12 @@ export async function commitLeaveImport(
           days: r.days.toFixed(2),
           effectiveOn: r.effectiveOn,
           reason: 'Imported (leave migration)',
-        }),
-      );
-      imported += 1;
+        });
+        return true;
+      });
+      // Counters describe committed effects, including a duplicate discovered under ownership.
+      if (written) imported += 1;
+      else skipped += 1;
     } catch (e) {
       // RLS WITH CHECK (can_see_employment / company scope) or any per-row DB error: record + continue.
       failed.push({ rowNum: r.result.rowNum, employeeRef: r.result.employeeRef, message: publicErrorMessage(e) });
