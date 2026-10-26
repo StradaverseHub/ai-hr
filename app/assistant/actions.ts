@@ -2,7 +2,8 @@
 
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { getSession } from '@/lib/session';
+import { getBrowserCommandSession } from '@/lib/session';
+import { AuthRequiredError } from '@/lib/auth-errors';
 import { askAssistant, AssistantError } from '@/core/assistant';
 
 /**
@@ -17,15 +18,15 @@ import { askAssistant, AssistantError } from '@/core/assistant';
  * provider failure for the same reason.
  */
 export async function askAssistantAction(formData: FormData) {
-  const s = await getSession();
   const question = String(formData.get('question') ?? '');
 
   let exchangeId: string;
   try {
+    const s = await getBrowserCommandSession();
     const res = await askAssistant(s, { question });
     exchangeId = res.exchangeId;
   } catch (e) {
-    const code = e instanceof AssistantError ? e.code : 'provider_error';
+    const code = e instanceof AuthRequiredError ? 'ai_control' : e instanceof AssistantError ? e.code : 'provider_error';
     redirect(`/assistant?error=${encodeURIComponent(code)}`);
   }
 
