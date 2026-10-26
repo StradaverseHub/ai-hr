@@ -239,7 +239,9 @@ describe('letter generation snapshots and complete-batch readiness',()=>{
   const made=await createLetterDraftBatch(ctx,{companyId:b.companyId,templateVersionId,employmentIds:employees,customValues:custom(employees),operationKey:randomUUID()});
   await owner.db.update(s.appUser).set({archivedAt:new Date()}).where(eq(s.appUser.id,blockedId));
   await submitLetterBatch(ctx,made.batchId);const row=(await getLetterGenerationBatch(ctx,made.batchId))!.rows[0];
-  const jobs=()=>owner.db.select().from(s.letterJob).where(eq(s.letterJob.letterId,row.record.id));
+  const allJobs=()=>owner.db.select().from(s.letterJob).where(eq(s.letterJob.letterId,row.record.id));
+  const jobs=async()=>(await allJobs()).filter(job=>job.payload.purpose!=='draftCreated');
+  expect((await allJobs()).filter(job=>job.payload.purpose==='draftCreated')).toMatchObject([{recipientUserId:ctx.userId,status:'queued'}]);
   const original=await jobs();expect(original).toHaveLength(2);expect(original.every(job=>job.recipientUserId===reviewer.userId)).toBe(true);const deadline=original.find(job=>job.kind==='approvalReminder')!.dueAt;
   await delegateLetterApproval(reviewer,{letterId:row.record.id,expectedRevisionId:row.revision!.id,expectedLockVersion:row.record.lockVersion,delegateUserId:delegateId,reason:'Delegate the pending review'});
   const delegated=await jobs();expect(delegated.filter(job=>job.recipientUserId===reviewer.userId).every(job=>job.status==='cancelled')).toBe(true);
