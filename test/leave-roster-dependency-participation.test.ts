@@ -7,7 +7,7 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { ensureStandardRule } from '../core/attendance-rule';
 import { saveScheduleGroupControl } from '../core/schedule-group-controls';
-import { generateRosterFromTemplate, createShift, updateShift, copyShift, deleteShift, archiveShift, unarchiveShift, assignShift, setRestDay, clearRoster, assignShiftBulk, setRestDayBulk, copyRoster, assignEmployeeShift, setEmploymentScheduleGroup, setEmploymentScheduleGroupTx, setEmploymentScheduleGroupBulk } from '../core/roster';
+import { generateRosterFromTemplate, replaceShiftOtWindows, saveShiftPay, createShift, updateShift, copyShift, deleteShift, archiveShift, unarchiveShift, assignShift, setRestDay, clearRoster, assignShiftBulk, setRestDayBulk, copyRoster, assignEmployeeShift, setEmploymentScheduleGroup, setEmploymentScheduleGroupTx, setEmploymentScheduleGroupBulk } from '../core/roster';
 import { lockLeaveDependenciesTx } from '../packs/leave/service';
 import { assignEmployeeShiftDated, removeShiftArrangement } from '../core/shift-arrangement';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -255,4 +255,35 @@ describe('protected roster generation', () => {
     expect(emitted.filter(row=>row.eventType==='roster.bulk.assigned')).toHaveLength(1);
     expect(emitted.filter(row=>row.eventType==='roster.bulk.rest-day.set')).toHaveLength(1);
   });
+});
+
+
+/** Actual standalone window editor and compound pay editor owners. Authored UNRUN. */
+describe('shift window configuration participants', () => {
+ it.each(['windows', 'pay'] as const)('%s refuses before shift/window/event changes then saves after release', async command => {
+  const ctx = adminCtx(b), today = todayInKualaLumpur();
+  const employee = await hireEmployee(ctx, { person: { fullName: 'Fictional Window Subject', primaryEmail: `window-${randomUUID()}@t.local` },
+   companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: today });
+  const created = await createShift(ctx, { name: 'Fictional Window Shift', code: 'FWS', companyId: b.companyId,
+   startTime: '09:00', endTime: '18:00', breakMinutes: 60 });
+  const windows = [{ startTime: '18:00', endTime: '20:00', endNextDay: false }];
+  const mutate = () => command === 'windows' ? replaceShiftOtWindows(ctx, { shiftId: created.id, windows })
+   : saveShiftPay(ctx, { shiftId: created.id, windows, differential: null, confirmClear: false });
+  const state = async () => ({
+   shifts: await owner.db.select().from(schema.shift).where(eq(schema.shift.tenantId, b.tenantId)).orderBy(schema.shift.id),
+   windows: await owner.db.select().from(schema.shiftOtWindow).where(eq(schema.shiftOtWindow.tenantId, b.tenantId)).orderBy(schema.shiftOtWindow.id),
+   events: await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.tenantId, b.tenantId)).orderBy(schema.domainEvent.id),
+  });
+  const before = await state();
+  let ready!: () => void, fail!: (error: unknown) => void, release!: () => void;
+  const started = new Promise<void>((yes, no) => { ready = yes; fail = no; }), finish = new Promise<void>(yes => { release = yes; });
+  const watchdog = setTimeout(() => { fail(new Error('owned shift window handshake timed out')); release(); }, 10_000);
+  const holder = withTenant(ctx, async tx => { await lockLeaveDependenciesTx(tx, b.tenantId, [employee.employmentId]); ready(); await finish; });
+  void holder.catch(fail);
+  try { await started; await expect(mutate()).rejects.toThrow('Leave source is unavailable'); expect(await state()).toEqual(before); }
+  finally { release(); clearTimeout(watchdog); await holder; }
+  await mutate(); const after = await state();
+  expect(after.windows).toHaveLength(1); expect(after.windows[0]).toMatchObject({ shiftId: created.id, startTime: '18:00:00', endTime: '20:00:00' });
+  expect(after.events.length).toBe(before.events.length + (command === 'pay' ? 2 : 1));
+ });
 });

@@ -1373,7 +1373,13 @@ export async function replaceShiftOtWindows(
   ctx: SessionContext,
   p: { shiftId: string; windows: ShiftOtWindowInput[] },
 ): Promise<{ id: string; windows: number }> {
-  return withTenant(ctx, tx => replaceShiftOtWindowsTx(tx, ctx, p));
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  return withTenant(ctx, async tx => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+    return replaceShiftOtWindowsTx(tx, ctx, p);
+  });
 }
 
 async function replaceShiftOtWindowsTx(tx: Tx, ctx: SessionContext, p: { shiftId: string; windows: ShiftOtWindowInput[] }) {
@@ -3468,8 +3474,12 @@ async function administrativeManagerNameTx(tx: Tx, employmentId: string): Promis
 
 /** Dedicated pay editor: validation and both changes commit together; basic shift saves omit pay fields. */
 export async function saveShiftPay(ctx: SessionContext, p: { shiftId: string; windows: ShiftOtWindowInput[]; differential: ShiftDifferential | null; confirmClear: boolean }) {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const differential = validateDifferential(p.differential);
   return withTenant(ctx, async tx => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [before] = await tx.select().from(shift).where(eq(shift.id, p.shiftId)).for('update');
     if (!before) throw new Error('Shift not found (or not visible)');
     const oldWindows = await tx.select({id:shiftOtWindow.id}).from(shiftOtWindow).where(eq(shiftOtWindow.shiftId, p.shiftId));

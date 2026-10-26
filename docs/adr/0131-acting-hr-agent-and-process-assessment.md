@@ -2687,3 +2687,11 @@ are distinct but no worker database or runtime job has been created. Source-only
 remain unverified until the shared checks are genuinely run. The human also explicitly
 authorized AI source-only publication to the now-public repository; private evidence,
 logs, fixtures and credentials remain outside Git.
+
+### Source integration: browser consent, module readers and shift window owners (26 October)
+
+Integrated isolated own-leave lifecycle, provider readiness and module-workspace source commits. Provider candidates stay inactive until explicit synthetic evaluation and receipt promotion; evaluation consent now binds the candidate ID and version actually displayed. Browser provider commands require an explicitly selected authenticated session, and issued provider snapshots are purpose-checked both at configuration creation and before admission. The closed Assistant reader facade now exposes the canonical module projections and a separately named write-carrier job join for bounded promotion accounting. Routing-only evaluation remains explicitly routing-only; prompt/model evaluation and full three-stage acceptance remain incomplete.
+
+AI feature/allowance/default-clear command transactions now check the current calling principal under Access ownership before policy writes; setting-backed AI feature changes perform that same check inside the actual setting transaction. Four archived-login refusal cases are authored, UNRUN. Other direct settings/module/authority owners still require their own reviewed coverage; this does not establish universal protection.
+
+The two standalone shift-pay source owners, `replaceShiftOtWindows` and `saveShiftPay`, now capture nested input/context and acquire Access then exclusive leave configuration before their existing source-row reads/locks, window replacement and events. Private window validation and canonical pay bodies remain unchanged; a reverse-edit comparison restored the previous source exactly. Two actual shared-interval/no-effect/release-and-save regressions are authored, UNRUN. Syntax parsing and diff checks only; no compiler, application, tests, database, build, provider calls or staging execution. No deployment or runtime security/readiness claim follows from this checkpoint.
