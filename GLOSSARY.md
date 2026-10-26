@@ -22,6 +22,11 @@ _Avoid_: Dummy employee, fake employee, unlinked identity
 
 ## Employee submissions
 
+**Reported clock attempt**:
+An employee's claim that they started preparing a clock action at a phone-reported time. Receipt by
+the company establishes that the claim arrived, not that the employee was present or clocked in.
+_Avoid_: Verified attendance, proof of presence, accepted offline punch
+
 **Pending submission**:
 An employee's specific clock or leave request whose accepted or refused outcome has not yet been confirmed.
 _Avoid_: Recorded attendance, approved leave

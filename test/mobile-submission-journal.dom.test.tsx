@@ -40,6 +40,9 @@ describe('pending submission durability and ownership',()=>{
     expect(await f.journal.pending()).toEqual([staged]);
     await expect(f.journal.prepareClock('in',requestId)).rejects.toBeInstanceOf(PendingSubmissionConflict);
     expect(await f.journal.restore(staged)).toEqual({command:clock,file});
+    const reads=vi.mocked(f.ports.readEvidence).mock.calls.length;
+    expect(await f.journal.clockAttempt(requestId)).toEqual({requestId,action:'in',claimedAt:entry.createdAt});
+    expect(f.ports.readEvidence).toHaveBeenCalledTimes(reads);
   });
   it('retains the unsent attempt after attachment or command persistence fails',async()=>{
     const f=fixture(),entry=await f.journal.prepareClock('in',requestId);

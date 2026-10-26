@@ -142,8 +142,21 @@ services disabled, mock flags, invalid fixes and stale/future samples. Settings 
 Services discovery and one position request share a 20-second deadline; no automatic GPS retry follows
 a timeout. A late services response cannot start a new position query. These checks validate reported
 quality, not provider authenticity. Real indoor-site measurements, signed-device permission behavior
-and hardware attestation remain acceptance requirements before broader rollout. Failed preparation
-attempts do not yet survive process termination; the durable journal begins at command staging.
+and hardware attestation remain acceptance requirements before broader rollout.
+
+Preparation now saves an encrypted attempt before GPS or camera capture. If storage fails, preparation
+stops before location acquisition. A restart can recover the unsent reference after fresh own-identity
+verification; cancellation retains it, and a different direction requires review. The preparation
+contains only the action, reference and phone-reported start. It cannot be sent as a clock command.
+Its eventual command/evidence adopts the same reference atomically. Snapshot version 2 represents a
+preparation; version 1 commands remain readable. Older binaries refuse version 2 without discarding it.
+
+Employees can send the minimal attempt record separately. Confirmation also requires a receipt from
+`POST /api/mobile/v1/clock-attempts` before sending attendance. The server records the claim once per
+actor/employment/reference, distinguishes its receipt time from the unverified phone time, and never
+creates attendance from this report. A failed/lost attempt receipt retains the command and prevents
+attendance transmission. Deploy this server capability before distributing the new client; an older
+server refusal retains local evidence. No background replay, offline acceptance or backdating is enabled.
 
 Native commands enforce registered-device policy. The registration token is stored in device-only
 unlocked SecureStore, is scoped to employment, and is deleted on logout/reinstall. This registration

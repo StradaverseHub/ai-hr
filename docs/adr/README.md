@@ -89,3 +89,4 @@ See also: [Malaysia localization — spec mapping & gap closure](../architecture
 - [ADR-0143: Server-ordered mobile submission abandonment](0143-mobile-submission-abandonment.md)
 
 - [0144 — Shared geofence containment with reported uncertainty](0144-geofence-reported-uncertainty.md)
+- [0145 — Durable clock preparation attempts](0145-durable-clock-preparation-attempts.md)

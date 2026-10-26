@@ -22,8 +22,9 @@ const locationRefusals={location_required:'locationPermission',invalid_location:
 export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
   const {employmentId,signOut}=useSession();
   const clock=useApi('clock',{employmentId:employmentId??undefined},signOut);
-  useFocusEffect(useCallback(()=>{clock.reload();},[clock.reload]));
-  useEffect(()=>{if(refreshToken)clock.reload();},[refreshToken,clock.reload]);
+  const attempts=useApi('clock-attempts',{employmentId:employmentId??undefined},signOut);
+  useFocusEffect(useCallback(()=>{clock.reload();attempts.reload();},[clock.reload,attempts.reload]));
+  useEffect(()=>{if(refreshToken){clock.reload();attempts.reload();}},[refreshToken,clock.reload,attempts.reload]);
   const {clock:draft,putClock}=useJourneyDrafts();
   const {palette,design}=useTenantDesign();
   const flight=useRef(false);
@@ -69,7 +70,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
   async function reportAttempt(){
     if(flight.current||!draft?.requestId||!draft.attemptStartedAt)return;
     flight.current=true;const owner=authGeneration();putClock({...draft,phase:'preparing',message:t('attemptSending')});
-    try{const receipt=await recovery.reportAttempt(draft.requestId);assertAuthGeneration(owner);putClock({...draft,attemptReceiptTime:receipt.receivedAt,message:t('attemptReported')},draft.requestId);}
+    try{const receipt=await recovery.reportAttempt(draft.requestId);assertAuthGeneration(owner);putClock({...draft,attemptReceiptTime:receipt.receivedAt,message:t('attemptReported')},draft.requestId);attempts.reload();}
     catch(e){putClock({...draft,message:t('attemptReportUncertain')},draft.requestId);if(e instanceof SignInRequiredError)void signOut();}
     finally{flight.current=false;}
   }
@@ -92,12 +93,15 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
     if(current.deviceRequired&&!draft.deviceToken)return;
     flight.current=true;const owner=authGeneration();
     let sent=false;
+    let reportingAttempt=false;
     let uploadFile:ClockDraft['photo'];
     putClock({...draft,phase:'submitting',message:undefined});
     try{
       const staged=await recovery.stage(JSON.stringify({action:draft.action,requestId:draft.requestId,lat:draft.geo.lat,lng:draft.geo.lng,accuracy:draft.geo.accuracy,sampledAt:draft.geo.sampledAt,deviceToken:draft.deviceToken}),draft.photo);assertAuthGeneration(owner);
       uploadFile=staged.file;
       if(!putClock({...draft,photo:staged.file,phase:'submitting'},draft.requestId))return;
+      reportingAttempt=true;await recovery.reportAttempt(draft.requestId);assertAuthGeneration(owner);
+      attempts.reload();
       const form=new FormData();form.append('command',staged.command);if(staged.file)appendAttachment(form,'photo',staged.file);
       sent=true;const result=await apiPost('clock',form,{employmentId:identity});assertAuthGeneration(owner);
       await recovery.resolve(draft.requestId);assertAuthGeneration(owner);
@@ -106,9 +110,9 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
       clock.reload();
     }catch(e){
       let refused=false;
-      if(e instanceof RequestRejectedError&&[400,403,404,413,415,422].includes(e.status))try{await recovery.resolve(draft.requestId);refused=true;}catch{}
+      if(sent&&e instanceof RequestRejectedError&&[400,403,404,413,415,422].includes(e.status))try{await recovery.resolve(draft.requestId);refused=true;}catch{}
       if(refused){removeLocalFile(draft.photo);putClock({action,phase:'idle',message:t('genericError')},draft.requestId);}
-      else putClock({...draft,phase:'uncertain',message:t(sent?'clockUncertain':e instanceof SubmissionJournalFull?'pendingStorageFull':'submissionSaveFailed')},draft.requestId);
+      else putClock({...draft,phase:'uncertain',message:t(sent?'clockUncertain':reportingAttempt?'attemptReportRequired':e instanceof SubmissionJournalFull?'pendingStorageFull':'submissionSaveFailed')},draft.requestId);
       if(e instanceof SignInRequiredError)void signOut();
     }
     finally{removeLocalFile(uploadFile);flight.current=false;}
@@ -185,6 +189,18 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
         {current.legacy.map((c,i)=><Row key={`${c.direction}-${c.time}-${i}`} label={c.direction==='in'?t('clockIn'):t('clockOut')} value={c.time.slice(0,5)}/>)}
         {current.captures.map(c=><Row key={c.id} label={c.direction==='in'?t('clockIn'):t('clockOut')} value={new Date(c.recordedAt).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kuala_Lumpur'})}/>)}
         {!current.captures.length&&!current.legacy.length&&<Muted>{t('noClockHistory')}</Muted>}
+      </View>
+      <View style={{gap:8,marginTop:8}}>
+        <Text style={{color:palette.text,fontSize:17,fontWeight:'600'}}>{t('reportedAttempts')}</Text>
+        <Muted>{t('reportedAttemptsHint')}</Muted>
+        <LoadState loading={attempts.loading} hasData={!!attempts.data} error={attempts.error} onRetry={attempts.reload}/>
+        {attempts.data?.items.map(item=><Card key={item.requestId}>
+          <Text style={{color:palette.text,fontWeight:'600'}}>{t(item.action==='in'?'clockIn':'clockOut')}</Text>
+          <Row label={t('attemptClaimedAt')} value={new Date(item.claimedAt).toLocaleString(appLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'})}/>
+          <Row label={t('attemptReceivedAt')} value={new Date(item.receivedAt).toLocaleString(appLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'})}/>
+          <Text selectable style={{color:palette.text}}>{item.requestId}</Text>
+        </Card>)}
+        {attempts.data&&!attempts.data.items.length&&<Muted>{t('noReportedAttempts')}</Muted>}
       </View>
     </>}
   </View>;

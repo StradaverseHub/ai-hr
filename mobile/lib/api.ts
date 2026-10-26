@@ -11,7 +11,7 @@ import { AppState } from 'react-native';
 import { fetch as nativeFetch } from 'expo/fetch';
 import { readBoundedBody } from '../../lib/bounded-body';
 import {
-  SubmissionAbandonResponse, SubmissionReceiptResponse, TasksResponse, MobileDesignResponse, ClockResponse,ClockLocationResponse,ClockAttemptReceipt,ClockPreparation,ClockResult,DeviceResponse,TeamResponse,LeaveOptionsResponse,LeaveRequestsResponse,LeavePreviewResponse,LeaveResult,LeaveCommand,
+  SubmissionAbandonResponse, SubmissionReceiptResponse, TasksResponse, MobileDesignResponse, ClockResponse,ClockLocationResponse,ClockAttemptReceipt,ClockAttemptsResponse,ClockPreparation,ClockResult,DeviceResponse,TeamResponse,LeaveOptionsResponse,LeaveRequestsResponse,LeavePreviewResponse,LeaveResult,LeaveCommand,
   LeaveResponse,
   MeResponse,
   NotificationsResponse,
@@ -26,6 +26,7 @@ import { appLocale } from './i18n';
 export type { LeaveResponse, MeResponse, NotificationsResponse, PayslipsResponse };
 
 type Endpoints = {
+  'clock-attempts':ClockAttemptsResponse;
   'submission-receipt': SubmissionReceiptResponse;
   tasks: TasksResponse;
   clock:ClockResponse; team:TeamResponse; 'leave-options':LeaveOptionsResponse; 'leave-requests':LeaveRequestsResponse;
@@ -45,6 +46,7 @@ function url(path: string, params: Record<string, string | undefined>,origin:str
 }
 
 const responses = {
+  'clock-attempts':ClockAttemptsResponse,
   'submission-receipt': SubmissionReceiptResponse,
   tasks: TasksResponse, clock: ClockResponse, team: TeamResponse, 'leave-options': LeaveOptionsResponse,
   'leave-requests': LeaveRequestsResponse, design: MobileDesignResponse, me: MeResponse,

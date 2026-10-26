@@ -97,11 +97,11 @@ export function useSubmissionRecovery(kind:SubmissionKind,employmentId:string|un
       check();if(kind!=='clock'||!employmentId||state.key!==key||!state.ready||AppState.currentState!=='active')throw new SubmissionJournalUnavailable('Unlock the app to continue');
       const journal=await ownedJournal(employmentId,owner);check();
       const entry=(await journal.pending()).find(value=>value.kind==='clock'&&value.requestId===requestId);check();
-      if(entry?.stage!=='preparation')throw new SubmissionJournalUnavailable('Pending attempt changed');
-      const restored=await journal.restore(entry);check();
-      const receipt=await apiPost('clock-attempts',ClockPreparation.parse(JSON.parse(restored.command)),{employmentId});check();
+      if(!entry)throw new SubmissionJournalUnavailable('Pending attempt changed');
+      const attempt=await journal.clockAttempt(requestId);check();
+      const receipt=await apiPost('clock-attempts',ClockPreparation.parse(attempt),{employmentId});check();
       if(receipt.requestId!==requestId)throw new SubmissionJournalUnavailable('Unexpected attempt receipt');
-      await journal.markAttemptReported(requestId,receipt);check();return receipt;
+      if(entry.stage==='preparation'){await journal.markAttemptReported(requestId,receipt);check();}return receipt;
     },
     async stage(command:string,file?:EvidenceFile){
       check();if(!employmentId||state.key!==key||!state.ready)throw new SubmissionJournalUnavailable('Pending submissions have not been checked');

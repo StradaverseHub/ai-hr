@@ -15,7 +15,7 @@ function fixture(){
   const apiPost=vi.fn<(...args:unknown[])=>Promise<any>>(async()=>({kind:'clock',requestId:'request',receipt:null,abandoned:true}));
   const entry:any={kind:'clock',requestId:'request',command:'original command',createdAt:Date.now()};
   const journal={pending:vi.fn(async()=>[entry]),restore:vi.fn(async()=>({command:entry.command})),
-    stage:vi.fn(async()=>entry),resolve:vi.fn(async()=>{}),prepareClock:vi.fn(async()=>entry),markAttemptReported:vi.fn(async()=>{})};
+    stage:vi.fn(async()=>entry),resolve:vi.fn(async()=>{}),prepareClock:vi.fn(async()=>entry),markAttemptReported:vi.fn(async()=>{}),clockAttempt:vi.fn(async()=>JSON.parse(entry.command))};
   const open=vi.fn(async()=>journal);
   const output={exports:{} as {listOwnedPendingSubmissions:()=>Promise<any[]>;reconcileOwnedPendingSubmission:(item:any,action:string)=>Promise<any>;useSubmissionRecovery:(kind:string,employmentId:string,onRestore:(value:unknown)=>void)=>{
     ready:boolean;error:unknown;prepareClock:(action:string,id:string)=>Promise<unknown>;reportAttempt:(id:string)=>Promise<unknown>;stage:(command:string)=>Promise<unknown>;resolve:(id:string)=>Promise<void>;

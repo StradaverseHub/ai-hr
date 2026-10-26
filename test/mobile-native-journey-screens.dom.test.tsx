@@ -10,9 +10,11 @@ import {DEFAULT_MOBILE_DESIGN,mobilePalette} from '../lib/mobile-design';
 import * as errors from '../mobile/lib/errors';
 import * as contract from '../lib/mobile-api/contract';
 import * as journal from '../mobile/lib/submission-journal';
-function load(path:string,ports:Record<string,unknown>){const module={exports:{} as any};runInNewContext(transpileModule(readFileSync(path,'utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX}}).outputText,{exports:module.exports,module,FormData,Date,require:(id:string)=>{if(id==='react')return React;if(id==='react/jsx-runtime')return jsx;if(id in ports)return ports[id];throw new Error('Missing native screen port '+id);}});return module.exports;}
+function load(path:string,ports:Record<string,unknown>){const module={exports:{} as any};runInNewContext(transpileModule(readFileSync(path,'utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX}}).outputText,{exports:module.exports,module,FormData,Date,Error,require:(id:string)=>{if(id==='react')return React;if(id==='react/jsx-runtime')return jsx;if(id in ports)return ports[id];throw new Error('Missing native screen port '+id);}});return module.exports;}
 function fixture(){
   let drafts:any,sequence=0;const reload=vi.fn(),get=vi.fn(),post=vi.fn(),remove=vi.fn(),capture=vi.fn(async()=>({lat:3,lng:101,accuracy:5,sampledAt:Date.now()}));
+  const photo=vi.fn<()=>Promise<any>>(async()=>null);
+  const reloadAttempts=vi.fn(),attemptsState={items:[] as any[]};
   const preview=vi.fn<(...args:unknown[])=>Promise<any>>(async()=>({outcome:'not_enforced',siteId:null,siteName:null,distanceM:null,radiusM:null,accuracyM:5,maximumAccuracyM:null}));
   const session={employmentId:'own',status:'signedIn',signOut:vi.fn()};
   const View=({children}:any)=><div>{children}</div>,Text=({children,accessibilityRole}:any)=><span role={accessibilityRole==='alert'?'alert':undefined}>{children}</span>;
@@ -26,15 +28,37 @@ function fixture(){
   const stage=vi.fn(async(command:string,file?:unknown)=>({command,file})),resolve=vi.fn(async()=>{});
   const prepareClock=vi.fn(async(action:string,requestId:string)=>({requestId,kind:'clock',stage:'preparation',createdAt:Date.now(),command:JSON.stringify({action,requestId,claimedAt:Date.now()})}));
   const reportAttempt=vi.fn(async(requestId:string)=>({requestId,receivedAt:new Date().toISOString()}));
-  const shared={...base,'./submission-journal':journal,'../../lib/mobile-api/contract':contract,'./submission-recovery':{useSubmissionRecovery:()=>({ready:true,error:null,reload:()=>{},stage,resolve,prepareClock,reportAttempt})},'./journey-drafts':{...provider,removeLocalFile:remove},'./ui':ui,'./api':{apiGet:get,apiPost:(path:string,...args:unknown[])=>path==='clock-location'?preview(...args):post(path,...args),useApi:(path:string)=>({data:path==='team'?teamState:clockState,reload,loading:false,error:null})},'./capture':{capturePosition:capture,capturePhoto:async()=>null,appendAttachment:()=>{}},'./device-registration':{readClockDevice:async()=>null,writeClockDevice:async()=>{},clearClockDevice:async()=>{}},'./slide-confirm':{SlideConfirm:(p:any)=><button disabled={p.disabled} onClick={p.onConfirm}>{p.label}</button>},'expo-document-picker':{getDocumentAsync:async()=>({canceled:true})},'expo-file-system':{}};
+  const shared={...base,'./submission-journal':journal,'../../lib/mobile-api/contract':contract,'./submission-recovery':{useSubmissionRecovery:()=>({ready:true,error:null,reload:()=>{},stage,resolve,prepareClock,reportAttempt})},'./journey-drafts':{...provider,removeLocalFile:remove},'./ui':ui,'./api':{apiGet:get,apiPost:(path:string,...args:unknown[])=>path==='clock-location'?preview(...args):post(path,...args),useApi:(path:string)=>({data:path==='clock-attempts'?attemptsState:path==='team'?teamState:clockState,reload:path==='clock-attempts'?reloadAttempts:reload,loading:false,error:null})},'./capture':{capturePosition:capture,capturePhoto:photo,appendAttachment:()=>{}},'./device-registration':{readClockDevice:async()=>null,writeClockDevice:async()=>{},clearClockDevice:async()=>{}},'./slide-confirm':{SlideConfirm:(p:any)=><button disabled={p.disabled} onClick={p.onConfirm}>{p.label}</button>},'expo-document-picker':{getDocumentAsync:async()=>({canceled:true})},'expo-file-system':{}};
   const {ClockPanel}=load('mobile/lib/clock-panel.tsx',shared),{LeaveRequestForm}=load('mobile/lib/leave-request-form.tsx',shared),{TeamPanel}=load('mobile/lib/team-panel.tsx',shared);
   function Probe(){drafts=provider.useJourneyDrafts();return null;}
   const options={employmentId:'own',items:[{id:'annual',name:'Annual leave',durations:['full_day','half_day_am','hourly'],allowedMimeTypes:[],maxDocBytes:10485760,requiresDocument:false,emergencySplit:false}]};
   function App({kind,refreshToken=0}:{kind:'clock'|'leave'|'team';refreshToken?:number}){return <provider.JourneyDraftProvider><Probe/>{kind==='clock'?<ClockPanel refreshToken={refreshToken}/>:kind==='team'?<TeamPanel refreshToken={refreshToken}/>:<LeaveRequestForm options={options} today="2026-01-01" onSubmitted={reload}/>}</provider.JourneyDraftProvider>;}
-  return {App,post,preview,get,capture,reload,stage,resolve,prepareClock,reportAttempt,remove,teamState,drafts:()=>drafts};
+  return {App,post,preview,get,capture,reload,stage,resolve,prepareClock,reportAttempt,remove,teamState,clockState,photo,attemptsState,reloadAttempts,drafts:()=>drafts};
 }
 afterEach(cleanup);
 describe('native clock job',()=>{
+  it('keeps an unsent attempt when a required photo is cancelled after location capture',async()=>{
+    const f=fixture();f.clockState.state.attendancePhotoSetting='required';render(<f.App kind="clock"/>);
+    fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('photoRequired');
+    expect(f.prepareClock).toHaveBeenCalledBefore(f.photo);expect(f.drafts().clock.requestId).toBeTruthy();
+    expect(f.drafts().clock.phase).toBe('idle');expect(f.stage).not.toHaveBeenCalled();expect(f.post).not.toHaveBeenCalled();
+    expect(screen.getByText('sendAttemptRecord')).toBeTruthy();
+  });
+  it('shows received attempt records separately from accepted clock history',()=>{
+    const f=fixture();f.attemptsState.items.push({requestId:'own-report',action:'in',claimedAt:Date.now()-1000,receivedAt:new Date().toISOString()});
+    render(<f.App kind="clock"/>);expect(screen.getByText('reportedAttemptsHint')).toBeTruthy();expect(screen.getByText('own-report')).toBeTruthy();
+    expect(screen.queryByText('clockRecorded')).toBeNull();expect(f.post).not.toHaveBeenCalled();
+  });
+  it.each([new errors.UnavailableError(),new errors.RequestRejectedError(404)])('retains a staged command without sending attendance when its attempt receipt fails (%s)',async(error)=>{
+    const f=fixture();render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('slideRecord');
+    const id=f.drafts().clock.requestId;f.reportAttempt.mockRejectedValueOnce(error);
+    fireEvent.click(screen.getByText('slideRecord'));await screen.findByText('attemptReportRequired');
+    expect(f.stage).toHaveBeenCalledBefore(f.reportAttempt);expect(f.post).not.toHaveBeenCalled();expect(f.resolve).not.toHaveBeenCalled();
+    expect(f.drafts().clock).toMatchObject({requestId:id,phase:'uncertain'});
+    f.post.mockResolvedValueOnce({outcome:'refused',code:'clock_conflict'});
+    fireEvent.click(screen.getByRole('button',{name:'retrySameClock'}));await screen.findByText('clockConflict');
+    expect(f.reportAttempt).toHaveBeenCalledBefore(f.post);expect(f.resolve).toHaveBeenCalledWith(id);
+  });
   it('saves the attempt before GPS and sends no location when its durable save fails',async()=>{
     const f=fixture();f.prepareClock.mockRejectedValueOnce(new Error('Disk full'));
     render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('attemptSaveFailed');

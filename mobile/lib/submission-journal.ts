@@ -96,6 +96,14 @@ export function createSubmissionJournal(scope: SubmissionScope, ports: JournalPo
       if(entry?.stage!=='preparation'||checked.requestId!==requestId)throw new SubmissionJournalUnavailable('Pending attempt changed');
       await commit(snapshot.entries.map(value=>value===entry?{...entry,attemptReceipt:checked}:value));
     });},
+    clockAttempt(requestId:string){return enqueue(async()=>{
+      const snapshot=await load(),entry=snapshot.entries.find(value=>value.kind==='clock'&&value.requestId===requestId);
+      if(!entry)throw new SubmissionJournalUnavailable('Pending clock attempt unavailable');
+      const expected=await ports.digest(JSON.stringify(['clock',entry.command,entry.evidence?{name:entry.evidence.name,mimeType:entry.evidence.mimeType,size:entry.evidence.size,digest:entry.evidence.digest}:null]));ports.assertCurrent();
+      if(expected!==entry.digest)throw new SubmissionJournalUnavailable('Pending attempt failed verification');
+      const parsed=(entry.stage==='preparation'?ClockPreparation:ClockCommand).parse(JSON.parse(entry.command));
+      return ClockPreparation.parse({requestId:entry.requestId,action:parsed.action,claimedAt:entry.createdAt});
+    });},
     stage(kind:SubmissionKind,command:string,file?:EvidenceFile){return enqueue(async()=>{
       const previous=await load();
       let parsed:ReturnType<typeof ClockCommand.parse>|ReturnType<typeof LeaveCommand.parse>;

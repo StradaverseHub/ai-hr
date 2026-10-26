@@ -163,7 +163,7 @@ export const ClockLocationResponse=z.object({
   radiusM:z.number().finite().nonnegative().nullable(),accuracyM:z.number().finite().nonnegative().nullable(),maximumAccuracyM:z.number().positive().nullable(),
 });
 export type ClockLocationResponse=z.infer<typeof ClockLocationResponse>;
-export {ClockPreparation,ClockAttemptReceipt} from '../clock-attempt';
+export {ClockPreparation,ClockAttemptReceipt,ClockAttemptsResponse} from '../clock-attempt';
 export const ClockResult = z.discriminatedUnion('outcome', [
   z.object({outcome:z.literal('accepted'),receipt:ClockReceipt}),
   z.object({outcome:z.literal('refused'),code:z.enum(['corrected_day','clock_conflict','location_required','outside_geofence','photo_required','photo_invalid','device_required','mock_location']),locationReason:z.enum(['location_required','invalid_location','poor_accuracy','no_assigned_site','outside_site']).optional()}),

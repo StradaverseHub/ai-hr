@@ -67,6 +67,7 @@ describe('reported clock attempts are separate from attendance',()=>{
     expect(await owner.db.select().from(schema.attendance)).toHaveLength(0);
     expect((await call(receipts.GET,`submission-receipt?kind=clock&requestId=${command.requestId}`)).body.receipt).toBeNull();
     expect((await call(clock.GET,'clock')).body.state.clockedIn).toBe(false);
+    expect((await call(attempts.GET,'clock-attempts')).body.items).toEqual([{...command,receivedAt:first.body.receivedAt}]);
     expect((await report({...command,claimedAt:command.claimedAt+1})).status).toBe(400);
     expect((await report({...command,action:'out'})).status).toBe(400);
   });
@@ -85,6 +86,14 @@ describe('reported clock attempts are separate from attendance',()=>{
       expect((await report({...command,...extra})).status).toBe(400);
     blocked=true;expect((await report(command)).status).toBe(401);
     expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'mobile.clock.attempt.reported'))).toHaveLength(0);
+  });
+  it('keeps report history scoped to its actor and employment, including valid uppercase references',async()=>{
+    const a=await hire('Attempt Owner'),peer=await hire('Attempt Peer');caller=a.ctx;
+    const command={requestId:randomUUID().toUpperCase(),action:'out',claimedAt:Date.now()+180000};
+    expect((await report(command)).status).toBe(200);
+    expect((await call(attempts.GET,'clock-attempts')).body.items[0]).toMatchObject(command);
+    caller=peer.ctx;expect((await call(attempts.GET,'clock-attempts')).body.items).toEqual([]);
+    expect((await call(attempts.GET,'clock-attempts?employmentId='+a.employmentId)).status).toBe(400);
   });
 });
 
