@@ -16255,7 +16255,7 @@
         "state_refused": "Proposal refused; promotion rolled back",
         "state_unavailable": "Result could not be revalidated",
         "title": "Agent review",
-        "scope": "These trials send fixed English synthetic questions only. Current canonical permissions still control every record read. Passing covers typed planning, not all HR answers or languages.",
+        "scope": "The fixed suite contains synthetic requests for {modules} module routes in {locales} languages. Each click allows up to {requests} requests and retains recorded outcomes. Results apply to typed planning. Current permissions still control every record read.",
         "variant": "Prompt variant",
         "concise": "Concise instructions",
         "explicit": "Explicit read-only scope",

@@ -16255,7 +16255,7 @@
         "state_refused": "Cadangan ditolak; kenaikan diundur",
         "state_unavailable": "Keputusan tidak dapat disahkan semula",
         "title": "Semakan ejen",
-        "scope": "Percubaan ini hanya menghantar soalan sintetik bahasa Inggeris yang tetap. Kebenaran kanonik semasa masih mengawal setiap bacaan rekod. Kelulusan hanya meliputi perancangan berjenis, bukan semua jawapan HR atau bahasa.",
+        "scope": "Set tetap ini mengandungi permintaan sintetik untuk {modules} laluan modul dalam {locales} bahasa. Setiap klik membenarkan sehingga {requests} permintaan dan mengekalkan hasil yang direkodkan. Keputusan terpakai pada perancangan berjenis. Kebenaran semasa tetap mengawal setiap bacaan rekod.",
         "variant": "Varian arahan",
         "concise": "Arahan ringkas",
         "explicit": "Skop baca sahaja yang jelas",

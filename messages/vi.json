@@ -16255,7 +16255,7 @@
         "state_refused": "Đề xuất bị từ chối; đã hoàn tác nâng cấp",
         "state_unavailable": "Không thể xác minh lại kết quả",
         "title": "Đánh giá tác nhân",
-        "scope": "Các thử nghiệm chỉ gửi câu hỏi tổng hợp tiếng Anh cố định. Quyền hiện tại vẫn kiểm soát mọi lần đọc hồ sơ. Kết quả đạt chỉ bao phủ lập kế hoạch có kiểu, không phải mọi câu trả lời HR hay ngôn ngữ.",
+        "scope": "Bộ kiểm tra cố định chứa yêu cầu tổng hợp cho {modules} tuyến mô-đun bằng {locales} ngôn ngữ. Mỗi lần nhấp cho phép tối đa {requests} yêu cầu và giữ lại kết quả đã ghi. Kết quả áp dụng cho lập kế hoạch có kiểu. Quyền hiện tại vẫn kiểm soát mọi lần đọc hồ sơ.",
         "variant": "Biến thể chỉ dẫn",
         "concise": "Chỉ dẫn ngắn gọn",
         "explicit": "Phạm vi chỉ đọc rõ ràng",
