@@ -10,7 +10,7 @@
  * Mocks mirror test/performance-ai-draft.test.ts: lib/ai's generateDraft is stubbed (redactPII stays REAL via
  * importActual) and core/ai-config's resolveActiveAiConfig is stubbed — no SDK, no network, no real key.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll,afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../lib/ai', async (importActual) => {
   const actual = await importActual<typeof import('../lib/ai')>();
@@ -33,7 +33,10 @@ import type { SessionContext } from '../db/client';
 import { generateDraft } from '../lib/ai';
 import { resolveActiveAiConfig } from '../core/ai-config';
 import { draftPayRule, PayRuleDraftError } from '../core/pay-rule-ai';
-import { adminCtx, closeAll, eventTypesFor, latestEventPayload, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import {setModule,entitledCtx} from './harness';
+import {defaultModelFor} from '../lib/ai';
+async function issuedFixtureConfig(...args:Parameters<typeof resolveActiveAiConfig>){return (await vi.importActual<typeof import('../core/ai-config')>('../core/ai-config')).resolveActiveAiConfig(...args);}
+import { closeAll, eventTypesFor, latestEventPayload, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 describe('Payroll Setup — AI-assisted pay-rule drafting', () => {
   let base: Base;
@@ -41,16 +44,18 @@ describe('Payroll Setup — AI-assisted pay-rule drafting', () => {
   beforeAll(async () => {
     await migrateTestDb();
   });
+  afterEach(()=>vi.unstubAllEnvs());
   beforeEach(async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY','fictional-unit-transport-never-sent');for(const key of ['OPENAI_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY'])vi.stubEnv(key,'');
     await resetDb();
     base = await seedBase();
-    a = adminCtx(base);
+    await setModule(base.tenantId,'payroll','active');a = await entitledCtx(base);
     vi.mocked(generateDraft)
       .mockReset()
       .mockResolvedValue(JSON.stringify({ rule: { kind: 'percent_of', base: 'basic', pct: 10 }, explanation: 'Ten percent of basic salary.' }));
     vi.mocked(resolveActiveAiConfig)
       .mockReset()
-      .mockResolvedValue({ provider: 'anthropic', model: 'claude-opus-4-8', apiKey: 'sk-test' });
+      .mockImplementation(issuedFixtureConfig);
   });
   afterAll(async () => {
     await closeAll();
@@ -80,7 +85,7 @@ describe('Payroll Setup — AI-assisted pay-rule drafting', () => {
     // …but the generation is on the audit log, with an agent actor + PII-free payload.
     expect(await eventTypesFor(base.tenantId, base.tenantId)).toContain('pay-component.ai-rule-drafted');
     const payload = await latestEventPayload(base.tenantId, base.tenantId, 'pay-component.ai-rule-drafted');
-    expect(payload).toMatchObject({ provider: 'anthropic', model: 'claude-opus-4-8', componentCode: 'HOUSING', ruleKind: 'percent_of' });
+    expect(payload).toMatchObject({ provider: 'anthropic', model: defaultModelFor('anthropic'), componentCode: 'HOUSING', ruleKind: 'percent_of' });
     expect(JSON.stringify(payload)).not.toContain('jane@acme.test');
   });
 
