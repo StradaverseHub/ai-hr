@@ -43,7 +43,7 @@ export function createPlayServiceAccountProvider(raw:unknown,ports:{transport?:t
     sent=true;ports.assertCurrent?.();
     const response=await transport(TOKEN_URL,{method:'POST',body:init.body,headers:init.headers,redirect:'error',cache:'no-store',signal:controller.signal});
     if(response.status!==200){void response.body?.cancel().catch(()=>{});throw unavailable();}
-    const bytes=await readBoundedBody(response,32768,timeout,controller.signal);
+    const bytes=await readBoundedBody(response,65536,timeout,controller.signal);
     const value=tokenResponse.safeParse(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes)));
     if(!value.success||controller.signal.aborted)throw unavailable();
     return Response.json(value.data);
