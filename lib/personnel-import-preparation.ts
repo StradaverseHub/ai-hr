@@ -107,7 +107,7 @@ export function applyPersonnelImportPreparation(preparation:PersonnelPreparation
   const record=preparation.records.find(record=>record.id===recordId)!;
   if(items.length&&record.fields.length+items.length>PERSONNEL_PREPARATION_LIMITS.columns)throw Error('Preparation exceeds limits.');
   for(const item of items){
-   if(!item||Object.keys(item).sort().join(',')!=='field,id,reviewed,value'||typeof item.id!=='string'||!/^human:[a-zA-Z0-9-]{1,80}$/.test(item.id)||ids.has(item.id)||typeof item.field!=='string'||typeof item.value!=='string'||typeof item.reviewed!=='boolean'||!preparation.columns.includes(item.field)||personnelImportField(item.field)?.import.column!==item.field)throw Error('Preparation human field unavailable.');
+   if(!item||(Object.getPrototypeOf(item)!==Object.prototype&&Object.getPrototypeOf(item)!==null)||Object.keys(item).sort().join(',')!=='field,id,reviewed,value'||typeof item.id!=='string'||!/^human:[a-zA-Z0-9-]{1,80}$/.test(item.id)||ids.has(item.id)||typeof item.field!=='string'||typeof item.value!=='string'||typeof item.reviewed!=='boolean'||((item.field!==''||decisions.records[recordId]!=='exclude')&&(!preparation.columns.includes(item.field)||personnelImportField(item.field)?.import.column!==item.field)))throw Error('Preparation human field unavailable.');
    ids.add(item.id);addedCount++;
   }
  }

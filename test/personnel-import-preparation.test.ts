@@ -49,6 +49,13 @@ describe('explicit human-supplied missing fields',()=>{
   if(kind==='blank-required')item.value='';if(kind==='invalid-date')item.value='not-a-date';
   expect(()=>applyPersonnelImportPreparation(prep,kind==='stale'?'other-source':'missing',{...decisions,humanFields} as PreparationDecisions,'accepted')).toThrow();
  });
+ it('retains incomplete added-field evidence on an excluded record without blocking another included record',()=>{
+  const prep=preparePersonnelImportMatrix({revisionId:'exclude-added',matrix:[header,row,['E2','Bob','bob@example.test','2027-01-15','full_time','2000']]},options);if(prep.state!=='needs_review')throw Error();
+  const first=prep.records[0],second=prep.records[1],decisions:PreparationDecisions={...reviewed(prep),records:{[first.id]:'exclude',[second.id]:'include'},humanFields:{[first.id]:[{id:'human:blank-excluded',field:'',value:'',reviewed:false}]}};
+  const result=applyPersonnelImportPreparation(prep,'exclude-added',decisions,'accepted');
+  expect(parsePersonnelCsv(result.text,'employee')).toHaveLength(2);expect(parsePersonnelCsv(result.text,'employee')[1][0]).toBe('E2');expect(result.decisions.humanFields?.[first.id]).toEqual([{id:'human:blank-excluded',field:'',value:'',reviewed:false}]);expect(result.recordEvidence[0]).toEqual(first);expect(result.decisions.records[first.id]).toBe('exclude');
+  expect(()=>applyPersonnelImportPreparation(prep,'exclude-added',{...decisions,records:{...decisions.records,[first.id]:'include'}},'accepted')).toThrow('human field unavailable');
+ });
  it('preserves human literal whitespace without silently normalizing or manufacturing source coordinates',()=>{
   const prep=preparePersonnelImportMatrix({revisionId:'literal',matrix:[header,row]}, {columns:[...options.columns,'preferred_name']});if(prep.state!=='needs_review')throw Error();
   const result=applyPersonnelImportPreparation(prep,'literal',{...reviewed(prep),humanFields:{[prep.records[0].id]:[{id:'human:literal',field:'preferred_name',value:'  Human supplied explanation  ',reviewed:true}]}},'accepted');
