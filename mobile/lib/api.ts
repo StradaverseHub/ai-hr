@@ -9,6 +9,7 @@
 import type {z} from 'zod';
 import {IntegrityKeysResultV2,IntegrityRevocationResultV2,IntegrityKeyLookupResultV2,IntegrityKeysResult,IntegrityRevocationResult,IntegrityKeyLookupResult} from '../../lib/mobile-integrity-contract';
 import {IntegrityEnrollmentIntent,IntegrityEnrollmentProof,IntegrityEnrollmentPrepared,IntegrityEnrollmentResult,IntegrityAndroidEnrollmentProof,IntegrityAndroidEnrollmentPrepared,IntegrityAndroidEnrollmentResult} from '../../lib/mobile-integrity-contract';
+import {IntegrityClockCapabilities,IntegrityClockPrepared,IntegrityAndroidClockPrepared,IntegrityClockResult} from '../../lib/mobile-integrity-contract';
 import {IntegrityEnrollmentCapabilitiesV2} from '../../lib/mobile-integrity-contract';
 import { useCallback, useEffect, useState } from 'react';
 import { AppState } from 'react-native';
@@ -30,6 +31,8 @@ import { appLocale } from './i18n';
 export type { LeaveResponse, MeResponse, NotificationsResponse, PayslipsResponse };
 
 type Endpoints = {
+  'v2/integrity/ios/clock/capabilities':z.infer<typeof IntegrityClockCapabilities>;
+  'v2/integrity/android/clock/capabilities':z.infer<typeof IntegrityClockCapabilities>;
   'v2/integrity/ios/capabilities':z.infer<typeof IntegrityEnrollmentCapabilitiesV2>;
   'v2/integrity/android/capabilities':z.infer<typeof IntegrityEnrollmentCapabilitiesV2>;
   'v2/integrity/keys':z.infer<typeof IntegrityKeysResultV2>;
@@ -55,6 +58,8 @@ function url(path: string, params: Record<string, string | undefined>,origin:str
 }
 
 const responses = {
+  'v2/integrity/ios/clock/capabilities':IntegrityClockCapabilities.refine(value=>value.outcome!=='capabilities'||value.platform==='ios'),
+  'v2/integrity/android/clock/capabilities':IntegrityClockCapabilities.refine(value=>value.outcome!=='capabilities'||value.platform==='android'),
   'v2/integrity/ios/capabilities':IntegrityEnrollmentCapabilitiesV2.refine(value=>value.outcome!=='capabilities'||value.platform==='ios'),
   'v2/integrity/android/capabilities':IntegrityEnrollmentCapabilitiesV2.refine(value=>value.outcome!=='capabilities'||value.platform==='android'),
   'v2/integrity/keys':IntegrityKeysResultV2,
@@ -69,14 +74,18 @@ const enrollmentCommands={
   'integrity/enrollment/begin':IntegrityEnrollmentPrepared,'integrity/enrollment/complete':IntegrityEnrollmentResult,
   'v2/integrity/android/enrollment/begin':IntegrityAndroidEnrollmentPrepared,'v2/integrity/android/enrollment/complete':IntegrityAndroidEnrollmentResult,
 };
-const commands = {...enrollmentCommands,'v2/integrity/key-receipt':IntegrityKeyLookupResultV2,'v2/integrity/revoke':IntegrityRevocationResultV2,'integrity/key-receipt':IntegrityKeyLookupResult,'integrity/revoke':IntegrityRevocationResult,'clock-attempts':ClockAttemptReceipt,'clock-location':ClockLocationResponse, 'submission-abandon':SubmissionAbandonResponse, clock: ClockResult, 'clock-device': DeviceResponse, 'leave-requests': LeaveResult, 'leave-preview': LeavePreviewResponse };
+const signedClockCommands={
+ 'v2/integrity/ios/clock/begin':IntegrityClockPrepared,'v2/integrity/ios/clock/complete':IntegrityClockResult,
+ 'v2/integrity/android/clock/begin':IntegrityAndroidClockPrepared,'v2/integrity/android/clock/complete':IntegrityClockResult,
+};
+const commands = {...enrollmentCommands,...signedClockCommands,'v2/integrity/key-receipt':IntegrityKeyLookupResultV2,'v2/integrity/revoke':IntegrityRevocationResultV2,'integrity/key-receipt':IntegrityKeyLookupResult,'integrity/revoke':IntegrityRevocationResult,'clock-attempts':ClockAttemptReceipt,'clock-location':ClockLocationResponse, 'submission-abandon':SubmissionAbandonResponse, clock: ClockResult, 'clock-device': DeviceResponse, 'leave-requests': LeaveResult, 'leave-preview': LeavePreviewResponse };
 
 const supportReference=(value:string|null)=>value?.length===36&&/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)?value.toLowerCase():undefined;
-async function apiRequest<T>(path:string,params:Record<string,string|undefined>,request?:{body:FormData|string;json:boolean},signal?:AbortSignal):Promise<T> {
+async function apiRequest<T>(path:string,params:Record<string,string|undefined>,request?:{body:FormData|string;json:boolean},signal?:AbortSignal,operation?:{assertCurrent():void}):Promise<T> {
   if (!config.apiUrl || apiOriginProblem(config.apiUrl) || configProblem()) throw new UnavailableError('The company connection is not configured securely.');
   const owner = authGeneration();
   const origin=config.apiUrl,namespace=identityNamespace(),locale=appLocale();
-  const assertCurrent=()=>{assertAuthGeneration(owner);if(config.apiUrl!==origin||identityNamespace()!==namespace||appLocale()!==locale)throw new SessionChangedError();};
+  const assertCurrent=()=>{operation?.assertCurrent();assertAuthGeneration(owner);if(config.apiUrl!==origin||identityNamespace()!==namespace||appLocale()!==locale)throw new SessionChangedError();};
   const schema = request ? commands[path as keyof typeof commands] : responses[path as keyof typeof responses];
   let resource=path;
   const send = async (token: string) => {
@@ -152,9 +161,11 @@ type EnrollmentBodies={
   'v2/integrity/android/enrollment/complete':z.infer<typeof IntegrityAndroidEnrollmentProof>;
 };
 type LegacyCommandBody=FormData|LeaveCommand|ClockPreparation|{originChallengeId:string}|{keyId:string}|{lat:number;lng:number;accuracy:number;sampledAt:number}|{label:string}|{kind:'clock'|'leave';requestId:string};
-export async function apiPost<P extends keyof Commands>(path:P,body:P extends keyof EnrollmentBodies?EnrollmentBodies[P]:LegacyCommandBody,params:Record<string,string|undefined>={}):Promise<Commands[P]>{
+export async function apiPost<P extends keyof Commands>(path:P,body:P extends keyof EnrollmentBodies?EnrollmentBodies[P]:P extends keyof typeof signedClockCommands?FormData:LegacyCommandBody,params:Record<string,string|undefined>={},operation?:{assertCurrent():void}):Promise<Commands[P]>{
   const form=body instanceof FormData;
-  return apiRequest(path,params,{body:form?body:JSON.stringify(body),json:!form});
+  operation?.assertCurrent();
+  if(Object.hasOwn(signedClockCommands,path)&&!form)throw new UnavailableError('Signed clock requests require their saved attachment envelope.');
+  return apiRequest(path,params,{body:form?body:JSON.stringify(body),json:!form},undefined,operation);
 }
 export type {ClockResponse,ClockResult,TeamResponse,LeaveOptionsResponse,LeaveRequestsResponse,LeavePreviewResponse,LeaveResult,LeaveCommand};
 

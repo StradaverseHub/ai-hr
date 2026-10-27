@@ -20,7 +20,8 @@ function runtime(platform:'ios'|'android',nativeAvailable=true,multiKey=false){
  const appState={currentState:'active'},config={apiUrl:f.scope.apiOrigin};
  const me={actorId:f.scope.actorId,employments:[{employmentId:f.employmentId}]};
  const get=vi.fn(async()=>structuredClone(me)),installation=vi.fn(async()=>f.scope.appInstallationId);
- const post=vi.fn(async(path:string,body:unknown,params:{employmentId:string})=>{
+ const post=vi.fn(async(path:string,body:unknown,params:{employmentId:string},operation?:{assertCurrent():void})=>{
+  operation?.assertCurrent();
   const id=params.employmentId;
   if(path.endsWith('/begin'))return f.ports.prepare(id,C.IntegrityEnrollmentIntent.parse(body));
   if(path.endsWith('/complete'))return platform==='ios'?a.ports.complete(id,C.IntegrityEnrollmentProof.parse(body)):d.ports.complete(id,C.IntegrityAndroidEnrollmentProof.parse(body));
@@ -79,7 +80,8 @@ describe.each(['ios','android'] as const)('%s app enrollment assembly',platform=
   expect(await device.advance()).toMatchObject({status:'stored_key',revoked:false});
   const prefix=platform==='ios'?'integrity/enrollment':'v2/integrity/android/enrollment';
   expect(r.post.mock.calls.map(([path])=>path)).toEqual([prefix+'/begin',platform==='ios'?'integrity/key-receipt':'v2/integrity/key-receipt',prefix+'/complete']);
-  expect(r.post.mock.calls.every(([, ,params])=>params.employmentId===r.f.employmentId)).toBe(true);
+  expect(r.post.mock.calls.every(([, ,params,operation])=>params.employmentId===r.f.employmentId&&typeof operation?.assertCurrent==='function')).toBe(true);
+  r.lock();expect(()=>r.post.mock.calls[0][3]!.assertCurrent()).toThrow();
  });
  it('rejects missing actor and another employment before opening local enrollment storage',async()=>{
   const r=runtime(platform);await expect(r.open('11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa')).rejects.toBeInstanceOf(apple.EnrollmentJournalUnavailable);

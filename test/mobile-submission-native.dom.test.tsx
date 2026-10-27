@@ -61,6 +61,7 @@ function fixture(nativeAvailable=true){
   function key(bytes:Buffer){return {bytes,encoded:async()=>bytes.toString('base64')};}
   // Keep native global declarations out of the server compiler; execute its implementation via VM.
   const output={exports:{} as {
+    openNativeSignedClockJournal:(scope:enrollment.EnrollmentScope,assertCurrent:()=>void,ports:Omit<signedClock.SignedClockPorts,'assertCurrent'|'read'|'commit'>)=>Promise<ReturnType<typeof signedClock.createSignedClockJournal>>;
     openNativeSubmissionJournal:(scope:journal.SubmissionScope,assertCurrent:()=>void)=>Promise<ReturnType<typeof journal.createSubmissionJournal>>;
     resetSubmissionInstallation:()=>Promise<void>;
     nativeIntegrityInstallationId:(assertCurrent:()=>void)=>Promise<string>;
@@ -313,4 +314,45 @@ describe('native encrypted submission adapter',()=>{
     const restarted=await f.native.openNativeSubmissionJournal({...scope,actorId:scope.employmentId},()=>{});
     await expect(restarted.pending()).rejects.toThrow('cannot be opened');
   });
+});
+
+
+function signedPorts(){
+ const source={provider:null,mock:null,simulated:null,accessory:null};
+ const signedScope={namespace:'signed-test',apiOrigin:'https://hr.example.com',actorId:scope.actorId,appInstallationId:scope.actorId};
+ const key={platform:'ios' as const,apiOrigin:signedScope.apiOrigin,actorId:scope.actorId,appInstallationId:signedScope.appInstallationId,installationId:scope.actorId,tenantId:scope.actorId,keyId:requestId,appId:'ABCDEFGHIJ.ai.hr',nativeReference:Buffer.alloc(32,7).toString('base64')};
+ const receipt={id:requestId,direction:'in' as const,recordedAt:'2026-10-27T00:00:00.000Z',date:'2026-10-27',photoAvailable:false};
+ let accepted=false;
+ const ports:Omit<signedClock.SignedClockPorts,'assertCurrent'|'read'|'commit'>={
+  base:async()=>({digest:'a'.repeat(64),command:JSON.parse(command),photo:null,source}),
+  key:async()=>({key,capability:{version:1,platform:'ios',appId:'ai.hr',appVersion:'1',buildVersion:'4',keyMechanism:'apple_app_attest'}}),
+  capabilities:async()=>({outcome:'capabilities',protocol:2,platform:'ios',commandProtocol:1,features:['online_clock_assertion'],offline:false,cloudProjectNumber:null}),
+  begin:vi.fn(async()=>{throw new Error('not requested');}),sign:vi.fn(async()=>{throw new Error('not requested');}),play:vi.fn(async()=>{throw new Error('not requested');}),complete:vi.fn(async()=>{throw new Error('not requested');}),
+  receipt:async()=>({kind:'clock',requestId,receipt:accepted?receipt:null}),abandon:vi.fn(async()=>{throw new Error('not requested');}),resolveBase:vi.fn(async()=>{}),
+ };
+ return {scope:signedScope,ports,accept:()=>{accepted=true;}};
+}
+describe('encrypted installed-account signed clock lease',()=>{
+ it('seals across restart, isolates account AAD and still resolves a receipt at the installation quota',async()=>{
+  const f=fixture(),s=signedPorts(),open=()=>f.native.openNativeSignedClockJournal(s.scope,()=>{},s.ports);
+  const j=await open();await j.start(scope.employmentId,requestId);
+  const paths=[...f.files.keys()].filter(path=>path.includes('/signed-clock-'));expect(paths).toHaveLength(1);
+  expect(Buffer.from(f.files.get(paths[0])!).toString()).not.toContain(requestId);
+  expect(await (await open()).status(scope.employmentId)).toMatchObject({status:'pending',phase:'intent'});
+  const other=await f.native.openNativeSignedClockJournal({...s.scope,actorId:scope.employmentId},()=>{},s.ports);
+  expect(await other.status(scope.employmentId)).toEqual({status:'empty'});
+  f.occupy(64*1024*1024);s.accept();expect(await (await open()).recover(scope.employmentId)).toMatchObject({status:'accepted'});
+  expect(await (await open()).status(scope.employmentId)).toEqual({status:'empty'});expect(s.ports.begin).not.toHaveBeenCalled();
+ });
+ it('quarantines an orphan signed pointer and refuses a new installation identity beside its pending lease',async()=>{
+  const f=fixture(),s=signedPorts(),appInstallationId=await f.native.nativeIntegrityInstallationId(()=>{});
+  s.scope.appInstallationId=appInstallationId;
+  s.ports.key=async()=>({key:{platform:'ios',apiOrigin:s.scope.apiOrigin,actorId:s.scope.actorId,appInstallationId,installationId:scope.actorId,tenantId:scope.actorId,keyId:requestId,appId:'ABCDEFGHIJ.ai.hr',nativeReference:Buffer.alloc(32,7).toString('base64')},
+   capability:{version:1,platform:'ios',appId:'ai.hr',appVersion:'1',buildVersion:'4',keyMechanism:'apple_app_attest'}});
+  await (await f.native.openNativeSignedClockJournal(s.scope,()=>{},s.ports)).start(scope.employmentId,requestId);
+  const pointer=[...f.secrets.keys()].find(key=>key.startsWith('aihr.signed-clock.'))!;expect(pointer).toBeTruthy();f.secrets.delete(pointer);
+  await expect((await f.native.openNativeSignedClockJournal(s.scope,()=>{},s.ports)).status(scope.employmentId)).rejects.toThrow();
+  const installation=[...f.secrets.keys()].find(key=>key.startsWith('aihr.enrollment.installation.'))!;f.secrets.delete(installation);
+  await expect(f.native.nativeIntegrityInstallationId(()=>{})).rejects.toBeInstanceOf(enrollment.EnrollmentJournalUnavailable);
+ });
 });

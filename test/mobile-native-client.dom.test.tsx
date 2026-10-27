@@ -24,7 +24,7 @@ function clientFixture() {
   const auth = { authGeneration: () => generation,
     assertAuthGeneration(owner: number) { if (owner !== generation) throw new SessionChangedError(); },
     getAccessToken: vi.fn(async () => 'access-token'), refresh: vi.fn(async () => 'rotated-token') };
-  const output = { exports: {} as { apiGet: (path: string, params?: Record<string, string>,signal?:AbortSignal) => Promise<unknown>; apiPost: (path:string,body:unknown,params?:Record<string,string>)=>Promise<unknown>;
+  const output = { exports: {} as { apiGet: (path: string, params?: Record<string, string>,signal?:AbortSignal) => Promise<unknown>; apiPost: (path:string,body:unknown,params?:Record<string,string>,operation?:{assertCurrent():void})=>Promise<unknown>;
     useApi: (path: string, params: Record<string, string>, onSignInRequired: () => void) => { data: { person: {name:string} } | null } } };
   const code = transpileModule(readFileSync('mobile/lib/api.ts', 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS } }).outputText;
   runInNewContext(code, { exports: output.exports, module: output, fetch: response, AbortController, FormData, TextDecoder, setTimeout, clearTimeout,
@@ -265,4 +265,38 @@ describe('native response safety and refresh resilience',()=>{
     const pending=f.api.apiGet('me').catch(e=>e);await vi.advanceTimersByTimeAsync(15_001);
     expect(await pending).toBeInstanceOf(UnavailableError);expect(cancel).toHaveBeenCalledOnce();expect(f.auth.refresh).not.toHaveBeenCalled();
   });
+});
+
+
+describe('signed clock transport and operation ownership',()=>{
+ it.each(['ios','android'] as const)('keeps %s signed clock paths on v2 without legacy fallback',async platform=>{
+  const f=clientFixture(),prefix='v2/integrity/'+platform+'/clock/';
+  f.response.mockResolvedValueOnce(Response.json({outcome:'capabilities',protocol:2,platform,commandProtocol:platform==='ios'?1:2,
+   features:platform==='ios'?['online_clock_assertion']:['online_clock_signature','current_play_integrity'],offline:false,cloudProjectNumber:platform==='ios'?null:'123456789'}));
+  expect(await f.api.apiGet(prefix+'capabilities')).toMatchObject({platform,outcome:'capabilities'});
+  const form=new FormData();form.append('command','saved command');
+  f.response.mockResolvedValueOnce(Response.json({outcome:'refused',code:'challenge_unavailable'}));
+  expect(await f.api.apiPost(prefix+'begin',form)).toEqual({outcome:'refused',code:'challenge_unavailable'});
+  expect(f.response.mock.calls[1][1]?.body).toBe(form);
+  f.response.mockResolvedValueOnce(new Response('',{status:404}));
+  await expect(f.api.apiPost(prefix+'complete',form)).rejects.toMatchObject({status:404});
+  expect(f.response).toHaveBeenCalledTimes(3);expect(new URL(f.response.mock.calls[2][0]).pathname).toBe('/api/mobile/'+prefix+'complete');
+ });
+ it('refuses a signed write without its multipart envelope before requesting credentials',async()=>{
+  const f=clientFixture();await expect(f.api.apiPost('v2/integrity/ios/clock/complete',{})).rejects.toBeInstanceOf(UnavailableError);
+  expect(f.auth.getAccessToken).not.toHaveBeenCalled();expect(f.response).not.toHaveBeenCalled();
+ });
+ it('checks privacy/selection ownership again before a refreshed-token mutation',async()=>{
+  const f=clientFixture();let unlocked=true;const operation={assertCurrent(){if(!unlocked)throw new SessionChangedError();}};
+  f.response.mockResolvedValueOnce(new Response('',{status:401}));
+  f.auth.refresh.mockImplementationOnce(async()=>{unlocked=false;return 'rotated-token';});
+  await expect(f.api.apiPost('v2/integrity/ios/clock/complete',new FormData(),{},operation)).rejects.toBeInstanceOf(SessionChangedError);
+  expect(f.auth.refresh).toHaveBeenCalledOnce();expect(f.response).toHaveBeenCalledOnce();
+ });
+ it('checks operation ownership after a delayed token lookup, before the first mutation',async()=>{
+  const f=clientFixture();let live=true;
+  f.auth.getAccessToken.mockImplementationOnce(async()=>{live=false;return 'access-token';});
+  await expect(f.api.apiPost('clock',new FormData(),{},{assertCurrent(){if(!live)throw new SessionChangedError();}})).rejects.toBeInstanceOf(SessionChangedError);
+  expect(f.response).not.toHaveBeenCalled();
+ });
 });

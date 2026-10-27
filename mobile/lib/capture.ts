@@ -5,6 +5,7 @@ import { ImageManipulator,SaveFormat } from 'expo-image-manipulator';
 import { Directory,File,Paths } from 'expo-file-system';
 import { randomUUID } from 'expo-crypto';
 import { AppState } from 'react-native';
+import type {ClockSourceSignals} from '../../lib/mobile-clock-integrity';
 import type { LocalAttachment } from './journey-drafts';
 import { t } from './i18n';
 import {LocationCaptureError} from './errors';
@@ -31,7 +32,10 @@ export async function capturePosition(){
   if(Math.abs(Date.now()-fix.timestamp)>120000)throw new LocationCaptureError(fix.timestamp>Date.now()?'future_fix':'stale_fix',t(fix.timestamp>Date.now()?'locationFuture':'locationExpired'));
   // Expo iOS emits a Double in milliseconds. The published v1 command uses whole milliseconds;
   // truncation changes representation by less than 1 ms and never determines attendance time.
-  return {lat,lng,accuracy,sampledAt:Math.trunc(fix.timestamp),permissionAccuracy};
+  // Expo exposes a mock flag on supported Android builds. It does not expose a provider or
+  // iOS sourceInformation here; preserve unavailable facts as null, never as fabricated false.
+  const source:ClockSourceSignals={provider:null,mock:typeof fix.mocked==='boolean'?fix.mocked:null,simulated:null,accessory:null};
+  return {lat,lng,accuracy,sampledAt:Math.trunc(fix.timestamp),permissionAccuracy,source};
 }
 export async function capturePhoto():Promise<LocalAttachment|null>{
   const permission=await ImagePicker.requestCameraPermissionsAsync();

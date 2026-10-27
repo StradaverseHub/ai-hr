@@ -16,16 +16,16 @@ function fixture(){
   const entry:any={kind:'clock',requestId:'request',command:'original command',createdAt:Date.now()};
   const journal={pending:vi.fn(async()=>[entry]),restore:vi.fn(async()=>({command:entry.command})),
     stage:vi.fn(async()=>entry),resolve:vi.fn(async()=>{}),prepareClock:vi.fn(async()=>entry),markAttemptReported:vi.fn(async()=>{}),clockAttempt:vi.fn(async()=>JSON.parse(entry.command))};
-  const open=vi.fn(async()=>journal);
-  const output={exports:{} as {listOwnedPendingSubmissions:()=>Promise<any[]>;reconcileOwnedPendingSubmission:(item:any,action:string)=>Promise<any>;useSubmissionRecovery:(kind:string,employmentId:string,onRestore:(value:unknown)=>void)=>{
-    ready:boolean;error:unknown;prepareClock:(action:string,id:string)=>Promise<unknown>;reportAttempt:(id:string)=>Promise<unknown>;stage:(command:string)=>Promise<unknown>;resolve:(id:string)=>Promise<void>;
+  const open=vi.fn(async()=>journal),discard=vi.fn();
+  const output={exports:{} as {openOwnedClockJournal:(employmentId:string,actorId:string)=>Promise<typeof journal>;listOwnedPendingSubmissions:()=>Promise<any[]>;reconcileOwnedPendingSubmission:(item:any,action:string)=>Promise<any>;useSubmissionRecovery:(kind:string,employmentId:string,onRestore:(value:unknown)=>void)=>{
+    ready:boolean;error:unknown;prepareClock:(action:string,id:string)=>Promise<unknown>;reportAttempt:(id:string)=>Promise<unknown>;stage:(command:string,file?:unknown,source?:unknown)=>Promise<unknown>;resolve:(id:string)=>Promise<void>;
   }}};
   runInNewContext(transpileModule(readFileSync('mobile/lib/submission-recovery.ts','utf8'),{compilerOptions:{module:ModuleKind.CommonJS}}).outputText,
     {exports:output.exports,module:output,require:(id:string)=>{
       if(id==='react')return React;if(id==='react-native')return native;
       if(id==='./api')return {apiGet,apiPost};if(id==='./auth')return {authGeneration:()=>owner,assertAuthGeneration:(value:number)=>{if(value!==owner)throw new errors.SessionChangedError();}};
       if(id==='./config')return {identityNamespace:()=>namespace};
-      if(id==='./errors')return errors;if(id==='./submission-native')return {openNativeSubmissionJournal:open};
+      if(id==='./errors')return errors;if(id==='./submission-native')return {openNativeSubmissionJournal:open,discardNativeSubmissionRestore:discard};
       if(id==='../../lib/clock-attempt')return attempt;
       if(id==='./submission-journal')return {SubmissionJournalUnavailable};throw new Error(id);
     }});
@@ -33,7 +33,7 @@ function fixture(){
     control=output.exports.useSubmissionRecovery('clock',employment,restored);
     return <span>{control.ready?'ready':control.error?'failed':'loading'}</span>;
   }
-  return {Probe,apiGet,apiPost,open,journal,native,entry,restored,control:()=>control,changeAccount:()=>{owner++;},changeNamespace:()=>{namespace='https://another.example.com';},api:output.exports};
+  return {Probe,discard,apiGet,apiPost,open,journal,native,entry,restored,control:()=>control,changeAccount:()=>{owner++;},changeNamespace:()=>{namespace='https://another.example.com';},api:output.exports};
 }
 afterEach(cleanup);
 describe('saved preparation recovery',()=>{
@@ -133,4 +133,31 @@ describe('submission recovery authorization and foreground boundary',()=>{
     await screen.findByText('ready');await act(async()=>release({actorId,employments:[{employmentId}]}));
     expect(f.apiGet).toHaveBeenCalledTimes(2);expect(f.restored).toHaveBeenCalledTimes(1);
   });
+});
+
+
+describe('signed and legacy shared base journal owner',()=>{
+ it('reuses one cached native journal and rejects a mismatched fresh actor expectation',async()=>{
+  const f=fixture();render(<f.Probe/>);await screen.findByText('ready');
+  const journal=await f.api.openOwnedClockJournal(employmentId,actorId);expect(journal).toBe(f.journal);expect(f.open).toHaveBeenCalledOnce();
+  await expect(f.api.openOwnedClockJournal(employmentId,employmentId)).rejects.toBeInstanceOf(SubmissionJournalUnavailable);
+  expect(f.open).toHaveBeenCalledOnce();
+ });
+ it('passes saved source facts through the shared stage boundary and returns the retained reference',async()=>{
+  const f=fixture();render(<f.Probe/>);await screen.findByText('ready');
+  const source={provider:null,mock:false,simulated:null,accessory:null};
+  expect(await f.control().stage('original command',undefined,source)).toEqual({command:'original command',entry:f.entry});
+  expect(f.journal.stage).toHaveBeenCalledWith('clock','original command',undefined,source);
+ });
+});
+
+
+describe('restored plaintext lifecycle',()=>{
+ it('cleans its restored copy if foreground ownership is lost after decryption',async()=>{
+  const f=fixture();render(<f.Probe/>);await screen.findByText('ready');
+  const file={uri:'test-restored',name:'photo',mimeType:'image/jpeg',size:3};
+  f.journal.restore.mockImplementationOnce(async()=>{f.native.AppState.currentState='background';return {command:'original command',file};});
+  await expect(f.control().stage('original command')).rejects.toThrow('Unlock the app');
+  expect(f.discard).toHaveBeenCalledWith(file);expect(f.journal.resolve).not.toHaveBeenCalled();
+ });
 });

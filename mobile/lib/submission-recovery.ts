@@ -4,8 +4,9 @@ import { apiGet,apiPost } from './api';
 import { assertAuthGeneration, authGeneration } from './auth';
 import { identityNamespace } from './config';
 import { SessionChangedError } from './errors';
-import { openNativeSubmissionJournal } from './submission-native';
+import { openNativeSubmissionJournal,discardNativeSubmissionRestore } from './submission-native';
 import { SubmissionJournalUnavailable, type EvidenceFile, type JournalEntry, type SubmissionKind } from './submission-journal';
+import type {ClockSourceSignals} from '../../lib/mobile-clock-integrity';
 import {ClockPreparation} from '../../lib/clock-attempt';
 
 type Journal=Awaited<ReturnType<typeof openNativeSubmissionJournal>>;
@@ -48,13 +49,15 @@ export async function reconcileOwnedPendingSubmission(item:PendingSubmissionSumm
   if(result.receipt||result.abandoned){await journal.resolve(item.kind,item.requestId);check();}
   return result;
 }
-async function ownedJournal(employmentId:string,owner:number){
+/** Signed and legacy controllers share this single base-journal cache. */
+export function openOwnedClockJournal(employmentId:string,actorId:string){return ownedJournal(employmentId,authGeneration(),actorId);}
+async function ownedJournal(employmentId:string,owner:number,expectedActorId?:string){
   assertAuthGeneration(owner);
   const namespace=identityNamespace();
   if(activeGeneration!==owner||activeNamespace!==namespace){activeGeneration=owner;activeNamespace=namespace;identity=null;journals.clear();}
   if(!identity)identity=apiGet('me').catch(error=>{if(activeGeneration===owner&&activeNamespace===namespace)identity=null;throw error;});
   const me=await identity;assertAuthGeneration(owner);
-  if(!me.actorId||!me.employments.some(e=>e.employmentId===employmentId))throw new SubmissionJournalUnavailable('Submission ownership cannot be verified');
+  if(!me.actorId||expectedActorId!==undefined&&me.actorId!==expectedActorId||!me.employments.some(e=>e.employmentId===employmentId))throw new SubmissionJournalUnavailable('Submission ownership cannot be verified');
   const scope={namespace,actorId:me.actorId,employmentId},key=JSON.stringify(scope);
   const check=()=>{assertAuthGeneration(owner);if(identityNamespace()!==namespace)throw new SessionChangedError();};
   let journal=journals.get(key);
@@ -77,7 +80,7 @@ export function useSubmissionRecovery(kind:SubmissionKind,employmentId:string|un
     if(employmentId)void (async()=>{
       const journal=await ownedJournal(employmentId,owner);check();
       const entry=(await journal.pending()).find(e=>e.kind===kind);check();
-      if(entry){const restored=await journal.restore(entry);check();if(!disposed)restore.current({entry,...restored});}
+      if(entry){const restored=await journal.restore(entry);try{check();if(!disposed)restore.current({entry,...restored});else if(restored.file)discardNativeSubmissionRestore(restored.file);}catch(error){if(restored.file)discardNativeSubmissionRestore(restored.file);throw error;}}
       if(!disposed)setState({key,ready:true,error:null});
     })().catch(error=>{if(!disposed&&current.current===key)setState({key,ready:false,error});});
     return ()=>{disposed=true;if(current.current===key)current.current='';};
@@ -103,14 +106,17 @@ export function useSubmissionRecovery(kind:SubmissionKind,employmentId:string|un
       if(receipt.requestId!==requestId)throw new SubmissionJournalUnavailable('Unexpected attempt receipt');
       if(entry.stage==='preparation'){await journal.markAttemptReported(requestId,receipt);check();}return receipt;
     },
-    async stage(command:string,file?:EvidenceFile){
+    async stage(command:string,file?:EvidenceFile,source?:ClockSourceSignals){
       check();if(!employmentId||state.key!==key||!state.ready)throw new SubmissionJournalUnavailable('Pending submissions have not been checked');
       const journal=await ownedJournal(employmentId,owner);check();
-      const entry=await journal.stage(kind,command,file);check();
-      const restored=await journal.restore(entry);check();
-      // Encryption may finish after an OS picker, lock or background transition.
-      if(AppState.currentState!=='active')throw new SubmissionJournalUnavailable('Unlock the app to continue');
-      return restored;
+      const entry=await journal.stage(kind,command,file,source);check();
+      const restored=await journal.restore(entry);
+      try{
+       check();
+       // Encryption may finish after an OS picker, lock or background transition.
+       if(AppState.currentState!=='active')throw new SubmissionJournalUnavailable('Unlock the app to continue');
+       return {...restored,entry};
+      }catch(error){if(restored.file)discardNativeSubmissionRestore(restored.file);throw error;}
     },
     async resolve(requestId:string){
       check();if(!employmentId)throw new SubmissionJournalUnavailable('Submission employment is unavailable');

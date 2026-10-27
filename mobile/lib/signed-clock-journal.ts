@@ -69,8 +69,9 @@ export function createSignedClockJournal(rawScope:EnrollmentScope,ports:SignedCl
  function intent(p:SignedClockPending,b:SignedClockBase){const {deviceToken,...command}=b.command;return {appInstallationId:scope.appInstallationId,keyId:p.key.keyId,...(deviceToken?{deviceToken}:{}),command,evidence:p.evidence};}
  function checkedDisposition(value:unknown,p:SignedClockReference,abandon=false){const result=(abandon?SubmissionAbandonResponse:SubmissionReceiptResponse).parse(value);if(result.kind!=='clock'||result.requestId!==p.requestId||result.receipt&&result.receipt.direction!==p.action)throw new SignedClockConflict();return result.receipt?{receipt:result.receipt,abandoned:false}:result.abandoned?{receipt:null,abandoned:true}:null;}
  async function finish(s:State,p:SignedClockReference,d:z.infer<typeof disposition>):Promise<SignedClockStatus>{
-  const confirmed=await save(s,{...reference.parse(p),phase:'settled',disposition:d});
-  await owned(()=>ports.resolveBase(reference.parse(p)));await save(confirmed,null);
+  const ref=reference.parse({employmentId:p.employmentId,requestId:p.requestId,baseDigest:p.baseDigest,action:p.action});
+  const confirmed=await save(s,{...ref,phase:'settled',disposition:d});
+  await owned(()=>ports.resolveBase(ref));await save(confirmed,null);
   return d.receipt?{status:'accepted',receipt:d.receipt}:{status:'abandoned'};
  }
  async function observe(s:State,p:z.infer<typeof pending>){const d=checkedDisposition(await owned(()=>ports.receipt(p.employmentId,p.requestId)),p);return d?finish(s,p,d):null;}

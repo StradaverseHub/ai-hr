@@ -2,7 +2,7 @@
 import { Directory, File, Paths } from 'expo-file-system';
 import * as SecureStore from 'expo-secure-store';
 import { AESEncryptionKey, AESSealedData, aesEncryptAsync, aesDecryptAsync, CryptoDigestAlgorithm,CryptoEncoding, digest, digestStringAsync, randomUUID } from 'expo-crypto';
-import { createSubmissionJournal, SubmissionJournalFull, SubmissionJournalUnavailable, type SubmissionScope } from './submission-journal';
+import { createSubmissionJournal, SubmissionJournalFull, SubmissionJournalUnavailable, type SubmissionScope,type EvidenceFile } from './submission-journal';
 import { createSubmissionStorage,createSealedJournalStorage } from './submission-storage';
 import {createEnrollmentJournal,parseEnrollmentSnapshot,EnrollmentScope,EnrollmentJournalUnavailable,type EnrollmentPorts} from './enrollment-journal';
 import {createAndroidEnrollmentJournal,parseAndroidEnrollmentSnapshot,type AndroidEnrollmentPorts} from './android-enrollment-journal';
@@ -117,6 +117,14 @@ export async function openNativeSubmissionJournal(scope:SubmissionScope,assertCu
     async discardRestored(file){const restored=new File(file.uri);if(restored.exists)restored.delete();},
     async deleteEvidence(reference){assertCurrent();const file=new File(directory,evidenceName(reference));if(file.exists)file.delete();},
   });
+}
+
+/** Cleanup only a plaintext file issued by this adapter's restore directory/naming scheme.
+ * It must remain possible after session ownership is lost. Encrypted evidence is untouched. */
+export function discardNativeSubmissionRestore(file:EvidenceFile){
+ const directory=new Directory(Paths.cache,'aihr-journeys'),prefix=directory.uri.replace(/\/$/,'')+'/';
+ if(!file.uri.startsWith(prefix)||!(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(file.uri.slice(prefix.length))))return;
+ const restored=new File(file.uri);if(restored.exists)restored.delete();
 }
 
 /** Installation identity is bound to the device-only master generation. Old Keychain pointers cannot

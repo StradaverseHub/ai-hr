@@ -35,13 +35,13 @@ export async function openOwnedDeviceEnrollment(employmentId:string,isUnlocked:(
  const supported=capability.status==='evidence'&&capability.evidence.platform===platform&&
   (platform==='ios'?capability.evidence.keyMechanism==='apple_app_attest'&&native.appleProofRecoverySupported():capability.evidence.keyMechanism==='android_keystore');
  const requireSupport=()=>{check();if(!supported)throw new UnavailableError('Device enrollment is unavailable.');};
- const receipt=(id:string,input:{originChallengeId:string})=>apiPost(platform==='ios'?'integrity/key-receipt':'v2/integrity/key-receipt',C.IntegrityKeyLookupIntent.parse(input),{employmentId:id});
- const revoke=(id:string,input:{keyId:string})=>apiPost(platform==='ios'?'integrity/revoke':'v2/integrity/revoke',C.IntegrityRevokeIntent.parse(input),{employmentId:id});
+ const receipt=(id:string,input:{originChallengeId:string})=>apiPost(platform==='ios'?'integrity/key-receipt':'v2/integrity/key-receipt',C.IntegrityKeyLookupIntent.parse(input),{employmentId:id},{assertCurrent:check});
+ const revoke=(id:string,input:{keyId:string})=>apiPost(platform==='ios'?'integrity/revoke':'v2/integrity/revoke',C.IntegrityRevokeIntent.parse(input),{employmentId:id},{assertCurrent:check});
  if(platform==='ios'){
   const journal=await owned(()=>openNativeEnrollmentJournal(scope,check,{
    native,receipt,revoke,
-   prepare:(id,input)=>apiPost('integrity/enrollment/begin',C.IntegrityEnrollmentIntent.parse(input),{employmentId:id}),
-   complete:(id,input)=>apiPost('integrity/enrollment/complete',C.IntegrityEnrollmentProof.parse(input),{employmentId:id}),
+   prepare:(id,input)=>apiPost('integrity/enrollment/begin',C.IntegrityEnrollmentIntent.parse(input),{employmentId:id},{assertCurrent:check}),
+   complete:(id,input)=>apiPost('integrity/enrollment/complete',C.IntegrityEnrollmentProof.parse(input),{employmentId:id},{assertCurrent:check}),
   }));
   return {platform:'ios',supported,signingKey:()=>owned(()=>{requireSupport();return journal.signingKey(employmentId);}),status:()=>owned(()=>journal.status()),reconcile:()=>owned(()=>journal.reconcile(employmentId)),
    begin:()=>owned(()=>{requireSupport();return journal.begin(employmentId,randomUUID());}),advance:()=>owned(()=>journal.advance(employmentId)),
@@ -49,8 +49,8 @@ export async function openOwnedDeviceEnrollment(employmentId:string,isUnlocked:(
  }
  const journal=await owned(()=>openNativeAndroidEnrollmentJournal(scope,check,{
   native:createAndroidKeyEnrollment(native,check,()=>AppState.currentState==='active'&&isUnlocked()),receipt,revoke,
-  prepare:(id,input)=>apiPost('v2/integrity/android/enrollment/begin',C.IntegrityEnrollmentIntent.parse(input),{employmentId:id}),
-  complete:(id,input)=>apiPost('v2/integrity/android/enrollment/complete',C.IntegrityAndroidEnrollmentProof.parse(input),{employmentId:id}),
+  prepare:(id,input)=>apiPost('v2/integrity/android/enrollment/begin',C.IntegrityEnrollmentIntent.parse(input),{employmentId:id},{assertCurrent:check}),
+  complete:(id,input)=>apiPost('v2/integrity/android/enrollment/complete',C.IntegrityAndroidEnrollmentProof.parse(input),{employmentId:id},{assertCurrent:check}),
  }));
  return {platform:'android',supported,signingKey:()=>owned(()=>{requireSupport();return journal.signingKey(employmentId);}),status:()=>owned(()=>journal.status()),reconcile:()=>owned(()=>journal.reconcile(employmentId)),
   begin:()=>owned(()=>{requireSupport();return journal.begin(employmentId,randomUUID());}),advance:()=>owned(()=>journal.advance(employmentId)),

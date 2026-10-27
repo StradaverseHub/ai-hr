@@ -39,6 +39,10 @@ describe('foreground location quality',()=>{
     f.permission.ios.accuracy='full';f.permission.android.accuracy='coarse';
     await expect(f.capture()).resolves.toMatchObject({permissionAccuracy:'approximate'});
   });
+  it('preserves only the source facts the OS exposed and never invents iPhone source flags',async()=>{
+    const f=fixture();await expect(f.capture()).resolves.toMatchObject({source:{provider:null,mock:false,simulated:null,accessory:null}});
+    Reflect.deleteProperty(f.fix,'mocked');await expect(f.capture()).resolves.toMatchObject({source:{provider:null,mock:null,simulated:null,accessory:null}});
+  });
   it('reports disabled services and refuses mock-provider evidence',async()=>{
     const f=fixture();f.location.hasServicesEnabledAsync.mockResolvedValueOnce(false);
     await expect(f.capture()).rejects.toMatchObject({issue:'services_disabled'});expect(f.location.getCurrentPositionAsync).not.toHaveBeenCalled();

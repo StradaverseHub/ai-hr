@@ -1060,3 +1060,34 @@ and key signature before that same transactional veto. Vendor HTTP, service-acco
 enrollment provenance are synthetic. None of these tests certifies a physical iPhone/Android device
 or real Google/Apple provisioning. Native durable clock orchestration/UI, signed-device field checks,
 full release verification and the remaining offline/employee/approver requirements are still open.
+
+### Native signed-clock recovery ownership (27 October 2026)
+
+The native clock submission journal adds a version-3 signed-mode marker with the captured source
+facts in its immutable digest. Versions 1 and 2 retain their original digest representation. Once
+staged as signed, the same request cannot be staged as unsigned after a restart. Missing OS source
+facts remain null; the existing Expo location adapter exposes only its actual mock flag and makes no
+GPS authenticity claim.
+
+A distinct encrypted `signed-clock-v1` journal reserves one unresolved attempt per installed account
+across employments. It references the existing submission journal's digest and encrypted photo;
+it does not become a second command/photo owner. Intent, exact server context and native proof are
+persisted before progressing to the next side effect. A lost complete response reuses the saved
+proof. An absent receipt does not authorize replacement or deletion: only an exact accepted receipt
+or server-ordered abandonment can settle the lease. Settlement is saved before resolving the base
+journal; cleanup can resume after an ambiguous storage response and remains possible at the
+installation quota. Another employment sees only that an unresolved attempt exists, with no old
+coordinates, key or employment details.
+
+Enrollment provides a signing reference only after a fresh exact server receipt and the existing
+native key reference match. It never generates a replacement key during clock recovery. The owned
+native assembly uses the same base-journal cache as the recovery UI, validates restored photo bytes,
+binds the server context to the saved command and source facts, and supplies Apple assertions or
+Android signatures plus a separate ephemeral Play Integrity token. Tokens are not journaled.
+Account/connection/employment, foreground and privacy-lock guards surround asynchronous work;
+the API also runs the operation guard immediately before each send, including its single token
+refresh retry. Its new signed routes have no legacy transport fallback.
+
+This is implementation of the recovery/transport layer. Connecting the attendance screen, physical
+vendor provisioning/acceptance, OS source-information support, offline attendance and the remaining
+employee/approver flows are still required. Existing deployment rollouts remain disabled.
