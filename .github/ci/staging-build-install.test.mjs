@@ -11,8 +11,14 @@ import {STAGING_BUILD_RUNTIME,assertBuildDotenvCompileKeys} from './build-produc
 import {validateInstallGrant,createInstallGrant,installJson,installHash} from './ci-install-grant.mjs';
 import {initializePrivateInstall,readPrivateInstall,assertServiceDescriptor} from './staging-build-install.mjs';
 import {installationFixture as fixture} from './staging-install-test-fixture.mjs';
+import * as installer from './staging-build-install.mjs';
 const uuid=n=>'00000000-0000-4000-8000-'+String(n).padStart(12,'0');
 const sha=c=>c.repeat(40),digest=c=>c.repeat(64);
+test('combined cleanup has no public skip-verification continuation and refuses a non-staging checkout',async()=>{
+ assert.equal(installer.cleanupAfterFreshRuntime,undefined);
+ const {grant}=fixture();
+ await assert.rejects(installer.arriveAndCleanupCiBuild(grant.source,grant.installId,grant.build.buildRecordId,{}),/existing Linux alpha\/staging source/);
+});
 function privateFixture(t){
  const home=mkdtempSync(join(tmpdir(),'aihr-ci-install-'));t.after(()=>rmSync(home,{recursive:true,force:true}));return home;
 }

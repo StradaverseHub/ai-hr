@@ -65,6 +65,7 @@ test('operator commands cannot request stage/activate or interpolate unknown ide
  const {grant}=seams();assert.match(stagingInstallerCommand('initialize'),/node .* initialize$/);
  assert.match(stagingInstallerCommand('status',grant.source,grant.installId,grant.build.buildRecordId),/node --env-file=.env.production --import tsx/);
  assert.match(stagingInstallerCommand('cleanup',grant.source,grant.installId,grant.build.buildRecordId),/staging-build-install.mjs cleanup /);
+ assert.match(stagingInstallerCommand('arrive-and-cleanup',grant.source,grant.installId,grant.build.buildRecordId),/staging-build-install.mjs arrive-and-cleanup /);
  for(const mode of ['stage','activate','other'])assert.throws(()=>stagingInstallerCommand(mode,grant.source,grant.installId,grant.build.buildRecordId));
  assert.throws(()=>stagingInstallerCommand('status',';exit',grant.installId,grant.build.buildRecordId));
 });

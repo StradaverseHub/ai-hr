@@ -8,12 +8,13 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createRequire} from 'node:module';
 import {brotliDecompressSync} from 'node:zlib';
 import {isDeepStrictEqual} from 'node:util';
-import {collectMigrationLedger} from './staging-migration-ledger.mjs';
+import {collectMigrationLedger,expectedMigrationLedger} from './staging-migration-ledger.mjs';
 import {fingerprintStagingEnvironment} from './staging-environment.mjs';
 import {validateCleanupRequest} from './staging-cleanup-protocol.mjs';
 import {validateInstallGrant,installJson,installHash} from './ci-install-grant.mjs';
 import {inspectCiBuildPacket} from './build-artifact.mjs';
 import {assertBuildRuntime,assertBuildDotenvCompileKeys} from './build-production.mjs';
+import {completeArrivalAndCleanup} from './arrival-cleanup-flow.mjs';
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
 const id=value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(value);
 const identity=st=>({device:st.dev,inode:st.ino});
@@ -213,6 +214,12 @@ export async function cleanupCiBuild(sourceRef,installId,buildRecordId,request){
  const source=targetRoot(),p=selected(installId,sourceRef,buildRecordId,{allowCleanup:true}),g=p.grant;
  validateCleanupRequest(request,g);
  await confirmRuntime(sourceRef,installId,buildRecordId,{persist:false,allowCleanup:true});
+ return cleanupAfterFreshRuntime(source,p,request);
+}
+/** Private continuation: callers above/below always establish the complete runtime proof first. */
+async function cleanupAfterFreshRuntime(source,p,request){
+ const g=p.grant,{source:sourceRef,installId}=g,buildRecordId=g.build.buildRecordId;
+ validateCleanupRequest(request,g);
  const activated=JSON.parse(regular(join(p.directory,'activated.json'),1024**2));
  const audit=join(p.directory,'audit');if(!existsSync(audit))mkdirSync(audit,{mode:0o700});privateDirectory(audit);
  if(!existsSync(join(audit,'bytes')))mkdirSync(join(audit,'bytes'),{mode:0o700});privateDirectory(join(audit,'bytes'));
@@ -243,6 +250,14 @@ export async function cleanupCiBuild(sourceRef,installId,buildRecordId,request){
   authorizationSha256:p.authorizationSha256,cleanup,runtime:after,ownedResourceCleanupVerified:true,releaseHandbackVerified:false};
 }
 
+export async function arriveAndCleanupCiBuild(sourceRef,installId,buildRecordId,observation){
+ const source=targetRoot(),p=selected(installId,sourceRef,buildRecordId,{allowCleanup:true});
+ return completeArrivalAndCleanup({grant:p.grant,observation,expectedLedger:expectedMigrationLedger(source)},{
+  observe:()=>readStatus(sourceRef,installId,buildRecordId),
+  cleanupAfterFreshArrival:request=>cleanupAfterFreshRuntime(source,p,request),
+ });
+}
+
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  const [mode,sourceRef,installId,buildRecordId]=process.argv.slice(2);
  (async()=>{
@@ -252,8 +267,8 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
    const chunks=[];let total=0;for await(const chunk of process.stdin){total+=chunk.length;assert(total<=32*1024,'Installation grant exceeds bound');chunks.push(chunk);}
    return initializePrivateInstall(JSON.parse(Buffer.concat(chunks)));
   }
-  assert(process.argv.length===6&&['stage','activate','confirm-runtime','status','cleanup'].includes(mode),'Exact installer mode/source/install/build record required');
-  if(mode==='cleanup'){const chunks=[];let total=0;for await(const chunk of process.stdin){total+=chunk.length;assert(total<=32*1024,'Cleanup proof exceeds bound');chunks.push(chunk);}return cleanupCiBuild(sourceRef,installId,buildRecordId,JSON.parse(Buffer.concat(chunks)));}
+  assert(process.argv.length===6&&['stage','activate','confirm-runtime','status','cleanup','arrive-and-cleanup'].includes(mode),'Exact installer mode/source/install/build record required');
+  if(mode==='cleanup'||mode==='arrive-and-cleanup'){const chunks=[];let total=0;for await(const chunk of process.stdin){total+=chunk.length;assert(total<=32*1024,'Cleanup proof exceeds bound');chunks.push(chunk);}const input=JSON.parse(Buffer.concat(chunks));return mode==='cleanup'?cleanupCiBuild(sourceRef,installId,buildRecordId,input):arriveAndCleanupCiBuild(sourceRef,installId,buildRecordId,input);}
   return mode==='stage'?stageCiBuild(sourceRef,installId,buildRecordId):mode==='activate'?activateCiBuild(sourceRef,installId,buildRecordId):mode==='confirm-runtime'?confirmRuntime(sourceRef,installId,buildRecordId):readStatus(sourceRef,installId,buildRecordId);
  })().then(value=>console.log(JSON.stringify(value))).catch(error=>{console.error(error);process.exitCode=1;});
 }
