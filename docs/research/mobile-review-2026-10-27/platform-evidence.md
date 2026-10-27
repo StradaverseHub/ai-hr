@@ -942,3 +942,23 @@ request, after117.988s admission wait (session84718, exit0). It did not bypass e
 foreign lease. The preceding two-slot attempt ended75 without starting. No native SDK/device,
 Metro export, App Store/Play rollout, staging migration or deployment is established by these checks.
 0636 remains byte-identical, unjournaled and unapplied, with paired Board/AI ancestry still required.
+
+
+## Explicit iPhone and Huawei NEXT coverage — owner clarification
+
+The owner asked about iPhone/Huawei and selected HarmonyOS5+/NEXT as the Huawei target. Source review
+confirmed Swift App Attest/Keychain code exists under mobile/modules/aihr-integrity/ios, while no
+HarmonyOS build-profile/module/oh-package/hvigor project target was found. Current expo-location
+Android source imports Google's FusedLocationProviderClient. No HMS/Huawei native integration was
+found in the current mobile source. iOS security foundations exist; physical signed iPhone acceptance
+is still unproven. Huawei NEXT native support is unimplemented and is now an explicit delivery track.
+
+Official Huawei native SDK/toolchain and HarmonyOS5+ installation guidance were checked. Android APK
+compatibility through a tool is not acceptance of this app or equivalence of device/key evidence.
+Native HarmonyOS provider selection remains an assessment, including SDK availability, current
+vendor verification APIs and genuine signed-device fixtures. No new Huawei trust anchor, proof-kind,
+API authority, native build or migration was introduced by this clarification.
+
+Android journal/protocol/storage work at8a217c467 and its following native storage checkpoint is
+in progress and UNVERIFIED. The previous26-case/root/native passing evidence remains bound to the
+published b921025c8 candidate, not to these later source changes. No new publication or deployment.

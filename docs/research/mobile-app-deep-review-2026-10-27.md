@@ -242,3 +242,32 @@ bash ~/.aihr-gate-state/testlock.sh mobile-review -- node docs/research/mobile-r
 The script reports six groups and writes its JSON to `/tmp/aihr-mobile-review-probes-20261027.json`. It uses injected native/network/query/hook ports; it cannot substantiate live-device or database authorization claims. The first review run exposed a cross-context `instanceof` assertion in the probe harness; comparison was corrected to the named error and the complete probe rerun exited 0. Application code was not modified to make probes pass.
 
 Primary platform sources and their specific claims are retained in [platform evidence](mobile-review-2026-10-27/platform-evidence.md). High-value checks: [Expo SDK 57 location](https://docs.expo.dev/versions/v57.0.0/sdk/location/), [Android Location](https://developer.android.com/reference/android/location/Location), [Play Integrity request binding](https://developer.android.com/google/play/integrity/standard), [Apple App Attest validation](https://developer.apple.com/documentation/devicecheck/validating-apps-that-connect-to-your-server), [Apple local-assertion clarification](https://developer.apple.com/forums/thread/838933), [Apple continuous time](https://developer.apple.com/documentation/kernel/1646199-mach_continuous_time), [Android elapsed realtime](https://developer.android.com/reference/android/os/SystemClock).
+
+
+## Platform requirement clarified by the owner — 27 October 2026
+
+The owner explicitly selected **Huawei HarmonyOS5+/NEXT** when asked which Huawei family to target.
+Keep iPhone/iOS, Android and native HarmonyOS as distinct platform acceptance tracks. Recent Android
+implementation is not a reduction of the shared employee/approver scope or an iOS completion claim.
+The iOS app and Swift/App Attest/Keychain/server owners already exist; signed iPhone acceptance and
+remaining end-to-end integration still need completion. No native HarmonyOS client/build target is
+present in the reviewed tree. HarmonyOS5+/NEXT is now an explicit target, not presumed Android support.
+
+Huawei's official native SDK lists Location, Notification/Push, Device Security/Certificate and
+Universal Keystore kits with ArkTS/ArkUI/DevEco tooling. Assess native application/toolchain support,
+identity and signed workplace routing, location freshness/accuracy/mock signals, secure key/proof
+storage, offline time/reboot behavior and device/app integrity before selecting adapters. Preserve
+the same server authorization, command identity, receipt recovery and claim/adjudication boundaries;
+validate each OS provider independently. Do not treat an Android HMS Safety Detect sample as a native
+HarmonyOS implementation or as proof of hardware-key custody.
+
+Huawei states that APK installation on HarmonyOS5+ can depend on the compatibility tool's actual
+support. Such installation does not establish this app's location/integrity/storage behavior. The
+current Android location dependency uses Google FusedLocationProviderClient; no Huawei-native
+integration or device acceptance was found. Existing Google-root verification must not be relabeled
+as Huawei verification. All three platform tracks require their own signed-device evidence and
+honest unsupported/unavailable/human-review behavior before a real-data attendance rollout.
+
+Sources checked: [Huawei native development/SDK](https://developer.huawei.com/consumer/en/harmonyos/develop/),
+[Huawei HarmonyOS5+ application installation guidance](https://consumer.huawei.com/cn/support/content/zh-cn16061787/),
+[Huawei Android Safety Detect codelab](https://developer.huawei.com/consumer/en/codelab/HMSCoreSafetyDetect/).
