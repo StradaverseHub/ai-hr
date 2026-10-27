@@ -337,3 +337,44 @@ Sources: [Google status schema and verification guidance](https://developer.andr
 and [official status endpoint](https://android.googleapis.com/attestation/status). Tests replace the
 HTTPS transport and do not call Google. No endpoint, native SDK or attendance writer invokes this
 reader yet.
+
+
+## Android signed-path assembly
+
+The optional server verifier now composes signed-path checks, the bounded KeyDescription decoder and
+current status observation. Google roots were captured from the official root endpoint on27October2026;
+their DER and SPKI SHA256 pins are stored with provenance. Trust follows a pinned root public key,
+never a root supplied solely by the phone. Presented roots must be self-issued/self-signed; every
+ordered child signature/name link is checked. The complete bounded path is structurally checked by
+PKIjs with an explicit per-call WebCrypto engine. Duplicate certificates/extensions, unknown critical
+extensions, non-leaf attestation extensions and unexpected provisioning placement refuse.
+
+Supported profiles currently match captured four-certificate factory chains under the factory root
+and five-certificate RKP chains through Google's DroidCA2 intermediate. Unknown shapes refuse as
+unsupported; they do not degrade to an unverified passing key. The target must be a non-CA P256 key,
+and its exact SPKI must match the submitted key. Exact expected server-owned challenge bytes must match
+the signed extension. The generic checker bounds those bytes to1–128; the future enrollment protocol
+must continue requiring its specific32-byte canonical challenge hash.
+
+RKP issuer validity is checked before and after status lookup. Future factory issuers also refuse;
+the documented factory-expiration exception does not extend RKP keys. Device-chosen target validity
+is not a server-time witness. PKI structural validation uses a mutually valid historical instant when
+factory expiry or device target dates require it; every RKP issuer must independently remain valid at
+the current server observation. Profiles without a common structural-check instant remain unsupported.
+This is an explicit compatibility limit, not full equivalence to Google's recommended Kotlin verifier.
+Root trust-anchor expiration is not used as an issuer-time policy. The factory exception remains
+visible in the result. No boot, security-level or app-identity value is upgraded by path verification.
+
+After signature/path/challenge checks, all path serials including the presented root are sent only to
+the server-owned status reader. Revoked/suspended or incomplete/unavailable/cancelled status refuses;
+checked observation timestamps and certificate count must match the current operation. Caller-owned
+buffers are copied before asynchronous work. The result labels path/status evidence only; decoded
+fields retain their separate unverified-policy status. It neither registers a key nor creates an
+attendance record. App signer/package/build, generated-key purpose/digest/origin/boot/security policy,
+unique custody, enrollment challenge consumption and Android clock signatures still require their
+canonical integration. Real Google-status, modern distribution, quota/cache and signed-device
+acceptance remain open. No Android integrity HTTP route is activated by this owner.
+
+Google's official verifier sources were inspected at revision34652d3df68b8d6887a6670b00eb0856090dae6d,
+including its Android-specific path profiles and validity behavior. The custom boundary must retain
+differential/negative coverage before release; a generic PKIX pass alone is not sufficient.

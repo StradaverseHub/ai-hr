@@ -614,3 +614,35 @@ and all four bound Mobile SQL hashes were independently verified. Acknowledgemen
 human's coordination authorization. Current provisional journal/names remain unchanged until a complete
 ordered integration includes Board+AI prerequisites and actual canonical prefix. No higher timestamp
 may ship independently and no staging application was requested. Historical candidates remain intact.
+
+
+Android signed-path assembly `bc3d786c5` captured the two public Google root certificates from the
+fixed official endpoint and bound DER/SPKI pins in `android-attestation-roots.json`. The factory SPKI
+pin isfeb2ea7551ee316ed4bb443c8293b884dbfdea40b603ee3e4f4a897e4580fbae; rotated root SPKI
+is3ee44512a1af2beb39c889490c60ea3f82e43f5d5a5532f5ab9419f676cd07ec. This retrieval is trust-source
+capture, not an attestation result. Pinned official Kotlin verifier path/validator sources were read
+to distinguish factory expiration from mandatory RKP issuer validity and target-device dates.
+
+The initial run passed42of50 cases but eight captured-path cases stopped at the expected-challenge
+length check: official fixtures use bounded non32-byte challenge formats. Strict compilation passed.
+Repair `d75d87a2d` permits exact server-owned1–128-byte challenges at the generic signature boundary,
+without modifying captured signatures or the future native enrollment's32-byte protocol requirement.
+The captured path suite then passed. Expanded `6c5d08c81` passed all63 cases across path/decoder/status/
+Apple enrollment proof and the full strict root TypeScript compiler exited0. Captured path signatures,
+key hashes, ASN1 and PKI validation are real; status responses are synthetic and clearly separate.
+
+Tests cover rotated-root StrongBox/RKP historical positives, factory expiry exception with unverified
+boot facts preserved, expired/future RKP issuer refusal, not-yet-valid factory refusal, changed SPKI/
+challenge, signature mutation, substituted/reversed/duplicate/trailing-byte paths, input bounds,
+revoked/suspended/incomplete status, cancelled/future/stale observations, expiry during delayed status
+and copies of caller buffers. Malformed upstream extensions refuse. No runtime Google status request,
+Android enrollment/key custody or attendance acceptance is established by these tests.
+
+Three controlled mutations removed challenge binding, RKP expiry checks and published revocation
+refusal. Every intended behavioral test failed and exact restoration passed:
+`mutation=1 restored=0 exact=true` for each. There was no source/type failure masquerading as that
+behavioral witness. No mobile runtime/native source changed, so no new device build/export is claimed.
+Profiles without a common historical structural-check instant or outside the captured4/5-cert shapes
+remain unsupported. This is not a claim of full Kotlin-verifier compatibility or completed Android
+integrity. App policy, custody, protocol wiring and device/distribution acceptance remain unfinished.
+No migration, shared database, publication, cloud build or deployment changed in this slice.
