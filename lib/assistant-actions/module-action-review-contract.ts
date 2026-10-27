@@ -1,7 +1,7 @@
 /** Closed human review contract. No posted actor, native receipt, identity, service or model executor. */
 import {z} from 'zod';
 import {OwnNotificationPreferencesIntent,OwnNotificationPreferencesReview} from './own-notification-preferences-contract';
-import {notificationPreferenceCategory,notificationEmailLocales} from '../notification-email-model';
+import {employmentNotificationPreferenceCategory as notificationPreferenceCategory,notificationEmailLocales} from '../notification-email-model';
 export const MODULE_NOTIFICATION_ACTION='notifications.email_preferences.save' as const;
 const digest=z.string().regex(/^[a-f0-9]{64}$/);
 export const ModuleActionPrepare=z.object({action:z.literal(MODULE_NOTIFICATION_ACTION),contractVersion:z.literal(1),intent:OwnNotificationPreferencesIntent}).strict();
