@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { Tx as AiReadTx } from '../db/client';
 import { withCanonicalAiReadTx } from './ai-read-transaction';
 /**
@@ -121,7 +122,11 @@ async function submitMyAcknowledgementOwnerTx(tx:AiReadTx,ctx:SessionContext,dat
       if (/not available|not been marked|No onboarding case/.test(msg)) throw new LifecycleError(msg.replace(/^.*?:\s*/, ''), 'conflict');
       throw e;
     }
-    const submittedEventId=await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'lifecycle-case', aggregateId: id, eventType: 'lifecycle-case.daa-submitted', actor: actorOf(ctx), payload: { action: 'daa.submitted' } },{returnId:true});
+    // NULL-subject audit events are deliberately unreadable to ordinary new hires. Bind the
+    // exact native reference before INSERT; RETURNING would require unrelated audit SELECT.
+    // The awaited insert and native acknowledgement still share this caller's transaction.
+    const submittedEventId=randomUUID();
+    await appendEvent(tx, { id:submittedEventId, tenantId: ctx.tenantId, aggregateType: 'lifecycle-case', aggregateId: id, eventType: 'lifecycle-case.daa-submitted', actor: actorOf(ctx), payload: { action: 'daa.submitted' } });
     return{caseId:id,submittedEventId};
 }
 /** Trusted reviewed command seam only. No nested commit; failure rolls back the enclosing command. */
