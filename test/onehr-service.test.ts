@@ -28,6 +28,7 @@ vi.mock('../lib/ai',async importActual=>({...await importActual<typeof import('.
 vi.mock('../core/ai-config',async importActual=>({...await importActual<typeof import('../core/ai-config')>(),resolveActiveAiConfig:vi.fn()}));
 import { generateDraft,readImage } from '../lib/ai';
 import { resolveActiveAiConfig } from '../core/ai-config';
+import {installSyntheticSpendCapability} from './ai-spend-fixture';
 // Resolver-issued capabilities replace obsolete structural provider/key mocks.
 async function issuedFixtureConfig(...args:Parameters<typeof resolveActiveAiConfig>){return (await vi.importActual<typeof import('../core/ai-config')>('../core/ai-config')).resolveActiveAiConfig(...args);}
 import {createOnehrServiceFixtures,restrictedReminderMailOwner,year} from './onehr-service-fixture';
@@ -36,7 +37,14 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
   let peers:{employmentId:string;ctx:SessionContext}[];
 const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtures({get b(){return b;},get a(){return a;},get subject(){return subject;},get manager(){return manager;},get self(){return self;},get mgr(){return mgr;},get cycleId(){return cycleId;},get reviewId(){return reviewId;},get peers(){return peers;}});
 
-  afterEach(()=>vi.unstubAllEnvs());
+  // Explicitly selected provider-positive cases only; native source/permission owners remain real.
+  let syntheticSpend:Awaited<ReturnType<typeof installSyntheticSpendCapability>>|undefined;
+  async function prepareMockedSpend(feature:'performance_assistant'|'performance_review'){
+    expect(vi.isMockFunction(generateDraft)).toBe(true);
+    const configuration=await withTenant(a,tx=>issuedFixtureConfig(tx,a,feature));if(!configuration)throw Error('Missing actual issued fixture configuration');
+    syntheticSpend=await installSyntheticSpendCapability(a,{provider:configuration.provider,model:configuration.model});
+  }
+  afterEach(()=>{syntheticSpend?.restore();syntheticSpend=undefined;vi.unstubAllEnvs();});
   beforeEach(async()=>{
     vi.stubEnv('OPENAI_API_KEY','fictional-unit-transport-never-sent');for(const key of ['ANTHROPIC_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY'])vi.stubEnv(key,'');
     vi.mocked(readImage).mockReset().mockResolvedValue('Verified 15.9 units.');vi.mocked(generateDraft).mockReset().mockResolvedValue('{"items":[0]}');vi.mocked(resolveActiveAiConfig).mockReset().mockResolvedValue(null);
@@ -186,7 +194,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     const closed=await perf.getPerformanceGuideFacts(self,'last cycle result');expect(closed.some(f=>f.id.startsWith('current:'))).toBe(false);expect(closed.find(f=>f.id===`history:${reviewId}`)?.text).toContain('released performance band ME');
   });
   it('Performance guide counts answered questions without storing their text or conversation',async()=>{
-    vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
+    await prepareMockedSpend('performance_review');vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
     vi.mocked(generateDraft).mockResolvedValue('{"facts":["dashboard"],"unanswered":false}');
     const answer=await perf.askPerformanceGuide(self,'My review PRIVATE_QUESTION',[{role:'user',content:'PRIVATE_HISTORY'}]);
     expect(answer.mode).toBe('answer');expect(answer.facts.map(f=>f.id)).toEqual(['dashboard']);
@@ -194,7 +202,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     expect(JSON.stringify(rows)).not.toMatch(/PRIVATE_QUESTION|PRIVATE_HISTORY/);
   });
   it('Performance guide reports anonymous unanswered questions and neutralizes spreadsheet formula content',async()=>{
-    vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
+    await prepareMockedSpend('performance_review');vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
     vi.mocked(generateDraft).mockResolvedValue('{"facts":[],"unanswered":true}');
     await perf.askPerformanceGuide(self,'=UNANSWERED_QUESTION');
     const report=await perf.getPerformanceGuideReport(a);expect(report.week).toEqual({answered:0,unanswered:1,declined:0,people:1});
@@ -209,23 +217,23 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     expect((await perf.getPerformanceGuideReport(scoped,{companyId:b.companyId})).week.people).toBe(0);
   });
   it('Performance guide drops invalid model claims and rechecks a changed AI configuration',async()=>{
-    vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
+    await prepareMockedSpend('performance_review');vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
     vi.mocked(generateDraft).mockResolvedValue('{"facts":["foreign-review"],"unanswered":false}');
-    expect((await perf.askPerformanceGuide(self,'my review')).mode).toBe('search');
+    expect((await perf.askPerformanceGuide(self,'my review')).mode).toBe('search');expect(generateDraft).toHaveBeenCalledOnce();
     vi.mocked(generateDraft).mockImplementationOnce(async()=>{vi.mocked(resolveActiveAiConfig).mockResolvedValue(null);return '{"facts":["dashboard"],"unanswered":false}';});
-    expect((await perf.askPerformanceGuide(self,'my review')).mode).toBe('search');
+    expect((await perf.askPerformanceGuide(self,'my review')).mode).toBe('search');expect(generateDraft).toHaveBeenCalledTimes(2);
     expect((await owner.db.select().from(schema.assessmentGuideUse)).every(r=>r.status==='search'&&r.question===null)).toBe(true);
   });
   it('Performance guide discards a colleague task when reviewer access changes during the provider call',async()=>{
     const before=await perf.getPerformanceGuideFacts(mgr,'review');const task=before.find(f=>f.id.startsWith(`task:${reviewId}.`));expect(task).toBeTruthy();
-    vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
+    await prepareMockedSpend('performance_review');vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
     vi.mocked(generateDraft).mockImplementationOnce(async()=>{await owner.db.update(schema.performanceReview).set({reviewerEmploymentId:peers[0].employmentId}).where(eq(schema.performanceReview.id,reviewId));return JSON.stringify({facts:[task!.id],unanswered:false});});
-    const reply=await perf.askPerformanceGuide(mgr,'Assessment subject review');expect(reply.mode).toBe('search');expect(reply.facts.some(f=>f.id===task!.id)).toBe(false);
+    const reply=await perf.askPerformanceGuide(mgr,'Assessment subject review');expect(generateDraft).toHaveBeenCalledOnce();expect(reply.mode).toBe('search');expect(reply.facts.some(f=>f.id===task!.id)).toBe(false);
   });
   it('Performance guide remains useful during provider failures and has no fixed daily allowance',async()=>{
     expect((await perf.askPerformanceGuide(self,'my review')).mode).toBe('search');expect(generateDraft).not.toHaveBeenCalled();
-    vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);vi.mocked(generateDraft).mockRejectedValue(new Error('provider unavailable'));
-    expect((await perf.askPerformanceGuide(self,'my review')).mode).toBe('search');
+    await prepareMockedSpend('performance_review');vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);vi.mocked(generateDraft).mockRejectedValue(new Error('provider unavailable'));
+    expect((await perf.askPerformanceGuide(self,'my review')).mode).toBe('search');expect(generateDraft).toHaveBeenCalledOnce();
     await expect(withTenant(mgr,tx=>tx.select().from(schema.assessmentGuideUse))).resolves.toEqual([]);
   });
   it('preserves six independent default-on assistance controls with central group-wide authorization',async()=>{

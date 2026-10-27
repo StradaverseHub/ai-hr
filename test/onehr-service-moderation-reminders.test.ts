@@ -28,6 +28,7 @@ vi.mock('../lib/ai',async importActual=>({...await importActual<typeof import('.
 vi.mock('../core/ai-config',async importActual=>({...await importActual<typeof import('../core/ai-config')>(),resolveActiveAiConfig:vi.fn()}));
 import { generateDraft,readImage } from '../lib/ai';
 import { resolveActiveAiConfig } from '../core/ai-config';
+import {installSyntheticSpendCapability} from './ai-spend-fixture';
 // Issued snapshots are process-private capabilities; raw provider/key lookalikes are invalid.
 async function issuedFixtureConfig(...args:Parameters<typeof resolveActiveAiConfig>){return (await vi.importActual<typeof import('../core/ai-config')>('../core/ai-config')).resolveActiveAiConfig(...args);}
 import {createOnehrServiceFixtures,restrictedReminderMailOwner,year} from './onehr-service-fixture';
@@ -36,7 +37,14 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
   let peers:{employmentId:string;ctx:SessionContext}[];
 const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtures({get b(){return b;},get a(){return a;},get subject(){return subject;},get manager(){return manager;},get self(){return self;},get mgr(){return mgr;},get cycleId(){return cycleId;},get reviewId(){return reviewId;},get peers(){return peers;}});
 
-  afterEach(()=>vi.unstubAllEnvs());
+  // Explicitly selected provider-positive cases only; native source/permission owners remain real.
+  let syntheticSpend:Awaited<ReturnType<typeof installSyntheticSpendCapability>>|undefined;
+  async function prepareMockedSpend(feature:'performance_assistant'|'performance_review'){
+    expect(vi.isMockFunction(generateDraft)).toBe(true);
+    const configuration=await withTenant(a,tx=>issuedFixtureConfig(tx,a,feature));if(!configuration)throw Error('Missing actual issued fixture configuration');
+    syntheticSpend=await installSyntheticSpendCapability(a,{provider:configuration.provider,model:configuration.model});
+  }
+  afterEach(()=>{syntheticSpend?.restore();syntheticSpend=undefined;vi.unstubAllEnvs();});
   beforeEach(async()=>{
     vi.stubEnv('OPENAI_API_KEY','fictional-unit-transport-never-sent');for(const key of ['ANTHROPIC_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY'])vi.stubEnv(key,'');
     vi.mocked(readImage).mockReset().mockResolvedValue('Verified 15.9 units.');vi.mocked(generateDraft).mockReset().mockResolvedValue('{"items":[0]}');vi.mocked(resolveActiveAiConfig).mockReset().mockResolvedValue(null);
@@ -291,7 +299,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
 
   it('edits KPI setup from chat through the form writer and rolls back when conversation revision is stale',async()=>{
     const id=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Delivery',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,50,100,150,200]},moderatorEmploymentId:manager.employmentId}]);
-    vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
+    await prepareMockedSpend('performance_assistant');vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
     const text='Set Delivery weight to 35',request=randomUUID();vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({commands:[{action:'set_weight',id,target:{start:4,end:12},value:{start:23,end:25}}]}));
     const first=await perf.sendReviewMessage(self,reviewId,'setting',null,request,text);
     expect(first.draftUpdated).toBe(true);expect((await view(self)).kpis[0]).toMatchObject({weightBp:3500,setting:'draft',actual:null,locked:false});
@@ -307,7 +315,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
   });
 
   it('saves career words and draft goals atomically, preserves the shared plan snapshot and degrades on provider failure',async()=>{
-    vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
+    await prepareMockedSpend('performance_assistant');vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
     const span=(text:string,value:string)=>({start:text.indexOf(value),end:text.indexOf(value)+value.length});
     const text='Aspiration: Lead operations. Goal: Facilitation. On the job: Run a workshop.';
     vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({commands:[{action:'career_field',field:'aspirationNow',value:span(text,'Lead operations.')},{action:'add_goal',area:span(text,'Facilitation'),onJob:span(text,'Run a workshop.')}]}));
@@ -332,7 +340,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
   });
 
   it('logs explicit evidence through chat exactly once and rolls back on a stale conversation',async()=>{
-    vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
+    await prepareMockedSpend('performance_assistant');vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
     const text='Log evidence: I resolved the deployment issue with the team.',body='I resolved the deployment issue with the team.';
     vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({commands:[{action:'log_evidence',body:{start:text.indexOf(body),end:text.length}}]}));
     const request=randomUUID(),first=await perf.sendReviewMessage(self,reviewId,'evidence',null,request,text);
@@ -348,7 +356,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await perf.assignOnehrPanel(a,reviewId,(await view(a)).revision,peers.map(p=>({employmentId:p.employmentId,relationship:'peer'})));
     const request=(await perf.onehrAssignments(peers[0].ctx)).feedback.find(f=>f.subject==='Assessment subject')!,card=await perf.getOnehrFeedback(peers[0].ctx,request.id),statement=card.statements[0],principle=statement.principle;
     const text=`Record ${statement.text} as yes. ${principle} comment: Clear follow-through.`,span=(value:string)=>({start:text.indexOf(value),end:text.indexOf(value)+value.length});
-    vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
+    await prepareMockedSpend('performance_assistant');vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
     vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({commands:[{action:'feedback_answer',id:statement.id,target:span(statement.text),answer:span('yes')},{action:'feedback_comment',id:`principle:${principle}`,target:span(principle),text:span('Clear follow-through.')}]}));
     const messageId=randomUUID(),reply=await perf.sendFeedbackMessage(peers[0].ctx,reviewId,request.id,null,messageId,text);
     expect(reply.draftUpdated).toBe(true);let saved=await perf.getOnehrFeedback(peers[0].ctx,request.id);
@@ -380,7 +388,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     const id=randomUUID();
     await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Delivery',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,50,100,150,200]},moderatorEmploymentId:manager.employmentId}],true);
     await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'Agreed');
-    vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
+    await prepareMockedSpend('performance_assistant');vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
     const text='Record Delivery at 100',request=randomUUID(),proposal=JSON.stringify({commands:[{action:'kpi_result',id,target:{start:7,end:15},actual:{start:19,end:22}}]});
     vi.mocked(generateDraft).mockResolvedValue(proposal);
     const result=await perf.sendReviewMessage(self,reviewId,'results',null,request,text);

@@ -28,6 +28,7 @@ vi.mock('../lib/ai',async importActual=>({...await importActual<typeof import('.
 vi.mock('../core/ai-config',async importActual=>({...await importActual<typeof import('../core/ai-config')>(),resolveActiveAiConfig:vi.fn()}));
 import { generateDraft,readImage } from '../lib/ai';
 import { resolveActiveAiConfig } from '../core/ai-config';
+import {installSyntheticSpendCapability} from './ai-spend-fixture';
 // Resolver-issued capabilities replace obsolete structural provider/key mocks.
 async function issuedFixtureConfig(...args:Parameters<typeof resolveActiveAiConfig>){return (await vi.importActual<typeof import('../core/ai-config')>('../core/ai-config')).resolveActiveAiConfig(...args);}
 import {createOnehrServiceFixtures,restrictedReminderMailOwner,year} from './onehr-service-fixture';
@@ -36,7 +37,14 @@ describe('Native performance workflow and Rewards boundary with real RLS',()=>{
   let peers:{employmentId:string;ctx:SessionContext}[];
 const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtures({get b(){return b;},get a(){return a;},get subject(){return subject;},get manager(){return manager;},get self(){return self;},get mgr(){return mgr;},get cycleId(){return cycleId;},get reviewId(){return reviewId;},get peers(){return peers;}});
 
-  afterEach(()=>vi.unstubAllEnvs());
+  // Explicitly selected provider-positive cases only; native source/permission owners remain real.
+  let syntheticSpend:Awaited<ReturnType<typeof installSyntheticSpendCapability>>|undefined;
+  async function prepareMockedSpend(feature:'performance_assistant'|'performance_review'){
+    expect(vi.isMockFunction(generateDraft)).toBe(true);
+    const configuration=await withTenant(a,tx=>issuedFixtureConfig(tx,a,feature));if(!configuration)throw Error('Missing actual issued fixture configuration');
+    syntheticSpend=await installSyntheticSpendCapability(a,{provider:configuration.provider,model:configuration.model});
+  }
+  afterEach(()=>{syntheticSpend?.restore();syntheticSpend=undefined;vi.unstubAllEnvs();});
   beforeEach(async()=>{
     vi.stubEnv('OPENAI_API_KEY','fictional-unit-transport-never-sent');for(const key of ['ANTHROPIC_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY'])vi.stubEnv(key,'');
     vi.mocked(readImage).mockReset().mockResolvedValue('Verified 15.9 units.');vi.mocked(generateDraft).mockReset().mockResolvedValue('{"items":[0]}');vi.mocked(resolveActiveAiConfig).mockReset().mockResolvedValue(null);
@@ -424,8 +432,8 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
   });
   it('cannot turn an AI suggestion into a manager confirmation',async()=>{
     const id=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Delivery',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,50,100,150,200]},moderatorEmploymentId:manager.employmentId}],true);await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'');await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:100,note:'Delivered the planned work'}],'Completed the agreed outcomes.');
-    vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);vi.mocked(generateDraft).mockResolvedValue('{"commands":[{"action":"confirm_performance"}]}');
-    const result=await perf.sendReviewMessage(mgr,reviewId,'moderation',null,randomUUID(),'Help me assess Delivery.');expect(result.draftUpdated).toBe(false);expect((await view()).kpis[0].locked).toBe(false);expect((await view()).managerPerformance).toBeNull();
+    await prepareMockedSpend('performance_assistant');vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);vi.mocked(generateDraft).mockResolvedValue('{"commands":[{"action":"confirm_performance"}]}');
+    const result=await perf.sendReviewMessage(mgr,reviewId,'moderation',null,randomUUID(),'Help me assess Delivery.');expect(generateDraft).toHaveBeenCalledOnce();expect(result.draftUpdated).toBe(false);expect((await view()).kpis[0].locked).toBe(false);expect((await view()).managerPerformance).toBeNull();
   });
   it('approves competency drafts through an explicit human instruction exactly once',async()=>{
     await complete(false);await perf.saveAssessmentDraft(mgr,reviewId,(await view()).revision,null,{kind:'competency_manager',answers:{'skill-1':{answer:'yes',remark:'Observed current-skill delivery.'},'skill-2':{answer:'no',remark:''}},remark:'Continue practising the future skill.'});
@@ -531,7 +539,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await expect(perf.saveOnehrKpiCheckIn(mgr,reviewId,(await view()).revision,id,'on_track','')).rejects.toThrow(/not assigned/);
     await expect(perf.freezeOnehrReview(a,reviewId,(await view(a)).revision)).rejects.toThrow(/every quarterly/);
     await perf.saveOnehrKpiCheckIn(self,reviewId,(await view(self)).revision,id,'at_risk','Dependency needs support');
-    vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
+    await prepareMockedSpend('performance_assistant');vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
     const label=(await view(self)).kpis[0].title,message=`Set ${label} to off track`;
     vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({commands:[{action:'checkin',id,target:{start:4,end:4+label.length},answer:{start:message.indexOf('off track'),end:message.length}}]}));
     expect((await perf.sendReviewMessage(self,reviewId,'results',null,randomUUID(),message)).draftUpdated).toBe(true);
