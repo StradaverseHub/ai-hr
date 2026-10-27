@@ -65,9 +65,17 @@ describe('Rewards approvals board: Matrix view', () => {
     const text = [...cells].map(c => c.textContent);
     // Unit, salary, bonus, flags, then the six steps, then the action.
     expect(text.length).toBe(4 + 6 + 1);
-    expect(text[0]).toContain('4 people');
-    expect(text[4]).toContain('Done'); expect(text[4]).toContain('Jan 5, 2026, 9:30 AM'); // Kuala Lumpur time
-    expect(text[5]).toContain('Done'); expect(text[5]).toContain('Jan 6, 2026, 10:00 AM');
+    // Unit: the unit name links, then people, then the cycle truncated with its full name in the title.
+    expect(within(cells[0] as HTMLElement).getByRole('link').textContent).toBe('Unit gr');
+    expect(text[0]).toBe('Unit gr4 peopleFictional cycle');
+    expect(cells[0].querySelector('.truncate')!.getAttribute('title')).toBe('Fictional cycle');
+    // Done: compact 24h Kuala Lumpur time on screen; the full date and time in the title and for screen readers.
+    const time = (cell: Element) => cell.querySelector('[title]')!;
+    expect(time(cells[4]).getAttribute('title')).toBe('Jan 5, 2026, 9:30 AM');
+    expect(time(cells[4]).querySelector('[aria-hidden="true"]')!.textContent).toBe('Jan 5, 09:30');
+    expect(time(cells[4]).querySelector('.sr-only')!.textContent).toBe('Jan 5, 2026, 9:30 AM');
+    expect(text[4]).toMatch(/^Done/);
+    expect(time(cells[5]).querySelector('[aria-hidden="true"]')!.textContent).toBe('Jan 6, 10:00');
     expect(text[6]).toBe('Your stepDue Feb 10');
     expect(text.slice(7, 10)).toEqual(['○Not reached', '○Not reached', '○Not reached']);
     expect(within(cells[10] as HTMLElement).getByRole('button', { name: 'Send to CTRO' })).toBeTruthy();

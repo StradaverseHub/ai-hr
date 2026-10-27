@@ -2,7 +2,7 @@ import { Fragment } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import type { RewardBoardRow, RewardRouteStep } from '@/packs/rewards/service';
-import { Badge, tableWrapCls, tbodyCls, theadCls, thCls } from '@/components/ui';
+import { Badge, tableWrapCls, tbodyCls, theadCls } from '@/components/ui';
 import { RewardSubmit } from '../submit-button';
 import { boardDecideAction } from './actions';
 
@@ -19,7 +19,11 @@ export const rm = (cents: number) => new Intl.NumberFormat('en-MY', { style: 'cu
 export const boardDueDate = (locale: string, iso: string) => new Intl.DateTimeFormat(locale, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${iso}T00:00:00Z`));
 const dayMonth = (locale: string, iso: string) => new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${iso}T00:00:00Z`));
 const percent = (locale: string, bp: number) => new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 1 }).format(bp / 10000);
-const decidedAt = (locale: string, at: Date) => new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kuala_Lumpur' }).format(at);
+/** A step's decision time, compact in the cell ("27 Oct 22:52"), in full in its title and for screen readers. */
+const decidedShort = (locale: string, at: Date) => new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'Asia/Kuala_Lumpur' }).format(at);
+const decidedFull = (locale: string, at: Date) => new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' }).format(at);
+/** Matrix header cells: thCls with a tighter gutter, so a whole route fits at 1440px. */
+const mthCls = 'px-2 py-2 font-medium';
 const dash = <span className="text-muted-foreground">—</span>;
 
 /**
@@ -55,7 +59,7 @@ export function BoardUnitLink({ r }: { r: RewardBoardRow }) {
 export function BoardSalary({ r }: { r: RewardBoardRow }) {
   const t = useTranslations('rewards'), locale = useLocale();
   return r.salary ? <>
-    <div className="tabular-nums">{rm(r.salary.increaseCents)}</div>
+    <div className="whitespace-nowrap tabular-nums">{rm(r.salary.increaseCents)}</div>
     {r.salary.poolShareBp !== null && <div className={`text-xs ${r.salary.overLimit ? 'font-semibold text-destructive' : 'text-muted-foreground'}`}>{t('board.ofPool', { percent: percent(locale, r.salary.poolShareBp) })}{r.salary.overLimit && <> · {t('board.overLimit')}</>}</div>}
   </> : dash;
 }
@@ -63,7 +67,7 @@ export function BoardSalary({ r }: { r: RewardBoardRow }) {
 export function BoardBonus({ r }: { r: RewardBoardRow }) {
   const t = useTranslations('rewards'), locale = useLocale();
   return r.bonus ? <>
-    <div className="tabular-nums">{rm(r.bonus.totalCents)}</div>
+    <div className="whitespace-nowrap tabular-nums">{rm(r.bonus.totalCents)}</div>
     {r.bonus.budgetShareBp !== null && <div className={`text-xs ${r.bonus.overLimit ? 'font-semibold text-destructive' : 'text-muted-foreground'}`}>{t('board.ofBudget', { percent: percent(locale, r.bonus.budgetShareBp) })}{r.bonus.overLimit && <> · {t('board.overLimit')}</>}</div>}
   </> : dash;
 }
@@ -72,10 +76,10 @@ export function BoardAction({ r }: { r: RewardBoardRow }) {
   const t = useTranslations('rewards');
   const back = r.canReturn ? boardReturnLabel(t, r.seat) : null;
   return <div className="flex flex-wrap items-center justify-end gap-2">
-    {back && <Link className="text-sm text-primary hover:underline" href={`/rewards/${r.id}?view=approvals`}>{back}</Link>}
+    {back && <Link className="whitespace-nowrap text-sm text-primary hover:underline" href={`/rewards/${r.id}?view=approvals`}>{back}</Link>}
     {r.ready && (r.action === 'approve' || r.action === 'submit')
       ? <form action={boardDecideAction}><input type="hidden" name="unitId" value={r.id} /><input type="hidden" name="revision" value={r.revision} /><input type="hidden" name="action" value={r.action} /><RewardSubmit type="submit" size="sm">{boardActionLabels(t, r)!.short}</RewardSubmit></form>
-      : <Link className="text-sm font-medium text-primary hover:underline" href={`/rewards/${r.id}${r.waiting ? '?view=approvals' : ''}`}>{t('board.openReview')}</Link>}
+      : <Link className="whitespace-nowrap text-sm font-medium text-primary hover:underline" href={`/rewards/${r.id}${r.waiting ? '?view=approvals' : ''}`}>{t('board.openReview')}</Link>}
     {r.waiting && r.blocking > 0 && <span className="basis-full text-right text-xs text-muted-foreground">{t('board.blockedHint')}</span>}
   </div>;
 }
@@ -83,15 +87,15 @@ export function BoardAction({ r }: { r: RewardBoardRow }) {
 function StepCell({ r, p }: { r: RewardBoardRow; p: RewardRouteStep }) {
   const t = useTranslations('rewards'), locale = useLocale();
   if (p.state === 'done') return <>
-    <Badge variant="success" className="normal-case">{t('board.stepState.done')}</Badge>
-    {p.doneAt && <div className="mt-1 whitespace-nowrap text-xs tabular-nums text-muted-foreground"><time dateTime={p.doneAt.toISOString()}>{decidedAt(locale, p.doneAt)}</time></div>}
+    <Badge variant="success" className="whitespace-nowrap normal-case">{t('board.stepState.done')}</Badge>
+    {p.doneAt && <div title={decidedFull(locale, p.doneAt)} className="mt-1 whitespace-nowrap text-xs tabular-nums text-muted-foreground"><time dateTime={p.doneAt.toISOString()}><span aria-hidden="true">{decidedShort(locale, p.doneAt)}</span><span className="sr-only">{decidedFull(locale, p.doneAt)}</span></time></div>}
   </>;
   if (p.state === 'pending') return <><span aria-hidden="true" className="text-muted-foreground">○</span><span className="sr-only">{t('board.stepState.notReached')}</span></>;
   const chip = r.returnedTo
-    ? <Badge variant="warning" className="normal-case">{t('board.stepState.returned')}</Badge>
+    ? <Badge variant="warning" className="whitespace-nowrap normal-case">{t('board.stepState.returned')}</Badge>
     : r.waiting
-      ? <span className="inline-flex items-center rounded-full bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground">{t('board.stepState.yours')}</span>
-      : <span className="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-xs font-medium text-foreground">{t('board.stepState.withThem')}</span>;
+      ? <span className="inline-flex items-center whitespace-nowrap rounded-full bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground">{t('board.stepState.yours')}</span>
+      : <span className="inline-flex items-center whitespace-nowrap rounded-full border border-border px-2 py-0.5 text-xs font-medium text-foreground">{t('board.stepState.withThem')}</span>;
   const overdue = r.daysUntilDue !== null && r.daysUntilDue < 0;
   return <>{chip}{r.due && <div className={`mt-1 whitespace-nowrap text-xs tabular-nums ${overdue ? 'font-semibold text-destructive' : 'text-muted-foreground'}`}>{t(overdue ? 'board.overdueOn' : 'board.dueOn', { date: dayMonth(locale, r.due) })}</div>}</>;
 }
@@ -119,28 +123,30 @@ export function RewardBoardMatrix({ rows, section }: { rows: RewardBoardRow[]; s
       <h3 id={id} className="text-sm font-medium text-muted-foreground">{t(list[0].kind === 'annual' ? 'board.route.annual' : 'board.route.offcycle')}</h3>
       <div className={tableWrapCls}><table aria-labelledby={id} className="w-full text-sm">
         <thead className={theadCls}><tr>
-          <th scope="col" className={thCls}>{t('board.columns.unit')}</th>
-          <th scope="col" className={`${thCls} text-right`}>{t('board.columns.salary')}</th>
-          <th scope="col" className={`${thCls} text-right`}>{t('board.columns.bonus')}</th>
-          <th scope="col" className={`${thCls} text-right`}>{t('board.columns.flags')}</th>
-          {seats ? seats.map((seat, n) => <th key={seat} scope="col" className={`${thCls} whitespace-nowrap`}>
-            <span className="tabular-nums">{n + 1}</span> {t(`board.seat.${seat}`)}
-            <div className="font-normal normal-case tracking-normal">{seat === 'payroll' && payOn ? t('board.payOn', { date: dayMonth(locale, payOn) }) : t(`board.duty.${seat}`)}</div>
-          </th>) : <th scope="col" className={thCls}>{t('board.columns.stage')}</th>}
-          <th scope="col" className={`${thCls} text-right`}>{t('board.columns.action')}</th>
+          <th scope="col" className={mthCls}>{t('board.columns.unit')}</th>
+          <th scope="col" className={`${mthCls} text-right`}>{t('board.columns.salary')}</th>
+          <th scope="col" className={`${mthCls} text-right`}>{t('board.columns.bonus')}</th>
+          <th scope="col" className={`${mthCls} text-right`}>{t('board.columns.flags')}</th>
+          {/* The header may wrap (the Atelier theme sets nowrap on every th, so the wrapping lives on an inner div). */}
+          {seats ? seats.map((seat, n) => <th key={seat} scope="col" className="min-w-[5.5rem] px-1.5 py-2 align-bottom text-xs font-medium">
+            <div className="whitespace-normal"><span className="tabular-nums">{n + 1}</span> {t(`board.seat.${seat}`)}</div>
+            <div className="whitespace-normal font-normal normal-case leading-snug tracking-normal">{seat === 'payroll' && payOn ? t('board.payOn', { date: dayMonth(locale, payOn) }) : t(`board.duty.${seat}`)}</div>
+          </th>) : <th scope="col" className={mthCls}>{t('board.columns.stage')}</th>}
+          <th scope="col" className={`${mthCls} text-right`}>{t('board.columns.action')}</th>
         </tr></thead>
         <tbody className={tbodyCls}>{list.map((r, n) => <Fragment key={r.id}>
           {(n === 0 || list[n - 1].companyId !== r.companyId) && <tr><th scope="colgroup" colSpan={span} className="bg-muted/30 px-3 py-1.5 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">{r.company}</th></tr>}
           <tr className="align-top">
-            <td className="px-3 py-3">
-              <BoardUnitLink r={r} />
-              <div className="text-xs tabular-nums text-muted-foreground">{t('board.peopleCount', { count: r.people })}</div>
+            <td className="px-2 py-3">
+              <Link className="font-semibold text-primary hover:underline" href={`/rewards/${r.id}`}>{r.name}</Link>
+              <div className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">{t('board.peopleCount', { count: r.people })}</div>
+              <div title={r.cycle} className="max-w-[8rem] truncate text-xs text-muted-foreground">{r.cycle}</div>
             </td>
-            <td className="px-3 py-3 text-right"><BoardSalary r={r} /></td>
-            <td className="px-3 py-3 text-right"><BoardBonus r={r} /></td>
-            <td className="px-3 py-3 text-right"><span className={`tabular-nums ${r.blocking ? 'font-semibold text-destructive' : r.exceptions ? '' : 'text-muted-foreground'}`}>{r.exceptions + r.blocking}</span></td>
-            {r.progress ? r.progress.map(p => <td key={p.seat} className="px-3 py-3"><StepCell r={r} p={p} /></td>) : <td className="px-3 py-3">{dash}</td>}
-            <td className="px-3 py-3 text-right"><BoardAction r={r} /></td>
+            <td className="px-2 py-3 text-right"><BoardSalary r={r} /></td>
+            <td className="px-2 py-3 text-right"><BoardBonus r={r} /></td>
+            <td className="px-2 py-3 text-right"><span className={`tabular-nums ${r.blocking ? 'font-semibold text-destructive' : r.exceptions ? '' : 'text-muted-foreground'}`}>{r.exceptions + r.blocking}</span></td>
+            {r.progress ? r.progress.map(p => <td key={p.seat} className="px-1.5 py-3"><StepCell r={r} p={p} /></td>) : <td className="px-1.5 py-3">{dash}</td>}
+            <td className="px-2 py-3 text-right"><BoardAction r={r} /></td>
           </tr>
         </Fragment>)}</tbody>
       </table></div>
