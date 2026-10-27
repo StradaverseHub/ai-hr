@@ -651,6 +651,8 @@ export function Sidebar({
   // Single-open flyout state (fdc20776): the labelKey of the open module, or null. Clicking a
   // parent sets it (replacing any other open module); clicking the same parent again closes.
   const [openKey, setOpenKey] = useState<string | null>(null);
+  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
+  const mobileNavigationTrigger = useRef<HTMLButtonElement | null>(null);
   /**
    * WHICH SECTIONS ARE EXPANDED — the fix for a rail that did not fit.
    *
@@ -683,6 +685,7 @@ export function Sidebar({
   // effect never fires when switching report categories).
   useEffect(() => {
     setOpenKey(null);
+    setMobileNavigationOpen(false);
     setInlineOpen({});
     setRailKids({});
     setWorkspaceChoice(null);
@@ -1063,7 +1066,7 @@ export function Sidebar({
         <div key={item.labelKey} data-atelier-module={item.labelKey}>
           {item.defaultHref ? (
             <div className="atelier-row pr-0">
-              <Link href={item.defaultHref} className="flex min-w-0 flex-1 items-center gap-2.5 text-inherit no-underline">
+              <Link href={item.defaultHref} onClick={()=>setMobileNavigationOpen(false)} className="flex min-w-0 flex-1 items-center gap-2.5 text-inherit no-underline">
                 <Icon aria-hidden /><span className="truncate">{label}</span>
               </Link>
               <button ref={register} type="button" aria-label={label} aria-expanded={expanded} aria-controls={kidsId} onClick={flip}
@@ -1082,7 +1085,14 @@ export function Sidebar({
     };
     const initials = (viewerName ?? '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('');
     return (
-      <div className={cn('atelier-navigation-shell relative hidden h-full shrink-0 sm:flex', openNode && 'atelier-flyout-open z-50')}>
+      <div className="atelier-navigation-container" onKeyDown={event=>{
+        if(event.key==='Escape'&&!openNode&&mobileNavigationOpen){event.preventDefault();setMobileNavigationOpen(false);mobileNavigationTrigger.current?.focus();}
+      }}>
+      <button ref={mobileNavigationTrigger} type="button" className="atelier-mobile-toggle" aria-expanded={mobileNavigationOpen} aria-controls="atelier-mobile-navigation"
+        onClick={()=>{setMobileNavigationOpen(open=>!open);setOpenKey(null);}}>
+        <PanelLeftOpen aria-hidden className="size-4"/><span>{t('workspaceSwitch')}</span>
+      </button>
+      <div id="atelier-mobile-navigation" className={cn('atelier-navigation-shell relative h-full shrink-0 sm:flex', mobileNavigationOpen?'flex':'hidden', openNode && 'atelier-flyout-open z-50')}>
         <aside data-app-sidebar data-atelier-navigation className="atelier-rail">
           <Link href="/" aria-label={t('home')} className="atelier-workspace">
             <span data-brand-tile aria-hidden>AI</span>
@@ -1115,7 +1125,7 @@ export function Sidebar({
                     const label = t(item.labelKey);
                     const count = atelierCount(item.href);
                     return (
-                      <Link key={item.href} href={item.navigationHref ?? item.href} data-tour={item.tour}
+                      <Link key={item.href} href={item.navigationHref ?? item.href} onClick={()=>setMobileNavigationOpen(false)} data-tour={item.tour}
                         aria-label={count ? `${label}, ${t('approvalsCount', { count })}` : label}
                         aria-current={isRowActive(item) ? 'page' : undefined} className="atelier-row">
                         <Icon aria-hidden /><span className="truncate">{label}</span>
@@ -1141,7 +1151,8 @@ export function Sidebar({
         {openNode && <NavFlyoutPanel key={openNode.labelKey} layout="atelier" labelKey={openNode.labelKey}
           items={openChildren.map(child=>({...child,sectionKey:sectionLabel(child.href),pendingCount:child.href==='/tasks'?taskCount:child.href==='/approvals'?approvalCount:0})) as FlyoutChild[]}
           isActive={href=>href===activeChildHref} rowBase="atelier-row" panelId={`atelier-flyout-${openNode.labelKey}`}
-          onClose={()=>setOpenKey(null)} onEscape={()=>{pendingTriggerFocus.current=openNode.labelKey;setOpenKey(null);}}/>}
+          onClose={()=>{setOpenKey(null);setMobileNavigationOpen(false);}} onEscape={()=>{pendingTriggerFocus.current=openNode.labelKey;setOpenKey(null);}}/>}
+      </div>
       </div>
     );
   }
