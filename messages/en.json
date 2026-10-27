@@ -18125,7 +18125,21 @@
       "tlsFailed": "The secure connection could not be verified. Check the encryption setting and the server’s TLS certificate.",
       "connectionFailed": "Could not connect to the SMTP server. Check the hostname, port, encryption and provider’s network access rules.",
       "unavailable": "The connection test could not be completed. Re-enter the password and try again."
-    }
+    },
+    "connectionsTitle": "Outgoing mail connections",
+    "connectionName": "Connection name",
+    "connectionNamePlaceholder": "For example, OneHR Microsoft 365",
+    "newConnection": "New connection",
+    "noConnections": "No SMTP connections have been saved. Create a connection to start sending account emails.",
+    "connectionStatus": "Status",
+    "lastTest": "Last test",
+    "connectionActive": "Active",
+    "connectionSaved": "Saved",
+    "changesPending": "Changes not activated",
+    "notRecorded": "Not recorded",
+    "backToConnections": "Back to connections",
+    "saveConnection": "Save connection",
+    "activeChangesHelp": "The active relay continues using its last activated settings. Save, test and confirm receipt before activating these changes."
   },
   "workflowEmail": {
     "letterAccountTitle": "Letters for this account",
@@ -20430,7 +20444,30 @@
       "notEligible": "The invitation or recovery recipient is no longer eligible.",
       "uncertain": "Delivery is uncertain. Check before retrying to avoid duplicate messages."
     },
-    "reference": "Delivery reference"
+    "reference": "Delivery reference",
+    "message": "Message",
+    "recipient": "Recipient",
+    "status": "Status",
+    "dateTime": "Date and time",
+    "actions": "Actions",
+    "viewEmail": "View email",
+    "previewHelp": "Template preview. Live links and security tokens are hidden. This is not a stored copy of the original message.",
+    "resend": "Resend email",
+    "fromDate": "From date",
+    "toDate": "To date",
+    "filter": "Filter",
+    "clearFilters": "Clear filters",
+    "noMatchingEmails": "No account emails match this date range.",
+    "pagination": "Email history pages",
+    "pageSize": "{count} entries on this page",
+    "newest": "Newest",
+    "older": "Older",
+    "resendUnavailable": {
+      "superseded": "Replaced by a newer email.",
+      "closed": "The invitation is no longer pending.",
+      "pending": "An attempt is in progress."
+    },
+    "historyUnavailable": "Email history could not be loaded. Check the date range and try again."
   },
   "pageStyleRecovery": {
     "restoring": "Restoring the page…",

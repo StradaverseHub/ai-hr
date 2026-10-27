@@ -18125,7 +18125,21 @@
       "tlsFailed": "Sambungan selamat tidak dapat disahkan. Semak tetapan penyulitan dan sijil TLS pelayan.",
       "connectionFailed": "Tidak dapat menyambung ke pelayan SMTP. Semak nama hos, port, penyulitan dan peraturan akses rangkaian penyedia.",
       "unavailable": "Ujian sambungan tidak dapat diselesaikan. Masukkan semula kata laluan dan cuba lagi."
-    }
+    },
+    "connectionsTitle": "Sambungan mel keluar",
+    "connectionName": "Nama sambungan",
+    "connectionNamePlaceholder": "Contohnya, OneHR Microsoft 365",
+    "newConnection": "Sambungan baharu",
+    "noConnections": "Tiada sambungan SMTP disimpan. Cipta sambungan untuk menghantar e-mel akaun.",
+    "connectionStatus": "Status",
+    "lastTest": "Ujian terakhir",
+    "connectionActive": "Aktif",
+    "connectionSaved": "Disimpan",
+    "changesPending": "Perubahan belum diaktifkan",
+    "notRecorded": "Tidak direkodkan",
+    "backToConnections": "Kembali ke sambungan",
+    "saveConnection": "Simpan sambungan",
+    "activeChangesHelp": "Relay aktif terus menggunakan tetapan terakhir yang diaktifkan. Simpan, uji dan sahkan penerimaan sebelum mengaktifkan perubahan ini."
   },
   "workflowEmail": {
     "letterAccountTitle": "Surat untuk akaun ini",
@@ -20430,7 +20444,30 @@
       "notEligible": "Jemputan atau penerima pemulihan tidak lagi layak.",
       "uncertain": "Penghantaran tidak pasti. Semak sebelum mencuba semula untuk mengelakkan e-mel pendua."
     },
-    "reference": "Rujukan penghantaran"
+    "reference": "Rujukan penghantaran",
+    "message": "Mesej",
+    "recipient": "Penerima",
+    "status": "Status",
+    "dateTime": "Tarikh dan masa",
+    "actions": "Tindakan",
+    "viewEmail": "Lihat e-mel",
+    "previewHelp": "Pratonton templat. Pautan aktif dan token keselamatan disembunyikan. Ini bukan salinan mesej asal yang disimpan.",
+    "resend": "Hantar semula e-mel",
+    "fromDate": "Tarikh mula",
+    "toDate": "Tarikh akhir",
+    "filter": "Tapis",
+    "clearFilters": "Kosongkan penapis",
+    "noMatchingEmails": "Tiada e-mel akaun dalam julat tarikh ini.",
+    "pagination": "Halaman sejarah e-mel",
+    "pageSize": "{count} rekod pada halaman ini",
+    "newest": "Terkini",
+    "older": "Lebih lama",
+    "resendUnavailable": {
+      "superseded": "Digantikan dengan e-mel yang lebih baharu.",
+      "closed": "Jemputan ini tidak lagi menunggu penerimaan.",
+      "pending": "Percubaan sedang berjalan."
+    },
+    "historyUnavailable": "Sejarah e-mel tidak dapat dimuatkan. Semak julat tarikh dan cuba lagi."
   },
   "pageStyleRecovery": {
     "restoring": "Memulihkan halaman…",

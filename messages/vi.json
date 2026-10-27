@@ -18125,7 +18125,21 @@
       "tlsFailed": "Không thể xác minh kết nối bảo mật. Kiểm tra phương thức mã hóa và chứng chỉ TLS của máy chủ.",
       "connectionFailed": "Không thể kết nối máy chủ SMTP. Kiểm tra tên máy chủ, cổng, mã hóa và quy tắc truy cập mạng của nhà cung cấp.",
       "unavailable": "Không thể hoàn tất kiểm tra kết nối. Nhập lại mật khẩu và thử lại."
-    }
+    },
+    "connectionsTitle": "Kết nối thư đi",
+    "connectionName": "Tên kết nối",
+    "connectionNamePlaceholder": "Ví dụ: OneHR Microsoft 365",
+    "newConnection": "Kết nối mới",
+    "noConnections": "Chưa lưu kết nối SMTP nào. Tạo kết nối để gửi email tài khoản.",
+    "connectionStatus": "Trạng thái",
+    "lastTest": "Lần kiểm tra gần nhất",
+    "connectionActive": "Đang hoạt động",
+    "connectionSaved": "Đã lưu",
+    "changesPending": "Thay đổi chưa kích hoạt",
+    "notRecorded": "Chưa ghi nhận",
+    "backToConnections": "Quay lại danh sách kết nối",
+    "saveConnection": "Lưu kết nối",
+    "activeChangesHelp": "Máy chủ chuyển tiếp đang dùng cài đặt đã kích hoạt gần nhất. Lưu, kiểm tra và xác nhận nhận thư trước khi kích hoạt thay đổi."
   },
   "workflowEmail": {
     "letterAccountTitle": "Thư cho tài khoản này",
@@ -20430,7 +20444,30 @@
       "notEligible": "Lời mời hoặc người nhận email khôi phục không còn đủ điều kiện.",
       "uncertain": "Chưa rõ kết quả gửi. Kiểm tra trước khi gửi lại để tránh email trùng."
     },
-    "reference": "Mã tham chiếu gửi"
+    "reference": "Mã tham chiếu gửi",
+    "message": "Thư",
+    "recipient": "Người nhận",
+    "status": "Trạng thái",
+    "dateTime": "Ngày và giờ",
+    "actions": "Thao tác",
+    "viewEmail": "Xem email",
+    "previewHelp": "Xem trước mẫu. Liên kết thật và mã bảo mật đã được ẩn. Đây không phải bản sao thư gốc đã lưu.",
+    "resend": "Gửi lại email",
+    "fromDate": "Từ ngày",
+    "toDate": "Đến ngày",
+    "filter": "Lọc",
+    "clearFilters": "Xóa bộ lọc",
+    "noMatchingEmails": "Không có email tài khoản trong khoảng ngày này.",
+    "pagination": "Các trang lịch sử email",
+    "pageSize": "{count} mục trên trang này",
+    "newest": "Mới nhất",
+    "older": "Cũ hơn",
+    "resendUnavailable": {
+      "superseded": "Đã được thay thế bằng email mới hơn.",
+      "closed": "Lời mời không còn chờ chấp nhận.",
+      "pending": "Đang thực hiện gửi."
+    },
+    "historyUnavailable": "Không thể tải lịch sử email. Kiểm tra khoảng ngày rồi thử lại."
   },
   "pageStyleRecovery": {
     "restoring": "Đang khôi phục trang…",

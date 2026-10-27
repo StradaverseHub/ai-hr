@@ -18125,7 +18125,21 @@
       "tlsFailed": "无法验证安全连接。请检查加密设置及服务器的 TLS 证书。",
       "connectionFailed": "无法连接 SMTP 服务器。请检查主机名、端口、加密设置及提供商的网络访问规则。",
       "unavailable": "无法完成连接测试。请重新输入密码后重试。"
-    }
+    },
+    "connectionsTitle": "发件连接",
+    "connectionName": "连接名称",
+    "connectionNamePlaceholder": "例如，OneHR Microsoft 365",
+    "newConnection": "新建连接",
+    "noConnections": "尚未保存 SMTP 连接。请创建连接以发送账户邮件。",
+    "connectionStatus": "状态",
+    "lastTest": "上次测试",
+    "connectionActive": "使用中",
+    "connectionSaved": "已保存",
+    "changesPending": "更改尚未启用",
+    "notRecorded": "未记录",
+    "backToConnections": "返回连接列表",
+    "saveConnection": "保存连接",
+    "activeChangesHelp": "当前中继继续使用上次启用的设置。请先保存、测试并确认收到邮件，再启用更改。"
   },
   "workflowEmail": {
     "letterAccountTitle": "此账户的信函通知",
@@ -20430,7 +20444,30 @@
       "notEligible": "邀请或恢复邮件收件人已不再符合条件。",
       "uncertain": "发送结果不确定。请在重试前检查，以免重复发送。"
     },
-    "reference": "发送参考编号"
+    "reference": "发送参考编号",
+    "message": "邮件",
+    "recipient": "收件人",
+    "status": "状态",
+    "dateTime": "日期和时间",
+    "actions": "操作",
+    "viewEmail": "查看邮件",
+    "previewHelp": "模板预览。实际链接和安全令牌已隐藏。这不是已保存的原始邮件副本。",
+    "resend": "重新发送邮件",
+    "fromDate": "开始日期",
+    "toDate": "结束日期",
+    "filter": "筛选",
+    "clearFilters": "清除筛选",
+    "noMatchingEmails": "此日期范围内没有账户邮件。",
+    "pagination": "邮件历史分页",
+    "pageSize": "本页共 {count} 条记录",
+    "newest": "最新",
+    "older": "更早",
+    "resendUnavailable": {
+      "superseded": "已被更新的邮件替代。",
+      "closed": "此邀请已不再等待接受。",
+      "pending": "正在尝试发送。"
+    },
+    "historyUnavailable": "无法加载邮件历史。请检查日期范围后重试。"
   },
   "pageStyleRecovery": {
     "restoring": "正在恢复页面…",

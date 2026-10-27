@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import {recoveryEmailContent} from '../account-email-content';
 import { client } from '../../db/client';
 import { internalConfig } from './config';
 import { digest, opaque, validOpaque, passwordHash, validatePassword } from './crypto';
@@ -54,8 +55,7 @@ export async function sendInternalRecovery(email: string, context?: { deliveryId
     await writeRecord(tx, `recovery-active:${c.subject}`, { key }, c.subject);
     return raw;
   });
-  await sendInternalMail({ to: email, subject: 'Reset your AI HR password',
-    text: `A password reset was requested for your AI HR login.\n\nOpen this link within 30 minutes:\n${internalConfig().origin}/reset-password#token=${token}\n\nYour authenticator or a recovery code is still required if MFA is enrolled. If you did not request this, you can ignore this email.` }, transport);
+  await sendInternalMail({to:email,...recoveryEmailContent(`${internalConfig().origin}/reset-password#token=${token}`)},transport);
 }
 export async function completeRecovery(raw: string, password: string, code: string) {
   if (!validOpaque(raw)) throw new InternalAuthError('invalidChallenge');

@@ -7,11 +7,12 @@ import { opaque } from './crypto';
 import { INTERNAL_EMAIL_STATE_KEY } from './active-relay';
 import { sendSmtp, type Relay, type Mail, type MailTransport } from './smtp';
 import type {StoredEmailRelay} from '../identity/email-relay';
+import {publicEmailConnections,saveEmailConnection,testedEmailConnection,activateEmailConnection,type ConnectionState} from './email-connections';
 export { sendSmtp } from './smtp';
 export type { Relay, Mail, MailTransport } from './smtp';
 
 type Draft = StoredEmailRelay & { id: string; revision: string; testedAt: number | null };
-type MailState = { revision: string; active: StoredEmailRelay | null; drafts: Record<string, Draft> };
+type MailState = ConnectionState & {drafts: Record<string, Draft>};
 const STATE = INTERNAL_EMAIL_STATE_KEY;
 const emptyState = (): MailState => ({ revision: 'initial', active: null, drafts: {} });
 export async function recoveryMailReady() { return Boolean((await readRecord<MailState>(client, STATE))?.active); }
@@ -32,9 +33,35 @@ export async function internalEmailRequest<T>(request: EmailSettingsRequest, tra
     const state = await readRecord<MailState>(tx, STATE, true) || emptyState();
     const draft = state.drafts[identity.subject];
     if (request.op === 'view') {
+      const connections=publicEmailConnections(state);
+      const selected=request.connectionId&&state.connections&&Object.hasOwn(state.connections,request.connectionId)?state.connections[request.connectionId]:undefined;
+      if(request.connectionId&&request.connectionId!=='new'&&!selected)throw new EmailSettingsError('conflict');
       return { active: state.active ? { ...state.active.config, hasPassword: Boolean(state.active.password) } : null,
-        revision: state.revision, draft: draft ? { id: draft.id, config: draft.config, hasPassword: Boolean(draft.password), testedAt: draft.testedAt ? new Date(draft.testedAt).toISOString() : null } : null,
+        connections,selectedConnectionId:selected?.id,selectedConnectionName:selected?.name,
+        revision: state.revision, draft: selected?{id:selected.version,config:selected.config,hasPassword:Boolean(selected.password),testedAt:selected.testedAt&&selected.testedBy===identity.subject?new Date(selected.testedAt).toISOString():null}:request.connectionId?null:draft ? { id: draft.id, config: draft.config, hasPassword: Boolean(draft.password), testedAt: draft.testedAt ? new Date(draft.testedAt).toISOString() : null } : null,
         testRecipient: identity.email } satisfies EmailSettingsView as T;
+    }
+    if(request.op==='save'&&request.connectionName!==undefined){
+      const connection=saveEmailConnection(state,{id:request.connectionId,name:request.connectionName,revision:request.revision,config:emailConfigSchema.parse(request.config),password:request.password});
+      await writeRecord(tx,STATE,state,null);
+      await tx.unsafe("select app.append_auth_event($1::uuid,'app-user',$2::uuid,'identity-email.connection-saved','user',$2::uuid,$3::jsonb)",[ctx.tenantId,ctx.userId!,JSON.stringify({connectionId:connection.id,name:connection.name})]);
+      return {ok:true,connectionId:connection.id} as T;
+    }
+    if((request.op==='test'||request.op==='apply')&&request.connectionId){
+      const connection=testedEmailConnection(state,request.connectionId,request.draftId);
+      if(request.op==='test'){
+        connection.testedAt=null;connection.testedBy=null;
+        try{await transport({config:connection.config,password:connection.password},{to:identity.email!,subject:'AI HR email delivery test',text:'This verifies email delivery for your AI HR installation. Return to Admin → Email delivery and confirm receipt to activate it.'});}
+        catch{
+          await writeRecord(tx,STATE,state,null);
+          await tx.unsafe("select app.append_auth_event($1::uuid,'app-user',$2::uuid,'identity-email.test-failed','user',$2::uuid,$3::jsonb)",[ctx.tenantId,ctx.userId!,JSON.stringify({connectionId:connection.id})]);
+          return {failed:true} as T;
+        }
+        connection.testedAt=Date.now();connection.testedBy=identity.subject;
+      }else activateEmailConnection(state,connection.id,request.draftId,identity.subject,request.received);
+      await writeRecord(tx,STATE,state,null);
+      await tx.unsafe("select app.append_auth_event($1::uuid,'app-user',$2::uuid,$3,'user',$2::uuid,$4::jsonb)",[ctx.tenantId,ctx.userId!,request.op==='test'?'identity-email.test-accepted':'identity-email.applied',JSON.stringify({connectionId:connection.id})]);
+      return {ok:true} as T;
     }
     if (request.op === 'save') {
       if (request.revision !== state.revision) throw new EmailSettingsError('conflict');
@@ -61,6 +88,7 @@ export async function internalEmailRequest<T>(request: EmailSettingsRequest, tra
         if (!request.received) throw new EmailSettingsError('needsReceipt');
         if (!draft.testedAt || draft.testedAt < Date.now() - 30 * 60_000) throw new EmailSettingsError('needsTest');
         state.active = { config: draft.config, password: draft.password }; state.revision = opaque();
+        delete state.activeConnectionId;delete state.activeConnectionVersion;
         delete state.drafts[identity.subject];
       }
     }

@@ -24,6 +24,20 @@ beforeAll(migrateTestDb); beforeEach(async () => {
 const view=()=>internalEmailRequest<EmailSettingsView>({op:'view',actor});
 async function draft() {const initial=await view();await internalEmailRequest({op:'save',actor,revision:initial.revision,config,password:secret});return (await view()).draft!;}
 describe('HR-owned SMTP settings with actual private storage and authority',()=>{
+  it('stores named connections privately and switches only the selected tested version after receipt',async()=>{
+    const original=await view();
+    const saved=await internalEmailRequest<{connectionId:string}>({op:'save',actor,revision:original.revision,connectionName:'Primary',config,password:secret});
+    let selected=await internalEmailRequest<EmailSettingsView>({op:'view',actor,connectionId:saved.connectionId});
+    expect(selected.connections).toHaveLength(1);expect(selected.selectedConnectionName).toBe('Primary');expect(selected.active).toBeNull();
+    await expect(internalEmailRequest({op:'apply',actor,connectionId:saved.connectionId,draftId:selected.draft!.id,received:true})).rejects.toMatchObject({code:'needsTest'});
+    const send=vi.fn(async()=>{});await internalEmailRequest({op:'test',actor,connectionId:saved.connectionId,draftId:selected.draft!.id},send);
+    await internalEmailRequest({op:'apply',actor,connectionId:saved.connectionId,draftId:selected.draft!.id,received:true});
+    selected=await internalEmailRequest<EmailSettingsView>({op:'view',actor,connectionId:saved.connectionId});
+    expect(selected.connections?.filter(c=>c.active)).toHaveLength(1);
+    await internalEmailRequest({op:'save',actor,revision:selected.revision,connectionName:'Backup',config,password:'fictional-backup-secret'});
+    const after=await view();expect(after.connections).toHaveLength(2);expect(after.active).toMatchObject(config);
+    expect(JSON.stringify(after)).not.toContain(secret);expect(JSON.stringify(await owner.client`select * from app_internal_auth_record`)).not.toContain('fictional-backup-secret');
+  });
   it('keeps an application secret encrypted and activates only the tested draft after explicit receipt',async()=>{
     const oauth:EmailConfig={...config,host:'smtp.office365.com',port:587,security:'starttls',user:'hr@example.test',authentication:'microsoft365',oauth2:{tenantId:randomUUID(),clientId:randomUUID()}};
     await internalEmailRequest({op:'save',actor,revision:(await view()).revision,config:oauth,password:secret});let current=await view();const id=current.draft!.id;
