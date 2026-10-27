@@ -3522,6 +3522,13 @@
       "when": 1793025815553,
       "tag": "0603_letter_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 618,
+      "version": "7",
+      "when": 1793109999999,
+      "tag": "0641_account_email_delivery_history",
+      "breakpoints": true
     }
   ]
 }
