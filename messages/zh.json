@@ -2471,7 +2471,16 @@
         "clearConfirm": "接受这 {count} 个字段",
         "clearCancel": "取消",
         "excludeField": "排除此字段；保留原始证据",
-        "reason_date_format": "明确的日期格式可改写为 ISO，不改变所写的公历年、月、日。接受前请审核原始内容。"
+        "reason_date_format": "明确的日期格式可改写为 ISO，不改变所写的公历年、月、日。接受前请审核原始内容。",
+        "humanFieldsTitle": "缺失信息",
+        "humanFieldsHint": "仅添加您可以确认的信息。新字段初始为空，审核前仅保留在本地。请勿猜测日期、薪资或类别。",
+        "humanField": "用户添加的字段 {number}",
+        "humanOrigin": "此字段由您提供，并非来自原始数据。",
+        "humanValue": "您提供的值",
+        "humanConfirm": "我确认此值及其目标字段。",
+        "humanRemove": "移除添加的字段 {number}",
+        "removeField": "移除字段",
+        "addField": "添加字段"
       },
       "measurement": {
         "title": "比较导入流程",
@@ -2626,7 +2635,8 @@
         "page": "第 {page} 页，共 {pages} 页",
         "originalEvidence": "显示原文与已排除记录",
         "exclusionsRetained": "被排除的字段与记录仍保留在原始证据中，不会悄悄合并或导入。",
-        "limit": "已保留八个本地版本。请完成本次导入，或明确选择新来源重新审核；原始资料不会被悄悄移除。"
+        "limit": "已保留八个本地版本。请完成本次导入，或明确选择新来源重新审核；原始资料不会被悄悄移除。",
+        "humanSupplied": "用户提供，原始数据中未包含。"
       }
     },
     "wizard": {

@@ -1,7 +1,8 @@
 /** @vitest-environment jsdom */
 /** Authored UNRUN. DOM interaction only, not canonical import/browser/a11y proof. */
 import {afterEach,describe,expect,it,vi} from 'vitest';
-import {cleanup,fireEvent,render,screen} from '@testing-library/react';
+import {cleanup,fireEvent,render,screen,within} from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import {NextIntlClientProvider} from 'next-intl';
 import {PersonnelImportPreparationReview} from '../components/personnel-import-preparation-review';
 import {preparePersonnelImportMatrix,preparePersonnelImportText} from '../lib/personnel-import-preparation';
@@ -17,4 +18,40 @@ describe('local original-to-proposed Personnel review',()=>{
  it('requires explicit field mappings and structure confirmation for a single unlabeled record and preserves its original cells',()=>{const values=['001',' Alice ','alice@example.test','2020-01-01','full_time','2000.00'],onApply=vi.fn(),prep=preparePersonnelImportText({revisionId:'source',text:values.join('\t')},options),view=render(<NextIntlClientProvider locale="en" messages={en}><PersonnelImportPreparationReview preparation={prep} sourceRevisionId="source" onApply={onApply}/></NextIntlClientProvider>);const fields=view.container.querySelectorAll('fieldset');expect(fields).toHaveLength(6);expect((fields[0].querySelector('select') as HTMLSelectElement).value).toBe('');fireEvent.change(view.container.querySelector('article header select')!,{target:{value:'include'}});fireEvent.click(screen.getByRole('button',{name:en.people.import.preparation.apply}));expect(onApply).not.toHaveBeenCalled();fields.forEach((field,index)=>{fireEvent.change(field.querySelector('select')!,{target:{value:options.columns[index]}});fireEvent.click(field.querySelector('input[type=checkbox]')!);});fireEvent.click(screen.getByRole('button',{name:en.people.import.preparation.apply}));expect(onApply).not.toHaveBeenCalled();expect(screen.getByRole('alert').textContent).toBe(en.people.import.preparation.incomplete);fireEvent.click(screen.getByLabelText(en.people.import.preparation.structure));fireEvent.click(screen.getByRole('button',{name:en.people.import.preparation.apply}));expect(onApply).toHaveBeenCalledTimes(1);const result=onApply.mock.calls[0][0];expect(result.evidence.matrix[0].map((cell:{value:string})=>cell.value)).toEqual(values);expect(parsePersonnelCsv(result.text,'employee')[1][0]).toBe('001');});
  it('has an honest manual branch for unsupported prose with no apply control',()=>{render(<NextIntlClientProvider locale="en" messages={en}><PersonnelImportPreparationReview preparation={preparePersonnelImportText({revisionId:'source',text:'Alice is a lovely colleague with an unspecified salary.'},options)} sourceRevisionId="source" onApply={vi.fn()}/></NextIntlClientProvider>);expect(screen.getByRole('status').textContent).toContain(en.people.import.preparation.manual);expect(screen.queryByRole('button',{name:en.people.import.preparation.apply})).toBeNull();});
  it('refuses stale source adoption and never dumps the internal preparation error',()=>{const onApply=vi.fn(),view=render(<NextIntlClientProvider locale="en" messages={en}><PersonnelImportPreparationReview preparation={preparePersonnelImportMatrix({revisionId:'original',matrix},options)} sourceRevisionId="changed-after-review" onApply={onApply}/></NextIntlClientProvider>);fireEvent.change(view.container.querySelector('select')!,{target:{value:'include'}});for(const checkbox of view.container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))fireEvent.click(checkbox);fireEvent.click(screen.getByRole('button',{name:en.people.import.preparation.apply}));expect(onApply).not.toHaveBeenCalled();expect(screen.getByRole('alert').textContent).toBe(en.people.import.preparation.incomplete);expect(view.container.textContent).not.toContain('Preparation review incomplete.');});
+});
+
+describe('human adds absent information inside local preparation',()=>{
+ const source=()=>preparePersonnelImportMatrix({revisionId:'missing',matrix:[['employee_code','full_name','email','employment_type','basic_salary'],['E-ADD','Alice','alice-added@example.test','full_time','2500.00']]},options);
+ it('starts keyboard-added fields blank and unchecked; changed human values require a new review before application',async()=>{
+  const user=userEvent.setup(),onApply=vi.fn(),view=render(<NextIntlClientProvider locale="en" messages={en}><PersonnelImportPreparationReview preparation={source()} sourceRevisionId="missing" onApply={onApply}/></NextIntlClientProvider>);
+  await user.selectOptions(view.container.querySelector('article header select')!,'include');await user.click(screen.getByLabelText(en.people.import.preparation.structure));
+  for(const details of view.container.querySelectorAll<HTMLDetailsElement>('details'))if(!details.open)await user.click(details.querySelector('summary')!);
+  for(const checkbox of view.container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))if(!checkbox.checked)await user.click(checkbox);
+  await user.click(screen.getByRole('button',{name:en.people.import.preparation.apply}));expect(onApply).not.toHaveBeenCalled();
+  const add=screen.getByRole('button',{name:en.people.import.preparation.addField});add.focus();await user.keyboard('{Enter}');
+  const group=screen.getByRole('group',{name:en.people.import.preparation.humanField.replace('{number}','1')}),destination=within(group).getByLabelText(en.people.import.preparation.destination),value=within(group).getByLabelText(en.people.import.preparation.humanValue),review=within(group).getByLabelText(en.people.import.preparation.humanConfirm);
+  expect(document.activeElement).toBe(destination);expect((destination as HTMLSelectElement).value).toBe('');expect((value as HTMLInputElement).value).toBe('');expect((review as HTMLInputElement).checked).toBe(false);
+  await user.selectOptions(destination,'hired_on');await user.type(value,'2027-01-15');await user.click(review);expect((review as HTMLInputElement).checked).toBe(true);
+  await user.clear(value);await user.type(value,'2027-02-03');expect((review as HTMLInputElement).checked).toBe(false);
+  await user.click(screen.getByRole('button',{name:en.people.import.preparation.apply}));expect(onApply).not.toHaveBeenCalled();
+  await user.click(review);await user.click(screen.getByRole('button',{name:en.people.import.preparation.apply}));expect(onApply).toHaveBeenCalledTimes(1);
+  const applied=onApply.mock.calls[0][0];expect(applied.changes.find((row:{field:string})=>row.field==='hired_on')).toMatchObject({origin:'human_supplied',original:[],reason:'human_added',value:'2027-02-03'});expect(applied.evidence.matrix[0].map((cell:{value:string})=>cell.value)).not.toContain('hired_on');
+ });
+ it('never bulk-accepts additions, accounts for their conflicts, and supports keyboard removal with returned focus',async()=>{
+  const user=userEvent.setup();render(<NextIntlClientProvider locale="en" messages={en}><PersonnelImportPreparationReview preparation={source()} sourceRevisionId="missing" onApply={vi.fn()}/></NextIntlClientProvider>);
+  await user.click(screen.getByRole('button',{name:en.people.import.preparation.addField}));const group=screen.getByRole('group',{name:en.people.import.preparation.humanField.replace('{number}','1')});
+  await user.selectOptions(within(group).getByLabelText(en.people.import.preparation.destination),'email');await user.type(within(group).getByLabelText(en.people.import.preparation.humanValue),'other@example.test');
+  expect(screen.getByText(/Conflicting destinations:/)).toBeTruthy();
+  await user.click(screen.getByRole('button',{name:en.people.import.preparation.clearAction.replace('{count}','4')}));await user.click(screen.getByRole('button',{name:en.people.import.preparation.clearConfirm.replace('{count}','4')}));
+  expect((within(group).getByLabelText(en.people.import.preparation.humanConfirm) as HTMLInputElement).checked).toBe(false);
+  const remove=within(group).getByRole('button',{name:en.people.import.preparation.humanRemove.replace('{number}','1')});remove.focus();await user.keyboard(' ');
+  expect(screen.queryByRole('group',{name:en.people.import.preparation.humanField.replace('{number}','1')})).toBeNull();expect(document.activeElement).toBe(screen.getByRole('button',{name:en.people.import.preparation.addField}));expect(screen.getByRole('button',{name:en.people.import.preparation.clearAction.replace('{count}','1')})).toBeTruthy();
+ });
+ it('drops human additions when the caller changes the bound source revision, without adopting stale values',async()=>{
+  const user=userEvent.setup(),onApply=vi.fn(),prep=source(),view=render(<NextIntlClientProvider locale="en" messages={en}><PersonnelImportPreparationReview preparation={prep} sourceRevisionId="missing" onApply={onApply}/></NextIntlClientProvider>);
+  await user.click(screen.getByRole('button',{name:en.people.import.preparation.addField}));await user.type(screen.getByLabelText(en.people.import.preparation.humanValue),'PRIVATE LOCAL VALUE');
+  view.rerender(<NextIntlClientProvider locale="en" messages={en}><PersonnelImportPreparationReview preparation={prep} sourceRevisionId="changed-company-or-source" onApply={onApply}/></NextIntlClientProvider>);
+  expect(screen.queryByDisplayValue('PRIVATE LOCAL VALUE')).toBeNull();expect(screen.queryByLabelText(en.people.import.preparation.humanValue)).toBeNull();
+  await user.click(screen.getByRole('button',{name:en.people.import.preparation.apply}));expect(onApply).not.toHaveBeenCalled();expect(screen.getByRole('alert').textContent).toBe(en.people.import.preparation.incomplete);
+ });
 });

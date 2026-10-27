@@ -2471,7 +2471,16 @@
         "clearConfirm": "Chấp nhận {count} trường này",
         "clearCancel": "Hủy",
         "excludeField": "Loại trường này; giữ bằng chứng gốc",
-        "reason_date_format": "Có thể viết định dạng ngày rõ ràng thành ISO mà không đổi năm, tháng hoặc ngày Gregory đã ghi. Xem xét bản gốc trước khi chấp nhận."
+        "reason_date_format": "Có thể viết định dạng ngày rõ ràng thành ISO mà không đổi năm, tháng hoặc ngày Gregory đã ghi. Xem xét bản gốc trước khi chấp nhận.",
+        "humanFieldsTitle": "Thông tin còn thiếu",
+        "humanFieldsHint": "Chỉ thêm thông tin bạn có thể xác nhận. Các trường bắt đầu trống và chỉ lưu cục bộ cho đến khi được xem xét. Không đoán ngày, lương hoặc danh mục.",
+        "humanField": "Trường do người dùng thêm {number}",
+        "humanOrigin": "Bạn đã cung cấp trường này. Trường này không có trong nguồn.",
+        "humanValue": "Giá trị của bạn",
+        "humanConfirm": "Tôi xác nhận giá trị này và trường đích.",
+        "humanRemove": "Xóa trường đã thêm {number}",
+        "removeField": "Xóa trường",
+        "addField": "Thêm trường"
       },
       "measurement": {
         "title": "So sánh quy trình nhập",
@@ -2626,7 +2635,8 @@
         "page": "{page} / {pages}",
         "originalEvidence": "Hiện văn bản gốc và bản ghi bị loại trừ",
         "exclusionsRetained": "Trường và bản ghi bị loại trừ vẫn ở bằng chứng gốc; không bị âm thầm gộp hoặc nhập.",
-        "limit": "Đã giữ tám phiên bản cục bộ. Hoàn tất lần nhập này hoặc chọn rõ nguồn mới để xem xét khác; không âm thầm xóa bản gốc."
+        "limit": "Đã giữ tám phiên bản cục bộ. Hoàn tất lần nhập này hoặc chọn rõ nguồn mới để xem xét khác; không âm thầm xóa bản gốc.",
+        "humanSupplied": "Do người dùng cung cấp — không có trong nguồn gốc."
       }
     },
     "wizard": {

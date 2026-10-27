@@ -23,3 +23,59 @@ describe('evidence-preserving local Personnel preparation',()=>{
  it('uses the canonical framed-cell decoder so protected text never gains an extra prefix during preparation',()=>{const data=['E1',"'=LITERAL NAME",'alice@example.test','2020-01-01','full_time','2000.00'],text=buildPersonnelCsv('employee',[header,data]),prep=preparePersonnelImportText({revisionId:'original',text},options);if(prep.state!=='needs_review')throw Error();expect(prep.records[0].fields[1].cells[0].value).toBe(data[1]);const result=applyPersonnelImportPreparation(prep,'original',reviewed(prep),'new');expect(parsePersonnelCsv(result.text,'employee')[1][1]).toBe(data[1]);expect(result.evidence.text).toBe(text);expect(result.recordEvidence[0].rows).toEqual([3]);});
  it('makes original evidence immutable and leaves companion source objects and caller arrays unchanged',()=>{const rows=[header.slice(),row.slice()],prep=prepare(rows);if(prep.state!=='needs_review')throw Error();rows[1][1]='CALLER CHANGED';expect(prep.original.matrix[1][1].value).toBe(' Alice ');expect(Object.isFrozen(prep.original.matrix[1][1])).toBe(true);const companion='ORIGINAL FAMILY CSV';applyPersonnelImportPreparation(prep,'original',reviewed(prep),'new');expect(companion).toBe('ORIGINAL FAMILY CSV');});
 });
+
+/** Authored UNRUN: human additions repair genuinely absent source fields, never inferred values. */
+describe('explicit human-supplied missing fields',()=>{
+ const missing=()=>preparePersonnelImportMatrix({revisionId:'missing',matrix:[['employee_code','full_name','email','employment_type','basic_salary','Unresolved heading'],['E-ADD',' Alice ','alice-added@example.test','full_time','2500.00','keep original evidence']]},options);
+ function added(){const prep=missing();if(prep.state!=='needs_review')throw Error('Expected source review');const decisions:PreparationDecisions={...reviewed(prep),humanFields:{[prep.records[0].id]:[{id:'human:date',field:'hired_on',value:'2027-01-15',reviewed:true}]}};return{prep,decisions};}
+ it('fails without the truly absent Join Date, then serializes only the reviewed literal while preserving original source evidence',()=>{
+  const {prep,decisions}=added(),original=JSON.stringify(prep.original);
+  expect(()=>applyPersonnelImportPreparation(prep,'missing',reviewed(prep),'accepted')).toThrow('required field missing');
+  const result=applyPersonnelImportPreparation(prep,'missing',decisions,'accepted');
+  expect(parsePersonnelCsv(result.text,'employee')[1]).toEqual(['E-ADD','Alice','alice-added@example.test','2027-01-15','full_time','2500.00']);
+  expect(result.changes.find(change=>change.field==='hired_on')).toEqual({recordId:prep.records[0].id,fieldId:'human:date',original:[],field:'hired_on',value:'2027-01-15',reason:'human_added',origin:'human_supplied',changed:true});
+  expect(JSON.stringify(result.evidence)).toBe(original);expect(prep.records[0].fields.some(field=>field.suggestedField==='hired_on')).toBe(false);
+  expect(result.excludedCount).toBe(1);expect(result.recordEvidence[0].fields.at(-1)?.cells[0].value).toBe('keep original evidence');
+ });
+ it.each(['unreviewed','unknown-record','inherited-record','unknown-field','unknown-id','duplicate-id','unknown-property','blank-required','invalid-date','stale'] as const)('refuses %s additions without returning a new CSV revision',kind=>{
+  const {prep,decisions}=added(),record=prep.records[0].id,item={id:'human:date',field:'hired_on',value:'2027-01-15',reviewed:true};let humanFields:unknown={[record]:[item]};
+  if(kind==='unreviewed')item.reviewed=false;
+  if(kind==='unknown-record')humanFields={'foreign-record':[item]};
+  if(kind==='inherited-record')humanFields=Object.create({[record]:[item]});
+  if(kind==='unknown-field')item.field='model_private_override';
+  if(kind==='unknown-id')item.id=prep.records[0].fields[0].id;
+  if(kind==='duplicate-id')humanFields={[record]:[item,{...item,field:'department'}]};
+  if(kind==='unknown-property')humanFields={[record]:[{...item,sourceCell:{row:1,column:1}}]};
+  if(kind==='blank-required')item.value='';if(kind==='invalid-date')item.value='not-a-date';
+  expect(()=>applyPersonnelImportPreparation(prep,kind==='stale'?'other-source':'missing',{...decisions,humanFields} as PreparationDecisions,'accepted')).toThrow();
+ });
+ it('preserves human literal whitespace without silently normalizing or manufacturing source coordinates',()=>{
+  const prep=preparePersonnelImportMatrix({revisionId:'literal',matrix:[header,row]}, {columns:[...options.columns,'preferred_name']});if(prep.state!=='needs_review')throw Error();
+  const result=applyPersonnelImportPreparation(prep,'literal',{...reviewed(prep),humanFields:{[prep.records[0].id]:[{id:'human:literal',field:'preferred_name',value:'  Human supplied explanation  ',reviewed:true}]}},'accepted');
+  expect(result.changes.find(change=>change.origin==='human_supplied')).toMatchObject({original:[],value:'  Human supplied explanation  '});
+  expect(parsePersonnelCsv(result.text,'employee')[1].at(-1)).toBe('  Human supplied explanation  ');
+ });
+ it('rejects duplicate destinations against original fields and never treats numeric formulas as supplied amounts',()=>{
+  const {prep,decisions}=added(),record=prep.records[0].id;
+  expect(()=>applyPersonnelImportPreparation(prep,'missing',{...decisions,humanFields:{[record]:[...decisions.humanFields![record],{id:'human:duplicate',field:'basic_salary',value:'999',reviewed:true}]}},'accepted')).toThrow('field conflict');
+  const noSalary=preparePersonnelImportMatrix({revisionId:'no-salary',matrix:[['employee_code','full_name','email','hired_on','employment_type'],['E1','Alice','a@example.test','2027-01-15','full_time']]},options);if(noSalary.state!=='needs_review')throw Error();
+  expect(()=>applyPersonnelImportPreparation(noSalary,'no-salary',{...reviewed(noSalary),humanFields:{[noSalary.records[0].id]:[{id:'human:salary',field:'basic_salary',value:'=1000+1000',reviewed:true}]}},'accepted')).toThrow('value needs review');
+ });
+ it('applies identity collision rules across supplied and source-backed values and prevents bulk clear acceptance across their destination conflicts',()=>{
+  const prep=preparePersonnelImportMatrix({revisionId:'collision',matrix:[['employee_code','full_name','email','hired_on','employment_type','basic_salary'],['E1','Alice','a@example.test','2027-01-15','full_time','2000'],['E2','Bob','b@example.test','2027-01-15','full_time','2000']]},options);if(prep.state!=='needs_review')throw Error();
+  const decisions=reviewed(prep),second=prep.records[1],email=second.fields.find(field=>field.suggestedField==='email')!;
+  const fields={...decisions.fields,[email.id]:{field:'exclude',value:email.suggestedValue,reviewed:true as const}},humanFields={[second.id]:[{id:'human:email',field:'email',value:'a@example.test',reviewed:true}]};
+  expect(()=>applyPersonnelImportPreparation(prep,'collision',{...decisions,fields,humanFields},'accepted')).toThrow('duplicate identity');
+  const matches=personnelPreparationClearMatches(prep,prep.records.map(record=>record.id),{records:{},fields:{},humanFields:{[prep.records[0].id]:[{id:'human:conflict',field:'email',value:'new@example.test',reviewed:false}]} });
+  expect(matches.some(item=>item.id===prep.records[0].fields.find(field=>field.suggestedField==='email')!.id)).toBe(false);
+  expect(matches.some(item=>item.id.startsWith('human:'))).toBe(false);
+ });
+ it('keeps existing UTF-8, source-plus-added cell and per-record field caps without truncating supplied input',()=>{
+  const {prep,decisions}=added(),record=prep.records[0].id;
+  expect(()=>applyPersonnelImportPreparation(prep,'missing',{...decisions,humanFields:{[record]:[{id:'human:large',field:'hired_on',value:'界'.repeat(400000),reviewed:true}]}},'accepted')).toThrow('exceeds limits');
+  const wide=preparePersonnelImportMatrix({revisionId:'wide',matrix:[Array.from({length:128},(_,i)=>i<6?header[i]:'Unknown '+i),Array.from({length:128},(_,i)=>i<6?row[i]:'Evidence')]},options);if(wide.state!=='needs_review')throw Error();
+  expect(()=>applyPersonnelImportPreparation(wide,'wide',{...reviewed(wide),humanFields:{[wide.records[0].id]:[{id:'human:extra',field:'hired_on',value:'2027-01-15',reviewed:true}]}},'accepted')).toThrow('exceeds limits');
+  const cells=preparePersonnelImportMatrix({revisionId:'cells',matrix:[Array.from({length:64},(_,i)=>i<6?header[i]:'Unknown '+i),...Array.from({length:249},(_,n)=>Array.from({length:64},(_,i)=>i===0?'E'+n:i===2?'e'+n+'@example.test':i<6?row[i]:'Evidence'))]},options);if(cells.state!=='needs_review')throw Error();
+  expect(()=>applyPersonnelImportPreparation(cells,'cells',{...reviewed(cells),humanFields:{[cells.records[0].id]:[{id:'human:over-cap',field:'hired_on',value:'Native department',reviewed:true}]}},'accepted')).toThrow('exceeds limits');
+ });
+});

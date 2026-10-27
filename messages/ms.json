@@ -2471,7 +2471,16 @@
         "clearConfirm": "Terima {count} medan ini",
         "clearCancel": "Batal",
         "excludeField": "Kecualikan medan ini; kekalkan bukti asal",
-        "reason_date_format": "Format tarikh yang jelas boleh ditulis sebagai ISO tanpa mengubah tahun, bulan atau hari Gregorian yang dinyatakan. Semak sumber asal sebelum menerima."
+        "reason_date_format": "Format tarikh yang jelas boleh ditulis sebagai ISO tanpa mengubah tahun, bulan atau hari Gregorian yang dinyatakan. Semak sumber asal sebelum menerima.",
+        "humanFieldsTitle": "Maklumat yang tiada",
+        "humanFieldsHint": "Tambah hanya maklumat yang dapat anda sahkan. Medan bermula kosong dan kekal setempat sehingga disemak. Jangan teka tarikh, gaji atau kategori.",
+        "humanField": "Medan ditambah pengguna {number}",
+        "humanOrigin": "Anda membekalkan medan ini. Ia tiada dalam sumber asal.",
+        "humanValue": "Nilai anda",
+        "humanConfirm": "Saya mengesahkan nilai ini dan medan tujuannya.",
+        "humanRemove": "Buang medan tambahan {number}",
+        "removeField": "Buang medan",
+        "addField": "Tambah medan"
       },
       "measurement": {
         "title": "Bandingkan aliran import",
@@ -2626,7 +2635,8 @@
         "page": "{page} daripada {pages}",
         "originalEvidence": "Tunjukkan teks asal dan rekod dikecualikan",
         "exclusionsRetained": "Medan dan rekod dikecualikan kekal dalam bukti asal ini; ia tidak digabungkan atau diimport secara senyap.",
-        "limit": "Lapan semakan setempat telah disimpan. Selesaikan import ini atau pilih sumber baharu secara jelas untuk semakan lain; asal tidak dibuang secara senyap."
+        "limit": "Lapan semakan setempat telah disimpan. Selesaikan import ini atau pilih sumber baharu secara jelas untuk semakan lain; asal tidak dibuang secara senyap.",
+        "humanSupplied": "Dibekalkan pengguna — tiada dalam sumber asal."
       }
     },
     "wizard": {
