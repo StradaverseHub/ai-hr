@@ -83,6 +83,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
   }
   function signedPendingMessage(value:SignedClockStatus){
     if(value.status==='other_pending')return t('signedClockOtherPending');
+    if(value.status==='offline_pending')return t('signedClockOfflinePending');
     if(value.status!=='pending')return t('signedClockPending');
     if(value.reason==='unsupported')return t('signedClockUnsupported');
     if(value.reason==='invalid_evidence')return t('signedClockEvidenceRefused');
@@ -166,9 +167,11 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
   }
   async function submitSigned(saved:ClockDraft,owner:number){
     const controller=await signedClock(),pending=await controller.status();assertAuthGeneration(owner);
+    if(pending.status==='offline_pending')throw new Error(signedPendingMessage(pending));
     if(pending.status==='other_pending'||pending.status==='pending'&&(pending.requestId!==saved.requestId||pending.action!==saved.action))throw new Error(t('signedClockOtherPending'));
     const observed=await controller.recover(false,saved.requestId);assertAuthGeneration(owner);
     if(signedResult(observed,saved))return;
+    if(observed.status==='offline_pending')throw new Error(signedPendingMessage(observed));
     if(observed.status==='other_pending')throw new Error(t('signedClockOtherPending'));
     if(!await recovery.hasSignedAttempt(saved.requestId!)){
       if(!saved.geo?.source)throw new Error(t('signedClockSavedUnavailable'));
@@ -223,6 +226,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
     try{
       if(draft.clockProtocol==='signed'){
         const controller=await signedClock(),status=await controller.status();assertAuthGeneration(owner);
+        if(status.status==='offline_pending')throw new Error(signedPendingMessage(status));
         if(status.status==='pending'&&(status.requestId!==draft.requestId||status.action!==draft.action)||status.status==='other_pending')throw new Error(t('signedClockOtherPending'));
         const observed=await controller.recover(abandon,draft.requestId);assertAuthGeneration(owner);
         if(signedResult(observed,draft))return;
@@ -252,6 +256,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
     <LoadState loading={clock.loading} hasData={current!=null} error={clock.error} onRetry={clock.reload}/>
     {!!recovery.error&&<><Muted>{t('genericError')}</Muted><Button title={t('retry')} onPress={recovery.reload}/></>}
     {registrationNeeded&&<><Muted>{t('signedClockRegistrationRequired')}</Muted><Button title={t('integrityEnrollmentTitle')} onPress={()=>router.push('/integrity-keys')}/></>}
+    {signedStatus?.status==='offline_pending'&&<Muted>{t('signedClockOfflinePending')}</Muted>}
     {signedStatus?.status==='other_pending'&&<Muted>{t('signedClockOtherPending')}</Muted>}
     {current&&<>
       <View style={{borderBottomWidth:1,borderColor:palette.border,paddingBottom:18,gap:10}}>
@@ -292,7 +297,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
         </Card>}
         {draft?.phase==='uncertain'?<><Muted>{t('retrySameClock')}</Muted><Button title={t('checkReceipt')} onPress={()=>void recover()}/><Button title={t('retrySameClock')} disabled={!recovery.ready} onPress={()=>void submit()}/>
           {draft.clockProtocol==='signed'&&<Button title={t('pendingDiscard')} kind="quiet" onPress={()=>Alert.alert(t('pendingDiscard'),t('pendingDiscardConfirm'),[{text:t('cancel'),style:'cancel'},{text:t('pendingDiscard'),style:'destructive',onPress:()=>void recover(true)}])}/>}
-        </>:<SlideConfirm label={pending?t('preparingClock'):draft?.phase==='review'?t('slideRecord',{action:label}):t('slidePrepare',{action:label})} disabled={!current||pending||!recovery.ready||signedStatus?.status==='other_pending'||(draft?.phase==='review'&&current.deviceRequired&&!draft.deviceToken)} onConfirm={()=>void(draft?.phase==='review'?submit():prepare())}/>}
+        </>:<SlideConfirm label={pending?t('preparingClock'):draft?.phase==='review'?t('slideRecord',{action:label}):t('slidePrepare',{action:label})} disabled={!current||pending||!recovery.ready||(signedStatus?.status==='other_pending'||signedStatus?.status==='offline_pending')||(draft?.phase==='review'&&current.deviceRequired&&!draft.deviceToken)} onConfirm={()=>void(draft?.phase==='review'?submit():prepare())}/>}
         {draft&&draft.phase==='review'&&<Button title={t('cancel')} kind="quiet" onPress={cancel}/>}
         <Muted>{t('onlineClockOnly')}</Muted>
       </>}

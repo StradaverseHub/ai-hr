@@ -319,3 +319,9 @@ it('persists the local attempt before fresh discovery fails and later reports th
  expect(f.reportAttempt).toHaveBeenCalledWith(id,{assertCurrent:expect.any(Function)});
  expect(screen.queryByText('clockRecorded')).toBeNull();expect(f.post).not.toHaveBeenCalled();
 });
+
+it('blocks online clock preparation while the shared owner retains an offline context exchange',async()=>{
+ const f=fixture();f.setSignedState({status:'offline_pending',requestId:'saved-context',phase:'context_requested'});render(<f.App kind="clock"/>);
+ await screen.findByText('signedClockOfflinePending');expect(screen.getByText('slidePrepare')).toBeDisabled();
+ expect(f.capture).not.toHaveBeenCalled();expect(f.signed.start).not.toHaveBeenCalled();
+});

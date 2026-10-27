@@ -201,3 +201,28 @@ issuing or consuming permits, deciding elapsed-time trust or writing attendance.
 integration prerequisite; no offline screen/queue or registry endpoint is enabled by adding it.
 The host test executes the shipped adapter with actual Noble signature verification and Node
 SHA-256 in place of the Expo OS hashing port; that does not prove native OS or physical-device use.
+
+
+### One journal for online proofs and offline context exchange
+
+The installed-account signed clock snapshot now has a v2 form with mutually exclusive online pending
+work or an offline context exchange. Legacy v1 online snapshots normalize in memory, preserving
+original command/context/proof bytes; only subsequent committed transitions write v2. The encrypted
+storage domain, account scope, commit pointer and serialized queue remain the existing owner. An
+older binary refuses the new strict format rather than adopting an empty alternative journal.
+
+Offline reservation saves the original request binding, reconciled key reference and app-local
+request-start clock snapshot before the context request port may run. Same-binding retries retain
+that first anchor; another request/employment cannot replace it. After the response, a second local
+snapshot is captured before signature verification and committed alongside the exact verified raw
+context/digest. A ready context is reverified before reuse, without fetching a replacement or moving
+the anchor. Online start, advance, receipt lookup and abandonment cannot bypass this owner. The
+employee clock displays a distinct unfinished offline-preparation state and disables online preparation.
+
+The existing sealed storage admits a bounded 256 KiB clock snapshot for escaped context/anchor data,
+within the unchanged 64 MiB installation quota. Offline acquisition is a new allocation, never a
+quota-exempt resolution merely because online pending is empty. Existing receipt-driven online
+resolution remains possible at the cap. Raw snapshots/native references stay in encrypted local state;
+only the strict binding goes to the context request port. No live adapter supplies these optional
+ports yet. Offline claim signing/storage, close/retirement recovery, registry provisioning, batch
+sync and server adjudication must be integrated before any offline entry point is enabled.

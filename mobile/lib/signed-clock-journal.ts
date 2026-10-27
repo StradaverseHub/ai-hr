@@ -1,4 +1,4 @@
-/** One durable signed attempt per installed account. No offline acceptance, implicit replay or trust tier. */
+/** One installed-account proof owner. Context preparation does not enable offline attendance. */
 import {z} from 'zod';
 import {ClockCommand,ClockReceipt,SubmissionReceiptResponse,SubmissionAbandonResponse} from '../../lib/mobile-api/contract';
 import {ClockSourceSignals,OnlineClockIntegrityData,onlineClockClientData} from '../../lib/mobile-clock-integrity';
@@ -6,7 +6,9 @@ import * as C from '../../lib/mobile-integrity-contract';
 import {AndroidPlayCloudProject} from '../../lib/mobile-android-clock-policy';
 import {EnrollmentScope} from './enrollment-journal';
 import {ClockSigningKey} from './clock-signing-key';
-import {NativeCapabilities,type NativeIntegrityResult} from './integrity-bridge';
+import {NativeCapabilities,NativeClockSnapshot,type NativeIntegrityResult} from './integrity-bridge';
+import {OfflineClockContextBinding,OfflineClockContextData,offlineClockContextClientData,type OfflineClockContextVerificationResult} from '../../lib/mobile-offline-context';
+import {OfflineClockExchange,validateOfflineClockExchange} from './offline-clock-state';
 const uuid=z.string().uuid().transform(value=>value.toLowerCase()),sha=z.string().length(64).regex(/^[a-f0-9]{64}$/);
 const reference=z.object({employmentId:uuid,requestId:uuid,baseDigest:sha,action:z.enum(['in','out'])}).strict();
 const disposition=z.object({receipt:ClockReceipt.nullable(),abandoned:z.boolean()}).strict().refine(value=>!!value.receipt!==value.abandoned);
@@ -15,7 +17,8 @@ const active=reference.extend({phase:z.enum(['intent','prepared','proof_ready','
  context:OnlineClockIntegrityData.nullable(),proof:z.string().min(4).max(10924).nullable()}).strict();
 const settled=reference.extend({phase:z.literal('settled'),disposition}).strict();
 const pending=z.union([active,settled]);
-const snapshot=z.object({version:z.literal(1),revision:z.number().int().positive().max(999999999999999),scope:EnrollmentScope,pending:pending.nullable()}).strict();
+const legacySnapshot=z.object({version:z.literal(1),revision:z.number().int().positive().max(999999999999999),scope:EnrollmentScope,pending:pending.nullable()}).strict();
+const snapshot=legacySnapshot.extend({version:z.literal(2),offline:OfflineClockExchange.nullable()}).refine(value=>!value.pending||!value.offline);
 export type SignedClockSnapshot=z.infer<typeof snapshot>;
 export type SignedClockReference=z.infer<typeof reference>;
 export type SignedClockPending=z.infer<typeof active>;
@@ -26,6 +29,7 @@ export type SignedClockUnavailableReason='unavailable'|'configuration'|'storage'
 export class SignedClockUnavailable extends Error{constructor(readonly reason:SignedClockUnavailableReason='unavailable'){super('Signed clocking unavailable');this.name='SignedClockUnavailable';}}
 const refusal=C.IntegrityRefused.omit({outcome:true});
 export type SignedClockStatus={status:'empty'}|{status:'other_pending'}|
+ {status:'offline_pending';requestId:string;phase:OfflineClockExchange['phase']}|
  {status:'pending';requestId:string;action:'in'|'out';phase:z.infer<typeof pending>['phase'];reason?:string;refusal?:z.infer<typeof refusal>}|
  {status:'accepted';receipt:z.infer<typeof ClockReceipt>}|{status:'abandoned'};
 export type SignedClockPorts={
@@ -40,11 +44,20 @@ export type SignedClockPorts={
  receipt(employmentId:string,requestId:string):Promise<unknown>;
  abandon(employmentId:string,requestId:string):Promise<unknown>;
  resolveBase(reference:SignedClockReference):Promise<void>;
+ offline?:{
+  snapshot():NativeIntegrityResult<NativeClockSnapshot>;
+  request(binding:OfflineClockContextBinding):Promise<string>;
+  verify(raw:string,binding:OfflineClockContextBinding):Promise<OfflineClockContextVerificationResult>;
+ };
+
 };
 function same(a:unknown,b:unknown){return JSON.stringify(a)===JSON.stringify(b);}
 export function parseSignedClockSnapshot(raw:unknown,scope:EnrollmentScope):SignedClockSnapshot{
  try{
-  const value=snapshot.parse(raw);if(!same(value.scope,EnrollmentScope.parse(scope)))throw new Error();
+  const parsed=z.union([legacySnapshot,snapshot]).parse(raw);
+  const value=parsed.version===1?{...parsed,version:2 as const,offline:null}:parsed;
+  if(!same(value.scope,EnrollmentScope.parse(scope)))throw new Error();
+  if(value.offline)validateOfflineClockExchange(value.offline,scope);
   const p=value.pending;if(p&&p.phase!=='settled'){
    if(p.key.apiOrigin!==scope.apiOrigin||p.key.actorId!==scope.actorId||p.key.appInstallationId!==scope.appInstallationId||p.evidence.platform!==p.key.platform)throw new Error();
    if(p.key.platform==='ios'?p.project!==null:p.project===null)throw new Error();
@@ -61,10 +74,11 @@ function exclusive<T>(key:string,work:()=>Promise<T>){const next=(queues.get(key
 export function createSignedClockJournal(rawScope:EnrollmentScope,ports:SignedClockPorts){
  const scope=EnrollmentScope.parse(rawScope),queue=JSON.stringify(['signed-clock-v1',scope]);
  async function owned<T>(work:()=>Promise<T>){ports.assertCurrent();try{const value=await work();ports.assertCurrent();return value;}catch(error){ports.assertCurrent();throw error;}}
- async function read(){const raw=await owned(()=>ports.read());return raw?parseSignedClockSnapshot(raw,scope):{version:1 as const,revision:0,scope,pending:null};}
+ async function read(){const raw=await owned(()=>ports.read());return raw?parseSignedClockSnapshot(raw,scope):{version:2 as const,revision:0,scope,pending:null,offline:null};}
  type State=Awaited<ReturnType<typeof read>>;
- async function save(s:State,p:SignedClockSnapshot['pending']){const next=parseSignedClockSnapshot({version:1,revision:s.revision+1,scope,pending:p},scope);await owned(()=>ports.commit(structuredClone(next)));return next;}
+ async function save(s:State,p:SignedClockSnapshot['pending']){const next=parseSignedClockSnapshot({...s,version:2,revision:s.revision+1,scope,pending:p},scope);await owned(()=>ports.commit(structuredClone(next)));return next;}
  function status(s:State,selected:string,reason?:string,refused?:z.infer<typeof C.IntegrityRefused>):SignedClockStatus{
+  if(s.offline)return s.offline.binding.scope.employmentId!==selected?{status:'other_pending'}:{status:'offline_pending',requestId:s.offline.binding.request.requestId,phase:s.offline.phase};
   const p=s.pending;return !p?{status:'empty'}:p.employmentId!==selected?{status:'other_pending'}:{status:'pending',requestId:p.requestId,action:p.action,phase:p.phase,...(reason?{reason}:{}),...(refused?{refusal:refusal.parse(refused)}:{})};
  }
  async function base(p:SignedClockReference){const value=baseSchema.parse(await owned(()=>ports.base(p.employmentId,p.requestId)));if(value.digest!==p.baseDigest||value.command.requestId!==p.requestId||value.command.action!==p.action)throw new SignedClockConflict();return value;}
@@ -81,10 +95,46 @@ export function createSignedClockJournal(rawScope:EnrollmentScope,ports:SignedCl
   const value=C.IntegrityClockCapabilities.parse(await owned(()=>ports.capabilities()));
   if(value.outcome!=='capabilities'||value.platform!==platform)throw new SignedClockUnavailable('configuration');return value;
  }
+ async function saveOffline(s:State,offline:OfflineClockExchange){
+  const next=parseSignedClockSnapshot({...s,version:2,revision:s.revision+1,offline},scope);
+  await owned(()=>ports.commit(structuredClone(next)));return next;
+ }
+ function offlinePorts(){if(!ports.offline)throw new SignedClockUnavailable('configuration');return ports.offline;}
+ function localSnapshot(){const result=offlinePorts().snapshot();ports.assertCurrent();if(result.status!=='evidence')throw new SignedClockUnavailable(result.status==='unsupported'?'unsupported':'native_unavailable');return NativeClockSnapshot.parse(result.evidence);}
+ async function verifyOffline(raw:string,binding:OfflineClockContextBinding){
+  const result=await owned(()=>offlinePorts().verify(raw,structuredClone(binding)));
+  if(result.outcome!=='signature_valid'||result.authorization!=='not_granted'||!sha.safeParse(result.digest).success)throw new SignedClockUnavailable('configuration');
+  return {...result,context:OfflineClockContextData.parse(result.context)};
+ }
  return {
+  reserveOffline:(input:unknown)=>exclusive(queue,async()=>{
+   const binding=OfflineClockContextBinding.parse(input),s=await read();offlinePorts();
+   if(s.pending)throw new SignedClockConflict();
+   if(s.offline){if(!same(s.offline.binding,binding))throw new SignedClockConflict();return status(s,binding.scope.employmentId);}
+   const found=await owned(()=>ports.key()),key=ClockSigningKey.parse(found.key),capability=NativeCapabilities.parse(found.capability);
+   if(capability.platform!==key.platform||(key.platform==='ios'?capability.keyMechanism!=='apple_app_attest'||!key.appId.endsWith('.'+capability.appId):capability.keyMechanism!=='android_keystore'||key.appId!==capability.appId))throw new SignedClockConflict();
+   const offline=validateOfflineClockExchange({phase:'context_requested',binding,key,requestStarted:localSnapshot()},scope);
+   return status(await saveOffline(s,offline),binding.scope.employmentId);
+  }),
+  prepareOffline:(expectedRequestId:string)=>exclusive(queue,async()=>{
+   const expected=uuid.parse(expectedRequestId),s=await read(),p=s.offline;offlinePorts();
+   if(!p||s.pending||p.binding.request.requestId!==expected)throw new SignedClockConflict();
+   if(p.phase==='context_ready'){
+    const verified=await verifyOffline(p.rawContext,p.binding);
+    if(verified.digest!==p.digest||offlineClockContextClientData(verified.context)!==offlineClockContextClientData((JSON.parse(p.rawContext) as {context:unknown}).context))throw new SignedClockConflict();
+    return status(s,p.binding.scope.employmentId);
+   }
+   const raw=await owned(()=>offlinePorts().request(structuredClone(p.binding))),responseReceived=localSnapshot();
+   const verified=await verifyOffline(raw,p.binding);
+   const next=validateOfflineClockExchange({...p,phase:'context_ready',rawContext:raw,digest:verified.digest,responseReceived},scope);
+   const parsed=JSON.parse(raw) as {context:unknown};
+   if(offlineClockContextClientData(verified.context)!==offlineClockContextClientData(parsed.context))throw new SignedClockConflict();
+   return status(await saveOffline(s,next),p.binding.scope.employmentId);
+  }),
   status:(employmentId:string)=>exclusive(queue,async()=>status(await read(),uuid.parse(employmentId))),
   start:(employmentId:string,requestId:string)=>exclusive(queue,async()=>{
    const selected=uuid.parse(employmentId),id=uuid.parse(requestId),s=await read();
+   if(s.offline)throw new SignedClockConflict();
    if(s.pending){if(s.pending.employmentId!==selected||s.pending.requestId!==id)throw new SignedClockConflict();return status(s,selected);}
    const b=baseSchema.parse(await owned(()=>ports.base(selected,id)));if(b.command.requestId!==id)throw new SignedClockConflict();
    const found=await owned(()=>ports.key()),key=ClockSigningKey.parse(found.key),cap=NativeCapabilities.parse(found.capability),features=await capabilities(key.platform);
@@ -96,14 +146,14 @@ export function createSignedClockJournal(rawScope:EnrollmentScope,ports:SignedCl
    return status(await save(s,p),selected);
   }),
   recover:(employmentId:string,abandon=false,expectedRequestId?:string)=>exclusive(queue,async()=>{
-   const selected=uuid.parse(employmentId),expected=expectedRequestId===undefined?undefined:uuid.parse(expectedRequestId),s=await read(),p=s.pending;if(!p||p.employmentId!==selected)return status(s,selected);
+   const selected=uuid.parse(employmentId),expected=expectedRequestId===undefined?undefined:uuid.parse(expectedRequestId),s=await read(),p=s.pending;if(s.offline||!p||p.employmentId!==selected)return status(s,selected);
    if(expected!==undefined&&p.requestId!==expected)throw new SignedClockConflict();
    const value=await owned(()=>abandon?ports.abandon(selected,p.requestId):ports.receipt(selected,p.requestId)),d=checkedDisposition(value,p,abandon);
    return d?finish(s,p,d):status(s,selected,'uncertain');
   }),
   advance:(employmentId:string,expectedRequestId?:string)=>exclusive(queue,async()=>{
    const selected=uuid.parse(employmentId),expected=expectedRequestId===undefined?undefined:uuid.parse(expectedRequestId);let s=await read();const p=s.pending;
-   if(!p||p.employmentId!==selected)return status(s,selected);
+   if(s.offline||!p||p.employmentId!==selected)return status(s,selected);
    if(expected!==undefined&&p.requestId!==expected)throw new SignedClockConflict();
    const existing=await observe(s,p);if(existing)return existing;
    if(p.phase==='settled')return status(s,selected,'uncertain');

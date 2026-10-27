@@ -19,6 +19,7 @@ const en = {
 
   signedClockRegistrationRequired: "Register this device before using signed attendance.",
   signedClockPending: "This signed attendance attempt is unresolved. Check its receipt, retry the saved attempt, or discard it through the company server.",
+  signedClockOfflinePending: "Offline clock preparation is unfinished. Resume it before starting an online attempt.",
   signedClockOtherPending: "A signed attendance attempt is pending under another work profile. Select that profile to check its receipt, or contact HR.",
   signedClockSavedUnavailable: "The saved signed command could not be read. Check its receipt or discard it through the company server.",
 
@@ -283,6 +284,7 @@ const ms: Record<MessageKey, string> = {
 
   signedClockRegistrationRequired: "Daftarkan peranti ini sebelum merekod kehadiran bertandatangan.",
   signedClockPending: "Cubaan kehadiran bertandatangan ini belum disahkan. Semak resit, cuba semula cubaan tersimpan, atau buangnya melalui pelayan syarikat.",
+  signedClockOfflinePending: "Persediaan rekod kehadiran luar talian belum selesai. Sambungkannya sebelum memulakan cubaan dalam talian.",
   signedClockOtherPending: "Cubaan kehadiran bertandatangan masih tertunda di bawah profil kerja lain. Pilih profil itu untuk menyemak resit atau hubungi HR.",
   signedClockSavedUnavailable: "Arahan bertandatangan tersimpan tidak dapat dibaca. Semak resit atau buangnya melalui pelayan syarikat.",
 

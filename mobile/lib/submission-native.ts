@@ -151,9 +151,10 @@ async function nativeEnrollmentStorage<T extends {revision:number;pending:unknow
   const key=await encryptionKey(assertCurrent);assertCurrent();
   const keyId=await hash(await key.encoded('base64'));assertCurrent();
   const pointer=`aihr.${prefix}.${keyId.slice(0,16)}.${scopeId}`,directory=new Directory(root(),`${prefix}-${scopeId}`);
-  // Apple retains up to fifteen predecessor contexts beside a 64 KiB attestation (base64 in JSON).
-  // Keep that bounded history and one-use proof recoverable together; install-wide quota is unchanged.
-  const maximum=domain==='enrollment-v1'?262144:domain==='android-enrollment-v1'?131072:65536;
+  // Apple retains predecessor enrollment contexts beside a bounded attestation. The shared clock
+  // owner also retains a signed server envelope plus app-local exchange anchors. Both use 256 KiB;
+  // Android enrollment retains its 128 KiB bound. The install-wide quota remains unchanged.
+  const maximum=domain==='android-enrollment-v1'?131072:262144;
   const aad=new TextEncoder().encode(`aihr-${domain}:${scopeId}:journal`);
   const file=(slot:0|1)=>new File(directory,`journal-${slot}.sealed`);
   const reclaim=(revision:number)=>{assertCurrent();const old=file((1-revision%2) as 0|1);if(old.exists)old.delete();};
@@ -192,6 +193,6 @@ export async function openNativeAndroidEnrollmentJournal(rawScope:EnrollmentScop
 /** One installed-account lease across employments; no proof or network action while opening. */
 export async function openNativeSignedClockJournal(rawScope:EnrollmentScope,assertCurrent:()=>void,ports:Omit<SignedClockPorts,'assertCurrent'|'read'|'commit'>){
  const scope=EnrollmentScope.parse(rawScope),storage=await nativeEnrollmentStorage(scope,assertCurrent,value=>parseSignedClockSnapshot(value,scope),'signed-clock-v1',
-  snapshot=>!snapshot.pending||snapshot.pending.phase==='settled');
+  snapshot=>(!snapshot.pending&&!snapshot.offline)||snapshot.pending?.phase==='settled');
  return createSignedClockJournal(scope,{...ports,assertCurrent,read:storage.read,commit:storage.commit});
 }

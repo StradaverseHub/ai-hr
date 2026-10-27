@@ -356,3 +356,24 @@ describe('encrypted installed-account signed clock lease',()=>{
   await expect(f.native.nativeIntegrityInstallationId(()=>{})).rejects.toBeInstanceOf(enrollment.EnrollmentJournalUnavailable);
  });
 });
+
+function offlinePortsForStorage(s:ReturnType<typeof signedPorts>){
+ const binding={scope:{apiOrigin:s.scope.apiOrigin,installationId:scope.actorId,tenantId:scope.actorId,companyId:scope.actorId,actorId:s.scope.actorId,employmentId:scope.employmentId,appInstallationId:s.scope.appInstallationId,deviceKeyId:requestId},
+  target:{platform:'ios' as const,appId:'ABCDEFGHIJ.ai.hr',environment:'production' as const},request:{requestId,requestNonce:'A'.repeat(43),appInstallationId:s.scope.appInstallationId,keyId:requestId}};
+ s.ports.offline={snapshot:()=>({status:'evidence',verification:'not_verified',evidence:{localOnly:true,runtimeId:scope.actorId,source:'ios_continuous',elapsedBeforeNs:'10',elapsedAfterNs:'11',wallTimeMs:1793055753390,bootId:null}}),
+  request:vi.fn(async()=>{throw Error('not requested');}),verify:vi.fn(async()=>{throw Error('not requested');})};
+ return binding;
+}
+it('seals offline request and raw local anchor in the existing account owner and restores them across restart',async()=>{
+ const f=fixture(),s=signedPorts(),binding=offlinePortsForStorage(s),open=()=>f.native.openNativeSignedClockJournal(s.scope,()=>{},s.ports);
+ await (await open()).reserveOffline(binding);
+ expect(await (await open()).status(scope.employmentId)).toMatchObject({status:'offline_pending',requestId,phase:'context_requested'});
+ const paths=[...f.files.keys()].filter(path=>path.includes('/signed-clock-'));expect(paths).toHaveLength(1);
+ const ciphertext=Buffer.from(f.files.get(paths[0])!).toString();expect(ciphertext).not.toContain('requestStarted');expect(ciphertext).not.toContain(requestId);
+ await expect((await open()).start(scope.employmentId,requestId)).rejects.toThrow('Review the saved signed clock attempt');expect(s.ports.offline!.request).not.toHaveBeenCalled();
+});
+it('does not treat new offline preparation as quota-exempt resolution merely because online pending is empty',async()=>{
+ const f=fixture(),s=signedPorts(),binding=offlinePortsForStorage(s),j=await f.native.openNativeSignedClockJournal(s.scope,()=>{},s.ports);
+ f.occupy(64*1024*1024);await expect(j.reserveOffline(binding)).rejects.toThrow();
+ expect(s.ports.offline!.request).not.toHaveBeenCalled();expect(s.ports.sign).not.toHaveBeenCalled();
+});

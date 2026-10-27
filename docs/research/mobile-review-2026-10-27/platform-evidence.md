@@ -1929,3 +1929,13 @@ moves verifier binding/result types into the existing portable context contract.
 only those portable types, keeping native Expo declarations in the native compilation boundary.
 The shared binding schema still checks expected installation/key agreement with expected scope.
 The repair requires fresh affected tests and root/native compilation; the original run is retained.
+
+
+Repair `56aabb8cd12450a44dfd3df657080d8d17f7e2cc` passed
+[40525991283](https://github.com/StradaverseHub/ai-hr/actions/runs/40525991283): all 18 server and
+18 shipped-client verifier cases, root TypeScript (4:24.60, maximum RSS 7,695,220 KiB, exit 0)
+and strict native TypeScript. The client host tests use actual Noble Ed25519 and Node SHA-256 in
+place of the Expo OS digest port. They cover both app targets, Unicode bytes, original request
+UUID/nonce, every scope UUID/origin, issuer fingerprint/revocation/validity, signature tampering,
+malformed input and owner loss at either hash, including failure. Native OS hashing, physical
+vendor acceptance, authenticated registry provisioning and offline attendance remain unverified.
