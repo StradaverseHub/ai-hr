@@ -37,5 +37,5 @@ export async function assertMobileClockCommit(tx:Tx,ctx:SessionContext,employmen
  if(platform!=='ios'&&platform!=='android')throw unavailable();
  const current=configured(platform,ctx,companyId);
  if(!current)throw new IntegrityConfigurationUnavailable('not_configured');
- if(!isSecretStorable()||JSON.stringify(current.configuration)!==JSON.stringify(initial))throw unavailable();
+ if(!isSecretStorable())throw unavailable();
 }
