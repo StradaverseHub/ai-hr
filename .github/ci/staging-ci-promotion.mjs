@@ -41,14 +41,14 @@ export async function transferAndLaunchCiBuild({grant,evidence,official,ssh,tran
  save('launch.json',{output,installId:grant.installId,testingBuildRecordId:grant.build.buildRecordId,nextBuildId:grant.build.nextBuildId});
  return {grant,acknowledgement,output};
 }
-export function validateInstalledArrival(status,grant,expectedLedger){
+export function validateInstalledArrival(status,grant,expectedLedger,{now=Date.now()}={}){
  assert(status?.authorizationSha256===installHash(Buffer.from(installJson(grant)+'\n'))&&status.releaseAuthorized===false,'Recipient installation grant differs');
  for(const record of [status.verified,status.activated,status.runtime]){
   assert(record?.source===grant.source&&record.installId===grant.installId&&record.buildRecordId===grant.build.buildRecordId&&record.nextBuildId===grant.build.nextBuildId&&record.authorizationSha256===status.authorizationSha256,'Recipient build tuple differs');
  }
  const runtime=status.runtime,observed=Date.parse(runtime.verifiedAt);
  assert(runtime.healthStatus===200&&/^[1-9][0-9]*$/.test(runtime.pid)&&Number.isSafeInteger(runtime.startedMonotonicUs)&&runtime.startedMonotonicUs>=status.activated.afterActivationMonotonicUs
-  &&Number.isFinite(observed)&&observed<=Date.now()+60000&&Date.now()-observed<=60000,'Fresh post-activation runtime/health proof required');
+  &&Number.isFinite(now)&&Number.isFinite(observed)&&observed<=now+60000&&now-observed<=60000,'Fresh post-activation runtime/health proof required');
  const inventory=runtime.compiledByteInventory;
  assert(inventory?.kind==='next-build-byte-bundle'&&inventory.releaseAuthorized===false&&inventory.runtimeCacheExcluded===true&&Number.isSafeInteger(inventory.files)&&inventory.files>0,'Actual complete immutable compiled-byte inventory required');
  const ledger=runtime.migrationLedger;

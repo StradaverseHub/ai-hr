@@ -20,7 +20,7 @@ function fixture(){
  const observation=createSourceChecksumObservation(grant,{output:'',checkedAt:new Date().toISOString()});
  const events=[],input={grant,observation,expectedLedger};
  const operations={observe:async()=>{events.push('full-before');return installed;},cleanupAfterFreshArrival:async request=>{
-  validateCleanupRequest(request,grant);events.push('owned-cleanup-and-full-after');return cleaned;
+  validateCleanupRequest(request,grant);events.push('owned-cleanup-and-full-after');cleaned.runtime.verifiedAt=new Date().toISOString();return cleaned;
  }};
  return {grant,observation,expectedLedger,installed,cleaned,events,input,operations};
 }
@@ -87,4 +87,27 @@ test('parent independently refuses replayed request bindings, altered results an
  }
  const another=structuredClone(f.observation);another.checkedAt=new Date(Date.now()+1).toISOString();
  assert.throws(()=>validateArrivalAndCleanupResult(value,{...f.input,observation:another}));
+});
+test('before proof stays historical after long cleanup: fresh when used, ordered, source-bound; after proof must be fresh now',async()=>{
+ const f=fixture(),value=await completeArrivalAndCleanup(f.input,f.operations);
+ // Retained phase evidence is deliberately older than one minute at response time.
+ // Its grant was already valid at that phase, and the final proof is still current.
+ const {grant}=installationFixture(Date.now()-180000),used=Date.now()-120000;
+ const historical=structuredClone(value),observation=structuredClone(f.observation);
+ const authorizationSha256=installHash(installJson(grant)+'\n');
+ observation.installId=grant.installId;observation.authorizationSha256=authorizationSha256;observation.checkedAt=new Date(used-1000).toISOString();
+ for(const status of [historical.installed.verified,historical.installed.activated,historical.installed.runtime,historical.cleaned,historical.cleaned.runtime,historical.cleaned.cleanup]){
+  status.installId=grant.installId;status.authorizationSha256=authorizationSha256;
+ }
+ historical.installed.authorizationSha256=authorizationSha256;
+ historical.beforeCleanupValidatedAt=new Date(used).toISOString();historical.installed.runtime.verifiedAt=new Date(used-200).toISOString();
+ historical.sourceObservationSha256=installHash(installJson(observation));
+ const input={grant,observation,expectedLedger:f.expectedLedger};
+ assert.equal(validateArrivalAndCleanupResult(historical,input).arrival.nextBuildId,grant.build.nextBuildId);
+ for(const mutate of [v=>v.beforeCleanupValidatedAt='invalid',v=>v.beforeCleanupValidatedAt=new Date(Date.now()+61000).toISOString(),
+  v=>v.installed.runtime.verifiedAt=new Date(used-61000).toISOString(),v=>v.cleaned.runtime.verifiedAt=new Date(Date.now()-61000).toISOString()]){
+  const bad=structuredClone(historical);mutate(bad);assert.throws(()=>validateArrivalAndCleanupResult(bad,input));
+ }
+ const oldChecksum={...observation,checkedAt:new Date(used-61000).toISOString()},bad=structuredClone(historical);
+ bad.sourceObservationSha256=installHash(installJson(oldChecksum));assert.throws(()=>validateArrivalAndCleanupResult(bad,{...input,observation:oldChecksum}));
 });
