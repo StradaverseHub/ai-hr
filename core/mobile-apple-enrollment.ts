@@ -115,6 +115,8 @@ export async function revokeOwnIntegrityKey(ctx:SessionContext,input:{employment
     await own(tx,ctx,employmentId);
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':mobile-integrity:'+ctx.userId},0))`);
     const [row]=await tx.select().from(mobileIntegrityKey).where(and(eq(mobileIntegrityKey.id,keyId),eq(mobileIntegrityKey.actorId,ctx.userId!))).limit(1).for('update');
+    // Either lock can outlive the subject check made at transaction entry.
+    await own(tx,ctx,employmentId);
     if(!row)throw new AppleKeyEnrollmentError('not_found');if(row.revokedAt)return receipt(row);
     const [revoked]=await tx.update(mobileIntegrityKey).set({revokedAt:sql`clock_timestamp()`}).where(eq(mobileIntegrityKey.id,keyId)).returning();
     if(!revoked)throw new AppleKeyEnrollmentError('key_unavailable');
