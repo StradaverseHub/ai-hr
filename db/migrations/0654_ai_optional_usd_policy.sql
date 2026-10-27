@@ -8,27 +8,41 @@ ALTER TABLE app.ai_spend_budget ADD CONSTRAINT ai_spend_budget_some_cap CHECK(mo
 -- No source payload/HR facts. Unknown unpriced costs cannot be manufactured as zero or TTL-released.
 -- Rootless legacy calls retain ordinary admission only without any applicable monetary threshold.
 CREATE TABLE app.ai_spend_admission_scope(
- run_id uuid PRIMARY KEY REFERENCES public.ai_model_run(id),tenant_id uuid NOT NULL REFERENCES public.tenant(id),
- user_id uuid REFERENCES public.app_user(id),company_ids uuid[] NOT NULL,feature_id text NOT NULL,
+ run_id uuid PRIMARY KEY,tenant_id uuid NOT NULL,
+ user_id uuid,company_ids uuid[] NOT NULL,feature_id text NOT NULL,
  root_id uuid,root_kind text,request_digest text CHECK(request_digest~'^[a-f0-9]{64}$'),
  configuration_digest text CHECK(configuration_digest~'^[a-f0-9]{64}$'),
  capture_kind text NOT NULL DEFAULT 'actual_admission' CHECK(capture_kind IN('actual_admission','historical_unknown')),
  money_mode text NOT NULL CHECK(money_mode IN('capped','uncapped')),created_at timestamptz NOT NULL DEFAULT now(),
  CHECK((capture_kind='actual_admission' AND user_id IS NOT NULL AND configuration_digest IS NOT NULL AND((root_id IS NULL AND root_kind IS NULL AND money_mode='uncapped') OR(root_id IS NOT NULL AND root_kind IN('agent','evaluation') AND request_digest IS NOT NULL)))
- OR(capture_kind='historical_unknown' AND root_id IS NULL AND root_kind IS NULL AND request_digest IS NULL AND configuration_digest IS NULL AND money_mode='uncapped')),
- FOREIGN KEY(tenant_id,root_id) REFERENCES app.ai_spend_root(tenant_id,root_id)
+ OR(capture_kind='historical_unknown' AND root_id IS NULL AND root_kind IS NULL AND request_digest IS NULL AND configuration_digest IS NULL AND money_mode='uncapped'))
 );
 ALTER TABLE app.ai_spend_admission_scope ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON app.ai_spend_admission_scope FROM PUBLIC,ai_hr_app;
 -- Install during the coordinated quiesced migration window. These are historical UNKNOWN markers,
--- not guessed native-root/configuration receipts. The NO ACTION run FK deliberately retains the
--- existing finance/usage metadata until explicit monetary review; no prompts/answers are copied.
+-- not guessed native-root/configuration receipts: no cost column exists, so nothing here can record
+-- or imply zero. Every non-blocked run without a reservation (a blocked run was refused before any
+-- provider call) stays unknown monetary debt. The NO ACTION run FK deliberately retains the existing
+-- finance/usage metadata until explicit monetary review; no prompts/answers are copied.
+-- Cost on a large table: ONE set-based pass. The lock below is exactly the SHARE ROW EXCLUSIVE footprint
+-- the four foreign keys take anyway (held to commit, same order), so no referenced row can be inserted or
+-- deleted between this snapshot and validation. The anti-join probes app.ai_spend_reservation's
+-- primary key (empty when 0651 and 0654 ship together). The foreign keys are validated AFTER the load by one set-based join per key
+-- instead of a per-row trigger that would also row-lock (and WAL-log) every historical ai_model_run
+-- tuple. Indexes are built after the load. Work is linear in ai_model_run rows; no prompt/answer is read.
+LOCK TABLE public.ai_model_run,public.tenant,public.app_user,app.ai_spend_root IN SHARE ROW EXCLUSIVE MODE;
 INSERT INTO app.ai_spend_admission_scope(run_id,tenant_id,user_id,company_ids,feature_id,capture_kind,money_mode,created_at)
  SELECT m.id,m.tenant_id,m.user_id,m.company_ids,m.feature_id,'historical_unknown','uncapped',m.started_at FROM public.ai_model_run m
  WHERE m.state<>'blocked' AND NOT EXISTS(SELECT 1 FROM app.ai_spend_reservation priced WHERE priced.run_id=m.id);
+ALTER TABLE app.ai_spend_admission_scope
+ ADD CONSTRAINT ai_spend_admission_scope_run_id_fkey FOREIGN KEY(run_id) REFERENCES public.ai_model_run(id),
+ ADD CONSTRAINT ai_spend_admission_scope_tenant_id_fkey FOREIGN KEY(tenant_id) REFERENCES public.tenant(id),
+ ADD CONSTRAINT ai_spend_admission_scope_user_id_fkey FOREIGN KEY(user_id) REFERENCES public.app_user(id),
+ ADD CONSTRAINT ai_spend_admission_scope_tenant_id_root_id_fkey FOREIGN KEY(tenant_id,root_id) REFERENCES app.ai_spend_root(tenant_id,root_id);
 CREATE INDEX ai_spend_uncapped_root ON app.ai_spend_admission_scope(tenant_id,root_id) WHERE money_mode='uncapped';
 CREATE INDEX ai_spend_uncapped_scope ON app.ai_spend_admission_scope(tenant_id,user_id,feature_id) WHERE money_mode='uncapped';
 --> statement-breakpoint
+-- Owners below that apply app._ai_spend_bounds() restore the caller's timeouts before returning (see 0651).
 CREATE FUNCTION app._ai_optional_root_allowed(wanted_root uuid,wanted_feature text,wanted_kind text)
  RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
  SELECT wanted_root IS NOT NULL AND wanted_kind IN('agent','evaluation') AND(
@@ -41,6 +55,7 @@ REVOKE ALL ON FUNCTION app._ai_optional_root_allowed(uuid,text,text) FROM PUBLIC
 CREATE FUNCTION app._ai_spend_policy_context(wanted_feature text,wanted_root uuid,wanted_kind text,admitted_run uuid)
  RETURNS TABLE(monetary_required boolean,company_ids uuid[]) LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE tid uuid:=app.current_tenant_id();uid uuid:=app.current_user_id();controls record;p app.ai_spend_budget;
+ saved_statement text:=current_setting('statement_timeout');saved_lock text:=current_setting('lock_timeout');
 BEGIN
  PERFORM app._ai_spend_bounds();
  IF tid IS NULL OR uid IS NULL OR NOT app.principal_snapshot_current() OR current_setting('transaction_isolation')<>'read committed' OR current_setting('transaction_read_only')<>'off'
@@ -72,6 +87,7 @@ BEGIN
   END LOOP;
  END IF;
  RETURN NEXT;
+ PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);
 END $$;
 REVOKE ALL ON FUNCTION app._ai_spend_policy_context(text,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
@@ -87,6 +103,7 @@ GRANT EXECUTE ON FUNCTION app.ai_spend_policy_context(text,uuid,text) TO ai_hr_a
 CREATE FUNCTION app.ai_spend_record_admission(wanted_run uuid,wanted_root uuid,wanted_kind text,wanted_request text,wanted_configuration text)
  RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE tid uuid:=app.current_tenant_id();uid uuid:=app.current_user_id();r public.ai_model_run;policy record;
+ saved_statement text:=current_setting('statement_timeout');saved_lock text:=current_setting('lock_timeout');
 BEGIN
  PERFORM app._ai_spend_bounds();
  IF tid IS NULL OR uid IS NULL OR wanted_configuration IS NULL OR wanted_configuration!~'^[a-f0-9]{64}$' OR(wanted_request IS NOT NULL AND wanted_request!~'^[a-f0-9]{64}$')
@@ -105,6 +122,7 @@ BEGIN
  ELSE IF EXISTS(SELECT 1 FROM app.ai_spend_reservation x WHERE x.run_id=r.id) THEN RAISE EXCEPTION 'AI monetary policy changed';END IF;END IF;
  INSERT INTO app.ai_spend_admission_scope(run_id,tenant_id,user_id,company_ids,feature_id,root_id,root_kind,request_digest,configuration_digest,money_mode)
  VALUES(r.id,tid,uid,r.company_ids,r.feature_id,wanted_root,wanted_kind,wanted_request,wanted_configuration,CASE WHEN policy.monetary_required THEN 'capped' ELSE 'uncapped' END);
+ PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);
 END $$;
 REVOKE ALL ON FUNCTION app.ai_spend_record_admission(uuid,uuid,text,text,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.ai_spend_record_admission(uuid,uuid,text,text,text) TO ai_hr_app;
@@ -114,6 +132,7 @@ CREATE OR REPLACE FUNCTION app.ai_spend_reserve(wanted_run uuid,wanted_root uuid
  RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE tid uuid:=app.current_tenant_id();uid uuid:=app.current_user_id();r ai_model_run;c app.ai_spend_capability;p app.ai_spend_budget;policy record;
  used numeric;root_used numeric;month_start timestamptz:=date_trunc('month',now() AT TIME ZONE 'Asia/Kuala_Lumpur') AT TIME ZONE 'Asia/Kuala_Lumpur';
+ saved_statement text:=current_setting('statement_timeout');saved_lock text:=current_setting('lock_timeout');
 BEGIN
  PERFORM app._ai_spend_bounds();
  IF tid IS NULL OR uid IS NULL OR wanted_kind NOT IN('agent','evaluation') OR wanted_root IS NULL OR wanted_request IS NULL OR wanted_request!~'^[a-f0-9]{64}$' OR wanted_nanos IS NULL OR wanted_nanos<=0 OR wanted_configuration IS NULL OR wanted_configuration!~'^[a-f0-9]{64}$'
@@ -136,6 +155,7 @@ BEGIN
  END LOOP;
  INSERT INTO app.ai_spend_reservation(run_id,tenant_id,root_id,user_id,company_ids,feature_id,capability_digest,request_digest,configuration_digest,reserved_nanos)
  VALUES(wanted_run,tid,wanted_root,uid,r.company_ids,r.feature_id,wanted_capability,wanted_request,wanted_configuration,wanted_nanos);
+ PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);
 END $$;
 REVOKE ALL ON FUNCTION app.ai_spend_reserve(uuid,uuid,text,text,text,bigint,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.ai_spend_reserve(uuid,uuid,text,text,text,bigint,text) TO ai_hr_app;
@@ -143,6 +163,7 @@ GRANT EXECUTE ON FUNCTION app.ai_spend_reserve(uuid,uuid,text,text,text,bigint,t
 CREATE OR REPLACE FUNCTION app.ai_spend_budget_save(wanted_kind text,wanted_subject uuid,wanted_feature text,monthly bigint,root_limit bigint)
  RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE tid uuid:=app.current_tenant_id();k text;
+ saved_statement text:=current_setting('statement_timeout');saved_lock text:=current_setting('lock_timeout');
 BEGIN
  PERFORM app._ai_spend_bounds();
  IF tid IS NULL OR NOT app._ai_provider_evaluation_actor_valid() OR wanted_kind IS NULL OR wanted_kind NOT IN('tenant','user','company','feature') OR monthly<0 OR root_limit<0 THEN RAISE EXCEPTION 'AI spend administration unavailable';END IF;
@@ -153,6 +174,7 @@ BEGIN
  IF monthly IS NULL AND root_limit IS NULL THEN DELETE FROM app.ai_spend_budget WHERE tenant_id=tid AND scope_key=k;
  ELSE INSERT INTO app.ai_spend_budget(tenant_id,scope_key,kind,subject_id,feature_id,monthly_nanos,root_nanos,updated_by) VALUES(tid,k,wanted_kind,wanted_subject,wanted_feature,monthly,root_limit,app.current_user_id())
   ON CONFLICT(tenant_id,scope_key) DO UPDATE SET monthly_nanos=excluded.monthly_nanos,root_nanos=excluded.root_nanos,updated_by=excluded.updated_by,updated_at=now();END IF;
+ PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);
 END $$;
 REVOKE ALL ON FUNCTION app.ai_spend_budget_save(text,uuid,text,bigint,bigint) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.ai_spend_budget_save(text,uuid,text,bigint,bigint) TO ai_hr_app;

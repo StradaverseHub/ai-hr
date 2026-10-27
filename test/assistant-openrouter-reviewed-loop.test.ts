@@ -8,6 +8,7 @@ import {withTenant,type SessionContext} from '../db/client';
 import {askAssistant} from '../core/assistant';
 import {grantAssistant} from '../core/assistant-grant';
 import {hireEmployee} from '../core/org';
+import {isModuleEnabled} from '../core/entitlements';
 import {saveAiProviderConfig,setActiveProvider,resolveActiveAiConfig} from '../core/ai-config';
 import {aiSpendConfigurationDigest} from '../lib/ai/spend-receipt';
 import {readOpenRouterOptions} from '../lib/ai/providers/openrouter-configuration';
@@ -20,7 +21,10 @@ let base:Base,admin:SessionContext,ctx:SessionContext,employmentId:string;
 const endpoint='fictional/exact-endpoint',key='fictional-loop-key',signer='fictional-loop-signer',secret='ab'.repeat(32);
 beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
 beforeEach(async()=>{
- await resetDb();base=await seedBase();await setModule(base.tenantId,'assistant','active');await setModule(base.tenantId,'leave','active');admin={...await entitledCtx(base),grants:[{role:'hr_admin',companyId:null}]};
+ await resetDb();base=await seedBase();await setModule(base.tenantId,'assistant','active');admin={...await entitledCtx(base),grants:[{role:'hr_admin',companyId:null}]};
+ // Leave is a CORE module (packs/catalog.ts isCore): always enabled, and the database refuses any tenant_module row
+ // for it. Assert the canonical tool's module is genuinely on rather than writing a row that cannot exist.
+ expect(isModuleEnabled(admin,'leave'),'core Leave module must be enabled for the canonical tool round trip').toBe(true);
  const employee=await hireEmployee(admin,{person:{fullName:'Fictional Reviewed Loop',primaryEmail:`${randomUUID()}@fixture.test`},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});employmentId=employee.employmentId;
  const userId=await createAppUser(base.tenantId,employee.personId,'employee');await grantAssistant(admin,{appUserId:userId});ctx={...await entitledCtx(base,['employee']),userId,personId:employee.personId,grants:[{role:'employee',companyId:null}]};
  vi.stubEnv('AI_CONFIG_SECRET','fictional-reviewed-loop-custody');for(const name of ['OPENAI_API_KEY','ANTHROPIC_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY','AI_SPEND_RECEIPT_KEY_ID','AI_SPEND_RECEIPT_SIGNING_KEY'])vi.stubEnv(name,'');

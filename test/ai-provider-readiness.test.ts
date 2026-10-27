@@ -3,7 +3,7 @@
  */
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { withTenant } from '../db/client';
+import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { getAiConfigView, resolveActiveAiConfig, saveAiProviderConfig, setActiveProvider } from '../core/ai-config';
 import { evaluateProviderCandidate } from '../core/ai-provider-readiness';
@@ -62,8 +62,11 @@ describe('explicit candidate evaluation and activation', () => {
   });
   it('refuses synthetic evaluation before provider access when a finite USD cap has no certified spend capability', async () => {
     await candidate();
-    await setAiSpendBudget(adminCtx(base),{kind:'tenant',monthlyUsd:'1',rootUsd:'1'});
-    const ctx=adminCtx(base), consent=await syntheticConsentFor(ctx), mock=syntheticProviderTransport();
+    // Spend administration is group-admin only (service isGroupAdmin, Control Tower card, SQL is_group_admin):
+    // a real group-wide hr_admin session carries that grant; a roles-only context does not.
+    const ctx:SessionContext={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};
+    await setAiSpendBudget(ctx,{kind:'tenant',monthlyUsd:'1',rootUsd:'1'});
+    const consent=await syntheticConsentFor(ctx), mock=syntheticProviderTransport();
     try {
       await expect(evaluateProviderCandidate(ctx,consent)).rejects.toThrow();
       expect(mock.draft).not.toHaveBeenCalled(); expect(mock.conversation).not.toHaveBeenCalled();

@@ -1,7 +1,7 @@
 import {withAiAdmissionCheck} from '../../../core/ai-governance';
 import {draftInputDigest} from '../../../lib/ai/draft-input';
 import {assessmentAiFeatureEnabledTx} from './ai-settings';
-import type {GenerateArgs} from '../../../lib/ai/types';
+import {AiAllowanceError,type GenerateArgs} from '../../../lib/ai/types';
 import { createHash,randomUUID } from 'node:crypto';
 import { and,eq } from 'drizzle-orm';
 import { z } from 'zod';
@@ -65,7 +65,12 @@ export async function suggestAssessmentCareerPlan(ctx:SessionContext,reviewId:st
  const fresh=await context(ctx,reviewId),unchanged=fresh.sourceDigest===before.sourceDigest;
  await recordProposal(ctx,{type:'performance_draft_command',subject:{type:'performance-review',id:reviewId},facts:{kind:'career_plan',digest:before.sourceDigest,itemIds:items.map(i=>i.id)},proposal:{goals:goals.map(g=>({area:g.area,itemIds:g.itemIds})),aspirationChars:aspirationLong.length},adjudication:unchanged&&(goals.length>0||aspirationLong)?{ok:true}:{ok:false,reason:unchanged?'No usable career draft.':'The career plan context changed.'},provider:cfg.provider,model:cfg.model});
  if(!unchanged)throw Error('Your career profile, assessment or plan changed while drafting. Reload before trying again.');
- if(!goals.length&&!aspirationLong)throw Error('No usable career draft was returned. You can build your plan yourself.');
+ if(!goals.length&&!aspirationLong){
+  // A typed AI control refusal (paused, allowance or USD spend control) is the reason, not an empty draft.
+  const refused=responses.find((r):r is PromiseRejectedResult=>r.status==='rejected'&&r.reason instanceof AiAllowanceError);
+  if(refused)throw refused.reason;
+  throw Error('No usable career draft was returned. You can build your plan yourself.');
+ }
  return withPerformanceTenant(ctx,async tx=>{
   const currentCfg=await assessmentAiConfigTx(tx,ctx,'idp');if(!currentCfg||currentCfg.provider!==cfg.provider||currentCfg.model!==cfg.model)throw Error('AI career drafting changed or was switched off. Request a fresh draft.');
   await recordAssessmentAiUseTx(tx,ctx,reviewId,fieldKey,requestId);

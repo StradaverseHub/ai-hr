@@ -9,6 +9,7 @@ import {assertAiPrincipalTx} from './ai-principal';
 import {assertModuleEnabled,resolveEntitlementsTx} from './entitlements';
 import {assertMayUseAssistant} from './assistant-grant';
 import {bindStrictAiSpendRoot} from './ai-governance';
+import {aiSpendAdmissionStep} from './ai-spend-capability';
 import type {ReadinessGapId} from './record-readiness';
 export type AiSpendTaskSource=Readonly<{kind:'assistant_question'}|{kind:'claim_request';sourceId:string}|{kind:'payroll_batch';sourceId:string}|{kind:'performance_guide_request';sourceId:string}|{kind:'readiness_template';gap:ReadinessGapId;audience:'employee'|'hr'}>;
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -24,7 +25,7 @@ export async function bindAiSpendTaskTx(tx:Tx,supplied:SessionContext,configurat
  else throw new AiGatewayError('The AI task identity could not be confirmed.');
  await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId),entitlementsExempt:undefined,entitlementsError:undefined};assertModuleEnabled(fresh,module);
  if(p.kind==='assistant_question')await assertMayUseAssistant(fresh,tx);
- const[row]=await tx.execute<{root_id:string}>(sql`select app.ai_spend_task_issue(${feature},${p.kind},${nativeId}::uuid,${operation}) as root_id`);
+ const[row]=await aiSpendAdmissionStep(()=>tx.execute<{root_id:string}>(sql`select app.ai_spend_task_issue(${feature},${p.kind},${nativeId}::uuid,${operation}) as root_id`),'The AI task identity could not be confirmed.');
  if(!row||!UUID.test(row.root_id))throw new AiGatewayError('The AI task identity could not be confirmed.');
  return bindStrictAiSpendRoot(configuration,{rootTaskId:row.root_id,kind:'agent'});
 }
@@ -40,7 +41,7 @@ export async function issuePerformanceMessageSpendTaskTx(tx:Tx,supplied:SessionC
  if(!UUID.test(p.reviewId)||!UUID.test(p.contextId)||!UUID.test(p.requestId)||!['setting','results','moderation','competency','career','evidence','feedback'].includes(p.channel)||p.channel!=='feedback'&&p.contextId!==p.reviewId)throw new AiGatewayError('The native Performance message could not be confirmed.');
  await assertAiPrincipalTx(tx,ctx);assertModuleEnabled({...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId),entitlementsExempt:undefined,entitlementsError:undefined},'performance');
  const kind=p.channel==='feedback'?'performance_feedback_message':'performance_review_message',native=p.channel==='feedback'?p.contextId:p.reviewId;
- const[row]=await tx.execute<{root_id:string}>(sql`select app.ai_spend_task_issue('performance_assistant',${kind},${native}::uuid,${p.channel+':'+p.requestId.toLowerCase()}) as root_id`);
+ const[row]=await aiSpendAdmissionStep(()=>tx.execute<{root_id:string}>(sql`select app.ai_spend_task_issue('performance_assistant',${kind},${native}::uuid,${p.channel+':'+p.requestId.toLowerCase()}) as root_id`),'The native Performance message could not be confirmed.');
  if(!row||!UUID.test(row.root_id))throw new AiGatewayError('The native Performance message could not be confirmed.');
  const token=Object.freeze({});performanceTasks.set(token,{principal:taskPrincipal(ctx),reviewId:p.reviewId,rootId:row.root_id});return token;
 }

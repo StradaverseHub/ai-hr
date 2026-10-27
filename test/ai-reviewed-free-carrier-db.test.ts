@@ -9,7 +9,7 @@ import {saveAiProviderConfig,setActiveProvider,resolveActiveAiConfig} from '../c
 import {resolveAiProviderCandidateSnapshotTx} from '../core/ai-provider-snapshot';
 import {aiSpendStatusTx} from '../core/ai-spend-management';
 import {governedAiConfig,bindStrictAiSpendRoot} from '../core/ai-governance';
-import {resolveReviewedAiSpendCapabilityTx,withReviewedAiSpendDispatch} from '../core/ai-spend-capability';
+import {AiSpendControlError,resolveReviewedAiSpendCapabilityTx,withReviewedAiSpendDispatch} from '../core/ai-spend-capability';
 import {aiSpendConfigurationDigest} from '../lib/ai/spend-receipt';
 import {FIXED_FREE_CARRIER_SOURCE_DIGEST,FIXED_FREE_INVARIANTS} from '../lib/ai/providers/openrouter-fixed-free-carrier';
 import {openrouterAdapter,createOpenRouterAdapter} from '../lib/ai/providers/openrouter';
@@ -34,13 +34,16 @@ async function reviewed(input:{expired?:boolean;staleSource?:boolean}={}){
  const invariants=JSON.stringify(Object.fromEntries(FIXED_FREE_INVARIANTS.map(name=>[name,true])));
  await owner.db.execute(sql`insert into app.ai_spend_reviewed_carrier_catalog(capability_digest,tenant_id,carrier,configuration_digest,model,operation,endpoint_slug,source_digest,workspace_control_digest,review_evidence_digest,independent_evidence_digest,invariants,reviewed_at,expires_at)
  values(${capabilityDigest},${base.tenantId}::uuid,'openrouter_fixed_free_text_v1',${configurationDigest},${model},'draft',${endpoint},${sourceDigest},${'b'.repeat(64)},${'c'.repeat(64)},${'d'.repeat(64)},${invariants}::jsonb,${reviewedAt}::timestamptz,${expiresAt}::timestamptz)`);
- await owner.db.execute(sql`insert into app.ai_spend_budget(tenant_id,scope_key,kind,monthly_nanos,root_nanos,updated_by) values(${base.tenantId}::uuid,'tenant','tenant',10,10,${ctx.userId}::uuid)`);
+ await cap();
  return{snapshot,capabilityDigest,configurationDigest};
 }
 function transport(cost='0'){
  const fetcher=vi.fn<typeof fetch>().mockImplementation(async(_url,init)=>new Response(init?.method==='POST'?`{"id":"gen-reviewed-fixture","model":"${model}","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"Synthetic answer"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2,"cost":${cost}}}`:`{"data":{"id":"gen-reviewed-fixture","model":"${model}","is_byok":false,"streamed":false,"total_cost":${cost}}}`,{headers:{'content-type':'application/json'}}));
  const adapter=createOpenRouterAdapter(fetcher);vi.spyOn(openrouterAdapter,'generate').mockImplementation((configuration,input)=>adapter.generate(configuration,input));return fetcher;
 }
+/** Owner decision: a USD cap is OPTIONAL. Only a configured cap (any value, including0) needs this carrier;
+ * with none, no USD ceiling is promised and there is no USD-based refusal (non-money controls still apply). */
+async function cap(){await owner.db.execute(sql`insert into app.ai_spend_budget(tenant_id,scope_key,kind,monthly_nanos,root_nanos,updated_by) values(${base.tenantId}::uuid,'tenant','tenant',10,10,${ctx.userId}::uuid) on conflict(tenant_id,scope_key) do nothing`);}
 async function configuration(snapshot:Awaited<ReturnType<typeof candidate>>){return bindStrictAiSpendRoot(governedAiConfig(ctx,snapshot,'provider_evaluation'),{rootTaskId:snapshot.candidate!.id,kind:'evaluation'});}
 describe('conditional private reviewed monetary carrier',()=>{
  it('uses an actual eligible private record, exact0policy POST and authentic0 HMAC reconciliation',async()=>{
@@ -58,11 +61,23 @@ describe('conditional private reviewed monetary carrier',()=>{
   await expect(generateDraft(cfg,args)).rejects.toThrow();expect(fetcher).toHaveBeenCalledTimes(2);
  });
  it('refuses absent, revoked, changed key/options/source and unavailable signer evidence before dispatch; app principals cannot mint or inspect private records',async()=>{
-  const missing=await candidate(),fetcher=transport();await expect(generateDraft(await configuration(missing),args)).rejects.toThrow();expect(fetcher).not.toHaveBeenCalled();
+  const missing=await candidate(),fetcher=transport();await cap();
+  // A configured cap with no reviewed record cannot establish cost: it fails closed in admission, before transport.
+  await expect(generateDraft(await configuration(missing),args)).rejects.toThrow('The current reviewed AI spend capability could not be confirmed.');expect(fetcher).not.toHaveBeenCalled();
   const f=await reviewed();await expect(withTenant(ctx,tx=>tx.execute(sql`select * from app.ai_spend_reviewed_carrier_catalog`))).rejects.toThrow();await expect(withTenant(ctx,tx=>tx.execute(sql`insert into app.ai_spend_reviewed_carrier_catalog select * from app.ai_spend_reviewed_carrier_catalog`))).rejects.toThrow();
   for(const changed of [{...f.snapshot.configuration,apiKey:'other-key'},{...f.snapshot.configuration,providerOptions:{...providerOptions,routing:{...providerOptions.routing,allowedProviders:['other/endpoint']}}}])await expect(withTenant(ctx,tx=>resolveReviewedAiSpendCapabilityTx(tx,ctx,changed,request()))).rejects.toThrow();
   vi.stubEnv('AI_SPEND_RECEIPT_SIGNING_KEY','cd'.repeat(32));await expect(withTenant(ctx,tx=>resolveReviewedAiSpendCapabilityTx(tx,ctx,f.snapshot.configuration,request()))).rejects.toThrow();vi.stubEnv('AI_SPEND_RECEIPT_SIGNING_KEY',secret);
   await owner.db.execute(sql`update app.ai_spend_reviewed_carrier_catalog set revoked_at=now() where capability_digest=${f.capabilityDigest}`);await expect(generateDraft(await configuration(f.snapshot),args)).rejects.toThrow();expect(fetcher).not.toHaveBeenCalled();
+ });
+ it('with NO configured USD cap an absent reviewed zero carrier is no USD refusal: admitted uncapped under the same root, unknown cost kept unknown',async()=>{
+  const missing=await candidate(),fetcher=transport();expect(await generateDraft(await configuration(missing),args)).toBe('Synthetic answer');
+  // No carrier proof means no generation-metadata GET: exactly the one completion POST, and no reservation or zero receipt.
+  expect(fetcher).toHaveBeenCalledOnce();expect(fetcher.mock.calls[0][1]?.method).toBe('POST');
+  expect(await owner.db.execute(sql`select run_id from app.ai_spend_reservation where tenant_id=${base.tenantId}::uuid`)).toEqual([]);
+  expect(await owner.db.execute<{root:string;money_mode:string}>(sql`select root_id::text as root,money_mode from app.ai_spend_admission_scope where tenant_id=${base.tenantId}::uuid`)).toEqual([{root:missing.candidate!.id,money_mode:'uncapped'}]);
+  // The run stays unpriced debt: a later cap on this root refuses instead of treating it as zero.
+  await cap();await expect(generateDraft(await configuration(missing),args)).rejects.toBeInstanceOf(AiSpendControlError);expect(fetcher).toHaveBeenCalledOnce();
+  await expect(withTenant(ctx,tx=>tx.execute(sql`select * from app.ai_spend_policy_context('provider_evaluation',${missing.candidate!.id}::uuid,'evaluation')`))).rejects.toMatchObject({cause:expect.objectContaining({code:'P0001',message:'Unpriced AI history requires monetary review'})});
  });
  it.each(['expired','staleSource'] as const)('refuses actual private %s certification before network',async kind=>{const f=await reviewed({[kind]:true}),fetcher=transport();await expect(generateDraft(await configuration(f.snapshot),args)).rejects.toThrow();expect(fetcher).not.toHaveBeenCalled();});
  it('binds signer challenge to the actual app principal/tenant and keeps historical certificate identity immutable',async()=>{
