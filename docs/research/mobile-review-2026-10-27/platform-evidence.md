@@ -1573,3 +1573,81 @@ checked-out source. The passing checkpoint remains the unmodified positive contr
 server test slots, migration application, full release gate or deployment was used. Clock routing,
 dedicated rollout/discovery and legacy-channel policy, native durable clock flow, physical Android
 and iPhone vendor acceptance, and offline claim adjudication remain unfinished.
+
+
+### Separate clock rollout and unsigned-channel verification
+
+The first frozen candidate `a2c9de2029bab41dd2f084dfacd0cb4553aa4ffa` ran fifteen selected suites
+in [Actions run 40500564325](https://github.com/StradaverseHub/ai-hr/actions/runs/40500564325).
+All nine DB-project files passed 170 cases, including the initial 16-case rollout suite. Five of six
+no-DB files passed; that partition had 48 passing cases and one failure. The failing source assertion
+in `7ac6b4db-web-clocking.test.ts` still expected the pre-joined native ownership lookup. Inspection
+of the preceding `0e10a14db` checkpoint confirmed the signed transaction had already introduced
+`myOwnEmploymentSubjectsTx(joined.tx, ctx, {profileEdit:true})`; the new shared-writer policy
+checks had not changed that ownership expression. The source sweep now pins both transaction-aware
+native ownership and explicit web selection rather than reverting the stronger authorization.
+Root TypeScript and Next type generation passed on this first candidate (4m33.42s, maximum RSS
+7,805,844 KiB). The
+[original failed evidence artifact](https://github.com/StradaverseHub/ai-hr/actions/runs/40500564325/artifacts/12733001023)
+ZIP SHA-256 is `3fc0a8bac4629bb3c1386942d1af21649ac9570cea0935af573fa1b0db96bd4d`.
+All planned jobs were allowed to finish before the repair.
+
+Review also found that a regex failure could still invoke a `BigInt` refinement on malformed project
+input. The repair checks trimmed bounded numeric syntax before conversion. Four named regressions
+cover letters, trailing newline, integer overflow and oversized digits; test titles use short labels
+rather than dumping the oversized synthetic input. The final frozen repair checkpoint is
+`4d363c14c475ee8805a674f0d7ef454dcc09ac98`.
+[Actions run 40501655251](https://github.com/StradaverseHub/ai-hr/actions/runs/40501655251) reran the
+two affected suites: the source sweep passed 8 cases and rollout passed 20. Fresh root TypeScript
+and Next type generation passed (4m20.30s, maximum RSS 7,562,960 KiB). The
+[repair evidence artifact](https://github.com/StradaverseHub/ai-hr/actions/runs/40501655251/artifacts/12733641001)
+ZIP SHA-256 is `9e325adbe1f04490b402386a7e6058f9b6d3b3e315fe1ade217eb6b0deb36cf6`.
+The three files changed by the repair are the project-policy schema and those two tests. Unaffected
+passing results were retained, yielding combined focused coverage of fifteen suites / 223 cases;
+this is not a claim that the original run was all green or that a full release gate ran.
+
+| Suite | Final passing cases | Evidence |
+|---|---:|---|
+| `test/mobile-clock-rollout.test.ts` | 20 | Repair run |
+| `test/7ac6b4db-web-clocking.test.ts` | 8 | Repair run |
+| `test/mobile-enrollment-rollout.test.ts` | 19 | First run |
+| `test/mobile-signed-clock-http.test.ts` | 17 | First run |
+| `test/mobile-integrity-http.test.ts` | 22 | First run |
+| `test/mobile-android-verified-clock.test.ts` | 17 | First run |
+| `test/mobile-api-routes.test.ts` | 42 | First run |
+| `test/mobile-api-body.test.ts` | 2 | First run |
+| `test/request-budget.test.ts` | 14 | First run |
+| `test/r430-web-clocking.test.ts` | 13 | First run |
+| `test/r430-web-clocking-route.test.ts` | 10 | First run |
+| `test/i18n-coverage.test.ts` | 3 | First run |
+| `test/attendance-pack-drift.test.ts` | 2 | First run |
+| `test/mobile-integrity-import-isolation.test.ts` | 3 | First run |
+| `test/board-clock-client.dom.test.tsx` | 31 | First run |
+
+The rollout suite uses the actual policy parser, temporal company proof, ordinary-role catalog
+checks, both established HTTP routes, shared canonical attendance writer and signed Android HTTP
+factory with the real deployment commit guard. It proves independent enrollment/clock activation,
+exact subject scope, no current-company fallback, malformed configuration/cancellation/storage
+faults, pre-write unsigned rejection, direct DTO bypass rejection, exact receipt replay after policy
+tightening, explicit partial rollout, post-write rollback on changed unsigned policy, signed success
+while unsigned channels are closed, and rollback when Google-await rollout/actor/policy changes.
+Google transport and enrollment seed proofs remain synthetic. No tenant policy is enabled by tests.
+
+Four independent mutation candidates descend directly from the passing repair checkpoint; each
+changes only the named production guard, with the same unchanged 20-case suite. Full terminal logs
+were inspected for the intended assertion failures:
+
+| Removed protection | Frozen candidate | Hosted run | Observed failure | Result |
+|---|---|---|---|---|
+| Shared unsigned policy check before writes | `a17228077182c6c33003e963ab443ea43dd28f79` | [40501708662](https://github.com/StradaverseHub/ai-hr/actions/runs/40501708662) | Both web/mobile refusal tests observed one canonical `checkInTx` call despite their zero-call assertion; later rollback alone would be vacuous | 2 failed / 18 passed |
+| Shared unsigned policy check after writes | `a8daead8eae29dccaa656e387d184f541b5ebbc1` | [40501717096](https://github.com/StradaverseHub/ai-hr/actions/runs/40501717096) | Policy tightened after tentative work, but the capture resolved instead of rolling back | 1 failed / 19 passed |
+| Signed transaction exact configuration comparison | `6188d6961791753142f7c5a8ecb384aeb065c7f6` | [40501725888](https://github.com/StradaverseHub/ai-hr/actions/runs/40501725888) | The post-Google policy-change case accepted attendance instead of returning unavailable | 1 failed / 19 passed |
+| Safe bounded numeric refinement before conversion | `e2ae093deb6ab700cd1aa4023d2f3d4874b1ad38` | [40501734744](https://github.com/StradaverseHub/ai-hr/actions/runs/40501734744) | The letters case threw `SyntaxError` rather than the required typed configuration-unavailable error | 1 failed / 19 passed |
+
+The explicitly unsafe `codex/mobile-clock-probe-rollout-*-20261027` candidates are never for merge
+or deployment. Separate temporary Git indices preserved the working source and index, so no source
+restoration was required; the positive repair checkpoint stayed unchanged. Neither hosted run
+requested a production build. No local server test slot, migration journal/apply, staging deployment,
+Google provisioning, clock-route activation or physical-device acceptance occurred. These remain
+focused development results. Clock discovery/provider assembly and durable native orchestration,
+then the remaining integrity/offline/employee/approver plan acceptance criteria, are still unfinished.

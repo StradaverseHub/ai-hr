@@ -957,3 +957,54 @@ removal probes verified the current-service dispatch and token-field guard. Resu
 the platform evidence appendix. No route or tenant setting was activated. Dedicated rollout and
 legacy-channel policy, Google/Apple provisioning, native durable clock orchestration, physical-device
 acceptance and the full release gate remain required.
+
+
+## Separate signed-clock rollout and unsigned-channel policy
+
+`AIHR_MOBILE_CLOCK_POLICY` is a new deployment-owned clock policy, independent of
+`AIHR_MOBILE_ENROLLMENT_POLICY`. It has no default activation. Its strict version-1 document is
+bounded to 256 KiB and 100 entries, with one entry per tenant/company, an explicit unique actor list
+(maximum 1000 per entry), explicit iOS/Android deployment slots (nullable to disable each), and a
+mandatory `legacySelfService` choice. At least one platform must be configured. Android deployment
+contains its settings/current-policy pair plus a bounded decimal cloud project number; iOS contains
+its existing App Attest settings. The project number is public SDK configuration, not a credential
+or a claim of Google readiness. No request body or mutable current-company column selects a policy.
+
+`readMobileClockDeployment` and `readMobileClockConfiguration` resolve the temporal own-company
+proof through the existing employment owner, check attendance entitlement and reuse the enrollment
+owner's ordinary-role storage readiness check. Missing receipt encryption, disabled custody triggers,
+missing Android prerequisites or cancellation refuse readiness. The metadata check does not replace
+migration semantic/release acceptance. No migration credentials or schema writes are used.
+`assertMobileClockCommit` repeats the temporal company/actor/platform selection and exact parsed
+settings/current-policy comparison after vendor work, using the supplied acceptance transaction;
+it never opens a second pooled transaction under held locks. Removed rollout, actor exclusion,
+changed configuration/policy or missing encryption veto tentative attendance and proof consumption.
+
+Each entry explicitly chooses `allow_unverified` or `require_signed` for its selected actors in the
+proven company. This is a partial rollout unless every intended actor is listed; unlisted actors do
+not gain signed-clock permission and retain established self-service behavior. `allow_unverified`
+never grants integrity assurance. For `require_signed`, the shared employee-capture writer refuses
+new unsigned web AND native-mobile captures before the canonical punch writer and rechecks the
+choice after tentative writes. A DTO field cannot select the internal signed transaction seam.
+The signed carrier remains responsible for proof verification and the mandatory deployment guard.
+An already accepted exact command can still return its original receipt subject to existing
+validation; dedicated receipt lookups remain independent. Privileged corrections/imports are
+separate audited workflows, not new self-service capture channels. The older exported clock-in/out
+server actions currently only authenticate and redirect and do not write another punch.
+
+Absence of the clock-policy environment variable preserves established channels and leaves signed
+clocking unconfigured. A present malformed/oversized policy cannot silently restore unsigned
+clocking: fresh writes fail with a typed availability outcome. Project-number refinements validate
+syntax and length before `BigInt`, including whitespace rejection; malformed configuration cannot
+escape as a raw conversion exception. Web returns a private/no-store 403 `integrityRequired` for
+a signed-only refusal; mobile returns its existing no-store refused envelope with
+`integrity_required`. Web copy exists in all six current catalogues; the native app adds the message
+to its existing English/Malay table. Known configuration faults return generic 503 responses;
+unknown failures retain the existing private failure handling. Native language completion remains
+part of the broader plan.
+
+This code does not set a deployment policy, supply Google credentials, mount signed clock routes
+or advertise clock capability. Native durable signing/upload/recovery, explicit discovery and
+vendor assembly, physical iPhone/Android acceptance and the full release gate remain necessary
+before activation. Focused hosted evidence and independent guard removals are recorded below in
+the platform research appendix.
