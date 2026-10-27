@@ -10,6 +10,7 @@ import { Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls, tableWra
 import { importOnehrAction, decideAction, importFactsAction, lumpAction, offcycleAction, postAction, refreshAction, bonusMultiplierAction } from '../actions';
 import { redirect } from 'next/navigation';
 import { ReturnedBanner, rewardDecisionTime } from '../returned-status';
+import { RewardPostPanel } from '../post-panel';
 
 const rm = (cents: number) => new Intl.NumberFormat('en-MY', { style: 'currency', currency: 'MYR' }).format(cents / 100);
 export default async function RewardUnitPage({ params, searchParams }: { params: Promise<{ unitId: string }>; searchParams: Promise<{ view?: string; q?: string; error?: string }> }) {
@@ -29,7 +30,7 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
   const canApprove = ['bg', 'gr', 'ctro', 'ec'].some(role => role === unit.status && v.roles.includes(role as 'bg' | 'gr' | 'ctro' | 'ec'));
   return <div className="w-full space-y-5">
     <Link href="/rewards" className="text-sm text-primary hover:underline">← {t('title')}</Link>
-    <PageHeader title={`${v.cycle?.name ?? t('title')} · ${v.name}`} description={`${t(`kinds.${unit.kind}`)} · ${v.returned ? t(`returnedTo.${v.returned.toSeat}`) : t(`stages.${unit.status}`)} · ${t('snapshotDate')}: ${unit.snapshotDate}`} />
+    <PageHeader title={`${v.cycle?.name ?? t('title')} · ${v.name}`} description={`${t(`kinds.${unit.kind}`)} · ${v.returned ? t(`returnedTo.${v.returned.toSeat}`) : t(`stages.${unit.status}`)}${v.due ? ` · ${t('dueOn', { date: v.due })}` : ''} · ${t('snapshotDate')}: ${unit.snapshotDate}`} />
     <ErrorBanner message={sp.error} />
     {v.returned && <ReturnedBanner returned={v.returned} />}
     {(v.roles.includes('gr') || choices.companies.some(c => c.id === unit.companyId)) && <Link href={`/admin/rewards/${unitId}`} className="inline-block text-sm font-medium text-primary hover:underline">{t('adminTitle')}</Link>}
@@ -60,7 +61,8 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
       <p className="text-sm">{v.route.map(role => t(`roles.${role}`)).join(' → ')}</p>
       {(canSubmit || canApprove) && <form action={decideAction} className="max-w-3xl space-y-3">{fields}<Field label={t('decisionReason')}><textarea name="reason" rows={3} maxLength={4000} className={`${inputCls} h-auto py-2`} /></Field>{!annual && v.rows.some(e => e.recommendation.promotionGrade) && <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="acknowledged" />{t('roleAcknowledgement')}</label>}<div className="flex flex-wrap gap-3">{editable ? <RewardSubmit name="action" value="submit" type="submit">{t('submit')}</RewardSubmit> : <><RewardSubmit name="action" value="approve" type="submit">{t('approve')}</RewardSubmit><RewardSubmit name="action" value="return" type="submit" variant="secondary">{t('return')}</RewardSubmit>{!annual && <RewardSubmit name="action" value="reject" type="submit" variant="secondary">{t('reject')}</RewardSubmit>}</>}</div></form>}
       {unit.status === 'approved' && v.roles.some(r => ['gr', 'ctro', 'ec'].includes(r)) && <form action={decideAction} className="max-w-3xl space-y-3">{fields}<Field label={t('decisionReason')}><textarea required minLength={10} name="reason" rows={3} className={`${inputCls} h-auto py-2`} /></Field><RewardSubmit name="action" value="return" type="submit" variant="secondary">{t('return')}</RewardSubmit></form>}
-      {unit.status === 'approved' && v.roles.includes('payroll') && <form action={postAction} className="max-w-3xl space-y-3">{fields}<p className="text-sm text-muted-foreground">{t('postHelp')}</p><Field label={t('payrollBatch')}><select name="batchId" className={inputCls}><option value="">{t('salaryOnly')}</option>{batches.map(b => <option key={b.id} value={b.id}>{b.period}</option>)}</select></Field><RewardSubmit type="submit">{t('post')}</RewardSubmit></form>}
+      {/* H1: Post appears only when postRewardUnit's own predicate (v.posting) says it would succeed. */}
+      {unit.status === 'approved' && <RewardPostPanel posting={v.posting} batches={batches} fields={fields} action={postAction} />}
       {!annual && unit.status === 'draft' && (canSubmit || v.roles.includes('gr')) && <form action={decideAction} className="max-w-3xl space-y-3">{fields}<Field label={t('decisionReason')}><input required minLength={10} name="reason" className={inputCls} /></Field><RewardSubmit name="action" value="withdraw" type="submit" variant="secondary">{t('withdraw')}</RewardSubmit></form>}
       <section><h2 className="mb-3 font-semibold">{t('history')}</h2><ol className="divide-y divide-border">{v.decisions.map(d => <li key={d.id} className="space-y-1 py-3 text-sm"><p className="font-medium">{t(`stages.${d.fromStage}`)} → {t(`stages.${d.toStage}`)}</p><p className="text-muted-foreground">{t('decidedBy', { actor: d.actorName ?? (d.actorRole ? t(`roles.${d.actorRole}`) : t('aReviewer')) })} · {rewardDecisionTime(d.createdAt)}</p>{d.reason && <p className="max-w-3xl whitespace-pre-wrap">{d.reason}</p>}</li>)}</ol></section>
     </div>}

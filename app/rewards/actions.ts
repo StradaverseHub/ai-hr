@@ -6,7 +6,7 @@ import { ZodError } from 'zod';
 import { getSession } from '@/lib/session';
 import { publicErrorMessage } from '@/lib/public-error';
 import {rewardPolicyFromForm} from './policy-input';
-import { RewardMaintenanceError, previewRewardAccessChange, saveRewardAccessChange, deleteRewardReview, RewardPolicyGroupError, previewRewardSeniorMembership, saveRewardSeniorMembership, importOnehrRewardResults, createOffcycleReview, createRewardUnit, decideRewardUnit, getRewardUnit, importRewardFacts, postRewardUnit, refreshRewardSources, saveRewardEntry, saveRewardPolicy, setRewardMember, setRewardUnitLump } from '@/packs/rewards/service';
+import { rewardCalendarStages, rewardOffcycleSlaStages, saveRewardCalendar, RewardMaintenanceError, previewRewardAccessChange, saveRewardAccessChange, deleteRewardReview, RewardPolicyGroupError, previewRewardSeniorMembership, saveRewardSeniorMembership, importOnehrRewardResults, createOffcycleReview, createRewardUnit, decideRewardUnit, getRewardUnit, importRewardFacts, postRewardUnit, refreshRewardSources, saveRewardEntry, saveRewardPolicy, setRewardMember, setRewardUnitLump } from '@/packs/rewards/service';
 import { emptyFacts, performances, talents, type RewardPolicy, type RewardRole } from '@/packs/rewards/model';
 
 const str = (f: FormData, key: string) => String(f.get(key) ?? '').trim();
@@ -33,6 +33,16 @@ export async function lumpAction(f: FormData) { return change(f, (s, id, rev) =>
 export async function refreshAction(f: FormData) { return change(f, (s, id, rev) => refreshRewardSources(s, id, rev)); }
 export async function decideAction(f: FormData) { return change(f, (s, id, rev) => decideRewardUnit(s, id, rev, str(f, 'action') as 'submit' | 'approve' | 'return' | 'reject' | 'withdraw', str(f, 'reason'), f.has('acknowledged'))); }
 export async function postAction(f: FormData) { return change(f, (s, id, rev) => postRewardUnit(s, id, rev, str(f, 'batchId') || undefined)); }
+/** Reward calendar (migration 0646). `revision` is the calendar's own revision (0 when not yet created). */
+export async function calendarAction(f: FormData) {
+  const date = (key: string) => str(f, key) || null;
+  const days = (key: string) => str(f, key) === '' ? null : number(f, key);
+  return change(f, (s, id, rev) => saveRewardCalendar(s, id, rev, {
+    due: Object.fromEntries(rewardCalendarStages.map(k => [k, date(`due.${k}`)])),
+    caseDue: date('caseDue'),
+    offcycleDays: Object.fromEntries(rewardOffcycleSlaStages.map(k => [k, days(`days.${k}`)])),
+  }), true);
+}
 
 export async function entryAction(f: FormData) {
   return change(f, async (s, id, rev) => {
