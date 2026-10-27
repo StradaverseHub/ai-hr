@@ -31,7 +31,7 @@ test('demo branch matches actual default deploy predicate and never grants relea
 for(const [name,change] of [['unknown field',r=>r.secret='bad'],['wrong checker',r=>r.checkerSha256='f'.repeat(64)],['wrong native runtime',r=>r.runtime.abi='115'],['invented pass',r=>{r.errors=['actual refusal'];r.ok=true;}],['invented release',r=>r.releaseAuthorized=true],['unknown profile',r=>r.profile='bypass']])test('refuse '+name,()=>{const {report}=observe({ALLOW_DEMO_SESSION:'true'});change(report);assert.throws(()=>validateStagingProfile(report,customerEnvironmentErrors));});
 test('canonical operator awaits profile check before archive verifier and repeats it before launch',()=>{
  const source=readFileSync(new URL('./operator-release.mjs',import.meta.url),'utf8');
- const early='const profilePreflight=await probeStagingProfile({candidatePath,ssh});',verify='const evidence=await verifyCi({candidatePath,runId,baseline});';
+ const early='const profilePreflight=await probeStagingProfile({candidatePath,ssh});',verify='const evidence=await verifyCi({candidatePath,runId,baseline:ciBaseline??baseline,deploymentBaseline:baseline,originController});';
  assert.equal(source.split(early).length,2);assert.equal(source.split(verify).length,2);assert(source.indexOf(early)>=0&&source.indexOf(early)<source.indexOf(verify));
  assert(source.includes('const revalidate=async({announced=false}={})=>{await probeStagingProfile({candidatePath,ssh});await revalidateCi(evidence);'));
 });
