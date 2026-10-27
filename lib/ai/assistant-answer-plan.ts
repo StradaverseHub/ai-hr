@@ -6,13 +6,20 @@
  */
 import {JOB_FACT_FIELDS,type JobPresentation} from './module-jobs';
 import {isAgentModuleCode} from './module-agents';
+import {moduleHumanActionHandoffs} from './module-human-handoffs';
 import {SPECIALIST_FINDINGS,type SpecialistFinding} from './module-specialists';
 import {FOLLOWUP_CODES,type FollowupCode} from './module-specialist-followup';
 import {LEAVE_SUMMARY_EXPLAIN_KEYS,type LeaveSummaryExplainKey} from '../leave-summary-explain';
+import {ENTITLEMENT_STATUS_LABEL_KEY,type EntitlementStatus,type EligibilityRuleNotice} from '../entitlement-status';
 
-export const ANSWER_PLAN_LIMITS=Object.freeze({bytes:8192,reads:128,blocks:16,cards:25,factsPerCard:64,explanationsPerRead:512,textBytes:2000});
-export type AssistantExplanationCode=`specialist_finding:${SpecialistFinding}`|`specialist_followup:${FollowupCode}`|`leave_summary:${LeaveSummaryExplainKey}`;
+export const ANSWER_PLAN_LIMITS=Object.freeze({bytes:8192,reads:128,blocks:16,cards:25,presentationCards:26,factsPerCard:64,explanationsPerRead:512,textBytes:2000});
+export const ASSISTANT_LEAVE_ELIGIBILITY_CODES=Object.freeze(['not_active','no_rules','no_match','undated_axes'] as const);
+export const ASSISTANT_LEAVE_RULE_STATES=Object.freeze(['matched','in_force','expired','not_yet','table_stopped'] as const satisfies readonly EligibilityRuleNotice['state'][]);
+export type AssistantExplanationCode=`leave_status:${EntitlementStatus}`|`leave_eligibility:${typeof ASSISTANT_LEAVE_ELIGIBILITY_CODES[number]}`|`leave_rule:${typeof ASSISTANT_LEAVE_RULE_STATES[number]}`|`specialist_finding:${SpecialistFinding}`|`specialist_followup:${FollowupCode}`|`leave_summary:${LeaveSummaryExplainKey}`;
 export const ASSISTANT_EXPLANATION_CODES:readonly AssistantExplanationCode[]=Object.freeze([
+ ...Object.keys(ENTITLEMENT_STATUS_LABEL_KEY).map(code=>`leave_status:${code as EntitlementStatus}` as const),
+ ...ASSISTANT_LEAVE_ELIGIBILITY_CODES.map(code=>`leave_eligibility:${code}` as const),
+ ...ASSISTANT_LEAVE_RULE_STATES.map(code=>`leave_rule:${code}` as const),
  ...SPECIALIST_FINDINGS.map(code=>`specialist_finding:${code}` as const),
  ...FOLLOWUP_CODES.map(code=>`specialist_followup:${code}` as const),
  ...LEAVE_SUMMARY_EXPLAIN_KEYS.map(code=>`leave_summary:${code}` as const),
@@ -40,7 +47,7 @@ export const ASSISTANT_ANSWER_PROTOCOL=[
  'or {"version":1,"mode":"refuse","code":"unsupported_request|human_review_required"}.',
  'Order 1 to 16 distinct fact/explanation blocks relevant to this question. The catalogue numbers original actual executed reads; use only its ordinals and available codes.',
  'A fact states only its recorded field. An explanation selects only its canonical clause for the same read/card (null means source-wide). Never infer causes, calculations, comparisons, decisions or permission reasons.',
- 'Never supply prose, HR values, URLs, effects or guessed selectors. Null, blank and withheld facts are unavailable; truncation proves neither absence nor all-clear.',
+ 'Never invent or supply prose, HR values, URLs, effects or guessed selectors. Null, blank and withheld facts are unavailable; truncation proves neither absence nor all-clear.',
  'Clarify one missing selection using a slot only, without guessed choices. no_verified_facts requires no selectable evidence; unsupported_explanation means the requested meaning lacks support. Human review/confirmation remains separate.',
  'Use ordinary nonnegative integer ordinals and exact unescaped catalogue strings.',
 ].join(' ');
@@ -115,8 +122,11 @@ function currentReads(input:readonly AssistantAnswerRead[]):readonly CurrentRead
   const p=object(row.presentation);exact(p,['module','cards','truncated',...(Object.hasOwn(p,'hasEmployment')?['hasEmployment']:[])]);
   if(!isAgentModuleCode(p.module)||typeof p.truncated!=='boolean'||Object.hasOwn(p,'hasEmployment')&&typeof p.hasEmployment!=='boolean')return fail();
   const cards:CurrentRead['cards'][number][]=[];
-  for(const value of array(p.cards,ANSWER_PLAN_LIMITS.cards)){
-   const card=object(value);if(card.withheld!==undefined&&typeof card.withheld!=='boolean')return fail();
+  for(const value of array(p.cards,ANSWER_PLAN_LIMITS.presentationCards)){
+   const card=object(value);
+   // The actual module presenter appends one deduplicated, source-owned human handoff. It is
+   // not a 26th fact selector or effect capability; future/unknown extra cards fail closed.
+   if(cards.length>=ANSWER_PLAN_LIMITS.cards&&(!Array.isArray(card.facts)||card.facts.length!==0||card.linkPurpose!=='human_review'||typeof card.href!=='string'||!moduleHumanActionHandoffs(p.module).some(handoff=>handoff.route===card.href)))return fail();if(card.withheld!==undefined&&typeof card.withheld!=='boolean')return fail();
    const facts:Readonly<{known:boolean}>[]=[];
    for(const value of array(card.facts,ANSWER_PLAN_LIMITS.factsPerCard)){
     const fact=object(value);exact(fact,['field','value','format']);if(typeof fact.field!=='string'||!factFields.has(fact.field)||typeof fact.format!=='string'||!formats.has(fact.format))return fail();
@@ -128,7 +138,7 @@ function currentReads(input:readonly AssistantAnswerRead[]):readonly CurrentRead
   }
   const explanations=new Set<string>();
   for(const value of array(row.explanations,ANSWER_PLAN_LIMITS.explanationsPerRead)){
-   const e=object(value);exact(e,['card','code']);const card=e.card===null?null:ordinal(e.card,ANSWER_PLAN_LIMITS.cards),c=code(e.code);if(c.startsWith('leave_summary:')&&p.module!=='leave')return fail();
+   const e=object(value);exact(e,['card','code']);const card=e.card===null?null:ordinal(e.card,ANSWER_PLAN_LIMITS.cards),c=code(e.code);if(['leave_summary:','leave_status:','leave_eligibility:','leave_rule:'].some(prefix=>c.startsWith(prefix))&&p.module!=='leave')return fail();
    if(card!==null&&(!cards[card]||cards[card].withheld))return fail();
    const key=`${card}:${c}`;if(explanations.has(key))return fail();explanations.add(key);
   }

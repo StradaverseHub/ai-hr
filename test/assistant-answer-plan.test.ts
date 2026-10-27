@@ -3,6 +3,8 @@ import {describe,it,expect} from 'vitest';
 import {captureAssistantAnswerPlan,parseAssistantAnswerPlan,adjudicateAssistantAnswerPlan,ASSISTANT_ANSWER_PROTOCOL,
  ASSISTANT_EXPLANATION_CODES,ANSWER_PLAN_LIMITS,type AssistantAnswerRead,type AssistantAnswerPlan} from '../lib/ai/assistant-answer-plan';
 import type {JobPresentation} from '../lib/ai/module-jobs';
+import {presentGroundedToolOutcome} from '../lib/ai/grounded-tool-presentation';
+import {moduleHumanActionHandoffs} from '../lib/ai/module-human-handoffs';
 const presentation=():JobPresentation=>({module:'leave',truncated:false,cards:[{title:{kind:'record',number:1},facts:[
  {field:'available',value:7.5,format:'number'},{field:'pending',value:2,format:'number'},
 ]}]});
@@ -86,4 +88,13 @@ describe('strict terminal model reference plan',()=>{
   expect(ASSISTANT_ANSWER_PROTOCOL).toContain('original actual executed reads');expect(ASSISTANT_ANSWER_PROTOCOL).toContain('Never invent');
   const plan:AssistantAnswerPlan=captureAssistantAnswerPlan({version:1,mode:'clarify',slot:'module'});expect(plan.mode).toBe('clarify');
  });
+});
+
+it('actual25 fact cards plus canonical deduplicated handoff allow facts0to24 but never selector25',()=>{
+ const source={ok:true,module:'claims',data:{hasEmployment:true,truncated:false,claims:Array.from({length:25},()=>({claimType:'Fictional Travel',status:'pending',paidAt:null}))},humanActions:moduleHumanActionHandoffs('claims')};
+ const presentation=presentGroundedToolOutcome('my_module_work',source)!;expect(presentation.cards.length).toBe(26);expect(presentation.cards[25].facts.length).toBe(0);expect(presentation.cards[25].linkPurpose).toBe('human_review');
+ const current:AssistantAnswerRead[]=[{read:0,presentation,explanations:[]}];const plan={version:1,mode:'answer',blocks:[{kind:'fact',read:0,card:24,fact:0}]};expect(adjudicateAssistantAnswerPlan(plan,current)).toEqual(plan);
+ expect(()=>adjudicateAssistantAnswerPlan({...plan,blocks:[{...plan.blocks[0],card:25}]},current)).toThrow();
+ for(const extra of[{...presentation.cards[25],facts:[{field:'available',value:99,format:'number'}]},{...presentation.cards[25],href:'/admin/private'},{...presentation.cards[25],linkPurpose:undefined}])expect(()=>adjudicateAssistantAnswerPlan(plan,[{...current[0],presentation:{...presentation,cards:[...presentation.cards.slice(0,25),extra]} as JobPresentation}])).toThrow();
+ expect(()=>adjudicateAssistantAnswerPlan(plan,[{...current[0],presentation:{...presentation,cards:[...presentation.cards,presentation.cards[25]]}}])).toThrow();
 });
