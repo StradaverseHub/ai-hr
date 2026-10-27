@@ -18523,6 +18523,23 @@
         "candidateTitle": "Completed action evidence (optional)",
         "candidateIntro": "Choose one of your previously linked actions. We will recheck it before attaching it to this candidate. This does not rate its quality or replace independent evaluation.",
         "candidateNone": "No completed action evidence"
+      },
+      "conversation": {
+        "answerLabel": "Answer from your records",
+        "canonicalNote": "Based on current records you can access.",
+        "sources": "View source records",
+        "clarify_employment": "Which employment should I check?",
+        "clarify_leave_type": "Which leave type do you mean?",
+        "clarify_period": "Which period should I look at?",
+        "clarify_module": "Which area would you like help with?",
+        "replyLabel": "Your reply",
+        "continue": "Continue",
+        "reopenBeforeReply": "Reopen this conversation before replying.",
+        "unavailable": "That one needs a fresh look. Refresh this conversation or open a task below.",
+        "insufficient_no_verified_facts": "I could not find a current record to answer that. Try choosing a task below.",
+        "insufficient_unsupported_explanation": "I can show recorded values, but I cannot verify that explanation yet. Check the usual page or ask HR.",
+        "refuse_unsupported_request": "That is outside my lane here. Choose a supported task below.",
+        "refuse_human_review_required": "This needs a human decision. Open the usual page to review it with the right person."
       }
     },
     "denied_unavailable": "A little snag on my side. Please try again in a moment.",

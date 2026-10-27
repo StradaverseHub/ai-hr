@@ -1,5 +1,7 @@
 /** Canonical typed facts only. A model answer, copied receipt or arbitrary JSON cannot render here. */
 import {randomUUID} from 'node:crypto';
+import {askAssistantAction} from '../../app/assistant/actions';
+import type {AssistantAnswerPlan} from '../../lib/ai/assistant-answer-plan';
 import {saveGovernedJobFeedbackAction,eraseGovernedJobFeedbackAction} from '../../app/assistant/job-feedback-actions';
 import {runGovernedPlanAction} from '../../app/assistant/governed-job-actions';
 import type {GovernedWorkspaceJobView} from '../../core/workspace-module-jobs';
@@ -24,21 +26,21 @@ export async function ModuleJobChooser({modules,selected}:{modules:readonly Agen
   </a>{module==='multi_cycle_payroll'&&<a href="/assistant/payroll-runs" className="inline-flex min-h-11 items-center rounded-md px-3 text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{multiCycleRun('title')}</a>}{module==='country-my'&&<a href="/assistant/statutory" className="inline-flex min-h-11 items-center rounded-md px-3 text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{countryStatutory('title')}</a>}{module==='payroll'&&<a href="/assistant/payroll-close" className="inline-flex min-h-11 items-center rounded-md px-3 text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{payrollClose('title')}</a>}{module==='employees'&&<a href="/admin/personnel/import" className="inline-flex min-h-11 items-center rounded-md px-3 text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{employeeImport('title')}</a>}{module==='rewards'&&<a href="/assistant/rewards" className="inline-flex min-h-11 items-center rounded-md px-3 text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{rewards('title')}</a>}{module==='typed_pay_components'&&<a href="/assistant/pay-codes" className="inline-flex min-h-11 items-center rounded-md px-3 text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{payComponents('title')}</a>}{module==='attendance'&&<a href="/assistant/attendance" className="inline-flex min-h-11 items-center rounded-md px-3 text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{attendance('title')}</a>}{module==='approvals'&&<a href="/assistant/approvals" className="inline-flex min-h-11 items-center rounded-md px-3 text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{approvals('title')}</a>}{module==='leave'&&<a href="/assistant/leave" className="inline-flex min-h-11 items-center rounded-md px-3 text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{leave('title')}</a>}{module==='notifications'&&<a href="/assistant/notifications" className="inline-flex min-h-11 items-center rounded-md px-3 text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{notifications('title')}</a>}{module==='ess'&&<a href="/assistant/profile" className="inline-flex min-h-11 items-center rounded-md px-3 text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{profile('title')}</a>}{module==='performance'&&<a href="/assistant/performance" className="inline-flex min-h-11 items-center rounded-md px-3 text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{performance('title')}</a>}{module==='claims'&&<a href="/assistant/claims" className="inline-flex min-h-11 items-center rounded-md px-3 text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{claims('title')}</a>}{module==='system_testing'&&<a href="/assistant/testing" className="inline-flex min-h-11 items-center rounded-md px-3 text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{testing('title')}</a>}{module==='org'&&<a href="/assistant/org" className="inline-flex min-h-11 items-center rounded-md px-3 text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{org('title')}</a>}{module==='knowledge_base'&&<a href="/assistant/knowledge-base" className="inline-flex min-h-11 items-center rounded-md px-3 text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{knowledge('title')}</a>}{module==='lifecycle'&&<a href="/assistant/lifecycle" className="inline-flex min-h-11 items-center rounded-md px-3 text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{lifecycle('title')}</a>}{module==='toil'&&<a href="/assistant/toil" className="inline-flex min-h-11 items-center rounded-md px-3 text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{toil('title')}</a>}</div>)}</div>
  </section>;
 }
-export async function CanonicalModuleJob({view,ctx}:{view:CanonicalModuleJobView;ctx:SessionContext}){
- const t=await getTranslations('assistant.workspace.jobs'),answers=await getTranslations('assistant.workspace.answers'),gap=await getTranslations('controlTower.readinessScreen.gap'),rewardStage=await getTranslations('rewards.stages'),rewardKind=await getTranslations('rewards.kinds');
- const locale=await getLocale(),safeLocale=['en','ms','zh','ta','th','vi'].includes(locale)?locale:'en';
- try{assertCanonicalModuleJobView(view,ctx);}catch{return <Card className="p-5"><p role="status" className="text-sm text-muted-foreground">{t('unavailable')}</p></Card>;}
- if(view.state==='unavailable')return <Card className="p-5"><p role="status" className="text-sm text-muted-foreground">{t('unavailable')}</p></Card>;
- const presentation=view.presentation,headingId='assistant-job-'+view.viewId;
- const display=(fact:JobFact)=>{
+async function canonicalJobText(){
+ const[t,answers,gap,rewardStage,rewardKind,locale]=await Promise.all([getTranslations('assistant.workspace.jobs'),getTranslations('assistant.workspace.answers'),getTranslations('controlTower.readinessScreen.gap'),getTranslations('rewards.stages'),getTranslations('rewards.kinds'),getLocale()]);
+ const safeLocale=['en','ms','zh','ta','th','vi'].includes(locale)?locale:'en';return{t,answers,gap,rewardStage,rewardKind,safeLocale};
+}
+type CanonicalJobText=Awaited<ReturnType<typeof canonicalJobText>>;
+function displayCanonicalFact(fact:JobFact,module:AgentModuleCode,text:CanonicalJobText){
+ const{t,rewardStage,rewardKind,safeLocale}=text;
   if(fact.value===null)return t('unknown');
   if(fact.format==='boolean'&&typeof fact.value==='boolean')return t(fact.value?'yes':'no');
   if(fact.format==='module'&&typeof fact.value==='string'&&MODULE_JOBS.some(([module])=>module===fact.value))return t(`module_${fact.value}`);
  if(fact.format==='performanceFramework'&&typeof fact.value==='string'&&['standard','onehr'].includes(fact.value))return t(`framework_${fact.value}`);
  if(fact.format==='performanceArtifact'&&typeof fact.value==='string'&&['review','plan'].includes(fact.value))return t(`artifact_${fact.value}`);
   if(fact.format==='blocks'&&typeof fact.value==='string')return t(`blocks_${fact.value}`);
-  if(presentation.module==='rewards'&&fact.field==='status'&&typeof fact.value==='string'&&['draft','bg','gr','ctro','ec','approved','posted','rejected','withdrawn'].includes(fact.value))return rewardStage(fact.value);
-  if(presentation.module==='rewards'&&fact.field==='rewardKind'&&typeof fact.value==='string'&&['annual','adhoc','midyear'].includes(fact.value))return rewardKind(fact.value);
+  if(module==='rewards'&&fact.field==='status'&&typeof fact.value==='string'&&['draft','bg','gr','ctro','ec','approved','posted','rejected','withdrawn'].includes(fact.value))return rewardStage(fact.value);
+  if(module==='rewards'&&fact.field==='rewardKind'&&typeof fact.value==='string'&&['annual','adhoc','midyear'].includes(fact.value))return rewardKind(fact.value);
   if(fact.format==='testingStatus'&&typeof fact.value==='string'&&['not_started','in_progress','passed','failed','blocked','retest_required','not_applicable','partial'].includes(fact.value))return t(`testing_state_${fact.value}`);
   if(fact.format==='status'&&typeof fact.value==='string'&&knownStates.has(fact.value))return t(`state_${fact.value}`);
   if(fact.format==='date'&&typeof fact.value==='string'){
@@ -47,18 +49,24 @@ export async function CanonicalModuleJob({view,ctx}:{view:CanonicalModuleJobView
   }
   // Monetary decimals are copied verbatim: no currency substitution, arithmetic or display rounding.
   return String(fact.value);
- };
- const heading=(card:JobCard)=>card.title.kind==='text'?card.title.value:card.title.kind==='gap'?gap(card.title.code):card.title.kind==='module'?t(`module_${card.title.module}`):t('record',{n:card.title.number});
+}
+
+function canonicalHeading(card:JobCard,{t,gap}:CanonicalJobText){return card.title.kind==='text'?card.title.value:card.title.kind==='gap'?gap(card.title.code):card.title.kind==='module'?t(`module_${card.title.module}`):t('record',{n:card.title.number});}
+export async function CanonicalModuleJob({view,ctx}:{view:CanonicalModuleJobView;ctx:SessionContext}){
+ const text=await canonicalJobText(),{t,answers,safeLocale}=text;
+ try{assertCanonicalModuleJobView(view,ctx);}catch{return <Card className="p-5"><p role="status" className="text-sm text-muted-foreground">{t('unavailable')}</p></Card>;}
+ if(view.state==='unavailable')return <Card className="p-5"><p role="status" className="text-sm text-muted-foreground">{t('unavailable')}</p></Card>;
+ const presentation=view.presentation,headingId='assistant-job-'+view.viewId;
  return <section aria-labelledby={headingId} className="space-y-3">
   <header className="flex flex-wrap items-start justify-between gap-3"><div><h2 id={headingId} className="text-lg font-semibold">{view.toolName?answers(`tool_${view.toolName}`):t(`module_${presentation.module}`)}</h2>
    <p className="mt-1 text-xs text-muted-foreground">{t('canonicalNote')}</p></div><form action="/assistant" method="get"><input type="hidden" name="job" value={presentation.module}/><button type="submit" className="min-h-11 rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('refresh')}</button></form></header>
   <p className="text-xs text-muted-foreground">{t('checkedAt',{time:new Intl.DateTimeFormat(safeLocale,{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'}).format(new Date(view.checkedAt))})}</p>
   {presentation.cards.length===0&&<Card className="p-5"><p className="text-sm text-muted-foreground">{t(presentation.hasEmployment===false?'noEmployment':'noData')}</p></Card>}
   <div className="grid gap-3 sm:grid-cols-2">{presentation.cards.map((card,index)=><Card key={index} className="min-w-0 p-4">
-   <h3 className="break-words text-sm font-semibold">{heading(card)}</h3>
+   <h3 className="break-words text-sm font-semibold">{canonicalHeading(card,text)}</h3>
    {card.title.kind==='module'&&<p className="mt-2 text-xs text-muted-foreground">{card.linkPurpose==='human_review'?t('humanReviewNote'):t(`help_${card.title.module}`)}</p>}
    {card.facts.length>0&&<dl className="mt-3 space-y-2">{card.facts.map((fact,i)=><div key={i} className="flex items-start justify-between gap-4 text-sm">
-    <dt className="min-w-0 text-muted-foreground">{t(`field_${fact.field}`)}</dt><dd className="max-w-[65%] break-words text-right tabular-nums">{display(fact)}</dd>
+    <dt className="min-w-0 text-muted-foreground">{t(`field_${fact.field}`)}</dt><dd className="max-w-[65%] break-words text-right tabular-nums">{displayCanonicalFact(fact,presentation.module,text)}</dd>
    </div>)}</dl>}
    {card.withheld&&<p className="mt-3 text-xs text-muted-foreground">{t('withheld')}</p>}
    {card.title.kind==='module'&&card.linkPurpose!=='human_review'&&<a href={'/assistant?job='+card.title.module} className="mt-3 inline-flex min-h-11 items-center text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('open')}</a>}
@@ -71,14 +79,59 @@ export async function CanonicalModuleJob({view,ctx}:{view:CanonicalModuleJobView
  </section>;
 }
 
-/** The only answer input is a trusted canonical view; raw model prose has no rendering slot. */
-export async function GroundedWorkspaceReply({reply,ctx}:{reply:GroundedWorkspaceAnswer;ctx:SessionContext}){
- const t=await getTranslations('assistant.workspace.answers');
+type ConversationReply=Readonly<{plan:AssistantAnswerPlan;facts:readonly Readonly<{view:CanonicalModuleJobView;card:number;fact:number}>[]}>;
+const closedConversationFields=(value:object,fields:readonly string[])=>JSON.stringify(Object.keys(value).sort())===JSON.stringify([...fields].sort());
+/** Selection/order comes from the checked plan; every displayed value still comes from an original
+ * fresh canonical view. Unknown plans, withheld/null facts and unsupported explanations refuse. */
+async function ConversationReplyBody({conversation,ctx,exchangeId}:{conversation:ConversationReply;ctx:SessionContext;exchangeId?:string}){
+ const[copy,text]=await Promise.all([getTranslations('assistant.workspace.conversation'),canonicalJobText()]);
+ const unavailable=()=> <p role="status" className="text-sm text-muted-foreground">{copy('unavailable')}</p>;
+ try{
+  const plan=conversation.plan;if(!closedConversationFields(conversation,['plan','facts'])||!Array.isArray(conversation.facts)||!plan||plan.version!==1)return unavailable();
+  if(plan.mode==='clarify'){
+   if(!closedConversationFields(plan,['version','mode','slot'])||!['employment','leave_type','period','module'].includes(plan.slot)||conversation.facts.length!==0)return unavailable();
+   const bound=typeof exchangeId==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(exchangeId),labelId=bound?'assistant-clarification-'+exchangeId:'assistant-clarification-unavailable';
+   return <section aria-labelledby={labelId} className="space-y-3"><h2 id={labelId} className="text-base font-medium">{copy(`clarify_${plan.slot}`)}</h2>
+    {bound?<form action={askAssistantAction} className="space-y-3"><input type="hidden" name="clarificationExchangeId" value={exchangeId}/>
+     <label className="block text-sm">{copy('replyLabel')}<textarea name="clarificationAnswer" required maxLength={500} rows={2} className="mt-1 min-h-11 w-full rounded-md border bg-background px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"/></label>
+     <button type="submit" className="min-h-11 rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{copy('continue')}</button>
+    </form>:<p role="status" className="text-sm text-muted-foreground">{copy('reopenBeforeReply')}</p>}
+   </section>;
+  }
+  if(plan.mode==='insufficient'||plan.mode==='refuse'){
+   const codes=plan.mode==='insufficient'?['no_verified_facts','unsupported_explanation']:['unsupported_request','human_review_required'];
+   if(!closedConversationFields(plan,['version','mode','code'])||!codes.includes(plan.code)||conversation.facts.length!==0)return unavailable();
+   return <p role="status" className="text-sm">{copy(`${plan.mode}_${plan.code}`)}</p>;
+  }
+  if(plan.mode!=='answer'||!closedConversationFields(plan,['version','mode','blocks'])||!Array.isArray(plan.blocks)||plan.blocks.length===0||plan.blocks.length>16||plan.blocks.length!==conversation.facts.length)return unavailable();
+  const views:CanonicalModuleJobView[]=[],lines=plan.blocks.map((block,index)=>{
+   const selected=conversation.facts[index];
+   if(block.kind!=='fact'||!closedConversationFields(block,['kind','read','card','fact'])||!Number.isSafeInteger(block.read)||block.read<0||!selected||selected.card!==block.card||selected.fact!==block.fact||!Number.isSafeInteger(selected.card)||selected.card<0||!Number.isSafeInteger(selected.fact)||selected.fact<0)throw Error();
+   assertCanonicalModuleJobView(selected.view,ctx);if(selected.view.state!=='ready')throw Error();
+   const card=selected.view.presentation.cards[selected.card],fact=card?.facts[selected.fact];if(!card||card.withheld||!fact||fact.value===null||typeof fact.value==='string'&&fact.value.trim()===''||typeof fact.value==='number'&&!Number.isFinite(fact.value))throw Error();
+   let value=displayCanonicalFact(fact,selected.view.presentation.module,text);
+   if(fact.format==='money'){
+    const units=card.facts.filter(row=>row.field==='currency');if(units.length!==1||typeof units[0].value!=='string'||!/^[A-Z]{3}$/.test(units[0].value))throw Error();
+    value=String(value)+' '+units[0].value;
+   }
+   if(!views.includes(selected.view))views.push(selected.view);
+   return <li key={index} className="break-words text-sm leading-relaxed"><span className="font-medium">{canonicalHeading(card,text)}</span>{' — '}{text.t(`field_${fact.field}`)}{': '}<span className="tabular-nums">{value}</span></li>;
+  });
+  const sources=await Promise.all(views.map(async view=>({id:view.viewId,card:await CanonicalModuleJob({view,ctx})})));
+  return <section aria-label={copy('answerLabel')} className="space-y-3"><p className="text-xs text-muted-foreground">{copy('canonicalNote')}</p><ul className="space-y-2">{lines}</ul>
+   <details className="rounded-lg border border-border p-3"><summary className="min-h-11 cursor-pointer py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{copy('sources')}</summary><div className="mt-3 space-y-4">{sources.map(source=><div key={source.id}>{source.card}</div>)}</div></details>
+  </section>;
+ }catch{return unavailable();}
+}
+/** No arbitrary model prose is rendered. Clarification/refusal precede legacy grounded/generic mode. */
+export async function GroundedWorkspaceReply({reply,ctx,exchangeId}:{reply:GroundedWorkspaceAnswer;ctx:SessionContext;exchangeId?:string}){
+ const t=await getTranslations('assistant.workspace.answers'),conversation=reply.conversation??null;
  return <div className="mt-3 space-y-4">
-  {reply.mode==='grounded'?<><p className="text-sm text-muted-foreground">{t('grounded')}</p>
+  {conversation!==null?await ConversationReplyBody({conversation,ctx,exchangeId}):reply.mode==='grounded'?<><p className="text-sm text-muted-foreground">{t('grounded')}</p>
    {reply.views.map(view=><CanonicalModuleJob key={view.viewId} view={view} ctx={ctx}/>)}
    {reply.partial&&<p className="text-xs text-muted-foreground">{t('partial')}</p>}</>:
    <p className="text-sm text-muted-foreground">{t(reply.mode==='generic'?'generic':'unavailable')}</p>}
+  {conversation?.plan.mode==='answer'&&reply.partial&&<p className="text-xs text-muted-foreground">{t('partial')}</p>}
   {reply.fallbackModules.filter(module=>MODULE_JOBS.some(([code])=>code===module)).map(module=><a key={module} href={'/assistant?job='+encodeURIComponent(module)}
    className="mr-3 inline-flex min-h-11 items-center text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('openTask')}</a>)}
  </div>;

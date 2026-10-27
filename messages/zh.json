@@ -18523,6 +18523,23 @@
         "candidateTitle": "已完成操作的证据（可选）",
         "candidateIntro": "选择您之前关联的操作。添加到此候选版本前，我们会再次核对。这不是质量评分，也不能替代独立评估。",
         "candidateNone": "不添加已完成操作的证据"
+      },
+      "conversation": {
+        "answerLabel": "根据您的记录回答",
+        "canonicalNote": "依据您目前有权查看的最新记录。",
+        "sources": "查看来源记录",
+        "clarify_employment": "您想查询哪一份雇佣记录？",
+        "clarify_leave_type": "您指的是哪种假期？",
+        "clarify_period": "您想查询哪个期间？",
+        "clarify_module": "您希望在哪个业务领域获得帮助？",
+        "replyLabel": "您的回复",
+        "continue": "继续",
+        "reopenBeforeReply": "请重新打开这段对话后再回复。",
+        "unavailable": "这需要重新核实。请刷新对话，或打开下方的任务。",
+        "insufficient_no_verified_facts": "我没有找到可用于回答此问题的最新记录。请尝试选择下方的任务。",
+        "insufficient_unsupported_explanation": "我可以展示记录中的数值，但目前无法核实这个解释。请查看常用页面或咨询人力资源部。",
+        "refuse_unsupported_request": "这超出了我在这里能协助的范围。请选择下方支持的任务。",
+        "refuse_human_review_required": "这需要由人作出决定。请打开常用页面，与适当的负责人一起审核。"
       }
     },
     "denied_unavailable": "我这边遇到了小状况，请稍后再试。",
