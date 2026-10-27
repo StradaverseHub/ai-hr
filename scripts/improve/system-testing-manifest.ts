@@ -29,8 +29,8 @@ export function prepareSystemTestingBuild(p: { worktree: string; candidate: stri
   const catalogueBlob = committed.read([SYSTEM_TESTING_CATALOGUE_PATH], 8 * 1024 * 1024).get(SYSTEM_TESTING_CATALOGUE_PATH)!;
   if (catalogueBlob.length > 8 * 1024 * 1024) throw new Error('Reviewed catalogue exceeds the supported bound.');
   const catalogue = catalogueSchema.parse(JSON.parse(catalogueBlob.toString('utf8')));
-  const paths = testingSourcePaths(catalogue), blobs = committed.read(paths);
-  const sourceHashRecord = paths.map(path => ({ path, sha256: createHash('sha256').update(blobs.get(path)!).digest('hex') }));
+  const paths = testingSourcePaths(catalogue), hashes = committed.hashes(paths);
+  const sourceHashRecord = paths.map(path => ({ path, sha256: hashes.get(path)! }));
   assertFrozen();
   const record: PreparedTestingBuild = { format: 1, identity: { sourceRef: p.candidate, buildRecordId: p.buildRecordId, catalogueHash: catalogueDigest(catalogue), contentHash: sourceContentDigest(sourceHashRecord) }, sourceHashRecord, activeServiceVerified: false };
   verifyInstalledTestingBuild(record, root);

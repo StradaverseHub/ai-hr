@@ -16,8 +16,7 @@ export function createCommittedSourceReader(worktree: string, candidate: string)
     if (!match || entries.has(match[4])) throw new Error('Malformed or duplicate immutable tree record.');
     entries.set(match[4], { mode: match[1], type: match[2], oid: match[3] });
   }
-  return {
-    read(paths: readonly string[], limit = MAX_BLOB): Map<string, Buffer> {
+  function readObjects<Value>(paths: readonly string[], limit: number, transform: (body: Buffer) => Value, buffered: boolean): Map<string, Value> {
       if (!Array.isArray(paths) || !paths.length || paths.length > 32000 || new Set(paths).size !== paths.length || !Number.isSafeInteger(limit) || limit < 1 || limit > MAX_BLOB) throw new Error('Bounded unique immutable source paths required.');
       const selected = paths.map(path => {
         const entry = entries.get(path);
@@ -33,7 +32,8 @@ export function createCommittedSourceReader(worktree: string, candidate: string)
         if (!match || match[1] !== ids[i] || !Number.isSafeInteger(size) || size < 0 || size > limit) throw new Error('Immutable source object exceeds its regular-file bound.');
         return { oid: ids[i], size };
       });
-      const bytes = new Map<string, Buffer>();
+      if (buffered && objects.reduce((sum, object) => sum + object.size, 0) > BATCH_BYTES) throw new Error('Buffered immutable sources exceed the supported bound; use streaming hashes.');
+      const bytes = new Map<string, Value>();
       for (let first = 0; first < objects.length;) {
         let last = first, expected = 0;
         while (last < objects.length && expected + objects[last].size + 128 <= BATCH_BYTES) { expected += objects[last].size + 128; last++; }
@@ -45,12 +45,15 @@ export function createCommittedSourceReader(worktree: string, candidate: string)
           if (end < offset || output.subarray(offset, end).toString('ascii') !== object.oid + ' blob ' + object.size || end + 1 + object.size >= output.length || output[end + 1 + object.size] !== 10) throw new Error('Immutable object frame differs.');
           const body = output.subarray(end + 1, end + 1 + object.size);
           if (createHash('sha1').update('blob ' + body.length + '\0').update(body).digest('hex') !== object.oid) throw new Error('Immutable source bytes differ from the selected Git object.');
-          bytes.set(object.oid, Buffer.from(body)); offset = end + object.size + 2;
+          bytes.set(object.oid, transform(body)); offset = end + object.size + 2;
         }
         if (offset !== output.length) throw new Error('Unexpected trailing immutable object bytes.');
         first = last;
       }
-      return new Map(selected.map(({ path, oid }) => { const value = bytes.get(oid); if (!value) throw new Error('Missing immutable source object.'); return [path, value]; }));
-    },
+      return new Map(selected.map(({ path, oid }) => { const value = bytes.get(oid); if (value === undefined) throw new Error('Missing immutable source object.'); return [path, value]; }));
+  }
+  return {
+    read: (paths: readonly string[], limit = MAX_BLOB) => readObjects(paths, limit, body => Buffer.from(body), true),
+    hashes: (paths: readonly string[]) => readObjects(paths, MAX_BLOB, body => createHash('sha256').update(body).digest('hex'), false),
   };
 }
