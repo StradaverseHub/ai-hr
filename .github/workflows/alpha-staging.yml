@@ -38,7 +38,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Email install grant and native protocol refusal controls
         if: inputs.control_scope == 'email-grant-controls'
-        run: node --import tsx --test .github/ci/email-install-grant.test.mjs .github/ci/email-compiler-evidence.test.mjs .github/ci/operator-email-repair.test.mjs .github/ci/build-only-evidence.test.mjs .github/ci/operator-flow.test.mjs
+        run: node --import tsx --test .github/ci/email-install-grant.test.mjs .github/ci/email-compiler-evidence.test.mjs .github/ci/operator-email-repair.test.mjs .github/ci/github-snapshot-batch.test.mjs .github/ci/build-only-evidence.test.mjs .github/ci/operator-flow.test.mjs
       - name: Import email operator without executing native actions
         if: inputs.control_scope == 'email-grant-controls'
         run: node --import tsx --input-type=module -e "await import('./.github/ci/operator-email-repair.mjs')"
