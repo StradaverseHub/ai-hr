@@ -5,7 +5,55 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
-## Current filename reservations; final journal positions deferred
+## Definitive coordinated source allocation — 27 October 2026
+
+The CI/efficiency coordinator reconciled the Board, AI and Mobile reservations and issued the
+following ordered **unapplied source allocation**. This supersedes the deferred positions below.
+The canonical `alpha@9541b1686d7941f89e564723271e48bf85a21a89` prefix retains all501 entries through
+index615/timestamp1793025815551. Allocation manifest SHA256:
+`703407b13d5170c9aafdd16b97528ec3dd32389caa85a71a44b65fa4c17523f0`.
+
+| Owner | Index | Timestamp | Filename tag |
+|---|---:|---:|---|
+|Board|616|1793025815552|0602_payroll_history_revisions|
+|Board|617|1793025815553|0603_letter_lifecycle|
+|AI|618|1793025815554|0621_ai_action_controls|
+|AI|619|1793025815555|0629_lifecycle_acknowledgement_source|
+|AI|620|1793025815556|0630_testing_execution_source|
+|AI|621|1793025815557|0631_payroll_close_source|
+|AI|622|1793025815558|0632_statutory_source_ownership|
+|AI|623|1793025815559|0622_own_leave_review_store|
+|AI|624|1793025815560|0623_openrouter_provider_options|
+|AI|625|1793025815561|0624_assistant_disclosure|
+|AI|626|1793025815562|0625_provider_readiness|
+|AI|627|1793025815563|0626_module_agent_feedback|
+|AI|628|1793025815564|0627_module_agent_improvement|
+|AI|629|1793025815565|0628_employee_import_ai_evaluation|
+|Mobile|630|1793039596595|0613_request_abuse_budgets|
+|Mobile|631|1793047796775|0633_geofence_reported_uncertainty|
+|Mobile|632|1793054626620|0634_mobile_integrity_challenges|
+|Mobile|633|1793055753390|0635_mobile_integrity_keys|
+
+This AI source integrates the two preceding Board SQL files from
+`b1103131ba3e54181cdcbacda85b47e5639f88fe`, then its twelve exact frozen `96c2c9cc9` draft bodies.
+All fourteen SQL files match the coordinator's source SHA256 values. Original drafts and historical
+candidates remain unchanged; header comments describing their original draft status remain part of
+those exact bytes. The journal, rather than the filename number or historical header, owns execution.
+The resulting AI journal has515 entries. Mobile rows are reserved successors, not applied here.
+
+Lifecycle, Testing and Payroll source functions precede shared review custody; OpenRouter options
+precede provider readiness. Any later release must include all earlier allocated prerequisites;
+shipping a later timestamp while omitting earlier allocated rows would silently skip migrations.
+An intervening canonical append requires reconciliation, never overwriting an occupied row.
+
+This is source integration only. No database was migrated, no gate/build/deployment receipt was
+issued, and neither alpha/main advancement nor a staging operation follows from allocation.
+The coordinator observed498 staging ledger rows with two historical source/hash differences;
+preserve the actual ledger and resolve installer acceptance through its owner rather than editing
+historical SQL or claiming the deployed prefix is hash-exact. Actual shadow, populated-upgrade,
+native security/concurrency and application experience checks remain required.
+
+## Historical filename reservations; journal positions were deferred
 
 The coordinator confirmed on 27 October 2026 (Asia/Kuala_Lumpur) that AI dev2 retains only the eight
 filename tags0621–0628 below. Journal indices and timestamps will be allocated centrally from the
