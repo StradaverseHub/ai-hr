@@ -58,7 +58,8 @@ export function parseAndroidEnrollmentSnapshot(input:unknown,rawScope:Enrollment
   for(const record of records)if(!contextMatches(scope,record)||!receiptMatches(record.key,record.prepared))throw new Error();
   if(s.retired.some(record=>record.key.revokedAt===null))throw new Error();
   const requests=[...records.map(value=>value.requestId),...(s.pending?[s.pending.requestId]:[])];
-  if(new Set(requests).size!==requests.length||new Set(records.map(value=>value.key.keyId)).size!==records.length)throw new Error();
+  const challenges=[...records.map(value=>value.prepared.context.challengeId),...(s.pending&&s.pending.phase!=='requested'?[s.pending.prepared.context.challengeId]:[])];
+  if(new Set(requests).size!==requests.length||new Set(records.map(value=>value.key.keyId)).size!==records.length||new Set(challenges).size!==challenges.length)throw new Error();
   return s;
  }catch{throw new EnrollmentJournalUnavailable();}
 }
@@ -91,7 +92,7 @@ export function createAndroidEnrollmentJournal(rawScope:EnrollmentScope,ports:An
   try{await owned(()=>ports.commit(structuredClone(next)));}catch{ports.assertCurrent();throw new EnrollmentJournalUnavailable();}return next;
  }
  function status(s:State,reason?:Reason):AndroidEnrollmentStatus{
-  if(s.key)return {status:s.version===2?'revocation_pending':'stored_key',keyId:s.key.key.keyId,...(s.version===2?{}:{revoked:s.key.key.revokedAt!==null}),...(reason?{reason}:{})} as AndroidEnrollmentStatus;
+  if(s.key){if(s.version===2)return {status:'revocation_pending',keyId:s.key.key.keyId,...(reason?{reason}:{})};return {status:'stored_key',keyId:s.key.key.keyId,revoked:s.key.key.revokedAt!==null,...(reason?{reason}:{})};}
   return s.pending?{status:'pending',requestId:s.pending.requestId,employmentId:s.pending.employmentId,phase:s.pending.phase,...(reason?{reason}:{})}:{status:'empty'};
  }
  function nativeReason(value:{status:string;reason?:string}):Reason{return value.status==='unsupported'?'unsupported':['invalid_key','key_exists','recovery_required','binding_conflict'].includes(value.reason??'')?'recovery_required':'native_unavailable';}

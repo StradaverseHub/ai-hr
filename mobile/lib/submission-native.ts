@@ -5,6 +5,7 @@ import { AESEncryptionKey, AESSealedData, aesEncryptAsync, aesDecryptAsync, Cryp
 import { createSubmissionJournal, SubmissionJournalFull, SubmissionJournalUnavailable, type SubmissionScope } from './submission-journal';
 import { createSubmissionStorage,createSealedJournalStorage } from './submission-storage';
 import {createEnrollmentJournal,parseEnrollmentSnapshot,EnrollmentScope,EnrollmentJournalUnavailable,type EnrollmentPorts} from './enrollment-journal';
+import {createAndroidEnrollmentJournal,parseAndroidEnrollmentSnapshot,type AndroidEnrollmentPorts} from './android-enrollment-journal';
 import NativeIntegrity from '../modules/aihr-integrity/src/AihrIntegrityModule';
 import {createIntegrityBridge} from './integrity-bridge';
 
@@ -128,18 +129,19 @@ export async function nativeIntegrityInstallationId(assertCurrent:()=>void){
   });
 }
 
-/** Shares the established AES-GCM owner and install quota, with a distinct purpose/scope AAD. Opening
- * the journal performs no enrollment, auto-replay or key replacement. The model serializes all owners. */
-export async function openNativeEnrollmentJournal(rawScope:EnrollmentScope,assertCurrent:()=>void,ports:Omit<EnrollmentPorts,'assertCurrent'|'read'|'commit'|'digest'>){
-  const scope=EnrollmentScope.parse(rawScope);assertCurrent();
-  const scopeId=await hash(JSON.stringify(['enrollment-v1',scope.namespace,scope.apiOrigin,scope.actorId,scope.appInstallationId]));assertCurrent();
+/** One encrypted storage owner with distinct protocol AAD/pointers. Legacy Apple bytes keep their
+ * original domain; Android cannot interpret or overwrite that journal. Opening performs no send. */
+async function nativeEnrollmentStorage<T extends {revision:number;pending:unknown}>(scope:EnrollmentScope,assertCurrent:()=>void,parse:(value:unknown)=>T,domain:'enrollment-v1'|'android-enrollment-v1'){
+  assertCurrent();
+  const prefix=domain==='enrollment-v1'?'enrollment':'android-enrollment';
+  const scopeId=await hash(JSON.stringify([domain,scope.namespace,scope.apiOrigin,scope.actorId,scope.appInstallationId]));assertCurrent();
   const key=await encryptionKey(assertCurrent);assertCurrent();
   const keyId=await hash(await key.encoded('base64'));assertCurrent();
-  const pointer=`aihr.enrollment.${keyId.slice(0,16)}.${scopeId}`,directory=new Directory(root(),`enrollment-${scopeId}`),maximum=131072;
-  const aad=new TextEncoder().encode(`aihr-enrollment-v1:${scopeId}:journal`);
+  const pointer=`aihr.${prefix}.${keyId.slice(0,16)}.${scopeId}`,directory=new Directory(root(),`${prefix}-${scopeId}`),maximum=131072;
+  const aad=new TextEncoder().encode(`aihr-${domain}:${scopeId}:journal`);
   const file=(slot:0|1)=>new File(directory,`journal-${slot}.sealed`);
   const reclaim=(revision:number)=>{assertCurrent();const old=file((1-revision%2) as 0|1);if(old.exists)old.delete();};
-  const storage=createSealedJournalStorage(value=>parseEnrollmentSnapshot(value,scope),{
+  const storage=createSealedJournalStorage(parse,{
     assertCurrent,
     readPointer:()=>SecureStore.getItemAsync(pointer,OPTIONS),writePointer:value=>SecureStore.setItemAsync(pointer,value,OPTIONS),
     async readSlot(slot){
@@ -150,16 +152,23 @@ export async function openNativeEnrollmentJournal(rawScope:EnrollmentScope,asser
     async writeSlot(slot,bytes,snapshot){
       assertCurrent();const f=file(slot),used=root().exists?root().size:0;
       if(used==null||!Number.isFinite(used)||used<0)throw new EnrollmentJournalUnavailable();
-      // A bounded receipt resolution must remain possible at the admission cap, as for submissions.
       if(snapshot.pending&&used+Math.max(0,bytes.byteLength-(f.exists?f.size:0))>MAX_INSTALL_BYTES)throw new EnrollmentJournalUnavailable();
       if(!directory.exists)directory.create({intermediates:true});f.write(bytes);
     },
     async seal(bytes){assertCurrent();const result=await aesEncryptAsync(bytes,key,{additionalData:aad});assertCurrent();return result.combined();},
     async open(bytes){assertCurrent();const result=await aesDecryptAsync(AESSealedData.fromCombined(bytes),key,{additionalData:aad});assertCurrent();return result;},
   },{maximumBytes:maximum,refuseOrphanSlots:true,error:()=>new EnrollmentJournalUnavailable()});
-  return createEnrollmentJournal(scope,{...ports,assertCurrent,
-    async read(){const s=await storage.read();if(s){try{reclaim(s.revision);}catch{/* A cleanup failure cannot hide a committed enrollment. */}}assertCurrent();return s;},
-    async commit(s){await storage.commit(s);try{reclaim(s.revision);}catch{/* Keep the committed receipt even if old ciphertext cleanup must retry. */}assertCurrent();},
-    async digest(value,encoding){assertCurrent();const result=await digestStringAsync(CryptoDigestAlgorithm.SHA256,value,{encoding:encoding==='base64'?CryptoEncoding.BASE64:CryptoEncoding.HEX});assertCurrent();return result;},
-  });
+  return {
+    async read(){const s=await storage.read();if(s){try{reclaim(s.revision);}catch{/* Preserve the committed state. */}}assertCurrent();return s;},
+    async commit(s:T){await storage.commit(s);try{reclaim(s.revision);}catch{/* Preserve the committed receipt. */}assertCurrent();},
+    async digest(value:string,encoding:'hex'|'base64'){assertCurrent();const result=await digestStringAsync(CryptoDigestAlgorithm.SHA256,value,{encoding:encoding==='base64'?CryptoEncoding.BASE64:CryptoEncoding.HEX});assertCurrent();return result;},
+  };
+}
+export async function openNativeEnrollmentJournal(rawScope:EnrollmentScope,assertCurrent:()=>void,ports:Omit<EnrollmentPorts,'assertCurrent'|'read'|'commit'|'digest'>){
+  const scope=EnrollmentScope.parse(rawScope),storage=await nativeEnrollmentStorage(scope,assertCurrent,value=>parseEnrollmentSnapshot(value,scope),'enrollment-v1');
+  return createEnrollmentJournal(scope,{...ports,assertCurrent,...storage});
+}
+export async function openNativeAndroidEnrollmentJournal(rawScope:EnrollmentScope,assertCurrent:()=>void,ports:Omit<AndroidEnrollmentPorts,'assertCurrent'|'read'|'commit'|'digest'>){
+  const scope=EnrollmentScope.parse(rawScope),storage=await nativeEnrollmentStorage(scope,assertCurrent,value=>parseAndroidEnrollmentSnapshot(value,scope),'android-enrollment-v1');
+  return createAndroidEnrollmentJournal(scope,{...ports,assertCurrent,...storage});
 }
