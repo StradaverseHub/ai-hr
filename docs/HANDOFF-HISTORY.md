@@ -1,3 +1,11 @@
+## P1 wave 2, Approvals Matrix and Performance navigation — staging release 28 October 2026
+
+- Staging source `6e0c067a083eb1518948c9ce0cc5580907cbe6dc` (alpha, PR #23), build `146ufbLUW89Az1NeKllat`, service restarted 03:12 MYT. `main@d8b2bac97` unchanged pending owner staging acceptance. Release witness: first-attempt `alpha-staging-ci` run 40564077406 (60/61, runner-diagnostics skipped), accepted by `operator-release.mjs verify` and `deploy`.
+- Migrations 0640 (idx619, when1793110000000) and 0646_reward_calendar (idx620, when1793120000000) applied: ledger 504 → 506. The merge had given 0646 a duplicate idx619; corrected to 620 before release (ba79a6a18).
+- Scope: Talent Box board; home cards; Rewards approvals board with reward calendar and truthful Post; Approvals Matrix view with per-seat decision labels; Talent/Development offered only to people with that work, Development locked until own KPI check-in and competency are done, and the own career-plan form withheld on the review page while locked. Wave 1 (alpha `dc74b804f`) ships in this release too.
+- Corrections retained: `STAGING_DEPLOYED_SHA` still named `2127b1a7` after the email release and was set to the verified `fffabc909` before the witness run; it now names `6e0c067a0`. Run 40562548565 failed only `test/hire-correction.test.ts`, whose no-salary assertion matches `4321` inside a random UUID (flaky; fix owed). The adapter's final source check refused on the candidate root directory's timestamp alone (evidence is written into the same checkout); a checksum dry-run with directory times omitted showed zero file differences.
+- Not done: signed-in staging acceptance walkthrough (owner); main alignment (after acceptance); the career-plan save path still has no lock check (deferred by the owner); production untouched.
+
 ## Email delivery staging release — 28 October 2026
 
 - Staging source `fffabc90922c3d43b2570dc29a33ce8b70b69aca`; `main@d8b2bac9705fd8fbc4d3eb500262b19858bf297d` remains unchanged. Named saved SMTP connections, one active relay, MYT history, safe template previews, explicit resend and configurable retention are available.
