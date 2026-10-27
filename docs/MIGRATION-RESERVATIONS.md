@@ -12,6 +12,23 @@ The owner designated the AI delivery session as migration allocator for the AI l
 
 Final `idx`/`when` values are assigned at journaling: unique append positions after every applied or approved predecessor, with `when` strictly above the live watermark and every pending predecessor. A read-only staging ledger check on 28 October found 504 applied rows, last idx618 (`0641`), watermark1793109999999, source ref `fffabc90922c3d43b2570dc29a33ce8b70b69aca`. Unused numbers in the block are released here once the AI group count is final. AI journal entries append after alpha's idx620 (`0646`) with `when` strictly above1793120000000.
 
+### AI filename map (final, 10 logical migrations)
+
+| File | Content | Ordering dependency |
+| --- | --- | --- |
+| `0642_module_specialist_diagnostic_playbook` | N1 playbook | needs pending 0627 |
+| `0648_ai_concurrency_controls` | N2 concurrency | needs pending 0621 |
+| `0649_ai_provider_accounting_summary` | N3 accounting summary | needs pending 0625 |
+| `0650_ai_native_outcomes` | N4 native outcomes: associations, target-custody, workspace, candidate-signals as ONE migration (NOT NULL column without default) | — |
+| `0651_ai_spend_controls` | N5 spend: allocation, receipt-reconciliation, native-tasks, reviewed-carriers, reviewed-metered-carriers as ONE migration | after 0648 |
+| `0652_performance_provider_source_custody` | N6 | — |
+| `0653_claims_provider_source_custody` | N7 | — |
+| `0654_ai_optional_usd_policy` | N8 | after 0651 |
+| `0655_assistant_conversation_candidates` | N9 | after 0642 |
+| `0656_assistant_transcript_retention` | N10 | after 0655 |
+
+Journal order: alpha's 506 entries; the 12 pending AI entries (0621, 0629–0632, 0622–0628) moved forward to idx621–632; then the ten files above at idx633–642. Every `when` is strictly increasing above max(live watermark, 1793120000000), assigned after re-reading the ledger.
+
 ## Existing allocations and ordering
 
 | Slot | Owner / scope | Allocation status |
@@ -23,7 +40,8 @@ Final `idx`/`when` values are assigned at journaling: unique append positions af
 | 0643–0645 | Free | Released by the REA P1 owner on 28 October; never written, branched or journaled. Record a claim here before use |
 | 0646 | REA P1 wave 2 Reward Calendar (PR #23) | Journaled on alpha idx620 / when1793120000000; not yet applied on staging |
 | 0647 | Mobile offline attendance | Reserved filename; idx/when deferred |
-| 0648–0658 | AI delivery (block) | Reserved filenames; idx/when integration-bound; unused numbers released when the group count is final |
+| 0648–0656 | AI delivery | Mapped filenames (see below); idx/when assigned at journaling |
+| 0657–0658 | Free | Released by AI on 28 October |
 
 The explicit owner exception permits only the still-unapplied0640 journal position to follow0641. It does not authorize P1 runtime deployment. Preserve both SQL files and all applied history. Filename order does not determine journal order.
 

@@ -99,10 +99,10 @@
     {
       "prefixRange": [
         648,
-        658
+        656
       ],
       "owner": "AI delivery",
-      "status": "reserved_block_filenames_only",
+      "status": "reserved_filenames_mapped",
       "idx": null,
       "when": null,
       "allocatedBy": "AI delivery Claude session; owner designated it AI-group migration allocator on 2026-10-28",
@@ -111,7 +111,62 @@
         "Above every recorded hold (0636, 0640, 0641, 0642, 0643-0645, 0646, 0647). All Git refs and working trees scanned on 2026-10-28; no filename at or above 0648 existed.",
         "AI keeps its recorded 0642 reservation. An unrecorded cross-session message claiming AI released 0642 is not adopted.",
         "Unused numbers in this block are released back here once the AI logical-group count is final.",
-        "Journal floor observed 28 October on origin/alpha: AI entries append after idx620 (0646) with when strictly above 1793120000000."
+        "Journal floor observed 28 October on origin/alpha: AI entries append after idx620 (0646) with when strictly above 1793120000000.",
+        "28 October: AI group count is final at 10 logical migrations (0642 + 0648-0656). 0657 and 0658 are released back to the registry.",
+        "Journal order: alpha 506 entries, then the 12 pending AI entries 0621,0629,0630,0631,0632,0622-0628 moved forward to idx621-632, then 0642,0648,0649,0650,0651,0652,0653,0654,0655,0656 at idx633-642, every when strictly increasing above max(live watermark, 1793120000000). Exact values assigned at journaling after re-reading the ledger."
+      ],
+      "filenames": [
+        {
+          "tag": "0642_module_specialist_diagnostic_playbook",
+          "scope": "N1 playbook; needs pending 0627"
+        },
+        {
+          "tag": "0648_ai_concurrency_controls",
+          "scope": "N2 concurrency; needs pending 0621"
+        },
+        {
+          "tag": "0649_ai_provider_accounting_summary",
+          "scope": "N3 accounting summary; needs pending 0625"
+        },
+        {
+          "tag": "0650_ai_native_outcomes",
+          "scope": "N4 native outcomes: associations, target-custody, workspace, candidate-signals as ONE migration (NOT NULL column without default)"
+        },
+        {
+          "tag": "0651_ai_spend_controls",
+          "scope": "N5 spend: allocation, receipt-reconciliation, native-tasks, reviewed-carriers, reviewed-metered-carriers as ONE migration; after 0648"
+        },
+        {
+          "tag": "0652_performance_provider_source_custody",
+          "scope": "N6"
+        },
+        {
+          "tag": "0653_claims_provider_source_custody",
+          "scope": "N7"
+        },
+        {
+          "tag": "0654_ai_optional_usd_policy",
+          "scope": "N8; after 0651"
+        },
+        {
+          "tag": "0655_assistant_conversation_candidates",
+          "scope": "N9; after 0642"
+        },
+        {
+          "tag": "0656_assistant_transcript_retention",
+          "scope": "N10; after 0655"
+        }
+      ]
+    },
+    {
+      "prefixRange": [
+        657,
+        658
+      ],
+      "owner": null,
+      "status": "released_free",
+      "notes": [
+        "Released by AI on 28 October; record a claim here before use."
       ]
     }
   ],
