@@ -1,7 +1,7 @@
 'use client';
 import { useState,type DragEvent,type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
-import { ChevronRight,GripVertical } from 'lucide-react';
+import { ChevronRight,Ellipsis,GripVertical } from 'lucide-react';
 import { Badge,inputCls } from '@/components/ui';
 import { potentialBands,potentialReferenceCurve,talentCategory,type PMBand,type PotentialBand,type Talent } from '@/packs/performance/onehr/model';
 import { boardCellKey,boardColumns,boardMove,boardSummary,fixed1,referenceText,talentCategoryOrder,type CapUsage,type TalentBoxGrid } from '@/packs/performance/onehr/talent-board-model';
@@ -65,7 +65,7 @@ export function TalentBoard({rows,sessionId,revision,grid,scope,locked,units,sho
    {movableChip&&<GripVertical aria-hidden className="size-3.5 shrink-0 cursor-grab text-muted-foreground"/>}
    <button type="button" onClick={()=>open(r.id)} title={`${r.name} · ${r.performance??'—'} · ${r.potential??'—'}`} className="min-h-9 min-w-0 flex-1 truncate text-left text-primary hover:underline">{r.name}</button>
    {direction&&<span className="shrink-0 text-xs font-semibold" title={t(direction==='up'?'movedUp':'movedDown',{category:from??''})}><span aria-hidden>{direction==='up'?'↗':'↘'}</span><span className="sr-only">{t(direction==='up'?'movedUp':'movedDown',{category:from??''})}</span></span>}
-   {movableChip&&<button type="button" aria-label={t('moveTo',{name:r.name})} onClick={()=>setMove({id:r.id,key:''})} className="min-h-9 shrink-0 rounded px-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">{t('moveMenu')}</button>}
+   {movableChip&&<button type="button" aria-label={t('moveTo',{name:r.name})} title={t('moveMenu')} onClick={()=>setMove({id:r.id,key:''})} className="flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"><Ellipsis aria-hidden className="size-4"/></button>}
   </li>;
  };
  const categoryTable=(category:Talent)=>{const members=filtered.filter(r=>talentCategory(r.performance,r.potential)===category).sort((a,b)=>a.name.localeCompare(b.name)||a.id.localeCompare(b.id));
@@ -109,7 +109,7 @@ export function TalentBoard({rows,sessionId,revision,grid,scope,locked,units,sho
       const droppable=dragging!=null&&boardCellKey(rows.find(r=>r.id===dragging)??{performance:null,potential:null},grid)!==cell.key;
       return <div key={cell.key} role="group" data-board-cell={cell.key} aria-label={t('cellLabel',{category:cell.category,potential,performance:columnLabel(cell.column),count:cell.count})} onDragOver={event=>{if(!droppable)return;event.preventDefault();if(event.dataTransfer)event.dataTransfer.dropEffect='move';setOver(cell.key);}} onDragLeave={()=>setOver(o=>o===cell.key?null:o)} onDrop={event=>drop(event,cell.key)} className={`flex min-h-40 min-w-0 flex-col rounded-md border ${tone(cell.category)} ${over===cell.key?'border-primary ring-2 ring-primary':'border-border'}`}>
        <div className="flex flex-wrap items-baseline justify-between gap-1 border-b border-border px-2 py-1"><span className="text-[11px] font-semibold uppercase tracking-wide">{cell.category}</span><span className="text-xs tabular-nums"><b>{cell.count}</b> · {fixed1(cell.pct)}%{cell.reference!=null&&<span className="text-muted-foreground"> · {t('vsRef',{pct:referenceText(cell.reference)})}</span>}</span></div>
-       <ul className={`grid max-h-64 min-h-0 flex-1 content-start gap-1 overflow-y-auto p-1.5 ${grid===9?'sm:grid-cols-2':''}`}>{members.map(chip)}</ul>
+       <ul className={`grid max-h-64 min-h-0 flex-1 content-start gap-1 overflow-y-auto p-1.5 ${grid===9?'2xl:grid-cols-2':''}`}>{members.map(chip)}</ul>
       </div>;
      })}</div>)}
      <span/>{columns.map(column=>{const count=summary.cells.filter(c=>c.column===column).reduce((n,c)=>n+c.count,0);return <p key={column} className="text-center text-xs font-medium">{columnLabel(column)}<span className="block font-normal text-muted-foreground">{count}{summary.placed?` · ${Math.round(count/summary.placed*100)}%`:''}</span></p>;})}
