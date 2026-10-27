@@ -86,10 +86,13 @@ describe('admitted native outcome learning privacy cleanup',()=>{
   expect(await counts()).toEqual({sources:1,targets:1,associations:1});const [remaining]=await owner.db.execute<{id:string}>(sql`select id from public.ai_native_outcome_association`);expect(remaining.id).toBe(keep);
   const [native]=await owner.db.execute<{n:number}>(sql`select count(*)::integer as n from app.assistant_own_leave_review`);expect(native.n).toBe(2);
  });
- it('cascades physical login deletion through private captures/targets/associations while preserving domain events',async()=>{
-  const target=await subject(),source=await storageCapture({targets:[{kind:'person',id:target.personId}]}),job=await storageJob();await storageAssociation(source,job,false);
+ it('cascades physical nonactor PERSON deletion through exact private capture/targets/association while preserving domain events',async()=>{
+  // A legitimate unlinked PERSON has no employment/statutory FK blocker; testing a login would
+  // instead pin the pre-existing non-cascading governed-job USER FK and prove nothing here.
+  const [target]=await owner.db.execute<{id:string}>(sql`insert into public.person(tenant_id,full_name,primary_email) values(${base.tenantId}::uuid,'Fictional unlinked privacy subject',${randomUUID()+'@example.test'}) returning id`);
+  const source=await storageCapture({targets:[{kind:'person',id:target.id}]}),job=await storageJob();await storageAssociation(source,job,false);
   const before=await owner.db.execute(sql`select id,event_type,payload from public.domain_event order by id`);
-  await owner.db.execute(sql`delete from public.app_user where id=${base.adminUserId}::uuid`);
+  await owner.db.execute(sql`delete from public.person where id=${target.id}::uuid`);
   expect(await counts()).toEqual({sources:0,targets:0,associations:0});expect(await owner.db.execute(sql`select id,event_type,payload from public.domain_event order by id`)).toEqual(before);
  });
  it('refuses unadmitted erasure and missing exact pii.erased audit, rolling source/association deletion back; identity-only own erasure is idempotent',async()=>{
