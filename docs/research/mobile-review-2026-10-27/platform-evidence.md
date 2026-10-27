@@ -837,3 +837,18 @@ These are synthetic custody fixtures, not Google-verified Android enrollment. Dr
 9063b27c0cc316b715d552561d636ffc6412e447ca9275758bf497870c995df7; no journal entry, shared schema,
 staging application, publication or deployment changed. Android enrollment/proof persistence and
 current mobile v2 transport still require implementation.
+
+
+## Android enrollment and mobile v2 integration — unverified checkpoint
+
+8052dc6ad adds Android custody orchestration, target schema types and six synthetic-port transaction
+cases, retaining real default proof verification and no mounted enrollment route. c9374a930 wires
+native v2 inventory/lookup/Android revocation, Apple-only read fallback and new transport/screen cases.
+Neither checkpoint has verification PASS. The planned complete-set run waited without acquiring any
+resource or starting Vitest/TypeScript; no /tmp/mobile-android-enrollment-owner.log or type log existed.
+The live wrapperPID25674 was positively identified and signaled only after another chat's extended
+browser reservation was confirmed holding both slots and the database. Its tool session36640 ended143;
+this is a deliberately canceled unstarted queue, not a failed test or a passing verification. No
+foreign lease/process was modified. Further implementation followed only after the wrapper was
+terminal. Combined verification is still required. No journal, shared schema, staging, publication or
+deployment changed; frozen0636 hash remains9063b27c0cc316b715d552561d636ffc6412e447ca9275758bf497870c995df7.

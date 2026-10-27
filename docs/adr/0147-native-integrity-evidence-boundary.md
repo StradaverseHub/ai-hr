@@ -523,3 +523,36 @@ Current mobile UI/enrollment journal still uses v1. Mixed-platform database/HTTP
 lookup/revocation against the draft custody schema in a disposable worker. They use synthetic custody
 rows; actual verified Android enrollment and migration integration remain unfinished. The new Android receipt decoder is tested using synthetic public fixtures,
 not an enrolled Android key. This is protocol preparation, not completed Android enrollment rollout.
+
+
+## Android enrollment custody integration (verification pending)
+
+The Android enrollment owner now composes the existing challenge and Google path/status/policy
+verifiers with the shared key table. It snapshots bounded SPKI/certificate bytes before awaiting,
+retains proof order/boundaries in immutable retry identity and limits serialized proof to32KiB before
+encryption. Existing outcomes reconcile before vendor verification or encryption-key availability,
+including revoked receipts. A new proof is checked against the stored canonical digest. P256 public
+SPKI equality and current-request verification time are checked before challenge consumption.
+
+The transaction consumes the owned challenge, serializes actor capacity, inserts immutable key/public
+metadata/encrypted provenance and appends enrollment audit atomically. Existing active-install and
+five-active-key limits apply across platforms. Permanent public-key fingerprint uniqueness prevents
+revoked-key adoption under a new challenge. A repeated consumed challenge reconciles its persisted
+receipt rather than creating another key. Android uses null Apple environment and counter0.
+
+Schema source types now describe the reserved0636 target. Apple enrollment explicitly validates its
+receipt through the unchanged v1 decoder and rejects a non-Apple reconciliation row. Until0636 is
+journal-integrated with a centrally allocated timestamp and paired dependencies, these Android writes
+are not compatible with the migration-owned predecessor schema. No Android enrollment HTTP route is
+mounted. The new tests use a synthetic verifier port and worker-only draft schema; they have not run
+at this checkpoint because another chat owns the complete local resource set.
+
+## Native v2 recovery integration (verification pending)
+
+The current mobile key screen requests v2 inventory. Only a404 on that read-only inventory can fall
+back to v1, using the strict Apple-only decoder. Other failures and every command retain their
+original protocol/outcome. Authentication refresh and live owner checks still apply to both reads.
+Android revocation uses v2; Apple revocation retains v1. Both require exact enrollment receipt identity
+and a confirmed revocation timestamp. Exact receipt lookup uses v2 with no command downgrade. These
+source changes and added transport/screen tests await shared verification resources; no new native
+bundle or physical-device acceptance is claimed.
