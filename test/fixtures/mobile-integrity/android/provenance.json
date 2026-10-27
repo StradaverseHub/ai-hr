@@ -1,0 +1,61 @@
+{
+  "repository": "https://github.com/android/keyattestation",
+  "revision": "34652d3df68b8d6887a6670b00eb0856090dae6d",
+  "license": "Apache-2.0",
+  "files": [
+    {
+      "file": "tee-v3.pem",
+      "path": "testdata/blueline/sdk28/TEE_EC_NONE.pem",
+      "sha256": "3f37e6a91eaa0fc581bfa16e853407fb2d810a9b03ce84884726737a6e899a3f",
+      "gitBlobSha": "b5b1a58cb3c9d386a2bc93f254f3a6a39ce1ebef"
+    },
+    {
+      "file": "tee-v3.json",
+      "path": "testdata/blueline/sdk28/TEE_EC_NONE.json",
+      "sha256": "81b4beffa9387f0094163cf60bcf7409892b0c7465646145248f6d904a2c655e",
+      "gitBlobSha": "fbbed0f8f63a3761e38c5919a3324c6ef714f8de"
+    },
+    {
+      "file": "tee-rkp.pem",
+      "path": "testdata/caiman/sdk36/TEE_EC_RKP.pem",
+      "sha256": "6194cd75cea7bb635d898be13cb72880771f7192f90fa9507279c95c86a395ec",
+      "gitBlobSha": "b5a863bc3e27791962d441900007288adf474534"
+    },
+    {
+      "file": "tee-rkp.json",
+      "path": "testdata/caiman/sdk36/TEE_EC_RKP.json",
+      "sha256": "e57a296d341c74a37ec51c96a0cbd08748172c21b355c4023b3f4ccdd3b6f2cb",
+      "gitBlobSha": "d323cccf3d19c9fd81714b06dd641d49527a4573"
+    },
+    {
+      "file": "strongbox-2026.pem",
+      "path": "testdata/tegu/sdk36/SB_EC_2026_ROOT.pem",
+      "sha256": "8aefd4c50eb6b7de6ab16695a7a09eeb700ac126a92a3a05266fbb22c41c5a3d",
+      "gitBlobSha": "5f7340a08251fc59cf87760b11e284e78f1b886b"
+    },
+    {
+      "file": "strongbox-2026.json",
+      "path": "testdata/tegu/sdk36/SB_EC_2026_ROOT.json",
+      "sha256": "121099611577e38bb85a6de3ee9d9dc96e0b641d3884690f892f87fa01dc1700",
+      "gitBlobSha": "9a6d446d1ce4d2713917c6739f7aaade5bd3d151"
+    },
+    {
+      "file": "malformed-locked.pem",
+      "path": "testdata/invalid/malformed_rot_device_locked.pem",
+      "sha256": "24e848f2f6e0800fbc3cf4aba1a8d8353bb2180377a2b45ac97354d0991c8975",
+      "gitBlobSha": "b944714bab84b680e70af050b9d1d27c758d5f7f"
+    },
+    {
+      "file": "unordered-tags.pem",
+      "path": "testdata/invalid/tags_not_in_ascending_order.pem",
+      "sha256": "1c197efacf1e0ca712ca5bf6d697930a5b9fb05ac7744053afcb8522890a16a3",
+      "gitBlobSha": "82dd35369e90c3e31fe1db4821bb332885baeb69"
+    },
+    {
+      "file": "LICENSE.txt",
+      "path": "LICENSE",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "gitBlobSha": "d645695673349e3947e8e5ae42332d0ac3164cd7"
+    }
+  ]
+}
