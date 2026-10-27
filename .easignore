@@ -9,6 +9,8 @@
 !/lib/clock-attempt.ts
 !/lib/mobile-clock-integrity.ts
 !/lib/mobile-key-enrollment.ts
+!/lib/mobile-android-key-policy.ts
+!/lib/mobile-android-enrollment.ts
 !/lib/mobile-integrity-contract.ts
 !/lib/mobile-connection.ts
 !/lib/mobile-workplace-setup.ts
