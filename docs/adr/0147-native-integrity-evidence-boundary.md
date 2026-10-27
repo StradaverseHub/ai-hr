@@ -481,3 +481,24 @@ The Android policy schema is shared by the portable context and server evidence 
 validation still comes from the same non-null field validators. No public enrollment route, native
 key-generation controller or key registration transaction invokes this new owner yet. Custody needs
 the separately reserved append-only migration and proof/transaction integration before release.
+
+
+## Android custody extension draft
+
+The exclusive0636/idx634 reservation extends mobile_integrity_key rather than introducing another
+key inventory. The draft pairs Android platform with google_key_generation_proof, null Apple
+environment, counter0 and non-null object provenance. Apple rows retain their required environment,
+minimum app identifier length and Apple proof kinds/metadata requirement. Android has no monotonic
+App Attest counter; command replay prevention must use the immutable command/challenge transaction.
+The encrypted receipt column remains required and is intended for the bounded original certificate
+proof, not private key material. Enrollment must define and enforce its serialized proof size before
+encryption and persist the verified metadata; a schema object check alone verifies no vendor claim.
+
+The draft preserves RLS definitions/enforcement, ACLs, unique indexes and immutable-history trigger.
+Rehearsal compares those database definitions before/after, verifies positive Android/Apple inserts,
+checks malformed platform/proof/environment/counter/metadata combinations and exercises revocation
+without resurrection. Every rehearsal intentionally rolls back the schema extension and rows.
+The draft has no journal entry pending a centrally assigned final timestamp and dependency freeze.
+It is not part of an applied migration chain and cannot be released in this state. Source schema,
+public receipt compatibility, Android enrollment and clock transactions still need integration;
+existing protocol-v1 Apple receipt consumers must not be silently fed unsupported Android variants.

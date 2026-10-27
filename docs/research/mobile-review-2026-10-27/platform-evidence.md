@@ -769,3 +769,22 @@ Coordinator reserved0636_mobile_android_key_custody and journalidx634 exclusivel
 deferred until actual SQL/dependency freeze. The hold was acknowledged. No SQL or journal entry was
 created from that reservation, no0635 bytes changed, and no shared/staging application or deployment
 occurred. Paired Board/AI runtime integration remains a release prerequisite for the519-row overlay.
+
+
+## Android custody migration rehearsal — 27 October 2026
+
+Draft8577e3188 adds reserved0636_mobile_android_key_custody.sql without a journal entry. Frozen SQL
+SHA256 is9063b27c0cc316b715d552561d636ffc6412e447ca9275758bf497870c995df7. The0635 predecessor
+retains60128ba64bd368a532b5cff0593727c0301a4ef2d41043344f82c5ada7b46e7c. Coordinator received
+the hash/dependency report; final when remains pending. No timestamp was guessed.
+
+Three transactional migration cases and root TypeScript passed at8577e3188. Test strengthening at
+e1a667976 pins insert refusals to PostgreSQL check violations and compares policies/indexes/triggers,
+in addition to RLS flags and ACLs. Removing the entire paired platform-evidence constraint made all
+three intended probes fail because invalid writes resolved; exact SQL restoration passed all three.
+Result: mutation=1 restored=0 exact=True. Logs: /tmp/mobile-android-custody-draft.log,
+/tmp/mobile-android-custody-draft-ts.log, /tmp/mobile-android-custody-mutation.log and
+/tmp/mobile-android-custody-restored.log. Tests apply the draft only inside intentionally rolled-back
+transactions in disposable worker databases. They establish local constraint behavior, not populated
+live upgrade acceptance, app-role enrollment, Android hardware proof or release readiness. No journal,
+shared database, staging schema, publication or deployment changed.
