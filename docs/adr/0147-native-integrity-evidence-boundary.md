@@ -1116,3 +1116,10 @@ reports remain excluded. Location refusal, unavailable challenge and registratio
 exact pending command/proof for receipt lookup or explicit server-ordered discard. A refusal on one
 call never clears an uncertain attempt or authorizes unsigned fallback. Capability checks distinguish
 unsupported native mechanisms from temporary bridge failure before consulting a signing key.
+
+An authenticated screen with an already owned/open local journal saves its immutable attempt
+preparation before fresh device discovery or other network checks. A discovery outage must retain
+the original attempt reference/claimed time for later attempt reporting, without launching capture
+or authorizing a punch. This remains an unverified local claim; it does not provide cold offline
+sign-in or replace fresh authorization for a server effect. Known unresolved signed work and
+privacy ownership still prevent new capture/proof/upload.

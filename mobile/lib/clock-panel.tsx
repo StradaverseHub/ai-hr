@@ -103,6 +103,10 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
     let next:ClockDraft={employmentId:identity,action,phase:'preparing'};
     putClock(next);
     try{
+      const saved=await recovery.prepareClock(action,randomUUID());assertAuthGeneration(owner);
+      next={...next,requestId:saved.requestId,attemptStartedAt:saved.createdAt,attemptReceiptTime:saved.attemptReceipt?.receivedAt};
+      if(!putClock(next))return;
+      operation(owner).assertCurrent();
       const controller=await signedClock(),savedStatus=await controller.status();assertAuthGeneration(owner);setSignedStatus(savedStatus);
       if(savedStatus.status!=='empty'){
         if(savedStatus.status==='pending')putClock({employmentId:identity,action:savedStatus.action,requestId:savedStatus.requestId,clockProtocol:'signed',phase:'uncertain',message:t('signedClockPending')});
@@ -116,9 +120,6 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
         next={...next,clockProtocol:'signed'};
         try{await controller.key();}catch(error){if(needsRegistration(error))setRegistrationNeeded(true);throw error;}
       }else if(capabilities&&!(capabilities.outcome==='unavailable'&&capabilities.code==='not_configured'))throw new Error(t('signedClockUnavailable'));
-      const saved=await recovery.prepareClock(action,randomUUID());assertAuthGeneration(owner);
-      next={...next,requestId:saved.requestId,attemptStartedAt:saved.createdAt,attemptReceiptTime:saved.attemptReceipt?.receivedAt};
-      if(!putClock(next))return;
       operation(owner).assertCurrent();const geo=await capturePosition(operation(owner).assertCurrent);assertAuthGeneration(owner);
       if(!putClock({...next,geo}))return;
       operation(owner).assertCurrent();const locationAssessment=await apiPost('clock-location',{lat:geo.lat,lng:geo.lng,accuracy:geo.accuracy,sampledAt:geo.sampledAt},{employmentId:identity},operation(owner));assertAuthGeneration(owner);

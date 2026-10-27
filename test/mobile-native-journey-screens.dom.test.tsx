@@ -213,12 +213,12 @@ describe('signed native clock screen',()=>{
  it('offers device registration before capture if the signed key is missing',async()=>{
   const f=fixture();f.signed.capabilities.mockResolvedValue({outcome:'capabilities'});f.signed.key.mockRejectedValue(new enrollment.EnrollmentConflict());
   render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));await screen.findByRole('button',{name:'integrityEnrollmentTitle'});
-  expect(f.capture).not.toHaveBeenCalled();expect(f.prepareClock).not.toHaveBeenCalled();expect(f.stage).not.toHaveBeenCalled();expect(f.post).not.toHaveBeenCalled();
+  expect(f.capture).not.toHaveBeenCalled();expect(f.prepareClock).toHaveBeenCalledOnce();expect(f.stage).not.toHaveBeenCalled();expect(f.post).not.toHaveBeenCalled();
  });
  it('does not choose unsigned clocking when signed discovery is unavailable',async()=>{
   const f=fixture();f.signed.capabilities.mockRejectedValue(new errors.UnavailableError());
   render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));await waitFor(()=>expect(f.drafts().clock.phase).toBe('idle'));
-  expect(f.capture).not.toHaveBeenCalled();expect(f.prepareClock).not.toHaveBeenCalled();expect(f.post).not.toHaveBeenCalled();
+  expect(f.capture).not.toHaveBeenCalled();expect(f.prepareClock).toHaveBeenCalledOnce();expect(f.post).not.toHaveBeenCalled();
  });
  it('restores the signed marker and refuses transport downgrade when the deployment route disappears',async()=>{
   const f=fixture(),id='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
@@ -284,10 +284,10 @@ it('does not start GPS or send preview after the preparation finishes on a locke
 
 
 describe('actionable signed attendance failure guidance',()=>{
- it('explains unsupported device checks before any capture or saved-attempt claim',async()=>{
+ it('explains unsupported device checks while retaining the unsent attempt without capturing',async()=>{
   const f=fixture();f.signed.capabilities.mockResolvedValue({outcome:'capabilities'});f.signed.key.mockRejectedValue(new SignedClockUnavailable('unsupported'));
   render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('signedClockUnsupported');
-  expect(f.prepareClock).not.toHaveBeenCalled();expect(f.capture).not.toHaveBeenCalled();expect(f.stage).not.toHaveBeenCalled();expect(screen.queryByText('attemptSaveFailed')).toBeNull();
+  expect(f.prepareClock).toHaveBeenCalledOnce();expect(f.drafts().clock.attemptStartedAt).toBeGreaterThan(0);expect(f.capture).not.toHaveBeenCalled();expect(f.stage).not.toHaveBeenCalled();expect(screen.queryByText('attemptSaveFailed')).toBeNull();
  });
  it.each([
   ['native_unavailable','signedClockUnavailable'],['unsupported','signedClockUnsupported'],['invalid_evidence','signedClockEvidenceRefused'],
@@ -305,4 +305,17 @@ describe('actionable signed attendance failure guidance',()=>{
   await screen.findByText('locationOutsideSite');expect(f.resolve).not.toHaveBeenCalled();expect(f.post).not.toHaveBeenCalled();
   expect(screen.getByRole('button',{name:'pendingDiscard'})).toBeTruthy();expect(screen.queryByText('clockRecorded')).toBeNull();
  });
+});
+
+
+it('persists the local attempt before fresh discovery fails and later reports that exact attempt without clocking',async()=>{
+ const f=fixture();f.openSigned.mockRejectedValue(new errors.UnavailableError());
+ render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));
+ await screen.findByText('signedClockUnavailable');
+ const saveOrder=f.prepareClock.mock.invocationCallOrder[0];expect(f.openSigned.mock.invocationCallOrder.some(order=>order>saveOrder)).toBe(true);
+ const id=f.drafts().clock.requestId;expect(id).toBeTruthy();expect(f.drafts().clock.attemptStartedAt).toBeGreaterThan(0);
+ expect(f.capture).not.toHaveBeenCalled();expect(f.stage).not.toHaveBeenCalled();expect(f.post).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('button',{name:'sendAttemptRecord'}));await screen.findAllByText('attemptReported');
+ expect(f.reportAttempt).toHaveBeenCalledWith(id,{assertCurrent:expect.any(Function)});
+ expect(screen.queryByText('clockRecorded')).toBeNull();expect(f.post).not.toHaveBeenCalled();
 });
