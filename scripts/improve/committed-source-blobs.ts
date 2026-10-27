@@ -54,6 +54,6 @@ export function createCommittedSourceReader(worktree: string, candidate: string)
   }
   return {
     read: (paths: readonly string[], limit = MAX_BLOB) => readObjects(paths, limit, body => Buffer.from(body), true),
-    hashes: (paths: readonly string[]) => readObjects(paths, MAX_BLOB, body => createHash('sha256').update(body).digest('hex'), false),
+    hashes: (paths: readonly string[]) => Array.isArray(paths) && paths.length === 0 ? new Map<string, string>() : readObjects(paths, MAX_BLOB, body => createHash('sha256').update(body).digest('hex'), false),
   };
 }

@@ -42,6 +42,16 @@ function publish(f: ReturnType<typeof fixture>) {
 function buildId(root: string, id: string = randomUUID()) { mkdirSync(join(root, '.next'), { recursive: true }); writeFileSync(join(root, '.next/BUILD_ID'), id + '\n'); }
 
 describe('selected System Testing release provenance', () => {
+  it('preserves a valid empty reviewed catalogue and its empty source record', () => {
+    const f = fixture();
+    writeFileSync(join(f.root, 'lib/system-testing/catalogue.json'), JSON.stringify({ format: 1, revision: 'fictional.empty', entries: [] }));
+    f.git('add', '-A'); f.git('commit', '-qm', 'empty reviewed catalogue fixture');
+    const record = prepareSystemTestingBuild({ worktree: f.root, candidate: f.git('rev-parse', 'HEAD'), buildRecordId: randomUUID() });
+    expect(record.sourceHashRecord).toEqual([]);
+    expect(record.identity.contentHash).toBe(sourceContentDigest([]));
+    expect(verifyInstalledTestingBuild(record, f.root)).toEqual(record);
+  });
+
   it('prepares exact clean committed source and does not restamp unreviewed guide fingerprints', () => {
     const f = fixture();
     expect(f.record.identity.sourceRef).toBe(f.candidate);

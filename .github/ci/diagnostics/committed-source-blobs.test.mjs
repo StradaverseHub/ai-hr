@@ -9,3 +9,5 @@ test('refuses object exceeding declared size before byte transfer',t=>{const f=f
 test('refuses invalid ref, absent commit and unsafe bound',t=>{const f=fixture(t);assert.throws(()=>createCommittedSourceReader(f.root,'HEAD'));assert.throws(()=>createCommittedSourceReader(f.root,'a'.repeat(40)));assert.throws(()=>createCommittedSourceReader(f.root,f.candidate).read(['app/same.ts'],0));});
 
 test('streaming source hashes equal each immutable blob without retaining all source bytes',t=>{const f=fixture(t),paths=['app/binary.ts','app/same.ts','app/alias.ts','app/empty.ts'];const hashes=createCommittedSourceReader(f.root,f.candidate).hashes(paths);for(const path of paths)assert.equal(hashes.get(path),createHash('sha256').update(execFileSync('git',['-C',f.root,'show',f.candidate+':'+path])).digest('hex'));});
+
+test('empty reviewed catalogue source set preserves the valid empty hash record',t=>{const f=fixture(t);assert.deepEqual([...createCommittedSourceReader(f.root,f.candidate).hashes([])],[]);});

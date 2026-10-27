@@ -6,7 +6,7 @@ on:
       mode:
         type: choice
         default: integration-only
-        options: [integration-only, all]
+        options: [integration-only, compatibility-only, all]
 permissions:
   contents: read
 jobs:
@@ -34,6 +34,10 @@ jobs:
         if: inputs.mode == 'all'
         working-directory: source
         run: node --experimental-strip-types --test .github/ci/diagnostics/committed-source-blobs.test.mjs
+      - name: Check new empty-catalogue compatibility control only
+        if: inputs.mode == 'compatibility-only'
+        working-directory: source
+        run: node --experimental-strip-types --test --test-name-pattern='empty reviewed catalogue' .github/ci/diagnostics/committed-source-blobs.test.mjs
       - name: Measure exact immutable bytes and actual Git process counts
         if: inputs.mode == 'all'
         working-directory: source
@@ -50,6 +54,7 @@ jobs:
           TEST_DATABASE_URL: postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test
           TEST_MIGRATION_DATABASE_URL: postgres://postgres@127.0.0.1:5433/ai_hr_test
           TEST_DB_NAMESPACE: cs_${{ github.run_id }}
+          AIHR_SOURCE_COMPATIBILITY_ONLY: ${{ inputs.mode == 'compatibility-only' }}
         run: pnpm exec tsx .github/ci/diagnostics/run-source-integration.mjs
       - name: Remove only this job's database and volume
         if: always()
