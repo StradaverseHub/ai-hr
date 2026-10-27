@@ -16,7 +16,7 @@ describe('account email failure log',()=>{
   render(await AccountEmailDeliveries({items:[{...item('invitation'),status:'sent',error:null}],returnTo:'/admin/settings/email',history:{hasMore:true,nextCursor:'opaque-page'}}));
   expect(screen.getByRole('table')).toBeTruthy();const instant=document.querySelector('time')!;expect(instant).toHaveAttribute('dateTime','2026-10-15T01:00:00.000Z');expect(instant.textContent).toContain('09:00 MYT');
   fireEvent.click(screen.getByText(en.accountEmail.viewEmail,{selector:'summary'}));expect(screen.getByText(en.accountEmail.previewHelp)).toBeVisible();expect(screen.getByText(/\[Activation link hidden\]/)).toBeVisible();
-  expect(screen.queryByRole('button',{name:en.accountEmail.resend})).toBeNull();fireEvent.click(screen.getByText(en.accountEmail.resend,{selector:'summary'}));
+  const resend=screen.getByRole('button',{name:en.accountEmail.resend}).closest('details')!;expect(resend).not.toHaveAttribute('open');fireEvent.click(screen.getByText(en.accountEmail.resend,{selector:'summary'}));expect(resend).toHaveAttribute('open');
   expect((screen.getByRole('checkbox',{name:en.accountEmail.invitationAck}) as HTMLInputElement).required).toBe(true);
   expect(screen.getByRole('link',{name:en.accountEmail.older})).toHaveAttribute('href','/admin/settings/email?before=opaque-page');
  });
