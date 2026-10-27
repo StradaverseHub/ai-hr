@@ -77,7 +77,24 @@ describe('Email delivery page list/detail at desktop and mobile sizes',()=>{
    await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
    expect(main.getBoundingClientRect().bottom).toBeLessThanOrEqual(window.innerHeight);
    expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
-   console.info('Synthetic email delivery page screenshot:',await page.screenshot({animations:'disabled',element:main,path:`../.vitest-attachments/email-delivery-${locale}-${detail?'detail':'list'}-${width}.png`}));
+   // Vitest 4.1.8 also scales its *outer harness wrapper* to fit the runner UI. Remove that
+   // harness-only transform during capture; never change application styles or upscale a PNG.
+   const wrapper=window.frameElement?.parentElement;
+   expect(wrapper).toBeTruthy();
+   const originalStyle=wrapper!.getAttribute('style'),originalScale=wrapper!.getAttribute('data-scale');
+   wrapper!.style.setProperty('transform','none','important');wrapper!.setAttribute('data-scale','1');
+   try{
+    const screenshot=await page.screenshot({animations:'disabled',element:main,scale:'css',base64:true,
+     style:'#vitest-tester [data-scale], #tester-ui [data-scale] { transform: none !important; }',
+     path:`../.vitest-attachments/email-delivery-${locale}-${detail?'detail':'list'}-${width}.png`});
+    const bytes=Uint8Array.from(atob(screenshot.base64),char=>char.charCodeAt(0)),header=new DataView(bytes.buffer);
+    expect(header.getUint32(16),'PNG must retain the declared CSS viewport width').toBe(width);
+    expect(header.getUint32(20),'PNG must include the full painted page').toBeGreaterThanOrEqual(Math.floor(main.getBoundingClientRect().height)-1);
+    console.info('Synthetic email delivery page screenshot:',{path:screenshot.path,width:header.getUint32(16),height:header.getUint32(20)});
+   }finally{
+    if(originalStyle===null)wrapper!.removeAttribute('style');else wrapper!.setAttribute('style',originalStyle);
+    if(originalScale===null)wrapper!.removeAttribute('data-scale');else wrapper!.setAttribute('data-scale',originalScale);
+   }
   });
  }
 });
