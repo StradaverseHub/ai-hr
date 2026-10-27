@@ -9,13 +9,18 @@ import {resolve,join,dirname} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {setTimeout as delay} from 'node:timers/promises';
 import {runAssistantOwnLeaveEnglishExperience} from './assistant-own-leave-experience.mjs';
+import {runAssistantEmployeeImportEnglishExperience} from './assistant-employee-import-experience.mjs';
 import {runAssistantProfileEnglishExperience} from './assistant-profile-experience.mjs';
 import {INACTIVE_PROVIDER_SELECTION,runAssistantProviderInactiveConfigEnglishExperience} from './assistant-provider-config-experience.mjs';
 export const MODULES=Object.freeze(['employees','org','leave','ess','approvals','knowledge_base','payroll','attendance','claims','performance','rewards','lifecycle','toil','multi_cycle_payroll','typed_pay_components','country-my','notifications','system_explorer','assistant','system_testing']);
 const HUMAN_ENTRY=Object.freeze({employees:'/admin/personnel/import',org:'/assistant/org',leave:'/assistant/leave',ess:'/assistant/profile',approvals:'/assistant/approvals',knowledge_base:'/assistant/knowledge-base',payroll:'/assistant/payroll-close',attendance:'/assistant/attendance',claims:'/assistant/claims',performance:'/assistant/performance',rewards:'/assistant/rewards',lifecycle:'/assistant/lifecycle',toil:'/assistant/toil',multi_cycle_payroll:'/assistant/payroll-runs',typed_pay_components:'/assistant/pay-codes','country-my':'/assistant/statutory',notifications:'/assistant/notifications',system_testing:'/assistant/testing'});
-export const REMAINING=Object.freeze(['remaining specialist/action prepare/review/confirm journeys beyond the primary English own-leave, ESS profile request and inactive provider-configuration positives','expiry/discard/uncertain-response replay and erasure','cross-person/company/tenant denial and revocation interleavings','governed independent evaluation/promotion/rollback and actual provider capability/cost/latency','real messy employee import correction/commit and measured baseline comparison','internal HTTPS login/MFA and actual verified notification identity/consent','locale switch interaction/accessibility and full desktop/mobile action journeys','combined exact-candidate final gate and deployment arrival']);
+export const REMAINING=Object.freeze(['remaining specialist/action prepare/review/confirm journeys beyond the primary English own-leave, ESS profile request and inactive provider-configuration positives','expiry/discard/uncertain-response replay and erasure','cross-person/company/tenant denial and revocation interleavings','governed independent evaluation/promotion/rollback and actual provider capability/cost/latency','employee import source modes not exercised by this job and real user dataset baseline comparison','internal HTTPS login/MFA and actual verified notification identity/consent','locale switch interaction/accessibility and full desktop/mobile action journeys','combined exact-candidate final gate and deployment arrival']);
 const UUID=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
 export function unitFor(run,attempt,sha){assert(/^\d+$/.test(run)&&/^\d+$/.test(attempt)&&/^[0-9a-f]{40}$/.test(sha));return 'db-'+createHash('sha256').update([run,attempt,sha,'assistant-development-v1'].join(':')).digest('hex').slice(0,16);}
+export const BROWSER_JOURNEYS=Object.freeze(['primary','employee_import_paste','employee_import_csv','employee_import_xlsx']);
+export function closedBrowserJourney(value){assert(typeof value==='string'&&BROWSER_JOURNEYS.includes(value),'Unknown closed browser journey');return value;}
+/** Existing primary unit stays byte-for-byte compatible; each import mode owns a distinct target. */
+export function unitForJourney(run,attempt,sha,journey){closedBrowserJourney(journey);const primary=unitFor(run,attempt,sha);return journey==='primary'?primary:'db-'+createHash('sha256').update([run,attempt,sha,'assistant-development-v1',journey].join(':')).digest('hex').slice(0,16);}
 export function childEnvironment(input,add={}){
  const env={};for(const key of ['PATH','HOME','TMPDIR','LANG','RUNNER_TEMP','CI','GITHUB_ACTIONS','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT'])if(input[key])env[key]=input[key];
  return {...env,TZ:'Asia/Kuala_Lumpur',NEXT_TELEMETRY_DISABLED:'1',...add};
@@ -108,19 +113,32 @@ const READBACK_SPECS=Object.freeze({
  own_leave:Object.freeze({module:'scripts/fixtures/ai-delivery-own-leave-native-readback.ts',member:'createAiDeliveryOwnLeaveNativeReadback',phases:Object.freeze(['baseline','prepared','submitted','reopened','reopened_again']),owner:true}),
  profile:Object.freeze({module:'scripts/fixtures/ai-delivery-profile-native-readback.ts',member:'createAiDeliveryProfileNativeReadback',phases:Object.freeze(['baseline','prepared','submitted','reopened','reopened_again']),owner:true}),
  provider_config:Object.freeze({module:'scripts/fixtures/ai-delivery-provider-config-native-readback.ts',member:'createAiDeliveryProviderConfigNativeReadback',phases:Object.freeze(['baseline','invalid_routes','saved','reloaded']),owner:false}),
+ employee_import_paste:Object.freeze({module:'scripts/fixtures/ai-delivery-employee-import-native-readback.ts',member:'createAiDeliveryEmployeeImportScenarioReadback',phases:Object.freeze(['baseline','unresolved','prepared','previewed','committed','reopened']),owner:true,sourceMode:'paste'}),
+ employee_import_csv:Object.freeze({module:'scripts/fixtures/ai-delivery-employee-import-native-readback.ts',member:'createAiDeliveryEmployeeImportScenarioReadback',phases:Object.freeze(['baseline','unresolved','prepared','previewed','committed','reopened']),owner:true,sourceMode:'csv'}),
+ employee_import_xlsx:Object.freeze({module:'scripts/fixtures/ai-delivery-employee-import-native-readback.ts',member:'createAiDeliveryEmployeeImportScenarioReadback',phases:Object.freeze(['baseline','unresolved','prepared','previewed','committed','reopened']),owner:true,sourceMode:'xlsx'}),
 });
 export function nativeReadbackSpecification(kind){assert(typeof kind==='string'&&Object.hasOwn(READBACK_SPECS,kind),'Unknown closed readback kind');return READBACK_SPECS[kind];}
 export function parseNativeReadbackResponse(line,sequence,operation,kind='own_leave'){
  nativeReadbackSpecification(kind);assert(typeof line==='string'&&Buffer.byteLength(line,'utf8')<=131072);const value=JSON.parse(line);
  assert(value&&typeof value==='object'&&!Array.isArray(value));assert.equal(value.kind,kind);assert.equal(value.sequence,sequence);assert.equal(value.ok,true);
  const keys=Object.keys(value).sort();
- if(operation==='ready'){assert.deepEqual(keys,['kind','ok','ready','sequence']);assert.equal(value.ready,true);return true;}
+ if(operation==='ready'){const spec=nativeReadbackSpecification(kind);assert.deepEqual(keys,spec.sourceMode?['input','kind','ok','ready','sequence']:['kind','ok','ready','sequence']);assert.equal(value.ready,true);return spec.sourceMode?validateEmployeeImportInput(value.input,spec.sourceMode):true;}
  if(operation==='finish'){assert.deepEqual(keys,['finished','kind','ok','sequence']);assert.equal(value.finished,true);return true;}
  assert.equal(operation,'verify');assert.deepEqual(keys,['kind','ok','sequence','value']);assert(value.value&&typeof value.value==='object'&&!Array.isArray(value.value));return value.value;
 }
+/** Closed private ready data, never a public artifact or caller-authored HR fact. Native scenario
+ * owner separately checks current authority/actual department/clock before creating this packet. */
+export function validateEmployeeImportInput(input,sourceMode){
+ assert(['paste','csv','xlsx'].includes(sourceMode));const exact=(v,keys)=>{assert(v&&typeof v==='object'&&!Array.isArray(v));assert.deepEqual(Object.keys(v).sort(),[...keys].sort());};
+ exact(input,['sourceMode','pastedText','human','expected']);assert.equal(input.sourceMode,sourceMode);
+ assert.equal(input.pastedText,'Employee ID,Full Name,Personal Email,Join Date,Unresolved Heading\nAI-IMPORT-NEW,Fictional Imported Human,fictional-import@example.test,,human must map or exclude\n');
+ exact(input.human,['employeeCode','fullName','email','department','employmentType','basicSalary','hiredOn']);const h=input.human;
+ assert.equal(h.employeeCode,'AI-IMPORT-NEW');assert.equal(h.fullName,'Fictional Imported Human');assert.equal(h.email,'fictional-import@example.test');assert.equal(h.employmentType,'full_time');assert.equal(h.basicSalary,'3000.00');assert(typeof h.department==='string'&&h.department.length>0&&h.department.length<=200);assert(/^\d{4}-\d{2}-\d{2}$/.test(h.hiredOn));
+ exact(input.expected,['userId','companyId','sourceMode','human']);assert(UUID.test(input.expected.userId)&&UUID.test(input.expected.companyId));assert.equal(input.expected.sourceMode,sourceMode);assert.deepEqual(input.expected.human,h);return structuredClone(input);
+}
 export function nativeReadbackBootstrap(root,fixturePath,kind='own_leave'){
  assert(arguments.length<=3,'No caller-provided readback count');const spec=nativeReadbackSpecification(kind),count=spec.phases.length;
- const factoryArgs=spec.owner?'owner,fixture:packet.fixture':'fixture:packet.fixture,expected:'+JSON.stringify(INACTIVE_PROVIDER_SELECTION);
+ const factoryArgs=spec.sourceMode?'owner,fixture:packet.fixture,sourceMode:'+JSON.stringify(spec.sourceMode):spec.owner?'owner,fixture:packet.fixture':'fixture:packet.fixture,expected:'+JSON.stringify(INACTIVE_PROVIDER_SELECTION);
  return `import {readFileSync} from 'node:fs';
 import {createInterface} from 'node:readline';
 import {${spec.owner?'createDb,client':'client'}} from ${JSON.stringify(join(root,'db/client.ts'))};
@@ -132,8 +150,9 @@ async function main(){
  let sequence=0,calls=0;
  try{
   const packet=JSON.parse(readFileSync(${JSON.stringify(fixturePath)},'utf8'));
-  const verify=await createNativeReadback({${factoryArgs}});
-  await send({sequence:0,ok:true,ready:true});
+  const ${spec.sourceMode?'prepared':'verify'}=await createNativeReadback({${factoryArgs}});
+  ${spec.sourceMode?'const verify=prepared.verifyCanonical;':''}
+  await send({sequence:0,ok:true,ready:true${spec.sourceMode?',input:prepared.input':''}});
   for await(const line of lines){
    if(Buffer.byteLength(line,'utf8')>131072)throw Error('Bounded readback input refused');
    const p=JSON.parse(line);if(!p||typeof p!=='object'||Array.isArray(p)||p.kind!==${JSON.stringify(kind)}||p.sequence!==++sequence||sequence>${count+1})throw Error('Readback sequence refused');
@@ -166,23 +185,24 @@ export function createPrivateNativeReadbackClient(child,options={}){
  child.once('error',fail);child.stdin.on('error',fail);child.once('exit',(code,signal)=>{if(code!==0||signal!==null||!finished)fail();else exited=true;});
  if(signal){if(signal.aborted)fail();else signal.addEventListener('abort',fail,{once:true});}
  async function request(operation,invocation){
+  if(spec.sourceMode&&operation==='verify')invocation=structuredClone(invocation);
   assert(!failed&&!inFlight&&!finished);
-  if(operation==='verify'){const allowed=kind==='provider_config'?['phase']:['phase','expected','actionId','receipt','review'];assert(invocation&&Object.keys(invocation).every(key=>allowed.includes(key))&&invocation.phase===spec.phases[verified]);}else assert(operation==='finish'&&verified===spec.phases.length);
+  if(operation==='verify'){const allowed=kind==='provider_config'?['phase']:spec.sourceMode?['phase','expected']:['phase','expected','actionId','receipt','review'];assert(invocation&&Object.keys(invocation).every(key=>allowed.includes(key))&&invocation.phase===spec.phases[verified]);}else assert(operation==='finish'&&verified===spec.phases.length);
   inFlight=true;
-  try{await ready;assert(!failed);const next=sequence+1,packet=JSON.stringify(operation==='verify'?{kind,sequence:next,operation,invocation}:{kind,sequence:next,operation});
+  try{const readyValue=await ready;assert(!failed);if(spec.sourceMode&&operation==='verify'){assert.deepEqual(Object.keys(invocation).sort(),['expected','phase']);assert.deepEqual(invocation.expected,readyValue.expected);}const next=sequence+1,packet=JSON.stringify(operation==='verify'?{kind,sequence:next,operation,invocation}:{kind,sequence:next,operation});
    assert(Buffer.byteLength(packet,'utf8')<=131072);sequence=next;const response=wait(operation,next);
    child.stdin.write(packet+'\n',error=>{if(error)fail();});const value=await response;if(operation==='finish'){finished=true;child.stdin.end();}else verified++;return value;
   }finally{inFlight=false;}
  }
- return {verifyCanonical:invocation=>request('verify',invocation),finish:()=>request('finish'),assertClosed(){assert(!failed&&finished&&ended&&exited&&verified===spec.phases.length&&!pending&&buffer===''&&child.exitCode===0&&child.signalCode===null,'Readback closure unconfirmed');}};
+ return {readyInput:async()=>{assert(spec.sourceMode,'Ready input only exists for closed import modes');const input=await ready;assert(!failed);return structuredClone(input);},verifyCanonical:invocation=>request('verify',invocation),finish:()=>request('finish'),assertClosed(){assert(!failed&&finished&&ended&&exited&&verified===spec.phases.length&&!pending&&buffer===''&&child.exitCode===0&&child.signalCode===null,'Readback closure unconfirmed');}};
 }
 const here=dirname(fileURLToPath(import.meta.url));
 async function main(){
  assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.CI,'true');assert.equal(process.env.GITHUB_REPOSITORY,'StradaverseHub/ai-hr');assert.equal(process.versions.node.split('.')[0],'20');
- const root=process.cwd(),sha=process.env.AIHR_CI_HEAD,control=process.env.AIHR_CI_CONTROL_HEAD;assert(/^[0-9a-f]{40}$/.test(sha??''));assert(/^[0-9a-f]{40}$/.test(control??''));
+ const root=process.cwd(),sha=process.env.AIHR_CI_HEAD,control=process.env.AIHR_CI_CONTROL_HEAD,selectedJourney=closedBrowserJourney(process.env.AIHR_CI_BROWSER_JOURNEY??'primary'),importMode=selectedJourney!=='primary';assert(/^[0-9a-f]{40}$/.test(sha??''));assert(/^[0-9a-f]{40}$/.test(control??''));
  const out=resolve(process.argv[2]??'');assert(out.startsWith(resolve(process.env.RUNNER_TEMP)+'/'));assert(!existsSync(out),'Evidence path must be new');mkdirSync(join(out,'private'),{recursive:true,mode:0o700});mkdirSync(join(out,'public'),{mode:0o700});
- const report=publicReport(sha),privateDir=join(out,'private'),children=new Set();let browser,browserServer,postgresOwned=false,failed=false;
- const unit=unitFor(process.env.GITHUB_RUN_ID,process.env.GITHUB_RUN_ATTEMPT,sha),container=`aihr-ci-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}-${unit}`,database='aihr_assistant_browser_'+unit.slice(3),base='http://127.0.0.1:3177';
+ const report=publicReport(sha);report.requestedJourney=selectedJourney;const privateDir=join(out,'private'),children=new Set();let browser,browserServer,postgresOwned=false,failed=false;
+ const unit=unitForJourney(process.env.GITHUB_RUN_ID,process.env.GITHUB_RUN_ATTEMPT,sha,selectedJourney),container=`aihr-ci-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}-${unit}`,database='aihr_assistant_browser_'+unit.slice(3),base='http://127.0.0.1:3177';
  const gate=randomBytes(32).toString('hex'),encryption=randomBytes(32).toString('hex');
  const basic=childEnvironment(process.env,{AIHR_CI_UNIT:unit,AIHR_CI_PG_MEMORY_GIB:'2'});
  const ownerUrl=`postgres://postgres@127.0.0.1:5433/${database}`,appUrl=`postgres://ai_hr_app@127.0.0.1:5433/${database}`;
@@ -211,7 +231,7 @@ async function main(){
   if(existsSync(join(root,'.env.local'))){assert.equal(readFileSync(join(root,'.env.local'),'utf8'),readFileSync(join(root,'.env.example'),'utf8'));unlinkSync(join(root,'.env.local'));}
   assert.deepEqual(readdirSync(root).filter(x=>/^\.env(?:\.|$)/.test(x)&&x!=='.env.example'),[]);
   assert(existsSync(join(root,'scripts/fixtures/ai-delivery-full-fixture.ts')),'Full native fixture owner absent; no legacy fallback');
-  for(const kind of Object.keys(READBACK_SPECS))assert(existsSync(join(root,nativeReadbackSpecification(kind).module)),'Required canonical '+kind+' readback owner absent; no fallback');
+  for(const kind of importMode?[selectedJourney]:['own_leave','profile','provider_config'])assert(existsSync(join(root,nativeReadbackSpecification(kind).module)),'Required canonical '+kind+' readback owner absent; no fallback');
   const inspect=spawnSync('docker',['container','inspect',container],{env:basic,encoding:'utf8',timeout:30000,maxBuffer:1048576});assert(confirmedContainerAbsent(inspect,container),'Unknown docker inspection is not absence');
   writeFileSync(join(privateDir,'owned-unit'),unit,{mode:0o600});postgresOwned=true;report.databaseCleanup='unconfirmed';
   await command('postgres', 'bash',[join(here,'postgres.sh'),'reset'],basic,120000);
@@ -237,6 +257,10 @@ async function main(){
      case 'own_leave':experience=await runAssistantOwnLeaveEnglishExperience({page,fixture,verifyCanonical:readback.verifyCanonical});checkIds=['real_current_own_selection','prepare_no_native_effect','literal_saved_review','single_explicit_confirm_native_refs','reload_same_completed_receipt','repeat_readonly_reopen_no_extra_effect'];reportKey='ownLeaveExperience';journey='english_own_leave_primary';coverage='fictional_english_positive_ui_and_readonly_native_reconciliation_only';break;
      case 'profile':experience=await runAssistantProfileEnglishExperience({page,fixture,verifyCanonical:readback.verifyCanonical});checkIds=['actual_own_permitted_selection','prepare_no_native_effect','literal_human_profile_review','explicit_human_confirm_exact_native_refs','same_completed_reopen','repeat_reopen_no_extra_request_or_profile_application'];reportKey='profileExperience';journey='english_ess_profile_request_primary';coverage='fictional_english_profile_request_submission_only';break;
      case 'provider_config':experience=await runAssistantProviderInactiveConfigEnglishExperience({page,fixture,verifyNative:readback.verifyCanonical});checkIds=['invalid_route_ui_refuses_before_save','privacy_policy_displayed_no_activation_control','synthetic_candidate_saved_inactive_without_probe','same_nonsecret_candidate_version_and_routing_after_reload'];reportKey='providerConfigExperience';journey='english_inactive_synthetic_provider_candidate';coverage='fictional_english_inactive_candidate_only_no_probe_or_activation';break;
+     case 'employee_import_paste':case 'employee_import_csv':case 'employee_import_xlsx':{
+      const sourceMode=nativeReadbackSpecification(kind).sourceMode,input=await readback.readyInput();assert.equal(input.expected.userId,fixture.actors.operator.userId);assert.equal(input.expected.companyId,fixture.companyId);
+      experience=await runAssistantEmployeeImportEnglishExperience({page,fixture,input,verifyCanonical:readback.verifyCanonical});checkIds=['actual_messy_source_local_intake','unresolved_and_unreviewed_prevent_commit','explicit_original_mapping_and_exclusions','blank_human_added_fields_explicit_review','editing_clears_human_review','local_preparation_and_native_preview_no_effects','single_human_commit_native_graph_events','separate_native_history_reopen_no_duplicate'];reportKey='employeeImportExperience';journey='english_employee_import_'+sourceMode;coverage='fictional_'+sourceMode+'_full_employee_creation_only';break;
+     }
      default:throw Error('Unknown closed journey');
     }
     assert.equal(experience.journey,journey);assert.deepEqual(experience.checks.map(check=>check.id),checkIds);assert(experience.checks.every(check=>check.passed===true&&JSON.stringify(Object.keys(check).sort())===JSON.stringify(['id','passed'])));
@@ -251,14 +275,14 @@ async function main(){
   const auth='Basic '+Buffer.from('ci:'+gate).toString('base64');let ready=false;
   for(let n=0;n<120;n++){assert(!interrupted);assert(server.exitCode===null&&server.signalCode===null,'App exited');try{const r=await fetch(base+'/login',{headers:{authorization:auth},signal:AbortSignal.timeout(2000)});if(r.status===200){ready=true;break;}}catch{}await delay(1000);}assert(ready,'App unavailable');assert.equal((await fetch(base+'/',{redirect:'manual'})).status,401);
   browserServer=await require('playwright').chromium.launchServer({headless:true});children.add(browserServer.process());browser=await require('playwright').chromium.connect(browserServer.wsEndpoint());
-  const roles=[['operator',fixture.actors.operator,true],['reviewer1',fixture.actors.reviewers[0],true],['reviewer2',fixture.actors.reviewers[1],true],['self',fixture.actors.self,false],['peer',fixture.actors.peer,false],['manager',fixture.actors.manager,false],['standalone_tester',fixture.platform.testing.standalone,false],['prehire',fixture.platform.prehire,false]];
+  const roles=importMode?[['operator',fixture.actors.operator,false]]:[['operator',fixture.actors.operator,true],['reviewer1',fixture.actors.reviewers[0],true],['reviewer2',fixture.actors.reviewers[1],true],['self',fixture.actors.self,false],['peer',fixture.actors.peer,false],['manager',fixture.actors.manager,false],['standalone_tester',fixture.platform.testing.standalone,false],['prehire',fixture.platform.prehire,false]];
   for(const [role,actor,all] of roles){
    assert(UUID.test(actor?.userId));const context=await browser.newContext({httpCredentials:{username:'ci',password:gate}});const page=await context.newPage();page.setDefaultTimeout(15000);page.setDefaultNavigationTimeout(20000);
    page.on('pageerror',()=>report.errorCounts.page++);page.on('console',m=>{if(m.type()==='error')report.errorCounts.console++;});page.on('response',r=>{if(r.status()>=500)report.errorCounts.server++;});
    await context.route('**/*',route=>{const url=new URL(route.request().url());if(url.origin===base||['data:','blob:','about:'].includes(url.protocol))return route.continue();report.errorCounts.external++;return route.abort();});
    try{
     await page.goto(base+'/login');await page.locator(`form[action="/login/as"]:has(input[name="userId"][value="${actor.userId}"]) button[type="submit"]`).click();await page.waitForURL(u=>!['/login','/login/as'].includes(u.pathname));
-    for(const locale of ['en','ms','zh','ta','th','vi'])for(const viewport of [{width:1440,height:1000},{width:375,height:812}]){
+    for(const locale of importMode?['en']:['en','ms','zh','ta','th','vi'])for(const viewport of importMode?[{width:1440,height:1000}]:[{width:1440,height:1000},{width:375,height:812}]){
      assert(!interrupted);await context.addCookies([{name:'NEXT_LOCALE',value:locale,url:base}]);await page.setViewportSize(viewport);await page.goto(base+'/assistant');assert.equal(new URL(page.url()).pathname,'/assistant');await page.locator('[data-tour="intelligence-assistant"]').waitFor();
      const available=await page.locator('a[href^="/assistant?job="]').evaluateAll(nodes=>[...new Set(nodes.map(n=>new URL(n.href).searchParams.get('job')))]);assert(available.every(m=>MODULES.includes(m)));if(all)assert.deepEqual([...available].sort(),[...MODULES].sort());
      report.checks.push({role,locale,viewport:viewport.width,workspace:'rendered',available});
@@ -266,12 +290,12 @@ async function main(){
      // repeats workspace plus own-leave entry, not an invented full translated action journey.
      if(all&&locale==='en'&&viewport.width===1440)for(const module of MODULES){await page.locator(`a[href="/assistant?job=${module}"]`).first().click();assert.equal(new URL(page.url()).searchParams.get('job'),module);await page.locator(`a[href="/assistant?job=${module}"][aria-current="page"]`).waitFor();assert(await page.locator('[data-ui-card]').count()>0);if(HUMAN_ENTRY[module])assert(await page.locator(`a[href="${HUMAN_ENTRY[module]}"]`).count()>0,'Declared human entry missing');assert(!/SQLSTATE|PostgresError|ECONNREFUSED|Unhandled Runtime Error|stack trace|AI_CONFIG_SECRET|MIGRATION_DATABASE_URL|postgres:\/\//i.test(await page.locator('body').innerText()));report.checks.push({role,locale,viewport:viewport.width,module,navigation:'rendered'});}
      if(role==='self'){await page.goto(base+'/assistant/leave');assert.equal(new URL(page.url()).pathname,'/assistant/leave');await page.locator('select[id$="-employment"]').waitFor();assert(await page.locator('select[id$="-employment"] option').count()>1);assert(await page.locator('input[type="date"]').count()===1);assert(await page.locator('textarea[id$="-reason"]').count()===1);report.checks.push({role,locale,viewport:viewport.width,ownLeaveEntry:'human_inputs_rendered_not_prepared'});}
-     if(locale==='en'&&viewport.width===1440){if(role==='operator')await runNativeJourney('provider_config',page);if(role==='self'){await runNativeJourney('own_leave',page);await runNativeJourney('profile',page);}}
+     if(locale==='en'&&viewport.width===1440){if(role==='operator')await runNativeJourney(importMode?selectedJourney:'provider_config',page);if(role==='self'){await runNativeJourney('own_leave',page);await runNativeJourney('profile',page);}}
      const body=await page.locator('body').innerText();assert(!/SQLSTATE|PostgresError|ECONNREFUSED|Unhandled Runtime Error|stack trace|AI_CONFIG_SECRET|MIGRATION_DATABASE_URL|postgres:\/\//i.test(body));assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Horizontal overflow');
     }
    }finally{await context.close();}
   }
-  assert.deepEqual([...experienced].sort(),['own_leave','profile','provider_config'],'Required primary journeys did not complete');assert(Object.values(report.errorCounts).every(n=>n===0),'Browser errors or unexpected external requests');report.state='smoke_passed_incomplete_experience';
+  assert.deepEqual([...experienced].sort(),importMode?[selectedJourney]:['own_leave','profile','provider_config'],'Required primary journeys did not complete');assert(Object.values(report.errorCounts).every(n=>n===0),'Browser errors or unexpected external requests');report.state='smoke_passed_incomplete_experience';
  }catch{failed=true;report.state='failed';report.failure=interrupted?'interrupted':'bounded_controller_or_browser_failure';}
  finally{
   if(browser)try{await Promise.race([browser.close(),delay(10000).then(()=>{throw Error('Browser cleanup timeout');})]);}catch{failed=true;report.failure='browser_cleanup_failure';}

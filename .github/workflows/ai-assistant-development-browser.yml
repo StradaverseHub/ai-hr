@@ -91,3 +91,54 @@ jobs:
           path: ${{ runner.temp }}/assistant-development-browser/public/report.json
           if-no-files-found: error
           retention-days: 7
+
+  # Each mode has its own runner, deterministic mode-bound container/database and FULL fixture.
+  # Never reset/reuse a primary target or import the same fictional identity three times in one DB.
+  development-import:
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        source_mode: [paste, csv, xlsx]
+    defaults:
+      run:
+        working-directory: source
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_CI_BROWSER_JOURNEY: employee_import_${{ matrix.source_mode }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          path: source
+          persist-credentials: false
+      - uses: ./automation/.github/actions/setup-alpha
+        with:
+          node: '20'
+          mobile: 'false'
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Controller contracts (not browser acceptance)
+        run: node --test ../automation/.github/ci/assistant-development-browser.test.mjs ../automation/.github/ci/assistant-provider-config-experience.test.mjs
+      - name: One source mode with a fresh job-owned native fictional fixture
+        run: node ../automation/.github/ci/assistant-development-browser.mjs "$RUNNER_TEMP/assistant-development-import-${{ matrix.source_mode }}"
+      - name: Cleanup exact job-owned database after cancellation
+        if: always()
+        run: |
+          if test -f "$RUNNER_TEMP/assistant-development-import-${{ matrix.source_mode }}/private/owned-unit" && test -f "$RUNNER_TEMP/assistant-development-import-${{ matrix.source_mode }}/private/cleanup-safe"; then
+            export AIHR_CI_UNIT="$(cat "$RUNNER_TEMP/assistant-development-import-${{ matrix.source_mode }}/private/owned-unit")"
+            bash ../automation/.github/ci/postgres.sh stop
+          fi
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: assistant-development-import-${{ matrix.source_mode }}-smoke-not-release-evidence
+          path: ${{ runner.temp }}/assistant-development-import-${{ matrix.source_mode }}/public/report.json
+          if-no-files-found: error
+          retention-days: 7
