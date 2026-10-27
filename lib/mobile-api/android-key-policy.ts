@@ -3,6 +3,8 @@ import 'server-only';
 import type {decodeAndroidKeyDescription} from './android-key-description';
 import {AndroidKeyPolicy} from '../mobile-android-key-policy';
 export {AndroidKeyPolicy} from '../mobile-android-key-policy';
+const month=AndroidKeyPolicy.shape.minimumOsPatchLevel.unwrap();
+const day=AndroidKeyPolicy.shape.minimumVendorPatchLevel.unwrap();
 export class AndroidKeyPolicyError extends Error{
  constructor(readonly reason:'configuration'|'app_identity'|'security_level'|'key_properties'|'boot_state'|'patch_level'|'lost_device'|'metadata_unavailable'){
   super('Android key policy refused');this.name='AndroidKeyPolicyError';
