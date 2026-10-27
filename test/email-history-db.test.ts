@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {beforeAll,beforeEach,afterAll,describe,it,expect,vi} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
@@ -6,7 +7,13 @@ import {inviteUser,retryAccountEmail,acceptInvitation,type AuthProvider} from '.
 import {readAccountEmailHistory} from '../core/account-email';
 import * as s from '../db/schema';
 let b:Base;
-beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();b=await seedBase();});afterAll(closeAll);
+beforeAll(async()=>{
+ await migrateTestDb();
+ // 0641 is centrally reserved; its journal slot belongs to final integration. Exercise the exact
+ // future DDL in this disposable hosted fixture without inventing or editing journal history.
+ const [existing]=await owner.client`select to_regprocedure('app.account_email_history(text,text,date,date,text,timestamp with time zone,uuid)') is not null installed`;
+ if(!existing.installed)for(const statement of readFileSync('db/migrations/0641_account_email_delivery_history.sql','utf8').split('--> statement-breakpoint'))if(statement.trim())await owner.client.unsafe(statement);
+});beforeEach(async()=>{await resetDb();b=await seedBase();});afterAll(closeAll);
 const fake=():AuthProvider=>({sendInvitation:vi.fn().mockResolvedValue({invitationId:'fixture'}),sendPasswordReset:vi.fn().mockResolvedValue(undefined),revokeInvitation:vi.fn(),endSession:vi.fn(),emailReadiness:vi.fn().mockResolvedValue(null)});
 describe('authorized account email history and explicit resend',()=>{
  it('uses local date boundaries, pages beyond the former 50-row limit and keeps same-timestamp rows distinct',async()=>{

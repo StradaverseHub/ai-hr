@@ -20467,7 +20467,8 @@
       "closed": "Jemputan ini tidak lagi menunggu penerimaan.",
       "pending": "Percubaan sedang berjalan."
     },
-    "historyUnavailable": "Sejarah e-mel tidak dapat dimuatkan. Semak julat tarikh dan cuba lagi."
+    "historyUnavailable": "Sejarah e-mel tidak dapat dimuatkan. Semak julat tarikh dan cuba lagi.",
+    "providerManagedPreview": "Penyedia identiti mengurus templat e-mel ini. Kandungan mesej asal tidak disimpan dalam AIHR."
   },
   "pageStyleRecovery": {
     "restoring": "Memulihkan halaman…",

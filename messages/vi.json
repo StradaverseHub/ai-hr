@@ -20467,7 +20467,8 @@
       "closed": "Lời mời không còn chờ chấp nhận.",
       "pending": "Đang thực hiện gửi."
     },
-    "historyUnavailable": "Không thể tải lịch sử email. Kiểm tra khoảng ngày rồi thử lại."
+    "historyUnavailable": "Không thể tải lịch sử email. Kiểm tra khoảng ngày rồi thử lại.",
+    "providerManagedPreview": "Nhà cung cấp danh tính quản lý mẫu email này. AIHR không lưu nội dung thư gốc."
   },
   "pageStyleRecovery": {
     "restoring": "Đang khôi phục trang…",

@@ -1,4 +1,4 @@
-import {beforeEach,describe,it,expect,vi} from 'vitest';
+import {afterEach,beforeEach,describe,it,expect,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen} from '@testing-library/react';
 import en from '../messages/en.json';
 import type {AccountEmailDeliveryView} from '../lib/account-email-model';
@@ -6,11 +6,15 @@ vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async()
 vi.mock('../app/admin/settings/notifications/actions',()=>({retryAccountEmailAction:vi.fn()}));
 import {AccountEmailDeliveries} from '../components/account-email-deliveries';
 const item=(kind:'invitation'|'recovery',canRetry=true):AccountEmailDeliveryView=>({id:kind+'-delivery',kind,email:kind+'@example.test',status:'failed',attempts:1,error:'relayUnavailable',createdAt:new Date('2026-10-15T01:00:00Z'),canRetry});
-beforeEach(cleanup);
+beforeEach(()=>{cleanup();vi.stubEnv('AUTH_PROVIDER','internal');});afterEach(()=>vi.unstubAllEnvs());
 describe('account email failure log',()=>{
+ it('does not invent an original message for an external identity provider',async()=>{
+  vi.stubEnv('AUTH_PROVIDER','keycloak');render(await AccountEmailDeliveries({items:[item('invitation')],returnTo:'/admin/settings/email'}));
+  fireEvent.click(screen.getByText(en.accountEmail.viewEmail,{selector:'summary'}));expect(screen.getByText(en.accountEmail.providerManagedPreview)).toBeVisible();expect(screen.queryByText(/\[Activation link hidden\]/)).toBeNull();
+ });
  it('shows a table in Malaysia time, a token-free preview and an explicit resend confirmation for sent emails',async()=>{
   render(await AccountEmailDeliveries({items:[{...item('invitation'),status:'sent',error:null}],returnTo:'/admin/settings/email',history:{hasMore:true,nextCursor:'opaque-page'}}));
-  expect(screen.getByRole('table')).toBeTruthy();expect(screen.getByText('15 Oct 2026, 09:00 MYT')).toBeTruthy();
+  expect(screen.getByRole('table')).toBeTruthy();const instant=document.querySelector('time')!;expect(instant).toHaveAttribute('dateTime','2026-10-15T01:00:00.000Z');expect(instant.textContent).toContain('09:00 MYT');
   fireEvent.click(screen.getByText(en.accountEmail.viewEmail,{selector:'summary'}));expect(screen.getByText(en.accountEmail.previewHelp)).toBeVisible();expect(screen.getByText(/\[Activation link hidden\]/)).toBeVisible();
   expect(screen.queryByRole('button',{name:en.accountEmail.resend})).toBeNull();fireEvent.click(screen.getByText(en.accountEmail.resend,{selector:'summary'}));
   expect((screen.getByRole('checkbox',{name:en.accountEmail.invitationAck}) as HTMLInputElement).required).toBe(true);

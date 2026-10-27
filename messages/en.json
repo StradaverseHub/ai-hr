@@ -20467,7 +20467,8 @@
       "closed": "The invitation is no longer pending.",
       "pending": "An attempt is in progress."
     },
-    "historyUnavailable": "Email history could not be loaded. Check the date range and try again."
+    "historyUnavailable": "Email history could not be loaded. Check the date range and try again.",
+    "providerManagedPreview": "The identity provider owns this email template. An original message body was not stored in AIHR."
   },
   "pageStyleRecovery": {
     "restoring": "Restoring the page…",

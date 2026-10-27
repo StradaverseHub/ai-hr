@@ -43,7 +43,7 @@ export async function readAccountEmailDeliveries(ctx:SessionContext,actor?:Ident
 
 const historyFilters=z.object({fromDate:z.iso.date().optional(),toDate:z.iso.date().optional(),before:z.string().max(200).optional()}).strict();
 export type AccountEmailHistoryFilters=z.infer<typeof historyFilters>;
-export async function readAccountEmailHistory(ctx:SessionContext,actor:IdentityEmailActor|undefined,input:AccountEmailHistoryFilters={}){
+export async function readAccountEmailHistory(ctx:SessionContext,actor?:IdentityEmailActor,input:AccountEmailHistoryFilters={}){
  if(actor&&(actor.userId!==ctx.userId||actor.tenantId!==ctx.tenantId))throw Error('Email administrator identity does not match the session.');
  const filters=historyFilters.parse(input);if(filters.fromDate&&filters.toDate&&filters.fromDate>filters.toDate)throw Error('Invalid email history date range.');
  const cursor=filters.before?z.tuple([z.iso.datetime({offset:true}),z.uuid()]).parse(JSON.parse(Buffer.from(filters.before,'base64url').toString())):null;

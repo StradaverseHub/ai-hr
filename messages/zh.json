@@ -20467,7 +20467,8 @@
       "closed": "此邀请已不再等待接受。",
       "pending": "正在尝试发送。"
     },
-    "historyUnavailable": "无法加载邮件历史。请检查日期范围后重试。"
+    "historyUnavailable": "无法加载邮件历史。请检查日期范围后重试。",
+    "providerManagedPreview": "此邮件模板由身份提供商管理。AIHR 未保存原始邮件正文。"
   },
   "pageStyleRecovery": {
     "restoring": "正在恢复页面…",
