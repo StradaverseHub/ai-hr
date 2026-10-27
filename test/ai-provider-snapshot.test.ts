@@ -1,5 +1,5 @@
 /** Actual current-config admission cases, authored UNRUN. Fake keys; mocked callbacks/transports only. */
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as tenantDb from '../db/client';
 import { withTenant } from '../db/client';
@@ -31,6 +31,10 @@ async function evaluatedActivation() {
   const evaluations = (await allRows()).filter(row => row.featureId === 'provider_evaluation');
   expect(evaluations.length).toBe(prior + 3);
   expect(evaluations.every(row => row.state === 'completed' && row.actualTokens === 0)).toBe(true);
+  // The synthetic evaluation installs a tenant-wide USD cap for its own reviewed carrier. This file tests the
+  // provider-configuration binding of a rootless pay_rule_draft, not caps: a configured cap (zero included)
+  // rightly refuses that rootless call (AiSpendControlError), so remove the cap the evaluation left behind.
+  await owner.db.execute(sql`delete from app.ai_spend_budget where tenant_id=${base.tenantId}::uuid`);
 }
 
 async function prepared() {

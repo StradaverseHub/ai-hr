@@ -11,6 +11,7 @@ vi.mock('next-intl/server',()=>({getLocale:async()=>state.locale,getTranslations
 }}));
 vi.mock('../app/assistant/job-feedback-actions',()=>({saveGovernedJobFeedbackAction:vi.fn(),eraseGovernedJobFeedbackAction:vi.fn()}));
 vi.mock('../app/assistant/governed-job-actions',()=>({runGovernedPlanAction:vi.fn()}));
+vi.mock('../app/assistant/actions',()=>({askAssistantAction:vi.fn()}));
 vi.mock('../core/module-agent-releases',()=>({reopenGovernedModuleReadJobTx:vi.fn()}));
 vi.mock('../core/assistant-tools',()=>({toolsFor:()=>state.tools}));
 vi.mock('../core/assistant-read-session',()=>({withAssistantRead:vi.fn(async(_ctx:unknown,module:string,consume:(read:unknown)=>Promise<unknown>)=>consume({moduleWork:async()=>{

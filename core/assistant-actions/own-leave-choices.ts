@@ -23,10 +23,13 @@ export const OWN_LEAVE_CHOICE_LIMITS=Object.freeze({employments:16,types:128});
  * person/tenant/company identity, salary, policy object, private balance or canonical event data.
  * The 128 bound counts ALL canonical eligible type rows across the complete own inventory before
  * the first-slice capability filter; a large catalogue must use the ordinary Leave form instead. */
-export async function readOwnLeaveChoicesTx(tx:Tx,supplied:SessionContext,locale:string):Promise<OwnLeaveChoices>{
+export async function readOwnLeaveChoicesTx(carrier:Tx,supplied:SessionContext,locale:string):Promise<OwnLeaveChoices>{
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
- try{
-  if(!isLocale(locale))return{kind:'unavailable'};
+ if(!isLocale(locale))return{kind:'unavailable'};
+ // A failed statement poisons the caller's transaction: postgres.js re-raises it at the scope end even when it
+ // was caught. The read therefore runs in its own savepoint, so a refusal or a bounded Access/configuration
+ // lock wait rolls back only this read (its bounds and locks included) and genuinely returns unavailable.
+ try{return await carrier.transaction(async (tx):Promise<OwnLeaveChoices>=>{
   await boundNativeOutcomeTransactionTx(tx);
   const actor=await readOwnLeaveActorTx(tx,ctx);if(!actor||!isModuleEnabled(actor,'leave'))return{kind:'unavailable'};
   await assertAiActionUnpausedTx(tx,actor,'hr_assistant');
@@ -50,5 +53,5 @@ export async function readOwnLeaveChoicesTx(tx:Tx,supplied:SessionContext,locale
    employments.push(Object.freeze({id:subject.employmentId,label:[subject.company,subject.employeeCode??subject.hiredOn].join(' · '),leaveTypes:Object.freeze(available)}));
   }
   return Object.freeze({kind:'choices',employments:Object.freeze(employments)});
- }catch{return{kind:'unavailable'};}
+ });}catch{return{kind:'unavailable'};}
 }

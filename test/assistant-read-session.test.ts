@@ -146,10 +146,12 @@ describe('explicit Assistant read ownership', () => {
   });
   it('rechecks feature pause without a provider admission or data effects', async () => {
     const { a, ctx } = await fixture();
-    await setAiFeature(a, 'hr_assistant', false);
+    // Shared AI features are changed only by a group-wide administrator (setAiFeature refuses others first).
+    const group: SessionContext = { ...a, grants: [{ role: 'hr_admin', companyId: null }] };
+    await setAiFeature(group, 'hr_assistant', false);
     await expect(withAssistantRead(ctx, 'employees', session => session.myEmployments())).rejects.toThrow('paused');
     expect(await owner.db.select().from(schema.aiModelRun)).toEqual([]);
-    await setAiFeature(a, 'hr_assistant', true);
+    await setAiFeature(group, 'hr_assistant', true);
     expect(await withAssistantRead(ctx, 'employees', session => session.myEmployments())).toHaveLength(1);
   });
 });
