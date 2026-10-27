@@ -66,6 +66,8 @@ export function createOfflineClaimService(settings:unknown,ports:OfflineClaimPor
  async function recover(ctx:SessionContext,signed:OfflineClockSignedClaim,digest:string){return withAttendanceTenant(ctx,async tx=>{await own(tx,ctx,signed);return recovered(tx,ctx,signed,digest);});}
  async function checked(tx:Tx,ctx:SessionContext,signed:OfflineClockSignedClaim,digest:string,lock:boolean,receivedAt?:number){
   const s=signed.claim.scope;
+  // Same order as context issuance and key revocation: actor admission, registered key, then stream.
+  if(lock)await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':mobile-integrity:'+ctx.userId},0))`);
   const query=tx.select().from(mobileIntegrityKey).where(and(eq(mobileIntegrityKey.id,s.deviceKeyId),eq(mobileIntegrityKey.tenantId,ctx.tenantId),eq(mobileIntegrityKey.actorId,ctx.userId!))).limit(1);
   const [key]=await(lock?query.for('update'):query);
   // Reconcile after the key wait, before revocation/provider/context checks: terminal receipts survive them.
@@ -109,7 +111,8 @@ export function createOfflineClaimService(settings:unknown,ports:OfflineClaimPor
     const {facts,stream,proof}=current;
     const seal=()=>hash(JSON.stringify([offlineClockClaimClientData(facts.claim),offlineClockContextClientData(facts.context),facts.key.id,facts.key.assertionCounter,facts.receivedAt,facts.currentCompanyId,facts.bounds]));
     const originalSeal=seal(),originalKeyId=facts.key.id;
-    await prepared.assertFresh(tx,facts);const parsedDecision=OfflineClockDecision.safeParse(await ports.adjudicate(tx,ctx,facts,photo));if(!parsedDecision.success)throw unavailable();const decision=parsedDecision.data;
+    // The policy owner receives a copy; the image bytes retained below never leave this service.
+    await prepared.assertFresh(tx,facts);const parsedDecision=OfflineClockDecision.safeParse(await ports.adjudicate(tx,ctx,facts,photo&&{bytes:Buffer.from(photo.bytes),mimeType:photo.mimeType}));if(!parsedDecision.success)throw unavailable();const decision=parsedDecision.data;
     if(seal()!==originalSeal)throw new OfflineClaimError('binding_conflict');
     if(!photoMatches(signed,photo))throw new OfflineClaimError('attachment_mismatch');
     if(facts.currentCompanyId!==facts.context.scope.companyId&&(decision.outcome==='accepted'||decision.reason!=='scope_changed'))throw unavailable();

@@ -3,7 +3,6 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
-import {withTenant} from '../db/client';
 import * as S from '../db/schema';
 import {createOfflineClaimService,offlineClaimPhotoAAD,type OfflineClaimPorts} from '../core/mobile-offline-claim';
 import {purgeExpiredOfflinePhotos} from '../core/mobile-offline-photo-retention';
@@ -105,8 +104,10 @@ describe('ordered transactional offline claim consumption',()=>{
   await expect(c.service().consume(f.ctx,f.signed())).rejects.toMatchObject({reason:'binding_conflict'});await untouched(f);
   expect((await owner.db.select().from(S.person).where(eq(S.person.id,f.e.personId)))[0].fullName).toBe('Offline consumer employee');
  });
- it('retains the exact owned image before acknowledging review, even if the caller changes its buffer',async()=>{
+ it('retains the exact owned image before acknowledging review, even if the caller or policy owner later changes its buffer',async()=>{
   const f=await offlineServiceFixture(base),c=consumer(),original=Buffer.from('original retained image'),bytes=Buffer.from(original),claim={...f.claim,command:{...f.claim.command,photo:{sha256:digest(original),byteLength:original.length,mimeType:'image/jpeg' as const}}};
+  // Zeroes the received buffer after the post-adjudication photo check, during the custody writes.
+  c.adjudicate.mockImplementationOnce(async(_tx,_ctx,_facts,photo)=>{setImmediate(()=>photo?.bytes.fill(0));return {outcome:'needs_review',reason:'review_required'};});
   const pending=c.service().consume(f.ctx,f.signed(claim),{bytes,mimeType:'image/jpeg'});bytes.fill(0);const result=await pending;
   const [media]=await owner.db.select().from(S.mobileOfflinePhoto);expect(Buffer.from(decryptSecret(media.photoCiphertext,offlineClaimPhotoAAD(media)),'base64')).toEqual(original);
   expect(result.photo).toEqual({sha256:digest(original),retainedUntil:media.retainedUntil.getTime()});expect(media.photoCiphertext).not.toContain(original.toString());
