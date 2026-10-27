@@ -4,8 +4,8 @@
 -- a root and thereby replenish its lifetime allowance. Erasure/accounting policy needs explicit owner.
 CREATE TABLE app.ai_spend_task(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES public.tenant(id),created_by uuid NOT NULL REFERENCES public.app_user(id),
- feature_id text NOT NULL CHECK(feature_id IN('hr_assistant','readiness_reminders','claims_triage','payroll_hypotheses')),
- source_kind text NOT NULL CHECK(source_kind IN('assistant_question','readiness_template','claim_request','payroll_batch')),
+ feature_id text NOT NULL CHECK(feature_id IN('hr_assistant','readiness_reminders','claims_triage','payroll_hypotheses','performance_assistant','performance_review')),
+ source_kind text NOT NULL CHECK(source_kind IN('assistant_question','readiness_template','claim_request','payroll_batch','performance_review_message','performance_feedback_message','performance_guide_request')),
  source_id uuid NOT NULL,operation text NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),
  UNIQUE(tenant_id,feature_id,source_kind,source_id,operation)
 );
@@ -21,6 +21,10 @@ CREATE FUNCTION app._ai_spend_task_source_allowed(feature text,kind text,native_
  WHEN feature='claims_triage' AND kind='claim_request' AND operation='triage' THEN EXISTS(SELECT 1 FROM claim_request q WHERE q.id=native_id AND q.tenant_id=app.current_tenant_id() AND q.status='pending' AND q.employment_id=ANY(app.visible_employment_ids()))
  WHEN feature='payroll_hypotheses' AND kind='payroll_batch' AND operation='hypotheses' THEN EXISTS(SELECT 1 FROM payroll_batch b WHERE b.id=native_id AND b.tenant_id=app.current_tenant_id() AND app.can_admin_payroll_for(b.company_id)
   AND NOT EXISTS(SELECT 1 FROM payslip s WHERE s.batch_id=b.id AND s.tenant_id=b.tenant_id AND app.can_admin_payroll_employment(s.employment_id) IS NOT TRUE))
+ WHEN feature='performance_assistant' AND kind='performance_review_message' AND operation~'^([a-f0-9-]{36}:)?(setting|results|moderation|competency|career|evidence):[a-f0-9-]{36}$' THEN EXISTS(SELECT 1 FROM performance_onehr_review r WHERE r.review_id=native_id AND r.tenant_id=app.current_tenant_id()
+  AND(app.onehr_manager(r.review_id) OR app.onehr_moderator(r.review_id) OR EXISTS(SELECT 1 FROM employment e WHERE e.id=r.employment_id AND e.tenant_id=r.tenant_id AND app.is_self_person(e.person_id))))
+ WHEN feature='performance_assistant' AND kind='performance_feedback_message' AND operation~'^([a-f0-9-]{36}:)?feedback:[a-f0-9-]{36}$' THEN app.onehr_feedback_card(native_id) IS NOT NULL
+ WHEN feature='performance_review' AND kind='performance_guide_request' AND operation='guide' THEN EXISTS(SELECT 1 FROM performance_assessment_guide_use g WHERE g.id=native_id AND g.tenant_id=app.current_tenant_id() AND g.actor_user_id=app.current_user_id() AND g.status='reserved')
  WHEN feature='readiness_reminders' AND kind='readiness_template' AND native_id=app.current_tenant_id() AND operation~'^(no_compensation|no_bank_account|no_identity|no_tax_number|no_epf_number|no_socso_number):(employee|hr)$' THEN app.is_admin()
  ELSE false END
 $$;
@@ -40,6 +44,12 @@ BEGIN
   -- One invocation is one new human question intent. Internal turns never call this issuer again.
   source:=gen_random_uuid();
  END IF;
+ IF wanted_source_kind IN('performance_review_message','performance_feedback_message') THEN
+  -- The native owner has already checked actual current review/feedback + prior message receipt.
+  -- Persist its nonce under the ACTUAL actor; browser nonce alone is never a permission/root.
+  IF wanted_operation!~'^(setting|results|moderation|competency|career|evidence|feedback):[a-f0-9-]{36}$' THEN RAISE EXCEPTION 'AI Performance operation unavailable';END IF;
+  wanted_operation:=app.current_user_id()::text||':'||wanted_operation;
+ END IF;
  INSERT INTO app.ai_spend_task(tenant_id,created_by,feature_id,source_kind,source_id,operation)
  VALUES(app.current_tenant_id(),app.current_user_id(),wanted_feature,wanted_source_kind,source,wanted_operation)
  ON CONFLICT(tenant_id,feature_id,source_kind,source_id,operation) DO NOTHING;
@@ -52,7 +62,7 @@ GRANT EXECUTE ON FUNCTION app.ai_spend_task_issue(text,text,uuid,text) TO ai_hr_
 CREATE FUNCTION app._ai_spend_task_root_current(wanted_root uuid,wanted_feature text,wanted_kind text)
  RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
  SELECT wanted_kind='agent' AND EXISTS(SELECT 1 FROM app.ai_spend_task t WHERE t.id=wanted_root AND t.tenant_id=app.current_tenant_id() AND t.feature_id=wanted_feature
- AND(t.source_kind<>'assistant_question' OR t.created_by=app.current_user_id()) AND app._ai_spend_task_source_allowed(t.feature_id,t.source_kind,t.source_id,t.operation))
+ AND(t.source_kind NOT IN('assistant_question','performance_review_message','performance_feedback_message','performance_guide_request') OR t.created_by=app.current_user_id()) AND app._ai_spend_task_source_allowed(t.feature_id,t.source_kind,t.source_id,t.operation))
 $$;
 REVOKE ALL ON FUNCTION app._ai_spend_task_root_current(uuid,text,text) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
@@ -105,7 +115,7 @@ BEGIN
  IF tid IS NULL OR NOT app._ai_provider_evaluation_actor_valid() OR wanted_kind NOT IN('tenant','user','company','feature') OR monthly IS NULL OR root_limit IS NULL OR monthly<0 OR root_limit<0 THEN RAISE EXCEPTION 'AI spend administration unavailable';END IF;
  PERFORM pg_advisory_xact_lock(hashtext('ai-control'),hashtext(tid::text));
  IF wanted_kind='tenant' THEN IF wanted_subject IS NOT NULL OR wanted_feature IS NOT NULL THEN RAISE EXCEPTION 'Invalid spend scope';END IF;k:='tenant';
- ELSIF wanted_kind='feature' THEN IF wanted_subject IS NOT NULL OR wanted_feature IS NULL OR wanted_feature NOT IN('provider_evaluation','module_agent_evaluation','module_agent_planning','hr_assistant','readiness_reminders','claims_triage','payroll_hypotheses') THEN RAISE EXCEPTION 'Invalid spend scope';END IF;k:='feature:'||wanted_feature;
+ ELSIF wanted_kind='feature' THEN IF wanted_subject IS NOT NULL OR wanted_feature IS NULL OR wanted_feature NOT IN('provider_evaluation','module_agent_evaluation','module_agent_planning','hr_assistant','readiness_reminders','claims_triage','payroll_hypotheses','performance_assistant','performance_review') THEN RAISE EXCEPTION 'Invalid spend scope';END IF;k:='feature:'||wanted_feature;
  ELSE IF wanted_feature IS NOT NULL OR wanted_subject IS NULL OR(wanted_kind='user' AND NOT EXISTS(SELECT 1 FROM app_user WHERE id=wanted_subject AND tenant_id=tid)) OR(wanted_kind='company' AND NOT EXISTS(SELECT 1 FROM company WHERE id=wanted_subject AND tenant_id=tid)) THEN RAISE EXCEPTION 'Invalid spend scope';END IF;k:=wanted_kind||':'||wanted_subject::text;END IF;
  INSERT INTO app.ai_spend_budget(tenant_id,scope_key,kind,subject_id,feature_id,monthly_nanos,root_nanos,updated_by) VALUES(tid,k,wanted_kind,wanted_subject,wanted_feature,monthly,root_limit,app.current_user_id())
  ON CONFLICT(tenant_id,scope_key) DO UPDATE SET monthly_nanos=excluded.monthly_nanos,root_nanos=excluded.root_nanos,updated_by=excluded.updated_by,updated_at=now();

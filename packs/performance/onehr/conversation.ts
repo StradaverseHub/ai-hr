@@ -1,3 +1,5 @@
+import {issuePerformanceMessageSpendTaskTx,type PerformanceMessageSpendTask} from '../../../core/ai-spend-task';
+import {assertPerformanceProviderSourceTx} from './provider-source-authority';
 import {assessmentHelp} from './help';
 import { competencyGuidance } from './competency-guide-model';
 import { competencyReflectionSchema,literalCompetencyReflection } from './review-command-model';
@@ -118,13 +120,15 @@ export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage
   return index<0?null:{revision:row.revision,messages,draftUpdated:['update','action'].includes(messages[index+1]?.kind),...(stage==='setting'&&view.self?{settingQuota:await assessmentAiQuotaTx(tx,ctx,`kpi_set:${view.cycle.id}`)}:{})};
  });
  if(previous)return previous;
+ let spendIntent:Promise<PerformanceMessageSpendTask>|undefined;
+ const spendTask=()=>spendIntent??=(withPerformanceTenant(ctx,async tx=>{await assertPerformanceProviderSourceTx(tx,ctx);await authorizedTx(tx,ctx,reviewId,stage);return issuePerformanceMessageSpendTaskTx(tx,ctx,{reviewId,contextId:reviewId,requestId,channel:stage});}));
  let reply='';
  const help=intent==='guide'?await assessmentHelp(ctx,words):null;
  const humanInput=intent==='guide'&&!help?humanManagerContext(view,stage,words):null;
  const commandInput=intent==='guide'&&!help&&!humanInput?commandContext(view,stage,words):null;
  const reflection=intent==='guide'&&stage==='competency'&&commandInput?literalCompetencyReflection(words,commandInput.facts):null;
  const evidenceInput=intent==='guide'&&!help&&!humanInput&&view.aiEnabled?evidenceContext(view,stage,words):null;
- const journey=!reflection&&view.aiEnabled&&(commandInput||evidenceInput)?await proposalOrNull(()=>proposeJourneyCommands(ctx,reviewId,commandInput?.facts??null,evidenceInput,async tx=>{const fresh=await authorizedTx(tx,ctx,reviewId,stage);if(!fresh.aiEnabled)throw Error('AI review assistance is unavailable.');return {review:commandInput?commandContext(fresh,stage,words)?.facts??null:null,evidence:evidenceInput?evidenceContext(fresh,stage,words):null};})):null;
+ const journey=!reflection&&view.aiEnabled&&(commandInput||evidenceInput)?await proposalOrNull(async ()=>proposeJourneyCommands(ctx,reviewId,commandInput?.facts??null,evidenceInput,async tx=>{const fresh=await authorizedTx(tx,ctx,reviewId,stage);if(!fresh.aiEnabled)throw Error('AI review assistance is unavailable.');return {review:commandInput?commandContext(fresh,stage,words)?.facts??null:null,evidence:evidenceInput?evidenceContext(fresh,stage,words):null};},await spendTask())):null;
  const command=reflection??journey?.review??null,evidence=journey?.evidence??null;
  const settingInput=['guide','starter'].includes(intent)&&!help&&!humanInput&&view.aiEnabled?settingContext(view,stage,words):null;
  const settingField=`kpi_set:${view.cycle.id}`;
@@ -136,9 +140,9 @@ export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage
  }
  const starter=intent==='starter'&&settingInput?await proposalOrNull(()=>proposeSettingSuggestion(ctx,reviewId,settingInput,async tx=>{const fresh=await authorizedTx(tx,ctx,reviewId,stage);if(!(await assessmentAiQuotaTx(tx,ctx,settingField)).remaining)throw Error('Current scorecard drafting allowance is unavailable.');return fresh.aiEnabled?settingContext(fresh,stage,words):null;})):null;
  if(intent==='starter'&&!starter)throw Error('Could not prepare a usable scorecard just now. You can add KPIs from the library and try again later.');
- const setting=starter??(intent==='guide'&&settingInput?await proposalOrNull(()=>proposeSettingCommands(ctx,reviewId,settingInput,async tx=>{const fresh=await authorizedTx(tx,ctx,reviewId,stage);return fresh.aiEnabled?settingContext(fresh,stage,words):null;})):null);
+ const setting=starter??(intent==='guide'&&settingInput?await proposalOrNull(async ()=>proposeSettingCommands(ctx,reviewId,settingInput,async tx=>{const fresh=await authorizedTx(tx,ctx,reviewId,stage);return fresh.aiEnabled?settingContext(fresh,stage,words):null;},await spendTask())):null);
  const careerInput=intent==='guide'&&!help&&!humanInput&&view.aiEnabled?careerContext(view,stage,words):null;
- const career=careerInput?await proposalOrNull(()=>proposeCareerCommands(ctx,reviewId,careerInput,async tx=>{const fresh=await authorizedTx(tx,ctx,reviewId,stage);return fresh.aiEnabled?careerContext(fresh,stage,words):null;})):null;
+ const career=careerInput?await proposalOrNull(async ()=>proposeCareerCommands(ctx,reviewId,careerInput,async tx=>{const fresh=await authorizedTx(tx,ctx,reviewId,stage);return fresh.aiEnabled?careerContext(fresh,stage,words):null;},await spendTask())):null;
 
  if(intent==='draft')reply=await draftOnehrNarrative(ctx,reviewId,words,stage==='competency'?'tc':stage==='career'?'idp':'pm');
  else{

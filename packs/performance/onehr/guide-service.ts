@@ -1,4 +1,5 @@
 import {withAiAdmissionCheck} from '../../../core/ai-governance';
+import {bindAiSpendTaskTx} from '../../../core/ai-spend-task';
 import {draftInputDigest} from '../../../lib/ai/draft-input';
 import {assertPerformanceProviderSourceTx} from './provider-source-authority';
 import {createHash} from 'node:crypto';
@@ -74,7 +75,8 @@ export async function askPerformanceGuide(ctx:SessionContext,rawQuestion:string,
   const expected=draftInputDigest(args),bound=withAiAdmissionCheck(cfg,'performance_review',async(tx,request)=>{
    if(request.operation!=='draft'||request.inputDigest!==expected||!await assessmentAiFeatureEnabledTx(tx,ctx,'review')||fingerprint(await getPerformanceGuideFactsTx(tx,ctx,question),cfg)!==before)throw Error('Current Performance guide source could not be confirmed.');
   });
-  const raw=await generateDraft(bound,args);
+  const rooted=await withPerformanceTenant(ctx,async tx=>{if(digest(await getPerformanceGuideFactsTx(tx,ctx,question))!==digest(facts))throw Error('Current Performance guide source could not be confirmed.');return bindAiSpendTaskTx(tx,ctx,bound,{kind:'performance_guide_request',sourceId:requestId});});
+  const raw=await generateDraft(rooted,args);
   selected=resolvePerformanceGuideSelection(JSON.parse(raw.trim().replace(/^```(?:json)?\s*|\s*```$/g,'')),facts);
  }catch{/* Search remains usable when the provider is unavailable or its selection fails adjudication. */}}
  // Re-fetch the actual owners after provider latency. Changed authorization/configuration cannot reuse old facts.

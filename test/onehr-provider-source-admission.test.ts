@@ -1,13 +1,17 @@
 /** Authored UNRUN. Actual app-role source projections, issued config and gateway admission;
- * only provider transport is mocked. No live provider/key, forged governance or receipts. */
+ * provider transport and its explicitly fictional monetary certificate are mocked.
+ * No live provider/key, forged governance, source permissions or receipts. */
 import {randomUUID} from 'node:crypto';
-import {and,eq} from 'drizzle-orm';
+import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
-import type {SessionContext} from '../db/client';
+import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import * as ai from '../lib/ai';
 import * as governance from '../core/ai-governance';
 import {createArticle} from '../core/knowledge-base';
+import {resolveActiveAiConfig} from '../core/ai-config';
+import {bindPerformanceMessageSpend} from '../core/ai-spend-task';
+import {installSyntheticSpendCapability} from './ai-spend-fixture';
 import {openaiAdapter} from '../lib/ai/providers/openai';
 import {hireEmployee,setReportingLine} from '../core/org';
 import * as perf from '../packs/performance/service';
@@ -18,9 +22,10 @@ import framework from '../packs/performance/onehr/framework.json';
 import {createOnehrServiceFixtures,year} from './onehr-service-fixture';
 import {closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base,a:SessionContext,self:SessionContext,mgr:SessionContext,subject:{employmentId:string;personId:string},manager:{employmentId:string;personId:string},peers:{employmentId:string;ctx:SessionContext}[],cycleId:string,reviewId:string;
+let spendPrice:Awaited<ReturnType<typeof installSyntheticSpendCapability>>;
 let beforeAdmission:(()=>Promise<void>)|undefined,afterSourceReplay:(()=>Promise<void>)|undefined,alterInput=false;
 const f=createOnehrServiceFixtures({get b(){return b;},get a(){return a;},get subject(){return subject;},get manager(){return manager;},get self(){return self;},get mgr(){return mgr;},get cycleId(){return cycleId;},get reviewId(){return reviewId;},get peers(){return peers;}});
-beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
+beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>{spendPrice?.restore();vi.restoreAllMocks();vi.unstubAllEnvs();});
 beforeEach(async()=>{
  await resetDb();b=await seedBase();for(const code of ['performance','rewards'])await setModule(b.tenantId,code,'active');a=await entitledCtx(b);
  subject=await f.hire('Assessment subject');manager=await f.hire('Assessment manager');
@@ -35,6 +40,7 @@ beforeEach(async()=>{
  await perf.configureOnehrCycle(a,cycleId,null,policy);await perf.openCycle(a,{cycleId});
  const [review]=await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,cycleId),eq(schema.performanceReview.employmentId,subject.employmentId)));reviewId=review.id;
  vi.stubEnv('OPENAI_API_KEY','fictional-admission-transport-never-sent');for(const key of ['ANTHROPIC_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY'])vi.stubEnv(key,'');beforeAdmission=undefined;afterSourceReplay=undefined;alterInput=false;
+ const issued=await withTenant(a,tx=>resolveActiveAiConfig(tx,a,'performance_review'));if(!issued)throw Error('Missing actual fixture provider');spendPrice=await installSyntheticSpendCapability(a,{provider:issued.provider,model:issued.model});
  const issue=governance.withAiAdmissionCheck;vi.spyOn(governance,'withAiAdmissionCheck').mockImplementation((config,feature,check)=>issue(config,feature,async(tx,request)=>{await check(tx,request);const tail=afterSourceReplay;afterSourceReplay=undefined;if(tail)await tail();}));
  const original=ai.generateDraft;vi.spyOn(ai,'generateDraft').mockImplementation(async(cfg,args)=>{const hook=beforeAdmission;beforeAdmission=undefined;if(hook)await hook();return original(cfg,alterInput?{...args,prompt:args.prompt+' CHANGED'}:args);});
  vi.spyOn(openaiAdapter,'generate').mockImplementation(async(_cfg,args)=>{args.onUsage?.({inputTokens:0,outputTokens:0,cachedInputTokens:0});if(args.system.includes('fact IDs'))return '{"facts":["dashboard"],"unanswered":false}';if(args.system.includes('longer-term career aspiration'))return '{"aspirationLong":"I aim to deepen my delivery practice."}';if(args.system.startsWith('Propose development goals'))return '[{"title":"Collaborative delivery","area":"Collaborative delivery","item_ids":["lp:0"],"experience":"Lead a delivery retrospective","exposure":"Seek colleague feedback","education":"Study facilitation"}]';return '{"items":[0]}';});
@@ -91,4 +97,24 @@ describe('native source custody survives the final source-check to admission gap
  });
  it('shared source custody grants no native review or impersonation permission',async()=>{for(const actor of [peers[0].ctx,{...mgr,personId:subject.personId}])await expect(perf.draftOnehrNarrative(actor,reviewId,'Unpermitted source.')).rejects.toThrow();expect(openaiAdapter.generate).not.toHaveBeenCalled();expect(await runs()).toEqual([]);});
 
+});
+
+// Authored UNRUN: exact native operation roots; synthetic monetary capability is test transport only.
+describe('native Performance Assistant/Guide spend operation ownership',()=>{
+ const tasks=()=>owner.db.execute<{id:string;source_kind:string;source_id:string;operation:string}>(sql`select id,source_kind,source_id,operation from app.ai_spend_task where tenant_id=${b.tenantId}::uuid order by created_at,id`);
+ const reserves=()=>owner.db.execute<{root_id:string}>(sql`select root_id from app.ai_spend_reservation where tenant_id=${b.tenantId}::uuid order by created_at,run_id`);
+ it('a caller object or foreign native request cannot issue the private message context',async()=>{const cfg=await withTenant(self,tx=>resolveActiveAiConfig(tx,self,'performance_assistant'));expect(cfg).not.toBeNull();expect(()=>bindPerformanceMessageSpend(cfg!,self,reviewId,{})).toThrow('spend context');await expect(withTenant(peers[0].ctx,tx=>tx.execute(sql`select app.ai_spend_task_issue('performance_assistant','performance_review_message',${reviewId}::uuid,${'results:'+randomUUID()})`))).rejects.toThrow();expect(await tasks()).toHaveLength(0);expect(await reserves()).toHaveLength(0);expect(openaiAdapter.generate).not.toHaveBeenCalled();});
+ it('Guide binds the actual preprovider reserved native operation, not its text or a new per-step UUID',async()=>{await askPerformanceGuide(self,'What are my current tasks?');expect(openaiAdapter.generate).toHaveBeenCalledOnce();const[t]=await tasks(),[r]=await reserves(),[operation]=await owner.db.execute<{id:string}>(sql`select id from performance_assessment_guide_use where tenant_id=${b.tenantId}::uuid and actor_user_id=${self.userId}::uuid`);expect(t).toMatchObject({source_kind:'performance_guide_request',source_id:operation.id,operation:'guide'});expect(r.root_id).toBe(t.id);expect(JSON.stringify(t)).not.toContain('What are');});
+ it('actual review message retry reuses one source-issued task after native conversation storage failure, then completed duplicate spends nothing',async()=>{
+  const kpiId=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await f.view(self)).revision,[{id:kpiId,title:'Agreed delivery',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:manager.employmentId}],true);await perf.approveOnehrScorecard(mgr,reviewId,(await f.view(mgr)).revision,true,'Targets verified');vi.mocked(openaiAdapter.generate).mockImplementation(async(_cfg,args)=>{args.onUsage?.({inputTokens:0,outputTokens:0,cachedInputTokens:0});return '{"commands":[]}';});
+  const nonce=randomUUID(),text='Record Agreed delivery result as 3';
+  await owner.db.execute(sql`create function app.fictional_spend_message_storage_failure() returns trigger language plpgsql as $$begin raise exception 'Fictional conversation persistence refusal';end$$`);await owner.db.execute(sql`create trigger fictional_spend_message_storage_failure before insert on performance_assessment_conversation for each row execute function app.fictional_spend_message_storage_failure()`);
+  try{await expect(perf.sendReviewMessage(self,reviewId,'results',null,nonce,text)).rejects.toThrow();expect(openaiAdapter.generate).toHaveBeenCalledOnce();expect(await reserves()).toHaveLength(1);}finally{await owner.db.execute(sql`drop trigger fictional_spend_message_storage_failure on performance_assessment_conversation`);await owner.db.execute(sql`drop function app.fictional_spend_message_storage_failure()`);}
+  const done=await perf.sendReviewMessage(self,reviewId,'results',null,nonce,text);expect(openaiAdapter.generate).toHaveBeenCalledTimes(2);const rows=await reserves(),task=await tasks();expect(task).toHaveLength(1);expect(rows).toHaveLength(2);expect(new Set(rows.map(r=>r.root_id))).toEqual(new Set([task[0].id]));expect(task[0]).toMatchObject({source_kind:'performance_review_message',source_id:reviewId});expect(task[0].operation).toBe(self.userId+':results:'+nonce);
+  expect(await perf.sendReviewMessage(self,reviewId,'results',null,nonce,text)).toEqual(done);expect(openaiAdapter.generate).toHaveBeenCalledTimes(2);expect(await tasks()).toHaveLength(1);
+ });
+ it('actual assigned feedback message owns its context and opaque task; another employee cannot create or spend it',async()=>{
+  await perf.assignOnehrPanel(mgr,reviewId,(await f.view(mgr)).revision,peers.map(p=>({employmentId:p.employmentId,relationship:'peer'})));const assignment=(await perf.onehrAssignments(peers[0].ctx)).feedback.find(r=>r.subject==='Assessment subject')!;expect(assignment).toBeDefined();const card=await perf.getOnehrFeedback(peers[0].ctx,assignment.id),nonce=randomUUID();vi.mocked(openaiAdapter.generate).mockImplementation(async(_cfg,args)=>{args.onUsage?.({inputTokens:0,outputTokens:0,cachedInputTokens:0});return '{"commands":[]}';});
+  const text='Mark '+card.statements[0].text+' yes',done=await perf.sendFeedbackMessage(peers[0].ctx,reviewId,assignment.id,null,nonce,text);expect(openaiAdapter.generate).toHaveBeenCalledOnce();expect(await tasks()).toMatchObject([{source_kind:'performance_feedback_message',source_id:assignment.id,operation:peers[0].ctx.userId+':feedback:'+nonce}]);expect(await perf.sendFeedbackMessage(peers[0].ctx,reviewId,assignment.id,null,nonce,text)).toEqual(done);expect(openaiAdapter.generate).toHaveBeenCalledOnce();await expect(perf.sendFeedbackMessage(peers[1].ctx,reviewId,assignment.id,null,randomUUID(),text)).rejects.toThrow();expect(openaiAdapter.generate).toHaveBeenCalledOnce();expect(await tasks()).toHaveLength(1);
+ });
 });
