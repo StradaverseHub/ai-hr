@@ -11,6 +11,7 @@ vi.mock('next-intl/server',()=>({getLocale:async()=>state.locale,getTranslations
 vi.mock('../app/assistant/agent-review-actions',()=>({createAgentCandidateAction:async()=>{},evaluateAgentCandidateAction:async()=>{},promoteAgentCandidateAction:async()=>{},rollbackAgentCandidateAction:async()=>{},tryAgentCandidateAction:async()=>{}}));
 import {ModuleAgentReview} from '../components/assistant/module-agent-review';
 import {PROMPT_HOLDOUTS,PROMPT_HOLDOUT_REQUEST_LIMIT} from '../lib/ai/module-agent-prompt-candidate';
+import {compareMeasuredQuality} from '../lib/ai/paired-evaluation';
 import {MODULE_AGENT_SOURCE_DIGEST} from '../lib/ai/module-agent-source-manifest';
 type View=Parameters<typeof ModuleAgentReview>[0]['view'];
 function view(progress:View['candidates'][number]['progress']):View{return {sourceDigest:MODULE_AGENT_SOURCE_DIGEST,nextVersion:2,lastTrial:null,ownSignalChoices:[],ownNativeSignalChoices:[],nativeSignalChoicesTruncated:false,
@@ -18,15 +19,16 @@ function view(progress:View['candidates'][number]['progress']):View{return {sour
 beforeEach(()=>{state.locale='en';});afterEach(cleanup);
 describe('human evaluation scope, consent and authenticated progress',()=>{
  it.each(['en','ms','zh','ta','th','vi'])('%s shows only its fixed trial questions and the real per-click request cap',async locale=>{
-  state.locale=locale;const result=render(await ModuleAgentReview({view:view({completedCases:12,totalCases:144,state:'incomplete',retainedFailures:1,knownFailures:1})}));
+  state.locale=locale;const result=render(await ModuleAgentReview({view:view({completedCases:6,totalCases:144,state:'incomplete',retainedFailures:1,knownFailures:1,comparison:compareMeasuredQuality([],[],144)})}));
   result.container.querySelector('details')!.open=true;
   const trial=result.container.querySelector<HTMLSelectElement>('select[name="fixtureId"]')!;
   expect([...trial.options].map(option=>option.value)).toEqual(PROMPT_HOLDOUTS.filter(row=>row.locale===locale).map(row=>row.id));
   expect(trial.options).toHaveLength(24);
   const scope=copies[locale].assistant.workspace.agentReview;
   expect(result.container.textContent).toContain(scope.consent.replace('{requests}',String(PROMPT_HOLDOUT_REQUEST_LIMIT)));
-  expect(result.container.textContent).toContain(scope.progress.replace('{completed}','12').replace('{total}','144').replace('{failures}','1').replace('{state}',scope.state_incomplete));
+  expect(result.container.textContent).toContain(scope.progress.replace('{completed}','6').replace('{total}','144').replace('{failures}','1').replace('{state}',scope.state_incomplete));
   for(const checkbox of result.container.querySelectorAll<HTMLInputElement>('input[name="consented"]'))expect(checkbox.required).toBe(true);
+  expect(result.container.textContent).toContain(scope.pairedBudget.replace('{requests}','12').replace('{pairs}','6'));expect(result.container.textContent).toContain(scope.qualityPending);expect(result.container.textContent).toContain(scope.metricUnknown);expect(result.container.textContent).toContain(scope.resourceObservations);
   expect(screen.getAllByRole('button').length).toBeGreaterThan(0);
  });
  it('offers only explicit own feedback selections and distinguishes verified zero from missing evidence',async()=>{
@@ -39,4 +41,10 @@ describe('human evaluation scope, consent and authenticated progress',()=>{
   const result=render(await ModuleAgentReview({view:view(null)}));expect(result.container.textContent).toContain(en.assistant.workspace.agentReview.progressUnknown);
   expect(result.container.textContent).not.toContain('0/144');
  });
+ it('shows equal perfect arms as no gain and does not replace unknown cost with zero',async()=>{
+  const measured=Array.from({length:144},(_,index)=>({id:String(index),passed:true,securityFailure:false,elapsedMs:1,readCount:0,tokens:0,costCredits:null}));
+  const data=view({completedCases:144,totalCases:144,state:'complete',retainedFailures:0,knownFailures:0,comparison:compareMeasuredQuality(measured,measured,144)});
+  const result=render(await ModuleAgentReview({view:data}));expect(result.container.textContent).toContain(en.assistant.workspace.agentReview.qualityNoGain);expect(result.container.textContent).not.toContain(en.assistant.workspace.agentReview.qualityGain);expect(result.container.textContent).toContain(en.assistant.workspace.agentReview.metricUnknown);
+ });
+
 });

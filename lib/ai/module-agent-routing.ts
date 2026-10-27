@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { AGENT_MODULE_CODES, isAgentModuleCode, type AgentModuleCode } from './module-agents';
 export const ROUTING_ENGINE_VERSION = 'typed-route-priority-v1';
 export const routingDigest = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
-export const ROUTING_ENGINE_DIGEST = routingDigest([ROUTING_ENGINE_VERSION, 'captured-permutation', 'same-exact-module-set', 'no-effects']);
+export const ROUTING_ENGINE_DIGEST = routingDigest([ROUTING_ENGINE_VERSION, 'captured-permutation', 'same-exact-module-set', 'no-effects','paired-canonical-observations-v2','permutation-is-not-quality-gain']);
 export type TypedRouteCandidate = Readonly<{ kind: 'typed_route_priority_v1'; priority: readonly AgentModuleCode[] }>;
 export type CapturedModulePlan = Readonly<{ version: 1; modules: readonly AgentModuleCode[] }>;
 const refuse = (): never => { throw new Error('Unsupported module-agent candidate or plan.'); };
@@ -38,8 +38,11 @@ export const ROUTING_HOLDOUT_PLANS = Object.freeze([
   Object.freeze(['assistant','notifications','knowledge_base','country-my'] as const),
   Object.freeze(['system_testing','system_explorer'] as const),
 ]);
-export const ROUTING_POLICY = Object.freeze({ version: 1, securityFailures: 0, qualityFailures: 0,
-  independentEvaluators: 2, minimumOwnSubjects: 1, maxJobs: 100, maxHours: 24, coverage: 'typed-routing-contract-only' });
+// The actual native fixture reads only authorized own Employees/ESS facts. Other plans above are
+// typed set/scope contracts; this evaluation does not claim live all-module business coverage.
+export const ROUTING_CANONICAL_PLANS=Object.freeze(ROUTING_HOLDOUT_PLANS.slice(0,2));
+export const ROUTING_POLICY = Object.freeze({ version: 2, securityFailures: 0, qualityFailures: 0,
+  independentEvaluators: 2, minimumOwnSubjects: 1, maxJobs: 100, maxHours: 24, coverage: 'typed-routing-contract-only', improvementRequires:'strict-independent-canonical-quality-gain', timerNoiseNeverQualifies:true });
 export const ROUTING_POLICY_DIGEST = routingDigest(ROUTING_POLICY);
-export const ROUTING_INPUT_DIGEST = routingDigest(ROUTING_HOLDOUT_PLANS);
-export const ROUTING_SUITE_DIGEST = routingDigest(['routing-heldout-v1', ROUTING_ENGINE_DIGEST, ROUTING_INPUT_DIGEST, ROUTING_POLICY_DIGEST]);
+export const ROUTING_INPUT_DIGEST = routingDigest([ROUTING_HOLDOUT_PLANS,ROUTING_CANONICAL_PLANS]);
+export const ROUTING_SUITE_DIGEST = routingDigest(['routing-heldout-v2-paired', ROUTING_ENGINE_DIGEST, ROUTING_INPUT_DIGEST, ROUTING_POLICY_DIGEST]);

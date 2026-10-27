@@ -4,7 +4,7 @@ import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {SessionContext} from '../db/client';
 import {openaiAdapter} from '../lib/ai/providers/openai';
-import {PROMPT_HOLDOUTS,PROMPT_HOLDOUT_REQUEST_LIMIT} from '../lib/ai/module-agent-prompt-candidate';
+import {PROMPT_HOLDOUTS,PROMPT_HOLDOUT_REQUEST_LIMIT,promptCandidateSystem,PROMPT_BASELINE} from '../lib/ai/module-agent-prompt-candidate';
 import {MODULE_AGENT_SOURCE_DIGEST} from '../lib/ai/module-agent-source-manifest';
 import {createPromptAgentCandidate,evaluatePromptAgentCandidate,promotePromptAgentCandidate,runPromptPlannedSyntheticJob} from '../core/module-agent-releases';
 import {hireEmployee} from '../core/org';
@@ -23,20 +23,21 @@ async function actors(){const admin=adminCtx(base);const make=async(name:string)
  return {...await entitledCtx(base,['hr_admin']),userId,personId:hired.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]} satisfies SessionContext;
 };return {author:await make('Fictional Prompt Author'),reviewer:await make('Fictional Prompt Reviewer'),second:await make('Fictional Second Prompt Reviewer')};}
 const consent=(maxRequests=PROMPT_HOLDOUT_REQUEST_LIMIT)=>({synthetic:true as const,maxRequests,sourceDigest:MODULE_AGENT_SOURCE_DIGEST});
-const transport=()=>vi.spyOn(openaiAdapter,'generate').mockImplementation(async(_cfg,args)=>{
+const transport=(fictionalBaselineFailure=false)=>vi.spyOn(openaiAdapter,'generate').mockImplementation(async(_cfg,args)=>{
  const fixture=PROMPT_HOLDOUTS.find(row=>row.question===args.prompt);if(!fixture)throw Error('Non-synthetic provider input');
- args.onUsage?.({inputTokens:0,outputTokens:0,cachedInputTokens:0});return JSON.stringify({decision:fixture.decision,modules:fixture.modules});
+ args.onUsage?.({inputTokens:0,outputTokens:0,cachedInputTokens:0});if(fictionalBaselineFailure&&args.system===promptCandidateSystem(PROMPT_BASELINE)&&fixture.id==='own-leave')return JSON.stringify({decision:'read',modules:['employees']});return JSON.stringify({decision:fixture.decision,modules:fixture.modules});
 });
 async function candidate(){const a=await actors();const row=await createPromptAgentCandidate(a.author,{version:1,configuration:{kind:'read_plan_prompt_v1',variant:'explicit_scope_v1'}});return {...a,...row};}
 async function completeEvaluation(ctx:SessionContext,input:Parameters<typeof evaluatePromptAgentCandidate>[1]){
- for(let batch=0;batch<=Math.ceil(PROMPT_HOLDOUTS.length/PROMPT_HOLDOUT_REQUEST_LIMIT);batch++){
+ for(let batch=0;batch<=Math.ceil(2*PROMPT_HOLDOUTS.length/PROMPT_HOLDOUT_REQUEST_LIMIT);batch++){
   const result=await evaluatePromptAgentCandidate(ctx,input);if(result.state==='complete')return result;
  }throw Error('Synthetic evaluation did not complete the fixed fixture set.');
 }
-const expectedModelRuns=()=>PROMPT_HOLDOUTS.length*2+1;
+const expectedModelRuns=()=>PROMPT_HOLDOUTS.length*4+1;
 describe('actual independent prompt-to-plan evaluation custody',()=>{
  it('requires human synthetic consent before transport, then uses real admission and a bounded promoted synthetic consumer',async()=>{
-  const a=await candidate(),sent=transport();
+  const a=await candidate(),sent=transport(true);
+  // Deliberately wrong MOCKED baseline response exercises promotion policy; it is not real provider quality evidence.
   await expect(evaluatePromptAgentCandidate(a.reviewer,{candidateId:a.candidateId,consent:{...consent(),synthetic:false} as never})).rejects.toThrow();
   expect(sent).not.toHaveBeenCalled();
   const first=await completeEvaluation(a.reviewer,{candidateId:a.candidateId,consent:consent()});
@@ -51,12 +52,12 @@ describe('actual independent prompt-to-plan evaluation custody',()=>{
  });
  it('retains authentic passing cases and reruns only a failed exact-input case',async()=>{
   const a=await candidate(),sent=transport();const normal=sent.getMockImplementation()!;
-  sent.mockImplementation(async(cfg,args)=>args.prompt===PROMPT_HOLDOUTS.find(row=>row.id==='reject-peer')!.question?JSON.stringify({decision:'read',modules:['payroll']}):normal(cfg,args));
+  sent.mockImplementation(async(cfg,args)=>args.system!==promptCandidateSystem(PROMPT_BASELINE)&&args.prompt===PROMPT_HOLDOUTS.find(row=>row.id==='reject-peer')!.question?JSON.stringify({decision:'read',modules:['payroll']}):normal(cfg,args));
   const failed=await completeEvaluation(a.reviewer,{candidateId:a.candidateId,consent:consent()});expect(failed.securityFailures).toBe(1);
   sent.mockImplementation(normal);sent.mockClear();
   const repaired=await completeEvaluation(a.reviewer,{candidateId:a.candidateId,consent:consent()});
-  expect(repaired).toMatchObject({retainedPasses:PROMPT_HOLDOUTS.length-1,retainedFailures:0,attemptedRequests:1,completedRequests:1,securityFailures:0,qualityFailures:0});expect(sent).toHaveBeenCalledTimes(1);
-  const [evidence]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from public.ai_agent_evaluation where candidate_id=${a.candidateId}::uuid`);expect(evidence.n).toBe(Math.ceil(PROMPT_HOLDOUTS.length/PROMPT_HOLDOUT_REQUEST_LIMIT)+1);
+  expect(repaired).toMatchObject({retainedPasses:2*PROMPT_HOLDOUTS.length-1,retainedFailures:0,attemptedRequests:1,completedRequests:1,securityFailures:0,qualityFailures:0});expect(sent).toHaveBeenCalledTimes(1);
+  const [evidence]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from public.ai_agent_evaluation where candidate_id=${a.candidateId}::uuid`);expect(evidence.n).toBe(Math.ceil(2*PROMPT_HOLDOUTS.length/PROMPT_HOLDOUT_REQUEST_LIMIT)+1);
  });
  it('does not convert incomplete or changed-provider evidence into promotable quality',async()=>{
   const a=await candidate(),sent=transport();const normal=sent.getMockImplementation()!;
@@ -70,11 +71,16 @@ describe('actual independent prompt-to-plan evaluation custody',()=>{
   await expect(promotePromptAgentCandidate(a.reviewer,{candidateId:a.candidateId,maxJobs:1,hours:1})).rejects.toThrow();
  });
  it('rolls back promotion on a schema-valid wrong synthetic plan before canonical facts are read',async()=>{
-  const a=await candidate(),sent=transport();await completeEvaluation(a.reviewer,{candidateId:a.candidateId,consent:consent()});
+  const a=await candidate(),sent=transport(true);await completeEvaluation(a.reviewer,{candidateId:a.candidateId,consent:consent()});
   await completeEvaluation(a.second,{candidateId:a.candidateId,consent:consent()});
   await promotePromptAgentCandidate(a.reviewer,{candidateId:a.candidateId,maxJobs:2,hours:1});
   sent.mockResolvedValue(JSON.stringify({decision:'read',modules:['employees']}));
   await expect(runPromptPlannedSyntheticJob(a.author,{fixtureId:'own-leave',consent:consent(1)})).rejects.toThrow();
   const [row]=await owner.db.execute<{reason:string}>(sql`select reason from public.ai_agent_rollback limit 1`);expect(row.reason).toBe('quality_regression');
  });
+ it('refuses equal perfect baseline/candidate plans after two authentic independent paired evaluations, regardless of zero reported tokens',async()=>{
+  const a=await candidate();transport();for(const ctx of [a.reviewer,a.second]){const report=await completeEvaluation(ctx,{candidateId:a.candidateId,consent:consent()});expect(report.comparison).toMatchObject({qualityImproved:false,baseline:{correct:144,tokens:0,costCredits:null},candidate:{correct:144,tokens:0,costCredits:null}});}
+  await expect(promotePromptAgentCandidate(a.reviewer,{candidateId:a.candidateId,maxJobs:1,hours:1})).rejects.toThrow();const[rows]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from public.ai_agent_promotion`);expect(rows.n).toBe(0);
+ });
+
 });

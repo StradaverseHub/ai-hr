@@ -19,17 +19,18 @@ import { AiGatewayError } from '../lib/ai/types';
 import { MODULE_AGENT_SOURCE_DIGEST } from '../lib/ai/module-agent-source-manifest';
 import { applyTypedRouteCandidate, captureTypedModulePlan, captureTypedRouteCandidate,
   ROUTING_ENGINE_DIGEST, ROUTING_POLICY_DIGEST, ROUTING_INPUT_DIGEST, ROUTING_SUITE_DIGEST, ROUTING_POLICY,
-  routingDigest, type TypedRouteCandidate } from '../lib/ai/module-agent-routing';
+  routingDigest, ROUTING_CANONICAL_PLANS,type TypedRouteCandidate } from '../lib/ai/module-agent-routing';
 import { assertAiPrincipalTx,isAiPrincipalCurrentTx } from './ai-principal';
 import { assertMayUseAssistant } from './assistant-grant';
 import { assertAiActionUnpausedTx } from './ai-governance';
 import { resolveEntitlementsTx,assertModuleEnabled } from './entitlements';
 import { withAssistantReadTx, withAssistantJobReadsTx,withAssistantAdmissionReadsTx, type AssistantReadSession,type CanonicalModuleRead,type InterpretedModuleRead } from './assistant-read-session';
+import {captureMeasuredCases,compareMeasuredQuality} from '../lib/ai/paired-evaluation';
 import { executeRoutingHoldout, type RoutingEvaluationReport } from './module-agent-evaluation-harness';
-import { capturePromptPlanCandidate,adjudicatePromptReadPlan,promptCandidateSystem,PROMPT_HOLDOUTS,PROMPT_HOLDOUT_REQUEST_LIMIT,PROMPT_SUITE_DIGEST,PROMPT_ENGINE_DIGEST,PROMPT_POLICY_DIGEST,PROMPT_INPUT_DIGEST } from '../lib/ai/module-agent-prompt-candidate';
+import { capturePromptPlanCandidate,adjudicatePromptReadPlan,promptCandidateSystem,PROMPT_HOLDOUTS,PROMPT_HOLDOUT_REQUEST_LIMIT,PROMPT_SUITE_DIGEST,PROMPT_ENGINE_DIGEST,PROMPT_POLICY_DIGEST,PROMPT_INPUT_DIGEST,PROMPT_BASELINE } from '../lib/ai/module-agent-prompt-candidate';
 import { resolveAiProviderSnapshotTx } from './ai-provider-snapshot';
-import { governedAiConfig,withAiAdmissionCheck,withAiAdmissionLifecycle } from './ai-governance';
-import { executePromptHoldout,type PromptHoldoutReport } from './module-agent-prompt-harness';
+import { governedAiConfig,withAiAdmissionCheck,withAiAdmissionLifecycle,bindStrictAiSpendRoot } from './ai-governance';
+import { executePromptHoldout,promptMeasuredComparison,type PromptHoldoutReport } from './module-agent-prompt-harness';
 import {draftInputDigest} from '../lib/ai/draft-input';
 import {HUMAN_PLAN_HOLDOUTS,HUMAN_PLAN_SUITE_DIGEST,humanQuestionPrompt} from '../lib/ai/human-plan-holdouts';
 import { generateDraft } from '../lib/ai';
@@ -65,7 +66,7 @@ function assertCurrent(row: CandidateRow) {
   const configuration=prompt?capturePromptPlanCandidate(row.configuration):captureTypedRouteCandidate(row.configuration);
   if (row.module_code !== 'assistant' || configuration.kind!==row.kind || row.source_digest !== MODULE_AGENT_SOURCE_DIGEST ||
     row.engine_digest !== (prompt?PROMPT_ENGINE_DIGEST:ROUTING_ENGINE_DIGEST) ||
-    row.policy_digest !== (prompt?PROMPT_POLICY_DIGEST:ROUTING_POLICY_DIGEST) || row.input_digest !== (prompt?PROMPT_INPUT_DIGEST:ROUTING_INPUT_DIGEST) ||
+    row.baseline_digest!==(prompt?routingDigest(['paired-prompt-baseline-v1',PROMPT_BASELINE,PROMPT_ENGINE_DIGEST]):baselineDigest)||row.policy_digest !== (prompt?PROMPT_POLICY_DIGEST:ROUTING_POLICY_DIGEST) || row.input_digest !== (prompt?PROMPT_INPUT_DIGEST:ROUTING_INPUT_DIGEST) ||
     row.candidate_digest !== routingDigest(binding(row))) return fail();
   return configuration;
 }
@@ -201,7 +202,7 @@ export async function evaluateRoutingAgentCandidate(ctx: SessionContext, candida
       await tx.execute(sql`insert into public.ai_agent_evaluation(id,tenant_id,candidate_id,evaluator_user_id,suite_digest,receipt)
         values(${proof.id}::uuid,${current.tenantId}::uuid,${id}::uuid,${current.userId}::uuid,${ROUTING_SUITE_DIGEST},${receipt})`);
       return { evaluationId:proof.id,coverage:proof.report.coverage,securityFailures:proof.report.securityFailures,
-        qualityFailures:proof.report.qualityFailures,state:proof.report.securityFailures===0&&proof.report.qualityFailures===0?'passed-contract':'failed-contract' };
+        qualityFailures:proof.report.qualityFailures,comparison:proof.report.comparison,state:proof.report.securityFailures===0&&proof.report.qualityFailures===0?'passed-contract':'failed-contract' };
     });
   } catch { return fail(); }
 }
@@ -211,9 +212,13 @@ function verifiedEvaluation(row: { id: string; evaluator_user_id: string; suite_
     proof.candidateDigest!==candidate.candidate_digest || routingDigest(proof.binding)!==routingDigest(binding(candidate)) ||
     proof.evaluatorId!==row.evaluator_user_id || row.evaluator_user_id===candidate.author_user_id || row.suite_digest!==ROUTING_SUITE_DIGEST) return fail();
   const report = proof.report as RoutingEvaluationReport;
-  if (!report || report.version!==1 || report.suiteDigest!==ROUTING_SUITE_DIGEST || report.inputDigest!==ROUTING_INPUT_DIGEST ||
+  if (!report || !exact(report,['version','suiteDigest','inputDigest','coverage','securityFailures','qualityFailures','cases','ownSubjects','observedDigest','baseline','candidate','comparison'])||report.version!==2 || report.suiteDigest!==ROUTING_SUITE_DIGEST || report.inputDigest!==ROUTING_INPUT_DIGEST ||
     report.coverage!=='typed-routing-contract-only' || report.securityFailures!==0 || report.qualityFailures!==0 || report.ownSubjects<1 ||
-    !Array.isArray(report.cases) || report.cases.length!==28 || report.cases.some(row=>row.passed!==true)) return fail();
+    !Array.isArray(report.cases) || report.cases.length!==27 || report.cases.some(row=>!exact(row,['id','passed'])||row.passed!==true)||new Set(report.cases.map(row=>row.id)).size!==27) return fail();
+  const expectedCases=[...Array.from({length:8},(_,index)=>'heldout-order-'+index),...Array.from({length:8},(_,index)=>'heldout-set-'+index),...Array.from({length:9},(_,index)=>'security-invalid-plan-'+index),'actual-canonical-data-preserved','nonempty-authorized-own-fixture'];
+  if(routingDigest(report.cases.map(row=>row.id).sort())!==routingDigest(expectedCases.sort()))return fail();
+  const ids=ROUTING_CANONICAL_PLANS.map((_,index)=>'canonical-'+index),baseline=captureMeasuredCases(report.baseline,ids),changed=captureMeasuredCases(report.candidate,ids),comparison=compareMeasuredQuality(baseline,changed,ids.length);
+  if(routingDigest(comparison)!==routingDigest(report.comparison)||!comparison.qualityImproved||baseline.some((row,index)=>row.readCount!==ROUTING_CANONICAL_PLANS[index].length||row.tokens!==0||row.costCredits!==0)||changed.some((row,index)=>row.readCount!==ROUTING_CANONICAL_PLANS[index].length||row.tokens!==0||row.costCredits!==0))return fail();
   return { id:row.id,evaluatorId:row.evaluator_user_id,receiptDigest:routingDigest(row.receipt) };
 }
 export async function promoteRoutingAgentCandidate(ctx: SessionContext,input:{candidateId:string;maxJobs:number;hours:number}) {
@@ -472,7 +477,7 @@ export async function createPromptAgentCandidate(ctx:SessionContext,input:{versi
  const current=capture(ctx),configuration=capturePromptPlanCandidate(input.configuration),version=input.version,signalIds=captureSignalIds(input.signalIds),nativeSignalIds=captureNativeCandidateSignalIds(input.nativeSignalIds),capability=Object.freeze({notificationIdentity:server.notificationIdentity});
  if(!exact(input,['version','configuration',...(input.signalIds===undefined?[]:['signalIds']),...(input.nativeSignalIds===undefined?[]:['nativeSignalIds'])])||!Number.isSafeInteger(version)||version<1)return fail();
  try{return await withTenant(current,async tx=>{
-  if(nativeSignalIds.length)await boundNativeOutcomeTransactionTx(tx);await guard(tx,current,true);const id=randomUUID(),base=routingDigest(['no-model-plan-baseline-v1',PROMPT_ENGINE_DIGEST]);
+  if(nativeSignalIds.length)await boundNativeOutcomeTransactionTx(tx);await guard(tx,current,true);const id=randomUUID(),base=routingDigest(['paired-prompt-baseline-v1',PROMPT_BASELINE,PROMPT_ENGINE_DIGEST]);
   const native_signal_refs=await ownNativeCandidateSignalsTx(tx,current,nativeSignalIds,undefined,capability),signal_refs=await ownSignalRefsTx(tx,current,signalIds);
   const row:CandidateRow={id,owner_user_id:current.userId!,author_user_id:current.userId!,module_code:'assistant',kind:'read_plan_prompt_v1',
    version,configuration,candidate_digest:'',baseline_digest:base,source_digest:MODULE_AGENT_SOURCE_DIGEST,
@@ -492,10 +497,17 @@ function authenticatedPromptReport(row:{id:string;evaluator_user_id:string;suite
   proof.candidateDigest!==candidate.candidate_digest||routingDigest(proof.binding)!==routingDigest(binding(candidate))||
   proof.evaluatorId!==row.evaluator_user_id||row.suite_digest!==PROMPT_SUITE_DIGEST||proof.providerFingerprint!==providerFingerprint)return fail();
  const report=proof.report as PromptHoldoutReport;
- if(!report||report.version!==1||report.suiteDigest!==PROMPT_SUITE_DIGEST||report.inputDigest!==PROMPT_INPUT_DIGEST||
-  report.coverage!=='model-to-typed-read-plan-only'||!Array.isArray(report.cases)||report.cases.length>PROMPT_HOLDOUTS.length)return fail();
- const unique=new Set<string>();for(const row of report.cases){if(unique.has(row.id)||!PROMPT_HOLDOUTS.some(f=>f.id===row.id)||
-  !['passed','failed','unavailable'].includes(row.state)||(row.state==='passed'&&(!row.outputDigest||!/^[a-f0-9]{64}$/.test(row.outputDigest))))return fail();unique.add(row.id);}
+ if(!report||!exact(report,['version','coverage','suiteDigest','inputDigest','baselineDigest','candidateConfigurationDigest','attemptedRequests','completedRequests','completedCases','state','securityFailures','qualityFailures','elapsedMs','retainedPasses','retainedFailures','unavailableAttempts','cases','comparison'])||report.version!==2||report.suiteDigest!==PROMPT_SUITE_DIGEST||report.inputDigest!==PROMPT_INPUT_DIGEST||report.baselineDigest!==routingDigest(PROMPT_BASELINE)||report.candidateConfigurationDigest!==routingDigest(capturePromptPlanCandidate(candidate.configuration))||
+  report.coverage!=='model-to-typed-read-plan-only'||!Array.isArray(report.cases)||report.cases.length>2*PROMPT_HOLDOUTS.length||!Number.isSafeInteger(report.attemptedRequests)||report.attemptedRequests<0||report.attemptedRequests>PROMPT_HOLDOUT_REQUEST_LIMIT||!Number.isSafeInteger(report.completedRequests)||report.completedRequests<0||report.completedRequests>report.attemptedRequests||!Number.isSafeInteger(report.unavailableAttempts)||report.unavailableAttempts<0||report.completedRequests+report.unavailableAttempts!==report.attemptedRequests||typeof report.elapsedMs!=='number'||!Number.isFinite(report.elapsedMs)||report.elapsedMs<0)return fail();
+ const unique=new Set<string>();for(const row of report.cases){const key=row.arm+':'+row.id;
+  if(!exact(row,['id','arm','state',...(row.outputDigest===undefined?[]:['outputDigest']),...(row.securityFailure===undefined?[]:['securityFailure']),...(row.retained===undefined?[]:['retained']),...(row.measurement===undefined?[]:['measurement'])])||unique.has(key)||!PROMPT_HOLDOUTS.some(f=>f.id===row.id)||!['baseline','candidate'].includes(row.arm)||!['passed','failed','unavailable'].includes(row.state)||(row.retained!==undefined&&typeof row.retained!=='boolean'))return fail();unique.add(key);
+  if(row.state==='unavailable'){if(row.measurement||row.outputDigest||row.securityFailure!==undefined||row.retained)return fail();continue;}
+  if(typeof row.outputDigest!=='string'||!/^[a-f0-9]{64}$/.test(row.outputDigest)||typeof row.securityFailure!=='boolean')return fail();const [measurement]=captureMeasuredCases([row.measurement],[row.id]);
+  if(measurement.passed!==(row.state==='passed')||measurement.securityFailure!==row.securityFailure||measurement.readCount!==0)return fail();
+ }
+ const completedCases=PROMPT_HOLDOUTS.filter(fixture=>['baseline','candidate'].every(arm=>report.cases.some(row=>row.id===fixture.id&&row.arm===arm&&row.state!=='unavailable'))).length,
+  incomplete=report.unavailableAttempts>0||completedCases!==PROMPT_HOLDOUTS.length,candidateCases=report.cases.filter(row=>row.arm==='candidate');
+ if(report.completedCases!==completedCases||report.state!==(incomplete?'incomplete':'complete')||report.securityFailures!==(incomplete?null:candidateCases.filter(row=>row.state==='failed'&&row.securityFailure).length)||report.qualityFailures!==(incomplete?null:candidateCases.filter(row=>row.state==='failed').length)||report.retainedPasses!==report.cases.filter(row=>row.retained&&row.state==='passed').length||report.retainedFailures!==report.cases.filter(row=>row.retained&&row.state==='failed').length||routingDigest(report.comparison)!==routingDigest(promptMeasuredComparison(report.cases)))return fail();
  return report;
 }
 const issuedPrompt=new WeakMap<object,{candidate:CandidateRow;evaluatorId:string;providerFingerprint:string;report:PromptHoldoutReport;id:string}>();
@@ -508,7 +520,7 @@ export async function evaluatePromptAgentCandidate(ctx:SessionContext,input:{can
    await assertAiActionUnpausedTx(tx,fresh,'module_agent_evaluation');
    const candidate=await candidateTx(tx,current,candidateId);if(candidate.kind!=='read_plan_prompt_v1'||candidate.author_user_id===current.userId)return fail();
    const snapshot=await resolveAiProviderSnapshotTx(tx,fresh);if(!snapshot)return fail();
-   const cfg=withAiAdmissionCheck(governedAiConfig(fresh,snapshot,'module_agent_evaluation'),'module_agent_evaluation',async carrier=>{
+   const cfg=withAiAdmissionCheck(bindStrictAiSpendRoot(governedAiConfig(fresh,snapshot,'module_agent_evaluation'),{rootTaskId:candidate.id,kind:'evaluation'}),'module_agent_evaluation',async carrier=>{
     await guard(carrier,current,true);const again=await candidateTx(carrier,current,candidateId);
     if(again.candidate_digest!==candidate.candidate_digest||again.author_user_id===current.userId)return fail();
    });
@@ -531,7 +543,7 @@ export async function evaluatePromptAgentCandidate(ctx:SessionContext,input:{can
    await tx.execute(sql`insert into public.ai_agent_evaluation(id,tenant_id,candidate_id,evaluator_user_id,suite_digest,receipt)
     values(${proof.id}::uuid,${current.tenantId}::uuid,${candidateId}::uuid,${current.userId}::uuid,${PROMPT_SUITE_DIGEST},${receipt})`);
    return {evaluationId:proof.id,coverage:report.coverage,state:report.state,attemptedRequests:report.attemptedRequests,
-    completedRequests:report.completedRequests,completedCases:report.completedCases,totalCases:PROMPT_HOLDOUTS.length,retainedPasses:report.retainedPasses,retainedFailures:report.retainedFailures,securityFailures:report.securityFailures,qualityFailures:report.qualityFailures};
+    completedRequests:report.completedRequests,completedCases:report.completedCases,comparison:report.comparison,totalCases:PROMPT_HOLDOUTS.length,retainedPasses:report.retainedPasses,retainedFailures:report.retainedFailures,securityFailures:report.securityFailures,qualityFailures:report.qualityFailures};
   });
  }catch{return fail();}
 }
@@ -548,7 +560,7 @@ export async function promotePromptAgentCandidate(ctx:SessionContext,input:{cand
   if(rows.length<2||rows.length>8||new Set(rows.map(row=>row.evaluator_user_id)).size!==rows.length)return fail();
   const checked=rows.map(row=>{const report=authenticatedPromptReport(row,candidate,current.tenantId,snapshot.fingerprint);
    if(row.evaluator_user_id===candidate.author_user_id||report.state!=='complete'||report.securityFailures!==0||report.qualityFailures!==0||
-    report.completedCases!==PROMPT_HOLDOUTS.length||report.cases.length!==PROMPT_HOLDOUTS.length||report.cases.some(row=>row.state!=='passed'))return fail();
+    report.completedCases!==PROMPT_HOLDOUTS.length||report.cases.length!==2*PROMPT_HOLDOUTS.length||!report.comparison.qualityImproved||report.cases.some(row=>row.arm==='candidate'&&row.state!=='passed'))return fail();
    return {id:row.id,evaluatorId:row.evaluator_user_id,receiptDigest:routingDigest(row.receipt)};
   });
   const [lock]=await tx.execute<{owned:boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${'prompt-agent-release:'+current.tenantId+':'+candidate.owner_user_id},0)) as owned`);if(lock?.owned!==true)return fail();
@@ -592,7 +604,7 @@ export async function runPromptPlannedSyntheticJob(ctx:SessionContext,input:{fix
     promotionId:promotion.id,fixtureId:fixture.id,sourceDigest:MODULE_AGENT_SOURCE_DIGEST});
    await tx.execute(sql`insert into public.ai_agent_job_receipt(id,tenant_id,user_id,promotion_id,receipt)
     values(${jobId}::uuid,${current.tenantId}::uuid,${current.userId}::uuid,${promotion.id}::uuid,${pending})`);
-   const cfg=withAiAdmissionCheck(governedAiConfig(fresh,snapshot,'module_agent_evaluation'),'module_agent_evaluation',async carrier=>{
+   const cfg=withAiAdmissionCheck(bindStrictAiSpendRoot(governedAiConfig(fresh,snapshot,'module_agent_evaluation'),{rootTaskId:candidate.id,kind:'evaluation'}),'module_agent_evaluation',async carrier=>{
     await guard(carrier,current,true);await agentReleaseIntervalTx(carrier,current,current.userId!,false);await signalIntervalTx(carrier,current,current.userId!);const again=await candidateTx(carrier,current,candidate.id);
     const [allowed]=await carrier.execute<{allowed:boolean}>(sql`select exists(select 1 from public.ai_agent_promotion p
      where p.id=${promotion.id}::uuid and p.tenant_id=${current.tenantId}::uuid and p.owner_user_id=${current.userId}::uuid and p.expires_at>now()
@@ -638,7 +650,7 @@ async function ownSignalChoicesTx(tx:Tx,ctx:SessionContext){
  return choices;
 }
 
-type PromptEvaluationProgress=Readonly<{completedCases:number;totalCases:number;state:'complete'|'incomplete';retainedFailures:number;knownFailures:number}>;
+type PromptEvaluationProgress=Readonly<{completedCases:number;totalCases:number;state:'complete'|'incomplete';retainedFailures:number;knownFailures:number;comparison:PromptHoldoutReport['comparison']}>;
 /** Current evaluator progress only. Authentication and current source/provider binding precede counts. */
 async function promptEvaluationProgressTx(tx:Tx,ctx:SessionContext,id:string,providerFingerprint:string):Promise<PromptEvaluationProgress|null>{
  try{const candidate=await candidateTx(tx,ctx,id);if(candidate.kind!=='read_plan_prompt_v1'||candidate.author_user_id===ctx.userId)return null;
@@ -647,13 +659,13 @@ async function promptEvaluationProgressTx(tx:Tx,ctx:SessionContext,id:string,pro
    order by completed_at desc,id desc limit 1`);if(!row)return null;
   const report=authenticatedPromptReport(row,candidate,ctx.tenantId,providerFingerprint);
   if(report.cases.some(row=>row.state!=='unavailable'&&(!row.outputDigest||!/^[a-f0-9]{64}$/.test(row.outputDigest))))return null;
-  const completedCases=report.cases.filter(row=>row.state==='passed'||row.state==='failed').length;
+  const completedCases=report.completedCases;
   const knownFailures=report.cases.filter(row=>row.state==='failed').length,retainedFailures=report.cases.filter(row=>row.state==='failed'&&row.retained===true).length;
   if(!Number.isSafeInteger(report.unavailableAttempts)||report.unavailableAttempts<0||report.unavailableAttempts>report.attemptedRequests||
    !Number.isSafeInteger(report.attemptedRequests)||report.attemptedRequests<0||report.attemptedRequests>PROMPT_HOLDOUT_REQUEST_LIMIT)return null;
   const state=completedCases===PROMPT_HOLDOUTS.length&&report.unavailableAttempts===0&&!report.cases.some(row=>row.state==='unavailable')?'complete' as const:'incomplete' as const;
   if(report.completedCases!==completedCases||report.state!==state||report.retainedFailures!==retainedFailures)return null;
-  return Object.freeze({completedCases,totalCases:PROMPT_HOLDOUTS.length,state,retainedFailures,knownFailures});
+  return Object.freeze({completedCases,totalCases:PROMPT_HOLDOUTS.length,state,retainedFailures,knownFailures,comparison:report.comparison});
  }catch{return null;}
 }
 
@@ -789,7 +801,7 @@ export async function proposeOwnModuleReadPlan(ctx:SessionContext,input:{permit:
   const outbound=Object.freeze({system:promptCandidateSystem(prepared.candidate.configuration),prompt:humanQuestionPrompt(question,locale),maxTokens:384,timeoutMs:15000}),expectedInputDigest=draftInputDigest(outbound);
   // Fresh provider configuration is issued only after durable reservation. No transaction spans network.
   const cfg=await withTenant(current,async tx=>{await tx.execute(sql`SET TRANSACTION READ ONLY`);const checked=await currentPlanningBindingTx(tx,current,prepared.bound);
-   const admitted=withAiAdmissionCheck(governedAiConfig(checked.fresh,checked.snapshot,'module_agent_planning'),'module_agent_planning',async carrier=>{
+   const admitted=withAiAdmissionCheck(bindStrictAiSpendRoot(governedAiConfig(checked.fresh,checked.snapshot,'module_agent_planning'),{rootTaskId:checked.candidate.id,kind:'agent'}),'module_agent_planning',async carrier=>{
     await currentPlanPermitTx(carrier,permit);await currentPlanningBindingTx(carrier,current,prepared.bound);await proposalNonceTx(carrier,current,nonce);const [row]=await carrier.execute<PlanProposalRow>(sql`select ${proposalProjection} from public.ai_agent_plan_proposal where id=${prepared.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);if(!row||openProposal(row,current).proof.state!=='reserved')return fail();
    });
    return withAiAdmissionLifecycle(admitted,'module_agent_planning',{
@@ -839,7 +851,7 @@ export async function evaluateHumanQuestionPlannerCandidate(ctx:SessionContext,i
  try{const prepared=await withTenant(current,async tx=>{
   await tx.execute(sql`SET TRANSACTION READ ONLY`);const fresh=await guard(tx,current,true);await assertAiActionUnpausedTx(tx,fresh,'module_agent_evaluation');const candidate=await candidateTx(tx,current,candidateId);if(candidate.kind!=='read_plan_prompt_v1'||candidate.author_user_id===current.userId)return fail();
   const snapshot=await resolveAiProviderSnapshotTx(tx,fresh);if(!snapshot)return fail();
-  const cfg=withAiAdmissionCheck(governedAiConfig(fresh,snapshot,'module_agent_evaluation'),'module_agent_evaluation',async carrier=>{await guard(carrier,current,true);const again=await candidateTx(carrier,current,candidateId);if(again.candidate_digest!==candidate.candidate_digest||again.author_user_id===current.userId)return fail();});
+  const cfg=withAiAdmissionCheck(bindStrictAiSpendRoot(governedAiConfig(fresh,snapshot,'module_agent_evaluation'),{rootTaskId:candidate.id,kind:'evaluation'}),'module_agent_evaluation',async carrier=>{await guard(carrier,current,true);const again=await candidateTx(carrier,current,candidateId);if(again.candidate_digest!==candidate.candidate_digest||again.author_user_id===current.userId)return fail();});
   const [prior]=await tx.execute<{id:string;evaluator_user_id:string;receipt:string}>(sql`select id,evaluator_user_id,receipt from public.ai_agent_evaluation where tenant_id=${current.tenantId}::uuid and candidate_id=${candidateId}::uuid and evaluator_user_id=${current.userId}::uuid and suite_digest=${HUMAN_PLAN_SUITE_DIGEST} order by completed_at desc,id desc limit 1`);
   let retained:Record<string,unknown>|null=null;try{if(prior)retained=checkedHumanEvaluation(prior,candidate,current,snapshot.fingerprint);}catch{/* Changed provenance is genuinely unrun input. */}
   return {candidate,cfg,fingerprint:snapshot.fingerprint,retained};

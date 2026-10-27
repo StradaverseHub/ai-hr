@@ -50,14 +50,14 @@ describe('human opinions nominate candidates but never become evaluator truth',(
   await expect(evaluateRoutingAgentCandidate(a.author,a.candidate.candidateId)).rejects.toThrow();
   const [row]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from public.ai_agent_evaluation`);expect(row.n).toBe(0);
   await evaluateRoutingAgentCandidate(a.reviewer,a.candidate.candidateId);await evaluateRoutingAgentCandidate(a.second,a.candidate.candidateId);
-  const promotion=await promoteRoutingAgentCandidate(a.reviewer,{candidateId:a.candidate.candidateId,maxJobs:2,hours:1});expect(promotion.promotionId).toBeTruthy();
+  await expect(promoteRoutingAgentCandidate(a.reviewer,{candidateId:a.candidate.candidateId,maxJobs:2,hours:1})).rejects.toThrow();const[count]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from public.ai_agent_promotion`);expect(count.n).toBe(0);
  });
- it('invalidates a candidate on an actual opinion revision and restores the baseline before another promoted use',async()=>{
-  const a=await candidateWithSignal();await evaluateRoutingAgentCandidate(a.reviewer,a.candidate.candidateId);await evaluateRoutingAgentCandidate(a.second,a.candidate.candidateId);await promoteRoutingAgentCandidate(a.reviewer,{candidateId:a.candidate.candidateId,maxJobs:2,hours:1});
+ it('invalidates a candidate on an actual opinion revision without fabricating an earlier no-gain promotion',async()=>{
+  const a=await candidateWithSignal();await evaluateRoutingAgentCandidate(a.reviewer,a.candidate.candidateId);await evaluateRoutingAgentCandidate(a.second,a.candidate.candidateId);await expect(promoteRoutingAgentCandidate(a.reviewer,{candidateId:a.candidate.candidateId,maxJobs:2,hours:1})).rejects.toThrow();
   const changed=await recordOwnGovernedJobFeedback(a.author,{jobId:a.job.jobId,outcome:'helpful',consented:true});expect(changed.feedbackId).toBe(a.feedback.feedbackId);expect(await signalsCurrent(a.reviewer,a.candidate.candidateId)).toBe(false);
   await expect(evaluateRoutingAgentCandidate(a.reviewer,a.candidate.candidateId)).rejects.toThrow();
   const next=await runGovernedModuleReadPlan(a.author,plan,{nonce:randomUUID()});expect(next.mode).toBe('baseline');
-  const [row]=await owner.db.execute<{reason:string;used:number}>(sql`select r.reason,p.used_jobs as used from public.ai_agent_rollback r join public.ai_agent_promotion p on p.id=r.promotion_id limit 1`);expect(row).toEqual({reason:'source_changed',used:0});
+  const [row]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from public.ai_agent_promotion`);expect(row.n).toBe(0);
  });
  it('permits own erasure after a grant is revoked, retires referenced evidence and never erases another user opinions',async()=>{
   const a=await candidateWithSignal(),otherJob=await runGovernedModuleReadPlan(a.reviewer,plan,{nonce:randomUUID()});await recordOwnGovernedJobFeedback(a.reviewer,{jobId:otherJob.jobId,outcome:'helpful',consented:true});

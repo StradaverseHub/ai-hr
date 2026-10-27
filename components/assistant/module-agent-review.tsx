@@ -7,12 +7,12 @@ import {AGENT_MODULE_CODES} from '../../lib/ai/module-agents';
 import {createAgentCandidateAction,evaluateAgentCandidateAction,promoteAgentCandidateAction,rollbackAgentCandidateAction,tryAgentCandidateAction} from '../../app/assistant/agent-review-actions';
 type View=NonNullable<Awaited<ReturnType<typeof agentReviewWorkspaceTx>>>;
 export async function ModuleAgentReview({view}:{view:View}){
- const t=await getTranslations('assistant.workspace.agentReview'),native=await getTranslations('assistant.workspace.nativeOutcomes'),jobs=await getTranslations('assistant.workspace.jobs');
- const locale=await getLocale();const trials=PROMPT_HOLDOUTS.filter(row=>row.locale===locale);
+ const [t,native,jobs,locale]=await Promise.all([getTranslations('assistant.workspace.agentReview'),getTranslations('assistant.workspace.nativeOutcomes'),getTranslations('assistant.workspace.jobs'),getLocale()]);
+ const number=new Intl.NumberFormat(locale,{maximumFractionDigits:4}),metric=(value:number|null)=>value===null?t('metricUnknown'):number.format(value);const trials=PROMPT_HOLDOUTS.filter(row=>row.locale===locale);
  const reviewable=view.candidates.filter(row=>!row.own&&row.kind==='read_plan_prompt_v1');
  const label=(row:View['candidates'][number])=>t('record',{version:row.version,kind:t(row.kind==='read_plan_prompt_v1'?'kindPrompt':'kindRoute'),attempts:row.attempts});
  return <Card className="p-5"><details><summary className="min-h-11 cursor-pointer text-sm font-medium">{t('title')}</summary>
-  <div className="mt-3 space-y-5"><p className="text-xs text-muted-foreground">{t('scope',{modules:AGENT_MODULE_CODES.length,locales:PROMPT_HOLDOUT_LOCALES.length,requests:PROMPT_HOLDOUT_REQUEST_LIMIT})}</p>
+  <div className="mt-3 space-y-5"><p className="text-xs text-muted-foreground">{t('scope',{modules:AGENT_MODULE_CODES.length,locales:PROMPT_HOLDOUT_LOCALES.length,requests:PROMPT_HOLDOUT_REQUEST_LIMIT})}</p><p className="text-xs text-muted-foreground">{t('pairedBudget',{requests:PROMPT_HOLDOUT_REQUEST_LIMIT,pairs:Math.floor(PROMPT_HOLDOUT_REQUEST_LIMIT/2)})}</p>
    {view.lastTrial&&<p role="status" className="text-sm">{t('lastTrial',{state:t(`state_${view.lastTrial.state}`)})}</p>}
    <form action={createAgentCandidateAction} className="space-y-2">
     <input type="hidden" name="version" value={view.nextVersion}/>
@@ -27,10 +27,15 @@ export async function ModuleAgentReview({view}:{view:View}){
     <button type="submit" className={`${btnPrimary} min-h-11`}>{t('create')}</button>
    </form>
    <div className="space-y-1"><h3 className="text-sm font-medium">{t('candidates')}</h3>
-    {view.candidates.length?view.candidates.map(row=><div key={row.id} className="text-xs text-muted-foreground"><p>{label(row)}</p><p>{row.verifiedSignalCount===null?t('signalsUnknown'):t('signalsCount',{count:row.verifiedSignalCount})}</p>
+    {view.candidates.length?view.candidates.map(row=>{const pairing=row.progress?.comparison;return <div key={row.id} className="text-xs text-muted-foreground"><p>{label(row)}</p><p>{row.verifiedSignalCount===null?t('signalsUnknown'):t('signalsCount',{count:row.verifiedSignalCount})}</p>
      {!row.own&&row.kind==='read_plan_prompt_v1'&&<p>{row.progress?t('progress',{completed:row.progress.completedCases,total:row.progress.totalCases,
       failures:row.progress.knownFailures,state:t(row.progress.state==='complete'?'state_complete':'state_incomplete')}):t('progressUnknown')}</p>}
-    </div>):<p className="text-xs text-muted-foreground">{t('empty')}</p>}
+     {pairing&&<section className="my-2 space-y-2 rounded-md border p-3" aria-label={t('pairedTitle')}>
+      <h4 className="font-medium">{t('pairedTitle')}</h4><p>{t(row.progress?.state!=='complete'?'qualityPending':pairing.qualityImproved?'qualityGain':'qualityNoGain')}</p>
+      <dl className="grid gap-2 sm:grid-cols-2">{(['baseline','candidate'] as const).map(arm=><div key={arm}><dt className="font-medium">{t(arm==='baseline'?'baselineArm':'candidateArm')}</dt><dd>{t('armQuality',{correct:pairing[arm].correct,total:row.progress!.totalCases,failures:pairing[arm].securityFailures})}</dd><dd>{t('armMetrics',{p50:metric(pairing[arm].p50Ms),p95:metric(pairing[arm].p95Ms),tokens:metric(pairing[arm].tokens),credits:metric(pairing[arm].costCredits)})}</dd></div>)}</dl>
+      <p>{t('resourceObservations')}</p>
+     </section>}
+    </div>}):<p className="text-xs text-muted-foreground">{t('empty')}</p>}
    </div>
    {reviewable.length>0&&<>
     <form action={evaluateAgentCandidateAction} className="space-y-2">

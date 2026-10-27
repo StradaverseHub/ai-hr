@@ -37,11 +37,12 @@ for(const locale of PROMPT_HOLDOUT_LOCALES){
  }
 }
 export const PROMPT_HOLDOUTS:readonly PromptHoldout[]=Object.freeze(heldouts);
-export const PROMPT_ENGINE_DIGEST = routingDigest(['read-plan-prompt-engine-v2',PLAN_PROMPTS,MODULE_AGENT_CAPABILITIES,'strict-adjudication-v1']);
+export const PROMPT_BASELINE=Object.freeze({kind:'read_plan_prompt_v1' as const,variant:'concise_v1' as const});
+export const PROMPT_ENGINE_DIGEST = routingDigest(['read-plan-prompt-engine-v3-paired',PLAN_PROMPTS,MODULE_AGENT_CAPABILITIES,'strict-adjudication-v1']);
 export const PROMPT_POLICY_DIGEST = routingDigest({securityFailures:0,qualityFailures:0,independentEvaluators:2,maxModules:4,
- maxRequestsPerInvocation:PROMPT_HOLDOUT_REQUEST_LIMIT,unrunBeforeFailedRetry:true,coverage:'model-to-typed-read-plan-only'});
+ maxRequestsPerInvocation:PROMPT_HOLDOUT_REQUEST_LIMIT,unrunBeforeFailedRetry:true,pairedBaseline:'concise_v1',improvementRequires:'strict-independent-quality-gain',unknownCostIsNull:true,coverage:'model-to-typed-read-plan-only'});
 export const PROMPT_INPUT_DIGEST = routingDigest(PROMPT_HOLDOUTS);
-export const PROMPT_SUITE_DIGEST = routingDigest(['prompt-heldout-v2-multilingual',PROMPT_ENGINE_DIGEST,PROMPT_POLICY_DIGEST,PROMPT_INPUT_DIGEST]);
+export const PROMPT_SUITE_DIGEST = routingDigest(['prompt-heldout-v3-paired-multilingual',PROMPT_ENGINE_DIGEST,PROMPT_POLICY_DIGEST,PROMPT_INPUT_DIGEST]);
 export function capturePromptPlanCandidate(value:unknown):PromptPlanCandidate{
  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Unsupported prompt candidate.');
  const row=value as Record<string,unknown>;
