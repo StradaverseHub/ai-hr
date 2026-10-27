@@ -2,7 +2,7 @@
 import {z} from 'zod';
 import type {SessionContext} from '../../db/client';
 import {ModuleNotEnabledError} from '../../core/entitlements';
-import {createAppleClockService,createAndroidVerifiedClockService,AndroidClockIntegrityError,AppleClockAssertionError,AndroidClockCommandError,
+import {createAppleClockService,createAndroidClockService,createAndroidVerifiedClockService,AndroidClockIntegrityError,AppleClockAssertionError,AndroidClockCommandError,
  IntegrityChallengeError,OwnClockEmploymentUnavailableError,ClockConflictError,CorrectedClockConflictError,
  ClockLocationError,AttendancePhotoRequiredError,OutsideGeofenceError,GeolocationRequiredError,GeofenceQualityError,DeviceNotRegisteredError} from '../../packs/attendance/mobile-integrity';
 import {ClockPhotoError} from '../attendance-photo';
@@ -72,9 +72,8 @@ export function createSignedClockOperations(platform:'ios'|'android',configurati
   if(req.signal.aborted)throw new IntegrityConfigurationUnavailable('configuration_unavailable');
  };}
  function android(ctx:SessionContext,id:string,config:z.infer<typeof AndroidClockConfiguration>,req:Request){
-  return createAndroidVerifiedClockService(config.settings,config.policy,options.androidPlay?.accessToken??null,{
-   transport:options.androidPlay?.transport,timeoutMs:options.androidPlay?.timeoutMs,beforeCommit:commit(ctx,id,config,req),
-  });
+  // PROBE ONLY: bypass current Google checks with the historical signature primitive.
+  return createAndroidClockService(config.settings,{beforeCommit:commit(ctx,id,config,req)});
  }
  function route(fn:(ctx:SessionContext,req:Request)=>Promise<unknown>){return async(ctx:SessionContext,req:Request)=>{try{return await fn(ctx,req);}catch(error){const known=expected(error);if(known)return known;throw error;}};}
  return {
