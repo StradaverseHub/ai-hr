@@ -1913,3 +1913,19 @@ independently supplied issuer keys/fingerprints, modified signed fields, cross-s
 revocation, issuer validity, malformed/oversized input and purpose separation. No context issuance,
 registry provisioning, permit consumption, attendance write, native bundle or physical-device
 acceptance is established by this checkpoint.
+
+### Native context verifier initial run and repair (27 October 2026)
+
+Checkpoint `fa97092de37775d00eaf214f2b0d033bfcb05a41`, run
+[40524727037](https://github.com/StradaverseHub/ai-hr/actions/runs/40524727037), completed all planned
+jobs before repair. Native TypeScript passed and the 18 server signature cases passed. The native
+host suite failed at collection: jsdom turned its package URL into `http://localhost:3000/mobile/package.json`,
+which Node `createRequire` refuses. Root TypeScript failed with 87 errors involving web FormData
+and fetch types after the test's native type import pulled Expo/React Native globals into the web
+compilation (4:45.10, maximum RSS 7,636,072 KiB, exit 2). These are failed checks, not acceptance.
+
+The repair resolves the installed native dependency from an absolute filesystem package path and
+moves verifier binding/result types into the existing portable context contract. The host test imports
+only those portable types, keeping native Expo declarations in the native compilation boundary.
+The shared binding schema still checks expected installation/key agreement with expected scope.
+The repair requires fresh affected tests and root/native compilation; the original run is retained.

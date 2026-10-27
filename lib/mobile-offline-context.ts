@@ -38,6 +38,13 @@ export const OfflineClockContextData=z.object({
  .refine(value=>value.permits.every((p,index)=>p.ordinal===index+1))
  .refine(value=>value.policy.offlineEnabled?value.permits.length>0&&(!value.policy.geofencingRequired||value.sites.length>0):value.permits.length===0);
 export type OfflineClockContextData=z.infer<typeof OfflineClockContextData>;
+/** Current owner supplies these expectations independently of the submitted signed context. */
+export const OfflineClockContextBinding=z.object({scope:OfflineClockClaimData.shape.scope,request:OfflineClockContextRequest,target:OfflineClockContextTarget}).strict()
+ .refine(value=>value.request.appInstallationId===value.scope.appInstallationId&&value.request.keyId===value.scope.deviceKeyId);
+export type OfflineClockContextBinding=z.infer<typeof OfflineClockContextBinding>;
+export type OfflineClockContextVerificationResult={outcome:'signature_valid';context:OfflineClockContextData;digest:string;authorization:'not_granted'}|
+ {outcome:'invalid';reason:'malformed'|'scope_mismatch'|'request_mismatch'|'target_mismatch'|'issuer_unavailable'|'invalid_signature'};
+
 export const OfflineClockContextEnvelope=z.object({context:OfflineClockContextData,
  signature:z.string().length(86).regex(/^[A-Za-z0-9_-]{85}[AQgw]$/)}).strict();
 /** Keys are supplied by an authenticated installation/deployment registry, never this envelope. */

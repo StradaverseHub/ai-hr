@@ -3,15 +3,11 @@ import {ed25519} from '@noble/curves/ed25519.js';
 import {CryptoDigestAlgorithm,digest} from 'expo-crypto';
 import {z} from 'zod';
 import {setupBytes} from '../../lib/mobile-workplace-setup';
-import {OfflineClockClaimData} from '../../lib/mobile-offline-clock';
-import {OfflineClockContextData,OfflineClockContextEnvelope,OfflineClockContextIssuer,OfflineClockContextRequest,
- OfflineClockContextTarget,OFFLINE_CLOCK_CONTEXT_MAX_BYTES,parseOfflineClockContext,offlineClockContextClientData} from '../../lib/mobile-offline-context';
+import {OfflineClockContextBinding,type OfflineClockContextVerificationResult,OfflineClockContextEnvelope,OfflineClockContextIssuer,
+ OFFLINE_CLOCK_CONTEXT_MAX_BYTES,parseOfflineClockContext,offlineClockContextClientData} from '../../lib/mobile-offline-context';
 export class OfflineContextVerificationUnavailable extends Error{constructor(){super('Offline context verification unavailable');this.name='OfflineContextVerificationUnavailable';}}
-const ExpectedContext=z.object({scope:OfflineClockClaimData.shape.scope,request:OfflineClockContextRequest,target:OfflineClockContextTarget}).strict()
- .refine(value=>value.request.appInstallationId===value.scope.appInstallationId&&value.request.keyId===value.scope.deviceKeyId);
-export type ExpectedOfflineContext=z.infer<typeof ExpectedContext>;
-export type NativeOfflineContextResult={outcome:'signature_valid';context:OfflineClockContextData;digest:string;authorization:'not_granted'}|
- {outcome:'invalid';reason:'malformed'|'scope_mismatch'|'request_mismatch'|'target_mismatch'|'issuer_unavailable'|'invalid_signature'};
+export type ExpectedOfflineContext=OfflineClockContextBinding;
+export type NativeOfflineContextResult=OfflineClockContextVerificationResult;
 // JSON.stringify escapes lone surrogates; this also counts actual raw UTF-8 bytes before JSON parsing.
 function utf8(value:string):Uint8Array{
  const encoded=encodeURIComponent(value).replace(/%([0-9A-F]{2})/g,(_,hex:string)=>String.fromCharCode(parseInt(hex,16)));
@@ -25,7 +21,7 @@ export async function verifyNativeOfflineClockContext(raw:string,trustedIssuers:
  let issuers:OfflineClockContextIssuer[],binding:ExpectedOfflineContext;
  try{
   if(!Array.isArray(trustedIssuers)||trustedIssuers.length<1||trustedIssuers.length>16)throw new Error();
-  issuers=trustedIssuers.map(key=>OfflineClockContextIssuer.parse(key));binding=ExpectedContext.parse(expected);
+  issuers=trustedIssuers.map(key=>OfflineClockContextIssuer.parse(key));binding=OfflineClockContextBinding.parse(expected);
   if(new Set(issuers.map(key=>key.keyId)).size!==issuers.length)throw new Error();
  }catch{throw new OfflineContextVerificationUnavailable();}
  async function sha256(bytes:Uint8Array):Promise<string>{
