@@ -1283,3 +1283,49 @@ Line Tools; no full Xcode app was found in Applications. The earlier Android wor
 failure remains unresolved. These prevent any claim of complete native build/device acceptance.
 The owner has now deferred Huawei and asked to prioritize working Android and iPhone; Huawei
 sign-in/DevEco installation is no longer an active dependency for this work order.
+
+
+### Complete local Android debug assembly and iPhone toolchain preparation
+
+At tracked candidate`f2f7b3f77`, the existing generated local Android project completed the whole
+`./gradlew assembleDebug --no-daemon --max-workers=2` task successfully in9m24s (489 tasks:
+379 executed/110 up-to-date). This is broader than the earlier integrity-module Kotlin compilation.
+The app artifact is
+`mobile/android/app/build/outputs/apk/debug/app-debug.apk`,227375421 bytes, SHA256
+`7479f9d6cd98241278cd04220a64065679498c53d2ec010a8f385b94729d54a1`.
+Its metadata identifies`ai.stradaverse.aihr.test`, debug, versionName1.0.3/versionCode4, minimum
+SDK24. The APK contains native libraries for arm64-v8a, armeabi-v7a, x86 and x86_64, and the
+AihrIntegrityModule class name in classes8.dex/classes14.dex. This proves class inclusion, not bridge
+registration or runtime/device acceptance. Android apksigner verified its APK v2 signature with one
+signer; debug signing does not establish production/Play distribution or attestation eligibility.
+
+The second planned phase, unmodified`lintDebug`, completed with exit1 in1m24s:
+`:react-native-worklets:lintAnalyzeDebug` again failed with`Cannot find a KaModule for the VirtualFile`
+while analyzing Kotlin build scripts. The combined wrapper therefore exited1, not PASS. No checks,
+dependency files or abort-on-error settings were suppressed to obtain assembly success. Both phases
+ran under one complete two-slot/no-database reservation, and source stayed frozen until both ended.
+Logs:`/tmp/mobile-native-android-{assemble,lint}.log`. Assembly is not a production release build or
+proof that the app launches. The debug app requires Metro; no emulator/physical-device launch was
+completed in this phase. A fresh-prebuild reproducibility check remains distinct from building the
+existing generated local project.
+
+An Android34 Google APIs arm64 system image and an existing Pixel3a AVD are installed. The expected
+SDK cmdline-tools directory and avdmanager/sdkmanager commands were not found in the checked
+locations. Do not wipe/reuse existing emulator account/storage merely to obtain a test result; prepare
+a separate guest or install the missing standard AVD-management tools before runtime acceptance.
+
+For iPhone, the owner explicitly approved installing Xcode26.6, and completed Apple Developer
+sign-in. Apple's official download entry lists a2.16 GB Apple-silicon archive at
+`https://download.developer.apple.com/Developer_Tools/Xcode_26.6/Xcode_26.6_Apple_silicon.xip`.
+[Apple's compatibility table](https://developer.apple.com/xcode/system-requirements) supports
+Xcode26.6 on macOS26.2–26.x; the [SDK57 reference](https://docs.expo.dev/versions/v57.0.0/)
+requires Xcode26.4+ and iOS16.4+. This supports choosing26.6 for the observed macOS26.5.1 without
+an OS upgrade; it is not a claim about current App Store submission eligibility.
+
+The authenticated browser download operations timed out without returning a local file. An anonymous
+HEAD to that exact official URL returned302 to Apple's unauthorized page; no browser credentials were
+read/exported to work around authentication. The owner subsequently confirmed that the installer is
+currently downloading. Leave that transfer alone; do not restart it because a browser observation
+expired. No local installer path, signature verification, extraction or Xcode installation has yet been
+confirmed. Installation authorization persists; any visible license acceptance still needs action-time
+confirmation. Huawei remains deferred in favor of Android/iPhone as instructed.
