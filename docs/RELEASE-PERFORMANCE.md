@@ -8,7 +8,7 @@ Business, financial, authorization, tenant-isolation and data-integrity coverage
 
 
 
-## Version15: refresh stale database scheduling observations — runtime measurement pending
+## Version15: complete hosted CI measured; end-to-end release still unproved
 
 The database batch cap stays **24 files**, with **two workers**, **2 GiB PostgreSQL**, **JIT on**, the same complete classifier inventory and standard `ubuntu-24.04` jobs. No assertion, test file, migration, browser engine, compiler check or resource guard is removed. The hint-data hash and version15 fingerprint deliberately invalidate old topology receipts.
 
@@ -16,7 +16,15 @@ The refreshed hints use maximum per-file elapsed intervals from two authenticate
 
 Only intervals whose exact test-file blob matches the reviewed target `5b059f5e00bb4bdd164785fbe4d9d29f27b6fab0` are adopted: **1,009 of 1,011 files**. The two changed files keep a conservative positive fallback. The profile retains every origin and adopted file-blob identity. For example, the secondary write-context file reached 261.730 seconds, while the tertiary file reached 240.150 seconds across these observations; relying on one older fast sample underestimates these groups.
 
-Using these conservative costs, the existing groups' maximum summed file cost is **482,532 ms** and the refreshed grouping's is **288,079 ms**. Both contain exactly the same 1,011 files in 43 groups, with at most 24 files per group. This arithmetic is a scheduling model, **not measured runtime or a predicted 194-second saving**: worker overlap, imports, setup and runner contention still need observation. A fresh complete timing run is required for the new layout. Alpha/main and the verified staging release remain unchanged; the complete under600s goal is still unproved.
+Using these conservative costs, the existing groups' maximum summed file cost is **482,532 ms** and the refreshed grouping's is **288,079 ms**. Both contain exactly the same 1,011 files in 43 groups, with at most 24 files per group. This arithmetic is a scheduling model, **not measured runtime or a predicted 194-second saving**: worker overlap, imports, setup and runner contention require actual observations.
+
+The first complete v15 run, [40460721766](https://github.com/StradaverseHub/ai-hr/actions/runs/40460721766), succeeded at exact frozen source/controller `88c94b36f15ea08e28ad24b2a91dec0bf6430135`. Fresh authenticated API metadata and all **56 artifact ZIP digests** were independently checked; reconstructed plans, reports and receipt prove **2,037 suite files, 54 browser-file executions and 28,663 passing assertions**, with the complete compiler/build/migration jobs successful. Every executing job used standard `ubuntu-24.04`. GitHub creation to the final deployment-hold job was **445.000 seconds**; the recorded client submission intent to that job was **450.910 seconds**. These include queue, setup and final CI verification.
+
+The critical DB job occupied **363 seconds**, including about 68 seconds before its unit invocation and 290 seconds in that invocation. Its two-worker group contains the secondary write-context file and 13 other required files. No-DB jobs also reached 302 seconds. This is a different candidate/topology from earlier versions, not a controlled causal claim that scheduling alone saved a particular duration.
+
+The local observer was lost during the app reconnect. Recovery retained and reauthenticated 23 staged ZIPs, downloaded only the remaining 33 in 16.902 seconds, and rechecked the final immutable API inventory. The Actions run was never restarted. That delayed recovery is not continuous end-to-end timing. The normal build release verifier correctly **refuses this feature controller branch**; the private timing assessment preserves that refusal and does not create installation authority or a trusted full-release baseline. A prior private measurement incorrectly invoked that release-only verifier and its refusal is retained.
+
+Alpha/main and the verified Board staging candidate remain unchanged. The earlier actual staging spine took 278 seconds, with final source/cleanup verification taking additional time; adding that historical phase to this different CI run would not prove a representative continuous release. The complete under600s goal, local timing and trusted-controller integration remain unfinished.
 
 ## Immutable source preparation benchmark — 27 October 2026
 
