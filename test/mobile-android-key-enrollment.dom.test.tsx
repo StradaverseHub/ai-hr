@@ -7,9 +7,16 @@ import {afterEach,describe,expect,it,vi} from 'vitest';
 import {z} from 'zod';
 import * as canonical from '../lib/mobile-android-enrollment';
 import {nativeKeyBindingData} from '../lib/mobile-key-enrollment';
-import {createIntegrityBridge} from '../mobile/lib/integrity-bridge';
+import {createIntegrityBridge,type NativeIntegrityResult} from '../mobile/lib/integrity-bridge';
 import {SessionChangedError,UnavailableError} from '../mobile/lib/errors';
 const id=(n:number)=>`${String(n).padStart(8,'0')}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`;
+// Keep Expo/React Native ambient declarations out of the web compiler. The VM executes the real
+// native module below; mobile/tsconfig.json separately owns its production type check.
+type KeyEvidence={publicKeySpki:string;certificateChain:string[];reportedSecurityLevel:string};
+type EnrollmentPort={
+ create(input:unknown,persist:(prepared:unknown)=>Promise<void>):Promise<NativeIntegrityResult<KeyEvidence>>;
+ read(input:unknown):Promise<NativeIntegrityResult<KeyEvidence>>;
+};
 function compile(path:string,ports:Record<string,unknown>){
  const output={exports:{} as Record<string,any>};
  runInNewContext(transpileModule(readFileSync(path,'utf8'),{compilerOptions:{module:ModuleKind.CommonJS}}).outputText,{module:output,exports:output.exports,structuredClone,require:(name:string)=>{if(name in ports)return ports[name];throw new Error(name);}});return output.exports;
@@ -25,7 +32,7 @@ function fixture(strongbox=false){
  const hashes=compile('mobile/lib/android-enrollment-integrity.ts',{'../../lib/mobile-android-enrollment':canonical,'../../lib/mobile-key-enrollment':{nativeKeyBindingData},'expo-crypto':{CryptoDigestAlgorithm:{SHA256:'SHA-256'},CryptoEncoding:{HEX:'hex',BASE64:'base64'},digestStringAsync:digest}});
  const adapter=compile('mobile/lib/android-key-enrollment.ts',{'zod':{z},'../../lib/mobile-android-enrollment':canonical,'./android-enrollment-integrity':hashes,'./errors':{UnavailableError}});
  const bridge=createIntegrityBridge(native as never,assertCurrent,30),persist=vi.fn(async()=>{order.push('durable-intent');});
- return {prepared,evidence,native,persist,order,digest,hashes,adapter:adapter.createAndroidKeyEnrollment(bridge,assertCurrent,()=>foreground) as ReturnType<typeof import('../mobile/lib/android-key-enrollment').createAndroidKeyEnrollment>,changeOwner:()=>{current=false;},background:()=>{foreground=false;}};
+ return {prepared,evidence,native,persist,order,digest,hashes,adapter:adapter.createAndroidKeyEnrollment(bridge,assertCurrent,()=>foreground) as EnrollmentPort,changeOwner:()=>{current=false;},background:()=>{foreground=false;}};
 }
 afterEach(()=>vi.useRealTimers());
 describe('Android native key enrollment adapter',()=>{
