@@ -892,3 +892,20 @@ Original Android native code was inspected: synchronized creation refuses an exi
 androidKeyInfo reads it without creation. A short complete-set verification window was requested
 through the existing authorized coordinator conversation. Source, compiler repair, provenance and
 new race/adapter cases remain unverified. No migration journal/apply, publication or deployment.
+
+
+## Hosted harness mapping and receipt identity checkpoint
+
+The coordinator confirmed existing alpha-focused-checks can run the four requested DB/DOM paths and
+whole-repository TypeScript on standard GitHub Actions with isolated PostgreSQL and mobile dependency
+installation. It does not execute native TypeScript; that remains separate evidence. Source is
+local-only, so hosted use requires authorized publication. The coordinator neither dispatched nor
+published and promised no Mac window. Migration hold/dependency prerequisites remain unchanged.
+
+36a57583a defines a shared Android canonical SPKI reference and native/server receipt-binding helper,
+with two new DOM hash cases (8 native adapter cases total) and a real service receipt assertion.
+The native journal can now check its saved public key against a returned receipt without trusting
+reported hardware hints or introducing a mobile ASN.1 parser. Permanent EC fingerprint uniqueness
+is unchanged. A subsequent test edit uses a well-formed wrong digest, so its refusal probes binding
+rather than only input shape. All these edits remain UNVERIFIED. No hosted check, journal append,
+shared migration, native device, publication or deployment occurred in this checkpoint.

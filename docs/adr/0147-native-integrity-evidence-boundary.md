@@ -580,3 +580,19 @@ an internal adapter with a durability contract; it is not a complete journal or 
 flow. The real journal still must persist generation/proof/outcome states, reconcile exact receipts
 and retain uncertain aliases. No native SDK/device or Metro export was exercised by this source
 change. Six shipped-adapter/bridge tests were added but remain unrun pending test resources.
+
+
+## Portable Android receipt identity (unverified)
+
+Before Android enrollment rollout, its opaque native-key reference is defined as SHA256 of the
+versioned canonical SPKI-base64 reference encoding. Both server and native crypto helpers can
+reproduce this reference, then bind it to the original challenge with nativeKeyBindingData. This
+avoids implementing ASN.1/elliptic-curve parsing in the mobile receipt journal. Public SPKI reference
+parsing verifies no certificate or key; the server still requires the real composed proof verifier
+and canonical P256 SPKI equality before registration. The permanent uniqueness fingerprint remains
+SHA256 of the uncompressed public EC point, preserving cross-platform duplicate-key refusal.
+
+No Android enrollment records have been deployed by this work. This pre-rollout reference change
+requires the new native/server code together; no historical Android key identity is silently
+rewritten. Public receipts still omit the reference and raw key. Two additional native hash cases
+and a server receipt assertion were added; pending native cases now total8. They remain unverified.

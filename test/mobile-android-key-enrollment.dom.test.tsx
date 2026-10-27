@@ -51,7 +51,7 @@ describe('Android native key enrollment adapter',()=>{
   const f=fixture(),result=await f.adapter.read(f.prepared);expect(result).toMatchObject({status:'evidence',verification:'not_verified'});expect(f.order).toEqual(['sdk-read']);expect(f.native.createAndroidKey).not.toHaveBeenCalled();expect(f.persist).not.toHaveBeenCalled();
  });
  it('refuses altered scope/digest/alias or native app/build before a durable intent or SDK operation',async()=>{
-  for(const change of [{clientDataHash:'B'+'A'.repeat(42)},{alias:'aihr_'+'b'.repeat(64)},{context:{...fixture().prepared.context,actorId:id(9)}},{state:'expired'},{protocol:1}]){
+  for(const change of [{clientDataHash:Buffer.alloc(32,2).toString('base64')},{alias:'aihr_'+'b'.repeat(64)},{context:{...fixture().prepared.context,actorId:id(9)}},{state:'expired'},{protocol:1}]){
    const f=fixture();expect(await f.adapter.create({...f.prepared,...change},f.persist)).toMatchObject({status:'invalid'});expect(f.persist).not.toHaveBeenCalled();expect(f.native.createAndroidKey).not.toHaveBeenCalled();
   }
   const f=fixture();f.native.capabilities.mockReturnValueOnce({...f.native.capabilities(),buildVersion:'5'});expect(await f.adapter.read(f.prepared)).toMatchObject({status:'invalid'});expect(f.native.androidKeyInfo).not.toHaveBeenCalled();
