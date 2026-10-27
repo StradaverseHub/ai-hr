@@ -18544,6 +18544,24 @@
         "comparison": "Các giá trị đã ghi nhận, đặt cạnh nhau",
         "recordColumn": "Bản ghi",
         "moreRules": "Hiển thị thêm {count} quy tắc"
+      },
+      "conversationGovernance": {
+        "title": "Cải tiến hội thoại chính",
+        "scope": "Các ứng viên này thay đổi trọng tâm trả lời và cách hỏi làm rõ trong cuộc trò chuyện chính. Đánh giá dùng nguồn chuẩn giả lập cho hai mươi mô-đun hiện tại và sáu ngôn ngữ. Bằng chứng định tuyến được tách riêng; đây không phải bằng chứng bảo mật thực tế, độ chính xác sản xuất hay mức tiết kiệm.",
+        "baseline": "Trọng tâm cơ sở",
+        "focused": "Tập trung, ngắn gọn và có cấu trúc",
+        "create": "Tạo ứng viên hội thoại",
+        "record": "Ứng viên hội thoại v{version}",
+        "choose": "Chọn ứng viên hội thoại",
+        "evaluate": "Đánh giá lô có giới hạn tiếp theo",
+        "consent": "Tôi cho phép tối đa mười hai lượt gọi nhà cung cấp mới cho CẢ HAI nhánh trong lần chạy này, chỉ dùng nguồn tổng hợp cố định. Giữ kết quả đạt có ràng buộc khớp chính xác; công việc chưa xong vẫn chưa được xác minh.",
+        "promote": "Nâng cấp hành vi hội thoại",
+        "condition": "Hai người đánh giá độc lập có quyền phải hoàn thành cả hai nhánh, không có lỗi bảo mật hay chất lượng ở ứng viên và có cải thiện chất lượng thật. Nếu cơ sở đúng hoàn toàn thì không có mức cải thiện. Nâng cấp bị giới hạn theo chủ sở hữu, số việc và thời hạn.",
+        "erase": "Xóa siêu dữ liệu đánh giá hội thoại và sử dụng chiến lược của tôi",
+        "progress": "Hoàn thành {completed}/{total} cặp trường hợp; có {failures} nhánh lỗi đã biết.",
+        "unknown": "Chưa rõ / chưa xác minh",
+        "noCandidates": "Chưa có ứng viên hội thoại.",
+        "metrics": "Đúng {correct}; lỗi bảo mật {security}. p50/p95 {p50}/{p95} ms. Token vào/ra {input}/{output}. Tín dụng tài khoản {credits}."
       }
     },
     "denied_unavailable": "Phía tôi gặp chút trục trặc. Vui lòng thử lại sau giây lát.",

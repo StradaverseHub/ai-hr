@@ -18544,6 +18544,24 @@
         "comparison": "Recorded values, side by side",
         "recordColumn": "Record",
         "moreRules": "Show {count} more rules"
+      },
+      "conversationGovernance": {
+        "title": "Main-conversation improvement",
+        "scope": "These candidates change main-chat focus and clarification. Evaluation uses fictional canonical sources across the twenty current modules and six languages. Routing evidence is separate; this is not native security, production accuracy or savings proof.",
+        "baseline": "Baseline focus",
+        "focused": "Focused, concise and structured",
+        "create": "Create conversation candidate",
+        "record": "Conversation candidate v{version}",
+        "choose": "Choose a conversation candidate",
+        "evaluate": "Evaluate the next bounded batch",
+        "consent": "I authorize at most twelve new provider calls across BOTH arms in this invocation, using fixed synthetic sources only. Retain exact passing arms; unfinished work remains unverified.",
+        "promote": "Promote conversation behavior",
+        "condition": "Two independent authorized evaluators must finish both arms with zero candidate security or quality failures and a genuine quality gain. A fully correct baseline means no gain. Promotion stays limited to its owner, job count and expiry.",
+        "erase": "Erase my conversation evaluation and strategy-use metadata",
+        "progress": "{completed}/{total} paired cases complete; {failures} known arm failures.",
+        "unknown": "Unknown / not verified",
+        "noCandidates": "No conversation candidates yet.",
+        "metrics": "Correct {correct}; security failures {security}. p50/p95 {p50}/{p95} ms. Input/output {input}/{output} tokens. Account credits {credits}."
       }
     },
     "denied_unavailable": "A little snag on my side. Please try again in a moment.",

@@ -2,7 +2,7 @@
 import {redirect} from 'next/navigation';
 import {revalidatePath} from 'next/cache';
 import {getBrowserCommandSession} from '@/lib/session';
-import {createPromptAgentCandidate,evaluatePromptAgentCandidate,promotePromptAgentCandidate,rollbackRoutingAgent,runPromptPlannedSyntheticJob} from '@/core/module-agent-releases';
+import {createPromptAgentCandidate,evaluatePromptAgentCandidate,promotePromptAgentCandidate,rollbackRoutingAgent,runPromptPlannedSyntheticJob,createConversationAgentCandidate,evaluateConversationAgentCandidate,promoteConversationAgentCandidate,eraseOwnConversationStrategyMetadata} from '@/core/module-agent-releases';
 import {resolveOwnNotificationServerIdentity} from '@/core/assistant-actions/own-notification-preferences-source';
 import {MODULE_AGENT_SOURCE_DIGEST} from '@/lib/ai/module-agent-source-manifest';
 import {PROMPT_HOLDOUT_REQUEST_LIMIT} from '@/lib/ai/module-agent-prompt-candidate';
@@ -29,3 +29,16 @@ export async function tryAgentCandidateAction(form:FormData){
  const fixtureId=String(form.get('fixtureId')??'');if(form.get('consented')!=='yes')failed();
  try{const ctx=await getBrowserCommandSession();await runPromptPlannedSyntheticJob(ctx,{fixtureId,consent:{synthetic:true,maxRequests:1,sourceDigest:MODULE_AGENT_SOURCE_DIGEST}});}catch{failed();}finish();
 }
+
+/** Separate conversation commands; posted variants never become raw system prompts. */
+export async function createConversationCandidateAction(form:FormData){
+ const version=Number(form.get('version')),variant=String(form.get('variant')??''),signalIds=form.getAll('signalId').map(String),native=String(form.get('nativeSignalId')??'');
+ try{const ctx=await getBrowserCommandSession(),input={version,configuration:{kind:'assistant_answer_prompt_v1',variant},signalIds,...(native?{nativeSignalIds:[native]}:{})};await createConversationAgentCandidate(ctx,input,native?{notificationIdentity:await resolveOwnNotificationServerIdentity()}:{});}catch{failed();}finish();
+}
+export async function evaluateConversationCandidateAction(form:FormData){
+ const candidateId=String(form.get('candidateId')??''),consented=form.get('consented')==='yes';if(!consented)failed();try{await evaluateConversationAgentCandidate(await getBrowserCommandSession(),{candidateId,consent:{synthetic:true,maxRequests:12,sourceDigest:MODULE_AGENT_SOURCE_DIGEST}});}catch{failed();}finish();
+}
+export async function promoteConversationCandidateAction(form:FormData){
+ const candidateId=String(form.get('candidateId')??''),maxJobs=Number(form.get('maxJobs')),hours=Number(form.get('hours'));try{await promoteConversationAgentCandidate(await getBrowserCommandSession(),{candidateId,maxJobs,hours});}catch{failed();}finish();
+}
+export async function eraseConversationMetadataAction(){try{await eraseOwnConversationStrategyMetadata(await getBrowserCommandSession());}catch{failed();}finish();}

@@ -18544,6 +18544,24 @@
         "comparison": "Nilai direkodkan, sebelah menyebelah",
         "recordColumn": "Rekod",
         "moreRules": "Tunjukkan {count} peraturan lagi"
+      },
+      "conversationGovernance": {
+        "title": "Penambahbaikan perbualan utama",
+        "scope": "Calon ini mengubah fokus dan penjelasan susulan dalam sembang utama. Penilaian menggunakan sumber kanonik rekaan bagi dua puluh modul semasa dan enam bahasa. Bukti penghalaan berasingan; ini bukan bukti keselamatan sebenar, ketepatan pengeluaran atau penjimatan.",
+        "baseline": "Fokus asas",
+        "focused": "Berfokus, ringkas dan tersusun",
+        "create": "Cipta calon perbualan",
+        "record": "Calon perbualan v{version}",
+        "choose": "Pilih calon perbualan",
+        "evaluate": "Nilai kelompok terhad seterusnya",
+        "consent": "Saya membenarkan paling banyak dua belas panggilan penyedia baharu merentas KEDUA-DUA cabang dalam pelaksanaan ini, dengan sumber sintetik tetap sahaja. Kekalkan cabang lulus yang sepadan; kerja belum selesai kekal belum disahkan.",
+        "promote": "Naik taraf tingkah laku perbualan",
+        "condition": "Dua penilai berkuasa yang bebas mesti menyelesaikan kedua-dua cabang tanpa kegagalan keselamatan atau kualiti calon serta menunjukkan peningkatan kualiti sebenar. Asas yang betul sepenuhnya bermaksud tiada peningkatan. Naik taraf terhad kepada pemilik, bilangan tugas dan tempoh sah.",
+        "erase": "Padam metadata penilaian perbualan dan penggunaan strategi saya",
+        "progress": "{completed}/{total} kes berpasangan selesai; {failures} kegagalan cabang diketahui.",
+        "unknown": "Tidak diketahui / belum disahkan",
+        "noCandidates": "Belum ada calon perbualan.",
+        "metrics": "Betul {correct}; kegagalan keselamatan {security}. p50/p95 {p50}/{p95} ms. Token masuk/keluar {input}/{output}. Kredit akaun {credits}."
       }
     },
     "denied_unavailable": "Ada sedikit masalah di pihak saya. Sila cuba lagi sebentar nanti.",

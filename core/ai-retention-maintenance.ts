@@ -5,8 +5,10 @@ import { sql,type SQL } from 'drizzle-orm';
 import {boundNativeOutcomeTransactionTx} from './module-native-outcome-bounds';
 import type { Tx } from '../db/client';
 
-export type AiRetentionResult = Readonly<{ tenants: number; busy: number; reviews: number; feedback: number; jobs:number;jobFeedback:number;candidateProvenance:number;plans:number;importAssistance:number;importEvaluations:number;nativeOutcomes:number;nativeSources:number }>;
+export type AiRetentionResult = Readonly<{ tenants: number; busy: number; reviews: number; feedback: number; jobs:number;jobFeedback:number;candidateProvenance:number;plans:number;importAssistance:number;importEvaluations:number;nativeOutcomes:number;nativeSources:number;conversationArms:number;conversationUses:number }>;
 const extraCustody=[
+ {key:'conversationArms',id:'id',table:sql`public.ai_assistant_answer_evaluation_arm`,expiry:sql`expires_at`},
+ {key:'conversationUses',id:'id',table:sql`public.ai_assistant_answer_strategy_use`,expiry:sql`expires_at`},
  {key:'plans',id:'id',table:sql`public.ai_agent_plan_proposal`,expiry:sql`expires_at`},
  {key:'jobFeedback',id:'id',table:sql`public.ai_agent_job_feedback`,expiry:sql`expires_at`},
  {key:'candidateProvenance',id:'candidate_id',table:sql`public.ai_agent_candidate_provenance`,expiry:sql`created_at+interval '720 hours'`},
@@ -39,9 +41,9 @@ export async function retireExpiredAiCustodyTx(tx: Tx): Promise<AiRetentionResul
       and current_setting('transaction_isolation')='read committed'
       and current_setting('transaction_read_only')='off'
       and has_function_privilege(current_user,'app.agent_signal_custody_visible(text,uuid,uuid,uuid)','EXECUTE')
-      and (select count(*)=13 and bool_and(r.rolsuper or c.relowner=r.oid)
+      and (select count(*)=15 and bool_and(r.rolsuper or c.relowner=r.oid)
         from pg_catalog.pg_roles r cross join pg_catalog.pg_class c where r.rolname=current_user
-        and c.oid in ('app.assistant_own_leave_review'::regclass,
+        and c.oid in ('public.ai_assistant_answer_evaluation_arm'::regclass,'public.ai_assistant_answer_strategy_use'::regclass,'app.assistant_own_leave_review'::regclass,
           'app.assistant_own_leave_review_content'::regclass,'public.ai_agent_feedback'::regclass,
           'public.ai_agent_plan_proposal'::regclass,'public.ai_agent_job_feedback'::regclass,'public.ai_agent_candidate_provenance'::regclass,
           'public.ai_agent_job_receipt'::regclass,'public.personnel_import_assistance_attempt'::regclass,
@@ -53,7 +55,7 @@ export async function retireExpiredAiCustodyTx(tx: Tx): Promise<AiRetentionResul
     ) expired group by tenant_id order by min(expires_at),tenant_id limit 10`);
     if (tenants.length > 10) return unavailable();
     let busy = 0, reviews = 0, feedback = 0;
-    const removed={jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0};
+    const removed={jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0,conversationArms:0,conversationUses:0};
     for (const tenant of tenants) {
       if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(tenant.tenant_id)) return unavailable();
       const [lock] = await tx.execute<{ owned: boolean }>(sql`select pg_try_advisory_xact_lock(

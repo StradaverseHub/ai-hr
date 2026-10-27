@@ -18544,6 +18544,24 @@
         "comparison": "并列查看已记录的数据",
         "recordColumn": "记录",
         "moreRules": "显示其余 {count} 条规则"
+      },
+      "conversationGovernance": {
+        "title": "主对话改进",
+        "scope": "这些候选方案改变主聊天的回答重点和澄清方式。评估使用覆盖当前二十个模块、六种语言的虚构规范来源。路由证据单独管理；这不证明真实安全性、生产准确性或节省成效。",
+        "baseline": "基准重点",
+        "focused": "聚焦、简洁且有条理",
+        "create": "创建对话候选方案",
+        "record": "对话候选方案 v{version}",
+        "choose": "选择对话候选方案",
+        "evaluate": "评估下一批有限案例",
+        "consent": "我授权本次执行的两个方案合计最多发出十二次新的提供商调用，仅使用固定的合成来源。保留完全匹配的通过记录；未完成的工作仍未验证。",
+        "promote": "提升对话行为",
+        "condition": "两位独立且获授权的评估者必须完成两个方案，候选方案无安全或质量失败且确有质量提升。基准全部正确即无提升。提升仅限其拥有者、任务次数和有效期。",
+        "erase": "删除我的对话评估和策略使用元数据",
+        "progress": "已完成 {completed}/{total} 组配对案例；已知 {failures} 个方案失败。",
+        "unknown": "未知／尚未验证",
+        "noCandidates": "暂无对话候选方案。",
+        "metrics": "正确 {correct}；安全失败 {security}。p50/p95 为 {p50}/{p95} 毫秒。输入／输出 {input}/{output} 个令牌。账号额度费用 {credits}。"
       }
     },
     "denied_unavailable": "我这边遇到了小状况，请稍后再试。",
