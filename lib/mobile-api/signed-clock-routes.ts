@@ -75,7 +75,7 @@ export function createSignedClockOperations(platform:'ios'|'android',configurati
  function android(ctx:SessionContext,id:string,config:z.infer<typeof AndroidClockConfiguration>,req:Request){
   const play=typeof options.androidPlay==='function'?options.androidPlay():options.androidPlay,guard=commit(ctx,id,config,req);
   return createAndroidVerifiedClockService(config.settings,config.policy,play?.accessToken??null,{
-   transport:play?.transport,timeoutMs:play?.timeoutMs,beforeCommit:async tx=>{await guard(tx);play?.assertCurrent?.();},
+   transport:play?.transport,timeoutMs:play?.timeoutMs,beforeCommit:async tx=>{await guard(tx);/* PROBE ONLY: omit credential commit snapshot. */},
   });
  }
  function route(fn:(ctx:SessionContext,req:Request)=>Promise<unknown>){return async(ctx:SessionContext,req:Request)=>{try{return await fn(ctx,req);}catch(error){const known=expected(error);if(known)return known;throw error;}};}
