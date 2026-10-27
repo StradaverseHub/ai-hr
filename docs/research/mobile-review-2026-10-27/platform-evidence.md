@@ -1184,3 +1184,50 @@ No signed-device acceptance, full regression/release build, deployment, policy e
 migration application occurred. Huawei browser access now works, but the official download flow
 requires account sign-in; DevEco/SDK installation is still pending that user action. HarmonyOS NEXT
 native implementation and acceptance remain outstanding.
+
+
+### Android stored-key clock command and attendance transaction evidence
+
+`f4432b479` adds the server Android signature owner and separate attendance carrier; `43236984b`
+strengthens its tests. Shipped command parsing, real P-256 signatures, RLS, locks, challenge
+consumption and the real attendance writer execute against disposable worker databases. Enrollment
+uses an explicitly synthetic verifier port and synthetic certificates; these tests do not establish
+Android hardware or Google certificate acceptance.
+
+The initial focused run completed50 passes/five failures across55 cases in five files, plus one
+unhandled PostgreSQL-driver error after a timed-out fixture; root TypeScript also failed on invalid
+test policy property names. One refusal exposed a real missing availability gate: cached decryption
+still worked after the configured secret disappeared. The other failures were incorrect attendance
+fixture fields and an owner update waiting behind the fixture's earlier person write. Explicit secret
+availability, the actual workStart/workEnd fields and corrected fixture ordering resolved them.
+The original failed run is retained in `/tmp/mobile-android-clock-{tests,root-types}.log`.
+
+The repaired Android file and attendance import ratchet passed14 cases across two files and root
+TypeScript. Tightened assertions and added observable key-lock races then passed all15 Android
+cases and root TypeScript at43236984b. The unaffected four original files (Apple transaction,
+Android signature verifier/native signing and canonical binding) retain their passing43 cases;
+there is no claim that the original55-case attempt was green or a full release gate.
+
+Controlled removal of signature verification, revocation enforcement, original policy matching,
+secret availability and final own-employment checking each caused the named assertion to fail.
+An initial post-expiry probe reached an unrelated deferred profile-permission constraint; that probe
+was insufficient to certify expiry detection. Its fixture now writes an authorized audit event.
+Repeating removal of final freshness then incorrectly committed consumption and failed the expected
+refusal. Removing freshness after the blocked key acquisition invoked acceptance after expiry and
+failed the no-callback assertion. Exact restoration passed all15 cases. Callback expiry rolls back
+the tentative audit event; real punch-insertion failure rolls back capture, punch, proof and audit.
+All owned probe worker/template databases were torn down; no shared schema was upgraded.
+
+Logs: `/tmp/mobile-android-clock-repair-{tests,root-types}.log`,
+`/tmp/mobile-android-clock-probe-{baseline,signature,revocation,secret,policy,post-scope,post-expiry,restored,root-types}.log`,
+`/tmp/mobile-android-clock-races-{tests,root-types}.log`,
+`/tmp/mobile-android-clock-time-probe-{post-expiry,pre-acceptance-expiry,restored}.log`.
+Each resource request reserved both memory slots and the database together. An initial launcher
+syntax error exited127 before starting any check; it is not test evidence. No native production
+source changed in this milestone, so earlier native compiler/bundle evidence is retained.
+
+Android's0636 custody draft SHA256 remains
+`9063b27c0cc316b715d552561d636ffc6412e447ca9275758bf497870c995df7`, unjournaled.
+The tests temporarily install/restore it only in their disposable worker. No public clock route,
+rollout enablement, current Play/vendor proof, signed-device acceptance, full release gate,
+migration application, deployment or HarmonyOS native client is established by this work.

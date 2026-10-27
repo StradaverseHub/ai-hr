@@ -775,3 +775,40 @@ its own smaller limit. Existing purpose-separated AAD, pointers, legacy serializ
 installation quota remain unchanged. A maximum-size proof beside fifteen retired contexts survives
 restart and resumes exact submission without another one-use SDK attestation in synthetic tests.
 This does not establish physical-device attestation, current device integrity or attendance presence.
+
+
+## Android online command transaction and attendance carrier
+
+The Android command owner now loads an actor/tenant/app-installation-owned, unrevoked Android
+custody row under a key lock. It requires the Google key-generation proof kind, nullable environment
+and an authenticated encrypted enrollment provenance record. Original origin, actor, tenant,
+installation, enrollment subject/challenge and SPKI must match custody. The original canonical
+Android target must equal the trusted settings supplied to this service, including signer digests
+and patch/security requirements. A changed target requires reenrollment; incomplete minimal metadata
+is not reinterpreted as satisfying a changed policy. Secret availability is checked explicitly before
+decryption, including after the encryption module has cached its derived key.
+
+The server reconstructs canonical command bytes from the actual command and exact photo bytes,
+client-reported source facts, stored challenge and owned key. The challenge binding additionally
+includes the exact legacy device credential, without publishing that credential. A real P-256 ECDSA
+signature is checked using the stored SPKI. Android has no Apple assertion counter; one-use challenge
+consumption is the replay owner, and different valid ECDSA signatures are not separate commands.
+Photo and signature buffers are copied before asynchronous work.
+
+One transaction consumes the challenge, locks/rechecks the key, checks the signature, invokes the
+attendance writer and appends proof/audit links. Database time and own-employment eligibility are
+checked after waiting and again after callback work. A callback must use the supplied transaction
+and checked command snapshot; network calls and nested transactions are prohibited. Failure rolls
+back consumption, tentative attendance, receipt and audit together. The carrier invokes the existing
+attendance owner, retaining registered-device, photo, geofence, correction and attendance rules.
+An already-consumed challenge recovers only a capture linked to the same challenge and actor; it
+cannot replay the writer or adopt an unrelated legacy receipt. Receipt recovery does not require
+new proof verification and remains usable after key revocation or secret unavailability.
+
+The audit distinguishes `command_signature` from `google_key_generation_proof` and has no Apple
+counter, device trust tier or verified-location claim. Historical key-generation evidence plus a
+valid signature does not establish current boot/app state, current vendor revocation, Play licensing,
+GPS authenticity or physical presence. Current vendor evidence and trust/review policy remain
+activation work. Public Android clock handlers, discovery, commit-time rollout revalidation and
+native journal/clock-screen orchestration are not yet connected; both platform clock routes remain
+unmounted. Enrollment configuration must not be treated as clock activation permission.
