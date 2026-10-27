@@ -10,7 +10,8 @@ import '../app/atelier.css';
 vi.mock('next/navigation',()=>({usePathname:()=>'/me/payslip',useSearchParams:()=>new URLSearchParams()}));
 vi.mock('next/link',async()=>{
  const React=await import('react');
- return {default:React.forwardRef<HTMLAnchorElement,any>(({prefetch,...props},ref)=>React.createElement('a',{...props,ref,onClick:(event:any)=>{event.preventDefault();props.onClick?.(event);}},props.children))};
+ // Browser-mode module mocks expose callable exports; keep the Next boundary a plain component.
+ return {default:function NextLink({prefetch,...props}:any){return React.createElement('a',{...props,onClick:(event:any)=>{event.preventDefault();props.onClick?.(event);}},props.children);}};
 });
 const {Sidebar}=await import('../components/sidebar');
 afterEach(async()=>{cleanup();document.documentElement.removeAttribute('data-ui-theme');document.body.style.margin='';await page.viewport(1280,720);});
