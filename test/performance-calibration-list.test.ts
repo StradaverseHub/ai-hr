@@ -6,13 +6,13 @@
  * promises — HOD only their HOD session, BU CEO only theirs, nobody else's company, final tier for cycle
  * administrators only, and a performance partner only in-scope cycles.
  *
- * Sessions are written as the owner (the creation service's year-end / ratings preconditions are not what
- * is under test here); every READ is the app role through the service.
+ * Sessions are written directly as the HR administrator (the creation service's year-end / ratings
+ * preconditions are not what is under test here); every READ is the persona's app-role session via the service.
  */
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import type { SessionContext } from '../db/client';
+import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { createCompany, createDepartment } from '../core/admin';
 import { hireEmployee } from '../core/org';
@@ -50,9 +50,14 @@ describe('Calibration destination: sessions the viewer may enter (real RLS)', ()
     return r.id;
   }
   async function session(cycleId: string, companyId: string | null, tier: 'hod' | 'bu' | 'bg' | 'group' | 'final', name: string, reviewers: string[], people: Hired[]) {
-    const [s] = await owner.db.insert(schema.onehrCalibration).values({ tenantId: b.tenantId, cycleId, companyId, name, tier, reviewerUserIds: reviewers }).returning();
-    for (const p of people) await owner.db.insert(schema.onehrCalibrationEntry).values({ tenantId: b.tenantId, sessionId: s.id, reviewId: await reviewOf(cycleId, p), employmentId: p.employmentId });
-    return s.id;
+    // Written as the HR administrator through the app role: the calibration authority trigger
+    // (app.assessment_final_authority) requires a cycle administrator as the current user.
+    const reviewIds = await Promise.all(people.map((p) => reviewOf(cycleId, p)));
+    return withTenant(a, async (tx) => {
+      const [s] = await tx.insert(schema.onehrCalibration).values({ tenantId: b.tenantId, cycleId, companyId, name, tier, reviewerUserIds: reviewers }).returning();
+      for (let i = 0; i < people.length; i++) await tx.insert(schema.onehrCalibrationEntry).values({ tenantId: b.tenantId, sessionId: s.id, reviewId: reviewIds[i], employmentId: people[i].employmentId });
+      return s.id;
+    });
   }
   const names = async (ctx: SessionContext) => (await perf.listMyCalibrationSessions(ctx)).map((s) => s.name).sort();
 

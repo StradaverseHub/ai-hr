@@ -101,9 +101,12 @@ describe('Calibration sidebar row', () => {
       <Sidebar isAdmin={props.isAdmin ?? false} canApprove={props.canApprove ?? false} canEnterCalibration={props.canEnterCalibration} canAdministerOnehr={props.canAdministerOnehr}
         enabledModules={props.enabledModules === undefined ? ['leave', 'performance'] : props.enabledModules} defaultCollapsed={false} />
     </NextIntlClientProvider>);
-    // The Performance module opens a panel; its rows only exist once it is open.
-    const trigger = screen.queryByRole('button', { name: en.nav.performance });
-    if (trigger) fireEvent.click(trigger);
+    // The rail opens on the Inbox workspace; Performance rows live under Strat → Performance and only exist
+    // once both are open. A viewer with no Performance row at all has no Performance module button.
+    const strat = screen.queryByRole('button', { name: /Strat/ });
+    if (strat) fireEvent.click(strat);
+    const perf = screen.queryByRole('button', { name: en.nav.performance });
+    if (perf) fireEvent.click(perf);
     return document.querySelector('a[href="/performance/calibration"]');
   }
   it('shows Calibration to a named reviewer who is neither a manager nor an administrator', () => {
