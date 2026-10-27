@@ -1,0 +1,5 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {createRequire}from'node:module';import {proveErasedFixtureCast,ERASED_CAST}from'./type-only-repair.mjs';
+const require=createRequire(process.env.AIHR_TEST_TYPESCRIPT_ROOT?process.env.AIHR_TEST_TYPESCRIPT_ROOT+'/package.json':new URL('../../package.json',import.meta.url));const typescript=require('typescript');
+const before='const options = {env: {PATH: process.env.PATH, ...changes}};\n',after=before.replace('...changes}', '...changes}'+ERASED_CAST);
+test('single env cast emits identical runtime with exact original source provenance',()=>{const p=proveErasedFixtureCast({before,after,typescript});assert.equal(p.insertion,ERASED_CAST);assert.match(p.identicalRuntimeJavaScriptSha256,/^[a-f0-9]{64}$/);});
+for(const[name,changed]of[['runtime value',after.replace('process.env.PATH','"other"')],['extra comment',after+'//extra\n'],['wrong type',after.replace('NodeJS.ProcessEnv','any')],['different property',after.replace('env:', 'other:')],['missing cast',before]])test('refuses '+name,()=>assert.throws(()=>proveErasedFixtureCast({before,after:changed,typescript})));
