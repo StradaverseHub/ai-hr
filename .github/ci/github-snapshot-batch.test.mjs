@@ -1,4 +1,4 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {collectRunSnapshots} from './github-snapshot-batch.mjs';
+import test from 'node:test';import assert from 'node:assert/strict';import {collectRunSnapshots,readMetadataWithRetry} from './github-snapshot-batch.mjs';
 const read=async path=>path.includes('/jobs?')?{jobs:[{id:1}]}:path.includes('/artifacts?')?{artifacts:[]}:{id:Number(path.split('/').at(-1))};
 test('bounded parallel transport retains every exact requested identity and complete inventories',async()=>{const r=await collectRunSnapshots([7,3,19],read);assert.deepEqual([...r.keys()].sort((a,b)=>a-b),[3,7,19]);assert.equal(r.get(7).jobs.length,1);});
 for(const ids of [[],[1,1],[0],['1'],Array.from({length:65},(_,i)=>i+1)])test('refuses invalid or excessive run IDs '+JSON.stringify(ids).slice(0,35),async()=>assert.rejects(collectRunSnapshots(ids,read)));
@@ -17,3 +17,15 @@ test('smaller actual metadata pages retain every job across all complete pages',
 });
 for(const size of [0,9,101,30.5])test('refuses invalid metadata page size '+size,async()=>assert.rejects(collectRunSnapshots([1],read,4,size)));
 test('never truncates an oversized response to a smaller request',async()=>assert.rejects(collectRunSnapshots([1],async p=>p.includes('/jobs?')?{jobs:Array(31).fill({id:1})}:read(p),4,30)));
+test('transient gateway retries return the actual response unchanged and retain bounded failure observations',async()=>{
+ let attempts=0;const waits=[],observations=[],response={stdout:'actual API bytes'};
+ const result=await readMetadataWithRetry(async()=>{if(++attempts<3)throw Object.assign(Error('gateway'),{stderr:'gh: Server Error (HTTP 502)'});return response;},{wait:async ms=>waits.push(ms),onRetry:e=>observations.push(e)});
+ assert.equal(result,response);assert.equal(attempts,3);assert.deepEqual(waits,[1000,2000]);assert.deepEqual(observations,[{attempt:1,status:502},{attempt:2,status:502}]);
+});
+test('persistent gateway errors stop after three reads and preserve the actual error',async()=>{
+ let attempts=0;const error=Object.assign(Error('unavailable'),{stderr:'gh: Service unavailable (HTTP 503)'});
+ await assert.rejects(readMetadataWithRetry(async()=>{attempts++;throw error;},{wait:async()=>{}}),e=>e===error);assert.equal(attempts,3);
+});
+for(const stderr of ['gh: Forbidden (HTTP 403)','gh: Unauthorized (HTTP 401)','gh: Not Found (HTTP 404)','Source guard refused',''])test('never retries non-gateway refusal '+stderr,async()=>{
+ let attempts=0;const error=Object.assign(Error('original refusal'),{stderr});await assert.rejects(readMetadataWithRetry(async()=>{attempts++;throw error;},{wait:async()=>{throw Error('must not wait');}}),e=>e===error);assert.equal(attempts,1);
+});

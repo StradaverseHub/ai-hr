@@ -12,6 +12,17 @@ export async function collectRunSnapshots(ids,readJson,workers=4,pageSize=100){
  await Promise.all(Array.from({length:Math.min(workers,ids.length)},async()=>{for(;;){const index=cursor++;if(index>=ids.length)return;const id=ids[index],root='actions/runs/'+id;const [run,jobs,artifacts]=await Promise.all([readJson(root),rows(root+'/jobs?filter=all','jobs'),rows(root+'/artifacts','artifacts')]);assert.equal(run.id,id,'Metadata transport returned another run');result.set(id,{run,jobs,artifacts});}}));
  assert.equal(result.size,ids.length);return result;
 }
+/** Retry only actual transient HTTP gateway errors; never authorization, data or guard refusals. */
+export async function readMetadataWithRetry(read,{wait=ms=>new Promise(resolve=>setTimeout(resolve,ms)),onRetry=()=>{}}={}){
+ for(let attempt=1;attempt<=3;attempt++){
+  try{return await read();}catch(error){
+   const match=typeof error?.stderr==='string'&&/\(HTTP (502|503|504)\)/.exec(error.stderr);
+   if(!match||attempt===3)throw error;
+   onRetry({attempt,status:Number(match[1])});await wait(attempt*1000);
+  }
+ }
+ throw Error('Metadata retry bound exceeded');
+}
 export async function fetchRunSnapshots(ids,pageSize=100){
- return collectRunSnapshots(ids,async path=>{const {stdout}=await exec('gh',['api','repos/'+repository+'/'+path],{encoding:'utf8',maxBuffer:128*1024**2,timeout:60000});return JSON.parse(stdout);},4,pageSize);
+ return collectRunSnapshots(ids,async path=>{const {stdout}=await readMetadataWithRetry(()=>exec('gh',['api','repos/'+repository+'/'+path],{encoding:'utf8',maxBuffer:128*1024**2,timeout:60000}),{onRetry:event=>console.error(JSON.stringify({kind:'TRANSIENT_GITHUB_METADATA_RETRY',path,...event}))});return JSON.parse(stdout);},4,pageSize);
 }
