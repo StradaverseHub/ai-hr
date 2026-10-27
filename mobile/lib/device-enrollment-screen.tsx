@@ -101,7 +101,7 @@ function EnrollmentPanel({employmentId,platform,onChanged}:{employmentId:string;
   {view.loading&&<Muted>{t('loading')}</Muted>}
   {view.failed&&<><Text accessibilityRole="alert">{t('integrityEnrollmentStorageUnavailable')}</Text><Button title={t('retry')} kind="quiet" disabled={busy||view.loading} onPress={()=>void initialize()}/></>}
   {local&&!local.controller.supported&&<Muted>{t('integrityEnrollmentUnsupported')}</Muted>}
-  {status&&<Muted>{t(status.status==='empty'?'integrityEnrollmentEmpty':status.status==='pending'?'integrityEnrollmentPending':status.status==='revocation_pending'?'integrityEnrollmentRevocationPending':status.revoked?'integrityEnrollmentRevoked':'integrityEnrollmentSaved')}</Muted>}
+  {status&&<Text accessibilityRole="alert">{t(status.status==='empty'?'integrityEnrollmentEmpty':status.status==='pending'?'integrityEnrollmentPending':status.status==='revocation_pending'?'integrityEnrollmentRevocationPending':status.revoked?'integrityEnrollmentRevoked':'integrityEnrollmentSaved')}</Text>}
   {status&&'reason' in status&&status.reason&&<Muted>{t('integrityEnrollmentAttention')}</Muted>}
   {previous&&<Muted>{t('integrityEnrollmentPreviousEmployment')}</Muted>}
   {busy&&<Text accessibilityRole="alert">{t('integrityEnrollmentBusy')}</Text>}
