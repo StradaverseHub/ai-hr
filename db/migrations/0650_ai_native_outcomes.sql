@@ -155,7 +155,8 @@ CREATE FUNCTION app.native_outcome_targets_capture(p_tenant uuid,p_user uuid,p_p
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE r app.assistant_own_leave_review%ROWTYPE;e public.employee_import_evaluation_attempt%ROWTYPE;
  t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();people uuid[];employees uuid[];cases uuid[];
- id uuid;total integer;expiry timestamptz;kind text;source_person uuid;
+ -- The new capture row id is NOT named id: an unqualified id below is always the queried table's column.
+ capture_row uuid;total integer;expiry timestamptz;kind text;source_person uuid;
  saved_statement text:=current_setting('statement_timeout');saved_lock text:=current_setting('lock_timeout');
 BEGIN
  PERFORM app._native_outcome_bounds();
@@ -231,9 +232,9 @@ BEGIN
  SELECT count(*)::integer INTO total FROM(SELECT DISTINCT 'person' AS k,x FROM unnest(people) x
   UNION SELECT DISTINCT 'employment',x FROM unnest(employees) x UNION SELECT DISTINCT 'lifecycle_case',x FROM unnest(cases) x) targets;
  INSERT INTO app.native_outcome_source_capture(tenant_id,user_id,person_id,action,source_id,source_kind,review_id,import_attempt_id,event_id,target_count,expires_at)
- VALUES(t,u,p_person,p_action,p_source,kind,CASE WHEN kind='review' THEN p_source END,CASE WHEN kind='employee_import' THEN p_source END,p_event,total,expiry) RETURNING native_outcome_source_capture.id INTO id;
+ VALUES(t,u,p_person,p_action,p_source,kind,CASE WHEN kind='review' THEN p_source END,CASE WHEN kind='employee_import' THEN p_source END,p_event,total,expiry) RETURNING native_outcome_source_capture.id INTO capture_row;
  INSERT INTO app.native_outcome_source_target(capture_id,kind,target_id)
- SELECT id,'person',x FROM unnest(people) x UNION SELECT id,'employment',x FROM unnest(employees) x UNION SELECT id,'lifecycle_case',x FROM unnest(cases) x;
+ SELECT capture_row,'person',x FROM unnest(people) x UNION SELECT capture_row,'employment',x FROM unnest(employees) x UNION SELECT capture_row,'lifecycle_case',x FROM unnest(cases) x;
  PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);
  RETURN true;
 END $$;
