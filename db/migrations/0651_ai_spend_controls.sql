@@ -2,6 +2,11 @@
 -- reviewed metered carriers as ONE migration. Receipt reconciliation adds a NOT NULL column without a
 -- default to app.ai_spend_reservation created here, which is only valid in this same migration.
 -- Part 1 of 5: allocation.
+-- Bounds only ever lower the caller's statement/lock timeouts (never relax a stricter one). Every SQL owner
+-- in this migration and 0654 that applies them captures the caller's prior statement_timeout and
+-- lock_timeout at entry and restores them before it returns (the 0650/0656 pattern), so the bounds never
+-- outlive the owner in the caller's AI-admission transaction. When an owner raises instead, the failed
+-- (sub)transaction rolls the SET LOCAL values back to the caller's.
 CREATE FUNCTION app._ai_spend_bounds() RETURNS void LANGUAGE plpgsql SET search_path=pg_catalog,pg_temp AS $$
 BEGIN
  IF current_setting('statement_timeout')::interval=interval '0' OR current_setting('statement_timeout')::interval>interval '5 seconds' THEN PERFORM set_config('statement_timeout','5s',true);END IF;
@@ -56,6 +61,7 @@ CREATE FUNCTION app.ai_spend_reserve(wanted_run uuid,wanted_root uuid,wanted_kin
  RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE tid uuid:=app.current_tenant_id();uid uuid:=app.current_user_id();r ai_model_run;c app.ai_spend_capability;p app.ai_spend_budget;
  used numeric;root_used numeric;month_start timestamptz:=date_trunc('month',now() AT TIME ZONE 'Asia/Kuala_Lumpur') AT TIME ZONE 'Asia/Kuala_Lumpur';
+ saved_statement text:=current_setting('statement_timeout');saved_lock text:=current_setting('lock_timeout');
 BEGIN
  PERFORM app._ai_spend_bounds();
  IF tid IS NULL OR uid IS NULL OR wanted_kind NOT IN('agent','evaluation') OR wanted_root IS NULL OR wanted_request!~'^[a-f0-9]{64}$' OR wanted_nanos IS NULL OR wanted_nanos<=0
@@ -86,6 +92,7 @@ BEGIN
  END LOOP;
  INSERT INTO app.ai_spend_reservation(run_id,tenant_id,root_id,user_id,company_ids,feature_id,capability_digest,request_digest,reserved_nanos)
  VALUES(wanted_run,tid,wanted_root,uid,r.company_ids,r.feature_id,wanted_capability,wanted_request,wanted_nanos);
+ PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);
 END $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.ai_spend_reserve(uuid,uuid,text,text,text,bigint) FROM PUBLIC;
@@ -94,14 +101,15 @@ GRANT EXECUTE ON FUNCTION app.ai_spend_reserve(uuid,uuid,text,text,text,bigint) 
 CREATE FUNCTION app.ai_spend_settle(wanted_run uuid,actual_nanos bigint)
  RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE tid uuid:=app.current_tenant_id();uid uuid:=app.current_user_id();r app.ai_spend_reservation;
+ saved_statement text:=current_setting('statement_timeout');saved_lock text:=current_setting('lock_timeout');
 BEGIN
  PERFORM app._ai_spend_bounds();
  IF tid IS NULL OR uid IS NULL OR actual_nanos<0 THEN RAISE EXCEPTION 'AI spend settlement unavailable';END IF;
  PERFORM pg_advisory_xact_lock(hashtext('ai-control'),hashtext(tid::text));
  SELECT * INTO r FROM app.ai_spend_reservation WHERE run_id=wanted_run AND tenant_id=tid AND user_id=uid FOR UPDATE NOWAIT;
  IF NOT FOUND THEN RAISE EXCEPTION 'AI spend reservation unavailable';END IF;
- IF actual_nanos IS NULL THEN RETURN;END IF;
- IF r.state<>'held' THEN IF r.confirmed_nanos<>actual_nanos THEN RAISE EXCEPTION 'AI spend settlement changed';END IF;RETURN;END IF;
+ IF actual_nanos IS NULL THEN PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);RETURN;END IF;
+ IF r.state<>'held' THEN IF r.confirmed_nanos<>actual_nanos THEN RAISE EXCEPTION 'AI spend settlement changed';END IF;PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);RETURN;END IF;
  -- No public caller can assert monetary costs. A future source-owned certified receipt reconciler
  -- needs a distinct evidence-verifying function. Current gateway ONLY passes NULL and holds exposure.
  RAISE EXCEPTION 'Verified USD receipt reconciliation unavailable';
@@ -113,6 +121,7 @@ GRANT EXECUTE ON FUNCTION app.ai_spend_settle(uuid,bigint) TO ai_hr_app;
 CREATE FUNCTION app.ai_spend_budget_save(wanted_kind text,wanted_subject uuid,wanted_feature text,monthly bigint,root_limit bigint)
  RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE tid uuid:=app.current_tenant_id();k text;
+ saved_statement text:=current_setting('statement_timeout');saved_lock text:=current_setting('lock_timeout');
 BEGIN
  PERFORM app._ai_spend_bounds();
  IF tid IS NULL OR NOT app._ai_provider_evaluation_actor_valid() OR wanted_kind NOT IN('tenant','user','company','feature') OR monthly IS NULL OR root_limit IS NULL OR monthly<0 OR root_limit<0 THEN RAISE EXCEPTION 'AI spend administration unavailable';END IF;
@@ -122,6 +131,7 @@ BEGIN
  ELSE IF wanted_feature IS NOT NULL OR wanted_subject IS NULL OR(wanted_kind='user' AND NOT EXISTS(SELECT 1 FROM app_user WHERE id=wanted_subject AND tenant_id=tid)) OR(wanted_kind='company' AND NOT EXISTS(SELECT 1 FROM company WHERE id=wanted_subject AND tenant_id=tid)) THEN RAISE EXCEPTION 'Invalid spend scope';END IF;k:=wanted_kind||':'||wanted_subject::text;END IF;
  INSERT INTO app.ai_spend_budget(tenant_id,scope_key,kind,subject_id,feature_id,monthly_nanos,root_nanos,updated_by) VALUES(tid,k,wanted_kind,wanted_subject,wanted_feature,monthly,root_limit,app.current_user_id())
  ON CONFLICT(tenant_id,scope_key) DO UPDATE SET monthly_nanos=excluded.monthly_nanos,root_nanos=excluded.root_nanos,updated_by=excluded.updated_by,updated_at=now();
+ PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);
 END $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.ai_spend_budget_save(text,uuid,text,bigint,bigint) FROM PUBLIC;
@@ -148,6 +158,7 @@ GRANT EXECUTE ON FUNCTION app.ai_spend_status() TO ai_hr_app;
 CREATE FUNCTION app._ai_spend_confirm_verified_receipt(wanted_run uuid,actual_nanos bigint)
  RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE r app.ai_spend_reservation;
+ saved_statement text:=current_setting('statement_timeout');saved_lock text:=current_setting('lock_timeout');
 BEGIN
  PERFORM app._ai_spend_bounds();
  IF actual_nanos IS NULL OR actual_nanos<0 THEN RAISE EXCEPTION 'Verified spend receipt unavailable';END IF;
@@ -155,8 +166,9 @@ BEGIN
  IF NOT FOUND THEN RAISE EXCEPTION 'Spend reservation unavailable';END IF;
  PERFORM pg_advisory_xact_lock(hashtext('ai-control'),hashtext(r.tenant_id::text));
  SELECT * INTO r FROM app.ai_spend_reservation WHERE run_id=wanted_run FOR UPDATE NOWAIT;
- IF r.state<>'held' THEN IF r.confirmed_nanos<>actual_nanos THEN RAISE EXCEPTION 'Verified spend receipt changed';END IF;RETURN;END IF;
+ IF r.state<>'held' THEN IF r.confirmed_nanos<>actual_nanos THEN RAISE EXCEPTION 'Verified spend receipt changed';END IF;PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);RETURN;END IF;
  UPDATE app.ai_spend_reservation SET confirmed_nanos=actual_nanos,state=CASE WHEN actual_nanos>reserved_nanos THEN 'breach' ELSE 'confirmed' END,settled_at=now() WHERE run_id=wanted_run;
+ PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);
 END $$;
 REVOKE ALL ON FUNCTION app._ai_spend_confirm_verified_receipt(uuid,bigint) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
@@ -199,6 +211,7 @@ CREATE FUNCTION app.ai_spend_reserve(wanted_run uuid,wanted_root uuid,wanted_kin
  RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE tid uuid:=app.current_tenant_id();uid uuid:=app.current_user_id();r ai_model_run;c app.ai_spend_capability;p app.ai_spend_budget;
  used numeric;root_used numeric;month_start timestamptz:=date_trunc('month',now() AT TIME ZONE 'Asia/Kuala_Lumpur') AT TIME ZONE 'Asia/Kuala_Lumpur';
+ saved_statement text:=current_setting('statement_timeout');saved_lock text:=current_setting('lock_timeout');
 BEGIN
  PERFORM app._ai_spend_bounds();
  IF tid IS NULL OR uid IS NULL OR wanted_kind NOT IN('agent','evaluation') OR wanted_root IS NULL OR wanted_request!~'^[a-f0-9]{64}$' OR wanted_nanos IS NULL OR wanted_nanos<=0 OR wanted_configuration IS NULL OR wanted_configuration!~'^[a-f0-9]{64}$'
@@ -229,6 +242,7 @@ BEGIN
  END LOOP;
  INSERT INTO app.ai_spend_reservation(run_id,tenant_id,root_id,user_id,company_ids,feature_id,capability_digest,request_digest,configuration_digest,reserved_nanos)
  VALUES(wanted_run,tid,wanted_root,uid,r.company_ids,r.feature_id,wanted_capability,wanted_request,wanted_configuration,wanted_nanos);
+ PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);
 END $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.ai_spend_reserve(uuid,uuid,text,text,text,bigint,text) FROM PUBLIC;
@@ -238,6 +252,7 @@ GRANT EXECUTE ON FUNCTION app.ai_spend_reserve(uuid,uuid,text,text,text,bigint,t
 CREATE FUNCTION app.ai_spend_reconcile_receipt(signed_payload text,signed_mac text)
  RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE p jsonb;r app.ai_spend_reservation;k app.ai_spend_receipt_verifier;expected bytea;received bytea;difference integer:=0;i integer;charge bigint;proof_digest text;
+ saved_statement text:=current_setting('statement_timeout');saved_lock text:=current_setting('lock_timeout');
 BEGIN
  PERFORM app._ai_spend_bounds();
  IF signed_payload IS NULL OR octet_length(signed_payload)>4096 OR signed_mac IS NULL OR signed_mac!~'^[a-f0-9]{64}$' THEN RAISE EXCEPTION 'AI spend receipt unavailable';END IF;
@@ -256,13 +271,13 @@ BEGIN
  FOR i IN 0..31 LOOP difference:=difference | (get_byte(expected,i) # get_byte(received,i));END LOOP;
  IF difference<>0 THEN RAISE EXCEPTION 'AI spend receipt unavailable';END IF;
  charge:=(p->>9)::bigint;IF ceil((p->>11)::numeric*1000000000)<>charge THEN RAISE EXCEPTION 'AI spend receipt amount changed';END IF;proof_digest:=encode(pg_catalog.sha256(convert_to(signed_payload,'UTF8')),'hex');
- IF r.receipt_digest IS NOT NULL THEN IF r.receipt_digest<>proof_digest OR r.generation_id<>p->>8 OR r.confirmed_nanos<>charge THEN RAISE EXCEPTION 'AI spend receipt changed';END IF;RETURN r.state;END IF;
+ IF r.receipt_digest IS NOT NULL THEN IF r.receipt_digest<>proof_digest OR r.generation_id<>p->>8 OR r.confirmed_nanos<>charge THEN RAISE EXCEPTION 'AI spend receipt changed';END IF;PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);RETURN r.state;END IF;
  IF r.state<>'held' THEN RAISE EXCEPTION 'AI spend receipt unavailable';END IF;
  UPDATE app.ai_spend_reservation SET generation_id=p->>8,receipt_digest=proof_digest WHERE run_id=r.run_id;
  PERFORM app._ai_spend_confirm_verified_receipt(r.run_id,charge);
  -- The private canonical confirmer owns breach policy (including carrier-specific ceilings).
  -- Return its stored decision, never recompute a weaker rule from allocation size alone.
- RETURN (SELECT x.state FROM app.ai_spend_reservation x WHERE x.run_id=r.run_id);
+ PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);RETURN (SELECT x.state FROM app.ai_spend_reservation x WHERE x.run_id=r.run_id);
 END $$;
 REVOKE ALL ON FUNCTION app.ai_spend_reconcile_receipt(text,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.ai_spend_reconcile_receipt(text,text) TO ai_hr_app;
@@ -302,6 +317,7 @@ REVOKE ALL ON FUNCTION app._ai_spend_task_source_allowed(text,text,uuid,text) FR
 CREATE FUNCTION app.ai_spend_task_issue(wanted_feature text,wanted_source_kind text,wanted_source_id uuid,wanted_operation text)
  RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE root uuid;source uuid:=wanted_source_id;controls record;
+ saved_statement text:=current_setting('statement_timeout');saved_lock text:=current_setting('lock_timeout');
 BEGIN
  PERFORM app._ai_spend_bounds();
  IF current_setting('transaction_isolation')<>'read committed' OR current_setting('transaction_read_only')<>'off'
@@ -323,7 +339,7 @@ BEGIN
  VALUES(app.current_tenant_id(),app.current_user_id(),wanted_feature,wanted_source_kind,source,wanted_operation)
  ON CONFLICT(tenant_id,feature_id,source_kind,source_id,operation) DO NOTHING;
  SELECT t.id INTO STRICT root FROM app.ai_spend_task t WHERE t.tenant_id=app.current_tenant_id() AND t.feature_id=wanted_feature AND t.source_kind=wanted_source_kind AND t.source_id=source AND t.operation=wanted_operation;
- RETURN root;
+ PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);RETURN root;
 END $$;
 REVOKE ALL ON FUNCTION app.ai_spend_task_issue(text,text,uuid,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.ai_spend_task_issue(text,text,uuid,text) TO ai_hr_app;
@@ -339,6 +355,7 @@ CREATE OR REPLACE FUNCTION app.ai_spend_reserve(wanted_run uuid,wanted_root uuid
  RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE tid uuid:=app.current_tenant_id();uid uuid:=app.current_user_id();r ai_model_run;c app.ai_spend_capability;p app.ai_spend_budget;
  used numeric;root_used numeric;month_start timestamptz:=date_trunc('month',now() AT TIME ZONE 'Asia/Kuala_Lumpur') AT TIME ZONE 'Asia/Kuala_Lumpur';
+ saved_statement text:=current_setting('statement_timeout');saved_lock text:=current_setting('lock_timeout');
 BEGIN
  PERFORM app._ai_spend_bounds();
  IF tid IS NULL OR uid IS NULL OR wanted_kind NOT IN('agent','evaluation') OR wanted_root IS NULL OR wanted_request!~'^[a-f0-9]{64}$' OR wanted_nanos IS NULL OR wanted_nanos<=0 OR wanted_configuration IS NULL OR wanted_configuration!~'^[a-f0-9]{64}$'
@@ -369,6 +386,7 @@ BEGIN
  END LOOP;
  INSERT INTO app.ai_spend_reservation(run_id,tenant_id,root_id,user_id,company_ids,feature_id,capability_digest,request_digest,configuration_digest,reserved_nanos)
  VALUES(wanted_run,tid,wanted_root,uid,r.company_ids,r.feature_id,wanted_capability,wanted_request,wanted_configuration,wanted_nanos);
+ PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);
 END $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.ai_spend_reserve(uuid,uuid,text,text,text,bigint,text) FROM PUBLIC;
@@ -379,6 +397,7 @@ GRANT EXECUTE ON FUNCTION app.ai_spend_reserve(uuid,uuid,text,text,text,bigint,t
 CREATE OR REPLACE FUNCTION app.ai_spend_budget_save(wanted_kind text,wanted_subject uuid,wanted_feature text,monthly bigint,root_limit bigint)
  RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE tid uuid:=app.current_tenant_id();k text;
+ saved_statement text:=current_setting('statement_timeout');saved_lock text:=current_setting('lock_timeout');
 BEGIN
  PERFORM app._ai_spend_bounds();
  IF tid IS NULL OR NOT app._ai_provider_evaluation_actor_valid() OR wanted_kind NOT IN('tenant','user','company','feature') OR monthly IS NULL OR root_limit IS NULL OR monthly<0 OR root_limit<0 THEN RAISE EXCEPTION 'AI spend administration unavailable';END IF;
@@ -388,6 +407,7 @@ BEGIN
  ELSE IF wanted_feature IS NOT NULL OR wanted_subject IS NULL OR(wanted_kind='user' AND NOT EXISTS(SELECT 1 FROM app_user WHERE id=wanted_subject AND tenant_id=tid)) OR(wanted_kind='company' AND NOT EXISTS(SELECT 1 FROM company WHERE id=wanted_subject AND tenant_id=tid)) THEN RAISE EXCEPTION 'Invalid spend scope';END IF;k:=wanted_kind||':'||wanted_subject::text;END IF;
  INSERT INTO app.ai_spend_budget(tenant_id,scope_key,kind,subject_id,feature_id,monthly_nanos,root_nanos,updated_by) VALUES(tid,k,wanted_kind,wanted_subject,wanted_feature,monthly,root_limit,app.current_user_id())
  ON CONFLICT(tenant_id,scope_key) DO UPDATE SET monthly_nanos=excluded.monthly_nanos,root_nanos=excluded.root_nanos,updated_by=excluded.updated_by,updated_at=now();
+ PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);
 END $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.ai_spend_budget_save(text,uuid,text,bigint,bigint) FROM PUBLIC;
@@ -421,15 +441,16 @@ REVOKE ALL ON app.ai_spend_reviewed_carrier_catalog FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.ai_spend_reviewed_carrier(wanted_configuration text,wanted_model text,wanted_operation text,wanted_source text,wanted_signer text,wanted_signature text,wanted_request text)
  RETURNS TABLE(profile jsonb) LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE tid uuid:=app.current_tenant_id();uid uuid:=app.current_user_id();k app.ai_spend_receipt_verifier;expected bytea;received bytea;difference integer:=0;i integer;
+ saved_statement text:=current_setting('statement_timeout');saved_lock text:=current_setting('lock_timeout');
 BEGIN
  PERFORM app._ai_spend_bounds();
- IF tid IS NULL OR uid IS NULL OR wanted_configuration IS NULL OR wanted_configuration!~'^[a-f0-9]{64}$' OR wanted_source IS NULL OR wanted_source!~'^[a-f0-9]{64}$' OR wanted_operation NOT IN('draft','conversation') OR current_setting('transaction_read_only')<>'off' OR current_setting('transaction_isolation')<>'read committed' THEN RETURN;END IF;
- IF wanted_signer IS NULL OR wanted_signer!~'^[A-Za-z0-9_-]{1,64}$' OR wanted_signature IS NULL OR wanted_signature!~'^[a-f0-9]{64}$' OR wanted_request IS NULL OR wanted_request!~'^[a-f0-9]{64}$' THEN RETURN;END IF;
+ IF tid IS NULL OR uid IS NULL OR wanted_configuration IS NULL OR wanted_configuration!~'^[a-f0-9]{64}$' OR wanted_source IS NULL OR wanted_source!~'^[a-f0-9]{64}$' OR wanted_operation NOT IN('draft','conversation') OR current_setting('transaction_read_only')<>'off' OR current_setting('transaction_isolation')<>'read committed' THEN PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);RETURN;END IF;
+ IF wanted_signer IS NULL OR wanted_signer!~'^[A-Za-z0-9_-]{1,64}$' OR wanted_signature IS NULL OR wanted_signature!~'^[a-f0-9]{64}$' OR wanted_request IS NULL OR wanted_request!~'^[a-f0-9]{64}$' THEN PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);RETURN;END IF;
  IF NOT pg_try_advisory_xact_lock(hashtext('ai-control'),hashtext(tid::text)) THEN RAISE EXCEPTION 'Reviewed spend carrier busy';END IF;
  SELECT * INTO k FROM app.ai_spend_receipt_verifier WHERE key_id=wanted_signer AND enabled AND valid_from<=now() AND(retired_at IS NULL OR retired_at>now()) FOR SHARE NOWAIT;
- IF NOT FOUND THEN RETURN;END IF;
+ IF NOT FOUND THEN PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);RETURN;END IF;
  expected:=app._ai_spend_hmac_sha256(convert_to('aihr.reviewed-carrier-signer.v1'||E'\n'||tid::text||E'\n'||uid::text||E'\n'||wanted_configuration||E'\n'||wanted_request,'UTF8'),k.secret);received:=decode(wanted_signature,'hex');
- FOR i IN 0..31 LOOP difference:=difference | (get_byte(expected,i)#get_byte(received,i));END LOOP;IF difference<>0 THEN RETURN;END IF;
+ FOR i IN 0..31 LOOP difference:=difference | (get_byte(expected,i)#get_byte(received,i));END LOOP;IF difference<>0 THEN PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);RETURN;END IF;
  -- Current principal/provider/source access is independently required by canonical admission.
  -- This private projection exposes only the exact tenant/configuration certificate, not keys.
  RETURN QUERY SELECT jsonb_build_object('capabilityDigest',r.capability_digest,'sourceDigest',r.source_digest,
@@ -442,6 +463,7 @@ BEGIN
  AND c.provider='openrouter' AND c.model=r.model AND c.operation=r.operation AND c.max_request_nanos=1 AND c.source_digest=r.source_digest
  AND c.semantics='complete_inference_usd_ceiling_v1' AND c.verified_at<=now() AND c.expires_at>now() AND c.revoked_at IS NULL
  ORDER BY r.expires_at DESC,r.capability_digest LIMIT 2 FOR SHARE OF r,c NOWAIT;
+ PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);
 END $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.ai_spend_reviewed_carrier(text,text,text,text,text,text,text) FROM PUBLIC;
@@ -486,6 +508,7 @@ CREATE TRIGGER ai_spend_reviewed_carrier_immutable BEFORE UPDATE OR DELETE ON ap
 CREATE OR REPLACE FUNCTION app._ai_spend_confirm_verified_receipt(wanted_run uuid,actual_nanos bigint)
  RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE r app.ai_spend_reservation;
+ saved_statement text:=current_setting('statement_timeout');saved_lock text:=current_setting('lock_timeout');
 BEGIN
  PERFORM app._ai_spend_bounds();
  IF actual_nanos IS NULL OR actual_nanos<0 THEN RAISE EXCEPTION 'Verified spend receipt unavailable';END IF;
@@ -493,10 +516,11 @@ BEGIN
  IF NOT FOUND THEN RAISE EXCEPTION 'Spend reservation unavailable';END IF;
  PERFORM pg_advisory_xact_lock(hashtext('ai-control'),hashtext(r.tenant_id::text));
  SELECT * INTO r FROM app.ai_spend_reservation WHERE run_id=wanted_run FOR UPDATE NOWAIT;
- IF r.state<>'held' THEN IF r.confirmed_nanos<>actual_nanos THEN RAISE EXCEPTION 'Verified spend receipt changed';END IF;RETURN;END IF;
+ IF r.state<>'held' THEN IF r.confirmed_nanos<>actual_nanos THEN RAISE EXCEPTION 'Verified spend receipt changed';END IF;PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);RETURN;END IF;
  UPDATE app.ai_spend_reservation SET confirmed_nanos=actual_nanos,state=CASE WHEN actual_nanos>reserved_nanos OR(actual_nanos>0 AND EXISTS(
   SELECT 1 FROM app.ai_spend_reviewed_carrier_catalog c WHERE c.capability_digest=r.capability_digest AND c.tenant_id=r.tenant_id AND c.configuration_digest=r.configuration_digest AND c.carrier='openrouter_fixed_free_text_v1'
  )) THEN 'breach' ELSE 'confirmed' END,settled_at=now() WHERE run_id=wanted_run;
+ PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);
 END $$;
 REVOKE ALL ON FUNCTION app._ai_spend_confirm_verified_receipt(uuid,bigint) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
@@ -557,15 +581,16 @@ REVOKE ALL ON app.ai_spend_reviewed_metered_carrier_catalog FROM PUBLIC,ai_hr_ap
 CREATE FUNCTION app.ai_spend_reviewed_metered_carrier(wanted_configuration text,wanted_model text,wanted_operation text,wanted_source text,wanted_signer text,wanted_signature text,wanted_request text)
  RETURNS TABLE(profile jsonb) LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE tid uuid:=app.current_tenant_id();uid uuid:=app.current_user_id();k app.ai_spend_receipt_verifier;expected bytea;received bytea;difference integer:=0;i integer;
+ saved_statement text:=current_setting('statement_timeout');saved_lock text:=current_setting('lock_timeout');
 BEGIN
  PERFORM app._ai_spend_bounds();
- IF tid IS NULL OR uid IS NULL OR wanted_configuration IS NULL OR wanted_configuration!~'^[a-f0-9]{64}$' OR wanted_source IS NULL OR wanted_source!~'^[a-f0-9]{64}$' OR wanted_operation NOT IN('draft','conversation') OR current_setting('transaction_read_only')<>'off' OR current_setting('transaction_isolation')<>'read committed' THEN RETURN;END IF;
- IF wanted_signer IS NULL OR wanted_signer!~'^[A-Za-z0-9_-]{1,64}$' OR wanted_signature IS NULL OR wanted_signature!~'^[a-f0-9]{64}$' OR wanted_request IS NULL OR wanted_request!~'^[a-f0-9]{64}$' THEN RETURN;END IF;
+ IF tid IS NULL OR uid IS NULL OR wanted_configuration IS NULL OR wanted_configuration!~'^[a-f0-9]{64}$' OR wanted_source IS NULL OR wanted_source!~'^[a-f0-9]{64}$' OR wanted_operation NOT IN('draft','conversation') OR current_setting('transaction_read_only')<>'off' OR current_setting('transaction_isolation')<>'read committed' THEN PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);RETURN;END IF;
+ IF wanted_signer IS NULL OR wanted_signer!~'^[A-Za-z0-9_-]{1,64}$' OR wanted_signature IS NULL OR wanted_signature!~'^[a-f0-9]{64}$' OR wanted_request IS NULL OR wanted_request!~'^[a-f0-9]{64}$' THEN PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);RETURN;END IF;
  IF NOT pg_try_advisory_xact_lock(hashtext('ai-control'),hashtext(tid::text)) THEN RAISE EXCEPTION 'Reviewed spend carrier busy';END IF;
  SELECT * INTO k FROM app.ai_spend_receipt_verifier WHERE key_id=wanted_signer AND enabled AND valid_from<=now() AND(retired_at IS NULL OR retired_at>now()) FOR SHARE NOWAIT;
- IF NOT FOUND THEN RETURN;END IF;
+ IF NOT FOUND THEN PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);RETURN;END IF;
  expected:=app._ai_spend_hmac_sha256(convert_to('aihr.reviewed-carrier-signer.v1'||E'\n'||tid::text||E'\n'||uid::text||E'\n'||wanted_configuration||E'\n'||wanted_request,'UTF8'),k.secret);received:=decode(wanted_signature,'hex');
- FOR i IN 0..31 LOOP difference:=difference | (get_byte(expected,i)#get_byte(received,i));END LOOP;IF difference<>0 THEN RETURN;END IF;
+ FOR i IN 0..31 LOOP difference:=difference | (get_byte(expected,i)#get_byte(received,i));END LOOP;IF difference<>0 THEN PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);RETURN;END IF;
  -- Current principal/provider/source access is independently required by canonical admission.
  -- This private projection exposes only the exact tenant/configuration certificate, not keys.
  RETURN QUERY SELECT jsonb_build_object('carrier','openrouter_fixed_metered_text_v1','meterContract',jsonb_build_object('semantics','all_native_input_and_all_generated_output_v1','nativeContextTokens',r.native_context_tokens,'completionTokens',r.completion_tokens,'promptUsdPerMillion',r.prompt_usd_per_million,'completionUsdPerMillion',r.completion_usd_per_million,'nativeContractDigest',r.native_contract_digest,'endpointRevisionDigest',r.endpoint_revision_digest,'documentationDigest',r.documentation_digest),'capabilityDigest',r.capability_digest,'sourceDigest',r.source_digest,
@@ -578,6 +603,7 @@ BEGIN
  AND c.provider='openrouter' AND c.model=r.model AND c.operation=r.operation AND c.max_request_nanos::numeric=(r.native_context_tokens::numeric*r.prompt_usd_per_million+r.completion_tokens::numeric*r.completion_usd_per_million)*1000 AND c.source_digest=r.source_digest
  AND c.semantics='complete_inference_usd_ceiling_v1' AND c.verified_at<=now() AND c.expires_at>now() AND c.revoked_at IS NULL
  ORDER BY r.expires_at DESC,r.capability_digest LIMIT 2 FOR SHARE OF r,c NOWAIT;
+ PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);
 END $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.ai_spend_reviewed_metered_carrier(text,text,text,text,text,text,text) FROM PUBLIC;

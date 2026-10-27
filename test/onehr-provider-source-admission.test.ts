@@ -47,12 +47,19 @@ beforeEach(async()=>{
  vi.spyOn(openaiAdapter,'generate').mockImplementation(async(_cfg,args)=>{args.onUsage?.({inputTokens:0,outputTokens:0,cachedInputTokens:0});if(args.system.includes('fact IDs'))return '{"facts":["dashboard"],"unanswered":false}';if(args.system.includes('longer-term career aspiration'))return '{"aspirationLong":"I aim to deepen my delivery practice."}';if(args.system.startsWith('Propose development goals'))return '[{"title":"Collaborative delivery","area":"Collaborative delivery","item_ids":["lp:0"],"experience":"Lead a delivery retrospective","exposure":"Seek colleague feedback","education":"Study facilitation"}]';return '{"items":[0]}';});
 });
 const runs=()=>owner.db.select().from(schema.aiModelRun).where(eq(schema.aiModelRun.tenantId,b.tenantId));
+/** Owner decision: USD caps are OPTIONAL. The shared fixture configures a tenant USD cap for the native-rooted
+ * Assistant/Guide spend tests. Legacy rootless drafting (narrative, development, career, competency insight,
+ * colleague draft) has no native task root, so its cost cannot be reserved: under ANY configured cap it fails
+ * closed (pinned below). The source-custody suites therefore run the no-cap configuration, where no USD ceiling
+ * is promised and authorization, module, source, token and concurrency controls still apply in full. */
+const withoutUsdCap=async()=>{await owner.db.execute(sql`delete from app.ai_spend_budget where tenant_id=${b.tenantId}::uuid`);};
 async function alternativeNativeReviewer(){const next=await f.hire('Actual second-level manager');await setReportingLine(a,{subordinateEmploymentId:manager.employmentId,managerEmploymentId:next.employmentId,lineType:'administrative',validFrom:`${year-2}-01-01`});return next;}
 const sources=['narrative','guide','development','career'] as const;
 type Source=typeof sources[number];
 async function prepare(kind:Source){if(kind==='development'||kind==='career'){await f.complete();await perf.releaseOnehrResult(a,reviewId,'feedback',true);}}
 const call=(kind:Source)=>kind==='narrative'?perf.draftOnehrNarrative(self,reviewId,'Completed the agreed delivery.'):kind==='guide'?askPerformanceGuide(self,'What are my current tasks?'):kind==='development'?perf.suggestAssessmentDevelopmentGoals(self,reviewId,randomUUID()):perf.suggestAssessmentCareerPlan(self,reviewId,randomUUID());
 describe('OneHR legacy drafting replays actual native source before provider admission',()=>{
+ beforeEach(withoutUsdCap);
  it.each(sources)('%s stable source reaches actual issued gateway and transport without saving a plan',async kind=>{await prepare(kind);await call(kind);expect(openaiAdapter.generate).toHaveBeenCalled();const observed=await runs();expect(observed.length).toBeGreaterThan(0);expect(observed.every(row=>row.state==='completed')).toBe(true);expect((await f.view(self)).plans).toEqual([]);});
  it.each(sources)('%s module revocation after gathering refuses before network or admission',async kind=>{await prepare(kind);beforeAdmission=()=>setModule(b.tenantId,'performance','disabled');await expect(call(kind)).rejects.toThrow();expect(openaiAdapter.generate).not.toHaveBeenCalled();expect(await runs()).toEqual([]);});
  it.each(sources)('%s changed native source after gathering is never sent or charged',async kind=>{await prepare(kind);beforeAdmission=async()=>{if(kind==='narrative')await perf.addOnehrEvidence(self,reviewId,{kind:'delivery',body:'Newly shared native source evidence.',occurredOn:todayInKualaLumpur(),state:'shared',supersedesId:null,links:[]});else if(kind==='guide')await owner.db.update(schema.reviewCycle).set({name:'Changed native calendar name'}).where(eq(schema.reviewCycle.id,cycleId));else await owner.db.update(schema.onehrReview).set({selfRemark:'Changed native own assessment words'}).where(eq(schema.onehrReview.reviewId,reviewId));};const result=await Promise.allSettled([call(kind)]);if(kind==='guide')expect(result[0]).toMatchObject({status:'fulfilled',value:{mode:'search'}});else expect(result[0].status).toBe('rejected');expect(openaiAdapter.generate).not.toHaveBeenCalled();expect(await runs()).toEqual([]);});
@@ -66,6 +73,7 @@ async function assignedFeedback(){
  const request=(await perf.onehrAssignments(peers[0].ctx)).feedback.find(row=>row.subject==='Assessment subject');if(!request)throw Error('Missing actual assigned colleague feedback');return request.id;
 }
 describe('additional native insight and feedback admission',()=>{
+ beforeEach(withoutUsdCap);
  it('current competency SQL projection reaches one governed provider call',async()=>{await f.complete();await perf.getAssessmentCompetencyInsight(mgr,reviewId,{generate:true});expect(openaiAdapter.generate).toHaveBeenCalledOnce();expect(await runs()).toMatchObject([{state:'completed'}]);});
  it('changed actual competency evidence refuses before transport or allowance',async()=>{await f.complete();beforeAdmission=async()=>{await owner.db.update(schema.onehrReview).set({competencySelfRemark:'Changed actual self competency source.'}).where(eq(schema.onehrReview.reviewId,reviewId));};await Promise.allSettled([perf.getAssessmentCompetencyInsight(mgr,reviewId,{generate:true})]);expect(openaiAdapter.generate).not.toHaveBeenCalled();expect(await runs()).toEqual([]);});
  it.each(['draft','guide'] as const)('assigned colleague %s retains current canonical identity and reaches transport',async intent=>{const id=await assignedFeedback();await perf.sendFeedbackMessage(peers[0].ctx,reviewId,id,null,randomUUID(),'Clear follow-through in our agreed delivery.',intent);expect(openaiAdapter.generate).toHaveBeenCalledOnce();expect(await runs()).toMatchObject([{state:'completed'}]);const card=await perf.getOnehrFeedback(peers[0].ctx,id);expect(card.submitted).toBe(false);});
@@ -75,6 +83,7 @@ describe('additional native insight and feedback admission',()=>{
 /** Source-only regression for the precise callback-tail race: the second native command owns a
  * different real transaction and attempts mutation AFTER the final projection, BEFORE ai_admit. */
 describe('native source custody survives the final source-check to admission gap',()=>{
+ beforeEach(withoutUsdCap);
  it('refuses actual reviewer reassignment at callback tail with no native mutation, then permits the original native writer after admission',async()=>{
   const next=await alternativeNativeReviewer(),revision=(await f.view(a)).revision;
   const [before]=await owner.db.select().from(schema.performanceReview).where(eq(schema.performanceReview.id,reviewId));const eventsBefore=await owner.db.select().from(schema.domainEvent);
@@ -98,6 +107,19 @@ describe('native source custody survives the final source-check to admission gap
  });
  it('shared source custody grants no native review or impersonation permission',async()=>{for(const actor of [peers[0].ctx,{...mgr,personId:subject.personId}])await expect(perf.draftOnehrNarrative(actor,reviewId,'Unpermitted source.')).rejects.toThrow();expect(openaiAdapter.generate).not.toHaveBeenCalled();expect(await runs()).toEqual([]);});
 
+});
+
+// Any configured USD cap, including zero, needs verified monetary enforcement; unknown cost is never zero.
+describe('legacy rootless Performance drafting under the optional USD policy',()=>{
+ it.each(['narrative','development','career'] as const)('%s fails closed before transport or admission while a USD cap is configured',async kind=>{
+  await prepare(kind);await expect(call(kind)).rejects.toThrow();expect(openaiAdapter.generate).not.toHaveBeenCalled();expect(await runs()).toEqual([]);
+ });
+ it('a zero USD cap is still a configured cap that refuses the rootless call; with no cap configured the same call is admitted',async()=>{
+  await owner.db.execute(sql`update app.ai_spend_budget set monthly_nanos=0,root_nanos=null where tenant_id=${b.tenantId}::uuid and kind='tenant'`);
+  await expect(call('narrative')).rejects.toMatchObject({cause:expect.objectContaining({code:'P0001',message:'This monetary limit requires a native AI task root'})});
+  expect(openaiAdapter.generate).not.toHaveBeenCalled();expect(await runs()).toEqual([]);
+  await withoutUsdCap();await call('narrative');expect(openaiAdapter.generate).toHaveBeenCalled();const observed=await runs();expect(observed.length).toBeGreaterThan(0);expect(observed.every(row=>row.state==='completed')).toBe(true);
+ });
 });
 
 // Authored UNRUN: exact native operation roots; synthetic monetary capability is test transport only.

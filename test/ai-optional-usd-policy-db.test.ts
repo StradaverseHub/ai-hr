@@ -49,6 +49,8 @@ async function configured(provider:Exclude<AiProvider,'openrouter'>='openai',fea
  });
 }
 const call=(cfg:ResolvedAiConfig)=>generateDraft(cfg,args);
+// Drizzle wraps the database error as 'Failed query: ...'; the RAISE itself is the cause (SQLSTATE P0001).
+const raised=(message:string)=>({cause:expect.objectContaining({code:'P0001',message})});
 async function policy(root:string|null,feature='hr_assistant'){return withTenant(a,tx=>tx.execute<{monetary_required:boolean;company_ids:string[]}>(sql`select * from app.ai_spend_policy_context(${feature},${root}::uuid,${root?'agent':null})`));}
 
 describe('actual optional USD policy with mandatory nonmoney controls',()=>{
@@ -85,8 +87,8 @@ describe('actual optional USD policy with mandatory nonmoney controls',()=>{
  });
  it('unknown uncapped history blocks later applicable monthly and same-task limits, without TTL or guessed zero',async()=>{
   http();const{cfg,root}=await configured();await call(cfg);await owner.db.execute(sql`update ai_model_run set started_at='2020-01-01' where tenant_id=${b.tenantId}::uuid`);
-  await setAiSpendBudget(a,{kind:'tenant',monthlyUsd:'100',rootUsd:''});await expect(policy(root)).rejects.toThrow('Unpriced AI history');
-  await setAiSpendBudget(a,{kind:'tenant',monthlyUsd:'',rootUsd:'100'});await expect(policy(root)).rejects.toThrow('Unpriced AI task history');
+  await setAiSpendBudget(a,{kind:'tenant',monthlyUsd:'100',rootUsd:''});await expect(policy(root)).rejects.toMatchObject(raised('Unpriced AI history requires monetary review'));
+  await setAiSpendBudget(a,{kind:'tenant',monthlyUsd:'',rootUsd:'100'});await expect(policy(root)).rejects.toMatchObject(raised('Unpriced AI task history requires monetary review'));
   const next=await withTenant(a,tx=>tx.execute<{root:string}>(sql`select app.ai_spend_task_issue('hr_assistant','assistant_question',null::uuid,'question') as root`));expect(await policy(next[0].root)).toMatchObject([{monetary_required:true}]);
   expect(fetch).toHaveBeenCalledOnce();expect(await holds()).toEqual([]);expect(await modeRows()).toMatchObject([{root_id:root,money_mode:'uncapped'}]);
  });
@@ -94,13 +96,13 @@ describe('actual optional USD policy with mandatory nonmoney controls',()=>{
   http();const{cfg,root}=await configured();await call(cfg);const[run]=await modeRows();
   await expect(owner.db.execute(sql`delete from ai_model_run where id=${run.run_id}::uuid`)).rejects.toThrow();
   expect(await modeRows()).toMatchObject([{run_id:run.run_id,root_id:root,money_mode:'uncapped'}]);
-  await setAiSpendBudget(a,{kind:'tenant',monthlyUsd:'1',rootUsd:''});await expect(policy(root)).rejects.toThrow('Unpriced AI history');
+  await setAiSpendBudget(a,{kind:'tenant',monthlyUsd:'1',rootUsd:''});await expect(policy(root)).rejects.toMatchObject(raised('Unpriced AI history requires monetary review'));
   expect(fetch).toHaveBeenCalledOnce();expect(await holds()).toEqual([]);
  });
  it('historical unassociated nonblocked admissions cannot disappear from a new monetary cutoff',async()=>{
   const{root}=await configured();await withTenant(a,tx=>tx.execute(sql`select * from app.ai_admit('pay_rule_draft','draft','openai','fictional-model',8)`));
-  await setAiSpendBudget(a,{kind:'tenant',monthlyUsd:'1',rootUsd:''});await expect(policy(root)).rejects.toThrow('Unpriced AI history');
-  await setAiSpendBudget(a,{kind:'tenant',monthlyUsd:'',rootUsd:'1'});await expect(policy(root)).rejects.toThrow('Unpriced AI task history');
+  await setAiSpendBudget(a,{kind:'tenant',monthlyUsd:'1',rootUsd:''});await expect(policy(root)).rejects.toMatchObject(raised('Unpriced AI history requires monetary review'));
+  await setAiSpendBudget(a,{kind:'tenant',monthlyUsd:'',rootUsd:'1'});await expect(policy(root)).rejects.toMatchObject(raised('Unpriced AI task history requires monetary review'));
  });
  it('legacy rootless features stay ordinary only with no applicable USD cap, while their real usage is retained',async()=>{
   http();const{cfg}=await configured('openai','pay_rule_draft',false);await call(cfg);expect(await modeRows()).toMatchObject([{root_id:null,money_mode:'uncapped',feature_id:'pay_rule_draft'}]);
@@ -125,7 +127,20 @@ describe('actual optional USD policy with mandatory nonmoney controls',()=>{
    while(Date.now()<deadline){if(writerError)throw writerError;const[row]=await owner.db.execute<{waiting:boolean}>(sql`select exists(select 1 from pg_locks l where l.locktype='advisory' and not l.granted and l.objsubid=2 and l.database=(select oid from pg_database where datname=current_database()) and l.classid=((hashtext('ai-control')::bigint & 4294967295)::oid) and l.objid=((hashtext(${b.tenantId})::bigint & 4294967295)::oid)) as waiting`);if(row.waiting){waiting=true;break;}await new Promise(yes=>setTimeout(yes,20));}
    expect(waiting,'actual competing budget writer must wait, not race the no-cap decision').toBe(true);
   }finally{release();clearTimeout(watchdog);await holder;if(writer)await writer;}
-  await expect(policy(root)).rejects.toThrow('Unpriced AI history');expect(await modeRows()).toMatchObject([{root_id:root,money_mode:'uncapped'}]);
+  await expect(policy(root)).rejects.toMatchObject(raised('Unpriced AI history requires monetary review'));expect(await modeRows()).toMatchObject([{root_id:root,money_mode:'uncapped'}]);
+ });
+ it('restores the caller statement and lock timeouts after the issue, policy and admission-record owners return',async()=>{
+  await configured();
+  const settings=await withTenant(a,async tx=>{
+   await tx.execute(sql`set local statement_timeout='30s'`);await tx.execute(sql`set local lock_timeout='10s'`);
+   const[issued]=await tx.execute<{root:string}>(sql`select app.ai_spend_task_issue('hr_assistant','assistant_question',null::uuid,'question') as root`);
+   expect(await tx.execute<{monetary_required:boolean}>(sql`select * from app.ai_spend_policy_context('hr_assistant',${issued.root}::uuid,'agent')`)).toMatchObject([{monetary_required:false}]);
+   const[r]=await tx.execute<{run_id:string}>(sql`select * from app.ai_admit('hr_assistant','draft','openai','fictional-model',8)`);
+   await tx.execute(sql`select app.ai_spend_record_admission(${r.run_id}::uuid,${issued.root}::uuid,'agent',${'a'.repeat(64)},${'b'.repeat(64)})`);
+   return tx.execute<{name:string;setting:string}>(sql`select name,setting from pg_catalog.pg_settings where name in ('lock_timeout','statement_timeout') order by name`);
+  });
+  // Without the restore these read 500/5000: the owners' bounds would govern the rest of the caller's transaction.
+  expect(settings.map(row=>({name:row.name,setting:Number(row.setting)}))).toEqual([{name:'lock_timeout',setting:10000},{name:'statement_timeout',setting:30000}]);
  });
  it('completes real candidate readiness and explicit one-use activation with three mocked HTTP calls and no monetary certificate',async()=>{
   http();const options=readOpenRouterOptions({version:1,routing:{allowedProviders:['approved-a'],allowFallbacks:false,sort:'latency'}});await saveAiProviderConfig(a,{provider:'openrouter',model:'fictional/model',apiKey:'fictional-only-key',providerOptions:options});
