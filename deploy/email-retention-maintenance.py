@@ -143,7 +143,8 @@ def main(mode):
     require(run(['/usr/bin/systemctl','is-active',NAME+'.timer'])=='active', 'Timer is not active')
     require(run(['/usr/bin/systemctl','is-enabled',NAME+'.timer'])=='enabled', 'Timer is not enabled')
     timer_props=run(['/usr/bin/systemctl','show',NAME+'.timer','--property=NextElapseUSecRealtime,ActiveState,Triggers'])
-    require('NextElapseUSecRealtime=' in timer_props and 'NextElapseUSecRealtime=\n' not in timer_props and NAME+'.service' in timer_props, 'Actual next timer invocation required')
+    timer_fields=dict(line.split('=',1) for line in timer_props.splitlines() if '=' in line)
+    require(bool(timer_fields.get('NextElapseUSecRealtime')) and timer_fields.get('Triggers')==NAME+'.service' and timer_fields.get('ActiveState')=='active', 'Actual next timer invocation required')
     print(json.dumps({'kind':'STAGING_EMAIL_RETENTION_COMMISSIONED','source':SOURCE,'buildId':BUILD,'fixedRootOwnedSqlUnit':True,'webWritableCodeExecuted':False,'retention':'Never delete','removed':0,'protectedRecordCountsPreserved':True,'serviceResult':'success','timerEnabled':True,'timerMetadata':timer_props,'observedAtUtc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'productionChanged':False}))
 
 if __name__=='__main__':

@@ -15,6 +15,7 @@ class MaintenanceRefusalTests(unittest.TestCase):
    self.assertEqual(m.owned_regular(p,uid=os.getuid(),private=True),b'private')
    p.chmod(0o640)
    with self.assertRaises(m.Refused):m.owned_regular(p,uid=os.getuid(),private=True)
+   with self.assertRaises(m.Refused):m.owned_regular(p,uid=os.getuid(),state_metadata=True)
    p.chmod(0o600);link=pathlib.Path(directory)/'link';link.symlink_to(p)
    with self.assertRaises(m.Refused):m.owned_regular(link,uid=os.getuid())
    link.unlink();os.link(p,link)
