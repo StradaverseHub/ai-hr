@@ -22731,6 +22731,8 @@
     "features": {
       "module_agent_evaluation": "தொகுதி முகவர் மதிப்பீடு",
       "provider_evaluation": "வழங்குநர் திறன் மதிப்பீடு",
+      "personnel_import_mapping": "பணியாளர் இறக்குமதி தலைப்புப் பரிந்துரைகள்",
+      "module_agent_planning": "தொகுதி முகவர் பணித் திட்டமிடல்",
       "hr_assistant": "HR உதவியாளர்",
       "readiness_reminders": "தயார்நிலை நினைவூட்டல்கள்",
       "claims_triage": "செலவுக் கோரிக்கை வகைப்படுத்தல்",

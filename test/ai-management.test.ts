@@ -4,6 +4,7 @@ import * as tenantDb from '../db/client';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { resolveActiveAiConfig } from '../core/ai-config';
+import { bindAiSpendTaskTx } from '../core/ai-spend-task';
 import type { AiFeatureId } from '../lib/ai/features';
 import { aiManagementView, allowanceLevel, clearUserAllowance, parseAiAllowance, setAiAllowance, setAiFeature, setAssistantPermission } from '../core/ai-management';
 import { generateDraft, converse, readImage } from '../lib/ai';
@@ -99,7 +100,10 @@ describe('central AI allowance admission and durable accounting',()=>{
    await setTenantSetting(group,{key:'notifications.readiness_nudge_enabled',value:true});
    vi.stubEnv('SETTING_KILL','notifications.readiness_nudge_enabled');
    expect((await aiManagementView(group)).features.find(f=>f.id==='readiness_reminders')?.state).toBe('restricted');
-   await expect((await cfg(group,'readiness_reminders')).governance!.run({operation:'draft',reservedTokens:100},async()=> 'must not run')).rejects.toThrow('paused');
+   // Readiness reminders are an autonomous workload: the product binds its native spend root before any
+   // admission (core/readiness-nudge.ts). Drive that real path so the platform kill is what refuses it.
+   const rooted=await withTenant(group,async tx=>{const resolved=await resolveActiveAiConfig(tx,group,'readiness_reminders');if(!resolved)throw new Error('Missing fake fixture configuration');return bindAiSpendTaskTx(tx,group,resolved,{kind:'readiness_template',gap:'no_bank_account',audience:'hr'});});
+   await expect(rooted.governance!.run({operation:'draft',reservedTokens:100},async()=> 'must not run')).rejects.toThrow('paused');
   }finally{vi.unstubAllEnvs();}
  });
  it('rechecks canonical switches rather than trusting a stale configuration',async()=>{

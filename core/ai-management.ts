@@ -51,15 +51,19 @@ const MONTH_START=sql`(date_trunc('month',now() at time zone 'Asia/Kuala_Lumpur'
 type UserUsageRow = {id:string;label:string;daily_requests:string;monthly_tokens:string;held_tokens:string;blocked_today:string;last_reason:string|null};
 export async function aiManagementView(ctx: SessionContext, search = '', runFilter: AiRunFilter = {}) {
   ctx=captureControlContext(ctx);assertAdmin(ctx);
-  const provider = await getAiConfigView(ctx);
+  // Tenant key/routing configuration needs fresh group-wide authority (getAiConfigView). A company
+  // administrator still manages its own scope here and sees only the provider/model its resolved
+  // configuration would use, never the tenant configuration view.
+  const provider = isGroupAdmin(ctx) ? await getAiConfigView(ctx) : null;
   return withTenant(ctx, async tx => {
     await currentControlAdminTx(tx,ctx,false);
     const fresh = { ...ctx, entitlements: await resolveEntitlementsTx(tx, ctx.tenantId) };
     const policies = await tx.select().from(aiControlPolicy).orderBy(asc(aiControlPolicy.scopeKey));
-    const activeProvider = provider.providers.find(p => p.isActive);
-    let usable = false;
-    try { usable = !!await resolveActiveAiConfig(tx,ctx); } catch { /* Render an unavailable state; never expose key/decryption errors. */ }
-    const selectedProvider = usable ? activeProvider ? {provider:activeProvider.provider,model:activeProvider.model} : provider.envFallback : null;
+    const activeProvider = provider?.providers.find(p => p.isActive);
+    let resolved: Pick<NonNullable<Awaited<ReturnType<typeof resolveActiveAiConfig>>>,'provider'|'model'> | null = null;
+    try { const cfg = await resolveActiveAiConfig(tx,ctx); resolved = cfg ? {provider:cfg.provider,model:cfg.model} : null; } catch { /* Render an unavailable state; never expose key/decryption errors. */ }
+    const usable = resolved !== null;
+    const selectedProvider = !usable ? null : provider ? activeProvider ? {provider:activeProvider.provider,model:activeProvider.model} : provider.envFallback : resolved;
     // Only provider/model metadata crosses to the view, after checking that its key can be resolved.
     const features = AI_FEATURES.map(f => {
       const setting = f.setting ? SETTING_CATALOG.find(s => s.key === f.setting) : undefined;
@@ -152,10 +156,12 @@ export async function setAiAllowance(ctx:SessionContext,p:{kind:AiAllowanceKind;
   assertAdmin(ctx);
   if(!['company','user','user_default'].includes(p.kind)||(p.kind!=='user_default'&&!UUID.test(p.subjectId??''))||typeof p.enabled!=='boolean')throw new AiControlError('Unknown allowance scope.');
   for(const [value,max] of [[p.dailyRequests,1000000],[p.monthlyTokens,1000000000000],[p.maxConcurrent??null,1000000]] as const){if(value!==null&&(!Number.isSafeInteger(value)||value<0||value>max))throw new AiControlError('Invalid AI allowance.');}
+  // The session role answers a company administrator plainly, as setAiFeature does; the fresh database
+  // check below still refuses a stale group session. Both are required; neither widens the other.
+  if(p.kind==='user'&&!isGroupAdmin(ctx))throw new AiControlError('Only a group administrator may change user allowances.');
+  if(p.kind==='user_default'&&!isGroupAdmin(ctx))throw new AiControlError('Only a group administrator may change the default user allowance.');
   await withTenant(ctx,async tx=>{
     await currentControlAdminTx(tx, ctx, p.kind !== 'company');
-    if(p.kind==='user'&&!isGroupAdmin(ctx))throw new AiControlError('Only a group administrator may change user allowances.');
-    if(p.kind==='user_default'&&!isGroupAdmin(ctx))throw new AiControlError('Only a group administrator may change the default user allowance.');
     const subjectId=p.kind==='user_default'?null:p.subjectId!;
     if(subjectId){
       const [target]=p.kind==='company'

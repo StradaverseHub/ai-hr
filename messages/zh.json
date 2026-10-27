@@ -22731,6 +22731,8 @@
     "features": {
       "module_agent_evaluation": "模块代理评估",
       "provider_evaluation": "提供商能力评估",
+      "personnel_import_mapping": "员工导入标题建议",
+      "module_agent_planning": "模块代理任务规划",
       "hr_assistant": "HR 助手",
       "readiness_reminders": "资料准备提醒",
       "claims_triage": "报销分流",

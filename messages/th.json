@@ -22731,6 +22731,8 @@
     "features": {
       "module_agent_evaluation": "การประเมินเอเจนต์โมดูล",
       "provider_evaluation": "การประเมินความสามารถของผู้ให้บริการ",
+      "personnel_import_mapping": "คำแนะนำหัวคอลัมน์สำหรับนำเข้าพนักงาน",
+      "module_agent_planning": "การวางแผนงานของเอเจนต์โมดูล",
       "hr_assistant": "ผู้ช่วย HR",
       "readiness_reminders": "การเตือนความพร้อม",
       "claims_triage": "คัดแยกคำขอเบิก",

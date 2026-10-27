@@ -22731,6 +22731,8 @@
     "features": {
       "module_agent_evaluation": "Đánh giá tác nhân mô-đun",
       "provider_evaluation": "Đánh giá năng lực nhà cung cấp",
+      "personnel_import_mapping": "Gợi ý tiêu đề nhập nhân viên",
+      "module_agent_planning": "Lập kế hoạch nhiệm vụ tác nhân mô-đun",
       "hr_assistant": "Trợ lý HR",
       "readiness_reminders": "Nhắc nhở hồ sơ",
       "claims_triage": "Phân loại yêu cầu chi phí",

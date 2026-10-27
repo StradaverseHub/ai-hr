@@ -22731,6 +22731,8 @@
     "features": {
       "module_agent_evaluation": "Module agent evaluation",
       "provider_evaluation": "Provider capability evaluation",
+      "personnel_import_mapping": "Employee import heading suggestions",
+      "module_agent_planning": "Module agent task planning",
       "hr_assistant": "HR assistant",
       "readiness_reminders": "Readiness reminders",
       "claims_triage": "Claims triage",

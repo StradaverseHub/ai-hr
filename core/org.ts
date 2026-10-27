@@ -994,9 +994,14 @@ async function insertDelegateLineTx(
     );
   const newFrom = p.validFrom;
   const newTo = p.validTo ?? null;
+  // Windows are HALF-OPEN [valid_from, valid_to), the same window the decision authority honours
+  // (app.can_decide_via_delegation: `valid_to > p_as_of`) and every reporting-line read uses. A delegation
+  // ended today (endReportingLine with today's date, the revoke path) therefore gives no authority today,
+  // and must not block a fresh delegation starting today. Two windows overlap only when each starts
+  // before the other ends; an empty window [d, d) overlaps nothing.
   for (const e of existing) {
     const eTo = e.validTo ?? null;
-    const overlaps = (eTo === null || newFrom <= eTo) && (newTo === null || e.validFrom <= newTo);
+    const overlaps = (eTo === null || newFrom < eTo) && (newTo === null || e.validFrom < newTo);
     if (overlaps) throw new DelegationError('An overlapping active delegation already exists for this period');
   }
   // Normalise the scope list: drop blanks, de-dupe. An empty result persists ZERO scope rows = whole-scope.
