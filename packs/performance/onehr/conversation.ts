@@ -7,7 +7,7 @@ import { z } from 'zod';
 import type { SessionContext,Tx } from '../../../db/client';
 import { assessmentConversation } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
-import { getOnehrReview, saveAssessmentDraftTx, saveOnehrKpisTx, saveAssessmentCareerProfileTx, saveOnehrPlanTx, addOnehrEvidenceTx, saveOnehrKpiCheckInTx,moderateOnehrKpiTx,submitAssessmentModerationTx,confirmOnehrPerformanceTx,submitOnehrCompetenciesTx,commentAssessmentCareerProfileTx,reviewOnehrPlanTx,editAssessmentDevelopmentGoalTx } from './service';
+import { getOnehrReview,getOnehrReviewTx, saveAssessmentDraftTx, saveOnehrKpisTx, saveAssessmentCareerProfileTx, saveOnehrPlanTx, addOnehrEvidenceTx, saveOnehrKpiCheckInTx,moderateOnehrKpiTx,submitAssessmentModerationTx,confirmOnehrPerformanceTx,submitOnehrCompetenciesTx,commentAssessmentCareerProfileTx,reviewOnehrPlanTx,editAssessmentDevelopmentGoalTx } from './service';
 import { assessmentDraftSchema } from './journey-model';
 import { proposeSettingCommands, proposeSettingSuggestion, proposeCareerCommands, proposeJourneyCommands } from './review-command-ai';
 import { assessmentAiQuotaTx,recordAssessmentAiUseTx } from './ai-usage';
@@ -22,8 +22,11 @@ const messageSchema=z.object({id:z.uuid(),role:z.enum(['user','assistant']),text
 export type ReviewMessage=z.infer<typeof messageSchema>;
 export const reviewConversationMessages=z.array(messageSchema).max(300);
 async function authorized(ctx:SessionContext,reviewId:string,stage:ConversationStage){
+ return withPerformanceTenant(ctx,tx=>authorizedTx(tx,ctx,reviewId,stage));
+}
+async function authorizedTx(tx:Tx,ctx:SessionContext,reviewId:string,stage:ConversationStage){
  z.uuid().parse(reviewId);conversationStage.parse(stage);if(stage==='feedback')throw Error('Use the assigned colleague feedback conversation.');
- const v=await getOnehrReview(ctx,reviewId);
+ const v=await getOnehrReviewTx(tx,ctx,reviewId);
  if(!v||!v.self&&!v.manager&&!v.moderator)throw Error('This review conversation is not assigned to you.');
  if(v.policy.modules.review===false)throw Error('Guided review is disabled.');
  if(['setting','results','moderation'].includes(stage)&&!v.policy.modules.pm||stage==='competency'&&!v.policy.modules.tm||stage==='career'&&!v.policy.modules.idp||stage==='evidence'&&!v.policy.modules.evidence)throw Error('This review module is disabled.');
@@ -106,6 +109,7 @@ export async function getReviewConversation(ctx:SessionContext,reviewId:string,s
 }
 /** Provider proposals stay private. Only an explicit human command may confirm through the canonical writer. */
 export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage:ConversationStage,expected:number|null,requestId:string,text:string,intent:'guide'|'draft'|'starter'='guide'){
+ ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
  z.uuid().parse(requestId);const words=z.string().trim().min(1).max(2500).parse(text);z.enum(['guide','draft','starter']).parse(intent);
  const view=await authorized(ctx,reviewId,stage);
  const previous=await withPerformanceTenant(ctx,async tx=>{
@@ -120,7 +124,7 @@ export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage
  const commandInput=intent==='guide'&&!help&&!humanInput?commandContext(view,stage,words):null;
  const reflection=intent==='guide'&&stage==='competency'&&commandInput?literalCompetencyReflection(words,commandInput.facts):null;
  const evidenceInput=intent==='guide'&&!help&&!humanInput&&view.aiEnabled?evidenceContext(view,stage,words):null;
- const journey=!reflection&&view.aiEnabled&&(commandInput||evidenceInput)?await proposalOrNull(()=>proposeJourneyCommands(ctx,reviewId,commandInput?.facts??null,evidenceInput)):null;
+ const journey=!reflection&&view.aiEnabled&&(commandInput||evidenceInput)?await proposalOrNull(()=>proposeJourneyCommands(ctx,reviewId,commandInput?.facts??null,evidenceInput,async tx=>{const fresh=await authorizedTx(tx,ctx,reviewId,stage);if(!fresh.aiEnabled)throw Error('AI review assistance is unavailable.');return {review:commandInput?commandContext(fresh,stage,words)?.facts??null:null,evidence:evidenceInput?evidenceContext(fresh,stage,words):null};})):null;
  const command=reflection??journey?.review??null,evidence=journey?.evidence??null;
  const settingInput=['guide','starter'].includes(intent)&&!help&&!humanInput&&view.aiEnabled?settingContext(view,stage,words):null;
  const settingField=`kpi_set:${view.cycle.id}`;
@@ -130,11 +134,11 @@ export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage
   const quota=await withPerformanceTenant(ctx,tx=>assessmentAiQuotaTx(tx,ctx,settingField));
   if(!quota.remaining)throw Error('All 5 AI scorecard suggestions have been used today. The limit resets at midnight Malaysia time.');
  }
- const starter=intent==='starter'&&settingInput?await proposalOrNull(()=>proposeSettingSuggestion(ctx,reviewId,settingInput)):null;
+ const starter=intent==='starter'&&settingInput?await proposalOrNull(()=>proposeSettingSuggestion(ctx,reviewId,settingInput,async tx=>{const fresh=await authorizedTx(tx,ctx,reviewId,stage);if(!(await assessmentAiQuotaTx(tx,ctx,settingField)).remaining)throw Error('Current scorecard drafting allowance is unavailable.');return fresh.aiEnabled?settingContext(fresh,stage,words):null;})):null;
  if(intent==='starter'&&!starter)throw Error('Could not prepare a usable scorecard just now. You can add KPIs from the library and try again later.');
- const setting=starter??(intent==='guide'&&settingInput?await proposalOrNull(()=>proposeSettingCommands(ctx,reviewId,settingInput)):null);
+ const setting=starter??(intent==='guide'&&settingInput?await proposalOrNull(()=>proposeSettingCommands(ctx,reviewId,settingInput,async tx=>{const fresh=await authorizedTx(tx,ctx,reviewId,stage);return fresh.aiEnabled?settingContext(fresh,stage,words):null;})):null);
  const careerInput=intent==='guide'&&!help&&!humanInput&&view.aiEnabled?careerContext(view,stage,words):null;
- const career=careerInput?await proposalOrNull(()=>proposeCareerCommands(ctx,reviewId,careerInput)):null;
+ const career=careerInput?await proposalOrNull(()=>proposeCareerCommands(ctx,reviewId,careerInput,async tx=>{const fresh=await authorizedTx(tx,ctx,reviewId,stage);return fresh.aiEnabled?careerContext(fresh,stage,words):null;})):null;
 
  if(intent==='draft')reply=await draftOnehrNarrative(ctx,reviewId,words,stage==='competency'?'tc':stage==='career'?'idp':'pm');
  else{

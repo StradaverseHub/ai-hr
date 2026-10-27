@@ -841,8 +841,11 @@ export async function saveAssessmentTalentRemark(ctx:SessionContext,sessionId:st
  });
 }
 export async function getOnehrCalibration(ctx:SessionContext,sessionId:string,viewAxis:Axis='both',detail:'all'|'roster'='all') {
-  z.enum(['performance','potential','both']).parse(viewAxis);
-  return withPerformanceTenant(ctx,async tx=>{
+ z.enum(['performance','potential','both']).parse(viewAxis);return withPerformanceTenant(ctx,tx=>getOnehrCalibrationTx(tx,ctx,sessionId,viewAxis,detail));
+}
+/** Native cohort projection inside the actual admitted transaction. */
+export async function getOnehrCalibrationTx(tx:Tx,ctx:SessionContext,sessionId:string,viewAxis:Axis='both',detail:'all'|'roster'='all') {
+ z.enum(['performance','potential','both']).parse(viewAxis);
     const {session,cycle}=await loadCalibration(tx,sessionId);
     // Read the authorized cohort in bulk. The database functions retain their per-person
     // permission checks; batching removes application/database round trips, not those checks.
@@ -867,7 +870,7 @@ export async function getOnehrCalibration(ctx:SessionContext,sessionId:string,vi
     const conversations=await tx.select({axis:calibrationConversation.axis,held:calibrationConversation.held}).from(calibrationConversation).where(and(eq(calibrationConversation.sessionId,sessionId),eq(calibrationConversation.actorUserId,ctx.userId!)));
     const held=Object.fromEntries(conversations.map(c=>{const saved=heldCalibrationSchema.parse(c.held),lines=saved.lines.filter(l=>['open','calibration'].includes(cycle.native.status)&&l.sessionRevision===session.revision&&rows.some(r=>r.entry.reviewId===l.reviewId&&!r.finalized&&!(l.axis==='performance'?r.entry.performanceLockedAt||session.performanceLockedAt:r.entry.potentialLockedAt||session.potentialLockedAt)));return [c.axis,{...saved,lines,focus:(saved.navigation?rows.some(r=>r.entry.reviewId===saved.focus):lines.some(l=>l.reviewId===saved.focus))?saved.focus:null,requestId:lines.length||saved.navigation&&rows.some(r=>r.entry.reviewId===saved.focus)?saved.requestId:null}];})) as Partial<Record<Axis,typeof emptyHeldCalibration>>;
     return {canSubmit:{pm:rows.length>0&&rows.every(r=>r.openAxes.pm&&(session.tier!=='hod'||!!r.entry.performanceLockedAt)&&(!r.finalized||!!r.entry.performanceLockedAt)),pot:rows.length>0&&rows.every(r=>r.openAxes.pot&&(session.tier!=='hod'||!!r.entry.potentialLockedAt)&&(!r.finalized||!!r.entry.potentialLockedAt))},held,actorUserId:ctx.userId,units,session,canReopen:await isAdmin(tx,session.cycleId)&&['open','calibration'].includes(cycle.native.status),canLockCohort:!own?.present,cycle:{id:cycle.native.id,name:cycle.native.name,status:cycle.native.status},modules:{...cycle.policy.modules,pm:ratedPerformance(cycle.policy)},axes:needsAxes(cycle.policy,viewAxis,session.tier),rows,curvePolicy:{curveToleranceMode:cycle.policy.curveToleranceMode,curveTolerancePct:cycle.policy.curveTolerancePct,curveTolerancePeople:cycle.policy.curveTolerancePeople},reference:cohortCompanyId?cohortProfit.reference:null};
-  });
+
 }
 
 /** Selected-person detail uses the same resolver and rechecks membership on every open. */
