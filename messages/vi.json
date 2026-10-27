@@ -18062,7 +18062,7 @@
     "clientSecret": "Bí mật máy khách",
     "clientSecretKept": "Để trống để giữ bí mật cho cùng đối tượng thuê, ứng dụng và hộp thư.",
     "clientSecretNeeded": "Nhập giá trị bí mật máy khách, không phải ID bí mật.",
-    "microsoft365Help": "Quản trị viên Microsoft 365 phải cấp SMTP.SendAsApp và chấp thuận quản trị, đăng ký ứng dụng trong Exchange và giới hạn quyền vào hộp thư gửi. Tên người dùng là hộp thư đó. AI HR tự động lấy mã thông báo ngắn hạn. Hộp thư From khác cũng cần quyền Send As.",
+    "microsoft365Help": "Quản trị viên Microsoft 365 phải cấp quyền hộp thư gửi qua SMTP.SendAsApp với sự chấp thuận quản trị và quyền hộp thư, hoặc Exchange App RBAC giới hạn phạm vi. Đăng ký ứng dụng trong Exchange và cho phép SMTP AUTH. Tên người dùng là hộp thư xác thực; địa chỉ From khác cần quyền Send As.",
     "draftTitle": "Bản nháp cấu hình",
     "host": "Máy chủ SMTP",
     "port": "Cổng",

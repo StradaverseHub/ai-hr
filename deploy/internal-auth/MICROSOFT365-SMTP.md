@@ -3,7 +3,8 @@
 AIHR internal authentication supports unattended SMTP with an application identity. An enrolled
 installation operator configures it in **System Configuration → Email delivery**. It uses existing
 encrypted mail settings and the Save, Test and Activate workflow. No user sign-in, delegated refresh
-token, callback or database migration is needed.
+token or callback is needed. Application OAuth itself does not require a database migration; the
+named-connections and paginated history upgrade requires its separately journaled release migration.
 
 ## Microsoft 365 administrator setup
 
@@ -15,6 +16,11 @@ Exchange mailbox permissions and grant the sender's required Send As permission.
 is enabled for that mailbox under the organization's approved security policy. Do not grant
 unrelated Graph, IMAP or POP permissions for AIHR SMTP.
 
+Microsoft also supports [scoped Exchange App RBAC for SMTP](https://learn.microsoft.com/en-us/exchange/client-developer/legacy-protocols/smtp-app-rbac-onboarding).
+An administrator using that route grants `Application SMTP.SendAsApp` with a mailbox resource scope;
+the token need not contain an `SMTP.SendAsApp` claim. Verify the chosen authorization route rather
+than treating an absent claim alone as an authentication failure.
+
 Create a client secret with an expiry and rotation owner. Privately provide its **value**, tenant ID,
 application/client ID and allowed mailbox to the AIHR installation operator. Keep secrets out of
 chat, tickets and tracked files. The request uses `client_credentials` with
@@ -24,12 +30,14 @@ and [SMTP submission requirements](https://learn.microsoft.com/en-us/exchange/ma
 
 ## AIHR setup and acceptance
 
-1. Select Microsoft 365 application OAuth in the saved Email delivery form. AIHR fixes the connection
+1. Open or create a named connection in Email delivery, then select Microsoft 365 application OAuth.
+   AIHR fixes the connection
    to `smtp.office365.com:587`, mandatory STARTTLS and verified TLS 1.2 or later.
 2. Enter tenant ID, application ID, mailbox username, client secret value and From address. Save the
-   draft. Saving does not replace the active connection.
+   connection. Saving does not replace the active connection.
 3. Send the test to the operator's verified address and check the actual inbox, including junk mail.
-   After receiving it, confirm receipt and activate the tested draft.
+   After receiving it, confirm receipt and activate the tested connection. Exactly one connection is
+   active for the installation. Other saved connections remain inactive until explicitly activated.
 4. Verify account and Reports deliveries separately. Configuring email does not install Reports
    private services, enable scheduling, create consent or replay held deliveries.
 
@@ -63,3 +71,20 @@ A failed test leaves active settings in place. Check consent, enterprise service
 registration, mailbox grants, SMTP AUTH policy and secret expiry privately. Token acquisition
 does not prove SMTP authorization or inbox receipt. Keep real tenant delivery, receipt and
 production activation evidence separate from simulated transport and local tests.
+
+## Saved connections and delivery history
+
+The list identifies the connection name, host, authentication mailbox, sender, encryption and active
+state. Opening a connection edits its saved candidate. If a live connection has saved changes, its
+last activated configuration continues sending until the replacement is tested and activated.
+Saving an inactive connection does not change the canonical active-relay revision used by Reports.
+
+Account-mail history has local-date filtering and older pages; timestamps stay UTC in storage and
+use the installed country pack's display clock. Malaysia supplies Asia/Kuala_Lumpur (MYT). No
+automatic purge or new retention period is configured by this upgrade.
+
+The email preview is explicitly a template preview, not an archived original. Live activation and
+password-reset links are hidden. Provider acceptance is not proof of inbox receipt. Explicit resend
+retains the previous attempt and issues a fresh link; invitation resend revokes the old link and
+preserves its role and company scope. An accepted invitation cannot be resent. Recovery resend still
+requires the installation identity administrator and current account eligibility.

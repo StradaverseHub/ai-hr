@@ -18062,7 +18062,7 @@
     "clientSecret": "Client secret",
     "clientSecretKept": "Leave blank to keep the secret for this same tenant, application and mailbox.",
     "clientSecretNeeded": "Enter the client secret value, not its secret ID.",
-    "microsoft365Help": "Your Microsoft 365 administrator must grant SMTP.SendAsApp and admin consent, register the application in Exchange, and restrict access to the sending mailbox. The username is that mailbox. AI HR automatically obtains short-lived tokens. A different From mailbox also needs Send As permission.",
+    "microsoft365Help": "Your Microsoft 365 administrator must authorize the sending mailbox using SMTP.SendAsApp with admin consent and mailbox grants, or scoped Exchange App RBAC. Register the application in Exchange and allow SMTP AUTH. The username is the authentication mailbox; a different From address also needs Send As permission.",
     "draftTitle": "Relay draft",
     "host": "SMTP host",
     "port": "Port",

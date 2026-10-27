@@ -18062,7 +18062,7 @@
     "clientSecret": "客户端密钥",
     "clientSecretKept": "留空可保留同一租户、应用程序和邮箱的现有密钥。",
     "clientSecretNeeded": "请输入客户端密钥的值，而非密钥 ID。",
-    "microsoft365Help": "Microsoft 365 管理员必须授予 SMTP.SendAsApp 和管理员同意，在 Exchange 中注册应用程序，并将访问权限限制为发件邮箱。用户名即该邮箱。AI HR 自动获取短期令牌。使用其他 From 邮箱还需要 Send As 权限。",
+    "microsoft365Help": "Microsoft 365 管理员须通过具有管理员同意和邮箱授权的 SMTP.SendAsApp，或限定范围的 Exchange App RBAC，授权发件邮箱。请在 Exchange 中注册应用并允许 SMTP AUTH。用户名是用于身份验证的邮箱；不同的 From 地址还需要 Send As 权限。",
     "draftTitle": "中继草稿",
     "host": "SMTP 主机",
     "port": "端口",
