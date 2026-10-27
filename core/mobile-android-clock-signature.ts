@@ -110,7 +110,7 @@ export function createAndroidClockSignatureService(settings:unknown,ports:Androi
       // Google may clear a concurrent reuse after another request committed this exact receipt.
       // Observe consumption again; never turn a failed vendor check into a fresh business write.
       const latest=await readOwnIntegrityChallenge(ctx,bound);
-      if(latest.state==='consumed')return consumeOwnIntegrityChallenge<T>(ctx,bound,async()=>{throw error;});
+      // PROBE ONLY: omit concurrent receipt recovery.
       throw error;
      }
     }
