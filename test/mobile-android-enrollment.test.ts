@@ -6,6 +6,7 @@ import type {SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {createAndroidEnrollmentService} from '../core/mobile-android-enrollment';
+import * as challengeOwner from '../core/mobile-integrity-challenge';
 import {readOwnIntegrityKeyReceipt,revokeOwnIntegrityKey} from '../core/mobile-integrity-key';
 import {decryptSecret} from '../lib/ai/crypto';
 import {androidNativeKeyReferenceData} from '../lib/mobile-android-enrollment';
@@ -29,6 +30,21 @@ function fixture(){
  return {proof,verifyProof,service,publicKeySpki,certificateChain};
 }
 describe('Android enrollment custody transaction',()=>{
+ it.each([false,true])('reconciles a winner committed between receipt lookup and challenge read (altered=%s)',async(altered)=>{
+  const e=await employee(),f=fixture(),begin=await f.service.begin(e.ctx,e.intent),input={...e.intent,challengeId:begin.challenge.id,publicKeySpki:f.publicKeySpki,certificateChain:f.certificateChain};
+  const original=challengeOwner.readOwnIntegrityChallenge;let winner:Awaited<ReturnType<typeof f.service.complete>>|undefined;
+  // Force the otherwise timing-dependent interleaving; all reads/commits still execute real RLS/DB.
+  const pause=vi.spyOn(challengeOwner,'readOwnIntegrityChallenge').mockImplementationOnce(async(...args)=>{
+   winner=await f.service.complete(e.ctx,input);return original(...args);
+  });
+  try{
+   const losing=f.service.complete(e.ctx,{...input,certificateChain:altered?[Buffer.from('altered leaf'),input.certificateChain[1]]:input.certificateChain});
+   if(altered)await expect(losing).rejects.toMatchObject({reason:'binding_conflict'});else expect(await losing).toEqual(winner);
+   expect(winner).toBeDefined();expect(f.verifyProof).toHaveBeenCalledOnce();
+   const rows=await owner.db.select().from(schema.mobileIntegrityKey);expect(rows).toHaveLength(1);
+   const events=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,rows[0].id));expect(events.filter(value=>value.eventType==='mobile.integrity.key.enrolled')).toHaveLength(1);
+  }finally{pause.mockRestore();}
+ });
  it('snapshots SPKI and ordered proof bytes before asynchronous ownership/verification work',async()=>{
   const e=await employee(),f=fixture(),begin=await f.service.begin(e.ctx,e.intent),spki=Buffer.from(f.publicKeySpki),chain=f.certificateChain.map(value=>Buffer.from(value));
   const input={...e.intent,challengeId:begin.challenge.id,publicKeySpki:f.publicKeySpki,certificateChain:f.certificateChain};

@@ -6,6 +6,7 @@ import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {createAppleEnrollmentService,listOwnIntegrityKeys,revokeOwnIntegrityKey} from '../core/mobile-apple-enrollment';
+import * as challengeOwner from '../core/mobile-integrity-challenge';
 import {keyEnrollmentClientData} from '../lib/mobile-key-enrollment';
 import {readOwnIntegrityKeyReceipt} from '../core/mobile-integrity-key';
 import {decryptSecret,encryptSecret} from '../lib/ai/crypto';
@@ -30,6 +31,20 @@ function fixture(){
   return {vendorKeyId,proof,verifyProof,service,attestation:Buffer.from('synthetic vendor proof')};
 }
 describe('scoped Apple key enrollment transaction',()=>{
+  it.each([false,true])('reconciles a winner committed between receipt lookup and challenge read (altered=%s)',async(altered)=>{
+    const e=await employee(),f=fixture(),begin=await f.service.begin(e.ctx,e.intent),input={...e.intent,challengeId:begin.challenge.id,vendorKeyId:f.vendorKeyId,attestation:f.attestation};
+    const original=challengeOwner.readOwnIntegrityChallenge;let winner:Awaited<ReturnType<typeof f.service.complete>>|undefined;
+    const pause=vi.spyOn(challengeOwner,'readOwnIntegrityChallenge').mockImplementationOnce(async(...args)=>{
+      winner=await f.service.complete(e.ctx,input);return original(...args);
+    });
+    try{
+      const losing=f.service.complete(e.ctx,{...input,attestation:altered?Buffer.from('altered proof'):input.attestation});
+      if(altered)await expect(losing).rejects.toMatchObject({reason:'binding_conflict'});else expect(await losing).toEqual(winner);
+      expect(winner).toBeDefined();expect(f.verifyProof).toHaveBeenCalledOnce();
+      const rows=await owner.db.select().from(schema.mobileIntegrityKey);expect(rows).toHaveLength(1);
+      const events=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,rows[0].id));expect(events.filter(value=>value.eventType==='mobile.integrity.key.enrolled')).toHaveLength(1);
+    }finally{pause.mockRestore();}
+  });
   it('recovers and revokes an old enrollment through a current own employment without rewriting history',async()=>{
     const e=await employee(),f=fixture(),begin=await f.service.begin(e.ctx,e.intent);
     const key=await f.service.complete(e.ctx,{...e.intent,challengeId:begin.challenge.id,vendorKeyId:f.vendorKeyId,attestation:f.attestation});
