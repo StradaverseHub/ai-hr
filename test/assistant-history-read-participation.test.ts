@@ -7,6 +7,7 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
+import {assignRole,createCompany} from '../core/admin';
 import {grantAssistant} from '../core/assistant-grant';
 import {withAssistantRead,withAssistantJobReadsTx} from '../core/assistant-read-session';
 import {lockPayrollHistoryWriteTx} from '../core/payroll-history-lock';
@@ -21,6 +22,12 @@ import {closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,
 let b:Base,a:SessionContext,ctx:SessionContext,employmentId:string,personId:string;
 const year=Number(todayInKualaLumpur().slice(0,4))-2,period=`${year}-01`;
 const modules=['payroll','multi_cycle_payroll'] as const;
+const historyRows=()=>[['0007',period,'ME','BASIC','000AC','5000.00','1'],...['EEEPF','EESOCSO','EEEIS','PCB'].map(code=>['0007',period,'ME',code,'000AC','0.00','1'])];
+const sourceContent=()=>Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...historyRows()]));
+async function historyCatalogue(){
+ await owner.db.update(s.company).set({companyLabel:'000AC'}).where(eq(s.company.id,b.companyId));await seedPayrollCycleCatalog(a,b.companyId);
+ await owner.db.insert(s.payComponent).values({tenantId:b.tenantId,code:'BASIC',name:'Basic salary',kind:'allowance',displayCategory:'basic'});
+}
 beforeAll(async()=>{
  await migrateTestDb();
  const [installed]=await owner.db.execute<{controls:boolean;history:boolean}>(sql`select to_regprocedure('app.ai_action_unpaused(text,boolean)') is not null as controls,to_regclass('public.payroll_history_import_attempt') is not null as history`);
@@ -106,10 +113,10 @@ describe('Assistant and ordinary readers participate in Board history ownership'
  });
 
  it('a real immutable imported history snapshot stays non-issued in ordinary and supplied own payslip/released-run reads',async()=>{
-  await owner.db.update(s.company).set({companyLabel:'000AC'}).where(eq(s.company.id,b.companyId));await seedPayrollCycleCatalog(a,b.companyId);
-  await owner.db.insert(s.payComponent).values({tenantId:b.tenantId,code:'BASIC',name:'Basic salary',kind:'allowance',displayCategory:'basic'});
-  const rows=[['0007',period,'ME','BASIC','000AC','5000.00','1'],...['EEEPF','EESOCSO','EEEIS','PCB'].map(code=>['0007',period,'ME',code,'000AC','0.00','1'])];
-  const preview=await previewPayrollHistoryUpload(a,{name:'fictional-reader-history.csv',content:Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...rows])),operationKey:randomUUID()});
+  await historyCatalogue();
+  const preview=await previewPayrollHistoryUpload(a,{name:'fictional-reader-history.csv',content:sourceContent(),operationKey:randomUUID()});
+  expect(preview.plan.issues).toEqual([]);
+  expect(preview.plan.rows.map(row=>row.reasons)).toEqual([[]]);
   expect(preview.plan.counts).toEqual({created:1,replaced:0,unchanged:0,invalid:0});
   const committed=await confirmPayrollHistoryUpload(a,{attemptId:preview.attemptId,previewHash:preview.plan.previewHash,confirmReplacement:false,expectedCompanyId:b.companyId});
   expect(committed.changes).toHaveLength(1);expect(committed.changes[0].snapshotId).toBeTruthy();
@@ -120,4 +127,21 @@ describe('Assistant and ordinary readers participate in Board history ownership'
   for(const module of modules){const native=await withAssistantRead(ctx,module,read=>read.moduleWork(module));expect(native.data).toEqual({rows:[],truncated:false});}
   expect(await state()).toEqual(before);
  });
+ it.each([false,true])('native history import never borrows foreign-company HR authority (target Payroll partner=%s)',async targetPartner=>{
+  await historyCatalogue();
+  const other=await createCompany(a,{legalName:'Fictional foreign HR scope',companyLabel:'FOREIGN',country:'MY',currency:'MYR'});
+  const [login]=await owner.db.insert(s.appUser).values({tenantId:b.tenantId,workosUserId:'user_'+randomUUID(),personId:null}).returning({id:s.appUser.id});
+  await assignRole(a,{appUserId:login.id,role:'hr_admin',companyId:other.id});
+  if(targetPartner)await assignRole(a,{appUserId:login.id,role:'payroll_partner',companyId:b.companyId});
+  const scoped:SessionContext={...await entitledCtx(b),userId:login.id,personId:null,roles:targetPartner?['hr_admin','payroll_partner']:['hr_admin'],grants:[{role:'hr_admin',companyId:other.id},...(targetPartner?[{role:'payroll_partner',companyId:b.companyId}]:[])]};
+  const [nativeScope]=await withTenant(scoped,tx=>tx.execute<{current:boolean;foreignHr:boolean;targetHr:boolean;targetPayroll:boolean}>(sql`select app.principal_snapshot_current() as current,app.has_role_for('hr_admin',${other.id}::uuid) as "foreignHr",app.has_role_for('hr_admin',${b.companyId}::uuid) as "targetHr",app.can_admin_payroll_for(${b.companyId}::uuid) as "targetPayroll"`));
+  expect(nativeScope).toEqual({current:true,foreignHr:true,targetHr:false,targetPayroll:targetPartner});
+  const before=await state(),preview=await previewPayrollHistoryUpload(scoped,{name:'outside-hr-history.csv',content:sourceContent(),operationKey:randomUUID()});
+  expect(preview.plan.counts.created).toBe(0);expect(preview.plan.counts.invalid).toBeGreaterThan(0);
+  const reasons=preview.plan.rows.flatMap(row=>row.reasons).join(' ');
+  expect(reasons).toMatch(targetPartner?/Payroll history import permission is unavailable/:/company code is unknown, ambiguous or outside your payroll scope/);
+  await expect(confirmPayrollHistoryUpload(scoped,{attemptId:preview.attemptId,previewHash:preview.plan.previewHash,confirmReplacement:false,expectedCompanyId:b.companyId})).rejects.toThrow();
+  const after=await state();expect(after.people).toEqual(before.people);expect(after.batches).toEqual(before.batches);expect(after.payslips).toEqual(before.payslips);
+ });
+
 });
