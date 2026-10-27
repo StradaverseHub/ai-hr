@@ -35,6 +35,14 @@ export function parseOwnedGroupSnapshot(text,inspectorPid,group){
  assert(Number.isSafeInteger(inspectorPid)&&inspectorPid>1&&Number.isSafeInteger(group)&&group>1);assert(typeof text==='string'&&text.trim());
  const result=[];for(const line of text.trim().split('\n')){const match=line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)$/);assert(match,'Unknown process snapshot');const [pid,pgid,sid]=match.slice(1).map(Number);assert([pid,pgid,sid].every(n=>Number.isSafeInteger(n)&&n>0));if(pgid===group&&pid!==inspectorPid){assert.equal(sid,group,'Owned group identity changed');result.push(pid);}}return result;
 }
+/** C11 fresh bootstrap order: schema, code-owned catalogs, then native fictional business facts. */
+export function fixturePreparationPlan(root,tsx,bootstrap){
+ return Object.freeze([
+  {label:'migration',command:'pnpm',args:['db:migrate'],timeout:900000},
+  {label:'seed-native-catalogs',command:process.execPath,args:['--import',tsx,join(root,'scripts/seed-catalogs.ts')],timeout:120000},
+  {label:'fixture',command:process.execPath,args:['--import',tsx,bootstrap],timeout:1200000},
+ ].map(stage=>Object.freeze({...stage,args:Object.freeze(stage.args)})));
+}
 /** Exact absence only. A failed Docker daemon/permission/timeout is never cleanup proof. */
 export function confirmedContainerAbsent(result,container){
  if(!/^aihr-ci-\d+-\d+-db-[a-f0-9]{16}$/.test(container)||!result||result.error||result.signal!=null||result.status!==1||typeof result.stderr!=='string'||typeof result.stdout!=='string')return false;
@@ -166,11 +174,10 @@ async function main(){
   writeFileSync(join(privateDir,'owned-unit'),unit,{mode:0o600});postgresOwned=true;report.databaseCleanup='unconfirmed';
   await command('postgres', 'bash',[join(here,'postgres.sh'),'reset'],basic,120000);
   sync('docker',['exec',container,'psql','-U','postgres','-p','5433','-v','ON_ERROR_STOP=1','-d','postgres','-c',`CREATE DATABASE ${database};`]);
-  await command('migration','pnpm',['db:migrate'],fixtureEnv);
   const require=createRequire(join(root,'package.json')),tsx=pathToFileURL(require.resolve('tsx')).href;
   const fixturePath=join(privateDir,'fixture.json'),bootstrap=join(privateDir,'prepare.ts');
   writeFileSync(bootstrap,buildFixtureBootstrap(root,fixturePath,database),{mode:0o600});
-  await command('fixture',process.execPath,['--import',tsx,bootstrap],{...fixtureEnv,TSX_TSCONFIG_PATH:join(root,'tsconfig.json')},1200000);
+  for(const stage of fixturePreparationPlan(root,tsx,bootstrap))await command(stage.label,stage.command,stage.args,{...fixtureEnv,TSX_TSCONFIG_PATH:join(root,'tsconfig.json')},stage.timeout);
   const packet=JSON.parse(readFileSync(fixturePath,'utf8')),fixture=validateFixture(packet.fixture);
   assert.deepEqual(packet.declarations.map(d=>d.module).sort(),[...MODULES].sort());
   for(const d of packet.declarations){assert(['partial_actions','read_only','orchestration_only'].includes(d.coverage),'Unknown declaration coverage');for(const a of d.actions){assert(typeof a.id==='string'&&a.id.length<100);assert(['implemented','read_context_only','human_workflow_only','pending_adapter','unavailable'].includes(a.prepare));assert(['implemented','read_context_only','human_workflow_only','pending_adapter','unavailable'].includes(a.confirm));}}

@@ -5,7 +5,7 @@ import {createRequire} from 'node:module';
 import {join} from 'node:path';
 import {EventEmitter} from 'node:events';
 import {PassThrough} from 'node:stream';
-import {buildFixtureBootstrap,confirmedContainerAbsent,parseNativeReadbackResponse,nativeReadbackBootstrap,createPrivateNativeReadbackClient,MODULES,REMAINING,unitFor,childEnvironment,validateFixture,publicReport,parseOwnedGroupSnapshot} from './assistant-development-browser.mjs';
+import {fixturePreparationPlan,buildFixtureBootstrap,confirmedContainerAbsent,parseNativeReadbackResponse,nativeReadbackBootstrap,createPrivateNativeReadbackClient,MODULES,REMAINING,unitFor,childEnvironment,validateFixture,publicReport,parseOwnedGroupSnapshot} from './assistant-development-browser.mjs';
 const id=n=>'00000000-0000-4000-8000-'+String(n).padStart(12,'0');
 function packet(){const actors=Array.from({length:6},(_,n)=>({userId:id(n+1),personId:id(n+11),employmentId:id(n+21)}));return {format:1,state:'native_prerequisites_prepared_not_experienced',actors:{operator:actors[0],self:actors[1],reviewers:[actors[2],actors[3]],peer:actors[4],manager:actors[5]},finalNativePrerequisites:[0,2,3].map(n=>({userId:actors[n].userId,modules:MODULES.map(module=>({module,state:'complete',nativeEvidence:'present',qualityFailures:0,securityFailures:0,cases:[{id:module+':nonempty-business-evidence',category:'native',passed:true}]}))})),expectedNative:{selfLeaveRequests:0,selfProfileRequests:0,closeTargetStatus:'processed'},limits:{uiTargetEffects:'not_executed',providerCapability:'UNVERIFIED_NO_CALLS',notificationEmailConsent:'UNAVAILABLE_REQUIRES_ACTUAL_VERIFIED_PROVIDER_IDENTITY',releaseGate:'NOT_RUN'}};}
 test('exact candidate/run/attempt own distinct finite container keys',()=>{const sha='a'.repeat(40);assert.match(unitFor('12','1',sha),/^db-[a-f0-9]{16}$/);assert.notEqual(unitFor('12','1',sha),unitFor('12','2',sha));assert.notEqual(unitFor('12','1',sha),unitFor('12','1','b'.repeat(40)));for(const args of [['x','1',sha],['1','0x1',sha],['1','1','main']])assert.throws(()=>unitFor(...args));});
@@ -59,4 +59,14 @@ test('both generated TS bootstrap variants parse with real statement separators 
    for(const statement of parsed.statements){if(ts.isImportDeclaration(statement))assert(statement.moduleSpecifier.text.startsWith('/')||statement.moduleSpecifier.text.startsWith('node:'));assert(!(ts.isExpressionStatement(statement)&&ts.isAwaitExpression(statement.expression)));}
   }
  }
+});
+
+test('fresh fictional setup executes canonical catalog CLI after migrations before full native fixture',()=>{
+ const plan=fixturePreparationPlan('/fictional/source','file:///fictional/source/node_modules/tsx/dist/loader.mjs','/fictional/private/prepare.ts');
+ assert.deepEqual(plan.map(stage=>stage.label),['migration','seed-native-catalogs','fixture']);
+ assert.equal(plan[0].command,'pnpm');assert.deepEqual(plan[0].args,['db:migrate']);
+ assert.equal(plan[1].command,process.execPath);assert.deepEqual(plan[1].args,['--import','file:///fictional/source/node_modules/tsx/dist/loader.mjs','/fictional/source/scripts/seed-catalogs.ts']);
+ assert.equal(plan[2].command,process.execPath);assert.deepEqual(plan[2].args,['--import','file:///fictional/source/node_modules/tsx/dist/loader.mjs','/fictional/private/prepare.ts']);
+ assert(Object.isFrozen(plan)&&plan.every(stage=>Object.isFrozen(stage)&&Object.isFrozen(stage.args)));assert(plan.every(stage=>Number.isSafeInteger(stage.timeout)&&stage.timeout>0));
+ assert(!JSON.stringify(plan).includes('seed:catalogs'));assert(!JSON.stringify(plan).includes('db/seed.ts'));assert(!JSON.stringify(plan).includes('reset'));
 });
