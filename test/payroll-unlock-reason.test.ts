@@ -118,6 +118,14 @@ describe('Unlock closed payroll — single confirm, mandatory reason (unlockClos
   beforeEach(async () => {
     await resetDb();
     base = await seedBase();
+    // Granular payroll authority binds to the caller's ACTUAL current grants (51a5f3b51): a context that
+    // claims a role the login does not hold is refused outright, whatever that role would allow. So the
+    // admin really holds the super_admin (b) and payroll_partner (c) roles these contexts claim; (c) then
+    // refuses on the partner role's own payroll.unlock default, not on an unheld claim.
+    await owner.db.insert(schema.roleAssignment).values([
+      { tenantId: base.tenantId, appUserId: base.adminUserId, companyId: null, role: 'super_admin' },
+      { tenantId: base.tenantId, appUserId: base.adminUserId, companyId: null, role: 'payroll_partner' },
+    ]);
     // The gate is a per-tenant row now, not a process-wide env flag (ADR-0077 slice 3). It has to be
     // written EXPLICITLY: `payroll.unlock_enabled` has catalog default `false`, so the freshly seeded
     // tenant carries no row and unlock is off. Being per-tenant, it also cannot leak into other files
