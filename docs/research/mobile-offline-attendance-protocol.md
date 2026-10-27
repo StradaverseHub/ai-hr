@@ -402,8 +402,8 @@ need integration. Issuance returns `authorization: not_granted`; it is not an at
 ### Claim consumption owner decisions (28 October 2026)
 
 `core/mobile-offline-claim.ts` consumes one original claim in the locked attendance transaction.
-The owner settled three rules on 28 October 2026. Their implementation is UNVERIFIED until a
-hosted run passes.
+The owner settled three rules on 28 October 2026. Their implementation at `182f8fa66` passed
+hosted run [40561470126](https://github.com/StradaverseHub/ai-hr/actions/runs/40561470126).
 
 1. Request-ID collision is refused. After the actor, key and stream locks, the service takes the
    subject lock the canonical clock writers take before their own request lookup. If an attendance

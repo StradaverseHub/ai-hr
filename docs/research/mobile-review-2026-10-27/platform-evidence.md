@@ -2114,3 +2114,12 @@ expired-only group-admin photo access) were implemented after this run and are U
 hosted run passes. They change the consumption service, receipt contract, 0647 photo read policy
 (new draft SHA-256 `a7b88d8be325af98d0c92124050718309fb84a6b316d3a86b02dd05aa562bcce`) and the
 consumption/receipt suites. 0636 and the migration journal are unchanged.
+
+Decision candidate `182f8fa66f040e66ec1de42b2a21c248acaecb7d` passed
+[40561470126](https://github.com/StradaverseHub/ai-hr/actions/runs/40561470126): 479 cases across the
+same twelve suites, no failures or skips. The no-database batch passed 360 in five (receipts now 5) and
+the database batch 119 in seven (claim consumption now 22). Root TypeScript passed (5:01.68, peak RSS
+7,822,696 KiB, exit 0). Native checks were skipped as unchanged and `migration-journal-ordering`
+remained excluded for the same reason. The same synthetic-proof, no-device, no-production-adjudicator
+and acceptance-disabled limits apply. Overnight clock-outs cannot be accepted offline under the exact
+instant rule until the owner defines their attendance day.
