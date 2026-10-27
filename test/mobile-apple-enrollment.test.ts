@@ -70,6 +70,33 @@ describe('scoped Apple key enrollment transaction',()=>{
     await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,e.ctx.userId!));
     await expect(f.service.complete(e.ctx,command)).rejects.toThrow();await expect(listOwnIntegrityKeys(e.ctx,e.employmentId)).rejects.toThrow();
   });
+  it.each(['actor','key'] as const)('rechecks own employment after waiting for the %s revocation lock',async lock=>{
+    const e=await employee(),f=fixture(),begin=await f.service.begin(e.ctx,e.intent);
+    const receipt=await f.service.complete(e.ctx,{...e.intent,challengeId:begin.challenge.id,vendorKeyId:f.vendorKeyId,attestation:f.attestation});
+    let entered!:()=>void,release!:()=>void;const started=new Promise<void>(resolve=>{entered=resolve;}),held=new Promise<void>(resolve=>{release=resolve;});
+    const holding=owner.db.transaction(async tx=>{
+      if(lock==='actor')await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${e.ctx.tenantId+':mobile-integrity:'+e.ctx.userId},0))`);
+      else await tx.select().from(schema.mobileIntegrityKey).where(eq(schema.mobileIntegrityKey.id,receipt.keyId)).for('update');
+      entered();await held;
+    });
+    try{
+      await started;const result=Promise.allSettled([revokeOwnIntegrityKey(e.ctx,{employmentId:e.employmentId,keyId:receipt.keyId})]);
+      try{
+        const until=Date.now()+5000;let observed=false;
+        while(Date.now()<until){
+          const rows=await owner.db.execute(sql`select pid,query from pg_stat_activity where datname=current_database() and pid<>pg_backend_pid() and wait_event_type='Lock'`);
+          if(rows.some(row=>String(row.query).includes(lock==='actor'?'pg_advisory_xact_lock':'for update'))){observed=true;break;}
+          await new Promise(resolve=>setTimeout(resolve,10));
+        }
+        expect(observed).toBe(true);
+        await owner.db.update(schema.employment).set({hiredOn:'2099-01-01'}).where(eq(schema.employment.id,e.employmentId));
+      }finally{release();}
+      await holding;const [outcome]=await result;expect(outcome.status).toBe('rejected');
+      const [row]=await owner.db.select().from(schema.mobileIntegrityKey).where(eq(schema.mobileIntegrityKey.id,receipt.keyId));expect(row.revokedAt).toBeNull();
+      const events=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,receipt.keyId));
+      expect(events.filter(event=>event.eventType==='mobile.integrity.key.revoked')).toHaveLength(0);
+    }finally{release();await holding.catch(()=>{});}
+  });
   it('keeps a challenge unconsumed on invalid/unavailable metadata or a missing encryption key',async()=>{
     const e=await employee(),f=fixture(),strict=createAppleEnrollmentService({...settings,target:{...settings.target,requiredMetadata:{validationCategory:4,bundleVersions:['4']}}},{verifyProof:f.verifyProof});
     const begin=await strict.begin(e.ctx,e.intent),command={...e.intent,challengeId:begin.challenge.id,vendorKeyId:f.vendorKeyId,attestation:f.attestation};
