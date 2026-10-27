@@ -107,8 +107,24 @@ export function createAndroidEnrollmentJournal(rawScope:EnrollmentScope,ports:An
   if(key.revokedAt!==null)return {state:await save(s,null,{...original,key})};
   return {state:s};
  }
+ async function reconcilePending(s:State,current:Exclude<Pending,{phase:'requested'}>,selected:string):Promise<AndroidEnrollmentStatus|null>{
+  const preparedRef=current.prepared,value=await lookup(selected,preparedRef.context.challengeId);
+  if(value.outcome!=='key_receipt')return status(s,value.outcome==='refused'?'server_refused':'server_unavailable');
+  if(!value.key)return null;
+  const key=checked(C.IntegrityAndroidKeyReceipt,value.key);let publicKeySpki:string;
+  if(current.phase==='proof_ready')publicKeySpki=current.proof.publicKeySpki;
+  else{const result=await owned(()=>ports.native.read(preparedRef));if(result.status!=='evidence')return status(s,nativeReason(result));publicKeySpki=checked(AndroidEnrollmentKeyArtifact,{publicKeySpki:result.evidence.publicKeySpki,certificateChain:result.evidence.certificateChain}).publicKeySpki;}
+  return register(s,{employmentId:current.employmentId,requestId:current.requestId,prepared:preparedRef},publicKeySpki,key);
+ }
  return {
   status:()=>exclusive(queue,async()=>status(await read())),
+  /** Receipt-only recovery is available even when new enrollment is disabled. */
+  reconcile:(employmentId:string)=>exclusive(queue,async()=>{
+   const selected=uuid.parse(employmentId),s=await read();
+   if(s.key){const found=await reconcileKey(s,selected);return status(found.state,found.reason);}
+   if(!s.pending||s.pending.phase==='requested')return status(s);
+   return await reconcilePending(s,s.pending,selected)??status(s);
+  }),
   begin:(employmentId:string,requestId:string)=>exclusive(queue,async()=>{
    const i=intent.parse({employmentId,requestId}),s=await read();
    if(s.key)return status(s);if(s.pending){if(s.pending.employmentId!==i.employmentId)throw new EnrollmentConflict();return status(s);}
@@ -149,13 +165,7 @@ export function createAndroidEnrollmentJournal(rawScope:EnrollmentScope,ports:An
     }
     const current:Exclude<Pending,{phase:'requested'}>=p,preparedRef:Prepared=current.prepared;await checkPrepared(preparedRef,intentRef);
     if(!reconciled){
-     const value=await lookup(selected,preparedRef.context.challengeId);if(value.outcome!=='key_receipt')return status(s,value.outcome==='refused'?'server_refused':'server_unavailable');
-     if(value.key){
-      const key=checked(C.IntegrityAndroidKeyReceipt,value.key);let publicKeySpki:string;
-      if(current.phase==='proof_ready')publicKeySpki=current.proof.publicKeySpki;
-      else{const result=await owned(()=>ports.native.read(preparedRef));if(result.status!=='evidence')return status(s,nativeReason(result));publicKeySpki=checked(AndroidEnrollmentKeyArtifact,{publicKeySpki:result.evidence.publicKeySpki,certificateChain:result.evidence.certificateChain}).publicKeySpki;}
-      return register(s,{...intentRef,prepared:preparedRef},publicKeySpki,key);
-     }
+     const found=await reconcilePending(s,current,selected);if(found)return found;
      reconciled=true;
     }
     // The selector may be a newer own employment. Only reconcile an existing receipt through it;

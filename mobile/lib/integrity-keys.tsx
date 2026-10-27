@@ -10,6 +10,7 @@ import {identityNamespace} from './config';
 import {appLocale,t} from './i18n';
 import {SignInRequiredError,RequestRejectedError} from './errors';
 import {Button,Card,LoadState,Muted,Row,Screen,Title} from './ui';
+import {DeviceEnrollment} from './device-enrollment-screen';
 
 export function IntegrityKeys(){
   const {employmentId,signOut}=useSession(),me=useApi('me',{},signOut);
@@ -62,6 +63,7 @@ function KeyInventory({employmentId}:{employmentId:string}){
   }
   const oldServer=keys.error instanceof RequestRejectedError&&keys.error.status===404;
   return <>
+    <DeviceEnrollment employmentId={employmentId} onChanged={keys.reload}/>
     {oldServer?<Muted>{t('integrityKeysOlderServer')}</Muted>:<LoadState loading={keys.loading} error={keys.error} hasData={keys.data!==null} onRetry={keys.reload}/>}
     {keys.data&&keys.data.outcome!=='keys'&&<Muted>{t('integrityKeysUnavailable')}</Muted>}
     {action&&<Text accessibilityRole="alert" style={{color:palette.text,lineHeight:22}}>{t(action.kind==='busy'?'integrityRevoking':action.kind==='confirmed'?'integrityRevoked':action.kind==='uncertain'?'integrityRevokeUncertain':'integrityRevokeRefused',{id:action.keyId})}</Text>}

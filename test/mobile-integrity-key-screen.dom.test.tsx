@@ -29,6 +29,7 @@ function fixture(){
   const ports={react:React,'react/jsx-runtime':jsx,'react-native':{Alert:{alert:(_a:string,_b:string,buttons:typeof dialog)=>{dialog=buttons;}}},
     'expo-router':{router:{back}},'./design':{DesignText:Text,useTenantDesign:()=>({palette:{text:'black'}})},
     './api':{useApi},'./integrity-key-recovery':{revokeIntegrityKey:revoke},'./session':{useSession:()=>({employmentId,signOut})},
+    './device-enrollment-screen':{DeviceEnrollment:({employmentId}: {employmentId:string})=><div data-testid="device-enrollment" data-employment={employmentId}/>},
     './auth':{authGeneration:()=>owner},'./config':{identityNamespace:()=>namespace},'./errors':{SignInRequiredError,RequestRejectedError},
     './i18n':{appLocale:()=>locale,t:(name:string,vars?:{id:string})=>name+(vars?' '+vars.id:'')},
     './ui':{Screen:Container,Card:Container,Muted:Text,Row:({label,value}:any)=><span>{label} {value}</span>,Title:Container,

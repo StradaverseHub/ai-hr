@@ -9,6 +9,7 @@
 import type {z} from 'zod';
 import {IntegrityKeysResultV2,IntegrityRevocationResultV2,IntegrityKeyLookupResultV2,IntegrityKeysResult,IntegrityRevocationResult,IntegrityKeyLookupResult} from '../../lib/mobile-integrity-contract';
 import {IntegrityEnrollmentIntent,IntegrityEnrollmentProof,IntegrityEnrollmentPrepared,IntegrityEnrollmentResult,IntegrityAndroidEnrollmentProof,IntegrityAndroidEnrollmentPrepared,IntegrityAndroidEnrollmentResult} from '../../lib/mobile-integrity-contract';
+import {IntegrityEnrollmentCapabilitiesV2} from '../../lib/mobile-integrity-contract';
 import { useCallback, useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 import { fetch as nativeFetch } from 'expo/fetch';
@@ -29,6 +30,8 @@ import { appLocale } from './i18n';
 export type { LeaveResponse, MeResponse, NotificationsResponse, PayslipsResponse };
 
 type Endpoints = {
+  'v2/integrity/ios/capabilities':z.infer<typeof IntegrityEnrollmentCapabilitiesV2>;
+  'v2/integrity/android/capabilities':z.infer<typeof IntegrityEnrollmentCapabilitiesV2>;
   'v2/integrity/keys':z.infer<typeof IntegrityKeysResultV2>;
   'integrity/keys':z.infer<typeof IntegrityKeysResult>;
   'clock-attempts':ClockAttemptsResponse;
@@ -52,6 +55,8 @@ function url(path: string, params: Record<string, string | undefined>,origin:str
 }
 
 const responses = {
+  'v2/integrity/ios/capabilities':IntegrityEnrollmentCapabilitiesV2.refine(value=>value.outcome!=='capabilities'||value.platform==='ios'),
+  'v2/integrity/android/capabilities':IntegrityEnrollmentCapabilitiesV2.refine(value=>value.outcome!=='capabilities'||value.platform==='android'),
   'v2/integrity/keys':IntegrityKeysResultV2,
   'integrity/keys':IntegrityKeysResult,
   'clock-attempts':ClockAttemptsResponse,

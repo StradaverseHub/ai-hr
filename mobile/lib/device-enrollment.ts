@@ -1,5 +1,5 @@
 /** App assembly for durable device enrollment. Only explicit user actions advance the journal.
- * These transport paths remain unavailable until their server rollout owner mounts them. */
+ * Server enrollment paths are scoped by default-closed deployment rollout. */
 import {AppState,Platform} from 'react-native';
 import {randomUUID} from 'expo-crypto';
 import {apiGet,apiPost} from './api';
@@ -12,11 +12,12 @@ import {createAndroidKeyEnrollment} from './android-key-enrollment';
 import NativeIntegrity from '../modules/aihr-integrity/src/AihrIntegrityModule';
 import {nativeIntegrityInstallationId,openNativeEnrollmentJournal,openNativeAndroidEnrollmentJournal} from './submission-native';
 import * as C from '../../lib/mobile-integrity-contract';
+import type {DeviceEnrollmentController} from './device-enrollment-contract';
 
 /** isUnlocked must read the current session, not a captured render's boolean. The caller invalidates
  * it on unmount/selection change. The retained journal remains actor/install scoped across rehire;
  * only receipt recovery can use a different current employment, never adoption of an old command. */
-export async function openOwnedDeviceEnrollment(employmentId:string,isUnlocked:()=>boolean){
+export async function openOwnedDeviceEnrollment(employmentId:string,isUnlocked:()=>boolean):Promise<DeviceEnrollmentController>{
  const owner=authGeneration(),namespace=identityNamespace(),apiOrigin=config.apiUrl,platform=Platform.OS;
  const check=()=>{
   assertAuthGeneration(owner);
@@ -30,6 +31,10 @@ export async function openOwnedDeviceEnrollment(employmentId:string,isUnlocked:(
  const appInstallationId=await owned(()=>nativeIntegrityInstallationId(check));
  const scope=EnrollmentScope.parse({namespace,apiOrigin,actorId:me.actorId,appInstallationId});
  const native=createIntegrityBridge(NativeIntegrity,check);
+ const capability=native.capabilities();
+ const supported=capability.status==='evidence'&&capability.evidence.platform===platform&&
+  (platform==='ios'?capability.evidence.keyMechanism==='apple_app_attest'&&native.appleProofRecoverySupported():capability.evidence.keyMechanism==='android_keystore');
+ const requireSupport=()=>{check();if(!supported)throw new UnavailableError('Device enrollment is unavailable.');};
  const receipt=(id:string,input:{originChallengeId:string})=>apiPost(platform==='ios'?'integrity/key-receipt':'v2/integrity/key-receipt',C.IntegrityKeyLookupIntent.parse(input),{employmentId:id});
  const revoke=(id:string,input:{keyId:string})=>apiPost(platform==='ios'?'integrity/revoke':'v2/integrity/revoke',C.IntegrityRevokeIntent.parse(input),{employmentId:id});
  if(platform==='ios'){
@@ -38,8 +43,8 @@ export async function openOwnedDeviceEnrollment(employmentId:string,isUnlocked:(
    prepare:(id,input)=>apiPost('integrity/enrollment/begin',C.IntegrityEnrollmentIntent.parse(input),{employmentId:id}),
    complete:(id,input)=>apiPost('integrity/enrollment/complete',C.IntegrityEnrollmentProof.parse(input),{employmentId:id}),
   }));
-  return {platform:'ios' as const,status:()=>owned(()=>journal.status()),
-   begin:()=>owned(()=>journal.begin(employmentId,randomUUID())),advance:()=>owned(()=>journal.advance(employmentId)),
+  return {platform:'ios',supported,status:()=>owned(()=>journal.status()),reconcile:()=>owned(()=>journal.reconcile(employmentId)),
+   begin:()=>owned(()=>{requireSupport();return journal.begin(employmentId,randomUUID());}),advance:()=>owned(()=>journal.advance(employmentId)),
    revoke:()=>owned(()=>journal.revoke(employmentId))};
  }
  const journal=await owned(()=>openNativeAndroidEnrollmentJournal(scope,check,{
@@ -47,7 +52,7 @@ export async function openOwnedDeviceEnrollment(employmentId:string,isUnlocked:(
   prepare:(id,input)=>apiPost('v2/integrity/android/enrollment/begin',C.IntegrityEnrollmentIntent.parse(input),{employmentId:id}),
   complete:(id,input)=>apiPost('v2/integrity/android/enrollment/complete',C.IntegrityAndroidEnrollmentProof.parse(input),{employmentId:id}),
  }));
- return {platform:'android' as const,status:()=>owned(()=>journal.status()),
-  begin:()=>owned(()=>journal.begin(employmentId,randomUUID())),advance:()=>owned(()=>journal.advance(employmentId)),
-  revoke:()=>owned(()=>journal.revoke(employmentId)),replace:()=>owned(()=>journal.replace(employmentId,randomUUID()))};
+ return {platform:'android',supported,status:()=>owned(()=>journal.status()),reconcile:()=>owned(()=>journal.reconcile(employmentId)),
+  begin:()=>owned(()=>{requireSupport();return journal.begin(employmentId,randomUUID());}),advance:()=>owned(()=>journal.advance(employmentId)),
+  revoke:()=>owned(()=>journal.revoke(employmentId)),replace:()=>owned(()=>{requireSupport();return journal.replace(employmentId,randomUUID());})};
 }

@@ -47,6 +47,15 @@ function clientFixture() {
 afterEach(()=>{cleanup();vi.useRealTimers();});
 
 describe('native API transport', () => {
+  it.each(['ios','android'] as const)('validates %s discovery without accepting the other platform or falling back',async(platform)=>{
+    const f=clientFixture(),path='v2/integrity/'+platform+'/capabilities';
+    f.response.mockResolvedValueOnce(Response.json({outcome:'capabilities',protocol:2,platform,features:['key_enrollment'],offline:false}));
+    expect(await f.api.apiGet(path)).toMatchObject({outcome:'capabilities',platform});
+    expect(new URL(f.response.mock.calls[0][0]).pathname).toBe('/api/mobile/v2/integrity/'+platform+'/capabilities');
+    f.response.mockResolvedValueOnce(Response.json({outcome:'capabilities',protocol:2,platform:platform==='ios'?'android':'ios',features:['key_enrollment'],offline:false}));
+    await expect(f.api.apiGet(path)).rejects.toBeInstanceOf(UnavailableError);
+    f.response.mockResolvedValueOnce(new Response('',{status:404}));await expect(f.api.apiGet(path)).rejects.toMatchObject({status:404});expect(f.response).toHaveBeenCalledTimes(3);
+  });
   it.each(['ios','android'] as const)('keeps %s enrollment on its exact protocol and never downgrades a missing command',async(platform)=>{
     const f=clientFixture(),e=platform==='ios'?enrollmentFixture():androidEnrollmentFixture();
     const prefix=platform==='ios'?'integrity/enrollment':'v2/integrity/android/enrollment',path=prefix+'/begin';

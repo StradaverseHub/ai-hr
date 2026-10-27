@@ -65,7 +65,7 @@ export type EnrollmentPorts={
 };
 type PendingReason='server_unavailable'|'server_refused'|'vendor_outage'|'native_unavailable'|'unsupported'|'recovery_required'|'challenge_unavailable';
 export type EnrollmentStatus={status:'empty'}|{status:'pending';requestId:string;employmentId:string;phase:Pending['phase'];reason?:PendingReason}|
-  {status:'stored_key';keyId:string;revoked:boolean}|{status:'revocation_pending';keyId:string;reason?:'server_refused'|'server_unavailable'};
+  {status:'stored_key';keyId:string;revoked:boolean;reason?:PendingReason}|{status:'revocation_pending';keyId:string;reason?:PendingReason};
 // Shared across all journal instances/generations. A fresh operation always reads the commit pointer;
 // it never uses another owner's stale cached snapshot after an ambiguous write or account change.
 const queues=new Map<string,Promise<void>>();
@@ -100,8 +100,8 @@ export function createEnrollmentJournal(rawScope:EnrollmentScope,ports:Enrollmen
     if(expected!==key.key.nativeKeyBinding)throw new EnrollmentConflict();
   }
   function status(s:Awaited<ReturnType<typeof read>>,reason?:PendingReason):EnrollmentStatus{
-    if(s.version===2&&s.key)return {status:'revocation_pending',keyId:s.key.key.keyId};
-    if(s.key)return {status:'stored_key',keyId:s.key.key.keyId,revoked:s.key.key.revokedAt!==null};
+    if(s.version===2&&s.key)return {status:'revocation_pending',keyId:s.key.key.keyId,...(reason?{reason}:{})};
+    if(s.key)return {status:'stored_key',keyId:s.key.key.keyId,revoked:s.key.key.revokedAt!==null,...(reason?{reason}:{})};
     return s.pending?{status:'pending',phase:s.pending.phase,requestId:s.pending.requestId,employmentId:s.pending.employmentId,...(reason?{reason}:{})}:{status:'empty'};
   }
   async function checkPrepared(p:Prepared,i:z.infer<typeof intent>){
@@ -119,8 +119,35 @@ export function createEnrollmentJournal(rawScope:EnrollmentScope,ports:Enrollmen
     if(value.status!=='evidence')return {reason:nativeReason(value)};
     return value.evidence===null?{reason:'recovery_required'}:{vendorKeyId:checked(hash32,value.evidence)};
   }
+  async function reconcilePending(s:Awaited<ReturnType<typeof read>>,p:Exclude<Pending,{phase:'requested'}>,selected:string):Promise<EnrollmentStatus|null>{
+    const lookup=checked(C.IntegrityKeyLookupResult,await owned(()=>ports.receipt(selected,{originChallengeId:p.prepared.context.challengeId})));
+    if(lookup.outcome!=='key_receipt')return status(s,lookup.outcome==='refused'?'server_refused':'server_unavailable');
+    const found=lookup.key;if(!found)return null;
+    if(!receiptMatches(found,p.prepared))throw new EnrollmentConflict();
+    const reference=await keyReference(p.prepared);if('reason' in reference)return status(s,reference.reason);
+    if('vendorKeyId' in p&&p.vendorKeyId!==reference.vendorKeyId)throw new EnrollmentConflict();
+    return registered(s,{employmentId:p.employmentId,requestId:p.requestId,prepared:p.prepared,vendorKeyId:reference.vendorKeyId,key:found});
+  }
+  async function reconcileStored(s:Awaited<ReturnType<typeof read>>,selected:string){
+    const original=s.key!;
+    const lookup=checked(C.IntegrityKeyLookupResult,await owned(()=>ports.receipt(selected,{originChallengeId:original.prepared.context.challengeId})));
+    if(lookup.outcome!=='key_receipt')return status(s,lookup.outcome==='refused'?'server_refused':'server_unavailable');
+    const key=lookup.key;if(!key)return status(s,'recovery_required');
+    if(!receiptMatches(key,original.prepared)||JSON.stringify({...original.key,revokedAt:null})!==JSON.stringify({...key,revokedAt:null})||
+      original.key.revokedAt!==null&&original.key.revokedAt!==key.revokedAt)throw new EnrollmentConflict();
+    await checkKeyBinding({...original,key});
+    const next=key.revokedAt!==null&&original.key.revokedAt===null?await save(s,null,{...original,key}):s;
+    await release({...original,key});return status(next);
+  }
   return {
     status:()=>exclusive(queue,async()=>{const s=await read();if(s.key)await release(s.key);return status(s);}),
+    /** Exact receipt recovery only: no prepare, attestation, proof upload or revocation replay. */
+    reconcile:(employmentId:string)=>exclusive(queue,async()=>{
+      const selected=uuid.parse(employmentId),s=await read();
+      if(s.key)return reconcileStored(s,selected);
+      if(!s.pending||s.pending.phase==='requested')return status(s);
+      return await reconcilePending(s,s.pending,selected)??status(s);
+    }),
     revoke:(employmentId:string)=>exclusive(queue,async()=>{
       const selected=uuid.parse(employmentId);let s=await read();
       if(!s.key)throw new EnrollmentConflict();
@@ -143,7 +170,7 @@ export function createEnrollmentJournal(rawScope:EnrollmentScope,ports:Enrollmen
     }),
     advance:(employmentId:string)=>exclusive(queue,async()=>{
       const selected=uuid.parse(employmentId);let s=await read(),p=s.pending;
-      if(!p){if(s.key)await release(s.key);return status(s);}
+      if(!p)return s.key?reconcileStored(s,selected):status(s);
       const recoveryOnly=p.employmentId!==selected;
       if(recoveryOnly&&p.phase==='requested')return status(s,'recovery_required');
       const intentRef={employmentId:p.employmentId,requestId:p.requestId};
@@ -158,15 +185,7 @@ export function createEnrollmentJournal(rawScope:EnrollmentScope,ports:Enrollmen
         await checkPrepared(p.prepared,p);
         const preparedRef:Prepared=p.prepared;
         if(!reconciled){
-          const lookup=checked(C.IntegrityKeyLookupResult,await owned(()=>ports.receipt(selected,{originChallengeId:preparedRef.context.challengeId})));
-          if(lookup.outcome!=='key_receipt')return status(s,lookup.outcome==='refused'?'server_refused':'server_unavailable');
-          const found=lookup.key;
-          if(found&&!receiptMatches(found,p.prepared))throw new EnrollmentConflict();
-          if(found){
-            const reference=await keyReference(p.prepared);if('reason' in reference)return status(s,reference.reason);const {vendorKeyId}=reference;
-            if('vendorKeyId' in p&&p.vendorKeyId!==vendorKeyId)throw new EnrollmentConflict();
-            return registered(s,{employmentId:p.employmentId,requestId:p.requestId,prepared:p.prepared,vendorKeyId,key:found});
-          }
+          const found=await reconcilePending(s,p,selected);if(found)return found;
           reconciled=true;
         }
         if(recoveryOnly)return status(s,'recovery_required');

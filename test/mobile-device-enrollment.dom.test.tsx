@@ -12,8 +12,8 @@ import * as errors from '../mobile/lib/errors';
 import {enrollmentFixture} from './helpers/mobile-enrollment-fixture';
 import {androidEnrollmentFixture} from './helpers/mobile-android-enrollment-fixture';
 type Status=apple.EnrollmentStatus|android.AndroidEnrollmentStatus;
-type Device={platform:'ios'|'android';status():Promise<Status>;begin():Promise<Status>;advance():Promise<Status>;revoke():Promise<Status>;replace?:()=>Promise<Status>};
-function runtime(platform:'ios'|'android'){
+type Device={platform:'ios'|'android';supported:boolean;status():Promise<Status>;begin():Promise<Status>;advance():Promise<Status>;reconcile():Promise<Status>;revoke():Promise<Status>;replace?:()=>Promise<Status>};
+function runtime(platform:'ios'|'android',nativeAvailable=true){
  const a=enrollmentFixture(),d=androidEnrollmentFixture(),f=platform==='ios'?a:d;
  let generation=0,namespace=f.scope.namespace,unlocked=true;
  const appState={currentState:'active'},config={apiUrl:f.scope.apiOrigin};
@@ -47,7 +47,7 @@ function runtime(platform:'ios'|'android'){
   if(id==='./enrollment-journal')return apple;
   if(id==='./integrity-bridge')return {createIntegrityBridge};
   if(id==='./android-key-enrollment')return {createAndroidKeyEnrollment:()=>d.native};
-  if(id==='../modules/aihr-integrity/src/AihrIntegrityModule')return {default:a.native};
+  if(id==='../modules/aihr-integrity/src/AihrIntegrityModule')return {default:!nativeAvailable?null:platform==='ios'?a.native:{...a.native,capabilities:()=>({version:1,platform:'android',appId:d.context.target.packageName,appVersion:'1.0',buildVersion:'4',keyMechanism:'android_keystore'})}};
   if(id==='./submission-native')return storage;
   if(id==='../../lib/mobile-integrity-contract')return C;
   throw new Error('Unexpected dependency '+id);
@@ -57,8 +57,14 @@ function runtime(platform:'ios'|'android'){
   lock:()=>{unlocked=false;},unlock:()=>{unlocked=true;},changeActor:()=>{generation++;},changeCompany:()=>{namespace='other-company';}};
 }
 describe.each(['ios','android'] as const)('%s app enrollment assembly',platform=>{
+ it('does not create a pending intent when its native module is unsupported',async()=>{
+  const r=runtime(platform,false),device=await r.open();expect(device.supported).toBe(false);
+  await expect(device.begin()).rejects.toBeInstanceOf(errors.UnavailableError);expect(r.f.stored()).toBeNull();expect(r.post).not.toHaveBeenCalled();
+  expect(await device.reconcile()).toEqual({status:'empty'});expect(r.post).not.toHaveBeenCalled();
+ });
  it('opens with fresh own identity and stable installation without generating, preparing or posting',async()=>{
   const r=runtime(platform),device=await r.open();expect(device.platform).toBe(platform);expect(await device.status()).toEqual({status:'empty'});
+  expect(device.supported).toBe(true);
   expect(r.get).toHaveBeenCalledWith('me');expect(r.installation).toHaveBeenCalledOnce();expect(r.post).not.toHaveBeenCalled();
   expect(r.a.native.generateAppleKey).not.toHaveBeenCalled();expect(r.d.native.create).not.toHaveBeenCalled();
   await device.begin();expect(r.post).not.toHaveBeenCalled();expect(r.f.stored()?.pending).toMatchObject({phase:'requested',requestId:r.f.requestId,employmentId:r.f.employmentId});

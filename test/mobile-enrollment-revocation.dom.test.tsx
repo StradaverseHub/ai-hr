@@ -18,16 +18,22 @@ describe('durable own-key revocation intent',()=>{
     await expect(f.journal().revoke(f.employmentId)).rejects.toBeInstanceOf(EnrollmentJournalUnavailable);
     expect(f.ports.revoke).not.toHaveBeenCalled();expect(f.stored()?.version).toBe(1);
   });
-  it('retains intent after a lost server reply, prevents enrollment replacement and retries only explicitly',async()=>{
+  it('retains intent after a lost server reply and resolves an accepted revocation through receipt-only recovery',async()=>{
     const f=await enrolled();vi.mocked(f.ports.revoke).mockImplementationOnce(async()=>{f.setRevoked(true);throw new Error('reply lost');});
     await expect(f.journal().revoke(f.employmentId)).rejects.toThrow('reply lost');
     const pending={status:'revocation_pending',keyId:enrollmentId(8)};
     expect(await f.journal().status()).toEqual(pending);
     expect(await f.journal().begin(f.employmentId,enrollmentId(9))).toEqual(pending);
-    expect(await f.journal().advance(f.employmentId)).toEqual(pending);
+    expect(await f.journal().reconcile(f.employmentId)).toMatchObject({status:'stored_key',revoked:true});
     expect(f.ports.revoke).toHaveBeenCalledOnce();expect(f.native.generateAppleKey).toHaveBeenCalledOnce();expect(f.native.attestAppleKey).toHaveBeenCalledOnce();
     expect(await f.journal().revoke(f.employmentId)).toMatchObject({status:'stored_key',revoked:true});
-    expect(f.ports.revoke).toHaveBeenCalledTimes(2);
+    expect(f.ports.revoke).toHaveBeenCalledOnce();
+  });
+  it('retains an unaccepted revocation and resends it only on explicit retry',async()=>{
+    const f=await enrolled();vi.mocked(f.ports.revoke).mockRejectedValueOnce(new Error('request unavailable'));
+    await expect(f.journal().revoke(f.employmentId)).rejects.toThrow('request unavailable');
+    expect(await f.journal().reconcile(f.employmentId)).toMatchObject({status:'revocation_pending'});expect(f.ports.revoke).toHaveBeenCalledOnce();
+    expect(await f.journal().revoke(f.employmentId)).toMatchObject({status:'stored_key',revoked:true});expect(f.ports.revoke).toHaveBeenCalledTimes(2);
   });
   it('keeps intent through refused, unavailable and malformed responses without trusting local revocation',async()=>{
     for(const response of [{outcome:'refused',code:'subject_unavailable'},{outcome:'unavailable',code:'module_unavailable'},{outcome:'revoked',key:{}}]){
