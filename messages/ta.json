@@ -473,7 +473,8 @@
     "letterApproval": "கடித ஒப்புதல்",
     "letterRegister": "வழங்கப்பட்ட கடிதப் பதிவேடு",
     "letterReports": "கடித அறிக்கைகள்",
-    "letterSettings": "கடித அமைப்புகள்"
+    "letterSettings": "கடித அமைப்புகள்",
+    "calibration": "Calibration"
   },
   "dashboard": {
     "title": "டாஷ்போர்டு",
@@ -13373,7 +13374,12 @@
       "profile": "சுயவிவர மாற்றத்தைச் சரிபார்க்கவும்",
       "replacementLeave": "மாற்று விடுப்பு கோரிக்கையை மதிப்பாய்வு செய்யவும்",
       "resignation": "ராஜினாமா கோரிக்கையை முடிவு செய்யவும்",
-      "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]"
+      "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]",
+      "performanceReview": "செயல்திறன் மதிப்பாய்வை முடிக்கவும்",
+      "assessmentWork": "செயல்திறன் மதிப்பீட்டில் நடவடிக்கை எடுக்கவும்",
+      "careerPlan": "தொழில் திட்டத்தை மதிப்பாய்வு செய்யவும்",
+      "calibration": "செயல்திறன் அளவுத்திருத்தத்தை முடிக்கவும்",
+      "rewardReview": "வெகுமதிகளை மதிப்பாய்வு செய்யவும்"
     },
     "tasksEmpty": "உங்கள் நடவடிக்கை தேவைப்படுவது எதுவும் இல்லை",
     "title": "அறிவிப்புகள்"
@@ -18046,7 +18052,16 @@
       "currencyHelp": "பகிரப்பட்ட அமைப்புகள் தற்போதைய MYR வெகுமதிக் கொள்கையைப் பயன்படுத்துகின்றன; பிற நாணயக் கொள்கைகள் இங்கு வழங்கப்படவில்லை.",
       "archive": "அமைப்பைக் காப்பகப்படுத்து",
       "archiveHelp": "இணைகள் தேர்ந்தெடுக்காமல் சேமிப்பது எதிர்கால மதிப்பாய்வுகளுக்கான இந்த அமைப்பை நிறுத்தும். சேமித்த பதிப்புகளும் தற்போதைய மதிப்பாய்வுகளும் தொடரும்."
-    }
+    },
+    "returnedTo": {
+      "bu": "Returned to BU CEO",
+      "bg": "Returned to BG CEO"
+    },
+    "returnedBy": "Returned by {actor} on {date}",
+    "returnedReason": "Reason for return",
+    "returnedNext": "Revise the review and submit it again.",
+    "decidedBy": "By {actor}",
+    "aReviewer": "a reviewer"
   },
   "identityEmail": {
     "title": "மின்னஞ்சல் அனுப்புதல்",
@@ -19620,6 +19635,40 @@
         "all": "அனைத்தும்",
         "outstanding": "நிலுவையில்",
         "done": "முடிந்தது"
+      }
+    },
+    "calibrationList": {
+      "title": "Calibration",
+      "description": "The calibration sessions you can open. Sessions with an open window come first.",
+      "empty": "No calibration is assigned to you.",
+      "groupWide": "Group-wide",
+      "opensOn": "Opens {date}",
+      "closesOn": "Closes {date}",
+      "tiers": {
+        "group": "Group",
+        "bg": "Business group (BG)",
+        "bu": "Business unit (BU)",
+        "hod": "Department (HOD)",
+        "final": "Final"
+      },
+      "columns": {
+        "session": "Session",
+        "cycle": "Cycle",
+        "company": "Company",
+        "window": "Window",
+        "people": "People",
+        "toDo": "To do",
+        "status": "Status"
+      },
+      "window": {
+        "open": "Open",
+        "upcoming": "Not open yet",
+        "closed": "Closed"
+      },
+      "lock": {
+        "open": "In progress",
+        "partial": "Partly locked",
+        "locked": "Locked"
       }
     }
   },
@@ -23463,7 +23512,12 @@
       "feedback": "சக பணியாளர் கருத்து",
       "noticeAcknowledgement": "அறிவிப்பு ஏற்பு",
       "replacementLeave": "ஈடு விடுப்பு ஒப்புதல்",
-      "onboarding": "பணியமர்வு பணிகள்"
+      "onboarding": "பணியமர்வு பணிகள்",
+      "performanceReview": "செயல்திறன் மதிப்பாய்வு",
+      "assessmentWork": "செயல்திறன் மதிப்பீடு",
+      "careerPlan": "தொழில் திட்ட மதிப்பாய்வு",
+      "calibration": "செயல்திறன் அளவுத்திருத்தம்",
+      "rewardReview": "வெகுமதி மதிப்பாய்வு"
     },
     "quickActions": {
       "leave": "விடுப்புக்கு விண்ணப்பி",

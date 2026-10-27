@@ -473,7 +473,8 @@
     "letterApproval": "Phê duyệt thư",
     "letterRegister": "Sổ đăng ký thư đã phát hành",
     "letterReports": "Báo cáo thư",
-    "letterSettings": "Cài đặt thư"
+    "letterSettings": "Cài đặt thư",
+    "calibration": "Calibration"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -13373,7 +13374,12 @@
       "profile": "Xác minh thay đổi hồ sơ",
       "replacementLeave": "Xem xét yêu cầu nghỉ bù",
       "resignation": "Quyết định đơn xin nghỉ việc",
-      "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]"
+      "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]",
+      "performanceReview": "Hoàn tất đánh giá hiệu suất",
+      "assessmentWork": "Xử lý đánh giá hiệu suất",
+      "careerPlan": "Xem xét kế hoạch nghề nghiệp",
+      "calibration": "Hoàn tất hiệu chỉnh hiệu suất",
+      "rewardReview": "Xem xét đãi ngộ"
     },
     "tasksEmpty": "Không có mục nào cần bạn xử lý",
     "title": "Thông báo"
@@ -18046,7 +18052,16 @@
       "currencyHelp": "Cấu hình dùng chung sử dụng chính sách Reward Desk MYR hiện có; không cung cấp chính sách tiền tệ khác tại đây.",
       "archive": "Lưu trữ cấu hình",
       "archiveHelp": "Lưu mà không chọn cặp nào sẽ ngừng áp dụng cấu hình này cho đợt xét duyệt tương lai. Vẫn giữ các phiên bản đã lưu và đợt xét duyệt hiện có."
-    }
+    },
+    "returnedTo": {
+      "bu": "Returned to BU CEO",
+      "bg": "Returned to BG CEO"
+    },
+    "returnedBy": "Returned by {actor} on {date}",
+    "returnedReason": "Reason for return",
+    "returnedNext": "Revise the review and submit it again.",
+    "decidedBy": "By {actor}",
+    "aReviewer": "a reviewer"
   },
   "identityEmail": {
     "title": "Gửi email",
@@ -19620,6 +19635,40 @@
         "all": "Tất cả",
         "outstanding": "Chưa hoàn tất",
         "done": "Hoàn tất"
+      }
+    },
+    "calibrationList": {
+      "title": "Calibration",
+      "description": "The calibration sessions you can open. Sessions with an open window come first.",
+      "empty": "No calibration is assigned to you.",
+      "groupWide": "Group-wide",
+      "opensOn": "Opens {date}",
+      "closesOn": "Closes {date}",
+      "tiers": {
+        "group": "Group",
+        "bg": "Business group (BG)",
+        "bu": "Business unit (BU)",
+        "hod": "Department (HOD)",
+        "final": "Final"
+      },
+      "columns": {
+        "session": "Session",
+        "cycle": "Cycle",
+        "company": "Company",
+        "window": "Window",
+        "people": "People",
+        "toDo": "To do",
+        "status": "Status"
+      },
+      "window": {
+        "open": "Open",
+        "upcoming": "Not open yet",
+        "closed": "Closed"
+      },
+      "lock": {
+        "open": "In progress",
+        "partial": "Partly locked",
+        "locked": "Locked"
       }
     }
   },
@@ -23463,7 +23512,12 @@
       "feedback": "Phản hồi đồng nghiệp",
       "noticeAcknowledgement": "Xác nhận thông báo",
       "replacementLeave": "Duyệt nghỉ bù",
-      "onboarding": "Công việc hội nhập"
+      "onboarding": "Công việc hội nhập",
+      "performanceReview": "Đánh giá hiệu suất",
+      "assessmentWork": "Đánh giá năng lực",
+      "careerPlan": "Xem xét kế hoạch nghề nghiệp",
+      "calibration": "Hiệu chỉnh hiệu suất",
+      "rewardReview": "Xem xét đãi ngộ"
     },
     "quickActions": {
       "leave": "Đăng ký nghỉ phép",

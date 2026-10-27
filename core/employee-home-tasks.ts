@@ -17,7 +17,7 @@ export async function readEmployeeHomeTasks(ctx:SessionContext,employmentId?:str
  // selected own employment must not hide assignments addressed to another of the actor's employments.
  const [configuration,inbox,replacement,standardFeedback,onehrFeedback,onboarding]=await Promise.all([
   readOwnEmployeeHomeConfiguration(ctx,subject.employmentId),
-  listPendingTasks(ctx,undefined,{attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims')}),
+  listPendingTasks(ctx,undefined,{attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')}),
   listPendingReplacementLeaveTasks(ctx),
   isModuleEnabled(ctx,'performance')?pendingStandardFeedbackTaskMetadata(ctx):Promise.resolve([]),
   isModuleEnabled(ctx,'performance')?pendingOnehrFeedbackTaskMetadata(ctx):Promise.resolve([]),

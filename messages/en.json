@@ -473,7 +473,8 @@
     "letterApproval": "Letter Approval",
     "letterRegister": "Issued Letter Register",
     "letterReports": "Letter Reports",
-    "letterSettings": "Letter Settings"
+    "letterSettings": "Letter Settings",
+    "calibration": "Calibration"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -13373,7 +13374,12 @@
       "profile": "Verify profile change",
       "replacementLeave": "Review replacement leave request",
       "resignation": "Decide resignation request",
-      "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]"
+      "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]",
+      "performanceReview": "Complete performance review",
+      "assessmentWork": "Act on performance assessment",
+      "careerPlan": "Review career plan",
+      "calibration": "Complete calibration",
+      "rewardReview": "Review rewards"
     },
     "tasksEmpty": "Nothing needs your action",
     "title": "Notifications"
@@ -18046,7 +18052,16 @@
       "currencyHelp": "Shared configurations use the existing MYR Reward Desk policy; other currency policies are not offered here.",
       "archive": "Archive configuration",
       "archiveHelp": "Saving with no selected pairs stops this configuration for future reviews. Its saved versions and existing reviews are retained."
-    }
+    },
+    "returnedTo": {
+      "bu": "Returned to BU CEO",
+      "bg": "Returned to BG CEO"
+    },
+    "returnedBy": "Returned by {actor} on {date}",
+    "returnedReason": "Reason for return",
+    "returnedNext": "Revise the review and submit it again.",
+    "decidedBy": "By {actor}",
+    "aReviewer": "a reviewer"
   },
   "identityEmail": {
     "title": "Email delivery",
@@ -19620,6 +19635,40 @@
         "all": "All",
         "outstanding": "Outstanding",
         "done": "Complete"
+      }
+    },
+    "calibrationList": {
+      "title": "Calibration",
+      "description": "The calibration sessions you can open. Sessions with an open window come first.",
+      "empty": "No calibration is assigned to you.",
+      "groupWide": "Group-wide",
+      "opensOn": "Opens {date}",
+      "closesOn": "Closes {date}",
+      "tiers": {
+        "group": "Group",
+        "bg": "Business group (BG)",
+        "bu": "Business unit (BU)",
+        "hod": "Department (HOD)",
+        "final": "Final"
+      },
+      "columns": {
+        "session": "Session",
+        "cycle": "Cycle",
+        "company": "Company",
+        "window": "Window",
+        "people": "People",
+        "toDo": "To do",
+        "status": "Status"
+      },
+      "window": {
+        "open": "Open",
+        "upcoming": "Not open yet",
+        "closed": "Closed"
+      },
+      "lock": {
+        "open": "In progress",
+        "partial": "Partly locked",
+        "locked": "Locked"
       }
     }
   },
@@ -23463,7 +23512,12 @@
       "feedback": "Peer feedback",
       "noticeAcknowledgement": "Notice acknowledgement",
       "replacementLeave": "Replacement leave approval",
-      "onboarding": "Onboarding work"
+      "onboarding": "Onboarding work",
+      "performanceReview": "Performance review",
+      "assessmentWork": "Performance assessment",
+      "careerPlan": "Career plan review",
+      "calibration": "Performance calibration",
+      "rewardReview": "Rewards review"
     },
     "quickActions": {
       "leave": "Apply leave",

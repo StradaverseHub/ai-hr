@@ -10,7 +10,7 @@ beforeEach(() => { vi.clearAllMocks(); ports.session.mockResolvedValue(principal
 it('uses the authenticated approval inbox and strips every uncontracted field', async () => {
   ports.tasks.mockResolvedValue([{ id: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa', kind: 'leave', subjectName: 'Scoped colleague', linkPath: '/approvals', salary: '98765.43', tenantId: 'tenant-a' }]);
   const r = await GET(new Request('https://hr.test/api/mobile/v1/tasks?tenantId=foreign&companyId=foreign&personId=foreign'));
-  expect(ports.tasks).toHaveBeenCalledWith(principal, undefined, { attendance: true, claims: false }, {noticeAcknowledgements:false});
+  expect(ports.tasks).toHaveBeenCalledWith(principal, undefined, { attendance: true, claims: false, performance: false, rewards: false }, {noticeAcknowledgements:false});
   expect(await r.json()).toEqual({ total: 1, items: [{ id: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa', kind: 'leave', subject: 'Scoped colleague' }] });
   expect(r.headers.get('cache-control')).toBe('no-store');
 });

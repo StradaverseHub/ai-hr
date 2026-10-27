@@ -221,6 +221,19 @@ type Spec = {
   recipients?: (tx: Tx, ev: EventRef, payload: Record<string, unknown> | null,noticeReader?:NoticeRecipientReader) => Promise<string[]>;
 };
 
+/**
+ * `reward-unit.routed` copy. A move back to draft from a later stage is a RETURN to the BU CEO (or the BG
+ * CEO for a BG-originated off-cycle request — the recipient resolver already picks that seat), so it says
+ * so. Neither branch carries an amount or the return reason: the reason is read in the app under
+ * reward_decision RLS, never frozen into a stored notice or an email.
+ */
+export function renderRewardRouted(p: Record<string, unknown> | null, ev: EventRef): Rendered {
+  const linkPath = `/rewards/${ev.aggregateId}?view=approvals`;
+  if (p?.to === 'draft' && typeof p?.from === 'string' && p.from !== 'draft')
+    return { severity: 'action', title: 'Rewards review returned to you', body: 'Open Reward Desk to see why it was returned and resubmit it.', linkPath };
+  return { severity: 'action', title: 'Rewards review needs attention', body: 'Open Reward Desk to review the assigned request.', linkPath };
+}
+
 // eventType → notification (or SEVERAL — 6522d26a: one event may fan out to different audiences with
 // different bodies, e.g. employment-review.decided → subject "complete" + HR "issue the letter").
 // Recipient defaults to the event's subjectEmploymentId. Keep titles/bodies short; deep-link into the
@@ -249,7 +262,7 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
   },
   'reward-unit.routed': {
     kind: 'rewards.review', category: 'rewards',
-    render: (_p, ev) => ({ severity: 'action', title: 'Rewards review needs attention', body: 'Open Reward Desk to review the assigned request.', linkPath: `/rewards/${ev.aggregateId}?view=approvals` }),
+    render: (p, ev) => renderRewardRouted(p, ev),
     recipients: (tx, ev, payload) => rewardNotificationRecipients(tx, ev.aggregateId, payload?.to),
   },
   'reward-unit.approved': {

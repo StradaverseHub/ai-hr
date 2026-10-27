@@ -75,6 +75,8 @@ export async function loadMobilePreview(s: SessionContext, scopeIds: string[], l
     }),
     read('tasks', moduleState('leave'), async () => (await listPendingTasks(s, scopeIds, {
       attendance: moduleState('attendance') === 'ready', claims: moduleState('claims') === 'ready',
+      // The preview mirrors the mobile v1 task vocabulary, which has no Performance or Rewards kinds.
+      performance: false, rewards: false,
     },{noticeAcknowledgements:false})).map(t => ({ id: t.id, kind: t.kind, subject: t.subjectName, href: t.linkPath }))),
     read('inbox', own('notifications'), async () => (await listNotifications(s, me!.employmentId, { limit: 30 }))
       .map(n => ({ id: n.id, title: n.title, body: n.body, href: n.linkPath,

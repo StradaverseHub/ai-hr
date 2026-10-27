@@ -70,7 +70,7 @@ async function main(){
   if(grants.length!==1||grants[0].role!=='employee'||grants[0].companyId!==null)throw Error('Fictional actor must still have only Employee access.');
   const rows=await owner.db.select({id:s.leaveRequest.id,status:s.leaveRequest.status,startDate:s.leaveRequest.startDate}).from(s.leaveRequest).where(and(eq(s.leaveRequest.tenantId,f.tenantId),inArray(s.leaveRequest.id,receipt.requestIds))).orderBy(s.leaveRequest.startDate,s.leaveRequest.id);
   if(rows.length!==2||rows.some(row=>!receipt.dates.includes(row.startDate)))throw Error('Saved task identities changed.');
-  const tasks=await listPendingTasks(manager,[f.companyId],{attendance:false,claims:false});
+  const tasks=await listPendingTasks(manager,[f.companyId],{attendance:false,claims:false,performance:false,rewards:false});
   if(tasks.some(row=>row.kind!=='leave'||!receipt!.requestIds.includes(row.id)))throw Error('Unexpected task outside the fictional witness.');
   if(command==='verify'&&(tasks.length!==expected||rows.filter(row=>row.status==='pending').length!==expected))throw Error('Actual remaining task/state count mismatch.');
   // The real app user context must see the same status as owner readback, not a guessed toast result.

@@ -63,7 +63,7 @@ describe('Attendance v3 participant owner and exact request capability', () => {
         const visible = await listAttendanceCorrections(f.first.ctx, { companyIds: [b.companyId], status: 'pending' });
         expect(visible.find(row => row.id === f.id)).toMatchObject({ canDecide: true, workflow: { currentParticipantSlot: '0:0' } });
         expect(await hasPendingAttendanceParticipantAssignment(f.first.ctx)).toBe(true);
-        expect(await listPendingTasks(f.first.ctx, [b.companyId], { attendance: true, claims: true })).toMatchObject([{ id: f.id, kind: 'attendance' }]);
+        expect(await listPendingTasks(f.first.ctx, [b.companyId], { attendance: true, claims: true, performance: false, rewards: false })).toMatchObject([{ id: f.id, kind: 'attendance' }]);
         const [scope] = await withTenant(f.first.ctx, tx => tx.execute(sql`select app.can_see_employment(${f.worker.employmentId}::uuid) as personnel`)) as unknown as { personnel: boolean }[];
         expect(scope.personnel).toBe(false);
         await expect(decideAttendanceCorrection(f.second.ctx, { correctionId: f.id, decision: 'approved', expectedStageIndex: 0, expectedParticipantSlot: '0:1' })).rejects.toThrow();
@@ -202,7 +202,7 @@ describe('v3 database authority refuses bypasses and committed/released proof', 
         const otherCompanyContext = [randomUUID()];
         expect((await listAttendanceCorrections(f.first.ctx, { companyIds: otherCompanyContext, status: 'pending' })).map(row => row.id)).toContain(f.id);
         expect((await listAttendanceCorrections(unrelated.ctx, { companyIds: otherCompanyContext, status: 'pending' })).map(row => row.id)).not.toContain(f.id);
-        expect((await listPendingTasks(f.first.ctx, otherCompanyContext, { attendance: true, claims: true })).map(row => row.id)).toEqual([f.id]);
+        expect((await listPendingTasks(f.first.ctx, otherCompanyContext, { attendance: true, claims: true, performance: false, rewards: false })).map(row => row.id)).toEqual([f.id]);
     });
 });
 

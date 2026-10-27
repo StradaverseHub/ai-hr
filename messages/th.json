@@ -473,7 +473,8 @@
     "letterApproval": "การอนุมัติจดหมาย",
     "letterRegister": "ทะเบียนจดหมายที่ออกแล้ว",
     "letterReports": "รายงานจดหมาย",
-    "letterSettings": "การตั้งค่าจดหมาย"
+    "letterSettings": "การตั้งค่าจดหมาย",
+    "calibration": "Calibration"
   },
   "dashboard": {
     "title": "แดชบอร์ด",
@@ -13373,7 +13374,12 @@
       "profile": "ตรวจสอบการเปลี่ยนแปลงโปรไฟล์",
       "replacementLeave": "ตรวจสอบคำขอลาชดเชย",
       "resignation": "พิจารณาคำขอลาออก",
-      "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]"
+      "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]",
+      "performanceReview": "ทำการประเมินผลการปฏิบัติงานให้เสร็จ",
+      "assessmentWork": "ดำเนินการกับการประเมินผลงาน",
+      "careerPlan": "ตรวจทานแผนพัฒนาอาชีพ",
+      "calibration": "ทำการปรับเทียบผลงานให้เสร็จ",
+      "rewardReview": "ตรวจทานผลตอบแทน"
     },
     "tasksEmpty": "ไม่มีรายการที่ต้องดำเนินการ",
     "title": "การแจ้งเตือน"
@@ -18046,7 +18052,16 @@
       "currencyHelp": "การตั้งค่าร่วมใช้นโยบาย Reward Desk สกุล MYR ที่มีอยู่ หน้านี้ไม่มีนโยบายสกุลเงินอื่น",
       "archive": "เก็บการตั้งค่าถาวร",
       "archiveHelp": "การบันทึกโดยไม่เลือกคู่จะหยุดใช้การตั้งค่านี้สำหรับการทบทวนในอนาคต โดยยังเก็บเวอร์ชันและการทบทวนเดิมไว้"
-    }
+    },
+    "returnedTo": {
+      "bu": "Returned to BU CEO",
+      "bg": "Returned to BG CEO"
+    },
+    "returnedBy": "Returned by {actor} on {date}",
+    "returnedReason": "Reason for return",
+    "returnedNext": "Revise the review and submit it again.",
+    "decidedBy": "By {actor}",
+    "aReviewer": "a reviewer"
   },
   "identityEmail": {
     "title": "การส่งอีเมล",
@@ -19620,6 +19635,40 @@
         "all": "ทั้งหมด",
         "outstanding": "ยังไม่เสร็จ",
         "done": "เสร็จสิ้น"
+      }
+    },
+    "calibrationList": {
+      "title": "Calibration",
+      "description": "The calibration sessions you can open. Sessions with an open window come first.",
+      "empty": "No calibration is assigned to you.",
+      "groupWide": "Group-wide",
+      "opensOn": "Opens {date}",
+      "closesOn": "Closes {date}",
+      "tiers": {
+        "group": "Group",
+        "bg": "Business group (BG)",
+        "bu": "Business unit (BU)",
+        "hod": "Department (HOD)",
+        "final": "Final"
+      },
+      "columns": {
+        "session": "Session",
+        "cycle": "Cycle",
+        "company": "Company",
+        "window": "Window",
+        "people": "People",
+        "toDo": "To do",
+        "status": "Status"
+      },
+      "window": {
+        "open": "Open",
+        "upcoming": "Not open yet",
+        "closed": "Closed"
+      },
+      "lock": {
+        "open": "In progress",
+        "partial": "Partly locked",
+        "locked": "Locked"
       }
     }
   },
@@ -23463,7 +23512,12 @@
       "feedback": "ความเห็นเพื่อนร่วมงาน",
       "noticeAcknowledgement": "ยืนยันรับทราบประกาศ",
       "replacementLeave": "อนุมัติวันลาชดเชย",
-      "onboarding": "งานเตรียมพนักงานใหม่"
+      "onboarding": "งานเตรียมพนักงานใหม่",
+      "performanceReview": "การประเมินผลการปฏิบัติงาน",
+      "assessmentWork": "การประเมินผลงาน",
+      "careerPlan": "การตรวจทานแผนอาชีพ",
+      "calibration": "การปรับเทียบผลงาน",
+      "rewardReview": "การตรวจทานผลตอบแทน"
     },
     "quickActions": {
       "leave": "ยื่นใบลา",

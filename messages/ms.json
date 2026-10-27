@@ -473,7 +473,8 @@
     "letterApproval": "Kelulusan Surat",
     "letterRegister": "Daftar Surat Dikeluarkan",
     "letterReports": "Laporan Surat",
-    "letterSettings": "Tetapan Surat"
+    "letterSettings": "Tetapan Surat",
+    "calibration": "Calibration"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -13373,7 +13374,12 @@
       "profile": "Sahkan perubahan profil",
       "replacementLeave": "Semak permohonan cuti gantian",
       "resignation": "Putuskan permohonan peletakan jawatan",
-      "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]"
+      "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]",
+      "performanceReview": "Lengkapkan semakan prestasi",
+      "assessmentWork": "Ambil tindakan pada penilaian prestasi",
+      "careerPlan": "Semak pelan kerjaya",
+      "calibration": "Lengkapkan kalibrasi prestasi",
+      "rewardReview": "Semak ganjaran"
     },
     "tasksEmpty": "Tiada apa-apa memerlukan tindakan anda",
     "title": "Pemberitahuan"
@@ -18046,7 +18052,16 @@
       "currencyHelp": "Konfigurasi dikongsi menggunakan dasar Reward Desk MYR sedia ada; dasar mata wang lain tidak ditawarkan di sini.",
       "archive": "Arkibkan konfigurasi",
       "archiveHelp": "Menyimpan tanpa pasangan dipilih menghentikan konfigurasi ini untuk semakan akan datang. Versi tersimpan dan semakan sedia ada dikekalkan."
-    }
+    },
+    "returnedTo": {
+      "bu": "Returned to BU CEO",
+      "bg": "Returned to BG CEO"
+    },
+    "returnedBy": "Returned by {actor} on {date}",
+    "returnedReason": "Reason for return",
+    "returnedNext": "Revise the review and submit it again.",
+    "decidedBy": "By {actor}",
+    "aReviewer": "a reviewer"
   },
   "identityEmail": {
     "title": "Penghantaran e-mel",
@@ -19620,6 +19635,40 @@
         "all": "Semua",
         "outstanding": "Belum selesai",
         "done": "Selesai"
+      }
+    },
+    "calibrationList": {
+      "title": "Calibration",
+      "description": "The calibration sessions you can open. Sessions with an open window come first.",
+      "empty": "No calibration is assigned to you.",
+      "groupWide": "Group-wide",
+      "opensOn": "Opens {date}",
+      "closesOn": "Closes {date}",
+      "tiers": {
+        "group": "Group",
+        "bg": "Business group (BG)",
+        "bu": "Business unit (BU)",
+        "hod": "Department (HOD)",
+        "final": "Final"
+      },
+      "columns": {
+        "session": "Session",
+        "cycle": "Cycle",
+        "company": "Company",
+        "window": "Window",
+        "people": "People",
+        "toDo": "To do",
+        "status": "Status"
+      },
+      "window": {
+        "open": "Open",
+        "upcoming": "Not open yet",
+        "closed": "Closed"
+      },
+      "lock": {
+        "open": "In progress",
+        "partial": "Partly locked",
+        "locked": "Locked"
       }
     }
   },
@@ -23463,7 +23512,12 @@
       "feedback": "Maklum balas rakan",
       "noticeAcknowledgement": "Pengesahan notis",
       "replacementLeave": "Kelulusan cuti gantian",
-      "onboarding": "Tugas penerimaan pekerja"
+      "onboarding": "Tugas penerimaan pekerja",
+      "performanceReview": "Semakan prestasi",
+      "assessmentWork": "Penilaian prestasi",
+      "careerPlan": "Semakan pelan kerjaya",
+      "calibration": "Kalibrasi prestasi",
+      "rewardReview": "Semakan ganjaran"
     },
     "quickActions": {
       "leave": "Mohon cuti",
