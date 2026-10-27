@@ -34,7 +34,7 @@ export async function PerformanceHomeView({ block }: { block: PerformanceHomeBlo
   const word = (state: HomeStepState, count?: number) => (state === 'waiting' ? t('states.waiting', { count: count ?? 0 }) : t(`states.${state}`));
   const nextTitle = next.kind === 'none' ? t('next.none') : next.kind === 'feedback360' ? t('next.feedback360Title', { count: next.colleagues }) : t(`next.${next.kind}Title`);
   const nextLine = next.kind === 'none' ? (next.nextDate ? t(next.nextDate.kind === 'opens' ? 'next.opens' : 'next.closesOn', { date: day(next.nextDate.on) }) : null)
-    : next.kind === 'feedback360' ? t('next.feedback360Line') : t(`next.${next.kind}Line`, { done: next.done, total: next.total });
+    : next.kind === 'feedback360' ? t('next.feedback360Line') : next.total > 0 ? t(`next.${next.kind}Line`, { done: next.done, total: next.total }) : null;
   const rows: { key: string; label: string; value: string; strong: boolean }[] = [];
   if (standing.performance) rows.push({ key: 'performance', label: t('standing.performance'), value: standing.performance.state === 'released' ? standing.performance.band : t(`standing.${standing.performance.state}`), strong: standing.performance.state === 'released' });
   if (standing.competency) rows.push({ key: 'competency', label: t('standing.competency'), value: t(`standing.${standing.competency}`), strong: standing.competency === 'reviewed' });
