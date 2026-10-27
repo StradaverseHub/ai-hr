@@ -289,7 +289,7 @@ describe('installed internal-auth preflight loader', () => {
     return spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', command!], {
       cwd: REPO, encoding: 'utf8', timeout: 10_000,
       env: {PATH: process.env.PATH, AUTH_PUBLIC_ORIGIN: 'https://fictional-preflight.example.com',
-        AUTH_SESSION_KEY: '12'.repeat(32), AUTH_DEFAULT_ORGANIZATION: 'fictional-preflight', ...changes},
+        AUTH_SESSION_KEY: '12'.repeat(32), AUTH_DEFAULT_ORGANIZATION: 'fictional-preflight', ...changes} as unknown as NodeJS.ProcessEnv,
     });
   }
   it('loads the real internalConfig and validates a fictional supported configuration', () => {
