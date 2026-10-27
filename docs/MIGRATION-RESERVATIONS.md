@@ -18,10 +18,10 @@ Final `idx`/`when` values are assigned at journaling: unique append positions af
 | --- | --- | --- |
 | 0636 | Mobile Android key custody | Held, unjournaled; old provisional idx634 is not a final allocation |
 | 0641 | Reports email delivery history | Applied on staging (idx618 / when1793109999999, observed 28 October) |
-| 0640 | P1 reviewer scope | Journaled on alpha idx619 / when1793110000000; not yet applied on staging |
+| 0640 | REA P1 wave 1 reviewer scope (PR #19) | Journaled on alpha idx619 / when1793110000000; not yet applied on staging |
 | 0642 | AI specialist diagnostic playbook | Reserved draft; idx/when deferred |
 | 0643–0645 | Unclaimed | P1 disclaims them (never written, branched or journaled); not recycled without a recorded claim |
-| 0646 | Reward Calendar (P1) | Journaled on alpha idx620 / when1793120000000; not yet applied on staging |
+| 0646 | REA P1 wave 2 Reward Calendar (PR #23) | Journaled on alpha idx620 / when1793120000000; not yet applied on staging |
 | 0647 | Mobile offline attendance | Reserved filename; idx/when deferred |
 | 0648–0658 | AI delivery (block) | Reserved filenames; idx/when integration-bound; unused numbers released when the group count is final |
 

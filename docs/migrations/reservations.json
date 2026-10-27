@@ -45,7 +45,7 @@
     },
     {
       "tag": "0640_onehr_plan_reviewer_scope",
-      "owner": "P1",
+      "owner": "REA (P1 wave 1); merged to alpha via PR #19",
       "status": "journaled_on_alpha_unapplied",
       "idx": 619,
       "when": 1793110000000,
@@ -66,12 +66,13 @@
       "owner": null,
       "status": "unresolved_hold_do_not_recycle",
       "notes": [
-        "28 October: the REA/P1 session states P1 never wrote, branched or journaled 0643-0645 and disclaims them. No owner has claimed them. AI does not need them; they stay unallocated and are not recycled without a recorded claim."
+        "28 October: the REA/P1 session states P1 never wrote, branched or journaled 0643-0645 and disclaims them. No owner has claimed them. AI does not need them; they stay unallocated and are not recycled without a recorded claim.",
+        "REA confirms (relayed by Mobile, 28 October) it holds none of 0643-0645; no hold exists on its behalf."
       ]
     },
     {
       "tag": "0646_reward_calendar",
-      "owner": "P1 (REA/P1 session confirmed 28 October)",
+      "owner": "REA (P1 wave 2, WP-G); built on claude/p1-wpg-rewards-board @58da4864d, merged to alpha via PR #23",
       "status": "journaled_on_alpha_unapplied",
       "idx": 620,
       "when": 1793120000000,
