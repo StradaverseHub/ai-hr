@@ -1368,12 +1368,11 @@ eligible generic simulator destination. Listed SDK headers alone therefore did n
 readiness. This is an environment prerequisite failure, not an observed Swift/app compile failure.
 Logs:`/tmp/mobile-ios-native-{prebuild,pods,simulator-build}.log`.
 
-Apple's documented installed command is now adding the missing iOS26.5 arm64 simulator/platform
+Apple's documented installed command was started to add the missing iOS26.5 arm64 simulator/platform
 component (`xcodebuild -downloadPlatform iOS -buildVersion26.5 -architectureVariant arm64`). The
-observed download is8.52 GB and is not yet complete. It runs under complete two-slot/no-database
-admission; log:`/tmp/mobile-ios-platform-install.log`. Do not restart that live transfer because a
-poll ends. No iPhone app compilation, launch, signed-device App Attest, staging migration, deployment
-or store distribution is established yet.
+download was8.52 GB and was incomplete at that observation. It used complete two-slot/no-database
+admission; log:`/tmp/mobile-ios-platform-install.log`. Its completed result and subsequent compilation
+are recorded below; an intermediate polling timeout was not treated as completion.
 
 One reviewed configuration concern was not assumed to be a bug: the generated iPhone entitlements
 omit an explicit App Attest environment. [Apple's entitlement documentation](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.devicecheck.appattest-environment)
@@ -1381,3 +1380,43 @@ says development without this entitlement uses sandbox, while TestFlight/App Sto
 distribution uses production irrespective of the setting. Do not invent a production entitlement
 change as a prerequisite for a simulator build. Real signed-device acceptance must still verify the
 actual provisioning/app identity/environment against the deployment-owned server target.
+
+### First successful iPhone simulator compilation and Android startup
+
+FACT: the iOS26.5 arm64 platform installation completed with exit0. At frozen tracked candidate
+`1ae606fb52f30cab25d5399c48a404eaf86f522c`, the compile-only retry then completed with exit0 and
+`BUILD SUCCEEDED`. It reused the successful prebuild/Pods output, reserved both resource slots,
+used two compiler jobs, disabled signing, and targeted generic arm64 iOS Simulator. The log is
+`/tmp/mobile-ios-native-compile-retry.log`; DerivedData is
+`/tmp/aihr-mobile-ios-1ae606fb5-derived`. Both `AihrIntegrityModule.swift` and
+`AppAttestProofStore.swift` compiled, and the resulting debug dylib contains their integrity symbols.
+
+The generated `AIHRTest.app` reports `ai.stradaverse.aihr.test`, version1.0.3/build4,
+minimum iOS16.4, SDK `iphonesimulator26.5`, and arm64 Mach-O executable/dylib. Executable SHA256:
+`32f53ffe9524d68278a028fd2cec132c181b900d9971ff2982abde1e92bcbbdf`;
+debug dylib SHA256:
+`de0d2c666a4f7e887530297cbc876aea1d59b401d08a09f4fc626e3ee1be27da`.
+This establishes simulator compilation only; iPhone launch, distribution signing and physical-device
+App Attest remain unverified.
+
+OBSERVATION: the corrected isolated Android harness booted, installed the previously recorded debug
+APK, and launched its main activity. It removed the custom SD-card option, used2048MiB and software
+graphics; these combined changes do not isolate the original boot failure's cause. Google's
+[emulator command-line reference](https://developer.android.com/studio/run/emulator-commandline)
+explicitly excludes the custom SD-card option on Apple silicon. Existing user AVD data was preserved.
+
+Initial launch displayed a missing-script error. Metro listened on IPv6 localhost8193, while the
+app's observed default emulator host was10.0.2.2:8081. A temporary loopback IPv4-to-IPv6 bridge on
+host8081 allowed a clean app launch and the actual **Connect to your company** screen to render.
+Earlier debug-menu recovery and an initial bridge transfer failure are not passing evidence.
+Final bounded crash-buffer output was empty. The screenshot and logs are retained under
+`/var/folders/8x/sb7ssym50_35f0ks9m11bjm80000gn/T/aihr-android-runtime-yqkh6ail/`
+(`company-setup.png`, `final-crash.log`, `metro.log`, `emulator.log`). The harness exited0 after
+stopping its owned emulator/Metro; both remaining owned bridges were stopped. This is first-screen
+startup evidence, not authenticated attendance, integrity acceptance or release validation.
+
+The command-only Android lint9.0.1 diagnostic still exited1 in1m17s at
+`:react-native-worklets:lintAnalyzeDebug`, now reporting `findFirCompiledSymbol` on a noncompiled
+declaration. Log:`/tmp/mobile-android-lint-9.0.1.log`. The stack remains in Kotlin-script UAST analysis,
+matching the failure family discussed in [Google issue430991549](https://issuetracker.google.com/issues/430991549).
+No lint override was committed, no checks were disabled, and this is not a lint pass or a proven fix.
