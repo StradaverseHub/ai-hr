@@ -2,7 +2,8 @@ import Link from 'next/link';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import type { SessionContext } from '@/db/client';
 import { Card } from '@/components/ui/card';
-import { buttonVariants } from '@/components/ui/button';
+// Button is a client component: rendered with a server Link child (asChild), never called as a function here.
+import { Button } from '@/components/ui/button';
 import { Status, type StatusTone } from '@/components/monolith';
 import { MONO_LABEL } from '@/components/monolith/classes';
 import { cn } from '@/lib/utils';
@@ -80,7 +81,7 @@ export async function PerformanceHomeView({ block }: { block: PerformanceHomeBlo
             )}
           </div>
           {next.kind !== 'none' && (
-            <Link href={next.href} className={cn(buttonVariants({ variant: 'default' }), 'min-h-11')}>{t('next.open')}</Link>
+            <Button asChild className="min-h-11"><Link href={next.href}>{t('next.open')}</Link></Button>
           )}
           {team && (
             <div data-performance-team className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4 monolith:border-hairline">
@@ -94,7 +95,7 @@ export async function PerformanceHomeView({ block }: { block: PerformanceHomeBlo
                   </ul>
                 )}
               </div>
-              <Link href={team.href} className={cn(buttonVariants({ variant: 'outline' }), 'min-h-11')}>{t('team.open')}</Link>
+              <Button asChild variant="outline" className="min-h-11"><Link href={team.href}>{t('team.open')}</Link></Button>
             </div>
           )}
         </Card>

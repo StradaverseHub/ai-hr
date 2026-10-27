@@ -102,6 +102,14 @@ describe('the slot', () => {
     spy.mockRestore();
   });
 
+  it('calls no client-module function from the server (buttonVariants lives in a "use client" file)', () => {
+    // Found by the render check: jsdom renders it, the RSC server refuses it, and Home silently loses the block.
+    const src = fs.readFileSync(path.resolve(__dirname, '../components/performance-home/performance-home.tsx'), 'utf8');
+    expect(src.length).toBeGreaterThan(2000);
+    expect(src).not.toMatch(/buttonVariants\s*\(/);
+    expect(fs.readFileSync(path.resolve(__dirname, '../components/ui/button.tsx'), 'utf8').startsWith("'use client'")).toBe(true);
+  });
+
   it('every Home branch mounts the block: personal landing, Atelier, Monolith, Classic', () => {
     const page = fs.readFileSync(path.resolve(__dirname, '../app/page.tsx'), 'utf8');
     expect(page).toContain('const performanceBlock = <PerformanceHomeSlot session={s} scopeIds={scopeIds} />;');
