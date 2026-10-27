@@ -417,12 +417,15 @@ export async function restoreDocument(ctx: SessionContext, id: string) {
 /** Bounded article guidance. Tenant RLS and the ordinary audience ladder apply before ranking. */
 export async function searchKnowledgeArticles(ctx:SessionContext,query:string,category:string,mode:'journey'|'dashboard'='journey'){
  if(!ctx.userId||!query.trim()||query.length>2500)return [];
- return withTenant(ctx,async tx=>{
+ return withTenant(ctx,tx=>searchKnowledgeArticlesTx(tx,ctx,query,category,mode));
+}
+/** Same bounded, RLS/audience-filtered owner projection inside an admitted caller transaction. */
+export async function searchKnowledgeArticlesTx(tx:Tx,ctx:SessionContext,query:string,category:string,mode:'journey'|'dashboard'='journey'){
+ if(!ctx.userId||!query.trim()||query.length>2500)return [];
   const rows=await tx.select({id:kbDocument.id,title:kbDocument.title,body:sql<string>`left(${kbDocument.body},5000)`,slug:kbDocument.slug}).from(kbDocument)
    .where(and(eq(kbDocument.kind,'article'),eq(kbDocument.category,category),isNull(kbDocument.archivedAt),inArray(kbDocument.audience,visibleAudiencesFor(ctx))))
    .orderBy(asc(kbDocument.createdAt),asc(kbDocument.id)).limit(100);
   return (category==='performance-faq'?(mode==='dashboard'?rankPerformanceDashboardArticles:rankPerformanceArticles)(query,rows.filter(r=>r.body)):rankKnowledgeArticles(query,rows.filter(r=>r.body))).map(r=>({id:r.id,title:r.title,body:r.body.slice(0,1400)}));
- });
 }
 
 /** Home searches this existing library, not a second content index. Tenant RLS and the ordinary

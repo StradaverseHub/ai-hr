@@ -1530,8 +1530,9 @@ export async function assessmentReviewTaskRecipientsTx(tx:Tx,reviewId:string,tas
  return [...new Set(live.map(e=>e.id))].sort();
 }
 /** A worklist projection, not a second workflow state store. Every card derives from current assignments. */
-export async function performanceWorkspace(ctx:SessionContext) {
- return withPerformanceTenant(ctx,async tx=>{
+export async function performanceWorkspace(ctx:SessionContext) {return withPerformanceTenant(ctx,tx=>performanceWorkspaceTx(tx,ctx));}
+/** Same native projection in the actual caller transaction; the caller owns fresh module authority. */
+export async function performanceWorkspaceTx(tx:Tx,ctx:SessionContext) {
   const items:PerformanceWorkspaceItem[]=[];
   const reviews=await tx.select({row:onehrReview,cycle:reviewCycle,policy:onehrCycle.policy,header:sql<{name:string;ownEmploymentIds:string[]}>`app.onehr_review_header(${onehrReview.reviewId})`,self:sql<boolean>`exists(select 1 from employment e where e.id=${onehrReview.employmentId} and app.is_self_person(e.person_id))`,manager:sql<boolean>`app.onehr_manager(${onehrReview.reviewId})`})
    .from(onehrReview).innerJoin(reviewCycle,eq(reviewCycle.id,onehrReview.cycleId)).innerJoin(onehrCycle,eq(onehrCycle.cycleId,onehrReview.cycleId))
@@ -1559,7 +1560,6 @@ export async function performanceWorkspace(ctx:SessionContext) {
   for(const {session} of sessions)if(session.tier==='bg'&&session.reviewerUserIds.includes(ctx.userId!)&&!await isAdmin(tx,session.cycleId))bgLeaderCycles.add(session.cycleId);
   // A BG leader's own assessment is not requested. Mine remains only while they owe a colleague feedback.
   return items.filter(i=>!bgLeaderCycles.has(i.cycleId)||i.view!=='mine'||i.kind==='feedback'&&i.state==='open').sort((a,b)=>b.periodEnd.localeCompare(a.periodEnd)||a.title.localeCompare(b.title)||a.key.localeCompare(b.key));
- });
 }
 
 export async function saveAssessmentTalentDecision(ctx:SessionContext,sessionId:string,expected:number,reviewId:string,kind:'pip'|'promotion'|'specialReward'|'nomination',selected:boolean,reason:string,details:{grade?:string;title?:string;talentRevision?:number}={}) {
