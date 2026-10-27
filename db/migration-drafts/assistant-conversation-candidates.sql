@@ -134,3 +134,18 @@ END $$;
 REVOKE ALL ON FUNCTION app.answer_metadata_capture_guard() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER answer_arm_capture_guard BEFORE INSERT OR UPDATE ON public.ai_assistant_answer_evaluation_arm FOR EACH ROW EXECUTE FUNCTION app.answer_metadata_capture_guard();
 CREATE TRIGGER answer_use_capture_guard BEFORE INSERT OR UPDATE ON public.ai_assistant_answer_strategy_use FOR EACH ROW EXECUTE FUNCTION app.answer_metadata_capture_guard();
+--> statement-breakpoint
+-- Identity-only metadata invalidation bridge for the actual own transcript redaction owner. No
+-- target is posted; no Assistant grant/module/provider admission or financial refund is inferred.
+CREATE FUNCTION app.assistant_answer_invalidate_own_strategy_uses() RETURNS integer
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();n integer;
+BEGIN
+ IF t IS NULL OR u IS NULL OR app.principal_snapshot_current() IS NOT TRUE OR current_setting('transaction_isolation')<>'read committed' OR current_setting('transaction_read_only')<>'off' THEN RAISE EXCEPTION 'Conversation metadata retirement unavailable' USING ERRCODE='42501';END IF;
+ -- First source phase, or reentrant under the admitted transcript owner's existing Access interval.
+ -- A competing actor/admission is a whole-command refusal, never a wait/partial-success erasure.
+ IF NOT pg_try_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0)) THEN RAISE EXCEPTION 'Conversation metadata retirement is busy' USING ERRCODE='55P03';END IF;
+ DELETE FROM public.ai_assistant_answer_strategy_use WHERE tenant_id=t AND user_id=u;GET DIAGNOSTICS n=ROW_COUNT;RETURN n;
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_answer_invalidate_own_strategy_uses() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_answer_invalidate_own_strategy_uses() TO ai_hr_app;

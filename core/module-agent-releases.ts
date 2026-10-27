@@ -1091,7 +1091,7 @@ export async function completeAssistantConversationStrategyTx(tx:Tx,ctx:SessionC
  const rows=await tx.execute(sql`update public.ai_assistant_answer_strategy_use set state='completed',exchange_id=${exchangeId}::uuid where id=${use.id}::uuid and tenant_id=${ctx.tenantId}::uuid and user_id=${ctx.userId}::uuid and state='pending' returning id`);if(rows.length!==1)return fail();return use.provenance;
 }
 /** Identity-only retirement is separate from Assistant admission. Revocation does not trap custody. */
-export async function eraseOwnConversationStrategyMetadata(ctx:SessionContext){const current=capture(ctx);return withTenant(current,async tx=>{await assertAiPrincipalTx(tx,current);await tx.execute(sql`delete from public.ai_assistant_answer_strategy_use where tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);await tx.execute(sql`delete from public.ai_assistant_answer_evaluation_arm where tenant_id=${current.tenantId}::uuid and evaluator_user_id=${current.userId}::uuid`);});}
+export async function eraseOwnConversationStrategyMetadata(ctx:SessionContext){const current=capture(ctx);return withTenant(current,async tx=>{await assertAiPrincipalTx(tx,current);await tx.execute(sql`select app.assistant_answer_invalidate_own_strategy_uses()`);await tx.execute(sql`delete from public.ai_assistant_answer_evaluation_arm where tenant_id=${current.tenantId}::uuid and evaluator_user_id=${current.userId}::uuid`);});}
 
 /** Call only after withTenant's successful COMMIT (or to explicitly abandon a failed request). A
  * transaction rollback retains the opaque binding and pending DB marker for an honest retry; the
