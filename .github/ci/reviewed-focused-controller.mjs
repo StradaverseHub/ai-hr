@@ -35,7 +35,7 @@ export function proveReviewedFocusedController({repository,controller,branch}){
  const tooling=controller===FOCUSED_TOOLING_CONTROLLER&&branch===FOCUSED_TOOLING_BRANCH;
  assert(tooling||(controller===FOCUSED_REPAIR_CONTROLLER&&branch===FOCUSED_REPAIR_BRANCH),'Unreviewed focused controller');
  const git=(...args)=>execFileSync('git',['-C',repository,...args],{encoding:'utf8',maxBuffer:2*1024**2,timeout:10000}).trim();
- assert(git('remote','get-url','origin').toLowerCase()==='https://github.com/stradaversehub/ai-hr.git','Foreign source repository');
+ assert(['https://github.com/stradaversehub/ai-hr.git','https://github.com/stradaversehub/ai-hr'].includes(git('remote','get-url','origin').toLowerCase()),'Foreign source repository');
  if(tooling){
   proveReviewedFocusedController({repository,controller:FOCUSED_REPAIR_CONTROLLER,branch:FOCUSED_REPAIR_BRANCH});
   assert(git('rev-parse',controller+'^')===FOCUSED_REPAIR_CONTROLLER,'Unexpected tooling controller parent');
