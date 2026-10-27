@@ -1,16 +1,20 @@
 import {sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
+import {isCarrierPrincipalCurrentTx} from './carrier-principal';
 /** Native callers keep their existing RLS/field-owner authority. This interval creates no marker,
  * role or table grant. Null-user provisioning keeps its original SYSTEM semantics. */
 export const captureStatutorySourceContext=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
 /** NATIVE statutory writers (profile, tax selection, hire/transfer initialization, TP3, split cards).
  * Same write barrier and configuration interval the reviewed owner joins, so reviewed custody and native
- * writers still serialize, but NO principal refusal of its own: the writer's existing RLS, field-owner
- * and own-identity checks stay the authority and keep their existing outcomes (not_found etc.). */
+ * writers still serialize. A USER carrier must pass the shared ordinary principal proof under that
+ * barrier: every claimed role/grant actually held now (a stale or forged role string is refused), and a
+ * personId only when the context supplies one. Otherwise the writer's existing RLS, field-owner and
+ * own-identity checks stay the authority and keep their outcomes (not_found etc.). */
 export async function lockStatutorySourceTx(tx:Tx,ctx:SessionContext){
  ctx=captureStatutorySourceContext(ctx);
  await tx.execute(sql`select app.access_workforce_write_lock()`);
+ if(ctx.userId&&!(await isCarrierPrincipalCurrentTx(tx,ctx)))throw new Error('Statutory authority unavailable');
  await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
 }
 /** REVIEWED (Assistant custody) statutory owners: the same interval, but a USER carrier must still match

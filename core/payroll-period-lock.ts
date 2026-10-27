@@ -7,17 +7,12 @@ import {eq,sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';
 import {payrollBatch,payPeriod} from '../db/schema';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {isCarrierPrincipalCurrentTx} from './carrier-principal';
 /** Ordinary authenticated kernel owners may carry statutory/bootstrap metadata. Those markers
- * grant NOTHING here. AI source owners apply their stricter no-marker prerequisite separately. */
+ * grant NOTHING here. AI source owners apply their stricter no-marker prerequisite separately.
+ * The reviewed owner refuses a null-user carrier; native owners keep SYSTEM semantics for it. */
 async function currentPayrollPeriodPrincipalTx(tx:Tx,ctx:SessionContext){
- const grants=ctx.grants??(ctx.roles??[]).map(role=>({role,companyId:null})),roles=ctx.roles??[...new Set(grants.map(g=>g.role))];
- const [row]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.app_user u
-  where u.id=${ctx.userId??null}::uuid and u.tenant_id=${ctx.tenantId}::uuid and u.id=app.current_user_id()
-   and u.tenant_id=app.current_tenant_id() and u.archived_at is null and not app.login_blocked(u.id)
-   and (${ctx.personId??null}::uuid is null or u.person_id=${ctx.personId??null}::uuid)
-   and current_setting('transaction_isolation')='read committed' and app.principal_snapshot_current()
-   and current_setting('app.roles',true)=${roles.join(',')} and current_setting('app.grants',true)::jsonb=${JSON.stringify(grants)}::jsonb) as allowed`);
- if(row?.allowed!==true)throw new PayrollPeriodOwnershipUnavailable();
+ if(!(await isCarrierPrincipalCurrentTx(tx,ctx)))throw new PayrollPeriodOwnershipUnavailable();
 }
 export type PayrollPeriodSelection=Readonly<{companyId:string;payPeriod:string}>;
 export class PayrollPeriodOwnershipUnavailable extends Error{constructor(){super('Payroll period is unavailable. Reload the selected run.');this.name='PayrollPeriodOwnershipUnavailable';}}
@@ -58,17 +53,26 @@ export async function lockPayrollBatchPeriodTx(tx:Tx,supplied:SessionContext,bat
 /** NATIVE lifecycle owners (create, additional run, draft delete, process, close, reset, unlock,
  * reprocess, remove employee). They join the SAME tenant Access phase and the SAME company/month
  * advisory key as the reviewed owner above (identical key text for every canonical month), so reviewed
- * custody and native writers still serialize on one owner. This interval adds NO principal, payroll-scope
- * or month-shape refusal of its own: the native writer's existing RLS, granular permission and period
- * rules remain the only authority and keep their existing outcomes and messages. A month the screens
- * cannot validate keys on its exact stored text, the identity pay_period itself compares on. */
+ * custody and native writers still serialize on one owner. A USER carrier must pass the shared ordinary
+ * principal proof (claimed roles/grants actually held; personId only when supplied); a null-user carrier
+ * keeps SYSTEM semantics. No payroll-scope or month-shape refusal is added: the native writer's existing
+ * RLS, granular permission and period rules stay the authority and keep their outcomes and messages. A
+ * month the screens cannot validate keys on its exact stored text, the identity pay_period compares on. */
+async function nativePeriodCarrierTx(tx:Tx,ctx:SessionContext){
+ await lockAccessConfigurationTx(tx,ctx.tenantId);
+ if(ctx.userId&&!(await isCarrierPrincipalCurrentTx(tx,ctx)))throw new PayrollPeriodOwnershipUnavailable();
+}
+async function lockNativePeriodKeysTx(tx:Tx,ctx:SessionContext,selections:readonly PayrollPeriodSelection[]){
+ const captured=selections.filter(p=>typeof p?.companyId==='string'&&typeof p?.payPeriod==='string').map(p=>({companyId:p.companyId,payPeriod:p.payPeriod})),keys:string[]=[];
+ for(const p of captured){const [row]=await tx.execute<{companyId:string}>(sql`select ${p.companyId}::uuid::text as "companyId"`);keys.push(periodOwnerKey(ctx.tenantId,row.companyId,p.payPeriod));}
+ for(const key of [...new Set(keys)].sort((a,b)=>a.localeCompare(b)))await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${key},0))`);
+}
 export async function lockNativePayrollPeriodsTx(tx:Tx,supplied:SessionContext,selections:readonly PayrollPeriodSelection[]):Promise<void>{
  const rawContext={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};
- const captured=selections.filter(p=>typeof p?.companyId==='string'&&typeof p?.payPeriod==='string').map(p=>({companyId:p.companyId,payPeriod:p.payPeriod}));
- const ctx=await canonicalPeriodContextTx(tx,rawContext),keys:string[]=[];
- for(const p of captured){const [row]=await tx.execute<{companyId:string}>(sql`select ${p.companyId}::uuid::text as "companyId"`);keys.push(periodOwnerKey(ctx.tenantId,row.companyId,p.payPeriod));}
- await lockAccessConfigurationTx(tx,ctx.tenantId);
- for(const key of [...new Set(keys)].sort((a,b)=>a.localeCompare(b)))await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${key},0))`);
+ const captured=selections.map(p=>({companyId:p?.companyId,payPeriod:p?.payPeriod}));
+ const ctx=await canonicalPeriodContextTx(tx,rawContext);
+ await nativePeriodCarrierTx(tx,ctx);
+ await lockNativePeriodKeysTx(tx,ctx,captured);
 }
 /** Native batch owners: own the RLS-visible nominee's company/month key, then reread the SAME row.
  * An invisible or vanished batch returns null with no refusal of its own, so the caller's existing read
@@ -76,10 +80,10 @@ export async function lockNativePayrollPeriodsTx(tx:Tx,supplied:SessionContext,s
 export async function lockNativePayrollBatchPeriodTx(tx:Tx,supplied:SessionContext,batchId:string){
  const rawContext={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},id=batchId;
  if(typeof id!=='string')return null;
- const ctx=await canonicalPeriodContextTx(tx,rawContext);await lockAccessConfigurationTx(tx,ctx.tenantId);
+ const ctx=await canonicalPeriodContextTx(tx,rawContext);await nativePeriodCarrierTx(tx,ctx);
  const read=()=>tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId,payPeriod:payrollBatch.payPeriod,payPeriodId:payrollBatch.payPeriodId}).from(payrollBatch).where(eq(payrollBatch.id,id)).limit(1);
  const [nominee]=await read();if(!nominee)return null;
- await lockNativePayrollPeriodsTx(tx,ctx,[nominee]);
+ await lockNativePeriodKeysTx(tx,ctx,[nominee]);
  const [current]=await read();if(!current)return null;
  if(JSON.stringify(current)!==JSON.stringify(nominee))throw new PayrollPeriodOwnershipUnavailable();
  return current;
