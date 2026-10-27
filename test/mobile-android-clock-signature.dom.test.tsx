@@ -1,5 +1,6 @@
 /** Synthetic P256 signatures prove canonical byte binding; no Android hardware/key custody is claimed. */
-import {createHash,generateKeyPairSync,sign} from 'node:crypto';
+import {createHash,createPublicKey,generateKeyPairSync,sign} from 'node:crypto';
+import javaVector from './fixtures/mobile-integrity/android-jca-clock-signature.json';
 import {describe,expect,it} from 'vitest';
 import {checkAndroidClockSignature} from '../lib/mobile-api/android-clock-signature';
 import {onlineClockClientData} from '../lib/mobile-clock-integrity';
@@ -12,6 +13,12 @@ function fixture(){const {publicKey,privateKey}=generateKeyPairSync('ec',{namedC
  return {input:{publicKey,signature,clientData,expectedAppId:clientData.evidence.appId,allowedBuildVersions:['4']},privateKey};}
 function refusal(f:ReturnType<typeof fixture>,clientData:unknown){expect(()=>checkAndroidClockSignature({...f.input,clientData})).toThrow();}
 describe('Android canonical online command signatures',()=>{
+ it('verifies a public-only Java JCA compatibility vector against an independent positional encoding',()=>{
+  const {clientData,canonicalUtf8,publicKeySpki,signature}=javaVector;
+  expect(onlineClockClientData(clientData)).toBe(canonicalUtf8);
+  const key=createPublicKey({key:Buffer.from(publicKeySpki,'base64'),format:'der',type:'spki'});
+  expect(checkAndroidClockSignature({publicKey:key,signature:Buffer.from(signature,'base64'),clientData,expectedAppId:'ai.stradaverse.aihr.test',allowedBuildVersions:['4']})).toEqual({verification:'command_signature',clientDataHash:createHash('sha256').update(canonicalUtf8,'utf8').digest('hex')});
+ });
  it('verifies SHA256withECDSA over UTF8 command bytes, never double-hashed or caller digests',()=>{
   const f=fixture(),bytes=Buffer.from(onlineClockClientData(f.input.clientData),'utf8');
   expect(checkAndroidClockSignature(f.input)).toEqual({verification:'command_signature',clientDataHash:createHash('sha256').update(bytes).digest('hex')});
