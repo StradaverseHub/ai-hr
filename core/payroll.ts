@@ -8548,18 +8548,22 @@ async function reviewedPayrollClosePreflightTx(tx:Tx,supplied:SessionContext,bat
   consequence:'close_this_run_apply_configured_payslip_release_parent_closes_when_all_runs_closed' as const};
  const priorBatchId=prepared.proof.circuitProof?.source.priorBatchId??null;
  const coverageIds=[...new Set([...prepared.proof.closingEmploymentIds,...prepared.proof.coverageEmploymentIds])];
+ // A raw JS array in a Drizzle SQL template becomes a record tuple, not a PostgreSQL array.
+ // Keep every UUID parameterized; the explicit array cast also types the empty-set case.
+ const uuidArray=(ids:readonly string[])=>sql`ARRAY[${sql.join(ids.map(value=>sql`${value}::uuid`),sql`, `)}]::uuid[]`;
+ const coverageArray=uuidArray(coverageIds),closingArray=uuidArray(prepared.proof.closingEmploymentIds);
  const versions=await tx.execute(sql`select
   (select jsonb_agg(jsonb_build_array(b.id,b.xmin::text) order by b.id) from public.payroll_batch b where b.id=${id}::uuid or b.pay_period_id=${header.payPeriodId}::uuid or b.id=${priorBatchId}::uuid or (b.pay_period=${header.payPeriod} and b.run_type='regular')) as batches,
   (select jsonb_agg(jsonb_build_array(p.id,p.xmin::text) order by p.id) from public.pay_period p where p.id=${header.payPeriodId}::uuid) as period,
-  (select jsonb_agg(jsonb_build_array(p.id,p.xmin::text) order by p.id) from public.payslip p join public.payroll_batch b on b.id=p.batch_id where p.batch_id=${id}::uuid or p.batch_id=${priorBatchId}::uuid or (b.pay_period=${header.payPeriod} and b.run_type='regular' and p.employment_id=any(${coverageIds}::uuid[]))) as slips,
+  (select jsonb_agg(jsonb_build_array(p.id,p.xmin::text) order by p.id) from public.payslip p join public.payroll_batch b on b.id=p.batch_id where p.batch_id=${id}::uuid or p.batch_id=${priorBatchId}::uuid or (b.pay_period=${header.payPeriod} and b.run_type='regular' and p.employment_id=any(${coverageArray}))) as slips,
   (select jsonb_agg(jsonb_build_array(v.id,v.xmin::text) order by v.id) from public.payroll_anomaly_verdict v where v.batch_id=${id}::uuid) as verdicts,
   (select jsonb_agg(jsonb_build_array(c.id,c.xmin::text) order by c.id) from public.payroll_anomaly_config c where c.id=${prepared.proof.circuitProof?.source.configId??null}::uuid) as circuit_config,
   (select jsonb_agg(jsonb_build_array(c.id,c.xmin::text) order by c.id) from public.company_payroll_config c where c.company_id=${header.companyId}::uuid) as company_config,
   (select jsonb_agg(jsonb_build_array(p.id,p.xmin::text) order by p.id) from public.payroll_policy p where p.company_id=${header.companyId}::uuid and p.status='active') as policies,
-  (select jsonb_agg(jsonb_build_array(e.id,e.xmin::text) order by e.id) from public.employment e where e.id=any(${coverageIds}::uuid[])) as employments,
-  (select jsonb_agg(jsonb_build_array(a.id,a.xmin::text) order by a.id) from public.assignment a where a.employment_id=any(${coverageIds}::uuid[])) as assignments,
-  (select jsonb_agg(jsonb_build_array(a.id,a.xmin::text) order by a.id) from public.attendance a where a.employment_id=any(${prepared.proof.closingEmploymentIds}::uuid[]) and a.attendance_date between ${prepared.proof.closeWindow.start}::date and ${prepared.proof.closeWindow.end}::date) as attendance`);
- const [privacy]=await tx.execute<{people:string[]}>(sql`select app.payroll_close_source_people(${id}::uuid,${priorBatchId}::uuid,${[...coverageIds].sort()}::uuid[]) as people`);
+  (select jsonb_agg(jsonb_build_array(e.id,e.xmin::text) order by e.id) from public.employment e where e.id=any(${coverageArray})) as employments,
+  (select jsonb_agg(jsonb_build_array(a.id,a.xmin::text) order by a.id) from public.assignment a where a.employment_id=any(${coverageArray})) as assignments,
+  (select jsonb_agg(jsonb_build_array(a.id,a.xmin::text) order by a.id) from public.attendance a where a.employment_id=any(${closingArray}) and a.attendance_date between ${prepared.proof.closeWindow.start}::date and ${prepared.proof.closeWindow.end}::date) as attendance`);
+ const [privacy]=await tx.execute<{people:string[]}>(sql`select app.payroll_close_source_people(${id}::uuid,${priorBatchId}::uuid,${uuidArray([...coverageIds].sort())}) as people`);
  const erasurePersonIds=privacy?.people;if(!Array.isArray(erasurePersonIds))throw new Error('Payroll source privacy unavailable.');
  const reviewedDigest=createHash('sha256').update(JSON.stringify(payrollCloseSourceValue(['reviewed-payroll-close:v1',{tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId??null},id,header,siblings,prepared.batch,prepared.cpc,prepared.proof,versions,erasurePersonIds,review]))).digest('hex');
  return{ctx,id,prepared,review,reviewedDigest,erasurePersonIds,erasureSource:{priorBatchId,coverageEmploymentIds:[...coverageIds].sort()}};

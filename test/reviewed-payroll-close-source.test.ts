@@ -40,6 +40,32 @@ describe('unmounted native Payroll CLOSE specialist',()=>{
  it('accepts only existing human-selected runs, no values, revisions, forced states or actor',()=>{for(const extra of [{amount:1},{revision:1},{status:'closed'},{force:true},{ctx:{}},{employeeRows:[]}])expect(ReviewedPayrollCloseHumanContent.safeParse({...human(randomUUID()),...extra}).success).toBe(false);});
  it('prepares without effects and exposes only the permitted run consequence, never private checks/rows/money',async()=>{const id=await batch(),before=await state(),r=await prepare(id);expect(await state()).toEqual(before);expect(ReviewedPayrollCloseReview.safeParse(r.review).success).toBe(true);expect(r.review).toMatchObject({batchId:id,status:'processed',siblingRunCount:1,otherUnclosedRuns:0,visiblePayslipCount:1});for(const key of ['reviewedDigest','employeeIds','netPay','grossPay','verdicts','versions','circuitProof'])expect(r.review).not.toHaveProperty(key);expect(r.reviewedDigest).toMatch(/^[a-f0-9]{64}$/);});
  it('uses the exact native original-actor close event, truthfully reports release, and reopens without another effect',async()=>{const id=await batch(),r=await prepare(id),before=await state(),receipt=await confirm(r),after=await state(),added=after.events.filter(row=>!before.events.some(old=>old.id===row.id)),closes=added.filter(row=>row.eventType==='payroll-batch.closed');expect(closes).toHaveLength(1);expect(closes[0]).toMatchObject({id:receipt.closedEventId,aggregateId:id,actorType:'user',actorId:ctx.userId});expect(receipt).toMatchObject({currentStatus:'closed',currentPeriodStatus:'closed',semantics:'configured_payslip_release_not_bank_payment',replayed:false});expect(closes[0].payload).toEqual({releasedAt:receipt.recordedReleasedAt});expect(after.slips).toEqual(before.slips);expect(await withTenant(ctx,tx=>reconcileReviewedPayrollCloseSourceTx(tx,ctx,receipt))).toEqual({...receipt,replayed:true});expect(await state()).toEqual(after);await expect(confirm(r)).rejects.toBeInstanceOf(ReviewedPayrollCloseUnavailable);expect(await state()).toEqual(after);});
+ it('binds two actual employees as UUID arrays across source versions/privacy, refuses second-subject drift, and closes/reopens exactly once',async()=>{
+  const hiredOn=String(Number(period.slice(0,4))-1)+'-01-01';
+  const second=await hireEmployee(group(),{person:{fullName:'Fictional second close employee',primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employeeCode:'FIC_CLOSE_SECOND',employmentType:'full_time',hiredOn});
+  await setCompensation(group(),{employmentId:second.employmentId,basicSalary:3500,effectiveFrom:hiredOn});
+  await requirePackFor('MY').statutory.set(group(),{personId:second.personId,icNumber:'900101019665'});
+  const prior=await batch('regular',month(-2)),id=await batch(),before=await state(),review=await prepare(id);
+  expect(await state()).toEqual(before);
+  expect(review.review).toMatchObject({batchId:id,visiblePayslipCount:2});
+  expect(review.erasureSource).toEqual({priorBatchId:prior,coverageEmploymentIds:[employmentId,second.employmentId].sort()});
+  expect(review.erasurePersonIds).toContain(second.personId);
+  // An actual second employee's version changes even with identical amounts. Every source member
+  // must participate in the private fingerprint; the first employee cannot stand in for the cohort.
+  await owner.db.execute(sql`update public.payslip set net_pay=net_pay where batch_id=${id}::uuid and employment_id=${second.employmentId}::uuid`);
+  const changed=await state();
+  await expect(confirm(review)).rejects.toBeInstanceOf(ReviewedPayrollCloseUnavailable);
+  expect(await state()).toEqual(changed);
+  const fresh=await prepare(id),receipt=await confirm(fresh),after=await state();
+  expect(receipt).toMatchObject({batchId:id,currentStatus:'closed',semantics:'configured_payslip_release_not_bank_payment',replayed:false});
+  expect(after.slips).toEqual(changed.slips);
+  const events=after.events.filter(row=>!changed.events.some(old=>old.id===row.id)&&row.eventType==='payroll-batch.closed');
+  expect(events).toHaveLength(1);
+  expect(events[0]).toMatchObject({id:receipt.closedEventId,aggregateId:id,actorId:ctx.userId,actorType:'user'});
+  expect(await withTenant(ctx,tx=>reconcileReviewedPayrollCloseSourceTx(tx,ctx,receipt))).toEqual({...receipt,replayed:true});
+  await expect(confirm(fresh)).rejects.toBeInstanceOf(ReviewedPayrollCloseUnavailable);
+  expect(await state()).toEqual(after);
+ });
  it('reconciles historical close after actual authorized unlock without pretending the run is still closed or closing again',async()=>{const id=await batch(),receipt=await confirm(await prepare(id));await setSetting(b.tenantId,'payroll.unlock_enabled',true);const current={...await entitledCtx(b,['hr_admin']),grants:[{role:'hr_admin' as const,companyId:null}]};await unlockClosedBatch(current,{batchId:id,reason:'Fictional human correction review'});const before=await state(),reopened=await withTenant(current,tx=>reconcileReviewedPayrollCloseSourceTx(tx,current,receipt));expect(reopened).toMatchObject({closedEventId:receipt.closedEventId,recordedReleasedAt:receipt.recordedReleasedAt,currentStatus:'processed',currentPeriodStatus:'open',proof:'historical_close_current_batch',replayed:true});expect(await state()).toEqual(before);});
  it('preserves ordinary undefined API and closes a parent only after the actual additional sibling closes',async()=>{const first=await batch(),second=await batch('bonus'),r=await prepare(second);expect(r.review).toMatchObject({runType:'bonus',siblingRunCount:2,otherUnclosedRuns:1});expect((await confirm(r)).currentPeriodStatus).toBe('open');expect(await closeBatch(group(),{batchId:first})).toBeUndefined();expect((await state()).periods.find(row=>row.period===period)?.status).toBe('closed');});
  it.each(['ordinary','reviewed'] as const)('refuses deliberately invalid processed-under-CLOSED-parent fixture through %s before release/status/event effects',async mode=>{const id=await batch(),[row]=await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,id));await owner.db.update(s.payPeriod).set({status:'closed'}).where(eq(s.payPeriod.id,row.payPeriodId));const before=await state();if(mode==='ordinary')await expect(closeBatch(group(),{batchId:id})).rejects.toThrow('This pay period is closed or unavailable.');else await expect(prepare(id)).rejects.toBeInstanceOf(ReviewedPayrollCloseUnavailable);expect(await state()).toEqual(before);});
