@@ -188,3 +188,16 @@ neither current policy nor expiry adjudication, issued-record existence, permit 
 canonical attendance write. Registry provisioning/rotation, transactional issuance, native
 verification and batch adjudication remain separate unfinished work. Tests generate keys in memory;
 no actual deployment signing material is created or distributed by this primitive.
+
+
+The iPhone/Android verifier in `mobile/lib/offline-context.ts` uses the existing pinned Noble
+Ed25519 implementation in strict mode and Expo SHA-256. It verifies the same canonical server
+bytes and independently supplied issuer fingerprints; it additionally requires the original
+request UUID/nonce and expected app target from the current connection owner. Expected installation
+and key references must agree with expected scope. Trusted inputs are parsed into separate snapshots
+before asynchronous hashing, and ownership is checked before/after every hash, including failures.
+It returns signature validity with `authorization: not_granted`, without fetching, persisting,
+issuing or consuming permits, deciding elapsed-time trust or writing attendance. It remains an
+integration prerequisite; no offline screen/queue or registry endpoint is enabled by adding it.
+The host test executes the shipped adapter with actual Noble signature verification and Node
+SHA-256 in place of the Expo OS hashing port; that does not prove native OS or physical-device use.

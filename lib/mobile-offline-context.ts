@@ -14,7 +14,7 @@ const site=z.object({id:uuid,name:z.string().min(1).max(200),lat:z.number().fini
  lng:z.number().finite().min(-180).max(180),radiusM:z.number().finite().positive()}).strict();
 const permit=z.object({id:uuid,ordinal:z.number().int().min(1).max(OFFLINE_CLOCK_CONTEXT_CLAIM_LIMIT),nonce}).strict();
 export const OfflineClockContextRequest=z.object({requestId:uuid,requestNonce:nonce,appInstallationId:uuid,keyId:uuid}).strict();
-const target=z.discriminatedUnion('platform',[
+export const OfflineClockContextTarget=z.discriminatedUnion('platform',[
  AppleEnrollmentTarget.pick({platform:true,appId:true,environment:true}).strict(),
  z.object({platform:z.literal('android'),appId:AndroidEnrollmentTarget.shape.packageName,environment:z.null()}).strict(),
 ]);
@@ -23,7 +23,7 @@ export const OfflineClockContextData=z.object({
  issuer:z.object({algorithm:z.literal('ed25519'),keyId:sha}).strict(),
  id:uuid,requestId:uuid,requestNonce:nonce,
  scope:OfflineClockClaimData.shape.scope,
- target,
+ target:OfflineClockContextTarget,
  issuedAt:instant,expiresAt:instant,
  policy:z.object({revision:sha,offlineEnabled:z.boolean(),windowMs:z.number().int().min(1).max(OFFLINE_CLOCK_MAX_WINDOW_MS),
   geofencingRequired:z.boolean(),maximumAccuracyM:z.number().finite().positive().nullable(),

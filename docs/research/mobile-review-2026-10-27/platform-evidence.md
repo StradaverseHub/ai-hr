@@ -1902,3 +1902,14 @@ retains that attempt without creating a punch. The offline claim contract binds 
 permit, sequence, command/photo and reported evidence in canonical bytes with a fixed digest vector.
 Neither this contract nor the export verifies native binaries, vendor acceptance, field devices,
 context issuance or offline attendance acceptance.
+
+### Server context signature primitive (27 October 2026)
+
+Checkpoint `6161aec967fa4402360e753e50f0850b498f549e` passed
+[40523429409](https://github.com/StradaverseHub/ai-hr/actions/runs/40523429409):
+18 actual Ed25519 context/issuer cases and 16 offline claim contract cases, plus root and native
+TypeScript. Root compilation took 4:23.81, maximum RSS 7,695,892 KiB, exit 0. Checks include
+independently supplied issuer keys/fingerprints, modified signed fields, cross-scope inputs,
+revocation, issuer validity, malformed/oversized input and purpose separation. No context issuance,
+registry provisioning, permit consumption, attendance write, native bundle or physical-device
+acceptance is established by this checkpoint.
