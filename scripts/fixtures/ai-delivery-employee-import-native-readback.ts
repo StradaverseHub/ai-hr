@@ -26,6 +26,29 @@ function urls(){
  const result=[process.env.DATABASE_URL,process.env.MIGRATION_DATABASE_URL].map(value=>{let u:URL;try{u=new URL(value??'');}catch{return unavailable();}if(!['postgres:','postgresql:'].includes(u.protocol)||!['localhost','127.0.0.1','[::1]'].includes(u.hostname)||u.port!=='5433'||!(u.pathname==='/aihr_ai_delivery_browser_v4_20261027'||/^\/aihr_assistant_browser_[a-f0-9]{16}$/.test(u.pathname))||u.hash||[...u.searchParams].some(([k,v])=>k!=='sslmode'||v!=='disable'))return unavailable();return u;});
  if(result[0].pathname!==result[1].pathname||decodeURIComponent(result[0].username)!=='ai_hr_app'||result[0].username===result[1].username)return unavailable();return result;
 }
+/** Code-authored FICTIONAL scenario for the closed development controller. Missing production HR
+ * values are never inferred here. The department is an actual freshly permitted fixture reference;
+ * category, literal amount and next-month day15 are declared synthetic test inputs. */
+export async function createAiDeliveryEmployeeImportScenarioReadback({owner,fixture,sourceMode}:{owner:ReturnType<typeof createDb>;fixture:Fixture;sourceMode:AiDeliveryEmployeeImportSourceMode}){
+ const configured=urls(),today=todayInKualaLumpur(),database=configured[0].pathname.slice(1);
+ if(fixture.today!==today||fixture.state!=='native_prerequisites_prepared_not_experienced'||![fixture.tenantId,fixture.companyId,fixture.departmentId,fixture.actors.operator.userId,fixture.actors.operator.personId].every(uuid))return unavailable('fictional_scenario_binding');
+ const ctx=await client.begin('isolation level read committed read only',async tx=>{
+  const [role]=await tx<{name:string;database:string;address:string;port:number;readonly:string;isolation:string;super:boolean;bypass:boolean}[]>`select current_user as name,current_database() as database,host(inet_server_addr()) as address,inet_server_port() as port,current_setting('transaction_read_only') as readonly,current_setting('transaction_isolation') as isolation,rolsuper as super,rolbypassrls as bypass from pg_roles where rolname=current_user`;
+  if(role.name!=='ai_hr_app'||role.database!==database||!['127.0.0.1','::1'].includes(role.address)||role.port!==5433||role.readonly!=='on'||role.isolation!=='read committed'||role.super||role.bypass)return unavailable();
+  const rows=await tx<{tenant_id:string;person_id:string|null;grants:Grant[]|null}[]>`select tenant_id,person_id,grants from app.principal(${fixture.actors.operator.userId}::uuid)`;const row=rows[0];
+  if(rows.length!==1||row.tenant_id!==fixture.tenantId||row.person_id!==fixture.actors.operator.personId||!Array.isArray(row.grants)||row.grants.some(g=>!g||typeof g.role!=='string'||g.companyId!==null&&!uuid(g.companyId)))return unavailable();
+  const grants=row.grants.map(g=>({...g}));return{tenantId:row.tenant_id,userId:fixture.actors.operator.userId,personId:row.person_id,grants,roles:[...new Set(grants.map(g=>g.role))]} satisfies SessionContext;
+ });
+ const department=await withTenant(ctx,async tx=>{
+  await tx.execute(sql`SET TRANSACTION READ ONLY`);await assertAiPrincipalTx(tx,ctx);await assertWorkforceCompanyTx(tx,ctx,fixture.companyId,'view');
+  const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.access_workforce_company(${fixture.companyId}::uuid,'workforce.maintain') and app.can_admin_payroll_for(${fixture.companyId}::uuid) and app.is_admin() as ok`);if(!allowed?.ok)return unavailable('current_operator_scope');
+  const rows=await tx.select({name:s.department.name,archivedAt:s.department.archivedAt}).from(s.department).where(and(eq(s.department.tenantId,fixture.tenantId),eq(s.department.companyId,fixture.companyId),eq(s.department.id,fixture.departmentId))).orderBy(s.department.id).limit(2);
+  if(rows.length!==1||rows[0].archivedAt!==null)return unavailable('department_binding');return rows[0].name;
+ });
+ const [year,month]=today.split('-').map(Number),hiredOn=new Date(Date.UTC(year,month,15)).toISOString().slice(0,10);
+ const human=AiDeliveryEmployeeImportHuman.parse({employeeCode:'AI-IMPORT-NEW',fullName:'Fictional Imported Human',email:'fictional-import@example.test',department,employmentType:'full_time',basicSalary:'3000.00',hiredOn});
+ return createAiDeliveryEmployeeImportNativeReadback({owner,fixture,human,sourceMode});
+}
 /** Returns PRIVATE expected input and callback facts. Never serialize these as public artifacts.
  * The browser module returns bounded named checks only. No native preview is called by this reader. */
 export async function createAiDeliveryEmployeeImportNativeReadback({owner,fixture,human:input,sourceMode}:{owner:ReturnType<typeof createDb>;fixture:Fixture;human:Human;sourceMode:AiDeliveryEmployeeImportSourceMode}){
