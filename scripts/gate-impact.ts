@@ -7,7 +7,7 @@ import { classifyFile,TEST_SETUP_FILES } from './gate-tier';
 import { guardFiles,isTestFile } from './gate-affected-plan';
 import { resolveSpecifier } from './gate-db-classify';
 
-export const IMPACT_POLICY_VERSION=3;
+export const IMPACT_POLICY_VERSION=4;
 export type Risk='low'|'moderate'|'high'|'unknown';
 export type Classification={path:string;risk:Risk;reason:string;dependencies:string[];sourceHash:string|null;uncertainties:string[]};
 export type ImpactPlan={policyVersion:number;tier:'impact'|'full';risk:Risk;classifications:Classification[];reasons:string[];changed:string[];run:string[];selection:Record<string,string[]>;browser:boolean;barrelMode:'module'|'diagnostic-symbols';fingerprint:string};
@@ -65,7 +65,7 @@ function inspect(path:string,text:string,files:Map<string,string>):Module{
   const found=spec==='server-only'&&files.has('test/stubs/server-only.ts')?'test/stubs/server-only.ts':resolveSpecifier(spec,path,p=>files.get(p)??null);
   if(found===null)out.uncertainties.push('unresolved local import '+spec);
   else if(found!==undefined)out.deps.add(found);
-  if(/^(node:)?fs(\/promises)?$/.test(spec))out.readsSource=true;
+  if(/^(node:)?fs(\/promises)?$/.test(spec)&&!fsImportsAreWriteOnly(path,text))out.readsSource=true;
  };
  const walk=(node:ts.Node)=>{
   if((ts.isImportDeclaration(node)||ts.isExportDeclaration(node))&&node.moduleSpecifier&&ts.isStringLiteralLike(node.moduleSpecifier))add(node.moduleSpecifier.text);
@@ -83,6 +83,31 @@ function inspect(path:string,text:string,files:Map<string,string>):Module{
   }
   ts.forEachChild(node,walk);
  };walk(sf);return out;
+}
+
+/** Filesystem output is not a source read. Admit only direct calls through named imports
+ * of these two write APIs; alias escape, shadowing, namespace/dynamic imports and re-exports
+ * remain conservative. Other read calls retain their independent source-reading flag. */
+export function fsImportsAreWriteOnly(path:string,text:string):boolean{
+ const sf=syntax(path,text),writers=new Set<string>();let safe=true;
+ if((sf as ts.SourceFile&{parseDiagnostics:unknown[]}).parseDiagnostics.length)return false;
+ const fs=(spec:string)=>/^(node:)?fs(?:\/promises)?$/.test(spec);
+ for(const statement of sf.statements)if(ts.isImportDeclaration(statement)&&ts.isStringLiteralLike(statement.moduleSpecifier)&&fs(statement.moduleSpecifier.text)){
+  const clause=statement.importClause,b=clause?.namedBindings;
+  if(!clause||clause.isTypeOnly||clause.name||!b||!ts.isNamedImports(b)||!b.elements.length){safe=false;continue;}
+  for(const item of b.elements){if(item.isTypeOnly||!['mkdirSync','appendFileSync'].includes((item.propertyName??item.name).text)||writers.has(item.name.text)){safe=false;continue;}writers.add(item.name.text);}
+ }
+ const walk=(node:ts.Node)=>{
+  if(ts.isExportDeclaration(node)&&node.moduleSpecifier&&ts.isStringLiteralLike(node.moduleSpecifier)&&fs(node.moduleSpecifier.text))safe=false;
+  if(ts.isCallExpression(node)&&(node.expression.kind===ts.SyntaxKind.ImportKeyword||ts.isIdentifier(node.expression)&&node.expression.text==='require')){
+   const argument=node.arguments[0];if(!argument||!ts.isStringLiteralLike(argument)||fs(argument.text))safe=false;
+  }
+  if(ts.isIdentifier(node)&&writers.has(node.text)){
+   if(ts.isImportSpecifier(node.parent))return;
+   if(!ts.isCallExpression(node.parent)||node.parent.expression!==node)safe=false;
+  }
+  ts.forEachChild(node,walk);
+ };walk(sf);return safe&&writers.size>0;
 }
 
 /** A process RSS monitor does not read repository bytes. This deliberately small proof rejects
@@ -244,7 +269,7 @@ function diagnosticEdges(files:Map<string,string>,raw:Map<string,Module>):Map<st
 }
 
 /** Both old and new import edges matter for deletions, renames and removed dependencies. */
-export function planImpact(changes:ChangedFile[],current:Map<string,string>,history:LearnedFailure[]=[],observeGraph?:(edges:ReadonlyMap<string,ReadonlySet<string>>)=>void,unchangedProcReads=false):ImpactPlan{
+export function planImpact(changes:ChangedFile[],current:Map<string,string>,history:LearnedFailure[]=[],observeGraph?:(edges:ReadonlyMap<string,ReadonlySet<string>>)=>void,unchangedProcReads=true):ImpactPlan{
  const files=new Map(current);
  for(const c of changes)if(c.baseText!==null&&!files.has(c.path))files.set(c.path,c.baseText);
  const modules=new Map<string,Module>();

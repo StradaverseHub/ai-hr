@@ -101,7 +101,7 @@ it.each([
 it('narrows only unchanged proven process reads, while still selecting an unknown repository reader',()=>{
  const files=new Map([['scripts/changed.ts','export const x=1;'],['monitor.ts',monitor],['test/process.test.ts',"import '../monitor';"],['reader.ts',"import {readFileSync} from 'node:fs';readFileSync(input);"],['test/reader.test.ts',"import '../reader';"]]);
  const change={path:'scripts/changed.ts',status:'M',headText:'export const x=1;',baseText:'export const x=0;',diffLines:[]};
- const broad=planImpact([change],files),precise=planImpact([change],files,[],undefined,true);
+ const broad=planImpact([change],files,[],undefined,false),precise=planImpact([change],files);
  expect(broad.run).toContain('test/process.test.ts');expect(precise.run).not.toContain('test/process.test.ts');expect(precise.run).toContain('test/reader.test.ts');
  const edited=planImpact([change,{path:'monitor.ts',status:'M',headText:monitor,baseText:monitor+' ',diffLines:[]}],files,[],undefined,true);
  expect(edited.run).toContain('test/process.test.ts');
