@@ -85,7 +85,7 @@ async function apiRequest<T>(path:string,params:Record<string,string|undefined>,
   if (!config.apiUrl || apiOriginProblem(config.apiUrl) || configProblem()) throw new UnavailableError('The company connection is not configured securely.');
   const owner = authGeneration();
   const origin=config.apiUrl,namespace=identityNamespace(),locale=appLocale();
-  const assertCurrent=()=>{operation?.assertCurrent();assertAuthGeneration(owner);if(config.apiUrl!==origin||identityNamespace()!==namespace||appLocale()!==locale)throw new SessionChangedError();};
+  const assertCurrent=()=>{assertAuthGeneration(owner);if(config.apiUrl!==origin||identityNamespace()!==namespace||appLocale()!==locale)throw new SessionChangedError();};
   const schema = request ? commands[path as keyof typeof commands] : responses[path as keyof typeof responses];
   let resource=path;
   const send = async (token: string) => {
