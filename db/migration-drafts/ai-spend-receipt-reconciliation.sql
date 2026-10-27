@@ -83,7 +83,9 @@ BEGIN
  IF r.state<>'held' THEN RAISE EXCEPTION 'AI spend receipt unavailable';END IF;
  UPDATE app.ai_spend_reservation SET generation_id=p->>8,receipt_digest=proof_digest WHERE run_id=r.run_id;
  PERFORM app._ai_spend_confirm_verified_receipt(r.run_id,charge);
- RETURN CASE WHEN charge>r.reserved_nanos THEN 'breach' ELSE 'confirmed' END;
+ -- The private canonical confirmer owns breach policy (including carrier-specific ceilings).
+ -- Return its stored decision, never recompute a weaker rule from allocation size alone.
+ RETURN (SELECT x.state FROM app.ai_spend_reservation x WHERE x.run_id=r.run_id);
 END $$;
 REVOKE ALL ON FUNCTION app.ai_spend_reconcile_receipt(text,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.ai_spend_reconcile_receipt(text,text) TO ai_hr_app;
