@@ -96,7 +96,7 @@ class Controls(unittest.TestCase):
         current=copy.deepcopy(snapshot);current['baseline'].update(pid='21',startedTicks='11')
         unit={'MainPID':'20','ActiveState':'active','ExecStart':'{ path=/opt/node20/bin/node ; argv[]=/opt/node20/bin/node app ; start_time=old ; }','ExecStartEx':'{ path=/opt/node20/bin/node ; argv[]=/opt/node20/bin/node app ; start_time=old ; }','User':'ubuntu'}
         actual={k:v.replace('start_time=old','start_time=new') for k,v in unit.items()};actual['MainPID']='21'
-        h=MagicMock();h.root=Path('/private-fixture');h.env_path='/private-env';h.dropin='/private-dropin';h.phase.return_value='stopped';h.proposals.return_value={'snapshot':current,'activeEnvironment':base64.b64encode(new)};h.unit_properties.return_value=actual;h.database.return_value={'same':True};h._records.return_value=[{'sha256':hashlib.sha256(b'original').hexdigest(),'identity':'identity'}]
+        h=MagicMock(unsafe=True);h.root=Path('/private-fixture');h.env_path='/private-env';h.dropin='/private-dropin';h.phase.return_value='stopped';h.proposals.return_value={'snapshot':current,'activeEnvironment':base64.b64encode(new)};h.unit_properties.return_value=actual;h.database.return_value={'same':True};h._records.return_value=[{'sha256':hashlib.sha256(b'original').hexdigest(),'identity':'identity'}]
         def require(ok,message):
             if not ok:raise ValueError(message)
         def read(path):
