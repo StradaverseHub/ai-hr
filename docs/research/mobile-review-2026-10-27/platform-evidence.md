@@ -722,3 +722,26 @@ probe failed and exact restoration passed: `mutation=1 restored=0 exact=true`. N
 runtime source changed; no fresh bundle/device result is claimed. No migration, shared database,
 vendor service, cloud/public publication or deployment changed. Android key custody/transactional
 challenge consumption and native attendance wiring remain unfinished.
+
+
+Native Android canonical signing adapter `564497b23` passed all38 affected cases across the new adapter,
+server signatures, existing bridge and canonical binding, plus both strict native/root TypeScript
+compilers. A VM executes the actual adapter with native/foreground/ownership ports, the actual bridge
+validates its bounded artifact/deadline, a synthetic P256 signer signs the exact decoded bytes, and the
+real server primitive verifies the result. Independent Java-vector canonical text matches the bytes
+passed to the bridge. Non-ASCII native app-version UTF8 also matches server encoding without hashing
+or normalizing away command facts.
+
+Cases refuse changed native app/version/build/platform, malformed authority, invalid alias, wrong
+platform capability, background before/after signing, obsolete owner on native success/failure,
+invalid-key/malformed/timeout results and automatic retry. No key is generated/replaced or uploaded.
+The module remains an internal adapter, not a wired attendance-screen/API flow. No Android SDK was
+called; the synthetic signer and VM foreground predicates do not establish physical-device behavior.
+No mobile export is claimed because the new adapter has no runtime caller in the shipped route graph.
+
+Three controlled mutations removed foreground refusal, capability identity binding and canonical
+positional encoding. Every intended behavioral probe failed, exact restoration passed and bytes
+matched: `mutation=1 restored=0 exact=true`. A routine coordination request was sent for an additional
+future Android-custody migration allocation; no tag/index/timestamp was guessed and existing0635 SQL
+was not edited. The519-row overlay remains development-only pending paired Board+AI runtime ancestry.
+No migration, shared database, vendor service, cloud/public publication or deployment changed here.

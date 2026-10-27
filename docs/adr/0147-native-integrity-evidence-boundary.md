@@ -435,3 +435,26 @@ Android module, with an independent positional message encoder. The private key 
 the generator process; fixtures retain public SPKI/signature/message and generator hash. This is
 cross-runtime encoding evidence, not Android Keystore, device, attestation or non-exportability proof.
 No Android clock route or attendance writer invokes the primitive yet.
+
+
+## Native Android canonical signing adapter
+
+The mobile adapter now encodes the validated online-clock context as exact canonical UTF8 and base64
+for the existing `signAndroidCommand` bridge method. It signs bytes, not a double-hashed value. It
+checks Android Keystore capability and exact app/version/build consistency before selecting the saved
+alias. Invalid aliases, malformed/cross-platform contexts, unavailable modules and native failure
+results cannot cause key generation or a JavaScript fallback. Native evidence remains `not_verified`.
+
+The caller supplies a live scope owner (auth generation, actor/connection/employment and view lifetime)
+and a live foreground/privacy predicate. These are checked before signing and after native success or
+failure. Background/obsolete callbacks cannot publish a signature as a current action. The bridge
+still owns its bounded deadline and artifact validation; a timeout never automatically retries. Input
+is schema-copied and serialized before the asynchronous native call. The caller must persist the exact
+command/signature and its challenge before upload. No API request, receipt, registration or attendance
+mutation occurs here; no screen or clock controller invokes this adapter yet.
+
+Tests execute the shipped adapter and bridge with a synthetic P256 native-signing port and the real
+server signature checker. They verify byte identity, non-ASCII UTF8, capability mismatch, aliases,
+foreground/owner changes, unavailable/invalid/malformed/timeouts and no retry. This establishes the
+code boundary, not Android Keystore availability, non-exportability, signing dialogs, hardware or
+signed-device lifecycle behavior. Those remain native acceptance work.
