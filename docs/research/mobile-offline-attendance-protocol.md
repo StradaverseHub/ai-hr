@@ -169,3 +169,22 @@ mislabelled server-arrival instant. Keep all new issuance/acceptance rollout pat
   required full release gate. Physical iPhone/Android signed builds must exercise real vendor,
   airplane-mode, continuity and OS-location behavior before rollout. Those witnesses are currently
   unavailable; they must not be replaced with synthetic success.
+
+### Context signature primitive
+
+`lib/mobile-offline-context.ts` defines a bounded strict context and purpose-separated positional
+bytes. The signed context binds the original request UUID and client nonce, full scope, platform
+and application target, issuer identity, issuance/expiry, policy revision and snapshot, site set,
+attendance baseline and ordered one-use permit inventory. The issuance request accepts only
+request/nonce and existing installation/key references; callers cannot submit policy or ownership.
+Site order is canonicalized; permit order is significant. The 32-claim bound is shared with claims.
+
+`lib/mobile-api/offline-context-signature.ts` signs and verifies actual Ed25519 bytes against a
+separately supplied trusted issuer registry whose identifiers are SHA-256 of raw public keys.
+It rejects self-supplied envelope keys, unknown/revoked issuers, issuer validity gaps, cross-scope
+inputs and modified signed fields. It loads no key files, environment credentials or DB state.
+A valid result explicitly returns `authorization: not_granted`: signature validity alone decides
+neither current policy nor expiry adjudication, issued-record existence, permit consumption or a
+canonical attendance write. Registry provisioning/rotation, transactional issuance, native
+verification and batch adjudication remain separate unfinished work. Tests generate keys in memory;
+no actual deployment signing material is created or distributed by this primitive.

@@ -1886,3 +1886,19 @@ requires matching local Android boot evidence across process restart, and export
 boot or runtime identifiers. Results remain explicitly unverified elapsed evidence. Context
 issuance/nonce binding, time adjudication, offline claim storage and physical measurements remain
 unfinished; this helper enables none of them.
+
+### Offline claim bytes and saved attempts (27 October 2026)
+
+Checkpoint `5bdab7a26d9d3544c0d8726a28c0595d76a054b0` passed
+[40521362302](https://github.com/StradaverseHub/ai-hr/actions/runs/40521362302):
+73 cases across the employee clock screen, offline claim contract and submission recovery,
+plus root/native TypeScript and both production Metro/Hermes exports. Root compilation took
+3:31.33, maximum RSS 7,825,540 KiB, exit 0. iOS bundled 1,365 modules in 33,083 ms
+(`entry-7d95977ed4fe9198797f18d84c6a2123.hbc`, 4 MB); Android bundled 1,497 in 41,843 ms
+(`entry-5e3e3acf012f43f0e871e3f8336da348.hbc`, 4.3 MB).
+
+The employee clock saves its owned local attempt before fresh discovery; a failed discovery
+retains that attempt without creating a punch. The offline claim contract binds scope, context,
+permit, sequence, command/photo and reported evidence in canonical bytes with a fixed digest vector.
+Neither this contract nor the export verifies native binaries, vendor acceptance, field devices,
+context issuance or offline attendance acceptance.

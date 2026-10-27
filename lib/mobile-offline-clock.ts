@@ -3,6 +3,7 @@
  * mandatory server owners; this contract does not enable an offline route or reuse online proofs. */
 import {z} from 'zod';
 import {OnlineClockIntegrityData} from './mobile-clock-integrity';
+export const OFFLINE_CLOCK_CONTEXT_CLAIM_LIMIT=32;
 const uuid=z.string().uuid().transform(value=>value.toLowerCase());
 const sha=z.string().length(64).regex(/^[a-f0-9]{64}$/);
 const nonce=z.string().length(43).regex(/^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/);
@@ -21,8 +22,8 @@ export const OfflineClockClaimData=z.object({
  // Digest of the canonical SERVER context data. A supplied digest alone proves no issuance.
  context:z.object({id:uuid,sha256:sha}).strict(),
  // Inventory/ordinal/nonce must match the separately verified server-issued context.
- permit:z.object({id:uuid,ordinal:z.number().int().min(1).max(32),nonce}).strict(),
- chain:z.object({sequence:z.number().int().min(1).max(32),previousSha256:sha.nullable()}).strict(),
+ permit:z.object({id:uuid,ordinal:z.number().int().min(1).max(OFFLINE_CLOCK_CONTEXT_CLAIM_LIMIT),nonce}).strict(),
+ chain:z.object({sequence:z.number().int().min(1).max(OFFLINE_CLOCK_CONTEXT_CLAIM_LIMIT),previousSha256:sha.nullable()}).strict(),
  command:OnlineClockIntegrityData.shape.command,
  time:z.object({claimedAt:instant,elapsed:OfflineClockElapsed}).strict(),
  evidence:OnlineClockIntegrityData.shape.evidence,
