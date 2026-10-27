@@ -1,5 +1,6 @@
 """Tiny private filesystem fixtures only; no application/database/build execution."""
 import base64,hashlib,json,os,pathlib,runpy,tempfile,unittest
+from unittest.mock import patch
 D=pathlib.Path(__file__).resolve().parent
 S=runpy.run_path(str(D/'sharp-restore.py'));M=S['M'];clean=(D/'sharp-clean-semver.fixture').read_bytes()
 class Restore(unittest.TestCase):
@@ -25,7 +26,15 @@ class Restore(unittest.TestCase):
   result=self.invoke(apply=True);self.assertEqual(result['completePackage'],self.ci['descriptor']);self.assertEqual((self.backup/'semver.original').read_bytes(),self.original);self.assertEqual(self.shim.stat().st_mode&511,0o755)
  def test_preexisting_temp_preserved(self):
   temp=self.parent/'semver.ci-restore-temporary';temp.write_text('another owner');
-  with self.assertRaises(FileExistsError):self.invoke(apply=True)
+  with self.assertRaisesRegex(AssertionError,'Original complete package identity changed'):self.invoke(apply=True)
+  self.assertEqual(temp.read_text(),'another owner');self.assertEqual(self.shim.read_bytes(),self.original)
+ def test_late_temp_collision_preserved(self):
+  temp=self.parent/'semver.ci-restore-temporary';real_open=os.open
+  def race(path,*args,**kwargs):
+   if path=='semver.ci-restore-temporary':temp.write_text('another owner')
+   return real_open(path,*args,**kwargs)
+  with patch.object(os,'open',race):
+   with self.assertRaises(FileExistsError):self.invoke(apply=True)
   self.assertEqual(temp.read_text(),'another owner');self.assertEqual(self.shim.read_bytes(),self.original)
  def test_postwrite_context_failure_restores_original(self):
   calls=[]
