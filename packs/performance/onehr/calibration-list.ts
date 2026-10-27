@@ -15,7 +15,7 @@ import { and, asc, desc, eq, ne, sql } from 'drizzle-orm';
 import type { SessionContext } from '../../../db/client';
 import { company, onehrCalibration, onehrCycle, reviewCycle } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
-import { isModuleEnabledOrFalse } from '../../../core/entitlements';
+import { isModuleEnabled } from '../../../core/entitlements';
 import { policySchema, type Tier } from './model';
 import { assessmentWorkWindowOpen, type CalibrationWorkEntry } from './workspace-model';
 import { calibrationToDo, calibrationWindowCells, calibrationWindowState, sortCalibrationSessions, type CalibrationListSession } from './calibration-list-model';
@@ -60,11 +60,12 @@ export async function listMyCalibrationSessions(ctx: SessionContext, now = new D
  *
  * ONE existence query per request. Administrators are not asked here: the sidebar already holds
  * canAdministerOnehr from the session grants and ORs it in. Final-tier sessions are excluded because only
- * cycle administrators enter them, whatever reviewer_user_ids says. Fails closed (false) when the
- * performance module is off or the entitlement snapshot did not resolve.
+ * cycle administrators enter them, whatever reviewer_user_ids says. Answers false when the performance
+ * module is off; an unresolved entitlement snapshot THROWS (service rule, module-catalog-drift) and the
+ * root layout's caller turns that into a hidden row.
  */
 export async function hasCalibrationAssignment(ctx: SessionContext): Promise<boolean> {
-  if (!ctx.userId || !isModuleEnabledOrFalse(ctx, 'performance')) return false;
+  if (!ctx.userId || !isModuleEnabled(ctx, 'performance')) return false;
   return withPerformanceTenant(ctx, async (tx) => {
     const [row] = await tx.execute<{ ok: boolean }>(sql`select exists(
       select 1 from performance_onehr_calibration s

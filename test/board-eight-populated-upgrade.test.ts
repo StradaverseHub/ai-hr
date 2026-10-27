@@ -14,7 +14,7 @@ import {payslip} from '../db/schema';
 it('upgrades populated upstream data through both board migrations without changing existing payroll or access',async()=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8'));
  const start=journal.entries.findIndex((entry:{tag:string})=>entry.tag==='0602_payroll_history_revisions');
- expect(start).toBeGreaterThan(0);expect(journal.entries.slice(start).map((entry:{tag:string})=>entry.tag)).toEqual(['0602_payroll_history_revisions','0603_letter_lifecycle']);
+ expect(start).toBeGreaterThan(0);expect(journal.entries.slice(start,start+2).map((entry:{tag:string})=>entry.tag)).toEqual(['0602_payroll_history_revisions','0603_letter_lifecycle']); // the board pair, adjacent; later migrations may follow
  const name='ai_hr_board_upgrade_'+randomUUID().replaceAll('-',''),directory=mkdtempSync(join(tmpdir(),'aihr-board-upgrade-'));
  const ownerUrl=new URL(process.env.TEST_MIGRATION_DATABASE_URL!),appUrl=new URL(process.env.TEST_DATABASE_URL!);
  expect(['127.0.0.1','localhost']).toContain(ownerUrl.hostname);expect(appUrl.hostname).toBe(ownerUrl.hostname);expect(appUrl.port).toBe(ownerUrl.port);expect(appUrl.username).toBe('ai_hr_app');expect(ownerUrl.username).not.toBe(appUrl.username);
