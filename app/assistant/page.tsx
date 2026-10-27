@@ -1,3 +1,4 @@
+import {NativeOutcomes,NativeOutcomePrivacy} from '@/components/assistant/native-outcomes';
 import {ImportPreparationPrivacy} from '@/components/assistant/import-privacy';
 import { getTranslations } from 'next-intl/server';
 import { todayInKualaLumpur } from '@/lib/hr-date';
@@ -41,7 +42,7 @@ import { saveAgentFeedbackAction, eraseAgentFeedbackAction } from './feedback-ac
 export default async function AssistantPage({
   searchParams,
 }: {
-  searchParams: Promise<{ e?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string;importHistory?:string }>;
+  searchParams: Promise<{ e?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string;importHistory?:string;nativeOutcome?:string;nativeLink?:string }>;
 }) {
   const s = await getSession();
   const t = await getTranslations('assistant');
@@ -61,7 +62,7 @@ export default async function AssistantPage({
             <button type="submit" className="min-h-11 text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.feedbackErase')}</button>
           </form>
           <form action={eraseModuleProposalsAction}><button type="submit" className="min-h-11 text-xs underline">{t('workspace.planning.erase')}</button></form>
-          <ImportPreparationPrivacy status={sp.importHistory}/>
+          <ImportPreparationPrivacy status={sp.importHistory}/><NativeOutcomePrivacy status={sp.nativeOutcome}/>
           <form action={eraseGovernedJobFeedbackAction}><button type="submit" className="min-h-11 text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.governed.eraseSignals')}</button></form>
         </Card>
       </div>
@@ -83,6 +84,7 @@ export default async function AssistantPage({
       <ModuleJobChooser modules={workspace.jobModules} selected={sp.job}/>
       {selectedJob&&<CanonicalModuleJob view={selectedJob} ctx={s}/>}
       {workspace.governedJob&&<GovernedWorkspaceJob view={workspace.governedJob} ctx={s}/>}
+      {workspace.governedJob&&sp.governed&&<NativeOutcomes jobId={sp.governed} status={sp.nativeOutcome} selectedLink={sp.nativeLink}/>}
       <GovernedModuleJobComposer modules={workspace.jobModules}/>
       <SpecialistJobComposer modules={workspace.jobModules}/>
       <ModuleQuestionPlanner permit={workspace.planningPermit} view={workspace.proposal} status={sp.planning??(sp.proposal&&!workspace.proposal?'unavailable':undefined)}/>
@@ -148,7 +150,7 @@ export default async function AssistantPage({
           <p className="text-sm text-muted-foreground">{t('empty')}</p>
         </Card>
       )}
-      <ImportPreparationPrivacy status={sp.importHistory}/>
+      <ImportPreparationPrivacy status={sp.importHistory}/><NativeOutcomePrivacy status={sp.nativeOutcome}/>
     </div>
   );
 }
