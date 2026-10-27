@@ -621,10 +621,10 @@ export const mobileIntegrityKey=pgTable('mobile_integrity_key',{
  appInstallationId:uuid('app_installation_id').notNull(),installationId:uuid('installation_id').notNull().references(()=>mobileIntegrityInstallation.installationId),
  originChallengeId:uuid('origin_challenge_id').notNull().references(()=>mobileIntegrityChallenge.id),
  enrolledForEmploymentId:uuid('enrolled_for_employment_id').notNull().references(()=>employment.id),
- platform:text('platform').notNull().$type<'ios'>(),appId:text('app_id').notNull(),environment:text('environment').notNull().$type<'production'|'development'>(),
+ platform:text('platform').notNull().$type<'ios'|'android'>(),appId:text('app_id').notNull(),environment:text('environment').$type<'production'|'development'>(),
  vendorKeyId:text('vendor_key_id').notNull(),fingerprint:text('fingerprint').notNull(),publicKeySpki:bytea('public_key_spki').notNull(),
- proofDigest:text('proof_digest').notNull(),proofKind:text('proof_kind').notNull().$type<'apple_key_proof'|'apple_app_metadata'>(),
- metadata:jsonb('metadata').$type<{validationCategory:number;bundleVersion:string}|null>(),receiptCiphertext:text('receipt_ciphertext').notNull(),
+ proofDigest:text('proof_digest').notNull(),proofKind:text('proof_kind').notNull().$type<'apple_key_proof'|'apple_app_metadata'|'google_key_generation_proof'>(),
+ metadata:jsonb('metadata').$type<{validationCategory:number;bundleVersion:string}|{androidKeyGeneration:Record<string,unknown>}|null>(),receiptCiphertext:text('receipt_ciphertext').notNull(),
  assertionCounter:bigint('assertion_counter',{mode:'number'}).notNull().default(0),createdAt:createdAt(),revokedAt:timestamp('revoked_at',{withTimezone:true}),
 },t=>[uniqueIndex('mobile_integrity_key_fingerprint_uq').on(t.fingerprint),uniqueIndex('mobile_integrity_key_origin_uq').on(t.originChallengeId),
  uniqueIndex('mobile_integrity_key_active_install_uq').on(t.tenantId,t.actorId,t.appInstallationId,t.platform).where(sql`${t.revokedAt} IS NULL`)]);

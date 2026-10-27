@@ -8,7 +8,8 @@ import {actorOf,appendEvent} from '../db/events';
 import {encryptSecret,isSecretStorable} from '../lib/ai/crypto';
 import {AppleEnrollmentSettings,KeyEnrollmentContext,keyEnrollmentClientData} from '../lib/mobile-key-enrollment';
 import {checkAppAttestKeyProof} from '../lib/mobile-api/app-attest-enrollment';
-import {integrityKeyReceipt as receipt} from './mobile-integrity-key';
+import {integrityKeyReceipt} from './mobile-integrity-key';
+import {IntegrityKeyReceipt} from '../lib/mobile-integrity-contract';
 import {withAttendanceTenant} from './module-gate';
 import {myOwnEmploymentSubjectsTx} from './read';
 import {OwnClockEmploymentUnavailableError} from './attendance-clock-subject';
@@ -23,6 +24,7 @@ export class AppleKeyEnrollmentError extends Error{
   }
 }
 const hash=(bytes:string|Buffer)=>createHash('sha256').update(bytes).digest();
+const receipt=(row:typeof mobileIntegrityKey.$inferSelect)=>IntegrityKeyReceipt.parse(integrityKeyReceipt(row));
 async function own(tx:Tx,ctx:SessionContext,employmentId:string){
   if(!ctx.userId||!ctx.personId||!(await myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:true})).some(row=>row.employmentId===employmentId))throw new OwnClockEmploymentUnavailableError();
 }
@@ -49,7 +51,7 @@ export function createAppleEnrollmentService(settings:unknown,ports:{verifyProof
         .innerJoin(mobileIntegrityChallenge,eq(mobileIntegrityChallenge.id,mobileIntegrityKey.originChallengeId)).where(and(eq(mobileIntegrityKey.tenantId,ctx.tenantId),
         eq(mobileIntegrityKey.actorId,ctx.userId!),eq(mobileIntegrityKey.originChallengeId,challengeId))).limit(1);
       if(!found)return null;const {row}=found;
-      if(found.requestId!==intent.requestId||row.proofDigest!==proofDigest||row.appInstallationId!==intent.appInstallationId||row.enrolledForEmploymentId!==intent.employmentId)
+      if(row.platform!=='ios'||found.requestId!==intent.requestId||row.proofDigest!==proofDigest||row.appInstallationId!==intent.appInstallationId||row.enrolledForEmploymentId!==intent.employmentId)
         throw new AppleKeyEnrollmentError('binding_conflict');
       return receipt(row);
     });

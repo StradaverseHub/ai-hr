@@ -5,7 +5,8 @@ import type {SessionContext} from '../db/client';
 import {AndroidEnrollmentSettings,AndroidEnrollmentContext,androidEnrollmentClientData} from '../lib/mobile-android-enrollment';
 import {issueOwnIntegrityChallenge,readOwnIntegrityChallenge,type IntegrityChallengeView} from './mobile-integrity-challenge';
 const uuid=z.string().uuid().transform(value=>value.toLowerCase());
-const intent=z.object({employmentId:uuid,requestId:uuid,appInstallationId:uuid}).strict();
+export const androidEnrollmentIntent=z.object({employmentId:uuid,requestId:uuid,appInstallationId:uuid}).strict();
+const intent=androidEnrollmentIntent;
 type Intent=z.infer<typeof intent>;
 const hash=(bytes:string)=>createHash('sha256').update(bytes,'utf8');
 export function createAndroidEnrollmentChallenges(settings:unknown){
