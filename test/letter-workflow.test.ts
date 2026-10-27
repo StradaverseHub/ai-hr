@@ -6,6 +6,22 @@ const policy:LetterPolicy={version:1,stages:[{key:'officer',label:'HR Officer',u
 const head:LetterWorkflowHead={state:'submitted',revisionId:randomUUID(),lockVersion:1,stageIndex:0,createdBy:creator};
 const input=(actorId:string,changes:Record<string,unknown>={})=>({actorId,expectedRevisionId:head.revisionId,expectedLockVersion:1,decision:{action:'approve' as const,comment:'',confirmSignature:false},...changes});
 describe('configured letter approval and exact-artifact acknowledgement',()=>{
+ it('accepts existing PostgreSQL principal identities without requiring RFC variant bits',()=>{
+  const admin='22222222-2222-2222-2222-222222222222',legacy='abcdefab-cdef-abcd-cdef-abcdefabcdef';
+  expect(validateLetterTemplatePresentation({letterheadAssetId:null,signatoryUserId:admin})).toEqual({letterheadAssetId:null,signatoryUserId:admin});
+  const configured={...policy,stages:[{...policy.stages[0],userIds:[legacy]},{...policy.stages[2],userIds:[admin]}],signatoryUserId:admin,escalationUserId:legacy};
+  expect(validateLetterPolicy(configured)).toEqual(configured);
+  expect(()=>letterStageDecision({...head,stageIndex:1,createdBy:admin},configured,input(admin,{decision:{action:'approve',comment:'',confirmSignature:true}}))).toThrow('selfApproval');
+  expect(()=>letterStageDecision({...head,stageIndex:1},configured,input(legacy,{decision:{action:'approve',comment:'',confirmSignature:true}}))).toThrow('permission');
+ });
+ it('continues refusing malformed principal IDs and does not broaden asset identities',()=>{
+  for(const id of ['',null,'22222222222222222222222222222222','22222222-2222-2222-2222-22222222222z','22222222-2222-2222-2222-222222222222 ']){
+   expect(()=>validateLetterTemplatePresentation({letterheadAssetId:null,signatoryUserId:id})).toThrow('presentation');
+   if(id!==null)expect(()=>validateLetterPolicy({...policy,escalationUserId:id})).toThrow('policy');
+   expect(()=>validateLetterPolicy({...policy,stages:[{...policy.stages[0],userIds:[id]},...policy.stages.slice(1)]})).toThrow('policy');
+  }
+  expect(()=>validateLetterTemplatePresentation({letterheadAssetId:'22222222-2222-2222-2222-222222222222',signatoryUserId:signatory})).toThrow('presentation');
+ });
  it('accepts only immutable asset and signatory identities in template presentation',()=>{
   expect(validateLetterTemplatePresentation({letterheadAssetId:null,signatoryUserId:signatory})).toEqual({letterheadAssetId:null,signatoryUserId:signatory});
   for(const value of [{letterheadAssetId:'https://outside.fixture.test/head.png',signatoryUserId:signatory},{letterheadAssetId:null,signatoryUserId:signatory,signatureImage:'private bytes'},{letterheadAssetId:null,signatoryUserId:null}])expect(()=>validateLetterTemplatePresentation(value)).toThrow('presentation');

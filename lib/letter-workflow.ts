@@ -1,5 +1,8 @@
 /** Letter lifecycle policy snapshots. These are user-configured workflow rules, not HR/legal policy. */
 import {z} from 'zod';
+// Existing PostgreSQL principals include imported and seeded UUIDs without RFC variant bits.
+// This validates their stored identity shape; scoped authority is still checked by the workflow owner.
+const principalId=z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
 export const LETTER_CAPABILITIES=['read','template','generate','approve','issue','report','settings'] as const;
 export type LetterCapability=typeof LETTER_CAPABILITIES[number];
 export const LETTER_STATES=['draft','submitted','returned','rejected','approved','issued','void','withdrawn'] as const;
@@ -8,7 +11,7 @@ export type LetterAcknowledgementMode='none'|'acknowledge'|'signature';
 export type LetterTemplatePresentation={letterheadAssetId:string|null;signatoryUserId:string};
 /** A template's approved presentation is independent of later reference/retention/reminder settings. */
 export function validateLetterTemplatePresentation(input:unknown):LetterTemplatePresentation{
- const parsed=z.object({letterheadAssetId:z.uuid().nullable(),signatoryUserId:z.uuid()}).strict().safeParse(input);
+ const parsed=z.object({letterheadAssetId:z.uuid().nullable(),signatoryUserId:principalId}).strict().safeParse(input);
  if(!parsed.success)throw new LetterWorkflowError('invalid','presentation');return parsed.data;
 }
 export type LetterPolicy={
@@ -21,12 +24,12 @@ export type LetterPolicy={
 export class LetterWorkflowError extends Error{
  constructor(public code:'invalid'|'stale'|'state'|'permission'|'selfApproval'|'signatureRequired'|'reasonRequired'|'configuration'|'conflict',public detail?:string){super(`letter:${code}${detail?':'+detail:''}`);this.name='LetterWorkflowError';}
 }
-const stage=z.object({key:z.string().regex(/^[a-z][a-z0-9_]{0,39}$/),label:z.string().trim().min(1).max(100),userIds:z.array(z.uuid()).min(1).max(50),allowDelegation:z.boolean()}).strict();
+const stage=z.object({key:z.string().regex(/^[a-z][a-z0-9_]{0,39}$/),label:z.string().trim().min(1).max(100),userIds:z.array(principalId).min(1).max(50),allowDelegation:z.boolean()}).strict();
 const policySchema=z.object({
- version:z.literal(1),stages:z.array(stage).min(1).max(10),signatoryUserId:z.uuid(),signingMode:z.enum(['authenticated','stamp']),signatureAssetId:z.uuid().nullable(),letterheadAssetId:z.uuid().nullable(),
+ version:z.literal(1),stages:z.array(stage).min(1).max(10),signatoryUserId:principalId,signingMode:z.enum(['authenticated','stamp']),signatureAssetId:z.uuid().nullable(),letterheadAssetId:z.uuid().nullable(),
  referenceFormat:z.string().min(1).max(100),retentionDays:z.number().int().min(1).max(36500),sensitiveLinkMinutes:z.number().int().min(1).max(1440),
  acknowledgement:z.enum(['none','acknowledge','signature']),approvalDueHours:z.number().int().min(1).max(8760),acknowledgementDueDays:z.number().int().min(1).max(3650),
- reminderHours:z.number().int().min(1).max(8760),escalationUserId:z.uuid().nullable(),portalNotifications:z.boolean(),emailNotifications:z.boolean(),
+ reminderHours:z.number().int().min(1).max(8760),escalationUserId:principalId.nullable(),portalNotifications:z.boolean(),emailNotifications:z.boolean(),
 }).strict();
 export function validateLetterReferenceFormat(format:string){
  const tokens=format.match(/\{[^}]+\}/g)??[];
