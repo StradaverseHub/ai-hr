@@ -5,7 +5,6 @@ import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base 
 import { bootstrapInternalOwner } from '../lib/internal-auth/bootstrap';
 import { credentialByLogin } from '../lib/internal-auth/service';
 import { internalEmailRequest, recoveryMailReady } from '../lib/internal-auth/mail';
-import {readActiveRelayTx} from '../lib/internal-auth/active-relay';
 import { readActiveRelayTx } from '../lib/internal-auth/active-relay';
 import { client } from '../db/client';
 import type { EmailConfig, EmailSettingsView, IdentityEmailActor } from '../lib/identity/email-model';
