@@ -10,9 +10,9 @@ export async function installOfflineDraftForWorker(){
  return async()=>{
   await owner.db.transaction(async tx=>{
    await tx.execute(sql`DROP TRIGGER mobile_offline_key_counter ON mobile_integrity_key`);
-   await tx.execute(sql`DROP TABLE mobile_offline_claim,mobile_offline_permit,mobile_offline_context CASCADE`);
+   await tx.execute(sql`DROP TABLE mobile_offline_photo,mobile_offline_claim,mobile_offline_permit,mobile_offline_context CASCADE`);
    for(const signature of ['mobile_offline_immutable()','mobile_offline_context_progress()','mobile_offline_inventory_complete()',
-    'mobile_offline_claim_ordered()','mobile_offline_key_counter()','mobile_offline_key_leased(uuid,uuid)','mobile_offline_claim_committed()','mobile_offline_permit_inventory()'])
+    'mobile_offline_claim_ordered()','mobile_offline_key_counter()','mobile_offline_key_leased(uuid,uuid)','mobile_offline_claim_committed()','mobile_offline_permit_inventory()','mobile_offline_photo_expired()','mobile_offline_photo_committed()'])
     await tx.execute(sql.raw('DROP FUNCTION IF EXISTS app.'+signature));
   });
   const [after]=await owner.db.execute(sql`select to_regclass('public.mobile_offline_context') IS NOT NULL installed, to_regprocedure('app.mobile_offline_key_leased(uuid,uuid)') IS NOT NULL ready`);

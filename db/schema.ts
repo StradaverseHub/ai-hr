@@ -651,12 +651,19 @@ export const mobileOfflineClaim=pgTable('mobile_offline_claim',{
  permitId:uuid('permit_id').notNull().references(()=>mobileOfflinePermit.id),sequence:integer('sequence').notNull(),requestId:uuid('request_id').notNull(),
  claimDigest:text('claim_digest').notNull(),previousDigest:text('previous_digest'),proofDigest:text('proof_digest').notNull(),
  assertionCounter:bigint('assertion_counter',{mode:'number'}),claimCiphertext:text('claim_ciphertext').notNull(),
+ photoDigest:text('photo_digest'),photoRetainedUntil:timestamp('photo_retained_until',{withTimezone:true}),
  claimedAt:timestamp('claimed_at',{withTimezone:true}).notNull(),sampledAt:timestamp('sampled_at',{withTimezone:true}).notNull(),receivedAt:timestamp('received_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),
  effectiveMinimum:timestamp('effective_minimum',{withTimezone:true}),effectiveMaximum:timestamp('effective_maximum',{withTimezone:true}),effectiveAt:timestamp('effective_at',{withTimezone:true}),
  outcome:text('outcome').notNull().$type<'accepted'|'needs_review'|'refused'>(),reason:text('reason').notNull(),captureId:uuid('capture_id').references(():AnyPgColumn=>attendanceClockCapture.id),
 },t=>[uniqueIndex('mobile_offline_claim_request_uq').on(t.tenantId,t.actorId,t.requestId),uniqueIndex('mobile_offline_claim_permit_uq').on(t.permitId),
  uniqueIndex('mobile_offline_claim_sequence_uq').on(t.contextId,t.sequence),uniqueIndex('mobile_offline_claim_capture_uq').on(t.captureId),
  uniqueIndex('mobile_offline_claim_counter_uq').on(t.deviceKeyId,t.assertionCounter).where(sql`${t.assertionCounter} IS NOT NULL`),index('mobile_offline_claim_subject_idx').on(t.tenantId,t.employmentId,t.receivedAt)]);
+
+export const mobileOfflinePhoto=pgTable('mobile_offline_photo',{
+ claimId:uuid('claim_id').primaryKey().references(()=>mobileOfflineClaim.id),tenantId:tenantId(),actorId:uuid('actor_id').notNull(),employmentId:uuid('employment_id').notNull(),
+ photoDigest:text('photo_digest').notNull(),retainedUntil:timestamp('retained_until',{withTimezone:true}).notNull(),byteLength:integer('byte_length').notNull(),mimeType:text('mime_type').notNull().$type<'image/jpeg'|'image/png'>(),
+ photoCiphertext:text('photo_ciphertext').notNull(),createdAt:timestamp('created_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),
+},t=>[index('mobile_offline_photo_expiry_idx').on(t.tenantId,t.retainedUntil)]);
 
 // Deployment identities are private to SECURITY DEFINER functions; they do not duplicate HR membership.
 export const appExternalIdentity = pgTable('app_external_identity', {

@@ -31,6 +31,9 @@ CREATE TABLE mobile_offline_claim (
  claim_digest text NOT NULL CHECK(claim_digest ~ '^[a-f0-9]{64}$'),previous_digest text CHECK(previous_digest ~ '^[a-f0-9]{64}$'),
  proof_digest text NOT NULL CHECK(proof_digest ~ '^[a-f0-9]{64}$'),assertion_counter bigint CHECK(assertion_counter BETWEEN 1 AND 4294967295),
  claim_ciphertext text NOT NULL CHECK(length(claim_ciphertext) BETWEEN 1 AND 131072),
+ photo_digest text CHECK(photo_digest ~ '^[a-f0-9]{64}$'),photo_retained_until timestamptz,
+ CHECK(num_nonnulls(photo_digest,photo_retained_until) IN (0,2)),
+ UNIQUE(id,tenant_id,actor_id,employment_id,photo_digest,photo_retained_until),
  claimed_at timestamptz NOT NULL,sampled_at timestamptz NOT NULL,received_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  effective_minimum timestamptz,effective_maximum timestamptz,effective_at timestamptz,
  outcome text NOT NULL CHECK(outcome IN ('accepted','needs_review','refused')),reason text NOT NULL CHECK(reason ~ '^[a-z][a-z0-9_]{0,99}$'),
@@ -172,3 +175,45 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.mobile_offline_permit_inventory() FROM PUBLIC;
 CREATE TRIGGER mobile_offline_permit_inventory BEFORE INSERT ON mobile_offline_permit FOR EACH ROW EXECUTE FUNCTION app.mobile_offline_permit_inventory();
+
+--> statement-breakpoint
+-- Original photo custody for processed claims; independent of a normalized accepted clock photo.
+CREATE TABLE mobile_offline_photo (
+ claim_id uuid PRIMARY KEY,tenant_id uuid NOT NULL,actor_id uuid NOT NULL,employment_id uuid NOT NULL,
+ photo_digest text NOT NULL CHECK(photo_digest ~ '^[a-f0-9]{64}$'),retained_until timestamptz NOT NULL,
+ byte_length integer NOT NULL CHECK(byte_length BETWEEN 1 AND 2097152),mime_type text NOT NULL CHECK(mime_type IN ('image/jpeg','image/png')),
+ photo_ciphertext text NOT NULL CHECK(length(photo_ciphertext) BETWEEN 1 AND 4194304),
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),CHECK(retained_until>created_at),
+ FOREIGN KEY(claim_id,tenant_id,actor_id,employment_id,photo_digest,retained_until)
+ REFERENCES mobile_offline_claim(id,tenant_id,actor_id,employment_id,photo_digest,photo_retained_until)
+);
+CREATE INDEX mobile_offline_photo_expiry_idx ON mobile_offline_photo(tenant_id,retained_until);
+ALTER TABLE mobile_offline_photo ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mobile_offline_photo FORCE ROW LEVEL SECURITY;
+REVOKE ALL ON mobile_offline_photo FROM PUBLIC,ai_hr_app;
+GRANT SELECT,INSERT,DELETE ON mobile_offline_photo TO ai_hr_app;
+CREATE POLICY mobile_offline_photo_read ON mobile_offline_photo FOR SELECT USING
+ (tenant_id=app.current_tenant_id() AND ((actor_id=app.current_user_id() AND app.mobile_integrity_subject(employment_id)) OR app.is_group_admin()));
+CREATE POLICY mobile_offline_photo_insert ON mobile_offline_photo FOR INSERT WITH CHECK
+ (tenant_id=app.current_tenant_id() AND actor_id=app.current_user_id() AND app.mobile_integrity_subject(employment_id));
+CREATE POLICY mobile_offline_photo_delete ON mobile_offline_photo FOR DELETE USING
+ (tenant_id=app.current_tenant_id() AND retained_until<=clock_timestamp() AND app.is_group_admin());
+CREATE TRIGGER mobile_offline_photo_immutable BEFORE UPDATE ON mobile_offline_photo FOR EACH ROW EXECUTE FUNCTION app.mobile_offline_immutable();
+CREATE FUNCTION app.mobile_offline_photo_expired() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public AS $$
+BEGIN
+ IF clock_timestamp()<OLD.retained_until THEN RAISE EXCEPTION 'Offline photo retention has not elapsed'; END IF;
+ RETURN OLD;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.mobile_offline_photo_expired() FROM PUBLIC;
+CREATE TRIGGER mobile_offline_photo_expired BEFORE DELETE ON mobile_offline_photo FOR EACH ROW EXECUTE FUNCTION app.mobile_offline_photo_expired();
+CREATE FUNCTION app.mobile_offline_photo_committed() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public AS $$
+BEGIN
+ IF NEW.photo_digest IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.mobile_offline_photo p WHERE p.claim_id=NEW.id
+ AND p.photo_digest=NEW.photo_digest AND p.retained_until=NEW.photo_retained_until) THEN RAISE EXCEPTION 'Offline photo custody not committed'; END IF;
+ RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.mobile_offline_photo_committed() FROM PUBLIC;
+CREATE CONSTRAINT TRIGGER mobile_offline_photo_committed AFTER INSERT ON mobile_offline_claim
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.mobile_offline_photo_committed();

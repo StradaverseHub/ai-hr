@@ -2077,3 +2077,13 @@ peak RSS 7,651,992 KiB, exit 2). The test now explicitly checks the payload is a
 before inspecting its exact keys. No issuance implementation or SQL changes are required by these
 findings. The repaired issuance suite and root compiler check must pass; the original failed attempt
 is retained here. Unaffected companion suites need not be rerun.
+
+Issuance repair `e89e645cfaa8ef9e9ee9194ac2198e126d94d209` passed
+[40550926794](https://github.com/StradaverseHub/ai-hr/actions/runs/40550926794): all 17 issuance
+cases passed and root TypeScript passed (4:20.74, peak RSS 7,648,712 KiB, exit 0). The repair
+changes only the expiry fixture's SQL timestamp encoding and audit-payload type narrowing.
+Retaining the seven unchanged companion suites from 3769625de gives 161 passing cases across
+eight suites. The original failed attempt remains above. No SQL, native app or issuance-service
+implementation changed in the repair. This proves the internal transaction/signature/storage seam;
+production policy/key registry assembly, routes, claim consumption/adjudication, employee/HR flows
+and physical-device acceptance remain separate unfinished integration work.
