@@ -13374,7 +13374,11 @@
       "profile": "ตรวจสอบการเปลี่ยนแปลงโปรไฟล์",
       "replacementLeave": "ตรวจสอบคำขอลาชดเชย",
       "resignation": "พิจารณาคำขอลาออก",
-      "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]"
+      "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]",
+      "performanceReview": "ทำการประเมินผลการปฏิบัติงานให้เสร็จ",
+      "assessmentWork": "ดำเนินการกับการประเมินผลงาน",
+      "careerPlan": "ตรวจทานแผนพัฒนาอาชีพ",
+      "rewardReview": "ตรวจทานผลตอบแทน"
     },
     "tasksEmpty": "ไม่มีรายการที่ต้องดำเนินการ",
     "title": "การแจ้งเตือน"
@@ -23507,7 +23511,11 @@
       "feedback": "ความเห็นเพื่อนร่วมงาน",
       "noticeAcknowledgement": "ยืนยันรับทราบประกาศ",
       "replacementLeave": "อนุมัติวันลาชดเชย",
-      "onboarding": "งานเตรียมพนักงานใหม่"
+      "onboarding": "งานเตรียมพนักงานใหม่",
+      "performanceReview": "การประเมินผลการปฏิบัติงาน",
+      "assessmentWork": "การประเมินผลงาน",
+      "careerPlan": "การตรวจทานแผนอาชีพ",
+      "rewardReview": "การตรวจทานผลตอบแทน"
     },
     "quickActions": {
       "leave": "ยื่นใบลา",

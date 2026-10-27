@@ -13374,7 +13374,11 @@
       "profile": "核实资料变更",
       "replacementLeave": "审核补休申请",
       "resignation": "决定辞职申请",
-      "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]"
+      "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]",
+      "performanceReview": "完成绩效评估",
+      "assessmentWork": "处理绩效考核",
+      "careerPlan": "审阅职业发展计划",
+      "rewardReview": "审阅薪酬奖励"
     },
     "tasksEmpty": "没有需要您处理的事项",
     "title": "通知"
@@ -23507,7 +23511,11 @@
       "feedback": "同事反馈",
       "noticeAcknowledgement": "通知确认",
       "replacementLeave": "补假审批",
-      "onboarding": "入职工作"
+      "onboarding": "入职工作",
+      "performanceReview": "绩效评估",
+      "assessmentWork": "绩效考核",
+      "careerPlan": "职业发展计划审阅",
+      "rewardReview": "薪酬奖励审阅"
     },
     "quickActions": {
       "leave": "申请休假",

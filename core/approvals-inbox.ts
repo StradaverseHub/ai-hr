@@ -14,6 +14,11 @@
  * Current assignment comes from each canonical decision owner, including named Attendance participants,
  * actual reporting assignments without a manager platform role and stored manager reviews across employments.
  * Broad row visibility and a role label alone do not create a task; private workspace rows are not selected.
+ *
+ * WP-A1 — module-owned work joins through PACK_TASK_SOURCES below: Performance (the /performance "Reviews
+ * awaiting you" queue, OneHR assessment work and career plans awaiting their reviewer) and Rewards (units at
+ * the viewer's approval stage). They deep-link to their own screens, so the layout's /approvals badge,
+ * which counts only /approvals links, is unchanged by them.
  */
 import {assignedApprovalHref,type AssignedApprovalKind} from '../lib/assigned-approval-focus';
 import type {SessionContext} from '../db/client';
@@ -25,6 +30,11 @@ import {pendingProfileTaskMetadata} from './profile';
 import {pendingResignationTaskMetadata} from './offboarding';
 import {pendingNoticeAcknowledgementTasks} from './notice';
 import {pendingReviewTaskMetadata} from './employment-review';
+import {pendingPerformanceTasks} from '../packs/performance/service';
+// The Rewards facade (packs/rewards/service.ts) does not re-export its task provider yet; that file is
+// owned elsewhere this round. Move this import to the facade when it does.
+import {pendingRewardTasks} from '../packs/rewards/tasks';
+import type {PackTaskItem,PackTaskKind,PackTaskProvider} from '../lib/assigned-work';
 
 /** The per-module task vocabulary — each key maps to an i18n label (notifications.task.*). */
 export type PendingTaskKind =
@@ -37,7 +47,8 @@ export type PendingTaskKind =
   | 'resignation'
   | 'managerReview'
   | 'hrReview'
-  | 'noticeAcknowledgement';
+  | 'noticeAcknowledgement'
+  | PackTaskKind;
 
 /** One item awaiting the viewer's decision — serializable (ISO date) so the client bell can render it. */
 export type PendingTaskItem = {
@@ -70,7 +81,25 @@ export type PendingTaskItem = {
  * `true` would throw for a declined tenant and `false` would hide real tasks from a paying one — and the
  * next caller would inherit whichever was guessed. Making it a parameter puts the compiler on the hook.
  */
-export type InboxModules = { attendance: boolean; claims: boolean };
+export type InboxModules = { attendance: boolean; claims: boolean; performance: boolean; rewards: boolean };
+
+/**
+ * Module-owned task sources (WP-A1) — the extension point for packs whose work belongs in this list.
+ *
+ * WHY HERE AND NOT ON `ModulePack` (packs/registry.ts). The registry object is client-safe on purpose:
+ * the sidebar imports the pack wiring, and registry.ts keeps even the service FACADE off the object so
+ * db/client never reaches the client bundle. A provider function on the pack would drag exactly that in.
+ * So the slot is this server-side table: one row per pack, keyed by the `InboxModules` flag that gates
+ * it, each provider imported from the pack's service surface. A disabled module's provider is never
+ * called — the pack services are module-gated and would refuse, and a declined module has no work.
+ *
+ * Each provider is its pack's projection of an owner that already decides the work; it returns only
+ * id, kind, subject name, owner time and link (lib/assigned-work.ts PackTaskItem).
+ */
+const PACK_TASK_SOURCES:readonly {module:'performance'|'rewards';load:PackTaskProvider}[]=[
+  {module:'performance',load:pendingPerformanceTasks},
+  {module:'rewards',load:pendingRewardTasks},
+];
 
 type ApprovalOnlyTaskItem=Omit<PendingTaskItem,'kind'>&{kind:Exclude<PendingTaskKind,'noticeAcknowledgement'>};
 export function listPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
@@ -85,7 +114,7 @@ export async function listPendingTasks(
 ): Promise<PendingTaskItem[]> {
   // Each owner proves actual current assignment without selecting its private decision workspace.
   // A platform role or broad read permission alone is not an actionable task assignment.
-  const [leave,cancellations,replacement,attendance,profile,claims,resignations,managerReviews,hrReviews,noticeAcknowledgements]=await Promise.all([
+  const [leave,cancellations,replacement,attendance,profile,claims,resignations,managerReviews,hrReviews,noticeAcknowledgements,packTaskLists]=await Promise.all([
     pendingLeaveTaskMetadata(ctx,scopeIds),pendingLeaveCancellationTaskMetadata(ctx,scopeIds),
     listPendingReplacementLeaveTasks(ctx,{companyIds:scopeIds}),
     modules.attendance?pendingAttendanceTaskMetadata(ctx,scopeIds):Promise.resolve([]),
@@ -93,7 +122,9 @@ export async function listPendingTasks(
     modules.claims?pendingClaimTaskMetadata(ctx,scopeIds):Promise.resolve([]),
     pendingResignationTaskMetadata(ctx,scopeIds),pendingReviewTaskMetadata(ctx,'manager',scopeIds),pendingReviewTaskMetadata(ctx,'hr',scopeIds),
     options.noticeAcknowledgements===false?Promise.resolve([]):pendingNoticeAcknowledgementTasks(ctx),
+    Promise.all(PACK_TASK_SOURCES.map(source=>modules[source.module]?source.load(ctx,scopeIds):Promise.resolve([]))),
   ]);
+  const packTasks:PackTaskItem[]=packTaskLists.flat();
   const iso=(value:Date|string)=>value instanceof Date?value.toISOString():new Date(value).toISOString();
   const project=(rows:readonly Pick<AssignedApprovalMetadata,'id'|'employee'|'createdAt'>[],kind:AssignedApprovalKind):PendingTaskItem[]=>
     rows.map(row=>({id:row.id,kind,subjectName:row.employee,createdAt:iso(row.createdAt),linkPath:assignedApprovalHref({kind,id:row.id})}));
@@ -106,6 +137,7 @@ export async function listPendingTasks(
     ...profile.map(row=>({id:row.id,kind:'profile' as const,subjectName:row.employee,createdAt:iso(row.createdAt),linkPath:`/admin/personnel/profile-changes?assigned=1&requestId=${row.id}#request-${row.id}`})),
     ...project(claims,'claim'),...project(resignations,'resignation'),
     ...project(managerReviews,'managerReview'),...project(hrReviews,'hrReview'),
+    ...packTasks.map(({id,kind,subjectName,createdAt,linkPath})=>({id,kind,subjectName,createdAt,linkPath})),
   ];
   return items.sort((a,b)=>a.createdAt<b.createdAt?1:a.createdAt>b.createdAt?-1:a.kind.localeCompare(b.kind)||a.id.localeCompare(b.id));
 }

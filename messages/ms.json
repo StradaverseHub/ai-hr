@@ -13374,7 +13374,11 @@
       "profile": "Sahkan perubahan profil",
       "replacementLeave": "Semak permohonan cuti gantian",
       "resignation": "Putuskan permohonan peletakan jawatan",
-      "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]"
+      "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]",
+      "performanceReview": "Lengkapkan semakan prestasi",
+      "assessmentWork": "Ambil tindakan pada penilaian prestasi",
+      "careerPlan": "Semak pelan kerjaya",
+      "rewardReview": "Semak ganjaran"
     },
     "tasksEmpty": "Tiada apa-apa memerlukan tindakan anda",
     "title": "Pemberitahuan"
@@ -23507,7 +23511,11 @@
       "feedback": "Maklum balas rakan",
       "noticeAcknowledgement": "Pengesahan notis",
       "replacementLeave": "Kelulusan cuti gantian",
-      "onboarding": "Tugas penerimaan pekerja"
+      "onboarding": "Tugas penerimaan pekerja",
+      "performanceReview": "Semakan prestasi",
+      "assessmentWork": "Penilaian prestasi",
+      "careerPlan": "Semakan pelan kerjaya",
+      "rewardReview": "Semakan ganjaran"
     },
     "quickActions": {
       "leave": "Mohon cuti",

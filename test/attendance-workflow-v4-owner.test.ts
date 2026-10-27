@@ -46,7 +46,7 @@ describe('v4 uses the immutable participant and final Attendance owners',()=>{
  });
  it('exposes a real named v4 assignment through the canonical inbox without granting unrelated queues',async()=>{
   const f=await fixture('all_required');
-  const modules={attendance:true,claims:true};
+  const modules={attendance:true,claims:true,performance:false,rewards:false};
   expect(await listPendingTasks(f.second.ctx,[base.companyId],modules)).toEqual([
    expect.objectContaining({id:f.id,kind:'attendance',linkPath:assignedApprovalHref({kind:'attendance',id:f.id})})
   ]);
