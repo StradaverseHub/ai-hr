@@ -1503,3 +1503,24 @@ recovery during outages, immutable inputs and request cancellation. These tests 
 real deployment guard, Google configuration or physical devices. The signed-clock HTTP carrier
 still uses the historical signature-only Android factory and remains unmounted; this run does not
 prove current Google evidence is required by a mounted HTTP route or native client.
+
+
+Five independent hosted guard-removal probes ran the unchanged 17-case transaction suite. Each
+candidate descends directly from the passing `8e76913c7` checkpoint and removes only the named
+production guard, with no test or controller edits. All five selected-test jobs exited 1 with the
+intended assertion failure; full job logs were inspected rather than treating a red job as proof.
+
+| Guard removed | Frozen probe candidate | Hosted run | Intended observed failure | Suite result |
+|---|---|---|---|---|
+| Freshness before business callback | `c4591988f9844291a7bdba3eb9d7ee8ca2a99c48` | [40498045368](https://github.com/StradaverseHub/ai-hr/actions/runs/40498045368) | Key-lock-age test reached the guard once despite its explicit zero-call assertion; later rollback alone would have been vacuous | 1 failed / 16 passed |
+| Freshness after tentative writes | `871754f6b4946ad09023bd0bb2f885c392638cca` | [40498053981](https://github.com/StradaverseHub/ai-hr/actions/runs/40498053981) | Post-write expiry test resolved with an attendance receipt instead of refusing stale evidence | 1 failed / 16 passed |
+| Deployment transaction guard invocation | `4c5a55c5afcddc75ffb51aaae1df070619ff16ab` | [40498061869](https://github.com/StradaverseHub/ai-hr/actions/runs/40498061869) | Policy-veto and cancellation tests resolved receipts instead of rejecting; callback-dependent assertions also failed | 6 failed / 11 passed |
+| Read-only signature precheck | `92b6bbd60bf1354338c3ab18a3828022f654b0c0` | [40498070021](https://github.com/StradaverseHub/ai-hr/actions/runs/40498070021) | Invalid-signature case called Google once despite the zero-call assertion; locked signature rejection still operated | 1 failed / 16 passed |
+| Concurrent consumed-receipt recovery | `56b4e5fbc2f48cc77401d8db34a4c12575896e47` | [40498078316](https://github.com/StradaverseHub/ai-hr/actions/runs/40498078316) | Cleared second Google response rejected instead of recovering the first committed receipt | 1 failed / 16 passed |
+
+These deliberately unsafe candidates are isolated `codex/mobile-clock-probe-*-20261027` branches,
+explicitly marked never to merge or deploy. A temporary Git index created each tree without
+modifying the working branch, its index or checked-out source. No restoration command or local
+application test ran. The working source and tests remain byte-identical to the passing baseline;
+subsequent working-branch edits only document the result, so that baseline remains the positive
+control. No full gate, route activation, migration application or deployment occurred.
