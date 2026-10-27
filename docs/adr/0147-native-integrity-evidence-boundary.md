@@ -228,3 +228,33 @@ attendance-security policy owner. Configured pilot scope, supported versions/dev
 and human exception handling still need their reviewed rollout owner. The two mounted source routes
 are not a deployed release, migration application, attestation check or physical-presence guarantee.
 No migration filename/index/timestamp was allocated by this wiring change.
+
+
+## Mobile account key review
+
+Me links to a protected integrity-key screen. It first obtains own employments, requires the selected
+employment to remain in that inventory, and reads the bounded actor-owned key list through the shared
+mobile API client. A direct signed-out route redirects before mounting private reads. Loading, empty,
+refused/unavailable, older-server 404 and retained stale content remain distinct. The screen uses the
+existing tenant theme/components and explicit selectable key references; it does not invent phone
+names or hardware identity from proof metadata. Destructive controls announce their key reference.
+
+The user confirms a specific reference in the native destructive dialog before a POST. Duplicate taps
+share an in-flight owner. Auth generation, connection namespace, language, employment remount and
+component lifetime checks stop obsolete confirmations/replies before mutation or side effects. The
+shared transport separately rechecks ownership around authentication/refresh and requires foreground
+visibility for writes. A success must contain the same immutable key receipt and a real revocation
+timestamp; mismatches remain unconfirmed. Known revoked status cannot be undone by retained stale UI.
+
+A lost reply retains the reference on the screen and allows a safe status read or explicit retry of
+the same key ID. Opening/reopening the screen performs authenticated reads, never mutation replay.
+A fresh server inventory reconciles remote revocation after restart. This account-management screen
+can revoke a key from another installation; it does not resume an enrollment, replace a key or mutate
+local attendance/enrollment journals. The separate local enrollment owner's durable revocation state
+remains for a native key workflow that invokes it. Cached native enrollment receipts never establish
+current server authorization; every later signed-clock operation must still check current revocation.
+
+The flow changes key authorization, not existing attendance or the login session. Server revocation
+and audit retain their atomic owner. There is no GPS-presence claim, offline approval or completed
+SDK-key retirement. Signed-device visual, screen-reader, small/large-screen and lifecycle acceptance,
+four additional mobile locales and the complete frozen-candidate release gate remain unfinished.

@@ -488,3 +488,33 @@ and weakened the 256-byte revoke reader to 4 KiB. Each intended test failed and 
 with excessive JSON whitespace, so schema strictness alone cannot mask a missing streaming cap. These
 are local process/database observations; no provider request, cloud build, new migration allocation,
 shared database write, publication or deployment occurred.
+
+
+Mobile key review at `ca0e67f3e` passed 42 initial screen/transport/revocation cases and both root/native
+TypeScript checks. Guard/accessibility follow-up `841bc02d3` passed 71 affected cases across key screen,
+real API client, local enrollment revocation, existing native attendance journeys and pending submissions;
+both strict compilers exited 0. The screen is reachable from Me and protected on direct navigation.
+New English/Malay text distinguishes keys from named phones or location proof. Existing machine-drafted
+Malay and the remaining four mobile locales still require their planned language acceptance.
+
+The screen tests execute shipped TSX with native view/dialog/session/HTTP ports replaced. Cases cover
+no mutation on load, destructive confirmation, duplicate taps, empty/loading/prerequisite/older-server
+states, failed reads, uncertain reply/reference retention, explicit status reconciliation, monotonic
+known-revoked display, refused/mismatched receipts, unmount and changed employment/account/connection/
+language. The shared API fixture exercises actual request construction, bearer/locale headers, omitted
+cookies/redirects, response allowlists and the twenty-key bound. No actual OS dialog, vendor or signed
+device is exercised by these models. A confirmation or list receipt never creates attendance.
+
+Three mutations at `841bc02d3` sent revocation before confirmation, removed obsolete-confirmation refusal
+and accepted a mismatched receipt. Every selected behavioral probe failed; each exact restored source
+passed (`mutation=1 restored=0 exact=true`). Both local Hermes exports passed. Maps contain 1,337 iOS
+and 1,468 Android sources, including the new screen/helper/API integration, with no application server
+core/database/session/private verifier, PKI dependencies or Zod 3. No native Swift/Kotlin source changed.
+These exports do not establish real-device layout, accessibility, process-loss or OS-storage acceptance.
+
+The UI skill's initial design search returned an unsuitable landing-page pattern; its narrower
+confirmation query matched this flow. The shipped screen reuses established tenant presentation and
+native confirmation rather than introducing a competing palette/component dependency. Physical light/
+dark, large-text, small/large phone/tablet, screen-reader focus and signed-device walkthrough remain
+open. No screenshot or visual-device pass is claimed. No migration allocation, shared database write,
+public/cloud publication or staging deployment occurred in this slice.
