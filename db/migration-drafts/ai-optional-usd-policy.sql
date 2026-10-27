@@ -54,7 +54,8 @@ BEGIN
  SELECT EXISTS(SELECT 1 FROM app.ai_spend_budget b WHERE b.tenant_id=tid AND(b.kind='tenant' OR(b.kind='user' AND b.subject_id=uid) OR(b.kind='company' AND b.subject_id=ANY(controls.company_ids)) OR(b.kind='feature' AND b.feature_id=wanted_feature)) AND(b.monthly_nanos IS NOT NULL OR b.root_nanos IS NOT NULL)) INTO monetary_required;
  IF admitted_run IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.ai_model_run m WHERE m.id=admitted_run AND m.tenant_id=tid AND m.user_id=uid AND m.feature_id=wanted_feature AND m.state='pending' AND m.xmin=pg_current_xact_id()::xid) THEN RAISE EXCEPTION 'AI policy exclusion requires this admission';END IF;
  IF monetary_required AND wanted_root IS NULL THEN RAISE EXCEPTION 'This monetary limit requires a native AI task root';END IF;
- -- Clearing allocations never clears a confirmed breach or authorizes its automatic recovery.
+ -- Clearing allocations never clears a confirmed breach: rooted/capped admissions remain paused.
+ -- The pre-existing ordinary rootless/no-cap boundary is unchanged.
  IF (monetary_required OR wanted_root IS NOT NULL) AND EXISTS(SELECT 1 FROM app.ai_spend_reservation b WHERE b.tenant_id=tid AND b.state='breach') THEN RAISE EXCEPTION 'AI spend ceiling breach requires review';END IF;
  IF monetary_required THEN
   FOR p IN SELECT * FROM app.ai_spend_budget b WHERE b.tenant_id=tid AND(b.kind='tenant' OR(b.kind='user' AND b.subject_id=uid) OR(b.kind='company' AND b.subject_id=ANY(controls.company_ids)) OR(b.kind='feature' AND b.feature_id=wanted_feature)) ORDER BY b.scope_key LOOP

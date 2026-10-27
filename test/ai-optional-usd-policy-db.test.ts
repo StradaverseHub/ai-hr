@@ -72,7 +72,7 @@ describe('actual optional USD policy with mandatory nonmoney controls',()=>{
   const events=await owner.db.execute<{payload:{cleared:boolean;monthlyNanos:string|null;rootNanos:string|null}}>(sql`select payload from domain_event where tenant_id=${b.tenantId}::uuid and event_type='ai-control.spend-allocation-changed' order by occurred_at,id`);expect(events.some(row=>row.payload.cleared&&row.payload.monthlyNanos===null&&row.payload.rootNanos===null)).toBe(true);
  });
  it('includes every actually visible company, not only the first company, in monetary policy',async()=>{
-  http();const[second]=await owner.db.insert(s.company).values({tenantId:b.tenantId,code:'USD-'+randomUUID().slice(0,8),name:'Fictional second company'}).returning();const{cfg,root}=await configured();
+  http();const[second]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional second company'}).returning();const{cfg,root}=await configured();
   const before=await policy(root);expect(before[0].company_ids).toEqual(expect.arrayContaining([b.companyId,second.id]));await setAiSpendBudget(a,{kind:'company',subjectId:second.id,monthlyUsd:'',rootUsd:'0'});
   await expect(call(cfg)).rejects.toThrow();expect(fetch).not.toHaveBeenCalled();
  });
