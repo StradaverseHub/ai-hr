@@ -127,8 +127,25 @@ def dedicated_identity(identity):
     group=grp.getgrgid(identity.pw_gid)
     require(identity.pw_uid!=0 and identity.pw_shell=='/usr/sbin/nologin' and identity.pw_dir=='/nonexistent' and group.gr_name==USER and not group.gr_mem and not any(p.pw_name!=USER and p.pw_gid==identity.pw_gid for p in pwd.getpwall()), 'Dedicated unshared non-login identity required')
 
+def journal_success(rows, uid, last_run, now=None):
+    now=now or datetime.datetime.now(datetime.timezone.utc)
+    require(isinstance(rows,list) and len(rows)<=100 and last_run, 'Bounded completed service journal required')
+    last=datetime.datetime.fromisoformat(last_run.replace('Z','+00:00')).timestamp()*1000000
+    matches=[]
+    for row in rows:
+        invocation=row.get('_SYSTEMD_INVOCATION_ID')
+        if row.get('_UID')!=str(uid) or row.get('_SYSTEMD_UNIT')!=NAME+'.service' or row.get('_EXE')!=PSQL or row.get('MESSAGE')!='0' or not invocation:continue
+        stamp=int(row.get('__REALTIME_TIMESTAMP','0'))
+        starts=[r for r in rows if r.get('_UID')=='0' and r.get('UNIT')==NAME+'.service' and r.get('INVOCATION_ID')==invocation and r.get('MESSAGE_ID')=='7d4958e842da4a758f6c1cdc7b36dcc5']
+        finishes=[r for r in rows if r.get('_UID')=='0' and r.get('UNIT')==NAME+'.service' and r.get('INVOCATION_ID')==invocation and r.get('MESSAGE_ID')=='39f53479d3a045ac8e11786248231fbf' and r.get('JOB_RESULT')=='done']
+        if len(starts)!=1 or len(finishes)!=1:continue
+        start=int(starts[0].get('__REALTIME_TIMESTAMP','0'));finish=int(finishes[0].get('__REALTIME_TIMESTAMP','0'))
+        if start<=last<=stamp<=finish and finish-start<=60000000 and 0<=now.timestamp()*1000000-finish<=86400000000 and abs(stamp-last)<=5000000:matches.append(invocation)
+    require(len(matches)==1, 'Actual dedicated zero-removal invocation and completed systemd job required')
+    return matches[0]
+
 def main(mode):
-    require(mode in ('install','verify') and os.geteuid()==0 and sys.platform=='linux', 'Run this bounded helper with sudo on staging')
+    require(mode in ('install','recover','verify') and os.geteuid()==0 and sys.platform=='linux', 'Run this bounded helper with sudo on staging')
     for p in [PSQL,'/usr/bin/systemctl','/usr/sbin/useradd','/usr/sbin/nologin']:root_path(p)
     actual_source()
     raw=owned_regular('/opt/ai-hr/.env.production',uid=1000,private=True)
@@ -158,19 +175,21 @@ def main(mode):
     require(snapshot(url)==before, 'Database state changed before commissioning')
     if mode=='install':
         run(['/usr/bin/systemctl','start',NAME+'.service'],timeout=70)
-    props=dict(line.split('=',1) for line in run(['/usr/bin/systemctl','show',NAME+'.service','--property=Result,ExecMainStatus,User,ExecMainStartTimestamp']).splitlines() if '=' in line)
-    require(props.get('Result')=='success' and props.get('ExecMainStatus')=='0' and props.get('User')==USER and props.get('ExecMainStartTimestamp'), 'Actual successful dedicated service execution required')
     after=snapshot(url);unchanged(before,after);actual_source()
-    if mode=='install':run(['/usr/bin/systemctl','enable','--now',NAME+'.timer'])
+    # An inactive oneshot can be garbage-collected immediately, clearing ExecMain* fields.
+    # Bind the real dedicated psql zero output to root systemd start+done for the same invocation.
+    rows=[json.loads(line) for line in run(['/usr/bin/journalctl','--unit='+NAME+'.service','--since=24 hours ago','--lines=100','--output=json','--no-pager']).splitlines() if line]
+    invocation=journal_success(rows,identity.pw_uid,after['lastRun'])
+    if mode in ('install','recover'):run(['/usr/bin/systemctl','enable','--now',NAME+'.timer'])
     require(run(['/usr/bin/systemctl','is-active',NAME+'.timer'])=='active', 'Timer is not active')
     require(run(['/usr/bin/systemctl','is-enabled',NAME+'.timer'])=='enabled', 'Timer is not enabled')
     timer_props=run(['/usr/bin/systemctl','show',NAME+'.timer','--property=NextElapseUSecRealtime,ActiveState,Triggers'])
     timer_fields=dict(line.split('=',1) for line in timer_props.splitlines() if '=' in line)
     require(bool(timer_fields.get('NextElapseUSecRealtime')) and timer_fields.get('Triggers')==NAME+'.service' and timer_fields.get('ActiveState')=='active', 'Actual next timer invocation required')
-    print(json.dumps({'kind':'STAGING_EMAIL_RETENTION_COMMISSIONED','source':SOURCE,'buildId':BUILD,'fixedRootOwnedSqlUnit':True,'webWritableCodeExecuted':False,'retention':'Never delete','removed':0,'protectedRecordCountsPreserved':True,'serviceResult':'success','timerEnabled':True,'timerMetadata':timer_props,'observedAtUtc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'productionChanged':False}))
+    print(json.dumps({'kind':'STAGING_EMAIL_RETENTION_COMMISSIONED','source':SOURCE,'buildId':BUILD,'fixedRootOwnedSqlUnit':True,'webWritableCodeExecuted':False,'retention':'Never delete','removed':0,'protectedRecordCountsPreserved':True,'serviceResult':'success','verifiedInvocationId':invocation,'cleanupRerun':mode=='install','timerEnabled':True,'timerMetadata':timer_props,'observedAtUtc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'productionChanged':False}))
 
 if __name__=='__main__':
     try:
-        require(len(sys.argv)==2,'Expected install or verify mode');main(sys.argv[1])
+        require(len(sys.argv)==2,'Expected install, recover or verify mode');main(sys.argv[1])
     except Exception as error:
         print(json.dumps({'maintenanceRefused':True,'reason':str(error) if isinstance(error,Refused) else 'Bounded maintenance check failed; preserve files for forward recovery','automaticRollback':False,'credentialsDisclosed':False}));sys.exit(1)

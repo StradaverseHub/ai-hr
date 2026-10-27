@@ -1,4 +1,4 @@
-import importlib.util,json,os,pathlib,subprocess,tempfile,unittest
+import importlib.util,json,os,pathlib,subprocess,tempfile,unittest,datetime,copy
 spec=importlib.util.spec_from_file_location('maintenance',pathlib.Path(__file__).resolve().parents[2]/'deploy/email-retention-maintenance.py')
 m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 class MaintenanceRefusalTests(unittest.TestCase):
@@ -48,4 +48,24 @@ class MaintenanceRefusalTests(unittest.TestCase):
    config=pathlib.Path(directory)/'pg_service.conf';m.exclusive(config,m.service_bytes(url))
    env={'PATH':'/usr/bin:/bin','PGSERVICEFILE':str(config),'PGSERVICE':'aihr_email_retention'}
    self.assertEqual(m.run([m.PSQL,'-X','-qAt','-v','ON_ERROR_STOP=1','-c','select 1'],env),'1')
+class JournalCompletionTests(unittest.TestCase):
+ def fixture(self):
+  base={'_UID':'0','UNIT':m.NAME+'.service','INVOCATION_ID':'bounded-invocation'}
+  start={**base,'MESSAGE_ID':'7d4958e842da4a758f6c1cdc7b36dcc5','__REALTIME_TIMESTAMP':'1793118846348676'}
+  sql={'_UID':'994','_SYSTEMD_UNIT':m.NAME+'.service','_EXE':m.PSQL,'_SYSTEMD_INVOCATION_ID':'bounded-invocation','MESSAGE':'0','__REALTIME_TIMESTAMP':'1793118846565876'}
+  end={**base,'MESSAGE_ID':'39f53479d3a045ac8e11786248231fbf','JOB_RESULT':'done','__REALTIME_TIMESTAMP':'1793118846584395'}
+  return [start,sql,end]
+ def validate(self,rows,last='2026-10-27T16:34:06.548Z',now=None):
+  return m.journal_success(rows,994,last,now or datetime.datetime(2026,10,27,16,35,tzinfo=datetime.timezone.utc))
+ def test_actual_completed_oneshot_accepted_without_transient_execmain_fields(self):
+  self.assertEqual(self.validate(self.fixture()),'bounded-invocation')
+ def test_foreign_uid_executable_invocation_failure_nonzero_or_stale_refused(self):
+  for index,key,value in [(1,'_UID','0'),(1,'_EXE','/opt/ai-hr/mutable'),(1,'MESSAGE','1'),(1,'_SYSTEMD_INVOCATION_ID','foreign'),(2,'_UID','994'),(2,'JOB_RESULT','failed'),(0,'INVOCATION_ID','foreign')]:
+   rows=copy.deepcopy(self.fixture());rows[index][key]=value
+   with self.subTest(key=key,value=value),self.assertRaises(m.Refused):self.validate(rows)
+  with self.assertRaises(m.Refused):self.validate(self.fixture(),now=datetime.datetime(2026,10,29,tzinfo=datetime.timezone.utc))
+  with self.assertRaises(m.Refused):self.validate(self.fixture(),last='2026-10-27T16:30:00Z')
+ def test_default_success_without_actual_journal_is_refused(self):
+  for rows in [[],self.fixture()[1:],self.fixture()[:2],self.fixture()+[self.fixture()[1]]]:
+   with self.assertRaises(m.Refused):self.validate(rows)
 if __name__=='__main__':unittest.main()
