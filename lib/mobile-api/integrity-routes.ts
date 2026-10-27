@@ -17,15 +17,13 @@ import {mobileRoute,MobileBadRequest,type MobileSessionResolver} from './handler
 import {integrityEmployment as selected} from './integrity-request';
 import {createIntegrityKeyHttpHandlers} from './integrity-key-routes';
 import {mobileInput,mobileForm} from './body';
+import {createIntegrityConfigurationReader,IntegrityConfigurationUnavailable} from './integrity-configuration';
 
-class NotConfigured extends Error{}
-class ConfigurationReadUnavailable extends Error{}
 type Refusal=z.infer<typeof C.IntegrityRefused>|z.infer<typeof C.IntegrityUnavailable>;
 const unavailable=(code:z.infer<typeof C.IntegrityUnavailable>['code']):Refusal=>({outcome:'unavailable',code});
 const refused=(code:z.infer<typeof C.IntegrityRefused>['code']):Refusal=>({outcome:'refused',code});
 function expected(error:unknown):Refusal|undefined{
-  if(error instanceof NotConfigured)return unavailable('not_configured');
-  if(error instanceof ConfigurationReadUnavailable)return unavailable('configuration_unavailable');
+  if(error instanceof IntegrityConfigurationUnavailable)return unavailable(error.reason);
   if(error instanceof ModuleNotEnabledError)return unavailable('module_unavailable');
   if(error instanceof OwnClockEmploymentUnavailableError)return refused('subject_unavailable');
   if(error instanceof AppleKeyEnrollmentError){
@@ -73,28 +71,7 @@ async function form<S extends z.ZodType>(req:Request,schema:S){
  * Responses distinguish preparation/unavailability/refusal from acceptance. No handler falls back.
  */
 export function createIntegrityHttpHandlers(configuration:(ctx:SessionContext,employmentId:string,signal:AbortSignal)=>Promise<unknown|null>,resolve?:MobileSessionResolver,options:{configurationTimeoutMs?:number}={}){
-  const timeout=options.configurationTimeoutMs??3000;
-  if(!Number.isInteger(timeout)||timeout<1||timeout>10000)throw new Error('Invalid configuration deadline');
-  async function settings(ctx:SessionContext,id:string,signal:AbortSignal){
-    if(signal.aborted)throw new ConfigurationReadUnavailable();
-    const controller=new AbortController();let timer:ReturnType<typeof setTimeout>|undefined,abort:()=>void=()=>{};
-    const stopped=new Promise<never>((_,reject)=>{
-      abort=()=>{controller.abort();reject(new ConfigurationReadUnavailable());};
-      signal.addEventListener('abort',abort,{once:true});timer=setTimeout(abort,timeout);
-    });
-    try{
-      const reading=Promise.resolve().then(()=>{
-        if(controller.signal.aborted)throw new ConfigurationReadUnavailable();return configuration(ctx,id,controller.signal);
-      });
-      const raw=await Promise.race([reading,stopped]);
-      if(controller.signal.aborted||signal.aborted)throw new ConfigurationReadUnavailable();
-      if(raw===null)throw new NotConfigured();
-      const parsed=AppleEnrollmentSettings.safeParse(raw);if(!parsed.success)throw new AppleKeyEnrollmentError('configuration_unavailable');return parsed.data;
-    }catch(error){
-      if(controller.signal.aborted||signal.aborted)throw new ConfigurationReadUnavailable();
-      throw error;
-    }finally{clearTimeout(timer);signal.removeEventListener('abort',abort);controller.abort();}
-  }
+  const settings=createIntegrityConfigurationReader(AppleEnrollmentSettings,configuration,options.configurationTimeoutMs);
   function route<S extends z.ZodType>(schema:S,fn:(ctx:SessionContext,req:Request)=>Promise<unknown>){
     return mobileRoute(schema,async(ctx,req)=>{
       try{return await fn(ctx,req) as z.input<S>;}

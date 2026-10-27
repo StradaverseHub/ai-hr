@@ -8,3 +8,4 @@ export {OwnClockEmploymentUnavailableError} from '../../core/attendance-clock-su
 export {ClockConflictError,CorrectedClockConflictError,ClockLocationError,AttendancePhotoRequiredError} from '../../core/attendance-clock';
 export {OutsideGeofenceError,GeolocationRequiredError,GeofenceQualityError} from '../../core/attendance';
 export {DeviceNotRegisteredError} from '../../core/attendance-device';
+export {createAndroidEnrollmentService,AndroidKeyEnrollmentError} from '../../core/mobile-android-enrollment';
