@@ -43,6 +43,19 @@ describe('source-owned conversational explanation display',()=>{
    expect(content).not.toContain('PRIVATE-');expect(content).not.toContain('employmentTypes');expect(shown.container.querySelector('a')).toBeNull();shown.unmount();
   }
  });
+ it.each(locales)('%s shows the first three actual tested rules and keeps all remaining rule detail in a closed native disclosure',async locale=>{
+  state.locale=locale;const source=outcome(),original=source.employments[0].eligibility.rules[0];
+  source.employments[0].eligibility.rules=Array.from({length:6},(_,index)=>({...original,id:`PRIVATE-LINEAGE-${index+1}`,name:`Canonical rule ${index+1}`,failingAxisValue:'PRIVATE-STORED-AXIS'}));
+  const view=await leave(source),selected=clause(view,'leave_rule:in_force'),shown=await show(view,selected);
+  expect(screen.queryByRole('status')).toBeNull();const root=shown.container.firstElementChild!;
+  const details=root.querySelector('details') as HTMLDetailsElement;expect(details).not.toBeNull();expect(details.open).toBe(false);expect(details.hasAttribute('open')).toBe(false);
+  expect(details.querySelector('summary')?.textContent).toBe(text('assistant.workspace.conversation','moreRules',{count:3}));
+  expect(details.querySelector('summary')?.className).toContain('min-h-11');expect(details.querySelector('summary')?.className).toContain('focus-visible:ring-2');
+  expect([...root.querySelectorAll(':scope > p')].map(row=>row.querySelector('span')?.textContent)).toEqual(['Canonical rule 1','Canonical rule 2','Canonical rule 3']);
+  expect([...details.querySelectorAll('p')].map(row=>row.querySelector('span')?.textContent)).toEqual(['Canonical rule 4','Canonical rule 5','Canonical rule 6']);
+  for(const row of root.querySelectorAll('p')){expect(row.textContent).toContain(text('leave.breakdown','eligibilityStateInForce'));expect(row.textContent).toContain(text('leave.breakdown','eligibilityWhyAxis',{axis:text('admin.leave.adjustmentsCriteria','employmentType')}));}
+  expect(root.textContent).not.toContain('PRIVATE-');expect(root.textContent).not.toContain('employmentTypes');expect(root.querySelector('a')).toBeNull();
+ });
  it('refuses copied views, copied descriptors, other callers and equal-looking descriptors from another source',async()=>{
   const original=await leave(),selected=clause(original,'leave_status:no_eligibility_match'),other=await leave();
   for(const input of [{view:JSON.parse(JSON.stringify(original)) as CanonicalModuleJobView,explanation:selected,principal:ctx},{view:original,explanation:JSON.parse(JSON.stringify(selected)) as AssistantAnswerExplanation,principal:ctx},{view:original,explanation:selected,principal:{...ctx,userId:'another-user'}},{view:original,explanation:clause(other,'leave_status:no_eligibility_match'),principal:ctx}]){const shown=await show(input.view,input.explanation,input.principal);expect(screen.getByRole('status').textContent).toBe(text('assistant.workspace.conversation','unavailable'));expect(shown.container.textContent).not.toContain('Canonical scheme');shown.unmount();}
