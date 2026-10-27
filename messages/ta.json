@@ -24733,5 +24733,68 @@
       "companyCodeUnavailable": "சுருக்கமான நிறுவனக் குறியீட்டை அமைக்கவும் அல்லது நிறுவன இடக்குறி இல்லாத வடிவத்தைப் பயன்படுத்தவும்.",
       "version": "அமைப்புப் பதிப்பு {number}"
     }
+  },
+  "performanceHome": {
+    "title": "Performance",
+    "closes": "Closes {date}",
+    "progress": "{done} of {total} done",
+    "stripLabel": "Steps in this cycle",
+    "steps": {
+      "kpi": "KPI Check-in",
+      "kpiSetting": "KPI setting",
+      "feedback360": "360 Feedback",
+      "competency": "Competency",
+      "careerPlan": "Career Plan",
+      "teamReview": "Team review",
+      "calibration": "Calibration",
+      "results": "Results released"
+    },
+    "states": {
+      "done": "Done",
+      "yourTurn": "Your turn",
+      "waiting": "{count} waiting",
+      "locked": "Locked",
+      "inProgress": "In progress",
+      "released": "Released",
+      "notRequired": "Not required"
+    },
+    "next": {
+      "label": "Your next step",
+      "kpiTitle": "Your KPI check-in",
+      "kpiLine": "{done} of {total} KPIs filled in",
+      "kpiSettingTitle": "Set your KPIs",
+      "kpiSettingLine": "{done} of {total} KPIs proposed",
+      "competencyTitle": "Rate your competencies",
+      "competencyLine": "{done} of {total} answered",
+      "careerPlanTitle": "Write your Career Plan",
+      "careerPlanLine": "{done} goals written, at least {total} needed",
+      "feedback360Title": "360 feedback for {count, plural, one {# colleague} other {# colleagues}}",
+      "feedback360Line": "Answer each statement, then submit.",
+      "due": "Due {date}",
+      "open": "Continue",
+      "none": "Nothing for you to do right now",
+      "opens": "Your next step opens {date}",
+      "closesOn": "This cycle closes {date}"
+    },
+    "team": {
+      "title": "Your team",
+      "waiting": "{count, plural, =0 {nothing waiting on you} one {# review waiting on you} other {# reviews waiting on you}}",
+      "open": "Open team review"
+    },
+    "standing": {
+      "title": "Where you stand",
+      "details": "Details",
+      "performance": "Performance",
+      "competency": "Competency",
+      "feedback360": "360 feedback",
+      "careerTarget": "Career target",
+      "awaitingManager": "Awaiting your manager",
+      "notReleased": "Not released yet",
+      "notSubmitted": "Not submitted yet",
+      "withManager": "With your manager",
+      "reviewed": "Reviewed by your manager",
+      "reportReleased": "Report released",
+      "notSet": "Not set yet"
+    }
   }
 }

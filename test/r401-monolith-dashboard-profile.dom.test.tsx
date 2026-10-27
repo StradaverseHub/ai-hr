@@ -132,6 +132,9 @@ vi.mock('@/core/dashboard-card-config', () => ({
   ]),
 }));
 vi.mock('@/app/dashboard-layout-actions', () => ({ saveDashboardLayoutAction: vi.fn(), resetDashboardLayoutAction: vi.fn() }));
+// WP-A2 — the Performance block slot is an async server component with its own reads and its own DOM suite
+// (test/p1-wpa2-performance-home.dom.test.tsx); this administrator fixture has no open cycle, so it renders nothing.
+vi.mock('@/components/performance-home/performance-home', () => ({ PerformanceHomeSlot: () => null }));
 // The real slot is an async server component (its own reads); stand in with the real card it renders.
 vi.mock('@/components/notice/notice-surfaces', async () => {
   const { NoticeBoardCard } = await import('../components/notice/notice-board-card');

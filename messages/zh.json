@@ -24733,5 +24733,68 @@
       "companyCodeUnavailable": "请配置简短的公司参考代码，或使用不含公司占位符的格式。",
       "version": "配置版本 {number}"
     }
+  },
+  "performanceHome": {
+    "title": "绩效",
+    "closes": "{date} 截止",
+    "progress": "已完成 {done}/{total}",
+    "stripLabel": "本周期步骤",
+    "steps": {
+      "kpi": "KPI 检视",
+      "kpiSetting": "KPI 设定",
+      "feedback360": "360 反馈",
+      "competency": "能力评估",
+      "careerPlan": "职业规划",
+      "teamReview": "团队评审",
+      "calibration": "校准",
+      "results": "结果发布"
+    },
+    "states": {
+      "done": "已完成",
+      "yourTurn": "轮到你",
+      "waiting": "{count} 项待处理",
+      "locked": "已锁定",
+      "inProgress": "进行中",
+      "released": "已发布",
+      "notRequired": "无需进行"
+    },
+    "next": {
+      "label": "你的下一步",
+      "kpiTitle": "你的 KPI 检视",
+      "kpiLine": "已填写 {done}/{total} 项 KPI",
+      "kpiSettingTitle": "设定你的 KPI",
+      "kpiSettingLine": "已提议 {done}/{total} 项 KPI",
+      "competencyTitle": "评估你的能力",
+      "competencyLine": "已回答 {done}/{total}",
+      "careerPlanTitle": "撰写你的职业规划",
+      "careerPlanLine": "已写 {done} 个目标，至少需要 {total} 个",
+      "feedback360Title": "为 {count} 位同事提供 360 反馈",
+      "feedback360Line": "回答每一项陈述，然后提交。",
+      "due": "截止日期 {date}",
+      "open": "继续",
+      "none": "目前没有需要你处理的事项",
+      "opens": "你的下一步将于 {date} 开放",
+      "closesOn": "本周期于 {date} 结束"
+    },
+    "team": {
+      "title": "你的团队",
+      "waiting": "{count, plural, =0 {没有等待你处理的评审} other {# 项评审等待你处理}}",
+      "open": "打开团队评审"
+    },
+    "standing": {
+      "title": "你的现况",
+      "details": "详情",
+      "performance": "绩效",
+      "competency": "能力",
+      "feedback360": "360 反馈",
+      "careerTarget": "职业目标",
+      "awaitingManager": "等待你的经理",
+      "notReleased": "尚未发布",
+      "notSubmitted": "尚未提交",
+      "withManager": "经理处理中",
+      "reviewed": "经理已评审",
+      "reportReleased": "报告已发布",
+      "notSet": "尚未设定"
+    }
   }
 }

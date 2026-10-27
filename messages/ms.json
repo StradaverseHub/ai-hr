@@ -24733,5 +24733,68 @@
       "companyCodeUnavailable": "Konfigurasikan kod rujukan syarikat yang pendek atau gunakan format tanpa pemegang tempat syarikat.",
       "version": "Versi konfigurasi {number}"
     }
+  },
+  "performanceHome": {
+    "title": "Prestasi",
+    "closes": "Tutup {date}",
+    "progress": "{done} daripada {total} selesai",
+    "stripLabel": "Langkah dalam kitaran ini",
+    "steps": {
+      "kpi": "Semakan KPI",
+      "kpiSetting": "Penetapan KPI",
+      "feedback360": "Maklum Balas 360",
+      "competency": "Kompetensi",
+      "careerPlan": "Pelan Kerjaya",
+      "teamReview": "Semakan pasukan",
+      "calibration": "Kalibrasi",
+      "results": "Keputusan dikeluarkan"
+    },
+    "states": {
+      "done": "Selesai",
+      "yourTurn": "Giliran anda",
+      "waiting": "{count} menunggu",
+      "locked": "Dikunci",
+      "inProgress": "Sedang berjalan",
+      "released": "Dikeluarkan",
+      "notRequired": "Tidak diperlukan"
+    },
+    "next": {
+      "label": "Langkah seterusnya",
+      "kpiTitle": "Semakan KPI anda",
+      "kpiLine": "{done} daripada {total} KPI diisi",
+      "kpiSettingTitle": "Tetapkan KPI anda",
+      "kpiSettingLine": "{done} daripada {total} KPI dicadangkan",
+      "competencyTitle": "Nilai kompetensi anda",
+      "competencyLine": "{done} daripada {total} dijawab",
+      "careerPlanTitle": "Tulis Pelan Kerjaya anda",
+      "careerPlanLine": "{done} matlamat ditulis, sekurang-kurangnya {total} diperlukan",
+      "feedback360Title": "Maklum balas 360 untuk {count, plural, other {# rakan sekerja}}",
+      "feedback360Line": "Jawab setiap kenyataan, kemudian hantar.",
+      "due": "Tarikh akhir {date}",
+      "open": "Teruskan",
+      "none": "Tiada apa-apa untuk anda lakukan sekarang",
+      "opens": "Langkah seterusnya dibuka {date}",
+      "closesOn": "Kitaran ini ditutup {date}"
+    },
+    "team": {
+      "title": "Pasukan anda",
+      "waiting": "{count, plural, =0 {tiada yang menunggu anda} other {# semakan menunggu anda}}",
+      "open": "Buka semakan pasukan"
+    },
+    "standing": {
+      "title": "Kedudukan anda",
+      "details": "Butiran",
+      "performance": "Prestasi",
+      "competency": "Kompetensi",
+      "feedback360": "Maklum balas 360",
+      "careerTarget": "Sasaran kerjaya",
+      "awaitingManager": "Menunggu pengurus anda",
+      "notReleased": "Belum dikeluarkan",
+      "notSubmitted": "Belum dihantar",
+      "withManager": "Dengan pengurus anda",
+      "reviewed": "Disemak oleh pengurus anda",
+      "reportReleased": "Laporan dikeluarkan",
+      "notSet": "Belum ditetapkan"
+    }
   }
 }
