@@ -1939,3 +1939,23 @@ place of the Expo OS digest port. They cover both app targets, Unicode bytes, or
 UUID/nonce, every scope UUID/origin, issuer fingerprint/revocation/validity, signature tampering,
 malformed input and owner loss at either hash, including failure. Native OS hashing, physical
 vendor acceptance, authenticated registry provisioning and offline attendance remain unverified.
+
+
+### Shared context exchange owner initial run (27 October 2026)
+
+Checkpoint `2e99fcb883b483285f6221bf8513cd2af4e98c7e`,
+[40527841793](https://github.com/StradaverseHub/ai-hr/actions/runs/40527841793), finished all planned
+jobs before repair. It passed 128 of 129 cases across six suites. The new installation-quota case
+failed because its fixture assigned occupied bytes without creating the root directory: the adapter
+correctly read an absent root as zero storage, so the supposed full-root scenario was not exercised.
+The repair creates the root after opening the installation master, then simulates its occupied bytes.
+Root TypeScript separately refused one untyped `vi.fn` snapshot mock whose status/verification
+literals widened to string (3:55.73, maximum RSS 7,699,792 KiB, exit 2). The repair types that mock
+with the actual offline snapshot port; no product implementation changes are needed for either fix.
+
+Native TypeScript and both production bundles passed. iOS bundled 1,366 modules in 26,221 ms
+(`entry-de663e7885cdc1f8a4e983166a73152e.hbc`, 4 MB); Android bundled 1,500 in 35,800 ms
+(`entry-73a0a760817727c73d19b8ef12aabcb7.hbc`, 4.3 MB). The unaffected passing suites are signed
+journal (20), owned assembly (8), employee screens (39), submission recovery (19). The affected
+context-owner and encrypted-storage suites, plus root compilation, require fresh repair evidence.
+These remain hosted model/JavaScript checks, not physical integrity or offline attendance acceptance.

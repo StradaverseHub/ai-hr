@@ -23,7 +23,7 @@ function fixture(platform:'ios'|'android'='ios'){
   base:vi.fn(async()=>({digest:'a'.repeat(64),command,photo:null,source})),key:vi.fn(async()=>({key,capability})) as SignedClockPorts['key'],
   capabilities:vi.fn(async()=>({outcome:'capabilities',protocol:2,platform,commandProtocol:platform==='ios'?1:2,features:platform==='ios'?['online_clock_assertion']:['online_clock_signature','current_play_integrity'],offline:false,cloudProjectNumber:platform==='ios'?null:'123456789'})),
   begin:vi.fn(async()=>({})),sign:vi.fn(async()=>({status:'unavailable' as const,reason:'unavailable' as const})),play:vi.fn(async()=>({status:'unavailable' as const,reason:'unavailable' as const})),complete:vi.fn(async()=>({})),receipt:vi.fn(async()=>({})),abandon:vi.fn(async()=>({})),resolveBase:vi.fn(async()=>{}),
-  offline:{snapshot:vi.fn(()=>({status:'evidence',evidence:snapshot(),verification:'not_verified'})),request:vi.fn(async()=>signOfflineClockContext(context,pair.privateKey)),verify:vi.fn(async(raw,expected)=>verifyOfflineClockContextSignature(raw,[issuer],expected.scope))},
+  offline:{snapshot:vi.fn<NonNullable<SignedClockPorts['offline']>['snapshot']>(()=>({status:'evidence',evidence:snapshot(),verification:'not_verified'})),request:vi.fn(async()=>signOfflineClockContext(context,pair.privateKey)),verify:vi.fn(async(raw,expected)=>verifyOfflineClockContextSignature(raw,[issuer],expected.scope))},
  };
  return {scope,key,binding,context,ports,stored:()=>stored,setStored:(s:SignedClockSnapshot)=>{stored=s;},journal:()=>createSignedClockJournal(scope,ports),obsolete:()=>{current=false;},raw:()=>signOfflineClockContext(context,pair.privateKey)};
 }

@@ -374,6 +374,7 @@ it('seals offline request and raw local anchor in the existing account owner and
 });
 it('does not treat new offline preparation as quota-exempt resolution merely because online pending is empty',async()=>{
  const f=fixture(),s=signedPorts(),binding=offlinePortsForStorage(s),j=await f.native.openNativeSignedClockJournal(s.scope,()=>{},s.ports);
- f.occupy(64*1024*1024);await expect(j.reserveOffline(binding)).rejects.toThrow();
+ // The installation master was opened above. Model an existing, full submission directory.
+ f.directories.add('document/aihr-submissions-v1');f.occupy(64*1024*1024);await expect(j.reserveOffline(binding)).rejects.toThrow();
  expect(s.ports.offline!.request).not.toHaveBeenCalled();expect(s.ports.sign).not.toHaveBeenCalled();
 });
