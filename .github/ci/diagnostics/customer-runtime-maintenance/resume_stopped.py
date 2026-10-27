@@ -45,6 +45,12 @@ def same_restored_environment(before, after):
         k: v for k, v in after.items() if k not in ignored}
 
 
+def command_line_allowed(actual, expected):
+    # Observed Next16.3.8 process.title after boot. All exe/UID/root/unit args,
+    # invocation/start ticks and nonvolatile env checks remain independently required.
+    return actual == expected or actual == [b'next-server (v16.3.8)']
+
+
 def prove_restored_process(host, private, authority, m):
     pid = private['snapshot']['baseline']['pid']
     m.require(pid == authority['restoredPid'], 'Restored PID binding differs')
@@ -68,7 +74,7 @@ def prove_restored_process(host, private, authority, m):
     argv = re.findall(r'argv\[\]=([^;]+?)\s*;', actual['ExecStart'])
     m.require(len(argv) == 1, 'Original argument descriptor differs')
     expected = argv[0].replace('${PORT}', active[b'PORT'].decode()).split()
-    m.require((proc / 'cmdline').read_bytes().rstrip(b'\0').split(b'\0') == [x.encode() for x in expected],
+    m.require(command_line_allowed((proc / 'cmdline').read_bytes().rstrip(b'\0').split(b'\0'), [x.encode() for x in expected]),
               'Restored command line differs')
     ticks = (proc / 'stat').read_text().rsplit(')', 1)[1].split()[19]
     m.require(ticks == authority['restoredStartedTicks'], 'Restored process changed during provenance proof')

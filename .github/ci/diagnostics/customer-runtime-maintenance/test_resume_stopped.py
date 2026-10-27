@@ -148,4 +148,11 @@ class Controls(unittest.TestCase):
         with self.assertRaises(AssertionError):wrapper.build_bootstrap(original.BOOTSTRAP,'bad','b'*64)
         with self.assertRaises(AssertionError):wrapper.build_bootstrap('unrecognized original','a'*64,'b'*64)
 
+    def test_exact_observed_next_title_is_allowed_but_other_titles_and_extra_args_refuse(self):
+        expected=[b'/opt/node20/bin/node',b'/opt/ai-hr/node_modules/next/dist/bin/next',b'start']
+        self.assertTrue(r.command_line_allowed(expected,expected))
+        self.assertTrue(r.command_line_allowed([b'next-server (v16.3.8)'],expected))
+        for actual in ([b'next-server (v16.3.7)'],[b'next-server'],[b'next-server (v16.3.8)',b'evil'],[b'node',b'evil']):
+            self.assertFalse(r.command_line_allowed(actual,expected))
+
 if __name__=='__main__':unittest.main()
