@@ -34,6 +34,8 @@
  */
 import { randomUUID } from 'node:crypto';
 import { assistantSourceDigest, sealAssistantDisclosure, type AssistantSourceRead } from '../lib/ai/assistant-disclosure';
+import { ASSISTANT_ANSWER_PROTOCOL, parseAssistantAnswerPlan, adjudicateAssistantAnswerPlan, type AssistantAnswerPlan, type AssistantAnswerRead } from '../lib/ai/assistant-answer-plan';
+import { isGroundedToolName, presentGroundedToolOutcome } from '../lib/ai/grounded-tool-presentation';
 import { and, count, eq, gte, sql } from 'drizzle-orm';
 import { captureAgentReadBatch, serializeAgentReadResult } from '../lib/ai/agent-read-batch';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
@@ -148,6 +150,7 @@ const SYSTEM: string[] = [
     'that record and carry on answering the question you were asked.',
   ].join(' '),
   'Answer briefly and in the same language the question was asked in.',
+  ASSISTANT_ANSWER_PROTOCOL,
 ];
 
 /**
@@ -287,6 +290,8 @@ export async function askAssistant(
   const toolBatchNonces=new Map<string,string>();
   let sourcesComplete = true;
   let answer = '';
+  let answerPlan: AssistantAnswerPlan | undefined;
+  const answerReads: AssistantAnswerRead[] = [];
   let stop: AiStop = 'other';
   let turnCount = 0;
   let hitTurnCap = false;
@@ -321,10 +326,14 @@ export async function askAssistant(
       stop = res.stop;
 
       if (res.stop !== 'tool_use') {
-        // 'end' carries the answer. 'refusal', 'max_tokens' and 'other' are terminal and VISIBLE: the
-        // text is whatever the model produced, which for a refusal is usually its reason, and the caller
-        // reads `stop` rather than inferring failure from an empty string.
+        // All terminal text remains audit-only. Only a complete, source-adjudicated end plan can
+        // nominate a conversational response; refusal/truncation/unknown stop never gains that meaning.
         answer = res.text;
+        // Terminal model output proposes references, never displayable HR prose. Invalid/truncated
+        // plans retain their audit text but acquire no conversational disclosure authority.
+        if (res.stop === 'end' && sourcesComplete) try {
+          answerPlan = adjudicateAssistantAnswerPlan(parseAssistantAnswerPlan(res.text), answerReads);
+        } catch { answerPlan = undefined; }
         break;
       }
 
@@ -338,9 +347,25 @@ export async function askAssistant(
         providerState: res.providerState,
       });
       const batchKey=JSON.stringify(capturedCalls);let batchNonce=toolBatchNonces.get(batchKey);if(!batchNonce){batchNonce=randomUUID();toolBatchNonces.set(batchKey,batchNonce);}
+      const sourceOffset = sourceReads.length;
       const results = await runTools(ctx, offered, capturedCalls, audit, sourceReads,batchNonce);
       if (results.some(result => result.isError)) sourcesComplete = false;
       turns.push({ role: 'tool', results });
+      let ordinal = sourceOffset;
+      for (const result of results) {
+        if (result.isError) continue;
+        const read = ordinal++;
+        try {
+          if (!isGroundedToolName(result.name)) continue;
+          const presentation = presentGroundedToolOutcome(result.name, JSON.parse(result.content));
+          if (presentation && read < 8) answerReads.push(Object.freeze({ read, presentation, explanations: Object.freeze([]) }));
+        } catch { /* Unsupported canonical presentation cannot authorize an answer reference. */ }
+      }
+      // Canonical record labels disambiguate flattened source rows. No second copy of fact values is added. Tool result
+      // fingerprints are still replayed before the next provider admission in prepareAssistantConversation.
+      turns.push({role:'user',content:JSON.stringify({kind:'source_owned_answer_catalogue',reads:answerReads.map(source=>({read:source.read,tool:sourceReads[source.read].name,module:source.presentation.module,
+        cards:source.presentation.cards.slice(0,25).map((card,cardIndex)=>({card:cardIndex,title:card.title,withheld:card.withheld===true,
+          facts:card.facts.map((fact,factIndex)=>({fact:factIndex,field:fact.field,available:card.withheld!==true&&fact.value!==null&&(typeof fact.value!=='string'||fact.value.trim().length>0)}))})),explanations:source.explanations}))})});
 
       if (i === MAX_TURNS - 1) hitTurnCap = true;
     }
@@ -373,6 +398,7 @@ export async function askAssistant(
     period,
     error: failure,
     sourceReads: sourcesComplete ? sourceReads : undefined,
+    answerPlan,
   });
 
   return { exchangeId, stop, turns: turnCount, hitTurnCap, toolsUsed: audit.map((a) => a.name) };
@@ -429,11 +455,12 @@ async function persist(
     period: string;
     error: string | null;
     sourceReads?: readonly AssistantSourceRead[];
+    answerPlan?: AssistantAnswerPlan;
   },
 ): Promise<string> {
   const id = randomUUID();
   const disclosureReceipt = sealAssistantDisclosure({ tenantId: ctx.tenantId, userId: p.appUserId,
-    exchangeId: id, question: p.question, answer: p.answer }, p.sourceReads);
+    exchangeId: id, question: p.question, answer: p.answer }, p.sourceReads, p.answerPlan);
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .insert(assistantExchange)

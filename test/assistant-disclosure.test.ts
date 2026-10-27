@@ -1,7 +1,7 @@
 /** Sealed source fingerprint cases, authored UNRUN. No DB, network or provider. */
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { assistantSourceDigest, openAssistantDisclosure, sealAssistantDisclosure, type AssistantDisclosureBinding } from '../lib/ai/assistant-disclosure';
+import { assistantSourceDigest, openAssistantDisclosure, openAssistantAnswerDisclosure, sealAssistantDisclosure, type AssistantDisclosureBinding } from '../lib/ai/assistant-disclosure';
 import { decryptSecret, encryptSecret } from '../lib/ai/crypto';
 beforeEach(() => { vi.stubEnv('AI_CONFIG_SECRET', 'fictional-disclosure-key-never-production'); });
 afterEach(() => vi.unstubAllEnvs());
@@ -60,5 +60,38 @@ describe('sealed source-owned specialist job references',()=>{
   const token=sealAssistantDisclosure(binding,[source])!;expect(token).toBeTruthy();expect(token).not.toContain(moduleJobId);expect(openAssistantDisclosure(binding,token)).toEqual([source]);
   expect(openAssistantDisclosure({...binding,userId:randomUUID()},token)).toBeNull();
   for(const invalid of [{...source,name:'employee_profile'},{...source,moduleJobId:'model-provided-version'},{...source,promotionId:randomUUID()}])expect(sealAssistantDisclosure(binding,[invalid])).toBeNull();
+ });
+});
+
+
+describe('source-bound conversational plans',()=>{
+ it('keeps legacy receipts card-only and authenticates a v2 plan without exposing model prose',()=>{
+  const {binding,reads}=fixture(),plan={version:1 as const,mode:'clarify' as const,slot:'period' as const};
+  const legacy=sealAssistantDisclosure(binding,reads)!;
+  expect(openAssistantAnswerDisclosure(binding,legacy)).toEqual({reads,plan:null});
+  const token=sealAssistantDisclosure(binding,reads,plan)!;
+  expect(openAssistantAnswerDisclosure(binding,token)).toEqual({reads,plan});
+  expect(openAssistantDisclosure(binding,token)).toEqual(reads);
+  expect(token).not.toContain('period');
+  expect(openAssistantAnswerDisclosure({...binding,question:'Another question'},token)).toBeNull();
+ });
+ it('refuses authenticated v2 plan corruption and never upgrades arbitrary terminal text',()=>{
+  const {binding,reads}=fixture();
+  const token=sealAssistantDisclosure(binding,reads,{version:1,mode:'clarify',slot:'employment'})!;
+  const original=JSON.parse(decryptSecret(token,aad(binding)));
+  for(const plan of [{version:1,mode:'clarify',slot:'salary'}, {version:1,mode:'clarify',slot:'period',answer:'unverified HR fact'},
+   {version:1,mode:'answer',blocks:[{kind:'fact',read:0,card:0,fact:0,value:999}]}]){
+   expect(openAssistantAnswerDisclosure(binding,encryptSecret(JSON.stringify({...original,plan}),aad(binding)))).toBeNull();
+  }
+ });
+ it('allows no-source clarification, but source references remain nominations requiring replay',()=>{
+  const {binding}=fixture();
+  const token=sealAssistantDisclosure(binding,[],{version:1,mode:'clarify',slot:'leave_type'})!;
+  expect(openAssistantAnswerDisclosure(binding,token)?.plan?.mode).toBe('clarify');
+  const nominated={version:1 as const,mode:'answer' as const,blocks:[{kind:'fact' as const,read:0,card:0,fact:0}]};
+  const nominatedToken=sealAssistantDisclosure(binding,[],nominated)!;
+  expect(openAssistantAnswerDisclosure(binding,nominatedToken)?.plan).toEqual(nominated);
+  // Encryption authenticates the nominated plan. It intentionally does not adjudicate nonexistent
+  // current-source facts; the fresh-source answer owner must reject that reference on replay.
  });
 });

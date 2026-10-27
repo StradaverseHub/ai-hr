@@ -2902,3 +2902,24 @@ New actual capture, rollback, bulk/privacy, bounded retention and two-generation
 
 
 Development run40501218662 on exacte3e5669fe:10selectedNODBfiles59/59PASS, actualprocess0/signalnull; authenticated artifact ZIP digest verified. Wholecompiler raw2 with four genuine diagnostics acrossthree files: narrowed-never exhaustiveness expression, undefined PayComponent privacy action constant, and missing expires_at field in the selected import Row type. Repair uses the closed contract constant, retains exhaustive checking on the discriminated reference itself, and types the expiry already selected by native ownTx SELECT*. No unsafe cast, suppressed compiler error or source-effect test weakening. Original failed compiler log retained; no green compiler claim. Passing59 retained, compiler repair verification to follow; SQL/browser/final gate still pending.
+
+
+### Conversation answers and clarification, 28 October 2026
+
+The real Assistant model loop selects tools; a source receipt alone does not establish the meaning of
+its final prose. Terminal conversational output therefore proposes a bounded answer plan: ordered
+references to actual executed-read facts or available canonical explanation clauses, one missing
+selection to clarify, or a closed unsupported/human-review outcome. Code adjudicates selectors against
+the current canonical presentation. Null, withheld and unavailable facts cannot become statements;
+known explanation codes are not evidence that a clause applies. The model chooses relevance and order;
+canonical engines own values, calculations and the meaning of supported explanation clauses.
+
+A version-two disclosure seals the plan together with the existing exact principal, exchange, human
+question, terminal-body digest and executed source fingerprints. Legacy version-one disclosures retain
+card-only meaning. Reopening reauthorizes and rereads sources before resolving a conversational plan.
+A clarification continuation reloads only the caller's own authenticated clarification exchange and
+rechecks current Assistant access; it carries the original human question and new human response into
+a fresh real model turn. Historical model prose and historical HR rows are not reused as authority.
+This mechanism does not grant effects, bypass human confirmation, prove arbitrary causal explanations,
+or make source-only implementation a verified conversational experience. Runtime, current-role/RLS,
+revocation, persistence and rendered-journey checks remain required before release.

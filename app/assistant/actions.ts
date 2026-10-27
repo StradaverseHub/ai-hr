@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { getBrowserCommandSession } from '@/lib/session';
 import { AuthRequiredError } from '@/lib/auth-errors';
 import { askAssistant, AssistantError } from '@/core/assistant';
+import { ownAssistantClarificationQuestion, AssistantClarificationError } from '@/core/assistant-clarification';
 
 /**
  * ADR-0082 slice 4 — ask one question.
@@ -18,15 +19,19 @@ import { askAssistant, AssistantError } from '@/core/assistant';
  * provider failure for the same reason.
  */
 export async function askAssistantAction(formData: FormData) {
-  const question = String(formData.get('question') ?? '');
+  const submittedQuestion = String(formData.get('question') ?? '');
+  const clarificationExchangeId = formData.get('clarificationExchangeId');
+  const clarificationAnswer = formData.get('clarificationAnswer');
 
   let exchangeId: string;
   try {
     const s = await getBrowserCommandSession();
+    const question = clarificationExchangeId === null ? submittedQuestion
+      : await ownAssistantClarificationQuestion(s,clarificationExchangeId,clarificationAnswer);
     const res = await askAssistant(s, { question });
     exchangeId = res.exchangeId;
   } catch (e) {
-    const code = e instanceof AuthRequiredError ? 'ai_control' : e instanceof AssistantError ? e.code : 'provider_error';
+    const code = e instanceof AuthRequiredError || e instanceof AssistantClarificationError ? 'ai_control' : e instanceof AssistantError ? e.code : 'provider_error';
     redirect(`/assistant?error=${encodeURIComponent(code)}`);
   }
 

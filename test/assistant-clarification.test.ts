@@ -33,7 +33,7 @@ async function exchange(ctx:SessionContext,plan:AssistantAnswerPlan|undefined={v
  return {binding,receipt:receipt!};
 }
 const state=async()=>({exchanges:await owner.db.select().from(s.assistantExchange).orderBy(s.assistantExchange.id),
- events:await owner.db.select({id:s.domainEvent.id}).from(s.domainEvent).orderBy(s.domainEvent.id),runs:await owner.db.select().from(s.aiModelRun)});
+ events:await owner.db.select({id:s.domainEvent.id}).from(s.domainEvent).orderBy(s.domainEvent.id),runs:await owner.db.select().from(s.aiModelRun).orderBy(s.aiModelRun.id)});
 const refused=(ctx:SessionContext,id:unknown,response:unknown='This calendar year')=>expect(ownAssistantClarificationQuestion(ctx,id,response)).rejects.toThrow(/^Current clarification unavailable\.$/);
 describe('actual caller-bound Assistant clarification continuation',()=>{
  it.each(['employment','leave_type','period','module'] as const)('continues the authenticated %s slot using only original human question and new human answer',async slot=>{

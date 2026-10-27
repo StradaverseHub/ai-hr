@@ -106,7 +106,7 @@ export default async function AssistantPage({
         <Card key={h.id} className={`p-5 ${h.id === sp.e ? 'ring-1 ring-primary' : ''}`}>
           <p className="text-sm font-medium">{h.question}</p>
 
-          {h.grounded?<GroundedWorkspaceReply reply={h.grounded} ctx={s}/>:
+          {h.grounded?<GroundedWorkspaceReply reply={h.grounded} ctx={s} exchangeId={h.id}/>:
           h.hasAnswer?<a href={'/assistant?e='+encodeURIComponent(h.id)} className="mt-3 inline-flex min-h-11 items-center text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.answers.check')}</a>:
           <p className="mt-2 text-sm text-muted-foreground">{t('noAnswer')}</p>}
 

@@ -2,6 +2,7 @@
  * A receipt authenticates the trusted command's source binding, not model truth or effect authority.
  */
 import { createHash } from 'node:crypto';
+import { captureAssistantAnswerPlan, type AssistantAnswerPlan } from './assistant-answer-plan';
 import { captureAgentReadBatch, serializeAgentReadResult } from './agent-read-batch';
 import { decryptSecret, encryptSecret, isSecretStorable } from './crypto';
 
@@ -38,11 +39,13 @@ export function captureAssistantSourceReads(value: unknown): readonly AssistantS
 /** No secret/configuration or incomplete source evidence means no historical disclosure receipt.
  * It never turns a failed read into an authenticated successful one. The caller retains its audit.
  */
-export function sealAssistantDisclosure(binding: AssistantDisclosureBinding, reads: readonly AssistantSourceRead[] | undefined): string | null {
+export function sealAssistantDisclosure(binding: AssistantDisclosureBinding, reads: readonly AssistantSourceRead[] | undefined, answerPlan?: AssistantAnswerPlan): string | null {
   try {
     if (!isSecretStorable() || !binding.answer || reads === undefined) return null;
     const captured = captureAssistantSourceReads(reads);
-    const plaintext = JSON.stringify({ v: ASSISTANT_DISCLOSURE_VERSION, body: body(binding), reads: captured });
+    const plaintext = JSON.stringify(answerPlan === undefined
+      ? { v: ASSISTANT_DISCLOSURE_VERSION, body: body(binding), reads: captured }
+      : { v: 2, body: body(binding), reads: captured, plan: captureAssistantAnswerPlan(answerPlan) });
     if (bytes(plaintext) > ASSISTANT_DISCLOSURE_LIMITS.plainBytes) return null;
     const sealed = encryptSecret(plaintext, aad(binding));
     return bytes(sealed) <= ASSISTANT_DISCLOSURE_LIMITS.tokenBytes ? sealed : null;
@@ -53,7 +56,11 @@ export function sealAssistantDisclosure(binding: AssistantDisclosureBinding, rea
  * The only outward value is captured lookup inputs and encrypted-at-rest result fingerprints.
  * No decryption error or secret material crosses this boundary.
  */
-export function openAssistantDisclosure(binding: AssistantDisclosureBinding, token: unknown): readonly AssistantSourceRead[] | null {
+export type AssistantAnswerDisclosure = Readonly<{ reads: readonly AssistantSourceRead[]; plan: AssistantAnswerPlan | null }>;
+
+/** Legacy receipts retain their old card-only meaning. A v2 plan is authenticated with the exact
+ * question, raw terminal body, principal and source lookup fingerprints, then adjudicated on replay. */
+export function openAssistantAnswerDisclosure(binding: AssistantDisclosureBinding, token: unknown): AssistantAnswerDisclosure | null {
   try {
     if (!isSecretStorable() || !binding.answer || typeof token !== 'string' || bytes(token) > ASSISTANT_DISCLOSURE_LIMITS.tokenBytes ||
         !/^[A-Za-z0-9_-]+$/.test(token) || Buffer.from(token, 'base64url').toString('base64url') !== token) return null;
@@ -62,7 +69,17 @@ export function openAssistantDisclosure(binding: AssistantDisclosureBinding, tok
     const value: unknown = JSON.parse(plaintext);
     if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
     const proof = value as Record<string, unknown>;
-    if (!exact(proof, ['v', 'body', 'reads']) || proof.v !== ASSISTANT_DISCLOSURE_VERSION || proof.body !== body(binding)) return null;
-    return captureAssistantSourceReads(proof.reads);
+    if (proof.body !== body(binding)) return null;
+    const reads = captureAssistantSourceReads(proof.reads);
+    if (proof.v === ASSISTANT_DISCLOSURE_VERSION && exact(proof, ['v', 'body', 'reads']))
+      return Object.freeze({ reads, plan: null });
+    if (proof.v === 2 && exact(proof, ['v', 'body', 'reads', 'plan']))
+      return Object.freeze({ reads, plan: captureAssistantAnswerPlan(proof.plan) });
+    return null;
   } catch { return null; }
+}
+
+/** Existing source-only callers do not acquire conversational semantics from a legacy receipt. */
+export function openAssistantDisclosure(binding: AssistantDisclosureBinding, token: unknown): readonly AssistantSourceRead[] | null {
+  return openAssistantAnswerDisclosure(binding, token)?.reads ?? null;
 }

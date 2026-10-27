@@ -21,6 +21,7 @@ import * as schema from '../db/schema';
 import type { ConverseResult } from '../lib/ai/types';
 import { askAssistant } from '../core/assistant';
 import { loadAiWorkspace } from '../core/ai-workspace';
+import { ownAssistantClarificationQuestion } from '../core/assistant-clarification';
 import { ASSISTANT_PUBLIC_REPLIES } from '../lib/ai/assistant-public-replies';
 import { grantAssistant } from '../core/assistant-grant';
 import { ASSISTANT_TOOLS, toolsFor } from '../core/assistant-tools';
@@ -261,4 +262,38 @@ describe('actual Assistant consumption of bounded agent batches', () => {
       expect(JSON.stringify(audit)).not.toContain(sentinel);
     } finally { spy.mockRestore(); }
   });
+});
+
+
+/** Actual command/source/readback composition. Only the provider is scripted, never engine rows. */
+describe('model-selected conversational plan reaches current canonical facts',()=>{
+ it('offers original source ordinals and reopens only the selected actual net fact',async()=>{
+  const {ctx,net}=await employeeWithReleasedPayslip(true);
+  converse.mockResolvedValueOnce(toolUse([{id:'conversation-pay',name:'my_payslip_summary',input:{limit:12}}]));
+  converse.mockImplementationOnce(async(_cfg,args)=>{
+   const catalogues=args.turns.filter((turn:{role:string;content?:string})=>turn.role==='user'&&turn.content?.includes('source_owned_answer_catalogue'));
+   expect(catalogues).toHaveLength(1);
+   const catalogue=JSON.parse(catalogues[0].content),source=catalogue.reads[0],card=source.cards[0];
+   const selected=card.facts.find((fact:{field:string})=>fact.field==='net');expect(selected?.available).toBe(true);
+   return {...end,text:JSON.stringify({version:1,mode:'answer',blocks:[{kind:'fact',read:source.read,card:card.card,fact:selected.fact}]})};
+  });
+  const res=await askAssistant(ctx,{question:'Show my recorded net pay only.'});
+  const workspace=await loadAiWorkspace(ctx,{selectedExchangeId:res.exchangeId,includeGovernance:false});
+  const conversation=workspace.history[0].grounded?.conversation;
+  expect(conversation?.plan.mode).toBe('answer');expect(conversation?.facts).toHaveLength(1);
+  const selected=conversation!.facts[0];expect(selected.view.state).toBe('ready');
+  if(selected.view.state!=='ready')throw Error('canonical selected fact unavailable');
+  expect(selected.view.presentation.cards[selected.card].facts[selected.fact]).toMatchObject({field:'net',value:Number(net)});
+  expect(workspace.history[0].answer).toBeNull();
+ });
+ it('preserves a real no-tool clarification instead of replacing it with a generic reply',async()=>{
+  const {ctx}=await employeeWithReleasedPayslip(true);
+  converse.mockResolvedValueOnce({...end,text:JSON.stringify({version:1,mode:'clarify',slot:'period'})});
+  const res=await askAssistant(ctx,{question:'Which pay period should we look at?'});
+  const workspace=await loadAiWorkspace(ctx,{selectedExchangeId:res.exchangeId,includeGovernance:false});
+  expect(workspace.history[0].grounded?.conversation).toEqual({plan:{version:1,mode:'clarify',slot:'period'},facts:[]});
+  const question=await ownAssistantClarificationQuestion(ctx,res.exchangeId,'March 2026');
+  expect(JSON.parse(question)).toEqual({originalQuestion:'Which pay period should we look at?',humanClarification:{slot:'period',answer:'March 2026'}});
+  expect(converse).toHaveBeenCalledTimes(1);
+ });
 });

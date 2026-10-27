@@ -48,7 +48,7 @@ export async function loadAiWorkspace(ctx: SessionContext, options:{includeHisto
           exchangeId:row.id,question:row.question,answer:row.answer},row.disclosureReceipt):null;
         // Raw model text remains audit-only: authentic source provenance never certifies its meaning.
         history.push({id:row.id,question:row.question,answer:null,hasAnswer:Boolean(row.answer),grounded,
-          answerVisibility:row.answer?(selected?(grounded?.mode==='grounded'?'current' as const:'unavailable' as const):'not_requested' as const):'none' as const,
+          answerVisibility:row.answer?(selected?((grounded?.mode==='grounded'||grounded?.conversation)?'current' as const:'unavailable' as const):'not_requested' as const):'none' as const,
           stop:row.stop,hitTurnCap:row.hitTurnCap,askedAt:row.askedAt,
           toolCalls:(grounded?.tools??[]).map(name=>({name}))});
       }
