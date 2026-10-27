@@ -22419,7 +22419,7 @@
     "legacyAssistant": "Ngân sách Assistant bổ sung: {daily} câu hỏi mỗi người dùng mỗi ngày và {tokens} token mỗi tháng cho đơn vị thuê. Ngân sách hiện có này đặt lại lúc 08:00 giờ Malaysia.",
     "humanDecisions": "AI chỉ tư vấn. Các quyết định về lương, xếp hạng, tuyển dụng và truy cập vẫn cần phê duyệt và con người quyết định.",
     "spendTitle": "Hạn mức suy luận AI (USD)",
-    "spendUnverified": "AI tự động và đánh giá nhà cung cấp tạm dừng cho đến khi xác minh trần giá đầy đủ. Lưu hạn mức không xác minh hoặc kích hoạt nhà cung cấp.",
+    "spendUnverified": "Yêu cầu AI nghiêm ngặt cần tuyến đã được rà soát phát hành còn hiệu lực và phân bổ hiện hành. Tuyến chưa xác minh bị từ chối; lưu phân bổ không chứng nhận hay kích hoạt nhà cung cấp.",
     "spendSemantics": "Chỉ áp dụng cho suy luận của ứng dụng. Không gồm việc dùng khóa ở nơi khác, phí mua tín dụng, thuế và chênh lệch hóa đơn. Phí chưa xác nhận vẫn được giữ chỗ.",
     "spendHeld": "Hạn mức chưa xác nhận: {value} nano-USD",
     "spendConfirmed": "Phí suy luận đã xác nhận: {value} nano-USD",
@@ -22543,7 +22543,10 @@
       "reported": "Đã báo cáo",
       "conflicting": "Báo cáo mâu thuẫn",
       "invalid": "Báo cáo không hợp lệ"
-    }
+    },
+    "spendRecords": "Bản ghi tuyến đã rà soát hiện tại: {count}",
+    "spendRecordsUnknown": "Chưa có số lượng bản ghi tuyến đã rà soát.",
+    "spendLiveUnverified": "Số bản ghi không xác minh truy cập trực tiếp, tính sẵn có của điểm cuối, kiểm soát tài khoản hiện hành hay năng lực mô hình. Các kiểm tra đó vẫn riêng biệt."
   },
   "accountEmail": {
     "title": "Lịch sử gửi email tài khoản",

@@ -132,7 +132,7 @@ export default async function AiManagementPage({searchParams}:{searchParams:Prom
       {view.users.length===0&&<p className="py-4 text-sm text-muted-foreground">{t('noUsers')}</p>}{view.moreUsers&&<p className="text-xs text-muted-foreground">{t('moreUsers')}</p>}
     </Card>}
     {view.spend&&<Card className="p-5"><SectionHeader title={t('spendTitle')}/>
-      <p className="mt-2 text-sm">{t('spendUnverified')}</p><p className="mt-2 text-xs text-muted-foreground">{t('spendSemantics')}</p>
+      <p className="mt-2 text-sm">{t('spendUnverified')}</p><p className="mt-2 text-sm">{view.spend.reviewedCarrierRecords===null?t('spendRecordsUnknown'):t('spendRecords',{count:view.spend.reviewedCarrierRecords})}</p><p className="mt-2 text-xs text-muted-foreground">{t('spendLiveUnverified')}</p><p className="mt-2 text-xs text-muted-foreground">{t('spendSemantics')}</p>
       <p className="mt-2 text-sm">{t('spendHeld',{value:view.spend.heldNanos})} · {t('spendConfirmed',{value:view.spend.confirmedNanos??t('spendUnknown')})}</p>
       {view.spend.breached&&<p role="alert">{t('spendBreach')}</p>}
       <form action={setAiSpendBudgetAction} className="mt-4 flex flex-wrap items-end gap-3">

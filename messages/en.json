@@ -22419,7 +22419,7 @@
     "legacyAssistant": "Additional Assistant budget: {daily} questions per user per day and {tokens} tokens per month for the tenant. This existing budget resets at 08:00 Malaysia time.",
     "humanDecisions": "AI remains advisory. Existing approvals and human decisions for pay, ratings, hiring and access remain required.",
     "spendTitle": "AI inference allocation (USD)",
-    "spendUnverified": "Autonomous AI and provider evaluations are paused until a complete provider price ceiling is verified. Saving an allocation does not certify or activate a provider.",
+    "spendUnverified": "Strict AI requests require a current release-reviewed carrier and allocation. Unverified routes refuse; saving an allocation does not certify or activate a provider.",
     "spendSemantics": "Application inference allocation only. It excludes other uses of your key, credit purchase fees, taxes and provider billing differences. Unconfirmed charges remain reserved.",
     "spendHeld": "Unresolved allocation: {value} nano-USD",
     "spendConfirmed": "Confirmed inference charges: {value} nano-USD",
@@ -22543,7 +22543,10 @@
       "reported": "Reported",
       "conflicting": "Conflicting reports",
       "invalid": "Invalid report"
-    }
+    },
+    "spendRecords": "Current reviewed carrier records: {count}",
+    "spendRecordsUnknown": "Reviewed carrier record count is unavailable.",
+    "spendLiveUnverified": "Record counts do not verify live access, endpoint availability, current account controls or model capability. Those checks remain separate."
   },
   "accountEmail": {
     "title": "Account email deliveries",

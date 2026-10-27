@@ -7,10 +7,10 @@ import {isGroupAdmin} from '../lib/authz-model';
 import {isAiFeature} from '../lib/ai/features';
 import {usdToNanos} from '../lib/ai/spend-allocation';
 import {AiGatewayError} from '../lib/ai/types';
-export type AiSpendStatus=Readonly<{currency:'USD';unit:'nano_usd';semantics:'application_inference_allocation';certifiedLiveRoutes:0;budgets:readonly {scopeKey:string;monthlyNanos:string;rootNanos:string}[];heldNanos:string;confirmedNanos:string|null;breached:boolean}>;
+export type AiSpendStatus=Readonly<{currency:'USD';unit:'nano_usd';semantics:'application_inference_allocation';certifiedLiveRoutes:0;reviewedCarrierRecords:number|null;liveCapability:'not_verified_here';budgets:readonly {scopeKey:string;monthlyNanos:string;rootNanos:string}[];heldNanos:string;confirmedNanos:string|null;breached:boolean}>;
 export async function aiSpendStatusTx(tx:Tx,ctx:SessionContext):Promise<AiSpendStatus|null>{
  await assertAiPrincipalTx(tx,ctx);if(!isGroupAdmin(ctx))return null;
- const[row]=await tx.execute<{status:AiSpendStatus}>(sql`select app.ai_spend_status() as status`);if(!row)throw new AiGatewayError('AI spend allocation unavailable.');return row.status;
+ const[row]=await tx.execute<{status:AiSpendStatus}>(sql`select app.ai_spend_status() as status`);if(!row)throw new AiGatewayError('AI spend allocation unavailable.');const count=row.status.reviewedCarrierRecords;return{...row.status,reviewedCarrierRecords:typeof count==='number'&&Number.isSafeInteger(count)&&count>=0?count:null,liveCapability:'not_verified_here'};
 }
 export async function setAiSpendBudget(supplied:SessionContext,input:{kind:'tenant'|'company'|'user'|'feature';subjectId?:string|null;featureId?:string|null;monthlyUsd:string;rootUsd:string}){
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},p={...input};

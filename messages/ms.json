@@ -22419,7 +22419,7 @@
     "legacyAssistant": "Belanjawan Assistant tambahan: {daily} soalan setiap pengguna sehari dan {tokens} token sebulan bagi penyewa. Belanjawan sedia ada ini ditetapkan semula pada 08:00 waktu Malaysia.",
     "humanDecisions": "AI kekal sebagai penasihat. Kelulusan dan keputusan manusia bagi gaji, penilaian, pengambilan dan akses masih diperlukan.",
     "spendTitle": "Peruntukan inferens AI (USD)",
-    "spendUnverified": "AI autonomi dan penilaian penyedia dijeda sehingga had harga penyedia yang lengkap disahkan. Menyimpan peruntukan tidak mengesahkan atau mengaktifkan penyedia.",
+    "spendUnverified": "Permintaan AI ketat memerlukan pengendali yang disemak semasa pelepasan dan peruntukan semasa. Laluan belum disahkan ditolak; menyimpan peruntukan tidak mengesahkan atau mengaktifkan pembekal.",
     "spendSemantics": "Peruntukan inferens aplikasi sahaja. Tidak termasuk penggunaan lain kunci anda, yuran pembelian kredit, cukai dan perbezaan bil penyedia. Caj belum disahkan kekal diperuntukkan.",
     "spendHeld": "Peruntukan belum dipastikan: {value} nano-USD",
     "spendConfirmed": "Caj inferens disahkan: {value} nano-USD",
@@ -22543,7 +22543,10 @@
       "reported": "Dilaporkan",
       "conflicting": "Laporan bercanggah",
       "invalid": "Laporan tidak sah"
-    }
+    },
+    "spendRecords": "Rekod pengendali disemak semasa: {count}",
+    "spendRecordsUnknown": "Bilangan rekod pengendali disemak tidak tersedia.",
+    "spendLiveUnverified": "Bilangan rekod tidak mengesahkan akses langsung, ketersediaan titik akhir, kawalan akaun semasa atau keupayaan model. Semakan itu berasingan."
   },
   "accountEmail": {
     "title": "Penghantaran e-mel akaun",

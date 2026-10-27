@@ -1,6 +1,7 @@
 /** USD inference allocation only, never an upstream invoice or prepaid-credit guarantee. */
 import {AiGatewayError,type ResolvedAiConfig} from './types';
 import type {AiFeatureId} from './features';
+import {currentReviewedFreeEnvelope} from './providers/openrouter-fixed-free-carrier';
 import type {AiAdmission} from './governance';
 export type StrictAiSpendRoot=Readonly<{rootTaskId:string;kind:'agent'|'evaluation'}>;
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -28,10 +29,8 @@ export function reserveUsdNanos(input:Readonly<{inputUnits:bigint;outputUnits:bi
  if(result>MAX)throw new AiGatewayError('The AI price ceiling is too large.');return result;
 }
 export type CertifiedAiSpendEnvelope=Readonly<{capabilityDigest:string;requestDigest:string;reservedNanos:string}>;
-/** Deliberately empty: none of the currently implemented adapters proves a COMPLETE billable-unit
- * ceiling plus immutable price enforcement. Key metadata/max_price alone does not supply that proof.
- * Only a reviewed source change implementing and testing such a carrier can add a capability here.
- * No administrator/browser/provider price-list response can mint one. Unknown is never zero. */
-export function certifiedAiSpendEnvelope(_configuration:ResolvedAiConfig,_request:Readonly<AiAdmission>):CertifiedAiSpendEnvelope{
- throw new AiGatewayError('This provider route has no verified complete spend ceiling. Autonomous AI and evaluation requests are paused.');
+/** Conditional release-reviewed carriers only. No live certificate is seeded; unresolved paid and
+ * arbitrary tenant routes refuse. The actual current-Tx resolver owns catalog/control evidence. */
+export function certifiedAiSpendEnvelope(configuration:ResolvedAiConfig,request:Readonly<AiAdmission>,proof?:object):CertifiedAiSpendEnvelope{
+ return currentReviewedFreeEnvelope(configuration,request,proof);
 }

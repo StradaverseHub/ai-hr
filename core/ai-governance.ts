@@ -8,8 +8,9 @@ import { resolveEntitlementsTx, getSetting } from './entitlements';
 import { assertAiProviderSnapshot, assertAiProviderSnapshotFeature, assertCurrentAiProviderSnapshotTx, type AiProviderSnapshot } from './ai-provider-snapshot';
 import type { AiAdmission } from '../lib/ai/governance';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
-import {captureStrictAiSpendRoot,requiresStrictAiSpend,certifiedAiSpendEnvelope,type StrictAiSpendRoot} from '../lib/ai/spend-allocation';
+import {captureStrictAiSpendRoot,requiresStrictAiSpend,type StrictAiSpendRoot} from '../lib/ai/spend-allocation';
 export type {StrictAiSpendRoot} from '../lib/ai/spend-allocation';
+import {resolveReviewedAiSpendCapabilityTx,withReviewedAiSpendDispatch} from './ai-spend-capability';
 import {aiSpendConfigurationDigest,createAiSpendReceiptScope} from '../lib/ai/spend-receipt';
 
 /** Reuse the gateway's fresh setting/platform-kill resolution for deterministic action checks. */
@@ -69,7 +70,7 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
    if(strictSpend&&!spendRoot)throw new AiGatewayError('The autonomous AI spend root could not be confirmed.');
    // Source-owned envelope only. Current unverified carriers REFUSE here, before token admission
    // and before any provider dispatch. A copied configuration or posted price cannot certify it.
-   const envelope=strictSpend?certifiedAiSpendEnvelope(outgoing,capturedRequest):null;
+   const envelope=strictSpend?await resolveReviewedAiSpendCapabilityTx(tx,ctx,outgoing,capturedRequest):null;
    if(envelope&&(!ctx.userId||envelope.requestDigest!==capturedRequest.inputDigest))throw new AiGatewayError('The exact AI spend request could not be confirmed.');
    const forcedPause=await forcedPauseTx(tx,ctx,feature);
    const rows=await tx.execute<{run_id:string;allowed:boolean;blocked_reason:string|null}>(sql`select * from app.ai_admit(${feature},${capturedRequest.operation},${cfg.provider},${cfg.model},${capturedRequest.reservedTokens}::bigint,${forcedPause})`);
@@ -88,7 +89,7 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
   const record=(usage:AiUsage)=>{const values=[usage.inputTokens,usage.outputTokens,usage.cachedInputTokens];if(values.every(n=>Number.isSafeInteger(n)&&n>=0))actual=values.reduce((a,b)=>a+b,0);};
   const scope=spendRoot&&spendEnvelope&&ctx.userId?createAiSpendReceiptScope({tenantId:ctx.tenantId,userId:ctx.userId,runId:admission.run_id,rootTaskId:spendRoot.rootTaskId,requestDigest:spendEnvelope.requestDigest,capabilityDigest:spendEnvelope.capabilityDigest,configurationDigest:aiSpendConfigurationDigest(outgoing)}):null;
   let succeeded=false;
-  try{const result=await(scope?scope.run(()=>call(record,accounting.observe)):call(record,accounting.observe));succeeded=true;return result;}
+  try{const dispatch=()=>scope?scope.run(()=>call(record,accounting.observe)):call(record,accounting.observe);const result=await(spendEnvelope?withReviewedAiSpendDispatch(spendEnvelope,outgoing,capturedRequest,dispatch):dispatch());succeeded=true;return result;}
   finally{
    // A failed write is visible and leaves the reservation held; it must never erase unconfirmed usage.
    let breach=false;

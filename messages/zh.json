@@ -22419,7 +22419,7 @@
     "legacyAssistant": "额外的 Assistant 预算：每位用户每天 {daily} 个问题，租户每月 {tokens} 个令牌。 此现有预算在马来西亚时间 08:00 重置。",
     "humanDecisions": "AI 仅提供建议。薪酬、评级、招聘和访问权限仍须依照现有审批与人工决策。",
     "spendTitle": "AI 推理额度（美元）",
-    "spendUnverified": "自主 AI 与供应商评估已暂停，直到完整的供应商价格上限通过验证。保存额度不会验证或启用供应商。",
+    "spendUnverified": "严格 AI 请求需要当前经发布审核的调用通道及预算。未核验通道会拒绝执行；保存预算不会认证或启用供应商。",
     "spendSemantics": "仅为应用推理额度。不包括密钥的其他用途、购买积分费用、税款或供应商账单差异。未确认费用保持预留。",
     "spendHeld": "未确定额度：{value} 纳美元",
     "spendConfirmed": "已确认推理费用：{value} 纳美元",
@@ -22543,7 +22543,10 @@
       "reported": "已报告",
       "conflicting": "报告冲突",
       "invalid": "报告无效"
-    }
+    },
+    "spendRecords": "当前已审核通道记录：{count}",
+    "spendRecordsUnknown": "已审核通道记录数量暂不可用。",
+    "spendLiveUnverified": "记录数量不代表已验证实时访问、端点可用性、当前账户控制或模型能力。这些须单独核验。"
   },
   "accountEmail": {
     "title": "账户邮件发送记录",
