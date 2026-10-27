@@ -12,11 +12,14 @@ import {downloadCiArchives,readCiArchive} from './archive-downloads.mjs';
 import {immutablePlan} from './immutable-plan.mjs';
 import {parseSelection} from './focused-checks.mjs';
 import {inspectFocusedFiles} from './focused-file-evidence.mjs';
+import {proveReviewedFocusedController,validateReviewedFocusedControllerProof} from './reviewed-focused-controller.mjs';
+import {authenticateFocusedPdfTools} from './authenticated-focused-pdf.mjs';
 const WORKFLOW=395862645,PATH='.github/workflows/alpha-focused-checks.yml',ARTIFACT='focused-development-evidence';
 export function inspectFocusedInventory({expected,run,jobs,artifacts,now=Date.now()}){
  assert(Number.isSafeInteger(expected.runId)&&expected.runId>0&&['candidate','controller','baseline'].every(k=>/^[a-f0-9]{40}$/.test(expected[k]??'')),'Exact focused identities required');
  assert(run?.id===expected.runId&&run.repository?.id===REPOSITORY_ID&&run.repository.full_name===REPOSITORY&&run.head_repository?.id===REPOSITORY_ID,'Foreign focused repository');
- assert(run.workflow_id===WORKFLOW&&run.path===PATH&&run.event==='workflow_dispatch'&&['main','alpha'].includes(run.head_branch)&&run.head_sha===expected.controller,'Untrusted focused workflow/controller');
+ if(!['main','alpha'].includes(run.head_branch))validateReviewedFocusedControllerProof(expected.reviewedControllerProof,{controller:expected.controller,branch:run.head_branch});
+ assert(run.workflow_id===WORKFLOW&&run.path===PATH&&run.event==='workflow_dispatch'&&run.head_sha===expected.controller,'Untrusted focused workflow/controller');
  assert(run.status==='completed'&&['success','failure'].includes(run.conclusion)&&run.run_attempt===1,'Focused run not terminal first attempt');
  const start=Date.parse(run.created_at),end=Date.parse(run.updated_at);assert(Number.isFinite(start)&&start<=end&&end<=now+60000&&now-start<=86400000,'Expired/invalid focused run');
  assert(Array.isArray(jobs)&&jobs.length===4,'Complete focused job inventory required');
@@ -32,7 +35,14 @@ export function inspectFocusedInventory({expected,run,jobs,artifacts,now=Date.no
  return {artifact:a,job};
 }
 export async function authenticateFocusedFiles({repository,expected,runtime,outputParent,prefetchDirectory}){
- const first=fetchGitHubRunSnapshot(expected.runId),origin=inspectFocusedInventory({expected,...first});
+ // The actual API branch decides whether source reconstruction is mandatory.
+ // A caller cannot suppress it by omitting a hint or injecting a self-hashed proof.
+ assert(!Object.hasOwn(expected,'reviewedControllerProof'),'Caller-supplied controller proof is not source authority');
+ const first=fetchGitHubRunSnapshot(expected.runId);
+ if(expected.controllerBranch!==undefined)assert(expected.controllerBranch===first.run.head_branch,'Focused controller branch differs from API');
+ if(!['main','alpha'].includes(first.run.head_branch))expected={...expected,controllerBranch:first.run.head_branch,
+  reviewedControllerProof:proveReviewedFocusedController({repository,controller:expected.controller,branch:first.run.head_branch})};
+ const origin=inspectFocusedInventory({expected,...first});
  const dir=join(resolve(outputParent),'focused-'+expected.runId+'-'+randomUUID());mkdirSync(dir,{recursive:true,mode:0o700});
  const save=(n,v)=>writeFileSync(join(dir,n),JSON.stringify(v,null,2)+'\n',{flag:'wx',mode:0o600});save('first-api-snapshot.json',first);
  try{
@@ -48,11 +58,13 @@ export async function authenticateFocusedFiles({repository,expected,runtime,outp
   for(const name of ['nodb.vitest.json','db.vitest.json'])assert(existsSync(join(extracted,name))===wanted.has(name),'Extra/missing raw focused group');
   const results=new Map(Object.entries(groups).filter(([,fs])=>fs.length).map(([kind])=>[kind,JSON.parse(readFileSync(join(extracted,kind.toLowerCase()+'.vitest.json')))]));
   const outcome=inspectFocusedFiles({report,results,expected:{...expected,runtime,files,groups,classifierHash:createHash('sha256').update(classifier).digest('hex')},postgresExecution:plan.execution});
+  const pdfTooling=await authenticateFocusedPdfTools({files,plan,run:first.run,job:origin.job,artifacts:first.artifacts,directory:dir});
   assert(origin.job.conclusion===(report.exitCode?'failure':'success'),'Focused job and report outcome differ');
   assert(Date.parse(report.startedAt)>=Date.parse(origin.job.started_at)&&Date.parse(report.endedAt)<=Date.parse(origin.job.completed_at),'Focused report outside job');
   if(groups.DB.length){const cleanup=origin.job.steps?.filter(s=>s.name==='Ensure owned database cleanup after interrupted checks');assert(cleanup?.length===1&&cleanup[0].status==='completed'&&cleanup[0].conclusion==='success','Focused owned database cleanup unproven');}
+  if(expected.reviewedControllerProof)assert(isDeepStrictEqual(proveReviewedFocusedController({repository,controller:expected.controller,branch:first.run.head_branch}),expected.reviewedControllerProof),'Repair controller source changed during authentication');
   const second=fetchGitHubRunSnapshot(expected.runId);const finalOrigin=inspectFocusedInventory({expected,...second});assert(isDeepStrictEqual(origin.job.steps,finalOrigin.job.steps),'Focused cleanup/step outcomes changed');assert(isDeepStrictEqual(githubSnapshotIdentity(first),githubSnapshotIdentity(second)),'Focused GitHub origin changed');save('final-api-snapshot.json',second);
-  const result={...outcome,kind:'AUTHENTICATED_FOCUSED_FILE_OUTCOMES_NOT_COMBINED_RELEASE',sourceBinding:reconstructed.binding,origin:{...expected,artifactId:origin.artifact.id,digest:origin.artifact.digest,jobId:origin.job.id},apiRevalidatedAt:new Date().toISOString(),evidenceDirectory:dir};save('authentication.json',result);return result;
+  const result={...outcome,kind:'AUTHENTICATED_FOCUSED_FILE_OUTCOMES_NOT_COMBINED_RELEASE',sourceBinding:reconstructed.binding,pdfTooling,origin:{...expected,artifactId:origin.artifact.id,digest:origin.artifact.digest,jobId:origin.job.id},apiRevalidatedAt:new Date().toISOString(),evidenceDirectory:dir};save('authentication.json',result);return result;
  }catch(error){save('refusal.json',{releaseAuthorized:false,error:String(error.message)});throw error;}
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
