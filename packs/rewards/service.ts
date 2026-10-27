@@ -10,9 +10,10 @@ import { setCompensation } from '../../core/comp';
 import { setEmploymentGrade } from '../../core/org';
 import { setPayrollInput } from '../payroll/service';
 import { todayInKualaLumpur } from '../../lib/hr-date';
+import type { PackTaskItem } from '../../lib/assigned-work';
 import { calculateRewards } from './engine';
 import { onehrRewardResultTx } from '../performance/service';
-import { factsFromOnehr, isSeniorPlanMember } from './model';
+import { decisionActorRole, factsFromOnehr, isSeniorPlanMember, returnedState } from './model';
 import {rewardPolicyForReviewTx} from './policy-groups';
 export {saveRewardPolicyGroup,listRewardPolicyGroups,rewardSharedPolicyChoices,rewardPolicyGroupUsage,RewardPolicyGroupError} from './policy-groups';
 export type {RewardSharedChoice} from './policy-groups';
@@ -75,6 +76,23 @@ async function touch(tx: Tx, unitId: string) {
   await tx.update(rewardUnit).set({ revision: sql`${rewardUnit.revision}+1`, approvedDigest: null, updatedAt: new Date() }).where(eq(rewardUnit.id, unitId));
 }
 
+/**
+ * Approval history, newest first by (created_at DESC, id DESC). Reads only rows reward_decision RLS
+ * already grants this viewer. The actor's name is joined through person RLS (never widened): when the
+ * viewer cannot read that person, the screen falls back to the actor's Reward Desk role on this unit.
+ */
+async function decisionHistory(tx: Tx, unitId: string, members: { role: string; userId: string }[]) {
+  const rows = await tx.select({ id: rewardDecision.id, action: rewardDecision.action, fromStage: rewardDecision.fromStage, toStage: rewardDecision.toStage, actorId: rewardDecision.actorId, actorName: person.fullName, reason: rewardDecision.reason, createdAt: rewardDecision.createdAt, revision: rewardDecision.revision })
+    .from(rewardDecision).leftJoin(appUser, eq(appUser.id, rewardDecision.actorId)).leftJoin(person, eq(person.id, appUser.personId))
+    .where(eq(rewardDecision.unitId, unitId)).orderBy(desc(rewardDecision.createdAt), desc(rewardDecision.id));
+  return rows.map(d => ({ ...d, actorRole: decisionActorRole(d.fromStage, members.filter(m => m.userId === d.actorId).map(m => m.role as RewardRole)) }));
+}
+type DecisionRow = Awaited<ReturnType<typeof decisionHistory>>[number];
+function returnedProjection(unit: typeof rewardUnit.$inferSelect, latest: DecisionRow | undefined) {
+  const state = returnedState(unit.status, latest, unit.offcycle?.bgOrigin === true);
+  return state && latest ? { reason: state.reason, at: state.at, fromStage: state.fromStage, toSeat: state.toSeat, actorName: latest.actorName ?? null, actorRole: latest.actorRole } : null;
+}
+
 /** The full pay-bearing review projection. Never return hidden internal entries or EC aggregates. */
 export async function getRewardUnit(ctx: SessionContext, unitId: string) {
   return withRewardsTenant(ctx, async tx => {
@@ -88,12 +106,23 @@ export async function getRewardUnit(ctx: SessionContext, unitId: string) {
     const [cycle] = await tx.select().from(rewardCycle).where(eq(rewardCycle.id, unit.cycleId));
     const [bu] = await tx.select({ name: businessUnitDisplayName }).from(businessUnit).where(eq(businessUnit.id, unit.businessUnitId));
     const members = await tx.select({ id: rewardMember.id, role: rewardMember.role, userId: rewardMember.userId }).from(rewardMember).where(eq(rewardMember.unitId, unitId)).orderBy(asc(rewardMember.role), asc(rewardMember.userId));
-    const decisions = await tx.select({ id: rewardDecision.id, action: rewardDecision.action, fromStage: rewardDecision.fromStage, toStage: rewardDecision.toStage, actorId: rewardDecision.actorId, reason: rewardDecision.reason, createdAt: rewardDecision.createdAt, revision: rewardDecision.revision }).from(rewardDecision).where(eq(rewardDecision.unitId, unitId)).orderBy(desc(rewardDecision.createdAt), desc(rewardDecision.id));
+    const decisions = await decisionHistory(tx, unitId, members);
+    const returned = returnedProjection(unit, decisions[0]);
     // EC totals are derived ONLY from the rows the viewer may see (including the own-person exclusion).
     const ecRows = visible.filter(e => e.plan === 'ec');
-    return { unit, cycle, route: unit.kind === 'annual' ? ['bu', 'bg', 'gr', 'ctro', 'ec'] as RewardRole[] : offcycleRoute(unit.kind, unit.offcycle!, entries), name: bu?.name ?? 'Business unit', roles, members, decisions,
+    const bonusCounts = (plan: 'standard' | 'h') => {
+      const group = calculated.rows.filter(e => e.plan === plan);
+      // Do not infer confidential category membership from the visible subset or expose hidden counts.
+      if (group.some(e => !visibleIds.has(e.id))) return null;
+      return { eligible: group.filter(e => e.bonusEligible).length,
+        increases: group.filter(e => e.bonusCents > e.standardBonusCents).length,
+        reductions: group.filter(e => e.bonusCents < e.standardBonusCents).length,
+        lump: group.filter(e => e.lumpCents > 0).length };
+    };
+    return { unit, cycle, route: unit.kind === 'annual' ? ['bu', 'bg', 'gr', 'ctro', 'ec'] as RewardRole[] : offcycleRoute(unit.kind, unit.offcycle!, entries), name: bu?.name ?? 'Business unit', roles, members, decisions, returned,
       rows: visible, flags, hiddenCount: entries.length - visible.length,
       budgets: { standard: calculated.budgets.standard, h: calculated.budgets.h },
+      bonusCounts: { standard: bonusCounts('standard'), h: bonusCounts('h') },
       ec: roles.some(r => ['gr', 'ctro', 'ec'].includes(r)) ? { count: ecRows.length, referenceCents: Math.round(ecRows.reduce((v, e) => v + e.source.basicCents, 0) * .07), incrementCents: ecRows.reduce((v, e) => v + e.newBasicCents - e.source.basicCents, 0), bonusCents: ecRows.reduce((v, e) => v + e.bonusCents + e.lumpCents, 0) } : null,
       suggestedLumpCents: calculated.suggestedLumpCents, lumpUnitCents: calculated.lumpUnitCents,
       suggestedMultiplierBp: calculated.suggestedMultiplierBp, lumpWorking: calculated.lumpWorking,
@@ -102,10 +131,41 @@ export async function getRewardUnit(ctx: SessionContext, unitId: string) {
   });
 }
 
+// Latest decision by (created_at DESC, id DESC), read through reward_decision RLS: a viewer who cannot
+// read the unit's decisions sees no Returned state rather than a widened read.
+const latestDecisionActionSql = sql<string | null>`(select d.action from reward_decision d where d.unit_id=${rewardUnit.id} order by d.created_at desc, d.id desc limit 1)`;
+/** Derived Returned seat for list rows: null unless the draft's latest decision is a return. */
+const returnedSeatSql = sql<'bu' | 'bg' | null>`case when ${rewardUnit.status}='draft' and ${latestDecisionActionSql}='return' then case when ${rewardUnit.offcycle}->>'bgOrigin'='true' then 'bg' else 'bu' end end`;
+
+/**
+ * Reviews returned to a seat the viewer holds (the BU CEO, or the BG CEO for a BG-originated off-cycle
+ * request). The reason is the one reward_decision RLS already lets this viewer read; no pay is returned.
+ */
+export async function returnedRewardUnits(ctx: SessionContext, companyIds?: string[]) {
+  return withRewardsTenant(ctx, async tx => {
+    if (companyIds && !companyIds.length) return [];
+    const rows = await tx.select({ id: rewardUnit.id, kind: rewardUnit.kind, name: businessUnitDisplayName, cycle: rewardCycle.name, toSeat: returnedSeatSql })
+      .from(rewardUnit).innerJoin(rewardCycle, eq(rewardCycle.id, rewardUnit.cycleId)).innerJoin(businessUnit, eq(businessUnit.id, rewardUnit.businessUnitId))
+      .where(and(isNull(rewardUnit.deletedAt), eq(rewardUnit.status, 'draft'), ...(companyIds ? [inArray(rewardUnit.companyId, companyIds)] : []),
+        sql`${latestDecisionActionSql}='return'`,
+        sql`(case when ${rewardUnit.offcycle}->>'bgOrigin'='true' then 'bg' else 'bu' end) in (select app.reward_roles(${rewardUnit.id}))`))
+      .orderBy(asc(rewardUnit.updatedAt), asc(rewardUnit.id));
+    const out = [];
+    for (const row of rows) {
+      const [latest] = await tx.select({ action: rewardDecision.action, fromStage: rewardDecision.fromStage, toStage: rewardDecision.toStage, reason: rewardDecision.reason, actorId: rewardDecision.actorId, actorName: person.fullName, createdAt: rewardDecision.createdAt })
+        .from(rewardDecision).leftJoin(appUser, eq(appUser.id, rewardDecision.actorId)).leftJoin(person, eq(person.id, appUser.personId))
+        .where(eq(rewardDecision.unitId, row.id)).orderBy(desc(rewardDecision.createdAt), desc(rewardDecision.id)).limit(1);
+      const state = returnedState('draft', latest, row.toSeat === 'bg');
+      if (state) out.push({ id: row.id, kind: row.kind, name: row.name, cycle: row.cycle, toSeat: state.toSeat, reason: state.reason, returnedAt: state.at, actorName: latest.actorName ?? null });
+    }
+    return out;
+  });
+}
+
 export async function listRewardUnits(ctx: SessionContext, companyIds: string[]) {
   return withRewardsTenant(ctx, async tx => {
     if (!companyIds.length) return [];
-    return tx.select({ id: rewardUnit.id, cycleId: rewardCycle.id, cycle: rewardCycle.name, kind: rewardUnit.kind, year: rewardCycle.year, company: company.legalName, unit: businessUnitDisplayName, status: rewardUnit.status, revision: rewardUnit.revision, canConfigure:sql<boolean>`${rewardUnit.status}='draft' and ${rewardUnit.kind}='annual' and 'gr' in (select app.reward_roles(${rewardUnit.id}))`, deletionReason:sql<import('./maintenance').RewardDeletionReason|null>`case when app.reward_admin(${rewardUnit.companyId}) then app.reward_deletion_reason(${rewardUnit.id}) else 'locked' end` })
+    return tx.select({ id: rewardUnit.id, cycleId: rewardCycle.id, cycle: rewardCycle.name, kind: rewardUnit.kind, year: rewardCycle.year, company: company.legalName, unit: businessUnitDisplayName, status: rewardUnit.status, returnedTo: returnedSeatSql, revision: rewardUnit.revision, canConfigure:sql<boolean>`${rewardUnit.status}='draft' and ${rewardUnit.kind}='annual' and 'gr' in (select app.reward_roles(${rewardUnit.id}))`, deletionReason:sql<import('./maintenance').RewardDeletionReason|null>`case when app.reward_admin(${rewardUnit.companyId}) then app.reward_deletion_reason(${rewardUnit.id}) else 'locked' end` })
       .from(rewardUnit).innerJoin(rewardCycle, eq(rewardCycle.id, rewardUnit.cycleId)).innerJoin(company, eq(company.id, rewardUnit.companyId)).innerJoin(businessUnit, eq(businessUnit.id, rewardUnit.businessUnitId))
       .where(and(inArray(rewardUnit.companyId, companyIds),isNull(rewardUnit.deletedAt))).orderBy(desc(rewardCycle.year), asc(rewardCycle.name), asc(businessUnitDisplayName), asc(rewardUnit.id));
   });
@@ -511,4 +571,57 @@ export async function importOnehrRewardResults(ctx: SessionContext, unitId: stri
     await touch(tx,unitId); await stamp(tx,ctx,unitId,'onehr-results-imported',{count:imported});
     return { imported };
   });
+}
+
+const REWARD_TASK_APPROVAL_STAGES = ['bg', 'gr', 'ctro', 'ec'] as const;
+
+/**
+ * Rewards work awaiting the viewer, projected into the shared task list (WP-A1; core/approvals-inbox.ts
+ * PACK_TASK_SOURCES). Two owners decide the rows; this function only supplies what the shared list needs:
+ *
+ *   - `pendingRewardReviews` — the queue /approvals already renders as its Rewards card: a unit at an
+ *     approval stage (bg, gr, ctro, ec) that `app.reward_roles` says is THIS viewer's stage. A BU or PBP
+ *     member therefore sees nothing while the unit sits at BG; the BG member sees it.
+ *   - `returnedRewardUnits` — a draft whose latest decision is a return, for the viewer holding the seat it
+ *     was returned to (BU CEO, or BG CEO for a BG-originated off-cycle request). Its reason and actor are
+ *     NOT projected.
+ *
+ * The first read is the cheap exit and the unscoped company source: the units the viewer can read at all
+ * (RLS) that sit at an approval stage or are drafts whose latest decision is a return. A viewer with none
+ * (almost everyone, on almost every page) costs one query. `pendingRewardReviews` takes company ids and
+ * answers [] for none, but Home and My tasks ask without a company selection, so the companies come from
+ * that read — a superset of the queue, which still decides every row.
+ *
+ * Payload: id, kind, subject name, owner timestamp and link. No pay, budget, band, recommendation, return
+ * reason or actor.
+ */
+export async function pendingRewardTasks(ctx: SessionContext, scopeIds: string[] | undefined): Promise<PackTaskItem[]> {
+  const readable = await withRewardsTenant(ctx, (tx) => tx
+    .select({ id: rewardUnit.id, companyId: rewardUnit.companyId, status: rewardUnit.status, createdAt: rewardUnit.createdAt })
+    .from(rewardUnit)
+    .where(and(isNull(rewardUnit.deletedAt), or(
+      inArray(rewardUnit.status, [...REWARD_TASK_APPROVAL_STAGES]),
+      and(eq(rewardUnit.status, 'draft'), sql`${latestDecisionActionSql}='return'`),
+    ))));
+  if (!readable.length) return [];
+  const atApproval = readable.filter((u) => u.status !== 'draft');
+  const createdAt = new Map(atApproval.map((u) => [u.id, u.createdAt]));
+  const companyIds = scopeIds ?? [...new Set(atApproval.map((u) => u.companyId))];
+  const [queue, returned] = await Promise.all([
+    atApproval.length ? pendingRewardReviews(ctx, companyIds) : Promise.resolve([]),
+    atApproval.length < readable.length ? returnedRewardUnits(ctx, scopeIds) : Promise.resolve([]),
+  ]);
+  // A unit that entered the queue between the two reads has no owner time here; it is left to the next
+  // read rather than given a guessed age (lib/assigned-work.ts: never a guessed task age).
+  const approvals: PackTaskItem[] = queue.flatMap((r) => {
+    const at = createdAt.get(r.id);
+    return at ? [{ id: r.id, kind: 'rewardReview' as const, subjectName: `${r.cycle} · ${r.name}`, createdAt: at.toISOString(), linkPath: `/rewards/${r.id}?view=approvals` }] : [];
+  });
+  // A unit is a draft or at an approval stage, never both; the reads are separate, so a unit that moved
+  // between them is listed once (its approval-stage row wins).
+  const listed = new Set(approvals.map((t) => t.id));
+  const back: PackTaskItem[] = returned.filter((r) => !listed.has(r.id)).map((r) => ({
+    id: r.id, kind: 'rewardReview' as const, subjectName: `${r.cycle} · ${r.name}`, createdAt: r.returnedAt, linkPath: `/rewards/${r.id}`,
+  }));
+  return [...approvals, ...back];
 }

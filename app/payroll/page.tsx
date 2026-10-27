@@ -242,8 +242,7 @@ export default async function PayrollPage({
             free-text remarks (e.g. Advance Salary / Mid-Month) when present, so wizard cycles
             stored under the generic 'off_cycle' bucket display distinctly. */}
         <td className="whitespace-nowrap px-3 py-2.5 text-muted-foreground">
-          {t(`runType.${b.runType}`)}
-          {b.remarks ? ` — ${b.remarks}` : ''}
+          {b.historyImportAttemptId?`${b.historyImportCycleName} - By Import`:<>{t(`runType.${b.runType}`)}{b.remarks ? ` — ${b.remarks}` : ''}</>}
         </td>
         <td className="px-3 py-2.5 text-muted-foreground">{b.company}</td>
         <td

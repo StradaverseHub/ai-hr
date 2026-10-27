@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
-import { attendanceCcUpgradeReady } from '../deploy/identity-email/workflow-capability';
+import { attendanceCcUpgradeReady,letterWorkflowUpgradeReady } from '../deploy/identity-email/workflow-capability';
 describe('root workflow-email upgrade boundaries',()=>{
  it.each([null,{},[],{version:1},{version:1,attendanceCc:false},{version:1,attendanceCc:'true'},{version:'1',attendanceCc:true},{version:2,attendanceCc:true}])('refuses a legacy or malformed capability response %#',value=>{
   expect(attendanceCcUpgradeReady(200,value)).toBe(false);
@@ -11,7 +11,16 @@ describe('root workflow-email upgrade boundaries',()=>{
   expect(attendanceCcUpgradeReady(503,installed)).toBe(false);
   expect(attendanceCcUpgradeReady(undefined,installed)).toBe(false);
   const upgrade=readFileSync('deploy/identity-email/upgrade-workflow.ts','utf8');
-  expect(upgrade).toContain('attendanceCcUpgradeReady(res.statusCode,JSON.parse(body))');
+  expect(upgrade).toContain('letterWorkflowUpgradeReady(res.statusCode,JSON.parse(body))');
+ });
+ it.each([undefined,false,'true',1,null])('refuses missing or malformed Letters installation capability %#',letters=>{
+  expect(letterWorkflowUpgradeReady(200,{version:1,attendanceCc:true,letters,ready:true})).toBe(false);
+ });
+ it('requires both installed workflow capabilities without sending mail or requiring an active relay',()=>{
+  expect(letterWorkflowUpgradeReady(200,{version:1,attendanceCc:true,letters:true,ready:false})).toBe(true);
+  expect(letterWorkflowUpgradeReady(503,{version:1,attendanceCc:true,letters:true,ready:true})).toBe(false);
+  expect(letterWorkflowUpgradeReady(200,{version:1,attendanceCc:false,letters:true,ready:true})).toBe(false);
+  expect(letterWorkflowUpgradeReady(200,null)).toBe(false);
  });
  it('uses a single embedded checked service bundle and preserves the root-owned runtime boundary',()=>{
   const upgrade=readFileSync('deploy/identity-email/upgrade-workflow.ts','utf8'),builder=readFileSync('scripts/build-workflow-email-upgrade.ts','utf8');

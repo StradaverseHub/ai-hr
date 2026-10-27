@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 /** Workflow email configuration. Policy and consent have separate owners and never imply SMTP readiness. */
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, sql, isNotNull } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Grant } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { employment, notificationEmailPolicy, notificationPref, notificationDelivery } from '../db/schema';
@@ -52,14 +52,14 @@ export async function readNotificationEmailPreferences(ctx: SessionContext) {
   return withTenant(ctx, async tx => ({
     employments: await tx.select({id:employment.id,code:employment.employeeCode}).from(employment)
       .where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId!))).orderBy(asc(employment.employeeCode),asc(employment.id)),
-    preferences: await tx.select().from(notificationPref).where(and(eq(notificationPref.tenantId,ctx.tenantId),eq(notificationPref.channel,'email'))).orderBy(asc(notificationPref.recipientEmploymentId),asc(notificationPref.category)),
+    preferences: await tx.select().from(notificationPref).where(and(eq(notificationPref.tenantId,ctx.tenantId),eq(notificationPref.channel,'email'),isNotNull(notificationPref.recipientEmploymentId))).orderBy(asc(notificationPref.recipientEmploymentId),asc(notificationPref.category)),
     policy: await tx.select().from(notificationEmailPolicy).where(eq(notificationEmailPolicy.tenantId,ctx.tenantId)).orderBy(asc(notificationEmailPolicy.category)),
   }));
 }
 export type EmailConsentIdentity = {issuer:string;subject:string;email:string|null;emailVerified:boolean};
 /** The action obtains identity from the verified server session, never from form fields. */
 export async function saveNotificationEmailPreferences(ctx:SessionContext, employmentId:string, enabledCategories:readonly string[], locale:NotificationEmailLocale, identity:EmailConsentIdentity|null) {
-  requireModule(ctx); const selected=categories(enabledCategories);
+  requireModule(ctx); const selected=categories(enabledCategories);if(selected.has('letters'))throw new NotificationEmailSettingsError('invalid');
   if (!ctx.userId || !ctx.personId) throw new NotificationEmailSettingsError('forbidden');
   if (!notificationEmailLocales.includes(locale)) throw new NotificationEmailSettingsError('invalid');
   await withTenant(ctx,async tx=>{
@@ -78,7 +78,7 @@ export async function saveNotificationEmailPreferences(ctx:SessionContext, emplo
       if (!allowed?.allowed) throw new NotificationEmailSettingsError('identityRequired');
     }
     const [watermark]=await tx.execute(sql`select app.notification_email_watermark() as sequence`) as unknown as {sequence:string}[];
-    for (const category of notificationPreferenceCategories) {
+    for (const category of notificationPreferenceCategories.filter(category=>category!=='letters')) {
       const before=current.find(p=>p.category===category), enabled=selected.has(category);
       const value={enabled,emailConsentUserId:enabled?ctx.userId:null,emailLocale:locale,
         emailAfterSequence:enabled ? before?.enabled && before.emailConsentUserId===ctx.userId && before.emailAfterSequence!=null && (category!=='employee_master_reports'||reportBindingCurrent) ? before.emailAfterSequence : Number(watermark.sequence) : null,

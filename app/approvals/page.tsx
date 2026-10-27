@@ -181,10 +181,14 @@ export default async function ApprovalsPage({
   // Exact current assignment may sit outside the selected company UX filter. RLS and the
   // existing full reader remain authoritative; a URL cannot supply an assignment.
   const queueScope=focus?undefined:scopeIds;
+  // WP-A1: the task list's Performance and Rewards sources are NOT read here. This page renders no
+  // performance queue (that work opens on /performance), and its Rewards card already comes from the
+  // very queue the Rewards provider projects — reading them again would admit a viewer to an inbox
+  // with nothing on it, or count one Rewards unit twice.
   const [rewardReviews,assignedAttendance,assignedTasks]=await Promise.all([
     !focus&&isModuleEnabledOrFalse(s,'rewards')?pendingRewardReviews(s,scopeIds):Promise.resolve([]),
     focus?Promise.resolve(focus.kind==='attendance'):attendanceOn?hasPendingAttendanceParticipantAssignment(s):Promise.resolve(false),
-    !focus&&!admin&&!manager?listPendingTasks(s,scopeIds,{attendance:attendanceOn,claims:claimsOn},{noticeAcknowledgements:false}):Promise.resolve([]),
+    !focus&&!admin&&!manager?listPendingTasks(s,scopeIds,{attendance:attendanceOn,claims:claimsOn,performance:false,rewards:false},{noticeAcknowledgements:false}):Promise.resolve([]),
   ]);
   if(!focus&&!admin&&!manager&&!rewardReviews.length&&!assignedAttendance&&!assignedTasks.length)redirect('/');
   const attendanceOnly=!admin&&!manager&&!rewardReviews.length&&assignedAttendance&&assignedTasks.every(task=>task.kind==='attendance');

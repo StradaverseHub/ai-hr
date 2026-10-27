@@ -61,7 +61,8 @@
  * Everyone who neither joined nor left keeps a blank box, as the agency form does.
  */
 import { and, eq, inArray } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../../db/client';
+import { type SessionContext } from '../../db/client';
+import { withPayrollHistoryTenant as withTenant } from '../../core/payroll-history-lock';
 import {
   company,
   companyStatutoryMy,

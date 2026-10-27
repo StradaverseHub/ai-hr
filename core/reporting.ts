@@ -10,7 +10,8 @@ import { onehrReportResultsTx } from '../packs/performance/service';
 import { and, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import type { Pcb2iiForm } from '../lib/pcb2ii-form';
 import { alias } from 'drizzle-orm/pg-core';
-import { withTenant, type SessionContext } from '../db/client';
+import { type SessionContext } from '../db/client';
+import { withPayrollHistoryTenant as withTenant } from './payroll-history-lock';
 import { actorOf, appendEvent } from '../db/events';
 import {
   appUser,

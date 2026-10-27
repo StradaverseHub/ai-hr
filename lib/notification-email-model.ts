@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 /** Categories describe the existing event registry; they do not decide recipients. */
 export const notificationEmailCategories = [
-  'attendance', 'claims', 'delegation', 'leave', 'notice', 'offboarding', 'payroll',
+  'attendance', 'claims', 'delegation', 'leave', 'letters', 'notice', 'offboarding', 'payroll',
   'onboarding', 'performance', 'profile', 'readiness', 'review', 'rewards', 'toil',
 ] as const;
 export type NotificationEmailCategory = typeof notificationEmailCategories[number];
@@ -20,7 +20,7 @@ export const notificationEmailRequest = z.discriminatedUnion('op', [
   z.object({op:z.literal('attendanceCcSend'),deliveryId:z.uuid(),leaseToken:z.uuid()}).strict(),
 ]);
 export type NotificationEmailRequest = z.infer<typeof notificationEmailRequest>;
-export type NotificationEmailStatus = { version: 1; ready: boolean; assessmentReminders?:boolean;assessmentReminderWords?:boolean;attendanceCc?:boolean };
+export type NotificationEmailStatus = { version: 1; ready: boolean; assessmentReminders?:boolean;assessmentReminderWords?:boolean;attendanceCc?:boolean;letters?:boolean };
 export type NotificationEmailOutcome = 'sent' | 'retry' | 'failed' | 'skipped' | 'uncertain';
 export const notificationEmailErrors = [
   'relayUnavailable', 'recipientUnavailable', 'recipientChanged', 'notEligible',

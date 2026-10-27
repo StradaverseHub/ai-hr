@@ -17,17 +17,28 @@ import {lockAccessConfigurationTx} from './access-configuration-lock';
  * deliberate, PDPA-justified exception to the "reads emit nothing" rule, because expected_function §6
  * requires an audit trail for document downloads.
  */
+import {randomUUID} from 'node:crypto';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext,type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { appUser, employeeDocument, person } from '../db/schema';
+import { appUser, employeeDocument, person,letterArtifact,letterRecord } from '../db/schema';
 
 export class EmployeeDocumentError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'EmployeeDocumentError';
   }
+}
+
+/** Purpose-bound filing of a sealed approved Letter. This grants no generic Personnel
+ * upload/read authority and stores only a protected artifact pointer, never a byte copy. */
+export async function fileLetterArtifactTx(tx:Tx,ctx:SessionContext,input:{letterId:string;artifactId:string}){
+ if(!ctx.userId)throw new EmployeeDocumentError('Letter filing permission unavailable.');
+ const [target]=await tx.execute<{employment_id:string;title:string;category:string;description:string;file_name:string;size_bytes:number;document_id:string|null}>(sql`select * from app.letter_document_filing_target(${input.letterId}::uuid,${input.artifactId}::uuid)`);
+ if(!target)throw new EmployeeDocumentError('Letter filing permission unavailable.');if(target.document_id)return target.document_id;const documentId=randomUUID();
+ await tx.insert(employeeDocument).values({id:documentId,tenantId:ctx.tenantId,employmentId:target.employment_id,letterArtifactId:input.artifactId,title:target.title,category:target.category,description:target.description,content:Buffer.alloc(0),fileName:target.file_name,mimeType:'application/pdf',sizeBytes:target.size_bytes,uploadedByUserId:ctx.userId,updatedByUserId:ctx.userId});
+ return documentId;
 }
 
 /** Configurable max upload size (bytes). Reuses the 10 MB ceiling shared by claim_attachment /
@@ -352,6 +363,7 @@ export function getEmployeeDocument(
     const [row] = await tx
       .select({
         content: employeeDocument.content,
+        letterArtifactId:employeeDocument.letterArtifactId,
         fileName: employeeDocument.fileName,
         mimeType: employeeDocument.mimeType,
         employmentId: employeeDocument.employmentId,
@@ -360,6 +372,12 @@ export function getEmployeeDocument(
       .where(and(eq(employeeDocument.id, documentId), expectedEmploymentId ? eq(employeeDocument.employmentId, expectedEmploymentId) : undefined))
       .limit(1);
     if (!row) return null;
+    if(row.letterArtifactId){
+      const [sealed]=await tx.select({content:letterArtifact.content,letterId:letterRecord.id,contentHash:letterArtifact.contentHash}).from(letterArtifact).innerJoin(letterRecord,and(eq(letterRecord.id,letterArtifact.letterId),eq(letterRecord.currentRevisionId,letterArtifact.revisionId),eq(letterRecord.state,'issued'))).where(eq(letterArtifact.id,row.letterArtifactId));
+      if(!sealed)return null;
+      row.content=sealed.content;
+      await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'letter',aggregateId:sealed.letterId,eventType:'letter.downloaded',actor:actorOf(ctx),payload:{artifactId:row.letterArtifactId,artifactHash:sealed.contentHash,documentId}});
+    }
     // SUBSTRATE (documented exception): audit the download per expected_function §6.
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -367,7 +385,7 @@ export function getEmployeeDocument(
       aggregateId: documentId,
       eventType: 'employee-document.downloaded',
       actor: actorOf(ctx),
-      subjectEmploymentId: row.employmentId,
+      subjectEmploymentId: row.letterArtifactId?null:row.employmentId,
       payload: { fileName: row.fileName },
     });
     return { content: row.content as Buffer, fileName: row.fileName, mimeType: row.mimeType, employmentId: row.employmentId };

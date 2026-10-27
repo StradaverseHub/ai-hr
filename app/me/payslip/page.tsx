@@ -13,12 +13,12 @@ import { PersonalPayslipStatement } from './statement';
 
 export default async function MyPayslipPage({searchParams}:{searchParams:Promise<{companyId?:string;year?:string;month?:string;payslipId?:string;review?:string}>}) {
   await requireModule('payroll');
-  const {s}=await scopedSession(),sp=await searchParams,t=await getTranslations('myPayslip'),pay=await getTranslations('payroll.individualPayslip'),txn=await getTranslations('payroll.transactions');
+  const {s}=await scopedSession(),sp=await searchParams,t=await getTranslations('myPayslip'),pay=await getTranslations('payroll.individualPayslip');
   const locale=await getLocale();
   const result=await myReleasedPayslipRuns(s).then(runs=>({runs,error:undefined})).catch(error=>({runs:[],error:publicErrorMessage(error)}));
   const selection=resolvePersonalPayslipSelection(result.runs,sp);
   const document=selection.payslipId?await myPayslipDocument(s,selection.payslipId):null;
-  const choices=result.runs.map(run=>({...run,label:[run.cycleName,txn(`individual.cycle.${run.runType}`),pay('cycleRun',{cycle:'',n:run.runSeq}).trim(),run.employeeCode].filter(Boolean).join(' · ')}));
+  const choices=result.runs.map(run=>({...run,label:run.cycleName ?? ''}));
   const months=Array.from({length:12},(_,month)=>new Intl.DateTimeFormat(locale,{month:'long',timeZone:'UTC'}).format(new Date(Date.UTC(2000,month,1))));
   const context=new URLSearchParams({...(selection.companyId?{companyId:selection.companyId}:{}),...(selection.year?{year:String(selection.year)}:{}),...(selection.month?{month:String(selection.month).padStart(2,'0')}:{}),...(selection.payslipId?{payslipId:selection.payslipId}:{})});
   const back=`/me/payslip?${context}`,pdf=document?`/me/payslip/${document.p.id}/pdf`:'';

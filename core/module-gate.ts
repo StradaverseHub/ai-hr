@@ -130,6 +130,7 @@
  * gate that knows the company, which is a different change; this one must not pretend to be it.
  */
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { lockPayrollHistoryReadTx } from './payroll-history-lock';
 import { CORE_MODULE_CODES, MODULE_CATALOG } from '../packs/catalog';
 import { assertModuleEnabled, type EntitledContext } from './entitlements';
 
@@ -176,7 +177,10 @@ export function withModuleTenant(code: string) {
   // returns a rejected promise.
   return async function withGatedTenant<T>(ctx: SessionContext, fn: (tx: Tx) => Promise<T>): Promise<T> {
     assertModuleGate(ctx, code);
-    return withTenant(ctx, fn);
+    return withTenant(ctx, async tx => {
+      if (code === 'payroll') await lockPayrollHistoryReadTx(tx,ctx.tenantId);
+      return fn(tx);
+    });
   };
 }
 

@@ -5,10 +5,10 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { createBatch, setPayrollInput } from '../packs/payroll/service';
-import { getRewardSeniorMembership, previewRewardSeniorMembership, saveRewardSeniorMembership, getRewardConfiguration, listRewardUnits, pendingRewardReviews, rewardSetupChoices, rewardNotificationRecipients, createOffcycleReview, createRewardUnit, getRewardUnit, saveRewardEntry, saveRewardPolicy, setRewardMember, decideRewardUnit, postRewardUnit } from '../packs/rewards/service';
-import { emptyFacts, type RewardRole } from '../packs/rewards/model';
+import { returnedRewardUnits, getRewardSeniorMembership, previewRewardSeniorMembership, saveRewardSeniorMembership, getRewardConfiguration, listRewardUnits, pendingRewardReviews, rewardSetupChoices, rewardNotificationRecipients, createOffcycleReview, createRewardUnit, getRewardUnit, saveRewardEntry, saveRewardPolicy, setRewardMember, decideRewardUnit, postRewardUnit } from '../packs/rewards/service';
+import { emptyFacts, returnedState, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
-import { dispatchNotificationsFromSweep } from '../core/notifications';
+import { dispatchNotificationsFromSweep, renderRewardRouted } from '../core/notifications';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
 const today = todayInKualaLumpur(), year = Number(today.slice(0, 4));
@@ -230,6 +230,14 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     expect(self.rows).toEqual([]); expect(self.ec?.count).toBe(0);
     await expect(saveRewardEntry({ ...actors.bu!, userId, personId: row.source.personId }, unitId, self.unit.revision, row.id, row.recommendation)).rejects.toThrow(/not available/);
   });
+  it('counts the complete authorized bonus cohort and withholds counts for a partial confidential roster', async () => {
+    const v = await view(), row = v.rows[0];
+    expect(v.bonusCounts.standard).toEqual({eligible:1,increases:0,reductions:0,lump:0});
+    await saveRewardEntry(admin, unitId, v.unit.revision, row.id, row.recommendation, {...row.facts,confidentiality:'bg'});
+    const restricted = await getRewardUnit(actors.bu!, unitId);
+    expect(restricted.rows).toEqual([]); expect(restricted.bonusCounts.standard).toBeNull();
+    expect((await getRewardUnit(actors.bg!, unitId)).bonusCounts.standard?.eligible).toBe(1);
+  });
   it('checks approval order, freezes submitted inputs and can reopen an unposted approval', async () => {
     const v = await view();
     await expect(decideRewardUnit(actors.ec!, unitId, v.unit.revision, 'approve', 'Approved')).rejects.toThrow(/current approval stage/);
@@ -312,6 +320,117 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     const other = ids.find(id => id !== accepted)!;
     v = await getRewardUnit(actors.bu!, other);
     expect(await decideRewardUnit(actors.bu!, other, v.unit.revision, 'submit', 'Revised and ready for approval')).toBe('bg');
+  });
+
+  // WP-F (RW-131): Returned is derived from the latest decision, never a stored stage.
+  describe('derived Returned state', () => {
+    const submit = async (who: RewardRole = 'bu', id = unitId) => decideRewardUnit(actors[who]!, id, (await getRewardUnit(actors[who]!, id)).unit.revision, 'submit', 'Reviewed recommendations');
+    const giveEmployment = async (role: RewardRole, name: string) => {
+      const hire = await hireEmployee(admin, { person: { fullName: name, primaryEmail: `${role}.employment@rewards.test` }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: `${year - 2}-01-01` });
+      await owner.db.update(schema.appUser).set({ personId: hire.personId }).where(eq(schema.appUser.id, actors[role]!.userId!));
+      actors[role] = { ...actors[role]!, personId: hire.personId };
+      return hire;
+    };
+    it('shows a BG return to the BU CEO and the BG reviewer with reason, actor and date; resubmission clears it', async () => {
+      const before = Date.now();
+      expect(await submit()).toBe('bg');
+      const rev = (await getRewardUnit(actors.bg!, unitId)).unit.revision;
+      expect(await decideRewardUnit(actors.bg!, unitId, rev, 'return', 'Merit for the sales team needs a rethink')).toBe('draft');
+      for (const who of ['bu', 'bg'] as const) {
+        const v = await getRewardUnit(actors[who]!, unitId);
+        expect(v.unit.status).toBe('draft');
+        expect(v.returned).toMatchObject({ toSeat: 'bu', fromStage: 'bg', reason: 'Merit for the sales team needs a rethink', actorRole: 'bg' });
+        expect(Date.parse(v.returned!.at)).toBeGreaterThanOrEqual(before - 5000);
+        // The actor's name is joined under person RLS; with none readable the role still identifies the seat.
+        expect(v.returned!.actorName ?? v.returned!.actorRole).toBeTruthy();
+      }
+      const history = (await view()).decisions;
+      expect(history.map(d => d.action)).toEqual(['return', 'submit']);
+      expect(history.map(d => d.actorName)).toEqual(['bg reviewer', 'bu reviewer']);
+      expect(history.map(d => d.actorRole)).toEqual(['bg', 'bu']);
+      expect((await listRewardUnits(actors.bu!, [b.companyId])).find(u => u.id === unitId)?.returnedTo).toBe('bu');
+      expect(await submit()).toBe('bg');
+      expect((await getRewardUnit(actors.bu!, unitId)).returned).toBeNull();
+      expect((await listRewardUnits(actors.bu!, [b.companyId])).find(u => u.id === unitId)?.returnedTo).toBeNull();
+      expect(await returnedRewardUnits(actors.bu!)).toEqual([]);
+    });
+    it('treats a return from approved as Returned and the latest of two returns wins', async () => {
+      const rev = await approve();
+      expect(await decideRewardUnit(admin, unitId, rev, 'return', 'Source salary needs refreshing')).toBe('draft');
+      expect((await getRewardUnit(actors.bu!, unitId)).returned).toMatchObject({ fromStage: 'approved', toSeat: 'bu', reason: 'Source salary needs refreshing', actorRole: 'gr' });
+      await submit();
+      await decideRewardUnit(actors.bg!, unitId, (await view()).unit.revision, 'return', 'Second return supersedes the first');
+      const v = await getRewardUnit(actors.bu!, unitId);
+      expect(v.returned).toMatchObject({ fromStage: 'bg', reason: 'Second return supersedes the first' });
+      // Newest first by (created_at DESC, id DESC); the projection reads that ordering, not insertion position.
+      const times = v.decisions.map(d => new Date(d.createdAt).getTime());
+      expect(times).toEqual([...times].sort((x, y) => y - x));
+      expect(v.decisions.filter(d => d.action === 'return').map(d => d.reason)).toEqual(['Second return supersedes the first', 'Source salary needs refreshing']);
+    });
+    it('lists returned units only for the seat that must act, never for PBP or Group Rewards', async () => {
+      await submit();
+      await decideRewardUnit(actors.bg!, unitId, (await view()).unit.revision, 'return', 'Merit for the sales team needs a rethink');
+      const mine = await returnedRewardUnits(actors.bu!);
+      expect(mine).toHaveLength(1);
+      expect(mine[0]).toMatchObject({ id: unitId, toSeat: 'bu', reason: 'Merit for the sales team needs a rethink', kind: 'annual' });
+      expect(Object.keys(mine[0]).sort()).toEqual(['actorName', 'cycle', 'id', 'kind', 'name', 'reason', 'returnedAt', 'toSeat']);
+      expect(await returnedRewardUnits(actors.bu!, [b.companyId])).toHaveLength(1);
+      expect(await returnedRewardUnits(actors.bu!, [])).toEqual([]);
+      for (const who of ['pbp', 'gr', 'bg'] as const) expect(await returnedRewardUnits(actors[who]!)).toEqual([]);
+    });
+    it('routes a returned BG-originated off-cycle request back to the BG seat', async () => {
+      const v0 = await view();
+      await saveRewardEntry(admin, unitId, v0.unit.revision, v0.rows[0].id, v0.rows[0].recommendation, { ...v0.rows[0].facts, confidentiality: 'bg' });
+      const rev = await approve(); const batch = await createBatch(admin, { companyId: b.companyId, payPeriod: today.slice(0, 7) });
+      await postRewardUnit(admin, unitId, rev, batch.batchId);
+      const parent = await getRewardUnit(actors.bg!, unitId);
+      const childId = await createOffcycleReview(actors.bg!, unitId, { kind: 'adhoc', entryIds: [parent.rows[0].id], effectiveFrom: `${year + 1}-02-01`, exceptionReason: '' });
+      let child = await getRewardUnit(actors.bg!, childId);
+      expect(child.unit.offcycle?.bgOrigin).toBe(true);
+      await saveRewardEntry(actors.bg!, childId, child.unit.revision, child.rows[0].id, { ...child.rows[0].recommendation, meritBp: 100, reason: 'Expanded responsibilities' });
+      child = await getRewardUnit(actors.bg!, childId);
+      expect(await decideRewardUnit(actors.bg!, childId, child.unit.revision, 'submit', 'Reviewed off-cycle request')).toBe('gr');
+      await decideRewardUnit(admin, childId, child.unit.revision, 'return', 'Business case needs a comparator');
+      expect((await getRewardUnit(actors.bg!, childId)).returned).toMatchObject({ toSeat: 'bg', fromStage: 'gr', actorRole: 'gr' });
+      expect((await listRewardUnits(actors.bg!, [b.companyId])).find(u => u.id === childId)?.returnedTo).toBe('bg');
+      expect((await returnedRewardUnits(actors.bg!)).map(u => [u.id, u.toSeat])).toEqual([[childId, 'bg']]);
+      expect((await returnedRewardUnits(actors.bu!)).map(u => u.id)).not.toContain(childId);
+    });
+    it('notifies the BU CEO that the review was returned, without amount or reason', async () => {
+      await setModule(b.tenantId, 'notifications', 'active');
+      const buEmployment = await giveEmployment('bu', 'BU Reviewer');
+      await submit();
+      await decideRewardUnit(actors.bg!, unitId, (await view()).unit.revision, 'return', 'Merit for the sales team needs a rethink');
+      const enabled = await entitledCtx(b);
+      await dispatchNotificationsFromSweep({ tenantId: b.tenantId, roles: ['hr_admin'], entitlements: enabled.entitlements }, owner);
+      const notices = await owner.db.select().from(schema.notification).where(and(eq(schema.notification.kind, 'rewards.review'), eq(schema.notification.recipientEmploymentId, buEmployment.employmentId)));
+      expect(notices).toHaveLength(1);
+      expect(notices[0].title).toBe('Rewards review returned to you');
+      expect(notices[0].linkPath).toBe(`/rewards/${unitId}?view=approvals`);
+      expect(`${notices[0].title} ${notices[0].body}`).not.toMatch(/sales team|rethink|5000|5225|RM/);
+      const events = await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId, unitId), eq(schema.domainEvent.eventType, 'reward-unit.routed')));
+      const returnedEvent = events.find(e => (e.payload as { to?: string }).to === 'draft');
+      expect(Object.keys(returnedEvent!.payload as object).sort()).toEqual(['from', 'revision', 'to']);
+    });
+    it('renders return and forward routing copy distinctly', () => {
+      const ev = { aggregateId: unitId, subjectEmploymentId: null };
+      expect(renderRewardRouted({ from: 'bg', to: 'draft', revision: 1 }, ev).title).toBe('Rewards review returned to you');
+      expect(renderRewardRouted({ from: 'approved', to: 'draft', revision: 1 }, ev).title).toBe('Rewards review returned to you');
+      expect(renderRewardRouted({ from: 'draft', to: 'bg', revision: 1 }, ev).title).toBe('Rewards review needs attention');
+      expect(renderRewardRouted({ from: 'bg', to: 'gr', revision: 1 }, ev).title).toBe('Rewards review needs attention');
+      expect(renderRewardRouted(null, ev).title).toBe('Rewards review needs attention');
+      const returned = renderRewardRouted({ from: 'bg', to: 'draft', revision: 1 }, ev);
+      expect(Object.keys(returned).sort()).toEqual(['body', 'linkPath', 'severity', 'title']);
+    });
+    it('derives Returned only from a return that is the latest decision on a draft', () => {
+      const at = new Date();
+      const ret = { action: 'return', fromStage: 'bg', toStage: 'draft', reason: 'Needs a rethink', actorId: unitId, createdAt: at };
+      expect(returnedState('draft', ret, false)).toMatchObject({ toSeat: 'bu', reason: 'Needs a rethink' });
+      expect(returnedState('draft', ret, true)?.toSeat).toBe('bg');
+      expect(returnedState('bg', ret, false)).toBeNull();
+      expect(returnedState('draft', { ...ret, action: 'submit', toStage: 'bg' }, false)).toBeNull();
+      expect(returnedState('draft', null, false)).toBeNull();
+    });
   });
 
 });

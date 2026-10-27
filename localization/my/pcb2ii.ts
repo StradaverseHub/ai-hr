@@ -29,7 +29,7 @@
  */
 import { and, eq, like, sql } from 'drizzle-orm';
 import type { SessionContext } from '../../db/client';
-import { withTenant } from '../../db/client';
+import { withPayrollHistoryTenant as withTenant } from '../../core/payroll-history-lock';
 import {
   company,
   companyStatutoryMy,

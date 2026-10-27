@@ -20,7 +20,7 @@ import { rewardNotificationRecipients } from '../packs/rewards/service';
 import { randomUUID } from 'node:crypto';
 import { notificationEmailCategory, type NotificationEmailCategory } from '../lib/notification-email-model';
 import {assertNotificationSweepConnection,noticeNotificationRecipientsTx,noticeSnapshotIdsTx,type NoticeRecipientReader,type NoticeEventReader,type NotificationSweepConnection} from './notice-projection';
-import { and, asc, desc, eq, gt, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, isNotNull, isNull, lte, ne, or, sql, inArray } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
   appUser,
@@ -221,6 +221,19 @@ type Spec = {
   recipients?: (tx: Tx, ev: EventRef, payload: Record<string, unknown> | null,noticeReader?:NoticeRecipientReader) => Promise<string[]>;
 };
 
+/**
+ * `reward-unit.routed` copy. A move back to draft from a later stage is a RETURN to the BU CEO (or the BG
+ * CEO for a BG-originated off-cycle request — the recipient resolver already picks that seat), so it says
+ * so. Neither branch carries an amount or the return reason: the reason is read in the app under
+ * reward_decision RLS, never frozen into a stored notice or an email.
+ */
+export function renderRewardRouted(p: Record<string, unknown> | null, ev: EventRef): Rendered {
+  const linkPath = `/rewards/${ev.aggregateId}?view=approvals`;
+  if (p?.to === 'draft' && typeof p?.from === 'string' && p.from !== 'draft')
+    return { severity: 'action', title: 'Rewards review returned to you', body: 'Open Reward Desk to see why it was returned and resubmit it.', linkPath };
+  return { severity: 'action', title: 'Rewards review needs attention', body: 'Open Reward Desk to review the assigned request.', linkPath };
+}
+
 // eventType → notification (or SEVERAL — 6522d26a: one event may fan out to different audiences with
 // different bodies, e.g. employment-review.decided → subject "complete" + HR "issue the letter").
 // Recipient defaults to the event's subjectEmploymentId. Keep titles/bodies short; deep-link into the
@@ -249,7 +262,7 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
   },
   'reward-unit.routed': {
     kind: 'rewards.review', category: 'rewards',
-    render: (_p, ev) => ({ severity: 'action', title: 'Rewards review needs attention', body: 'Open Reward Desk to review the assigned request.', linkPath: `/rewards/${ev.aggregateId}?view=approvals` }),
+    render: (p, ev) => renderRewardRouted(p, ev),
     recipients: (tx, ev, payload) => rewardNotificationRecipients(tx, ev.aggregateId, payload?.to),
   },
   'reward-unit.approved': {
@@ -1018,7 +1031,7 @@ export async function projectHomeGreetingInTx(tx:Tx,greetingId:string):Promise<v
 export function unreadNotificationCount(
   ctx: SessionContext,
   employmentId?: string,
-  opts: { action?: boolean } = {},
+  opts: { action?: boolean;letterCompanyIds?:string[] } = {},
 ): Promise<number> {
   return withTenant(ctx, async (tx) => {
     const [r] = await tx
@@ -1027,7 +1040,8 @@ export function unreadNotificationCount(
       .where(
         and(
           isNull(notification.readAt),
-          employmentId ? eq(notification.recipientEmploymentId, employmentId) : undefined,
+          employmentId ? or(eq(notification.recipientEmploymentId, employmentId),eq(notification.recipientUserId,ctx.userId??'00000000-0000-0000-0000-000000000000')) : undefined,
+          opts.letterCompanyIds!==undefined?and(isNotNull(notification.recipientUserId),inArray(notification.companyId,opts.letterCompanyIds)):undefined,
           opts.action === true ? eq(notification.severity, 'action') : undefined,
           opts.action === false ? ne(notification.severity, 'action') : undefined,
         ),
@@ -1053,7 +1067,7 @@ export type NotificationRow = {
 export function listNotifications(
   ctx: SessionContext,
   employmentId?: string,
-  opts: { limit?: number; read?: boolean; action?: boolean } = {},
+  opts: { limit?: number; read?: boolean; action?: boolean;letterCompanyIds?:string[] } = {},
 ): Promise<NotificationRow[]> {
   return withTenant(ctx, (tx) =>
     tx
@@ -1070,9 +1084,10 @@ export function listNotifications(
       .from(notification)
       .where(
         and(
-          employmentId ? eq(notification.recipientEmploymentId, employmentId) : undefined,
+          employmentId ? or(eq(notification.recipientEmploymentId, employmentId),eq(notification.recipientUserId,ctx.userId??'00000000-0000-0000-0000-000000000000')) : undefined,
           opts.read === true ? isNotNull(notification.readAt) : undefined,
           opts.read === false ? isNull(notification.readAt) : undefined,
+          opts.letterCompanyIds!==undefined?and(isNotNull(notification.recipientUserId),inArray(notification.companyId,opts.letterCompanyIds)):undefined,
           opts.action === true ? eq(notification.severity, 'action') : undefined,
           opts.action === false ? ne(notification.severity, 'action') : undefined,
         ),
@@ -1089,11 +1104,11 @@ export async function markNotificationRead(ctx: SessionContext, notificationId: 
   );
 }
 
-export async function markAllNotificationsRead(ctx: SessionContext, employmentId?: string): Promise<void> {
+export async function markAllNotificationsRead(ctx: SessionContext, employmentId?: string,opts:{letterCompanyIds?:string[]}={}): Promise<void> {
   await withTenant(ctx, (tx) =>
     tx
       .update(notification)
       .set({ readAt: sql`now()` })
-      .where(and(isNull(notification.readAt), employmentId ? eq(notification.recipientEmploymentId, employmentId) : undefined)),
+      .where(and(isNull(notification.readAt),opts.letterCompanyIds!==undefined?and(isNotNull(notification.recipientUserId),inArray(notification.companyId,opts.letterCompanyIds)):undefined, employmentId ? or(eq(notification.recipientEmploymentId, employmentId),eq(notification.recipientUserId,ctx.userId??'00000000-0000-0000-0000-000000000000')) : undefined)),
   );
 }

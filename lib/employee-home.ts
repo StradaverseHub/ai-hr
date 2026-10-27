@@ -12,7 +12,7 @@ export const EMPLOYEE_HOME_CARD_DEFAULTS=EMPLOYEE_HOME_CARDS.map((cardKey,index)
 }));
 export const HOME_QUICK_ACTIONS=['leave','claim','payslip','profile','calendar','notices'] as const;
 export type HomeQuickAction=typeof HOME_QUICK_ACTIONS[number];
-export const HOME_TASK_KINDS=['leave','leaveCancellation','attendance','profile','claim','resignation','managerReview','hrReview','feedback','noticeAcknowledgement','replacementLeave','onboarding'] as const;
+export const HOME_TASK_KINDS=['leave','leaveCancellation','attendance','profile','claim','resignation','managerReview','hrReview','feedback','noticeAcknowledgement','replacementLeave','onboarding','performanceReview','assessmentWork','careerPlan','calibration','rewardReview'] as const;
 export type HomeTaskKind=typeof HOME_TASK_KINDS[number];
 export const DEFAULT_HOME_QUICK_ACTIONS:readonly HomeQuickAction[]=['leave','claim','payslip','profile'];
 export const HOME_TEMPLATE_FIELDS={

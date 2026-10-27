@@ -32,7 +32,7 @@ export function readOwnPayrollHomeMetadata(ctx:SessionContext,employmentId:strin
   const rows=await tx.select({id:payslip.id,period:payrollBatch.payPeriod,runType:payrollBatch.runType,
    runSequence:payrollBatch.runSeq,paymentDate:payrollBatch.batchDate,status:payrollBatch.status,releasedAt:payrollBatch.releasedAt,needsRecalcAt:payrollBatch.needsRecalcAt})
    .from(payslip).innerJoin(payrollBatch,and(eq(payrollBatch.id,payslip.batchId),eq(payrollBatch.tenantId,payslip.tenantId)))
-   .where(and(eq(payslip.tenantId,ctx.tenantId),eq(payslip.employmentId,employmentId)))
+   .where(and(isNull(payrollBatch.historyImportAttemptId),eq(payslip.tenantId,ctx.tenantId),eq(payslip.employmentId,employmentId)))
    .orderBy(desc(payrollBatch.payPeriod),desc(payrollBatch.runSeq),asc(payslip.id)).limit(1201);
   if(rows.length>1200)throw Error('Own payroll metadata exceeds its bounded history.');
   const now=new Date(),today=todayInKualaLumpur(now);
@@ -57,7 +57,7 @@ export function readOwnPayrollCalendarPayments(ctx:SessionContext,employmentId:s
   if(!own.some(subject=>subject.employmentId===employmentId))throw new OwnPayrollSubjectUnavailableError();
   const rows=await tx.selectDistinct({date:payrollBatch.batchDate})
    .from(payslip).innerJoin(payrollBatch,and(eq(payrollBatch.id,payslip.batchId),eq(payrollBatch.tenantId,payslip.tenantId)))
-   .where(and(eq(payslip.tenantId,ctx.tenantId),eq(payslip.employmentId,employmentId),
+   .where(and(isNull(payrollBatch.historyImportAttemptId),eq(payslip.tenantId,ctx.tenantId),eq(payslip.employmentId,employmentId),
     ne(payrollBatch.status,'draft'),isNull(payrollBatch.needsRecalcAt),gte(payrollBatch.batchDate,from),lte(payrollBatch.batchDate,to)))
    .orderBy(asc(payrollBatch.batchDate));
   return rows.map(row=>row.date);
