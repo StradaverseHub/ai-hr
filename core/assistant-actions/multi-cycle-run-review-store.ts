@@ -5,6 +5,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {sql,type SQL} from 'drizzle-orm';
 import {z} from 'zod';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
+import {assertAiPrincipalTx} from '../ai-principal';
 import {PrivateReviewNonce,newPrivateReviewNonce,privateReviewCommitment} from './private-review-commitment';
 import {masterKeyAvailable,newDek,newKid,sealUnderDek,unsealUnderDek,unwrapDek,wrapDek} from '../../lib/pii/vault';
 import {OwnLeaveSealedReview} from './own-leave-content';
@@ -58,8 +59,8 @@ async function existing(supplied:SessionContext,id:string,expected:string|undefi
  });});}
 export async function confirmMultiCycleRunReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=MultiCycleRunReviewConfirmation.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await existing(ctx,p.actionId,p.reviewedDigest,true);}catch{return fail();}}
 export async function reopenMultiCycleRunReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=z.uuid().safeParse(input);if(!parsed.success)return fail();try{return await existing(ctx,parsed.data,undefined,false);}catch{return fail();}}
-export async function discardMultiCycleRunReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=MultiCycleRunReviewRetirement.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_multi_cycle_run_review_discard(${p.actionId}::uuid) as receipt`);return{kind:'retired' as const,receipt:MultiCycleRunRetiredReview.parse(row?.receipt)};});}catch{return fail();}}
-export async function listMultiCycleRunReviews(supplied:SessionContext){const ctx=capture(supplied);try{return await withTenant(ctx,async tx=>{const rows=await tx.execute(sql`select action,1 as "contractVersion",action_id as "actionId",state,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",to_char(expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "expiresAt" from app.assistant_multi_cycle_run_reviews_index()`);return MultiCycleRunReviewIndex.parse({kind:'multi_cycle_run_review_index',reviews:Array.from(rows)});});}catch{return fail();}}
+export async function discardMultiCycleRunReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=MultiCycleRunReviewRetirement.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_multi_cycle_run_review_discard(${p.actionId}::uuid) as receipt`);return{kind:'retired' as const,receipt:MultiCycleRunRetiredReview.parse(row?.receipt)};});}catch{return fail();}}
+export async function listMultiCycleRunReviews(supplied:SessionContext){const ctx=capture(supplied);try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);const rows=await tx.execute(sql`select action,1 as "contractVersion",action_id as "actionId",state,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",to_char(expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "expiresAt" from app.assistant_multi_cycle_run_reviews_index()`);return MultiCycleRunReviewIndex.parse({kind:'multi_cycle_run_review_index',reviews:Array.from(rows)});});}catch{return fail();}}
 
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
