@@ -14,10 +14,20 @@ export class IntegrityKeyError extends Error{
   constructor(readonly reason:'not_found'|'key_unavailable'){super('Device key unavailable');this.name='IntegrityKeyError';}
 }
 async function own(tx:Tx,ctx:SessionContext,employmentId:string){
-  if(!ctx.userId||!ctx.personId||!(await myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:true})).some(row=>row.employmentId===employmentId))throw new OwnClockEmploymentUnavailableError();
+  if(!ctx.userId||!ctx.personId)throw new OwnClockEmploymentUnavailableError();
+  const subject=(await myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:true})).find(row=>row.employmentId===employmentId);
+  if(!subject)throw new OwnClockEmploymentUnavailableError();return subject;
 }
 export async function requireOwnIntegrityEmployment(ctx:SessionContext,employmentId:string){
   await withAttendanceTenant(ctx,tx=>own(tx,ctx,uuid.parse(employmentId)));
+}
+/** Company proof is derived by the existing temporal employment owner, never the caller's selector
+ * or a mutable current-company column. A missing proof cannot select a deployment rollout entry. */
+export async function ownIntegrityEnrollmentCompany(ctx:SessionContext,employmentId:string){
+ return withAttendanceTenant(ctx,tx=>ownIntegrityEnrollmentCompanyTx(tx,ctx,employmentId));
+}
+export async function ownIntegrityEnrollmentCompanyTx(tx:Tx,ctx:SessionContext,employmentId:string){
+ const subject=await own(tx,ctx,uuid.parse(employmentId));return subject.companyProof.companyId;
 }
 /** One receipt mapper for enrollment and recovery; never exposes SDK keys or encrypted vendor receipts. */
 export function integrityKeyReceipt(row:typeof mobileIntegrityKey.$inferSelect){

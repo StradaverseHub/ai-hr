@@ -1,8 +1,8 @@
-/** Server-owned Android enrollment transaction. No public enrollment route is enabled. */
+/** Server-owned Android enrollment transaction. Public route assembly is deployment-rollout gated. */
 import {createHash,createPublicKey,KeyObject,randomUUID,timingSafeEqual} from 'node:crypto';
 import {and,eq,isNull,sql} from 'drizzle-orm';
 import {z} from 'zod';
-import type {SessionContext} from '../db/client';
+import type {SessionContext,Tx} from '../db/client';
 import {mobileIntegrityKey,mobileIntegrityChallenge} from '../db/schema';
 import {actorOf,appendEvent} from '../db/events';
 import {AndroidEnrollmentSettings,androidNativeKeyReferenceData} from '../lib/mobile-android-enrollment';
@@ -24,7 +24,7 @@ export class AndroidKeyEnrollmentError extends Error{
 function fail(reason:AndroidKeyEnrollmentError['reason']):never{throw new AndroidKeyEnrollmentError(reason);}
 const receipt=(row:typeof mobileIntegrityKey.$inferSelect)=>IntegrityKeyReceiptV2.parse(integrityKeyReceipt(row));
 /** Verifier override is only an integration-test seam. Settings/proof verification are server-owned. */
-export function createAndroidEnrollmentService(settings:unknown,ports:{verifyProof?:ReturnType<typeof createAndroidKeyProofVerifier>}={}){
+export function createAndroidEnrollmentService(settings:unknown,ports:{verifyProof?:ReturnType<typeof createAndroidKeyProofVerifier>;beforeCommit?:(tx:Tx)=>Promise<void>}={}){
  const parsed=AndroidEnrollmentSettings.safeParse(settings);if(!parsed.success)fail('configuration_unavailable');
  const config=parsed.data,{platform:_platform,...policy}=config.target;
  const challenges=createAndroidEnrollmentChallenges(config),verify=ports.verifyProof??createAndroidKeyProofVerifier(policy);
@@ -78,6 +78,7 @@ export function createAndroidEnrollmentService(settings:unknown,ports:{verifyPro
    const aad=JSON.stringify(['mobile-integrity-key-receipt',1,ctx.tenantId,ctx.userId,id,challengeId]),receiptCiphertext=encryptSecret(provenance,aad);
    const consumed=await consumeOwnIntegrityChallenge(ctx,{...intent,purpose:'device.enrollment',bindingHash:prepared.challenge.bindingHash,challengeId},async tx=>{
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':mobile-integrity:'+ctx.userId},0))`);
+    await ports.beforeCommit?.(tx);
     const active=await tx.select({appInstallationId:mobileIntegrityKey.appInstallationId}).from(mobileIntegrityKey).where(and(eq(mobileIntegrityKey.actorId,ctx.userId!),isNull(mobileIntegrityKey.revokedAt))).limit(5);
     if(active.some(row=>row.appInstallationId===intent.appInstallationId))fail('active_key_exists');if(active.length===5)fail('capacity');
     const [row]=await tx.insert(mobileIntegrityKey).values({id,tenantId:ctx.tenantId,actorId:ctx.userId!,appInstallationId:intent.appInstallationId,installationId:prepared.challenge.installationId,originChallengeId:challengeId,enrolledForEmploymentId:intent.employmentId,

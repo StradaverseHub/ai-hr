@@ -1,5 +1,5 @@
-/** Enrollment and signed-clock HTTP handlers remain unmounted; key recovery has separate routes.
- * A trusted company/deployment configuration owner must be supplied by the eventual route assembly.
+/** Enrollment uses deployment-gated route assembly; signed-clock handlers remain unmounted.
+ * A trusted company/deployment configuration owner is supplied by server route assembly.
  * Never obtain that configuration, expected app identity or a verifier from request data/headers.
  */
 import {z} from 'zod';
@@ -15,9 +15,9 @@ import {AppleEnrollmentSettings} from '../mobile-key-enrollment';
 import * as C from '../mobile-integrity-contract';
 import {mobileRoute,MobileBadRequest,type MobileSessionResolver} from './handler';
 import {integrityEmployment as selected} from './integrity-request';
-import {createIntegrityKeyHttpHandlers} from './integrity-key-routes';
+import {createIntegrityKeyOperations} from './integrity-key-routes';
 import {mobileInput,mobileForm} from './body';
-import {createIntegrityConfigurationReader,IntegrityConfigurationUnavailable} from './integrity-configuration';
+import {createIntegrityConfigurationReader,IntegrityConfigurationUnavailable,type EnrollmentCommitGuard} from './integrity-configuration';
 
 type Refusal=z.infer<typeof C.IntegrityRefused>|z.infer<typeof C.IntegrityUnavailable>;
 const unavailable=(code:z.infer<typeof C.IntegrityUnavailable>['code']):Refusal=>({outcome:'unavailable',code});
@@ -70,13 +70,13 @@ async function form<S extends z.ZodType>(req:Request,schema:S){
  * afresh after own-subject authorization; enrollment keys remain listable/revocable during outages.
  * Responses distinguish preparation/unavailability/refusal from acceptance. No handler falls back.
  */
-export function createIntegrityHttpHandlers(configuration:(ctx:SessionContext,employmentId:string,signal:AbortSignal)=>Promise<unknown|null>,resolve?:MobileSessionResolver,options:{configurationTimeoutMs?:number}={}){
+export function createIntegrityOperations(configuration:(ctx:SessionContext,employmentId:string,signal:AbortSignal)=>Promise<unknown|null>,options:{configurationTimeoutMs?:number;beforeEnrollmentCommit?:EnrollmentCommitGuard}={}){
   const settings=createIntegrityConfigurationReader(AppleEnrollmentSettings,configuration,options.configurationTimeoutMs);
   function route<S extends z.ZodType>(schema:S,fn:(ctx:SessionContext,req:Request)=>Promise<unknown>){
-    return mobileRoute(schema,async(ctx,req)=>{
+    return async(ctx:SessionContext,req:Request)=>{
       try{return await fn(ctx,req) as z.input<S>;}
       catch(error){const known=expected(error);if(known)return known as z.input<S>;throw error;}
-    },resolve);
+    };
   }
   return {
     capabilities:route(C.IntegrityCapabilities,async(ctx,req)=>{
@@ -90,10 +90,13 @@ export function createIntegrityHttpHandlers(configuration:(ctx:SessionContext,em
     }),
     enrollmentComplete:route(C.IntegrityEnrollmentResult,async(ctx,req)=>{
       const id=await selected(ctx,req),{attestation,...input}=parse(C.IntegrityEnrollmentProof,await mobileInput(req,96*1024));
-      const key=await createAppleEnrollmentService(await settings(ctx,id,req.signal)).complete(ctx,{...input,employmentId:id,attestation:bytes(attestation,65536)});
+      const config=await settings(ctx,id,req.signal);
+      const key=await createAppleEnrollmentService(config,{beforeCommit:options.beforeEnrollmentCommit?async tx=>{
+        if(req.signal.aborted)throw new IntegrityConfigurationUnavailable('configuration_unavailable');await options.beforeEnrollmentCommit!(tx,ctx,id,config);
+      }:undefined}).complete(ctx,{...input,employmentId:id,attestation:bytes(attestation,65536)});
       return {outcome:'enrolled',key};
     }),
-    ...createIntegrityKeyHttpHandlers(resolve),
+    ...createIntegrityKeyOperations(),
     clockBegin:route(C.IntegrityClockPrepared,async(ctx,req)=>{
       const id=await selected(ctx,req),{command,...photo}=await form(req,C.IntegrityClockIntent);
       const result=await createAppleClockService(await settings(ctx,id,req.signal)).begin(ctx,{...command,...photo,employmentId:id});
@@ -105,4 +108,17 @@ export function createIntegrityHttpHandlers(configuration:(ctx:SessionContext,em
       return {outcome:'accepted',receipt};
     }),
   };
+}
+export function createIntegrityHttpHandlers(configuration:(ctx:SessionContext,employmentId:string,signal:AbortSignal)=>Promise<unknown|null>,resolve?:MobileSessionResolver,options:{configurationTimeoutMs?:number;beforeEnrollmentCommit?:EnrollmentCommitGuard}={}){
+ const operations=createIntegrityOperations(configuration,options);
+ return {
+  capabilities:mobileRoute(C.IntegrityCapabilities,operations.capabilities,resolve),
+  enrollmentBegin:mobileRoute(C.IntegrityEnrollmentPrepared,operations.enrollmentBegin,resolve),
+  enrollmentComplete:mobileRoute(C.IntegrityEnrollmentResult,operations.enrollmentComplete,resolve),
+  keys:mobileRoute(C.IntegrityKeysResult,async(ctx,req)=>C.IntegrityKeysResult.parse(await operations.keys(ctx,req)),resolve),
+  keyReceipt:mobileRoute(C.IntegrityKeyLookupResult,async(ctx,req)=>C.IntegrityKeyLookupResult.parse(await operations.keyReceipt(ctx,req)),resolve),
+  revoke:mobileRoute(C.IntegrityRevocationResult,async(ctx,req)=>C.IntegrityRevocationResult.parse(await operations.revoke(ctx,req)),resolve),
+  clockBegin:mobileRoute(C.IntegrityClockPrepared,operations.clockBegin,resolve),
+  clockComplete:mobileRoute(C.IntegrityClockResult,operations.clockComplete,resolve),
+ };
 }

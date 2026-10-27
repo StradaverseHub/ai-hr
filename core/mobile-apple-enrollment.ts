@@ -1,4 +1,4 @@
-/** Scoped Apple enrollment orchestration. No enrollment endpoint or attendance trust tier is enabled. */
+/** Scoped Apple enrollment orchestration. Enrollment never assigns an attendance trust tier. */
 import {createHash,KeyObject,randomUUID} from 'node:crypto';
 import {and,eq,isNull,sql} from 'drizzle-orm';
 import {z} from 'zod';
@@ -31,7 +31,7 @@ async function own(tx:Tx,ctx:SessionContext,employmentId:string){
 
 
 /** Settings and verifier are server-owned. The verifier override is an integration-test port only. */
-export function createAppleEnrollmentService(settings:unknown,ports:{verifyProof?:typeof checkAppAttestKeyProof}={}){
+export function createAppleEnrollmentService(settings:unknown,ports:{verifyProof?:typeof checkAppAttestKeyProof;beforeCommit?:(tx:Tx)=>Promise<void>}={}){
   const parsed=AppleEnrollmentSettings.safeParse(settings);
   if(!parsed.success)throw new AppleKeyEnrollmentError('configuration_unavailable');
   const config=parsed.data,verify=ports.verifyProof??checkAppAttestKeyProof;
@@ -93,6 +93,7 @@ export function createAppleEnrollmentService(settings:unknown,ports:{verifyProof
       const receiptCiphertext=encryptSecret(proof.receipt.toString('base64'),aad);
       const consumed=await consumeOwnIntegrityChallenge(ctx,{...binding,challengeId},async tx=>{
         await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':mobile-integrity:'+ctx.userId},0))`);
+        await ports.beforeCommit?.(tx);
         const active=await tx.select({appInstallationId:mobileIntegrityKey.appInstallationId}).from(mobileIntegrityKey).where(and(
           eq(mobileIntegrityKey.actorId,ctx.userId!),isNull(mobileIntegrityKey.revokedAt))).limit(5);
         if(active.some(row=>row.appInstallationId===intent.appInstallationId))throw new AppleKeyEnrollmentError('active_key_exists');

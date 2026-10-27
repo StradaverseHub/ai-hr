@@ -34,6 +34,9 @@ export const IntegrityAndroidEnrollmentResult=result(z.object({outcome:z.literal
 // Response envelopes strip additive fields for older supported apps; signed contexts stay version-fixed.
 export const IntegrityCapabilities=result(z.object({outcome:z.literal('capabilities'),protocol:z.literal(1),platform:z.literal('ios'),
   features:z.array(z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)).max(16),offline:z.literal(false)}));
+/** V2 discovery advertises enrollment only; it never grants attendance trust or offline support. */
+export const IntegrityEnrollmentCapabilitiesV2=result(z.object({outcome:z.literal('capabilities'),protocol:z.literal(2),platform:z.enum(['ios','android']),
+  features:z.array(z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)).max(16),offline:z.literal(false)}));
 export const IntegrityEnrollmentPrepared=result(z.object({outcome:z.literal('prepared'),protocol:z.literal(1),context:KeyEnrollmentContext,
   clientDataHash:hash32,alias:z.string().regex(/^aihr_[a-f0-9]{64}$/),state}));
 export const IntegrityEnrollmentResult=result(z.object({outcome:z.literal('enrolled'),key:IntegrityKeyReceipt}));

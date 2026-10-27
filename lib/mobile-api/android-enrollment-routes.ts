@@ -1,4 +1,4 @@
-/** Unmounted Android enrollment boundary. Activation requires trusted configuration and the custody
+/** Android enrollment boundary. Activation requires trusted configuration and the custody
  * schema; this factory never grants attendance trust or substitutes an Apple/Huawei proof. */
 import {z} from 'zod';
 import type {SessionContext} from '../../db/client';
@@ -9,7 +9,7 @@ import * as C from '../mobile-integrity-contract';
 import {mobileRoute,MobileBadRequest,type MobileSessionResolver} from './handler';
 import {mobileInput} from './body';
 import {integrityEmployment} from './integrity-request';
-import {createIntegrityConfigurationReader,IntegrityConfigurationUnavailable,type IntegrityConfigurationReader} from './integrity-configuration';
+import {createIntegrityConfigurationReader,IntegrityConfigurationUnavailable,type IntegrityConfigurationReader,type EnrollmentCommitGuard} from './integrity-configuration';
 import {AndroidKeyChainError} from './android-key-chain';
 import {AndroidKeyPolicyError} from './android-key-policy';
 type Refusal=z.infer<typeof C.IntegrityRefused>|z.infer<typeof C.IntegrityUnavailable>;
@@ -35,12 +35,12 @@ function expected(error:unknown):Refusal|undefined{
 function parse<S extends z.ZodType>(schema:S,input:unknown):z.output<S>{
  const value=schema.safeParse(input);if(!value.success)throw new MobileBadRequest('Invalid enrollment command');return value.data;
 }
-export function createAndroidEnrollmentHttpHandlers(configuration:IntegrityConfigurationReader,resolve?:MobileSessionResolver,options:{configurationTimeoutMs?:number}={}){
+export function createAndroidEnrollmentOperations(configuration:IntegrityConfigurationReader,options:{configurationTimeoutMs?:number;beforeEnrollmentCommit?:EnrollmentCommitGuard}={}){
  const settings=createIntegrityConfigurationReader(AndroidEnrollmentSettings,configuration,options.configurationTimeoutMs);
  function route<S extends z.ZodType>(schema:S,fn:(ctx:SessionContext,req:Request)=>Promise<unknown>){
-  return mobileRoute(schema,async(ctx,req)=>{
+  return async(ctx:SessionContext,req:Request)=>{
    try{return await fn(ctx,req) as z.input<S>;}catch(error){const known=expected(error);if(known)return known as z.input<S>;throw error;}
-  },resolve);
+  };
  }
  return {
   enrollmentBegin:route(C.IntegrityAndroidEnrollmentPrepared,async(ctx,req)=>{
@@ -50,9 +50,17 @@ export function createAndroidEnrollmentHttpHandlers(configuration:IntegrityConfi
   }),
   enrollmentComplete:route(C.IntegrityAndroidEnrollmentResult,async(ctx,req)=>{
    const employmentId=await integrityEmployment(ctx,req),{publicKeySpki,certificateChain,...input}=parse(C.IntegrityAndroidEnrollmentProof,await mobileInput(req,36*1024));
-   const key=await createAndroidEnrollmentService(await settings(ctx,employmentId,req.signal)).complete(ctx,{...input,employmentId,
+   const config=await settings(ctx,employmentId,req.signal);
+   const key=await createAndroidEnrollmentService(config,{beforeCommit:options.beforeEnrollmentCommit?async tx=>{
+    if(req.signal.aborted)throw new IntegrityConfigurationUnavailable('configuration_unavailable');await options.beforeEnrollmentCommit!(tx,ctx,employmentId,config);
+   }:undefined}).complete(ctx,{...input,employmentId,
     publicKeySpki:Buffer.from(publicKeySpki,'base64'),certificateChain:certificateChain.map(value=>Buffer.from(value,'base64'))},req.signal);
    return {outcome:'enrolled',key};
   }),
  };
+}
+export function createAndroidEnrollmentHttpHandlers(configuration:IntegrityConfigurationReader,resolve?:MobileSessionResolver,options:{configurationTimeoutMs?:number;beforeEnrollmentCommit?:EnrollmentCommitGuard}={}){
+ const operations=createAndroidEnrollmentOperations(configuration,options);
+ return {enrollmentBegin:mobileRoute(C.IntegrityAndroidEnrollmentPrepared,operations.enrollmentBegin,resolve),
+  enrollmentComplete:mobileRoute(C.IntegrityAndroidEnrollmentResult,operations.enrollmentComplete,resolve)};
 }

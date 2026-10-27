@@ -9,3 +9,4 @@ export {ClockConflictError,CorrectedClockConflictError,ClockLocationError,Attend
 export {OutsideGeofenceError,GeolocationRequiredError,GeofenceQualityError} from '../../core/attendance';
 export {DeviceNotRegisteredError} from '../../core/attendance-device';
 export {createAndroidEnrollmentService,AndroidKeyEnrollmentError} from '../../core/mobile-android-enrollment';
+export {readMobileEnrollmentConfiguration,assertMobileEnrollmentCommit} from '../../core/mobile-enrollment-rollout';
