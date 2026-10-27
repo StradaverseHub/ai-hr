@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {IntegrityCapabilities,IntegrityClockResult,IntegrityEnrollmentIntent,IntegrityEnrollmentProof,IntegrityKeyReceipt,IntegrityKeysResult} from '../lib/mobile-integrity-contract';
+import {IntegrityCapabilities,IntegrityClockResult,IntegrityEnrollmentIntent,IntegrityEnrollmentProof,IntegrityKeyLookupResult,IntegrityKeyLookupIntent,IntegrityKeyReceipt,IntegrityKeysResult} from '../lib/mobile-integrity-contract';
 const id='11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 describe('integrity v1 compatibility and closed security outcomes',()=>{
   it('tolerates additive response fields and bounded unknown discovery features without retaining extra data',()=>{
@@ -13,6 +13,12 @@ describe('integrity v1 compatibility and closed security outcomes',()=>{
     expect(IntegrityKeysResult.parse({outcome:'keys',items:[{...key,receiptCiphertext:'private',vendorKeyId:'private'}]})).toEqual({outcome:'keys',items:[key]});
     const receipt={id,direction:'in',recordedAt:'2026-10-27T00:00:00.000Z',date:'2026-10-27',photoAvailable:false};
     expect(IntegrityClockResult.parse({outcome:'accepted',receipt:{...receipt,rawProof:'private'},support:'extra'})).toEqual({outcome:'accepted',receipt});
+  });
+  it('distinguishes an absent exact key receipt from malformed or client-authorized lookup state',()=>{
+    expect(IntegrityKeyLookupResult.parse({outcome:'key_receipt',key:null})).toEqual({outcome:'key_receipt',key:null});
+    expect(IntegrityKeyLookupResult.safeParse({outcome:'key_receipt'}).success).toBe(false);
+    expect(IntegrityKeyLookupIntent.safeParse({originChallengeId:id,tenantId:id}).success).toBe(false);
+    expect(IntegrityKeyLookupIntent.safeParse({originChallengeId:id,verified:true}).success).toBe(false);
   });
   it('rejects trailing newlines in key IDs, proof bytes and receipt bindings',()=>{
     const proof={requestId:id,appInstallationId:id,challengeId:id,vendorKeyId:Buffer.alloc(32,7).toString('base64'),attestation:'YQ=='};

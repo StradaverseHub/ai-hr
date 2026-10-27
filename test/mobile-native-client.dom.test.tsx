@@ -56,6 +56,12 @@ describe('native API transport', () => {
     const [url,request]=f.response.mock.calls[1];expect(url).toBe('https://hr.example.com/api/mobile/v1/integrity/revoke?employmentId='+id);
     expect(request?.body).toBe(JSON.stringify({keyId:id}));expect(request?.credentials).toBe('omit');expect(request?.redirect).toBe('error');
     expect(request?.headers).toMatchObject({authorization:'Bearer access-token','content-type':'application/json'});
+    f.response.mockResolvedValueOnce(Response.json({outcome:'key_receipt',key:null}));
+    expect(await f.api.apiPost('integrity/key-receipt',{originChallengeId:id},{employmentId:id})).toEqual({outcome:'key_receipt',key:null});
+    const [lookup,command]=f.response.mock.calls[2];expect(lookup).toBe('https://hr.example.com/api/mobile/v1/integrity/key-receipt?employmentId='+id);
+    expect(command?.body).toBe(JSON.stringify({originChallengeId:id}));
+    f.response.mockResolvedValueOnce(Response.json({outcome:'key_receipt',key:'unknown'}));
+    await expect(f.api.apiPost('integrity/key-receipt',{originChallengeId:id},{employmentId:id})).rejects.toBeInstanceOf(UnavailableError);
     f.response.mockResolvedValueOnce(Response.json({outcome:'keys',items:Array(21).fill(key)}));
     await expect(f.api.apiGet('integrity/keys',{employmentId:id})).rejects.toBeInstanceOf(UnavailableError);
   });
