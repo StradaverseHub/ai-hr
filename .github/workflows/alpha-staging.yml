@@ -10,6 +10,12 @@ concurrency:
   cancel-in-progress: false
 env:
   AIHR_CI_CONTROL_HEAD: ${{ github.workflow_sha }}
+  AIHR_CI_HEAD: 9bf924ff3389fd5f5a41c03d062a40c429216585
+  DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+  MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+  TEST_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+  TEST_MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+  NODE_OPTIONS: --max-old-space-size=6144
   TZ: Asia/Kuala_Lumpur
   LANG: en_US.UTF-8
 jobs:
