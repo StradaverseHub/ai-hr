@@ -115,9 +115,12 @@ export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage
  z.uuid().parse(requestId);const words=z.string().trim().min(1).max(2500).parse(text);z.enum(['guide','draft','starter']).parse(intent);
  const view=await authorized(ctx,reviewId,stage);
  const previous=await withPerformanceTenant(ctx,async tx=>{
+  // A completed earlier authorization cannot admit a historical reply after stage policy changes.
+  // Hold the actual native source interval across the fresh gate, messages and optional quota read.
+  await assertPerformanceProviderSourceTx(tx,ctx);const current=await authorizedTx(tx,ctx,reviewId,stage);
   const [row]=await tx.select().from(assessmentConversation).where(and(eq(assessmentConversation.reviewId,reviewId),eq(assessmentConversation.actorUserId,ctx.userId!),eq(assessmentConversation.stage,storedStage(stage)),eq(assessmentConversation.contextId,reviewId)));
   if(!row)return null;const messages=reviewConversationMessages.parse(row.messages),index=messages.findIndex(m=>m.id===requestId);
-  return index<0?null:{revision:row.revision,messages,draftUpdated:['update','action'].includes(messages[index+1]?.kind),...(stage==='setting'&&view.self?{settingQuota:await assessmentAiQuotaTx(tx,ctx,`kpi_set:${view.cycle.id}`)}:{})};
+  return index<0?null:{revision:row.revision,messages,draftUpdated:['update','action'].includes(messages[index+1]?.kind),...(stage==='setting'&&current.self?{settingQuota:await assessmentAiQuotaTx(tx,ctx,`kpi_set:${current.cycle.id}`)}:{})};
  });
  if(previous)return previous;
  let spendIntent:Promise<PerformanceMessageSpendTask>|undefined;

@@ -4,10 +4,11 @@
 import {randomUUID} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
-import {withTenant,type SessionContext} from '../db/client';
+import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as schema from '../db/schema';
 import * as ai from '../lib/ai';
 import * as governance from '../core/ai-governance';
+import * as moduleGate from '../core/module-gate';
 import {createArticle} from '../core/knowledge-base';
 import {resolveActiveAiConfig} from '../core/ai-config';
 import {bindPerformanceMessageSpend} from '../core/ai-spend-task';
@@ -116,5 +117,37 @@ describe('native Performance Assistant/Guide spend operation ownership',()=>{
  it('actual assigned feedback message owns its context and opaque task; another employee cannot create or spend it',async()=>{
   await perf.assignOnehrPanel(mgr,reviewId,(await f.view(mgr)).revision,peers.map(p=>({employmentId:p.employmentId,relationship:'peer'})));const assignment=(await perf.onehrAssignments(peers[0].ctx)).feedback.find(r=>r.subject==='Assessment subject')!;expect(assignment).toBeDefined();const card=await perf.getOnehrFeedback(peers[0].ctx,assignment.id),nonce=randomUUID();vi.mocked(openaiAdapter.generate).mockImplementation(async(_cfg,args)=>{args.onUsage?.({inputTokens:0,outputTokens:0,cachedInputTokens:0});return '{"commands":[]}';});
   const text='Mark '+card.statements[0].text+' yes',done=await perf.sendFeedbackMessage(peers[0].ctx,reviewId,assignment.id,null,nonce,text);expect(openaiAdapter.generate).toHaveBeenCalledOnce();expect(await tasks()).toMatchObject([{source_kind:'performance_feedback_message',source_id:assignment.id,operation:peers[0].ctx.userId+':feedback:'+nonce}]);expect(await perf.sendFeedbackMessage(peers[0].ctx,reviewId,assignment.id,null,nonce,text)).toEqual(done);expect(openaiAdapter.generate).toHaveBeenCalledOnce();await expect(perf.sendFeedbackMessage(peers[1].ctx,reviewId,assignment.id,null,randomUUID(),text)).rejects.toThrow();expect(openaiAdapter.generate).toHaveBeenCalledOnce();expect(await tasks()).toHaveLength(1);
+ });
+});
+
+
+describe('native historical review retry stage ownership',()=>{
+ const tasks=()=>owner.db.execute(sql`select id,source_kind,source_id,operation from app.ai_spend_task where tenant_id=${b.tenantId}::uuid order by created_at,id`);
+ const reserves=()=>owner.db.execute(sql`select root_id from app.ai_spend_reservation where tenant_id=${b.tenantId}::uuid order by created_at,run_id`);
+ it('refuses an existing reply after actual stage disable between first authorization and its message-read transaction; unchanged retry spends nothing',async()=>{
+  const nonce=randomUUID(),text='How do I build my scorecard?';
+  const completed=await perf.sendReviewMessage(self,reviewId,'setting',null,nonce,text);
+  expect(completed.messages.some(message=>message.id===nonce)).toBe(true);
+  const originalRuns=await runs(),originalTasks=await tasks(),originalReservations=await reserves(),providerCalls=vi.mocked(openaiAdapter.generate).mock.calls.length;
+  const conversationsBefore=await owner.db.select().from(schema.assessmentConversation).where(eq(schema.assessmentConversation.reviewId,reviewId));
+  expect(await perf.sendReviewMessage(self,reviewId,'setting',null,nonce,text)).toEqual(completed);
+  expect(await runs()).toEqual(originalRuns);expect(await tasks()).toEqual(originalTasks);expect(await reserves()).toEqual(originalReservations);expect(openaiAdapter.generate).toHaveBeenCalledTimes(providerCalls);
+
+  // Only the transaction boundary is intercepted; both reads and the intervening operational
+  // policy writer use the genuine app role, native authority, source triggers and actual database.
+  const native=moduleGate.withPerformanceTenant;let userTransactions=0,changed=false;
+  vi.spyOn(moduleGate,'withPerformanceTenant').mockImplementation(async<T>(ctx:SessionContext,run:(tx:Tx)=>Promise<T>):Promise<T>=>{
+   const result=await native(ctx,run);
+   if(ctx.userId===self.userId&&++userTransactions===1){
+    const before=(await perf.getOnehrCycle(a,cycleId))!;expect(before.policy.modules.pm).toBe(true);
+    await perf.updateAssessmentModules(a,cycleId,before.revision,{...before.policy.modules,pm:false});
+    const after=(await perf.getOnehrCycle(a,cycleId))!;expect(after.policy.modules.pm).toBe(false);expect(after.revision).toBe(before.revision+1);changed=true;
+   }
+   return result;
+  });
+  await expect(perf.sendReviewMessage(self,reviewId,'setting',null,nonce,text)).rejects.toThrow('This review module is disabled.');
+  expect(changed).toBe(true);expect(userTransactions).toBe(1); // failed second read never completes
+  expect(await owner.db.select().from(schema.assessmentConversation).where(eq(schema.assessmentConversation.reviewId,reviewId))).toEqual(conversationsBefore);
+  expect(await runs()).toEqual(originalRuns);expect(await tasks()).toEqual(originalTasks);expect(await reserves()).toEqual(originalReservations);expect(openaiAdapter.generate).toHaveBeenCalledTimes(providerCalls);
  });
 });
