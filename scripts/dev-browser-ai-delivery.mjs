@@ -7,10 +7,12 @@ import os from 'node:os';
 import path from 'node:path';
 import net from 'node:net';
 import {fileURLToPath} from 'node:url';
+import {createRequire} from 'node:module';
 import {spawn,execFileSync} from 'node:child_process';
-import {createHash,randomUUID} from 'node:crypto';
+import {createHash,randomUUID,randomBytes} from 'node:crypto';
 import {AI_DELIVERY_BROWSER_TARGET as target,assertAiDeliveryBrowserAdmission} from './ai-delivery-browser-fixture.ts';
 const mainwt='/Users/zenlam/Projects/ai-hr/.claude/worktrees/mainwt',filename=fileURLToPath(import.meta.url),root=path.resolve(path.dirname(filename),'..');
+const tsxLoader=createRequire(path.join(root,'package.json')).resolve('tsx');
 const worker=process.argv.slice(2);if(worker.length>1||worker.length===1&&worker[0]!=='--held-lock-worker')throw Error('Use the closed browser coordinator invocation.');
 if(process.env.NODE_ENV==='production')throw Error('Development only.');
 const out=path.join(root,target.scratchpad),stopFile=path.join(out,'browser.stop'),state=path.join(os.homedir(),'.aihr-gate-state');
@@ -21,11 +23,12 @@ for(const url of [appUrl,ownerUrl])if(!['postgres:','postgresql:'].includes(url.
 if(decodeURIComponent(appUrl.username)!=='ai_hr_app'||appUrl.username===ownerUrl.username)throw Error('Separate restricted application and migration credentials required.');
 if(!fs.existsSync(path.join(root,'node_modules'))||fs.lstatSync(path.join(root,'node_modules')).isSymbolicLink())throw Error('Provision real owned worktree dependencies separately; no installs or links are performed here.');
 const env=Object.fromEntries(['PATH','HOME','TMPDIR','LANG','LC_ALL','USER','SHELL'].flatMap(key=>process.env[key]===undefined?[]:[[key,process.env[key]]]));
-Object.assign(env,{NODE_ENV:'development',AUTH_PROVIDER:'workos',ALLOW_DEMO_SESSION:'true',DATABASE_URL:appUrl.toString(),MIGRATION_DATABASE_URL:ownerUrl.toString(),TEST_DATABASE_URL:appUrl.toString(),TEST_MIGRATION_DATABASE_URL:ownerUrl.toString(),TEST_DB_NAMESPACE:target.namespace,PORT:String(target.port),NEXT_PUBLIC_APP_URL:`http://127.0.0.1:${target.port}`,DEV_USER_ID:'',DEV_TENANT_ID:'',NOTIFICATIONS_ENABLED:'false',IDENTITY_EMAIL_SOCKET:path.join(out,'no-mail.sock'),NEXT_TELEMETRY_DISABLED:'1',AI_CONFIG_SECRET:process.env.AI_DELIVERY_BROWSER_FIXTURE_SECRET??randomUUID()+randomUUID(),ANTHROPIC_API_KEY:'',OPENAI_API_KEY:'',GOOGLE_API_KEY:'',GEMINI_API_KEY:'',OPENROUTER_API_KEY:'',AI_DRAFT_MODEL:'',WORKOS_API_KEY:'',WORKOS_CLIENT_ID:'',WORKOS_COOKIE_PASSWORD:'',AIHR_TEST_SLOTS:'2',AIHR_LOCK_DIR:path.join(state,'locks')});
+const fixtureSecret=process.env.AI_DELIVERY_BROWSER_FIXTURE_SECRET??randomBytes(32).toString('hex');if(!/^[a-f0-9]{64}$/.test(fixtureSecret))throw Error('Use a dedicated 32-byte hex fictional-fixture key.');
+Object.assign(env,{NODE_ENV:'development',AUTH_PROVIDER:'workos',ALLOW_DEMO_SESSION:'true',DATABASE_URL:appUrl.toString(),MIGRATION_DATABASE_URL:ownerUrl.toString(),TEST_DATABASE_URL:appUrl.toString(),TEST_MIGRATION_DATABASE_URL:ownerUrl.toString(),TEST_DB_NAMESPACE:target.namespace,PORT:String(target.port),NEXT_PUBLIC_APP_URL:`http://127.0.0.1:${target.port}`,DEV_USER_ID:'',DEV_TENANT_ID:'',NOTIFICATIONS_ENABLED:'false',IDENTITY_EMAIL_SOCKET:path.join(out,'no-mail.sock'),NEXT_TELEMETRY_DISABLED:'1',AI_DELIVERY_BROWSER_FIXTURE_SECRET:fixtureSecret,AI_CONFIG_SECRET:fixtureSecret,ANTHROPIC_API_KEY:'',OPENAI_API_KEY:'',GOOGLE_API_KEY:'',GEMINI_API_KEY:'',OPENROUTER_API_KEY:'',AI_DRAFT_MODEL:'',WORKOS_API_KEY:'',WORKOS_CLIENT_ID:'',WORKOS_COOKIE_PASSWORD:'',AIHR_TEST_SLOTS:'2',AIHR_LOCK_DIR:path.join(state,'locks')});
 fs.mkdirSync(out,{recursive:true,mode:0o700});if(fs.realpathSync(out)!==out||fs.lstatSync(out).isSymbolicLink())throw Error('Owned canonical private scratchpad required.');
 if(!worker.length){
  // One coordinator owns all resources before spawning its entire service/fixture descendant tree.
- const child=spawn('python3',[path.join(root,'scripts/local-resource-lock.py'),'--test-slots','2','--database',target.leaseName,'--',process.execPath,'--import','tsx',filename,'--held-lock-worker'],{cwd:mainwt,env,stdio:'inherit',detached:true});
+ const child=spawn('python3',[path.join(root,'scripts/local-resource-lock.py'),'--test-slots','2','--database',target.leaseName,'--',process.execPath,'--import',tsxLoader,filename,'--held-lock-worker'],{cwd:mainwt,env,stdio:'inherit',detached:true});
  const stop=()=>{fs.writeFileSync(stopFile,'Explicit coordinator stop requested.\n',{mode:0o600});if(child.pid)try{process.kill(child.pid,'SIGTERM');}catch(error){if(error.code!=='ESRCH')throw error;}};process.on('SIGINT',stop);process.on('SIGTERM',stop);
  process.exitCode=await new Promise((resolve,reject)=>{child.once('error',reject);child.once('exit',(code,signal)=>resolve(code??(signal?1:0)));});
 }else{
@@ -75,13 +78,14 @@ if(!worker.length){
   if(!configs[0]?.name)throw Error('Native provider configuration schema missing.');
   if(configs[0]?.name){const active=await targetDb`select count(*)::int as n from public.ai_provider_config`;if(active[0]?.n!==0)throw Error('Provider configuration exists in new target; refuse.');}
   await targetDb.end();targetDb=undefined;
-  await run(process.execPath,['--import','tsx',path.join(root,'scripts/ai-delivery-browser-fixture.ts')],'fixture',180000);
+  await run(process.execPath,['--import',tsxLoader,path.join(root,'scripts/ai-delivery-browser-fixture.ts')],'fixture',180000);
   const fixtureFile=path.join(out,'fixture.json'),stat=fs.lstatSync(fixtureFile);if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1||(stat.mode&0o077)||stat.size>1048576)throw Error('Private fixture identity is unavailable.');
   const fixture=JSON.parse(fs.readFileSync(fixtureFile,'utf8'));
   if(fixture.state!=='prepared_not_experienced'||fixture.candidate!==candidate||fixture.target.database!==target.database||!fixture.actors?.hr?.userId||!fixture.tenantId)throw Error('Fixture/source target differs.');
   env.DEV_TENANT_ID=fixture.tenantId;env.DEV_USER_ID=''; // Header cookie must be selected; commands cannot assume an HR fallback.
   await portFree();frozen();serverFd=fs.openSync(path.join(attempt,'next-dev.log'),'wx',0o600);
-  server=spawn(process.execPath,[path.join(root,'node_modules/next/dist/bin/next'),'dev',root,'--hostname','127.0.0.1','--port',String(target.port)],{cwd:mainwt,env,stdio:['ignore',serverFd,serverFd],detached:false});
+  const appEnv={...env};for(const key of ['MIGRATION_DATABASE_URL','TEST_MIGRATION_DATABASE_URL','TEST_DATABASE_URL','AI_DELIVERY_BROWSER_FIXTURE_SECRET'])delete appEnv[key];
+  server=spawn(process.execPath,[path.join(root,'node_modules/next/dist/bin/next'),'dev',root,'--hostname','127.0.0.1','--port',String(target.port)],{cwd:mainwt,env:appEnv,stdio:['ignore',serverFd,serverFd],detached:false});
   server.once('error',()=>{stopping=true;});
   ownedServerPid=server.pid;if(!Number.isSafeInteger(ownedServerPid))throw Error('Owned server did not start.');
   const current={candidate,root,target,serverPid:ownedServerPid,attempt:path.basename(attempt),fixtureSha256:createHash('sha256').update(fs.readFileSync(fixtureFile)).digest('hex'),applicationAcceptance:'UNVERIFIED',healthReady:false};
