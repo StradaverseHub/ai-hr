@@ -1,5 +1,6 @@
 /** Authored two-connection DB acceptance; UNRUN until the coordinated runtime window. */
 import { randomUUID } from 'node:crypto';
+import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant, type Tx } from '../db/client';
 import { lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx, lockLeaveDependencyReadConfigurationTx,lockLeaveReadOnlySourceConfigurationTx,lockLeaveReadOnlySourceDependenciesTx, LeaveDependencyUnavailable } from '../core/leave-dependency-lock';

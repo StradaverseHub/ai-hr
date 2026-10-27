@@ -15,6 +15,8 @@ afterEach(()=>{cleanup();vi.clearAllMocks();});
 const config:AiConfigView={storable:true,envFallback:null,usingEnvFallback:false,providers:[{
  provider:'openrouter',label:'OpenRouter',models:[],defaultModel:'',model:'',configured:false,keyLast4:null,
  isActive:false,envKeyPresent:false,providerOptions:null,candidateSaved:false,candidateId:null,candidateVersion:null,activeModel:null}]};
+type EvaluationSuccess=Extract<Awaited<ReturnType<typeof evaluateProviderCandidateAction>>,{ok:true}>;
+const summaryFixture:EvaluationSuccess['summary']={calls:3,elapsedMs:1,usageReportedCalls:3,inputTokens:0,outputTokens:0,cachedInputTokens:0,accountChargeCredits:null};
 const t=messages.admin.ai;
 function show(value=config){return render(<NextIntlClientProvider locale="en" messages={messages}><AiConfigForm config={value}/></NextIntlClientProvider>);}
 describe('OpenRouter admin settings form',()=>{
@@ -61,7 +63,7 @@ describe('explicit synthetic evaluation interaction',()=>{
   expect(run.disabled).toBe(true);expect(activate.disabled).toBe(true);
   fireEvent.click(screen.getByLabelText(t.evaluationAccountReview));expect(run.disabled).toBe(true);
   fireEvent.click(screen.getByLabelText(t.evaluationConsent));expect(run.disabled).toBe(false);
-  vi.mocked(evaluateProviderCandidateAction).mockResolvedValueOnce({ok:true,receipt:'opaque-fixture-receipt',candidateId:saved.providers[0].candidateId!,candidateVersion:saved.providers[0].candidateVersion!,expiresAt:new Date(Date.now()+60000).toISOString()});
+  vi.mocked(evaluateProviderCandidateAction).mockResolvedValueOnce({ok:true,summary:summaryFixture,receipt:'opaque-fixture-receipt',candidateId:saved.providers[0].candidateId!,candidateVersion:saved.providers[0].candidateVersion!,expiresAt:new Date(Date.now()+60000).toISOString()});
   fireEvent.click(run);await waitFor(()=>expect(activate.disabled).toBe(false));
   expect(evaluateProviderCandidateAction).toHaveBeenCalledWith({accountReview:true,consent:true,candidateId:saved.providers[0].candidateId,candidateVersion:saved.providers[0].candidateVersion});
   expect(setActiveProviderAction).not.toHaveBeenCalled();expect(saveAiProviderConfigAction).not.toHaveBeenCalled();
@@ -69,14 +71,20 @@ describe('explicit synthetic evaluation interaction',()=>{
   fireEvent.change(screen.getByLabelText(t.approvedProviders),{target:{value:'approved-b'}});
   expect(activate.disabled).toBe(true);
  });
+ it.each([0,null])('shows reported evaluation credit %s without treating absent cost as zero',async credit=>{
+  show(saved);vi.mocked(evaluateProviderCandidateAction).mockResolvedValueOnce({ok:true,summary:{...summaryFixture,accountChargeCredits:credit},receipt:'display-only-receipt',candidateId:saved.providers[0].candidateId!,candidateVersion:saved.providers[0].candidateVersion!,expiresAt:new Date(Date.now()+60000).toISOString()});
+  fireEvent.click(screen.getByLabelText(t.evaluationAccountReview));fireEvent.click(screen.getByLabelText(t.evaluationConsent));fireEvent.click(screen.getByRole('button',{name:t.evaluationRun}));
+  await waitFor(()=>expect(screen.getByText(t.evaluationCredits.replace('{value}',credit===null?t.evaluationUnknown:'0'))).toBeTruthy());
+  expect(screen.getByText(t.evaluationAccountingHelp)).toBeTruthy();expect(evaluateProviderCandidateAction).toHaveBeenCalledTimes(1);expect(setActiveProviderAction).not.toHaveBeenCalled();
+ });
  it('ignores a stale in-flight result after any candidate edit',async()=>{
-  const view=show(saved);let finish!:(value:{ok:true;receipt:string;expiresAt:string;candidateId:string;candidateVersion:string})=>void;
+  const view=show(saved);let finish!:(value:Awaited<ReturnType<typeof evaluateProviderCandidateAction>>)=>void;
   vi.mocked(evaluateProviderCandidateAction).mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
   fireEvent.click(screen.getByLabelText(t.evaluationAccountReview));fireEvent.click(screen.getByLabelText(t.evaluationConsent));
   fireEvent.click(screen.getByRole('button',{name:t.evaluationRun}));
   await waitFor(()=>expect(evaluateProviderCandidateAction).toHaveBeenCalledTimes(1));
   fireEvent.change(screen.getByLabelText(t.apiKey),{target:{value:'changed-fixture-key'}});
-  await act(async()=>finish({ok:true,receipt:'stale-opaque-receipt',candidateId:saved.providers[0].candidateId!,candidateVersion:saved.providers[0].candidateVersion!,expiresAt:new Date(Date.now()+60000).toISOString()}));
+  await act(async()=>finish({ok:true,summary:summaryFixture,receipt:'stale-opaque-receipt',candidateId:saved.providers[0].candidateId!,candidateVersion:saved.providers[0].candidateVersion!,expiresAt:new Date(Date.now()+60000).toISOString()}));
   expect((screen.getByRole('button',{name:t.evaluationActivate}) as HTMLButtonElement).disabled).toBe(true);
   expect(view.container.querySelector('input[name="evaluationReceipt"]')?.getAttribute('value')).toBe('');
  });
@@ -85,7 +93,7 @@ describe('explicit synthetic evaluation interaction',()=>{
 describe('candidate result binding',()=>{
  it('does not offer activation when a returned result names a different candidate version',async()=>{
   show(saved);
-  vi.mocked(evaluateProviderCandidateAction).mockResolvedValueOnce({ok:true,receipt:'wrong-candidate-receipt',candidateId:saved.providers[0].candidateId!,candidateVersion:'33333333-3333-4333-8333-333333333333',expiresAt:new Date(Date.now()+60000).toISOString()});
+  vi.mocked(evaluateProviderCandidateAction).mockResolvedValueOnce({ok:true,summary:summaryFixture,receipt:'wrong-candidate-receipt',candidateId:saved.providers[0].candidateId!,candidateVersion:'33333333-3333-4333-8333-333333333333',expiresAt:new Date(Date.now()+60000).toISOString()});
   fireEvent.click(screen.getByLabelText(t.evaluationAccountReview));fireEvent.click(screen.getByLabelText(t.evaluationConsent));
   fireEvent.click(screen.getByRole('button',{name:t.evaluationRun}));
   await waitFor(()=>expect(screen.getByRole('status').textContent).toBe(t.evaluationFailed));
@@ -102,4 +110,4 @@ describe('bounded provider card async outcomes',()=>{
  it('admits one evaluation flight and ignores its late reply after the card lifetime ends',async()=>{const view=show(saved);let finish!:(value:{ok:false})=>void;vi.mocked(evaluateProviderCandidateAction).mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));fireEvent.click(screen.getByLabelText(t.evaluationAccountReview));fireEvent.click(screen.getByLabelText(t.evaluationConsent));const run=screen.getByRole('button',{name:t.evaluationRun});fireEvent.click(run);fireEvent.click(run);await waitFor(()=>expect(evaluateProviderCandidateAction).toHaveBeenCalledTimes(1));view.unmount();await act(async()=>finish({ok:false}));expect(setActiveProviderAction).not.toHaveBeenCalled();expect(toast.error).not.toHaveBeenCalled();});
 });
 
-it('expires a current activation receipt without further user edits, evaluation or automatic retry',async()=>{vi.useFakeTimers();try{show(saved);vi.mocked(evaluateProviderCandidateAction).mockResolvedValueOnce({ok:true,receipt:'opaque-expiring-receipt',candidateId:saved.providers[0].candidateId!,candidateVersion:saved.providers[0].candidateVersion!,expiresAt:new Date(Date.now()+1000).toISOString()});await act(async()=>{fireEvent.click(screen.getByLabelText(t.evaluationAccountReview));fireEvent.click(screen.getByLabelText(t.evaluationConsent));});await act(async()=>{fireEvent.click(screen.getByRole('button',{name:t.evaluationRun}));await Promise.resolve();});expect((screen.getByRole('button',{name:t.evaluationActivate}) as HTMLButtonElement).disabled).toBe(false);await act(async()=>{await vi.advanceTimersByTimeAsync(1001);});expect((screen.getByRole('button',{name:t.evaluationActivate}) as HTMLButtonElement).disabled).toBe(true);expect(screen.getByRole('status').textContent).toBe(t.evaluationExpired);expect(evaluateProviderCandidateAction).toHaveBeenCalledTimes(1);expect(setActiveProviderAction).not.toHaveBeenCalled();}finally{vi.useRealTimers();}});
+it('expires a current activation receipt without further user edits, evaluation or automatic retry',async()=>{vi.useFakeTimers();try{show(saved);vi.mocked(evaluateProviderCandidateAction).mockResolvedValueOnce({ok:true,summary:summaryFixture,receipt:'opaque-expiring-receipt',candidateId:saved.providers[0].candidateId!,candidateVersion:saved.providers[0].candidateVersion!,expiresAt:new Date(Date.now()+1000).toISOString()});await act(async()=>{fireEvent.click(screen.getByLabelText(t.evaluationAccountReview));fireEvent.click(screen.getByLabelText(t.evaluationConsent));});await act(async()=>{fireEvent.click(screen.getByRole('button',{name:t.evaluationRun}));await Promise.resolve();});expect((screen.getByRole('button',{name:t.evaluationActivate}) as HTMLButtonElement).disabled).toBe(false);await act(async()=>{await vi.advanceTimersByTimeAsync(1001);});expect((screen.getByRole('button',{name:t.evaluationActivate}) as HTMLButtonElement).disabled).toBe(true);expect(screen.getByRole('status').textContent).toBe(t.evaluationExpired);expect(evaluateProviderCandidateAction).toHaveBeenCalledTimes(1);expect(setActiveProviderAction).not.toHaveBeenCalled();}finally{vi.useRealTimers();}});
