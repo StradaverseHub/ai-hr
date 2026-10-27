@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Bounded staging-only installer. Runs fixed SQL via OS psql; never executes app code."""
-import datetime, hashlib, json, os, pathlib, pwd, re, stat, subprocess, sys
+import datetime, hashlib, json, os, pathlib, pwd, re, stat, subprocess, sys, tempfile
+from urllib.parse import urlsplit, unquote, parse_qsl
 SOURCE = 'fffabc90922c3d43b2570dc29a33ce8b70b69aca'
 BUILD = 'Ym4S0kmHHYqC3vpeurUeW'
 NAME = 'aihr-account-email-retention'
 USER = 'aihr-maintenance'
-PRIVATE = pathlib.Path('/etc/aihr/account-email-retention.env')
+PRIVATE = pathlib.Path('/etc/aihr-account-email-retention/pg_service.conf')
+PSQL = '/usr/lib/postgresql/16/bin/psql'
 UNITS = pathlib.Path('/etc/systemd/system')
 SERVICE = '''[Unit]
 Description=AIHR account email delivery retention (fixed SQL)
@@ -13,8 +15,10 @@ After=network.target postgresql.service
 [Service]
 Type=oneshot
 User=aihr-maintenance
-EnvironmentFile=/etc/aihr/account-email-retention.env
-ExecStart=/usr/bin/psql -X -qAt -v ON_ERROR_STOP=1 -c "select app.account_email_retention_prune()"
+Environment=PGSERVICEFILE=/etc/aihr-account-email-retention/pg_service.conf
+Environment=PGSERVICE=aihr_email_retention
+Environment="PGOPTIONS=-c statement_timeout=30000 -c lock_timeout=5000"
+ExecStart=/usr/lib/postgresql/16/bin/psql -X -qAt -v ON_ERROR_STOP=1 -c "select app.account_email_retention_prune()"
 TimeoutStartSec=60
 Restart=no
 NoNewPrivileges=true
@@ -76,8 +80,15 @@ def database_url(text):
     require(value.startswith(('postgres://','postgresql://')) and len(value)<8192 and all(ord(c)>=32 and ord(c)!=127 for c in value), 'Invalid private owner connection')
     return value
 
-def environment_bytes(url):
-    return ('PGDATABASE='+json.dumps(url,ensure_ascii=False)+'\nPGCONNECT_TIMEOUT=10\nPGOPTIONS="-c statement_timeout=30000 -c lock_timeout=5000"\n').encode()
+def service_bytes(url):
+    parsed=urlsplit(url)
+    require(parsed.scheme in ('postgres','postgresql') and parsed.hostname and parsed.username and parsed.password is not None and parsed.path.startswith('/') and not parsed.fragment, 'Complete owner connection required')
+    fields={'host':parsed.hostname,'port':str(parsed.port or 5432),'dbname':unquote(parsed.path[1:]),'user':unquote(parsed.username),'password':unquote(parsed.password),'connect_timeout':'10'}
+    allowed={'sslmode','sslrootcert','sslcert','sslkey','channel_binding','target_session_attrs','gssencmode','application_name'}
+    for key,value in parse_qsl(parsed.query,keep_blank_values=True,strict_parsing=True):
+        require(key in allowed and key not in fields,'Unsupported or duplicate connection parameter');fields[key]=value
+    require(all(value and value==value.strip() and all(ord(c)>=32 and ord(c)!=127 for c in value) for value in fields.values()),'Unsupported private connection value')
+    return ('[aihr_email_retention]\n'+''.join(key+'='+value+'\n' for key,value in fields.items())).encode()
 
 def run(args, env=None, timeout=30):
     result=subprocess.run(args,env=env or {'PATH':'/usr/sbin:/usr/bin:/sbin:/bin','LANG':'C.UTF-8'},capture_output=True,text=True,timeout=timeout)
@@ -86,8 +97,11 @@ def run(args, env=None, timeout=30):
     return result.stdout.strip()
 
 def snapshot(url):
-    env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8','PGDATABASE':url,'PGCONNECT_TIMEOUT':'10','PGOPTIONS':'-c statement_timeout=10000 -c lock_timeout=2000'}
-    data=json.loads(run(['/usr/bin/psql','-X','-qAt','-v','ON_ERROR_STOP=1','-c',SNAPSHOT],env))
+    # psql gets only a service name/path; credentials never appear in argv or environment.
+    with tempfile.TemporaryDirectory(prefix='aihr-email-retention-check-') as directory:
+        config=pathlib.Path(directory)/'pg_service.conf';exclusive(config,service_bytes(url))
+        env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8','PGSERVICEFILE':str(config),'PGSERVICE':'aihr_email_retention','PGOPTIONS':'-c statement_timeout=10000 -c lock_timeout=2000'}
+        data=json.loads(run([PSQL,'-X','-qAt','-v','ON_ERROR_STOP=1','-c',SNAPSHOT],env))
     require(data['rows']==504 and data['watermark']=='1793109999999' and data['days'] is None, 'Expected installed migration and Never delete policy required')
     return data
 
@@ -110,7 +124,7 @@ def actual_source():
 
 def main(mode):
     require(mode in ('install','verify') and os.geteuid()==0 and sys.platform=='linux', 'Run this bounded helper with sudo on staging')
-    for p in ['/usr/bin/psql','/usr/bin/systemctl','/usr/sbin/useradd','/usr/sbin/nologin']:root_path(p)
+    for p in [PSQL,'/usr/bin/systemctl','/usr/sbin/useradd','/usr/sbin/nologin']:root_path(p)
     actual_source()
     raw=owned_regular('/opt/ai-hr/.env.production',uid=1000,private=True)
     url=database_url(raw.decode());before=snapshot(url)
@@ -125,10 +139,13 @@ def main(mode):
         if PRIVATE.parent.exists():root_path(PRIVATE.parent)
         else:PRIVATE.parent.mkdir(mode=0o700)
         run(['/usr/sbin/useradd','--system','--no-create-home','--home-dir','/nonexistent','--shell','/usr/sbin/nologin',USER])
-        exclusive(PRIVATE,environment_bytes(url));exclusive(service,SERVICE.encode(),0o644);exclusive(timer,TIMER.encode(),0o644)
+        identity=pwd.getpwnam(USER)
+        os.chown(PRIVATE.parent,0,identity.pw_gid);os.chmod(PRIVATE.parent,0o750)
+        exclusive(PRIVATE,service_bytes(url),0o640);os.chown(PRIVATE,0,identity.pw_gid)
+        exclusive(service,SERVICE.encode(),0o644);exclusive(timer,TIMER.encode(),0o644)
         run(['/usr/bin/systemctl','daemon-reload'])
     else:
-        require(owned_regular(PRIVATE,private=True)==environment_bytes(url), 'Private job connection changed')
+        require(owned_regular(PRIVATE)==service_bytes(url) and stat.S_IMODE(PRIVATE.stat().st_mode)==0o640, 'Private job connection changed')
         require(owned_regular(service)==SERVICE.encode() and owned_regular(timer)==TIMER.encode(), 'Installed fixed SQL units changed')
     identity=pwd.getpwnam(USER)
     require(identity.pw_uid!=0 and identity.pw_shell=='/usr/sbin/nologin' and identity.pw_dir=='/nonexistent', 'Dedicated non-login identity required')
