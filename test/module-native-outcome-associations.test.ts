@@ -1,3 +1,5 @@
+import {expectNativeSourceCapture} from './native-outcome-source-capture.helpers';
+import {readCompletedNativeOutcomeTx} from '../core/assistant-actions/completed-outcome-readers';
 /** Authored UNRUN. Requires normally installed coordinated drafts; never applies/forges schema,
  * native completion, governed job provenance or provider capability receipts in this fixture. */
 import {createHash,randomUUID} from 'node:crypto';
@@ -192,4 +194,37 @@ it('refuses copied, different-person, cross-transaction and already finished pro
  await expect(withTenant(f.mine.ctx,tx=>recordVerifiedNativeOutcomeAssociationTx(tx,f.mine.ctx,p.input,old))).rejects.toThrow();
  await expect(withTenant(f.mine.ctx,async tx=>{const proof=await beginOwnNativeOutcomeJobProvenanceTx(tx,f.mine.ctx,p.job.jobId);await finishNativeOutcomeJobRecheckTx(tx,f.mine.ctx,proof);await recordVerifiedNativeOutcomeAssociationTx(tx,f.mine.ctx,p.input,proof);})).rejects.toThrow();
  expect(await counts()).toEqual(before);await recordOwnNativeOutcomeAssociation(f.mine.ctx,p.input);expect((await counts()).links).toBe(before.links+1);
+});
+
+/** New actual source-capture regressions, authored UNRUN. */
+
+it('captures own original PERSON and actual EMPLOYMENT privately with the canonical effect',async()=>{
+ const f=await fixture(),p=await preparation(f),done=await complete(f,p);if(done.kind!=='completed')throw Error('Expected native completion');
+ await expectNativeSourceCapture(p.review.actionId,done.receipt.submissionEventId,[{kind:'person',id:f.mine.subject.personId},{kind:'employment',id:f.mine.subject.employmentId}]);
+ await expect(withTenant(f.mine.ctx,tx=>tx.execute(sql`select * from app.native_outcome_source_target`))).rejects.toThrow();
+});
+it('rolls canonical request/event/body state back on private capture failure, then performs one explicit retry',async()=>{
+ const f=await fixture(),p=await preparation(f),before=await counts();
+ await owner.db.execute(sql`create function app.fictional_native_capture_failure() returns trigger language plpgsql as $$begin raise exception 'fictional private capture failure';end$$`);
+ await owner.db.execute(sql`create trigger fictional_native_capture_failure before insert on app.native_outcome_source_capture for each row execute function app.fictional_native_capture_failure()`);
+ try{await expect(complete(f,p)).rejects.toThrow();expect(await counts()).toEqual(before);
+  const [row]=await owner.db.execute<{state:string;bodies:number;captures:number}>(sql`select state,(select count(*)::int from app.assistant_own_leave_review_content where action_id=r.id) as bodies,(select count(*)::int from app.native_outcome_source_capture where source_id=r.id) as captures from app.assistant_own_leave_review r where id=${p.review.actionId}::uuid`);
+  expect(row).toEqual({state:'awaiting_confirmation',bodies:1,captures:0});
+ }finally{await owner.db.execute(sql`drop trigger fictional_native_capture_failure on app.native_outcome_source_capture`);await owner.db.execute(sql`drop function app.fictional_native_capture_failure()`);}
+ await complete(f,p);expect((await counts()).requests).toBe(before.requests+1);
+});
+it('refuses learning for historical missing source capture while preserving canonical human completion reopening',async()=>{
+ const f=await fixture(),p=await preparation(f);await complete(f,p);const before=await counts();
+ await owner.db.execute(sql`delete from app.native_outcome_source_capture where source_id=${p.review.actionId}::uuid`);
+ expect((await withTenant(f.mine.ctx,tx=>readCompletedOwnLeaveOutcomeTx(tx,f.mine.ctx,p.review.actionId))).completion.kind).toBe('completed');
+ await expect(withTenant(f.mine.ctx,tx=>readCompletedNativeOutcomeTx(tx,f.mine.ctx,p.input.reference))).rejects.toThrow();
+ await expect(recordOwnNativeOutcomeAssociation(f.mine.ctx,p.input)).rejects.toThrow(unavailable);expect(await counts()).toEqual(before);
+});
+it('rolls an already inserted private capture back if final native completion fails',async()=>{
+ const f=await fixture(),p=await preparation(f),before=await counts();
+ await owner.db.execute(sql`create function app.fictional_native_completion_failure() returns trigger language plpgsql as $$begin if NEW.state='completed' then raise exception 'fictional completion failure';end if;return NEW;end$$`);
+ await owner.db.execute(sql`create trigger fictional_native_completion_failure before update on app.assistant_own_leave_review for each row execute function app.fictional_native_completion_failure()`);
+ try{await expect(complete(f,p)).rejects.toThrow();expect(await counts()).toEqual(before);const [capture]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from app.native_outcome_source_capture where source_id=${p.review.actionId}::uuid`);expect(capture.n).toBe(0);}
+ finally{await owner.db.execute(sql`drop trigger fictional_native_completion_failure on app.assistant_own_leave_review`);await owner.db.execute(sql`drop function app.fictional_native_completion_failure()`);}
+ await complete(f,p);
 });

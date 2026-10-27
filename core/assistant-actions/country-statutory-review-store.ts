@@ -1,3 +1,4 @@
+import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 /** UNMOUNTED Personnel EPF/SOCSO custody. No Identity/Tax/Bank/TP3/Zakat mutation or model calculations. */
 import {createHash,randomUUID} from 'node:crypto';
@@ -49,6 +50,7 @@ async function existing(supplied:SessionContext,id:string,expected:string|undefi
  if(confirm&&before.metadata.reviewedDigest!==expected)return fail();const body=unseal(before),native=await prepareReviewedCountryStatutorySourceTx(tx,fresh,body.content);if(native.reviewedDigest!==body.nativeReviewedDigest)return fail();
  const stored=await read(tx,sql`select app.assistant_country_statutory_review_read(${id}::uuid) as review`);bound(stored,fresh,id,source);sameSnapshot(before,stored);if(!confirm)return pending(stored,native);
  const receipt=await confirmReviewedCountryStatutorySourceTx(tx,fresh,body.content,{action,contractVersion:1,reviewedDigest:body.nativeReviewedDigest});if(receipt.employmentId!==source.employmentId||receipt.personId!==source.personId||receipt.companyId!==source.companyId||receipt.statutoryId!==source.statutoryId)return fail();
+ await captureNativeOutcomeTargetsTx(tx,fresh,{action:action,sourceId:id,eventId:receipt.eventId,targets:[{kind:'employment',id:source.employmentId},{kind:'person',id:source.personId}]});
  const done=await read(tx,sql`select app.assistant_country_statutory_review_complete(${id}::uuid,${expected},${receipt.eventId}::uuid) as review`);bound(done,fresh,id,source);if(done.eventId!==receipt.eventId)return fail();return completed(tx,fresh,done);
  });});}
 export async function confirmCountryStatutoryReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=CountryStatutoryReviewConfirmation.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await existing(ctx,p.actionId,p.reviewedDigest,true);}catch{return fail();}}

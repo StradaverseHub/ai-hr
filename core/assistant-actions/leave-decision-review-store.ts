@@ -1,3 +1,4 @@
+import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 /** UNMOUNTED human assigned Leave decisions in the SAME review/body lifecycle. Models never decide. */
 import {createHash,randomUUID} from 'node:crypto';
@@ -43,6 +44,7 @@ export async function prepareLeaveDecisionReview(supplied:SessionContext,input:u
 export async function confirmLeaveDecisionReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=LeaveDecisionReviewConfirmation.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{
  const actor=await assertReviewedLeaveDecisionActorTx(tx,ctx),nomination=await subject(tx,p.actionId);return withReviewedLeaveDecisionIntervalTx(tx,actor,{leaveRequestId:nomination.leaveRequestId,currentStepId:nomination.currentStepId},nomination.mode,async(fresh,source)=>{
  const stored=await read(tx,sql`select app.assistant_leave_decision_review_read(${p.actionId}::uuid) as review`);bound(stored,fresh,p.actionId,source);if(stored.metadata.state==='completed')return completed(tx,fresh,stored);if(stored.metadata.state!=='awaiting_confirmation')return retired(stored);if(stored.metadata.reviewedDigest!==p.reviewedDigest)return fail();const body=unseal(stored);if(body.content.leaveRequestId!==stored.leaveRequestId||body.content.currentStepId!==stored.stepId)return fail();const native=await confirmReviewedLeaveDecisionSourceTx(tx,fresh,body.content,{action,contractVersion:1,reviewedDigest:body.nativeReviewedDigest});
+ await captureNativeOutcomeTargetsTx(tx,fresh,{action:action,sourceId:p.actionId,eventId:native.decisionEventId,targets:[{kind:'employment',id:source.employmentId},{kind:'person',id:source.subjectPersonId}]});
  const done=await read(tx,sql`select app.assistant_leave_decision_review_complete(${p.actionId}::uuid,${p.reviewedDigest},${native.decisionEventId}::uuid) as review`);bound(done,fresh,p.actionId,source);if(done.leaveRequestId!==native.leaveRequestId||done.stepId!==native.decisionStepId||done.eventId!==native.decisionEventId)return fail();return completed(tx,fresh,done);
  });});}catch{return fail();}}
 export async function reopenLeaveDecisionReview(supplied:SessionContext,value:unknown){const ctx=capture(supplied),parsed=z.uuid().safeParse(value);if(!parsed.success)return fail();const id=parsed.data;try{return await withTenant(ctx,async tx=>{

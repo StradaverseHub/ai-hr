@@ -1,3 +1,4 @@
+import {expectNativeSourceCapture} from './native-outcome-source-capture.helpers';
 /** Authored UNRUN: actual fictional Payroll CLOSE/native custody. Coordinated drafts required.
  * No fixture represents production data, a model capability test, or a passing security gate. */
 import {randomUUID} from 'node:crypto';
@@ -68,4 +69,12 @@ it('source-person projection rejects duplicate/unsorted/unrelated actual source 
 // Exact millisecond timestamps plus deliberate tied pairs make the public ISO order comparable;
 // unconstrained clock_timestamp microseconds must not be reinterpreted as millisecond UUID ties.
 it('metadata index is own/login-only, stable newest25, and has no native run/company/person/token selectors',async()=>{const [batch]=await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,batchId)),ids=Array.from({length:27},()=>randomUUID()),createdBase=Date.now()-3600000;for(const [index,id] of ids.entries())await owner.db.execute(sql`insert into app.assistant_own_leave_review(action_kind,id,tenant_id,user_id,person_id,employment_id,company_id,payroll_close_batch_id,payroll_close_period_id,state,created_at,expires_at) values('payroll.close',${id}::uuid,${b.tenantId}::uuid,${ctx.userId}::uuid,${ctx.personId}::uuid,NULL,${b.companyId}::uuid,${batchId}::uuid,${batch.payPeriodId}::uuid,'discarded',${new Date(createdBase+Math.floor(index/2)*10).toISOString()}::timestamptz,clock_timestamp()+interval '1 hour')`);const index=await listPayrollCloseReviews(ctx);expect(index.reviews).toHaveLength(25);for(const row of index.reviews)expect(Object.keys(row).sort()).toEqual(['action','actionId','contractVersion','createdAt','expiresAt','state']);const sorted=[...index.reviews].sort((a,b)=>b.createdAt.localeCompare(a.createdAt)||b.actionId.localeCompare(a.actionId));expect(index.reviews).toEqual(sorted);const nativeOrder=await owner.db.execute<{id:string}>(sql`select id from app.assistant_own_leave_review where tenant_id=${b.tenantId}::uuid and user_id=${ctx.userId}::uuid and action_kind='payroll.close' order by created_at desc,id desc limit 25`);expect(index.reviews.map(row=>row.actionId)).toEqual(nativeOrder.map(row=>row.id));expect((await listPayrollCloseReviews(outsider)).reviews).toEqual([]);});
+});
+
+/** New actual source-capture regressions, authored UNRUN. */
+
+it('keeps exact original payee PERSON and EMPLOYMENT refs separately from the closing actor',async()=>{
+ const r=await prepare(),done=await confirm(r);if(done.kind!=='completed')throw Error('Expected Payroll completion');
+ await expectNativeSourceCapture(r.actionId,done.receipt.receipt.closedEventId,[{kind:'person',id:ctx.personId!},{kind:'person',id:personId},{kind:'employment',id:employmentId}]);
+ expect(await custody(r.actionId)).toMatchObject({payroll_review_person_ids:null});
 });

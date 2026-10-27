@@ -1,3 +1,4 @@
+import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 /** UNMOUNTED closed KB publication in the existing physical review/body lifecycle. No arbitrary
  * executor, second ledger, provider drafting or HTTP/tool exposure. A current author confirms actual
@@ -44,6 +45,7 @@ export async function prepareKnowledgeArticleReview(supplied:SessionContext,inpu
 export async function confirmKnowledgeArticleReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=KnowledgeArticleReviewConfirmation.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{
  const fresh=await assertKnowledgeArticleActorTx(tx,ctx),stored=await read(tx,sql`select app.assistant_knowledge_article_review_read(${p.actionId}::uuid) as review`);bound(stored,fresh,p.actionId);
  if(stored.metadata.state==='completed')return completed(tx,fresh,stored);if(stored.metadata.state!=='awaiting_confirmation')return retired(stored);if(stored.metadata.reviewedDigest!==p.reviewedDigest)return fail();const body=unseal(stored),native=await confirmKnowledgeArticleSourceTx(tx,fresh,body.content,{action:KNOWLEDGE_ARTICLE_ACTION,contractVersion:1,reviewedDigest:body.nativeReviewedDigest});
+ await captureNativeOutcomeTargetsTx(tx,fresh,{action:KNOWLEDGE_ARTICLE_ACTION,sourceId:p.actionId,eventId:native.createdEventId,targets:[]});
  const done=await read(tx,sql`select app.assistant_knowledge_article_review_complete(${p.actionId}::uuid,${p.reviewedDigest},${native.articleId}::uuid,${native.createdEventId}::uuid) as review`);bound(done,fresh,p.actionId);if(done.articleId!==native.articleId||done.eventId!==native.createdEventId)return fail();return completed(tx,fresh,done);
  });}catch{return fail();}}
 /** Fresh author/Assistant/module/pause BEFORE custody read or crypto, including completed receipts. */

@@ -1241,6 +1241,10 @@ export async function commitEmployeeImport(
   // subordinate to a manager who was created by the SAME run.
   const employmentByRow = new Map<number, string>();
   const registerSubjects=new Map<string,{employmentId:string;personId:string}>();
+  // Private measured-outcome erasure refs come from actual canonical owners, never model/browser IDs.
+  const outcomeSubjects=new Map<string,{kind:'person'|'employment';id:string}>();
+  const outcomeEmployment=(id:string)=>{if(p.evaluationBinding)outcomeSubjects.set('employment:'+id,{kind:'employment',id});};
+  const outcomePerson=(id:string)=>{if(p.evaluationBinding)outcomeSubjects.set('person:'+id,{kind:'person',id});};
 
   // The validated subset and its forward reporting links form one import operation. Domain
   // writers share this explicit transaction; no failed file can leave a half-created employee.
@@ -1329,6 +1333,7 @@ export async function commitEmployeeImport(
       return {employmentId,personId,familyCount};
       })();
       employmentByRow.set(index,saved.employmentId);
+      outcomeEmployment(saved.employmentId);outcomePerson(saved.personId);
       if(row.hire.employeeCode)registerSubjects.set(row.hire.employeeCode,{employmentId:saved.employmentId,personId:saved.personId});
       dependentsImported+=saved.familyCount;
       if(saved.familyCount)familySyncPersonIds.add(saved.personId);
@@ -1367,6 +1372,7 @@ export async function commitEmployeeImport(
         lineType: 'administrative',
         validFrom: row.hire.hiredOn,
       },tx);
+      outcomeEmployment(subordinate);outcomeEmployment(manager);
     } catch (e) {
       // A reporting-link refusal aborts the enclosing import transaction as well.
       superiorFailed.push({
@@ -1378,7 +1384,14 @@ export async function commitEmployeeImport(
     }
   }
 
-  for(const register of registers)registersImported[register.preview.kind]=await writeRegisterRowsTx(tx,ctx,register.preview.kind,register.resolved,registerSubjects);
+  for(const register of registers){
+    registersImported[register.preview.kind]=await writeRegisterRowsTx(tx,ctx,register.preview.kind,register.resolved,registerSubjects);
+    if(p.evaluationBinding)for(const row of register.resolved){
+      const target=registerSubjects.get(row.preview.employeeCode)??row.subject;
+      if(!target?.employmentId||!target.personId)throw Error('The import receipt could not be confirmed.');
+      outcomeEmployment(target.employmentId);outcomePerson(target.personId);
+    }
+  }
 
   const evaluationEventId=await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -1400,7 +1413,7 @@ export async function commitEmployeeImport(
         registers:registersImported,
       },
     },{returnId:Boolean(p.evaluationBinding)});
-  if(p.evaluationBinding){if(typeof evaluationEventId!=='string')throw Error('The import receipt could not be confirmed.');evaluationReceipt=await completeEmployeeImportEvaluationTx(tx,ctx,p.evaluationBinding,p.companyId,evaluationEventId,{imported,failed:failed.length,skipped:resolved.length-valid.length,dependents:dependentsImported,qualification:registersImported.qualification,emergency:registersImported.emergency});}
+  if(p.evaluationBinding){if(typeof evaluationEventId!=='string')throw Error('The import receipt could not be confirmed.');evaluationReceipt=await completeEmployeeImportEvaluationTx(tx,ctx,p.evaluationBinding,p.companyId,evaluationEventId,{imported,failed:failed.length,skipped:resolved.length-valid.length,dependents:dependentsImported,qualification:registersImported.qualification,emergency:registersImported.emergency},[...outcomeSubjects.values()]);}
 
     });
   } catch(error) {

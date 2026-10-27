@@ -1,3 +1,4 @@
+import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 /** UNMOUNTED Multi-cycle draft creation custody. One new native draft, no processing/closing/money/payment. */
 import {createHash,randomUUID} from 'node:crypto';
@@ -52,6 +53,7 @@ async function existing(supplied:SessionContext,id:string,expected:string|undefi
  if(confirm&&before.metadata.reviewedDigest!==expected)return fail();const body=unseal(before),native=await prepareReviewedMultiCycleRunSourceTx(tx,fresh,body.content);if(native.reviewedDigest!==body.nativeReviewedDigest)return fail();
  const stored=await read(tx,sql`select app.assistant_multi_cycle_run_review_read(${id}::uuid) as review`);bound(stored,fresh,id,source);sameSnapshot(before,stored);if(!confirm)return pending(stored,native);
  const receipt=await confirmReviewedMultiCycleRunSourceTx(tx,fresh,body.content,{action,contractVersion:1,reviewedDigest:body.nativeReviewedDigest});if(receipt.companyId!==source.companyId||receipt.payPeriod!==source.payPeriod||receipt.createdPayrollCycleId!==source.payrollCycleId||receipt.runType!==stored.metadata.binding.runType)return fail();
+ await captureNativeOutcomeTargetsTx(tx,fresh,{action:action,sourceId:id,eventId:receipt.createdEventId,targets:[...native.erasurePersonIds.map(id=>({kind:'person' as const,id})),...native.erasureEmploymentIds.map(id=>({kind:'employment' as const,id}))]});
  const done=await read(tx,sql`select app.assistant_multi_cycle_run_review_complete(${id}::uuid,${expected},${receipt.batchId}::uuid,${receipt.createdEventId}::uuid) as review`);bound(done,fresh,id,source);if(done.eventId!==receipt.createdEventId||done.batchId!==receipt.batchId)return fail();return completed(tx,fresh,done);
  });});}
 export async function confirmMultiCycleRunReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=MultiCycleRunReviewConfirmation.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await existing(ctx,p.actionId,p.reviewedDigest,true);}catch{return fail();}}

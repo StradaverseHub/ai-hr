@@ -1,3 +1,4 @@
+import {expectNativeSourceCapture} from './native-outcome-source-capture.helpers';
 /** Authored UNRUN: actual app-role non-own custody, native graph/events and real erasure owner.
  * Source/static checks are not concurrency/security proof; no route or production activation. */
 import {randomUUID} from 'node:crypto';
@@ -47,4 +48,13 @@ describe('governed non-own reporting review custody',()=>{
  it('refuses same-transaction privacy resurrection for each captured person before inserting a new sealed body',async()=>{const r=(await prepare()).review,[sealed]=await owner.db.execute<{kid:string;wrapped:string;ciphertext:string}>(sql`select kid,wrapped_dek as wrapped,ciphertext from app.assistant_own_leave_review_content where action_id=${r.actionId}::uuid`);for(const employmentId of [sub.employmentId,manager.employmentId,oldManager.employmentId]){const rollback=Error('fictional erasure admission rollback');await expect(withTenant(scoped,async tx=>{await tx.execute(sql`select app.home_greeting_erasure_begin(${employmentId}::uuid,'contact','FICTIONAL-ORG-RECREATE','Fictional erasure resurrection refusal')`);await tx.execute(sql`select app.assistant_own_leave_reviews_redact(${employmentId}::uuid)`);await expect(tx.transaction(inner=>inner.execute(sql`select app.assistant_org_review_prepare(${randomUUID()}::uuid,${scoped.personId}::uuid,${sub.employmentId}::uuid,${b.companyId}::uuid,${sub.personId}::uuid,${manager.employmentId}::uuid,${oldManager.employmentId}::uuid,'administrative',${'a'.repeat(64)},${'b'.repeat(64)},${sealed.kid},${sealed.wrapped},${sealed.ciphertext})`))).rejects.toThrow();throw rollback;})).rejects.toBe(rollback);expect(await custody(r.actionId)).toMatchObject({state:'awaiting_confirmation',bodies:1});}});
  it('cannot reset the shared rolling creation budget by immediately discarding each private review',async()=>{for(let n=0;n<20;n++){const r=(await prepare()).review;await retire(r);}await expect(prepare()).rejects.toThrow();expect((await listOrgActionReviews(scoped)).reviews).toHaveLength(20);});
  it('keeps shared global pending budget and expires all Org privacy links with encrypted body',async()=>{const rows=[];for(let n=0;n<5;n++)rows.push((await prepare()).review);await expect(prepare()).rejects.toThrow();const r=rows[0];await owner.db.execute(sql`update app.assistant_own_leave_review set created_at=clock_timestamp()-interval '20 minutes',expires_at=clock_timestamp()-interval '1 minute' where id=${r.actionId}::uuid`);await listOrgActionReviews(scoped);expect(await custody(r.actionId)).toMatchObject({state:'expired',manager:null,prior:null,intent:null,reviewed:null,bodies:0});expect((await prepare()).kind).toBe('prepared');});
+});
+
+/** New actual source-capture regressions, authored UNRUN. */
+
+it('preserves HR actor, subordinate and BOTH original manager people/employments before terminal clearing',async()=>{
+ const r=(await prepare()).review,done=await confirm(r);if(done.kind!=='completed')throw Error('Expected reporting completion');
+ const managers=await owner.db.select({id:s.employment.id,personId:s.employment.personId}).from(s.employment).where(sql`${s.employment.id} in (${manager.employmentId}::uuid,${oldManager.employmentId}::uuid)`).orderBy(s.employment.id);
+ await expectNativeSourceCapture(r.actionId,done.receipt.receipt.setEventId,[{kind:'person',id:scoped.personId!},{kind:'person',id:sub.personId},{kind:'employment',id:sub.employmentId},...managers.flatMap(m=>[{kind:'person' as const,id:m.personId},{kind:'employment' as const,id:m.id}])]);
+ expect(await custody(r.actionId)).toMatchObject({state:'completed',manager:null,prior:null});
 });

@@ -1,3 +1,4 @@
+import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 /** UNMOUNTED own Attendance correction custody; models never invent clocks/work or approve OT. */
 import {createHash,randomUUID} from 'node:crypto';
@@ -51,7 +52,8 @@ async function existing(supplied:SessionContext,id:string,expected:string|undefi
  if(before.metadata.state!=='awaiting_confirmation'||initial.pendingExpired){const stored=await read(tx,sql`select app.assistant_attendance_review_read(${id}::uuid) as review`);bound(stored,fresh,id,source);if(initial.pendingExpired){if(stored.metadata.state!=='expired')return fail();return retired(stored);}sameSnapshot(before,stored);return stored.metadata.state==='completed'?completed(tx,fresh,stored):retired(stored);}
  if(confirm&&before.metadata.reviewedDigest!==expected)return fail();const body=unseal(before),native=await prepareOwnAttendanceCorrectionTx(tx,fresh,body.intent);if(native.reviewDigest!==body.nativeReviewedDigest)return fail();
  const stored=await read(tx,sql`select app.assistant_attendance_review_read(${id}::uuid) as review`);bound(stored,fresh,id,source);sameSnapshot(before,stored);if(!confirm)return pending(stored,native);
- const receipt=await confirmOwnAttendanceCorrectionTx(tx,fresh,body.intent,body.nativeReviewedDigest),done=await read(tx,sql`select app.assistant_attendance_review_complete(${id}::uuid,${expected},${receipt.correctionId}::uuid,${receipt.eventId}::uuid) as review`);bound(done,fresh,id,source);if(done.requestId!==receipt.correctionId||done.eventId!==receipt.eventId)return fail();return completed(tx,fresh,done);
+ const receipt=await confirmOwnAttendanceCorrectionTx(tx,fresh,body.intent,body.nativeReviewedDigest);await captureNativeOutcomeTargetsTx(tx,fresh,{action:action,sourceId:id,eventId:receipt.eventId,targets:[{kind:'employment',id:source.employmentId}]});
+ const done=await read(tx,sql`select app.assistant_attendance_review_complete(${id}::uuid,${expected},${receipt.correctionId}::uuid,${receipt.eventId}::uuid) as review`);bound(done,fresh,id,source);if(done.requestId!==receipt.correctionId||done.eventId!==receipt.eventId)return fail();return completed(tx,fresh,done);
  });});}
 export async function confirmAttendanceCorrectionReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=AttendanceCorrectionReviewConfirmation.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await existing(ctx,p.actionId,p.reviewedDigest,true);}catch{return fail();}}
 export async function reopenAttendanceCorrectionReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=z.uuid().safeParse(input);if(!parsed.success)return fail();try{return await existing(ctx,parsed.data,undefined,false);}catch{return fail();}}

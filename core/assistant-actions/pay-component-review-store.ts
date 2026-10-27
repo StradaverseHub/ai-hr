@@ -1,3 +1,4 @@
+import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 /** UNMOUNTED human catalogue CREATE custody in the same physical review/body lifecycle.
  * No model-derived rate, employee assignment or payroll execution. Completed retries never create. */
@@ -43,6 +44,7 @@ export async function preparePayComponentReview(supplied:SessionContext,input:un
 export async function confirmPayComponentReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=PayComponentReviewConfirmation.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,tx=>withReviewedPayComponentIntervalTx(tx,ctx,async fresh=>{
  const stored=await read(tx,sql`select app.assistant_pay_component_review_read(${p.actionId}::uuid) as review`);bound(stored,fresh,p.actionId);if(stored.metadata.state==='completed')return completed(tx,fresh,stored);if(stored.metadata.state!=='awaiting_confirmation')return retired(stored);if(stored.metadata.reviewedDigest!==p.reviewedDigest)return fail();
  const body=unseal(stored),native=await confirmReviewedPayComponentSourceTx(tx,fresh,body.content,{action:REVIEWED_PAY_COMPONENT_ACTION,contractVersion:1,reviewedDigest:body.nativeReviewedDigest});
+ await captureNativeOutcomeTargetsTx(tx,fresh,{action:action,sourceId:p.actionId,eventId:native.createdEventId,targets:[]});
  const done=await read(tx,sql`select app.assistant_pay_component_review_complete(${p.actionId}::uuid,${p.reviewedDigest},${native.componentId}::uuid,${native.createdEventId}::uuid) as review`);bound(done,fresh,p.actionId);if(done.componentId!==native.componentId||done.eventId!==native.createdEventId)return fail();return completed(tx,fresh,done);
  }));}catch{return fail();}}
 export async function reopenPayComponentReview(supplied:SessionContext,value:unknown){const ctx=capture(supplied),parsed=z.uuid().safeParse(value);if(!parsed.success)return fail();const id=parsed.data;try{return await withTenant(ctx,tx=>withReviewedPayComponentIntervalTx(tx,ctx,async fresh=>{

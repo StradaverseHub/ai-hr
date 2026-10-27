@@ -1,3 +1,4 @@
+import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 import {ownLeaveHumanIntentText} from '../../lib/assistant-actions/own-leave-human-intent';
 /** UNRELEASED review custody and human-confirmation command. The human browser route calls it; no model tool does.
@@ -240,7 +241,8 @@ export async function confirmOwnLeaveReview(supplied: SessionContext, confirmati
         availableBalance: fresh.privateAvailableBalance, holidayWarnings: candidate.holidayWarnings });
       if (!written.submittedEventId || written.days !== candidate.deductionDays)
         throw new OwnLeaveContentUnavailable();
-      const recorded = await storedReviewTx(tx, sql`select app.assistant_own_leave_review_complete(
+      await captureNativeOutcomeTargetsTx(tx,actor,{action:'leave.apply',sourceId:m.actionId,eventId:written.submittedEventId,targets:[{kind:'employment',id:m.binding.employmentId}]});
+       const recorded = await storedReviewTx(tx, sql`select app.assistant_own_leave_review_complete(
         ${m.actionId}::uuid,${m.reviewedDigest},${written.leaveRequestId}::uuid,${written.submittedEventId}::uuid) as review`);
       if (recorded.metadata.actionId !== m.actionId || recorded.receipt?.state !== 'completed'
         || recorded.receipt.leaveRequestId !== written.leaveRequestId

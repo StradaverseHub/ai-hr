@@ -1,3 +1,4 @@
+import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 /** UNMOUNTED shared custody extension. One existing physical review/body lifecycle; no second
  * execution ledger, model effect, provider, browser endpoint or client-supplied source receipt.
@@ -65,6 +66,7 @@ export async function confirmModuleActionReview(supplied:SessionContext,input:un
  const stored=await read(tx,sql`select app.assistant_module_action_review_read(${p.actionId}::uuid,${MODULE_NOTIFICATION_ACTION}) as review`);bound(stored,fresh,p.actionId,nominated);
  if(stored.metadata.state==='completed')return completed(tx,fresh,stored,cap);if(stored.metadata.state!=='awaiting_confirmation')return retired(stored);
  if(stored.metadata.reviewedDigest!==p.reviewedDigest)return fail();const body=unseal(stored),native=await confirmOwnNotificationPreferencesTx(tx,fresh,body.intent,body.review.reviewDigest,cap);
+ await captureNativeOutcomeTargetsTx(tx,fresh,{action:MODULE_NOTIFICATION_ACTION,sourceId:p.actionId,eventId:native.eventId,targets:[{kind:'employment',id:nominated}]});
  const done=await read(tx,sql`select app.assistant_module_action_review_complete(${p.actionId}::uuid,${MODULE_NOTIFICATION_ACTION},${p.reviewedDigest},${native.eventId}::uuid) as review`);bound(done,fresh,p.actionId,nominated);if(done.eventId!==native.eventId)return fail();return completed(tx,fresh,done,cap);
  });}catch{return fail();}}
 /** Reopen is read/reconciliation only, never an effect or automatic confirmation retry. */
@@ -119,6 +121,7 @@ export async function confirmProfileModuleActionReview(supplied:SessionContext,i
  const actor=await guard(tx,ctx,'ess');await lockLeaveDependencyConfigurationTx(tx,actor.tenantId);const nominated=await profileSubject(tx,p.actionId);await lockLeaveDependenciesTx(tx,actor.tenantId,[nominated]);const stored=await readProfile(tx,sql`select app.assistant_module_action_review_read(${p.actionId}::uuid,${OWN_PROFILE_CHANGE_ACTION}) as review`);boundProfile(stored,actor,p.actionId,nominated);
  if(stored.metadata.state==='completed')return completedProfile(tx,actor,stored);if(stored.metadata.state!=='awaiting_confirmation')return retiredProfile(stored);if(stored.metadata.reviewedDigest!==p.reviewedDigest)return fail();const body=unsealProfile(stored);
  const native=await confirmOwnProfileChangeSourceTx(tx,actor,body.content,{action:OWN_PROFILE_CHANGE_ACTION,contractVersion:1,reviewedDigest:body.nativeReviewedDigest});
+ await captureNativeOutcomeTargetsTx(tx,actor,{action:OWN_PROFILE_CHANGE_ACTION,sourceId:p.actionId,eventId:native.requestedEventId,targets:[{kind:'employment',id:nominated}]});
  const done=await readProfile(tx,sql`select app.assistant_profile_action_review_complete(${p.actionId}::uuid,${p.reviewedDigest},${native.requestId}::uuid,${native.requestedEventId}::uuid) as review`);boundProfile(done,actor,p.actionId,nominated);if(done.requestId!==native.requestId||done.eventId!==native.requestedEventId)return fail();return completedProfile(tx,actor,done);
  });}catch{return fail();}}
 /** Current-source reconciliation only; approval/rejection changes the reported native status but
@@ -171,6 +174,7 @@ export async function confirmClaimModuleActionReview(supplied:SessionContext,inp
  const actor=await guard(tx,ctx,'claims');await lockLeaveDependencyReadConfigurationTx(tx,actor.tenantId);const nominated=await claimSubject(tx,p.actionId);await lockLeaveDependenciesTx(tx,actor.tenantId,[nominated]);const stored=await readClaim(tx,sql`select app.assistant_module_action_review_read(${p.actionId}::uuid,${OWN_CLAIM_DRAFT_ACTION}) as review`);boundClaim(stored,actor,p.actionId,nominated);
  if(stored.metadata.state==='completed')return completedClaim(tx,actor,stored);if(stored.metadata.state!=='awaiting_confirmation')return retiredClaim(stored);if(stored.metadata.reviewedDigest!==p.reviewedDigest)return fail();const body=unsealClaim(stored);
  const native=await confirmOwnClaimDraftSourceTx(tx,actor,body.content,{action:OWN_CLAIM_DRAFT_ACTION,contractVersion:1,reviewedDigest:body.nativeReviewedDigest});
+ await captureNativeOutcomeTargetsTx(tx,actor,{action:OWN_CLAIM_DRAFT_ACTION,sourceId:p.actionId,eventId:native.savedEventId,targets:[{kind:'employment',id:nominated}]});
  const done=await readClaim(tx,sql`select app.assistant_claim_action_review_complete(${p.actionId}::uuid,${p.reviewedDigest},${native.draftId}::uuid,${native.savedEventId}::uuid) as review`);boundClaim(done,actor,p.actionId,nominated);if(done.draftId!==native.draftId||done.eventId!==native.savedEventId)return fail();return completedClaim(tx,actor,done);
  });}catch{return fail();}}
 /** Current-source reconciliation only; approval/rejection changes the reported native status but
@@ -222,6 +226,7 @@ async function preparePerformanceCustody(supplied:SessionContext,input:unknown,k
 async function confirmPerformanceCustody(supplied:SessionContext,input:unknown,kind:PerformanceKind){const ctx=capture(supplied),parsed=(kind===MODULE_REVIEW_ACK_ACTION?ReviewModuleActionConfirmation:OnehrModuleActionConfirmation).safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{
  const actor=await guard(tx,ctx,'performance');await lockLeaveDependencyReadConfigurationTx(tx,actor.tenantId);const nominated=await performanceSubject(tx,p.actionId,kind);await lockLeaveDependenciesTx(tx,actor.tenantId,[nominated]);const stored=await readPerformance(tx,sql`select app.assistant_module_action_review_read(${p.actionId}::uuid,${kind}) as review`);boundPerformance(stored,actor,p.actionId,kind,nominated);
  if(stored.metadata.state==='completed')return completedPerformance(tx,actor,stored);if(stored.metadata.state!=='awaiting_confirmation')return retiredPerformance(stored);if(stored.metadata.reviewedDigest!==p.reviewedDigest)return fail();const body=unsealPerformance(stored),native=body.engine==='standard_cycle_only'?await confirmOwnReviewAcknowledgementTx(tx,actor,body.intent,body.review.reviewDigest):await confirmOwnOnehrPlanAcknowledgementTx(tx,actor,body.intent,body.review.reviewDigest);if(native.employmentId!==nominated)return fail();
+ await captureNativeOutcomeTargetsTx(tx,actor,{action:stored.metadata.action,sourceId:p.actionId,eventId:native.eventId,targets:[{kind:'employment',id:nominated}]});
  const done=await readPerformance(tx,sql`select app.assistant_performance_action_review_complete(${p.actionId}::uuid,${kind},${p.reviewedDigest},${native.eventId}::uuid) as review`);boundPerformance(done,actor,p.actionId,kind,nominated);if(done.eventId!==native.eventId)return fail();return completedPerformance(tx,actor,done);
  });}catch{return fail();}}
 async function reopenPerformanceCustody(supplied:SessionContext,value:unknown,kind:PerformanceKind){const ctx=capture(supplied),parsed=z.uuid().safeParse(value);if(!parsed.success)return fail();const id=parsed.data;try{return await withTenant(ctx,async tx=>{
@@ -276,6 +281,7 @@ export async function confirmTestingModuleActionReview(supplied:SessionContext,i
  await assertAiPrincipalTx(tx,ctx);const executionId=await testingSubject(tx,p.actionId);return withOwnTestingExecutionIntervalTx(tx,ctx,executionId,async actor=>{
  const stored=await readTesting(tx,sql`select app.assistant_testing_action_review_read(${p.actionId}::uuid) as review`);boundTesting(stored,actor,p.actionId,executionId);
  if(stored.metadata.state==='completed')return completedTesting(tx,actor,stored);if(stored.metadata.state!=='awaiting_confirmation')return retiredTesting(stored);if(stored.metadata.reviewedDigest!==p.reviewedDigest)return fail();const body=unsealTesting(stored),native=await confirmOwnTestingExecutionTx(tx,actor,body.intent,body.review.reviewDigest);
+ await captureNativeOutcomeTargetsTx(tx,actor,{action:MODULE_TESTING_EXECUTION_ACTION,sourceId:p.actionId,eventId:native.eventId,targets:[]});
  const done=await readTesting(tx,sql`select app.assistant_testing_action_review_complete(${p.actionId}::uuid,${p.reviewedDigest},${native.runId}::uuid,${native.eventId}::uuid) as review`);boundTesting(done,actor,p.actionId,executionId);if(done.runId!==native.runId||done.eventId!==native.eventId)return fail();return completedTesting(tx,actor,done);
  });});}catch{return fail();}}
 export async function reopenTestingModuleActionReview(supplied:SessionContext,value:unknown){const ctx=capture(supplied),parsed=z.uuid().safeParse(value);if(!parsed.success)return fail();const id=parsed.data;try{return await withTenant(ctx,async tx=>{
@@ -322,6 +328,7 @@ export async function confirmClaimSubmissionModuleActionReview(supplied:SessionC
  await assertAiPrincipalTx(tx,ctx);const claimId=await submissionSubject(tx,p.actionId);return withOwnClaimSubmissionIntervalTx(tx,ctx,claimId,async(actor,own)=>{
  const stored=await readSubmission(tx,sql`select app.assistant_claim_submission_review_read(${p.actionId}::uuid) as review`);boundSubmission(stored,actor,p.actionId,claimId,own.employmentId);
  if(stored.metadata.state==='completed')return completedSubmission(tx,actor,stored);if(stored.metadata.state!=='awaiting_confirmation')return retiredSubmission(stored);if(stored.metadata.reviewedDigest!==p.reviewedDigest)return fail();const body=unsealSubmission(stored),native=await confirmOwnClaimSubmissionSourceTx(tx,actor,body.content,{action:OWN_CLAIM_SUBMISSION_ACTION,contractVersion:1,reviewedDigest:body.nativeReviewedDigest});
+ await captureNativeOutcomeTargetsTx(tx,actor,{action:OWN_CLAIM_SUBMISSION_ACTION,sourceId:p.actionId,eventId:native.submittedEventId,targets:[{kind:'employment',id:own.employmentId}]});
  const done=await readSubmission(tx,sql`select app.assistant_claim_submission_review_complete(${p.actionId}::uuid,${p.reviewedDigest},${native.claimId}::uuid,${native.submittedEventId}::uuid) as review`);boundSubmission(done,actor,p.actionId,claimId,own.employmentId);if(done.eventId!==native.submittedEventId)return fail();return completedSubmission(tx,actor,done);
  });});}catch{return fail();}}
 export async function reopenClaimSubmissionModuleActionReview(supplied:SessionContext,value:unknown){const ctx=capture(supplied),parsed=z.uuid().safeParse(value);if(!parsed.success)return fail();const id=parsed.data;try{return await withTenant(ctx,async tx=>{

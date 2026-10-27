@@ -1,3 +1,4 @@
+import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 /** UNMOUNTED approved-unit Rewards post custody. Models never calculate, approve or post money. */
 import {createHash,randomUUID} from 'node:crypto';
@@ -51,6 +52,7 @@ async function existing(supplied:SessionContext,id:string,expected:string|undefi
  if(confirm&&before.metadata.reviewedDigest!==expected)return fail();const body=unseal(before),native=await prepareReviewedRewardsPostSourceTx(tx,fresh,body.content);if(native.reviewedDigest!==body.nativeReviewedDigest)return fail();
  const stored=await read(tx,sql`select app.assistant_rewards_post_review_read(${id}::uuid) as review`);bound(stored,fresh,id,source);sameSnapshot(before,stored);if(!confirm)return pending(stored,native);
  const receipt=await confirmReviewedRewardsPostSourceTx(tx,fresh,body.content,{action,contractVersion:1,reviewedDigest:body.nativeReviewedDigest});if(receipt.unitId!==source.unitId||receipt.postedRevision!==body.content.revision||(receipt.postedBatchId?.toLowerCase()??null)!==(body.content.batchId?.toLowerCase()??null))return fail();
+ await captureNativeOutcomeTargetsTx(tx,fresh,{action:action,sourceId:id,eventId:receipt.postedEventId,targets:[]});
  const done=await read(tx,sql`select app.assistant_rewards_post_review_complete(${id}::uuid,${expected},${receipt.postedEventId}::uuid,${receipt.postedRevision},${receipt.postedBatchId}::uuid) as review`);bound(done,fresh,id,source);if(done.eventId!==receipt.postedEventId||done.postedRevision!==receipt.postedRevision||done.postedBatchId!==receipt.postedBatchId)return fail();return completed(tx,fresh,done);
  });});}
 export async function confirmRewardsPostReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=RewardsPostReviewConfirmation.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await existing(ctx,p.actionId,p.reviewedDigest,true);}catch{return fail();}}

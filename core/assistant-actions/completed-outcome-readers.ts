@@ -1,3 +1,4 @@
+import {requireNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 /** Closed actual-source adapters only. Never calls prepare/confirm, decrypts pending content,
  * executes a service string, or interprets arbitrary native SQL/event payloads in a harness. */
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
@@ -30,6 +31,7 @@ export async function readCompletedNativeOutcomeTx(tx:Tx,supplied:SessionContext
  const reference=NativeOutcomeReference.parse(structuredClone(value));await boundNativeOutcomeTransactionTx(tx);
  if(reference.source==='employee_import'){
   const read=await readCompletedEmployeeImportOutcomeTx(tx,ctx,{attemptId:reference.attemptId,attemptVersion:reference.attemptVersion},reference.companyId);
+  await requireNativeOutcomeTargetsTx(tx,ctx,{action:reference.action,sourceId:read.attemptId,eventId:read.eventId});
   return {evidence:NativeOutcomeEvidence.parse({action:reference.action,sourceId:read.attemptId,eventId:read.eventId,currentStatus:read.currentStatus}),sourceExpiresAt:read.expiresAt};
  }
  let result:{completion:unknown;eventId:string};const id=reference.actionId;
@@ -56,6 +58,7 @@ export async function readCompletedNativeOutcomeTx(tx:Tx,supplied:SessionContext
   default:{const never:never=reference.action;void never;return unavailable();}
  }
  const evidence=NativeOutcomeEvidence.parse({action:reference.action,sourceId:id,eventId:result.eventId,currentStatus:currentStatus(result.completion)});
+ await requireNativeOutcomeTargetsTx(tx,ctx,{action:reference.action,sourceId:id,eventId:result.eventId});
  const [retention]=await tx.execute<{expires:Date|string|null}>(sql`select app.native_outcome_review_retention(${reference.action},${id}::uuid) as expires`);if(!retention?.expires)return unavailable();
  const expires=new Date(retention.expires);if(!Number.isFinite(expires.getTime()))return unavailable();return {evidence,sourceExpiresAt:expires.toISOString()};
 }
