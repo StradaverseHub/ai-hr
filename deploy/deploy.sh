@@ -242,7 +242,7 @@ else
 fi
 
 if [ "${AUTH_PROVIDER:-}" = "internal" ]; then
-  node --import tsx --input-type=module -e 'import { internalConfig } from "./lib/internal-auth/config.ts"; internalConfig();'
+  node --import tsx --input-type=module -e 'const imported=await import("./lib/internal-auth/config.ts"); const {internalConfig}=imported.default??imported; internalConfig();'
 elif [ "${AUTH_PROVIDER:-}" = "keycloak" ]; then
   node --import tsx --input-type=module -e 'import { keycloakConfig } from "./lib/identity/config.ts"; keycloakConfig();'
 fi

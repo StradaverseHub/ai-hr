@@ -277,3 +277,34 @@ describe('Keycloak customer deploy entry point', () => {
     refused(runDeploy({ ...keycloak, KEYCLOAK_ISSUER: 'http://id.customer.com/realms/hr' }), 'KEYCLOAK_ISSUER');
   });
 });
+
+
+// Exercise deploy.sh's actual internal-auth command, rather than its ordinary shell shim.
+// tsx may expose this TypeScript module as CommonJS when the package has no ESM type.
+describe('installed internal-auth preflight loader', () => {
+  function internalPreflight(changes: Record<string, string | undefined> = {}) {
+    const source = fs.readFileSync(path.join(REPO, 'deploy/deploy.sh'), 'utf8');
+    const command = source.match(/^  node --import tsx --input-type=module -e '([^'\n]*internalConfig[^'\n]*)'$/m)?.[1];
+    expect(command, 'actual deployment internal-auth validation command').toBeTruthy();
+    return spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', command!], {
+      cwd: REPO, encoding: 'utf8', timeout: 10_000,
+      env: {PATH: process.env.PATH, AUTH_PUBLIC_ORIGIN: 'https://fictional-preflight.example.com',
+        AUTH_SESSION_KEY: '12'.repeat(32), AUTH_DEFAULT_ORGANIZATION: 'fictional-preflight', ...changes},
+    });
+  }
+  it('loads the real internalConfig and validates a fictional supported configuration', () => {
+    const result = internalPreflight();
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toBe('');
+  });
+  it.each([
+    [{AUTH_PUBLIC_ORIGIN: 'http://fictional-preflight.example.com'}, 'canonical HTTPS origin'],
+    [{AUTH_SESSION_KEY: 'invalid-fictional-key'}, '32 random bytes'],
+    [{AUTH_DEFAULT_ORGANIZATION: 'invalid organization'}, 'Invalid default organization'],
+  ] as const)('retains internalConfig refusal for invalid settings %j', (changes, message) => {
+    const result = internalPreflight({...changes});
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(message);
+    expect(result.stdout).toBe('');
+  });
+});
