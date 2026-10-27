@@ -1,0 +1,579 @@
+name: alpha-staging-ci
+run-name: ${{ inputs.controller_only && 'CI controller checks' || inputs.diagnostics_only && 'Runner diagnostics' || 'Alpha CI' }} · ${{ inputs.candidate_ref || github.head_ref || 'alpha' }}
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_ref:
+        description: Existing same-repository branch (CI only; staging deploy remains held)
+        default: alpha
+        required: true
+        type: string
+      expected_sha:
+        description: Exact 40-character candidate SHA (refuse if the branch moved)
+        required: true
+        type: string
+      test_parallelism:
+        description: Standard runner concurrency; complete test coverage stays unchanged
+        type: choice
+        default: '48'
+        options: ['4', '8', '16', '20', '32', '40', '48']
+      diagnostics_only:
+        description: Measure disposable runner resources without the full CI gate
+        required: false
+        default: false
+        type: boolean
+      controller_only:
+        description: Pure CI controller checks only; requires diagnostics_only and never supplies release evidence
+        required: false
+        default: false
+        type: boolean
+  push:
+    branches: [alpha]
+  pull_request:
+    branches: [alpha]
+    types: [opened, reopened, synchronize, ready_for_review]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: alpha-ci-${{ inputs.candidate_ref || github.head_ref || github.ref }}-${{ inputs.diagnostics_only && 'diagnostics' || 'gate' }}
+  cancel-in-progress: false
+env:
+  PYTHONDONTWRITEBYTECODE: '1'
+  TZ: Asia/Kuala_Lumpur
+  LANG: en_US.UTF-8
+  AIHR_CI_CONTROL_HEAD: ${{ github.workflow_sha }}
+  AIHR_CI_PG_MEMORY_GIB: '2'
+  AIHR_CI_PG_JIT: 'on'
+jobs:
+  resolve:
+    if: ${{ github.repository == 'StradaverseHub/ai-hr' && (github.event_name != 'pull_request' || (!github.event.pull_request.draft && github.event.pull_request.head.repo.full_name == github.repository)) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.candidate.outputs.sha }}
+      branch: ${{ steps.candidate.outputs.branch }}
+      base: ${{ steps.candidate.outputs.base }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Pin dependency-free controller runtime
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '22.23.3'}
+      - name: Refuse an invalid controller-only selection
+        if: ${{ inputs.controller_only }}
+        env:
+          DIAGNOSTICS_ONLY: ${{ inputs.diagnostics_only }}
+          EVENT: ${{ github.event_name }}
+          EXPECTED: ${{ inputs.expected_sha }}
+          CONTROL: ${{ github.workflow_sha }}
+        run: test "$DIAGNOSTICS_ONLY" = true && test "$EVENT" = workflow_dispatch && test "$EXPECTED" = "$CONTROL"
+      - name: CI integrity regression checks
+        run: node --experimental-strip-types --test .github/ci/rsync-packet-capability.test.mjs .github/ci/pdf-tool-scope.test.mjs .github/ci/pdf-tools.test.mjs .github/ci/compiler-cache.test.mjs .github/ci/cache-artifact-discovery.test.mjs .github/ci/compiler-wrapper.test.mjs .github/ci/diagnostics/compiler-compatible.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/diagnostics/compiler-cleanup.test.mjs .github/ci/ci.test.mjs .github/ci/release-policy.test.mjs .github/ci/archive-downloads.test.mjs .github/ci/prefetch-ci.test.mjs .github/ci/migration-history.test.mjs .github/ci/manifest.test.mjs .github/ci/db-scheduling.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/report-run-cost.test.mjs .github/ci/resume-assessment.test.mjs .github/ci/resume-source.test.mjs .github/ci/resume-repair.test.mjs .github/ci/repair-impact.test.mjs .github/ci/build-production.test.mjs .github/ci/build-artifact.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-application-restore.test.mjs .github/ci/staging-transport.test.mjs .github/ci/staging-build-install.test.mjs .github/ci/staging-ci-promotion.test.mjs .github/ci/staging-migration-ledger.test.mjs .github/ci/staging-environment.test.mjs .github/ci/staging-preflight.test.mjs .github/ci/customer-runtime-transition.test.mjs .github/ci/customer-runtime-snapshot.test.mjs .github/ci/staging-cleanup-protocol.test.mjs
+      - name: Build byte transport regression checks
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/build-bundle.test.py
+          PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/build-transport-extract.test.py
+          PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/build-activate.test.py
+      - name: Resolve frozen candidate
+        id: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAGING_BASE_SHA: ${{ vars.STAGING_DEPLOYED_SHA }}
+        run: node .github/ci/resolve.mjs
+      - name: Reconstruct complete current source manifest without application dependencies
+        if: ${{ inputs.controller_only }}
+        env:
+          AIHR_CI_HEAD: ${{ steps.candidate.outputs.sha }}
+          AIHR_CI_MIGRATION_BASE: ${{ vars.STAGING_DEPLOYED_SHA }}
+          AIHR_CI_CLASSIFIER_RUNTIME: native
+        run: |
+          node --experimental-strip-types .github/ci/plan.mjs > "$RUNNER_TEMP/controller-plan.json"
+          node --input-type=module <<'NODE'
+          import {readFileSync,writeFileSync} from 'node:fs';
+          import assert from 'node:assert/strict';
+          import {DB_BATCH_FILES} from './.github/ci/manifest.mjs';
+          const plan=JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/controller-plan.json'));
+          const hints=JSON.parse(readFileSync('.github/ci/db-duration-hints.json'));
+          const db=plan.units.filter(u=>u.kind==='db'),files=db.flatMap(u=>u.files).sort(),old=[];
+          for(let i=0;i<files.length;i+=DB_BATCH_FILES)old.push(files.slice(i,i+DB_BATCH_FILES));
+          assert.deepEqual(db.flatMap(u=>u.files).sort(),old.flat().sort());assert.equal(db.length,old.length);
+          const estimate=group=>group.reduce((ms,f)=>ms+(hints.durationsMs[f]??hints.unknownDurationMs),0);
+          const report={kind:'SCHEDULING_MODEL_NOT_RUNTIME_OR_PASS',candidate:plan.sha,controller:plan.controller,policy:plan.policyVersion,runId:process.env.GITHUB_RUN_ID,dbFiles:files.length,dbUnits:db.length,maximumFiles:DB_BATCH_FILES,workers:plan.execution.workers,scheduling:plan.execution.scheduling,oldAlphabeticalMaximumSummedFileMs:Math.max(...old.map(estimate)),balancedMaximumSummedFileMs:Math.max(...db.map(u=>estimate(u.files))),unknownFiles:files.filter(f=>!Object.hasOwn(hints.durationsMs,f)),completeClassifierInventoryUnchanged:true,releaseAuthorized:false,warning:'Overlapping historical file intervals are advisory weights, not job elapsed times or predicted speedups.'};
+          writeFileSync(process.env.RUNNER_TEMP+'/scheduling-model.json',JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report,null,2));
+          NODE
+      - if: ${{ inputs.controller_only }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: controller-plan-diagnostics
+          path: |
+            ${{ runner.temp }}/controller-plan.json
+            ${{ runner.temp }}/scheduling-model.json
+          if-no-files-found: error
+          retention-days: 3
+  typecheck:
+    if: ${{ !inputs.diagnostics_only }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: source
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_CI_MIGRATION_BASE: ${{ needs.resolve.outputs.base }}
+      AIHR_COMPILER_CACHE_MODE: whole
+      AIHR_CI_CAPACITY_PROFILE: ${{ github.run_attempt == 1 && 'bounded-whole-compiler' || 'legacy' }}
+      DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+      MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+      TEST_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+      TEST_MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+      GH_TOKEN: ${{ github.token }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./automation/.github/actions/setup-alpha
+        with:
+          node: '22.23.3'
+          capacity_profile: ${{ github.run_attempt == 1 && 'bounded-whole-compiler' || 'legacy' }}
+      - run: pnpm exec next typegen
+      - name: Whole current compiler with authenticated graph or cold fallback
+        if: ${{ github.run_attempt == 1 }}
+        run: bash ../automation/.github/ci/typecheck.sh --whole-cache
+      - name: Preserve legacy whole compiler on rerun attempts
+        if: ${{ github.run_attempt != 1 }}
+        run: bash ../automation/.github/ci/typecheck.sh
+      - name: Bind actual owned-resource cleanup before graph publication
+        if: ${{ github.run_attempt == 1 && github.event_name != 'pull_request' }}
+        run: |
+          test -f "$RUNNER_TEMP/compiler-transport-swap-cleanup.json"
+          test ! -e "$RUNNER_TEMP/whole-compiler-state-packet/swap-cleanup.json"
+          cp "$RUNNER_TEMP/compiler-transport-swap-cleanup.json" "$RUNNER_TEMP/whole-compiler-state-packet/swap-cleanup.json"
+      - if: ${{ github.run_attempt == 1 && github.event_name != 'pull_request' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: whole-compiler-state-v1
+          path: ${{ runner.temp }}/whole-compiler-state-packet/
+          if-no-files-found: error
+          retention-days: 1
+  migrations:
+    if: ${{ !inputs.diagnostics_only }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: source
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_CI_MIGRATION_BASE: ${{ needs.resolve.outputs.base }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - run: node ../automation/.github/ci/check-migration-order.mjs "$BASE"
+        env: {BASE: '${{ needs.resolve.outputs.base }}'}
+  runner-diagnostics:
+    if: ${{ inputs.diagnostics_only && !inputs.controller_only }}
+    needs: resolve
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_SUITE_CAPACITY_PILOT: 'true'
+      DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+      MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+      TEST_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+      TEST_MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: source
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Runner capacity before dependencies
+        run: |
+          df -Pk . "$RUNNER_TEMP" /var/lib/docker
+          for p in /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup; do
+            if [ -d "$p" ]; then sudo du -sx -B1 "$p"; fi
+          done
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {capacity_profile: "${{ github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}"}
+      - name: Record measured capacity and unused SDK sizes
+        run: node ../automation/.github/ci/runner-diagnostics.mjs
+        env: {AIHR_CAPACITY_REPORT_PROFILE: "${{ github.run_attempt == 1 && 'bounded-suite-ready' || 'legacy' }}"}
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: runner-resources
+          path: |
+            ${{ runner.temp }}/runner-resources.json
+            ${{ runner.temp }}/suite-capacity-preparation.log
+          if-no-files-found: error
+          retention-days: 3
+  controller-tests:
+    if: ${{ !inputs.diagnostics_only }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: source
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {capacity_profile: "${{ github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}"}
+      - name: Owned Linux install cleanup and immutable byte inventory controls
+        run: |
+          python3 ../automation/.github/ci/cleanup-install.test.py -v
+          python3 ../automation/.github/ci/build-bundle.test.py -v
+      - name: Exercise actual official detached-deploy helpers with shim transport
+        run: node --import tsx --test ../automation/.github/ci/operator-flow.test.mjs ../automation/.github/ci/build-source-binding.test.mjs ../automation/.github/ci/next-build-launcher.test.mjs ../automation/.github/ci/staging-source-transfer.test.mjs ../automation/.github/ci/staging-launcher.test.mjs
+  plan:
+    outputs:
+      test_matrix: ${{ steps.matrix.outputs.test_matrix }}
+    if: ${{ !inputs.diagnostics_only }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: source
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_CI_MIGRATION_BASE: ${{ needs.resolve.outputs.base }}
+      AIHR_CI_CLASSIFIER_RUNTIME: native
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '22'}
+      - run: node ../automation/.github/ci/plan.mjs > "$RUNNER_TEMP/ci-plan.json"
+      - name: Derive execution matrix from complete trusted manifest
+        id: matrix
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const p=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+"/ci-plan.json","utf8"));
+            const unit=p.units.filter(u=>u.kind!=="browser").map(u=>u.id);
+            if(!unit.length || unit.length>256 || new Set(unit).size!==unit.length)throw Error("Invalid test matrix");
+            fs.appendFileSync(process.env.GITHUB_OUTPUT,"test_matrix="+JSON.stringify({unit})+"\n");'
+      - name: Publish complete partition counts
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const p=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+"/ci-plan.json","utf8"));
+            const count=k=>p.units.filter(u=>u.kind===k).reduce((n,u)=>n+u.files.length,0);
+            const line=`Exact candidate ${p.sha}: ${p.suite.length} suite files = ${count("nodb")} no-DB + ${count("db")} DB; ${count("browser")} browser executions across 3 engines. Controller ${p.controller}.`;
+            console.log(line); fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,line+"\n");'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate-plan
+          path: ${{ runner.temp }}/ci-plan.json
+          if-no-files-found: error
+          retention-days: 30
+  build:
+    if: ${{ !inputs.diagnostics_only }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: source
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_CI_MIGRATION_BASE: ${{ needs.resolve.outputs.base }}
+      DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+      MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+      TEST_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+      TEST_MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+      AIHR_CI_CAPACITY_PROFILE: bounded-canonical-build
+      NODE_OPTIONS: --max-old-space-size=6144
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {node: '22.23.3', mobile: 'false', capacity_profile: bounded-canonical-build}
+      - name: Bind compiler cache to CI build context
+        id: next-cache-context
+        continue-on-error: true
+        timeout-minutes: 1
+        run: |
+          cache_runtime="$(node -p '[process.platform, process.arch, process.versions.node].join("-")')"
+          test -f deploy/css-cache-guard.sh
+          test ! -L deploy/css-cache-guard.sh
+          cache_css="$(bash -c '. deploy/css-cache-guard.sh; aihr_css_inputs_hash')"
+          test "${#cache_css}" -eq 64
+          case "$cache_css" in *[!a-f0-9]*) exit 1 ;; esac
+          printf 'prefix=aihr-next-compiler-v2-ubuntu24-%s-%s-%s\n' "$cache_runtime" "$cache_css" "${{ hashFiles('source/pnpm-lock.yaml', 'source/package.json', 'source/next.config.ts', 'source/tsconfig.json', 'source/tsconfig.build.json', 'source/.env.example', 'source/scripts/improve/system-testing-next-config.ts', 'source/deploy/css-cache-guard.sh') }}" >> "$GITHUB_OUTPUT"
+      - name: Restore optional Turbopack compiler cache
+        id: next-cache
+        if: ${{ steps.next-cache-context.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 1
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: source/.next/cache/turbopack
+          key: ${{ steps.next-cache-context.outputs.prefix }}-${{ needs.resolve.outputs.sha }}
+          restore-keys: ${{ steps.next-cache-context.outputs.prefix }}-
+          enableCrossOsArchive: false
+          fail-on-cache-miss: false
+        env: {SEGMENT_DOWNLOAD_TIMEOUT_MINS: '1'}
+      - name: Canonical System Testing production build and byte bundle
+        run: pnpm exec tsx ../automation/.github/ci/next-application-cache.mjs
+        env: {GH_TOKEN: '${{ github.token }}'}
+      - name: Publish mandatory canonical build packet
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: production-build-v1
+          path: ${{ runner.temp }}/production-build/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+      - name: Publish optional application compiler graph
+        if: ${{ success() && github.event_name != 'pull_request' }}
+        continue-on-error: true
+        timeout-minutes: 1
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: next-application-state-v1
+          path: ${{ runner.temp }}/next-application-state-packet/
+          if-no-files-found: warn
+          retention-days: 1
+      - name: Preserve failed canonical build diagnostics
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: next-application-build-failure
+          path: ${{ runner.temp }}/normal-next-application-cache/comparison.json
+          if-no-files-found: warn
+          retention-days: 3
+      - name: Bound optional compiler cache upload
+        id: next-cache-budget
+        if: ${{ success() && steps.next-cache-context.outcome == 'success' && steps.next-cache.outputs.cache-hit != 'true' }}
+        continue-on-error: true
+        timeout-minutes: 1
+        run: |
+          if [ -d .next/cache/turbopack ] && [ ! -L .next/cache/turbopack ]; then
+            cache_kib="$(du -sk .next/cache/turbopack | cut -f1)"
+            if [[ "$cache_kib" =~ ^[0-9]+$ ]] && [ "$cache_kib" -le 1048576 ]; then
+              echo 'eligible=true' >> "$GITHUB_OUTPUT"
+              echo "Compiler cache: ${cache_kib} KiB; within the 1 GiB per-entry upload bound."
+            else
+              echo 'Compiler cache upload skipped: exceeds the per-entry bound.'
+            fi
+          else
+            echo 'Compiler cache upload skipped: no regular compiler cache directory.'
+          fi
+      - name: Save optional Turbopack compiler cache
+        if: ${{ success() && steps.next-cache-budget.outputs.eligible == 'true' }}
+        continue-on-error: true
+        timeout-minutes: 1
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: source/.next/cache/turbopack
+          key: ${{ steps.next-cache-context.outputs.prefix }}-${{ needs.resolve.outputs.sha }}
+          enableCrossOsArchive: false
+  test:
+    needs: [resolve, plan]
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: source
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_CI_MIGRATION_BASE: ${{ needs.resolve.outputs.base }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJSON(inputs.test_parallelism || '48') }}
+      matrix: ${{ fromJSON(needs.plan.outputs.test_matrix) }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {capacity_profile: "${{ github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}"}
+      - name: Source-bound PDF dependencies for this complete unit
+        env: {UNIT: '${{ matrix.unit }}'}
+        run: node ../automation/.github/ci/pdf-tools.mjs --unit "$UNIT"
+      - name: Preserve suite headroom after PDF tooling
+        if: ${{ github.run_attempt == 1 }}
+        run: bash ../automation/.github/ci/prepare-runner.sh
+        env: {AIHR_CI_CAPACITY_PROFILE: bounded-suite-ready}
+      - run: git rev-parse --verify -q refs/heads/main >/dev/null || git branch main origin/main
+      - run: node ../automation/.github/ci/run-unit.mjs "$UNIT" "$RUNNER_TEMP/aihr-ci"
+        env: {UNIT: '${{ matrix.unit }}'}
+      - name: Retain actual PDF setup diagnostics with the unit evidence
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/pdf-tools-setup.json" ]; then
+            mkdir -p "$RUNNER_TEMP/aihr-ci"
+            cp "$RUNNER_TEMP/pdf-tools-setup.json" "$RUNNER_TEMP/aihr-ci/pdf-tools-setup.json"
+          fi
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: unit-${{ matrix.unit }}
+          path: ${{ runner.temp }}/aihr-ci/
+          if-no-files-found: error
+          retention-days: 14
+  browser:
+    needs: [resolve, plan]
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
+      options: --init --ipc=host
+    defaults:
+      run:
+        working-directory: source
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_CI_MIGRATION_BASE: ${{ needs.resolve.outputs.base }}
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: {engine: [chromium, firefox, webkit]}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./automation/.github/actions/setup-browser-image
+      - run: node ../automation/.github/ci/run-unit.mjs "browser-$ENGINE" "$RUNNER_TEMP/aihr-ci"
+        env: {ENGINE: '${{ matrix.engine }}', HOME: /root}
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: unit-browser-${{ matrix.engine }}
+          path: ${{ runner.temp }}/aihr-ci/
+          if-no-files-found: error
+          retention-days: 14
+  verify:
+    needs: [resolve, plan, controller-tests, typecheck, migrations, build, test, browser]
+    if: ${{ always() && !inputs.diagnostics_only && needs.resolve.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: source
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_CI_MIGRATION_BASE: ${{ needs.resolve.outputs.base }}
+      AIHR_CI_CLASSIFIER_RUNTIME: native
+    steps:
+      - name: Every prerequisite succeeded
+        working-directory: ${{ github.workspace }}
+        env: {RESULTS: '${{ toJSON(needs) }}'}
+        run: node -e 'for(const j of Object.values(JSON.parse(process.env.RESULTS)))if(j.result!=="success")process.exit(1)'
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '22'}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          path: ${{ runner.temp }}/aihr-ci
+          pattern: unit-*
+          merge-multiple: true
+      - run: node ../automation/.github/ci/verify-shards.mjs "$RUNNER_TEMP/aihr-ci" "$RUNNER_TEMP/ci-receipt.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate-evidence
+          path: ${{ runner.temp }}/ci-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+  deployment-hold:
+    needs: [resolve, verify]
+    if: ${{ always() && needs.resolve.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Deployment remains disabled
+        env:
+          STAGING_ENABLED: ${{ vars.STAGING_DEPLOY_ENABLED }}
+          PRODUCTION_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
+        run: |
+          test "$STAGING_ENABLED" = false
+          test "$PRODUCTION_ENABLED" = false
+          echo 'CI only. Board 3 retains staging release ownership. Main deployment is disabled.' >> "$GITHUB_STEP_SUMMARY"

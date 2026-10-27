@@ -1,5 +1,5 @@
 name: alpha-staging-ci
-run-name: ${{ inputs.controller_only && 'CI controller checks' || inputs.diagnostics_only && 'Runner diagnostics' || 'Alpha CI' }} · ${{ inputs.candidate_ref || github.head_ref || 'alpha' }}
+run-name: ${{ inputs.build_only && 'Canonical build only' || inputs.controller_only && 'CI controller checks' || inputs.diagnostics_only && 'Runner diagnostics' || 'Alpha CI' }} · ${{ inputs.candidate_ref || github.head_ref || 'alpha' }}
 on:
   workflow_dispatch:
     inputs:
@@ -17,6 +17,11 @@ on:
         type: choice
         default: '48'
         options: ['4', '8', '16', '20', '32', '40', '48']
+      build_only:
+        description: Canonical byte build only; never emits a gate PASS
+        required: false
+        default: false
+        type: boolean
       diagnostics_only:
         description: Measure disposable runner resources without the full CI gate
         required: false
@@ -36,7 +41,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: alpha-ci-${{ inputs.candidate_ref || github.head_ref || github.ref }}-${{ inputs.diagnostics_only && 'diagnostics' || 'gate' }}
+  group: alpha-ci-${{ inputs.candidate_ref || github.head_ref || github.ref }}-${{ inputs.build_only && 'build-only' || inputs.diagnostics_only && 'diagnostics' || 'gate' }}
   cancel-in-progress: false
 env:
   PYTHONDONTWRITEBYTECODE: '1'
@@ -70,6 +75,13 @@ jobs:
           EXPECTED: ${{ inputs.expected_sha }}
           CONTROL: ${{ github.workflow_sha }}
         run: test "$DIAGNOSTICS_ONLY" = true && test "$EVENT" = workflow_dispatch && test "$EXPECTED" = "$CONTROL"
+      - name: Refuse invalid build-only execution
+        if: ${{ inputs.build_only }}
+        env:
+          EVENT: ${{ github.event_name }}
+          DIAGNOSTICS_ONLY: ${{ inputs.diagnostics_only }}
+          CONTROLLER_ONLY: ${{ inputs.controller_only }}
+        run: test "$EVENT" = workflow_dispatch && test "$DIAGNOSTICS_ONLY" = false && test "$CONTROLLER_ONLY" = false
       - name: CI integrity regression checks
         run: node --experimental-strip-types --test .github/ci/rsync-packet-capability.test.mjs .github/ci/pdf-tool-scope.test.mjs .github/ci/pdf-tools.test.mjs .github/ci/compiler-cache.test.mjs .github/ci/cache-artifact-discovery.test.mjs .github/ci/compiler-wrapper.test.mjs .github/ci/diagnostics/compiler-compatible.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/diagnostics/compiler-cleanup.test.mjs .github/ci/ci.test.mjs .github/ci/release-policy.test.mjs .github/ci/archive-downloads.test.mjs .github/ci/prefetch-ci.test.mjs .github/ci/migration-history.test.mjs .github/ci/manifest.test.mjs .github/ci/db-scheduling.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/report-run-cost.test.mjs .github/ci/resume-assessment.test.mjs .github/ci/resume-source.test.mjs .github/ci/resume-repair.test.mjs .github/ci/repair-impact.test.mjs .github/ci/build-production.test.mjs .github/ci/build-artifact.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-application-restore.test.mjs .github/ci/staging-transport.test.mjs .github/ci/staging-build-install.test.mjs .github/ci/staging-ci-promotion.test.mjs .github/ci/staging-migration-ledger.test.mjs .github/ci/staging-environment.test.mjs .github/ci/staging-preflight.test.mjs .github/ci/customer-runtime-transition.test.mjs .github/ci/customer-runtime-snapshot.test.mjs .github/ci/staging-cleanup-protocol.test.mjs
       - name: Build byte transport regression checks
@@ -84,7 +96,7 @@ jobs:
       - name: Validate versioned repair selection and evidence boundaries
         if: ${{ inputs.controller_only }}
         run: |
-          node --import tsx --test .github/ci/non-repository-io.test.mjs .github/ci/immutable-plan.test.mjs .github/ci/retained-units.test.mjs .github/ci/authenticated-focused.test.mjs .github/ci/focused-file-evidence.test.mjs .github/ci/forward-baseline.test.mjs .github/ci/ci-origin-binding.test.mjs .github/ci/forward-install-grant.test.mjs .github/ci/type-only-repair.test.mjs
+          node --import tsx --test .github/ci/non-repository-io.test.mjs .github/ci/immutable-plan.test.mjs .github/ci/retained-units.test.mjs .github/ci/authenticated-focused.test.mjs .github/ci/focused-file-evidence.test.mjs .github/ci/forward-baseline.test.mjs .github/ci/ci-origin-binding.test.mjs .github/ci/forward-install-grant.test.mjs .github/ci/type-only-repair.test.mjs .github/ci/build-only-mode.test.mjs .github/ci/type-repair-acceptance.test.mjs
           PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/extract-focused.test.py
       - name: Resolve frozen candidate
         id: candidate
@@ -123,7 +135,7 @@ jobs:
           if-no-files-found: error
           retention-days: 3
   typecheck:
-    if: ${{ !inputs.diagnostics_only }}
+    if: ${{ !inputs.diagnostics_only && !inputs.build_only }}
     needs: resolve
     runs-on: ubuntu-24.04
     defaults:
@@ -177,7 +189,7 @@ jobs:
           if-no-files-found: error
           retention-days: 1
   migrations:
-    if: ${{ !inputs.diagnostics_only }}
+    if: ${{ !inputs.diagnostics_only && !inputs.build_only }}
     needs: resolve
     runs-on: ubuntu-24.04
     defaults:
@@ -249,7 +261,7 @@ jobs:
           if-no-files-found: error
           retention-days: 3
   controller-tests:
-    if: ${{ !inputs.diagnostics_only }}
+    if: ${{ !inputs.diagnostics_only && !inputs.build_only }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -279,7 +291,7 @@ jobs:
   plan:
     outputs:
       test_matrix: ${{ steps.matrix.outputs.test_matrix }}
-    if: ${{ !inputs.diagnostics_only }}
+    if: ${{ !inputs.diagnostics_only && !inputs.build_only }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -440,6 +452,7 @@ jobs:
           key: ${{ steps.next-cache-context.outputs.prefix }}-${{ needs.resolve.outputs.sha }}
           enableCrossOsArchive: false
   test:
+    if: ${{ !inputs.diagnostics_only && !inputs.build_only }}
     needs: [resolve, plan]
     runs-on: ubuntu-24.04
     defaults:
@@ -492,6 +505,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   browser:
+    if: ${{ !inputs.diagnostics_only && !inputs.build_only }}
     needs: [resolve, plan]
     runs-on: ubuntu-24.04
     container:
@@ -532,7 +546,7 @@ jobs:
           retention-days: 14
   verify:
     needs: [resolve, plan, controller-tests, typecheck, migrations, build, test, browser]
-    if: ${{ always() && !inputs.diagnostics_only && needs.resolve.result == 'success' }}
+    if: ${{ always() && !inputs.diagnostics_only && !inputs.build_only && needs.resolve.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     defaults:
