@@ -120,8 +120,14 @@ export async function reopenOwnLeaveReviewTx(tx: Tx, supplied: SessionContext, a
   const actor = await readOwnLeaveActorTx(tx, ctx);
   if (!actor) throw new OwnLeaveContentUnavailable();
   await assertAiActionUnpausedTx(tx, actor, 'hr_assistant');
-  const [nominated]=await tx.execute<{subject:unknown}>(sql`select app.assistant_own_leave_review_subject(${actionId.data}::uuid) as subject`);
-  const subject=z.uuid().safeParse(nominated?.subject);if(!subject.success)throw new OwnLeaveContentUnavailable();
+  // The nomination helper deliberately refuses foreign custody at SQL level. Keep that refusal
+  // on the same bounded content boundary as the subsequent encrypted read; caller must roll back.
+  let subjectId:string;
+  try{
+    const [nominated]=await tx.execute<{subject:unknown}>(sql`select app.assistant_own_leave_review_subject(${actionId.data}::uuid) as subject`);
+    subjectId=z.uuid().parse(nominated?.subject);
+  }catch{throw new OwnLeaveContentUnavailable();}
+  const subject={data:subjectId};
   await lockLeaveDependenciesTx(tx,actor.tenantId,[subject.data]);
   const stored = await storedReviewTx(tx, sql`select app.assistant_own_leave_review_read(${actionId.data}::uuid) as review`);
   if (stored.metadata.actionId !== actionId.data
