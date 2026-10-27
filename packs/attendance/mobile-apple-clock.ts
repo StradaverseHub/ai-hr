@@ -1,7 +1,7 @@
 /** Internal signed online clock carrier. Deployment configuration is not loaded by a public route. */
 import {and,eq} from 'drizzle-orm';
 import {z} from 'zod';
-import type {SessionContext} from '../../db/client';
+import type {SessionContext,Tx} from '../../db/client';
 import {attendanceClockCapture,domainEvent} from '../../db/schema';
 import {actorOf,appendEvent} from '../../db/events';
 import {clockCommandContext} from '../../lib/clock-command-context';
@@ -15,8 +15,8 @@ import {createAppleClockAssertionService,type AppleClockAssertionInput} from '..
 /** The audit link describes checked historical enrollment evidence; no trust tier or assertion of
  * physical presence is created. Native receipt recovery remains available separately.
  */
-export function createAppleClockService(settings:unknown){
-  const assertions=createAppleClockAssertionService(settings);
+export function createAppleClockService(settings:unknown,ports:{beforeCommit?:(tx:Tx)=>Promise<void>}={}){
+  const assertions=createAppleClockAssertionService(settings,ports);
   return {
     begin:assertions.begin,
     async complete(ctx:SessionContext,input:AppleClockAssertionInput,proof:{challengeId:string;assertion:Buffer}){

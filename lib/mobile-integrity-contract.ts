@@ -10,8 +10,10 @@ const hash32=z.string().length(44).regex(/^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$
 export const IntegrityEnrollmentIntent=z.object({requestId:uuid,appInstallationId:uuid}).strict();
 export const IntegrityEnrollmentProof=IntegrityEnrollmentIntent.extend({challengeId:uuid,vendorKeyId:hash32,attestation:base64.max(87384)}).strict();
 export const IntegrityClockIntent=z.object({appInstallationId:uuid,keyId:uuid,deviceToken:uuid.optional(),
-  command:OnlineClockIntegrityData.shape.command.omit({photo:true}),evidence:OnlineClockIntegrityData.shape.evidence}).strict();
+  command:OnlineClockIntegrityData.shape.command.omit({photo:true}),evidence:OnlineClockIntegrityData.shape.evidence.extend({platform:z.literal('ios')})}).strict();
 export const IntegrityClockProof=IntegrityClockIntent.extend({challengeId:uuid,assertion:base64.max(10924)}).strict();
+export const IntegrityAndroidClockIntent=IntegrityClockIntent.extend({evidence:OnlineClockIntegrityData.shape.evidence.extend({platform:z.literal('android')})}).strict();
+export const IntegrityAndroidClockProof=IntegrityAndroidClockIntent.extend({challengeId:uuid,signature:base64.max(96)}).strict();
 export const IntegrityKeyLookupIntent=z.object({originChallengeId:uuid}).strict();
 export const IntegrityRevokeIntent=z.object({keyId:uuid}).strict();
 export const IntegrityKeyReceipt=z.object({keyId:uuid,originChallengeId:uuid,platform:z.literal('ios'),appId:z.string().max(300),
@@ -46,5 +48,7 @@ export const IntegrityRevocationResult=result(z.object({outcome:z.literal('revok
 export const IntegrityKeyLookupResultV2=result(z.object({outcome:z.literal('key_receipt'),key:IntegrityKeyReceiptV2.nullable()}));
 export const IntegrityKeysResultV2=result(z.object({outcome:z.literal('keys'),items:z.array(IntegrityKeyReceiptV2).max(20)}));
 export const IntegrityRevocationResultV2=result(z.object({outcome:z.literal('revoked'),key:IntegrityKeyReceiptV2}));
-export const IntegrityClockPrepared=result(z.object({outcome:z.literal('prepared'),protocol:z.literal(1),context:OnlineClockIntegrityData,state}));
+export const IntegrityClockPrepared=result(z.object({outcome:z.literal('prepared'),protocol:z.literal(1),context:OnlineClockIntegrityData.refine(value=>value.evidence.platform==='ios'),state}));
 export const IntegrityClockResult=result(z.object({outcome:z.literal('accepted'),receipt:ClockReceipt}));
+
+export const IntegrityAndroidClockPrepared=result(z.object({outcome:z.literal('prepared'),protocol:z.literal(2),context:OnlineClockIntegrityData.refine(value=>value.evidence.platform==='android'),state}));

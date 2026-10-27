@@ -26,7 +26,7 @@ export class AndroidClockCommandError extends Error{
 const hash=(value:string|Buffer)=>createHash('sha256').update(value).digest('hex');
 /** Caller must use the supplied transaction and checked snapshot for business acceptance. No network
  * operation belongs in the callback. already_consumed requests exact receipt recovery only. */
-export function createAndroidClockSignatureService(settings:unknown){
+export function createAndroidClockSignatureService(settings:unknown,ports:{beforeCommit?:(tx:Tx)=>Promise<void>}={}){
  const parsed=AndroidEnrollmentSettings.safeParse(settings);if(!parsed.success)throw new AndroidClockCommandError('configuration_unavailable');
  const config=parsed.data;
  function snapshot(raw:AndroidClockSignatureInput){
@@ -88,6 +88,7 @@ export function createAndroidClockSignatureService(settings:unknown){
     checkAndroidClockSignature({publicKey:createPublicKey({key:enrolled.publicKeySpki,type:'spki',format:'der'}),signature,clientData:context,expectedAppId:config.target.packageName,allowedBuildVersions:config.target.versionCodes});
     await fresh(tx,challenge);
     const value=await operation(tx,{context,photo:p.photo,deviceToken:p.deviceToken,proofKind:'google_key_generation_proof',verification:'command_signature'});
+    await ports.beforeCommit?.(tx);
     await own(tx,ctx,p);await fresh(tx,challenge);
     await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'mobile-integrity-challenge',aggregateId:challengeId,eventType:'mobile.integrity.signature.checked',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,
      payload:{keyId:enrolled.id,proofKind:'google_key_generation_proof',verification:'command_signature'}});

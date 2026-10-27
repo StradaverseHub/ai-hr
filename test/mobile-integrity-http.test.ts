@@ -15,6 +15,7 @@ import {GET as ownKeysV2} from '../app/api/mobile/v2/integrity/keys/route';
 import {POST as lookupKeyReceiptV2} from '../app/api/mobile/v2/integrity/key-receipt/route';
 import {POST as revokeKeyV2} from '../app/api/mobile/v2/integrity/revoke/route';
 import {createIntegrityHttpHandlers} from '../lib/mobile-api/integrity-routes';
+import {IntegrityConfigurationUnavailable} from '../lib/mobile-api/integrity-configuration';
 import {AuthRequiredError} from '../lib/auth-errors';
 import {onlineClockClientData,type OnlineClockIntegrityData} from '../lib/mobile-clock-integrity';
 import {adminCtx,closeAll,createAppUser,harnessSnapshot,owner,resetDb,seedBase,type Base} from './harness';
@@ -22,7 +23,7 @@ const settings={apiOrigin:'https://hr.example.com',target:{platform:'ios',appId:
 let base:Base,caller:SessionContext,config:unknown|null,revoked=false;
 vi.mock('../lib/session',async original=>({...await original<typeof import('../lib/session')>(),getMobileSession:async()=>{if(revoked)throw new AuthRequiredError();return caller;}}));
 const configuration=vi.fn(async(_ctx:SessionContext,_employmentId:string)=>config);
-const api=createIntegrityHttpHandlers(configuration,async()=>{if(revoked)throw new AuthRequiredError();return caller;});
+const api=createIntegrityHttpHandlers(configuration,async()=>{if(revoked)throw new AuthRequiredError();return caller;},{beforeClockCommit:async(_tx,_ctx,_id,initial)=>{if(JSON.stringify(config)!==JSON.stringify(initial))throw new IntegrityConfigurationUnavailable('configuration_unavailable');}});
 beforeAll(()=>vi.stubEnv('AI_CONFIG_SECRET','synthetic-mobile-key-receipt-secret-2026'));
 beforeEach(async()=>{await resetDb();base=await seedBase();config=settings;revoked=false;configuration.mockClear();});
 afterAll(async()=>{vi.unstubAllEnvs();await closeAll();});
@@ -177,6 +178,19 @@ describe('bounded scoped integrity HTTP handlers before route activation',()=>{
     expect(a.status).toBe(200);expect(a.body.outcome).toBe('accepted');expect(a.body).toEqual(b.body);
     expect(await owner.db.select().from(schema.attendancePunch)).toHaveLength(1);const [key]=await owner.db.select().from(schema.mobileIntegrityKey);expect(key.assertionCounter).toBe(1);
     expect(a.body.receipt).not.toHaveProperty('trustTier');expect(begin.body.context.scope.apiOrigin).toBe(settings.apiOrigin);
+  });
+  it('withholds Apple clock capability and preparation when the transaction guard is absent',async()=>{
+    const f=await enrolled(),unguarded=createIntegrityHttpHandlers(configuration,async()=>caller);
+    const capabilities=await unguarded.capabilities(new Request('https://hr.example.com/?employmentId='+f.employmentId));expect(await capabilities.json()).toMatchObject({features:['key_enrollment']});
+    const form=new FormData();form.append('command',JSON.stringify(f.input));const response=await unguarded.clockBegin(new Request('https://hr.example.com/?employmentId='+f.employmentId,{method:'POST',body:form}));
+    expect(await response.json()).toEqual({outcome:'unavailable',code:'configuration_unavailable'});expect(await owner.db.select().from(schema.mobileIntegrityChallenge).where(eq(schema.mobileIntegrityChallenge.purpose,'clock.online'))).toHaveLength(0);
+  });
+  it('rolls back Apple counter, proof and attendance when commit-time configuration is disabled',async()=>{
+    const f=await enrolled(),begin=await call('clockBegin',f.employmentId,f.input,{form:true}),proof={...f.input,challengeId:begin.body.context.challenge.id,assertion:assertion(begin.body.context,f.privateKey)};
+    const guarded=createIntegrityHttpHandlers(configuration,async()=>caller,{beforeClockCommit:async()=>{config=null;throw new IntegrityConfigurationUnavailable('configuration_unavailable');}}),form=new FormData();form.append('command',JSON.stringify(proof));
+    const result=await guarded.clockComplete(new Request('https://hr.example.com/?employmentId='+f.employmentId,{method:'POST',body:form}));expect(await result.json()).toEqual({outcome:'unavailable',code:'configuration_unavailable'});
+    expect((await owner.db.select().from(schema.mobileIntegrityKey))[0].assertionCounter).toBe(0);expect((await owner.db.select().from(schema.mobileIntegrityChallenge).where(eq(schema.mobileIntegrityChallenge.id,proof.challengeId)))[0].consumedAt).toBeNull();expect(await owner.db.select().from(schema.attendancePunch)).toHaveLength(0);expect(await owner.db.select().from(schema.attendanceClockCapture)).toHaveLength(0);
+    config=settings;expect((await call('clockComplete',f.employmentId,proof,{form:true})).body.outcome).toBe('accepted');
   });
   it('never falls back after invalid proof or changed command, and rejects multipart ambiguity',async()=>{
     const f=await enrolled(),begin=await call('clockBegin',f.employmentId,f.input,{form:true});

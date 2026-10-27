@@ -32,7 +32,7 @@ const hash=(value:string|Buffer)=>createHash('sha256').update(value).digest('hex
  * authoritative receipt/writes. No network calls or nested transactions belong in the callback.
  * already_consumed only requests receipt reconciliation; it is not a new proof check or acceptance.
  */
-export function createAppleClockAssertionService(settings:unknown){
+export function createAppleClockAssertionService(settings:unknown,ports:{beforeCommit?:(tx:Tx)=>Promise<void>}={}){
   const parsed=AppleEnrollmentSettings.safeParse(settings);
   if(!parsed.success)throw new AppleClockAssertionError('configuration_unavailable');
   const config=parsed.data;
@@ -105,6 +105,7 @@ export function createAppleClockAssertionService(settings:unknown){
           eq(mobileIntegrityKey.id,enrolled.id),eq(mobileIntegrityKey.assertionCounter,enrolled.assertionCounter),isNull(mobileIntegrityKey.revokedAt))).returning({id:mobileIntegrityKey.id});
         if(!updated)throw new AppleClockAssertionError('counter_unavailable');
         const value=await operation(tx,{context,photo:p.photo,deviceToken:p.deviceToken,nextCounter:checked.nextCounter,proofKind:enrolled.proofKind as 'apple_key_proof'|'apple_app_metadata'});
+        await ports.beforeCommit?.(tx);
         // Acceptance may wait on another subject/day lock after the key check. A stale grant must
         // roll back even if the callback has already written its tentative attendance outcome.
         await own(tx,ctx,p);

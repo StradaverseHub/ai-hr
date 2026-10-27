@@ -5,18 +5,15 @@
 import {z} from 'zod';
 import type {SessionContext} from '../../db/client';
 import {ModuleNotEnabledError} from '../../core/entitlements';
-import {OwnClockEmploymentUnavailableError,createAppleEnrollmentService,AppleKeyEnrollmentError,
-  createAppleClockService,AppleClockAssertionError,IntegrityChallengeError,ClockConflictError,CorrectedClockConflictError,
-  ClockLocationError,AttendancePhotoRequiredError,OutsideGeofenceError,GeolocationRequiredError,GeofenceQualityError,DeviceNotRegisteredError} from '../../packs/attendance/mobile-integrity';
-import {ClockPhotoError} from '../attendance-photo';
+import {OwnClockEmploymentUnavailableError,createAppleEnrollmentService,AppleKeyEnrollmentError,IntegrityChallengeError} from '../../packs/attendance/mobile-integrity';
 import {AppAttestEnrollmentError} from './app-attest-enrollment';
-import {AppAttestAssertionError} from './app-attest-assertion';
 import {AppleEnrollmentSettings} from '../mobile-key-enrollment';
 import * as C from '../mobile-integrity-contract';
 import {mobileRoute,MobileBadRequest,type MobileSessionResolver} from './handler';
 import {integrityEmployment as selected} from './integrity-request';
 import {createIntegrityKeyOperations} from './integrity-key-routes';
-import {mobileInput,mobileForm} from './body';
+import {mobileInput} from './body';
+import {createSignedClockOperations,type SignedClockOptions} from './signed-clock-routes';
 import {createIntegrityConfigurationReader,IntegrityConfigurationUnavailable,type EnrollmentCommitGuard} from './integrity-configuration';
 
 type Refusal=z.infer<typeof C.IntegrityRefused>|z.infer<typeof C.IntegrityUnavailable>;
@@ -33,23 +30,8 @@ function expected(error:unknown):Refusal|undefined{
   }
   if(error instanceof IntegrityChallengeError)return error.reason==='time_unavailable'?unavailable('proof_unavailable'):
     refused(error.reason==='binding_conflict'?'binding_conflict':'challenge_unavailable');
-  if(error instanceof AppleClockAssertionError)return error.reason==='configuration_unavailable'?unavailable('configuration_unavailable'):
-    error.reason==='counter_unavailable'||error.reason==='time_unavailable'?unavailable('proof_unavailable'):
-      refused(error.reason==='key_unavailable'?'key_unavailable':error.reason==='expired'?'challenge_unavailable':'invalid_proof');
   if(error instanceof AppAttestEnrollmentError)return error.reason==='invalid_configuration'?unavailable('configuration_unavailable'):
     error.reason==='metadata_unavailable'?unavailable('metadata_unavailable'):refused('invalid_proof');
-  if(error instanceof AppAttestAssertionError){
-    if(error.reason==='invalid_configuration')return unavailable('configuration_unavailable');
-    if(error.reason!=='invalid_key')return refused('invalid_proof'); // Corrupt stored keys remain unexpected failures.
-  }
-  if(error instanceof CorrectedClockConflictError)return refused('corrected_day');
-  if(error instanceof ClockConflictError)return refused('clock_conflict');
-  if(error instanceof AttendancePhotoRequiredError)return refused('photo_required');
-  if(error instanceof GeofenceQualityError)return {outcome:'refused',code:'location_required',locationReason:error.assessment.outcome==='poor_accuracy'?'poor_accuracy':error.assessment.outcome==='invalid_location'?'invalid_location':'location_required'};
-  if(error instanceof OutsideGeofenceError)return {outcome:'refused',code:'outside_geofence',...(error.info.reason?{locationReason:error.info.reason}:{})};
-  if(error instanceof ClockLocationError||error instanceof GeolocationRequiredError||error instanceof GeofenceQualityError)return refused('location_required');
-  if(error instanceof DeviceNotRegisteredError)return refused('device_required');
-  if(error instanceof ClockPhotoError)return refused('photo_invalid');
 }
 function parse<S extends z.ZodType>(schema:S,raw:unknown):z.output<S>{
   const value=schema.safeParse(raw);if(!value.success)throw new MobileBadRequest('Invalid integrity command');return value.data;
@@ -58,19 +40,11 @@ function bytes(value:string,maximum:number){
   const decoded=Buffer.from(value,'base64');
   if(decoded.length<1||decoded.length>maximum||decoded.toString('base64')!==value)throw new MobileBadRequest('Invalid proof encoding');return decoded;
 }
-async function form<S extends z.ZodType>(req:Request,schema:S){
-  const fields=await mobileForm(req,['command','photo'],3*1024*1024),raw=fields.get('command'),file=fields.get('photo');
-  if(typeof raw!=='string')throw new MobileBadRequest('Invalid command');
-  let json:unknown;try{json=JSON.parse(raw);}catch{throw new MobileBadRequest('Invalid JSON');}
-  const command=parse(schema,json);
-  if(file!==null&&(!(file instanceof File)||file.size<1||file.size>2*1024*1024||!['image/jpeg','image/png'].includes(file.type)))throw new MobileBadRequest('Invalid photo');
-  return {command,...(file instanceof File?{photo:Buffer.from(await file.arrayBuffer()),mime:file.type as 'image/jpeg'|'image/png'}:{})};
-}
 /** Session/configuration ports are server assembly/test seams, not HTTP fields. Settings are loaded
  * afresh after own-subject authorization; enrollment keys remain listable/revocable during outages.
  * Responses distinguish preparation/unavailability/refusal from acceptance. No handler falls back.
  */
-export function createIntegrityOperations(configuration:(ctx:SessionContext,employmentId:string,signal:AbortSignal)=>Promise<unknown|null>,options:{configurationTimeoutMs?:number;beforeEnrollmentCommit?:EnrollmentCommitGuard}={}){
+export function createIntegrityOperations(configuration:(ctx:SessionContext,employmentId:string,signal:AbortSignal)=>Promise<unknown|null>,options:SignedClockOptions&{beforeEnrollmentCommit?:EnrollmentCommitGuard}={}){
   const settings=createIntegrityConfigurationReader(AppleEnrollmentSettings,configuration,options.configurationTimeoutMs);
   function route<S extends z.ZodType>(schema:S,fn:(ctx:SessionContext,req:Request)=>Promise<unknown>){
     return async(ctx:SessionContext,req:Request)=>{
@@ -78,10 +52,11 @@ export function createIntegrityOperations(configuration:(ctx:SessionContext,empl
       catch(error){const known=expected(error);if(known)return known as z.input<S>;throw error;}
     };
   }
+  const clocks=createSignedClockOperations('ios',configuration,options);
   return {
     capabilities:route(C.IntegrityCapabilities,async(ctx,req)=>{
       const id=await selected(ctx,req);await settings(ctx,id,req.signal);
-      return {outcome:'capabilities',protocol:1,platform:'ios',features:['key_enrollment','online_clock_assertion'],offline:false};
+      return {outcome:'capabilities',protocol:1,platform:'ios',features:['key_enrollment',...(typeof options.beforeClockCommit==='function'?['online_clock_assertion']:[])],offline:false};
     }),
     enrollmentBegin:route(C.IntegrityEnrollmentPrepared,async(ctx,req)=>{
       const id=await selected(ctx,req),input=parse(C.IntegrityEnrollmentIntent,await mobileInput(req,1024));
@@ -97,19 +72,11 @@ export function createIntegrityOperations(configuration:(ctx:SessionContext,empl
       return {outcome:'enrolled',key};
     }),
     ...createIntegrityKeyOperations(),
-    clockBegin:route(C.IntegrityClockPrepared,async(ctx,req)=>{
-      const id=await selected(ctx,req),{command,...photo}=await form(req,C.IntegrityClockIntent);
-      const result=await createAppleClockService(await settings(ctx,id,req.signal)).begin(ctx,{...command,...photo,employmentId:id});
-      return {outcome:'prepared',protocol:1,context:result.context,state:result.challenge.state};
-    }),
-    clockComplete:route(C.IntegrityClockResult,async(ctx,req)=>{
-      const id=await selected(ctx,req),{command:{challengeId,assertion,...command},...photo}=await form(req,C.IntegrityClockProof);
-      const receipt=await createAppleClockService(await settings(ctx,id,req.signal)).complete(ctx,{...command,...photo,employmentId:id},{challengeId,assertion:bytes(assertion,8192)});
-      return {outcome:'accepted',receipt};
-    }),
+    clockBegin:clocks.clockBegin,
+    clockComplete:clocks.clockComplete,
   };
 }
-export function createIntegrityHttpHandlers(configuration:(ctx:SessionContext,employmentId:string,signal:AbortSignal)=>Promise<unknown|null>,resolve?:MobileSessionResolver,options:{configurationTimeoutMs?:number;beforeEnrollmentCommit?:EnrollmentCommitGuard}={}){
+export function createIntegrityHttpHandlers(configuration:(ctx:SessionContext,employmentId:string,signal:AbortSignal)=>Promise<unknown|null>,resolve?:MobileSessionResolver,options:SignedClockOptions&{beforeEnrollmentCommit?:EnrollmentCommitGuard}={}){
  const operations=createIntegrityOperations(configuration,options);
  return {
   capabilities:mobileRoute(C.IntegrityCapabilities,operations.capabilities,resolve),
@@ -118,7 +85,7 @@ export function createIntegrityHttpHandlers(configuration:(ctx:SessionContext,em
   keys:mobileRoute(C.IntegrityKeysResult,async(ctx,req)=>C.IntegrityKeysResult.parse(await operations.keys(ctx,req)),resolve),
   keyReceipt:mobileRoute(C.IntegrityKeyLookupResult,async(ctx,req)=>C.IntegrityKeyLookupResult.parse(await operations.keyReceipt(ctx,req)),resolve),
   revoke:mobileRoute(C.IntegrityRevocationResult,async(ctx,req)=>C.IntegrityRevocationResult.parse(await operations.revoke(ctx,req)),resolve),
-  clockBegin:mobileRoute(C.IntegrityClockPrepared,operations.clockBegin,resolve),
-  clockComplete:mobileRoute(C.IntegrityClockResult,operations.clockComplete,resolve),
+  clockBegin:mobileRoute(C.IntegrityClockPrepared,async(ctx,req)=>C.IntegrityClockPrepared.parse(await operations.clockBegin(ctx,req)),resolve),
+  clockComplete:mobileRoute(C.IntegrityClockResult,async(ctx,req)=>C.IntegrityClockResult.parse(await operations.clockComplete(ctx,req)),resolve),
  };
 }

@@ -1,7 +1,9 @@
 /** Server assembly owns integrity settings. A phone never selects a policy or verifier. */
 import {z} from 'zod';
 import type {SessionContext,Tx} from '../../db/client';
-export type EnrollmentCommitGuard=(tx:Tx,ctx:SessionContext,employmentId:string,settings:unknown)=>Promise<void>;
+export type IntegrityCommitGuard=(tx:Tx,ctx:SessionContext,employmentId:string,settings:unknown)=>Promise<void>;
+export type EnrollmentCommitGuard=IntegrityCommitGuard;
+export type ClockCommitGuard=IntegrityCommitGuard;
 export class IntegrityConfigurationUnavailable extends Error {
  constructor(readonly reason:'not_configured'|'configuration_unavailable'){
   super('Integrity configuration unavailable');this.name='IntegrityConfigurationUnavailable';
