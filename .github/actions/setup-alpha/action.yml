@@ -3,7 +3,7 @@ description: Install the candidate without staging credentials or shared Mac ser
 inputs:
   node:
     description: Node major
-    default: '22'
+    default: '22.23.3'
   path:
     description: Candidate checkout
     default: source
