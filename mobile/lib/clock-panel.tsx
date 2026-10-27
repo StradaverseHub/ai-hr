@@ -50,10 +50,6 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
   const recovery=useSubmissionRecovery('clock',identity??undefined,({entry,command,file})=>{
     if(entry.stage==='preparation'){
       const saved=ClockPreparation.parse(JSON.parse(command));
-      const prior=latestDraft.current;
-      if(prior?.requestId===saved.requestId&&prior.action===saved.action&&prior.geo&&prior.phase==='review'){
-        putClock({...prior,attemptStartedAt:saved.claimedAt,attemptReceiptTime:entry.attemptReceipt?.receivedAt});return;
-      }
       putClock({employmentId:identity??undefined,action:saved.action,requestId:saved.requestId,attemptStartedAt:saved.claimedAt,
         attemptReceiptTime:entry.attemptReceipt?.receivedAt,phase:'idle',message:t('attemptSavedNotSent')});return;
     }
