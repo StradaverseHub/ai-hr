@@ -48,7 +48,18 @@ def main():
             active=[name for name in instances() if show(name,'ActiveState')=='active']
             if active:assert len(active)==1;unit=active[0];break
             assert time.monotonic()<deadline;time.sleep(.03)
-        pid=int(show(unit,'MainPID'));helper_uid=os.stat('/proc/'+str(pid)).st_uid;assert helper_uid>0 and helper_uid!=uid
+        # Type=simple becomes active before systemd finishes exec/credential setup.
+        # Observe the actual installed helper before inspecting its identity; all
+        # credential, namespace and resource assertions below remain mandatory.
+        deadline=time.monotonic()+5
+        while True:
+            pid=int(show(unit,'MainPID'))
+            try:command=pathlib.Path('/proc/'+str(pid)+'/cmdline').read_bytes().split(b'\0') if pid>0 else []
+            except FileNotFoundError:command=[]
+            if os.fsencode(runtime/'smtp-token-peer.py') in command:break
+            assert time.monotonic()<deadline,'Installed token helper did not execute under systemd'
+            time.sleep(.03)
+        helper_uid=os.stat('/proc/'+str(pid)).st_uid;assert helper_uid>0 and helper_uid!=uid
         assert show(unit,'DynamicUser')=='yes' and show(unit,'EnvironmentFiles')==''
         env=pathlib.Path('/proc/'+str(pid)+'/environ').read_bytes().split(b'\0')
         assert not any(part.startswith(prefix) for part in env for prefix in [b'DATABASE_URL=',b'MIGRATION_DATABASE_URL=',b'AUTH_SESSION_KEY=',b'IDENTITY_EMAIL_DATABASE_URL='])
