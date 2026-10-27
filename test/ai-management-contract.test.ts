@@ -18,13 +18,17 @@ const governedCallers:Record<string,{features:readonly string[];seams:readonly R
  'core/module-agent-releases.ts':{features:['module_agent_evaluation','module_agent_planning'],seams:[/governedAiConfig\([^()]*'module_agent_evaluation'\)/,/governedAiConfig\([^()]*'module_agent_planning'\)/,/withAiAdmissionLifecycle\([^,()]*,\s*'module_agent_planning'/]},
  'core/personnel-import-assistance.ts':{features:['personnel_import_mapping'],seams:[/const FEATURE\s*=\s*'personnel_import_mapping'/,/resolveActiveAiConfig\(tx,\s*ctx,\s*FEATURE\)/]},
 };
+// Shared Performance provider seam: it resolves no configuration of its own and admits every call under the
+// calling Performance feature. Its call sites ARE provider call sites, so each is held to the same rule as a
+// direct call (a Performance pack file that resolves through assessmentAiConfigTx); the seam shows its admission.
+const performanceSeam={file:'packs/performance/onehr/provider-source-draft.ts',call:'generatePerformanceSourceDraft',admission:/withAiAdmissionCheck\(cfg,\s*`performance_\$\{feature\}`/};
 describe('complete AI management inventory and boundary',()=>{
  it('registers every production AI workload caller and keeps providers behind the shared gateway',()=>{
   const coreFound:string[]=[];let packCalls=0;
   for(const file of [...walk('core'),...walk('packs'),...walk('app')]){
    const src=read(file),tree=ts.createSourceFile(file,src,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
    let calls=0;
-   const visit=(node:ts.Node)=>{if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&['generateDraft','readImage','converse'].includes(node.expression.text))calls++;ts.forEachChild(node,visit);};visit(tree);
+   const visit=(node:ts.Node)=>{if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&['generateDraft','readImage','converse',performanceSeam.call].includes(node.expression.text))calls++;ts.forEachChild(node,visit);};visit(tree);
    for(const statement of tree.statements)if(ts.isImportDeclaration(statement)&&ts.isStringLiteral(statement.moduleSpecifier))expect(['openai','@anthropic-ai/sdk','@google/genai']).not.toContain(statement.moduleSpecifier.text);
    if(!calls)continue;
    if(file.startsWith('core/')){coreFound.push(file);const governed=governedCallers[file];
@@ -34,10 +38,13 @@ describe('complete AI management inventory and boundary',()=>{
      if(governed.issuedBy){const issuer=read(governed.issuedBy);expect(issuer,`${governed.issuedBy} issues ${file}`).toContain(`from './${file.slice('core/'.length,-'.ts'.length)}'`);
       for(const feature of governed.features)expect(issuer).toMatch(new RegExp(`governedAiConfig\\([^()]*'${feature}'\\)`));}
     }else{expect(coreCallers[file],`${file} needs a registered capability`).toBeTruthy();expect(src,`${file} resolves ${coreCallers[file]}`).toMatch(new RegExp(`resolveActiveAiConfig\\(tx,\\s*ctx,\\s*'${coreCallers[file]}'\\)`));}}
-   else{expect(file.startsWith('packs/performance/onehr/'),`${file} needs a governed configuration seam`).toBe(true);expect(src).toContain('assessmentAiConfigTx');packCalls+=calls;}
+   else{expect(file.startsWith('packs/performance/onehr/'),`${file} needs a governed configuration seam`).toBe(true);if(file===performanceSeam.file)expect(src).toMatch(performanceSeam.admission);else expect(src,`${file} resolves through assessmentAiConfigTx`).toContain('assessmentAiConfigTx');packCalls+=calls;}
   }
   expect(coreFound.sort()).toEqual([...Object.keys(coreCallers),...Object.keys(governedCallers)].sort());expect(packCalls).toBeGreaterThan(15);
-  const config=read('core/ai-config.ts');expect(config.match(/governedAiConfig\(/g)?.length).toBe(2);
+  // Since the provider snapshot owner (ADR-0131, 64651f101) the tenant row and platform fallback are one
+  // snapshot, so the active resolver issues exactly one governed configuration and nothing ungoverned.
+  const config=read('core/ai-config.ts');expect(config.match(/governedAiConfig\(/g)?.length).toBe(1);
+  expect(config).toMatch(/const snapshot\s*=\s*await resolveAiProviderSnapshotTx\(tx,\s*ctx\);\s*return snapshot\s*\?\s*governedAiConfig\(ctx,\s*snapshot,\s*feature\)\s*:\s*null;/);
  });
  it('keeps the SQL inventory, module catalogue and canonical switches consistent',()=>{
   // The live definition of a function is its LAST redefinition in journal (apply) order; 0568, 0621 and 0648 replaced ai_admit.
