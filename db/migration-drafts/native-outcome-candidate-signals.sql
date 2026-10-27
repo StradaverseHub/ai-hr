@@ -52,6 +52,10 @@ BEGIN
    ON j.id=a.job_id AND j.tenant_id=a.tenant_id AND j.user_id=a.user_id
    WHERE a.id=(r->>'associationId')::uuid AND j.id=(r->>'jobId')::uuid AND a.tenant_id=c.tenant_id AND a.user_id=c.owner_user_id
    AND a.consented AND a.action=r->>'action' AND a.expires_at>now() AND a.expires_at=(r->>'expiresAt')::timestamptz
+   AND EXISTS(SELECT 1 FROM app.native_outcome_source_capture source WHERE source.id=a.source_capture_id
+    AND source.tenant_id=a.tenant_id AND source.user_id=a.user_id AND source.person_id IS NOT DISTINCT FROM a.person_id
+    AND source.action=a.action AND source.event_id=a.event_id AND source.source_id=coalesce(a.review_id,a.import_attempt_id)
+    AND source.expires_at>=a.expires_at AND source.target_count=(SELECT count(*) FROM app.native_outcome_source_target target WHERE target.capture_id=source.id))
    AND j.expires_at>=a.expires_at AND j.request_nonce IS NOT NULL AND a.native_digest=r->>'nativeDigest'
    AND a.job_receipt_digest=r->>'jobReceiptDigest' AND encode(sha256(convert_to(a.receipt,'UTF8')),'hex')=r->>'associationReceiptDigest'
    AND encode(sha256(convert_to(j.receipt,'UTF8')),'hex')=r->>'jobReceiptDigest') THEN RETURN false;END IF;

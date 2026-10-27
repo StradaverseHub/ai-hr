@@ -6,7 +6,7 @@ import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {RecordNativeOutcomeAssociation,NativeOutcomeAssociationId} from '../lib/ai/module-native-outcomes';
 import {assertAiPrincipalTx} from './ai-principal';
-import {readVerifiedOwnGovernedJobProvenanceTx} from './module-agent-releases';
+import {beginOwnNativeOutcomeJobProvenanceTx} from './module-agent-releases';
 import {lockNativeOutcomeCustodyTx,nominateOwnNativeOutcomeJobTx,readVerifiedNativeOutcomeAssociationTx,recordVerifiedNativeOutcomeAssociationTx} from './module-native-outcome-references';
 import type {NativeOutcomeServerContext} from './assistant-actions/completed-outcome-readers';
 const capture=(ctx:SessionContext)=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))});
@@ -16,7 +16,7 @@ export async function recordOwnNativeOutcomeAssociation(supplied:SessionContext,
  const ctx=capture(supplied);let input;try{input=RecordNativeOutcomeAssociation.parse(structuredClone(value));}catch{throw new NativeOutcomeUnavailable();}const capability=serverCapture(server);
  try{return await withTenant(ctx,async tx=>{
   await boundNativeOutcomeTransactionTx(tx);
-  const provenance=await readVerifiedOwnGovernedJobProvenanceTx(tx,ctx,input.jobId);
+  const provenance=await beginOwnNativeOutcomeJobProvenanceTx(tx,ctx,input.jobId);
   return recordVerifiedNativeOutcomeAssociationTx(tx,ctx,input,provenance,capability);
  });}catch{throw new NativeOutcomeUnavailable();}
 }
@@ -26,7 +26,7 @@ export async function reopenOwnNativeOutcomeAssociation(supplied:SessionContext,
   await boundNativeOutcomeTransactionTx(tx);
   await assertAiPrincipalTx(tx,ctx);
   const jobId=await nominateOwnNativeOutcomeJobTx(tx,ctx,input.associationId);
-  const provenance=await readVerifiedOwnGovernedJobProvenanceTx(tx,ctx,jobId);
+  const provenance=await beginOwnNativeOutcomeJobProvenanceTx(tx,ctx,jobId);
   return (await readVerifiedNativeOutcomeAssociationTx(tx,ctx,input.associationId,provenance,capability)).view;
  });}catch{throw new NativeOutcomeUnavailable();}
 }

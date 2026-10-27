@@ -12,6 +12,18 @@ import {encryptSecret,decryptSecret,isSecretStorable} from '../lib/ai/crypto';
 import {NativeOutcomeReference,NativeOutcomeEvidence,NativeOutcomeAssociationView,RecordNativeOutcomeAssociation,nativeOutcomeDescriptor} from '../lib/ai/module-native-outcomes';
 import {readCompletedNativeOutcomeTx,type NativeOutcomeServerContext} from './assistant-actions/completed-outcome-readers';
 export type NativeOutcomeJobProvenance=Readonly<{jobId:string;modules:readonly AgentModuleCode[];jobReceiptDigest:string;candidateDigest:string;sourceDigest:string;expiresAt:string}>;
+/** Two-phase server capability. The actual governance owner verifies the job/candidate binding
+ * first, then supplies a SAME-Tx continuation for current native metadata. This keeps second-
+ * generation candidate custody AFTER the new canonical source, without impersonating an author.
+ * Neither JSON, a copied object nor a browser/model callback can mint this in-process capability. */
+const jobRechecks=new WeakMap<NativeOutcomeJobProvenance,{tx:Tx;tenantId:string;userId:string|undefined;personId:string|null;check:()=>Promise<void>}>();
+export function bindNativeOutcomeJobRecheckTx(tx:Tx,ctx:SessionContext,job:NativeOutcomeJobProvenance,check:()=>Promise<void>){
+ const bound=Object.freeze({...job,modules:Object.freeze([...job.modules])});jobRechecks.set(bound,{tx,tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId??null,check});return bound;
+}
+function requireJobCarrier(tx:Tx,ctx:SessionContext,job:NativeOutcomeJobProvenance){const carrier=jobRechecks.get(job);if(!carrier||carrier.tx!==tx||carrier.tenantId!==ctx.tenantId||carrier.userId!==ctx.userId||carrier.personId!==(ctx.personId??null))throw Error('Native outcome unavailable.');return carrier;}
+/** With no further canonical source reads, a metadata-only GET may finish this immediately. */
+export async function finishNativeOutcomeJobRecheckTx(tx:Tx,ctx:SessionContext,job:NativeOutcomeJobProvenance){const carrier=requireJobCarrier(tx,ctx,job);jobRechecks.delete(job);await carrier.check();}
+
 const Id=z.uuid(),Digest=z.string().regex(/^[a-f0-9]{64}$/),Time=z.union([z.string(),z.date()]);
 const Row=z.object({id:Id,tenant_id:Id,user_id:Id,person_id:Id.nullable(),job_id:Id,request_nonce:Id,request_digest:Digest,action:z.string(),source_kind:z.enum(['review','employee_import']),review_id:Id.nullable(),import_attempt_id:Id.nullable(),event_id:Id,native_digest:Digest,job_receipt_digest:Digest,receipt:z.string().min(1).max(16384),consented:z.literal(true),created_at:Time,expires_at:Time,fresh:z.literal(true)}).strict();
 type Row=z.infer<typeof Row>;
@@ -50,8 +62,8 @@ export async function nominateOwnNativeOutcomeJobTx(tx:Tx,ctx:SessionContext,id:
 /** Existing authenticated job source may have changed because the native action succeeded. Reopen
  * proves the exact action again; a changed current status is stale evidence, not retroactive failure. */
 export async function readVerifiedNativeOutcomeAssociationTx(tx:Tx,ctx:SessionContext,idValue:unknown,job:NativeOutcomeJobProvenance,server:NativeOutcomeServerContext={}){
- const id=Id.parse(idValue);await boundNativeOutcomeTransactionTx(tx);const before=await rowTx(tx,ctx,id),proof=openRow(ctx,before);sameProvenance(proof,job);
- const fresh=await readCompletedNativeOutcomeTx(tx,ctx,proof.reference,server);
+ const id=Id.parse(idValue);await boundNativeOutcomeTransactionTx(tx);requireJobCarrier(tx,ctx,job);const before=await rowTx(tx,ctx,id),proof=openRow(ctx,before);sameProvenance(proof,job);
+ const fresh=await readCompletedNativeOutcomeTx(tx,ctx,proof.reference,server);await finishNativeOutcomeJobRecheckTx(tx,ctx,job);
  if(hash([proof.proofNonce,fresh.evidence])!==before.native_digest||Date.parse(proof.expiresAt)>Date.parse(fresh.sourceExpiresAt))return fail();
  await lockNativeOutcomeCustodyTx(tx,ctx);const row=await rowTx(tx,ctx,id);if(row.receipt!==before.receipt||row.request_digest!==before.request_digest)return fail();const checked=openRow(ctx,row);sameProvenance(checked,job);
  return Object.freeze({view:view(row,checked),reference:Object.freeze({associationId:id,jobId:job.jobId,associationReceiptDigest:rawReceiptDigest(row.receipt),nativeDigest:row.native_digest,jobReceiptDigest:row.job_receipt_digest,action:checked.reference.action,module:nativeOutcomeDescriptor(checked.reference.action).module,expiresAt:checked.expiresAt})});
@@ -59,8 +71,8 @@ export async function readVerifiedNativeOutcomeAssociationTx(tx:Tx,ctx:SessionCo
 /** Called only AFTER the existing own-job verifier took Access/release/signal ownership. */
 export async function recordVerifiedNativeOutcomeAssociationTx(tx:Tx,ctx:SessionContext,value:z.infer<typeof RecordNativeOutcomeAssociation>,job:NativeOutcomeJobProvenance,server:NativeOutcomeServerContext={}){
  const input=RecordNativeOutcomeAssociation.parse(structuredClone(value));if(input.jobId!==job.jobId||!ctx.userId||!isSecretStorable())return fail();requireProvenance(job,input.reference);
- await boundNativeOutcomeTransactionTx(tx);
- const native=await readCompletedNativeOutcomeTx(tx,ctx,input.reference,server),requestDigest=hash(input);
+ await boundNativeOutcomeTransactionTx(tx);requireJobCarrier(tx,ctx,job);
+ const native=await readCompletedNativeOutcomeTx(tx,ctx,input.reference,server),requestDigest=hash(input);await finishNativeOutcomeJobRecheckTx(tx,ctx,job);
  await lockNativeOutcomeCustodyTx(tx,ctx);
  const [old]=await tx.execute(sql`select ${projection} from public.ai_native_outcome_association where tenant_id=${ctx.tenantId}::uuid and user_id=${ctx.userId}::uuid and request_nonce=${input.nonce}::uuid`);
  if(old){const row=Row.parse(old),proof=openRow(ctx,row);if(row.request_digest!==requestDigest)return fail();sameProvenance(proof,job);if(hash([proof.proofNonce,native.evidence])!==row.native_digest||Date.parse(proof.expiresAt)>Date.parse(native.sourceExpiresAt))return fail();return view(row,proof);}

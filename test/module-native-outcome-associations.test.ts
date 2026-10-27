@@ -8,9 +8,9 @@ import {hireEmployee} from '../core/org';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {applyLeaveAdjustmentBatch} from '../packs/leave/service';
 import {prepareOwnLeaveReviewTx,confirmOwnLeaveReview,discardOwnLeaveReviewTx,readCompletedOwnLeaveOutcomeTx} from '../core/assistant-actions/own-leave-store';
-import {runGovernedModuleReadPlan,readVerifiedOwnGovernedJobProvenanceTx,createCanonicalSpecialistCandidate,promoteCanonicalSpecialistCandidate} from '../core/module-agent-releases';
+import {runGovernedModuleReadPlan,beginOwnNativeOutcomeJobProvenanceTx,createCanonicalSpecialistCandidate,promoteCanonicalSpecialistCandidate} from '../core/module-agent-releases';
 import {recordOwnNativeOutcomeAssociation,reopenOwnNativeOutcomeAssociation,eraseOwnNativeOutcomeAssociations} from '../core/module-native-outcomes';
-import {readVerifiedNativeOutcomeAssociationTx,recordVerifiedNativeOutcomeAssociationTx} from '../core/module-native-outcome-references';
+import {readVerifiedNativeOutcomeAssociationTx,recordVerifiedNativeOutcomeAssociationTx,finishNativeOutcomeJobRecheckTx} from '../core/module-native-outcome-references';
 import {boundNativeOutcomeTransactionTx} from '../core/module-native-outcome-bounds';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -52,7 +52,7 @@ describe('actual own native outcome links',()=>{
   expect(await counts()).toEqual({...before,links:before.links+1});
   const [stored]=await owner.db.execute<{receipt:string}>(sql`select receipt from public.ai_native_outcome_association where id=${linked.associationId}::uuid`);
   const [sqlDigest]=await owner.db.execute<{digest:string}>(sql`select encode(sha256(convert_to(receipt,'UTF8')),'hex') as digest from public.ai_native_outcome_association where id=${linked.associationId}::uuid`);
-  const reference=await withTenant(f.mine.ctx,async tx=>{const provenance=await readVerifiedOwnGovernedJobProvenanceTx(tx,f.mine.ctx,p.job.jobId);return readVerifiedNativeOutcomeAssociationTx(tx,f.mine.ctx,linked.associationId,provenance);});
+  const reference=await withTenant(f.mine.ctx,async tx=>{const provenance=await beginOwnNativeOutcomeJobProvenanceTx(tx,f.mine.ctx,p.job.jobId);return readVerifiedNativeOutcomeAssociationTx(tx,f.mine.ctx,linked.associationId,provenance);});
   expect(reference.reference.associationReceiptDigest).toBe(sqlDigest.digest);expect(sqlDigest.digest).toBe(createHash('sha256').update(stored.receipt,'utf8').digest('hex'));
   expect(stored.receipt).not.toContain('HUMAN PRIVATE REASON');expect(JSON.stringify(linked)).not.toContain(p.review.actionId);
   await expect(recordOwnNativeOutcomeAssociation(f.mine.ctx,{...p.input,nonce:randomUUID()})).rejects.toThrow(unavailable);
@@ -78,7 +78,7 @@ describe('actual own native outcome links',()=>{
  });
  it('rolls back a fully inserted link on caller failure and permits the same authenticated retry',async()=>{
   const f=await fixture(),p=await preparation(f);await complete(f,p);const before=await counts();
-  await expect(withTenant(f.mine.ctx,async tx=>{const proof=await readVerifiedOwnGovernedJobProvenanceTx(tx,f.mine.ctx,p.job.jobId);await recordVerifiedNativeOutcomeAssociationTx(tx,f.mine.ctx,p.input,proof);throw Error('injected caller rollback');})).rejects.toThrow('injected caller rollback');
+  await expect(withTenant(f.mine.ctx,async tx=>{const proof=await beginOwnNativeOutcomeJobProvenanceTx(tx,f.mine.ctx,p.job.jobId);await recordVerifiedNativeOutcomeAssociationTx(tx,f.mine.ctx,p.input,proof);throw Error('injected caller rollback');})).rejects.toThrow('injected caller rollback');
   expect(await counts()).toEqual(before);await recordOwnNativeOutcomeAssociation(f.mine.ctx,p.input);expect((await counts()).links).toBe(before.links+1);
  });
  it.each(['agent-release','agent-signals','native-outcome:v1'])('refuses actual held %s ownership with no link/native effect and succeeds after release',async(prefix)=>{
@@ -180,4 +180,16 @@ describe('native completion as human-selected candidate hypothesis',()=>{
   try{await started;await expect(createCanonicalSpecialistCandidate(f.mine.ctx,{module:'leave',version:1,nativeSignalIds:[linked.associationId]})).rejects.toThrow();expect(await count()).toBe(before);}finally{release();await holder;}
   expect((await createCanonicalSpecialistCandidate(f.mine.ctx,{module:'leave',version:1,nativeSignalIds:[linked.associationId]})).state).toBe('unevaluated');expect(await count()).toBe(before+1);
  });
+});
+
+/** Authored UNRUN: begin/finish carriers cannot become reusable canonical-source capabilities. */
+it('refuses copied, different-person, cross-transaction and already finished provenance before native association work',async()=>{
+ const f=await fixture(),p=await preparation(f);await complete(f,p);const before=await counts();
+ await expect(withTenant(f.mine.ctx,async tx=>{const proof=await beginOwnNativeOutcomeJobProvenanceTx(tx,f.mine.ctx,p.job.jobId);await recordVerifiedNativeOutcomeAssociationTx(tx,f.mine.ctx,p.input,{...proof});})).rejects.toThrow();
+ await expect(withTenant(f.mine.ctx,async tx=>{const proof=await beginOwnNativeOutcomeJobProvenanceTx(tx,f.mine.ctx,p.job.jobId);await recordVerifiedNativeOutcomeAssociationTx(tx,{...f.mine.ctx,personId:f.peer.ctx.personId},p.input,proof);})).rejects.toThrow();
+ let old!:Awaited<ReturnType<typeof beginOwnNativeOutcomeJobProvenanceTx>>;
+ await withTenant(f.mine.ctx,async tx=>{old=await beginOwnNativeOutcomeJobProvenanceTx(tx,f.mine.ctx,p.job.jobId);await finishNativeOutcomeJobRecheckTx(tx,f.mine.ctx,old);});
+ await expect(withTenant(f.mine.ctx,tx=>recordVerifiedNativeOutcomeAssociationTx(tx,f.mine.ctx,p.input,old))).rejects.toThrow();
+ await expect(withTenant(f.mine.ctx,async tx=>{const proof=await beginOwnNativeOutcomeJobProvenanceTx(tx,f.mine.ctx,p.job.jobId);await finishNativeOutcomeJobRecheckTx(tx,f.mine.ctx,proof);await recordVerifiedNativeOutcomeAssociationTx(tx,f.mine.ctx,p.input,proof);})).rejects.toThrow();
+ expect(await counts()).toEqual(before);await recordOwnNativeOutcomeAssociation(f.mine.ctx,p.input);expect((await counts()).links).toBe(before.links+1);
 });

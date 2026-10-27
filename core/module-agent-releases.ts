@@ -1,6 +1,6 @@
 import type {NativeOutcomeServerContext} from './assistant-actions/completed-outcome-readers';
 import {captureNativeCandidateSignals,captureNativeCandidateSignalIds,type NativeCandidateSignal} from '../lib/ai/module-native-signals';
-import {nominateOwnNativeOutcomeJobTx,readVerifiedNativeOutcomeAssociationTx,ownNativeCandidateSignalChoicesTx} from './module-native-outcome-references';
+import {nominateOwnNativeOutcomeJobTx,readVerifiedNativeOutcomeAssociationTx,ownNativeCandidateSignalChoicesTx,bindNativeOutcomeJobRecheckTx} from './module-native-outcome-references';
 import {boundNativeOutcomeTransactionTx} from './module-native-outcome-bounds';
 import {specialistFollowupCases} from '../lib/ai/module-specialist-followup-cases';
 import {SpecialistCandidate,executeCanonicalSpecialist,specialistNativeContractDigest,SPECIALIST_ENGINE_DIGEST,SPECIALIST_POLICY_DIGEST,SPECIALIST_POLICY,type SpecialistAssessment} from '../lib/ai/module-specialists';
@@ -69,13 +69,13 @@ function assertCurrent(row: CandidateRow) {
     row.candidate_digest !== routingDigest(binding(row))) return fail();
   return configuration;
 }
-async function candidateTx(tx: Tx, ctx: SessionContext, id: string, validate = true) {
+async function candidateTx(tx: Tx, ctx: SessionContext, id: string, validate = true, deferNativeCustody = false) {
   if (!uuid(id)) return fail();
   const [row] = await tx.execute<CandidateRow>(sql`select c.id,c.owner_user_id,c.author_user_id,c.module_code,c.version,c.kind,c.configuration,
     c.candidate_digest,c.baseline_digest,c.source_digest,c.engine_digest,c.policy_digest,c.input_digest,p.refs as signal_refs,p.receipt as signal_receipt,p.native_refs as native_signal_refs from public.ai_agent_candidate c
     left join public.ai_agent_candidate_provenance p on p.candidate_id=c.id and p.tenant_id=c.tenant_id
     where c.id=${id}::uuid and c.tenant_id=${ctx.tenantId}::uuid`);
-  if (!row) return fail(); if (validate){assertCurrent(row);await assertCandidateSignalsTx(tx,ctx,row);} return row;
+  if (!row) return fail(); if (validate){assertCurrent(row);await assertCandidateSignalsTx(tx,ctx,row,deferNativeCustody);} return row;
 }
 const aad = (kind: string, tenant: string, id: string) => JSON.stringify(['ai-hr.module-agent.v1',kind,tenant,id]);
 function seal(kind: string, tenant: string, id: string, value: unknown) {
@@ -115,13 +115,13 @@ async function signalIntervalTx(tx:Tx,ctx:SessionContext,ownerId:string,exclusiv
  const key='agent-signals:'+ctx.tenantId+':'+ownerId;const [row]=await tx.execute<{owned:boolean}>(exclusive?
   sql`select pg_try_advisory_xact_lock(hashtextextended(${key},0)) as owned`:sql`select pg_try_advisory_xact_lock_shared(hashtextextended(${key},0)) as owned`);if(row?.owned!==true)throw new AgentSignalBusy('Agent review could not be confirmed.');
 }
-async function assertCandidateSignalsTx(tx:Tx,ctx:SessionContext,candidate:CandidateRow){
+async function assertCandidateSignalsTx(tx:Tx,ctx:SessionContext,candidate:CandidateRow,deferNativeCustody=false){
  await signalIntervalTx(tx,ctx,candidate.owner_user_id);const refs=captureSignalRefs(candidate.signal_refs),nativeRefs=captureNativeCandidateSignals(candidate.native_signal_refs);
  if(!candidate.signal_receipt)return fail();const proof=open('candidate-signals',ctx.tenantId,candidate.id,candidate.signal_receipt);
  if(!exact(proof,['version','candidateDigest','ownerId','sourceDigest','refs',...(nativeRefs.length?['nativeRefs']:[])])||proof.version!==(nativeRefs.length?2:1)||proof.candidateDigest!==candidate.candidate_digest||proof.ownerId!==candidate.owner_user_id||
   proof.sourceDigest!==MODULE_AGENT_SOURCE_DIGEST||routingDigest(captureSignalRefs(proof.refs))!==routingDigest(refs)||routingDigest(captureNativeCandidateSignals(proof.nativeRefs))!==routingDigest(nativeRefs))return fail();
  const [current]=await tx.execute<{allowed:boolean}>(sql`select app.agent_candidate_signals_current(${candidate.id}::uuid) as allowed`);if(current?.allowed!==true)return fail();
- if(nativeRefs.length){
+ if(nativeRefs.length&&!deferNativeCustody){
   // A competing erasure/retention interval is transient busy, not evidence of source retirement.
   // Match the trigger's canonical UUID key and propagate the existing busy classification.
   const [ownership]=await tx.execute<{owned:boolean}>(sql`select pg_try_advisory_xact_lock_shared(hashtextextended('native-outcome:v1:'||(${ctx.tenantId}::uuid)::text||':'||(${candidate.owner_user_id}::uuid)::text,0)) as owned`);
@@ -156,7 +156,7 @@ async function ownNativeCandidateSignalsTx(tx:Tx,ctx:SessionContext,ids:readonly
  if(!ids.length)return Object.freeze([]);
  await boundNativeOutcomeTransactionTx(tx);
  const jobId=await nominateOwnNativeOutcomeJobTx(tx,ctx,ids[0]);
- const provenance=await readVerifiedOwnGovernedJobProvenanceTx(tx,ctx,jobId);
+ const provenance=await beginOwnNativeOutcomeJobProvenanceTx(tx,ctx,jobId);
  const proof=await readVerifiedNativeOutcomeAssociationTx(tx,ctx,ids[0],provenance,server);
  const refs=captureNativeCandidateSignals([proof.reference]);if(module&&refs[0].module!==module)return fail();return refs;
 }
@@ -276,25 +276,25 @@ function verifiedGovernedJob(row:GovernedJobRow,ctx:SessionContext){
  const planning=proof.planning===undefined?undefined:capturePlanningBinding(proof.planning);if(specialist&&(planning||requested.modules.length!==1||requested.modules[0]!==specialist.configuration.module||executed.modules[0]!==specialist.configuration.module||(proof.mode==='promoted')!==(specialist.assessmentDigest!==null)||proof.mode==='baseline'&&proof.candidateDigest!==specialistBaselineDigest(specialist.configuration.module)))return fail();
  return {requested,executed,mode:proof.mode as 'baseline'|'promoted',candidateDigest:proof.candidateDigest,resultDigest:proof.resultDigest,planning,specialist};
 }
-async function assertGovernedJobCandidateTx(tx:Tx,ctx:SessionContext,job:GovernedJobRow,completed:ReturnType<typeof verifiedGovernedJob>){
- if(completed.planning)await currentPlanningBindingTx(tx,ctx,completed.planning);
+async function assertGovernedJobCandidateTx(tx:Tx,ctx:SessionContext,job:GovernedJobRow,completed:ReturnType<typeof verifiedGovernedJob>,deferNativeCustody=false){
+ if(completed.planning)await currentPlanningBindingTx(tx,ctx,completed.planning,deferNativeCustody);
  if(!job.promotion_id)return;const [promotion]=await tx.execute<{candidate_id:string}>(sql`select candidate_id from public.ai_agent_promotion where id=${job.promotion_id}::uuid and tenant_id=${ctx.tenantId}::uuid and owner_user_id=${ctx.userId}::uuid`);
- if(!promotion)return fail();const candidate=await candidateTx(tx,ctx,promotion.candidate_id);if(candidate.candidate_digest!==completed.candidateDigest||completed.specialist&&(candidate.kind!=='canonical_specialist_v1'||candidate.module_code!==completed.specialist.configuration.module||routingDigest(candidate.configuration)!==routingDigest(completed.specialist.configuration)))return fail();
+ if(!promotion)return fail();const candidate=await candidateTx(tx,ctx,promotion.candidate_id,true,deferNativeCustody);if(candidate.candidate_digest!==completed.candidateDigest||completed.specialist&&(candidate.kind!=='canonical_specialist_v1'||candidate.module_code!==completed.specialist.configuration.module||routingDigest(candidate.configuration)!==routingDigest(completed.specialist.configuration)))return fail();
 }
 /** Historical command provenance for a distinct human-linked native outcome. This is neither
  * feedback truth nor new promoted-run admission. A native action may intentionally change read
  * facts: do not apply the opinion writer's unchanged-result test here. Call BEFORE native source
  * intervals, preserving Access -> release -> signals -> canonical source -> association order.
  * Any refusal requires the whole caller transaction to roll back; no savepoint continuation. */
-export async function readVerifiedOwnGovernedJobProvenanceTx(tx:Tx,supplied:SessionContext,jobId:string):Promise<Readonly<{jobId:string;modules:readonly AgentModuleCode[];jobReceiptDigest:string;candidateDigest:string;sourceDigest:string;expiresAt:string}>>{
+export async function beginOwnNativeOutcomeJobProvenanceTx(tx:Tx,supplied:SessionContext,jobId:string):Promise<Readonly<{jobId:string;modules:readonly AgentModuleCode[];jobReceiptDigest:string;candidateDigest:string;sourceDigest:string;expiresAt:string}>>{
  const current=capture(supplied),id=jobId;
  if(typeof id!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(id))return fail();
  const fresh=await guard(tx,current,false);if(!current.userId)return fail();
  await agentReleaseIntervalTx(tx,current,current.userId,false);await signalIntervalTx(tx,current,current.userId);
  const rows=await tx.execute<GovernedJobRow>(sql`select ${jobProjection} from public.ai_agent_job_receipt where id=${id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);
- if(rows.length!==1)return fail();const job=rows[0],completed=verifiedGovernedJob(job,current);await assertGovernedJobCandidateTx(tx,current,job,completed);
+ if(rows.length!==1)return fail();const job=rows[0],completed=verifiedGovernedJob(job,current);await assertGovernedJobCandidateTx(tx,current,job,completed,true);
  for(const module of completed.executed.modules)assertModuleEnabled(fresh,module);
- return Object.freeze({jobId:job.id,modules:Object.freeze([...completed.executed.modules]),jobReceiptDigest:rawReceiptDigest(job.receipt),candidateDigest:completed.candidateDigest,sourceDigest:MODULE_AGENT_SOURCE_DIGEST,expiresAt:job.expires_at!});
+ return bindNativeOutcomeJobRecheckTx(tx,current,{jobId:job.id,modules:Object.freeze([...completed.executed.modules]),jobReceiptDigest:rawReceiptDigest(job.receipt),candidateDigest:completed.candidateDigest,sourceDigest:MODULE_AGENT_SOURCE_DIGEST,expiresAt:job.expires_at!},async()=>{await assertGovernedJobCandidateTx(tx,current,job,completed);});
 }
 /** Human opinion only, independently tied to an actual completed command and unchanged current facts. */
 export async function recordOwnGovernedJobFeedback(ctx:SessionContext,input:{jobId:string;outcome:typeof GOVERNED_JOB_FEEDBACK_OUTCOMES[number];consented:true}){
@@ -654,10 +654,10 @@ function capturePlanningBinding(input:unknown):PlanningBinding{
  return Object.freeze(row) as PlanningBinding;
 }
 /** Historical sealed binding nominates; fresh issued provider and actual principal remain authority. */
-async function currentPlanningBindingTx(tx:Tx,ctx:SessionContext,binding:PlanningBinding){
+async function currentPlanningBindingTx(tx:Tx,ctx:SessionContext,binding:PlanningBinding,deferNativeCustody=false){
  const fresh=await guard(tx,ctx,false);await assertAiActionUnpausedTx(tx,fresh,'module_agent_planning');
  await agentReleaseIntervalTx(tx,ctx,ctx.userId!,false);await signalIntervalTx(tx,ctx,ctx.userId!);
- const candidate=await candidateTx(tx,ctx,binding.candidateId);
+ const candidate=await candidateTx(tx,ctx,binding.candidateId,true,deferNativeCustody);
  if(candidate.owner_user_id!==ctx.userId||candidate.kind!=='read_plan_prompt_v1'||candidate.candidate_digest!==binding.candidateDigest)return fail();
  const [promotion]=await tx.execute<{receipt:string;max_jobs:number;expires_at:string}>(sql`select receipt,max_jobs,expires_at::text from public.ai_agent_promotion p where p.id=${binding.promotionId}::uuid and p.tenant_id=${ctx.tenantId}::uuid and p.owner_user_id=${ctx.userId}::uuid and p.candidate_id=${candidate.id}::uuid and p.expires_at>now() and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id and r.tenant_id=p.tenant_id)`);
  if(!promotion)return fail();const proof=open('prompt-promotion',ctx.tenantId,binding.promotionId,promotion.receipt);
