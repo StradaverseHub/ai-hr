@@ -54,3 +54,30 @@ export async function lockLeaveDependenciesTx(tx: Tx, tenantId: string, employme
   await acquire(tx, tenantId, `leave-dependency-configuration:${tenantId}`, true);
   for (const id of subjects) await acquire(tx, tenantId, `leave-dependency-employment:${tenantId}:${id}`, false);
 }
+
+/** Explicit SOURCE-READ interval for an actual READ COMMITTED READ ONLY transaction. Same physical
+ * keys as ordinary writers; shared subject mode coexists with other source readers but conflicts
+ * with every participating employment-exclusive writer. This grants no effect authority, never
+ * changes transaction mode, and must follow the caller's current Access/own-subject authorization.
+ * PostgreSQL's advisory-lock/SET TRANSACTION docs describe these distinct mechanisms; actual
+ * app-role/read-only/lock-mode interleavings remain required verification, not a source guarantee.
+ */
+async function acquireReadOnlySource(tx:Tx,tenantId:string,key:string):Promise<void>{
+ const [row]=await tx.execute<{acquired:boolean}>(sql`select case
+  when app.current_tenant_id()=${tenantId}::uuid and current_setting('transaction_isolation')='read committed'
+   and current_setting('transaction_read_only')='on'
+  then pg_try_advisory_xact_lock_shared(hashtextextended(${key},0)) else false end as acquired`);
+ if(row?.acquired!==true)throw new LeaveDependencyUnavailable();
+}
+export async function lockLeaveReadOnlySourceConfigurationTx(tx:Tx,tenantId:string):Promise<void>{
+ if(!uuid.safeParse(tenantId).success)throw new LeaveDependencyUnavailable();tenantId=tenantId.toLowerCase();
+ await acquireReadOnlySource(tx,tenantId,`leave-dependency-configuration:${tenantId}`);
+}
+/** Complete nominated subject set is captured/deduped/ordered before first await. Any busy/partial
+ * refusal requires the WHOLE caller transaction to roll back, exactly as for ordinary commands. */
+export async function lockLeaveReadOnlySourceDependenciesTx(tx:Tx,tenantId:string,employmentIds:readonly string[]):Promise<void>{
+ if(!uuid.safeParse(tenantId).success||employmentIds.length===0||employmentIds.some(id=>!uuid.safeParse(id).success))throw new LeaveDependencyUnavailable();
+ tenantId=tenantId.toLowerCase();const subjects=[...new Set(employmentIds.map(id=>id.toLowerCase()))].sort();
+ await acquireReadOnlySource(tx,tenantId,`leave-dependency-configuration:${tenantId}`);
+ for(const id of subjects)await acquireReadOnlySource(tx,tenantId,`leave-dependency-employment:${tenantId}:${id}`);
+}

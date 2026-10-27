@@ -1,4 +1,4 @@
-import { count, eq } from 'drizzle-orm';
+import { count, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant, type SessionContext } from '../db/client';
 import { appUser, domainEvent, employment, leaveLedger, leaveRequest, leaveType, roleAssignment } from '../db/schema';
@@ -146,6 +146,27 @@ describe('own-leave read-only candidate', () => {
     expect(await sourceCounts()).toEqual(before);
   });
 
+  it('preserves the actual READ COMMITTED READ ONLY native-readback contract under explicit source ownership, with no leave or custody effects',async()=>{
+    const before=await sourceCounts();
+    const result=await withTenant(ctx,async tx=>{
+      await tx.execute(sql`set transaction read only`);
+      const outcome=await readOwnLeaveCandidateTx(tx,ctx,nomination,selection,text,'en');
+      const [mode]=await tx.execute<{readonly:string;isolation:string}>(sql`select current_setting('transaction_read_only') as readonly,current_setting('transaction_isolation') as isolation`);
+      expect(mode).toEqual({readonly:'on',isolation:'read committed'});return outcome;
+    });
+    expect(result.kind).toBe('candidate');expect(await sourceCounts()).toEqual(before);
+  });
+  it('refuses a held actual employment writer before a read-only native candidate returns private facts, then reads after release without changing mode',async()=>{
+    const before=await sourceCounts();let entered!:()=>void,failed!:(error:unknown)=>void,release!:()=>void;const ready=new Promise<void>((yes,no)=>{entered=yes;failed=no;}),done=new Promise<void>(yes=>{release=yes;});const watchdog=setTimeout(()=>{failed(Error('owned ownleave handshake timed out'));release();},10_000);
+    const holder=owner.db.transaction(async tx=>{await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'leave-dependency-employment:'+base.tenantId+':'+employmentId},0))`);entered();await done;});void holder.catch(failed);
+    const read=()=>withTenant(ctx,async tx=>{await tx.execute(sql`set transaction read only`);const result=await readOwnLeaveCandidateTx(tx,ctx,nomination,selection,text,'en');const [mode]=await tx.execute<{readonly:string}>(sql`select current_setting('transaction_read_only') as readonly`);expect(mode.readonly).toBe('on');return result;});
+    try{await ready;await expect(read()).rejects.toThrow();expect(await sourceCounts()).toEqual(before);}finally{release();clearTimeout(watchdog);await holder;}
+    expect((await read()).kind).toBe('candidate');expect(await sourceCounts()).toEqual(before);
+  });
+
+  it('captures the original actor before its new transaction-bounds await so retained carriers cannot retarget disclosure',async()=>{
+    await withTenant(ctx,async tx=>{const supplied={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};const pending=readOwnLeaveCandidateTx(tx,supplied,nomination,selection,text,'en');supplied.userId=base.adminUserId;supplied.personId=null;supplied.roles!.push('hr_admin');supplied.grants![0].role='hr_admin';const result=await pending;expect(result.kind).toBe('candidate');if(result.kind==='candidate')expect(result.candidate.binding).toMatchObject({userId:ctx.userId,personId:ctx.personId});});
+  });
   it('does not label an older report snapshot as fresh confirmation authority', async () => {
     expect(await withTenant(ctx, tx =>
       readOwnLeaveCandidateTx(tx, ctx, nomination, selection, text), { readOnlySnapshot: true }))

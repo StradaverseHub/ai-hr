@@ -77,6 +77,41 @@ async function counts() {
 }
 
 describe('pending own-leave review custody', () => {
+  it.each(['configuration','employment'] as const)('refuses initial preparation while the actual %s interval is held, returns no private card or custody, then prepares after release',async interval=>{
+    const before=await counts();let entered!:()=>void,failed!:(error:unknown)=>void,release!:()=>void;const ready=new Promise<void>((yes,no)=>{entered=yes;failed=no;}),done=new Promise<void>(yes=>{release=yes;});const watchdog=setTimeout(()=>{failed(Error('owned ownleave handshake timed out'));release();},10_000);
+    const key=interval==='configuration'?'leave-dependency-configuration:'+base.tenantId:'leave-dependency-employment:'+base.tenantId+':'+subject.employmentId;
+    // Hold only the exact tested leave interval, never Access, so a different earlier guard cannot
+    // masquerade as configuration/subject protection of initial card disclosure.
+    const holder=owner.db.transaction(async tx=>{await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${key},0))`);entered();await done;});void holder.catch(failed);
+    try{await ready;await expect(prepare()).rejects.toThrow();expect(await counts()).toEqual(before);}
+    finally{release();clearTimeout(watchdog);await holder;}
+    const review=await prepare();expect(review.availableBalance).toBe(10);expect(review.humanText).toEqual(text);expect(await counts()).toEqual({...before,bodies:1,pending:1});
+  });
+
+  it.each(['confirm','reopen','discard','expireOwn','expireAdmin'] as const)('bounds actual held review-row %s custody before SQL/effect, rolls back, then completes the intended operation after release',async operation=>{
+    const review=await prepare();
+    if(operation==='expireOwn'||operation==='expireAdmin')await owner.db.execute(sql`update app.assistant_own_leave_review set created_at=now()-interval '11 minutes',expires_at=now()-interval '1 minute' where id=${review.actionId}::uuid`);
+    const invoke=()=>operation==='confirm'?confirmOwnLeaveReview(ctx,confirmation(review),'en'):
+      operation==='reopen'?withTenant(ctx,tx=>reopenOwnLeaveReviewTx(tx,ctx,review.actionId,'en')):
+      operation==='discard'?withTenant(ctx,tx=>discardOwnLeaveReviewTx(tx,confirmation(review))):
+      operation==='expireOwn'?withTenant(ctx,tx=>expireOwnLeaveReviewsForCallerTx(tx)):
+      withTenant(adminCtx(base),tx=>expireOwnLeaveReviewsTx(tx));
+    const before=await counts(),ledger=await owner.db.select().from(schema.leaveLedger).orderBy(schema.leaveLedger.id),events=await owner.db.select().from(schema.domainEvent).orderBy(schema.domainEvent.id);
+    let entered!:()=>void,failed!:(error:unknown)=>void,release!:()=>void;const ready=new Promise<void>((yes,no)=>{entered=yes;failed=no;}),done=new Promise<void>(yes=>{release=yes;});const watchdog=setTimeout(()=>{failed(Error('owned ownleave handshake timed out'));release();},10_000);
+    // A real physical row holder intentionally has no advisory/Access ownership.
+    const holder=owner.db.transaction(async tx=>{const rows=await tx.execute(sql`select id from app.assistant_own_leave_review where id=${review.actionId}::uuid for update`);expect(rows).toHaveLength(1);entered();await done;});void holder.catch(failed);
+    try{await ready;const started=Date.now();await expect(invoke()).rejects.toThrow();expect(Date.now()-started).toBeLessThan(4500);expect(await counts()).toEqual(before);expect(await owner.db.select().from(schema.leaveLedger).orderBy(schema.leaveLedger.id)).toEqual(ledger);expect(await owner.db.select().from(schema.domainEvent).orderBy(schema.domainEvent.id)).toEqual(events);}
+    finally{release();clearTimeout(watchdog);await holder;}
+    const result=await invoke();
+    if(operation==='confirm'||operation==='reopen'){
+      if(operation==='reopen')expect(result).toEqual({kind:'prepared',review});
+      const completed=operation==='confirm'?result:await confirmOwnLeaveReview(ctx,confirmation(review),'en');expect(completed).toMatchObject({kind:'completed',receipt:{state:'completed',actionId:review.actionId}});
+      expect(await confirmOwnLeaveReview(ctx,confirmation(review),'en')).toEqual(completed);expect(await counts()).toMatchObject({requests:1,bodies:0,pending:0,model_runs:0});
+    }else if(operation==='discard'){
+      expect(result).toMatchObject({kind:'retired',receipt:{state:'discarded',actionId:review.actionId}});expect(await invoke()).toEqual(result);expect(await counts()).toMatchObject({requests:0,bodies:0,pending:0,model_runs:0});
+    }else{expect(result).toBe(1);expect(await invoke()).toBe(0);expect(await counts()).toMatchObject({requests:0,bodies:0,pending:0,model_runs:0});}
+  });
+
   it('saves and reopens the exact human review without a request, model run or plaintext telemetry', async () => {
     const before = await counts(), review = await prepare();
     expect(await withTenant(ctx, tx => reopenOwnLeaveReviewTx(tx, ctx, review.actionId)))

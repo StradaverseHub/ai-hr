@@ -1,14 +1,15 @@
 /** Read-only candidate, not a prepared action or permission to submit. No action ID, persistence,
  * provider call, allowance admission or leave write is created here. The eventual lifecycle owner
  * must check fresh authority/AI controls, protect intent content and freeze the reviewed effect. */
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
+import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 import type { SessionContext, Tx } from '../../db/client';
 import { leaveType } from '../../db/schema';
 import { todayInKualaLumpur } from '../../lib/hr-date';
 import {
   OwnLeaveHumanSelection, OwnLeaveHumanText, OwnLeaveNomination,
 } from '../../lib/assistant-actions/own-leave-contract';
-import { leaveTypeIs, normalizeLeaveEmployeeRemark, previewLeaveDeduction } from '../../packs/leave/service';
+import { leaveTypeIs, normalizeLeaveEmployeeRemark, previewLeaveDeduction,lockLeaveDependencyReadConfigurationTx,lockLeaveDependenciesTx,lockLeaveReadOnlySourceConfigurationTx,lockLeaveReadOnlySourceDependenciesTx,LeaveDependencyUnavailable } from '../../packs/leave/service';
 import { provenCompanyDatesTx } from '../employment-company';
 import { isEmploymentEnded } from '../employment-status';
 import { resolveEssView } from '../ess-view';
@@ -45,11 +46,13 @@ export async function readOwnLeaveCandidateTx(
   tx: Tx, ctx: SessionContext, nominationValue: unknown, selectionValue: unknown,
   humanTextValue: unknown, locale?: string,
 ): Promise<OwnLeaveCandidateResult> {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   // Capture this invocation's model nomination and separate human inputs before any database await.
   // Defer their refusal responses until after authorization, preserving the unavailable boundary.
   const nomination = OwnLeaveNomination.safeParse(nominationValue);
   const text = OwnLeaveHumanText.safeParse(humanTextValue);
   const selection = OwnLeaveHumanSelection.safeParse(selectionValue);
+  await boundNativeOutcomeTransactionTx(tx);
   const actor = await readOwnLeaveActorTx(tx, ctx);
   if (!actor) return { kind: 'unavailable' };
   ctx = actor;
@@ -60,10 +63,23 @@ export async function readOwnLeaveCandidateTx(
   const today = todayInKualaLumpur();
   if (intent.date < today) return { kind: 'use_leave_form' };
 
-  // Salary-free canonical own-subject inventory, including current login/person linkage checks.
+  // Access first: actor reads only authority/entitlements and Access-protected login/termination
+  // state. Protect leave configuration BEFORE the first own-subject/catalogue/calendar/balance
+  // read. The admitted native-readback contract remains genuinely READ ONLY, never converted to
+  // writable: its separate shared source barriers use the SAME keys as ordinary exclusive writers.
+  const [mode]=await tx.execute<{readonly:string}>(sql`select current_setting('transaction_read_only') as readonly`);
+  if(!mode||!['on','off'].includes(mode.readonly))throw new LeaveDependencyUnavailable();
+  const readOnly=mode.readonly==='on';
+  await (readOnly?lockLeaveReadOnlySourceConfigurationTx:lockLeaveDependencyReadConfigurationTx)(tx,ctx.tenantId);
   const subjects = await myOwnEmploymentSubjectsTx(tx, ctx);
-  const subject = subjects.find(row => row.employmentId === intent.employmentId);
-  if (!subject || subject.hiredOn > today || isEmploymentEnded(subject, today)
+  const nominated = subjects.find(row => row.employmentId === intent.employmentId);
+  if(!nominated)return {kind:'unavailable'}; // Original own-person gate BEFORE subject ownership.
+  await (readOnly?lockLeaveReadOnlySourceDependenciesTx:lockLeaveDependenciesTx)(tx,ctx.tenantId,[nominated.employmentId]);
+  const subject=(await myOwnEmploymentSubjectsTx(tx,ctx)).find(row=>row.employmentId===nominated.employmentId);
+  // No newly discovered subject, silent retarget or stale pre-ownership binding. Even this first
+  // card must use one coherent owned interval, not merely hope confirmation will refuse it later.
+  if(!subject||JSON.stringify(subject)!==JSON.stringify(nominated))throw new LeaveDependencyUnavailable();
+  if (subject.hiredOn > today || isEmploymentEnded(subject, today)
     || isEmploymentEnded(subject, intent.date)) return { kind: 'unavailable' };
   const dated = await provenCompanyDatesTx(tx, [{ employmentId: subject.employmentId, date: intent.date }]);
   const requestedCompany = dated.get(`${subject.employmentId}|${intent.date}`);

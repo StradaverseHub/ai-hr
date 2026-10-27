@@ -119,6 +119,7 @@ export async function reopenOwnLeaveReviewTx(tx: Tx, supplied: SessionContext, a
   const ctx = captureContext(supplied);
   const actionId = z.string().uuid().safeParse(actionIdValue);
   if (!actionId.success) throw new OwnLeaveContentUnavailable();
+  await boundNativeOutcomeTransactionTx(tx);
   const actor = await readOwnLeaveActorTx(tx, ctx);
   if (!actor) throw new OwnLeaveContentUnavailable();
   await assertAiActionUnpausedTx(tx, actor, 'hr_assistant');
@@ -152,6 +153,7 @@ export async function discardOwnLeaveReviewTx(tx: Tx, retirementValue: unknown):
  const parsed=OwnLeaveRetirementRequest.safeParse(retirementValue);
  if(!parsed.success)throw new OwnLeaveContentUnavailable();
  try{
+ await boundNativeOutcomeTransactionTx(tx);
  const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_legacy_review_retire(${parsed.data.actionId}::uuid,'leave.apply') as receipt`);
  const receipt=z.object({action:z.literal('leave.apply'),contractVersion:z.literal(1),actionId:z.uuid(),state:z.enum(['discarded','expired','refused'])}).strict().parse(row?.receipt);
  if(receipt.actionId!==parsed.data.actionId)throw new OwnLeaveContentUnavailable();
@@ -166,6 +168,7 @@ export async function discardOwnLeaveReviewTx(tx: Tx, retirementValue: unknown):
 async function expireReviewsTx(tx: Tx, limit: number, own: boolean): Promise<number> {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000) throw new OwnLeaveContentUnavailable();
   try {
+    await boundNativeOutcomeTransactionTx(tx);
     const [row] = await tx.execute<{ expired: number }>(own
       ? sql`select app.assistant_own_leave_reviews_expire_own(${limit}) as expired`
       : sql`select app.assistant_own_leave_reviews_expire(${limit}) as expired`);
@@ -209,6 +212,7 @@ export async function confirmOwnLeaveReview(supplied: SessionContext, confirmati
   const confirmation = parsed.data;
   try {
     return await withTenant(ctx, async tx => {
+      await boundNativeOutcomeTransactionTx(tx);
       const actor = await readOwnLeaveActorTx(tx, ctx);
       if (!actor) throw new OwnLeaveContentUnavailable();
       await assertAiActionUnpausedTx(tx, actor, 'hr_assistant');
@@ -263,6 +267,7 @@ export async function confirmOwnLeaveReview(supplied: SessionContext, confirmati
 export async function listOwnLeaveReviewsTx(tx:Tx,supplied:SessionContext):Promise<z.infer<typeof OwnLeaveReviewIndexResult>>{
   const ctx=captureContext(supplied);
   try{
+    await boundNativeOutcomeTransactionTx(tx);
     const [carrier]=await tx.execute<{matches:boolean}>(sql`select app.current_tenant_id()=${ctx.tenantId}::uuid and app.current_user_id()=${ctx.userId??null}::uuid as matches`);
     if(carrier?.matches!==true)throw new OwnLeaveContentUnavailable();
     const rows=await tx.execute<{actionId:unknown;state:unknown;createdAt:unknown;expiresAt:unknown}>(sql`select action_id as "actionId",state,
