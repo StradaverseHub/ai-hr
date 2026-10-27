@@ -1,0 +1,9 @@
+/** Existing classifier decides DB scope. Use only the job-owned disposable PostgreSQL, never a Mac/staging DB. */
+import assert from'node:assert/strict';import{readFileSync,mkdirSync}from'node:fs';import{join}from'node:path';import{spawnSync}from'node:child_process';
+const imported=await import('../../../scripts/gate-db-classify.ts'),{classifyTestFiles}={...(imported.default??{}),...imported};
+const files=['test/system-testing-release-publication.test.ts','test/system-testing-next-config.test.ts','test/system-testing-build-identity.test.ts'];
+const classified=classifyTestFiles(files,p=>{try{return readFileSync(p,'utf8')}catch{return null}});assert.deepEqual([...classified.db,...classified.nodb].sort(),[...files].sort());assert.equal(classified.db.length,2);assert.equal(classified.nodb.length,1);
+console.log(JSON.stringify({kind:'CLASSIFIED_TARGETED_PROVENANCE_INTEGRATION_NOT_FULL_GATE',db:classified.db,nodb:classified.nodb,why:[...classified.why]}));
+const directory=join(process.env.RUNNER_TEMP,'source-integration-reports');mkdirSync(directory,{recursive:true});let failed=false;
+for(const kind of ['nodb','db']){const args=['exec','vitest','run',...(kind==='nodb'?['--config','vitest.nodb.config.ts']:[]),...classified[kind],'--maxWorkers=2','--reporter=default','--reporter=json','--outputFile.json='+join(directory,kind+'.json')];const env={...process.env,VITEST_MAX_WORKERS:'2',VITEST_MAX_WORKERS_NODB:'2'};if(kind==='nodb')for(const key of['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'])env[key]='postgres://nobody:nothing@127.0.0.1:1/no_database';const child=spawnSync('pnpm',args,{stdio:'inherit',env});if(child.error||child.status!==0)failed=true;}
+if(failed)process.exitCode=1;
