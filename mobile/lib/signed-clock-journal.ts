@@ -95,14 +95,12 @@ export function createSignedClockJournal(rawScope:EnrollmentScope,ports:SignedCl
   }),
   recover:(employmentId:string,abandon=false,expectedRequestId?:string)=>exclusive(queue,async()=>{
    const selected=uuid.parse(employmentId),expected=expectedRequestId===undefined?undefined:uuid.parse(expectedRequestId),s=await read(),p=s.pending;if(!p||p.employmentId!==selected)return status(s,selected);
-   if(expected!==undefined&&p.requestId!==expected)throw new SignedClockConflict();
    const value=await owned(()=>abandon?ports.abandon(selected,p.requestId):ports.receipt(selected,p.requestId)),d=checkedDisposition(value,p,abandon);
    return d?finish(s,p,d):status(s,selected,'uncertain');
   }),
   advance:(employmentId:string,expectedRequestId?:string)=>exclusive(queue,async()=>{
    const selected=uuid.parse(employmentId),expected=expectedRequestId===undefined?undefined:uuid.parse(expectedRequestId);let s=await read();const p=s.pending;
    if(!p||p.employmentId!==selected)return status(s,selected);
-   if(expected!==undefined&&p.requestId!==expected)throw new SignedClockConflict();
    const existing=await observe(s,p);if(existing)return existing;
    if(p.phase==='settled')return status(s,selected,'uncertain');
    let current:SignedClockPending=p;
