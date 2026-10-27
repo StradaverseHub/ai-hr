@@ -59,7 +59,7 @@ describe('actual app-role same-login privacy recovery',()=>{
   await owner.db.update(s.appUser).set({personId:other.personId}).where(eq(s.appUser.id,ctx.userId!));
   const before=await effects(),held=await custody(id),unwrap=vi.spyOn(vault,'unwrapDek');unwrap.mockClear();const current={...ctx,personId:other.personId};
   await expect(c.list(ctx)).rejects.toThrow();await expect(c.discard(ctx,packet(c.action,id))).rejects.toThrow();expect((await c.list(current)).reviews).toEqual([]);
-  const refusal=async(actionId:string)=>{try{await c.discard(current,packet(c.action,actionId));}catch(error){return error;}throw Error('Expected a generic refusal');};
+  const refusal=async(actionId:ReturnType<typeof randomUUID>)=>{try{await c.discard(current,packet(c.action,actionId));}catch(error){return error;}throw Error('Expected a generic refusal');};
   const former=await refusal(id),unknown=await refusal(randomUUID());expect(String(former)).toBe(String(unknown));expect((former as Error).constructor).toBe((unknown as Error).constructor);
   expect(await custody(id)).toEqual(held);expect(await effects()).toEqual(before);expect(unwrap).not.toHaveBeenCalled();
   // Linked to the original person again, the same login retires its own review exactly as before.
