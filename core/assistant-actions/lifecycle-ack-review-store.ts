@@ -1,3 +1,4 @@
+import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 /** UNMOUNTED Lifecycle acknowledgement in the same physical review/body lifecycle. Native email-owned
  * prehire cases stay unlinked; caller person, case person and employment are distinct actual facts. */
 import {createHash,randomUUID} from 'node:crypto';
@@ -55,7 +56,7 @@ export async function listLifecycleAckReviews(supplied:SessionContext){const ctx
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
 export async function readCompletedLifecycleAckOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=capture(supplied),id=z.uuid().parse(value);
+ const ctx=capture(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'lifecycle.acknowledgement.submit'},${id}::uuid) as completed`);
  if(terminal?.completed!==true)return fail();
  const actor=await assertOwnLifecycleAcknowledgementActorTx(tx,ctx),caseId=await subject(tx,id);return withOwnLifecycleAcknowledgementIntervalTx(tx,actor,caseId,async(fresh,source)=>{const stored=await read(tx,sql`select app.assistant_lifecycle_ack_review_read(${id}::uuid) as review`);bound(stored,fresh,id,source);const completion=await completed(tx,fresh,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};});

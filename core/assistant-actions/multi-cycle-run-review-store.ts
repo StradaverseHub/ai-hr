@@ -1,3 +1,4 @@
+import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 /** UNMOUNTED Multi-cycle draft creation custody. One new native draft, no processing/closing/money/payment. */
 import {createHash,randomUUID} from 'node:crypto';
 import {sql,type SQL} from 'drizzle-orm';
@@ -61,7 +62,7 @@ export async function listMultiCycleRunReviews(supplied:SessionContext){const ct
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
 export async function readCompletedMultiCycleRunOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=capture(supplied),id=z.uuid().parse(value);
+ const ctx=capture(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'multi_cycle_payroll.create_run'},${id}::uuid) as completed`);
  if(terminal?.completed!==true)return fail();
  const actor=await assertReviewedMultiCycleRunActorTx(tx,ctx),selection=await subject(tx,id);return withReviewedMultiCycleRunSourceIntervalTx(tx,actor,selection,async(fresh,source)=>{const stored=await read(tx,sql`select app.assistant_multi_cycle_run_review_read(${id}::uuid) as review`);bound(stored,fresh,id,source);const completion=await completed(tx,fresh,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};});

@@ -1,3 +1,4 @@
+import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 /** UNMOUNTED human assigned Leave decisions in the SAME review/body lifecycle. Models never decide. */
 import {createHash,randomUUID} from 'node:crypto';
 import {sql,type SQL} from 'drizzle-orm';
@@ -55,7 +56,7 @@ export async function listLeaveDecisionReviews(supplied:SessionContext){const ct
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
 export async function readCompletedLeaveDecisionOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=capture(supplied),id=z.uuid().parse(value);
+ const ctx=capture(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'approvals.leave.decide'},${id}::uuid) as completed`);
  if(terminal?.completed!==true)return fail();
  const actor=await assertReviewedLeaveDecisionActorTx(tx,ctx),nomination=await subject(tx,id);return withReviewedLeaveDecisionIntervalTx(tx,actor,{leaveRequestId:nomination.leaveRequestId,currentStepId:nomination.currentStepId},nomination.mode,async(fresh,source)=>{const stored=await read(tx,sql`select app.assistant_leave_decision_review_read(${id}::uuid) as review`);bound(stored,fresh,id,source);const completion=await completed(tx,fresh,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};});

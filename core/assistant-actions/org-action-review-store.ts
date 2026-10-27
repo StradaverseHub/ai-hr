@@ -1,3 +1,4 @@
+import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 /** UNMOUNTED non-own Org custody. Native graph, original-actor event, body retirement and
  * completion share ONE top-level Tx. No synthetic employee, generic executor or second ledger. */
 import {createHash,randomUUID} from 'node:crypto';
@@ -60,7 +61,7 @@ export async function listOrgActionReviews(supplied:SessionContext){const ctx=ca
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
 export async function readCompletedOrgOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=capture(supplied),id=z.uuid().parse(value);
+ const ctx=capture(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'org.reporting.change'},${id}::uuid) as completed`);
  if(terminal?.completed!==true)return fail();
  const actor=await ownInterval(tx,ctx),stored=await existing(tx,actor,id);const completion=await completed(tx,actor,stored);return{completion,eventId:z.uuid().parse(stored.setEventId)};

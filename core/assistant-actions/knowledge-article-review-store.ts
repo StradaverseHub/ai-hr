@@ -1,3 +1,4 @@
+import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 /** UNMOUNTED closed KB publication in the existing physical review/body lifecycle. No arbitrary
  * executor, second ledger, provider drafting or HTTP/tool exposure. A current author confirms actual
  * human content; completed retries reconcile native metadata and NEVER create another article. */
@@ -57,7 +58,7 @@ export async function listKnowledgeArticleReviews(supplied:SessionContext){const
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
 export async function readCompletedKnowledgeArticleOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=capture(supplied),id=z.uuid().parse(value);
+ const ctx=capture(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'knowledge_base.article.create'},${id}::uuid) as completed`);
  if(terminal?.completed!==true)return fail();
  const fresh=await assertKnowledgeArticleActorTx(tx,ctx),stored=await read(tx,sql`select app.assistant_knowledge_article_review_read(${id}::uuid) as review`);bound(stored,fresh,id);const completion=await completed(tx,fresh,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};

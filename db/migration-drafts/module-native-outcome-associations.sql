@@ -12,6 +12,8 @@ $$;
 REVOKE ALL ON FUNCTION app.native_outcome_review_completed(text,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.native_outcome_review_completed(text,uuid) TO ai_hr_app;
 --> statement-breakpoint
+-- This is a new bounded association evidence window, NOT pending confirmation expiry or a
+-- claim about physical/native completed receipt retention. Every reopen still rechecks authority.
 CREATE FUNCTION app.native_outcome_review_retention(p_kind text,p_id uuid) RETURNS timestamptz
  LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp SET row_security=on AS $$
  SELECT r.created_at+interval '30 days' FROM app.assistant_own_leave_review r

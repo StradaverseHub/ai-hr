@@ -1,3 +1,4 @@
+import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 /** UNMOUNTED own Attendance correction custody; models never invent clocks/work or approve OT. */
 import {createHash,randomUUID} from 'node:crypto';
 import {sql,type SQL} from 'drizzle-orm';
@@ -61,7 +62,7 @@ export async function listAttendanceCorrectionReviews(supplied:SessionContext){c
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
 export async function readCompletedAttendanceCorrectionOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=capture(supplied),id=z.uuid().parse(value);
+ const ctx=capture(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'attendance.correction.request'},${id}::uuid) as completed`);
  if(terminal?.completed!==true)return fail();
  const actor=await assertOwnAttendanceCorrectionActorTx(tx,ctx),nomination=await subject(tx,id);return withOwnAttendanceCorrectionIntervalTx(tx,actor,nomination,async(fresh,source)=>{const stored=await read(tx,sql`select app.assistant_attendance_review_read(${id}::uuid) as review`);bound(stored,fresh,id,source);if(stored.requestId!==nomination.correctionId)return fail();const completion=await completed(tx,fresh,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};});

@@ -1,3 +1,4 @@
+import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 /** UNMOUNTED own worked-date TOIL request in the SAME review/body lifecycle. No credit is granted by
  * submission, no model computes the entitlement, and completed retries never submit a new request. */
 import {createHash,randomUUID} from 'node:crypto';
@@ -57,7 +58,7 @@ export async function listToilRequestReviews(supplied:SessionContext){const ctx=
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
 export async function readCompletedToilRequestOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=capture(supplied),id=z.uuid().parse(value);
+ const ctx=capture(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'toil.replacement.request'},${id}::uuid) as completed`);
  if(terminal?.completed!==true)return fail();
  const actor=await assertOwnToilReplacementActorTx(tx,ctx),employmentId=await subject(tx,id);return withOwnToilReplacementIntervalTx(tx,actor,employmentId,async(fresh,source)=>{const stored=await read(tx,sql`select app.assistant_toil_request_review_read(${id}::uuid) as review`);bound(stored,fresh,id,source);const completion=await completed(tx,fresh,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};});

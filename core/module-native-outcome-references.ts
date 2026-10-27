@@ -2,6 +2,7 @@
  * or command service. A caller MUST first obtain real own-job provenance from the existing verifier;
  * this argument is trusted server output, never an accepted browser/model DTO. Native proof is
  * freshly reopened here; neither a stored marker nor an event UUID is canonical-engine provenance. */
+import {boundNativeOutcomeTransactionTx} from './module-native-outcome-bounds';
 import {createHash,randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
@@ -39,17 +40,17 @@ async function rowTx(tx:Tx,ctx:SessionContext,id:string){const [raw]=await tx.ex
  * for INSERT/DELETE (including expiry/cascade). TRY failure requires whole caller-Tx rollback.
  * No UPDATE privilege or SELECT FOR UPDATE is needed or granted. */
 export async function lockNativeOutcomeCustodyTx(tx:Tx,ctx:SessionContext){
- const bounds=await tx.execute(sql`select name,set_config(name,(case when setting::bigint=0 then case name when 'statement_timeout' then 5000 else 500 end else least(setting::bigint,case name when 'statement_timeout' then 5000 else 500 end) end)::text,true) as value from pg_catalog.pg_settings where name in ('statement_timeout','lock_timeout') and unit='ms'`);if(bounds.length!==2)return fail();
+
  if(!Id.safeParse(ctx.tenantId).success||!Id.safeParse(ctx.userId).success)return fail();
  const [row]=await tx.execute<{owned:boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended('native-outcome:v1:'||(${ctx.tenantId}::uuid)::text||':'||(${ctx.userId}::uuid)::text,0)) as owned`);
  if(row?.owned!==true)return fail();
 }
 /** Minimal own nomination only; does not authenticate a job or reveal any action/source reference. */
-export async function nominateOwnNativeOutcomeJobTx(tx:Tx,ctx:SessionContext,id:string){const [row]=await tx.execute<{job_id:string}>(sql`select job_id from public.ai_native_outcome_association where id=${Id.parse(id)}::uuid and tenant_id=${ctx.tenantId}::uuid and user_id=${ctx.userId}::uuid`);return Id.parse(row?.job_id);}
+export async function nominateOwnNativeOutcomeJobTx(tx:Tx,ctx:SessionContext,id:string){await boundNativeOutcomeTransactionTx(tx);const [row]=await tx.execute<{job_id:string}>(sql`select job_id from public.ai_native_outcome_association where id=${Id.parse(id)}::uuid and tenant_id=${ctx.tenantId}::uuid and user_id=${ctx.userId}::uuid`);return Id.parse(row?.job_id);}
 /** Existing authenticated job source may have changed because the native action succeeded. Reopen
  * proves the exact action again; a changed current status is stale evidence, not retroactive failure. */
 export async function readVerifiedNativeOutcomeAssociationTx(tx:Tx,ctx:SessionContext,idValue:unknown,job:NativeOutcomeJobProvenance,server:NativeOutcomeServerContext={}){
- const id=Id.parse(idValue),before=await rowTx(tx,ctx,id),proof=openRow(ctx,before);sameProvenance(proof,job);
+ const id=Id.parse(idValue);await boundNativeOutcomeTransactionTx(tx);const before=await rowTx(tx,ctx,id),proof=openRow(ctx,before);sameProvenance(proof,job);
  const fresh=await readCompletedNativeOutcomeTx(tx,ctx,proof.reference,server);
  if(hash([proof.proofNonce,fresh.evidence])!==before.native_digest||Date.parse(proof.expiresAt)>Date.parse(fresh.sourceExpiresAt))return fail();
  await lockNativeOutcomeCustodyTx(tx,ctx);const row=await rowTx(tx,ctx,id);if(row.receipt!==before.receipt||row.request_digest!==before.request_digest)return fail();const checked=openRow(ctx,row);sameProvenance(checked,job);
@@ -58,6 +59,7 @@ export async function readVerifiedNativeOutcomeAssociationTx(tx:Tx,ctx:SessionCo
 /** Called only AFTER the existing own-job verifier took Access/release/signal ownership. */
 export async function recordVerifiedNativeOutcomeAssociationTx(tx:Tx,ctx:SessionContext,value:z.infer<typeof RecordNativeOutcomeAssociation>,job:NativeOutcomeJobProvenance,server:NativeOutcomeServerContext={}){
  const input=RecordNativeOutcomeAssociation.parse(structuredClone(value));if(input.jobId!==job.jobId||!ctx.userId||!isSecretStorable())return fail();requireProvenance(job,input.reference);
+ await boundNativeOutcomeTransactionTx(tx);
  const native=await readCompletedNativeOutcomeTx(tx,ctx,input.reference,server),requestDigest=hash(input);
  await lockNativeOutcomeCustodyTx(tx,ctx);
  const [old]=await tx.execute(sql`select ${projection} from public.ai_native_outcome_association where tenant_id=${ctx.tenantId}::uuid and user_id=${ctx.userId}::uuid and request_nonce=${input.nonce}::uuid`);

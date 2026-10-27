@@ -1,3 +1,4 @@
+import {boundNativeOutcomeTransactionTx} from './module-native-outcome-bounds';
 /** Own source-bound evaluation custody. Canonical importer alone writes employees and completion. */
 import {createHash,randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
@@ -109,7 +110,7 @@ export async function eraseOwnImportEvaluationMetadataTx(tx:Tx,ctx:SessionContex
  * accounting projection or nested transaction. Same native own/version/company/current scope gate. */
 export async function readCompletedEmployeeImportOutcomeTx(tx:Tx,supplied:SessionContext,input:EmployeeImportEvaluationBinding,companyId:string){
  const ctx=context(supplied),binding=EmployeeImportEvaluationBindingSchema.parse(structuredClone(input)),company=String(companyId);
- const row=await ownTx(tx,ctx,binding,company);
+ await boundNativeOutcomeTransactionTx(tx);const row=await ownTx(tx,ctx,binding,company);
  if(row.state!=='committed'||!row.event_id)return fail();
  await canonical(tx,ctx,row);
  return Object.freeze({attemptId:row.id,attemptVersion:row.version,eventId:row.event_id,currentStatus:'committed' as const,expiresAt:databaseInstant(row.expires_at).toISOString()});

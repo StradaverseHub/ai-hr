@@ -1,3 +1,4 @@
+import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 /** UNMOUNTED Payroll CLOSE custody. Human confirmation owns one canonical close; no model money/approval/payment. */
 import {createHash,randomUUID} from 'node:crypto';
 import {sql,type SQL} from 'drizzle-orm';
@@ -60,7 +61,7 @@ export async function listPayrollCloseReviews(supplied:SessionContext){const ctx
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
 export async function readCompletedPayrollCloseOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=capture(supplied),id=z.uuid().parse(value);
+ const ctx=capture(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'payroll.close'},${id}::uuid) as completed`);
  if(terminal?.completed!==true)return fail();
  const actor=await assertReviewedPayrollCloseActorTx(tx,ctx),batchId=await subject(tx,id);return withReviewedPayrollCloseSourceIntervalTx(tx,actor,batchId,async(fresh,source)=>{const stored=await read(tx,sql`select app.assistant_payroll_close_review_read(${id}::uuid) as review`);bound(stored,fresh,id,source);const completion=await completed(tx,fresh,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};});

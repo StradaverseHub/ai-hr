@@ -1,3 +1,4 @@
+import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 /** UNMOUNTED human catalogue CREATE custody in the same physical review/body lifecycle.
  * No model-derived rate, employee assignment or payroll execution. Completed retries never create. */
 import {createHash,randomUUID} from 'node:crypto';
@@ -54,7 +55,7 @@ export async function listPayComponentReviews(supplied:SessionContext){const ctx
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
 export async function readCompletedPayComponentOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=capture(supplied),id=z.uuid().parse(value);
+ const ctx=capture(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'typed_pay_components.create'},${id}::uuid) as completed`);
  if(terminal?.completed!==true)return fail();
  return withReviewedPayComponentIntervalTx(tx,ctx,async fresh=>{const stored=await read(tx,sql`select app.assistant_pay_component_review_read(${id}::uuid) as review`);bound(stored,fresh,id);const completion=await completed(tx,fresh,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};});

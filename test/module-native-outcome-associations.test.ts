@@ -11,6 +11,7 @@ import {prepareOwnLeaveReviewTx,confirmOwnLeaveReview,discardOwnLeaveReviewTx,re
 import {runGovernedModuleReadPlan,readVerifiedOwnGovernedJobProvenanceTx} from '../core/module-agent-releases';
 import {recordOwnNativeOutcomeAssociation,reopenOwnNativeOutcomeAssociation,eraseOwnNativeOutcomeAssociations} from '../core/module-native-outcomes';
 import {readVerifiedNativeOutcomeAssociationTx,recordVerifiedNativeOutcomeAssociationTx} from '../core/module-native-outcome-references';
+import {boundNativeOutcomeTransactionTx} from '../core/module-native-outcome-bounds';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let base:Base;
@@ -124,6 +125,30 @@ describe('actual own native outcome links',()=>{
   await owner.db.execute(sql`update public.ai_agent_job_receipt set receipt='invalid historical proof' where id=${p.job.jobId}::uuid`);
   await expect(recordOwnNativeOutcomeAssociation(f.mine.ctx,p.input)).rejects.toThrow(unavailable);
   expect(await counts()).toEqual(before);
+ });
+
+ it('bounds a physical completed-custody row wait before native reads, rolls back, then links/replays once after release',async()=>{
+  const f=await fixture(),p=await preparation(f);await complete(f,p);const before=await counts();
+  let entered!:()=>void,release!:()=>void;const started=new Promise<void>(resolve=>{entered=resolve;}),resume=new Promise<void>(resolve=>{release=resolve;});
+  // Holder intentionally has no Access/advisory lock: the actual blocking legacy custody row is
+  // the only competing resource, so metadata/Access TRY refusal cannot mask this test.
+  const holder=owner.db.transaction(async tx=>{const rows=await tx.execute(sql`select id from app.assistant_own_leave_review where id=${p.review.actionId}::uuid for update`);expect(rows).toHaveLength(1);entered();await resume;});
+  try{await started;const began=Date.now();
+   await expect(recordOwnNativeOutcomeAssociation(f.mine.ctx,p.input)).rejects.toThrow(unavailable);
+   expect(Date.now()-began).toBeLessThan(4500);expect(await counts()).toEqual(before);
+   await expect(withTenant(f.mine.ctx,tx=>readCompletedOwnLeaveOutcomeTx(tx,f.mine.ctx,p.review.actionId))).rejects.toThrow();
+   expect(await counts()).toEqual(before);
+  }finally{release();await holder;}
+  const linked=await recordOwnNativeOutcomeAssociation(f.mine.ctx,p.input);expect(await recordOwnNativeOutcomeAssociation(f.mine.ctx,p.input)).toEqual(linked);
+  expect(await counts()).toEqual({...before,links:before.links+1});
+ });
+ it('never relaxes shorter inherited statement or lock bounds',async()=>{
+  const f=await fixture();await withTenant(f.mine.ctx,async tx=>{
+   await tx.execute(sql`set local statement_timeout='1000ms'`);await tx.execute(sql`set local lock_timeout='100ms'`);
+   await boundNativeOutcomeTransactionTx(tx);
+   const rows=await tx.execute<{name:string;setting:string}>(sql`select name,setting from pg_catalog.pg_settings where name in ('statement_timeout','lock_timeout') order by name`);
+   expect(rows.map(row=>({name:row.name,setting:Number(row.setting)}))).toEqual([{name:'lock_timeout',setting:100},{name:'statement_timeout',setting:1000}]);
+  });
  });
 
 });

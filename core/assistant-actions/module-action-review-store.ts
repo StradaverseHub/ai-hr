@@ -1,3 +1,4 @@
+import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 /** UNMOUNTED shared custody extension. One existing physical review/body lifecycle; no second
  * execution ledger, model effect, provider, browser endpoint or client-supplied source receipt.
  * All commands own a top-level transaction and expose bounded errors only after whole rollback. */
@@ -336,7 +337,7 @@ export async function listClaimSubmissionModuleActionReviews(supplied:SessionCon
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
 export async function readCompletedNotificationOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown,cap:OwnNotificationServerIdentity){
- const ctx=capture(supplied),id=z.uuid().parse(value);
+ const ctx=capture(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'notifications.email_preferences.save'},${id}::uuid) as completed`);
  if(terminal?.completed!==true)return fail();
  const fresh=await guard(tx,ctx);await lockLeaveDependencyReadConfigurationTx(tx,fresh.tenantId);const nominated=await subject(tx,id);await lockLeaveDependenciesTx(tx,fresh.tenantId,[nominated]);const stored=await read(tx,sql`select app.assistant_module_action_review_read(${id}::uuid,${MODULE_NOTIFICATION_ACTION}) as review`);bound(stored,fresh,id,nominated);const completion=await completed(tx,fresh,stored,cap);return{completion,eventId:z.uuid().parse(stored.eventId)};
@@ -345,7 +346,7 @@ export async function readCompletedNotificationOutcomeTx(tx:Tx,supplied:SessionC
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
 export async function readCompletedProfileOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=capture(supplied),id=z.uuid().parse(value);
+ const ctx=capture(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'ess.profile.request'},${id}::uuid) as completed`);
  if(terminal?.completed!==true)return fail();
  const actor=await guard(tx,ctx,'ess');await lockLeaveDependencyConfigurationTx(tx,actor.tenantId);const nominated=await profileSubject(tx,id);await lockLeaveDependenciesTx(tx,actor.tenantId,[nominated]);const stored=await readProfile(tx,sql`select app.assistant_module_action_review_read(${id}::uuid,${OWN_PROFILE_CHANGE_ACTION}) as review`);boundProfile(stored,actor,id,nominated);const completion=await completedProfile(tx,actor,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};
@@ -354,7 +355,7 @@ export async function readCompletedProfileOutcomeTx(tx:Tx,supplied:SessionContex
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
 export async function readCompletedClaimDraftOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=capture(supplied),id=z.uuid().parse(value);
+ const ctx=capture(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'claims.draft.save'},${id}::uuid) as completed`);
  if(terminal?.completed!==true)return fail();
  const actor=await guard(tx,ctx,'claims');await lockLeaveDependencyReadConfigurationTx(tx,actor.tenantId);const nominated=await claimSubject(tx,id);await lockLeaveDependenciesTx(tx,actor.tenantId,[nominated]);const stored=await readClaim(tx,sql`select app.assistant_module_action_review_read(${id}::uuid,${OWN_CLAIM_DRAFT_ACTION}) as review`);boundClaim(stored,actor,id,nominated);const completion=await completedClaim(tx,actor,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};
@@ -363,7 +364,7 @@ export async function readCompletedClaimDraftOutcomeTx(tx:Tx,supplied:SessionCon
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
 export async function readCompletedTestingOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=capture(supplied),id=z.uuid().parse(value);
+ const ctx=capture(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'system_testing.execution.save'},${id}::uuid) as completed`);
  if(terminal?.completed!==true)return fail();
  await assertAiPrincipalTx(tx,ctx);const executionId=await testingSubject(tx,id);return withOwnTestingExecutionIntervalTx(tx,ctx,executionId,async actor=>{const stored=await readTesting(tx,sql`select app.assistant_testing_action_review_read(${id}::uuid) as review`);boundTesting(stored,actor,id,executionId);const completion=await completedTesting(tx,actor,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};});
@@ -372,7 +373,7 @@ export async function readCompletedTestingOutcomeTx(tx:Tx,supplied:SessionContex
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
 export async function readCompletedClaimSubmissionOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=capture(supplied),id=z.uuid().parse(value);
+ const ctx=capture(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'claims.submit'},${id}::uuid) as completed`);
  if(terminal?.completed!==true)return fail();
  await assertAiPrincipalTx(tx,ctx);const claimId=await submissionSubject(tx,id);return withOwnClaimSubmissionIntervalTx(tx,ctx,claimId,async(actor,own)=>{const stored=await readSubmission(tx,sql`select app.assistant_claim_submission_review_read(${id}::uuid) as review`);boundSubmission(stored,actor,id,claimId,own.employmentId);const completion=await completedSubmission(tx,actor,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};});
@@ -381,7 +382,7 @@ export async function readCompletedClaimSubmissionOutcomeTx(tx:Tx,supplied:Sessi
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
 export async function readCompletedStandardReviewOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=capture(supplied),id=z.uuid().parse(value);
+ const ctx=capture(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'performance.review.acknowledge'},${id}::uuid) as completed`);
  if(terminal?.completed!==true)return fail();
  const actor=await guard(tx,ctx,'performance');await lockLeaveDependencyReadConfigurationTx(tx,actor.tenantId);const nominated=await performanceSubject(tx,id,MODULE_REVIEW_ACK_ACTION);await lockLeaveDependenciesTx(tx,actor.tenantId,[nominated]);const stored=await readPerformance(tx,sql`select app.assistant_module_action_review_read(${id}::uuid,${MODULE_REVIEW_ACK_ACTION}) as review`);boundPerformance(stored,actor,id,MODULE_REVIEW_ACK_ACTION,nominated);const completion=await completedPerformance(tx,actor,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};
@@ -390,7 +391,7 @@ export async function readCompletedStandardReviewOutcomeTx(tx:Tx,supplied:Sessio
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
 export async function readCompletedOnehrPlanOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=capture(supplied),id=z.uuid().parse(value);
+ const ctx=capture(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'performance.onehr.plan.acknowledge'},${id}::uuid) as completed`);
  if(terminal?.completed!==true)return fail();
  const actor=await guard(tx,ctx,'performance');await lockLeaveDependencyReadConfigurationTx(tx,actor.tenantId);const nominated=await performanceSubject(tx,id,MODULE_ONEHR_ACK_ACTION);await lockLeaveDependenciesTx(tx,actor.tenantId,[nominated]);const stored=await readPerformance(tx,sql`select app.assistant_module_action_review_read(${id}::uuid,${MODULE_ONEHR_ACK_ACTION}) as review`);boundPerformance(stored,actor,id,MODULE_ONEHR_ACK_ACTION,nominated);const completion=await completedPerformance(tx,actor,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};

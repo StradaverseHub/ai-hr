@@ -1,3 +1,4 @@
+import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 /** UNMOUNTED Personnel EPF/SOCSO custody. No Identity/Tax/Bank/TP3/Zakat mutation or model calculations. */
 import {createHash,randomUUID} from 'node:crypto';
 import {sql,type SQL} from 'drizzle-orm';
@@ -58,7 +59,7 @@ export async function listCountryStatutoryReviews(supplied:SessionContext){const
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
 export async function readCompletedCountryStatutoryOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=capture(supplied),id=z.uuid().parse(value);
+ const ctx=capture(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'country-my.statutory.update'},${id}::uuid) as completed`);
  if(terminal?.completed!==true)return fail();
  const actor=await assertReviewedCountryStatutoryActorTx(tx,ctx),employmentId=await subject(tx,id);return withReviewedCountryStatutoryIntervalTx(tx,actor,employmentId,async(fresh,source)=>{const stored=await read(tx,sql`select app.assistant_country_statutory_review_read(${id}::uuid) as review`);bound(stored,fresh,id,source);const completion=await completed(tx,fresh,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};});

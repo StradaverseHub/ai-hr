@@ -1,3 +1,4 @@
+import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 import {ownLeaveHumanIntentText} from '../../lib/assistant-actions/own-leave-human-intent';
 /** UNRELEASED review custody and human-confirmation command. The human browser route calls it; no model tool does.
  * Relevant source writers and security/concurrency/retention verification must be complete before exposure.
@@ -272,7 +273,7 @@ export async function listOwnLeaveReviewsTx(tx:Tx,supplied:SessionContext):Promi
 
 /** Completed-only actual-Tx evidence path. Never unseals/returns a pending body or retries a request. */
 export async function readCompletedOwnLeaveOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=captureContext(supplied),id=z.uuid().parse(value),actor=await readOwnLeaveActorTx(tx,ctx);if(!actor)throw new OwnLeaveContentUnavailable();
+ const ctx=captureContext(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);const actor=await readOwnLeaveActorTx(tx,ctx);if(!actor)throw new OwnLeaveContentUnavailable();
  await assertAiActionUnpausedTx(tx,actor,'hr_assistant');
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed('leave.apply',${id}::uuid) as completed`);if(terminal?.completed!==true)throw new OwnLeaveContentUnavailable();
  const [nomination]=await tx.execute<{subject:unknown}>(sql`select app.assistant_own_leave_review_subject(${id}::uuid) as subject`),subject=z.uuid().parse(nomination?.subject);await lockLeaveDependenciesTx(tx,actor.tenantId,[subject]);

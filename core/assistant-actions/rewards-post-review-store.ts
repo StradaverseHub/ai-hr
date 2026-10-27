@@ -1,3 +1,4 @@
+import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 /** UNMOUNTED approved-unit Rewards post custody. Models never calculate, approve or post money. */
 import {createHash,randomUUID} from 'node:crypto';
 import {sql,type SQL} from 'drizzle-orm';
@@ -60,7 +61,7 @@ export async function listRewardsPostReviews(supplied:SessionContext){const ctx=
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
 export async function readCompletedRewardsPostOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=capture(supplied),id=z.uuid().parse(value);
+ const ctx=capture(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'rewards.post'},${id}::uuid) as completed`);
  if(terminal?.completed!==true)return fail();
  const actor=await assertReviewedRewardsPostActorTx(tx,ctx),unitId=await subject(tx,id);return withReviewedRewardsPostIntervalTx(tx,actor,unitId,async(fresh,source)=>{const stored=await read(tx,sql`select app.assistant_rewards_post_review_read(${id}::uuid) as review`);bound(stored,fresh,id,source);const completion=await completed(tx,fresh,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};});

@@ -1,5 +1,6 @@
 /** Closed actual-source adapters only. Never calls prepare/confirm, decrypts pending content,
  * executes a service string, or interprets arbitrary native SQL/event payloads in a harness. */
+import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import type {SessionContext,Tx} from '../../db/client';
@@ -24,8 +25,9 @@ const unavailable=():never=>{throw Error('Native outcome unavailable.');};
 const object=(value:unknown):Record<string,unknown>|null=>value!==null&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:null;
 /** Only existing native status codes are projected. Completed custody is NOT business approval. */
 function currentStatus(completion:unknown){const outer=object(completion),receipt=object(outer?.receipt),native=object(receipt?.receipt)??receipt;const value=native?.currentStatus??native?.status;if(value===undefined||value===null)return null;return z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,63}$/).parse(value);}
-export async function readCompletedNativeOutcomeTx(tx:Tx,ctx:SessionContext,value:unknown,server:NativeOutcomeServerContext={}){
- const reference=NativeOutcomeReference.parse(structuredClone(value));
+export async function readCompletedNativeOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown,server:NativeOutcomeServerContext={}){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))},capability=server.notificationIdentity;
+ const reference=NativeOutcomeReference.parse(structuredClone(value));await boundNativeOutcomeTransactionTx(tx);
  if(reference.source==='employee_import'){
   const read=await readCompletedEmployeeImportOutcomeTx(tx,ctx,{attemptId:reference.attemptId,attemptVersion:reference.attemptVersion},reference.companyId);
   return {evidence:NativeOutcomeEvidence.parse({action:reference.action,sourceId:read.attemptId,eventId:read.eventId,currentStatus:read.currentStatus}),sourceExpiresAt:read.expiresAt};
@@ -34,7 +36,7 @@ export async function readCompletedNativeOutcomeTx(tx:Tx,ctx:SessionContext,valu
  switch(reference.action){
   case 'leave.apply':result=await readCompletedOwnLeaveOutcomeTx(tx,ctx,id);break;
   case 'ess.profile.request':result=await readCompletedProfileOutcomeTx(tx,ctx,id);break;
-  case 'notifications.email_preferences.save':if(!server.notificationIdentity)return unavailable();result=await readCompletedNotificationOutcomeTx(tx,ctx,id,server.notificationIdentity);break;
+  case 'notifications.email_preferences.save':if(!capability)return unavailable();result=await readCompletedNotificationOutcomeTx(tx,ctx,id,capability);break;
   case 'claims.draft.save':result=await readCompletedClaimDraftOutcomeTx(tx,ctx,id);break;
   case 'claims.submit':result=await readCompletedClaimSubmissionOutcomeTx(tx,ctx,id);break;
   case 'performance.review.acknowledge':result=await readCompletedStandardReviewOutcomeTx(tx,ctx,id);break;
