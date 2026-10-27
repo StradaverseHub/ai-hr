@@ -15,3 +15,21 @@ export function elapsedBetweenClockSnapshots(anchor:unknown,current:unknown):Loc
   if(minimum<BigInt(0)||maximum<minimum)return {status:'unknown',reason:'counter_discontinuity'};
   return {status:'elapsed',minimumNs:String(minimum),maximumNs:String(maximum),continuity,verification:'not_verified'};
 }
+
+/** Bound an event relative to a server instant minted during a request/response exchange.
+ * The caller retains the ORIGINAL request-start snapshot across retries and binds that exchange
+ * to its nonce/context before using these bounds. This helper verifies neither issuance nor time.
+ * Raw snapshots remain local. Using only the response snapshot would hide network/server delay. */
+export function elapsedFromServerExchange(requestStarted:unknown,responseReceived:unknown,event:unknown):LocalElapsedEvidence{
+  const exchange=elapsedBetweenClockSnapshots(requestStarted,responseReceived);
+  if(exchange.status==='unknown')return exchange;
+  const afterResponse=elapsedBetweenClockSnapshots(responseReceived,event);
+  if(afterResponse.status==='unknown')return afterResponse;
+  const afterRequest=elapsedBetweenClockSnapshots(requestStarted,event);
+  if(afterRequest.status==='unknown')return afterRequest;
+  const minimum=BigInt(afterResponse.minimumNs),maximum=BigInt(afterRequest.maximumNs);
+  if(maximum<minimum)return {status:'unknown',reason:'counter_discontinuity'};
+  return {status:'elapsed',minimumNs:String(minimum),maximumNs:String(maximum),
+    continuity:exchange.continuity==='same_process'&&afterResponse.continuity==='same_process'&&afterRequest.continuity==='same_process'?'same_process':'same_boot',
+    verification:'not_verified'};
+}

@@ -1852,3 +1852,23 @@ modules in 43,841 ms. Outputs were iOS `entry-0c21fe6cb9ee670f3d084dcb577da9d7.h
 job completed successfully in 2m30s including dependency setup. The accompanying integrity-contract
 check also passed. These are production JavaScript/Hermes packaging witnesses only: no new native
 binary, physical device, Apple/Google verdict, app-store release or deployment follows from export.
+
+### Explicit device-check and refusal guidance (27 October 2026)
+
+Checkpoint `59baf38f0af80247defcbcb34507223249fb5b23` passed
+[40517569686](https://github.com/StradaverseHub/ai-hr/actions/runs/40517569686):
+75 cases across the signed journal (20), owned native assembly (8), screen (37) and integrity contract
+(10), plus root/native TypeScript and production iPhone/Android Metro/Hermes exports. Root TypeScript
+took 4:32.03, maximum RSS 7,635,360 KiB, exit 0. Metro bundled 1,364 iOS modules in 29,049 ms and 1,497
+Android modules in 38,703 ms.
+
+The actual assembly refuses unsupported mechanisms before handing off an enrollment key and
+distinguishes temporary bridge failure. The journal retains unsupported, invalid and unavailable
+outcomes separately, exposes only bounded public refusal codes and retains sent proofs after
+server refusal. The employee screen explains next actions without declaring acceptance, clearing
+saved work or choosing unsigned transport. No real vendor or physical-device success is asserted.
+
+The subsequent offline design is in `mobile-offline-attendance-protocol.md`. The human authorized a
+migration-number reservation request to the coordinator; it has been received, but the offline
+prefix/index/timestamp remain explicitly unallocated until central confirmation. The held Android
+custody draft and all other reservations remain untouched. No migration apply or rollout is implied.
