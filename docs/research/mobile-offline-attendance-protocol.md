@@ -344,3 +344,32 @@ check authorization/revocation/policy and actual photos, then atomically commit 
 adjudication and any canonical attendance effect. It does not classify expired/unknown time or
 mock indicators as accepted attendance, and it does not invent an in/out state machine. This
 server primitive is not mounted in an offline route. The migration and live flow remain pending.
+
+### Reserved persistence draft and online lease guard
+
+Unjournaled `0647_mobile_offline_attendance.sql` introduces context/stream, immutable permit
+inventory and immutable processed-claim outcomes. Context ownership binds tenant/actor/employment,
+company, registered key and both installations; canonical context and claim artifacts use bounded
+ciphertexts. The per-key unique open context is the lease. Expiry leaves it held. Explicit closure
+retains a reason/request reference; an exhausted close requires the complete consumed prefix.
+Review/refused outcomes carry no capture or effective attendance instant. An accepted outcome must
+link the matching canonical capture and explicit effective bounds, with received time kept separate.
+These are persistence constraints, not an implemented issuance/adjudication or acceptance service.
+
+Deferred constraints require the original complete permit inventory at context creation and require
+each committed processed claim to have its advanced cursor and Apple counter in the same transaction.
+Composite references bind permit/ordinal and claim scope. Immutable triggers reject rewriting or
+removing retained records. A key-counter trigger also prevents an unrelated online advance while
+an open stream exists. A narrow security-definer function exposes only whether this actor's app/key
+has a lease, including when the original employment has become unreadable; it exposes no capture.
+Revoking the registered key invalidates its permits and allows other keys to proceed without
+rewriting the old context or claims. Ordinary expiry never has that effect.
+
+Online challenge admission checks the lease while holding its existing actor lock. Apple and Android
+proof consumers repeat it after acquiring their registered-key lock; Android also checks before
+spending a provider request. Existing exact terminal receipt recovery is retained. Before 0647 is
+installed, no offline lease can exist and established online behavior remains available. Partial or
+inaccessible installed storage fails closed. Future context issuance must acquire the same actor/key
+locks and reconcile active online challenges before inserting any lease; this draft does not yet
+provide that issuance path. Final SQL/hash/dependencies and journal allocation still require central
+coordination. No migration journal entry or application is authorized by the reserved filename.

@@ -11,6 +11,7 @@ import {checkAppAttestAssertion} from '../lib/mobile-api/app-attest-assertion';
 import {withAttendanceTenant} from './module-gate';
 import {myOwnEmploymentSubjectsTx} from './read';
 import {OwnClockEmploymentUnavailableError} from './attendance-clock-subject';
+import {assertNoOfflineClockLeaseTx} from './mobile-offline-lease';
 import {consumeOwnIntegrityChallenge,issueOwnIntegrityChallenge,type IntegrityChallengeView} from './mobile-integrity-challenge';
 
 const uuid=z.string().uuid().transform(value=>value.toLowerCase());
@@ -72,6 +73,7 @@ export function createAppleClockAssertionService(settings:unknown,ports:{beforeC
     const required=config.target.requiredMetadata,metadata=row.metadata as {validationCategory?:number;bundleVersion?:string}|null;
     if(required&&(row.proofKind!=='apple_app_metadata'||metadata?.validationCategory!==required.validationCategory||!required.bundleVersions.includes(metadata?.bundleVersion??'')))
       throw new AppleClockAssertionError('key_unavailable');
+    await assertNoOfflineClockLeaseTx(tx,ctx,p.appInstallationId,p.keyId);
     return row;
   }
   async function fresh(tx:Tx,challenge:IntegrityChallengeView){

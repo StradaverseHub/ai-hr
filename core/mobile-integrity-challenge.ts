@@ -9,6 +9,7 @@ import {RequestBudgetExceeded} from '../lib/request-budget';
 import {withAttendanceTenant} from './module-gate';
 import {myOwnEmploymentSubjectsTx} from './read';
 import {OwnClockEmploymentUnavailableError} from './attendance-clock-subject';
+import {assertNoOfflineClockLeaseTx} from './mobile-offline-lease';
 
 const uuid=z.string().uuid().transform(value=>value.toLowerCase());
 const inputSchema=z.object({employmentId:uuid,requestId:uuid,appInstallationId:uuid,
@@ -60,7 +61,8 @@ export async function issueOwnIntegrityChallenge(ctx:SessionContext,input:Integr
     const [existing]=await tx.select().from(mobileIntegrityChallenge).where(and(eq(mobileIntegrityChallenge.tenantId,ctx.tenantId),
       eq(mobileIntegrityChallenge.actorId,ctx.userId!),eq(mobileIntegrityChallenge.requestId,intent.requestId))).limit(1);
     const now=await stamp(tx);
-    if(existing){matches(existing,intent);return view(existing,now);}
+    if(existing){matches(existing,intent);if(intent.purpose==='clock.online'&&!existing.consumedAt&&now<existing.expiresAt)await assertNoOfflineClockLeaseTx(tx,ctx,intent.appInstallationId);return view(existing,now);}
+    if(intent.purpose==='clock.online')await assertNoOfflineClockLeaseTx(tx,ctx,intent.appInstallationId);
     const pending=await tx.select({expiresAt:mobileIntegrityChallenge.expiresAt}).from(mobileIntegrityChallenge).where(and(
       eq(mobileIntegrityChallenge.tenantId,ctx.tenantId),eq(mobileIntegrityChallenge.actorId,ctx.userId!),isNull(mobileIntegrityChallenge.consumedAt),
       gt(mobileIntegrityChallenge.expiresAt,now))).orderBy(mobileIntegrityChallenge.expiresAt).limit(4);

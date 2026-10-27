@@ -15,3 +15,5 @@ export {AndroidClockCommandError} from '../../core/mobile-android-clock-signatur
 export {createAndroidVerifiedClockService,AndroidClockIntegrityError} from './mobile-android-verified-clock';
 
 export {readMobileClockDeployment,readMobileClockConfiguration,assertMobileClockCommit} from '../../core/mobile-clock-rollout';
+
+export {OfflineClockStreamError} from '../../core/mobile-offline-lease';

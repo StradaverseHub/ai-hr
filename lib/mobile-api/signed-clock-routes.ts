@@ -3,7 +3,7 @@ import {z} from 'zod';
 import type {SessionContext} from '../../db/client';
 import {ModuleNotEnabledError} from '../../core/entitlements';
 import {createAppleClockService,createAndroidVerifiedClockService,AndroidClockIntegrityError,AppleClockAssertionError,AndroidClockCommandError,
- IntegrityChallengeError,OwnClockEmploymentUnavailableError,ClockConflictError,CorrectedClockConflictError,
+ OfflineClockStreamError,IntegrityChallengeError,OwnClockEmploymentUnavailableError,ClockConflictError,CorrectedClockConflictError,
  ClockLocationError,AttendancePhotoRequiredError,OutsideGeofenceError,GeolocationRequiredError,GeofenceQualityError,DeviceNotRegisteredError} from '../../packs/attendance/mobile-integrity';
 import {ClockPhotoError} from '../attendance-photo';
 import {AppleEnrollmentSettings} from '../mobile-key-enrollment';
@@ -23,6 +23,7 @@ function expected(error:unknown):Refusal|undefined{
   return result.status==='unavailable'?{outcome:'unavailable',code:result.reason==='configuration_unavailable'?'configuration_unavailable':'proof_unavailable',integrityReason:result.reason}:
    {outcome:'refused',code:result.reason==='challenge_unavailable'?'challenge_unavailable':'invalid_proof',integrityReason:result.reason};
  }
+ if(error instanceof OfflineClockStreamError)return error.reason==='offline_pending'?{outcome:'refused',code:'clock_conflict'}:{outcome:'unavailable',code:'configuration_unavailable'};
  if(error instanceof IntegrityConfigurationUnavailable)return {outcome:'unavailable',code:error.reason};
  if(error instanceof ModuleNotEnabledError)return {outcome:'unavailable',code:'module_unavailable'};
  if(error instanceof OwnClockEmploymentUnavailableError)return {outcome:'refused',code:'subject_unavailable'};

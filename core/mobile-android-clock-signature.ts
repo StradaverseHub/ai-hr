@@ -13,6 +13,7 @@ import {decryptSecret,isSecretStorable} from '../lib/ai/crypto';
 import {withAttendanceTenant} from './module-gate';
 import {myOwnEmploymentSubjectsTx} from './read';
 import {OwnClockEmploymentUnavailableError} from './attendance-clock-subject';
+import {assertNoOfflineClockLeaseTx} from './mobile-offline-lease';
 import {consumeOwnIntegrityChallenge,issueOwnIntegrityChallenge,readOwnIntegrityChallenge,type IntegrityChallengeView} from './mobile-integrity-challenge';
 const uuid=z.string().uuid().transform(value=>value.toLowerCase());
 const inputSchema=z.object({employmentId:uuid,appInstallationId:uuid,keyId:uuid,deviceToken:uuid.optional(),
@@ -73,6 +74,7 @@ export function createAndroidClockSignatureService(settings:unknown,ports:Androi
     JSON.stringify(context.target)!==JSON.stringify(config.target)||context.tenantId!==ctx.tenantId||context.actorId!==ctx.userId||
     context.appInstallationId!==p.appInstallationId||context.installationId!==row.installationId||context.challengeId!==row.originChallengeId||context.employmentId!==row.enrolledForEmploymentId)throw new Error();
   }catch{throw new AndroidClockCommandError('key_unavailable');}
+  await assertNoOfflineClockLeaseTx(tx,ctx,p.appInstallationId,p.keyId);
   return row;
  }
  async function fresh(tx:Tx,challenge:IntegrityChallengeView){
