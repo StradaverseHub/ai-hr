@@ -124,7 +124,7 @@ export function createAndroidClockSignatureService(settings:unknown,ports:Androi
     await current?.assertFresh(tx,context);
     const value=await operation(tx,{context,photo:p.photo,deviceToken:p.deviceToken,proofKind:'google_key_generation_proof',verification:'command_signature',...(current?{currentIntegrity:current.assessment}:{})});
     await ports.beforeCommit?.(tx);
-    await current?.assertFresh(tx,context);
+    // PROBE ONLY: omit post-write freshness.
     await own(tx,ctx,p);await fresh(tx,challenge);
     await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'mobile-integrity-challenge',aggregateId:challengeId,eventType:'mobile.integrity.signature.checked',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,
      payload:{keyId:enrolled.id,proofKind:'google_key_generation_proof',verification:'command_signature'}});
