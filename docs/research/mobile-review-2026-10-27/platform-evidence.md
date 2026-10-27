@@ -2043,3 +2043,24 @@ transactions, verified clock transactions and signed-clock HTTP boundary. All pl
 Unchanged native app TypeScript/bundles retain 68e6738a9 evidence; unchanged Swift recovery stores
 retain cad993d68 host-model evidence. No native rebuild or physical SDK/vendor acceptance was run.
 No context issuance/stream lease/permit transaction or offline route is enabled by these checks.
+
+Offline stream/storage candidate `59b7cebab36f6a4b858595a5de191697b8f9d6a5` passed
+[40547435698](https://github.com/StradaverseHub/ai-hr/actions/runs/40547435698): 149 cases across
+ten database suites, including 15 new draft storage/lease scenarios. Root TypeScript passed
+(4:14.66, peak RSS 7,710,516 KiB, exit 0). All planned jobs finished successfully. New cases
+execute the actual reserved SQL in a disposable hosted worker, exercise RLS, immutable history,
+deferred inventory/cursor/counter atomicity, expired and former-employment leases, explicit closure,
+key revocation, direct counter updates, both online carriers and a real key-lock waiter. Review and
+refusal outcomes create no capture or punch. The worker restores its predecessor schema; this is
+not staging migration application. Existing challenge, enrollment, Apple/Android command, verified
+clock, HTTP, rollout and held Android custody suites also pass with unchanged pre-install behavior.
+
+The verified 0647 draft SHA-256 is
+`abe2c7d790d2ef6a64563079df292903ce4dcb2d2534baa23de268c075600c7c`.
+It has no journal index/timestamp and is not release-ready: context issuance/configuration,
+transactional proof consumption/adjudication, effective/arrival integration, APIs and employee/HR
+flows remain unfinished. Held 0636 remains byte-identical at
+`9063b27c0cc316b715d552561d636ffc6412e447ca9275758bf497870c995df7`.
+Unchanged native app and Swift-store evidence is retained; no native or physical-device test was
+rerun for this server-only change. Final dependencies/hash and canonical/applied pending-union
+ordering must be coordinated before allocating journal metadata or applying any migration.
