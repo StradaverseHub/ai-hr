@@ -2020,3 +2020,15 @@ proof, sixteen retained records/vendor calls, refusal of a seventeenth call, and
 after durable cleanup. The original failed run remains above. Root/native compiler and bundle
 passes from unchanged app source at f01552824 are retained. No physical SDK/OS Keychain, complete
 Expo/iOS binary or live attendance acceptance is inferred from these host checks.
+
+
+Ordered local offline signing candidate `68e6738a9a862c2152663f85d9aaf2a8196f3e86` passed
+[40543548218](https://github.com/StradaverseHub/ai-hr/actions/runs/40543548218). All 190 cases
+across nine suites passed: offline signer, context journal, native storage, claim contract,
+shared signed journal, integrity bridge, native assembly, submission recovery and elapsed bounds.
+Root TypeScript passed (4:49.70, peak RSS 7,642,176 KiB, exit 0), native TypeScript passed,
+and production JS bundles passed for iPhone (1,368 modules / 28,072 ms) and Android
+(1,501 modules / 38,413 ms). Unchanged Swift source retains the 17+17 model passes from
+cad993d68. These checks do not establish full native binaries, vendor acceptance, OS location
+flags or physical airplane-mode/continuity behavior. Server-issued contexts, key leases,
+transactional consumption/adjudication and the employee offline flow remain unfinished.

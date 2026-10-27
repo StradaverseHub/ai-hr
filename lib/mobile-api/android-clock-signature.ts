@@ -2,6 +2,7 @@
 import 'server-only';
 import {createHash,KeyObject,verify} from 'node:crypto';
 import {OnlineClockIntegrityData,onlineClockClientData} from '../mobile-clock-integrity';
+import {OfflineClockClaimData,offlineClockClaimClientData} from '../mobile-offline-clock';
 export class AndroidClockSignatureError extends Error{
  constructor(readonly reason:'configuration'|'invalid_key'|'malformed'|'wrong_app'|'invalid_signature'){
   super('Android command signature check failed');this.name='AndroidClockSignatureError';
@@ -42,4 +43,20 @@ export function checkAndroidClockSignature(input:{publicKey:KeyObject;signature:
  if(!valid)fail('invalid_signature');
  // No signature hash is an idempotency key: ECDSA may produce multiple valid signatures per command.
  return {verification:'command_signature' as const,clientDataHash:createHash('sha256').update(canonical).digest('hex')};
+}
+
+/** Exact original offline bytes only. Capture build reports are not current Play Integrity evidence.
+ * The offline stream owner must separately bind issued context/permit/key and consume atomically. */
+export function checkAndroidOfflineClockSignature(input:{publicKey:KeyObject;signature:Buffer;claim:unknown;expectedAppId:string}){
+ const {publicKey,signature,expectedAppId}=input;
+ if(typeof expectedAppId!=='string'||expectedAppId.length<3||expectedAppId.length>200||expectedAppId.trim()!==expectedAppId||
+  !/^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/.test(expectedAppId))fail('configuration');
+ if(!(publicKey instanceof KeyObject)||publicKey.type!=='public'||publicKey.asymmetricKeyType!=='ec'||publicKey.asymmetricKeyDetails?.namedCurve!=='prime256v1')fail('invalid_key');
+ if(!Buffer.isBuffer(signature))fail('malformed');canonicalSignature(signature);
+ const parsed=OfflineClockClaimData.safeParse(input.claim);if(!parsed.success)fail('malformed');
+ if(parsed.data.evidence.platform!=='android'||parsed.data.evidence.appId!==expectedAppId)fail('wrong_app');
+ const bytes=Buffer.from(offlineClockClaimClientData(parsed.data),'utf8');if(bytes.length<1||bytes.length>16384)fail('malformed');
+ let valid=false;try{valid=verify('sha256',bytes,{key:publicKey,dsaEncoding:'der'},signature);}catch{}
+ if(!valid)fail('invalid_signature');
+ return {verification:'command_signature' as const,clientDataHash:createHash('sha256').update(bytes).digest('hex')};
 }

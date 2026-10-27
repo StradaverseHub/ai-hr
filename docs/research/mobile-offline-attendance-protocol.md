@@ -324,3 +324,23 @@ the actual ordered submitted payload and must not be labeled capture-time integr
 attachment admission, partial receipts and audited refusals must preserve those invariants. Final
 SQL and journal metadata for reserved 0647 must be coordinated before release; the reservation does
 not authorize stale metadata, migration application or rollout.
+
+
+### Server verification of original claim proofs
+
+`lib/mobile-api/offline-clock-proof.ts` binds an original signed claim to independently supplied
+context, registered public-key and stream snapshots. It checks the complete context scope/digest,
+exact issued permit inventory, registered key/app/environment and contiguous predecessor digest.
+iPhone verification reuses the existing strict App Attest primitive and returns its proposed
+strictly increasing counter. Android verification uses the same bounded canonical DER checks as
+online signatures but verifies the separate offline purpose/bytes; it never reinterprets an online
+signature or a hash of the canonical message as the original claim. Capture build reports are
+preserved, with current upload Play assessment and configured build policy owned separately.
+
+The result is `proof_valid` with `authorization: not_granted`, never a receipt or punch. The
+primitive does not authenticate its context/key/cursor arguments: the server stream transaction
+must load independently verified issued records and locked current registration/stream state,
+check authorization/revocation/policy and actual photos, then atomically commit counter/permit,
+adjudication and any canonical attendance effect. It does not classify expired/unknown time or
+mock indicators as accepted attendance, and it does not invent an in/out state machine. This
+server primitive is not mounted in an offline route. The migration and live flow remain pending.
