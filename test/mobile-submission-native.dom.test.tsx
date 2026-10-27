@@ -11,6 +11,7 @@ import {androidEnrollmentFixture} from './helpers/mobile-android-enrollment-fixt
 import {enrollmentFixture,enrollmentId} from './helpers/mobile-enrollment-fixture';
 import {createIntegrityBridge} from '../mobile/lib/integrity-bridge';
 import {createInstallationStore} from '../mobile/lib/installation-store';
+import {appleReplacementFixture} from './helpers/mobile-apple-replacement-fixture';
 
 /** Execute the shipped native adapter. Files/Keychain/native AES are ports; AES-GCM uses real crypto. */
 function fixture(nativeAvailable=true){
@@ -79,6 +80,22 @@ const scope={namespace:'https://hr.example.com',actorId:'aaaaaaaa-aaaa-4aaa-8aaa
 const requestId='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const command=JSON.stringify({requestId,action:'in',lat:3,lng:101,accuracy:5,sampledAt:Date.now()});
 describe('native encrypted submission adapter',()=>{
+  it('seals iPhone retirement history across reopening without retaining uploaded attestation bytes',async()=>{
+    const f=fixture(),e=appleReplacementFixture();
+    const first=await f.native.openNativeEnrollmentJournal(e.scope,e.ports.assertCurrent,e.ports);
+    await first.begin(e.employmentId,e.requestId);const original=await first.advance(e.employmentId);expect(original.status).toBe('stored_key');
+    await first.revoke(e.employmentId);await first.replace(e.employmentId,enrollmentId(88));
+    const reopened=await f.native.openNativeEnrollmentJournal(e.scope,e.ports.assertCurrent,e.ports);
+    expect(await reopened.status()).toMatchObject({status:'pending',phase:'requested',requestId:enrollmentId(88)});
+    expect(await reopened.advance(e.employmentId)).toMatchObject({status:'stored_key',revoked:false});
+    const bytes=Buffer.from([...f.files.values()][0]),key=Buffer.from(f.secrets.get('aihr.submissions.key.v1')!,'base64');
+    const scopeId=createHash('sha256').update(JSON.stringify(['enrollment-v1',e.scope.namespace,e.scope.apiOrigin,e.scope.actorId,e.scope.appInstallationId])).digest('hex');
+    const decipher=createDecipheriv('aes-256-gcm',key,bytes.subarray(0,12));decipher.setAAD(Buffer.from('aihr-enrollment-v1:'+scopeId+':journal'));decipher.setAuthTag(bytes.subarray(-16));
+    const saved=JSON.parse(Buffer.concat([decipher.update(bytes.subarray(12,-16)),decipher.final()]).toString());
+    expect(saved.version).toBe(3);expect(saved.retired).toHaveLength(1);expect(saved.retired[0].key.keyId).toBe(original.status==='stored_key'?original.keyId:'unexpected');
+    expect(saved.retired[0].employmentId).toBe(e.employmentId);expect(saved.retired[0].key.revokedAt).not.toBeNull();expect(saved.pending).toBeNull();
+    expect(saved.retired[0]).not.toHaveProperty('attestation');expect(saved.key).not.toHaveProperty('attestation');
+  });
   it('seals Android enrollment through restart with a separate Apple pointer/AAD and no creation on open',async()=>{
     const f=fixture(),a=androidEnrollmentFixture(),apple=enrollmentFixture();
     const opened=await f.native.openNativeAndroidEnrollmentJournal(a.scope,a.ports.assertCurrent,a.ports);expect(a.native.create).not.toHaveBeenCalled();expect(a.ports.prepare).not.toHaveBeenCalled();

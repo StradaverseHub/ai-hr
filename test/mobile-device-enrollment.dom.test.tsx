@@ -11,11 +11,12 @@ import {createIntegrityBridge} from '../mobile/lib/integrity-bridge';
 import * as errors from '../mobile/lib/errors';
 import {enrollmentFixture} from './helpers/mobile-enrollment-fixture';
 import {androidEnrollmentFixture} from './helpers/mobile-android-enrollment-fixture';
+import {appleReplacementFixture} from './helpers/mobile-apple-replacement-fixture';
 type Status=apple.EnrollmentStatus|android.AndroidEnrollmentStatus;
 type Device={platform:'ios'|'android';supported:boolean;status():Promise<Status>;begin():Promise<Status>;advance():Promise<Status>;reconcile():Promise<Status>;revoke():Promise<Status>;replace?:()=>Promise<Status>};
-function runtime(platform:'ios'|'android',nativeAvailable=true){
- const a=enrollmentFixture(),d=androidEnrollmentFixture(),f=platform==='ios'?a:d;
- let generation=0,namespace=f.scope.namespace,unlocked=true;
+function runtime(platform:'ios'|'android',nativeAvailable=true,multiKey=false){
+ const a=multiKey?appleReplacementFixture():enrollmentFixture(),d=androidEnrollmentFixture(),f=platform==='ios'?a:d;
+ let generation=0,namespace=f.scope.namespace,unlocked=true,nextRequest=f.requestId;
  const appState={currentState:'active'},config={apiUrl:f.scope.apiOrigin};
  const me={actorId:f.scope.actorId,employments:[{employmentId:f.employmentId}]};
  const get=vi.fn(async()=>structuredClone(me)),installation=vi.fn(async()=>f.scope.appInstallationId);
@@ -39,7 +40,7 @@ function runtime(platform:'ios'|'android',nativeAvailable=true){
  const code=transpileModule(readFileSync('mobile/lib/device-enrollment.ts','utf8'),{compilerOptions:{module:ModuleKind.CommonJS}}).outputText;
  runInNewContext(code,{exports:output.exports,module:output,require:(id:string)=>{
   if(id==='react-native')return {AppState:appState,Platform:{OS:platform}};
-  if(id==='expo-crypto')return {randomUUID:()=>f.requestId};
+  if(id==='expo-crypto')return {randomUUID:()=>nextRequest};
   if(id==='./api')return {apiGet:get,apiPost:post};
   if(id==='./auth')return {authGeneration:()=>generation,assertAuthGeneration:(owner:number)=>{if(owner!==generation)throw new errors.SessionChangedError();}};
   if(id==='./config')return {config,identityNamespace:()=>namespace};
@@ -54,8 +55,15 @@ function runtime(platform:'ios'|'android',nativeAvailable=true){
  }});
  return {a,d,f,get,post,storage,installation,me,appState,config,
   open:(id=f.employmentId)=>output.exports.openOwnedDeviceEnrollment(id,()=>unlocked),
-  lock:()=>{unlocked=false;},unlock:()=>{unlocked=true;},changeActor:()=>{generation++;},changeCompany:()=>{namespace='other-company';}};
+  lock:()=>{unlocked=false;},unlock:()=>{unlocked=true;},changeActor:()=>{generation++;},changeCompany:()=>{namespace='other-company';},nextRequest:(value:string)=>{nextRequest=value;}};
 }
+it('connects explicit iPhone replacement to the original scoped journal and fresh receipt reader',async()=>{
+ const r=runtime('ios',true,true),device=await r.open();await device.begin();await device.advance();await device.revoke();
+ r.nextRequest('99999999-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+ expect(await device.replace!()).toMatchObject({status:'pending',phase:'requested'});expect(r.a.native.generateAppleKey).toHaveBeenCalledOnce();
+ expect(await device.advance()).toMatchObject({status:'stored_key',revoked:false});expect(r.a.native.generateAppleKey).toHaveBeenCalledTimes(2);
+ const saved=r.f.stored();expect(saved?.version).toBe(3);if(saved?.version!==3)throw new Error('missing retirement');expect(saved.retired).toHaveLength(1);expect(saved.retired[0].employmentId).toBe(r.f.employmentId);
+});
 describe.each(['ios','android'] as const)('%s app enrollment assembly',platform=>{
  it('does not create a pending intent when its native module is unsupported',async()=>{
   const r=runtime(platform,false),device=await r.open();expect(device.supported).toBe(false);

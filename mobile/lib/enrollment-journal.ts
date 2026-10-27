@@ -26,6 +26,9 @@ const snapshotFields={revision:z.number().int().positive().max(999999999999999),
 const snapshot=z.discriminatedUnion('version',[
   z.object({version:z.literal(1),...snapshotFields}).strict(),
   z.object({version:z.literal(2),...snapshotFields,revocation:z.literal('requested')}).strict(),
+  // Keep v1/v2 bytes readable and unchanged until the first explicit retirement. Native Apple
+  // proof storage has sixteen lifetime records; retain at most fifteen predecessors plus current.
+  z.object({version:z.literal(3),...snapshotFields,retired:z.array(registered).min(1).max(15),revocation:z.literal('requested').optional()}).strict(),
 ]);
 export type EnrollmentSnapshot=z.infer<typeof snapshot>;
 type Pending=z.infer<typeof pending>;
@@ -45,10 +48,16 @@ function contextMatches(scope:EnrollmentScope,p:z.infer<typeof bound>){
 export function parseEnrollmentSnapshot(value:unknown,rawScope:EnrollmentScope):EnrollmentSnapshot{
   try{
     const scope=EnrollmentScope.parse(rawScope),s=snapshot.parse(value);
-    if(JSON.stringify(s.scope)!==JSON.stringify(scope)||s.pending&&s.key)throw new Error();
-    if(s.version===2&&(!s.key||s.pending||s.key.key.revokedAt!==null))throw new Error();
+    if(JSON.stringify(s.scope)!==JSON.stringify(scope)||s.pending&&s.key||s.version===3&&!s.key&&!s.pending)throw new Error();
+    if((s.version===2||s.version===3&&s.revocation==='requested')&&(!s.key||s.pending||s.key.key.revokedAt!==null))throw new Error();
     if(s.pending&&s.pending.phase!=='requested'&&!contextMatches(scope,s.pending))throw new Error();
     if(s.key&&(!contextMatches(scope,s.key)||!receiptMatches(s.key.key,s.key.prepared)))throw new Error();
+    const records=[...(s.version===3?s.retired:[]),...(s.key?[s.key]:[])];
+    if(s.version===3&&s.retired.some(record=>record.key.revokedAt===null||!contextMatches(scope,record)||!receiptMatches(record.key,record.prepared)))throw new Error();
+    const requests=[...records.map(record=>record.requestId),...(s.pending?[s.pending.requestId]:[])];
+    const challenges=[...records.map(record=>record.prepared.context.challengeId),...(s.pending&&s.pending.phase!=='requested'?[s.pending.prepared.context.challengeId]:[])];
+    const vendors=[...records.map(record=>record.vendorKeyId),...(s.pending&&'vendorKeyId' in s.pending?[s.pending.vendorKeyId]:[])];
+    if(new Set(requests).size!==requests.length||new Set(challenges).size!==challenges.length||new Set(vendors).size!==vendors.length||new Set(records.map(record=>record.key.keyId)).size!==records.length)throw new Error();
     return s;
   }catch{throw new EnrollmentJournalUnavailable();}
 }
@@ -63,7 +72,7 @@ export type EnrollmentPorts={
   receipt(employmentId:string,input:z.infer<typeof C.IntegrityKeyLookupIntent>):Promise<unknown>;
   revoke(employmentId:string,input:z.infer<typeof C.IntegrityRevokeIntent>):Promise<unknown>;
 };
-type PendingReason='server_unavailable'|'server_refused'|'vendor_outage'|'native_unavailable'|'unsupported'|'recovery_required'|'challenge_unavailable';
+type PendingReason='server_unavailable'|'server_refused'|'vendor_outage'|'native_unavailable'|'unsupported'|'recovery_required'|'challenge_unavailable'|'history_full';
 export type EnrollmentStatus={status:'empty'}|{status:'pending';requestId:string;employmentId:string;phase:Pending['phase'];reason?:PendingReason}|
   {status:'stored_key';keyId:string;revoked:boolean;reason?:PendingReason}|{status:'revocation_pending';keyId:string;reason?:PendingReason};
 // Shared across all journal instances/generations. A fresh operation always reads the commit pointer;
@@ -80,10 +89,12 @@ export function createEnrollmentJournal(rawScope:EnrollmentScope,ports:Enrollmen
     const raw=await owned(()=>ports.read());if(!raw)return {version:1 as const,revision:0,scope,pending:null,key:null};
     const s=parseEnrollmentSnapshot(raw,scope);
     if(s.pending&&s.pending.phase!=='requested')await checkPrepared(s.pending.prepared,s.pending);
-    if(s.key){await checkPrepared(s.key.prepared,s.key);await checkKeyBinding(s.key);}return s;
+    for(const record of [...(s.version===3?s.retired:[]),...(s.key?[s.key]:[])]){await checkPrepared(record.prepared,record);await checkKeyBinding(record);}return s;
   }
-  async function save(s:Awaited<ReturnType<typeof read>>,p:Pending|null,key:EnrollmentSnapshot['key']=null,revoking=false){
-    const next=parseEnrollmentSnapshot({version:revoking?2:1,revision:s.revision+1,scope,pending:p,key,...(revoking?{revocation:'requested'}:{})},scope);
+  const history=(s:Awaited<ReturnType<typeof read>>)=>s.version===3?s.retired:[];
+  const revocationPending=(s:Awaited<ReturnType<typeof read>>)=>s.version===2||s.version===3&&s.revocation==='requested';
+  async function save(s:Awaited<ReturnType<typeof read>>,p:Pending|null,key:EnrollmentSnapshot['key']=null,revoking=false,retired=history(s)){
+    const next=parseEnrollmentSnapshot({version:retired.length?3:revoking?2:1,revision:s.revision+1,scope,pending:p,key,...(retired.length?{retired}:{}),...(revoking?{revocation:'requested'}:{})},scope);
     try{await owned(()=>ports.commit(structuredClone(next)));}catch(error){ports.assertCurrent();throw new EnrollmentJournalUnavailable();}return next;
   }
   async function release(key:NonNullable<EnrollmentSnapshot['key']>){
@@ -100,7 +111,7 @@ export function createEnrollmentJournal(rawScope:EnrollmentScope,ports:Enrollmen
     if(expected!==key.key.nativeKeyBinding)throw new EnrollmentConflict();
   }
   function status(s:Awaited<ReturnType<typeof read>>,reason?:PendingReason):EnrollmentStatus{
-    if(s.version===2&&s.key)return {status:'revocation_pending',keyId:s.key.key.keyId,...(reason?{reason}:{})};
+    if(revocationPending(s)&&s.key)return {status:'revocation_pending',keyId:s.key.key.keyId,...(reason?{reason}:{})};
     if(s.key)return {status:'stored_key',keyId:s.key.key.keyId,revoked:s.key.key.revokedAt!==null,...(reason?{reason}:{})};
     return s.pending?{status:'pending',phase:s.pending.phase,requestId:s.pending.requestId,employmentId:s.pending.employmentId,...(reason?{reason}:{})}:{status:'empty'};
   }
@@ -153,7 +164,7 @@ export function createEnrollmentJournal(rawScope:EnrollmentScope,ports:Enrollmen
       if(!s.key)throw new EnrollmentConflict();
       if(s.key.key.revokedAt!==null){await release(s.key);return status(s);}
       // Durable intent precedes transport. Neither a lost reply nor a restart restores local key use.
-      if(s.version!==2)s=await save(s,null,s.key,true);
+      if(!revocationPending(s))s=await save(s,null,s.key,true);
       const key=s.key!;
       const value=checked(C.IntegrityRevocationResult,await owned(()=>ports.revoke(selected,{keyId:key.key.keyId})));
       if(value.outcome!=='revoked')return {status:'revocation_pending' as const,keyId:key.key.keyId,reason:value.outcome==='refused'?'server_refused' as const:'server_unavailable' as const};
@@ -166,7 +177,18 @@ export function createEnrollmentJournal(rawScope:EnrollmentScope,ports:Enrollmen
       const i=intent.parse({employmentId,requestId}),s=await read();
       if(s.key){await release(s.key);return status(s);}
       if(s.pending){if(s.pending.employmentId!==i.employmentId)throw new EnrollmentConflict();return status(s);}
+      if(history(s).some(record=>record.requestId===i.requestId))throw new EnrollmentConflict();
       return status(await save(s,{...i,phase:'requested'}));
+    }),
+    replace:(employmentId:string,requestId:string)=>exclusive(queue,async()=>{
+      const i=intent.parse({employmentId,requestId});let s=await read();if(!s.key||s.pending)throw new EnrollmentConflict();
+      // A cached revocation is insufficient. Only the same immutable receipt, freshly read through
+      // a current own selector, permits archiving the original registration before a new intent.
+      const confirmed=await reconcileStored(s,i.employmentId);if('reason' in confirmed&&confirmed.reason)return confirmed;
+      s=await read();if(!s.key||s.key.key.revokedAt===null)return status(s,'recovery_required');
+      const retired=history(s);if(retired.length===15)return status(s,'history_full');
+      if(s.key.requestId===i.requestId||retired.some(record=>record.requestId===i.requestId))throw new EnrollmentConflict();
+      return status(await save(s,{...i,phase:'requested'},null,false,[...retired,s.key]));
     }),
     advance:(employmentId:string)=>exclusive(queue,async()=>{
       const selected=uuid.parse(employmentId);let s=await read(),p=s.pending;

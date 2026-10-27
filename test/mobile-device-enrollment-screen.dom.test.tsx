@@ -21,7 +21,7 @@ function fixture(platform='ios'){
   advance:vi.fn(async()=>{saved={status:'stored_key',keyId:id,revoked:false};return saved;}),
   reconcile:vi.fn(async()=>structuredClone(saved)),revoke:vi.fn(async()=>{saved={status:'stored_key',keyId:id,revoked:true};return saved;}),
  };
- if(platform==='android')controller.replace=vi.fn(async()=>{saved={status:'pending',phase:'requested',requestId:other,employmentId:id};return saved;});
+ controller.replace=vi.fn(async()=>{saved={status:'pending',phase:'requested',requestId:other,employmentId:id};return saved;});
  const checks:Array<()=>boolean>=[];
  const open=vi.fn(async(_id:string,check:()=>boolean)=>{checks.push(check);return controller;});
  const useApi=vi.fn(()=>capabilities);
@@ -103,8 +103,8 @@ describe('explicit device enrollment screen',()=>{
   fireEvent.click(await screen.findByText('integrityCheckStatus'));await waitFor(()=>expect(f.controller.reconcile).toHaveBeenCalledOnce());expect(f.controller.revoke).not.toHaveBeenCalled();
   fireEvent.click(screen.getByText('integrityEnrollmentRetryRevoke'));await act(async()=>f.accept()());await screen.findByText('integrityEnrollmentRevoked');expect(f.controller.revoke).toHaveBeenCalledOnce();
  });
- it('requires an explicit Android replacement action for a known revoked registration',async()=>{
-  const f=fixture('android');f.saved({status:'stored_key',keyId:id,revoked:true});render(<f.View employmentId={id} onChanged={f.changed}/>);
+ it.each(['ios','android'])('requires an explicit %s replacement action for a known revoked registration',async(platform)=>{
+  const f=fixture(platform);f.saved({status:'stored_key',keyId:id,revoked:true});render(<f.View employmentId={id} onChanged={f.changed}/>);
   fireEvent.click(await screen.findByText('integrityEnrollmentReplace'));expect(f.controller.replace).not.toHaveBeenCalled();await act(async()=>f.accept()());await screen.findByText('integrityEnrollmentSaved');expect(f.controller.replace).toHaveBeenCalledOnce();expect(f.controller.advance).toHaveBeenCalledOnce();
  });
  it('does not create an Android compatibility path for an unsupported native platform',()=>{

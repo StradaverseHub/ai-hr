@@ -45,7 +45,7 @@ export async function openOwnedDeviceEnrollment(employmentId:string,isUnlocked:(
   }));
   return {platform:'ios',supported,status:()=>owned(()=>journal.status()),reconcile:()=>owned(()=>journal.reconcile(employmentId)),
    begin:()=>owned(()=>{requireSupport();return journal.begin(employmentId,randomUUID());}),advance:()=>owned(()=>journal.advance(employmentId)),
-   revoke:()=>owned(()=>journal.revoke(employmentId))};
+   revoke:()=>owned(()=>journal.revoke(employmentId)),replace:()=>owned(()=>{requireSupport();return journal.replace(employmentId,randomUUID());})};
  }
  const journal=await owned(()=>openNativeAndroidEnrollmentJournal(scope,check,{
   native:createAndroidKeyEnrollment(native,check,()=>AppState.currentState==='active'&&isUnlocked()),receipt,revoke,
