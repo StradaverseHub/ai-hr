@@ -20468,7 +20468,20 @@
       "pending": "Percubaan sedang berjalan."
     },
     "historyUnavailable": "Sejarah e-mel tidak dapat dimuatkan. Semak julat tarikh dan cuba lagi.",
-    "providerManagedPreview": "Penyedia identiti mengurus templat e-mel ini. Kandungan mesej asal tidak disimpan dalam AIHR."
+    "providerManagedPreview": "Penyedia identiti mengurus templat e-mel ini. Kandungan mesej asal tidak disimpan dalam AIHR.",
+    "retentionTitle": "Penyimpanan log penghantaran",
+    "retentionPeriod": "Tempoh penyimpanan",
+    "retentionNever": "Jangan padam",
+    "retentionCustom": "Padam selepas bilangan hari tertentu",
+    "retentionDays": "Hari (1–3650)",
+    "retentionSave": "Simpan dasar penyimpanan",
+    "retentionHelp": "Terpakai pada log penghantaran jemputan dan pemulihan seluruh pemasangan ini. Pembersihan berjalan setiap jam apabila pemasa penyelenggaraan dipasang. Umur dikira sejak aktiviti penghantaran terakhir. Penghantaran tertunda, jemputan belum luput dan rantaian penghantaran semula yang mengandungi aktiviti dilindungi atau terkini dikekalkan. Akaun, jemputan dan peristiwa audit keselamatan dikekalkan.",
+    "retentionAcknowledge": "Saya faham log layak yang lebih lama daripada tempoh ini, termasuk sejarah sedia ada, akan dipadam secara kekal dan tidak lagi boleh dipratonton atau dihantar semula daripada log ini.",
+    "retentionSaved": "Dasar penyimpanan disimpan. Sejarah layak akan dipadam oleh pembersihan berjadual.",
+    "retentionError": "Dasar penyimpanan tidak dapat disimpan. Muat semula halaman, semak hari dan pengakuan pemadaman, kemudian cuba lagi.",
+    "retentionLastRun": "Pembersihan terakhir berjaya: {time}. Dipadam: {count} rekod.",
+    "retentionNotRun": "Tiada pembersihan berjaya direkodkan. Pengendali penyelenggaraan mesti memasang dan mengesahkan pemasa pembersihan.",
+    "retentionUnavailable": "Tetapan penyimpanan tidak tersedia. Muat semula halaman atau hubungi pengendali pemasangan."
   },
   "pageStyleRecovery": {
     "restoring": "Memulihkan halaman…",

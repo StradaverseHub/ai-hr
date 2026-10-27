@@ -48,8 +48,10 @@ export async function readAccountEmailHistory(ctx:SessionContext,actor?:Identity
  const filters=historyFilters.parse(input);if(filters.fromDate&&filters.toDate&&filters.fromDate>filters.toDate)throw Error('Invalid email history date range.');
  const cursor=filters.before?z.tuple([z.iso.datetime({offset:true}),z.uuid()]).parse(JSON.parse(Buffer.from(filters.before,'base64url').toString())):null;
  const clock=emailDisplayClock();
- const rows=await withTenant(ctx,tx=>tx.execute<{id:string;kind:'invitation'|'recovery';email:string;status:'pending'|'sent'|'failed'|'skipped';attempts:number;error:AccountEmailError|null;created_at:Date;can_retry:boolean;resend_unavailable:string|null}>(sql`select * from app.account_email_history(${actor?.issuer??null},${actor?.subject??null},${filters.fromDate??null}::date,${filters.toDate??null}::date,${clock.timeZone},${cursor?.[0]??null}::timestamptz,${cursor?.[1]??null}::uuid)`));
+ const rows=await withTenant(ctx,tx=>tx.execute<{id:string;kind:'invitation'|'recovery';email:string;status:'pending'|'sent'|'failed'|'skipped';attempts:number;error:AccountEmailError|null;created_at:Date;cursor_created_at:string;can_retry:boolean;resend_unavailable:string|null}>(sql`select * from app.account_email_history(${actor?.issuer??null},${actor?.subject??null},${filters.fromDate??null}::date,${filters.toDate??null}::date,${clock.timeZone},${cursor?.[0]??null}::timestamptz,${cursor?.[1]??null}::uuid)`));
  const hasMore=rows.length>25,page=rows.slice(0,25),last=page.at(-1);
  const items:AccountEmailDeliveryView[]=page.map(row=>({id:row.id,kind:row.kind,email:row.email,status:row.status,attempts:row.attempts,error:row.error,createdAt:new Date(row.created_at),canRetry:row.can_retry,resendUnavailable:row.resend_unavailable==='superseded'?'superseded':row.resend_unavailable==='closed'?'closed':row.resend_unavailable==='pending'?'pending':undefined}));
- return {items,hasMore,nextCursor:hasMore&&last?Buffer.from(JSON.stringify([new Date(last.created_at).toISOString(),last.id])).toString('base64url'):undefined};
+ // A JS Date truncates PostgreSQL microseconds. Preserve the database cursor verbatim so rows
+ // sharing the boundary millisecond cannot disappear between pages.
+ return {items,hasMore,nextCursor:hasMore&&last?Buffer.from(JSON.stringify([last.cursor_created_at,last.id])).toString('base64url'):undefined};
 }

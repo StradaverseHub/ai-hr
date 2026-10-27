@@ -80,8 +80,39 @@ last activated configuration continues sending until the replacement is tested a
 Saving an inactive connection does not change the canonical active-relay revision used by Reports.
 
 Account-mail history has local-date filtering and older pages; timestamps stay UTC in storage and
-use the installed country pack's display clock. Malaysia supplies Asia/Kuala_Lumpur (MYT). No
-automatic purge or new retention period is configured by this upgrade.
+use the installed country pack's display clock. Malaysia supplies Asia/Kuala_Lumpur (MYT).
+Delivery-log retention defaults to Never delete. The verified installation email administrator can
+choose 1–3650 days and must acknowledge permanent deletion, including existing eligible history.
+The period is elapsed 24-hour days since the last delivery activity, independent of display timezone.
+Pending sends and unexpired pending invitations are protected. An entire resend chain is retained
+until every entry is inactive and old enough; cleanup never exposes a retained predecessor for resend.
+Accounts, invitation records and append-only security audit events are not deleted. Policy changes
+and cleanup counts are audited without recipient addresses. Deleted log entries cannot be previewed
+or resent from history. Backups have their own retention; this setting does not rewrite backups.
+
+### Commission the cleanup timer
+
+Source deployment alone does not install or enable maintenance. The release operator must install
+`deploy/systemd/aihr-account-email-retention.service` and its matching timer after the journaled
+migration is applied. Do not install a second cron job for the same task. The service template uses
+the reviewed Node 22 path and a dedicated `aihr-maintenance` OS identity: create or map that identity
+privately during the reviewed maintenance window. Supply only `MIGRATION_DATABASE_URL` in
+`/etc/aihr/account-email-retention.env`, readable only by the maintenance identity/root; do not copy
+the web environment or add database-owner credentials to the web process. The prune function is
+revoked from PUBLIC and `ai_hr_app`; only its database owner can run it.
+
+The timer runs hourly with up to five minutes of jitter and catches up a missed invocation. Each
+transaction removes at most 100 complete eligible resend chains. It takes a nonblocking advisory
+lock against other cleanup runs and policy edits, and serializes delivery-ledger writes while deleting.
+A lock timeout or failed audit append rolls the transaction back; no successful cleanup is claimed.
+The web app never starts cleanup while viewing or saving settings.
+
+In the authorized maintenance window, validate the installed units, explicitly start one service
+invocation, inspect its exit status/journal and then enable the timer. Verify the sanitized count and
+last-success timestamp in Email delivery, and inspect the timer's next scheduled invocation. Missing
+initial success is shown explicitly in the UI; a last-success timestamp is not proof that a timer is
+still enabled. Stopping the timer or choosing Never delete stops future removal; deleted rows cannot
+be restored through this page. This preparation does not install the timer or authorize production.
 
 The email preview is explicitly a template preview, not an archived original. Live activation and
 password-reset links are hidden. Provider acceptance is not proof of inbox receipt. Explicit resend

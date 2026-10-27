@@ -5,6 +5,7 @@ import { requireIdentityEmailAdmin } from '@/lib/identity/email-settings';
 import { identityEmailRequest } from '@/lib/identity/email-ipc';
 import { EmailSettingsError, emailConfigSchema } from '@/lib/identity/email-model';
 import {internalSelected} from '@/lib/internal-auth/config';
+import {saveAccountEmailRetention} from '@/core/account-email-retention';
 const path='/admin/settings/email';
 async function execute(op:'save'|'test'|'apply',form:FormData) {
  const {actor}=await requireIdentityEmailAdmin();
@@ -28,3 +29,14 @@ async function execute(op:'save'|'test'|'apply',form:FormData) {
 export async function saveEmailDraft(form:FormData){await execute('save',form);}
 export async function testEmailDraft(form:FormData){await execute('test',form);}
 export async function activateEmailDraft(form:FormData){await execute('apply',form);}
+export async function saveEmailRetention(form:FormData){
+ const {session,actor}=await requireIdentityEmailAdmin();
+ let failed=false;
+ try{
+  const mode=form.get('retentionMode');
+  if(mode!=='never'&&mode!=='days')throw Error('Invalid retention mode.');
+  if(!/^\d+$/.test(String(form.get('retentionRevision')??'')))throw Error('Invalid retention revision.');
+  await saveAccountEmailRetention(session,actor,{days:mode==='never'?null:Number(form.get('retentionDays')),revision:Number(form.get('retentionRevision')),acknowledged:form.get('retentionAcknowledged')==='true'});
+ }catch{failed=true;}
+ revalidatePath(path);redirect(path+'?'+(failed?'retentionError=1':'retentionSaved=1'));
+}

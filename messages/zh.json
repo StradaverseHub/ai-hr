@@ -20468,7 +20468,20 @@
       "pending": "正在尝试发送。"
     },
     "historyUnavailable": "无法加载邮件历史。请检查日期范围后重试。",
-    "providerManagedPreview": "此邮件模板由身份提供商管理。AIHR 未保存原始邮件正文。"
+    "providerManagedPreview": "此邮件模板由身份提供商管理。AIHR 未保存原始邮件正文。",
+    "retentionTitle": "投递日志保留",
+    "retentionPeriod": "保留期限",
+    "retentionNever": "永不删除",
+    "retentionCustom": "在指定天数后删除",
+    "retentionDays": "天数（1–3650）",
+    "retentionSave": "保存保留策略",
+    "retentionHelp": "适用于此安装中的邀请和账户恢复投递日志。安装维护定时器后，每小时清理一次。保留期限从最后一次投递活动起计算。待处理投递、未过期邀请，以及包含受保护或近期活动的重发链将被保留。账户、邀请和安全审计事件不受影响。",
+    "retentionAcknowledge": "我理解，超过此期限的符合条件日志（包括已有历史记录）将被永久删除，此后无法在此日志中预览或重发。",
+    "retentionSaved": "保留策略已保存。符合条件的历史记录将由定时清理删除。",
+    "retentionError": "无法保存保留策略。请重新加载页面，检查天数和删除确认后重试。",
+    "retentionLastRun": "上次成功清理：{time}。删除了 {count} 条记录。",
+    "retentionNotRun": "尚无成功清理记录。维护人员需要安装并验证清理定时器。",
+    "retentionUnavailable": "保留设置不可用。请重新加载页面或联系安装管理员。"
   },
   "pageStyleRecovery": {
     "restoring": "正在恢复页面…",

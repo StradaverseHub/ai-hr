@@ -20468,7 +20468,20 @@
       "pending": "An attempt is in progress."
     },
     "historyUnavailable": "Email history could not be loaded. Check the date range and try again.",
-    "providerManagedPreview": "The identity provider owns this email template. An original message body was not stored in AIHR."
+    "providerManagedPreview": "The identity provider owns this email template. An original message body was not stored in AIHR.",
+    "retentionTitle": "Delivery log retention",
+    "retentionPeriod": "Retention period",
+    "retentionNever": "Never delete",
+    "retentionCustom": "Delete after a set number of days",
+    "retentionDays": "Days (1–3650)",
+    "retentionSave": "Save retention policy",
+    "retentionHelp": "Applies to invitation and recovery delivery logs across this installation. Cleanup runs hourly when its maintenance timer is installed. Age is measured since the last delivery activity. Pending sends, unexpired invitations and any resend chain containing protected or recent activity are retained. Accounts, invitations and security audit events are preserved.",
+    "retentionAcknowledge": "I understand that eligible logs older than this period, including existing history, will be permanently deleted and will no longer be available to preview or resend from this log.",
+    "retentionSaved": "Retention policy saved. Eligible history will be removed by scheduled cleanup.",
+    "retentionError": "Could not save the retention policy. Reload the page, check the days and deletion acknowledgement, then try again.",
+    "retentionLastRun": "Last successful cleanup: {time}. Removed: {count} records.",
+    "retentionNotRun": "No successful cleanup has been recorded. A maintenance operator must install and verify the cleanup timer.",
+    "retentionUnavailable": "Retention settings are unavailable. Reload the page or contact the installation operator."
   },
   "pageStyleRecovery": {
     "restoring": "Restoring the page…",

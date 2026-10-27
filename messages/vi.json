@@ -20468,7 +20468,20 @@
       "pending": "Đang thực hiện gửi."
     },
     "historyUnavailable": "Không thể tải lịch sử email. Kiểm tra khoảng ngày rồi thử lại.",
-    "providerManagedPreview": "Nhà cung cấp danh tính quản lý mẫu email này. AIHR không lưu nội dung thư gốc."
+    "providerManagedPreview": "Nhà cung cấp danh tính quản lý mẫu email này. AIHR không lưu nội dung thư gốc.",
+    "retentionTitle": "Lưu giữ nhật ký gửi email",
+    "retentionPeriod": "Thời gian lưu giữ",
+    "retentionNever": "Không bao giờ xóa",
+    "retentionCustom": "Xóa sau số ngày đã chọn",
+    "retentionDays": "Số ngày (1–3650)",
+    "retentionSave": "Lưu chính sách lưu giữ",
+    "retentionHelp": "Áp dụng cho nhật ký gửi thư mời và khôi phục trên toàn hệ thống. Dọn dẹp chạy mỗi giờ khi bộ hẹn giờ bảo trì được cài đặt. Thời gian được tính từ hoạt động gửi cuối cùng. Các lượt gửi đang chờ, lời mời chưa hết hạn và chuỗi gửi lại có hoạt động được bảo vệ hoặc gần đây được giữ lại. Tài khoản, lời mời và sự kiện kiểm toán bảo mật được giữ nguyên.",
+    "retentionAcknowledge": "Tôi hiểu rằng nhật ký đủ điều kiện cũ hơn thời gian này, kể cả lịch sử hiện có, sẽ bị xóa vĩnh viễn và không còn có thể xem trước hoặc gửi lại từ nhật ký này.",
+    "retentionSaved": "Đã lưu chính sách lưu giữ. Lịch sử đủ điều kiện sẽ được xóa trong lần dọn dẹp theo lịch.",
+    "retentionError": "Không thể lưu chính sách. Tải lại trang, kiểm tra số ngày và xác nhận xóa, rồi thử lại.",
+    "retentionLastRun": "Lần dọn dẹp thành công gần nhất: {time}. Đã xóa: {count} bản ghi.",
+    "retentionNotRun": "Chưa ghi nhận lần dọn dẹp thành công nào. Người vận hành bảo trì cần cài đặt và xác minh bộ hẹn giờ dọn dẹp.",
+    "retentionUnavailable": "Không thể tải cài đặt lưu giữ. Tải lại trang hoặc liên hệ người quản trị hệ thống."
   },
   "pageStyleRecovery": {
     "restoring": "Đang khôi phục trang…",

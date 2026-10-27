@@ -17,8 +17,10 @@ import Link from 'next/link';
 import {btnPrimary,btnGhost,Badge} from '@/components/ui';
 import {emailDisplayClock,formatEmailTimestamp} from '@/lib/email-display-clock';
 import { saveEmailDraft, testEmailDraft, activateEmailDraft } from './actions';
+import {readAccountEmailRetention,type AccountEmailRetention} from '@/core/account-email-retention';
+import {EmailRetentionForm} from './retention-form';
 
-export default async function IdentityEmailPage({searchParams}:{searchParams:Promise<{error?:string;success?:string;accountRetry?:string;connection?:string;fromDate?:string;toDate?:string;before?:string}>}) {
+export default async function IdentityEmailPage({searchParams}:{searchParams:Promise<{error?:string;success?:string;accountRetry?:string;connection?:string;fromDate?:string;toDate?:string;before?:string;retentionError?:string;retentionSaved?:string}>}) {
  // Demo admins may probe temporary connections. Saved relay settings retain installation authority.
  const {s}=await scopedSession();
  const mayConfigure=await canConfigureIdentityEmail(s);
@@ -29,8 +31,10 @@ export default async function IdentityEmailPage({searchParams}:{searchParams:Pro
  try{history=await readAccountEmailHistory(s,undefined,filters);}catch{historyError=true;}
  let deliveries=history.items;
  let view:EmailSettingsView|null=null;
+ let retention:AccountEmailRetention|null=null;
  if(mayConfigure) {
   const {session,actor}=await requireIdentityEmailAdmin();
+  try{retention=await readAccountEmailRetention(session,actor);}catch{/* Show an explicit unavailable state; never imply cleanup is enabled. */}
   try{history=await readAccountEmailHistory(session,actor,filters);deliveries=await withInternalRecoveryLabels(session,actor,history.items);historyError=false;}catch{historyError=true;}
   try{view=await readIdentityEmailSettings(actor,internalSelected()?query.connection:undefined);}catch(e){
   return <div className="space-y-6"><PageHeader title={t('title')} description={t('description')}/><ErrorBanner message={t(`errors.${e instanceof EmailSettingsError?e.code:'unavailable'}`)}/><AccountEmailDeliveries items={deliveries} returnTo="/admin/settings/email"/></div>;
@@ -88,6 +92,12 @@ export default async function IdentityEmailPage({searchParams}:{searchParams:Pro
    </form>}
   </div></Card>}</>}
   {historyError&&<ErrorBanner message={accountT('historyUnavailable')}/>}
+  {mayConfigure&&<section aria-labelledby="email-retention-title" className="space-y-4 rounded-xl border border-border p-5">
+   <h2 id="email-retention-title" className="text-lg font-semibold">{accountT('retentionTitle')}</h2>
+   {query.retentionError==='1'&&<ErrorBanner message={accountT('retentionError')}/>}
+   {query.retentionSaved==='1'&&<p role="status" className="text-sm">{accountT('retentionSaved')}</p>}
+   {retention?<><EmailRetentionForm key={retention.revision} policy={retention}/><p className="text-sm text-muted-foreground">{retention.lastRunAt?accountT('retentionLastRun',{time:formatEmailTimestamp(retention.lastRunAt,clock),count:retention.lastDeleted}):accountT('retentionNotRun')}</p></>:<ErrorBanner message={accountT('retentionUnavailable')}/>}
+  </section>}
   <AccountEmailDeliveries items={deliveries} returnTo="/admin/settings/email" history={{...filters,hasMore:history.hasMore,nextCursor:history.nextCursor}}/>
  </div>;
 }
