@@ -21,7 +21,7 @@ export class AndroidKeyEnrollmentError extends Error{
   super('Device key enrollment unavailable');this.name='AndroidKeyEnrollmentError';
  }
 }
-const fail=(reason:AndroidKeyEnrollmentError['reason']):never=>{throw new AndroidKeyEnrollmentError(reason);};
+function fail(reason:AndroidKeyEnrollmentError['reason']):never{throw new AndroidKeyEnrollmentError(reason);}
 const receipt=(row:typeof mobileIntegrityKey.$inferSelect)=>IntegrityKeyReceiptV2.parse(integrityKeyReceipt(row));
 /** Verifier override is only an integration-test seam. Settings/proof verification are server-owned. */
 export function createAndroidEnrollmentService(settings:unknown,ports:{verifyProof?:ReturnType<typeof createAndroidKeyProofVerifier>}={}){

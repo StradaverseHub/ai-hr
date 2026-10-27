@@ -1,6 +1,6 @@
 /** Real custody/transactions/crypto. Synthetic verifier port is not Android hardware acceptance. */
 import {generateKeyPairSync,randomUUID} from 'node:crypto';
-import {eq} from 'drizzle-orm';
+import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {SessionContext} from '../db/client';
 import * as schema from '../db/schema';
@@ -27,6 +27,41 @@ function fixture(){
  return {proof,verifyProof,service,publicKeySpki,certificateChain};
 }
 describe('Android enrollment custody transaction',()=>{
+ it('snapshots SPKI and ordered proof bytes before asynchronous ownership/verification work',async()=>{
+  const e=await employee(),f=fixture(),begin=await f.service.begin(e.ctx,e.intent),spki=Buffer.from(f.publicKeySpki),chain=f.certificateChain.map(value=>Buffer.from(value));
+  const input={...e.intent,challengeId:begin.challenge.id,publicKeySpki:f.publicKeySpki,certificateChain:f.certificateChain};
+  const pending=f.service.complete(e.ctx,input);f.publicKeySpki.fill(0);f.certificateChain[0].fill(0);
+  const accepted=await pending;expect(f.verifyProof).toHaveBeenCalledWith({publicKeySpki:spki,certificateChain:chain,challenge:Buffer.from(begin.clientDataHash,'base64')},undefined);
+  expect(await f.service.complete(e.ctx,{...input,publicKeySpki:spki,certificateChain:chain})).toEqual(accepted);expect(f.verifyProof).toHaveBeenCalledOnce();
+ });
+ it('refuses an owner offboarded during verification without consuming or registering anything',async()=>{
+  const e=await employee(),f=fixture(),begin=await f.service.begin(e.ctx,e.intent);
+  f.verifyProof.mockImplementationOnce(async()=>{
+   await owner.db.update(schema.employment).set({hiredOn:'2099-01-01'}).where(eq(schema.employment.id,e.employmentId));return {...f.proof,checkedAt:Date.now()};
+  });
+  await expect(f.service.complete(e.ctx,{...e.intent,challengeId:begin.challenge.id,publicKeySpki:f.publicKeySpki,certificateChain:f.certificateChain})).rejects.toThrow();
+  expect(await owner.db.select().from(schema.mobileIntegrityKey)).toHaveLength(0);
+  expect((await owner.db.select().from(schema.mobileIntegrityChallenge).where(eq(schema.mobileIntegrityChallenge.id,begin.challenge.id)))[0].consumedAt).toBeNull();
+ });
+ it('rolls back consumption if employment becomes ineligible while waiting for the custody actor lock',async()=>{
+  const e=await employee(),f=fixture(),begin=await f.service.begin(e.ctx,e.intent);
+  let entered!:()=>void,release!:()=>void;const started=new Promise<void>(resolve=>{entered=resolve;}),held=new Promise<void>(resolve=>{release=resolve;});
+  const holding=owner.db.transaction(async tx=>{await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${e.ctx.tenantId+':mobile-integrity:'+e.ctx.userId},0))`);entered();await held;});
+  try{
+   await started;const outcome=Promise.allSettled([f.service.complete(e.ctx,{...e.intent,challengeId:begin.challenge.id,publicKeySpki:f.publicKeySpki,certificateChain:f.certificateChain})]);
+   try{
+    const deadline=Date.now()+5000;let waiting=false;
+    while(Date.now()<deadline){
+     const rows=await owner.db.execute(sql`select query from pg_stat_activity where datname=current_database() and pid<>pg_backend_pid() and wait_event_type='Lock'`);
+     if(rows.some(row=>String(row.query).includes('pg_advisory_xact_lock'))){waiting=true;break;}await new Promise(resolve=>setTimeout(resolve,10));
+    }
+    expect(waiting).toBe(true);await owner.db.update(schema.employment).set({hiredOn:'2099-01-01'}).where(eq(schema.employment.id,e.employmentId));
+   }finally{release();}
+   await holding;expect((await outcome)[0].status).toBe('rejected');
+   expect(await owner.db.select().from(schema.mobileIntegrityKey)).toHaveLength(0);
+   expect((await owner.db.select().from(schema.mobileIntegrityChallenge).where(eq(schema.mobileIntegrityChallenge.id,begin.challenge.id)))[0].consumedAt).toBeNull();
+  }finally{release();await holding.catch(()=>{});}
+ });
  it('binds verification to the original server digest and atomically stores encrypted provenance once',async()=>{
   const e=await employee(),f=fixture(),prepared=await f.service.begin(e.ctx,e.intent),input={...e.intent,challengeId:prepared.challenge.id,publicKeySpki:f.publicKeySpki,certificateChain:f.certificateChain};
   const [a,b]=await Promise.all([f.service.complete(e.ctx,input),f.service.complete(e.ctx,input)]);expect(a).toEqual(b);
