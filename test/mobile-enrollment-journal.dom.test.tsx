@@ -59,6 +59,15 @@ describe('native enrollment durability and one-use recovery',()=>{
     f.setRevoked(true);expect(await f.journal().advance(f.employmentId)).toEqual({status:'stored_key',keyId:enrollmentId(8),revoked:true});
     expect(f.ports.complete).toHaveBeenCalledOnce();expect(f.native.attestAppleKey).toHaveBeenCalledOnce();
   });
+  it('retains proof when receipt persistence fails and reconciles it without reloading enrollment configuration',async()=>{
+    const f=enrollmentFixture(),journal=f.journal();await journal.begin(f.employmentId,f.requestId);const commit=f.ports.commit;
+    f.ports.commit=vi.fn(async value=>{if(value.key)throw new Error('receipt pointer failed');await commit(value);});
+    await expect(journal.advance(f.employmentId)).rejects.toBeInstanceOf(EnrollmentJournalUnavailable);
+    expect(f.stored()?.pending?.phase).toBe('proof_ready');expect(f.stored()?.key).toBeNull();expect(f.ports.complete).toHaveBeenCalledOnce();
+    f.ports.commit=commit;vi.mocked(f.ports.prepare).mockRejectedValueOnce(new Error('configuration unavailable'));
+    expect((await f.journal().advance(f.employmentId)).status).toBe('stored_key');
+    expect(f.ports.prepare).toHaveBeenCalledOnce();expect(f.ports.complete).toHaveBeenCalledOnce();expect(f.native.attestAppleKey).toHaveBeenCalledOnce();
+  });
   it('rejects transplanted, changed or mismatched prepared context before touching native keys',async()=>{
     for(const change of ['actor','origin','hash','alias'] as const){
       const f=enrollmentFixture(),journal=f.journal();await journal.begin(f.employmentId,f.requestId);const value=f.prepared();
