@@ -66,6 +66,7 @@ export function createIntegrityBridge(native:NativeIntegrityModule|null,assertCu
   function valid(...results:Array<{success:boolean}>){assertCurrent();return results.every(result=>result.success);}
   const invalid={status:'invalid',reason:'invalid_input'} as const;
   return {
+    appleProofRecoverySupported:()=>{assertCurrent();return typeof native?.appleAttestationInfo==='function';},
     capabilities:()=>read('capabilities',NativeCapabilities),clockSnapshot:()=>read('clockSnapshot',NativeClockSnapshot),
     appleKeyInfo:(value:string)=>valid(alias.safeParse(value))?operation('appleKeyInfo',[value],keyId.nullable()):Promise.resolve(invalid),
     generateAppleKey:(value:string)=>valid(alias.safeParse(value))?operation('generateAppleKey',[value],keyId):Promise.resolve(invalid),
