@@ -35,6 +35,36 @@ export function parseOwnedGroupSnapshot(text,inspectorPid,group){
  assert(Number.isSafeInteger(inspectorPid)&&inspectorPid>1&&Number.isSafeInteger(group)&&group>1);assert(typeof text==='string'&&text.trim());
  const result=[];for(const line of text.trim().split('\n')){const match=line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)$/);assert(match,'Unknown process snapshot');const [pid,pgid,sid]=match.slice(1).map(Number);assert([pid,pgid,sid].every(n=>Number.isSafeInteger(n)&&n>0));if(pgid===group&&pid!==inspectorPid){assert.equal(sid,group,'Owned group identity changed');result.push(pid);}}return result;
 }
+/** Exact absence only. A failed Docker daemon/permission/timeout is never cleanup proof. */
+export function confirmedContainerAbsent(result,container){
+ if(!/^aihr-ci-\d+-\d+-db-[a-f0-9]{16}$/.test(container)||!result||result.error||result.signal!=null||result.status!==1||typeof result.stderr!=='string'||typeof result.stdout!=='string')return false;
+ if(!['','[]'].includes(result.stdout.trim()))return false;
+ const expected=new RegExp('^(?:Error:\\s+|Error response from daemon:\\s+)?No such (?:object|container):\\s+'+container+'$','i');
+ return expected.test(result.stderr.trim());
+}
+/** Real statement separators live in this template; JSON quoting applies only to data/import paths. */
+export function buildFixtureBootstrap(root,fixturePath,database){
+ assert(/^aihr_assistant_browser_[a-f0-9]{16}$/.test(database));
+ return `import {writeFileSync} from 'node:fs';
+import {createDb,client} from ${JSON.stringify(join(root,'db/client.ts'))};
+import {MODULE_AGENT_ACTIONS} from ${JSON.stringify(join(root,'lib/ai/module-agent-actions.ts'))};
+import {populateAiDeliveryFullFixture} from ${JSON.stringify(join(root,'scripts/fixtures/ai-delivery-full-fixture.ts'))};
+async function prepare(){
+ const owner=createDb(process.env.MIGRATION_DATABASE_URL!,{max:1});
+ try{
+  for(const [pool,role,superuser] of [[owner.client,'postgres',true],[client,'ai_hr_app',false]] as const){
+   const [p]=await pool.unsafe("select current_user as role,current_database() as db,inet_server_port() as port,host(inet_server_addr()) as address,rolsuper or rolbypassrls as privileged from pg_roles where rolname=current_user");
+   if(p.role!==role||p.db!==${JSON.stringify(database)}||p.port!==5433||!['127.0.0.1','::1'].includes(p.address)||p.privileged!==superuser)throw Error('Physical fixture ownership refused');
+  }
+  const before=await owner.client.unsafe('select count(*)::int n from public.ai_provider_config');if(before[0].n!==0)throw Error('Provider configuration forbidden');
+  const fixture=await populateAiDeliveryFullFixture(owner);
+  const after=await owner.client.unsafe('select count(*)::int n from public.ai_provider_config');if(after[0].n!==0)throw Error('Provider configuration forbidden');
+  writeFileSync(${JSON.stringify(fixturePath)},JSON.stringify({fixture,declarations:Object.values(MODULE_AGENT_ACTIONS).map(d=>({module:d.module,coverage:d.coverage,actions:d.actions.map(a=>({id:a.id,prepare:a.prepare.status,confirm:a.confirm.status}))}))}),{mode:0o600});
+ }finally{await owner.client.end();await client.end();}
+}
+prepare().catch(()=>{process.exitCode=1;});
+`;
+}
 /** Private transport only. These envelopes are not canonical facts and confer no authority. */
 export function parseNativeReadbackResponse(line,sequence,operation){
  assert(typeof line==='string'&&Buffer.byteLength(line,'utf8')<=131072);const value=JSON.parse(line);
@@ -132,14 +162,14 @@ async function main(){
   assert.deepEqual(readdirSync(root).filter(x=>/^\.env(?:\.|$)/.test(x)&&x!=='.env.example'),[]);
   assert(existsSync(join(root,'scripts/fixtures/ai-delivery-full-fixture.ts')),'Full native fixture owner absent; no legacy fallback');
   assert(existsSync(join(root,'scripts/fixtures/ai-delivery-own-leave-native-readback.ts')),'Required canonical readback owner absent; no fallback');
-  const inspect=spawnSync('docker',['container','inspect',container],{env:basic,encoding:'utf8'});assert.equal(inspect.status,1);assert(/No such (object|container)/i.test(inspect.stderr),'Unknown docker inspection is not absence');
-  writeFileSync(join(privateDir,'owned-unit'),unit,{mode:0o600});postgresOwned=true;
+  const inspect=spawnSync('docker',['container','inspect',container],{env:basic,encoding:'utf8',timeout:30000,maxBuffer:1048576});assert(confirmedContainerAbsent(inspect,container),'Unknown docker inspection is not absence');
+  writeFileSync(join(privateDir,'owned-unit'),unit,{mode:0o600});postgresOwned=true;report.databaseCleanup='unconfirmed';
   await command('postgres', 'bash',[join(here,'postgres.sh'),'reset'],basic,120000);
   sync('docker',['exec',container,'psql','-U','postgres','-p','5433','-v','ON_ERROR_STOP=1','-d','postgres','-c',`CREATE DATABASE ${database};`]);
   await command('migration','pnpm',['db:migrate'],fixtureEnv);
   const require=createRequire(join(root,'package.json')),tsx=pathToFileURL(require.resolve('tsx')).href;
   const fixturePath=join(privateDir,'fixture.json'),bootstrap=join(privateDir,'prepare.ts');
-  writeFileSync(bootstrap,`import {writeFileSync} from 'node:fs';\nimport {createDb,client} from ${JSON.stringify(join(root,'db/client.ts'))};\nimport {MODULE_AGENT_ACTIONS} from ${JSON.stringify(join(root,'lib/ai/module-agent-actions.ts'))};\nimport {populateAiDeliveryFullFixture} from ${JSON.stringify(join(root,'scripts/fixtures/ai-delivery-full-fixture.ts'))};\nasync function prepare(){const owner=createDb(process.env.MIGRATION_DATABASE_URL!,{max:1});try{for(const [pool,role,superuser] of [[owner.client,'postgres',true],[client,'ai_hr_app',false]] as const){const [p]=await pool.unsafe("select current_user as role,current_database() as db,inet_server_port() as port,host(inet_server_addr()) as address,rolsuper or rolbypassrls as privileged from pg_roles where rolname=current_user");if(p.role!==role||p.db!==${JSON.stringify(database)}||p.port!==5433||!['127.0.0.1','::1'].includes(p.address)||p.privileged!==superuser)throw Error('Physical fixture ownership refused');}const before=await owner.client.unsafe('select count(*)::int n from public.ai_provider_config');if(before[0].n!==0)throw Error('Provider configuration forbidden');const fixture=await populateAiDeliveryFullFixture(owner);const after=await owner.client.unsafe('select count(*)::int n from public.ai_provider_config');if(after[0].n!==0)throw Error('Provider configuration forbidden');writeFileSync(${JSON.stringify(fixturePath)},JSON.stringify({fixture,declarations:Object.values(MODULE_AGENT_ACTIONS).map(d=>({module:d.module,coverage:d.coverage,actions:d.actions.map(a=>({id:a.id,prepare:a.prepare.status,confirm:a.confirm.status}))}))}),{mode:0o600});}finally{await owner.client.end();await client.end();}}prepare().catch(()=>{process.exitCode=1;});\n`,{mode:0o600});
+  writeFileSync(bootstrap,buildFixtureBootstrap(root,fixturePath,database),{mode:0o600});
   await command('fixture',process.execPath,['--import',tsx,bootstrap],{...fixtureEnv,TSX_TSCONFIG_PATH:join(root,'tsconfig.json')},1200000);
   const packet=JSON.parse(readFileSync(fixturePath,'utf8')),fixture=validateFixture(packet.fixture);
   assert.deepEqual(packet.declarations.map(d=>d.module).sort(),[...MODULES].sort());
@@ -191,7 +221,7 @@ async function main(){
   if(browserServer)try{await Promise.race([browserServer.close(),delay(10000).then(()=>{throw Error('Browser server cleanup timeout');})]);}catch{failed=true;report.failure='browser_cleanup_failure';}
   let groupsGone=true;for(const child of [...children])try{await stop(child);}catch{groupsGone=false;failed=true;report.failure='owned_process_cleanup_unconfirmed';}
   if(groupsGone)writeFileSync(join(privateDir,'cleanup-safe'),'all owned process groups confirmed absent',{mode:0o600});
-  if(postgresOwned&&groupsGone)try{await command('postgres-cleanup','bash',[join(here,'postgres.sh'),'stop'],basic,120000);}catch{failed=true;report.failure='owned_database_cleanup_unconfirmed';}
+  if(postgresOwned&&groupsGone)try{await command('postgres-cleanup','bash',[join(here,'postgres.sh'),'stop'],basic,120000);const absent=spawnSync('docker',['container','inspect',container],{env:basic,encoding:'utf8',timeout:30000,maxBuffer:1048576});assert(confirmedContainerAbsent(absent,container),'Database removal not confirmed');report.databaseCleanup='confirmed_absent';}catch{failed=true;report.failure='owned_database_cleanup_unconfirmed';}
   clearTimeout(deadline);process.off('SIGTERM',signal);process.off('SIGINT',signal);if(failed)report.state='failed';writeFileSync(join(out,'public/report.json'),JSON.stringify(report,null,2)+'\n',{mode:0o600});
  }
  if(failed)process.exitCode=1;
