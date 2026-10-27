@@ -5,8 +5,8 @@ on:
     inputs:
       control_scope:
         type: choice
-        default: browser-partial
-        options: [focused, browser-partial]
+        default: runtime-controls
+        options: [focused, browser-partial, runtime-controls]
 permissions: {contents: read, actions: read}
 concurrency:
   group: runtime-evidence-controls-${{ github.run_id }}
@@ -40,3 +40,40 @@ jobs:
         if: inputs.control_scope == 'focused'
         env: {PYTHONDONTWRITEBYTECODE: '1'}
         run: python3 -I .github/ci/extract-focused.test.py
+      - name: Install source-parser tooling for runtime controls only
+        if: inputs.control_scope == 'runtime-controls'
+        uses: ./.github/actions/setup-alpha
+        with: {node: '22.23.3', path: '.', mobile: 'false', capacity_profile: bounded-suite-setup}
+      - name: Checkout the exact reviewed application candidate for immutable-source controls
+        if: inputs.control_scope == 'runtime-controls'
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: e07a86340d1ced979868bf4359d73597301d0f15
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Import the exact runtime adapter without executing operator actions
+        if: inputs.control_scope == 'runtime-controls'
+        run: node --import tsx --input-type=module -e "await import('./.github/ci/operator-runtime-repair.mjs')"
+      - name: Runtime owner-exception coverage, compiler and native grant refusal controls
+        if: inputs.control_scope == 'runtime-controls'
+        run: node --import tsx --test .github/ci/runtime-owner-acceptance.test.mjs .github/ci/runtime-install-grant.test.mjs .github/ci/runtime-compiler-evidence.test.mjs .github/ci/authenticated-browser-repair.test.mjs .github/ci/build-only-evidence.test.mjs .github/ci/operator-flow.test.mjs
+      - name: Reconstruct the actual final source graph and erased historical bridge
+        if: inputs.control_scope == 'runtime-controls'
+        run: |
+          node --import tsx --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {writeFileSync} from 'node:fs';
+          import {runtimeRepairSource,RUNTIME_REPAIR} from './.github/ci/runtime-repair-source.mjs';
+          const proof=await runtimeRepairSource({repository:process.env.GITHUB_WORKSPACE+'/source',candidate:RUNTIME_REPAIR.candidate});
+          assert(proof.impacts.length===2&&proof.impacts.every(i=>i.plan.tier==='full'&&i.plan.risk==='unknown'&&i.plan.reasons.length===2));
+          writeFileSync(process.env.RUNNER_TEMP+'/runtime-source-proof.json',JSON.stringify({controller:process.env.GITHUB_SHA,runId:process.env.GITHUB_RUN_ID,proof},null,2));
+          console.log(JSON.stringify({source:proof.candidate,impacts:proof.impacts.map(i=>({base:i.base,tier:i.plan.tier,risk:i.plan.risk,selected:i.plan.run.length})),releaseAuthorized:false}));
+          NODE
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always() && inputs.control_scope == 'runtime-controls'
+        with:
+          name: runtime-source-control-evidence
+          path: ${{ runner.temp }}/runtime-source-proof.json
+          if-no-files-found: warn
+          retention-days: 7
