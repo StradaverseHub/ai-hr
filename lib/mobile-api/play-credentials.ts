@@ -32,7 +32,7 @@ export function createPlayServiceAccountProvider(raw:unknown,ports:{transport?:t
   if(scope!==SCOPE||signal.aborted)throw unavailable();
   const controller=new AbortController();let timer:ReturnType<typeof setTimeout>|undefined,stop=()=>{},sent=false;
   const interrupted=new Promise<never>((_,reject)=>{
-   stop=()=>{controller.abort();reject(unavailable());};signal.addEventListener('abort',stop,{once:true});timer=setTimeout(stop,timeout);
+   stop=()=>{controller.abort();reject(unavailable());};signal.addEventListener('abort',stop,{once:true});/* PROBE ONLY: omit outer deadline. */
   });
   try{
    ports.assertCurrent?.();
@@ -48,7 +48,7 @@ export function createPlayServiceAccountProvider(raw:unknown,ports:{transport?:t
     if(!value.success||controller.signal.aborted)throw unavailable();
     return Response.json(value.data);
    };
-   const client=new JWT({email,key,scopes:[SCOPE],transporterOptions:{fetchImplementation:exchange,timeout,retry:false,retryConfig:{retry:0},maxContentLength:32768}});
+   const client=new JWT({email,key,scopes:[SCOPE],transporterOptions:{fetchImplementation:exchange,timeout:0,retry:false,retryConfig:{retry:0},maxContentLength:32768}});
    const value=await Promise.race([client.getAccessToken(),interrupted]);
    ports.assertCurrent?.();if(controller.signal.aborted||!access.safeParse(value.token).success)throw unavailable();
    return value.token!;
