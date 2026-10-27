@@ -33,7 +33,7 @@ describe('complete AI management inventory and boundary',()=>{
      for(const seam of governed.seams)expect(src,`${file} ${seam}`).toMatch(seam);
      if(governed.issuedBy){const issuer=read(governed.issuedBy);expect(issuer,`${governed.issuedBy} issues ${file}`).toContain(`from './${file.slice('core/'.length,-'.ts'.length)}'`);
       for(const feature of governed.features)expect(issuer).toMatch(new RegExp(`governedAiConfig\\([^()]*'${feature}'\\)`));}
-    }else{expect(coreCallers[file],`${file} needs a registered capability`).toBeTruthy();expect(src).toContain(`resolveActiveAiConfig(tx, ctx, '${coreCallers[file]}')`);}}
+    }else{expect(coreCallers[file],`${file} needs a registered capability`).toBeTruthy();expect(src,`${file} resolves ${coreCallers[file]}`).toMatch(new RegExp(`resolveActiveAiConfig\\(tx,\\s*ctx,\\s*'${coreCallers[file]}'\\)`));}}
    else{expect(file.startsWith('packs/performance/onehr/'),`${file} needs a governed configuration seam`).toBe(true);expect(src).toContain('assessmentAiConfigTx');packCalls+=calls;}
   }
   expect(coreFound.sort()).toEqual([...Object.keys(coreCallers),...Object.keys(governedCallers)].sort());expect(packCalls).toBeGreaterThan(15);
