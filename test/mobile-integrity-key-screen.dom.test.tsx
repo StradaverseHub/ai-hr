@@ -48,6 +48,18 @@ describe('integrity key review and explicit revocation',()=>{
     expect(f.revoke).toHaveBeenCalledExactlyOnceWith(id,key);await screen.findByText('integrityRevoked '+id);
     expect(screen.queryByText('integrityRevoke')).toBeNull();expect(f.reload).toHaveBeenCalledOnce();
   });
+  it('rejects a confirmation after the selected employment changes and does not publish an unmounted reply',async()=>{
+    const f=fixture();const view=render(<f.View/>);fireEvent.click(screen.getByText('integrityRevoke'));const old=f.confirm;
+    f.changeEmployment();view.rerender(<f.View/>);await act(async()=>old());expect(f.revoke).not.toHaveBeenCalled();
+    const g=fixture();view.unmount();let finish!:(value:unknown)=>void;g.revoke.mockReturnValueOnce(new Promise(resolve=>{finish=resolve;}));
+    const next=render(<g.View/>);fireEvent.click(screen.getByText('integrityRevoke'));act(()=>g.confirm());next.unmount();
+    await act(async()=>finish({outcome:'revoked',key:{...key,revokedAt:'2026-10-28T00:00:00.000Z'}}));expect(g.reload).not.toHaveBeenCalled();
+  });
+  it('gates a direct route before mounting private reads when signed out',()=>{
+    let status='signedOut';const privateView=vi.fn(()=> <span>private content</span>);
+    const Page=compile('mobile/app/integrity-keys.tsx',{'react/jsx-runtime':jsx,'expo-router':{Redirect:()=> <span>sign-in redirect</span>},'../lib/session':{useSession:()=>({status})},'../lib/integrity-keys':{IntegrityKeys:privateView}}).default as React.ComponentType;
+    const view=render(<Page/>);expect(screen.getByText('sign-in redirect')).toBeTruthy();expect(privateView).not.toHaveBeenCalled();status='signedIn';view.rerender(<Page/>);expect(screen.getByText('private content')).toBeTruthy();
+  });
   it('distinguishes missing prerequisites, initial loading, empty, unavailable and older-server states',()=>{
     const f=fixture();f.me.data=null;f.me.loading=true;const view=render(<f.View/>);expect(screen.queryByText('integrityKeysEmpty')).toBeNull();expect(f.useApi).not.toHaveBeenCalledWith('integrity/keys',expect.anything(),expect.anything());
     f.me.data={employments:[]};f.me.loading=false;view.rerender(<f.View/>);expect(screen.getByText('integrityKeysNoEmployment')).toBeTruthy();

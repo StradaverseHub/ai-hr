@@ -11,6 +11,7 @@
 import { getLocales } from 'expo-localization';
 
 const en = {
+  integrityRevokeLabel: "Revoke key {id}",
   integrityKeysTitle: "Integrity keys",
   integrityKeysHint: "Review keys used for attendance integrity checks. A registered key does not prove location. References identify keys, not named phones.",
   integrityKeysNoEmployment: "Select an active employment to review integrity keys.",
@@ -239,6 +240,7 @@ const en = {
 export type MessageKey = keyof typeof en;
 
 const ms: Record<MessageKey, string> = {
+  integrityRevokeLabel: "Batalkan kunci {id}",
   integrityKeysTitle: "Kunci integriti",
   integrityKeysHint: "Semak kunci untuk semakan integriti kehadiran. Kunci berdaftar tidak membuktikan lokasi. Rujukan mengenal pasti kunci, bukan nama telefon.",
   integrityKeysNoEmployment: "Pilih pekerjaan aktif untuk menyemak kunci integriti.",

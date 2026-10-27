@@ -73,11 +73,12 @@ export function Muted({ children }: { children: ReactNode }) {
   return <Text style={[styles.muted, { color: palette.muted }]}>{children}</Text>;
 }
 
-export function Button({ title, onPress, kind = 'primary', disabled = false }: { title: string; onPress: () => void; kind?: 'primary' | 'quiet'; disabled?: boolean }) {
+export function Button({ title, onPress, kind = 'primary', disabled = false,accessibilityLabel }: { title: string; onPress: () => void; kind?: 'primary' | 'quiet'; disabled?: boolean;accessibilityLabel?:string }) {
   const { palette, design } = useTenantDesign();
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}

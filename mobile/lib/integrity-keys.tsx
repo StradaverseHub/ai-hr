@@ -77,7 +77,7 @@ function KeyInventory({employmentId}:{employmentId:string}){
           <Row label={t('integrityRegisteredAt')} value={new Date(key.createdAt).toLocaleString(appLocale())}/>
           <Row label={t('integrityKeyStatus')} value={t(revokedAt?'integrityKeyRevoked':'integrityKeyRegistered')}/>
           {revokedAt&&<Row label={t('integrityRevokedAt')} value={new Date(revokedAt).toLocaleString(appLocale())}/>}
-          {!revokedAt&&<Button title={t('integrityRevoke')} kind="quiet" disabled={action?.kind==='busy'||keys.loading||!!keys.error||action?.kind==='uncertain'&&action.keyId!==key.keyId} onPress={()=>confirm(key)}/>}
+          {!revokedAt&&<Button title={t('integrityRevoke')} accessibilityLabel={t('integrityRevokeLabel',{id:key.keyId})} kind="quiet" disabled={action?.kind==='busy'||keys.loading||!!keys.error||action?.kind==='uncertain'&&action.keyId!==key.keyId} onPress={()=>confirm(key)}/>}
         </Card>;
       })}
     </>}
