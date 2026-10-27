@@ -10,3 +10,5 @@ export {OutsideGeofenceError,GeolocationRequiredError,GeofenceQualityError} from
 export {DeviceNotRegisteredError} from '../../core/attendance-device';
 export {createAndroidEnrollmentService,AndroidKeyEnrollmentError} from '../../core/mobile-android-enrollment';
 export {readMobileEnrollmentConfiguration,assertMobileEnrollmentCommit} from '../../core/mobile-enrollment-rollout';
+export {createAndroidClockService} from './mobile-android-clock';
+export {AndroidClockCommandError} from '../../core/mobile-android-clock-signature';
