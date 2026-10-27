@@ -944,6 +944,7 @@ export async function commitSectionImport(
   const failed: SectionImportResult['failed'] = [];
   let updated = 0;
   const warnings:string[]=[];
+  const appliedPeople=new Set<string>();
   for (const row of resolved) {
     if (!row.result.ok || !row.subject) continue;
     const s = row.subject;
@@ -956,9 +957,13 @@ export async function commitSectionImport(
       const fresh=current.resolved[nominatedRow.result.rowNum-1];
       if(current.preview.fileErrors.length||!fresh?.subject||fresh.subject.employmentId!==nominatedRow.subject!.employmentId||fresh.subject.personId!==nominatedRow.subject!.personId||fresh.subject.companyId!==nominatedRow.subject!.companyId||fresh.subject.employeeCode!==nominatedRow.subject!.employeeCode||fresh.subject.pack!==nominatedRow.subject!.pack)throw new Error('Section import inputs changed; preview the original file again.');
       if(fresh.result.errors.length)throw new Error('Section import inputs changed; preview the original file again.');
-      if(fresh.result.verdict==='skip')return false;
+      // A later row naming a Person that an EARLIER row of this same commit already wrote re-analyses as
+      // 'skip' only because of that write. The preview counted it as an update and the native owner applies
+      // it exactly as previewed (each row its own write); an independent no-op still stays a skip.
+      const afterOwnEarlierRow=fresh.result.verdict==='skip'&&appliedPeople.has(fresh.subject.personId);
+      if(fresh.result.verdict==='skip'&&!afterOwnEarlierRow)return false;
       const binding=(value:ResolvedSectionRow)=>JSON.stringify({...value,result:undefined,subject:undefined});
-      if(!fresh.result.ok||binding(fresh)!==binding(nominatedRow))throw new Error('Section import inputs changed; preview the original file again.');
+      if(!(fresh.result.ok||afterOwnEarlierRow)||binding(fresh)!==binding(nominatedRow))throw new Error('Section import inputs changed; preview the original file again.');
       const row=fresh,s=fresh.subject;
       await assertWorkforceEmploymentTx(tx,ctx,s.employmentId,'maintain');
       await assertWorkforcePersonTx(tx,ctx,s.personId,'maintain');
@@ -1013,6 +1018,7 @@ export async function commitSectionImport(
       return true;
       });
       if(!wrote)continue;
+      appliedPeople.add(s.personId);
       updated++;
       if(row.dependent) {try {await syncChildReliefFromFamily(ctx,s.personId);}catch{warnings.push(`Row ${row.result.rowNum} was saved; review the child-relief refresh on Personnel.`);}}
     } catch (e) {

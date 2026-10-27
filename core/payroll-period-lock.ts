@@ -25,7 +25,8 @@ const canonicalUuid=(value:string)=>{if(typeof value!=='string'||!/^[0-9a-f]{8}-
 const canonicalMonth=(value:string)=>{if(typeof value!=='string'||!/^\d{4}-(0[1-9]|1[0-2])$/.test(value))throw new PayrollPeriodOwnershipUnavailable();return value;};
 /** Internal owners feed PostgreSQL-normalized UUID text here. Public pure callers may use canonical
  * hyphen UUID case aliases; no alternate month is guessed or converted into a different key. */
-export const payrollPeriodOwnerKey=(tenantId:string,p:PayrollPeriodSelection)=>'payroll-period:'+JSON.stringify([canonicalUuid(tenantId),canonicalUuid(p.companyId),canonicalMonth(p.payPeriod)]);
+const periodOwnerKey=(tenantId:string,companyId:string,month:string)=>'payroll-period:'+JSON.stringify([tenantId,companyId,month]);
+export const payrollPeriodOwnerKey=(tenantId:string,p:PayrollPeriodSelection)=>periodOwnerKey(canonicalUuid(tenantId),canonicalUuid(p.companyId),canonicalMonth(p.payPeriod));
 async function canonicalPeriodContextTx(tx:Tx,supplied:SessionContext){const captured={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};const [row]=await tx.execute<{tenantId:string}>(sql`select ${captured.tenantId}::uuid::text as "tenantId"`);return{...captured,tenantId:row.tenantId};}
 /** Capture COMPLETE keys before any wait. Existing native financial scope, including ancestors and
  * actual Payroll partners, remains the authority; the key supplies no role or company entitlement. */
@@ -52,5 +53,34 @@ export async function lockPayrollBatchPeriodTx(tx:Tx,supplied:SessionContext,bat
  const [current]=await read();if(!current||JSON.stringify(current)!==JSON.stringify(nominee))throw new PayrollPeriodOwnershipUnavailable();
  const [parent]=await tx.select({id:payPeriod.id,companyId:payPeriod.companyId,period:payPeriod.period}).from(payPeriod).where(eq(payPeriod.id,current.payPeriodId)).limit(1);
  if(!parent||parent.companyId!==current.companyId||parent.period!==current.payPeriod)throw new PayrollPeriodOwnershipUnavailable();
+ return current;
+}
+/** NATIVE lifecycle owners (create, additional run, draft delete, process, close, reset, unlock,
+ * reprocess, remove employee). They join the SAME tenant Access phase and the SAME company/month
+ * advisory key as the reviewed owner above (identical key text for every canonical month), so reviewed
+ * custody and native writers still serialize on one owner. This interval adds NO principal, payroll-scope
+ * or month-shape refusal of its own: the native writer's existing RLS, granular permission and period
+ * rules remain the only authority and keep their existing outcomes and messages. A month the screens
+ * cannot validate keys on its exact stored text, the identity pay_period itself compares on. */
+export async function lockNativePayrollPeriodsTx(tx:Tx,supplied:SessionContext,selections:readonly PayrollPeriodSelection[]):Promise<void>{
+ const rawContext={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};
+ const captured=selections.filter(p=>typeof p?.companyId==='string'&&typeof p?.payPeriod==='string').map(p=>({companyId:p.companyId,payPeriod:p.payPeriod}));
+ const ctx=await canonicalPeriodContextTx(tx,rawContext),keys:string[]=[];
+ for(const p of captured){const [row]=await tx.execute<{companyId:string}>(sql`select ${p.companyId}::uuid::text as "companyId"`);keys.push(periodOwnerKey(ctx.tenantId,row.companyId,p.payPeriod));}
+ await lockAccessConfigurationTx(tx,ctx.tenantId);
+ for(const key of [...new Set(keys)].sort((a,b)=>a.localeCompare(b)))await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${key},0))`);
+}
+/** Native batch owners: own the RLS-visible nominee's company/month key, then reread the SAME row.
+ * An invisible or vanished batch returns null with no refusal of its own, so the caller's existing read
+ * reports its existing not-found outcome. A batch whose company/month moved under the key is refused. */
+export async function lockNativePayrollBatchPeriodTx(tx:Tx,supplied:SessionContext,batchId:string){
+ const rawContext={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},id=batchId;
+ if(typeof id!=='string')return null;
+ const ctx=await canonicalPeriodContextTx(tx,rawContext);await lockAccessConfigurationTx(tx,ctx.tenantId);
+ const read=()=>tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId,payPeriod:payrollBatch.payPeriod,payPeriodId:payrollBatch.payPeriodId}).from(payrollBatch).where(eq(payrollBatch.id,id)).limit(1);
+ const [nominee]=await read();if(!nominee)return null;
+ await lockNativePayrollPeriodsTx(tx,ctx,[nominee]);
+ const [current]=await read();if(!current)return null;
+ if(JSON.stringify(current)!==JSON.stringify(nominee))throw new PayrollPeriodOwnershipUnavailable();
  return current;
 }
