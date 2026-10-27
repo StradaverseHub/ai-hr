@@ -1,6 +1,7 @@
 /** Independently authenticate retained runtime coverage, replacement compiler and new canonical bytes. */
 import assert from'node:assert/strict';import{execFileSync}from'node:child_process';import{mkdirSync,writeFileSync,readFileSync}from'node:fs';import{join}from'node:path';import{fileURLToPath}from'node:url';import{randomUUID}from'node:crypto';import{createRequire}from'node:module';import{isDeepStrictEqual}from'node:util';
 import{authenticateRetainedUnits,fetchGitHubRunSnapshot,githubSnapshotIdentity}from'./retained-units.mjs';import{authenticateFocusedFiles}from'./authenticated-focused.mjs';import{typeOnlyRepairSource}from'./type-only-repair.mjs';import{assessTypeRepairAcceptance}from'./type-repair-acceptance.mjs';import{inspectBuildOnlySnapshot}from'./build-only-evidence.mjs';import{downloadCiArchives,readCiArchive}from'./archive-downloads.mjs';import{sourceBoundBuild,cleanHead,controllerRoot}from'./release-ci.mjs';import{bindOriginalController}from'./ci-origin-binding.mjs';import{forwardBaselineSource}from'./forward-baseline.mjs';import{BUILD_ARTIFACT}from'./build-artifact.mjs';
+import{authenticateDifferentCandidateRun}from'./other-controller-evidence.mjs';
 const runtime={node:'22.23.3',platform:'linux',arch:'x64'};
 export function validateTypeRepairPlan(plan){
  const refs=['originalCandidate','compilerCandidate','originalController','ciBaseline'],runs=['originalRunId','compilerRunId','buildRunId'],optional=['originalPrefetchDirectory','focusedPrefetchDirectory','buildPrefetchDirectory'];
@@ -31,14 +32,18 @@ export async function verifyTypeRepairCi({candidatePath,deploymentBaseline,plan}
  execFileSync('python3',[fileURLToPath(new URL('./build-transport-extract.py',import.meta.url)),archive,join(dir,BUILD_ARTIFACT),inventory.artifact.digest.slice(7)],{stdio:'inherit',timeout:60000});
  const p={...expected,controllerBranch:'alpha'},build=await sourceBoundBuild({candidatePath,dir,p,jobs:snapshot.jobs});
  const evidence={kind:'AUTHENTICATED_CANONICAL_BUILD_ONLY_NOT_FULL_GATE',tier:'ci-type-only-repair-v1',result:'ACCEPTED_WITH_AUTHENTICATED_ORIGINAL_PASSES',sha,controller:sha,controllerBranch:'alpha',runId:plan.buildRunId,baseline:plan.ciBaseline,deploymentBaseline,baselineAdvance,verifierBinding,build,artifact:{id:inventory.artifact.id,digest:inventory.artifact.digest},acceptance,sourceProof,candidatePath,evidenceDirectory:dir,verifiedAt:new Date().toISOString(),fullGatePassCreated:false,releaseAuthorized:false};
- const origins={originalSnapshot,focusedSnapshot,snapshot};
+ const origins={originalSnapshot,focusedSnapshot,snapshot},otherRuns=new Map();
  const revalidate=async()=>{
   assert(cleanHead(candidatePath)===sha&&cleanHead(controllerRoot)===verifier,'Candidate/verifier changed');
   for(const[runId,before]of[[plan.originalRunId,origins.originalSnapshot],[plan.compilerRunId,origins.focusedSnapshot],[plan.buildRunId,origins.snapshot]])assert(isDeepStrictEqual(githubSnapshotIdentity(fetchGitHubRunSnapshot(runId)),githubSnapshotIdentity(before)),'Required original evidence changed');
   const current=await sourceBoundBuild({candidatePath,dir,p,jobs:snapshot.jobs});assert(isDeepStrictEqual(current,build),'Original canonical packet changed');
   assert(isDeepStrictEqual(typeOnlyRepairSource({repository:candidatePath,original:plan.originalCandidate,compilerCandidate:plan.compilerCandidate,candidate:sha,typescript}),sourceProof),'Source compatibility changed');
   const live=JSON.parse(execFileSync('gh',['api','repos/StradaverseHub/ai-hr/git/ref/heads/alpha'],{encoding:'utf8'}));assert(live.object?.sha===sha,'Trusted alpha moved');
-  const latest=JSON.parse(execFileSync('gh',['api','repos/StradaverseHub/ai-hr/actions/runs?head_sha='+sha+'&per_page=100'],{encoding:'utf8',maxBuffer:8*1024**2}));assert(latest.total_count<=100&&latest.workflow_runs.every(r=>r.id===plan.buildRunId||r.status==='completed'&&r.conclusion==='skipped'),'Additional unassessed verification exists for frozen release');
+  const latest=JSON.parse(execFileSync('gh',['api','repos/StradaverseHub/ai-hr/actions/runs?head_sha='+sha+'&per_page=100'],{encoding:'utf8',maxBuffer:8*1024**2}));assert(Number.isSafeInteger(latest.total_count)&&latest.total_count<=100&&Array.isArray(latest.workflow_runs)&&latest.workflow_runs.length===latest.total_count&&new Set(latest.workflow_runs.map(r=>r.id)).size===latest.total_count,'Complete bounded additional run inventory required');
+  for(const run of latest.workflow_runs){if(run.id===plan.buildRunId||run.status==='completed'&&run.conclusion==='skipped')continue;
+   const cached=otherRuns.get(run.id);if(cached){assert(isDeepStrictEqual(githubSnapshotIdentity(fetchGitHubRunSnapshot(run.id)),cached.identity),'Assessed other candidate run changed');continue;}
+   const assessed=await authenticateDifferentCandidateRun({repository:candidatePath,runId:run.id,candidate:sha,controller:sha,outputParent:dir});otherRuns.set(run.id,assessed);save('other-candidate-'+run.id+'.json',assessed);
+  }
   return true;
  };
  await revalidate();save('verification.json',evidence);return{evidence,snapshot,revalidate};

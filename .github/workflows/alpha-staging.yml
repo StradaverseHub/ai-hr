@@ -2,6 +2,11 @@ name: Sharp package identity diagnostic
 run-name: Read-only Sharp package identity · frozen9bf
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        default: recovery-controls
+        options: [recovery-controls, identity]
 permissions:
   contents: read
   actions: read
@@ -20,6 +25,7 @@ env:
   LANG: en_US.UTF-8
 jobs:
   build:
+    if: inputs.mode == 'identity'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     defaults:
@@ -52,3 +58,20 @@ jobs:
           path: ${{ runner.temp }}/sharp-identity/
           if-no-files-found: error
           retention-days: 3
+
+  recovery-controls:
+    if: inputs.mode == 'recovery-controls'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '22.23.3'}
+      - name: Candidate disambiguation refusal controls
+        run: node --test .github/ci/other-controller-run.test.mjs
+      - name: Private generated-shim filesystem controls
+        env: {PYTHONDONTWRITEBYTECODE: '1'}
+        run: python3 -I .github/ci/diagnostics/sharp-restore.test.py
