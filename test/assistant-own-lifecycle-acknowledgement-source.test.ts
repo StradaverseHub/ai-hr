@@ -19,8 +19,8 @@ const group=()=>({...adminCtx(b),grants:[{role:'hr_admin' as const,companyId:nul
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{
  await resetDb();b=await seedBase();await setModule(b.tenantId,'assistant','active');await setModule(b.tenantId,'lifecycle','active');
  const email=randomUUID()+'@fixture.test',h=await hireEmployee(group(),{person:{fullName:'Fictional Equipment Recipient',primaryEmail:email},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:`${Number(todayInKualaLumpur().slice(0,4))-1}-01-01`}),userId=await createAppUser(b.tenantId,h.personId,'employee');await grantAssistant(group(),{appUserId:userId});ctx={...await entitledCtx(b,['employee']),userId,personId:h.personId,grants:[{role:'employee',companyId:null}]};
- const c=await createOnboardingCase(group(),{companyId:b.companyId,fullName:'Fictional Equipment Recipient',employeeNo:'F-'+randomUUID().slice(0,8),joinDate:todayInKualaLumpur(),laptopRequired:true,newhireEmail:email});number=c.number;
- for(const step of ONBOARDING_STEPS.filter(step=>step.phase===0))await tickStep(group(),'onboarding',number,step.key);await tickStep(group(),'onboarding',number,'laptop_dist');
+ const c=await createOnboardingCase(group(),{companyId:b.companyId,fullName:'Fictional Equipment Recipient',employeeNo:'F-'+randomUUID().slice(0,8),joinDate:todayInKualaLumpur(),laptopRequired:true,carparkRequired:false,newhireEmail:email});number=c.number;
+ for(const step of ONBOARDING_STEPS.filter(step=>step.phase===0&&step.rule!=='carpark'))await tickStep(group(),'onboarding',number,step.key);await tickStep(group(),'onboarding',number,'laptop_dist');
  human={action,contractVersion:1,caseId:c.id,contactNumber:'012-345',serialNumber:'FIC-PRIVATE-DEVICE',accessories:'Human-entered mouse',pcType:'Laptop',hasMonitor:false,monitorSerial:null,receiptEmail:null,acknowledged:true};
 });
 const prepare=(who=ctx,content:unknown=human)=>withTenant(who,tx=>prepareOwnLifecycleAcknowledgementSourceTx(tx,who,content));
