@@ -4,7 +4,9 @@
 import {cleanup,render,screen,within} from '@testing-library/react';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import viCopy from '../messages/vi.json';
-const state=vi.hoisted(()=>({locale:'en'})),copies:Record<string,unknown>={en,ms,zh,ta,th,vi:viCopy};
+const state=vi.hoisted(()=>({locale:'en'}));
+// A separate statement: vitest hoists the WHOLE declaration holding vi.hoisted above the JSON imports.
+const copies:Record<string,unknown>={en,ms,zh,ta,th,vi:viCopy};
 vi.mock('next-intl/server',()=>({getLocale:async()=>state.locale,getTranslations:async(namespace:string)=>(key:string,args:Record<string,string|number>={})=>{let value:unknown=copies[state.locale];for(const part of [...namespace.split('.'),...key.split('.')])value=(value as Record<string,unknown>)[part];if(typeof value!=='string')throw Error('Missing translated governance label');return value.replace(/\{(\w+)\}/g,(_all,key:string)=>String(args[key]??''));}}));
 vi.mock('../app/assistant/agent-review-actions',()=>({createAgentCandidateAction:vi.fn(),evaluateAgentCandidateAction:vi.fn(),promoteAgentCandidateAction:vi.fn(),rollbackAgentCandidateAction:vi.fn(),tryAgentCandidateAction:vi.fn(),createConversationCandidateAction:vi.fn(),evaluateConversationCandidateAction:vi.fn(),promoteConversationCandidateAction:vi.fn(),eraseConversationMetadataAction:vi.fn()}));
 import {ModuleAgentReview} from '../components/assistant/module-agent-review';
