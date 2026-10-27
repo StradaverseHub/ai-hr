@@ -473,7 +473,8 @@
     "letterApproval": "Kelulusan Surat",
     "letterRegister": "Daftar Surat Dikeluarkan",
     "letterReports": "Laporan Surat",
-    "letterSettings": "Tetapan Surat"
+    "letterSettings": "Tetapan Surat",
+    "calibration": "Calibration"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -13698,7 +13699,12 @@
       "profile": "Sahkan perubahan profil",
       "replacementLeave": "Semak permohonan cuti gantian",
       "resignation": "Putuskan permohonan peletakan jawatan",
-      "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]"
+      "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]",
+      "performanceReview": "Lengkapkan semakan prestasi",
+      "assessmentWork": "Ambil tindakan pada penilaian prestasi",
+      "careerPlan": "Semak pelan kerjaya",
+      "calibration": "Lengkapkan kalibrasi prestasi",
+      "rewardReview": "Semak ganjaran"
     },
     "tasksEmpty": "Tiada apa-apa memerlukan tindakan anda",
     "title": "Pemberitahuan"
@@ -20209,6 +20215,136 @@
       "currencyHelp": "Konfigurasi dikongsi menggunakan dasar Reward Desk MYR sedia ada; dasar mata wang lain tidak ditawarkan di sini.",
       "archive": "Arkibkan konfigurasi",
       "archiveHelp": "Menyimpan tanpa pasangan dipilih menghentikan konfigurasi ini untuk semakan akan datang. Versi tersimpan dan semakan sedia ada dikekalkan."
+    },
+    "returnedTo": {
+      "bu": "Returned to BU CEO",
+      "bg": "Returned to BG CEO"
+    },
+    "returnedBy": "Returned by {actor} on {date}",
+    "returnedReason": "Reason for return",
+    "returnedNext": "Revise the review and submit it again.",
+    "decidedBy": "By {actor}",
+    "aReviewer": "a reviewer",
+    "postNeedsAdmin": "Posting needs a company HR administrator who also holds the Payroll seat.",
+    "noPayrollBatch": "There is no draft payroll batch for this company, so bonus and lump-sum awards cannot be posted yet. Salary changes can still be posted on their own. Payroll creates the draft batch for the pay period; posting itself needs a company HR administrator who also holds the Payroll seat.",
+    "dueOn": "Due {date}",
+    "board": {
+      "title": "Approvals",
+      "open": "Approvals board",
+      "view": {
+        "label": "Paparan",
+        "matrix": "Matriks",
+        "list": "Senarai"
+      },
+      "yourStep": "Your step: {steps}.",
+      "stepPhrase": {
+        "post": "post approved reviews to payroll"
+      },
+      "nothingYours": "No step on this board sits with you; you follow these reviews along the route.",
+      "groups": "Business groups",
+      "allGroups": "All groups",
+      "waiting": "Waiting on you · {count}",
+      "elsewhere": "Elsewhere on the route · {count}",
+      "noneWaiting": "Nothing is waiting on you.",
+      "empty": "No reviews are on the route for you in the selected companies.",
+      "columns": {
+        "unit": "Unit",
+        "stage": "Stage",
+        "due": "Due",
+        "people": "People",
+        "salary": "Salary increase",
+        "bonus": "Bonus",
+        "exceptions": "Exceptions",
+        "blocking": "Blocking",
+        "flags": "Penanda",
+        "action": "Action"
+      },
+      "seat": {
+        "bu": "BU CEO",
+        "bg": "BG CEO",
+        "gr": "Group Rewards",
+        "ctro": "CTRO",
+        "ec": "Executive Chairman",
+        "pbp": "PBP",
+        "payroll": "Payroll"
+      },
+      "seatShort": {
+        "ec": "EC"
+      },
+      "route": {
+        "annual": "Laluan akhir tahun · kenaikan gaji dan bonus diluluskan bersama",
+        "offcycle": "Laluan luar kitaran"
+      },
+      "duty": {
+        "bu": "Syor · hantar",
+        "bg": "Luluskan",
+        "gr": "Semak · majukan",
+        "ctro": "Selaras · HR bersetuju",
+        "ec": "Kelulusan muktamad",
+        "payroll": "Bayar"
+      },
+      "payOn": "Bayar · {date}",
+      "stepState": {
+        "done": "Selesai",
+        "yours": "Langkah anda",
+        "withThem": "Pada pihak lain",
+        "returned": "Dikembalikan",
+        "notReached": "Belum sampai"
+      },
+      "with": "With {seat}",
+      "stepOf": "Step {step} of {steps}",
+      "dueOn": "Tarikh akhir {date}",
+      "overdueOn": "Lewat {date}",
+      "peopleCount": "{count, plural, other {# orang}}",
+      "dueToday": "today",
+      "dueTomorrow": "tomorrow",
+      "dueIn": "in {days, plural, one {# day} other {# days}}",
+      "overdue": "{days, plural, one {# day} other {# days}} overdue",
+      "ofPool": "{percent} of pool",
+      "ofBudget": "{percent} of budget",
+      "overLimit": "over limit",
+      "openReview": "Open review",
+      "sendTo": "Majukan kepada {seat}",
+      "submitTo": "Hantar kepada {seat}",
+      "approveFinal": "Luluskan untuk penggajian",
+      "button": {
+        "submit": "Hantar",
+        "approve": "Luluskan"
+      },
+      "returnTo": {
+        "bg": "Kembalikan kepada BU CEO",
+        "gr": "Kembalikan kepada BG / BU",
+        "ctro": "Kembalikan kepada BG / BU",
+        "ec": "Tolak · kembali kepada BG / BU"
+      },
+      "stepOr": "{action} atau {return}",
+      "blockedHint": "Clear the blocking checks first",
+      "sendAll": "Send all ready ({count})",
+      "sendResult": "{sent} sent · {skipped} skipped (blocking) · {refused} refused (changed since you opened the page)",
+      "refusedItem": "{name}: {message}",
+      "decided": "Decision recorded.",
+      "footer": "Salary increase is the monthly total in RM (RM/mo) for the standard and JG H plans, against the salary increase pool. Bonus is the total in RM, including lump sums, against the bonus budget. Totals count only the records you are allowed to see. Open a row to see its review."
+    },
+    "calendar": {
+      "title": "Reward calendar",
+      "help": "Due dates for this reward cycle in this company. They appear on the Approvals board and on each review; they never move, block or approve a review. Leave a date empty when there is no deadline.",
+      "annual": "Annual review: date each step is due",
+      "stage": {
+        "bu": "BU CEO submits",
+        "returned": "Returned review resubmitted",
+        "bg": "BG CEO approves",
+        "gr": "Group Rewards approves",
+        "ctro": "CTRO approves",
+        "ec": "Executive Chairman approves",
+        "payroll": "Posted to payroll"
+      },
+      "caseDue": "ER and PIP case decisions due",
+      "offcycle": "Off-cycle requests: days allowed at each step",
+      "offcycleHelp": "An off-cycle request is due this many days after it reaches the step (1 to 90).",
+      "save": "Save calendar",
+      "readOnly": "Group Rewards or a company HR administrator maintains this calendar.",
+      "notSet": "Not set",
+      "days": "{days, plural, one {# day} other {# days}}"
     }
   },
   "identityEmail": {
@@ -20225,7 +20361,7 @@
     "clientSecret": "Rahsia klien",
     "clientSecretKept": "Biarkan kosong untuk mengekalkan rahsia bagi penyewa, aplikasi dan peti mel yang sama.",
     "clientSecretNeeded": "Masukkan nilai rahsia klien, bukan ID rahsia.",
-    "microsoft365Help": "Pentadbir Microsoft 365 mesti memberikan SMTP.SendAsApp dan persetujuan pentadbir, mendaftarkan aplikasi dalam Exchange serta mengehadkan akses kepada peti mel penghantar. Nama pengguna ialah peti mel tersebut. AI HR memperoleh token jangka pendek secara automatik. Peti mel From yang lain turut memerlukan kebenaran Send As.",
+    "microsoft365Help": "Pentadbir Microsoft 365 mesti membenarkan peti mel penghantar melalui SMTP.SendAsApp dengan persetujuan pentadbir dan kebenaran peti mel, atau Exchange App RBAC berskop. Daftar aplikasi dalam Exchange dan benarkan SMTP AUTH. Nama pengguna ialah peti mel pengesahan; alamat From yang berbeza juga memerlukan kebenaran Send As.",
     "draftTitle": "Draf geganti",
     "host": "Hos SMTP",
     "port": "Port",
@@ -20288,7 +20424,21 @@
       "tlsFailed": "Sambungan selamat tidak dapat disahkan. Semak tetapan penyulitan dan sijil TLS pelayan.",
       "connectionFailed": "Tidak dapat menyambung ke pelayan SMTP. Semak nama hos, port, penyulitan dan peraturan akses rangkaian penyedia.",
       "unavailable": "Ujian sambungan tidak dapat diselesaikan. Masukkan semula kata laluan dan cuba lagi."
-    }
+    },
+    "connectionsTitle": "Sambungan mel keluar",
+    "connectionName": "Nama sambungan",
+    "connectionNamePlaceholder": "Contohnya, OneHR Microsoft 365",
+    "newConnection": "Sambungan baharu",
+    "noConnections": "Tiada sambungan SMTP disimpan. Cipta sambungan untuk menghantar e-mel akaun.",
+    "connectionStatus": "Status",
+    "lastTest": "Ujian terakhir",
+    "connectionActive": "Aktif",
+    "connectionSaved": "Disimpan",
+    "changesPending": "Perubahan belum diaktifkan",
+    "notRecorded": "Tidak direkodkan",
+    "backToConnections": "Kembali ke sambungan",
+    "saveConnection": "Simpan sambungan",
+    "activeChangesHelp": "Relay aktif terus menggunakan tetapan terakhir yang diaktifkan. Simpan, uji dan sahkan penerimaan sebelum mengaktifkan perubahan ini."
   },
   "workflowEmail": {
     "letterAccountTitle": "Surat untuk akaun ini",
@@ -21453,7 +21603,8 @@
       "failed": "Perpindahan tidak dapat disimpan. Cuba lagi.",
       "saving": "Menyimpan…",
       "save": "Simpan perpindahan",
-      "cancel": "Batal"
+      "cancel": "Batal",
+      "reasonRequired": "Reason (required) · the tier above reads it"
     },
     "talentCurve": {
       "title": "Taburan {axis} — {unit}",
@@ -21784,6 +21935,96 @@
         "outstanding": "Belum selesai",
         "done": "Selesai"
       }
+    },
+    "calibrationList": {
+      "title": "Calibration",
+      "description": "The calibration sessions you can open. Sessions with an open window come first.",
+      "empty": "No calibration is assigned to you.",
+      "groupWide": "Group-wide",
+      "opensOn": "Opens {date}",
+      "closesOn": "Closes {date}",
+      "tiers": {
+        "group": "Group",
+        "bg": "Business group (BG)",
+        "bu": "Business unit (BU)",
+        "hod": "Department (HOD)",
+        "final": "Final"
+      },
+      "columns": {
+        "session": "Session",
+        "cycle": "Cycle",
+        "company": "Company",
+        "window": "Window",
+        "people": "People",
+        "toDo": "To do",
+        "status": "Status"
+      },
+      "window": {
+        "open": "Open",
+        "upcoming": "Not open yet",
+        "closed": "Closed"
+      },
+      "lock": {
+        "open": "In progress",
+        "partial": "Partly locked",
+        "locked": "Locked"
+      }
+    },
+    "talentBoard": {
+      "title": "Talent Box",
+      "people": "{count, plural, one {# person} other {# people}}",
+      "units": "{count, plural, one {# business unit} other {# business units}}",
+      "placed": "{placed} of {total} placed",
+      "lockedState": "Locked",
+      "openState": "Open for review",
+      "sources": "Potential from {cycle} · performance from {cycle}",
+      "businessUnit": "Business unit",
+      "all": "All",
+      "department": "Department",
+      "allDepartments": "All departments",
+      "grade": "Job grade",
+      "allGrades": "All grades",
+      "clearFilters": "Clear filters",
+      "wholeScope": "Showing the whole scope. Narrow it by business unit, department or grade to measure the distribution against that group instead.",
+      "filtered": "{count, plural, one {Measured against the # person in this selection.} other {Measured against the # people in this selection.}}",
+      "views": "Talent Box views",
+      "grid9": "9-box",
+      "grid15": "15-box",
+      "table": "Table",
+      "referenceTitle": "Reference guideline",
+      "showDetails": "Show details",
+      "hideDetails": "Hide details",
+      "onTarget": "On target in every category",
+      "onTargetShort": "On target",
+      "deltaTitle": "{actual} now, {target} at the reference share",
+      "noReference": "This scope has no single performance reference, so no reference shares are shown.",
+      "referenceNote": "Performance reference × potential {high}/{mid}/{low}, over the {placed} placed. It is guidance for the conversation, not a quota.",
+      "columns": {
+        "category": "Category",
+        "count": "Count",
+        "share": "Share",
+        "reference": "Reference",
+        "toMove": "To meet reference"
+      },
+      "capChip": "Moves {used} of {cap}",
+      "capChipUnits": "Moves {used} of {cap} across {count} business units",
+      "capNote": "Category-change limit: {pct}% of each business unit's people, counted per unit. Only a change of talent category counts, and moving someone back returns the allowance.",
+      "cellLabel": "{category}, {potential} potential, {performance}: {count}",
+      "vsRef": "vs {pct}%",
+      "movedUp": "Moved up from {category}",
+      "movedDown": "Moved down from {category}",
+      "moveTo": "Move {name} to another box",
+      "moveMenu": "Move to…",
+      "legendUp": "moved up a box in this calibration",
+      "legendDown": "moved down a box",
+      "potentialAxis": "Potential",
+      "performanceAxis": "Performance →",
+      "columnPerformance": "{level} performance",
+      "footerOpen": "{placed} placed{filtered, select, yes { in this selection} other {}} · locking covers both performance and potential for {scope}",
+      "footerLocked": "Calibration locked for {scope}: performance and potential are final.",
+      "pickUnitToLock": "Choose a business unit above to lock it.",
+      "categoryHelp": "Everyone here whose performance and potential place them in {category}.",
+      "categoryEmpty": "No one here is in {category} right now."
     }
   },
   "allowanceV2": {
@@ -22624,7 +22865,44 @@
       "notEligible": "Jemputan atau penerima pemulihan tidak lagi layak.",
       "uncertain": "Penghantaran tidak pasti. Semak sebelum mencuba semula untuk mengelakkan e-mel pendua."
     },
-    "reference": "Rujukan penghantaran"
+    "reference": "Rujukan penghantaran",
+    "message": "Mesej",
+    "recipient": "Penerima",
+    "status": "Status",
+    "dateTime": "Tarikh dan masa",
+    "actions": "Tindakan",
+    "viewEmail": "Lihat e-mel",
+    "previewHelp": "Pratonton templat. Pautan aktif dan token keselamatan disembunyikan. Ini bukan salinan mesej asal yang disimpan.",
+    "resend": "Hantar semula e-mel",
+    "fromDate": "Tarikh mula",
+    "toDate": "Tarikh akhir",
+    "filter": "Tapis",
+    "clearFilters": "Kosongkan penapis",
+    "noMatchingEmails": "Tiada e-mel akaun dalam julat tarikh ini.",
+    "pagination": "Halaman sejarah e-mel",
+    "pageSize": "{count} rekod pada halaman ini",
+    "newest": "Terkini",
+    "older": "Lebih lama",
+    "resendUnavailable": {
+      "superseded": "Digantikan dengan e-mel yang lebih baharu.",
+      "closed": "Jemputan ini tidak lagi menunggu penerimaan.",
+      "pending": "Percubaan sedang berjalan."
+    },
+    "historyUnavailable": "Sejarah e-mel tidak dapat dimuatkan. Semak julat tarikh dan cuba lagi.",
+    "providerManagedPreview": "Penyedia identiti mengurus templat e-mel ini. Kandungan mesej asal tidak disimpan dalam AIHR.",
+    "retentionTitle": "Penyimpanan log penghantaran",
+    "retentionPeriod": "Tempoh penyimpanan",
+    "retentionNever": "Jangan padam",
+    "retentionCustom": "Padam selepas bilangan hari tertentu",
+    "retentionDays": "Hari (1–3650)",
+    "retentionSave": "Simpan dasar penyimpanan",
+    "retentionHelp": "Terpakai pada log penghantaran jemputan dan pemulihan seluruh pemasangan ini. Pembersihan berjalan setiap jam apabila pemasa penyelenggaraan dipasang. Umur dikira sejak aktiviti penghantaran terakhir. Penghantaran tertunda, jemputan belum luput dan rantaian penghantaran semula yang mengandungi aktiviti dilindungi atau terkini dikekalkan. Akaun, jemputan dan peristiwa audit keselamatan dikekalkan.",
+    "retentionAcknowledge": "Saya faham log layak yang lebih lama daripada tempoh ini, termasuk sejarah sedia ada, akan dipadam secara kekal dan tidak lagi boleh dipratonton atau dihantar semula daripada log ini.",
+    "retentionSaved": "Dasar penyimpanan disimpan. Sejarah layak akan dipadam oleh pembersihan berjadual.",
+    "retentionError": "Dasar penyimpanan tidak dapat disimpan. Muat semula halaman, semak hari dan pengakuan pemadaman, kemudian cuba lagi.",
+    "retentionLastRun": "Pembersihan terakhir berjaya: {time}. Dipadam: {count} rekod.",
+    "retentionNotRun": "Tiada pembersihan berjaya direkodkan. Pengendali penyelenggaraan mesti memasang dan mengesahkan pemasa pembersihan.",
+    "retentionUnavailable": "Tetapan penyimpanan tidak tersedia. Muat semula halaman atau hubungi pengendali pemasangan."
   },
   "pageStyleRecovery": {
     "restoring": "Memulihkan halaman…",
@@ -25657,7 +25935,12 @@
       "feedback": "Maklum balas rakan",
       "noticeAcknowledgement": "Pengesahan notis",
       "replacementLeave": "Kelulusan cuti gantian",
-      "onboarding": "Tugas penerimaan pekerja"
+      "onboarding": "Tugas penerimaan pekerja",
+      "performanceReview": "Semakan prestasi",
+      "assessmentWork": "Penilaian prestasi",
+      "careerPlan": "Semakan pelan kerjaya",
+      "calibration": "Kalibrasi prestasi",
+      "rewardReview": "Semakan ganjaran"
     },
     "quickActions": {
       "leave": "Mohon cuti",
@@ -26885,6 +27168,69 @@
       "assetSearch": "Cari nama aset",
       "companyCodeUnavailable": "Konfigurasikan kod rujukan syarikat yang pendek atau gunakan format tanpa pemegang tempat syarikat.",
       "version": "Versi konfigurasi {number}"
+    }
+  },
+  "performanceHome": {
+    "title": "Prestasi",
+    "closes": "Tutup {date}",
+    "progress": "{done} daripada {total} selesai",
+    "stripLabel": "Langkah dalam kitaran ini",
+    "steps": {
+      "kpi": "Semakan KPI",
+      "kpiSetting": "Penetapan KPI",
+      "feedback360": "Maklum Balas 360",
+      "competency": "Kompetensi",
+      "careerPlan": "Pelan Kerjaya",
+      "teamReview": "Semakan pasukan",
+      "calibration": "Kalibrasi",
+      "results": "Keputusan dikeluarkan"
+    },
+    "states": {
+      "done": "Selesai",
+      "yourTurn": "Giliran anda",
+      "waiting": "{count} menunggu",
+      "locked": "Dikunci",
+      "inProgress": "Sedang berjalan",
+      "released": "Dikeluarkan",
+      "notRequired": "Tidak diperlukan"
+    },
+    "next": {
+      "label": "Langkah seterusnya",
+      "kpiTitle": "Semakan KPI anda",
+      "kpiLine": "{done} daripada {total} KPI diisi",
+      "kpiSettingTitle": "Tetapkan KPI anda",
+      "kpiSettingLine": "{done} daripada {total} KPI dicadangkan",
+      "competencyTitle": "Nilai kompetensi anda",
+      "competencyLine": "{done} daripada {total} dijawab",
+      "careerPlanTitle": "Tulis Pelan Kerjaya anda",
+      "careerPlanLine": "{done} matlamat ditulis, sekurang-kurangnya {total} diperlukan",
+      "feedback360Title": "Maklum balas 360 untuk {count, plural, other {# rakan sekerja}}",
+      "feedback360Line": "Jawab setiap kenyataan, kemudian hantar.",
+      "due": "Tarikh akhir {date}",
+      "open": "Teruskan",
+      "none": "Tiada apa-apa untuk anda lakukan sekarang",
+      "opens": "Langkah seterusnya dibuka {date}",
+      "closesOn": "Kitaran ini ditutup {date}"
+    },
+    "team": {
+      "title": "Pasukan anda",
+      "waiting": "{count, plural, =0 {tiada yang menunggu anda} other {# semakan menunggu anda}}",
+      "open": "Buka semakan pasukan"
+    },
+    "standing": {
+      "title": "Kedudukan anda",
+      "details": "Butiran",
+      "performance": "Prestasi",
+      "competency": "Kompetensi",
+      "feedback360": "Maklum balas 360",
+      "careerTarget": "Sasaran kerjaya",
+      "awaitingManager": "Menunggu pengurus anda",
+      "notReleased": "Belum dikeluarkan",
+      "notSubmitted": "Belum dihantar",
+      "withManager": "Dengan pengurus anda",
+      "reviewed": "Disemak oleh pengurus anda",
+      "reportReleased": "Laporan dikeluarkan",
+      "notSet": "Belum ditetapkan"
     }
   }
 }

@@ -1,0 +1,22 @@
+[Unit]
+Description=AIHR account email delivery retention (fixed SQL)
+After=network.target postgresql.service
+[Service]
+Type=oneshot
+User=aihr-maintenance
+Environment=PGSERVICEFILE=/etc/aihr-account-email-retention/pg_service.conf
+Environment=PGSERVICE=aihr_email_retention
+Environment="PGOPTIONS=-c statement_timeout=30000 -c lock_timeout=5000"
+ExecStart=/usr/lib/postgresql/16/bin/psql -X -qAt -v ON_ERROR_STOP=1 -c "select app.account_email_retention_prune()"
+TimeoutStartSec=60
+Restart=no
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+UMask=0077

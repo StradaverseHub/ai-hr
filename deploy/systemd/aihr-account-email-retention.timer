@@ -1,0 +1,9 @@
+[Unit]
+Description=Run AIHR account email delivery retention hourly
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=300
+Unit=aihr-account-email-retention.service
+[Install]
+WantedBy=timers.target

@@ -44,6 +44,7 @@ import { getScopeIds } from '@/lib/scope';
 import { getOnboardingStatus } from '@/core/onboarding';
 import { listPendingTasks } from '@/core/approvals-inbox';
 import { onboardingTasks, onboardingUnreadNoticeCount, onboardingNotices, onboardingNavigation } from '@/packs/lifecycle/service';
+import { hasCalibrationAssignment, performanceNavigationOffer } from '@/packs/performance/service';
 import { NotificationCenter, type NotificationTaskItem } from '@/components/notification-center';
 import { onboardingNotificationTask } from '@/lib/onboarding-notification-task';
 import { CommandBar } from '@/components/command-bar';
@@ -179,6 +180,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const letterNotificationCompanies=scopeIds.filter(id=>isModuleEnabledOrFalse(session,'notifications',id));
   const bellNotificationsEnabled=notifEnabled||letterNotificationCompanies.length>0,notificationScope=notifEnabled?{}:{letterCompanyIds:letterNotificationCompanies};
   if (notifEnabled && isAdmin(session)) await dispatchNotifications(session).catch(() => {});
+  // The review journey's sidebar offer, started here so it overlaps the task-list reads below; awaited where the Sidebar takes it.
+  const performanceNavigation = isModuleEnabledOrFalse(session, 'performance')
+    ? performanceNavigationOffer(session).catch(() => ({ tm: false, idp: 'none' as const }))
+    : Promise.resolve(undefined);
   // 3-tab bell (feedback 1514d366) — one notification framework for every role, role-scoped by the reads:
   //   • Notification tab: unread informational (non-action) notifications + their unread badge.
   //   • Task tab: the live approvals queue (listPendingTasks — replaces the retired count-only legacy
@@ -191,6 +196,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const approvalTasks = await listPendingTasks(session, scopeIds, {
     attendance: isModuleEnabledOrFalse(session, 'attendance'),
     claims: isModuleEnabledOrFalse(session, 'claims'),
+    performance: isModuleEnabledOrFalse(session, 'performance'),
+    rewards: isModuleEnabledOrFalse(session, 'rewards'),
   });
   // The canonical inbox admits ordinary employees only for an actionable, non-self v3/v4 assignment.
   // Reuse that result; do not promote the viewer to manager or query the assignment owner twice.
@@ -258,6 +265,12 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               // ADR-0142 — the OneHR performance partner gets the Performance row only, NOT the admin rail:
               // it is deliberately absent from isAdmin above, because it can enter no admin screen.
               canAdministerOnehr={canAdminOnehr(session)}
+              // WP-B1 — a named calibration reviewer gets the Calibration row only. Skipped for OneHR admins (the row
+              // is already theirs): one existence query per request otherwise, failing closed.
+              canEnterCalibration={!canAdminOnehr(session) && await hasCalibrationAssignment(session).catch(() => false)}
+              // The review journey's Talent/Development offer and the own-plan lock: the workspace's own item
+              // derivation without calibration sessions or plan rows. Fails closed to neither row.
+              performanceNavigation={await performanceNavigation}
               // Pending-approval badge on the "Approval Items" row (feedback 836118c4). Reuses the
               // pendingTasks already resolved above for the bell — ZERO extra queries — so the badge is
               // by construction the same user-scoped queue: only items awaiting THIS viewer's decision,

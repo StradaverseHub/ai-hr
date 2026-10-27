@@ -10289,6 +10289,18 @@ export const rewardDecision = pgTable('reward_decision', {
   reason: text('reason').notNull().default(''), digest: text('digest').notNull(), createdAt: createdAt(),
 });
 
+// P1 WP-G (migration 0646): per (reward cycle, company) due dates. Display only; never moves a review.
+export const rewardCalendar = pgTable('reward_calendar', {
+  id: id(), tenantId: tenantId(), cycleId: uuid('cycle_id').notNull().references(() => rewardCycle.id),
+  companyId: uuid('company_id').notNull().references(() => company.id),
+  buDue: date('bu_due'), returnedDue: date('returned_due'), bgDue: date('bg_due'), grDue: date('gr_due'),
+  ctroDue: date('ctro_due'), ecDue: date('ec_due'), payrollDue: date('payroll_due'), caseDue: date('case_due'),
+  offcycleBgDays: smallint('offcycle_bg_days'), offcycleGrDays: smallint('offcycle_gr_days'), offcycleCtroDays: smallint('offcycle_ctro_days'),
+  offcycleEcDays: smallint('offcycle_ec_days'), offcycleReturnedDays: smallint('offcycle_returned_days'),
+  revision: integer('revision').notNull().default(1), updatedBy: uuid('updated_by').notNull().references(() => appUser.id),
+  createdAt: createdAt(), updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 // OneHR native aggregates. Identity, employment, organization and compensation remain kernel-owned.
 export const onehrCycle = pgTable('performance_onehr_cycle', {
   cycleId: uuid('cycle_id').primaryKey().references(() => reviewCycle.id), tenantId: tenantId(),

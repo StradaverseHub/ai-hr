@@ -473,7 +473,8 @@
     "letterApproval": "信函审批",
     "letterRegister": "已签发信函登记册",
     "letterReports": "信函报表",
-    "letterSettings": "信函设置"
+    "letterSettings": "信函设置",
+    "calibration": "Calibration"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -13698,7 +13699,12 @@
       "profile": "核实资料变更",
       "replacementLeave": "审核补休申请",
       "resignation": "决定辞职申请",
-      "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]"
+      "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]",
+      "performanceReview": "完成绩效评估",
+      "assessmentWork": "处理绩效考核",
+      "careerPlan": "审阅职业发展计划",
+      "calibration": "完成绩效校准",
+      "rewardReview": "审阅薪酬奖励"
     },
     "tasksEmpty": "没有需要您处理的事项",
     "title": "通知"
@@ -20209,6 +20215,136 @@
       "currencyHelp": "共享配置使用现有的 MYR 奖励政策；此处不提供其他币种政策。",
       "archive": "归档配置",
       "archiveHelp": "不选择任何组合保存后，此配置将不再用于未来评审。已保存版本与现有评审均予保留。"
+    },
+    "returnedTo": {
+      "bu": "Returned to BU CEO",
+      "bg": "Returned to BG CEO"
+    },
+    "returnedBy": "Returned by {actor} on {date}",
+    "returnedReason": "Reason for return",
+    "returnedNext": "Revise the review and submit it again.",
+    "decidedBy": "By {actor}",
+    "aReviewer": "a reviewer",
+    "postNeedsAdmin": "Posting needs a company HR administrator who also holds the Payroll seat.",
+    "noPayrollBatch": "There is no draft payroll batch for this company, so bonus and lump-sum awards cannot be posted yet. Salary changes can still be posted on their own. Payroll creates the draft batch for the pay period; posting itself needs a company HR administrator who also holds the Payroll seat.",
+    "dueOn": "Due {date}",
+    "board": {
+      "title": "Approvals",
+      "open": "Approvals board",
+      "view": {
+        "label": "视图",
+        "matrix": "矩阵",
+        "list": "列表"
+      },
+      "yourStep": "Your step: {steps}.",
+      "stepPhrase": {
+        "post": "post approved reviews to payroll"
+      },
+      "nothingYours": "No step on this board sits with you; you follow these reviews along the route.",
+      "groups": "Business groups",
+      "allGroups": "All groups",
+      "waiting": "Waiting on you · {count}",
+      "elsewhere": "Elsewhere on the route · {count}",
+      "noneWaiting": "Nothing is waiting on you.",
+      "empty": "No reviews are on the route for you in the selected companies.",
+      "columns": {
+        "unit": "Unit",
+        "stage": "Stage",
+        "due": "Due",
+        "people": "People",
+        "salary": "Salary increase",
+        "bonus": "Bonus",
+        "exceptions": "Exceptions",
+        "blocking": "Blocking",
+        "flags": "标记",
+        "action": "Action"
+      },
+      "seat": {
+        "bu": "BU CEO",
+        "bg": "BG CEO",
+        "gr": "Group Rewards",
+        "ctro": "CTRO",
+        "ec": "Executive Chairman",
+        "pbp": "PBP",
+        "payroll": "Payroll"
+      },
+      "seatShort": {
+        "ec": "EC"
+      },
+      "route": {
+        "annual": "年终流程 · 加薪与奖金一并审批",
+        "offcycle": "非周期流程"
+      },
+      "duty": {
+        "bu": "建议 · 提交",
+        "bg": "审批",
+        "gr": "核查 · 转交",
+        "ctro": "对齐 · HR 同意",
+        "ec": "最终审批",
+        "payroll": "发薪"
+      },
+      "payOn": "发薪 · {date}",
+      "stepState": {
+        "done": "已完成",
+        "yours": "轮到您",
+        "withThem": "由对方处理",
+        "returned": "已退回",
+        "notReached": "尚未到达"
+      },
+      "with": "With {seat}",
+      "stepOf": "Step {step} of {steps}",
+      "dueOn": "截止 {date}",
+      "overdueOn": "已逾期 {date}",
+      "peopleCount": "{count, plural, other {# 人}}",
+      "dueToday": "today",
+      "dueTomorrow": "tomorrow",
+      "dueIn": "in {days, plural, one {# day} other {# days}}",
+      "overdue": "{days, plural, one {# day} other {# days}} overdue",
+      "ofPool": "{percent} of pool",
+      "ofBudget": "{percent} of budget",
+      "overLimit": "over limit",
+      "openReview": "Open review",
+      "sendTo": "转交{seat}",
+      "submitTo": "提交至{seat}",
+      "approveFinal": "批准并转入薪资",
+      "button": {
+        "submit": "提交",
+        "approve": "批准"
+      },
+      "returnTo": {
+        "bg": "退回 BU CEO",
+        "gr": "退回 BG / BU",
+        "ctro": "退回 BG / BU",
+        "ec": "驳回 · 退回 BG / BU"
+      },
+      "stepOr": "{action}，或{return}",
+      "blockedHint": "Clear the blocking checks first",
+      "sendAll": "Send all ready ({count})",
+      "sendResult": "{sent} sent · {skipped} skipped (blocking) · {refused} refused (changed since you opened the page)",
+      "refusedItem": "{name}: {message}",
+      "decided": "Decision recorded.",
+      "footer": "Salary increase is the monthly total in RM (RM/mo) for the standard and JG H plans, against the salary increase pool. Bonus is the total in RM, including lump sums, against the bonus budget. Totals count only the records you are allowed to see. Open a row to see its review."
+    },
+    "calendar": {
+      "title": "Reward calendar",
+      "help": "Due dates for this reward cycle in this company. They appear on the Approvals board and on each review; they never move, block or approve a review. Leave a date empty when there is no deadline.",
+      "annual": "Annual review: date each step is due",
+      "stage": {
+        "bu": "BU CEO submits",
+        "returned": "Returned review resubmitted",
+        "bg": "BG CEO approves",
+        "gr": "Group Rewards approves",
+        "ctro": "CTRO approves",
+        "ec": "Executive Chairman approves",
+        "payroll": "Posted to payroll"
+      },
+      "caseDue": "ER and PIP case decisions due",
+      "offcycle": "Off-cycle requests: days allowed at each step",
+      "offcycleHelp": "An off-cycle request is due this many days after it reaches the step (1 to 90).",
+      "save": "Save calendar",
+      "readOnly": "Group Rewards or a company HR administrator maintains this calendar.",
+      "notSet": "Not set",
+      "days": "{days, plural, one {# day} other {# days}}"
     }
   },
   "identityEmail": {
@@ -20225,7 +20361,7 @@
     "clientSecret": "客户端密钥",
     "clientSecretKept": "留空可保留同一租户、应用程序和邮箱的现有密钥。",
     "clientSecretNeeded": "请输入客户端密钥的值，而非密钥 ID。",
-    "microsoft365Help": "Microsoft 365 管理员必须授予 SMTP.SendAsApp 和管理员同意，在 Exchange 中注册应用程序，并将访问权限限制为发件邮箱。用户名即该邮箱。AI HR 自动获取短期令牌。使用其他 From 邮箱还需要 Send As 权限。",
+    "microsoft365Help": "Microsoft 365 管理员须通过具有管理员同意和邮箱授权的 SMTP.SendAsApp，或限定范围的 Exchange App RBAC，授权发件邮箱。请在 Exchange 中注册应用并允许 SMTP AUTH。用户名是用于身份验证的邮箱；不同的 From 地址还需要 Send As 权限。",
     "draftTitle": "中继草稿",
     "host": "SMTP 主机",
     "port": "端口",
@@ -20288,7 +20424,21 @@
       "tlsFailed": "无法验证安全连接。请检查加密设置及服务器的 TLS 证书。",
       "connectionFailed": "无法连接 SMTP 服务器。请检查主机名、端口、加密设置及提供商的网络访问规则。",
       "unavailable": "无法完成连接测试。请重新输入密码后重试。"
-    }
+    },
+    "connectionsTitle": "发件连接",
+    "connectionName": "连接名称",
+    "connectionNamePlaceholder": "例如，OneHR Microsoft 365",
+    "newConnection": "新建连接",
+    "noConnections": "尚未保存 SMTP 连接。请创建连接以发送账户邮件。",
+    "connectionStatus": "状态",
+    "lastTest": "上次测试",
+    "connectionActive": "使用中",
+    "connectionSaved": "已保存",
+    "changesPending": "更改尚未启用",
+    "notRecorded": "未记录",
+    "backToConnections": "返回连接列表",
+    "saveConnection": "保存连接",
+    "activeChangesHelp": "当前中继继续使用上次启用的设置。请先保存、测试并确认收到邮件，再启用更改。"
   },
   "workflowEmail": {
     "letterAccountTitle": "此账户的信函通知",
@@ -21453,7 +21603,8 @@
       "failed": "无法保存移动，请重试。",
       "saving": "正在保存…",
       "save": "保存移动",
-      "cancel": "取消"
+      "cancel": "取消",
+      "reasonRequired": "Reason (required) · the tier above reads it"
     },
     "talentCurve": {
       "title": "{axis}分布 — {unit}",
@@ -21784,6 +21935,96 @@
         "outstanding": "未完成",
         "done": "已完成"
       }
+    },
+    "calibrationList": {
+      "title": "Calibration",
+      "description": "The calibration sessions you can open. Sessions with an open window come first.",
+      "empty": "No calibration is assigned to you.",
+      "groupWide": "Group-wide",
+      "opensOn": "Opens {date}",
+      "closesOn": "Closes {date}",
+      "tiers": {
+        "group": "Group",
+        "bg": "Business group (BG)",
+        "bu": "Business unit (BU)",
+        "hod": "Department (HOD)",
+        "final": "Final"
+      },
+      "columns": {
+        "session": "Session",
+        "cycle": "Cycle",
+        "company": "Company",
+        "window": "Window",
+        "people": "People",
+        "toDo": "To do",
+        "status": "Status"
+      },
+      "window": {
+        "open": "Open",
+        "upcoming": "Not open yet",
+        "closed": "Closed"
+      },
+      "lock": {
+        "open": "In progress",
+        "partial": "Partly locked",
+        "locked": "Locked"
+      }
+    },
+    "talentBoard": {
+      "title": "Talent Box",
+      "people": "{count, plural, one {# person} other {# people}}",
+      "units": "{count, plural, one {# business unit} other {# business units}}",
+      "placed": "{placed} of {total} placed",
+      "lockedState": "Locked",
+      "openState": "Open for review",
+      "sources": "Potential from {cycle} · performance from {cycle}",
+      "businessUnit": "Business unit",
+      "all": "All",
+      "department": "Department",
+      "allDepartments": "All departments",
+      "grade": "Job grade",
+      "allGrades": "All grades",
+      "clearFilters": "Clear filters",
+      "wholeScope": "Showing the whole scope. Narrow it by business unit, department or grade to measure the distribution against that group instead.",
+      "filtered": "{count, plural, one {Measured against the # person in this selection.} other {Measured against the # people in this selection.}}",
+      "views": "Talent Box views",
+      "grid9": "9-box",
+      "grid15": "15-box",
+      "table": "Table",
+      "referenceTitle": "Reference guideline",
+      "showDetails": "Show details",
+      "hideDetails": "Hide details",
+      "onTarget": "On target in every category",
+      "onTargetShort": "On target",
+      "deltaTitle": "{actual} now, {target} at the reference share",
+      "noReference": "This scope has no single performance reference, so no reference shares are shown.",
+      "referenceNote": "Performance reference × potential {high}/{mid}/{low}, over the {placed} placed. It is guidance for the conversation, not a quota.",
+      "columns": {
+        "category": "Category",
+        "count": "Count",
+        "share": "Share",
+        "reference": "Reference",
+        "toMove": "To meet reference"
+      },
+      "capChip": "Moves {used} of {cap}",
+      "capChipUnits": "Moves {used} of {cap} across {count} business units",
+      "capNote": "Category-change limit: {pct}% of each business unit's people, counted per unit. Only a change of talent category counts, and moving someone back returns the allowance.",
+      "cellLabel": "{category}, {potential} potential, {performance}: {count}",
+      "vsRef": "vs {pct}%",
+      "movedUp": "Moved up from {category}",
+      "movedDown": "Moved down from {category}",
+      "moveTo": "Move {name} to another box",
+      "moveMenu": "Move to…",
+      "legendUp": "moved up a box in this calibration",
+      "legendDown": "moved down a box",
+      "potentialAxis": "Potential",
+      "performanceAxis": "Performance →",
+      "columnPerformance": "{level} performance",
+      "footerOpen": "{placed} placed{filtered, select, yes { in this selection} other {}} · locking covers both performance and potential for {scope}",
+      "footerLocked": "Calibration locked for {scope}: performance and potential are final.",
+      "pickUnitToLock": "Choose a business unit above to lock it.",
+      "categoryHelp": "Everyone here whose performance and potential place them in {category}.",
+      "categoryEmpty": "No one here is in {category} right now."
     }
   },
   "allowanceV2": {
@@ -22624,7 +22865,44 @@
       "notEligible": "邀请或恢复邮件收件人已不再符合条件。",
       "uncertain": "发送结果不确定。请在重试前检查，以免重复发送。"
     },
-    "reference": "发送参考编号"
+    "reference": "发送参考编号",
+    "message": "邮件",
+    "recipient": "收件人",
+    "status": "状态",
+    "dateTime": "日期和时间",
+    "actions": "操作",
+    "viewEmail": "查看邮件",
+    "previewHelp": "模板预览。实际链接和安全令牌已隐藏。这不是已保存的原始邮件副本。",
+    "resend": "重新发送邮件",
+    "fromDate": "开始日期",
+    "toDate": "结束日期",
+    "filter": "筛选",
+    "clearFilters": "清除筛选",
+    "noMatchingEmails": "此日期范围内没有账户邮件。",
+    "pagination": "邮件历史分页",
+    "pageSize": "本页共 {count} 条记录",
+    "newest": "最新",
+    "older": "更早",
+    "resendUnavailable": {
+      "superseded": "已被更新的邮件替代。",
+      "closed": "此邀请已不再等待接受。",
+      "pending": "正在尝试发送。"
+    },
+    "historyUnavailable": "无法加载邮件历史。请检查日期范围后重试。",
+    "providerManagedPreview": "此邮件模板由身份提供商管理。AIHR 未保存原始邮件正文。",
+    "retentionTitle": "投递日志保留",
+    "retentionPeriod": "保留期限",
+    "retentionNever": "永不删除",
+    "retentionCustom": "在指定天数后删除",
+    "retentionDays": "天数（1–3650）",
+    "retentionSave": "保存保留策略",
+    "retentionHelp": "适用于此安装中的邀请和账户恢复投递日志。安装维护定时器后，每小时清理一次。保留期限从最后一次投递活动起计算。待处理投递、未过期邀请，以及包含受保护或近期活动的重发链将被保留。账户、邀请和安全审计事件不受影响。",
+    "retentionAcknowledge": "我理解，超过此期限的符合条件日志（包括已有历史记录）将被永久删除，此后无法在此日志中预览或重发。",
+    "retentionSaved": "保留策略已保存。符合条件的历史记录将由定时清理删除。",
+    "retentionError": "无法保存保留策略。请重新加载页面，检查天数和删除确认后重试。",
+    "retentionLastRun": "上次成功清理：{time}。删除了 {count} 条记录。",
+    "retentionNotRun": "尚无成功清理记录。维护人员需要安装并验证清理定时器。",
+    "retentionUnavailable": "保留设置不可用。请重新加载页面或联系安装管理员。"
   },
   "pageStyleRecovery": {
     "restoring": "正在恢复页面…",
@@ -25657,7 +25935,12 @@
       "feedback": "同事反馈",
       "noticeAcknowledgement": "通知确认",
       "replacementLeave": "补假审批",
-      "onboarding": "入职工作"
+      "onboarding": "入职工作",
+      "performanceReview": "绩效评估",
+      "assessmentWork": "绩效考核",
+      "careerPlan": "职业发展计划审阅",
+      "calibration": "绩效校准",
+      "rewardReview": "薪酬奖励审阅"
     },
     "quickActions": {
       "leave": "申请休假",
@@ -26885,6 +27168,69 @@
       "assetSearch": "搜索资源名称",
       "companyCodeUnavailable": "请配置简短的公司参考代码，或使用不含公司占位符的格式。",
       "version": "配置版本 {number}"
+    }
+  },
+  "performanceHome": {
+    "title": "绩效",
+    "closes": "{date} 截止",
+    "progress": "已完成 {done}/{total}",
+    "stripLabel": "本周期步骤",
+    "steps": {
+      "kpi": "KPI 检视",
+      "kpiSetting": "KPI 设定",
+      "feedback360": "360 反馈",
+      "competency": "能力评估",
+      "careerPlan": "职业规划",
+      "teamReview": "团队评审",
+      "calibration": "校准",
+      "results": "结果发布"
+    },
+    "states": {
+      "done": "已完成",
+      "yourTurn": "轮到你",
+      "waiting": "{count} 项待处理",
+      "locked": "已锁定",
+      "inProgress": "进行中",
+      "released": "已发布",
+      "notRequired": "无需进行"
+    },
+    "next": {
+      "label": "你的下一步",
+      "kpiTitle": "你的 KPI 检视",
+      "kpiLine": "已填写 {done}/{total} 项 KPI",
+      "kpiSettingTitle": "设定你的 KPI",
+      "kpiSettingLine": "已提议 {done}/{total} 项 KPI",
+      "competencyTitle": "评估你的能力",
+      "competencyLine": "已回答 {done}/{total}",
+      "careerPlanTitle": "撰写你的职业规划",
+      "careerPlanLine": "已写 {done} 个目标，至少需要 {total} 个",
+      "feedback360Title": "为 {count} 位同事提供 360 反馈",
+      "feedback360Line": "回答每一项陈述，然后提交。",
+      "due": "截止日期 {date}",
+      "open": "继续",
+      "none": "目前没有需要你处理的事项",
+      "opens": "你的下一步将于 {date} 开放",
+      "closesOn": "本周期于 {date} 结束"
+    },
+    "team": {
+      "title": "你的团队",
+      "waiting": "{count, plural, =0 {没有等待你处理的评审} other {# 项评审等待你处理}}",
+      "open": "打开团队评审"
+    },
+    "standing": {
+      "title": "你的现况",
+      "details": "详情",
+      "performance": "绩效",
+      "competency": "能力",
+      "feedback360": "360 反馈",
+      "careerTarget": "职业目标",
+      "awaitingManager": "等待你的经理",
+      "notReleased": "尚未发布",
+      "notSubmitted": "尚未提交",
+      "withManager": "经理处理中",
+      "reviewed": "经理已评审",
+      "reportReleased": "报告已发布",
+      "notSet": "尚未设定"
     }
   }
 }

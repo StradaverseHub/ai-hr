@@ -1,4 +1,22 @@
+## Email delivery staging release — 28 October 2026
+
+- Staging source `fffabc90922c3d43b2570dc29a33ce8b70b69aca`; `main@d8b2bac9705fd8fbc4d3eb500262b19858bf297d` remains unchanged. Named saved SMTP connections, one active relay, MYT history, safe template previews, explicit resend and configurable retention are available.
+- Migration 0641 is installed at idx618 / when1793109999999, preserving all 503 earlier applied entries. The approved repository union places still-unapplied 0640 at idx619 with its original timestamp and SQL. This does not authorize deployment of that separate feature.
+- Retention stays Never delete. The commissioned hourly service executes only the fixed owner-only SQL through the system PostgreSQL client and a private service file, under a dedicated non-login identity. It executes no web-writable source or dependencies. Initial run removed zero records; timer activation reused the completed invocation without rerunning cleanup.
+- Corrections retained: the original full CI attempt failed two outdated test contracts; exact test-only follow-up and authenticated original passes were used without manufacturing a full PASS. A post-install byte-check timeout passed on unchanged retry. The initial maintenance verifier incorrectly expected transient oneshot metadata; the corrected verifier binds dedicated psql output to the matching completed root systemd journal invocation.
+- Source/build arrival, exact migration ledger, health, checksum, owned cleanup and signed-in email acceptance are verified. No additional invitations or test emails were sent. Production deployment and finite retention are not performed.
+
 > Infrastructure identifiers in this working copy were sanitized on 25–26 October 2026. Hostnames, IPs and SSH ports shown below are documentation examples, not connection settings. Git history still contains the original values.
+
+## board-eight-approved — 2026-10-27 · main@aff38607c633aa37e2939dbca7fad9f1c4d5e542 · final repair migrations none
+
+**Source handback.** The approved feature set covers centralized Overtime settings, dedicated My Payslip, shared Reports navigation, Payroll History Import, Atelier flyouts, Letters, Rewards configuration and Bonus Budget. The normal merge preserves the existing canonical branch histories. Environment acceptance, board readbacks and operational audit evidence are retained in the private operator evidence collection.
+
+**Corrections.** Letter signatory validation accepts canonical PostgreSQL UUID shapes within the existing authorization owners. Atelier navigation has a labelled phone disclosure, bounded scrolling and preserved Escape focus. Bonus cards convert stored cents to major currency units at presentation; saved policy, calculation and award owners are unchanged. Literal reference, fractional-currency and reduction regressions avoid copying the formatter into expectations, and the original-component counterexample demonstrates the defect.
+
+**Verification.** Public Actions evidence includes the focused currency regressions and repository TypeScript checks (40507897305), original-component negative control (40509167972), and three-engine browser regression run (40512563694). Failed or wrong-runtime original outcomes are preserved in the audit collection; required coverage was composed under the owner's failed-or-affected-only rule, without manufacturing a new full-PASS baseline. Role-dependent workflow checks use genuine backend, DOM and PDF fixtures in addition to the interface checks.
+
+**Scope and decisions.** This final repair adds no migration, dependency, financial calculation or permission change. Existing data and immutable audit owners remain intact. Separate email-connection redesign and P1 work are outside this installed repair scope. Production deployment and production package publication are separate owner decisions. Detailed deployment, migration-ledger, runtime, test-data and acceptance records remain private.
 
 ## Private staging access integration — 2026-10-26
 

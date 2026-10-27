@@ -9,16 +9,19 @@ import {eq,sql} from 'drizzle-orm';
 import {createDb} from '../db/client';
 import {payslip} from '../db/schema';
 
-/** Authored changed-input upgrade witness: real 501-entry schema, then the exact allocated 14-entry delta.
+/** Authored changed-input upgrade witness: the real schema up to the board pair, then every later journaled
+ * migration (board pair, Reports/P1, the forwarded AI entries and the AI groups). Pin the board pair at its
+ * boundary; later journaled migrations may follow and must also preserve the populated rows and access.
  * Owner-created fictional rows prove physical preservation, NOT canonical business effect/AI confirmation
  * provenance. Normal Drizzle migrators only; no test-local function installer, customer data or shared reset.
  * Actual application-role principal, scoped grants and permitted reads are compared before/after. */
-it('upgrades populated 501 baseline through exact Board2+AI12 allocation to515 without changing retained facts or access',async()=>{
+it('upgrades a populated pre-board baseline through every later journaled migration without changing retained facts or access',async()=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8'));
- const start=501;
- const allocated=['0602_payroll_history_revisions','0603_letter_lifecycle','0621_ai_action_controls','0629_lifecycle_acknowledgement_source','0630_testing_execution_source','0631_payroll_close_source','0632_statutory_source_ownership','0622_own_leave_review_store','0623_openrouter_provider_options','0624_assistant_disclosure','0625_provider_readiness','0626_module_agent_feedback','0627_module_agent_improvement','0628_employee_import_ai_evaluation'];
- expect(journal.entries).toHaveLength(515);expect(journal.entries[start-1].tag).toBe('0611_performance_partner_access');
- expect(journal.entries.slice(start).map((entry:{idx:number;tag:string;when:number})=>({idx:entry.idx,tag:entry.tag,when:entry.when}))).toEqual(allocated.map((tag,index)=>({idx:616+index,tag,when:1793025815552+index})));
+ const start=journal.entries.findIndex((entry:{tag:string})=>entry.tag==='0602_payroll_history_revisions');
+ expect(start).toBeGreaterThan(0);expect(journal.entries[start-1].tag).toBe('0611_performance_partner_access');
+ expect(journal.entries.slice(start,start+2).map((entry:{tag:string})=>entry.tag)).toEqual(['0602_payroll_history_revisions','0603_letter_lifecycle']); // the board pair, adjacent; later migrations may follow
+ const tail=journal.entries.slice(start) as {idx:number;when:number}[];
+ expect(tail.every((entry,index)=>index===0||entry.idx>tail[index-1].idx&&entry.when>tail[index-1].when)).toBe(true); // strictly ascending, or Drizzle silently skips
  const name='ai_hr_board_upgrade_'+randomUUID().replaceAll('-',''),directory=mkdtempSync(join(tmpdir(),'aihr-board-upgrade-'));
  const ownerUrl=new URL(process.env.TEST_MIGRATION_DATABASE_URL!),appUrl=new URL(process.env.TEST_DATABASE_URL!);
  expect(['127.0.0.1','localhost']).toContain(ownerUrl.hostname);expect(appUrl.hostname).toBe(ownerUrl.hostname);expect(appUrl.port).toBe(ownerUrl.port);expect(appUrl.username).toBe('ai_hr_app');expect(ownerUrl.username).not.toBe(appUrl.username);
@@ -110,7 +113,7 @@ it('upgrades populated 501 baseline through exact Board2+AI12 allocation to515 w
   await expect(storage.client`update payslip set gross_pay=1 where id=${slips[0]}`).rejects.toMatchObject({code:'23514'});
   await migrate(storage.db,{migrationsFolder:'db/migrations'});expect(await ledger()).toEqual(upgraded);expect(await applicationWitness()).toEqual(actualGrantsBefore);
   for(const table of tables)if(before.has(table.schema+'.'+table.name))expect(await rows(table),table.schema+'.'+table.name).toEqual(before.get(table.schema+'.'+table.name));
-  console.info(JSON.stringify({kind:'COMBINED_501_TO_515_POPULATED_UPGRADE',physicalWitnessNotCommandProvenance:true,scopedPrincipalWitnesses:subjects.length*3,providerActivated:false,baselineMigrations:start,appliedMigrations:upgraded.length-start,populatedTables:before.size,comparedRows:[...before.values()].reduce((count,rows)=>count+rows.length,0),tenants:tenantIds.length,physicalRowsUnchanged:true,appRoleIsolation:true,closedPayrollImmutable:true,idempotentMigration:true}));
+  console.info(JSON.stringify({kind:'COMBINED_POPULATED_UPGRADE',physicalWitnessNotCommandProvenance:true,scopedPrincipalWitnesses:subjects.length*3,providerActivated:false,baselineMigrations:start,appliedMigrations:upgraded.length-start,populatedTables:before.size,comparedRows:[...before.values()].reduce((count,rows)=>count+rows.length,0),tenants:tenantIds.length,physicalRowsUnchanged:true,appRoleIsolation:true,closedPayrollImmutable:true,idempotentMigration:true}));
  }finally{
   await application.client.end();await storage.client.end();
   if(created)await admin.unsafe(`DROP DATABASE "${name}" WITH (FORCE)`);

@@ -473,7 +473,8 @@
     "letterApproval": "Phê duyệt thư",
     "letterRegister": "Sổ đăng ký thư đã phát hành",
     "letterReports": "Báo cáo thư",
-    "letterSettings": "Cài đặt thư"
+    "letterSettings": "Cài đặt thư",
+    "calibration": "Calibration"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -13698,7 +13699,12 @@
       "profile": "Xác minh thay đổi hồ sơ",
       "replacementLeave": "Xem xét yêu cầu nghỉ bù",
       "resignation": "Quyết định đơn xin nghỉ việc",
-      "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]"
+      "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]",
+      "performanceReview": "Hoàn tất đánh giá hiệu suất",
+      "assessmentWork": "Xử lý đánh giá hiệu suất",
+      "careerPlan": "Xem xét kế hoạch nghề nghiệp",
+      "calibration": "Hoàn tất hiệu chỉnh hiệu suất",
+      "rewardReview": "Xem xét đãi ngộ"
     },
     "tasksEmpty": "Không có mục nào cần bạn xử lý",
     "title": "Thông báo"
@@ -20209,6 +20215,136 @@
       "currencyHelp": "Cấu hình dùng chung sử dụng chính sách Reward Desk MYR hiện có; không cung cấp chính sách tiền tệ khác tại đây.",
       "archive": "Lưu trữ cấu hình",
       "archiveHelp": "Lưu mà không chọn cặp nào sẽ ngừng áp dụng cấu hình này cho đợt xét duyệt tương lai. Vẫn giữ các phiên bản đã lưu và đợt xét duyệt hiện có."
+    },
+    "returnedTo": {
+      "bu": "Returned to BU CEO",
+      "bg": "Returned to BG CEO"
+    },
+    "returnedBy": "Returned by {actor} on {date}",
+    "returnedReason": "Reason for return",
+    "returnedNext": "Revise the review and submit it again.",
+    "decidedBy": "By {actor}",
+    "aReviewer": "a reviewer",
+    "postNeedsAdmin": "Posting needs a company HR administrator who also holds the Payroll seat.",
+    "noPayrollBatch": "There is no draft payroll batch for this company, so bonus and lump-sum awards cannot be posted yet. Salary changes can still be posted on their own. Payroll creates the draft batch for the pay period; posting itself needs a company HR administrator who also holds the Payroll seat.",
+    "dueOn": "Due {date}",
+    "board": {
+      "title": "Approvals",
+      "open": "Approvals board",
+      "view": {
+        "label": "Chế độ xem",
+        "matrix": "Ma trận",
+        "list": "Danh sách"
+      },
+      "yourStep": "Your step: {steps}.",
+      "stepPhrase": {
+        "post": "post approved reviews to payroll"
+      },
+      "nothingYours": "No step on this board sits with you; you follow these reviews along the route.",
+      "groups": "Business groups",
+      "allGroups": "All groups",
+      "waiting": "Waiting on you · {count}",
+      "elsewhere": "Elsewhere on the route · {count}",
+      "noneWaiting": "Nothing is waiting on you.",
+      "empty": "No reviews are on the route for you in the selected companies.",
+      "columns": {
+        "unit": "Unit",
+        "stage": "Stage",
+        "due": "Due",
+        "people": "People",
+        "salary": "Salary increase",
+        "bonus": "Bonus",
+        "exceptions": "Exceptions",
+        "blocking": "Blocking",
+        "flags": "Cảnh báo",
+        "action": "Action"
+      },
+      "seat": {
+        "bu": "BU CEO",
+        "bg": "BG CEO",
+        "gr": "Group Rewards",
+        "ctro": "CTRO",
+        "ec": "Executive Chairman",
+        "pbp": "PBP",
+        "payroll": "Payroll"
+      },
+      "seatShort": {
+        "ec": "EC"
+      },
+      "route": {
+        "annual": "Quy trình cuối năm · tăng lương và thưởng được duyệt cùng lúc",
+        "offcycle": "Quy trình ngoài chu kỳ"
+      },
+      "duty": {
+        "bu": "Đề xuất · gửi",
+        "bg": "Phê duyệt",
+        "gr": "Kiểm tra · chuyển tiếp",
+        "ctro": "Thống nhất · HR đồng ý",
+        "ec": "Phê duyệt cuối cùng",
+        "payroll": "Chi trả"
+      },
+      "payOn": "Chi trả · {date}",
+      "stepState": {
+        "done": "Đã xong",
+        "yours": "Bước của bạn",
+        "withThem": "Đang chờ người khác",
+        "returned": "Đã trả lại",
+        "notReached": "Chưa đến"
+      },
+      "with": "With {seat}",
+      "stepOf": "Step {step} of {steps}",
+      "dueOn": "Hạn {date}",
+      "overdueOn": "Quá hạn {date}",
+      "peopleCount": "{count, plural, other {# người}}",
+      "dueToday": "today",
+      "dueTomorrow": "tomorrow",
+      "dueIn": "in {days, plural, one {# day} other {# days}}",
+      "overdue": "{days, plural, one {# day} other {# days}} overdue",
+      "ofPool": "{percent} of pool",
+      "ofBudget": "{percent} of budget",
+      "overLimit": "over limit",
+      "openReview": "Open review",
+      "sendTo": "Chuyển đến {seat}",
+      "submitTo": "Trình {seat}",
+      "approveFinal": "Phê duyệt để chuyển bảng lương",
+      "button": {
+        "submit": "Trình",
+        "approve": "Phê duyệt"
+      },
+      "returnTo": {
+        "bg": "Trả lại BU CEO",
+        "gr": "Trả lại BG / BU",
+        "ctro": "Trả lại BG / BU",
+        "ec": "Từ chối · trả lại BG / BU"
+      },
+      "stepOr": "{action} hoặc {return}",
+      "blockedHint": "Clear the blocking checks first",
+      "sendAll": "Send all ready ({count})",
+      "sendResult": "{sent} sent · {skipped} skipped (blocking) · {refused} refused (changed since you opened the page)",
+      "refusedItem": "{name}: {message}",
+      "decided": "Decision recorded.",
+      "footer": "Salary increase is the monthly total in RM (RM/mo) for the standard and JG H plans, against the salary increase pool. Bonus is the total in RM, including lump sums, against the bonus budget. Totals count only the records you are allowed to see. Open a row to see its review."
+    },
+    "calendar": {
+      "title": "Reward calendar",
+      "help": "Due dates for this reward cycle in this company. They appear on the Approvals board and on each review; they never move, block or approve a review. Leave a date empty when there is no deadline.",
+      "annual": "Annual review: date each step is due",
+      "stage": {
+        "bu": "BU CEO submits",
+        "returned": "Returned review resubmitted",
+        "bg": "BG CEO approves",
+        "gr": "Group Rewards approves",
+        "ctro": "CTRO approves",
+        "ec": "Executive Chairman approves",
+        "payroll": "Posted to payroll"
+      },
+      "caseDue": "ER and PIP case decisions due",
+      "offcycle": "Off-cycle requests: days allowed at each step",
+      "offcycleHelp": "An off-cycle request is due this many days after it reaches the step (1 to 90).",
+      "save": "Save calendar",
+      "readOnly": "Group Rewards or a company HR administrator maintains this calendar.",
+      "notSet": "Not set",
+      "days": "{days, plural, one {# day} other {# days}}"
     }
   },
   "identityEmail": {
@@ -20225,7 +20361,7 @@
     "clientSecret": "Bí mật máy khách",
     "clientSecretKept": "Để trống để giữ bí mật cho cùng đối tượng thuê, ứng dụng và hộp thư.",
     "clientSecretNeeded": "Nhập giá trị bí mật máy khách, không phải ID bí mật.",
-    "microsoft365Help": "Quản trị viên Microsoft 365 phải cấp SMTP.SendAsApp và chấp thuận quản trị, đăng ký ứng dụng trong Exchange và giới hạn quyền vào hộp thư gửi. Tên người dùng là hộp thư đó. AI HR tự động lấy mã thông báo ngắn hạn. Hộp thư From khác cũng cần quyền Send As.",
+    "microsoft365Help": "Quản trị viên Microsoft 365 phải cấp quyền hộp thư gửi qua SMTP.SendAsApp với sự chấp thuận quản trị và quyền hộp thư, hoặc Exchange App RBAC giới hạn phạm vi. Đăng ký ứng dụng trong Exchange và cho phép SMTP AUTH. Tên người dùng là hộp thư xác thực; địa chỉ From khác cần quyền Send As.",
     "draftTitle": "Bản nháp cấu hình",
     "host": "Máy chủ SMTP",
     "port": "Cổng",
@@ -20288,7 +20424,21 @@
       "tlsFailed": "Không thể xác minh kết nối bảo mật. Kiểm tra phương thức mã hóa và chứng chỉ TLS của máy chủ.",
       "connectionFailed": "Không thể kết nối máy chủ SMTP. Kiểm tra tên máy chủ, cổng, mã hóa và quy tắc truy cập mạng của nhà cung cấp.",
       "unavailable": "Không thể hoàn tất kiểm tra kết nối. Nhập lại mật khẩu và thử lại."
-    }
+    },
+    "connectionsTitle": "Kết nối thư đi",
+    "connectionName": "Tên kết nối",
+    "connectionNamePlaceholder": "Ví dụ: OneHR Microsoft 365",
+    "newConnection": "Kết nối mới",
+    "noConnections": "Chưa lưu kết nối SMTP nào. Tạo kết nối để gửi email tài khoản.",
+    "connectionStatus": "Trạng thái",
+    "lastTest": "Lần kiểm tra gần nhất",
+    "connectionActive": "Đang hoạt động",
+    "connectionSaved": "Đã lưu",
+    "changesPending": "Thay đổi chưa kích hoạt",
+    "notRecorded": "Chưa ghi nhận",
+    "backToConnections": "Quay lại danh sách kết nối",
+    "saveConnection": "Lưu kết nối",
+    "activeChangesHelp": "Máy chủ chuyển tiếp đang dùng cài đặt đã kích hoạt gần nhất. Lưu, kiểm tra và xác nhận nhận thư trước khi kích hoạt thay đổi."
   },
   "workflowEmail": {
     "letterAccountTitle": "Thư cho tài khoản này",
@@ -21453,7 +21603,8 @@
       "failed": "Không thể lưu thay đổi. Vui lòng thử lại.",
       "saving": "Đang lưu…",
       "save": "Lưu thay đổi",
-      "cancel": "Hủy"
+      "cancel": "Hủy",
+      "reasonRequired": "Reason (required) · the tier above reads it"
     },
     "talentCurve": {
       "title": "Phân bố {axis} — {unit}",
@@ -21784,6 +21935,96 @@
         "outstanding": "Chưa hoàn tất",
         "done": "Hoàn tất"
       }
+    },
+    "calibrationList": {
+      "title": "Calibration",
+      "description": "The calibration sessions you can open. Sessions with an open window come first.",
+      "empty": "No calibration is assigned to you.",
+      "groupWide": "Group-wide",
+      "opensOn": "Opens {date}",
+      "closesOn": "Closes {date}",
+      "tiers": {
+        "group": "Group",
+        "bg": "Business group (BG)",
+        "bu": "Business unit (BU)",
+        "hod": "Department (HOD)",
+        "final": "Final"
+      },
+      "columns": {
+        "session": "Session",
+        "cycle": "Cycle",
+        "company": "Company",
+        "window": "Window",
+        "people": "People",
+        "toDo": "To do",
+        "status": "Status"
+      },
+      "window": {
+        "open": "Open",
+        "upcoming": "Not open yet",
+        "closed": "Closed"
+      },
+      "lock": {
+        "open": "In progress",
+        "partial": "Partly locked",
+        "locked": "Locked"
+      }
+    },
+    "talentBoard": {
+      "title": "Talent Box",
+      "people": "{count, plural, one {# person} other {# people}}",
+      "units": "{count, plural, one {# business unit} other {# business units}}",
+      "placed": "{placed} of {total} placed",
+      "lockedState": "Locked",
+      "openState": "Open for review",
+      "sources": "Potential from {cycle} · performance from {cycle}",
+      "businessUnit": "Business unit",
+      "all": "All",
+      "department": "Department",
+      "allDepartments": "All departments",
+      "grade": "Job grade",
+      "allGrades": "All grades",
+      "clearFilters": "Clear filters",
+      "wholeScope": "Showing the whole scope. Narrow it by business unit, department or grade to measure the distribution against that group instead.",
+      "filtered": "{count, plural, one {Measured against the # person in this selection.} other {Measured against the # people in this selection.}}",
+      "views": "Talent Box views",
+      "grid9": "9-box",
+      "grid15": "15-box",
+      "table": "Table",
+      "referenceTitle": "Reference guideline",
+      "showDetails": "Show details",
+      "hideDetails": "Hide details",
+      "onTarget": "On target in every category",
+      "onTargetShort": "On target",
+      "deltaTitle": "{actual} now, {target} at the reference share",
+      "noReference": "This scope has no single performance reference, so no reference shares are shown.",
+      "referenceNote": "Performance reference × potential {high}/{mid}/{low}, over the {placed} placed. It is guidance for the conversation, not a quota.",
+      "columns": {
+        "category": "Category",
+        "count": "Count",
+        "share": "Share",
+        "reference": "Reference",
+        "toMove": "To meet reference"
+      },
+      "capChip": "Moves {used} of {cap}",
+      "capChipUnits": "Moves {used} of {cap} across {count} business units",
+      "capNote": "Category-change limit: {pct}% of each business unit's people, counted per unit. Only a change of talent category counts, and moving someone back returns the allowance.",
+      "cellLabel": "{category}, {potential} potential, {performance}: {count}",
+      "vsRef": "vs {pct}%",
+      "movedUp": "Moved up from {category}",
+      "movedDown": "Moved down from {category}",
+      "moveTo": "Move {name} to another box",
+      "moveMenu": "Move to…",
+      "legendUp": "moved up a box in this calibration",
+      "legendDown": "moved down a box",
+      "potentialAxis": "Potential",
+      "performanceAxis": "Performance →",
+      "columnPerformance": "{level} performance",
+      "footerOpen": "{placed} placed{filtered, select, yes { in this selection} other {}} · locking covers both performance and potential for {scope}",
+      "footerLocked": "Calibration locked for {scope}: performance and potential are final.",
+      "pickUnitToLock": "Choose a business unit above to lock it.",
+      "categoryHelp": "Everyone here whose performance and potential place them in {category}.",
+      "categoryEmpty": "No one here is in {category} right now."
     }
   },
   "allowanceV2": {
@@ -22624,7 +22865,44 @@
       "notEligible": "Lời mời hoặc người nhận email khôi phục không còn đủ điều kiện.",
       "uncertain": "Chưa rõ kết quả gửi. Kiểm tra trước khi gửi lại để tránh email trùng."
     },
-    "reference": "Mã tham chiếu gửi"
+    "reference": "Mã tham chiếu gửi",
+    "message": "Thư",
+    "recipient": "Người nhận",
+    "status": "Trạng thái",
+    "dateTime": "Ngày và giờ",
+    "actions": "Thao tác",
+    "viewEmail": "Xem email",
+    "previewHelp": "Xem trước mẫu. Liên kết thật và mã bảo mật đã được ẩn. Đây không phải bản sao thư gốc đã lưu.",
+    "resend": "Gửi lại email",
+    "fromDate": "Từ ngày",
+    "toDate": "Đến ngày",
+    "filter": "Lọc",
+    "clearFilters": "Xóa bộ lọc",
+    "noMatchingEmails": "Không có email tài khoản trong khoảng ngày này.",
+    "pagination": "Các trang lịch sử email",
+    "pageSize": "{count} mục trên trang này",
+    "newest": "Mới nhất",
+    "older": "Cũ hơn",
+    "resendUnavailable": {
+      "superseded": "Đã được thay thế bằng email mới hơn.",
+      "closed": "Lời mời không còn chờ chấp nhận.",
+      "pending": "Đang thực hiện gửi."
+    },
+    "historyUnavailable": "Không thể tải lịch sử email. Kiểm tra khoảng ngày rồi thử lại.",
+    "providerManagedPreview": "Nhà cung cấp danh tính quản lý mẫu email này. AIHR không lưu nội dung thư gốc.",
+    "retentionTitle": "Lưu giữ nhật ký gửi email",
+    "retentionPeriod": "Thời gian lưu giữ",
+    "retentionNever": "Không bao giờ xóa",
+    "retentionCustom": "Xóa sau số ngày đã chọn",
+    "retentionDays": "Số ngày (1–3650)",
+    "retentionSave": "Lưu chính sách lưu giữ",
+    "retentionHelp": "Áp dụng cho nhật ký gửi thư mời và khôi phục trên toàn hệ thống. Dọn dẹp chạy mỗi giờ khi bộ hẹn giờ bảo trì được cài đặt. Thời gian được tính từ hoạt động gửi cuối cùng. Các lượt gửi đang chờ, lời mời chưa hết hạn và chuỗi gửi lại có hoạt động được bảo vệ hoặc gần đây được giữ lại. Tài khoản, lời mời và sự kiện kiểm toán bảo mật được giữ nguyên.",
+    "retentionAcknowledge": "Tôi hiểu rằng nhật ký đủ điều kiện cũ hơn thời gian này, kể cả lịch sử hiện có, sẽ bị xóa vĩnh viễn và không còn có thể xem trước hoặc gửi lại từ nhật ký này.",
+    "retentionSaved": "Đã lưu chính sách lưu giữ. Lịch sử đủ điều kiện sẽ được xóa trong lần dọn dẹp theo lịch.",
+    "retentionError": "Không thể lưu chính sách. Tải lại trang, kiểm tra số ngày và xác nhận xóa, rồi thử lại.",
+    "retentionLastRun": "Lần dọn dẹp thành công gần nhất: {time}. Đã xóa: {count} bản ghi.",
+    "retentionNotRun": "Chưa ghi nhận lần dọn dẹp thành công nào. Người vận hành bảo trì cần cài đặt và xác minh bộ hẹn giờ dọn dẹp.",
+    "retentionUnavailable": "Không thể tải cài đặt lưu giữ. Tải lại trang hoặc liên hệ người quản trị hệ thống."
   },
   "pageStyleRecovery": {
     "restoring": "Đang khôi phục trang…",
@@ -25657,7 +25935,12 @@
       "feedback": "Phản hồi đồng nghiệp",
       "noticeAcknowledgement": "Xác nhận thông báo",
       "replacementLeave": "Duyệt nghỉ bù",
-      "onboarding": "Công việc hội nhập"
+      "onboarding": "Công việc hội nhập",
+      "performanceReview": "Đánh giá hiệu suất",
+      "assessmentWork": "Đánh giá năng lực",
+      "careerPlan": "Xem xét kế hoạch nghề nghiệp",
+      "calibration": "Hiệu chỉnh hiệu suất",
+      "rewardReview": "Xem xét đãi ngộ"
     },
     "quickActions": {
       "leave": "Đăng ký nghỉ phép",
@@ -26885,6 +27168,69 @@
       "assetSearch": "Tìm theo tên tài nguyên",
       "companyCodeUnavailable": "Cấu hình mã tham chiếu công ty ngắn hoặc dùng định dạng không có biến công ty.",
       "version": "Phiên bản cấu hình {number}"
+    }
+  },
+  "performanceHome": {
+    "title": "Performance",
+    "closes": "Closes {date}",
+    "progress": "{done} of {total} done",
+    "stripLabel": "Steps in this cycle",
+    "steps": {
+      "kpi": "KPI Check-in",
+      "kpiSetting": "KPI setting",
+      "feedback360": "360 Feedback",
+      "competency": "Competency",
+      "careerPlan": "Career Plan",
+      "teamReview": "Team review",
+      "calibration": "Calibration",
+      "results": "Results released"
+    },
+    "states": {
+      "done": "Done",
+      "yourTurn": "Your turn",
+      "waiting": "{count} waiting",
+      "locked": "Locked",
+      "inProgress": "In progress",
+      "released": "Released",
+      "notRequired": "Not required"
+    },
+    "next": {
+      "label": "Your next step",
+      "kpiTitle": "Your KPI check-in",
+      "kpiLine": "{done} of {total} KPIs filled in",
+      "kpiSettingTitle": "Set your KPIs",
+      "kpiSettingLine": "{done} of {total} KPIs proposed",
+      "competencyTitle": "Rate your competencies",
+      "competencyLine": "{done} of {total} answered",
+      "careerPlanTitle": "Write your Career Plan",
+      "careerPlanLine": "{done} goals written, at least {total} needed",
+      "feedback360Title": "360 feedback for {count, plural, one {# colleague} other {# colleagues}}",
+      "feedback360Line": "Answer each statement, then submit.",
+      "due": "Due {date}",
+      "open": "Continue",
+      "none": "Nothing for you to do right now",
+      "opens": "Your next step opens {date}",
+      "closesOn": "This cycle closes {date}"
+    },
+    "team": {
+      "title": "Your team",
+      "waiting": "{count, plural, =0 {nothing waiting on you} one {# review waiting on you} other {# reviews waiting on you}}",
+      "open": "Open team review"
+    },
+    "standing": {
+      "title": "Where you stand",
+      "details": "Details",
+      "performance": "Performance",
+      "competency": "Competency",
+      "feedback360": "360 feedback",
+      "careerTarget": "Career target",
+      "awaitingManager": "Awaiting your manager",
+      "notReleased": "Not released yet",
+      "notSubmitted": "Not submitted yet",
+      "withManager": "With your manager",
+      "reviewed": "Reviewed by your manager",
+      "reportReleased": "Report released",
+      "notSet": "Not set yet"
     }
   }
 }

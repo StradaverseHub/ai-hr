@@ -29,7 +29,7 @@ async function reportingPair(){
  let date=add(todayInKualaLumpur(),3);while([0,6].includes(new Date(date+'T12:00:00Z').getUTCDay()))date=add(date,1);
  return {employee,manager,date};
 }
-const tasks=(ctx:SessionContext)=>listPendingTasks(ctx,undefined,{attendance:false,claims:false});
+const tasks=(ctx:SessionContext)=>listPendingTasks(ctx,undefined,{attendance:false,claims:false,performance:false,rewards:false});
 describe('Home consumes actual assigned actions, not a manager-role shortcut',()=>{
  it('finds a real organizational manager without Manager role and removes a task after that manager decides',async()=>{
   const {employee,manager,date}=await reportingPair();
@@ -71,9 +71,9 @@ describe('Home consumes actual assigned actions, not a manager-role shortcut',()
   const candidates=[...Array.from({length:1001},()=>randomUUID()),claim.id];
   expect(await actionablePendingClaimIds(managerCtx,candidates)).toEqual([claim.id]);
   expect(await actionablePendingClaimIds(employeeCtx,candidates)).toEqual([]);
-  expect((await listPendingTasks(managerCtx,undefined,{attendance:false,claims:true})).filter(row=>row.kind==='claim').map(row=>row.id)).toEqual([claim.id]);
+  expect((await listPendingTasks(managerCtx,undefined,{attendance:false,claims:true,performance:false,rewards:false})).filter(row=>row.kind==='claim').map(row=>row.id)).toEqual([claim.id]);
   await decideClaim(managerCtx,{claimRequestId:claim.id,decision:'approve'});
-  expect((await listPendingTasks(managerCtx,undefined,{attendance:false,claims:true})).filter(row=>row.kind==='claim')).toEqual([]);
+  expect((await listPendingTasks(managerCtx,undefined,{attendance:false,claims:true,performance:false,rewards:false})).filter(row=>row.kind==='claim')).toEqual([]);
   expect(await actionableLeaveCancellationIds(managerCtx,candidates)).toEqual([]);
  });
  it('keeps own profile requests out and repeats the current group-only profile decision setting',async()=>{

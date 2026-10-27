@@ -52,6 +52,8 @@ import { DashboardCustomizer, type CustomizerCard } from '@/components/dashboard
 import { saveDashboardLayoutAction, resetDashboardLayoutAction } from '@/app/dashboard-layout-actions';
 import { BUILTIN_ROLE_DASHBOARD_CARDS, type DashboardLayout } from '@/lib/dashboard-layout';
 import { NoticeBoardCardSlot } from '@/components/notice/notice-surfaces';
+// WP-A2 (APR-015) — the Performance block: reads its own facts, renders nothing without an open cycle.
+import { PerformanceHomeSlot } from '@/components/performance-home/performance-home';
 // r401 — Monolith step 4: the theme decides how the SAME data is drawn, never which data is read.
 import { currentUiTheme } from '@/lib/ui-theme-server';
 import { MonoPageHeader, Note } from '@/components/monolith';
@@ -163,9 +165,10 @@ export default async function DashboardPage({
   const locale = await getLocale(); // R37: render leave-type names in the viewer's language
   const { s, scopeIds, allowedCount } = await scopedSession();
   const admin = isAdmin(s);
+  const performanceBlock = <PerformanceHomeSlot session={s} scopeIds={scopeIds} />;
   const personalLanding=()=><>
     {unavailableModule&&<Card className="mb-5 border-warning/30 p-4"><h2 className="text-sm font-semibold">{tModule('title')}</h2><p className="mt-1 text-sm text-muted-foreground">{tModule('body',{module:unavailableModule.name})}</p></Card>}
-    <EmployeePersonalHome session={s} greetingsEnabled={isModuleEnabledOrFalse(s,'notifications')} employmentId={Array.isArray(homeQuery?.employmentId)?undefined:homeQuery?.employmentId}/>
+    <EmployeePersonalHome session={s} greetingsEnabled={isModuleEnabledOrFalse(s,'notifications')} employmentId={Array.isArray(homeQuery?.employmentId)?undefined:homeQuery?.employmentId} lead={performanceBlock}/>
   </>;
   let teamEmploymentId:string|null=null;
   if(!admin){
@@ -280,6 +283,8 @@ export default async function DashboardPage({
       pendingApprovalsCount(s, scopeIds, {
         attendance: isModuleEnabledOrFalse(s, 'attendance'),
         claims: isModuleEnabledOrFalse(s, 'claims'),
+        performance: isModuleEnabledOrFalse(s, 'performance'),
+        rewards: isModuleEnabledOrFalse(s, 'rewards'),
       }),
       // Performance / probation review deadlines assigned to this manager (the reporter's "review
       // deadlines" reminder). Same queue the bell counts — surfaced here as an upcoming reminder too.
@@ -631,6 +636,8 @@ export default async function DashboardPage({
       listPendingTasks(s, scopeIds, {
         attendance: isModuleEnabledOrFalse(s, 'attendance'),
         claims: isModuleEnabledOrFalse(s, 'claims'),
+        performance: isModuleEnabledOrFalse(s, 'performance'),
+        rewards: isModuleEnabledOrFalse(s, 'rewards'),
       }),
       mayUseAssistant(s),
       // Malaysia keeps UTC+8 all year (no DST), so the local midnight is a fixed offset.
@@ -656,6 +663,7 @@ export default async function DashboardPage({
         history={shapeApprovalHistoryItems(historyRows)}
         showHistory={showHistory}
         canAsk={assistant.allowed}
+        performance={performanceBlock}
         notice={
           unavailableModule && (
             <Card className="border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/40">
@@ -725,6 +733,7 @@ export default async function DashboardPage({
           } · ${todayLong}`}
           title={t('title')}
         />
+        {performanceBlock}
         <DashboardCustomizer
           cards={customizerCards}
           blocks={monolithBlocks}
@@ -746,6 +755,7 @@ export default async function DashboardPage({
         </Card>
       )}
       {pageHeader}
+      {performanceBlock}
       <DashboardCustomizer
         cards={customizerCards}
         blocks={cardNodes}

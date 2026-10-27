@@ -73,7 +73,7 @@
  * this pack via `modulePackById('performance')` and fails closed (D3). No entitlement machinery
  * is built here by design.
  */
-import { Target } from 'lucide-react';
+import { Scale, Target } from 'lucide-react';
 import { registerPack, type ModulePack, type NavLinkDescriptor } from '../registry';
 
 // The performance sidebar presence, moved VERBATIM from components/sidebar.tsx at rung 4 — like
@@ -87,6 +87,10 @@ import { registerPack, type ModulePack, type NavLinkDescriptor } from '../regist
 const PERFORMANCE_NAV_LINKS: NavLinkDescriptor[] = [
   { group: 'main', href: '/performance/workspace', labelKey: 'myPerformance', icon: Target },
   { group: 'manage', href: '/performance', labelKey: 'performance', icon: Target, managerUp: true },
+  // WP-B1 (APR-020) — the Calibration destination. Deliberately carries NEITHER managerUp nor adminOnly: a HOD
+  // or BU CEO named on a session may be neither. components/sidebar.tsx gates it by its own predicate
+  // (canEnterCalibration || canAdministerOnehr); the page lists only sessions the viewer may enter.
+  { group: 'manage', href: '/performance/calibration', labelKey: 'calibration', icon: Scale },
 ];
 
 export const performancePack: ModulePack = {

@@ -306,7 +306,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
-        with: {node-version: '22'}
+        with: {node-version: '22.23.3'}
       - run: node ../automation/.github/ci/plan.mjs > "$RUNNER_TEMP/ci-plan.json"
       - name: Derive execution matrix from complete trusted manifest
         id: matrix
@@ -564,7 +564,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
-        with: {node-version: '22'}
+        with: {node-version: '22.23.3'}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           path: ${{ runner.temp }}/aihr-ci

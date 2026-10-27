@@ -877,7 +877,7 @@ describe('Application History status counts and Overview migration parity', () =
     expect((await attendanceApplicationDetail(a,[b.companyId],id))?.workflow).toBeNull();
     for(const ctx of [a,mgr]){
       const overview=await listAttendanceCorrections(ctx,{companyIds:[b.companyId],status:'pending'});
-      const inbox=await listPendingTasks(ctx,[b.companyId],{attendance:true,claims:false});
+      const inbox=await listPendingTasks(ctx,[b.companyId],{attendance:true,claims:false,performance:false,rewards:false});
       expect(inbox.filter(row=>row.kind==='attendance').map(row=>row.id).sort()).toEqual(overview.map(row=>row.id).sort());
     }
     const overview=await listAttendanceCorrections(a,{companyIds:[b.companyId],status:'pending'});

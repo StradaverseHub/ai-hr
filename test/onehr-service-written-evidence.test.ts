@@ -743,8 +743,10 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     const hod=await make('hod'),bu=await make('bu'),group=await make('group');
     let items=await perf.performanceWorkspace(mgr);
     expect(items.filter(i=>i.id===hod)).toHaveLength(2);expect(items.filter(i=>i.id===hod)).toEqual(expect.arrayContaining([expect.objectContaining({module:'cal',axis:'performance',stage:'department_review'}),expect.objectContaining({module:'cal',axis:'potential',stage:'department_potential_review'})]));
-    expect(items.filter(i=>i.id===bu).map(i=>i.axis).sort()).toEqual(['performance','potential']);
-    expect(items.filter(i=>i.id===group)).toMatchObject([{module:'cal',axis:'performance',stage:'group_calibration'}]);
+    // P1 WP-D: with PM and TM on, the BU CEO also has the Talent Box beside the per-axis calibration parts.
+    expect(items.filter(i=>i.id===bu).map(i=>i.axis).sort()).toEqual(['both','performance','potential']);expect(items.filter(i=>i.id===bu&&i.axis==='both')).toMatchObject([{module:'cal',stage:'talent_box'}]);
+    // P1 WP-D (C10): the Group Chief's Talent Box follows the performance-only group list.
+    expect(items.filter(i=>i.id===group)).toMatchObject([{module:'cal',axis:'performance',stage:'group_calibration'},{module:'cal',axis:'both',stage:'talent_box'}]);
     expect(items.some(i=>i.view==='mine'&&i.kind==='review')).toBe(true);
     const bg=await make('bg');items=await perf.performanceWorkspace(mgr);
     expect(items.filter(i=>i.id===bg)).toMatchObject([{module:'cal',axis:'both',stage:'talent_box'}]);expect(items.some(i=>i.view==='mine')).toBe(false);

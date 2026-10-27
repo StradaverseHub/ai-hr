@@ -473,7 +473,8 @@
     "letterApproval": "Letter Approval",
     "letterRegister": "Issued Letter Register",
     "letterReports": "Letter Reports",
-    "letterSettings": "Letter Settings"
+    "letterSettings": "Letter Settings",
+    "calibration": "Calibration"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -13698,7 +13699,12 @@
       "profile": "Verify profile change",
       "replacementLeave": "Review replacement leave request",
       "resignation": "Decide resignation request",
-      "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]"
+      "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]",
+      "performanceReview": "Complete performance review",
+      "assessmentWork": "Act on performance assessment",
+      "careerPlan": "Review career plan",
+      "calibration": "Complete calibration",
+      "rewardReview": "Review rewards"
     },
     "tasksEmpty": "Nothing needs your action",
     "title": "Notifications"
@@ -20209,6 +20215,136 @@
       "currencyHelp": "Shared configurations use the existing MYR Reward Desk policy; other currency policies are not offered here.",
       "archive": "Archive configuration",
       "archiveHelp": "Saving with no selected pairs stops this configuration for future reviews. Its saved versions and existing reviews are retained."
+    },
+    "returnedTo": {
+      "bu": "Returned to BU CEO",
+      "bg": "Returned to BG CEO"
+    },
+    "returnedBy": "Returned by {actor} on {date}",
+    "returnedReason": "Reason for return",
+    "returnedNext": "Revise the review and submit it again.",
+    "decidedBy": "By {actor}",
+    "aReviewer": "a reviewer",
+    "postNeedsAdmin": "Posting needs a company HR administrator who also holds the Payroll seat.",
+    "noPayrollBatch": "There is no draft payroll batch for this company, so bonus and lump-sum awards cannot be posted yet. Salary changes can still be posted on their own. Payroll creates the draft batch for the pay period; posting itself needs a company HR administrator who also holds the Payroll seat.",
+    "dueOn": "Due {date}",
+    "board": {
+      "title": "Approvals",
+      "open": "Approvals board",
+      "view": {
+        "label": "View",
+        "matrix": "Matrix",
+        "list": "List"
+      },
+      "yourStep": "Your step: {steps}.",
+      "stepPhrase": {
+        "post": "post approved reviews to payroll"
+      },
+      "nothingYours": "No step on this board sits with you; you follow these reviews along the route.",
+      "groups": "Business groups",
+      "allGroups": "All groups",
+      "waiting": "Waiting on you · {count}",
+      "elsewhere": "Elsewhere on the route · {count}",
+      "noneWaiting": "Nothing is waiting on you.",
+      "empty": "No reviews are on the route for you in the selected companies.",
+      "columns": {
+        "unit": "Unit",
+        "stage": "Stage",
+        "due": "Due",
+        "people": "People",
+        "salary": "Salary increase",
+        "bonus": "Bonus",
+        "exceptions": "Exceptions",
+        "blocking": "Blocking",
+        "flags": "Flags",
+        "action": "Action"
+      },
+      "seat": {
+        "bu": "BU CEO",
+        "bg": "BG CEO",
+        "gr": "Group Rewards",
+        "ctro": "CTRO",
+        "ec": "Executive Chairman",
+        "pbp": "PBP",
+        "payroll": "Payroll"
+      },
+      "seatShort": {
+        "ec": "EC"
+      },
+      "route": {
+        "annual": "Year-end route · salary increase and bonus approved together",
+        "offcycle": "Off-cycle route"
+      },
+      "duty": {
+        "bu": "Recommend · submit",
+        "bg": "Approve",
+        "gr": "Check · send on",
+        "ctro": "Align · HR agrees",
+        "ec": "Final approval",
+        "payroll": "Pay"
+      },
+      "payOn": "Pay · {date}",
+      "stepState": {
+        "done": "Done",
+        "yours": "Your step",
+        "withThem": "With them",
+        "returned": "Returned",
+        "notReached": "Not reached"
+      },
+      "with": "With {seat}",
+      "stepOf": "Step {step} of {steps}",
+      "dueOn": "Due {date}",
+      "overdueOn": "Overdue {date}",
+      "peopleCount": "{count, plural, one {# person} other {# people}}",
+      "dueToday": "today",
+      "dueTomorrow": "tomorrow",
+      "dueIn": "in {days, plural, one {# day} other {# days}}",
+      "overdue": "{days, plural, one {# day} other {# days}} overdue",
+      "ofPool": "{percent} of pool",
+      "ofBudget": "{percent} of budget",
+      "overLimit": "over limit",
+      "openReview": "Open review",
+      "sendTo": "Send to {seat}",
+      "submitTo": "Submit to {seat}",
+      "approveFinal": "Approve for payroll",
+      "button": {
+        "submit": "Submit",
+        "approve": "Approve"
+      },
+      "returnTo": {
+        "bg": "Return to BU CEO",
+        "gr": "Return to BG / BU",
+        "ctro": "Return to BG / BU",
+        "ec": "Reject · back to BG / BU"
+      },
+      "stepOr": "{action} or {return}",
+      "blockedHint": "Clear the blocking checks first",
+      "sendAll": "Send all ready ({count})",
+      "sendResult": "{sent} sent · {skipped} skipped (blocking) · {refused} refused (changed since you opened the page)",
+      "refusedItem": "{name}: {message}",
+      "decided": "Decision recorded.",
+      "footer": "Salary increase is the monthly total in RM (RM/mo) for the standard and JG H plans, against the salary increase pool. Bonus is the total in RM, including lump sums, against the bonus budget. Totals count only the records you are allowed to see. Open a row to see its review."
+    },
+    "calendar": {
+      "title": "Reward calendar",
+      "help": "Due dates for this reward cycle in this company. They appear on the Approvals board and on each review; they never move, block or approve a review. Leave a date empty when there is no deadline.",
+      "annual": "Annual review: date each step is due",
+      "stage": {
+        "bu": "BU CEO submits",
+        "returned": "Returned review resubmitted",
+        "bg": "BG CEO approves",
+        "gr": "Group Rewards approves",
+        "ctro": "CTRO approves",
+        "ec": "Executive Chairman approves",
+        "payroll": "Posted to payroll"
+      },
+      "caseDue": "ER and PIP case decisions due",
+      "offcycle": "Off-cycle requests: days allowed at each step",
+      "offcycleHelp": "An off-cycle request is due this many days after it reaches the step (1 to 90).",
+      "save": "Save calendar",
+      "readOnly": "Group Rewards or a company HR administrator maintains this calendar.",
+      "notSet": "Not set",
+      "days": "{days, plural, one {# day} other {# days}}"
     }
   },
   "identityEmail": {
@@ -20225,7 +20361,7 @@
     "clientSecret": "Client secret",
     "clientSecretKept": "Leave blank to keep the secret for this same tenant, application and mailbox.",
     "clientSecretNeeded": "Enter the client secret value, not its secret ID.",
-    "microsoft365Help": "Your Microsoft 365 administrator must grant SMTP.SendAsApp and admin consent, register the application in Exchange, and restrict access to the sending mailbox. The username is that mailbox. AI HR automatically obtains short-lived tokens. A different From mailbox also needs Send As permission.",
+    "microsoft365Help": "Your Microsoft 365 administrator must authorize the sending mailbox using SMTP.SendAsApp with admin consent and mailbox grants, or scoped Exchange App RBAC. Register the application in Exchange and allow SMTP AUTH. The username is the authentication mailbox; a different From address also needs Send As permission.",
     "draftTitle": "Relay draft",
     "host": "SMTP host",
     "port": "Port",
@@ -20288,7 +20424,21 @@
       "tlsFailed": "The secure connection could not be verified. Check the encryption setting and the server’s TLS certificate.",
       "connectionFailed": "Could not connect to the SMTP server. Check the hostname, port, encryption and provider’s network access rules.",
       "unavailable": "The connection test could not be completed. Re-enter the password and try again."
-    }
+    },
+    "connectionsTitle": "Outgoing mail connections",
+    "connectionName": "Connection name",
+    "connectionNamePlaceholder": "For example, OneHR Microsoft 365",
+    "newConnection": "New connection",
+    "noConnections": "No SMTP connections have been saved. Create a connection to start sending account emails.",
+    "connectionStatus": "Status",
+    "lastTest": "Last test",
+    "connectionActive": "Active",
+    "connectionSaved": "Saved",
+    "changesPending": "Changes not activated",
+    "notRecorded": "Not recorded",
+    "backToConnections": "Back to connections",
+    "saveConnection": "Save connection",
+    "activeChangesHelp": "The active relay continues using its last activated settings. Save, test and confirm receipt before activating these changes."
   },
   "workflowEmail": {
     "letterAccountTitle": "Letters for this account",
@@ -21453,7 +21603,8 @@
       "failed": "Could not save the move. Try again.",
       "saving": "Saving…",
       "save": "Save move",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "reasonRequired": "Reason (required) · the tier above reads it"
     },
     "talentCurve": {
       "title": "{axis} distribution — {unit}",
@@ -21784,6 +21935,96 @@
         "outstanding": "Outstanding",
         "done": "Complete"
       }
+    },
+    "calibrationList": {
+      "title": "Calibration",
+      "description": "The calibration sessions you can open. Sessions with an open window come first.",
+      "empty": "No calibration is assigned to you.",
+      "groupWide": "Group-wide",
+      "opensOn": "Opens {date}",
+      "closesOn": "Closes {date}",
+      "tiers": {
+        "group": "Group",
+        "bg": "Business group (BG)",
+        "bu": "Business unit (BU)",
+        "hod": "Department (HOD)",
+        "final": "Final"
+      },
+      "columns": {
+        "session": "Session",
+        "cycle": "Cycle",
+        "company": "Company",
+        "window": "Window",
+        "people": "People",
+        "toDo": "To do",
+        "status": "Status"
+      },
+      "window": {
+        "open": "Open",
+        "upcoming": "Not open yet",
+        "closed": "Closed"
+      },
+      "lock": {
+        "open": "In progress",
+        "partial": "Partly locked",
+        "locked": "Locked"
+      }
+    },
+    "talentBoard": {
+      "title": "Talent Box",
+      "people": "{count, plural, one {# person} other {# people}}",
+      "units": "{count, plural, one {# business unit} other {# business units}}",
+      "placed": "{placed} of {total} placed",
+      "lockedState": "Locked",
+      "openState": "Open for review",
+      "sources": "Potential from {cycle} · performance from {cycle}",
+      "businessUnit": "Business unit",
+      "all": "All",
+      "department": "Department",
+      "allDepartments": "All departments",
+      "grade": "Job grade",
+      "allGrades": "All grades",
+      "clearFilters": "Clear filters",
+      "wholeScope": "Showing the whole scope. Narrow it by business unit, department or grade to measure the distribution against that group instead.",
+      "filtered": "{count, plural, one {Measured against the # person in this selection.} other {Measured against the # people in this selection.}}",
+      "views": "Talent Box views",
+      "grid9": "9-box",
+      "grid15": "15-box",
+      "table": "Table",
+      "referenceTitle": "Reference guideline",
+      "showDetails": "Show details",
+      "hideDetails": "Hide details",
+      "onTarget": "On target in every category",
+      "onTargetShort": "On target",
+      "deltaTitle": "{actual} now, {target} at the reference share",
+      "noReference": "This scope has no single performance reference, so no reference shares are shown.",
+      "referenceNote": "Performance reference × potential {high}/{mid}/{low}, over the {placed} placed. It is guidance for the conversation, not a quota.",
+      "columns": {
+        "category": "Category",
+        "count": "Count",
+        "share": "Share",
+        "reference": "Reference",
+        "toMove": "To meet reference"
+      },
+      "capChip": "Moves {used} of {cap}",
+      "capChipUnits": "Moves {used} of {cap} across {count} business units",
+      "capNote": "Category-change limit: {pct}% of each business unit's people, counted per unit. Only a change of talent category counts, and moving someone back returns the allowance.",
+      "cellLabel": "{category}, {potential} potential, {performance}: {count}",
+      "vsRef": "vs {pct}%",
+      "movedUp": "Moved up from {category}",
+      "movedDown": "Moved down from {category}",
+      "moveTo": "Move {name} to another box",
+      "moveMenu": "Move to…",
+      "legendUp": "moved up a box in this calibration",
+      "legendDown": "moved down a box",
+      "potentialAxis": "Potential",
+      "performanceAxis": "Performance →",
+      "columnPerformance": "{level} performance",
+      "footerOpen": "{placed} placed{filtered, select, yes { in this selection} other {}} · locking covers both performance and potential for {scope}",
+      "footerLocked": "Calibration locked for {scope}: performance and potential are final.",
+      "pickUnitToLock": "Choose a business unit above to lock it.",
+      "categoryHelp": "Everyone here whose performance and potential place them in {category}.",
+      "categoryEmpty": "No one here is in {category} right now."
     }
   },
   "allowanceV2": {
@@ -22624,7 +22865,44 @@
       "notEligible": "The invitation or recovery recipient is no longer eligible.",
       "uncertain": "Delivery is uncertain. Check before retrying to avoid duplicate messages."
     },
-    "reference": "Delivery reference"
+    "reference": "Delivery reference",
+    "message": "Message",
+    "recipient": "Recipient",
+    "status": "Status",
+    "dateTime": "Date and time",
+    "actions": "Actions",
+    "viewEmail": "View email",
+    "previewHelp": "Template preview. Live links and security tokens are hidden. This is not a stored copy of the original message.",
+    "resend": "Resend email",
+    "fromDate": "From date",
+    "toDate": "To date",
+    "filter": "Filter",
+    "clearFilters": "Clear filters",
+    "noMatchingEmails": "No account emails match this date range.",
+    "pagination": "Email history pages",
+    "pageSize": "{count} entries on this page",
+    "newest": "Newest",
+    "older": "Older",
+    "resendUnavailable": {
+      "superseded": "Replaced by a newer email.",
+      "closed": "The invitation is no longer pending.",
+      "pending": "An attempt is in progress."
+    },
+    "historyUnavailable": "Email history could not be loaded. Check the date range and try again.",
+    "providerManagedPreview": "The identity provider owns this email template. An original message body was not stored in AIHR.",
+    "retentionTitle": "Delivery log retention",
+    "retentionPeriod": "Retention period",
+    "retentionNever": "Never delete",
+    "retentionCustom": "Delete after a set number of days",
+    "retentionDays": "Days (1–3650)",
+    "retentionSave": "Save retention policy",
+    "retentionHelp": "Applies to invitation and recovery delivery logs across this installation. Cleanup runs hourly when its maintenance timer is installed. Age is measured since the last delivery activity. Pending sends, unexpired invitations and any resend chain containing protected or recent activity are retained. Accounts, invitations and security audit events are preserved.",
+    "retentionAcknowledge": "I understand that eligible logs older than this period, including existing history, will be permanently deleted and will no longer be available to preview or resend from this log.",
+    "retentionSaved": "Retention policy saved. Eligible history will be removed by scheduled cleanup.",
+    "retentionError": "Could not save the retention policy. Reload the page, check the days and deletion acknowledgement, then try again.",
+    "retentionLastRun": "Last successful cleanup: {time}. Removed: {count} records.",
+    "retentionNotRun": "No successful cleanup has been recorded. A maintenance operator must install and verify the cleanup timer.",
+    "retentionUnavailable": "Retention settings are unavailable. Reload the page or contact the installation operator."
   },
   "pageStyleRecovery": {
     "restoring": "Restoring the page…",
@@ -25657,7 +25935,12 @@
       "feedback": "Peer feedback",
       "noticeAcknowledgement": "Notice acknowledgement",
       "replacementLeave": "Replacement leave approval",
-      "onboarding": "Onboarding work"
+      "onboarding": "Onboarding work",
+      "performanceReview": "Performance review",
+      "assessmentWork": "Performance assessment",
+      "careerPlan": "Career plan review",
+      "calibration": "Performance calibration",
+      "rewardReview": "Rewards review"
     },
     "quickActions": {
       "leave": "Apply leave",
@@ -26885,6 +27168,69 @@
       "assetSearch": "Search asset names",
       "companyCodeUnavailable": "Configure a short company reference code or use a format without the company placeholder.",
       "version": "Configuration version {number}"
+    }
+  },
+  "performanceHome": {
+    "title": "Performance",
+    "closes": "Closes {date}",
+    "progress": "{done} of {total} done",
+    "stripLabel": "Steps in this cycle",
+    "steps": {
+      "kpi": "KPI Check-in",
+      "kpiSetting": "KPI setting",
+      "feedback360": "360 Feedback",
+      "competency": "Competency",
+      "careerPlan": "Career Plan",
+      "teamReview": "Team review",
+      "calibration": "Calibration",
+      "results": "Results released"
+    },
+    "states": {
+      "done": "Done",
+      "yourTurn": "Your turn",
+      "waiting": "{count} waiting",
+      "locked": "Locked",
+      "inProgress": "In progress",
+      "released": "Released",
+      "notRequired": "Not required"
+    },
+    "next": {
+      "label": "Your next step",
+      "kpiTitle": "Your KPI check-in",
+      "kpiLine": "{done} of {total} KPIs filled in",
+      "kpiSettingTitle": "Set your KPIs",
+      "kpiSettingLine": "{done} of {total} KPIs proposed",
+      "competencyTitle": "Rate your competencies",
+      "competencyLine": "{done} of {total} answered",
+      "careerPlanTitle": "Write your Career Plan",
+      "careerPlanLine": "{done} goals written, at least {total} needed",
+      "feedback360Title": "360 feedback for {count, plural, one {# colleague} other {# colleagues}}",
+      "feedback360Line": "Answer each statement, then submit.",
+      "due": "Due {date}",
+      "open": "Continue",
+      "none": "Nothing for you to do right now",
+      "opens": "Your next step opens {date}",
+      "closesOn": "This cycle closes {date}"
+    },
+    "team": {
+      "title": "Your team",
+      "waiting": "{count, plural, =0 {nothing waiting on you} one {# review waiting on you} other {# reviews waiting on you}}",
+      "open": "Open team review"
+    },
+    "standing": {
+      "title": "Where you stand",
+      "details": "Details",
+      "performance": "Performance",
+      "competency": "Competency",
+      "feedback360": "360 feedback",
+      "careerTarget": "Career target",
+      "awaitingManager": "Awaiting your manager",
+      "notReleased": "Not released yet",
+      "notSubmitted": "Not submitted yet",
+      "withManager": "With your manager",
+      "reviewed": "Reviewed by your manager",
+      "reportReleased": "Report released",
+      "notSet": "Not set yet"
     }
   }
 }

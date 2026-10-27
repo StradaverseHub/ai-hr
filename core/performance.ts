@@ -1804,6 +1804,10 @@ export function managerPendingReviews(ctx: SessionContext) {
         employeeCode: employment.employeeCode,
         cycleName: reviewCycle.name,
         status: performanceReview.status,
+        // The shared task list (packs/performance/onehr/tasks.ts) projects THIS queue rather than
+        // re-deriving it: it needs the subject's company (the company switcher) and an owner timestamp.
+        companyId: employment.companyId,
+        createdAt: performanceReview.createdAt,
       })
       .from(performanceReview)
       .innerJoin(reviewCycle, eq(reviewCycle.id, performanceReview.cycleId))

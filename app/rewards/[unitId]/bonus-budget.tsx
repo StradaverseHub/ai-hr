@@ -7,7 +7,7 @@ type RewardView=Awaited<ReturnType<typeof getRewardUnit>>;
 type BudgetView=Pick<RewardView,'budgets'|'bonusCounts'|'suggestedMultiplierBp'> & {unit:Pick<RewardView['unit'],'policy'>};
 /** Presentation of the canonical calculated pools; no award or policy is calculated here. */
 export function BonusBudgetCards({value:v,t,locale,adjustment}:{value:BudgetView;t:(key:string)=>string;locale:string;adjustment?:ReactNode}) {
-  const money=(cents:number)=>formatMoney(cents,'MYR');
+  const money=(cents:number)=>formatMoney(cents/100,'MYR');
   const decimal=(number:number,digits=2)=>new Intl.NumberFormat(locale,{minimumFractionDigits:digits,maximumFractionDigits:digits}).format(number);
   const percent=(amount:number,pool:number)=>pool>0?`${decimal(amount/pool*100,1)}%`:'—';
   const policy=v.unit.policy;
