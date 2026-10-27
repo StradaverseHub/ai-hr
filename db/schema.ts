@@ -10683,9 +10683,13 @@ export const aiSpendBudget=aiSpendPrivate.table('ai_spend_budget',{
 export const aiSpendRoot=aiSpendPrivate.table('ai_spend_root',{
  tenantId:tenantId(),rootId:uuid('root_id').notNull(),kind:text('kind').notNull(),createdAt:createdAt(),
 },t=>[primaryKey({columns:[t.tenantId,t.rootId]})]);
+/** Dedicated receipt verifier material is operator-owned; no app SELECT/INSERT/UPDATE grant. */
+export const aiSpendReceiptVerifier=aiSpendPrivate.table('ai_spend_receipt_verifier',{
+ keyId:text('key_id').primaryKey(),secret:bytea('secret').notNull(),enabled:boolean('enabled').notNull().default(true),validFrom:timestamp('valid_from',{withTimezone:true}).notNull().defaultNow(),retiredAt:timestamp('retired_at',{withTimezone:true}),
+});
 export const aiSpendReservation=aiSpendPrivate.table('ai_spend_reservation',{
  runId:uuid('run_id').primaryKey().references(()=>aiModelRun.id),tenantId:tenantId(),rootId:uuid('root_id').notNull(),userId:uuid('user_id').notNull().references(()=>appUser.id),companyIds:uuid('company_ids').array().notNull(),featureId:text('feature_id').notNull(),
- capabilityDigest:text('capability_digest').notNull().references(()=>aiSpendCapability.digest),requestDigest:text('request_digest').notNull(),reservedNanos:bigint('reserved_nanos',{mode:'bigint'}).notNull(),confirmedNanos:bigint('confirmed_nanos',{mode:'bigint'}),state:text('state').notNull().default('held'),createdAt:createdAt(),settledAt:timestamp('settled_at',{withTimezone:true}),
+ capabilityDigest:text('capability_digest').notNull().references(()=>aiSpendCapability.digest),requestDigest:text('request_digest').notNull(),configurationDigest:text('configuration_digest').notNull(),generationId:text('generation_id'),receiptDigest:text('receipt_digest'),reservedNanos:bigint('reserved_nanos',{mode:'bigint'}).notNull(),confirmedNanos:bigint('confirmed_nanos',{mode:'bigint'}),state:text('state').notNull().default('held'),createdAt:createdAt(),settledAt:timestamp('settled_at',{withTimezone:true}),
 },t=>[foreignKey({columns:[t.tenantId,t.rootId],foreignColumns:[aiSpendRoot.tenantId,aiSpendRoot.rootId]})]);
 
 // fcc2ea42 — OT-only version/assignment and immutable source evidence. Schedule Group stays independent.

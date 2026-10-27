@@ -18,7 +18,7 @@ beforeEach(async()=>{await resetDb();b=await seedBase();ctx=adminCtx(b);vi.stubE
 });
 async function reserve(options:{root?:string;digest?:string;kind?:'agent'|'evaluation';lateFailure?:boolean}={}){return withTenant(ctx,async tx=>{
  const[r]=await tx.execute<{run_id:string}>(sql`select * from app.ai_admit('provider_evaluation','draft','openrouter','fictional/model',32)`);
- await tx.execute(sql`select app.ai_spend_reserve(${r.run_id}::uuid,${options.root??root}::uuid,${options.kind??'evaluation'},${options.digest??fixture.digest},${'a'.repeat(64)},1000000::bigint)`);
+ await tx.execute(sql`select app.ai_spend_reserve(${r.run_id}::uuid,${options.root??root}::uuid,${options.kind??'evaluation'},${options.digest??fixture.digest},${'a'.repeat(64)},1000000::bigint,${'c'.repeat(64)})`);
  if(options.lateFailure)throw Error('Fictional later admission persistence failure');return r.run_id;
 });}
 const rows=()=>owner.db.execute<{run_id:string;reserved_nanos:string;confirmed_nanos:string|null;state:string}>(sql`select run_id,reserved_nanos::text,confirmed_nanos::text,state from app.ai_spend_reservation where tenant_id=${b.tenantId}::uuid`);

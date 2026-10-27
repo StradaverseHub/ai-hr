@@ -18,7 +18,7 @@ export function usdToNanos(value:string):bigint{
  if(result>MAX)throw new AiGatewayError('The USD allocation is too large.');return result;
 }
 export function nanosToUsd(value:string):string{
- if(!/^\d+$/.test(value))throw new AiGatewayError('Invalid USD allocation.');const amount=BigInt(value);if(amount>MAX)throw new AiGatewayError('Invalid USD allocation.');
+ if(!/^\d{1,128}$/.test(value))throw new AiGatewayError('Invalid USD allocation.');const amount=BigInt(value);
  const fraction=(amount%BigInt("1000000000")).toString().padStart(9,'0').replace(/0+$/,'');return (amount/BigInt("1000000000")).toString()+(fraction?'.'+fraction:'');
 }
 export function reserveUsdNanos(input:Readonly<{inputUnits:bigint;outputUnits:bigint;inputNanosPerMillion:bigint;outputNanosPerMillion:bigint;requestNanos:bigint}>):bigint{

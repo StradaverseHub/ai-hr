@@ -10,6 +10,7 @@ import type { AiAdmission } from '../lib/ai/governance';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {captureStrictAiSpendRoot,requiresStrictAiSpend,certifiedAiSpendEnvelope,type StrictAiSpendRoot} from '../lib/ai/spend-allocation';
 export type {StrictAiSpendRoot} from '../lib/ai/spend-allocation';
+import {aiSpendConfigurationDigest,createAiSpendReceiptScope} from '../lib/ai/spend-receipt';
 
 /** Reuse the gateway's fresh setting/platform-kill resolution for deterministic action checks. */
 async function forcedPauseTx(tx:Tx,ctx:SessionContext,feature:AiFeatureId):Promise<boolean>{
@@ -56,7 +57,7 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
    ...(request.inputDigest===undefined?{}:{inputDigest:request.inputDigest})});
   if(!['draft','conversation','image'].includes(capturedRequest.operation)||!Number.isSafeInteger(capturedRequest.reservedTokens)||capturedRequest.reservedTokens<0||capturedRequest.reservedTokens>1000000000||
    (capturedRequest.inputDigest!==undefined&&!/^[a-f0-9]{64}$/.test(capturedRequest.inputDigest)))throw new AiGatewayError('The prepared AI request could not be confirmed.');
-  const [admission]=await withTenant(ctx,async tx=>{
+  const preparedAdmission=await withTenant(ctx,async tx=>{
    await assertCurrentAiProviderSnapshotTx(tx,ctx,snapshot,outgoing);
    if(check)try{await check(tx,capturedRequest);}catch(error){
     if(error instanceof AiAllowanceError)throw error;
@@ -69,12 +70,14 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
    // Source-owned envelope only. Current unverified carriers REFUSE here, before token admission
    // and before any provider dispatch. A copied configuration or posted price cannot certify it.
    const envelope=strictSpend?certifiedAiSpendEnvelope(outgoing,capturedRequest):null;
+   if(envelope&&(!ctx.userId||envelope.requestDigest!==capturedRequest.inputDigest))throw new AiGatewayError('The exact AI spend request could not be confirmed.');
    const forcedPause=await forcedPauseTx(tx,ctx,feature);
    const rows=await tx.execute<{run_id:string;allowed:boolean;blocked_reason:string|null}>(sql`select * from app.ai_admit(${feature},${capturedRequest.operation},${cfg.provider},${cfg.model},${capturedRequest.reservedTokens}::bigint,${forcedPause})`);
-   if(rows[0]?.allowed&&envelope&&spendRoot)await tx.execute(sql`select app.ai_spend_reserve(${rows[0].run_id}::uuid,${spendRoot.rootTaskId}::uuid,${spendRoot.kind},${envelope.capabilityDigest},${envelope.requestDigest},${envelope.reservedNanos}::bigint)`);
+   if(rows[0]?.allowed&&envelope&&spendRoot)await tx.execute(sql`select app.ai_spend_reserve(${rows[0].run_id}::uuid,${spendRoot.rootTaskId}::uuid,${spendRoot.kind},${envelope.capabilityDigest},${envelope.requestDigest},${envelope.reservedNanos}::bigint,${aiSpendConfigurationDigest(outgoing)})`);
    if(rows[0]?.allowed&&lifecycle?.admitted)await lifecycle.admitted(tx,Object.freeze({runId:rows[0].run_id,request:capturedRequest}));
-   return rows;
+   return{rows,envelope};
   });
+  const[admission]=preparedAdmission.rows,spendEnvelope=preparedAdmission.envelope;
   if(!admission?.allowed){
    const reason=admission?.blocked_reason;
    if(reason==='paused'||reason==='daily_limit'||reason==='monthly_limit'||reason==='concurrent_limit')throw new AiAllowanceError(reason);
@@ -83,20 +86,23 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
   let actual:number|null=null;
   const accounting=createAiRunAccounting(cfg.provider);
   const record=(usage:AiUsage)=>{const values=[usage.inputTokens,usage.outputTokens,usage.cachedInputTokens];if(values.every(n=>Number.isSafeInteger(n)&&n>=0))actual=values.reduce((a,b)=>a+b,0);};
+  const scope=spendRoot&&spendEnvelope&&ctx.userId?createAiSpendReceiptScope({tenantId:ctx.tenantId,userId:ctx.userId,runId:admission.run_id,rootTaskId:spendRoot.rootTaskId,requestDigest:spendEnvelope.requestDigest,capabilityDigest:spendEnvelope.capabilityDigest,configurationDigest:aiSpendConfigurationDigest(outgoing)}):null;
   let succeeded=false;
-  try{const result=await call(record,accounting.observe);succeeded=true;return result;}
+  try{const result=await(scope?scope.run(()=>call(record,accounting.observe)):call(record,accounting.observe));succeeded=true;return result;}
   finally{
    // A failed write is visible and leaves the reservation held; it must never erase unconfirmed usage.
-   try { const observed=accounting.snapshot(actual);await withTenant(ctx,async tx=>{
+   let breach=false;
+   try { const observed=accounting.snapshot(actual),receipt=scope?.receipt();await withTenant(ctx,async tx=>{
     // Same order as admission. This is ownership only: role revocation must not erase actual usage.
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     await tx.execute(sql`select app.ai_settle_observed(${admission.run_id}::uuid,${succeeded},${actual}::bigint,
     ${observed.providerObservationStatus},${observed.reportedInputTokens}::bigint,${observed.reportedOutputTokens}::bigint,${observed.reportedCachedInputTokens}::bigint,
     ${observed.openrouterAccountCostCredits}::numeric,${observed.observedRoundTripMs}::double precision)`);
-    if(spendRoot)await tx.execute(sql`select app.ai_spend_settle(${admission.run_id}::uuid,null::bigint)`);
+    if(spendRoot){if(receipt){const[state]=await tx.execute<{state:string}>(sql`select app.ai_spend_reconcile_receipt(${receipt.payload},${receipt.signature}) as state`);breach=state?.state==='breach';}else await tx.execute(sql`select app.ai_spend_settle(${admission.run_id}::uuid,null::bigint)`);}
     // A terminal transport/token receipt does not establish USD cost. Keep monetary exposure held.
     if(lifecycle?.settled)await lifecycle.settled(tx,Object.freeze({runId:admission.run_id,succeeded,actualTokens:actual,accounting:observed}));}); }
    catch { throw new AiGatewayError('AI usage could not be confirmed. Its reservation remains held.'); }
+   if(breach)throw new AiGatewayError('The AI inference charge exceeded its verified allocation ceiling. Further strict admissions are paused.');
   }
  }})});
  issuedConfigurations.set(resolved,{ctx,snapshot,feature,check,lifecycle,spendRoot});

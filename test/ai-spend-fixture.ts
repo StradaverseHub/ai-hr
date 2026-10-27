@@ -29,3 +29,11 @@ export async function installSyntheticSpendCapability(ctx:SessionContext,input:{
  });
  return{digest,conversationDigest,reservedNanos:nanos,restore(){selector.mockRestore();}};
 }
+
+/** Explicit TEST-ONLY operator provisioning. Not called by consent or production readiness. */
+export async function installSyntheticSpendReceiptVerifier(keyId='fictional-receipt-v1',secret='2'.repeat(64)){
+ vi.stubEnv('AI_SPEND_RECEIPT_KEY_ID',keyId);vi.stubEnv('AI_SPEND_RECEIPT_SIGNING_KEY',secret);
+ await owner.db.execute(sql`insert into app.ai_spend_receipt_verifier(key_id,secret,valid_from) values(${keyId},decode(${secret},'hex'),now()-interval '1 minute')
+ on conflict(key_id) do update set secret=excluded.secret,valid_from=excluded.valid_from,enabled=true,retired_at=null`);
+ return{keyId,secret};
+}

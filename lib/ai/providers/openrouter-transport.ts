@@ -6,6 +6,8 @@ import { AiGatewayError, type ConverseArgs } from '../types';
 import { buildOpenRouterRoutingPolicy } from './openrouter-policy';
 import { readOpenRouterCompletion } from './openrouter-completion';
 import { readOpenRouterAccounting,type OpenRouterAccounting } from './openrouter-accounting';
+import {observeOpenRouterSpendTerminal} from '../spend-receipt';
+import {readOpenRouterOptions} from './openrouter-configuration';
 
 const ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
 const MAX_BYTES = 2 * 1024 * 1024;
@@ -90,7 +92,7 @@ export function buildOpenRouterRequest(configuration: unknown, argumentsValue: u
   } catch { throw unavailable(); }
 }
 
-export async function readOpenRouterJsonResponse(response: Response, signal: AbortSignal, expired: () => boolean): Promise<unknown> {
+export async function readOpenRouterJsonResponse(response: Response, signal: AbortSignal, expired: () => boolean,onRaw?:(raw:string)=>void): Promise<unknown> {
   if (!response.ok || response.headers.get('content-type')?.split(';')[0].trim().toLowerCase() !== 'application/json') {
     void response.body?.cancel().catch(() => {}); throw unavailable();
   }
@@ -112,7 +114,7 @@ export async function readOpenRouterJsonResponse(response: Response, signal: Abo
     }
     const body = new Uint8Array(bytes); let offset = 0;
     for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength; }
-    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(body));
+    const raw=new TextDecoder('utf-8', { fatal: true }).decode(body),value=JSON.parse(raw);onRaw?.(raw);return value;
   } catch { void reader.cancel().catch(() => {}); throw unavailable(); }
   finally { signal.removeEventListener('abort', cancel); reader.releaseLock(); }
 }
@@ -143,7 +145,9 @@ export function createOpenRouterTransport(fetcher: typeof fetch) {
         const response = await fetcher(ENDPOINT, { method: 'POST', redirect: 'error', cache: 'no-store',
           headers: { Authorization: 'Bearer ' + cfg.apiKey, 'Content-Type': 'application/json' },
           body, signal: controller.signal });
-        const value = await readOpenRouterJsonResponse(response, controller.signal, () => performance.now() - started >= timeoutMs);
+        let raw='';
+        const expired=()=>performance.now()-started>=timeoutMs;
+        const value = await readOpenRouterJsonResponse(response, controller.signal,expired,text=>{raw=text;});
         if (controller.signal.aborted || performance.now() - started >= timeoutMs) throw unavailable();
         const usage = value && typeof value === 'object' ? (value as Record<string, unknown>).usage : undefined;
         const accounting=readOpenRouterAccounting(usage),elapsedMs=performance.now()-started;
@@ -151,6 +155,7 @@ export function createOpenRouterTransport(fetcher: typeof fetch) {
         // completion. Observe exactly once BEFORE content parsing; never expose the body/cause.
         // Official: /docs/cookbook/administration/usage-accounting and /docs/api_reference/errors-and-debugging.
         onTerminal?.(Object.freeze({accounting,elapsedMs}));
+        await observeOpenRouterSpendTerminal(raw,{provider:'openrouter',model:cfg.model,apiKey:cfg.apiKey,providerOptions:readOpenRouterOptions({version:1,routing:cfg.routing})},controller.signal,expired,fetcher,async metadataResponse=>{let text='';await readOpenRouterJsonResponse(metadataResponse,controller.signal,expired,raw=>{text=raw;});return text;});
         const completion = readOpenRouterCompletion(value);
         return { completion, accounting, elapsedMs };
       };
