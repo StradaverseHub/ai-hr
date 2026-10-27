@@ -106,7 +106,7 @@ export async function openOwnedSignedClock(employmentId:string,isUnlocked:()=>bo
   platform,capabilities,key,
   status:()=>owned(()=>journal.status(employmentId)),
   start:(requestId:string)=>owned(()=>journal.start(employmentId,requestId)),
-  advance:()=>owned(()=>journal.advance(employmentId)),
-  recover:(abandon=false)=>owned(()=>journal.recover(employmentId,abandon)),
+  advance:(requestId?:string)=>owned(()=>journal.advance(employmentId,requestId)),
+  recover:(abandon=false,requestId?:string)=>owned(()=>journal.recover(employmentId,abandon,requestId)),
  };
 }

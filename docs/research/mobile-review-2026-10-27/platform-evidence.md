@@ -1740,3 +1740,42 @@ control. Later changes only correct carrier comments and document evidence. No l
 slots, tenant rollout, real credential setup, shared migration apply, staging deployment, store
 submission or physical-device acceptance occurred. Native signed-clock integration and the broader
 integrity/offline/employee/approver acceptance criteria remain unfinished.
+
+### Native signed-clock journal and owned transport (27 October 2026)
+
+The focused workflow now has an opt-in native TypeScript job, using the locked mobile dependencies
+and strict Expo project on a standard Ubuntu runner. Its default is false and other checks/release
+holds are unchanged. The baseline controller/candidate
+`f0481d69df7e341915902a61194a8a8899306e2a` passed the contract suite and native compiler in
+[40508784511](https://github.com/StradaverseHub/ai-hr/actions/runs/40508784511).
+This is focused development evidence, not release eligibility.
+
+Initial journal candidate `d970d692db1d177cb9fb7563f50c32c6de5424e4` ran in
+[40510096643](https://github.com/StradaverseHub/ai-hr/actions/runs/40510096643).
+Eight suites produced 123 passing and seven failing cases. All seven failures identified the same
+actual defect: terminal cleanup passed a full pending record to the strict reference-only schema,
+preventing settlement. The root compiler also found two overly broad test-mock return types.
+The native compiler passed. Every requested job finished before publishing the repair. Original
+failure logs remain on that run.
+
+The repair/adapter checkpoint `1adaa6f516c6d73740e6f22408522a2b50754631` passed
+[40511450496](https://github.com/StradaverseHub/ai-hr/actions/runs/40511450496):
+eleven selected files, 167 cases, root TypeScript and the strict native TypeScript project.
+The root compiler took 3:47.18 at the original failed checkpoint and 2:54.92 on repair
+(maximum RSS 7,828,624 KiB, exit 0). No local compiler or test slot was used.
+
+Passing files and counts: encrypted native storage 26; API client 35; submission recovery 17;
+employee journey screens 20; device enrollment assembly 25; signed clock journal 13; owned signed
+clock assembly 4; draft/journey controls 5; foreground location capture 9; actual installed Expo
+multipart encoder 1; company setup 12. Earlier unaffected passes remain valid for submission
+journal 19, Apple enrollment journal 21, Android enrollment journal 14, signing-key handoff 4 and
+integrity contract 10. These combine to sixteen files / 235 cases for this layer at this checkpoint.
+
+The assembly tests execute the shipped controller, real journal/bridge/Android signing adapter and
+canonical hash encoding with synthetic OS, storage and server ports. Separate native storage tests
+use real AES-GCM with fake filesystem/Keychain ports. They cover receipt recovery with disabled
+providers/missing base work, restart/proof reuse, exact command/photo/source binding, nullable source
+facts, privacy/account changes, encrypted scope separation, missing commit/installation pointers,
+terminal cleanup at quota and server-ordered abandonment. They do not certify a real Apple/Google
+verdict, SDK provisioning, physical device, current native binary, deployment or complete screen
+acceptance. Screen integration is the next checkpoint; no migration or rollout was applied.

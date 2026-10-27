@@ -121,3 +121,15 @@ describe('durable signed clock attempt ordering and recovery',()=>{
    expect(()=>parseSignedClockSnapshot({...stored,...change},scope)).toThrow('Signed clocking unavailable');
  });
 });
+
+
+describe('atomic expected-request ownership',()=>{
+ it('refuses a different current lease before receipt lookup, abandonment or signing',async()=>{
+  const f=fixture(),j=f.journal();await j.start(employmentId,requestId);
+  await expect(j.advance(employmentId,actorId)).rejects.toBeInstanceOf(SignedClockConflict);
+  await expect(j.recover(employmentId,false,actorId)).rejects.toBeInstanceOf(SignedClockConflict);
+  await expect(j.recover(employmentId,true,actorId)).rejects.toBeInstanceOf(SignedClockConflict);
+  expect(f.ports.receipt).not.toHaveBeenCalled();expect(f.ports.abandon).not.toHaveBeenCalled();expect(f.ports.sign).not.toHaveBeenCalled();
+  expect(f.stored()?.pending?.requestId).toBe(requestId);
+ });
+});

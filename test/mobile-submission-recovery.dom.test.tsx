@@ -161,3 +161,12 @@ describe('restored plaintext lifecycle',()=>{
   expect(f.discard).toHaveBeenCalledWith(file);expect(f.journal.resolve).not.toHaveBeenCalled();
  });
 });
+
+
+it('checks the signed marker from the shared owner without restoring a second plaintext file',async()=>{
+ const f=fixture();f.entry.integrity={version:1,source:{provider:null,mock:null,simulated:null,accessory:null}};
+ render(<f.Probe/>);await screen.findByText('ready');const restores=f.journal.restore.mock.calls.length;
+ expect(await f.control().hasSignedAttempt(f.entry.requestId)).toBe(true);
+ expect(await f.control().hasSignedAttempt('another-request')).toBe(false);
+ expect(f.journal.restore).toHaveBeenCalledTimes(restores);expect(f.apiPost).not.toHaveBeenCalled();
+});

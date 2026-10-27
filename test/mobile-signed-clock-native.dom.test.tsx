@@ -45,7 +45,7 @@ function fixture(platform:'ios'|'android'){
   if(path.endsWith('/complete')){accepted=true;return {outcome:'accepted',receipt};}throw new Error(path);
  });
  class File{constructor(readonly uri:string){}get exists(){return files.has(this.uri);}delete(){files.delete(this.uri);}}
- const output={exports:{} as {openOwnedSignedClock:(employment:string,unlocked:()=>boolean)=>Promise<{status:()=>Promise<journal.SignedClockStatus>;start:(id:string)=>Promise<journal.SignedClockStatus>;advance:()=>Promise<journal.SignedClockStatus>;recover:(abandon?:boolean)=>Promise<journal.SignedClockStatus>}>}};
+ const output={exports:{} as {openOwnedSignedClock:(employment:string,unlocked:()=>boolean)=>Promise<{status:()=>Promise<journal.SignedClockStatus>;start:(id:string)=>Promise<journal.SignedClockStatus>;advance:(requestId?:string)=>Promise<journal.SignedClockStatus>;recover:(abandon?:boolean,requestId?:string)=>Promise<journal.SignedClockStatus>}>}};
  runInNewContext(transpileModule(readFileSync('mobile/lib/signed-clock.ts','utf8'),{compilerOptions:{module:ModuleKind.CommonJS}}).outputText,{
   exports:output.exports,module:output,FormData,structuredClone,require:(id:string)=>{
    if(id==='react-native')return {AppState:{currentState:'active'},Platform:{OS:platform}};
@@ -102,4 +102,13 @@ describe('owned signed-clock native assembly',()=>{
   await expect(controller.start(requestId)).rejects.toBeInstanceOf(errors.SessionChangedError);
   expect(f.handoff).not.toHaveBeenCalled();expect(f.base.restore).not.toHaveBeenCalled();expect(f.apiPost).not.toHaveBeenCalled();
  });
+});
+
+
+it('the owned native adapter forwards expected request identity into the atomic journal operation',async()=>{
+ const f=fixture('ios'),controller=await f.open();await controller.start(requestId);
+ const reads=f.apiGet.mock.calls.length;
+ await expect(controller.advance(actorId)).rejects.toBeInstanceOf(journal.SignedClockConflict);
+ await expect(controller.recover(true,actorId)).rejects.toBeInstanceOf(journal.SignedClockConflict);
+ expect(f.apiGet).toHaveBeenCalledTimes(reads);expect(f.apiPost).not.toHaveBeenCalled();expect(f.native.assertAppleKey).not.toHaveBeenCalled();
 });

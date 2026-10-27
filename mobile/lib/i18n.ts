@@ -11,6 +11,12 @@
 import { getLocales } from 'expo-localization';
 
 const en = {
+  signedClockUnavailable: "Signed device clocking is unavailable. Your saved work is retained.",
+  signedClockRegistrationRequired: "Register this device before using signed attendance.",
+  signedClockPending: "This signed attendance attempt is unresolved. Check its receipt, retry the saved attempt, or discard it through the company server.",
+  signedClockOtherPending: "A signed attendance attempt is pending under another work profile. Select that profile to check its receipt, or contact HR.",
+  signedClockSavedUnavailable: "The saved signed command could not be read. Check its receipt or discard it through the company server.",
+
   clockIntegrityRequired: "Your work profile requires signed device clocking. Contact HR if it is not available.",
   integrityEnrollmentTitle: "This device",
   integrityEnrollmentHint: "Register this device with your work profile. Registration does not confirm attendance or location.",
@@ -264,6 +270,12 @@ const en = {
 export type MessageKey = keyof typeof en;
 
 const ms: Record<MessageKey, string> = {
+  signedClockUnavailable: "Rekod kehadiran bertandatangan tidak tersedia. Maklumat tersimpan anda dikekalkan.",
+  signedClockRegistrationRequired: "Daftarkan peranti ini sebelum merekod kehadiran bertandatangan.",
+  signedClockPending: "Cubaan kehadiran bertandatangan ini belum disahkan. Semak resit, cuba semula cubaan tersimpan, atau buangnya melalui pelayan syarikat.",
+  signedClockOtherPending: "Cubaan kehadiran bertandatangan masih tertunda di bawah profil kerja lain. Pilih profil itu untuk menyemak resit atau hubungi HR.",
+  signedClockSavedUnavailable: "Arahan bertandatangan tersimpan tidak dapat dibaca. Semak resit atau buangnya melalui pelayan syarikat.",
+
   clockIntegrityRequired: "Profil kerja anda memerlukan rekod waktu bertandatangan peranti. Hubungi HR jika fungsi ini tidak tersedia.",
   integrityRevokeLabel: "Batalkan kunci {id}",
   integrityEnrollmentTitle: "Peranti ini",

@@ -106,6 +106,12 @@ export function useSubmissionRecovery(kind:SubmissionKind,employmentId:string|un
       if(receipt.requestId!==requestId)throw new SubmissionJournalUnavailable('Unexpected attempt receipt');
       if(entry.stage==='preparation'){await journal.markAttemptReported(requestId,receipt);check();}return receipt;
     },
+    async hasSignedAttempt(requestId:string){
+      check();if(kind!=='clock'||!employmentId)throw new SubmissionJournalUnavailable('Submission employment is unavailable');
+      const journal=await ownedJournal(employmentId,owner);check();
+      const entry=(await journal.pending()).find(value=>value.kind==='clock'&&value.requestId===requestId);check();
+      return !!entry?.integrity;
+    },
     async stage(command:string,file?:EvidenceFile,source?:ClockSourceSignals){
       check();if(!employmentId||state.key!==key||!state.ready)throw new SubmissionJournalUnavailable('Pending submissions have not been checked');
       const journal=await ownedJournal(employmentId,owner);check();

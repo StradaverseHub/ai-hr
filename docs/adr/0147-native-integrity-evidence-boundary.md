@@ -1088,6 +1088,17 @@ Account/connection/employment, foreground and privacy-lock guards surround async
 the API also runs the operation guard immediately before each send, including its single token
 refresh retry. Its new signed routes have no legacy transport fallback.
 
-This is implementation of the recovery/transport layer. Connecting the attendance screen, physical
-vendor provisioning/acceptance, OS source-information support, offline attendance and the remaining
+This implements the recovery/transport layer. Physical vendor provisioning/acceptance,
+OS source-information support, offline attendance and the remaining
 employee/approver flows are still required. Existing deployment rollouts remain disabled.
+
+The attendance screen now discovers signed clock capability before capture, offers registration for
+a missing key, restores the signed marker/source facts and uses the owned assembly for signed
+submissions. A retained signed attempt never uses the unsigned clock transport. Missing optional
+discovery on an older server or an explicitly unconfigured deployment can preserve legacy behavior
+only before signed staging; other discovery failures cannot silently select that behavior.
+Signed retry reads the encrypted retained attempt instead of recapturing/re-staging a photo.
+A receipt can be checked without a readable attachment or current vendor SDK, and explicit discard
+uses server-ordered abandonment. The journal checks the expected request ID inside its serialized
+operation, preventing another screen's settled/replaced lease from being retried or displayed as
+the reviewed attempt. This does not complete physical-device acceptance or activate rollout.

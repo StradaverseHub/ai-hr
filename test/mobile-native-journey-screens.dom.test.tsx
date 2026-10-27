@@ -9,31 +9,49 @@ import {afterEach,describe,expect,it,vi} from 'vitest';
 import {DEFAULT_MOBILE_DESIGN,mobilePalette} from '../lib/mobile-design';
 import * as errors from '../mobile/lib/errors';
 import * as contract from '../lib/mobile-api/contract';
+import * as enrollment from '../mobile/lib/enrollment-journal';
+import type {SignedClockStatus} from '../mobile/lib/signed-clock-journal';
 import * as journal from '../mobile/lib/submission-journal';
 function load(path:string,ports:Record<string,unknown>){const module={exports:{} as any};runInNewContext(transpileModule(readFileSync(path,'utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX}}).outputText,{exports:module.exports,module,FormData,Date,Error,require:(id:string)=>{if(id==='react')return React;if(id==='react/jsx-runtime')return jsx;if(id in ports)return ports[id];throw new Error('Missing native screen port '+id);}});return module.exports;}
-function fixture(){
-  let drafts:any,sequence=0;const reload=vi.fn(),get=vi.fn(),post=vi.fn(),remove=vi.fn(),capture=vi.fn(async()=>({lat:3,lng:101,accuracy:5,sampledAt:Date.now()}));
+function fixture(platform:'ios'|'android'='ios'){
+  let drafts:any,sequence=0;const reload=vi.fn(),get=vi.fn(),post=vi.fn(),remove=vi.fn(),capture=vi.fn<()=>Promise<{lat:number;lng:number;accuracy:number;sampledAt:number;permissionAccuracy?:'precise'|'approximate'|'unavailable';source?:import('../lib/mobile-clock-integrity').ClockSourceSignals}>>(async()=>({lat:3,lng:101,accuracy:5,sampledAt:Date.now(),source:{provider:null,mock:false,simulated:null,accessory:null}}));
   const photo=vi.fn<()=>Promise<any>>(async()=>null);
   const reloadAttempts=vi.fn(),attemptsState={items:[] as any[]};
   const preview=vi.fn<(...args:unknown[])=>Promise<any>>(async()=>({outcome:'not_enforced',siteId:null,siteName:null,distanceM:null,radiusM:null,accuracyM:5,maximumAccuracyM:null}));
   const session={employmentId:'own',status:'signedIn',signOut:vi.fn()};
   const View=({children}:any)=><div>{children}</div>,Text=({children,accessibilityRole}:any)=><span role={accessibilityRole==='alert'?'alert':undefined}>{children}</span>;
   const Pressable=(p:any)=><button disabled={p.disabled} role={p.accessibilityRole??'button'} aria-label={p.accessibilityLabel} aria-checked={p.accessibilityState?.checked} onClick={p.onPress}>{p.children}</button>;
-  const native={View,Text,Pressable,TextInput:(p:any)=><input aria-label={p.accessibilityLabel} disabled={!p.editable} value={p.value} onChange={e=>p.onChangeText(e.target.value)}/>,Image:()=>null,AppState:{currentState:'active'},Platform:{OS:'ios'}};
+  const alert=vi.fn();
+  const native={Alert:{alert},View,Text,Pressable,TextInput:(p:any)=><input aria-label={p.accessibilityLabel} disabled={!p.editable} value={p.value} onChange={e=>p.onChangeText(e.target.value)}/>,Image:()=>null,AppState:{currentState:'active'},Platform:{OS:platform}};
   const base={'react-native':native,'./session':{useSession:()=>session},'./auth':{authGeneration:()=>1,assertAuthGeneration:()=>{}},'./design':{DesignText:Text,useTenantDesign:()=>({design:DEFAULT_MOBILE_DESIGN,palette:mobilePalette(DEFAULT_MOBILE_DESIGN,'dark')})},'./errors':errors,'./i18n':{appLocale:()=>'en',t:(s:string,v?:any)=>s==='awayToday'?`${s} ${v.n}/${v.total}`:s},'expo-crypto':{randomUUID:()=>`request-${++sequence}`},'expo-router':{useFocusEffect:()=>{},router:{push:vi.fn()}}};
   const provider=load('mobile/lib/journey-drafts.tsx',{...base,'expo-file-system':{File:class{exists=false},Directory:class{exists=false},Paths:{cache:'cache'}}});
   const ui={Button:(p:any)=><button disabled={p.disabled} onClick={p.onPress}>{p.title}</button>,Card:View,Muted:Text,Row:({label,value}:any)=><p>{label}: {value}</p>,LoadState:()=>null,fmtDays:(n:unknown)=>n==null?'—':String(n)};
   const clockState={enabled:true,employmentId:'own',state:{date:'2026-01-01',clockedIn:false,geofencingRequired:false,workedSeconds:0,shift:{code:null,start:null,end:null},attendancePhotoSetting:'not_required',deviceRequired:false,captures:[],legacy:[]}};
   const teamState={enabled:true,today:'2026-01-01',items:[{employmentId:'a',name:'Approved Away',dates:[{date:'2026-01-01',status:'approved',session:'full_day'}]},{employmentId:'b',name:'Pending Colleague',dates:[{date:'2026-01-01',status:'pending',session:'AM'}]}]};
-  const stage=vi.fn(async(command:string,file?:unknown)=>({command,file})),resolve=vi.fn(async()=>{});
+  let signedState:SignedClockStatus={status:'empty'},restoredClock:any;
+  const retained=new Set<string>();
+  const signed={
+    status:vi.fn(async()=>signedState),
+    capabilities:vi.fn<()=>Promise<any>>(async()=>({outcome:'unavailable',code:'not_configured'})),
+    key:vi.fn(async()=>({})),
+    recover:vi.fn<((abandon?:boolean,requestId?:string)=>Promise<SignedClockStatus>)>(async()=>signedState),
+    start:vi.fn(async(id:string)=>{signedState={status:'pending',phase:'intent',requestId:id,action:'in'};return signedState;}),
+    advance:vi.fn<(requestId?:string)=>Promise<SignedClockStatus>>(async()=>{signedState={status:'empty'};return {status:'accepted',receipt:{id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',direction:'in',date:'2026-01-01',recordedAt:'2026-01-01T08:00:00.000Z',photoAvailable:false}};}),
+  };
+  const openSigned=vi.fn(async()=>signed);
+  const hasSignedAttempt=vi.fn(async(id:string)=>retained.has(id));
+  const stage=vi.fn(async(command:string,file?:unknown,source?:unknown)=>{if(source)retained.add(JSON.parse(command).requestId);return {command,file};}),resolve=vi.fn(async()=>{});
   const prepareClock=vi.fn(async(action:string,requestId:string)=>({requestId,kind:'clock',stage:'preparation',createdAt:Date.now(),command:JSON.stringify({action,requestId,claimedAt:Date.now()})}));
   const reportAttempt=vi.fn(async(requestId:string)=>({requestId,receivedAt:new Date().toISOString()}));
-  const shared={...base,'./submission-journal':journal,'../../lib/mobile-api/contract':contract,'./submission-recovery':{useSubmissionRecovery:()=>({ready:true,error:null,reload:()=>{},stage,resolve,prepareClock,reportAttempt})},'./journey-drafts':{...provider,removeLocalFile:remove},'./ui':ui,'./api':{apiGet:get,apiPost:(path:string,...args:unknown[])=>path==='clock-location'?preview(...args):post(path,...args),useApi:(path:string)=>({data:path==='clock-attempts'?attemptsState:path==='team'?teamState:clockState,reload:path==='clock-attempts'?reloadAttempts:reload,loading:false,error:null})},'./capture':{capturePosition:capture,capturePhoto:photo,appendAttachment:()=>{}},'./device-registration':{readClockDevice:async()=>null,writeClockDevice:async()=>{},clearClockDevice:async()=>{}},'./slide-confirm':{SlideConfirm:(p:any)=><button disabled={p.disabled} onClick={p.onConfirm}>{p.label}</button>},'expo-document-picker':{getDocumentAsync:async()=>({canceled:true})},'expo-file-system':{}};
+  const shared={...base,'./submission-journal':journal,'../../lib/mobile-api/contract':contract,'./enrollment-journal':enrollment,'./signed-clock':{openOwnedSignedClock:openSigned},'./submission-recovery':{useSubmissionRecovery:(_kind:string,_id:string,onRestore:(value:unknown)=>void)=>{
+    React.useEffect(()=>{if(restoredClock){const value=restoredClock;if(value.entry.integrity)retained.add(value.entry.requestId);onRestore(value);}},[]);
+    return {ready:true,error:null,reload:()=>{},stage,resolve,prepareClock,reportAttempt,hasSignedAttempt};
+  }},'./journey-drafts':{...provider,removeLocalFile:remove},'./ui':ui,'./api':{apiGet:get,apiPost:(path:string,...args:unknown[])=>path==='clock-location'?preview(...args):post(path,...args),useApi:(path:string)=>({data:path==='clock-attempts'?attemptsState:path==='team'?teamState:clockState,reload:path==='clock-attempts'?reloadAttempts:reload,loading:false,error:null})},'./capture':{capturePosition:capture,capturePhoto:photo,appendAttachment:()=>{}},'./device-registration':{readClockDevice:async()=>null,writeClockDevice:async()=>{},clearClockDevice:async()=>{}},'./slide-confirm':{SlideConfirm:(p:any)=><button disabled={p.disabled} onClick={p.onConfirm}>{p.label}</button>},'expo-document-picker':{getDocumentAsync:async()=>({canceled:true})},'expo-file-system':{}};
   const {ClockPanel}=load('mobile/lib/clock-panel.tsx',shared),{LeaveRequestForm}=load('mobile/lib/leave-request-form.tsx',shared),{TeamPanel}=load('mobile/lib/team-panel.tsx',shared);
   function Probe(){drafts=provider.useJourneyDrafts();return null;}
   const options={employmentId:'own',items:[{id:'annual',name:'Annual leave',durations:['full_day','half_day_am','hourly'],allowedMimeTypes:[],maxDocBytes:10485760,requiresDocument:false,emergencySplit:false}]};
   function App({kind,refreshToken=0}:{kind:'clock'|'leave'|'team';refreshToken?:number}){return <provider.JourneyDraftProvider><Probe/>{kind==='clock'?<ClockPanel refreshToken={refreshToken}/>:kind==='team'?<TeamPanel refreshToken={refreshToken}/>:<LeaveRequestForm options={options} today="2026-01-01" onSubmitted={reload}/>}</provider.JourneyDraftProvider>;}
-  return {App,post,preview,get,capture,reload,stage,resolve,prepareClock,reportAttempt,remove,teamState,clockState,photo,attemptsState,reloadAttempts,drafts:()=>drafts};
+  return {App,post,signed,openSigned,alert,hasSignedAttempt,setSignedState:(value:SignedClockStatus)=>{signedState=value;},restoreClock:(value:unknown)=>{restoredClock=value;},preview,get,capture,reload,stage,resolve,prepareClock,reportAttempt,remove,teamState,clockState,photo,attemptsState,reloadAttempts,drafts:()=>drafts};
 }
 afterEach(cleanup);
 describe('native clock job',()=>{
@@ -165,4 +183,72 @@ describe('explicit receipt lookup',()=>{
     fireEvent.click(screen.getByText('checkReceipt'));await screen.findByText('requestRecorded');expect(f.post).toHaveBeenCalledTimes(2);
     expect(f.get).toHaveBeenCalledWith('submission-receipt',{kind:'leave',requestId:id,employmentId:'own'});
   });
+});
+
+
+describe('signed native clock screen',()=>{
+ for(const platform of ['ios','android'] as const){
+  it(platform+' selects signed mode, saves source metadata and never calls the unsigned clock endpoint',async()=>{
+   const f=fixture(platform);f.signed.capabilities.mockResolvedValue({outcome:'capabilities'});
+   render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('slideRecord');
+   expect(f.drafts().clock.clockProtocol).toBe('signed');fireEvent.click(screen.getByText('slideRecord'));
+   await screen.findByText('clockRecorded');expect(f.stage).toHaveBeenCalledOnce();
+   expect(f.stage.mock.calls[0][2]).toEqual({provider:null,mock:false,simulated:null,accessory:null});
+   expect(f.signed.start).toHaveBeenCalledOnce();expect(f.signed.advance).toHaveBeenCalledOnce();expect(f.resolve).not.toHaveBeenCalled();
+   expect(f.post).not.toHaveBeenCalled();expect(f.reportAttempt).toHaveBeenCalledOnce();
+  });
+ }
+ it('retries the retained signed command after connection loss without a second capture or stage',async()=>{
+  const f=fixture();f.signed.capabilities.mockResolvedValue({outcome:'capabilities'});f.signed.advance.mockRejectedValueOnce(new errors.UnavailableError());
+  render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('slideRecord');fireEvent.click(screen.getByText('slideRecord'));
+  await screen.findByRole('button',{name:'retrySameClock'});const id=f.drafts().clock.requestId;
+  fireEvent.click(screen.getByRole('button',{name:'retrySameClock'}));await screen.findByText('clockRecorded');
+  expect(f.stage).toHaveBeenCalledOnce();expect(f.capture).toHaveBeenCalledOnce();expect(f.signed.start.mock.calls.map(([id])=>id)).toEqual([id,id]);expect(f.post).not.toHaveBeenCalled();
+ });
+ it('blocks a new capture while another work profile owns an unresolved signed attempt',async()=>{
+  const f=fixture();f.setSignedState({status:'other_pending'});render(<f.App kind="clock"/>);
+  await screen.findByText('signedClockOtherPending');expect(screen.getByText('slidePrepare')).toBeDisabled();
+  expect(f.capture).not.toHaveBeenCalled();expect(f.prepareClock).not.toHaveBeenCalled();expect(f.signed.key).not.toHaveBeenCalled();
+ });
+ it('offers device registration before capture if the signed key is missing',async()=>{
+  const f=fixture();f.signed.capabilities.mockResolvedValue({outcome:'capabilities'});f.signed.key.mockRejectedValue(new enrollment.EnrollmentConflict());
+  render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));await screen.findByRole('button',{name:'integrityEnrollmentTitle'});
+  expect(f.capture).not.toHaveBeenCalled();expect(f.prepareClock).not.toHaveBeenCalled();expect(f.stage).not.toHaveBeenCalled();expect(f.post).not.toHaveBeenCalled();
+ });
+ it('does not choose unsigned clocking when signed discovery is unavailable',async()=>{
+  const f=fixture();f.signed.capabilities.mockRejectedValue(new errors.UnavailableError());
+  render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));await waitFor(()=>expect(f.drafts().clock.phase).toBe('idle'));
+  expect(f.capture).not.toHaveBeenCalled();expect(f.prepareClock).not.toHaveBeenCalled();expect(f.post).not.toHaveBeenCalled();
+ });
+ it('restores the signed marker and refuses transport downgrade when the deployment route disappears',async()=>{
+  const f=fixture(),id='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  const command={requestId:id,action:'in',lat:3,lng:101,accuracy:5,sampledAt:Date.now()};
+  f.restoreClock({entry:{kind:'clock',requestId:id,integrity:{version:1,source:{provider:null,mock:false,simulated:null,accessory:null}}},command:JSON.stringify(command)});
+  f.signed.start.mockRejectedValue(new errors.RequestRejectedError(404));
+  render(<f.App kind="clock"/>);await screen.findByRole('button',{name:'retrySameClock'});fireEvent.click(screen.getByRole('button',{name:'retrySameClock'}));
+  await waitFor(()=>expect(f.signed.start).toHaveBeenCalled());await waitFor(()=>expect(f.drafts().clock.phase).toBe('uncertain'));
+  expect(f.drafts().clock.clockProtocol).toBe('signed');expect(f.capture).not.toHaveBeenCalled();expect(f.stage).not.toHaveBeenCalled();expect(f.post).not.toHaveBeenCalled();expect(f.resolve).not.toHaveBeenCalled();
+ });
+ it('hydrates a global pending reference without capturing or uploading, and recovers its receipt without a photo',async()=>{
+  const f=fixture();f.setSignedState({status:'pending',requestId:'saved-global',action:'in',phase:'sent'});
+  render(<f.App kind="clock"/>);await screen.findByRole('button',{name:'checkReceipt'});
+  expect(f.capture).not.toHaveBeenCalled();expect(f.signed.advance).not.toHaveBeenCalled();expect(f.reportAttempt).not.toHaveBeenCalled();
+  f.signed.recover.mockResolvedValue({status:'accepted',receipt:{id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',direction:'in',date:'2026-01-01',recordedAt:'2026-01-01T08:00:00.000Z',photoAvailable:true}});
+  fireEvent.click(screen.getByRole('button',{name:'checkReceipt'}));await screen.findByText('clockRecorded');expect(f.resolve).not.toHaveBeenCalled();expect(f.post).not.toHaveBeenCalled();
+ });
+ it('requires explicit discard confirmation and keeps pending work until server-ordered abandonment',async()=>{
+  const f=fixture();f.setSignedState({status:'pending',requestId:'saved-global',action:'in',phase:'sent'});
+  f.signed.recover.mockImplementation(async abandon=>abandon?{status:'abandoned'}:{status:'pending',requestId:'saved-global',action:'in',phase:'sent'});
+  render(<f.App kind="clock"/>);await screen.findByRole('button',{name:'pendingDiscard'});fireEvent.click(screen.getByRole('button',{name:'pendingDiscard'}));
+  expect(f.signed.recover).not.toHaveBeenCalled();expect(f.alert).toHaveBeenCalledOnce();
+  await act(async()=>{f.alert.mock.calls[0][2][1].onPress();});await screen.findByText('pendingDiscarded');
+  expect(f.signed.recover).toHaveBeenCalledWith(true,'saved-global');expect(f.resolve).not.toHaveBeenCalled();expect(f.capture).not.toHaveBeenCalled();
+ });
+ it('never presents another request’s accepted receipt as the reviewed attempt',async()=>{
+  const f=fixture();f.signed.capabilities.mockResolvedValue({outcome:'capabilities'});
+  render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('slideRecord');
+  f.setSignedState({status:'pending',requestId:'different-request',action:'in',phase:'sent'});
+  fireEvent.click(screen.getByText('slideRecord'));await screen.findByRole('button',{name:'retrySameClock'});
+  expect(f.signed.recover).not.toHaveBeenCalled();expect(f.signed.advance).not.toHaveBeenCalled();expect(screen.queryByText('clockRecorded')).toBeNull();expect(f.post).not.toHaveBeenCalled();
+ });
 });
