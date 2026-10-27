@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {OfflineClockReceipt,OfflineClockDecision} from '../lib/mobile-offline-receipt';
+import {OfflineClockReceipt,OfflineClockDecision,OfflineClockServiceRefusal} from '../lib/mobile-offline-receipt';
 import {offlineClockReportedBounds} from '../lib/mobile-api/offline-clock-time';
 const id='00000001-aaaa-4aaa-8aaa-aaaaaaaaaaaa',issuedAt=1793055753390;
 const claim=(minimumNs:string,maximumNs:string)=>({time:{claimedAt:issuedAt,elapsed:{status:'elapsed' as const,minimumNs,maximumNs,continuity:'same_process' as const}}});
@@ -22,5 +22,12 @@ describe('versioned offline receipts and unverified duration bounds',()=>{
  it('admits only named dispositions and an actual capture/effective instant for acceptance',()=>{
   expect(OfflineClockDecision.safeParse({outcome:'needs_review',reason:'continuity_unknown'}).success).toBe(true);
   for(const value of [{outcome:'accepted',reason:'clock_accepted'},{outcome:'refused',reason:'clock_accepted'},{outcome:'needs_review',reason:'AI_says_yes'},{outcome:'accepted',reason:'clock_accepted',captureId:id,effectiveAt:issuedAt,verified:true}])expect(OfflineClockDecision.safeParse(value).success).toBe(false);
+ });
+ it('keeps the request-collision refusal service-owned, terminal and without an attendance instant',()=>{
+  const conflict={...receipt,outcome:'refused',reason:'request_conflict'};
+  expect(OfflineClockReceipt.parse(conflict).reason).toBe('request_conflict');expect(OfflineClockServiceRefusal.parse({outcome:'refused',reason:'request_conflict'}).reason).toBe('request_conflict');
+  for(const change of [{outcome:'needs_review'},{outcome:'accepted'},{captureId:id},{effectiveAt:issuedAt+25},{outcome:'accepted',captureId:id,effectiveAt:issuedAt+25}])expect(OfflineClockReceipt.safeParse({...conflict,...change}).success).toBe(false);
+  for(const outcome of ['refused','needs_review'])expect(OfflineClockDecision.safeParse({outcome,reason:'request_conflict'}).success).toBe(false);
+  expect(OfflineClockServiceRefusal.safeParse({outcome:'needs_review',reason:'request_conflict'}).success).toBe(false);
  });
 });

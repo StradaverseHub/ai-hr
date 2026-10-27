@@ -10,13 +10,18 @@ export const OfflineClockDecision=z.discriminatedUnion('outcome',[
  z.object({outcome:z.literal('refused'),reason:OfflineClockReviewReason}).strict(),
 ]);
 export type OfflineClockDecision=z.infer<typeof OfflineClockDecision>;
+/** Service-owned terminal refusals (owner decision 2026-10-28), never an adjudicator answer: a request ID
+ * already recorded by an attendance capture is refused before policy runs. */
+export const OfflineClockServiceRefusal=z.object({outcome:z.literal('refused'),reason:z.literal('request_conflict')}).strict();
+export type OfflineClockDisposition=OfflineClockDecision|z.infer<typeof OfflineClockServiceRefusal>;
 export const OfflineClockReceipt=z.object({version:z.literal(1),purpose:z.literal('attendance.clock.offline.receipt'),
  id:uuid,contextId:uuid,requestId:uuid,sequence:z.number().int().min(1).max(OFFLINE_CLOCK_CONTEXT_CLAIM_LIMIT),digest:sha,
- outcome:z.enum(['accepted','needs_review','refused']),reason:z.union([z.literal('clock_accepted'),OfflineClockReviewReason]),
+ outcome:z.enum(['accepted','needs_review','refused']),reason:z.union([z.literal('clock_accepted'),OfflineClockReviewReason,OfflineClockServiceRefusal.shape.reason]),
  receivedAt:instant,effectiveMinimum:instant.nullable(),effectiveMaximum:instant.nullable(),effectiveAt:instant.nullable(),captureId:uuid.nullable(),
  photo:z.object({sha256:sha,retainedUntil:instant}).strict().nullable(),
 }).strict().refine(r=>(r.effectiveMinimum===null)===(r.effectiveMaximum===null))
  .refine(r=>r.effectiveMinimum===null||r.effectiveMaximum!>=r.effectiveMinimum)
+ .refine(r=>r.reason!=='request_conflict'||r.outcome==='refused')
  .refine(r=>r.outcome==='accepted'?r.reason==='clock_accepted'&&r.captureId!==null&&r.effectiveAt!==null&&r.effectiveMinimum!==null&&r.effectiveAt>=r.effectiveMinimum&&r.effectiveAt<=r.effectiveMaximum!:
   r.reason!=='clock_accepted'&&r.captureId===null&&r.effectiveAt===null);
 export type OfflineClockReceipt=z.infer<typeof OfflineClockReceipt>;

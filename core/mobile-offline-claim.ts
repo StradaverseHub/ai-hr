@@ -9,7 +9,8 @@ import {actorOf,appendEvent} from '../db/events';
 import {encryptSecret,isSecretStorable} from '../lib/ai/crypto';
 import {AppleEnrollmentSettings} from '../lib/mobile-key-enrollment';
 import {OfflineClockSignedClaim,offlineClockClaimClientData} from '../lib/mobile-offline-clock';
-import {OfflineClockDecision,OfflineClockReceipt} from '../lib/mobile-offline-receipt';
+import {OfflineClockDecision,OfflineClockReceipt,type OfflineClockDisposition} from '../lib/mobile-offline-receipt';
+import {HR_LOCAL_TZ,todayInKualaLumpur} from '../lib/hr-date';
 import {offlineClockContextClientData,type OfflineClockContextData} from '../lib/mobile-offline-context';
 import {verifyOfflineClockProof} from '../lib/mobile-api/offline-clock-proof';
 import {offlineClockReportedBounds,type OfflineClockReportedBounds} from '../lib/mobile-api/offline-clock-time';
@@ -26,10 +27,11 @@ export type OfflineClaimPorts={
   * fresh payload-bound Play check here; iOS must not generate a later transport assertion. */
  prepare(ctx:SessionContext,facts:OfflineClaimFacts):Promise<{assertFresh(tx:Tx,facts:OfflineClaimFacts):Promise<void>}>;
  /** Deterministic policy owner. Accepted must call the canonical offline attendance writer in this
-  * same tx and return its capture; review/refusal creates no attendance fact. No network/nested tx. */
+  * same tx and return its capture, whose live punch records exactly effectiveAt; review/refusal creates
+  * no attendance fact. No network/nested tx. Not called for a request ID an attendance capture already holds. */
  adjudicate(tx:Tx,ctx:SessionContext,facts:OfflineClaimFacts,photo:OfflineClaimPhoto|null):Promise<unknown>;
  /** Recheck deployment/issuer/current-key/policy eligibility after tentative writes. */
- beforeCommit(tx:Tx,ctx:SessionContext,facts:OfflineClaimFacts,decision:OfflineClockDecision):Promise<void>;
+ beforeCommit(tx:Tx,ctx:SessionContext,facts:OfflineClaimFacts,decision:OfflineClockDisposition):Promise<void>;
 };
 export class OfflineClaimError extends Error{
  constructor(readonly reason:'configuration_unavailable'|'scope_unavailable'|'context_unavailable'|'key_unavailable'|'binding_conflict'|'chain_conflict'|'invalid_proof'|'attachment_mismatch'|'time_unavailable'){
@@ -111,17 +113,31 @@ export function createOfflineClaimService(settings:unknown,ports:OfflineClaimPor
     const {facts,stream,proof}=current;
     const seal=()=>hash(JSON.stringify([offlineClockClaimClientData(facts.claim),offlineClockContextClientData(facts.context),facts.key.id,facts.key.assertionCounter,facts.receivedAt,facts.currentCompanyId,facts.bounds]));
     const originalSeal=seal(),originalKeyId=facts.key.id;
+    await prepared.assertFresh(tx,facts);
+    // Owner decision 2026-10-28: a request ID an attendance capture already holds (tenant/employment/request,
+    // its unique key) is refused before policy. The subject lock follows key/stream, as in the canonical
+    // clock writers, which take it before their own request lookup; it is held to commit.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+facts.claim.scope.employmentId},0))`);
+    const [recorded]=await tx.select({id:attendanceClockCapture.id}).from(attendanceClockCapture).where(and(eq(attendanceClockCapture.tenantId,ctx.tenantId),
+     eq(attendanceClockCapture.employmentId,facts.claim.scope.employmentId),eq(attendanceClockCapture.requestId,facts.claim.command.requestId))).limit(1);
     // The policy owner receives a copy; the image bytes retained below never leave this service.
-    await prepared.assertFresh(tx,facts);const parsedDecision=OfflineClockDecision.safeParse(await ports.adjudicate(tx,ctx,facts,photo&&{bytes:Buffer.from(photo.bytes),mimeType:photo.mimeType}));if(!parsedDecision.success)throw unavailable();const decision=parsedDecision.data;
+    let decision:OfflineClockDisposition;
+    if(recorded)decision={outcome:'refused',reason:'request_conflict'};
+    else{const parsedDecision=OfflineClockDecision.safeParse(await ports.adjudicate(tx,ctx,facts,photo&&{bytes:Buffer.from(photo.bytes),mimeType:photo.mimeType}));if(!parsedDecision.success)throw unavailable();decision=parsedDecision.data;}
     if(seal()!==originalSeal)throw new OfflineClaimError('binding_conflict');
     if(!photoMatches(signed,photo))throw new OfflineClaimError('attachment_mismatch');
-    if(facts.currentCompanyId!==facts.context.scope.companyId&&(decision.outcome==='accepted'||decision.reason!=='scope_changed'))throw unavailable();
+    if(facts.currentCompanyId!==facts.context.scope.companyId&&(decision.outcome==='accepted'||(decision.reason!=='scope_changed'&&decision.reason!=='request_conflict')))throw unavailable();
     if(decision.outcome==='accepted'&&(facts.bounds.status!=='reported_interval'||facts.bounds.minimum<facts.context.issuedAt||facts.bounds.maximum>facts.context.expiresAt||decision.effectiveAt<facts.bounds.minimum||decision.effectiveAt>facts.bounds.maximum))throw unavailable();
     if(decision.outcome==='accepted'){
-     const [punch]=await tx.select({id:attendancePunch.id}).from(attendancePunch).innerJoin(attendanceClockCapture,eq(attendanceClockCapture.id,attendancePunch.clockCaptureId)).where(and(
+     // Owner decision 2026-10-28: the linked live punch records exactly effectiveAt, else the whole tx rolls back.
+     // punch_at is PostgreSQL time (microsecond) on attendance_date, both MYT wall clock; the integer-millisecond
+     // instant must equal it at that native precision, and attendance_date must be the instant's MYT day.
+     const effective=new Date(decision.effectiveAt);
+     const [punch]=await tx.select({id:attendancePunch.id,date:attendancePunch.attendanceDate,
+      exact:sql<boolean>`timezone(${HR_LOCAL_TZ}::text,${attendancePunch.attendanceDate}+${attendancePunch.punchAt})=${effective.toISOString()}::timestamptz`}).from(attendancePunch).innerJoin(attendanceClockCapture,eq(attendanceClockCapture.id,attendancePunch.clockCaptureId)).where(and(
       eq(attendanceClockCapture.id,decision.captureId),eq(attendanceClockCapture.tenantId,ctx.tenantId),eq(attendanceClockCapture.employmentId,facts.claim.scope.employmentId),eq(attendanceClockCapture.requestId,facts.claim.command.requestId),
       eq(attendancePunch.tenantId,ctx.tenantId),eq(attendancePunch.employmentId,facts.claim.scope.employmentId),eq(attendancePunch.direction,facts.claim.command.action),isNull(attendancePunch.voidedAt))).limit(1);
-     if(!punch)throw unavailable();
+     if(!punch||punch.date!==todayInKualaLumpur(effective)||punch.exact!==true)throw unavailable();
     }
     const now=await stamp(tx),retainedUntil=photo?new Date(now.getTime()+config.photoRetentionMs):null;
     if(retainedUntil&&!Number.isFinite(retainedUntil.getTime()))throw unavailable();

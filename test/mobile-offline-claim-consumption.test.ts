@@ -1,7 +1,7 @@
 /** Real signatures/SQL/RLS/custody/counters. Vendor preparation and adjudication policy are synthetic.
  * Accepted cases call the existing canonical writer; offline provenance/readers remain separate work. */
 import {createHash,randomUUID} from 'node:crypto';
-import {and,eq,sql} from 'drizzle-orm';
+import {and,asc,eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import * as S from '../db/schema';
 import {createOfflineClaimService,offlineClaimPhotoAAD,type OfflineClaimPorts} from '../core/mobile-offline-claim';
@@ -9,6 +9,7 @@ import {purgeExpiredOfflinePhotos} from '../core/mobile-offline-photo-retention'
 import {revokeOwnIntegrityKey} from '../core/mobile-integrity-key';
 import {checkOutTx} from '../core/attendance';
 import {setAttendancePolicy} from '../packs/attendance/service';
+import {withAttendanceTenant} from '../core/module-gate';
 import {decryptSecret} from '../lib/ai/crypto';
 import {offlineClockClaimClientData} from '../lib/mobile-offline-clock';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -30,8 +31,11 @@ async function untouched(f:Awaited<ReturnType<typeof offlineServiceFixture>>){
  const [key]=await owner.db.select().from(S.mobileIntegrityKey).where(eq(S.mobileIntegrityKey.id,f.key.id)),[stream]=await owner.db.select().from(S.mobileOfflineContext).where(eq(S.mobileOfflineContext.id,f.context.id));
  expect(key.assertionCounter).toBe(0);expect(stream.nextSequence).toBe(1);expect(stream.previousDigest).toBeNull();expect(stream.closedAt).toBeNull();
 }
-async function accept(tx:Parameters<OfflineClaimPorts['adjudicate']>[0],ctx:Parameters<OfflineClaimPorts['adjudicate']>[1],facts:Parameters<OfflineClaimPorts['adjudicate']>[2],at=facts.bounds.status==='reported_interval'?facts.bounds.minimum:facts.context.issuedAt){
- const date=todayInKualaLumpur(new Date(at)),time=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kuala_Lumpur',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(new Date(at));
+// Canonical punch_at is MYT wall time; milliseconds are written so an exact effectiveAt can be linked.
+const mytTime=(at:number)=>new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kuala_Lumpur',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(new Date(at))+'.'+String(at%1000).padStart(3,'0');
+/** `written` shifts only the canonical punch away from the returned effectiveAt (a faulty policy owner). */
+async function accept(tx:Parameters<OfflineClaimPorts['adjudicate']>[0],ctx:Parameters<OfflineClaimPorts['adjudicate']>[1],facts:Parameters<OfflineClaimPorts['adjudicate']>[2],at=facts.bounds.status==='reported_interval'?facts.bounds.minimum:facts.context.issuedAt,written:{ms?:number;days?:number}={}){
+ const punchAt=at+(written.ms??0),date=todayInKualaLumpur(new Date(punchAt+(written.days??0)*86400000)),time=mytTime(punchAt);
  const [capture]=await tx.insert(S.attendanceClockCapture).values({tenantId:ctx.tenantId,employmentId:facts.claim.scope.employmentId,attendanceDate:date,direction:facts.claim.command.action,requestId:facts.claim.command.requestId,serverRecordedAt:new Date(facts.receivedAt),lat:facts.claim.command.lat,lng:facts.claim.command.lng,accuracyM:facts.claim.command.accuracy,commandDigest:digest(offlineClockClaimClientData(facts.claim))}).returning();
  await checkOutTx(ctx,{employmentId:facts.claim.scope.employmentId,date,time,geo:{lat:facts.claim.command.lat,lng:facts.claim.command.lng,accuracy:facts.claim.command.accuracy},clockCaptureId:capture.id,preciseOrder:true},tx);
  return {outcome:'accepted',reason:'clock_accepted',captureId:capture.id,effectiveAt:at};
@@ -88,6 +92,30 @@ describe('ordered transactional offline claim consumption',()=>{
   expect(result).toMatchObject({outcome:'accepted',reason:'clock_accepted',effectiveAt:f.context.issuedAt,effectiveMinimum:f.context.issuedAt});expect(result.receivedAt).toBeGreaterThanOrEqual(result.effectiveAt!);
   expect(await owner.db.select().from(S.attendancePunch).where(eq(S.attendancePunch.clockCaptureId,result.captureId!))).toHaveLength(1);
  });
+ it.each([['one millisecond after',1,0],['on the next attendance day from',0,1]] as const)('rolls back everything when the linked punch is recorded %s effectiveAt, and accepts the exact instant',async(_label,ms,days)=>{
+  await policy();const f=await offlineServiceFixture(base),c=consumer();c.adjudicate.mockImplementation((tx,ctx,facts)=>accept(tx,ctx,facts,undefined,{ms,days}));
+  await expect(c.service().consume(f.ctx,f.signed())).rejects.toMatchObject({reason:'configuration_unavailable'});expect(c.adjudicate).toHaveBeenCalledOnce();
+  await untouched(f);expect(await owner.db.select().from(S.attendanceClockCapture)).toHaveLength(0);expect(await owner.db.select().from(S.attendance).where(eq(S.attendance.employmentId,f.e.employmentId))).toHaveLength(0);
+  expect(await owner.db.select().from(S.domainEvent).where(eq(S.domainEvent.eventType,'mobile.offline.claim.processed'))).toHaveLength(0);
+  c.adjudicate.mockImplementation((tx,ctx,facts)=>accept(tx,ctx,facts));const result=await c.service().consume(f.ctx,f.signed());
+  expect(result).toMatchObject({outcome:'accepted',reason:'clock_accepted',effectiveAt:f.context.issuedAt});
+  const [punch]=await owner.db.select().from(S.attendancePunch).where(eq(S.attendancePunch.clockCaptureId,result.captureId!));expect(punch.attendanceDate).toBe(todayInKualaLumpur(new Date(result.effectiveAt!)));
+ });
+ it('refuses a request ID an attendance capture already holds before policy runs, with a stable terminal receipt',async()=>{
+  await policy();const f=await offlineServiceFixture(base),c=consumer(),requestId=f.claim.command.requestId;c.adjudicate.mockImplementation((tx,ctx,facts)=>accept(tx,ctx,facts));
+  await owner.db.insert(S.attendanceClockCapture).values({tenantId:base.tenantId,employmentId:f.e.employmentId,attendanceDate:todayInKualaLumpur(),direction:'in',requestId,serverRecordedAt:new Date(),commandDigest:'c'.repeat(64)});
+  expect(await owner.db.select().from(S.attendanceClockCapture).where(eq(S.attendanceClockCapture.requestId,requestId))).toHaveLength(1);
+  const result=await c.service().consume(f.ctx,f.signed());
+  expect(result).toMatchObject({outcome:'refused',reason:'request_conflict',requestId,captureId:null,effectiveAt:null,digest:digest(offlineClockClaimClientData(f.claim))});
+  expect(c.adjudicate).not.toHaveBeenCalled();expect(c.fresh).toHaveBeenCalledTimes(2);expect(c.beforeCommit).toHaveBeenCalledOnce();expect(c.beforeCommit.mock.calls[0][3]).toEqual({outcome:'refused',reason:'request_conflict'});
+  expect(await owner.db.select().from(S.mobileOfflineClaim)).toMatchObject([{id:result.id,requestId,outcome:'refused',reason:'request_conflict',captureId:null,effectiveAt:null}]);
+  expect((await owner.db.select().from(S.mobileOfflineContext))[0]).toMatchObject({nextSequence:2,previousDigest:result.digest,closedAt:null});
+  expect((await owner.db.select().from(S.mobileIntegrityKey).where(eq(S.mobileIntegrityKey.id,f.key.id)))[0].assertionCounter).toBe(1);
+  const events=await owner.db.select().from(S.domainEvent).where(and(eq(S.domainEvent.eventType,'mobile.offline.claim.processed'),eq(S.domainEvent.aggregateId,result.id)));
+  expect(events).toHaveLength(1);expect(events[0].payload).toMatchObject({outcome:'refused',reason:'request_conflict'});
+  expect(await c.service().consume(f.ctx,f.signed())).toEqual(result);expect(c.adjudicate).not.toHaveBeenCalled();
+  expect(await owner.db.select().from(S.attendancePunch)).toHaveLength(0);expect(await owner.db.select().from(S.attendanceClockCapture)).toHaveLength(1);
+ });
  it.each(['unknown','outside'] as const)('cannot turn %s timing into accepted attendance even if a callback tries',async mode=>{
   await policy();const f=await offlineServiceFixture(base),c=consumer(),claim=mode==='unknown'?{...f.claim,time:{...f.claim.time,elapsed:{status:'unknown' as const,reason:'continuity_unknown' as const}}}:f.claim;
   c.adjudicate.mockImplementation((tx,ctx,facts)=>accept(tx,ctx,facts,mode==='outside'?f.context.issuedAt-60000:f.context.issuedAt));
@@ -123,13 +151,25 @@ describe('ordered transactional offline claim consumption',()=>{
   const f=await offlineServiceFixture(base),c=consumer(),bytes=Buffer.from('retained only on commit'),claim={...f.claim,command:{...f.claim.command,photo:{sha256:digest(bytes),byteLength:bytes.length,mimeType:'image/jpeg' as const}}};
   c.beforeCommit.mockRejectedValueOnce(new Error('policy changed'));await expect(c.service().consume(f.ctx,f.signed(claim),{bytes,mimeType:'image/jpeg'})).rejects.toThrow('policy changed');await untouched(f);
  });
- it('purges only expired tenant photos under group-admin authority, retaining the stable claim receipt',async()=>{
-  const f=await offlineServiceFixture(base),c=consumer(),bytes=Buffer.from('short test retention'),claim={...f.claim,command:{...f.claim.command,photo:{sha256:digest(bytes),byteLength:bytes.length,mimeType:'image/jpeg' as const}}};c.config.photoRetentionMs=1000;
-  const result=await c.service().consume(f.ctx,f.signed(claim),{bytes,mimeType:'image/jpeg'});expect(await purgeExpiredOfflinePhotos(adminCtx(base))).toEqual({purged:0});
-  await expect(purgeExpiredOfflinePhotos(f.ctx)).rejects.toThrow('Only a group administrator');
-  await owner.db.execute(sql`select pg_sleep(greatest(0,extract(epoch from (${new Date(result.photo!.retainedUntil).toISOString()}::timestamptz-clock_timestamp())))+0.02)`);
-  const a=await purgeExpiredOfflinePhotos(adminCtx(base));expect(a).toEqual({purged:1});expect(await owner.db.select().from(S.mobileOfflinePhoto)).toHaveLength(0);expect(await c.service().consume(f.ctx,f.signed(claim))).toEqual(result);
-  expect(await owner.db.select().from(S.domainEvent).where(and(eq(S.domainEvent.eventType,'mobile.offline.photo.purged'),eq(S.domainEvent.aggregateId,result.id)))).toHaveLength(1);
+ it('lets a group admin read and purge only expired photos, never retained ciphertext, keeping stable receipts',async()=>{
+  const f=await offlineServiceFixture(base),c=consumer(),kept=Buffer.from('retained for an hour'),short=Buffer.from('short test retention'),jpeg='image/jpeg' as const;
+  const photoOf=(bytes:Buffer)=>({sha256:digest(bytes),byteLength:bytes.length,mimeType:jpeg});
+  const ids=(rows:{claimId:string}[])=>rows.map(row=>row.claimId),custody=async()=>ids(await owner.db.select({claimId:S.mobileOfflinePhoto.claimId}).from(S.mobileOfflinePhoto).orderBy(asc(S.mobileOfflinePhoto.retainedUntil),asc(S.mobileOfflinePhoto.claimId)));
+  // Application role under tenant context and RLS, not the owner connection.
+  const visible=async(ctx:typeof f.ctx)=>ids(await withAttendanceTenant(ctx,tx=>tx.select({claimId:S.mobileOfflinePhoto.claimId}).from(S.mobileOfflinePhoto).orderBy(asc(S.mobileOfflinePhoto.retainedUntil),asc(S.mobileOfflinePhoto.claimId))));
+  const firstClaim={...f.claim,command:{...f.claim.command,photo:photoOf(kept)}},first=await c.service().consume(f.ctx,f.signed(firstClaim),{bytes:kept,mimeType:jpeg});
+  // Non-vacuous: the unexpired custody row exists and its actor still reads it; the group admin does not.
+  expect(first.photo!.retainedUntil-first.receivedAt).toBeGreaterThanOrEqual(3600000-60000);expect(await custody()).toEqual([first.id]);expect(await visible(f.ctx)).toEqual([first.id]);expect(await visible(adminCtx(base))).toEqual([]);
+  expect(await withAttendanceTenant(adminCtx(base),tx=>tx.delete(S.mobileOfflinePhoto).where(eq(S.mobileOfflinePhoto.claimId,first.id)).returning({claimId:S.mobileOfflinePhoto.claimId}))).toEqual([]);
+  expect(await purgeExpiredOfflinePhotos(adminCtx(base))).toEqual({purged:0});await expect(purgeExpiredOfflinePhotos(f.ctx)).rejects.toThrow('Only a group administrator');expect(await custody()).toEqual([first.id]);
+  const secondClaim={...f.claim,permit:f.context.permits[1],chain:{sequence:2,previousSha256:first.digest},command:{...f.claim.command,requestId:randomUUID(),photo:photoOf(short)}};
+  c.config.photoRetentionMs=5000;const second=await c.service().consume(f.ctx,f.signed(secondClaim),{bytes:short,mimeType:jpeg});
+  // Expiry is read from the database clock that the policy, delete trigger and purge all use.
+  await owner.db.execute(sql`select pg_sleep(greatest(0,extract(epoch from (${new Date(second.photo!.retainedUntil).toISOString()}::timestamptz-clock_timestamp())))+0.02)`);
+  expect(await custody()).toEqual([second.id,first.id]);expect(await visible(f.ctx)).toEqual([second.id,first.id]);expect(await visible(adminCtx(base))).toEqual([second.id]);
+  expect(await purgeExpiredOfflinePhotos(adminCtx(base))).toEqual({purged:1});expect(await custody()).toEqual([first.id]);expect(await visible(adminCtx(base))).toEqual([]);
+  expect(await c.service().consume(f.ctx,f.signed(secondClaim))).toEqual(second);expect(await c.service().consume(f.ctx,f.signed(firstClaim))).toEqual(first);
+  const purged=await owner.db.select({aggregateId:S.domainEvent.aggregateId}).from(S.domainEvent).where(eq(S.domainEvent.eventType,'mobile.offline.photo.purged'));expect(purged).toEqual([{aggregateId:second.id}]);
  });
  it('requires all current verification/adjudication guards and explicit photo retention configuration',()=>{
   const c=consumer();expect(()=>createOfflineClaimService(c.config,{prepare:c.prepare,adjudicate:c.adjudicate} as never)).toThrow();expect(()=>createOfflineClaimService({...c.config,photoRetentionMs:0},c.ports)).toThrow();

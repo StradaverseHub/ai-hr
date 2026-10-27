@@ -192,8 +192,11 @@ ALTER TABLE mobile_offline_photo ENABLE ROW LEVEL SECURITY;
 ALTER TABLE mobile_offline_photo FORCE ROW LEVEL SECURITY;
 REVOKE ALL ON mobile_offline_photo FROM PUBLIC,ai_hr_app;
 GRANT SELECT,INSERT,DELETE ON mobile_offline_photo TO ai_hr_app;
+-- Owner decision 2026-10-28: a group admin reads (and so can DELETE ... RETURNING) only expired rows, never
+-- retained ciphertext. Same clock_timestamp() expiry test as the delete policy and trigger below.
 CREATE POLICY mobile_offline_photo_read ON mobile_offline_photo FOR SELECT USING
- (tenant_id=app.current_tenant_id() AND ((actor_id=app.current_user_id() AND app.mobile_integrity_subject(employment_id)) OR app.is_group_admin()));
+ (tenant_id=app.current_tenant_id() AND ((actor_id=app.current_user_id() AND app.mobile_integrity_subject(employment_id))
+ OR (retained_until<=clock_timestamp() AND app.is_group_admin())));
 CREATE POLICY mobile_offline_photo_insert ON mobile_offline_photo FOR INSERT WITH CHECK
  (tenant_id=app.current_tenant_id() AND actor_id=app.current_user_id() AND app.mobile_integrity_subject(employment_id));
 CREATE POLICY mobile_offline_photo_delete ON mobile_offline_photo FOR DELETE USING
