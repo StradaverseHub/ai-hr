@@ -1,3 +1,4 @@
+import {SpecialistCandidateChoices} from './specialist-candidate-choices';
 import {randomUUID} from 'node:crypto';
 import {getTranslations} from 'next-intl/server';
 import {Card,inputCls,btnPrimary} from '../ui';
@@ -27,19 +28,12 @@ export async function ModuleSpecialistReview({view}:{view:View}){
  return <Card className="p-5"><details><summary className="min-h-11 cursor-pointer text-sm font-medium">{t('title')}</summary>
   <div className="mt-3 space-y-5"><p className="text-xs text-muted-foreground">{t('intro')}</p>
    <form action={createSpecialistCandidateAction} className="space-y-3">
-    <label className="block text-sm">{t('module')}<select name="moduleVersion" required className={`${inputCls} mt-1 min-h-11 w-full`}>
-     {view.modules.map(row=><option key={row.module} value={`${row.module}:${row.nextVersion}`}>{record({module:row.module,version:row.nextVersion})}</option>)}
-    </select></label>
+    <SpecialistCandidateChoices modules={view.modules.map(row=>({value:`${row.module}:${row.nextVersion}`,module:row.module,label:record({module:row.module,version:row.nextVersion})}))} evidence={view.ownNativeSignalChoices.map(signal=>({value:signal.associationId,module:signal.module,label:jobs(`module_${signal.module}`)+' · '+native(`action_${signal.action.replace(/[.-]/g,'_')}`)}))} messages={{module:t('module'),nativeTitle:native('candidateTitle'),nativeIntro:native('candidateIntro'),nativeNone:native('candidateNone')}}/>
     <label className="block text-sm">{t('strategy')}<select name="playbook" defaultValue="canonical_domain_v1" required className={`${inputCls} mt-1 min-h-11 w-full`}><option value="canonical_domain_v1">{t('strategySummary')}</option><option value="canonical_followup_v1">{t('strategyDiagnostic')}</option></select></label><p className="text-xs text-muted-foreground">{t('strategyScope')}</p>
     {view.ownSignalChoices.length>0&&<fieldset className="space-y-2"><legend className="text-sm">{t('signalsTitle')}</legend><p className="text-xs text-muted-foreground">{t('signalsConsent')}</p>
      {view.ownSignalChoices.map(signal=><label key={signal.id} className="flex min-h-11 items-center gap-2 text-xs"><input type="checkbox" name="signalId" value={signal.id}/><span>{jobs(`module_${signal.module}`)} · {signals(`signal_${signal.outcome}`)}</span></label>)}
     </fieldset>}
     {view.signalChoicesTruncated&&<p className="text-xs text-muted-foreground">{t('signalsTruncated')}</p>}
-    {view.ownNativeSignalChoices.length>0&&<label className="block text-sm">{native('candidateTitle')}
-     <span className="mt-1 block text-xs text-muted-foreground">{native('candidateIntro')}</span>
-     <select name="nativeSignalId" defaultValue="" className={`${inputCls} mt-1 min-h-11 w-full`}>
-      <option value="">{native('candidateNone')}</option>{view.ownNativeSignalChoices.map(signal=><option key={signal.associationId} value={signal.associationId}>{jobs(`module_${signal.module}`)} · {native(`action_${signal.action.replace(/[.-]/g,'_')}`)}</option>)}
-     </select></label>}
     {view.nativeSignalChoicesTruncated&&<p className="text-xs text-muted-foreground">{t('signalsTruncated')}</p>}
     <button type="submit" disabled={!view.modules.length} className={`${btnPrimary} min-h-11`}>{t('create')}</button>
    </form>

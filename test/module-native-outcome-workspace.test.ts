@@ -1,3 +1,4 @@
+import {eraseOwnNativeOutcomeAssociations} from '../core/module-native-outcomes';
 /** Authored UNRUN. Actual canonical Leave fixture and app-role discovery; migrations must be installed normally. */
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
@@ -47,4 +48,11 @@ describe('own completed native outcome discovery',()=>{
   const rows=await withTenant(f.mine.ctx,tx=>tx.execute(sql`select * from app.native_outcome_completed_review_choices('["leave.apply"]'::jsonb)`));expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({action:'leave.apply',action_id:f.mine.review.actionId});expect(Object.keys(rows[0]).sort()).toEqual(['action','action_id','created_at']);
   for(const input of ['[]','null','{}','["leave.apply","leave.apply"]','["unknown.action"]','[42]'])await expect(withTenant(f.mine.ctx,tx=>tx.execute(sql`select * from app.native_outcome_completed_review_choices(${input}::jsonb)`))).rejects.toThrow();
  });
+});
+
+/** Authored UNRUN: erased/historical captures are not advertised as usable association choices. */
+it('hides old completed source nominations after own learning erasure without changing the human completion',async()=>{
+ const f=await fixture();await complete(f.mine);expect((await loadOwnNativeOutcomeWorkspace(f.mine.ctx,f.mine.job.jobId)).choices).toHaveLength(1);const before=await counts();
+ await eraseOwnNativeOutcomeAssociations(f.mine.ctx);expect((await loadOwnNativeOutcomeWorkspace(f.mine.ctx,f.mine.job.jobId)).choices).toEqual([]);
+ expect(await counts()).toEqual(before);const [row]=await owner.db.execute<{state:string}>(sql`select state from app.assistant_own_leave_review where id=${f.mine.review.actionId}::uuid`);expect(row.state).toBe('completed');
 });
