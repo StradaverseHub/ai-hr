@@ -846,3 +846,42 @@ review policy remain separate from command-signature acceptance.
 
 The owner has deferred Huawei work for now and prioritized Android and iPhone. That changes the
 work order, not the evidence bar: full native builds and physical-device acceptance remain required.
+
+## Current Android evidence policy boundary
+
+`AndroidClockIntegrityPolicy` now defines deployment-owned, explicit requirements for the current
+Google verdict: device versus strong device labels, licensed versus any evaluated licensing,
+bounded token age/future skew, and separate rules for reported mock, simulation and accessory flags.
+It has no defaults, wildcard allowances or missing-provider success mode. Missing/invalid settings,
+policy or credentials make the operation unavailable before a Google call. No policy is activated
+by defining this schema; enrollment permission remains separate from clock rollout permission.
+
+`createAndroidClockIntegrityVerifier` composes the existing fixed-endpoint, bounded standard-token
+decoder instead of accepting a phone-supplied decoded verdict. Google must bind the actual canonical
+command hash, package, every signer and build first. The policy then requires recognized app/device
+evidence, selected licensing and freshness, and the configured source-signal rules. Basic, virtual or
+strong-only labels without the device label do not satisfy the required device baseline. Unknown
+vendor labels remain unavailable. Licensing unevaluated and a required-but-unavailable source flag
+remain unavailable; unlicensed or reported source flags have distinct refusals where the selected
+policy disallows them. Explicitly tolerated unavailable/allowed source facts remain intact.
+
+The alternative of treating a historical enrolled key or client `false` flag as current assurance is
+rejected. Google evidence describes its documented app/device/account checks, not authenticated GPS
+or attendance. A successful result is **eligible** for this evidence policy only. It explicitly
+records `locationVerification: not_verified` and `keyVerification: not_evaluated`. Its assessment
+binds the exact canonical command hash, parsed configuration digest and parsed policy digest,
+requested/checked times and checked labels, retaining source flags without manufacturing false.
+Inputs are copied before asynchronous vendor work; no raw integrity/access token is returned or
+persisted, and no automatic token retry/cache is introduced.
+
+This module performs no database work, signature/key validation, challenge consumption, attendance
+write, trust-tier assignment or HR adjudication. Network verification must occur outside database
+locks; the acceptance transaction must revalidate ownership, signature, challenge/time, revocation
+and exact command/configuration/policy bindings before one authoritative write. A serializable
+assessment is not a bearer permission. Clock routing, transaction integration, native orchestration,
+legacy-channel policy and signed-device verification remain required before activation.
+
+This interpretation follows Google's [verdict reference](https://developer.android.com/google/play/integrity/verdicts)
+and [standard-request flow](https://developer.android.com/google/play/integrity/standard).
+Focused synthetic-transport verification and guard-removal evidence are recorded in the platform
+research appendix; they do not constitute Google production provisioning or device certification.

@@ -1452,3 +1452,29 @@ UAST analysis with `findFirCompiledSymbol`; log:`/tmp/mobile-android-lint-9.3.3.
 upstream issue has a [later Google source repair](https://android.googlesource.com/platform/tools/base/+/44330ad8b855e38930c70ca44f65e781dd95d1ab)
 for included-script content-root classification. A newer engine number alone is therefore not
 evidence of a fix. No dependency-script patch, lint suppression or engine override was committed.
+
+### Current Android evidence policy verification
+
+At code checkpoint`28a0de830`, the explicit Android clock-integrity policy and server-only verifier
+compose the existing Google standard-token decoder. The two focused suites
+`mobile-android-clock-integrity.dom.test.tsx` and `mobile-play-integrity.dom.test.tsx` passed33 cases;
+the root TypeScript check also exited0. Logs:
+`/tmp/mobile-current-android-policy-final-{tests,rootTypes}.log`.
+The earlier31-case pass was strengthened so the policy-age refusal uses a timestamp after issuance,
+ensuring it cannot accidentally pass because the decoder's earlier issuance guard already refused.
+
+Seven controlled removals each caused the intended named assertion to fail: selected token age/skew,
+recognized app, device tier, unknown vendor labels, licensing, required unavailable source flags,
+and the existing decoder's request-hash comparison. Original failed logs are retained as
+`/tmp/mobile-current-android-policy-probe-{age,app,device,labels,license,missing-location,command-hash}.log`.
+Every mutation restored exact committed bytes; both restored suites passed33 cases. The initial
+probe-driver syntax error executed no source mutation or application test; the corrected driver ran
+all seven probes and reported no unexpected result. Restoration log:
+`/tmp/mobile-current-android-policy-probe-restored.log`.
+
+The tests exercise the real decoder/policy through a synthetic HTTP transport; no Google credentials,
+physical device, customer location or employee attendance is involved. Results preserve null source
+flags, explicitly allowed accessory facts and unsupported/unevaluated distinctions. Successful
+eligibility binds the server command/configuration/policy while explicitly withholding key and GPS
+verification claims. No route, tenant rollout or attendance write was enabled. Transactional
+integration and actual signed-device checks remain subsequent acceptance work.
