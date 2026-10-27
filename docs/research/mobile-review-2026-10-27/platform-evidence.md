@@ -2064,3 +2064,16 @@ flows remain unfinished. Held 0636 remains byte-identical at
 Unchanged native app and Swift-store evidence is retained; no native or physical-device test was
 rerun for this server-only change. Final dependencies/hash and canonical/applied pending-union
 ordering must be coordinated before allocating journal metadata or applying any migration.
+
+Context issuance candidate `3769625de7cad54c75edf56412dbc6fb76be5b42` completed all planned jobs
+in [40549547751](https://github.com/StradaverseHub/ai-hr/actions/runs/40549547751). Of 161 cases
+in eight suites, 160 passed. The expiry-recovery fixture failed before its recovery assertions:
+a JavaScript Date passed directly through raw SQL was rejected by the PostgreSQL driver's string
+encoder. Its repair sends the ISO timestamp, like the existing expiry fixtures. The other sixteen
+issuance cases and seven companion suites passed, including Android/iPhone context signatures,
+concurrent issuance, policy/issuer recovery, RLS, admission, rollback and key-lock waiting.
+Root TypeScript failed only on Object.keys of the audit payload's unknown type (4:25.67,
+peak RSS 7,651,992 KiB, exit 2). The test now explicitly checks the payload is a non-null object
+before inspecting its exact keys. No issuance implementation or SQL changes are required by these
+findings. The repaired issuance suite and root compiler check must pass; the original failed attempt
+is retained here. Unaffected companion suites need not be rerun.

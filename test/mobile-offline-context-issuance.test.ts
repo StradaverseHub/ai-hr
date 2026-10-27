@@ -59,7 +59,7 @@ describe('transactional signed offline context issuance',()=>{
   expect(row.contextDigest).toBe(createHash('sha256').update(offlineClockContextClientData(context)).digest('hex'));expect(row.contextCiphertext).not.toContain('attendance.clock');expect(row.contextCiphertext).not.toContain(context.permits[0].nonce);
   expect((await withTenant(f.ctx,tx=>readIssuedOfflineContextTx(tx,row,apple.apiOrigin))).raw).toBe(a.raw);
   expect(await counts()).toEqual({contexts:1,permits:2,punches:0});expect(f.snapshot).toHaveBeenCalledOnce();expect(f.beforeCommit.mock.calls.map(call=>call[2].mode).sort()).toEqual(['issue','recover']);
-  const events=await owner.db.select().from(S.domainEvent).where(eq(S.domainEvent.eventType,'mobile.offline.context.issued'));expect(events).toHaveLength(1);expect(Object.keys(events[0].payload).sort()).toEqual(['keyId','permitCount','policyRevision']);
+  const events=await owner.db.select().from(S.domainEvent).where(eq(S.domainEvent.eventType,'mobile.offline.context.issued'));expect(events).toHaveLength(1);const payload=events[0].payload;if(payload===null||typeof payload!=='object'||Array.isArray(payload))throw Error('Invalid issuance audit payload');expect(Object.keys(payload).sort()).toEqual(['keyId','permitCount','policyRevision']);
  });
  it('recovers original bytes and anchors through changed snapshots and ordinary signer rotation',async()=>{
   const f=await fixture(),original=await f.issue();f.snapshot.mockRejectedValueOnce(new Error('must not fetch a new snapshot'));
@@ -69,7 +69,7 @@ describe('transactional signed offline context issuance',()=>{
  });
  it('keeps expired context retries stable and refuses allocating a replacement stream implicitly',async()=>{
   const f=await fixture();f.setPolicy({...f.policy(),policy:{...f.policy().policy,windowMs:1000}});const original=await f.issue(),{context}=JSON.parse(original.raw);
-  await owner.db.execute(sql`select pg_sleep(greatest(0,extract(epoch from (${new Date(context.expiresAt)}::timestamptz-clock_timestamp())))+0.02)`);
+  await owner.db.execute(sql`select pg_sleep(greatest(0,extract(epoch from (${new Date(context.expiresAt).toISOString()}::timestamptz-clock_timestamp())))+0.02)`);
   expect(await f.issue()).toEqual(original);
   await expect(f.service().issue(f.ctx,{...f.input,request:{...f.input.request,requestId:randomUUID(),requestNonce:randomBytes(32).toString('base64url')}})).rejects.toMatchObject({reason:'offline_pending'});
   expect(await counts()).toEqual({contexts:1,permits:2,punches:0});
