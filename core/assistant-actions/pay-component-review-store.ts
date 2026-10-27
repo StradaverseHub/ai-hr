@@ -50,3 +50,12 @@ export async function reopenPayComponentReview(supplied:SessionContext,value:unk
 /** Privacy cleanup needs the actual current login, never the lost action digest or catalogue grant. */
 export async function discardPayComponentReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=PayComponentReviewRetirement.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_pay_component_review_discard(${p.actionId}::uuid) as receipt`);return{kind:'retired' as const,receipt:PayComponentRetiredReview.parse(row?.receipt)};});}catch{return fail();}}
 export async function listPayComponentReviews(supplied:SessionContext){const ctx=capture(supplied);try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);const rows=await tx.execute(sql`select action,1 as "contractVersion",action_id as "actionId",state,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",to_char(expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "expiresAt" from app.assistant_pay_component_reviews_index()`);return PayComponentReviewIndex.parse({kind:'pay_component_review_index',reviews:Array.from(rows)});});}catch{return fail();}}
+
+/** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
+ * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
+export async function readCompletedPayComponentOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
+ const ctx=capture(supplied),id=z.uuid().parse(value);
+ const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'typed_pay_components.create'},${id}::uuid) as completed`);
+ if(terminal?.completed!==true)return fail();
+ return withReviewedPayComponentIntervalTx(tx,ctx,async fresh=>{const stored=await read(tx,sql`select app.assistant_pay_component_review_read(${id}::uuid) as review`);bound(stored,fresh,id);const completion=await completed(tx,fresh,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};});
+}

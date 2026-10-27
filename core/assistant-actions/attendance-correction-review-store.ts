@@ -57,3 +57,12 @@ export async function reopenAttendanceCorrectionReview(supplied:SessionContext,i
 /** Login-only metadata and retirement remain available without digest/content/source grants. */
 export async function discardAttendanceCorrectionReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=AttendanceCorrectionReviewRetirement.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_attendance_review_discard(${p.actionId}::uuid) as receipt`);return{kind:'retired' as const,receipt:AttendanceCorrectionRetiredReview.parse(row?.receipt)};});}catch{return fail();}}
 export async function listAttendanceCorrectionReviews(supplied:SessionContext){const ctx=capture(supplied);try{return await withTenant(ctx,async tx=>{const rows=await tx.execute(sql`select action,1 as "contractVersion",action_id as "actionId",state,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",to_char(expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "expiresAt" from app.assistant_attendance_reviews_index()`);return AttendanceCorrectionReviewIndex.parse({kind:'attendance_correction_review_index',reviews:Array.from(rows)});});}catch{return fail();}}
+
+/** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
+ * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
+export async function readCompletedAttendanceCorrectionOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
+ const ctx=capture(supplied),id=z.uuid().parse(value);
+ const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'attendance.correction.request'},${id}::uuid) as completed`);
+ if(terminal?.completed!==true)return fail();
+ const actor=await assertOwnAttendanceCorrectionActorTx(tx,ctx),nomination=await subject(tx,id);return withOwnAttendanceCorrectionIntervalTx(tx,actor,nomination,async(fresh,source)=>{const stored=await read(tx,sql`select app.assistant_attendance_review_read(${id}::uuid) as review`);bound(stored,fresh,id,source);if(stored.requestId!==nomination.correctionId)return fail();const completion=await completed(tx,fresh,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};});
+}

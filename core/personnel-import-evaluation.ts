@@ -104,3 +104,13 @@ export async function recordEmployeeImportEvaluationTelemetry(ctx:SessionContext
  * after Workforce revocation. No row, count, provider history or other user's data is returned. */
 export async function eraseOwnImportEvaluationMetadata(ctx:SessionContext):Promise<void>{ctx=context(ctx);await withTenant(ctx,tx=>eraseOwnImportEvaluationMetadataTx(tx,ctx));}
 export async function eraseOwnImportEvaluationMetadataTx(tx:Tx,ctx:SessionContext):Promise<void>{ctx=context(ctx);const bounds=await tx.execute(sql`select name,set_config(name,(case when setting::bigint=0 then case name when 'statement_timeout' then 5000 else 500 end else least(setting::bigint,case name when 'statement_timeout' then 5000 else 500 end) end)::text,true) as value from pg_catalog.pg_settings where name in ('statement_timeout','lock_timeout') and unit='ms'`);if(bounds.length!==2)return fail();await assertAiPrincipalTx(tx,ctx);await tx.execute(sql`delete from public.personnel_import_assistance_attempt`);await tx.execute(sql`delete from public.employee_import_evaluation_attempt`);}
+
+/** Completed-only learning evidence. No raw file/effect inputs, best-effort run history, resend,
+ * accounting projection or nested transaction. Same native own/version/company/current scope gate. */
+export async function readCompletedEmployeeImportOutcomeTx(tx:Tx,supplied:SessionContext,input:EmployeeImportEvaluationBinding,companyId:string){
+ const ctx=context(supplied),binding=EmployeeImportEvaluationBindingSchema.parse(structuredClone(input)),company=String(companyId);
+ const row=await ownTx(tx,ctx,binding,company);
+ if(row.state!=='committed'||!row.event_id)return fail();
+ await canonical(tx,ctx,row);
+ return Object.freeze({attemptId:row.id,attemptVersion:row.version,eventId:row.event_id,currentStatus:'committed' as const,expiresAt:databaseInstant(row.expires_at).toISOString()});
+}

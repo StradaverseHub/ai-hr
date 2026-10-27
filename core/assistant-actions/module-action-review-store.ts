@@ -332,3 +332,66 @@ export async function reopenClaimSubmissionModuleActionReview(supplied:SessionCo
  * Person relinks still refuse; bounded login expiry and canonical erasure remain independent owners. */
 export async function discardClaimSubmissionModuleActionReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=ClaimSubmissionModuleActionRetirementRequest.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_legacy_review_retire(${p.actionId}::uuid,${OWN_CLAIM_SUBMISSION_ACTION}) as receipt`);return{kind:'retired' as const,receipt:ClaimSubmissionModuleActionRetiredReceipt.parse(row?.receipt)};});}catch{return fail();}}
 export async function listClaimSubmissionModuleActionReviews(supplied:SessionContext){const ctx=capture(supplied);try{return await withTenant(ctx,async tx=>{const rows=await tx.execute(sql`select action,action_id as "actionId",state,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",to_char(expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "expiresAt" from app.assistant_legacy_reviews_index(${OWN_CLAIM_SUBMISSION_ACTION})`);return ClaimSubmissionModuleActionReviewIndexResult.parse({kind:'claim_submission_module_review_index',reviews:Array.from(rows)});});}catch{return fail();}}
+
+/** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
+ * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
+export async function readCompletedNotificationOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown,cap:OwnNotificationServerIdentity){
+ const ctx=capture(supplied),id=z.uuid().parse(value);
+ const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'notifications.email_preferences.save'},${id}::uuid) as completed`);
+ if(terminal?.completed!==true)return fail();
+ const fresh=await guard(tx,ctx);await lockLeaveDependencyReadConfigurationTx(tx,fresh.tenantId);const nominated=await subject(tx,id);await lockLeaveDependenciesTx(tx,fresh.tenantId,[nominated]);const stored=await read(tx,sql`select app.assistant_module_action_review_read(${id}::uuid,${MODULE_NOTIFICATION_ACTION}) as review`);bound(stored,fresh,id,nominated);const completion=await completed(tx,fresh,stored,cap);return{completion,eventId:z.uuid().parse(stored.eventId)};
+}
+
+/** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
+ * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
+export async function readCompletedProfileOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
+ const ctx=capture(supplied),id=z.uuid().parse(value);
+ const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'ess.profile.request'},${id}::uuid) as completed`);
+ if(terminal?.completed!==true)return fail();
+ const actor=await guard(tx,ctx,'ess');await lockLeaveDependencyConfigurationTx(tx,actor.tenantId);const nominated=await profileSubject(tx,id);await lockLeaveDependenciesTx(tx,actor.tenantId,[nominated]);const stored=await readProfile(tx,sql`select app.assistant_module_action_review_read(${id}::uuid,${OWN_PROFILE_CHANGE_ACTION}) as review`);boundProfile(stored,actor,id,nominated);const completion=await completedProfile(tx,actor,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};
+}
+
+/** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
+ * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
+export async function readCompletedClaimDraftOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
+ const ctx=capture(supplied),id=z.uuid().parse(value);
+ const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'claims.draft.save'},${id}::uuid) as completed`);
+ if(terminal?.completed!==true)return fail();
+ const actor=await guard(tx,ctx,'claims');await lockLeaveDependencyReadConfigurationTx(tx,actor.tenantId);const nominated=await claimSubject(tx,id);await lockLeaveDependenciesTx(tx,actor.tenantId,[nominated]);const stored=await readClaim(tx,sql`select app.assistant_module_action_review_read(${id}::uuid,${OWN_CLAIM_DRAFT_ACTION}) as review`);boundClaim(stored,actor,id,nominated);const completion=await completedClaim(tx,actor,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};
+}
+
+/** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
+ * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
+export async function readCompletedTestingOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
+ const ctx=capture(supplied),id=z.uuid().parse(value);
+ const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'system_testing.execution.save'},${id}::uuid) as completed`);
+ if(terminal?.completed!==true)return fail();
+ await assertAiPrincipalTx(tx,ctx);const executionId=await testingSubject(tx,id);return withOwnTestingExecutionIntervalTx(tx,ctx,executionId,async actor=>{const stored=await readTesting(tx,sql`select app.assistant_testing_action_review_read(${id}::uuid) as review`);boundTesting(stored,actor,id,executionId);const completion=await completedTesting(tx,actor,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};});
+}
+
+/** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
+ * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
+export async function readCompletedClaimSubmissionOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
+ const ctx=capture(supplied),id=z.uuid().parse(value);
+ const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'claims.submit'},${id}::uuid) as completed`);
+ if(terminal?.completed!==true)return fail();
+ await assertAiPrincipalTx(tx,ctx);const claimId=await submissionSubject(tx,id);return withOwnClaimSubmissionIntervalTx(tx,ctx,claimId,async(actor,own)=>{const stored=await readSubmission(tx,sql`select app.assistant_claim_submission_review_read(${id}::uuid) as review`);boundSubmission(stored,actor,id,claimId,own.employmentId);const completion=await completedSubmission(tx,actor,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};});
+}
+
+/** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
+ * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
+export async function readCompletedStandardReviewOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
+ const ctx=capture(supplied),id=z.uuid().parse(value);
+ const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'performance.review.acknowledge'},${id}::uuid) as completed`);
+ if(terminal?.completed!==true)return fail();
+ const actor=await guard(tx,ctx,'performance');await lockLeaveDependencyReadConfigurationTx(tx,actor.tenantId);const nominated=await performanceSubject(tx,id,MODULE_REVIEW_ACK_ACTION);await lockLeaveDependenciesTx(tx,actor.tenantId,[nominated]);const stored=await readPerformance(tx,sql`select app.assistant_module_action_review_read(${id}::uuid,${MODULE_REVIEW_ACK_ACTION}) as review`);boundPerformance(stored,actor,id,MODULE_REVIEW_ACK_ACTION,nominated);const completion=await completedPerformance(tx,actor,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};
+}
+
+/** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
+ * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
+export async function readCompletedOnehrPlanOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
+ const ctx=capture(supplied),id=z.uuid().parse(value);
+ const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'performance.onehr.plan.acknowledge'},${id}::uuid) as completed`);
+ if(terminal?.completed!==true)return fail();
+ const actor=await guard(tx,ctx,'performance');await lockLeaveDependencyReadConfigurationTx(tx,actor.tenantId);const nominated=await performanceSubject(tx,id,MODULE_ONEHR_ACK_ACTION);await lockLeaveDependenciesTx(tx,actor.tenantId,[nominated]);const stored=await readPerformance(tx,sql`select app.assistant_module_action_review_read(${id}::uuid,${MODULE_ONEHR_ACK_ACTION}) as review`);boundPerformance(stored,actor,id,MODULE_ONEHR_ACK_ACTION,nominated);const completion=await completedPerformance(tx,actor,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};
+}

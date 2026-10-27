@@ -56,3 +56,12 @@ export async function reopenOrgActionReview(supplied:SessionContext,actionId:unk
 /** Owner-login privacy path: no subordinate read, Assistant grant or native graph execution. */
 export async function discardOrgActionReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=OrgActionRetirement.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);const [r]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_org_review_discard(${p.actionId}::uuid) as receipt`);return{kind:'retired' as const,receipt:OrgActionRetirementReceipt.parse(r?.receipt)};});}catch{return fail();}}
 export async function listOrgActionReviews(supplied:SessionContext){const ctx=capture(supplied);try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);await tx.execute(sql`select app.assistant_own_leave_reviews_expire_own(100)`);const rows=await tx.execute<{actionId:unknown;state:unknown;createdAt:unknown;expiresAt:unknown}>(sql`select * from app.assistant_org_reviews_index()`);return OrgActionReviewIndexResult.parse({kind:'org_module_review_index',reviews:rows.map(r=>({action:ACTION,...r}))});});}catch{return fail();}}
+
+/** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
+ * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
+export async function readCompletedOrgOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
+ const ctx=capture(supplied),id=z.uuid().parse(value);
+ const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'org.reporting.change'},${id}::uuid) as completed`);
+ if(terminal?.completed!==true)return fail();
+ const actor=await ownInterval(tx,ctx),stored=await existing(tx,actor,id);const completion=await completed(tx,actor,stored);return{completion,eventId:z.uuid().parse(stored.setEventId)};
+}

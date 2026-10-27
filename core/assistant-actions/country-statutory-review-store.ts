@@ -54,3 +54,12 @@ export async function confirmCountryStatutoryReview(supplied:SessionContext,inpu
 export async function reopenCountryStatutoryReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=z.uuid().safeParse(input);if(!parsed.success)return fail();try{return await existing(ctx,parsed.data,undefined,false);}catch{return fail();}}
 export async function discardCountryStatutoryReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=CountryStatutoryReviewRetirement.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_country_statutory_review_discard(${p.actionId}::uuid) as receipt`);return{kind:'retired' as const,receipt:CountryStatutoryRetiredReview.parse(row?.receipt)};});}catch{return fail();}}
 export async function listCountryStatutoryReviews(supplied:SessionContext){const ctx=capture(supplied);try{return await withTenant(ctx,async tx=>{const rows=await tx.execute(sql`select action,1 as "contractVersion",action_id as "actionId",state,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",to_char(expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "expiresAt" from app.assistant_country_statutory_reviews_index()`);return CountryStatutoryReviewIndex.parse({kind:'country_statutory_review_index',reviews:Array.from(rows)});});}catch{return fail();}}
+
+/** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
+ * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
+export async function readCompletedCountryStatutoryOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
+ const ctx=capture(supplied),id=z.uuid().parse(value);
+ const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'country-my.statutory.update'},${id}::uuid) as completed`);
+ if(terminal?.completed!==true)return fail();
+ const actor=await assertReviewedCountryStatutoryActorTx(tx,ctx),employmentId=await subject(tx,id);return withReviewedCountryStatutoryIntervalTx(tx,actor,employmentId,async(fresh,source)=>{const stored=await read(tx,sql`select app.assistant_country_statutory_review_read(${id}::uuid) as review`);bound(stored,fresh,id,source);const completion=await completed(tx,fresh,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};});
+}

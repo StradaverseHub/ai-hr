@@ -51,3 +51,12 @@ export async function reopenLeaveDecisionReview(supplied:SessionContext,value:un
 /** Login-only metadata/retirement requires no lost review digest, grant or plaintext reopening. */
 export async function discardLeaveDecisionReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=LeaveDecisionReviewRetirement.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_leave_decision_review_discard(${p.actionId}::uuid) as receipt`);return{kind:'retired' as const,receipt:LeaveDecisionRetiredReview.parse(row?.receipt)};});}catch{return fail();}}
 export async function listLeaveDecisionReviews(supplied:SessionContext){const ctx=capture(supplied);try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);const rows=await tx.execute(sql`select action,1 as "contractVersion",action_id as "actionId",state,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",to_char(expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "expiresAt" from app.assistant_leave_decision_reviews_index()`);return LeaveDecisionReviewIndex.parse({kind:'leave_decision_review_index',reviews:Array.from(rows)});});}catch{return fail();}}
+
+/** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
+ * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
+export async function readCompletedLeaveDecisionOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
+ const ctx=capture(supplied),id=z.uuid().parse(value);
+ const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'approvals.leave.decide'},${id}::uuid) as completed`);
+ if(terminal?.completed!==true)return fail();
+ const actor=await assertReviewedLeaveDecisionActorTx(tx,ctx),nomination=await subject(tx,id);return withReviewedLeaveDecisionIntervalTx(tx,actor,{leaveRequestId:nomination.leaveRequestId,currentStepId:nomination.currentStepId},nomination.mode,async(fresh,source)=>{const stored=await read(tx,sql`select app.assistant_leave_decision_review_read(${id}::uuid) as review`);bound(stored,fresh,id,source);const completion=await completed(tx,fresh,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};});
+}

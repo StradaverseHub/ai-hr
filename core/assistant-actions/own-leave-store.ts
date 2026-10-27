@@ -269,3 +269,14 @@ export async function listOwnLeaveReviewsTx(tx:Tx,supplied:SessionContext):Promi
     return OwnLeaveReviewIndexResult.parse({kind:'review_index',reviews:Array.from(rows)});
   }catch{throw new OwnLeaveContentUnavailable();}
 }
+
+/** Completed-only actual-Tx evidence path. Never unseals/returns a pending body or retries a request. */
+export async function readCompletedOwnLeaveOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
+ const ctx=captureContext(supplied),id=z.uuid().parse(value),actor=await readOwnLeaveActorTx(tx,ctx);if(!actor)throw new OwnLeaveContentUnavailable();
+ await assertAiActionUnpausedTx(tx,actor,'hr_assistant');
+ const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed('leave.apply',${id}::uuid) as completed`);if(terminal?.completed!==true)throw new OwnLeaveContentUnavailable();
+ const [nomination]=await tx.execute<{subject:unknown}>(sql`select app.assistant_own_leave_review_subject(${id}::uuid) as subject`),subject=z.uuid().parse(nomination?.subject);await lockLeaveDependenciesTx(tx,actor.tenantId,[subject]);
+ const stored=await storedReviewTx(tx,sql`select app.assistant_own_leave_review_read(${id}::uuid) as review`);
+ if(stored.metadata.actionId!==id||stored.metadata.binding.tenantId!==actor.tenantId||stored.metadata.binding.userId!==actor.userId||stored.metadata.binding.personId!==actor.personId||stored.metadata.binding.employmentId!==subject)throw new OwnLeaveContentUnavailable();
+ const completion=await completed(tx,actor,stored);return{completion,eventId:completion.receipt.submissionEventId};
+}

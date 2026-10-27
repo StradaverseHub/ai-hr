@@ -53,3 +53,12 @@ export async function reopenToilRequestReview(supplied:SessionContext,value:unkn
 /** Login-only metadata/retirement requires no lost review digest, grant or plaintext reopening. */
 export async function discardToilRequestReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=ToilRequestReviewRetirement.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_toil_request_review_discard(${p.actionId}::uuid) as receipt`);return{kind:'retired' as const,receipt:ToilRequestRetiredReview.parse(row?.receipt)};});}catch{return fail();}}
 export async function listToilRequestReviews(supplied:SessionContext){const ctx=capture(supplied);try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);const rows=await tx.execute(sql`select action,1 as "contractVersion",action_id as "actionId",state,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",to_char(expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "expiresAt" from app.assistant_toil_request_reviews_index()`);return ToilRequestReviewIndex.parse({kind:'toil_request_review_index',reviews:Array.from(rows)});});}catch{return fail();}}
+
+/** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
+ * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
+export async function readCompletedToilRequestOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
+ const ctx=capture(supplied),id=z.uuid().parse(value);
+ const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'toil.replacement.request'},${id}::uuid) as completed`);
+ if(terminal?.completed!==true)return fail();
+ const actor=await assertOwnToilReplacementActorTx(tx,ctx),employmentId=await subject(tx,id);return withOwnToilReplacementIntervalTx(tx,actor,employmentId,async(fresh,source)=>{const stored=await read(tx,sql`select app.assistant_toil_request_review_read(${id}::uuid) as review`);bound(stored,fresh,id,source);const completion=await completed(tx,fresh,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};});
+}
