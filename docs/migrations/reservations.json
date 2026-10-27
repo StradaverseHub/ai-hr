@@ -159,14 +159,24 @@
       ]
     },
     {
+      "tag": "0657_ai_integration_repairs",
+      "owner": "AI delivery",
+      "status": "reserved_filename",
+      "idx": null,
+      "when": null,
+      "notes": [
+        "28 October: re-allocated to AI for SQL repairs found by the integrated full run, so the forwarded byte-identical 0621-0632 files stay unchanged. Intended idx643, when strictly above 1793130000022."
+      ]
+    },
+    {
       "prefixRange": [
-        657,
+        658,
         658
       ],
       "owner": null,
       "status": "released_free",
       "notes": [
-        "Released by AI on 28 October; record a claim here before use."
+        "Free; record a claim here before use."
       ]
     }
   ],

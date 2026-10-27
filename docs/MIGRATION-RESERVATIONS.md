@@ -41,7 +41,8 @@ Journal order: alpha's 506 entries; the 12 pending AI entries (0621, 0629–0632
 | 0646 | REA P1 wave 2 Reward Calendar (PR #23) | Journaled on alpha idx620 / when1793120000000; not yet applied on staging |
 | 0647 | Mobile offline attendance | Reserved filename; idx/when deferred |
 | 0648–0656 | AI delivery | Mapped filenames (see below); idx/when assigned at journaling |
-| 0657–0658 | Free | Released by AI on 28 October |
+| 0657 | AI delivery | `0657_ai_integration_repairs`, reserved 28 October for integration SQL repairs; idx643 intended |
+| 0658 | Free | Released by AI on 28 October |
 
 The explicit owner exception permits only the still-unapplied0640 journal position to follow0641. It does not authorize P1 runtime deployment. Preserve both SQL files and all applied history. Filename order does not determine journal order.
 
