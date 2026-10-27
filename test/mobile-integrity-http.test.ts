@@ -89,8 +89,11 @@ describe('bounded scoped integrity HTTP handlers before route activation',()=>{
   });
   it('bounds mounted revocation inputs and refuses extra authority without changing the key',async()=>{
     const f=await enrolled(),url='https://hr.example/api/mobile/v1/integrity/revoke?employmentId='+f.employmentId;
-    for(const body of [{keyId:f.input.keyId,tenantId:base.tenantId},{keyId:f.input.keyId,verified:true},{keyId:f.input.keyId,padding:'x'.repeat(257)}]){
-      const response=await revokeKey(new Request(url,{method:'POST',headers:{'content-type':'application/json','content-length':'1'},body:JSON.stringify(body)}));expect(response.status).toBe(400);
+    const payloads=[{keyId:f.input.keyId,tenantId:base.tenantId},{keyId:f.input.keyId,verified:true},{keyId:f.input.keyId,padding:'x'.repeat(257)}].map(value=>JSON.stringify(value));
+    // Valid command schema with excessive wire whitespace: only the streaming byte cap refuses it.
+    payloads.push(' '.repeat(257)+JSON.stringify({keyId:f.input.keyId}));
+    for(const body of payloads){
+      const response=await revokeKey(new Request(url,{method:'POST',headers:{'content-type':'application/json','content-length':'1'},body}));expect(response.status).toBe(400);
     }
     const [key]=await owner.db.select().from(schema.mobileIntegrityKey);expect(key.revokedAt).toBeNull();
   });
