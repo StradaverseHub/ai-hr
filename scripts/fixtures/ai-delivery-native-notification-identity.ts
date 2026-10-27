@@ -27,6 +27,8 @@ export async function prepareAiDeliveryNativeNotificationIdentity(context:AiDeli
  try{
   requireFact(process.env.NODE_ENV!=='production'&&attested===true&&internalSelected(configuration)&&internalSelected());
   const supplied=internalConfig(configuration),runtime=internalConfig();
+  const localOrigin=new URL(supplied.origin);
+  requireFact(['localhost','127.0.0.1','[::1]'].includes(localOrigin.hostname)&&localOrigin.port!=='');
   requireFact(configuration.AUTH_PUBLIC_ORIGIN===supplied.origin&&supplied.origin===runtime.origin&&supplied.organization===runtime.organization);
   requireFact(timingSafeEqual(Buffer.from(supplied.key,'hex'),Buffer.from(runtime.key,'hex')));
   requireFact(typeof credential.organization==='string'&&credential.organization===credential.organization.trim().toLowerCase()&&/^[a-z0-9][a-z0-9-]{1,63}$/.test(credential.organization));
