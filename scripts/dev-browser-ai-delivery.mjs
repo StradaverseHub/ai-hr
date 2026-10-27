@@ -67,7 +67,24 @@ if(!worker.length){
   const [physical]=await admin`select current_user as name,host(inet_server_addr()) as address,inet_server_port() as port,rolsuper,rolcreatedb from pg_roles where rolname=current_user`;
   if(physical?.name!==decodeURIComponent(ownerUrl.username)||physical.port!==5433||!['127.0.0.1','::1'].includes(physical.address)||!physical.rolsuper&&!physical.rolcreatedb)throw Error('Local database-creation principal proof failed.');
   if((await admin`select datname from pg_database where datname=${target.database}`).length)throw Error('Named database already exists; preserve it and refuse.');
-  frozen();await admin.unsafe('CREATE DATABASE aihr_ai_delivery_browser_v3_20261027');await admin.end();admin=undefined;
+  frozen();await admin.unsafe('CREATE DATABASE aihr_ai_delivery_browser_v4_20261027');await admin.end();admin=undefined;
+  // Normal deploy/bootstrap-db.sql defaults MUST precede migrations. Never grant ALL on
+  // existing tables afterward: migration REVOKEs protect ciphertext and append-only history.
+  targetDb=postgres(ownerUrl.toString(),{max:1,connect_timeout:10,idle_timeout:5});
+  const bootstrapProof=await targetDb.begin(async tx=>{
+   const [proof]=await tx`select current_user as name,current_database() as database,host(inet_server_addr()) as address,inet_server_port() as port,to_regclass('public.tenant') is null as empty_schema`;
+   if(proof?.name!==decodeURIComponent(ownerUrl.username)||proof.database!==target.database||proof.port!==5433||!['127.0.0.1','::1'].includes(proof.address)||proof.empty_schema!==true)throw Error('Fresh owned bootstrap identity refused.');
+   await tx`GRANT CONNECT ON DATABASE ${tx(target.database)} TO ai_hr_app`;
+   await tx`GRANT USAGE ON SCHEMA public TO ai_hr_app`;
+   await tx`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT,INSERT,UPDATE,DELETE ON TABLES TO ai_hr_app`;
+   await tx`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE,SELECT ON SEQUENCES TO ai_hr_app`;
+   const [grants]=await tx`select has_database_privilege('ai_hr_app',current_database(),'CONNECT') as db_connect,has_schema_privilege('ai_hr_app','public','USAGE') as schema_usage,has_schema_privilege('ai_hr_app','public','CREATE') as schema_create`;
+   const defaults=await tx`select d.defaclobjtype as kind,array_agg(distinct a.privilege_type order by a.privilege_type) as privileges from pg_default_acl d cross join lateral aclexplode(d.defaclacl) a where d.defaclrole=(select oid from pg_roles where rolname=current_user) and d.defaclnamespace='public'::regnamespace and a.grantee=(select oid from pg_roles where rolname='ai_hr_app') group by d.defaclobjtype order by d.defaclobjtype`;
+   if(!grants?.db_connect||!grants.schema_usage||grants.schema_create||JSON.stringify(defaults.find(x=>x.kind==='r')?.privileges)!==JSON.stringify(['DELETE','INSERT','SELECT','UPDATE'])||JSON.stringify(defaults.find(x=>x.kind==='S')?.privileges)!==JSON.stringify(['SELECT','USAGE']))throw Error('Normal pre-migration application ACL proof refused.');
+   return {candidate,preMigration:true,freshOwnedTarget:true,applicationConnect:true,publicUsage:true,applicationSchemaCreate:false,defaults};
+  });
+  write('bootstrap-acl.json',bootstrapProof);
+  await targetDb.end();targetDb=undefined;
   const migrationConfig=path.join(attempt,'drizzle-ai-delivery.config.ts');
   fs.writeFileSync(migrationConfig,`import {defineConfig} from 'drizzle-kit';\nconst url=process.env.MIGRATION_DATABASE_URL;if(!url||new URL(url).pathname!=='/${target.database}')throw Error('Exact local browser target required');\nexport default defineConfig({schema:${JSON.stringify(path.join(root,'db/schema.ts'))},out:${JSON.stringify(path.join(root,'db/migrations'))},dialect:'postgresql',dbCredentials:{url},strict:true});\n`,{flag:'wx',mode:0o600});
   await run('pnpm',['--dir',root,'exec','drizzle-kit','migrate','--config',migrationConfig],'migrate',300000);
@@ -80,6 +97,15 @@ if(!worker.length){
   if(!configs[0]?.name)throw Error('Native provider configuration schema missing.');
   if(configs[0]?.name){const active=await targetDb`select count(*)::int as n from public.ai_provider_config`;if(active[0]?.n!==0)throw Error('Provider configuration exists in new target; refuse.');}
   await targetDb.end();targetDb=undefined;
+  const restricted=postgres(appUrl.toString(),{max:1,connect_timeout:10,idle_timeout:5});
+  try{
+   const [proof]=await restricted`select current_user as name,current_database() as database,rolsuper,rolbypassrls,has_column_privilege(current_user,'public.ai_provider_config','api_key_ciphertext','SELECT') as ciphertext_read from pg_roles where rolname=current_user`;
+   if(proof?.name!=='ai_hr_app'||proof.database!==target.database||proof.rolsuper||proof.rolbypassrls||proof.ciphertext_read!==false)throw Error('Post-migration restricted application proof refused.');
+   write('application-role-proof.json',{candidate,restrictedApplication:true,ciphertextSelectWithheld:true});
+  }finally{await restricted.end();}
+  // C11 normal usable-database bootstrap: catalog identities/settings precede tenant licensing.
+  // This owner reconciles global catalogs only; it never seeds demo tenants or grants licenses.
+  await run(process.execPath,['--import',tsxLoader,path.join(root,'scripts/seed-catalogs.ts')],'catalogues',180000);
   await run(process.execPath,['--import',tsxLoader,path.join(root,'scripts/ai-delivery-browser-fixture.ts')],'fixture',180000);
   const fixtureFile=path.join(out,'fixture.json'),stat=fs.lstatSync(fixtureFile);if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1||(stat.mode&0o077)||stat.size>1048576)throw Error('Private fixture identity is unavailable.');
   const fixture=JSON.parse(fs.readFileSync(fixtureFile,'utf8'));

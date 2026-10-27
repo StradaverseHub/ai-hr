@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {execFileSync} from 'node:child_process';
-export const AI_DELIVERY_BROWSER_TARGET=Object.freeze({database:'aihr_ai_delivery_browser_v3_20261027',namespace:'ai_delivery_browser_v3_20261027',port:3177,leaseName:'ai-delivery-browser-v3-20261027',scratchpad:'scratchpad/ai-delivery-browser-v3-20261027'});
+export const AI_DELIVERY_BROWSER_TARGET=Object.freeze({database:'aihr_ai_delivery_browser_v4_20261027',namespace:'ai_delivery_browser_v4_20261027',port:3177,leaseName:'ai-delivery-browser-v4-20261027',scratchpad:'scratchpad/ai-delivery-browser-v4-20261027'});
 const root=fileURLToPath(new URL('..',import.meta.url));
 const refusal=()=>new Error('AI delivery browser fixture refused; preserve existing resources and inspect private preparation evidence.');
 /** Metadata alone is insufficient: require one actual live ancestor atomic coordinator, the complete
