@@ -2087,3 +2087,30 @@ eight suites. The original failed attempt remains above. No SQL, native app or i
 implementation changed in the repair. This proves the internal transaction/signature/storage seam;
 production policy/key registry assembly, routes, claim consumption/adjudication, employee/HR flows
 and physical-device acceptance remain separate unfinished integration work.
+
+### Transactional claim consumption and photo custody (28 October 2026)
+
+Consumption candidate `d8a29c9f21946d40d821731873af42cdfe5c0e02`, which repairs the unverified
+checkpoint `22bd397d79d6ad065d3ad7b7f1a7a813ba550160`, passed
+[40558316195](https://github.com/StradaverseHub/ai-hr/actions/runs/40558316195): 475 cases across
+twelve suites. The no-database batch passed 359 cases in five suites and the database batch 116 in
+seven: claim consumption 19, receipts 4, context issuance 17, stream storage 15, clock proof 25,
+integrity challenge 14, Apple clock assertion 19, Android clock command 15, signed-clock HTTP 17,
+PII guard 320, attendance pack drift 2 and today-in-MYT drift 8. Root TypeScript passed (2:30.07,
+peak RSS 7,783,068 KiB, exit 0). Native checks were skipped because native source is unchanged.
+`migration-journal-ordering` was deliberately excluded: it fails by design while held 0636 and
+reserved 0647 remain unjournaled, so this run makes no journal or migration-order claim.
+
+The repair takes the actor admission lock before the registered-key and stream locks, the order
+already used by context issuance and key revocation, and gives the policy owner a copy of the photo
+attachment so a callback cannot change the bytes encrypted into custody after the photo check.
+Vendor proofs are synthetic, no device ran, there is no production adjudicator and offline
+acceptance is not enabled. The checked 0647 draft was
+`14009a277e539fbe35428eff842af22cb3eca465d0c02a8983b8ee5c1f220bfb`; held 0636 stayed
+`9063b27c0cc316b715d552561d636ffc6412e447ca9275758bf497870c995df7`.
+
+The 28 October owner decisions (request-ID collision refusal, exact effective punch instant and
+expired-only group-admin photo access) were implemented after this run and are UNVERIFIED until a
+hosted run passes. They change the consumption service, receipt contract, 0647 photo read policy
+(new draft SHA-256 `a7b88d8be325af98d0c92124050718309fb84a6b316d3a86b02dd05aa562bcce`) and the
+consumption/receipt suites. 0636 and the migration journal are unchanged.

@@ -398,3 +398,31 @@ Failure rolls back all records, audit and issuance budget. The service exposes n
 no default live policy/key loader. Trusted registry provisioning/rotation delivery, actual deployment
 snapshot/eligibility assembly, offline transport/consumption/adjudication and employee/HR flows still
 need integration. Issuance returns `authorization: not_granted`; it is not an attendance receipt.
+
+### Claim consumption owner decisions (28 October 2026)
+
+`core/mobile-offline-claim.ts` consumes one original claim in the locked attendance transaction.
+The owner settled three rules on 28 October 2026. Their implementation is UNVERIFIED until a
+hosted run passes.
+
+1. Request-ID collision is refused. After the actor, key and stream locks, the service takes the
+   subject lock the canonical clock writers take before their own request lookup. If an attendance
+   capture already holds the claim's request ID for that tenant and employment (the capture's
+   unique key; punches link to captures), the claim is refused with service-owned reason
+   `request_conflict` and the adjudicator is not called. The refusal is an ordinary terminal
+   outcome with counter, cursor and audit, and no capture or effective instant. An exact-digest
+   retry returns the same receipt. The adjudicator contract cannot return `request_conflict`.
+   Residual: an online capture created after this refusal commits is not refused by the online
+   writer, which does not read offline claims. An accepted claim cannot duplicate a capture, because
+   the capture unique key rejects the second insert.
+2. An accepted punch records exactly `effectiveAt`. The linked live punch's `attendance_date` plus
+   `punch_at`, read as Asia/Kuala_Lumpur wall time, must equal the integer-millisecond `effectiveAt`
+   at PostgreSQL `time` precision (microseconds), and `attendance_date` must be its MYT day from
+   `todayInKualaLumpur`. Otherwise the transaction rolls back with `configuration_unavailable`, the
+   error already used for a missing linked punch. A writer that stores whole seconds can link only a
+   whole-second `effectiveAt`. An overnight clock-out written to the previous attendance day, as the
+   online writer anchors one, cannot satisfy this rule, so it rolls back rather than being accepted.
+3. A group admin may read and delete only expired photo custody (`retained_until <=
+   clock_timestamp()`), never retained ciphertext; the purge's `DELETE ... RETURNING` passes the
+   same read policy. The actor's own read is unchanged. GRANTs, immutability and the deferred
+   custody constraint are unchanged.
