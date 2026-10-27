@@ -111,4 +111,30 @@ describe('actual caller-bound Assistant clarification continuation',()=>{
   }finally{release();clearTimeout(watchdog);await holder;if(pending)result=await pending;}
   expect(result).toEqual({originalQuestion:stored.binding.question,slot:'period',answer:'My original human answer'});expect(Object.isFrozen(result)).toBe(true);expect(await state()).toEqual(before);
  });
+ it('bounds the real held Access wait, rolls back before a generic refusal, and continues after release',async()=>{
+  const {ctx,admin}=await actor(),stored=await exchange(ctx),before=await state();
+  let ready!:()=>void,release!:()=>void,fail!:(error:unknown)=>void,held=false;
+  const started=new Promise<void>((yes,no)=>{ready=yes;fail=no;}),finish=new Promise<void>(yes=>{release=yes;});
+  const watchdog=setTimeout(()=>{fail(Error('owned bounded clarification handshake timed out'));release();},10000);
+  const holder=withTenant(admin,async tx=>{await lockAccessConfigurationTx(tx,b.tenantId);held=true;ready();await finish;held=false;});
+  void holder.catch(fail);let pending:ReturnType<typeof ownAssistantClarification>|undefined;
+  let deadline:ReturnType<typeof setTimeout>|undefined;
+  try{
+   await started;pending=ownAssistantClarification(ctx,stored.binding.exchangeId,'Original current period');
+   // The timeout is a failure oracle, not the expected outcome. The holder is released only after
+   // the actual command has returned its bounded public refusal and unchanged-state assertions.
+   const bounded=Promise.race([pending,new Promise<never>((_,reject)=>{deadline=setTimeout(()=>reject(Error('clarification did not bound the owned Access wait')),2500);})]);
+   await expect(bounded).rejects.toThrow(/^Current clarification unavailable\.$/);
+   clearTimeout(deadline);expect(held).toBe(true);expect(await state()).toEqual(before);
+   const [probe]=await withTenant(ctx,tx=>tx.execute<{user_id:string;ok:number}>(sql`select app.current_user_id() as user_id,1 as ok`));
+   expect(probe).toEqual({user_id:ctx.userId,ok:1});expect(held).toBe(true);
+  }finally{
+   release();clearTimeout(watchdog);if(deadline)clearTimeout(deadline);await holder;
+   if(pending)await pending.catch(()=>undefined);
+  }
+  const result=await ownAssistantClarification(ctx,stored.binding.exchangeId,'Original current period');
+  expect(result).toEqual({originalQuestion:stored.binding.question,slot:'period',answer:'Original current period'});
+  expect(Object.isFrozen(result)).toBe(true);expect(await state()).toEqual(before);
+ });
+
 });
