@@ -2,6 +2,11 @@ name: Runtime repair evidence controls
 run-name: Runtime repair verifier controls only · no deployment
 on:
   workflow_dispatch:
+    inputs:
+      control_scope:
+        type: choice
+        default: browser-partial
+        options: [focused, browser-partial]
 permissions: {contents: read, actions: read}
 concurrency:
   group: runtime-evidence-controls-${{ github.run_id }}
@@ -23,9 +28,15 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with: {node-version: '22.23.3'}
       - name: Exact immutable reviewed controller source boundaries
+        if: inputs.control_scope == 'focused'
         run: node .github/ci/reviewed-focused-controller.source.test.mjs
       - name: Focused provenance and native PDF refusal controls
+        if: inputs.control_scope == 'focused'
         run: node --test .github/ci/authenticated-focused.test.mjs .github/ci/authenticated-focused-pdf.test.mjs .github/ci/focused-file-evidence.test.mjs .github/ci/pdf-tools.test.mjs
+      - name: Original browser outcome and provenance refusal controls
+        if: inputs.control_scope == 'browser-partial'
+        run: node --test .github/ci/browser-partial-outcomes.test.mjs .github/ci/authenticated-browser-partial.test.mjs
       - name: Archive extraction refusal controls
+        if: inputs.control_scope == 'focused'
         env: {PYTHONDONTWRITEBYTECODE: '1'}
         run: python3 -I .github/ci/extract-focused.test.py
