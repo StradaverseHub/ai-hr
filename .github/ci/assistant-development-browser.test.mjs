@@ -42,7 +42,7 @@ test('one persistent transport per kind requires ordered phases and exact finish
   child.stdout.write(JSON.stringify({kind,sequence:0,ok:true,ready:true})+'\n');await assert.rejects(client.finish());await assert.rejects(client.verifyCanonical({phase:'reopened_again'}));
   if(kind==='provider_config')await assert.rejects(client.verifyCanonical({phase:'baseline',expected:{key:'not_allowed'}}));
   for(const phase of nativeReadbackSpecification(kind).phases)assert.deepEqual(await client.verifyCanonical({phase}),{phase});
-  await client.finish();const ended=new Promise(resolve=>child.stdout.once('end',resolve));child.stdout.end();await ended;child.exitCode=0;child.emit('exit',0,null);client.assertClosed();
+  await client.finish();assert.throws(()=>client.assertClosed(),'finish response alone is not process closure');const ended=new Promise(resolve=>child.stdout.once('end',resolve));child.stdout.end();await ended;child.exitCode=0;assert.throws(()=>client.assertClosed(),'EOF and assigned exitCode do not replace observed exit0');child.emit('exit',0,null);client.assertClosed();
   assert.deepEqual(observed.map(p=>p.sequence),Array.from({length:nativeReadbackSpecification(kind).phases.length+1},(_,i)=>i+1));assert(observed.every(p=>p.kind===kind));assert.deepEqual(Object.keys(observed.at(-1)).sort(),['kind','operation','sequence']);
  }
  assert.throws(()=>createPrivateNativeReadbackClient(fakeReadbackChild(),{kind:'own_leave',count:99}));
@@ -69,6 +69,10 @@ test('both generated TS bootstrap variants parse with real statement separators 
    assert.deepEqual(parsed.parseDiagnostics.map(d=>ts.flattenDiagnosticMessageText(d.messageText,' ')),[]);
    assert(text.includes(";\nimport "));assert(!text.includes(';\\nimport '));assert(!text.includes('file://'));assert(!text.includes('import.meta'));
    for(const statement of parsed.statements){if(ts.isImportDeclaration(statement))assert(statement.moduleSpecifier.text.startsWith('/')||statement.moduleSpecifier.text.startsWith('node:'));assert(!(ts.isExpressionStatement(statement)&&ts.isAwaitExpression(statement.expression)));}
+   const frameWrites=[];function inspect(node){if(ts.isCallExpression(node)&&ts.isPropertyAccessExpression(node.expression)&&node.expression.name.text==='write'&&node.expression.expression.getText(parsed)==='process.stdout')frameWrites.push(node.arguments[0]);ts.forEachChild(node,inspect);}inspect(parsed);
+   assert.equal(frameWrites.length,name==='prepare'?0:1);
+   for(const frame of frameWrites){assert(ts.isBinaryExpression(frame)&&frame.operatorToken.kind===ts.SyntaxKind.PlusToken&&ts.isStringLiteral(frame.right));assert.deepEqual([...frame.right.text].map(character=>character.codePointAt(0)),[10],'RPC delimiter must be actual LF, never literal backslash+n');}
+
   }
  }
 });

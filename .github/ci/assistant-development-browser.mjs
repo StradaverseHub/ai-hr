@@ -154,7 +154,7 @@ main().catch(()=>{process.exitCode=1;});
 export function createPrivateNativeReadbackClient(child,options={}){
  assert(options&&typeof options==='object'&&!Array.isArray(options)&&Object.keys(options).every(key=>['signal','timeoutMs','kind'].includes(key)));const {signal,timeoutMs=30000,kind='own_leave'}=options;
  const spec=nativeReadbackSpecification(kind);assert(child?.stdin&&child?.stdout);assert(Number.isSafeInteger(timeoutMs)&&timeoutMs>0&&timeoutMs<=60000);
- let sequence=0,verified=0,pending,failed=false,inFlight=false,finished=false,ended=false,buffer='';const decoder=new TextDecoder('utf-8',{fatal:true});
+ let sequence=0,verified=0,pending,failed=false,inFlight=false,finished=false,ended=false,exited=false,buffer='';const decoder=new TextDecoder('utf-8',{fatal:true});
  const fail=()=>{failed=true;if(pending){const p=pending;pending=undefined;clearTimeout(p.timer);p.reject(Error('Private native readback unavailable'));}};
  const wait=(operation,number)=>new Promise((resolve,reject)=>{assert(!pending);pending={operation,number,resolve,reject,timer:setTimeout(fail,timeoutMs)};});
  const ready=wait('ready',0);ready.catch(()=>{});
@@ -163,7 +163,7 @@ export function createPrivateNativeReadbackClient(child,options={}){
   for(let index;(index=buffer.indexOf('\n'))>=0;){const line=buffer.slice(0,index);buffer=buffer.slice(index+1);assert(pending&&!failed);const value=parseNativeReadbackResponse(line,pending.number,pending.operation,kind);const p=pending;pending=undefined;clearTimeout(p.timer);p.resolve(value);}
  }catch{fail();}});
  child.stdout.once('end',()=>{try{assert.equal(decoder.decode(),'');assert.equal(buffer,'');ended=true;if(!finished)fail();}catch{fail();}});
- child.once('error',fail);child.stdin.on('error',fail);child.once('exit',(code)=>{if(code!==0||!finished)fail();});
+ child.once('error',fail);child.stdin.on('error',fail);child.once('exit',(code,signal)=>{if(code!==0||signal!==null||!finished)fail();else exited=true;});
  if(signal){if(signal.aborted)fail();else signal.addEventListener('abort',fail,{once:true});}
  async function request(operation,invocation){
   assert(!failed&&!inFlight&&!finished);
@@ -174,7 +174,7 @@ export function createPrivateNativeReadbackClient(child,options={}){
    child.stdin.write(packet+'\n',error=>{if(error)fail();});const value=await response;if(operation==='finish'){finished=true;child.stdin.end();}else verified++;return value;
   }finally{inFlight=false;}
  }
- return {verifyCanonical:invocation=>request('verify',invocation),finish:()=>request('finish'),assertClosed(){assert(!failed&&finished&&ended&&verified===spec.phases.length&&!pending&&buffer===''&&child.exitCode===0&&child.signalCode===null,'Readback closure unconfirmed');}};
+ return {verifyCanonical:invocation=>request('verify',invocation),finish:()=>request('finish'),assertClosed(){assert(!failed&&finished&&ended&&exited&&verified===spec.phases.length&&!pending&&buffer===''&&child.exitCode===0&&child.signalCode===null,'Readback closure unconfirmed');}};
 }
 const here=dirname(fileURLToPath(import.meta.url));
 async function main(){
