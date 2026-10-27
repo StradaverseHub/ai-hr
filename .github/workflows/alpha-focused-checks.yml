@@ -24,6 +24,10 @@ on:
         required: false
         default: false
         type: boolean
+      compiler_only:
+        description: Whole compiler only; requires empty selection and cannot run tests or a build
+        default: false
+        type: boolean
       run_typecheck:
         description: Whole-repository compiler check in a separate standard runner
         default: false
@@ -68,7 +72,17 @@ jobs:
         with: {node-version: '22.23.3'}
       - name: Focused controller regression checks
         run: node --experimental-strip-types --test .github/ci/focused-checks.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs
+      - name: Refuse an invalid compiler-only request
+        if: ${{ inputs.compiler_only }}
+        env:
+          SELECTION: ${{ inputs.selected_tests }}
+          TYPECHECK: ${{ inputs.run_typecheck }}
+          BUILD: ${{ inputs.run_build }}
+          PROFILE: ${{ inputs.profile_database }}
+          DURATION: ${{ inputs.duration_order }}
+        run: test "$SELECTION" = "[]" && test "$TYPECHECK" = true && test "$BUILD" = false && test "$PROFILE" = false && test "$DURATION" = false
       - name: Validate bounded manifest
+        if: ${{ !inputs.compiler_only }}
         id: selection
         run: node .github/ci/focused-checks.mjs selection
         env:
@@ -80,6 +94,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           STAGING_BASE_SHA: ${{ vars.STAGING_DEPLOYED_SHA }}
   selected-tests:
+    if: ${{ !inputs.compiler_only }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 20
