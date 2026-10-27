@@ -68,6 +68,11 @@ describe('bounded Android signed clock HTTP boundary without route activation',(
   for(const options of [{fields:[['command',JSON.stringify(proof)]] as [string,string][]},{fields:[['verified','true']] as [string,string][]},{padding:3*1024*1024},{photo:new Blob(['wrong'],{type:'text/plain'})}])expect((await call('clockComplete',f.employmentId,proof,options)).status).toBe(400);
   expect(guard).not.toHaveBeenCalled();await untouched(proof.challengeId);
  });
+ it('bounds the command field before JSON parsing while accepting its complete allowed envelope',async()=>{
+  const f=await enrolled(),{proof}=await prepared(f),padding=16384-Buffer.byteLength(JSON.stringify(proof),'utf8');expect(padding).toBeGreaterThan(0);
+  expect((await call('clockComplete',f.employmentId,proof,{padding:padding+1})).status).toBe(400);expect(guard).not.toHaveBeenCalled();await untouched(proof.challengeId);
+  expect((await call('clockComplete',f.employmentId,proof,{padding})).body.outcome).toBe('accepted');
+ });
  it('maps malformed/invalid signatures and changed bound command bytes to private typed outcomes',async()=>{
   const f=await enrolled(),{proof}=await prepared(f);
   expect((await call('clockComplete',f.employmentId,{...proof,signature:Buffer.alloc(8).toString('base64')})).body).toEqual({outcome:'refused',code:'invalid_proof'});

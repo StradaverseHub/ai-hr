@@ -39,7 +39,7 @@ function expected(error:unknown):Refusal|undefined{
 }
 async function form<S extends z.ZodType>(req:Request,schema:S){
  const fields=await mobileForm(req,['command','photo'],3*1024*1024),raw=fields.get('command'),file=fields.get('photo');
- if(typeof raw!=='string')throw new MobileBadRequest('Invalid command');
+ if(typeof raw!=='string'||Buffer.byteLength(raw,'utf8')>16384)throw new MobileBadRequest('Invalid command');
  let json:unknown;try{json=JSON.parse(raw);}catch{throw new MobileBadRequest('Invalid JSON');}
  const parsed=schema.safeParse(json);if(!parsed.success)throw new MobileBadRequest('Invalid integrity command');
  if(file!==null&&(!(file instanceof File)||file.size<1||file.size>2*1024*1024||!['image/jpeg','image/png'].includes(file.type)))throw new MobileBadRequest('Invalid photo');
