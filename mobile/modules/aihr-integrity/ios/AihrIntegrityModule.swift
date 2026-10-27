@@ -76,7 +76,32 @@ public class AihrIntegrityModule: Module {
         case .requested: promise.resolve(["state": "requested"])
         case .retryable: promise.resolve(["state": "retryable"])
         case .completed(let data): promise.resolve(["state": "completed", "attestation": data.base64EncodedString()])
+        case .released: promise.resolve(["state": "released"])
         }
+      } catch { self.reject(error, promise) }
+    }
+
+    AsyncFunction("releaseAppleAttestation") { (id: String, hash: String, promise: Promise) in
+      do { try Self.proofs.release(keyId: id, hash: hash); promise.resolve(nil) }
+      catch { self.reject(error, promise) }
+    }
+
+    // The verified first-install owner calls this before restoring credentials or creating its marker.
+    // Clearing metadata does not revoke a server key or pretend to delete an App Attest private key.
+    AsyncFunction("resetAppleIntegrityInstallation") { (promise: Promise) in
+      let state = Self.requests
+      state.lock.lock(); defer { state.lock.unlock() }
+      guard state.active.isEmpty && state.uncommitted.isEmpty else {
+        promise.reject("ERR_INTEGRITY_IN_PROGRESS", "Retain the pending enrollment"); return
+      }
+      do {
+        try Self.proofs.resetInstallation {
+          let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "aihr.integrity.app-attest.v1"]
+          let status = SecItemDelete(query as CFDictionary)
+          guard status == errSecSuccess || status == errSecItemNotFound else { throw AppAttestProofError.storageUnavailable }
+        }
+        promise.resolve(nil)
       } catch { self.reject(error, promise) }
     }
 

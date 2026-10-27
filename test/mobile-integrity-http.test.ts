@@ -113,7 +113,7 @@ describe('bounded scoped integrity HTTP handlers before route activation',()=>{
     const f=await enrolled();config=null;
     expect((await call('capabilities',f.employmentId)).body).toEqual({outcome:'unavailable',code:'not_configured'});
     const keys=await call('keys',f.employmentId);expect(keys.body.outcome).toBe('keys');expect(keys.body.items).toHaveLength(1);
-    expect(Object.keys(keys.body.items[0]).sort()).toEqual(['appId','createdAt','environment','keyId','originChallengeId','platform','proofKind','revokedAt'].sort());
+    expect(Object.keys(keys.body.items[0]).sort()).toEqual(['appId','createdAt','environment','keyId','nativeKeyBinding','originChallengeId','platform','proofKind','revokedAt'].sort());
     const revoked=await call('revoke',f.employmentId,{keyId:f.input.keyId});expect(revoked.body.outcome).toBe('revoked');expect(revoked.body.key.revokedAt).not.toBeNull();
     expect((await call('revoke',f.employmentId,{keyId:f.input.keyId})).body).toEqual(revoked.body);expect((await call('keys',f.employmentId)).body.items[0]).toEqual(revoked.body.key);
   });

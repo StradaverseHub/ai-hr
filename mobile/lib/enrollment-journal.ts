@@ -1,6 +1,6 @@
 /** Local enrollment recovery. Only the server owns key enrollment/authorization; no trust tier here. */
 import {z} from 'zod';
-import {AppleEnrollmentSettings,keyEnrollmentClientData} from '../../lib/mobile-key-enrollment';
+import {AppleEnrollmentSettings,keyEnrollmentClientData,nativeKeyBindingData} from '../../lib/mobile-key-enrollment';
 import * as C from '../../lib/mobile-integrity-contract';
 import type {createIntegrityBridge} from './integrity-bridge';
 
@@ -74,11 +74,24 @@ export function createEnrollmentJournal(rawScope:EnrollmentScope,ports:Enrollmen
     const raw=await owned(()=>ports.read());if(!raw)return {version:1 as const,revision:0,scope,pending:null,key:null};
     const s=parseEnrollmentSnapshot(raw,scope);
     if(s.pending&&s.pending.phase!=='requested')await checkPrepared(s.pending.prepared,s.pending);
-    if(s.key)await checkPrepared(s.key.prepared,s.key);return s;
+    if(s.key){await checkPrepared(s.key.prepared,s.key);await checkKeyBinding(s.key);}return s;
   }
   async function save(s:Awaited<ReturnType<typeof read>>,p:Pending|null,key:EnrollmentSnapshot['key']=null){
     const next=parseEnrollmentSnapshot({...s,revision:s.revision+1,pending:p,key},scope);
     try{await owned(()=>ports.commit(structuredClone(next)));}catch(error){ports.assertCurrent();throw new EnrollmentJournalUnavailable();}return next;
+  }
+  async function release(key:NonNullable<EnrollmentSnapshot['key']>){
+    // Cleanup is retried on later owned reads. Its unavailability must not turn a committed receipt
+    // back into a pending enrollment, but an obsolete owner must still stop before publishing state.
+    await owned(()=>ports.native.releaseAppleAttestation(key.vendorKeyId,key.prepared.clientDataHash));
+  }
+  async function registered(s:Awaited<ReturnType<typeof read>>,key:NonNullable<EnrollmentSnapshot['key']>){
+    await checkKeyBinding(key);
+    const next=await save(s,null,key);await release(key);return status(next);
+  }
+  async function checkKeyBinding(key:NonNullable<EnrollmentSnapshot['key']>){
+    const expected=await owned(()=>ports.digest(nativeKeyBindingData(key.prepared.context.challengeId,key.vendorKeyId),'hex'));
+    if(expected!==key.key.nativeKeyBinding)throw new EnrollmentConflict();
   }
   function status(s:Awaited<ReturnType<typeof read>>,reason?:PendingReason):EnrollmentStatus{
     if(s.key)return {status:'stored_key',keyId:s.key.key.keyId,revoked:s.key.key.revokedAt!==null};
@@ -100,16 +113,16 @@ export function createEnrollmentJournal(rawScope:EnrollmentScope,ports:Enrollmen
     return value.evidence===null?{reason:'recovery_required'}:{vendorKeyId:checked(hash32,value.evidence)};
   }
   return {
-    status:()=>exclusive(queue,async()=>status(await read())),
+    status:()=>exclusive(queue,async()=>{const s=await read();if(s.key)await release(s.key);return status(s);}),
     begin:(employmentId:string,requestId:string)=>exclusive(queue,async()=>{
       const i=intent.parse({employmentId,requestId}),s=await read();
-      if(s.key)return status(s);
+      if(s.key){await release(s.key);return status(s);}
       if(s.pending){if(s.pending.employmentId!==i.employmentId)throw new EnrollmentConflict();return status(s);}
       return status(await save(s,{...i,phase:'requested'}));
     }),
     advance:(employmentId:string)=>exclusive(queue,async()=>{
       const selected=uuid.parse(employmentId);let s=await read(),p=s.pending;
-      if(!p)return status(s);
+      if(!p){if(s.key)await release(s.key);return status(s);}
       if(p.employmentId!==selected)throw new EnrollmentConflict();
       const intentRef={employmentId:p.employmentId,requestId:p.requestId};
       let refreshed=false,reconciled=false;
@@ -130,7 +143,7 @@ export function createEnrollmentJournal(rawScope:EnrollmentScope,ports:Enrollmen
           if(matches[0]){
             const reference=await keyReference(p.prepared);if('reason' in reference)return status(s,reference.reason);const {vendorKeyId}=reference;
             if('vendorKeyId' in p&&p.vendorKeyId!==vendorKeyId)throw new EnrollmentConflict();
-            return status(await save(s,null,{employmentId:p.employmentId,requestId:p.requestId,prepared:p.prepared,vendorKeyId,key:matches[0]}));
+            return registered(s,{employmentId:p.employmentId,requestId:p.requestId,prepared:p.prepared,vendorKeyId,key:matches[0]});
           }
           reconciled=true;
         }
@@ -142,7 +155,7 @@ export function createEnrollmentJournal(rawScope:EnrollmentScope,ports:Enrollmen
             challengeId:preparedRef.context.challengeId,vendorKeyId:proof.vendorKeyId,attestation:proof.attestation})));
           if(value.outcome!=='enrolled')return status(s,value.outcome==='refused'?'server_refused':'server_unavailable');
           if(!receiptMatches(value.key,p.prepared))throw new EnrollmentConflict();
-          return status(await save(s,null,{employmentId:p.employmentId,requestId:p.requestId,prepared:p.prepared,vendorKeyId:p.vendorKeyId,key:value.key}));
+          return registered(s,{employmentId:p.employmentId,requestId:p.requestId,prepared:p.prepared,vendorKeyId:p.vendorKeyId,key:value.key});
         }
         if(!refreshed){
           const value=checked(C.IntegrityEnrollmentPrepared,await owned(()=>ports.prepare(intentRef.employmentId,{requestId:intentRef.requestId,appInstallationId:scope.appInstallationId})));
@@ -175,7 +188,7 @@ export function createEnrollmentJournal(rawScope:EnrollmentScope,ports:Enrollmen
         if(cache.evidence.state==='completed'){
           p={...p,phase:'proof_ready',attestation:checked(artifact,cache.evidence.attestation)};s=await save(s,p);continue;
         }
-        if(cache.evidence.state==='requested'||cache.evidence.state==='absent'&&p.phase==='attestation_requested')return status(s,'recovery_required');
+        if(cache.evidence.state==='released'||cache.evidence.state==='requested'||cache.evidence.state==='absent'&&p.phase==='attestation_requested')return status(s,'recovery_required');
         p={...p,phase:'attestation_requested'};s=await save(s,p);
         const value=await owned(()=>ports.native.attestAppleKey(vendorKeyId,preparedRef.clientDataHash));
         if(value.status!=='evidence')return status(s,nativeReason(value));

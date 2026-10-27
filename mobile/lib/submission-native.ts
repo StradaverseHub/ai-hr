@@ -5,6 +5,8 @@ import { AESEncryptionKey, AESSealedData, aesEncryptAsync, aesDecryptAsync, Cryp
 import { createSubmissionJournal, SubmissionJournalFull, SubmissionJournalUnavailable, type SubmissionScope } from './submission-journal';
 import { createSubmissionStorage,createSealedJournalStorage } from './submission-storage';
 import {createEnrollmentJournal,parseEnrollmentSnapshot,EnrollmentScope,EnrollmentJournalUnavailable,type EnrollmentPorts} from './enrollment-journal';
+import NativeIntegrity from '../modules/aihr-integrity/src/AihrIntegrityModule';
+import {createIntegrityBridge} from './integrity-bridge';
 
 const KEY='aihr.submissions.key.v1';
 const MAX_INSTALL_BYTES=64*1024*1024;
@@ -18,6 +20,10 @@ const hash=(value:string|Uint8Array)=>typeof value==='string'?digestStringAsync(
 
 /** Called only when the app sandbox's installation marker is absent, before any session is restored. */
 export function resetSubmissionInstallation(){return serializedKey(async()=>{
+  // Only the verified first-install owner calls this. A failed native reset leaves the app marker
+  // absent so initialization retries; old/missing bridges cannot start the new enrollment protocol.
+  const reset=await createIntegrityBridge(NativeIntegrity,()=>{}).resetAppleIntegrityInstallation();
+  if(reset.status!=='evidence'&&reset.status!=='unsupported')throw new SubmissionJournalUnavailable('Native installation cleanup unavailable');
   await SecureStore.deleteItemAsync(KEY,OPTIONS);
   const directory=root();if(directory.exists)directory.delete();
 });}

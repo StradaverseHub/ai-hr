@@ -38,6 +38,7 @@ describe('scoped Apple key enrollment transaction',()=>{
     const [a,b]=await Promise.all([f.service.complete(e.ctx,command),f.service.complete(e.ctx,command)]);expect(a).toEqual(b);
     expect(f.verifyProof).toHaveBeenCalledWith(expect.objectContaining({clientDataHash:Buffer.from(begin.clientDataHash,'base64'),keyId:f.vendorKeyId,appId:settings.target.appId,environment:'production'}));
     const [row]=await owner.db.select().from(schema.mobileIntegrityKey);expect(row.proofKind).toBe('apple_key_proof');expect(row.assertionCounter).toBe(0);
+    expect(a.nativeKeyBinding).toBe(createHash('sha256').update(JSON.stringify(['aihr.native-key-binding',1,begin.challenge.id,f.vendorKeyId])).digest('hex'));
     expect(row.receiptCiphertext).not.toContain('SYNTHETIC_PRIVATE_RECEIPT');
     const aad=JSON.stringify(['mobile-integrity-key-receipt',1,base.tenantId,e.ctx.userId,row.id,begin.challenge.id]);
     expect(Buffer.from(decryptSecret(row.receiptCiphertext,aad),'base64').toString()).toBe('SYNTHETIC_PRIVATE_RECEIPT');

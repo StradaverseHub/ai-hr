@@ -23,3 +23,9 @@ export function keyEnrollmentClientData(input:unknown):string{
     [t.platform,t.appId,t.environment,t.requiredMetadata?[t.requiredMetadata.validationCategory,t.requiredMetadata.bundleVersions]:null],
   ]);
 }
+
+/** Enrollment-specific reference binding; not a stable hardware identifier or a trust verdict. */
+export function nativeKeyBindingData(challengeId:string,vendorKeyId:string):string{
+  const id=z.string().regex(/^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$/).parse(vendorKeyId);
+  return JSON.stringify(['aihr.native-key-binding',1,uuid.parse(challengeId),id]);
+}

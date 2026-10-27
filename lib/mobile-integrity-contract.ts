@@ -14,6 +14,7 @@ export const IntegrityClockProof=IntegrityClockIntent.extend({challengeId:uuid,a
 export const IntegrityRevokeIntent=z.object({keyId:uuid}).strict();
 export const IntegrityKeyReceipt=z.object({keyId:uuid,originChallengeId:uuid,platform:z.literal('ios'),appId:z.string().max(300),
   environment:z.enum(['production','development']),proofKind:z.enum(['apple_key_proof','apple_app_metadata']),
+  nativeKeyBinding:z.string().regex(/^[a-f0-9]{64}$/),
   createdAt:z.string().datetime(),revokedAt:z.string().datetime().nullable()});
 export const IntegrityRefused=z.object({outcome:z.literal('refused'),code:z.enum(['subject_unavailable','key_unavailable','key_exists','key_limit',
   'binding_conflict','challenge_unavailable','invalid_proof','clock_conflict','corrected_day','location_required','outside_geofence','photo_required','photo_invalid','device_required']),

@@ -6,7 +6,7 @@ import type {SessionContext,Tx} from '../db/client';
 import {mobileIntegrityChallenge,mobileIntegrityKey} from '../db/schema';
 import {actorOf,appendEvent} from '../db/events';
 import {encryptSecret,isSecretStorable} from '../lib/ai/crypto';
-import {AppleEnrollmentSettings,KeyEnrollmentContext,keyEnrollmentClientData} from '../lib/mobile-key-enrollment';
+import {AppleEnrollmentSettings,KeyEnrollmentContext,keyEnrollmentClientData,nativeKeyBindingData} from '../lib/mobile-key-enrollment';
 import {checkAppAttestKeyProof} from '../lib/mobile-api/app-attest-enrollment';
 import {withAttendanceTenant} from './module-gate';
 import {myOwnEmploymentSubjectsTx} from './read';
@@ -27,7 +27,7 @@ async function own(tx:Tx,ctx:SessionContext,employmentId:string){
   if(!ctx.userId||!ctx.personId||!(await myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:true})).some(row=>row.employmentId===employmentId))throw new OwnClockEmploymentUnavailableError();
 }
 function receipt(row:Row){return {keyId:row.id,originChallengeId:row.originChallengeId,platform:row.platform,appId:row.appId,environment:row.environment,proofKind:row.proofKind,
-  createdAt:row.createdAt.toISOString(),revokedAt:row.revokedAt?.toISOString()??null};}
+  nativeKeyBinding:hash(nativeKeyBindingData(row.originChallengeId,row.vendorKeyId)).toString('hex'),createdAt:row.createdAt.toISOString(),revokedAt:row.revokedAt?.toISOString()??null};}
 
 /** Settings and verifier are server-owned. The verifier override is an integration-test port only. */
 export function createAppleEnrollmentService(settings:unknown,ports:{verifyProof?:typeof checkAppAttestKeyProof}={}){

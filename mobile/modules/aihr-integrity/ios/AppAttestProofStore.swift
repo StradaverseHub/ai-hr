@@ -5,14 +5,20 @@ import CryptoKit
 protocol AppAttestProofPersistence {
   func read(_ account: String) throws -> Data?
   func write(_ data: Data, account: String) throws
+  func removeAll() throws
 }
 
 enum AppAttestProofError: Error { case invalidInput, bindingConflict, recoveryRequired, busy, storageUnavailable, malformedProof }
-enum AppAttestProofSnapshot: Equatable { case absent, requested, retryable, completed(Data) }
+enum AppAttestProofSnapshot: Equatable { case absent, requested, retryable, completed(Data), released }
 
 /** OS-encrypted, unlocked/device-only records. Never evict unresolved proofs to admit another key. */
 struct AppAttestKeychainProofPersistence: AppAttestProofPersistence {
   private let service = "aihr.integrity.app-attest-proof.v1"
+  func removeAll() throws {
+    let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service]
+    let status = SecItemDelete(query as CFDictionary)
+    guard status == errSecSuccess || status == errSecItemNotFound else { throw AppAttestProofError.storageUnavailable }
+  }
   func read(_ account: String) throws -> Data? {
     let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: service, kSecAttrAccount as String: account,
@@ -53,7 +59,7 @@ struct AppAttestKeychainProofPersistence: AppAttestProofPersistence {
  * Interrupted/unknown attempts remain requested, never silently replaced or sent with another hash.
  */
 final class AppAttestProofStore: @unchecked Sendable {
-  private enum Phase: String, Codable { case requested, retryable, completed }
+  private enum Phase: String, Codable { case requested, retryable, completed, released }
   private struct Record: Codable {
     let version: Int
     let keyId: String
@@ -102,7 +108,26 @@ final class AppAttestProofStore: @unchecked Sendable {
     case .requested: return .requested
     case .retryable: return .retryable
     case .completed: return .completed(record.proof!)
+    case .released: return .released
     }
+  }
+  /** Called only after JS has durably committed its matching server receipt. Retain the immutable
+   * binding tombstone so cleanup never makes a one-use key appear unused or attestable again. */
+  func release(keyId: String, hash: String) throws {
+    let name = try account(keyId, hash)
+    lock.lock(); defer { lock.unlock() }
+    guard active[name] == nil else { throw AppAttestProofError.busy }
+    guard let record = try load(name, keyId, hash) else { throw AppAttestProofError.recoveryRequired }
+    if record.phase == .released { return }
+    guard record.phase == .completed else { throw AppAttestProofError.recoveryRequired }
+    try save(Record(version: 1, keyId: keyId, clientDataHash: hash, phase: .released, proof: nil), name)
+  }
+  /** Bootstrap-only reinstall reset. Never erase an active/uncertain live callback's artifact. */
+  func resetInstallation(clearAliases: () throws -> Void) throws {
+    lock.lock(); defer { lock.unlock() }
+    guard active.isEmpty && uncommitted.isEmpty else { throw AppAttestProofError.busy }
+    try clearAliases()
+    try persistence.removeAll()
   }
   func request(keyId: String, hash: String,
     retryable: @escaping (Error) -> Bool,
@@ -116,7 +141,7 @@ final class AppAttestProofStore: @unchecked Sendable {
       guard active[name] == nil else { throw AppAttestProofError.busy }
       if let record = try load(name, keyId, hash) {
         if record.phase == .completed { lock.unlock(); completion(.success(record.proof!)); return }
-        if record.phase == .requested { throw AppAttestProofError.recoveryRequired }
+        if record.phase == .requested || record.phase == .released { throw AppAttestProofError.recoveryRequired }
       }
       guard active.count + uncommitted.count < 4 else { throw AppAttestProofError.busy }
       try save(Record(version: 1, keyId: keyId, clientDataHash: hash, phase: .requested, proof: nil), name)

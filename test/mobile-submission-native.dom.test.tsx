@@ -7,11 +7,14 @@ import * as journal from '../mobile/lib/submission-journal';
 import * as storage from '../mobile/lib/submission-storage';
 import * as enrollment from '../mobile/lib/enrollment-journal';
 import {enrollmentFixture,enrollmentId} from './helpers/mobile-enrollment-fixture';
+import {createIntegrityBridge} from '../mobile/lib/integrity-bridge';
+import {createInstallationStore} from '../mobile/lib/installation-store';
 
 /** Execute the shipped native adapter. Files/Keychain/native AES are ports; AES-GCM uses real crypto. */
-function fixture(){
+function fixture(nativeAvailable=true){
   const files=new Map<string,Uint8Array>(),directories=new Set<string>(),secrets=new Map<string,string>();
   let occupiedBytes=0;
+  const nativeReset={resetAppleIntegrityInstallation:vi.fn<()=>Promise<unknown>>(async()=>null)};
   const uri=(...parts:unknown[])=>parts.map(p=>typeof p==='string'?p:(p as {uri:string}).uri).join('/');
   class Directory {
     uri:string;constructor(...parts:unknown[]){this.uri=uri(...parts);}
@@ -62,14 +65,34 @@ function fixture(){
   runInNewContext(code,{exports:output.exports,module:output,Uint8Array,TextEncoder,TextDecoder,require:(id:string)=>{
     if(id==='expo-file-system')return {Directory,File,Paths:{document:'document',cache:'cache'}};
     if(id==='expo-secure-store')return secure;if(id==='expo-crypto')return crypto;
+    if(id==='../modules/aihr-integrity/src/AihrIntegrityModule')return {default:nativeAvailable?nativeReset:null};
+    if(id==='./integrity-bridge')return {createIntegrityBridge};
     if(id==='./submission-journal')return journal;if(id==='./submission-storage')return storage;if(id==='./enrollment-journal')return enrollment;throw new Error(id);
   }});
-  return {native:output.exports,files,directories,secrets,secure,occupy:(bytes:number)=>{occupiedBytes=bytes;}};
+  return {native:output.exports,files,directories,secrets,secure,nativeReset,occupy:(bytes:number)=>{occupiedBytes=bytes;}};
 }
 const scope={namespace:'https://hr.example.com',actorId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',employmentId:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'};
 const requestId='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const command=JSON.stringify({requestId,action:'in',lat:3,lng:101,accuracy:5,sampledAt:Date.now()});
 describe('native encrypted submission adapter',()=>{
+  it('retries failed native first-install cleanup before marking the installation, without clearing data on logout',async()=>{
+    const f=fixture(),e=enrollmentFixture(),pending=await f.native.openNativeEnrollmentJournal(e.scope,e.ports.assertCurrent,e.ports);await pending.begin(e.employmentId,e.requestId);
+    let marker=false,logout=false;const events:string[]=[];
+    const ports={markerExists:()=>marker,logoutPending:()=>logout,createMarker:()=>{events.push('marker');marker=true;logout=false;},
+      read:async()=>{events.push('read');return null;},write:async()=>{},remove:async()=>{events.push('credentials');},resetPrivateData:f.native.resetSubmissionInstallation};
+    f.nativeReset.resetAppleIntegrityInstallation.mockRejectedValueOnce({code:'ERR_INTEGRITY_UNAVAILABLE'});
+    const store=createInstallationStore(ports);await expect(store.read()).rejects.toThrow();
+    expect(marker).toBe(false);expect(f.secrets.has('aihr.submissions.key.v1')).toBe(true);expect(f.files.size).toBe(1);
+    await store.read();expect(events).toEqual(['credentials','credentials','marker','read']);expect(f.files.size).toBe(0);expect(f.secrets.has('aihr.submissions.key.v1')).toBe(false);
+    const current=await f.native.openNativeEnrollmentJournal(e.scope,e.ports.assertCurrent,e.ports);await current.begin(e.employmentId,e.requestId);
+    logout=true;await createInstallationStore(ports).read();expect(f.nativeReset.resetAppleIntegrityInstallation).toHaveBeenCalledTimes(2);expect(f.files.size).toBe(1);
+  });
+  it('keeps legacy initialization available without an optional native bridge, and refuses malformed cleanup acknowledgement',async()=>{
+    const old=fixture(false);await old.native.resetSubmissionInstallation();expect(old.nativeReset.resetAppleIntegrityInstallation).not.toHaveBeenCalled();
+    const f=fixture(),e=enrollmentFixture(),opened=await f.native.openNativeEnrollmentJournal(e.scope,e.ports.assertCurrent,e.ports);await opened.begin(e.employmentId,e.requestId);
+    f.nativeReset.resetAppleIntegrityInstallation.mockResolvedValueOnce({cleared:true});await expect(f.native.resetSubmissionInstallation()).rejects.toThrow();
+    expect(f.files.size).toBe(1);expect(f.secrets.has('aihr.submissions.key.v1')).toBe(true);
+  });
   it('keeps enrollment identity stable within one master generation and changes it after installation reset',async()=>{
     const f=fixture(),first=await f.native.nativeIntegrityInstallationId(()=>{});
     expect(await f.native.nativeIntegrityInstallationId(()=>{})).toBe(first);

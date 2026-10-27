@@ -10,6 +10,7 @@ function fixture(){
     clockSnapshot:vi.fn(()=>({localOnly:true as const,runtimeId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',source:'ios_continuous',elapsedBeforeNs:'9007199254740993',elapsedAfterNs:'9007199254740995',wallTimeMs:Date.now(),bootId:null})),
     appleKeyInfo:vi.fn<(...args:unknown[])=>Promise<unknown>>(async()=>null),generateAppleKey:vi.fn<(...args:unknown[])=>Promise<unknown>>(async()=>'opaque-key-reference'),
     appleAttestationInfo:vi.fn<(...args:unknown[])=>Promise<unknown>>(async()=>({state:'absent'})),
+    releaseAppleAttestation:vi.fn<(...args:unknown[])=>Promise<unknown>>(async()=>null),resetAppleIntegrityInstallation:vi.fn<(...args:unknown[])=>Promise<unknown>>(async()=>null),
     attestAppleKey:vi.fn<(...args:unknown[])=>Promise<unknown>>(async()=>Buffer.from('unverified platform artifact').toString('base64')),
     assertAppleKey:vi.fn<(...args:unknown[])=>Promise<unknown>>(async()=>Buffer.from('unverified assertion').toString('base64')),
     createAndroidKey:vi.fn<(...args:unknown[])=>Promise<unknown>>(async()=>({publicKeySpki:Buffer.from('unverified public key').toString('base64'),certificateChain:[Buffer.from('not a certificate').toString('base64')],reportedSecurityLevel:'software'})),
@@ -23,12 +24,12 @@ afterEach(()=>vi.useRealTimers());
 describe('native integrity evidence boundary',()=>{
   it('recovers native proof state without retrying a one-use vendor operation or claiming verification',async()=>{
     const f=fixture(),attestation=Buffer.from('retained artifact').toString('base64');
-    for(const state of [{state:'absent'},{state:'requested'},{state:'retryable'},{state:'completed',attestation}]){
+    for(const state of [{state:'absent'},{state:'requested'},{state:'retryable'},{state:'completed',attestation},{state:'released'}]){
       f.native.appleAttestationInfo.mockResolvedValueOnce(state);
       expect(await f.bridge.appleAttestationInfo('same-key',hash)).toEqual({status:'evidence',evidence:state,verification:'not_verified'});
     }
     expect(f.native.attestAppleKey).not.toHaveBeenCalled();expect(f.native.generateAppleKey).not.toHaveBeenCalled();
-    expect(f.native.appleAttestationInfo.mock.calls).toEqual(Array(4).fill(['same-key',hash]));
+    expect(f.native.appleAttestationInfo.mock.calls).toEqual(Array(5).fill(['same-key',hash]));
   });
   it('rejects malformed proof-cache records and noncanonical or oversized cached artifacts',async()=>{
     const f=fixture();

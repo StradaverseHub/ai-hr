@@ -63,7 +63,7 @@ describe('native enrollment durability and one-use recovery',()=>{
     const f=enrollmentFixture(),journal=f.journal();await journal.begin(f.employmentId,f.requestId);const commit=f.ports.commit;
     f.ports.commit=vi.fn(async value=>{if(value.key)throw new Error('receipt pointer failed');await commit(value);});
     await expect(journal.advance(f.employmentId)).rejects.toBeInstanceOf(EnrollmentJournalUnavailable);
-    expect(f.stored()?.pending?.phase).toBe('proof_ready');expect(f.stored()?.key).toBeNull();expect(f.ports.complete).toHaveBeenCalledOnce();
+    expect(f.stored()?.pending?.phase).toBe('proof_ready');expect(f.stored()?.key).toBeNull();expect(f.ports.complete).toHaveBeenCalledOnce();expect(f.native.releaseAppleAttestation).not.toHaveBeenCalled();
     f.ports.commit=commit;vi.mocked(f.ports.prepare).mockRejectedValueOnce(new Error('configuration unavailable'));
     expect((await f.journal().advance(f.employmentId)).status).toBe('stored_key');
     expect(f.ports.prepare).toHaveBeenCalledOnce();expect(f.ports.complete).toHaveBeenCalledOnce();expect(f.native.attestAppleKey).toHaveBeenCalledOnce();
@@ -107,5 +107,28 @@ describe('native enrollment durability and one-use recovery',()=>{
     await expect(f.journal().advance(f.employmentId)).rejects.toBeInstanceOf(EnrollmentConflict);expect(f.native.generateAppleKey).toHaveBeenCalledOnce();
     const g=enrollmentFixture();g.context.target.requiredMetadata={validationCategory:4,bundleVersions:['other-build']};
     await g.journal().begin(g.employmentId,g.requestId);expect(await g.journal().advance(g.employmentId)).toMatchObject({reason:'unsupported'});expect(g.native.generateAppleKey).not.toHaveBeenCalled();
+  });
+  it('releases native bytes only after the matching key receipt is durable and retries deferred cleanup',async()=>{
+    const f=enrollmentFixture(),journal=f.journal();await journal.begin(f.employmentId,f.requestId);
+    let observedDurable=false;
+    f.native.releaseAppleAttestation.mockImplementationOnce(async()=>{observedDurable=f.stored()?.pending===null&&f.stored()?.key?.key.nativeKeyBinding===f.receipt().nativeKeyBinding;throw {code:'ERR_INTEGRITY_UNAVAILABLE'};});
+    expect((await journal.advance(f.employmentId)).status).toBe('stored_key');
+    expect(observedDurable).toBe(true);
+    expect((await f.journal().status()).status).toBe('stored_key');expect(f.native.releaseAppleAttestation).toHaveBeenCalledTimes(2);
+    expect(f.native.attestAppleKey).toHaveBeenCalledOnce();expect(f.ports.complete).toHaveBeenCalledOnce();
+  });
+  it('refuses a receipt for another native key even when its challenge matches, and never clears that proof',async()=>{
+    const f=enrollmentFixture(),journal=f.journal();await journal.begin(f.employmentId,f.requestId);
+    vi.mocked(f.ports.complete).mockResolvedValue({outcome:'enrolled',key:{...f.receipt(),nativeKeyBinding:'0'.repeat(64)}});
+    await expect(journal.advance(f.employmentId)).rejects.toBeInstanceOf(EnrollmentConflict);expect(f.stored()?.pending?.phase).toBe('proof_ready');expect(f.native.releaseAppleAttestation).not.toHaveBeenCalled();
+    const g=enrollmentFixture();await g.journal().begin(g.employmentId,g.requestId);
+    g.native.generateAppleKey.mockRejectedValueOnce({code:'ERR_INTEGRITY_UNAVAILABLE'});await g.journal().advance(g.employmentId);
+    g.setAccepted(true);g.setKey(Buffer.alloc(32,9).toString('base64'));
+    await expect(g.journal().advance(g.employmentId)).rejects.toBeInstanceOf(EnrollmentConflict);expect(g.native.releaseAppleAttestation).not.toHaveBeenCalled();
+  });
+  it('does not re-attest a released key when no matching receipt can be recovered',async()=>{
+    const f=enrollmentFixture(),journal=f.journal();await journal.begin(f.employmentId,f.requestId);
+    f.native.attestAppleKey.mockRejectedValueOnce({code:'ERR_INTEGRITY_UNAVAILABLE'});await journal.advance(f.employmentId);f.setCache({state:'released'});
+    expect(await f.journal().advance(f.employmentId)).toMatchObject({phase:'attestation_requested',reason:'recovery_required'});expect(f.native.attestAppleKey).toHaveBeenCalledOnce();
   });
 });

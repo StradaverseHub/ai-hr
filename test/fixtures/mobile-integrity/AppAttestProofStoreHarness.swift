@@ -8,6 +8,7 @@ private final class MemoryPersistence: AppAttestProofPersistence {
   var records = [String: Data]()
   var failWrites = false
   var failAfterWrite = false
+  var failReset = false
   var lastRead: String?
   func read(_ account: String) throws -> Data? { lastRead = account; return records[account] }
   func write(_ data: Data, account: String) throws {
@@ -15,6 +16,7 @@ private final class MemoryPersistence: AppAttestProofPersistence {
     records[account] = data
     if failAfterWrite { throw Synthetic.storage }
   }
+  func removeAll() throws { if failReset { throw Synthetic.storage }; records.removeAll() }
 }
 private func require(_ condition: Bool, _ label: String) throws { if !condition { throw Synthetic.failure(label) } }
 private func failure(_ result: Result<Data, Error>?) -> AppAttestProofError? {
@@ -93,6 +95,9 @@ private let retryable: (Error) -> Bool = { if case Synthetic.outage = $0 { retur
       var result: Result<Data, Error>?
       store.request(keyId: "sdk-A", hash: hash, retryable: retryable, vendor: { complete in memory.failWrites = true; complete(.success(proof)) }, completion: { result = $0 })
       if case .storageUnavailable? = failure(result) {} else { throw Synthetic.failure("no proof reply before persistence") }
+      var resetAliases = 0
+      do { try store.resetInstallation { resetAliases += 1 }; throw Synthetic.failure("uncommitted artifact reset") } catch AppAttestProofError.busy {}
+      try require(resetAliases == 0, "uncommitted artifact blocks alias deletion")
       try require(try AppAttestProofStore(persistence: memory).snapshot(keyId: "sdk-A", hash: hash) == .requested, "lost process remains uncertain")
       memory.failWrites = false
       try require(try store.snapshot(keyId: "sdk-A", hash: hash) == .completed(proof), "live native owner flushes retained artifact")
@@ -191,6 +196,55 @@ private let retryable: (Error) -> Bool = { if case Synthetic.outage = $0 { retur
       try require(state.calls == 1 && state.replies == 7, "one active vendor call among concurrent callers")
       state.callback?(.success(proof))
       try require(state.replies == 8 && (try store.snapshot(keyId: "sdk-A", hash: hash)) == .completed(proof), "one durable concurrent outcome"); checks += 1
+    }
+    do {
+      let memory = MemoryPersistence(), store = AppAttestProofStore(persistence: memory)
+      var result: Result<Data, Error>?, calls = 0
+      store.request(keyId: "sdk-A", hash: hash, retryable: retryable, vendor: { calls += 1; $0(.success(proof)) }, completion: { result = $0 })
+      try store.release(keyId: "sdk-A", hash: hash); try store.release(keyId: "sdk-A", hash: hash)
+      try require(try store.snapshot(keyId: "sdk-A", hash: hash) == .released, "released proof leaves a binding tombstone")
+      try require(!String(data: memory.records.values.first!, encoding: .utf8)!.contains(proof.base64EncodedString()), "released bytes removed")
+      AppAttestProofStore(persistence: memory).request(keyId: "sdk-A", hash: hash, retryable: retryable, vendor: { _ in calls += 1 }, completion: { result = $0 })
+      if case .recoveryRequired? = failure(result) {} else { throw Synthetic.failure("released key cannot attest again") }
+      do { try store.release(keyId: "sdk-A", hash: otherHash); throw Synthetic.failure("released binding changed") }
+      catch AppAttestProofError.bindingConflict {}
+      try require(calls == 1, "cleanup never re-enters vendor"); checks += 1
+    }
+    do {
+      let memory = MemoryPersistence(), store = AppAttestProofStore(persistence: memory)
+      var complete: ((Result<Data, Error>) -> Void)?
+      store.request(keyId: "sdk-A", hash: hash, retryable: retryable, vendor: { complete = $0 }, completion: { _ in })
+      do { try store.release(keyId: "sdk-A", hash: hash); throw Synthetic.failure("in-flight proof erased") } catch AppAttestProofError.busy {}
+      var aliases = 0
+      do { try store.resetInstallation { aliases += 1 }; throw Synthetic.failure("active callback reset") } catch AppAttestProofError.busy {}
+      try require(aliases == 0 && memory.records.count == 1, "reset waits for active owner")
+      complete?(.failure(Synthetic.unknown))
+      do { try store.release(keyId: "sdk-A", hash: hash); throw Synthetic.failure("unknown proof erased") } catch AppAttestProofError.recoveryRequired {}
+      try require(try store.snapshot(keyId: "sdk-A", hash: hash) == .requested, "unknown evidence preserved"); checks += 1
+    }
+    do {
+      let memory = MemoryPersistence(), store = AppAttestProofStore(persistence: memory)
+      store.request(keyId: "sdk-A", hash: hash, retryable: retryable, vendor: { $0(.success(proof)) }, completion: { _ in })
+      memory.failWrites = true
+      do { try store.release(keyId: "sdk-A", hash: hash); throw Synthetic.failure("failed release claimed success") } catch Synthetic.storage {}
+      try require(try store.snapshot(keyId: "sdk-A", hash: hash) == .completed(proof), "failed cleanup preserves artifact")
+      memory.failWrites = false; memory.failAfterWrite = true
+      do { try store.release(keyId: "sdk-A", hash: hash); throw Synthetic.failure("ambiguous release claimed success") } catch Synthetic.storage {}
+      memory.failAfterWrite = false
+      try require(try AppAttestProofStore(persistence: memory).snapshot(keyId: "sdk-A", hash: hash) == .released, "committed release survives lost reply")
+      try store.release(keyId: "sdk-A", hash: hash); checks += 1
+    }
+    do {
+      let memory = MemoryPersistence(), store = AppAttestProofStore(persistence: memory)
+      store.request(keyId: "sdk-A", hash: hash, retryable: retryable, vendor: { $0(.success(proof)) }, completion: { _ in })
+      var aliases = 0
+      do { try store.resetInstallation { throw Synthetic.storage }; throw Synthetic.failure("alias reset failure ignored") } catch Synthetic.storage {}
+      try require(memory.records.count == 1, "alias failure does not erase proofs")
+      memory.failReset = true
+      do { try store.resetInstallation { aliases += 1 }; throw Synthetic.failure("proof reset failure ignored") } catch Synthetic.storage {}
+      try require(memory.records.count == 1, "failed proof reset remains retryable")
+      memory.failReset = false; try store.resetInstallation { aliases += 1 }; try store.resetInstallation { aliases += 1 }
+      try require(aliases == 3 && memory.records.isEmpty && (try store.snapshot(keyId: "sdk-A", hash: hash)) == .absent, "fresh-install reset retries idempotently"); checks += 1
     }
     print("AppAttestProofStore: \(checks) host model scenarios passed; no vendor or OS Keychain acceptance claimed")
   }
