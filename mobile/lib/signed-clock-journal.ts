@@ -120,7 +120,7 @@ export function createSignedClockJournal(rawScope:EnrollmentScope,ports:SignedCl
     const signed=await owned(()=>ports.sign(signingKey,structuredClone(context)));
     if(signed.status!=='evidence')return status(s,selected,signed.status==='unsupported'?'unsupported':'native_unavailable');
     const proof=(current.key.platform==='ios'?C.IntegrityClockProof.shape.assertion:C.IntegrityAndroidClockProof.shape.signature).parse(signed.evidence);
-    current={...current,phase:'proof_ready',context,proof};s=await save(s,current);
+    current={...current,phase:'proof_ready',context,proof};
    }
    let token:string|undefined;
    if(current.key.platform==='android'){
