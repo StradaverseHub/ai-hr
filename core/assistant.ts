@@ -309,7 +309,9 @@ export async function askAssistant(
         tools,
         maxTokens: 2048,
         timeoutMs: TURN_TIMEOUT_MS,
-        cacheKey: CACHE_KEY,
+        // OpenRouter reviewed carriers forbid cache hints. Choose before capture/digest; stripping
+        // it later would invalidate the prepared request. The direct providers keep their prefix.
+        ...(cfg.provider==='openrouter'?{}:{cacheKey:CACHE_KEY}),
       }, sourceReads, deadline);
       const res = await converse(prepared.configuration, prepared.args);
       turnCount++;
