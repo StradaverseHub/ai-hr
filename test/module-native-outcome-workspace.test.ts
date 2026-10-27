@@ -23,8 +23,9 @@ async function fixture(){
   await applyLeaveAdjustmentBatch(admin,{leaveTypeIds:[base.annualLeaveTypeId],days:10,effectiveOn:todayInKualaLumpur(),reason:'Fictional discovery fixture credit',targetMode:'individual',employmentIds:[employee.employmentId]});
   const job=await runGovernedModuleReadPlan(ctx,{version:1,modules:['leave']},{nonce:randomUUID()});
   const next=new Date(todayInKualaLumpur()+'T00:00:00Z');do{next.setUTCDate(next.getUTCDate()+1);}while([0,6].includes(next.getUTCDay()));
-  const prepared=await withTenant(ctx,tx=>prepareOwnLeaveReviewTx(tx,ctx,{action:'leave.apply',contractVersion:1,employmentId:employee.employmentId,leaveTypeId:base.annualLeaveTypeId,date:next.toISOString().slice(0,10),durationType:'full_day'},{employmentId:employee.employmentId,leaveTypeId:base.annualLeaveTypeId},{reason:'PRIVATE human reason must not appear in discovery',employeeRemark:''},'en'));
-  if(prepared.kind!=='prepared')throw Error('Canonical Leave discovery fixture failed');return{ctx,employee,job,review:prepared.review};};
+  const prepared=await withTenant(ctx,tx=>prepareOwnLeaveReviewTx(tx,ctx,{action:'leave.apply',contractVersion:1,employmentId:employee.employmentId,leaveTypeId:base.annualLeaveTypeId,date:next.toISOString().slice(0,10),durationType:'full_day'},{employmentId:employee.employmentId,leaveTypeId:base.annualLeaveTypeId},{reason:'PRIVATE human reason must not appear in discovery'},'en'));
+  // An empty remark box is absent, as the human input owner sends it; '' is handed to the full form.
+  if(prepared.kind!=='prepared')throw Error('Canonical Leave discovery fixture failed: '+prepared.kind);return{ctx,employee,job,review:prepared.review};};
  return{admin,mine:await make(),peer:await make()};
 }
 async function complete(subject:Awaited<ReturnType<typeof fixture>>['mine']){const r=subject.review;expect((await confirmOwnLeaveReview(subject.ctx,{actionId:r.actionId,contractVersion:r.contractVersion,reviewedDigest:r.reviewedDigest},'en')).kind).toBe('completed');}
