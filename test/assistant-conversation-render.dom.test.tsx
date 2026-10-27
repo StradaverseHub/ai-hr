@@ -143,7 +143,10 @@ describe('grounded conversation rendering',()=>{
   if(issued.state!=='ready')throw Error('Actual fieldwise Mine fixture unavailable');
   expect(issued.presentation.cards[0].withheld).toBe(true);expect(issued.presentation.cards[0].facts.map(row=>row.field)).toEqual(['company','taken','pending']);
   const shown=render(await GroundedWorkspaceReply({ctx,reply:answer([select(issued,0,'taken')])})),region=screen.getByRole('region',{name:en.assistant.workspace.conversation.answerLabel});
-  expect([...region.querySelectorAll(':scope > p')].map(row=>row.textContent)).toContain(`Annual — ${en.assistant.workspace.jobs.field_taken}: 2.5`);
+  const answerLine=[...region.querySelectorAll(':scope > p')].find(row=>row.querySelector('.tabular-nums'));
+  expect(answerLine?.textContent).toContain(`Annual — ${en.assistant.workspace.jobs.field_taken}: 2.5`);
+  expect(answerLine?.querySelector('.tabular-nums')?.textContent).toBe('2.5');
+  expect(answerLine?.textContent).toContain(en.assistant.workspace.jobs.withheld);
   expect(screen.queryByRole('status')).toBeNull();expect(shown.container.textContent).not.toMatch(/9876|8765/);expect(region.querySelector('table')).toBeNull();
   expect(region.querySelector('details')?.open).toBe(false);
  });

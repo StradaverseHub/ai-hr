@@ -50,7 +50,7 @@ export async function ModuleAgentReview({view}:{view:View}){
      <p className="text-xs text-muted-foreground">{t('pending')}</p><button type="submit" className={`${btnPrimary} min-h-11`}>{t('promote')}</button>
     </form>
    </>}
-   <form action={tryAgentCandidateAction,createConversationCandidateAction,evaluateConversationCandidateAction,promoteConversationCandidateAction,eraseConversationMetadataAction} className="space-y-2">
+   <form action={tryAgentCandidateAction} className="space-y-2">
     <label className="block text-sm">{t('fixture')}<select name="fixtureId" className={`${inputCls} mt-1 w-full`}>{trials.map(row=><option key={row.id} value={row.id}>{row.question}</option>)}</select></label>
     <label className="flex items-start gap-2 text-xs"><input required type="checkbox" name="consented" value="yes" className="mt-0.5"/><span>{t('consent',{requests:1})}</span></label>
     <button type="submit" className={`${btnPrimary} min-h-11`}>{t('tryout')}</button>

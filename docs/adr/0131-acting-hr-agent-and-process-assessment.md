@@ -2910,7 +2910,7 @@ The real Assistant model loop selects tools; a source receipt alone does not est
 its final prose. Terminal conversational output therefore proposes a bounded answer plan: ordered
 references to actual executed-read facts or available canonical explanation clauses, one missing
 selection to clarify, or a closed unsupported/human-review outcome. Code adjudicates selectors against
-the current canonical presentation. Null, withheld and unavailable facts cannot become statements;
+the current canonical presentation. Null, hidden and unavailable facts cannot become statements;
 known explanation codes are not evidence that a clause applies. The model chooses relevance and order;
 canonical engines own values, calculations and the meaning of supported explanation clauses.
 
@@ -2959,3 +2959,9 @@ record/column order and actual units; they perform no currency conversion or HR 
 visual may show an already recorded, valid completion percentage; it never invents a denominator or uses
 model-calculated money. Long rule detail is expandable rather than an unstructured text dump. These
 presentation choices do not widen retrieval, effects or the supported explanation vocabulary.
+
+The conversation fact selector follows native Mine Leave field visibility: an aggregate `withheld`
+notice does not suppress a separately permitted non-null projected field. Hidden or omitted fields
+remain unavailable, and partial-card explanations remain refused. The reply retains its withholding
+notice and does not turn partial records into comparison tables. New regression cases are authored;
+runtime verification remains pending the exact-candidate development run.

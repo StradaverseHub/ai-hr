@@ -1,3 +1,4 @@
+import {eraseConversationMetadataAction} from './agent-review-actions';
 import {NativeOutcomes,NativeOutcomePrivacy} from '@/components/assistant/native-outcomes';
 import {ImportPreparationPrivacy} from '@/components/assistant/import-privacy';
 import { getTranslations } from 'next-intl/server';
@@ -63,6 +64,7 @@ export default async function AssistantPage({
           <form action={eraseAgentFeedbackAction} className="mt-4">
             <button type="submit" className="min-h-11 text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.feedbackErase')}</button>
           </form>
+          <form action={eraseConversationMetadataAction}><button type="submit" className="min-h-11 text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.conversationGovernance.erase')}</button></form>
           <form action={eraseModuleProposalsAction}><button type="submit" className="min-h-11 text-xs underline">{t('workspace.planning.erase')}</button></form>
           <ImportPreparationPrivacy status={sp.importHistory}/><NativeOutcomePrivacy status={sp.nativeOutcome}/>
           <form action={eraseGovernedJobFeedbackAction}><button type="submit" className="min-h-11 text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.governed.eraseSignals')}</button></form>
@@ -81,6 +83,7 @@ export default async function AssistantPage({
   return (
     <div data-tour="intelligence-assistant" className="mx-auto max-w-5xl space-y-5">
       <PageHeader title={t('title')} description={t('description')} />
+      <form action={eraseConversationMetadataAction}><button type="submit" className="min-h-11 text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.conversationGovernance.erase')}</button></form>
       <ErrorBanner message={errorMessage} />
 
       <ModuleJobChooser modules={workspace.jobModules} selected={sp.job}/>

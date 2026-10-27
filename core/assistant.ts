@@ -35,7 +35,8 @@
 import { randomUUID } from 'node:crypto';
 import { assistantSourceDigest, sealAssistantDisclosure, type AssistantSourceRead } from '../lib/ai/assistant-disclosure';
 import { ownAssistantClarification } from './assistant-clarification';
-import {ASSISTANT_CONVERSATION_SYSTEM} from '../lib/ai/assistant-conversation-system';
+import {buildAssistantConversationSystem} from '../lib/ai/assistant-conversation-system';
+import {prepareAssistantConversationStrategyTx,completeAssistantConversationStrategyTx,retireAssistantConversationStrategyCapability,type AssistantConversationStrategyCapability} from './module-agent-releases';
 import { parseAssistantAnswerPlan, adjudicateAssistantAnswerPlan, type AssistantAnswerPlan, type AssistantAnswerRead } from '../lib/ai/assistant-answer-plan';
 import { assistantToolAnswerExplanations } from '../lib/ai/assistant-tool-answer-evidence';
 import { assistantAnswerExplanationAvailability } from '../lib/ai/assistant-answer-explanations';
@@ -212,7 +213,7 @@ export async function askAssistant(
   const today = now.toISOString().slice(0, 10);
   const deadline = now.getTime() + EXCHANGE_DEADLINE_MS;
 
-  const { cfg, budget, spentBefore } = await withTenant(ctx, async (tx) => {
+  const { cfg, budget, spentBefore, conversationStrategy } = await withTenant(ctx, async (tx) => {
     const budget = await activeBudget(tx, ctx, today);
 
     // §2.6 — REFUSE BEFORE SPENDING, NOT AFTER. Both caps are checked here, in this order: the daily cap
@@ -239,7 +240,8 @@ export async function askAssistant(
     // Persist a new human-question intent BEFORE provider work. Its root is held in the issued
     // configuration through every converse/tool step; no late completed exchange ID or prompt hash.
     const rooted=await bindAiSpendTaskTx(tx,ctx,cfg,{kind:'assistant_question'});
-    return { cfg:rooted, budget, spentBefore: budget ? await spentThisPeriod(tx, ctx, period) : 0 };
+    const conversationStrategy=await prepareAssistantConversationStrategyTx(tx,ctx,rooted,question);
+    return { cfg:conversationStrategy.configuration, conversationStrategy, budget, spentBefore: budget ? await spentThisPeriod(tx, ctx, period) : 0 };
   });
 
   // Token, request, concurrency and time controls remain mandatory at provider admission.
@@ -278,7 +280,7 @@ export async function askAssistant(
       }
 
       const prepared = prepareAssistantConversation(ctx, cfg, {
-        system: [...ASSISTANT_CONVERSATION_SYSTEM],
+        system: buildAssistantConversationSystem(conversationStrategy.system),
         turns,
         tools,
         maxTokens: 2048,
@@ -343,21 +345,22 @@ export async function askAssistant(
     }
   } catch (e) {
     if (e instanceof AiAllowanceError) {
-      await persist(ctx, { appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: 'ai_control' });
+      await persist(ctx, { strategy:conversationStrategy.capability, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: 'ai_control' });
       throw new AssistantError('ai_control');
     }
     if (e instanceof AssistantError) {
       // A budget refusal mid-loop still records what was spent getting there.
       failure = e.code;
-      await persist(ctx, { appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: e.code });
+      await persist(ctx, { strategy:conversationStrategy.capability, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: e.code });
       throw e;
     }
     failure = 'provider_error';
-    await persist(ctx, { appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: failure });
+    await persist(ctx, { strategy:conversationStrategy.capability, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: failure });
     throw new AssistantError('provider_error');
   }
 
   const exchangeId = await persist(ctx, {
+    strategy:conversationStrategy.capability,
     appUserId,
     question,
     answer,
@@ -415,6 +418,7 @@ async function runTools(
 async function persist(
   ctx: SessionContext,
   p: {
+    strategy:AssistantConversationStrategyCapability;
     appUserId: string;
     question: string;
     answer: string;
@@ -433,7 +437,7 @@ async function persist(
   const id = randomUUID();
   const disclosureReceipt = sealAssistantDisclosure({ tenantId: ctx.tenantId, userId: p.appUserId,
     exchangeId: id, question: p.question, answer: p.answer }, p.sourceReads, p.answerPlan);
-  return withTenant(ctx, async (tx) => {
+  const completed=await withTenant(ctx, async (tx) => {
     const [row] = await tx
       .insert(assistantExchange)
       .values({
@@ -455,6 +459,7 @@ async function persist(
         error: p.error,
       })
       .returning({ id: assistantExchange.id });
+    await completeAssistantConversationStrategyTx(tx,ctx,p.strategy,row!.id);
 
     // Upsert the period counter. ON CONFLICT so two concurrent exchanges cannot lose one another's
     // tokens — a ceiling that under-counts under load is a ceiling that does not hold.
@@ -481,4 +486,7 @@ async function persist(
 
     return row!.id;
   });
+  // A rollback must not turn an unfinished marker into a completed in-memory capability.
+  retireAssistantConversationStrategyCapability(p.strategy);
+  return completed;
 }
