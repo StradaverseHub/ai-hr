@@ -45,6 +45,36 @@ function clientFixture() {
 afterEach(()=>{cleanup();vi.useRealTimers();});
 
 describe('native API transport', () => {
+  it('uses explicit v2 URLs and validates Android inventory, receipts and commands',async()=>{
+    const f=clientFixture(),id='11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const key={keyId:id,originChallengeId:id,platform:'android',appId:'ai.hr',environment:null,proofKind:'google_key_generation_proof',nativeKeyBinding:'a'.repeat(64),createdAt:'2026-10-27T00:00:00.000Z',revokedAt:null};
+    f.response.mockResolvedValueOnce(Response.json({outcome:'keys',items:[{...key,vendorKeyId:'private'}]}));
+    expect(await f.api.apiGet('v2/integrity/keys',{employmentId:id})).toEqual({outcome:'keys',items:[key]});
+    expect(f.response.mock.calls[0][0]).toBe('https://hr.example.com/api/mobile/v2/integrity/keys?employmentId='+id);
+    f.response.mockResolvedValueOnce(Response.json({outcome:'key_receipt',key}));
+    expect(await f.api.apiPost('v2/integrity/key-receipt',{originChallengeId:id},{employmentId:id})).toEqual({outcome:'key_receipt',key});
+    f.response.mockResolvedValueOnce(Response.json({outcome:'revoked',key:{...key,revokedAt:key.createdAt}}));
+    expect(await f.api.apiPost('v2/integrity/revoke',{keyId:id},{employmentId:id})).toMatchObject({outcome:'revoked'});
+    expect(f.response.mock.calls[2][0]).toContain('/api/mobile/v2/integrity/revoke?');
+    expect(f.response.mock.calls[2][1]?.body).toBe(JSON.stringify({keyId:id}));
+  });
+  it('falls back only from a missing v2 inventory and keeps the legacy decoder Apple-only',async()=>{
+    const f=clientFixture();f.response.mockResolvedValueOnce(new Response('',{status:404})).mockResolvedValueOnce(Response.json({outcome:'keys',items:[]}));
+    expect(await f.api.apiGet('v2/integrity/keys')).toEqual({outcome:'keys',items:[]});
+    expect(f.response.mock.calls.map(([url])=>new URL(url).pathname)).toEqual(['/api/mobile/v2/integrity/keys','/api/mobile/v1/integrity/keys']);
+    const bad=clientFixture(),id='11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    bad.response.mockResolvedValueOnce(new Response('',{status:404})).mockResolvedValueOnce(Response.json({outcome:'keys',items:[{keyId:id,originChallengeId:id,platform:'android',appId:'ai.hr',environment:null,proofKind:'google_key_generation_proof',nativeKeyBinding:'a'.repeat(64),createdAt:'2026-10-27T00:00:00.000Z',revokedAt:null}]}));
+    await expect(bad.api.apiGet('v2/integrity/keys')).rejects.toBeInstanceOf(UnavailableError);
+  });
+  it('refreshes ownership before compatible reads and never downgrades or replays a v2 command',async()=>{
+    const f=clientFixture();f.response.mockResolvedValueOnce(new Response('',{status:401})).mockResolvedValueOnce(new Response('',{status:404})).mockResolvedValueOnce(Response.json({outcome:'keys',items:[]}));
+    expect(await f.api.apiGet('v2/integrity/keys')).toEqual({outcome:'keys',items:[]});expect(f.auth.refresh).toHaveBeenCalledOnce();
+    expect(f.response.mock.calls[2][1]?.headers).toMatchObject({authorization:'Bearer rotated-token'});
+    const write=clientFixture();write.response.mockResolvedValueOnce(new Response('',{status:404}));
+    await expect(write.api.apiPost('v2/integrity/revoke',{keyId:'11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa'})).rejects.toMatchObject({status:404});expect(write.response).toHaveBeenCalledOnce();
+    const failed=clientFixture();failed.response.mockResolvedValueOnce(new Response('',{status:503}));
+    await expect(failed.api.apiGet('v2/integrity/keys')).rejects.toBeInstanceOf(UnavailableError);expect(failed.response).toHaveBeenCalledOnce();
+  });
   it('validates key recovery contracts and sends only the selected key command through normal bearer transport',async()=>{
     const f=clientFixture(),id='11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     const key={keyId:id,originChallengeId:id,platform:'ios',appId:'ABCDEFGHIJ.ai.hr',environment:'production',proofKind:'apple_key_proof',nativeKeyBinding:'a'.repeat(64),createdAt:'2026-10-27T00:00:00.000Z',revokedAt:null};

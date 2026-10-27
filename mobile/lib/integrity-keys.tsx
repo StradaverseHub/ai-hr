@@ -26,7 +26,7 @@ export function IntegrityKeys(){
 type Action={kind:'busy'|'uncertain'|'confirmed'|'refused';keyId:string};
 function KeyInventory({employmentId}:{employmentId:string}){
   const {signOut}=useSession(),{palette}=useTenantDesign();
-  const keys=useApi('integrity/keys',{employmentId},signOut);
+  const keys=useApi('v2/integrity/keys',{employmentId},signOut);
   const owner=authGeneration(),namespace=identityNamespace(),locale=appLocale();
   const alive=useRef(true),flight=useRef<symbol|null>(null);
   const [action,setAction]=useState<Action|null>(null),[confirmed,setConfirmed]=useState<Record<string,string>>({});

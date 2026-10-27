@@ -61,7 +61,7 @@ describe('integrity key review and explicit revocation',()=>{
     const view=render(<Page/>);expect(screen.getByText('sign-in redirect')).toBeTruthy();expect(privateView).not.toHaveBeenCalled();status='signedIn';view.rerender(<Page/>);expect(screen.getByText('private content')).toBeTruthy();
   });
   it('distinguishes missing prerequisites, initial loading, empty, unavailable and older-server states',()=>{
-    const f=fixture();f.me.data=null;f.me.loading=true;const view=render(<f.View/>);expect(screen.queryByText('integrityKeysEmpty')).toBeNull();expect(f.useApi).not.toHaveBeenCalledWith('integrity/keys',expect.anything(),expect.anything());
+    const f=fixture();f.me.data=null;f.me.loading=true;const view=render(<f.View/>);expect(screen.queryByText('integrityKeysEmpty')).toBeNull();expect(f.useApi).not.toHaveBeenCalledWith('v2/integrity/keys',expect.anything(),expect.anything());
     f.me.data={employments:[]};f.me.loading=false;view.rerender(<f.View/>);expect(screen.getByText('integrityKeysNoEmployment')).toBeTruthy();
   });
   it('does not call an older server empty or allow a retained key to be revoked while reads fail',()=>{
@@ -96,6 +96,15 @@ describe('integrity key review and explicit revocation',()=>{
   });
 });
 describe('real recovery command receipt matching',()=>{
+  it('uses v2 for Android revocation and exact lookup while preserving enrollment binding',async()=>{
+    const android={...key,platform:'android',appId:'ai.hr',environment:null,proofKind:'google_key_generation_proof'};
+    const post=vi.fn(async()=>({outcome:'revoked',key:{...android,revokedAt:'2026-10-28T00:00:00.000Z'}}));
+    const helper=compile('mobile/lib/integrity-key-recovery.ts',{'../../lib/mobile-integrity-contract':contracts,'./api':{apiPost:post},'./errors':{UnavailableError}});
+    await helper.revokeIntegrityKey(id,android);expect(post).toHaveBeenCalledExactlyOnceWith('v2/integrity/revoke',{keyId:id},{employmentId:id});
+    post.mockResolvedValueOnce({outcome:'revoked',key:{...android,nativeKeyBinding:'b'.repeat(64),revokedAt:'2026-10-28T00:00:00.000Z'}});
+    await expect(helper.revokeIntegrityKey(id,android)).rejects.toBeInstanceOf(UnavailableError);
+    await helper.lookupIntegrityKeyReceipt(id,id);expect(post).toHaveBeenLastCalledWith('v2/integrity/key-receipt',{originChallengeId:id},{employmentId:id});
+  });
   it('sends only the key ID and rejects another enrollment or a missing revocation timestamp',async()=>{
     const post=vi.fn(async()=>({outcome:'revoked',key:{...key,revokedAt:'2026-10-28T00:00:00.000Z'}}));
     const helper=compile('mobile/lib/integrity-key-recovery.ts',{'../../lib/mobile-integrity-contract':contracts,'./api':{apiPost:post},'./errors':{UnavailableError}});

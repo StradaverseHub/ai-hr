@@ -7,7 +7,7 @@
  * failure or 5xx ⇒ UnavailableError and the session is KEPT.
  */
 import type {z} from 'zod';
-import {IntegrityKeysResult,IntegrityRevocationResult,IntegrityKeyLookupResult} from '../../lib/mobile-integrity-contract';
+import {IntegrityKeysResultV2,IntegrityRevocationResultV2,IntegrityKeyLookupResultV2,IntegrityKeysResult,IntegrityRevocationResult,IntegrityKeyLookupResult} from '../../lib/mobile-integrity-contract';
 import { useCallback, useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 import { fetch as nativeFetch } from 'expo/fetch';
@@ -28,6 +28,7 @@ import { appLocale } from './i18n';
 export type { LeaveResponse, MeResponse, NotificationsResponse, PayslipsResponse };
 
 type Endpoints = {
+  'v2/integrity/keys':z.infer<typeof IntegrityKeysResultV2>;
   'integrity/keys':z.infer<typeof IntegrityKeysResult>;
   'clock-attempts':ClockAttemptsResponse;
   'submission-receipt': SubmissionReceiptResponse;
@@ -45,10 +46,12 @@ function url(path: string, params: Record<string, string | undefined>,origin:str
     .filter((e): e is [string, string] => e[1] != null)
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
     .join('&');
-  return `${origin}/api/mobile/v1/${path}${q ? `?${q}` : ''}`;
+  const version=path.startsWith('v2/')?2:1,resource=version===2?path.slice(3):path;
+  return `${origin}/api/mobile/v${version}/${resource}${q ? `?${q}` : ''}`;
 }
 
 const responses = {
+  'v2/integrity/keys':IntegrityKeysResultV2,
   'integrity/keys':IntegrityKeysResult,
   'clock-attempts':ClockAttemptsResponse,
   'submission-receipt': SubmissionReceiptResponse,
@@ -56,7 +59,7 @@ const responses = {
   'leave-requests': LeaveRequestsResponse, design: MobileDesignResponse, me: MeResponse,
   payslips: PayslipsResponse, leave: LeaveResponse, notifications: NotificationsResponse,
 };
-const commands = {'integrity/key-receipt':IntegrityKeyLookupResult,'integrity/revoke':IntegrityRevocationResult,'clock-attempts':ClockAttemptReceipt,'clock-location':ClockLocationResponse, 'submission-abandon':SubmissionAbandonResponse, clock: ClockResult, 'clock-device': DeviceResponse, 'leave-requests': LeaveResult, 'leave-preview': LeavePreviewResponse };
+const commands = {'v2/integrity/key-receipt':IntegrityKeyLookupResultV2,'v2/integrity/revoke':IntegrityRevocationResultV2,'integrity/key-receipt':IntegrityKeyLookupResult,'integrity/revoke':IntegrityRevocationResult,'clock-attempts':ClockAttemptReceipt,'clock-location':ClockLocationResponse, 'submission-abandon':SubmissionAbandonResponse, clock: ClockResult, 'clock-device': DeviceResponse, 'leave-requests': LeaveResult, 'leave-preview': LeavePreviewResponse };
 
 const supportReference=(value:string|null)=>value?.length===36&&/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)?value.toLowerCase():undefined;
 async function apiRequest<T>(path:string,params:Record<string,string|undefined>,request?:{body:FormData|string;json:boolean},signal?:AbortSignal):Promise<T> {
@@ -65,6 +68,7 @@ async function apiRequest<T>(path:string,params:Record<string,string|undefined>,
   const origin=config.apiUrl,namespace=identityNamespace(),locale=appLocale();
   const assertCurrent=()=>{assertAuthGeneration(owner);if(config.apiUrl!==origin||identityNamespace()!==namespace||appLocale()!==locale)throw new SessionChangedError();};
   const schema = request ? commands[path as keyof typeof commands] : responses[path as keyof typeof responses];
+  let resource=path;
   const send = async (token: string) => {
     assertCurrent();
     if(request&&AppState.currentState!=='active')throw new UnavailableError('Unlock the app to continue.');
@@ -75,7 +79,7 @@ async function apiRequest<T>(path:string,params:Record<string,string|undefined>,
     if (signal?.aborted) controller.abort();
     const timeout = setTimeout(abort, 15_000);
     try {
-      const response = await nativeFetch(url(path, params,origin), {
+      const response = await nativeFetch(url(resource, params,origin), {
         headers: { authorization: `Bearer ${token}`, 'accept-language': locale, ...(request?.json ? {'content-type':'application/json'} : {}) },
         ...(request ? {method:'POST',body:request.body} : {}),
         redirect: 'error', credentials: 'omit', signal: controller.signal,
@@ -88,7 +92,8 @@ async function apiRequest<T>(path:string,params:Record<string,string|undefined>,
       const bytes = await readBoundedBody(response, 1024 * 1024, 15_000, controller.signal);
       assertCurrent();
       const text = new TextDecoder('utf-8', {fatal:true}).decode(bytes);
-      const parsed = schema.safeParse(JSON.parse(text));
+      const responseSchema=path==='v2/integrity/keys'&&resource==='integrity/keys'?IntegrityKeysResult:schema;
+      const parsed = responseSchema.safeParse(JSON.parse(text));
       if (!parsed.success) throw new UnavailableError('Invalid server response.');
       return {status:response.status, data:parsed.data};
     } catch (error) {
@@ -99,9 +104,15 @@ async function apiRequest<T>(path:string,params:Record<string,string|undefined>,
     } finally { clearTimeout(timeout); signal?.removeEventListener('abort',abort); }
   };
   try{
-    let res = await send(await getAccessToken());
+    const compatibleRead=async(token:string)=>{
+      let response=await send(token);
+      // Only missing read-only inventory has a legacy fallback; its decoder stays Apple-only.
+      if(!request&&path==='v2/integrity/keys'&&resource===path&&response.status===404&&!signal?.aborted){resource='integrity/keys';response=await send(token);}
+      return response;
+    };
+    let res = await compatibleRead(await getAccessToken());
     assertCurrent();
-    if (res.status === 401 && !signal?.aborted) res = await send(await refresh());
+    if (res.status === 401 && !signal?.aborted) res = await compatibleRead(await refresh());
     assertCurrent();
     if (signal?.aborted) throw new UnavailableError();
     if (res.status === 401) throw new SignInRequiredError();
@@ -123,7 +134,7 @@ export async function apiGet<P extends keyof Endpoints>(path:P,params:Record<str
     return apiRequest<Endpoints[P]>(path,snapshot,undefined,sharedSignal);
   },signal);
 }
-type Commands = {'integrity/key-receipt':z.infer<typeof IntegrityKeyLookupResult>;'integrity/revoke':z.infer<typeof IntegrityRevocationResult>;'clock-attempts':ClockAttemptReceipt;'clock-location':ClockLocationResponse;'submission-abandon':SubmissionAbandonResponse;clock:ClockResult;'clock-device':DeviceResponse;'leave-requests':LeaveResult;'leave-preview':LeavePreviewResponse};
+type Commands = {'v2/integrity/key-receipt':z.infer<typeof IntegrityKeyLookupResultV2>;'v2/integrity/revoke':z.infer<typeof IntegrityRevocationResultV2>;'integrity/key-receipt':z.infer<typeof IntegrityKeyLookupResult>;'integrity/revoke':z.infer<typeof IntegrityRevocationResult>;'clock-attempts':ClockAttemptReceipt;'clock-location':ClockLocationResponse;'submission-abandon':SubmissionAbandonResponse;clock:ClockResult;'clock-device':DeviceResponse;'leave-requests':LeaveResult;'leave-preview':LeavePreviewResponse};
 export async function apiPost<P extends keyof Commands>(path:P,body:FormData|LeaveCommand|ClockPreparation|{originChallengeId:string}|{keyId:string}|{lat:number;lng:number;accuracy:number;sampledAt:number}|{label:string}|{kind:'clock'|'leave';requestId:string},params:Record<string,string|undefined>={}):Promise<Commands[P]>{
   const form=body instanceof FormData;
   return apiRequest(path,params,{body:form?body:JSON.stringify(body),json:!form});
