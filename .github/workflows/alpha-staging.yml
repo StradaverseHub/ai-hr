@@ -49,7 +49,7 @@ jobs:
           MIGRATION_DATABASE_URL: postgres://postgres@127.0.0.1:5433/ai_hr_test
           TEST_DATABASE_URL: postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test
           TEST_MIGRATION_DATABASE_URL: postgres://postgres@127.0.0.1:5433/ai_hr_test
-          TEST_DB_NAMESPACE: ci_source_${{ github.run_id }}
+          TEST_DB_NAMESPACE: cs_${{ github.run_id }}
         run: pnpm exec tsx .github/ci/diagnostics/run-source-integration.mjs
       - name: Remove only this job's database and volume
         if: always()
