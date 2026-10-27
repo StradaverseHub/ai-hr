@@ -3,23 +3,28 @@
 import {randomUUID} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi,type MockInstance} from 'vitest';
-import type {SessionContext} from '../db/client';
+import {type SessionContext,type Tx} from '../db/client';
+import * as governance from '../core/ai-governance';
+import {submitFeedback,generateFeedbackPlan,cancelFeedback} from '../core/feedback';
+import {cancelClaim,updateClaimType,deleteClaimDraft,saveClaimDraft} from '../core/claims';
+import {askAssistant} from '../core/assistant';
 import * as schema from '../db/schema';
 import * as ai from '../lib/ai';
 import {openaiAdapter} from '../lib/ai/providers/openai';
 import {grantAssistant} from '../core/assistant-grant';
 import {hireEmployee,setReportingLine} from '../core/org';
-import {createCycle,openCycle,submitSelfReview,draftManagerReview} from '../core/performance';
+import {createCycle,openCycle,submitSelfReview,submitManagerReview,draftManagerReview} from '../core/performance';
 import {narrateVerdict} from '../core/payroll-anomaly-narrate';
 import {triagePendingClaims} from '../core/input-triage';
 import {proposeHypotheses} from '../core/payroll-hypothesis';
 import {evaluateBatchAnomalies} from '../core/payroll-anomaly';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
-let b:Base,a:SessionContext,beforeAdmission:(()=>Promise<void>)|undefined,alterInput=false,transport:MockInstance<typeof openaiAdapter.generate>;
+let b:Base,a:SessionContext,beforeAdmission:(()=>Promise<void>)|undefined,afterSourceReplay:((tx:Tx)=>Promise<void>)|undefined,alterInput=false,transport:MockInstance<typeof openaiAdapter.generate>;
 const PRIOR='2026-04',PERIOD='2026-05',PEERS=12;
 beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
-beforeEach(async()=>{await resetDb();b=await seedBase();for(const code of ['assistant','performance','payroll','claims'])await setModule(b.tenantId,code,'active');a={...await entitledCtx(b,['hr_admin']),grants:[{role:'hr_admin',companyId:null}]};await grantAssistant(a,{appUserId:b.adminUserId});vi.stubEnv('OPENAI_API_KEY','fictional-source-boundary-never-sent');for(const key of ['ANTHROPIC_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY'])vi.stubEnv(key,'');beforeAdmission=undefined;alterInput=false;
+beforeEach(async()=>{await resetDb();b=await seedBase();for(const code of ['assistant','performance','payroll','claims'])await setModule(b.tenantId,code,'active');a={...await entitledCtx(b,['hr_admin']),grants:[{role:'hr_admin',companyId:null}]};await grantAssistant(a,{appUserId:b.adminUserId});vi.stubEnv('OPENAI_API_KEY','fictional-source-boundary-never-sent');for(const key of ['ANTHROPIC_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY'])vi.stubEnv(key,'');beforeAdmission=undefined;afterSourceReplay=undefined;alterInput=false;
+ const issue=governance.withAiAdmissionCheck;vi.spyOn(governance,'withAiAdmissionCheck').mockImplementation((config,feature,check)=>issue(config,feature,async(tx,request)=>{await check(tx,request);const tail=afterSourceReplay;afterSourceReplay=undefined;if(tail)await tail(tx);}));
  const original=ai.generateDraft;vi.spyOn(ai,'generateDraft').mockImplementation(async(cfg,args)=>{const hook=beforeAdmission;beforeAdmission=undefined;if(hook)await hook();return original(cfg,alterInput?{...args,prompt:args.prompt+' CHANGED'}:args);});
  transport=vi.spyOn(openaiAdapter,'generate').mockImplementation(async(_cfg,args)=>{args.onUsage?.({inputTokens:0,outputTokens:0,cachedInputTokens:0});return args.prompt.startsWith('Check:')?'The difference is 820.':args.prompt.startsWith('Claim type:')?'{"verdict":"ok"}':args.prompt.startsWith('colleagues on this run:')?'{"claim":"nothing_notable","evidence":[]}':'A fictional editable manager draft.';});
 });
@@ -143,4 +148,32 @@ describe('each later dispatch and original native SYSTEM behavior',()=>{
  it('replays Payroll finding facts before EACH call and cannot store the earlier model prose after a later source changed',async()=>{const f=await narrationFixture();await owner.db.insert(schema.payrollAnomalyFinding).values({tenantId:b.tenantId,verdictId:f.verdictId,detectorId:'ot-spike',severity:'review',facts:{delta:821,hours:14},suggestedAction:'anomaly.review'});vi.mocked(openaiAdapter.generate).mockImplementationOnce(async(_cfg,args)=>{const delta=args.prompt.match(/delta: (\d+)/)?.[1];if(!delta)throw Error('Missing actual native source');await owner.db.update(schema.payrollAnomalyFinding).set({facts:{delta:999,hours:14}}).where(eq(schema.payrollAnomalyFinding.verdictId,f.verdictId));return'The difference is '+delta+'.';});await expect(narrateVerdict(a,{verdictId:f.verdictId})).rejects.toThrow();expect(transport).toHaveBeenCalledOnce();expect(await runs()).toHaveLength(1);const rows=await owner.db.select().from(schema.payrollAnomalyFinding).where(eq(schema.payrollAnomalyFinding.verdictId,f.verdictId));expect(rows).toHaveLength(2);expect(rows.map(row=>row.narrative)).toEqual([null,null]);});
  it('rechecks the next actual pending claim rather than admitting every row from the original gathered list',async()=>{const claim=await claimFixture();await owner.db.insert(schema.claimRequest).values({tenantId:b.tenantId,employmentId:claim.employmentId,claimTypeId:claim.claimTypeId,amount:'42.00',incurredOn:todayInKualaLumpur(),description:'Fictional second actual claim',status:'pending'});vi.mocked(openaiAdapter.generate).mockImplementationOnce(async()=>{await owner.db.update(schema.claimRequest).set({status:'cancelled'}).where(eq(schema.claimRequest.id,claim.id));return'{"verdict":"ok"}';});const out=await triagePendingClaims(a);expect(out.asked).toBe(1);expect(transport).toHaveBeenCalledOnce();expect(await runs()).toHaveLength(1);});
  it('retains native SYSTEM claim/no-provider behavior but does not fabricate a USER or dispatch to the fake-key transport',async()=>{await claimFixture();const system={...a,userId:undefined,personId:undefined},out=await triagePendingClaims(system);expect(out).toMatchObject({notConfigured:true,asked:0,queried:0});expect(transport).not.toHaveBeenCalled();expect(await runs()).toEqual([]);});
+});
+
+/** Actual cross-connection callback-tail ownership, not a changed cached hash. */
+async function observedBlocked(holder:number,writer:Promise<unknown>){
+ const observe=(async()=>{for(let i=0;i<60;i++){const [row]=await owner.client`select exists(select 1 from pg_stat_activity a where ${holder}=any(pg_blocking_pids(a.pid))) as blocked`;if(row.blocked===true)return;await new Promise(resolve=>setTimeout(resolve,25));}throw Error('Native writer did not expose the expected actual blocking relationship');})();
+ await Promise.race([observe,writer.then(()=>{throw Error('Native writer committed before admission released source ownership');})]);
+}
+describe('exact native source ownership at callback tail',()=>{
+ it('keeps Feedback withdrawal behind the exact planning-source row until admission commits',async()=>{
+  await setSetting(b.tenantId,'feedback.ai_planning_enabled',true);a={...await entitledCtx(b),grants:[{role:'hr_admin',companyId:null}]};const {id}=await submitFeedback(a,{category:'issue',title:'Fictional private workflow feedback',description:'A fictional source description for a human plan.'});let withdrawal:Promise<void>|undefined;
+  afterSourceReplay=async tx=>{const [holder]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);withdrawal=cancelFeedback(a,{feedbackId:id});await observedBlocked(holder.pid,withdrawal);expect((await owner.db.select().from(schema.feedbackRequest).where(eq(schema.feedbackRequest.id,id)))[0].status).toBe('open');expect(transport).not.toHaveBeenCalled();};
+  try{await Promise.allSettled([generateFeedbackPlan(a,{feedbackId:id})]);}finally{await withdrawal;}expect(transport).toHaveBeenCalledOnce();expect((await owner.db.select().from(schema.feedbackRequest).where(eq(schema.feedbackRequest.id,id)))[0].status).toBe('cancelled');
+ });
+ it.each(['cancel','type'] as const)('holds actual triage %s source against its native writer through admission',async kind=>{
+  const claim=await claimFixture(),[type]=await owner.db.select().from(schema.claimType).where(eq(schema.claimType.id,claim.claimTypeId));let writer:Promise<void>|undefined;
+  afterSourceReplay=async tx=>{const [holder]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);writer=kind==='cancel'?cancelClaim(a,claim.id):updateClaimType(a,{id:type.id,name:'Changed canonical type label',requiresReceipt:type.requiresReceipt,defaultTaxable:type.defaultTaxable});await observedBlocked(holder.pid,writer);expect(transport).not.toHaveBeenCalled();expect((await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id,claim.id)))[0].status).toBe('pending');};
+  try{await Promise.allSettled([triagePendingClaims(a)]);}finally{await writer;}expect(transport).toHaveBeenCalledOnce();if(kind==='cancel')expect((await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id,claim.id)))[0].status).toBe('cancelled');else expect((await owner.db.select().from(schema.claimType).where(eq(schema.claimType.id,type.id)))[0].name).toBe('Changed canonical type label');
+ });
+ it('prevents actual standard manager-review writes at callback tail, then permits native submission after admission',async()=>{
+  const f=await performanceFixture(),[before]=await owner.db.select().from(schema.performanceReview).where(eq(schema.performanceReview.id,f.reviewId)),submission={reviewId:f.reviewId,managerRating:4,overallRating:4,managerComments:'Actual fictional native manager decision.'};
+  afterSourceReplay=async()=>{await expect(submitManagerReview(f.ctx,submission)).rejects.toThrow();expect((await owner.db.select().from(schema.performanceReview).where(eq(schema.performanceReview.id,f.reviewId)))[0]).toEqual(before);};
+  await draftManagerReview(f.ctx,{reviewId:f.reviewId});expect(transport).toHaveBeenCalledOnce();await submitManagerReview(f.ctx,submission);expect((await owner.db.select().from(schema.performanceReview).where(eq(schema.performanceReview.id,f.reviewId)))[0].managerComments).toBe(submission.managerComments);
+ });
+ it('protects the Assistant own-claim list against native deletion and insertion phantoms without granting other claims',async()=>{
+  const employmentId=await makeEmp('Actual fictional claim-list owner'),[employment]=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,employmentId)),userId=await createAppUser(b.tenantId,employment.personId,'employee');await grantAssistant(a,{appUserId:userId});const self:SessionContext={...await entitledCtx(b,['employee']),userId,personId:employment.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]},[type]=await owner.db.insert(schema.claimType).values({tenantId:b.tenantId,code:'SOURCE_LIST',name:'Fictional own claim type'}).returning(),input={employmentId,claimTypeId:type.id,amount:12,incurredOn:todayInKualaLumpur(),description:'Fictional own draft.'},draft=await saveClaimDraft(self,input);
+  const chat=vi.spyOn(openaiAdapter,'converse').mockImplementationOnce(async()=>{afterSourceReplay=async()=>{await expect(deleteClaimDraft(self,draft.id)).rejects.toThrow();await expect(saveClaimDraft(self,input)).rejects.toThrow();expect(await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.employmentId,employmentId))).toHaveLength(1);};return{text:'',stop:'tool_use',toolCalls:[{id:'actual-status-call',name:'my_claim_statuses',input:{limit:5}}],usage:{inputTokens:0,outputTokens:0,cachedInputTokens:0},usageReported:true};}).mockResolvedValue({text:'Your recorded claim is a draft.',stop:'end',toolCalls:[],usage:{inputTokens:0,outputTokens:0,cachedInputTokens:0},usageReported:true});
+  await askAssistant(self,{question:'What is my recorded claim status?'});expect(chat).toHaveBeenCalledTimes(2);expect(JSON.stringify(chat.mock.calls[1][1].turns)).not.toContain('Fictional own draft.');await deleteClaimDraft(self,draft.id);const replacement=await saveClaimDraft(self,input);expect(replacement.id).not.toBe(draft.id);
+ });
 });

@@ -282,7 +282,7 @@ export async function generateFeedbackPlan(ctx: SessionContext, p: { feedbackId:
   const args=Object.freeze({system,prompt:`Write an implementation plan for this product feedback:\n\n${lines.join('\n')}`,maxTokens:2048});
   const sourceDigest=feedbackPlanningDigest(fb),inputDigest=draftInputDigest(args);
   const bound=withAiAdmissionCheck(aiCfg,'feedback_planning',async(tx,request)=>{
-    if(request.operation!=='draft'||request.inputDigest!==inputDigest||feedbackPlanningDigest(await feedbackPlanningSourceTx(tx,ctx,fb.id))!==sourceDigest)throw new FeedbackError('Current feedback planning source could not be confirmed.');
+    if(request.operation!=='draft'||request.inputDigest!==inputDigest||feedbackPlanningDigest(await feedbackPlanningSourceTx(tx,ctx,fb.id,true))!==sourceDigest)throw new FeedbackError('Current feedback planning source could not be confirmed.');
   });
   const plan=await generateDraft(bound,args);
   if(!plan.trim())throw new FeedbackError('A plan is required.');

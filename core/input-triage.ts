@@ -1,7 +1,6 @@
+import {assertClaimsProviderSourceTx} from './claims-provider-source';
 import {withAiAdmissionCheck} from './ai-governance';
 import {draftInputDigest} from '../lib/ai/draft-input';
-import {assertAiPrincipalTx} from './ai-principal';
-import {resolveEntitlementsTx,assertModuleEnabled} from './entitlements';
 /**
  * ADR-0084 §2.7 / §3 item 4 — INPUT-SIDE TRIAGE. The largest untouched surface in the product.
  *
@@ -318,7 +317,19 @@ async function pendingClaimNativeSourceTx(tx:Tx,since:Date,claimId?:string){
 }
 /** Fresh actual USER/native RLS source required at EVERY provider admission. */
 async function pendingClaimAiSourceTx(tx:Tx,supplied:SessionContext,sinceValue:Date,claimId?:string){
- const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},since=new Date(sinceValue.getTime());await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};assertModuleEnabled(fresh,'claims');if(!settingEnabled(fresh,'claims.input_triage_enabled'))throw Error('Current claim source unavailable.');
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},since=new Date(sinceValue.getTime());
+ const fresh=await assertClaimsProviderSourceTx(tx,ctx);if(!settingEnabled(fresh,'claims.input_triage_enabled'))throw Error('Current claim source unavailable.');
+ if(claimId){
+  // Nomination is not disclosure authority. Own exact native rows NOWAIT before the fresh projection;
+  // fixed table order is type -> item -> request. Existing claim-limit writer ordering is untouched.
+  const binding={employmentId:schema.claimRequest.employmentId,claimTypeId:schema.claimRequest.claimTypeId,claimItemId:schema.claimRequest.claimItemId};
+  const [nominee]=await tx.select(binding).from(schema.claimRequest).where(and(eq(schema.claimRequest.id,claimId),eq(schema.claimRequest.status,'pending'),gte(schema.claimRequest.createdAt,since))).limit(1);
+  if(!nominee)throw Error('Current claim source unavailable.');
+  const [type]=await tx.select({id:schema.claimType.id}).from(schema.claimType).where(eq(schema.claimType.id,nominee.claimTypeId)).for('share',{noWait:true});if(!type)throw Error('Current claim source unavailable.');
+  if(nominee.claimItemId){const [item]=await tx.select({id:schema.claimItem.id}).from(schema.claimItem).where(eq(schema.claimItem.id,nominee.claimItemId)).for('share',{noWait:true});if(!item)throw Error('Current claim source unavailable.');}
+  const [owned]=await tx.select(binding).from(schema.claimRequest).where(eq(schema.claimRequest.id,claimId)).for('share',{noWait:true});
+  if(!owned||JSON.stringify(owned)!==JSON.stringify(nominee))throw Error('Current claim source unavailable.');
+ }
  return pendingClaimNativeSourceTx(tx,since,claimId);
 }
 

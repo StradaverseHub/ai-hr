@@ -1,5 +1,5 @@
 -- UNALLOCATED / UNJOURNALED / UNAPPLIED. Coordinate allocation before any application/exposure.
--- Finite native source footprint for OneHR provider admission, not universal HR-writer protection.
+-- Finite native source footprint for standard/OneHR provider admission, not universal HR-writer protection.
 -- Access ownership precedes reader custody; custody precedes the actual fresh native projections.
 -- Readers retain shared tenant custody through ai_admit COMMIT, never through external transport.
 -- Actual native DML (including hidden->visible UPDATE and INSERT/DELETE phantoms) takes exclusive
@@ -65,7 +65,7 @@ DECLARE relation_name text;
 BEGIN
  FOREACH relation_name IN ARRAY ARRAY[
   'app_user','role_assignment','person','employment','assignment','reporting_line','company','department','position','job_grade',
-  'review_cycle','performance_review','peer_feedback_request','performance_attachment',
+  'review_cycle','performance_review','review_goal','performance_goal','peer_feedback','peer_feedback_request','performance_attachment',
   'performance_onehr_cycle','performance_assessment_participation',
   'performance_onehr_review','performance_onehr_panel','performance_assessment_profit_achievement',
   'performance_onehr_calibration','performance_onehr_calibration_entry','performance_assessment_talent_remark',

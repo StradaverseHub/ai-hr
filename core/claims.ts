@@ -1,3 +1,4 @@
+import {assertClaimsProviderSourceTx} from './claims-provider-source';
 import {createHash} from 'node:crypto';
 import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 /**
@@ -3271,10 +3272,8 @@ export async function ownClaimStatuses(ctx: SessionContext, limit: number, exist
   if (!Number.isInteger(limit) || limit < 1 || limit > 25) throw new Error('Claim lookup limit is invalid.');
   const captured = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   const read = async (tx: Tx) => {
-    await assertAiPrincipalTx(tx, captured);
-    // The offered registry used a session snapshot. Recheck actual entitlement at the source read.
-    const entitlements = await resolveEntitlementsTx(tx, captured.tenantId);
-    assertModuleEnabled({ ...captured, entitlements }, 'claims');
+    // Own list membership and current status/labels share native custody through admission.
+    await assertClaimsProviderSourceTx(tx,captured);
     const own = await myOwnEmploymentSubjectsTx(tx, captured);
     if (!own.length || !captured.personId) return { hasEmployment: false, claims: [], truncated: false };
     const rows = await tx.select({

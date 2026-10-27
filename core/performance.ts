@@ -1,7 +1,6 @@
+import {assertPerformanceProviderSourceTx} from './performance-provider-source';
 import {withAiAdmissionCheck} from './ai-governance';
 import {draftInputDigest} from '../lib/ai/draft-input';
-import {assertAiPrincipalTx} from './ai-principal';
-import {resolveEntitlementsTx} from './entitlements';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import type { Tx as AiReadTx } from '../db/client';
 import { withCanonicalAiReadTx } from './ai-read-transaction';
@@ -2864,7 +2863,7 @@ export type DraftSignals = { hasSelf: boolean; goals: number; priorRatings: numb
  * queries/preflight as the ordinary draft, reusable only inside the actual admission transaction. */
 async function managerReviewDraftSourceTx(tx:Tx,supplied:SessionContext,reviewId:string){
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};
- await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};assertModuleEnabled(fresh,'performance');
+ const fresh=await assertPerformanceProviderSourceTx(tx,ctx);
  const [nomination]=await tx.select({employmentId:performanceReview.employmentId}).from(performanceReview).where(eq(performanceReview.id,reviewId)).limit(1);if(!nomination)throw new PerfError('Current review source is unavailable.');
  await assertCanDecide(tx,fresh,nomination.employmentId,'AI review draft');
     const { review, cycle } = await loadReview(tx, reviewId);
