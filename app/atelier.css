@@ -156,6 +156,8 @@
   :root[data-ui-theme='atelier'] main table tbody tr:focus-within { background: var(--sidebar); }
 
   /* ── The rail (components/sidebar.tsx, data-atelier-navigation) ─────────────────────────────────── */
+  :root[data-ui-theme='atelier'] .atelier-navigation-container { display: contents; }
+  :root[data-ui-theme='atelier'] .atelier-mobile-toggle { display: none; }
   :root[data-ui-theme='atelier'] .atelier-rail {
     display: flex; flex-direction: column; width: 15.5rem; height: 100%; min-height: 0;
     background: var(--sidebar); border-right: 1px solid var(--sidebar-border); color: var(--sidebar-foreground);
@@ -168,6 +170,16 @@
   :root[data-ui-theme='atelier'] .atelier-flyout .atelier-row { min-height: 2.5rem; height: auto; padding-block: .5rem; }
   :root[data-ui-theme='atelier'] .atelier-flyout .atelier-row > span { white-space: normal; overflow: visible; }
   @media (min-width: 640px) and (max-width: 1023px) {
+    :root[data-ui-theme='atelier'] .atelier-flyout-open .atelier-rail { display: none; }
+  }
+  @media (max-width: 639px) {
+    :root[data-ui-theme='atelier'] [data-app-shell] { flex-direction: column; }
+    :root[data-ui-theme='atelier'] [data-app-content] { min-height: 0; }
+    :root[data-ui-theme='atelier'] .atelier-navigation-container { display: flex; flex: none; flex-direction: column; min-height: 0; }
+    :root[data-ui-theme='atelier'] .atelier-mobile-toggle { display: flex; align-items: center; gap: .625rem; min-height: 2.75rem; padding: .5rem 1rem; border-bottom: 1px solid var(--sidebar-border); background: var(--sidebar); color: var(--sidebar-foreground); text-align: start; }
+    :root[data-ui-theme='atelier'] .atelier-navigation-shell { width: 100%; height: min(65dvh, 32rem); }
+    :root[data-ui-theme='atelier'] .atelier-rail,
+    :root[data-ui-theme='atelier'] .atelier-flyout { width: 100%; }
     :root[data-ui-theme='atelier'] .atelier-flyout-open .atelier-rail { display: none; }
   }
   :root[data-ui-theme='atelier'] .atelier-workspace {
