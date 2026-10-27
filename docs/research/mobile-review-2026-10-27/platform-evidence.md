@@ -299,6 +299,43 @@ deliberately unavailable Apple owner, then both passed after restoration. All th
 were `mutation=1 restored=0 exact=True`; no mutation diff remains. These are targeted boundary checks,
 not an official full gate, route activation or deployment witness.
 
+Native Apple proof recovery began at `4eaf465e4`: the actual Swift cache helper compiled on the host
+against Foundation/Security/CryptoKit and passed ten model scenarios with injected in-memory
+persistence/vendor ports. No real Keychain or DeviceCheck operation occurred. The existing ten bridge
+cases and native TypeScript also passed. Expanded `6846da278` passed thirteen Swift scenarios,
+fourteen JavaScript bridge cases, native TypeScript and syntax parsing of the module plus helper.
+Actual Android `:aihr-integrity:compileDebugKotlin` passed in 39 seconds after adding the explicit
+unsupported method; root TypeScript exited 0. The previous dependency lint failure remains unresolved
+and is not relabelled by this compile result.
+
+Scenarios cover durable intent before the vendor call, commit before reply, cached/restarted proof
+recovery, delayed native completion after the JS operation stops, explicit same-key/hash outage retry,
+unknown/interrupted calls without retry, failed/ambiguous storage replies, retained uncommitted bytes,
+bounded artifacts/capacity, corrupt/cross-key records, duplicate callback generations and eight truly
+concurrent callers with one vendor invocation. Bridge cases preserve all four recovery states without
+verification, reject malformed/oversized/noncanonical proof records, distinguish binding/recovery
+errors, handle an older binary's missing method and reject an artifact delivered to an obsolete actor.
+
+Four controlled native mutations at `6846da278` individually removed the intent commit, artifact commit,
+hash binding and interrupted-call refusal. Each mutated Swift source still compiled, its model run
+failed, and exact restoration compiled and passed. All four harness results recorded
+`compile=0 mutation=1 restored_compile=0 restored=0 exact=True`. The checks fail on those specific
+state/persistence invariants, rather than an unrelated compiler error.
+
+The expanded boundary probe at `9c9b30a60` then found a real failure: a valid 64 KiB artifact with
+slash-heavy base64 and maximum escaped key metadata exceeded the record cap under default JSON slash
+escaping. Compilation passed but the model failed with storageUnavailable. Repair `9c0f41808` disables
+slash escaping without raising the cap. All thirteen scenarios, including worst-case bytes, then
+passed, and combined iOS source parsing passed. The original failed probe/log remains separate.
+
+The implementation uses a dedicated non-synchronizing, unlocked/device-only Keychain service, capped
+at sixteen persisted records and four active/uncommitted operations, without silent eviction or key
+replacement. These are configured native mechanisms, not device-tested guarantees. The encrypted
+enrollment journal, installation reset, receipt reconciliation/cleanup and iOS signed-framework/device
+acceptance remain unfinished. A crash before the artifact is stored remains explicitly uncertain;
+no retry or attendance acceptance is inferred. No public route, UI enrollment flow or deployment was
+enabled by this dependency work.
+
 1. iOS release/TestFlight build: initial key attestation online, then generate and persist ordered assertions in airplane mode; reconnect, validate counters/challenges; repeat after force quit, update, reinstall and restore.
 2. Both OSes: anchor a native sleep-inclusive clock, sleep for a shift, alter wall time/timezone, kill/relaunch, reboot, and upload out of order. Measure drift and uncertainty; validate bounded expiry and no silent loss.
 3. Location: denied/once-only/revoked/approximate permission, services off, indoor uncertainty, stale/future timestamps, Android mock flag, iOS Xcode simulation versus third-party provider, accessory receiver. Record capability/unknown values without assuming a clean device.

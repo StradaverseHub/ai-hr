@@ -88,3 +88,34 @@ private-key possession nor actor/employment ownership, and does not accept atten
 must reconcile receipts before decoding again and persist command/challenge outcomes atomically: Google
 may have consumed a token when a response is lost. No credentials are loaded and no endpoint is activated
 by the primitive itself. Live service-account/project/distribution acceptance remains required.
+
+## Recovering one-use Apple enrollment artifacts
+
+The native Apple owner now records an immutable key/client-data-hash intent before invoking DeviceCheck.
+It commits a successful artifact before resolving JavaScript, through a dedicated unlocked/device-only,
+non-synchronizing Keychain service. Repeating the same completed key/hash reads those original bytes
+without another vendor operation. A different hash for an existing key refuses. An interrupted or
+unknown operation remains requested; it cannot silently become another attestation attempt. Only an
+explicitly recognized `DCError.serverUnavailable` result records retryable state for a later explicit
+same-key/same-hash call.
+
+An artifact returned by DeviceCheck but not yet stored remains with the bounded live native owner.
+Recovery reads first retry that storage commit. A lost storage reply can recover a committed artifact
+after restart; an actual crash before artifact persistence remains uncertain. These states are reported
+separately from absent, retryable and completed. Operation-generation tokens prevent a duplicate old
+callback from replacing a newer retry or resolving it twice. The JavaScript bridge validates the
+bounded canonical artifact, repeats operation-owner checks and continues to label all evidence
+`not_verified`. Missing older-binary methods remain explicitly unsupported.
+
+The mechanism reserves at most four active/uncommitted native operations and admits at most sixteen
+persisted cache records. Unresolved evidence is never evicted to admit another key. Records are capped
+at 90 KiB, including a permitted 64 KiB artifact and bounded metadata; JSON encoding disables slash
+escaping so worst-case valid base64 remains within that cap. The iOS pod source glob includes the new
+helper. Android exposes an explicit unsupported recovery method, with no signing fallback.
+
+These records establish local recovery state only. They provide no certificate verification, actor
+authorization, attendance acceptance or trusted time. The encrypted JavaScript enrollment journal,
+server-receipt reconciliation, installation-reset integration and receipt-driven retention/cleanup
+are still required before activation. In particular, the sixteen-record bound is not a retention
+policy or a completed cleanup lifecycle. Full iOS framework/signed-device/OS Keychain and process-loss
+acceptance remain required; host model execution does not establish them.
