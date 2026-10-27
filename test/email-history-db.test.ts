@@ -25,7 +25,7 @@ async function operator(){
 async function recovery(days:number,parent:string|null=null,pending=false){
  const id=randomUUID();
  await owner.client`insert into account_email_delivery(id,tenant_id,kind,recovery_email,replaces_delivery_id,status,last_error,lease_token,lease_until,created_at,updated_at)
- values(${id}::uuid,'00000000-0000-0000-0000-000000000000','recovery','history-fixture@example.test',${parent}::uuid,${pending?'pending':'failed'}::notification_delivery_status,${pending?null:'relayUnavailable'},${pending?randomUUID():null}::uuid,${pending?new Date(Date.now()+60000):null},now()-make_interval(days=>${days}),now()-make_interval(days=>${days}))`;
+ values(${id}::uuid,'00000000-0000-0000-0000-000000000000','recovery','history-fixture@example.test',${parent}::uuid,${pending?'pending':'failed'}::notification_delivery_status,${pending?null:'relayUnavailable'},${pending?randomUUID():null}::uuid,${pending?new Date(Date.now()+60000).toISOString():null}::timestamptz,now()-make_interval(days=>${days}),now()-make_interval(days=>${days}))`;
  return id;
 }
 describe('authorized account email history and explicit resend',()=>{
@@ -70,16 +70,16 @@ describe('authorized account email history and explicit resend',()=>{
   await expect(saveAccountEmailRetention(ctx,actor,{days:30,revision:0,acknowledged:false})).rejects.toThrow(/Acknowledge/);
   await expect(saveAccountEmailRetention(ctx,actor,{days:0,revision:0,acknowledged:true})).rejects.toThrow();
   await expect(readAccountEmailRetention(ctx,{...actor,userId:randomUUID()})).rejects.toThrow(/does not match/);
-  await expect(readAccountEmailRetention(ctx,{...actor,subject:'not-enrolled'})).rejects.toThrow(/administrator/);
-  await expect(withTenant(ctx,tx=>tx.execute(sql`select app.account_email_retention_prune()`))).rejects.toThrow(/permission denied/);
-  await expect(withTenant(ctx,tx=>tx.execute(sql`select * from account_email_retention`))).rejects.toThrow(/permission denied/);
-  await expect(withTenant(ctx,tx=>tx.execute(sql`delete from account_email_delivery`))).rejects.toThrow(/permission denied/);
-  await expect(withTenant(ctx,tx=>tx.execute(sql`select app.account_email_retention_save(${actor.issuer},${actor.subject},30,0,false)`))).rejects.toThrow(/acknowledgement/);
+  await expect(readAccountEmailRetention(ctx,{...actor,subject:'not-enrolled'})).rejects.toMatchObject({cause:{code:'42501'}});
+  await expect(withTenant(ctx,tx=>tx.execute(sql`select app.account_email_retention_prune()`))).rejects.toMatchObject({cause:{code:'42501'}});
+  await expect(withTenant(ctx,tx=>tx.execute(sql`select * from account_email_retention`))).rejects.toMatchObject({cause:{code:'42501'}});
+  await expect(withTenant(ctx,tx=>tx.execute(sql`delete from account_email_delivery`))).rejects.toMatchObject({cause:{code:'42501'}});
+  await expect(withTenant(ctx,tx=>tx.execute(sql`select app.account_email_retention_save(${actor.issuer},${actor.subject},30,0,false)`))).rejects.toMatchObject({cause:{code:'P0001',message:expect.stringContaining('acknowledgement')}});
   await saveAccountEmailRetention(ctx,actor,{days:30,revision:0,acknowledged:true});
-  await expect(saveAccountEmailRetention(ctx,actor,{days:7,revision:0,acknowledged:true})).rejects.toThrow(/changed/);
+  await expect(saveAccountEmailRetention(ctx,actor,{days:7,revision:0,acknowledged:true})).rejects.toMatchObject({cause:{code:'P0001',message:expect.stringContaining('changed')}});
   expect(await readAccountEmailRetention(ctx,actor)).toMatchObject({days:30,revision:1});
   await owner.db.update(s.deploymentIdentityOperator).set({revokedAt:new Date()});
-  await expect(saveAccountEmailRetention(ctx,actor,{days:null,revision:1,acknowledged:false})).rejects.toThrow(/administrator/);
+  await expect(saveAccountEmailRetention(ctx,actor,{days:null,revision:1,acknowledged:false})).rejects.toMatchObject({cause:{code:'42501'}});
  });
  it('prunes only whole inactive chains and preserves pending sends, recent activity, usable invitations, accounts and audit',async()=>{
   const ctx=adminCtx(b),actor=await operator(),provider=fake();
