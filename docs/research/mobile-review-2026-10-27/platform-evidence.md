@@ -646,3 +646,28 @@ Profiles without a common historical structural-check instant or outside the cap
 remain unsupported. This is not a claim of full Kotlin-verifier compatibility or completed Android
 integrity. App policy, custody, protocol wiring and device/distribution acceptance remain unfinished.
 No migration, shared database, publication, cloud build or deployment changed in this slice.
+
+
+Android app/key policy at `ae49e37b3` initially passed50of62 affected cases; twelve captured path/policy
+cases refused because older signed provisioning maps omit the newer documented entity field. Strict
+compilation passed. The actual maps were inspected: legacy issuer info includes issued-count and old
+optional keys but no entity/lost-device metadata. Repair `af0fc4660` preserves missing known fields as
+unavailable, validates present known fields and cross-checks the signed issuer level. All63 cases then
+passed; the compiler caught a mixed-value Map inference in the new fixture, which was repaired with an
+explicit type. No certificate signature, expected app identity or refusal policy was bypassed.
+
+At `42fc289c2`, all64 cases across policy/path/description/status and the strict root compiler passed.
+Real captured StrongBox key evidence is matched only to its actual upstream collector app/build/signer;
+changing expectations to the AI HR app refuses. Synthetic policy mutations test software/shared-UID/
+wrong signer/build/curve/origin/purpose/digest/boot/patch states without claiming hardware provenance.
+Composed positive tests use actual captured signatures and synthetic revocation, not current Google
+status or a signed AI HR installation. Pure lost-device/issuer-signal tests separately witness those
+policy guards. Caller changes cannot mutate the verifier's parsed settings during an async operation.
+
+Three controlled mutations removed signer allowlisting, locked-boot enforcement and lost-device
+refusal; every selected behavioral test failed and exact restoration passed:
+`mutation=1 restored=0 exact=true`. Explicit metadata policy follow-up `d05e8139b` then passed25
+policy/path cases, including legacy-unavailable versus required-modern metadata refusal. The final
+strict root TypeScript compiler exited0. No mobile runtime/native build, migration, shared
+DB, vendor call, public/cloud publication or deployment changed. Android custody, challenge protocol,
+Play composition, rollout and actual device/distribution acceptance remain open.

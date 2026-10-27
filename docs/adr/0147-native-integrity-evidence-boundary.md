@@ -378,3 +378,35 @@ acceptance remain open. No Android integrity HTTP route is activated by this own
 Google's official verifier sources were inspected at revision34652d3df68b8d6887a6670b00eb0856090dae6d,
 including its Android-specific path profiles and validity behavior. The custom boundary must retain
 differential/negative coverage before release; a generic PKIX pass alone is not sufficient.
+
+
+## Android app and generated-key policy
+
+The composed optional proof owner now validates server-owned package/signer/build expectations after
+chain/status verification. It requires exactly the configured package (shared-UID packages are not
+adopted), an allowed version and every reported signing certificate digest in the configured rotation
+allowlist. Software and hardware authorization lists are not merged. The required hardware facts are
+EC/P256/256-bit, generated origin, sign purpose (verify may also be present), and SHA256 only. Software
+substitution or conflicting duplicate key properties refuses. Both attestation and key security levels
+must be the same configured hardware level; software is never an accepted fallback.
+
+Locked verified boot with expected32-byte boot-key/hash evidence is required. Only digest lengths are
+retained, never identifier bytes. Deployment settings explicitly provide nullable OS/patch minima;
+null means no additional minimum, not an invented universal safe age. Reported patch formats are
+validated, and a software/absent value cannot substitute for a configured hardware minimum. These are
+key-generation-time facts, not a current boot, app-license, live-GPS or attendance authorization claim.
+
+RKP issuer organization must identify TEE or StrongBox. When provisioning entity metadata is present,
+it must agree with that signed issuer and with both description security levels. Present lost-device
+true refuses. Older captured provisioning maps lack entity and lost-device fields; these remain
+unavailable, not false. The policy must explicitly select `allow_legacy` or
+`require_entity_and_lost_device`. The latter refuses missing metadata. Results preserve reported versus
+unavailable metadata so a caller cannot invent checks. Unknown optional provisioning map keys are
+bounded but not persisted; known fields, duplicate CBOR keys, trailing data and nesting are validated.
+
+The result exposes minimal app/build/security/patch/provisioning evidence plus public key, never raw
+identity, signer list or full decoded authorization metadata. It does not consume a challenge, persist
+Android ownership, register a replacement key, enable routes or accept attendance. Enrollment must
+supply a fresh canonical32-byte scoped challenge and consume/persist proof atomically with unique key
+custody; clocking requires its own signature and current revocation/permission checks. Rollout settings,
+Play composition and real signed-build/device/distribution acceptance remain unfinished.
