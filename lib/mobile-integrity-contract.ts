@@ -3,6 +3,7 @@ import {z} from 'zod';
 import {KeyEnrollmentContext} from './mobile-key-enrollment';
 import {AndroidEnrollmentPreparation,AndroidEnrollmentKeyArtifact} from './mobile-android-enrollment';
 import {OnlineClockIntegrityData} from './mobile-clock-integrity';
+import {AndroidClockOpaqueToken,AndroidClockRefusalReason,AndroidClockUnavailableReason} from './mobile-android-clock-policy';
 import {ClockReceipt} from './mobile-api/contract';
 const uuid=z.string().uuid().transform(value=>value.toLowerCase());
 const base64=z.string().min(4).refine(value=>value.trim()===value).regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
@@ -13,6 +14,8 @@ export const IntegrityClockIntent=z.object({appInstallationId:uuid,keyId:uuid,de
   command:OnlineClockIntegrityData.shape.command.omit({photo:true}),evidence:OnlineClockIntegrityData.shape.evidence.extend({platform:z.literal('ios')})}).strict();
 export const IntegrityClockProof=IntegrityClockIntent.extend({challengeId:uuid,assertion:base64.max(10924)}).strict();
 export const IntegrityAndroidClockIntent=IntegrityClockIntent.extend({evidence:OnlineClockIntegrityData.shape.evidence.extend({platform:z.literal('android')})}).strict();
+/** Separate multipart field; it is never part of the 16 KiB command JSON or a decoded verdict. */
+export const IntegrityAndroidClockToken=AndroidClockOpaqueToken;
 export const IntegrityAndroidClockProof=IntegrityAndroidClockIntent.extend({challengeId:uuid,signature:base64.max(96)}).strict();
 export const IntegrityKeyLookupIntent=z.object({originChallengeId:uuid}).strict();
 export const IntegrityRevokeIntent=z.object({keyId:uuid}).strict();
@@ -25,8 +28,9 @@ export const IntegrityAndroidKeyReceipt=IntegrityKeyReceipt.extend({platform:z.l
 export const IntegrityKeyReceiptV2=z.discriminatedUnion('platform',[IntegrityKeyReceipt,IntegrityAndroidKeyReceipt]);
 export const IntegrityRefused=z.object({outcome:z.literal('refused'),code:z.enum(['subject_unavailable','key_unavailable','key_exists','key_limit',
   'binding_conflict','challenge_unavailable','invalid_proof','clock_conflict','corrected_day','location_required','outside_geofence','photo_required','photo_invalid','device_required']),
+  integrityReason:AndroidClockRefusalReason.optional(),
   locationReason:z.enum(['location_required','invalid_location','poor_accuracy','no_assigned_site','outside_site']).optional()});
-export const IntegrityUnavailable=z.object({outcome:z.literal('unavailable'),code:z.enum(['not_configured','configuration_unavailable','metadata_unavailable','proof_unavailable','module_unavailable'])});
+export const IntegrityUnavailable=z.object({outcome:z.literal('unavailable'),code:z.enum(['not_configured','configuration_unavailable','metadata_unavailable','proof_unavailable','module_unavailable']),integrityReason:AndroidClockUnavailableReason.optional()});
 const state=z.enum(['active','expired','consumed']);
 const result=<S extends z.ZodType>(success:S)=>z.union([success,IntegrityRefused,IntegrityUnavailable]);
 export const IntegrityAndroidEnrollmentPrepared=result(AndroidEnrollmentPreparation.extend({outcome:z.literal('prepared')}));

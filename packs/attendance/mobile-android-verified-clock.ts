@@ -1,11 +1,10 @@
 /** Unmounted current-device clock carrier. Vendor verification precedes transaction acquisition. */
 import {createHash} from 'node:crypto';
 import {sql} from 'drizzle-orm';
-import {z} from 'zod';
 import type {SessionContext,Tx} from '../../db/client';
 import type {AndroidClockSignatureInput} from '../../core/mobile-android-clock-signature';
 import {AndroidEnrollmentSettings} from '../../lib/mobile-android-enrollment';
-import {AndroidClockIntegrityPolicy} from '../../lib/mobile-android-clock-policy';
+import {AndroidClockIntegrityPolicy,AndroidClockOpaqueToken} from '../../lib/mobile-android-clock-policy';
 import {createAndroidClockIntegrityVerifier,type AndroidClockIntegrityResult} from '../../lib/mobile-api/android-clock-integrity';
 import type {PlayAccessTokenProvider} from '../../lib/mobile-api/play-integrity';
 import {onlineClockClientDataHash} from '../../lib/mobile-api/clock-integrity';
@@ -17,7 +16,6 @@ export class AndroidClockIntegrityError extends Error{
 }
 const unavailable=()=>new AndroidClockIntegrityError({status:'unavailable',reason:'configuration_unavailable'});
 const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
-const tokenSchema=z.string().min(1).max(32768).regex(/^[\x21-\x7e]+$/);
 /** A deployment transaction guard is mandatory. It must re-read its current clock rollout/settings
  * using the supplied transaction, after vendor work, and refuse changed/disabled configuration.
  * This factory neither loads enrollment rollout nor enables a route. No network work belongs in
@@ -36,7 +34,7 @@ export function createAndroidVerifiedClockService(settings:unknown,policy:unknow
    return base.begin(ctx,input);
   },
   async complete(ctx:SessionContext,input:AndroidClockSignatureInput,proof:{challengeId:string;signature:Buffer;playIntegrityToken:string},signal?:AbortSignal){
-   const token=tokenSchema.safeParse(proof.playIntegrityToken);
+   const token=AndroidClockOpaqueToken.safeParse(proof.playIntegrityToken);
    if(!token.success)throw new AndroidClockIntegrityError({status:'refused',reason:'invalid_proof'});
    const cancelled=()=>{if(signal?.aborted)throw new AndroidClockIntegrityError({status:'unavailable',reason:'provider_unavailable'});};
    const clock=createAndroidClockService(configuration,{

@@ -2,15 +2,14 @@
 import 'server-only';
 import {createHash} from 'node:crypto';
 import {AndroidEnrollmentSettings} from '../mobile-android-enrollment';
-import {AndroidClockIntegrityPolicy} from '../mobile-android-clock-policy';
+import {AndroidClockIntegrityPolicy,type AndroidClockRefusalReason,type AndroidClockUnavailableReason} from '../mobile-android-clock-policy';
+import type {z} from 'zod';
 import {OnlineClockIntegrityData} from '../mobile-clock-integrity';
 import {onlineClockClientDataHash} from './clock-integrity';
 import {createPlayIntegrityVerifier,type PlayAccessTokenProvider,type PlayIntegrityResult} from './play-integrity';
 
-type Refusal='invalid_proof'|'challenge_unavailable'|'stale_token'|'unrecognized_app'|'unlicensed_app'|
- 'device_integrity'|'reported_mock'|'reported_simulation'|'reported_accessory';
-type Unavailable='configuration_unavailable'|'provider_unavailable'|'licensing_unavailable'|
- 'location_signal_unavailable'|'unknown_vendor_verdict'|'time_unavailable';
+type Refusal=z.infer<typeof AndroidClockRefusalReason>;
+type Unavailable=z.infer<typeof AndroidClockUnavailableReason>;
 export type AndroidClockIntegrityResult=
  |{status:'refused';reason:Refusal}
  |{status:'unavailable';reason:Unavailable}
