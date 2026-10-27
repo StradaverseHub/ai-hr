@@ -37,3 +37,12 @@ export function proveEmailRepairSource({repository,candidate=EMAIL.candidate}){
  const body={format:1,kind:'EXACT_EMAIL_TEST_CONTRACT_REPAIR_NOT_RELEASE',original:EMAIL.original,candidate,files,applicationSqlAndJournalUnchanged:true,releaseAuthorized:false};
  return {...body,proofSha256:installHash(installJson(body))};
 }
+export function proveEmailCompilerSource({repository}){
+ const git=(...a)=>execFileSync('git',['-C',repository,...a],{encoding:'utf8',maxBuffer:2*1024**2,timeout:10000});
+ const path='.github/ci/typecheck.sh',before=git('show',EMAIL.controller+':'+path),after=git('show',EMAIL.compilerController+':'+path);
+ assert.equal(before,after,'The actual strict compiler script must remain unchanged');
+ const workflow=git('show',EMAIL.compilerController+':.github/workflows/alpha-staging.yml'),start=workflow.indexOf('\n  typecheck:\n');assert(start>0,'Exact compiler job required');const job=workflow.slice(start);
+ for(const needle of ["if: inputs.control_scope == 'email-compiler'",'ref: '+EMAIL.candidate,"node: '22.23.3'",'run: pnpm exec next typegen','bash ../automation/.github/ci/typecheck.sh 2>&1 | tee'])assert(job.includes(needle),'Actual whole compiler source missing: '+needle);
+ assert(!job.includes('tsconfig.build')&&!job.includes('continue-on-error'),'Do not replace strict whole compilation with build roots or ignored errors');
+ const body={kind:'EXACT_EMAIL_WHOLE_COMPILER_SOURCE_NOT_RELEASE',controller:EMAIL.compilerController,candidate:EMAIL.candidate,compilerScriptSha256:installHash(after),jobSha256:installHash(job),releaseAuthorized:false};return {...body,proofSha256:installHash(installJson(body))};
+}
