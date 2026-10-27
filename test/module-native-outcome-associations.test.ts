@@ -71,7 +71,7 @@ describe('actual own native outcome links',()=>{
   await expect(recordOwnNativeOutcomeAssociation(f.mine.ctx,p.input)).rejects.toThrow(unavailable);
   await expect(withTenant(f.mine.ctx,tx=>readCompletedOwnLeaveOutcomeTx(tx,f.mine.ctx,p.review.actionId))).rejects.toThrow();
   expect(await counts()).toEqual(before);
-  await withTenant(f.mine.ctx,tx=>discardOwnLeaveReviewTx(tx,{actionId:p.review.actionId,contractVersion:p.review.contractVersion}));
+  await withTenant(f.mine.ctx, tx => discardOwnLeaveReviewTx(tx, f.mine.ctx, {actionId:p.review.actionId,contractVersion:p.review.contractVersion}));
   await expect(recordOwnNativeOutcomeAssociation(f.mine.ctx,p.input)).rejects.toThrow(unavailable);expect(await counts()).toEqual(before);
  });
  it('refuses foreign owner/tenant, revoked Assistant and module kill before association; own erasure survives revocation',async()=>{

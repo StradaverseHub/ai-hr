@@ -73,7 +73,7 @@ describe('fresh Leave module control on own human-review lifecycle',()=>{
   const review=await prepared();await killed();await revokeAssistant(adminCtx(b),{appUserId:ctx.userId!});
   const before=await state(),index=await withTenant(ctx,tx=>listOwnLeaveReviewsTx(tx,ctx));
   expect(index.reviews.find(row=>row.actionId===review.actionId)?.state).toBe('awaiting_confirmation');
-  expect(await withTenant(ctx,tx=>discardOwnLeaveReviewTx(tx,{actionId:review.actionId,contractVersion:1}))).toEqual({kind:'retired',receipt:{actionId:review.actionId,contractVersion:1,state:'discarded'}});
+  expect(await withTenant(ctx, tx => discardOwnLeaveReviewTx(tx, ctx, {actionId:review.actionId,contractVersion:1}))).toEqual({kind:'retired',receipt:{actionId:review.actionId,contractVersion:1,state:'discarded'}});
   const after=await state();expect(after.requests).toEqual(before.requests);expect(after.events).toEqual(before.events);expect(after.ledger).toEqual(before.ledger);expect(after.runs).toEqual(before.runs);
   expect(after.reviews).toMatchObject([{id:review.actionId,state:'discarded',intent_digest:null,reviewed_digest:null,body_count:0}]);
   expect((await withTenant(ctx,tx=>listOwnLeaveReviewsTx(tx,ctx))).reviews.find(row=>row.actionId===review.actionId)?.state).toBe('discarded');

@@ -36,7 +36,7 @@ export function createOwnLeaveBrowserCommandHandler(authenticate: () => Promise<
     // Private retirement remains available after a grant/pause change; SQL still owns current custody.
     discard: async (session, confirmation) => {
       await cleanup(session);
-      return withTenant(session.ctx, tx => discardOwnLeaveReviewTx(tx, confirmation));
+      return withTenant(session.ctx, tx => discardOwnLeaveReviewTx(tx, session.ctx, confirmation));
     },
   }, originPolicy);
 }

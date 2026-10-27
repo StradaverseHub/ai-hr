@@ -139,7 +139,7 @@ describe('actual AI workspace source read', () => {
     const ids: string[] = [];
     for (let index = 0; index < 12; index++) {
       const [row] = await owner.db.insert(schema.assistantExchange).values({ tenantId: base.tenantId,
-        appUserId: ctx.userId!, question: `Own ${index}`, askedAt: new Date(Date.UTC(2026, 0, index + 1)) }).returning({ id: schema.assistantExchange.id });
+        appUserId: ctx.userId!, question: `Own ${index}`, askedAt: new Date(Date.now() - (12 - index) * 60 * 60 * 1000) }).returning({ id: schema.assistantExchange.id });
       ids.push(row.id);
     }
     expect((await loadAiWorkspace(ctx)).history.map(row => row.id)).toEqual(ids.slice(2).reverse());
@@ -155,13 +155,13 @@ describe('actual AI workspace source read', () => {
     expect(fresh.taskIds).not.toContain('pay_change'); expect(fresh.taskIds).toContain('leave_available');
     await setModule(base.tenantId, 'assistant', null);
     const disabled = await loadAiWorkspace(ctx);
-    expect(disabled).toEqual({ access: { allowed: false, reason: 'module_off' }, taskIds: [], history: [],jobModules:[],agentReview:null,governedJob:null });
+    expect(disabled).toEqual({ access: { allowed: false, reason: 'module_off' }, taskIds: [], history: [],jobModules:[],agentReview:null,specialistReview:null,governedJob:null,proposal:null,planningPermit:null });
   });
   it('returns neither tasks nor history after a grant revocation or without a login', async () => {
     const ctx = await grant(); await exchange(base.tenantId, ctx.userId!, 'OWN_PRIVATE_SENTINEL');
     await revokeAssistant(ctx, { appUserId: ctx.userId! });
-    expect(await loadAiWorkspace(ctx)).toEqual({ access: { allowed: false, reason: 'no_grant' }, taskIds: [], history: [],jobModules:[],agentReview:null,governedJob:null });
-    expect(await loadAiWorkspace({ ...ctx, userId: undefined })).toEqual({ access: { allowed: false, reason: 'no_user' }, taskIds: [], history: [],jobModules:[],agentReview:null,governedJob:null });
+    expect(await loadAiWorkspace(ctx)).toEqual({ access: { allowed: false, reason: 'no_grant' }, taskIds: [], history: [],jobModules:[],agentReview:null,specialistReview:null,governedJob:null,proposal:null,planningPermit:null });
+    expect(await loadAiWorkspace({ ...ctx, userId: undefined })).toEqual({ access: { allowed: false, reason: 'no_user' }, taskIds: [], history: [],jobModules:[],agentReview:null,specialistReview:null,governedJob:null,proposal:null,planningPermit:null });
   });
   it('refuses archived/stale actual principals before reading personal history', async () => {
     const ctx = await grant(); await exchange(base.tenantId, ctx.userId!, 'OWN_PRIVATE_SENTINEL');

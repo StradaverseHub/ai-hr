@@ -150,13 +150,16 @@ export async function reopenOwnLeaveReviewTx(tx: Tx, supplied: SessionContext, a
   return stored.metadata.state === 'completed' ? completed(tx, actor, stored) : retired(stored);
 }
 
-/** Same-login privacy-only retirement remains available after person relinking or source/grant
- * revocation. No lost digest, plaintext reopening or native permission is needed; completed refuses. */
-export async function discardOwnLeaveReviewTx(tx: Tx, retirementValue: unknown): Promise<RetiredResult> {
- const parsed=OwnLeaveRetirementRequest.safeParse(retirementValue);
+/** Privacy-only retirement for the SAME login, tenant AND person (ADR-0131), still available after
+ * source/grant revocation or an AI pause. A relinked login cannot retire the former person's review:
+ * the principal proof and the person-bound SQL refuse it exactly like an unknown action ID. No lost
+ * digest, plaintext reopening or native permission is needed; completed refuses. */
+export async function discardOwnLeaveReviewTx(tx: Tx, supplied: SessionContext, retirementValue: unknown): Promise<RetiredResult> {
+ const ctx=captureContext(supplied),parsed=OwnLeaveRetirementRequest.safeParse(retirementValue);
  if(!parsed.success)throw new OwnLeaveContentUnavailable();
  try{
  await boundNativeOutcomeTransactionTx(tx);
+ await assertAiPrincipalTx(tx,ctx);
  const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_legacy_review_retire(${parsed.data.actionId}::uuid,'leave.apply') as receipt`);
  const receipt=z.object({action:z.literal('leave.apply'),contractVersion:z.literal(1),actionId:z.uuid(),state:z.enum(['discarded','expired','refused'])}).strict().parse(row?.receipt);
  if(receipt.actionId!==parsed.data.actionId)throw new OwnLeaveContentUnavailable();
