@@ -588,8 +588,11 @@ async function reviewedRewardPostAuthorityTx(tx:Tx,ctx:SessionContext,unitId:str
  const [nominee]=await tx.select({id:rewardUnit.id,companyId:rewardUnit.companyId,parentUnitId:rewardUnit.parentUnitId,deletedAt:rewardUnit.deletedAt})
   .from(rewardUnit).where(eq(rewardUnit.id,unitId));
  if(!nominee||nominee.deletedAt)throw new RewardError('Reward unit not found or access has been removed.');
- const assigned=await rolesFor(tx,unitId);if(!assigned.includes('payroll'))throw new RewardError('The assigned payroll role is required.');
- await requireAdmin(tx,nominee.companyId);return nominee;
+ // H1: the same single posting-authority owner as postRewardUnit and the review page's Post button.
+ const roles=await rolesFor(tx,unitId),authority=await rewardPostingAuthorityTx(tx,nominee,roles);
+ if(authority==='no-seat')throw new RewardError('The assigned payroll role is required.');
+ if(authority==='needs-admin')throw new RewardError('Company administrator access is required.');
+ return nominee;
 }
 /** Advisory post-selection metadata only. No entries, compensation, budgets or hidden-person
  * arrays are loaded. Native prepare remains the sole posting eligibility/calculation owner. */

@@ -116,9 +116,27 @@ describe('Rewards approvals board, posting authority and reward calendar', () =>
       expect(start).toBeGreaterThanOrEqual(0); expect(end).toBeGreaterThan(start);
       const body = svc.slice(start, end);
       expect(body.length).toBeGreaterThan(1500);
-      expect(body).toContain('rewardPostingAuthorityTx(tx, unit, roles)');
-      expect(body).not.toContain("roles.includes('payroll')");
-      expect(body).not.toContain('requireAdmin(');
+      // postRewardUnit's guard now lives in prepareRewardPostTx, which the reviewed Assistant post shares.
+      // Pin it exactly where alpha put it: after the locked load and revision check, before any status,
+      // calculation or batch read, and as the ONLY posting-authority rule.
+      expect(body).toContain('const prepared=await prepareRewardPostTx(tx,ctx,unitId,revision,batchId);');
+      const pStart = svc.indexOf('async function prepareRewardPostTx('), pEnd = svc.indexOf('async function currentRewardPostEmployeeTx(', pStart);
+      expect(pStart).toBeGreaterThanOrEqual(0); expect(pEnd).toBeGreaterThan(pStart);
+      const prepare = svc.slice(pStart, pEnd);
+      expect(prepare.length).toBeGreaterThan(800);
+      const guardAt = prepare.indexOf('const authority = await rewardPostingAuthorityTx(tx, unit, roles);');
+      expect(guardAt).toBeGreaterThan(prepare.indexOf('assertRevision(unit, revision);'));
+      expect(prepare.indexOf('assertRevision(unit, revision);')).toBeGreaterThanOrEqual(0);
+      expect(guardAt).toBeLessThan(prepare.indexOf("if (unit.status === 'posted')"));
+      expect(prepare).toContain("if (authority === 'no-seat') throw new RewardError('The assigned payroll role is required.');");
+      expect(prepare).toContain("if (authority === 'needs-admin') throw new RewardError('Company administrator access is required.');");
+      // The reviewed Assistant post re-checks through the same owner, never a second copy of the rule.
+      expect(body).toContain('authority=await rewardPostingAuthorityTx(tx,nominee,roles)');
+      for (const src of [body, prepare]) {
+        expect(src).not.toContain("roles.includes('payroll')");
+        expect(src).not.toContain("includes('payroll'))throw");
+        expect(src).not.toContain('requireAdmin(');
+      }
       const page = readFileSync(new URL('../app/rewards/[unitId]/page.tsx', import.meta.url), 'utf8');
       expect(page).toContain('<RewardPostPanel posting={v.posting}');
       expect(page).not.toContain('postAction} className');

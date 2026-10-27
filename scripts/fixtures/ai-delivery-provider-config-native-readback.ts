@@ -22,7 +22,7 @@ export async function createAiDeliveryProviderConfigNativeReadback({fixture,expe
  const database=url.pathname.slice(1);
  if(!['postgres:','postgresql:'].includes(url.protocol)||decodeURIComponent(url.username)!=='ai_hr_app'||!['127.0.0.1','localhost','[::1]'].includes(url.hostname)||url.port!=='5433'||!(database==='aihr_ai_delivery_browser_v4_20261027'||/^aihr_assistant_browser_[a-f0-9]{16}$/.test(database))||url.hash||[...url.searchParams].some(([key,value])=>key!=='sslmode'||value!=='disable'))return unavailable();
  // A fresh fictional fixture must never inherit real provider credentials or environment fallback.
- if(['ANTHROPIC_API_KEY','OPENAI_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY','OPENROUTER_API_KEY'].some(key=>process.env[key]?.trim()))return unavailable();
+ if([process.env.ANTHROPIC_API_KEY,process.env.OPENAI_API_KEY,process.env.GOOGLE_API_KEY,process.env.GEMINI_API_KEY,process.env.OPENROUTER_API_KEY].some(value=>value?.trim()))return unavailable();
  const capturedUrl=url.toString();let phase=0,inFlight=false,completedCandidate:unknown;
  const phases=['baseline','invalid_routes','saved','reloaded'] as const;
  async function read(){

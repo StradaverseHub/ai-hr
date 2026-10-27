@@ -286,9 +286,9 @@ async function resolveWebSession(requireSelectedDevCookie: boolean): Promise<Ses
       const [row] = await client<{ blocked: boolean }[]>`select app.login_blocked(${id}::uuid) as blocked`;
       return Boolean(row?.blocked);
     };
-    return withEntitlements(requireSelectedDevCookie
-      ? await resolveCommandDevPrincipal(lookup, cookieUser, blocked)
-      : await resolveDevPrincipal(lookup, cookieUser, fallback, blocked));
+    // Each selected path is its own wrapped call, so test/entitlement-resolver.test.ts can count them.
+    if (requireSelectedDevCookie) return withEntitlements(await resolveCommandDevPrincipal(lookup, cookieUser, blocked));
+    return withEntitlements(await resolveDevPrincipal(lookup, cookieUser, fallback, blocked));
   }
 
   // Production: WorkOS is the auth. Imported lazily so the dev/test path never loads the WorkOS SDK.

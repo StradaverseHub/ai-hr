@@ -221,7 +221,12 @@ describe('4c63b37e · (a) the column is on the screen and in the export, immedia
     expect(rows.match(/\bleaveBalances(?:Tx)?\(/g) ?? []).toHaveLength(2);
     expect(rows).toContain('const balanceOptions = self ? { includeHidden: false, includeArchived: true, includeIneligible: false, asOf } : { includeHidden: true, includeArchived: true, includeIneligible: true, asOf };');
     expect(rows).toContain('const balances = opts.tx ? await leaveBalancesTx(opts.tx, ctx, employmentId, locale, balanceOptions) : await leaveBalances(ctx, employmentId, locale, balanceOptions);');
-    expect(code('core/read.ts')).toContain('return withTenant(ctx, tx => leaveBalancesTx(tx, ctx, employmentId, locale, opts));');
+    // The no-tx entry point still opens its own tenant transaction; the explicit-tx seam added for
+    // canonical AI readers delegates to the SAME owner after re-checking the principal, never a copy.
+    const read = code('core/read.ts');
+    expect(read).toContain('return withReadTx(ctx, existingTx, tx => leaveBalancesTx(tx, ctx, employmentId, locale, opts));');
+    expect(read).toContain('if (!existingTx) return withTenant(ctx, read);');
+    expect(read).toContain('await assertAiPrincipalTx(existingTx, ctx);');
     for (const src of [page, route, inquiry]) expect(src, 'presentation adds no separate balance read').not.toMatch(/\bleaveBalances(?:Tx)?\(/);
   });
 });

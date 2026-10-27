@@ -46,7 +46,7 @@ import { type SessionContext, type Tx } from '../db/client';
 // read by core/leave.ts, core/roster.ts and core/absence-days.ts) open no transaction and stay ungated,
 // which is what keeps Leave and the roster working for a tenant without Attendance. See
 // core/module-gate.ts.
-import { withAttendanceTenant as withTenant,assertModuleGate } from './module-gate';
+import { assertModuleGate, withAttendanceTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent, appendEvents } from '../db/events';
 import { createHash, randomUUID } from 'node:crypto';
 import { filterDelegationOrgScopeTx, assertAssignedWorkPrincipalTx, isApprovalDecisionRefusal } from './approvals';

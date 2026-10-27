@@ -89,6 +89,14 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   {table:'letter_template',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
   {table:'letter_template_version',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
   {table:'notification',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  // AI review custody and import-assistance attempts: owner-only rows the administrator's own RLS view
+  // cannot count, so one fixed SECURITY DEFINER boolean answers for all four (repair fragment
+  // guards-fixtures). They refuse rather than cascade: they are audit of what a person reviewed or what a
+  // model was asked, and they leave only through their own expiry/retention owners.
+  {table:'assistant_own_leave_review',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'A reviewed Assistant action custody record scoped to this company is retained audit; expose only a scoped retention boolean.'},
+  {table:'personnel_import_assistance_attempt',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'An AI-assisted personnel import attempt for this company is retained until its own expiry owner removes it.'},
+  {table:'employee_import_evaluation_attempt',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'An employee import AI evaluation for this company is retained until its own expiry owner removes it.'},
+  {table:'employee_import_evaluation_run_membership',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'The model-run membership of an employee import AI evaluation retains its company with the evaluation.'},
   {table:'payroll_history_import_record',column:'company_id',disposition:'payroll',note:'An imported payroll identity and every correction or recovery retain their original company permanently.'},
   { table: 'employment_cost_allocation_set', column: 'company_id', disposition: 'employees', existsFunction: 'app.board3_allocation_company_in_use', note: 'Every retained allocation set, including cleared or superseded sets after a transfer, retains its company without exposing employee rows.' },
   { table: 'job_document', column: 'company_id', disposition: 'other', existsFunction: 'app.board3_job_company_in_use', note: 'Job documentation and its approval history are retained records, never company setup to cascade.' },

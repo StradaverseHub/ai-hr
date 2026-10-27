@@ -1,5 +1,6 @@
 /** Canonical Claims specialist read and Assistant consumer; authored UNRUN. No provider calls. */
 import { eq } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { SessionContext } from '../db/client';
 import * as schema from '../db/schema';
@@ -17,7 +18,7 @@ const tool = ASSISTANT_TOOLS.find(item => item.spec.name === 'my_claim_statuses'
 
 async function fixture() {
   const a = adminCtx(base);
-  const hire = (name: string) => hireEmployee(a, { person: { fullName: name }, companyId: base.companyId,
+  const hire = (name: string) => hireEmployee(a, { person: { fullName: name, primaryEmail: `${randomUUID()}@fixture.test` }, companyId: base.companyId,
     departmentId: base.deptA, employmentType: 'full_time', hiredOn: '2026-01-01' });
   const mine = await hire('Fictional Claim Reader');
   const other = await hire('Fictional Other Claimant');
