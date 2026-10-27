@@ -6,7 +6,7 @@ on:
       mode:
         type: choice
         default: integration-only
-        options: [integration-only, compatibility-only, all]
+        options: [integration-only, compatibility-only, compiler-only, all]
 permissions:
   contents: read
 jobs:
@@ -17,6 +17,8 @@ jobs:
       AIHR_CI_CONTROL_HEAD: ${{ github.workflow_sha }}
       AIHR_CI_HEAD: ${{ github.workflow_sha }}
       AIHR_COMPILER_CACHE_MODE: whole
+      AIHR_CI_CAPACITY_PROFILE: bounded-whole-compiler
+      GH_TOKEN: ${{ github.token }}
       DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
       MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
       TEST_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
@@ -43,10 +45,12 @@ jobs:
         working-directory: source
         run: node --experimental-strip-types .github/ci/diagnostics/committed-source-benchmark.mjs . "$RUNNER_TEMP/source-batch-benchmark.json"
       - name: Start only job-owned disposable database required by existing classifier
+        if: inputs.mode != 'compiler-only'
         working-directory: source
         env: {AIHR_CI_UNIT: db-1, AIHR_CI_PG_MEMORY_GIB: '2', AIHR_CI_PG_JIT: 'on'}
         run: bash .github/ci/postgres.sh reset
       - name: Existing provenance integration boundaries with classified DB scope
+        if: inputs.mode != 'compiler-only'
         working-directory: source
         env:
           DATABASE_URL: postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test
@@ -57,13 +61,15 @@ jobs:
           AIHR_SOURCE_COMPATIBILITY_ONLY: ${{ inputs.mode == 'compatibility-only' }}
         run: pnpm exec tsx .github/ci/diagnostics/run-source-integration.mjs
       - name: Remove only this job's database and volume
-        if: always()
+        if: always() && inputs.mode != 'compiler-only'
         working-directory: source
         env: {AIHR_CI_UNIT: db-1, AIHR_CI_PG_MEMORY_GIB: '2', AIHR_CI_PG_JIT: 'on'}
         run: bash .github/ci/postgres.sh stop
       - name: Whole TypeScript check
         working-directory: source
-        run: pnpm exec tsc --noEmit --incremental false
+        run: |
+          pnpm exec next typegen
+          bash .github/ci/typecheck.sh --whole-cache
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
@@ -71,5 +77,7 @@ jobs:
           path: |
             ${{ runner.temp }}/source-batch-benchmark.json
             ${{ runner.temp }}/source-integration-reports/
+            ${{ runner.temp }}/whole-compiler-state-packet/
+            ${{ runner.temp }}/compiler-transport-swap-cleanup.json
           if-no-files-found: warn
           retention-days: 3
