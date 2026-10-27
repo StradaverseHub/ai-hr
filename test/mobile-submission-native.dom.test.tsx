@@ -93,6 +93,19 @@ describe('native encrypted submission adapter',()=>{
     f.nativeReset.resetAppleIntegrityInstallation.mockResolvedValueOnce({cleared:true});await expect(f.native.resetSubmissionInstallation()).rejects.toThrow();
     expect(f.files.size).toBe(1);expect(f.secrets.has('aihr.submissions.key.v1')).toBe(true);
   });
+  it('persists revocation intent encrypted across reopening without touching an attendance command',async()=>{
+    const f=fixture(),e=enrollmentFixture();
+    const clock=await f.native.openNativeSubmissionJournal(scope,()=>{});await clock.stage('clock',command);
+    const journal=await f.native.openNativeEnrollmentJournal(e.scope,e.ports.assertCurrent,e.ports);
+    await journal.begin(e.employmentId,e.requestId);await journal.advance(e.employmentId);
+    vi.mocked(e.ports.revoke).mockRejectedValueOnce(new Error('reply lost'));
+    await expect(journal.revoke(e.employmentId)).rejects.toThrow('reply lost');
+    const reopened=await f.native.openNativeEnrollmentJournal(e.scope,e.ports.assertCurrent,e.ports);
+    expect(await reopened.status()).toMatchObject({status:'revocation_pending'});
+    expect((await clock.pending())[0].command).toBe(command);
+    expect(await reopened.revoke(e.employmentId)).toMatchObject({status:'stored_key',revoked:true});
+    expect((await clock.pending())[0].command).toBe(command);
+  });
   it('keeps enrollment identity stable within one master generation and changes it after installation reset',async()=>{
     const f=fixture(),first=await f.native.nativeIntegrityInstallationId(()=>{});
     expect(await f.native.nativeIntegrityInstallationId(()=>{})).toBe(first);
