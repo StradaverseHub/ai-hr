@@ -12,10 +12,11 @@ vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async(n
 vi.mock('../app/assistant/agent-review-actions',()=>actions);
 import {ModuleAgentReview} from '../components/assistant/module-agent-review';
 import {PROMPT_HOLDOUTS} from '../lib/ai/module-agent-prompt-candidate';
+import {MODULE_AGENT_SOURCE_DIGEST} from '../lib/ai/module-agent-source-manifest';
 type View=Parameters<typeof ModuleAgentReview>[0]['view'];
 type ActionName=keyof typeof actions;
 /** Every management form is present, so a wrong action identity has somewhere wrong to land. */
-function view():View{return{sourceDigest:'a'.repeat(64),nextVersion:3,lastTrial:null,ownSignalChoices:[],ownNativeSignalChoices:[],nativeSignalChoicesTruncated:false,
+function view():View{return{sourceDigest:MODULE_AGENT_SOURCE_DIGEST,nextVersion:3,lastTrial:null,ownSignalChoices:[],ownNativeSignalChoices:[],nativeSignalChoicesTruncated:false,
  candidates:[{id:'00000000-0000-4000-8000-000000000011',version:1,kind:'read_plan_prompt_v1',own:false,attempts:1,progress:null,verifiedSignalCount:null}],
  promotions:[{id:'00000000-0000-4000-8000-000000000012',version:1,kind:'read_plan_prompt_v1',used:0,maximum:5,expiresAt:new Date().toISOString(),retired:false}],
  conversationCandidates:[{id:'00000000-0000-4000-8000-000000000001',version:2,own:false,progress:null}],
