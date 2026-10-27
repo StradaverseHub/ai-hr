@@ -1080,3 +1080,33 @@ The new assembly is deliberately absent from both app entry graphs because scree
 integration remains unfinished. Packaging establishes the updated shared transport/storage graph,
 not a reachable enrollment journey, signed device binary, installed-app behavior or Huawei support.
 No cloud build, store submission, migration apply or deployment occurred.
+
+### Default-closed enrollment rollout verification
+
+Source candidate `9101be23a252edde304bcedb06c87451d438f9b9` passed121 assertions across eight focused
+integration/DOM files, Next route type generation, root TypeScript and native TypeScript. The
+complete local reservation held both memory slots and the database, with0.003s admission; every
+planned phase finished with exit0. The new rollout file contributes19 cases. It invokes the actual
+mounted routes and deployment reader/catalog checks, with only bearer resolution and explicitly
+seeded/intercepted vendor proofs synthetic. Its disposable worker temporarily installs the0636
+draft and restores the actual predecessor checks/nullability; no shared migration is applied.
+
+The cases cover disabled default, minimal capability discovery, exact tenant/company/actor/platform
+matching, fresh policy reads, malformed/oversized/duplicate policy, missing temporal company proof,
+peer/admin/revoked bearer refusal, encryption outage, disabled immutable trigger, missing Android
+paired constraint, exact accepted-proof recovery and independent lookup/revocation after rollout
+removal. Four actual mounted completion cases change/remove the policy during synthetic vendor
+verification and assert rollback of consumption, custody and success audit before an exact retry.
+
+Controlled removal of both services' transaction-time guard caused all four selected policy-change
+cases to accept keys incorrectly and fail their assertions. Removing Android's paired-schema check
+caused its selected readiness case to advertise capability incorrectly and fail. Exact restoration
+passed all19 rollout cases. The mutation runs intentionally selected subsets, not complete suites.
+All owned probe databases were torn down. Logs:
+`/tmp/mobile-enrollment-rollout-{tests,next-types,root-types,native-types}.log` and
+`/tmp/mobile-rollout-probe-{commit-mutation,schema-mutation,restored}.log`.
+
+No full regression/build or signed-device acceptance is established. Enrollment/discovery routes
+now exist in source under default-closed deployment policy; this supersedes earlier unmounted
+source descriptions only. No live policy, staging migration, deployment or native screen activation
+occurred. Android's exclusive0636/idx634 reservation remains unjournaled and unchanged.

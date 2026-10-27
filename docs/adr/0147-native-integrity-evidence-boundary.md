@@ -667,3 +667,51 @@ evidence or implement a pending-enrollment discard/exception protocol.
 The assembly is not yet connected to a screen or imported by the app entry graph. A reviewed
 capability/rollout owner and explicit user interface remain required before enrollment is offered.
 The existing key inventory/revocation screen remains independently available.
+
+## Deployment-owned enrollment rollout and capability discovery
+
+Enrollment and discovery routes are now mounted **in source**, with `mobileRoute` at every exported
+method. This supersedes the earlier unmounted-enrollment description, not the signed-clock/offline
+limits. Nothing has been deployed or enabled by this source change. The server reader defaults to
+disabled when `AIHR_MOBILE_ENROLLMENT_POLICY` is absent/empty. It is a server-only deployment policy,
+never an `EXPO_PUBLIC` value, phone header, query, editable tenant preference or alternate identity
+store. It controls access to an enrollment pilot; it does not define HR attendance acceptance.
+
+The JSON shape is `{version:1,entries:[...]}`. An empty entries array is also disabled. Each entry
+requires `tenantId`, `companyId`, explicit nonempty `actorIds`, and complete platform `settings`
+validated by the existing Apple/Android settings schema. There are no wildcard actors or company
+fallbacks. Duplicate tenant/company/platform entries or duplicate actor IDs refuse configuration.
+The raw value is bounded to256KiB, at most100 entries and1000 actors per entry. Target settings remain
+server-owned: expected HTTPS deployment origin, signed app identity/environment or package/signer/
+build/hardware/provisioning/patch policy must come from reviewed actual distribution evidence.
+The entire policy is validated before selecting an entry; malformed policy never partially enables.
+
+The reader repeats current own-employment authorization and uses the canonical temporal company
+proof. An unproven company cannot choose a rollout entry by reading the mutable current-company
+column directly. Company-scoped attendance entitlement, receipt-encryption availability and ordinary
+application-role storage readiness are prerequisites. Readiness uses system catalogs to detect
+missing tables, required RLS/forced-RLS flags, immutable triggers, key read/insert permissions and
+installation-function execution. Android additionally requires the validated paired custody
+constraint and nullable environment. This is a prerequisite detector, **not** a complete schema,
+constraint-body, RLS-policy or migration-semantic certification. The coordinated migration/release
+checks remain required; no migration-owner credential is read by a web request.
+
+`GET /api/mobile/v2/integrity/{ios|android}/capabilities?employmentId=...` reports only understood
+enrollment capability, protocol/platform and `offline:false`, or a typed unavailable/refused result.
+It issues no challenge and returns no rollout allowlist. Commands use the client-reserved Apple v1
+and explicit Android v2 enrollment paths. A valid capability is neither key custody nor attendance
+acceptance. Signed-clock routes remain unmounted. Native capability consumption and the explicit
+enrollment screen still need connection; the app assembly is not yet in its entry graph.
+
+Both mounted completion routes supply a trusted commit guard. After vendor verification, inside
+the same challenge-consumption/custody transaction and actor lock, it repeats own-company proof and
+checks the current exact allowlist/target against the original settings. Removed actors/entries or
+changed targets refuse, rolling back consumption, key insert and success audit together. No second
+pooled transaction or vendor call occurs under that guard. The configuration reader has no cache;
+subsequent requests observe a changed environment. Exact already-accepted receipts remain facts,
+and independent inventory/lookup/revocation continue during disabled rollout or encryption outages.
+
+Keep the deployment variable unset until the paired migration chain and signed-device acceptance
+for the named pilot population are approved. The unjournaled Android draft still cannot be applied
+by inventing a timestamp. Source-mounting these default-closed routes does not grant migration,
+deployment, store submission or HarmonyOS activation authority.
