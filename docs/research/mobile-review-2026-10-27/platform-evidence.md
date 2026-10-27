@@ -1143,3 +1143,44 @@ Map SHA256 values are `0796b4f72a086eaf51d66b09f39563a04d66e403d66a6a12cf68b8c15
 Artifacts and per-platform logs are `/tmp/mobile-enrollment-screen-final-export-{ios,android}`.
 Earlier exports remain historical witnesses. No pilot configuration, migration application, signed
 device build, full release gate, deployment or HarmonyOS client acceptance occurred.
+
+
+### iPhone replacement, retirement capacity and repaired storage evidence
+
+`340e9d3a7` added explicit iPhone replacement with immutable retirement history, the iOS app adapter
+operation and both-platform confirmation coverage. It passed129 DOM cases across eight files plus
+root/native TypeScript locally. Tests execute shipped journals/assembly with synthetic SDK/transport
+ports and actual AES-GCM in the encrypted-storage fixture; no real App Attest proof is generated.
+
+`d6095517f27db50e97fc6d02d1a567564cb21116` added maximum-proof/full-history capacity coverage and
+raised the Apple native slot to256 KiB. Hosted run
+[40460620256](https://github.com/StradaverseHub/ai-hr/actions/runs/40460620256) completed: root
+TypeScript passed; selected tests had63 passes and12 failures out of75. All12 failures were the
+native encrypted-storage file: the shared constructor still rejected limits above128 KiB before
+opening Apple journals. This was a real implementation mismatch, not an environmental failure.
+
+Repair `dbb7df103` raised only the shared constructor's admissible ceiling to256 KiB, retaining each
+caller's explicit bound. The complete affected native-storage file passed24 cases and native
+TypeScript passed. Controlled removal of fresh receipt reconciliation, default history retention and
+Apple proof capacity each failed its named assertion; exact restoration passed all31 cases across
+the replacement/native-storage files. The other shared-storage consumer file passed16 cases.
+The unaffected hosted screen19/assembly25/replacement7 passing cases remain valid witnesses;
+there is no claim that the original failed hosted run was green or a full release gate.
+
+On repaired production bytes, root TypeScript and both Metro exports passed. Maps contain1344 iOS
+and1475 Android entries, with exact current screen, app adapter, API, both journals, native storage
+and shared sealed-storage sources. Checked server custody, database, rollout and attestation verifier
+paths were absent. Map SHA256 values: iOS
+`bcda4f2b6e4ef82bd33645bad94f297641cada090d80a774d5e14b94ca69e4d7`, Android
+`60cf09652e2639a62aeda816d8b91d5549936ff7acbf1faf3ce75745b78bc6df`.
+Logs: `/tmp/mobile-iphone-bound-repair-{dom,native-types}.log`,
+`/tmp/mobile-iphone-probe-{fresh-revocation,history,capacity,restored}.log`,
+`/tmp/mobile-iphone-storage-consumers.log`, `/tmp/mobile-iphone-final-{root-types,ios,android}.log`.
+Exports: `/tmp/mobile-iphone-replacement-export-{ios,android}`. Earlier capacity admission timed out
+holding no slots; its tests never ran. The earlier native compiler handle disappeared with an empty
+log and cannot supply a successful result; the repair's completed native compiler is the witness.
+
+No signed-device acceptance, full regression/release build, deployment, policy enablement or
+migration application occurred. Huawei browser access now works, but the official download flow
+requires account sign-in; DevEco/SDK installation is still pending that user action. HarmonyOS NEXT
+native implementation and acceptance remain outstanding.

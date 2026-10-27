@@ -151,8 +151,8 @@ be resent to the authoritative enrollment owner. Proof is cleared from this jour
 receipt transition. A failed local receipt commit retains proof; no automatic replacement or replay occurs.
 
 Storage reuses the existing native AES-GCM master/installation quota, with purpose-separated AAD,
-directory and SecureStore pointer. Enrollment slots allow 128 KiB for a full 64 KiB base64 artifact and
-bounded context. Missing pointers with existing enrollment slots quarantine the state; they cannot
+directory and SecureStore pointer. Android enrollment slots allow 128 KiB; Apple slots allow
+256 KiB for a full 64 KiB base64 artifact beside bounded retirement history and context. Missing pointers with existing enrollment slots quarantine the state; they cannot
 create an empty enrollment beside an uncertain native key. Missing/corrupt selected slots never fall
 back to an older one. The established clock/leave slot format, purpose and bounds remain unchanged.
 An app-installation UUID is committed in device-only SecureStore under the master generation; the
@@ -735,8 +735,8 @@ helper for this operation and the receipt-first step of explicit continuation.
 This recovery stays available when enrollment rollout is disabled. Previous-employment intent may
 recover an exact accepted receipt through a current own selector, but cannot continue generation or
 upload under a different subject. Revocation continuation remains an explicit confirmed action.
-Android replacement requires known retirement and the journal's fresh server check/history limits;
-iPhone replacement remains unfinished. Unreadable storage exposes retry/help, never an empty setup
+Both platforms require known retirement and a fresh server receipt before explicit replacement;
+the iPhone history and storage bounds are described below. Unreadable storage exposes retry/help, never an empty setup
 or automatic reset. Cached registration is described as saved state, not verified attendance/location.
 
 The UI checks live capability/local state again when confirmation is accepted. Its operation lineage
@@ -750,3 +750,28 @@ Local Metro entry graphs now include the actual screen, app adapter, both journa
 transport. This supersedes the earlier unreachable-assembly description. Reachability and synthetic
 port tests do not establish signed-device acceptance, activation, store distribution or Huawei NEXT
 support. The default-closed deployment policy remains unchanged.
+
+
+## iPhone replacement preserves original enrollment provenance
+
+Explicit iPhone replacement freshly reconciles the exact immutable server receipt through a current
+own-employment selector. A cached revocation alone cannot authorize replacement. Active, missing,
+unavailable or mismatched receipts preserve the existing state. After confirmed revocation, one
+atomic journal commit archives the original subject, context, key binding and receipt and writes the
+new request intent before any challenge preparation or native key operation. Lost acknowledgements
+recover that committed intent; they cannot start a different key. SDK private keys are not deleted.
+
+Legacy Apple journal versions1/2 remain readable and unchanged until explicit retirement. Version3
+requires one to fifteen revoked predecessors plus a current key or pending intent. It rejects duplicate
+request/challenge/native/key identities, foreign context and tampered bindings. Every subsequent
+transition retains history, including revocation intent and receipt. Full history refuses further
+replacement without eviction. Fifteen predecessors plus the current key match the native Apple
+proof store's sixteen total records; this is an application bound, not an Apple provider quota.
+Other actor scopes can consume installation capacity earlier.
+
+Apple encrypted plaintext slots now allow256 KiB; Android remains128 KiB and submission journals
+remain64 KiB. The shared sealed-storage constructor admits at most256 KiB, while each caller keeps
+its own smaller limit. Existing purpose-separated AAD, pointers, legacy serialization and64 MiB
+installation quota remain unchanged. A maximum-size proof beside fifteen retired contexts survives
+restart and resumes exact submission without another one-use SDK attestation in synthetic tests.
+This does not establish physical-device attestation, current device integrity or attendance presence.
