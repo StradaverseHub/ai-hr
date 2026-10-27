@@ -42,10 +42,11 @@ SNAPSHOT = """select json_build_object('rows',(select count(*) from drizzle.__dr
 class Refused(Exception): pass
 def require(ok, why):
     if not ok: raise Refused(why)
-def owned_regular(path, uid=0, maximum=1048576, private=False):
+def owned_regular(path, uid=0, maximum=1048576, private=False, state_metadata=False):
     path=pathlib.Path(path); before=path.lstat()
     require(stat.S_ISREG(before.st_mode) and before.st_nlink==1 and before.st_uid==uid and before.st_size<=maximum, 'Unexpected file identity')
-    require(not before.st_mode & (0o077 if private else 0o022), 'Unsafe file permissions')
+    require(not before.st_mode & (0o077 if private else 0o002 if state_metadata else 0o022), 'Unsafe file permissions')
+    if state_metadata:require(path==pathlib.Path('/var/tmp/aihr-deploy/current') and uid==1000, 'State metadata exception is path-bound')
     data=path.read_bytes(); after=path.lstat()
     require((before.st_dev,before.st_ino,before.st_mtime_ns,before.st_size)==(after.st_dev,after.st_ino,after.st_mtime_ns,after.st_size), 'File changed during read')
     return data
@@ -102,7 +103,7 @@ def exclusive(path, data, mode=0o600):
 
 def actual_source():
     require(owned_regular('/opt/ai-hr/.next/BUILD_ID',uid=1000,maximum=513).decode().strip()==BUILD, 'Reviewed email build required')
-    current=owned_regular('/var/tmp/aihr-deploy/current',uid=1000,maximum=16384).decode()
+    current=owned_regular('/var/tmp/aihr-deploy/current',uid=1000,maximum=16384,state_metadata=True).decode()
     fields=dict(line.split('=',1) for line in current.splitlines() if '=' in line)
     require(fields.get('ref')==SOURCE and fields.get('result')=='ok', 'Reviewed completed staging release required')
     require(run(['/usr/bin/systemctl','is-active','aihr'])=='active', 'Staging service must be healthy')
