@@ -16,6 +16,9 @@ import {runAiRetentionTick} from '../scripts/ai-retention-runner';
 const dialect=new PgDialect();
 const MAINTENANCE_REFUSAL='AI retention maintenance could not be confirmed.';
 const TRANSCRIPT_REFUSAL='Assistant history retirement unavailable.';
+// The ownership guard also NAMES this function (regprocedure); only an actual call statement starts so.
+const TRANSCRIPT_CALL='select app.assistant_transcripts_retire_expired(';
+const isTranscriptCall=(step:{text:string})=>step.text.startsWith(TRANSCRIPT_CALL);
 const A='0a0a0a0a-0000-4000-8000-00000000000a',B='0b0b0b0b-0000-4000-8000-00000000000b';
 type Step={text:string;params:unknown[]};
 type Script={allowed?:boolean;tenants?:string[];busy?:string[];transcripts?:Record<string,unknown>;intents?:number;queue?:{remaining:boolean;oldest_age_seconds:number|null}};
@@ -27,7 +30,7 @@ function carrier(script:Script){
   if(text.includes('pg_catalog.pg_roles')&&text.includes('current_user=session_user'))return [{allowed:script.allowed??true}];
   if(text.includes('group by tenant_id'))return (script.tenants??[]).map(tenant_id=>({tenant_id}));
   if(text.includes('pg_try_advisory_xact_lock')){const key=String(query.params[0]);return [{owned:!(script.busy??[]).some(id=>key==='access-configuration:'+id)}];}
-  if(text.includes('app.assistant_transcripts_retire_expired')){const reported=script.transcripts??{},key=String(query.params[0]);return [{retired:key in reported?reported[key]:0}];}
+  if(text.startsWith(TRANSCRIPT_CALL)){const reported=script.transcripts??{},key=String(query.params[0]);return [{retired:key in reported?reported[key]:0}];}
   if(text.includes('update app.assistant_own_leave_review r set state'))return [{retired:0,erased:0}];
   if(text.includes('delete from public.ai_assistant_answer_evaluation_intent'))return [{removed:script.intents??0}];
   if(text.includes('delete from '))return [{removed:0}];
@@ -80,16 +83,16 @@ describe('AI custody maintenance composition (pure, fake carrier)',()=>{
  });
  it('retires raw transcripts first inside the owned Access interval, before every metadata expiry, with the fixed policy and bound',async()=>{
   const {tx,log}=carrier({tenants:[A],transcripts:{[A]:7}});const result=await retireExpiredAiCustodyTx(tx);expect(result.transcripts).toBe(7);
-  const lock=index(log,step=>step.text.includes('pg_try_advisory_xact_lock')),transcript=index(log,step=>step.text.includes('app.assistant_transcripts_retire_expired'));
+  const lock=index(log,step=>step.text.includes('pg_try_advisory_xact_lock')),transcript=index(log,isTranscriptCall);
   const firstMutation=index(log,step=>mutated(step.text).length>0);
   expect(lock).toBeGreaterThan(0);expect(transcript).toBeGreaterThan(lock);expect(firstMutation).toBeGreaterThan(transcript);
   expect(log[transcript].params).toEqual([A,ASSISTANT_TRANSCRIPT_RETENTION_DAYS,100]);expect(ASSISTANT_TRANSCRIPT_RETENTION_DAYS).toBe(30);
-  expect(log.filter(step=>step.text.includes('app.assistant_transcripts_retire_expired'))).toHaveLength(1);
+  expect(log.filter(isTranscriptCall)).toHaveLength(1);
  });
  it('counts transcripts and evaluation intents only for owned tenants and skips busy Access without any transcript call',async()=>{
   const {tx,log}=carrier({tenants:[A,B],busy:[B],transcripts:{[A]:3,[B]:99},intents:2});const result=await retireExpiredAiCustodyTx(tx);
   expect(result).toEqual({tenants:2,busy:1,reviews:0,feedback:0,transcripts:3,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0,conversationArms:0,conversationUses:0,conversationIntents:2});
-  expect(log.filter(step=>step.text.includes('app.assistant_transcripts_retire_expired')).map(step=>step.params[0])).toEqual([A]);
+  expect(log.filter(isTranscriptCall).map(step=>step.params[0])).toEqual([A]);
   for(const id of [A,B])expect(JSON.stringify(result)).not.toContain(id);
  });
  it.each([101,-1,1.5,'1',null,undefined])('refuses the whole tick when transcript retirement reports %s',async retired=>{
