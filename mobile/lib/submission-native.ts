@@ -124,7 +124,10 @@ export async function nativeIntegrityInstallationId(assertCurrent:()=>void){
   const keyId=await hash(await key.encoded('base64'));assertCurrent();
   return serializedKey(async()=>{
     assertCurrent();const pointer=`aihr.enrollment.installation.${keyId.slice(0,16)}`,old=await SecureStore.getItemAsync(pointer,OPTIONS);assertCurrent();
-    if(old){if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(old))throw new EnrollmentJournalUnavailable();return old.toLowerCase();}
+    if(old!==null){if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(old))throw new EnrollmentJournalUnavailable();return old.toLowerCase();}
+    // Losing this pointer must not select a new, empty scope while old encrypted enrollment work
+    // remains. Legacy submission-only installations can still initialize their first enrollment ID.
+    if(root().exists&&root().list().some(item=>/^(?:android-)?enrollment-/.test(item.name)))throw new EnrollmentJournalUnavailable();
     const id=randomUUID();await SecureStore.setItemAsync(pointer,id,OPTIONS);assertCurrent();return id;
   });
 }

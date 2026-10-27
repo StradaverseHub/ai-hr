@@ -20,9 +20,10 @@ function fixture(nativeAvailable=true){
   const uri=(...parts:unknown[])=>parts.map(p=>typeof p==='string'?p:(p as {uri:string}).uri).join('/');
   class Directory {
     uri:string;constructor(...parts:unknown[]){this.uri=uri(...parts);}
+    get name(){return this.uri.split('/').at(-1)!;}
     get exists(){return directories.has(this.uri);}
     get size(){return occupiedBytes+[...files].filter(([path])=>path.startsWith(this.uri+'/')).reduce((total,[,bytes])=>total+bytes.byteLength,0);}
-    list(){return [...files.keys()].filter(path=>path.startsWith(this.uri+'/')&&!path.slice(this.uri.length+1).includes('/')).map(path=>new File(path));}
+    list(){return [...[...files.keys()].filter(path=>path.startsWith(this.uri+'/')&&!path.slice(this.uri.length+1).includes('/')).map(path=>new File(path)),...[...directories].filter(path=>path.startsWith(this.uri+'/')&&!path.slice(this.uri.length+1).includes('/')).map(path=>new Directory(path))];}
     create(){directories.add(this.uri);directories.add('document/aihr-submissions-v1');}
     delete(){for(const key of directories)if(key.startsWith(this.uri))directories.delete(key);for(const key of files.keys())if(key.startsWith(this.uri+'/'))files.delete(key);}
   }
@@ -132,6 +133,25 @@ describe('native encrypted submission adapter',()=>{
     const f=fixture(),first=await f.native.nativeIntegrityInstallationId(()=>{});
     expect(await f.native.nativeIntegrityInstallationId(()=>{})).toBe(first);
     await f.native.resetSubmissionInstallation();expect(await f.native.nativeIntegrityInstallationId(()=>{})).not.toBe(first);
+  });
+  it.each(['ios','android'] as const)('refuses a missing installation pointer with retained %s enrollment work',async(platform)=>{
+    const f=fixture(),id=await f.native.nativeIntegrityInstallationId(()=>{});
+    if(platform==='ios'){
+      const e=enrollmentFixture(),opened=await f.native.openNativeEnrollmentJournal({...e.scope,appInstallationId:id},()=>{},e.ports);await opened.begin(e.employmentId,e.requestId);
+    }else{
+      const e=androidEnrollmentFixture(),opened=await f.native.openNativeAndroidEnrollmentJournal({...e.scope,appInstallationId:id},()=>{},e.ports);await opened.begin(e.employmentId,e.requestId);
+    }
+    const pointer=[...f.secrets.keys()].find(key=>key.startsWith('aihr.enrollment.installation.'))!;expect(pointer).toBeTruthy();
+    const files=[...f.files].map(([name,value])=>[name,Buffer.from(value).toString('hex')]);f.secrets.delete(pointer);
+    await expect(f.native.nativeIntegrityInstallationId(()=>{})).rejects.toThrow('Device enrollment storage unavailable');
+    expect(f.secrets.has(pointer)).toBe(false);expect([...f.files].map(([name,value])=>[name,Buffer.from(value).toString('hex')])).toEqual(files);
+  });
+  it('allows a legacy submission-only install to initialize enrollment but refuses a corrupt empty pointer',async()=>{
+    const f=fixture(),clock=await f.native.openNativeSubmissionJournal(scope,()=>{});await clock.stage('clock',command);
+    const id=await f.native.nativeIntegrityInstallationId(()=>{});expect(id).toMatch(/^[0-9a-f-]{36}$/);
+    const pointer=[...f.secrets.keys()].find(key=>key.startsWith('aihr.enrollment.installation.'))!;f.secrets.set(pointer,'');
+    await expect(f.native.nativeIntegrityInstallationId(()=>{})).rejects.toThrow('Device enrollment storage unavailable');expect(f.secrets.get(pointer)).toBe('');
+    expect((await clock.pending())[0].command).toBe(command);
   });
   it('encrypts enrollment context and proof, survives restart and clears proof only after server receipt commit',async()=>{
     const f=fixture(),e=enrollmentFixture();
