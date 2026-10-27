@@ -1008,3 +1008,55 @@ or advertise clock capability. Native durable signing/upload/recovery, explicit 
 vendor assembly, physical iPhone/Android acceptance and the full release gate remain necessary
 before activation. Focused hosted evidence and independent guard removals are recorded below in
 the platform research appendix.
+
+
+## Default-disabled signed-clock routes and vendor credential assembly
+
+The source now mounts dedicated v2 `integrity/{ios|android}/clock/{capabilities|begin|complete}`
+endpoints. This supersedes the earlier unmounted-assembly descriptions; it does not configure or
+activate any tenant. Every export uses the existing mobile admission/budget/authentication wrapper.
+The source-reading route sweep includes the six new endpoints. Preparation/completion parse their
+outputs through their platform contract at the typed route boundary as well as the shared response
+wrapper. Clock rollout, enrollment rollout and legacy self-service policy remain separate owners.
+
+Discovery authorizes the explicit own subject, then uses the bounded deployment reader and existing
+storage/encryption checks. It returns transport protocol 2, command protocol 1 for Apple or 2 for
+Android, understood online feature names, `offline:false`, and only Android's public cloud project
+number (null on Apple). Bounded future feature names and additive response fields remain compatible;
+required understood features and platform/protocol/project constraints stay enforced. It returns no
+credential, private configuration or device verdict. Discovery and preparation make no Google
+request. Android requires a syntactically valid server credential provider before advertising or
+issuing a fresh challenge; actual vendor/project permissions remain separate provisioning evidence.
+Apple does not read Google credential configuration.
+
+`AIHR_MOBILE_GOOGLE_SERVICE_ACCOUNT` supplies bounded server-only Google service-account JSON.
+The parser selects only type `service_account`, a service-account email and a valid RSA private key
+(2048–8192 bits). Other exported JSON fields are ignored, never passed through to select endpoints,
+key files, impersonation, universe domains or scopes. There is no ADC/file/metadata fallback.
+`google-auth-library@10.7.0` is now a direct exact dependency; it was already present at that exact
+version through the locked Google SDK, so no transitive version was changed. The actual SDK signs
+the OAuth assertion. Only the Play Integrity scope and fixed Google OAuth token URL are usable.
+This follows the official [standard verification flow](https://developer.android.com/google/play/integrity/standard)
+and [Google JWT client](https://googleapis.dev/nodejs/google-auth-library/latest/classes/JWT.html);
+exact runtime behavior was inspected in the installed locked implementation and tested below.
+
+OAuth has a whole-call deadline (default 5s, configurable by trusted assembly within 1–10s), source
+cancellation, a bounded 32 KiB streamed response, strict access-token/type/expiry parsing, no redirect
+following and no application retry. An exchange is dispatched at most once; SDK retry is disabled.
+Per-call SDK clients avoid shared refresh/cancellation state and an application last-good token cache.
+Responses and errors never expose application credential/SDK diagnostics. Tokens remain in memory
+only for the fixed Google decoder call. Each request reads a fresh credential snapshot after subject
+and command/configuration validation; changes veto OAuth results and are checked again inside the
+clock commit guard after Google verification and tentative attendance writes. Missing credentials
+never fall back to signature-only fresh acceptance. Already consumed exact receipt observation can
+still succeed without a provider; the dedicated authenticated receipt endpoint also works after
+clock rollout and receipt encryption are removed.
+
+Both mounted platforms now exercise the actual deployment commit guard with real signatures,
+challenge consumption and authoritative attendance writes in the test worker. Apple tests prove
+one counter increment for concurrent exact retry and counter/punch/audit rollback after rollout
+removal; Android composes the actual Google SDK token exchange, decoder/current-policy verification
+and key signature before that same transactional veto. Vendor HTTP, service-account credentials and
+enrollment provenance are synthetic. None of these tests certifies a physical iPhone/Android device
+or real Google/Apple provisioning. Native durable clock orchestration/UI, signed-device field checks,
+full release verification and the remaining offline/employee/approver requirements are still open.

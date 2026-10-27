@@ -1651,3 +1651,92 @@ requested a production build. No local server test slot, migration journal/apply
 Google provisioning, clock-route activation or physical-device acceptance occurred. These remain
 focused development results. Clock discovery/provider assembly and durable native orchestration,
 then the remaining integrity/offline/employee/approver plan acceptance criteria, are still unfinished.
+
+
+### Mounted signed-clock and credential-boundary verification
+
+Initial frozen source `46db7094d6ae87973173bafbc8df3e8b95bb3d79` ran fifteen selected suites,
+root TypeScript and a Linux Node 20 production build through
+[Actions run 40504329394](https://github.com/StradaverseHub/ai-hr/actions/runs/40504329394).
+All selected tests passed: seven no-DB files / 85 cases and eight DB-project files / 173 cases,
+258 total. Root TypeScript and the build both failed on the same four `TS2345` errors: the mounted
+begin/complete wrappers passed an operation returning `unknown` where a typed contract was
+required. No tests/compiler checks were suppressed. The
+[original test artifact](https://github.com/StradaverseHub/ai-hr/actions/runs/40504329394/artifacts/12733624689)
+ZIP SHA-256 is `e341aca136da0285e159fc43cb4ac5eaa1e85b9c110f5a2baec7bd61c0c1596e`.
+The original root compiler exited 2 in 4m32.40s, maximum RSS 7,631,308 KiB. All planned jobs reached
+terminal state before repair.
+
+The repair parses each operation through its platform response schema at those four route
+boundaries, with no casts or weakened shared typing. Review also strengthened the OAuth oversize
+fixture to be otherwise-valid JSON with an oversized unknown padding field: malformed JSON alone
+could have refused independently of the size guard. A new before-headers fixture ignores
+cancellation and releases a valid response only later, checking deadline refusal before that event.
+Frozen repair source `ab30710863014f174c7793bb737a10b517c497d8` passed
+[Actions run 40505776624](https://github.com/StradaverseHub/ai-hr/actions/runs/40505776624): the three
+affected suites passed 77 cases (13 credentials, 16 mounted deployment, 48 mobile routes), root
+TypeScript passed in 4m37.71s with maximum RSS 7,628,104 KiB, and the Linux Node 20 production build
+succeeded. Build logs report compilation in 89s, TypeScript completion in 2.3min and all 369 static
+pages generated; all six new clock paths appear as dynamic routes. The
+[repair test artifact](https://github.com/StradaverseHub/ai-hr/actions/runs/40505776624/artifacts/12734907211)
+ZIP SHA-256 is `25a02446297e16a1dedd0c40834e02fd5ec2ed90dc807628e0f8a1ec016b6a47`.
+The other twelve unchanged passing suites were retained, giving combined focused coverage of
+fifteen files / 259 cases. This is not a claim that the original compiler/build passed or that a
+full release gate, native app build or deployment ran.
+
+| Suite | Final passing cases | Evidence |
+|---|---:|---|
+| `test/mobile-play-credentials.test.ts` | 13 | Repair run |
+| `test/mobile-signed-clock-deployment.test.ts` | 16 | Repair run |
+| `test/mobile-api-routes.test.ts` | 48 | Repair run |
+| `test/mobile-integrity-contract.dom.test.tsx` | 10 | First run |
+| `test/mobile-clock-rollout.test.ts` | 20 | First run |
+| `test/mobile-enrollment-rollout.test.ts` | 19 | First run |
+| `test/mobile-signed-clock-http.test.ts` | 17 | First run |
+| `test/mobile-integrity-http.test.ts` | 22 | First run |
+| `test/mobile-android-verified-clock.test.ts` | 17 | First run |
+| `test/mobile-android-clock-integrity.dom.test.tsx` | 22 | First run |
+| `test/mobile-play-integrity.dom.test.tsx` | 11 | First run |
+| `test/mobile-integrity-import-isolation.test.ts` | 3 | First run |
+| `test/attendance-pack-drift.test.ts` | 2 | First run |
+| `test/request-budget.test.ts` | 14 | First run |
+| `test/mobile-device-enrollment.dom.test.tsx` | 25 | First run |
+
+The mounted suite calls the actual route exports for both platforms. It proves default-disabled
+clock discovery/preparation, no Google calls for discovery/begin, scoped server-origin contexts,
+real Apple assertion signatures and one counter advance under concurrent retry, real Android key
+signatures/current Google decoding, actual deployment-guard rollback after tentative writes on both
+platforms, authentication/ownership before credential reading, private audit/response output, and
+dedicated receipt recovery after rollout/credentials/encryption removal. Android-specific cases
+prove missing/malformed provider refusal, no decode after OAuth outage, post-Google credential
+snapshot veto and exact committed receipt recovery without the now-missing provider. All enrollment
+provenance, vendor HTTP and credentials are synthetic; worker-only custody draft installation is
+restored afterward and never applies the shared migration journal.
+
+The credential suite uses the actual locked Google `JWT` client with generated synthetic RSA keys.
+It cryptographically verifies the SDK's assertion signature/issuer/scope/audience/expiry, ignores
+untrusted URL/file/delegation fields, refuses weak/malformed/non-service credentials and alternate
+scopes, proves no retry on failure, and exercises malformed/oversized OAuth output, stalled bodies,
+before-headers timeout, cancellation/late replies, independent subsequent calls and removed/changed
+credential snapshots. Only generated fixture keys and synthetic HTTP were used; no real Google
+account or Google OAuth/Play endpoint was contacted. Linking the already locked direct dependency
+used an offline frozen pnpm install with the worktree's explicit existing store; the first
+noninteractive attempt aborted at a no-TTY module-replacement prompt before installation. No package version was upgraded and no dependency build script was approved.
+
+Four independent hosted probes used the same unchanged tests and descend from the positive repair
+checkpoint. Full logs confirm the intended named assertion failures:
+
+| Controlled mutation | Frozen candidate | Hosted run | Observed failure | Result |
+|---|---|---|---|---|
+| Remove credential snapshot check at clock commit | `df4952f0fe7bd0321529caf578f1087e1d3bd457` | [40505846489](https://github.com/StradaverseHub/ai-hr/actions/runs/40505846489) | Credential removed after Google verification, but attendance accepted instead of becoming unavailable | 1 failed / 15 passed |
+| Replace real deployed clock commit guard with a no-op | `3157e91af7a805c5bace63b559d0817cfc01a19e` | [40505855590](https://github.com/StradaverseHub/ai-hr/actions/runs/40505855590) | Both iOS and Android rollout-removal cases accepted instead of rolling back | 2 failed / 14 passed |
+| Relax raw OAuth body limit from 32 KiB to 64 KiB | `5aff437ab565bfd516c12c35111d4c6d79d0b964` | [40505864728](https://github.com/StradaverseHub/ai-hr/actions/runs/40505864728) | Otherwise-valid oversized JSON yielded a usable token; post-filter SDK response limits did not substitute for the raw streamed bound | 1 failed / 12 passed |
+| Remove outer header deadline and disable the SDK timeout | `fad8773ce20a7c6c0c2b9f2a1defd1f4abbc7b61` | [40505873220](https://github.com/StradaverseHub/ai-hr/actions/runs/40505873220) | Cancellation-ignoring pre-header fetch returned its late token instead of deadline refusal | 1 failed / 12 passed |
+
+These explicitly unsafe `codex/mobile-clock-probe-*-20261027` candidates are never for merge or
+deployment. A separate temporary Git index created each candidate without changing the worktree or
+its index; no source restoration was required. The frozen repair checkpoint stayed the positive
+control. Later changes only correct carrier comments and document evidence. No local server test
+slots, tenant rollout, real credential setup, shared migration apply, staging deployment, store
+submission or physical-device acceptance occurred. Native signed-clock integration and the broader
+integrity/offline/employee/approver acceptance criteria remain unfinished.

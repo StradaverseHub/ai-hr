@@ -1,4 +1,4 @@
-/** Internal signed online clock carrier. Deployment configuration is not loaded by a public route. */
+/** Internal signed online clock carrier. Route assembly supplies trusted deployment configuration. */
 import {and,eq} from 'drizzle-orm';
 import {z} from 'zod';
 import type {SessionContext,Tx} from '../../db/client';
