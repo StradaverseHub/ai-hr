@@ -856,6 +856,10 @@ export async function submitReplacementLeaveRequest(ctx:SessionContext,p:SubmitR
 async function reviewedReplacementPreparationTx(tx:Tx,ctx:SessionContext,input:SubmitReplacementRequestInput){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};input={...input,lines:input.lines.map(line=>({...line}))};
  const prepared=await prepareReplacementLeaveRequestTx(tx,ctx,input),dates=[...prepared.dates].sort();
+ // One typed date[] built from one bound parameter per date. Interpolating the JS array directly makes
+ // drizzle emit a parenthesised parameter LIST, so `(${dates})::date[]` casts a bare date string (or a
+ // row) to date[] and Postgres refuses it as a malformed array literal for every request.
+ const dateArray=sql`ARRAY[${sql.join(dates.map(date=>sql`${date}::date`),sql`, `)}]::date[]`;
  // Bounded own-subject row versions, not other employees or a guessed global epoch. Formula proof
  // supplies its real calculation/source revision; legacy schedule facts remain semantic evidence.
  const versions=await tx.execute<{kind:string;id:string;revision:string}>(sql`select * from (
@@ -864,12 +868,12 @@ async function reviewedReplacementPreparationTx(tx:Tx,ctx:SessionContext,input:S
  union all select 'toil_policy',id::text,xmin::text from public.toil_policy where company_id=${prepared.resolved.companyId}::uuid and tenant_id=${ctx.tenantId}::uuid
  union all select 'compensation',id::text,xmin::text from public.compensation where employment_id=${input.employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid
  union all select 'assignment',id::text,xmin::text from public.assignment where employment_id=${input.employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid
- union all select 'attendance',id::text,xmin::text from public.attendance where employment_id=${input.employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid and attendance_date=any(${dates}::date[])
- union all select 'attendance_correction',id::text,xmin::text from public.attendance_correction where employment_id=${input.employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid and attendance_date=any(${dates}::date[])
- union all select 'toil_accrual',id::text,xmin::text from public.toil_accrual where employment_id=${input.employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid and worked_date=any(${dates}::date[])
- union all select 'replacement_request',q.id::text,q.xmin::text from public.replacement_leave_request q where q.employment_id=${input.employmentId}::uuid and q.tenant_id=${ctx.tenantId}::uuid and exists(select 1 from public.replacement_leave_request_date d where d.request_id=q.id and d.tenant_id=q.tenant_id and d.worked_date=any(${dates}::date[]))
- union all select 'replacement_date',id::text,xmin::text from public.replacement_leave_request_date where subject_employment_id=${input.employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid and worked_date=any(${dates}::date[])
- union all select 'roster',id::text,xmin::text from public.roster_assignment where employment_id=${input.employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid and shift_date=any(${dates}::date[])
+ union all select 'attendance',id::text,xmin::text from public.attendance where employment_id=${input.employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid and attendance_date=any(${dateArray})
+ union all select 'attendance_correction',id::text,xmin::text from public.attendance_correction where employment_id=${input.employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid and attendance_date=any(${dateArray})
+ union all select 'toil_accrual',id::text,xmin::text from public.toil_accrual where employment_id=${input.employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid and worked_date=any(${dateArray})
+ union all select 'replacement_request',q.id::text,q.xmin::text from public.replacement_leave_request q where q.employment_id=${input.employmentId}::uuid and q.tenant_id=${ctx.tenantId}::uuid and exists(select 1 from public.replacement_leave_request_date d where d.request_id=q.id and d.tenant_id=q.tenant_id and d.worked_date=any(${dateArray}))
+ union all select 'replacement_date',id::text,xmin::text from public.replacement_leave_request_date where subject_employment_id=${input.employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid and worked_date=any(${dateArray})
+ union all select 'roster',id::text,xmin::text from public.roster_assignment where employment_id=${input.employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid and shift_date=any(${dateArray})
  union all select 'shift_arrangement',id::text,xmin::text from public.employment_shift_arrangement where employment_id=${input.employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid
  ) evidence order by kind,id limit 4097`);if(versions.length>4096)throw new ReplacementRequestInvalidError('The reviewed source is unavailable.');
  const dateEvidence=[];for(const line of prepared.p.lines){dateEvidence.push({date:line.workedDate,day:await extendedHoursDayForEmploymentTx(tx,prepared.p.employmentId,line.workedDate,ctx),credit:await leaveCreditClaimReviewTx(tx,ctx,{employmentId:prepared.p.employmentId,workedDate:line.workedDate,claimStart:line.fromTime,claimEnd:line.toTime})});}

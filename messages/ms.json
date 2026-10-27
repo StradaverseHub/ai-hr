@@ -22731,6 +22731,8 @@
     "features": {
       "module_agent_evaluation": "Penilaian ejen modul",
       "provider_evaluation": "Penilaian keupayaan penyedia",
+      "personnel_import_mapping": "Cadangan tajuk import pekerja",
+      "module_agent_planning": "Perancangan tugas ejen modul",
       "hr_assistant": "Pembantu HR",
       "readiness_reminders": "Peringatan kesediaan",
       "claims_triage": "Triage tuntutan",
