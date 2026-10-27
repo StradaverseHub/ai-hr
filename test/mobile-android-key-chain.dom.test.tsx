@@ -1,6 +1,6 @@
 /** Captured certificate signatures/PKI are real. Status-list transport is synthetic, not current Google evidence. */
 import {readFileSync} from 'node:fs';
-import {X509Certificate,createHash} from 'node:crypto';
+import {X509Certificate} from 'node:crypto';
 import {describe,expect,it,vi} from 'vitest';
 import {createAndroidKeyChainVerifier} from '../lib/mobile-api/android-key-chain';
 const base='test/fixtures/mobile-integrity/android/';
@@ -36,7 +36,7 @@ describe('Android pinned chain and revocation evidence',()=>{
  it('refuses changed public key/challenge and bounded malformed input before network work',async()=>{
   const f=fixture(),other=fixture('tee-rkp');
   await expect(f.verify({...f.input,publicKeySpki:other.input.publicKeySpki})).rejects.toMatchObject({reason:'key_mismatch'});
-  await expect(f.verify({...f.input,challenge:Buffer.alloc(32)})).rejects.toMatchObject({reason:'challenge_mismatch'});
+  await expect(f.verify({...f.input,challenge:Buffer.alloc(f.input.challenge.length)})).rejects.toMatchObject({reason:'challenge_mismatch'});
   for(const certificateChain of [[],Array(9).fill(f.input.certificateChain[0]),[Buffer.alloc(16385),...f.input.certificateChain.slice(1)]])await expect(f.verify({...f.input,certificateChain})).rejects.toMatchObject({reason:'malformed'});
   expect(f.revocation).not.toHaveBeenCalled();
  });

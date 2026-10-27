@@ -33,7 +33,7 @@ export function createAndroidKeyChainVerifier(ports:{revocation?:(serials:readon
   if(!Array.isArray(input.certificateChain)||input.certificateChain.length<3||input.certificateChain.length>8||
    input.certificateChain.some(value=>!Buffer.isBuffer(value)||value.length<1||value.length>16384)||
    !Buffer.isBuffer(input.publicKeySpki)||input.publicKeySpki.length<64||input.publicKeySpki.length>2048||
-   !Buffer.isBuffer(input.challenge)||input.challenge.length!==32)fail('malformed');
+   !Buffer.isBuffer(input.challenge)||input.challenge.length<1||input.challenge.length>128)fail('malformed');
   const bytes=input.certificateChain.map(value=>Buffer.from(value)),spki=Buffer.from(input.publicKeySpki),challenge=Buffer.from(input.challenge);
   if(new Set(bytes.map(digest)).size!==bytes.length)fail('certificate_path');
   try{
