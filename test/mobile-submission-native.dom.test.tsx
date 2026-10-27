@@ -6,6 +6,8 @@ import { describe, expect, it, vi } from 'vitest';
 import * as journal from '../mobile/lib/submission-journal';
 import * as storage from '../mobile/lib/submission-storage';
 import * as enrollment from '../mobile/lib/enrollment-journal';
+import * as androidEnrollment from '../mobile/lib/android-enrollment-journal';
+import {androidEnrollmentFixture} from './helpers/mobile-android-enrollment-fixture';
 import {enrollmentFixture,enrollmentId} from './helpers/mobile-enrollment-fixture';
 import {createIntegrityBridge} from '../mobile/lib/integrity-bridge';
 import {createInstallationStore} from '../mobile/lib/installation-store';
@@ -60,6 +62,7 @@ function fixture(nativeAvailable=true){
     resetSubmissionInstallation:()=>Promise<void>;
     nativeIntegrityInstallationId:(assertCurrent:()=>void)=>Promise<string>;
     openNativeEnrollmentJournal:(scope:enrollment.EnrollmentScope,assertCurrent:()=>void,ports:Omit<enrollment.EnrollmentPorts,'assertCurrent'|'read'|'commit'|'digest'>)=>Promise<ReturnType<typeof enrollment.createEnrollmentJournal>>;
+    openNativeAndroidEnrollmentJournal:(scope:enrollment.EnrollmentScope,assertCurrent:()=>void,ports:Omit<androidEnrollment.AndroidEnrollmentPorts,'assertCurrent'|'read'|'commit'|'digest'>)=>Promise<ReturnType<typeof androidEnrollment.createAndroidEnrollmentJournal>>;
   }};
   const code=transpileModule(readFileSync('mobile/lib/submission-native.ts','utf8'),{compilerOptions:{module:ModuleKind.CommonJS}}).outputText;
   runInNewContext(code,{exports:output.exports,module:output,Uint8Array,TextEncoder,TextDecoder,require:(id:string)=>{
@@ -67,7 +70,7 @@ function fixture(nativeAvailable=true){
     if(id==='expo-secure-store')return secure;if(id==='expo-crypto')return crypto;
     if(id==='../modules/aihr-integrity/src/AihrIntegrityModule')return {default:nativeAvailable?nativeReset:null};
     if(id==='./integrity-bridge')return {createIntegrityBridge};
-    if(id==='./submission-journal')return journal;if(id==='./submission-storage')return storage;if(id==='./enrollment-journal')return enrollment;throw new Error(id);
+    if(id==='./submission-journal')return journal;if(id==='./submission-storage')return storage;if(id==='./enrollment-journal')return enrollment;if(id==='./android-enrollment-journal')return androidEnrollment;throw new Error(id);
   }});
   return {native:output.exports,files,directories,secrets,secure,nativeReset,occupy:(bytes:number)=>{occupiedBytes=bytes;}};
 }
@@ -75,6 +78,25 @@ const scope={namespace:'https://hr.example.com',actorId:'aaaaaaaa-aaaa-4aaa-8aaa
 const requestId='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const command=JSON.stringify({requestId,action:'in',lat:3,lng:101,accuracy:5,sampledAt:Date.now()});
 describe('native encrypted submission adapter',()=>{
+  it('seals Android enrollment through restart with a separate Apple pointer/AAD and no creation on open',async()=>{
+    const f=fixture(),a=androidEnrollmentFixture(),apple=enrollmentFixture();
+    const opened=await f.native.openNativeAndroidEnrollmentJournal(a.scope,a.ports.assertCurrent,a.ports);expect(a.native.create).not.toHaveBeenCalled();expect(a.ports.prepare).not.toHaveBeenCalled();
+    await opened.begin(a.employmentId,a.requestId);expect(await opened.advance(a.employmentId)).toMatchObject({status:'stored_key'});
+    const restarted=await f.native.openNativeAndroidEnrollmentJournal(a.scope,a.ports.assertCurrent,a.ports);expect(await restarted.status()).toMatchObject({status:'stored_key'});expect(a.native.create).toHaveBeenCalledOnce();
+    for(const bytes of f.files.values())expect(Buffer.from(bytes).toString()).not.toContain(a.requestId);
+    const old=await f.native.openNativeEnrollmentJournal({...apple.scope,...a.scope},apple.ports.assertCurrent,apple.ports);expect(await old.status()).toEqual({status:'empty'});
+    expect([...f.secrets.keys()].some(key=>key.startsWith('aihr.android-enrollment.'))).toBe(true);
+  });
+  it('refuses an Android orphan pointer and prevents Apple/Android ciphertext transplantation',async()=>{
+    const f=fixture(),a=androidEnrollmentFixture(),apple=enrollmentFixture(),shared={...apple.scope,...a.scope};
+    await (await f.native.openNativeAndroidEnrollmentJournal(shared,a.ports.assertCurrent,a.ports)).begin(a.employmentId,a.requestId);
+    await (await f.native.openNativeEnrollmentJournal(shared,apple.ports.assertCurrent,apple.ports)).begin(apple.employmentId,apple.requestId);
+    const androidPath=[...f.files.keys()].find(path=>path.includes('/android-enrollment-'))!,applePath=[...f.files.keys()].find(path=>path.includes('/enrollment-'))!;
+    expect(androidPath).toBeTruthy();expect(applePath).toBeTruthy();f.files.set(androidPath,f.files.get(applePath)!);
+    await expect((await f.native.openNativeAndroidEnrollmentJournal(shared,a.ports.assertCurrent,a.ports)).status()).rejects.toBeInstanceOf(enrollment.EnrollmentJournalUnavailable);
+    const pointer=[...f.secrets.keys()].find(key=>key.startsWith('aihr.android-enrollment.'))!;f.secrets.delete(pointer);
+    await expect((await f.native.openNativeAndroidEnrollmentJournal(shared,a.ports.assertCurrent,a.ports)).status()).rejects.toBeInstanceOf(enrollment.EnrollmentJournalUnavailable);
+  });
   it('retries failed native first-install cleanup before marking the installation, without clearing data on logout',async()=>{
     const f=fixture(),e=enrollmentFixture(),pending=await f.native.openNativeEnrollmentJournal(e.scope,e.ports.assertCurrent,e.ports);await pending.begin(e.employmentId,e.requestId);
     let marker=false,logout=false;const events:string[]=[];

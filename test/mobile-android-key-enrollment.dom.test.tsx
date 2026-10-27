@@ -61,7 +61,12 @@ describe('Android native key enrollment adapter',()=>{
   for(const change of [{clientDataHash:Buffer.alloc(32,2).toString('base64')},{alias:'aihr_'+'b'.repeat(64)},{context:{...fixture().prepared.context,actorId:id(9)}},{state:'expired'},{protocol:1}]){
    const f=fixture();expect(await f.adapter.create({...f.prepared,...change},f.persist)).toMatchObject({status:'invalid'});expect(f.persist).not.toHaveBeenCalled();expect(f.native.createAndroidKey).not.toHaveBeenCalled();
   }
-  const f=fixture();f.native.capabilities.mockReturnValueOnce({...f.native.capabilities(),buildVersion:'5'});expect(await f.adapter.read(f.prepared)).toMatchObject({status:'invalid'});expect(f.native.androidKeyInfo).not.toHaveBeenCalled();
+  const f=fixture();f.native.capabilities.mockReturnValueOnce({...f.native.capabilities(),buildVersion:'5'});expect(await f.adapter.create(f.prepared,f.persist)).toMatchObject({status:'invalid'});expect(f.native.createAndroidKey).not.toHaveBeenCalled();expect(f.persist).not.toHaveBeenCalled();
+ });
+ it('keeps saved-alias recovery available after an app upgrade or terminal challenge without creating',async()=>{
+  const f=fixture();f.native.capabilities.mockReturnValue({...f.native.capabilities(),buildVersion:'5'});
+  for(const state of ['expired','consumed'])expect(await f.adapter.read({...f.prepared,state})).toMatchObject({status:'evidence',verification:'not_verified'});
+  expect(await f.adapter.create({...f.prepared,state:'expired'},f.persist)).toMatchObject({status:'invalid'});expect(f.native.createAndroidKey).not.toHaveBeenCalled();
  });
  it('cannot generate after a failed durable commit or owner/foreground change during commit',async()=>{
   const f=fixture();f.persist.mockRejectedValueOnce(new Error('storage unavailable'));await expect(f.adapter.create(f.prepared,f.persist)).rejects.toThrow('storage unavailable');expect(f.native.createAndroidKey).not.toHaveBeenCalled();
