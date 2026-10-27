@@ -50,3 +50,15 @@ export async function listOwnIntegrityKeys(ctx:SessionContext,employmentId:strin
     return rows.map(receipt);
   });
 }
+
+/** Exact own-actor lookup is independent of catalog pagination and vendor configuration. Null is an
+ * observation at this read, not permission to regenerate a key or repeat a one-use attestation. */
+export async function readOwnIntegrityKeyReceipt(ctx:SessionContext,input:{employmentId:string;originChallengeId:string}){
+  const employmentId=uuid.parse(input.employmentId),originChallengeId=uuid.parse(input.originChallengeId);
+  return withAttendanceTenant(ctx,async tx=>{
+    await own(tx,ctx,employmentId);
+    const [row]=await tx.select().from(mobileIntegrityKey).where(and(eq(mobileIntegrityKey.tenantId,ctx.tenantId),
+      eq(mobileIntegrityKey.actorId,ctx.userId!),eq(mobileIntegrityKey.originChallengeId,originChallengeId))).limit(1);
+    return row?receipt(row):null;
+  });
+}

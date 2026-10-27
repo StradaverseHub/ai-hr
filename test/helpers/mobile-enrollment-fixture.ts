@@ -35,7 +35,7 @@ export function enrollmentFixture(){
   };
   const ports:EnrollmentPorts={assertCurrent:check,digest,native:createIntegrityBridge(native,check),
     read:vi.fn(async()=>structuredClone(stored)),commit:vi.fn(async(value)=>{stored=structuredClone(value);}),
-    prepare:vi.fn(async()=>prepared()),keys:vi.fn(async()=>({outcome:'keys',items:accepted?[receipt()]:[]})),
+    prepare:vi.fn(async()=>prepared()),receipt:vi.fn(async()=>({outcome:'key_receipt',key:accepted?receipt():null})),
     revoke:vi.fn(async()=>{revoked=true;return {outcome:'revoked',key:receipt()};}),
     complete:vi.fn(async()=>{accepted=true;return {outcome:'enrolled',key:receipt()};}),
   };

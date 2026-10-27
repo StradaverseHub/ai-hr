@@ -1,6 +1,6 @@
 /** Fresh authenticated inventory is authority; enrollment caches never establish current key validity. */
 import type {z} from 'zod';
-import {IntegrityKeyReceipt,IntegrityRevokeIntent} from '../../lib/mobile-integrity-contract';
+import {IntegrityKeyReceipt,IntegrityRevokeIntent,IntegrityKeyLookupIntent} from '../../lib/mobile-integrity-contract';
 import {apiPost} from './api';
 import {UnavailableError} from './errors';
 export type IntegrityKey=z.infer<typeof IntegrityKeyReceipt>;
@@ -11,4 +11,10 @@ export async function revokeIntegrityKey(employmentId:string,key:IntegrityKey){
     if(result.key.revokedAt===null||JSON.stringify({...original,revokedAt:null})!==JSON.stringify({...result.key,revokedAt:null}))throw new UnavailableError();
   }
   return result;
+}
+
+/** No SDK call or enrollment replay is implied by an absent server receipt. */
+export async function lookupIntegrityKeyReceipt(employmentId:string,originChallengeId:string){
+  const input=IntegrityKeyLookupIntent.parse({originChallengeId});
+  return apiPost('integrity/key-receipt',input,{employmentId});
 }

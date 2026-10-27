@@ -60,7 +60,7 @@ export type EnrollmentPorts={
   native:ReturnType<typeof createIntegrityBridge>;
   prepare(employmentId:string,intent:{requestId:string;appInstallationId:string}):Promise<unknown>;
   complete(employmentId:string,input:z.infer<typeof C.IntegrityEnrollmentProof>):Promise<unknown>;
-  keys(employmentId:string):Promise<unknown>;
+  receipt(employmentId:string,input:z.infer<typeof C.IntegrityKeyLookupIntent>):Promise<unknown>;
   revoke(employmentId:string,input:z.infer<typeof C.IntegrityRevokeIntent>):Promise<unknown>;
 };
 type PendingReason='server_unavailable'|'server_refused'|'vendor_outage'|'native_unavailable'|'unsupported'|'recovery_required'|'challenge_unavailable';
@@ -157,20 +157,20 @@ export function createEnrollmentJournal(rawScope:EnrollmentScope,ports:Enrollmen
         await checkPrepared(p.prepared,p);
         const preparedRef:Prepared=p.prepared;
         if(!reconciled){
-          const catalog=checked(C.IntegrityKeysResult,await owned(()=>ports.keys(intentRef.employmentId)));
-          if(catalog.outcome!=='keys')return status(s,catalog.outcome==='refused'?'server_refused':'server_unavailable');
-          const matches=catalog.items.filter(key=>key.originChallengeId===preparedRef.context.challengeId);
-          if(matches.length>1||matches[0]&&!receiptMatches(matches[0],p.prepared))throw new EnrollmentConflict();
-          if(matches[0]){
+          const lookup=checked(C.IntegrityKeyLookupResult,await owned(()=>ports.receipt(intentRef.employmentId,{originChallengeId:preparedRef.context.challengeId})));
+          if(lookup.outcome!=='key_receipt')return status(s,lookup.outcome==='refused'?'server_refused':'server_unavailable');
+          const found=lookup.key;
+          if(found&&!receiptMatches(found,p.prepared))throw new EnrollmentConflict();
+          if(found){
             const reference=await keyReference(p.prepared);if('reason' in reference)return status(s,reference.reason);const {vendorKeyId}=reference;
             if('vendorKeyId' in p&&p.vendorKeyId!==vendorKeyId)throw new EnrollmentConflict();
-            return registered(s,{employmentId:p.employmentId,requestId:p.requestId,prepared:p.prepared,vendorKeyId,key:matches[0]});
+            return registered(s,{employmentId:p.employmentId,requestId:p.requestId,prepared:p.prepared,vendorKeyId,key:found});
           }
           reconciled=true;
         }
         if(p.phase==='proof_ready'){
-          // A bounded catalog may omit older revoked keys. Replay only these exact saved bytes under
-          // the original intent; the server's receipt owner resolves duplicates before re-verification.
+          // An absent lookup is not terminal: a concurrent completion may still commit. Replay only
+          // these exact saved bytes; the authoritative receipt owner reconciles before re-verification.
           const proof=p;
           const value=checked(C.IntegrityEnrollmentResult,await owned(()=>ports.complete(intentRef.employmentId,{requestId:intentRef.requestId,appInstallationId:scope.appInstallationId,
             challengeId:preparedRef.context.challengeId,vendorKeyId:proof.vendorKeyId,attestation:proof.attestation})));

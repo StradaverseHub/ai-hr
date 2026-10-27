@@ -9,6 +9,7 @@ import {hireEmployee} from '../core/org';
 import {createAppleEnrollmentService} from '../core/mobile-apple-enrollment';
 import {createClockingLocation,setClockingControl,setAttendancePolicy} from '../packs/attendance/service';
 import {GET as ownKeys} from '../app/api/mobile/v1/integrity/keys/route';
+import {POST as lookupKeyReceipt} from '../app/api/mobile/v1/integrity/key-receipt/route';
 import {POST as revokeKey} from '../app/api/mobile/v1/integrity/revoke/route';
 import {createIntegrityHttpHandlers} from '../lib/mobile-api/integrity-routes';
 import {AuthRequiredError} from '../lib/auth-errors';
@@ -67,6 +68,23 @@ describe('bounded scoped integrity HTTP handlers before route activation',()=>{
       const revoked=await revokeKey(request()),receipt=await revoked.json();expect(revoked.status).toBe(200);expect(receipt.outcome).toBe('revoked');expect(receipt.key.revokedAt).not.toBeNull();
       expect(await (await revokeKey(request())).json()).toEqual(receipt);expect(configuration).not.toHaveBeenCalled();
     }finally{vi.stubEnv('AI_CONFIG_SECRET',secret);}
+  });
+  it('mounts a bounded exact receipt lookup independent of configuration and never makes absence authoritative',async()=>{
+    const f=await enrolled();config=null;
+    const [key]=await owner.db.select().from(schema.mobileIntegrityKey);
+    const url='https://hr.example/api/mobile/v1/integrity/key-receipt?employmentId='+f.employmentId;
+    const request=(body:unknown)=>new Request(url,{method:'POST',headers:{'content-type':'application/json','content-length':'1'},body:JSON.stringify(body)});
+    const found=await lookupKeyReceipt(request({originChallengeId:key.originChallengeId})),value=await found.json();
+    expect(found.status).toBe(200);expect(found.headers.get('cache-control')).toBe('no-store');expect(value).toMatchObject({outcome:'key_receipt',key:{keyId:key.id,originChallengeId:key.originChallengeId}});
+    expect(await (await lookupKeyReceipt(request({originChallengeId:randomUUID()}))).json()).toEqual({outcome:'key_receipt',key:null});
+    for(const extra of [{tenantId:base.tenantId},{verified:true},{keyId:key.id}])expect((await lookupKeyReceipt(request({originChallengeId:key.originChallengeId,...extra}))).status).toBe(400);
+    const padded=new Request(url,{method:'POST',headers:{'content-type':'application/json','content-length':'1'},body:' '.repeat(257)+JSON.stringify({originChallengeId:key.originChallengeId})});
+    expect((await lookupKeyReceipt(padded)).status).toBe(400);
+    const peer=await employee();caller=peer.ctx;
+    const peerRequest=new Request(url.replace(f.employmentId,peer.employmentId),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({originChallengeId:key.originChallengeId})});
+    expect(await (await lookupKeyReceipt(peerRequest)).json()).toEqual({outcome:'key_receipt',key:null});
+    revoked=true;expect((await lookupKeyReceipt(request({originChallengeId:key.originChallengeId}))).status).toBe(401);
+    expect(configuration).not.toHaveBeenCalled();expect((await owner.db.select().from(schema.mobileIntegrityKey))[0].revokedAt).toBeNull();
   });
   it('requires an explicit own selector on mounted recovery routes and never permits peer revocation',async()=>{
     const f=await enrolled(),peer=await employee();

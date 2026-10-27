@@ -9,8 +9,9 @@ describe('legacy attendance loading without integrity activation',()=>{
   it('loads key recovery routes without evaluating either optional vendor owner',async()=>{
     const keys=await import('../app/api/mobile/v1/integrity/keys/route');
     const revoke=await import('../app/api/mobile/v1/integrity/revoke/route');
+    const receipt=await import('../app/api/mobile/v1/integrity/key-receipt/route');
     expect(typeof keys.GET).toBe('function');expect(typeof revoke.POST).toBe('function');
-    expect(Object.keys(keys)).toEqual(['GET']);expect(Object.keys(revoke)).toEqual(['POST']);
+    expect(Object.keys(keys)).toEqual(['GET']);expect(Object.keys(revoke)).toEqual(['POST']);expect(Object.keys(receipt)).toEqual(['POST']);
   });
   it('loads the established v1 clock handler without optional vendor owners',async()=>{
     const route=await import('../app/api/mobile/v1/clock/route');expect(typeof route.POST).toBe('function');

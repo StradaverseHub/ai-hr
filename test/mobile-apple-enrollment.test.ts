@@ -1,5 +1,5 @@
 /** Real DB/crypto storage; vendor proof is a synthetic port here, not a hardware claim. */
-import {createHash,generateKeyPairSync,randomUUID} from 'node:crypto';
+import {createHash,generateKeyPairSync,randomUUID,randomBytes} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
@@ -7,7 +7,8 @@ import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {createAppleEnrollmentService,listOwnIntegrityKeys,revokeOwnIntegrityKey} from '../core/mobile-apple-enrollment';
 import {keyEnrollmentClientData} from '../lib/mobile-key-enrollment';
-import {decryptSecret} from '../lib/ai/crypto';
+import {readOwnIntegrityKeyReceipt} from '../core/mobile-integrity-key';
+import {decryptSecret,encryptSecret} from '../lib/ai/crypto';
 import type {AppAttestKeyProof} from '../lib/mobile-api/app-attest-enrollment';
 import {adminCtx,closeAll,createAppUser,harnessSnapshot,owner,resetDb,seedBase,type Base} from './harness';
 const settings={apiOrigin:'https://hr.example.com',target:{platform:'ios',appId:'ABCDEFGHIJ.ai.stradaverse.aihr.test',environment:'production',requiredMetadata:null}};
@@ -135,6 +136,29 @@ describe('scoped Apple key enrollment transaction',()=>{
     const next={...e.intent,requestId:randomUUID()},fresh=await f.service.begin(e.ctx,next);
     await expect(f.service.complete(e.ctx,{...next,challengeId:fresh.challenge.id,vendorKeyId:f.vendorKeyId,attestation:f.attestation})).rejects.toMatchObject({reason:'key_unavailable'});
     expect(await owner.db.select().from(schema.mobileIntegrityKey)).toHaveLength(1);
+  });
+  it('recovers a revoked key by its original challenge after it falls outside the bounded inventory',async()=>{
+    const e=await employee(),f=fixture(),begin=await f.service.begin(e.ctx,e.intent);
+    const first=await f.service.complete(e.ctx,{...e.intent,challengeId:begin.challenge.id,vendorKeyId:f.vendorKeyId,attestation:f.attestation});
+    const revoked=await revokeOwnIntegrityKey(e.ctx,{employmentId:e.employmentId,keyId:first.keyId});
+    const [original]=await owner.db.select().from(schema.mobileIntegrityKey),[challenge]=await owner.db.select().from(schema.mobileIntegrityChallenge);
+    // Synthetic owned history isolates receipt lookup from the list's display bound. No vendor pass.
+    for(let i=0;i<20;i++){
+      const fresh=fixture(),challengeId=randomUUID(),keyId=randomUUID(),createdAt=new Date();
+      await owner.db.insert(schema.mobileIntegrityChallenge).values({...challenge,id:challengeId,requestId:randomUUID(),nonce:randomBytes(32).toString('base64url')});
+      await owner.db.insert(schema.mobileIntegrityKey).values({...original,id:keyId,originChallengeId:challengeId,
+        vendorKeyId:fresh.vendorKeyId,fingerprint:Buffer.from(fresh.vendorKeyId,'base64').toString('hex'),
+        publicKeySpki:fresh.proof.publicKey.export({type:'spki',format:'der'}),
+        receiptCiphertext:encryptSecret(fresh.proof.receipt.toString('base64'),JSON.stringify(['mobile-integrity-key-receipt',1,e.ctx.tenantId,e.ctx.userId,keyId,challengeId])),
+        createdAt,revokedAt:createdAt});
+    }
+    expect(await listOwnIntegrityKeys(e.ctx,e.employmentId)).toHaveLength(20);
+    expect((await listOwnIntegrityKeys(e.ctx,e.employmentId)).some(key=>key.keyId===first.keyId)).toBe(false);
+    vi.stubEnv('AI_CONFIG_SECRET','');
+    expect(await readOwnIntegrityKeyReceipt(e.ctx,{employmentId:e.employmentId,originChallengeId:begin.challenge.id.toUpperCase()})).toEqual(revoked);
+    const peer=await employee(),foreign=await employee(await seedBase());
+    for(const other of [peer,foreign])expect(await readOwnIntegrityKeyReceipt(other.ctx,{employmentId:other.employmentId,originChallengeId:begin.challenge.id})).toBeNull();
+    expect(await readOwnIntegrityKeyReceipt(e.ctx,{employmentId:e.employmentId,originChallengeId:randomUUID()})).toBeNull();
   });
   it('enforces active-key capacity independently of issuance rate and keeps earlier active keys visible first',async()=>{
     const e=await employee(),keys:Awaited<ReturnType<typeof listOwnIntegrityKeys>>=[];

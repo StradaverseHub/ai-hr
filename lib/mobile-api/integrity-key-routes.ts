@@ -1,7 +1,7 @@
 /** Authenticated key recovery only. No enrollment, hardware policy or attendance acceptance. */
 import {z} from 'zod';
 import {ModuleNotEnabledError} from '../../core/entitlements';
-import {listOwnIntegrityKeys,revokeOwnIntegrityKey,IntegrityKeyError,OwnClockEmploymentUnavailableError} from '../../packs/attendance/mobile-integrity-recovery';
+import {readOwnIntegrityKeyReceipt,listOwnIntegrityKeys,revokeOwnIntegrityKey,IntegrityKeyError,OwnClockEmploymentUnavailableError} from '../../packs/attendance/mobile-integrity-recovery';
 import * as C from '../mobile-integrity-contract';
 import {mobileRoute,MobileBadRequest,type MobileSessionResolver} from './handler';
 import {mobileInput} from './body';
@@ -19,6 +19,11 @@ export function createIntegrityKeyHttpHandlers(resolve?:MobileSessionResolver){
     },resolve);
   }
   return {
+    keyReceipt:route(C.IntegrityKeyLookupResult,async(ctx,req)=>{
+      const id=await integrityEmployment(ctx,req),input=C.IntegrityKeyLookupIntent.safeParse(await mobileInput(req,256));
+      if(!input.success)throw new MobileBadRequest('Invalid integrity receipt selector');
+      return {outcome:'key_receipt' as const,key:await readOwnIntegrityKeyReceipt(ctx,{...input.data,employmentId:id})};
+    }),
     keys:route(C.IntegrityKeysResult,async(ctx,req)=>({outcome:'keys' as const,items:await listOwnIntegrityKeys(ctx,await integrityEmployment(ctx,req))})),
     revoke:route(C.IntegrityRevocationResult,async(ctx,req)=>{
       const id=await integrityEmployment(ctx,req),input=C.IntegrityRevokeIntent.safeParse(await mobileInput(req,256));

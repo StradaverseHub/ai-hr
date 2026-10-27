@@ -22,6 +22,26 @@ describe('native enrollment durability and one-use recovery',()=>{
     await expect(f.journal().advance(f.employmentId)).rejects.toBeInstanceOf(EnrollmentJournalUnavailable);
     expect(f.ports.complete).toHaveBeenCalledOnce();expect(f.native.attestAppleKey).toHaveBeenCalledOnce();
   });
+  it('uses an exact challenge receipt to recover during configuration outage, including revoked history',async()=>{
+    const f=enrollmentFixture(),journal=f.journal();await journal.begin(f.employmentId,f.requestId);
+    vi.mocked(f.ports.complete).mockImplementationOnce(async()=>{f.setAccepted(true);throw new Error('reply lost');});
+    await expect(journal.advance(f.employmentId)).rejects.toThrow('reply lost');
+    f.setRevoked(true);vi.mocked(f.ports.prepare).mockRejectedValue(new Error('configuration removed'));
+    expect(await f.journal().advance(f.employmentId)).toEqual({status:'stored_key',keyId:enrollmentId(8),revoked:true});
+    expect(f.ports.receipt).toHaveBeenLastCalledWith(f.employmentId,{originChallengeId:f.context.challengeId});
+    expect(f.ports.prepare).toHaveBeenCalledOnce();expect(f.ports.complete).toHaveBeenCalledOnce();expect(f.native.attestAppleKey).toHaveBeenCalledOnce();
+  });
+  it('does not turn an absent exact receipt into permission to repeat uncertain attestation',async()=>{
+    const f=enrollmentFixture(),journal=f.journal();await journal.begin(f.employmentId,f.requestId);
+    f.native.attestAppleKey.mockImplementationOnce(async()=>{f.setCache({state:'requested'});throw {code:'ERR_INTEGRITY_UNAVAILABLE'};});
+    await journal.advance(f.employmentId);
+    expect(await f.journal().advance(f.employmentId)).toMatchObject({status:'pending',reason:'recovery_required'});
+    expect(f.native.attestAppleKey).toHaveBeenCalledOnce();expect(f.ports.complete).not.toHaveBeenCalled();
+    vi.mocked(f.ports.receipt).mockResolvedValueOnce({outcome:'unavailable',code:'module_unavailable'});
+    expect(await f.journal().advance(f.employmentId)).toMatchObject({reason:'server_unavailable'});expect(f.native.attestAppleKey).toHaveBeenCalledOnce();
+    vi.mocked(f.ports.receipt).mockResolvedValueOnce({outcome:'key_receipt',key:{...f.receipt(),originChallengeId:enrollmentId(9)}});
+    await expect(f.journal().advance(f.employmentId)).rejects.toBeInstanceOf(EnrollmentConflict);expect(f.native.attestAppleKey).toHaveBeenCalledOnce();
+  });
   it('shares one queue across journal instances, preserves the first request and refuses employment adoption',async()=>{
     const f=enrollmentFixture(),a=f.journal(),b=f.journal();
     const [first,second]=await Promise.all([a.begin(f.employmentId,f.requestId),b.begin(f.employmentId,enrollmentId(9))]);expect(second).toEqual(first);

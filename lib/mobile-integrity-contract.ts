@@ -11,6 +11,7 @@ export const IntegrityEnrollmentProof=IntegrityEnrollmentIntent.extend({challeng
 export const IntegrityClockIntent=z.object({appInstallationId:uuid,keyId:uuid,deviceToken:uuid.optional(),
   command:OnlineClockIntegrityData.shape.command.omit({photo:true}),evidence:OnlineClockIntegrityData.shape.evidence}).strict();
 export const IntegrityClockProof=IntegrityClockIntent.extend({challengeId:uuid,assertion:base64.max(10924)}).strict();
+export const IntegrityKeyLookupIntent=z.object({originChallengeId:uuid}).strict();
 export const IntegrityRevokeIntent=z.object({keyId:uuid}).strict();
 export const IntegrityKeyReceipt=z.object({keyId:uuid,originChallengeId:uuid,platform:z.literal('ios'),appId:z.string().max(300),
   environment:z.enum(['production','development']),proofKind:z.enum(['apple_key_proof','apple_app_metadata']),
@@ -29,6 +30,7 @@ export const IntegrityCapabilities=result(z.object({outcome:z.literal('capabilit
 export const IntegrityEnrollmentPrepared=result(z.object({outcome:z.literal('prepared'),protocol:z.literal(1),context:KeyEnrollmentContext,
   clientDataHash:hash32,alias:z.string().regex(/^aihr_[a-f0-9]{64}$/),state}));
 export const IntegrityEnrollmentResult=result(z.object({outcome:z.literal('enrolled'),key:IntegrityKeyReceipt}));
+export const IntegrityKeyLookupResult=result(z.object({outcome:z.literal('key_receipt'),key:IntegrityKeyReceipt.nullable()}));
 export const IntegrityKeysResult=result(z.object({outcome:z.literal('keys'),items:z.array(IntegrityKeyReceipt).max(20)}));
 export const IntegrityRevocationResult=result(z.object({outcome:z.literal('revoked'),key:IntegrityKeyReceipt}));
 export const IntegrityClockPrepared=result(z.object({outcome:z.literal('prepared'),protocol:z.literal(1),context:OnlineClockIntegrityData,state}));
