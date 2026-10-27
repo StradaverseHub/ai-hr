@@ -410,3 +410,21 @@ With the human's explicit credential-access approval, a read-only staging query 
 returned `count=498`, `max(created_at)=1792997586564`. The query sourced only the existing server-side
 configuration and displayed no credential. It changed no schema/data/configuration. This is a watermark
 observation, not a live-baseline migration rehearsal or authorization to apply the provisional migrations.
+
+
+At the same runtime source `56434a99a`, actual Android `:aihr-integrity:compileDebugKotlin` exited 0
+in 39 seconds. Both local Hermes exports exited 0. Their source maps contained 1,334 iOS and 1,465
+Android entries, including enrollment, storage, bridge, native module and portable contracts; no
+application server core/database/session module, private API verifier, PKI dependency or Zod 3 appeared.
+The initial checker incorrectly matched dependency directories containing `/core/` and the mobile
+`session.tsx`/`session-state.ts`; inspection corrected it to the application server paths, then both
+maps passed. The exports passed initially. Android dependency lint's earlier UAST failure remains
+unresolved; Kotlin compilation does not relabel it. No full Xcode/signed-iOS build was performed.
+
+Six controlled mutations against checkpoint `adb3e4eac` individually removed receipt-before-cleanup
+ordering, receipt-to-native-key binding, failed-bootstrap refusal, released-key replay refusal,
+completed-only proof release and active/uncommitted reset refusal. Every mutant failed the intended
+behavioral assertion; every exact restored source passed. All three native mutants compiled, excluding
+compiler failure as the witness. Results were `mutation=1 restored=0 exact=true` for all six, with
+`compile=0 restoredCompile=0` for native cases. Logs preserve the failed and restored attempts separately.
+No migration, public API registration, enrollment UI, cloud upload or deployment occurred in this slice.
