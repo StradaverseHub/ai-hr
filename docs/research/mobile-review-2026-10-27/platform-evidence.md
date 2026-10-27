@@ -1779,3 +1779,37 @@ facts, privacy/account changes, encrypted scope separation, missing commit/insta
 terminal cleanup at quota and server-ordered abandonment. They do not certify a real Apple/Google
 verdict, SDK provisioning, physical device, current native binary, deployment or complete screen
 acceptance. Screen integration is the next checkpoint; no migration or rollout was applied.
+
+Owner clarification: no physical test Android phone or iPhone is available yet (27 October 2026).
+Keep physical App Attest/Play Integrity, OS source/approximate-location paths, signed distribution,
+airplane-mode and reboot measurements explicitly unverified. Simulator, compiler and synthetic-port
+results cannot replace those witnesses or authorize integrity/offline rollout.
+
+### Signed attendance screen and privacy lifecycle (27 October 2026)
+
+Screen checkpoint `46bb2854d93507059673dbb2aa7d66d7e89b2b9d` ran all planned parts in
+[40512624475](https://github.com/StradaverseHub/ai-hr/actions/runs/40512624475).
+It exposed a duplicate block variable in the new expected-request guard, a nullable employment
+property in the native screen and a pre-existing incomplete receipt fixture lacking its required
+direction. The duplicate prevented two model/assembly suites from transforming; 67 other cases
+passed and one screen case failed. Root and native compilers failed; the full run finished before
+repair publication. Original failed evidence is retained on that run.
+
+Repair checkpoint `572f16a614ed96565c5b9db209aa1e10e336a254` passed
+[40514004652](https://github.com/StradaverseHub/ai-hr/actions/runs/40514004652):
+seven selected files / 118 cases, root TypeScript and strict native TypeScript.
+Files/counts: API transport 35, submission recovery 19, employee journey screens 32, signed clock
+journal 14, owned native assembly 5, capture 12, installed Expo multipart 1. Earlier unaffected
+contract, pending-submission and composition passes remain valid; those were not restarted.
+
+The screen exercises signed-mode selection on both platform branches, missing-key guidance,
+discovery outage without downgrade, encrypted saved-attempt retry without recapture/re-stage,
+restored mode after missing routes, receipt-only recovery without an attachment, explicit
+server-ordered discard, wrong-request rejection, and camera completion while the screen is locked
+and remounted. The latter exposed a source lifecycle issue: unconditional preparation hydration
+would replace the protected reviewed photo. Matching same-request reviews are now retained.
+Separate capture tests stop a new GPS/camera launch after permission/service awaits lose ownership.
+Clock preview, attempts, registration and legacy writes now pass the owner guard through transport
+refresh retries. These are shipped-code tests with synthetic native/network ports. They are not
+physical device, signed distribution, current native build or complete accessibility witnesses.
+No local test/compiler slot, rollout, migration apply or deployment was used.

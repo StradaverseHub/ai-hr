@@ -55,6 +55,15 @@ describe('durable signed clock attempt ordering and recovery',()=>{
   await expect(j.advance(employmentId)).rejects.toThrow('connection lost');expect(f.stored()?.pending?.phase).toBe('sent');
   await f.journal().advance(employmentId);expect(f.ports.sign).toHaveBeenCalledOnce();expect(f.ports.complete).toHaveBeenCalledTimes(2);
  });
+ it('retains the exact Android signature when Play Integrity fails before the attendance upload',async()=>{
+  const f=fixture('android'),j=f.journal();await j.start(employmentId,requestId);
+  vi.mocked(f.ports.play).mockRejectedValueOnce(new Error('provider connection lost'));
+  await expect(j.advance(employmentId)).rejects.toThrow('provider connection lost');
+  expect(f.stored()?.pending).toMatchObject({phase:'proof_ready',proof:f.proof});expect(f.ports.complete).not.toHaveBeenCalled();
+  expect(await f.journal().advance(employmentId)).toEqual({status:'accepted',receipt});
+  expect(f.ports.sign).toHaveBeenCalledOnce();expect(f.ports.play).toHaveBeenCalledTimes(2);
+  expect(f.ports.complete).toHaveBeenCalledOnce();
+ });
  it('recovers accepted receipt after rollout, key and base files become unavailable',async()=>{
   const f=fixture(),j=f.journal();await j.start(employmentId,requestId);f.accept();
   for(const name of ['base','key','capabilities','begin'] as const)vi.mocked(f.ports[name]).mockRejectedValue(new Error('disabled'));
