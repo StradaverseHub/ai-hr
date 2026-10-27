@@ -18,6 +18,8 @@ The private fixture manifest records the complete native composition: six actual
 
 Provisioning's first administrator is activated through its native single-use invitation before using the actual grant owner. Canonical templates, hire/year-opening, payroll, claims, reviews, onboarding, Testing and notice owners create their fictional facts. Selected human target effects remain pending: self leave is not submitted, profile change and new knowledge article are not created, current payroll remains processed rather than closed, and no governed candidate/evaluation/promotion is fabricated. The manifest records actual baseline counts, not an assumption that the entire tenant contains zero requests. Passwords, activation tokens and session material do not enter the manifest.
 
+The private `scopeDenials` prerequisite adds distinct actual people in a separate company of the primary tenant and in a foreign tenant, plus an initially granted revocable identity in the separate company. It runs after Workforce and before Financial; the original primary-company employment population and selected own-leave target remain unchanged. Its native setup request is included in the final actual tenant baseline counts. Preparing these records does not prove a browser denial or revocation; perform those observations explicitly.
+
 The WorkOS demo selector cannot provide verified notification identity. Positive notification email-consent experience requires a separate native internal-auth HTTPS app using the real password-change/MFA flow and operator-attested identity, or a legitimately configured external issuer. No fake verified claims or injected session cookie can replace that path. Actual mailbox delivery remains a separate claim.
 
 ## Explicit local browser coordinator (unexecuted)
@@ -30,7 +32,7 @@ Next/jobs remain in the atomic worker's isolated process group, so the existing 
 
 The older System Testing runner remains unchanged and must not be run for this target: it points at a different fixture/database and acquires separate resources. The new source still needs the parent's actual admitted startup/shutdown/recovery rehearsal and all browser observations below.
 
-Use the existing header user chooser / `dev_user` session in development. Select the manifest's fictional HR, own employee, peer, standalone HR and revoked employee IDs through that chooser. Missing/unknown cookie selection must refuse commands rather than assume a fallback employee. This demonstrates the actual local browser boundary, not production SSO or real-provider authentication.
+Use the existing header user chooser / `dev_user` session in development. Select the manifest's fictional operator, own employee, peer, standalone Testing USER and initially granted revocable employee IDs through that chooser. Missing/unknown cookie selection must refuse commands rather than assume a fallback employee. This demonstrates the actual local browser boundary, not production SSO or real-provider authentication.
 
 ## Actual experience observations
 

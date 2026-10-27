@@ -9,6 +9,7 @@ import {executeSpecialistHoldout} from '../../core/module-specialist-harness';
 import {AGENT_MODULE_CODES} from '../../lib/ai/module-agents';
 import {createAiDeliveryFixtureContext,aiDeliveryFixturePhase as phase} from './ai-delivery-fixture-factory';
 import {populateAiDeliveryWorkforce} from './ai-delivery-workforce';
+import {populateAiDeliveryScopeDenials} from './ai-delivery-scope-denial-fixture';
 import {populateAiDeliveryFinancial,finalizeAiDeliveryFinancial} from './ai-delivery-financial';
 import {populateAiDeliveryPlatform} from './ai-delivery-platform';
 import type {AiDeliveryFixtureActor} from './ai-delivery-fixture-context';
@@ -17,6 +18,9 @@ const actorReference=(actor:AiDeliveryFixtureActor)=>({userId:actor.userId,perso
 export async function populateAiDeliveryFullFixture(owner:ReturnType<typeof createDb>){
  const c=await phase('full fixture factory',()=>createAiDeliveryFixtureContext(owner));
  const workforce=await phase('full fixture Workforce',()=>populateAiDeliveryWorkforce(c));
+ // New denied/revocable identities belong to their separate company; create them before any
+ // primary payroll is closed, then derive all final baselines from actual native state.
+ const scopeDenials=await phase('full fixture scope denials',()=>populateAiDeliveryScopeDenials(c,{annualTypeId:workforce.leave.annualTypeId,selfLeave:workforce.leave.self}));
  const financial=await phase('full fixture Financial',()=>populateAiDeliveryFinancial(c));
  const platform=await phase('full fixture Platform',()=>populateAiDeliveryPlatform(c));
  const financialReady=await phase('full fixture Financial after platform inputs',()=>finalizeAiDeliveryFinancial(c,financial));
@@ -42,7 +46,7 @@ export async function populateAiDeliveryFullFixture(owner:ReturnType<typeof crea
  const [baselineSubmittedEvents]=await owner.db.select({n:count()}).from(s.domainEvent).where(and(eq(s.domainEvent.tenantId,c.tenantId),eq(s.domainEvent.eventType,'leave-request.submitted')));
  const manifest={format:1 as const,state:'native_prerequisites_prepared_not_experienced' as const,tenantId:c.tenantId,companyId:c.companyId,departmentId:c.departmentId,today:c.today,period:c.period,
   actors:{operator:actorReference(c.actors.operator),self:actorReference(c.actors.self),reviewers:c.actors.reviewers.map(actorReference),peer:actorReference(c.actors.peer),manager:actorReference(c.actors.manager)},
-  workforce,financial,financialReady,
+  workforce,scopeDenials,financial,financialReady,
   // Explicit projections prevent the prehire/tester SessionContext from escaping the helper.
   platform:{attendance:platform.attendance,lifecycle:platform.lifecycle,
    prehire:{userId:platform.prehire.userId,personId:platform.prehire.personId,employmentId:null,caseId:platform.prehire.caseId,number:platform.prehire.number},
