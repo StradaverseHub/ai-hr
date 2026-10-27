@@ -127,6 +127,9 @@ describe('out-of-band expired AI custody maintenance', () => {
       await tx.execute(sql`grant usage on schema app,public to ${role}`);
       await tx.execute(sql`grant execute on function app.current_tenant_id(),app.is_group_admin(),app.principal_snapshot_current() to ${role}`);
       await tx.execute(sql`grant execute on function app.agent_signal_custody_visible(text,uuid,uuid,uuid) to ${role}`);
+      // 0650 PUBLIC policies on the FORCE-RLS job receipt and native association tables call this helper;
+      // PostgreSQL checks EXECUTE when the policy expression is initialized, even where an earlier conjunct is false.
+      await tx.execute(sql`grant execute on function app.agent_native_signal_custody_visible(text,uuid,uuid,uuid) to ${role}`);
       await tx.execute(sql`grant execute on function app._answer_metadata_erasure_authorized(uuid,uuid,uuid) to ${role}`);
       // PUBLIC policy dependency on feedback/markers; no scope row exists outside the owner helper.
       await tx.execute(sql`grant execute on function app.assistant_transcript_retirement_visible(uuid,uuid) to ${role}`);

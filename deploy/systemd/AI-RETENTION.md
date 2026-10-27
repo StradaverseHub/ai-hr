@@ -22,9 +22,9 @@ never copy the web application's environment or put connection values in Git, ar
 The runner refuses app-role connections and has no credential fallback or privilege self-grant.
 Its actual physical table-owner connection must also be able to execute the guarded policy helper
 `app.agent_signal_custody_visible(text,uuid,uuid,uuid)`. The migration/function owner already
-has that privilege. A separately provisioned table owner needs explicit EXECUTE on this helper
-(plus the transcript requirements below); never substitute PUBLIC EXECUTE, app-role membership, candidate-table SELECT or BYPASSRLS. The runner
-checks this function privilege before processing custody and grants itself nothing.
+has that privilege. The runner checks this one function privilege before processing custody and
+grants itself nothing; never substitute PUBLIC EXECUTE, app-role membership, candidate-table SELECT
+or BYPASSRLS for any grant below.
 Raw Assistant chat content (question, answer, tool inputs, disclosure receipt, error) is also retired
 by this pass 30 days after it was asked, at most 100 exchanges per tenant per pass, inside the same
 tenant Access interval and before any other expiry. Exchange rows, dates, tokens and usage remain, so
@@ -32,14 +32,41 @@ retirement never replenishes an allowance; linked feedback, completed strategy m
 identity custody retire with the content and are not counted separately (`transcripts` counts
 exchanges). The transcript step runs through `app.assistant_transcripts_retire_expired`, which refuses
 unless the session is a superuser or BOTH that function's owner and `public.assistant_exchange`'s
-owner. A separately provisioned owner therefore also needs ownership of that function and its two
-private helpers, plus explicit EXECUTE on `app.assistant_transcript_retirement_visible(uuid,uuid)` and
-`app._answer_metadata_erasure_authorized(uuid,uuid,uuid)` (PUBLIC policy expressions on the feedback and
-conversation tables). The connection must own every relation listed in
-`AI_RETENTION_MAINTAINED_RELATIONS` (`core/ai-retention-maintenance.ts`; currently 19, derived from the
-relations the pass mutates, its declared cascades and the transcript helper), including the
-employee-import comparison parent and its admitted-run membership table. Expired comparison metadata is deleted after
-its 30-day lifetime; at most 100 parents are selected per tenant per pass, with at most 128 declared
+owner. An exchange inserted already retired (accounting only) captures no identity and is never
+selected again.
+
+A separately provisioned nonsuperuser owner role needs exactly the following. The runner refuses
+when relation or `app.assistant_transcripts_retire_expired` ownership is incomplete; any other
+omission fails the pass with permission denied and rolls the whole pass back:
+
+- Ownership of every relation listed in `AI_RETENTION_MAINTAINED_RELATIONS`
+  (`core/ai-retention-maintenance.ts`; currently 19, derived from the relations the pass mutates, its
+  declared cascades and the transcript helper), including the employee-import comparison parent and
+  its admitted-run membership table.
+- Ownership of `app.assistant_transcripts_retire_expired(uuid,integer,integer)` and its two private
+  helpers `app._assistant_transcripts_retire(uuid,uuid[],boolean)` and `app._assistant_transcript_bounds()`.
+- EXECUTE on the helpers that PUBLIC row-security policies call on the FORCE-RLS tables it owns.
+  Ownership does not bypass FORCE RLS, and PostgreSQL checks EXECUTE on every function in an applicable
+  policy before any row is read, so each one is required even though it returns false for this role:
+  `app.agent_signal_custody_visible(text,uuid,uuid,uuid)` and
+  `app.agent_native_signal_custody_visible(text,uuid,uuid,uuid)` (job receipt, job feedback and native
+  outcome association), `app.principal_snapshot_current()` (feedback, candidate provenance and
+  conversation metadata), `app._answer_metadata_erasure_authorized(uuid,uuid,uuid)` (conversation
+  metadata) and `app.assistant_transcript_retirement_visible(uuid,uuid)` (feedback and strategy
+  markers). `app.current_tenant_id()`, `app.current_user_id()` and `app.is_group_admin()` are also
+  called there; they are PUBLIC-executable unless an installation revoked that.
+
+Ownership transfer is not isolated. `ALTER ... OWNER` moves the previous owner's own privileges to the
+new owner. The own-clear and PDPA transcript functions (`app.assistant_transcripts_erase_own`,
+`app.assistant_transcripts_redact`), the policy helper `app.assistant_transcript_retirement_visible`
+and the review/native/conversation custody trigger functions run as their own owner and read or call
+the objects above. If that owner is not a superuser, transferring those objects to a separate role
+can make own-clear, PDPA erasure or ordinary Assistant feedback reads fail with permission denied.
+This has not been runtime verified on a nonsuperuser migration owner. Before transferring ownership on
+such a target, verify those paths there, or run maintenance as the role that already owns all of
+these objects.
+
+Expired employee-import comparison metadata is deleted after its 30-day lifetime; at most 100 parents are selected per tenant per pass, with at most 128 declared
 run links cascading per parent. Aggregate deletion counts report direct parents, not cascaded links.
 Canonical HR records, import completion events and provider billing runs remain untouched.
 

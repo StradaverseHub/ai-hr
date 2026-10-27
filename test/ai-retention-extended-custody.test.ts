@@ -58,6 +58,9 @@ describe('physical-owner retention of extended AI custody',()=>{
    await tx.execute(sql`grant execute on function app.current_user_id(),app.current_tenant_id(),app.is_group_admin(),app.principal_snapshot_current() to ${role}`);
    // Narrow dependency of PUBLIC policy expressions; no app membership or candidate SELECT.
    await tx.execute(sql`grant execute on function app.agent_signal_custody_visible(text,uuid,uuid,uuid) to ${role}`);
+   // 0650 PUBLIC policies on the FORCE-RLS job receipt and native association tables call this helper;
+   // PostgreSQL checks EXECUTE when the policy expression is initialized, even where an earlier conjunct is false.
+   await tx.execute(sql`grant execute on function app.agent_native_signal_custody_visible(text,uuid,uuid,uuid) to ${role}`);
    // Same narrow PUBLIC-policy dependencies for conversation metadata and transcript-linked feedback/markers.
    await tx.execute(sql`grant execute on function app._answer_metadata_erasure_authorized(uuid,uuid,uuid),app.assistant_transcript_retirement_visible(uuid,uuid) to ${role}`);
    // Complete derived inventory: conversation metadata, raw transcript content and its owner helper.
