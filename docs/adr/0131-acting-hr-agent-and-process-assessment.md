@@ -2837,3 +2837,41 @@ omits legacy accrued/balance aliases; the specialist refuses those aliases rathe
 an all-null rule on permitted summary fields. Independent native-policy cases cover both hiding
 available while showing pending and hiding pending while showing available. Their authored
 assertions are not runtime evidence until executed against the actual canonical owners.
+
+
+### Human-supplied missing import fields and independent specialist comparison
+
+The preparation owner now permits explicit human additions for fields absent from messy source
+records. They start blank and unreviewed; changing a value or destination clears review. Accepted
+additions retain `human_supplied` provenance with no manufactured original cell. Original source,
+coordinates and exclusions remain separate. Excluded records may retain incomplete added-field
+drafts; included records still require canonical field/scalar/identity validation and explicit
+review. Preparation never invokes native preview or commit. Paste, CSV and Excel browser journey
+sources now use the actual import UI and an independently authorized read-only native verifier.
+The fictional scenario declares its literal salary/category/date inputs; it does not discover or
+invent missing production HR values. Import history remains a separately verified post-commit
+record, not an atomic event receipt. These browser journeys remain UNRUN.
+
+Focused development run [40470563995](https://github.com/StradaverseHub/ai-hr/actions/runs/40470563995)
+verified exact `cef9571174538b589698e749078be792a2b67678`: three affected preparation/evidence suites,
+49 assertions passed, raw process exit0, and whole-repository TypeScript exit0 after route typegen.
+This evidence does not cover the later excluded-draft repair, browser verifier or diagnostic changes;
+it is neither a browser result nor a final release receipt. Unrelated authentic passes are retained.
+
+The closed `canonical_followup_v1` candidate adds prioritized source-record diagnostics while
+preserving the baseline's factual presentation, warnings and human boundaries. Independent mixed
+record tasks currently distinguish potential gains for Org, Leave, Attendance, Claims and
+Performance. The other fifteen modules have no demonstrated gain from this variant and cannot
+promote it merely because a new diagnostic field exists. No all-twenty improvement claim follows.
+All new comparisons, real promotion/consumer/rollback cases and migration-shape cases are UNRUN.
+The centrally reserved0642 filename remains a draft with journal index/timestamp unassigned.
+
+A native action can intentionally change the facts of an earlier read job. Its completed outcome
+must therefore use a distinct human-linked association, not weaken the opinion-feedback writer's
+unchanged-read guard. The historical job provenance boundary authenticates the actual owner,
+source/candidate/expiry and current entitlements without returning HR facts or admitting a new
+promoted job. Ordering is Access, shared release interval, shared signal interval, canonical native
+source interval, then association custody; refusal requires whole-transaction rollback. The separate
+outcome store/owner reconciliation and user journey are still being implemented. Such an association
+will prove neither causal AI benefit nor business correctness, approval, payment or measured savings.
+All three stages, actual experience/security evidence and the combined final gate remain required.

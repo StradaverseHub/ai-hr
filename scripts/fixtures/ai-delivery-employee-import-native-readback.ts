@@ -8,6 +8,7 @@ import {client,withTenant,type createDb,type Grant,type SessionContext} from '..
 import * as s from '../../db/schema';
 import {assertAiPrincipalTx} from '../../core/ai-principal';
 import {assertWorkforceCompanyTx} from '../../core/workforce-access';
+import {visibleLabelIdsCondition} from '../../core/system-labels';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {isCalendarDate} from '../../lib/calendar-date';
 import type {populateAiDeliveryFullFixture} from './ai-delivery-full-fixture';
@@ -30,24 +31,26 @@ function urls(){
  * values are never inferred here. The department is an actual freshly permitted fixture reference;
  * category, literal amount and next-month day15 are declared synthetic test inputs. */
 export async function createAiDeliveryEmployeeImportScenarioReadback({owner,fixture,sourceMode}:{owner:ReturnType<typeof createDb>;fixture:Fixture;sourceMode:AiDeliveryEmployeeImportSourceMode}){
+ const captured=structuredClone({fixture,sourceMode}),f=captured.fixture,mode=captured.sourceMode;
+ if(!['paste','csv','xlsx'].includes(mode))return unavailable('fictional_scenario_binding');
  const configured=urls(),today=todayInKualaLumpur(),database=configured[0].pathname.slice(1);
- if(fixture.today!==today||fixture.state!=='native_prerequisites_prepared_not_experienced'||![fixture.tenantId,fixture.companyId,fixture.departmentId,fixture.actors.operator.userId,fixture.actors.operator.personId].every(uuid))return unavailable('fictional_scenario_binding');
+ if(f.today!==today||f.state!=='native_prerequisites_prepared_not_experienced'||![f.tenantId,f.companyId,f.departmentId,f.actors.operator.userId,f.actors.operator.personId].every(uuid))return unavailable('fictional_scenario_binding');
  const ctx=await client.begin('isolation level read committed read only',async tx=>{
   const [role]=await tx<{name:string;database:string;address:string;port:number;readonly:string;isolation:string;super:boolean;bypass:boolean}[]>`select current_user as name,current_database() as database,host(inet_server_addr()) as address,inet_server_port() as port,current_setting('transaction_read_only') as readonly,current_setting('transaction_isolation') as isolation,rolsuper as super,rolbypassrls as bypass from pg_roles where rolname=current_user`;
   if(role.name!=='ai_hr_app'||role.database!==database||!['127.0.0.1','::1'].includes(role.address)||role.port!==5433||role.readonly!=='on'||role.isolation!=='read committed'||role.super||role.bypass)return unavailable();
-  const rows=await tx<{tenant_id:string;person_id:string|null;grants:Grant[]|null}[]>`select tenant_id,person_id,grants from app.principal(${fixture.actors.operator.userId}::uuid)`;const row=rows[0];
-  if(rows.length!==1||row.tenant_id!==fixture.tenantId||row.person_id!==fixture.actors.operator.personId||!Array.isArray(row.grants)||row.grants.some(g=>!g||typeof g.role!=='string'||g.companyId!==null&&!uuid(g.companyId)))return unavailable();
-  const grants=row.grants.map(g=>({...g}));return{tenantId:row.tenant_id,userId:fixture.actors.operator.userId,personId:row.person_id,grants,roles:[...new Set(grants.map(g=>g.role))]} satisfies SessionContext;
+  const rows=await tx<{tenant_id:string;person_id:string|null;grants:Grant[]|null}[]>`select tenant_id,person_id,grants from app.principal(${f.actors.operator.userId}::uuid)`;const row=rows[0];
+  if(rows.length!==1||row.tenant_id!==f.tenantId||row.person_id!==f.actors.operator.personId||!Array.isArray(row.grants)||row.grants.some(g=>!g||typeof g.role!=='string'||g.companyId!==null&&!uuid(g.companyId)))return unavailable();
+  const grants=row.grants.map(g=>({...g}));return{tenantId:row.tenant_id,userId:f.actors.operator.userId,personId:row.person_id,grants,roles:[...new Set(grants.map(g=>g.role))]} satisfies SessionContext;
  });
  const department=await withTenant(ctx,async tx=>{
-  await tx.execute(sql`SET TRANSACTION READ ONLY`);await assertAiPrincipalTx(tx,ctx);await assertWorkforceCompanyTx(tx,ctx,fixture.companyId,'view');
-  const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.access_workforce_company(${fixture.companyId}::uuid,'workforce.maintain') and app.can_admin_payroll_for(${fixture.companyId}::uuid) and app.is_admin() as ok`);if(!allowed?.ok)return unavailable('current_operator_scope');
-  const rows=await tx.select({name:s.department.name,archivedAt:s.department.archivedAt}).from(s.department).where(and(eq(s.department.tenantId,fixture.tenantId),eq(s.department.companyId,fixture.companyId),eq(s.department.id,fixture.departmentId))).orderBy(s.department.id).limit(2);
+  await tx.execute(sql`SET TRANSACTION READ ONLY`);await assertAiPrincipalTx(tx,ctx);await assertWorkforceCompanyTx(tx,ctx,f.companyId,'view');
+  const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.access_workforce_company(${f.companyId}::uuid,'workforce.maintain') and app.can_admin_payroll_for(${f.companyId}::uuid) and app.is_admin() as ok`);if(!allowed?.ok)return unavailable('current_operator_scope');
+  const rows=await tx.select({name:s.department.name,archivedAt:s.department.archivedAt}).from(s.department).where(and(eq(s.department.tenantId,f.tenantId),eq(s.department.companyId,f.companyId),eq(s.department.id,f.departmentId),visibleLabelIdsCondition(s.department,'department',[f.companyId]))).orderBy(s.department.id).limit(2);
   if(rows.length!==1||rows[0].archivedAt!==null)return unavailable('department_binding');return rows[0].name;
  });
  const [year,month]=today.split('-').map(Number),hiredOn=new Date(Date.UTC(year,month,15)).toISOString().slice(0,10);
  const human=AiDeliveryEmployeeImportHuman.parse({employeeCode:'AI-IMPORT-NEW',fullName:'Fictional Imported Human',email:'fictional-import@example.test',department,employmentType:'full_time',basicSalary:'3000.00',hiredOn});
- return createAiDeliveryEmployeeImportNativeReadback({owner,fixture,human,sourceMode});
+ return createAiDeliveryEmployeeImportNativeReadback({owner,fixture:f,human,sourceMode:mode});
 }
 /** Returns PRIVATE expected input and callback facts. Never serialize these as public artifacts.
  * The browser module returns bounded named checks only. No native preview is called by this reader. */
@@ -75,7 +78,7 @@ export async function createAiDeliveryEmployeeImportNativeReadback({owner,fixtur
   await assertAiPrincipalTx(tx,ctx);await assertWorkforceCompanyTx(tx,ctx,f.companyId,'view');
   // Independently require actual native maintain/payroll/audit authority before these narrow facts.
   const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.access_workforce_company(${f.companyId}::uuid,'workforce.maintain') and app.can_admin_payroll_for(${f.companyId}::uuid) and app.is_admin() as ok`);if(!allowed?.ok)return unavailable('current_operator_scope');
-  const [department]=await tx.select({id:s.department.id,name:s.department.name,archivedAt:s.department.archivedAt}).from(s.department).where(and(eq(s.department.tenantId,f.tenantId),eq(s.department.companyId,f.companyId),eq(s.department.id,f.departmentId))).orderBy(s.department.id);if(!department||department.archivedAt!==null||human.department!==department.name)return unavailable('department_binding');
+  const [department]=await tx.select({id:s.department.id,name:s.department.name,archivedAt:s.department.archivedAt}).from(s.department).where(and(eq(s.department.tenantId,f.tenantId),eq(s.department.companyId,f.companyId),eq(s.department.id,f.departmentId),visibleLabelIdsCondition(s.department,'department',[f.companyId]))).orderBy(s.department.id);if(!department||department.archivedAt!==null||human.department!==department.name)return unavailable('department_binding');
   const [company]=await tx.select({name:s.company.legalName}).from(s.company).where(and(eq(s.company.tenantId,f.tenantId),eq(s.company.id,f.companyId))).orderBy(s.company.id);const [operator]=await tx.select({name:s.person.fullName}).from(s.person).where(and(eq(s.person.tenantId,f.tenantId),eq(s.person.id,f.operator.personId))).orderBy(s.person.id);if(!company||!operator)return unavailable();
   const rows=await tx.select({employmentId:s.employment.id,personId:s.person.id,employeeCode:s.employment.employeeCode,fullName:s.person.fullName,email:s.person.primaryEmail,companyId:s.employment.companyId,hiredOn:s.employment.hiredOn,version:sql<string>`${s.employment}.xmin::text`}).from(s.employment).innerJoin(s.person,and(eq(s.person.id,s.employment.personId),eq(s.person.tenantId,f.tenantId))).where(and(eq(s.employment.tenantId,f.tenantId),eq(s.employment.employeeCode,human.employeeCode))).orderBy(s.employment.id).limit(2);
   const collisions=await tx.select({id:s.person.id}).from(s.person).where(and(eq(s.person.tenantId,f.tenantId),eq(s.person.primaryEmail,human.email))).orderBy(s.person.id).limit(2);
