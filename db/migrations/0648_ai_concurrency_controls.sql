@@ -38,3 +38,21 @@ BEGIN
  VALUES(tid,uid,companies,wanted_feature,wanted_operation,left(wanted_provider,40),left(wanted_model,200),CASE WHEN reason IS NULL THEN 'pending' ELSE 'blocked' END,reason,reserve) RETURNING id INTO rid;
  RETURN QUERY SELECT rid,reason IS NULL,reason;
 END $$;
+
+--> statement-breakpoint
+-- Feature-level switch guard. 0541 admitted switches only for the five settingless features that existed
+-- then; 0621 added four more settingless workloads whose pause the admission context already honours
+-- (feature_paused) and whose callers check (assertAiActionUnpausedTx), yet setAiFeature could not record
+-- their switch. The accepted set is exactly AI_FEATURES with setting === null (lib/ai/features.ts), the
+-- registry setAiFeature and the management screen use; test/ai-management-contract.test.ts pins this
+-- live list to that registry so it cannot drift. Every other branch is 0541's, byte for byte.
+CREATE OR REPLACE FUNCTION app.ai_control_policy_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $$
+BEGIN
+ PERFORM pg_advisory_xact_lock(hashtext('ai-control'),hashtext(NEW.tenant_id::text));
+ IF NEW.kind='feature' AND NEW.feature_id='feedback_planning' THEN RAISE EXCEPTION 'Platform managed feature';END IF;
+ IF NEW.kind='company' AND NOT EXISTS(SELECT 1 FROM company WHERE id=NEW.subject_id AND tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'Unknown company';END IF;
+ IF NEW.kind='user' AND NOT EXISTS(SELECT 1 FROM app_user WHERE id=NEW.subject_id AND tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'Unknown user';END IF;
+ IF NEW.kind='feature' AND NEW.feature_id NOT IN ('hr_assistant','provider_evaluation','module_agent_evaluation','personnel_import_mapping','module_agent_planning','payroll_explanation','pay_rule_draft','report_insight','performance_assistant') THEN RAISE EXCEPTION 'Unknown AI feature';END IF;
+ NEW.updated_by_user_id:=app.current_user_id();NEW.updated_at:=now();
+ RETURN NEW;
+END $$;
