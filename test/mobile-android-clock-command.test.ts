@@ -4,6 +4,7 @@ import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {SessionContext} from '../db/client';
 import * as schema from '../db/schema';
+import {appendEvent,actorOf} from '../db/events';
 import {hireEmployee} from '../core/org';
 import {createAndroidEnrollmentService} from '../core/mobile-android-enrollment';
 import {createAndroidClockSignatureService} from '../core/mobile-android-clock-signature';
@@ -69,6 +70,26 @@ describe('stored Android online command transaction',()=>{
   const f=await fixture(),input={...f.input,photo:Buffer.from('original photo'),mime:'image/jpeg' as const},begin=await service.begin(f.ctx,input),proof={challengeId:begin.challenge.id,signature:signature(begin.context,f.privateKey)};
   const pending=service.consume(f.ctx,input,proof,async(_tx,checked)=>{expect(checked.photo).toEqual(Buffer.from('original photo'));return null;});proof.signature.fill(0);input.photo.fill(0);expect((await pending).state).toBe('consumed');
  });
+ it.each(['expiry','employment','revocation'] as const)('refuses %s changed while waiting for the stored key before invoking acceptance',async change=>{
+  const f=await fixture();let begin=await service.begin(f.ctx,f.input);
+  if(change==='expiry'){
+   const row=await challenge(begin.challenge.id),now=Date.now();await owner.db.delete(schema.mobileIntegrityChallenge).where(eq(schema.mobileIntegrityChallenge.id,row.id));await owner.db.insert(schema.mobileIntegrityChallenge).values({...row,issuedAt:new Date(now-118000),expiresAt:new Date(now+2000)});begin=await service.begin(f.ctx,f.input);
+  }
+  let entered!:()=>void,release!:()=>void;const started=new Promise<void>(r=>{entered=r;}),held=new Promise<void>(r=>{release=r;});
+  const holding=owner.db.transaction(async tx=>{await tx.select().from(schema.mobileIntegrityKey).where(eq(schema.mobileIntegrityKey.id,f.input.keyId)).for('update');entered();await held;if(change==='revocation')await tx.update(schema.mobileIntegrityKey).set({revokedAt:new Date()}).where(eq(schema.mobileIntegrityKey.id,f.input.keyId));});
+  const operation=vi.fn(async()=>null);
+  try{
+   await started;const result=Promise.allSettled([service.consume(f.ctx,f.input,{challengeId:begin.challenge.id,signature:signature(begin.context,f.privateKey)},operation)]);
+   try{
+    const deadline=Date.now()+5000;let waiting=false;
+    while(Date.now()<deadline){const rows=await owner.db.execute(sql`select pid from pg_stat_activity where datname=current_database() and pid<>pg_backend_pid() and wait_event_type='Lock' and query like '%mobile_integrity_key%' and query like '%for update%'`);if(rows.length){waiting=true;break;}await new Promise(r=>setTimeout(r,10));}
+    expect(waiting).toBe(true);
+    if(change==='expiry')await owner.db.execute(sql`select pg_sleep(greatest(0,extract(epoch from (${begin.challenge.expiresAt}::timestamptz-clock_timestamp())))+0.05)`);
+    if(change==='employment')await owner.db.update(schema.employment).set({hiredOn:new Date(Date.now()+365*86400000).toISOString().slice(0,10)}).where(eq(schema.employment.id,f.input.employmentId));
+   }finally{release();}
+   await holding;expect((await result)[0]).toMatchObject({status:'rejected',reason:change==='expiry'?{reason:'expired'}:change==='employment'?{name:'OwnClockEmploymentUnavailableError'}:{reason:'key_unavailable'}});expect(operation).not.toHaveBeenCalled();await untouched(begin.challenge.id);
+  }finally{release();await holding.catch(()=>{});}
+ });
  it('rolls back challenge, audit and callback writes together on business refusal',async()=>{
   const f=await fixture(),begin=await service.begin(f.ctx,f.input),proof={challengeId:begin.challenge.id,signature:signature(begin.context,f.privateKey)};
   await expect(service.consume(f.ctx,f.input,proof,async tx=>{await tx.update(schema.person).set({fullName:'must roll back'}).where(eq(schema.person.id,f.ctx.personId!));throw new Error('business refused');})).rejects.toThrow('business refused');
@@ -83,8 +104,8 @@ describe('stored Android online command transaction',()=>{
   }
   await expect(service.consume(f.ctx,f.input,{challengeId:begin.challenge.id,signature:signature(begin.context,f.privateKey)},async tx=>{
    if(change==='employment')await owner.db.update(schema.employment).set({hiredOn:new Date(Date.now()+365*86400000).toISOString().slice(0,10)}).where(eq(schema.employment.id,f.input.employmentId));
-   if(change==='expiry'){await tx.update(schema.person).set({fullName:'must roll back'}).where(eq(schema.person.id,f.ctx.personId!));await tx.execute(sql`select pg_sleep(2.2)`);}return null;
-  })).rejects.toMatchObject(change==='employment'?{name:'OwnClockEmploymentUnavailableError'}:{reason:'expired'});await untouched(begin.challenge.id);expect((await owner.db.select().from(schema.person).where(eq(schema.person.id,f.ctx.personId!)))[0].fullName).toBe('Android clock employee');
+   if(change==='expiry'){await appendEvent(tx,{tenantId:f.ctx.tenantId,aggregateType:'mobile-integrity-challenge',aggregateId:begin.challenge.id,eventType:'test.android-clock.rollback',actor:actorOf(f.ctx),subjectEmploymentId:f.input.employmentId,payload:{synthetic:true}});await tx.execute(sql`select pg_sleep(2.2)`);}return null;
+  })).rejects.toMatchObject(change==='employment'?{name:'OwnClockEmploymentUnavailableError'}:{reason:'expired'});await untouched(begin.challenge.id);expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'test.android-clock.rollback'))).toHaveLength(0);expect((await owner.db.select().from(schema.person).where(eq(schema.person.id,f.ctx.personId!)))[0].fullName).toBe('Android clock employee');
  });
 });
 describe('Android signed command uses authoritative attendance acceptance',()=>{
