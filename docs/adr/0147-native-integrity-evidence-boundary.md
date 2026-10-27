@@ -181,3 +181,27 @@ upgrade/reinstall/device acceptance and an explicit retirement owner are still r
 This connects tested model/native-storage ports, not a UI or live API transport. Voluntary recovery and
 retirement controls, authenticated app orchestration, registered-key use, supported route rollout and
 real signed-device termination/restore/Keychain acceptance remain release work.
+
+
+## Explicit key revocation recovery
+
+A registered native journal exposes explicit revocation through the existing actor-owned server key
+service. It first commits a version 2 `revocation: requested` snapshot containing the unchanged key
+provenance. Until resolved, status is `revocation_pending`; beginning or advancing enrollment cannot
+replace it or represent it as an active local key. Reading status does not replay revocation. Older
+version 1 snapshots remain readable; older binaries refuse the new pending format rather than silently
+interpreting it as empty. Enrollment and revocation continue to share the same serialized scope owner.
+
+An explicit later retry sends only the original key ID to the idempotent server owner, using the
+currently selected own employment for authorization. This selector does not rewrite the key's original
+enrollment employment. A matching receipt must preserve every immutable enrollment field and carry a
+non-null server revocation timestamp. Refused, unavailable, malformed, mismatched or obsolete replies
+cannot clear intent. Failed or ambiguous receipt writes re-read the secure pointer on the next owned
+operation. Only a durable matching revoked receipt returns the journal to version 1 with revoked
+history preserved. No replacement key, SDK private-key deletion or attendance-journal mutation occurs.
+
+The server repeats own-employment eligibility after both its actor advisory lock and key row lock,
+before returning an existing receipt or writing revocation. The initial authorization observation may
+be stale after either wait. This enforces the existing active-own-employment requirement at that
+boundary; it is not a claim that every concurrent employment change is serialized with key services.
+UI orchestration, retirement/replacement capacity and signed-device acceptance remain activation work.
