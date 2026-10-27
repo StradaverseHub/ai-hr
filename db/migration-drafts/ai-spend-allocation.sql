@@ -70,7 +70,8 @@ BEGIN
  IF NOT EXISTS(SELECT 1 FROM app.ai_spend_budget WHERE tenant_id=tid AND kind='tenant') THEN RAISE EXCEPTION 'AI spend budget missing';END IF;
  IF EXISTS(SELECT 1 FROM app.ai_spend_reservation WHERE tenant_id=tid AND state='breach') THEN RAISE EXCEPTION 'AI spend ceiling breach requires review';END IF;
  INSERT INTO app.ai_spend_root(tenant_id,root_id,kind) VALUES(tid,wanted_root,wanted_kind) ON CONFLICT DO NOTHING;
- IF NOT EXISTS(SELECT 1 FROM app.ai_spend_root WHERE tenant_id=tid AND root_id=wanted_root AND kind=wanted_kind) THEN RAISE EXCEPTION 'AI spend root changed';END IF;
+ -- kind records the initial use only. Evaluation and an agent using the SAME persisted
+ -- candidate share this root, rather than changing purpose to mint another lifetime allowance.
  FOR p IN SELECT * FROM app.ai_spend_budget WHERE tenant_id=tid AND(kind='tenant' OR(kind='user' AND subject_id=uid) OR(kind='company' AND subject_id=ANY(r.company_ids)) OR(kind='feature' AND feature_id=r.feature_id)) ORDER BY scope_key LOOP
   -- Unknown exposure survives month rollover and process death; no TTL or success flag releases it.
   SELECT coalesce(sum(CASE WHEN state='held' THEN reserved_nanos ELSE confirmed_nanos END),0) INTO used FROM app.ai_spend_reservation x WHERE x.tenant_id=tid AND(x.state='held' OR x.created_at>=month_start)
