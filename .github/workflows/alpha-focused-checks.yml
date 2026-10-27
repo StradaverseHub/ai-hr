@@ -104,6 +104,33 @@ jobs:
           persist-credentials: false
       - uses: ./automation/.github/actions/setup-alpha
         with: {capacity_profile: "${{ github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}"}
+      - name: Bind original trusted main for source-reading invariants
+        run: |
+          set -euo pipefail
+          expected_main=67be2710c35035af433bdb2fcdfb2cb30277ceda
+          git cat-file -e "$expected_main^{commit}"
+          if git show-ref --verify --quiet refs/heads/main; then
+            test "$(git rev-parse refs/heads/main)" = "$expected_main"
+          else
+            git branch main "$expected_main"
+          fi
+      - name: Prepare source-bound tools for the selected PDF suite
+        if: ${{ contains(inputs.selected_tests, 'test/payslip-pdf.test.ts') || contains(inputs.selected_tests, 'test/r379-pcb2ii-pdf.test.ts') }}
+        env:
+          AIHR_CI_MIGRATION_BASE: ${{ vars.STAGING_DEPLOYED_SHA }}
+          AIHR_CI_CLASSIFIER_RUNTIME: native
+        run: |
+          set -euo pipefail
+          pdf_unit="$(node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {createPlan} from '../automation/.github/ci/plan.mjs';
+          const plan=createPlan(),units=plan.units.filter(unit=>unit.pdfTools===true);
+          const selected=JSON.parse(process.env.AIHR_FOCUSED_TESTS);
+          assert(units.length===1&&selected.length>0&&selected.every(file=>units[0].files.includes(file)),'Only selected source-audited PDF files may use this setup');
+          console.log(units[0].id);
+          NODE
+          )"
+          node ../automation/.github/ci/pdf-tools.mjs --unit "$pdf_unit"
       - name: Classify and execute only selected files
         run: node ../automation/.github/ci/focused-checks.mjs run "$RUNNER_TEMP/aihr-focused"
         env:
@@ -121,6 +148,14 @@ jobs:
         with:
           name: focused-development-evidence
           path: ${{ runner.temp }}/aihr-focused/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Retain separate source-bound PDF tool evidence
+        if: ${{ always() && (contains(inputs.selected_tests, 'test/payslip-pdf.test.ts') || contains(inputs.selected_tests, 'test/r379-pcb2ii-pdf.test.ts')) }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: focused-pdf-tool-evidence
+          path: ${{ runner.temp }}/pdf-tools-setup.json
           if-no-files-found: error
           retention-days: 14
   typecheck:
