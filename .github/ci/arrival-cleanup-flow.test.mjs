@@ -29,9 +29,9 @@ test('source observation is not legacy deletion authority and retains exact sour
  assert.throws(()=>validateCleanupRequest(f.observation,f.grant));
  assert.throws(()=>createSourceChecksumObservation(f.grant,{output:'>f changed\n',checkedAt:new Date().toISOString()}));
  for(const mutate of [v=>v.kind='OPERATOR_OBSERVED_SOURCE_CHECKSUM_FOR_OWNED_CLEANUP',v=>v.source='e'.repeat(40),v=>v.installId=f.grant.build.buildRecordId,
-  v=>v.buildRecordId=f.grant.installId,v=>v.nextBuildId='other',v=>v.authorizationSha256='e'.repeat(64),v=>v.witnessFingerprint='e'.repeat(64),
+  v=>v.buildRecordId=f.grant.installId,v=>v.nextBuildId='other',v=>v.authorizationSha256='e'.repeat(64),v=>v.witnessFingerprint='f'.repeat(64),
   v=>v.outputSha256=installHash('changed'),v=>v.extra=true,v=>v.checkedAt=new Date(Date.now()-61000).toISOString()]){
-  const value=structuredClone(f.observation);mutate(value);assert.throws(()=>validateSourceChecksumObservation(value,f.grant));
+  const value=structuredClone(f.observation);mutate(value);assert.notDeepEqual(value,f.observation,'Refusal control must actually change the observation');assert.throws(()=>validateSourceChecksumObservation(value,f.grant));
  }
 });
 test('one complete fresh arrival proof feeds cleanup, retains both results and cannot claim deployment authority',async()=>{
