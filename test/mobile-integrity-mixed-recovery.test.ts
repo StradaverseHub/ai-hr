@@ -17,11 +17,14 @@ let caller:SessionContext,base:Base;
 vi.mock('../lib/session',async original=>({...await original<typeof import('../lib/session')>(),getMobileSession:async()=>caller}));
 const checks=()=>owner.db.execute(sql`select conname,pg_get_constraintdef(oid) definition from pg_constraint where conrelid='mobile_integrity_key'::regclass and contype='c' order by conname`);
 let originalChecks:Awaited<ReturnType<typeof checks>>;
+let originalEnvironmentRequired:boolean;
 // Only this disposable worker sees the draft, and its original check definitions are restored.
 beforeAll(async()=>{
  originalChecks=await checks();
+ const [environment]=await owner.db.execute(sql`select attnotnull from pg_attribute where attrelid='mobile_integrity_key'::regclass and attname='environment'`);
+ originalEnvironmentRequired=Boolean(environment.attnotnull);
  const draft=readFileSync(new URL('../db/migrations/0636_mobile_android_key_custody.sql',import.meta.url),'utf8');
- await owner.db.transaction(async tx=>{for(const block of draft.split('--> statement-breakpoint').filter(value=>value.trim()))await tx.execute(sql.raw(block));});
+ if(!originalChecks.some(row=>row.conname==='mobile_integrity_key_platform_evidence_check'))await owner.db.transaction(async tx=>{for(const block of draft.split('--> statement-breakpoint').filter(value=>value.trim()))await tx.execute(sql.raw(block));});
 });
 beforeEach(async()=>{await resetDb();base=await seedBase();});
 afterAll(async()=>{
@@ -30,7 +33,7 @@ afterAll(async()=>{
   await owner.db.transaction(async tx=>{
    for(const row of await checks())await tx.execute(sql.raw(`ALTER TABLE mobile_integrity_key DROP CONSTRAINT "${row.conname}"`));
    for(const row of originalChecks)await tx.execute(sql.raw(`ALTER TABLE mobile_integrity_key ADD CONSTRAINT "${row.conname}" ${row.definition}`));
-   await tx.execute(sql`ALTER TABLE mobile_integrity_key ALTER COLUMN environment SET NOT NULL`);
+   await tx.execute(sql.raw(`ALTER TABLE mobile_integrity_key ALTER COLUMN environment ${originalEnvironmentRequired?'SET':'DROP'} NOT NULL`));
   });
   expect(await checks()).toEqual(originalChecks);
  }finally{await closeAll();}
