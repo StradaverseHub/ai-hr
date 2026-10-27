@@ -72,8 +72,8 @@ jobs:
         run: test "$DIAGNOSTICS_ONLY" = true && test "$EVENT" = workflow_dispatch && test "$EXPECTED" = "$CONTROL"
       - name: CI integrity regression checks
         run: |
-          # Original maintenance/continuation controls retained; only new forward interoperability controls.
-          node --test .github/ci/diagnostics/customer-runtime-maintenance/forward_internal_preflight.test.mjs
+          # Prior maintenance/deployment controls retained; focused SMTP operator enrollment only.
+          node --test .github/ci/diagnostics/customer-runtime-maintenance/enroll_internal_smtp_operator.test.mjs
       - name: Build byte transport regression checks
         if: ${{ !inputs.controller_only }}
         run: |
