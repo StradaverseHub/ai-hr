@@ -280,6 +280,8 @@ export default async function DashboardPage({
       pendingApprovalsCount(s, scopeIds, {
         attendance: isModuleEnabledOrFalse(s, 'attendance'),
         claims: isModuleEnabledOrFalse(s, 'claims'),
+        performance: isModuleEnabledOrFalse(s, 'performance'),
+        rewards: isModuleEnabledOrFalse(s, 'rewards'),
       }),
       // Performance / probation review deadlines assigned to this manager (the reporter's "review
       // deadlines" reminder). Same queue the bell counts — surfaced here as an upcoming reminder too.
@@ -631,6 +633,8 @@ export default async function DashboardPage({
       listPendingTasks(s, scopeIds, {
         attendance: isModuleEnabledOrFalse(s, 'attendance'),
         claims: isModuleEnabledOrFalse(s, 'claims'),
+        performance: isModuleEnabledOrFalse(s, 'performance'),
+        rewards: isModuleEnabledOrFalse(s, 'rewards'),
       }),
       mayUseAssistant(s),
       // Malaysia keeps UTC+8 all year (no DST), so the local midnight is a fixed offset.

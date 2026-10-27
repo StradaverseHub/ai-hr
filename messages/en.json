@@ -13242,7 +13242,11 @@
       "profile": "Verify profile change",
       "replacementLeave": "Review replacement leave request",
       "resignation": "Decide resignation request",
-      "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]"
+      "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]",
+      "performanceReview": "Complete performance review",
+      "assessmentWork": "Act on performance assessment",
+      "careerPlan": "Review career plan",
+      "rewardReview": "Review rewards"
     },
     "tasksEmpty": "Nothing needs your action",
     "title": "Notifications"
@@ -23302,7 +23306,11 @@
       "feedback": "Peer feedback",
       "noticeAcknowledgement": "Notice acknowledgement",
       "replacementLeave": "Replacement leave approval",
-      "onboarding": "Onboarding work"
+      "onboarding": "Onboarding work",
+      "performanceReview": "Performance review",
+      "assessmentWork": "Performance assessment",
+      "careerPlan": "Career plan review",
+      "rewardReview": "Rewards review"
     },
     "quickActions": {
       "leave": "Apply leave",

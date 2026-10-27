@@ -13242,7 +13242,11 @@
       "profile": "Xác minh thay đổi hồ sơ",
       "replacementLeave": "Xem xét yêu cầu nghỉ bù",
       "resignation": "Quyết định đơn xin nghỉ việc",
-      "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]"
+      "travel": "[retired r362 — 'Approve travel request' in the bell's Task tab. Item b833a077 removed 'travel' from PendingTaskKind, so listPendingTasks never returns one. This was travel's ONLY notification surface: core/notifications.ts has never held a travel event key at all]",
+      "performanceReview": "Hoàn tất đánh giá hiệu suất",
+      "assessmentWork": "Xử lý đánh giá hiệu suất",
+      "careerPlan": "Xem xét kế hoạch nghề nghiệp",
+      "rewardReview": "Xem xét đãi ngộ"
     },
     "tasksEmpty": "Không có mục nào cần bạn xử lý",
     "title": "Thông báo"
@@ -23302,7 +23306,11 @@
       "feedback": "Phản hồi đồng nghiệp",
       "noticeAcknowledgement": "Xác nhận thông báo",
       "replacementLeave": "Duyệt nghỉ bù",
-      "onboarding": "Công việc hội nhập"
+      "onboarding": "Công việc hội nhập",
+      "performanceReview": "Đánh giá hiệu suất",
+      "assessmentWork": "Đánh giá năng lực",
+      "careerPlan": "Xem xét kế hoạch nghề nghiệp",
+      "rewardReview": "Xem xét đãi ngộ"
     },
     "quickActions": {
       "leave": "Đăng ký nghỉ phép",

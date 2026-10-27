@@ -187,6 +187,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const approvalTasks = await listPendingTasks(session, scopeIds, {
     attendance: isModuleEnabledOrFalse(session, 'attendance'),
     claims: isModuleEnabledOrFalse(session, 'claims'),
+    performance: isModuleEnabledOrFalse(session, 'performance'),
+    rewards: isModuleEnabledOrFalse(session, 'rewards'),
   });
   // The canonical inbox admits ordinary employees only for an actionable, non-self v3/v4 assignment.
   // Reuse that result; do not promote the viewer to manager or query the assignment owner twice.

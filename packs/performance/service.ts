@@ -66,3 +66,5 @@ export {getAssessmentAdminReport,buildAssessmentAdminReport,getAssessmentAdminRe
 export {buildAssessmentAdminWorkbook} from './onehr/admin-report-xlsx';
 
 export {getAssessmentOverview} from './onehr/overview-service';
+
+export {pendingPerformanceTasks} from './onehr/tasks';
