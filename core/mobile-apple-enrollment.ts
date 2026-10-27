@@ -72,7 +72,12 @@ export function createAppleEnrollmentService(settings:unknown,ports:{verifyProof
       const recovered=await existing(ctx,intent,challengeId,proofDigest);if(recovered)return recovered;
       if(!isSecretStorable())throw new AppleKeyEnrollmentError('configuration_unavailable');
       const binding=bound(ctx,intent),challenge=await readOwnIntegrityChallenge(ctx,{...binding,challengeId});
-      if(challenge.state!=='active')throw new AppleKeyEnrollmentError('key_unavailable');
+      if(challenge.state!=='active'){
+        // A competing exact request can commit after the initial receipt lookup. Only the matching
+        // stored proof/owner is recoverable; consumption alone never establishes a successful key.
+        const committed=await existing(ctx,intent,challengeId,proofDigest);if(committed)return committed;
+        throw new AppleKeyEnrollmentError('key_unavailable');
+      }
       const data=context(ctx,challenge),proof=await verify({attestation,clientDataHash:hash(keyEnrollmentClientData(data)),keyId:vendorKeyId,
         appId:config.target.appId,environment:config.target.environment});
       if(proof.keyId!==vendorKeyId||proof.environment!==config.target.environment||!(proof.publicKey instanceof KeyObject)||proof.publicKey.type!=='public'||

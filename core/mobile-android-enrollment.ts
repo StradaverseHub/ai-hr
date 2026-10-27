@@ -50,7 +50,13 @@ export function createAndroidEnrollmentService(settings:unknown,ports:{verifyPro
    const proofDigest=hash(JSON.stringify(['android-enrollment-proof',1,challengeId,hash(serialized).toString('hex')])).toString('hex');
    const recovered=await existing(ctx,intent,challengeId,proofDigest);if(recovered)return recovered;
    if(!isSecretStorable())fail('configuration_unavailable');if(signal?.aborted)fail('key_unavailable');
-   const prepared=await challenges.read(ctx,{...intent,challengeId});if(prepared.challenge.state!=='active')fail('key_unavailable');
+   const prepared=await challenges.read(ctx,{...intent,challengeId});
+   if(prepared.challenge.state!=='active'){
+    // Another exact request may commit between the first lookup and this challenge read. A consumed
+    // challenge is not itself a receipt: recheck immutable proof identity and current ownership.
+    const committed=await existing(ctx,intent,challengeId,proofDigest);if(committed)return committed;
+    fail('key_unavailable');
+   }
    const started=Date.now(),proof=await verify({certificateChain,publicKeySpki,challenge:Buffer.from(prepared.clientDataHash,'base64')},signal);
    if(signal?.aborted||proof.verification!=='google_key_generation_proof'||!Number.isSafeInteger(proof.checkedAt)||proof.checkedAt<started||proof.checkedAt>Date.now()||
     !(proof.publicKey instanceof KeyObject)||proof.publicKey.type!=='public'||proof.publicKey.asymmetricKeyType!=='ec'||proof.publicKey.asymmetricKeyDetails?.namedCurve!=='prime256v1')fail('invalid_proof');
