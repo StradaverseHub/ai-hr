@@ -596,3 +596,12 @@ No Android enrollment records have been deployed by this work. This pre-rollout 
 requires the new native/server code together; no historical Android key identity is silently
 rewritten. Public receipts still omit the reference and raw key. Two additional native hash cases
 and a server receipt assertion were added; pending native cases now total8. They remain unverified.
+
+
+Focused verification now covers the Android enrollment owner, encrypted original-context provenance,
+receipt reference and native create/read adapter:26 assertions across run40446194829 and targeted
+retry40447866519, plus root and separate native TypeScript. The first hosted run's compiler failed
+on React Native ambient types entering through a VM test type import. A test-only boundary repair
+resolved it without changing production code or weakening compiler policy. These are focused source
+checks with synthetic vendor/native ports; no real Android hardware acceptance, mounted enrollment
+flow, complete durable journal, migration integration or release readiness is claimed.

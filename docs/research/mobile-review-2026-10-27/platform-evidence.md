@@ -909,3 +909,36 @@ reported hardware hints or introducing a mobile ASN.1 parser. Permanent EC finge
 is unchanged. A subsequent test edit uses a well-formed wrong digest, so its refusal probes binding
 rather than only input shape. All these edits remain UNVERIFIED. No hosted check, journal append,
 shared migration, native device, publication or deployment occurred in this checkpoint.
+
+
+## Published focused verification and compiler repair — 27 October 2026
+
+The human explicitly approved publishing frozenff896f314c87aa39123e644c01cf8d9adb29e312 on
+codex/mobile-native-integrity-20261027 and running existing focused CI/root TypeScript. Publication
+completed; no merge/apply/deploy was included. Standard hosted run40446194829 used trusted controller
+67be2710c35035af433bdb2fcdfb2cb30277ceda. Raw focused.json and Vitest reports reconcile exactly4files /
+26passing assertions, no skips: Android binding4 + native adapter/reference8 + challenge owner5 +
+Android custody9. The custody cases include input snapshots, offboarding during verification and a
+real observed actor-lock wait with RLS rollback. Receipt/reference and encrypted context assertions
+passed. This supersedes those cases' earlier UNVERIFIED status, without claiming Android hardware.
+
+That run remains FAILED overall: root compiler emitted59 FormData/fetch/timer conflicts. The new VM
+test's production-module type import crossed root's mobile exclusion through expo-crypto ->
+expo-modules-core -> React Native ambient declarations. Earlier7 enrollment narrowing errors were
+absent after their repair. b921025c8d01f6ea1e12d368fcc601b58c63bc02 replaces only that VM test type
+edge with an explicit port interface. No production source or compiler policy changed.
+
+Published retry40447866519 selects only the changed8-case VM suite plus whole root TypeScript. Both
+passed. Raw retry focused.json pins b921025c8d01f6ea1e12d368fcc601b58c63bc02 and the same controller;
+its8 assertions passed without skips. The other18 assertions remain valid from the first run: git
+diff between the candidates contains only test/mobile-android-key-enrollment.dom.test.tsx. Evidence
+is FOCUSED_ONLY/releaseEligible=false, not a full release gate. Linux build was intentionally unrun.
+Artifacts/logs remain in /tmp/mobile-focused-40446194829-artifacts,
+/tmp/mobile-focused-40446194829-typecheck.log and /tmp/mobile-focused-40447866519-artifacts.
+
+The separate native compiler at b921025c8d01f6ea1e12d368fcc601b58c63bc02 also passed: full
+`pnpm --dir mobile exec tsc --noEmit` under the appropriate focused one-slot/no-database complete
+request, after117.988s admission wait (session84718, exit0). It did not bypass either capacity or a
+foreign lease. The preceding two-slot attempt ended75 without starting. No native SDK/device,
+Metro export, App Store/Play rollout, staging migration or deployment is established by these checks.
+0636 remains byte-identical, unjournaled and unapplied, with paired Board/AI ancestry still required.
