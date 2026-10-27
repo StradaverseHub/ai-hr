@@ -43,6 +43,32 @@ export function rewardStageStep(status: RewardStage, route: readonly RewardRole[
   return i < 0 ? null : { step: i + 1, steps };
 }
 
+export type RewardRouteStep = { seat: RewardRole; state: 'done' | 'current' | 'pending'; doneAt: Date | null };
+type RewardRouteDecision = { action: string; fromStage: string; toStage: string; createdAt: Date };
+/**
+ * Every step of the route (payroll last) with its state. A step before the current one is done; its time is the
+ * newest forward decision taken at that step, from the decisions this viewer may read (reward_decision RLS), so
+ * a done step may carry no time. `decisions` are newest first. A returned review is at step 1 again: the later
+ * steps read as pending, whatever older forward decisions exist. Null once the review has left the route.
+ */
+export function rewardRouteProgress(status: RewardStage, route: readonly RewardRole[], decisions: readonly RewardRouteDecision[]): RewardRouteStep[] | null {
+  const step = rewardStageStep(status, route);
+  if (!step) return null;
+  const seats: RewardRole[] = [...route, 'payroll'];
+  const stageOf = (i: number) => i === 0 ? 'draft' : seats[i] === 'payroll' ? 'approved' : seats[i];
+  return seats.map((seat, i) => {
+    const state = i < step.step - 1 ? 'done' : i === step.step - 1 ? 'current' : 'pending';
+    const decided = state === 'done' ? decisions.find(d => d.fromStage === stageOf(i) && d.toStage !== 'draft' && d.action !== 'return') : undefined;
+    return { seat, state, doneAt: decided?.createdAt ?? null };
+  });
+}
+/** The seat a decision at the current step sends the review to: payroll after the last approver; null at payroll or off the route. */
+export function rewardNextSeat(status: RewardStage, route: readonly RewardRole[]): RewardRole | null {
+  if (status === 'approved') return null;
+  const step = rewardStageStep(status, route);
+  return step ? ([...route, 'payroll'] as RewardRole[])[step.step] ?? null : null;
+}
+
 const addDays = (iso: string, days: number) => new Date(Date.parse(`${iso}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 
 /**

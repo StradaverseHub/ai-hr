@@ -18068,10 +18068,13 @@
     "board": {
       "title": "Approvals",
       "open": "Approvals board",
+      "view": {
+        "label": "Paparan",
+        "matrix": "Matriks",
+        "list": "Senarai"
+      },
       "yourStep": "Your step: {steps}.",
       "stepPhrase": {
-        "submit": "submit your unit's recommendations",
-        "approve": "approve and send on, or return with a reason",
         "post": "post approved reviews to payroll"
       },
       "nothingYours": "No step on this board sits with you; you follow these reviews along the route.",
@@ -18090,6 +18093,7 @@
         "bonus": "Bonus",
         "exceptions": "Exceptions",
         "blocking": "Blocking",
+        "flags": "Penanda",
         "action": "Action"
       },
       "seat": {
@@ -18101,8 +18105,34 @@
         "pbp": "PBP",
         "payroll": "Payroll"
       },
+      "seatShort": {
+        "ec": "EC"
+      },
+      "route": {
+        "annual": "Laluan akhir tahun · kenaikan gaji dan bonus diluluskan bersama",
+        "offcycle": "Laluan luar kitaran"
+      },
+      "duty": {
+        "bu": "Syor · hantar",
+        "bg": "Luluskan",
+        "gr": "Semak · majukan",
+        "ctro": "Selaras · HR bersetuju",
+        "ec": "Kelulusan muktamad",
+        "payroll": "Bayar"
+      },
+      "payOn": "Bayar · {date}",
+      "stepState": {
+        "done": "Selesai",
+        "yours": "Langkah anda",
+        "withThem": "Pada pihak lain",
+        "returned": "Dikembalikan",
+        "notReached": "Belum sampai"
+      },
       "with": "With {seat}",
       "stepOf": "Step {step} of {steps}",
+      "dueOn": "Tarikh akhir {date}",
+      "overdueOn": "Lewat {date}",
+      "peopleCount": "{count, plural, other {# orang}}",
       "dueToday": "today",
       "dueTomorrow": "tomorrow",
       "dueIn": "in {days, plural, one {# day} other {# days}}",
@@ -18111,7 +18141,20 @@
       "ofBudget": "{percent} of budget",
       "overLimit": "over limit",
       "openReview": "Open review",
-      "return": "Return",
+      "sendTo": "Majukan kepada {seat}",
+      "submitTo": "Hantar kepada {seat}",
+      "approveFinal": "Luluskan untuk penggajian",
+      "button": {
+        "submit": "Hantar",
+        "approve": "Luluskan"
+      },
+      "returnTo": {
+        "bg": "Kembalikan kepada BU CEO",
+        "gr": "Kembalikan kepada BG / BU",
+        "ctro": "Kembalikan kepada BG / BU",
+        "ec": "Tolak · kembali kepada BG / BU"
+      },
+      "stepOr": "{action} atau {return}",
       "blockedHint": "Clear the blocking checks first",
       "sendAll": "Send all ready ({count})",
       "sendResult": "{sent} sent · {skipped} skipped (blocking) · {refused} refused (changed since you opened the page)",

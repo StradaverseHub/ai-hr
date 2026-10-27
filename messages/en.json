@@ -18068,10 +18068,13 @@
     "board": {
       "title": "Approvals",
       "open": "Approvals board",
+      "view": {
+        "label": "View",
+        "matrix": "Matrix",
+        "list": "List"
+      },
       "yourStep": "Your step: {steps}.",
       "stepPhrase": {
-        "submit": "submit your unit's recommendations",
-        "approve": "approve and send on, or return with a reason",
         "post": "post approved reviews to payroll"
       },
       "nothingYours": "No step on this board sits with you; you follow these reviews along the route.",
@@ -18090,6 +18093,7 @@
         "bonus": "Bonus",
         "exceptions": "Exceptions",
         "blocking": "Blocking",
+        "flags": "Flags",
         "action": "Action"
       },
       "seat": {
@@ -18101,8 +18105,34 @@
         "pbp": "PBP",
         "payroll": "Payroll"
       },
+      "seatShort": {
+        "ec": "EC"
+      },
+      "route": {
+        "annual": "Year-end route · salary increase and bonus approved together",
+        "offcycle": "Off-cycle route"
+      },
+      "duty": {
+        "bu": "Recommend · submit",
+        "bg": "Approve",
+        "gr": "Check · send on",
+        "ctro": "Align · HR agrees",
+        "ec": "Final approval",
+        "payroll": "Pay"
+      },
+      "payOn": "Pay · {date}",
+      "stepState": {
+        "done": "Done",
+        "yours": "Your step",
+        "withThem": "With them",
+        "returned": "Returned",
+        "notReached": "Not reached"
+      },
       "with": "With {seat}",
       "stepOf": "Step {step} of {steps}",
+      "dueOn": "Due {date}",
+      "overdueOn": "Overdue {date}",
+      "peopleCount": "{count, plural, one {# person} other {# people}}",
       "dueToday": "today",
       "dueTomorrow": "tomorrow",
       "dueIn": "in {days, plural, one {# day} other {# days}}",
@@ -18111,7 +18141,20 @@
       "ofBudget": "{percent} of budget",
       "overLimit": "over limit",
       "openReview": "Open review",
-      "return": "Return",
+      "sendTo": "Send to {seat}",
+      "submitTo": "Submit to {seat}",
+      "approveFinal": "Approve for payroll",
+      "button": {
+        "submit": "Submit",
+        "approve": "Approve"
+      },
+      "returnTo": {
+        "bg": "Return to BU CEO",
+        "gr": "Return to BG / BU",
+        "ctro": "Return to BG / BU",
+        "ec": "Reject · back to BG / BU"
+      },
+      "stepOr": "{action} or {return}",
       "blockedHint": "Clear the blocking checks first",
       "sendAll": "Send all ready ({count})",
       "sendResult": "{sent} sent · {skipped} skipped (blocking) · {refused} refused (changed since you opened the page)",

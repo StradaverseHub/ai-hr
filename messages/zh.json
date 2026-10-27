@@ -18068,10 +18068,13 @@
     "board": {
       "title": "Approvals",
       "open": "Approvals board",
+      "view": {
+        "label": "视图",
+        "matrix": "矩阵",
+        "list": "列表"
+      },
       "yourStep": "Your step: {steps}.",
       "stepPhrase": {
-        "submit": "submit your unit's recommendations",
-        "approve": "approve and send on, or return with a reason",
         "post": "post approved reviews to payroll"
       },
       "nothingYours": "No step on this board sits with you; you follow these reviews along the route.",
@@ -18090,6 +18093,7 @@
         "bonus": "Bonus",
         "exceptions": "Exceptions",
         "blocking": "Blocking",
+        "flags": "标记",
         "action": "Action"
       },
       "seat": {
@@ -18101,8 +18105,34 @@
         "pbp": "PBP",
         "payroll": "Payroll"
       },
+      "seatShort": {
+        "ec": "EC"
+      },
+      "route": {
+        "annual": "年终流程 · 加薪与奖金一并审批",
+        "offcycle": "非周期流程"
+      },
+      "duty": {
+        "bu": "建议 · 提交",
+        "bg": "审批",
+        "gr": "核查 · 转交",
+        "ctro": "对齐 · HR 同意",
+        "ec": "最终审批",
+        "payroll": "发薪"
+      },
+      "payOn": "发薪 · {date}",
+      "stepState": {
+        "done": "已完成",
+        "yours": "轮到您",
+        "withThem": "由对方处理",
+        "returned": "已退回",
+        "notReached": "尚未到达"
+      },
       "with": "With {seat}",
       "stepOf": "Step {step} of {steps}",
+      "dueOn": "截止 {date}",
+      "overdueOn": "已逾期 {date}",
+      "peopleCount": "{count, plural, other {# 人}}",
       "dueToday": "today",
       "dueTomorrow": "tomorrow",
       "dueIn": "in {days, plural, one {# day} other {# days}}",
@@ -18111,7 +18141,20 @@
       "ofBudget": "{percent} of budget",
       "overLimit": "over limit",
       "openReview": "Open review",
-      "return": "Return",
+      "sendTo": "转交{seat}",
+      "submitTo": "提交至{seat}",
+      "approveFinal": "批准并转入薪资",
+      "button": {
+        "submit": "提交",
+        "approve": "批准"
+      },
+      "returnTo": {
+        "bg": "退回 BU CEO",
+        "gr": "退回 BG / BU",
+        "ctro": "退回 BG / BU",
+        "ec": "驳回 · 退回 BG / BU"
+      },
+      "stepOr": "{action}，或{return}",
       "blockedHint": "Clear the blocking checks first",
       "sendAll": "Send all ready ({count})",
       "sendResult": "{sent} sent · {skipped} skipped (blocking) · {refused} refused (changed since you opened the page)",

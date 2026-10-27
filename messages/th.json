@@ -18068,10 +18068,13 @@
     "board": {
       "title": "Approvals",
       "open": "Approvals board",
+      "view": {
+        "label": "มุมมอง",
+        "matrix": "เมทริกซ์",
+        "list": "รายการ"
+      },
       "yourStep": "Your step: {steps}.",
       "stepPhrase": {
-        "submit": "submit your unit's recommendations",
-        "approve": "approve and send on, or return with a reason",
         "post": "post approved reviews to payroll"
       },
       "nothingYours": "No step on this board sits with you; you follow these reviews along the route.",
@@ -18090,6 +18093,7 @@
         "bonus": "Bonus",
         "exceptions": "Exceptions",
         "blocking": "Blocking",
+        "flags": "ข้อสังเกต",
         "action": "Action"
       },
       "seat": {
@@ -18101,8 +18105,34 @@
         "pbp": "PBP",
         "payroll": "Payroll"
       },
+      "seatShort": {
+        "ec": "EC"
+      },
+      "route": {
+        "annual": "เส้นทางสิ้นปี · อนุมัติการขึ้นเงินเดือนและโบนัสพร้อมกัน",
+        "offcycle": "เส้นทางนอกรอบ"
+      },
+      "duty": {
+        "bu": "เสนอ · ส่ง",
+        "bg": "อนุมัติ",
+        "gr": "ตรวจสอบ · ส่งต่อ",
+        "ctro": "ปรับให้สอดคล้อง · HR เห็นชอบ",
+        "ec": "อนุมัติขั้นสุดท้าย",
+        "payroll": "จ่าย"
+      },
+      "payOn": "จ่าย · {date}",
+      "stepState": {
+        "done": "เสร็จแล้ว",
+        "yours": "ขั้นตอนของคุณ",
+        "withThem": "อยู่กับผู้อื่น",
+        "returned": "ถูกส่งคืน",
+        "notReached": "ยังไม่ถึง"
+      },
       "with": "With {seat}",
       "stepOf": "Step {step} of {steps}",
+      "dueOn": "ครบกำหนด {date}",
+      "overdueOn": "เลยกำหนด {date}",
+      "peopleCount": "{count, plural, other {# คน}}",
       "dueToday": "today",
       "dueTomorrow": "tomorrow",
       "dueIn": "in {days, plural, one {# day} other {# days}}",
@@ -18111,7 +18141,20 @@
       "ofBudget": "{percent} of budget",
       "overLimit": "over limit",
       "openReview": "Open review",
-      "return": "Return",
+      "sendTo": "ส่งต่อให้ {seat}",
+      "submitTo": "ส่งให้ {seat}",
+      "approveFinal": "อนุมัติเพื่อเข้าบัญชีเงินเดือน",
+      "button": {
+        "submit": "ส่ง",
+        "approve": "อนุมัติ"
+      },
+      "returnTo": {
+        "bg": "ส่งคืน BU CEO",
+        "gr": "ส่งคืน BG / BU",
+        "ctro": "ส่งคืน BG / BU",
+        "ec": "ปฏิเสธ · ส่งคืน BG / BU"
+      },
+      "stepOr": "{action} หรือ {return}",
       "blockedHint": "Clear the blocking checks first",
       "sendAll": "Send all ready ({count})",
       "sendResult": "{sent} sent · {skipped} skipped (blocking) · {refused} refused (changed since you opened the page)",
