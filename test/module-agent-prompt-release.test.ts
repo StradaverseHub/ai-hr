@@ -56,7 +56,7 @@ describe('actual independent prompt-to-plan evaluation custody',()=>{
   const[allocation]=await owner.db.execute<{roots:number;reservations:number;held:number;reserved:string}>(sql`select(select count(*)::int from app.ai_spend_root where tenant_id=${base.tenantId}::uuid) as roots,count(*)::int as reservations,count(*) filter(where state='held')::int as held,sum(reserved_nanos)::text as reserved from app.ai_spend_reservation where tenant_id=${base.tenantId}::uuid and root_id=${a.candidateId}::uuid`);
   // Unknown USD reconciliation stays held even with zero normalized tokens. Both reviewers and
   // the author trial share the same actual root; no retry/arm/principal mints a fresh allowance.
-  expect(allocation).toEqual({roots:1,reservations:expectedModelRuns(),held:expectedModelRuns(),reserved:(BigInt(expectedModelRuns())*1000000n).toString()});
+  expect(allocation).toEqual({roots:1,reservations:expectedModelRuns(),held:expectedModelRuns(),reserved:(BigInt(expectedModelRuns())*BigInt("1000000")).toString()});
  });
  it('retains authentic passing cases and reruns only a failed exact-input case',async()=>{
   const a=await candidate(),sent=await transport(a.author);const normal=sent.getMockImplementation()!;

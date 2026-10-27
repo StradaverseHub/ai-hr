@@ -1,6 +1,7 @@
 /** Authored UNRUN: real role/module/config/admission, only provider transport mocked.
  * Drafting classifies fictional human input; it reads no employee payroll values and commits no pay rule. */
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
+import {randomUUID} from 'node:crypto';
 import {eq} from 'drizzle-orm';
 import type {SessionContext} from '../db/client';
 import * as schema from '../db/schema';
@@ -25,7 +26,7 @@ describe('pay-rule administrative provider boundary',()=>{
   const events=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'pay-component.ai-rule-drafted'));expect(JSON.stringify(events)).not.toMatch(/private@fixture|jane@fixture|910101-01-1234/);
  });
  it('refuses an actual nonadmin before even looking up the provider',async()=>{
-  const [person]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional ordinary caller'}).returning(),userId=await createAppUser(b.tenantId,person.id,'employee'),self:SessionContext={...await entitledCtx(b,['employee']),userId,personId:person.id,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+  const [person]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional ordinary caller',primaryEmail:randomUUID()+'@fixture.test'}).returning(),userId=await createAppUser(b.tenantId,person.id,'employee'),self:SessionContext={...await entitledCtx(b,['employee']),userId,personId:person.id,roles:['employee'],grants:[{role:'employee',companyId:null}]};
   await expect(draftPayRule(self,{description:'Pay 10% of basic.'})).rejects.toThrow();expect(configuration.resolveActiveAiConfig).not.toHaveBeenCalled();expect(openaiAdapter.generate).not.toHaveBeenCalled();expect(await runs()).toEqual([]);
  });
  it.each(['module','login'] as const)('refuses actual %s revocation between provider preparation and admission with no call or charge',async kind=>{
