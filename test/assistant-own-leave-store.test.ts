@@ -197,7 +197,7 @@ describe('pending own-leave review custody', () => {
     expect(await counts()).toMatchObject({ bodies: 1, pending: 1, model_runs: 0, requests: 0 });
   });
 
-  it('refuses another login of the same person, foreign tenants and altered discard digests', async () => {
+  it('refuses another login and foreign tenants while allowing the owner privacy retirement without a matching digest', async () => {
     const review = await prepare();
     const secondId = await createAppUser(base.tenantId, subject.personId, 'employee');
     await grantAssistant(adminCtx(base), { appUserId: secondId });
@@ -211,10 +211,16 @@ describe('pending own-leave review custody', () => {
     const foreign = await seedBase();
     await expect(withTenant(adminCtx(foreign), tx => discardOwnLeaveReviewTx(tx, confirmation(review))))
       .rejects.toThrow(OwnLeaveContentUnavailable);
-    await expect(withTenant(ctx, tx => discardOwnLeaveReviewTx(tx, { ...confirmation(review), reviewedDigest: 'a'.repeat(64) })))
-      .rejects.toThrow(OwnLeaveContentUnavailable);
     expect(await withTenant(ctx, tx => reopenOwnLeaveReviewTx(tx, ctx, review.actionId)))
       .toEqual({ kind: 'prepared', review });
+    const before = await counts();
+    // Retirement destroys private pending content; it cannot submit or confirm the review.
+    // The exact login remains authoritative, while a legacy digest is deliberately unnecessary.
+    expect(await withTenant(ctx, tx => discardOwnLeaveReviewTx(tx, { ...confirmation(review), reviewedDigest: 'a'.repeat(64) })))
+      .toMatchObject({ kind: 'retired', receipt: { actionId: review.actionId, state: 'discarded' } });
+    expect(await counts()).toEqual({ ...before, bodies: before.bodies - 1, pending: before.pending - 1 });
+    expect(await withTenant(ctx, tx => reopenOwnLeaveReviewTx(tx, ctx, review.actionId)))
+      .toMatchObject({ kind: 'retired', receipt: { actionId: review.actionId, state: 'discarded' } });
   });
 
   it('refuses direct app-role reads/writes to private custody and private metadata helpers', async () => {
