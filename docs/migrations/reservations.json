@@ -1,0 +1,651 @@
+{
+  "schemaVersion": 1,
+  "reconciledOn": "2026-10-27",
+  "repository": "StradaverseHub/ai-hr",
+  "purpose": "Central filename reservations; not an executable journal or deployment authorization",
+  "observedAppliedBoundary": {
+    "sourceRef": "d52563c666d39074217ed42191866add4a2793a0",
+    "rows": 503,
+    "lastIdx": 617,
+    "maxWhen": 1793025815553
+  },
+  "integrationRules": [
+    "Preserve applied SQL and the exact applied journal prefix.",
+    "Refresh the live watermark and reconcile the entire pending union before assigning new journal metadata.",
+    "Append only; source idx/when values below are observations, not allocations unless explicitly marked approved.",
+    "Unapplied entries whose old when precedes a newly shipped watermark need coordinated forward metadata; never silently append stale timestamps.",
+    "Do not replay draft copies of already represented logical migrations. Divergent legacy files are not proven aliases."
+  ],
+  "reservations": [
+    {
+      "tag": "0636_mobile_android_key_custody",
+      "owner": "Mobile",
+      "status": "held_unjournaled",
+      "sha256": "9063b27c0cc316b715d552561d636ffc6412e447ca9275758bf497870c995df7",
+      "idx": null,
+      "when": null,
+      "priorProvisionalIdx": 634,
+      "priorMinWhenExclusive": 1793055753390
+    },
+    {
+      "tag": "0641_account_email_delivery_history",
+      "owner": "Reports email",
+      "status": "approved_pending_integration",
+      "idx": 618,
+      "when": 1793109999999
+    },
+    {
+      "tag": "0640_onehr_plan_reviewer_scope",
+      "owner": "P1",
+      "status": "approved_after_0641_pending_integration",
+      "idx": 619,
+      "when": 1793110000000
+    },
+    {
+      "tag": "0642_module_specialist_diagnostic_playbook",
+      "owner": "AI dev2",
+      "status": "reserved_draft",
+      "idx": null,
+      "when": null
+    },
+    {
+      "prefixRange": [
+        643,
+        645
+      ],
+      "owner": null,
+      "status": "unresolved_hold_do_not_recycle"
+    },
+    {
+      "tag": "0646_reward_calendar",
+      "owner": "P1 rewards source branch; allocation owner unconfirmed",
+      "status": "occupied_unapplied_source",
+      "idx": null,
+      "when": null,
+      "sourceObservedIdx": 619,
+      "sourceObservedWhen": 1793120000000
+    },
+    {
+      "tag": "0647_mobile_offline_attendance",
+      "owner": "Mobile",
+      "status": "reserved_filename_only",
+      "idx": null,
+      "when": null,
+      "scope": "One logical offline-attendance migration: context/exchange/anchor provenance, per-key permits and consumption, immutable claim dispositions, canonical punch/correction links, effective/received instants and offline provenance.",
+      "constraints": [
+        "No SQL/journal/application/database/deployment change authorized by this reservation.",
+        "Keep 0636 custody separate and unchanged.",
+        "Assign idx/when at central integration after dependency review and a fresh actual watermark.",
+        "If all currently known predecessors are integrated first, when must exceed 1793120000000; this lower bound is not a final timestamp."
+      ]
+    }
+  ],
+  "unallocatedAiLogicalGroups": [
+    "ai-concurrency-controls",
+    "ai-provider-accounting-summary",
+    "native-outcomes (four ordered fragments)",
+    "ai-spend (five ordered fragments)",
+    "performance-provider-source-custody",
+    "claims-provider-source-custody"
+  ],
+  "observedPendingSources": [
+    {
+      "branch": "refs/heads/codex/mobile-native-integrity-20261027",
+      "prefix503ExactlyMatchesAppliedSource": true,
+      "rows": 519
+    },
+    {
+      "branch": "refs/heads/codex/ai-development-sql-20261027-6f32",
+      "prefix503ExactlyMatchesAppliedSource": false,
+      "rows": 506
+    },
+    {
+      "branch": "refs/heads/claude/alpha-node22-pinned-controller-20261027",
+      "prefix503ExactlyMatchesAppliedSource": true,
+      "rows": 504
+    },
+    {
+      "branch": "refs/heads/claude/ci-pin-node",
+      "prefix503ExactlyMatchesAppliedSource": true,
+      "rows": 504
+    },
+    {
+      "branch": "refs/heads/codex/email-release-admission-20261027",
+      "prefix503ExactlyMatchesAppliedSource": true,
+      "rows": 504
+    },
+    {
+      "branch": "refs/heads/claude/p1-approvals-matrix",
+      "prefix503ExactlyMatchesAppliedSource": true,
+      "rows": 505
+    },
+    {
+      "branch": "refs/heads/claude/p1-wave1",
+      "prefix503ExactlyMatchesAppliedSource": true,
+      "rows": 504
+    },
+    {
+      "branch": "refs/heads/claude/p1-wave2",
+      "prefix503ExactlyMatchesAppliedSource": true,
+      "rows": 505
+    },
+    {
+      "branch": "refs/heads/claude/p1-wpa2-home-cards",
+      "prefix503ExactlyMatchesAppliedSource": true,
+      "rows": 504
+    },
+    {
+      "branch": "refs/heads/claude/p1-wpd-talent-box",
+      "prefix503ExactlyMatchesAppliedSource": true,
+      "rows": 504
+    },
+    {
+      "branch": "refs/heads/claude/p1-wpg-rewards-board",
+      "prefix503ExactlyMatchesAppliedSource": true,
+      "rows": 505
+    },
+    {
+      "branch": "refs/heads/claude/p1-wpi-idp-scope",
+      "prefix503ExactlyMatchesAppliedSource": false,
+      "rows": 502
+    },
+    {
+      "branch": "refs/heads/codex/smtp-connections-20261027",
+      "prefix503ExactlyMatchesAppliedSource": true,
+      "rows": 504
+    },
+    {
+      "branch": "refs/heads/codex/own-leave-reconciliation-evidence-20261025",
+      "prefix503ExactlyMatchesAppliedSource": true,
+      "rows": 515
+    }
+  ],
+  "observedPendingEntries": [
+    {
+      "idx": 613,
+      "version": "7",
+      "when": 1792997586565,
+      "tag": "0613_ai_action_controls",
+      "breakpoints": true,
+      "sha256": "964f43ad48b3ad355da706992fd919882eb76a01589f8a0fd44ecdd9e6ab4708",
+      "observedMetadata": [
+        {
+          "idx": 613,
+          "when": 1792997586565
+        }
+      ],
+      "branches": [
+        "codex/ai-development-sql-20261027-6f32"
+      ]
+    },
+    {
+      "idx": 614,
+      "version": "7",
+      "when": 1792997586566,
+      "tag": "0614_own_leave_review_store",
+      "breakpoints": true,
+      "sha256": "4e51fa6af461745e6f18a9f62c53e816a7249d0c228d293378fa5507830c6ef5",
+      "observedMetadata": [
+        {
+          "idx": 614,
+          "when": 1792997586566
+        }
+      ],
+      "branches": [
+        "codex/ai-development-sql-20261027-6f32"
+      ]
+    },
+    {
+      "idx": 615,
+      "version": "7",
+      "when": 1792997586567,
+      "tag": "0615_openrouter_provider_options",
+      "breakpoints": true,
+      "sha256": "1aca66c97df0e2979f6842e62c32761efc9f6a517ff85eed10ec42314af1d3cd",
+      "observedMetadata": [
+        {
+          "idx": 615,
+          "when": 1792997586567
+        }
+      ],
+      "branches": [
+        "codex/ai-development-sql-20261027-6f32"
+      ]
+    },
+    {
+      "idx": 616,
+      "version": "7",
+      "when": 1792997586568,
+      "tag": "0616_assistant_disclosure",
+      "breakpoints": true,
+      "sha256": "423a0bb81d3c6d243a9fea1b57996692573b33107c25b78daf269d1b3aa2de02",
+      "observedMetadata": [
+        {
+          "idx": 616,
+          "when": 1792997586568
+        }
+      ],
+      "branches": [
+        "codex/ai-development-sql-20261027-6f32"
+      ]
+    },
+    {
+      "idx": 617,
+      "version": "7",
+      "when": 1792997586569,
+      "tag": "0617_provider_readiness",
+      "breakpoints": true,
+      "sha256": "207279d28f4f0cf80b7b0e9fba52c77ef676707ba4c40aebc2e71723c50d0239",
+      "observedMetadata": [
+        {
+          "idx": 617,
+          "when": 1792997586569
+        }
+      ],
+      "branches": [
+        "codex/ai-development-sql-20261027-6f32"
+      ]
+    },
+    {
+      "idx": 618,
+      "version": "7",
+      "when": 1792997586570,
+      "tag": "0618_module_agent_feedback",
+      "breakpoints": true,
+      "sha256": "11d1fbb1e56139ad2ad8b33511912ec19fbe381819a62ecc2900b9f6ab2bf406",
+      "observedMetadata": [
+        {
+          "idx": 618,
+          "when": 1792997586570
+        }
+      ],
+      "branches": [
+        "codex/ai-development-sql-20261027-6f32"
+      ]
+    },
+    {
+      "idx": 618,
+      "version": "7",
+      "when": 1793025815554,
+      "tag": "0621_ai_action_controls",
+      "breakpoints": true,
+      "sha256": "4dbb6f3560852f0bc34b0461aebe942d275fc8ff597b1511ec775696f0a1d68b",
+      "observedMetadata": [
+        {
+          "idx": 618,
+          "when": 1793025815554
+        }
+      ],
+      "branches": [
+        "codex/mobile-native-integrity-20261027",
+        "codex/own-leave-reconciliation-evidence-20261025"
+      ]
+    },
+    {
+      "idx": 618,
+      "version": "7",
+      "when": 1793110000000,
+      "tag": "0640_onehr_plan_reviewer_scope",
+      "breakpoints": true,
+      "sha256": "1fdac0addc780e87dc5d44e44f8ec93fa184f350649bc95e2bac73d084c6284b",
+      "observedMetadata": [
+        {
+          "idx": 618,
+          "when": 1793110000000
+        },
+        {
+          "idx": 616,
+          "when": 1793110000000
+        }
+      ],
+      "branches": [
+        "claude/alpha-node22-pinned-controller-20261027",
+        "claude/ci-pin-node",
+        "codex/email-release-admission-20261027",
+        "claude/p1-approvals-matrix",
+        "claude/p1-wave1",
+        "claude/p1-wave2",
+        "claude/p1-wpa2-home-cards",
+        "claude/p1-wpd-talent-box",
+        "claude/p1-wpg-rewards-board",
+        "claude/p1-wpi-idp-scope"
+      ]
+    },
+    {
+      "idx": 618,
+      "version": "7",
+      "when": 1793109999999,
+      "tag": "0641_account_email_delivery_history",
+      "breakpoints": true,
+      "sha256": "855e984c18da0949f13ddd697d1b8b82c1ff646c04f701728e609f5972b8115d",
+      "observedMetadata": [
+        {
+          "idx": 618,
+          "when": 1793109999999
+        }
+      ],
+      "branches": [
+        "codex/smtp-connections-20261027"
+      ]
+    },
+    {
+      "idx": 619,
+      "version": "7",
+      "when": 1792997586571,
+      "tag": "0619_module_agent_improvement",
+      "breakpoints": true,
+      "sha256": "298cbbab29e807265b8048c1cda5a755b0ec513f4a2d183304873e7b1880f084",
+      "observedMetadata": [
+        {
+          "idx": 619,
+          "when": 1792997586571
+        }
+      ],
+      "branches": [
+        "codex/ai-development-sql-20261027-6f32"
+      ]
+    },
+    {
+      "idx": 619,
+      "version": "7",
+      "when": 1793025815555,
+      "tag": "0629_lifecycle_acknowledgement_source",
+      "breakpoints": true,
+      "sha256": "d889d1d5096da380a984575d0bd3ddf2b15b1465b7d16e28911e181aa1c9b118",
+      "observedMetadata": [
+        {
+          "idx": 619,
+          "when": 1793025815555
+        }
+      ],
+      "branches": [
+        "codex/mobile-native-integrity-20261027",
+        "codex/own-leave-reconciliation-evidence-20261025"
+      ]
+    },
+    {
+      "idx": 619,
+      "version": "7",
+      "when": 1793120000000,
+      "tag": "0646_reward_calendar",
+      "breakpoints": true,
+      "sha256": "3660f34a3475e37bb09cd5747327dafc0dd486e1e3b7e0d3f590e7bb49f4add0",
+      "observedMetadata": [
+        {
+          "idx": 619,
+          "when": 1793120000000
+        }
+      ],
+      "branches": [
+        "claude/p1-approvals-matrix",
+        "claude/p1-wave2",
+        "claude/p1-wpg-rewards-board"
+      ]
+    },
+    {
+      "idx": 620,
+      "version": "7",
+      "when": 1792997586572,
+      "tag": "0620_employee_import_ai_evaluation",
+      "breakpoints": true,
+      "sha256": "e58cc99d80c74bee7fa5443fe156f03adce357402d0385660eeddab4f19f646c",
+      "observedMetadata": [
+        {
+          "idx": 620,
+          "when": 1792997586572
+        }
+      ],
+      "branches": [
+        "codex/ai-development-sql-20261027-6f32"
+      ]
+    },
+    {
+      "idx": 620,
+      "version": "7",
+      "when": 1793025815556,
+      "tag": "0630_testing_execution_source",
+      "breakpoints": true,
+      "sha256": "81666d6211c557dbd0353f6afe17233243f14790ca1306dc1ce457a4bd60b9cc",
+      "observedMetadata": [
+        {
+          "idx": 620,
+          "when": 1793025815556
+        }
+      ],
+      "branches": [
+        "codex/mobile-native-integrity-20261027",
+        "codex/own-leave-reconciliation-evidence-20261025"
+      ]
+    },
+    {
+      "idx": 621,
+      "version": "7",
+      "when": 1793025815557,
+      "tag": "0631_payroll_close_source",
+      "breakpoints": true,
+      "sha256": "0cce2fdd12e1906cd39b790b77a9510b840941b9af52f129203781b96fc33d89",
+      "observedMetadata": [
+        {
+          "idx": 621,
+          "when": 1793025815557
+        }
+      ],
+      "branches": [
+        "codex/mobile-native-integrity-20261027",
+        "codex/own-leave-reconciliation-evidence-20261025"
+      ]
+    },
+    {
+      "idx": 622,
+      "version": "7",
+      "when": 1793025815558,
+      "tag": "0632_statutory_source_ownership",
+      "breakpoints": true,
+      "sha256": "a1c6a28deca7f1c443132db105f30394cda59df52c65e622d7186ad8ec8f92ef",
+      "observedMetadata": [
+        {
+          "idx": 622,
+          "when": 1793025815558
+        }
+      ],
+      "branches": [
+        "codex/mobile-native-integrity-20261027",
+        "codex/own-leave-reconciliation-evidence-20261025"
+      ]
+    },
+    {
+      "idx": 623,
+      "version": "7",
+      "when": 1793025815559,
+      "tag": "0622_own_leave_review_store",
+      "breakpoints": true,
+      "sha256": "dd46faf30d4f587a1a1fab8e7a6cc705faf1258ab00e0d5205bbc2513aac1985",
+      "observedMetadata": [
+        {
+          "idx": 623,
+          "when": 1793025815559
+        }
+      ],
+      "branches": [
+        "codex/mobile-native-integrity-20261027",
+        "codex/own-leave-reconciliation-evidence-20261025"
+      ]
+    },
+    {
+      "idx": 624,
+      "version": "7",
+      "when": 1793025815560,
+      "tag": "0623_openrouter_provider_options",
+      "breakpoints": true,
+      "sha256": "0f78416bd82c8e7328732b4234fe071ba15248f387ab9aa8ef911ee1822cd319",
+      "observedMetadata": [
+        {
+          "idx": 624,
+          "when": 1793025815560
+        }
+      ],
+      "branches": [
+        "codex/mobile-native-integrity-20261027",
+        "codex/own-leave-reconciliation-evidence-20261025"
+      ]
+    },
+    {
+      "idx": 625,
+      "version": "7",
+      "when": 1793025815561,
+      "tag": "0624_assistant_disclosure",
+      "breakpoints": true,
+      "sha256": "219891ab9c3515e466fcc0b6d37a0bc4bc0f73af61dd92772a400521ec2db801",
+      "observedMetadata": [
+        {
+          "idx": 625,
+          "when": 1793025815561
+        }
+      ],
+      "branches": [
+        "codex/mobile-native-integrity-20261027",
+        "codex/own-leave-reconciliation-evidence-20261025"
+      ]
+    },
+    {
+      "idx": 626,
+      "version": "7",
+      "when": 1793025815562,
+      "tag": "0625_provider_readiness",
+      "breakpoints": true,
+      "sha256": "8634525e4ac5a6810435518b54b92f5f478f75c9004413180fdeabbf46bc15f1",
+      "observedMetadata": [
+        {
+          "idx": 626,
+          "when": 1793025815562
+        }
+      ],
+      "branches": [
+        "codex/mobile-native-integrity-20261027",
+        "codex/own-leave-reconciliation-evidence-20261025"
+      ]
+    },
+    {
+      "idx": 627,
+      "version": "7",
+      "when": 1793025815563,
+      "tag": "0626_module_agent_feedback",
+      "breakpoints": true,
+      "sha256": "c7b8677ea5fc512650fa59a73ae84fbd0961288b63196ec2e4c66558ab6c2ec8",
+      "observedMetadata": [
+        {
+          "idx": 627,
+          "when": 1793025815563
+        }
+      ],
+      "branches": [
+        "codex/mobile-native-integrity-20261027",
+        "codex/own-leave-reconciliation-evidence-20261025"
+      ]
+    },
+    {
+      "idx": 628,
+      "version": "7",
+      "when": 1793025815564,
+      "tag": "0627_module_agent_improvement",
+      "breakpoints": true,
+      "sha256": "2c4f8a72a2c8bc745faffb004962040fd0a2d90db7098173db59103ad9b4bcb1",
+      "observedMetadata": [
+        {
+          "idx": 628,
+          "when": 1793025815564
+        }
+      ],
+      "branches": [
+        "codex/mobile-native-integrity-20261027",
+        "codex/own-leave-reconciliation-evidence-20261025"
+      ]
+    },
+    {
+      "idx": 629,
+      "version": "7",
+      "when": 1793025815565,
+      "tag": "0628_employee_import_ai_evaluation",
+      "breakpoints": true,
+      "sha256": "089b08e05f11291ba9289e19ce7db6a87a94353fcf276bee15e89c03200e0e56",
+      "observedMetadata": [
+        {
+          "idx": 629,
+          "when": 1793025815565
+        }
+      ],
+      "branches": [
+        "codex/mobile-native-integrity-20261027",
+        "codex/own-leave-reconciliation-evidence-20261025"
+      ]
+    },
+    {
+      "idx": 630,
+      "version": "7",
+      "when": 1793039596595,
+      "tag": "0613_request_abuse_budgets",
+      "breakpoints": true,
+      "sha256": "11a70f86bd67b4bf4eced617de8d7b96526a04f991add7b1d8c9efade8be3e60",
+      "observedMetadata": [
+        {
+          "idx": 630,
+          "when": 1793039596595
+        }
+      ],
+      "branches": [
+        "codex/mobile-native-integrity-20261027"
+      ]
+    },
+    {
+      "idx": 631,
+      "version": "7",
+      "when": 1793047796775,
+      "tag": "0633_geofence_reported_uncertainty",
+      "breakpoints": true,
+      "sha256": "844a51b7acae6c5208c02d5e9db6077ec5fea560c04c809f81cf9e3f4412380d",
+      "observedMetadata": [
+        {
+          "idx": 631,
+          "when": 1793047796775
+        }
+      ],
+      "branches": [
+        "codex/mobile-native-integrity-20261027"
+      ]
+    },
+    {
+      "idx": 632,
+      "version": "7",
+      "when": 1793054626620,
+      "tag": "0634_mobile_integrity_challenges",
+      "breakpoints": true,
+      "sha256": "c8a72f0d3f2b1cd86e90613581eb3428997951ff23e664d2f146638c1672e697",
+      "observedMetadata": [
+        {
+          "idx": 632,
+          "when": 1793054626620
+        }
+      ],
+      "branches": [
+        "codex/mobile-native-integrity-20261027"
+      ]
+    },
+    {
+      "idx": 633,
+      "version": "7",
+      "when": 1793055753390,
+      "tag": "0635_mobile_integrity_keys",
+      "breakpoints": true,
+      "sha256": "60128ba64bd368a532b5cff0593727c0301a4ef2d41043344f82c5ada7b46e7c",
+      "observedMetadata": [
+        {
+          "idx": 633,
+          "when": 1793055753390
+        }
+      ],
+      "branches": [
+        "codex/mobile-native-integrity-20261027"
+      ]
+    }
+  ]
+}
