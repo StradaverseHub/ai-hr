@@ -3508,6 +3508,13 @@
       "when": 1793025815551,
       "tag": "0611_performance_partner_access",
       "breakpoints": true
+    },
+    {
+      "idx": 616,
+      "version": "7",
+      "when": 1793110000000,
+      "tag": "0640_onehr_plan_reviewer_scope",
+      "breakpoints": true
     }
   ]
 }
