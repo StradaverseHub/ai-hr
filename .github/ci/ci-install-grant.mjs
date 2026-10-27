@@ -41,9 +41,17 @@ export function createInstallGrant({evidence,run,producer,baselineBuildId,enviro
  assert(run.id===evidence.runId&&run.head_sha===evidence.controller&&run.status==='completed'&&run.conclusion==='success'&&run.run_attempt===1
   &&run.repository?.id===1333414856&&run.head_repository?.id===1333414856
   &&producer.name==='build'&&producer.run_id===run.id&&producer.run_attempt===1&&producer.head_sha===run.head_sha&&producer.conclusion==='success','Original authenticated successful run/build required');
+ const deploymentBaseline=evidence.deploymentBaseline??evidence.baseline;
+ if(deploymentBaseline!==evidence.baseline){
+  const proof=evidence.baselineAdvance;assert(proof&&typeof proof==='object','Forward baseline source proof required');
+  const {proofSha256,...body}=proof;
+  assert(proofSha256===installHash(installJson(body))&&body.format===1&&body.kind==='FORWARD_STAGING_BASELINE_SOURCE_PREFIX_NOT_CI_RECEIPT'
+   &&body.candidate===evidence.sha&&body.ciBaseline===evidence.baseline&&body.deploymentBaseline===deploymentBaseline
+   &&body.originalCiBaselinePreserved===true&&body.requiresFreshActualLedgerAndBuildBinding===true&&body.requiresOriginalCIAuthentication===true&&body.releaseAuthorized===false,'Forward baseline identity/integrity differs');
+ }
  const artifacts=evidence.artifacts.filter(a=>a.name===BUILD_ARTIFACT);assert(artifacts.length===1,'Unique authenticated build artifact required');
  const grant={format:1,kind:'OPERATOR_AUTHORIZED_STAGING_CI_BUILD_INSTALL',policyVersion:CI_POLICY,target:'alpha-staging',installId:randomUUID(),
-  source:evidence.sha,controller:evidence.controller,controllerBranch:evidence.controllerBranch,baseline:evidence.baseline,baselineBuildId,environmentSha256,
+  source:evidence.sha,controller:evidence.controller,controllerBranch:evidence.controllerBranch,baseline:deploymentBaseline,baselineBuildId,environmentSha256,
   runId:evidence.runId,runAttempt:1,runCreatedAt:run.created_at,issuedAt:new Date(now).toISOString(),expiresAt:new Date(Math.min(now+30*60000,Date.parse(run.created_at)+86400000)).toISOString(),
   producerStartedAt:producer.started_at,producerCompletedAt:producer.completed_at,witnessFingerprint:evidence.fingerprint,artifact:{id:artifacts[0].id,digest:artifacts[0].digest},
   build:Object.fromEntries(INSTALL_BUILD_FIELDS.map(key=>[key,evidence.build[key]]))};

@@ -84,7 +84,7 @@ jobs:
       - name: Validate versioned repair selection and evidence boundaries
         if: ${{ inputs.controller_only }}
         run: |
-          node --import tsx --test .github/ci/non-repository-io.test.mjs .github/ci/immutable-plan.test.mjs .github/ci/retained-units.test.mjs .github/ci/authenticated-focused.test.mjs .github/ci/focused-file-evidence.test.mjs .github/ci/forward-baseline.test.mjs
+          node --import tsx --test .github/ci/non-repository-io.test.mjs .github/ci/immutable-plan.test.mjs .github/ci/retained-units.test.mjs .github/ci/authenticated-focused.test.mjs .github/ci/focused-file-evidence.test.mjs .github/ci/forward-baseline.test.mjs .github/ci/ci-origin-binding.test.mjs .github/ci/forward-install-grant.test.mjs
           PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/extract-focused.test.py
       - name: Resolve frozen candidate
         id: candidate

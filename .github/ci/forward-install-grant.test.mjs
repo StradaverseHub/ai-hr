@@ -1,0 +1,9 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {installationFixture} from './staging-install-test-fixture.mjs';
+import {createInstallGrant,installHash,installJson} from './ci-install-grant.mjs';
+function fixture(){const f=installationFixture();f.evidence.deploymentBaseline='f'.repeat(40);const body={format:1,kind:'FORWARD_STAGING_BASELINE_SOURCE_PREFIX_NOT_CI_RECEIPT',candidate:f.evidence.sha,ciBaseline:f.evidence.baseline,deploymentBaseline:f.evidence.deploymentBaseline,originalCiBaselinePreserved:true,requiresFreshActualLedgerAndBuildBinding:true,requiresOriginalCIAuthentication:true,releaseAuthorized:false};f.evidence.baselineAdvance={...body,proofSha256:installHash(installJson(body))};return f;}
+test('operational grant uses actual baseline while original CI identities remain intact',()=>{const f=fixture(),original=structuredClone(f.evidence),g=createInstallGrant(f);assert.equal(g.baseline,f.evidence.deploymentBaseline);assert.equal(g.controller,f.run.head_sha);assert.equal(g.witnessFingerprint,f.evidence.fingerprint);assert.deepEqual(f.evidence,original);});
+test('forward baseline without valid source binding refuses',()=>{for(const mutate of [f=>delete f.evidence.baselineAdvance,f=>f.evidence.baselineAdvance.proofSha256='0'.repeat(64),f=>f.evidence.baselineAdvance.ciBaseline='b'.repeat(40),f=>f.evidence.baselineAdvance.releaseAuthorized=true]){const f=fixture();mutate(f);assert.throws(()=>createInstallGrant(f));}});
+test('even consistently rehashed foreign candidate binding refuses',()=>{const f=fixture(),{proofSha256,...body}=f.evidence.baselineAdvance;body.candidate='e'.repeat(40);f.evidence.baselineAdvance={...body,proofSha256:installHash(installJson(body))};assert.throws(()=>createInstallGrant(f));});
+test('failed original CI cannot be rescued by a forward source binding',()=>{const f=fixture();f.run.conclusion='failure';assert.throws(()=>createInstallGrant(f));});

@@ -19,7 +19,7 @@ export function requireSuccessfulBuild(official,status,sha){
  if(!official.isSuccessState(status.state??'unknown')||status.built_ref!==sha||status.stale_build!=='0')throw Error('Remote build/migration failed; no arrival or deployed board state claimed');
  return status;
 }
-export async function operatorRelease({candidatePath,runId,execute=false}){
+export async function operatorRelease({candidatePath,runId,execute=false,ciBaseline,originController}){
  candidatePath=resolve(candidatePath);bindStaging(process.env);
  const packetTransport=execute?assertRsyncPacketCapability():null;
  // Import the ACTUAL frozen candidate's official release helpers; never rewrite its gate code.
@@ -35,11 +35,11 @@ export async function operatorRelease({candidatePath,runId,execute=false}){
  const profilePreflight=await probeStagingProfile({candidatePath,ssh});
  const expectedBaseline=expectedBaselineMigrationLedger(candidatePath,baseline);
  const baselineLedger=verifyBaselineMigrationPreflight({candidatePath,baseline,ssh});
- const evidence=await verifyCi({candidatePath,runId,baseline});
+ const evidence=await verifyCi({candidatePath,runId,baseline:ciBaseline??baseline,deploymentBaseline:baseline,originController});
  const save=(name,data)=>writeFileSync(join(evidence.evidenceDirectory,name),JSON.stringify(data,null,2)+'\n',{flag:'wx',mode:0o600});
  save('operator-preflight.json',{...evidence,target:STAGING,baselineLedger,profilePreflight,execute,packetTransport});
  if(!execute)return evidence;
- const frozen=()=>{if(cleanHead(candidatePath)!==evidence.sha||cleanHead(controllerRoot)!==evidence.controller)throw Error('Verified source changed');};
+ const frozen=()=>{if(cleanHead(candidatePath)!==evidence.sha||cleanHead(controllerRoot)!==(evidence.verifierBinding?.verifier??evidence.controller))throw Error('Verified source changed');};
  const revalidate=async({announced=false}={})=>{await probeStagingProfile({candidatePath,ssh});await revalidateCi(evidence);validatePrelaunchState(current(),{baseline,baselineBuildId:initial.built_build_id,candidate:evidence.sha,announced});
   if(!announced){const actual=JSON.parse(ssh(stagingLedgerProbeCommand(),{input:LEDGER_QUERY,timeout:20000,maxBuffer:4*1024**2}));const fresh=validateMigrationLedgerRows(expectedBaseline,actual);if(fresh.actualSha256!==baselineLedger.actualSha256)throw Error('Applied migration history changed before source transfer');}
  };
@@ -80,7 +80,7 @@ export async function operatorRelease({candidatePath,runId,execute=false}){
   arrivalVerified:true,ownedResourceCleanupVerified:true,releaseHandbackVerified:false};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
- const [mode,candidatePath,runId]=process.argv.slice(2);
- if(!['verify','deploy'].includes(mode)||!candidatePath||!/^\d+$/.test(runId??''))throw Error('Usage: node --import tsx operator-release.mjs <verify|deploy> <candidate-worktree> <run-id>');
- operatorRelease({candidatePath,runId,execute:mode==='deploy'}).then(result=>{console.log(JSON.stringify(result,null,2));process.exit(0);}).catch(error=>{console.error(error);process.exit(1);});
+ const [mode,candidatePath,runId,ciBaseline,originController]=process.argv.slice(2);
+ if(!['verify','deploy'].includes(mode)||!candidatePath||!/^\d+$/.test(runId??'')||!([3,5].includes(process.argv.length-2))||(ciBaseline!==undefined&&(!/^[a-f0-9]{40}$/.test(ciBaseline)||!/^[a-f0-9]{40}$/.test(originController??''))))throw Error('Usage: node --import tsx operator-release.mjs <verify|deploy> <candidate-worktree> <run-id> [recorded-ci-baseline original-ci-controller]');
+ operatorRelease({candidatePath,runId,execute:mode==='deploy',ciBaseline,originController}).then(result=>{console.log(JSON.stringify(result,null,2));process.exit(0);}).catch(error=>{console.error(error);process.exit(1);});
 }

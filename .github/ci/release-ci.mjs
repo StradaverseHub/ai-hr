@@ -7,6 +7,8 @@ import {isDeepStrictEqual} from 'node:util';
 import {BUILD_ARTIFACT,inspectCiBuildPacket,bindCiBuildSource} from './build-artifact.mjs';
 import {NEXT_APPLICATION_STATE,NEXT_APPLICATION_MEMBERS,inspectNextStatePacket} from './next-application-cache-protocol.mjs';
 import {randomUUID} from 'node:crypto';
+import {forwardBaselineSource} from './forward-baseline.mjs';
+import {bindOriginalController} from './ci-origin-binding.mjs';
 import {createPlan,hash} from './plan.mjs';
 import {downloadCiArchives,readCiArchive} from './archive-downloads.mjs';
 import {REPOSITORY,validateRun,validateJobs,validateArtifacts,verifyArtifactBytes,validateProof} from './release-policy.mjs';
@@ -26,10 +28,12 @@ export async function sourceBoundBuild({candidatePath,dir,p,jobs}){
  const prepared=testing.prepareSystemTestingBuild({worktree:candidatePath,candidate:p.candidate,buildRecordId:packet.buildRecordId});
  return bindCiBuildSource(packet,{lockBytes:readFileSync(join(candidatePath,'pnpm-lock.yaml')),packageBytes:readFileSync(join(candidatePath,'package.json')),preparedBytes:Buffer.from(stableTestingJson(prepared)+'\n')});
 }
-export async function verifyCi({candidatePath,runId,baseline}){
+export async function verifyCi({candidatePath,runId,baseline,deploymentBaseline=baseline,originController}){
  candidatePath=resolve(candidatePath);runId=Number(runId);
  if(!Number.isSafeInteger(runId)||runId<1||!/^[0-9a-f]{40}$/.test(baseline??''))throw Error('Invalid CI run or staging baseline');
- const controller=cleanHead(controllerRoot),candidate=cleanHead(candidatePath),p={controller,candidate,runId,baseline};
+ const verifier=cleanHead(controllerRoot),controller=originController??verifier,candidate=cleanHead(candidatePath),p={controller,candidate,runId,baseline};
+ const verifierBinding=bindOriginalController({repository:controllerRoot,verifier,controller});
+ const baselineAdvance=deploymentBaseline===baseline?null:forwardBaselineSource({repository:candidatePath,candidate,ciBaseline:baseline,deploymentBaseline});
  if(git(candidatePath,'remote','get-url','origin').toLowerCase()!=='https://github.com/stradaversehub/ai-hr.git')throw Error('Unexpected repository origin');
  execFileSync('git',['merge-base','--is-ancestor',baseline,candidate],{cwd:candidatePath,stdio:'ignore'});
  const run=api(`actions/runs/${runId}`);validateRun(run,p);p.controllerBranch=run.head_branch;
@@ -62,9 +66,9 @@ export async function verifyCi({candidatePath,runId,baseline}){
  const expectedPlan={...body,fingerprint:hash(body)};
  const verified=validateProof({plan,reports,receipt,expectedPlan,p});
  const build=await sourceBoundBuild({candidatePath,dir,p,jobs});
- if(cleanHead(controllerRoot)!==controller||cleanHead(candidatePath)!==candidate)throw Error('Source changed during CI verification');
- const alpha=api('git/ref/heads/alpha');if(![baseline,candidate].includes(alpha.object?.sha))throw Error('Alpha no longer matches the deployed staging baseline');
- const result={...verified,build,candidatePath,controllerBranch:run.head_branch,verifiedAt:new Date().toISOString(),url:run.html_url,evidenceDirectory:dir,artifacts:artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}))};
+ if(cleanHead(controllerRoot)!==verifier||cleanHead(candidatePath)!==candidate)throw Error('Source changed during CI verification');
+ const alpha=api('git/ref/heads/alpha');if(![deploymentBaseline,candidate].includes(alpha.object?.sha))throw Error('Alpha no longer matches the deployed staging baseline');
+ const result={...verified,build,candidatePath,deploymentBaseline,baselineAdvance,verifierBinding,controllerBranch:run.head_branch,verifiedAt:new Date().toISOString(),url:run.html_url,evidenceDirectory:dir,artifacts:artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}))};
  save('verification.json',result);
  return result;
 }
@@ -75,14 +79,17 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
 
 export async function revalidateCi(evidence){
  const local=createPlan(evidence.candidatePath);
- if(cleanHead(controllerRoot)!==evidence.controller||cleanHead(evidence.candidatePath)!==evidence.sha)throw Error('Source changed after CI verification');
+ const verifier=evidence.verifierBinding?.verifier??evidence.controller;
+ if(cleanHead(controllerRoot)!==verifier||cleanHead(evidence.candidatePath)!==evidence.sha)throw Error('Source changed after CI verification');
+ if(evidence.verifierBinding&&!isDeepStrictEqual(bindOriginalController({repository:controllerRoot,verifier,controller:evidence.controller}),evidence.verifierBinding))throw Error('Verifier origin binding changed');
+ if((evidence.deploymentBaseline??evidence.baseline)!==evidence.baseline&&!isDeepStrictEqual(forwardBaselineSource({repository:evidence.candidatePath,candidate:evidence.sha,ciBaseline:evidence.baseline,deploymentBaseline:evidence.deploymentBaseline}),evidence.baselineAdvance))throw Error('Forward baseline source binding changed');
  const p={controller:evidence.controller,candidate:evidence.sha,runId:evidence.runId,baseline:evidence.baseline,controllerBranch:evidence.controllerBranch};
  validateRun(api(`actions/runs/${p.runId}`),p);
  const jobs=pages(`actions/runs/${p.runId}/jobs?filter=all`,'jobs');validateJobs(jobs,local);
  const artifacts=pages(`actions/runs/${p.runId}/artifacts`,'artifacts');validateArtifacts(artifacts,p,local);
  const identity=a=>JSON.stringify(a.map(x=>({id:x.id,name:x.name,digest:x.digest})).sort((a,b)=>a.name.localeCompare(b.name)));
- if(identity(artifacts)!==identity(evidence.artifacts)||![p.baseline,p.candidate].includes(api('git/ref/heads/alpha').object?.sha))throw Error('CI evidence or alpha moved after verification');
+ if(identity(artifacts)!==identity(evidence.artifacts)||![evidence.deploymentBaseline??p.baseline,p.candidate].includes(api('git/ref/heads/alpha').object?.sha))throw Error('CI evidence or alpha moved after verification');
  const build=await sourceBoundBuild({candidatePath:evidence.candidatePath,dir:evidence.evidenceDirectory,p,jobs});
- if(!isDeepStrictEqual(build,evidence.build)||cleanHead(controllerRoot)!==p.controller||cleanHead(evidence.candidatePath)!==p.candidate)throw Error('Validated build bytes or canonical source changed');
+ if(!isDeepStrictEqual(build,evidence.build)||cleanHead(controllerRoot)!==verifier||cleanHead(evidence.candidatePath)!==p.candidate)throw Error('Validated build bytes or canonical source changed');
  return true;
 }
