@@ -13378,6 +13378,7 @@
       "performanceReview": "Lengkapkan semakan prestasi",
       "assessmentWork": "Ambil tindakan pada penilaian prestasi",
       "careerPlan": "Semak pelan kerjaya",
+      "calibration": "Lengkapkan kalibrasi prestasi",
       "rewardReview": "Semak ganjaran"
     },
     "tasksEmpty": "Tiada apa-apa memerlukan tindakan anda",
@@ -23515,6 +23516,7 @@
       "performanceReview": "Semakan prestasi",
       "assessmentWork": "Penilaian prestasi",
       "careerPlan": "Semakan pelan kerjaya",
+      "calibration": "Kalibrasi prestasi",
       "rewardReview": "Semakan ganjaran"
     },
     "quickActions": {

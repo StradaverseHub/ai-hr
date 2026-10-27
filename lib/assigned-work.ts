@@ -17,7 +17,7 @@ export class AssignedWorkPrincipalUnavailableError extends Error{
  * never a band, rating, score, amount, remark or plan body — the link opens the owning screen, which
  * applies its own authorization again.
  */
-export const PACK_TASK_KINDS=['performanceReview','assessmentWork','careerPlan','rewardReview'] as const;
+export const PACK_TASK_KINDS=['performanceReview','assessmentWork','careerPlan','calibration','rewardReview'] as const;
 export type PackTaskKind=typeof PACK_TASK_KINDS[number];
 export type PackTaskItem={id:string;kind:PackTaskKind;subjectName:string|null;createdAt:string;linkPath:string};
 /** A pack's task provider. `scopeIds` is the company-switcher selection; undefined means no filter. */

@@ -15,8 +15,11 @@
  *                      idp part ('shared' → open for the manager/moderator), i.e. the
  *                      app.assessment_plan_reviewer relationship. Plan rows are read under plan RLS.
  *
- * Calibration sessions are deliberately not a source here yet; a calibration source is added to
- * `sources` in pendingPerformanceTasks.
+ *   calibration        A calibration session naming this actor as a reviewer, whose tier window is open
+ *                      and which still has people awaiting the tier's decision: `pendingCalibrationTasks`
+ *                      (calibration-list.ts), the Calibration page's own gates. Administering a cycle is
+ *                      not a calibration task. A group-wide session (no company) survives any company
+ *                      selection, as it does on the Calibration page.
  *
  * The viewer's OWN assessment (self view) is not a task in this list: the list answers "who is waiting
  * on me", and the employee's own journey lives on My Performance.
@@ -31,8 +34,10 @@ import { managerPendingReviews } from '../../../core/performance';
 import type { PackTaskItem } from '../../../lib/assigned-work';
 import { competencySchema, kpiSchema, policySchema } from './model';
 import { reviewWorkspaceParts } from './workspace-model';
+import { pendingCalibrationTasks } from './calibration-list';
 
-type Sourced = PackTaskItem & { companyId: string; reviewId: string };
+/** companyId null: a group-wide calibration session. reviewId: the assessment, for review-scoped kinds only. */
+type Sourced = PackTaskItem & { companyId: string | null; reviewId?: string };
 
 const reviewHref = (reviewId: string) => `/performance/review/${reviewId}`;
 const iso = (value: Date | string) => (value instanceof Date ? value : new Date(value)).toISOString();
@@ -117,7 +122,7 @@ async function assessmentTasks(ctx: SessionContext): Promise<Sourced[]> {
 
 /** The performance pack's task provider (core/approvals-inbox.ts PACK_TASK_SOURCES). */
 export async function pendingPerformanceTasks(ctx: SessionContext, scopeIds: string[] | undefined): Promise<PackTaskItem[]> {
-  const sources: Array<(ctx: SessionContext) => Promise<Sourced[]>> = [managerReviewTasks, assessmentTasks];
+  const sources: Array<(ctx: SessionContext) => Promise<Sourced[]>> = [managerReviewTasks, assessmentTasks, (c) => pendingCalibrationTasks(c)];
   const all = (await Promise.all(sources.map((source) => source(ctx)))).flat();
   // One assessment, one task: a review already in the "Reviews awaiting you" queue is not repeated as
   // assessment work. A career plan is a separate decision on its own record and stays.
@@ -125,8 +130,8 @@ export async function pendingPerformanceTasks(ctx: SessionContext, scopeIds: str
   const scope = scopeIds ? new Set(scopeIds) : null;
   const seen = new Set<string>();
   return all
-    .filter((t) => !(t.kind === 'assessmentWork' && reviewed.has(t.reviewId)))
-    .filter((t) => !scope || scope.has(t.companyId))
+    .filter((t) => !(t.kind === 'assessmentWork' && t.reviewId && reviewed.has(t.reviewId)))
+    .filter((t) => !scope || t.companyId === null || scope.has(t.companyId))
     .filter((t) => { const key = `${t.kind}:${t.id}`; if (seen.has(key)) return false; seen.add(key); return true; })
     .map(({ id, kind, subjectName, createdAt, linkPath }) => ({ id, kind, subjectName, createdAt, linkPath }));
 }

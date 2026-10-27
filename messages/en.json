@@ -13378,6 +13378,7 @@
       "performanceReview": "Complete performance review",
       "assessmentWork": "Act on performance assessment",
       "careerPlan": "Review career plan",
+      "calibration": "Complete calibration",
       "rewardReview": "Review rewards"
     },
     "tasksEmpty": "Nothing needs your action",
@@ -23515,6 +23516,7 @@
       "performanceReview": "Performance review",
       "assessmentWork": "Performance assessment",
       "careerPlan": "Career plan review",
+      "calibration": "Performance calibration",
       "rewardReview": "Rewards review"
     },
     "quickActions": {

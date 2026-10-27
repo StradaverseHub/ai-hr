@@ -13378,6 +13378,7 @@
       "performanceReview": "完成绩效评估",
       "assessmentWork": "处理绩效考核",
       "careerPlan": "审阅职业发展计划",
+      "calibration": "完成绩效校准",
       "rewardReview": "审阅薪酬奖励"
     },
     "tasksEmpty": "没有需要您处理的事项",
@@ -23515,6 +23516,7 @@
       "performanceReview": "绩效评估",
       "assessmentWork": "绩效考核",
       "careerPlan": "职业发展计划审阅",
+      "calibration": "绩效校准",
       "rewardReview": "薪酬奖励审阅"
     },
     "quickActions": {

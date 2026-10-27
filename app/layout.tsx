@@ -44,6 +44,7 @@ import { getScopeIds } from '@/lib/scope';
 import { getOnboardingStatus } from '@/core/onboarding';
 import { listPendingTasks } from '@/core/approvals-inbox';
 import { onboardingTasks, onboardingUnreadNoticeCount, onboardingNotices, onboardingNavigation } from '@/packs/lifecycle/service';
+import { hasCalibrationAssignment } from '@/packs/performance/service';
 import { NotificationCenter, type NotificationTaskItem } from '@/components/notification-center';
 import { onboardingNotificationTask } from '@/lib/onboarding-notification-task';
 import { CommandBar } from '@/components/command-bar';
@@ -260,6 +261,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               // ADR-0142 — the OneHR performance partner gets the Performance row only, NOT the admin rail:
               // it is deliberately absent from isAdmin above, because it can enter no admin screen.
               canAdministerOnehr={canAdminOnehr(session)}
+              // WP-B1 — a named calibration reviewer gets the Calibration row only. Skipped for OneHR admins (the row
+              // is already theirs): one existence query per request otherwise, failing closed.
+              canEnterCalibration={!canAdminOnehr(session) && await hasCalibrationAssignment(session).catch(() => false)}
               // Pending-approval badge on the "Approval Items" row (feedback 836118c4). Reuses the
               // pendingTasks already resolved above for the bell — ZERO extra queries — so the badge is
               // by construction the same user-scoped queue: only items awaiting THIS viewer's decision,

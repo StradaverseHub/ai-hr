@@ -13378,6 +13378,7 @@
       "performanceReview": "Hoàn tất đánh giá hiệu suất",
       "assessmentWork": "Xử lý đánh giá hiệu suất",
       "careerPlan": "Xem xét kế hoạch nghề nghiệp",
+      "calibration": "Hoàn tất hiệu chỉnh hiệu suất",
       "rewardReview": "Xem xét đãi ngộ"
     },
     "tasksEmpty": "Không có mục nào cần bạn xử lý",
@@ -23515,6 +23516,7 @@
       "performanceReview": "Đánh giá hiệu suất",
       "assessmentWork": "Đánh giá năng lực",
       "careerPlan": "Xem xét kế hoạch nghề nghiệp",
+      "calibration": "Hiệu chỉnh hiệu suất",
       "rewardReview": "Xem xét đãi ngộ"
     },
     "quickActions": {

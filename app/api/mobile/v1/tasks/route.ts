@@ -9,6 +9,6 @@ export const GET = mobileRoute(TasksResponse, async s => {
   // Existing v1 clients validate a closed task-kind enum. Keep that published
   // vocabulary until a versioned mobile contract supports replacement leave.
   // The pack kinds are never read above; naming them here narrows the type to the published enum.
-  const items = tasks.flatMap(item => item.kind === 'replacementLeave' || item.kind === 'performanceReview' || item.kind === 'assessmentWork' || item.kind === 'careerPlan' || item.kind === 'rewardReview' ? [] : [{ id: item.id, kind: item.kind, subject: item.subjectName }]);
+  const items = tasks.flatMap(item => item.kind === 'replacementLeave' || item.kind === 'performanceReview' || item.kind === 'assessmentWork' || item.kind === 'careerPlan' || item.kind === 'calibration' || item.kind === 'rewardReview' ? [] : [{ id: item.id, kind: item.kind, subject: item.subjectName }]);
   return { total: items.length, items: items.slice(0, 50) };
 });

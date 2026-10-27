@@ -11,14 +11,15 @@
  * the people still awaiting this tier's decision in a part that is not yet submitted/locked, excluding the
  * viewer's own entry. It is a count of people, never a judgement.
  */
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ne, sql } from 'drizzle-orm';
 import type { SessionContext } from '../../../db/client';
 import { company, onehrCalibration, onehrCycle, reviewCycle } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
 import { isModuleEnabledOrFalse } from '../../../core/entitlements';
 import { policySchema, type Tier } from './model';
-import type { CalibrationWorkEntry } from './workspace-model';
-import { calibrationToDo, calibrationWindowState, sortCalibrationSessions, type CalibrationListSession } from './calibration-list-model';
+import { assessmentWorkWindowOpen, type CalibrationWorkEntry } from './workspace-model';
+import { calibrationToDo, calibrationWindowCells, calibrationWindowState, sortCalibrationSessions, type CalibrationListSession } from './calibration-list-model';
+import type { PackTaskItem } from '../../../lib/assigned-work';
 
 export { calibrationListTierOrder, type CalibrationListSession } from './calibration-list-model';
 
@@ -71,5 +72,72 @@ export async function hasCalibrationAssignment(ctx: SessionContext): Promise<boo
         and app.current_user_id() = any(s.reviewer_user_ids)
         and app.onehr_calibration_access(s.id)) as ok`);
     return !!row?.ok;
+  });
+}
+
+/** A calibration task before the shared list drops its company (null for a group-wide session). */
+export type CalibrationTask = PackTaskItem & { kind: 'calibration'; companyId: string | null };
+
+/**
+ * Calibration work awaiting the viewer, for the shared task list (packs/performance/onehr/tasks.ts).
+ *
+ * A task only where the viewer is a NAMED reviewer (`reviewer_user_ids`): an HR administrator or performance
+ * partner who can open a session only because they administer the cycle has no calibration task for it —
+ * their entry point is the Calibration page. Beyond that, the same gates the Calibration page reads: not the
+ * final tier (cycle administrators only), `app.onehr_calibration_access`, the cycle's calibration module, a
+ * cycle that is not closed, this tier's window open now, and at least one person still awaiting the tier's
+ * decision (`calibrationToDo`, excluding the viewer's own entry).
+ *
+ * The named-reviewer, tier, cycle and module filters run in SQL, so `app.assessment_calibration_work` is
+ * called only for the viewer's own sessions — never once per session in the tenant for an administrator.
+ *
+ * Owner time: the later of the session's creation and the opening of its currently open window. A reviewer
+ * named on a session created months before its window opens has owed nothing until the window opened; a
+ * tier with no window (Group) is owed from creation. The time the viewer was added to reviewer_user_ids is not
+ * recorded anywhere, so it cannot be used.
+ *
+ * Payload: id, kind, session name, owner time and link (plus the company for the switcher, dropped by the
+ * caller). No band, rating, note, name of a person or count.
+ */
+export async function pendingCalibrationTasks(ctx: SessionContext, now = new Date()): Promise<CalibrationTask[]> {
+  if (!ctx.userId) return [];
+  return withPerformanceTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({ session: onehrCalibration, policy: onehrCycle.policy })
+      .from(onehrCalibration)
+      .innerJoin(reviewCycle, eq(reviewCycle.id, onehrCalibration.cycleId))
+      .innerJoin(onehrCycle, and(eq(onehrCycle.cycleId, onehrCalibration.cycleId), eq(onehrCycle.tenantId, onehrCalibration.tenantId)))
+      .where(and(
+        sql`app.current_user_id() = any(${onehrCalibration.reviewerUserIds})`,
+        ne(onehrCalibration.tier, 'final'),
+        ne(reviewCycle.status, 'closed'),
+        sql`coalesce((${onehrCycle.policy}->'modules'->>'calibration')::boolean,true)`,
+        sql`app.onehr_calibration_access(${onehrCalibration.id})`,
+      ))
+      .orderBy(asc(onehrCalibration.createdAt), asc(onehrCalibration.id));
+    const out: CalibrationTask[] = [];
+    for (const { session, policy: raw } of rows) {
+      // This runs from the root layout: a policy the canonical schema rejects yields no task rather than a
+      // 500 on every route. The Calibration page still reports the defect.
+      const parsed = policySchema.safeParse(raw);
+      if (!parsed.success) continue;
+      const policy = parsed.data, tier = session.tier as Tier;
+      if (calibrationWindowState(policy, tier, false, now).window !== 'open') continue;
+      const [work] = await tx.execute<{ entries: CalibrationWorkEntry[] | null }>(sql`select app.assessment_calibration_work(${session.id}::uuid) as entries`);
+      const entries = (work?.entries ?? []).filter((entry) => entry.personId !== ctx.personId);
+      if (calibrationToDo(policy, tier, session, entries) <= 0) continue;
+      const opened = calibrationWindowCells(policy, tier)
+        .filter((cell) => assessmentWorkWindowOpen(policy, cell, now))
+        .map((cell) => policy.windows[cell]?.opensAt)
+        .filter((at): at is string => !!at)
+        .map((at) => Date.parse(at))
+        .sort((x, y) => x - y)[0];
+      const since = opened !== undefined && opened > session.createdAt.getTime() ? new Date(opened) : session.createdAt;
+      out.push({
+        id: session.id, kind: 'calibration', subjectName: session.name, createdAt: since.toISOString(),
+        linkPath: `/performance/assessment/calibration/${session.id}`, companyId: session.companyId,
+      });
+    }
+    return out;
   });
 }
