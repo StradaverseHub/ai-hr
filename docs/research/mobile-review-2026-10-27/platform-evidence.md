@@ -428,3 +428,35 @@ behavioral assertion; every exact restored source passed. All three native mutan
 compiler failure as the witness. Results were `mutation=1 restored=0 exact=true` for all six, with
 `compile=0 restoredCompile=0` for native cases. Logs preserve the failed and restored attempts separately.
 No migration, public API registration, enrollment UI, cloud upload or deployment occurred in this slice.
+
+
+Explicit native key revocation at `dee30053c` passed 57 affected client cases and both root/native
+TypeScript checks. Nine new model cases and one encrypted-adapter case cover durable intent before
+transport, failed/lost/ambiguous acknowledgements, explicit retry only, refused/unavailable/malformed
+responses, changed receipt binding, pending enrollment refusal, obsolete owners and version compatibility.
+The encrypted adapter reopens the pending revocation and retains a separate attendance command unchanged.
+A current employment selector authorizes revocation without rewriting original enrollment provenance.
+There is still no screen or live transport invoking this model; it does not replace the SDK key or
+claim a completed retirement lifecycle.
+
+A separate database probe at `c0bdf712c` reproduced stale subject authorization: revocation waiting on
+either the actor advisory lock or key row lock still fulfilled after its selected employment became
+ineligible. Both cases failed their refusal expectation (`fulfilled` instead of `rejected`); lock
+waiting was observed in `pg_stat_activity` before changing eligibility. Repair `8058d665c` rechecks
+own-employment eligibility after both locks. All 42 affected enrollment/assertion/HTTP cases then passed,
+including both wait races, and the full root TypeScript compiler exited 0. This addresses stale entry
+checks across those waits; it does not assert serializable authorization against every possible
+concurrent employment update. No migration or shared database was changed.
+
+Three controlled native-journal mutations removed durable revocation intent, matching receipt checks
+and pending-status refusal. Each selected behavioral test failed, then exact restoration passed:
+`mutation=1 restored=0 exact=true` for all three. The genuine initial database race failures above are
+separate negative evidence for the server repair. All failures/restored observations retain their
+original checkpoint attribution.
+
+
+Both local Hermes exports for runtime source `8058d665c` exited 0. Source maps contain 1,334 iOS and
+1,465 Android modules, including the intended enrollment/storage/bridge/native-module contracts and no
+application server core/database/session/private verifier, PKI dependency or Zod 3. The unchanged native
+Swift/Kotlin mechanisms retain their previous compiler evidence; this slice changes their JavaScript
+orchestration only. These are local bundles, not signed-device, cloud/full-gate or deployment evidence.
