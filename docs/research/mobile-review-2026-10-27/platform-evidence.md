@@ -1813,3 +1813,30 @@ Clock preview, attempts, registration and legacy writes now pass the owner guard
 refresh retries. These are shipped-code tests with synthetic native/network ports. They are not
 physical device, signed distribution, current native build or complete accessibility witnesses.
 No local test/compiler slot, rollout, migration apply or deployment was used.
+
+A further provider-failure test freezes the exact Android signature before requesting Play Integrity:
+loss of that vendor call leaves proof recoverable, and retry signs no second time. Positive control
+`6770e14910aac296e87f357804bae8cd4b19f19d` passed all fifteen journal cases and root TypeScript in
+[40515098923](https://github.com/StradaverseHub/ai-hr/actions/runs/40515098923).
+The unchanged native source retains its preceding strict native compiler pass.
+
+Four isolated hosted mutations kept the tests unchanged relative to that positive control. Full
+logs were inspected for the named assertion, rather than interpreting any red job as proof:
+
+| Removed control | Candidate | Hosted run | Intended observed failure |
+|---|---|---|---|
+| Expected request identity inside the journal operation | `1752076ea6d64a3e716a2113d9acedeec355a17f` | [40515103719](https://github.com/StradaverseHub/ai-hr/actions/runs/40515103719) | Journal and owned assembly accepted another expected request instead of rejecting: 2 failed / 18 passed |
+| Persist proof before Play Integrity | `6ab4e5634e45980123228694455aaeab9e5eee94` | [40515108552](https://github.com/StradaverseHub/ai-hr/actions/runs/40515108552) | Provider loss retained prepared state without the saved signature: 1 failed / 14 passed |
+| Preserve matching camera review during preparation hydration | `0702da86beac8f002311b5efdcbd1d11f7a66ef2` | [40515113509](https://github.com/StradaverseHub/ai-hr/actions/runs/40515113509) | Remounted review/photo no longer reached record confirmation: 1 failed / 31 passed |
+| Operation-owner assertion within API sends | `dbba03ca89e7667112f0313568114bdc26e2d764` | [40515119231](https://github.com/StradaverseHub/ai-hr/actions/runs/40515119231) | Delayed token lookup and refresh lost the required privacy/selection refusal: 2 failed / 33 passed |
+
+All planned runs completed. These `codex/mobile-clock-negative-*-20261027` commits are deliberately
+unsafe, expected-failure probes and must never be merged or deployed. Temporary Git indexes created
+them without changing the normal index/worktree; no source restoration was needed. No vendor
+account, credential, real attendance record, rollout or local test slot was involved.
+
+The focused workflow also gains an opt-in `run_native_bundle` job: the locked Expo CLI exports
+production Android and iPhone bundles on a separate standard Ubuntu runner, with Metro/Hermes,
+two workers, offline mode and telemetry disabled. This is packaging verification, not native
+compilation, physical-device acceptance, EAS publication or deployment. Its default is false;
+existing check/default/release behavior is unchanged.

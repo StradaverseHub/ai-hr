@@ -32,6 +32,10 @@ on:
         description: Native app compiler with its strict Expo project and locked SDK dependencies
         default: false
         type: boolean
+      run_native_bundle:
+        description: Production Metro and Hermes bundles for iPhone and Android
+        default: false
+        type: boolean
       run_build:
         description: Linux Node 20 production build in a separate standard runner
         default: false
@@ -199,3 +203,32 @@ jobs:
         run: npm --prefix mobile run typecheck
         env:
           NODE_OPTIONS: --max-old-space-size=4096
+
+
+  native-bundle:
+    if: ${{ inputs.run_native_bundle }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: source
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          path: source
+          persist-credentials: false
+      - uses: ./automation/.github/actions/setup-alpha
+      - name: Export production iPhone and Android bundles with the locked Expo CLI
+        working-directory: source/mobile
+        run: npm exec --offline -- expo export --platform ios --platform android --max-workers 2 --output-dir "$RUNNER_TEMP/mobile-native-bundles"
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+          EXPO_OFFLINE: '1'
+          EXPO_NO_TELEMETRY: '1'

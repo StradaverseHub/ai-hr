@@ -1,11 +1,13 @@
-# AI HR integrity primitives — development spike
+# AI HR integrity primitives
 
 This local Expo SDK 57 module provides App Attest key/assertion operations, Android Keystore P-256
 keys and signatures, Play Integrity standard tokens, and app-local sleep-inclusive clock readings.
 It is not an attendance adjudicator. No response, certificate chain, hardware hint or token from it
 is a verified trust verdict. Server certificate/token, app/environment, challenge, actor/employment,
 device ownership, counter and revocation verification remain required before M04 can be activated.
-The attendance flows do not yet import this module or claim its evidence.
+The owned enrollment and signed-clock assemblies use this module. Server-backed signed-clock
+routes and screen recovery are implemented behind default-disabled deployment rollout. Neither
+local bridge availability nor successful port tests enable that rollout.
 
 `mobile/lib/integrity-bridge.ts` validates native outputs and returns evidence explicitly marked
 `verification: not_verified`, or a named unsupported/unavailable/invalid outcome. Missing bridges
@@ -39,9 +41,13 @@ An opaque runtime identifier permits comparison within one process; after restar
 requires review rather than wall-clock reconstruction. Android may compare a locally stored boot count.
 Neither result establishes an accepted timestamp, identity, location or offline attendance fact.
 
-The generated ignored `mobile/android` project is only a local build harness. Kotlin compilation,
-Swift syntax checks and JS port tests do not establish release signing, Apple entitlements, a valid
-vendor attestation or physical-device behavior. iOS native compilation and the airplane-mode, sleep,
-restart/reboot, reinstall, quota/outage and copied-token acceptance matrix remain open. Raw location
-source metadata, server enrollment/verification, trust policy, HR review and offline adjudication
-remain implementation work. No store upload, EAS build or runtime rollout is implied by this module.
+The generated ignored `mobile/android` project is only a local build harness. Historical Android/iOS
+native builds and simulator setup launches, hosted compiler checks, and signed-clock recovery port
+tests are recorded in the [platform evidence](../../../docs/research/mobile-review-2026-10-27/platform-evidence.md).
+They do not establish release signing, Apple entitlements, a valid vendor attestation or physical
+device behavior. No physical test Android phone or iPhone is currently available. The signed-device
+airplane-mode, sleep, restart/reboot, reinstall, quota/outage and copied-token field matrix remains
+unverified. The current Expo location adapter reports its actual mock flag and preserves missing
+provider/simulation/accessory facts as null; native source-information APIs, HR integrity review and
+offline adjudication remain implementation work. No store upload, EAS build or runtime rollout is
+implied by this module.
