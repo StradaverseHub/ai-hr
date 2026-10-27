@@ -11,7 +11,7 @@ import * as spend from '../lib/ai/spend-allocation';
 import {owner} from './harness';
 export async function installSyntheticSpendCapability(ctx:SessionContext,input:{provider:AiProvider;model:string;reservedNanos?:string;monthlyNanos?:string;rootNanos?:string}){
  const p=Object.freeze({...input}),nanos=p.reservedNanos??'1000000',digest=createHash('sha256').update(JSON.stringify(['fictional-fixed-total-MOCK-TRANSPORT-ONLY',p.provider,p.model,nanos])).digest('hex');
- if(!/^\d+$/.test(nanos)||BigInt(nanos)<=0n)throw Error('Invalid synthetic ceiling');
+ if(!/^\d+$/.test(nanos)||BigInt(nanos)<=BigInt("0"))throw Error('Invalid synthetic ceiling');
  await owner.db.execute(sql`insert into app.ai_spend_capability(digest,provider,model,operation,max_request_nanos,source_digest,verified_at,expires_at,semantics)
  values(${digest},${p.provider},${p.model},'draft',${nanos}::bigint,${'f'.repeat(64)},now(),now()+interval '1 hour','complete_inference_usd_ceiling_v1')
  on conflict(digest) do update set verified_at=now(),expires_at=now()+interval '1 hour',revoked_at=null`);

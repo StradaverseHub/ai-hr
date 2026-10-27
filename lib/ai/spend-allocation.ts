@@ -4,7 +4,7 @@ import type {AiFeatureId} from './features';
 import type {AiAdmission} from './governance';
 export type StrictAiSpendRoot=Readonly<{rootTaskId:string;kind:'agent'|'evaluation'}>;
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const MAX=9223372036854775807n;
+const MAX=BigInt("9223372036854775807");
 export const STRICT_AI_SPEND_FEATURES=Object.freeze(['provider_evaluation','module_agent_evaluation','module_agent_planning'] as const);
 export function requiresStrictAiSpend(feature:AiFeatureId){return (STRICT_AI_SPEND_FEATURES as readonly string[]).includes(feature);}
 export function captureStrictAiSpendRoot(value:StrictAiSpendRoot):StrictAiSpendRoot{
@@ -14,17 +14,17 @@ export function captureStrictAiSpendRoot(value:StrictAiSpendRoot):StrictAiSpendR
 /** No float multiplication and no rounding down. Reject fractional nano-USD and overflow. */
 export function usdToNanos(value:string):bigint{
  if(typeof value!=='string'||!/^\d{1,10}(?:\.\d{1,9})?$/.test(value))throw new AiGatewayError('Enter an exact non-negative USD allocation with at most nine decimal places.');
- const [whole,fraction='']=value.split('.'),result=BigInt(whole)*1000000000n+BigInt(fraction.padEnd(9,'0'));
+ const [whole,fraction='']=value.split('.'),result=BigInt(whole)*BigInt("1000000000")+BigInt(fraction.padEnd(9,'0'));
  if(result>MAX)throw new AiGatewayError('The USD allocation is too large.');return result;
 }
 export function nanosToUsd(value:string):string{
  if(!/^\d+$/.test(value))throw new AiGatewayError('Invalid USD allocation.');const amount=BigInt(value);if(amount>MAX)throw new AiGatewayError('Invalid USD allocation.');
- const fraction=(amount%1000000000n).toString().padStart(9,'0').replace(/0+$/,'');return (amount/1000000000n).toString()+(fraction?'.'+fraction:'');
+ const fraction=(amount%BigInt("1000000000")).toString().padStart(9,'0').replace(/0+$/,'');return (amount/BigInt("1000000000")).toString()+(fraction?'.'+fraction:'');
 }
 export function reserveUsdNanos(input:Readonly<{inputUnits:bigint;outputUnits:bigint;inputNanosPerMillion:bigint;outputNanosPerMillion:bigint;requestNanos:bigint}>):bigint{
  const {inputUnits,outputUnits,inputNanosPerMillion,outputNanosPerMillion,requestNanos}=input;
- if([inputUnits,outputUnits,inputNanosPerMillion,outputNanosPerMillion,requestNanos].some(n=>typeof n!=='bigint'||n<0n||n>MAX))throw new AiGatewayError('The AI price ceiling could not be confirmed.');
- const result=(inputUnits*inputNanosPerMillion+outputUnits*outputNanosPerMillion+999999n)/1000000n+requestNanos;
+ if([inputUnits,outputUnits,inputNanosPerMillion,outputNanosPerMillion,requestNanos].some(n=>typeof n!=='bigint'||n<BigInt("0")||n>MAX))throw new AiGatewayError('The AI price ceiling could not be confirmed.');
+ const result=(inputUnits*inputNanosPerMillion+outputUnits*outputNanosPerMillion+BigInt("999999"))/BigInt("1000000")+requestNanos;
  if(result>MAX)throw new AiGatewayError('The AI price ceiling is too large.');return result;
 }
 export type CertifiedAiSpendEnvelope=Readonly<{capabilityDigest:string;requestDigest:string;reservedNanos:string}>;
