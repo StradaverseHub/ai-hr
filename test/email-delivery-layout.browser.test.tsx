@@ -46,6 +46,8 @@ describe('Email delivery page list/detail at desktop and mobile sizes',()=>{
    render(<NextIntlClientProvider locale={locale} messages={locale==='en'?en:ta}><main className="min-w-0 p-4">{content}</main></NextIntlClientProvider>);
    const messages=locale==='en'?en:ta;
    expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
+   expect(document.querySelector('[data-active-connection-name]')).toHaveTextContent('Microsoft 365 · Synthetic staging connection');
+   expect(document.querySelector('[data-email-recipient]')!.getBoundingClientRect().width).toBeGreaterThanOrEqual(288);
    expect(screen.getByRole('heading',{name:messages.identityEmail.title})).toBeVisible();
    expect(screen.getByRole('heading',{name:messages.accountEmail.retentionTitle})).toBeVisible();
    expect(screen.getByLabelText(messages.accountEmail.retentionPeriod)).toHaveValue('never');
@@ -57,8 +59,12 @@ describe('Email delivery page list/detail at desktop and mobile sizes',()=>{
     expect(screen.getByRole('checkbox',{name:messages.identityEmail.received})).not.toBeChecked();
    }else{
     expect(screen.getByRole('link',{name:messages.identityEmail.newConnection})).toBeVisible();
-    expect(screen.getByText(messages.identityEmail.connectionActive)).toBeVisible();
-    expect(screen.getByText(messages.identityEmail.connectionSaved)).toBeVisible();
+    expect(screen.getAllByText(messages.identityEmail.connectionActive).some(node=>node.getClientRects().length>0)).toBe(true);
+    expect(screen.getAllByText(messages.identityEmail.connectionSaved).some(node=>node.getClientRects().length>0)).toBe(true);
+    if(width<1024){
+     const row=screen.getByRole('link',{name:'Microsoft 365 · Synthetic staging connection'}).closest('tr')!;
+     expect(row.querySelector('[data-mobile-connection-state]')).toBeVisible();
+    }
    }
    await page.getByText(messages.accountEmail.viewEmail,{exact:true}).click();
    expect(screen.getByText(messages.accountEmail.previewHelp)).toBeVisible();

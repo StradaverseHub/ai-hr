@@ -19,7 +19,7 @@ STORY: Scan saved connections, open one to edit, save and test it, confirm inbox
 
 FIRST VIEWPORT: A compact active-sender summary above the connection table; New connection at the table's upper right. Name, server, username, sender, security, status and last test form the scan. Delivery history follows with date filters, a local timezone label and expandable preview/resend actions.
 
-FORM: User-pinned Odoo-style list/detail extension inside the existing product world. seed: none (a precise reference; concept roll not applicable).
+FORM: User-pinned Odoo-style list/detail extension inside the existing product world. Reference provenance: owner message on 27 October 2026, “This view needs to be enhanced. Lets do it similar to Odoo,” with Screenshot 2026-10-27 at 3.13.12 PM (Outgoing Mail Servers list) and 3.13.20 PM (connection detail); subsequent confirmed choice “Multiple named connections; one active.” The original temporary attachment paths have expired; no pixel-perfect comp match is claimed. This follows new-work.md §3 “Extend an existing surface” and its explicit instruction “Never run the script for a local extension or a precisely specified narrow request; shape those directly.” Therefore no concept roll was attempted or required, and no unavailable-roll receipt is invented.
 
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 
