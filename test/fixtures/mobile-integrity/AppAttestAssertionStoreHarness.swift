@@ -71,7 +71,7 @@ private let retryable: (Error) -> Bool = { if case Synthetic.outage = $0 { retur
    memory.failAfterWrite = true
    store.request(keyId: "key", hash: hash, retryable: retryable, vendor: { _ in calls += 1 }, completion: { result = $0 })
    memory.failAfterWrite = false
-   try require(calls == 0 && !memory.records.isEmpty, "lost intent reply never calls vendor")
+   try require(calls == 0 && !memory.records.isEmpty && result != nil && success(result) == nil, "lost intent reply never calls vendor or publishes a proof")
    try require(try store.snapshot(keyId: "key", hash: hash) == .requested(canRetry: false), "unknown same-process intent stays held"); checks += 1
   }
   do {
@@ -98,7 +98,7 @@ private let retryable: (Error) -> Bool = { if case Synthetic.outage = $0 { retur
    store.request(keyId: "key", hash: hash, retryable: retryable, vendor: { second = $0 }, completion: { result = $0 })
    first?(.success(proof)); try require(try store.snapshot(keyId: "key", hash: hash) == .requested(canRetry: false), "stale callback cannot win")
    second?(.success(otherProof)); first?(.failure(Synthetic.unknown))
-   try require(try store.snapshot(keyId: "key", hash: hash) == .completed(otherProof), "current callback wins once");checks += 1
+   try require(try store.snapshot(keyId: "key", hash: hash) == .completed(otherProof), "current callback wins once");try require(success(result) == otherProof, "only current proof is published");checks += 1
   }
   do {
    let memory = Memory(), store = AppAttestAssertionStore(persistence: memory); var result: Result<Data, Error>?, calls = 0
@@ -148,7 +148,7 @@ private let retryable: (Error) -> Bool = { if case Synthetic.outage = $0 { retur
   do {
    let memory = Memory(), store = AppAttestAssertionStore(persistence: memory);var calls = 0,result: Result<Data, Error>?
    for index in 0..<17 {store.request(keyId: "key\(index)", hash: hash, retryable: retryable, vendor: { complete in calls += 1;complete(.success(proof)) }, completion: { result = $0 })}
-   if case .storageUnavailable? = failure(result) {} else { throw Synthetic.failure("persisted capacity") };try require(calls == 16 && memory.records.count == 16, "unresolved keys are not evicted")
+   try require(result != nil && success(result) == nil, "persistence refusal does not publish a proof");try require(calls == 16 && memory.records.count == 16, "unresolved keys are not evicted and a seventeenth vendor call is refused")
    try store.release(keyId: "key0", hash: hash)
    store.request(keyId: "key16", hash: hash, retryable: retryable, vendor: { complete in calls += 1;complete(.success(proof)) }, completion: { result = $0 })
    try require(calls == 17 && success(result) == proof, "durable handoff frees capacity");checks += 1

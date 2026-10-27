@@ -1991,3 +1991,22 @@ not JPEG decoder or OS image-capture evidence. The owner cases cover immutable p
 interrupted commits/photo transfer/base release, duplicate requests, unknown iPhone restart timing,
 source privacy and operation ownership. These results do not establish a live offline controller,
 device proofs, sync, attendance acceptance or physical OS/vendor behavior.
+
+### Native assertion handoff model initial run (27 October 2026)
+
+Checkpoint `f015528249b28c583676e455ebc9ce1883cfa029`,
+[40535521621](https://github.com/StradaverseHub/ai-hr/actions/runs/40535521621), finished every planned
+job before repair. All 193 JS cases passed across ten suites, as did root/native TypeScript and both
+production bundles. Root compilation took 3:10.98, maximum RSS 7,632,496 KiB, exit 0. iOS bundled
+1,369 modules in 34,751 ms; Android bundled 1,501 in 44,193 ms.
+
+The standard GitHub macOS runner compiled both actual Swift stores using Apple Swift 6.1.2 in
+Swift-5 mode, target arm64-apple-macosx15.0. The unchanged enrollment harness passed 17 scenarios.
+The assertion harness failed its persisted-capacity error-class expectation: its memory persistence
+port throws a synthetic storage error on admission refusal, while that assertion expected the
+Keychain adapter's specific error enum. The subsequent capacity/call-count check was not reached,
+so that scenario is not a pass. The repair asserts an actual failed result with no published proof,
+then requires exactly sixteen retained records/vendor calls and refusal of the seventeenth operation.
+It also checks previously unused callback results for lost intent replies/stale callbacks. No native
+implementation change is needed for this harness correction. Host checks still do not exercise real
+Keychain/vendor calls or compile the complete Expo/iOS module; those are separate acceptance claims.
