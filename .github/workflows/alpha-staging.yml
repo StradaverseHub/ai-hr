@@ -6,14 +6,14 @@ on:
       control_scope:
         type: choice
         default: runtime-controls
-        options: [focused, browser-partial, runtime-controls, bonus-negative, bonus-controls, email-controls, email-compiler, email-grant-controls]
+        options: [focused, browser-partial, runtime-controls, bonus-negative, bonus-controls, email-controls, email-compiler, email-grant-controls, retention-controls]
 permissions: {contents: read, actions: read}
 concurrency:
   group: runtime-evidence-controls-${{ github.run_id }}
   cancel-in-progress: false
 jobs:
   verifier-controls:
-    if: inputs.control_scope != 'bonus-negative' && inputs.control_scope != 'email-compiler'
+    if: inputs.control_scope != 'bonus-negative' && inputs.control_scope != 'email-compiler' && inputs.control_scope != 'retention-controls'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
@@ -194,3 +194,27 @@ jobs:
           path: ${{ runner.temp }}/email-compiler/
           if-no-files-found: error
           retention-days: 7
+
+  retention-controls:
+    if: inputs.control_scope == 'retention-controls'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: disposable-retention-controls
+          POSTGRES_DB: retention_controls
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Bounded maintenance refusal and actual libpq environment controls
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+          RETENTION_TEST_DATABASE_URL: postgres://postgres:disposable-retention-controls@127.0.0.1:5432/retention_controls
+        run: python3 -I .github/ci/email-retention-maintenance.test.py
