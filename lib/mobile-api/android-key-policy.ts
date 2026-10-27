@@ -45,3 +45,9 @@ export function matchAndroidKeyPolicy(settings:unknown,description:Description){
  return {packageName:app.packages[0].name,versionCode:app.packages[0].version,securityLevel:description.keyMintSecurityLevel as 'tee'|'strongbox',
   osVersion:h.osVersion??null,osPatchLevel:h.osPatchLevel??null,vendorPatchLevel:h.vendorPatchLevel??null,bootPatchLevel:h.bootPatchLevel??null};
 }
+
+/** Pure cross-check of signed issuer/provisioning signals; requires the verified path owner. */
+export function matchAndroidIssuerSignals(description:Description,certifiedSecurityLevel:'tee'|'strongbox'|null,lostDevice:boolean|null){
+ if(lostDevice===true)fail('lost_device');
+ if(certifiedSecurityLevel!==null&&(certifiedSecurityLevel!==description.attestationSecurityLevel||certifiedSecurityLevel!==description.keyMintSecurityLevel))fail('security_level');
+}

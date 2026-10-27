@@ -7,7 +7,7 @@ import cbor from 'cbor';
 import {decodeAndroidProvisioningInfo} from '../lib/mobile-api/android-provisioning';
 import {describe,expect,it,vi} from 'vitest';
 import {decodeAndroidKeyDescription} from '../lib/mobile-api/android-key-description';
-import {AndroidKeyPolicy,matchAndroidKeyPolicy} from '../lib/mobile-api/android-key-policy';
+import {AndroidKeyPolicy,matchAndroidKeyPolicy,matchAndroidIssuerSignals} from '../lib/mobile-api/android-key-policy';
 import {createAndroidKeyProofVerifier} from '../lib/mobile-api/android-key-proof';
 const base='test/fixtures/mobile-integrity/android/';
 function fixture(){
@@ -73,8 +73,18 @@ describe('Android key-generation policy',()=>{
   const settings={...f.settings,minimumOsVersion:null,minimumOsPatchLevel:null,minimumVendorPatchLevel:null,minimumBootPatchLevel:null};
   expect(AndroidKeyPolicy.parse(settings)).toMatchObject({minimumBootPatchLevel:null});
  });
+ it('refuses lost-device and issuer/key-level conflicts before policy can grant key-generation evidence',()=>{
+  const f=fixture();
+  expect(()=>matchAndroidIssuerSignals(f.description,'strongbox',true)).toThrow(expect.objectContaining({reason:'lost_device'}));
+  expect(()=>matchAndroidIssuerSignals(f.description,'tee',false)).toThrow(expect.objectContaining({reason:'security_level'}));
+  expect(()=>matchAndroidIssuerSignals(f.description,'strongbox',null)).not.toThrow();
+  for(const changed of [{osPatchLevel:202699},{vendorPatchLevel:20260230},{bootPatchLevel:20261301}]){
+   const d=structuredClone(f.description);Object.assign(d.hardwareEnforced,changed);
+   expect(()=>matchAndroidKeyPolicy(f.settings,d)).toThrow(expect.objectContaining({reason:'patch_level'}));
+  }
+ });
  it('keeps legacy missing provisioning metadata unavailable and validates new known fields',()=>{
-  expect(decodeAndroidProvisioningInfo(cbor.encode(new Map([[1,32],[3,'Google']])))).toEqual({entity:null,lostDevice:null});
+  expect(decodeAndroidProvisioningInfo(cbor.encode(new Map<number,number|string>([[1,32],[3,'Google']])))).toEqual({entity:null,lostDevice:null});
   expect(decodeAndroidProvisioningInfo(cbor.encode(new Map<any,any>([[1,32],[4,'STRONG_BOX'],[6,true]])))).toEqual({entity:'strongbox',lostDevice:true});
   expect(decodeAndroidProvisioningInfo(cbor.encode(new Map<any,any>([[1,32],[4,'TEE'],[6,false]])))).toEqual({entity:'tee',lostDevice:false});
   for(const map of [new Map<any,any>([[1,32],[4,'UNKNOWN']]),new Map<any,any>([[1,32],[6,'false']]),new Map<any,any>([[1,-1]]),new Map<any,any>([['1',32]])])expect(()=>decodeAndroidProvisioningInfo(cbor.encode(map))).toThrow();
