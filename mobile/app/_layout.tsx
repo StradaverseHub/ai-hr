@@ -46,8 +46,8 @@ function Gate() {
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
+      <StatusBar style="dark" />
       <CompanyConnectionProvider><SessionProvider>
-        <StatusBar style="dark" />
         <JourneyDraftProvider><WorkplaceReviewBoundary><Gate /></WorkplaceReviewBoundary></JourneyDraftProvider>
       </SessionProvider></CompanyConnectionProvider>
     </SafeAreaProvider>
