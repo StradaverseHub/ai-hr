@@ -7,12 +7,13 @@ import {mobileIntegrityKey} from '../db/schema';
 import {actorOf,appendEvent} from '../db/events';
 import {AndroidEnrollmentSettings,AndroidEnrollmentContext,AndroidEnrollmentKeyArtifact} from '../lib/mobile-android-enrollment';
 import {OnlineClockIntegrityData} from '../lib/mobile-clock-integrity';
+import type {AndroidClockIntegrityResult} from '../lib/mobile-api/android-clock-integrity';
 import {checkAndroidClockSignature} from '../lib/mobile-api/android-clock-signature';
 import {decryptSecret,isSecretStorable} from '../lib/ai/crypto';
 import {withAttendanceTenant} from './module-gate';
 import {myOwnEmploymentSubjectsTx} from './read';
 import {OwnClockEmploymentUnavailableError} from './attendance-clock-subject';
-import {consumeOwnIntegrityChallenge,issueOwnIntegrityChallenge,type IntegrityChallengeView} from './mobile-integrity-challenge';
+import {consumeOwnIntegrityChallenge,issueOwnIntegrityChallenge,readOwnIntegrityChallenge,type IntegrityChallengeView} from './mobile-integrity-challenge';
 const uuid=z.string().uuid().transform(value=>value.toLowerCase());
 const inputSchema=z.object({employmentId:uuid,appInstallationId:uuid,keyId:uuid,deviceToken:uuid.optional(),
  command:OnlineClockIntegrityData.shape.command.omit({photo:true}),evidence:OnlineClockIntegrityData.shape.evidence,
@@ -24,9 +25,16 @@ export class AndroidClockCommandError extends Error{
  }
 }
 const hash=(value:string|Buffer)=>createHash('sha256').update(value).digest('hex');
+export type AndroidClockCurrentAssessment=Extract<AndroidClockIntegrityResult,{status:'eligible'}>['assessment'];
+export type AndroidClockSignaturePorts={beforeCommit?:(tx:Tx)=>Promise<void>;
+ /** Vendor work runs after a scoped signature precheck and BEFORE any consumption/key lock.
+  * The returned assertion runs inside the acceptance transaction and must perform no network work. */
+ verifyCurrent?:(context:OnlineClockIntegrityData,challenge:IntegrityChallengeView)=>Promise<{
+  assertFresh(tx:Tx,context:OnlineClockIntegrityData):Promise<void>;assessment:AndroidClockCurrentAssessment;
+ }>};
 /** Caller must use the supplied transaction and checked snapshot for business acceptance. No network
  * operation belongs in the callback. already_consumed requests exact receipt recovery only. */
-export function createAndroidClockSignatureService(settings:unknown,ports:{beforeCommit?:(tx:Tx)=>Promise<void>}={}){
+export function createAndroidClockSignatureService(settings:unknown,ports:AndroidClockSignaturePorts={}){
  const parsed=AndroidEnrollmentSettings.safeParse(settings);if(!parsed.success)throw new AndroidClockCommandError('configuration_unavailable');
  const config=parsed.data;
  function snapshot(raw:AndroidClockSignatureInput){
@@ -78,17 +86,45 @@ export function createAndroidClockSignatureService(settings:unknown,ports:{befor
    if(challenge.installationId!==enrolled.installationId)throw new AndroidClockCommandError('key_unavailable');
    return {challenge,context:data(ctx,p,challenge)};
   },
-  async consume<T>(ctx:SessionContext,raw:AndroidClockSignatureInput,proof:{challengeId:string;signature:Buffer},operation:(tx:Tx,checked:{context:OnlineClockIntegrityData;photo:Buffer|undefined;deviceToken:string|undefined;proofKind:'google_key_generation_proof';verification:'command_signature'})=>Promise<T>){
+  async consume<T>(ctx:SessionContext,raw:AndroidClockSignatureInput,proof:{challengeId:string;signature:Buffer},operation:(tx:Tx,checked:{context:OnlineClockIntegrityData;photo:Buffer|undefined;deviceToken:string|undefined;proofKind:'google_key_generation_proof';verification:'command_signature';currentIntegrity?:AndroidClockCurrentAssessment})=>Promise<T>){
    const p=snapshot(raw),challengeId=uuid.parse(proof.challengeId);
    if(!Buffer.isBuffer(proof.signature)||proof.signature.length<8||proof.signature.length>72)throw new AndroidClockCommandError('invalid_command');
    const signature=Buffer.from(proof.signature);
-   return consumeOwnIntegrityChallenge(ctx,{...intent(p),challengeId},async(tx,challenge)=>{
+   const bound={...intent(p),challengeId};
+   let current:Awaited<ReturnType<NonNullable<AndroidClockSignaturePorts['verifyCurrent']>>>|undefined;
+   if(ports.verifyCurrent){
+    const challenge=await readOwnIntegrityChallenge(ctx,bound);
+    if(challenge.state==='active'){
+     const context=data(ctx,p,challenge);
+     // A direct caller with another key/signature must not spend a vendor request. This read-only
+     // precheck is not acceptance: repeat all authorization/key/signature checks under the locks.
+     try{
+      await withAttendanceTenant(ctx,async tx=>{
+       const enrolled=await key(tx,ctx,p,false);if(enrolled.installationId!==challenge.installationId)throw new AndroidClockCommandError('key_unavailable');
+       checkAndroidClockSignature({publicKey:createPublicKey({key:enrolled.publicKeySpki,type:'spki',format:'der'}),signature,clientData:context,expectedAppId:config.target.packageName,allowedBuildVersions:config.target.versionCodes});
+       await fresh(tx,challenge);
+      });
+      current=await ports.verifyCurrent(context,challenge);
+     }
+     catch(error){
+      // Google may clear a concurrent reuse after another request committed this exact receipt.
+      // Observe consumption again; never turn a failed vendor check into a fresh business write.
+      const latest=await readOwnIntegrityChallenge(ctx,bound);
+      if(latest.state==='consumed')return consumeOwnIntegrityChallenge<T>(ctx,bound,async()=>{throw error;});
+      throw error;
+     }
+    }
+   }
+   return consumeOwnIntegrityChallenge(ctx,bound,async(tx,challenge)=>{
     const enrolled=await key(tx,ctx,p,true);if(enrolled.installationId!==challenge.installationId)throw new AndroidClockCommandError('key_unavailable');
     const context=data(ctx,p,challenge);
     checkAndroidClockSignature({publicKey:createPublicKey({key:enrolled.publicKeySpki,type:'spki',format:'der'}),signature,clientData:context,expectedAppId:config.target.packageName,allowedBuildVersions:config.target.versionCodes});
     await fresh(tx,challenge);
-    const value=await operation(tx,{context,photo:p.photo,deviceToken:p.deviceToken,proofKind:'google_key_generation_proof',verification:'command_signature'});
+    if(ports.verifyCurrent&&!current)throw new AndroidClockCommandError('configuration_unavailable');
+    await current?.assertFresh(tx,context);
+    const value=await operation(tx,{context,photo:p.photo,deviceToken:p.deviceToken,proofKind:'google_key_generation_proof',verification:'command_signature',...(current?{currentIntegrity:current.assessment}:{})});
     await ports.beforeCommit?.(tx);
+    await current?.assertFresh(tx,context);
     await own(tx,ctx,p);await fresh(tx,challenge);
     await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'mobile-integrity-challenge',aggregateId:challengeId,eventType:'mobile.integrity.signature.checked',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,
      payload:{keyId:enrolled.id,proofKind:'google_key_generation_proof',verification:'command_signature'}});

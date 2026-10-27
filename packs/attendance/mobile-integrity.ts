@@ -12,3 +12,4 @@ export {createAndroidEnrollmentService,AndroidKeyEnrollmentError} from '../../co
 export {readMobileEnrollmentConfiguration,assertMobileEnrollmentCommit} from '../../core/mobile-enrollment-rollout';
 export {createAndroidClockService} from './mobile-android-clock';
 export {AndroidClockCommandError} from '../../core/mobile-android-clock-signature';
+export {createAndroidVerifiedClockService,AndroidClockIntegrityError} from './mobile-android-verified-clock';

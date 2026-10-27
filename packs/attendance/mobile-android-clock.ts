@@ -1,7 +1,7 @@
 /** Internal signed online clock carrier. Deployment configuration is not loaded by a public route. */
 import {and,eq} from 'drizzle-orm';
 import {z} from 'zod';
-import type {SessionContext,Tx} from '../../db/client';
+import type {SessionContext} from '../../db/client';
 import {attendanceClockCapture,domainEvent} from '../../db/schema';
 import {actorOf,appendEvent} from '../../db/events';
 import {clockCommandContext} from '../../lib/clock-command-context';
@@ -10,12 +10,12 @@ import {OutsideGeofenceError,appendGeofenceBlockedEvent} from '../../core/attend
 import {withAttendanceTenant} from '../../core/module-gate';
 import {myOwnEmploymentSubjectsTx} from '../../core/read';
 import {OwnClockEmploymentUnavailableError} from '../../core/attendance-clock-subject';
-import {createAndroidClockSignatureService,type AndroidClockSignatureInput} from '../../core/mobile-android-clock-signature';
+import {createAndroidClockSignatureService,type AndroidClockSignatureInput,type AndroidClockSignaturePorts} from '../../core/mobile-android-clock-signature';
 
-/** The audit link describes checked historical enrollment evidence; no trust tier or assertion of
- * physical presence is created. Native receipt recovery remains available separately.
+/** The audit link keeps the command signature, historical enrollment and optional current-device
+ * assessment distinct. No physical-presence claim or trust tier is created; recovery stays separate.
  */
-export function createAndroidClockService(settings:unknown,ports:{beforeCommit?:(tx:Tx)=>Promise<void>}={}){
+export function createAndroidClockService(settings:unknown,ports:AndroidClockSignaturePorts={}){
   const assertions=createAndroidClockSignatureService(settings,ports);
   return {
     begin:assertions.begin,
@@ -30,7 +30,8 @@ export function createAndroidClockService(settings:unknown,ports:{beforeCommit?:
             ...(checked.photo?{photo:checked.photo,mime:photoMetadata!.mimeType}:{}),deviceToken:checked.deviceToken},tx);
           await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'attendance-clock-capture',aggregateId:receipt.id,
             eventType:'attendance.clock.integrity.checked',actor:actorOf(ctx),subjectEmploymentId:scope.employmentId,
-            payload:{challengeId:checked.context.challenge.id,keyId:scope.deviceKeyId,proofKind:checked.proofKind,verification:checked.verification}});
+            payload:{challengeId:checked.context.challenge.id,keyId:scope.deviceKeyId,proofKind:checked.proofKind,verification:checked.verification,
+              ...(checked.currentIntegrity?{currentIntegrity:checked.currentIntegrity}:{})}});
           return receipt;
         });
         if(result.state==='consumed')return result.value;
