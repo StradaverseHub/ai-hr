@@ -10,6 +10,7 @@ import {fileURLToPath} from 'node:url';
 import {createRequire} from 'node:module';
 import {spawn,execFileSync} from 'node:child_process';
 import {createHash,randomUUID,randomBytes} from 'node:crypto';
+import {ownedAiDeliveryProcessMembers} from './ai-delivery-process-members.ts';
 import {AI_DELIVERY_BROWSER_TARGET as target,assertAiDeliveryBrowserAdmission} from './ai-delivery-browser-fixture.ts';
 const mainwt='/Users/zenlam/Projects/ai-hr/.claude/worktrees/mainwt',filename=fileURLToPath(import.meta.url),root=path.resolve(path.dirname(filename),'..');
 const tsxLoader=createRequire(path.join(root,'package.json')).resolve('tsx');
@@ -47,7 +48,7 @@ if(!worker.length){
  const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
  // The Python coordinator starts this worker in its own session. Descendants MUST stay in
  // that group so abnormal worker death cannot release leases while an escaped server survives.
- const members=()=>execFileSync('ps',['-Ao','pid=,pgid=,stat='],{encoding:'utf8'}).trim().split('\n').map(line=>line.trim().split(/\s+/)).filter(([pid,pgid,status])=>Number(pgid)===process.pid&&Number(pid)!==process.pid&&!status.startsWith('Z')).map(([pid])=>Number(pid));
+ const members=()=>ownedAiDeliveryProcessMembers(process.pid);
  const signal=(_child,sig)=>{for(const pid of members())if(members().includes(pid))try{process.kill(pid,sig);}catch(error){if(error.code!=='ESRCH')throw error;}};
  async function stopOwned(child){if(!child)return;signal(child,'SIGTERM');const deadline=Date.now()+7500;while(members().length&&Date.now()<deadline)await sleep(100);if(members().length)signal(child,'SIGKILL');while(members().length)await sleep(250);}
  async function portFree(){const probe=net.createServer();await new Promise((resolve,reject)=>{probe.once('error',()=>reject(Error('Reserved3177 is occupied; no process will be killed.')));probe.listen({host:'127.0.0.1',port:target.port,exclusive:true},()=>probe.close(resolve));});}
@@ -65,7 +66,7 @@ if(!worker.length){
   const [physical]=await admin`select current_user as name,host(inet_server_addr()) as address,inet_server_port() as port,rolsuper,rolcreatedb from pg_roles where rolname=current_user`;
   if(physical?.name!==decodeURIComponent(ownerUrl.username)||physical.port!==5433||!['127.0.0.1','::1'].includes(physical.address)||!physical.rolsuper&&!physical.rolcreatedb)throw Error('Local database-creation principal proof failed.');
   if((await admin`select datname from pg_database where datname=${target.database}`).length)throw Error('Named database already exists; preserve it and refuse.');
-  frozen();await admin.unsafe('CREATE DATABASE aihr_ai_delivery_browser_20261027');await admin.end();admin=undefined;
+  frozen();await admin.unsafe('CREATE DATABASE aihr_ai_delivery_browser_v2_20261027');await admin.end();admin=undefined;
   const migrationConfig=path.join(attempt,'drizzle-ai-delivery.config.ts');
   fs.writeFileSync(migrationConfig,`import {defineConfig} from 'drizzle-kit';\nconst url=process.env.MIGRATION_DATABASE_URL;if(!url||new URL(url).pathname!=='/${target.database}')throw Error('Exact local browser target required');\nexport default defineConfig({schema:${JSON.stringify(path.join(root,'db/schema.ts'))},out:${JSON.stringify(path.join(root,'db/migrations'))},dialect:'postgresql',dbCredentials:{url},strict:true});\n`,{flag:'wx',mode:0o600});
   await run('pnpm',['--dir',root,'exec','drizzle-kit','migrate','--config',migrationConfig],'migrate',300000);
