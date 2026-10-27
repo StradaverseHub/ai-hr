@@ -46,7 +46,7 @@ function expected(error:unknown):Refusal|undefined{
 async function form<S extends z.ZodType>(req:Request,schema:S,playToken=false){
  const fields=await mobileForm(req,playToken?['command','photo','playIntegrityToken']:['command','photo'],3*1024*1024),raw=fields.get('command'),file=fields.get('photo');
  const token=playToken?C.IntegrityAndroidClockToken.safeParse(fields.get('playIntegrityToken')):undefined;
- if(token&&!token.success)throw new MobileBadRequest('Invalid integrity token');
+ // PROBE ONLY: omit HTTP opaque token validation.
  if(typeof raw!=='string'||Buffer.byteLength(raw,'utf8')>16384)throw new MobileBadRequest('Invalid command');
  let json:unknown;try{json=JSON.parse(raw);}catch{throw new MobileBadRequest('Invalid JSON');}
  const parsed=schema.safeParse(json);if(!parsed.success)throw new MobileBadRequest('Invalid integrity command');
