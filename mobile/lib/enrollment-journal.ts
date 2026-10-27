@@ -1,5 +1,6 @@
 /** Local enrollment recovery. Only the server owns key enrollment/authorization; no trust tier here. */
 import {z} from 'zod';
+import {ClockSigningKey} from './clock-signing-key';
 import {AppleEnrollmentSettings,keyEnrollmentClientData,nativeKeyBindingData} from '../../lib/mobile-key-enrollment';
 import * as C from '../../lib/mobile-integrity-contract';
 import type {createIntegrityBridge} from './integrity-bridge';
@@ -151,6 +152,18 @@ export function createEnrollmentJournal(rawScope:EnrollmentScope,ports:Enrollmen
     await release({...original,key});return status(next);
   }
   return {
+    /** Fresh receipt + local native reference only. Never generates/attests or adopts a retired key. */
+    signingKey:(employmentId:string)=>exclusive(queue,async()=>{
+      const selected=uuid.parse(employmentId);let s=await read();
+      if(!s.key||s.pending||revocationPending(s)||s.key.key.revokedAt!==null)throw new EnrollmentConflict();
+      const result=await reconcileStored(s,selected);if('reason' in result&&result.reason)throw new EnrollmentJournalUnavailable();
+      s=await read();if(!s.key||revocationPending(s)||s.key.key.revokedAt!==null)throw new EnrollmentConflict();
+      const record=s.key,reference=await keyReference(record.prepared);
+      if('reason' in reference||reference.vendorKeyId!==record.vendorKeyId)throw new EnrollmentConflict();
+      const c=record.prepared.context;
+      return ClockSigningKey.parse({platform:'ios',apiOrigin:c.apiOrigin,actorId:c.actorId,appInstallationId:c.appInstallationId,
+       installationId:c.installationId,tenantId:c.tenantId,keyId:record.key.keyId,appId:record.key.appId,nativeReference:record.vendorKeyId});
+    }),
     status:()=>exclusive(queue,async()=>{const s=await read();if(s.key)await release(s.key);return status(s);}),
     /** Exact receipt recovery only: no prepare, attestation, proof upload or revocation replay. */
     reconcile:(employmentId:string)=>exclusive(queue,async()=>{

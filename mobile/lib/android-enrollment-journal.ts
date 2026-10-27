@@ -1,5 +1,6 @@
 /** Durable Android enrollment intent/proof/receipt model. Cached receipts never authorize attendance. */
 import {z} from 'zod';
+import {ClockSigningKey} from './clock-signing-key';
 import {AndroidEnrollmentKeyArtifact,AndroidEnrollmentPreparation,androidEnrollmentClientData,androidEnrollmentAliasData,androidNativeKeyReferenceData} from '../../lib/mobile-android-enrollment';
 import {nativeKeyBindingData} from '../../lib/mobile-key-enrollment';
 import * as C from '../../lib/mobile-integrity-contract';
@@ -117,6 +118,18 @@ export function createAndroidEnrollmentJournal(rawScope:EnrollmentScope,ports:An
   return register(s,{employmentId:current.employmentId,requestId:current.requestId,prepared:preparedRef},publicKeySpki,key);
  }
  return {
+  /** Fresh receipt + exact existing native SPKI only; no generation or proof upload. */
+  signingKey:(employmentId:string)=>exclusive(queue,async()=>{
+   const selected=uuid.parse(employmentId);let s:State=await read();
+   if(!s.key||s.pending||s.version===2||s.key.key.revokedAt!==null)throw new EnrollmentConflict();
+   const result=await reconcileKey(s,selected);if(result.reason)throw new EnrollmentJournalUnavailable();s=result.state;
+   if(!s.key||s.version===2||s.key.key.revokedAt!==null)throw new EnrollmentConflict();
+   const record=s.key,native=await owned(()=>ports.native.read(record.prepared));
+   if(native.status!=='evidence'||native.evidence.publicKeySpki!==record.publicKeySpki)throw new EnrollmentConflict();
+   const c=record.prepared.context;
+   return ClockSigningKey.parse({platform:'android',apiOrigin:c.apiOrigin,actorId:c.actorId,appInstallationId:c.appInstallationId,
+    installationId:c.installationId,tenantId:c.tenantId,keyId:record.key.keyId,appId:record.key.appId,nativeReference:record.prepared.alias});
+  }),
   status:()=>exclusive(queue,async()=>status(await read())),
   /** Receipt-only recovery is available even when new enrollment is disabled. */
   reconcile:(employmentId:string)=>exclusive(queue,async()=>{

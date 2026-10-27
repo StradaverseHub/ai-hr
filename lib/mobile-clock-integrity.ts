@@ -10,6 +10,11 @@ const origin=z.string().max(300).refine(value=>{
   catch{return false;}
 });
 
+/** Reported source facts; null means unavailable and false is not authenticity assurance. */
+export const ClockSourceSignals=z.object({provider:z.string().min(1).max(80).regex(/^[A-Za-z0-9._-]+$/).nullable(),
+ mock:z.boolean().nullable(),simulated:z.boolean().nullable(),accessory:z.boolean().nullable()}).strict();
+export type ClockSourceSignals=z.infer<typeof ClockSourceSignals>;
+
 export const OnlineClockIntegrityData=z.object({
   version:z.literal(1),purpose:z.literal('attendance.clock.online'),
   // The server must supply this origin from deployment configuration, never Host/Forwarded headers.
@@ -26,8 +31,7 @@ export const OnlineClockIntegrityData=z.object({
   // Client-reported source facts. null means unavailable; false adds no authenticity assurance.
   evidence:z.object({platform:z.enum(['ios','android']),appId:z.string().min(1).max(200),
     appVersion:z.string().min(1).max(64),buildVersion:z.string().min(1).max(64),
-    provider:z.string().min(1).max(80).regex(/^[A-Za-z0-9._-]+$/).nullable(),
-    mock:z.boolean().nullable(),simulated:z.boolean().nullable(),accessory:z.boolean().nullable(),
+    ...ClockSourceSignals.shape,
   }).strict(),
 }).strict();
 export type OnlineClockIntegrityData=z.infer<typeof OnlineClockIntegrityData>;

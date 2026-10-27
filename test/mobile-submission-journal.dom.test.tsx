@@ -154,3 +154,27 @@ describe('journal commit pointer crash boundaries',()=>{
     await expect(f.store().commit({version:1,revision:2,scope,entries:[]})).rejects.toThrow('revision changed');
   });
 });
+
+
+describe('signed-mode persistence and failed acknowledgement recovery',()=>{
+ it('binds signed mode and nullable source facts into the saved digest across restarts',async()=>{
+  const f=fixture(),source={provider:null,mock:false,simulated:null,accessory:null};
+  const entry=await f.journal.stage('clock',clock,file,source);source.mock=true;
+  expect(f.stored()?.version).toBe(3);expect(entry.integrity?.source.mock).toBe(false);
+  const restarted=createSubmissionJournal(scope,f.ports);expect(await restarted.restore(entry)).toEqual({command:clock,file});
+  await expect(restarted.stage('clock',clock,file)).rejects.toBeInstanceOf(PendingSubmissionConflict);
+  await expect(restarted.stage('clock',clock,file,source)).rejects.toBeInstanceOf(PendingSubmissionConflict);
+ });
+ it('rereads the commit pointer when a successful write loses its acknowledgement',async()=>{
+  const f=fixture();await f.journal.pending();
+  vi.mocked(f.ports.commit).mockImplementationOnce(async value=>{vi.mocked(f.ports.read).mockResolvedValue(structuredClone(value));throw new Error('ack lost');});
+  await expect(f.journal.stage('clock',clock)).rejects.toThrow('ack lost');
+  expect(await f.journal.pending()).toHaveLength(1);
+ });
+ it('discards only its restored plaintext when evidence verification fails',async()=>{
+  const f=fixture(),entry=await f.journal.stage('clock',clock,file);f.ports.discardRestored=vi.fn(async()=>{});
+  vi.mocked(f.ports.readEvidence).mockResolvedValue(new Uint8Array([9,9,9]));
+  await expect(f.journal.restore(entry)).rejects.toBeInstanceOf(SubmissionJournalUnavailable);
+  expect(f.ports.discardRestored).toHaveBeenCalledWith(file);expect(f.ports.deleteEvidence).not.toHaveBeenCalled();
+ });
+});

@@ -6,6 +6,7 @@ import { createSubmissionJournal, SubmissionJournalFull, SubmissionJournalUnavai
 import { createSubmissionStorage,createSealedJournalStorage } from './submission-storage';
 import {createEnrollmentJournal,parseEnrollmentSnapshot,EnrollmentScope,EnrollmentJournalUnavailable,type EnrollmentPorts} from './enrollment-journal';
 import {createAndroidEnrollmentJournal,parseAndroidEnrollmentSnapshot,type AndroidEnrollmentPorts} from './android-enrollment-journal';
+import {createSignedClockJournal,parseSignedClockSnapshot,type SignedClockPorts} from './signed-clock-journal';
 import NativeIntegrity from '../modules/aihr-integrity/src/AihrIntegrityModule';
 import {createIntegrityBridge} from './integrity-bridge';
 
@@ -110,9 +111,10 @@ export async function openNativeSubmissionJournal(scope:SubmissionScope,assertCu
       const bytes=await open(encrypted,name);assertCurrent();
       if(bytes.byteLength!==metadata.size)throw new SubmissionJournalUnavailable('Pending evidence changed');
       const cache=new Directory(Paths.cache,'aihr-journeys');if(!cache.exists)cache.create({intermediates:true});
-      const restored=new File(cache,randomUUID());restored.write(bytes);
+      const restored=new File(cache,randomUUID());try{restored.write(bytes);}catch(error){try{if(restored.exists)restored.delete();}catch{}throw error;}
       return {uri:restored.uri,name:metadata.name,mimeType:metadata.mimeType,size:metadata.size};
     },
+    async discardRestored(file){const restored=new File(file.uri);if(restored.exists)restored.delete();},
     async deleteEvidence(reference){assertCurrent();const file=new File(directory,evidenceName(reference));if(file.exists)file.delete();},
   });
 }
@@ -127,23 +129,23 @@ export async function nativeIntegrityInstallationId(assertCurrent:()=>void){
     if(old!==null){if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(old))throw new EnrollmentJournalUnavailable();return old.toLowerCase();}
     // Losing this pointer must not select a new, empty scope while old encrypted enrollment work
     // remains. Legacy submission-only installations can still initialize their first enrollment ID.
-    if(root().exists&&root().list().some(item=>/^(?:android-)?enrollment-/.test(item.name)))throw new EnrollmentJournalUnavailable();
+    if(root().exists&&root().list().some(item=>/^(?:(?:android-)?enrollment|signed-clock)-/.test(item.name)))throw new EnrollmentJournalUnavailable();
     const id=randomUUID();await SecureStore.setItemAsync(pointer,id,OPTIONS);assertCurrent();return id;
   });
 }
 
 /** One encrypted storage owner with distinct protocol AAD/pointers. Legacy Apple bytes keep their
  * original domain; Android cannot interpret or overwrite that journal. Opening performs no send. */
-async function nativeEnrollmentStorage<T extends {revision:number;pending:unknown}>(scope:EnrollmentScope,assertCurrent:()=>void,parse:(value:unknown)=>T,domain:'enrollment-v1'|'android-enrollment-v1'){
+async function nativeEnrollmentStorage<T extends {revision:number;pending:unknown}>(scope:EnrollmentScope,assertCurrent:()=>void,parse:(value:unknown)=>T,domain:'enrollment-v1'|'android-enrollment-v1'|'signed-clock-v1',resolving:(snapshot:T)=>boolean=snapshot=>!snapshot.pending){
   assertCurrent();
-  const prefix=domain==='enrollment-v1'?'enrollment':'android-enrollment';
+  const prefix=domain==='enrollment-v1'?'enrollment':domain==='android-enrollment-v1'?'android-enrollment':'signed-clock';
   const scopeId=await hash(JSON.stringify([domain,scope.namespace,scope.apiOrigin,scope.actorId,scope.appInstallationId]));assertCurrent();
   const key=await encryptionKey(assertCurrent);assertCurrent();
   const keyId=await hash(await key.encoded('base64'));assertCurrent();
   const pointer=`aihr.${prefix}.${keyId.slice(0,16)}.${scopeId}`,directory=new Directory(root(),`${prefix}-${scopeId}`);
   // Apple retains up to fifteen predecessor contexts beside a 64 KiB attestation (base64 in JSON).
   // Keep that bounded history and one-use proof recoverable together; install-wide quota is unchanged.
-  const maximum=domain==='enrollment-v1'?262144:131072;
+  const maximum=domain==='enrollment-v1'?262144:domain==='android-enrollment-v1'?131072:65536;
   const aad=new TextEncoder().encode(`aihr-${domain}:${scopeId}:journal`);
   const file=(slot:0|1)=>new File(directory,`journal-${slot}.sealed`);
   const reclaim=(revision:number)=>{assertCurrent();const old=file((1-revision%2) as 0|1);if(old.exists)old.delete();};
@@ -158,7 +160,7 @@ async function nativeEnrollmentStorage<T extends {revision:number;pending:unknow
     async writeSlot(slot,bytes,snapshot){
       assertCurrent();const f=file(slot),used=root().exists?root().size:0;
       if(used==null||!Number.isFinite(used)||used<0)throw new EnrollmentJournalUnavailable();
-      if(snapshot.pending&&used+Math.max(0,bytes.byteLength-(f.exists?f.size:0))>MAX_INSTALL_BYTES)throw new EnrollmentJournalUnavailable();
+      if(!resolving(snapshot)&&used+Math.max(0,bytes.byteLength-(f.exists?f.size:0))>MAX_INSTALL_BYTES)throw new EnrollmentJournalUnavailable();
       if(!directory.exists)directory.create({intermediates:true});f.write(bytes);
     },
     async seal(bytes){assertCurrent();const result=await aesEncryptAsync(bytes,key,{additionalData:aad});assertCurrent();return result.combined();},
@@ -177,4 +179,11 @@ export async function openNativeEnrollmentJournal(rawScope:EnrollmentScope,asser
 export async function openNativeAndroidEnrollmentJournal(rawScope:EnrollmentScope,assertCurrent:()=>void,ports:Omit<AndroidEnrollmentPorts,'assertCurrent'|'read'|'commit'|'digest'>){
   const scope=EnrollmentScope.parse(rawScope),storage=await nativeEnrollmentStorage(scope,assertCurrent,value=>parseAndroidEnrollmentSnapshot(value,scope),'android-enrollment-v1');
   return createAndroidEnrollmentJournal(scope,{...ports,assertCurrent,...storage});
+}
+
+/** One installed-account lease across employments; no proof or network action while opening. */
+export async function openNativeSignedClockJournal(rawScope:EnrollmentScope,assertCurrent:()=>void,ports:Omit<SignedClockPorts,'assertCurrent'|'read'|'commit'>){
+ const scope=EnrollmentScope.parse(rawScope),storage=await nativeEnrollmentStorage(scope,assertCurrent,value=>parseSignedClockSnapshot(value,scope),'signed-clock-v1',
+  snapshot=>!snapshot.pending||snapshot.pending.phase==='settled');
+ return createSignedClockJournal(scope,{...ports,assertCurrent,read:storage.read,commit:storage.commit});
 }

@@ -4,6 +4,7 @@ import { runInNewContext } from 'node:vm';
 import { ModuleKind, transpileModule } from 'typescript';
 import { describe, expect, it, vi } from 'vitest';
 import * as journal from '../mobile/lib/submission-journal';
+import * as signedClock from '../mobile/lib/signed-clock-journal';
 import * as storage from '../mobile/lib/submission-storage';
 import * as enrollment from '../mobile/lib/enrollment-journal';
 import * as androidEnrollment from '../mobile/lib/android-enrollment-journal';
@@ -72,6 +73,7 @@ function fixture(nativeAvailable=true){
     if(id==='expo-secure-store')return secure;if(id==='expo-crypto')return crypto;
     if(id==='../modules/aihr-integrity/src/AihrIntegrityModule')return {default:nativeAvailable?nativeReset:null};
     if(id==='./integrity-bridge')return {createIntegrityBridge};
+    if(id==='./signed-clock-journal')return signedClock;
     if(id==='./submission-journal')return journal;if(id==='./submission-storage')return storage;if(id==='./enrollment-journal')return enrollment;if(id==='./android-enrollment-journal')return androidEnrollment;throw new Error(id);
   }});
   return {native:output.exports,files,directories,secrets,secure,nativeReset,occupy:(bytes:number)=>{occupiedBytes=bytes;}};
