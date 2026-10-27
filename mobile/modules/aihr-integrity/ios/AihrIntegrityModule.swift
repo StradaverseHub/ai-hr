@@ -15,6 +15,7 @@ private enum KeyStorageError: Error { case unavailable, invalidKey }
 public class AihrIntegrityModule: Module {
   private static let requests = KeyRequests()
   private static let proofs = AppAttestProofStore(persistence: AppAttestKeychainProofPersistence())
+  private static let assertions = AppAttestAssertionStore(persistence: AppAttestKeychainAssertionPersistence())
   private static let runtimeId = UUID().uuidString.lowercased()
   public func definition() -> ModuleDefinition {
     Name("AihrIntegrity")
@@ -95,11 +96,13 @@ public class AihrIntegrityModule: Module {
         promise.reject("ERR_INTEGRITY_IN_PROGRESS", "Retain the pending enrollment"); return
       }
       do {
-        try Self.proofs.resetInstallation {
-          let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "aihr.integrity.app-attest.v1"]
-          let status = SecItemDelete(query as CFDictionary)
-          guard status == errSecSuccess || status == errSecItemNotFound else { throw AppAttestProofError.storageUnavailable }
+        try Self.assertions.resetInstallation {
+          try Self.proofs.resetInstallation {
+            let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+              kSecAttrService as String: "aihr.integrity.app-attest.v1"]
+            let status = SecItemDelete(query as CFDictionary)
+            guard status == errSecSuccess || status == errSecItemNotFound else { throw AppAttestProofError.storageUnavailable }
+          }
         }
         promise.resolve(nil)
       } catch { self.reject(error, promise) }
@@ -121,6 +124,39 @@ public class AihrIntegrityModule: Module {
         }, completion: { result in
           switch result {
           case .success(let data): promise.resolve(data.base64EncodedString())
+          case .failure(let error): self.reject(error, promise)
+          }
+        })
+    }
+
+    AsyncFunction("appleOfflineProofInfo") { (id: String, hash: String, promise: Promise) in
+      do {
+        switch try Self.assertions.snapshot(keyId: id, hash: hash) {
+        case .absent: promise.resolve(["state": "absent"])
+        case .requested(let canRetry): promise.resolve(["state": "requested", "canRetry": canRetry])
+        case .retryable: promise.resolve(["state": "retryable"])
+        case .completed(let proof): promise.resolve(["state": "completed", "assertion": proof.base64EncodedString()])
+        }
+      } catch { self.reject(error, promise) }
+    }
+    AsyncFunction("releaseAppleOfflineProof") { (id: String, hash: String, promise: Promise) in
+      do { try Self.assertions.release(keyId: id, hash: hash); promise.resolve(nil) }
+      catch { self.reject(error, promise) }
+    }
+    AsyncFunction("assertAppleOfflineKey") { (id: String, hash: String, promise: Promise) in
+      guard DCAppAttestService.shared.isSupported else { self.unsupported(promise); return }
+      guard self.validKeyId(id), let data = self.hashData(hash) else { self.invalid(promise); return }
+      Self.assertions.request(keyId: id, hash: hash,
+        retryable: { ($0 as? DCError)?.code == .serverUnavailable },
+        vendor: { complete in
+          DCAppAttestService.shared.generateAssertion(id, clientDataHash: data) { result, error in
+            if let error { complete(.failure(error)) }
+            else if let result { complete(.success(result)) }
+            else { complete(.failure(AppAttestProofError.malformedProof)) }
+          }
+        }, completion: { result in
+          switch result {
+          case .success(let proof): promise.resolve(proof.base64EncodedString())
           case .failure(let error): self.reject(error, promise)
           }
         })

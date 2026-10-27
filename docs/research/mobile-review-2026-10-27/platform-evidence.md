@@ -1973,3 +1973,21 @@ The coordinator published reservation registry commit `151b39c36` on
 bytes remain unchanged. Central integration must reconcile the complete pending union and fresh
 actual applied ledger before assigning forward metadata; 0641-before-0640 remains required.
 No migration journal or database has been changed by this reservation.
+
+### Durable offline capture and evidence handoff (27 October 2026)
+
+Checkpoint `7f379cfa5ea8e9992b4e2bf71a58abd9c3197aee` passed
+[40532250909](https://github.com/StradaverseHub/ai-hr/actions/runs/40532250909): 176 cases in eight files
+(native encrypted storage 33, shared offline owner 28, employee screens 39, submission recovery 19,
+signed journal 20, claim bytes 16, owned assembly 8, elapsed helper 13), root/native TypeScript and
+both production bundles. Root compilation took 4:28.72, maximum RSS 7,834,732 KiB, exit 0. iOS bundled
+1,369 modules in 33,476 ms; Android bundled 1,501 in 42,751 ms.
+
+The native storage tests execute the shipped adapter with actual AES-GCM/SHA-256 and filesystem/
+Keychain ports. They verify two retained photos across successive offline captures after freeing
+only the original base slots, restart reads, quota refusal/recovery, phase-only progress at the cap,
+metadata/content tampering and cross-account refusal. Images are synthetic integrity-test bytes,
+not JPEG decoder or OS image-capture evidence. The owner cases cover immutable permits/chain links,
+interrupted commits/photo transfer/base release, duplicate requests, unknown iPhone restart timing,
+source privacy and operation ownership. These results do not establish a live offline controller,
+device proofs, sync, attendance acceptance or physical OS/vendor behavior.

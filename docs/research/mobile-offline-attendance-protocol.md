@@ -265,3 +265,9 @@ later local signing; this still needs actual airplane-mode/device measurements. 
 non-exportable key operations but also warns that a compromised process may still invoke its keys.
 Neither source establishes trusted GPS/capture time. Sync-time integrity cannot be presented as proof
 of capture-time integrity; server verification, policy and auditable review remain necessary.
+
+The native iPhone assertion handoff cache and its host-model CI path are described in ADR-0147.
+The application proof journal must own a completed proof before releasing that cache and must keep
+online/offline counter order serialized. Native cache support alone does not provide an offline
+signing flow. The one-use enrollment cache is unchanged; its requested-state recovery rules must
+not be relaxed to match repeatable assertion semantics.

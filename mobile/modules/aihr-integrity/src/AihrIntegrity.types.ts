@@ -8,6 +8,9 @@ export type NativeIntegrityModule = {
   releaseAppleAttestation(keyId: string, clientDataHash: string): Promise<unknown>;
   resetAppleIntegrityInstallation(): Promise<unknown>;
   attestAppleKey(keyId: string, clientDataHash: string): Promise<unknown>;
+  appleOfflineProofInfo?(keyId: string, clientDataHash: string): Promise<unknown>;
+  assertAppleOfflineKey?(keyId: string, clientDataHash: string): Promise<unknown>;
+  releaseAppleOfflineProof?(keyId: string, clientDataHash: string): Promise<unknown>;
   assertAppleKey(keyId: string, clientDataHash: string): Promise<unknown>;
   createAndroidKey(alias: string, challenge: string, strongBox: boolean): Promise<unknown>;
   androidKeyInfo(alias: string): Promise<unknown>;

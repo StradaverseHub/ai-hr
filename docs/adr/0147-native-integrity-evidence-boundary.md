@@ -1123,3 +1123,40 @@ the original attempt reference/claimed time for later attempt reporting, without
 or authorizing a punch. This remains an unverified local claim; it does not provide cold offline
 sign-in or replace fresh authorization for a server effect. Known unresolved signed work and
 privacy ownership still prevent new capture/proof/upload.
+
+## Offline iPhone assertion handoff cache
+
+Offline assertions have a separate native cache (`AppAttestAssertionStore`) and API from the one-use
+enrollment cache. One unresolved payload hash owns each key slot. Intent is committed before
+`generateAssertion`; a bounded completed assertion is committed before returning it to JavaScript.
+Completed bytes survive a UI deadline, lost reply or process restart. A storage-failed completion
+stays with the bounded live native owner and is flushed before a subsequent read can return it.
+Generation tokens prevent stale/duplicate callbacks from replacing a current result. Another payload
+hash cannot replace unresolved work.
+
+The process marker is native-private. A requested operation in the same process remains held;
+creating another store instance does not count as process loss. After an actual process replacement,
+an explicit retry may regenerate only the same immutable assertion payload. Unlike one-use key
+attestation, this can leave an unused counter gap; the server's assertion verifier requires a strict
+increase, not consecutive counters. This relies on the calling journal retaining the immutable
+command, committing proof before upload and preserving its single account-wide ordering owner.
+The new native API is not wired to a live offline signing controller yet. An OS process replacement
+means the old application callback cannot later publish into the new process; app extensions/shared
+cross-process Keychain access are outside this implementation and require a separate ownership review.
+
+Only after JavaScript durably owns the exact proof may it release the native handoff. Cleanup is
+idempotent when absent, refuses another hash and never deletes an active callback's record. Released
+assertions do not accumulate lifetime tombstones: the JavaScript proof journal now owns those bytes.
+This differs deliberately from enrollment cleanup, whose one-use key tombstone remains mandatory.
+The assertion store admits four active/uncommitted operations and sixteen unresolved Keychain slots,
+with an 8 KiB artifact/16 KiB record bound. It never evicts unresolved work for another key. The
+separate Keychain service uses unlocked/device-only, non-synchronizing records. Reinstall reset
+coordinates both caches before clearing installation aliases. Native snapshots/cleanup observations
+remain `not_verified`; none authorizes attendance or certifies capture location/time.
+
+The strict optional bridge methods report older binaries/cross-platform calls as unsupported without
+falling back to uncached assertion generation. The existing online assertion API remains unchanged.
+A default-off `run_native_swift_models` focused-CI input compiles and runs the actual Swift stores
+with synthetic persistence/vendor ports on a standard GitHub `macos-15` runner. It records compiler/
+SDK/OS and timing, pins the candidate/controller independently and uses no Mac runtime slot. It is
+host-model evidence, not an iOS app build, OS Keychain exercise, vendor acceptance or release gate.

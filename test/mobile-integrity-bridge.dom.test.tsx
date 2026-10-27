@@ -12,6 +12,9 @@ function fixture(){
     appleAttestationInfo:vi.fn<(...args:unknown[])=>Promise<unknown>>(async()=>({state:'absent'})),
     releaseAppleAttestation:vi.fn<(...args:unknown[])=>Promise<unknown>>(async()=>null),resetAppleIntegrityInstallation:vi.fn<(...args:unknown[])=>Promise<unknown>>(async()=>null),
     attestAppleKey:vi.fn<(...args:unknown[])=>Promise<unknown>>(async()=>Buffer.from('unverified platform artifact').toString('base64')),
+    appleOfflineProofInfo:vi.fn<(...args:unknown[])=>Promise<unknown>>(async()=>({state:'absent'})),
+    assertAppleOfflineKey:vi.fn<(...args:unknown[])=>Promise<unknown>>(async()=>Buffer.from('offline assertion').toString('base64')),
+    releaseAppleOfflineProof:vi.fn<(...args:unknown[])=>Promise<unknown>>(async()=>null),
     assertAppleKey:vi.fn<(...args:unknown[])=>Promise<unknown>>(async()=>Buffer.from('unverified assertion').toString('base64')),
     createAndroidKey:vi.fn<(...args:unknown[])=>Promise<unknown>>(async()=>({publicKeySpki:Buffer.from('unverified public key').toString('base64'),certificateChain:[Buffer.from('not a certificate').toString('base64')],reportedSecurityLevel:'software'})),
     androidKeyInfo:vi.fn<(...args:unknown[])=>Promise<unknown>>(async()=>({})),signAndroidCommand:vi.fn<(...args:unknown[])=>Promise<unknown>>(async()=>'c2ln'),
@@ -121,4 +124,38 @@ describe('native integrity evidence boundary',()=>{
     expect(result).toEqual({status:'unavailable',reason:'provider_expired'});expect(JSON.stringify(result)).not.toContain('SYNTHETIC_PRIVATE_VALUE');
     expect(f.native.preparePlayIntegrity).not.toHaveBeenCalled();
   });
+});
+
+it('reads offline assertion handoff state without generating a proof or claiming vendor verification',async()=>{
+ const f=fixture(),assertion=Buffer.from('retained assertion').toString('base64');expect(f.bridge.appleOfflineProofRecoverySupported()).toBe(true);
+ for(const state of [{state:'absent'},{state:'requested',canRetry:false},{state:'requested',canRetry:true},{state:'retryable'},{state:'completed',assertion}]){
+  f.native.appleOfflineProofInfo.mockResolvedValueOnce(state);expect(await f.bridge.appleOfflineProofInfo('same-key',hash)).toEqual({status:'evidence',evidence:state,verification:'not_verified'});
+ }
+ expect(f.native.assertAppleOfflineKey).not.toHaveBeenCalled();expect(f.native.assertAppleKey).not.toHaveBeenCalled();
+});
+it('refuses malformed offline proof records and keeps older binaries explicitly unsupported without using legacy signing',async()=>{
+ const f=fixture();
+ for(const state of [{state:'requested'},{state:'requested',canRetry:'yes'},{state:'requested',canRetry:true,processId:'private'},
+  {state:'completed',assertion:''},{state:'completed',assertion:Buffer.alloc(8193).toString('base64')},{state:'completed',assertion:'AB=='},{state:'released'}]){
+  f.native.appleOfflineProofInfo.mockResolvedValueOnce(state);expect(await f.bridge.appleOfflineProofInfo('same-key',hash)).toEqual({status:'unavailable',reason:'malformed'});
+ }
+ const old={...f.native};for(const name of ['appleOfflineProofInfo','assertAppleOfflineKey','releaseAppleOfflineProof'])Reflect.deleteProperty(old,name);
+ const bridge=createIntegrityBridge(old,()=>{});expect(bridge.appleOfflineProofRecoverySupported()).toBe(false);
+ expect(await bridge.appleOfflineProofInfo('same-key',hash)).toEqual({status:'unsupported',reason:'method_missing'});
+ expect(await bridge.assertAppleOfflineKey('same-key',hash)).toEqual({status:'unsupported',reason:'method_missing'});
+ expect(await bridge.releaseAppleOfflineProof('same-key',hash)).toEqual({status:'unsupported',reason:'method_missing'});
+ expect(f.native.assertAppleKey).not.toHaveBeenCalled();
+});
+it('binds explicit offline generation and native handoff cleanup to the same key/hash with bounded unverified outputs',async()=>{
+ const f=fixture();expect(await f.bridge.assertAppleOfflineKey('same-key',hash)).toMatchObject({status:'evidence',verification:'not_verified'});
+ expect(f.native.assertAppleOfflineKey).toHaveBeenCalledWith('same-key',hash);expect(f.native.assertAppleKey).not.toHaveBeenCalled();
+ expect(await f.bridge.releaseAppleOfflineProof('same-key',hash)).toEqual({status:'evidence',evidence:null,verification:'not_verified'});
+ f.native.releaseAppleOfflineProof.mockResolvedValueOnce({released:true});expect(await f.bridge.releaseAppleOfflineProof('same-key',hash)).toEqual({status:'unavailable',reason:'malformed'});
+ expect(await f.bridge.assertAppleOfflineKey('same-key',hash+'\n')).toEqual({status:'invalid',reason:'invalid_input'});expect(f.native.assertAppleOfflineKey).toHaveBeenCalledOnce();
+});
+it('does not publish a cached offline assertion after its authenticated operation owner changes',async()=>{
+ const f=fixture();let resolve!:(value:unknown)=>void;
+ f.native.appleOfflineProofInfo.mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));
+ const pending=f.bridge.appleOfflineProofInfo('same-key',hash);await Promise.resolve();f.changeAccount();resolve({state:'completed',assertion:Buffer.from('retained').toString('base64')});
+ await expect(pending).rejects.toBeInstanceOf(SessionChangedError);expect(f.native.assertAppleOfflineKey).not.toHaveBeenCalled();
 });

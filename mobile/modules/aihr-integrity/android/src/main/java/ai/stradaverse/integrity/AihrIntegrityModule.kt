@@ -128,6 +128,9 @@ class AihrIntegrityModule : Module() {
     AsyncFunction("resetAppleIntegrityInstallation") { promise: Promise -> reject(promise, "ERR_INTEGRITY_UNSUPPORTED") }
     AsyncFunction("generateAppleKey") { _: String, promise: Promise -> reject(promise, "ERR_INTEGRITY_UNSUPPORTED") }
     AsyncFunction("attestAppleKey") { _: String, _: String, promise: Promise -> reject(promise, "ERR_INTEGRITY_UNSUPPORTED") }
+    AsyncFunction("appleOfflineProofInfo") { _: String, _: String, promise: Promise -> reject(promise, "ERR_INTEGRITY_UNSUPPORTED") }
+    AsyncFunction("assertAppleOfflineKey") { _: String, _: String, promise: Promise -> reject(promise, "ERR_INTEGRITY_UNSUPPORTED") }
+    AsyncFunction("releaseAppleOfflineProof") { _: String, _: String, promise: Promise -> reject(promise, "ERR_INTEGRITY_UNSUPPORTED") }
     AsyncFunction("assertAppleKey") { _: String, _: String, promise: Promise -> reject(promise, "ERR_INTEGRITY_UNSUPPORTED") }
   }
 

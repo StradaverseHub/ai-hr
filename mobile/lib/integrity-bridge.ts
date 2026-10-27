@@ -27,6 +27,10 @@ const AppleAttestationSnapshot=z.discriminatedUnion('state',[
   z.object({state:z.literal('retryable')}).strict(),z.object({state:z.literal('completed'),attestation:blob(65536)}).strict(),
   z.object({state:z.literal('released')}).strict(),
 ]);
+export const AppleOfflineProofSnapshot=z.discriminatedUnion('state',[
+ z.object({state:z.literal('absent')}).strict(),z.object({state:z.literal('requested'),canRetry:z.boolean()}).strict(),
+ z.object({state:z.literal('retryable')}).strict(),z.object({state:z.literal('completed'),assertion:blob(8192)}).strict(),
+]);
 type Reason='bridge_missing'|'method_missing'|'unsupported'|'unavailable'|'server_unavailable'|'invalid_input'|'invalid_key'|'key_exists'|'binding_conflict'|'recovery_required'|'provider_expired'|'obsolete'|'in_progress'|'timeout'|'malformed';
 export type NativeIntegrityResult<T>={status:'evidence';evidence:T;verification:'not_verified'}|{status:'unsupported'|'unavailable'|'invalid';reason:Reason};
 const codes:Record<string,{status:'unsupported'|'unavailable'|'invalid';reason:Reason}>={
@@ -54,10 +58,10 @@ export function createIntegrityBridge(native:NativeIntegrityModule|null,assertCu
   }
   async function operation<T>(method:keyof NativeIntegrityModule,args:unknown[],schema:z.ZodType<T>):Promise<NativeIntegrityResult<T>>{
     assertCurrent();if(!native)return {status:'unsupported',reason:'bridge_missing'};
-    if(typeof native[method]!=='function')return {status:'unsupported',reason:'method_missing'};
+    const nativeMethod=native[method];if(typeof nativeMethod!=='function')return {status:'unsupported',reason:'method_missing'};
     let timer:ReturnType<typeof setTimeout>|undefined;
     try{
-      const result=await Promise.race([Promise.resolve().then(()=>{assertCurrent();return Reflect.apply(native[method],native,args);}),
+      const result=await Promise.race([Promise.resolve().then(()=>{assertCurrent();return Reflect.apply(nativeMethod,native,args);}),
         new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(timedOut),deadlineMs);})]);
       assertCurrent();const parsed=schema.safeParse(result);
       return parsed.success?{status:'evidence',evidence:parsed.data,verification:'not_verified'}:{status:'unavailable',reason:'malformed'};
@@ -67,6 +71,7 @@ export function createIntegrityBridge(native:NativeIntegrityModule|null,assertCu
   function valid(...results:Array<{success:boolean}>){assertCurrent();return results.every(result=>result.success);}
   const invalid={status:'invalid',reason:'invalid_input'} as const;
   return {
+    appleOfflineProofRecoverySupported:()=>{assertCurrent();return typeof native?.appleOfflineProofInfo==='function'&&typeof native?.assertAppleOfflineKey==='function'&&typeof native?.releaseAppleOfflineProof==='function';},
     appleProofRecoverySupported:()=>{assertCurrent();return typeof native?.appleAttestationInfo==='function'&&typeof native?.releaseAppleAttestation==='function'&&typeof native?.resetAppleIntegrityInstallation==='function';},
     capabilities:()=>read('capabilities',NativeCapabilities),clockSnapshot:()=>read('clockSnapshot',NativeClockSnapshot),
     appleKeyInfo:(value:string)=>valid(alias.safeParse(value))?operation('appleKeyInfo',[value],keyId.nullable()):Promise.resolve(invalid),
@@ -75,6 +80,9 @@ export function createIntegrityBridge(native:NativeIntegrityModule|null,assertCu
     releaseAppleAttestation:(id:string,hash:string)=>valid(keyId.safeParse(id),sha256.safeParse(hash))?operation('releaseAppleAttestation',[id,hash],z.null()):Promise.resolve(invalid),
     resetAppleIntegrityInstallation:()=>operation('resetAppleIntegrityInstallation',[],z.null()),
     attestAppleKey:(id:string,hash:string)=>valid(keyId.safeParse(id),sha256.safeParse(hash))?operation('attestAppleKey',[id,hash],blob(65536)):Promise.resolve(invalid),
+    appleOfflineProofInfo:(id:string,hash:string)=>valid(keyId.safeParse(id),sha256.safeParse(hash))?operation('appleOfflineProofInfo',[id,hash],AppleOfflineProofSnapshot):Promise.resolve(invalid),
+    assertAppleOfflineKey:(id:string,hash:string)=>valid(keyId.safeParse(id),sha256.safeParse(hash))?operation('assertAppleOfflineKey',[id,hash],blob(8192)):Promise.resolve(invalid),
+    releaseAppleOfflineProof:(id:string,hash:string)=>valid(keyId.safeParse(id),sha256.safeParse(hash))?operation('releaseAppleOfflineProof',[id,hash],z.null()):Promise.resolve(invalid),
     assertAppleKey:(id:string,hash:string)=>valid(keyId.safeParse(id),sha256.safeParse(hash))?operation('assertAppleKey',[id,hash],blob(8192)):Promise.resolve(invalid),
     createAndroidKey:(value:string,nonce:string,strongBox=false)=>valid(alias.safeParse(value),sha256.safeParse(nonce),z.boolean().safeParse(strongBox))?operation('createAndroidKey',[value,nonce,strongBox],AndroidKeyEvidence):Promise.resolve(invalid),
     androidKeyInfo:(value:string)=>valid(alias.safeParse(value))?operation('androidKeyInfo',[value],AndroidKeyEvidence):Promise.resolve(invalid),
