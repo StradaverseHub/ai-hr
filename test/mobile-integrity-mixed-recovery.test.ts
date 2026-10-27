@@ -71,8 +71,9 @@ describe('mixed platform recovery compatibility',()=>{
  });
  it('refuses v1 Android revocation before mutation, then durably recovers v2 revocation',async()=>{
   const e=await employee();caller=e.ctx;const key=await seedKey(e,'android');
-  expect((await call(revokeV1,e.employmentId,{keyId:key.id})).body).toEqual({outcome:'refused',code:'key_unavailable'});
+  const legacy=await call(revokeV1,e.employmentId,{keyId:key.id});
   expect((await owner.db.select().from(schema.mobileIntegrityKey).where(eq(schema.mobileIntegrityKey.id,key.id)))[0].revokedAt).toBeNull();
+  expect(legacy.body).toEqual({outcome:'refused',code:'key_unavailable'});
   const revoked=await call(revokeV2,e.employmentId,{keyId:key.id});expect(revoked.body.outcome).toBe('revoked');expect(revoked.body.key.revokedAt).not.toBeNull();
   expect((await call(revokeV2,e.employmentId,{keyId:key.id})).body).toEqual(revoked.body);
   expect((await call(receiptV2,e.employmentId,{originChallengeId:key.originChallengeId})).body.key).toEqual(revoked.body.key);
