@@ -3697,6 +3697,13 @@
       "when": 1793130000022,
       "tag": "0656_assistant_transcript_retention",
       "breakpoints": true
+    },
+    {
+      "idx": 643,
+      "version": "7",
+      "when": 1793130000023,
+      "tag": "0657_ai_integration_repairs",
+      "breakpoints": true
     }
   ]
 }
