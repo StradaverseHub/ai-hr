@@ -62,11 +62,11 @@ export function inspectRetainedInventory({plan,expected,run,jobs,artifacts,now=D
 }
 const api=path=>JSON.parse(execFileSync('gh',['api',`repos/${REPOSITORY}/${path}`],{encoding:'utf8',maxBuffer:128*1024**2,timeout:60000}));
 function pages(path,key){const rows=[];for(let n=1;n<=10;n++){const value=api(path+(path.includes('?')?'&':'?')+'per_page=100&page='+n);assert(Array.isArray(value[key]),'Missing API page');rows.push(...value[key]);if(value[key].length<100)return rows;}throw Error('API inventory exceeds bound');}
-function snapshot(runId){return {run:api('actions/runs/'+runId),jobs:pages('actions/runs/'+runId+'/jobs?filter=all','jobs'),artifacts:pages('actions/runs/'+runId+'/artifacts','artifacts')};}
-const identity=s=>({run:{id:s.run.id,run_attempt:s.run.run_attempt,status:s.run.status,conclusion:s.run.conclusion,head_sha:s.run.head_sha,head_branch:s.run.head_branch},jobs:s.jobs.map(j=>({id:j.id,name:j.name,conclusion:j.conclusion,status:j.status,run_id:j.run_id,run_attempt:j.run_attempt,head_sha:j.head_sha,started_at:j.started_at,completed_at:j.completed_at})).sort((a,b)=>a.id-b.id),artifacts:s.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest,size_in_bytes:a.size_in_bytes,expired:a.expired})).sort((a,b)=>a.id-b.id)});
+export function fetchGitHubRunSnapshot(runId){return {run:api('actions/runs/'+runId),jobs:pages('actions/runs/'+runId+'/jobs?filter=all','jobs'),artifacts:pages('actions/runs/'+runId+'/artifacts','artifacts')};}
+export const githubSnapshotIdentity=s=>({run:{id:s.run.id,run_attempt:s.run.run_attempt,status:s.run.status,conclusion:s.run.conclusion,head_sha:s.run.head_sha,head_branch:s.run.head_branch},jobs:s.jobs.map(j=>({id:j.id,name:j.name,conclusion:j.conclusion,status:j.status,run_id:j.run_id,run_attempt:j.run_attempt,head_sha:j.head_sha,started_at:j.started_at,completed_at:j.completed_at})).sort((a,b)=>a.id-b.id),artifacts:s.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest,size_in_bytes:a.size_in_bytes,expired:a.expired})).sort((a,b)=>a.id-b.id)});
 export async function authenticateRetainedUnits({repository,expected,runtime,outputParent,prefetchDirectory}){
  const reconstructed=immutablePlan({repository,candidate:expected.candidate,controller:expected.controller,baseline:expected.baseline,runtime}),plan=reconstructed.plan;
- const first=snapshot(expected.runId),inventory=inspectRetainedInventory({plan,expected,...first});
+ const first=fetchGitHubRunSnapshot(expected.runId),inventory=inspectRetainedInventory({plan,expected,...first});
  const dir=join(resolve(outputParent),'retained-'+expected.runId+'-'+randomUUID());mkdirSync(dir,{recursive:true,mode:0o700});
  const save=(name,data)=>writeFileSync(join(dir,name),JSON.stringify(data,null,2)+'\n',{flag:'wx',mode:0o600});
  save('first-api-snapshot.json',first);save('source-plan.json',reconstructed);
@@ -84,7 +84,7 @@ export async function authenticateRetainedUnits({repository,expected,runtime,out
    try{const verified=verifyUnitReport(plan,report);assert(j.conclusion==='success','Original producing job did not pass');reusable.push({...verified,origin:{candidate:plan.sha,policy:plan.policyVersion,fingerprint:plan.fingerprint,runId:expected.runId,attempt:1,jobId:j.id,artifactId:a.id,digest:a.digest,reportHash:hash(report)}});}
    catch(error){rerun.push({id:u.id,jobConclusion:j.conclusion,artifactId:a.id,digest:a.digest,reportHash:hash(report),reason:String(error.message)});}
   }
-  const second=snapshot(expected.runId);inspectRetainedInventory({plan,expected,...second});assert(isDeepStrictEqual(identity(first),identity(second)),'GitHub origin changed during authentication');save('final-api-snapshot.json',second);
+  const second=fetchGitHubRunSnapshot(expected.runId);inspectRetainedInventory({plan,expected,...second});assert(isDeepStrictEqual(githubSnapshotIdentity(first),githubSnapshotIdentity(second)),'GitHub origin changed during authentication');save('final-api-snapshot.json',second);
   const result={kind:'AUTHENTICATED_ORIGINAL_UNIT_EVIDENCE_NOT_COMBINED_RELEASE',releaseAuthorized:false,sourceBinding:reconstructed.binding,expected,policy:plan.policyVersion,fingerprint:plan.fingerprint,apiRevalidatedAt:new Date().toISOString(),completeRequiredUnits:plan.units.map(u=>u.id),reusable,rerun,uncheckedPrerequisites:['migrations','typecheck','build','browser/source equivalence','latest failure history','repair impact','final combined release validation'],evidenceDirectory:dir};save('authentication.json',result);return result;
  }catch(error){save('refusal.json',{releaseAuthorized:false,error:String(error.message)});throw error;}
 }
