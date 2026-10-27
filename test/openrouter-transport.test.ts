@@ -39,6 +39,14 @@ describe('unregistered OpenRouter request boundary', () => {
     expect(JSON.stringify(body)).not.toContain('fictional-cache-identity');
   });
 
+  it('accepts narrow fixed :free syntax without claiming an eligible live ZDR/tool route or monetary certificate', () => {
+    const c=config(), body=JSON.parse(buildOpenRouterRequest({model:'fictional/model:free',routing:c.routing},args()));
+    expect(body.model).toBe('fictional/model:free');expect(body.provider).toMatchObject({only:['openai'],allow_fallbacks:false,zdr:true,data_collection:'deny'});
+    // Ordinary syntax validation has no private reviewed dispatch authority and invents no price proof.
+    expect(body.provider).not.toHaveProperty('max_price');
+    for(const model of ['fictional/model:online','fictional/model:nitro','fictional/model:free:online','openrouter/free'])expect(()=>buildOpenRouterRequest({model,routing:c.routing},args())).toThrow(AiGatewayError);
+  });
+
   it.each(['duplicate-call', 'wrong-result', 'unknown-tool', 'unfinished', 'cyclic-input'] as const)
   ('refuses %s before transport instead of repairing the tool graph silently', flaw => {
     const input = toolArgs(), assistant = input.turns[1], result = input.turns[2];

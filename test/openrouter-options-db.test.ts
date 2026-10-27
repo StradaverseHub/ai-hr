@@ -33,6 +33,13 @@ describe('persisted provider options SQL boundary', () => {
     await expect(insert('anthropic', options)).rejects.toThrow();
     await insert('openrouter', options); await insert('anthropic', {});
   });
+  it('accepts only the optional :free native suffix while retaining routing/privacy guards; syntax is not eligibility',async()=>{
+    const ctx=adminCtx(b),options=readOpenRouterOptions({version:1,routing:{allowedProviders:['fictional-endpoint']}});
+    await withTenant(ctx,tx=>tx.execute(sql`insert into public.ai_provider_config(id,tenant_id,provider,model,api_key_ciphertext,key_last4,provider_options) values(${randomUUID()}::uuid,${b.tenantId}::uuid,'openrouter','fictional/model:free','fixture-not-a-key','none',${JSON.stringify(options)}::jsonb)`));
+    const[row]=await withTenant(ctx,tx=>tx.execute<{model:string;is_active:boolean}>(sql`select model,is_active from public.ai_provider_config where tenant_id=${b.tenantId}::uuid and provider='openrouter'`));expect(row).toEqual({model:'fictional/model:free',is_active:false});
+    for(const model of ['fictional/model:online','fictional/model:nitro','fictional/model:free:online','openrouter/free'])await expect(withTenant(ctx,tx=>tx.execute(sql`update public.ai_provider_config set model=${model} where tenant_id=${b.tenantId}::uuid and provider='openrouter'`))).rejects.toThrow();
+    await expect(withTenant(ctx,tx=>tx.execute(sql`update public.ai_provider_config set provider_options=${JSON.stringify({...options,plugins:['web']})}::jsonb where tenant_id=${b.tenantId}::uuid and provider='openrouter'`))).rejects.toThrow();
+  });
   it('adds only nonsecret column access and retains tenant scoping on privileged v2 resolution', async () => {
     const ctx = adminCtx(b);
     await withTenant(ctx, tx => tx.execute(sql`insert into public.ai_provider_config

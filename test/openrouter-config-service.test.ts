@@ -23,6 +23,13 @@ describe('tenant OpenRouter configuration ownership',()=>{
   const resolved=await withTenant(ctx,tx=>resolveActiveAiConfig(tx,ctx));expect(resolved?.provider).toBe('openrouter');expect(resolved?.apiKey).toBe(key);expect(resolved?.providerOptions).toEqual(options());
   const other=await seedBase();const foreign=await withTenant(adminCtx(other),tx=>tx.execute(sql`select provider from app.ai_active_provider_config_v2()`));expect(foreign).toHaveLength(0);
  });
+ it('saves narrow :free syntax as an inactive unevaluated candidate without asserting live route capability',async()=>{
+  const ctx=adminCtx(b);await saveAiProviderConfig(ctx,{provider:'openrouter',model:'fictional/model:free',apiKey:key,providerOptions:options()});
+  const before=await getAiConfigView(ctx);expect(before.providers.find(p=>p.provider==='openrouter')).toMatchObject({configured:true,isActive:false});
+  await expect(setActiveProvider(ctx,{provider:'openrouter'})).rejects.toThrow();
+  for(const model of ['fictional/model:online','fictional/model:nitro','fictional/model:free:online','openrouter/free'])await expect(saveAiProviderConfig(ctx,{provider:'openrouter',model})).rejects.toThrow();
+  expect(await getAiConfigView(ctx)).toEqual(before);expect(await withTenant(ctx,tx=>tx.execute(sql`select id from public.ai_provider_config where tenant_id=${b.tenantId}::uuid and provider='openrouter' and is_active`))).toHaveLength(0);
+ });
  it('preserves the existing key/routes on model-only saves and refuses malformed routing without a write/event',async()=>{
   const ctx=adminCtx(b);await saveAiProviderConfig(ctx,{provider:'openrouter',model:'fictional/model',apiKey:key,providerOptions:options()});
   await activateSyntheticCandidate(ctx);
