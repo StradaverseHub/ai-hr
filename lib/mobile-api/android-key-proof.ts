@@ -8,8 +8,10 @@ export function createAndroidKeyProofVerifier(settings:unknown,ports:Parameters<
  return async(input:Parameters<ReturnType<typeof createAndroidKeyChainVerifier>>[0],signal?:AbortSignal)=>{
   const checked=await verify(input,signal);
   matchAndroidIssuerSignals(checked.description,checked.certifiedSecurityLevel,checked.lostDevice);
+  if(config.provisioningMetadata==='require_entity_and_lost_device'&&(!checked.provisioningEntityReported||checked.lostDevice===null))throw new AndroidKeyPolicyError('metadata_unavailable');
   const matched=matchAndroidKeyPolicy(config,checked.description);
   return {verification:'google_key_generation_proof' as const,publicKey:checked.publicKey,checkedAt:checked.checkedAt,
-   provisioning:checked.provisioning,factoryExpiryException:checked.factoryExpiryException,...matched};
+   provisioning:checked.provisioning,provisioningEntity:checked.provisioningEntityReported?'reported' as const:'unavailable' as const,
+   lostDeviceStatus:checked.lostDevice===false?'not_flagged' as const:'unavailable' as const,factoryExpiryException:checked.factoryExpiryException,...matched};
  };
 }

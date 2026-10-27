@@ -14,7 +14,7 @@ function fixture(){
  const chain=readFileSync(base+'strongbox-2026.pem','utf8').match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g)!.map(value=>new X509Certificate(value).raw);
  const leaf=new X509Certificate(chain[0]),cert=new Certificate({schema:fromBER(new Uint8Array(chain[0])).result});
  const description=decodeAndroidKeyDescription(Buffer.from(cert.extensions!.find(value=>value.extnID==='1.3.6.1.4.1.11129.2.1.17')!.extnValue.getValue()));
- const settings={packageName:'com.google.android.attestation',certificateDigests:['EDk47kU35Z6O55L2VFBPuDRvxrNG0LvEQV/DOfz8jsE='],versionCodes:['0'],securityLevels:['strongbox'],minimumOsVersion:160000,minimumOsPatchLevel:202602,minimumVendorPatchLevel:20260205,minimumBootPatchLevel:20260205};
+ const settings={provisioningMetadata:'allow_legacy',packageName:'com.google.android.attestation',certificateDigests:['EDk47kU35Z6O55L2VFBPuDRvxrNG0LvEQV/DOfz8jsE='],versionCodes:['0'],securityLevels:['strongbox'],minimumOsVersion:160000,minimumOsPatchLevel:202602,minimumVendorPatchLevel:20260205,minimumBootPatchLevel:20260205};
  const input={certificateChain:chain,publicKeySpki:leaf.publicKey.export({type:'spki',format:'der'}),challenge:Buffer.from(description.challenge)};
  const now=Date.parse('2026-02-26T00:00:00Z'),revocation=vi.fn(async(serials:readonly string[])=>({status:'checked' as const,source:'google_https' as const,checkedAt:now,certificateCount:serials.length}));
  return {description,settings,input,ports:{now:()=>now,revocation}};
@@ -23,8 +23,14 @@ describe('Android key-generation policy',()=>{
  it('matches the captured app/build/signer and hardware facts only after real path validation',async()=>{
   const f=fixture(),verify=createAndroidKeyProofVerifier(f.settings,f.ports),proof=await verify(f.input);
   expect(proof).toMatchObject({verification:'google_key_generation_proof',packageName:f.settings.packageName,versionCode:'0',securityLevel:'strongbox',provisioning:'remote',osPatchLevel:202602});
+  expect(proof).toMatchObject({provisioningEntity:'unavailable',lostDeviceStatus:'unavailable'});
   expect(proof).not.toHaveProperty('description');expect(proof).not.toHaveProperty('certificateDigests');expect(proof).not.toHaveProperty('accepted');
   const serialized=JSON.stringify(proof);expect(serialized).not.toContain('MyevYthK');
+ });
+ it('requires an explicit legacy-metadata decision and refuses missing fields when strict metadata is selected',async()=>{
+  const f=fixture(),{provisioningMetadata,...missing}=f.settings;
+  expect(()=>createAndroidKeyProofVerifier(missing,f.ports)).toThrow(expect.objectContaining({reason:'configuration'}));
+  await expect(createAndroidKeyProofVerifier({...f.settings,provisioningMetadata:'require_entity_and_lost_device'},f.ports)(f.input)).rejects.toMatchObject({reason:'metadata_unavailable'});
  });
  it('cannot reinterpret a correctly signed proof as a different package, build, signer or hardware level',async()=>{
   for(const changed of [{packageName:'ai.stradaverse.aihr.test'},{versionCodes:['4']},{certificateDigests:[Buffer.alloc(32).toString('base64')]},{securityLevels:['tee']},{minimumOsPatchLevel:202603}]){

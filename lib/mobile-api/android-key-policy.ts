@@ -9,12 +9,13 @@ const day=z.number().int().min(20000101).max(99991231).refine(value=>{const s=St
 export const AndroidKeyPolicy=z.object({packageName:z.string().min(3).max(255).refine(value=>value.trim()===value).regex(/^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/),
  certificateDigests:z.array(digest).min(1).max(8).transform(values=>[...new Set(values)].sort()),
  versionCodes:z.array(version).min(1).max(20).transform(values=>[...new Set(values)].sort()),
+ provisioningMetadata:z.enum(['allow_legacy','require_entity_and_lost_device']),
  securityLevels:z.array(z.enum(['tee','strongbox'])).min(1).max(2).transform(values=>[...new Set(values)]),
  minimumOsVersion:z.number().int().min(0).max(999999).nullable(),minimumOsPatchLevel:month.nullable(),
  minimumVendorPatchLevel:day.nullable(),minimumBootPatchLevel:day.nullable(),
 }).strict();
 export class AndroidKeyPolicyError extends Error{
- constructor(readonly reason:'configuration'|'app_identity'|'security_level'|'key_properties'|'boot_state'|'patch_level'|'lost_device'){
+ constructor(readonly reason:'configuration'|'app_identity'|'security_level'|'key_properties'|'boot_state'|'patch_level'|'lost_device'|'metadata_unavailable'){
   super('Android key policy refused');this.name='AndroidKeyPolicyError';
  }
 }

@@ -58,7 +58,7 @@ export function createAndroidKeyChainVerifier(ports:{revocation?:(serials:readon
    const rkp=chain.length===5&&intermediate.subject.split('\n').includes('CN=Droid CA2')&&intermediate.subject.split('\n').includes('O=Google LLC');
    if(!factory&&!rkp)fail('unsupported_path');
    if(factory&&provisioning.length)fail('unsupported_path');
-   let certifiedSecurityLevel:'tee'|'strongbox'|null=null,lostDevice:boolean|null=null;
+   let certifiedSecurityLevel:'tee'|'strongbox'|null=null,lostDevice:boolean|null=null,provisioningEntityReported=false;
    if(rkp){
     const names=chain[1].subject.split('\n'),organizations=names.filter(value=>value.startsWith('O='));
     if(organizations.length!==1||!['O=TEE','O=StrongBox'].includes(organizations[0]))fail('unsupported_path');
@@ -67,7 +67,7 @@ export function createAndroidKeyChainVerifier(ports:{revocation?:(serials:readon
      let info:ReturnType<typeof decodeAndroidProvisioningInfo>;
      try{info=decodeAndroidProvisioningInfo(Buffer.from(extensions(certs[1],PROVISIONING)[0].extnValue.getValue()));}catch{fail('extension');}
      if(info.entity!==null&&info.entity!==certifiedSecurityLevel)fail('extension');
-     lostDevice=info.lostDevice;
+     lostDevice=info.lostDevice;provisioningEntityReported=info.entity!==null;
     }
    }else if(chain.slice(1,-1).some(cert=>cert.subject.toLowerCase().includes('strongbox')))certifiedSecurityLevel='strongbox';
    const expectedSpki=leaf.publicKey.export({type:'spki',format:'der'});
@@ -95,7 +95,7 @@ export function createAndroidKeyChainVerifier(ports:{revocation?:(serials:readon
    if(signal?.aborted||!Number.isSafeInteger(checkedAt)||checkedAt<started||status.checkedAt<started||status.checkedAt>checkedAt)fail('revocation_unavailable');
    if(rkp&&dates.some(value=>value.to<checkedAt))fail('expired');
    return {verification:'google_root_path_and_status' as const,publicKey:leaf.publicKey,description,
-    certifiedSecurityLevel,lostDevice,provisioning:factory?'factory' as const:'remote' as const,factoryExpiryException:factory&&dates.some(value=>value.to<checkedAt),checkedAt};
+    certifiedSecurityLevel,lostDevice,provisioningEntityReported,provisioning:factory?'factory' as const:'remote' as const,factoryExpiryException:factory&&dates.some(value=>value.to<checkedAt),checkedAt};
   }catch(error){if(error instanceof AndroidKeyChainError)throw error;fail('malformed');}
  };
 }
