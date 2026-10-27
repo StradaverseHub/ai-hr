@@ -14,6 +14,7 @@ import {COMPILER_STATE_ARTIFACT} from './compiler-cache-protocol.mjs';
 import {NEXT_APPLICATION_STATE,NEXT_APPLICATION_FAILURE} from './next-application-cache-protocol.mjs';
 import {verifyUnitReport} from './verify-shards.mjs';
 import {hash} from './manifest.mjs';
+import {validateEmailControllerProof} from './email-repair-source.mjs';
 const id=n=>Number.isSafeInteger(n)&&n>0;
 const time=s=>typeof s==='string'?Date.parse(s):NaN;
 const jobName=u=>u.kind==='browser'?`browser (${u.engine})`:`test (${u.id})`;
@@ -22,7 +23,8 @@ export function inspectRetainedInventory({plan,expected,run,jobs,artifacts,now=D
  assert(plan.sha===expected.candidate&&plan.controller===expected.controller&&plan.migrationBase===expected.baseline,'Reconstructed plan identity differs');
  assert(plan.runtime?.platform==='linux'&&plan.runtime.arch==='x64'&&/^22\./.test(plan.runtime.node),'Unsupported original runtime');
  assert(run?.id===expected.runId&&run.repository?.id===REPOSITORY_ID&&run.repository.full_name===REPOSITORY&&run.head_repository?.id===REPOSITORY_ID,'Foreign retained repository/run');
- assert(run.workflow_id===WORKFLOW_ID&&run.path===WORKFLOW_PATH&&['main','alpha'].includes(run.head_branch)&&run.head_sha===expected.controller,'Untrusted retained controller/workflow');
+ if(!['main','alpha'].includes(run.head_branch))validateEmailControllerProof(expected.reviewedControllerProof,{controller:expected.controller,branch:run.head_branch});
+ assert(run.workflow_id===WORKFLOW_ID&&run.path===WORKFLOW_PATH&&run.head_sha===expected.controller,'Untrusted retained controller/workflow');
  assert(run.event==='workflow_dispatch'||run.event==='push'&&run.head_branch==='alpha'&&expected.candidate===expected.controller,'Unsupported retained event');
  assert(run.status==='completed'&&['success','failure'].includes(run.conclusion)&&run.run_attempt===1,'Retained run must be terminal first attempt');
  const began=time(run.created_at),ended=time(run.updated_at);

@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {installHash,installJson} from './ci-install-grant.mjs';
+import {EMAIL,proveEmailController,validateEmailControllerProof} from './email-repair-source.mjs';
 export const FOCUSED_REPAIR_PARENT='67be2710c35035af433bdb2fcdfb2cb30277ceda';
 export const FOCUSED_REPAIR_CONTROLLER='482ee86a0a5f9b8c3b549157f9141c2132447787';
 export const FOCUSED_REPAIR_BRANCH='claude/letters-repair-controller-20261027';
@@ -24,6 +25,7 @@ export function withPinnedRepairRuntime(before){
  return before.replace(old,'with: {node: \'22.23.3\', capacity_profile: "${{ github.run_attempt == 1 && \'bounded-suite-setup\' || \'legacy\' }}"}');
 }
 export function validateReviewedFocusedControllerProof(proof,{controller,branch}){
+ if(controller===EMAIL.controller)return validateEmailControllerProof(proof,{controller,branch});
  const {proofSha256,...body}=proof??{};
  if(controller===FOCUSED_PINNED_CONTROLLER){
   assert(proofSha256===installHash(installJson(body))&&body.kind==='EXACT_FOCUSED_NODE_PIN_SOURCE_NOT_RELEASE'&&body.format===1&&body.parent===FOCUSED_TOOLING_CONTROLLER&&body.controller===controller&&body.branch===FOCUSED_PINNED_BRANCH&&branch===body.branch&&body.path===path&&body.afterSha256===FOCUSED_PINNED_SHA256&&body.onlyNodeVersionPinned===true&&body.releaseAuthorized===false&&/^[a-f0-9]{64}$/.test(body.beforeSha256),'Exact independently reconstructed Node pin proof required');return proof;
@@ -44,6 +46,7 @@ export function validateReviewedFocusedControllerProof(proof,{controller,branch}
 }
 /** Authenticate actual immutable source; never accept a caller's self-hashed proof as source authority. */
 export function proveReviewedFocusedController({repository,controller,branch}){
+ if(controller===EMAIL.controller)return proveEmailController({repository,controller,branch});
  const pinned=controller===FOCUSED_PINNED_CONTROLLER&&branch===FOCUSED_PINNED_BRANCH;
  const tooling=controller===FOCUSED_TOOLING_CONTROLLER&&branch===FOCUSED_TOOLING_BRANCH;
  assert(pinned||tooling||(controller===FOCUSED_REPAIR_CONTROLLER&&branch===FOCUSED_REPAIR_BRANCH),'Unreviewed focused controller');
