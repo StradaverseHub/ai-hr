@@ -109,8 +109,8 @@ export function createSignedClockJournal(rawScope:EnrollmentScope,ports:SignedCl
    const b=await base(current),features=await capabilities(current.key.platform);if(features.cloudProjectNumber!==current.project)throw new SignedClockConflict();
    const request=intent(current,b),prepared=(current.key.platform==='ios'?C.IntegrityClockPrepared:C.IntegrityAndroidClockPrepared).parse(await owned(()=>ports.begin(structuredClone(current),structuredClone(request))));
    if(prepared.outcome!=='prepared')return status(s,selected,prepared.outcome==='refused'?'refused':'unavailable');
-   const context=prepared.context,expected=OnlineClockIntegrityData.parse({...context,scope:{apiOrigin:scope.apiOrigin,actorId:scope.actorId,employmentId:selected,deviceKeyId:p.key.keyId,tenantId:p.key.tenantId,installationId:p.key.installationId},command:{...request.command,photo:b.photo},evidence:p.evidence});
-   if(onlineClockClientData(context)!==onlineClockClientData(expected)||p.context&&onlineClockClientData(p.context)!==onlineClockClientData(context))throw new SignedClockConflict();
+   const context=prepared.context,expectedContext=OnlineClockIntegrityData.parse({...context,scope:{apiOrigin:scope.apiOrigin,actorId:scope.actorId,employmentId:selected,deviceKeyId:p.key.keyId,tenantId:p.key.tenantId,installationId:p.key.installationId},command:{...request.command,photo:b.photo},evidence:p.evidence});
+   if(onlineClockClientData(context)!==onlineClockClientData(expectedContext)||p.context&&onlineClockClientData(p.context)!==onlineClockClientData(context))throw new SignedClockConflict();
    if(prepared.state!=='active')return status(s,selected,'challenge_unavailable');
    if(current.phase==='intent'){current={...current,phase:'prepared',context};s=await save(s,current);}
    if(!current.proof){

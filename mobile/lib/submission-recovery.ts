@@ -96,13 +96,14 @@ export function useSubmissionRecovery(kind:SubmissionKind,employmentId:string|un
       if(AppState.currentState!=='active')throw new SubmissionJournalUnavailable('Unlock the app to continue');
       return entry;
     },
-    async reportAttempt(requestId:string){
+    async reportAttempt(requestId:string,operation?:{assertCurrent():void}){
+      operation?.assertCurrent();
       check();if(kind!=='clock'||!employmentId||state.key!==key||!state.ready||AppState.currentState!=='active')throw new SubmissionJournalUnavailable('Unlock the app to continue');
       const journal=await ownedJournal(employmentId,owner);check();
       const entry=(await journal.pending()).find(value=>value.kind==='clock'&&value.requestId===requestId);check();
       if(!entry)throw new SubmissionJournalUnavailable('Pending attempt changed');
       const attempt=await journal.clockAttempt(requestId);check();
-      const receipt=await apiPost('clock-attempts',ClockPreparation.parse(attempt),{employmentId});check();
+      const receipt=await apiPost('clock-attempts',ClockPreparation.parse(attempt),{employmentId},operation);check();
       if(receipt.requestId!==requestId)throw new SubmissionJournalUnavailable('Unexpected attempt receipt');
       if(entry.stage==='preparation'){await journal.markAttemptReported(requestId,receipt);check();}return receipt;
     },

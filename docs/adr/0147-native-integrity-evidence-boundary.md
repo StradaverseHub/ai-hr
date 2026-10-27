@@ -1102,3 +1102,10 @@ A receipt can be checked without a readable attachment or current vendor SDK, an
 uses server-ordered abandonment. The journal checks the expected request ID inside its serialized
 operation, preventing another screen's settled/replaced lease from being retried or displayed as
 the reviewed attempt. This does not complete physical-device acceptance or activate rollout.
+
+Clock screen operations also guard new GPS/camera launches, location preview, attempt reporting,
+device registration and unsigned clock writes with the current screen/privacy owner, including
+token-refresh retries. Completion of an already launched camera may retain its result only in the
+same protected in-memory draft. Rehydrating that draft's matching saved preparation preserves a
+completed review/photo instead of replacing it with an empty preparation. This does not grant
+permission for a server mutation after lock; the user must return through the session gate.

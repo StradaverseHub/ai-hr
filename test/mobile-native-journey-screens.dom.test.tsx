@@ -23,7 +23,7 @@ function fixture(platform:'ios'|'android'='ios'){
   const Pressable=(p:any)=><button disabled={p.disabled} role={p.accessibilityRole??'button'} aria-label={p.accessibilityLabel} aria-checked={p.accessibilityState?.checked} onClick={p.onPress}>{p.children}</button>;
   const alert=vi.fn();
   const native={Alert:{alert},View,Text,Pressable,TextInput:(p:any)=><input aria-label={p.accessibilityLabel} disabled={!p.editable} value={p.value} onChange={e=>p.onChangeText(e.target.value)}/>,Image:()=>null,AppState:{currentState:'active'},Platform:{OS:platform}};
-  const base={'react-native':native,'./session':{useSession:()=>session},'./auth':{authGeneration:()=>1,assertAuthGeneration:()=>{}},'./design':{DesignText:Text,useTenantDesign:()=>({design:DEFAULT_MOBILE_DESIGN,palette:mobilePalette(DEFAULT_MOBILE_DESIGN,'dark')})},'./errors':errors,'./i18n':{appLocale:()=>'en',t:(s:string,v?:any)=>s==='awayToday'?`${s} ${v.n}/${v.total}`:s},'expo-crypto':{randomUUID:()=>`request-${++sequence}`},'expo-router':{useFocusEffect:()=>{},router:{push:vi.fn()}}};
+  const base={'react-native':native,'./session':{useSession:()=>session},'./auth':{authGeneration:()=>1,assertAuthGeneration:()=>{}},'./design':{DesignText:Text,useTenantDesign:()=>({design:DEFAULT_MOBILE_DESIGN,palette:mobilePalette(DEFAULT_MOBILE_DESIGN,'dark')})},'./errors':errors,'./i18n':{appLocale:()=>'en',t:(s:string,v?:any)=>s==='awayToday'?`${s} ${v.n}/${v.total}`:s},'expo-crypto':{randomUUID:()=>`${String(++sequence).padStart(8,'0')}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`},'expo-router':{useFocusEffect:()=>{},router:{push:vi.fn()}}};
   const provider=load('mobile/lib/journey-drafts.tsx',{...base,'expo-file-system':{File:class{exists=false},Directory:class{exists=false},Paths:{cache:'cache'}}});
   const ui={Button:(p:any)=><button disabled={p.disabled} onClick={p.onPress}>{p.title}</button>,Card:View,Muted:Text,Row:({label,value}:any)=><p>{label}: {value}</p>,LoadState:()=>null,fmtDays:(n:unknown)=>n==null?'—':String(n)};
   const clockState={enabled:true,employmentId:'own',state:{date:'2026-01-01',clockedIn:false,geofencingRequired:false,workedSeconds:0,shift:{code:null,start:null,end:null},attendancePhotoSetting:'not_required',deviceRequired:false,captures:[],legacy:[]}};
@@ -42,7 +42,7 @@ function fixture(platform:'ios'|'android'='ios'){
   const hasSignedAttempt=vi.fn(async(id:string)=>retained.has(id));
   const stage=vi.fn(async(command:string,file?:unknown,source?:unknown)=>{if(source)retained.add(JSON.parse(command).requestId);return {command,file};}),resolve=vi.fn(async()=>{});
   const prepareClock=vi.fn(async(action:string,requestId:string)=>({requestId,kind:'clock',stage:'preparation',createdAt:Date.now(),command:JSON.stringify({action,requestId,claimedAt:Date.now()})}));
-  const reportAttempt=vi.fn(async(requestId:string)=>({requestId,receivedAt:new Date().toISOString()}));
+  const reportAttempt=vi.fn(async(requestId:string,_operation?:{assertCurrent():void})=>({requestId,receivedAt:new Date().toISOString()}));
   const shared={...base,'./submission-journal':journal,'../../lib/mobile-api/contract':contract,'./enrollment-journal':enrollment,'./signed-clock':{openOwnedSignedClock:openSigned},'./submission-recovery':{useSubmissionRecovery:(_kind:string,_id:string,onRestore:(value:unknown)=>void)=>{
     React.useEffect(()=>{if(restoredClock){const value=restoredClock;if(value.entry.integrity)retained.add(value.entry.requestId);onRestore(value);}},[]);
     return {ready:true,error:null,reload:()=>{},stage,resolve,prepareClock,reportAttempt,hasSignedAttempt};
@@ -50,8 +50,8 @@ function fixture(platform:'ios'|'android'='ios'){
   const {ClockPanel}=load('mobile/lib/clock-panel.tsx',shared),{LeaveRequestForm}=load('mobile/lib/leave-request-form.tsx',shared),{TeamPanel}=load('mobile/lib/team-panel.tsx',shared);
   function Probe(){drafts=provider.useJourneyDrafts();return null;}
   const options={employmentId:'own',items:[{id:'annual',name:'Annual leave',durations:['full_day','half_day_am','hourly'],allowedMimeTypes:[],maxDocBytes:10485760,requiresDocument:false,emergencySplit:false}]};
-  function App({kind,refreshToken=0}:{kind:'clock'|'leave'|'team';refreshToken?:number}){return <provider.JourneyDraftProvider><Probe/>{kind==='clock'?<ClockPanel refreshToken={refreshToken}/>:kind==='team'?<TeamPanel refreshToken={refreshToken}/>:<LeaveRequestForm options={options} today="2026-01-01" onSubmitted={reload}/>}</provider.JourneyDraftProvider>;}
-  return {App,post,signed,openSigned,alert,hasSignedAttempt,setSignedState:(value:SignedClockStatus)=>{signedState=value;},restoreClock:(value:unknown)=>{restoredClock=value;},preview,get,capture,reload,stage,resolve,prepareClock,reportAttempt,remove,teamState,clockState,photo,attemptsState,reloadAttempts,drafts:()=>drafts};
+  function App({kind,refreshToken=0,visible=true}:{kind:'clock'|'leave'|'team';refreshToken?:number;visible?:boolean}){return <provider.JourneyDraftProvider><Probe/>{!visible?null:kind==='clock'?<ClockPanel refreshToken={refreshToken}/>:kind==='team'?<TeamPanel refreshToken={refreshToken}/>:<LeaveRequestForm options={options} today="2026-01-01" onSubmitted={reload}/>}</provider.JourneyDraftProvider>;}
+  return {App,session,post,signed,openSigned,alert,hasSignedAttempt,setSignedState:(value:SignedClockStatus)=>{signedState=value;},restoreClock:(value:unknown)=>{restoredClock=value;},preview,get,capture,reload,stage,resolve,prepareClock,reportAttempt,remove,teamState,clockState,photo,attemptsState,reloadAttempts,drafts:()=>drafts};
 }
 afterEach(cleanup);
 describe('native clock job',()=>{
@@ -102,7 +102,7 @@ describe('native clock job',()=>{
     expect(f.prepareClock).toHaveBeenCalledBefore(f.capture);const id=f.drafts().clock.requestId;
     expect(id).toBeTruthy();expect(f.drafts().clock.attemptStartedAt).toBeGreaterThan(0);
     fireEvent.click(screen.getByText('sendAttemptRecord'));await screen.findAllByText('attemptReported');
-    expect(f.reportAttempt).toHaveBeenCalledWith(id);expect(f.post).not.toHaveBeenCalled();expect(f.stage).not.toHaveBeenCalled();
+    expect(f.reportAttempt).toHaveBeenCalledWith(id,{assertCurrent:expect.any(Function)});expect(f.post).not.toHaveBeenCalled();expect(f.stage).not.toHaveBeenCalled();
     expect(f.drafts().clock.phase).toBe('idle');expect(screen.queryByText('clockRecorded')).toBeNull();
   });
   it('shows the assigned-site quality refusal without staging or sending attendance',async()=>{
@@ -129,7 +129,7 @@ describe('native clock job',()=>{
     await screen.findByText('slideRecord');expect(f.capture).toHaveBeenCalledTimes(1);expect(f.post).not.toHaveBeenCalled();
     f.post.mockRejectedValueOnce(new errors.UnavailableError());fireEvent.click(screen.getByText('slideRecord'));await screen.findAllByText('retrySameClock');expect(f.post).toHaveBeenCalledTimes(1);
     const command=(f.post.mock.calls[0][1] as FormData).get('command');expect(f.drafts().clock.phase).toBe('uncertain');
-    f.post.mockResolvedValueOnce({outcome:'accepted',receipt:{recordedAt:'2026-01-01T01:00:00Z'}});fireEvent.click(screen.getByRole('button',{name:'retrySameClock'}));await screen.findByText('clockRecorded');expect((f.post.mock.calls[1][1] as FormData).get('command')).toBe(command);expect(f.post).toHaveBeenCalledTimes(2);expect(screen.getByText(/9:00/)).toBeTruthy();expect(screen.queryByText('2026-01-01T01:00:00Z')).toBeNull();
+    f.post.mockResolvedValueOnce({outcome:'accepted',receipt:contract.ClockReceipt.parse({id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',direction:'in',date:'2026-01-01',recordedAt:'2026-01-01T01:00:00Z',photoAvailable:false})});fireEvent.click(screen.getByRole('button',{name:'retrySameClock'}));await screen.findByText('clockRecorded');expect((f.post.mock.calls[1][1] as FormData).get('command')).toBe(command);expect(f.post).toHaveBeenCalledTimes(2);expect(screen.getByText(/9:00/)).toBeTruthy();expect(screen.queryByText('2026-01-01T01:00:00Z')).toBeNull();
   });
   it('cancelling a prepared capture writes nothing, and a definitive refusal permits a new attempt',async()=>{
     const f=fixture();render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('slideRecord');fireEvent.click(screen.getByText('cancel'));expect(f.post).not.toHaveBeenCalled();expect(f.drafts().clock).toMatchObject({phase:'idle',message:'attemptSavedNotSent'});
@@ -171,7 +171,7 @@ describe('explicit receipt lookup',()=>{
   it('clock Check receipt resolves the same reference without resubmitting its command',async()=>{
     const f=fixture();render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('slideRecord');
     f.post.mockRejectedValueOnce(new errors.UnavailableError());fireEvent.click(screen.getByText('slideRecord'));await screen.findByText('checkReceipt');
-    const id=f.drafts().clock.requestId;f.get.mockResolvedValueOnce({kind:'clock',requestId:id,receipt:{recordedAt:'2026-01-01T01:00:00Z'}});
+    const id=f.drafts().clock.requestId;f.get.mockResolvedValueOnce({kind:'clock',requestId:id,receipt:contract.ClockReceipt.parse({id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',direction:'in',date:'2026-01-01',recordedAt:'2026-01-01T01:00:00Z',photoAvailable:false})});
     fireEvent.click(screen.getByText('checkReceipt'));await screen.findByText('clockRecorded');expect(f.post).toHaveBeenCalledTimes(1);
     expect(f.get).toHaveBeenCalledWith('submission-receipt',{kind:'clock',requestId:id,employmentId:'own'});
   });
@@ -251,4 +251,33 @@ describe('signed native clock screen',()=>{
   fireEvent.click(screen.getByText('slideRecord'));await screen.findByRole('button',{name:'retrySameClock'});
   expect(f.signed.recover).not.toHaveBeenCalled();expect(f.signed.advance).not.toHaveBeenCalled();expect(screen.queryByText('clockRecorded')).toBeNull();expect(f.post).not.toHaveBeenCalled();
  });
+});
+
+
+describe('camera return and privacy lock lifecycle',()=>{
+ it('retains the reviewed photo when the screen remounts and rehydrates its saved preparation',async()=>{
+  const f=fixture();f.clockState.state.attendancePhotoSetting='required';
+  let finish!:(photo:unknown)=>void;f.photo.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+  const ui=render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));
+  await waitFor(()=>expect(f.photo).toHaveBeenCalledOnce());const draft=f.drafts().clock;
+  f.session.status='locked';ui.rerender(<f.App kind="clock" visible={false}/>);
+  await act(async()=>{finish({uri:'picked-private-photo',name:'attendance.jpg',mimeType:'image/jpeg',size:3});});
+  await waitFor(()=>expect(f.drafts().clock.phase).toBe('review'));
+  f.restoreClock({entry:{stage:'preparation',kind:'clock',requestId:draft.requestId,createdAt:draft.attemptStartedAt},
+   command:JSON.stringify({requestId:draft.requestId,action:'in',claimedAt:draft.attemptStartedAt})});
+  f.session.status='signedIn';ui.rerender(<f.App kind="clock"/>);await screen.findByText('slideRecord');
+  expect(f.drafts().clock.photo.uri).toBe('picked-private-photo');expect(f.drafts().clock.geo).toEqual(draft.geo);
+  expect(f.capture).toHaveBeenCalledOnce();expect(f.post).not.toHaveBeenCalled();
+ });
+});
+
+
+it('does not start GPS or send preview after the preparation finishes on a locked/unmounted screen',async()=>{
+ const f=fixture();let finish!:(value:any)=>void;
+ f.prepareClock.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+ const ui=render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));await waitFor(()=>expect(f.prepareClock).toHaveBeenCalledOnce());
+ f.session.status='locked';ui.rerender(<f.App kind="clock" visible={false}/>);
+ const id=f.prepareClock.mock.calls[0][1];await act(async()=>{finish({requestId:id,kind:'clock',stage:'preparation',createdAt:Date.now()});});
+ expect(f.capture).not.toHaveBeenCalled();expect(f.preview).not.toHaveBeenCalled();expect(f.post).not.toHaveBeenCalled();
+ expect(f.drafts().clock).toMatchObject({requestId:id,phase:'idle'});
 });

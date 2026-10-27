@@ -50,7 +50,7 @@ describe('saved preparation recovery',()=>{
     expect(f.journal.markAttemptReported).not.toHaveBeenCalled();expect(f.journal.resolve).not.toHaveBeenCalled();
     const receipt={requestId:f.entry.requestId,receivedAt:new Date().toISOString()};f.apiPost.mockResolvedValueOnce(receipt);
     await expect(f.control().reportAttempt(f.entry.requestId)).resolves.toEqual(receipt);
-    expect(f.apiPost).toHaveBeenCalledWith('clock-attempts',JSON.parse(f.entry.command),{employmentId});
+    expect(f.apiPost).toHaveBeenCalledWith('clock-attempts',JSON.parse(f.entry.command),{employmentId},undefined);
     expect(f.journal.markAttemptReported).toHaveBeenCalledWith(f.entry.requestId,receipt);expect(f.journal.resolve).not.toHaveBeenCalled();
   });
 });
@@ -169,4 +169,16 @@ it('checks the signed marker from the shared owner without restoring a second pl
  expect(await f.control().hasSignedAttempt(f.entry.requestId)).toBe(true);
  expect(await f.control().hasSignedAttempt('another-request')).toBe(false);
  expect(f.journal.restore).toHaveBeenCalledTimes(restores);expect(f.apiPost).not.toHaveBeenCalled();
+});
+
+
+it('forwards the privacy/screen guard to attempt reporting and refuses an obsolete owner before network',async()=>{
+ const f=fixture();f.entry.stage='preparation';f.entry.requestId='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+ f.entry.command=JSON.stringify({requestId:f.entry.requestId,action:'in',claimedAt:Date.now()});
+ render(<f.Probe/>);await screen.findByText('ready');
+ await expect(f.control().reportAttempt(f.entry.requestId,{assertCurrent(){throw new errors.SessionChangedError();}})).rejects.toBeInstanceOf(errors.SessionChangedError);
+ expect(f.apiPost).not.toHaveBeenCalled();
+ const operation={assertCurrent:vi.fn()},receipt={requestId:f.entry.requestId,receivedAt:new Date().toISOString()};f.apiPost.mockResolvedValueOnce(receipt);
+ await f.control().reportAttempt(f.entry.requestId,operation);
+ expect(operation.assertCurrent).toHaveBeenCalled();expect(f.apiPost).toHaveBeenCalledWith('clock-attempts',JSON.parse(f.entry.command),{employmentId},operation);
 });

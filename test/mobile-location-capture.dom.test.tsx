@@ -9,17 +9,19 @@ function fixture(){
   const permission={status:'granted',canAskAgain:true,ios:{accuracy:'full'},android:{accuracy:'fine'}};
   const fix={timestamp:Date.now(),mocked:false,coords:{latitude:3,longitude:101,accuracy:5}};
   const location={requestForegroundPermissionsAsync:vi.fn(async()=>permission),hasServicesEnabledAsync:vi.fn(async()=>true),getCurrentPositionAsync:vi.fn(async()=>fix),Accuracy:{High:4}};
-  const module={exports:{} as {capturePosition:()=>Promise<{lat:number;lng:number;accuracy:number;sampledAt:number;permissionAccuracy:string}>}};
+  const camera={requestCameraPermissionsAsync:vi.fn(async()=>({granted:true})),launchCameraAsync:vi.fn(async()=>({canceled:true})),CameraType:{front:'front'}};
+  const module={exports:{} as {capturePhoto:(assertCurrent?:()=>void)=>Promise<unknown>;capturePosition:(assertCurrent?:()=>void)=>Promise<{lat:number;lng:number;accuracy:number;sampledAt:number;permissionAccuracy:string}>}};
   const code=transpileModule(readFileSync('mobile/lib/capture.ts','utf8'),{compilerOptions:{module:ModuleKind.CommonJS}}).outputText;
   runInNewContext(code,{exports:module.exports,module,Date,setTimeout,clearTimeout,require:(id:string)=>{
     if(id==='expo-location')return location;
-    if(['expo-image-picker','expo-image-manipulator','expo-file-system','expo-crypto'].includes(id))return {};
+    if(id==='expo-image-picker')return camera;
+    if(['expo-image-manipulator','expo-file-system','expo-crypto'].includes(id))return {};
     if(id==='react-native')return {AppState:state};
     if(id==='./i18n')return {t:(key:string)=>key};
     if(id==='./errors')return {LocationCaptureError};
     throw new Error(id);
   }});
-  return {capture:module.exports.capturePosition,location,permission,fix,state};
+  return {capture:module.exports.capturePosition,capturePhoto:module.exports.capturePhoto,camera,location,permission,fix,state};
 }
 afterEach(()=>vi.useRealTimers());
 describe('foreground location quality',()=>{
@@ -71,4 +73,24 @@ describe('foreground location quality',()=>{
     expect(await result).toMatchObject({issue:'unavailable'});release(true);await Promise.resolve();await Promise.resolve();
     expect(f.location.getCurrentPositionAsync).not.toHaveBeenCalled();
   });
+});
+
+
+describe('capture operation owner',()=>{
+ it('does not start GPS after a permission dialog invalidates its screen owner',async()=>{
+  const f=fixture();let current=true;
+  f.location.requestForegroundPermissionsAsync.mockImplementationOnce(async()=>{current=false;return f.permission;});
+  await expect(f.capture(()=>{if(!current)throw new Error('obsolete');})).rejects.toThrow('obsolete');
+  expect(f.location.hasServicesEnabledAsync).not.toHaveBeenCalled();expect(f.location.getCurrentPositionAsync).not.toHaveBeenCalled();
+ });
+ it('checks the operation again after a delayed location-services query',async()=>{
+  const f=fixture();let current=true;f.location.hasServicesEnabledAsync.mockImplementationOnce(async()=>{current=false;return true;});
+  await expect(f.capture(()=>{if(!current)throw new Error('obsolete');})).rejects.toMatchObject({issue:'unavailable'});
+  expect(f.location.getCurrentPositionAsync).not.toHaveBeenCalled();
+ });
+ it('does not launch a camera after its permission dialog invalidates the owner',async()=>{
+  const f=fixture();let current=true;f.camera.requestCameraPermissionsAsync.mockImplementationOnce(async()=>{current=false;return {granted:true};});
+  await expect(f.capturePhoto(()=>{if(!current)throw new Error('obsolete');})).rejects.toThrow('obsolete');
+  expect(f.camera.launchCameraAsync).not.toHaveBeenCalled();
+ });
 });

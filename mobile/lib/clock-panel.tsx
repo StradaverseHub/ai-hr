@@ -44,9 +44,16 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
     const selected=identity;
     return openOwnedSignedClock(selected,()=>mounted.current&&session.current.employmentId===selected&&session.current.status==='signedIn');
   }
+  function operation(owner:number){
+    return {assertCurrent(){assertAuthGeneration(owner);if(!mounted.current||session.current.status!=='signedIn'||session.current.employmentId!==identity||AppState.currentState!=='active')throw new SessionChangedError();}};
+  }
   const recovery=useSubmissionRecovery('clock',identity??undefined,({entry,command,file})=>{
     if(entry.stage==='preparation'){
       const saved=ClockPreparation.parse(JSON.parse(command));
+      const prior=latestDraft.current;
+      if(prior?.requestId===saved.requestId&&prior.action===saved.action&&prior.geo&&prior.phase==='review'){
+        putClock({...prior,attemptStartedAt:saved.claimedAt,attemptReceiptTime:entry.attemptReceipt?.receivedAt});return;
+      }
       putClock({employmentId:identity??undefined,action:saved.action,requestId:saved.requestId,attemptStartedAt:saved.claimedAt,
         attemptReceiptTime:entry.attemptReceipt?.receivedAt,phase:'idle',message:t('attemptSavedNotSent')});return;
     }
@@ -92,15 +99,15 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
       const saved=await recovery.prepareClock(action,randomUUID());assertAuthGeneration(owner);
       next={...next,requestId:saved.requestId,attemptStartedAt:saved.createdAt,attemptReceiptTime:saved.attemptReceipt?.receivedAt};
       if(!putClock(next))return;
-      const geo=await capturePosition();assertAuthGeneration(owner);
+      operation(owner).assertCurrent();const geo=await capturePosition(operation(owner).assertCurrent);assertAuthGeneration(owner);
       if(!putClock({...next,geo}))return;
-      const locationAssessment=await apiPost('clock-location',{lat:geo.lat,lng:geo.lng,accuracy:geo.accuracy,sampledAt:geo.sampledAt},{employmentId:identity});assertAuthGeneration(owner);
+      operation(owner).assertCurrent();const locationAssessment=await apiPost('clock-location',{lat:geo.lat,lng:geo.lng,accuracy:geo.accuracy,sampledAt:geo.sampledAt},{employmentId:identity},operation(owner));assertAuthGeneration(owner);
       if(locationAssessment.outcome!=='pass'&&locationAssessment.outcome!=='not_enforced'){
         removeLocalFile(photo);
         const approximate=geo.permissionAccuracy==='approximate'&&['poor_accuracy','outside_site'].includes(locationAssessment.outcome);
         putClock({...next,phase:'idle',geo,locationAssessment,...(approximate?{locationIssue:'approximate_permission'}:{}),message:t(approximate?'locationApproximate':locationRefusals[locationAssessment.outcome])});return;
       }
-      if(current.attendancePhotoSetting==='required'&&!photo){photo=await capturePhoto()??undefined;assertAuthGeneration(owner);if(!photo)throw new Error(t('photoRequired'));}
+      if(current.attendancePhotoSetting==='required'&&!photo){photo=await capturePhoto(operation(owner).assertCurrent)??undefined;assertAuthGeneration(owner);if(!photo)throw new Error(t('photoRequired'));}
       const deviceToken=await readClockDevice(identity);assertAuthGeneration(owner);
       if(!putClock({...next,phase:'review',geo,locationAssessment,photo,deviceToken}))removeLocalFile(photo);
     }catch(e){removeLocalFile(photo);putClock({...next,phase:'idle',message:e instanceof PendingSubmissionConflict?t('attemptReplacementBlocked'):e instanceof EnrollmentConflict?t('signedClockRegistrationRequired'):!next.requestId?t('attemptSaveFailed'):errorMessage(e),...(e instanceof LocationCaptureError?{locationIssue:e.issue}:{})});if(e instanceof SignInRequiredError)void signOut();}
@@ -109,19 +116,19 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
   async function reportAttempt(){
     if(flight.current||!draft?.requestId||!draft.attemptStartedAt)return;
     flight.current=true;const owner=authGeneration();putClock({...draft,phase:'preparing',message:t('attemptSending')});
-    try{const receipt=await recovery.reportAttempt(draft.requestId);assertAuthGeneration(owner);putClock({...draft,attemptReceiptTime:receipt.receivedAt,message:t('attemptReported')},draft.requestId);attempts.reload();}
+    try{const receipt=await recovery.reportAttempt(draft.requestId,operation(owner));assertAuthGeneration(owner);putClock({...draft,attemptReceiptTime:receipt.receivedAt,message:t('attemptReported')},draft.requestId);attempts.reload();}
     catch(e){putClock({...draft,message:t('attemptReportUncertain')},draft.requestId);if(e instanceof SignInRequiredError)void signOut();}
     finally{flight.current=false;}
   }
   async function takePhoto(){
     let captured:ClockDraft['photo'];
     if(flight.current||!draft||pending)return;flight.current=true;const owner=authGeneration();putClock({...draft,phase:'preparing'});
-    try{const photo=await capturePhoto();captured=photo??undefined;assertAuthGeneration(owner);if(photo){if(putClock({...draft,photo},draft.requestId))removeLocalFile(draft.photo);else removeLocalFile(photo);}else putClock(draft,draft.requestId);}
+    try{const photo=await capturePhoto(operation(owner).assertCurrent);captured=photo??undefined;assertAuthGeneration(owner);if(photo){if(putClock({...draft,photo},draft.requestId))removeLocalFile(draft.photo);else removeLocalFile(photo);}else putClock(draft,draft.requestId);}
     catch(e){removeLocalFile(captured);putClock({...draft,message:errorMessage(e)},draft.requestId);}finally{flight.current=false;}
   }
   async function register(){
     if(flight.current||!identity||!draft||pending)return;flight.current=true;const owner=authGeneration();putClock({...draft,phase:'preparing'});
-    try{const registered=await apiPost('clock-device',{label:`AI HR · ${Platform.OS}`},{employmentId:identity});assertAuthGeneration(owner);
+    try{const registered=await apiPost('clock-device',{label:`AI HR · ${Platform.OS}`},{employmentId:identity},operation(owner));assertAuthGeneration(owner);
       if(!putClock({...draft,deviceToken:registered.deviceToken,message:undefined},draft.requestId))return;
       await writeClockDevice(identity,registered.deviceToken,()=>assertAuthGeneration(owner));
     }catch(e){putClock({...draft,message:errorMessage(e)},draft.requestId);if(e instanceof SignInRequiredError)void signOut();}finally{flight.current=false;}
@@ -132,7 +139,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
       removeLocalFile(saved.photo);putClock({...saved,photo:undefined,phase:'done',receiptTime:result.receipt.recordedAt,message:undefined},saved.requestId);clock.reload();return true;
     }
     if(result.status==='abandoned'){
-      removeLocalFile(saved.photo);putClock({employmentId:identity,action:saved.action,phase:'idle',message:t('pendingDiscarded')},saved.requestId);clock.reload();return true;
+      removeLocalFile(saved.photo);putClock({employmentId:identity??undefined,action:saved.action,phase:'idle',message:t('pendingDiscarded')},saved.requestId);clock.reload();return true;
     }
     return false;
   }
@@ -147,7 +154,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
       const staged=await recovery.stage(JSON.stringify({action:saved.action,requestId:saved.requestId,lat:saved.geo.lat,lng:saved.geo.lng,accuracy:saved.geo.accuracy,sampledAt:saved.geo.sampledAt,deviceToken:saved.deviceToken}),saved.photo,saved.geo.source);
       removeLocalFile(staged.file);assertAuthGeneration(owner);
     }
-    await recovery.reportAttempt(saved.requestId!);assertAuthGeneration(owner);attempts.reload();
+    await recovery.reportAttempt(saved.requestId!,operation(owner));assertAuthGeneration(owner);attempts.reload();
     await controller.start(saved.requestId!);assertAuthGeneration(owner);
     const result=await controller.advance(saved.requestId);assertAuthGeneration(owner);
     if(!signedResult(result,saved))putClock({...saved,phase:'uncertain',message:t(result.status==='other_pending'?'signedClockOtherPending':'signedClockPending')},saved.requestId);
@@ -167,10 +174,10 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
       const staged=await recovery.stage(JSON.stringify({action:draft.action,requestId:draft.requestId,lat:draft.geo.lat,lng:draft.geo.lng,accuracy:draft.geo.accuracy,sampledAt:draft.geo.sampledAt,deviceToken:draft.deviceToken}),draft.photo);assertAuthGeneration(owner);
       uploadFile=staged.file;
       if(!putClock({...draft,photo:staged.file,phase:'submitting'},draft.requestId))return;
-      reportingAttempt=true;await recovery.reportAttempt(draft.requestId);assertAuthGeneration(owner);
+      reportingAttempt=true;await recovery.reportAttempt(draft.requestId,operation(owner));assertAuthGeneration(owner);
       attempts.reload();
       const form=new FormData();form.append('command',staged.command);if(staged.file)appendAttachment(form,'photo',staged.file);
-      sent=true;const result=await apiPost('clock',form,{employmentId:identity});assertAuthGeneration(owner);
+      sent=true;const result=await apiPost('clock',form,{employmentId:identity},operation(owner));assertAuthGeneration(owner);
       await recovery.resolve(draft.requestId);assertAuthGeneration(owner);
       if(result.outcome==='accepted'){removeLocalFile(draft.photo);putClock({...draft,photo:undefined,phase:'done',receiptTime:result.receipt.recordedAt});}
       else{if(result.code==='device_required')await clearClockDevice();removeLocalFile(draft.photo);putClock({employmentId:identity,action,phase:'idle',message:t(result.locationReason?locationRefusals[result.locationReason]:refusals[result.code])});}
@@ -200,7 +207,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
         if(signedResult(observed,draft))return;
         if(observed.status!=='empty'){putClock({...draft,message:t('signedClockPending')},draft.requestId);return;}
       }
-      const result=abandon?await apiPost('submission-abandon',{kind:'clock',requestId:draft.requestId},{employmentId:identity},{assertCurrent(){assertAuthGeneration(owner);if(!mounted.current||session.current.status!=='signedIn'||session.current.employmentId!==identity)throw new SessionChangedError();}}):await apiGet('submission-receipt',{kind:'clock',requestId:draft.requestId,employmentId:identity});assertAuthGeneration(owner);
+      const result=abandon?await apiPost('submission-abandon',{kind:'clock',requestId:draft.requestId},{employmentId:identity},operation(owner)):await apiGet('submission-receipt',{kind:'clock',requestId:draft.requestId,employmentId:identity});assertAuthGeneration(owner);
       if(result.kind!=='clock'||result.requestId!==draft.requestId||result.receipt&&result.receipt.direction!==draft.action)throw new Error('Unexpected submission receipt');
       if(result.kind==='clock'&&result.receipt){
         await recovery.resolve(draft.requestId);assertAuthGeneration(owner);

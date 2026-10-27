@@ -9,9 +9,11 @@ import type {ClockSourceSignals} from '../../lib/mobile-clock-integrity';
 import type { LocalAttachment } from './journey-drafts';
 import { t } from './i18n';
 import {LocationCaptureError} from './errors';
-export async function capturePosition(){
+export async function capturePosition(assertCurrent?:()=>void){
+  assertCurrent?.();
   const permission=await Location.requestForegroundPermissionsAsync();
   if(permission.status!=='granted')throw new LocationCaptureError(permission.canAskAgain?'permission_denied':'permission_blocked',t(permission.canAskAgain?'locationPermission':'locationPermissionBlocked'));
+  assertCurrent?.();
   const permissionAccuracy:'precise'|'approximate'|'unavailable'=permission.android?.accuracy==='coarse'||permission.ios?.accuracy==='reduced'?'approximate':permission.android?.accuracy==='fine'||permission.ios?.accuracy==='full'?'precise':'unavailable';
   if(AppState.currentState!=='active')throw new Error(t('unlockContinue'));
   let timeout:ReturnType<typeof setTimeout>|undefined;
@@ -20,7 +22,7 @@ export async function capturePosition(){
     if(!await Location.hasServicesEnabledAsync())throw new LocationCaptureError('services_disabled',t('locationServicesDisabled'));
     if(ended)throw new LocationCaptureError('unavailable',t('locationTimeout'));
     if(AppState.currentState!=='active')throw new LocationCaptureError('unavailable',t('unlockContinue'));
-    return Location.getCurrentPositionAsync({accuracy:Location.Accuracy.High});
+    assertCurrent?.();return Location.getCurrentPositionAsync({accuracy:Location.Accuracy.High});
   })(),new Promise<never>((_,reject)=>{timeout=setTimeout(()=>reject(new LocationCaptureError('unavailable',t('locationTimeout'))),20000);})])
     .catch(error=>{throw error instanceof LocationCaptureError?error:new LocationCaptureError('unavailable',t('locationTimeout'));})
     .finally(()=>{ended=true;clearTimeout(timeout);});
@@ -37,11 +39,12 @@ export async function capturePosition(){
   const source:ClockSourceSignals={provider:null,mock:typeof fix.mocked==='boolean'?fix.mocked:null,simulated:null,accessory:null};
   return {lat,lng,accuracy,sampledAt:Math.trunc(fix.timestamp),permissionAccuracy,source};
 }
-export async function capturePhoto():Promise<LocalAttachment|null>{
+export async function capturePhoto(assertCurrent?:()=>void):Promise<LocalAttachment|null>{
+  assertCurrent?.();
   const permission=await ImagePicker.requestCameraPermissionsAsync();
   if(!permission.granted)throw new Error(t('cameraPermission'));
   if(AppState.currentState!=='active')throw new Error(t('unlockContinue'));
-  const result=await ImagePicker.launchCameraAsync({mediaTypes:['images'],cameraType:ImagePicker.CameraType.front,quality:.7,exif:false});
+  assertCurrent?.();const result=await ImagePicker.launchCameraAsync({mediaTypes:['images'],cameraType:ImagePicker.CameraType.front,quality:.7,exif:false});
   if(result.canceled)return null;
   const original=result.assets[0];
   const image=ImageManipulator.manipulate(original.uri);
