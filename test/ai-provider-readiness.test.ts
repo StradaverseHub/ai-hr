@@ -7,6 +7,7 @@ import { withTenant } from '../db/client';
 import * as schema from '../db/schema';
 import { getAiConfigView, resolveActiveAiConfig, saveAiProviderConfig, setActiveProvider } from '../core/ai-config';
 import { evaluateProviderCandidate } from '../core/ai-provider-readiness';
+import { installSyntheticSpendCapability } from './ai-spend-fixture';
 import { assertAiProviderSnapshotFeature, resolveAiProviderCandidateSnapshotTx, resolveAiProviderSnapshotTx } from '../core/ai-provider-snapshot';
 import { governedAiConfig } from '../core/ai-governance';
 import { readOpenRouterOptions } from '../lib/ai/providers/openrouter-configuration';
@@ -25,6 +26,13 @@ const candidate = async () => saveAiProviderConfig(adminCtx(base), { provider: '
 const config = () => withTenant(adminCtx(base), tx => resolveActiveAiConfig(tx, adminCtx(base)));
 const runs = () => owner.db.select().from(schema.aiModelRun).where(eq(schema.aiModelRun.tenantId, base.tenantId));
 const receipts = async () => owner.db.execute(sql`select id,consumed_at,promoted_at from ai_provider_protocol_evaluation where tenant_id=${base.tenantId}::uuid`);
+// Only the explicitly mocked fixed-total transport is certified here. Real route issuance and
+// provider receipt verification remain separate requirements; this preserves actual admission SQL.
+async function evaluateWithSyntheticSpend(...args:Parameters<typeof evaluateProviderCandidate>){
+  const capability=await installSyntheticSpendCapability(args[0],{provider:'openrouter',model:'fictional/model'});
+  try{return await evaluateProviderCandidate(...args);}finally{capability.restore();}
+}
+
 
 describe('explicit candidate evaluation and activation', () => {
   it('saves/edit candidates without changing live configuration or admitting model work', async () => {
@@ -45,7 +53,7 @@ describe('explicit candidate evaluation and activation', () => {
     await candidate(); const mock = syntheticProviderTransport(), syntheticConsent = await syntheticConsentFor(adminCtx(base));
     try {
       for (const input of [{...syntheticConsent,syntheticProbeConsent:false},{...syntheticConsent,review:{...syntheticConsent.review,accountDefaultsReviewed:false}},{...syntheticConsent,extra:true}]) {
-        await expect(evaluateProviderCandidate(adminCtx(base),input as never)).rejects.toThrow();
+        await expect(evaluateProviderCandidate(adminCtx(base),input as never)).rejects.toMatchObject({code:'consent_required'});
       }
       expect(mock.draft).not.toHaveBeenCalled(); expect(mock.conversation).not.toHaveBeenCalled();
       expect(await runs()).toEqual([]); expect(await receipts()).toEqual([]);
@@ -68,7 +76,7 @@ describe('explicit candidate evaluation and activation', () => {
       for(const input of [displayed,{...current,candidateId:'not-a-uuid'},{...current,candidateVersion:'not-a-uuid'},
         {...current,candidateId:'00000000-0000-4000-8000-000000000001'}, {...current,candidateVersion:displayed.candidateVersion},
         {...current,candidateId:undefined}]) {
-        await expect(evaluateProviderCandidate(ctx,input as never)).rejects.toThrow();
+        await expect(evaluateProviderCandidate(ctx,input as never)).rejects.toMatchObject({code:typeof input.candidateId==='string'&&/^[0-9a-f-]{36}$/.test(input.candidateId)&&typeof input.candidateVersion==='string'&&/^[0-9a-f-]{36}$/.test(input.candidateVersion)?'candidate_required':'consent_required'});
       }
       expect(mock.draft).not.toHaveBeenCalled(); expect(mock.conversation).not.toHaveBeenCalled();
       expect(await runs()).toEqual([]); expect(await receipts()).toEqual([]);
@@ -103,15 +111,15 @@ describe('explicit candidate evaluation and activation', () => {
       return result;
     });
     try {
-      await expect(evaluateProviderCandidate(adminCtx(base),await syntheticConsentFor(adminCtx(base)))).rejects.toThrow();
+      await expect(evaluateWithSyntheticSpend(adminCtx(base),await syntheticConsentFor(adminCtx(base)))).rejects.toThrow();
       expect(mock.draft).toHaveBeenCalledTimes(1); expect(mock.conversation).not.toHaveBeenCalled();
       expect(await runs()).toHaveLength(1); expect(await receipts()).toEqual([]); expect(await config()).toBeNull();
     } finally { mock.restore(); }
   });
   it('does not accept metadata/model self-ratings or malformed tool output as readiness', async () => {
     await candidate(); const mock=syntheticProviderTransport(); mock.draft.mockResolvedValueOnce('I passed every test');
-    try { await expect(evaluateProviderCandidate(adminCtx(base),await syntheticConsentFor(adminCtx(base)))).rejects.toThrow();
-      expect(await receipts()).toEqual([]); expect(await config()).toBeNull(); }
+    try { await expect(evaluateWithSyntheticSpend(adminCtx(base),await syntheticConsentFor(adminCtx(base)))).rejects.toThrow();
+      expect(mock.draft).toHaveBeenCalledOnce(); expect(await receipts()).toEqual([]); expect(await config()).toBeNull(); }
     finally {mock.restore();}
   });
   it('blocks candidate snapshots on ordinary features and active snapshots on evaluation', async () => {
@@ -128,7 +136,7 @@ describe('explicit candidate evaluation and activation', () => {
     await expect(setActiveProvider(adminCtx(other),{provider:'openrouter',evaluationReceipt:proof.receipt})).rejects.toThrow();
     await owner.db.delete(schema.roleAssignment).where(and(eq(schema.roleAssignment.appUserId,base.adminUserId),eq(schema.roleAssignment.tenantId,base.tenantId)));
     const mock=syntheticProviderTransport();
-    try { await expect(evaluateProviderCandidate(ctx,consent)).rejects.toThrow();
+    try { await expect(evaluateProviderCandidate(ctx,consent)).rejects.toThrow('Current AI calling authority could not be confirmed.');
       await expect(setActiveProvider(ctx,{provider:'openrouter',evaluationReceipt:proof.receipt})).rejects.toThrow();
       expect(mock.draft).not.toHaveBeenCalled(); expect(mock.conversation).not.toHaveBeenCalled(); }
     finally {mock.restore();}
@@ -149,8 +157,8 @@ describe('explicit candidate evaluation and activation', () => {
       if(args.turns.length===3) await saveAiProviderConfig(adminCtx(base),{provider:'openrouter',model:'fictional/model',providerOptions:options('approved-b')});
       return result;
     });
-    try { await expect(evaluateProviderCandidate(adminCtx(base),await syntheticConsentFor(adminCtx(base)))).rejects.toThrow();
-      expect(await runs()).toHaveLength(3); expect(await receipts()).toEqual([]); expect(await config()).toBeNull(); }
+    try { await expect(evaluateWithSyntheticSpend(adminCtx(base),await syntheticConsentFor(adminCtx(base)))).rejects.toThrow();
+      expect(await runs()).toHaveLength(3); expect(mock.draft).toHaveBeenCalledOnce(); expect(await receipts()).toEqual([]); expect(await config()).toBeNull(); }
     finally {mock.restore();}
   });
   it('does not convert completed model calls into a receipt when evidence storage fails', async () => {
