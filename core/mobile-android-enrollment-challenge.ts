@@ -2,7 +2,7 @@
 import {createHash} from 'node:crypto';
 import {z} from 'zod';
 import type {SessionContext} from '../db/client';
-import {AndroidEnrollmentSettings,AndroidEnrollmentContext,androidEnrollmentClientData} from '../lib/mobile-android-enrollment';
+import {AndroidEnrollmentSettings,AndroidEnrollmentContext,androidEnrollmentClientData,androidEnrollmentAliasData} from '../lib/mobile-android-enrollment';
 import {issueOwnIntegrityChallenge,readOwnIntegrityChallenge,type IntegrityChallengeView} from './mobile-integrity-challenge';
 const uuid=z.string().uuid().transform(value=>value.toLowerCase());
 export const androidEnrollmentIntent=z.object({employmentId:uuid,requestId:uuid,appInstallationId:uuid}).strict();
@@ -25,7 +25,7 @@ export function createAndroidEnrollmentChallenges(settings:unknown){
   // Tenant is supplied by the authenticated server owner, never added to the public challenge view.
   const context=prepared(ctx,row);
   return {challenge:row,context,clientDataHash:hash(androidEnrollmentClientData(context)).digest('base64'),
-   alias:'aihr_'+hash(JSON.stringify(['aihr-android-key-alias',1,context.installationId,context.tenantId,context.actorId,context.appInstallationId,context.challengeId])).digest('hex')};
+   alias:'aihr_'+hash(androidEnrollmentAliasData(context)).digest('hex')};
  }
  return {
   async begin(ctx:SessionContext,input:Intent){const value=intent.parse(input);return result(ctx,await issueOwnIntegrityChallenge(ctx,binding(ctx,value)));},

@@ -7,6 +7,10 @@ export const AndroidEnrollmentSettings=z.object({apiOrigin:KeyEnrollmentContext.
 export const AndroidEnrollmentContext=z.object({...KeyEnrollmentContext.shape,target:AndroidEnrollmentTarget}).strict()
  .refine(value=>value.expiresAt>value.issuedAt&&value.expiresAt-value.issuedAt<=600000);
 export type AndroidEnrollmentContext=z.infer<typeof AndroidEnrollmentContext>;
+export function androidEnrollmentAliasData(input:unknown):string{
+ const p=AndroidEnrollmentContext.parse(input);
+ return JSON.stringify(['aihr-android-key-alias',1,p.installationId,p.tenantId,p.actorId,p.appInstallationId,p.challengeId]);
+}
 export function androidEnrollmentClientData(input:unknown):string{
  const p=AndroidEnrollmentContext.parse(input),t=p.target;
  return JSON.stringify(['aihr.mobile.integrity',p.version,p.purpose,
