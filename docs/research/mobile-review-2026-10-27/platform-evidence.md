@@ -959,6 +959,62 @@ Native HarmonyOS provider selection remains an assessment, including SDK availab
 vendor verification APIs and genuine signed-device fixtures. No new Huawei trust anchor, proof-kind,
 API authority, native build or migration was introduced by this clarification.
 
-Android journal/protocol/storage work at8a217c467 and its following native storage checkpoint is
-in progress and UNVERIFIED. The previous26-case/root/native passing evidence remains bound to the
-published b921025c8 candidate, not to these later source changes. No new publication or deployment.
+### Native HarmonyOS feasibility and acceptance boundary
+
+FACT: Huawei's [native SDK catalogue](https://developer.huawei.com/consumer/en/harmonyos/develop/)
+provides ArkTS/ArkUI/DevEco and separate location, storage and security kits. OBSERVATION: no DevEco
+application matched `/Applications/*DevEco*`; `hvigor`, `hvigorw`, and `hdc` were absent from PATH;
+the three checked SDK environment variables were unset; `~/Library/Huawei` and
+`~/Library/OpenHarmony` were absent. This is a bounded toolchain inventory, not an exhaustive disk scan.
+
+The [native enhanced-integrity guide](https://developer.huawei.com/consumer/ru/doc/atomic-guides/atomic-devicesecurity-sysintegrityenhanced-check)
+documents ArkTS `safetyDetect.checkSysIntegrityEnhanced`, SafetyDetect/profile prerequisites,
+server-generated base64 nonces of 16–66 bytes and a cloud-backed JWS result. It specifies ES256,
+a three-certificate chain, application identity fields, nonce and timestamp. The documented limits
+are 10,000 calls per app daily, five per device per minute and five concurrent per device. Its
+minimum API level and availability across the requested HarmonyOS5+ population remain UNKNOWN.
+
+RECOMMENDATION: assess a distinct Huawei provider with deployment-owned trust roots, strict bounded
+parsing, signature/path/time/app-identity verification and atomic one-use server challenge consumption.
+Never trust a root merely because it arrives in `x5c`. A positive device verdict does not prove
+hardware-key custody, GPS truth or historical offline presence. Provider errors and quota exhaustion
+must remain unavailable evidence, never an accepted verdict. No Huawei verifier is implemented here.
+
+| Native acceptance area | Required witness before support is claimed |
+|---|---|
+| Client/toolchain | Pinned SDK/API baseline, reproducible signed native build, supported phone/OS matrix; no Android compatibility assumption. |
+| Login/workplace | Actual native redirect, selected employment authorization, token storage and logout isolation; server reconstructs identity. |
+| Location | Native provider, permission denial and approximate fixes, freshness/accuracy bounds and documented mock-source signals; null stays unknown. |
+| Integrity | Enabled app profile, official independently captured trust anchors and signed positive/negative device fixtures; wrong app/nonce/time/chain rejected. |
+| Key custody | Verified HUKS algorithm, attestation API availability/permissions and chain semantics on the minimum supported OS; device generation/sign/restart/deletion evidence. |
+| Durable operations | Encrypted restart-safe intent/proof/receipt storage, lost-reply recovery, concurrent calls, account changes and revoked-key retirement tested on device. |
+| Offline attendance | Reboot/time uncertainty, permit consumption and server adjudication; a cloud-backed integrity call cannot itself establish offline acceptance. |
+
+DECISION: retain the shared server ownership of authorization, immutable commands and receipts.
+Build the native HarmonyOS client/provider as its own track. Do not extend the frozen Android
+migration or reuse Google's proof kind to represent Huawei. The first platform milestone is a signed
+native device build exercising login, secure storage, location and integrity challenge recovery;
+attendance acceptance follows verified provider integration, not merely successful compilation.
+
+### Durable enrollment recovery verification
+
+Candidate `2bd06fd0f815a7b09d9006a97f4c561a41a6f2ff` passed
+[focused hosted run 40451930906](https://github.com/StradaverseHub/ai-hr/actions/runs/40451930906):
+80 DOM assertions across six files, 12 Apple enrollment/database assertions, no skipped assertions,
+and the root TypeScript check. Artifact `focused.json` pins that candidate and controller
+`67be2710c35035af433bdb2fcdfb2cb30277ceda`, marks `FOCUSED_ONLY` and `releaseEligible:false`.
+The build phase was intentionally excluded. Native TypeScript separately passed after the shared
+employment-recovery change; subsequent candidate changes added tests only. Controlled removals of
+each platform's cross-employment no-adoption guard and Android's generation-intent commit failed
+their targeted assertions; exact source restoration passed each probe.
+
+The database case verifies that a current own employment can recover/revoke an accepted key while
+preserving its original employment provenance. The journal cases reject using the new employment
+to create or submit a previously unaccepted enrollment. Synthetic SDK/receipt ports establish
+recovery ordering, not hardware attestation. No signed-device acceptance, Huawei implementation,
+full regression/build, migration application or deployment is established by these checks.
+
+At the earlier `8a217c467` journal/protocol/storage checkpoint, that work was UNVERIFIED: the previous
+26-case/root/native evidence was bound to `b921025c8` and did not cover those changes. The later
+92-assertion candidate and its narrower limits are recorded above; neither checkpoint establishes
+deployment or signed-device acceptance.
