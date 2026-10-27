@@ -13,6 +13,7 @@ import {withAssistantRead,withAssistantJobReadsTx} from '../core/assistant-read-
 import {lockPayrollHistoryWriteTx} from '../core/payroll-history-lock';
 import {myPayslips,myReleasedPayslipRuns} from '../core/read';
 import {previewPayrollHistoryUpload,confirmPayrollHistoryUpload} from '../core/payroll-history-revisions';
+import {resolvePayrollPermission} from '../core/payroll';
 import {seedPayrollCycleCatalog} from '../core/payroll-cycle';
 import {PAYROLL_HISTORY_HEADERS} from '../lib/payroll-history-import-schema';
 import {toCsv} from '../lib/csv';
@@ -142,6 +143,17 @@ describe('Assistant and ordinary readers participate in Board history ownership'
   expect(reasons).toMatch(targetPartner?/Payroll history import permission is unavailable/:/company code is unknown, ambiguous or outside your payroll scope/);
   await expect(confirmPayrollHistoryUpload(scoped,{attemptId:preview.attemptId,previewHash:preview.plan.previewHash,confirmReplacement:false,expectedCompanyId:b.companyId})).rejects.toThrow();
   const after=await state();expect(after.people).toEqual(before.people);expect(after.batches).toEqual(before.batches);expect(after.payslips).toEqual(before.payslips);
+ });
+
+ it('an explicitly empty permission carrier cannot borrow administrator role strings from a valid actual login',async()=>{
+  await historyCatalogue();
+  expect(await withTenant(a,tx=>resolvePayrollPermission(tx,a,'payroll.history.import',b.companyId))).toBe(true);
+  const narrowed={...a,roles:['hr_admin'],grants:[]};
+  // The real GUC principal is still valid here: this isolates the resolver's deliberate empty scope.
+  expect(await withTenant(a,tx=>resolvePayrollPermission(tx,narrowed,'payroll.history.import',b.companyId))).toBe(false);
+  const before=await state();
+  await expect(previewPayrollHistoryUpload(narrowed,{name:'empty-grants.csv',content:sourceContent(),operationKey:randomUUID()})).rejects.toThrow('Access changed');
+  expect(await state()).toEqual(before);
  });
 
 });

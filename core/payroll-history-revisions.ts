@@ -30,15 +30,12 @@ async function principal(tx:Tx,ctx:SessionContext){
 }
 async function permission(tx:Tx,ctx:SessionContext,companyId:string,kind:'import'|'revert'){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
- // Preserve the original scope objects. Explicit empty/narrow grants cannot borrow ctx.roles,
- // while roles-only native callers retain the resolver's existing absent-grants compatibility.
- const candidates=ctx.grants??(ctx.roles??[]).map(role=>({role,companyId:null}));
- const roles=[...new Set(candidates.map(grant=>grant.role))];
  const [row]=await tx.execute<{ok:boolean}>(sql`select app.can_admin_payroll_for(${companyId}::uuid) as ok`);
- const scoped=await tx.execute<{role:string}>(sql`select role from unnest(ARRAY[${sql.join(roles.map(role=>sql`${role}::text`),sql`, `)}]::text[]) scoped_role(role) where app.has_role_for(role,${companyId}::uuid)`);
- const allowedRoles=new Set(scoped.map(item=>item.role)),grants=candidates.filter(grant=>allowedRoles.has(grant.role));
- if(!row?.ok||!await resolvePayrollPermission(tx,{...ctx,roles:scoped.map(item=>item.role),grants},kind==='import'?'payroll.history.import':'payroll.history.revert',companyId))fail('Payroll history access is unavailable for a company in this file.');
+ // The canonical resolver rechecks current scope. Preserve the original grant objects: an explicit
+ // empty/narrow carrier must not borrow roles or become an accidentally empty authorized carrier.
+ if(!row?.ok||!await resolvePayrollPermission(tx,ctx,kind==='import'?'payroll.history.import':'payroll.history.revert',companyId))fail('Payroll history access is unavailable for a company in this file.');
 }
+
 /** Bound ZIP expansion before a workbook parser allocates worksheet strings. No archive is extracted. */
 function checkWorkbook(bytes:Buffer){
  let end=-1;for(let i=bytes.length-22;i>=Math.max(0,bytes.length-65557);i--)if(bytes.readUInt32LE(i)===0x06054b50){end=i;break;}
