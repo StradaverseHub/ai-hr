@@ -8,7 +8,8 @@ import { currentPrincipleComments,editLeadershipFramework,frameworkEditSchema } 
 import { profitCurveFor } from './calibration-curve-model';
 import { lockProfitReferenceTx,profitAchievementsTx,seedCalibrationProfitTx } from './profit-service';
 import { talentBandTrail,potentialReviewReady } from './talent-trail-model';
-import { talentMovement,talentMoveAxes } from './talent-move-model';
+import { talentMovement,talentMoveAxes,talentOrigin } from './talent-move-model';
+import { talentBoxSettings,talentMoveCapBreach,talentMoveUsage,type CapPerson,type CapUsage } from './talent-board-model';
 import { finalBandExplanation,suggestFinalBand,type GroupMode } from './final-band-model';
 import { toCsv } from '../../../lib/csv';
 import { assessmentAiQuotaTx } from './ai-usage';
@@ -557,6 +558,34 @@ function needsAxes(policy:Policy,axis:Axis,_tier?:string){return {pm:ratedPerfor
 function assertPrecedingTier(rows:Awaited<ReturnType<typeof decisions>>,tier:Tier,mode:string,pm:boolean,pot:boolean) {
  if(!calibrationPredecessorOpen(rows,tier,pm,pot))throw Error(tier==='bu'?'BU calibration is closed after BG locks.':'HOD calibration is closed after BU or BG locks.');
 }
+/** Every person in the session as the movement ceiling counts them: unit, where this tier found them, where they sit. */
+async function talentCapCohortTx(tx:Tx,session:typeof onehrCalibration.$inferSelect,policy:Policy):Promise<CapPerson[]>{
+ const entries=await tx.select().from(onehrCalibrationEntry).where(eq(onehrCalibrationEntry.sessionId,session.id)).orderBy(asc(onehrCalibrationEntry.reviewId));
+ if(!entries.length)return [];
+ const facts=await tx.execute<{id:string;participates:boolean;companyId:string|null;input:Inputs|null;decisions:Awaited<ReturnType<typeof decisions>>|null}>(sql`select e.review_id as id,app.assessment_review_participates(e.review_id) as participates,r.company_id as "companyId",app.onehr_assessment_inputs(e.review_id) as input,app.onehr_decisions(e.review_id) as decisions from performance_onehr_calibration_entry e left join performance_onehr_review r on r.review_id=e.review_id where e.session_id=${session.id}::uuid`);
+ const byId=new Map(facts.map(f=>[f.id,f])),people:CapPerson[]=[];
+ for(const entry of entries){
+  const fact=byId.get(entry.reviewId);if(!fact?.participates)continue;
+  // The reviewer's own row is never resolved for them; it still belongs to its unit's headcount, unmoved.
+  if(!fact.input){if(fact.companyId)people.push({companyId:fact.companyId,from:{performance:null,potential:null},current:{performance:null,potential:null}});continue;}
+  const display=boxBands(resolveAssessment(assessmentFromInputs(fact.input,policy),fact.decisions??[]),session.tier,'both');
+  const current={performance:z.enum(pmBands).nullable().parse(entry.performance??display.performance),potential:z.enum(potentialBands).nullable().parse(entry.potential??display.potential)};
+  people.push({companyId:fact.input.companyId,from:talentOrigin(entry,current),current});
+ }
+ return people;
+}
+/** The source's movement ceiling, enforced in the writer so a replayed or crafted move cannot pass it. */
+async function assertTalentMoveCapTx(tx:Tx,session:typeof onehrCalibration.$inferSelect,policy:Policy,subject:CapPerson,next:{performance:PMBand|null;potential:PotentialBand|null}){
+ const cap=talentBoxSettings(policy).moveCap;if(!cap)return;
+ const breach=talentMoveCapBreach(await talentCapCohortTx(tx,session,policy),subject,next,cap.pct);if(!breach)return;
+ const [unit]=await tx.select({name:company.legalName}).from(company).where(eq(company.id,subject.companyId));
+ throw Error(`The category-change limit for ${unit?.name??'this business unit'} is used up: ${breach.used} of ${breach.cap} (${cap.pct}% of ${breach.headcount} ${breach.headcount===1?'person':'people'}). Return someone to their original category first, or ask HR to change the cycle's limit.`);
+}
+/** Per-unit ceiling usage for the board, from the same count the writer enforces; null while the ceiling is off. */
+async function talentCapUsageTx(tx:Tx,session:typeof onehrCalibration.$inferSelect,policy:Policy):Promise<{pct:number;units:Record<string,CapUsage>}|null>{
+ const cap=talentBoxSettings(policy).moveCap;if(!cap)return null;
+ return {pct:cap.pct,units:Object.fromEntries(talentMoveUsage(await talentCapCohortTx(tx,session,policy),cap.pct))};
+}
 export async function saveOnehrCalibration(ctx:SessionContext,sessionId:string,expected:number,raw:unknown) {
  const p=z.object({reviewId:uuid,axis:z.enum(['performance','potential','both']).default('both'),performance:z.enum(pmBands).nullable(),potential:z.enum(potentialBands).nullable(),performanceNote:note,potentialNote:note,pip:z.boolean().default(false),promotion:z.boolean().default(false),specialReward:z.boolean().default(false),confirmTalentDecisions:z.boolean().default(false)}).parse(raw);
  return withPerformanceTenant(ctx,tx=>saveOnehrCalibrationTx(tx,ctx,sessionId,expected,p));
@@ -576,7 +605,11 @@ export async function saveOnehrCalibrationTx(tx:Tx,ctx:SessionContext,sessionId:
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${p.reviewId},0))`);
   const current=await resolved(tx,p.reviewId,cycle.policy);if(current.input.finalized)throw Error('Assessment is finalized.');
   const display=boxBands(current,session.tier,p.axis),visible={performance:z.enum(pmBands).nullable().parse(entry.performance??display.performance),potential:z.enum(potentialBands).nullable().parse(entry.potential??display.potential)};
-  if(talentBoxMove){assertPrecedingTier(current.rows,session.tier as Tier,session.mode,pm,pot);const changed=talentMoveAxes(visible,p);pm=pm&&changed.pm;pot=pot&&changed.pot;if(!pm&&!pot)return;}
+  if(talentBoxMove){assertPrecedingTier(current.rows,session.tier as Tier,session.mode,pm,pot);const changed=talentMoveAxes(visible,p);pm=pm&&changed.pm;pot=pot&&changed.pot;if(!pm&&!pot)return;
+   // APR-011: every leader band change on the box carries its reason (BU, BG and Group; the HOD rule is below).
+   if(pm&&!p.performanceNote.trim()||pot&&!p.potentialNote.trim())throw Error('Explain each changed band.');
+   await assertTalentMoveCapTx(tx,session,cycle.policy,{companyId:current.input.companyId,from:talentOrigin(entry,visible),current:visible},{performance:pm?p.performance:null,potential:pot?p.potential:null});
+  }
   if(session.tier==='final'&&pm&&!current.input.performance)throw Error('The line manager rating must be confirmed before a final band is decided.');
   assertPrecedingTier(current.rows,session.tier as Tier,session.mode,pm,pot);
   const below=current.rows.filter(d=>tiers.indexOf(d.tier)<tiers.indexOf(session.tier as Tier)&&!(d.tier==='group'&&d.mode==='blend'));
@@ -790,7 +823,8 @@ export async function exportAssessmentFinalBands(ctx:SessionContext,sessionId:st
 async function calibrationRow(tx:Tx,ctx:SessionContext,entry:typeof onehrCalibrationEntry.$inferSelect,policy:Policy,session:typeof onehrCalibration.$inferSelect,status:string,viewAxis:Axis='both',resolvedInput?:Awaited<ReturnType<typeof resolved>>,includeTalent=true){
  const tier=session.tier;
  const r=resolvedInput??await resolved(tx,entry.reviewId,policy),talent=includeTalent?await talentContext(tx,ctx.tenantId,entry.reviewId,entry.employmentId,policy):null,bands=boxBands(r,tier,viewAxis);
- const movement=talentMovement(entry,{performance:z.enum(pmBands).nullable().parse(entry.performance??bands.performance),potential:z.enum(potentialBands).nullable().parse(entry.potential??bands.potential)});
+ const placed={performance:z.enum(pmBands).nullable().parse(entry.performance??bands.performance),potential:z.enum(potentialBands).nullable().parse(entry.potential??bands.potential)};
+ const movement={...talentMovement(entry,placed),from:talentOrigin(entry,placed)};
  const managerPotential=potentialReviewReady(r.input.potential.valid,r.input.competencyAssigned,r.input.competencyStatus)?r.input.potential.band:null;
  const current={performance:z.enum(pmBands).nullable().parse(entry.performance??bands.performance),potential:z.enum(potentialBands).nullable().parse(entry.potential??bands.potential)};
  const trailSource={self:{performance:r.input.selfPerformance,potential:r.input.selfPotential},manager:{performance:r.input.performance,potential:managerPotential},decisions:r.rows,current,adjusted:{performance:entry.performance!=null&&!entry.performancePinned,potential:entry.potential!=null&&!entry.potentialPinned},sources:{performance:entry.performancePinned?entry.performancePinSource:bands.performanceSource,potential:entry.potentialPinned?entry.potentialPinSource:bands.potentialSource}};
@@ -863,7 +897,7 @@ export async function getOnehrCalibration(ctx:SessionContext,sessionId:string,vi
     const cohortCompanyId=session.companyId??(companyIds.length===1?companyIds[0]:commonParent),cohortCompany=companies.find(c=>c.id===cohortCompanyId),cohortProfit=profitCurveFor(cohortCompanyId??'',cohortCompany?.parent??null,profitFigures);
     const conversations=await tx.select({axis:calibrationConversation.axis,held:calibrationConversation.held}).from(calibrationConversation).where(and(eq(calibrationConversation.sessionId,sessionId),eq(calibrationConversation.actorUserId,ctx.userId!)));
     const held=Object.fromEntries(conversations.map(c=>{const saved=heldCalibrationSchema.parse(c.held),lines=saved.lines.filter(l=>['open','calibration'].includes(cycle.native.status)&&l.sessionRevision===session.revision&&rows.some(r=>r.entry.reviewId===l.reviewId&&!r.finalized&&!(l.axis==='performance'?r.entry.performanceLockedAt||session.performanceLockedAt:r.entry.potentialLockedAt||session.potentialLockedAt)));return [c.axis,{...saved,lines,focus:(saved.navigation?rows.some(r=>r.entry.reviewId===saved.focus):lines.some(l=>l.reviewId===saved.focus))?saved.focus:null,requestId:lines.length||saved.navigation&&rows.some(r=>r.entry.reviewId===saved.focus)?saved.requestId:null}];})) as Partial<Record<Axis,typeof emptyHeldCalibration>>;
-    return {canSubmit:{pm:rows.length>0&&rows.every(r=>r.openAxes.pm&&(session.tier!=='hod'||!!r.entry.performanceLockedAt)&&(!r.finalized||!!r.entry.performanceLockedAt)),pot:rows.length>0&&rows.every(r=>r.openAxes.pot&&(session.tier!=='hod'||!!r.entry.potentialLockedAt)&&(!r.finalized||!!r.entry.potentialLockedAt))},held,actorUserId:ctx.userId,units,session,canReopen:await isAdmin(tx,session.cycleId)&&['open','calibration'].includes(cycle.native.status),canLockCohort:!own?.present,cycle:{id:cycle.native.id,name:cycle.native.name,status:cycle.native.status},modules:{...cycle.policy.modules,pm:ratedPerformance(cycle.policy)},axes:needsAxes(cycle.policy,viewAxis,session.tier),rows,curvePolicy:{curveToleranceMode:cycle.policy.curveToleranceMode,curveTolerancePct:cycle.policy.curveTolerancePct,curveTolerancePeople:cycle.policy.curveTolerancePeople},reference:cohortCompanyId?cohortProfit.reference:null};
+    return {canSubmit:{pm:rows.length>0&&rows.every(r=>r.openAxes.pm&&(session.tier!=='hod'||!!r.entry.performanceLockedAt)&&(!r.finalized||!!r.entry.performanceLockedAt)),pot:rows.length>0&&rows.every(r=>r.openAxes.pot&&(session.tier!=='hod'||!!r.entry.potentialLockedAt)&&(!r.finalized||!!r.entry.potentialLockedAt))},held,actorUserId:ctx.userId,units,session,canReopen:await isAdmin(tx,session.cycleId)&&['open','calibration'].includes(cycle.native.status),canLockCohort:!own?.present,cycle:{id:cycle.native.id,name:cycle.native.name,status:cycle.native.status},modules:{...cycle.policy.modules,pm:ratedPerformance(cycle.policy)},axes:needsAxes(cycle.policy,viewAxis,session.tier),rows,curvePolicy:{curveToleranceMode:cycle.policy.curveToleranceMode,curveTolerancePct:cycle.policy.curveTolerancePct,curveTolerancePeople:cycle.policy.curveTolerancePeople},reference:cohortCompanyId?cohortProfit.reference:null,talentBox:{grid:talentBoxSettings(cycle.policy).grid,cap:['bu','bg','group'].includes(session.tier)?await talentCapUsageTx(tx,session,cycle.policy):null}};
   });
 }
 

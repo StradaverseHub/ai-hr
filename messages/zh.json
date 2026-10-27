@@ -18061,7 +18061,85 @@
     "returnedReason": "Reason for return",
     "returnedNext": "Revise the review and submit it again.",
     "decidedBy": "By {actor}",
-    "aReviewer": "a reviewer"
+    "aReviewer": "a reviewer",
+    "postNeedsAdmin": "Posting needs a company HR administrator who also holds the Payroll seat.",
+    "noPayrollBatch": "There is no draft payroll batch for this company, so bonus and lump-sum awards cannot be posted yet. Salary changes can still be posted on their own. Payroll creates the draft batch for the pay period; posting itself needs a company HR administrator who also holds the Payroll seat.",
+    "dueOn": "Due {date}",
+    "board": {
+      "title": "Approvals",
+      "open": "Approvals board",
+      "yourStep": "Your step: {steps}.",
+      "stepPhrase": {
+        "submit": "submit your unit's recommendations",
+        "approve": "approve and send on, or return with a reason",
+        "post": "post approved reviews to payroll"
+      },
+      "nothingYours": "No step on this board sits with you; you follow these reviews along the route.",
+      "groups": "Business groups",
+      "allGroups": "All groups",
+      "waiting": "Waiting on you · {count}",
+      "elsewhere": "Elsewhere on the route · {count}",
+      "noneWaiting": "Nothing is waiting on you.",
+      "empty": "No reviews are on the route for you in the selected companies.",
+      "columns": {
+        "unit": "Unit",
+        "stage": "Stage",
+        "due": "Due",
+        "people": "People",
+        "salary": "Salary increase",
+        "bonus": "Bonus",
+        "exceptions": "Exceptions",
+        "blocking": "Blocking",
+        "action": "Action"
+      },
+      "seat": {
+        "bu": "BU CEO",
+        "bg": "BG CEO",
+        "gr": "Group Rewards",
+        "ctro": "CTRO",
+        "ec": "Executive Chairman",
+        "pbp": "PBP",
+        "payroll": "Payroll"
+      },
+      "with": "With {seat}",
+      "stepOf": "Step {step} of {steps}",
+      "dueToday": "today",
+      "dueTomorrow": "tomorrow",
+      "dueIn": "in {days, plural, one {# day} other {# days}}",
+      "overdue": "{days, plural, one {# day} other {# days}} overdue",
+      "ofPool": "{percent} of pool",
+      "ofBudget": "{percent} of budget",
+      "overLimit": "over limit",
+      "openReview": "Open review",
+      "return": "Return",
+      "blockedHint": "Clear the blocking checks first",
+      "sendAll": "Send all ready ({count})",
+      "sendResult": "{sent} sent · {skipped} skipped (blocking) · {refused} refused (changed since you opened the page)",
+      "refusedItem": "{name}: {message}",
+      "decided": "Decision recorded.",
+      "footer": "Salary increase is the monthly total in RM (RM/mo) for the standard and JG H plans, against the salary increase pool. Bonus is the total in RM, including lump sums, against the bonus budget. Totals count only the records you are allowed to see. Open a row to see its review."
+    },
+    "calendar": {
+      "title": "Reward calendar",
+      "help": "Due dates for this reward cycle in this company. They appear on the Approvals board and on each review; they never move, block or approve a review. Leave a date empty when there is no deadline.",
+      "annual": "Annual review: date each step is due",
+      "stage": {
+        "bu": "BU CEO submits",
+        "returned": "Returned review resubmitted",
+        "bg": "BG CEO approves",
+        "gr": "Group Rewards approves",
+        "ctro": "CTRO approves",
+        "ec": "Executive Chairman approves",
+        "payroll": "Posted to payroll"
+      },
+      "caseDue": "ER and PIP case decisions due",
+      "offcycle": "Off-cycle requests: days allowed at each step",
+      "offcycleHelp": "An off-cycle request is due this many days after it reaches the step (1 to 90).",
+      "save": "Save calendar",
+      "readOnly": "Group Rewards or a company HR administrator maintains this calendar.",
+      "notSet": "Not set",
+      "days": "{days, plural, one {# day} other {# days}}"
+    }
   },
   "identityEmail": {
     "title": "邮件发送",
@@ -19319,7 +19397,8 @@
       "failed": "无法保存移动，请重试。",
       "saving": "正在保存…",
       "save": "保存移动",
-      "cancel": "取消"
+      "cancel": "取消",
+      "reasonRequired": "Reason (required) · the tier above reads it"
     },
     "talentCurve": {
       "title": "{axis}分布 — {unit}",
@@ -19684,6 +19763,62 @@
         "partial": "Partly locked",
         "locked": "Locked"
       }
+    },
+    "talentBoard": {
+      "title": "Talent Box",
+      "people": "{count, plural, one {# person} other {# people}}",
+      "units": "{count, plural, one {# business unit} other {# business units}}",
+      "placed": "{placed} of {total} placed",
+      "lockedState": "Locked",
+      "openState": "Open for review",
+      "sources": "Potential from {cycle} · performance from {cycle}",
+      "businessUnit": "Business unit",
+      "all": "All",
+      "department": "Department",
+      "allDepartments": "All departments",
+      "grade": "Job grade",
+      "allGrades": "All grades",
+      "clearFilters": "Clear filters",
+      "wholeScope": "Showing the whole scope. Narrow it by business unit, department or grade to measure the distribution against that group instead.",
+      "filtered": "{count, plural, one {Measured against the # person in this selection.} other {Measured against the # people in this selection.}}",
+      "views": "Talent Box views",
+      "grid9": "9-box",
+      "grid15": "15-box",
+      "table": "Table",
+      "referenceTitle": "Reference guideline",
+      "showDetails": "Show details",
+      "hideDetails": "Hide details",
+      "onTarget": "On target in every category",
+      "onTargetShort": "On target",
+      "deltaTitle": "{actual} now, {target} at the reference share",
+      "noReference": "This scope has no single performance reference, so no reference shares are shown.",
+      "referenceNote": "Performance reference × potential {high}/{mid}/{low}, over the {placed} placed. It is guidance for the conversation, not a quota.",
+      "columns": {
+        "category": "Category",
+        "count": "Count",
+        "share": "Share",
+        "reference": "Reference",
+        "toMove": "To meet reference"
+      },
+      "capChip": "Moves {used} of {cap}",
+      "capChipUnits": "Moves {used} of {cap} across {count} business units",
+      "capNote": "Category-change limit: {pct}% of each business unit's people, counted per unit. Only a change of talent category counts, and moving someone back returns the allowance.",
+      "cellLabel": "{category}, {potential} potential, {performance}: {count}",
+      "vsRef": "vs {pct}%",
+      "movedUp": "Moved up from {category}",
+      "movedDown": "Moved down from {category}",
+      "moveTo": "Move {name} to another box",
+      "moveMenu": "Move to…",
+      "legendUp": "moved up a box in this calibration",
+      "legendDown": "moved down a box",
+      "potentialAxis": "Potential",
+      "performanceAxis": "Performance →",
+      "columnPerformance": "{level} performance",
+      "footerOpen": "{placed} placed{filtered, select, yes { in this selection} other {}} · locking covers both performance and potential for {scope}",
+      "footerLocked": "Calibration locked for {scope}: performance and potential are final.",
+      "pickUnitToLock": "Choose a business unit above to lock it.",
+      "categoryHelp": "Everyone here whose performance and potential place them in {category}.",
+      "categoryEmpty": "No one here is in {category} right now."
     }
   },
   "allowanceV2": {
@@ -24726,6 +24861,69 @@
       "assetSearch": "搜索资源名称",
       "companyCodeUnavailable": "请配置简短的公司参考代码，或使用不含公司占位符的格式。",
       "version": "配置版本 {number}"
+    }
+  },
+  "performanceHome": {
+    "title": "绩效",
+    "closes": "{date} 截止",
+    "progress": "已完成 {done}/{total}",
+    "stripLabel": "本周期步骤",
+    "steps": {
+      "kpi": "KPI 检视",
+      "kpiSetting": "KPI 设定",
+      "feedback360": "360 反馈",
+      "competency": "能力评估",
+      "careerPlan": "职业规划",
+      "teamReview": "团队评审",
+      "calibration": "校准",
+      "results": "结果发布"
+    },
+    "states": {
+      "done": "已完成",
+      "yourTurn": "轮到你",
+      "waiting": "{count} 项待处理",
+      "locked": "已锁定",
+      "inProgress": "进行中",
+      "released": "已发布",
+      "notRequired": "无需进行"
+    },
+    "next": {
+      "label": "你的下一步",
+      "kpiTitle": "你的 KPI 检视",
+      "kpiLine": "已填写 {done}/{total} 项 KPI",
+      "kpiSettingTitle": "设定你的 KPI",
+      "kpiSettingLine": "已提议 {done}/{total} 项 KPI",
+      "competencyTitle": "评估你的能力",
+      "competencyLine": "已回答 {done}/{total}",
+      "careerPlanTitle": "撰写你的职业规划",
+      "careerPlanLine": "已写 {done} 个目标，至少需要 {total} 个",
+      "feedback360Title": "为 {count} 位同事提供 360 反馈",
+      "feedback360Line": "回答每一项陈述，然后提交。",
+      "due": "截止日期 {date}",
+      "open": "继续",
+      "none": "目前没有需要你处理的事项",
+      "opens": "你的下一步将于 {date} 开放",
+      "closesOn": "本周期于 {date} 结束"
+    },
+    "team": {
+      "title": "你的团队",
+      "waiting": "{count, plural, =0 {没有等待你处理的评审} other {# 项评审等待你处理}}",
+      "open": "打开团队评审"
+    },
+    "standing": {
+      "title": "你的现况",
+      "details": "详情",
+      "performance": "绩效",
+      "competency": "能力",
+      "feedback360": "360 反馈",
+      "careerTarget": "职业目标",
+      "awaitingManager": "等待你的经理",
+      "notReleased": "尚未发布",
+      "notSubmitted": "尚未提交",
+      "withManager": "经理处理中",
+      "reviewed": "经理已评审",
+      "reportReleased": "报告已发布",
+      "notSet": "尚未设定"
     }
   }
 }

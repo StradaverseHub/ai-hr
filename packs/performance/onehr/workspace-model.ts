@@ -56,6 +56,8 @@ export function leaderWorkspaceParts(policy:Pick<Policy,'modules'|'kind'>,tier:T
  const pm=ratedPerformance(policy),pot=policy.modules.tm;
  const part=(stage:string,axis:WorkspaceAxis,done:boolean)=>({stage,axis,module:'cal' as const,state:(done?'done':'open') as 'done'|'open'|'waiting'});
  if(tier==='bg')return pm||pot?[part('talent_box','both',!!locks.lockedAt)]:[];
- if(tier==='group'||tier==='final')return pm?[part('group_calibration','performance',!!(locks.performanceLockedAt||locks.lockedAt))]:[];
- return [...(pm?[part(tier==='hod'?'department_review':'calibration','performance',!!(locks.performanceLockedAt||locks.lockedAt))]:[]),...(pot?[part(tier==='hod'?'department_potential_review':'potential_calibration','potential',!!(locks.potentialLockedAt||locks.lockedAt))]:[])];
+ // OneHR gives the BU CEO and the Group Chief a Talent Box beside their per-axis work, and only with both axes on (C1, C10).
+ const box=pm&&pot&&(tier==='bu'||tier==='group')?[part('talent_box','both',!!locks.lockedAt)]:[];
+ if(tier==='group'||tier==='final')return [...(pm?[part('group_calibration','performance',!!(locks.performanceLockedAt||locks.lockedAt))]:[]),...box];
+ return [...(pm?[part(tier==='hod'?'department_review':'calibration','performance',!!(locks.performanceLockedAt||locks.lockedAt))]:[]),...(pot?[part(tier==='hod'?'department_potential_review':'potential_calibration','potential',!!(locks.potentialLockedAt||locks.lockedAt))]:[]),...box];
 }

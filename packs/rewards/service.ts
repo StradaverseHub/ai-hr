@@ -4,7 +4,7 @@ import { and, asc, desc, eq, inArray, isNull, lte, or, gt, sql } from 'drizzle-o
 import { z } from 'zod';
 import type { SessionContext, Tx } from '../../db/client';
 import { actorOf, appendEvent } from '../../db/events';
-import { appUser, assignment, businessUnit, company, compensation, employment, jobGrade, payrollBatch, payrollInput, performanceReview, reviewCycle, person, rewardCycle, rewardDecision, rewardEntry, rewardMember, rewardUnit } from '../../db/schema';
+import { appUser, assignment, businessUnit, company, compensation, employment, jobGrade, payrollBatch, payrollInput, performanceReview, reviewCycle, person, rewardCalendar, rewardCycle, rewardDecision, rewardEntry, rewardMember, rewardUnit } from '../../db/schema';
 import { assertModuleGate, withRewardsTenant } from '../../core/module-gate';
 import { setCompensation } from '../../core/comp';
 import { setEmploymentGrade } from '../../core/org';
@@ -20,6 +20,9 @@ export type {RewardSharedChoice} from './policy-groups';
 import { calculateOffcycle, offcycleRoute, offcycleTransition, type Funding } from './offcycle';
 import { canEditStage, defaultPolicy, emptyFacts, emptyRecommendation, factsSchema, isoDateSchema, policySchema, recommendationSchema, rewardRoles, transition, visibleEntry, type RewardEntry, type RewardFacts, type RewardPolicy, type RewardRole, type RewardSource } from './model';
 
+import { emptyRewardCalendar, rewardCalendarSchema, rewardDaysUntil, rewardStageDue, rewardStageSeat, rewardStageStep, type RewardCalendarValues } from './calendar';
+export { rewardCalendarStages, rewardOffcycleSlaStages, emptyRewardCalendar, rewardDueWording } from './calendar';
+export type { RewardCalendarValues, RewardCalendarStage, RewardOffcycleSlaStage } from './calendar';
 import {changeRewardMember} from './maintenance';
 export {rewardAccessAdministration,previewRewardAccessChange,saveRewardAccessChange,rewardDeletionEligibility,deleteRewardReview,RewardMaintenanceError} from './maintenance';
 export type {RewardAccessChange,RewardAccessAdministration,RewardDeletionReason} from './maintenance';
@@ -48,6 +51,25 @@ async function calculateUnit(tx: Tx, unit: typeof rewardUnit.$inferSelect, entri
   const result = calculateOffcycle(entries, unit.policy, unit.kind, unit.offcycle!, available);
   if (available.duplicate) result.flags.push({ severity: 'block', code: 'OC-12', message: 'An employee already has an open off-cycle request against this annual review.' });
   return result;
+}
+/**
+ * Who may post a fully approved review to payroll (H1). The ONE owner of this rule: postRewardUnit's guard
+ * and the review page's Post button both ask it, so the button can never offer what the guard refuses.
+ * Posting needs BOTH the unit's payroll seat AND fresh company HR administration, because the salary and
+ * grade writers it calls are administrator-owned. Who MAY post is unchanged here (DR-13 is not decided).
+ */
+export type RewardPostingAuthority = 'allowed' | 'no-seat' | 'needs-admin';
+async function rewardPostingAuthorityTx(tx: Tx, unit: { companyId: string }, roles: readonly RewardRole[]): Promise<RewardPostingAuthority> {
+  if (!roles.includes('payroll')) return 'no-seat';
+  const [r] = await tx.execute<{ ok: boolean }>(sql`select app.reward_admin(${unit.companyId}::uuid) as ok`);
+  return r?.ok ? 'allowed' : 'needs-admin';
+}
+/** The posting predicate for a caller without a transaction. True only when postRewardUnit's guard passes. */
+export async function canPostRewardUnit(ctx: SessionContext, unitId: string): Promise<boolean> {
+  return withRewardsTenant(ctx, async tx => {
+    const { unit, roles } = await load(tx, unitId);
+    return (await rewardPostingAuthorityTx(tx, unit, roles)) === 'allowed';
+  });
 }
 async function requireAdmin(tx: Tx, companyId: string) {
   const [r] = await tx.execute<{ ok: boolean }>(sql`select app.reward_admin(${companyId}::uuid) as ok`);
@@ -95,7 +117,15 @@ function returnedProjection(unit: typeof rewardUnit.$inferSelect, latest: Decisi
 
 /** The full pay-bearing review projection. Never return hidden internal entries or EC aggregates. */
 export async function getRewardUnit(ctx: SessionContext, unitId: string) {
-  return withRewardsTenant(ctx, async tx => {
+  return withRewardsTenant(ctx, tx => reviewProjectionTx(tx, ctx, unitId));
+}
+/**
+ * The review read path. getRewardUnit and the Approvals board (rewardApprovalsBoard) both read a review
+ * through this one function, so membership, entry visibility (visibleEntry, including the own-person
+ * exclusion) and flag filtering are decided in one place.
+ */
+async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string) {
+  {
     const { unit, roles, entries } = await load(tx, unitId);
     const calculated = await calculateUnit(tx, unit, entries);
     const visible = calculated.rows.filter(e => visibleEntry(e, roles, ctx.personId));
@@ -108,6 +138,10 @@ export async function getRewardUnit(ctx: SessionContext, unitId: string) {
     const members = await tx.select({ id: rewardMember.id, role: rewardMember.role, userId: rewardMember.userId }).from(rewardMember).where(eq(rewardMember.unitId, unitId)).orderBy(asc(rewardMember.role), asc(rewardMember.userId));
     const decisions = await decisionHistory(tx, unitId, members);
     const returned = returnedProjection(unit, decisions[0]);
+    const route: RewardRole[] = unit.kind === 'annual' ? ['bu', 'bg', 'gr', 'ctro', 'ec'] : offcycleRoute(unit.kind, unit.offcycle!, entries);
+    // The latest decision is the one that moved the review to its current step (or returned it).
+    const entered = decisions[0] && decisions[0].toStage === unit.status ? todayInKualaLumpur(new Date(decisions[0].createdAt)) : null;
+    const due = rewardStageDue(await calendarTx(tx, unit.cycleId, unit.companyId), { kind: unit.kind, status: unit.status, returned: !!returned, enteredOn: entered });
     // EC totals are derived ONLY from the rows the viewer may see (including the own-person exclusion).
     const ecRows = visible.filter(e => e.plan === 'ec');
     const bonusCounts = (plan: 'standard' | 'h') => {
@@ -119,7 +153,7 @@ export async function getRewardUnit(ctx: SessionContext, unitId: string) {
         reductions: group.filter(e => e.bonusCents < e.standardBonusCents).length,
         lump: group.filter(e => e.lumpCents > 0).length };
     };
-    return { unit, cycle, route: unit.kind === 'annual' ? ['bu', 'bg', 'gr', 'ctro', 'ec'] as RewardRole[] : offcycleRoute(unit.kind, unit.offcycle!, entries), name: bu?.name ?? 'Business unit', roles, members, decisions, returned,
+    return { unit, cycle, route, due, name: bu?.name ?? 'Business unit', roles, members, decisions, returned,
       rows: visible, flags, hiddenCount: entries.length - visible.length,
       budgets: { standard: calculated.budgets.standard, h: calculated.budgets.h },
       bonusCounts: { standard: bonusCounts('standard'), h: bonusCounts('h') },
@@ -127,8 +161,9 @@ export async function getRewardUnit(ctx: SessionContext, unitId: string) {
       suggestedLumpCents: calculated.suggestedLumpCents, lumpUnitCents: calculated.lumpUnitCents,
       suggestedMultiplierBp: calculated.suggestedMultiplierBp, lumpWorking: calculated.lumpWorking,
       canEdit: canEditStage(unit.status, roles) || unit.kind !== 'annual' && unit.status === 'draft' && roles.includes('bg'), canConfigure: roles.includes('gr') && unit.status === 'draft' && unit.kind === 'annual',
+      posting: await rewardPostingAuthorityTx(tx, unit, roles),
     };
-  });
+  }
 }
 
 // Latest decision by (created_at DESC, id DESC), read through reward_decision RLS: a viewer who cannot
@@ -456,8 +491,9 @@ export async function postRewardUnit(ctx: SessionContext, unitId: string, revisi
   return withRewardsTenant(ctx, async tx => {
     idSchema.parse(unitId); await funding(tx, unitId, true);
     const { unit, roles, entries } = await load(tx, unitId, true); assertRevision(unit, revision);
-    if (!roles.includes('payroll')) throw new RewardError('The assigned payroll role is required.');
-    await requireAdmin(tx, unit.companyId); // The existing salary and grade writers are administrator-owned.
+    const authority = await rewardPostingAuthorityTx(tx, unit, roles);
+    if (authority === 'no-seat') throw new RewardError('The assigned payroll role is required.');
+    if (authority === 'needs-admin') throw new RewardError('Company administrator access is required.');
     if (unit.status === 'posted') return { alreadyPosted: true };
     if (unit.status !== 'approved' || unit.approvedDigest !== digest(unit, entries)) throw new RewardError('Only the unchanged, fully approved review can be posted.');
     const result = await calculateUnit(tx, unit, entries);
@@ -624,4 +660,163 @@ export async function pendingRewardTasks(ctx: SessionContext, scopeIds: string[]
     id: r.id, kind: 'rewardReview' as const, subjectName: `${r.cycle} · ${r.name}`, createdAt: r.returnedAt, linkPath: `/rewards/${r.id}`,
   }));
   return [...approvals, ...back];
+}
+
+// ── Reward calendar (migration 0646) ────────────────────────────────────────────────────────────────────
+
+type CalendarRow = typeof rewardCalendar.$inferSelect;
+const calendarValues = (r: CalendarRow): RewardCalendarValues => ({
+  due: { bu: r.buDue, returned: r.returnedDue, bg: r.bgDue, gr: r.grDue, ctro: r.ctroDue, ec: r.ecDue, payroll: r.payrollDue },
+  caseDue: r.caseDue,
+  offcycleDays: { bg: r.offcycleBgDays, gr: r.offcycleGrDays, ctro: r.offcycleCtroDays, ec: r.offcycleEcDays, returned: r.offcycleReturnedDays },
+});
+/** The calendar for a (cycle, company), read through reward_calendar RLS; null when none is set or readable. */
+async function calendarTx(tx: Tx, cycleId: string, companyId: string): Promise<RewardCalendarValues | null> {
+  const [row] = await tx.select().from(rewardCalendar).where(and(eq(rewardCalendar.cycleId, cycleId), eq(rewardCalendar.companyId, companyId)));
+  return row ? calendarValues(row) : null;
+}
+async function calendarUnit(tx: Tx, unitId: string) {
+  idSchema.parse(unitId);
+  const [unit] = await tx.select({ id: rewardUnit.id, cycleId: rewardUnit.cycleId, companyId: rewardUnit.companyId, deletedAt: rewardUnit.deletedAt }).from(rewardUnit).where(eq(rewardUnit.id, unitId));
+  if (!unit || unit.deletedAt) throw new RewardError('Reward unit not found or access has been removed.');
+  const [access] = await tx.execute<{ read: boolean; write: boolean }>(sql`select app.reward_calendar_access(${unit.cycleId}::uuid, ${unit.companyId}::uuid, false) as read, app.reward_calendar_access(${unit.cycleId}::uuid, ${unit.companyId}::uuid, true) as write`);
+  if (!access?.read) throw new RewardError('Ask an administrator to assign your Reward Desk role for this unit.');
+  return { unit, canEdit: !!access.write };
+}
+
+/** The reward calendar of the review's cycle in the review's company. Dates only; no pay. */
+export async function getRewardCalendar(ctx: SessionContext, unitId: string) {
+  return withRewardsTenant(ctx, async tx => {
+    const { unit, canEdit } = await calendarUnit(tx, unitId);
+    const [row] = await tx.select().from(rewardCalendar).where(and(eq(rewardCalendar.cycleId, unit.cycleId), eq(rewardCalendar.companyId, unit.companyId)));
+    return { cycleId: unit.cycleId, companyId: unit.companyId, revision: row?.revision ?? 0, values: row ? calendarValues(row) : emptyRewardCalendar(), canEdit };
+  });
+}
+
+/**
+ * Save the calendar for the review's (cycle, company). Writers: a company HR administrator or the Group
+ * Rewards seat (enforced again by reward_calendar RLS). `revision` is what the editor opened: 0 for a calendar
+ * not yet created. A stale form is refused rather than overwriting another person's dates.
+ */
+export async function saveRewardCalendar(ctx: SessionContext, unitId: string, revision: number, raw: unknown) {
+  const values = rewardCalendarSchema.parse(raw);
+  return withRewardsTenant(ctx, async tx => {
+    const { unit, canEdit } = await calendarUnit(tx, unitId);
+    if (!canEdit) throw new RewardError('The reward calendar is maintained by Group Rewards or a company HR administrator.');
+    const [existing] = await tx.select().from(rewardCalendar).where(and(eq(rewardCalendar.cycleId, unit.cycleId), eq(rewardCalendar.companyId, unit.companyId))).for('update');
+    if ((existing?.revision ?? 0) !== revision) throw new RewardError('The reward calendar changed in another session. Reload before saving.');
+    const columns = {
+      buDue: values.due.bu, returnedDue: values.due.returned, bgDue: values.due.bg, grDue: values.due.gr, ctroDue: values.due.ctro, ecDue: values.due.ec, payrollDue: values.due.payroll,
+      caseDue: values.caseDue,
+      offcycleBgDays: values.offcycleDays.bg, offcycleGrDays: values.offcycleDays.gr, offcycleCtroDays: values.offcycleDays.ctro, offcycleEcDays: values.offcycleDays.ec, offcycleReturnedDays: values.offcycleDays.returned,
+      updatedBy: ctx.userId!, updatedAt: new Date(),
+    };
+    const [saved] = existing
+      ? await tx.update(rewardCalendar).set({ ...columns, revision: existing.revision + 1 }).where(eq(rewardCalendar.id, existing.id)).returning({ id: rewardCalendar.id, revision: rewardCalendar.revision })
+      : await tx.insert(rewardCalendar).values({ tenantId: ctx.tenantId, cycleId: unit.cycleId, companyId: unit.companyId, ...columns }).returning({ id: rewardCalendar.id, revision: rewardCalendar.revision });
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'reward-calendar', aggregateId: saved.id, eventType: 'reward-calendar.updated', actor: actorOf(ctx), payload: { cycleId: unit.cycleId, companyId: unit.companyId, revision: saved.revision, values } });
+    return saved.revision;
+  });
+}
+
+// ── Approvals board (P1 WP-G) ────────────────────────────────────────────────────────────────────────────
+
+const BOARD_STAGES = ['draft', 'bg', 'gr', 'ctro', 'ec', 'approved'] as const;
+type ReviewProjection = Awaited<ReturnType<typeof reviewProjectionTx>>;
+export type RewardBoardAction = 'submit' | 'approve' | 'post';
+export type RewardBoardRow = {
+  id: string; kind: 'annual' | 'adhoc' | 'midyear'; name: string; cycle: string; companyId: string; company: string;
+  status: typeof BOARD_STAGES[number]; revision: number; returnedTo: 'bu' | 'bg' | null;
+  seat: RewardRole | null; step: { step: number; steps: number } | null;
+  due: string | null; daysUntilDue: number | null;
+  waiting: boolean; action: RewardBoardAction | null; canReturn: boolean;
+  /** Waiting on the viewer, no blocking check and nothing that needs a written reason: the decision needs no note. */
+  ready: boolean;
+  /** Visible people only. Money is null ("—") when the viewer can see no record of the review. */
+  people: number;
+  salary: { increaseCents: number; poolCents: number; poolShareBp: number | null; overLimit: boolean } | null;
+  bonus: { totalCents: number; budgetCents: number; budgetShareBp: number | null; overLimit: boolean } | null;
+  exceptions: number; blocking: number;
+};
+
+/**
+ * One board row from the review projection the review page itself renders (reviewProjectionTx): its `rows`
+ * are already filtered by visibleEntry for THIS viewer, and its `flags` already withhold hidden records'
+ * flags (a hidden block becomes ACCESS-01). Money is summed from those visible rows only — never from the
+ * full roster — and only over the pooled plans (standard and JG H); the Executive plan consumes no pool.
+ */
+function boardRow(v: ReviewProjection, meta: { cycle: string; company: string }, today: string): RewardBoardRow {
+  const { unit } = v, status = unit.status as typeof BOARD_STAGES[number];
+  const seat = rewardStageSeat(unit.status, v.route), step = rewardStageStep(unit.status, v.route);
+  const waiting = seat === 'payroll' ? v.posting === 'allowed' : !!seat && v.roles.includes(seat) && (unit.status !== 'draft' || v.canEdit);
+  const action: RewardBoardAction | null = !waiting ? null : unit.status === 'draft' ? 'submit' : unit.status === 'approved' ? 'post' : 'approve';
+  const blocking = v.flags.filter(f => f.severity === 'block').length, exceptions = v.flags.filter(f => f.severity === 'exception').length;
+  const needsReason = v.flags.some(f => f.severity === 'exception' || f.severity === 'warning');
+  // An off-cycle promotion needs the approver's explicit role-summary acknowledgement on the review page.
+  const needsAcknowledgement = unit.kind !== 'annual' && v.rows.some(r => r.recommendation.promotionGrade);
+  const pooled = v.rows.filter(r => r.plan === 'standard' || r.plan === 'h');
+  const plans = ['standard', 'h'] as const;
+  const seen = v.rows.length > 0;
+  const usedBy = (plan: 'standard' | 'h') => { const g = pooled.filter(r => r.plan === plan); return [g.reduce((n, r) => n + r.meritCents, 0), g.reduce((n, r) => n + r.promotionCents, 0), g.reduce((n, r) => n + r.specialCents, 0)]; };
+  const increaseCents = pooled.reduce((n, r) => n + r.newBasicCents - r.source.basicCents, 0);
+  const poolCents = plans.reduce((n, p) => n + v.budgets[p].pools.reduce((a, b) => a + b, 0), 0);
+  const salaryOver = plans.some(p => usedBy(p).some((used, i) => used > v.budgets[p].pools[i]));
+  const annual = unit.kind === 'annual';
+  const bonusOf = (plan: 'standard' | 'h') => pooled.filter(r => r.plan === plan).reduce((n, r) => n + r.bonusCents + r.lumpCents, 0);
+  const totalCents = plans.reduce((n, p) => n + bonusOf(p), 0), budgetCents = plans.reduce((n, p) => n + v.budgets[p].bonusPoolCents, 0);
+  return {
+    id: unit.id, kind: unit.kind, name: v.name, cycle: meta.cycle, companyId: unit.companyId, company: meta.company,
+    status, revision: unit.revision, returnedTo: v.returned?.toSeat ?? null, seat, step,
+    due: v.due, daysUntilDue: v.due ? rewardDaysUntil(v.due, today) : null,
+    waiting, action, canReturn: waiting && action === 'approve',
+    ready: waiting && (action === 'approve' || action === 'submit') && blocking === 0 && !needsReason && !needsAcknowledgement,
+    people: v.rows.length,
+    salary: seen ? { increaseCents, poolCents, poolShareBp: poolCents > 0 ? Math.round(increaseCents * 10000 / poolCents) : null, overLimit: salaryOver } : null,
+    bonus: seen && annual ? { totalCents, budgetCents, budgetShareBp: budgetCents > 0 ? Math.round(totalCents * 10000 / budgetCents) : null, overLimit: plans.some(p => bonusOf(p) > v.budgets[p].bonusPoolCents) } : null,
+    exceptions, blocking,
+  };
+}
+
+/**
+ * The Approvals board (RW-03 WP-7): every live review on the route on which the viewer holds a Reward Desk
+ * seat, in the companies of the viewer's current scope. Each review is read through reviewProjectionTx — the
+ * review page's own read — so membership, entry visibility and flags cannot drift between the two screens.
+ */
+export async function rewardApprovalsBoard(ctx: SessionContext, companyIds: string[]) {
+  return withRewardsTenant(ctx, async tx => {
+    if (!companyIds.length) return [] as RewardBoardRow[];
+    const units = await tx.select({ id: rewardUnit.id, cycle: rewardCycle.name, company: company.legalName })
+      .from(rewardUnit).innerJoin(rewardCycle, eq(rewardCycle.id, rewardUnit.cycleId)).innerJoin(company, eq(company.id, rewardUnit.companyId))
+      .where(and(inArray(rewardUnit.companyId, companyIds), isNull(rewardUnit.deletedAt), inArray(rewardUnit.status, [...BOARD_STAGES]),
+        sql`exists(select 1 from app.reward_roles(${rewardUnit.id}))`))
+      .orderBy(asc(company.legalName), asc(rewardCycle.name), asc(rewardUnit.id));
+    const today = todayInKualaLumpur();
+    const rows: RewardBoardRow[] = [];
+    for (const u of units) rows.push(boardRow(await reviewProjectionTx(tx, ctx, u.id), u, today));
+    return rows;
+  });
+}
+
+const sendReadySchema = z.array(z.object({ unitId: idSchema, revision: z.number().int().positive() }).strict()).max(500);
+export type RewardSendReadyResult = { sent: string[]; skipped: string[]; refused: { id: string; name: string; message: string }[] };
+
+/**
+ * "Send all ready": approve every review that is waiting on the viewer at an approval step (BG, Group
+ * Rewards, CTRO, EC) and needs no written reason. `seen` is the (unit, revision) list of the page the viewer
+ * opened. Each unit goes through decideRewardUnit — the same decision the review page's Approve button makes,
+ * in its own transaction, with the revision the viewer saw, so a review that changed since is refused and the
+ * others still proceed. Units the viewer did not see are left alone. ADR-0099 order is decideRewardUnit's.
+ */
+export async function sendReadyRewardUnits(ctx: SessionContext, companyIds: string[], seen: unknown): Promise<RewardSendReadyResult> {
+  const opened = new Map(sendReadySchema.parse(seen).map(s => [s.unitId, s.revision]));
+  const board = await rewardApprovalsBoard(ctx, companyIds);
+  const result: RewardSendReadyResult = { sent: [], skipped: [], refused: [] };
+  for (const row of board) {
+    const revision = opened.get(row.id);
+    if (revision === undefined || !row.waiting || row.action !== 'approve') continue;
+    if (!row.ready) { result.skipped.push(row.id); continue; }
+    try { await decideRewardUnit(ctx, row.id, revision, 'approve', ''); result.sent.push(row.id); }
+    catch (error) { result.refused.push({ id: row.id, name: `${row.cycle} · ${row.name}`, message: error instanceof RewardError ? error.message : 'This review could not be sent.' }); }
+  }
+  return result;
 }

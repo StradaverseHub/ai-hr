@@ -56,6 +56,9 @@ export const policySchema = z.object({
   idpMinGoals:z.number().int().min(0).max(100), idpMaxGoals:z.number().int().min(0).max(100).default(6), idpRequireAllActions:z.boolean(),
   curveToleranceMode:z.enum(['people','percent']).default('people'),
   curveTolerancePct:finite.min(0).max(100),curveTolerancePeople:z.number().int().min(1).max(100),curveStrict:z.boolean(),
+  // Talent Box layout and the per-unit category-change ceiling. Optional and default-free, so a policy without it
+  // parses (and digests) exactly as before; talentBoxSettings() supplies the source defaults (nine cells, no ceiling).
+  talentBox:z.object({grid:z.union([z.literal(9),z.literal(15)]).optional(),moveCap:z.object({enabled:z.boolean(),pct:finite.min(0).max(100)}).optional()}).optional(),
 }).superRefine((v,c)=>{
   if(v.minValid>v.panelTarget)c.addIssue({code:'custom',message:'The valid response minimum cannot exceed the assessor panel size.'});
   if(v.lowMaxPct>=v.midMaxPct)c.addIssue({code:'custom',message:'Potential cutoffs must increase.'});

@@ -61,7 +61,9 @@ export function assessmentReminderWork(graph:ReminderWorkGraph,enabledCompanies:
    if(!entries.length)continue;
    const parts=leaderWorkspaceParts(policy,session.tier,session);
    for(const part of parts){
-    if(part.state!=='open')continue;
+    // A BU or Group Talent Box restates people the per-axis parts already remind about (or, for Group potential,
+    // has no reminder key yet); counting it again would put both axes under one axis's key.
+    if(part.state!=='open'||part.stage==='talent_box'&&session.tier!=='bg')continue;
     const key:TaskKey=session.tier==='bg'?'bg_talent':session.tier==='group'||session.tier==='final'?'group_performance':session.tier==='hod'?part.axis==='performance'?'hod_performance':'hod_potential':part.axis==='performance'?'bu_performance':'bu_potential';
     const cell:WindowCell|null=session.tier==='bg'?'tb_bgceo':session.tier==='group'||session.tier==='final'?null:session.tier==='hod'?part.axis==='performance'?'pm_hod':'pot_hod':part.axis==='performance'?'pm_buceo':'pot_buceo';
     for(const entry of leaderPendingEntries(policy,session.tier,part.axis,entries))add(userId,key,entry.reviewId,cell);

@@ -11,7 +11,7 @@ export default async function RewardsPage({ searchParams }: { searchParams: Prom
   const t = await getTranslations('rewards'); const { error } = await searchParams;
   const [units, choices] = await Promise.all([listRewardUnits(s, scopeIds), rewardSetupChoices(s, scopeIds)]);
   return <div className="w-full space-y-6">
-    <PageHeader title={t('title')} description={t('description')} />
+    <PageHeader title={t('title')} description={t('description')} actions={<Link href="/rewards/approvals" className="inline-flex text-sm font-medium text-primary hover:underline">{t('board.open')}</Link>} />
     <ErrorBanner message={error} />
     <div data-tour="rewards-review-units" className={tableWrapCls}><table className="w-full text-sm"><thead className={theadCls}><tr>{['cycle', 'company', 'unit', 'stage', 'action'].map(k => <th key={k} className={thCls}>{t(k)}</th>)}</tr></thead>
       <tbody className={tbodyCls}>{units.map(u => <tr key={u.id}><td className="px-3 py-3 font-medium">{u.cycle} · {t(`kinds.${u.kind}`)}<span className="ml-2 text-muted-foreground">{u.year}</span></td><td className="px-3 py-3">{u.company}</td><td className="px-3 py-3">{u.unit}</td><td className="px-3 py-3"><RewardStageLabel status={u.status} returnedTo={u.returnedTo} /></td><td className="px-3 py-3"><Link className="font-medium text-primary hover:underline" href={`/rewards/${u.id}`}>{t('openReview')}</Link></td></tr>)}</tbody>
