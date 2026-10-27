@@ -6,7 +6,7 @@ on:
       mode:
         type: choice
         default: recovery-controls
-        options: [recovery-controls, shim-repair, identity]
+        options: [recovery-controls, shim-repair, authority-controls, identity]
 permissions:
   contents: read
   actions: read
@@ -60,7 +60,7 @@ jobs:
           retention-days: 3
 
   recovery-controls:
-    if: inputs.mode == 'recovery-controls' || inputs.mode == 'shim-repair'
+    if: inputs.mode == 'recovery-controls' || inputs.mode == 'shim-repair' || inputs.mode == 'authority-controls'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -81,3 +81,11 @@ jobs:
         if: inputs.mode == 'shim-repair'
         env: {PYTHONDONTWRITEBYTECODE: '1'}
         run: python3 -I .github/ci/diagnostics/sharp-restore.test.py Restore.test_preexisting_temp_preserved Restore.test_late_temp_collision_preserved
+      - name: Parse changed authority and transport proof controls only
+        if: inputs.mode == 'authority-controls'
+        env: {PYTHONDONTWRITEBYTECODE: '1'}
+        run: |
+          python3 -I .github/ci/diagnostics/sharp-restore.test.py Restore.test_real_authority_program_parses_without_importing_application
+          node --test .github/ci/diagnostics/sharp-restore-transport.test.mjs
+          node --experimental-vm-modules --test .github/ci/diagnostics/sharp-authority.test.mjs
+          node --test .github/ci/diagnostics/forward-guards.test.mjs

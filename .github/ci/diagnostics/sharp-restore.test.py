@@ -1,5 +1,5 @@
 """Tiny private filesystem fixtures only; no application/database/build execution."""
-import base64,hashlib,json,os,pathlib,runpy,tempfile,unittest
+import base64,hashlib,json,os,pathlib,runpy,tempfile,unittest,subprocess
 from unittest.mock import patch
 D=pathlib.Path(__file__).resolve().parent
 S=runpy.run_path(str(D/'sharp-restore.py'));M=S['M'];clean=(D/'sharp-clean-semver.fixture').read_bytes()
@@ -20,6 +20,11 @@ class Restore(unittest.TestCase):
     rows.append({'path':rel,'size':len(b),'sha256':S['digest'](b)})
   return {'descriptor':desc,'rows':rows,'shim':{'rawBase64':base64.b64encode(clean).decode(),'rawSha256':S['digest'](self.shim.read_bytes())}}
  def invoke(self,**kwargs):return S['restore'](self.source,self.ci,self.old,self.backup,self.authority,**kwargs)
+ def test_real_authority_program_parses_without_importing_application(self):
+  code=S['authority_program']('2024815a-9960-4c16-8121-0f3cf1f727af',{'parentFailedContext':{'currentSha256':'a'*64}})
+  p=subprocess.run(['node','--check','--input-type=module'],input=code,text=True,capture_output=True)
+  self.assertEqual(p.returncode,0,p.stderr)
+  self.assertIn("state.state!=='incomplete'",code);self.assertIn("c.result!=='failed'",code);self.assertIn('pending.ref!==g.source',code)
  def test_preview_preserves_all_bytes(self):
   self.assertFalse(self.invoke()['written']);self.assertEqual(self.shim.read_bytes(),self.original);self.assertFalse(self.backup.exists())
  def test_exact_original_full_hash_restored(self):

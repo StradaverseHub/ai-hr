@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {join} from 'node:path';import{fileURLToPath}from'node:url';import{execFileSync}from'node:child_process';import{readFileSync,mkdirSync}from'node:fs';import{randomUUID}from'node:crypto';import{isDeepStrictEqual}from'node:util';
+import {join} from 'node:path';import{fileURLToPath}from'node:url';import{execFileSync}from'node:child_process';import{readFileSync,mkdirSync,writeFileSync}from'node:fs';import{randomUUID}from'node:crypto';import{isDeepStrictEqual}from'node:util';
 import{fetchGitHubRunSnapshot,githubSnapshotIdentity}from'./retained-units.mjs';import{downloadCiArchives,readCiArchive}from'./archive-downloads.mjs';import{immutablePlan}from'./immutable-plan.mjs';import{inspectOtherControllerRun}from'./other-controller-run.mjs';
 export async function authenticateDifferentCandidateRun({repository,runId,candidate,controller,outputParent}){
  const snapshot=fetchGitHubRunSnapshot(runId),matches=snapshot.artifacts.filter(a=>a.name==='gate-plan');assert(matches.length===1,'Additional run has no unique candidate plan');
@@ -8,5 +8,5 @@ export async function authenticateDifferentCandidateRun({repository,runId,candid
  const archivedPlan=JSON.parse(readFileSync(join(target,'ci-plan.json')));assert(archivedPlan.sha!==candidate,'Additional verification exists for frozen candidate');
  const reconstructedPlan=immutablePlan({repository,candidate:archivedPlan.sha,controller,baseline:archivedPlan.migrationBase,runtime:archivedPlan.runtime}).plan;
  const proof=inspectOtherControllerRun({snapshot,artifact,archivedPlan,reconstructedPlan,candidate,controller});const current=fetchGitHubRunSnapshot(runId);assert(isDeepStrictEqual(githubSnapshotIdentity(current),githubSnapshotIdentity(snapshot)),'Additional run changed during authentication');
- return{proof,identity:githubSnapshotIdentity(current),evidenceDirectory:dir};
+ const result={proof,identity:githubSnapshotIdentity(current),evidenceDirectory:dir};writeFileSync(join(dir,'authentication.json'),JSON.stringify(result,null,2)+'\n',{flag:'wx',mode:0o600});writeFileSync(join(dir,'api-snapshot.json'),JSON.stringify(current,null,2)+'\n',{flag:'wx',mode:0o600});return result;
 }
