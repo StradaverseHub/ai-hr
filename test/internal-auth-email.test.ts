@@ -5,6 +5,7 @@ import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base 
 import { bootstrapInternalOwner } from '../lib/internal-auth/bootstrap';
 import { credentialByLogin } from '../lib/internal-auth/service';
 import { internalEmailRequest, recoveryMailReady } from '../lib/internal-auth/mail';
+import {readActiveRelayTx} from '../lib/internal-auth/active-relay';
 import { readActiveRelayTx } from '../lib/internal-auth/active-relay';
 import { client } from '../db/client';
 import type { EmailConfig, EmailSettingsView, IdentityEmailActor } from '../lib/identity/email-model';
@@ -34,8 +35,10 @@ describe('HR-owned SMTP settings with actual private storage and authority',()=>
     await internalEmailRequest({op:'apply',actor,connectionId:saved.connectionId,draftId:selected.draft!.id,received:true});
     selected=await internalEmailRequest<EmailSettingsView>({op:'view',actor,connectionId:saved.connectionId});
     expect(selected.connections?.filter(c=>c.active)).toHaveLength(1);
+    const activeBefore=await owner.client.begin(tx=>readActiveRelayTx(tx));expect(activeBefore?.revision).toMatch(/^[A-Za-z0-9_-]{43}$/);
     await internalEmailRequest({op:'save',actor,revision:selected.revision,connectionName:'Backup',config,password:'fictional-backup-secret'});
     const after=await view();expect(after.connections).toHaveLength(2);expect(after.active).toMatchObject(config);
+    const activeAfter=await owner.client.begin(tx=>readActiveRelayTx(tx));expect(activeAfter?.revision).toBe(activeBefore?.revision);expect(activeAfter?.relay.config).toEqual(config);
     expect(JSON.stringify(after)).not.toContain(secret);expect(JSON.stringify(await owner.client`select * from app_internal_auth_record`)).not.toContain('fictional-backup-secret');
   });
   it('keeps an application secret encrypted and activates only the tested draft after explicit receipt',async()=>{

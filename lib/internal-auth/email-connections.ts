@@ -1,9 +1,10 @@
-import {randomUUID} from 'node:crypto';
+import {randomBytes,randomUUID} from 'node:crypto';
 import {EmailSettingsError,sameEmailCredential,type EmailConfig} from '../identity/email-model';
 import type {StoredEmailRelay} from '../identity/email-relay';
 
-export type SavedEmailConnection=StoredEmailRelay&{id:string;name:string;version:string;testedAt:number|null;testedBy:string|null};
-export type ConnectionState={revision:string;active:StoredEmailRelay|null;connections?:Record<string,SavedEmailConnection>;activeConnectionId?:string;activeConnectionVersion?:string;drafts?:Record<string,StoredEmailRelay&{id:string;testedAt:number|null}>};
+export type SavedEmailConnection=StoredEmailRelay&{id:string;name:string;version:string;testedAt:number|null;testedBy:string|null;testedAgainstRevision?:string};
+export type ConnectionState={revision:string;active:StoredEmailRelay|null;connectionsRevision?:string;connections?:Record<string,SavedEmailConnection>;activeConnectionId?:string;activeConnectionVersion?:string;drafts?:Record<string,StoredEmailRelay&{id:string;testedAt:number|null;revision?:string}>};
+const revision=()=>randomBytes(32).toString('base64url');
 /** Upgrade only the encrypted record's representation; the working relay remains byte-for-byte intact. */
 export function emailConnections(state:ConnectionState):Record<string,SavedEmailConnection>{
  const records={...state.connections};
@@ -15,7 +16,7 @@ export function emailConnections(state:ConnectionState):Record<string,SavedEmail
   const id='draft-'+draft.id;if(Object.hasOwn(records,id))continue;
   const base=draft.config.fromName||draft.config.host||'SMTP';let name=base,index=2;
   while(Object.values(records).some(c=>c.name.toLowerCase()===name.toLowerCase()))name=`${base} (${index++})`;
-  records[id]={config:draft.config,password:draft.password,id,name,version:draft.id,testedAt:draft.testedAt,testedBy:draft.testedAt?subject:null};
+  records[id]={config:draft.config,password:draft.password,id,name,version:draft.id,testedAt:draft.testedAt,testedBy:draft.testedAt?subject:null,testedAgainstRevision:draft.revision??state.revision};
  }
  state.connections=records;return records;
 }
@@ -25,7 +26,7 @@ export function publicEmailConnections(state:ConnectionState){
   testedAt:c.testedAt?new Date(c.testedAt).toISOString():null}));
 }
 export function saveEmailConnection(state:ConnectionState,input:{id?:string;name:string;config:EmailConfig;password?:string;revision:string}){
- if(input.revision!==state.revision)throw new EmailSettingsError('conflict');
+ if(input.revision!==(state.connectionsRevision??state.revision))throw new EmailSettingsError('conflict');
  const records=emailConnections(state),previous=input.id&&Object.hasOwn(records,input.id)?records[input.id]:undefined;
  if(input.id&&!previous)throw new EmailSettingsError('conflict');
  const name=input.name.trim();if(!name||name.length>120||/[\x00-\x1f\x7f]/.test(name))throw new EmailSettingsError('invalid');
@@ -35,8 +36,8 @@ export function saveEmailConnection(state:ConnectionState,input:{id?:string;name
  const password=input.config.auth?(input.password||(previous&&sameEmailCredential(previous.config,input.config)?previous.password:undefined)):undefined;
  if(input.config.auth&&!password)throw new EmailSettingsError('invalid');
  const id=previous?.id??randomUUID();
- records[id]={id,name,config:input.config,password,version:randomUUID(),testedAt:null,testedBy:null};
- state.revision=randomUUID();return records[id];
+ records[id]={id,name,config:input.config,password,version:randomUUID(),testedAt:null,testedBy:null,testedAgainstRevision:state.revision};
+ state.connectionsRevision=revision();return records[id];
 }
 export function testedEmailConnection(state:ConnectionState,id:string,version:string){
  const records=emailConnections(state),c=Object.hasOwn(records,id)?records[id]:undefined;if(!c||c.version!==version)throw new EmailSettingsError('conflict');return c;
@@ -44,6 +45,6 @@ export function testedEmailConnection(state:ConnectionState,id:string,version:st
 export function activateEmailConnection(state:ConnectionState,id:string,version:string,subject:string,received:boolean,now=Date.now()){
  const c=testedEmailConnection(state,id,version);
  if(!received)throw new EmailSettingsError('needsReceipt');
- if(!c.testedAt||c.testedBy!==subject||c.testedAt<now-30*60_000)throw new EmailSettingsError('needsTest');
- state.active={config:c.config,password:c.password};state.activeConnectionId=c.id;state.activeConnectionVersion=c.version;state.revision=randomUUID();
+ if(!c.testedAt||c.testedBy!==subject||c.testedAgainstRevision!==state.revision||c.testedAt<now-30*60_000)throw new EmailSettingsError('needsTest');
+ state.active={config:c.config,password:c.password};state.activeConnectionId=c.id;state.activeConnectionVersion=c.version;state.revision=revision();state.connectionsRevision=revision();
 }

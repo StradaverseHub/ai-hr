@@ -38,7 +38,7 @@ export async function internalEmailRequest<T>(request: EmailSettingsRequest, tra
       if(request.connectionId&&request.connectionId!=='new'&&!selected)throw new EmailSettingsError('conflict');
       return { active: state.active ? { ...state.active.config, hasPassword: Boolean(state.active.password) } : null,
         connections,selectedConnectionId:selected?.id,selectedConnectionName:selected?.name,
-        revision: state.revision, draft: selected?{id:selected.version,config:selected.config,hasPassword:Boolean(selected.password),testedAt:selected.testedAt&&selected.testedBy===identity.subject?new Date(selected.testedAt).toISOString():null}:request.connectionId?null:draft ? { id: draft.id, config: draft.config, hasPassword: Boolean(draft.password), testedAt: draft.testedAt ? new Date(draft.testedAt).toISOString() : null } : null,
+        revision: request.connectionId?state.connectionsRevision??state.revision:state.revision, draft: selected?{id:selected.version,config:selected.config,hasPassword:Boolean(selected.password),testedAt:selected.testedAt&&selected.testedBy===identity.subject&&selected.testedAgainstRevision===state.revision?new Date(selected.testedAt).toISOString():null}:request.connectionId?null:draft ? { id: draft.id, config: draft.config, hasPassword: Boolean(draft.password), testedAt: draft.testedAt ? new Date(draft.testedAt).toISOString() : null } : null,
         testRecipient: identity.email } satisfies EmailSettingsView as T;
     }
     if(request.op==='save'&&request.connectionName!==undefined){
@@ -57,7 +57,7 @@ export async function internalEmailRequest<T>(request: EmailSettingsRequest, tra
           await tx.unsafe("select app.append_auth_event($1::uuid,'app-user',$2::uuid,'identity-email.test-failed','user',$2::uuid,$3::jsonb)",[ctx.tenantId,ctx.userId!,JSON.stringify({connectionId:connection.id})]);
           return {failed:true} as T;
         }
-        connection.testedAt=Date.now();connection.testedBy=identity.subject;
+        connection.testedAt=Date.now();connection.testedBy=identity.subject;connection.testedAgainstRevision=state.revision;
       }else activateEmailConnection(state,connection.id,request.draftId,identity.subject,request.received);
       await writeRecord(tx,STATE,state,null);
       await tx.unsafe("select app.append_auth_event($1::uuid,'app-user',$2::uuid,$3,'user',$2::uuid,$4::jsonb)",[ctx.tenantId,ctx.userId!,request.op==='test'?'identity-email.test-accepted':'identity-email.applied',JSON.stringify({connectionId:connection.id})]);
@@ -89,6 +89,7 @@ export async function internalEmailRequest<T>(request: EmailSettingsRequest, tra
         if (!draft.testedAt || draft.testedAt < Date.now() - 30 * 60_000) throw new EmailSettingsError('needsTest');
         state.active = { config: draft.config, password: draft.password }; state.revision = opaque();
         delete state.activeConnectionId;delete state.activeConnectionVersion;
+        delete state.connectionsRevision;
         delete state.drafts[identity.subject];
       }
     }
