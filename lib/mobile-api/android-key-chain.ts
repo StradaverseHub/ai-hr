@@ -1,7 +1,7 @@
 /** Signed Android key evidence. No actor custody, attendance acceptance or current device-state claim. */
 import 'server-only';
 import {createHash,timingSafeEqual,webcrypto,X509Certificate} from 'node:crypto';
-import cbor from 'cbor';
+import {decodeAndroidProvisioningInfo} from './android-provisioning';
 import {fromBER} from 'asn1js';
 import {Certificate,CertificateChainValidationEngine,CryptoEngine} from 'pkijs';
 import roots from './android-attestation-roots.json';
@@ -64,13 +64,10 @@ export function createAndroidKeyChainVerifier(ports:{revocation?:(serials:readon
     if(organizations.length!==1||!['O=TEE','O=StrongBox'].includes(organizations[0]))fail('unsupported_path');
     certifiedSecurityLevel=organizations[0]==='O=TEE'?'tee':'strongbox';
     if(provisioning.length){
-     const raw=Buffer.from(extensions(certs[1],PROVISIONING)[0].extnValue.getValue());if(raw.length<1||raw.length>2048)fail('extension');
-     const tags=new Proxy(Object.create(null),{get:()=>null});
-     const info:unknown=cbor.decodeFirstSync(raw,{required:true,preferMap:true,preventDuplicateKeys:true,max_depth:3,tags});
-     if(!(info instanceof Map)||info.size>16||!Number.isSafeInteger(info.get(1))||info.get(1)<0||!['TEE','STRONG_BOX'].includes(info.get(4))||
-       info.has(6)&&typeof info.get(6)!=='boolean'||[...info.keys()].some(key=>!Number.isSafeInteger(key)))fail('extension');
-     if((info.get(4)==='TEE'?'tee':'strongbox')!==certifiedSecurityLevel)fail('extension');
-     lostDevice=info.has(6)?info.get(6):null;
+     let info:ReturnType<typeof decodeAndroidProvisioningInfo>;
+     try{info=decodeAndroidProvisioningInfo(Buffer.from(extensions(certs[1],PROVISIONING)[0].extnValue.getValue()));}catch{fail('extension');}
+     if(info.entity!==null&&info.entity!==certifiedSecurityLevel)fail('extension');
+     lostDevice=info.lostDevice;
     }
    }else if(chain.slice(1,-1).some(cert=>cert.subject.toLowerCase().includes('strongbox')))certifiedSecurityLevel='strongbox';
    const expectedSpki=leaf.publicKey.export({type:'spki',format:'der'});

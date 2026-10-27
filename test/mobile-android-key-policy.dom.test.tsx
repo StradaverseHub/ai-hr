@@ -3,6 +3,8 @@ import {readFileSync} from 'node:fs';
 import {X509Certificate} from 'node:crypto';
 import {Certificate} from 'pkijs';
 import {fromBER} from 'asn1js';
+import cbor from 'cbor';
+import {decodeAndroidProvisioningInfo} from '../lib/mobile-api/android-provisioning';
 import {describe,expect,it,vi} from 'vitest';
 import {decodeAndroidKeyDescription} from '../lib/mobile-api/android-key-description';
 import {AndroidKeyPolicy,matchAndroidKeyPolicy} from '../lib/mobile-api/android-key-policy';
@@ -70,6 +72,13 @@ describe('Android key-generation policy',()=>{
   const f=fixture();for(const value of [{...f.settings,securityLevels:['software']},{...f.settings,versionCodes:['01']},{...f.settings,certificateDigests:[f.settings.certificateDigests[0]+'\n']},{...f.settings,minimumOsPatchLevel:202613},{...f.settings,minimumVendorPatchLevel:20260230},{...f.settings,verified:true}])expect(()=>createAndroidKeyProofVerifier(value,f.ports)).toThrow(expect.objectContaining({reason:'configuration'}));
   const settings={...f.settings,minimumOsVersion:null,minimumOsPatchLevel:null,minimumVendorPatchLevel:null,minimumBootPatchLevel:null};
   expect(AndroidKeyPolicy.parse(settings)).toMatchObject({minimumBootPatchLevel:null});
+ });
+ it('keeps legacy missing provisioning metadata unavailable and validates new known fields',()=>{
+  expect(decodeAndroidProvisioningInfo(cbor.encode(new Map([[1,32],[3,'Google']])))).toEqual({entity:null,lostDevice:null});
+  expect(decodeAndroidProvisioningInfo(cbor.encode(new Map<any,any>([[1,32],[4,'STRONG_BOX'],[6,true]])))).toEqual({entity:'strongbox',lostDevice:true});
+  expect(decodeAndroidProvisioningInfo(cbor.encode(new Map<any,any>([[1,32],[4,'TEE'],[6,false]])))).toEqual({entity:'tee',lostDevice:false});
+  for(const map of [new Map<any,any>([[1,32],[4,'UNKNOWN']]),new Map<any,any>([[1,32],[6,'false']]),new Map<any,any>([[1,-1]]),new Map<any,any>([['1',32]])])expect(()=>decodeAndroidProvisioningInfo(cbor.encode(map))).toThrow();
+  for(const bytes of [Buffer.alloc(2049),Buffer.from('a20101180102','hex'),Buffer.concat([cbor.encode(new Map([[1,32]])),Buffer.from([0])])])expect(()=>decodeAndroidProvisioningInfo(bytes)).toThrow();
  });
  it('snapshots validated server configuration before asynchronous verification',async()=>{
   const f=fixture(),verify=createAndroidKeyProofVerifier(f.settings,f.ports);f.settings.packageName='untrusted.change';f.settings.securityLevels.splice(0,1,'tee');
