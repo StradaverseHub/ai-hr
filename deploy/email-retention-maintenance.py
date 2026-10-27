@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Bounded staging-only installer. Runs fixed SQL via OS psql; never executes app code."""
-import datetime, hashlib, json, os, pathlib, pwd, re, stat, subprocess, sys, tempfile
+import datetime, hashlib, json, os, pathlib, pwd, grp, re, stat, subprocess, sys, tempfile
 from urllib.parse import urlsplit, unquote, parse_qsl
 SOURCE = 'fffabc90922c3d43b2570dc29a33ce8b70b69aca'
 BUILD = 'Ym4S0kmHHYqC3vpeurUeW'
@@ -84,7 +84,8 @@ def service_bytes(url):
     parsed=urlsplit(url)
     require(parsed.scheme in ('postgres','postgresql') and parsed.hostname and parsed.username and parsed.password is not None and parsed.path.startswith('/') and not parsed.fragment, 'Complete owner connection required')
     fields={'host':parsed.hostname,'port':str(parsed.port or 5432),'dbname':unquote(parsed.path[1:]),'user':unquote(parsed.username),'password':unquote(parsed.password),'connect_timeout':'10'}
-    allowed={'sslmode','sslrootcert','sslcert','sslkey','channel_binding','target_session_attrs','gssencmode','application_name'}
+    require(parsed.hostname in ('127.0.0.1','localhost','::1'), 'This staging helper permits only the existing loopback database')
+    allowed={'sslmode','channel_binding','target_session_attrs','application_name'}
     for key,value in parse_qsl(parsed.query,keep_blank_values=True,strict_parsing=True):
         require(key in allowed and key not in fields,'Unsupported or duplicate connection parameter');fields[key]=value
     require(all(value and value==value.strip() and all(ord(c)>=32 and ord(c)!=127 for c in value) for value in fields.values()),'Unsupported private connection value')
@@ -122,6 +123,10 @@ def actual_source():
     require(fields.get('ref')==SOURCE and fields.get('result')=='ok', 'Reviewed completed staging release required')
     require(run(['/usr/bin/systemctl','is-active','aihr'])=='active', 'Staging service must be healthy')
 
+def dedicated_identity(identity):
+    group=grp.getgrgid(identity.pw_gid)
+    require(identity.pw_uid!=0 and identity.pw_shell=='/usr/sbin/nologin' and identity.pw_dir=='/nonexistent' and group.gr_name==USER and not group.gr_mem and not any(p.pw_name!=USER and p.pw_gid==identity.pw_gid for p in pwd.getpwall()), 'Dedicated unshared non-login identity required')
+
 def main(mode):
     require(mode in ('install','verify') and os.geteuid()==0 and sys.platform=='linux', 'Run this bounded helper with sudo on staging')
     for p in [PSQL,'/usr/bin/systemctl','/usr/sbin/useradd','/usr/sbin/nologin']:root_path(p)
@@ -138,8 +143,8 @@ def main(mode):
         root_path('/etc/systemd/system')
         if PRIVATE.parent.exists():root_path(PRIVATE.parent)
         else:PRIVATE.parent.mkdir(mode=0o700)
-        run(['/usr/sbin/useradd','--system','--no-create-home','--home-dir','/nonexistent','--shell','/usr/sbin/nologin',USER])
-        identity=pwd.getpwnam(USER)
+        run(['/usr/sbin/useradd','--system','--user-group','--no-create-home','--home-dir','/nonexistent','--shell','/usr/sbin/nologin',USER])
+        identity=pwd.getpwnam(USER);dedicated_identity(identity)
         os.chown(PRIVATE.parent,0,identity.pw_gid);os.chmod(PRIVATE.parent,0o750)
         exclusive(PRIVATE,service_bytes(url),0o640);os.chown(PRIVATE,0,identity.pw_gid)
         exclusive(service,SERVICE.encode(),0o644);exclusive(timer,TIMER.encode(),0o644)
@@ -148,7 +153,7 @@ def main(mode):
         require(owned_regular(PRIVATE)==service_bytes(url) and stat.S_IMODE(PRIVATE.stat().st_mode)==0o640, 'Private job connection changed')
         require(owned_regular(service)==SERVICE.encode() and owned_regular(timer)==TIMER.encode(), 'Installed fixed SQL units changed')
     identity=pwd.getpwnam(USER)
-    require(identity.pw_uid!=0 and identity.pw_shell=='/usr/sbin/nologin' and identity.pw_dir=='/nonexistent', 'Dedicated non-login identity required')
+    dedicated_identity(identity)
     # No finite policy is selected, and only fixed SQL under the dedicated identity is run.
     require(snapshot(url)==before, 'Database state changed before commissioning')
     if mode=='install':

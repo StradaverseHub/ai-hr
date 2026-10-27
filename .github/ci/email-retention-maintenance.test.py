@@ -6,6 +6,9 @@ class MaintenanceRefusalTests(unittest.TestCase):
   url='postgresql://user:literal$(do-not-run)@localhost/db?sslmode=verify-full'
   self.assertEqual(m.database_url('MIGRATION_DATABASE_URL='+json.dumps(url)),url)
   self.assertIn('password=literal$(do-not-run)',m.service_bytes(url).decode())
+ def test_remote_database_and_external_key_loader_parameters_refused(self):
+  for url in ['postgres://owner:password@remote.example/db','postgres://owner:password@localhost/db?sslkey=engine:untrusted','postgres://owner:password@localhost/db?sslrootcert=/opt/ai-hr/cert']:
+   with self.subTest(url=url),self.assertRaises(m.Refused):m.service_bytes(url)
  def test_duplicate_or_malformed_private_configuration_refused(self):
   for text in ['', 'MIGRATION_DATABASE_URL=http://example.test', 'MIGRATION_DATABASE_URL="unterminated', 'MIGRATION_DATABASE_URL=postgres://a\nMIGRATION_DATABASE_URL=postgres://b', 'MIGRATION_DATABASE_URL="postgres://x\\nsecret"']:
    with self.subTest(text=text),self.assertRaises(m.Refused):m.database_url(text)
