@@ -1,5 +1,13 @@
 -- UNALLOCATED / UNJOURNALED / UNAPPLIED. AFTER assistant-conversation-candidates.sql including own-invalidation bridge.
 -- Explicit owner decision: raw Assistant chat content retires after30days. Accounting survives.
+-- LOCKING (deliberate, for the integrator): drizzle applies this file in one transaction, so CREATE INDEX
+-- CONCURRENTLY is unavailable. ADD COLUMN (nullable, no default) is catalog-only, but ADD CONSTRAINT
+-- validates every existing row and the plain CREATE INDEX scans the table, all under the ACCESS EXCLUSIVE
+-- lock ADD COLUMN takes and holds to COMMIT: new Assistant exchanges (and own-history reads) wait for
+-- that scan. Kept plain because assistant_exchange rows are per-question and the per-user daily cap
+-- bounds growth; the actual installed row count/size is UNKNOWN here. Measure it on the target before
+-- applying; if the scan is not acceptably short, build the index in a separate operator step outside
+-- the migration transaction instead. NOT VALID would not shorten this transaction's lock.
 ALTER TABLE public.assistant_exchange ADD COLUMN content_retired_at timestamptz;
 ALTER TABLE public.assistant_exchange ADD CONSTRAINT assistant_exchange_retired_content CHECK(
  content_retired_at IS NULL OR(question='' AND answer IS NULL AND tool_calls='[]'::jsonb AND disclosure_receipt IS NULL AND error IS NULL));

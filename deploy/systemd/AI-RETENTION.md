@@ -20,13 +20,25 @@ Root owns the separate
 `/etc/aihr/retention.env` file with mode0600. It contains only the approved maintenance connection;
 never copy the web application's environment or put connection values in Git, arguments or logs.
 The runner refuses app-role connections and has no credential fallback or privilege self-grant.
-Its actual physical table-owner connection must also be able to execute the single guarded policy
-helper `app.agent_signal_custody_visible(text,uuid,uuid,uuid)`. The migration/function owner already
-has that privilege. A separately provisioned table owner needs only explicit EXECUTE on this helper;
-never substitute PUBLIC EXECUTE, app-role membership, candidate-table SELECT or BYPASSRLS. The runner
+Its actual physical table-owner connection must also be able to execute the guarded policy helper
+`app.agent_signal_custody_visible(text,uuid,uuid,uuid)`. The migration/function owner already
+has that privilege. A separately provisioned table owner needs explicit EXECUTE on this helper
+(plus the transcript requirements below); never substitute PUBLIC EXECUTE, app-role membership, candidate-table SELECT or BYPASSRLS. The runner
 checks this function privilege before processing custody and grants itself nothing.
-The connection must own all ten custody tables checked by the runner, including the employee-import
-comparison parent and its admitted-run membership table. Expired comparison metadata is deleted after
+Raw Assistant chat content (question, answer, tool inputs, disclosure receipt, error) is also retired
+by this pass 30 days after it was asked, at most 100 exchanges per tenant per pass, inside the same
+tenant Access interval and before any other expiry. Exchange rows, dates, tokens and usage remain, so
+retirement never replenishes an allowance; linked feedback, completed strategy markers and original
+identity custody retire with the content and are not counted separately (`transcripts` counts
+exchanges). The transcript step runs through `app.assistant_transcripts_retire_expired`, which refuses
+unless the session is a superuser or BOTH that function's owner and `public.assistant_exchange`'s
+owner. A separately provisioned owner therefore also needs ownership of that function and its two
+private helpers, plus explicit EXECUTE on `app.assistant_transcript_retirement_visible(uuid,uuid)` and
+`app._answer_metadata_erasure_authorized(uuid,uuid,uuid)` (PUBLIC policy expressions on the feedback and
+conversation tables). The connection must own every relation listed in
+`AI_RETENTION_MAINTAINED_RELATIONS` (`core/ai-retention-maintenance.ts`; currently 19, derived from the
+relations the pass mutates, its declared cascades and the transcript helper), including the
+employee-import comparison parent and its admitted-run membership table. Expired comparison metadata is deleted after
 its 30-day lifetime; at most 100 parents are selected per tenant per pass, with at most 128 declared
 run links cascading per parent. Aggregate deletion counts report direct parents, not cascaded links.
 Canonical HR records, import completion events and provider billing runs remain untouched.
