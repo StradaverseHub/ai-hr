@@ -6,10 +6,10 @@ import * as C from '../../lib/mobile-integrity-contract';
 import {AndroidPlayCloudProject} from '../../lib/mobile-android-clock-policy';
 import {EnrollmentScope} from './enrollment-journal';
 import {ClockSigningKey} from './clock-signing-key';
-import {NativeCapabilities,NativeClockSnapshot,type NativeIntegrityResult} from './integrity-bridge';
+import {NativeCapabilities,NativeClockSnapshot,AppleOfflineProofSnapshot,type NativeIntegrityResult} from './integrity-bridge';
 import {OfflineClockContextBinding,OfflineClockContextData,offlineClockContextClientData,type OfflineClockContextVerificationResult} from '../../lib/mobile-offline-context';
-import {OfflineClockClaimData,offlineClockClaimClientData} from '../../lib/mobile-offline-clock';
-import {OfflineClockCaptureInput,offlineClockPhotoReference,offlineWireElapsed,type OfflineClockCapturedClaim,OfflineClockExchange,validateOfflineClockExchange} from './offline-clock-state';
+import {OfflineClockClaimData,OfflineClockAppleAssertion,OfflineClockAndroidSignature,offlineClockClaimClientData} from '../../lib/mobile-offline-clock';
+import {OfflineClockCaptureInput,offlineClockPhotoReference,offlineWireElapsed,type OfflineClockCapturedClaim,type OfflineClockProofPorts,offlineCaptureComplete,OfflineClockExchange,validateOfflineClockExchange} from './offline-clock-state';
 const uuid=z.string().uuid().transform(value=>value.toLowerCase()),sha=z.string().length(64).regex(/^[a-f0-9]{64}$/);
 const reference=z.object({employmentId:uuid,requestId:uuid,baseDigest:sha,action:z.enum(['in','out'])}).strict();
 const disposition=z.object({receipt:ClockReceipt.nullable(),abandoned:z.boolean()}).strict().refine(value=>!!value.receipt!==value.abandoned);
@@ -33,6 +33,7 @@ export type SignedClockStatus={status:'empty'}|{status:'other_pending'}|
  {status:'offline_pending';requestId:string;phase:OfflineClockExchange['phase']}|
  {status:'pending';requestId:string;action:'in'|'out';phase:z.infer<typeof pending>['phase'];reason?:string;refusal?:z.infer<typeof refusal>}|
  {status:'accepted';receipt:z.infer<typeof ClockReceipt>}|{status:'abandoned'};
+export type OfflineSignResult={status:'proof_ready';requestId:string;acceptance:'not_granted'}|{status:'pending';requestId:string;reason:'earlier_claim'|'native_unavailable'|'unsupported'|'invalid_evidence'|'recovery_required'};
 export type SignedClockPorts={
  assertCurrent():void;read():Promise<SignedClockSnapshot|null>;commit(value:SignedClockSnapshot):Promise<void>;
  base(employmentId:string,requestId:string):Promise<SignedClockBase>;
@@ -49,6 +50,7 @@ export type SignedClockPorts={
   snapshot():NativeIntegrityResult<NativeClockSnapshot>;
   request(binding:OfflineClockContextBinding):Promise<string>;
   verify(raw:string,binding:OfflineClockContextBinding):Promise<OfflineClockContextVerificationResult>;
+  signing?:OfflineClockProofPorts;
   capture?:{
    capabilities():NativeIntegrityResult<z.infer<typeof NativeCapabilities>>;
    digest(canonical:string):Promise<string>;
@@ -107,6 +109,7 @@ export function createSignedClockJournal(rawScope:EnrollmentScope,ports:SignedCl
   await owned(()=>ports.commit(structuredClone(next)));return next;
  }
  function offlinePorts(){if(!ports.offline)throw new SignedClockUnavailable('configuration');return ports.offline;}
+ function signingPorts(){const value=offlinePorts().signing;if(!value)throw new SignedClockUnavailable('configuration');return value;}
  function capturePorts(){const value=offlinePorts().capture;if(!value)throw new SignedClockUnavailable('configuration');return value;}
  function localSnapshot(){const result=offlinePorts().snapshot();ports.assertCurrent();if(result.status!=='evidence')throw new SignedClockUnavailable(result.status==='unsupported'?'unsupported':'native_unavailable');return NativeClockSnapshot.parse(result.evidence);}
  async function verifyOffline(raw:string,binding:OfflineClockContextBinding){
@@ -135,6 +138,45 @@ export function createSignedClockJournal(rawScope:EnrollmentScope,ports:SignedCl
   return {status:'captured' as const,requestId:entry.claim.command.requestId,sequence:entry.claim.chain.sequence,acceptance:'not_granted' as const};
  }
  return {
+  signOffline:(requestId:string,expectedContextId:string)=>exclusive(queue,async():Promise<OfflineSignResult>=>{
+   const id=uuid.parse(requestId),contextId=uuid.parse(expectedContextId);let s=await read();const initial=s.offline,signer=signingPorts();
+   if(!initial||initial.phase!=='context_ready'||s.pending)throw new SignedClockConflict();
+   const context=OfflineClockContextData.parse((JSON.parse(initial.rawContext) as {context:unknown}).context);
+   if(context.id!==contextId)throw new SignedClockConflict();
+   const index=initial.claims.findIndex(entry=>entry.claim.command.requestId===id);if(index<0)throw new SignedClockConflict();
+   if(initial.claims.slice(0,index).some(entry=>entry.phase!=='proof_ready'||!entry.nativeReleased))return {status:'pending',requestId:id,reason:'earlier_claim'};
+   await verifyCapturedDigests(initial);let p=initial,entry=initial.claims[index];
+   if(!offlineCaptureComplete(entry.phase))throw new SignedClockConflict();
+   const pending=(result:Exclude<NativeIntegrityResult<unknown>,{status:'evidence'}>):OfflineSignResult=>({status:'pending',requestId:id,reason:result.status==='unsupported'?'unsupported':result.status==='invalid'?'invalid_evidence':'native_unavailable'});
+   async function saveEntry(next:OfflineClockCapturedClaim){
+    entry=next;p={...p,claims:p.claims.map((value,at)=>at===index?entry:value)};s=await saveOffline(s,p);
+   }
+   if(entry.phase!=='proof_ready'){
+    const verified=await verifyOffline(p.rawContext,p.binding);
+    if(verified.digest!==p.digest||offlineClockContextClientData(verified.context)!==offlineClockContextClientData(context))throw new SignedClockConflict();
+    if(entry.phase==='captured')await saveEntry({...entry,phase:'signing'});
+    const info=await owned(()=>signer.inspect(structuredClone(p.key),structuredClone(entry.claim)));if(info.status!=='evidence')return pending(info);
+    const snapshot=AppleOfflineProofSnapshot.safeParse(info.evidence);if(!snapshot.success)return {status:'pending',requestId:id,reason:'invalid_evidence'};
+    let proof:string;
+    if(snapshot.data.state==='completed'){
+     if(p.key.platform!=='ios')return {status:'pending',requestId:id,reason:'invalid_evidence'};proof=snapshot.data.assertion;
+    }else{
+     if(p.key.platform==='android'&&snapshot.data.state!=='absent')return {status:'pending',requestId:id,reason:'invalid_evidence'};
+     if(snapshot.data.state==='requested'&&!snapshot.data.canRetry)return {status:'pending',requestId:id,reason:'recovery_required'};
+     if(entry.claim.command.photo)await owned(()=>signer.verifyPhoto(id,structuredClone(entry.claim.command.photo!)));
+     const signed=await owned(()=>signer.sign(structuredClone(p.key),structuredClone(entry.claim)));if(signed.status!=='evidence')return pending(signed);proof=signed.evidence;
+    }
+    const parsed=(p.key.platform==='ios'?OfflineClockAppleAssertion:OfflineClockAndroidSignature).safeParse(proof);
+    if(!parsed.success)return {status:'pending',requestId:id,reason:'invalid_evidence'};
+    await saveEntry({...entry,phase:'proof_ready',proof:parsed.data,nativeReleased:false});
+   }
+   if(!entry.nativeReleased){
+    const released=await owned(()=>signer.release(structuredClone(p.key),structuredClone(entry.claim)));if(released.status!=='evidence')return pending(released);
+    if(released.evidence!==null)return {status:'pending',requestId:id,reason:'invalid_evidence'};
+    await saveEntry({...entry,nativeReleased:true});
+   }
+   return {status:'proof_ready',requestId:id,acceptance:'not_granted'};
+  }),
   captureOffline:(input:unknown)=>exclusive(queue,async()=>{
    const request=OfflineClockCaptureInput.parse(input);let s=await read();const p=s.offline;capturePorts();
    if(!p||p.phase!=='context_ready'||s.pending)throw new SignedClockConflict();
@@ -144,7 +186,7 @@ export function createSignedClockJournal(rawScope:EnrollmentScope,ports:SignedCl
    await verifyCapturedDigests(p);
    const existing=p.claims.findIndex(entry=>entry.claim.command.requestId===request.requestId);
    if(existing>=0){if(p.claims[existing].claim.time.claimedAt!==request.claimedAt)throw new SignedClockConflict();return completeOfflineCapture(s,p,existing);}
-   if(p.claims.some(entry=>entry.phase!=='captured'))throw new SignedClockConflict();
+   if(p.claims.some(entry=>!offlineCaptureComplete(entry.phase)))throw new SignedClockConflict();
    const verified=await verifyOffline(p.rawContext,p.binding);
    if(verified.digest!==p.digest||offlineClockContextClientData(verified.context)!==offlineClockContextClientData(context))throw new SignedClockConflict();
    const permit=context.permits[p.claims.length];if(!context.policy.offlineEnabled||!permit)throw new SignedClockUnavailable('configuration');
@@ -153,7 +195,7 @@ export function createSignedClockJournal(rawScope:EnrollmentScope,ports:SignedCl
    const result=capturePorts().capabilities();ports.assertCurrent();
    if(result.status!=='evidence')throw new SignedClockUnavailable(result.status==='unsupported'?'unsupported':'native_unavailable');
    const cap=NativeCapabilities.parse(result.evidence),key=p.key;
-   if(cap.platform!==key.platform||(key.platform==='ios'?cap.keyMechanism!=='apple_app_attest'||!key.appId.endsWith('.'+cap.appId):cap.keyMechanism!=='android_keystore'||cap.appId!==key.appId))throw new SignedClockConflict();
+   if(cap.platform!==key.platform||(key.platform==='ios'?cap.keyMechanism!=='apple_app_attest'||key.appId.slice(11)!==cap.appId:cap.keyMechanism!=='android_keystore'||cap.appId!==key.appId))throw new SignedClockConflict();
    const {deviceToken,...command}=b.command;void deviceToken;
    const claim=OfflineClockClaimData.parse({version:1,purpose:'attendance.clock.offline.claim',scope:p.binding.scope,
     context:{id:context.id,sha256:p.digest},permit,chain:{sequence:p.claims.length+1,previousSha256:p.claims.at(-1)?.digest??null},
@@ -161,7 +203,7 @@ export function createSignedClockJournal(rawScope:EnrollmentScope,ports:SignedCl
     evidence:{platform:cap.platform,appId:cap.appId,appVersion:cap.appVersion,buildVersion:cap.buildVersion,...b.source}});
    const digest=sha.parse(await owned(()=>capturePorts().digest(offlineClockClaimClientData(claim))));
    const entry:OfflineClockCapturedClaim={phase:'capture_requested',baseDigest:b.digest,claim,digest,eventSnapshot:request.eventSnapshot,
-    photoReference:claim.command.photo?offlineClockPhotoReference(request.requestId):null};
+    photoReference:claim.command.photo?offlineClockPhotoReference(request.requestId):null,proof:null,nativeReleased:false};
    const next=validateOfflineClockExchange({...p,claims:[...p.claims,entry]},scope);
    if(next.phase!=='context_ready')throw new SignedClockConflict();s=await saveOffline(s,next);
    return completeOfflineCapture(s,next,next.claims.length-1);
@@ -171,7 +213,7 @@ export function createSignedClockJournal(rawScope:EnrollmentScope,ports:SignedCl
    if(s.pending)throw new SignedClockConflict();
    if(s.offline){if(!same(s.offline.binding,binding))throw new SignedClockConflict();return status(s,binding.scope.employmentId);}
    const found=await owned(()=>ports.key()),key=ClockSigningKey.parse(found.key),capability=NativeCapabilities.parse(found.capability);
-   if(capability.platform!==key.platform||(key.platform==='ios'?capability.keyMechanism!=='apple_app_attest'||!key.appId.endsWith('.'+capability.appId):capability.keyMechanism!=='android_keystore'||key.appId!==capability.appId))throw new SignedClockConflict();
+   if(capability.platform!==key.platform||(key.platform==='ios'?capability.keyMechanism!=='apple_app_attest'||key.appId.slice(11)!==capability.appId:capability.keyMechanism!=='android_keystore'||key.appId!==capability.appId))throw new SignedClockConflict();
    const offline=validateOfflineClockExchange({phase:'context_requested',binding,key,requestStarted:localSnapshot()},scope);
    return status(await saveOffline(s,offline),binding.scope.employmentId);
   }),
@@ -198,7 +240,7 @@ export function createSignedClockJournal(rawScope:EnrollmentScope,ports:SignedCl
    const b=baseSchema.parse(await owned(()=>ports.base(selected,id)));if(b.command.requestId!==id)throw new SignedClockConflict();
    const found=await owned(()=>ports.key()),key=ClockSigningKey.parse(found.key),cap=NativeCapabilities.parse(found.capability),features=await capabilities(key.platform);
    if(key.actorId!==scope.actorId||key.apiOrigin!==scope.apiOrigin||key.appInstallationId!==scope.appInstallationId||cap.platform!==key.platform||
-    (key.platform==='ios'?cap.keyMechanism!=='apple_app_attest'||!key.appId.endsWith('.'+cap.appId):cap.keyMechanism!=='android_keystore'||key.appId!==cap.appId))throw new SignedClockConflict();
+    (key.platform==='ios'?cap.keyMechanism!=='apple_app_attest'||key.appId.slice(11)!==cap.appId:cap.keyMechanism!=='android_keystore'||key.appId!==cap.appId))throw new SignedClockConflict();
    const p:SignedClockPending={phase:'intent',employmentId:selected,requestId:id,baseDigest:b.digest,action:b.command.action,key,
     evidence:OnlineClockIntegrityData.shape.evidence.parse({platform:cap.platform,appId:cap.appId,appVersion:cap.appVersion,buildVersion:cap.buildVersion,...b.source}),
     project:features.cloudProjectNumber,context:null,proof:null};

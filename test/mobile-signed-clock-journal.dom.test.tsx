@@ -167,3 +167,8 @@ describe('signed clock safe refusal and provider outcomes',()=>{
   expect(await j.advance(employmentId)).toMatchObject({status:'pending',phase:'prepared',reason});expect(f.ports.complete).not.toHaveBeenCalled();expect(f.ports.resolveBase).not.toHaveBeenCalled();
  });
 });
+
+it('refuses a native bundle that is only a suffix of the registered Apple App ID before reserving an online proof',async()=>{
+ const f=fixture();vi.mocked(f.ports.key).mockResolvedValueOnce({...await f.ports.key(),capability:{...f.capability,appId:'hr'}} as Awaited<ReturnType<SignedClockPorts['key']>>);
+ await expect(f.journal().start(employmentId,requestId)).rejects.toBeInstanceOf(SignedClockConflict);expect(f.stored()).toBeNull();expect(f.ports.begin).not.toHaveBeenCalled();expect(f.ports.sign).not.toHaveBeenCalled();
+});

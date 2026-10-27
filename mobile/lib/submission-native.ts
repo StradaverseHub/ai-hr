@@ -154,9 +154,9 @@ async function nativeEnrollmentStorage<T extends {revision:number;pending:unknow
   const keyId=await hash(await key.encoded('base64'));assertCurrent();
   const pointer=`aihr.${prefix}.${keyId.slice(0,16)}.${scopeId}`,directory=new Directory(root(),`${prefix}-${scopeId}`);
   // Apple retains predecessor enrollment contexts beside a bounded attestation. The shared clock
-  // owner also retains a signed server envelope plus app-local exchange anchors. Both use 256 KiB;
-  // Android enrollment retains its 128 KiB bound. The install-wide quota remains unchanged.
-  const maximum=domain==='android-enrollment-v1'?131072:262144;
+  // owner retains up to 32 bounded claim proofs beside its signed context: 1 MiB. Apple enrollment
+  // retains 256 KiB, Android enrollment 128 KiB. The install-wide allocation quota is unchanged.
+  const maximum=domain==='signed-clock-v1'?1048576:domain==='android-enrollment-v1'?131072:262144;
   const aad=new TextEncoder().encode(`aihr-${domain}:${scopeId}:journal`);
   const file=(slot:0|1)=>new File(directory,`journal-${slot}.sealed`);
   const reclaim=(revision:number)=>{assertCurrent();const old=file((1-revision%2) as 0|1);if(old.exists)old.delete();};
@@ -197,7 +197,7 @@ async function nativeEnrollmentStorage<T extends {revision:number;pending:unknow
     if(target.exists){await readPhoto(requestId,expected);return name;}
     const result=await aesEncryptAsync(bytes,key,{additionalData:photoAad(name)});assertCurrent();const sealed=await result.combined();assertCurrent();
     const used=root().exists?root().size:0,staged=new File(directory,name+'.staging');
-    if(used==null||!Number.isFinite(used)||used<0||used+Math.max(0,sealed.byteLength-(staged.exists?staged.size:0))+METADATA_RESERVE>MAX_INSTALL_BYTES)throw new SubmissionJournalFull('Pending submission storage is full');
+    if(used==null||!Number.isFinite(used)||used<0||used+Math.max(0,sealed.byteLength-(staged.exists?staged.size:0))+2*maximum>MAX_INSTALL_BYTES)throw new SubmissionJournalFull('Pending submission storage is full');
     if(!directory.exists)directory.create({intermediates:true});staged.write(sealed);assertCurrent();
     staged.moveSync(target,{overwrite:false});assertCurrent();await readPhoto(requestId,expected);return name;
   });}

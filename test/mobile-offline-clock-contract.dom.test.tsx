@@ -1,7 +1,7 @@
 import vector from './fixtures/mobile-integrity/offline-clock-claim-v1.json';
 import {createHash} from 'node:crypto';
 import {describe,it,expect} from 'vitest';
-import {OfflineClockClaimData,OfflineClockElapsed,offlineClockClaimClientData} from '../lib/mobile-offline-clock';
+import {OfflineClockClaimData,OfflineClockElapsed,OfflineClockSignedClaim,OfflineClockAppleAssertion,OfflineClockAndroidSignature,offlineClockClaimClientData} from '../lib/mobile-offline-clock';
 import {OnlineClockIntegrityData} from '../lib/mobile-clock-integrity';
 const id=(n:number)=>String(n).padStart(8,'0')+'-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 function fixture():OfflineClockClaimData{return {
@@ -69,4 +69,16 @@ describe('offline claim canonical protocol boundary',()=>{
   expect(OfflineClockClaimData.safeParse({...p,purpose:'attendance.clock.online'}).success).toBe(false);
   expect(OfflineClockClaimData.safeParse({...p,version:2}).success).toBe(false);
  });
+});
+
+it('bounds unverified signed-claim envelopes without accepting authority, another platform or noncanonical proof bytes',()=>{
+ const claim=fixture(),assertion=Buffer.from('opaque unverified artifact').toString('base64');
+ expect(OfflineClockSignedClaim.parse({claim,proof:{platform:'ios',assertion}})).toMatchObject({claim,proof:{platform:'ios',assertion}});
+ for(const value of [{claim,proof:{platform:'android',signature:assertion}},{claim,proof:{platform:'ios',assertion,verified:true}},{claim,proof:{platform:'ios',assertion},accepted:true},{claim,proof:{platform:'ios',assertion:'AB=='}}])
+  expect(OfflineClockSignedClaim.safeParse(value).success).toBe(false);
+ expect(OfflineClockAppleAssertion.safeParse(Buffer.alloc(8192,255).toString('base64')).success).toBe(true);
+ expect(OfflineClockAppleAssertion.safeParse(Buffer.alloc(8193,255).toString('base64')).success).toBe(false);
+ expect(OfflineClockAndroidSignature.safeParse(Buffer.alloc(72,255).toString('base64')).success).toBe(true);
+ expect(OfflineClockAndroidSignature.safeParse(Buffer.alloc(73,255).toString('base64')).success).toBe(false);
+ expect(offlineClockClaimClientData(claim)).toBe(vector.canonical);
 });

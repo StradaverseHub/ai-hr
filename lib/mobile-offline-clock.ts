@@ -45,3 +45,15 @@ export function offlineClockClaimClientData(input:unknown):string{
   [e.platform,e.appId,e.appVersion,e.buildVersion,e.provider,e.mock,e.simulated,e.accessory],
  ]);
 }
+
+/** Opaque unverified proof bytes. Crypto/key/counter/permit checks remain mandatory server owners. */
+const offlineProofBytes=(maximum:number)=>z.string().min(4).max(Math.ceil(maximum/3)*4)
+ .regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$/)
+ .refine(value=>value.length/4*3-(value.endsWith('==')?2:value.endsWith('=')?1:0)<=maximum);
+export const OfflineClockAppleAssertion=offlineProofBytes(8192);
+export const OfflineClockAndroidSignature=offlineProofBytes(72);
+export const OfflineClockSignedClaim=z.object({claim:OfflineClockClaimData,proof:z.discriminatedUnion('platform',[
+ z.object({platform:z.literal('ios'),assertion:OfflineClockAppleAssertion}).strict(),
+ z.object({platform:z.literal('android'),signature:OfflineClockAndroidSignature}).strict(),
+])}).strict().refine(value=>value.proof.platform===value.claim.evidence.platform);
+export type OfflineClockSignedClaim=z.infer<typeof OfflineClockSignedClaim>;

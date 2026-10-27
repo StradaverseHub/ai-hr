@@ -25,7 +25,7 @@ export function createSubmissionStorage(scope:SubmissionScope,ports:SubmissionSt
  * refuses orphan slots without a pointer; it must not recreate an intent beside an unknown native key. */
 export function createSealedJournalStorage<T extends {revision:number}>(parse:(value:unknown)=>T,ports:SealedJournalStoragePorts<T>,options:{maximumBytes:number;error:(message:string)=>Error;refuseOrphanSlots?:boolean}){
   const MAX_BYTES=options.maximumBytes,fail=options.error;
-  if(!Number.isSafeInteger(MAX_BYTES)||MAX_BYTES<1||MAX_BYTES>262144)throw fail('Invalid journal bound');
+  if(!Number.isSafeInteger(MAX_BYTES)||MAX_BYTES<1||MAX_BYTES>1048576)throw fail('Invalid journal bound');
   return {
     async read():Promise<T|null>{
       ports.assertCurrent();const current=revision(await ports.readPointer(),fail);ports.assertCurrent();

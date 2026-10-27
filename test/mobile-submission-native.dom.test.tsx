@@ -385,11 +385,11 @@ it('does not treat new offline preparation as quota-exempt resolution merely bec
  expect(s.ports.offline!.request).not.toHaveBeenCalled();expect(s.ports.sign).not.toHaveBeenCalled();
 });
 
-async function offlinePhotoFixture(){
+async function offlinePhotoFixture(permitCount=2){
  const f=fixture(),s=signedPorts(),binding=offlinePortsForStorage(s),pair=generateKeyPairSync('ed25519'),identity=offlineContextIssuerIdentity(pair.privateKey),issuedAt=1793055753390;
  const context:OfflineClockContextData={version:1,purpose:'attendance.clock.offline.context',issuer:{algorithm:'ed25519',keyId:identity.keyId},id:requestId,requestId,requestNonce:binding.request.requestNonce,
   scope:binding.scope,target:binding.target,issuedAt,expiresAt:issuedAt+3600000,policy:{revision:'a'.repeat(64),offlineEnabled:true,windowMs:86400000,geofencingRequired:false,maximumAccuracyM:null,photoRequirement:'optional'},sites:[],
-  attendance:{baseline:'b'.repeat(64),date:'2026-10-27',clockedIn:false,openSince:null},permits:[{id:scope.actorId,ordinal:1,nonce:'A'.repeat(43)},{id:scope.employmentId,ordinal:2,nonce:'B'.repeat(42)+'A'}]};
+  attendance:{baseline:'b'.repeat(64),date:'2026-10-27',clockedIn:false,openSince:null},permits:Array.from({length:permitCount},(_,index)=>({id:String(index+1).padStart(8,'0')+'-aaaa-4aaa-8aaa-aaaaaaaaaaaa',ordinal:index+1,nonce:Buffer.alloc(32,index+1).toString('base64url')}))};
  const issuer={...identity,validFrom:issuedAt-1,validUntil:issuedAt+86400000,revoked:false};
  const raw=signOfflineClockContext(context,pair.privateKey),source={provider:null,mock:null,simulated:null,accessory:null},photoBytes=Uint8Array.from([1,2,3,4]);
  const baseScope={namespace:'offline-base',actorId:scope.actorId,employmentId:scope.employmentId},base=await f.native.openNativeSubmissionJournal(baseScope,()=>{});
@@ -446,4 +446,25 @@ it('refuses missing/tampered retained ciphertext instead of treating it as an ab
  const changed=saved.slice();changed[changed.length-1]^=1;f.f.files.set(path,changed);
  await expect((await f.open()).readOfflinePhoto(requestId,f.expectedPhoto)).rejects.toThrow();await expect((await f.open()).retainOfflinePhoto(requestId,f.expectedPhoto,f.photoBytes)).rejects.toThrow();
  expect(f.f.files.get(path)).toEqual(changed);f.f.files.set(path,saved);expect(await (await f.open()).readOfflinePhoto(requestId,f.expectedPhoto)).toEqual(f.photoBytes);
+});
+
+it('retains all 32 bounded iPhone proof artifacts in a sealed journal larger than the legacy cap and recovers them across restart',async()=>{
+ const f=await offlinePhotoFixture(32),proof=Buffer.alloc(8192,255).toString('base64');
+ f.s.ports.offline!.signing={inspect:async()=>({status:'evidence',evidence:{state:'absent'},verification:'not_verified'}),sign:async()=>({status:'evidence',evidence:proof,verification:'not_verified'}),release:async()=>({status:'evidence',evidence:null,verification:'not_verified'}),verifyPhoto:async()=>{throw Error('no photo expected');}};
+ for(let index=0;index<32;index++){
+  const id='00000000-0000-4000-8000-'+String(index+100).padStart(12,'0');await f.stage(id,false);const j=await f.open();await j.captureOffline(f.input(id));
+  expect(await j.signOffline(id,requestId)).toMatchObject({status:'proof_ready'});
+ }
+ const files=[...f.f.files].filter(([path])=>path.includes('/signed-clock-')&&/journal-[01]\.sealed$/.test(path));expect(files).toHaveLength(1);
+ expect(files[0][1].byteLength).toBeGreaterThan(262144+64);expect(files[0][1].byteLength).toBeLessThan(1048576+64);
+ const restarted=await f.open();expect(await restarted.status(scope.employmentId)).toMatchObject({status:'offline_pending'});
+ expect(await restarted.signOffline('00000000-0000-4000-8000-000000000100',requestId)).toMatchObject({status:'proof_ready'});
+ expect(f.s.ports.sign).not.toHaveBeenCalled();expect(f.s.ports.complete).not.toHaveBeenCalled();
+});
+it('commits only the native-cache release flag at the storage cap and still refuses another claim allocation',async()=>{
+ const f=await offlinePhotoFixture();await f.stage(requestId,false);const proof=Buffer.from('opaque proof').toString('base64');
+ f.s.ports.offline!.signing={inspect:async()=>({status:'evidence',evidence:{state:'absent'},verification:'not_verified'}),sign:async()=>({status:'evidence',evidence:proof,verification:'not_verified'}),release:async()=>{f.f.occupy(64*1024*1024);return {status:'evidence',evidence:null,verification:'not_verified'};},verifyPhoto:async()=>{throw Error('no photo expected');}};
+ const j=await f.open();await j.captureOffline(f.input());expect(await j.signOffline(requestId,requestId)).toMatchObject({status:'proof_ready'});
+ const next='00000000-0000-4000-8000-000000000099';f.f.occupy(0);await f.stage(next,false);f.f.occupy(64*1024*1024);
+ await expect((await f.open()).captureOffline(f.input(next))).rejects.toThrow();expect(await f.base.pending()).toHaveLength(1);
 });

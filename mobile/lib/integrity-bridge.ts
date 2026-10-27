@@ -1,5 +1,6 @@
 /** Bounded platform primitives. Evidence availability is deliberately separate from server verification. */
 import {z} from 'zod';
+import {OfflineClockAppleAssertion} from '../../lib/mobile-offline-clock';
 import type {NativeIntegrityModule} from '../modules/aihr-integrity/src/AihrIntegrity.types';
 const alias=z.string().length(69).regex(/^aihr_[0-9a-f]{64}$/);
 const keyId=z.string().min(1).max(512).refine(value=>!value.includes('\0'));
@@ -29,8 +30,9 @@ const AppleAttestationSnapshot=z.discriminatedUnion('state',[
 ]);
 export const AppleOfflineProofSnapshot=z.discriminatedUnion('state',[
  z.object({state:z.literal('absent')}).strict(),z.object({state:z.literal('requested'),canRetry:z.boolean()}).strict(),
- z.object({state:z.literal('retryable')}).strict(),z.object({state:z.literal('completed'),assertion:blob(8192)}).strict(),
+ z.object({state:z.literal('retryable')}).strict(),z.object({state:z.literal('completed'),assertion:OfflineClockAppleAssertion}).strict(),
 ]);
+export type AppleOfflineProofSnapshot=z.infer<typeof AppleOfflineProofSnapshot>;
 type Reason='bridge_missing'|'method_missing'|'unsupported'|'unavailable'|'server_unavailable'|'invalid_input'|'invalid_key'|'key_exists'|'binding_conflict'|'recovery_required'|'provider_expired'|'obsolete'|'in_progress'|'timeout'|'malformed';
 export type NativeIntegrityResult<T>={status:'evidence';evidence:T;verification:'not_verified'}|{status:'unsupported'|'unavailable'|'invalid';reason:Reason};
 const codes:Record<string,{status:'unsupported'|'unavailable'|'invalid';reason:Reason}>={
@@ -81,7 +83,7 @@ export function createIntegrityBridge(native:NativeIntegrityModule|null,assertCu
     resetAppleIntegrityInstallation:()=>operation('resetAppleIntegrityInstallation',[],z.null()),
     attestAppleKey:(id:string,hash:string)=>valid(keyId.safeParse(id),sha256.safeParse(hash))?operation('attestAppleKey',[id,hash],blob(65536)):Promise.resolve(invalid),
     appleOfflineProofInfo:(id:string,hash:string)=>valid(keyId.safeParse(id),sha256.safeParse(hash))?operation('appleOfflineProofInfo',[id,hash],AppleOfflineProofSnapshot):Promise.resolve(invalid),
-    assertAppleOfflineKey:(id:string,hash:string)=>valid(keyId.safeParse(id),sha256.safeParse(hash))?operation('assertAppleOfflineKey',[id,hash],blob(8192)):Promise.resolve(invalid),
+    assertAppleOfflineKey:(id:string,hash:string)=>valid(keyId.safeParse(id),sha256.safeParse(hash))?operation('assertAppleOfflineKey',[id,hash],OfflineClockAppleAssertion):Promise.resolve(invalid),
     releaseAppleOfflineProof:(id:string,hash:string)=>valid(keyId.safeParse(id),sha256.safeParse(hash))?operation('releaseAppleOfflineProof',[id,hash],z.null()):Promise.resolve(invalid),
     assertAppleKey:(id:string,hash:string)=>valid(keyId.safeParse(id),sha256.safeParse(hash))?operation('assertAppleKey',[id,hash],blob(8192)):Promise.resolve(invalid),
     createAndroidKey:(value:string,nonce:string,strongBox=false)=>valid(alias.safeParse(value),sha256.safeParse(nonce),z.boolean().safeParse(strongBox))?operation('createAndroidKey',[value,nonce,strongBox],AndroidKeyEvidence):Promise.resolve(invalid),

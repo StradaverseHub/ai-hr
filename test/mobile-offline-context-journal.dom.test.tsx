@@ -4,7 +4,7 @@ import {describe,it,expect,vi} from 'vitest';
 import {createSignedClockJournal,parseSignedClockSnapshot,SignedClockConflict,type SignedClockPorts,type SignedClockSnapshot} from '../mobile/lib/signed-clock-journal';
 import {offlineContextIssuerIdentity,signOfflineClockContext,verifyOfflineClockContextSignature} from '../lib/mobile-api/offline-context-signature';
 import {NativeCapabilities} from '../mobile/lib/integrity-bridge';
-import {offlineClockPhotoReference} from '../mobile/lib/offline-clock-state';
+import {offlineClockPhotoReference,type OfflineClockProofPorts} from '../mobile/lib/offline-clock-state';
 import {offlineClockClaimClientData} from '../lib/mobile-offline-clock';
 import type {OfflineClockContextData,OfflineClockContextBinding} from '../lib/mobile-offline-context';
 const id=(n:number)=>String(n).padStart(8,'0')+'-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -217,4 +217,104 @@ describe('durable offline claim capture and photo/base ownership transfer',()=>{
   vi.mocked(f.capture.capabilities).mockReturnValueOnce({status:'unsupported',reason:'unsupported'});
   await expect(f.journal().captureOffline(f.input())).rejects.toThrow('Signed clocking unavailable');expect(f.stored()!.offline).toMatchObject({claims:[]});expect(f.capture.retainPhoto).not.toHaveBeenCalled();
  });
+});
+
+function proofFixture(platform:'ios'|'android'='ios'){
+ const f=captureFixture(platform),proof=Buffer.from('opaque unverified proof').toString('base64');
+ const signing:OfflineClockProofPorts={inspect:vi.fn<OfflineClockProofPorts['inspect']>(async()=>({status:'evidence',evidence:{state:'absent'},verification:'not_verified'})),
+  sign:vi.fn<OfflineClockProofPorts['sign']>(async()=>({status:'evidence',evidence:proof,verification:'not_verified'})),
+  release:vi.fn<OfflineClockProofPorts['release']>(async()=>({status:'evidence',evidence:null,verification:'not_verified'})),verifyPhoto:vi.fn<OfflineClockProofPorts['verifyPhoto']>(async()=>{})};
+ f.ports.offline!.signing=signing;
+ return {...f,signing,proof,captured:async()=>{await f.ready();await f.journal().captureOffline(f.input());}};
+}
+describe('ordered offline proof generation and durable native handoff',()=>{
+ it.each(['ios','android'] as const)('%s reserves SDK intent and commits proof before native cleanup without uploading attendance',async platform=>{
+  const f=proofFixture(platform);await f.captured();
+  vi.mocked(f.signing.inspect).mockImplementationOnce(async()=>{expect(f.stored()!.offline).toMatchObject({claims:[{phase:'signing',proof:null,nativeReleased:false}]});return {status:'evidence',evidence:{state:'absent'},verification:'not_verified'};});
+  vi.mocked(f.signing.release).mockImplementationOnce(async()=>{expect(f.stored()!.offline).toMatchObject({claims:[{phase:'proof_ready',proof:f.proof,nativeReleased:false}]});return {status:'evidence',evidence:null,verification:'not_verified'};});
+  expect(await f.journal().signOffline(id(20),f.context.id)).toEqual({status:'proof_ready',requestId:id(20),acceptance:'not_granted'});
+  expect(f.stored()!.offline).toMatchObject({claims:[{phase:'proof_ready',proof:f.proof,nativeReleased:true}]});expect(f.signing.verifyPhoto).toHaveBeenCalledWith(id(20),f.image);
+  expect(f.ports.complete).not.toHaveBeenCalled();expect(f.ports.play).not.toHaveBeenCalled();expect(f.ports.sign).not.toHaveBeenCalled();
+ });
+ it('does not inspect/sign a later claim until every earlier proof handoff is finished',async()=>{
+  const f=proofFixture();await f.captured();await f.journal().captureOffline(f.input(id(21)));
+  expect(await f.journal().signOffline(id(21),f.context.id)).toEqual({status:'pending',requestId:id(21),reason:'earlier_claim'});expect(f.signing.inspect).not.toHaveBeenCalled();
+  await f.journal().signOffline(id(20),f.context.id);await f.journal().signOffline(id(21),f.context.id);expect(f.signing.sign).toHaveBeenCalledTimes(2);
+  expect(vi.mocked(f.signing.sign).mock.calls.map(([,claim])=>claim.command.requestId)).toEqual([id(20),id(21)]);
+ });
+ it('recovers a completed native iPhone proof without generating again or requiring an unavailable photo',async()=>{
+  const f=proofFixture();await f.captured();vi.mocked(f.signing.inspect).mockResolvedValueOnce({status:'evidence',evidence:{state:'completed',assertion:f.proof},verification:'not_verified'});
+  vi.mocked(f.signing.verifyPhoto).mockRejectedValueOnce(Error('photo unavailable'));
+  expect(await f.journal().signOffline(id(20),f.context.id)).toMatchObject({status:'proof_ready'});expect(f.signing.sign).not.toHaveBeenCalled();expect(f.signing.verifyPhoto).not.toHaveBeenCalled();expect(f.signing.release).toHaveBeenCalledOnce();
+ });
+ it('holds a live/unknown iPhone request while allowing subsequent local capture without bypassing proof order',async()=>{
+  const f=proofFixture();await f.captured();vi.mocked(f.signing.inspect).mockResolvedValueOnce({status:'evidence',evidence:{state:'requested',canRetry:false},verification:'not_verified'});
+  expect(await f.journal().signOffline(id(20),f.context.id)).toMatchObject({status:'pending',reason:'recovery_required'});expect(f.signing.sign).not.toHaveBeenCalled();
+  await f.journal().captureOffline(f.input(id(21)));expect(await f.journal().signOffline(id(21),f.context.id)).toMatchObject({reason:'earlier_claim'});
+  vi.mocked(f.signing.inspect).mockResolvedValueOnce({status:'evidence',evidence:{state:'completed',assertion:f.proof},verification:'not_verified'});
+  await f.journal().signOffline(id(20),f.context.id);expect(f.signing.sign).not.toHaveBeenCalled();
+ });
+ it.each([{state:'retryable' as const},{state:'requested' as const,canRetry:true}])('allows explicit same-claim SDK retry only when the native recovery state permits %s',async evidence=>{
+  const f=proofFixture();await f.captured();vi.mocked(f.signing.inspect).mockResolvedValueOnce({status:'evidence',evidence,verification:'not_verified'});
+  await f.journal().signOffline(id(20),f.context.id);expect(f.signing.sign).toHaveBeenCalledOnce();expect(vi.mocked(f.signing.sign).mock.calls[0][1].command.requestId).toBe(id(20));
+ });
+ it('does not generate a proof after a lost signing-reservation commit acknowledgement',async()=>{
+  const f=proofFixture();await f.captured();vi.mocked(f.ports.commit).mockImplementationOnce(async value=>{f.setStored(structuredClone(value));throw Error('reservation acknowledgement lost');});
+  await expect(f.journal().signOffline(id(20),f.context.id)).rejects.toThrow('reservation acknowledgement lost');expect(f.signing.inspect).not.toHaveBeenCalled();expect(f.signing.sign).not.toHaveBeenCalled();
+  await f.journal().signOffline(id(20),f.context.id);expect(f.signing.sign).toHaveBeenCalledOnce();
+ });
+ it('reuses a proof committed before a lost storage reply instead of another SDK call',async()=>{
+  const f=proofFixture();await f.captured();vi.mocked(f.ports.commit).mockImplementation(async value=>{f.setStored(structuredClone(value));if(value.offline?.phase==='context_ready'&&value.offline.claims[0].phase==='proof_ready')throw Error('proof acknowledgement lost');});
+  await expect(f.journal().signOffline(id(20),f.context.id)).rejects.toThrow('proof acknowledgement lost');expect(f.signing.release).not.toHaveBeenCalled();
+  vi.mocked(f.ports.commit).mockImplementation(async value=>{f.setStored(structuredClone(value));});
+  await f.journal().signOffline(id(20),f.context.id);expect(f.signing.sign).toHaveBeenCalledOnce();expect(f.signing.inspect).toHaveBeenCalledOnce();expect(f.signing.release).toHaveBeenCalledOnce();
+ });
+ it('recovers a proof that reached the native cache but not the JS journal',async()=>{
+  const f=proofFixture();await f.captured();let commits=0;
+  vi.mocked(f.ports.commit).mockImplementation(async value=>{if(++commits===2)throw Error('proof write failed');f.setStored(structuredClone(value));});
+  await expect(f.journal().signOffline(id(20),f.context.id)).rejects.toThrow('proof write failed');expect(f.stored()!.offline).toMatchObject({claims:[{phase:'signing',proof:null}]});
+  vi.mocked(f.ports.commit).mockImplementation(async value=>{f.setStored(structuredClone(value));});vi.mocked(f.signing.inspect).mockResolvedValueOnce({status:'evidence',evidence:{state:'completed',assertion:f.proof},verification:'not_verified'});
+  await f.journal().signOffline(id(20),f.context.id);expect(f.signing.sign).toHaveBeenCalledOnce();
+ });
+ it('retries uncertain native cleanup with the retained proof, without registry lookup or another SDK operation',async()=>{
+  const f=proofFixture();await f.captured();vi.mocked(f.signing.release).mockRejectedValueOnce(Error('cleanup reply lost'));
+  await expect(f.journal().signOffline(id(20),f.context.id)).rejects.toThrow('cleanup reply lost');
+  const verifiedCalls=vi.mocked(f.ports.offline!.verify).mock.calls.length;vi.mocked(f.ports.offline!.verify).mockRejectedValueOnce(Error('registry unavailable'));
+  expect(await f.journal().signOffline(id(20),f.context.id)).toMatchObject({status:'proof_ready'});expect(f.signing.sign).toHaveBeenCalledOnce();expect(f.signing.release).toHaveBeenCalledTimes(2);expect(f.ports.offline!.verify).toHaveBeenCalledTimes(verifiedCalls);
+ });
+ it('keeps repeated ready calls idempotent and rejects stale request/context identifiers before SDK work',async()=>{
+  const f=proofFixture();await f.captured();await f.journal().signOffline(id(20),f.context.id);const before=structuredClone(f.stored());
+  await f.journal().signOffline(id(20),f.context.id);expect(f.stored()).toEqual(before);expect(f.signing.sign).toHaveBeenCalledOnce();expect(f.signing.release).toHaveBeenCalledOnce();
+  await expect(f.journal().signOffline(id(99),f.context.id)).rejects.toBeInstanceOf(SignedClockConflict);await expect(f.journal().signOffline(id(20),id(99))).rejects.toBeInstanceOf(SignedClockConflict);
+ });
+ it('keeps missing photos and native failures pending without signing another claim or inventing proof bytes',async()=>{
+  const f=proofFixture();await f.captured();vi.mocked(f.signing.verifyPhoto).mockRejectedValueOnce(Error('photo unavailable'));
+  await expect(f.journal().signOffline(id(20),f.context.id)).rejects.toThrow('photo unavailable');expect(f.signing.sign).not.toHaveBeenCalled();
+  vi.mocked(f.signing.sign).mockResolvedValueOnce({status:'unsupported',reason:'unsupported'});expect(await f.journal().signOffline(id(20),f.context.id)).toMatchObject({status:'pending',reason:'unsupported'});
+  expect(f.stored()!.offline).toMatchObject({claims:[{phase:'signing',proof:null,nativeReleased:false}]});expect(f.signing.release).not.toHaveBeenCalled();
+ });
+ it('refuses malformed proof bytes and an Android claim masquerading as an Apple cached assertion',async()=>{
+  const f=proofFixture();await f.captured();vi.mocked(f.signing.sign).mockResolvedValueOnce({status:'evidence',evidence:'AB==',verification:'not_verified'});
+  expect(await f.journal().signOffline(id(20),f.context.id)).toMatchObject({status:'pending',reason:'invalid_evidence'});expect(f.signing.release).not.toHaveBeenCalled();
+  const g=proofFixture('android');await g.captured();vi.mocked(g.signing.inspect).mockResolvedValueOnce({status:'evidence',evidence:{state:'completed',assertion:g.proof},verification:'not_verified'});
+  expect(await g.journal().signOffline(id(20),g.context.id)).toMatchObject({status:'pending',reason:'invalid_evidence'});expect(g.signing.sign).not.toHaveBeenCalled();
+ });
+ it('does not save returned proof or release native custody after ownership changes during the SDK operation',async()=>{
+  const f=proofFixture();await f.captured();vi.mocked(f.signing.sign).mockImplementationOnce(async()=>{f.obsolete();return {status:'evidence',evidence:f.proof,verification:'not_verified'};});
+  await expect(f.journal().signOffline(id(20),f.context.id)).rejects.toThrow('Session changed');expect(f.signing.release).not.toHaveBeenCalled();expect(f.stored()!.offline).toMatchObject({claims:[{phase:'signing',proof:null}]});
+ });
+ it('refuses corrupted proof phases, claimed scope or fake cleanup flags rather than opening a new owner',async()=>{
+  const f=proofFixture();await f.captured();const snapshot=structuredClone(f.stored()!);if(snapshot.offline?.phase!=='context_ready')throw Error('missing');const entry=snapshot.offline.claims[0];
+  for(const change of [{nativeReleased:true},{proof:f.proof},{phase:'proof_ready',proof:null},{claim:{...entry.claim,scope:{...entry.claim.scope,companyId:id(99)}}}]){
+   expect(()=>parseSignedClockSnapshot({...snapshot,offline:{...snapshot.offline,claims:[{...entry,...change}]}},f.scope)).toThrow('Signed clocking unavailable');
+  }
+ });
+});
+
+it('refuses persisted out-of-order proof state or native-cleanup claims before opening SDK ownership',async()=>{
+ const f=proofFixture();await f.captured();await f.journal().captureOffline(f.input(id(21)));const snapshot=structuredClone(f.stored()!);if(snapshot.offline?.phase!=='context_ready')throw Error('missing');
+ for(const change of [{phase:'signing',proof:null,nativeReleased:false},{phase:'proof_ready',proof:f.proof,nativeReleased:true}]){
+  const claims=snapshot.offline.claims.map((entry,index)=>index===1?{...entry,...change}:entry);
+  expect(()=>parseSignedClockSnapshot({...snapshot,offline:{...snapshot.offline,claims}},f.scope)).toThrow('Signed clocking unavailable');
+ }
 });

@@ -271,3 +271,56 @@ The application proof journal must own a completed proof before releasing that c
 online/offline counter order serialized. Native cache support alone does not provide an offline
 signing flow. The one-use enrollment cache is unchanged; its requested-state recovery rules must
 not be relaxed to match repeatable assertion semantics.
+
+### Ordered local proof handoff
+
+Captured claims can advance to `signing` and `proof_ready`. The same installed-account owner
+commits signing reservation before inspecting/using native proof operations. It verifies retained
+claim hashes and the original server context before new proof work. A later claim cannot start
+proof generation before every prior proof is durable and its native handoff is released. Local
+capture may continue behind an uncertain earlier proof; signing cannot skip it. Stored state with
+out-of-order proofs is refused, rather than silently opened as a new queue.
+
+An iPhone completed-cache result recovers the original assertion without a new SDK call or a
+requirement to recover a now-missing photo first. An unknown live request remains held. Only native
+`retryable` or actual process-replacement permission allows explicit same-payload generation again.
+Before generating new proof, retained photos must still pass their owned integrity read. A proof
+is saved before native cleanup; lost proof-write/cleanup acknowledgements reuse the durable proof
+or cache on retry. Cleanup may finish without refetching the issuer registry, since it transfers
+local custody and grants no attendance authority. Ownership loss never publishes proof or advances
+cleanup state. No claim is sent or resolved as attendance by this signing method.
+
+The platform adapter signs exact purpose-separated offline UTF-8 bytes. Android uses the existing
+Keystore SHA256withECDSA operation and no Google network call during offline signing. iPhone uses
+only the new cached assertion API, never an uncached fallback. Current platform/app identity must
+match the captured key; capture-time reported app versions remain unchanged after a legitimate
+upgrade. The expected Apple bundle is the complete App ID after its ten-character prefix, not an
+arbitrary suffix. The matching local online guard now applies the same exact-bundle check as the
+existing server owner.
+
+Signed-claim envelopes carry only the original claim plus a platform-specific bounded canonical
+base64 artifact; they contain no client-supplied trust/counter/acceptance flag. Native proof bytes
+are still unverified inputs until the server performs cryptographic/key/permit/current-policy
+checks. The sealed clock journal now admits up to 1 MiB, needed for 32 possible 8 KiB iPhone
+artifacts plus context and metadata. Other journal bounds are unchanged. Photo admission reserves
+two clock-journal copies within the installation's existing allocation quota. Only identical-data
+phase reservation/handoff/native-cleanup transitions may finish at the cap; adding a proof or a
+claim still needs admission. These optional signing ports are not yet supplied by an employee flow.
+
+### Server key lease and transport invariants required for sync
+
+The same proof-order rule must hold on the server, including requests sent directly to the API.
+Offline context issuance must reconcile pending online work and acquire the registered key's
+stream lease. Existing online begin/complete paths must refuse conflicting work while that lease
+is active. Expiry alone cannot release it: unsynced proofs may already exist. Closing/retiring a
+context needs a durable scoped server result that makes old permits unusable and preserves claim
+provenance; revocation and HR review remain explicit outcomes. Client-only ordering is insufficient.
+
+In particular, do not generate a fresh iPhone transport assertion after all offline proofs and then
+advance its higher counter while only part of that backlog has been consumed. That would invalidate
+the remaining legitimate lower counters. Sync must validate original claim assertions in order and
+atomically consume their permits/counters/outcomes. Android's fresh sync-time Play evidence must bind
+the actual ordered submitted payload and must not be labeled capture-time integrity. Chunking,
+attachment admission, partial receipts and audited refusals must preserve those invariants. Final
+SQL and journal metadata for reserved 0647 must be coordinated before release; the reservation does
+not authorize stale metadata, migration application or rollout.

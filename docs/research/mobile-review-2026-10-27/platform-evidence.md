@@ -2010,3 +2010,13 @@ then requires exactly sixteen retained records/vendor calls and refusal of the s
 It also checks previously unused callback results for lost intent replies/stale callbacks. No native
 implementation change is needed for this harness correction. Host checks still do not exercise real
 Keychain/vendor calls or compile the complete Expo/iOS module; those are separate acceptance claims.
+
+Repair `cad993d68b5439ac42cbdf95eea362ed5ce812a7` passed
+[40536878391](https://github.com/StradaverseHub/ai-hr/actions/runs/40536878391): both actual Swift
+stores compiled; all 17 enrollment and 17 assertion host-model scenarios passed, with 18 companion
+bridge cases. The native models used Apple Swift 6.1.2, Swift-5 mode, arm64-apple-macosx15.0 on a
+standard GitHub runner. The repaired capacity scenario now observes a failed result, no published
+proof, sixteen retained records/vendor calls, refusal of a seventeenth call, and successful admission
+after durable cleanup. The original failed run remains above. Root/native compiler and bundle
+passes from unchanged app source at f01552824 are retained. No physical SDK/OS Keychain, complete
+Expo/iOS binary or live attendance acceptance is inferred from these host checks.
