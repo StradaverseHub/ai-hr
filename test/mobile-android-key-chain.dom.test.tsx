@@ -19,6 +19,25 @@ describe('Android pinned chain and revocation evidence',()=>{
   expect(f.revocation).toHaveBeenCalledExactlyOnceWith(f.input.certificateChain.map(bytes=>new X509Certificate(bytes).serialNumber.toLowerCase().replace(/^0+/,'')),undefined);
   expect(value).not.toHaveProperty('accepted');expect(value).not.toHaveProperty('trustTier');
  });
+ it('retains the narrow factory expiry exception without accepting future issuers or manufacturing device assurance',async()=>{
+  const f=fixture('tee-v3','2030-01-01T00:00:00Z'),value=await f.verify(f.input);
+  expect(value).toMatchObject({provisioning:'factory',factoryExpiryException:true,description:{hardwareEnforced:{rootOfTrust:{deviceLocked:false,state:'unverified'}}}});
+  expect(f.revocation).toHaveBeenCalledOnce();
+  const before=fixture('tee-v3','2017-01-01T00:00:00Z');await expect(before.verify(before.input)).rejects.toMatchObject({reason:'expired'});expect(before.revocation).not.toHaveBeenCalled();
+ });
+ it('refuses cancelled or inconsistent status observations even after a signed path checks',async()=>{
+  for(const checkedAt of [Date.parse('2026-02-25T00:00:00Z'),Date.parse('2026-02-27T00:00:00Z')]){
+   const f=fixture();f.revocation.mockImplementationOnce(async serials=>({status:'checked',source:'google_https',checkedAt,certificateCount:serials.length}));
+   await expect(f.verify(f.input)).rejects.toMatchObject({reason:'revocation_unavailable'});
+  }
+  const f=fixture(),abort=new AbortController();f.revocation.mockImplementationOnce(async serials=>{abort.abort();return {status:'checked',source:'google_https',checkedAt:Date.parse('2026-02-26T00:00:00Z'),certificateCount:serials.length};});
+  await expect(f.verify(f.input,abort.signal)).rejects.toMatchObject({reason:'revocation_unavailable'});
+ });
+ it('copies signed input before an asynchronous status check can mutate caller buffers',async()=>{
+  const f=fixture(),expected=Buffer.from(f.input.challenge),spki=Buffer.from(f.input.publicKeySpki);
+  f.revocation.mockImplementationOnce(async serials=>{f.input.challenge.fill(0);f.input.publicKeySpki.fill(0);f.input.certificateChain[0].fill(0);return {status:'checked',source:'google_https',checkedAt:Date.parse('2026-02-26T00:00:00Z'),certificateCount:serials.length};});
+  const value=await f.verify(f.input);expect(value.description.challenge).toEqual(expected);expect(value.publicKey.export({type:'spki',format:'der'})).toEqual(spki);
+ });
  it('refuses expired/future RKP issuer chains before revocation or attendance',async()=>{
   for(const date of ['2026-02-01T00:00:00Z','2026-10-27T00:00:00Z']){
    const f=fixture('strongbox-2026',date);await expect(f.verify(f.input)).rejects.toMatchObject({reason:'expired'});expect(f.revocation).not.toHaveBeenCalled();
