@@ -1,13 +1,21 @@
 {
   "schemaVersion": 1,
-  "reconciledOn": "2026-10-27",
+  "reconciledOn": "2026-10-28",
   "repository": "StradaverseHub/ai-hr",
   "purpose": "Central filename reservations; not an executable journal or deployment authorization",
   "observedAppliedBoundary": {
-    "sourceRef": "d52563c666d39074217ed42191866add4a2793a0",
-    "rows": 503,
-    "lastIdx": 617,
-    "maxWhen": 1793025815553
+    "sourceRef": "fffabc90922c3d43b2570dc29a33ce8b70b69aca",
+    "rows": 504,
+    "lastIdx": 618,
+    "lastTag": "0641_account_email_delivery_history",
+    "maxWhen": 1793109999999,
+    "observedOn": "2026-10-28 read-only staging ledger",
+    "previousObservation": {
+      "sourceRef": "d52563c666d39074217ed42191866add4a2793a0",
+      "rows": 503,
+      "lastIdx": 617,
+      "maxWhen": 1793025815553
+    }
   },
   "integrationRules": [
     "Preserve applied SQL and the exact applied journal prefix.",
@@ -30,9 +38,10 @@
     {
       "tag": "0641_account_email_delivery_history",
       "owner": "Reports email",
-      "status": "approved_pending_integration",
+      "status": "applied_on_staging",
       "idx": 618,
-      "when": 1793109999999
+      "when": 1793109999999,
+      "observedApplied": "2026-10-28 staging ledger row 504 (idx 618, when 1793109999999)"
     },
     {
       "tag": "0640_onehr_plan_reviewer_scope",
@@ -77,6 +86,23 @@
         "Keep 0636 custody separate and unchanged.",
         "Assign idx/when at central integration after dependency review and a fresh actual watermark.",
         "If all currently known predecessors are integrated first, when must exceed 1793120000000; this lower bound is not a final timestamp."
+      ]
+    },
+    {
+      "prefixRange": [
+        648,
+        658
+      ],
+      "owner": "AI delivery",
+      "status": "reserved_block_filenames_only",
+      "idx": null,
+      "when": null,
+      "allocatedBy": "AI delivery Claude session; owner designated it AI-group migration allocator on 2026-10-28",
+      "notes": [
+        "Filenames only. idx/when are integration-bound: unique append positions after every applied or approved predecessor, when strictly above the live watermark and every pending predecessor.",
+        "Above every recorded hold (0636, 0640, 0641, 0642, 0643-0645, 0646, 0647). All Git refs and working trees scanned on 2026-10-28; no filename at or above 0648 existed.",
+        "AI keeps its recorded 0642 reservation. An unrecorded cross-session message claiming AI released 0642 is not adopted.",
+        "Unused numbers in this block are released back here once the AI logical-group count is final."
       ]
     }
   ],

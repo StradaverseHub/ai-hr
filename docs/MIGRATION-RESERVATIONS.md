@@ -6,17 +6,24 @@ Allocate filename numbers here before parallel SQL work. The machine-readable [r
 
 **0647_mobile_offline_attendance** is reserved for Mobile, as one logical migration. No SQL file or journal entry was created by this reservation. Its final Drizzle `idx` and `when` are **integration-bound**, not allocated now. Mobile may prepare its draft against this filename; journal/apply/deploy require the normal integration and release process. Keep the separate unjournaled **0636_mobile_android_key_custody** reservation and SQL bytes unchanged.
 
+## AI reservation (28 October 2026)
+
+The owner designated the AI delivery session as migration allocator for the AI logical groups. It reserves the filename block **0648–0658** for AI, above every recorded hold. A scan of all Git refs and working trees on 28 October found no filename at or above 0648. AI keeps its recorded **0642**; an unrecorded cross-session message saying AI had released 0642 is not adopted. Holds 0643–0645 stay unresolved and untouched.
+
+Final `idx`/`when` values are assigned at journaling: unique append positions after every applied or approved predecessor, with `when` strictly above the live watermark and every pending predecessor. A read-only staging ledger check on 28 October found 504 applied rows, last idx618 (`0641`), watermark1793109999999, source ref `fffabc90922c3d43b2570dc29a33ce8b70b69aca`. Unused numbers in the block are released here once the AI group count is final.
+
 ## Existing allocations and ordering
 
 | Slot | Owner / scope | Allocation status |
 | --- | --- | --- |
 | 0636 | Mobile Android key custody | Held, unjournaled; old provisional idx634 is not a final allocation |
-| 0641 | Reports email delivery history | Approved next idx618 / when1793109999999 |
+| 0641 | Reports email delivery history | Applied on staging (idx618 / when1793109999999, observed 28 October) |
 | 0640 | P1 reviewer scope | Approved after0641, idx619 / unchanged when1793110000000 |
 | 0642 | AI specialist diagnostic playbook | Reserved draft; idx/when deferred |
 | 0643–0645 | Ownership unresolved | Hold; absence of files does not make these available |
 | 0646 | Reward Calendar | Occupied in P1 source; final integration metadata unresolved |
 | 0647 | Mobile offline attendance | Reserved filename; idx/when deferred |
+| 0648–0658 | AI delivery (block) | Reserved filenames; idx/when integration-bound; unused numbers released when the group count is final |
 
 The explicit owner exception permits only the still-unapplied0640 journal position to follow0641. It does not authorize P1 runtime deployment. Preserve both SQL files and all applied history. Filename order does not determine journal order.
 
