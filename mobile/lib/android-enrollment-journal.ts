@@ -137,7 +137,9 @@ export function createAndroidEnrollmentJournal(rawScope:EnrollmentScope,ports:An
    const selected=uuid.parse(employmentId);let s:State=await read();const retained=s.pending;
    if(!retained){if(!s.key)return status(s);const found=await reconcileKey(s,selected);return status(found.state,found.reason);}
    let p:Pending=retained;
-   if(p.employmentId!==selected)throw new EnrollmentConflict();const intentRef={employmentId:p.employmentId,requestId:p.requestId};let refreshed=false,reconciled=false;
+   const recoveryOnly=p.employmentId!==selected;
+   if(recoveryOnly&&p.phase==='requested')return status(s,'recovery_required');
+   const intentRef={employmentId:p.employmentId,requestId:p.requestId};let refreshed=false,reconciled=false;
    for(let steps=0;steps<6;steps++){
     ports.assertCurrent();
     if(p.phase==='requested'){
@@ -156,6 +158,9 @@ export function createAndroidEnrollmentJournal(rawScope:EnrollmentScope,ports:An
      }
      reconciled=true;
     }
+    // The selector may be a newer own employment. Only reconcile an existing receipt through it;
+    // the original command subject can never be rewritten for generation or proof submission.
+    if(recoveryOnly)return status(s,'recovery_required');
     if(current.phase==='proof_ready'){
      const value=checked(C.IntegrityAndroidEnrollmentResult,await owned(()=>ports.complete(selected,{...current.proof,requestId:current.requestId,appInstallationId:scope.appInstallationId,challengeId:preparedRef.context.challengeId})));
      if(value.outcome!=='enrolled')return status(s,value.outcome==='refused'?'server_refused':'server_unavailable');

@@ -43,7 +43,20 @@ describe('durable Android enrollment journal',()=>{
  });
  it('shares a scope queue across instances and never adopts another employment or replacement intent',async()=>{
   const f=androidEnrollmentFixture(),a=f.journal(),b=f.journal();const [x,y]=await Promise.all([a.begin(f.employmentId,f.requestId),b.begin(f.employmentId,id(9))]);expect(y).toEqual(x);
-  await expect(b.advance(id(44))).rejects.toBeInstanceOf(EnrollmentConflict);const [m,n]=await Promise.all([a.advance(f.employmentId),b.advance(f.employmentId)]);expect(n).toEqual(m);expect(f.native.create).toHaveBeenCalledOnce();
+  expect(await b.advance(id(44))).toMatchObject({status:'pending',employmentId:f.employmentId,reason:'recovery_required'});expect(f.native.create).not.toHaveBeenCalled();const [m,n]=await Promise.all([a.advance(f.employmentId),b.advance(f.employmentId)]);expect(n).toEqual(m);expect(f.native.create).toHaveBeenCalledOnce();
+ });
+ it('recovers accepted history through a newer own subject without rewriting the original command',async()=>{
+  const f=androidEnrollmentFixture(),complete=vi.mocked(f.ports.complete).getMockImplementation()!;await f.journal().begin(f.employmentId,f.requestId);
+  vi.mocked(f.ports.complete).mockImplementationOnce(async(...args)=>{await complete(...args);throw new Error('reply lost');});
+  await expect(f.journal().advance(f.employmentId)).rejects.toThrow('reply lost');expect(await f.journal().advance(id(44))).toMatchObject({status:'stored_key'});
+  expect(f.ports.receipt).toHaveBeenLastCalledWith(id(44),{originChallengeId:f.context.challengeId});
+  expect(f.stored()?.key?.employmentId).toBe(f.employmentId);expect(f.stored()?.key?.prepared.context.employmentId).toBe(f.employmentId);expect(f.ports.complete).toHaveBeenCalledOnce();
+ });
+ it('cannot submit retained proof or generate through a different employment when no accepted receipt exists',async()=>{
+  const f=androidEnrollmentFixture();await f.journal().begin(f.employmentId,f.requestId);vi.mocked(f.ports.complete).mockRejectedValueOnce(new Error('request lost'));
+  await expect(f.journal().advance(f.employmentId)).rejects.toThrow('request lost');
+  expect(await f.journal().advance(id(44))).toMatchObject({status:'pending',employmentId:f.employmentId,phase:'proof_ready',reason:'recovery_required'});
+  expect(f.ports.complete).toHaveBeenCalledOnce();expect(f.native.create).toHaveBeenCalledOnce();expect(f.native.read).not.toHaveBeenCalled();expect(f.ports.prepare).toHaveBeenCalledOnce();
  });
  it('quarantines cross-scope state and malformed retained proof before any server upload',async()=>{
   const f=androidEnrollmentFixture();await f.journal().begin(f.employmentId,f.requestId);vi.mocked(f.ports.complete).mockRejectedValueOnce(new Error('lost'));await expect(f.journal().advance(f.employmentId)).rejects.toThrow();

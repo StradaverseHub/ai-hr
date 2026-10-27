@@ -45,9 +45,24 @@ describe('native enrollment durability and one-use recovery',()=>{
   it('shares one queue across journal instances, preserves the first request and refuses employment adoption',async()=>{
     const f=enrollmentFixture(),a=f.journal(),b=f.journal();
     const [first,second]=await Promise.all([a.begin(f.employmentId,f.requestId),b.begin(f.employmentId,enrollmentId(9))]);expect(second).toEqual(first);
-    await expect(b.advance(enrollmentId(9))).rejects.toBeInstanceOf(EnrollmentConflict);
+    expect(await b.advance(enrollmentId(9))).toMatchObject({status:'pending',employmentId:f.employmentId,reason:'recovery_required'});expect(f.native.generateAppleKey).not.toHaveBeenCalled();
     const [x,y]=await Promise.all([a.advance(f.employmentId),b.advance(f.employmentId)]);expect(y).toEqual(x);
     expect(f.native.generateAppleKey).toHaveBeenCalledOnce();expect(f.ports.complete).toHaveBeenCalledOnce();
+  });
+  it('uses a newer own-employment selector only to recover an accepted receipt, preserving original history',async()=>{
+    const f=enrollmentFixture(),j=f.journal();await j.begin(f.employmentId,f.requestId);
+    vi.mocked(f.ports.complete).mockImplementationOnce(async()=>{f.setAccepted(true);throw new Error('reply lost');});
+    await expect(j.advance(f.employmentId)).rejects.toThrow('reply lost');
+    expect(await f.journal().advance(enrollmentId(44))).toMatchObject({status:'stored_key'});
+    expect(f.ports.receipt).toHaveBeenLastCalledWith(enrollmentId(44),{originChallengeId:f.context.challengeId});
+    expect(f.stored()?.key?.employmentId).toBe(f.employmentId);expect(f.stored()?.key?.prepared.context.employmentId).toBe(f.employmentId);
+    expect(f.ports.complete).toHaveBeenCalledOnce();expect(f.native.generateAppleKey).toHaveBeenCalledOnce();
+  });
+  it('does not submit an older employment proof through a different subject after an absent receipt',async()=>{
+    const f=enrollmentFixture();await f.journal().begin(f.employmentId,f.requestId);vi.mocked(f.ports.complete).mockRejectedValueOnce(new Error('request lost'));
+    await expect(f.journal().advance(f.employmentId)).rejects.toThrow('request lost');
+    expect(await f.journal().advance(enrollmentId(44))).toMatchObject({phase:'proof_ready',employmentId:f.employmentId,reason:'recovery_required'});
+    expect(f.ports.complete).toHaveBeenCalledOnce();expect(f.native.generateAppleKey).toHaveBeenCalledOnce();expect(f.ports.prepare).toHaveBeenCalledOnce();
   });
   it('stops before key generation when durable stage commit fails',async()=>{
     const f=enrollmentFixture(),journal=f.journal();await journal.begin(f.employmentId,f.requestId);

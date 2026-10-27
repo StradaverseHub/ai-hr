@@ -30,6 +30,16 @@ function fixture(){
   return {vendorKeyId,proof,verifyProof,service,attestation:Buffer.from('synthetic vendor proof')};
 }
 describe('scoped Apple key enrollment transaction',()=>{
+  it('recovers and revokes an old enrollment through a current own employment without rewriting history',async()=>{
+    const e=await employee(),f=fixture(),begin=await f.service.begin(e.ctx,e.intent);
+    const key=await f.service.complete(e.ctx,{...e.intent,challengeId:begin.challenge.id,vendorKeyId:f.vendorKeyId,attestation:f.attestation});
+    await owner.db.update(schema.employment).set({terminatedOn:'2024-12-31'}).where(eq(schema.employment.id,e.employmentId));
+    const current=await hireEmployee(adminCtx(base),{person:{id:e.personId},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2025-01-01'});
+    await expect(readOwnIntegrityKeyReceipt(e.ctx,{employmentId:e.employmentId,originChallengeId:begin.challenge.id})).rejects.toThrow();
+    expect(await readOwnIntegrityKeyReceipt(e.ctx,{employmentId:current.employmentId,originChallengeId:begin.challenge.id})).toEqual(key);
+    const revoked=await revokeOwnIntegrityKey(e.ctx,{employmentId:current.employmentId,keyId:key.keyId});expect(revoked.revokedAt).not.toBeNull();
+    const [row]=await owner.db.select().from(schema.mobileIntegrityKey).where(eq(schema.mobileIntegrityKey.id,key.keyId));expect(row.enrolledForEmploymentId).toBe(e.employmentId);expect(row.originChallengeId).toBe(begin.challenge.id);expect(f.verifyProof).toHaveBeenCalledOnce();
+  });
   it('binds context, persists encrypted receipt/public key, and recovers a byte-identical concurrent enrollment',async()=>{
     const e=await employee(),f=fixture(),begin=await f.service.begin(e.ctx,e.intent),again=await f.service.begin(e.ctx,e.intent);
     expect(again).toEqual(begin);expect(begin.alias).toMatch(/^aihr_[0-9a-f]{64}$/);

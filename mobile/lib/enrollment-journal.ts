@@ -144,7 +144,8 @@ export function createEnrollmentJournal(rawScope:EnrollmentScope,ports:Enrollmen
     advance:(employmentId:string)=>exclusive(queue,async()=>{
       const selected=uuid.parse(employmentId);let s=await read(),p=s.pending;
       if(!p){if(s.key)await release(s.key);return status(s);}
-      if(p.employmentId!==selected)throw new EnrollmentConflict();
+      const recoveryOnly=p.employmentId!==selected;
+      if(recoveryOnly&&p.phase==='requested')return status(s,'recovery_required');
       const intentRef={employmentId:p.employmentId,requestId:p.requestId};
       let refreshed=false,reconciled=false;
       for(let steps=0;steps<8;steps++){
@@ -157,7 +158,7 @@ export function createEnrollmentJournal(rawScope:EnrollmentScope,ports:Enrollmen
         await checkPrepared(p.prepared,p);
         const preparedRef:Prepared=p.prepared;
         if(!reconciled){
-          const lookup=checked(C.IntegrityKeyLookupResult,await owned(()=>ports.receipt(intentRef.employmentId,{originChallengeId:preparedRef.context.challengeId})));
+          const lookup=checked(C.IntegrityKeyLookupResult,await owned(()=>ports.receipt(selected,{originChallengeId:preparedRef.context.challengeId})));
           if(lookup.outcome!=='key_receipt')return status(s,lookup.outcome==='refused'?'server_refused':'server_unavailable');
           const found=lookup.key;
           if(found&&!receiptMatches(found,p.prepared))throw new EnrollmentConflict();
@@ -168,6 +169,7 @@ export function createEnrollmentJournal(rawScope:EnrollmentScope,ports:Enrollmen
           }
           reconciled=true;
         }
+        if(recoveryOnly)return status(s,'recovery_required');
         if(p.phase==='proof_ready'){
           // An absent lookup is not terminal: a concurrent completion may still commit. Replay only
           // these exact saved bytes; the authoritative receipt owner reconciles before re-verification.
