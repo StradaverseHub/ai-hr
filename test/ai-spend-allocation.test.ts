@@ -1,0 +1,11 @@
+/** Pure source contracts, authored UNRUN. No live provider certification is asserted. */
+import {describe,expect,it} from 'vitest';
+import {captureStrictAiSpendRoot,certifiedAiSpendEnvelope,nanosToUsd,reserveUsdNanos,requiresStrictAiSpend,usdToNanos} from '../lib/ai/spend-allocation';
+describe('exact application USD allocations',()=>{
+ it.each([['0',0n],['0.000000001',1n],['1.000000001',1000000001n],['9223372036.854775807',9223372036854775807n]])('parses %s without float rounding', (input,expected)=>{expect(usdToNanos(input)).toBe(expected);expect(usdToNanos(nanosToUsd(expected.toString()))).toBe(expected);});
+ it.each(['','-1','1e3','NaN','0.0000000001','9223372036.854775808',' 1','1.'])('refuses malformed or overflowing allocation %s',value=>expect(()=>usdToNanos(value)).toThrow());
+ it('rounds an exact rational price ceiling UP and rejects unknown dimensions instead of zero',()=>{expect(reserveUsdNanos({inputUnits:1n,outputUnits:0n,inputNanosPerMillion:1n,outputNanosPerMillion:0n,requestNanos:0n})).toBe(1n);expect(()=>reserveUsdNanos({inputUnits:-1n,outputUnits:0n,inputNanosPerMillion:1n,outputNanosPerMillion:0n,requestNanos:0n})).toThrow();});
+ it('captures stable root identity and admits no caller cap or price',()=>{const root={rootTaskId:'00000000-0000-0000-0000-000000000001',kind:'evaluation' as const},capture=captureStrictAiSpendRoot(root);root.rootTaskId='00000000-0000-0000-0000-000000000002';expect(capture.rootTaskId.endsWith('1')).toBe(true);expect(()=>captureStrictAiSpendRoot({...root,price:'0'} as never)).toThrow();});
+ it('makes actual autonomous/evaluation features strict and preserves ordinary human features',()=>{for(const feature of ['provider_evaluation','module_agent_evaluation','module_agent_planning'] as const)expect(requiresStrictAiSpend(feature)).toBe(true);expect(requiresStrictAiSpend('pay_rule_draft')).toBe(false);});
+ it.each(['openai','anthropic','google','openrouter'] as const)('refuses unverified actual %s carrier even with user-attested zero pricing',provider=>{expect(()=>certifiedAiSpendEnvelope({provider,model:'fictional/model',apiKey:'never-sent'}, {operation:'draft',reservedTokens:1,inputDigest:'a'.repeat(64)})).toThrow(/no verified complete spend ceiling/);});
+});

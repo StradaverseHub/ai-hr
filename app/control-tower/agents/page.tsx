@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import {nanosToUsd} from '@/lib/ai/spend-allocation';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import { requireAdmin, isGroupAdmin } from '@/lib/authz';
 import { AI_RUN_STATE_FILTERS, aiManagementView, type AiAllowanceUse, type AiRunFilter, type AiUsageSummary } from '@/core/ai-management';
@@ -6,7 +7,7 @@ import { AI_FEATURES, isAiFeature } from '@/lib/ai/features';
 import { orchestrationQueue } from '@/core/hr-orchestrator';
 import { Badge, Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, btnGhost, inputCls, pageWideCls } from '@/components/ui';
 import { OrchestrationWorkQueue } from '../work-queue';
-import { clearUserAllowanceAction, setAiAllowanceAction, setAiFeatureAction, setAssistantPermissionAction } from './actions';
+import { clearUserAllowanceAction, setAiSpendBudgetAction, setAiAllowanceAction, setAiFeatureAction, setAssistantPermissionAction } from './actions';
 
 type Search = {error?:string;toast?:string;q?:string;refresh?:string;runs?:string;feature?:string};
 
@@ -130,6 +131,15 @@ export default async function AiManagementPage({searchParams}:{searchParams:Prom
       <ul className="mt-2 divide-y divide-border">{view.users.map(userRow)}</ul>
       {view.users.length===0&&<p className="py-4 text-sm text-muted-foreground">{t('noUsers')}</p>}{view.moreUsers&&<p className="text-xs text-muted-foreground">{t('moreUsers')}</p>}
     </Card>}
+    {view.spend&&<Card className="p-5"><SectionHeader title={t('spendTitle')}/>
+      <p className="mt-2 text-sm">{t('spendUnverified')}</p><p className="mt-2 text-xs text-muted-foreground">{t('spendSemantics')}</p>
+      <p className="mt-2 text-sm">{t('spendHeld',{value:view.spend.heldNanos})} · {t('spendConfirmed',{value:view.spend.confirmedNanos??t('spendUnknown')})}</p>
+      {view.spend.breached&&<p role="alert">{t('spendBreach')}</p>}
+      <form action={setAiSpendBudgetAction} className="mt-4 flex flex-wrap items-end gap-3">
+        <label className="text-sm">{t('spendMonthly')}<input className={inputCls} name="monthlyUsd" inputMode="decimal" required defaultValue={view.spend.budgets.find(b=>b.scopeKey==='tenant')?nanosToUsd(view.spend.budgets.find(b=>b.scopeKey==='tenant')!.monthlyNanos):'0'}/></label>
+        <label className="text-sm">{t('spendRoot')}<input className={inputCls} name="rootUsd" inputMode="decimal" required defaultValue={view.spend.budgets.find(b=>b.scopeKey==='tenant')?nanosToUsd(view.spend.budgets.find(b=>b.scopeKey==='tenant')!.rootNanos):'0'}/></label>
+        <button className={btnPrimary}>{t('save')}</button>
+      </form></Card>}
     <Card className="p-5"><SectionHeader title={t('inherited')}/><p className="mt-1 text-sm text-muted-foreground">{t('businessLimits')}</p>{view.legacyBudget&&<p className="mt-2 text-sm">{t('legacyAssistant',{daily:numbers(view.legacyBudget.daily),tokens:numbers(view.legacyBudget.monthly)})}</p>}<p className="mt-2 text-xs text-muted-foreground">{t('humanDecisions')}</p></Card>
     <details id="orchestrator" className="scroll-mt-4 rounded-xl border border-border p-5"><summary className="cursor-pointer font-semibold">{t('orchestrator')}</summary><p className="my-3 max-w-4xl text-sm text-muted-foreground">{t('orchestratorHelp')}</p><OrchestrationWorkQueue returnTo="/control-tower/agents" view={queue} refresh={sp.refresh} canViewRuns={isGroupAdmin(s)}/></details>
     <Card id="ai-runs" className="scroll-mt-4 overflow-hidden"><div className="p-5"><SectionHeader title={t('recentRuns')}/><p className="mt-1 text-sm text-muted-foreground">{t('runsHelp')}</p>

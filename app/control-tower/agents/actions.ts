@@ -7,6 +7,7 @@ import { getTranslations } from 'next-intl/server';
 import { getBrowserCommandSession } from '@/lib/session';
 import { AuthRequiredError } from '@/lib/auth-errors';
 import { isAiFeature } from '@/lib/ai/features';
+import {setAiSpendBudget} from '@/core/ai-spend-management';
 import { AiControlError, clearUserAllowance, parseAiAllowance, setAiAllowance, setAiFeature, setAssistantPermission } from '@/core/ai-management';
 
 const PAGE = '/control-tower/agents';
@@ -69,4 +70,11 @@ export async function clearUserAllowanceAction(formData:FormData){
  catch(e){redirect(`${PAGE}?${query}error=${encodeURIComponent(await commandError(e))}`);}
  revalidatePath(PAGE);
  redirect(`${PAGE}?${query}toast=${encodeURIComponent(t('usesDefault'))}`);
+}
+
+export async function setAiSpendBudgetAction(formData:FormData){
+ const t=await getTranslations('aiManagement');
+ try{const session=await getBrowserCommandSession();await setAiSpendBudget(session,{kind:'tenant',monthlyUsd:String(formData.get('monthlyUsd')??''),rootUsd:String(formData.get('rootUsd')??'')});}
+ catch(error){redirect(`${PAGE}?error=${encodeURIComponent(await commandError(error))}`);}
+ revalidatePath(PAGE);redirect(`${PAGE}?toast=${encodeURIComponent(t('saved'))}`);
 }

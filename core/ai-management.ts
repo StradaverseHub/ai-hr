@@ -10,6 +10,7 @@ import { getAiConfigView, resolveActiveAiConfig } from './ai-config';
 import { grantAssistant, revokeAssistant } from './assistant-grant';
 import { setTenantSetting } from './tenant-settings';
 import { assertAiPrincipalTx } from './ai-principal';
+import {aiSpendStatusTx} from './ai-spend-management';
 
 export class AiControlError extends Error {}
 const assertAdmin = (ctx: SessionContext) => { if (!isAdmin(ctx)) throw new AiControlError('Only HR administrators may manage AI.'); };
@@ -119,7 +120,7 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
       blocked: activity.filter(r=>Number(r.blocked_today)>0).map(r=>({id:r.id,label:r.label,count:Number(r.blocked_today),reason:r.last_reason}))
         .sort((a,b)=>b.count-a.count||a.label.localeCompare(b.label)),
     };
-    return {features,policies,userDefault,companies,companyUsage,usage:Array.from(usage),users,moreUsers:userRows.length>50,attention,runs,runFilter,provider:selectedProvider,mayWriteUsers:isGroupAdmin(ctx),legacyBudget:legacyBudgets[0]??null};
+    return {spend:await aiSpendStatusTx(tx,ctx),features,policies,userDefault,companies,companyUsage,usage:Array.from(usage),users,moreUsers:userRows.length>50,attention,runs,runFilter,provider:selectedProvider,mayWriteUsers:isGroupAdmin(ctx),legacyBudget:legacyBudgets[0]??null};
   });
 }
 

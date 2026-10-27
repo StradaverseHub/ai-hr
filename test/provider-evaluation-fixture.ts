@@ -2,6 +2,7 @@
 import { vi } from 'vitest';
 import type { SessionContext } from '../db/client';
 import { openrouterAdapter } from '../lib/ai/providers/openrouter';
+import {installSyntheticSpendCapability} from './ai-spend-fixture';
 export function syntheticProviderTransport() {
   const usage = { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 };
   const draft = vi.spyOn(openrouterAdapter, 'generate').mockImplementation(async (_cfg, args) => {
@@ -27,9 +28,13 @@ export async function syntheticConsentFor(ctx: SessionContext) {
 }
 export async function evaluateSyntheticCandidate(ctx: SessionContext) {
   const { evaluateProviderCandidate } = await import('../core/ai-provider-readiness');
-  const mock = syntheticProviderTransport();
+  const {withTenant}=await import('../db/client');
+  const {providerCandidatesTx}=await import('../core/ai-provider-readiness');
+  const candidate=await withTenant(ctx,async tx=>(await providerCandidatesTx(tx,ctx))[0]);
+  if(!candidate)throw Error('Missing actual synthetic spend candidate');
+  const ceiling=await installSyntheticSpendCapability(ctx,{provider:'openrouter',model:candidate.model}),mock=syntheticProviderTransport();
   try { return await evaluateProviderCandidate(ctx, await syntheticConsentFor(ctx)); }
-  finally { mock.restore(); }
+  finally { mock.restore();ceiling.restore(); }
 }
 export async function activateSyntheticCandidate(ctx: SessionContext) {
   const { setActiveProvider } = await import('../core/ai-config');

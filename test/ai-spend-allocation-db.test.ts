@@ -1,0 +1,33 @@
+/** Authored UNRUN; coordinated spend draft required. Fictional fixed-total transport capability
+ * isolates ledger acceptance. These tests DO NOT establish any real provider price ceiling. */
+import {randomUUID} from 'node:crypto';
+import {sql} from 'drizzle-orm';
+import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
+import {withTenant,type SessionContext} from '../db/client';
+import {saveAiProviderConfig} from '../core/ai-config';
+import {providerCandidatesTx} from '../core/ai-provider-readiness';
+import {setAiSpendBudget,aiSpendStatusTx} from '../core/ai-spend-management';
+import {readOpenRouterOptions} from '../lib/ai/providers/openrouter-configuration';
+import {installSyntheticSpendCapability} from './ai-spend-fixture';
+import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+let b:Base,ctx:SessionContext,root:string,fixture:Awaited<ReturnType<typeof installSyntheticSpendCapability>>;
+beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>{fixture?.restore();vi.restoreAllMocks();vi.unstubAllEnvs();});
+beforeEach(async()=>{await resetDb();b=await seedBase();ctx=adminCtx(b);vi.stubEnv('AI_CONFIG_SECRET','fictional-spend-ledger-key');
+ await saveAiProviderConfig(ctx,{provider:'openrouter',model:'fictional/model',apiKey:'fixture-not-a-live-key',providerOptions:readOpenRouterOptions({version:1,routing:{allowedProviders:['fictional'],allowFallbacks:false,sort:'latency'}})});
+ root=await withTenant(ctx,async tx=>(await providerCandidatesTx(tx,ctx))[0].id);fixture=await installSyntheticSpendCapability(ctx,{provider:'openrouter',model:'fictional/model',reservedNanos:'1000000',monthlyNanos:'1000000',rootNanos:'1000000'});
+});
+async function reserve(options:{root?:string;digest?:string;lateFailure?:boolean}={}){return withTenant(ctx,async tx=>{
+ const[r]=await tx.execute<{run_id:string}>(sql`select * from app.ai_admit('provider_evaluation','draft','openrouter','fictional/model',32)`);
+ await tx.execute(sql`select app.ai_spend_reserve(${r.run_id}::uuid,${options.root??root}::uuid,'evaluation',${options.digest??fixture.digest},${'a'.repeat(64)},1000000::bigint)`);
+ if(options.lateFailure)throw Error('Fictional later admission persistence failure');return r.run_id;
+});}
+const rows=()=>owner.db.execute<{run_id:string;reserved_nanos:string;confirmed_nanos:string|null;state:string}>(sql`select run_id,reserved_nanos::text,confirmed_nanos::text,state from app.ai_spend_reservation where tenant_id=${b.tenantId}::uuid`);
+describe('actual app-role USD allocation ledger',()=>{
+ it('serializes competing actual admissions so only one consumes the last allocation',async()=>{const outcomes=await Promise.allSettled([reserve(),reserve()]);expect(outcomes.filter(row=>row.status==='fulfilled')).toHaveLength(1);expect(outcomes.filter(row=>row.status==='rejected')).toHaveLength(1);expect(await rows()).toMatchObject([{reserved_nanos:'1000000',confirmed_nanos:null,state:'held'}]);const[r]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from ai_model_run where tenant_id=${b.tenantId}::uuid`);expect(r.n).toBe(1);});
+ it('rolls the original token admission and monetary reservation back after a later failure, then permits explicit retry',async()=>{await expect(reserve({lateFailure:true})).rejects.toThrow('Fictional later');expect(await rows()).toEqual([]);expect(await reserve()).toMatch(/^[a-f0-9-]+$/);});
+ it('keeps unknown cost held after failed token settlement and across month boundaries',async()=>{const id=await reserve();await withTenant(ctx,async tx=>{await tx.execute(sql`select app.ai_settle(${id}::uuid,false,null)`);await tx.execute(sql`select app.ai_spend_settle(${id}::uuid,null)`);});await owner.db.execute(sql`update app.ai_spend_reservation set created_at='2020-01-01' where run_id=${id}::uuid`);await expect(reserve()).rejects.toThrow();expect(await rows()).toMatchObject([{state:'held',confirmed_nanos:null}]);await expect(withTenant(ctx,tx=>tx.execute(sql`select app.ai_spend_settle(${id}::uuid,0)`))).rejects.toThrow();});
+ it('lifetime root exposure survives settlement and month rollover; changing a random posted root cannot reset it',async()=>{const id=await reserve();await owner.db.execute(sql`select app._ai_spend_confirm_verified_receipt(${id}::uuid,1000000)`);await owner.db.execute(sql`update app.ai_spend_reservation set created_at='2020-01-01' where run_id=${id}::uuid`);await expect(reserve()).rejects.toThrow();await expect(reserve({root:randomUUID()})).rejects.toThrow();expect(await rows()).toHaveLength(1);});
+ it('rejects uncertified, expired and arbitrary caller price assertions without preserving partial admission',async()=>{await expect(reserve({digest:'0'.repeat(64)})).rejects.toThrow();await owner.db.execute(sql`update app.ai_spend_capability set verified_at=now()-interval '2 hours',expires_at=now()-interval '1 hour' where digest=${fixture.digest}`);await expect(reserve()).rejects.toThrow();expect(await rows()).toEqual([]);});
+ it('a verified-owner breach preserves actual amount and pauses strict admission; app cannot mint a zero receipt or read private targets',async()=>{const id=await reserve();await owner.db.execute(sql`select app._ai_spend_confirm_verified_receipt(${id}::uuid,1000001)`);expect(await rows()).toMatchObject([{state:'breach',confirmed_nanos:'1000001'}]);await setAiSpendBudget(ctx,{kind:'tenant',monthlyUsd:'100',rootUsd:'100'});await expect(reserve()).rejects.toThrow();await expect(withTenant(ctx,tx=>tx.execute(sql`select app._ai_spend_confirm_verified_receipt(${id}::uuid,0)`))).rejects.toThrow();await expect(withTenant(ctx,tx=>tx.execute(sql`select * from app.ai_spend_capability`))).rejects.toThrow();});
+ it('administration changes allocations only and preserves null confirmed cost versus actual held allocation',async()=>{await setAiSpendBudget(ctx,{kind:'tenant',monthlyUsd:'1.000000001',rootUsd:'0.000000001'});const status=await withTenant(ctx,tx=>aiSpendStatusTx(tx,ctx));expect(status).toMatchObject({certifiedLiveRoutes:0,heldNanos:'0',confirmedNanos:null,budgets:[{monthlyNanos:'1000000001',rootNanos:'1'}]});await expect(reserve()).rejects.toThrow();const other=adminCtx(await seedBase());expect(await withTenant(other,tx=>aiSpendStatusTx(tx,other))).toMatchObject({budgets:[],heldNanos:'0',confirmedNanos:null});});
+});

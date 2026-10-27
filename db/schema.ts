@@ -29,6 +29,7 @@ import { getTableColumns, sql } from 'drizzle-orm';
 import type { AttendanceTraceV1, TraceAttendancePolicyBinding } from '../core/attendance-trace';
 import {
   pgTable,
+  pgSchema,
   pgView,
   QueryBuilder,
   foreignKey,
@@ -10668,6 +10669,24 @@ export const aiModelRun=pgTable('ai_model_run',{
  openrouterAccountCostCredits:numeric('openrouter_account_cost_credits'),observedRoundTripMs:doublePrecision('observed_round_trip_ms'),providerObservationStatus:text('provider_observation_status').$type<'missing'|'reported'|'conflicting'|'invalid'>(),
  actualTokens:bigint('actual_tokens',{mode:'number'}),startedAt:timestamp('started_at',{withTimezone:true}).notNull().defaultNow(),finishedAt:timestamp('finished_at',{withTimezone:true}),
 },t=>[index('ai_model_run_period').on(t.tenantId,t.startedAt),index('ai_model_run_user').on(t.tenantId,t.userId,t.startedAt),index('ai_model_run_company').using('gin',t.companyIds),index('ai_model_run_pending_scope').on(t.tenantId,t.userId,t.featureId).where(sql`${t.state}='pending'`)]);
+
+/** Private allocation metadata; migrations grant no direct table access to the app role. */
+const aiSpendPrivate=pgSchema('app');
+export const aiSpendCapability=aiSpendPrivate.table('ai_spend_capability',{
+ digest:text('digest').primaryKey(),provider:text('provider').notNull(),model:text('model').notNull(),operation:text('operation').notNull(),
+ maxRequestNanos:bigint('max_request_nanos',{mode:'bigint'}).notNull(),sourceDigest:text('source_digest').notNull(),verifiedAt:timestamp('verified_at',{withTimezone:true}).notNull(),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),revokedAt:timestamp('revoked_at',{withTimezone:true}),semantics:text('semantics').notNull(),
+});
+export const aiSpendBudget=aiSpendPrivate.table('ai_spend_budget',{
+ tenantId:tenantId(),scopeKey:text('scope_key').notNull(),kind:text('kind').notNull(),subjectId:uuid('subject_id'),featureId:text('feature_id'),
+ monthlyNanos:bigint('monthly_nanos',{mode:'bigint'}).notNull(),rootNanos:bigint('root_nanos',{mode:'bigint'}).notNull(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),updatedBy:uuid('updated_by').references(()=>appUser.id),
+},t=>[primaryKey({columns:[t.tenantId,t.scopeKey]})]);
+export const aiSpendRoot=aiSpendPrivate.table('ai_spend_root',{
+ tenantId:tenantId(),rootId:uuid('root_id').notNull(),kind:text('kind').notNull(),createdAt:createdAt(),
+},t=>[primaryKey({columns:[t.tenantId,t.rootId]})]);
+export const aiSpendReservation=aiSpendPrivate.table('ai_spend_reservation',{
+ runId:uuid('run_id').primaryKey().references(()=>aiModelRun.id),tenantId:tenantId(),rootId:uuid('root_id').notNull(),userId:uuid('user_id').notNull().references(()=>appUser.id),companyIds:uuid('company_ids').array().notNull(),featureId:text('feature_id').notNull(),
+ capabilityDigest:text('capability_digest').notNull().references(()=>aiSpendCapability.digest),requestDigest:text('request_digest').notNull(),reservedNanos:bigint('reserved_nanos',{mode:'bigint'}).notNull(),confirmedNanos:bigint('confirmed_nanos',{mode:'bigint'}),state:text('state').notNull().default('held'),createdAt:createdAt(),settledAt:timestamp('settled_at',{withTimezone:true}),
+},t=>[foreignKey({columns:[t.tenantId,t.rootId],foreignColumns:[aiSpendRoot.tenantId,aiSpendRoot.rootId]})]);
 
 // fcc2ea42 — OT-only version/assignment and immutable source evidence. Schedule Group stays independent.
 export const overtimePatternEpoch = pgTable('overtime_pattern_epoch', {
