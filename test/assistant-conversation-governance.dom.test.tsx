@@ -8,10 +8,11 @@ const state=vi.hoisted(()=>({locale:'en'})),copies:Record<string,unknown>={en,ms
 vi.mock('next-intl/server',()=>({getLocale:async()=>state.locale,getTranslations:async(namespace:string)=>(key:string,args:Record<string,string|number>={})=>{let value:unknown=copies[state.locale];for(const part of [...namespace.split('.'),...key.split('.')])value=(value as Record<string,unknown>)[part];if(typeof value!=='string')throw Error('Missing translated governance label');return value.replace(/\{(\w+)\}/g,(_all,key:string)=>String(args[key]??''));}}));
 vi.mock('../app/assistant/agent-review-actions',()=>({createAgentCandidateAction:vi.fn(),evaluateAgentCandidateAction:vi.fn(),promoteAgentCandidateAction:vi.fn(),rollbackAgentCandidateAction:vi.fn(),tryAgentCandidateAction:vi.fn(),createConversationCandidateAction:vi.fn(),evaluateConversationCandidateAction:vi.fn(),promoteConversationCandidateAction:vi.fn(),eraseConversationMetadataAction:vi.fn()}));
 import {ModuleAgentReview} from '../components/assistant/module-agent-review';
+import {MODULE_AGENT_SOURCE_DIGEST} from '../lib/ai/module-agent-source-manifest';
 import {createConversationCandidateAction,evaluateConversationCandidateAction,promoteConversationCandidateAction} from '../app/assistant/agent-review-actions';
 type View=Parameters<typeof ModuleAgentReview>[0]['view'];
 const id='00000000-0000-4000-8000-000000000001';
-function view(own=false):View{return{sourceDigest:'a'.repeat(64),nextVersion:3,lastTrial:null,ownSignalChoices:[],ownNativeSignalChoices:[],nativeSignalChoicesTruncated:false,candidates:[],promotions:[],conversationCandidates:[{id,version:2,own,progress:null}],conversationPromotions:[]};}
+function view(own=false):View{return{sourceDigest:MODULE_AGENT_SOURCE_DIGEST,nextVersion:3,lastTrial:null,ownSignalChoices:[],ownNativeSignalChoices:[],nativeSignalChoicesTruncated:false,candidates:[],promotions:[],conversationCandidates:[{id,version:2,own,progress:null}],conversationPromotions:[]};}
 beforeEach(()=>{state.locale='en';vi.clearAllMocks();});afterEach(cleanup);
 describe('separate main-conversation governance controls',()=>{
  it.each(['en','ms','zh','ta','th','vi'])('%s names main conversation independently from routing and requires unchecked bounded synthetic consent',async locale=>{
