@@ -2,7 +2,7 @@ name: Isolated alpha toolchain
 description: Install the candidate without staging credentials or shared Mac services
 inputs:
   node:
-    description: Node major
+    description: Exact Node version (fingerprints bind it)
     default: '22.23.3'
   path:
     description: Candidate checkout
