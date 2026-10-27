@@ -34,6 +34,7 @@ export async function verifyEmailRepairCi({candidatePath,deploymentBaseline,plan
  assert(plan&&Number.isSafeInteger(plan.controlRunId)&&plan.controlRunId>0&&/^[a-f0-9]{40}$/.test(plan.expectedAlpha??''),'Actual frozen control run and current canonical identity required');
  const verifier=cleanHead(controllerRoot),verifierBinding=bindOriginalController({repository:controllerRoot,verifier,controller:EMAIL.controller});
  bindOriginalController({repository:controllerRoot,verifier,controller:EMAIL.compilerController});
+ bindOriginalController({repository:controllerRoot,verifier,controller:EMAIL.buildController});
  const controllerProof=proveEmailController({repository:candidatePath}),sourceProof=proveEmailRepairSource({repository:candidatePath});
  const directory=join(controllerRoot,'scratchpad','validated-email-'+EMAIL.buildRun+'-'+randomUUID());mkdirSync(directory,{mode:0o700});
  const save=(name,data)=>writeFileSync(join(directory,name),JSON.stringify(data,null,2)+'\n',{flag:'wx',mode:0o600});
