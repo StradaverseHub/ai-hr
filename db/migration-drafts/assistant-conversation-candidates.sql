@@ -43,7 +43,10 @@ CREATE POLICY answer_arm_create ON public.ai_assistant_answer_evaluation_arm FOR
 CREATE POLICY answer_arm_retry ON public.ai_assistant_answer_evaluation_arm FOR UPDATE TO ai_hr_app USING(tenant_id=app.current_tenant_id() AND evaluator_user_id=app.current_user_id() AND app.principal_snapshot_current() AND app.is_group_admin() AND NOT passed) WITH CHECK(tenant_id=app.current_tenant_id() AND evaluator_user_id=app.current_user_id() AND app.principal_snapshot_current() AND app.is_group_admin());
 CREATE POLICY answer_arm_erase ON public.ai_assistant_answer_evaluation_arm FOR DELETE TO ai_hr_app USING(tenant_id=app.current_tenant_id() AND evaluator_user_id=app.current_user_id());
 REVOKE ALL ON public.ai_assistant_answer_evaluation_arm FROM PUBLIC,ai_hr_app;
-GRANT SELECT,INSERT,DELETE ON public.ai_assistant_answer_evaluation_arm TO ai_hr_app;
+-- App INSERT cannot choose created_at/expires_at: a future created_at would satisfy the 31-day CHECK
+-- while keeping checkpoint metadata beyond its retention bound. Upsert retry still updates only these two.
+GRANT SELECT,DELETE ON public.ai_assistant_answer_evaluation_arm TO ai_hr_app;
+GRANT INSERT(id,tenant_id,candidate_id,evaluator_user_id,evaluator_person_id,provider_fingerprint,suite_digest,fixture_id,arm,passed,receipt) ON public.ai_assistant_answer_evaluation_arm TO ai_hr_app;
 GRANT UPDATE(passed,receipt) ON public.ai_assistant_answer_evaluation_arm TO ai_hr_app;
 --> statement-breakpoint
 CREATE TABLE public.ai_assistant_answer_evaluation_intent(
@@ -164,6 +167,11 @@ CREATE TRIGGER answer_intent_capture_guard BEFORE INSERT OR UPDATE ON public.ai_
 --> statement-breakpoint
 -- Identity-only metadata invalidation bridge for the actual own transcript redaction owner. No
 -- target is posted; no Assistant grant/module/provider admission or financial refund is inferred.
+-- SINGLE shared owner (evaluation fence). Scope: the CURRENT app user's strategy-use markers AND
+-- evaluation intents, pending or completed, in the current tenant; checkpoint arms are not deleted
+-- (explicit metadata erase and PDPA own those). Lock order: callers take blocking exclusive Access
+-- first (assistant_transcripts_erase_own / assertAiPrincipalTx); this TRY then re-enters it, and the
+-- intent custody trigger re-enters again. Without prior Access a competing holder refuses 55P03.
 CREATE FUNCTION app.assistant_answer_invalidate_own_strategy_uses() RETURNS integer
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();n integer;k integer;
