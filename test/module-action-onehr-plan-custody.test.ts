@@ -2,7 +2,7 @@
 /** Authored UNRUN: actual OneHR human share/conversation/acknowledgement owners. Fictional career
  * words and goals are human fixture inputs, never generated facts, ratings or promotion decisions. */
 import {randomUUID} from 'node:crypto';
-import {and,eq,sql} from 'drizzle-orm';
+import {and,eq,isNull,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
@@ -23,7 +23,9 @@ let base:Base;beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>vi.unstu
 async function fixture(closed=true){
  const admin=adminCtx(base),year=Number(todayInKualaLumpur().slice(0,4)),hire=(name:string)=>hireEmployee(admin,{person:{fullName:name,primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:`${year-2}-01-01`});
  const employee=await hire('Fictional Plan Owner'),manager=await hire('Fictional Plan Manager'),userId=await createAppUser(base.tenantId,employee.personId,'employee'),managerId=await createAppUser(base.tenantId,manager.personId,'manager');
- const [grade]=await owner.db.insert(schema.jobGrade).values({tenantId:base.tenantId,code:'12',name:'Fictional Grade 12'}).returning({id:schema.jobGrade.id});for(const person of [employee,manager])await owner.db.update(schema.employment).set({gradeId:grade.id}).where(eq(schema.employment.id,person.employmentId));
+ // job_grade_code_uq/job_grade_name_uq allow one active grade per code/name: a second fixture in one test reuses it.
+ const [existingGrade]=await owner.db.select({id:schema.jobGrade.id}).from(schema.jobGrade).where(and(eq(schema.jobGrade.tenantId,base.tenantId),eq(schema.jobGrade.code,'12'),isNull(schema.jobGrade.archivedAt)));
+ const [grade]=existingGrade?[existingGrade]:await owner.db.insert(schema.jobGrade).values({tenantId:base.tenantId,code:'12',name:'Fictional Grade 12'}).returning({id:schema.jobGrade.id});for(const person of [employee,manager])await owner.db.update(schema.employment).set({gradeId:grade.id}).where(eq(schema.employment.id,person.employmentId));
  await setReportingLine(admin,{subordinateEmploymentId:employee.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:`${year-2}-01-01`});await grantAssistant(admin,{appUserId:userId});await grantAssistant(admin,{appUserId:managerId});
  const ctx:SessionContext={tenantId:base.tenantId,userId,personId:employee.personId,roles:['employee'],entitlements:harnessSnapshot(base.tenantId)},managerCtx:SessionContext={tenantId:base.tenantId,userId:managerId,personId:manager.personId,roles:['manager'],entitlements:harnessSnapshot(base.tenantId)};
  const {cycleId}=await perf.createCycle(admin,{name:'Fictional OneHR Annual',companyId:base.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`});await perf.configureOnehrCycle(admin,cycleId,null,defaultPolicy(framework));await perf.openCycle(admin,{cycleId});

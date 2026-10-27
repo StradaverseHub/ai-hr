@@ -4,7 +4,8 @@ import { z } from 'zod';
 import type { SessionContext,Tx } from '../../../db/client';
 import { assessmentAiUse,onehrCycle,reviewCycle } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
-import { generateDraft,redactPII } from '../../../lib/ai';
+import { AiGatewayError,generateDraft,redactPII } from '../../../lib/ai';
+import { EntitlementError } from '../../../core/entitlements';
 import { recordProposal } from '../../../core/agent-proposal';
 import { getOnehrFeedbackTx,getOnehrReviewTx } from './service';
 import { assessmentAiConfigTx,assessmentAiFeatureEnabledTx,type AssessmentAiFeature } from './ai-settings';
@@ -88,8 +89,10 @@ export async function rewriteAssessmentField(ctx:SessionContext,reviewId:string,
   if(used||!(await assessmentAiQuotaTx(tx,ctx,before.fieldKey)).remaining)throw Error('Current assessment drafting allowance could not be confirmed.');
  });
  const raw=await generateDraft(bound,args);
- const checked=adjudicateAssessmentRewrite(redactPII(words),redactPII(command),redactPII(before.label),raw,{forwardLooking:before.forwardLooking}),fresh=await rewriteContext(ctx,reviewId,target);
- const unchanged=fresh.fingerprint===before.fingerprint;
+ // Access withdrawn during generation (module, AI calling login) is an access change: it is audited as
+ // such and answered with the product's changed-source refusal, never applied. Other failures propagate.
+ const checked=adjudicateAssessmentRewrite(redactPII(words),redactPII(command),redactPII(before.label),raw,{forwardLooking:before.forwardLooking}),fresh=await rewriteContext(ctx,reviewId,target).catch(error=>{if(error instanceof AiGatewayError||error instanceof EntitlementError)return null;throw error;});
+ const unchanged=fresh!==null&&fresh.fingerprint===before.fingerprint;
  await recordProposal(ctx,{type:'onehr_narrative',subject:{type:'performance-review',id:reviewId},facts:{field:target.kind,fingerprint:before.fingerprint,draftHash:digest(words)},proposal:{characters:raw.length},adjudication:unchanged&&checked.ok?{ok:true}:{ok:false,reason:unchanged&&!checked.ok?checked.reason:'Assessment or access changed.'},provider:cfg.provider,model:cfg.model});
  if(!unchanged)throw Error('This assessment or field changed. Reload before requesting another draft.');
  if(!checked.ok)throw Error('The draft added unsupported details or figures, so it was not applied. Edit your own words or try again.');

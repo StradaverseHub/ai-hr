@@ -125,7 +125,10 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
       for(let file=0;file<4;file++)files.push((await perf.addPerformanceAttachment(self,{reviewId,evidenceId,stageKind:null,fileName:`proof-${entry}-${file}.png`,mimeType:'image/png',content:png})).id);
     }
     vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
-    let active=0,max=0;vi.mocked(readImage).mockImplementation(async()=>{active++;max=Math.max(max,active);await new Promise(resolve=>setTimeout(resolve,10));active--;return 'Verified 15.9 units.';});
+    // Per-image fresh source checks run in serialized database phases before each provider call, so a fixed
+    // 10ms provider sleep no longer overlaps them. Hold the first provider read (bounded) until a second worker
+    // genuinely enters: a serial implementation never reaches max>1 and still fails below.
+    let active=0,max=0;vi.mocked(readImage).mockImplementation(async()=>{active++;max=Math.max(max,active);for(let n=0;n<300&&max<2;n++)await new Promise(resolve=>setTimeout(resolve,10));await new Promise(resolve=>setTimeout(resolve,10));active--;return 'Verified 15.9 units.';});
     const texts=await perf.readAssessmentFileTexts(self,reviewId,{allowImages:true});expect(max).toBeLessThanOrEqual(4);expect(max).toBeGreaterThan(1);expect(readImage).toHaveBeenCalledTimes(8);expect([...texts.values()].filter(t=>t.status==='ok')).toHaveLength(8);expect([...texts.values()].filter(t=>t.status==='unread')).toHaveLength(4);
     const visibleEvidence=await perf.addOnehrEvidence(self,reviewId,{kind:'recognition',body:'Shared image proof.',occurredOn:todayInKualaLumpur(),state:'shared',supersedesId:null,links:[]}),file=await perf.addPerformanceAttachment(self,{reviewId,evidenceId:visibleEvidence,stageKind:null,fileName:'shared.png',mimeType:'image/png',content:png});
     vi.mocked(readImage).mockImplementation(async()=>{await perf.changeOnehrEvidenceState(self,visibleEvidence,'retracted');return 'Retracted confidential file words.';});

@@ -671,8 +671,13 @@ export async function readOwnReviewAcknowledgementSourceTx(tx:Tx,ctx:SessionCont
   const [nominated]=await tx.select({cycleId:performanceReview.cycleId}).from(performanceReview).innerJoin(employment,eq(employment.id,performanceReview.employmentId))
     .where(and(eq(performanceReview.id,reviewId),eq(performanceReview.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId))).limit(1);
   if(!nominated)throw new PerfError('Only the employee can acknowledge their own review');
+  // No row lock on review_cycle: under RLS any locking clause (FOR SHARE included) also applies the
+  // UPDATE policy, and an employee never passes review_cycle_write, so the lock silently filtered the
+  // subject's own tenant-readable cycle ("not found"). The cycle facts used here cannot regress inside
+  // the transaction: released_at is set once and never cleared, and the engine marker is fixed while the
+  // cycle is draft. Its xmin still binds the reviewed version; the own review row lock below serializes.
   const [cycle]=await tx.select({id:reviewCycle.id,name:reviewCycle.name,releasedAt:reviewCycle.releasedAt,periodStart:reviewCycle.periodStart,periodEnd:reviewCycle.periodEnd,version:sql<string>`${reviewCycle}.xmin::text`})
-    .from(reviewCycle).where(and(eq(reviewCycle.id,nominated.cycleId),eq(reviewCycle.tenantId,ctx.tenantId))).for('share',{noWait:true});
+    .from(reviewCycle).where(and(eq(reviewCycle.id,nominated.cycleId),eq(reviewCycle.tenantId,ctx.tenantId)));
   if(!cycle)throw new PerfError('Performance review not found (or not visible)');
   await assertStandardCycleTx(tx,cycle.id);
   const [review]=await tx.select({id:performanceReview.id,cycleId:performanceReview.cycleId,employmentId:performanceReview.employmentId,status:performanceReview.status,acknowledgedAt:performanceReview.acknowledgedAt,version:sql<string>`${performanceReview}.xmin::text`})
