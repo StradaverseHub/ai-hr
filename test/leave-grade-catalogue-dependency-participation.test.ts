@@ -1,6 +1,6 @@
 /** Authored UNRUN: real employee intervals and canonical grade catalogue/import owners. */
 import {randomUUID} from 'node:crypto';
-import {eq} from 'drizzle-orm';
+import {and,eq} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as tenantDb from '../db/client';
@@ -36,9 +36,17 @@ describe('grade catalogue source ownership',()=>{
   try{await ready;p.code='RETARGETED';p.name='retargeted';p.active=false;ctx.userId=randomUUID();ctx.grants![0].role='employee';release();await pending;}finally{release();await pending.catch(()=>{});boundary.mockRestore();}const [grade]=await owner.db.select().from(schema.jobGrade).where(eq(schema.jobGrade.code,'CAPTURED_GRADE'));expect(grade).toMatchObject({name:'Fictional Captured Grade',archivedAt:null});
  });
  it('captures workbook bytes/selection/context before asynchronous admission, without mutable-buffer retargeting',async()=>{
-  await subject();const bytes=await workbook(),preview=await previewSystemLabelImport(group(),bytes),ctx=group(),p={bytes,token:preview.token,selectedKeys:preview.rows.filter(row=>row.selected).map(row=>row.sheet+':'+row.row)};let entered!:()=>void,release!:()=>void;const ready=new Promise<void>(yes=>{entered=yes;}),pause=new Promise<void>(yes=>{release=yes;});const actual=tenantDb.withTenant;
+  await subject();
+  // Codes are tenant-local. An owner-wide code-only count is not the caller's import result.
+  const foreign=await seedBase(),foreignCtx={...adminCtx(foreign),grants:[{role:'hr_admin',companyId:null}]};
+  const foreignGrade=await createJobGrade(foreignCtx,{code:'IMPORTED_GRADE',name:'Fictional Separate Tenant Grade',rank:9});
+  const [foreignBefore]=await owner.db.select().from(schema.jobGrade).where(eq(schema.jobGrade.id,foreignGrade.id));
+  const bytes=await workbook(),preview=await previewSystemLabelImport(group(),bytes),ctx=group(),p={bytes,token:preview.token,selectedKeys:preview.rows.filter(row=>row.selected).map(row=>row.sheet+':'+row.row)};let entered!:()=>void,release!:()=>void;const ready=new Promise<void>(yes=>{entered=yes;}),pause=new Promise<void>(yes=>{release=yes;});const actual=tenantDb.withTenant;
   // The selected-key set is part of the preview token, so prepare the matching exact selection first.
   const selectedPreview=await previewSystemLabelImport(ctx,bytes,'add',p.selectedKeys);p.token=selectedPreview.token;const block=vi.spyOn(tenantDb,'withTenant').mockImplementationOnce(async(c,fn)=>{entered();await pause;return actual(c,fn);});const pending=applySystemLabelImport(ctx,p);
-  try{await ready;bytes.fill(0);p.selectedKeys.splice(0);p.token='retargeted';ctx.userId=randomUUID();ctx.grants![0].role='employee';release();expect(await pending).toMatchObject({imported:1});}finally{release();await pending.catch(()=>{});block.mockRestore();}expect(await owner.db.select().from(schema.jobGrade).where(eq(schema.jobGrade.code,'IMPORTED_GRADE'))).toHaveLength(1);
+  try{await ready;bytes.fill(0);p.selectedKeys.splice(0);p.token='retargeted';ctx.userId=randomUUID();ctx.grants![0].role='employee';release();expect(await pending).toMatchObject({imported:1});}finally{release();await pending.catch(()=>{});block.mockRestore();}
+  const ownGrades=await owner.db.select().from(schema.jobGrade).where(and(eq(schema.jobGrade.tenantId,b.tenantId),eq(schema.jobGrade.code,'IMPORTED_GRADE')));
+  expect(ownGrades).toHaveLength(1);expect(ownGrades[0]).toMatchObject({tenantId:b.tenantId,code:'IMPORTED_GRADE',name:'Fictional Imported Grade',rank:4,description:'Fictional description',archivedAt:null});
+  expect((await owner.db.select().from(schema.jobGrade).where(eq(schema.jobGrade.id,foreignGrade.id)))[0]).toEqual(foreignBefore);
  });
 });

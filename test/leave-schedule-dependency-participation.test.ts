@@ -50,6 +50,10 @@ describe('canonical schedule configuration source owners', () => {
       bands: await owner.db.select().from(schema.attendanceRuleOtRow).where(eq(schema.attendanceRuleOtRow.tenantId, b.tenantId)).orderBy(schema.attendanceRuleOtRow.id),
       membership: await owner.db.select().from(schema.attendanceRuleShift).where(eq(schema.attendanceRuleShift.tenantId, b.tenantId)).orderBy(schema.attendanceRuleShift.ruleId, schema.attendanceRuleShift.shiftId),
       rotations: await owner.db.select().from(schema.attendanceRotation).where(eq(schema.attendanceRotation.tenantId, b.tenantId)).orderBy(schema.attendanceRotation.id),
+      patterns: await owner.db.select().from(schema.overtimePattern).where(eq(schema.overtimePattern.tenantId,b.tenantId)).orderBy(schema.overtimePattern.id),
+      versions: await owner.db.select().from(schema.overtimePatternVersion).where(eq(schema.overtimePatternVersion.tenantId,b.tenantId)).orderBy(schema.overtimePatternVersion.id),
+      versionStates: await owner.db.select().from(schema.overtimePatternVersionState).where(eq(schema.overtimePatternVersionState.tenantId,b.tenantId)).orderBy(schema.overtimePatternVersionState.id),
+      bindings: await owner.db.select().from(schema.overtimePatternLegacyBinding).where(eq(schema.overtimePatternLegacyBinding.tenantId,b.tenantId)).orderBy(schema.overtimePatternLegacyBinding.id),
       events: await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.tenantId, b.tenantId)).orderBy(schema.domainEvent.id),
     });
     const before = await state();
@@ -63,7 +67,24 @@ describe('canonical schedule configuration source owners', () => {
     } finally { release(); clearTimeout(watchdog); await holder; }
     await mutate(); const after = await state(), existing = after.rules.find(row => row.id === rule.id);
     const standardExisted = before.rules.some(row => row.isDefault);
-    expect(after.events.length).toBe(before.events.length + (command === 'standard' && standardExisted ? 0 : 1));
+    const priorEvents=new Set(before.events.map(row=>row.id)),addedEvents=after.events.filter(row=>!priorEvents.has(row.id));
+    const commandEventType={pool:'attendance-rule.shifts-assigned',standard:'attendance-rule.created',create:'attendance-rule.created',update:'attendance-rule.updated',section:'attendance-rule.updated',copy:'attendance-rule.copied',status:'attendance-rule.deactivated',delete:'attendance-rule.deleted',rotation:'attendance-rule.rotation-saved'}[command];
+    const newlyInsertedRule=command==='create'||command==='copy'||command==='standard'&&!standardExisted;
+    // 0551's deferred native INSERT trigger records the immutable legacy overtime snapshot too.
+    // Check both exact events AND their real rule/version/binding, rather than relaxing an event count.
+    const expectedTypes=command==='standard'&&standardExisted?[]:[commandEventType,...(newlyInsertedRule?['overtime.legacy.snapshot.recorded']:[])];
+    expect(addedEvents.map(row=>row.eventType).sort()).toEqual(expectedTypes.sort());
+    if(newlyInsertedRule){
+      const commandEvent=addedEvents.find(row=>row.eventType===commandEventType)!,snapshot=addedEvents.find(row=>row.eventType==='overtime.legacy.snapshot.recorded')!;
+      const payload=snapshot.payload as {ruleId:string;versionId:string;digest:string};
+      expect(payload).toMatchObject({ruleId:commandEvent.aggregateId,versionId:expect.any(String),digest:expect.stringMatching(/^[a-f0-9]{64}$/)});
+      const pattern=after.patterns.find(row=>row.id===snapshot.aggregateId),version=after.versions.find(row=>row.id===payload.versionId);
+      expect(pattern).toMatchObject({kind:'legacy',legacyRuleRef:commandEvent.aggregateId,legacyRuleId:commandEvent.aggregateId});
+      expect(version).toMatchObject({patternId:pattern!.id,kind:'legacy',ordinal:1,digest:payload.digest,definition:{kind:'legacy',ruleId:commandEvent.aggregateId}});
+      expect(after.versionStates.filter(row=>row.versionId===payload.versionId)).toMatchObject([{sequence:1,state:'active'}]);
+      expect(after.bindings.filter(row=>row.versionId===payload.versionId)).toMatchObject([{legacyRuleRef:commandEvent.aggregateId,ruleId:commandEvent.aggregateId}]);
+      expect(after.patterns.length).toBe(before.patterns.length+1);expect(after.versions.length).toBe(before.versions.length+1);
+    }
     if (command === 'pool') expect(after.membership.some(row => row.ruleId === rule.id && row.shiftId === shift.id)).toBe(true);
     if (command === 'standard') expect(after.rules.filter(row => row.isDefault)).toHaveLength(1);
     if (command === 'create' || command === 'copy') expect(after.rules.length).toBe(before.rules.length + 1);
