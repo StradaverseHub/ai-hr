@@ -556,3 +556,10 @@ Android revocation uses v2; Apple revocation retains v1. Both require exact enro
 and a confirmed revocation timestamp. Exact receipt lookup uses v2 with no command downgrade. These
 source changes and added transport/screen tests await shared verification resources; no new native
 bundle or physical-device acceptance is claimed.
+
+
+The encrypted Android provenance envelope now also retains the original server-generated enrollment
+context alongside the immutable ordered proof. Without this context, a later target-policy change
+would prevent reconstructing the original attested digest for audit. The original proof identity is
+still bounded32KiB; the complete provenance plaintext is bounded48KiB before AES-GCM/base64url, below
+the64KiB ciphertext column bound. This follow-up is unverified pending shared test resources.

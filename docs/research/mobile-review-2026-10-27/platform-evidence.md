@@ -852,3 +852,25 @@ this is a deliberately canceled unstarted queue, not a failed test or a passing 
 foreign lease/process was modified. Further implementation followed only after the wrapper was
 terminal. Combined verification is still required. No journal, shared schema, staging, publication or
 deployment changed; frozen0636 hash remains9063b27c0cc316b715d552561d636ffc6412e447ca9275758bf497870c995df7.
+
+
+## Combined enrollment/native integration run and pending repair
+
+The combined candidate06563909c waited104.351s for complete admission, then ran all eight planned
+suites:96 cases passed in26.02s, including six Android custody cases, Apple enrollment/integrity HTTP,
+mixed recovery, native transport/screen, Android policy and challenge ownership. Native TypeScript
+passed. Root TypeScript failed with7 narrowing diagnostics in the new service/tests. This attempt
+remains failed overall: /tmp/mobile-android-native-v2.log, /tmp/mobile-android-native-v2-ts.log and
+/tmp/mobile-android-native-v2-mobile-ts.log. Repair6aec1c1e5 changes the never-return helper to a
+function declaration and adds three input-snapshot/offboarding/race cases; its focused run did not
+start. The complete-set admission wrapper ended75 after300s holding no leases, preserving occupied
+legacy owners. There are no /tmp/mobile-android-owner-repair*.log verification artifacts.
+
+Review then found that original enrollment context must accompany encrypted certificate proof so
+later policy changes cannot destroy canonical digest reconstruction. efb677cb1 stores that context
+inside a versioned provenance envelope, with an explicit48KiB plaintext bound below the64KiB
+ciphertext column limit. Input proof identity retains its independent original32KiB bound. This new
+provenance change, compiler repair and three added cases are UNVERIFIED. No broad96-case or compiler
+PASS is attributed to them.0636 SQL bytes/journal state are unchanged, with no shared/staging apply,
+publication or deployment. The authorized migration coordinator received the source/verification
+report and terminal resource handback.
