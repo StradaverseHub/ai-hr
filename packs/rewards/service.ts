@@ -569,6 +569,9 @@ export async function postRewardUnit(ctx: SessionContext, unitId: string, revisi
 }
 
 type ReviewedRewardPostSelection={unitId:string;revision:number;batchId:string|null};
+// A JS array interpolated into a drizzle sql template becomes a ROW of parameters, not a uuid[]; build an
+// explicit typed array (empty-safe) as the other review owners do.
+const rewardUuidArray=(ids:readonly string[])=>sql`ARRAY[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
 const captureRewardPostContext=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
 async function reviewedRewardPostPrincipalTx(tx:Tx,ctx:SessionContext){
  const grants=ctx.grants??(ctx.roles??[]).map(role=>({role,companyId:null}));const roles=ctx.roles??Array.from(new Set(grants.map(g=>g.role)));
@@ -646,11 +649,11 @@ async function reviewedRewardPostPreflightTx(tx:Tx,supplied:SessionContext,selec
  const versions=await tx.execute(sql`select
   (select jsonb_agg(jsonb_build_array(u.id,u.xmin::text) order by u.id) from public.reward_unit u where u.id=${unit.id}::uuid or u.id=${unit.parentUnitId}::uuid or u.parent_unit_id=${unit.parentUnitId}::uuid) as units,
   (select jsonb_agg(jsonb_build_array(e.id,e.xmin::text) order by e.id) from public.reward_entry e where e.unit_id=${unit.id}::uuid) as entries,
-  (select jsonb_agg(jsonb_build_array(e.id,e.xmin::text) order by e.id) from public.employment e where e.id=any(${result.rows.map(row=>row.source.employmentId)}::uuid[])) as employments,
-  (select jsonb_agg(jsonb_build_array(c.id,c.xmin::text) order by c.id) from public.compensation c where c.id=any(${sourceRows.map(row=>row.compensationId)}::uuid[])) as compensations,
+  (select jsonb_agg(jsonb_build_array(e.id,e.xmin::text) order by e.id) from public.employment e where e.id=any(${rewardUuidArray(result.rows.map(row=>row.source.employmentId))})) as employments,
+  (select jsonb_agg(jsonb_build_array(c.id,c.xmin::text) order by c.id) from public.compensation c where c.id=any(${rewardUuidArray(sourceRows.map(row=>row.compensationId))})) as compensations,
   (select jsonb_agg(jsonb_build_array(g.id,g.xmin::text) order by g.id) from public.job_grade g) as grades,
   (select b.xmin::text from public.payroll_batch b where b.id=${p.batchId}::uuid) as batch,
-  (select jsonb_agg(jsonb_build_array(i.id,i.xmin::text) order by i.id) from public.payroll_input i where i.batch_id=${p.batchId}::uuid and i.employment_id=any(${result.rows.map(row=>row.source.employmentId)}::uuid[])) as inputs`);
+  (select jsonb_agg(jsonb_build_array(i.id,i.xmin::text) order by i.id) from public.payroll_input i where i.batch_id=${p.batchId}::uuid and i.employment_id=any(${rewardUuidArray(result.rows.map(row=>row.source.employmentId))})) as inputs`);
  const available=await funding(tx,unit.id);
  const reviewedDigest=createHash('sha256').update(JSON.stringify(['reviewed-rewards-post:v1',{tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId??null},p,unit,entries,result,sourceRows,versions,available,review])).digest('hex');
  return{ctx,p,prepared,review,reviewedDigest};

@@ -376,3 +376,236 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.assistant_lifecycle_ack_review_discard(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assistant_lifecycle_ack_review_discard(uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- ADR-0131 own-review custody, continued: the nine typed review stores (knowledge article, TOIL request,
+-- leave decision, attendance correction, pay component, rewards post, payroll close, country statutory,
+-- multi-cycle run) also listed and discarded by login only. Each review row records the actor person it was
+-- prepared under (person_id is bound to the login's person by every prepare owner and is never rewritten), so
+-- that original custody is compared with the login's CURRENT person (IS NOT DISTINCT FROM: a person-less login
+-- sees only person-less rows). Bodies and grants are otherwise identical to 0622; another person's review is NOT
+-- FOUND, so its refusal is the same generic error as an unknown action ID.
+CREATE OR REPLACE FUNCTION app.assistant_knowledge_article_review_discard(p_id uuid) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();
+BEGIN
+ PERFORM app._assistant_knowledge_review_identity(NULL,false);
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=t AND user_id=u AND person_id IS NOT DISTINCT FROM (SELECT a.person_id FROM public.app_user a WHERE a.id=u AND a.tenant_id=t) AND action_kind='knowledge_base.article.create' FOR UPDATE NOWAIT;
+ IF NOT FOUND OR r.state='completed' THEN RAISE EXCEPTION 'Article review unavailable' USING ERRCODE='42501';END IF;
+ IF r.state='awaiting_confirmation' THEN
+  UPDATE app.assistant_own_leave_review SET state=CASE WHEN clock_timestamp()>=r.expires_at THEN 'expired' ELSE 'discarded' END,intent_digest=NULL,reviewed_digest=NULL WHERE id=r.id;
+ END IF;
+ DELETE FROM app.assistant_own_leave_review_content WHERE action_id=r.id;
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=r.id;
+ RETURN jsonb_build_object('action','knowledge_base.article.create','contractVersion',1,'actionId',r.id,'state',r.state);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_knowledge_article_review_discard(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_knowledge_article_review_discard(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.assistant_knowledge_article_reviews_index()
+ RETURNS TABLE(action text,action_id uuid,state text,created_at timestamptz,expires_at timestamptz)
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ PERFORM app._assistant_knowledge_review_identity(NULL,false);
+ RETURN QUERY SELECT r.action_kind,r.id,r.state,r.created_at,r.expires_at FROM app.assistant_own_leave_review r
+ WHERE r.tenant_id=app.current_tenant_id() AND r.user_id=app.current_user_id() AND r.person_id IS NOT DISTINCT FROM (SELECT a.person_id FROM public.app_user a WHERE a.id=app.current_user_id() AND a.tenant_id=app.current_tenant_id()) AND r.action_kind='knowledge_base.article.create' ORDER BY r.created_at DESC,r.id DESC LIMIT 25;
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_knowledge_article_reviews_index() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_knowledge_article_reviews_index() TO ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.assistant_toil_request_review_discard(p_id uuid) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;
+BEGIN
+ PERFORM app._assistant_toil_review_login();
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND person_id IS NOT DISTINCT FROM (SELECT a.person_id FROM public.app_user a WHERE a.id=app.current_user_id() AND a.tenant_id=app.current_tenant_id()) AND action_kind='toil.replacement.request' FOR UPDATE NOWAIT;
+ IF NOT FOUND OR r.state='completed' THEN RAISE EXCEPTION 'TOIL review unavailable' USING ERRCODE='42501';END IF;
+ IF r.state='awaiting_confirmation' THEN UPDATE app.assistant_own_leave_review SET state=CASE WHEN clock_timestamp()>=r.expires_at THEN 'expired' ELSE 'discarded' END,intent_digest=NULL,reviewed_digest=NULL WHERE id=r.id;END IF;
+ DELETE FROM app.assistant_own_leave_review_content WHERE action_id=r.id;
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=r.id;
+ RETURN jsonb_build_object('action','toil.replacement.request','contractVersion',1,'actionId',r.id,'state',r.state);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_toil_request_review_discard(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_toil_request_review_discard(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.assistant_toil_request_reviews_index() RETURNS TABLE(action text,action_id uuid,state text,created_at timestamptz,expires_at timestamptz)
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ PERFORM app._assistant_toil_review_login();
+ RETURN QUERY SELECT r.action_kind,r.id,r.state,r.created_at,r.expires_at FROM app.assistant_own_leave_review r WHERE r.tenant_id=app.current_tenant_id() AND r.user_id=app.current_user_id() AND r.person_id IS NOT DISTINCT FROM (SELECT a.person_id FROM public.app_user a WHERE a.id=app.current_user_id() AND a.tenant_id=app.current_tenant_id()) AND r.action_kind='toil.replacement.request' ORDER BY r.created_at DESC,r.id DESC LIMIT 25;
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_toil_request_reviews_index() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_toil_request_reviews_index() TO ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.assistant_leave_decision_review_discard(p_id uuid) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;
+BEGIN
+ PERFORM app._assistant_leave_decision_login();
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND person_id IS NOT DISTINCT FROM (SELECT a.person_id FROM public.app_user a WHERE a.id=app.current_user_id() AND a.tenant_id=app.current_tenant_id()) AND action_kind='approvals.leave.decide' FOR UPDATE NOWAIT;
+ IF NOT FOUND OR r.state='completed' THEN RAISE EXCEPTION 'Leave decision review unavailable' USING ERRCODE='42501';END IF;
+ IF r.state='awaiting_confirmation' THEN UPDATE app.assistant_own_leave_review SET state=CASE WHEN clock_timestamp()>=r.expires_at THEN 'expired' ELSE 'discarded' END,intent_digest=NULL,reviewed_digest=NULL WHERE id=r.id;END IF;
+ DELETE FROM app.assistant_own_leave_review_content WHERE action_id=r.id;
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=r.id;
+ RETURN jsonb_build_object('action','approvals.leave.decide','contractVersion',1,'actionId',r.id,'state',r.state);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_leave_decision_review_discard(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_leave_decision_review_discard(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.assistant_leave_decision_reviews_index() RETURNS TABLE(action text,action_id uuid,state text,created_at timestamptz,expires_at timestamptz)
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ PERFORM app._assistant_leave_decision_login();
+ RETURN QUERY SELECT r.action_kind,r.id,r.state,r.created_at,r.expires_at FROM app.assistant_own_leave_review r WHERE r.tenant_id=app.current_tenant_id() AND r.user_id=app.current_user_id() AND r.person_id IS NOT DISTINCT FROM (SELECT a.person_id FROM public.app_user a WHERE a.id=app.current_user_id() AND a.tenant_id=app.current_tenant_id()) AND r.action_kind='approvals.leave.decide' ORDER BY r.created_at DESC,r.id DESC LIMIT 25;
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_leave_decision_reviews_index() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_leave_decision_reviews_index() TO ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.assistant_attendance_review_discard(p_id uuid) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;
+BEGIN
+ PERFORM app._assistant_attendance_review_login();
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND person_id IS NOT DISTINCT FROM (SELECT a.person_id FROM public.app_user a WHERE a.id=app.current_user_id() AND a.tenant_id=app.current_tenant_id()) AND action_kind='attendance.correction.request' FOR UPDATE NOWAIT;
+ IF NOT FOUND OR r.state='completed' THEN RAISE EXCEPTION 'Attendance review unavailable' USING ERRCODE='42501';END IF;
+ IF r.state='awaiting_confirmation' THEN UPDATE app.assistant_own_leave_review SET state=CASE WHEN clock_timestamp()>=r.expires_at THEN 'expired' ELSE 'discarded' END,intent_digest=NULL,reviewed_digest=NULL WHERE id=r.id;END IF;
+ DELETE FROM app.assistant_own_leave_review_content WHERE action_id=r.id;
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=r.id;
+ RETURN jsonb_build_object('action','attendance.correction.request','contractVersion',1,'actionId',r.id,'state',r.state);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_attendance_review_discard(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_attendance_review_discard(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.assistant_attendance_reviews_index() RETURNS TABLE(action text,action_id uuid,state text,created_at timestamptz,expires_at timestamptz)
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ PERFORM app._assistant_attendance_review_login(false);
+ RETURN QUERY SELECT r.action_kind,r.id,r.state,r.created_at,r.expires_at FROM app.assistant_own_leave_review r WHERE r.tenant_id=app.current_tenant_id() AND r.user_id=app.current_user_id() AND r.person_id IS NOT DISTINCT FROM (SELECT a.person_id FROM public.app_user a WHERE a.id=app.current_user_id() AND a.tenant_id=app.current_tenant_id()) AND r.action_kind='attendance.correction.request' ORDER BY r.created_at DESC,r.id DESC LIMIT 25;
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_attendance_reviews_index() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_attendance_reviews_index() TO ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.assistant_pay_component_review_discard(p_id uuid) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();
+BEGIN
+ PERFORM app._assistant_pay_component_review_identity(NULL,false);
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=t AND user_id=u AND person_id IS NOT DISTINCT FROM (SELECT a.person_id FROM public.app_user a WHERE a.id=u AND a.tenant_id=t) AND action_kind='typed_pay_components.create' FOR UPDATE NOWAIT;
+ IF NOT FOUND OR r.state='completed' THEN RAISE EXCEPTION 'Pay catalogue review unavailable' USING ERRCODE='42501';END IF;
+ IF r.state='awaiting_confirmation' THEN
+  UPDATE app.assistant_own_leave_review SET state=CASE WHEN clock_timestamp()>=r.expires_at THEN 'expired' ELSE 'discarded' END,intent_digest=NULL,reviewed_digest=NULL WHERE id=r.id;
+ END IF;
+ DELETE FROM app.assistant_own_leave_review_content WHERE action_id=r.id;
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=r.id;
+ RETURN jsonb_build_object('action','typed_pay_components.create','contractVersion',1,'actionId',r.id,'state',r.state);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_pay_component_review_discard(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_pay_component_review_discard(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.assistant_pay_component_reviews_index()
+ RETURNS TABLE(action text,action_id uuid,state text,created_at timestamptz,expires_at timestamptz)
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ PERFORM app._assistant_pay_component_review_identity(NULL,false);
+ RETURN QUERY SELECT r.action_kind,r.id,r.state,r.created_at,r.expires_at FROM app.assistant_own_leave_review r
+ WHERE r.tenant_id=app.current_tenant_id() AND r.user_id=app.current_user_id() AND r.person_id IS NOT DISTINCT FROM (SELECT a.person_id FROM public.app_user a WHERE a.id=app.current_user_id() AND a.tenant_id=app.current_tenant_id()) AND r.action_kind='typed_pay_components.create' ORDER BY r.created_at DESC,r.id DESC LIMIT 25;
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_pay_component_reviews_index() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_pay_component_reviews_index() TO ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.assistant_rewards_post_review_discard(p_id uuid) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;
+BEGIN
+ PERFORM app._assistant_rewards_post_review_identity(NULL,false);
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND person_id IS NOT DISTINCT FROM (SELECT a.person_id FROM public.app_user a WHERE a.id=app.current_user_id() AND a.tenant_id=app.current_tenant_id()) AND action_kind='rewards.post' FOR UPDATE NOWAIT;
+ IF NOT FOUND OR r.state='completed' THEN RAISE EXCEPTION 'Rewards review unavailable' USING ERRCODE='42501';END IF;
+ IF r.state='awaiting_confirmation' THEN UPDATE app.assistant_own_leave_review SET state=CASE WHEN clock_timestamp()>=r.expires_at THEN 'expired' ELSE 'discarded' END,intent_digest=NULL,reviewed_digest=NULL,rewards_review_person_ids=NULL WHERE id=r.id;END IF;
+ DELETE FROM app.assistant_own_leave_review_content WHERE action_id=r.id;
+ -- Also clears a malformed already-retired association without touching native canonical history.
+ UPDATE app.assistant_own_leave_review SET rewards_review_person_ids=NULL WHERE id=r.id AND rewards_review_person_ids IS NOT NULL;
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=r.id;
+ RETURN jsonb_build_object('action','rewards.post','contractVersion',1,'actionId',r.id,'state',r.state);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_rewards_post_review_discard(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_rewards_post_review_discard(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.assistant_rewards_post_reviews_index() RETURNS TABLE(action text,action_id uuid,state text,created_at timestamptz,expires_at timestamptz)
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ PERFORM app._assistant_rewards_post_review_identity(NULL,false,false);
+ RETURN QUERY SELECT r.action_kind,r.id,r.state,r.created_at,r.expires_at FROM app.assistant_own_leave_review r WHERE r.tenant_id=app.current_tenant_id() AND r.user_id=app.current_user_id() AND r.person_id IS NOT DISTINCT FROM (SELECT a.person_id FROM public.app_user a WHERE a.id=app.current_user_id() AND a.tenant_id=app.current_tenant_id()) AND r.action_kind='rewards.post' ORDER BY r.created_at DESC,r.id DESC LIMIT 25;
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_rewards_post_reviews_index() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_rewards_post_reviews_index() TO ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.assistant_payroll_close_review_discard(p_id uuid) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;
+BEGIN
+ PERFORM app._assistant_payroll_close_review_identity(NULL,false);
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND person_id IS NOT DISTINCT FROM (SELECT a.person_id FROM public.app_user a WHERE a.id=app.current_user_id() AND a.tenant_id=app.current_tenant_id()) AND action_kind='payroll.close' FOR UPDATE NOWAIT;
+ IF NOT FOUND OR r.state='completed' THEN RAISE EXCEPTION 'Payroll close review unavailable' USING ERRCODE='42501';END IF;
+ IF r.state='awaiting_confirmation' THEN UPDATE app.assistant_own_leave_review SET state=CASE WHEN clock_timestamp()>=r.expires_at THEN 'expired' ELSE 'discarded' END,intent_digest=NULL,reviewed_digest=NULL,payroll_review_person_ids=NULL WHERE id=r.id;END IF;
+ DELETE FROM app.assistant_own_leave_review_content WHERE action_id=r.id;
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=r.id;
+ RETURN jsonb_build_object('action','payroll.close','contractVersion',1,'actionId',r.id,'state',r.state);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_payroll_close_review_discard(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_payroll_close_review_discard(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.assistant_payroll_close_reviews_index() RETURNS TABLE(action text,action_id uuid,state text,created_at timestamptz,expires_at timestamptz)
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ PERFORM app._assistant_payroll_close_review_identity(NULL,false,false);
+ RETURN QUERY SELECT r.action_kind,r.id,r.state,r.created_at,r.expires_at FROM app.assistant_own_leave_review r WHERE r.tenant_id=app.current_tenant_id() AND r.user_id=app.current_user_id() AND r.person_id IS NOT DISTINCT FROM (SELECT a.person_id FROM public.app_user a WHERE a.id=app.current_user_id() AND a.tenant_id=app.current_tenant_id()) AND r.action_kind='payroll.close' ORDER BY r.created_at DESC,r.id DESC LIMIT 25;
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_payroll_close_reviews_index() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_payroll_close_reviews_index() TO ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.assistant_country_statutory_review_discard(p_id uuid) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;
+BEGIN
+ PERFORM app._assistant_country_statutory_review_identity(NULL,false);
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND person_id IS NOT DISTINCT FROM (SELECT a.person_id FROM public.app_user a WHERE a.id=app.current_user_id() AND a.tenant_id=app.current_tenant_id()) AND action_kind='country-my.statutory.update' FOR UPDATE NOWAIT;
+ IF NOT FOUND OR r.state='completed' THEN RAISE EXCEPTION 'Statutory review unavailable' USING ERRCODE='42501';END IF;
+ IF r.state='awaiting_confirmation' THEN UPDATE app.assistant_own_leave_review SET state=CASE WHEN clock_timestamp()>=r.expires_at THEN 'expired' ELSE 'discarded' END,intent_digest=NULL,reviewed_digest=NULL WHERE id=r.id;END IF;
+ DELETE FROM app.assistant_own_leave_review_content WHERE action_id=r.id;
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=r.id;
+ RETURN jsonb_build_object('action','country-my.statutory.update','contractVersion',1,'actionId',r.id,'state',r.state);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_country_statutory_review_discard(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_country_statutory_review_discard(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.assistant_country_statutory_reviews_index() RETURNS TABLE(action text,action_id uuid,state text,created_at timestamptz,expires_at timestamptz)
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ PERFORM app._assistant_country_statutory_review_identity(NULL,false,false);
+ RETURN QUERY SELECT r.action_kind,r.id,r.state,r.created_at,r.expires_at FROM app.assistant_own_leave_review r WHERE r.tenant_id=app.current_tenant_id() AND r.user_id=app.current_user_id() AND r.person_id IS NOT DISTINCT FROM (SELECT a.person_id FROM public.app_user a WHERE a.id=app.current_user_id() AND a.tenant_id=app.current_tenant_id()) AND r.action_kind='country-my.statutory.update' ORDER BY r.created_at DESC,r.id DESC LIMIT 25;
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_country_statutory_reviews_index() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_country_statutory_reviews_index() TO ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.assistant_multi_cycle_run_review_discard(p_id uuid) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;
+BEGIN
+ PERFORM app._assistant_multi_cycle_run_review_identity(NULL,false);
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND person_id IS NOT DISTINCT FROM (SELECT a.person_id FROM public.app_user a WHERE a.id=app.current_user_id() AND a.tenant_id=app.current_tenant_id()) AND action_kind='multi_cycle_payroll.create_run' FOR UPDATE NOWAIT;
+ IF NOT FOUND OR r.state='completed' THEN RAISE EXCEPTION 'Payroll draft review unavailable' USING ERRCODE='42501';END IF;
+ IF r.state='awaiting_confirmation' THEN UPDATE app.assistant_own_leave_review SET state=CASE WHEN clock_timestamp()>=r.expires_at THEN 'expired' ELSE 'discarded' END,intent_digest=NULL,reviewed_digest=NULL,multi_cycle_review_person_ids=NULL,multi_cycle_review_employment_ids=NULL WHERE id=r.id;END IF;
+ DELETE FROM app.assistant_own_leave_review_content WHERE action_id=r.id;
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=r.id;
+ RETURN jsonb_build_object('action','multi_cycle_payroll.create_run','contractVersion',1,'actionId',r.id,'state',r.state);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_multi_cycle_run_review_discard(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_multi_cycle_run_review_discard(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.assistant_multi_cycle_run_reviews_index() RETURNS TABLE(action text,action_id uuid,state text,created_at timestamptz,expires_at timestamptz)
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ PERFORM app._assistant_multi_cycle_run_review_identity(NULL,false,false);
+ RETURN QUERY SELECT r.action_kind,r.id,r.state,r.created_at,r.expires_at FROM app.assistant_own_leave_review r WHERE r.tenant_id=app.current_tenant_id() AND r.user_id=app.current_user_id() AND r.person_id IS NOT DISTINCT FROM (SELECT a.person_id FROM public.app_user a WHERE a.id=app.current_user_id() AND a.tenant_id=app.current_tenant_id()) AND r.action_kind='multi_cycle_payroll.create_run' ORDER BY r.created_at DESC,r.id DESC LIMIT 25;
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_multi_cycle_run_reviews_index() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_multi_cycle_run_reviews_index() TO ai_hr_app;
