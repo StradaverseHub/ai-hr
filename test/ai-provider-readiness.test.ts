@@ -51,6 +51,15 @@ describe('explicit candidate evaluation and activation', () => {
       expect(await runs()).toEqual([]); expect(await receipts()).toEqual([]);
     } finally { mock.restore(); }
   });
+  it('refuses synthetic evaluation before provider access when no certified spend capability or allocation exists', async () => {
+    await candidate();
+    const ctx=adminCtx(base), consent=await syntheticConsentFor(ctx), mock=syntheticProviderTransport();
+    try {
+      await expect(evaluateProviderCandidate(ctx,consent)).rejects.toThrow();
+      expect(mock.draft).not.toHaveBeenCalled(); expect(mock.conversation).not.toHaveBeenCalled();
+      expect(await runs()).toEqual([]); expect(await receipts()).toEqual([]); expect(await config()).toBeNull();
+    } finally { mock.restore(); }
+  });
   it('refuses stale displayed candidates or malformed bindings before any reservation or network', async () => {
     await candidate(); const ctx=adminCtx(base), displayed=await syntheticConsentFor(ctx);
     await saveAiProviderConfig(ctx,{provider:'openrouter',model:'fictional/replaced',providerOptions:options('approved-b')});

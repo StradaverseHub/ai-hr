@@ -10,7 +10,7 @@ import { OpenRouterModel, OpenRouterTransportConfiguration } from '../lib/ai/pro
 import { assertProviderProtocolEvaluation, runProviderProtocolEvaluation, type ProviderProtocolSummary } from '../lib/ai/provider-protocol';
 import { openProviderEvaluationReceipt, sealProviderEvaluationReceipt } from '../lib/ai/provider-evaluation-receipt';
 import { currentAiProviderAdminTx } from './ai-provider-authority';
-import { governedAiConfig } from './ai-governance';
+import { bindStrictAiSpendRoot, governedAiConfig } from './ai-governance';
 import { resolveAiProviderCandidateSnapshotTx } from './ai-provider-snapshot';
 
 export class AiProviderReadinessError extends Error {
@@ -74,7 +74,11 @@ export async function evaluateProviderCandidate(ctx: SessionContext, input: Prov
       throw new AiProviderReadinessError('candidate_required');
     return candidate;
   });
-  const cfg = governedAiConfig(ctx, snapshot, 'provider_evaluation');
+  // The validated, persisted candidate owns one lifetime allocation across all three probes,
+  // reviewers and retries. A new attempt/receipt must never mint another spend allowance.
+  if (!snapshot.candidate) return unavailable();
+  const cfg = bindStrictAiSpendRoot(governedAiConfig(ctx, snapshot, 'provider_evaluation'),
+    { rootTaskId: snapshot.candidate.id, kind: 'evaluation' });
   let summary: ProviderProtocolSummary;
   try { summary = await runProviderProtocolEvaluation(cfg); assertProviderProtocolEvaluation(summary, cfg); }
   catch { throw new AiProviderReadinessError('probe_failed'); }
