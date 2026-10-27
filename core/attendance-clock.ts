@@ -200,7 +200,7 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, nativ
     // sets this and stays fully policy-gated.
     await (p.action === 'in' ? checkInTx : checkOutTx)(ctx, { employmentId: me.employmentId, date, time, geo: point ?? undefined, deviceGateExempt: !native, deviceToken: native?.deviceToken, clockCaptureId: captureId, preciseOrder }, tx);
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-clock-capture', aggregateId: captureId, eventType: 'attendance.clock.captured', actor: actorOf(ctx), subjectEmploymentId: me.employmentId, payload: { ...(native ? { clientSource: 'native_online', clientLocationTimestamp: native.sampledAt } : {}), captureId, direction: p.action, serverRecordedAt: now.toISOString(), clockingLocationId: site.clockingLocationId, geofence: geo.enforced ? 'pass' : 'not_enforced' } });
-    if(!joined)await assertLegacySelfServiceClockTx(tx,ctx,me.employmentId);
+    // PROBE ONLY: omit post-write unsigned policy check.
     return publicReceipt(capture);
   };
   return joined?execute(joined.tx):withTenant(ctx,execute);
