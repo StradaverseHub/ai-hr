@@ -62,10 +62,22 @@ describe('Email delivery page list/detail at desktop and mobile sizes',()=>{
    }
    await page.getByText(messages.accountEmail.viewEmail,{exact:true}).click();
    expect(screen.getByText(messages.accountEmail.previewHelp)).toBeVisible();
+   await page.getByText(messages.accountEmail.resend,{exact:true}).first().click();
+   expect(screen.getByRole('checkbox',{name:messages.accountEmail.invitationAck})).not.toBeChecked();
+   if(!detail){
+    await page.getByLabelText(messages.accountEmail.retentionPeriod).selectOptions('days');
+    expect(screen.getByRole('checkbox',{name:messages.accountEmail.retentionAcknowledge})).not.toBeChecked();
+   }
    expect(document.querySelector('a[href*="/invite/"],input[name="token"]')).toBeNull();
    expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
-   window.scrollTo(0,0);await document.fonts.ready;
-   console.info('Synthetic email delivery page screenshot:',await page.screenshot({animations:'disabled',fullPage:true,path:`../.vitest-attachments/email-delivery-${locale}-${detail?'detail':'list'}-${width}.png`}));
+   // Vitest captures an element inside an iframe, not a top-level document. A body screenshot
+   // taller than that iframe contains blank unpainted regions even when assertions pass.
+   const main=document.querySelector('main')!;
+   await page.viewport(width,Math.ceil(main.scrollHeight+32));window.scrollTo(0,0);await document.fonts.ready;
+   await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
+   expect(main.getBoundingClientRect().bottom).toBeLessThanOrEqual(window.innerHeight);
+   expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
+   console.info('Synthetic email delivery page screenshot:',await page.screenshot({animations:'disabled',element:main,path:`../.vitest-attachments/email-delivery-${locale}-${detail?'detail':'list'}-${width}.png`}));
   });
  }
 });
