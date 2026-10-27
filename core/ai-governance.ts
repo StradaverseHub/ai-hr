@@ -69,7 +69,7 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
   });
   if(!admission?.allowed){
    const reason=admission?.blocked_reason;
-   if(reason==='paused'||reason==='daily_limit'||reason==='monthly_limit')throw new AiAllowanceError(reason);
+   if(reason==='paused'||reason==='daily_limit'||reason==='monthly_limit'||reason==='concurrent_limit')throw new AiAllowanceError(reason);
    throw new AiGatewayError('The AI request could not be admitted.');
   }
   let actual:number|null=null;

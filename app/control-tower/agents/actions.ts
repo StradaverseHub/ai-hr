@@ -42,7 +42,8 @@ export async function setAiAllowanceAction(formData: FormData) {
     if (kind !== 'company' && kind !== 'user' && kind !== 'user_default') throw new AiControlError(t('invalid'));
     await setAiAllowance(s, {kind,subjectId:kind==='user_default'?null:String(formData.get('subjectId')),enabled:formData.get('enabled')==='true',
       dailyRequests:parseAiAllowance(String(formData.get('dailyRequests')??''),1000000),
-      monthlyTokens:parseAiAllowance(String(formData.get('monthlyTokens')??''),1000000000000)});
+      monthlyTokens:parseAiAllowance(String(formData.get('monthlyTokens')??''),1000000000000),
+      maxConcurrent:parseAiAllowance(String(formData.get('maxConcurrent')??''),1000000)});
   } catch (e) { redirect(`${PAGE}?${query}error=${encodeURIComponent(await commandError(e))}`); }
   revalidatePath(PAGE);
   redirect(`${PAGE}?${query}toast=${encodeURIComponent(t('saved'))}`);

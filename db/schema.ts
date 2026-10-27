@@ -10657,7 +10657,7 @@ export const attendanceWorkflowReassignment = pgTable('attendance_workflow_reass
 /** Governance telemetry contains no prompt, output, image, secret or employee field values. */
 export const aiControlPolicy=pgTable('ai_control_policy',{
  id:id(),tenantId:tenantId(),scopeKey:text('scope_key').notNull(),kind:text('kind').notNull(),subjectId:uuid('subject_id'),featureId:text('feature_id'),
- enabled:boolean('enabled').notNull().default(true),dailyRequests:integer('daily_requests'),monthlyTokens:bigint('monthly_tokens',{mode:'number'}),
+ enabled:boolean('enabled').notNull().default(true),dailyRequests:integer('daily_requests'),monthlyTokens:bigint('monthly_tokens',{mode:'number'}),maxConcurrent:integer('max_concurrent'),
  updatedByUserId:uuid('updated_by_user_id').references(()=>appUser.id),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
 },t=>[uniqueIndex('ai_control_policy_scope_uq').on(t.tenantId,t.scopeKey)]);
 export const aiModelRun=pgTable('ai_model_run',{

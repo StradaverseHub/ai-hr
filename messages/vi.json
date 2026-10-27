@@ -10952,7 +10952,12 @@
       "evaluationActivate": "Dùng cấu hình đã được đánh giá",
       "evaluationSaveFirst": "Lưu thay đổi trước khi đánh giá.",
       "evaluationExpired": "Đánh giá đã hết hạn hoặc cấu hình đã thay đổi. Hãy đánh giá lại.",
-      "commandFailed": "Cài đặt AI hơi trục trặc. Hãy kiểm tra quyền và cài đặt đã lưu rồi thử lại."
+      "commandFailed": "Cài đặt AI hơi trục trặc. Hãy kiểm tra quyền và cài đặt đã lưu rồi thử lại.",
+      "evaluationElapsed": "Thời gian đánh giá: {value} ms",
+      "evaluationReportedUsage": "Cuộc gọi có báo cáo token: {count} trên 3",
+      "evaluationCredits": "Tín dụng tài khoản đã báo cáo: {value}",
+      "evaluationUnknown": "Chưa biết",
+      "evaluationAccountingHelp": "Đây là quan sát nhà cung cấp cho ba cuộc gọi tổng hợp, không phải hóa đơn, báo giá hay giới hạn chi tiêu. Chi phí chưa biết vẫn là chưa biết."
     },
     "attendancePolicy": {
       "pageTitle": "Cài đặt ca làm việc",
@@ -22459,7 +22464,8 @@
     "reasons": {
       "paused": "Truy cập AI tạm dừng",
       "daily_limit": "Giới hạn yêu cầu ngày",
-      "monthly_limit": "Giới hạn token tháng"
+      "monthly_limit": "Giới hạn token tháng",
+      "concurrent_limit": "Tất cả chỗ yêu cầu đã cấu hình đang được sử dụng."
     },
     "assistantGranted": "Đã cấp quyền trợ lý HR",
     "assistantNotGranted": "Chưa cấp quyền trợ lý HR",
@@ -22504,7 +22510,20 @@
     "applyFilter": "Áp dụng",
     "clearFilter": "Xóa bộ lọc",
     "runsFiltered": "Đang hiển thị 50 lệnh gọi phù hợp gần nhất.",
-    "noMatchingRuns": "Không có lệnh gọi nào khớp bộ lọc."
+    "noMatchingRuns": "Không có lệnh gọi nào khớp bộ lọc.",
+    "concurrent": "Yêu cầu đồng thời",
+    "concurrentHelp": "Để trống để không thêm giới hạn đồng thời; số không dừng cuộc gọi mới. Yêu cầu đang chờ giữ chỗ đến khi quyết toán, kể cả sau khi khởi động lại. Đây không phải giới hạn chi tiêu nhà cung cấp.",
+    "observedAccounting": "Quan sát nhà cung cấp",
+    "reportedCredits": "Tín dụng tài khoản đã báo cáo",
+    "roundTrip": "Thời gian khứ hồi",
+    "unknownObservation": "Chưa biết",
+    "milliseconds": "{value} ms",
+    "observationStates": {
+      "missing": "Chưa báo cáo",
+      "reported": "Đã báo cáo",
+      "conflicting": "Báo cáo mâu thuẫn",
+      "invalid": "Báo cáo không hợp lệ"
+    }
   },
   "accountEmail": {
     "title": "Lịch sử gửi email tài khoản",

@@ -60,8 +60,8 @@ export class AiGatewayError extends Error {
 
 /** A control refusal is distinct from provider failure; it contains no tenant/company identifiers. */
 export class AiAllowanceError extends AiGatewayError {
-  constructor(readonly reason: 'paused' | 'daily_limit' | 'monthly_limit') {
-    super(reason === 'paused' ? 'This AI feature is paused.' : reason === 'daily_limit' ? 'The daily AI request allowance has been reached.' : 'The monthly AI token allowance has insufficient available capacity.');
+  constructor(readonly reason: 'paused' | 'daily_limit' | 'monthly_limit' | 'concurrent_limit') {
+    super(reason === 'concurrent_limit' ? 'All configured AI request slots are currently in use. Try again after an existing request finishes.' : reason === 'paused' ? 'This AI feature is paused.' : reason === 'daily_limit' ? 'The daily AI request allowance has been reached.' : 'The monthly AI token allowance has insufficient available capacity.');
     this.name = 'AiAllowanceError';
   }
 }

@@ -38,9 +38,9 @@ export function allowanceLevel(used:number,limit:number|null|undefined):AiAllowa
 export type AiMeter = {used:number;limit:number|null;level:AiAllowanceLevel|null};
 const meter=(used:number,limit:number|null|undefined):AiMeter=>({used,limit:limit??null,level:allowanceLevel(used,limit)});
 /** Daily requests and monthly tokens, the latter counting held reservations exactly as admission does. */
-export type AiAllowanceUse = {daily:AiMeter;tokens:AiMeter;recorded:number;held:number;enabled:boolean};
-const allowanceUse=(daily:number,recorded:number,held:number,policy?:{enabled:boolean;dailyRequests:number|null;monthlyTokens:number|null}):AiAllowanceUse=>
-  ({daily:meter(daily,policy?.dailyRequests),tokens:meter(recorded+held,policy?.monthlyTokens),recorded,held,enabled:policy?.enabled!==false});
+export type AiAllowanceUse = {daily:AiMeter;tokens:AiMeter;recorded:number;held:number;enabled:boolean;maxConcurrent:number|null};
+const allowanceUse=(daily:number,recorded:number,held:number,policy?:{enabled:boolean;dailyRequests:number|null;monthlyTokens:number|null;maxConcurrent?:number|null}):AiAllowanceUse=>
+  ({daily:meter(daily,policy?.dailyRequests),tokens:meter(recorded+held,policy?.monthlyTokens),recorded,held,enabled:policy?.enabled!==false,maxConcurrent:policy?.maxConcurrent??null});
 /** Attention is about pressure on a cap, so a deliberately zero cap with no attempts is not listed. */
 const pressing=(u:AiAllowanceUse)=>u.enabled&&((u.daily.level!==null&&u.daily.used>0)||(u.tokens.level!==null&&u.tokens.used>0));
 export const AI_RUN_STATE_FILTERS = ['blocked','failed'] as const;
@@ -49,9 +49,10 @@ const DAY_START=sql`(date_trunc('day',now() at time zone 'Asia/Kuala_Lumpur') at
 const MONTH_START=sql`(date_trunc('month',now() at time zone 'Asia/Kuala_Lumpur') at time zone 'Asia/Kuala_Lumpur')`;
 type UserUsageRow = {id:string;label:string;daily_requests:string;monthly_tokens:string;held_tokens:string;blocked_today:string;last_reason:string|null};
 export async function aiManagementView(ctx: SessionContext, search = '', runFilter: AiRunFilter = {}) {
-  assertAdmin(ctx);
+  ctx=captureControlContext(ctx);assertAdmin(ctx);
   const provider = await getAiConfigView(ctx);
   return withTenant(ctx, async tx => {
+    await currentControlAdminTx(tx,ctx,false);
     const fresh = { ...ctx, entitlements: await resolveEntitlementsTx(tx, ctx.tenantId) };
     const policies = await tx.select().from(aiControlPolicy).orderBy(asc(aiControlPolicy.scopeKey));
     const activeProvider = provider.providers.find(p => p.isActive);
@@ -106,7 +107,7 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
       from ai_model_run r join app_user u on u.id=r.user_id left join person p on p.id=u.person_id
       where r.tenant_id=${ctx.tenantId}::uuid and r.started_at>=${MONTH_START}
       group by r.user_id,u.workos_user_id,p.full_name order by r.user_id`)) : [];
-    const runs = isGroupAdmin(ctx) ? await tx.select({id:aiModelRun.id,actor:sql<string|null>`coalesce(${person.fullName},${appUser.workosUserId})`,feature:aiModelRun.featureId,operation:aiModelRun.operation,provider:aiModelRun.provider,model:aiModelRun.model,state:aiModelRun.state,reason:aiModelRun.reason,actual:aiModelRun.actualTokens,reserved:aiModelRun.reservedTokens,startedAt:aiModelRun.startedAt,finishedAt:aiModelRun.finishedAt})
+    const runs = isGroupAdmin(ctx) ? await tx.select({id:aiModelRun.id,actor:sql<string|null>`coalesce(${person.fullName},${appUser.workosUserId})`,feature:aiModelRun.featureId,operation:aiModelRun.operation,provider:aiModelRun.provider,model:aiModelRun.model,state:aiModelRun.state,reason:aiModelRun.reason,actual:aiModelRun.actualTokens,reserved:aiModelRun.reservedTokens,startedAt:aiModelRun.startedAt,finishedAt:aiModelRun.finishedAt,reportedCredits:aiModelRun.openrouterAccountCostCredits,roundTripMs:aiModelRun.observedRoundTripMs,observationStatus:aiModelRun.providerObservationStatus})
       .from(aiModelRun).leftJoin(appUser,eq(aiModelRun.userId,appUser.id)).leftJoin(person,eq(appUser.personId,person.id))
       .where(and(runFilter.state?eq(aiModelRun.state,runFilter.state):undefined,runFilter.feature?eq(aiModelRun.featureId,runFilter.feature):undefined))
       .orderBy(desc(aiModelRun.startedAt),desc(aiModelRun.id)).limit(50) : [];
@@ -144,12 +145,12 @@ export async function setAiFeature(ctx: SessionContext, feature: AiFeatureId, en
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export type AiAllowanceKind = 'company'|'user'|'user_default';
 /** `user_default` is the tenant-wide allowance for every login without an individual policy; it has no subject. */
-export async function setAiAllowance(ctx:SessionContext,p:{kind:AiAllowanceKind;subjectId?:string|null;dailyRequests:number|null;monthlyTokens:number|null;enabled:boolean}){
+export async function setAiAllowance(ctx:SessionContext,p:{kind:AiAllowanceKind;subjectId?:string|null;dailyRequests:number|null;monthlyTokens:number|null;maxConcurrent?:number|null;enabled:boolean}){
   ctx = captureControlContext(ctx);
-  p = { kind: p.kind, subjectId: p.subjectId, dailyRequests: p.dailyRequests, monthlyTokens: p.monthlyTokens, enabled: p.enabled };
+  p = { kind: p.kind, subjectId: p.subjectId, dailyRequests: p.dailyRequests, monthlyTokens: p.monthlyTokens, maxConcurrent:p.maxConcurrent??null, enabled: p.enabled };
   assertAdmin(ctx);
   if(!['company','user','user_default'].includes(p.kind)||(p.kind!=='user_default'&&!UUID.test(p.subjectId??''))||typeof p.enabled!=='boolean')throw new AiControlError('Unknown allowance scope.');
-  for(const [value,max] of [[p.dailyRequests,1000000],[p.monthlyTokens,1000000000000]] as const){if(value!==null&&(!Number.isSafeInteger(value)||value<0||value>max))throw new AiControlError('Invalid AI allowance.');}
+  for(const [value,max] of [[p.dailyRequests,1000000],[p.monthlyTokens,1000000000000],[p.maxConcurrent??null,1000000]] as const){if(value!==null&&(!Number.isSafeInteger(value)||value<0||value>max))throw new AiControlError('Invalid AI allowance.');}
   await withTenant(ctx,async tx=>{
     await currentControlAdminTx(tx, ctx, p.kind !== 'company');
     if(p.kind==='user'&&!isGroupAdmin(ctx))throw new AiControlError('Only a group administrator may change user allowances.');
@@ -161,10 +162,10 @@ export async function setAiAllowance(ctx:SessionContext,p:{kind:AiAllowanceKind;
         :await tx.select({id:appUser.id}).from(appUser).where(and(eq(appUser.id,subjectId),eq(appUser.tenantId,ctx.tenantId)));
       if(!target)throw new AiControlError('This user or company is outside your administrative scope.');
     }
-    const values={enabled:p.enabled,dailyRequests:p.dailyRequests,monthlyTokens:p.monthlyTokens,updatedByUserId:ctx.userId??null,updatedAt:sql`now()`};
+    const values={enabled:p.enabled,dailyRequests:p.dailyRequests,monthlyTokens:p.monthlyTokens,maxConcurrent:p.maxConcurrent??null,updatedByUserId:ctx.userId??null,updatedAt:sql`now()`};
     await tx.insert(aiControlPolicy).values({tenantId:ctx.tenantId,scopeKey:subjectId?`${p.kind}:${subjectId}`:'user_default',kind:p.kind,subjectId,...values})
       .onConflictDoUpdate({target:[aiControlPolicy.tenantId,aiControlPolicy.scopeKey],set:values});
-    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'ai-control',aggregateId:subjectId??ctx.tenantId,eventType:'ai-control.allowance-changed',actor:actorOf(ctx),payload:{kind:p.kind,enabled:p.enabled,dailyRequests:p.dailyRequests,monthlyTokens:p.monthlyTokens}});
+    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'ai-control',aggregateId:subjectId??ctx.tenantId,eventType:'ai-control.allowance-changed',actor:actorOf(ctx),payload:{kind:p.kind,enabled:p.enabled,dailyRequests:p.dailyRequests,monthlyTokens:p.monthlyTokens,maxConcurrent:p.maxConcurrent??null}});
   });
 }
 /** Returns a login to the tenant default by removing its individual policy; the removed values stay in the event history. */
@@ -177,7 +178,7 @@ export async function clearUserAllowance(ctx:SessionContext,userId:string){
     await currentControlAdminTx(tx, ctx, true);
     const [removed]=await tx.delete(aiControlPolicy).where(and(eq(aiControlPolicy.tenantId,ctx.tenantId),eq(aiControlPolicy.scopeKey,`user:${userId}`),eq(aiControlPolicy.kind,'user'))).returning();
     if(!removed)throw new AiControlError('This login already follows the default allowance.');
-    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'ai-control',aggregateId:userId,eventType:'ai-control.allowance-cleared',actor:actorOf(ctx),payload:{kind:'user',enabled:removed.enabled,dailyRequests:removed.dailyRequests,monthlyTokens:removed.monthlyTokens}});
+    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'ai-control',aggregateId:userId,eventType:'ai-control.allowance-cleared',actor:actorOf(ctx),payload:{kind:'user',enabled:removed.enabled,dailyRequests:removed.dailyRequests,monthlyTokens:removed.monthlyTokens,maxConcurrent:removed.maxConcurrent}});
   });
 }
 

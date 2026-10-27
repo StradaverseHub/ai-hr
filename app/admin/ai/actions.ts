@@ -107,7 +107,7 @@ export async function testConnectionAction(input: {
 
 /** Explicit synthetic evaluation only: never accepts client prompts, model outputs or readiness flags. */
 export async function evaluateProviderCandidateAction(input: { accountReview: boolean; consent: boolean; candidateId: string; candidateVersion: string }): Promise<
-  { ok: true; receipt: string; expiresAt: string; candidateId: string; candidateVersion: string } | { ok: false }> {
+  { ok: true; receipt: string; expiresAt: string; candidateId: string; candidateVersion: string; summary: import('@/lib/ai/provider-protocol').ProviderProtocolSummary } | { ok: false }> {
   const reviewed = input?.accountReview === true, consent = input?.consent === true, candidateId = input?.candidateId, candidateVersion = input?.candidateVersion;
   try {
     const s = await getBrowserCommandSession();
@@ -115,6 +115,6 @@ export async function evaluateProviderCandidateAction(input: { accountReview: bo
     const result = await evaluateProviderCandidate(s, { provider: 'openrouter', candidateId, candidateVersion, review: {
       version: 1, accountDefaultsReviewed: true, externalProcessingReviewed: true,
     }, syntheticProbeConsent: true });
-    return { ok: true, receipt: result.receipt, expiresAt: result.expiresAt, candidateId: result.candidateId, candidateVersion: result.candidateVersion };
+    return { ok: true, receipt: result.receipt, expiresAt: result.expiresAt, candidateId: result.candidateId, candidateVersion: result.candidateVersion, summary:result.summary };
   } catch { return { ok: false }; }
 }

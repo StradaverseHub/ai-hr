@@ -10952,7 +10952,12 @@
       "evaluationActivate": "Use evaluated candidate",
       "evaluationSaveFirst": "Save your changes before evaluating.",
       "evaluationExpired": "The evaluation expired or the candidate changed. Evaluate again.",
-      "commandFailed": "The AI settings hit a little snag. Please check your access and saved settings, then try again."
+      "commandFailed": "The AI settings hit a little snag. Please check your access and saved settings, then try again.",
+      "evaluationElapsed": "Evaluation elapsed: {value} ms",
+      "evaluationReportedUsage": "Calls with reported token usage: {count} of 3",
+      "evaluationCredits": "Reported account credits: {value}",
+      "evaluationUnknown": "Unknown",
+      "evaluationAccountingHelp": "These are provider observations for the three synthetic calls, not an invoice, price quote or spending cap. Unknown cost remains unknown."
     },
     "attendancePolicy": {
       "pageTitle": "Shift settings",
@@ -22459,7 +22464,8 @@
     "reasons": {
       "paused": "AI access paused",
       "daily_limit": "Daily request cap",
-      "monthly_limit": "Monthly token cap"
+      "monthly_limit": "Monthly token cap",
+      "concurrent_limit": "All configured request slots are in use."
     },
     "assistantGranted": "HR assistant access granted",
     "assistantNotGranted": "HR assistant access not granted",
@@ -22504,7 +22510,20 @@
     "applyFilter": "Apply",
     "clearFilter": "Clear filters",
     "runsFiltered": "Showing the latest 50 matching calls.",
-    "noMatchingRuns": "No calls match these filters."
+    "noMatchingRuns": "No calls match these filters.",
+    "concurrent": "Concurrent requests",
+    "concurrentHelp": "Blank adds no concurrency cap; zero stops new calls. Pending requests keep their slot until settlement, even across a restart. This does not impose a provider spend limit.",
+    "observedAccounting": "Provider observations",
+    "reportedCredits": "Reported account credits",
+    "roundTrip": "Round trip",
+    "unknownObservation": "Unknown",
+    "milliseconds": "{value} ms",
+    "observationStates": {
+      "missing": "Not reported",
+      "reported": "Reported",
+      "conflicting": "Conflicting reports",
+      "invalid": "Invalid report"
+    }
   },
   "accountEmail": {
     "title": "Account email deliveries",

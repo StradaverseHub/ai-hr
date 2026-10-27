@@ -9,7 +9,8 @@
  */
 import { useState, useTransition, useId, useRef, useEffect } from 'react';
 import { readOpenRouterOptions, type OpenRouterOptions } from '@/lib/ai/providers/openrouter-configuration';
-import { useTranslations } from 'next-intl';
+import { useFormatter,useTranslations } from 'next-intl';
+import type {ProviderProtocolSummary} from '@/lib/ai/provider-protocol';
 import { toast } from 'sonner';
 import { CheckCircle2, Loader2, PlugZap, Trash2 } from 'lucide-react';
 import { Button, Card, Field, inputCls } from '@/components/ui';
@@ -43,14 +44,14 @@ export function AiConfigForm({ config }: { config: AiConfigView }) {
 }
 
 function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean }) {
-  const t = useTranslations('admin.ai');
+  const t = useTranslations('admin.ai'),f=useFormatter();
   const [model, setModel] = useState(p.model);
   const [key, setKey] = useState('');
   const [testing, startTest] = useTransition();
   const [evaluating, startEvaluation] = useTransition();
   const [accountReview, setAccountReview] = useState(false);
   const [consent, setConsent] = useState(false);
-  const [evaluation, setEvaluation] = useState<{ receipt: string; expiresAt: string; candidateId: string; candidateVersion: string } | null>(null);
+  const [evaluation, setEvaluation] = useState<{ receipt: string; expiresAt: string; candidateId: string; candidateVersion: string; summary:ProviderProtocolSummary } | null>(null);
   const [evaluationFailed, setEvaluationFailed] = useState(false);
   const [receiptClock,setReceiptClock]=useState(()=>Date.now());
   useEffect(()=>{setReceiptClock(Date.now());if(!evaluation)return;const expiry=Date.parse(evaluation.expiresAt);if(!Number.isFinite(expiry))return;const timer=setTimeout(()=>setReceiptClock(Date.now()),Math.min(2147483647,Math.max(0,expiry-Date.now()+1)));return()=>clearTimeout(timer);},[evaluation?.receipt,evaluation?.expiresAt]);
@@ -88,7 +89,7 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
     startEvaluation(async()=>{
       try{const result=await evaluateProviderCandidateAction({accountReview:true,consent:true,candidateId,candidateVersion});
         if(!alive.current||sequence!==evaluationSequence.current)return;
-        if(result.ok&&result.candidateId===candidateId&&result.candidateVersion===candidateVersion)setEvaluation({receipt:result.receipt,expiresAt:result.expiresAt,candidateId,candidateVersion});else setEvaluationFailed(true);
+        if(result.ok&&result.candidateId===candidateId&&result.candidateVersion===candidateVersion)setEvaluation({receipt:result.receipt,expiresAt:result.expiresAt,candidateId,candidateVersion,summary:result.summary});else setEvaluationFailed(true);
       }catch{if(alive.current&&sequence===evaluationSequence.current)setEvaluationFailed(true);}
       finally{evaluationFlight.current=false;}
     });
@@ -194,6 +195,12 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
           <input type="hidden" name="evaluationReceipt" value={receiptCurrent && evaluation ? evaluation.receipt : ''}/>
           <Button type="submit" disabled={!receiptCurrent || evaluating} className="min-h-11">{t('evaluationActivate')}</Button>
         </form>
+        {evaluation&&<div className="space-y-1 text-xs text-muted-foreground">
+          <p>{t('evaluationElapsed',{value:f.number(evaluation.summary.elapsedMs)})}</p>
+          <p>{t('evaluationReportedUsage',{count:evaluation.summary.usageReportedCalls})}</p>
+          <p>{t('evaluationCredits',{value:evaluation.summary.accountChargeCredits==null?t('evaluationUnknown'):f.number(evaluation.summary.accountChargeCredits,{maximumSignificantDigits:15})})}</p>
+          <p>{t('evaluationAccountingHelp')}</p>
+        </div>}
       </section>}
       {p.configured && (
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">

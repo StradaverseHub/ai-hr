@@ -10952,7 +10952,12 @@
       "evaluationActivate": "使用已评估的候选配置",
       "evaluationSaveFirst": "请先保存更改再评估。",
       "evaluationExpired": "评估已过期或候选配置已更改。请重新评估。",
-      "commandFailed": "AI 设置遇到一点小状况。请检查权限和已保存的设置，然后重试。"
+      "commandFailed": "AI 设置遇到一点小状况。请检查权限和已保存的设置，然后重试。",
+      "evaluationElapsed": "评估耗时：{value} 毫秒",
+      "evaluationReportedUsage": "报告了令牌用量的调用：3 次中的 {count} 次",
+      "evaluationCredits": "报告的账户点数：{value}",
+      "evaluationUnknown": "未知",
+      "evaluationAccountingHelp": "这些是三次合成调用的供应商观测，并非发票、报价或支出上限。未知费用仍显示为未知。"
     },
     "attendancePolicy": {
       "pageTitle": "班次设置",
@@ -22459,7 +22464,8 @@
     "reasons": {
       "paused": "AI 访问已暂停",
       "daily_limit": "每日请求上限",
-      "monthly_limit": "每月令牌上限"
+      "monthly_limit": "每月令牌上限",
+      "concurrent_limit": "已配置的请求名额均在使用中。"
     },
     "assistantGranted": "已授予 HR 助手访问权限",
     "assistantNotGranted": "尚未授予 HR 助手访问权限",
@@ -22504,7 +22510,20 @@
     "applyFilter": "应用",
     "clearFilter": "清除筛选",
     "runsFiltered": "显示最近 50 条匹配的调用。",
-    "noMatchingRuns": "没有符合这些筛选条件的调用。"
+    "noMatchingRuns": "没有符合这些筛选条件的调用。",
+    "concurrent": "并发请求",
+    "concurrentHelp": "留空不增加并发上限；零会停止新调用。待处理请求在结算前一直占用名额，重启后也一样。这不是供应商支出限额。",
+    "observedAccounting": "供应商观测",
+    "reportedCredits": "报告的账户点数",
+    "roundTrip": "往返时间",
+    "unknownObservation": "未知",
+    "milliseconds": "{value} 毫秒",
+    "observationStates": {
+      "missing": "未报告",
+      "reported": "已报告",
+      "conflicting": "报告冲突",
+      "invalid": "报告无效"
+    }
   },
   "accountEmail": {
     "title": "账户邮件发送记录",

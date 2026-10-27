@@ -51,4 +51,18 @@ describe('fixed synthetic provider protocol', () => {
     await expect(runProviderProtocolEvaluation({ ...cfg(), provider: 'openai' })).rejects.toThrow();
     expect(mock.draft).not.toHaveBeenCalled(); expect(mock.conversation).not.toHaveBeenCalled();
   });
+  it.each([{costs:[0,0,0],expected:0},{costs:[0.1,0.2,0.3],expected:0.6},{costs:[null,0,1],expected:null}])('aggregates actual per-call account-credit observations honestly: $costs',async({costs,expected})=>{
+    mock=syntheticProviderTransport();let index=0;const draft=mock.draft.getMockImplementation()!,conversation=mock.conversation.getMockImplementation()!;
+    const receipt=()=>({version:1 as const,provider:'openrouter' as const,accountCostUnit:'openrouter_account_credits' as const,usage:{inputTokens:0,outputTokens:0,cachedInputTokens:0},accountCostCredits:costs[index++],elapsedMs:5});
+    mock.draft.mockImplementation(async(config,args)=>{const result=await draft(config,args);args.onObservation?.(receipt());return result;});
+    mock.conversation.mockImplementation(async(config,args)=>{const result=await conversation(config,args);args.onObservation?.(receipt());return result;});
+    const summary=await runProviderProtocolEvaluation(cfg());if(expected===null)expect(summary.accountChargeCredits).toBeNull();else expect(summary.accountChargeCredits).toBeCloseTo(expected,12);
+    expect(mock.draft).toHaveBeenCalledOnce();expect(mock.conversation).toHaveBeenCalledTimes(2);
+  });
+  it('does not invent a total when a call has conflicting provider receipts',async()=>{
+    mock=syntheticProviderTransport();const draft=mock.draft.getMockImplementation()!;
+    mock.draft.mockImplementation(async(config,args)=>{const result=await draft(config,args);for(const cost of [0,1])args.onObservation?.({version:1,provider:'openrouter',accountCostUnit:'openrouter_account_credits',usage:{inputTokens:0,outputTokens:0,cachedInputTokens:0},accountCostCredits:cost,elapsedMs:5});return result;});
+    expect((await runProviderProtocolEvaluation(cfg())).accountChargeCredits).toBeNull();
+  });
+
 });

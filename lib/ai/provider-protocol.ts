@@ -4,13 +4,14 @@
  */
 import { createHash, randomUUID } from 'node:crypto';
 import { converse, generateDraft } from './index';
+import {createAiRunAccounting} from './run-accounting';
 import { captureAiConfig } from './governance';
 import { readOpenRouterOptions } from './providers/openrouter-configuration';
 import { AiGatewayError, type AiUsage,type AiRunObservation, type AiToolSpec, type ResolvedAiConfig } from './types';
 export const PROVIDER_PROTOCOL_SUITE_VERSION = 1;
 export const PROVIDER_PROTOCOL_LIMITS = Object.freeze({ calls: 3, outputTokens: 1024, perCallMs: 15_000, totalMs: 60_000 });
 export type ProviderProtocolSummary = Readonly<{ calls: 3; elapsedMs: number; usageReportedCalls: number;
-  inputTokens: number | null; outputTokens: number | null; cachedInputTokens: number | null; accountChargeCredits: null }>;
+  inputTokens: number | null; outputTokens: number | null; cachedInputTokens: number | null; accountChargeCredits: number | null }>;
 const issued = new WeakMap<object, string>();
 const unavailable = (): never => { throw new AiGatewayError('The provider protocol evaluation could not be confirmed.'); };
 const binding = (cfg: ResolvedAiConfig) => createHash('sha256').update(JSON.stringify([
@@ -25,11 +26,11 @@ export async function runProviderProtocolEvaluation(configuration: ResolvedAiCon
   configuration = captureAiConfig(configuration);
   if (configuration.provider !== 'openrouter' || !configuration.governance) return unavailable();
   const configurationBinding = binding(configuration), governance = configuration.governance;
-  const started = performance.now(), observations: (AiUsage | null)[] = [];
+  const started = performance.now(), observations: (AiUsage | null)[] = [],charges:(number|null)[]=[];
   const inTime = () => { if (performance.now() - started >= PROVIDER_PROTOCOL_LIMITS.totalMs) return unavailable(); };
   const cfg: ResolvedAiConfig = Object.freeze({ ...configuration, governance: Object.freeze({
     async run<T>(request: Parameters<typeof governance.run>[0], call: (record: (usage: AiUsage) => void,observe?: (observation:AiRunObservation)=>void) => Promise<T>, outgoing: ResolvedAiConfig = configuration): Promise<T> {
-      inTime(); const usage: AiUsage[] = [];
+      inTime(); const usage: AiUsage[] = [],accounting=createAiRunAccounting(configuration.provider);
       try {
         return await governance.run(request, async (record,observe) => {
           // Admission may have waited: never start a late provider request after the evaluation deadline.
@@ -37,9 +38,9 @@ export async function runProviderProtocolEvaluation(configuration: ResolvedAiCon
             record({ inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 });
             return unavailable();
           }
-          return call(value => { usage.push({ ...value }); record(value); },observe);
+          return call(value => { usage.push({ ...value }); record(value); },value=>{accounting.observe(value);observe?.(value);});
         }, outgoing);
-      } finally { observations.push(usage.length === 1 && validUsage(usage[0]) ? usage[0] : null); }
+      } finally { const actual=usage.length === 1 && validUsage(usage[0]) ? usage[0] : null;observations.push(actual);const receipt=accounting.snapshot(actual?actual.inputTokens+actual.outputTokens+actual.cachedInputTokens:null);charges.push(receipt.providerObservationStatus==='reported'?receipt.openrouterAccountCostCredits:null); }
     },
   }) });
   const marker = `eval_${randomUUID()}`;
@@ -63,10 +64,11 @@ export async function runProviderProtocolEvaluation(configuration: ResolvedAiCon
   ], maxTokens: PROVIDER_PROTOCOL_LIMITS.outputTokens, timeoutMs: PROVIDER_PROTOCOL_LIMITS.perCallMs });
   inTime(); if (final.stop !== 'end' || final.toolCalls.length || final.text.trim() !== marker || observations.length !== 3) return unavailable();
   const known = observations.filter((value): value is AiUsage => value !== null), allKnown = known.length === 3;
+  const credits=charges.every(value=>value!==null)?charges.reduce<number>((sum,value)=>sum+value!,0):null;
   const summary: ProviderProtocolSummary = Object.freeze({ calls: 3, elapsedMs: Math.max(0, Math.round(performance.now() - started)),
     usageReportedCalls: known.length, inputTokens: allKnown ? known.reduce((n, value) => n + value.inputTokens, 0) : null,
     outputTokens: allKnown ? known.reduce((n, value) => n + value.outputTokens, 0) : null,
-    cachedInputTokens: allKnown ? known.reduce((n, value) => n + value.cachedInputTokens, 0) : null, accountChargeCredits: null });
+    cachedInputTokens: allKnown ? known.reduce((n, value) => n + value.cachedInputTokens, 0) : null, accountChargeCredits: credits!==null&&Number.isFinite(credits)?credits:null });
   issued.set(summary, configurationBinding);
   return summary;
 }

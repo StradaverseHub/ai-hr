@@ -10952,7 +10952,12 @@
       "evaluationActivate": "Gunakan calon yang dinilai",
       "evaluationSaveFirst": "Simpan perubahan anda sebelum menilai.",
       "evaluationExpired": "Penilaian telah tamat tempoh atau calon telah berubah. Nilai semula.",
-      "commandFailed": "Tetapan AI tersangkut sedikit. Semak akses dan tetapan tersimpan anda, kemudian cuba lagi."
+      "commandFailed": "Tetapan AI tersangkut sedikit. Semak akses dan tetapan tersimpan anda, kemudian cuba lagi.",
+      "evaluationElapsed": "Masa penilaian: {value} ms",
+      "evaluationReportedUsage": "Panggilan dengan penggunaan token dilaporkan: {count} daripada 3",
+      "evaluationCredits": "Kredit akaun dilaporkan: {value}",
+      "evaluationUnknown": "Tidak diketahui",
+      "evaluationAccountingHelp": "Ini ialah pemerhatian penyedia bagi tiga panggilan sintetik, bukan invois, sebut harga atau had perbelanjaan. Kos tidak diketahui kekal tidak diketahui."
     },
     "attendancePolicy": {
       "pageTitle": "Tetapan syif",
@@ -22459,7 +22464,8 @@
     "reasons": {
       "paused": "Akses AI dijeda",
       "daily_limit": "Had permintaan harian",
-      "monthly_limit": "Had token bulanan"
+      "monthly_limit": "Had token bulanan",
+      "concurrent_limit": "Semua slot permintaan yang ditetapkan sedang digunakan."
     },
     "assistantGranted": "Akses pembantu HR diberikan",
     "assistantNotGranted": "Akses pembantu HR belum diberikan",
@@ -22504,7 +22510,20 @@
     "applyFilter": "Guna",
     "clearFilter": "Kosongkan penapis",
     "runsFiltered": "Memaparkan 50 panggilan sepadan terkini.",
-    "noMatchingRuns": "Tiada panggilan sepadan dengan penapis ini."
+    "noMatchingRuns": "Tiada panggilan sepadan dengan penapis ini.",
+    "concurrent": "Permintaan serentak",
+    "concurrentHelp": "Kosong tidak menambah had serentak; sifar menghentikan panggilan baharu. Permintaan tertunda mengekalkan slot sehingga penyelesaian, termasuk selepas mula semula. Ini bukan had perbelanjaan penyedia.",
+    "observedAccounting": "Pemerhatian penyedia",
+    "reportedCredits": "Kredit akaun dilaporkan",
+    "roundTrip": "Masa pergi balik",
+    "unknownObservation": "Tidak diketahui",
+    "milliseconds": "{value} ms",
+    "observationStates": {
+      "missing": "Tidak dilaporkan",
+      "reported": "Dilaporkan",
+      "conflicting": "Laporan bercanggah",
+      "invalid": "Laporan tidak sah"
+    }
   },
   "accountEmail": {
     "title": "Penghantaran e-mel akaun",
