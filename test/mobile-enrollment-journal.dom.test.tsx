@@ -13,6 +13,15 @@ describe('native enrollment durability and one-use recovery',()=>{
     expect(f.stored()?.pending).toBeNull();expect(JSON.stringify(f.stored())).not.toContain(f.attestation);
     expect(f.native.generateAppleKey).toHaveBeenCalledOnce();expect(f.native.attestAppleKey).toHaveBeenCalledExactlyOnceWith(f.vendorKeyId,f.prepared().clientDataHash);
   });
+  it('quarantines persisted proof with trailing whitespace before server submission',async()=>{
+    const f=enrollmentFixture(),journal=f.journal();await journal.begin(f.employmentId,f.requestId);
+    vi.mocked(f.ports.complete).mockRejectedValueOnce(new Error('reply lost'));
+    await expect(journal.advance(f.employmentId)).rejects.toThrow('reply lost');
+    const stored=f.stored()!;if(stored.pending?.phase!=='proof_ready')throw new Error('missing fixture proof');
+    stored.pending.attestation+='\n';f.setStored(stored);
+    await expect(f.journal().advance(f.employmentId)).rejects.toBeInstanceOf(EnrollmentJournalUnavailable);
+    expect(f.ports.complete).toHaveBeenCalledOnce();expect(f.native.attestAppleKey).toHaveBeenCalledOnce();
+  });
   it('shares one queue across journal instances, preserves the first request and refuses employment adoption',async()=>{
     const f=enrollmentFixture(),a=f.journal(),b=f.journal();
     const [first,second]=await Promise.all([a.begin(f.employmentId,f.requestId),b.begin(f.employmentId,enrollmentId(9))]);expect(second).toEqual(first);

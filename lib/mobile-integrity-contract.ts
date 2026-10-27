@@ -4,8 +4,8 @@ import {KeyEnrollmentContext} from './mobile-key-enrollment';
 import {OnlineClockIntegrityData} from './mobile-clock-integrity';
 import {ClockReceipt} from './mobile-api/contract';
 const uuid=z.string().uuid().transform(value=>value.toLowerCase());
-const base64=z.string().min(4).regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
-const hash32=z.string().regex(/^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$/);
+const base64=z.string().min(4).refine(value=>value.trim()===value).regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
+const hash32=z.string().length(44).regex(/^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$/);
 export const IntegrityEnrollmentIntent=z.object({requestId:uuid,appInstallationId:uuid}).strict();
 export const IntegrityEnrollmentProof=IntegrityEnrollmentIntent.extend({challengeId:uuid,vendorKeyId:hash32,attestation:base64.max(87384)}).strict();
 export const IntegrityClockIntent=z.object({appInstallationId:uuid,keyId:uuid,deviceToken:uuid.optional(),
@@ -14,7 +14,7 @@ export const IntegrityClockProof=IntegrityClockIntent.extend({challengeId:uuid,a
 export const IntegrityRevokeIntent=z.object({keyId:uuid}).strict();
 export const IntegrityKeyReceipt=z.object({keyId:uuid,originChallengeId:uuid,platform:z.literal('ios'),appId:z.string().max(300),
   environment:z.enum(['production','development']),proofKind:z.enum(['apple_key_proof','apple_app_metadata']),
-  nativeKeyBinding:z.string().regex(/^[a-f0-9]{64}$/),
+  nativeKeyBinding:z.string().length(64).regex(/^[a-f0-9]{64}$/),
   createdAt:z.string().datetime(),revokedAt:z.string().datetime().nullable()});
 export const IntegrityRefused=z.object({outcome:z.literal('refused'),code:z.enum(['subject_unavailable','key_unavailable','key_exists','key_limit',
   'binding_conflict','challenge_unavailable','invalid_proof','clock_conflict','corrected_day','location_required','outside_geofence','photo_required','photo_invalid','device_required']),

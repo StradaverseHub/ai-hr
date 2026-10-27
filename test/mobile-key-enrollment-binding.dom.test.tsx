@@ -1,7 +1,7 @@
 /** Synthetic signatures establish byte binding, not Apple or hardware provenance. */
 import {generateKeyPairSync,sign,verify} from 'node:crypto';
 import {describe,expect,it} from 'vitest';
-import {keyEnrollmentClientData} from '../lib/mobile-key-enrollment';
+import {keyEnrollmentClientData,nativeKeyBindingData} from '../lib/mobile-key-enrollment';
 
 const id=(n:number)=>`${String(n).padStart(8,'0')}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`;
 const input=()=>({version:1,purpose:'device.key.enrollment',apiOrigin:'https://hr.example.com',
@@ -11,6 +11,11 @@ const input=()=>({version:1,purpose:'device.key.enrollment',apiOrigin:'https://h
     requiredMetadata:{validationCategory:4,bundleVersions:['4','5']}},
 });
 describe('enrollment proof byte binding',()=>{
+  it('requires exact canonical SDK key references for receipt binding',()=>{
+    const key=Buffer.alloc(32,7).toString('base64');
+    expect(nativeKeyBindingData(id(1),key)).toBe(JSON.stringify(['aihr.native-key-binding',1,id(1),key]));
+    expect(()=>nativeKeyBindingData(id(1),key+'\n')).toThrow();
+  });
   it('matches an independent positional vector despite object order or UUID case',()=>{
     const original=input(),expected=JSON.stringify(['aihr.mobile.integrity',1,'device.key.enrollment',
       ['https://hr.example.com',id(1),id(2),id(3),id(4),id(5)],

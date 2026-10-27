@@ -5,8 +5,8 @@ import * as C from '../../lib/mobile-integrity-contract';
 import type {createIntegrityBridge} from './integrity-bridge';
 
 const uuid=z.string().uuid().transform(value=>value.toLowerCase());
-const hash32=z.string().regex(/^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$/);
-const artifact=z.string().min(4).max(87384).regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$/)
+const hash32=z.string().length(44).regex(/^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$/);
+const artifact=z.string().min(4).max(87384).refine(value=>value.trim()===value).regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$/)
   .refine(value=>value.length/4*3-(value.endsWith('==')?2:value.endsWith('=')?1:0)<=65536);
 export const EnrollmentScope=z.object({namespace:z.string().min(1).max(2048),apiOrigin:AppleEnrollmentSettings.shape.apiOrigin,actorId:uuid,appInstallationId:uuid}).strict();
 export type EnrollmentScope=z.infer<typeof EnrollmentScope>;
