@@ -21,6 +21,8 @@ vi.mock('../core/assistant-read-session',()=>({withAssistantRead:vi.fn(async(_ct
 import {askAssistantAction} from '../app/assistant/actions';
 import {loadCanonicalModuleJob,type CanonicalModuleJobView} from '../core/workspace-module-jobs';
 import {GroundedWorkspaceReply} from '../components/assistant/module-jobs';
+import {projectMineLeaveBalance} from '../core/assistant-leave-projection';
+import {resolveEssView} from '../core/ess-view';
 import {MODULE_AGENT_CAPABILITIES,type AgentModuleCode} from '../lib/ai/module-agents';
 import type {AssistantAnswerPlan} from '../lib/ai/assistant-answer-plan';
 import type {AssistantAnswerExplanation} from '../lib/ai/assistant-answer-explanations';
@@ -129,10 +131,21 @@ describe('grounded conversation rendering',()=>{
   for(const input of [answer(Array.from({length:17},()=>selected)),{...answer([selected]),conversation:{...answer([selected]).conversation!,plan:{...answer([selected]).conversation!.plan,text:'RAW-MODEL-PROSE'}}} as unknown as Reply]){const shown=render(await GroundedWorkspaceReply({ctx,reply:input}));expect(screen.getByRole('status').textContent).toBe(en.assistant.workspace.conversation.unavailable);expect(shown.container.textContent).not.toContain('BOUND-RECORD');expect(shown.container.textContent).not.toContain('RAW-MODEL-PROSE');shown.unmount();}
  });
  it('refuses null/withheld selections and unsupported explanatory blocks rather than inventing an explanation',async()=>{
-  const unknown=await view('employees',{rows:[{employeeCode:'NULL-RECORD',company:'Fictional employer',hiredOn:'2020-01-01',terminatedOn:null,status:'active'}],truncated:false}),hidden=await view('leave',{rows:[{company:'Fictional employer',balances:[{leaveType:'Annual',available:5,taken:1,pending:0,withheld:true}]}],truncated:false});
-  for(const selected of [select(unknown,0,'terminatedOn'),select(hidden,0,'available')]){const shown=render(await GroundedWorkspaceReply({ctx,reply:answer([selected])}));expect(screen.getByRole('status').textContent).toBe(en.assistant.workspace.conversation.unavailable);expect(shown.container.querySelector('details')).toBeNull();shown.unmount();}
+  const unknown=await view('employees',{rows:[{employeeCode:'NULL-RECORD',company:'Fictional employer',hiredOn:'2020-01-01',terminatedOn:null,status:'active'}],truncated:false}),hidden=await view('leave',{rows:[{company:'Fictional employer',balances:[projectMineLeaveBalance({leaveTypeId:'fictional-type',leaveType:'Annual',accrued:9876,taken:1,pending:0,balance:8765,available:5,essView:resolveEssView({available:false})})]}],truncated:false});
+  if(hidden.state!=='ready')throw Error('Actual fieldwise Mine fixture unavailable');expect(hidden.presentation.cards[0].facts.some(row=>row.field==='available')).toBe(false);
+  for(const selected of [select(unknown,0,'terminatedOn'),{view:hidden,card:0,fact:hidden.presentation.cards[0].facts.length}]){const shown=render(await GroundedWorkspaceReply({ctx,reply:answer([selected])}));expect(screen.getByRole('status').textContent).toBe(en.assistant.workspace.conversation.unavailable);expect(shown.container.querySelector('details')).toBeNull();shown.unmount();}
   const selected=select(unknown,0,'employeeCode'),bad={version:1,mode:'answer',blocks:[{kind:'fact',read:0,card:0,fact:selected.fact},{kind:'explanation',read:0,card:0,code:'MODEL-INVENTED-WHY'}]} as unknown as AssistantAnswerPlan;
   const shown=render(await GroundedWorkspaceReply({ctx,reply:reply(bad,[selected,selected])}));expect(shown.container.textContent).not.toContain('MODEL-INVENTED-WHY');expect(shown.container.textContent).not.toContain('NULL-RECORD');expect(screen.getByRole('status').textContent).toBe(en.assistant.workspace.conversation.unavailable);
+ });
+ it('renders an actually permitted Mine fact when another field is hidden, without restoring its ledger aliases',async()=>{
+  const balance=projectMineLeaveBalance({leaveTypeId:'fictional-type',leaveType:'Annual',accrued:9876,taken:2.5,pending:1,balance:8765,available:7,
+   essView:resolveEssView({available:false})}),issued=await view('leave',{rows:[{company:'Fieldwise employer',balances:[balance]}],truncated:false});
+  if(issued.state!=='ready')throw Error('Actual fieldwise Mine fixture unavailable');
+  expect(issued.presentation.cards[0].withheld).toBe(true);expect(issued.presentation.cards[0].facts.map(row=>row.field)).toEqual(['company','taken','pending']);
+  const shown=render(await GroundedWorkspaceReply({ctx,reply:answer([select(issued,0,'taken')])})),region=screen.getByRole('region',{name:en.assistant.workspace.conversation.answerLabel});
+  expect([...region.querySelectorAll(':scope > p')].map(row=>row.textContent)).toContain(`Annual — ${en.assistant.workspace.jobs.field_taken}: 2.5`);
+  expect(screen.queryByRole('status')).toBeNull();expect(shown.container.textContent).not.toMatch(/9876|8765/);expect(region.querySelector('table')).toBeNull();
+  expect(region.querySelector('details')?.open).toBe(false);
  });
  it.each(['en','ms','zh','ta','th','vi'])('%s renders each closed clarification before generic mode and posts only bounded human reply plus server exchange identity',async locale=>{
   state.locale=locale;const copy=localeCopy(locale).assistant.workspace.conversation;

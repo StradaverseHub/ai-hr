@@ -47,7 +47,7 @@ export const ASSISTANT_ANSWER_PROTOCOL=[
  'or {"version":1,"mode":"refuse","code":"unsupported_request|human_review_required"}.',
  'Order 1 to 16 distinct fact/explanation blocks relevant to this question. The catalogue numbers original actual executed reads; use only its ordinals and available codes.',
  'A fact states only its recorded field. An explanation selects only its canonical clause for the same read/card (null means source-wide). Never infer causes, calculations, comparisons, decisions or permission reasons.',
- 'Never invent or supply prose, HR values, URLs, effects or guessed selectors. Null, blank and withheld facts are unavailable; truncation proves neither absence nor all-clear.',
+ 'Never invent or supply prose, HR values, URLs, effects or guessed selectors. Null, blank and omitted facts are unavailable; a partially withheld Leave card exposes only its remaining projected nonnull facts. Truncation proves neither absence nor all-clear.',
  'Clarify one missing selection using a slot only, without guessed choices. no_verified_facts requires no selectable evidence; unsupported_explanation means the requested meaning lacks support. Human review/confirmation remains separate.',
  'Use ordinary nonnegative integer ordinals and exact unescaped catalogue strings.',
 ].join(' ');
@@ -132,7 +132,9 @@ function currentReads(input:readonly AssistantAnswerRead[]):readonly CurrentRead
     const fact=object(value);exact(fact,['field','value','format']);if(typeof fact.field!=='string'||!factFields.has(fact.field)||typeof fact.format!=='string'||!formats.has(fact.format))return fail();
     const v=fact.value;if(v!==null&&typeof v!=='string'&&typeof v!=='boolean'&&typeof v!=='number')return fail();
     if(typeof v==='number'&&!Number.isFinite(v)||typeof v==='string'&&Buffer.byteLength(v,'utf8')>ANSWER_PLAN_LIMITS.textBytes)return fail();
-    facts.push(Object.freeze({known:v!==null&&(typeof v!=='string'||v.trim().length>0)}));
+    // Mine Leave hides individual fields as null/omission and marks a partially hidden card.
+    // Other modules have no such fieldwise disclosure contract: their withheld cards stay closed.
+    facts.push(Object.freeze({known:(card.withheld!==true||p.module==='leave')&&v!==null&&(typeof v!=='string'||v.trim().length>0)}));
    }
    cards.push(Object.freeze({withheld:card.withheld===true,facts:Object.freeze(facts)}));
   }
@@ -149,15 +151,15 @@ function currentReads(input:readonly AssistantAnswerRead[]):readonly CurrentRead
 
 /** This validates selector meaning/availability, not model prose or arbitrary causal assertions.
  * Known global codes are never evidence by themselves. The exact source owner supplies availability;
- * withheld/null facts cannot become assertions. A truncated read may still state an individual fact.
+ * hidden/null facts cannot become assertions; permitted projected Mine fields remain selectable. A truncated read may still state an individual fact.
  */
 export function adjudicateAssistantAnswerPlan(value:unknown,current:readonly AssistantAnswerRead[]):AssistantAnswerPlan{
  const plan=captureAssistantAnswerPlan(value),reads=currentReads(current),byRead=new Map(reads.map(read=>[read.read,read]));
  if(plan.mode==='answer')for(const block of plan.blocks){
   const read=byRead.get(block.read);if(!read)return fail();
-  if(block.kind==='fact'){const card=read.cards[block.card];if(!card||card.withheld||!card.facts[block.fact]?.known)return fail();}
+  if(block.kind==='fact'){const card=read.cards[block.card];if(!card||!card.facts[block.fact]?.known)return fail();}
   else if(!read.explanations.has(`${block.card}:${block.code}`))return fail();
  }
- else if(plan.mode==='insufficient'&&plan.code==='no_verified_facts'&&reads.some(read=>read.explanations.size>0||read.cards.some(card=>!card.withheld&&card.facts.some(fact=>fact.known))))return fail();
+ else if(plan.mode==='insufficient'&&plan.code==='no_verified_facts'&&reads.some(read=>read.explanations.size>0||read.cards.some(card=>card.facts.some(fact=>fact.known))))return fail();
  return plan;
 }

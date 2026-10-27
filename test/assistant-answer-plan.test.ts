@@ -4,6 +4,8 @@ import {captureAssistantAnswerPlan,parseAssistantAnswerPlan,adjudicateAssistantA
  ASSISTANT_EXPLANATION_CODES,ANSWER_PLAN_LIMITS,type AssistantAnswerRead,type AssistantAnswerPlan} from '../lib/ai/assistant-answer-plan';
 import type {JobPresentation} from '../lib/ai/module-jobs';
 import {presentGroundedToolOutcome} from '../lib/ai/grounded-tool-presentation';
+import {projectMineLeaveBalance} from '../core/assistant-leave-projection';
+import {resolveEssView} from '../core/ess-view';
 import {moduleHumanActionHandoffs} from '../lib/ai/module-human-handoffs';
 const presentation=():JobPresentation=>({module:'leave',truncated:false,cards:[{title:{kind:'record',number:1},facts:[
  {field:'available',value:7.5,format:'number'},{field:'pending',value:2,format:'number'},
@@ -66,12 +68,29 @@ describe('strict terminal model reference plan',()=>{
   const sources=current();sources[0]={...sources[0],explanations:[{card:null,code:'specialist_finding:scope_current_caller'}]};
   expect(adjudicateAssistantAnswerPlan({version:1,mode:'answer',blocks:[{kind:'explanation',read:3,card:null,code:'specialist_finding:scope_current_caller'}]},sources).mode).toBe('answer');
  });
- it('never asserts withheld, null, blank or nonfinite facts, and does not reconstruct hidden values',()=>{
+ it('never asserts wholly withheld non-Leave, null, blank or nonfinite facts, and does not reconstruct hidden values',()=>{
   for(const value of[null,'','   ']){const sources=current(),p=presentation();sources[0]={...sources[0],presentation:{...p,cards:[{...p.cards[0],facts:[{field:'available',value,format:'number'}]}]}};expect(()=>adjudicateAssistantAnswerPlan(fact(),sources)).toThrow();}
-  const hidden=current(),p=presentation();hidden[0]={...hidden[0],presentation:{...p,cards:[{...p.cards[0],withheld:true}]},explanations:[]};
+  const hidden=current(),p=presentation();hidden[0]={...hidden[0],presentation:{...p,module:'employees',cards:[{...p.cards[0],withheld:true}]},explanations:[]};
   expect(()=>adjudicateAssistantAnswerPlan(fact(),hidden)).toThrow();
   const invalid=current();invalid[0]={...invalid[0],presentation:{...p,cards:[{...p.cards[0],facts:[{field:'available',value:NaN,format:'number'}]}]}};expect(()=>adjudicateAssistantAnswerPlan(fact(),invalid)).toThrow();
   const truncated=current();truncated[0]={...truncated[0],presentation:{...presentation(),truncated:true}};expect(adjudicateAssistantAnswerPlan(fact(),truncated).mode).toBe('answer');
+ });
+ it('selects only actually permitted fieldwise Mine facts and keeps hidden fields/decomposition unavailable',()=>{
+  const raw={leaveTypeId:'fictional-type',leaveType:'Annual',accrued:9876,taken:2.5,pending:1,balance:8765,available:7,
+   essView:resolveEssView({available:false})},balance=projectMineLeaveBalance(raw);
+  expect(balance).toMatchObject({withheld:true,available:null,taken:2.5,pending:1});
+  expect(balance).not.toHaveProperty('balance');expect(balance).not.toHaveProperty('accrued');
+  const p=presentGroundedToolOutcome('my_leave_balances',{ok:true,employments:[{company:'Canonical employer',balances:[balance]}]})!;
+  expect(p.cards[0].withheld).toBe(true);expect(p.cards[0].facts.map(row=>row.field)).toEqual(['company','taken','pending']);
+  const sources:AssistantAnswerRead[]=[{read:0,presentation:p,explanations:[]}],taken=p.cards[0].facts.findIndex(row=>row.field==='taken'),selected={version:1,mode:'answer',blocks:[{kind:'fact',read:0,card:0,fact:taken}]};
+  expect(adjudicateAssistantAnswerPlan(selected,sources)).toEqual(selected);
+  expect(()=>adjudicateAssistantAnswerPlan({...selected,blocks:[{...selected.blocks[0],fact:p.cards[0].facts.length}]},sources)).toThrow();
+  expect(()=>adjudicateAssistantAnswerPlan({version:1,mode:'insufficient',code:'no_verified_facts'},sources)).toThrow();
+  const nullFact:AssistantAnswerRead[]=[{read:0,presentation:{...p,cards:[{...p.cards[0],facts:[{field:'available',value:null,format:'number'}]}]},explanations:[]}];
+  expect(()=>adjudicateAssistantAnswerPlan({...selected,blocks:[{...selected.blocks[0],fact:0}]},nullFact)).toThrow();
+  const explanationSources:AssistantAnswerRead[]=[{...sources[0],explanations:[{card:0,code:'leave_status:granted'}]}];
+  expect(()=>adjudicateAssistantAnswerPlan({version:1,mode:'answer',blocks:[{kind:'explanation',read:0,card:0,code:'leave_status:granted'}]},explanationSources)).toThrow();
+  expect(JSON.stringify(p)).not.toContain('9876');expect(JSON.stringify(p)).not.toContain('8765');
  });
  it('supports one closed clarification without any reads and no choices or guessed HR facts',()=>{
   for(const slot of['employment','leave_type','period','module'])expect(adjudicateAssistantAnswerPlan({version:1,mode:'clarify',slot},[])).toEqual({version:1,mode:'clarify',slot});
