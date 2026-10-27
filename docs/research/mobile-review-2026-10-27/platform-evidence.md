@@ -788,3 +788,25 @@ Result: mutation=1 restored=0 exact=True. Logs: /tmp/mobile-android-custody-draf
 transactions in disposable worker databases. They establish local constraint behavior, not populated
 live upgrade acceptance, app-role enrollment, Android hardware proof or release readiness. No journal,
 shared database, staging schema, publication or deployment changed.
+
+
+## Explicit v2 key recovery — 27 October 2026
+
+Checkpoint4ec937cc3 adds explicit v2 recovery contracts/routes and v1 database visibility filtering.
+The contract, integrity HTTP and Apple enrollment suites passed37 cases plus root TypeScript. The
+repository mobile-route authentication guard then failed six factory-based route exports (the three
+existing v1 recovery files and the three new v2 files). Its direct-mobileRoute rule was retained.
+Repair63a908f60 separates shared operations and makes every recovery route explicitly invoke the
+authentication wrapper. The complete mobile API route and integrity HTTP suites then passed56 cases,
+including the six repaired exports, real authenticated Apple inventory/lookup/revocation, peer denial,
+revoked bearer refusal and no-store responses. Root and native TypeScript passed after the repair.
+Local logs: /tmp/mobile-integrity-v2.log, /tmp/mobile-integrity-v2-ts.log,
+/tmp/mobile-integrity-v2-route-guard.log (failed), /tmp/mobile-integrity-v2-route-repair.log and
+/tmp/mobile-integrity-v2-route-repair-ts.log. This is focused coverage, not a full release gate.
+
+Android public receipt fixtures verify v1 rejection, v2 acceptance, closed platform/environment/proof
+combinations, bounded inventory and stripping of private nested material. Actual mixed-platform
+DB recovery and v1 Android mutation refusal remain to be exercised after schema integration. The
+current app still uses v1; no native bundle/export or Android enrollment flow was claimed. The draft
+0636 remains unjournaled/unapplied pending central timestamp/dependency review. No staging deployment
+or public publication occurred.

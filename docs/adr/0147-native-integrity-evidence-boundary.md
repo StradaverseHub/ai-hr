@@ -502,3 +502,24 @@ The draft has no journal entry pending a centrally assigned final timestamp and 
 It is not part of an applied migration chain and cannot be released in this state. Source schema,
 public receipt compatibility, Android enrollment and clock transactions still need integration;
 existing protocol-v1 Apple receipt consumers must not be silently fed unsupported Android variants.
+
+
+## Versioned key recovery compatibility
+
+V1 key receipts remain Apple-only. V2 recovery has separate mounted keys/key-receipt/revoke routes
+and a discriminated public receipt accepting Apple or Android. Android receipts require null Apple
+environment and google_key_generation_proof; cross-platform combinations are refused. Neither
+receipt exposes vendor key identifiers, public key bytes, encrypted proof or provenance metadata.
+V2 recovery grants no enrollment or attendance capability.
+
+V1 inventory filters the platform in the database before the bounded20-row ordering/limit. Exact
+receipt lookup applies the same filter. V1 revocation refuses an unsupported platform while holding
+the key lock and before mutation, so an output-contract failure cannot follow a successful unsupported
+revocation. V2 uses the same own-actor/current-employment and immutable-history owner without that
+legacy platform filter. Every mounted recovery route explicitly invokes mobileRoute; shared
+operations handle business logic and closed outcomes underneath the authenticated boundary.
+
+Current mobile UI/enrollment journal still uses v1. V2 Android database reads/revocation need mixed
+platform transaction tests after the custody migration is integrated; current mounted HTTP tests
+exercise real Apple rows. The new Android receipt decoder is tested using synthetic public fixtures,
+not an enrolled Android key. This is protocol preparation, not completed Android enrollment rollout.
