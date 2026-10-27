@@ -71,7 +71,9 @@ jobs:
           CONTROL: ${{ github.workflow_sha }}
         run: test "$DIAGNOSTICS_ONLY" = true && test "$EVENT" = workflow_dispatch && test "$EXPECTED" = "$CONTROL"
       - name: CI integrity regression checks
-        run: node --test .github/ci/diagnostics/customer-runtime-maintenance/source-root-time.test.mjs
+        run: |
+          node --test .github/ci/diagnostics/customer-runtime-maintenance/maintenance.test.mjs .github/ci/diagnostics/customer-runtime-maintenance/source-root-time.test.mjs
+          PYTHONDONTWRITEBYTECODE=1 python3 -B .github/ci/diagnostics/customer-runtime-maintenance/test_resume_stopped.py
       - name: Build byte transport regression checks
         if: ${{ !inputs.controller_only }}
         run: |
