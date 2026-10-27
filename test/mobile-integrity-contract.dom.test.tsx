@@ -1,7 +1,7 @@
 import {describe,expect,it} from 'vitest';
 import {IntegrityCapabilities,IntegrityClockResult,IntegrityEnrollmentIntent,IntegrityEnrollmentProof,IntegrityKeyLookupResult,IntegrityKeyLookupIntent,IntegrityKeyReceipt,IntegrityKeysResult} from '../lib/mobile-integrity-contract';
 import {IntegrityKeyReceiptV2,IntegrityKeysResultV2,IntegrityKeyLookupResultV2,IntegrityRevocationResultV2} from '../lib/mobile-integrity-contract';
-import {IntegrityAndroidEnrollmentPrepared,IntegrityAndroidEnrollmentProof} from '../lib/mobile-integrity-contract';
+import {IntegrityAndroidEnrollmentPrepared,IntegrityAndroidEnrollmentProof,IntegrityClockCapabilities} from '../lib/mobile-integrity-contract';
 import {androidEnrollmentFixture} from './helpers/mobile-android-enrollment-fixture';
 const id='11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 describe('integrity v1 compatibility and closed security outcomes',()=>{
@@ -56,4 +56,19 @@ describe('integrity v1 compatibility and closed security outcomes',()=>{
     expect(IntegrityEnrollmentIntent.safeParse({requestId:id,appInstallationId:id,tenantId:id}).success).toBe(false);
     for(const outcome of ['refused','unavailable'])expect(IntegrityClockResult.safeParse({outcome,code:'unrecognized'}).success).toBe(false);
   });
+});
+
+
+describe('online-only signed-clock capability discovery',()=>{
+ it('retains required understood features while tolerating bounded future feature names',()=>{
+  const ios={outcome:'capabilities',protocol:2,platform:'ios',commandProtocol:1,features:['online_clock_assertion','future_feature'],offline:false,cloudProjectNumber:null};
+  const android={...ios,platform:'android',commandProtocol:2,features:['online_clock_signature','current_play_integrity','future_feature'],cloudProjectNumber:'123456789'};
+  expect(IntegrityClockCapabilities.parse({...ios,privateExtra:'stripped'})).toEqual(ios);expect(IntegrityClockCapabilities.parse(android)).toEqual(android);
+  expect(IntegrityClockCapabilities.safeParse({...android,features:['online_clock_signature']}).success).toBe(false);
+  expect(IntegrityClockCapabilities.safeParse({...ios,features:['future_feature']}).success).toBe(false);
+ });
+ it('refuses offline claims, platform protocol confusion and malformed public SDK configuration',()=>{
+  const android={outcome:'capabilities',protocol:2,platform:'android',commandProtocol:2,features:['online_clock_signature','current_play_integrity'],offline:false,cloudProjectNumber:'123456789'};
+  for(const change of [{offline:true},{commandProtocol:1},{cloudProjectNumber:null},{cloudProjectNumber:'abc'},{cloudProjectNumber:'123\n'},{platform:'ios'},{features:Array(17).fill('online_clock_signature')}])expect(IntegrityClockCapabilities.safeParse({...android,...change}).success).toBe(false);
+ });
 });

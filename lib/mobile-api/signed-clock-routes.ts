@@ -1,4 +1,4 @@
-/** Unmounted signed-clock HTTP boundary. Enrollment permission alone never activates this protocol. */
+/** Signed-clock HTTP boundary. Enrollment permission alone never activates this protocol. */
 import {z} from 'zod';
 import type {SessionContext} from '../../db/client';
 import {ModuleNotEnabledError} from '../../core/entitlements';
@@ -54,9 +54,10 @@ async function form<S extends z.ZodType>(req:Request,schema:S,playToken=false){
  return {command:parsed.data,...(token?.success?{playIntegrityToken:token.data}:{}),...(file instanceof File?{photo:Buffer.from(await file.arrayBuffer()),mime:file.type as 'image/jpeg'|'image/png'}:{})};
 }
 function bytes(encoded:string,maximum:number){const value=Buffer.from(encoded,'base64');if(value.length<1||value.length>maximum||value.toString('base64')!==encoded)throw new MobileBadRequest('Invalid proof encoding');return value;}
+type AndroidPlayAssembly={accessToken:PlayAccessTokenProvider|null;transport?:typeof fetch;timeoutMs?:number;assertCurrent?:()=>void};
 export type SignedClockOptions={configurationTimeoutMs?:number;beforeClockCommit?:ClockCommitGuard;
  /** Server-owned Google credentials and transport; never selected by request fields. */
- androidPlay?:{accessToken:PlayAccessTokenProvider|null;transport?:typeof fetch;timeoutMs?:number}};
+ androidPlay?:AndroidPlayAssembly|(()=>AndroidPlayAssembly)};
 /** The trusted guard revalidates rollout/policy using the supplied transaction, after attendance work.
  * Absence refuses both preparation and completion. Never call a pooled configuration reader from
  * inside this guard; the route assembly must provide the transaction-aware policy owner. */
@@ -72,8 +73,9 @@ export function createSignedClockOperations(platform:'ios'|'android',configurati
   if(req.signal.aborted)throw new IntegrityConfigurationUnavailable('configuration_unavailable');
  };}
  function android(ctx:SessionContext,id:string,config:z.infer<typeof AndroidClockConfiguration>,req:Request){
-  return createAndroidVerifiedClockService(config.settings,config.policy,options.androidPlay?.accessToken??null,{
-   transport:options.androidPlay?.transport,timeoutMs:options.androidPlay?.timeoutMs,beforeCommit:commit(ctx,id,config,req),
+  const play=typeof options.androidPlay==='function'?options.androidPlay():options.androidPlay,guard=commit(ctx,id,config,req);
+  return createAndroidVerifiedClockService(config.settings,config.policy,play?.accessToken??null,{
+   transport:play?.transport,timeoutMs:play?.timeoutMs,beforeCommit:async tx=>{await guard(tx);play?.assertCurrent?.();},
   });
  }
  function route(fn:(ctx:SessionContext,req:Request)=>Promise<unknown>){return async(ctx:SessionContext,req:Request)=>{try{return await fn(ctx,req);}catch(error){const known=expected(error);if(known)return known;throw error;}};}

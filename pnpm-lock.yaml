@@ -64,6 +64,9 @@ importers:
       fontkit:
         specifier: ^1.9.0
         version: 1.9.0(patch_hash=b208b0e233a985efb2decb13e5043f8c26955724f0df805849ef7b305773642a)
+      google-auth-library:
+        specifier: 10.7.0
+        version: 10.7.0
       jose:
         specifier: ^6.2.12
         version: 6.2.12

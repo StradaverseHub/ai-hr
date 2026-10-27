@@ -3,7 +3,7 @@ import {z} from 'zod';
 import {KeyEnrollmentContext} from './mobile-key-enrollment';
 import {AndroidEnrollmentPreparation,AndroidEnrollmentKeyArtifact} from './mobile-android-enrollment';
 import {OnlineClockIntegrityData} from './mobile-clock-integrity';
-import {AndroidClockOpaqueToken,AndroidClockRefusalReason,AndroidClockUnavailableReason} from './mobile-android-clock-policy';
+import {AndroidClockOpaqueToken,AndroidClockRefusalReason,AndroidClockUnavailableReason,AndroidPlayCloudProject} from './mobile-android-clock-policy';
 import {ClockReceipt} from './mobile-api/contract';
 const uuid=z.string().uuid().transform(value=>value.toLowerCase());
 const base64=z.string().min(4).refine(value=>value.trim()===value).regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
@@ -56,3 +56,11 @@ export const IntegrityClockPrepared=result(z.object({outcome:z.literal('prepared
 export const IntegrityClockResult=result(z.object({outcome:z.literal('accepted'),receipt:ClockReceipt}));
 
 export const IntegrityAndroidClockPrepared=result(z.object({outcome:z.literal('prepared'),protocol:z.literal(2),context:OnlineClockIntegrityData.refine(value=>value.evidence.platform==='android'),state}));
+
+/** Discovery is online-only deployment capability, never a device verdict or attendance receipt. */
+export const IntegrityClockCapabilities=result(z.discriminatedUnion('platform',[
+ z.object({outcome:z.literal('capabilities'),protocol:z.literal(2),platform:z.literal('ios'),commandProtocol:z.literal(1),
+  features:z.array(z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)).max(16).refine(values=>values.includes('online_clock_assertion')),offline:z.literal(false),cloudProjectNumber:z.null()}),
+ z.object({outcome:z.literal('capabilities'),protocol:z.literal(2),platform:z.literal('android'),commandProtocol:z.literal(2),
+  features:z.array(z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)).max(16).refine(values=>values.includes('online_clock_signature')&&values.includes('current_play_integrity')),offline:z.literal(false),cloudProjectNumber:AndroidPlayCloudProject}),
+]));

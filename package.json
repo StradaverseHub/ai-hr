@@ -75,6 +75,7 @@
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",
     "fontkit": "^1.9.0",
+    "google-auth-library": "10.7.0",
     "jose": "^6.2.12",
     "jszip": "^3.10.2",
     "leaflet": "1.9.4",

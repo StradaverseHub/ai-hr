@@ -22,3 +22,6 @@ export const AndroidClockRefusalReason=z.enum(['invalid_proof','challenge_unavai
  'device_integrity','reported_mock','reported_simulation','reported_accessory']);
 export const AndroidClockUnavailableReason=z.enum(['configuration_unavailable','provider_unavailable','licensing_unavailable',
  'location_signal_unavailable','unknown_vendor_verdict','time_unavailable']);
+
+/** Public SDK project configuration; never a credential or verdict. */
+export const AndroidPlayCloudProject=z.string().regex(/^[1-9][0-9]{0,18}$/).refine(value=>value.trim()===value&&/^[1-9][0-9]{0,18}$/.test(value)&&BigInt(value)<=BigInt('9223372036854775807'));
