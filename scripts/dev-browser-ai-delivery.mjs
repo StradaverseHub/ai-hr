@@ -67,7 +67,7 @@ if(!worker.length){
   const [physical]=await admin`select current_user as name,host(inet_server_addr()) as address,inet_server_port() as port,rolsuper,rolcreatedb from pg_roles where rolname=current_user`;
   if(physical?.name!==decodeURIComponent(ownerUrl.username)||physical.port!==5433||!['127.0.0.1','::1'].includes(physical.address)||!physical.rolsuper&&!physical.rolcreatedb)throw Error('Local database-creation principal proof failed.');
   if((await admin`select datname from pg_database where datname=${target.database}`).length)throw Error('Named database already exists; preserve it and refuse.');
-  frozen();await admin.unsafe('CREATE DATABASE aihr_ai_delivery_browser_v2_20261027');await admin.end();admin=undefined;
+  frozen();await admin.unsafe('CREATE DATABASE aihr_ai_delivery_browser_v3_20261027');await admin.end();admin=undefined;
   const migrationConfig=path.join(attempt,'drizzle-ai-delivery.config.ts');
   fs.writeFileSync(migrationConfig,`import {defineConfig} from 'drizzle-kit';\nconst url=process.env.MIGRATION_DATABASE_URL;if(!url||new URL(url).pathname!=='/${target.database}')throw Error('Exact local browser target required');\nexport default defineConfig({schema:${JSON.stringify(path.join(root,'db/schema.ts'))},out:${JSON.stringify(path.join(root,'db/migrations'))},dialect:'postgresql',dbCredentials:{url},strict:true});\n`,{flag:'wx',mode:0o600});
   await run('pnpm',['--dir',root,'exec','drizzle-kit','migrate','--config',migrationConfig],'migrate',300000);
@@ -83,7 +83,7 @@ if(!worker.length){
   await run(process.execPath,['--import',tsxLoader,path.join(root,'scripts/ai-delivery-browser-fixture.ts')],'fixture',180000);
   const fixtureFile=path.join(out,'fixture.json'),stat=fs.lstatSync(fixtureFile);if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1||(stat.mode&0o077)||stat.size>1048576)throw Error('Private fixture identity is unavailable.');
   const fixture=JSON.parse(fs.readFileSync(fixtureFile,'utf8'));
-  if(fixture.state!=='prepared_not_experienced'||fixture.candidate!==candidate||fixture.target.database!==target.database||!fixture.actors?.hr?.userId||!fixture.tenantId)throw Error('Fixture/source target differs.');
+  if(fixture.state!=='native_prerequisites_prepared_not_experienced'||fixture.candidate!==candidate||fixture.target.database!==target.database||!fixture.actors?.operator?.userId||!fixture.tenantId)throw Error('Fixture/source target differs.');
   env.DEV_TENANT_ID=fixture.tenantId;env.DEV_USER_ID=''; // Header cookie must be selected; commands cannot assume an HR fallback.
   await portFree();frozen();serverFd=fs.openSync(path.join(attempt,'next-dev.log'),'wx',0o600);
   const appEnv={...env};for(const key of ['MIGRATION_DATABASE_URL','TEST_MIGRATION_DATABASE_URL','TEST_DATABASE_URL','AI_DELIVERY_BROWSER_FIXTURE_SECRET'])delete appEnv[key];

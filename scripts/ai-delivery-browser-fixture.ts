@@ -5,9 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {execFileSync} from 'node:child_process';
-import {and,asc,eq} from 'drizzle-orm';
-import type {SessionContext} from '../db/client';
-export const AI_DELIVERY_BROWSER_TARGET=Object.freeze({database:'aihr_ai_delivery_browser_v2_20261027',namespace:'ai_delivery_browser_v2_20261027',port:3177,leaseName:'ai-delivery-browser-v2-20261027',scratchpad:'scratchpad/ai-delivery-browser-v2-20261027'});
+export const AI_DELIVERY_BROWSER_TARGET=Object.freeze({database:'aihr_ai_delivery_browser_v3_20261027',namespace:'ai_delivery_browser_v3_20261027',port:3177,leaseName:'ai-delivery-browser-v3-20261027',scratchpad:'scratchpad/ai-delivery-browser-v3-20261027'});
 const root=fileURLToPath(new URL('..',import.meta.url));
 const refusal=()=>new Error('AI delivery browser fixture refused; preserve existing resources and inspect private preparation evidence.');
 /** Metadata alone is insufficient: require one actual live ancestor atomic coordinator, the complete
@@ -45,7 +43,7 @@ export async function prepareAiDeliveryBrowserFixture(){
  const output=path.join(root,t.scratchpad);fs.mkdirSync(output,{recursive:true,mode:0o700});if(fs.realpathSync(output)!==output||fs.lstatSync(output).isSymbolicLink())throw refusal();
  const manifestPath=path.join(output,'fixture.json'),fd=fs.openSync(manifestPath,'wx',0o600);
  fs.writeFileSync(fd,JSON.stringify({state:'preparation_started',candidate,database:t.database,warning:'Partial failure may leave canonical fixture facts. Do not reset or automatically retry.'}));
- const {createDb,client,withTenant}=await import('../db/client'),s=await import('../db/schema'),{SYSTEM_TENANT_ID}=await import('../db/seed-guard');
+ const {createDb,client}=await import('../db/client'),s=await import('../db/schema'),{SYSTEM_TENANT_ID}=await import('../db/seed-guard');
  const owner=createDb(urls[1].toString(),{max:1});
  try{
   const [app]=await client`select current_user as name,current_database() as database,host(inet_server_addr()) as address,inet_server_port() as port,rolsuper,rolbypassrls from pg_roles where rolname=current_user`;
@@ -55,40 +53,15 @@ export async function prepareAiDeliveryBrowserFixture(){
   const tenants=await owner.db.select({id:s.tenant.id}).from(s.tenant);if(tenants.some(row=>row.id!==SYSTEM_TENANT_ID))throw refusal();
   const [controls]=await owner.client`select to_regprocedure('app.ai_action_unpaused(text,boolean)') is not null as ready,to_regprocedure('app.assistant_own_leave_review_complete(uuid,text,uuid,uuid)') is not null as custody`;
   if(!controls?.ready||!controls.custody)throw refusal();
-  const {provisionTenant}=await import('../db/provision'),{resolveEntitlementsTx}=await import('../core/entitlements'),{createDepartment,updateLeaveType,setLeaveTypeRules}=await import('../core/admin'),{createEntitlementTemplate,setLeaveTypeDefaultTemplate}=await import('../core/entitlement-template'),{hireEmployee}=await import('../core/org'),{grantAssistant,revokeAssistant}=await import('../core/assistant-grant'),{readOwnLeaveCandidateTx}=await import('../core/assistant-actions/own-leave-candidate'),{withAssistantRead}=await import('../core/assistant-read-session'),{todayInKualaLumpur}=await import('../lib/hr-date');
-  const made=await owner.db.transaction(tx=>provisionTenant(tx,{name:'Fictional AI Delivery Browser Only',adminEmail:'ai-browser-admin@example.test',country:'MY',modules:['assistant','country-my'],baseUrl:`http://127.0.0.1:${t.port}`}));
-  // Identity/role fixtures only: same dev_user/principal path as existing local browser runners.
-  await owner.db.insert(s.roleAssignment).values({tenantId:made.tenantId,appUserId:made.appUserId,companyId:null,role:'hr_admin'}).onConflictDoNothing();
-  async function context(userId:string,personId:string|null):Promise<SessionContext>{const grants=await owner.db.select({role:s.roleAssignment.role,companyId:s.roleAssignment.companyId}).from(s.roleAssignment).where(and(eq(s.roleAssignment.tenantId,made.tenantId),eq(s.roleAssignment.appUserId,userId))).orderBy(asc(s.roleAssignment.id));return{tenantId:made.tenantId,userId,personId,grants,roles:[...new Set(grants.map(g=>g.role))],entitlements:await owner.db.transaction(tx=>resolveEntitlementsTx(tx,made.tenantId))};}
-  const hr=await context(made.appUserId,made.personId);await grantAssistant(hr,{appUserId:made.appUserId});
-  const department=await createDepartment(hr,{companyId:made.companyId,name:'Fictional AI Browser Department'}),today=todayInKualaLumpur(),yearStart=today.slice(0,4)+'-01-01';
-  const [annual]=await owner.db.select().from(s.leaveType).where(and(eq(s.leaveType.tenantId,made.tenantId),eq(s.leaveType.code,'ANNUAL'))).limit(1);if(!annual)throw refusal();
-  await updateLeaveType(hr,{id:annual.id,name:annual.name,employeeRemarkRequired:true});
-  const template=await createEntitlementTemplate(hr,{leaveTypeId:annual.id,name:'Fictional AI Browser Annual 20',validFrom:yearStart,serviceBands:[{fromYears:0,toYears:null,days:20,carryForwardDays:0,maxBalanceDays:20}]});
-  // Creating a table alone neither selects its lineage nor configures an earning method.
-  // These are explicit fictional HR policy choices through the actual canonical owners, before hire.
-  const selectedTemplate=await setLeaveTypeDefaultTemplate(hr,{leaveTypeId:annual.id,templateLineageId:template.lineageId});
-  if(selectedTemplate.leaveTypeId!==annual.id||selectedTemplate.defaultTemplateLineageId!==template.lineageId)throw refusal();
-  await setLeaveTypeRules(hr,{id:annual.id,accrualMethod:'lump_sum'});
-  const [configured]=await owner.db.select({lineage:s.leaveType.defaultEntitlementTemplateLineageId,method:s.leaveType.accrualMethod}).from(s.leaveType).where(and(eq(s.leaveType.tenantId,made.tenantId),eq(s.leaveType.id,annual.id)));
-  if(configured?.lineage!==template.lineageId||configured.method!=='lump_sum')throw refusal();
-  const actors:Record<string,{userId:string;personId:string|null;employmentId:string|null}>={hr:{userId:made.appUserId,personId:made.personId,employmentId:null}};
-  for(const [key,code]of [['own','AI-BROWSER-OWN'],['peer','AI-BROWSER-PEER'],['revoked','AI-BROWSER-REVOKED']] as const){
-   const hired=await hireEmployee(hr,{person:{fullName:`Fictional AI Browser ${key}`,primaryEmail:`ai-browser-${key}@example.test`},companyId:made.companyId,departmentId:department.id,employeeCode:code,employmentType:'full_time',hiredOn:yearStart,grantLeaveTypes:[{id:annual.id,code:annual.code,yearCycleOverride:annual.yearCycleOverride}]});
-   const [user]=await owner.db.insert(s.appUser).values({tenantId:made.tenantId,personId:hired.personId,workosUserId:'ai-delivery-browser:'+key,onboardedAt:new Date()}).returning({id:s.appUser.id});await owner.db.insert(s.roleAssignment).values({tenantId:made.tenantId,appUserId:user.id,companyId:null,role:'employee'});await grantAssistant(hr,{appUserId:user.id});if(key==='revoked')await revokeAssistant(hr,{appUserId:user.id});actors[key]={userId:user.id,personId:hired.personId,employmentId:hired.employmentId};
-  }
-  const [standalone]=await owner.db.insert(s.appUser).values({tenantId:made.tenantId,personId:null,workosUserId:'ai-delivery-browser:standalone',onboardedAt:new Date()}).returning({id:s.appUser.id});await owner.db.insert(s.roleAssignment).values({tenantId:made.tenantId,appUserId:standalone.id,companyId:null,role:'hr_admin'});await grantAssistant(hr,{appUserId:standalone.id});actors.standalone={userId:standalone.id,personId:null,employmentId:null};
-  const own=actors.own,ownCtx=await context(own.userId,own.personId),selection={employmentId:own.employmentId!,leaveTypeId:annual.id},humanText={reason:'Fictional personal appointment entered by the human',employeeRemark:'Fictional browser review only'};
-  // Ask the actual candidate owner; a guessed weekday is not canonical eligibility proof.
-  let checked:Awaited<ReturnType<typeof readOwnLeaveCandidateTx>>|undefined,requestedDate='';const date=new Date(today+'T00:00:00Z');
-  for(let n=0;n<31;n++){date.setUTCDate(date.getUTCDate()+1);requestedDate=date.toISOString().slice(0,10);const nomination={action:'leave.apply',contractVersion:1,employmentId:own.employmentId!,leaveTypeId:annual.id,date:requestedDate,durationType:'full_day'};checked=await withTenant(ownCtx,tx=>readOwnLeaveCandidateTx(tx,ownCtx,nomination,selection,humanText,'en'));if(checked.kind==='candidate'&&checked.candidate.deductionDays===1&&typeof checked.candidate.availableBalance==='number'&&Number.isFinite(checked.candidate.availableBalance)&&checked.candidate.availableBalance>=1)break;}
-  if(checked?.kind!=='candidate'||checked.candidate.deductionDays!==1||typeof checked.candidate.availableBalance!=='number'||!Number.isFinite(checked.candidate.availableBalance)||checked.candidate.availableBalance<1)throw refusal();
-  const workspace:Record<string,unknown>={};for(const module of ['employees','leave','ess'] as const)workspace[module]=await withAssistantRead(ownCtx,module,read=>read.moduleWork(module));
-  const [counts]=await owner.client`select (select count(*)::int from leave_request where tenant_id=${made.tenantId}::uuid) as leave_requests,(select count(*)::int from domain_event where tenant_id=${made.tenantId}::uuid and event_type='leave-request.submitted') as submitted_events`;
-  if(counts.leave_requests!==0||counts.submitted_events!==0)throw refusal();
+  const {populateAiDeliveryFullFixture}=await import('./fixtures/ai-delivery-full-fixture');
+  const full=await populateAiDeliveryFullFixture(owner);
   assertAiDeliveryBrowserAdmission();if(git(['rev-parse','HEAD'])!==candidate||git(['status','--porcelain','--untracked-files=all']))throw refusal();
-  const manifest={state:'prepared_not_experienced',candidate,target:t,tenantId:made.tenantId,companyId:made.companyId,actors,annualTypeId:annual.id,today,requestedDate,humanText,expectedNative:{before:counts,deductionDays:checked.candidate.deductionDays,availableBalance:checked.candidate.availableBalance},workspace,provider:'No configuration/key/network activation; capability and delivery unverified',auth:'Existing local dev_user selector only; not production authentication proof'};
-  fs.ftruncateSync(fd,0);fs.writeSync(fd,JSON.stringify(manifest,null,2)+'\n',0,'utf8');fs.fsyncSync(fd);console.log('Private fictional fixture prepared; no browser or release PASS claimed.');return manifestPath;
+  const manifest={...full,candidate,target:t,provider:'No configuration/key/network activation; capability and delivery unverified',auth:'Existing local dev_user selector only; notification verified identity still unavailable; not production authentication proof'};
+  fs.ftruncateSync(fd,0);fs.writeSync(fd,JSON.stringify(manifest,null,2)+'\n',0,'utf8');fs.fsyncSync(fd);console.log('Private full-module native fixture prepared; no browser or release PASS claimed.');return manifestPath;
+ }catch(error){
+  // Private admitted fixture diagnostics only. Never send native SQL/error details to the product UI.
+  const capture=(value:unknown,depth=0):unknown=>depth>8?{truncated:true}:value instanceof Error?{name:value.name,message:value.message,stack:value.stack,cause:value.cause===undefined?undefined:capture(value.cause,depth+1)}:{kind:typeof value};
+  fs.writeFileSync(path.join(output,'fixture.failure.json'),JSON.stringify({candidate,state:'failed_no_acceptance',error:capture(error)},null,2)+'\n',{flag:'wx',mode:0o600});throw error;
  }finally{fs.closeSync(fd);await owner.client.end();await client.end();}
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))prepareAiDeliveryBrowserFixture().catch(()=>{console.error('AI delivery browser fixture refused or failed; preserve private receipt and target.');process.exitCode=1;});

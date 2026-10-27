@@ -66,7 +66,7 @@ export async function populateAiDeliveryPlatform(input:AiDeliveryFixtureContext)
 
  async function readyCase(actor:typeof operator){
   const actual=personFor(actor),created=await createOnboardingCase(bootstrapCtx,{companyId,fullName:actual.name,employeeNo:actual.employeeCode!,joinDate:today,newhireEmail:actual.email!,personId:actor.personId,employmentId:actor.employmentId,laptopRequired:true,carparkRequired:false});
-  for(const step of ONBOARDING_STEPS.filter(step=>step.phase===0))await tickStep(bootstrapCtx,'onboarding',created.number,step.key);
+  for(const step of ONBOARDING_STEPS.filter(step=>step.phase===0&&step.rule!=='carpark'))await tickStep(bootstrapCtx,'onboarding',created.number,step.key);
   await tickStep(bootstrapCtx,'onboarding',created.number,'laptop_dist');
   const own=await getMyOnboarding(actor.ctx);requireFact(own?.number===created.number&&own.acknowledgement.available&&own.acknowledgement.submittedAt===null,'actual linked own DAA must be available and unsubmitted');
   return {caseId:created.id,number:created.number,employmentId:actor.employmentId,personId:actor.personId,status:own.status,acknowledgementSubmitted:false as const};
@@ -82,7 +82,7 @@ export async function populateAiDeliveryPlatform(input:AiDeliveryFixtureContext)
  await assignRole(bootstrapCtx,{appUserId:prehireLogin.id,role:'employee'});await grantAssistant(bootstrapCtx,{appUserId:prehireLogin.id});
  const prehireCtx:SessionContext={tenantId,userId:prehireLogin.id,personId:prehirePerson.id,roles:['employee'],grants:[{role:'employee',companyId:null}],entitlements:await withTenant(bootstrapCtx,tx=>resolveEntitlementsTx(tx,tenantId))};
  const prehireCase=await createOnboardingCase(bootstrapCtx,{companyId,fullName:'Fictional AI browser prehire recipient',employeeNo:'PRE-'+randomUUID().slice(0,8),joinDate:today,newhireEmail:prehireEmail,laptopRequired:true,carparkRequired:false});
- for(const step of ONBOARDING_STEPS.filter(step=>step.phase===0))await tickStep(bootstrapCtx,'onboarding',prehireCase.number,step.key);
+ for(const step of ONBOARDING_STEPS.filter(step=>step.phase===0&&step.rule!=='carpark'))await tickStep(bootstrapCtx,'onboarding',prehireCase.number,step.key);
  await tickStep(bootstrapCtx,'onboarding',prehireCase.number,'laptop_dist');
  const prehireView=await getMyOnboarding(prehireCtx);requireFact(prehireView?.number===prehireCase.number&&prehireView.acknowledgement.available&&!prehireView.acknowledgement.submittedAt,'actual unlinked prehire DAA must be available');
  const prehireEmployment=await owner.db.select({id:s.employment.id}).from(s.employment).where(and(eq(s.employment.tenantId,tenantId),eq(s.employment.personId,prehirePerson.id)));requireFact(prehireEmployment.length===0,'never fabricate an employment for prehire acknowledgement');
