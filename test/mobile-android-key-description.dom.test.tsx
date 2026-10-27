@@ -28,17 +28,21 @@ function synthetic(options:{version?:number;software?:any[];hardware?:any[];keyM
 describe('bounded unverified Android KeyDescription',()=>{
   it('pins the upstream fixture revision, license and downloaded bytes',()=>{
     expect(provenance.revision).toBe('34652d3df68b8d6887a6670b00eb0856090dae6d');
-    for(const record of provenance.files)expect(createHash('sha256').update(readFileSync(base+record.file)).digest('hex')).toBe(record.sha256);
+    for(const record of provenance.files){
+      const raw=readFileSync(base+record.file);expect(createHash('sha256').update(raw).digest('hex')).toBe(record.sha256);
+      expect(createHash('sha1').update(Buffer.concat([Buffer.from('blob '+raw.length+'\0'),raw])).digest('hex')).toBe(record.gitBlobSha);
+    }
   });
   it.each(['tee-v3','tee-rkp','strongbox-2026'])('decodes captured %s fields against independently published expectations',file=>{
     const expected=JSON.parse(readFileSync(base+file+'.json','utf8')),actual=decodeAndroidKeyDescription(extension(file+'.pem'));
-    const level=(value:string)=>({TRUSTED_ENVIRONMENT:'tee',STRONG_BOX:'strongbox',SOFTWARE:'software'})[value as 'SOFTWARE'];
+    const levels:Record<string,string>={TRUSTED_ENVIRONMENT:'tee',STRONG_BOX:'strongbox',SOFTWARE:'software'};
+    const level=(value:string)=>levels[value];
     expect(actual).toMatchObject({verification:'not_verified',attestationVersion:Number(expected.attestationVersion),keyMintVersion:Number(expected.keyMintVersion),
       attestationSecurityLevel:level(expected.attestationSecurityLevel),keyMintSecurityLevel:level(expected.keyMintSecurityLevel),uniqueIdPresent:false});
     expect(actual.challenge.toString('base64')).toBe(expected.attestationChallenge);
     expect(actual.softwareEnforced.applicationId).toEqual({packages:expected.softwareEnforced.attestationApplicationId.packages,certificateDigests:expected.softwareEnforced.attestationApplicationId.signatures});
     expect(actual.hardwareEnforced).toMatchObject({algorithm:Number(expected.hardwareEnforced.algorithms),keySize:Number(expected.hardwareEnforced.keySize),
-      purposes:expected.hardwareEnforced.purposes.map(Number),digests:expected.hardwareEnforced.digests.map(Number),curve:Number(expected.hardwareEnforced.ecCurve),
+      purposes:expected.hardwareEnforced.purposes.map(Number),digests:expected.hardwareEnforced.digests?.map(Number),curve:Number(expected.hardwareEnforced.ecCurve),
       rootOfTrust:{deviceLocked:expected.hardwareEnforced.rootOfTrust.deviceLocked,state:expected.hardwareEnforced.rootOfTrust.verifiedBootState.toLowerCase(),
         bootKeyBytes:Buffer.from(expected.hardwareEnforced.rootOfTrust.verifiedBootKey,'base64').length,bootHashBytes:Buffer.from(expected.hardwareEnforced.rootOfTrust.verifiedBootHash,'base64').length}});
     const visible=JSON.stringify(actual);if(expected.hardwareEnforced.rootOfTrust.verifiedBootKey)expect(visible).not.toContain(expected.hardwareEnforced.rootOfTrust.verifiedBootKey);
@@ -72,6 +76,26 @@ describe('bounded unverified Android KeyDescription',()=>{
     for(const hardware of [[tag(999,deep)],[tag(2,new Integer({valueHex:Uint8Array.from([0,3]).buffer}))],
       [tag(704,new Sequence({value:[bytes(Buffer.alloc(32)),new AsnBoolean({valueHex:Uint8Array.from([1]).buffer}),enumeration(0),bytes(Buffer.alloc(32))]}))],
       [tag(1,set([3,2]))],[tag(1,set([2,2]))]])expect(()=>decodeAndroidKeyDescription(synthetic({hardware}))).toThrow(AndroidKeyDescriptionError);
+  });
+  it.each([[1,2],[2,3],[3,4],[4,41],[100,100],[200,200],[300,300],[400,400],[500,500]])('preserves supported version pair %s / %s without inventing absent app evidence',(version,keyMint)=>{
+    const actual=decodeAndroidKeyDescription(synthetic({version,keyMint,hardware:[]}));
+    expect(actual.attestationVersion).toBe(version);expect(actual.hardwareEnforced.applicationId).toBeUndefined();expect(actual.hardwareEnforced.rootOfTrust).toBeUndefined();
+    expect(actual.hardwareEnforced.digests).toBeUndefined();expect(actual.verification).toBe('not_verified');
+  });
+  it('preserves 64-bit app versions and rejects malformed app identity containers',()=>{
+    const app=(packages:any[],digests:any[]= [bytes(Buffer.alloc(32,1))])=>tag(709,bytes(Buffer.from(new Sequence({value:[new AsnSet({value:packages}),new AsnSet({value:digests})]}).toBER())));
+    const pkg=(name:Buffer,version:any=int(1))=>new Sequence({value:[bytes(name),version]});
+    const maximum=new Integer({valueHex:Uint8Array.from([0,255,255,255,255,255,255,255,255]).buffer});
+    const value=decodeAndroidKeyDescription(synthetic({software:[app([pkg(Buffer.from('ai.hr'),maximum)])]}));
+    expect(value.softwareEnforced.applicationId?.packages).toEqual([{name:'ai.hr',version:'18446744073709551615'}]);
+    for(const field of [app([]),app([pkg(Buffer.from('ai.hr'))],[]),app([pkg(Buffer.from('ai.hr'))],[bytes(Buffer.alloc(31))]),
+      app([pkg(Buffer.from('ai.hr')),pkg(Buffer.from('ai.hr'),int(2))]),app([pkg(Buffer.from([255]))]),app([pkg(Buffer.from('ai.hr\n'))])])
+      expect(()=>decodeAndroidKeyDescription(synthetic({software:[field]}))).toThrow(AndroidKeyDescriptionError);
+  });
+  it('caps node count and preserves uninterpreted tags without exposing their values',()=>{
+    expect(()=>decodeAndroidKeyDescription(synthetic({hardware:Array.from({length:300},(_,i)=>tag(1000+i,int(1)))}))).toThrow(AndroidKeyDescriptionError);
+    const actual=decodeAndroidKeyDescription(synthetic({hardware:[tag(999,bytes(Buffer.from('uninterpreted private value')))]}));
+    expect(actual.hardwareEnforced.uninterpretedTags).toEqual([999]);expect(JSON.stringify(actual)).not.toContain('uninterpreted private value');
   });
   it('reports identifier field presence without returning identity values',()=>{
     const result=decodeAndroidKeyDescription(synthetic({hardware:[tag(600,new Null()),tag(713,bytes(Buffer.from('synthetic private serial')))]}));
