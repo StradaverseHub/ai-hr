@@ -60,6 +60,7 @@ export async function erasePersonPii(ctx:SessionContext,p:ErasePersonPiiInput):P
  * admission, protected facts, PII effects and exact audit; no alternate policy or model executor. */
 export async function erasePersonPiiTx(tx:Tx,ctx:SessionContext,p:ErasePersonPiiInput):Promise<ErasureReport>{
  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+    await boundNativeOutcomeTransactionTx(tx);
     await tx.execute(sql`select app.access_workforce_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // The canonical Access/privacy owner admits the original exact nullable effects first. Home's
@@ -85,7 +86,6 @@ export async function erasePersonPiiTx(tx:Tx,ctx:SessionContext,p:ErasePersonPii
     // Source-owned original effect-subject links cover HR/bulk actions where actor PERSON differs
     // from the subject. This joins the existing admitted erasure and exact deferred pii.erased audit,
     // removes learning metadata only, and never touches canonical/statutory records.
-    await boundNativeOutcomeTransactionTx(tx);
     const [outcomes]=await tx.execute<{cleared:number}>(sql`select app.native_outcome_targets_redact(${p.subjectEmploymentId}::uuid) as cleared`);
     if(!outcomes||!Number.isSafeInteger(outcomes.cleared)||outcomes.cleared<0)throw new Error('Assistant outcome erasure unavailable.');
 
