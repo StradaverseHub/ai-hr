@@ -151,12 +151,13 @@ describe('Rewards work in the shared task list', () => {
     const unitId = await createRewardUnit(a, { name: 'Annual rewards', year, companyId: b.companyId, businessUnitId: bu.id, snapshotDate: today });
     const view = () => getRewardUnit(a, unitId);
     const actors: Record<string, SessionContext> = {};
-    for (const role of ['bu', 'bg', 'pbp'] as const) {
+    for (const role of ['bu', 'bg', 'ctro', 'ec', 'pbp'] as const) {
       const [p] = await owner.db.insert(schema.person).values({ tenantId: b.tenantId, fullName: `${role} reviewer`, primaryEmail: `${randomUUID()}@wpa1.test` }).returning();
       const userId = await createAppUser(b.tenantId, p.id, 'employee');
       actors[role] = { ...a, userId, personId: p.id, roles: ['employee'], grants: undefined };
       await setRewardMember(a, unitId, (await view()).unit.revision, userId, role);
     }
+    await setRewardMember(a, unitId, (await view()).unit.revision, a.userId!, 'payroll');
     const v = await view();
     await saveRewardPolicy(a, unitId, v.unit.revision, { ...v.unit.policy, effectiveFrom: today, patActual: 100, patTarget: 100, ranges: { '12': [300000, 500000, 700000] } });
     const v2 = await view();
