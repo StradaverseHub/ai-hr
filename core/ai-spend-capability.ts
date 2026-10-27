@@ -6,6 +6,8 @@ import type {SessionContext,Tx} from '../db/client';
 import type {ResolvedAiConfig} from '../lib/ai/types';
 import {AiGatewayError} from '../lib/ai/types';
 import type {AiAdmission} from '../lib/ai/governance';
+import type {AiFeatureId} from '../lib/ai/features';
+import type {StrictAiSpendRoot} from '../lib/ai/spend-allocation';
 import {certifiedAiSpendEnvelope,type CertifiedAiSpendEnvelope} from '../lib/ai/spend-allocation';
 import {aiSpendConfigurationDigest} from '../lib/ai/spend-receipt';
 import {readOpenRouterOptions} from '../lib/ai/providers/openrouter-configuration';
@@ -17,6 +19,15 @@ const issued=new WeakMap<object,Owned>();
 function keep(envelope:CertifiedAiSpendEnvelope,cfg:ResolvedAiConfig,request:Readonly<AiAdmission>,proof:object|null,carrier:'source'|'free'|'metered'='source'){
  if(!envelope||Object.keys(envelope).sort().join(',')!=='capabilityDigest,requestDigest,reservedNanos'||! /^[a-f0-9]{64}$/.test(envelope.capabilityDigest)||envelope.requestDigest!==request.inputDigest||! /^\d{1,19}$/.test(envelope.reservedNanos)||BigInt(envelope.reservedNanos)<=BigInt('0')||BigInt(envelope.reservedNanos)>BigInt('9223372036854775807'))return unavailable();
  const captured=Object.freeze({...envelope});issued.set(captured,{configuration:cfg,request,proof,carrier,active:true});return captured;
+}
+/** Actual SAME-admission-Tx policy, never a posted/configuration 'unlimited' flag. SQL owns the
+ * current principal, canonical company set, root validation and ai-control interval through ai_admit.
+ * Any finite applicable dimension, including0, still requires the reviewed monetary carrier. */
+export async function resolveAiSpendPolicyTx(tx:Tx,ctx:SessionContext,feature:AiFeatureId,root?:StrictAiSpendRoot):Promise<Readonly<{requiresMonetaryCeiling:boolean}>>{
+ if(!ctx.userId)return unavailable();
+ const rows=await tx.execute<{monetary_required:boolean}>(sql`select monetary_required from app.ai_spend_policy_context(${feature},${root?.rootTaskId??null}::uuid,${root?.kind??null})`);
+ if(rows.length!==1||typeof rows[0].monetary_required!=='boolean'||rows[0].monetary_required&&!root)return unavailable();
+ return Object.freeze({requiresMonetaryCeiling:rows[0].monetary_required});
 }
 export async function resolveReviewedAiSpendCapabilityTx(tx:Tx,ctx:SessionContext,cfg:ResolvedAiConfig,request:Readonly<AiAdmission>):Promise<CertifiedAiSpendEnvelope>{
  // Existing independently source-certified carriers (including exact test-process fixtures) may

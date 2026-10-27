@@ -7,6 +7,7 @@ import { withTenant } from '../db/client';
 import * as schema from '../db/schema';
 import { getAiConfigView, resolveActiveAiConfig, saveAiProviderConfig, setActiveProvider } from '../core/ai-config';
 import { evaluateProviderCandidate } from '../core/ai-provider-readiness';
+import {setAiSpendBudget} from '../core/ai-spend-management';
 import { installSyntheticSpendCapability } from './ai-spend-fixture';
 import { assertAiProviderSnapshotFeature, resolveAiProviderCandidateSnapshotTx, resolveAiProviderSnapshotTx } from '../core/ai-provider-snapshot';
 import { governedAiConfig } from '../core/ai-governance';
@@ -59,8 +60,9 @@ describe('explicit candidate evaluation and activation', () => {
       expect(await runs()).toEqual([]); expect(await receipts()).toEqual([]);
     } finally { mock.restore(); }
   });
-  it('refuses synthetic evaluation before provider access when no certified spend capability or allocation exists', async () => {
+  it('refuses synthetic evaluation before provider access when a finite USD cap has no certified spend capability', async () => {
     await candidate();
+    await setAiSpendBudget(adminCtx(base),{kind:'tenant',monthlyUsd:'1',rootUsd:'1'});
     const ctx=adminCtx(base), consent=await syntheticConsentFor(ctx), mock=syntheticProviderTransport();
     try {
       await expect(evaluateProviderCandidate(ctx,consent)).rejects.toThrow();

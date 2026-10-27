@@ -132,12 +132,14 @@ export default async function AiManagementPage({searchParams}:{searchParams:Prom
       {view.users.length===0&&<p className="py-4 text-sm text-muted-foreground">{t('noUsers')}</p>}{view.moreUsers&&<p className="text-xs text-muted-foreground">{t('moreUsers')}</p>}
     </Card>}
     {view.spend&&<Card className="p-5"><SectionHeader title={t('spendTitle')}/>
-      <p className="mt-2 text-sm">{t('spendUnverified')}</p><p className="mt-2 text-sm">{view.spend.reviewedCarrierRecords===null?t('spendRecordsUnknown'):t('spendRecords',{count:view.spend.reviewedCarrierRecords})}</p><p className="mt-2 text-xs text-muted-foreground">{t('spendLiveUnverified')}</p><p className="mt-2 text-xs text-muted-foreground">{t('spendSemantics')}</p>
+      <p className="mt-2 text-sm">{t('spendOptionalPolicy')}</p><p className="mt-2 text-sm">{view.spend.reviewedCarrierRecords===null?t('spendRecordsUnknown'):t('spendRecords',{count:view.spend.reviewedCarrierRecords})}</p><p className="mt-2 text-xs text-muted-foreground">{t('spendLiveUnverified')}</p><p className="mt-2 text-xs text-muted-foreground">{t('spendSemantics')}</p>
       <p className="mt-2 text-sm">{t('spendHeld',{value:view.spend.heldNanos})} · {t('spendConfirmed',{value:view.spend.confirmedNanos??t('spendUnknown')})}</p>
       {view.spend.breached&&<p role="alert">{t('spendBreach')}</p>}
+      <p className="mt-2 text-xs text-muted-foreground">{t('spendUnpricedUnknown',{count:view.spend.unpricedUnknownRuns==null?t('spendUnknown'):String(view.spend.unpricedUnknownRuns)})}</p>
+      <p className="mt-2 text-xs text-muted-foreground">{t('spendOptionalHelp')}</p>
       <form action={setAiSpendBudgetAction} className="mt-4 flex flex-wrap items-end gap-3">
-        <label className="text-sm">{t('spendMonthly')}<input className={inputCls} name="monthlyUsd" inputMode="decimal" required defaultValue={view.spend.budgets.find(b=>b.scopeKey==='tenant')?nanosToUsd(view.spend.budgets.find(b=>b.scopeKey==='tenant')!.monthlyNanos):'0'}/></label>
-        <label className="text-sm">{t('spendRoot')}<input className={inputCls} name="rootUsd" inputMode="decimal" required defaultValue={view.spend.budgets.find(b=>b.scopeKey==='tenant')?nanosToUsd(view.spend.budgets.find(b=>b.scopeKey==='tenant')!.rootNanos):'0'}/></label>
+        <label className="text-sm">{t('spendMonthly')}<input className={inputCls} name="monthlyUsd" inputMode="decimal" defaultValue={view.spend.budgets.find(b=>b.scopeKey==='tenant')?.monthlyNanos!=null?nanosToUsd(view.spend.budgets.find(b=>b.scopeKey==='tenant')!.monthlyNanos!):''}/></label>
+        <label className="text-sm">{t('spendRoot')}<input className={inputCls} name="rootUsd" inputMode="decimal" defaultValue={view.spend.budgets.find(b=>b.scopeKey==='tenant')?.rootNanos!=null?nanosToUsd(view.spend.budgets.find(b=>b.scopeKey==='tenant')!.rootNanos!):''}/></label>
         <button className={btnPrimary}>{t('save')}</button>
       </form></Card>}
     <Card className="p-5"><SectionHeader title={t('inherited')}/><p className="mt-1 text-sm text-muted-foreground">{t('businessLimits')}</p>{view.legacyBudget&&<p className="mt-2 text-sm">{t('legacyAssistant',{daily:numbers(view.legacyBudget.daily),tokens:numbers(view.legacyBudget.monthly)})}</p>}<p className="mt-2 text-xs text-muted-foreground">{t('humanDecisions')}</p></Card>

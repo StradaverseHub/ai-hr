@@ -8,9 +8,9 @@ import { resolveEntitlementsTx, getSetting } from './entitlements';
 import { assertAiProviderSnapshot, assertAiProviderSnapshotFeature, assertCurrentAiProviderSnapshotTx, type AiProviderSnapshot } from './ai-provider-snapshot';
 import type { AiAdmission } from '../lib/ai/governance';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
-import {captureStrictAiSpendRoot,requiresStrictAiSpend,type StrictAiSpendRoot} from '../lib/ai/spend-allocation';
+import {captureStrictAiSpendRoot,requiresAiTaskRoot,type StrictAiSpendRoot} from '../lib/ai/spend-allocation';
 export type {StrictAiSpendRoot} from '../lib/ai/spend-allocation';
-import {resolveReviewedAiSpendCapabilityTx,withReviewedAiSpendDispatch} from './ai-spend-capability';
+import {resolveAiSpendPolicyTx,resolveReviewedAiSpendCapabilityTx,withReviewedAiSpendDispatch} from './ai-spend-capability';
 import {aiSpendConfigurationDigest,createAiSpendReceiptScope} from '../lib/ai/spend-receipt';
 
 /** Reuse the gateway's fresh setting/platform-kill resolution for deterministic action checks. */
@@ -66,15 +66,20 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
    }
    assertAiProviderSnapshot(snapshot,ctx);
    assertAiProviderSnapshotFeature(snapshot,feature);
-   const strictSpend=requiresStrictAiSpend(feature)||spendRoot!==undefined;
-   if(strictSpend&&!spendRoot)throw new AiGatewayError('The autonomous AI spend root could not be confirmed.');
-   // Source-owned envelope only. Current unverified carriers REFUSE here, before token admission
-   // and before any provider dispatch. A copied configuration or posted price cannot certify it.
-   const envelope=strictSpend?await resolveReviewedAiSpendCapabilityTx(tx,ctx,outgoing,capturedRequest):null;
+   const nativeRootRequired=requiresAiTaskRoot(feature)||spendRoot!==undefined;
+   if(nativeRootRequired&&!spendRoot)throw new AiGatewayError('The autonomous AI spend root could not be confirmed.');
+   // Every admission checks ALL applicable monetary scopes under the actual ai-control interval.
+   // No configured USD cap promises no USD ceiling, not a pause/auth/token/concurrency bypass.
+   // Any finite dimension still requires the unchanged reviewed carrier and reservation contract.
+   const moneyPolicy=await resolveAiSpendPolicyTx(tx,ctx,feature,spendRoot);
+   const envelope=moneyPolicy.requiresMonetaryCeiling?await resolveReviewedAiSpendCapabilityTx(tx,ctx,outgoing,capturedRequest):null;
    if(envelope&&(!ctx.userId||envelope.requestDigest!==capturedRequest.inputDigest))throw new AiGatewayError('The exact AI spend request could not be confirmed.');
    const forcedPause=await forcedPauseTx(tx,ctx,feature);
    const rows=await tx.execute<{run_id:string;allowed:boolean;blocked_reason:string|null}>(sql`select * from app.ai_admit(${feature},${capturedRequest.operation},${cfg.provider},${cfg.model},${capturedRequest.reservedTokens}::bigint,${forcedPause})`);
    if(rows[0]?.allowed&&envelope&&spendRoot)await tx.execute(sql`select app.ai_spend_reserve(${rows[0].run_id}::uuid,${spendRoot.rootTaskId}::uuid,${spendRoot.kind},${envelope.capabilityDigest},${envelope.requestDigest},${envelope.reservedNanos}::bigint,${aiSpendConfigurationDigest(outgoing)})`);
+   // Root custody and real run association are mandatory even without monetary certification.
+   // Unknown unpriced history persists; a later finite cap cannot retrospectively count it as zero.
+   if(rows[0]?.allowed)await tx.execute(sql`select app.ai_spend_record_admission(${rows[0].run_id}::uuid,${spendRoot?.rootTaskId??null}::uuid,${spendRoot?.kind??null},${capturedRequest.inputDigest??null},${aiSpendConfigurationDigest(outgoing)})`);
    if(rows[0]?.allowed&&lifecycle?.admitted)await lifecycle.admitted(tx,Object.freeze({runId:rows[0].run_id,request:capturedRequest}));
    return{rows,envelope};
   });
@@ -99,7 +104,7 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
     await tx.execute(sql`select app.ai_settle_observed(${admission.run_id}::uuid,${succeeded},${actual}::bigint,
     ${observed.providerObservationStatus},${observed.reportedInputTokens}::bigint,${observed.reportedOutputTokens}::bigint,${observed.reportedCachedInputTokens}::bigint,
     ${observed.openrouterAccountCostCredits}::numeric,${observed.observedRoundTripMs}::double precision)`);
-    if(spendRoot){if(receipt){const[state]=await tx.execute<{state:string}>(sql`select app.ai_spend_reconcile_receipt(${receipt.payload},${receipt.signature}) as state`);breach=state?.state==='breach';}else await tx.execute(sql`select app.ai_spend_settle(${admission.run_id}::uuid,null::bigint)`);}
+    if(spendEnvelope&&spendRoot){if(receipt){const[state]=await tx.execute<{state:string}>(sql`select app.ai_spend_reconcile_receipt(${receipt.payload},${receipt.signature}) as state`);breach=state?.state==='breach';}else await tx.execute(sql`select app.ai_spend_settle(${admission.run_id}::uuid,null::bigint)`);}
     // A terminal transport/token receipt does not establish USD cost. Keep monetary exposure held.
     if(lifecycle?.settled)await lifecycle.settled(tx,Object.freeze({runId:admission.run_id,succeeded,actualTokens:actual,accounting:observed}));}); }
    catch { throw new AiGatewayError('AI usage could not be confirmed. Its reservation remains held.'); }

@@ -7,7 +7,10 @@ export type StrictAiSpendRoot=Readonly<{rootTaskId:string;kind:'agent'|'evaluati
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX=BigInt("9223372036854775807");
 export const STRICT_AI_SPEND_FEATURES=Object.freeze(['provider_evaluation','module_agent_evaluation','module_agent_planning','hr_assistant','readiness_reminders','claims_triage','payroll_hypotheses','performance_assistant'] as const);
-export function requiresStrictAiSpend(feature:AiFeatureId){return (STRICT_AI_SPEND_FEATURES as readonly string[]).includes(feature);}
+export function requiresAiTaskRoot(feature:AiFeatureId){return (STRICT_AI_SPEND_FEATURES as readonly string[]).includes(feature);}
+/** Historical name retained for source consumers. This inventory requires native root ownership;
+ * actual monetary enforcement is selected only by the current locked applicable USD policy. */
+export const requiresStrictAiSpend=requiresAiTaskRoot;
 export function captureStrictAiSpendRoot(value:StrictAiSpendRoot):StrictAiSpendRoot{
  if(!value||Object.keys(value).sort().join(',')!=='kind,rootTaskId'||!UUID.test(value.rootTaskId)||!['agent','evaluation'].includes(value.kind))throw new AiGatewayError('The AI spend allocation could not be confirmed.');
  return Object.freeze({rootTaskId:value.rootTaskId.toLowerCase(),kind:value.kind});
@@ -17,6 +20,11 @@ export function usdToNanos(value:string):bigint{
  if(typeof value!=='string'||!/^\d{1,10}(?:\.\d{1,9})?$/.test(value))throw new AiGatewayError('Enter an exact non-negative USD allocation with at most nine decimal places.');
  const [whole,fraction='']=value.split('.'),result=BigInt(whole)*BigInt("1000000000")+BigInt(fraction.padEnd(9,'0'));
  if(result>MAX)throw new AiGatewayError('The USD allocation is too large.');return result;
+}
+/** Explicit optional policy: blank is no additional cap, zero remains a finite stop. */
+export function optionalUsdToNanos(value:string):bigint|null{
+ if(typeof value!=='string')throw new AiGatewayError('The USD allocation could not be confirmed.');
+ return value.trim()===''?null:usdToNanos(value.trim());
 }
 export function nanosToUsd(value:string):string{
  if(!/^\d{1,128}$/.test(value))throw new AiGatewayError('Invalid USD allocation.');const amount=BigInt(value);
