@@ -410,3 +410,28 @@ Android ownership, register a replacement key, enable routes or accept attendanc
 supply a fresh canonical32-byte scoped challenge and consume/persist proof atomically with unique key
 custody; clocking requires its own signature and current revocation/permission checks. Rollout settings,
 Play composition and real signed-build/device/distribution acceptance remain unfinished.
+
+
+## Android online command-signature primitive
+
+The optional server checker verifies SHA256withECDSA over the exact UTF8 positional online-clock
+encoding. It does not sign/verify an already hashed digest or raw multipart/JSON object encoding. The
+stored public key must be a verified public P256 key; private/RSA/other-curve keys refuse. Signature
+encoding is bounded DER with exactly two positive minimal integers in the P256 scalar range, no
+truncation, trailing bytes or alternate P1363 interpretation. Server-owned package and build allowlist
+must match the Android evidence before the signature can pass. The complete canonical scope,
+challenge, command/photo and client-source fields remain bound; null stays distinct from false.
+
+This primitive does not retrieve or authorize a key, prove location, check challenge issuance/expiry,
+consume a permit, advance an App Attest counter or create attendance. Android has no equivalent
+assertion counter in this signature. The transaction owner must load scoped current custody, enforce
+revocation/own employment and atomically consume the challenge with its authoritative command/receipt.
+It must reconstruct actual photo digest/size/MIME and canonical context rather than trust submitted
+hashes or authority. ECDSA has multiple valid signatures for the same message; signature bytes are
+never an idempotency key. Stable command identity and challenge consumption own replay prevention.
+
+A public-only synthetic OpenJDK JCA vector exercises the same secp256r1/SHA256withECDSA API as the
+Android module, with an independent positional message encoder. The private key exists only inside
+the generator process; fixtures retain public SPKI/signature/message and generator hash. This is
+cross-runtime encoding evidence, not Android Keystore, device, attestation or non-exportability proof.
+No Android clock route or attendance writer invokes the primitive yet.

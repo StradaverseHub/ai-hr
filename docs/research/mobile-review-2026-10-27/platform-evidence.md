@@ -697,3 +697,28 @@ and private-agent capability companions. No full feature/gate evidence for those
 inherited by copying SQL. No canonical ref advance, staging application, publication or deployment
 occurred. Further Mobile implementation continues locally against this development overlay until the
 paired integration and complete required verification can be established.
+
+
+Android online command signatures at `84db503ee` passed30 focused cases across the new checker,
+Android key policy and existing Apple assertions, with strict root TypeScript exit0. Tests use real
+synthetic P256 signatures to bind scope, key ID, challenge, request/action/coordinates/uncertainty/time,
+photo bytes metadata and original source flags. Unsupported platform/app/build/configuration, wrong
+keys, private/RSA/other-curve keys, noncanonical DER, scalar bounds, truncated/trailing/P1363 input and
+caller authority fail. Double-hashed signing fails; UUID case/property order canonicalization passes.
+Signature checks intentionally do not enforce receipt/counter/time/physical-presence semantics.
+
+A temporary Java source-file generator then ran under shared locks with the Android Studio bundled
+OpenJDK. It generated a P256 pair in process, signed independently encoded canonical UTF8 using
+`Signature.getInstance("SHA256withECDSA")`, and wrote public SPKI/signature only. Fixture
+`android-jca-clock-signature.json` records the independent message, public vector and generator hash;
+no private key was written. At `03c0aa9e2`, the test verifies the actual JCA signature with the shipped
+server owner. Follow-up `7bba3e936` derives the distinct mathematically valid alternate ECDSA signature
+and verifies both map to the same canonical command digest. This demonstrates why signature-byte
+identity cannot own idempotency. It does not establish real Keystore signing or Android hardware custody.
+
+The final32 affected cases and strict full root compiler passed. Three controlled mutations removed
+signature enforcement, platform restriction and positional native encoding. Each intended behavioral
+probe failed and exact restoration passed: `mutation=1 restored=0 exact=true`. No native/mobile
+runtime source changed; no fresh bundle/device result is claimed. No migration, shared database,
+vendor service, cloud/public publication or deployment changed. Android key custody/transactional
+challenge consumption and native attendance wiring remain unfinished.
