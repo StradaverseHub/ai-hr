@@ -7,6 +7,17 @@ Measure elapsed time from submission of a clean, frozen candidate through queuei
 Business, financial, authorization, tenant-isolation and data-integrity coverage remains mandatory. Include full regression whenever the validated release policy requires it. A focused development check is useful evidence about its selected scope, not proof of the complete release goal. Keep main/live deployment disabled until its separate installation is ready.
 
 
+
+## Version15: refresh stale database scheduling observations — runtime measurement pending
+
+The database batch cap stays **24 files**, with **two workers**, **2 GiB PostgreSQL**, **JIT on**, the same complete classifier inventory and standard `ubuntu-24.04` jobs. No assertion, test file, migration, browser engine, compiler check or resource guard is removed. The hint-data hash and version15 fingerprint deliberately invalidate old topology receipts.
+
+The refreshed hints use maximum per-file elapsed intervals from two authenticated standard-runner origins: [40442376429](https://github.com/StradaverseHub/ai-hr/actions/runs/40442376429), candidate `92878d7685f428b61d16b6144e1515bb34769b07`, and [40444007805](https://github.com/StradaverseHub/ai-hr/actions/runs/40444007805), candidate `e349224b485ee4abb7cb1285a58329dd17d88c74`. Fresh API metadata, immutable reconstructed plans, ZIP digests and every DB unit report were verified. All 43 database jobs in each origin passed; the second overall run still failed its compiler, and its timings convey no coverage/PASS authority.
+
+Only intervals whose exact test-file blob matches the reviewed target `5b059f5e00bb4bdd164785fbe4d9d29f27b6fab0` are adopted: **1,009 of 1,011 files**. The two changed files keep a conservative positive fallback. The profile retains every origin and adopted file-blob identity. For example, the secondary write-context file reached 261.730 seconds, while the tertiary file reached 240.150 seconds across these observations; relying on one older fast sample underestimates these groups.
+
+Using these conservative costs, the existing groups' maximum summed file cost is **482,532 ms** and the refreshed grouping's is **288,079 ms**. Both contain exactly the same 1,011 files in 43 groups, with at most 24 files per group. This arithmetic is a scheduling model, **not measured runtime or a predicted 194-second saving**: worker overlap, imports, setup and runner contention still need observation. A fresh complete timing run is required for the new layout. Alpha/main and the verified staging release remain unchanged; the complete under600s goal is still unproved.
+
 ## Immutable source preparation benchmark — 27 October 2026
 
 `prepareSystemTestingBuild` previously launched `git ls-tree` and `git show` for each declared source. The replacement reads one immutable tree, checks object types/sizes in batches, verifies each returned Git blob identity and streams SHA-256 hashes within bounded batches. Catalogue validation, every clean-HEAD check, actual installed-file verification and the final prepared-record bounds remain. Empty reviewed catalogues remain valid. No mutable cache or source-file exclusion is introduced.
