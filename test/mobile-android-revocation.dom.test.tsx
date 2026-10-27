@@ -12,7 +12,7 @@ describe('bounded Android certificate revocation observation',()=>{
   expect(init).toMatchObject({method:'GET',headers:{accept:'application/json'},redirect:'error',credentials:'omit',cache:'no-store'});expect(init).not.toHaveProperty('body');
  });
  it('checks every supplied path serial and refuses revoked before suspended irrespective of expiry metadata',async()=>{
-  const f=fixture();f.transport.mockResolvedValue(response({entries:{a1:{status:'SUSPENDED'},ff:{status:'REVOKED',expires:'2020-01-01'}}}));
+  const f=fixture();f.transport.mockImplementation(async()=>response({entries:{a1:{status:'SUSPENDED'},ff:{status:'REVOKED',expires:'2020-01-01'}}}));
   expect(await f.check(['a1','ff'])).toEqual({status:'refused',reason:'revoked'});expect(await f.check(['a1'])).toEqual({status:'refused',reason:'suspended'});
  });
  it('does not cache or reuse a passing response across outage or changed statuses',async()=>{
@@ -25,7 +25,7 @@ describe('bounded Android certificate revocation observation',()=>{
   expect(f.transport).not.toHaveBeenCalled();
  });
  it('refuses missing, stale, future or malformed HTTP freshness evidence',async()=>{
-  const f=fixture();for(const headers of [{date:''},{date:new Date(now-3600001).toUTCString()},{date:new Date(now+31000).toUTCString()},{age:'3601'},{age:'-1'},{age:'01'}]){
+  const f=fixture();const invalidHeaders:Record<string,string>[]=[{date:''},{date:new Date(now-3600001).toUTCString()},{date:new Date(now+31000).toUTCString()},{age:'3601'},{age:'-1'},{age:'01'}];for(const headers of invalidHeaders){
    f.transport.mockResolvedValueOnce(response({entries:{}},headers));expect(await f.check(['a1'])).toEqual({status:'unavailable',reason:'stale'});
   }
  });
