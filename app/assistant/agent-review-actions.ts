@@ -10,7 +10,9 @@ const failed=()=>redirect('/assistant?error=agent_review');
 const finish=()=>{revalidatePath('/assistant');redirect('/assistant');};
 export async function createAgentCandidateAction(form:FormData){
  const version=Number(form.get('version')),variant=String(form.get('variant')??''),signalIds=form.getAll('signalId').map(value=>String(value)),nativeSignalId=String(form.get('nativeSignalId')??''),nativeSignalIds=nativeSignalId?[nativeSignalId]:[];
- try{const ctx=await getBrowserCommandSession();await createPromptAgentCandidate(ctx,{version,configuration:{kind:'read_plan_prompt_v1',variant},signalIds,nativeSignalIds},nativeSignalIds.length?{notificationIdentity:await resolveOwnNotificationServerIdentity()}:{});}catch{failed();}finish();
+ try{const ctx=await getBrowserCommandSession(),input={version,configuration:{kind:'read_plan_prompt_v1',variant},signalIds,...(nativeSignalIds.length?{nativeSignalIds}:{})};
+  if(nativeSignalIds.length)await createPromptAgentCandidate(ctx,input,{notificationIdentity:await resolveOwnNotificationServerIdentity()});else await createPromptAgentCandidate(ctx,input);
+ }catch{failed();}finish();
 }
 export async function evaluateAgentCandidateAction(form:FormData){
  const candidateId=String(form.get('candidateId')??'');if(form.get('consented')!=='yes')failed();

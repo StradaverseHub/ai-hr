@@ -1,6 +1,7 @@
 /** Authored UNRUN. Closed Server Action forwarding only; mocked owners do not prove native authority. */
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-const state=vi.hoisted(()=>({session:vi.fn(),create:vi.fn(),evaluate:vi.fn(),promote:vi.fn(),rollback:vi.fn(),run:vi.fn(),redirect:vi.fn(),refresh:vi.fn()}));
+const state=vi.hoisted(()=>({session:vi.fn(),create:vi.fn(),evaluate:vi.fn(),promote:vi.fn(),rollback:vi.fn(),run:vi.fn(),redirect:vi.fn(),refresh:vi.fn(),notification:vi.fn()}));
+vi.mock('../core/assistant-actions/own-notification-preferences-source',()=>({resolveOwnNotificationServerIdentity:state.notification}));
 vi.mock('../lib/session',()=>({getBrowserCommandSession:state.session}));
 vi.mock('next/navigation',()=>({redirect:state.redirect}));
 vi.mock('next/cache',()=>({revalidatePath:state.refresh}));
@@ -35,4 +36,12 @@ describe('specialist human actions forward no posted authority or success eviden
   await expect(createSpecialistCandidateAction(form({moduleVersion:'claims:4',playbook:'canonical_followup_v1',qualityFailures:'0'}))).rejects.toThrow('FRAMEWORK_REDIRECT /assistant');expect(state.create).toHaveBeenCalledExactlyOnceWith(ctx,{module:'claims',version:4,signalIds:[],playbook:'canonical_followup_v1'});
  });
 
+});
+
+// Authored UNRUN: private IDs only nominate; posted receipt/identity/rating never reaches the owner.
+it('snapshots an optional native evidence choice before authentication and keeps opaque identity server-only',async()=>{
+ const f=form({moduleVersion:'notifications:5',nativeSignalId:'own-native-association',notificationIdentity:'posted',quality:'pass',playbook:'canonical_followup_v1'});
+ state.session.mockImplementationOnce(async()=>{f.set('nativeSignalId','retargeted');f.set('playbook','arbitrary');return ctx;});state.notification.mockResolvedValueOnce({opaque:'actual-server-capability'});
+ await expect(createSpecialistCandidateAction(f)).rejects.toThrow('FRAMEWORK_REDIRECT /assistant');
+ expect(state.create).toHaveBeenCalledExactlyOnceWith(ctx,{module:'notifications',version:5,signalIds:[],nativeSignalIds:['own-native-association'],playbook:'canonical_followup_v1'},{notificationIdentity:{opaque:'actual-server-capability'}});
 });

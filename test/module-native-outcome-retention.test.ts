@@ -129,14 +129,15 @@ describe('admitted native outcome learning privacy cleanup',()=>{
   // Positive control proves these exact capture inputs reach the capture path without erasure;
   // rollback deliberately preserves the fixture for the actual same-transaction regression.
   await expect(withTenant(ctx,async tx=>{await effect(tx);throw Error('positive capture rollback');})).rejects.toThrow('positive capture rollback');
-  const before=await counts(),events=await owner.db.execute(sql`select id,event_type,payload from public.domain_event order by id`);
+  const before=await counts(),events=await owner.db.execute(sql`select id,event_type,payload from public.domain_event order by id`);let reachedAfterConstraints=false;
   await expect(withTenant(ctx,async tx=>{
    const result=await erasePersonPiiTx(tx,ctx,{subjectEmploymentId:target.employmentId,scope:'financial',reason:'Fictional same transaction privacy request',requestRef:'fictional-after-constraints'});expect(result.erased).toContain('assistantOutcomeLearning');
    const [audit]=await tx.execute<{n:number}>(sql`select count(*)::integer as n from public.domain_event where event_type='pii.erased' and aggregate_type='person' and aggregate_id=${target.personId}::uuid and tenant_id=${base.tenantId}::uuid and xmin=pg_current_xact_id()::xid`);expect(audit.n).toBe(1);
    // Runs the real deferred owners: 0586 deletes its ephemeral greeting intent and effect here.
-   await tx.execute(sql`set constraints all immediate`);
+   await tx.execute(sql`set constraints all immediate`);reachedAfterConstraints=true;
    await effect(tx); // MUST refuse: immutable audit / exact Assistant Tx barrier still applies.
   })).rejects.toThrow();
+  expect(reachedAfterConstraints,'The regression must reach capture after the real erasure, audit and immediate constraints').toBe(true);
   expect(await counts()).toEqual(before);expect(await owner.db.execute(sql`select id,event_type,payload from public.domain_event order by id`)).toEqual(events);
  });
  it('refuses unadmitted erasure and missing exact pii.erased audit, rolling source/association deletion back; identity-only own erasure is idempotent',async()=>{
