@@ -5,7 +5,7 @@ import {z} from 'zod';
 import type {SessionContext} from '../db/client';
 import {mobileIntegrityKey,mobileIntegrityChallenge} from '../db/schema';
 import {actorOf,appendEvent} from '../db/events';
-import {AndroidEnrollmentSettings} from '../lib/mobile-android-enrollment';
+import {AndroidEnrollmentSettings,androidNativeKeyReferenceData} from '../lib/mobile-android-enrollment';
 import {IntegrityKeyReceiptV2} from '../lib/mobile-integrity-contract';
 import {createAndroidKeyProofVerifier} from '../lib/mobile-api/android-key-proof';
 import {encryptSecret,isSecretStorable} from '../lib/ai/crypto';
@@ -61,7 +61,10 @@ export function createAndroidEnrollmentService(settings:unknown,ports:{verifyPro
    if(packageName!==config.target.packageName||!config.target.versionCodes.includes(proof.versionCode)||!config.target.securityLevels.includes(proof.securityLevel))fail('invalid_proof');
    const jwk=createPublicKey({key:publicKeySpki,type:'spki',format:'der'}).export({format:'jwk'}),x=Buffer.from(jwk.x??'','base64url'),y=Buffer.from(jwk.y??'','base64url');
    if(x.length!==32||y.length!==32)fail('invalid_proof');
-   const fingerprint=hash(Buffer.concat([Buffer.from([4]),x,y])),vendorKeyId=fingerprint.toString('base64'),id=randomUUID();
+   const fingerprint=hash(Buffer.concat([Buffer.from([4]),x,y]));
+   // Android has no App Attest SDK identifier. Its opaque reference is reproducible from the saved
+   // canonical public SPKI without implementing elliptic-curve/ASN.1 parsing in the mobile journal.
+   const vendorKeyId=hash(androidNativeKeyReferenceData(publicKeySpki.toString('base64'))).toString('base64'),id=randomUUID();
    // Retain the original server context for later policy re-evaluation and audit. Reconstructing it
    // from a changed deployment policy would change the attested digest and destroy that evidence.
    const provenance=JSON.stringify(['aihr.android.key.provenance',1,prepared.context,JSON.parse(serialized)]);

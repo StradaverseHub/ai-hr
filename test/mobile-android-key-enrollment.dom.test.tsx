@@ -6,6 +6,7 @@ import {ModuleKind,transpileModule} from 'typescript';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {z} from 'zod';
 import * as canonical from '../lib/mobile-android-enrollment';
+import {nativeKeyBindingData} from '../lib/mobile-key-enrollment';
 import {createIntegrityBridge} from '../mobile/lib/integrity-bridge';
 import {SessionChangedError,UnavailableError} from '../mobile/lib/errors';
 const id=(n:number)=>`${String(n).padStart(8,'0')}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`;
@@ -21,13 +22,27 @@ function fixture(strongbox=false){
  const native={capabilities:vi.fn(()=>({version:1,platform:'android',keyMechanism:'android_keystore',appId:context.target.packageName,appVersion:'1.0',buildVersion:'4'})),
   createAndroidKey:vi.fn(async()=>{order.push('sdk-create');return evidence;}),androidKeyInfo:vi.fn(async()=>{order.push('sdk-read');return evidence;})};
  const digest=vi.fn(async(_algorithm:unknown,value:string,options:{encoding:'hex'|'base64'})=>createHash('sha256').update(value).digest(options.encoding));
- const hashes=compile('mobile/lib/android-enrollment-integrity.ts',{'../../lib/mobile-android-enrollment':canonical,'expo-crypto':{CryptoDigestAlgorithm:{SHA256:'SHA-256'},CryptoEncoding:{HEX:'hex',BASE64:'base64'},digestStringAsync:digest}});
+ const hashes=compile('mobile/lib/android-enrollment-integrity.ts',{'../../lib/mobile-android-enrollment':canonical,'../../lib/mobile-key-enrollment':{nativeKeyBindingData},'expo-crypto':{CryptoDigestAlgorithm:{SHA256:'SHA-256'},CryptoEncoding:{HEX:'hex',BASE64:'base64'},digestStringAsync:digest}});
  const adapter=compile('mobile/lib/android-key-enrollment.ts',{'zod':{z},'../../lib/mobile-android-enrollment':canonical,'./android-enrollment-integrity':hashes,'./errors':{UnavailableError}});
  const bridge=createIntegrityBridge(native as never,assertCurrent,30),persist=vi.fn(async()=>{order.push('durable-intent');});
- return {prepared,evidence,native,persist,order,digest,adapter:adapter.createAndroidKeyEnrollment(bridge,assertCurrent,()=>foreground) as ReturnType<typeof import('../mobile/lib/android-key-enrollment').createAndroidKeyEnrollment>,changeOwner:()=>{current=false;},background:()=>{foreground=false;}};
+ return {prepared,evidence,native,persist,order,digest,hashes,adapter:adapter.createAndroidKeyEnrollment(bridge,assertCurrent,()=>foreground) as ReturnType<typeof import('../mobile/lib/android-key-enrollment').createAndroidKeyEnrollment>,changeOwner:()=>{current=false;},background:()=>{foreground=false;}};
 }
 afterEach(()=>vi.useRealTimers());
 describe('Android native key enrollment adapter',()=>{
+ it('reproduces the server public-key receipt binding without trusting local hardware hints',async()=>{
+  const f=fixture(),spki=f.evidence.publicKeySpki,challengeId=f.prepared.context.challengeId;
+  const reference=createHash('sha256').update(JSON.stringify(['aihr.android.native-key',1,spki])).digest('base64');
+  const expected=createHash('sha256').update(JSON.stringify(['aihr.native-key-binding',1,challengeId,reference])).digest('hex');
+  expect(await f.hashes.androidEnrollmentNativeKeyBinding(challengeId,spki,()=>{})).toBe(expected);
+  expect(await f.hashes.androidEnrollmentNativeKeyBinding(id(8),spki,()=>{})).not.toBe(expected);
+  expect(await f.hashes.androidEnrollmentNativeKeyBinding(challengeId,Buffer.alloc(91,2).toString('base64'),()=>{})).not.toBe(expected);
+  for(const malformed of [spki+'\n','AB==',''])await expect(f.hashes.androidEnrollmentNativeKeyBinding(challengeId,malformed,()=>{})).rejects.toThrow();
+ });
+ it('drops a public-key reference hash after its owner becomes obsolete',async()=>{
+  const f=fixture();let current=true;
+  f.digest.mockImplementationOnce(async()=>{current=false;return Buffer.alloc(32).toString('base64');});
+  await expect(f.hashes.androidEnrollmentNativeKeyBinding(f.prepared.context.challengeId,f.evidence.publicKeySpki,()=>{if(!current)throw new SessionChangedError();})).rejects.toBeInstanceOf(SessionChangedError);expect(f.digest).toHaveBeenCalledOnce();
+ });
  it('persists intent before generation and passes the exact scoped alias/challenge/StrongBox requirement',async()=>{
   const f=fixture(true),result=await f.adapter.create(f.prepared,f.persist);expect(result).toEqual({status:'evidence',evidence:f.evidence,verification:'not_verified'});
   expect(f.order).toEqual(['durable-intent','sdk-create']);expect(f.native.createAndroidKey).toHaveBeenCalledExactlyOnceWith(f.prepared.alias,f.prepared.clientDataHash,true);expect(f.native.androidKeyInfo).not.toHaveBeenCalled();

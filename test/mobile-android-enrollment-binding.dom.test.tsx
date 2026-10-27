@@ -5,7 +5,7 @@ import {runInNewContext} from 'node:vm';
 import {ModuleKind,transpileModule} from 'typescript';
 import {describe,expect,it,vi} from 'vitest';
 import * as canonical from '../lib/mobile-android-enrollment';
-import {keyEnrollmentClientData} from '../lib/mobile-key-enrollment';
+import {keyEnrollmentClientData,nativeKeyBindingData} from '../lib/mobile-key-enrollment';
 import {SessionChangedError} from '../mobile/lib/errors';
 const id=(n:number)=>`${String(n).padStart(8,'0')}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`;
 const target=()=>({platform:'android',packageName:'ai.stradaverse.aihr.test',certificateDigests:[Buffer.alloc(32,1).toString('base64')],versionCodes:['4'],securityLevels:['tee','strongbox'],
@@ -37,7 +37,8 @@ describe('Android scoped enrollment encoding',()=>{
   runInNewContext(transpileModule(readFileSync('mobile/lib/android-enrollment-integrity.ts','utf8'),{compilerOptions:{module:ModuleKind.CommonJS}}).outputText,
    {module:output,exports:output.exports,require:(name:string)=>{
     if(name==='expo-crypto')return {CryptoDigestAlgorithm:{SHA256:'SHA-256'},CryptoEncoding:{BASE64:'base64'},digestStringAsync:digest};
-    if(name==='../../lib/mobile-android-enrollment')return canonical;throw new Error(name);
+    if(name==='../../lib/mobile-android-enrollment')return canonical;
+    if(name==='../../lib/mobile-key-enrollment')return {nativeKeyBindingData};throw new Error(name);
    }});
   const hash=output.exports.androidEnrollmentClientDataHash,p=context();expect(await hash(p,()=>{})).toBe(createHash('sha256').update(canonical.androidEnrollmentClientData(p)).digest('base64'));
   for(const fail of [false,true]){let current=true;digest.mockImplementationOnce(async()=>{current=false;if(fail)throw new Error('old crypto failure');return 'old hash';});

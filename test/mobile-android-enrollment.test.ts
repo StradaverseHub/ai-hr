@@ -1,5 +1,5 @@
 /** Real custody/transactions/crypto. Synthetic verifier port is not Android hardware acceptance. */
-import {generateKeyPairSync,randomUUID} from 'node:crypto';
+import {createHash,generateKeyPairSync,randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {SessionContext} from '../db/client';
@@ -8,6 +8,8 @@ import {hireEmployee} from '../core/org';
 import {createAndroidEnrollmentService} from '../core/mobile-android-enrollment';
 import {readOwnIntegrityKeyReceipt,revokeOwnIntegrityKey} from '../core/mobile-integrity-key';
 import {decryptSecret} from '../lib/ai/crypto';
+import {androidNativeKeyReferenceData} from '../lib/mobile-android-enrollment';
+import {nativeKeyBindingData} from '../lib/mobile-key-enrollment';
 import {adminCtx,closeAll,createAppUser,harnessSnapshot,owner,resetDb,seedBase,type Base} from './harness';
 import {installCustodyDraftForWorker} from './helpers/mobile-custody-draft';
 const settings={apiOrigin:'https://hr.example.com',target:{platform:'android',packageName:'ai.stradaverse.aihr.test',certificateDigests:[Buffer.alloc(32,1).toString('base64')],versionCodes:['4'],securityLevels:['tee'],provisioningMetadata:'allow_legacy',minimumOsVersion:null,minimumOsPatchLevel:null,minimumVendorPatchLevel:null,minimumBootPatchLevel:null}};
@@ -72,6 +74,8 @@ describe('Android enrollment custody transaction',()=>{
   expect(JSON.parse(decryptSecret(row.receiptCiphertext,aad))).toEqual(['aihr.android.key.provenance',1,prepared.context,['aihr.android.enrollment.proof',1,f.publicKeySpki.toString('base64'),f.certificateChain.map(value=>value.toString('base64'))]]);
   expect(()=>decryptSecret(row.receiptCiphertext,aad+'wrong')).toThrow();
   expect(a).toMatchObject({platform:'android',proofKind:'google_key_generation_proof',environment:null});expect(a).not.toHaveProperty('metadata');expect(a).not.toHaveProperty('vendorKeyId');
+  const reference=createHash('sha256').update(androidNativeKeyReferenceData(f.publicKeySpki.toString('base64'))).digest('base64');
+  expect(a.nativeKeyBinding).toBe(createHash('sha256').update(nativeKeyBindingData(prepared.challenge.id,reference)).digest('hex'));
   const events=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,row.id));expect(events.filter(event=>event.eventType==='mobile.integrity.key.enrolled')).toHaveLength(1);
   expect(JSON.stringify(events)).not.toContain('synthetic leaf');
  });
