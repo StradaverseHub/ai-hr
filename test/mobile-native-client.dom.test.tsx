@@ -10,6 +10,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { apiOriginProblem } from '../mobile/lib/config';
 import { SessionChangedError, SignInRequiredError, UnavailableError, RequestRejectedError } from '../mobile/lib/errors';
+import {enrollmentFixture} from './helpers/mobile-enrollment-fixture';
+import {androidEnrollmentFixture} from './helpers/mobile-android-enrollment-fixture';
 
 /** Execute the shipped client/hook. Only the native ports are replaced, not the request logic. */
 const employee = (name:string) => ({apiVersion:'v1',person:{name,email:null},employments:[],roles:[],modules:{payroll:false,notifications:false}});
@@ -45,6 +47,19 @@ function clientFixture() {
 afterEach(()=>{cleanup();vi.useRealTimers();});
 
 describe('native API transport', () => {
+  it.each(['ios','android'] as const)('keeps %s enrollment on its exact protocol and never downgrades a missing command',async(platform)=>{
+    const f=clientFixture(),e=platform==='ios'?enrollmentFixture():androidEnrollmentFixture();
+    const prefix=platform==='ios'?'integrity/enrollment':'v2/integrity/android/enrollment',path=prefix+'/begin';
+    f.response.mockResolvedValueOnce(Response.json(e.prepared()));
+    expect(await f.api.apiPost(path,{requestId:e.requestId,appInstallationId:e.scope.appInstallationId},{employmentId:e.employmentId})).toMatchObject({outcome:'prepared',protocol:platform==='ios'?1:2});
+    expect(new URL(f.response.mock.calls[0][0]).pathname).toBe(platform==='ios'?'/api/mobile/v1/integrity/enrollment/begin':'/api/mobile/v2/integrity/android/enrollment/begin');
+    f.response.mockResolvedValueOnce(new Response('',{status:404}));
+    await expect(f.api.apiPost(path,{requestId:e.requestId,appInstallationId:e.scope.appInstallationId},{employmentId:e.employmentId})).rejects.toMatchObject({status:404});
+    expect(f.response).toHaveBeenCalledTimes(2);
+    const wrong=platform==='ios'?androidEnrollmentFixture().prepared():enrollmentFixture().prepared();
+    f.response.mockResolvedValueOnce(Response.json(wrong));
+    await expect(f.api.apiPost(path,{requestId:e.requestId,appInstallationId:e.scope.appInstallationId},{employmentId:e.employmentId})).rejects.toBeInstanceOf(UnavailableError);
+  });
   it('uses explicit v2 URLs and validates Android inventory, receipts and commands',async()=>{
     const f=clientFixture(),id='11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     const key={keyId:id,originChallengeId:id,platform:'android',appId:'ai.hr',environment:null,proofKind:'google_key_generation_proof',nativeKeyBinding:'a'.repeat(64),createdAt:'2026-10-27T00:00:00.000Z',revokedAt:null};

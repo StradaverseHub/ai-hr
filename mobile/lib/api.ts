@@ -8,6 +8,7 @@
  */
 import type {z} from 'zod';
 import {IntegrityKeysResultV2,IntegrityRevocationResultV2,IntegrityKeyLookupResultV2,IntegrityKeysResult,IntegrityRevocationResult,IntegrityKeyLookupResult} from '../../lib/mobile-integrity-contract';
+import {IntegrityEnrollmentIntent,IntegrityEnrollmentProof,IntegrityEnrollmentPrepared,IntegrityEnrollmentResult,IntegrityAndroidEnrollmentProof,IntegrityAndroidEnrollmentPrepared,IntegrityAndroidEnrollmentResult} from '../../lib/mobile-integrity-contract';
 import { useCallback, useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 import { fetch as nativeFetch } from 'expo/fetch';
@@ -59,7 +60,11 @@ const responses = {
   'leave-requests': LeaveRequestsResponse, design: MobileDesignResponse, me: MeResponse,
   payslips: PayslipsResponse, leave: LeaveResponse, notifications: NotificationsResponse,
 };
-const commands = {'v2/integrity/key-receipt':IntegrityKeyLookupResultV2,'v2/integrity/revoke':IntegrityRevocationResultV2,'integrity/key-receipt':IntegrityKeyLookupResult,'integrity/revoke':IntegrityRevocationResult,'clock-attempts':ClockAttemptReceipt,'clock-location':ClockLocationResponse, 'submission-abandon':SubmissionAbandonResponse, clock: ClockResult, 'clock-device': DeviceResponse, 'leave-requests': LeaveResult, 'leave-preview': LeavePreviewResponse };
+const enrollmentCommands={
+  'integrity/enrollment/begin':IntegrityEnrollmentPrepared,'integrity/enrollment/complete':IntegrityEnrollmentResult,
+  'v2/integrity/android/enrollment/begin':IntegrityAndroidEnrollmentPrepared,'v2/integrity/android/enrollment/complete':IntegrityAndroidEnrollmentResult,
+};
+const commands = {...enrollmentCommands,'v2/integrity/key-receipt':IntegrityKeyLookupResultV2,'v2/integrity/revoke':IntegrityRevocationResultV2,'integrity/key-receipt':IntegrityKeyLookupResult,'integrity/revoke':IntegrityRevocationResult,'clock-attempts':ClockAttemptReceipt,'clock-location':ClockLocationResponse, 'submission-abandon':SubmissionAbandonResponse, clock: ClockResult, 'clock-device': DeviceResponse, 'leave-requests': LeaveResult, 'leave-preview': LeavePreviewResponse };
 
 const supportReference=(value:string|null)=>value?.length===36&&/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)?value.toLowerCase():undefined;
 async function apiRequest<T>(path:string,params:Record<string,string|undefined>,request?:{body:FormData|string;json:boolean},signal?:AbortSignal):Promise<T> {
@@ -134,8 +139,15 @@ export async function apiGet<P extends keyof Endpoints>(path:P,params:Record<str
     return apiRequest<Endpoints[P]>(path,snapshot,undefined,sharedSignal);
   },signal);
 }
-type Commands = {'v2/integrity/key-receipt':z.infer<typeof IntegrityKeyLookupResultV2>;'v2/integrity/revoke':z.infer<typeof IntegrityRevocationResultV2>;'integrity/key-receipt':z.infer<typeof IntegrityKeyLookupResult>;'integrity/revoke':z.infer<typeof IntegrityRevocationResult>;'clock-attempts':ClockAttemptReceipt;'clock-location':ClockLocationResponse;'submission-abandon':SubmissionAbandonResponse;clock:ClockResult;'clock-device':DeviceResponse;'leave-requests':LeaveResult;'leave-preview':LeavePreviewResponse};
-export async function apiPost<P extends keyof Commands>(path:P,body:FormData|LeaveCommand|ClockPreparation|{originChallengeId:string}|{keyId:string}|{lat:number;lng:number;accuracy:number;sampledAt:number}|{label:string}|{kind:'clock'|'leave';requestId:string},params:Record<string,string|undefined>={}):Promise<Commands[P]>{
+type Commands = {[P in keyof typeof commands]:z.infer<(typeof commands)[P]>};
+type EnrollmentBodies={
+  'integrity/enrollment/begin':z.infer<typeof IntegrityEnrollmentIntent>;
+  'integrity/enrollment/complete':z.infer<typeof IntegrityEnrollmentProof>;
+  'v2/integrity/android/enrollment/begin':z.infer<typeof IntegrityEnrollmentIntent>;
+  'v2/integrity/android/enrollment/complete':z.infer<typeof IntegrityAndroidEnrollmentProof>;
+};
+type LegacyCommandBody=FormData|LeaveCommand|ClockPreparation|{originChallengeId:string}|{keyId:string}|{lat:number;lng:number;accuracy:number;sampledAt:number}|{label:string}|{kind:'clock'|'leave';requestId:string};
+export async function apiPost<P extends keyof Commands>(path:P,body:P extends keyof EnrollmentBodies?EnrollmentBodies[P]:LegacyCommandBody,params:Record<string,string|undefined>={}):Promise<Commands[P]>{
   const form=body instanceof FormData;
   return apiRequest(path,params,{body:form?body:JSON.stringify(body),json:!form});
 }
