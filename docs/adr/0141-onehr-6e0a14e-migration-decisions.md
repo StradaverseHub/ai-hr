@@ -89,6 +89,18 @@ Phase 3a, authorized 25 Oct 2026, covers only:
 
     Each is business-policy content awaiting Chin Hin confirmation. The owner explicitly kept AI-HR's reason-on-change for leaders' calibration band moves (CF-19) and AI-HR's confirmed PIP/promotion/special-reward decisions (CF-23).
 
+## Career Plan reviewer scope (TASK-030)
+
+Decided as CF-26 / AC-10; built in migration `0640_onehr_plan_reviewer_scope.sql`. Before 0640, `onehr_plan_access` admitted the whole department tree (`app.visible_employment_ids()`: skip-level managers through the administrative chain, heads of department through the department subtree) to every non-draft Career Plan, and `app.can_see_employment` let the same people write one. After 0640 a plan row is read and written only by:
+
+- **the subject**, at any status;
+- **the OneHR administrator of the plan's cycle** — `app.onehr_admin(employment company)` and `app.onehr_cycle_admin(cycle of the plan's review)`, at any status. That is HR administrators in scope and, under ADR-0142, a performance partner for a OneHR-native cycle it administers. A company-scoped grant never covers a group-wide cycle;
+- **the assigned reviewer** — `app.assessment_plan_reviewer`: the review's line manager, or an approver/moderator of any of the subject's KPI lines, for a review whose cycle owns the plan year. Shared or closed plans only; a draft stays with the subject and the administrator, as before.
+
+The visibility arm is gone from both USING and WITH CHECK, so no actor writes a plan just because they can see the employee. The scheduled dispatcher's SELECT (`assessment_plan_dispatch_read`, no human user) and the career profile policy (`assessment_career_access`: self, admin, open-review manager/moderator) had no department-tree arm and are unchanged. HR's progress and overview figures are unchanged (pinned in `test/onehr-plan-reviewer-scope.test.ts`). A performance partner now counts shared plans as HR does, where before 0640 it read none.
+
+**Recorded divergence.** OneHR (`_cycle_review_managers`) passes a plan one level up when the line manager's unit is left out of the cycle. AI-HR does not derive this. The reviewer is `performance_review.reviewer_employment_id` (the administrative line manager at launch) or a KPI approver, and removing the line manager from the cycle's participation does not re-route it. The skip-level manager therefore neither reviews nor, after 0640, reads the plan. Changing this needs a reviewer-derivation decision, not a policy change.
+
 ## Consequences
 
 - New work in this repository on the OneHR delta cites this ADR and the relevant M-number.
