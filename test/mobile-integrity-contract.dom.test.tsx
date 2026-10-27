@@ -1,8 +1,19 @@
 import {describe,expect,it} from 'vitest';
 import {IntegrityCapabilities,IntegrityClockResult,IntegrityEnrollmentIntent,IntegrityEnrollmentProof,IntegrityKeyLookupResult,IntegrityKeyLookupIntent,IntegrityKeyReceipt,IntegrityKeysResult} from '../lib/mobile-integrity-contract';
 import {IntegrityKeyReceiptV2,IntegrityKeysResultV2,IntegrityKeyLookupResultV2,IntegrityRevocationResultV2} from '../lib/mobile-integrity-contract';
+import {IntegrityAndroidEnrollmentPrepared,IntegrityAndroidEnrollmentProof} from '../lib/mobile-integrity-contract';
+import {androidEnrollmentFixture} from './helpers/mobile-android-enrollment-fixture';
 const id='11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 describe('integrity v1 compatibility and closed security outcomes',()=>{
+  it('accepts only bounded Android proof bytes and refuses client authority or noncanonical encoding',()=>{
+    const proof={requestId:id,appInstallationId:id,challengeId:id,publicKeySpki:Buffer.alloc(91,1).toString('base64'),certificateChain:[Buffer.from('leaf').toString('base64'),Buffer.from('root').toString('base64')]};
+    expect(IntegrityAndroidEnrollmentProof.parse(proof)).toEqual(proof);
+    for(const change of [{verified:true},{tenantId:id},{actorId:id},{employmentId:id},{clientDataHash:'A'.repeat(43)+'='},{certificateChain:['AB==','YQ==']},{certificateChain:['YQ==']},{publicKeySpki:proof.publicKeySpki+'\n'},{certificateChain:[Buffer.alloc(16384).toString('base64'),Buffer.alloc(16384).toString('base64')]}])expect(IntegrityAndroidEnrollmentProof.safeParse({...proof,...change}).success).toBe(false);
+  });
+  it('keeps Android preparation transport version separate from immutable signed context and terminal state',()=>{
+    const p=androidEnrollmentFixture().prepared();expect(IntegrityAndroidEnrollmentPrepared.parse({...p,state:'expired',future:'ignored'})).not.toHaveProperty('future');
+    for(const change of [{protocol:1},{state:'trusted'},{context:{...p.context,verified:true}},{context:{...p.context,target:{...p.context.target,platform:'ios'}}}])expect(IntegrityAndroidEnrollmentPrepared.safeParse({...p,...change}).success).toBe(false);
+  });
   it('accepts both platforms only in explicit v2 recovery and strips private vendor material',()=>{
     const apple={keyId:id,originChallengeId:id,platform:'ios',appId:'ABCDEFGHIJ.ai.hr',environment:'production',proofKind:'apple_key_proof',nativeKeyBinding:'a'.repeat(64),createdAt:'2026-10-27T00:00:00.000Z',revokedAt:null};
     const android={...apple,platform:'android',appId:'ai.hr',environment:null,proofKind:'google_key_generation_proof'};
