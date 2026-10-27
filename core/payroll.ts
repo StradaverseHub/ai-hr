@@ -8441,14 +8441,18 @@ async function applyPayrollCloseTx(tx:Tx,ctx:SessionContext,p:{batchId:string},p
       .update(payrollBatch)
       .set({ status: 'closed', closedAt: sql`now()`, releasedAt })
       .where(eq(payrollBatch.id, p.batchId));
-    const closedEventId=await appendEvent(tx, {
+    // Scoped Payroll partners may INSERT the native batch event but cannot SELECT audit rows.
+    // Return only our successfully inserted identity; the existing fixed-purpose reader proves it.
+    const closedEventId=returnEventId?randomUUID():undefined;
+    await appendEvent(tx, {
+      ...(closedEventId?{id:closedEventId}:{}),
       tenantId: ctx.tenantId,
       aggregateType: 'payroll-batch',
       aggregateId: p.batchId,
       eventType: 'payroll-batch.closed',
       actor: actorOf(ctx),
       payload: { releasedAt: releasedAt.toISOString() },
-    },{returnId:returnEventId});
+    });
 
     // Wave 2C (ADR-0024): close the parent pay_period once ALL its runs are closed, so the statutory
     // month becomes immutable. A single-run month closes its period when that run closes.
