@@ -518,3 +518,36 @@ native confirmation rather than introducing a competing palette/component depend
 dark, large-text, small/large phone/tablet, screen-reader focus and signed-device walkthrough remain
 open. No screenshot or visual-device pass is claimed. No migration allocation, shared database write,
 public/cloud publication or staging deployment occurred in this slice.
+
+
+Rollout review identified a receipt dependency on the twenty-entry display list. At `e977e62ea`, exact
+own-key lookup by original challenge replaced that dependency in the native enrollment journal. The
+new POST `integrity/key-receipt` is independently mounted through the recovery owner, with a 256-byte
+strict selector body, explicit own employment, shared bearer/admission/no-store handling and minimal
+nullable receipt contract. It does not load vendor configuration or expose proof/key material.
+
+Four database/API/pack suites passed 35 cases and five native model/storage/client/screen suites passed
+80 cases; both root and native TypeScript exited 0. The owned synthetic-history fixture places twenty
+newer revoked keys after an accepted revoked key, verifies the old key is absent from the display list,
+then recovers that exact receipt with receipt encryption configuration absent. Normal app-role/RLS
+reads return null for a peer and another tenant. These seeded historical rows are visibility fixtures,
+not vendor validation evidence. HTTP probes cover exact/absent/peer lookup, extra authority, false
+content length, actual body cap, revoked bearer and configuration independence without key mutation.
+
+Native cases recover a matching revoked receipt during configuration outage without another enrollment
+completion or SDK call. Explicit absent/unavailable/mismatched results retain the old operation; an
+uncertain SDK attempt is not repeated. Follow-up `e07144dfa` passed all 28 transport/contract cases
+(including the already counted client suite), validating the real request shape and nullable versus
+malformed lookup distinction. The final full root TypeScript compiler also exited 0.
+
+Three controlled mutations regressed lookup to bounded display history, weakened the exact endpoint's
+reader to 4 KiB and repeated an uncertain attestation after an absent receipt. All selected behavioral
+probes failed, then exact restoration passed: `mutation=1 restored=0 exact=true` for each. Both local
+Hermes exports exited 0; their 1,337 iOS / 1,468 Android source maps include the intended client/recovery
+modules and no application server core/database/session/private verifier, PKI dependency or Zod 3.
+No Swift/Kotlin source changed, vendor service was called or device acceptance was established.
+
+The central allocation record was read again and still reserves filename tags0621–0628 to the other
+workstream, deferring journal positions/timestamps to source freeze. This slice allocated/renumbered no
+migration and changed no shared database. The rollout configuration owner remains unfinished; the exact
+receipt dependency was repaired before proceeding with it. No full CI, publication or deployment occurred.

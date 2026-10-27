@@ -142,12 +142,13 @@ state cannot trigger another one-use operation. Known vendor outage, temporary n
 missing references and unsupported capability remain distinct. Ownership is rechecked around every
 await, including failed requests, so obsolete results cannot be adopted by another login/connection.
 
-The exact artifact is committed before first transmission. Before resending it, the owner checks the
-bounded own-key catalog for its original challenge. A matching receipt, including a revoked one, can
-resolve the journal without another enrollment/configuration request. Catalog absence is not proof of
-absence: only the same saved bytes/intent may be sent to the authoritative server receipt owner. Proof
-is cleared from this journal only by the durable receipt transition. A failed local receipt commit
-retains the proof; no automatic key replacement or background replay occurs.
+The exact artifact is committed before first transmission. Before resending it, the owner looks up an
+own-key receipt by its original challenge, independently of the bounded display inventory. A matching
+receipt, including a revoked one, resolves the journal without another enrollment/configuration request.
+An absent result is only a read observation: a concurrent completion may still commit. It never permits
+key regeneration or repeating an uncertain one-use attestation. Only the same saved bytes/intent may
+be resent to the authoritative enrollment owner. Proof is cleared from this journal only by the durable
+receipt transition. A failed local receipt commit retains proof; no automatic replacement or replay occurs.
 
 Storage reuses the existing native AES-GCM master/installation quota, with purpose-separated AAD,
 directory and SecureStore pointer. Enrollment slots allow 128 KiB for a full 64 KiB base64 artifact and
@@ -210,7 +211,8 @@ UI orchestration, retirement/replacement capacity and signed-device acceptance r
 ## Mounted key recovery boundary
 
 The source tree now mounts `GET /api/mobile/v1/integrity/keys` and
-`POST /api/mobile/v1/integrity/revoke`. These authenticated recovery routes expose only the existing
+`POST /api/mobile/v1/integrity/revoke`, plus `POST /api/mobile/v1/integrity/key-receipt` for exact
+challenge receipt recovery. These authenticated recovery routes expose only the existing
 own-key inventory and idempotent revocation service. They use the shared bearer-only route owner,
 source/actor admission, no-store responses, private diagnostics and strict bounded request reader.
 An explicit, unique own-employment selector is required. Tenant/actor/app-verification authority is
@@ -258,3 +260,21 @@ The flow changes key authorization, not existing attendance or the login session
 and audit retain their atomic owner. There is no GPS-presence claim, offline approval or completed
 SDK-key retirement. Signed-device visual, screen-reader, small/large-screen and lifecycle acceptance,
 four additional mobile locales and the complete frozen-candidate release gate remain unfinished.
+
+
+## Exact receipt lookup during rollout changes
+
+A twenty-entry display bound cannot own enrollment reconciliation. An accepted revoked key may be
+older than the entire current display window, while the original encrypted enrollment still needs its
+receipt. The exact recovery endpoint accepts only `originChallengeId` in a 256-byte JSON body and an
+explicit own-employment query selector. It returns the same minimal receipt or an explicit null under
+`key_receipt`. The actor, tenant and active own employment are independently resolved/checked; a peer
+or another tenant cannot retrieve the receipt. The existing unique origin-challenge index supplies the
+lookup key. No proof upload, caller digest, vendor verifier or rollout configuration is consulted.
+
+The native journal uses this lookup before configuration refresh or irreversible work. Matching still
+requires the original challenge/app/environment/proof kind and native key binding; a historical receipt
+cannot upgrade assurance or resurrect a revoked key. The exact endpoint is a read of history, not key
+enrollment, attendance acceptance or a promise that a null cannot later become a receipt. Older-server,
+unavailable and malformed lookup results must preserve pending work rather than become empty state.
+The human-facing inventory remains bounded and retains its existing scope and history wording.
