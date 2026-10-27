@@ -103,7 +103,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./automation/.github/actions/setup-alpha
-        with: {capacity_profile: "${{ github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}"}
+        with: {node: '22.23.3', capacity_profile: "${{ github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}"}
       - name: Bind original trusted main for source-reading invariants
         run: |
           set -euo pipefail
