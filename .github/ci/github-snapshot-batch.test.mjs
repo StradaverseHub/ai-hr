@@ -1,0 +1,8 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {collectRunSnapshots} from './github-snapshot-batch.mjs';
+const read=async path=>path.includes('/jobs?')?{jobs:[{id:1}]}:path.includes('/artifacts?')?{artifacts:[]}:{id:Number(path.split('/').at(-1))};
+test('bounded parallel transport retains every exact requested identity and complete inventories',async()=>{const r=await collectRunSnapshots([7,3,19],read);assert.deepEqual([...r.keys()].sort((a,b)=>a-b),[3,7,19]);assert.equal(r.get(7).jobs.length,1);});
+for(const ids of [[],[1,1],[0],['1'],Array.from({length:65},(_,i)=>i+1)])test('refuses invalid or excessive run IDs '+JSON.stringify(ids).slice(0,35),async()=>assert.rejects(collectRunSnapshots(ids,read)));
+test('refuses a foreign run response',async()=>assert.rejects(collectRunSnapshots([1],async p=>p.endsWith('/1')?{id:2}:read(p))));
+test('never truncates a full first page',async()=>{const calls=[];const r=await collectRunSnapshots([1],async p=>{calls.push(p);if(p.includes('/jobs?'))return {jobs:p.endsWith('page=1')?Array(100).fill({id:2}):[{id:3}]};return read(p);});assert.equal(r.get(1).jobs.length,101);assert(calls.some(p=>p.includes('/jobs?')&&p.endsWith('page=2')));});
+test('refuses missing pages and unbounded pagination',async()=>{await assert.rejects(collectRunSnapshots([1],async p=>p.includes('/jobs?')?{}:read(p)));await assert.rejects(collectRunSnapshots([1],async p=>p.includes('/jobs?')?{jobs:Array(100).fill({id:1})}:read(p)));});
+test('rejects worker count beyond the bounded resource budget',async()=>assert.rejects(collectRunSnapshots([1],read,5)));
