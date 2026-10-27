@@ -46,8 +46,30 @@ REVOKE ALL ON public.ai_assistant_answer_evaluation_arm FROM PUBLIC,ai_hr_app;
 GRANT SELECT,INSERT,DELETE ON public.ai_assistant_answer_evaluation_arm TO ai_hr_app;
 GRANT UPDATE(passed,receipt) ON public.ai_assistant_answer_evaluation_arm TO ai_hr_app;
 --> statement-breakpoint
+CREATE TABLE public.ai_assistant_answer_evaluation_intent(
+ id uuid PRIMARY KEY,incarnation bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+ tenant_id uuid NOT NULL REFERENCES public.tenant(id),candidate_id uuid NOT NULL,
+ evaluator_user_id uuid NOT NULL REFERENCES public.app_user(id),evaluator_person_id uuid REFERENCES public.person(id) ON DELETE CASCADE,
+ source_digest text NOT NULL CHECK(source_digest~'^[a-f0-9]{64}$'),provider_fingerprint text NOT NULL CHECK(provider_fingerprint~'^[a-f0-9]{64}$'),suite_digest text NOT NULL CHECK(suite_digest~'^[a-f0-9]{64}$'),
+ state text NOT NULL DEFAULT 'pending' CHECK(state IN('pending','completed')),evaluation_id uuid UNIQUE REFERENCES public.ai_agent_evaluation(id) ON DELETE CASCADE,
+ receipt text NOT NULL CHECK(octet_length(receipt) BETWEEN 1 AND 8192),created_at timestamptz NOT NULL DEFAULT clock_timestamp(),expires_at timestamptz NOT NULL DEFAULT(clock_timestamp()+interval '30 days'),
+ FOREIGN KEY(candidate_id,tenant_id) REFERENCES public.ai_agent_candidate(id,tenant_id) ON DELETE CASCADE,
+ CHECK((state='pending' AND evaluation_id IS NULL) OR(state='completed' AND evaluation_id IS NOT NULL)),CHECK(expires_at>created_at AND expires_at<=created_at+interval '31 days')
+);
+ALTER TABLE public.ai_assistant_answer_evaluation_intent ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ai_assistant_answer_evaluation_intent FORCE ROW LEVEL SECURITY;
+CREATE INDEX answer_evaluation_intent_expiry ON public.ai_assistant_answer_evaluation_intent(expires_at,id);
+CREATE POLICY answer_intent_read ON public.ai_assistant_answer_evaluation_intent FOR SELECT TO PUBLIC USING(tenant_id=app.current_tenant_id() AND evaluator_user_id=app.current_user_id() AND app.principal_snapshot_current());
+CREATE POLICY answer_intent_create ON public.ai_assistant_answer_evaluation_intent FOR INSERT TO ai_hr_app WITH CHECK(tenant_id=app.current_tenant_id() AND evaluator_user_id=app.current_user_id() AND app.principal_snapshot_current() AND app.is_group_admin() AND state='pending' AND evaluation_id IS NULL AND EXISTS(SELECT 1 FROM public.app_user a WHERE a.id=ai_assistant_answer_evaluation_intent.evaluator_user_id AND a.tenant_id=ai_assistant_answer_evaluation_intent.tenant_id AND a.person_id IS NOT DISTINCT FROM ai_assistant_answer_evaluation_intent.evaluator_person_id) AND EXISTS(SELECT 1 FROM public.ai_agent_candidate c WHERE c.id=ai_assistant_answer_evaluation_intent.candidate_id AND c.tenant_id=ai_assistant_answer_evaluation_intent.tenant_id AND c.kind='assistant_answer_prompt_v1' AND c.author_user_id<>app.current_user_id()));
+CREATE POLICY answer_intent_finish ON public.ai_assistant_answer_evaluation_intent FOR UPDATE TO ai_hr_app USING(tenant_id=app.current_tenant_id() AND evaluator_user_id=app.current_user_id() AND state='pending' AND app.principal_snapshot_current() AND app.is_group_admin()) WITH CHECK(tenant_id=app.current_tenant_id() AND evaluator_user_id=app.current_user_id() AND state='completed' AND EXISTS(SELECT 1 FROM public.ai_agent_evaluation e WHERE e.id=ai_assistant_answer_evaluation_intent.evaluation_id AND e.tenant_id=ai_assistant_answer_evaluation_intent.tenant_id AND e.candidate_id=ai_assistant_answer_evaluation_intent.candidate_id AND e.evaluator_user_id=ai_assistant_answer_evaluation_intent.evaluator_user_id AND e.suite_digest=ai_assistant_answer_evaluation_intent.suite_digest AND e.xmin=pg_current_xact_id()::xid));
+CREATE POLICY answer_intent_erase ON public.ai_assistant_answer_evaluation_intent FOR DELETE TO PUBLIC USING(tenant_id=app.current_tenant_id() AND evaluator_user_id=app.current_user_id() AND app.principal_snapshot_current());
+REVOKE ALL ON public.ai_assistant_answer_evaluation_intent FROM PUBLIC,ai_hr_app;
+GRANT SELECT,DELETE ON public.ai_assistant_answer_evaluation_intent TO ai_hr_app;
+GRANT INSERT(id,tenant_id,candidate_id,evaluator_user_id,evaluator_person_id,source_digest,provider_fingerprint,suite_digest,receipt) ON public.ai_assistant_answer_evaluation_intent TO ai_hr_app;
+GRANT UPDATE(state,evaluation_id) ON public.ai_assistant_answer_evaluation_intent TO ai_hr_app;
+--> statement-breakpoint
 CREATE TABLE public.ai_assistant_answer_strategy_use(
- id uuid PRIMARY KEY,tenant_id uuid NOT NULL REFERENCES public.tenant(id),user_id uuid NOT NULL REFERENCES public.app_user(id),person_id uuid REFERENCES public.person(id) ON DELETE CASCADE,
+ id uuid PRIMARY KEY,incarnation bigint GENERATED ALWAYS AS IDENTITY NOT NULL,tenant_id uuid NOT NULL REFERENCES public.tenant(id),user_id uuid NOT NULL REFERENCES public.app_user(id),person_id uuid REFERENCES public.person(id) ON DELETE CASCADE,
  promotion_id uuid REFERENCES public.ai_agent_promotion(id),candidate_digest text NOT NULL CHECK(candidate_digest~'^[a-f0-9]{64}$'),provider_fingerprint text NOT NULL CHECK(provider_fingerprint~'^[a-f0-9]{64}$'),source_digest text NOT NULL CHECK(source_digest~'^[a-f0-9]{64}$'),
  state text NOT NULL DEFAULT 'pending' CHECK(state IN('pending','completed')),exchange_id uuid UNIQUE REFERENCES public.assistant_exchange(id) ON DELETE CASCADE,
  receipt text NOT NULL CHECK(octet_length(receipt) BETWEEN 1 AND 8192),created_at timestamptz NOT NULL DEFAULT clock_timestamp(),expires_at timestamptz NOT NULL DEFAULT(clock_timestamp()+interval '30 days'),
@@ -61,7 +83,8 @@ CREATE POLICY answer_use_create ON public.ai_assistant_answer_strategy_use FOR I
 CREATE POLICY answer_use_complete ON public.ai_assistant_answer_strategy_use FOR UPDATE TO ai_hr_app USING(tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND state='pending' AND app.principal_snapshot_current()) WITH CHECK(tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND state='completed' AND EXISTS(SELECT 1 FROM public.assistant_exchange e WHERE e.id=ai_assistant_answer_strategy_use.exchange_id AND e.tenant_id=ai_assistant_answer_strategy_use.tenant_id AND e.app_user_id=ai_assistant_answer_strategy_use.user_id AND e.xmin=pg_current_xact_id()::xid));
 CREATE POLICY answer_use_erase ON public.ai_assistant_answer_strategy_use FOR DELETE TO PUBLIC USING(tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND app.principal_snapshot_current());
 REVOKE ALL ON public.ai_assistant_answer_strategy_use FROM PUBLIC,ai_hr_app;
-GRANT SELECT,INSERT,DELETE ON public.ai_assistant_answer_strategy_use TO ai_hr_app;
+GRANT SELECT,DELETE ON public.ai_assistant_answer_strategy_use TO ai_hr_app;
+GRANT INSERT(id,tenant_id,user_id,person_id,promotion_id,candidate_digest,provider_fingerprint,source_digest,receipt) ON public.ai_assistant_answer_strategy_use TO ai_hr_app;
 GRANT UPDATE(state,exchange_id) ON public.ai_assistant_answer_strategy_use TO ai_hr_app;
 --> statement-breakpoint
 -- No role/bypass grant: ordinary physical owners maintain expired rows only, including UPDATE
@@ -69,7 +92,7 @@ GRANT UPDATE(state,exchange_id) ON public.ai_assistant_answer_strategy_use TO ai
 DO $policies$
 DECLARE relation_name text;
 BEGIN
- FOREACH relation_name IN ARRAY ARRAY['ai_assistant_answer_evaluation_arm','ai_assistant_answer_strategy_use'] LOOP
+ FOREACH relation_name IN ARRAY ARRAY['ai_assistant_answer_evaluation_arm','ai_assistant_answer_strategy_use','ai_assistant_answer_evaluation_intent'] LOOP
   EXECUTE format('CREATE POLICY answer_expired_owner_read ON public.%I FOR SELECT TO PUBLIC USING(expires_at<=clock_timestamp() AND current_user=session_user AND session_user<>''ai_hr_app'' AND session_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid=%L::regclass)))',relation_name,'public.'||relation_name);
   EXECUTE format('CREATE POLICY answer_expired_owner_update ON public.%I FOR UPDATE TO PUBLIC USING(expires_at<=clock_timestamp() AND current_user=session_user AND session_user<>''ai_hr_app'' AND session_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid=%L::regclass))) WITH CHECK(expires_at<=clock_timestamp())',relation_name,'public.'||relation_name);
   EXECUTE format('CREATE POLICY answer_expired_owner_delete ON public.%I FOR DELETE TO PUBLIC USING(expires_at<=clock_timestamp() AND current_user=session_user AND session_user<>''ai_hr_app'' AND session_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid=%L::regclass)))',relation_name,'public.'||relation_name);
@@ -96,6 +119,8 @@ REVOKE ALL ON FUNCTION app._answer_metadata_erasure_authorized(uuid,uuid,uuid) F
 GRANT EXECUTE ON FUNCTION app._answer_metadata_erasure_authorized(uuid,uuid,uuid) TO ai_hr_app;
 CREATE POLICY answer_arm_pdpa_read ON public.ai_assistant_answer_evaluation_arm FOR SELECT TO PUBLIC USING(app._answer_metadata_erasure_authorized(tenant_id,evaluator_person_id,evaluator_user_id));
 CREATE POLICY answer_use_pdpa_read ON public.ai_assistant_answer_strategy_use FOR SELECT TO PUBLIC USING(app._answer_metadata_erasure_authorized(tenant_id,person_id,user_id));
+CREATE POLICY answer_intent_pdpa_read ON public.ai_assistant_answer_evaluation_intent FOR SELECT TO PUBLIC USING(app._answer_metadata_erasure_authorized(tenant_id,evaluator_person_id,evaluator_user_id));
+CREATE POLICY answer_intent_pdpa_delete ON public.ai_assistant_answer_evaluation_intent FOR DELETE TO PUBLIC USING(app._answer_metadata_erasure_authorized(tenant_id,evaluator_person_id,evaluator_user_id));
 CREATE POLICY answer_arm_pdpa_delete ON public.ai_assistant_answer_evaluation_arm FOR DELETE TO PUBLIC USING(app._answer_metadata_erasure_authorized(tenant_id,evaluator_person_id,evaluator_user_id));
 CREATE POLICY answer_use_pdpa_delete ON public.ai_assistant_answer_strategy_use FOR DELETE TO PUBLIC USING(app._answer_metadata_erasure_authorized(tenant_id,person_id,user_id));
 CREATE TABLE app.assistant_answer_erasure_intent(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,person_id uuid NOT NULL,employment_id uuid NOT NULL,cleared integer NOT NULL CHECK(cleared>=0),PRIMARY KEY(xact_id,tenant_id,person_id));
@@ -108,6 +133,7 @@ BEGIN
  IF NOT FOUND OR app.principal_snapshot_current() IS NOT TRUE OR app.can_admin_employment(subject_employment) IS NOT TRUE THEN RAISE EXCEPTION 'Conversation metadata erasure unavailable' USING ERRCODE='42501';END IF;
  DELETE FROM public.ai_assistant_answer_evaluation_arm a WHERE a.tenant_id=i.tenant_id AND(a.evaluator_person_id=i.person_id OR EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=a.evaluator_user_id AND u.tenant_id=i.tenant_id AND u.person_id=i.person_id));GET DIAGNOSTICS n=ROW_COUNT;
  DELETE FROM public.ai_assistant_answer_strategy_use a WHERE a.tenant_id=i.tenant_id AND(a.person_id=i.person_id OR EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=a.user_id AND u.tenant_id=i.tenant_id AND u.person_id=i.person_id));GET DIAGNOSTICS k=ROW_COUNT;n:=n+k;
+ DELETE FROM public.ai_assistant_answer_evaluation_intent a WHERE a.tenant_id=i.tenant_id AND(a.evaluator_person_id=i.person_id OR EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=a.evaluator_user_id AND u.tenant_id=i.tenant_id AND u.person_id=i.person_id));GET DIAGNOSTICS k=ROW_COUNT;n:=n+k;
  INSERT INTO app.assistant_answer_erasure_intent VALUES(pg_current_xact_id(),i.tenant_id,i.user_id,i.person_id,i.employment_id,n);
  RETURN n;
 END $$;
@@ -134,18 +160,45 @@ END $$;
 REVOKE ALL ON FUNCTION app.answer_metadata_capture_guard() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER answer_arm_capture_guard BEFORE INSERT OR UPDATE ON public.ai_assistant_answer_evaluation_arm FOR EACH ROW EXECUTE FUNCTION app.answer_metadata_capture_guard();
 CREATE TRIGGER answer_use_capture_guard BEFORE INSERT OR UPDATE ON public.ai_assistant_answer_strategy_use FOR EACH ROW EXECUTE FUNCTION app.answer_metadata_capture_guard();
+CREATE TRIGGER answer_intent_capture_guard BEFORE INSERT OR UPDATE ON public.ai_assistant_answer_evaluation_intent FOR EACH ROW EXECUTE FUNCTION app.answer_metadata_capture_guard();
 --> statement-breakpoint
 -- Identity-only metadata invalidation bridge for the actual own transcript redaction owner. No
 -- target is posted; no Assistant grant/module/provider admission or financial refund is inferred.
 CREATE FUNCTION app.assistant_answer_invalidate_own_strategy_uses() RETURNS integer
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();n integer;
+DECLARE t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();n integer;k integer;
 BEGIN
  IF t IS NULL OR u IS NULL OR app.principal_snapshot_current() IS NOT TRUE OR current_setting('transaction_isolation')<>'read committed' OR current_setting('transaction_read_only')<>'off' THEN RAISE EXCEPTION 'Conversation metadata retirement unavailable' USING ERRCODE='42501';END IF;
  -- First source phase, or reentrant under the admitted transcript owner's existing Access interval.
  -- A competing actor/admission is a whole-command refusal, never a wait/partial-success erasure.
  IF NOT pg_try_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0)) THEN RAISE EXCEPTION 'Conversation metadata retirement is busy' USING ERRCODE='55P03';END IF;
- DELETE FROM public.ai_assistant_answer_strategy_use WHERE tenant_id=t AND user_id=u;GET DIAGNOSTICS n=ROW_COUNT;RETURN n;
+ DELETE FROM public.ai_assistant_answer_strategy_use WHERE tenant_id=t AND user_id=u;GET DIAGNOSTICS n=ROW_COUNT;
+ DELETE FROM public.ai_assistant_answer_evaluation_intent WHERE tenant_id=t AND evaluator_user_id=u;GET DIAGNOSTICS k=ROW_COUNT;RETURN n+k;
 END $$;
 REVOKE ALL ON FUNCTION app.assistant_answer_invalidate_own_strategy_uses() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assistant_answer_invalidate_own_strategy_uses() TO ai_hr_app;
+
+--> statement-breakpoint
+-- A copied id/ciphertext cannot resurrect an old in-process marker. Identity incarnation always
+-- advances on INSERT, and app INSERT/UPDATE column grants cannot override it or rewind its sequence.
+DO $incarnations$
+DECLARE relation_name text;sequence_name text;
+BEGIN
+ FOREACH relation_name IN ARRAY ARRAY['ai_assistant_answer_strategy_use','ai_assistant_answer_evaluation_intent'] LOOP
+  SELECT pg_get_serial_sequence('public.'||relation_name,'incarnation') INTO sequence_name;
+  IF sequence_name IS NULL THEN RAISE EXCEPTION 'Conversation marker incarnation unavailable';END IF;
+  EXECUTE format('REVOKE ALL ON SEQUENCE %s FROM PUBLIC,ai_hr_app',sequence_name);
+ END LOOP;
+END $incarnations$;
+-- Every physical intent deletion (including FK/PDPA/owner expiry) joins exclusive Access. Source
+-- admissions/checkpoints already own shared Access, so marker presence cannot race within their Tx.
+CREATE FUNCTION app.answer_evaluation_intent_custody() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid;owned boolean;
+BEGIN
+ IF TG_OP='DELETE' THEN t:=OLD.tenant_id;SELECT pg_try_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0)) INTO owned;
+ ELSE t:=NEW.tenant_id;SELECT pg_try_advisory_xact_lock_shared(hashtextextended('access-configuration:'||t::text,0)) INTO owned;END IF;
+ IF owned IS NOT TRUE THEN RAISE EXCEPTION 'Conversation evaluation custody is busy' USING ERRCODE='55P03';END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD;END IF;RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.answer_evaluation_intent_custody() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER answer_evaluation_intent_custody BEFORE INSERT OR UPDATE OR DELETE ON public.ai_assistant_answer_evaluation_intent FOR EACH ROW EXECUTE FUNCTION app.answer_evaluation_intent_custody();
