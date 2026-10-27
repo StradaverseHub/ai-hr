@@ -142,3 +142,53 @@ jobs:
           path: ${{ runner.temp }}/assistant-development-import-${{ matrix.source_mode }}/public/report.json
           if-no-files-found: error
           retention-days: 7
+
+  # SOURCE PROPOSAL ONLY; same exact approved controller fence through resolve. No self-enable.
+  development-native:
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        journey: [specialist_governance, ai_controls, own_leave_retirement]
+    defaults:
+      run:
+        working-directory: source
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_CI_BROWSER_JOURNEY: ${{ matrix.journey }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          path: source
+          persist-credentials: false
+      - uses: ./automation/.github/actions/setup-alpha
+        with:
+          node: '20'
+          mobile: 'false'
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Controller contracts (not browser acceptance)
+        run: node --test ../automation/.github/ci/assistant-development-browser.test.mjs ../automation/.github/ci/assistant-specialist-governance-experience.test.mjs ../automation/.github/ci/assistant-ai-controls-experience.test.mjs ../automation/.github/ci/assistant-own-leave-retirement-experience.test.mjs
+      - name: One closed native journey with a fresh job-owned fictional fixture
+        run: node ../automation/.github/ci/assistant-development-browser.mjs "$RUNNER_TEMP/assistant-development-native-${{ matrix.journey }}"
+      - name: Cleanup exact job-owned database after cancellation
+        if: always()
+        run: |
+          if test -f "$RUNNER_TEMP/assistant-development-native-${{ matrix.journey }}/private/owned-unit" && test -f "$RUNNER_TEMP/assistant-development-native-${{ matrix.journey }}/private/cleanup-safe"; then
+            export AIHR_CI_UNIT="$(cat "$RUNNER_TEMP/assistant-development-native-${{ matrix.journey }}/private/owned-unit")"
+            bash ../automation/.github/ci/postgres.sh stop
+          fi
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: assistant-development-native-${{ matrix.journey }}-smoke-not-release-evidence
+          path: ${{ runner.temp }}/assistant-development-native-${{ matrix.journey }}/public/report.json
+          if-no-files-found: error
+          retention-days: 7

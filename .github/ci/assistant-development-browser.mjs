@@ -8,16 +8,20 @@ import {existsSync,mkdirSync,readFileSync,writeFileSync,openSync,closeSync,unlin
 import {resolve,join,dirname} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {setTimeout as delay} from 'node:timers/promises';
+import {runAssistantSpecialistGovernanceEnglishExperience,SPECIALIST_PHASES,SPECIALIST_CHECKS,SPECIALIST_MODULES} from './assistant-specialist-governance-experience.mjs';
+import {runAssistantAiControlsEnglishExperience,AI_CONTROLS_CHECKS} from './assistant-ai-controls-experience.mjs';
+import {runAssistantOwnLeaveRetirementEnglishExperience,OWN_LEAVE_RETIREMENT_CHECKS} from './assistant-own-leave-retirement-experience.mjs';
 import {runAssistantOwnLeaveEnglishExperience} from './assistant-own-leave-experience.mjs';
 import {runAssistantEmployeeImportEnglishExperience} from './assistant-employee-import-experience.mjs';
 import {runAssistantProfileEnglishExperience} from './assistant-profile-experience.mjs';
 import {INACTIVE_PROVIDER_SELECTION,runAssistantProviderInactiveConfigEnglishExperience} from './assistant-provider-config-experience.mjs';
 export const MODULES=Object.freeze(['employees','org','leave','ess','approvals','knowledge_base','payroll','attendance','claims','performance','rewards','lifecycle','toil','multi_cycle_payroll','typed_pay_components','country-my','notifications','system_explorer','assistant','system_testing']);
+assert.deepEqual(SPECIALIST_MODULES,MODULES);
 const HUMAN_ENTRY=Object.freeze({employees:'/admin/personnel/import',org:'/assistant/org',leave:'/assistant/leave',ess:'/assistant/profile',approvals:'/assistant/approvals',knowledge_base:'/assistant/knowledge-base',payroll:'/assistant/payroll-close',attendance:'/assistant/attendance',claims:'/assistant/claims',performance:'/assistant/performance',rewards:'/assistant/rewards',lifecycle:'/assistant/lifecycle',toil:'/assistant/toil',multi_cycle_payroll:'/assistant/payroll-runs',typed_pay_components:'/assistant/pay-codes','country-my':'/assistant/statutory',notifications:'/assistant/notifications',system_testing:'/assistant/testing'});
 export const REMAINING=Object.freeze(['remaining specialist/action prepare/review/confirm journeys beyond the primary English own-leave, ESS profile request and inactive provider-configuration positives','expiry/discard/uncertain-response replay and erasure','cross-person/company/tenant denial and revocation interleavings','governed independent evaluation/promotion/rollback and actual provider capability/cost/latency','employee import source modes not exercised by this job and real user dataset baseline comparison','internal HTTPS login/MFA and actual verified notification identity/consent','locale switch interaction/accessibility and full desktop/mobile action journeys','combined exact-candidate final gate and deployment arrival']);
 const UUID=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
 export function unitFor(run,attempt,sha){assert(/^\d+$/.test(run)&&/^\d+$/.test(attempt)&&/^[0-9a-f]{40}$/.test(sha));return 'db-'+createHash('sha256').update([run,attempt,sha,'assistant-development-v1'].join(':')).digest('hex').slice(0,16);}
-export const BROWSER_JOURNEYS=Object.freeze(['primary','employee_import_paste','employee_import_csv','employee_import_xlsx']);
+export const BROWSER_JOURNEYS=Object.freeze(['primary','employee_import_paste','employee_import_csv','employee_import_xlsx','specialist_governance','ai_controls','own_leave_retirement']);
 export function closedBrowserJourney(value){assert(typeof value==='string'&&BROWSER_JOURNEYS.includes(value),'Unknown closed browser journey');return value;}
 /** Existing primary unit stays byte-for-byte compatible; each import mode owns a distinct target. */
 export function unitForJourney(run,attempt,sha,journey){closedBrowserJourney(journey);const primary=unitFor(run,attempt,sha);return journey==='primary'?primary:'db-'+createHash('sha256').update([run,attempt,sha,'assistant-development-v1',journey].join(':')).digest('hex').slice(0,16);}
@@ -110,6 +114,9 @@ prepare().catch(()=>{process.exitCode=1;});
 }
 /** Private transport only. These envelopes are not canonical facts and confer no authority. */
 const READBACK_SPECS=Object.freeze({
+ specialist_governance:Object.freeze({module:'assistant-specialist-native-readback.mjs',member:'createAssistantSpecialistNativeReadback',phases:SPECIALIST_PHASES,owner:true,controller:true,rootArgument:true}),
+ ai_controls:Object.freeze({module:'assistant-ai-controls-native-readback.mjs',member:'createAssistantAiControlsNativeReadback',phases:Object.freeze(['baseline','invalid_spend','invalid_concurrency','spend_saved','spend_reloaded','limits_saved','limits_reloaded','zero_paused','zero_reloaded','unlimited_saved','unlimited_reloaded']),owner:true,controller:true,rootArgument:true}),
+ own_leave_retirement:Object.freeze({module:'assistant-own-leave-retirement-native-readback.mjs',member:'createAiDeliveryOwnLeaveRetirementNativeReadback',phases:Object.freeze(['baseline','prepared','discarded','reopened','reopened_again']),owner:true,controller:true,rootArgument:true}),
  own_leave:Object.freeze({module:'scripts/fixtures/ai-delivery-own-leave-native-readback.ts',member:'createAiDeliveryOwnLeaveNativeReadback',phases:Object.freeze(['baseline','prepared','submitted','reopened','reopened_again']),owner:true}),
  profile:Object.freeze({module:'scripts/fixtures/ai-delivery-profile-native-readback.ts',member:'createAiDeliveryProfileNativeReadback',phases:Object.freeze(['baseline','prepared','submitted','reopened','reopened_again']),owner:true}),
  provider_config:Object.freeze({module:'scripts/fixtures/ai-delivery-provider-config-native-readback.ts',member:'createAiDeliveryProviderConfigNativeReadback',phases:Object.freeze(['baseline','invalid_routes','saved','reloaded']),owner:false}),
@@ -138,11 +145,11 @@ export function validateEmployeeImportInput(input,sourceMode){
 }
 export function nativeReadbackBootstrap(root,fixturePath,kind='own_leave'){
  assert(arguments.length<=3,'No caller-provided readback count');const spec=nativeReadbackSpecification(kind),count=spec.phases.length;
- const factoryArgs=spec.sourceMode?'owner,fixture:packet.fixture,sourceMode:'+JSON.stringify(spec.sourceMode):spec.owner?'owner,fixture:packet.fixture':'fixture:packet.fixture,expected:'+JSON.stringify(INACTIVE_PROVIDER_SELECTION);
+ const factoryArgs=spec.rootArgument?'root:'+JSON.stringify(root)+',owner,fixture:packet.fixture':spec.sourceMode?'owner,fixture:packet.fixture,sourceMode:'+JSON.stringify(spec.sourceMode):spec.owner?'owner,fixture:packet.fixture':'fixture:packet.fixture,expected:'+JSON.stringify(INACTIVE_PROVIDER_SELECTION);
  return `import {readFileSync} from 'node:fs';
 import {createInterface} from 'node:readline';
 import {${spec.owner?'createDb,client':'client'}} from ${JSON.stringify(join(root,'db/client.ts'))};
-import {${spec.member} as createNativeReadback} from ${JSON.stringify(join(root,spec.module))};
+import {${spec.member} as createNativeReadback} from ${JSON.stringify(spec.controller?join(here,spec.module):join(root,spec.module))};
 async function main(){
  ${spec.owner?'const owner=createDb(process.env.MIGRATION_DATABASE_URL!,{max:1});':''}
  const lines=createInterface({input:process.stdin,crlfDelay:Infinity}),phases=${JSON.stringify(spec.phases)};
@@ -187,7 +194,7 @@ export function createPrivateNativeReadbackClient(child,options={}){
  async function request(operation,invocation){
   if(spec.sourceMode&&operation==='verify')invocation=structuredClone(invocation);
   assert(!failed&&!inFlight&&!finished);
-  if(operation==='verify'){const allowed=kind==='provider_config'?['phase']:spec.sourceMode?['phase','expected']:['phase','expected','actionId','receipt','review'];assert(invocation&&Object.keys(invocation).every(key=>allowed.includes(key))&&invocation.phase===spec.phases[verified]);}else assert(operation==='finish'&&verified===spec.phases.length);
+  if(operation==='verify'){const allowed=kind==='specialist_governance'?['phase','jobId']:kind==='ai_controls'||kind==='provider_config'?['phase']:spec.sourceMode?['phase','expected']:['phase','expected','actionId','receipt','review'];assert(invocation&&Object.keys(invocation).every(key=>allowed.includes(key))&&invocation.phase===spec.phases[verified]);}else assert(operation==='finish'&&verified===spec.phases.length);
   inFlight=true;
   try{const readyValue=await ready;assert(!failed);if(spec.sourceMode&&operation==='verify'){assert.deepEqual(Object.keys(invocation).sort(),['expected','phase']);assert.deepEqual(invocation.expected,readyValue.expected);}const next=sequence+1,packet=JSON.stringify(operation==='verify'?{kind,sequence:next,operation,invocation}:{kind,sequence:next,operation});
    assert(Buffer.byteLength(packet,'utf8')<=131072);sequence=next;const response=wait(operation,next);
@@ -199,7 +206,7 @@ export function createPrivateNativeReadbackClient(child,options={}){
 const here=dirname(fileURLToPath(import.meta.url));
 async function main(){
  assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.CI,'true');assert.equal(process.env.GITHUB_REPOSITORY,'StradaverseHub/ai-hr');assert.equal(process.versions.node.split('.')[0],'20');
- const root=process.cwd(),sha=process.env.AIHR_CI_HEAD,control=process.env.AIHR_CI_CONTROL_HEAD,selectedJourney=closedBrowserJourney(process.env.AIHR_CI_BROWSER_JOURNEY??'primary'),importMode=selectedJourney!=='primary';assert(/^[0-9a-f]{40}$/.test(sha??''));assert(/^[0-9a-f]{40}$/.test(control??''));
+ const root=process.cwd(),sha=process.env.AIHR_CI_HEAD,control=process.env.AIHR_CI_CONTROL_HEAD,selectedJourney=closedBrowserJourney(process.env.AIHR_CI_BROWSER_JOURNEY??'primary'),singleMode=selectedJourney!=='primary';assert(/^[0-9a-f]{40}$/.test(sha??''));assert(/^[0-9a-f]{40}$/.test(control??''));
  const out=resolve(process.argv[2]??'');assert(out.startsWith(resolve(process.env.RUNNER_TEMP)+'/'));assert(!existsSync(out),'Evidence path must be new');mkdirSync(join(out,'private'),{recursive:true,mode:0o700});mkdirSync(join(out,'public'),{mode:0o700});
  const report=publicReport(sha);report.requestedJourney=selectedJourney;const privateDir=join(out,'private'),children=new Set();let browser,browserServer,postgresOwned=false,failed=false;
  const unit=unitForJourney(process.env.GITHUB_RUN_ID,process.env.GITHUB_RUN_ATTEMPT,sha,selectedJourney),container=`aihr-ci-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}-${unit}`,database='aihr_assistant_browser_'+unit.slice(3),base='http://127.0.0.1:3177';
@@ -231,7 +238,7 @@ async function main(){
   if(existsSync(join(root,'.env.local'))){assert.equal(readFileSync(join(root,'.env.local'),'utf8'),readFileSync(join(root,'.env.example'),'utf8'));unlinkSync(join(root,'.env.local'));}
   assert.deepEqual(readdirSync(root).filter(x=>/^\.env(?:\.|$)/.test(x)&&x!=='.env.example'),[]);
   assert(existsSync(join(root,'scripts/fixtures/ai-delivery-full-fixture.ts')),'Full native fixture owner absent; no legacy fallback');
-  for(const kind of importMode?[selectedJourney]:['own_leave','profile','provider_config'])assert(existsSync(join(root,nativeReadbackSpecification(kind).module)),'Required canonical '+kind+' readback owner absent; no fallback');
+  for(const kind of singleMode?[selectedJourney]:['own_leave','profile','provider_config']){const spec=nativeReadbackSpecification(kind);assert(existsSync(spec.controller?join(here,spec.module):join(root,spec.module)),'Required canonical '+kind+' readback owner absent; no fallback');}
   const inspect=spawnSync('docker',['container','inspect',container],{env:basic,encoding:'utf8',timeout:30000,maxBuffer:1048576});assert(confirmedContainerAbsent(inspect,container),'Unknown docker inspection is not absence');
   writeFileSync(join(privateDir,'owned-unit'),unit,{mode:0o600});postgresOwned=true;report.databaseCleanup='unconfirmed';
   await command('postgres', 'bash',[join(here,'postgres.sh'),'reset'],basic,120000);
@@ -254,6 +261,9 @@ async function main(){
    try{
     let experience,checkIds,reportKey,journey,coverage;
     switch(kind){
+     case 'specialist_governance':experience=await runAssistantSpecialistGovernanceEnglishExperience({page,fixture,verifyCanonical:readback.verifyCanonical});checkIds=[...SPECIALIST_CHECKS];reportKey='specialistGovernanceExperience';journey='english_specialist_governance';coverage='all20_actual_baselines_and_independent_evaluations_five_promoted_only_no_live_provider_or_actions';break;
+     case 'ai_controls':experience=await runAssistantAiControlsEnglishExperience({page,fixture,verifyNative:readback.verifyCanonical});checkIds=[...AI_CONTROLS_CHECKS];reportKey='aiControlsExperience';journey='english_ai_controls';coverage='fictional_operator_controls_persistence_only_no_provider_activity';break;
+     case 'own_leave_retirement':experience=await runAssistantOwnLeaveRetirementEnglishExperience({page,fixture,verifyCanonical:readback.verifyCanonical});checkIds=[...OWN_LEAVE_RETIREMENT_CHECKS];reportKey='ownLeaveRetirementExperience';journey='english_own_leave_retirement';coverage='fictional_english_discard_and_body_retirement_only_no_request_submission';break;
      case 'own_leave':experience=await runAssistantOwnLeaveEnglishExperience({page,fixture,verifyCanonical:readback.verifyCanonical});checkIds=['real_current_own_selection','prepare_no_native_effect','literal_saved_review','single_explicit_confirm_native_refs','reload_same_completed_receipt','repeat_readonly_reopen_no_extra_effect'];reportKey='ownLeaveExperience';journey='english_own_leave_primary';coverage='fictional_english_positive_ui_and_readonly_native_reconciliation_only';break;
      case 'profile':experience=await runAssistantProfileEnglishExperience({page,fixture,verifyCanonical:readback.verifyCanonical});checkIds=['actual_own_permitted_selection','prepare_no_native_effect','literal_human_profile_review','explicit_human_confirm_exact_native_refs','same_completed_reopen','repeat_reopen_no_extra_request_or_profile_application'];reportKey='profileExperience';journey='english_ess_profile_request_primary';coverage='fictional_english_profile_request_submission_only';break;
      case 'provider_config':experience=await runAssistantProviderInactiveConfigEnglishExperience({page,fixture,verifyNative:readback.verifyCanonical});checkIds=['invalid_route_ui_refuses_before_save','privacy_policy_displayed_no_activation_control','synthetic_candidate_saved_inactive_without_probe','same_nonsecret_candidate_version_and_routing_after_reload'];reportKey='providerConfigExperience';journey='english_inactive_synthetic_provider_candidate';coverage='fictional_english_inactive_candidate_only_no_probe_or_activation';break;
@@ -275,14 +285,14 @@ async function main(){
   const auth='Basic '+Buffer.from('ci:'+gate).toString('base64');let ready=false;
   for(let n=0;n<120;n++){assert(!interrupted);assert(server.exitCode===null&&server.signalCode===null,'App exited');try{const r=await fetch(base+'/login',{headers:{authorization:auth},signal:AbortSignal.timeout(2000)});if(r.status===200){ready=true;break;}}catch{}await delay(1000);}assert(ready,'App unavailable');assert.equal((await fetch(base+'/',{redirect:'manual'})).status,401);
   browserServer=await require('playwright').chromium.launchServer({headless:true});children.add(browserServer.process());browser=await require('playwright').chromium.connect(browserServer.wsEndpoint());
-  const roles=importMode?[['operator',fixture.actors.operator,false]]:[['operator',fixture.actors.operator,true],['reviewer1',fixture.actors.reviewers[0],true],['reviewer2',fixture.actors.reviewers[1],true],['self',fixture.actors.self,false],['peer',fixture.actors.peer,false],['manager',fixture.actors.manager,false],['standalone_tester',fixture.platform.testing.standalone,false],['prehire',fixture.platform.prehire,false]];
+  const roles=singleMode?(selectedJourney==='own_leave_retirement'?[['self',fixture.actors.self,false]]:[['operator',fixture.actors.operator,false]]):[['operator',fixture.actors.operator,true],['reviewer1',fixture.actors.reviewers[0],true],['reviewer2',fixture.actors.reviewers[1],true],['self',fixture.actors.self,false],['peer',fixture.actors.peer,false],['manager',fixture.actors.manager,false],['standalone_tester',fixture.platform.testing.standalone,false],['prehire',fixture.platform.prehire,false]];
   for(const [role,actor,all] of roles){
    assert(UUID.test(actor?.userId));const context=await browser.newContext({httpCredentials:{username:'ci',password:gate}});const page=await context.newPage();page.setDefaultTimeout(15000);page.setDefaultNavigationTimeout(20000);
    page.on('pageerror',()=>report.errorCounts.page++);page.on('console',m=>{if(m.type()==='error')report.errorCounts.console++;});page.on('response',r=>{if(r.status()>=500)report.errorCounts.server++;});
    await context.route('**/*',route=>{const url=new URL(route.request().url());if(url.origin===base||['data:','blob:','about:'].includes(url.protocol))return route.continue();report.errorCounts.external++;return route.abort();});
    try{
     await page.goto(base+'/login');await page.locator(`form[action="/login/as"]:has(input[name="userId"][value="${actor.userId}"]) button[type="submit"]`).click();await page.waitForURL(u=>!['/login','/login/as'].includes(u.pathname));
-    for(const locale of importMode?['en']:['en','ms','zh','ta','th','vi'])for(const viewport of importMode?[{width:1440,height:1000}]:[{width:1440,height:1000},{width:375,height:812}]){
+    for(const locale of singleMode?['en']:['en','ms','zh','ta','th','vi'])for(const viewport of singleMode?[{width:1440,height:1000}]:[{width:1440,height:1000},{width:375,height:812}]){
      assert(!interrupted);await context.addCookies([{name:'NEXT_LOCALE',value:locale,url:base}]);await page.setViewportSize(viewport);await page.goto(base+'/assistant');assert.equal(new URL(page.url()).pathname,'/assistant');await page.locator('[data-tour="intelligence-assistant"]').waitFor();
      const available=await page.locator('a[href^="/assistant?job="]').evaluateAll(nodes=>[...new Set(nodes.map(n=>new URL(n.href).searchParams.get('job')))]);assert(available.every(m=>MODULES.includes(m)));if(all)assert.deepEqual([...available].sort(),[...MODULES].sort());
      report.checks.push({role,locale,viewport:viewport.width,workspace:'rendered',available});
@@ -290,12 +300,12 @@ async function main(){
      // repeats workspace plus own-leave entry, not an invented full translated action journey.
      if(all&&locale==='en'&&viewport.width===1440)for(const module of MODULES){await page.locator(`a[href="/assistant?job=${module}"]`).first().click();assert.equal(new URL(page.url()).searchParams.get('job'),module);await page.locator(`a[href="/assistant?job=${module}"][aria-current="page"]`).waitFor();assert(await page.locator('[data-ui-card]').count()>0);if(HUMAN_ENTRY[module])assert(await page.locator(`a[href="${HUMAN_ENTRY[module]}"]`).count()>0,'Declared human entry missing');assert(!/SQLSTATE|PostgresError|ECONNREFUSED|Unhandled Runtime Error|stack trace|AI_CONFIG_SECRET|MIGRATION_DATABASE_URL|postgres:\/\//i.test(await page.locator('body').innerText()));report.checks.push({role,locale,viewport:viewport.width,module,navigation:'rendered'});}
      if(role==='self'){await page.goto(base+'/assistant/leave');assert.equal(new URL(page.url()).pathname,'/assistant/leave');await page.locator('select[id$="-employment"]').waitFor();assert(await page.locator('select[id$="-employment"] option').count()>1);assert(await page.locator('input[type="date"]').count()===1);assert(await page.locator('textarea[id$="-reason"]').count()===1);report.checks.push({role,locale,viewport:viewport.width,ownLeaveEntry:'human_inputs_rendered_not_prepared'});}
-     if(locale==='en'&&viewport.width===1440){if(role==='operator')await runNativeJourney(importMode?selectedJourney:'provider_config',page);if(role==='self'){await runNativeJourney('own_leave',page);await runNativeJourney('profile',page);}}
+     if(locale==='en'&&viewport.width===1440){if(role==='operator'||singleMode&&selectedJourney==='own_leave_retirement')await runNativeJourney(singleMode?selectedJourney:'provider_config',page);if(role==='self'&&!singleMode){await runNativeJourney('own_leave',page);await runNativeJourney('profile',page);}}
      const body=await page.locator('body').innerText();assert(!/SQLSTATE|PostgresError|ECONNREFUSED|Unhandled Runtime Error|stack trace|AI_CONFIG_SECRET|MIGRATION_DATABASE_URL|postgres:\/\//i.test(body));assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Horizontal overflow');
     }
    }finally{await context.close();}
   }
-  assert.deepEqual([...experienced].sort(),importMode?[selectedJourney]:['own_leave','profile','provider_config'],'Required primary journeys did not complete');assert(Object.values(report.errorCounts).every(n=>n===0),'Browser errors or unexpected external requests');report.state='smoke_passed_incomplete_experience';
+  assert.deepEqual([...experienced].sort(),singleMode?[selectedJourney]:['own_leave','profile','provider_config'],'Required primary journeys did not complete');assert(Object.values(report.errorCounts).every(n=>n===0),'Browser errors or unexpected external requests');report.state='smoke_passed_incomplete_experience';
  }catch{failed=true;report.state='failed';report.failure=interrupted?'interrupted':'bounded_controller_or_browser_failure';}
  finally{
   if(browser)try{await Promise.race([browser.close(),delay(10000).then(()=>{throw Error('Browser cleanup timeout');})]);}catch{failed=true;report.failure='browser_cleanup_failure';}
