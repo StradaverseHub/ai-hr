@@ -21,10 +21,9 @@ import { listPendingTasks, pendingApprovalsCount, type InboxModules, type Pendin
 import * as perf from '../packs/performance/service';
 import { defaultPolicy } from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
-import { createRewardUnit, decideRewardUnit, getRewardUnit, pendingRewardReviews, saveRewardEntry, saveRewardPolicy, setRewardMember } from '../packs/rewards/service';
+import { createRewardUnit, decideRewardUnit, getRewardUnit, pendingRewardReviews, pendingRewardTasks, saveRewardEntry, saveRewardPolicy, setRewardMember } from '../packs/rewards/service';
 import { emptyFacts } from '../packs/rewards/model';
 import { PACK_TASK_KINDS } from '../lib/assigned-work';
-import { pendingRewardTasks } from '../packs/rewards/tasks';
 import { HOME_TASK_KINDS } from '../lib/employee-home';
 import { closeAll, createAppUser, entitledCtx, harnessSnapshot, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';

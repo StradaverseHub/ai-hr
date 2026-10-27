@@ -10,6 +10,7 @@ import { setCompensation } from '../../core/comp';
 import { setEmploymentGrade } from '../../core/org';
 import { setPayrollInput } from '../payroll/service';
 import { todayInKualaLumpur } from '../../lib/hr-date';
+import type { PackTaskItem } from '../../lib/assigned-work';
 import { calculateRewards } from './engine';
 import { onehrRewardResultTx } from '../performance/service';
 import { decisionActorRole, factsFromOnehr, isSeniorPlanMember, returnedState } from './model';
@@ -570,4 +571,57 @@ export async function importOnehrRewardResults(ctx: SessionContext, unitId: stri
     await touch(tx,unitId); await stamp(tx,ctx,unitId,'onehr-results-imported',{count:imported});
     return { imported };
   });
+}
+
+const REWARD_TASK_APPROVAL_STAGES = ['bg', 'gr', 'ctro', 'ec'] as const;
+
+/**
+ * Rewards work awaiting the viewer, projected into the shared task list (WP-A1; core/approvals-inbox.ts
+ * PACK_TASK_SOURCES). Two owners decide the rows; this function only supplies what the shared list needs:
+ *
+ *   - `pendingRewardReviews` — the queue /approvals already renders as its Rewards card: a unit at an
+ *     approval stage (bg, gr, ctro, ec) that `app.reward_roles` says is THIS viewer's stage. A BU or PBP
+ *     member therefore sees nothing while the unit sits at BG; the BG member sees it.
+ *   - `returnedRewardUnits` — a draft whose latest decision is a return, for the viewer holding the seat it
+ *     was returned to (BU CEO, or BG CEO for a BG-originated off-cycle request). Its reason and actor are
+ *     NOT projected.
+ *
+ * The first read is the cheap exit and the unscoped company source: the units the viewer can read at all
+ * (RLS) that sit at an approval stage or are drafts whose latest decision is a return. A viewer with none
+ * (almost everyone, on almost every page) costs one query. `pendingRewardReviews` takes company ids and
+ * answers [] for none, but Home and My tasks ask without a company selection, so the companies come from
+ * that read — a superset of the queue, which still decides every row.
+ *
+ * Payload: id, kind, subject name, owner timestamp and link. No pay, budget, band, recommendation, return
+ * reason or actor.
+ */
+export async function pendingRewardTasks(ctx: SessionContext, scopeIds: string[] | undefined): Promise<PackTaskItem[]> {
+  const readable = await withRewardsTenant(ctx, (tx) => tx
+    .select({ id: rewardUnit.id, companyId: rewardUnit.companyId, status: rewardUnit.status, createdAt: rewardUnit.createdAt })
+    .from(rewardUnit)
+    .where(and(isNull(rewardUnit.deletedAt), or(
+      inArray(rewardUnit.status, [...REWARD_TASK_APPROVAL_STAGES]),
+      and(eq(rewardUnit.status, 'draft'), sql`${latestDecisionActionSql}='return'`),
+    ))));
+  if (!readable.length) return [];
+  const atApproval = readable.filter((u) => u.status !== 'draft');
+  const createdAt = new Map(atApproval.map((u) => [u.id, u.createdAt]));
+  const companyIds = scopeIds ?? [...new Set(atApproval.map((u) => u.companyId))];
+  const [queue, returned] = await Promise.all([
+    atApproval.length ? pendingRewardReviews(ctx, companyIds) : Promise.resolve([]),
+    atApproval.length < readable.length ? returnedRewardUnits(ctx, scopeIds) : Promise.resolve([]),
+  ]);
+  // A unit that entered the queue between the two reads has no owner time here; it is left to the next
+  // read rather than given a guessed age (lib/assigned-work.ts: never a guessed task age).
+  const approvals: PackTaskItem[] = queue.flatMap((r) => {
+    const at = createdAt.get(r.id);
+    return at ? [{ id: r.id, kind: 'rewardReview' as const, subjectName: `${r.cycle} · ${r.name}`, createdAt: at.toISOString(), linkPath: `/rewards/${r.id}?view=approvals` }] : [];
+  });
+  // A unit is a draft or at an approval stage, never both; the reads are separate, so a unit that moved
+  // between them is listed once (its approval-stage row wins).
+  const listed = new Set(approvals.map((t) => t.id));
+  const back: PackTaskItem[] = returned.filter((r) => !listed.has(r.id)).map((r) => ({
+    id: r.id, kind: 'rewardReview' as const, subjectName: `${r.cycle} · ${r.name}`, createdAt: r.returnedAt, linkPath: `/rewards/${r.id}`,
+  }));
+  return [...approvals, ...back];
 }

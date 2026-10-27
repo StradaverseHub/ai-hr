@@ -31,9 +31,7 @@ import {pendingResignationTaskMetadata} from './offboarding';
 import {pendingNoticeAcknowledgementTasks} from './notice';
 import {pendingReviewTaskMetadata} from './employment-review';
 import {pendingPerformanceTasks} from '../packs/performance/service';
-// The Rewards facade (packs/rewards/service.ts) does not re-export its task provider yet; that file is
-// owned elsewhere this round. Move this import to the facade when it does.
-import {pendingRewardTasks} from '../packs/rewards/tasks';
+import {pendingRewardTasks} from '../packs/rewards/service';
 import type {PackTaskItem,PackTaskKind,PackTaskProvider} from '../lib/assigned-work';
 
 /** The per-module task vocabulary — each key maps to an i18n label (notifications.task.*). */
