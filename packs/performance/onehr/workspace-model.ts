@@ -59,3 +59,43 @@ export function leaderWorkspaceParts(policy:Pick<Policy,'modules'|'kind'>,tier:T
  if(tier==='group'||tier==='final')return pm?[part('group_calibration','performance',!!(locks.performanceLockedAt||locks.lockedAt))]:[];
  return [...(pm?[part(tier==='hod'?'department_review':'calibration','performance',!!(locks.performanceLockedAt||locks.lockedAt))]:[]),...(pot?[part(tier==='hod'?'department_potential_review':'potential_calibration','potential',!!(locks.potentialLockedAt||locks.lockedAt))]:[])];
 }
+export const workspaceViews=['mine','team','dept','bu','bg','group'] as const;
+export const workspaceModules=['pm','tm','idp','cal'] as const;
+export type WorkspaceView=typeof workspaceViews[number];
+export type WorkspaceModule=typeof workspaceModules[number];
+/** The facts module selection reads from a worklist item. `locked` is reviewWorkspaceParts' own IDP lock. */
+export type WorkspaceSelectionItem={cycleId:string;view:WorkspaceView;module:WorkspaceModule;state:'open'|'waiting'|'done'|'later';locked:boolean};
+/**
+ * The review journey's module offer for navigation: Talent when the viewer holds any TM item in an open cycle,
+ * Development when they hold any IDP item. Development is 'locked' only when every IDP item they hold is locked,
+ * which reviewWorkspaceParts raises only for the person's OWN plan; a team plan is never locked.
+ */
+export type WorkspaceNavigationOffer={tm:boolean;idp:'none'|'open'|'locked'};
+export function workspaceNavigationOffer(items:readonly Pick<WorkspaceSelectionItem,'module'|'locked'>[]):WorkspaceNavigationOffer{
+ const idp=items.filter(item=>item.module==='idp');
+ return {tm:items.some(item=>item.module==='tm'),idp:!idp.length?'none':idp.some(item=>!item.locked)?'open':'locked'};
+}
+/**
+ * Which cycle, view and module a workspace request lands on. A module is selectable in a view only through an
+ * unlocked item, so a crafted request for a locked plan, or for a module the viewer does not hold, cannot select
+ * it: it falls back to the first module with open work (the resume point), otherwise the first selectable one.
+ * A request for a module held in another view of the cycle lands in that view; without a cycle, in the first
+ * cycle that holds it.
+ */
+export function resolveWorkspaceSelection(items:readonly WorkspaceSelectionItem[],query:{cycle?:string;view?:string;module?:string}){
+ const cycleIds=[...new Set(items.map(item=>item.cycleId))];
+ const want=workspaceModules.find(m=>m===query.module);
+ const holds=(item:WorkspaceSelectionItem)=>!item.locked&&item.module===want;
+ const cycle:string|undefined=query.cycle&&cycleIds.includes(query.cycle)?query.cycle:(want&&cycleIds.find(id=>items.some(item=>item.cycleId===id&&holds(item))))||cycleIds[0];
+ const current=items.filter(item=>item.cycleId===cycle);
+ const availableViews=workspaceViews.filter(v=>current.some(item=>item.view===v));
+ const viewHolds=(v:WorkspaceView)=>current.some(item=>item.view===v&&holds(item));
+ const asked=availableViews.find(v=>v===query.view);
+ const view:WorkspaceView=(asked&&(!want||viewHolds(asked)||!availableViews.some(viewHolds))?asked:undefined)??(want?availableViews.find(viewHolds):undefined)??availableViews[0]??'mine';
+ const inView=current.filter(item=>item.view===view);
+ const availableModules=workspaceModules.filter(m=>inView.some(item=>item.module===m));
+ const selectableModules=availableModules.filter(m=>inView.some(item=>item.module===m&&!item.locked));
+ const resume=selectableModules.find(m=>inView.some(item=>item.module===m&&!item.locked&&item.state==='open'));
+ const module:WorkspaceModule=selectableModules.find(m=>m===want)??resume??selectableModules[0]??availableModules[0]??'pm';
+ return {cycleIds,cycle,availableViews,view,availableModules,lockedModules:availableModules.filter(m=>!selectableModules.includes(m)),module};
+}

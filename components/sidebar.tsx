@@ -85,6 +85,9 @@ type ChildItem = Item & {
   // 388e53c2 — highlighting only, never a gate. See NavChildDescriptor in packs/registry.ts.
   exactHref?: boolean;
   ownedSubpaths?: string[];
+  // A destination the viewer holds but may not open yet (the locked Development plan): rendered as a
+  // non-link and never the owner of the current route or a command-bar entry.
+  disabled?: boolean;
 };
 type CollapsibleGroupItem = {
   tour?: string;
@@ -167,6 +170,9 @@ const PERSONAL_PERFORMANCE_ROW: ChildItem = modulePackById('performance')!.navLi
 const PERFORMANCE_ROW: ChildItem = modulePackById('performance')!.navLinks!.find((l) => l.group === 'manage' && l.labelKey === 'performance')!;
 // WP-B1 (APR-020) — Calibration. No role flag on the descriptor: canSeeChild gates it by canEnterCalibration
 // (a named reviewer on a session they may enter) OR canAdministerOnehr.
+// The review journey's Talent and Development entry points: the workspace resolves each request itself.
+const TALENT_HREF = '/performance/workspace?module=tm';
+const DEVELOPMENT_HREF = '/performance/workspace?module=idp';
 const CALIBRATION_ROW: ChildItem = modulePackById('performance')!.navLinks!.find((l) => l.group === 'manage' && l.labelKey === 'calibration')!;
 
 // Leave nav rows (ADR-0080 rung 6): two flat rows the leave pack contributes (packs/leave/index.ts,
@@ -257,8 +263,8 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
   ['/me/tp3', 'payroll'] as const,
   ['/admin/claims/reimbursements', 'claims'] as const,
   ['/admin/work-locations', 'attendance'] as const,
-  ['/performance/workspace?module=tm', 'performance'] as const,
-  ['/performance/workspace?module=idp', 'performance'] as const,
+  [TALENT_HREF, 'performance'] as const,
+  [DEVELOPMENT_HREF, 'performance'] as const,
   // ADR-0082 — `assistant` is the SECOND hand-written entry and for the same reason as the first: it is
   // a catalog module with `packBacked: false`, so there is no pack descriptor to derive the href from.
   // Without this line the row would advertise a module the tenant has not bought. The per-user
@@ -570,6 +576,7 @@ export function Sidebar({
   onboardingJoinerCount,
   onboardingChecklistCount,
   enabledModules = null,
+  performanceNavigation = { tm: false, idp: 'none' },
   defaultCollapsed,
   viewerName = null,
   viewerCode = null,
@@ -608,6 +615,12 @@ export function Sidebar({
    * page these rows point at refuses on its own (D3).
    */
   enabledModules?: string[] | null;
+  /**
+   * The review journey's module offer (packs/performance performanceNavigationOffer, computed once in
+   * app/layout.tsx): Talent only with TM work, Development only with IDP work, and Development disabled while
+   * the viewer's own plan is locked. Absent means neither row; every workspace request re-resolves on its own.
+   */
+  performanceNavigation?: { tm: boolean; idp: 'none' | 'open' | 'locked' };
   /** Pending items awaiting THIS viewer's decision (feedback 836118c4) — badge on the
    *  "Approval Items" row. Computed once in app/layout.tsx as listPendingTasks(...).length; the rail
    *  never queries. 0 (or a viewer without the row) renders no badge. */
@@ -631,6 +644,7 @@ export function Sidebar({
   const searchParams = useSearchParams();
   const search = searchParams.toString();
   const t = useTranslations('nav');
+  const tWorkspace = useTranslations('onehr.workspace');
   // `common`, NOT `nav`: the brand name lives at common.appName. Reading it off `t` would resolve
   // nav.appName, which does not exist — and a MISSING_MESSAGE passes tsc, the suite and `next build`
   // alike, so nothing would have told us until the screen rendered.
@@ -702,7 +716,7 @@ export function Sidebar({
   // Per-child visibility for flyout nodes (per-child gating vs. whole-group gating). Role gating and
   // module gating are ANDed: a row needs both the role AND the module to appear.
   const canSeeChild = (c: ChildItem) =>
-    moduleAllows(c.href) && (!c.href.startsWith('/letters/')||letterDestinations.includes(c.href)) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === CALIBRATION_ROW.href ? canEnterCalibration || canAdministerOnehr : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) || c.href === PERFORMANCE_ROW.href && canAdministerOnehr : true);
+    moduleAllows(c.href) && (c.href !== TALENT_HREF || performanceNavigation.tm) && (c.href !== DEVELOPMENT_HREF || performanceNavigation.idp !== 'none') && (!c.href.startsWith('/letters/')||letterDestinations.includes(c.href)) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === CALIBRATION_ROW.href ? canEnterCalibration || canAdministerOnehr : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) || c.href === PERFORMANCE_ROW.href && canAdministerOnehr : true);
   // The former audience inventory still supplies its original visibility boundaries.
   // Only authorized rows are handed to the workspace placement owner below.
   const authorizedGroups = GROUPS
@@ -719,8 +733,7 @@ export function Sidebar({
 
   const authorizedRows = authorizedGroups.flatMap(group => group.items.flatMap(row =>
     isCollapsible(row) ? row.children.filter(canSeeChild) : [row],
-  )).filter(row => row.href !== '/mobile-preview' || isAdmin)
-    .map(row=>row.href==='/performance/workspace'?{...row,navigationHref:'/performance/workspace?module=pm'}:row);
+  )).filter(row => row.href !== '/mobile-preview' || isAdmin);
   const additionalRows: ChildItem[] = [
     ...LETTER_NAV_ITEMS.map(item=>({href:item.href,labelKey:item.labelKey,icon:FileBarChart,ownedSubpaths:[item.href]})),
     {href:'/admin/personnel/profile-changes',labelKey:'profileChanges',icon:ListChecks,adminOnly:true},
@@ -732,15 +745,15 @@ export function Sidebar({
     {href:'/admin/claims/reimbursements',labelKey:'reimbursementsDue',icon:Receipt,adminOnly:true},
     {href:'/admin/work-locations',labelKey:'workLocations',icon:Building2,adminOnly:true},
     {href:'/reports',labelKey:'reports',icon:FileBarChart,adminOnly:true,exactHref:true},
-    {href:'/performance/workspace?module=tm',labelKey:'talent',icon:Users,managerUp:true},
-    {href:'/performance/workspace?module=idp',labelKey:'development',icon:Target},
+    {href:TALENT_HREF,labelKey:'talent',icon:Users},
+    {href:DEVELOPMENT_HREF,labelKey:'development',icon:Target,disabled:performanceNavigation.idp==='locked'},
   ];
   const destinations = [...authorizedRows, ...additionalRows.filter(canSeeChild)];
   const navigation = placeNavigation(destinations);
   const availableWorkspaces = (['ops','strata'] as const).filter(workspace =>
     navigation.placed.some(row => row.placement.area === workspace),
   );
-  const routeOwner = navigationRouteOwner(pathname, search, destinations);
+  const routeOwner = navigationRouteOwner(pathname, search, destinations.filter(row => !row.disabled));
   const routeWorkspace = routeOwner?.placement.area;
   const selectedWorkspace = workspaceChoice && availableWorkspaces.includes(workspaceChoice) ? workspaceChoice
     : routeWorkspace === 'ops' || routeWorkspace === 'strata' ? routeWorkspace : availableWorkspaces[0];
@@ -788,7 +801,8 @@ export function Sidebar({
   };
   const isActive = (href: string) => isHrefActive(pathname, search, href);
   // The shared route owner preserves query intent and explicit owned subpaths across all themes.
-  const isRowActive = (r: { href: string; exactHref?: boolean; ownedSubpaths?: string[] }) => {
+  const isRowActive = (r: { href: string; exactHref?: boolean; ownedSubpaths?: string[]; disabled?: boolean }) => {
+    if(r.disabled)return false;
     // One owner across shared rows and modules, including query-based and non-descendant routes.
     if(routeOwner)return r.href===routeOwner.destination.href;
     return isNavRowActive(pathname,search,r);
@@ -837,7 +851,7 @@ export function Sidebar({
     const section = g.labelKey ? t(g.labelKey) : null;
     for (const r of g.items) {
       if (isCollapsible(r)) {
-        const kids = r.children.filter(canSeeChild);
+        const kids = r.children.filter(canSeeChild).filter((c) => !c.disabled);
         const parent = t(r.labelKey);
         const activeKid = kids.filter((c) => isRowActive(c))
           .sort((a, b) => b.href.split('?')[0].length - a.href.split('?')[0].length)[0];
@@ -846,7 +860,7 @@ export function Sidebar({
           navEntries.push(entry);
           if (!activeEntry && c === activeKid) activeEntry = entry;
         }
-      } else {
+      } else if (!r.disabled) {
         const entry = { href: r.navigationHref ?? r.href, label: t(r.labelKey), section, parent: null };
         navEntries.push(entry);
         if (!activeEntry && isRowActive(r)) activeEntry = entry;
@@ -997,8 +1011,14 @@ export function Sidebar({
               {sectionOpen(group.labelKey) &&
                 group.items.map((item) => {
                   if (isCollapsible(item)) return monolithModule(item);
-                  const active = isRowActive(item);
                   const label = t(item.labelKey);
+                  if (item.disabled) return (
+                    <span key={item.href} aria-disabled="true" title={tWorkspace('planLocked')} className={cn(railRow, 'cursor-not-allowed hover:border-transparent hover:text-mid')}>
+                      <span className="min-w-0">{label}</span>
+                      <Lock aria-hidden className="size-3 shrink-0" />
+                    </span>
+                  );
+                  const active = isRowActive(item);
                   const rowCount = item.href === '/tasks' ? taskCount : approvalCount;
                   const showApprovalCount = (item.href === '/approvals' || item.href === '/tasks') && rowCount > 0;
                   return (
@@ -1113,6 +1133,11 @@ export function Sidebar({
                     if (isCollapsible(item)) return atelierModule(item);
                     const Icon = item.icon;
                     const label = t(item.labelKey);
+                    if (item.disabled) return (
+                      <span key={item.href} aria-disabled="true" title={tWorkspace('planLocked')} className="atelier-row cursor-not-allowed text-muted-foreground">
+                        <Icon aria-hidden /><span className="truncate">{label}</span><Lock aria-hidden className="ml-auto size-3.5 shrink-0" />
+                      </span>
+                    );
                     const count = atelierCount(item.href);
                     return (
                       <Link key={item.href} href={item.navigationHref ?? item.href} data-tour={item.tour}
@@ -1271,9 +1296,17 @@ export function Sidebar({
                     />
                   );
                 }
-                const active = isRowActive(item);
                 const Icon = item.icon;
                 const label = t(item.labelKey);
+                if (item.disabled) return (
+                  <span key={item.href} aria-disabled="true" title={tWorkspace('planLocked')}
+                    className={cn(rowBase, collapsed ? 'size-11 justify-center' : 'w-full gap-3 px-3 py-2', 'cursor-not-allowed text-muted-foreground')}>
+                    <Icon className="size-[20px] shrink-0" strokeWidth={2} aria-hidden />
+                    {!collapsed && <span className="truncate text-sm">{label}</span>}
+                    {!collapsed && <Lock className="ml-auto size-4 shrink-0" aria-hidden />}
+                  </span>
+                );
+                const active = isRowActive(item);
                 // Pending-approval badge (feedback 836118c4). Keyed on the href, like every other
                 // row-specific behaviour in this file — no marker field on the Item type. The count
                 // arrives pre-computed from the layout; a viewer without the row never reaches here.

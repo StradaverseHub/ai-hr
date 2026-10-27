@@ -15,7 +15,7 @@ import { assessmentAiQuotaTx } from './ai-usage';
 import { emptyHeldCalibration,heldCalibrationSchema } from './calibration-command-model';
 import { defaultLibraryScoring,settingNumberSource,spreadScoring } from './setting-default-model';
 import { hasLibrarySpread } from './setting-suggestion-model';
-import { assessmentWorkWindowOpen,calibrationPredecessorOpen,leaderPendingEntries,leaderWorkspaceParts,reviewWorkspaceParts,type CalibrationWorkEntry, type WorkspaceAxis } from './workspace-model';
+import { assessmentWorkWindowOpen,calibrationPredecessorOpen,leaderPendingEntries,leaderWorkspaceParts,reviewWorkspaceParts,workspaceNavigationOffer,type CalibrationWorkEntry, type WorkspaceAxis, type WorkspaceNavigationOffer } from './workspace-model';
 import { evidenceFileLimit, validateEvidenceFile } from './evidence-file-model';
 import { personalPlan } from './personal-record-model';
 import { evidenceCitationSchema, evidenceDetailsSchema, evidenceFieldsSchema, evidenceLinkSchema, patchEvidenceFields, standingResponses, upsertEvidenceResponse } from './evidence-model';
@@ -1437,6 +1437,31 @@ export async function assessmentReviewTaskRecipientsTx(tx:Tx,reviewId:string,tas
 /** A worklist projection, not a second workflow state store. Every card derives from current assignments. */
 export async function performanceWorkspace(ctx:SessionContext) {
  return withPerformanceTenant(ctx,async tx=>{
+  const sessions=await workspaceSessionsTx(tx);
+  const items=[...await reviewWorkspaceItemsTx(tx,true),...await feedbackWorkspaceItemsTx(tx),...await calibrationWorkspaceItemsTx(tx,ctx,sessions)];
+  return visibleWorkspaceItems(items,await bgLeaderCyclesTx(tx,ctx,sessions));
+ });
+}
+/**
+ * Sidebar offer (Talent, Development and its lock) for the review journey. The SAME item derivation as
+ * performanceWorkspace — the same review, feedback and BG-leader reads, the same reviewWorkspaceParts — minus
+ * the two reads the offer cannot depend on: calibration items (module 'cal' only; the per-session
+ * assessment_calibration_work call is the expensive part) and the plan status (it moves an IDP card between
+ * states, never whether the card exists or is locked). Feedback cards (TM only) are read only when the
+ * reviews leave Talent unanswered. The review read still pays onehr_review RLS per row, as the workspace and
+ * the shared task list (onehr/tasks.ts) already do on every request. test/p1-performance-nav-offer.test.ts pins it against
+ * workspaceNavigationOffer(performanceWorkspace()).
+ */
+export async function performanceNavigationOffer(ctx:SessionContext):Promise<WorkspaceNavigationOffer> {
+ if(!ctx.userId||!isModuleEnabled(ctx,'performance'))return {tm:false,idp:'none'};
+ return withPerformanceTenant(ctx,async tx=>{
+  const bgLeaderCycles=await bgLeaderCyclesTx(tx,ctx,await workspaceSessionsTx(tx));
+  const reviews=visibleWorkspaceItems(await reviewWorkspaceItemsTx(tx,false),bgLeaderCycles),fromReviews=workspaceNavigationOffer(reviews);
+  // Feedback cards are TM items only: read them only when the reviews have not already offered Talent.
+  return fromReviews.tm?fromReviews:workspaceNavigationOffer(visibleWorkspaceItems([...reviews,...await feedbackWorkspaceItemsTx(tx)],bgLeaderCycles));
+ });
+}
+async function reviewWorkspaceItemsTx(tx:Tx,withPlans:boolean) {
   const items:PerformanceWorkspaceItem[]=[];
   const reviews=await tx.select({row:onehrReview,cycle:reviewCycle,policy:onehrCycle.policy,header:sql<{name:string;ownEmploymentIds:string[]}>`app.onehr_review_header(${onehrReview.reviewId})`,self:sql<boolean>`exists(select 1 from employment e where e.id=${onehrReview.employmentId} and app.is_self_person(e.person_id))`,manager:sql<boolean>`app.onehr_manager(${onehrReview.reviewId})`})
    .from(onehrReview).innerJoin(reviewCycle,eq(reviewCycle.id,onehrReview.cycleId)).innerJoin(onehrCycle,eq(onehrCycle.cycleId,onehrReview.cycleId))
@@ -1445,13 +1470,24 @@ export async function performanceWorkspace(ctx:SessionContext) {
    const policy=policySchema.parse(raw),kpis=kpiSchema.array().parse(row.kpis),closed=cycle.status==='closed';
    const base={id:row.reviewId,kind:'review' as const,cycleId:cycle.id,cycle:cycle.name,periodEnd:cycle.periodEnd,view:self?'mine' as const:'team' as const,title:header.name,locked:false};
    const year=Number(cycle.periodEnd.slice(0,4))+1;
-   const [plan]=policy.modules.idp&&policy.kind==='year_end'?await tx.select({status:onehrPlan.status}).from(onehrPlan).where(and(eq(onehrPlan.employmentId,row.employmentId),eq(onehrPlan.planYear,year))):[];
+   const [plan]=withPlans&&policy.modules.idp&&policy.kind==='year_end'?await tx.select({status:onehrPlan.status}).from(onehrPlan).where(and(eq(onehrPlan.employmentId,row.employmentId),eq(onehrPlan.planYear,year))):[];
    const parts=reviewWorkspaceParts(policy,{kpis,competenciesAssigned:competencySchema.array().parse(row.competencies).length>0,competencyStatus:row.competencyStatus,resultsSubmitted:!!row.resultsSubmittedAt,managerPerformance:row.managerPerformance,planStatus:plan?.status??null},{self,manager,employmentIds:header.ownEmploymentIds});
    for(const part of parts)items.push({...base,key:`${row.reviewId}.${part.module}`,...part,state:closed?'done':part.state});
   }
+  return items;
+}
+async function feedbackWorkspaceItemsTx(tx:Tx) {
+  const items:PerformanceWorkspaceItem[]=[];
   const feedback=await tx.select({panel:onehrPanel,subject:peerFeedbackRequest.subjectName,cycle:reviewCycle}).from(onehrPanel).innerJoin(peerFeedbackRequest,eq(peerFeedbackRequest.id,onehrPanel.requestId)).innerJoin(reviewCycle,eq(reviewCycle.id,sql`(app.onehr_feedback_card(${onehrPanel.requestId})->>'cycleId')::uuid`)).where(and(isNull(onehrPanel.archivedAt),sql`${reviewCycle.status}<>'closed' and app.onehr_feedback_card(${onehrPanel.requestId}) is not null`));
   for(const {panel,subject,cycle} of feedback)items.push({key:panel.requestId,id:panel.requestId,kind:'feedback',cycleId:cycle.id,cycle:cycle.name,periodEnd:cycle.periodEnd,view:'mine',module:'tm',state:panel.submittedAt?'done':'open',title:subject,stage:'feedback',locked:false});
-  const sessions=await tx.select({session:onehrCalibration,cycle:reviewCycle,policy:onehrCycle.policy}).from(onehrCalibration).innerJoin(reviewCycle,eq(reviewCycle.id,onehrCalibration.cycleId)).innerJoin(onehrCycle,eq(onehrCycle.cycleId,onehrCalibration.cycleId)).where(sql`coalesce((${onehrCycle.policy}->'modules'->>'calibration')::boolean,true) and ${reviewCycle.status}<>'closed'`).orderBy(desc(reviewCycle.periodEnd),asc(onehrCalibration.id));
+  return items;
+}
+function workspaceSessionsTx(tx:Tx) {
+  return tx.select({session:onehrCalibration,cycle:reviewCycle,policy:onehrCycle.policy}).from(onehrCalibration).innerJoin(reviewCycle,eq(reviewCycle.id,onehrCalibration.cycleId)).innerJoin(onehrCycle,eq(onehrCycle.cycleId,onehrCalibration.cycleId)).where(sql`coalesce((${onehrCycle.policy}->'modules'->>'calibration')::boolean,true) and ${reviewCycle.status}<>'closed'`).orderBy(desc(reviewCycle.periodEnd),asc(onehrCalibration.id));
+}
+type WorkspaceSessionRow=Awaited<ReturnType<typeof workspaceSessionsTx>>[number];
+async function calibrationWorkspaceItemsTx(tx:Tx,ctx:SessionContext,sessions:WorkspaceSessionRow[]) {
+  const items:PerformanceWorkspaceItem[]=[];
   for(const {session,cycle,policy:raw} of sessions){
    const view=session.tier==='hod'?'dept':session.tier==='final'?'group':session.tier as 'bu'|'bg'|'group';
    const policy=policySchema.parse(raw),parts=leaderWorkspaceParts(policy,session.tier as Tier,session);
@@ -1460,11 +1496,16 @@ export async function performanceWorkspace(ctx:SessionContext) {
    for(const part of parts)if(entries.length&&!leaderPendingEntries(policy,session.tier as Tier,part.axis,entries).length)part.state=session.tier==='group'&&!entries.some(entry=>entry.performanceLocked)&&entries.some(entry=>!entry.frozen)?'waiting':'done';
    for(const part of parts)items.push({key:`${session.id}.${part.stage}`,id:session.id,kind:'calibration',cycleId:cycle.id,cycle:cycle.name,periodEnd:cycle.periodEnd,view,title:session.name,locked:false,...part});
   }
+  return items;
+}
+async function bgLeaderCyclesTx(tx:Tx,ctx:SessionContext,sessions:WorkspaceSessionRow[]) {
   const bgLeaderCycles=new Set<string>();
   for(const {session} of sessions)if(session.tier==='bg'&&session.reviewerUserIds.includes(ctx.userId!)&&!await isAdmin(tx,session.cycleId))bgLeaderCycles.add(session.cycleId);
+  return bgLeaderCycles;
+}
+function visibleWorkspaceItems(items:PerformanceWorkspaceItem[],bgLeaderCycles:Set<string>) {
   // A BG leader's own assessment is not requested. Mine remains only while they owe a colleague feedback.
   return items.filter(i=>!bgLeaderCycles.has(i.cycleId)||i.view!=='mine'||i.kind==='feedback'&&i.state==='open').sort((a,b)=>b.periodEnd.localeCompare(a.periodEnd)||a.title.localeCompare(b.title)||a.key.localeCompare(b.key));
- });
 }
 
 export async function saveAssessmentTalentDecision(ctx:SessionContext,sessionId:string,expected:number,reviewId:string,kind:'pip'|'promotion'|'specialReward'|'nomination',selected:boolean,reason:string,details:{grade?:string;title?:string;talentRevision?:number}={}) {

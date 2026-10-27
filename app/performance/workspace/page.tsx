@@ -1,5 +1,6 @@
 import {PerformanceGuide} from './performance-guide';
 import { settingNumbersComplete } from '@/packs/performance/onehr/setting-default-model';
+import { resolveWorkspaceSelection } from '@/packs/performance/onehr/workspace-model';
 import { Lock } from 'lucide-react';
 import { ItemNavigator } from './item-navigator';
 import { PersonalRecord } from './personal-record';
@@ -19,17 +20,12 @@ import { FeedbackView } from '../onehr/feedback-view';
 import { WorkspaceRail } from './workspace-rail';
 
 type Query={cycle?:string;view?:string;module?:string;review?:string;feedback?:string;calibration?:string;stage?:string;record?:string;recordTab?:string;planYear?:string;error?:string};
-const views=['mine','team','dept','bu','bg','group'] as const;
-const modules=['pm','tm','idp','cal'] as const;
 export default async function PerformanceWorkspacePage({searchParams}:{searchParams:Promise<Query>}) {
  await requireModule('performance');const {s}=await scopedSession(),query=await searchParams;
  const [items,t]=await Promise.all([performanceWorkspace(s),getTranslations('onehr')]);
- const cycleIds=[...new Set(items.map(i=>i.cycleId))];
- const cycle=query.cycle&&cycleIds.includes(query.cycle)?query.cycle:cycleIds[0];
- const current=items.filter(i=>i.cycleId===cycle),availableViews=views.filter(view=>current.some(i=>i.view===view));
- const view=availableViews.find(v=>v===query.view)??availableViews[0]??'mine';
- const inView=current.filter(i=>i.view===view),availableModules=modules.filter(m=>inView.some(i=>i.module===m));
- const module=availableModules.find(m=>m===query.module)??availableModules[0]??'pm';
+ // One resolver for cycle, view and module: a locked plan or a module the viewer does not hold is never selected.
+ const {cycleIds,cycle,availableViews,view,availableModules,lockedModules,module}=resolveWorkspaceSelection(items,query);
+ const inView=items.filter(i=>i.cycleId===cycle&&i.view===view);
  const order={open:0,waiting:1,later:2,done:3};
  const moduleItems=inView.filter(i=>i.module===module);
  const partOrder=['feedback','competency','department_review','calibration','department_potential_review','potential_calibration','talent_box','group_calibration'];
@@ -37,7 +33,7 @@ export default async function PerformanceWorkspacePage({searchParams}:{searchPar
  const part=module==='tm'||module==='cal'?(parts.find(p=>p===query.stage)??(parts.includes('feedback')?'feedback':parts[0])):undefined;
  const cards=moduleItems.filter(i=>!part||i.stage===part).sort((a,b)=>order[a.state]-order[b.state]||a.title.localeCompare(b.title));
  const requested=query.review??query.feedback??query.calibration;
- const selected=cards.find(i=>i.id===requested)??cards[0];
+ const selected=cards.find(i=>i.id===requested&&!i.locked)??cards.find(i=>!i.locked)??cards[0];
  function href(changes:Record<string,string|undefined>={},item?:PerformanceWorkspaceItem){
   const params=new URLSearchParams({...(cycle?{cycle}:{}),view,module,...(part?{stage:part}:{})});
   for(const [key,value] of Object.entries(changes)){if(value===undefined)params.delete(key);else params.set(key,value);}
@@ -87,7 +83,7 @@ export default async function PerformanceWorkspacePage({searchParams}:{searchPar
   {!items.length?<section className="rounded-lg border border-border p-8"><h2 className="font-semibold">{t('workspace.empty')}</h2><p className="mt-2 text-sm text-muted-foreground">{t('workspace.emptyHelp')}</p><Link href="/me/performance" className="mt-4 mr-6 inline-flex min-h-11 items-center text-sm text-primary underline">{t('workspace.record')}</Link><Link href="/performance" className="mt-4 inline-flex min-h-11 items-center text-sm text-primary underline">{t('workspace.manageCycles')}</Link></section>:<>
    <div className="grid gap-3 lg:grid-cols-[224px_minmax(0,1fr)]">
     <nav aria-label={t('workspace.viewsLabel')} className="flex gap-1 rounded-lg border border-border p-1">{availableViews.map(v=><Link key={v} href={href({view:v,module:undefined,stage:undefined})} aria-current={view===v?'page':undefined} className={`flex min-h-11 min-w-0 flex-1 items-center justify-center whitespace-nowrap rounded-md px-1 text-xs ${view===v?'bg-foreground text-background':'hover:bg-muted'}`}>{t(`workspace.views.${v}`)}</Link>)}</nav>
-    <nav aria-label={t('workspace.modulesLabel')} className="flex flex-wrap gap-2">{availableModules.map(m=>{const locked=items.some(item=>item.cycleId===cycle&&item.view===view&&item.module===m&&item.locked);return <div key={m} className={`flex min-h-11 flex-wrap items-center gap-x-3 rounded-lg border px-3 text-sm ${module===m?'flex-1 border-primary bg-primary/5':'border-border hover:bg-muted'}`}>{locked?<span aria-disabled="true" title={t('workspace.planLocked')} className="flex min-h-11 items-center gap-2 text-muted-foreground"><b>{m.toUpperCase()}</b><Lock size={14} aria-hidden/></span>:<Link href={href({module:m,stage:undefined})} aria-current={module===m?'page':undefined} className="flex min-h-11 items-center gap-2"><b>{m==='cal'&&view==='dept'?'DR':m.toUpperCase()}</b>{module===m&&<span>{t(m==='cal'&&view==='dept'?'workspace.departmentReview':`workspace.modules.${m}`)}</span>}</Link>}{module===m&&journeyWidget!==widget&&<div className="ml-auto"><JourneySteps/></div>}</div>;})}</nav>
+    <nav aria-label={t('workspace.modulesLabel')} className="flex flex-wrap gap-2">{availableModules.map(m=>{const locked=lockedModules.includes(m);return <div key={m} className={`flex min-h-11 flex-wrap items-center gap-x-3 rounded-lg border px-3 text-sm ${module===m?'flex-1 border-primary bg-primary/5':'border-border hover:bg-muted'}`}>{locked?<span aria-disabled="true" title={t('workspace.planLocked')} className="flex min-h-11 items-center gap-2 text-muted-foreground"><b>{m.toUpperCase()}</b><Lock size={14} aria-hidden/></span>:<Link href={href({module:m,stage:undefined})} aria-current={module===m?'page':undefined} className="flex min-h-11 items-center gap-2"><b>{m==='cal'&&view==='dept'?'DR':m.toUpperCase()}</b>{module===m&&<span>{t(m==='cal'&&view==='dept'?'workspace.departmentReview':`workspace.modules.${m}`)}</span>}</Link>}{module===m&&journeyWidget!==widget&&<div className="ml-auto"><JourneySteps/></div>}</div>;})}</nav>
    </div>
    <div className="grid items-start gap-4 lg:grid-cols-[224px_minmax(0,1fr)]">
     <WorkspaceRail label={t('workspace.navigator')}>{rail}</WorkspaceRail>
