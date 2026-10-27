@@ -78,6 +78,7 @@ function authorizations(node:Node,version:number){
     if(field.cls!==2||!field.constructed||field.children.length!==1||field.tag<=previous)fail();
     previous=field.tag;fields.set(field.tag,field.children[0]);
   }
+  if(version===1&&fields.has(709)||version<3&&(fields.has(718)||fields.has(719)))fail();
   const get=(tag:number)=>fields.get(tag),numeric=(tag:number)=>get(tag)?number(get(tag)!):undefined;
   for(const tag of [503,600])if(get(tag)&&!is(get(tag)!,5))fail();
   return {purposes:get(1)?numbers(get(1)!):undefined,algorithm:numeric(2),keySize:numeric(3),digests:get(5)?numbers(get(5)!):undefined,

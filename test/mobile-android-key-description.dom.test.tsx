@@ -92,6 +92,13 @@ describe('bounded unverified Android KeyDescription',()=>{
       app([pkg(Buffer.from('ai.hr')),pkg(Buffer.from('ai.hr'),int(2))]),app([pkg(Buffer.from([255]))]),app([pkg(Buffer.from('ai.hr\n'))])])
       expect(()=>decodeAndroidKeyDescription(synthetic({software:[field]}))).toThrow(AndroidKeyDescriptionError);
   });
+  it('does not interpret app identity or patch fields under schemas that never defined them',()=>{
+    const app=new Sequence({value:[new AsnSet({value:[new Sequence({value:[bytes(Buffer.from('ai.hr')),int(1)]})]}),new AsnSet({value:[bytes(Buffer.alloc(32,1))]})]});
+    const software=[tag(709,bytes(Buffer.from(app.toBER())))];
+    expect(()=>decodeAndroidKeyDescription(synthetic({version:1,keyMint:2,software,hardware:[]}))).toThrow(AndroidKeyDescriptionError);
+    expect(decodeAndroidKeyDescription(synthetic({version:2,keyMint:3,software,hardware:[]})).softwareEnforced.applicationId?.packages[0].name).toBe('ai.hr');
+    for(const id of [718,719])expect(()=>decodeAndroidKeyDescription(synthetic({version:2,keyMint:3,hardware:[tag(id,int(20260101))]}))).toThrow(AndroidKeyDescriptionError);
+  });
   it('caps node count and preserves uninterpreted tags without exposing their values',()=>{
     expect(()=>decodeAndroidKeyDescription(synthetic({hardware:Array.from({length:300},(_,i)=>tag(1000+i,int(1)))}))).toThrow(AndroidKeyDescriptionError);
     const actual=decodeAndroidKeyDescription(synthetic({hardware:[tag(999,bytes(Buffer.from('uninterpreted private value')))]}));
