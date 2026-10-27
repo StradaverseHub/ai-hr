@@ -114,8 +114,50 @@ escaping so worst-case valid base64 remains within that cap. The iOS pod source 
 helper. Android exposes an explicit unsupported recovery method, with no signing fallback.
 
 These records establish local recovery state only. They provide no certificate verification, actor
-authorization, attendance acceptance or trusted time. The encrypted JavaScript enrollment journal,
-server-receipt reconciliation, installation-reset integration and receipt-driven retention/cleanup
-are still required before activation. In particular, the sixteen-record bound is not a retention
+authorization, attendance acceptance or trusted time. The encrypted journal below adds JavaScript
+recovery and server-receipt reconciliation. Native installation-reset integration and receipt-driven
+retention/cleanup are still required before activation. In particular, the sixteen-record bound is not a retention
 policy or a completed cleanup lifecycle. Full iOS framework/signed-device/OS Keychain and process-loss
 acceptance remain required; host model execution does not establish them.
+
+## Encrypted enrollment journal
+
+One journal belongs to the approved connection namespace, API origin, actual login actor and client app
+installation UUID. An unresolved enrollment additionally retains its original employment and request.
+It cannot be adopted by another employment or overwritten by a newly generated request. A completed
+key keeps historical enrollment provenance; it is not a current permission or verified-presence claim.
+
+The owner serializes all instances/generations for that scope in the JavaScript runtime and reads the
+committed snapshot afresh for each operation. It persists requested, prepared, key-requested, key-ready,
+attestation-requested and proof-ready transitions before their corresponding external operation. It
+validates the server context, canonical hash and deterministic alias against current scope before key
+generation, refreshes the same immutable context before resuming irreversible work, and refuses changed
+nonce/target material. An older native binary without proof recovery and a known unsupported app build
+cannot start key generation. Context freshness comes from the server, not the phone's claimed clock.
+
+A key-requested interruption reads the original native alias; a missing reference requires recovery
+instead of generating another key. Attestation-requested interruptions read the native cache. Only
+recorded retryable state permits an explicit later same-key/hash call. Requested/unknown/absent recovery
+state cannot trigger another one-use operation. Known vendor outage, temporary native unavailability,
+missing references and unsupported capability remain distinct. Ownership is rechecked around every
+await, including failed requests, so obsolete results cannot be adopted by another login/connection.
+
+The exact artifact is committed before first transmission. Before resending it, the owner checks the
+bounded own-key catalog for its original challenge. A matching receipt, including a revoked one, can
+resolve the journal without another enrollment/configuration request. Catalog absence is not proof of
+absence: only the same saved bytes/intent may be sent to the authoritative server receipt owner. Proof
+is cleared from this journal only by the durable receipt transition. A failed local receipt commit
+retains the proof; no automatic key replacement or background replay occurs.
+
+Storage reuses the existing native AES-GCM master/installation quota, with purpose-separated AAD,
+directory and SecureStore pointer. Enrollment slots allow 128 KiB for a full 64 KiB base64 artifact and
+bounded context. Missing pointers with existing enrollment slots quarantine the state; they cannot
+create an empty enrollment beside an uncertain native key. Missing/corrupt selected slots never fall
+back to an older one. The established clock/leave slot format, purpose and bounds remain unchanged.
+An app-installation UUID is committed in device-only SecureStore under the master generation; the
+existing first-install reset changes that generation and clears these encrypted files.
+
+This connects tested model/native-storage ports, not a UI or live API transport. The native proof/alias
+Keychain services still need their verified installation-reset and receipt-driven cleanup owner.
+Voluntary recovery/retirement controls, authenticated app orchestration, registered-key use, supported
+route rollout and real signed-device termination/restore/Keychain acceptance remain release work.

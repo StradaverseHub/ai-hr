@@ -336,6 +336,49 @@ acceptance remain unfinished. A crash before the artifact is stored remains expl
 no retry or attendance acceptance is inferred. No public route, UI enrollment flow or deployment was
 enabled by this dependency work.
 
+Encrypted enrollment journal work at `542d27834` initially failed native TypeScript because mutable
+phase references lost narrowing across async closures. `84daf45c2` connected encrypted native storage
+and passed 52 cases, but both compilers still rejected inferred loop-local types. Explicit immutable
+phase/hash/key references repaired the inference without relaxing strictness. At `eb48c5eb7`, all 54
+cases across enrollment, native adapter, existing submission journal and integrity bridge passed;
+both native and root TypeScript exited 0. The failed compiler observations remain separate.
+
+The model preserves the original intent, validates server scope/hash/alias, commits irreversible stages,
+recovers native key/proof references without replacement, and reconciles stable server receipts before
+resending exact saved evidence. Shared scope queues serialize multiple instances and re-read actual
+commit state after interrupted writes. Tests cover phase-write failures, native uncertainties/outages,
+changed nonce/context, unavailable versus missing key storage, unsupported binary/build, lost server
+replies, revoked receipts, wrong actor/employment/receipt and obsolete operation ownership.
+
+The shipped native adapter shares the established device-only AES-GCM master, with distinct enrollment
+AAD/paths/pointers and a 128 KiB slot bound. Its VM filesystem/Keychain/Expo ports use real AES-GCM in
+the fixture. Encryption/restart/tamper/transplant, missing pointer/slot and master-generation install
+identity tests passed alongside the unchanged clock/leave cases. Enrollment refuses existing orphan
+slots with no pointer; it cannot silently recreate the enrollment. This is not OS Keychain or power-loss
+acceptance. Native alias/proof Keychain cleanup/reset remains separate unfinished work.
+
+Four controlled mutations at `eb48c5eb7` removed the durable key-intent write, prepared hash/alias check,
+uncertain-attestation refusal and enrollment orphan-pointer protection. Each selected test failed and
+exact restoration passed (one selected, eleven skipped per run). All harness results were
+`mutation=1 restored=0 exact=True`. Missing guards caused premature progression or an empty state where
+the original operation needed preservation; the failures were not unrelated schema or environment errors.
+
+Both Hermes exports passed at `eb48c5eb7`, with 1,332 iOS and 1,463 Android source-map entries. The maps
+include the enrollment journal, native adapter and shared enrollment/integrity contracts, and contain no
+server core/database/session, private mobile API handlers/verifiers, PKI packages or nested Zod 3. The
+initial map checker expected mobile-prefixed paths; inspection found Metro's actual `/lib/...` names.
+The corrected exact-name checker passed all required inclusions and exclusions. Exports themselves
+passed on the original attempt; these are local bundles, not signed-device or store evidence.
+
+At `28695da9b`, all 56 affected cases and root TypeScript passed after adding a full 64 KiB encrypted
+proof and ambiguous SecureStore acknowledgement case. The stored proof exceeds the old 64 KiB metadata
+bound, survives restart, resends byte-identically, and is removed from the JS snapshot only after its
+receipt commits. At `9460253e1`, all thirteen enrollment-model cases and root TypeScript passed with an
+additional failed-receipt-commit case: pending proof survives server acceptance and resolves from the
+owned catalog during a configuration outage without another attestation or completion request. Those
+last commits change tests only; the passing native compiler/export and other consumer evidence remains
+applicable. No migration, filesystem API route, enrollment screen, live transport or deployment was added.
+
 1. iOS release/TestFlight build: initial key attestation online, then generate and persist ordered assertions in airplane mode; reconnect, validate counters/challenges; repeat after force quit, update, reinstall and restore.
 2. Both OSes: anchor a native sleep-inclusive clock, sleep for a shift, alter wall time/timezone, kill/relaunch, reboot, and upload out of order. Measure drift and uncertainty; validate bounded expiry and no silent loss.
 3. Location: denied/once-only/revoked/approximate permission, services off, indoor uncertainty, stale/future timestamps, Android mock flag, iOS Xcode simulation versus third-party provider, accessory receiver. Record capability/unknown values without assuming a clean device.
