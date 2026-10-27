@@ -52,4 +52,9 @@ describe('specialist human governance presentation',()=>{
   render(await ModuleSpecialistFindings({assessment}));expect(screen.getByText('assistant.workspace.specialists.diagnosticState_recorded')).toBeInTheDocument();expect(within(screen.getByRole('region',{name:'assistant.workspace.specialists.diagnosticTitle'})).getByText('assistant.workspace.specialistFindings.claim_payment_recorded')).toBeInTheDocument();expect(screen.queryByRole('link')).toBeNull();expect(screen.queryByRole('button')).toBeNull();
  });
 
+ it('keeps two completed baseline evaluations visible while offering no promotion for missing behavior benefit',async()=>{
+  const v={...view(),candidates:view().candidates.map(row=>({...row,playbook:'canonical_domain_v1' as const,evaluations:2,passingEvaluators:0,incompleteEvaluators:0}))};const{container}=render(await ModuleSpecialistReview({view:v}));
+  expect(container.querySelectorAll('select[name="candidateId"]')).toHaveLength(1);expect(container.querySelector('input[name="maxJobs"]')).toBeNull();expect(screen.queryByRole('button',{name:'assistant.workspace.specialists.promote'})).toBeNull();
+ });
+
 });
