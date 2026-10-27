@@ -115,9 +115,9 @@ helper. Android exposes an explicit unsupported recovery method, with no signing
 
 These records establish local recovery state only. They provide no certificate verification, actor
 authorization, attendance acceptance or trusted time. The encrypted journal below adds JavaScript
-recovery and server-receipt reconciliation. Native installation-reset integration and receipt-driven
-retention/cleanup are still required before activation. In particular, the sixteen-record bound is not a retention
-policy or a completed cleanup lifecycle. Full iOS framework/signed-device/OS Keychain and process-loss
+recovery and server-receipt reconciliation. Receipt-driven cleanup replaces completed proof bytes with a
+released binding tombstone; it never makes the key attestable again. Released tombstones still count
+toward the sixteen-record bound. This bound is not a retention policy or a completed retirement lifecycle. Full iOS framework/signed-device/OS Keychain and process-loss
 acceptance remain required; host model execution does not establish them.
 
 ## Encrypted enrollment journal
@@ -157,7 +157,27 @@ back to an older one. The established clock/leave slot format, purpose and bound
 An app-installation UUID is committed in device-only SecureStore under the master generation; the
 existing first-install reset changes that generation and clears these encrypted files.
 
-This connects tested model/native-storage ports, not a UI or live API transport. The native proof/alias
-Keychain services still need their verified installation-reset and receipt-driven cleanup owner.
-Voluntary recovery/retirement controls, authenticated app orchestration, registered-key use, supported
-route rollout and real signed-device termination/restore/Keychain acceptance remain release work.
+The server receipt additionally carries an enrollment-specific SHA-256 digest of the canonical tuple
+`["aihr.native-key-binding", 1, challengeId, vendorKeyId]`. The native owner checks this against its
+retained SDK reference before committing the receipt or releasing native proof bytes. The digest is
+scoped to this enrollment; it does not expose the SDK reference or assert physical presence. Key IDs,
+hashes and proof encodings reject trailing whitespace rather than normalizing signed material.
+
+Only after the matching receipt commits does the owner request native proof release. Known cleanup
+unavailability leaves the committed receipt authoritative and retries cleanup on a later owned read.
+Native release accepts only a completed matching key/hash, persists a released tombstone and refuses
+in-flight or uncertain work. A released cache without a recoverable server receipt requires recovery;
+it cannot initiate another attestation.
+
+Verified first-install bootstrap invokes native alias/proof-service cleanup before replacing the AES
+master and encrypted journals. Native cleanup must acknowledge success, or explicitly be unsupported
+on an older/missing binary or Android; malformed/failed acknowledgements stop bootstrap before its
+installation marker is created. Active or uncommitted native work blocks reset. Partial cleanup is
+retryable while bootstrap remains incomplete. Ordinary logout does not invoke this reset. This deletes
+local alias/cache metadata, not backend key registrations or the opaque DeviceCheck private key.
+An older binary's reinstall followed by an upgrade can leave native state outside this marker's reset;
+upgrade/reinstall/device acceptance and an explicit retirement owner are still required before activation.
+
+This connects tested model/native-storage ports, not a UI or live API transport. Voluntary recovery and
+retirement controls, authenticated app orchestration, registered-key use, supported route rollout and
+real signed-device termination/restore/Keychain acceptance remain release work.

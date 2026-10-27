@@ -387,3 +387,26 @@ applicable. No migration, filesystem API route, enrollment screen, live transpor
 6. On-site corroboration: signed rotating QR can add evidence but screenshots/relay remain possible. Test replay/expiry and define whether policy accepts that residual risk. Never call a QR or device attestation alone proof of presence.
 
 **Recommendation:** preserve separate recorded evidence, deterministic integrity assessment, attendance acceptance, and human exception resolution. An unavailable platform check is not a failed employee action and must not silently erase the attempt.
+
+
+Receipt-bound native cleanup at `38d8a65f0`, tightened at `56434a99a`, passed 55 focused client cases
+and 54 server enrollment/challenge/assertion/HTTP cases. Both root and native TypeScript exited 0.
+Seventeen host Swift scenarios passed and combined module/helper syntax parsing exited 0. The native
+proof cache replaces completed bytes with a released tombstone only after durable receipt recovery;
+uncertain/in-flight work remains protected. Receipt binding independently hashes the challenge and
+SDK key reference, so a matching challenge cannot release proof for another native key. Fixed-length
+references and proof schemas reject trailing newlines. These are model/compiler results; no real
+DeviceCheck, OS Keychain or signed-iOS acceptance is claimed.
+
+The verified first-install owner now waits for native alias/proof cleanup before clearing the AES
+master, journals and installation marker transition. Failed/malformed native acknowledgements preserve
+the pending bootstrap and encrypted files for retry. An optional missing/older bridge remains usable
+for established app initialization; it cannot initiate the new enrollment protocol. Ordinary logout
+preserves pending records. Released tombstones still occupy the bounded sixteen-record cache; this
+change does not establish voluntary retirement, backend revocation or deletion of the SDK private key.
+Reinstall through an older binary followed by upgrade remains a device/retirement acceptance case.
+
+With the human's explicit credential-access approval, a read-only staging query on 27 October 2026
+returned `count=498`, `max(created_at)=1792997586564`. The query sourced only the existing server-side
+configuration and displayed no credential. It changed no schema/data/configuration. This is a watermark
+observation, not a live-baseline migration rehearsal or authorization to apply the provisional migrations.
