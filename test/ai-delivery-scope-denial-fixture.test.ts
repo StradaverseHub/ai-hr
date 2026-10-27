@@ -32,6 +32,10 @@ describe('native scope-denial browser prerequisites',()=>{
   expect(fixture.state).toBe('scope_denial_prerequisites_not_experienced');
   expect(fixture.sameTenantOtherCompany.tenantId).toBe(primary.tenantId);expect(fixture.sameTenantOtherCompany.companyId).not.toBe(primary.companyId);
   expect(fixture.foreignTenant.tenantId).not.toBe(primary.tenantId);
+  expect(fixture.revocable.companyId).toBe(fixture.sameTenantOtherCompany.companyId);expect(fixture.revocable.companyId).not.toBe(primary.companyId);
+  const primaryIds=await owner.db.select({id:s.employment.id}).from(s.employment).where(and(eq(s.employment.tenantId,primary.tenantId),eq(s.employment.companyId,primary.companyId)));
+  expect(primaryIds.map(row=>row.id).sort()).toEqual([primary.actors.operator,primary.actors.self,...primary.actors.reviewers,primary.actors.peer,primary.actors.manager].map(actor=>actor.employmentId).sort());
+  const [revocableEmployment]=await owner.db.select({companyId:s.employment.companyId,personId:s.employment.personId}).from(s.employment).where(eq(s.employment.id,fixture.revocable.actor.employmentId));expect(revocableEmployment).toEqual({companyId:fixture.revocable.companyId,personId:fixture.revocable.actor.personId});
   const people=[primary.actors.self.personId,fixture.sameTenantOtherCompany.actor.personId,fixture.foreignTenant.actor.personId,fixture.revocable.actor.personId];expect(new Set(people).size).toBe(4);
   for(const scope of [fixture.sameTenantOtherCompany,fixture.foreignTenant]){
    const [employee]=await owner.db.select({personId:s.employment.personId,companyId:s.employment.companyId,tenantId:s.employment.tenantId}).from(s.employment).where(eq(s.employment.id,scope.actor.employmentId));

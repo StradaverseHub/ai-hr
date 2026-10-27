@@ -1,4 +1,5 @@
 /** Import-safe PRIVATE denial prerequisites, not browser/authentication/security proof.
+ * Call AFTER Workforce and BEFORE Financial creates any primary-company payroll batch.
  * Parent owns an admitted disposable target. Native business owners create every company, hire,
  * entitlement and request. The sole direct insertion is the existing selected-cookie USER identity
  * fixture seam; it asserts no external identity, verified mailbox, cookie or production session.
@@ -26,6 +27,9 @@ const reference=(actor:AiDeliveryFixtureActor)=>({userId:actor.userId,personId:a
 export async function populateAiDeliveryScopeDenials(context:AiDeliveryFixtureContext,input:AiDeliveryScopeDenialSelection){
  const selected=structuredClone(input),c={...context,bootstrapCtx:{...context.bootstrapCtx,roles:context.bootstrapCtx.roles?.slice(),grants:context.bootstrapCtx.grants?.map(g=>({...g}))},actors:{...context.actors,self:{...context.actors.self,ctx:{...context.actors.self.ctx,roles:context.actors.self.ctx.roles?.slice(),grants:context.actors.self.ctx.grants?.map(g=>({...g}))}}}};
  requireFact(c.today===todayInKualaLumpur()&&c.period===c.today.slice(0,7)&&c.bootstrapCtx.tenantId===c.tenantId&&c.actors.self.ctx.userId===c.actors.self.userId&&c.actors.self.ctx.personId===c.actors.self.personId);
+ const [priorPayroll]=await c.owner.db.select({n:count()}).from(s.payrollBatch).where(and(eq(s.payrollBatch.tenantId,c.tenantId),eq(s.payrollBatch.companyId,c.companyId)));requireFact(priorPayroll.n===0);
+ const primaryEmploymentIds=()=>c.owner.db.select({id:s.employment.id}).from(s.employment).where(and(eq(s.employment.tenantId,c.tenantId),eq(s.employment.companyId,c.companyId))).orderBy(s.employment.id);
+ const primaryEmploymentBefore=await primaryEmploymentIds();
  const year=Number(c.today.slice(0,4)),hiredOn=String(year-1)+'-01-01',token=randomUUID();
  const [annual]=await c.owner.db.select({id:s.leaveType.id,code:s.leaveType.code,template:s.leaveType.defaultTemplateLineageId}).from(s.leaveType).where(and(eq(s.leaveType.tenantId,c.tenantId),eq(s.leaveType.id,selected.annualTypeId))).limit(1);
  requireFact(annual?.code==='ANNUAL'&&annual.template!==null);
@@ -60,7 +64,7 @@ export async function populateAiDeliveryScopeDenials(context:AiDeliveryFixtureCo
   return currentActor(c.tenantId,login.id,hired.personId,hired.employmentId);
  }
  const otherCompany=await createCompany(c.bootstrapCtx,{legalName:'Fictional separate denial company '+token,country:'MY',currency:'MYR'}),otherDepartment=await createDepartment(c.bootstrapCtx,{companyId:otherCompany.id,name:'Fictional separate denial department'});
- const sameTenant=await hireLogin('other-company',otherCompany.id,otherDepartment.id),revocable=await hireLogin('revocable',c.companyId,c.departmentId);
+ const sameTenant=await hireLogin('other-company',otherCompany.id,otherDepartment.id),revocable=await hireLogin('revocable',otherCompany.id,otherDepartment.id);
  const opened=await openLeaveYear(c.bootstrapCtx,{year,leaveTypeIds:[annual.id],employmentIds:[sameTenant.employmentId,revocable.employmentId]});requireFact(opened.packBlocked.length===0);
  // Reuse native provisioning+single-use activation; no second installer, synthetic tenant row or
  // provider delivery. Its extra bootstrap actors are native prerequisites, not browser observations.
@@ -87,12 +91,13 @@ export async function populateAiDeliveryScopeDenials(context:AiDeliveryFixtureCo
  const otherRequest=await requested(sameTenant,annual.id,'other-company'),foreignRequest=await requested(foreignActor,foreignAnnual.id,'foreign-tenant'),revocableHuman=await suitable(revocable,annual.id,'revocable');
  const after={tenant:await counters(c.tenantId),self:await counters(c.tenantId,c.actors.self.employmentId),review:await candidate(c.actors.self,annual.id,selected.selfLeave.date,selected.selfLeave.humanText)};
  requireFact(after.tenant.requests===before.tenant.requests+1&&after.tenant.submittedEvents===before.tenant.submittedEvents+1&&JSON.stringify(before.self)===JSON.stringify(after.self)&&JSON.stringify(before.review)===JSON.stringify(after.review));
+ requireFact(JSON.stringify(await primaryEmploymentIds())===JSON.stringify(primaryEmploymentBefore));
  const revocableCounts=await counters(c.tenantId,revocable.employmentId);requireFact(revocableCounts.requests===0&&revocableCounts.submittedEvents===0);
  const people=[c.actors.self.personId,sameTenant.personId,foreignActor.personId,revocable.personId];requireFact(new Set(people).size===4&&otherCompany.id!==c.companyId);
  return{format:1 as const,state:'scope_denial_prerequisites_not_experienced' as const,
   sameTenantOtherCompany:{tenantId:c.tenantId,companyId:otherCompany.id,actor:reference(sameTenant),request:otherRequest},
   foreignTenant:{tenantId:foreign.tenantId,companyId:foreign.companyId,actor:reference(foreignActor),request:foreignRequest},
-  revocable:{tenantId:c.tenantId,companyId:c.companyId,actor:reference(revocable),human:{leaveTypeId:annual.id,...revocableHuman},assistantGrant:'initially_granted_browser_revocation_pending' as const,requestCount:0 as const},
+  revocable:{tenantId:c.tenantId,companyId:otherCompany.id,actor:reference(revocable),human:{leaveTypeId:annual.id,...revocableHuman},assistantGrant:'initially_granted_browser_revocation_pending' as const,requestCount:0 as const},
   primaryBaseline:{before:{tenant:before.tenant,self:before.self},after:{tenant:after.tenant,self:after.self},setupAddedRequests:1 as const,setupAddedSubmissionEvents:1 as const},
   limits:{browserEffects:'not_executed' as const,scopeDenial:'UNVERIFIED' as const,revocation:'NOT_PERFORMED' as const,productionAuthentication:'UNVERIFIED' as const,provider:'NOT_CALLED' as const,fixtureIdentity:'selected_cookie_user_only_not_verified_provider_identity' as const},
  };
