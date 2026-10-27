@@ -77,6 +77,15 @@ jobs:
           PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/build-bundle.test.py
           PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/build-transport-extract.test.py
           PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/build-activate.test.py
+      - name: Install isolated controller analysis dependencies
+        if: ${{ inputs.controller_only }}
+        uses: ./.github/actions/setup-alpha
+        with: {capacity_profile: bounded-suite-setup}
+      - name: Validate versioned repair selection and evidence boundaries
+        if: ${{ inputs.controller_only }}
+        run: |
+          node --import tsx --test .github/ci/non-repository-io.test.mjs .github/ci/immutable-plan.test.mjs .github/ci/retained-units.test.mjs .github/ci/authenticated-focused.test.mjs .github/ci/focused-file-evidence.test.mjs .github/ci/forward-baseline.test.mjs
+          PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/extract-focused.test.py
       - name: Resolve frozen candidate
         id: candidate
         env:

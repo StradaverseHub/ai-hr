@@ -49,7 +49,7 @@ function committedTexts(cwd, ref) {
 }
 
 /** Requires the installed tsx loader and TypeScript parser; does not execute application/test bodies. */
-export function reconstructRepairImpact({cwd, base, head, controller}) {
+export function reconstructRepairImpact({cwd, base, head, controller, selectionMode = 'legacy'}) {
   cwd = resolve(cwd);
   if (![base, head, controller].every(sha) || base === head) fail('exact distinct source/candidate and controller required');
   if (text(controllerDirectory, 'rev-parse', 'HEAD') !== controller || text(controllerDirectory, 'status', '--porcelain'))
@@ -59,16 +59,19 @@ export function reconstructRepairImpact({cwd, base, head, controller}) {
   for (const ref of [base, head]) if (text(cwd, 'rev-parse', '--verify', ref + '^{commit}') !== ref) fail('not a commit');
   execFileSync('git', ['merge-base', '--is-ancestor', base, head], {cwd, stdio: 'ignore', timeout: 60000});
   const require = createRequire(import.meta.url);
-  const {planImpact, IMPACT_POLICY_VERSION} = require(join(controllerDirectory, 'scripts/gate-impact.ts'));
+  const {planImpact, IMPACT_POLICY_VERSION, REPAIR_IMPACT_POLICY_VERSION} = require(join(controllerDirectory, 'scripts/gate-impact.ts'));
   const {collectChanges} = require(join(controllerDirectory, 'scripts/gate-tier-git.ts'));
   if (IMPACT_POLICY_VERSION !== 3) fail('unexpected existing impact policy');
   const changes = collectChanges(base, head, cwd), files = committedTexts(cwd, head);
   if (!changes.length) fail('empty repair delta');
   // Historical failures are a separate independently authenticated input, still required before activation.
-  const plan = planImpact(changes, files);
+  if(!['legacy','bounded-repair-v1'].includes(selectionMode))fail('unknown selection mode');
+  const policy=selectionMode==='legacy'?IMPACT_POLICY_VERSION:REPAIR_IMPACT_POLICY_VERSION;
+  if(policy!==(selectionMode==='legacy'?3:4))fail('unsupported repair selection policy');
+  const plan = planImpact(changes, files, [], undefined, false, selectionMode);
   const baseTree = text(cwd, 'rev-parse', base + '^{tree}'), headTree = text(cwd, 'rev-parse', head + '^{tree}');
   const context = {base, head, controller, baseTree, headTree, plan,
-    sourceInputsFingerprint: hash({baseTree, headTree, controller, impactPolicy: IMPACT_POLICY_VERSION}),
+    sourceInputsFingerprint: hash({baseTree, headTree, controller, impactPolicy: policy}),
     snapshotSource: 'IMMUTABLE_GIT_OBJECTS', historyIncluded: false,
     requiresLatestFailureHistoryValidation: true, releaseAuthorized: false};
   if (text(controllerDirectory, 'rev-parse', 'HEAD') !== controller || text(controllerDirectory, 'status', '--porcelain'))

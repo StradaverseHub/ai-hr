@@ -126,6 +126,42 @@ export function readsOnlyProcessStatus(path:string,text:string):boolean{
  };walk(sf);return safe&&readers.size>0&&reads>0;
 }
 
+/** A named, direct-use write-only fs binding cannot inspect repository source. Unknown
+ * imports, aliases, escapes, shadowing and dynamic loads retain the broad source-reader rule. */
+export function writesOnlyFilesystem(path:string,text:string):boolean{
+ const sf=syntax(path,text),writers=new Set<string>();let safe=true,calls=0;
+ if((sf as ts.SourceFile&{parseDiagnostics:unknown[]}).parseDiagnostics.length)return false;
+ for(const statement of sf.statements){
+  if(ts.isImportDeclaration(statement)&&ts.isStringLiteralLike(statement.moduleSpecifier)&&/^(node:)?fs(?:\/promises)?$/.test(statement.moduleSpecifier.text)){
+   const clause=statement.importClause,b=clause?.namedBindings;
+   if(!clause||clause.isTypeOnly||clause.name||!b||!ts.isNamedImports(b)){safe=false;continue;}
+   for(const item of b.elements){if(item.isTypeOnly||!['appendFileSync','mkdirSync'].includes((item.propertyName??item.name).text))safe=false;else writers.add(item.name.text);}
+  }
+ }
+ const walk=(n:ts.Node)=>{
+  if(ts.isExportDeclaration(n)&&n.moduleSpecifier&&ts.isStringLiteralLike(n.moduleSpecifier)&&/^(node:)?fs(?:\/promises)?$/.test(n.moduleSpecifier.text))safe=false;
+  if(ts.isIdentifier(n)&&['eval','Function','getBuiltinModule','binding','_linkedBinding','_load','_compile'].includes(n.text))safe=false;
+  if(ts.isImportDeclaration(n)&&ts.isStringLiteralLike(n.moduleSpecifier)&&/^(node:)?(?:module|vm)$/.test(n.moduleSpecifier.text))safe=false;
+  if(ts.isCallExpression(n)){
+   if(ts.isElementAccessExpression(n.expression))safe=false;
+   if(n.expression.kind===ts.SyntaxKind.ImportKeyword||(ts.isIdentifier(n.expression)||ts.isPropertyAccessExpression(n.expression))&&(ts.isIdentifier(n.expression)?n.expression.text:n.expression.name.text)==='require'){
+    const argument=n.arguments[0];
+    if(!argument||!ts.isStringLiteralLike(argument)||/^(node:)?fs(?:\/promises)?$/.test(argument.text))safe=false;
+   }
+   if(ts.isIdentifier(n.expression)&&['eval','Function'].includes(n.expression.text))safe=false;
+  }
+  if(ts.isNewExpression(n)&&ts.isIdentifier(n.expression)&&n.expression.text==='Function')safe=false;
+  if(ts.isIdentifier(n)&&writers.has(n.text)){
+   if(ts.isImportSpecifier(n.parent))return;
+   if(!ts.isCallExpression(n.parent)||n.parent.expression!==n)safe=false;else calls++;
+  }
+  ts.forEachChild(n,walk);
+ };
+ walk(sf);return safe&&writers.size>0&&calls>0;
+}
+export const REPAIR_IMPACT_POLICY_VERSION=4;
+export type RepairSelectionMode='legacy'|'bounded-repair-v1';
+
 /** Diagnostic strings cannot change module initialization. Only this proven case may bypass the
  * all-to-all edges introduced by pure re-export facades; namespace/dynamic consumers remain broad. */
 function initializationFree(path:string,text:string,source=syntax(path,text)):boolean{
@@ -244,7 +280,9 @@ function diagnosticEdges(files:Map<string,string>,raw:Map<string,Module>):Map<st
 }
 
 /** Both old and new import edges matter for deletions, renames and removed dependencies. */
-export function planImpact(changes:ChangedFile[],current:Map<string,string>,history:LearnedFailure[]=[],observeGraph?:(edges:ReadonlyMap<string,ReadonlySet<string>>)=>void,unchangedProcReads=false):ImpactPlan{
+export function planImpact(changes:ChangedFile[],current:Map<string,string>,history:LearnedFailure[]=[],observeGraph?:(edges:ReadonlyMap<string,ReadonlySet<string>>)=>void,unchangedProcReads=false,selectionMode:RepairSelectionMode='legacy'):ImpactPlan{
+ if(!['legacy','bounded-repair-v1'].includes(selectionMode))throw Error('Unknown repair selection mode');
+ const nonRepositoryIo:Record<string,{kind:string;sourceHash:string}>={};
  const files=new Map(current);
  for(const c of changes)if(c.baseText!==null&&!files.has(c.path))files.set(c.path,c.baseText);
  const modules=new Map<string,Module>();
@@ -279,7 +317,23 @@ export function planImpact(changes:ChangedFile[],current:Map<string,string>,hist
  });
  // A source-reading or computed-load test cannot be excluded merely because its dependency is absent
  // from a static import graph. Include it and all of its test consumers, regardless of filename.
- for(const [path,m]of modules)if((m.readsSource&&!(unchangedProcReads&&!changes.some(c=>c.path===path)&&readsOnlyProcessStatus(path,files.get(path)??'')))||m.uncertainties.length)for(const t of consumers(path,rawReverse))select(t,'source reading or uncertain module reach through '+path);
+ for(const [path,m]of modules){
+  const unchanged=!changes.some(c=>c.path===path),source=files.get(path)??'';
+  if(selectionMode==='bounded-repair-v1'&&unchanged&&m.readsSource&&!m.uncertainties.length){
+   // A child process can load repository code even when its parent only reads /proc.
+   // Bind the one reviewed extractor's explicit runtime asset; all unknown process loaders stay broad.
+   const processModule=/from\s*['"](?:node:)?child_process['"]/.test(source);
+   const extractorAsset='packs/performance/onehr/evidence-extractor.cjs';
+   const reviewedExtractor=path==='packs/performance/onehr/evidence-extraction.ts'
+    &&createHash('sha256').update(source).digest('hex')==='0258cc6f58113b0e833f107079cb3301ead9ff7bdbe436fd3eedaa4bc3a69269'
+    &&files.has(extractorAsset)&&!changes.some(c=>c.path===extractorAsset);
+   const procOnly=readsOnlyProcessStatus(path,source)&&(!processModule||reviewedExtractor);
+   const kind=procOnly?'process-status-only':writesOnlyFilesystem(path,source)?'write-only-filesystem':null;
+   if(kind)nonRepositoryIo[path]={kind,sourceHash:digest(source)};
+  }
+  if((m.readsSource&&!(unchangedProcReads&&unchanged&&readsOnlyProcessStatus(path,source))&&!nonRepositoryIo[path])||m.uncertainties.length)
+   for(const t of consumers(path,rawReverse))select(t,'source reading or uncertain module reach through '+path);
+ }
  for(const t of guardFiles(all))select(t,'mandatory repository invariant');
  for(const t of all)if(/(?:rls|scope|tenant|permission|authz|privesc|invitation)/i.test(posix.basename(t)))select(t,'mandatory access/tenant invariant');
  for(const observation of history)if(observation.changed.some(p=>changes.some(c=>c.path===p)))for(const t of observation.failed)select(t,'failure observed for a changed module in prior verification');
@@ -287,6 +341,6 @@ export function planImpact(changes:ChangedFile[],current:Map<string,string>,hist
  if(!changes.length)reasons.push('empty diff has no impact evidence');
  const risk:Risk=!changes.length||classifications.some(c=>c.risk==='unknown')?'unknown':classifications.some(c=>c.risk==='high')?'high':classifications.some(c=>c.risk==='moderate')?'moderate':'low';
  const run=Object.keys(selection).sort();for(const r of Object.values(selection))r.sort();
- const body={barrelMode:narrow?'diagnostic-symbols' as const:'module' as const,policyVersion:IMPACT_POLICY_VERSION,tier:reasons.length?'full' as const:'impact' as const,risk,classifications,reasons,changed:changes.map(c=>c.path).sort(),run,selection,browser:changes.some(c=>/\.(tsx|css)$/.test(c.path)||c.path.startsWith('public/'))};
+ const body={barrelMode:narrow?'diagnostic-symbols' as const:'module' as const,policyVersion:selectionMode==='legacy'?IMPACT_POLICY_VERSION:REPAIR_IMPACT_POLICY_VERSION,...(selectionMode==='legacy'?{}:{selectionMode,nonRepositoryIo}),tier:reasons.length?'full' as const:'impact' as const,risk,classifications,reasons,changed:changes.map(c=>c.path).sort(),run,selection,browser:changes.some(c=>/\.(tsx|css)$/.test(c.path)||c.path.startsWith('public/'))};
  return {...body,fingerprint:digest(body)};
 }
