@@ -3,6 +3,7 @@
  * must check fresh authority/AI controls, protect intent content and freeze the reviewed effect. */
 import { and, eq, sql } from 'drizzle-orm';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
+import {isModuleEnabled} from '../entitlements';
 import type { SessionContext, Tx } from '../../db/client';
 import { leaveType } from '../../db/schema';
 import { todayInKualaLumpur } from '../../lib/hr-date';
@@ -54,7 +55,7 @@ export async function readOwnLeaveCandidateTx(
   const selection = OwnLeaveHumanSelection.safeParse(selectionValue);
   await boundNativeOutcomeTransactionTx(tx);
   const actor = await readOwnLeaveActorTx(tx, ctx);
-  if (!actor) return { kind: 'unavailable' };
+  if (!actor || !isModuleEnabled(actor,'leave')) return { kind: 'unavailable' };
   ctx = actor;
   if (!nomination.success || !text.success) return { kind: 'use_leave_form' };
   if (!selection.success || selection.data.employmentId !== nomination.data.employmentId

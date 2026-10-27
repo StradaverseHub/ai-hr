@@ -11,6 +11,7 @@ import {isEmploymentEnded} from '../employment-status';
 import {listEligibleLeaveTypesFor,myOwnEmploymentSubjectsTx} from '../read';
 import {readOwnLeaveActorTx} from './own-leave-actor';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
+import {isModuleEnabled} from '../entitlements';
 import {ownLeaveFirstSliceTypeQualifies} from './own-leave-candidate';
 
 export type OwnLeaveChoiceEmployment=Readonly<{id:string;label:string;leaveTypes:readonly Readonly<{id:string;label:string}>[]}>;
@@ -27,7 +28,7 @@ export async function readOwnLeaveChoicesTx(tx:Tx,supplied:SessionContext,locale
  try{
   if(!isLocale(locale))return{kind:'unavailable'};
   await boundNativeOutcomeTransactionTx(tx);
-  const actor=await readOwnLeaveActorTx(tx,ctx);if(!actor)return{kind:'unavailable'};
+  const actor=await readOwnLeaveActorTx(tx,ctx);if(!actor||!isModuleEnabled(actor,'leave'))return{kind:'unavailable'};
   await assertAiActionUnpausedTx(tx,actor,'hr_assistant');
   await lockLeaveDependencyReadConfigurationTx(tx,actor.tenantId);
   const subjects=await myOwnEmploymentSubjectsTx(tx,actor);

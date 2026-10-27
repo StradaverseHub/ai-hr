@@ -1,5 +1,6 @@
 import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
+import {isModuleEnabled} from '../entitlements';
 import {ownLeaveHumanIntentText} from '../../lib/assistant-actions/own-leave-human-intent';
 /** UNRELEASED review custody and human-confirmation command. The human browser route calls it; no model tool does.
  * Relevant source writers and security/concurrency/retention verification must be complete before exposure.
@@ -80,6 +81,8 @@ function retired(stored: StoredReview): RetiredResult {
 /** A stored marker is not provenance. Reopen only after the actual canonical own-source reader
  * confirms both references under the current actor. Never infer approval or retry an effect here. */
 async function completed(tx: Tx, actor: SessionContext, stored: StoredReview): Promise<CompletedResult> {
+  // Even a completed receipt is a Leave disclosure, not an exemption from a current module kill.
+  if(!isModuleEnabled(actor,'leave'))throw new OwnLeaveContentUnavailable();
   const receipt = stored.receipt;
   if (stored.metadata.state !== 'completed' || receipt?.state !== 'completed') throw new OwnLeaveContentUnavailable();
   const source = await readOwnLeaveSubmissionReferenceTx(tx, actor, receipt.leaveRequestId, receipt.submissionEventId);
@@ -121,7 +124,7 @@ export async function reopenOwnLeaveReviewTx(tx: Tx, supplied: SessionContext, a
   if (!actionId.success) throw new OwnLeaveContentUnavailable();
   await boundNativeOutcomeTransactionTx(tx);
   const actor = await readOwnLeaveActorTx(tx, ctx);
-  if (!actor) throw new OwnLeaveContentUnavailable();
+  if (!actor || !isModuleEnabled(actor,'leave')) throw new OwnLeaveContentUnavailable();
   await assertAiActionUnpausedTx(tx, actor, 'hr_assistant');
   // The nomination helper deliberately refuses foreign custody at SQL level. Keep that refusal
   // on the same bounded content boundary as the subsequent encrypted read; caller must roll back.
@@ -214,7 +217,7 @@ export async function confirmOwnLeaveReview(supplied: SessionContext, confirmati
     return await withTenant(ctx, async tx => {
       await boundNativeOutcomeTransactionTx(tx);
       const actor = await readOwnLeaveActorTx(tx, ctx);
-      if (!actor) throw new OwnLeaveContentUnavailable();
+      if (!actor || !isModuleEnabled(actor,'leave')) throw new OwnLeaveContentUnavailable();
       await assertAiActionUnpausedTx(tx, actor, 'hr_assistant');
       const [nominated] = await tx.execute<{ subject: unknown }>(sql`select
         app.assistant_own_leave_review_subject(${confirmation.actionId}::uuid) as subject`);
@@ -280,7 +283,7 @@ export async function listOwnLeaveReviewsTx(tx:Tx,supplied:SessionContext):Promi
 
 /** Completed-only actual-Tx evidence path. Never unseals/returns a pending body or retries a request. */
 export async function readCompletedOwnLeaveOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=captureContext(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);const actor=await readOwnLeaveActorTx(tx,ctx);if(!actor)throw new OwnLeaveContentUnavailable();
+ const ctx=captureContext(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);const actor=await readOwnLeaveActorTx(tx,ctx);if(!actor||!isModuleEnabled(actor,'leave'))throw new OwnLeaveContentUnavailable();
  await assertAiActionUnpausedTx(tx,actor,'hr_assistant');
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed('leave.apply',${id}::uuid) as completed`);if(terminal?.completed!==true)throw new OwnLeaveContentUnavailable();
  const [nomination]=await tx.execute<{subject:unknown}>(sql`select app.assistant_own_leave_review_subject(${id}::uuid) as subject`),subject=z.uuid().parse(nomination?.subject);await lockLeaveDependenciesTx(tx,actor.tenantId,[subject]);
