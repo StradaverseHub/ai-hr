@@ -29,6 +29,7 @@ export async function AtelierHome({
   showHistory,
   canAsk,
   notice,
+  performance,
   dashboard,
 }: {
   name: string | null;
@@ -43,6 +44,8 @@ export async function AtelierHome({
   showHistory: boolean;
   canAsk: boolean;
   notice: ReactNode;
+  /** WP-A2: the Performance block (reads its own facts; null without an open cycle). */
+  performance?: ReactNode;
   dashboard: ReactNode;
 }) {
   const t = await getTranslations('dashboard.atelier');
@@ -80,6 +83,8 @@ export async function AtelierHome({
           suggestions={[t('suggestLeave'), t('suggestAway'), t('suggestPay'), t('suggestHoliday')]}
         />
       )}
+
+      {performance}
 
       <section className="atelier-sect" aria-labelledby="atelier-needs-you">
         <div className="atelier-sect-h">
