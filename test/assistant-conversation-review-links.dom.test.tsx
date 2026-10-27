@@ -25,7 +25,10 @@ async function issued(module:AgentModuleCode='employees',humanActions:unknown=mo
  const data=module==='employees'?{rows:[{employeeCode:'PRIVATE-RECORD',company:'PRIVATE-COMPANY',hiredOn:'2020-01-01',terminatedOn:null,status:'active'}],truncated:false}:module==='payroll'?{rows:[{id:'00000000-0000-4000-8000-000000000002',payPeriod:'2026-01',company:'PRIVATE-COMPANY',gross:'100.00',deductions:'0.00',net:'100.00',currency:'MYR',runType:'regular',runSeq:1}],truncated:false}:module==='claims'?{hasEmployment:true,claims:[],truncated:false}:module==='assistant'?{capabilities:[]}:{rows:[],truncated:false};
  const source={module,capability:MODULE_AGENT_CAPABILITIES.find(row=>row[0]===module)![1],scope:'current-caller',data},configuration={kind:'canonical_specialist_v1' as const,module,playbook:'canonical_domain_v1' as const},assessment=executeCanonicalSpecialist(configuration,source),outcome={ok:true as const,...source,humanActions:humanActions==='omit'?undefined:humanActions,specialistWork:compactSpecialistWork(assessment,{mode:'baseline',version:0,configuration})};
  vi.mocked(readGovernedSpecialistToolResultTx).mockResolvedValue({outcome,assessment} as Awaited<ReturnType<typeof readGovernedSpecialistToolResultTx>>);
- return loadGovernedSpecialistToolJob(ctx,{} as Tx,{module},jobId,assistantSourceDigest(outcome));
+ // The owner contains each card's source replay in a SAVEPOINT. Replay itself is mocked above, so this
+ // transaction double only runs the savepoint callback with itself; it grants and skips nothing.
+ const savepointTx={transaction:async(run:(tx:Tx)=>Promise<unknown>)=>run(savepointTx as unknown as Tx)};
+ return loadGovernedSpecialistToolJob(ctx,savepointTx as unknown as Tx,{module},jobId,assistantSourceDigest(outcome));
 }
 async function show(views:readonly CanonicalModuleJobView[],principal=ctx){return render(await ConversationReviewLinks({views,ctx:principal}));}
 beforeEach(()=>{state.locale='en';vi.clearAllMocks();});afterEach(cleanup);

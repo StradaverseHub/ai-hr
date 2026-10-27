@@ -956,7 +956,15 @@ async function assessSpecialistTx(tx:Tx,ctx:SessionContext,admission:SpecialistA
  * Any storage/busy refusal propagates and rolls the complete owner transaction back. */
 async function completeSpecialistsTx(tx:Tx,ctx:SessionContext,admissions:readonly SpecialistAdmission[],results:readonly AgentReadResult[]){
  const completed:{selection:SpecialistSelection;assessment:SpecialistAssessment}[]=[];
- for(const admission of admissions){const result=results.find(row=>row.module===admission.module);if(!result)return fail();if(admission.candidate)await assertCandidateSignalsTx(tx,ctx,admission.candidate);
+ for(const admission of admissions){const result=results.find(row=>row.module===admission.module);if(!result)return fail();
+  // Native privacy custody deferred at nomination is checked here, after every canonical read. An erased or
+  // retired native signal behind a PROMOTED specialist is a source change exactly as at nomination: retire
+  // that promotion and answer from the baseline. A busy interval or storage failure still propagates, and an
+  // unpromoted candidate (no promotion to retire) still refuses.
+  if(admission.candidate&&admission.promotion){try{await assertCandidateSignalsTx(tx,ctx,admission.candidate);}
+   catch(error){if(error instanceof AgentSignalBusy||!(error instanceof AiGatewayError)&&!(error instanceof Error&&error.name==='ZodError'))throw error;
+    await retireSpecialistTx(tx,ctx,admission.promotion.id,'source_changed');admission.candidate=null;admission.promotion=null;delete admission.assessment;}}
+  else if(admission.candidate)await assertCandidateSignalsTx(tx,ctx,admission.candidate);
   const assessment=await assessSpecialistTx(tx,ctx,admission,result),candidate=admission.candidate,promotion=admission.promotion,configuration=candidate?SpecialistCandidate.parse(candidate.configuration):baselineConfiguration(admission.module);
   if(candidate&&promotion){const updated=await tx.execute<{id:string}>(sql`update public.ai_agent_promotion set used_jobs=used_jobs+1 where id=${promotion.id}::uuid and tenant_id=${ctx.tenantId}::uuid and owner_user_id=${ctx.userId}::uuid and used_jobs<max_jobs and expires_at>now() and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=${promotion.id}::uuid) returning id`);if(updated.length!==1)return fail();}
   const selection=captureSpecialistSelections([{binding:{configuration,nativeContractDigest:specialistNativeContractDigest(admission.module),suiteDigest:specialistSuiteDigest(admission.module),assessmentDigest:routingDigest(assessment)},mode:candidate?'promoted':'baseline',candidateDigest:candidate?.candidate_digest??specialistBaselineDigest(admission.module),promotionId:promotion?.id??null,version:candidate?.version??0}])[0];completed.push({selection,assessment});
