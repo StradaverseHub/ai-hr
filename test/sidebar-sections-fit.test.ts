@@ -20,7 +20,8 @@ describe('workspace navigation keeps controls reachable',()=>{
  });
  it('keeps workspace selection, module collapse and route ownership independent',()=>{
   expect(source).toContain('setWorkspaceChoice(workspace)');
-  expect(source).toContain('navigationRouteOwner(pathname, search, destinations)');
+  // A disabled destination (the locked Development plan) is placed but never owns the route.
+  expect(source).toContain('navigationRouteOwner(pathname, search, destinations.filter(row => !row.disabled))');
   expect(source).toContain('setRailKids({})');
   expect(source).not.toContain('disabled={group.labelKey === activeSectionKey}');
  });
