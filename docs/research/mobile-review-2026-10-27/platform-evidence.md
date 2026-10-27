@@ -1329,3 +1329,55 @@ currently downloading. Leave that transfer alone; do not restart it because a br
 expired. No local installer path, signature verification, extraction or Xcode installation has yet been
 confirmed. Installation authorization persists; any visible license acceptance still needs action-time
 confirmation. Huawei remains deferred in favor of Android/iPhone as instructed.
+
+
+### Installed Xcode26.6 and first local runtime/build attempts
+
+The owner completed the official Apple-silicon archive download at
+`/Users/zenlam/Downloads/Xcode_26.6_Apple_silicon.xip` (2318258791 bytes).
+`pkgutil --check-signature` reports signed Apple Software. A complete two-slot/no-database installer
+expanded it into a fresh temporary directory, verified the extracted app with strict/deep codesign
+and Gatekeeper (all exits0), checked its bundle identifier/version, then moved it to
+`/Applications/Xcode.app` without overwriting an existing app. Installed-code verification also
+passed. The app reports version26.6, CFBundleVersion24959; xcodebuild reports build17F113.
+Installer log:`/tmp/aihr-xcode-26.6-bw_6qol0/install.log`.
+
+The first-run agreement was displayed; the agent did not click Agree or run a license-accept
+command. Xcode subsequently advanced to system-component installation, and both its version check
+and first-launch-status check completed successfully. CocoaPods1.16.2 is available. iPhoneOS and
+iPhoneSimulator26.5 SDKs are listed; an existing iOS18.0 simulator runtime is available. Preserve that
+runtime and any existing simulator data.
+
+The owner explicitly authorized adb UI control, screenshots and taps only on the temporary Android
+guest`emulator-5580`. A test wrapper reserved two slots and started that guest using the existing
+Pixel3a hardware definition with separate temporary data/cache/SD-card images and no snapshots,
+alongside an offline local Metro server. The console answered ping/status, but adb remained offline
+and the guest did not complete boot within its240-second deadline. The wrapper then stopped only
+its own emulator/Metro process groups and exited1. No APK installation or app screen was verified;
+this is a failed runtime attempt, not a launch pass. Diagnostic root:
+`/var/folders/8x/sb7ssym50_35f0ks9m11bjm80000gn/T/aihr-android-runtime-c5pycruy`.
+No existing emulator user-data image was selected for the guest's writable partitions. The installed
+emulator supports a software-renderer override; a subsequent attempt should collect kernel/boot
+output and distinguish transport/renderer/resource faults rather than blindly restarting a live guest.
+
+The first complete local iOS build request used another two-slot/no-database reservation.
+`expo prebuild --platform ios --no-install` exited0 without changing tracked package settings;
+`pod install` exited0 and generated`AIHRTest.xcworkspace`. The selected AIHRTest arm64 Debug
+simulator build then exited70 before compilation: Xcode reported iOS26.5 not installed and no
+eligible generic simulator destination. Listed SDK headers alone therefore did not prove platform
+readiness. This is an environment prerequisite failure, not an observed Swift/app compile failure.
+Logs:`/tmp/mobile-ios-native-{prebuild,pods,simulator-build}.log`.
+
+Apple's documented installed command is now adding the missing iOS26.5 arm64 simulator/platform
+component (`xcodebuild -downloadPlatform iOS -buildVersion26.5 -architectureVariant arm64`). The
+observed download is8.52 GB and is not yet complete. It runs under complete two-slot/no-database
+admission; log:`/tmp/mobile-ios-platform-install.log`. Do not restart that live transfer because a
+poll ends. No iPhone app compilation, launch, signed-device App Attest, staging migration, deployment
+or store distribution is established yet.
+
+One reviewed configuration concern was not assumed to be a bug: the generated iPhone entitlements
+omit an explicit App Attest environment. [Apple's entitlement documentation](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.devicecheck.appattest-environment)
+says development without this entitlement uses sandbox, while TestFlight/App Store/Enterprise
+distribution uses production irrespective of the setting. Do not invent a production entitlement
+change as a prerequisite for a simulator build. Real signed-device acceptance must still verify the
+actual provisioning/app identity/environment against the deployment-owned server target.
