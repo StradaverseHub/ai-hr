@@ -106,6 +106,25 @@ describe('native encrypted submission adapter',()=>{
       await expect(restarted.status()).rejects.toThrow();expect(e.native.generateAppleKey).not.toHaveBeenCalled();
     }
   });
+  it('keeps the full permitted proof encrypted above the old metadata limit and releases its JS copy only on receipt',async()=>{
+    const f=fixture(),e=enrollmentFixture(),proof=Buffer.alloc(65536,255).toString('base64');
+    e.native.attestAppleKey.mockResolvedValueOnce(proof);vi.mocked(e.ports.complete).mockRejectedValueOnce(new Error('no server response'));
+    const opened=await f.native.openNativeEnrollmentJournal(e.scope,e.ports.assertCurrent,e.ports);await opened.begin(e.employmentId,e.requestId);
+    await expect(opened.advance(e.employmentId)).rejects.toThrow('no server response');
+    expect([...f.files.values()].some(value=>value.byteLength>65536)).toBe(true);
+    const restarted=await f.native.openNativeEnrollmentJournal(e.scope,e.ports.assertCurrent,e.ports);
+    expect((await restarted.advance(e.employmentId)).status).toBe('stored_key');
+    expect(vi.mocked(e.ports.complete).mock.calls[1][1].attestation).toBe(proof);expect(e.native.attestAppleKey).toHaveBeenCalledOnce();
+    expect([...f.files.values()].every(value=>value.byteLength<65536)).toBe(true);
+  });
+  it('re-reads an ambiguously committed intent instead of caching empty state or choosing a new request',async()=>{
+    const f=fixture(),e=enrollmentFixture(),opened=await f.native.openNativeEnrollmentJournal(e.scope,e.ports.assertCurrent,e.ports);
+    f.secure.setItemAsync.mockImplementationOnce(async(key,value)=>{f.secrets.set(key,value);throw new Error('secure write reply lost');});
+    await expect(opened.begin(e.employmentId,e.requestId)).rejects.toThrow();
+    expect(await opened.status()).toMatchObject({phase:'requested',requestId:e.requestId});
+    expect(await opened.begin(e.employmentId,enrollmentId(9))).toMatchObject({requestId:e.requestId});
+    expect(e.native.generateAppleKey).not.toHaveBeenCalled();expect(e.ports.prepare).not.toHaveBeenCalled();
+  });
   it('retains the preparation if command adoption loses its secure commit pointer',async()=>{
     const f=fixture();f.files.set('photo',new Uint8Array([7,8,9]));
     const opened=await f.native.openNativeSubmissionJournal(scope,()=>{}),entry=await opened.prepareClock('in',requestId);
