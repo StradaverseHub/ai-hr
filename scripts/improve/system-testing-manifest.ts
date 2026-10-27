@@ -5,6 +5,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { lstatSync, mkdirSync, openSync, closeSync, writeFileSync, fsyncSync, linkSync, unlinkSync, fstatSync, readSync, realpathSync, constants } from 'node:fs';
 import { resolve, join, isAbsolute, dirname } from 'node:path';
 import { homedir } from 'node:os';
+import { createCommittedSourceReader } from './committed-source-blobs';
 import { buildIdentitySchema, catalogueSchema, sourceHashRecordSchema, testingSourceRef, testingUuid, type TestingBuildIdentity, type TestingSourceHashRecord } from '../../lib/system-testing/model';
 import { catalogueDigest, sourceContentDigest, stableTestingJson, testingSourcePaths } from '../../lib/system-testing/hash';
 export const SYSTEM_TESTING_CATALOGUE_PATH = 'lib/system-testing/catalogue.json';
@@ -23,16 +24,13 @@ export function prepareSystemTestingBuild(p: { worktree: string; candidate: stri
   function assertFrozen() {
     if (git(root, ['rev-parse', '--show-toplevel']).toString().trim() !== root || git(root, ['rev-parse', 'HEAD']).toString().trim() !== p.candidate || git(root, ['status', '--porcelain', '--untracked-files=all']).length) throw new Error('System Testing build evidence requires the exact clean selected worktree.');
   }
-  function blob(path: string): Buffer {
-    const mode = git(root, ['ls-tree', p.candidate, '--', path]).toString();
-    if (!/^100(?:644|755) blob [a-f0-9]{40}\t/.test(mode)) throw new Error('Reviewed System Testing source must be a committed regular file.');
-    return git(root, ['show', `${p.candidate}:${path}`]);
-  }
   assertFrozen();
-  const catalogueBlob = blob(SYSTEM_TESTING_CATALOGUE_PATH);
+  const committed = createCommittedSourceReader(root, p.candidate);
+  const catalogueBlob = committed.read([SYSTEM_TESTING_CATALOGUE_PATH], 8 * 1024 * 1024).get(SYSTEM_TESTING_CATALOGUE_PATH)!;
   if (catalogueBlob.length > 8 * 1024 * 1024) throw new Error('Reviewed catalogue exceeds the supported bound.');
   const catalogue = catalogueSchema.parse(JSON.parse(catalogueBlob.toString('utf8')));
-  const sourceHashRecord = testingSourcePaths(catalogue).map(path => ({ path, sha256: createHash('sha256').update(blob(path)).digest('hex') }));
+  const paths = testingSourcePaths(catalogue), blobs = committed.read(paths);
+  const sourceHashRecord = paths.map(path => ({ path, sha256: createHash('sha256').update(blobs.get(path)!).digest('hex') }));
   assertFrozen();
   const record: PreparedTestingBuild = { format: 1, identity: { sourceRef: p.candidate, buildRecordId: p.buildRecordId, catalogueHash: catalogueDigest(catalogue), contentHash: sourceContentDigest(sourceHashRecord) }, sourceHashRecord, activeServiceVerified: false };
   verifyInstalledTestingBuild(record, root);
