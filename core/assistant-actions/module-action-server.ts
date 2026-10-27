@@ -7,7 +7,7 @@ import {prepareMultiCycleRunReview,confirmMultiCycleRunReview,reopenMultiCycleRu
 import 'server-only';
 import {PayComponentActionChoices} from '../../lib/assistant-actions/module-action-http';
 import {withReviewedPayComponentIntervalTx} from './reviewed-pay-component-source';
-import {reviewedPayComponentReferenceChoicesTx,ROUNDING_METHODS,PAY_DISPLAY_CATEGORIES} from '../pay-components';
+import {reviewedPayComponentReferenceChoicesTx,ROUNDING_METHODS,PAY_DISPLAY_CATEGORIES} from '../../packs/payroll/service';
 import {countryPacks} from '../../localization/registry';
 import {preparePayComponentReview,confirmPayComponentReview,reopenPayComponentReview,discardPayComponentReview,listPayComponentReviews} from './pay-component-review-store';
 

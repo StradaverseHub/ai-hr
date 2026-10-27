@@ -12,7 +12,7 @@ import {StatutoryConfig} from '@/app/admin/pay-components/statutory-config';
 import {OrpConfig} from '@/app/admin/pay-components/orp-config';
 import {PAY_COMPONENT_DEFAULTS,payComponentOvertimeDefault,payComponentEaDefault} from '@/lib/pay-component-contract';
 import {capturePayComponentHumanForm} from '@/lib/assistant-actions/pay-component-form';
-import {formatPayRule} from '@/core/pay-rule';
+import {formatPayRule} from '@/packs/payroll/client';
 import type {PayComponentActionChoices} from '@/lib/assistant-actions/module-action-http';
 
 type Packet=z.infer<typeof PayComponentModuleActionBrowserPacket>;type Result=z.infer<typeof PayComponentModuleActionBrowserResult>;type Review=Extract<Result,{kind:'prepared'}>['review'];type Receipt=Extract<Result,{kind:'completed'}>['receipt'];type Retired=Extract<Result,{kind:'retired'}>['receipt'];
