@@ -12,6 +12,11 @@ import {reconcileEntitlementParityTenant,type EntitlementParityTenantOptions} fr
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base;
 const url=process.env.TEST_MIGRATION_DATABASE_URL!;
+/** The CLI owns/ends its client. createDb caches by exact URL, so NEVER hand it the reusable
+ * harness-owner URL. A distinct application_name retains the SAME physical DB/owner credentials
+ * while making each real CLI invocation own a separate pool, just as a separate CLI process does. */
+function backfill(){const dedicated=new URL(url);dedicated.searchParams.set('application_name','fictional-entitlement-operator-'+randomUUID());return backfillCountryModules(dedicated.toString());}
+
 beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();b=await seedBase();});afterAll(closeAll);
 async function subject(){return hireEmployee(adminCtx(b),{person:{fullName:'Fictional Operator Subject',primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});}
 async function state(){return{modules:await owner.db.select().from(s.tenantModule).where(eq(s.tenantModule.tenantId,b.tenantId)).orderBy(s.tenantModule.id),settings:await owner.db.select().from(s.tenantSetting).where(eq(s.tenantSetting.tenantId,b.tenantId)).orderBy(s.tenantSetting.key),events:await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.tenantId,b.tenantId)).orderBy(s.domainEvent.id)};}
@@ -19,8 +24,8 @@ async function held(employee:string,work:()=>Promise<void>){let ready!:()=>void,
 const options=(apply=true):EntitlementParityTenantOptions=>({apply,modules:['notifications'],settings:[{key:'payroll.reset_enabled',value:true}],createdBeforeAt:new Date('2100-01-01T00:00:00Z')});
 describe('maintained entitlement operator ownership',()=>{
  it('country backfill refuses before grants while an actual employee interval is held, then grants exactly once',async()=>{
-  const employee=await subject(),before=await state();await held(employee.employmentId,async()=>{await expect(backfillCountryModules(url)).rejects.toThrow('Tenant catalogs are busy or unavailable');expect(await state()).toEqual(before);});
-  expect((await backfillCountryModules(url)).granted).toBe(1);const after=await state();expect(after.modules.filter(row=>row.moduleCode==='country-my')).toHaveLength(1);expect((await backfillCountryModules(url)).granted).toBe(0);expect(await state()).toEqual(after);
+  const employee=await subject(),before=await state();await held(employee.employmentId,async()=>{await expect(backfill()).rejects.toThrow('Tenant catalogs are busy or unavailable');expect(await state()).toEqual(before);});
+  expect((await backfill()).granted).toBe(1);const after=await state();expect(after.modules.filter(row=>row.moduleCode==='country-my')).toHaveLength(1);expect((await backfill()).granted).toBe(0);expect(await state()).toEqual(after);
  });
  it('parity refuses whole tenant without effects, then publishes its original module/setting decisions after release',async()=>{
   const employee=await subject(),before=await state();await held(employee.employmentId,async()=>{await expect(owner.db.transaction(tx=>reconcileEntitlementParityTenant(tx,b.tenantId,options()))).rejects.toThrow('Tenant catalogs are busy or unavailable');expect(await state()).toEqual(before);});
