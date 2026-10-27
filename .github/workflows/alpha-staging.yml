@@ -11,6 +11,7 @@ jobs:
     env:
       AIHR_CI_CONTROL_HEAD: ${{ github.workflow_sha }}
       AIHR_CI_HEAD: ${{ github.workflow_sha }}
+      AIHR_COMPILER_CACHE_MODE: whole
       DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
       MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
       TEST_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
