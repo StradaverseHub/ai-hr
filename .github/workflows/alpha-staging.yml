@@ -6,14 +6,14 @@ on:
       control_scope:
         type: choice
         default: runtime-controls
-        options: [focused, browser-partial, runtime-controls, bonus-negative, bonus-controls, email-controls]
+        options: [focused, browser-partial, runtime-controls, bonus-negative, bonus-controls, email-controls, email-compiler]
 permissions: {contents: read, actions: read}
 concurrency:
   group: runtime-evidence-controls-${{ github.run_id }}
   cancel-in-progress: false
 jobs:
   verifier-controls:
-    if: inputs.control_scope != 'bonus-negative'
+    if: inputs.control_scope != 'bonus-negative' && inputs.control_scope != 'email-compiler'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
@@ -132,5 +132,51 @@ jobs:
         with:
           name: bonus-negative-control
           path: ${{ runner.temp }}/bonus-negative/
+          if-no-files-found: error
+          retention-days: 7
+
+  typecheck:
+    if: inputs.control_scope == 'email-compiler'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults: {run: {working-directory: source}}
+    env:
+      AIHR_CI_HEAD: fffabc90922c3d43b2570dc29a33ce8b70b69aca
+      AIHR_CI_CONTROL_HEAD: ${{ github.workflow_sha }}
+      AIHR_CI_CAPACITY_PROFILE: legacy
+      DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+      MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+      TEST_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+      TEST_MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: fffabc90922c3d43b2570dc29a33ce8b70b69aca, path: source, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {node: '22.23.3', capacity_profile: legacy}
+      - name: Generate actual Next route types
+        run: pnpm exec next typegen
+      - name: Whole-project compiler on exact repaired candidate
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/email-compiler"
+          bash ../automation/.github/ci/typecheck.sh 2>&1 | tee "$RUNNER_TEMP/email-compiler.log"
+      - name: Bind exact compiler outcome
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {execFileSync} from 'node:child_process';
+          import {readFileSync,writeFileSync} from 'node:fs';
+          import {createHash} from 'node:crypto';
+          const source=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),controller=execFileSync('git',['-C','../automation','rev-parse','HEAD'],{encoding:'utf8'}).trim();
+          assert.equal(source,process.env.AIHR_CI_HEAD);assert.equal(controller,process.env.GITHUB_SHA);assert.equal(process.versions.node,'22.23.3');assert.equal(execFileSync('git',['status','--porcelain'],{encoding:'utf8'}),'');
+          const text=readFileSync(process.env.RUNNER_TEMP+'/email-compiler.log','utf8'),report={kind:'ACTUAL_EMAIL_WHOLE_COMPILER_RESULT_NOT_TEST_OR_RELEASE',source,controller,runId:process.env.GITHUB_RUN_ID,attempt:'1',runtime:{node:process.versions.node,platform:process.platform,arch:process.arch},exitCode:0,wholeProject:true,sourceClean:true,logSha256:createHash('sha256').update(text).digest('hex'),completedAt:new Date().toISOString(),releaseAuthorized:false};
+          writeFileSync(process.env.RUNNER_TEMP+'/email-compiler/compiler-result.json',JSON.stringify(report)+'\n');writeFileSync(process.env.RUNNER_TEMP+'/email-compiler/compiler-log.json',JSON.stringify({text})+'\n');
+          NODE
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: email-whole-compiler-evidence
+          path: ${{ runner.temp }}/email-compiler/
           if-no-files-found: error
           retention-days: 7
