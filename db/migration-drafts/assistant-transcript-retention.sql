@@ -1,5 +1,13 @@
 -- UNALLOCATED / UNJOURNALED / UNAPPLIED. AFTER assistant-conversation-candidates.sql including own-invalidation bridge.
 -- Explicit owner decision: raw Assistant chat content retires after30days. Accounting survives.
+-- LOCKING (deliberate, for the integrator): drizzle applies this file in one transaction, so CREATE INDEX
+-- CONCURRENTLY is unavailable. ADD COLUMN (nullable, no default) is catalog-only, but ADD CONSTRAINT
+-- validates every existing row and the plain CREATE INDEX scans the table, all under the ACCESS EXCLUSIVE
+-- lock ADD COLUMN takes and holds to COMMIT: new Assistant exchanges (and own-history reads) wait for
+-- that scan. Kept plain because assistant_exchange rows are per-question and the per-user daily cap
+-- bounds growth; the actual installed row count/size is UNKNOWN here. Measure it on the target before
+-- applying; if the scan is not acceptably short, build the index in a separate operator step outside
+-- the migration transaction instead. NOT VALID would not shorten this transaction's lock.
 ALTER TABLE public.assistant_exchange ADD COLUMN content_retired_at timestamptz;
 ALTER TABLE public.assistant_exchange ADD CONSTRAINT assistant_exchange_retired_content CHECK(
  content_retired_at IS NULL OR(question='' AND answer IS NULL AND tool_calls='[]'::jsonb AND disclosure_receipt IS NULL AND error IS NULL));
@@ -32,7 +40,9 @@ CREATE FUNCTION app.assistant_transcript_source_guard() RETURNS trigger
 DECLARE actor_person uuid;
 BEGIN
  IF TG_OP='UPDATE' THEN
-  IF NEW.id IS DISTINCT FROM OLD.id OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.app_user_id IS DISTINCT FROM OLD.app_user_id THEN RAISE EXCEPTION 'Transcript source identity immutable' USING ERRCODE='42501';END IF;
+  -- asked_at is both the 30-day retention clock and the per-user daily-question key. The legacy 0451
+  -- self-row UPDATE grant must not let any caller defer retirement or replenish an allowance.
+  IF NEW.id IS DISTINCT FROM OLD.id OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.app_user_id IS DISTINCT FROM OLD.app_user_id OR NEW.asked_at IS DISTINCT FROM OLD.asked_at THEN RAISE EXCEPTION 'Transcript source identity immutable' USING ERRCODE='42501';END IF;
   IF OLD.content_retired_at IS NOT NULL AND NEW.content_retired_at IS DISTINCT FROM OLD.content_retired_at THEN RAISE EXCEPTION 'Retired transcript cannot reopen' USING ERRCODE='42501';END IF;
   RETURN NEW;
  END IF;
@@ -77,23 +87,27 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app._assistant_transcript_bounds() FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
-CREATE FUNCTION app._assistant_transcripts_retire(tid uuid,ids uuid[]) RETURNS integer
+-- linked_markers=false ONLY for same-Tx PDPA composition: the shared bridge
+-- app.assistant_conversation_metadata_redact then deletes AND audits the subject's markers/intents/arms.
+-- Deleting them here first would hide them from its count and under-report assistantConversationLearning.
+CREATE FUNCTION app._assistant_transcripts_retire(tid uuid,ids uuid[],linked_markers boolean) RETURNS integer
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE n integer;
 BEGIN
  PERFORM app._assistant_transcript_bounds();
+ IF tid IS NULL OR ids IS NULL OR linked_markers IS NULL THEN RAISE EXCEPTION 'Transcript retirement unavailable' USING ERRCODE='42501';END IF;
  INSERT INTO app.assistant_transcript_retirement_scope(xact_id,tenant_id,exchange_id) SELECT pg_current_xact_id(),tid,e.id FROM public.assistant_exchange e WHERE e.tenant_id=tid AND e.id=ANY(ids);
  -- Content and replay proof retire atomically; identity/dates/usage and financial rows stay intact.
  UPDATE public.assistant_exchange e SET question='',answer=NULL,tool_calls='[]'::jsonb,disclosure_receipt=NULL,error=NULL,content_retired_at=clock_timestamp()
  WHERE e.tenant_id=tid AND e.id=ANY(ids) AND e.content_retired_at IS NULL;
  GET DIAGNOSTICS n=ROW_COUNT;
  DELETE FROM public.ai_agent_feedback f WHERE f.tenant_id=tid AND f.exchange_id=ANY(ids);
- DELETE FROM public.ai_assistant_answer_strategy_use s WHERE s.tenant_id=tid AND s.exchange_id=ANY(ids);
+ IF linked_markers THEN DELETE FROM public.ai_assistant_answer_strategy_use s WHERE s.tenant_id=tid AND s.exchange_id=ANY(ids);END IF;
  DELETE FROM app.assistant_transcript_identity i WHERE i.tenant_id=tid AND i.exchange_id=ANY(ids);
  DELETE FROM app.assistant_transcript_retirement_scope s WHERE s.xact_id=pg_current_xact_id() AND s.tenant_id=tid AND s.exchange_id=ANY(ids);
  RETURN n;
 END $$;
-REVOKE ALL ON FUNCTION app._assistant_transcripts_retire(uuid,uuid[]) FROM PUBLIC,ai_hr_app;
+REVOKE ALL ON FUNCTION app._assistant_transcripts_retire(uuid,uuid[],boolean) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.assistant_transcripts_erase_own() RETURNS integer
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -107,7 +121,7 @@ BEGIN
  -- same pending marker, in this same Access interval, so in-flight raw content cannot resurrect.
  PERFORM app.assistant_answer_invalidate_own_strategy_uses();
  SELECT coalesce(array_agg(e.id ORDER BY e.id),'{}'::uuid[]) INTO ids FROM public.assistant_exchange e WHERE e.tenant_id=tid AND e.app_user_id=uid AND e.content_retired_at IS NULL;
- RETURN app._assistant_transcripts_retire(tid,ids);
+ RETURN app._assistant_transcripts_retire(tid,ids,true);
 END $$;
 REVOKE ALL ON FUNCTION app.assistant_transcripts_erase_own() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assistant_transcripts_erase_own() TO ai_hr_app;
@@ -125,23 +139,30 @@ BEGIN
  SELECT coalesce(array_agg(e.id ORDER BY e.id),'{}'::uuid[]) INTO ids FROM public.assistant_exchange e
  LEFT JOIN app.assistant_transcript_identity original ON original.exchange_id=e.id AND original.tenant_id=e.tenant_id
  WHERE e.tenant_id=i.tenant_id AND e.content_retired_at IS NULL AND(original.person_id=i.person_id OR(original.exchange_id IS NULL AND EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=e.app_user_id AND u.tenant_id=i.tenant_id AND u.person_id=i.person_id)));
- DELETE FROM public.ai_assistant_answer_strategy_use s WHERE s.tenant_id=i.tenant_id AND(s.person_id=i.person_id OR(s.person_id IS NULL AND EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=s.user_id AND u.tenant_id=i.tenant_id AND u.person_id=i.person_id)));
+ -- Pending/completed markers, evaluation intents and arms are NOT deleted here: core/pdpa.ts calls the
+ -- shared bridge app.assistant_conversation_metadata_redact next in this same Tx, which owns their
+ -- original/current PERSON predicate and the audited assistantConversationLearning count.
  -- Existing admitted review-erasure intent requires the canonical pii.erased audit at commit.
- RETURN app._assistant_transcripts_retire(i.tenant_id,ids);
+ RETURN app._assistant_transcripts_retire(i.tenant_id,ids,false);
 END $$;
 REVOKE ALL ON FUNCTION app.assistant_transcripts_redact(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assistant_transcripts_redact(uuid) TO ai_hr_app;
 --> statement-breakpoint
 -- Internal physical-owner only: fixed approved30day raw-content policy, bounded batch; NO app grant.
+-- Identity matches core/ai-retention-maintenance's ownership proof: the session is a superuser, or it is
+-- BOTH this function's owner and public.assistant_exchange's physical owner. An app session reaching this
+-- through any other definer keeps session_user=ai_hr_app and is refused. NULL inputs refuse.
 CREATE FUNCTION app.assistant_transcripts_retire_expired(wanted_tenant uuid,retention_days integer,row_limit integer) RETURNS integer
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE ids uuid[];
 BEGIN
  PERFORM app._assistant_transcript_bounds();
- IF current_user<>session_user OR session_user='ai_hr_app' OR NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class c WHERE c.oid='public.assistant_exchange'::regclass AND pg_get_userbyid(c.relowner)=session_user)
+ IF wanted_tenant IS NULL OR session_user='ai_hr_app' OR NOT(
+  coalesce((SELECT r.rolsuper FROM pg_catalog.pg_roles r WHERE r.rolname=session_user),false)
+  OR(current_user=session_user AND EXISTS(SELECT 1 FROM pg_catalog.pg_class c WHERE c.oid='public.assistant_exchange'::regclass AND pg_get_userbyid(c.relowner)=session_user)))
  OR retention_days IS DISTINCT FROM 30 OR row_limit IS NULL OR row_limit<1 OR row_limit>100 THEN RAISE EXCEPTION 'Transcript maintenance unavailable' USING ERRCODE='42501';END IF;
  IF NOT pg_try_advisory_xact_lock(hashtextextended('access-configuration:'||wanted_tenant::text,0)) THEN RAISE EXCEPTION 'Transcript maintenance busy' USING ERRCODE='55P03';END IF;
  SELECT coalesce(array_agg(id ORDER BY id),'{}'::uuid[]) INTO ids FROM(SELECT e.id FROM public.assistant_exchange e WHERE e.tenant_id=wanted_tenant AND e.content_retired_at IS NULL AND e.asked_at<=clock_timestamp()-make_interval(days=>retention_days) ORDER BY e.asked_at,e.id LIMIT row_limit FOR UPDATE SKIP LOCKED) selected;
- RETURN app._assistant_transcripts_retire(wanted_tenant,ids);
+ RETURN app._assistant_transcripts_retire(wanted_tenant,ids,true);
 END $$;
 REVOKE ALL ON FUNCTION app.assistant_transcripts_retire_expired(uuid,integer,integer) FROM PUBLIC,ai_hr_app;

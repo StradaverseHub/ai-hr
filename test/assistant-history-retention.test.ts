@@ -10,7 +10,7 @@ import {hireEmployee} from '../core/org';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
 import {recordOwnAgentFeedback} from '../core/module-agent-feedback';
-import {erasePersonPii} from '../core/pdpa';
+import {erasePersonPii,erasePersonPiiTx} from '../core/pdpa';
 import {saveAiProviderConfig,resolveActiveAiConfig} from '../core/ai-config';
 import {bindAiSpendTaskTx} from '../core/ai-spend-task';
 import {prepareAssistantConversationStrategyTx,recheckAssistantConversationStrategyTx} from '../core/module-agent-releases';
@@ -25,6 +25,15 @@ async function transcript(ctx:SessionContext,old=false){const id=randomUUID();aw
 const rows=()=>owner.db.execute<{id:string;app_user_id:string;question:string;answer:string|null;tool_calls:unknown;disclosure_receipt:string|null;error:string|null;content_retired_at:Date|null;asked_at:Date;created_at:Date;input_tokens:number;output_tokens:number;cached_input_tokens:number}>(sql`select * from public.assistant_exchange order by id`);
 const metadata=()=>owner.db.execute(sql`select id,app_user_id,asked_at,created_at,input_tokens,output_tokens,cached_input_tokens from public.assistant_exchange order by id`);
 async function protectedState(){return{usage:await owner.db.execute(sql`select * from public.assistant_usage order by tenant_id,period`),model:await owner.db.execute(sql`select * from public.ai_model_run order by id`),money:await owner.db.execute(sql`select * from app.ai_spend_reservation order by run_id`),requests:await owner.db.execute(sql`select * from public.leave_request order by id`),events:await owner.db.execute(sql`select * from public.domain_event order by id`)};}
+/** Fictional conversation metadata rows; the shared bridge, not transcript SQL, must erase and audit them. */
+async function answerCandidate(){const id=randomUUID(),digest='c'.repeat(64);await owner.db.execute(sql`insert into public.ai_agent_candidate(id,tenant_id,owner_user_id,author_user_id,module_code,version,kind,configuration,candidate_digest,baseline_digest,source_digest,engine_digest,policy_digest,input_digest)
+ values(${id}::uuid,${b.tenantId}::uuid,${b.adminUserId}::uuid,${b.adminUserId}::uuid,'assistant',1,'assistant_answer_prompt_v1','{"kind":"assistant_answer_prompt_v1","variant":"focused_v1"}'::jsonb,${digest},${digest},${digest},${digest},${digest},${digest})`);return id;}
+async function pendingIntent(candidateId:string,ctx:SessionContext){const id=randomUUID(),hash='d'.repeat(64);await owner.db.execute(sql`insert into public.ai_assistant_answer_evaluation_intent(id,tenant_id,candidate_id,evaluator_user_id,evaluator_person_id,source_digest,provider_fingerprint,suite_digest,receipt)
+ values(${id}::uuid,${ctx.tenantId}::uuid,${candidateId}::uuid,${ctx.userId}::uuid,${ctx.personId??null}::uuid,${hash},${hash},${hash},'synthetic-intent-custody-not-evaluation-proof')`);return id;}
+async function marker(ctx:SessionContext,exchangeId:string|null){const id=randomUUID(),hash='e'.repeat(64);await owner.db.execute(sql`insert into public.ai_assistant_answer_strategy_use(id,tenant_id,user_id,person_id,candidate_digest,provider_fingerprint,source_digest,receipt,state,exchange_id)
+ values(${id}::uuid,${ctx.tenantId}::uuid,${ctx.userId}::uuid,${ctx.personId??null}::uuid,${hash},${hash},${hash},'synthetic-marker-custody-not-strategy-proof',case when ${exchangeId}::uuid is null then 'pending' else 'completed' end,${exchangeId}::uuid)`);return id;}
+const conversationMetadata=()=>owner.db.execute(sql`select 'marker' as kind,id,user_id,state,exchange_id from public.ai_assistant_answer_strategy_use union all select 'intent',id,evaluator_user_id,state,null from public.ai_assistant_answer_evaluation_intent order by 1,2`);
+const identities=()=>owner.db.execute(sql`select * from app.assistant_transcript_identity order by exchange_id`);
 const retired=(row:Awaited<ReturnType<typeof rows>>[number])=>{expect(row).toMatchObject({question:'',answer:null,tool_calls:[],disclosure_receipt:null,error:null});expect(row.content_retired_at).not.toBeNull();};
 describe('actual own transcript retirement without allowance reset',()=>{
  it('clears only actual own content after grant revocation and preserves rows/dates/usage/financial/native records',async()=>{
@@ -60,6 +69,35 @@ describe('actual own transcript retirement without allowance reset',()=>{
  });
  it('does not let an authenticated caller nominate a foreign person erasure without the real canonical audit admission',async()=>{
   const mine=await actor();await transcript(mine.ctx);const before=await rows();await expect(withTenant(mine.ctx,tx=>tx.execute(sql`select app.assistant_transcripts_redact(${mine.hired.employmentId}::uuid)`))).rejects.toThrow();expect(await rows()).toEqual(before);
+ });
+ it('own clear invalidates the caller pending evaluation intent and main markers through the shared bridge, never a peer row',async()=>{
+  const mine=await actor(),peer=await actor(),candidate=await answerCandidate(),own=await transcript(mine.ctx);
+  await pendingIntent(candidate,mine.ctx);const peerIntent=await pendingIntent(candidate,peer.ctx);await marker(mine.ctx,null);await marker(mine.ctx,own);const peerMarker=await marker(peer.ctx,null);
+  expect(await eraseOwnAssistantHistory(mine.ctx)).toEqual({retired:1});
+  expect((await conversationMetadata()).map(row=>row.id).sort()).toEqual([peerIntent,peerMarker].sort());retired((await rows()).find(row=>row.id===own)!);
+ });
+ it('PDPA retires chat content and leaves marker erasure to the bridge so the audit records conversation learning too',async()=>{
+  const subject=await actor(),own=await transcript(subject.ctx);await marker(subject.ctx,null);await marker(subject.ctx,own);
+  await erasePersonPii(adminCtx(b),{subjectEmploymentId:subject.hired.employmentId,scope:'contact',reason:'Fictional canonical privacy request',requestRef:'fixture-'+randomUUID()});
+  retired((await rows()).find(row=>row.id===own)!);expect(await conversationMetadata()).toEqual([]);
+  const[event]=await owner.db.execute<{payload:{erasedFields?:unknown}}>(sql`select payload from public.domain_event where tenant_id=${b.tenantId}::uuid and event_type='pii.erased' and aggregate_type='person' and aggregate_id=${subject.hired.personId}::uuid`);
+  // Non-vacuous: transcript SQL that deleted these markers first would leave the bridge count at zero.
+  expect(event?.payload.erasedFields).toEqual(expect.arrayContaining(['assistantChatContent','assistantConversationLearning']));
+ });
+ it('rolls PDPA chat-content retirement, identity custody and conversation metadata back together',async()=>{
+  const subject=await actor(),own=await transcript(subject.ctx);await marker(subject.ctx,own);await pendingIntent(await answerCandidate(),subject.ctx);
+  const before={rows:await rows(),metadata:await conversationMetadata(),identities:await identities()};
+  await expect(withTenant(adminCtx(b),async tx=>{await erasePersonPiiTx(tx,adminCtx(b),{subjectEmploymentId:subject.hired.employmentId,scope:'contact',reason:'Fictional canonical privacy request',requestRef:'fixture-'+randomUUID()});throw Error('Fictional later canonical failure');})).rejects.toThrow('Fictional later canonical failure');
+  expect({rows:await rows(),metadata:await conversationMetadata(),identities:await identities()}).toEqual(before);
+ });
+ it('keeps the retention clock immutable and never reopens retired content, even for the physical owner',async()=>{
+  const mine=await actor(),id=await transcript(mine.ctx,true);
+  await expect(withTenant(mine.ctx,tx=>tx.execute(sql`update public.assistant_exchange set asked_at=clock_timestamp() where id=${id}::uuid`))).rejects.toThrow();
+  await expect(owner.db.execute(sql`update public.assistant_exchange set asked_at=clock_timestamp() where id=${id}::uuid`)).rejects.toThrow();
+  expect(await eraseOwnAssistantHistory(mine.ctx)).toEqual({retired:1});const before=await rows();
+  await expect(owner.db.execute(sql`update public.assistant_exchange set content_retired_at=null where id=${id}::uuid`)).rejects.toThrow();
+  await expect(owner.db.execute(sql`update public.assistant_exchange set question='FICTIONAL RESURRECTED QUESTION' where id=${id}::uuid`)).rejects.toThrow();
+  expect(await rows()).toEqual(before);
  });
  it('joins actual person PDPA erasure using original capture and preserves later unrelated account history after relinking',async()=>{
   const original=await actor(),next=await actor(),old=await transcript(original.ctx);
