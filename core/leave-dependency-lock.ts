@@ -1,5 +1,5 @@
-/** UNRELEASED, joined by only some legacy writers and no Assistant confirmation. These advisory locks
- * protect only participating transactions; they are NOT a universal database constraint or authority.
+/** UNRELEASED. Canonical writers and the human-confirmation owner join these advisory locks. They
+ * protect participating transactions; they are NOT a universal database constraint or authority.
  * Caller owns fresh access checks, complete dependency coverage and whole-transaction rollback on
  * refusal. Acquire before protected reads; do not catch a busy refusal and continue to write. */
 import { sql } from 'drizzle-orm';
