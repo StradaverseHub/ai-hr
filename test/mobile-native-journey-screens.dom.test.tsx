@@ -10,7 +10,7 @@ import {DEFAULT_MOBILE_DESIGN,mobilePalette} from '../lib/mobile-design';
 import * as errors from '../mobile/lib/errors';
 import * as contract from '../lib/mobile-api/contract';
 import * as enrollment from '../mobile/lib/enrollment-journal';
-import type {SignedClockStatus} from '../mobile/lib/signed-clock-journal';
+import {SignedClockUnavailable,type SignedClockStatus} from '../mobile/lib/signed-clock-journal';
 import * as journal from '../mobile/lib/submission-journal';
 function load(path:string,ports:Record<string,unknown>){const module={exports:{} as any};runInNewContext(transpileModule(readFileSync(path,'utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX}}).outputText,{exports:module.exports,module,FormData,Date,Error,require:(id:string)=>{if(id==='react')return React;if(id==='react/jsx-runtime')return jsx;if(id in ports)return ports[id];throw new Error('Missing native screen port '+id);}});return module.exports;}
 function fixture(platform:'ios'|'android'='ios'){
@@ -43,7 +43,7 @@ function fixture(platform:'ios'|'android'='ios'){
   const stage=vi.fn(async(command:string,file?:unknown,source?:unknown)=>{if(source)retained.add(JSON.parse(command).requestId);return {command,file};}),resolve=vi.fn(async()=>{});
   const prepareClock=vi.fn(async(action:string,requestId:string)=>({requestId,kind:'clock',stage:'preparation',createdAt:Date.now(),command:JSON.stringify({action,requestId,claimedAt:Date.now()})}));
   const reportAttempt=vi.fn(async(requestId:string,_operation?:{assertCurrent():void})=>({requestId,receivedAt:new Date().toISOString()}));
-  const shared={...base,'./submission-journal':journal,'../../lib/mobile-api/contract':contract,'./enrollment-journal':enrollment,'./signed-clock':{openOwnedSignedClock:openSigned},'./submission-recovery':{useSubmissionRecovery:(_kind:string,_id:string,onRestore:(value:unknown)=>void)=>{
+  const shared={...base,'./submission-journal':journal,'../../lib/mobile-api/contract':contract,'./enrollment-journal':enrollment,'./signed-clock-journal':{SignedClockUnavailable},'./signed-clock':{openOwnedSignedClock:openSigned},'./submission-recovery':{useSubmissionRecovery:(_kind:string,_id:string,onRestore:(value:unknown)=>void)=>{
     React.useEffect(()=>{if(restoredClock){const value=restoredClock;if(value.entry.integrity)retained.add(value.entry.requestId);onRestore(value);}},[]);
     return {ready:true,error:null,reload:()=>{},stage,resolve,prepareClock,reportAttempt,hasSignedAttempt};
   }},'./journey-drafts':{...provider,removeLocalFile:remove},'./ui':ui,'./api':{apiGet:get,apiPost:(path:string,...args:unknown[])=>path==='clock-location'?preview(...args):post(path,...args),useApi:(path:string)=>({data:path==='clock-attempts'?attemptsState:path==='team'?teamState:clockState,reload:path==='clock-attempts'?reloadAttempts:reload,loading:false,error:null})},'./capture':{capturePosition:capture,capturePhoto:photo,appendAttachment:()=>{}},'./device-registration':{readClockDevice:async()=>null,writeClockDevice:async()=>{},clearClockDevice:async()=>{}},'./slide-confirm':{SlideConfirm:(p:any)=><button disabled={p.disabled} onClick={p.onConfirm}>{p.label}</button>},'expo-document-picker':{getDocumentAsync:async()=>({canceled:true})},'expo-file-system':{}};
@@ -280,4 +280,29 @@ it('does not start GPS or send preview after the preparation finishes on a locke
  const id=f.prepareClock.mock.calls[0][1];await act(async()=>{finish({requestId:id,kind:'clock',stage:'preparation',createdAt:Date.now()});});
  expect(f.capture).not.toHaveBeenCalled();expect(f.preview).not.toHaveBeenCalled();expect(f.post).not.toHaveBeenCalled();
  expect(f.drafts().clock).toMatchObject({requestId:id,phase:'idle'});
+});
+
+
+describe('actionable signed attendance failure guidance',()=>{
+ it('explains unsupported device checks before any capture or saved-attempt claim',async()=>{
+  const f=fixture();f.signed.capabilities.mockResolvedValue({outcome:'capabilities'});f.signed.key.mockRejectedValue(new SignedClockUnavailable('unsupported'));
+  render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('signedClockUnsupported');
+  expect(f.prepareClock).not.toHaveBeenCalled();expect(f.capture).not.toHaveBeenCalled();expect(f.stage).not.toHaveBeenCalled();expect(screen.queryByText('attemptSaveFailed')).toBeNull();
+ });
+ it.each([
+  ['native_unavailable','signedClockUnavailable'],['unsupported','signedClockUnsupported'],['invalid_evidence','signedClockEvidenceRefused'],
+ ] as const)('keeps a retained attempt when the device returns %s',async(reason,message)=>{
+  const f=fixture();f.signed.capabilities.mockResolvedValue({outcome:'capabilities'});
+  f.signed.advance.mockImplementation(async()=>({status:'pending',phase:'prepared',requestId:f.drafts().clock.requestId,action:'in',reason}));
+  render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('slideRecord');fireEvent.click(screen.getByText('slideRecord'));
+  await screen.findByText(message);expect(f.drafts().clock.phase).toBe('uncertain');expect(f.resolve).not.toHaveBeenCalled();expect(f.post).not.toHaveBeenCalled();
+  expect(screen.getByRole('button',{name:'checkReceipt'})).toBeTruthy();
+ });
+ it('shows a safe server location refusal while preserving receipt recovery and explicit discard',async()=>{
+  const f=fixture();f.signed.capabilities.mockResolvedValue({outcome:'capabilities'});
+  f.signed.advance.mockImplementation(async()=>({status:'pending',phase:'sent',requestId:f.drafts().clock.requestId,action:'in',reason:'refused',refusal:{code:'outside_geofence',locationReason:'outside_site'}}));
+  render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('slideRecord');fireEvent.click(screen.getByText('slideRecord'));
+  await screen.findByText('locationOutsideSite');expect(f.resolve).not.toHaveBeenCalled();expect(f.post).not.toHaveBeenCalled();
+  expect(screen.getByRole('button',{name:'pendingDiscard'})).toBeTruthy();expect(screen.queryByText('clockRecorded')).toBeNull();
+ });
 });

@@ -142,3 +142,28 @@ describe('atomic expected-request ownership',()=>{
   expect(f.stored()?.pending?.requestId).toBe(requestId);
  });
 });
+
+
+describe('signed clock safe refusal and provider outcomes',()=>{
+ it('retains only bounded public refusal codes from begin without generating a proof',async()=>{
+  const f=fixture(),j=f.journal();await j.start(employmentId,requestId);
+  vi.mocked(f.ports.begin).mockResolvedValue({outcome:'refused',code:'outside_geofence',locationReason:'outside_site',vendorToken:'private'});
+  const result=await j.advance(employmentId);
+  expect(result).toMatchObject({status:'pending',phase:'intent',reason:'refused',refusal:{code:'outside_geofence',locationReason:'outside_site'}});
+  expect(JSON.stringify(result)).not.toContain('private');expect(f.ports.sign).not.toHaveBeenCalled();expect(f.ports.resolveBase).not.toHaveBeenCalled();
+ });
+ it('retains the sent proof after explicit server refusal instead of treating it as settled',async()=>{
+  const f=fixture(),j=f.journal();await j.start(employmentId,requestId);
+  vi.mocked(f.ports.complete).mockResolvedValue({outcome:'refused',code:'invalid_proof',integrityReason:'reported_mock',privateReport:{secret:'private'}});
+  expect(await j.advance(employmentId)).toMatchObject({status:'pending',phase:'sent',reason:'refused',refusal:{code:'invalid_proof',integrityReason:'reported_mock'}});
+  expect(f.stored()?.pending?.phase).toBe('sent');expect(f.ports.resolveBase).not.toHaveBeenCalled();
+ });
+ it.each([
+  [{status:'unsupported',reason:'unsupported'},'unsupported'],
+  [{status:'invalid',reason:'invalid_key'},'invalid_evidence'],
+  [{status:'unavailable',reason:'server_unavailable'},'native_unavailable'],
+ ] as const)('keeps %s distinct without uploading or discarding the retained command',async(native,reason)=>{
+  const f=fixture(),j=f.journal();await j.start(employmentId,requestId);vi.mocked(f.ports.sign).mockResolvedValue(native);
+  expect(await j.advance(employmentId)).toMatchObject({status:'pending',phase:'prepared',reason});expect(f.ports.complete).not.toHaveBeenCalled();expect(f.ports.resolveBase).not.toHaveBeenCalled();
+ });
+});

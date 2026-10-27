@@ -1840,3 +1840,15 @@ production Android and iPhone bundles on a separate standard Ubuntu runner, with
 two workers, offline mode and telemetry disabled. This is packaging verification, not native
 compilation, physical-device acceptance, EAS publication or deployment. Its default is false;
 existing check/default/release behavior is unchanged.
+
+### Hosted Android/iPhone production JavaScript bundles (27 October 2026)
+
+Workflow/candidate `9886a3b428bdd8b51509bdc179806477009e8460` passed
+[40516569416](https://github.com/StradaverseHub/ai-hr/actions/runs/40516569416).
+The actual locked Expo CLI exported both selected production platforms with two workers,
+offline mode and telemetry disabled. Metro processed 1,362 iOS modules in 34,435 ms and 1,497 Android
+modules in 43,841 ms. Outputs were iOS `entry-0c21fe6cb9ee670f3d084dcb577da9d7.hbc` (4 MB) and Android
+`entry-00535a34b7f9a424a80b00573dcc67ab.hbc` (4.3 MB), plus bounded export metadata. The native-bundle
+job completed successfully in 2m30s including dependency setup. The accompanying integrity-contract
+check also passed. These are production JavaScript/Hermes packaging witnesses only: no new native
+binary, physical device, Apple/Google verdict, app-store release or deployment follows from export.

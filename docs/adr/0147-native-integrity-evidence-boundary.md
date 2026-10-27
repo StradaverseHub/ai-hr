@@ -1109,3 +1109,10 @@ token-refresh retries. Completion of an already launched camera may retain its r
 same protected in-memory draft. Rehydrating that draft's matching saved preparation preserves a
 completed review/photo instead of replacing it with an empty preparation. This does not grant
 permission for a server mutation after lock; the user must return through the session gate.
+
+Signed-clock feedback preserves distinct unsupported, invalid-evidence and temporarily unavailable
+native outcomes. Only bounded public server refusal codes are exposed to the screen; raw provider
+reports remain excluded. Location refusal, unavailable challenge and registration guidance retain the
+exact pending command/proof for receipt lookup or explicit server-ordered discard. A refusal on one
+call never clears an uncertain attempt or authorizes unsigned fallback. Capability checks distinguish
+unsupported native mechanisms from temporary bridge failure before consulting a signing key.

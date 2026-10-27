@@ -22,9 +22,11 @@ export type SignedClockPending=z.infer<typeof active>;
 const baseSchema=z.object({digest:sha,command:ClockCommand,photo:OnlineClockIntegrityData.shape.command.shape.photo,source:ClockSourceSignals}).strict();
 export type SignedClockBase=z.infer<typeof baseSchema>;
 export class SignedClockConflict extends Error{constructor(){super('Review the saved signed clock attempt');this.name='SignedClockConflict';}}
-export class SignedClockUnavailable extends Error{constructor(readonly reason='unavailable'){super('Signed clocking unavailable');this.name='SignedClockUnavailable';}}
+export type SignedClockUnavailableReason='unavailable'|'configuration'|'storage'|'registration_required'|'native_unavailable'|'unsupported'|'saved_command';
+export class SignedClockUnavailable extends Error{constructor(readonly reason:SignedClockUnavailableReason='unavailable'){super('Signed clocking unavailable');this.name='SignedClockUnavailable';}}
+const refusal=C.IntegrityRefused.omit({outcome:true});
 export type SignedClockStatus={status:'empty'}|{status:'other_pending'}|
- {status:'pending';requestId:string;action:'in'|'out';phase:z.infer<typeof pending>['phase'];reason?:string}|
+ {status:'pending';requestId:string;action:'in'|'out';phase:z.infer<typeof pending>['phase'];reason?:string;refusal?:z.infer<typeof refusal>}|
  {status:'accepted';receipt:z.infer<typeof ClockReceipt>}|{status:'abandoned'};
 export type SignedClockPorts={
  assertCurrent():void;read():Promise<SignedClockSnapshot|null>;commit(value:SignedClockSnapshot):Promise<void>;
@@ -62,8 +64,8 @@ export function createSignedClockJournal(rawScope:EnrollmentScope,ports:SignedCl
  async function read(){const raw=await owned(()=>ports.read());return raw?parseSignedClockSnapshot(raw,scope):{version:1 as const,revision:0,scope,pending:null};}
  type State=Awaited<ReturnType<typeof read>>;
  async function save(s:State,p:SignedClockSnapshot['pending']){const next=parseSignedClockSnapshot({version:1,revision:s.revision+1,scope,pending:p},scope);await owned(()=>ports.commit(structuredClone(next)));return next;}
- function status(s:State,selected:string,reason?:string):SignedClockStatus{
-  const p=s.pending;return !p?{status:'empty'}:p.employmentId!==selected?{status:'other_pending'}:{status:'pending',requestId:p.requestId,action:p.action,phase:p.phase,...(reason?{reason}:{})};
+ function status(s:State,selected:string,reason?:string,refused?:z.infer<typeof C.IntegrityRefused>):SignedClockStatus{
+  const p=s.pending;return !p?{status:'empty'}:p.employmentId!==selected?{status:'other_pending'}:{status:'pending',requestId:p.requestId,action:p.action,phase:p.phase,...(reason?{reason}:{}),...(refused?{refusal:refusal.parse(refused)}:{})};
  }
  async function base(p:SignedClockReference){const value=baseSchema.parse(await owned(()=>ports.base(p.employmentId,p.requestId)));if(value.digest!==p.baseDigest||value.command.requestId!==p.requestId||value.command.action!==p.action)throw new SignedClockConflict();return value;}
  function intent(p:SignedClockPending,b:SignedClockBase){const {deviceToken,...command}=b.command;return {appInstallationId:scope.appInstallationId,keyId:p.key.keyId,...(deviceToken?{deviceToken}:{}),command,evidence:p.evidence};}
@@ -108,7 +110,7 @@ export function createSignedClockJournal(rawScope:EnrollmentScope,ports:SignedCl
    let current:SignedClockPending=p;
    const b=await base(current),features=await capabilities(current.key.platform);if(features.cloudProjectNumber!==current.project)throw new SignedClockConflict();
    const request=intent(current,b),prepared=(current.key.platform==='ios'?C.IntegrityClockPrepared:C.IntegrityAndroidClockPrepared).parse(await owned(()=>ports.begin(structuredClone(current),structuredClone(request))));
-   if(prepared.outcome!=='prepared')return status(s,selected,prepared.outcome==='refused'?'refused':'unavailable');
+   if(prepared.outcome!=='prepared')return status(s,selected,prepared.outcome==='refused'?'refused':'unavailable',prepared.outcome==='refused'?prepared:undefined);
    const context=prepared.context,expectedContext=OnlineClockIntegrityData.parse({...context,scope:{apiOrigin:scope.apiOrigin,actorId:scope.actorId,employmentId:selected,deviceKeyId:p.key.keyId,tenantId:p.key.tenantId,installationId:p.key.installationId},command:{...request.command,photo:b.photo},evidence:p.evidence});
    if(onlineClockClientData(context)!==onlineClockClientData(expectedContext)||p.context&&onlineClockClientData(p.context)!==onlineClockClientData(context))throw new SignedClockConflict();
    if(prepared.state!=='active')return status(s,selected,'challenge_unavailable');
@@ -118,7 +120,7 @@ export function createSignedClockJournal(rawScope:EnrollmentScope,ports:SignedCl
     const found=await owned(()=>ports.key()),freshKey=ClockSigningKey.parse(found.key),cap=NativeCapabilities.parse(found.capability);
     if(!same(freshKey,signingKey)||cap.platform!==current.evidence.platform||cap.appId!==current.evidence.appId||cap.appVersion!==current.evidence.appVersion||cap.buildVersion!==current.evidence.buildVersion)throw new SignedClockConflict();
     const signed=await owned(()=>ports.sign(signingKey,structuredClone(context)));
-    if(signed.status!=='evidence')return status(s,selected,signed.status==='unsupported'?'unsupported':'native_unavailable');
+    if(signed.status!=='evidence')return status(s,selected,signed.status==='unsupported'?'unsupported':signed.status==='invalid'?'invalid_evidence':'native_unavailable');
     const proof=(current.key.platform==='ios'?C.IntegrityClockProof.shape.assertion:C.IntegrityAndroidClockProof.shape.signature).parse(signed.evidence);
     current={...current,phase:'proof_ready',context,proof};s=await save(s,current);
    }
@@ -126,12 +128,12 @@ export function createSignedClockJournal(rawScope:EnrollmentScope,ports:SignedCl
    if(current.key.platform==='android'){
     const project=AndroidPlayCloudProject.parse(current.project);
     const result=await owned(()=>ports.play(project,structuredClone(context)));
-    if(result.status!=='evidence')return status(s,selected,result.status==='unsupported'?'unsupported':'native_unavailable');token=C.IntegrityAndroidClockToken.parse(result.evidence);
+    if(result.status!=='evidence')return status(s,selected,result.status==='unsupported'?'unsupported':result.status==='invalid'?'invalid_evidence':'native_unavailable');token=C.IntegrityAndroidClockToken.parse(result.evidence);
    }
    if(current.phase!=='sent'){current={...current,phase:'sent'};s=await save(s,current);}
    const proof=current.key.platform==='ios'?{assertion:current.proof!}:{signature:current.proof!};
    const result=C.IntegrityClockResult.parse(await owned(()=>ports.complete(structuredClone(current),{...request,challengeId:context.challenge.id,...proof},token)));
-   if(result.outcome!=='accepted')return status(s,selected,result.outcome==='refused'?'refused':'unavailable');
+   if(result.outcome!=='accepted')return status(s,selected,result.outcome==='refused'?'refused':'unavailable',result.outcome==='refused'?result:undefined);
    if(result.receipt.direction!==current.action)throw new SignedClockConflict();return finish(s,current,{receipt:result.receipt,abandoned:false});
   }),
  };

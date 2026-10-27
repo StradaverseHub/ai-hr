@@ -8,13 +8,13 @@ import { assertAuthGeneration,authGeneration } from './auth';
 import { capturePhoto,capturePosition,appendAttachment } from './capture';
 import { readClockDevice,writeClockDevice,clearClockDevice } from './device-registration';
 import { useTenantDesign } from './design';
-import { SignInRequiredError,RequestRejectedError,LocationCaptureError,SessionChangedError } from './errors';
+import { SignInRequiredError,RequestRejectedError,LocationCaptureError,SessionChangedError,UnavailableError } from './errors';
 import { useJourneyDrafts,removeLocalFile,type ClockDraft } from './journey-drafts';
 import { useSession } from './session';
 import { SlideConfirm } from './slide-confirm';
 import { t,appLocale } from './i18n';
 import {openOwnedSignedClock} from './signed-clock';
-import type {SignedClockStatus} from './signed-clock-journal';
+import {SignedClockUnavailable,type SignedClockStatus} from './signed-clock-journal';
 import {EnrollmentConflict} from './enrollment-journal';
 import { useSubmissionRecovery } from './submission-recovery';
 import { ClockCommand,ClockPreparation } from '../../lib/mobile-api/contract';
@@ -74,7 +74,27 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
   },[identity,recovery.ready]);
   const pending=draft?.phase==='preparing'||draft?.phase==='submitting';
   const label=action==='in'?t('clockIn'):t('clockOut');
-  function errorMessage(e:unknown){return e instanceof Error?e.message:t('genericError');}
+  function needsRegistration(e:unknown){return e instanceof EnrollmentConflict||e instanceof SignedClockUnavailable&&e.reason==='registration_required';}
+  function errorMessage(e:unknown){
+    if(e instanceof EnrollmentConflict)return t('signedClockRegistrationRequired');
+    if(e instanceof UnavailableError)return t('signedClockUnavailable');
+    if(e instanceof SignedClockUnavailable)return t(e.reason==='unsupported'?'signedClockUnsupported':e.reason==='saved_command'?'signedClockSavedUnavailable':e.reason==='registration_required'?'signedClockRegistrationRequired':'signedClockUnavailable');
+    return e instanceof Error?e.message:t('genericError');
+  }
+  function signedPendingMessage(value:SignedClockStatus){
+    if(value.status==='other_pending')return t('signedClockOtherPending');
+    if(value.status!=='pending')return t('signedClockPending');
+    if(value.reason==='unsupported')return t('signedClockUnsupported');
+    if(value.reason==='invalid_evidence')return t('signedClockEvidenceRefused');
+    if(value.reason==='native_unavailable'||value.reason==='unavailable')return t('signedClockUnavailable');
+    const refusal=value.refusal;if(!refusal)return t('signedClockPending');
+    if(refusal.locationReason)return t(locationRefusals[refusal.locationReason]);
+    if(refusal.integrityReason?.startsWith('reported_'))return t('signedClockReportedSource');
+    if(refusal.code in refusals)return t(refusals[refusal.code as keyof typeof refusals]);
+    if(['key_unavailable','key_exists','key_limit','binding_conflict'].includes(refusal.code))return t('signedClockRegistrationRequired');
+    if(refusal.code==='challenge_unavailable')return t('signedClockChallengeUnavailable');
+    return t('signedClockEvidenceRefused');
+  }
   async function prepare(){
     if(flight.current||!identity||!current||pending||!recovery.ready)return;
     flight.current=true;
@@ -94,7 +114,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
       catch(error){if(!(error instanceof RequestRejectedError&&error.status===404))throw error;}
       if(capabilities?.outcome==='capabilities'){
         next={...next,clockProtocol:'signed'};
-        try{await controller.key();}catch(error){if(error instanceof EnrollmentConflict)setRegistrationNeeded(true);throw error;}
+        try{await controller.key();}catch(error){if(needsRegistration(error))setRegistrationNeeded(true);throw error;}
       }else if(capabilities&&!(capabilities.outcome==='unavailable'&&capabilities.code==='not_configured'))throw new Error(t('signedClockUnavailable'));
       const saved=await recovery.prepareClock(action,randomUUID());assertAuthGeneration(owner);
       next={...next,requestId:saved.requestId,attemptStartedAt:saved.createdAt,attemptReceiptTime:saved.attemptReceipt?.receivedAt};
@@ -110,7 +130,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
       if(current.attendancePhotoSetting==='required'&&!photo){photo=await capturePhoto(operation(owner).assertCurrent)??undefined;assertAuthGeneration(owner);if(!photo)throw new Error(t('photoRequired'));}
       const deviceToken=await readClockDevice(identity);assertAuthGeneration(owner);
       if(!putClock({...next,phase:'review',geo,locationAssessment,photo,deviceToken}))removeLocalFile(photo);
-    }catch(e){removeLocalFile(photo);putClock({...next,phase:'idle',message:e instanceof PendingSubmissionConflict?t('attemptReplacementBlocked'):e instanceof EnrollmentConflict?t('signedClockRegistrationRequired'):!next.requestId?t('attemptSaveFailed'):errorMessage(e),...(e instanceof LocationCaptureError?{locationIssue:e.issue}:{})});if(e instanceof SignInRequiredError)void signOut();}
+    }catch(e){removeLocalFile(photo);putClock({...next,phase:'idle',message:e instanceof PendingSubmissionConflict?t('attemptReplacementBlocked'):e instanceof EnrollmentConflict||e instanceof SignedClockUnavailable||e instanceof UnavailableError?errorMessage(e):!next.requestId?t('attemptSaveFailed'):errorMessage(e),...(e instanceof LocationCaptureError?{locationIssue:e.issue}:{})});if(e instanceof SignInRequiredError)void signOut();}
     finally{flight.current=false;}
   }
   async function reportAttempt(){
@@ -157,7 +177,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
     await recovery.reportAttempt(saved.requestId!,operation(owner));assertAuthGeneration(owner);attempts.reload();
     await controller.start(saved.requestId!);assertAuthGeneration(owner);
     const result=await controller.advance(saved.requestId);assertAuthGeneration(owner);
-    if(!signedResult(result,saved))putClock({...saved,phase:'uncertain',message:t(result.status==='other_pending'?'signedClockOtherPending':'signedClockPending')},saved.requestId);
+    if(!signedResult(result,saved))putClock({...saved,phase:'uncertain',message:signedPendingMessage(result)},saved.requestId);
   }
   async function submit(){
     if(flight.current||!identity||!draft?.requestId||(!draft.geo&&draft.clockProtocol!=='signed')||!current||AppState.currentState!=='active')return;
@@ -184,8 +204,8 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
       clock.reload();
     }catch(e){
       if(draft.clockProtocol==='signed'){
-        if(e instanceof EnrollmentConflict)setRegistrationNeeded(true);
-        putClock({...draft,phase:'uncertain',message:t(e instanceof EnrollmentConflict?'signedClockRegistrationRequired':'signedClockPending')},draft.requestId);
+        if(needsRegistration(e))setRegistrationNeeded(true);
+        putClock({...draft,phase:'uncertain',message:e instanceof EnrollmentConflict||e instanceof SignedClockUnavailable||e instanceof UnavailableError?errorMessage(e):t('signedClockPending')},draft.requestId);
         if(e instanceof SignInRequiredError)void signOut();return;
       }
       let refused=false;
@@ -205,7 +225,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
         if(status.status==='pending'&&(status.requestId!==draft.requestId||status.action!==draft.action)||status.status==='other_pending')throw new Error(t('signedClockOtherPending'));
         const observed=await controller.recover(abandon,draft.requestId);assertAuthGeneration(owner);
         if(signedResult(observed,draft))return;
-        if(observed.status!=='empty'){putClock({...draft,message:t('signedClockPending')},draft.requestId);return;}
+        if(observed.status!=='empty'){putClock({...draft,message:signedPendingMessage(observed)},draft.requestId);return;}
       }
       const result=abandon?await apiPost('submission-abandon',{kind:'clock',requestId:draft.requestId},{employmentId:identity},operation(owner)):await apiGet('submission-receipt',{kind:'clock',requestId:draft.requestId,employmentId:identity});assertAuthGeneration(owner);
       if(result.kind!=='clock'||result.requestId!==draft.requestId||result.receipt&&result.receipt.direction!==draft.action)throw new Error('Unexpected submission receipt');

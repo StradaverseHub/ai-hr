@@ -33,7 +33,7 @@ function fixture(platform:'ios'|'android'){
   signAndroidCommand:vi.fn(async(_alias:string,_envelope:string)=>Buffer.from('signature').toString('base64')),
   preparePlayIntegrity:vi.fn(async()=>null),requestPlayIntegrity:vi.fn(async()=> 'fresh-token'),
  };
- const handoff=vi.fn(async()=>key),append=vi.fn((form:FormData,name:string)=>form.append(name,'saved-photo-bytes'));
+ const handoff=vi.fn(async()=>key),enrollmentController={supported:true,signingKey:()=>handoff()},append=vi.fn((form:FormData,name:string)=>form.append(name,'saved-photo-bytes'));
  const apiGet=vi.fn(async(path:string)=>{
   if(path==='me')return {actorId,employments:[{employmentId}]};
   if(path==='submission-receipt')return {kind:'clock',requestId,receipt:accepted?receipt:null};
@@ -45,7 +45,7 @@ function fixture(platform:'ios'|'android'){
   if(path.endsWith('/complete')){accepted=true;return {outcome:'accepted',receipt};}throw new Error(path);
  });
  class File{constructor(readonly uri:string){}get exists(){return files.has(this.uri);}delete(){files.delete(this.uri);}}
- const output={exports:{} as {openOwnedSignedClock:(employment:string,unlocked:()=>boolean)=>Promise<{status:()=>Promise<journal.SignedClockStatus>;start:(id:string)=>Promise<journal.SignedClockStatus>;advance:(requestId?:string)=>Promise<journal.SignedClockStatus>;recover:(abandon?:boolean,requestId?:string)=>Promise<journal.SignedClockStatus>}>}};
+ const output={exports:{} as {openOwnedSignedClock:(employment:string,unlocked:()=>boolean)=>Promise<{key:()=>Promise<unknown>;status:()=>Promise<journal.SignedClockStatus>;start:(id:string)=>Promise<journal.SignedClockStatus>;advance:(requestId?:string)=>Promise<journal.SignedClockStatus>;recover:(abandon?:boolean,requestId?:string)=>Promise<journal.SignedClockStatus>}>}};
  runInNewContext(transpileModule(readFileSync('mobile/lib/signed-clock.ts','utf8'),{compilerOptions:{module:ModuleKind.CommonJS}}).outputText,{
   exports:output.exports,module:output,FormData,structuredClone,require:(id:string)=>{
    if(id==='react-native')return {AppState:{currentState:'active'},Platform:{OS:platform}};
@@ -57,7 +57,7 @@ function fixture(platform:'ios'|'android'){
    if(id==='./auth')return {authGeneration:()=>generation,assertAuthGeneration:(n:number)=>{if(n!==generation)throw new errors.SessionChangedError();}};
    if(id==='./config')return {config,identityNamespace:()=> 'company'};
    if(id==='./errors')return errors;if(id==='./enrollment-journal')return enrollment;if(id==='./clock-signing-key')return signingKey;
-   if(id==='./device-enrollment')return {openOwnedDeviceEnrollment:async()=>({signingKey:handoff})};
+   if(id==='./device-enrollment')return {openOwnedDeviceEnrollment:async()=>enrollmentController};
    if(id==='./submission-recovery')return {openOwnedClockJournal:async()=>base};
    if(id==='./submission-native')return {nativeIntegrityInstallationId:async()=>actorId,
     openNativeSignedClockJournal:async(scope:enrollment.EnrollmentScope,assertCurrent:()=>void,ports:journal.SignedClockPorts)=>journal.createSignedClockJournal(scope,{...ports,assertCurrent,read:async()=>stored,commit:async value=>{stored=structuredClone(value);}})};
@@ -68,7 +68,7 @@ function fixture(platform:'ios'|'android'){
    if(id==='./capture')return {appendAttachment:append};
    if(id==='./signed-clock-journal')return journal;throw new Error(id);
   }});
- return {open:()=>output.exports.openOwnedSignedClock(employmentId,()=>unlocked),apiGet,apiPost,base,native,append,files,handoff,context,stored:()=>stored,
+ return {enrollmentController,open:()=>output.exports.openOwnedSignedClock(employmentId,()=>unlocked),apiGet,apiPost,base,native,append,files,handoff,context,stored:()=>stored,
   lock:()=>{unlocked=false;},changeOwner:()=>{generation++;}};
 }
 describe('owned signed-clock native assembly',()=>{
@@ -111,4 +111,23 @@ it('the owned native adapter forwards expected request identity into the atomic 
  await expect(controller.advance(actorId)).rejects.toBeInstanceOf(journal.SignedClockConflict);
  await expect(controller.recover(true,actorId)).rejects.toBeInstanceOf(journal.SignedClockConflict);
  expect(f.apiGet).toHaveBeenCalledTimes(reads);expect(f.apiPost).not.toHaveBeenCalled();expect(f.native.assertAppleKey).not.toHaveBeenCalled();
+});
+
+
+describe('native support outcomes before signing-key handoff',()=>{
+ it('reports an unsupported mechanism before opening or reading an enrollment key',async()=>{
+  const f=fixture('ios');f.native.capabilities.mockReturnValue({version:1,platform:'ios',appId:'ai.hr',appVersion:'1',buildVersion:'4',keyMechanism:'unsupported'});
+  await expect((await f.open()).key()).rejects.toMatchObject({reason:'unsupported'});
+  expect(f.handoff).not.toHaveBeenCalled();expect(f.apiPost).not.toHaveBeenCalled();
+ });
+ it('distinguishes a temporarily unreadable bridge from an unsupported device',async()=>{
+  const f=fixture('android');f.native.capabilities.mockImplementationOnce(()=>{throw new Error('temporary OS failure');});
+  await expect((await f.open()).key()).rejects.toMatchObject({reason:'native_unavailable'});
+  expect(f.handoff).not.toHaveBeenCalled();expect(f.apiPost).not.toHaveBeenCalled();
+ });
+ it('refuses an older enrollment assembly without the required native support',async()=>{
+  const f=fixture('ios');f.enrollmentController.supported=false;
+  await expect((await f.open()).key()).rejects.toMatchObject({reason:'unsupported'});
+  expect(f.handoff).not.toHaveBeenCalled();
+ });
 });

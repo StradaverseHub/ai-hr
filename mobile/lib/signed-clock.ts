@@ -38,11 +38,16 @@ export async function openOwnedSignedClock(employmentId:string,isUnlocked:()=>bo
  const operation={assertCurrent:check};
  const capabilities=()=>owned(()=>apiGet(platform==='ios'?'v2/integrity/ios/clock/capabilities':'v2/integrity/android/clock/capabilities',{employmentId}));
  const key=async()=>{
+  const initial=native.capabilities();check();
+  if(initial.status!=='evidence')throw new SignedClockUnavailable(initial.status==='unsupported'?'unsupported':'native_unavailable');
+  if(initial.evidence.platform!==platform||initial.evidence.keyMechanism==='unsupported')throw new SignedClockUnavailable('unsupported');
   const controller=await owned(()=>openOwnedDeviceEnrollment(employmentId,isUnlocked));
+  if(!controller.supported)throw new SignedClockUnavailable('unsupported');
   if(!controller.signingKey)throw new SignedClockUnavailable('registration_required');
   const key=ClockSigningKey.parse(await owned(()=>controller.signingKey!())),capability=native.capabilities();check();
   if(key.platform!==platform||key.actorId!==actorId||key.apiOrigin!==apiOrigin||key.appInstallationId!==appInstallationId)throw new SignedClockConflict();
-  if(capability.status!=='evidence')throw new SignedClockUnavailable('native_unavailable');
+  if(capability.status!=='evidence')throw new SignedClockUnavailable(capability.status==='unsupported'?'unsupported':'native_unavailable');
+  if(capability.evidence.platform!==platform||capability.evidence.keyMechanism==='unsupported')throw new SignedClockUnavailable('unsupported');
   return {key,capability:capability.evidence};
  };
  async function withBase<T>(selected:string,id:string,run:(entry:JournalEntry,command:ReturnType<typeof ClockCommand.parse>,file?:EvidenceFile)=>Promise<T>){

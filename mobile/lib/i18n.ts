@@ -11,7 +11,12 @@
 import { getLocales } from 'expo-localization';
 
 const en = {
-  signedClockUnavailable: "Signed device clocking is unavailable. Your saved work is retained.",
+  signedClockUnavailable: "Device checks are temporarily unavailable. Try again later. Saved attempts remain available for receipt recovery.",
+  signedClockUnsupported: "This app or device does not support the required attendance check. Update the app or contact HR.",
+  signedClockEvidenceRefused: "The device evidence was not accepted. Check this attempt's receipt, review device registration, or contact HR.",
+  signedClockReportedSource: "The device reported a mock, simulated or accessory location that this work profile does not allow. Check the saved attempt's receipt or contact HR.",
+  signedClockChallengeUnavailable: "This saved attempt's challenge is no longer usable. Check its receipt, or discard the attempt through the company server before starting again.",
+
   signedClockRegistrationRequired: "Register this device before using signed attendance.",
   signedClockPending: "This signed attendance attempt is unresolved. Check its receipt, retry the saved attempt, or discard it through the company server.",
   signedClockOtherPending: "A signed attendance attempt is pending under another work profile. Select that profile to check its receipt, or contact HR.",
@@ -270,7 +275,12 @@ const en = {
 export type MessageKey = keyof typeof en;
 
 const ms: Record<MessageKey, string> = {
-  signedClockUnavailable: "Rekod kehadiran bertandatangan tidak tersedia. Maklumat tersimpan anda dikekalkan.",
+  signedClockUnavailable: "Semakan peranti tidak tersedia buat sementara. Cuba lagi kemudian. Resit cubaan tersimpan masih boleh disemak.",
+  signedClockUnsupported: "Aplikasi atau peranti ini tidak menyokong semakan kehadiran yang diperlukan. Kemas kini aplikasi atau hubungi HR.",
+  signedClockEvidenceRefused: "Bukti peranti tidak diterima. Semak resit cubaan ini, semak pendaftaran peranti, atau hubungi HR.",
+  signedClockReportedSource: "Peranti melaporkan lokasi palsu, simulasi atau aksesori yang tidak dibenarkan oleh profil kerja ini. Semak resit cubaan tersimpan atau hubungi HR.",
+  signedClockChallengeUnavailable: "Cabaran cubaan tersimpan ini tidak boleh digunakan lagi. Semak resitnya atau buang cubaan melalui pelayan syarikat sebelum bermula semula.",
+
   signedClockRegistrationRequired: "Daftarkan peranti ini sebelum merekod kehadiran bertandatangan.",
   signedClockPending: "Cubaan kehadiran bertandatangan ini belum disahkan. Semak resit, cuba semula cubaan tersimpan, atau buangnya melalui pelayan syarikat.",
   signedClockOtherPending: "Cubaan kehadiran bertandatangan masih tertunda di bawah profil kerja lain. Pilih profil itu untuk menyemak resit atau hubungi HR.",
