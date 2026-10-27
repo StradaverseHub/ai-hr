@@ -84,7 +84,7 @@ describe('strict terminal model reference plan',()=>{
   for(const plan of[{version:1,mode:'insufficient',code:'unsupported_explanation'},{version:1,mode:'refuse',code:'unsupported_request'},{version:1,mode:'refuse',code:'human_review_required'}])expect(adjudicateAssistantAnswerPlan(plan,current())).toEqual(plan);
  });
  it('rejects ambiguous current catalogues without accepting a posted catalogue as source authority',()=>{
-  const sources=current();for(const rows of[[...sources,...sources],[{...sources[0],explanations:[...sources[0].explanations,...sources[0].explanations]}],[{...sources[0],explanations:[{card:1,code:'specialist_followup:read_balance'}]}]])expect(()=>adjudicateAssistantAnswerPlan(fact(),rows)).toThrow();
+  const sources=current();for(const rows of[[...sources,...sources],[{...sources[0],explanations:[...sources[0].explanations,...sources[0].explanations]}],[{...sources[0],explanations:[{card:1,code:'specialist_followup:read_balance' as const}]}]])expect(()=>adjudicateAssistantAnswerPlan(fact(),rows)).toThrow();
   expect(ASSISTANT_ANSWER_PROTOCOL).toContain('original actual executed reads');expect(ASSISTANT_ANSWER_PROTOCOL).toContain('Never invent');
   const plan:AssistantAnswerPlan=captureAssistantAnswerPlan({version:1,mode:'clarify',slot:'module'});expect(plan.mode).toBe('clarify');
  });

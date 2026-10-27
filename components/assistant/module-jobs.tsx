@@ -10,7 +10,7 @@ import type {SessionContext} from '../../db/client';
 import {assertCanonicalModuleJobView,type CanonicalModuleJobView} from '../../core/workspace-module-jobs';
 import type {AgentModuleCode} from '../../lib/ai/module-agents';
 import type {JobFact,JobCard} from '../../lib/ai/module-jobs';
-import type {GroundedWorkspaceAnswer} from '../../core/workspace-grounded-answers';
+import type {GroundedWorkspaceAnswer,AssistantConversationSegment} from '../../core/workspace-grounded-answers';
 import {MODULE_JOBS} from '../../lib/ai/module-jobs';
 import {ConversationReviewLinks} from './conversation-review-links';
 import {ConversationExplanation} from './conversation-explanation';
@@ -109,7 +109,7 @@ async function ConversationReplyBody({conversation,ctx,exchangeId}:{conversation
   const segments=conversation.segments??conversation.facts.map(fact=>({kind:'fact' as const,...fact}));
   if(!Array.isArray(segments)||segments.length!==plan.blocks.length)return unavailable();
   let factIndex=0;const views:CanonicalModuleJobView[]=[],lines=await Promise.all(plan.blocks.map(async(block,index)=>{
-   const selected=segments[index];
+   const selected:AssistantConversationSegment=segments[index];
    if(!selected||!Number.isSafeInteger(block.read)||block.read<0||block.read>=128)throw Error();
    assertCanonicalModuleJobView(selected.view,ctx);if(selected.view.state!=='ready')throw Error();
    if(!views.includes(selected.view))views.push(selected.view);

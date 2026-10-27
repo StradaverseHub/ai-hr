@@ -80,7 +80,7 @@ export function specialistAnswerExplanations(assessment:SpecialistAssessment,pre
   JSON.stringify(assessment.presentation.cards)!==JSON.stringify(presentation.cards.slice(0,assessment.presentation.cards.length))||
   !Array.isArray(assessment.findings)||new Set(assessment.findings).size!==assessment.findings.length||assessment.findings.some(code=>!findings.has(code)))return fail();
  const result:AssistantAnswerExplanation[]=[];
- for(const finding of assessment.findings)add(result,null,`specialist_finding:${finding}`,{kind:'specialist_finding',finding});
+ for(const finding of assessment.findings as readonly SpecialistFinding[])add(result,null,`specialist_finding:${finding}`,{kind:'specialist_finding',finding});
  const d=assessment.diagnostic;if(d){
   if(d.version!==1||d.effect!=='none'||d.requiresHumanIntent!==true||!followups.has(d.code)||!['review','recorded','insufficient','no_followup'].includes(d.state)||
    d.recordNumber!==null&&(!Number.isSafeInteger(d.recordNumber)||d.recordNumber<1||d.recordNumber>assessment.presentation.cards.length))return fail();

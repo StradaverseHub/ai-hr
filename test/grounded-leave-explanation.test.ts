@@ -6,7 +6,7 @@ import {resolveEssView,ESS_VIEW_COMPONENT_KEYS} from '../core/ess-view';
 import type {LeaveEntitlementBreakdown} from '../core/read';
 import {ENTITLEMENT_STATUS_LABEL_KEY,ENTITLEMENT_STATUS_TIP_KEY} from '../lib/entitlement-status';
 const poison='PRIVATE_OR_MODEL_TEXT_NOT_AN_EXPLANATION';
-const rule=()=>({id:'lineage-1',name:'Canonical scheme',state:'in_force',tested:true,validFrom:'2026-01-01',validTo:null,
+const rule=()=>({id:'lineage-1',name:'Canonical scheme',state:'in_force',tested:true,validFrom:'2026-01-01',validTo:null as string|null,
  tableName:'Canonical table',failingAxis:'employmentTypes',failingAxisValue:poison,failsOnCombination:false,href:poison});
 const row=()=>({employmentId:'employment-1',company:'Company A',leaveType:'Annual',cycleStart:'2026-01-01',
  entitlementStatus:'no_eligibility_match',entitlementTemplateName:null,withheld:false,
