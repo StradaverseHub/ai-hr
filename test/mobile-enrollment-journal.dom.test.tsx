@@ -45,7 +45,7 @@ describe('native enrollment durability and one-use recovery',()=>{
   it('retries only a natively recorded outage under the same key and hash on an explicit later advance',async()=>{
     const f=enrollmentFixture(),journal=f.journal();await journal.begin(f.employmentId,f.requestId);
     f.native.attestAppleKey.mockImplementationOnce(async()=>{f.setCache({state:'retryable'});throw {code:'ERR_INTEGRITY_SERVER_UNAVAILABLE'};});
-    expect(await journal.advance(f.employmentId)).toMatchObject({phase:'attestation_requested',reason:'native_unavailable'});
+    expect(await journal.advance(f.employmentId)).toMatchObject({phase:'attestation_requested',reason:'vendor_outage'});
     expect((await f.journal().advance(f.employmentId)).status).toBe('stored_key');
     expect(f.native.attestAppleKey.mock.calls).toEqual(Array(2).fill([f.vendorKeyId,f.prepared().clientDataHash]));expect(f.native.generateAppleKey).toHaveBeenCalledOnce();
   });
@@ -81,5 +81,22 @@ describe('native enrollment durability and one-use recovery',()=>{
     await expect(createEnrollmentJournal({...f.scope,actorId:enrollmentId(9)},f.ports).status()).rejects.toBeInstanceOf(EnrollmentJournalUnavailable);
     vi.mocked(f.ports.complete).mockResolvedValue({outcome:'enrolled',key:{...f.receipt(),originChallengeId:enrollmentId(9)}});
     await expect(journal.advance(f.employmentId)).rejects.toBeInstanceOf(EnrollmentConflict);expect(f.stored()?.pending?.phase).toBe('proof_ready');
+  });
+  it('distinguishes unavailable key storage from a missing key and never repeats an uncertain attestation',async()=>{
+    const f=enrollmentFixture(),journal=f.journal();await journal.begin(f.employmentId,f.requestId);
+    f.native.generateAppleKey.mockImplementationOnce(async()=>{f.setKey(f.vendorKeyId);throw {code:'ERR_INTEGRITY_UNAVAILABLE'};});await journal.advance(f.employmentId);
+    f.native.appleKeyInfo.mockRejectedValueOnce({code:'ERR_INTEGRITY_UNAVAILABLE'});
+    expect(await f.journal().advance(f.employmentId)).toMatchObject({reason:'native_unavailable',phase:'key_requested'});
+    f.native.attestAppleKey.mockRejectedValueOnce({code:'ERR_INTEGRITY_UNAVAILABLE'});await f.journal().advance(f.employmentId);
+    expect(await f.journal().advance(f.employmentId)).toMatchObject({reason:'recovery_required',phase:'attestation_requested'});
+    expect(f.native.generateAppleKey).toHaveBeenCalledOnce();expect(f.native.attestAppleKey).toHaveBeenCalledOnce();
+  });
+  it('does not adopt a refreshed nonce or generate a key for an explicitly unsupported build',async()=>{
+    const f=enrollmentFixture(),journal=f.journal();await journal.begin(f.employmentId,f.requestId);
+    f.native.generateAppleKey.mockRejectedValueOnce({code:'ERR_INTEGRITY_UNAVAILABLE'});await journal.advance(f.employmentId);
+    f.context.nonce='B'+'A'.repeat(42);
+    await expect(f.journal().advance(f.employmentId)).rejects.toBeInstanceOf(EnrollmentConflict);expect(f.native.generateAppleKey).toHaveBeenCalledOnce();
+    const g=enrollmentFixture();g.context.target.requiredMetadata={validationCategory:4,bundleVersions:['other-build']};
+    await g.journal().begin(g.employmentId,g.requestId);expect(await g.journal().advance(g.employmentId)).toMatchObject({reason:'unsupported'});expect(g.native.generateAppleKey).not.toHaveBeenCalled();
   });
 });

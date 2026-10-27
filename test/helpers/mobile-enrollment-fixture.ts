@@ -3,7 +3,7 @@ import {createHash} from 'node:crypto';
 import {vi} from 'vitest';
 import {createEnrollmentJournal,type EnrollmentSnapshot,type EnrollmentPorts} from '../../mobile/lib/enrollment-journal';
 import {createIntegrityBridge} from '../../mobile/lib/integrity-bridge';
-import {keyEnrollmentClientData} from '../../lib/mobile-key-enrollment';
+import {keyEnrollmentClientData,type KeyEnrollmentContext} from '../../lib/mobile-key-enrollment';
 import {SessionChangedError} from '../../mobile/lib/errors';
 export const enrollmentId=(n:number)=>`${String(n).padStart(8,'0')}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`;
 export function enrollmentFixture(){
@@ -11,7 +11,7 @@ export function enrollmentFixture(){
   const employmentId=enrollmentId(3),requestId=enrollmentId(4),vendorKeyId=Buffer.alloc(32,7).toString('base64'),attestation=Buffer.from('synthetic native proof').toString('base64');
   let current=true,stored:EnrollmentSnapshot|null=null,keyRef:string|null=null,cache:{state:'absent'|'requested'|'retryable'}|{state:'completed';attestation:string}={state:'absent'};
   let accepted=false,revoked=false,serverState:'active'|'expired'|'consumed'='active';
-  const context={version:1 as const,purpose:'device.key.enrollment' as const,apiOrigin:scope.apiOrigin,installationId:enrollmentId(5),tenantId:enrollmentId(6),actorId:scope.actorId,
+  const context:KeyEnrollmentContext={version:1,purpose:'device.key.enrollment',apiOrigin:scope.apiOrigin,installationId:enrollmentId(5),tenantId:enrollmentId(6),actorId:scope.actorId,
     employmentId,appInstallationId:scope.appInstallationId,requestId,challengeId:enrollmentId(7),nonce:'A'.repeat(43),issuedAt:1800000000000,expiresAt:1800000600000,
     target:{platform:'ios' as const,appId:'ABCDEFGHIJ.ai.stradaverse.aihr.test',environment:'production' as const,requiredMetadata:null}};
   const digest=async(value:string,encoding:'hex'|'base64')=>createHash('sha256').update(value,'utf8').digest(encoding);

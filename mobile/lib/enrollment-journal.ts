@@ -57,7 +57,7 @@ export type EnrollmentPorts={
   complete(employmentId:string,input:z.infer<typeof C.IntegrityEnrollmentProof>):Promise<unknown>;
   keys(employmentId:string):Promise<unknown>;
 };
-type PendingReason='server_unavailable'|'server_refused'|'native_unavailable'|'unsupported'|'recovery_required'|'challenge_unavailable';
+type PendingReason='server_unavailable'|'server_refused'|'vendor_outage'|'native_unavailable'|'unsupported'|'recovery_required'|'challenge_unavailable';
 export type EnrollmentStatus={status:'empty'}|{status:'pending';requestId:string;employmentId:string;phase:Pending['phase'];reason?:PendingReason}|
   {status:'stored_key';keyId:string;revoked:boolean};
 // Shared across all journal instances/generations. A fresh operation always reads the commit pointer;
@@ -90,10 +90,14 @@ export function createEnrollmentJournal(rawScope:EnrollmentScope,ports:Enrollmen
     const c=p.context,alias='aihr_'+await owned(()=>ports.digest(JSON.stringify(['aihr-key-alias',1,c.installationId,c.tenantId,c.actorId,c.appInstallationId,c.challengeId]),'hex'));
     if(hash!==p.clientDataHash||alias!==p.alias)throw new EnrollmentConflict();
   }
-  function nativeReason(result:{status:string}):PendingReason{return result.status==='unsupported'?'unsupported':'native_unavailable';}
-  async function keyReference(p:Prepared){
+  function nativeReason(result:{status:string;reason?:string}):PendingReason{
+    if(result.status==='unsupported')return 'unsupported';if(result.reason==='server_unavailable')return 'vendor_outage';
+    if(['recovery_required','binding_conflict','invalid_key'].includes(result.reason??''))return 'recovery_required';return 'native_unavailable';
+  }
+  async function keyReference(p:Prepared):Promise<{vendorKeyId:string}|{reason:PendingReason}>{
     const value=await owned(()=>ports.native.appleKeyInfo(p.alias));
-    return value.status==='evidence'&&value.evidence!==null?checked(hash32,value.evidence):null;
+    if(value.status!=='evidence')return {reason:nativeReason(value)};
+    return value.evidence===null?{reason:'recovery_required'}:{vendorKeyId:checked(hash32,value.evidence)};
   }
   return {
     status:()=>exclusive(queue,async()=>status(await read())),
@@ -117,14 +121,14 @@ export function createEnrollmentJournal(rawScope:EnrollmentScope,ports:Enrollmen
           await checkPrepared(value,p);p={...p,phase:'prepared',prepared:value};s=await save(s,p);refreshed=true;
         }
         await checkPrepared(p.prepared,p);
-        const preparedRef=p.prepared;
+        const preparedRef:Prepared=p.prepared;
         if(!reconciled){
           const catalog=checked(C.IntegrityKeysResult,await owned(()=>ports.keys(intentRef.employmentId)));
           if(catalog.outcome!=='keys')return status(s,catalog.outcome==='refused'?'server_refused':'server_unavailable');
           const matches=catalog.items.filter(key=>key.originChallengeId===preparedRef.context.challengeId);
           if(matches.length>1||matches[0]&&!receiptMatches(matches[0],p.prepared))throw new EnrollmentConflict();
           if(matches[0]){
-            const vendorKeyId=await keyReference(p.prepared);if(!vendorKeyId)return status(s,'recovery_required');
+            const reference=await keyReference(p.prepared);if('reason' in reference)return status(s,reference.reason);const {vendorKeyId}=reference;
             if('vendorKeyId' in p&&p.vendorKeyId!==vendorKeyId)throw new EnrollmentConflict();
             return status(await save(s,null,{employmentId:p.employmentId,requestId:p.requestId,prepared:p.prepared,vendorKeyId,key:matches[0]}));
           }
@@ -151,6 +155,8 @@ export function createEnrollmentJournal(rawScope:EnrollmentScope,ports:Enrollmen
         const capability=ports.native.capabilities();ports.assertCurrent();
         if(capability.status!=='evidence'||capability.evidence.platform!=='ios'||capability.evidence.keyMechanism!=='apple_app_attest')return status(s,'unsupported');
         if(capability.evidence.appId!==p.prepared.context.target.appId.slice(11))throw new EnrollmentConflict();
+        const required=p.prepared.context.target.requiredMetadata;
+        if(required&&!required.bundleVersions.includes(capability.evidence.buildVersion))return status(s,'unsupported');
         if(p.phase==='prepared'){
           // Require the recovery method before generating any key on an older native binary.
           if(!ports.native.appleProofRecoverySupported())return status(s,'unsupported');
@@ -160,10 +166,10 @@ export function createEnrollmentJournal(rawScope:EnrollmentScope,ports:Enrollmen
           p={...p,phase:'key_ready',vendorKeyId:checked(hash32,value.evidence)};s=await save(s,p);continue;
         }
         if(p.phase==='key_requested'){
-          const vendorKeyId=await keyReference(p.prepared);if(!vendorKeyId)return status(s,'recovery_required');
+          const reference=await keyReference(p.prepared);if('reason' in reference)return status(s,reference.reason);const {vendorKeyId}=reference;
           p={...p,phase:'key_ready',vendorKeyId};s=await save(s,p);continue;
         }
-        const vendorKeyId=p.vendorKeyId;
+        const vendorKeyId:string=p.vendorKeyId;
         const cache=await owned(()=>ports.native.appleAttestationInfo(vendorKeyId,preparedRef.clientDataHash));
         if(cache.status!=='evidence')return status(s,nativeReason(cache));
         if(cache.evidence.state==='completed'){
