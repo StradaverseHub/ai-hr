@@ -71,6 +71,7 @@ import type { CountryPack } from '../country-pack';
 export const myPack: CountryPack = {
   eaReporting: MY_EA_REPORTING,
   country: 'MY' as const,
+  displayClock: {timeZone:'Asia/Kuala_Lumpur',label:'MYT'},
   // Rung 5b (ADR-0080 D4) — the client-safe vocabulary slice, ALSO served to 'use client'
   // components by localization/registry.client.ts (this reference makes it contract-declared).
   client: myClientPack,

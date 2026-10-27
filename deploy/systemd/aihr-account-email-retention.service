@@ -1,0 +1,20 @@
+# Install explicitly with its timer; deployment alone does not enable scheduled maintenance.
+[Unit]
+Description=AIHR email delivery log retention
+After=network.target postgresql.service
+
+[Service]
+Type=oneshot
+User=aihr-maintenance
+WorkingDirectory=/opt/ai-hr
+Environment=NODE_ENV=production
+# Private job-specific MIGRATION_DATABASE_URL; never use the web process environment wholesale.
+EnvironmentFile=/etc/aihr/account-email-retention.env
+ExecStart=/opt/node22/bin/node --import tsx /opt/ai-hr/scripts/account-email-retention.ts
+TimeoutStartSec=60
+Restart=no
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+

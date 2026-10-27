@@ -36,6 +36,9 @@ export class EmailSettingsError extends Error {
   constructor(public readonly code: EmailFailureCode) { super(`Identity email settings: ${code}`); }
 }
 export type EmailSettingsView = {
+  connections?: {id:string;name:string;config:EmailConfig;hasPassword:boolean;active:boolean;hasUnappliedChanges:boolean;testedAt:string|null}[];
+  selectedConnectionId?:string;
+  selectedConnectionName?:string;
   active: (EmailConfig & {hasPassword:boolean}) | null;
   revision: string;
   draft: {id:string;config:EmailConfig;hasPassword:boolean;testedAt:string|null} | null;
@@ -44,7 +47,7 @@ export type EmailSettingsView = {
 export const defaultEmailConfig: EmailConfig = {host:'',port:465,security:'tls',from:'',fromName:'AI HR',replyTo:'',auth:true,user:''};
 export type EmailSettingsRequest =
   | {op:'readiness'}
-  | {op:'view';actor:IdentityEmailActor}
-  | {op:'save';actor:IdentityEmailActor;revision:string;config:EmailConfig;password?:string}
-  | {op:'test';actor:IdentityEmailActor;draftId:string}
-  | {op:'apply';actor:IdentityEmailActor;draftId:string;received:boolean};
+  | {op:'view';actor:IdentityEmailActor;connectionId?:string}
+  | {op:'save';actor:IdentityEmailActor;revision:string;config:EmailConfig;password?:string;connectionId?:string;connectionName?:string}
+  | {op:'test';actor:IdentityEmailActor;draftId:string;connectionId?:string}
+  | {op:'apply';actor:IdentityEmailActor;draftId:string;received:boolean;connectionId?:string};

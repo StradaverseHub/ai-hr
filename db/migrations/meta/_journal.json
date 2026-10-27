@@ -3526,6 +3526,13 @@
     {
       "idx": 618,
       "version": "7",
+      "when": 1793109999999,
+      "tag": "0641_account_email_delivery_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 619,
+      "version": "7",
       "when": 1793110000000,
       "tag": "0640_onehr_plan_reviewer_scope",
       "breakpoints": true

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run AIHR email delivery log cleanup hourly
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=300
+Unit=aihr-account-email-retention.service
+
+[Install]
+WantedBy=timers.target
