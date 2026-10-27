@@ -8,6 +8,7 @@ import {hireEmployee} from '../core/org';
 import {createAndroidEnrollmentChallenges} from '../core/mobile-android-enrollment-challenge';
 import {issueOwnIntegrityChallenge,consumeOwnIntegrityChallenge} from '../core/mobile-integrity-challenge';
 import {androidEnrollmentClientData} from '../lib/mobile-android-enrollment';
+import {RequestBudgetExceeded} from '../lib/request-budget';
 import {adminCtx,closeAll,createAppUser,harnessSnapshot,owner,resetDb,seedBase,type Base} from './harness';
 const settings={apiOrigin:'https://hr.example.com',target:{platform:'android',packageName:'ai.stradaverse.aihr.test',certificateDigests:[Buffer.alloc(32,1).toString('base64')],versionCodes:['4'],securityLevels:['tee','strongbox'],provisioningMetadata:'allow_legacy',minimumOsVersion:null,minimumOsPatchLevel:null,minimumVendorPatchLevel:null,minimumBootPatchLevel:null}};
 let base:Base;
@@ -58,7 +59,7 @@ describe('Android enrollment challenge owner',()=>{
  it('uses the shared pending challenge admission limit while allowing exact recovery',async()=>{
   const e=await employee(),service=createAndroidEnrollmentChallenges(settings),a=await service.begin(e.ctx,e.intent);
   for(let i=0;i<3;i++)await service.begin(e.ctx,{...e.intent,requestId:randomUUID()});
-  await expect(service.begin(e.ctx,{...e.intent,requestId:randomUUID()})).rejects.toMatchObject({name:'RequestBudgetExceeded'});
+  await expect(service.begin(e.ctx,{...e.intent,requestId:randomUUID()})).rejects.toBeInstanceOf(RequestBudgetExceeded);
   expect(await service.begin(e.ctx,e.intent)).toEqual(a);
  });
 });
