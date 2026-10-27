@@ -6,7 +6,9 @@ import { createSubmissionJournal, SubmissionJournalFull, SubmissionJournalUnavai
 import { createSubmissionStorage,createSealedJournalStorage } from './submission-storage';
 import {createEnrollmentJournal,parseEnrollmentSnapshot,EnrollmentScope,EnrollmentJournalUnavailable,type EnrollmentPorts} from './enrollment-journal';
 import {createAndroidEnrollmentJournal,parseAndroidEnrollmentSnapshot,type AndroidEnrollmentPorts} from './android-enrollment-journal';
-import {createSignedClockJournal,parseSignedClockSnapshot,type SignedClockPorts} from './signed-clock-journal';
+import {createSignedClockJournal,parseSignedClockSnapshot,type SignedClockSnapshot,type SignedClockPorts} from './signed-clock-journal';
+import {OfflineClockClaimData} from '../../lib/mobile-offline-clock';
+import {offlineClockPhotoReference,isOfflineCaptureProgress} from './offline-clock-state';
 import NativeIntegrity from '../modules/aihr-integrity/src/AihrIntegrityModule';
 import {createIntegrityBridge} from './integrity-bridge';
 
@@ -175,7 +177,32 @@ async function nativeEnrollmentStorage<T extends {revision:number;pending:unknow
     async seal(bytes){assertCurrent();const result=await aesEncryptAsync(bytes,key,{additionalData:aad});assertCurrent();return result.combined();},
     async open(bytes){assertCurrent();const result=await aesDecryptAsync(AESSealedData.fromCombined(bytes),key,{additionalData:aad});assertCurrent();return result;},
   },{maximumBytes:maximum,refuseOrphanSlots:true,error:()=>new EnrollmentJournalUnavailable()});
+  function photoMetadata(input:unknown){const photo=OfflineClockClaimData.shape.command.shape.photo.parse(input);if(!photo)throw new EnrollmentJournalUnavailable();return photo;}
+  const photoAad=(name:string)=>new TextEncoder().encode(`aihr-${domain}:${scopeId}:photo:${name}`);
+  async function readPhoto(requestId:string,input:unknown){
+    assertCurrent();if(domain!=='signed-clock-v1')throw new EnrollmentJournalUnavailable();
+    const expected=photoMetadata(input),name=offlineClockPhotoReference(requestId),f=new File(directory,name);
+    if(!f.exists||f.size<1||f.size>expected.byteLength+64)throw new EnrollmentJournalUnavailable();
+    const sealed=await f.bytes();assertCurrent();if(sealed.byteLength>expected.byteLength+64)throw new EnrollmentJournalUnavailable();
+    const bytes=await aesDecryptAsync(AESSealedData.fromCombined(sealed),key,{additionalData:photoAad(name)});assertCurrent();
+    if(bytes.byteLength!==expected.byteLength||await hash(bytes)!==expected.sha256)throw new EnrollmentJournalUnavailable();assertCurrent();return bytes;
+  }
+  async function retainPhoto(requestId:string,input:unknown,source:Uint8Array){return serializedKey(async()=>{
+    assertCurrent();if(domain!=='signed-clock-v1')throw new EnrollmentJournalUnavailable();
+    const expected=photoMetadata(input),name=offlineClockPhotoReference(requestId);
+    if(!(source instanceof Uint8Array)||source.byteLength!==expected.byteLength||source.byteLength>2*1024*1024)throw new EnrollmentJournalUnavailable();
+    const bytes=new Uint8Array(source);
+    if(await hash(bytes)!==expected.sha256)throw new EnrollmentJournalUnavailable();assertCurrent();
+    const target=new File(directory,name);
+    if(target.exists){await readPhoto(requestId,expected);return name;}
+    const result=await aesEncryptAsync(bytes,key,{additionalData:photoAad(name)});assertCurrent();const sealed=await result.combined();assertCurrent();
+    const used=root().exists?root().size:0,staged=new File(directory,name+'.staging');
+    if(used==null||!Number.isFinite(used)||used<0||used+Math.max(0,sealed.byteLength-(staged.exists?staged.size:0))+METADATA_RESERVE>MAX_INSTALL_BYTES)throw new SubmissionJournalFull('Pending submission storage is full');
+    if(!directory.exists)directory.create({intermediates:true});staged.write(sealed);assertCurrent();
+    staged.moveSync(target,{overwrite:false});assertCurrent();await readPhoto(requestId,expected);return name;
+  });}
   return {
+    retainPhoto,readPhoto,
     async read(){const s=await storage.read();if(s){try{reclaim(s.revision);}catch{/* Preserve the committed state. */}}assertCurrent();return s;},
     async commit(s:T){await storage.commit(s);try{reclaim(s.revision);}catch{/* Preserve the committed receipt. */}assertCurrent();},
     async digest(value:string,encoding:'hex'|'base64'){assertCurrent();const result=await digestStringAsync(CryptoDigestAlgorithm.SHA256,value,{encoding:encoding==='base64'?CryptoEncoding.BASE64:CryptoEncoding.HEX});assertCurrent();return result;},
@@ -192,7 +219,21 @@ export async function openNativeAndroidEnrollmentJournal(rawScope:EnrollmentScop
 
 /** One installed-account lease across employments; no proof or network action while opening. */
 export async function openNativeSignedClockJournal(rawScope:EnrollmentScope,assertCurrent:()=>void,ports:Omit<SignedClockPorts,'assertCurrent'|'read'|'commit'>){
- const scope=EnrollmentScope.parse(rawScope),storage=await nativeEnrollmentStorage(scope,assertCurrent,value=>parseSignedClockSnapshot(value,scope),'signed-clock-v1',
-  snapshot=>(!snapshot.pending&&!snapshot.offline)||snapshot.pending?.phase==='settled');
- return createSignedClockJournal(scope,{...ports,assertCurrent,read:storage.read,commit:storage.commit});
+ const scope=EnrollmentScope.parse(rawScope);let prior:SignedClockSnapshot|null=null;
+ const storage=await nativeEnrollmentStorage(scope,assertCurrent,value=>parseSignedClockSnapshot(value,scope),'signed-clock-v1',
+  snapshot=>(!snapshot.pending&&!snapshot.offline)||snapshot.pending?.phase==='settled'||!snapshot.pending&&isOfflineCaptureProgress(prior?.offline,snapshot.offline));
+ const read=async()=>{const value=await storage.read();prior=value;return value;};
+ const commit=async(value:SignedClockSnapshot)=>{await storage.commit(value);prior=value;};
+ const journal=createSignedClockJournal(scope,{...ports,assertCurrent,read,commit});
+ async function checkPhoto(requestId:string,input:unknown,reading=false){
+  const state=await read();assertCurrent();const exchange=state?.offline;
+  if(!exchange||exchange.phase!=='context_ready')throw new EnrollmentJournalUnavailable();
+  const name=offlineClockPhotoReference(requestId),entry=exchange.claims.find(value=>value.photoReference===name);
+  if(!entry||reading&&entry.phase==='capture_requested'||JSON.stringify(OfflineClockClaimData.shape.command.shape.photo.parse(input))!==JSON.stringify(entry.claim.command.photo))throw new EnrollmentJournalUnavailable();
+ }
+ return {...journal,
+  async retainOfflinePhoto(requestId:string,input:unknown,bytes:Uint8Array){try{await checkPhoto(requestId,input);const result=await storage.retainPhoto(requestId,input,bytes);assertCurrent();return result;}catch(error){assertCurrent();throw error;}},
+  async readOfflinePhoto(requestId:string,input:unknown){try{await checkPhoto(requestId,input,true);const result=await storage.readPhoto(requestId,input);assertCurrent();return result;}catch(error){assertCurrent();throw error;}},
+ };
+
 }

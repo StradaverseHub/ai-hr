@@ -1959,3 +1959,17 @@ Native TypeScript and both production bundles passed. iOS bundled 1,366 modules 
 journal (20), owned assembly (8), employee screens (39), submission recovery (19). The affected
 context-owner and encrypted-storage suites, plus root compilation, require fresh repair evidence.
 These remain hosted model/JavaScript checks, not physical integrity or offline attendance acceptance.
+
+Repair `eab8af9681db201d31d30e9dc5a6c5efbc2a27c2` passed
+[40529226840](https://github.com/StradaverseHub/ai-hr/actions/runs/40529226840): all 43 affected cases
+(context owner 15, encrypted native storage 28), plus root TypeScript (3:58.70, maximum RSS 7,629,948 KiB,
+exit 0). Together with the 86 unaffected cases and the native compiler/bundle passes retained above,
+this completes 129-case hosted verification for the context-exchange owner checkpoint. It does not
+establish offline claim capture/signing, batch sync, OS/device acceptance or a deployed attendance flow.
+
+The coordinator published reservation registry commit `151b39c36` on
+`claude/migration-inventory-20261027`: `docs/migrations/reservations.json` reserves
+`0647_mobile_offline_attendance` as filename only, with null idx/when. Existing held 0636 custody
+bytes remain unchanged. Central integration must reconcile the complete pending union and fresh
+actual applied ledger before assigning forward metadata; 0641-before-0640 remains required.
+No migration journal or database has been changed by this reservation.

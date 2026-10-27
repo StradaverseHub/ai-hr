@@ -8,7 +8,8 @@ import {EnrollmentScope} from './enrollment-journal';
 import {ClockSigningKey} from './clock-signing-key';
 import {NativeCapabilities,NativeClockSnapshot,type NativeIntegrityResult} from './integrity-bridge';
 import {OfflineClockContextBinding,OfflineClockContextData,offlineClockContextClientData,type OfflineClockContextVerificationResult} from '../../lib/mobile-offline-context';
-import {OfflineClockExchange,validateOfflineClockExchange} from './offline-clock-state';
+import {OfflineClockClaimData,offlineClockClaimClientData} from '../../lib/mobile-offline-clock';
+import {OfflineClockCaptureInput,offlineClockPhotoReference,offlineWireElapsed,type OfflineClockCapturedClaim,OfflineClockExchange,validateOfflineClockExchange} from './offline-clock-state';
 const uuid=z.string().uuid().transform(value=>value.toLowerCase()),sha=z.string().length(64).regex(/^[a-f0-9]{64}$/);
 const reference=z.object({employmentId:uuid,requestId:uuid,baseDigest:sha,action:z.enum(['in','out'])}).strict();
 const disposition=z.object({receipt:ClockReceipt.nullable(),abandoned:z.boolean()}).strict().refine(value=>!!value.receipt!==value.abandoned);
@@ -48,6 +49,12 @@ export type SignedClockPorts={
   snapshot():NativeIntegrityResult<NativeClockSnapshot>;
   request(binding:OfflineClockContextBinding):Promise<string>;
   verify(raw:string,binding:OfflineClockContextBinding):Promise<OfflineClockContextVerificationResult>;
+  capture?:{
+   capabilities():NativeIntegrityResult<z.infer<typeof NativeCapabilities>>;
+   digest(canonical:string):Promise<string>;
+   retainPhoto(requestId:string,expected:NonNullable<OfflineClockClaimData['command']['photo']>):Promise<string>;
+   releaseBase(reference:SignedClockReference):Promise<void>;
+  };
  };
 
 };
@@ -100,13 +107,65 @@ export function createSignedClockJournal(rawScope:EnrollmentScope,ports:SignedCl
   await owned(()=>ports.commit(structuredClone(next)));return next;
  }
  function offlinePorts(){if(!ports.offline)throw new SignedClockUnavailable('configuration');return ports.offline;}
+ function capturePorts(){const value=offlinePorts().capture;if(!value)throw new SignedClockUnavailable('configuration');return value;}
  function localSnapshot(){const result=offlinePorts().snapshot();ports.assertCurrent();if(result.status!=='evidence')throw new SignedClockUnavailable(result.status==='unsupported'?'unsupported':'native_unavailable');return NativeClockSnapshot.parse(result.evidence);}
  async function verifyOffline(raw:string,binding:OfflineClockContextBinding){
   const result=await owned(()=>offlinePorts().verify(raw,structuredClone(binding)));
   if(result.outcome!=='signature_valid'||result.authorization!=='not_granted'||!sha.safeParse(result.digest).success)throw new SignedClockUnavailable('configuration');
   return {...result,context:OfflineClockContextData.parse(result.context)};
  }
+ async function verifyCapturedDigests(p:Extract<OfflineClockExchange,{phase:'context_ready'}>){
+  for(const entry of p.claims){const digest=sha.parse(await owned(()=>capturePorts().digest(offlineClockClaimClientData(entry.claim))));if(digest!==entry.digest)throw new SignedClockUnavailable('storage');}
+ }
+ async function completeOfflineCapture(s:State,p:Extract<OfflineClockExchange,{phase:'context_ready'}>,index:number){
+  let state=s,exchange=p,entry=p.claims[index];
+  async function transition(phase:OfflineClockCapturedClaim['phase']){
+   entry={...entry,phase};exchange={...exchange,claims:exchange.claims.map((value,at)=>at===index?entry:value)};
+   state=await saveOffline(state,exchange);
+  }
+  if(entry.phase==='capture_requested'){
+   const photo=entry.claim.command.photo;
+   if(photo){const reference=await owned(()=>capturePorts().retainPhoto(entry.claim.command.requestId,structuredClone(photo)));if(reference!==entry.photoReference)throw new SignedClockConflict();}
+   await transition('photo_retained');
+  }
+  if(entry.phase==='photo_retained'){
+   await owned(()=>capturePorts().releaseBase({employmentId:entry.claim.scope.employmentId,requestId:entry.claim.command.requestId,baseDigest:entry.baseDigest,action:entry.claim.command.action}));
+   await transition('captured');
+  }
+  return {status:'captured' as const,requestId:entry.claim.command.requestId,sequence:entry.claim.chain.sequence,acceptance:'not_granted' as const};
+ }
  return {
+  captureOffline:(input:unknown)=>exclusive(queue,async()=>{
+   const request=OfflineClockCaptureInput.parse(input);let s=await read();const p=s.offline;capturePorts();
+   if(!p||p.phase!=='context_ready'||s.pending)throw new SignedClockConflict();
+   const rawContext=(JSON.parse(p.rawContext) as {context:unknown}).context;
+   const context=OfflineClockContextData.parse(rawContext);
+   if(context.id!==request.expectedContextId)throw new SignedClockConflict();
+   await verifyCapturedDigests(p);
+   const existing=p.claims.findIndex(entry=>entry.claim.command.requestId===request.requestId);
+   if(existing>=0){if(p.claims[existing].claim.time.claimedAt!==request.claimedAt)throw new SignedClockConflict();return completeOfflineCapture(s,p,existing);}
+   if(p.claims.some(entry=>entry.phase!=='captured'))throw new SignedClockConflict();
+   const verified=await verifyOffline(p.rawContext,p.binding);
+   if(verified.digest!==p.digest||offlineClockContextClientData(verified.context)!==offlineClockContextClientData(context))throw new SignedClockConflict();
+   const permit=context.permits[p.claims.length];if(!context.policy.offlineEnabled||!permit)throw new SignedClockUnavailable('configuration');
+   const b=baseSchema.parse(await owned(()=>ports.base(p.binding.scope.employmentId,request.requestId)));
+   if(b.command.requestId!==request.requestId)throw new SignedClockConflict();
+   const result=capturePorts().capabilities();ports.assertCurrent();
+   if(result.status!=='evidence')throw new SignedClockUnavailable(result.status==='unsupported'?'unsupported':'native_unavailable');
+   const cap=NativeCapabilities.parse(result.evidence),key=p.key;
+   if(cap.platform!==key.platform||(key.platform==='ios'?cap.keyMechanism!=='apple_app_attest'||!key.appId.endsWith('.'+cap.appId):cap.keyMechanism!=='android_keystore'||cap.appId!==key.appId))throw new SignedClockConflict();
+   const {deviceToken,...command}=b.command;void deviceToken;
+   const claim=OfflineClockClaimData.parse({version:1,purpose:'attendance.clock.offline.claim',scope:p.binding.scope,
+    context:{id:context.id,sha256:p.digest},permit,chain:{sequence:p.claims.length+1,previousSha256:p.claims.at(-1)?.digest??null},
+    command:{...command,photo:b.photo},time:{claimedAt:request.claimedAt,elapsed:offlineWireElapsed(p.requestStarted,p.responseReceived,request.eventSnapshot)},
+    evidence:{platform:cap.platform,appId:cap.appId,appVersion:cap.appVersion,buildVersion:cap.buildVersion,...b.source}});
+   const digest=sha.parse(await owned(()=>capturePorts().digest(offlineClockClaimClientData(claim))));
+   const entry:OfflineClockCapturedClaim={phase:'capture_requested',baseDigest:b.digest,claim,digest,eventSnapshot:request.eventSnapshot,
+    photoReference:claim.command.photo?offlineClockPhotoReference(request.requestId):null};
+   const next=validateOfflineClockExchange({...p,claims:[...p.claims,entry]},scope);
+   if(next.phase!=='context_ready')throw new SignedClockConflict();s=await saveOffline(s,next);
+   return completeOfflineCapture(s,next,next.claims.length-1);
+  }),
   reserveOffline:(input:unknown)=>exclusive(queue,async()=>{
    const binding=OfflineClockContextBinding.parse(input),s=await read();offlinePorts();
    if(s.pending)throw new SignedClockConflict();

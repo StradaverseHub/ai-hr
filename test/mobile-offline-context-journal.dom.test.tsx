@@ -1,8 +1,11 @@
 /** Shared proof-owner model with real context signatures; no OS/DB/attendance acceptance. */
-import {generateKeyPairSync} from 'node:crypto';
+import {createHash,generateKeyPairSync} from 'node:crypto';
 import {describe,it,expect,vi} from 'vitest';
 import {createSignedClockJournal,parseSignedClockSnapshot,SignedClockConflict,type SignedClockPorts,type SignedClockSnapshot} from '../mobile/lib/signed-clock-journal';
 import {offlineContextIssuerIdentity,signOfflineClockContext,verifyOfflineClockContextSignature} from '../lib/mobile-api/offline-context-signature';
+import {NativeCapabilities} from '../mobile/lib/integrity-bridge';
+import {offlineClockPhotoReference} from '../mobile/lib/offline-clock-state';
+import {offlineClockClaimClientData} from '../lib/mobile-offline-clock';
 import type {OfflineClockContextData,OfflineClockContextBinding} from '../lib/mobile-offline-context';
 const id=(n:number)=>String(n).padStart(8,'0')+'-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 function fixture(platform:'ios'|'android'='ios'){
@@ -25,7 +28,7 @@ function fixture(platform:'ios'|'android'='ios'){
   begin:vi.fn(async()=>({})),sign:vi.fn(async()=>({status:'unavailable' as const,reason:'unavailable' as const})),play:vi.fn(async()=>({status:'unavailable' as const,reason:'unavailable' as const})),complete:vi.fn(async()=>({})),receipt:vi.fn(async()=>({})),abandon:vi.fn(async()=>({})),resolveBase:vi.fn(async()=>{}),
   offline:{snapshot:vi.fn<NonNullable<SignedClockPorts['offline']>['snapshot']>(()=>({status:'evidence',evidence:snapshot(),verification:'not_verified'})),request:vi.fn(async()=>signOfflineClockContext(context,pair.privateKey)),verify:vi.fn(async(raw,expected)=>verifyOfflineClockContextSignature(raw,[issuer],expected.scope))},
  };
- return {scope,key,binding,context,ports,stored:()=>stored,setStored:(s:SignedClockSnapshot)=>{stored=s;},journal:()=>createSignedClockJournal(scope,ports),obsolete:()=>{current=false;},raw:()=>signOfflineClockContext(context,pair.privateKey)};
+ return {scope,key,capability,command,snapshot,binding,context,ports,stored:()=>stored,setStored:(s:SignedClockSnapshot)=>{stored=s;},journal:()=>createSignedClockJournal(scope,ports),obsolete:()=>{current=false;},raw:()=>signOfflineClockContext(context,pair.privateKey)};
 }
 describe('shared online/offline context exchange owner',()=>{
  it.each(['ios','android'] as const)('%s saves request and original local snapshot before any network/verification operation',async platform=>{
@@ -120,4 +123,98 @@ it('retains the exact legacy proof/context when normalizing an unresolved online
  command:{requestId:id(20),action:'in',lat:3,lng:101,accuracy:5,sampledAt:1793055753390,photo:null},evidence:{platform:'ios',appId:'ai.hr',appVersion:'1',buildVersion:'4',provider:null,mock:null,simulated:null,accessory:null}};
  const parsed=parseSignedClockSnapshot({version:1,revision:3,scope:f.scope,pending:{...current.pending,phase:'proof_ready',context,proof}},f.scope);
  expect(parsed).toMatchObject({version:2,offline:null,pending:{phase:'proof_ready',context,proof}});expect(f.ports.sign).not.toHaveBeenCalled();
+});
+
+type CapturePorts=NonNullable<NonNullable<SignedClockPorts['offline']>['capture']>;
+function captureFixture(platform:'ios'|'android'='ios',photo=true,permitCount=2){
+ const f=fixture(platform),bytes=Buffer.from('synthetic photo bytes'),image=photo?{sha256:createHash('sha256').update(bytes).digest('hex'),byteLength:bytes.length,mimeType:'image/jpeg' as const}:null;
+ f.context.permits=Array.from({length:permitCount},(_,index)=>({id:id(30+index),ordinal:index+1,nonce:Buffer.alloc(32,index+1).toString('base64url')}));
+ f.ports.base=vi.fn<SignedClockPorts['base']>(async(_employment,requestId)=>({digest:'a'.repeat(64),command:{...f.command,requestId},photo:image,source:{provider:null,mock:false,simulated:null,accessory:null}}));
+ const capture:CapturePorts={capabilities:vi.fn<CapturePorts['capabilities']>(()=>({status:'evidence',evidence:NativeCapabilities.parse(f.capability),verification:'not_verified'})),
+  digest:vi.fn<CapturePorts['digest']>(async canonical=>createHash('sha256').update(canonical).digest('hex')),
+  retainPhoto:vi.fn<CapturePorts['retainPhoto']>(async requestId=>offlineClockPhotoReference(requestId)),releaseBase:vi.fn<CapturePorts['releaseBase']>(async()=>{})};
+ f.ports.offline!.capture=capture;
+ const input=(requestId=id(20))=>({requestId,expectedContextId:f.context.id,claimedAt:1793055753390,eventSnapshot:f.snapshot()});
+ return {...f,capture,image,input,ready:async()=>{await f.journal().reserveOffline(f.binding);await f.journal().prepareOffline(f.binding.request.requestId);}};
+}
+describe('durable offline claim capture and photo/base ownership transfer',()=>{
+ it.each(['ios','android'] as const)('%s commits original claim before photo retention and commits photo retention before releasing its base',async platform=>{
+  const f=captureFixture(platform);await f.ready();
+  vi.mocked(f.capture.retainPhoto).mockImplementationOnce(async(requestId,photo)=>{
+   const entry=f.stored()!.offline;if(entry?.phase!=='context_ready')throw Error('missing owner');
+   expect(entry.claims[0]).toMatchObject({phase:'capture_requested',claim:{command:{requestId,photo}}});return offlineClockPhotoReference(requestId);
+  });
+  vi.mocked(f.capture.releaseBase).mockImplementationOnce(async reference=>{
+   expect(f.stored()!.offline).toMatchObject({claims:[{phase:'photo_retained',baseDigest:reference.baseDigest}]});
+  });
+  expect(await f.journal().captureOffline(f.input())).toEqual({status:'captured',requestId:id(20),sequence:1,acceptance:'not_granted'});
+  const exchange=f.stored()!.offline;if(exchange?.phase!=='context_ready')throw Error('missing exchange');
+  const entry=exchange.claims[0];expect(entry.phase).toBe('captured');expect(entry.digest).toBe(createHash('sha256').update(offlineClockClaimClientData(entry.claim)).digest('hex'));
+  expect(entry.claim).toMatchObject({scope:f.binding.scope,context:{id:f.context.id,sha256:exchange.digest},permit:f.context.permits[0],chain:{sequence:1,previousSha256:null},command:{photo:f.image}});
+  expect(JSON.stringify(entry.claim)).not.toMatch(/runtimeId|bootId|elapsedBeforeNs|wallTimeMs|not_verified|nativeReference/);
+  expect(f.ports.sign).not.toHaveBeenCalled();expect(f.ports.complete).not.toHaveBeenCalled();expect(f.ports.play).not.toHaveBeenCalled();
+ });
+ it('uses the next preissued permit and immutable previous digest only after the prior local handoff is complete',async()=>{
+  const f=captureFixture();await f.ready();await f.journal().captureOffline(f.input());await f.journal().captureOffline(f.input(id(21)));
+  const p=f.stored()!.offline;if(p?.phase!=='context_ready')throw Error('missing');
+  expect(p.claims).toHaveLength(2);expect(p.claims[1].claim).toMatchObject({permit:f.context.permits[1],chain:{sequence:2,previousSha256:p.claims[0].digest}});
+  await expect(f.journal().captureOffline(f.input(id(22)))).rejects.toThrow('Signed clocking unavailable');expect(f.ports.base).toHaveBeenCalledTimes(2);
+ });
+ it('recovers a lost initial capture commit acknowledgement with the original event and one retained photo',async()=>{
+  const f=captureFixture();await f.ready();const original=f.input();
+  vi.mocked(f.ports.commit).mockImplementationOnce(async value=>{f.setStored(structuredClone(value));throw Error('acknowledgement lost');});
+  await expect(f.journal().captureOffline(original)).rejects.toThrow('acknowledgement lost');expect(f.capture.retainPhoto).not.toHaveBeenCalled();
+  await f.journal().captureOffline(f.input());
+  expect(f.stored()!.offline).toMatchObject({claims:[{phase:'captured',eventSnapshot:original.eventSnapshot}]});
+  expect(f.ports.base).toHaveBeenCalledOnce();expect(f.capture.retainPhoto).toHaveBeenCalledOnce();
+ });
+ it('retains the captured command and base after a photo failure and blocks a competing new claim',async()=>{
+  const f=captureFixture();await f.ready();vi.mocked(f.capture.retainPhoto).mockRejectedValueOnce(Error('photo storage full'));
+  await expect(f.journal().captureOffline(f.input())).rejects.toThrow('photo storage full');expect(f.capture.releaseBase).not.toHaveBeenCalled();
+  await expect(f.journal().captureOffline(f.input(id(21)))).rejects.toBeInstanceOf(SignedClockConflict);
+  await f.journal().captureOffline(f.input());expect(f.ports.base).toHaveBeenCalledOnce();expect(f.capture.retainPhoto).toHaveBeenCalledTimes(2);
+ });
+ it('does not copy another photo after the photo-retained checkpoint reply is lost',async()=>{
+  const f=captureFixture();await f.ready();
+  vi.mocked(f.ports.commit).mockImplementation(async value=>{f.setStored(structuredClone(value));if(value.offline?.phase==='context_ready'&&value.offline.claims[0]?.phase==='photo_retained')throw Error('photo checkpoint lost');});
+  await expect(f.journal().captureOffline(f.input())).rejects.toThrow('photo checkpoint lost');expect(f.capture.releaseBase).not.toHaveBeenCalled();
+  vi.mocked(f.ports.commit).mockImplementation(async value=>{f.setStored(structuredClone(value));});
+  await f.journal().captureOffline(f.input());expect(f.capture.retainPhoto).toHaveBeenCalledOnce();expect(f.capture.releaseBase).toHaveBeenCalledOnce();
+ });
+ it('retries an ambiguous base release without retrieving the original command or copying another photo',async()=>{
+  const f=captureFixture();await f.ready();vi.mocked(f.capture.releaseBase).mockRejectedValueOnce(Error('base acknowledgement lost'));
+  await expect(f.journal().captureOffline(f.input())).rejects.toThrow('base acknowledgement lost');
+  f.ports.base=vi.fn(async()=>{throw Error('base already gone');});
+  await f.journal().captureOffline(f.input());expect(f.ports.base).not.toHaveBeenCalled();expect(f.capture.retainPhoto).toHaveBeenCalledOnce();expect(f.capture.releaseBase).toHaveBeenCalledTimes(2);
+ });
+ it('keeps duplicate retries idempotent and refuses altered claimed time or context identity',async()=>{
+  const f=captureFixture();await f.ready();await f.journal().captureOffline(f.input());const before=structuredClone(f.stored());
+  expect(await f.journal().captureOffline(f.input())).toMatchObject({status:'captured',sequence:1});expect(f.stored()).toEqual(before);
+  await expect(f.journal().captureOffline({...f.input(),claimedAt:1793055753391})).rejects.toBeInstanceOf(SignedClockConflict);
+  await expect(f.journal().captureOffline({...f.input(),expectedContextId:id(99)})).rejects.toBeInstanceOf(SignedClockConflict);
+  expect(f.capture.retainPhoto).toHaveBeenCalledOnce();expect(f.capture.releaseBase).toHaveBeenCalledOnce();
+ });
+ it('preserves unknown iPhone restart timing and does not require a nonexistent photo port operation',async()=>{
+  const f=captureFixture('ios',false);await f.ready();const input=f.input();input.eventSnapshot.runtimeId=id(99);
+  await f.journal().captureOffline(input);
+  expect(f.stored()!.offline).toMatchObject({claims:[{photoReference:null,claim:{time:{elapsed:{status:'unknown',reason:'continuity_unknown'}}}}]});expect(f.capture.retainPhoto).not.toHaveBeenCalled();
+ });
+ it('refuses a changed recorded digest before another base, permit or proof operation',async()=>{
+  const f=captureFixture();await f.ready();await f.journal().captureOffline(f.input());const state=structuredClone(f.stored()!);if(state.offline?.phase!=='context_ready')throw Error('missing');state.offline.claims[0].digest='c'.repeat(64);f.setStored(state);
+  await expect(f.journal().captureOffline(f.input(id(21)))).rejects.toThrow('Signed clocking unavailable');expect(f.ports.base).toHaveBeenCalledOnce();expect(f.ports.sign).not.toHaveBeenCalled();
+ });
+ it('does not release the base or publish a later checkpoint after owner loss while retaining its photo',async()=>{
+  const f=captureFixture();await f.ready();vi.mocked(f.capture.retainPhoto).mockImplementationOnce(async requestId=>{f.obsolete();return offlineClockPhotoReference(requestId);});
+  await expect(f.journal().captureOffline(f.input())).rejects.toThrow('Session changed');expect(f.capture.releaseBase).not.toHaveBeenCalled();expect(f.stored()!.offline).toMatchObject({claims:[{phase:'capture_requested'}]});
+ });
+ it('serializes concurrent capture retries into one command, one permit and one photo handoff',async()=>{
+  const f=captureFixture();await f.ready();const input=f.input();
+  const results=await Promise.all([f.journal().captureOffline(input),f.journal().captureOffline(input)]);expect(results[0]).toEqual(results[1]);expect(f.ports.base).toHaveBeenCalledOnce();expect(f.capture.retainPhoto).toHaveBeenCalledOnce();expect(f.capture.releaseBase).toHaveBeenCalledOnce();
+ });
+ it('does not allocate a new claim under a revoked issuer or unsupported native capability',async()=>{
+  const f=captureFixture();await f.ready();vi.mocked(f.ports.offline!.verify).mockResolvedValueOnce({outcome:'invalid',reason:'issuer_unavailable'});
+  await expect(f.journal().captureOffline(f.input())).rejects.toThrow('Signed clocking unavailable');expect(f.ports.base).not.toHaveBeenCalled();
+  vi.mocked(f.capture.capabilities).mockReturnValueOnce({status:'unsupported',reason:'unsupported'});
+  await expect(f.journal().captureOffline(f.input())).rejects.toThrow('Signed clocking unavailable');expect(f.stored()!.offline).toMatchObject({claims:[]});expect(f.capture.retainPhoto).not.toHaveBeenCalled();
+ });
 });

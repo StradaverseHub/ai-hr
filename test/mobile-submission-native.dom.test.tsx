@@ -1,9 +1,13 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { ModuleKind, transpileModule } from 'typescript';
 import { describe, expect, it, vi } from 'vitest';
 import * as journal from '../mobile/lib/submission-journal';
+import {OfflineClockClaimData} from '../lib/mobile-offline-clock';
+import * as offlineState from '../mobile/lib/offline-clock-state';
+import {offlineContextIssuerIdentity,signOfflineClockContext,verifyOfflineClockContextSignature} from '../lib/mobile-api/offline-context-signature';
+import type {OfflineClockContextData} from '../lib/mobile-offline-context';
 import * as signedClock from '../mobile/lib/signed-clock-journal';
 import * as storage from '../mobile/lib/submission-storage';
 import * as enrollment from '../mobile/lib/enrollment-journal';
@@ -36,6 +40,7 @@ function fixture(nativeAvailable=true){
     get name(){return this.uri.split('/').at(-1)!;}
     async bytes(){return files.get(this.uri)!.slice();}
     write(value:Uint8Array){files.set(this.uri,value.slice());}
+    moveSync(destination:File){if(files.has(destination.uri))throw Error('destination exists');const value=files.get(this.uri);if(!value)throw Error('source missing');files.set(destination.uri,value);files.delete(this.uri);this.uri=destination.uri;}
     delete(){files.delete(this.uri);}
   }
   const secure={WHEN_UNLOCKED_THIS_DEVICE_ONLY:'device-unlocked',
@@ -61,7 +66,7 @@ function fixture(nativeAvailable=true){
   function key(bytes:Buffer){return {bytes,encoded:async()=>bytes.toString('base64')};}
   // Keep native global declarations out of the server compiler; execute its implementation via VM.
   const output={exports:{} as {
-    openNativeSignedClockJournal:(scope:enrollment.EnrollmentScope,assertCurrent:()=>void,ports:Omit<signedClock.SignedClockPorts,'assertCurrent'|'read'|'commit'>)=>Promise<ReturnType<typeof signedClock.createSignedClockJournal>>;
+    openNativeSignedClockJournal:(scope:enrollment.EnrollmentScope,assertCurrent:()=>void,ports:Omit<signedClock.SignedClockPorts,'assertCurrent'|'read'|'commit'>)=>Promise<ReturnType<typeof signedClock.createSignedClockJournal>&{retainOfflinePhoto(requestId:string,photo:unknown,bytes:Uint8Array):Promise<string>;readOfflinePhoto(requestId:string,photo:unknown):Promise<Uint8Array>}>;
     openNativeSubmissionJournal:(scope:journal.SubmissionScope,assertCurrent:()=>void)=>Promise<ReturnType<typeof journal.createSubmissionJournal>>;
     resetSubmissionInstallation:()=>Promise<void>;
     nativeIntegrityInstallationId:(assertCurrent:()=>void)=>Promise<string>;
@@ -75,6 +80,7 @@ function fixture(nativeAvailable=true){
     if(id==='../modules/aihr-integrity/src/AihrIntegrityModule')return {default:nativeAvailable?nativeReset:null};
     if(id==='./integrity-bridge')return {createIntegrityBridge};
     if(id==='./signed-clock-journal')return signedClock;
+    if(id==='../../lib/mobile-offline-clock')return {OfflineClockClaimData};if(id==='./offline-clock-state')return offlineState;
     if(id==='./submission-journal')return journal;if(id==='./submission-storage')return storage;if(id==='./enrollment-journal')return enrollment;if(id==='./android-enrollment-journal')return androidEnrollment;throw new Error(id);
   }});
   return {native:output.exports,files,directories,secrets,secure,nativeReset,occupy:(bytes:number)=>{occupiedBytes=bytes;}};
@@ -377,4 +383,67 @@ it('does not treat new offline preparation as quota-exempt resolution merely bec
  // The installation master was opened above. Model an existing, full submission directory.
  f.directories.add('document/aihr-submissions-v1');f.occupy(64*1024*1024);await expect(j.reserveOffline(binding)).rejects.toThrow();
  expect(s.ports.offline!.request).not.toHaveBeenCalled();expect(s.ports.sign).not.toHaveBeenCalled();
+});
+
+async function offlinePhotoFixture(){
+ const f=fixture(),s=signedPorts(),binding=offlinePortsForStorage(s),pair=generateKeyPairSync('ed25519'),identity=offlineContextIssuerIdentity(pair.privateKey),issuedAt=1793055753390;
+ const context:OfflineClockContextData={version:1,purpose:'attendance.clock.offline.context',issuer:{algorithm:'ed25519',keyId:identity.keyId},id:requestId,requestId,requestNonce:binding.request.requestNonce,
+  scope:binding.scope,target:binding.target,issuedAt,expiresAt:issuedAt+3600000,policy:{revision:'a'.repeat(64),offlineEnabled:true,windowMs:86400000,geofencingRequired:false,maximumAccuracyM:null,photoRequirement:'optional'},sites:[],
+  attendance:{baseline:'b'.repeat(64),date:'2026-10-27',clockedIn:false,openSince:null},permits:[{id:scope.actorId,ordinal:1,nonce:'A'.repeat(43)},{id:scope.employmentId,ordinal:2,nonce:'B'.repeat(42)+'A'}]};
+ const issuer={...identity,validFrom:issuedAt-1,validUntil:issuedAt+86400000,revoked:false};
+ const raw=signOfflineClockContext(context,pair.privateKey),source={provider:null,mock:null,simulated:null,accessory:null},photoBytes=Uint8Array.from([1,2,3,4]);
+ const baseScope={namespace:'offline-base',actorId:scope.actorId,employmentId:scope.employmentId},base=await f.native.openNativeSubmissionJournal(baseScope,()=>{});
+ let controller:Awaited<ReturnType<typeof f.native.openNativeSignedClockJournal>>;
+ s.ports.base=async(_employment,id)=>{const entry=(await base.pending()).find(value=>value.requestId===id);if(!entry)throw Error('base unavailable');return {digest:entry.digest,command:JSON.parse(entry.command),source,
+  photo:entry.evidence?{sha256:entry.evidence.digest,byteLength:entry.evidence.size,mimeType:'image/jpeg'}:null};};
+ s.ports.offline!.request=async()=>raw;s.ports.offline!.verify=async(text,expected)=>verifyOfflineClockContextSignature(text,[issuer],expected.scope);
+ const release=vi.fn(async(reference:signedClock.SignedClockReference)=>{
+  const entry=(await base.pending()).find(value=>value.requestId===reference.requestId);if(!entry)return;
+  if(entry.digest!==reference.baseDigest)throw Error('changed base');await base.resolve('clock',reference.requestId);
+ });
+ s.ports.offline!.capture={capabilities:()=>({status:'evidence',verification:'not_verified',evidence:{version:1,platform:'ios',appId:'ai.hr',appVersion:'1',buildVersion:'4',keyMechanism:'apple_app_attest'}}),
+  digest:async canonical=>createHash('sha256').update(canonical).digest('hex'),
+  retainPhoto:async(id,photo)=>controller.retainOfflinePhoto(id,photo,photoBytes),releaseBase:release};
+ const open=async()=>{controller=await f.native.openNativeSignedClockJournal(s.scope,()=>{},s.ports);return controller;};
+ await open();await controller!.reserveOffline(binding);await controller!.prepareOffline(requestId);
+ const stage=async(id=requestId,withPhoto=true)=>{
+  const file={uri:'cache/'+id+'.jpg',name:'evidence.jpg',mimeType:'image/jpeg',size:photoBytes.length};f.files.set(file.uri,photoBytes);
+  await base.stage('clock',JSON.stringify({...JSON.parse(command),requestId:id}),withPhoto?file:undefined,source);
+ };
+ const input=(id=requestId)=>({requestId:id,expectedContextId:context.id,claimedAt:issuedAt,eventSnapshot:{localOnly:true,runtimeId:scope.actorId,source:'ios_continuous',elapsedBeforeNs:'30',elapsedAfterNs:'31',wallTimeMs:issuedAt,bootId:null}});
+ const expectedPhoto={sha256:createHash('sha256').update(photoBytes).digest('hex'),byteLength:photoBytes.length,mimeType:'image/jpeg'};
+ return {f,s,base,open,stage,input,expectedPhoto,photoBytes,release};
+}
+it('transfers photos into the sealed proof owner before freeing the base clock slot, then captures the next offline command',async()=>{
+ const f=await offlinePhotoFixture();await f.stage();await (await f.open()).captureOffline(f.input());expect(await f.base.pending()).toEqual([]);
+ const files=[...f.f.files.keys()].filter(path=>path.includes('/signed-clock-')&&path.endsWith('.sealed')&&!path.includes('/journal-'));expect(files).toHaveLength(1);
+ expect(f.f.files.get(files[0])).not.toEqual(f.photoBytes);expect(await (await f.open()).readOfflinePhoto(requestId,f.expectedPhoto)).toEqual(f.photoBytes);
+ const next='00000000-0000-4000-8000-000000000077';await f.stage(next);await (await f.open()).captureOffline(f.input(next));expect(await f.base.pending()).toEqual([]);
+ expect(await (await f.open()).readOfflinePhoto(requestId,f.expectedPhoto)).toEqual(f.photoBytes);expect(await (await f.open()).readOfflinePhoto(next,f.expectedPhoto)).toEqual(f.photoBytes);
+});
+it('keeps both base and captured intent when the installation cannot admit another encrypted photo',async()=>{
+ const f=await offlinePhotoFixture();await f.stage();f.f.occupy(64*1024*1024-65536);
+ await expect((await f.open()).captureOffline(f.input())).rejects.toThrow('Pending submission storage is full');
+ expect(await f.base.pending()).toHaveLength(1);expect(f.release).not.toHaveBeenCalled();expect(f.s.ports.sign).not.toHaveBeenCalled();
+ f.f.occupy(0);await (await f.open()).captureOffline(f.input());expect(await f.base.pending()).toEqual([]);expect(await (await f.open()).readOfflinePhoto(requestId,f.expectedPhoto)).toEqual(f.photoBytes);
+});
+it('finishes phase-only capture recovery at the quota without treating another command as a resolution',async()=>{
+ const f=await offlinePhotoFixture();await f.stage(requestId,false);f.release.mockImplementationOnce(async reference=>{await f.base.resolve('clock',reference.requestId);f.f.occupy(64*1024*1024);});
+ expect(await (await f.open()).captureOffline(f.input())).toMatchObject({status:'captured'});
+ const next='00000000-0000-4000-8000-000000000078';f.f.occupy(0);await f.stage(next,false);f.f.occupy(64*1024*1024);
+ await expect((await f.open()).captureOffline(f.input(next))).rejects.toThrow();expect(await f.base.pending()).toHaveLength(1);
+});
+it('refuses changed photo bytes/metadata and cross-account reads without overwriting retained evidence',async()=>{
+ const f=await offlinePhotoFixture();await f.stage();const j=await f.open();await j.captureOffline(f.input());
+ await expect(j.retainOfflinePhoto(requestId,f.expectedPhoto,Uint8Array.from([9,9,9,9]))).rejects.toThrow();
+ await expect(j.readOfflinePhoto(requestId,{...f.expectedPhoto,sha256:'c'.repeat(64)})).rejects.toThrow();
+ const other=await f.f.native.openNativeSignedClockJournal({...f.s.scope,actorId:scope.employmentId},()=>{},f.s.ports);
+ await expect(other.readOfflinePhoto(requestId,f.expectedPhoto)).rejects.toThrow();expect(await j.readOfflinePhoto(requestId,f.expectedPhoto)).toEqual(f.photoBytes);
+});
+it('refuses missing/tampered retained ciphertext instead of treating it as an absent or newly replaceable photo',async()=>{
+ const f=await offlinePhotoFixture();await f.stage();await (await f.open()).captureOffline(f.input());
+ const path=[...f.f.files.keys()].find(path=>path.endsWith(offlineState.offlineClockPhotoReference(requestId)))!,saved=f.f.files.get(path)!.slice();
+ const changed=saved.slice();changed[changed.length-1]^=1;f.f.files.set(path,changed);
+ await expect((await f.open()).readOfflinePhoto(requestId,f.expectedPhoto)).rejects.toThrow();await expect((await f.open()).retainOfflinePhoto(requestId,f.expectedPhoto,f.photoBytes)).rejects.toThrow();
+ expect(f.f.files.get(path)).toEqual(changed);f.f.files.set(path,saved);expect(await (await f.open()).readOfflinePhoto(requestId,f.expectedPhoto)).toEqual(f.photoBytes);
 });

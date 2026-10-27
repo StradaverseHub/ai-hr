@@ -226,3 +226,42 @@ resolution remains possible at the cap. Raw snapshots/native references stay in 
 only the strict binding goes to the context request port. No live adapter supplies these optional
 ports yet. Offline claim signing/storage, close/retirement recovery, registry provisioning, batch
 sync and server adjudication must be integrated before any offline entry point is enabled.
+
+### Durable local capture and photo handoff
+
+`captureOffline` now records a claim under the same installed-account owner. Before a new claim it
+reverifies the saved server context, checks its permit inventory and existing claim hashes, and binds
+the original base command, photo digest, actual reported app/source fields and elapsed evidence from
+the retained exchange anchors. Its app-local event snapshot remains outside canonical transport bytes.
+Unknown continuity stays unknown; claimed wall time grants no authority. No new in/out sequence rule
+is introduced. The context's 32-slot resource limit and installation byte quota remain explicit bounds.
+
+Each claim advances through `capture_requested`, `photo_retained`, and `captured`. The first commit
+precedes photo retention; the second precedes release of the original base slot. Same-ID retry keeps
+the original claim/event/permit, including after a lost commit or base-release acknowledgement.
+A different claim cannot pass an incomplete handoff. Local capture returns `acceptance: not_granted`;
+it neither creates a device proof nor sends a clock command, records attendance or clears the claim.
+
+The native store retains bounded image bytes with separate photo AAD under the existing device-only
+installation master and installed-account directory. It requires a committed matching claim and
+checks exact byte length/SHA-256. A staged sealed file is moved into place without overwrite; an
+existing retained file must decrypt and match. Tampering/missing data fail rather than silently
+replacing history. Only after that retained checkpoint may the base command/photo be released,
+allowing another offline capture without losing the earlier image. New photos and claims respect
+the installation quota. Strict phase-only progress with identical existing claims may finish at the
+cap, like existing receipt recovery; it cannot admit another command, context or image.
+
+The optional local capture ports are not supplied by a live offline screen/controller yet. Proof
+creation/recovery, authenticated registry provisioning, context issuance, stream consumption, batch
+sync, canonical effective/arrival provenance, HR resolution and the employee flow remain unfinished.
+The centrally reserved draft filename is `0647_mobile_offline_attendance`; journal index and timestamp
+remain integration-bound and must not be inferred from the filename or reused source metadata.
+
+For protocol feasibility, Apple's [App Attest explanation](https://developer.apple.com/videos/play/wwdc2021/10244/)
+describes assertion generation on the device after enrollment, without an Apple server call, and a
+server-validated increasing counter. Our inference is that preissued one-use challenges can support
+later local signing; this still needs actual airplane-mode/device measurements. Android's
+[Keystore documentation](https://developer.android.com/privacy-and-security/keystore) describes
+non-exportable key operations but also warns that a compromised process may still invoke its keys.
+Neither source establishes trusted GPS/capture time. Sync-time integrity cannot be presented as proof
+of capture-time integrity; server verification, policy and auditable review remain necessary.
