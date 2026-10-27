@@ -22,7 +22,7 @@ export function requireSuccessfulBuild(official,status,sha){
 }
 export async function operatorRelease({candidatePath,runId,execute=false,ciBaseline,originController,evidenceProtocol}){
  candidatePath=resolve(candidatePath);bindStaging(process.env);
- if(evidenceProtocol&&(!['type-only-test-fixture-repair/v1','runtime-owner-exception/v1'].includes(evidenceProtocol.kind)||!['verify','revalidate','createGrant'].every(k=>typeof evidenceProtocol[k]==='function')))throw Error('Unknown explicit evidence protocol');
+ if(evidenceProtocol&&(!['type-only-test-fixture-repair/v1','runtime-owner-exception/v1','email-test-contract-repair/v1'].includes(evidenceProtocol.kind)||!['verify','revalidate','createGrant'].every(k=>typeof evidenceProtocol[k]==='function')))throw Error('Unknown explicit evidence protocol');
  const packetTransport=execute?assertRsyncPacketCapability():null;
  // Import the ACTUAL frozen candidate's official release helpers; never rewrite its gate code.
  const load=async path=>{const raw=await import(pathToFileURL(join(candidatePath,path)).href);return {...(raw.default??{}),...raw};};
@@ -75,7 +75,7 @@ export async function operatorRelease({candidatePath,runId,execute=false,ciBasel
  if(finalChecksum.length!==0)throw Error('Final source checksum differs after cleanup; owner intervention required');frozen();
  // Preserve official learning only after actual service/build/source/ledger arrival.
  try{
-  const record=recordReleaseLearning({worktree:candidatePath,sha:evidence.sha,buildId:status.built_build_id,previousRef:baseline,receipt:{...evidence,tier:evidenceProtocol?.kind==='runtime-owner-exception/v1'?'ci-runtime-owner-exception-v1':evidenceProtocol?'ci-type-only-repair-v1':'ci',result:evidenceProtocol?.kind==='runtime-owner-exception/v1'?'ACCEPTED_WITH_OWNER_EXCEPTION':evidenceProtocol?'ACCEPTED_WITH_AUTHENTICATED_ORIGINAL_PASSES':'PASS'},status,
+  const record=recordReleaseLearning({worktree:candidatePath,sha:evidence.sha,buildId:status.built_build_id,previousRef:baseline,receipt:{...evidence,tier:evidenceProtocol?.kind==='email-test-contract-repair/v1'?'ci-email-test-contract-repair-v1':evidenceProtocol?.kind==='runtime-owner-exception/v1'?'ci-runtime-owner-exception-v1':evidenceProtocol?'ci-type-only-repair-v1':'ci',result:evidenceProtocol?.kind==='runtime-owner-exception/v1'?'ACCEPTED_WITH_OWNER_EXCEPTION':evidenceProtocol?'ACCEPTED_WITH_AUTHENTICATED_ORIGINAL_PASSES':'PASS'},status,
    mirror:record=>ssh('cd /opt/ai-hr && AIHR_IMPACT_STATE_DIR=/var/tmp/aihr-deploy/impact-learning /opt/node22/bin/node --import tsx scripts/gate-learning-cli.ts record-release',{input:JSON.stringify(record)})});
   save('release-learning.json',record);
  }catch(error){save('release-learning-warning.json',{error:String(error)});console.warn('Release learning requires retry; arrival evidence is retained: '+String(error));}

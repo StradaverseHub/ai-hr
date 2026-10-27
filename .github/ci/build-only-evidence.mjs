@@ -5,6 +5,7 @@ import {installHash,installJson,INSTALL_BUILD_FIELDS,validateInstallGrant}from'.
 import {CI_POLICY}from'./policy-version.mjs';
 import {BUILD_ARTIFACT,BUILD_ZIP_MAX}from'./build-artifact.mjs';
 import {REPOSITORY,REPOSITORY_ID,WORKFLOW_ID,WORKFLOW_PATH}from'./release-policy.mjs';
+import {EMAIL} from './email-repair-source.mjs';
 import {NEXT_APPLICATION_STATE}from'./next-application-cache-protocol.mjs';
 export function inspectBuildOnlySnapshot({run,jobs,artifacts,expected,now=Date.now()}){
  assert(expected.candidate===expected.controller&&/^[a-f0-9]{40}$/.test(expected.candidate??'')&&Number.isSafeInteger(expected.runId)&&expected.runId>0,'Exact trusted alpha candidate/controller required');
@@ -22,6 +23,11 @@ export function inspectBonusRepairBuildOnlySnapshot(options){
  assert(options.expected?.candidate==='d52563c666d39074217ed42191866add4a2793a0'
   &&options.expected.controller==='dc74b804fcecb4bab3207e82c9b9f099b9bf13be'
   &&options.expected.runId===40508894540,'Exact Bonus repair source, trusted controller and build run required');
+ return inspectBuildOnlyInventory({...options,now:options.now??Date.now()});
+}
+/** Exact email repaired source; this authenticates canonical bytes only. */
+export function inspectEmailRepairBuildOnlySnapshot(options){
+ assert(options.expected?.candidate===EMAIL.candidate&&options.expected.controller===EMAIL.buildController&&options.expected.runId===EMAIL.buildRun,'Exact email repair build source/controller/run required');
  return inspectBuildOnlyInventory({...options,now:options.now??Date.now()});
 }
 function inspectBuildOnlyInventory({run,jobs,artifacts,expected,now}){

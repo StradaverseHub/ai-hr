@@ -1,0 +1,10 @@
+/** Explicit email test-contract protocol; native transport, installer and ledger guards remain authoritative. */
+import {readFileSync} from 'node:fs';
+import {resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {operatorRelease} from './operator-release.mjs';
+import {verifyEmailRepairCi} from './verify-email-repair.mjs';
+import {createEmailInstallGrant} from './email-install-grant.mjs';
+export function bindEmailEvidenceProtocol(verify,makeGrant){let context,started=false;const bound=e=>{if(!context||context.evidence!==e)throw Error('Email verified evidence identity changed');return context;};return {kind:'email-test-contract-repair/v1',verify:async options=>{if(started)throw Error('Email verification already bound');started=true;context=await verify(options);return context.evidence;},revalidate:async e=>bound(e).revalidate(),createGrant:({evidence,baselineBuildId,environmentSha256})=>makeGrant({acceptance:evidence.acceptance,evidence,snapshot:bound(evidence).snapshot,baselineBuildId,environmentSha256})};}
+export async function operatorEmailRepair({candidatePath,plan,execute=false}){return operatorRelease({candidatePath,execute,evidenceProtocol:bindEmailEvidenceProtocol(options=>verifyEmailRepairCi({...options,plan}),createEmailInstallGrant)});}
+if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){const [mode,candidatePath,file]=process.argv.slice(2);if(process.argv.length!==5||!['verify','deploy'].includes(mode))throw Error('Usage: operator-email-repair.mjs <verify|deploy> <clean-candidate> <private-plan.json>');operatorEmailRepair({candidatePath,plan:JSON.parse(readFileSync(file)),execute:mode==='deploy'}).then(r=>console.log(JSON.stringify({kind:r.kind,result:r.result,sha:r.sha,runId:r.runId,evidenceDirectory:r.evidenceDirectory,arrivalVerified:r.arrivalVerified??false,ownedResourceCleanupVerified:r.ownedResourceCleanupVerified??false,releaseHandbackVerified:r.releaseHandbackVerified??false,fullGatePassCreated:false}))).catch(e=>{console.error(e);process.exitCode=1;});}
