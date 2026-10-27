@@ -1,4 +1,5 @@
-/** Authored UNRUN. Isolated process/import boundary only: fake ownership refusal, no sockets or DB calls. */
+/** Isolated process/import boundary only: fake bounds then fake ownership refusal, no sockets or DB calls.
+ * The fake answers the bounds probe so the refusal is the actual ownership guard, not an earlier throw. */
 import {spawnSync} from 'node:child_process';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
@@ -18,12 +19,15 @@ describe('operator retention runner independent import boundary',()=>{
    let queries=0,transactions=0;
    const owner={db:{transaction:async(fn,options)=>{transactions++;
     if(options?.isolationLevel!=='read committed')throw Error('owned isolation boundary failed');
-    return fn({execute:async(statement)=>{queries++;const query=dialect.sqlToQuery(statement).sql;
-     if(!query.includes('current_user=session_user')||!query.includes('pg_catalog.pg_roles'))throw Error('owned guard boundary failed');
-     return [{allowed:false}];}});
+    return fn({execute:async(statement)=>{queries++;const rendered=dialect.sqlToQuery(statement),query=rendered.sql;
+     // First the non-increasing local bounds, then the ownership proof: reach the REAL guard refusal.
+     if(queries===1){if(!query.includes('pg_catalog.pg_settings'))throw Error('owned bounds boundary failed');return [{name:'lock_timeout',value:'500'},{name:'statement_timeout',value:'5000'}];}
+     if(!query.includes('current_user=session_user')||!query.includes('pg_catalog.pg_roles')||!query.includes('app.assistant_transcripts_retire_expired(uuid,integer,integer)')
+      ||!rendered.params.includes('public.assistant_exchange')||!rendered.params.includes('public.ai_assistant_answer_evaluation_intent'))throw Error('owned guard boundary failed');
+     guarded=true;return [{allowed:false}];}});
    }}};
-   let rejected=false;try{await run(owner);}catch(error){if(error?.message!==${JSON.stringify(message)})throw Error('owned bounded refusal failed');rejected=true;}
-   if(!rejected||queries!==1||transactions!==1)throw Error('owned refusal evidence missing');
+   let rejected=false,guarded=false;try{await run(owner);}catch(error){if(error?.message!==${JSON.stringify(message)})throw Error('owned bounded refusal failed');rejected=true;}
+   if(!rejected||!guarded||queries!==2||transactions!==1)throw Error('owned refusal evidence missing');
    process.stdout.write('OWNED_GUARD_REFUSED\\n');
   `;
   const result=spawnSync(process.execPath,['--import','tsx','--input-type=module','-e',script],{env,cwd:process.cwd(),encoding:'utf8',timeout:15000,maxBuffer:65536});
