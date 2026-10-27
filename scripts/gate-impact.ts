@@ -99,9 +99,15 @@ export function fsImportsAreWriteOnly(path:string,text:string):boolean{
  }
  const walk=(node:ts.Node)=>{
   if(ts.isExportDeclaration(node)&&node.moduleSpecifier&&ts.isStringLiteralLike(node.moduleSpecifier)&&fs(node.moduleSpecifier.text))safe=false;
-  if(ts.isCallExpression(node)&&(node.expression.kind===ts.SyntaxKind.ImportKeyword||ts.isIdentifier(node.expression)&&node.expression.text==='require')){
-   const argument=node.arguments[0];if(!argument||!ts.isStringLiteralLike(argument)||fs(argument.text))safe=false;
+  if(ts.isCallExpression(node)){
+   const callee=ts.isIdentifier(node.expression)?node.expression.text:ts.isPropertyAccessExpression(node.expression)?node.expression.name.text:'';
+   if(['eval','getBuiltinModule'].includes(callee))safe=false;
+   if(node.expression.kind===ts.SyntaxKind.ImportKeyword||callee==='require'){
+    const argument=node.arguments[0];if(!ts.isIdentifier(node.expression)&&node.expression.kind!==ts.SyntaxKind.ImportKeyword||!argument||!ts.isStringLiteralLike(argument)||fs(argument.text))safe=false;
+   }
   }
+  if(ts.isNewExpression(node)&&ts.isIdentifier(node.expression)&&node.expression.text==='Function')safe=false;
+  if(ts.isIdentifier(node)&&node.text==='require'&&(!ts.isCallExpression(node.parent)||node.parent.expression!==node))safe=false;
   if(ts.isIdentifier(node)&&writers.has(node.text)){
    if(ts.isImportSpecifier(node.parent))return;
    if(!ts.isCallExpression(node.parent)||node.parent.expression!==node)safe=false;
