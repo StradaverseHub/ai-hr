@@ -19,7 +19,7 @@ import {evaluateSyntheticCandidate} from './provider-evaluation-fixture';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let base:Base,ctx:SessionContext;
 const model='fictional/reviewed:free',key='fictional-controlled-key',endpoint='fictional/exact-endpoint',secret='ab'.repeat(32),signer='fictional-reviewed-signer';
-const providerOptions={version:1,routing:{allowedProviders:[endpoint],allowFallbacks:false,sort:'latency'}};
+const providerOptions={version:1 as const,routing:{allowedProviders:[endpoint],allowFallbacks:false,sort:'latency' as const}};
 const args={system:'Synthetic review only',prompt:'Synthetic fixed question',maxTokens:64,timeoutMs:1000};
 const request=()=>Object.freeze({operation:'draft' as const,reservedTokens:100,inputDigest:draftInputDigest(args)});
 beforeAll(async()=>{await migrateTestDb();const[installed]=await owner.db.execute<{ready:boolean}>(sql`select to_regprocedure('app.ai_spend_reviewed_carrier(text,text,text,text,text,text,text)') is not null as ready`);expect(installed.ready,'Install the normally coordinated reviewed-carrier draft before this actual DB suite').toBe(true);});afterAll(closeAll);afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});

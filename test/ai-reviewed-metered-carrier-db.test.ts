@@ -18,7 +18,7 @@ import {draftInputDigest} from '../lib/ai/draft-input';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let base:Base,ctx:SessionContext;
 const model='fictional/reviewed-metered',key='fictional-controlled-key',endpoint='fictional/exact-endpoint',secret='ab'.repeat(32),signer='fictional-reviewed-signer';
-const providerOptions={version:1,routing:{allowedProviders:[endpoint],allowFallbacks:false,sort:'latency'}};
+const providerOptions={version:1 as const,routing:{allowedProviders:[endpoint],allowFallbacks:false,sort:'latency' as const}};
 const meter={nativeContextTokens:4096,completionTokens:128,promptUsdPerMillion:3,completionUsdPerMillion:15},reserved='14208000';
 const args={system:'Synthetic review only',prompt:'Synthetic fixed question',maxTokens:64,timeoutMs:1000};
 const request=()=>Object.freeze({operation:'draft' as const,reservedTokens:100,inputDigest:draftInputDigest(args)});

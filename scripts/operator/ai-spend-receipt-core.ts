@@ -2,7 +2,7 @@
 import {createHash,randomBytes,timingSafeEqual} from 'node:crypto';
 export const KEY_ID='AI_SPEND_RECEIPT_KEY_ID',KEY_SECRET='AI_SPEND_RECEIPT_SIGNING_KEY';
 const digest=(text:string)=>createHash('sha256').update(text,'utf8').digest('hex');
-const fail=():never=>{throw Error('Receipt preparation refused; inspect private recovery material with the release operator.');};
+const fail:()=>never=()=>{throw Error('Receipt preparation refused; inspect private recovery material with the release operator.');};
 export type Pair=Readonly<{id:string;secret:string}>;
 export type Verifier=Pair&Readonly<{enabled:boolean;usable:boolean}>;
 export type Pending=Readonly<{version:1;environment:'staging';databaseIdentity:string;expectedDatabaseIdentity:string;envPath:string;original:string;originalDigest:string;replacement:string;replacementDigest:string;pair:Pair}>;

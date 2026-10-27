@@ -6,7 +6,7 @@ import {pathToFileURL} from 'node:url';
 import {createHash} from 'node:crypto';
 import postgres from 'postgres';
 import {prepareReceipt,type ReceiptFiles,type ReceiptDatabase,type Pair,type Preparation} from './ai-spend-receipt-core';
-const refuse=():never=>{throw Error('Receipt preparation refused. No route was activated. Consult the private recovery record and release operator.');};
+const refuse:()=>never=()=>{throw Error('Receipt preparation refused. No route was activated. Consult the private recovery record and release operator.');};
 export function parseReceiptArguments(args:readonly string[]):Preparation&{recoveryDirectory:string}{
  const value=new Map<string,string>();let apply=false,recover=false;
  for(let i=0;i<args.length;i++){
