@@ -25,7 +25,7 @@
  */
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { SessionContext } from '../../../db/client';
-import { employment, onehrCycle, onehrPlan, onehrReview, performanceReview, reviewCycle } from '../../../db/schema';
+import { employment, onehrCycle, onehrPlan, onehrReview, reviewCycle } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
 import { managerPendingReviews } from '../../../core/performance';
 import type { PackTaskItem } from '../../../lib/assigned-work';
@@ -53,29 +53,28 @@ async function assessmentTasks(ctx: SessionContext): Promise<Sourced[]> {
     const mine = (await tx.select({ id: employment.id }).from(employment).where(eq(employment.personId, personId))).map((e) => e.id);
     if (!mine.length) return [];
     const ids = sql`array[${sql.join(mine.map((id) => sql`${id}`), sql`,`)}]::text[]`;
-    // The reviewer/approver pre-filter is a NECESSARY condition of app.onehr_manager (the reviewer is one
-    // of my employments) or app.onehr_moderator (an approval step names one of them); the SECURITY
-    // DEFINER functions after it stay the authority. It keeps an administrator, who can read every
-    // assessment, from evaluating those functions on every row on every page render.
+    // Read exactly as /performance/workspace reads (onehr_review, cycle and config only): the kernel
+    // performance_review row is NOT joined, because its RLS hides it from a matrix approver who still
+    // owes work on the assessment. The approval-step test on the KPI JSON is a cheap NECESSARY condition
+    // of app.onehr_moderator; together with app.onehr_manager (one indexed EXISTS) it decides which rows
+    // ever reach the expensive moderator function. The SECURITY DEFINER functions remain the authority.
     const rows = await tx
       .select({
         reviewId: onehrReview.reviewId, employmentId: onehrReview.employmentId, companyId: onehrReview.companyId,
         kpis: onehrReview.kpis, competencies: onehrReview.competencies, competencyStatus: onehrReview.competencyStatus,
         resultsSubmittedAt: onehrReview.resultsSubmittedAt, managerPerformance: onehrReview.managerPerformance,
-        createdAt: performanceReview.createdAt, periodEnd: reviewCycle.periodEnd, policy: onehrCycle.policy,
+        createdAt: onehrReview.createdAt, periodEnd: reviewCycle.periodEnd, policy: onehrCycle.policy,
         header: sql<{ name: string; ownEmploymentIds: string[] } | null>`app.onehr_review_header(${onehrReview.reviewId})`,
         manager: sql<boolean>`app.onehr_manager(${onehrReview.reviewId})`,
       })
       .from(onehrReview)
-      .innerJoin(performanceReview, eq(performanceReview.id, onehrReview.reviewId))
       .innerJoin(reviewCycle, eq(reviewCycle.id, onehrReview.cycleId))
       .innerJoin(onehrCycle, eq(onehrCycle.cycleId, onehrReview.cycleId))
       .where(and(
         inArray(reviewCycle.status, ['open', 'calibration']),
-        sql`(${performanceReview.reviewerEmploymentId}::text = any(${ids}) or exists(select 1 from jsonb_array_elements(${onehrReview.kpis}) k where k->>'moderatorEmploymentId' = any(${ids}) or exists(select 1 from jsonb_array_elements(coalesce(k->'approvalChain','[]'::jsonb)) step where step->>'employmentId' = any(${ids}))))`,
         sql`not exists(select 1 from employment e where e.id=${onehrReview.employmentId} and app.is_self_person(e.person_id))`,
+        sql`(app.onehr_manager(${onehrReview.reviewId}) or (exists(select 1 from jsonb_array_elements(${onehrReview.kpis}) k where k->>'moderatorEmploymentId' = any(${ids}) or exists(select 1 from jsonb_array_elements(coalesce(k->'approvalChain','[]'::jsonb)) step where step->>'employmentId' = any(${ids}))) and app.onehr_moderator(${onehrReview.reviewId})))`,
         sql`app.assessment_review_participates(${onehrReview.reviewId})`,
-        sql`(app.onehr_manager(${onehrReview.reviewId}) or app.onehr_moderator(${onehrReview.reviewId}))`,
       ))
       .orderBy(desc(reviewCycle.periodEnd), asc(onehrReview.reviewId));
     // This runs from the root layout: a row the canonical schemas reject yields no task rather than a

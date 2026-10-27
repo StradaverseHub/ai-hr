@@ -24,6 +24,7 @@ import framework from '../packs/performance/onehr/framework.json';
 import { createRewardUnit, decideRewardUnit, getRewardUnit, pendingRewardReviews, saveRewardEntry, saveRewardPolicy, setRewardMember } from '../packs/rewards/service';
 import { emptyFacts } from '../packs/rewards/model';
 import { PACK_TASK_KINDS } from '../lib/assigned-work';
+import { pendingRewardTasks } from '../packs/rewards/tasks';
 import { HOME_TASK_KINDS } from '../lib/employee-home';
 import { closeAll, createAppUser, entitledCtx, harnessSnapshot, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -132,8 +133,15 @@ describe('performance work in the shared task list', () => {
     const foreign = await seedBase();
     await setModule(foreign.tenantId, 'performance', 'active'); await setModule(foreign.tenantId, 'rewards', 'active');
     // The same person and account ids presented under another tenant reach nothing of this tenant's.
+    // (listPendingTasks itself refuses such a principal in its leave owner; the pack providers are asked
+    // directly so the assertion is about THEIR reads, under the foreign tenant's RLS context.)
     const crossTenant: SessionContext = { ...mgr, tenantId: foreign.tenantId, entitlements: harnessSnapshot(foreign.tenantId) };
-    expect(packItems(await listPendingTasks(crossTenant, undefined, ALL))).toEqual([]);
+    expect(await perf.pendingPerformanceTasks(crossTenant, undefined)).toEqual([]);
+    expect(await pendingRewardTasks(crossTenant, undefined)).toEqual([]);
+    // A real principal of the other tenant has no task from this one either.
+    const stranger = await hireEmployee({ ...a, tenantId: foreign.tenantId, userId: foreign.adminUserId, personId: undefined, roles: ['hr_admin'], entitlements: harnessSnapshot(foreign.tenantId) }, { person: { fullName: 'Foreign manager', primaryEmail: `${randomUUID()}@wpa1.test` }, companyId: foreign.companyId, departmentId: foreign.deptA, employmentType: 'full_time', hiredOn: `${year - 2}-01-01` });
+    const strangerCtx: SessionContext = { tenantId: foreign.tenantId, userId: await createAppUser(foreign.tenantId, stranger.personId, 'manager'), personId: stranger.personId, roles: ['manager'], entitlements: harnessSnapshot(foreign.tenantId) };
+    expect(packItems(await listPendingTasks(strangerCtx, undefined, ALL))).toEqual([]);
   });
 });
 
