@@ -460,3 +460,31 @@ Both local Hermes exports for runtime source `8058d665c` exited 0. Source maps c
 application server core/database/session/private verifier, PKI dependency or Zod 3. The unchanged native
 Swift/Kotlin mechanisms retain their previous compiler evidence; this slice changes their JavaScript
 orchestration only. These are local bundles, not signed-device, cloud/full-gate or deployment evidence.
+
+
+Key recovery route wiring at `30f62fddd` separated actor-owned inventory/revocation and the common
+receipt mapper from optional vendor verification. The source mounts GET `integrity/keys` and POST
+`integrity/revoke` through the established mobile wrapper. Five focused suites passed 52 cases:
+mounted HTTP behavior, enrollment/key custody, assertion transactions, import isolation and attendance
+pack boundaries. Bearer resolution in the mounted HTTP fixture is synthetic; transactions/RLS are real.
+The separate existing real bearer resolver suite then passed all 12 cases on disposable databases.
+
+The first root compiler at `30f62fddd` rejected two new route callbacks whose outcome literals had
+widened to string. Repair `a94c92798` preserves the two discriminators with `as const`; strictness and
+runtime validation were unchanged. That compiler rerun passed. After the stronger wire-byte probe at
+`17284ce4e`, the final full root compiler also exited 0. Original failed compiler evidence remains separate.
+No mobile runtime source changed here, so the prior native compiler/bundle evidence remains applicable;
+this server wiring does not supply signed-device, complete-gate or deployed-release evidence.
+
+Mounted checks cover explicit unique selectors, peer-key refusal without mutation, configuration and
+receipt-encryption outage, idempotent revocation, no-store/auth refusal before parsing, extra authority,
+false content length, streaming wire bounds and attendance module refusal. Response fields retain the
+same nine-field receipt allowlist. Optional-owner poison tests confirm both recovery routes load when
+Apple enrollment and assertion owners throw. No enrollment or signed-clock route was mounted.
+
+Three controlled mutations at `17284ce4e` introduced a vendor-owner import, allowed duplicate selectors
+and weakened the 256-byte revoke reader to 4 KiB. Each intended test failed and exact restoration passed:
+`mutation=1 restored=0 exact=true` for all three. The byte-limit probe uses an otherwise valid command
+with excessive JSON whitespace, so schema strictness alone cannot mask a missing streaming cap. These
+are local process/database observations; no provider request, cloud build, new migration allocation,
+shared database write, publication or deployment occurred.

@@ -205,3 +205,26 @@ before returning an existing receipt or writing revocation. The initial authoriz
 be stale after either wait. This enforces the existing active-own-employment requirement at that
 boundary; it is not a claim that every concurrent employment change is serialized with key services.
 UI orchestration, retirement/replacement capacity and signed-device acceptance remain activation work.
+
+
+## Mounted key recovery boundary
+
+The source tree now mounts `GET /api/mobile/v1/integrity/keys` and
+`POST /api/mobile/v1/integrity/revoke`. These authenticated recovery routes expose only the existing
+own-key inventory and idempotent revocation service. They use the shared bearer-only route owner,
+source/actor admission, no-store responses, private diagnostics and strict bounded request reader.
+An explicit, unique own-employment selector is required. Tenant/actor/app-verification authority is
+never accepted from a query, header or body. Attendance entitlement and database RLS remain enforced.
+
+Inventory/revocation and their common minimal receipt mapper live in `core/mobile-integrity-key.ts`,
+behind the narrow attendance recovery facade. They do not import enrollment/assertion owners or the
+optional PKI stack. Neither vendor settings nor vendor-receipt encryption availability is needed to
+list or revoke an already registered key. A failed verifier module must not remove that recovery path.
+The existing combined integrity handler factory delegates recovery to this same owner; there is no
+second revocation writer. Existing enrollment imports retain their compatibility re-exports.
+
+Enrollment and signed-clock handlers remain unmounted. Company presentation configuration is not an
+attendance-security policy owner. Configured pilot scope, supported versions/devices, honest fallback
+and human exception handling still need their reviewed rollout owner. The two mounted source routes
+are not a deployed release, migration application, attestation check or physical-presence guarantee.
+No migration filename/index/timestamp was allocated by this wiring change.
