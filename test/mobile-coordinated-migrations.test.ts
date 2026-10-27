@@ -9,7 +9,7 @@ const hash=(value:string|Buffer)=>createHash('sha256').update(value).digest('hex
 describe('coordinated unapplied Mobile migration integration',()=>{
  it('preserves the complete canonical prefix at the allocated source freeze',()=>{
   expect(allocation.canonicalPrefixCommit).toBe('9541b1686d7941f89e564723271e48bf85a21a89');
-  expect(hash(JSON.stringify(journal.slice(0,allocation.prefixEntries))))).toBe(allocation.prefixEntriesSHA256);
+  expect(hash(JSON.stringify(journal.slice(0,allocation.prefixEntries)))).toBe(allocation.prefixEntriesSHA256);
  });
  it('includes every earlier Board/AI prerequisite before the four Mobile entries',()=>{
   const actual=journal.slice(allocation.prefixEntries,allocation.prefixEntries+allocation.rows.length);
