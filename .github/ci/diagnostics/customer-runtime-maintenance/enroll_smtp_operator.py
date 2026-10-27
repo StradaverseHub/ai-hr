@@ -26,7 +26,7 @@ def read(p):
  fd=os.open(p,os.O_RDONLY|os.O_NOFOLLOW)
  try:
   s=os.fstat(fd);assert stat.S_ISREG(s.st_mode) and s.st_nlink==1 and 0<s.st_size<=200000 and stat.S_IMODE(s.st_mode)==0o600
-  b=os.read(fd,200001);assert len(b)==s.st_size and os.fstat(fd)==s and p.lstat()==s
+  b=os.read(fd,200001);identity=lambda x:(x.st_dev,x.st_ino,x.st_size,x.st_mtime_ns,x.st_ctime_ns,x.st_uid,x.st_gid,x.st_mode,x.st_nlink);assert len(b)==s.st_size and identity(os.fstat(fd))==identity(s)==identity(p.lstat())
   return b,s
  finally:os.close(fd)
 root.mkdir(mode=0o700)
