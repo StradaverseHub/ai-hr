@@ -161,3 +161,12 @@ test('native specialist/control/retirement proposal units preserve closed RPC an
  for(const[kind,[factory,count]]of Object.entries(expected)){const spec=nativeReadbackSpecification(kind),source=nativeReadbackBootstrap('/fictional/source','/fictional/private/fixture.json',kind);assert.equal(spec.phases.length,count);assert.equal(spec.controller,true);assert.equal(spec.rootArgument,true);assert(source.includes(factory));assert(source.includes('root:"/fictional/source",owner,fixture:packet.fixture'));assert(source.includes('calls!=='+count));assert(source.includes('client.end()'));}
  const workflow=readFileSync(new URL('../workflows/ai-assistant-development-browser.yml',import.meta.url),'utf8');assert(workflow.includes('journey: [specialist_governance, ai_controls, own_leave_retirement]'));assert(workflow.includes('AIHR_CI_BROWSER_JOURNEY: ${{ matrix.journey }}'));assert(workflow.includes('assistant-development-native-${{ matrix.journey }}/private/cleanup-safe'));assert(workflow.includes('assistant-development-native-${{ matrix.journey }}/public/report.json'));assert(workflow.includes('APPROVED_CONTROL_SHA: ${{ vars.AIHR_ASSISTANT_BROWSER_APPROVED_CONTROL_SHA }}'));
 });
+
+
+test('all gated browser job contract steps register every authored native boundary unit',()=>{
+ const workflow=readFileSync(new URL('../workflows/ai-assistant-development-browser.yml',import.meta.url),'utf8');
+ const commands=workflow.split('\n').filter(line=>line.trim().startsWith('run: node --test '));assert.equal(commands.length,3);
+ const units=['assistant-development-browser.test.mjs','assistant-provider-config-experience.test.mjs','assistant-specialist-governance-experience.test.mjs','assistant-ai-controls-experience.test.mjs','assistant-ai-controls-native-readback.test.mjs','assistant-own-leave-retirement-experience.test.mjs','assistant-own-leave-retirement-native-readback.test.mjs'];
+ for(const command of commands)for(const unit of units)assert(command.includes('../automation/.github/ci/'+unit),'Missing authored prerequisite unit: '+unit);
+ assert(workflow.includes('test -n "$APPROVED_CONTROL_SHA"'));assert(workflow.includes('test "$APPROVED_CONTROL_SHA" = "$AIHR_CI_CONTROL_HEAD"'));
+});

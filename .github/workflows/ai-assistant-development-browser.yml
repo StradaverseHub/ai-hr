@@ -74,7 +74,7 @@ jobs:
           mobile: 'false'
       - run: pnpm exec playwright install --with-deps chromium
       - name: Controller contracts (not browser acceptance)
-        run: node --test ../automation/.github/ci/assistant-development-browser.test.mjs ../automation/.github/ci/assistant-provider-config-experience.test.mjs
+        run: node --test ../automation/.github/ci/assistant-development-browser.test.mjs ../automation/.github/ci/assistant-provider-config-experience.test.mjs ../automation/.github/ci/assistant-specialist-governance-experience.test.mjs ../automation/.github/ci/assistant-ai-controls-experience.test.mjs ../automation/.github/ci/assistant-ai-controls-native-readback.test.mjs ../automation/.github/ci/assistant-own-leave-retirement-experience.test.mjs ../automation/.github/ci/assistant-own-leave-retirement-native-readback.test.mjs
       - name: Production renderer with actual full native fictional fixture
         run: node ../automation/.github/ci/assistant-development-browser.mjs "$RUNNER_TEMP/assistant-development-browser"
       - name: Cleanup exact job-owned database after cancellation
@@ -125,7 +125,7 @@ jobs:
           mobile: 'false'
       - run: pnpm exec playwright install --with-deps chromium
       - name: Controller contracts (not browser acceptance)
-        run: node --test ../automation/.github/ci/assistant-development-browser.test.mjs ../automation/.github/ci/assistant-provider-config-experience.test.mjs
+        run: node --test ../automation/.github/ci/assistant-development-browser.test.mjs ../automation/.github/ci/assistant-provider-config-experience.test.mjs ../automation/.github/ci/assistant-specialist-governance-experience.test.mjs ../automation/.github/ci/assistant-ai-controls-experience.test.mjs ../automation/.github/ci/assistant-ai-controls-native-readback.test.mjs ../automation/.github/ci/assistant-own-leave-retirement-experience.test.mjs ../automation/.github/ci/assistant-own-leave-retirement-native-readback.test.mjs
       - name: One source mode with a fresh job-owned native fictional fixture
         run: node ../automation/.github/ci/assistant-development-browser.mjs "$RUNNER_TEMP/assistant-development-import-${{ matrix.source_mode }}"
       - name: Cleanup exact job-owned database after cancellation
@@ -175,7 +175,7 @@ jobs:
           mobile: 'false'
       - run: pnpm exec playwright install --with-deps chromium
       - name: Controller contracts (not browser acceptance)
-        run: node --test ../automation/.github/ci/assistant-development-browser.test.mjs ../automation/.github/ci/assistant-specialist-governance-experience.test.mjs ../automation/.github/ci/assistant-ai-controls-experience.test.mjs ../automation/.github/ci/assistant-own-leave-retirement-experience.test.mjs
+        run: node --test ../automation/.github/ci/assistant-development-browser.test.mjs ../automation/.github/ci/assistant-provider-config-experience.test.mjs ../automation/.github/ci/assistant-specialist-governance-experience.test.mjs ../automation/.github/ci/assistant-ai-controls-experience.test.mjs ../automation/.github/ci/assistant-ai-controls-native-readback.test.mjs ../automation/.github/ci/assistant-own-leave-retirement-experience.test.mjs ../automation/.github/ci/assistant-own-leave-retirement-native-readback.test.mjs
       - name: One closed native journey with a fresh job-owned fictional fixture
         run: node ../automation/.github/ci/assistant-development-browser.mjs "$RUNNER_TEMP/assistant-development-native-${{ matrix.journey }}"
       - name: Cleanup exact job-owned database after cancellation
