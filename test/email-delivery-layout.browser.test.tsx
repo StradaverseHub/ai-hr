@@ -29,7 +29,7 @@ const {default:EmailPage}=await import('../app/admin/settings/email/page');
 const {AccountEmailDeliveries}=await import('../components/account-email-deliveries');
 
 const relay={host:'smtp.office365.com',port:587,security:'starttls' as const,from:'no-reply@synthetic-company.example.test',fromName:'Synthetic OneHR',replyTo:'',auth:true,user:'service-mailbox@synthetic-company.example.test'};
-function view(detail:boolean):EmailSettingsView{return {active:{...relay,hasPassword:true},revision:'r'.repeat(43),draft:detail?{id:'saved-version',config:relay,hasPassword:true,testedAt:'2026-10-27T01:00:00Z'}:null,testRecipient:'operator@example.test',connections:[{id:'primary',name:'Microsoft 365 · Synthetic staging connection',config:relay,hasPassword:true,active:true,hasUnappliedChanges:false,testedAt:'2026-10-27T01:00:00Z'},{id:'backup',name:'Synthetic backup connection',config:{...relay,host:'smtp.backup.example.test'},hasPassword:true,active:false,hasUnappliedChanges:false,testedAt:null}],...(detail?{selectedConnectionId:'primary',selectedConnectionName:'Microsoft 365 · Synthetic staging connection'}:{})};}
+function view(detail:boolean):EmailSettingsView{const saved={...relay,fromName:'Synthetic OneHR (saved update)'};return {active:{...relay,hasPassword:true},revision:'r'.repeat(43),draft:detail?{id:'saved-version',config:saved,hasPassword:true,testedAt:'2026-10-27T01:00:00Z'}:null,testRecipient:'operator@example.test',connections:[{id:'primary',name:'Microsoft 365 · Synthetic staging connection',config:saved,hasPassword:true,active:true,hasUnappliedChanges:true,testedAt:'2026-10-27T01:00:00Z'},{id:'backup',name:'Synthetic backup connection',config:{...relay,host:'smtp.backup.example.test'},hasPassword:true,active:false,hasUnappliedChanges:false,testedAt:null}],...(detail?{selectedConnectionId:'primary',selectedConnectionName:'Microsoft 365 · Synthetic staging connection'}:{})};}
 /** Resolve the actual async server child before mounting its client/presentational descendants. */
 async function resolveServer(node:ReactNode):Promise<ReactNode>{
  if(Array.isArray(node))return Promise.all(node.map(resolveServer));
@@ -64,6 +64,9 @@ describe('Email delivery page list/detail at desktop and mobile sizes',()=>{
     if(width<1024){
      const row=screen.getByRole('link',{name:'Microsoft 365 · Synthetic staging connection'}).closest('tr')!;
      expect(row.querySelector('[data-mobile-connection-state]')).toBeVisible();
+     const pending=row.querySelector('[data-mobile-pending-changes]')!;
+     expect(pending).toBeVisible();expect(pending).toHaveTextContent(messages.identityEmail.changesPending);
+     expect(pending.getBoundingClientRect().right).toBeLessThanOrEqual(width);
     }
    }
    await page.getByText(messages.accountEmail.viewEmail,{exact:true}).click();
