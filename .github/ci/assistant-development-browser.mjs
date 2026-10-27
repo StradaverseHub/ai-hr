@@ -8,9 +8,10 @@ import {existsSync,mkdirSync,readFileSync,writeFileSync,openSync,closeSync,unlin
 import {resolve,join,dirname} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {setTimeout as delay} from 'node:timers/promises';
+import {runAssistantOwnLeaveEnglishExperience} from './assistant-own-leave-experience.mjs';
 export const MODULES=Object.freeze(['employees','org','leave','ess','approvals','knowledge_base','payroll','attendance','claims','performance','rewards','lifecycle','toil','multi_cycle_payroll','typed_pay_components','country-my','notifications','system_explorer','assistant','system_testing']);
 const HUMAN_ENTRY=Object.freeze({employees:'/admin/personnel/import',org:'/assistant/org',leave:'/assistant/leave',ess:'/assistant/profile',approvals:'/assistant/approvals',knowledge_base:'/assistant/knowledge-base',payroll:'/assistant/payroll-close',attendance:'/assistant/attendance',claims:'/assistant/claims',performance:'/assistant/performance',rewards:'/assistant/rewards',lifecycle:'/assistant/lifecycle',toil:'/assistant/toil',multi_cycle_payroll:'/assistant/payroll-runs',typed_pay_components:'/assistant/pay-codes','country-my':'/assistant/statutory',notifications:'/assistant/notifications',system_testing:'/assistant/testing'});
-export const REMAINING=Object.freeze(['explicit human prepare/review/confirm and exact native receipts for each action','expiry/discard/uncertain-response replay and erasure','cross-person/company/tenant denial and revocation interleavings','governed independent evaluation/promotion/rollback and actual provider capability/cost/latency','real messy employee import correction/commit and measured baseline comparison','internal HTTPS login/MFA and actual verified notification identity/consent','locale switch interaction/accessibility and full desktop/mobile action journeys','combined exact-candidate final gate and deployment arrival']);
+export const REMAINING=Object.freeze(['remaining specialist human prepare/review/confirm journeys beyond the primary English own-leave positive','expiry/discard/uncertain-response replay and erasure','cross-person/company/tenant denial and revocation interleavings','governed independent evaluation/promotion/rollback and actual provider capability/cost/latency','real messy employee import correction/commit and measured baseline comparison','internal HTTPS login/MFA and actual verified notification identity/consent','locale switch interaction/accessibility and full desktop/mobile action journeys','combined exact-candidate final gate and deployment arrival']);
 const UUID=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
 export function unitFor(run,attempt,sha){assert(/^\d+$/.test(run)&&/^\d+$/.test(attempt)&&/^[0-9a-f]{40}$/.test(sha));return 'db-'+createHash('sha256').update([run,attempt,sha,'assistant-development-v1'].join(':')).digest('hex').slice(0,16);}
 export function childEnvironment(input,add={}){
@@ -33,6 +34,67 @@ export function publicReport(sha){return {format:1,candidate:sha,kind:'assistant
 export function parseOwnedGroupSnapshot(text,inspectorPid,group){
  assert(Number.isSafeInteger(inspectorPid)&&inspectorPid>1&&Number.isSafeInteger(group)&&group>1);assert(typeof text==='string'&&text.trim());
  const result=[];for(const line of text.trim().split('\n')){const match=line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)$/);assert(match,'Unknown process snapshot');const [pid,pgid,sid]=match.slice(1).map(Number);assert([pid,pgid,sid].every(n=>Number.isSafeInteger(n)&&n>0));if(pgid===group&&pid!==inspectorPid){assert.equal(sid,group,'Owned group identity changed');result.push(pid);}}return result;
+}
+/** Private transport only. These envelopes are not canonical facts and confer no authority. */
+export function parseNativeReadbackResponse(line,sequence,operation){
+ assert(typeof line==='string'&&Buffer.byteLength(line,'utf8')<=131072);const value=JSON.parse(line);
+ assert(value&&typeof value==='object'&&!Array.isArray(value));assert.equal(value.sequence,sequence);assert.equal(value.ok,true);
+ const keys=Object.keys(value).sort();
+ if(operation==='ready'){assert.deepEqual(keys,['ok','ready','sequence']);assert.equal(value.ready,true);return true;}
+ if(operation==='finish'){assert.deepEqual(keys,['finished','ok','sequence']);assert.equal(value.finished,true);return true;}
+ assert.equal(operation,'verify');assert.deepEqual(keys,['ok','sequence','value']);assert(value.value&&typeof value.value==='object'&&!Array.isArray(value.value));return value.value;
+}
+export function nativeReadbackBootstrap(root,fixturePath){
+ return `import {readFileSync} from 'node:fs';
+import {createInterface} from 'node:readline';
+import {createDb,client} from ${JSON.stringify(join(root,'db/client.ts'))};
+import {createAiDeliveryOwnLeaveNativeReadback} from ${JSON.stringify(join(root,'scripts/fixtures/ai-delivery-own-leave-native-readback.ts'))};
+async function main(){
+ const owner=createDb(process.env.MIGRATION_DATABASE_URL!,{max:1});const lines=createInterface({input:process.stdin,crlfDelay:Infinity});
+ const send=(value:unknown)=>new Promise<void>((ok,bad)=>{const text=JSON.stringify(value);if(Buffer.byteLength(text,'utf8')>131072)return bad(Error('Bounded readback reply refused'));process.stdout.write(text+'\\n',error=>error?bad(error):ok());});
+ let sequence=0,calls=0;
+ try{
+  const packet=JSON.parse(readFileSync(${JSON.stringify(fixturePath)},'utf8'));
+  const verify=await createAiDeliveryOwnLeaveNativeReadback({owner,fixture:packet.fixture});
+  await send({sequence:0,ok:true,ready:true});
+  for await(const line of lines){
+   if(Buffer.byteLength(line,'utf8')>131072)throw Error('Bounded readback input refused');
+   const p=JSON.parse(line);if(!p||typeof p!=='object'||Array.isArray(p)||p.sequence!==++sequence||sequence>6)throw Error('Readback sequence refused');
+   if(p.operation==='finish'){
+    if(Object.keys(p).sort().join(',')!=='operation,sequence'||calls!==5)throw Error('Readback finish refused');
+    await send({sequence,ok:true,finished:true});return;
+   }
+   if(p.operation!=='verify'||Object.keys(p).sort().join(',')!=='invocation,operation,sequence'||calls>=5)throw Error('Readback operation refused');
+   const value=await verify(p.invocation);calls++;await send({sequence,ok:true,value});
+  }
+  throw Error('Readback input ended before completion');
+ }catch{await send({sequence,ok:false});process.exitCode=1;}
+ finally{lines.close();const closed=await Promise.allSettled([owner.client.end(),client.end()]);if(closed.some(result=>result.status!=='fulfilled'))throw Error('Readback pool closure refused');}
+}
+main().catch(()=>{process.exitCode=1;});
+`;
+}
+export function createPrivateNativeReadbackClient(child,{signal,timeoutMs=30000}={}){
+ assert(child?.stdin&&child?.stdout);assert(Number.isSafeInteger(timeoutMs)&&timeoutMs>0&&timeoutMs<=60000);
+ let sequence=0,pending,failed=false,inFlight=false,finished=false,ended=false,buffer='';const decoder=new TextDecoder('utf-8',{fatal:true});
+ const fail=()=>{failed=true;if(pending){const p=pending;pending=undefined;clearTimeout(p.timer);p.reject(Error('Private native readback unavailable'));}};
+ const wait=(operation,number)=>new Promise((resolve,reject)=>{assert(!pending);pending={operation,number,resolve,reject,timer:setTimeout(fail,timeoutMs)};});
+ const ready=wait('ready',0);ready.catch(()=>{});
+ child.stdout.on('data',chunk=>{try{
+  buffer+=decoder.decode(chunk,{stream:true});assert(Buffer.byteLength(buffer,'utf8')<=262144);
+  for(let index;(index=buffer.indexOf('\n'))>=0;){const line=buffer.slice(0,index);buffer=buffer.slice(index+1);assert(pending&&!failed);const value=parseNativeReadbackResponse(line,pending.number,pending.operation);const p=pending;pending=undefined;clearTimeout(p.timer);p.resolve(value);}
+ }catch{fail();}});
+ child.stdout.once('end',()=>{try{assert.equal(decoder.decode(),'');assert.equal(buffer,'');ended=true;if(!finished)fail();}catch{fail();}});
+ child.once('error',fail);child.stdin.on('error',fail);child.once('exit',(code)=>{if(code!==0||!finished)fail();});
+ if(signal){if(signal.aborted)fail();else signal.addEventListener('abort',fail,{once:true});}
+ async function request(operation,invocation){
+  assert(!failed&&!inFlight&&!finished);inFlight=true;
+  try{await ready;assert(!failed);const next=sequence+1,packet=JSON.stringify(operation==='verify'?{sequence:next,operation,invocation}:{sequence:next,operation});
+   assert(Buffer.byteLength(packet,'utf8')<=131072);sequence=next;const response=wait(operation,next);
+   child.stdin.write(packet+'\n',error=>{if(error)fail();});const value=await response;if(operation==='finish'){finished=true;child.stdin.end();}return value;
+  }finally{inFlight=false;}
+ }
+ return {verifyCanonical:invocation=>request('verify',invocation),finish:()=>request('finish'),assertClosed(){assert(!failed&&finished&&ended&&!pending&&buffer===''&&child.exitCode===0&&child.signalCode===null,'Readback closure unconfirmed');}};
 }
 const here=dirname(fileURLToPath(import.meta.url));
 async function main(){
@@ -69,6 +131,7 @@ async function main(){
   if(existsSync(join(root,'.env.local'))){assert.equal(readFileSync(join(root,'.env.local'),'utf8'),readFileSync(join(root,'.env.example'),'utf8'));unlinkSync(join(root,'.env.local'));}
   assert.deepEqual(readdirSync(root).filter(x=>/^\.env(?:\.|$)/.test(x)&&x!=='.env.example'),[]);
   assert(existsSync(join(root,'scripts/fixtures/ai-delivery-full-fixture.ts')),'Full native fixture owner absent; no legacy fallback');
+  assert(existsSync(join(root,'scripts/fixtures/ai-delivery-own-leave-native-readback.ts')),'Required canonical readback owner absent; no fallback');
   const inspect=spawnSync('docker',['container','inspect',container],{env:basic,encoding:'utf8'});assert.equal(inspect.status,1);assert(/No such (object|container)/i.test(inspect.stderr),'Unknown docker inspection is not absence');
   writeFileSync(join(privateDir,'owned-unit'),unit,{mode:0o600});postgresOwned=true;
   await command('postgres', 'bash',[join(here,'postgres.sh'),'reset'],basic,120000);
@@ -87,6 +150,7 @@ async function main(){
   const auth='Basic '+Buffer.from('ci:'+gate).toString('base64');let ready=false;
   for(let n=0;n<120;n++){assert(!interrupted);assert(server.exitCode===null&&server.signalCode===null,'App exited');try{const r=await fetch(base+'/login',{headers:{authorization:auth},signal:AbortSignal.timeout(2000)});if(r.status===200){ready=true;break;}}catch{}await delay(1000);}assert(ready,'App unavailable');assert.equal((await fetch(base+'/',{redirect:'manual'})).status,401);
   browserServer=await require('playwright').chromium.launchServer({headless:true});children.add(browserServer.process());browser=await require('playwright').chromium.connect(browserServer.wsEndpoint());
+  let ownLeaveExperienced=false;
   const roles=[['operator',fixture.actors.operator,true],['reviewer1',fixture.actors.reviewers[0],true],['reviewer2',fixture.actors.reviewers[1],true],['self',fixture.actors.self,false],['peer',fixture.actors.peer,false],['manager',fixture.actors.manager,false],['standalone_tester',fixture.platform.testing.standalone,false],['prehire',fixture.platform.prehire,false]];
   for(const [role,actor,all] of roles){
    assert(UUID.test(actor?.userId));const context=await browser.newContext({httpCredentials:{username:'ci',password:gate}});const page=await context.newPage();page.setDefaultTimeout(15000);page.setDefaultNavigationTimeout(20000);
@@ -102,11 +166,25 @@ async function main(){
      // repeats workspace plus own-leave entry, not an invented full translated action journey.
      if(all&&locale==='en'&&viewport.width===1440)for(const module of MODULES){await page.locator(`a[href="/assistant?job=${module}"]`).first().click();assert.equal(new URL(page.url()).searchParams.get('job'),module);await page.locator(`a[href="/assistant?job=${module}"][aria-current="page"]`).waitFor();assert(await page.locator('[data-ui-card]').count()>0);if(HUMAN_ENTRY[module])assert(await page.locator(`a[href="${HUMAN_ENTRY[module]}"]`).count()>0,'Declared human entry missing');assert(!/SQLSTATE|PostgresError|ECONNREFUSED|Unhandled Runtime Error|stack trace|AI_CONFIG_SECRET|MIGRATION_DATABASE_URL|postgres:\/\//i.test(await page.locator('body').innerText()));report.checks.push({role,locale,viewport:viewport.width,module,navigation:'rendered'});}
      if(role==='self'){await page.goto(base+'/assistant/leave');assert.equal(new URL(page.url()).pathname,'/assistant/leave');await page.locator('select[id$="-employment"]').waitFor();assert(await page.locator('select[id$="-employment"] option').count()>1);assert(await page.locator('input[type="date"]').count()===1);assert(await page.locator('textarea[id$="-reason"]').count()===1);report.checks.push({role,locale,viewport:viewport.width,ownLeaveEntry:'human_inputs_rendered_not_prepared'});}
+     if(role==='self'&&locale==='en'&&viewport.width===1440){
+      assert(!ownLeaveExperienced);const bridgePath=join(privateDir,'native-readback.ts');writeFileSync(bridgePath,nativeReadbackBootstrap(root,fixturePath),{mode:0o600});
+      const stderr=openSync(join(privateDir,'native-readback.stderr.log'),'wx',0o600);
+      const bridge=spawn(process.execPath,['--import',tsx,bridgePath],{cwd:root,env:{...fixtureEnv,TSX_TSCONFIG_PATH:join(root,'tsconfig.json')},detached:true,stdio:['pipe','pipe',stderr]});closeSync(stderr);children.add(bridge);
+      const bridgeExit=new Promise((ok,bad)=>{bridge.once('error',bad);bridge.once('close',(code,signal)=>code===0&&!signal?ok():bad(Error('Native readback exited unsuccessfully')));});bridgeExit.catch(()=>{});
+      const privateReadback=createPrivateNativeReadbackClient(bridge,{signal:abort.signal});
+      try{
+       const experience=await runAssistantOwnLeaveEnglishExperience({page,fixture,verifyCanonical:privateReadback.verifyCanonical});
+       assert.equal(experience.journey,'english_own_leave_primary');const checkIds=['real_current_own_selection','prepare_no_native_effect','literal_saved_review','single_explicit_confirm_native_refs','reload_same_completed_receipt','repeat_readonly_reopen_no_extra_effect'];assert.deepEqual(experience.checks.map(check=>check.id),checkIds);assert(experience.checks.every(check=>check.passed===true&&JSON.stringify(Object.keys(check).sort())===JSON.stringify(['id','passed'])));
+       await privateReadback.finish();await Promise.race([bridgeExit,delay(10000).then(()=>{throw Error('Readback exit unconfirmed');})]);await stop(bridge);privateReadback.assertClosed();
+       // This is the journey's bounded code-owned check metadata, never native payloads/IDs/text.
+       report.ownLeaveExperience={journey:'english_own_leave_primary',checks:checkIds.map(id=>({id,passed:true})),coverage:'fictional_english_positive_ui_and_readonly_native_reconciliation_only'};ownLeaveExperienced=true;
+      }finally{if(children.has(bridge))await stop(bridge);}
+     }
      const body=await page.locator('body').innerText();assert(!/SQLSTATE|PostgresError|ECONNREFUSED|Unhandled Runtime Error|stack trace|AI_CONFIG_SECRET|MIGRATION_DATABASE_URL|postgres:\/\//i.test(body));assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Horizontal overflow');
     }
    }finally{await context.close();}
   }
-  assert(Object.values(report.errorCounts).every(n=>n===0),'Browser errors or unexpected external requests');report.state='smoke_passed_incomplete_experience';
+  assert(ownLeaveExperienced,'Required primary own-leave journey did not complete');assert(Object.values(report.errorCounts).every(n=>n===0),'Browser errors or unexpected external requests');report.state='smoke_passed_incomplete_experience';
  }catch{failed=true;report.state='failed';report.failure=interrupted?'interrupted':'bounded_controller_or_browser_failure';}
  finally{
   if(browser)try{await Promise.race([browser.close(),delay(10000).then(()=>{throw Error('Browser cleanup timeout');})]);}catch{failed=true;report.failure='browser_cleanup_failure';}

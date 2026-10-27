@@ -1,7 +1,9 @@
 /** Dependency-free controller contract fixtures only: not native/business/browser evidence. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {MODULES,REMAINING,unitFor,childEnvironment,validateFixture,publicReport,parseOwnedGroupSnapshot} from './assistant-development-browser.mjs';
+import {EventEmitter} from 'node:events';
+import {PassThrough} from 'node:stream';
+import {parseNativeReadbackResponse,nativeReadbackBootstrap,createPrivateNativeReadbackClient,MODULES,REMAINING,unitFor,childEnvironment,validateFixture,publicReport,parseOwnedGroupSnapshot} from './assistant-development-browser.mjs';
 const id=n=>'00000000-0000-4000-8000-'+String(n).padStart(12,'0');
 function packet(){const actors=Array.from({length:6},(_,n)=>({userId:id(n+1),personId:id(n+11),employmentId:id(n+21)}));return {format:1,state:'native_prerequisites_prepared_not_experienced',actors:{operator:actors[0],self:actors[1],reviewers:[actors[2],actors[3]],peer:actors[4],manager:actors[5]},finalNativePrerequisites:[0,2,3].map(n=>({userId:actors[n].userId,modules:MODULES.map(module=>({module,state:'complete',nativeEvidence:'present',qualityFailures:0,securityFailures:0,cases:[{id:module+':nonempty-business-evidence',category:'native',passed:true}]}))})),expectedNative:{selfLeaveRequests:0,selfProfileRequests:0,closeTargetStatus:'processed'},limits:{uiTargetEffects:'not_executed',providerCapability:'UNVERIFIED_NO_CALLS',notificationEmailConsent:'UNAVAILABLE_REQUIRES_ACTUAL_VERIFIED_PROVIDER_IDENTITY',releaseGate:'NOT_RUN'}};}
 test('exact candidate/run/attempt own distinct finite container keys',()=>{const sha='a'.repeat(40);assert.match(unitFor('12','1',sha),/^db-[a-f0-9]{16}$/);assert.notEqual(unitFor('12','1',sha),unitFor('12','2',sha));assert.notEqual(unitFor('12','1',sha),unitFor('12','1','b'.repeat(40)));for(const args of [['x','1',sha],['1','0x1',sha],['1','1','main']])assert.throws(()=>unitFor(...args));});
@@ -9,3 +11,29 @@ test('child environment omits production secrets, provider/auth credentials and 
 test('all20 nonempty native prerequisite reports required, metadata-only or borrowed actor refuses',()=>{assert.equal(MODULES.length,20);assert.equal(new Set(MODULES).size,20);assert.doesNotThrow(()=>validateFixture(packet()));for(const mutate of [p=>p.finalNativePrerequisites[0].modules.pop(),p=>p.finalNativePrerequisites[0].modules[0].cases=[],p=>p.finalNativePrerequisites[0].modules[0].nativeEvidence='empty',p=>p.finalNativePrerequisites[0].modules[0].securityFailures=1,p=>p.finalNativePrerequisites[0].userId=p.actors.self.userId,p=>p.expectedNative.selfLeaveRequests=1,p=>p.limits.providerCapability='PASS',p=>p.limits.notificationEmailConsent='verified',p=>p.actors.reviewers.pop()]){const p=packet();mutate(p);assert.throws(()=>validateFixture(p));}});
 test('smoke report cannot certify experience, provider identity or release',()=>{const report=publicReport('a'.repeat(40));report.state='smoke_passed_incomplete_experience';report.checks.push({workspace:'rendered'});assert.equal(report.releaseEligible,false);assert.equal(report.experienceComplete,false);assert.match(report.authentication,/not_production/);assert.match(report.notificationIdentity,/excluded/);assert.deepEqual(report.remaining,[...REMAINING]);assert(report.remaining.some(x=>x.includes('confirm')));assert(report.remaining.some(x=>x.includes('cross-person')));});
 test('process cleanup excludes only inspector and retains real same-session descendants',()=>{assert.deepEqual(parseOwnedGroupSnapshot('100 100 100\n101 100 100\n102 100 100\n200 200 200\n',102,100),[100,101]);assert.deepEqual(parseOwnedGroupSnapshot('102 100 100\n200 200 200\n',102,100),[]);for(const text of ['', 'unknown', '100 100 999', '100 0 100'])assert.throws(()=>parseOwnedGroupSnapshot(text,102,100));assert.throws(()=>parseOwnedGroupSnapshot('100 100 100',undefined,100));});
+
+test('private readback response envelopes refuse wrong phase sequence, unknown fields and oversize',()=>{
+ assert.equal(parseNativeReadbackResponse('{"sequence":0,"ok":true,"ready":true}',0,'ready'),true);
+ assert.deepEqual(parseNativeReadbackResponse('{"sequence":1,"ok":true,"value":{"counts":{}}}',1,'verify'),{counts:{}});
+ for(const [value,sequence,operation] of [[{sequence:2,ok:true,value:{}},1,'verify'],[{sequence:1,ok:false},1,'verify'],[{sequence:1,ok:true,value:{},key:'private'},1,'verify'],[{sequence:0,ok:true,ready:true},1,'verify'],[{sequence:6,ok:true,finished:false},6,'finish']])assert.throws(()=>parseNativeReadbackResponse(JSON.stringify(value),sequence,operation));
+ assert.throws(()=>parseNativeReadbackResponse(' '.repeat(131073),1,'verify'));
+});
+test('one private bootstrap creates one persistent canonical verifier with absolute imports and readback only',()=>{
+ const source=nativeReadbackBootstrap('/fictional/source','/fictional/private/fixture.json');
+ assert(source.includes('from "/fictional/source/db/client.ts"'));assert(source.includes('from "/fictional/source/scripts/fixtures/ai-delivery-own-leave-native-readback.ts"'));
+ assert.equal(source.split('await createAiDeliveryOwnLeaveNativeReadback(').length-1,1);assert(source.includes('await verify(p.invocation)'));assert(source.includes("calls!==5"));assert(source.includes("process.stdout.write(text+'\\n'"));
+ for(const disallowed of ['file://','import.meta','populateAiDeliveryFullFixture','db:migrate','INSERT INTO','UPDATE public','createAiDeliveryOwnLeaveNativeReadback(p.'])assert(!source.includes(disallowed));
+});
+function fakeReadbackChild(){const child=new EventEmitter();child.stdin=new PassThrough();child.stdout=new PassThrough();child.exitCode=null;child.signalCode=null;return child;}
+test('private transport retains a single sequential stream, enforces correspondence and confirms clean finish',async()=>{
+ const child=fakeReadbackChild(),client=createPrivateNativeReadbackClient(child,{timeoutMs:1000});let requestBuffer='';const observed=[];
+ child.stdin.on('data',chunk=>{requestBuffer+=chunk.toString();for(let i;(i=requestBuffer.indexOf('\n'))>=0;){const line=requestBuffer.slice(0,i);requestBuffer=requestBuffer.slice(i+1);const p=JSON.parse(line);observed.push(p);child.stdout.write(JSON.stringify(p.operation==='finish'?{sequence:p.sequence,ok:true,finished:true}:{sequence:p.sequence,ok:true,value:{phase:p.invocation.phase}})+'\n');}});
+ child.stdout.write('{"sequence":0,"ok":true,"ready":true}\n');
+ for(const phase of ['baseline','prepared','submitted','reopened','reopened_again'])assert.deepEqual(await client.verifyCanonical({phase}),{phase});
+ await client.finish();const ended=new Promise(resolve=>child.stdout.once('end',resolve));child.stdout.end();await ended;child.exitCode=0;child.emit('exit',0,null);client.assertClosed();
+ assert.deepEqual(observed.map(p=>p.sequence),[1,2,3,4,5,6]);assert.deepEqual(Object.keys(observed[5]).sort(),['operation','sequence']);
+});
+test('abort and malformed/unsolicited private replies cannot produce a verification fact',async()=>{
+ const child=fakeReadbackChild(),abort=new AbortController(),client=createPrivateNativeReadbackClient(child,{signal:abort.signal,timeoutMs:1000});child.stdout.write('{"sequence":0,"ok":true,"ready":true}\n');const pending=client.verifyCanonical({phase:'baseline'});abort.abort();await assert.rejects(pending);assert.throws(()=>client.assertClosed());
+ const other=fakeReadbackChild(),otherClient=createPrivateNativeReadbackClient(other,{timeoutMs:1000});other.stdout.write('{"sequence":0,"ok":true,"ready":true}\n');const request=otherClient.verifyCanonical({phase:'baseline'});await Promise.resolve();other.stdout.write('{"sequence":99,"ok":true,"value":{}}\n');await assert.rejects(request);assert.throws(()=>otherClient.assertClosed());
+});
