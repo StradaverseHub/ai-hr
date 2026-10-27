@@ -14,12 +14,15 @@ beforeAll(migrateTestDb);afterAll(async()=>{vi.unstubAllEnvs();await closeAll();
 beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-marker-acl-secret');vi.stubEnv('OPENAI_API_KEY','fictional-marker-acl-key');vi.stubEnv('ANTHROPIC_API_KEY','');vi.stubEnv('GOOGLE_API_KEY','');vi.stubEnv('GEMINI_API_KEY','');await resetDb();base=await seedBase();await setModule(base.tenantId,'assistant','active');});
 
 const TABLES={
- intent:{name:'public.ai_assistant_answer_evaluation_intent',identity:true,
+ intent:{name:'public.ai_assistant_answer_evaluation_intent',identity:true,deletable:true,forbidden:['created_at','expires_at','incarnation'],
   insert:['candidate_id','evaluator_person_id','evaluator_user_id','id','provider_fingerprint','receipt','source_digest','suite_digest','tenant_id'],update:['evaluation_id','state']},
- strategyUse:{name:'public.ai_assistant_answer_strategy_use',identity:true,
+ strategyUse:{name:'public.ai_assistant_answer_strategy_use',identity:true,deletable:true,forbidden:['created_at','expires_at','incarnation'],
   insert:['candidate_digest','id','person_id','promotion_id','provider_fingerprint','receipt','source_digest','tenant_id','user_id'],update:['exchange_id','state']},
- arm:{name:'public.ai_assistant_answer_evaluation_arm',identity:false,
+ arm:{name:'public.ai_assistant_answer_evaluation_arm',identity:false,deletable:true,forbidden:['created_at','expires_at'],
   insert:['arm','candidate_id','evaluator_person_id','evaluator_user_id','fixture_id','id','passed','provider_fingerprint','receipt','suite_digest','tenant_id'],update:['passed','receipt']},
+ // Cumulative call ledger: the app opens at the default 1 and adds 1; it can never choose or delete a count.
+ budget:{name:'public.ai_assistant_answer_evaluation_budget',identity:false,deletable:false,forbidden:[],
+  insert:['arm','candidate_id','fixture_id','tenant_id'],update:['admitted']},
 } as const;
 const MARKERS=[TABLES.intent.name,TABLES.strategyUse.name] as const;
 
@@ -30,11 +33,12 @@ describe('conversation marker ACL in the live catalogue',()=>{
   expect(columns.length).toBeGreaterThan(table.insert.length);
   expect(columns.filter(row=>row.can_insert).map(row=>row.name)).toEqual([...table.insert]);
   expect(columns.filter(row=>row.can_update).map(row=>row.name)).toEqual([...table.update]);
-  for(const forbidden of ['created_at','expires_at',...(table.identity?['incarnation']:[])])expect(columns.find(row=>row.name===forbidden)).toMatchObject({can_insert:false,can_update:false});
+  for(const forbidden of table.forbidden)expect(columns.find(row=>row.name===forbidden)).toMatchObject({can_insert:false,can_update:false});
+  expect(columns.find(row=>row.name==='admitted')?.can_insert??false).toBe(false);
   const[whole]=await owner.db.execute<Record<string,boolean>>(sql`select has_table_privilege('ai_hr_app',${table.name}::text,'SELECT') as can_select,has_table_privilege('ai_hr_app',${table.name}::text,'DELETE') as can_delete,
    has_table_privilege('ai_hr_app',${table.name}::text,'INSERT') as table_insert,has_table_privilege('ai_hr_app',${table.name}::text,'UPDATE') as table_update,has_table_privilege('ai_hr_app',${table.name}::text,'TRUNCATE') as can_truncate,
    has_table_privilege('ai_hr_app',${table.name}::text,'REFERENCES') as can_reference,has_table_privilege('ai_hr_app',${table.name}::text,'TRIGGER') as can_trigger,has_any_column_privilege('public',${table.name}::text,'SELECT,INSERT,UPDATE') as public_any`);
-  expect({...whole}).toEqual({can_select:true,can_delete:true,table_insert:false,table_update:false,can_truncate:false,can_reference:false,can_trigger:false,public_any:false});
+  expect({...whole}).toEqual({can_select:true,can_delete:table.deletable,table_insert:false,table_update:false,can_truncate:false,can_reference:false,can_trigger:false,public_any:false});
  });
  it.each(MARKERS)('%s: incarnation is GENERATED ALWAYS and its sequence grants neither the app role nor PUBLIC anything',async table=>{
   const[row]=await owner.db.execute<{identity:string;sequence:string|null}>(sql`select a.attidentity::text as identity,pg_get_serial_sequence(${table}::text,'incarnation') as sequence from pg_catalog.pg_attribute a where a.attrelid=${table}::regclass and a.attname='incarnation' and not a.attisdropped`);
@@ -103,5 +107,23 @@ describe('the real app role cannot choose, rewind or re-issue marker identity or
   expect(Number(next.incarnation)).toBeGreaterThan(Number(intent.incarnation));
   const[dates]=await owner.db.execute<{bounded:boolean}>(sql`select bool_and(expires_at>created_at and expires_at<=created_at+interval '31 days' and created_at<=clock_timestamp()) as bounded from (select created_at,expires_at from public.ai_assistant_answer_evaluation_intent union all select created_at,expires_at from public.ai_assistant_answer_strategy_use union all select created_at,expires_at from public.ai_assistant_answer_evaluation_arm) stored`);
   expect(dates.bounded).toBe(true);
+ },120000);
+});
+
+describe('the cumulative evaluation call ledger only advances',()=>{
+ it('refuses app-role reset, skip, delete and chosen counts, and refuses even the physical owner a decrease',async()=>{
+  const author=await actor('Fictional Ledger Author'),reviewer=await actor('Fictional Ledger Reviewer'),{candidateId}=await createConversationAgentCandidate(author,{version:1,configuration:{kind:'assistant_answer_prompt_v1',variant:'focused_v1'}});
+  const as=(query:SQL)=>withTenant(reviewer,tx=>tx.execute(query)),where=sql`tenant_id=${base.tenantId}::uuid and candidate_id=${candidateId}::uuid and fixture_id='*' and arm='total'`;
+  const open=sql`insert into public.ai_assistant_answer_evaluation_budget(tenant_id,candidate_id,fixture_id,arm) values(${base.tenantId}::uuid,${candidateId}::uuid,'*','total')`;
+  await as(open);await as(sql`update public.ai_assistant_answer_evaluation_budget set admitted=admitted+1 where ${where}`);
+  const stored=async()=>{const[row]=await owner.db.execute<{admitted:number}>(sql`select admitted from public.ai_assistant_answer_evaluation_budget where ${where}`);return row.admitted;};
+  expect(await stored()).toBe(2);
+  await expect(as(sql`update public.ai_assistant_answer_evaluation_budget set admitted=0 where ${where}`)).rejects.toMatchObject(DENIED);
+  await expect(as(sql`update public.ai_assistant_answer_evaluation_budget set admitted=1 where ${where}`)).rejects.toMatchObject(DENIED);
+  await expect(as(sql`update public.ai_assistant_answer_evaluation_budget set admitted=admitted+2 where ${where}`)).rejects.toMatchObject(DENIED);
+  await expect(as(sql`delete from public.ai_assistant_answer_evaluation_budget where ${where}`)).rejects.toMatchObject(DENIED);
+  await expect(as(sql`insert into public.ai_assistant_answer_evaluation_budget(tenant_id,candidate_id,fixture_id,arm,admitted) values(${base.tenantId}::uuid,${candidateId}::uuid,'fictional-ledger-fixture','baseline',1)`)).rejects.toMatchObject(DENIED);
+  await expect(owner.db.execute(sql`update public.ai_assistant_answer_evaluation_budget set admitted=0 where ${where}`)).rejects.toMatchObject(DENIED);
+  expect(await stored()).toBe(2);
  },120000);
 });

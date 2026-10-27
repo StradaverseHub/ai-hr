@@ -20,7 +20,7 @@ import {openaiAdapter} from '../lib/ai/providers/openai';
 import {defaultModelFor} from '../lib/ai/registry';
 import {MODULE_AGENT_SOURCE_DIGEST} from '../lib/ai/module-agent-source-manifest';
 import {ASSISTANT_CONVERSATION_HOLDOUTS} from '../lib/ai/assistant-conversation-holdouts';
-import {createConversationAgentCandidate,evaluateConversationAgentCandidate,prepareAssistantConversationStrategyTx,recheckAssistantConversationStrategyTx,completeAssistantConversationStrategyTx,eraseOwnConversationStrategyMetadata} from '../core/module-agent-releases';
+import {ASSISTANT_CONVERSATION_ARM_CALL_LIMIT,ASSISTANT_CONVERSATION_CANDIDATE_CALL_LIMIT,createConversationAgentCandidate,evaluateConversationAgentCandidate,prepareAssistantConversationStrategyTx,recheckAssistantConversationStrategyTx,completeAssistantConversationStrategyTx,eraseOwnConversationStrategyMetadata} from '../core/module-agent-releases';
 import {installSyntheticSpendCapability} from './ai-spend-fixture';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let base:Base;
@@ -28,7 +28,8 @@ beforeAll(migrateTestDb);afterAll(async()=>{vi.unstubAllEnvs();await closeAll();
 beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-evaluation-fence-secret');vi.stubEnv('OPENAI_API_KEY','fictional-evaluation-fence-key');vi.stubEnv('ANTHROPIC_API_KEY','');vi.stubEnv('GOOGLE_API_KEY','');vi.stubEnv('GEMINI_API_KEY','');await resetDb();base=await seedBase();await setModule(base.tenantId,'assistant','active');});
 
 type Actor=SessionContext&{employmentId:string};
-async function actors(){const make=async(name:string):Promise<Actor>=>{const hired=await hireEmployee(adminCtx(base),{person:{fullName:name,primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'}),userId=await createAppUser(base.tenantId,hired.personId,'hr_admin');await grantAssistant(adminCtx(base),{appUserId:userId});return{...await entitledCtx(base,['hr_admin']),userId,personId:hired.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}],employmentId:hired.employmentId};};return{author:await make('Fictional Fence Author'),reviewer:await make('Fictional Fence Reviewer')};}
+async function actor(name:string):Promise<Actor>{const hired=await hireEmployee(adminCtx(base),{person:{fullName:name,primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'}),userId=await createAppUser(base.tenantId,hired.personId,'hr_admin');await grantAssistant(adminCtx(base),{appUserId:userId});return{...await entitledCtx(base,['hr_admin']),userId,personId:hired.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}],employmentId:hired.employmentId};}
+async function actors(){return{author:await actor('Fictional Fence Author'),reviewer:await actor('Fictional Fence Reviewer')};}
 const spendFixture={provider:'openai' as const,model:defaultModelFor('openai'),rootNanos:'5000000000',monthlyNanos:'10000000000'};
 async function candidate(){const a=await actors(),created=await createConversationAgentCandidate(a.author,{version:1,configuration:{kind:'assistant_answer_prompt_v1',variant:'focused_v1'}});await installSyntheticSpendCapability(a.author,spendFixture);return{...a,candidateId:created.candidateId};}
 const consent=()=>({synthetic:true as const,maxRequests:12,sourceDigest:MODULE_AGENT_SOURCE_DIGEST});
@@ -184,5 +185,47 @@ describe('in-flight main question shares the same marker fence',()=>{
    expect(await count(EXCHANGE)).toBe(0);
    expect(Array.from(await owner.db.execute(sql`select state,exchange_id::text as exchange_id,incarnation::text as incarnation from public.ai_assistant_answer_strategy_use where id=${old.id}::uuid`),row=>({...row}))).toEqual([{state:'pending',exchange_id:null,incarnation:copy.incarnation}]);
   }finally{transport.release();await running;}
+ },120000);
+});
+
+async function ledger(candidateId:string){return Array.from(await owner.db.execute<{fixture_id:string;arm:string;admitted:number}>(sql`select fixture_id,arm,admitted from public.ai_assistant_answer_evaluation_budget where tenant_id=${base.tenantId}::uuid and candidate_id=${candidateId}::uuid order by fixture_id,arm`),row=>({...row}));}
+/** Physical-owner fixture standing in for earlier invocations' spend; the app role can never set a count. */
+async function seedLedger(candidateId:string,fixture:string,arm:'total'|'baseline'|'candidate',admitted:number){await owner.db.execute(sql`insert into public.ai_assistant_answer_evaluation_budget(tenant_id,candidate_id,fixture_id,arm,admitted) values(${base.tenantId}::uuid,${candidateId}::uuid,${fixture},${arm},${admitted})`);}
+describe('cumulative provider-call ledger across invocations, retries and evaluators',()=>{
+ it('charges every admitted call to its exact queued arm and to the candidate total, accumulating across invocations',async()=>{
+  const a=await candidate(),transport=evaluationTransport(null);
+  for(let invocation=0;invocation<2;invocation++){
+   await evaluateConversationAgentCandidate(a.reviewer,{candidateId:a.candidateId,consent:consent()});
+   const rows=await ledger(a.candidateId),arms=rows.filter(row=>row.arm!=='total'),stored=await owner.db.execute<{fixture_id:string;arm:string}>(sql`select fixture_id,arm from public.ai_assistant_answer_evaluation_arm where tenant_id=${base.tenantId}::uuid and candidate_id=${a.candidateId}::uuid order by fixture_id,arm`);
+   expect(rows.find(row=>row.arm==='total')?.admitted).toBe(transport.spy.mock.calls.length);
+   expect(arms.reduce((sum,row)=>sum+row.admitted,0)).toBe(transport.spy.mock.calls.length);
+   expect(arms.map(row=>row.fixture_id+':'+row.arm)).toEqual(Array.from(stored,row=>row.fixture_id+':'+row.arm));
+   for(const row of arms)expect(row.admitted).toBe(ASSISTANT_CONVERSATION_HOLDOUTS.find(fixture=>fixture.id===row.fixture_id)!.expectedTools.length+1);
+  }
+  expect(transport.spy.mock.calls.length).toBeGreaterThan(12);
+ },120000);
+ it('an exhausted candidate total refuses before any intent, provider call or evaluation, and erasure never resets it',async()=>{
+  const a=await candidate(),transport=evaluationTransport(null);await seedLedger(a.candidateId,'*','total',ASSISTANT_CONVERSATION_CANDIDATE_CALL_LIMIT);const before=await ledger(a.candidateId);
+  await expect(evaluateConversationAgentCandidate(a.reviewer,{candidateId:a.candidateId,consent:consent()})).rejects.toMatchObject(REFUSED);
+  expect(transport.spy).not.toHaveBeenCalled();expect(await count(INTENT)).toBe(0);expect(await count(EVALUATION)).toBe(0);
+  await eraseOwnConversationStrategyMetadata(a.reviewer);await eraseOwnAssistantHistory(a.reviewer);await erasePersonPii(adminCtx(base),pdpaRequest(a.reviewer.employmentId));
+  expect(await ledger(a.candidateId)).toEqual(before);
+  // A different, untouched evaluator proves the refusal is the ledger, not the erased evaluator's state.
+  const second=await actor('Fictional Fence Second Reviewer');
+  await expect(evaluateConversationAgentCandidate(second,{candidateId:a.candidateId,consent:consent()})).rejects.toMatchObject(REFUSED);
+  expect(transport.spy).not.toHaveBeenCalled();expect(await ledger(a.candidateId)).toEqual(before);expect(await count(INTENT)).toBe(0);
+ },120000);
+ it('one remaining candidate call admits exactly one provider call, refuses the next admission mid-run, then refuses upfront',async()=>{
+  const a=await candidate(),transport=evaluationTransport(null);await seedLedger(a.candidateId,'*','total',ASSISTANT_CONVERSATION_CANDIDATE_CALL_LIMIT-1);
+  const report=await evaluateConversationAgentCandidate(a.reviewer,{candidateId:a.candidateId,consent:consent()});expect(report.state).toBe('incomplete');expect(transport.spy).toHaveBeenCalledTimes(1);
+  expect((await ledger(a.candidateId)).find(row=>row.arm==='total')?.admitted).toBe(ASSISTANT_CONVERSATION_CANDIDATE_CALL_LIMIT);
+  await expect(evaluateConversationAgentCandidate(a.reviewer,{candidateId:a.candidateId,consent:consent()})).rejects.toMatchObject(REFUSED);expect(transport.spy).toHaveBeenCalledTimes(1);
+ },120000);
+ it('a repeatedly retried queue-head arm never exceeds its own bound and, once exhausted, refuses upfront',async()=>{
+  const a=await candidate(),transport=evaluationTransport(null),head=ASSISTANT_CONVERSATION_HOLDOUTS[0];expect(head.expectedTools.length).toBeGreaterThan(0);
+  await seedLedger(a.candidateId,head.id,'baseline',ASSISTANT_CONVERSATION_ARM_CALL_LIMIT-1);
+  const report=await evaluateConversationAgentCandidate(a.reviewer,{candidateId:a.candidateId,consent:consent()});expect(report.state).toBe('incomplete');expect(transport.spy).toHaveBeenCalledTimes(1);
+  const rows=await ledger(a.candidateId);expect(rows.find(row=>row.fixture_id===head.id&&row.arm==='baseline')?.admitted).toBe(ASSISTANT_CONVERSATION_ARM_CALL_LIMIT);expect(rows.find(row=>row.arm==='total')?.admitted).toBe(1);expect(await count(ARM)).toBe(0);
+  await expect(evaluateConversationAgentCandidate(a.reviewer,{candidateId:a.candidateId,consent:consent()})).rejects.toMatchObject(REFUSED);expect(transport.spy).toHaveBeenCalledTimes(1);
  },120000);
 });

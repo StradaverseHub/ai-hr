@@ -1,5 +1,6 @@
--- UNALLOCATED / UNJOURNALED / UNAPPLIED. Requires0642 diagnostic configuration contract.
--- No journal/index/timestamp is inferred; release owner coordinates actual allocation.
+-- Filename ALLOCATED by the coordinator: 0655_assistant_conversation_candidates. Still UNJOURNALED /
+-- UNAPPLIED: the integrator creates the numbered file and journal entry after review. Requires0642
+-- diagnostic configuration contract. No journal index/timestamp is inferred here.
 -- Replace ONLY exact known parsed CHECK expressions, never a guessed generated constraint name.
 DO $migration$
 DECLARE expected text; actual_name text; targets integer;
@@ -70,6 +71,36 @@ REVOKE ALL ON public.ai_assistant_answer_evaluation_intent FROM PUBLIC,ai_hr_app
 GRANT SELECT,DELETE ON public.ai_assistant_answer_evaluation_intent TO ai_hr_app;
 GRANT INSERT(id,tenant_id,candidate_id,evaluator_user_id,evaluator_person_id,source_digest,provider_fingerprint,suite_digest,receipt) ON public.ai_assistant_answer_evaluation_intent TO ai_hr_app;
 GRANT UPDATE(state,evaluation_id) ON public.ai_assistant_answer_evaluation_intent TO ai_hr_app;
+--> statement-breakpoint
+-- Cumulative provider-call ledger: one candidate total (fixture_id='*', arm='total') and one row per
+-- (fixture, arm), shared by every evaluator, invocation and retry. It holds no person, user or content,
+-- so no erasure/PDPA/bridge path touches it; only candidate deletion cascades. The app may open a row at
+-- 1 and add exactly 1 per admission under exclusive Access; it can never choose, lower, reset or delete
+-- a count, and exhaustion refuses before any provider admission. Limits are source constants.
+CREATE TABLE public.ai_assistant_answer_evaluation_budget(
+ tenant_id uuid NOT NULL REFERENCES public.tenant(id),candidate_id uuid NOT NULL,
+ fixture_id text NOT NULL CHECK(length(fixture_id) BETWEEN 1 AND 160),arm text NOT NULL CHECK(arm IN('total','baseline','candidate')),
+ admitted integer NOT NULL DEFAULT 1 CHECK(admitted BETWEEN 1 AND 1000000),
+ PRIMARY KEY(tenant_id,candidate_id,fixture_id,arm),CHECK((arm='total')=(fixture_id='*')),
+ FOREIGN KEY(candidate_id,tenant_id) REFERENCES public.ai_agent_candidate(id,tenant_id) ON DELETE CASCADE
+);
+ALTER TABLE public.ai_assistant_answer_evaluation_budget ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ai_assistant_answer_evaluation_budget FORCE ROW LEVEL SECURITY;
+CREATE POLICY answer_budget_read ON public.ai_assistant_answer_evaluation_budget FOR SELECT TO ai_hr_app USING(tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND app.is_group_admin());
+CREATE POLICY answer_budget_open ON public.ai_assistant_answer_evaluation_budget FOR INSERT TO ai_hr_app WITH CHECK(tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND app.is_group_admin() AND admitted=1 AND EXISTS(SELECT 1 FROM public.ai_agent_candidate c WHERE c.id=ai_assistant_answer_evaluation_budget.candidate_id AND c.tenant_id=ai_assistant_answer_evaluation_budget.tenant_id AND c.kind='assistant_answer_prompt_v1' AND c.author_user_id<>app.current_user_id()));
+CREATE POLICY answer_budget_spend ON public.ai_assistant_answer_evaluation_budget FOR UPDATE TO ai_hr_app USING(tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND app.is_group_admin()) WITH CHECK(tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND app.is_group_admin());
+REVOKE ALL ON public.ai_assistant_answer_evaluation_budget FROM PUBLIC,ai_hr_app;
+GRANT SELECT ON public.ai_assistant_answer_evaluation_budget TO ai_hr_app;
+GRANT INSERT(tenant_id,candidate_id,fixture_id,arm) ON public.ai_assistant_answer_evaluation_budget TO ai_hr_app;
+GRANT UPDATE(admitted) ON public.ai_assistant_answer_evaluation_budget TO ai_hr_app;
+-- Monotonic for EVERY role that updates, including the physical owner: +1 only, identity immutable.
+CREATE FUNCTION app.answer_evaluation_budget_monotonic() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,pg_temp AS $$
+BEGIN
+ IF NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.candidate_id IS DISTINCT FROM OLD.candidate_id OR NEW.fixture_id IS DISTINCT FROM OLD.fixture_id OR NEW.arm IS DISTINCT FROM OLD.arm OR NEW.admitted IS DISTINCT FROM OLD.admitted+1 THEN RAISE EXCEPTION 'Conversation evaluation call ledger only advances' USING ERRCODE='42501';END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.answer_evaluation_budget_monotonic() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER answer_evaluation_budget_monotonic BEFORE UPDATE ON public.ai_assistant_answer_evaluation_budget FOR EACH ROW EXECUTE FUNCTION app.answer_evaluation_budget_monotonic();
 --> statement-breakpoint
 CREATE TABLE public.ai_assistant_answer_strategy_use(
  id uuid PRIMARY KEY,incarnation bigint GENERATED ALWAYS AS IDENTITY NOT NULL,tenant_id uuid NOT NULL REFERENCES public.tenant(id),user_id uuid NOT NULL REFERENCES public.app_user(id),person_id uuid REFERENCES public.person(id) ON DELETE CASCADE,
