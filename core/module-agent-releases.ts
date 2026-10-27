@@ -257,6 +257,21 @@ async function assertGovernedJobCandidateTx(tx:Tx,ctx:SessionContext,job:Governe
  if(!job.promotion_id)return;const [promotion]=await tx.execute<{candidate_id:string}>(sql`select candidate_id from public.ai_agent_promotion where id=${job.promotion_id}::uuid and tenant_id=${ctx.tenantId}::uuid and owner_user_id=${ctx.userId}::uuid`);
  if(!promotion)return fail();const candidate=await candidateTx(tx,ctx,promotion.candidate_id);if(candidate.candidate_digest!==completed.candidateDigest||completed.specialist&&(candidate.kind!=='canonical_specialist_v1'||candidate.module_code!==completed.specialist.configuration.module||routingDigest(candidate.configuration)!==routingDigest(completed.specialist.configuration)))return fail();
 }
+/** Historical command provenance for a distinct human-linked native outcome. This is neither
+ * feedback truth nor new promoted-run admission. A native action may intentionally change read
+ * facts: do not apply the opinion writer's unchanged-result test here. Call BEFORE native source
+ * intervals, preserving Access -> release -> signals -> canonical source -> association order.
+ * Any refusal requires the whole caller transaction to roll back; no savepoint continuation. */
+export async function readVerifiedOwnGovernedJobProvenanceTx(tx:Tx,supplied:SessionContext,jobId:string):Promise<Readonly<{jobId:string;modules:readonly AgentModuleCode[];jobReceiptDigest:string;candidateDigest:string;sourceDigest:string;expiresAt:string}>>{
+ const current=capture(supplied),id=jobId;
+ if(typeof id!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(id))return fail();
+ const fresh=await guard(tx,current,false);if(!current.userId)return fail();
+ await agentReleaseIntervalTx(tx,current,current.userId,false);await signalIntervalTx(tx,current,current.userId);
+ const rows=await tx.execute<GovernedJobRow>(sql`select ${jobProjection} from public.ai_agent_job_receipt where id=${id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);
+ if(rows.length!==1)return fail();const job=rows[0],completed=verifiedGovernedJob(job,current);await assertGovernedJobCandidateTx(tx,current,job,completed);
+ for(const module of completed.executed.modules)assertModuleEnabled(fresh,module);
+ return Object.freeze({jobId:job.id,modules:Object.freeze([...completed.executed.modules]),jobReceiptDigest:rawReceiptDigest(job.receipt),candidateDigest:completed.candidateDigest,sourceDigest:MODULE_AGENT_SOURCE_DIGEST,expiresAt:job.expires_at!});
+}
 /** Human opinion only, independently tied to an actual completed command and unchanged current facts. */
 export async function recordOwnGovernedJobFeedback(ctx:SessionContext,input:{jobId:string;outcome:typeof GOVERNED_JOB_FEEDBACK_OUTCOMES[number];consented:true}){
  const current=capture(ctx),p={jobId:input.jobId,outcome:input.outcome,consented:input.consented};
