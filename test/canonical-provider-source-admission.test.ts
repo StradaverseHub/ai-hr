@@ -3,7 +3,7 @@
 import {randomUUID} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi,type MockInstance} from 'vitest';
-import {type SessionContext,type Tx} from '../db/client';
+import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as governance from '../core/ai-governance';
 import {submitFeedback,generateFeedbackPlan,cancelFeedback} from '../core/feedback';
 import {cancelClaim,updateClaimType,deleteClaimDraft,saveClaimDraft} from '../core/claims';
@@ -175,5 +175,15 @@ describe('exact native source ownership at callback tail',()=>{
   const employmentId=await makeEmp('Actual fictional claim-list owner'),[employment]=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,employmentId)),userId=await createAppUser(b.tenantId,employment.personId,'employee');await grantAssistant(a,{appUserId:userId});const self:SessionContext={...await entitledCtx(b,['employee']),userId,personId:employment.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]},[type]=await owner.db.insert(schema.claimType).values({tenantId:b.tenantId,code:'SOURCE_LIST',name:'Fictional own claim type'}).returning(),input={employmentId,claimTypeId:type.id,amount:12,incurredOn:todayInKualaLumpur(),description:'Fictional own draft.'},draft=await saveClaimDraft(self,input);
   const chat=vi.spyOn(openaiAdapter,'converse').mockImplementationOnce(async()=>{afterSourceReplay=async()=>{await expect(deleteClaimDraft(self,draft.id)).rejects.toThrow();await expect(saveClaimDraft(self,input)).rejects.toThrow();expect(await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.employmentId,employmentId))).toHaveLength(1);};return{text:'',stop:'tool_use',toolCalls:[{id:'actual-status-call',name:'my_claim_statuses',input:{limit:5}}],usage:{inputTokens:0,outputTokens:0,cachedInputTokens:0},usageReported:true};}).mockResolvedValue({text:'Your recorded claim is a draft.',stop:'end',toolCalls:[],usage:{inputTokens:0,outputTokens:0,cachedInputTokens:0},usageReported:true});
   await askAssistant(self,{question:'What is my recorded claim status?'});expect(chat).toHaveBeenCalledTimes(2);expect(JSON.stringify(chat.mock.calls[1][1].turns)).not.toContain('Fictional own draft.');await deleteClaimDraft(self,draft.id);const replacement=await saveClaimDraft(self,input);expect(replacement.id).not.toBe(draft.id);
+ });
+});
+
+describe('ordinary authorized triage caller retains app-role locking access',()=>{
+ it('owns type/item/request through existing grants and USING policies without gaining catalogue write permission',async()=>{
+  const claim=await claimFixture(),[employment]=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,claim.employmentId)),userId=await createAppUser(b.tenantId,employment.personId,'employee'),[item]=await owner.db.insert(schema.claimItem).values({tenantId:b.tenantId,claimTypeId:claim.claimTypeId,name:'Fictional ordinary-caller item'}).returning();
+  await owner.db.update(schema.claimRequest).set({claimItemId:item.id}).where(eq(schema.claimRequest.id,claim.id));const self:SessionContext={...await entitledCtx(b,['employee']),userId,personId:employment.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+  const [privileges]=await withTenant(self,tx=>tx.execute<{role:string;type_update:boolean;item_update:boolean;request_update:boolean}>(sql`select current_user as role,has_table_privilege(current_user,'public.claim_type','UPDATE') as type_update,has_table_privilege(current_user,'public.claim_item','UPDATE') as item_update,has_table_privilege(current_user,'public.claim_request','UPDATE') as request_update`));expect(privileges).toEqual({role:'ai_hr_app',type_update:true,item_update:true,request_update:true});
+  expect(await triagePendingClaims(self)).toMatchObject({asked:1,cleared:1});expect(transport).toHaveBeenCalledOnce();expect(await runs()).toMatchObject([{userId,state:'completed'}]);
+  const [type]=await owner.db.select().from(schema.claimType).where(eq(schema.claimType.id,claim.claimTypeId));await expect(updateClaimType(self,{id:type.id,name:'Forbidden ordinary-caller rename',defaultTaxable:type.defaultTaxable,requiresReceipt:type.requiresReceipt})).rejects.toThrow();expect((await owner.db.select().from(schema.claimType).where(eq(schema.claimType.id,type.id)))[0]).toEqual(type);
  });
 });
