@@ -4,10 +4,8 @@
  */
 import {z} from 'zod';
 import type {SessionContext} from '../../db/client';
-import {withAttendanceTenant} from '../../core/module-gate';
-import {myOwnEmploymentSubjectsTx} from '../../core/read';
 import {ModuleNotEnabledError} from '../../core/entitlements';
-import {OwnClockEmploymentUnavailableError,createAppleEnrollmentService,listOwnIntegrityKeys,revokeOwnIntegrityKey,AppleKeyEnrollmentError,
+import {OwnClockEmploymentUnavailableError,createAppleEnrollmentService,AppleKeyEnrollmentError,
   createAppleClockService,AppleClockAssertionError,IntegrityChallengeError,ClockConflictError,CorrectedClockConflictError,
   ClockLocationError,AttendancePhotoRequiredError,OutsideGeofenceError,GeolocationRequiredError,GeofenceQualityError,DeviceNotRegisteredError} from '../../packs/attendance/mobile-integrity';
 import {ClockPhotoError} from '../attendance-photo';
@@ -16,6 +14,8 @@ import {AppAttestAssertionError} from './app-attest-assertion';
 import {AppleEnrollmentSettings} from '../mobile-key-enrollment';
 import * as C from '../mobile-integrity-contract';
 import {mobileRoute,MobileBadRequest,type MobileSessionResolver} from './handler';
+import {integrityEmployment as selected} from './integrity-request';
+import {createIntegrityKeyHttpHandlers} from './integrity-key-routes';
 import {mobileInput,mobileForm} from './body';
 
 class NotConfigured extends Error{}
@@ -52,15 +52,6 @@ function expected(error:unknown):Refusal|undefined{
   if(error instanceof ClockLocationError||error instanceof GeolocationRequiredError||error instanceof GeofenceQualityError)return refused('location_required');
   if(error instanceof DeviceNotRegisteredError)return refused('device_required');
   if(error instanceof ClockPhotoError)return refused('photo_invalid');
-}
-const uuid=z.string().uuid().transform(value=>value.toLowerCase());
-async function selected(ctx:SessionContext,req:Request){
-  const params=new URL(req.url).searchParams;
-  if([...params.keys()].some(key=>key!=='employmentId')||params.getAll('employmentId').length!==1)throw new MobileBadRequest('Select an employment');
-  const parsed=uuid.safeParse(params.get('employmentId'));if(!parsed.success)throw new MobileBadRequest('Invalid selector');
-  const own=await withAttendanceTenant(ctx,tx=>myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:true}));
-  if(!ctx.userId||!ctx.personId||!own.some(row=>row.employmentId===parsed.data))throw new OwnClockEmploymentUnavailableError();
-  return parsed.data;
 }
 function parse<S extends z.ZodType>(schema:S,raw:unknown):z.output<S>{
   const value=schema.safeParse(raw);if(!value.success)throw new MobileBadRequest('Invalid integrity command');return value.data;
@@ -125,11 +116,7 @@ export function createIntegrityHttpHandlers(configuration:(ctx:SessionContext,em
       const key=await createAppleEnrollmentService(await settings(ctx,id,req.signal)).complete(ctx,{...input,employmentId:id,attestation:bytes(attestation,65536)});
       return {outcome:'enrolled',key};
     }),
-    keys:route(C.IntegrityKeysResult,async(ctx,req)=>({outcome:'keys',items:await listOwnIntegrityKeys(ctx,await selected(ctx,req))})),
-    revoke:route(C.IntegrityRevocationResult,async(ctx,req)=>{
-      const id=await selected(ctx,req),input=parse(C.IntegrityRevokeIntent,await mobileInput(req,256));
-      return {outcome:'revoked',key:await revokeOwnIntegrityKey(ctx,{...input,employmentId:id})};
-    }),
+    ...createIntegrityKeyHttpHandlers(resolve),
     clockBegin:route(C.IntegrityClockPrepared,async(ctx,req)=>{
       const id=await selected(ctx,req),{command,...photo}=await form(req,C.IntegrityClockIntent);
       const result=await createAppleClockService(await settings(ctx,id,req.signal)).begin(ctx,{...command,...photo,employmentId:id});

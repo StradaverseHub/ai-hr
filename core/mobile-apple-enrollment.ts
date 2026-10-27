@@ -1,13 +1,14 @@
 /** Scoped Apple enrollment orchestration. No public endpoint or attendance trust tier is enabled. */
 import {createHash,KeyObject,randomUUID} from 'node:crypto';
-import {and,desc,eq,isNull,sql} from 'drizzle-orm';
+import {and,eq,isNull,sql} from 'drizzle-orm';
 import {z} from 'zod';
 import type {SessionContext,Tx} from '../db/client';
 import {mobileIntegrityChallenge,mobileIntegrityKey} from '../db/schema';
 import {actorOf,appendEvent} from '../db/events';
 import {encryptSecret,isSecretStorable} from '../lib/ai/crypto';
-import {AppleEnrollmentSettings,KeyEnrollmentContext,keyEnrollmentClientData,nativeKeyBindingData} from '../lib/mobile-key-enrollment';
+import {AppleEnrollmentSettings,KeyEnrollmentContext,keyEnrollmentClientData} from '../lib/mobile-key-enrollment';
 import {checkAppAttestKeyProof} from '../lib/mobile-api/app-attest-enrollment';
+import {integrityKeyReceipt as receipt} from './mobile-integrity-key';
 import {withAttendanceTenant} from './module-gate';
 import {myOwnEmploymentSubjectsTx} from './read';
 import {OwnClockEmploymentUnavailableError} from './attendance-clock-subject';
@@ -16,7 +17,6 @@ import {issueOwnIntegrityChallenge,readOwnIntegrityChallenge,consumeOwnIntegrity
 const uuid=z.string().uuid().transform(value=>value.toLowerCase());
 const intentSchema=z.object({employmentId:uuid,requestId:uuid,appInstallationId:uuid}).strict();
 type Intent=z.infer<typeof intentSchema>;
-type Row=typeof mobileIntegrityKey.$inferSelect;
 export class AppleKeyEnrollmentError extends Error{
   constructor(readonly reason:'configuration_unavailable'|'binding_conflict'|'not_found'|'key_unavailable'|'active_key_exists'|'capacity'|'metadata_unavailable'|'invalid_proof'){
     super('Device key enrollment unavailable');this.name='AppleKeyEnrollmentError';
@@ -26,8 +26,7 @@ const hash=(bytes:string|Buffer)=>createHash('sha256').update(bytes).digest();
 async function own(tx:Tx,ctx:SessionContext,employmentId:string){
   if(!ctx.userId||!ctx.personId||!(await myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:true})).some(row=>row.employmentId===employmentId))throw new OwnClockEmploymentUnavailableError();
 }
-function receipt(row:Row){return {keyId:row.id,originChallengeId:row.originChallengeId,platform:row.platform,appId:row.appId,environment:row.environment,proofKind:row.proofKind,
-  nativeKeyBinding:hash(nativeKeyBindingData(row.originChallengeId,row.vendorKeyId)).toString('hex'),createdAt:row.createdAt.toISOString(),revokedAt:row.revokedAt?.toISOString()??null};}
+
 
 /** Settings and verifier are server-owned. The verifier override is an integration-test port only. */
 export function createAppleEnrollmentService(settings:unknown,ports:{verifyProof?:typeof checkAppAttestKeyProof}={}){
@@ -109,27 +108,4 @@ export function createAppleEnrollmentService(settings:unknown,ports:{verifyProof
   };
 }
 
-export async function revokeOwnIntegrityKey(ctx:SessionContext,input:{employmentId:string;keyId:string}){
-  const employmentId=uuid.parse(input.employmentId),keyId=uuid.parse(input.keyId);
-  return withAttendanceTenant(ctx,async tx=>{
-    await own(tx,ctx,employmentId);
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':mobile-integrity:'+ctx.userId},0))`);
-    const [row]=await tx.select().from(mobileIntegrityKey).where(and(eq(mobileIntegrityKey.id,keyId),eq(mobileIntegrityKey.actorId,ctx.userId!))).limit(1).for('update');
-    // Either lock can outlive the subject check made at transaction entry.
-    await own(tx,ctx,employmentId);
-    if(!row)throw new AppleKeyEnrollmentError('not_found');if(row.revokedAt)return receipt(row);
-    const [revoked]=await tx.update(mobileIntegrityKey).set({revokedAt:sql`clock_timestamp()`}).where(eq(mobileIntegrityKey.id,keyId)).returning();
-    if(!revoked)throw new AppleKeyEnrollmentError('key_unavailable');
-    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'mobile-integrity-key',aggregateId:keyId,eventType:'mobile.integrity.key.revoked',
-      actor:actorOf(ctx),subjectEmploymentId:employmentId,payload:{}});return receipt(revoked);
-  });
-}
-/** Active keys first, followed by bounded recent revoked history; not a complete audit inventory. */
-export async function listOwnIntegrityKeys(ctx:SessionContext,employmentId:string){
-  return withAttendanceTenant(ctx,async tx=>{
-    await own(tx,ctx,uuid.parse(employmentId));
-    const rows=await tx.select().from(mobileIntegrityKey).where(eq(mobileIntegrityKey.actorId,ctx.userId!))
-      .orderBy(sql`case when ${mobileIntegrityKey.revokedAt} is null then 0 else 1 end`,desc(mobileIntegrityKey.createdAt)).limit(20);
-    return rows.map(receipt);
-  });
-}
+export {listOwnIntegrityKeys,revokeOwnIntegrityKey} from './mobile-integrity-key';

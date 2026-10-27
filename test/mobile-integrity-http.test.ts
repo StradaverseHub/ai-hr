@@ -8,12 +8,15 @@ import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {createAppleEnrollmentService} from '../core/mobile-apple-enrollment';
 import {createClockingLocation,setClockingControl,setAttendancePolicy} from '../packs/attendance/service';
+import {GET as ownKeys} from '../app/api/mobile/v1/integrity/keys/route';
+import {POST as revokeKey} from '../app/api/mobile/v1/integrity/revoke/route';
 import {createIntegrityHttpHandlers} from '../lib/mobile-api/integrity-routes';
 import {AuthRequiredError} from '../lib/auth-errors';
 import {onlineClockClientData,type OnlineClockIntegrityData} from '../lib/mobile-clock-integrity';
 import {adminCtx,closeAll,createAppUser,harnessSnapshot,owner,resetDb,seedBase,type Base} from './harness';
 const settings={apiOrigin:'https://hr.example.com',target:{platform:'ios',appId:'ABCDEFGHIJ.ai.stradaverse.aihr.test',environment:'production',requiredMetadata:null}};
 let base:Base,caller:SessionContext,config:unknown|null,revoked=false;
+vi.mock('../lib/session',async original=>({...await original<typeof import('../lib/session')>(),getMobileSession:async()=>{if(revoked)throw new AuthRequiredError();return caller;}}));
 const configuration=vi.fn(async(_ctx:SessionContext,_employmentId:string)=>config);
 const api=createIntegrityHttpHandlers(configuration,async()=>{if(revoked)throw new AuthRequiredError();return caller;});
 beforeAll(()=>vi.stubEnv('AI_CONFIG_SECRET','synthetic-mobile-key-receipt-secret-2026'));
@@ -51,6 +54,51 @@ async function call(kind:keyof typeof api,employmentId:string,body?:unknown,opti
   return {status:response.status,headers:response.headers,body:await response.json()};
 }
 describe('bounded scoped integrity HTTP handlers before route activation',()=>{
+  it('mounts own key recovery independently of vendor settings and receipt encryption availability',async()=>{
+    const f=await enrolled();config=null;const secret=process.env.AI_CONFIG_SECRET;
+    vi.stubEnv('AI_CONFIG_SECRET','');
+    try{
+      const url='https://hr.example/api/mobile/v1/integrity/keys?employmentId='+f.employmentId;
+      const response=await ownKeys(new Request(url)),keys=await response.json();
+      expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toBe('no-store');
+      expect(keys.outcome).toBe('keys');expect(keys.items).toHaveLength(1);expect(keys.items[0].keyId).toBe(f.input.keyId);
+      expect(Object.keys(keys.items[0]).sort()).toEqual(['appId','createdAt','environment','keyId','nativeKeyBinding','originChallengeId','platform','proofKind','revokedAt'].sort());
+      const request=()=>new Request(url.replace('/keys?','/revoke?'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({keyId:f.input.keyId})});
+      const revoked=await revokeKey(request()),receipt=await revoked.json();expect(revoked.status).toBe(200);expect(receipt.outcome).toBe('revoked');expect(receipt.key.revokedAt).not.toBeNull();
+      expect(await (await revokeKey(request())).json()).toEqual(receipt);expect(configuration).not.toHaveBeenCalled();
+    }finally{vi.stubEnv('AI_CONFIG_SECRET',secret);}
+  });
+  it('requires an explicit own selector on mounted recovery routes and never permits peer revocation',async()=>{
+    const f=await enrolled(),peer=await employee();
+    const url='https://hr.example/api/mobile/v1/integrity/keys';
+    for(const query of ['', '?employmentId='+f.employmentId+'&employmentId='+f.employmentId,'?employmentId='+f.employmentId+'&tenantId='+base.tenantId])
+      expect((await ownKeys(new Request(url+query))).status).toBe(400);
+    caller=peer.ctx;
+    expect(await (await ownKeys(new Request(url+'?employmentId='+f.employmentId))).json()).toEqual({outcome:'refused',code:'subject_unavailable'});
+    const result=await revokeKey(new Request(url.replace('/keys','/revoke')+'?employmentId='+peer.employmentId,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({keyId:f.input.keyId})}));
+    expect(await result.json()).toEqual({outcome:'refused',code:'key_unavailable'});
+    const [key]=await owner.db.select().from(schema.mobileIntegrityKey);expect(key.revokedAt).toBeNull();
+  });
+  it('applies bearer admission before mounted recovery reads and mutation parsing',async()=>{
+    const f=await enrolled();revoked=true;
+    for(const [handler,method,path] of [[ownKeys,'GET','keys'],[revokeKey,'POST','revoke']] as const){
+      const response=await handler(new Request('https://hr.example/api/mobile/v1/integrity/'+path+'?employmentId='+f.employmentId,{method,...(method==='POST'?{body:'malformed'}:{})}));
+      expect(response.status).toBe(401);expect(await response.json()).toEqual({error:'auth_required'});expect(response.headers.get('cache-control')).toBe('no-store');
+    }
+    const [key]=await owner.db.select().from(schema.mobileIntegrityKey);expect(key.revokedAt).toBeNull();
+  });
+  it('bounds mounted revocation inputs and refuses extra authority without changing the key',async()=>{
+    const f=await enrolled(),url='https://hr.example/api/mobile/v1/integrity/revoke?employmentId='+f.employmentId;
+    for(const body of [{keyId:f.input.keyId,tenantId:base.tenantId},{keyId:f.input.keyId,verified:true},{keyId:f.input.keyId,padding:'x'.repeat(257)}]){
+      const response=await revokeKey(new Request(url,{method:'POST',headers:{'content-type':'application/json','content-length':'1'},body:JSON.stringify(body)}));expect(response.status).toBe(400);
+    }
+    const [key]=await owner.db.select().from(schema.mobileIntegrityKey);expect(key.revokedAt).toBeNull();
+  });
+  it('keeps mounted key recovery behind the attendance module service boundary',async()=>{
+    const f=await enrolled();caller={...f.ctx,entitlements:{...harnessSnapshot(base.tenantId),enabledModules:[]}};
+    const response=await ownKeys(new Request('https://hr.example/api/mobile/v1/integrity/keys?employmentId='+f.employmentId));
+    expect(await response.json()).toEqual({outcome:'unavailable',code:'module_unavailable'});
+  });
   it('uses deployment identity, explicit owned selection and minimal prepared enrollment bytes',async()=>{
     const e=await employee();caller=e.ctx;
     expect((await call('capabilities',e.employmentId)).body).toEqual({outcome:'capabilities',protocol:1,platform:'ios',features:['key_enrollment','online_clock_assertion'],offline:false});
