@@ -55,7 +55,7 @@ export async function prepareAiDeliveryBrowserFixture(){
   const tenants=await owner.db.select({id:s.tenant.id}).from(s.tenant);if(tenants.some(row=>row.id!==SYSTEM_TENANT_ID))throw refusal();
   const [controls]=await owner.client`select to_regprocedure('app.ai_action_unpaused(text,boolean)') is not null as ready,to_regprocedure('app.assistant_own_leave_review_complete(uuid,text,uuid,uuid)') is not null as custody`;
   if(!controls?.ready||!controls.custody)throw refusal();
-  const {provisionTenant}=await import('../db/provision'),{resolveEntitlementsTx}=await import('../core/entitlements'),{createDepartment,updateLeaveType}=await import('../core/admin'),{createEntitlementTemplate}=await import('../core/entitlement-template'),{hireEmployee}=await import('../core/org'),{grantAssistant,revokeAssistant}=await import('../core/assistant-grant'),{readOwnLeaveCandidateTx}=await import('../core/assistant-actions/own-leave-candidate'),{withAssistantRead}=await import('../core/assistant-read-session'),{todayInKualaLumpur}=await import('../lib/hr-date');
+  const {provisionTenant}=await import('../db/provision'),{resolveEntitlementsTx}=await import('../core/entitlements'),{createDepartment,updateLeaveType,setLeaveTypeRules}=await import('../core/admin'),{createEntitlementTemplate,setLeaveTypeDefaultTemplate}=await import('../core/entitlement-template'),{hireEmployee}=await import('../core/org'),{grantAssistant,revokeAssistant}=await import('../core/assistant-grant'),{readOwnLeaveCandidateTx}=await import('../core/assistant-actions/own-leave-candidate'),{withAssistantRead}=await import('../core/assistant-read-session'),{todayInKualaLumpur}=await import('../lib/hr-date');
   const made=await owner.db.transaction(tx=>provisionTenant(tx,{name:'Fictional AI Delivery Browser Only',adminEmail:'ai-browser-admin@example.test',country:'MY',modules:['assistant','country-my'],baseUrl:`http://127.0.0.1:${t.port}`}));
   // Identity/role fixtures only: same dev_user/principal path as existing local browser runners.
   await owner.db.insert(s.roleAssignment).values({tenantId:made.tenantId,appUserId:made.appUserId,companyId:null,role:'hr_admin'}).onConflictDoNothing();
@@ -64,7 +64,14 @@ export async function prepareAiDeliveryBrowserFixture(){
   const department=await createDepartment(hr,{companyId:made.companyId,name:'Fictional AI Browser Department'}),today=todayInKualaLumpur(),yearStart=today.slice(0,4)+'-01-01';
   const [annual]=await owner.db.select().from(s.leaveType).where(and(eq(s.leaveType.tenantId,made.tenantId),eq(s.leaveType.code,'ANNUAL'))).limit(1);if(!annual)throw refusal();
   await updateLeaveType(hr,{id:annual.id,name:annual.name,employeeRemarkRequired:true});
-  await createEntitlementTemplate(hr,{leaveTypeId:annual.id,name:'Fictional AI Browser Annual 20',validFrom:yearStart,serviceBands:[{fromYears:0,toYears:null,days:20,carryForwardDays:0,maxBalanceDays:20}]});
+  const template=await createEntitlementTemplate(hr,{leaveTypeId:annual.id,name:'Fictional AI Browser Annual 20',validFrom:yearStart,serviceBands:[{fromYears:0,toYears:null,days:20,carryForwardDays:0,maxBalanceDays:20}]});
+  // Creating a table alone neither selects its lineage nor configures an earning method.
+  // These are explicit fictional HR policy choices through the actual canonical owners, before hire.
+  const selectedTemplate=await setLeaveTypeDefaultTemplate(hr,{leaveTypeId:annual.id,templateLineageId:template.lineageId});
+  if(selectedTemplate.leaveTypeId!==annual.id||selectedTemplate.defaultTemplateLineageId!==template.lineageId)throw refusal();
+  await setLeaveTypeRules(hr,{id:annual.id,accrualMethod:'lump_sum'});
+  const [configured]=await owner.db.select({lineage:s.leaveType.defaultEntitlementTemplateLineageId,method:s.leaveType.accrualMethod}).from(s.leaveType).where(and(eq(s.leaveType.tenantId,made.tenantId),eq(s.leaveType.id,annual.id)));
+  if(configured?.lineage!==template.lineageId||configured.method!=='lump_sum')throw refusal();
   const actors:Record<string,{userId:string;personId:string|null;employmentId:string|null}>={hr:{userId:made.appUserId,personId:made.personId,employmentId:null}};
   for(const [key,code]of [['own','AI-BROWSER-OWN'],['peer','AI-BROWSER-PEER'],['revoked','AI-BROWSER-REVOKED']] as const){
    const hired=await hireEmployee(hr,{person:{fullName:`Fictional AI Browser ${key}`,primaryEmail:`ai-browser-${key}@example.test`},companyId:made.companyId,departmentId:department.id,employeeCode:code,employmentType:'full_time',hiredOn:yearStart,grantLeaveTypes:[{id:annual.id,code:annual.code,yearCycleOverride:annual.yearCycleOverride}]});
