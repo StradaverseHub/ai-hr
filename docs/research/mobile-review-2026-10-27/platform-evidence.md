@@ -551,3 +551,36 @@ The central allocation record was read again and still reserves filename tags062
 workstream, deferring journal positions/timestamps to source freeze. This slice allocated/renumbered no
 migration and changed no shared database. The rollout configuration owner remains unfinished; the exact
 receipt dependency was repaired before proceeding with it. No full CI, publication or deployment occurred.
+
+
+Android KeyDescription work at `101c990df` initially passed 32 of 33 vendor/decoder cases but rejected
+a captured legacy boot record with an empty boot-key digest. Its initial compiler also rejected BigInt
+literal syntax under the repository target. Repair `cb624428f` preserves empty digest lengths as
+unverified facts and uses supported BigInt construction; strict compilation passed. That test rerun
+still failed because the test assumed the legacy fixture had a digest list. Upstream explicitly omits
+it and reports unlocked/unverified boot. The decoder had preserved the omission correctly; the test
+expectation was corrected without manufacturing missing evidence.
+
+At `c6489d69d`, all 44 cases across Android decoding, existing Apple enrollment proof and Play verifier
+passed, with strict root TypeScript exit0. Version-field review added refusal of app identity under
+schema1 and patch fields before schema3. At `b02b56426`, all 24 Android decoder cases and the full root
+compiler passed. Captured v3, remote-provisioning v400 and StrongBox v300 descriptions match independently
+published upstream expectations; malformed locked-state and unordered-tag captures refuse. Synthetic
+cases exercise supported versions, DER canonicality/truncation/nesting/node bounds, app identity sets,
+unsigned64 app versions and absent versus unverified facts. None validates a certificate chain.
+
+Nine upstream public artifacts are pinned to34652d3df68b8d6887a6670b00eb0856090dae6d, with exact decoded
+Git-blob bytes verified before commit. Five PEM files were explicitly tracked after verifying their
+blocks contain only public CERTIFICATE material; the repository generally ignores PEM. The accompanying
+Apache license and SHA256/Gitblob manifest are retained. These fixture roots/challenges are not deployment
+trust configuration. Three controlled mutations removed authorization ordering, raised the node budget
+and leaked boot identifier bytes. Each selected behavioral test failed and exact restoration passed:
+`mutation=1 restored=0 exact=true`. The version-field follow-up is covered by its final dedicated run.
+
+The human-authorized migration report was sent to coordinator chat01a16cee-9004-72c2-aaf0-932d4d0a1582
+with actual four tags/indices/timestamps/hashes and persistent-apply status. Mobile accepted proposed
+replacement0633/0634/0635 names in principle, pending confirmation and final coordinated journal
+allocation. No migration name or applied SQL was changed. All Mobile additions remain unapplied to
+staging; the latest read-only watermark remains498 at1792997586564. No active job depends on filenames.
+This Android slice changes server-only decoder/test/docs; no mobile export, cloud build, shared DB
+write, publication or deployment occurred. Android chain/revocation/custody and rollout remain unfinished.

@@ -278,3 +278,32 @@ cannot upgrade assurance or resurrect a revoked key. The exact endpoint is a rea
 enrollment, attendance acceptance or a promise that a null cannot later become a receipt. Older-server,
 unavailable and malformed lookup results must preserve pending work rather than become empty state.
 The human-facing inventory remains bounded and retains its existing scope and history wording.
+
+
+## Android key-description boundary
+
+The server-only Android decoder accepts bounded DER contents of the KeyDescription extension, OID
+1.3.6.1.4.1.11129.2.1.17. It enforces canonical definite lengths, primitive encodings, integer bounds,
+ordered unique authorization tags and SET members, bounded nodes/depth/bytes, known schema/version
+pairs and version-specific interpreted fields. App package versions preserve unsigned 64-bit decimal
+values. Software and hardware authorization lists remain separate. Absent evidence stays absent;
+unlocked/unverified boot or software security levels cannot become hardware assurance by parsing.
+
+Its output is explicitly `verification: not_verified`. It reports presence/lengths rather than device
+identifier values, boot keys or boot hashes. Uninterpreted authorization tags retain their numeric IDs
+without values; downstream validation must decide whether a combination is acceptable. This decoder
+is not a certificate verifier, chain selector, app authorization policy or key enrollment service.
+
+Before use, the chain owner must validate trusted roots, path constraints, validity/expiration rules,
+certificate revocation, the correct root-nearest attestation/provisioning extension and the exact
+attested public key. It must compare a server-owned scoped challenge and app signing identity, enforce
+appropriate key properties and boot/security requirements, then persist unique actor-owned custody.
+A caller-selected leaf extension is not authority: a malicious child can append its own extension.
+Play Integrity remains separate evidence and does not retroactively verify GPS or key custody.
+
+Primary references: [Android server verification](https://developer.android.com/privacy-and-security/security-key-attestation),
+[AOSP schema](https://source.android.com/docs/security/features/keystore/attestation), and the
+[official verifier](https://github.com/android/keyattestation). Pinned public certificate/expected-value
+fixtures derive from upstream revision34652d3df68b8d6887a6670b00eb0856090dae6d under Apache-2.0, with
+exact SHA-256 and Git blob hashes in their provenance manifest. Fixture parsing is not a current
+Google-root, revocation or signed-device acceptance witness. Chain verification remains unfinished.
