@@ -473,7 +473,8 @@
     "letterApproval": "信函审批",
     "letterRegister": "已签发信函登记册",
     "letterReports": "信函报表",
-    "letterSettings": "信函设置"
+    "letterSettings": "信函设置",
+    "calibration": "Calibration"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -19629,6 +19630,40 @@
         "all": "全部",
         "outstanding": "未完成",
         "done": "已完成"
+      }
+    },
+    "calibrationList": {
+      "title": "Calibration",
+      "description": "The calibration sessions you can open. Sessions with an open window come first.",
+      "empty": "No calibration is assigned to you.",
+      "groupWide": "Group-wide",
+      "opensOn": "Opens {date}",
+      "closesOn": "Closes {date}",
+      "tiers": {
+        "group": "Group",
+        "bg": "Business group (BG)",
+        "bu": "Business unit (BU)",
+        "hod": "Department (HOD)",
+        "final": "Final"
+      },
+      "columns": {
+        "session": "Session",
+        "cycle": "Cycle",
+        "company": "Company",
+        "window": "Window",
+        "people": "People",
+        "toDo": "To do",
+        "status": "Status"
+      },
+      "window": {
+        "open": "Open",
+        "upcoming": "Not open yet",
+        "closed": "Closed"
+      },
+      "lock": {
+        "open": "In progress",
+        "partial": "Partly locked",
+        "locked": "Locked"
       }
     }
   },

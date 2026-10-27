@@ -473,7 +473,8 @@
     "letterApproval": "Phê duyệt thư",
     "letterRegister": "Sổ đăng ký thư đã phát hành",
     "letterReports": "Báo cáo thư",
-    "letterSettings": "Cài đặt thư"
+    "letterSettings": "Cài đặt thư",
+    "calibration": "Calibration"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -19629,6 +19630,40 @@
         "all": "Tất cả",
         "outstanding": "Chưa hoàn tất",
         "done": "Hoàn tất"
+      }
+    },
+    "calibrationList": {
+      "title": "Calibration",
+      "description": "The calibration sessions you can open. Sessions with an open window come first.",
+      "empty": "No calibration is assigned to you.",
+      "groupWide": "Group-wide",
+      "opensOn": "Opens {date}",
+      "closesOn": "Closes {date}",
+      "tiers": {
+        "group": "Group",
+        "bg": "Business group (BG)",
+        "bu": "Business unit (BU)",
+        "hod": "Department (HOD)",
+        "final": "Final"
+      },
+      "columns": {
+        "session": "Session",
+        "cycle": "Cycle",
+        "company": "Company",
+        "window": "Window",
+        "people": "People",
+        "toDo": "To do",
+        "status": "Status"
+      },
+      "window": {
+        "open": "Open",
+        "upcoming": "Not open yet",
+        "closed": "Closed"
+      },
+      "lock": {
+        "open": "In progress",
+        "partial": "Partly locked",
+        "locked": "Locked"
       }
     }
   },

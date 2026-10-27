@@ -18,7 +18,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { Target } from 'lucide-react';
+import { Scale, Target } from 'lucide-react';
 import { performancePack } from '../packs/performance';
 import { listPacks, modulePackById, packById } from '../packs/registry';
 import * as facade from '../packs/performance/service';
@@ -96,6 +96,8 @@ describe('ADR-0080 rung 4: nav parity with the pre-retrofit sidebar', () => {
   const EXPECTED = [
     { group: 'main', href: '/performance/workspace', labelKey: 'myPerformance', icon: Target },
     { group: 'manage', href: '/performance', labelKey: 'performance', icon: Target, managerUp: true },
+    // WP-B1 (APR-020) — Calibration: no role flag; the sidebar gates it by canEnterCalibration || canAdministerOnehr.
+    { group: 'manage', href: '/performance/calibration', labelKey: 'calibration', icon: Scale },
   ] as const;
 
   const links = performancePack.navLinks!;
@@ -130,6 +132,9 @@ describe('ADR-0080 rung 4: nav parity with the pre-retrofit sidebar', () => {
     expect(sidebar, 'resolves the row through the registry').toContain(`modulePackById('performance')`);
     expect(sidebar.split('\n').some(line=>line.trim()==='PERSONAL_PERFORMANCE_ROW,')).toBe(true);
     expect(sidebar.split('\n').some(line=>line.trim()==='PERFORMANCE_ROW,')).toBe(true);
+    expect(sidebar.split('\n').some(line=>line.trim()==='CALIBRATION_ROW,')).toBe(true);
+    // WP-B1 — the Calibration row carries no role flag, so its ONE gate is this predicate in canSeeChild.
+    expect(sidebar).toContain('c.href === CALIBRATION_ROW.href ? canEnterCalibration || canAdministerOnehr :');
     for (const { href } of EXPECTED) {
       // Route-intent comparisons may name the path; they must never mint a second nav descriptor.
       const duplicates=[...sidebar.matchAll(/\bhref:\s*'([^']+)'/g)].filter(match=>match[1]===href);
