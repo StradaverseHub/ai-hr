@@ -94,6 +94,11 @@ describe('separate deployment-owned clock rollout and legacy self-service policy
    const result=await legacy(e,'mobile');expect(result.response.status).toBe(503);expect(result.body).toEqual({error:'unavailable'});
   }await noWrites();
  });
+ it.each(['abc','123\n','9223372036854775808','1'.repeat(10000)])('refuses malformed project number %s through typed configuration outcomes',async cloudProjectNumber=>{
+  const e=await employee(),selected=entry(e);configure([{...selected,platforms:{ios:null,android:{configuration:androidConfig,cloudProjectNumber}}}]);
+  await expect(readMobileClockDeployment('android',e.ctx,e.employmentId,signal())).rejects.toBeInstanceOf(IntegrityConfigurationUnavailable);
+  const response=await legacy(e,'mobile');expect(response.response.status).toBe(503);expect(response.body).toEqual({error:'unavailable'});await noWrites();
+ });
  it('does not use an unproven current-company column or another actor to select a rollout',async()=>{
   const e=await employee(),peer=await employee();configure([entry(e)]);
   await expect(readMobileClockConfiguration('android',peer.ctx,e.employmentId,signal())).rejects.toThrow();

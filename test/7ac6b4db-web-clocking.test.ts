@@ -108,8 +108,10 @@ describe('r378/r430 · private camera capture, now CONDITIONAL on attendancePhot
     expect(command).toContain('decodeClockPhoto(p.photo, p.mime');
     expect(command).toContain("photoSetting !== 'not_required' && p.photo");
     expect(command).toContain("if (photoSetting === 'required' && !p.photo) throw new AttendancePhotoRequiredError()");
-    // Native retains its existing owner. Web repeats own eligibility for explicit selections.
-    expect(command).toContain('native?(await myEmployments(ctx)).find(e=>e.employmentId===native.employmentId):await resolveOwnClockEmployment(ctx,p.employmentId)');
+    // Signed native work repeats own eligibility inside its existing transaction; the ordinary
+    // native carrier retains its owner. Web resolves own eligibility for explicit selections.
+    expect(command).toContain('joined?myOwnEmploymentSubjectsTx(joined.tx,ctx,{profileEdit:true}):myEmployments(ctx)');
+    expect(command).toContain('.find(e=>e.employmentId===native.employmentId):await resolveOwnClockEmployment(ctx,p.employmentId)');
     const subject=codeOnly(read('/core/attendance-clock-subject.ts'));
     expect(subject).toContain('myOwnEmploymentSubjects(ctx,{profileEdit:true})');
     expect(subject).toContain('const legacy=await myEmployment(ctx)');
