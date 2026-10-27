@@ -8,6 +8,6 @@ export const rewardsPack: ModulePack = {
     { group: 'admin', href: '/admin/rewards', labelKey: 'rewards', icon: Gift, adminOnly: true },
     { group: 'admin', href: '/admin/rewards/access', labelKey: 'rewardsAccess', icon: Gift, adminOnly: true },
   ],
-  satelliteTables: ['reward_cycle', 'reward_unit', 'reward_member', 'reward_entry', 'reward_decision'].map(table => ({ table })),
+  satelliteTables: ['reward_cycle', 'reward_unit', 'reward_member', 'reward_entry', 'reward_decision', 'reward_calendar'].map(table => ({ table })),
 };
 registerPack(rewardsPack);
