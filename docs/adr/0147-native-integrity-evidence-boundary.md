@@ -307,3 +307,33 @@ Primary references: [Android server verification](https://developer.android.com/
 fixtures derive from upstream revision34652d3df68b8d6887a6670b00eb0856090dae6d under Apache-2.0, with
 exact SHA-256 and Git blob hashes in their provenance manifest. Fixture parsing is not a current
 Google-root, revocation or signed-device acceptance witness. Chain verification remains unfinished.
+
+
+## Android revocation status observation
+
+The server-only revocation reader contacts only Google's fixed HTTPS status endpoint, without app
+credentials, certificates, serials or caller-selected URLs in the request. Its input must be canonical
+lowercase unpadded hex serials from the server-validated path, bounded to eight distinct twenty-byte
+serials. It checks every supplied serial; a published revoked or suspended status refuses regardless
+of an entry's expiry annotation. No app/key/attendance acceptance follows from a missing status entry.
+
+The entire request/body has a deadline, with explicit caller cancellation and ignored late completion.
+The reader caps actual wire bytes at4MiB and entry inventory at20,000, validates the published closed
+schema and rejects duplicate decoded JSON member names, including escaped aliases. Invalid, oversized,
+unknown-status and unavailable responses do not become an empty passing list. Expected errors expose
+closed reasons, not vendor comments, certificate serials or raw network failures.
+
+There is no cache or automatic retry in this initial owner. Every invocation obtains a new HTTP
+observation; no previous passing result survives an outage. Date/Age metadata and elapsed body time
+must fit the server-owned maximum observation age (default1hour, configurable up to24hours); future or
+backwards time refuses. This bounds the observation's age, not Google's compromise-publication delay.
+A production cache/shared fetch owner must preserve those semantics and Google's Cache-Control policy
+before activation at scale; this implementation does not claim that per-call fetching is a completed
+quota/availability design. Transport success authenticates the fixed HTTPS response only, not its
+relation to a validated certificate path. Chain selection, trust roots, expiration exceptions,
+app/key-property verification and persistent Android custody remain unfinished.
+
+Sources: [Google status schema and verification guidance](https://developer.android.com/privacy-and-security/security-key-attestation#certificate_revocation_status_list)
+and [official status endpoint](https://android.googleapis.com/attestation/status). Tests replace the
+HTTPS transport and do not call Google. No endpoint, native SDK or attendance writer invokes this
+reader yet.

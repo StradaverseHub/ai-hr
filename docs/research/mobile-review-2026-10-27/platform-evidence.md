@@ -584,3 +584,33 @@ allocation. No migration name or applied SQL was changed. All Mobile additions r
 staging; the latest read-only watermark remains498 at1792997586564. No active job depends on filenames.
 This Android slice changes server-only decoder/test/docs; no mobile export, cloud build, shared DB
 write, publication or deployment occurred. Android chain/revocation/custody and rollout remain unfinished.
+
+
+Android revocation observation at `522ef50d1` initially passed50of51 focused cases; the one failure
+reused an already-consumed synthetic Response on the second invocation. The initial compiler also
+rejected an inferred optional-header union in the fixture. Repair `ad4cc7988` creates a fresh response
+stream per invocation and gives the fixture an explicit string-header map. No production refusal
+was weakened. All51 cases across revocation, Android description and Play verifier then passed, and
+the strict root TypeScript compiler exited0. Original failed test/compiler logs remain separate.
+
+Sixteen revocation cases cover the fixed credential-free URL/request, every supplied path serial,
+revoked/suspended precedence, no expired-entry override, absence versus provider failure, changed
+statuses without cache reuse, canonical serial/input limits, stale/future/missing Date/Age metadata,
+body elapsed time, caller-input mutation, duplicate escaped JSON keys, closed schema/date bounds,
+actual bytes despite false Content-Length, redirect/304/403/429/500 refusal without retry, transport/
+body deadlines, cancellation, late success and backwards server time. These are synthetic HTTP
+observations; web research read the public endpoint separately and is not a runtime verification pass.
+
+Three controlled mutations removed checks for later path serials, duplicate members and freshness
+limits. Each selected behavioral probe failed, exact restoration passed and source bytes matched:
+`mutation=1 restored=0 exact=true` for all three. No mobile runtime source, native compiler/export,
+migration, shared database, cloud publication or deployment changed in this slice. The reader is not
+yet connected to Android chain/custody/attendance verification; complete Android integrity remains open.
+
+Coordinator supplied definitive unapplied allocation: Board616–617, AI618–629, Mobile630–633. Mobile
+rows retain timestamps1793039596595/1793047796775/1793054626620/1793055753390 with final tags0613/0633/0634/0635.
+The private allocation manifest SHA256703407b13d5170c9aafdd16b97528ec3dd32389caa85a71a44b65fa4c17523f0
+and all four bound Mobile SQL hashes were independently verified. Acknowledgement was sent under the
+human's coordination authorization. Current provisional journal/names remain unchanged until a complete
+ordered integration includes Board+AI prerequisites and actual canonical prefix. No higher timestamp
+may ship independently and no staging application was requested. Historical candidates remain intact.
