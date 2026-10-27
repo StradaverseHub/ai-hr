@@ -1,5 +1,5 @@
 /** Real signatures/SQL/RLS/custody/counters. Vendor preparation and adjudication policy are synthetic.
- * Accepted cases call the existing canonical writer; offline provenance/readers remain separate work. */
+ * Accepted cases call the canonical offline writer (captureOfflineClockTx); offline readers remain separate work. */
 import {createHash,randomUUID} from 'node:crypto';
 import {and,asc,eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
@@ -9,7 +9,7 @@ import {purgeExpiredOfflinePhotos} from '../core/mobile-offline-photo-retention'
 import {revokeOwnIntegrityKey} from '../core/mobile-integrity-key';
 import {checkInTx,checkOutTx,clockScheduleForTx} from '../core/attendance';
 import {createShift} from '../core/roster';
-import {setAttendancePolicy} from '../packs/attendance/service';
+import {captureOfflineClockTx,setAttendancePolicy} from '../packs/attendance/service';
 import {withAttendanceTenant} from '../core/module-gate';
 import {decryptSecret} from '../lib/ai/crypto';
 import {offlineClockClaimClientData} from '../lib/mobile-offline-clock';
@@ -36,22 +36,45 @@ async function untouched(f:Awaited<ReturnType<typeof offlineServiceFixture>>,kep
 }
 // Canonical punch_at is MYT wall time; milliseconds are written so an exact effectiveAt can be linked.
 const mytTime=(at:number)=>new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kuala_Lumpur',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(new Date(at))+'.'+String(at%1000).padStart(3,'0');
-/** `written` shifts only the canonical punch away from the returned effectiveAt (a faulty policy owner); `days`
- * moves only attendance_date, so days:-1 with ms:0 is the online writer's overnight-out encoding. */
-async function accept(tx:Parameters<OfflineClaimPorts['adjudicate']>[0],ctx:Parameters<OfflineClaimPorts['adjudicate']>[1],facts:Parameters<OfflineClaimPorts['adjudicate']>[2],at=facts.bounds.status==='reported_interval'?facts.bounds.minimum:facts.context.issuedAt,written:{ms?:number;days?:number}={}){
- const punchAt=at+(written.ms??0),date=todayInKualaLumpur(new Date(punchAt+(written.days??0)*86400000)),time=mytTime(punchAt);
- const [capture]=await tx.insert(S.attendanceClockCapture).values({tenantId:ctx.tenantId,employmentId:facts.claim.scope.employmentId,attendanceDate:date,direction:facts.claim.command.action,requestId:facts.claim.command.requestId,serverRecordedAt:new Date(facts.receivedAt),lat:facts.claim.command.lat,lng:facts.claim.command.lng,accuracyM:facts.claim.command.accuracy,commandDigest:digest(offlineClockClaimClientData(facts.claim))}).returning();
- await (facts.claim.command.action==='in'?checkInTx:checkOutTx)(ctx,{employmentId:facts.claim.scope.employmentId,date,time,geo:{lat:facts.claim.command.lat,lng:facts.claim.command.lng,accuracy:facts.claim.command.accuracy},clockCaptureId:capture.id,preciseOrder:true},tx);
- return {outcome:'accepted',reason:'clock_accepted',captureId:capture.id,effectiveAt:at};
+/** Accepted instants are whole seconds (0647's capture CHECK, as online punch_at): the first inside the reported
+ * interval [issuedAt, issuedAt+1 s]. `settled` waits on the database clock that stamps receipt until it has passed. */
+const whole=(f:{context:{issuedAt:number}})=>Math.ceil(f.context.issuedAt/1000)*1000;
+async function settled(f:{context:{issuedAt:number}}){
+ await owner.db.execute(sql`select pg_sleep(greatest(0,extract(epoch from (${new Date(whole(f)).toISOString()}::timestamptz-clock_timestamp())))+0.02)`);
+ const [row]=await owner.db.execute<{passed:boolean}>(sql`select clock_timestamp()>${new Date(whole(f)).toISOString()}::timestamptz passed`);expect(row.passed).toBe(true);
+}
+type Adjudication=Parameters<OfflineClaimPorts['adjudicate']>;
+/** The canonical offline writer through the attendance facade, as a deterministic policy owner would call it. */
+async function accept(tx:Adjudication[0],ctx:Adjudication[1],facts:Adjudication[2],at=whole(facts)){
+ const c=facts.claim.command,written=await captureOfflineClockTx(tx,ctx,{employmentId:facts.claim.scope.employmentId,requestId:c.requestId,action:c.action,lat:c.lat,lng:c.lng,accuracy:c.accuracy,effectiveAt:new Date(at),claimDigest:facts.digest});
+ if(written.kind!=='recorded')throw new Error('Canonical offline writer refused: '+written.reason);
+ expect(written.effectiveAt).toBe(at);return {outcome:'accepted',reason:'clock_accepted',captureId:written.captureId,effectiveAt:at};
+}
+/** A faulty policy owner bypassing the canonical writer. Its capture states effectiveAt (+captureMs) and its punch is
+ * mobile_offline, unless `web` writes the pre-0647 online shape (no effective_at, web punch). `ms` shifts only the
+ * punch instant; `days` moves only attendance_date, so days:-1 with ms:0 is the overnight-out encoding. */
+async function forged(tx:Adjudication[0],ctx:Adjudication[1],facts:Adjudication[2],written:{ms?:number;days?:number;captureMs?:number;web?:boolean}){
+ const at=whole(facts),c=facts.claim.command,punchAt=at+(written.ms??0),date=todayInKualaLumpur(new Date(punchAt+(written.days??0)*86400000)),id=randomUUID();
+ const effective=written.web?null:new Date(at+(written.captureMs??0)).toISOString();
+ await tx.execute(sql`insert into attendance_clock_capture(id,tenant_id,employment_id,attendance_date,direction,request_id,server_recorded_at,lat,lng,accuracy_m,command_digest,effective_at)
+  values(${id}::uuid,${ctx.tenantId}::uuid,${facts.claim.scope.employmentId}::uuid,${date}::date,${c.action},${c.requestId}::uuid,${new Date(facts.receivedAt).toISOString()}::timestamptz,${c.lat},${c.lng},${c.accuracy},${digest(offlineClockClaimClientData(facts.claim))},${effective}::timestamptz)`);
+ await (c.action==='in'?checkInTx:checkOutTx)(ctx,{employmentId:facts.claim.scope.employmentId,date,time:mytTime(punchAt),geo:{lat:c.lat,lng:c.lng,accuracy:c.accuracy},clockCaptureId:id,preciseOrder:true,...(written.web?{}:{method:'mobile_offline' as const})},tx);
+ return {outcome:'accepted',reason:'clock_accepted',captureId:id,effectiveAt:at};
+}
+/** Provenance the canonical writer must leave: its capture holds exactly effectiveAt, its punch is mobile_offline. */
+async function provenance(captureId:string){
+ const [row]=await owner.db.execute<{effectiveMs:string|null;later:boolean|null;method:string}>(sql`select (extract(epoch from c.effective_at)*1000)::bigint::text "effectiveMs",c.server_recorded_at>c.effective_at later,p.method::text method
+  from attendance_clock_capture c join attendance_punch p on p.clock_capture_id=c.id where c.id=${captureId}::uuid`);
+ return row&&{effectiveAt:row.effectiveMs==null?null:Number(row.effectiveMs),later:row.later,method:row.method};
 }
 /** A real open overnight session: a rostered midnight-crossing shift on the MYT day before effectiveAt's day
- * (effectiveAt is the fixture's issuedAt), checked in at 22:00 by the canonical writer. */
+ * (effectiveAt is the fixture's first whole second), checked in at 22:00 by the canonical writer. */
 async function overnight(f:Awaited<ReturnType<typeof offlineServiceFixture>>){
- const start=todayInKualaLumpur(new Date(f.context.issuedAt-86400000)),shift=await createShift(adminCtx(base),{name:'Offline overnight',code:'OFFLINE_NIGHT',startTime:'22:00',endTime:'06:00'});
+ const start=todayInKualaLumpur(new Date(whole(f)-86400000)),shift=await createShift(adminCtx(base),{name:'Offline overnight',code:'OFFLINE_NIGHT',startTime:'22:00',endTime:'06:00'});
  await owner.db.insert(S.rosterAssignment).values({tenantId:base.tenantId,employmentId:f.e.employmentId,shiftDate:start,shiftId:shift.id});
  await withAttendanceTenant(f.ctx,tx=>checkInTx(f.ctx,{employmentId:f.e.employmentId,date:start,time:'22:00:00',geo:{lat:3,lng:101,accuracy:5}},tx));
  // Non-vacuous: the start day is the previous MYT day, its schedule crosses midnight and its session is open.
- expect(start).not.toBe(todayInKualaLumpur(new Date(f.context.issuedAt)));expect((await withAttendanceTenant(f.ctx,tx=>clockScheduleForTx(tx,f.e.employmentId,start))).crossesMidnight).toBe(true);
+ expect(start).not.toBe(todayInKualaLumpur(new Date(whole(f))));expect((await withAttendanceTenant(f.ctx,tx=>clockScheduleForTx(tx,f.e.employmentId,start))).crossesMidnight).toBe(true);
  const punches=await owner.db.select().from(S.attendancePunch);expect(punches).toMatchObject([{attendanceDate:start,direction:'in',punchAt:'22:00:00',voidedAt:null}]);
  expect(await owner.db.select({checkIn:S.attendance.checkInAt,checkOut:S.attendance.checkOutAt}).from(S.attendance).where(and(eq(S.attendance.employmentId,f.e.employmentId),eq(S.attendance.attendanceDate,start)))).toEqual([{checkIn:'22:00:00',checkOut:null}]);
  return {start,kept:[punches[0].id]};
@@ -103,44 +126,49 @@ describe('ordered transactional offline claim consumption',()=>{
   c.fresh.mockResolvedValue();expect((await c.service().consume(f.ctx,f.signed())).outcome).toBe('needs_review');
  });
  it('rolls back counter, cursor, canonical punch/capture, claim and audit if the final guard refuses',async()=>{
-  await policy();const f=await offlineServiceFixture(base),c=consumer();c.adjudicate.mockImplementation((tx,ctx,facts)=>accept(tx,ctx,facts));c.beforeCommit.mockRejectedValueOnce(new Error('rollout disabled'));
+  await policy();const f=await offlineServiceFixture(base),c=consumer();await settled(f);c.adjudicate.mockImplementation((tx,ctx,facts)=>accept(tx,ctx,facts));c.beforeCommit.mockRejectedValueOnce(new Error('rollout disabled'));
   await expect(c.service().consume(f.ctx,f.signed())).rejects.toThrow('rollout disabled');await untouched(f);expect(await owner.db.select().from(S.attendanceClockCapture)).toHaveLength(0);
   expect(await owner.db.select().from(S.domainEvent).where(eq(S.domainEvent.eventType,'mobile.offline.claim.processed'))).toHaveLength(0);
  });
  it('links an accepted out-first command to the actual canonical punch, with effective bounds separate from admission',async()=>{
-  await policy();const f=await offlineServiceFixture(base),c=consumer();c.adjudicate.mockImplementation((tx,ctx,facts)=>accept(tx,ctx,facts));const result=await c.service().consume(f.ctx,f.signed());
-  expect(result).toMatchObject({outcome:'accepted',reason:'clock_accepted',effectiveAt:f.context.issuedAt,effectiveMinimum:f.context.issuedAt});expect(result.receivedAt).toBeGreaterThanOrEqual(result.effectiveAt!);
+  await policy();const f=await offlineServiceFixture(base),c=consumer();await settled(f);c.adjudicate.mockImplementation((tx,ctx,facts)=>accept(tx,ctx,facts));const result=await c.service().consume(f.ctx,f.signed());
+  expect(result).toMatchObject({outcome:'accepted',reason:'clock_accepted',effectiveAt:whole(f),effectiveMinimum:f.context.issuedAt});expect(result.receivedAt).toBeGreaterThanOrEqual(result.effectiveAt!);
   expect(await owner.db.select().from(S.attendancePunch).where(eq(S.attendancePunch.clockCaptureId,result.captureId!))).toHaveLength(1);
+  expect(await provenance(result.captureId!)).toEqual({effectiveAt:whole(f),later:true,method:'mobile_offline'});
+  expect((await owner.db.select().from(S.mobileOfflineClaim))[0].effectiveAt?.getTime()).toBe(whole(f));
  });
- it.each([['one millisecond after',1,0],['on the next attendance day from',0,1]] as const)('rolls back everything when the linked punch is recorded %s effectiveAt, and accepts the exact instant',async(_label,ms,days)=>{
-  await policy();const f=await offlineServiceFixture(base),c=consumer();c.adjudicate.mockImplementation((tx,ctx,facts)=>accept(tx,ctx,facts,undefined,{ms,days}));
+ // The last two shapes pass every instant/day check; only the 0647 provenance requirement refuses them.
+ it.each([['recorded one millisecond after',{ms:1}],['recorded on the next attendance day from',{days:1}],['captured one second before',{captureMs:-1000}],['written as an online web punch at',{web:true}]] as const)('rolls back everything when the linked punch is %s effectiveAt, and accepts the exact instant',async(_label,written)=>{
+  await policy();const f=await offlineServiceFixture(base),c=consumer();await settled(f);c.adjudicate.mockImplementation((tx,ctx,facts)=>forged(tx,ctx,facts,written));
   await expect(c.service().consume(f.ctx,f.signed())).rejects.toMatchObject({reason:'configuration_unavailable'});expect(c.adjudicate).toHaveBeenCalledOnce();
   await untouched(f);expect(await owner.db.select().from(S.attendanceClockCapture)).toHaveLength(0);expect(await owner.db.select().from(S.attendance).where(eq(S.attendance.employmentId,f.e.employmentId))).toHaveLength(0);
   expect(await owner.db.select().from(S.domainEvent).where(eq(S.domainEvent.eventType,'mobile.offline.claim.processed'))).toHaveLength(0);
   c.adjudicate.mockImplementation((tx,ctx,facts)=>accept(tx,ctx,facts));const result=await c.service().consume(f.ctx,f.signed());
-  expect(result).toMatchObject({outcome:'accepted',reason:'clock_accepted',effectiveAt:f.context.issuedAt});
+  expect(result).toMatchObject({outcome:'accepted',reason:'clock_accepted',effectiveAt:whole(f)});
   const [punch]=await owner.db.select().from(S.attendancePunch).where(eq(S.attendancePunch.clockCaptureId,result.captureId!));expect(punch.attendanceDate).toBe(todayInKualaLumpur(new Date(result.effectiveAt!)));
+  expect(await instant(punch.id,0,result.effectiveAt!)).toBe(true);expect(await provenance(result.captureId!)).toEqual({effectiveAt:whole(f),later:true,method:'mobile_offline'});
  });
  // Owner decision 2026-10-28: an offline overnight out belongs to the open session's start day, as the online writer files it.
  it.each([['one millisecond after',{ms:1,days:-1}],['on the day before the session start',{days:-2}],['on effectiveAt\'s own day instead of the open session start day',{days:0}]] as const)('rolls back an overnight out recorded %s, and accepts the start-day encoding of the exact instant',async(_label,written)=>{
-  await policy();const f=await offlineServiceFixture(base),{start,kept}=await overnight(f),c=consumer();c.adjudicate.mockImplementation((tx,ctx,facts)=>accept(tx,ctx,facts,undefined,written));
+  await policy();const f=await offlineServiceFixture(base),{start,kept}=await overnight(f),c=consumer();await settled(f);c.adjudicate.mockImplementation((tx,ctx,facts)=>forged(tx,ctx,facts,written));
   await expect(c.service().consume(f.ctx,f.signed())).rejects.toMatchObject({reason:'configuration_unavailable'});expect(c.adjudicate).toHaveBeenCalledOnce();
   await untouched(f,kept);expect(await owner.db.select().from(S.attendanceClockCapture)).toHaveLength(0);
   expect(await owner.db.select({date:S.attendance.attendanceDate,checkOut:S.attendance.checkOutAt}).from(S.attendance).where(eq(S.attendance.employmentId,f.e.employmentId))).toEqual([{date:start,checkOut:null}]);
   expect(await owner.db.select().from(S.domainEvent).where(eq(S.domainEvent.eventType,'mobile.offline.claim.processed'))).toHaveLength(0);
-  c.adjudicate.mockImplementation((tx,ctx,facts)=>accept(tx,ctx,facts,undefined,{days:-1}));const result=await c.service().consume(f.ctx,f.signed());
-  expect(result).toMatchObject({outcome:'accepted',reason:'clock_accepted',effectiveAt:f.context.issuedAt});expect(todayInKualaLumpur(new Date(result.effectiveAt!))).not.toBe(start);
+  // The canonical writer itself files the overnight out on the start day; no caller supplies the encoding.
+  c.adjudicate.mockImplementation((tx,ctx,facts)=>accept(tx,ctx,facts));const result=await c.service().consume(f.ctx,f.signed());
+  expect(result).toMatchObject({outcome:'accepted',reason:'clock_accepted',effectiveAt:whole(f)});expect(todayInKualaLumpur(new Date(result.effectiveAt!))).not.toBe(start);
   const [punch]=await owner.db.select().from(S.attendancePunch).where(eq(S.attendancePunch.clockCaptureId,result.captureId!));
   expect(punch).toMatchObject({attendanceDate:start,direction:'out',voidedAt:null});expect(await instant(punch.id,1,result.effectiveAt!)).toBe(true);
   expect(await owner.db.select({date:S.attendance.attendanceDate}).from(S.attendance).where(eq(S.attendance.employmentId,f.e.employmentId))).toEqual([{date:start}]);
  });
  it('rolls back an in punch filed on the prior day even while an overnight session is open, and accepts it on its own day',async()=>{
-  await policy();const f=await offlineServiceFixture(base),{start,kept}=await overnight(f),c=consumer(),claim={...f.claim,command:{...f.claim.command,action:'in' as const}};
-  c.adjudicate.mockImplementation((tx,ctx,facts)=>accept(tx,ctx,facts,undefined,{days:-1}));
+  await policy();const f=await offlineServiceFixture(base),{start,kept}=await overnight(f),c=consumer(),claim={...f.claim,command:{...f.claim.command,action:'in' as const}};await settled(f);
+  c.adjudicate.mockImplementation((tx,ctx,facts)=>forged(tx,ctx,facts,{days:-1}));
   await expect(c.service().consume(f.ctx,f.signed(claim))).rejects.toMatchObject({reason:'configuration_unavailable'});expect(c.adjudicate).toHaveBeenCalledOnce();
   await untouched(f,kept);expect(await owner.db.select().from(S.attendanceClockCapture)).toHaveLength(0);
   c.adjudicate.mockImplementation((tx,ctx,facts)=>accept(tx,ctx,facts));const result=await c.service().consume(f.ctx,f.signed(claim));
-  expect(result).toMatchObject({outcome:'accepted',reason:'clock_accepted',effectiveAt:f.context.issuedAt});
+  expect(result).toMatchObject({outcome:'accepted',reason:'clock_accepted',effectiveAt:whole(f)});
   const [punch]=await owner.db.select().from(S.attendancePunch).where(eq(S.attendancePunch.clockCaptureId,result.captureId!));
   expect(punch).toMatchObject({attendanceDate:todayInKualaLumpur(new Date(result.effectiveAt!)),direction:'in',voidedAt:null});expect(punch.attendanceDate).not.toBe(start);expect(await instant(punch.id,0,result.effectiveAt!)).toBe(true);
  });
@@ -160,8 +188,9 @@ describe('ordered transactional offline claim consumption',()=>{
   expect(await owner.db.select().from(S.attendancePunch)).toHaveLength(0);expect(await owner.db.select().from(S.attendanceClockCapture)).toHaveLength(1);
  });
  it.each(['unknown','outside'] as const)('cannot turn %s timing into accepted attendance even if a callback tries',async mode=>{
-  await policy();const f=await offlineServiceFixture(base),c=consumer(),claim=mode==='unknown'?{...f.claim,time:{...f.claim.time,elapsed:{status:'unknown' as const,reason:'continuity_unknown' as const}}}:f.claim;
-  c.adjudicate.mockImplementation((tx,ctx,facts)=>accept(tx,ctx,facts,mode==='outside'?f.context.issuedAt-60000:f.context.issuedAt));
+  await policy();const f=await offlineServiceFixture(base),c=consumer(),claim=mode==='unknown'?{...f.claim,time:{...f.claim.time,elapsed:{status:'unknown' as const,reason:'continuity_unknown' as const}}}:f.claim;await settled(f);
+  // The canonical writer records either instant; only the service's bounds owner refuses it, rolling the write back.
+  c.adjudicate.mockImplementation((tx,ctx,facts)=>accept(tx,ctx,facts,mode==='outside'?whole(f)-60000:whole(f)));
   await expect(c.service().consume(f.ctx,f.signed(claim))).rejects.toMatchObject({reason:'configuration_unavailable'});await untouched(f);
  });
  it('refuses acceptance without a linked canonical punch and refuses unknown decision authority fields',async()=>{

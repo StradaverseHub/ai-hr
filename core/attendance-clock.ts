@@ -1,16 +1,16 @@
 import { LOCATION_CAPTURE_STATUSES, type LocationCaptureStatus } from '../lib/attendance-removal';
 /** Employee web command. A private capture and the existing attendance writer share one transaction. */
 import { createHash, randomUUID } from 'node:crypto';
-import { and, desc, eq, inArray, isNull, isNotNull, sql } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns, inArray, isNull, isNotNull, sql, type DriverValueEncoder } from 'drizzle-orm';
 import type { SessionContext,Tx } from '../db/client';
 import { attendance, attendanceClockCapture, attendancePunch, attendanceCorrection, clockingLocation, employment, domainEvent, employeeDevice } from '../db/schema';
 import { actorOf, appendEvent } from '../db/events';
 import { withAttendanceTenant as withTenant } from './module-gate';
 import {resolveOwnClockEmployment,OwnClockEmploymentUnavailableError} from './attendance-clock-subject';
 import {myEmployments,myOwnEmploymentSubjectsTx} from './read';
-import { ClockConflictError, CorrectedClockConflictError, assertDayNotOwnedByCorrectionTx, appendGeofenceBlockedEvent, checkInTx, checkOutTx, resolveGeofence, clockScheduleForTx, OutsideGeofenceError } from './attendance';
+import { ClockConflictError, CorrectedClockConflictError, assertDayNotOwnedByCorrectionTx, appendGeofenceBlockedEvent, checkInTx, checkOutTx, clockPunchOrderRefusal, resolveGeofence, clockScheduleForTx, GeofenceQualityError, OutsideGeofenceError } from './attendance';
 import { enforceDeviceGateTx, DeviceNotRegisteredError } from './attendance-device';
-import { decodeClockPhoto } from '../lib/attendance-photo';
+import { ClockPhotoError, decodeClockPhoto } from '../lib/attendance-photo';
 import { clockCommandContext } from '../lib/clock-command-context';
 import { todayInKualaLumpur, timeInKualaLumpur } from '../lib/hr-date';
 import {abandonSubmissionTx,submissionAbandonedTx} from './mobile-submission-state';
@@ -116,7 +116,15 @@ export async function captureEmployeeClock(ctx: SessionContext, p: ClockIntent) 
   }
 }
 
-async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, native?: { employmentId: string; deviceToken?: string; sampledAt: number },joined?:{tx:Tx;requireNew:boolean}) {
+type NativeCarrier = { employmentId: string; deviceToken?: string; sampledAt: number };
+type JoinedCarrier = { tx: Tx; requireNew: boolean };
+/** Who records the punch. An online instant is read where it always was, after the subject lock and the request
+ * lookup, never at the call site (a tab that waited on the lock must still order after its sibling). An offline
+ * instant is the accepted claim's effective time, fixed before planning; its receipt instant is read at planning. */
+type ClockSource = { source: 'web' | 'native_online' } | { source: 'mobile_offline'; at: Date; claimDigest: string };
+type ClockSubject = { employmentId: string };
+
+async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, native?: NativeCarrier,joined?:JoinedCarrier) {
   const me=native?(await (joined?myOwnEmploymentSubjectsTx(joined.tx,ctx,{profileEdit:true}):myEmployments(ctx))).find(e=>e.employmentId===native.employmentId):await resolveOwnClockEmployment(ctx,p.employmentId);
   if(!me)throw new OwnClockEmploymentUnavailableError();
   if(!native&&p.employmentId!==undefined&&p.clockContext==null)throw new ClockContextChangedError('Reopen the selected employee clock context.');
@@ -126,11 +134,24 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, nativ
   if(p.locationStatus!=null&&(!LOCATION_CAPTURE_STATUSES.includes(p.locationStatus)||(p.locationStatus==='recorded')!==!!point))throw new ClockLocationError('Location status must agree with the supplied coordinates.');
   if (native && !point) throw new ClockLocationError('Native clocking requires a sampled location');
   const execute=async(tx:Tx)=>{
+    const plan=await planClockTx(tx,ctx,me,p,point,native?{source:'native_online'}:{source:'web'},native,joined);
+    if(plan.kind==='recorded')return plan.receipt;
+    const receipt=await applyClockTx(tx,ctx,plan);
+    if(!joined)await assertLegacySelfServiceClockTx(tx,ctx,me.employmentId);
+    return receipt;
+  };
+  return joined?execute(joined.tx):withTenant(ctx,execute);
+}
+
+/** Every validation and typed refusal of a clocking, in the online order, with no write: locks and reads only. */
+async function planClockTx(tx:Tx,ctx:SessionContext,me:ClockSubject,p:ClockIntent,point:ReturnType<typeof clockLocation>,clock:ClockSource,native?:NativeCarrier,joined?:JoinedCarrier) {
+    const offline=clock.source==='mobile_offline';
     // Lock the subject even before its first attendance row exists. Concurrent tabs serialize here.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + me.employmentId}, 0))`);
     if(joined&&!(await myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:true})).some(e=>e.employmentId===me.employmentId))throw new OwnClockEmploymentUnavailableError();
     if(await submissionAbandonedTx(tx,ctx,me.employmentId,'clock',p.requestId))throw new ClockConflictError('This submission was abandoned before it recorded.');
-    if (native) await enforceDeviceGateTx(tx, { employmentId: me.employmentId, deviceToken: native.deviceToken });
+    // An offline claim carries no legacy device token: a company requiring a registered device refuses it.
+    if (native || offline) await enforceDeviceGateTx(tx, { employmentId: me.employmentId, deviceToken: native?.deviceToken });
     const [nativeDevice] = native?.deviceToken ? await tx.select({id:employeeDevice.id}).from(employeeDevice).where(and(eq(employeeDevice.employmentId,me.employmentId),eq(employeeDevice.deviceToken,native.deviceToken),isNull(employeeDevice.revokedAt))).limit(1) : [];
     if (native?.deviceToken && !nativeDevice) throw new DeviceNotRegisteredError();
     // r430 — the employee's OWN attendance_photo_setting decides, read fresh from the row every time
@@ -141,21 +162,27 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, nativ
     const photoSetting = empRow?.attendancePhotoSetting ?? 'not_required';
     if (photoSetting === 'required' && !p.photo) throw new AttendancePhotoRequiredError();
     const photo = photoSetting !== 'not_required' && p.photo ? await decodeClockPhoto(p.photo, p.mime ?? 'image/jpeg') : null;
-    const commandDigest = createHash('sha256').update(JSON.stringify([p.action, p.lat, p.lng, p.accuracy, photo?.photoDigest ?? '',...(p.locationStatus?[p.locationStatus]:[])])).digest('hex');
+    // An offline command is its signed claim: same digest whatever the photo setting did, and never an online one's.
+    const commandDigest = createHash('sha256').update(JSON.stringify(offline?['mobile_offline',clock.claimDigest]:[p.action, p.lat, p.lng, p.accuracy, photo?.photoDigest ?? '',...(p.locationStatus?[p.locationStatus]:[])])).digest('hex');
     const [accepted] = await tx.select().from(attendanceClockCapture).where(and(eq(attendanceClockCapture.employmentId, me.employmentId), eq(attendanceClockCapture.requestId, p.requestId))).limit(1);
     if (accepted) {
       // A new proof must never retroactively upgrade a capture accepted through another carrier.
       // The signed-command owner recovers its committed receipt before invoking this writer again.
       if(joined?.requireNew)throw new ClockConflictError('This clock reference already recorded before this proof');
       if (accepted.commandDigest !== commandDigest) throw new ClockConflictError('This request already recorded a different clock action');
-      return publicReceipt(accepted);
+      return { kind: 'recorded' as const, receipt: publicReceipt(accepted) };
     }
     if(!joined)await assertLegacySelfServiceClockTx(tx,ctx,me.employmentId);
-    const now = new Date();
+    const now = offline ? clock.at : new Date(), recordedAt = offline ? new Date() : now;
     if (native && (!Number.isFinite(native.sampledAt) || Math.abs(now.getTime()-native.sampledAt)>120000)) throw new ClockLocationError('Capture a fresh location before clocking');
+    // Offline skips the fresh-sample rule; its instant must be a whole second (as online punch_at is) not after receipt.
+    if (offline && (!Number.isFinite(now.getTime()) || now.getTime() % 1000 !== 0 || now.getTime() > recordedAt.getTime())) throw new OfflineClockPlanRefusal('effective_time_invalid', 'The offline instant must be a whole second before its receipt');
     const date = await clockAttendanceDateTx(tx, me.employmentId, p.action, now, await openClockSessionDateTx(tx, me.employmentId));
     const time = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kuala_Lumpur', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(now);
-    const [lastCapture] = await tx.select({ direction: attendanceClockCapture.direction, time: attendanceClockCapture.serverRecordedAt }).from(attendanceClockCapture).where(eq(attendanceClockCapture.employmentId, me.employmentId)).orderBy(desc(attendanceClockCapture.serverRecordedAt), desc(attendanceClockCapture.id)).limit(1);
+    // Ordering is by each capture's own instant: the offline effective time where one exists (draft 0647).
+    const [lastCapture] = offline
+      ? await tx.select({ direction: attendanceClockCapture.direction, time: sql<Date>`coalesce(${captureEffectiveAt}, ${attendanceClockCapture.serverRecordedAt})`.mapWith(attendanceClockCapture.serverRecordedAt) }).from(attendanceClockCapture).where(eq(attendanceClockCapture.employmentId, me.employmentId)).orderBy(desc(sql`coalesce(${captureEffectiveAt}, ${attendanceClockCapture.serverRecordedAt})`), desc(attendanceClockCapture.id)).limit(1)
+      : await tx.select({ direction: attendanceClockCapture.direction, time: attendanceClockCapture.serverRecordedAt }).from(attendanceClockCapture).where(eq(attendanceClockCapture.employmentId, me.employmentId)).orderBy(desc(attendanceClockCapture.serverRecordedAt), desc(attendanceClockCapture.id)).limit(1);
     const [day] = await tx.select({ id: attendance.id, checkIn: attendance.checkInAt, checkOut: attendance.checkOutAt }).from(attendance).where(and(eq(attendance.employmentId, me.employmentId), eq(attendance.attendanceDate, date))).limit(1).for('update');
     // r430 — the direction/state mismatch guard that used to require strict in-then-out is GONE: Clock In
     // and Clock Out are both always allowed, in any order. checkInTx/checkOutTx (core/attendance.ts) accept
@@ -168,7 +195,7 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, nativ
     // day is refused before the ordering checks below, with the same typed error. Locking the day above
     // sequences concurrent correction writers.
     await assertDayNotOwnedByCorrectionTx(tx, me.employmentId, date);
-    const minute = (clock:string) => Number(clock.slice(0,2))*60+Number(clock.slice(3,5));
+    const minute = (wall:string) => Number(wall.slice(0,2))*60+Number(wall.slice(3,5));
     const schedule = await clockScheduleForTx(tx,me.employmentId,date);
     if (!schedule.crossesMidnight && priorPunches.some(punch=>minute(punch.time)>minute(time))) throw new ClockConflictError('Clocking must follow the previous attendance punch');
     // Same-minute relaxation requires a recorded server instant for every same-minute anchor.
@@ -181,21 +208,105 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, nativ
     // geofenced → the three are stored NULL together (0517) and the position alone is the record.
     if (geo.enforced && (!geo.clockingLocationId || geo.radiusM == null || geo.distanceM == null)) throw new Error('An assigned clocking location is required');
     const site = geo.enforced ? { clockingLocationId: geo.clockingLocationId, distanceM: geo.distanceM, radiusM: geo.radiusM } : { clockingLocationId: null, distanceM: null, radiusM: null };
+    // checkInTx/checkOutTx refuse with this same predicate after the capture insert; deciding it here, where they
+    // would, keeps the online error order and lets an offline plan refuse before any write.
+    const order = clockPunchOrderRefusal({ direction: p.action, time, preciseOrder, crossesMidnight: schedule.crossesMidnight, durationOnly: schedule.durationOnly, dayExists: !!day, punchTimes: priorPunches.map(punch=>punch.time), checkInAt: day?.checkIn ?? null });
+    if (order) throw offline ? new ClockConflictError(order) : new Error(order);
+    return { kind: 'plan' as const, me, p, point, clock, native, now, recordedAt, date, time, photo, commandDigest, geo, site, preciseOrder, nativeDevice };
+}
+type ClockPlan = Extract<Awaited<ReturnType<typeof planClockTx>>, { kind: 'plan' }>;
+type CaptureValues = typeof attendanceClockCapture.$inferInsert & { id: string };
+
+/** The writes of a planned clocking, in its caller's transaction: capture, canonical punch and audit. */
+async function applyClockTx(tx:Tx,ctx:SessionContext,plan:ClockPlan) {
+    const { me, p, point, clock, native, now, recordedAt, date, time, photo, commandDigest, geo, site, preciseOrder, nativeDevice } = plan;
+    const offline = clock.source === 'mobile_offline';
     const captureId = randomUUID();
     // r430 — the six photo columns are spread ONLY when a photo exists (nullable since 0520; CHECK enforces
     // they land null together). deviceId is never set any more for a Web Clocking capture (nullable since
     // 0520 too) — there is no registered device to attribute it to.
-    const [capture] = await tx.insert(attendanceClockCapture).values({ id: captureId, tenantId: ctx.tenantId, employmentId: me.employmentId, attendanceDate: date, direction: p.action, requestId: p.requestId, serverRecordedAt: now, ...(nativeDevice ? { deviceId:nativeDevice.id } : {}), ...(photo ? { photoCapturedAt: now, photoMimeType: 'image/jpeg', ...photo } : {}), lat: p.lat, lng: p.lng, accuracyM: p.accuracy, ...site, locationCaptureStatus:p.locationStatus??(point?'recorded':null),geofencingRequired:geo.enforced,commandDigest }).returning();
+    const values: CaptureValues = { id: captureId, tenantId: ctx.tenantId, employmentId: me.employmentId, attendanceDate: date, direction: p.action, requestId: p.requestId, serverRecordedAt: recordedAt, ...(nativeDevice ? { deviceId:nativeDevice.id } : {}), ...(photo ? { photoCapturedAt: now, photoMimeType: 'image/jpeg', ...photo } : {}), lat: p.lat, lng: p.lng, accuracyM: p.accuracy, ...site, locationCaptureStatus:p.locationStatus??(point?'recorded':null),geofencingRequired:geo.enforced,commandDigest };
+    const [capture] = offline ? [await insertOfflineCaptureTx(tx, values, now)] : await tx.insert(attendanceClockCapture).values(values).returning();
     // r430 — deviceGateExempt:true: Web Clocking's own self-capture path is fully exempt from the
     // registered-device policy regardless of whether any tenant has it ON (ADR-0070 amendment). The
     // any other caller (the administrator's manual checkIn/checkOut, which has no screen since r435) never
     // sets this and stays fully policy-gated.
-    await (p.action === 'in' ? checkInTx : checkOutTx)(ctx, { employmentId: me.employmentId, date, time, geo: point ?? undefined, deviceGateExempt: !native, deviceToken: native?.deviceToken, clockCaptureId: captureId, preciseOrder }, tx);
-    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-clock-capture', aggregateId: captureId, eventType: 'attendance.clock.captured', actor: actorOf(ctx), subjectEmploymentId: me.employmentId, payload: { ...(native ? { clientSource: 'native_online', clientLocationTimestamp: native.sampledAt } : {}), captureId, direction: p.action, serverRecordedAt: now.toISOString(), clockingLocationId: site.clockingLocationId, geofence: geo.enforced ? 'pass' : 'not_enforced' } });
-    if(!joined)await assertLegacySelfServiceClockTx(tx,ctx,me.employmentId);
+    await (p.action === 'in' ? checkInTx : checkOutTx)(ctx, { employmentId: me.employmentId, date, time, geo: point ?? undefined, deviceGateExempt: clock.source === 'web', deviceToken: native?.deviceToken, clockCaptureId: captureId, preciseOrder, ...(offline ? { method: 'mobile_offline' as const } : {}) }, tx);
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-clock-capture', aggregateId: captureId, eventType: 'attendance.clock.captured', actor: actorOf(ctx), subjectEmploymentId: me.employmentId, payload: { ...(native ? { clientSource: 'native_online', clientLocationTimestamp: native.sampledAt } : {}), ...(offline ? { clientSource: 'mobile_offline', effectiveAt: now.toISOString() } : {}), captureId, direction: p.action, serverRecordedAt: recordedAt.toISOString(), clockingLocationId: site.clockingLocationId, geofence: geo.enforced ? 'pass' : 'not_enforced' } });
     return publicReceipt(capture);
-  };
-  return joined?execute(joined.tx):withTenant(ctx,execute);
+}
+
+// Draft 0647's column, named explicitly: db/schema.ts declares it only once 0647 is journaled (see the note there).
+export const attendanceClockCaptureEffectiveAt = sql`${attendanceClockCapture}.effective_at`;
+const captureEffectiveAt = attendanceClockCaptureEffectiveAt;
+/** The canonical capture row plus its effective instant, from the same values object as the online insert. */
+async function insertOfflineCaptureTx(tx:Tx,values:CaptureValues,effectiveAt:Date) {
+  const columns = getTableColumns(attendanceClockCapture), set = Object.entries(values).filter(([, value]) => value !== undefined) as [keyof typeof columns, unknown][];
+  await tx.execute(sql`insert into ${attendanceClockCapture} (${sql.join(set.map(([key]) => sql.identifier(columns[key].name)), sql`,`)},effective_at)
+    values (${sql.join(set.map(([key, value]) => sql.param(value, columns[key] as unknown as DriverValueEncoder<unknown, unknown>)), sql`,`)},${effectiveAt.toISOString()}::timestamptz)`);
+  const [row] = await tx.select().from(attendanceClockCapture).where(eq(attendanceClockCapture.id, values.id)).limit(1);
+  if (!row) throw new Error('Offline clock capture unavailable');
+  return row;
+}
+
+/** An accepted offline claim's command. Whole-second effectiveAt; claimDigest is the signed claim's sha256. */
+export type OfflineClockCommand = { employmentId: string; requestId: string; action: 'in' | 'out'; lat: number; lng: number; accuracy: number;
+  photo?: { bytes: Buffer; mimeType: 'image/jpeg' | 'image/png' }; effectiveAt: Date; claimDigest: string };
+export type OfflineClockRefusalReason = 'invalid_command' | 'employment_unavailable' | 'clock_conflict' | 'corrected_day' | 'device_unavailable'
+  | 'photo_required' | 'photo_invalid' | 'location_invalid' | 'geofence_quality' | 'outside_geofence' | 'effective_time_invalid';
+export type OfflineClockRefusal = { kind: 'refused'; reason: OfflineClockRefusalReason; message: string };
+export type OfflineClockPlan = ClockPlan;
+class OfflineClockPlanRefusal extends Error {
+  constructor(readonly reason: OfflineClockRefusalReason, message: string) { super(message); this.name = 'OfflineClockPlanRefusal'; }
+}
+/** Typed refusals only; anything else (SQL, RLS, a missing site) stays a fault for the caller's transaction. */
+function offlineClockRefusal(error: unknown): OfflineClockRefusal | null {
+  const reason: OfflineClockRefusalReason | null = error instanceof OfflineClockPlanRefusal ? error.reason
+    : error instanceof OwnClockEmploymentUnavailableError ? 'employment_unavailable'
+    : error instanceof CorrectedClockConflictError ? 'corrected_day'
+    : error instanceof ClockConflictError ? 'clock_conflict'
+    : error instanceof DeviceNotRegisteredError ? 'device_unavailable'
+    : error instanceof AttendancePhotoRequiredError ? 'photo_required'
+    : error instanceof ClockPhotoError ? 'photo_invalid'
+    : error instanceof ClockLocationError ? 'location_invalid'
+    : error instanceof GeofenceQualityError ? 'geofence_quality'
+    : error instanceof OutsideGeofenceError ? 'outside_geofence' : null;
+  return reason && error instanceof Error ? { kind: 'refused', reason, message: error.message } : null;
+}
+/** Plans an offline punch in the CALLER's transaction: every online rule except the 120 s fresh-sample rule,
+ * ordered by the effective instant, under the subject lock. Writes nothing; a refusal leaves the transaction usable. */
+export async function planOfflineClockTx(tx: Tx, ctx: SessionContext, p: OfflineClockCommand): Promise<OfflineClockPlan | OfflineClockRefusal> {
+  try {
+    if (!['in', 'out'].includes(p.action) || !UUID.test(p.requestId) || !UUID.test(p.employmentId) || !/^[a-f0-9]{64}$/.test(p.claimDigest) || !(p.effectiveAt instanceof Date))
+      throw new OfflineClockPlanRefusal('invalid_command', 'Invalid offline clock command');
+    const intent: ClockIntent = { action: p.action, requestId: p.requestId, lat: p.lat, lng: p.lng, accuracy: p.accuracy, ...(p.photo ? { photo: p.photo.bytes, mime: p.photo.mimeType } : {}), locationStatus: 'recorded', employmentId: p.employmentId };
+    const point = clockLocation(intent);
+    if (!point) throw new ClockLocationError('Offline clocking requires its sampled location');
+    const me = (await myOwnEmploymentSubjectsTx(tx, ctx, { profileEdit: true })).find(e => e.employmentId === p.employmentId);
+    if (!me) throw new OwnClockEmploymentUnavailableError();
+    const plan = await planClockTx(tx, ctx, me, intent, point, { source: 'mobile_offline', at: new Date(p.effectiveAt.getTime()), claimDigest: p.claimDigest }, undefined, { tx, requireNew: true });
+    // requireNew refuses any held request ID, so a replayed receipt cannot reach here.
+    if (plan.kind !== 'plan') throw new ClockConflictError('This clock reference already recorded');
+    return plan;
+  } catch (error) {
+    const refusal = offlineClockRefusal(error);
+    if (refusal) return refusal;
+    throw error;
+  }
+}
+/** The canonical offline attendance writer: plans, then writes capture (effective_at), punch (mobile_offline) and
+ * audit in the CALLER's transaction; no nested transaction. A refusal writes nothing. Any throw after the first
+ * write also aborts that transaction, so a caller that catches it can still never commit a partial clocking. */
+export async function captureOfflineClockTx(tx: Tx, ctx: SessionContext, p: OfflineClockCommand) {
+  const plan = await planOfflineClockTx(tx, ctx, p);
+  if (plan.kind === 'refused') return plan;
+  try {
+    const receipt = await applyClockTx(tx, ctx, plan);
+    return { kind: 'recorded' as const, captureId: receipt.id, date: plan.date, effectiveAt: plan.now.getTime(), receipt };
+  } catch (error) {
+    await tx.execute(sql`select cast('offline clock write failed; transaction aborted' as integer)`).catch(() => undefined);
+    throw error;
+  }
 }
 
 /** The newest open session (a check-in with no check-out) that a clock-out may close. Read under the subject lock. */

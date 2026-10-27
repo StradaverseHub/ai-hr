@@ -1,5 +1,45 @@
 -- Filename reserved centrally. DRAFT: no journal idx/when, not authorized for application.
 -- Durable offline evidence ownership only; routes/rollout remain disabled.
+-- ADR-0088 offline punch provenance, as 0528:3 added 'admin'. A value added in this transaction is not usable
+-- as an enum literal here, so this file compares it only as text. PostgreSQL cannot drop an enum value.
+ALTER TYPE clock_method ADD VALUE IF NOT EXISTS 'mobile_offline';--> statement-breakpoint
+-- effective_at: the accepted offline instant; NULL is an online capture, whose instant stays server_recorded_at
+-- (never overloaded: 0528's legacy-in synthesis needs it within 5 s). Whole seconds, as online punch_at is, and
+-- never after the receipt. Epoch arithmetic keeps the CHECK independent of the session TimeZone.
+-- Writers of attendance_clock_capture, none broken (only the first ever sets the column; NULL satisfies it):
+-- core/attendance-clock.ts (sole application insert; only its mobile_offline source sets effective_at),
+-- scripts/dev-fixture-board1-policy-release.ts and test fixtures (owner inserts), app.purge_attendance_clock_photo
+-- (0500; UPDATEs photo columns only, so the CHECK re-evaluates unchanged values). Nothing else updates or
+-- deletes the table. ai_hr_app's table-level SELECT, INSERT (0500) covers the new column; no grant added.
+ALTER TABLE attendance_clock_capture ADD COLUMN effective_at timestamptz,
+ ADD CONSTRAINT attendance_clock_capture_effective_at_ck CHECK(effective_at IS NULL OR
+ (effective_at<=server_recorded_at AND extract(epoch FROM effective_at)=trunc(extract(epoch FROM effective_at))));
+-- 0528's guard with every check kept. A capture-linked punch is web or mobile_offline, and mobile_offline exactly
+-- when its capture holds effective_at; a mobile_offline punch without a capture is refused for every role.
+CREATE OR REPLACE FUNCTION app.attendance_capture_punch_guard() RETURNS trigger
+LANGUAGE plpgsql SET search_path=public,pg_temp AS $$
+DECLARE cap attendance_clock_capture;
+BEGIN
+ IF NEW.clock_capture_id IS NOT NULL THEN
+  SELECT * INTO cap FROM attendance_clock_capture WHERE id=NEW.clock_capture_id;
+  IF NOT FOUND OR cap.tenant_id<>NEW.tenant_id OR cap.employment_id<>NEW.employment_id OR cap.attendance_date<>NEW.attendance_date OR cap.direction<>NEW.direction
+   OR NEW.method::text NOT IN ('web','mobile_offline') OR (NEW.method::text='mobile_offline')<>(cap.effective_at IS NOT NULL) THEN
+   RAISE EXCEPTION 'Invalid attendance capture reference';
+  END IF;
+ ELSIF NEW.method::text='mobile_offline' THEN
+  RAISE EXCEPTION 'Offline clocking requires its attendance capture';
+ ELSIF current_user='ai_hr_app' AND NOT EXISTS(SELECT 1 FROM employment e WHERE e.id=NEW.employment_id AND app.is_admin_for(e.company_id)) THEN
+  IF NOT (
+   (NEW.method::text='admin' AND app.can_correct_attendance(NEW.employment_id))
+   OR
+   (NEW.direction='in' AND EXISTS(SELECT 1 FROM attendance a WHERE a.id=NEW.attendance_id AND a.check_in_at=NEW.punch_at AND NOT EXISTS(SELECT 1 FROM attendance_punch p WHERE p.attendance_id=a.id)) AND EXISTS(SELECT 1 FROM attendance_clock_capture c WHERE c.employment_id=NEW.employment_id AND c.attendance_date=NEW.attendance_date AND c.direction='out' AND c.server_recorded_at>=statement_timestamp()-interval '5 seconds'))
+  ) THEN
+   RAISE EXCEPTION 'Employee clocking requires a photo capture';
+  END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+--> statement-breakpoint
 CREATE TABLE mobile_offline_context (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),actor_id uuid NOT NULL REFERENCES app_user(id),
  employment_id uuid NOT NULL REFERENCES employment(id),company_id uuid NOT NULL REFERENCES company(id),
@@ -121,8 +161,9 @@ BEGIN
  SELECT * INTO k FROM public.mobile_integrity_key WHERE id=c.device_key_id;
  IF NOT FOUND OR k.revoked_at IS NOT NULL OR (k.platform='ios' AND (NEW.assertion_counter IS NULL OR NEW.assertion_counter<=k.assertion_counter))
  OR (k.platform='android' AND NEW.assertion_counter IS NOT NULL) THEN RAISE EXCEPTION 'Offline proof counter unavailable'; END IF;
+ -- The capture owns the accepted instant; the claim's effective_at is a checked copy, never a second truth.
  IF NEW.capture_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.attendance_clock_capture a WHERE a.id=NEW.capture_id
- AND a.tenant_id=NEW.tenant_id AND a.employment_id=NEW.employment_id AND a.request_id=NEW.request_id)
+ AND a.tenant_id=NEW.tenant_id AND a.employment_id=NEW.employment_id AND a.request_id=NEW.request_id AND a.effective_at=NEW.effective_at)
  THEN RAISE EXCEPTION 'Offline capture binding mismatch'; END IF;
  RETURN NEW;
 END;

@@ -2125,3 +2125,15 @@ and acceptance-disabled limits apply. On 28 October 2026 the owner decided that 
 overnight clock-out belongs to the shift's start day, as the online writer files it, and must still
 match `effectiveAt` exactly. The acceptance check now uses the online writer's own anchoring rule,
 and this change is UNVERIFIED until a hosted run passes.
+
+### Canonical offline attendance writer (28 October 2026)
+
+UNVERIFIED pending a hosted run: no vitest, TypeScript, build or database command was run for this
+change. It adds the canonical offline writer (`captureOfflineClockTx`, `planOfflineClockTx`), the
+shared minute-ordering predicate, the `mobile_offline` method and `attendance_clock_capture.effective_at`
+in reserved 0647 with its CHECK, the widened punch guard and the claim-to-capture instant check, and a
+new `test/mobile-offline-clock-writer.test.ts`. The consumption suite's accepted paths now go through the
+canonical writer. New 0647 SHA-256 `ae58b8f74eb58587005b682cdfaa426aab14c4155ecf602b02fecff25241d7d1`;
+held 0636 is unchanged (`9063b27c0cc316b715d552561d636ffc6412e447ca9275758bf497870c995df7`) and the
+migration journal is unchanged. Readers remain unchanged, routes remain unmounted and acceptance is not
+enabled. The online clock suites must pass unchanged for the split to be considered behavior-preserving.

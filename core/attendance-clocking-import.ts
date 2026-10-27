@@ -566,7 +566,7 @@ async function decideLines(tx: Tx, def: AnyMappingDef, text: string, lockTenantI
   const sortedDays = matched.map((d) => d.day!).sort();
   const from = sortedDays[0];
   const to = sortedDays[sortedDays.length - 1];
-  type Existing = { time: string; direction: 'in' | 'out'; method: 'web' | 'import' | 'admin' };
+  type Existing = { time: string; direction: 'in' | 'out'; method: 'web' | 'import' | 'admin' | 'mobile_offline' };
   const existingBy = new Map<string, Existing[]>();
   const correctedDays = new Set<string>();
   for (const ids of chunks(empIds)) {

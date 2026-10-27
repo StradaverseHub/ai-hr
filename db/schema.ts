@@ -3950,7 +3950,8 @@ export const geofenceStatusEnum = pgEnum('geofence_status', ['pass', 'not_enforc
 // the `attendance.amended` event's top-level `before` block (core/attendance.ts AMENDED_FIGURE_COLUMNS),
 // so the Audit Trail shows the loss as "old → new" rather than leaving it invisible. Still no column and
 // still no snapshot table: see the ADR-0069 note on attendance_correction below.
-export const clockMethodEnum = pgEnum('clock_method', ['web', 'import', 'admin']);
+// 'mobile_offline' (draft 0647, ADR-0088): an accepted offline claim's punch, written only by core/attendance-clock.ts.
+export const clockMethodEnum = pgEnum('clock_method', ['web', 'import', 'admin', 'mobile_offline']);
 
 // Absence classification (Wave 4A) — set when a day is explicitly recorded/corrected as absent, so the
 // absenteeism analytics can categorise unplanned absence (planned absence is already typed via leave).
@@ -4106,6 +4107,9 @@ export const attendanceClockCapture = pgTable('attendance_clock_capture', {
   geofencingRequired: boolean('geofencing_required'),
   commandDigest: text('command_digest').notNull(), photoDigest: text('photo_digest'),
   photoPurgedAt: timestamp('photo_purged_at', { withTimezone: true }), photoPurgeEventId: uuid('photo_purge_event_id').references(() => domainEvent.id),
+  // effective_at (timestamptz, NULL = online) exists only where unjournaled draft 0647 is installed. It is declared
+  // here when 0647 is journaled: until then every select()/returning() of this table would name a missing column
+  // on the live schema. Its one writer and readers name it explicitly (attendanceClockCaptureEffectiveAt, core/attendance-clock.ts).
 }, (t) => [uniqueIndex('attendance_clock_capture_request_uq').on(t.tenantId, t.employmentId, t.requestId),
   index('attendance_clock_capture_day_idx').on(t.employmentId, t.attendanceDate, t.serverRecordedAt),
   check('attendance_clock_capture_location_together', sql`num_nonnulls(${t.lat}, ${t.lng}, ${t.accuracyM}) IN (0, 3) AND (${t.lat} IS NOT NULL OR (${t.clockingLocationId} IS NULL AND ${t.deviceId} IS NULL))`),

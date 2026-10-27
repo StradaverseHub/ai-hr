@@ -17,7 +17,7 @@ import {offlineClockReportedBounds,type OfflineClockReportedBounds} from '../lib
 import {readIssuedOfflineContextTx} from './mobile-offline-context';
 import {ownIntegrityEnrollmentCompanyTx} from './mobile-integrity-key';
 import {withAttendanceTenant} from './module-gate';
-import {clockAttendanceDateTx,openClockSessionDateTx} from '../packs/attendance/service';
+import {attendanceClockCaptureEffectiveAt,clockAttendanceDateTx,openClockSessionDateTx} from '../packs/attendance/service';
 type KeyRow=typeof mobileIntegrityKey.$inferSelect;
 type ClaimRow=typeof mobileOfflineClaim.$inferSelect;
 export type OfflineClaimFacts={claim:OfflineClockSignedClaim['claim'];context:OfflineClockContextData;key:Readonly<KeyRow>;
@@ -27,8 +27,8 @@ export type OfflineClaimPorts={
  /** Verify current upload environment/configuration outside DB locks. Android must perform its
   * fresh payload-bound Play check here; iOS must not generate a later transport assertion. */
  prepare(ctx:SessionContext,facts:OfflineClaimFacts):Promise<{assertFresh(tx:Tx,facts:OfflineClaimFacts):Promise<void>}>;
- /** Deterministic policy owner. Accepted must call the canonical offline attendance writer in this
-  * same tx and return its capture, whose live punch records exactly effectiveAt; review/refusal creates
+ /** Deterministic policy owner. Accepted must call the canonical offline attendance writer (captureOfflineClockTx) in
+  * this same tx and return its capture, whose live mobile_offline punch records exactly effectiveAt; review/refusal creates
   * no attendance fact. No network/nested tx. Not called for a request ID an attendance capture already holds. */
  adjudicate(tx:Tx,ctx:SessionContext,facts:OfflineClaimFacts,photo:OfflineClaimPhoto|null):Promise<unknown>;
  /** Recheck deployment/issuer/current-key/policy eligibility after tentative writes. */
@@ -137,12 +137,14 @@ export function createOfflineClaimService(settings:unknown,ports:OfflineClaimPor
      // PostgreSQL time (microsecond), the MYT wall clock of the instant; it must equal the integer-millisecond
      // instant at that native precision. attendance_date must be the canonical writer's day for this action and
      // instant: its MYT day, or for that overnight out only the start day (instant = start day + 1 + punch_at).
+     // The canonical offline writer's provenance too: its capture owns exactly this effective_at, its punch is mobile_offline.
      const effective=new Date(decision.effectiveAt),date=await clockAttendanceDateTx(tx,facts.claim.scope.employmentId,facts.claim.command.action,effective,unclosed);
-     const [punch]=await tx.select({id:attendancePunch.id,date:attendancePunch.attendanceDate,
-      exact:sql<boolean>`${attendancePunch.punchAt}=(${effective.toISOString()}::timestamptz at time zone ${HR_LOCAL_TZ}::text)::time`}).from(attendancePunch).innerJoin(attendanceClockCapture,eq(attendanceClockCapture.id,attendancePunch.clockCaptureId)).where(and(
+     const [punch]=await tx.select({id:attendancePunch.id,date:attendancePunch.attendanceDate,method:attendancePunch.method,
+      exact:sql<boolean>`${attendancePunch.punchAt}=(${effective.toISOString()}::timestamptz at time zone ${HR_LOCAL_TZ}::text)::time`,
+      effective:sql<boolean>`coalesce(${attendanceClockCaptureEffectiveAt}=${effective.toISOString()}::timestamptz,false)`}).from(attendancePunch).innerJoin(attendanceClockCapture,eq(attendanceClockCapture.id,attendancePunch.clockCaptureId)).where(and(
       eq(attendanceClockCapture.id,decision.captureId),eq(attendanceClockCapture.tenantId,ctx.tenantId),eq(attendanceClockCapture.employmentId,facts.claim.scope.employmentId),eq(attendanceClockCapture.requestId,facts.claim.command.requestId),
       eq(attendancePunch.tenantId,ctx.tenantId),eq(attendancePunch.employmentId,facts.claim.scope.employmentId),eq(attendancePunch.direction,facts.claim.command.action),isNull(attendancePunch.voidedAt))).limit(1);
-     if(!punch||punch.date!==date||punch.exact!==true)throw unavailable();
+     if(!punch||punch.date!==date||punch.exact!==true||punch.effective!==true||punch.method!=='mobile_offline')throw unavailable();
     }
     const now=await stamp(tx),retainedUntil=photo?new Date(now.getTime()+config.photoRetentionMs):null;
     if(retainedUntil&&!Number.isFinite(retainedUntil.getTime()))throw unavailable();

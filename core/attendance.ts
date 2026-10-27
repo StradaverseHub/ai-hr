@@ -415,6 +415,27 @@ const toMinutes = (t: string): number => {
   return h * 60 + m;
 };
 
+/** Sole owner of the writers' minute-ordering refusals: checkInTx/checkOutTx throw `new Error(message)`, and the
+ *  clock planner (core/attendance-clock.ts) evaluates the same predicate before any write, so plan and apply
+ *  cannot disagree. Inputs are the day's live (non-voided) punch times and its aggregate check-in; null = in order. */
+export function clockPunchOrderRefusal(p: {
+  direction: 'in' | 'out'; time: string; preciseOrder?: boolean; crossesMidnight: boolean; durationOnly?: boolean;
+  dayExists: boolean; punchTimes: readonly string[]; checkInAt: string | null;
+}): string | null {
+  if (p.preciseOrder) return null;
+  const latest = p.punchTimes.reduce<string | null>((a, b) => (a == null || toMinutes(b) > toMinutes(a) ? b : a), null);
+  if (p.direction === 'in') {
+    // R45: on a non-cross-midnight day a later clock-in must follow every punch already recorded that day.
+    return p.dayExists && !p.crossesMidnight && !p.durationOnly && latest != null && toMinutes(p.time) <= toMinutes(latest)
+      ? 'Each clocking must be later than the previous one' : null;
+  }
+  // Order against the latest punch, or a legacy row's check-in that predates the punch table.
+  const anchor = latest ?? p.checkInAt;
+  if (!p.crossesMidnight && !p.durationOnly && anchor != null && toMinutes(p.time) <= toMinutes(anchor)) return 'Check-out must be after check-in';
+  if (anchor != null && toMinutes(p.time) === toMinutes(anchor)) return 'Check-out must differ from check-in';
+  return null;
+}
+
 /** ISO weekday (1=Mon … 7=Sun) of a YYYY-MM-DD date. */
 export const isoWeekday = (iso: string): number => {
   const dow = new Date(`${iso}T00:00:00Z`).getUTCDay();
@@ -2021,7 +2042,7 @@ function deriveDayFromPunchList(
 
 export async function checkInTx(
   ctx: SessionContext,
-  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string; deviceGateExempt?: boolean; clockCaptureId?: string; preciseOrder?: boolean; manual?: boolean },
+  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string; deviceGateExempt?: boolean; clockCaptureId?: string; preciseOrder?: boolean; manual?: boolean; method?: 'web' | 'mobile_offline' },
   existingTx?: Tx,
 ) {
   const perform = async (tx: Tx) => {
@@ -2050,17 +2071,18 @@ export async function checkInTx(
 
     // R45: a SECOND (or later) clock-in of the day is now allowed (multiple clocking). Keep punches monotonic
     // on a non-cross-midnight day: a new clocking must be later than every punch already recorded today.
-    if (existing && !sched.crossesMidnight && !sched.durationOnly && !p.preciseOrder) {
-      const [last] = await tx
+    // The rule itself is clockPunchOrderRefusal's; the latest punch is read only where it can refuse.
+    const [last] = existing && !sched.crossesMidnight && !sched.durationOnly && !p.preciseOrder
+      ? await tx
         .select({ punchAt: attendancePunch.punchAt })
         .from(attendancePunch)
         .where(and(eq(attendancePunch.attendanceId, existing.id), isNull(attendancePunch.voidedAt)))
         .orderBy(desc(attendancePunch.punchAt))
-        .limit(1);
-      if (last && toMinutes(p.time) <= toMinutes(last.punchAt)) {
-        throw new Error('Each clocking must be later than the previous one');
-      }
-    }
+        .limit(1)
+      : [];
+    const inOrder = clockPunchOrderRefusal({ direction: 'in', time: p.time, preciseOrder: p.preciseOrder, crossesMidnight: sched.crossesMidnight,
+      durationOnly: sched.durationOnly, dayExists: !!existing, punchTimes: last ? [last.punchAt] : [], checkInAt: existing?.checkInAt ?? null });
+    if (inOrder) throw new Error(inOrder);
 
     // ADR-0070: resolve the geofence outcome BEFORE writing. Throws (rolling back this transaction, no
     // row/event written) when enforced and outside every assigned site — the caller catches it outside
@@ -2098,7 +2120,7 @@ export async function checkInTx(
           checkInDistanceM: geo.enforced ? geo.distanceM : null,
           checkInGeofenceStatus: geo.enforced ? 'pass' : 'not_enforced',
           checkInRadiusM: geo.enforced ? geo.radiusM : null,
-          checkInMethod: 'web',
+          checkInMethod: p.method ?? 'web',
         })
         .returning({ id: attendance.id });
       attendanceId = row.id;
@@ -2113,7 +2135,7 @@ export async function checkInTx(
       attendanceDate: p.date,
       punchAt: p.time,
       direction: 'in',
-      method: 'web',
+      method: p.method ?? 'web',
       clockCaptureId: p.clockCaptureId,
       ...punchGeoValues(geo),
     });
@@ -2165,7 +2187,7 @@ export async function checkIn(
 
 export async function checkOutTx(
   ctx: SessionContext,
-  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string; deviceGateExempt?: boolean; clockCaptureId?: string; preciseOrder?: boolean; manual?: boolean },
+  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string; deviceGateExempt?: boolean; clockCaptureId?: string; preciseOrder?: boolean; manual?: boolean; method?: 'web' | 'mobile_offline' },
   existingTx?: Tx,
 ) {
   const perform = async (tx: Tx) => {
@@ -2222,15 +2244,9 @@ export async function checkOutTx(
       .select({ punchAt: attendancePunch.punchAt })
       .from(attendancePunch)
       .where(and(eq(attendancePunch.attendanceId, rec.id), isNull(attendancePunch.voidedAt)));
-    const anchor = existingPunches.length
-      ? existingPunches.reduce((a, b) => (toMinutes(b.punchAt) > toMinutes(a.punchAt) ? b : a)).punchAt
-      : rec.checkInAt;
-    if (!p.preciseOrder && !sched.crossesMidnight && !sched.durationOnly && anchor != null && toMinutes(p.time) <= toMinutes(anchor)) {
-      throw new Error('Check-out must be after check-in');
-    }
-    if (!p.preciseOrder && anchor != null && toMinutes(p.time) === toMinutes(anchor)) {
-      throw new Error('Check-out must differ from check-in');
-    }
+    const outOrder = clockPunchOrderRefusal({ direction: 'out', time: p.time, preciseOrder: p.preciseOrder, crossesMidnight: sched.crossesMidnight,
+      durationOnly: sched.durationOnly, dayExists: true, punchTimes: existingPunches.map((punch) => punch.punchAt), checkInAt: rec.checkInAt });
+    if (outOrder) throw new Error(outOrder);
 
     // ADR-0070: resolve the geofence outcome for the CHECK-OUT punch — independent of the check-in punch's
     // status/radius (a mid-day toggle or radius change is representable; each punch freezes its own).
@@ -2273,7 +2289,7 @@ export async function checkOutTx(
       attendanceDate: p.date,
       punchAt: p.time,
       direction: 'out',
-      method: 'web',
+      method: p.method ?? 'web',
       clockCaptureId: p.clockCaptureId,
       ...punchGeoValues(geo),
     });
@@ -2288,7 +2304,7 @@ export async function checkOutTx(
         checkOutDistanceM: geo.enforced ? geo.distanceM : null,
         checkOutGeofenceStatus: geo.enforced ? 'pass' : 'not_enforced',
         checkOutRadiusM: geo.enforced ? geo.radiusM : null,
-        checkOutMethod: 'web',
+        checkOutMethod: p.method ?? 'web',
       })
       .where(eq(attendance.id, rec.id));
 
@@ -6389,7 +6405,7 @@ export async function addImportedPunchesBatchTx(
         policyPlanRequestedOn.set(key,todayInKualaLumpur(c.createdAt));
     }
   }
-  type Kid = { punchAt: string; direction: 'in' | 'out'; method: 'web' | 'import' | 'admin' };
+  type Kid = { punchAt: string; direction: 'in' | 'out'; method: 'web' | 'import' | 'admin' | 'mobile_offline' };
   const kidsBy = new Map<string, Kid[]>();
   const wanted = days.map((d) => rowBy.get(keyOf(d.employmentId, d.day))?.id).filter((x): x is string => !!x);
   for (const ids of chunk(wanted, 1000)) {
@@ -6691,7 +6707,7 @@ async function deriveStoredAttendanceTx(tx:Tx,schedule:ResolvedSchedule,p:{emplo
 /** Presentation/command anchoring only; calculation remains in the existing writer. */
 export async function clockScheduleForTx(tx: Tx, employmentId: string, date: string) {
   const schedule = await scheduleFor(tx, employmentId, date);
-  return { crossesMidnight: schedule.crossesMidnight, start: schedule.shiftStart, end: schedule.shiftEnd, code: schedule.displayShiftCode ?? null };
+  return { crossesMidnight: schedule.crossesMidnight, durationOnly: schedule.durationOnly === true, start: schedule.shiftStart, end: schedule.shiftEnd, code: schedule.displayShiftCode ?? null };
 }
 
 

@@ -434,3 +434,47 @@ hosted run [40561470126](https://github.com/StradaverseHub/ai-hr/actions/runs/40
    clock_timestamp()`), never retained ciphertext; the purge's `DELETE ... RETURNING` passes the
    same read policy. The actor's own read is unchanged. GRANTs, immutability and the deferred
    custody constraint are unchanged.
+
+### Canonical offline attendance writer and provenance (28 October 2026)
+
+`captureOfflineClockTx` in `core/attendance-clock.ts`, exported through `packs/attendance/service`, is
+the only writer of an accepted offline punch. It runs in the caller's transaction (no nested
+transaction), as the claim service's `adjudicate` port requires. It remains unmounted: no route, no
+production adjudicator and no acceptance is enabled.
+
+- One owner, two halves. The online `captureEmployeeClockTx` is split into a read-only plan (every
+  validation and typed refusal, locks and reads only) and an apply step (capture, canonical punch,
+  audit). Web, native-online and offline share both. The online instant is still read after the
+  subject lock and request lookup, not at the call site, so online error order is unchanged.
+- Offline differences. The instant is the claim's `effectiveAt`, a whole second no later than the
+  receipt; the receipt instant `server_recorded_at` is the actual server time. The 120 s fresh-sample
+  rule does not apply. Ordering uses each capture's own instant (`effective_at`, else
+  `server_recorded_at`), so an offline instant earlier than an existing online clocking is refused even
+  though its upload arrives later. Any capture already holding the request ID refuses the plan. The
+  command digest is sha256 of `["mobile_offline", claimDigest]`, so an online replay of the same request
+  ID conflicts. A company requiring a registered device refuses offline clocking: a claim carries no
+  legacy device token.
+- `planOfflineClockTx` returns a plan or a typed refusal (`invalid_command`, `employment_unavailable`,
+  `clock_conflict`, `corrected_day`, `device_unavailable`, `photo_required`, `photo_invalid`,
+  `location_invalid`, `geofence_quality`, `outside_geofence`, `effective_time_invalid`) and writes nothing.
+  Other errors stay faults. If apply throws after its first write, the writer also aborts the caller's
+  transaction, so a caller that catches the error still cannot commit a partial clocking.
+- Minute ordering. `clockPunchOrderRefusal` in `core/attendance.ts` owns the minute-ordering refusals
+  that `checkInTx`/`checkOutTx` previously inlined. The plan evaluates the same predicate where those
+  writers would, so plan and apply cannot disagree.
+- Provenance in 0647. `clock_method` gains `mobile_offline` (PostgreSQL cannot drop an enum value; the
+  worker restore leaves it). `attendance_clock_capture.effective_at` (nullable; NULL is online) is
+  checked whole-second and not after `server_recorded_at`. The punch guard keeps all 0528 checks and
+  allows a capture-linked punch to be `web` or `mobile_offline`, `mobile_offline` exactly when the
+  capture has `effective_at`. A `mobile_offline` punch without a capture is refused for every role. The
+  claim trigger requires the claim's `effective_at` to equal its capture's, so the claim keeps a
+  checked copy, not a second truth. The consumption service also requires the linked capture's
+  `effective_at` to equal `effectiveAt` and the punch method to be `mobile_offline`.
+- `effective_at` is deliberately not declared in `db/schema.ts` while 0647 is unjournaled. Declaring
+  it would make every `select()`/`returning()` of the table name a column the live schema lacks. The
+  writer and the consumption check name it explicitly (`attendanceClockCaptureEffectiveAt`).
+- Readers are not yet updated. Reports, exports, correction history, current status, policy coverage
+  (0590 reads `server_recorded_at`) and the clocking import's `method === 'web'` rule still treat an
+  offline capture by its receipt instant or as non-web. This is required before enabling acceptance.
+
+This writer is UNVERIFIED until a hosted run passes.
