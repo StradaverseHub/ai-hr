@@ -9,6 +9,7 @@ import { hireEmployee } from '../core/org';
 import { grantAssistant } from '../core/assistant-grant';
 import { resolveActiveAiConfig } from '../core/ai-config';
 import { withAiAdmissionCheck } from '../core/ai-governance';
+import { bindAiSpendTaskTx } from '../core/ai-spend-task';
 import { prepareAssistantConversation } from '../core/assistant-provider-input';
 import { ASSISTANT_TOOLS, specsFor } from '../core/assistant-tools';
 import { assistantSourceDigest } from '../lib/ai/assistant-disclosure';
@@ -38,7 +39,11 @@ async function fixture(claims = false) {
   const tool = ASSISTANT_TOOLS.find(tool => tool.spec.name === 'employee_profile')!;
   const input = { employment_id: employee.employmentId }, outcome = await tool.run(ctx, input);
   expect(outcome.ok).toBe(true);
-  const configuration = await withTenant(ctx, tx => resolveActiveAiConfig(tx, ctx));
+  // The Assistant binds its native question spend root before any admission (core/assistant.ts).
+  const configuration = await withTenant(ctx, async tx => {
+    const resolved = await resolveActiveAiConfig(tx, ctx, 'hr_assistant');
+    return resolved ? bindAiSpendTaskTx(tx, ctx, resolved, { kind: 'assistant_question' }) : null;
+  });
   if (!configuration) throw Error('Actual fake-key fixture configuration missing');
   const args: ConverseArgs = { system: ['Fictional fixed system'], tools: specsFor(ctx), turns: [
     { role: 'user', content: 'Read this permitted profile.' },

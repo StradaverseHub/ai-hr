@@ -8,7 +8,10 @@
  *     with no AI config. Either way: FeedbackError, no LLM call, status untouched;
  *   - re-plan: a contested item's prompt carries the prior plan + the reporter's push-back.
  *
- * lib/ai generateDraft + core/ai-config resolveActiveAiConfig are mocked — never touches an SDK / key.
+ * lib/ai generateDraft is mocked — never touches an SDK / key. resolveActiveAiConfig is spied so one case can
+ * return null; otherwise it is the REAL resolver over a fictional platform env key, because the planning
+ * agent binds its admission check with withAiAdmissionCheck, which refuses any configuration the server did
+ * not issue (a plain object is exactly the lookalike it exists to refuse).
  * redactPII stays REAL (importActual) so redaction is genuinely exercised.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -72,11 +75,18 @@ beforeEach(async () => {
   await setSetting(base.tenantId, 'feedback.ai_planning_enabled', true);
   planCtx = await entitledCtx(base);
   vi.mocked(generateDraft).mockReset().mockResolvedValue('PLAN: 1. Do the thing. 2. Test it.');
+  // Fictional platform key only; the tenant has no stored provider, so the real resolver issues the
+  // environment fallback (Anthropic, its default model claude-opus-4-8). generateDraft never sends it.
+  vi.unstubAllEnvs();
+  vi.stubEnv('ANTHROPIC_API_KEY', 'sk-test'); vi.stubEnv('AI_DRAFT_MODEL', '');
+  for (const key of ['OPENAI_API_KEY', 'GOOGLE_API_KEY', 'GEMINI_API_KEY']) vi.stubEnv(key, '');
+  const actual = await vi.importActual<typeof import('../core/ai-config')>('../core/ai-config');
   vi.mocked(resolveActiveAiConfig)
     .mockReset()
-    .mockResolvedValue({ provider: 'anthropic', model: 'claude-opus-4-8', apiKey: 'sk-test' });
+    .mockImplementation((tx, ctx, feature) => actual.resolveActiveAiConfig(tx, ctx, feature));
 });
 afterAll(async () => {
+  vi.unstubAllEnvs();
   await closeAll();
 });
 

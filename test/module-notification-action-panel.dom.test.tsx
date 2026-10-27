@@ -4,7 +4,8 @@ import React from 'react';
 import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {ModuleNotificationActionPanel,readModuleNotificationActionResponse} from '../components/assistant/module-notification-action-panel';
-import {notificationPreferenceCategories} from '../lib/notification-email-model';
+// The action contract and panel use the employment preference categories ('letters' is account-scoped, 429558b69).
+import {employmentNotificationPreferenceCategories as notificationPreferenceCategories} from '../lib/notification-email-model';
 import {MODULE_NOTIFICATION_ACTION} from '../lib/assistant-actions/module-action-review-contract';
 vi.mock('next-intl',()=>({useTranslations:()=>((key:string)=>key),useFormatter:()=>({dateTime:(date:Date)=>date.toISOString()})}));
 vi.mock('next/link',()=>({default:({children,...props}:React.AnchorHTMLAttributes<HTMLAnchorElement>)=><a {...props}>{children}</a>}));

@@ -11,6 +11,10 @@ vi.mock('next-intl/server',()=>({getLocale:async()=>state.locale,getTranslations
 }}));
 vi.mock('../app/assistant/job-feedback-actions',()=>({saveGovernedJobFeedbackAction:vi.fn(),eraseGovernedJobFeedbackAction:vi.fn()}));
 vi.mock('../app/assistant/governed-job-actions',()=>({runGovernedPlanAction:vi.fn()}));
+vi.mock('../app/assistant/actions',()=>({askAssistantAction:vi.fn()}));
+// The findings panel is an async server component (own coverage: module-specialist-review.dom). A client
+// render cannot resolve a nested async component, so the whole card suspended and rendered nothing.
+vi.mock('../components/assistant/module-specialist-findings',()=>({ModuleSpecialistFindings:()=>null}));
 vi.mock('../core/module-agent-releases',()=>({reopenGovernedModuleReadJobTx:vi.fn()}));
 vi.mock('../core/assistant-tools',()=>({toolsFor:()=>state.tools}));
 vi.mock('../core/assistant-read-session',()=>({withAssistantRead:vi.fn(async(_ctx:unknown,module:string,consume:(read:unknown)=>Promise<unknown>)=>consume({moduleWork:async()=>{
@@ -23,6 +27,7 @@ import {CanonicalModuleJob,ModuleJobChooser,GroundedWorkspaceReply,GovernedModul
 import {AGENT_MODULE_CODES,MODULE_AGENT_CAPABILITIES} from '../lib/ai/module-agents';
 import {moduleHumanActionHandoffs} from '../lib/ai/module-human-handoffs';
 import {assistantSourceDigest} from '../lib/ai/assistant-disclosure';
+import {compactSpecialistWork,executeCanonicalSpecialist} from '../lib/ai/module-specialists';
 import type {AssistantReadSession} from '../core/assistant-read-session';
 import type {SessionContext} from '../db/client';
 const copies:Record<string,unknown>={en,ms,zh,ta,th,vi:viMessages};
@@ -91,7 +96,11 @@ describe('deterministic current-user job cards',()=>{
   render(await ModuleJobChooser({modules:['leave','ess']}));expect(screen.queryByRole('link',{name:copy.title})).toBeNull();
  });
  it.each(['en','ms','zh','ta','th','vi'])('%s renders only a source-owned human handoff from the grounded chat path',async locale=>{
-  state.locale=locale;const outcome={ok:true as const,module:'leave',data:{rows:[],truncated:false},humanActions:moduleHumanActionHandoffs('leave')};
+  // The actual my_module_work contract (d7ff112ca): current-caller capability/scope and the baseline compact
+  // specialist work the read session derives, which the answer-evidence owner reconstructs and compares.
+  state.locale=locale;const source={module:'leave' as const,capability:MODULE_AGENT_CAPABILITIES.find(row=>row[0]==='leave')![1],scope:'current-caller',data:{rows:[],truncated:false},humanActions:moduleHumanActionHandoffs('leave')};
+  const configuration={kind:'canonical_specialist_v1' as const,module:'leave' as const,playbook:'canonical_domain_v1' as const};
+  const outcome={ok:true as const,...source,specialistWork:compactSpecialistWork(executeCanonicalSpecialist(configuration,source),{mode:'baseline',version:0,configuration})};
   state.tools=[{spec:{name:'my_module_work'},module:null,sensitivity:'ordinary',run:async()=>outcome}];
   const view=await loadCanonicalToolJob(ctx,'my_module_work',{module:'leave'},assistantSourceDigest(outcome),{} as AssistantReadSession),copy=(copies[locale] as typeof en).assistant.workspace.jobs;
   const shown=render(await CanonicalModuleJob({view,ctx}));expect(screen.getByRole('link',{name:copy.reviewAction}).getAttribute('href')).toBe('/assistant/leave');expect(screen.getByText(copy.humanReviewNote)).toBeTruthy();expect(shown.container.querySelectorAll('form[method="post"]')).toHaveLength(0);shown.unmount();
