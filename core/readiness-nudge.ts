@@ -38,6 +38,7 @@ import { loadReadinessActions } from './readiness-actions';
 import { resolveEntitlementsTx } from './entitlements';
 import { recordDecision, recordProposal } from './agent-proposal';
 import { resolveActiveAiConfig } from './ai-config';
+import {bindAiSpendTaskTx} from './ai-spend-task';
 import { generateDraft } from '../lib/ai';
 
 /** The audience is resolved from current request permissions and pending submissions (ADR-0111). */
@@ -151,7 +152,7 @@ async function draftBody(
   gap: ReadinessGapId,
   audience: NudgeAudience,
 ): Promise<string> {
-  const cfg = await withTenant(ctx, (tx) => resolveActiveAiConfig(tx, ctx, 'readiness_reminders')).catch(() => null);
+  const cfg = await withTenant(ctx,async tx=>{const resolved=await resolveActiveAiConfig(tx,ctx,'readiness_reminders');return resolved?bindAiSpendTaskTx(tx,ctx,resolved,{kind:'readiness_template',gap,audience}):null;}).catch(()=>null);
   // No provider is not a failure — it is the ordinary state of a tenant that has not bought one, and the
   // deterministic body is a perfectly good chaser. Nothing is recorded, because nothing was proposed.
   if (!cfg) return fallbackBody(gap, audience);
@@ -258,6 +259,7 @@ async function settleOutcomes(ctx: SessionContext, openGapKeys: Set<string>, act
  * gap fixed since the last run is credited before anything new is raised.
  */
 export async function sweepReadinessNudges(ctx: SessionContext): Promise<NudgeSweepResult> {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   const empty: NudgeSweepResult = {
     awaitingReview: 0,
     changed: 0,

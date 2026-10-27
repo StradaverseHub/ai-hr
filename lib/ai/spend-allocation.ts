@@ -5,7 +5,7 @@ import type {AiAdmission} from './governance';
 export type StrictAiSpendRoot=Readonly<{rootTaskId:string;kind:'agent'|'evaluation'}>;
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX=BigInt("9223372036854775807");
-export const STRICT_AI_SPEND_FEATURES=Object.freeze(['provider_evaluation','module_agent_evaluation','module_agent_planning'] as const);
+export const STRICT_AI_SPEND_FEATURES=Object.freeze(['provider_evaluation','module_agent_evaluation','module_agent_planning','hr_assistant','readiness_reminders','claims_triage','payroll_hypotheses'] as const);
 export function requiresStrictAiSpend(feature:AiFeatureId){return (STRICT_AI_SPEND_FEATURES as readonly string[]).includes(feature);}
 export function captureStrictAiSpendRoot(value:StrictAiSpendRoot):StrictAiSpendRoot{
  if(!value||Object.keys(value).sort().join(',')!=='kind,rootTaskId'||!UUID.test(value.rootTaskId)||!['agent','evaluation'].includes(value.kind))throw new AiGatewayError('The AI spend allocation could not be confirmed.');

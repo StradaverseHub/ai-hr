@@ -41,6 +41,7 @@ import { assistantBudget, assistantExchange, assistantUsage } from '../db/schema
 import { converse } from '../lib/ai';
 import { AiAllowanceError, type AiStop, type AiToolCall, type AiToolResult, type AiTurn, type AiUsage } from '../lib/ai/types';
 import { resolveActiveAiConfig } from './ai-config';
+import {bindAiSpendTaskTx} from './ai-spend-task';
 import { assertMayUseAssistant } from './assistant-grant';
 import { withAssistantRead,type AssistantReadSession } from './assistant-read-session';
 import {withGovernedSpecialistReadBatch} from './module-agent-releases';
@@ -265,13 +266,14 @@ export async function askAssistant(
 
     const cfg = await resolveActiveAiConfig(tx, ctx, 'hr_assistant');
     if (!cfg) throw new AssistantError('not_configured');
-    return { cfg, budget, spentBefore: budget ? await spentThisPeriod(tx, ctx, period) : 0 };
+    // Persist a new human-question intent BEFORE provider work. Its root is held in the issued
+    // configuration through every converse/tool step; no late completed exchange ID or prompt hash.
+    const rooted=await bindAiSpendTaskTx(tx,ctx,cfg,{kind:'assistant_question'});
+    return { cfg:rooted, budget, spentBefore: budget ? await spentThisPeriod(tx, ctx, period) : 0 };
   });
 
-  // A NO-BUDGET TENANT IS UNLIMITED, AND THAT IS DELIBERATE. The feature is already gated by an explicit
-  // per-user grant an admin has to make (r223), so an unconfigured ceiling means "no ceiling set", not
-  // "nobody may ask". Refusing instead would make the assistant unusable the moment it is granted, which
-  // is the failure mode of a safety default nobody can discover.
+  // Legacy token caps remain additional controls. Every provider step also requires the mandatory
+  // application USD allocation; absence of a legacy token cap never means unlimited agent spend.
   const ceiling = budget ? Number(budget.monthlyTokenCeiling) : null;
 
   // ONE list, computed once: what the model is offered and what dispatch may run are the same array, so

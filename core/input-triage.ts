@@ -1,5 +1,6 @@
 import {assertClaimsProviderSourceTx} from './claims-provider-source';
 import {withAiAdmissionCheck} from './ai-governance';
+import {bindAiSpendTaskTx} from './ai-spend-task';
 import {draftInputDigest} from '../lib/ai/draft-input';
 /**
  * ADR-0084 §2.7 / §3 item 4 — INPUT-SIDE TRIAGE. The largest untouched surface in the product.
@@ -394,7 +395,8 @@ export async function triagePendingClaims(ctx: SessionContext): Promise<TriageRu
     try {
       const args=Object.freeze({system:SYSTEM,prompt:claimAsText(facts),maxTokens:MAX_TOKENS}),expectedInput=draftInputDigest(args),expectedSource=digestOf(c);
       const bound=withAiAdmissionCheck(cfg,'claims_triage',async(tx,request)=>{const [current]=await pendingClaimAiSourceTx(tx,ctx,since,c.id);if(request.operation!=='draft'||request.inputDigest!==expectedInput||!current||digestOf(current)!==expectedSource)throw Error('Current claim source unavailable.');});
-      raw=await generateDraft(bound,args);
+      const rooted=await withTenant(ctx,async tx=>{const[current]=await pendingClaimAiSourceTx(tx,ctx,since,c.id);if(!current||digestOf(current)!==expectedSource)throw Error('Current claim source unavailable.');return bindAiSpendTaskTx(tx,ctx,bound,{kind:'claim_request',sourceId:c.id});});
+      raw=await generateDraft(rooted,args);
     } catch {
       // Provider down, timed out, refused. Nothing proposed, nothing recorded; the next pass re-asks
       // because no ledger row was written for this claim.

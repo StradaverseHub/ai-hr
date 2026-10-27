@@ -1,4 +1,5 @@
 import {withAiAdmissionCheck} from './ai-governance';
+import {bindAiSpendTaskTx} from './ai-spend-task';
 import {draftInputDigest} from '../lib/ai/draft-input';
 /**
  * ADR-0084 §2.6 / §3 item 3 — JUDGMENT-GRADE DETECTION. The first place in this product where a model
@@ -666,7 +667,7 @@ export async function proposeHypotheses(
     }
 
     if (!cfgResolved) {
-      cfg = await withTenant(ctx, (tx) => resolveActiveAiConfig(tx, ctx, 'payroll_hypotheses')).catch(() => null);
+      cfg = await withTenant(ctx,async tx=>{if((await hypothesisSourceTx(tx,ctx,p)).digest!==source.digest)throw Error('Current payroll source unavailable.');const resolved=await resolveActiveAiConfig(tx,ctx,'payroll_hypotheses');return resolved?bindAiSpendTaskTx(tx,ctx,resolved,{kind:'payroll_batch',sourceId:p.batchId}):null;}).catch(()=>null);
       cfgResolved = true;
     }
     // NOT an error, and nothing is recorded: a tenant with no provider proposed nothing, and counting
