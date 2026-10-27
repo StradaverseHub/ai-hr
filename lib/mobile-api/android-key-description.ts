@@ -45,8 +45,8 @@ function sequence(node:Node,tag=16){if(!is(node,tag))fail();return node.children
 function integer(node:Node,tag=2):bigint{
   if(!is(node,tag)||node.bytes.length<1||node.bytes.length>9||node.bytes[0]&128||
     node.bytes.length>1&&node.bytes[0]===0&&node.bytes[1]<128)fail();
-  let value=0n;for(const b of node.bytes)value=value*256n+BigInt(b);
-  if(value>0xffffffffffffffffn)fail();return value;
+  let value=BigInt(0);for(const b of node.bytes)value=value*BigInt(256)+BigInt(b);
+  if(value>BigInt('18446744073709551615'))fail();return value;
 }
 function number(node:Node,tag=2){const value=integer(node,tag);if(value>BigInt(Number.MAX_SAFE_INTEGER))fail();return Number(value);}
 function octets(node:Node,minimum=0,maximum=1024){if(!is(node,4)||node.bytes.length<minimum||node.bytes.length>maximum)fail();return node.bytes;}
@@ -54,10 +54,10 @@ function numbers(node:Node){const entries=sequence(node,17);if(entries.length>16
 function level(node:Node,version:number){const value=number(node,10);if(value>2||version<3&&value===2)fail();return (['software','tee','strongbox'] as const)[value];}
 function boot(node:Node,version:number){
   const values=sequence(node);if(values.length!==(version>=3?4:3))fail();
-  octets(values[0],1,128);if(!is(values[1],1))fail();const state=number(values[2],10);if(state>3)fail();
-  if(version>=3)octets(values[3],1,128);
+  octets(values[0],0,128);if(!is(values[1],1))fail();const state=number(values[2],10);if(state>3)fail();
+  if(version>=3)octets(values[3],0,128);
   // Do not return boot keys/hashes, which are unnecessary persistent identifiers for this application.
-  return {deviceLocked:values[1].bytes[0]===255,state:(['verified','self_signed','unverified','failed'] as const)[state]};
+  return {bootKeyBytes:values[0].bytes.length,bootHashBytes:version>=3?values[3].bytes.length:null,deviceLocked:values[1].bytes[0]===255,state:(['verified','self_signed','unverified','failed'] as const)[state]};
 }
 function application(node:Node){
   const data=sequence(decode(octets(node,1,8192)));if(data.length!==2)fail();

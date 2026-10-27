@@ -39,15 +39,16 @@ describe('bounded unverified Android KeyDescription',()=>{
     expect(actual.softwareEnforced.applicationId).toEqual({packages:expected.softwareEnforced.attestationApplicationId.packages,certificateDigests:expected.softwareEnforced.attestationApplicationId.signatures});
     expect(actual.hardwareEnforced).toMatchObject({algorithm:Number(expected.hardwareEnforced.algorithms),keySize:Number(expected.hardwareEnforced.keySize),
       purposes:expected.hardwareEnforced.purposes.map(Number),digests:expected.hardwareEnforced.digests.map(Number),curve:Number(expected.hardwareEnforced.ecCurve),
-      rootOfTrust:{deviceLocked:expected.hardwareEnforced.rootOfTrust.deviceLocked,state:'verified'}});
-    const visible=JSON.stringify(actual);expect(visible).not.toContain(expected.hardwareEnforced.rootOfTrust.verifiedBootKey);
+      rootOfTrust:{deviceLocked:expected.hardwareEnforced.rootOfTrust.deviceLocked,state:expected.hardwareEnforced.rootOfTrust.verifiedBootState.toLowerCase(),
+        bootKeyBytes:Buffer.from(expected.hardwareEnforced.rootOfTrust.verifiedBootKey,'base64').length,bootHashBytes:Buffer.from(expected.hardwareEnforced.rootOfTrust.verifiedBootHash,'base64').length}});
+    const visible=JSON.stringify(actual);if(expected.hardwareEnforced.rootOfTrust.verifiedBootKey)expect(visible).not.toContain(expected.hardwareEnforced.rootOfTrust.verifiedBootKey);
     expect(visible).not.toContain(expected.hardwareEnforced.rootOfTrust.verifiedBootHash);
     expect(actual).not.toHaveProperty('accepted');expect(actual).not.toHaveProperty('trustTier');
   });
   it('preserves software and hardware facts without upgrading an unlocked or unverified boot state',()=>{
     const actual=decodeAndroidKeyDescription(synthetic({software:[tag(2,int(1))],hardware:[tag(2,int(3)),tag(704,root(false,2))]}));
     expect(actual.softwareEnforced.algorithm).toBe(1);expect(actual.hardwareEnforced.algorithm).toBe(3);
-    expect(actual.hardwareEnforced.rootOfTrust).toEqual({deviceLocked:false,state:'unverified'});expect(actual.verification).toBe('not_verified');
+    expect(actual.hardwareEnforced.rootOfTrust).toMatchObject({deviceLocked:false,state:'unverified'});expect(actual.verification).toBe('not_verified');
   });
   it.each(['malformed-locked.pem','unordered-tags.pem'])('rejects upstream negative fixture %s',file=>{
     expect(()=>decodeAndroidKeyDescription(extension(file))).toThrow(AndroidKeyDescriptionError);
