@@ -3,7 +3,7 @@ import {z} from 'zod';
 import {AppleEnrollmentSettings} from './mobile-key-enrollment';
 import {AndroidClockConfiguration} from './mobile-android-clock-policy';
 const uuid=z.string().uuid().transform(value=>value.toLowerCase());
-const project=z.string().regex(/^[1-9][0-9]{0,18}$/).refine(value=>value.trim()===value&&/^[1-9][0-9]{0,18}$/.test(value)&&BigInt(value)<=BigInt('9223372036854775807'));
+const project=z.string().regex(/^[1-9][0-9]{0,18}$/).refine(value=>BigInt(value)<=BigInt('9223372036854775807'));
 export const MobileClockRolloutPolicy=z.object({version:z.literal(1),entries:z.array(z.object({
  tenantId:uuid,companyId:uuid,actorIds:z.array(uuid).min(1).max(1000).refine(values=>new Set(values).size===values.length),
  // Applies to the selected actors in this proven company, on BOTH web and old mobile self-service.
