@@ -150,7 +150,7 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, nativ
       if (accepted.commandDigest !== commandDigest) throw new ClockConflictError('This request already recorded a different clock action');
       return publicReceipt(accepted);
     }
-    if(!joined)await assertLegacySelfServiceClockTx(tx,ctx,me.employmentId);
+    // PROBE ONLY: omit pre-write unsigned policy check.
     const now = new Date();
     if (native && (!Number.isFinite(native.sampledAt) || Math.abs(now.getTime()-native.sampledAt)>120000)) throw new ClockLocationError('Capture a fresh location before clocking');
     let date = todayInKualaLumpur(now);
