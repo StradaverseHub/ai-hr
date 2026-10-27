@@ -62,15 +62,20 @@ describe('performance navigation offer (real RLS)', () => {
     expect(items.find(i => i.id === reviewId && i.module === 'pm')).toMatchObject({ stage: 'results', state: 'open' });
     const picked = resolveWorkspaceSelection(items, { module: 'idp' });
     expect(picked).toMatchObject({ view: 'mine', module: 'pm', lockedModules: ['idp'] });
+    // The review page reads the same lock (ownPlanLocked), so its plan form is withheld too.
+    expect((await view(self)).planLocked).toBe(true);
+    expect((await view(mgr)).planLocked).toBe(false);
   });
 
   it('opens the plan once the own KPI results and competency self-assessment are submitted', async () => {
     await approvedScorecard();
     await perf.submitOnehrResults(self, reviewId, (await view(self)).revision, [{ id: kpiId, actual: 100, note: 'Completed' }], 'Completed the agreed outcomes.');
     expect((await offer(self)).offer).toEqual({ tm: true, idp: 'locked' });
+    expect((await view(self)).planLocked).toBe(true);
     await perf.submitOnehrCompetencies(self, reviewId, (await view(self)).revision, { 'skill-1': { answer: 'yes', remark: '' } }, false, 'Practised through assigned work.');
     const { offer: own, items } = await offer(self);
     expect(own).toEqual({ tm: true, idp: 'open' });
+    expect((await view(self)).planLocked).toBe(false);
     expect(resolveWorkspaceSelection(items, { module: 'idp' })).toMatchObject({ view: 'mine', module: 'idp', lockedModules: [] });
   });
 

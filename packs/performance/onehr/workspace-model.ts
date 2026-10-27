@@ -40,6 +40,10 @@ export function reviewWorkspaceParts(policy:Pick<Policy,'modules'|'kind'>,facts:
  }
  return parts;
 }
+/** The person's OWN career-plan lock, exactly as reviewWorkspaceParts raises it for the self actor. */
+export function ownPlanLocked(policy:Pick<Policy,'modules'|'kind'>,facts:Omit<ReviewWorkFacts,'planStatus'>){
+ return reviewWorkspaceParts(policy,{...facts,planStatus:null},{self:true,manager:false,employmentIds:[]}).some(part=>part.module==='idp'&&part.locked);
+}
 export function assessmentWorkWindowOpen(policy:Pick<Policy,'windows'>,cell:WindowCell,now=new Date()){
  try{assertWindow(policy,cell,now);return true;}catch{return false;}
 }
