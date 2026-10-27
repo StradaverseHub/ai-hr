@@ -242,8 +242,8 @@ export async function askAssistant(
     return { cfg:rooted, budget, spentBefore: budget ? await spentThisPeriod(tx, ctx, period) : 0 };
   });
 
-  // Legacy token caps remain additional controls. Every provider step also requires the mandatory
-  // application USD allocation; absence of a legacy token cap never means unlimited agent spend.
+  // Token, request, concurrency and time controls remain mandatory at provider admission.
+  // Any configured USD cap additionally requires verified monetary allocation; no cap promises no USD ceiling.
   const ceiling = budget ? Number(budget.monthlyTokenCeiling) : null;
 
   // ONE list, computed once: what the model is offered and what dispatch may run are the same array, so
