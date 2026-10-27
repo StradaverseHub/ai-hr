@@ -1500,8 +1500,8 @@ pre-vendor signature rejection, provider/hash/device/mock refusals, opaque-token
 post-vendor revocation and employment changes, transaction-guard rollback, token expiry before
 business work and after tentative writes, cleared concurrent response recovery, committed receipt
 recovery during outages, immutable inputs and request cancellation. These tests do not certify a
-real deployment guard, Google configuration or physical devices. The signed-clock HTTP carrier
-still uses the historical signature-only Android factory and remains unmounted; this run does not
+real deployment guard, Google configuration or physical devices. At that checkpoint the signed-clock
+HTTP carrier uses the historical signature-only Android factory and remains unmounted; that run does not
 prove current Google evidence is required by a mounted HTTP route or native client.
 
 
@@ -1521,6 +1521,55 @@ intended assertion failure; full job logs were inspected rather than treating a 
 These deliberately unsafe candidates are isolated `codex/mobile-clock-probe-*-20261027` branches,
 explicitly marked never to merge or deploy. A temporary Git index created each tree without
 modifying the working branch, its index or checked-out source. No restoration command or local
-application test ran. The working source and tests remain byte-identical to the passing baseline;
-subsequent working-branch edits only document the result, so that baseline remains the positive
-control. No full gate, route activation, migration application or deployment occurred.
+application test ran. For that verification, the working source and tests stayed byte-identical to
+the passing baseline; the subsequent working-branch evidence commits only document those results,
+so that baseline remains their positive control. No full gate, route activation, migration application or deployment occurred.
+
+
+### Current Android HTTP integration verification
+
+At frozen checkpoint `c9e72e803167a392d3080b7ad90d1d6e05178112`,
+[Actions run 40498835451](https://github.com/StradaverseHub/ai-hr/actions/runs/40498835451) passed all
+ten selected files / 132 cases, Next type generation and root TypeScript. The production build was
+not requested and was skipped. Root TypeScript exited 0 in 4m14.01s, maximum RSS 7,667,924 KiB.
+The test job completed both classifier partitions: six no-DB files / 71 cases and four DB-project
+files / 61 cases. All three worker databases and their template were dropped. The
+[focused evidence artifact](https://github.com/StradaverseHub/ai-hr/actions/runs/40498835451/artifacts/12731897698)
+ZIP SHA-256 is `56fc3e4e8bca09ad4690cbb4d4bdcb2923b3dad869aee010bbd75aa36c51be4d`.
+
+| Selected file | Passing cases |
+|---|---:|
+| `test/mobile-signed-clock-http.test.ts` | 17 |
+| `test/mobile-integrity-http.test.ts` (Apple HTTP and recovery) | 22 |
+| `test/mobile-android-verified-clock.test.ts` | 17 |
+| `test/mobile-android-clock-integrity.dom.test.tsx` | 22 |
+| `test/mobile-play-integrity.dom.test.tsx` | 11 |
+| `test/mobile-integrity-contract.dom.test.tsx` | 8 |
+| `test/mobile-integrity-configuration.dom.test.tsx` | 5 |
+| `test/mobile-device-enrollment.dom.test.tsx` | 25 |
+| `test/mobile-integrity-import-isolation.test.ts` | 3 |
+| `test/attendance-pack-drift.test.ts` | 2 |
+
+The Android HTTP suite now exercises the actual current Google decoder/policy and canonical
+attendance transaction through synthetic transport responses, signatures and enrollment provenance.
+It proves refusal/unavailability for vendor outage, changed command hash, inadequate device labels,
+reported mock source, unlicensed app and unknown labels; independent token/command bounds including
+both maximum sizes together; no-provider begin/fresh completion refusal; exact committed receipt
+recovery without a provider; policy-change transaction veto; and existing auth/body/privacy/retry
+and cancellation invariants. Its in-memory guard re-parses the full configuration snapshot; it is
+not the real deployment rollout owner. No physical-device or production vendor claim follows.
+
+Two additional independent hosted mutation candidates each changed only the HTTP assembly file;
+tests and controller were unchanged. Full logs confirmed the intended failures:
+
+| Removed protection | Frozen candidate | Hosted run | Observed assertion failure | Result |
+|---|---|---|---|---|
+| Current Android factory dispatch, replaced by the internal signature-only service | `2909a230659163421d4edece5dbfe49753401031` | [40499319835](https://github.com/StradaverseHub/ai-hr/actions/runs/40499319835) | All six current-evidence refusal/unavailability cases accepted attendance; current-assessment audit, vendor invocation, no-provider readiness and policy-change tests also detected the bypass | 10 failed / 7 passed |
+| HTTP opaque-token validation | `aded70129949fa83d993ecd8993042bf6afb20c3` | [40499328510](https://github.com/StradaverseHub/ai-hr/actions/runs/40499328510) | Missing token returned HTTP 200 instead of the required malformed-request 400; the direct service still refused proof, so this asserts the HTTP boundary independently | 1 failed / 16 passed |
+
+These are explicitly unsafe `codex/mobile-clock-probe-*-20261027` candidates, never for merge or
+deployment. Separate temporary Git indices created them without changing the working branch or
+checked-out source. The passing checkpoint remains the unmodified positive control. No local
+server test slots, migration application, full release gate or deployment was used. Clock routing,
+dedicated rollout/discovery and legacy-channel policy, native durable clock flow, physical Android
+and iPhone vendor acceptance, and offline claim adjudication remain unfinished.

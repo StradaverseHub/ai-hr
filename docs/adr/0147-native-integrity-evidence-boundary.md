@@ -918,3 +918,42 @@ focused workflow passed the five selected files (45 cases) and whole-root TypeSc
 focused development evidence, not a full release gate, actual vendor provisioning, tenant activation
 or signed physical-device acceptance. Detailed scope and adversarial verification belong in the
 platform evidence appendix.
+
+
+## Current Android evidence at the signed-clock HTTP boundary
+
+The unmounted Android signed-clock factory now requires `AndroidClockConfiguration`, a strict
+server-owned pair of enrollment settings and explicit current-integrity policy. Bare enrollment
+settings no longer configure Android clocking. The transaction guard receives the complete parsed
+pair, so a policy change during Google verification must be checked alongside a settings change.
+Apple retains its existing App Attest configuration and v1 contract. This supersedes the historical
+signature-only Android HTTP assembly described above; the primitive remains internal.
+
+Android completion accepts one separate `playIntegrityToken` multipart text field, bounded to
+1–32768 printable ASCII bytes. It rejects missing, duplicate, file-valued or malformed tokens before
+configuration/vendor work. Tokens are not embedded in command JSON, whose independent 16384 UTF-8
+byte limit remains unchanged. The existing 3 MiB streamed body, 2 MiB JPEG/PNG photo and canonical
+signature bounds remain. Begin and Apple requests reject the extra token field. A phone may not
+supply a configuration, decoded verdict, authority field or vendor endpoint.
+
+Trusted assembly supplies a Google access-token provider and optional bounded transport deadline.
+A fresh Android challenge is unavailable without that provider. Completion composes
+`createAndroidVerifiedClockService` with the authenticated subject, reconstructed server context,
+exact attachment bytes, mandatory transaction guard and request cancellation. It never falls back
+to the historical signature-only writer after unavailable or refused evidence. Exact already
+committed receipt observation remains possible during provider outage while a valid server clock
+configuration and current own-employment access remain. The dedicated receipt/discovery behavior
+for missing clock rollout remains separate activation work.
+
+The response contract adds optional, bounded `integrityReason` enums to existing refused/unavailable
+envelopes. It distinguishes current evidence failures without exposing raw Google responses,
+access/integrity tokens or private configuration. Accepted responses retain the minimal authoritative
+clock receipt; neither receipt nor client flags claim authenticated GPS. Evidence remains in the
+separate audit assessment. The existing mobile admission/budget/authentication wrapper applies.
+
+Frozen checkpoint `c9e72e803167a392d3080b7ad90d1d6e05178112` passed ten affected suites (132 cases),
+Next type generation and whole-root TypeScript in standard GitHub Actions. Independent hosted
+removal probes verified the current-service dispatch and token-field guard. Results are detailed in
+the platform evidence appendix. No route or tenant setting was activated. Dedicated rollout and
+legacy-channel policy, Google/Apple provisioning, native durable clock orchestration, physical-device
+acceptance and the full release gate remain required.
