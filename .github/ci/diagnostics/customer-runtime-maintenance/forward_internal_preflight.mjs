@@ -64,7 +64,7 @@ async function main(){
   return{environment:env,ledger,recipient,databaseCustodyUnchanged:true};
  }
  const checked=await guard();
- save('forward-recovery-preflight.json',{...checked,kind:'EXPLICIT_FORWARD_RECOVERY_NOT_ORIGINAL_OPERATOR_SUCCESS',source:SOURCE,installId:grant.installId,originalExecutionDirectory:old,originalScriptSha256:hash(originalScript),repairedScriptSha256:hash(repairDeployScript(originalScript)),wrapperSha256:hash(wrapper),recoveryId,onlyChangedExpression:{before:ORIGINAL,after:REPAIRED},databaseRollback:false});
+ save('forward-recovery-preflight.json',{...checked,kind:'EXPLICIT_FORWARD_RECOVERY_NOT_ORIGINAL_OPERATOR_SUCCESS',source:SOURCE,installId:grant.installId,originalExecutionDirectory:old,originalScriptSha256:hash(originalScript),repairedScriptSha256:hash(repairDeployScript(originalScript)),wrapperSha256:hash(wrapper),recoveryId,retainedPrivateRecoveryDirectory:remote,recoveryExecutableRetainedAsEvidence:true,recoveryExecutableCleanupClaimed:false,onlyChangedExpression:{before:ORIGINAL,after:REPAIRED},databaseRollback:false});
  // A private external executable retains the complete original spine and argv/$0 semantics.
  const upload=`import os,sys,hashlib;parent=${JSON.stringify(remote)};data=sys.stdin.buffer.read(200001);assert 0<len(data)<=200000 and hashlib.sha256(data).hexdigest()==${JSON.stringify(hash(wrapper))};os.mkdir(parent,0o700);fd=os.open(parent+'/run.sh',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o700)\nwith os.fdopen(fd,'wb') as f:f.write(data);f.flush();os.fsync(f.fileno())`;
  ssh('python3 -I -c '+quote(upload),{input:wrapper});
@@ -81,7 +81,7 @@ async function main(){
  const cleaned=JSON.parse(ssh(stagingInstallerCommand('cleanup',SOURCE,grant.installId,grant.build.buildRecordId),{input:JSON.stringify(request),timeout:180000}));
  const arrival=validateFinalCleanup(cleaned,{grant,installed,expectedLedger});save('owned-cleanup.json',cleaned);assert(cleanHead(root)===SOURCE);
  const final=checksum();save('final-source-arrival.json',{source:SOURCE,output:final,checkedAt:new Date().toISOString()});assert(final==='');
- save('accepted-forward-recovery.json',{kind:'EXPLICIT_FORWARD_RECOVERY_ACCEPTED',arrival,ownedResourceCleanupVerified:true,originalFailedAttemptRetained:true,productionDeployed:false,reportsSchedulingActivated:false});
- console.log(JSON.stringify({forwardRecoveryAccepted:true,arrival,ownedResourceCleanupVerified:true}));
+ save('accepted-forward-recovery.json',{kind:'EXPLICIT_FORWARD_RECOVERY_ACCEPTED',arrival,ciInstallationOwnedResourceCleanupVerified:true,recoveryExecutableRetainedAsEvidence:remoteScript,allOwnedResourcesCleanupClaimed:false,originalFailedAttemptRetained:true,productionDeployed:false,reportsSchedulingActivated:false});
+ console.log(JSON.stringify({forwardRecoveryAccepted:true,arrival,ciInstallationOwnedResourceCleanupVerified:true,recoveryExecutableRetainedAsEvidence:remoteScript}));
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))await main();
