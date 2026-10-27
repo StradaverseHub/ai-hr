@@ -11,6 +11,9 @@ import {createClockingLocation,setClockingControl,setAttendancePolicy} from '../
 import {GET as ownKeys} from '../app/api/mobile/v1/integrity/keys/route';
 import {POST as lookupKeyReceipt} from '../app/api/mobile/v1/integrity/key-receipt/route';
 import {POST as revokeKey} from '../app/api/mobile/v1/integrity/revoke/route';
+import {GET as ownKeysV2} from '../app/api/mobile/v2/integrity/keys/route';
+import {POST as lookupKeyReceiptV2} from '../app/api/mobile/v2/integrity/key-receipt/route';
+import {POST as revokeKeyV2} from '../app/api/mobile/v2/integrity/revoke/route';
 import {createIntegrityHttpHandlers} from '../lib/mobile-api/integrity-routes';
 import {AuthRequiredError} from '../lib/auth-errors';
 import {onlineClockClientData,type OnlineClockIntegrityData} from '../lib/mobile-clock-integrity';
@@ -55,6 +58,18 @@ async function call(kind:keyof typeof api,employmentId:string,body?:unknown,opti
   return {status:response.status,headers:response.headers,body:await response.json()};
 }
 describe('bounded scoped integrity HTTP handlers before route activation',()=>{
+  it('mounts v2 recovery with the same authenticated ownership and closed Apple receipt shape',async()=>{
+    const f=await enrolled(),[key]=await owner.db.select().from(schema.mobileIntegrityKey);
+    const url='https://hr.example/api/mobile/v2/integrity/keys?employmentId='+f.employmentId;
+    const listed=await ownKeysV2(new Request(url));expect(listed.status).toBe(200);expect(listed.headers.get('cache-control')).toBe('no-store');
+    expect(await listed.json()).toEqual(await (await ownKeys(new Request(url.replace('/v2/','/v1/')))).json());
+    const request=(path:string,body:unknown)=>new Request(url.replace('/keys?',`/${path}?`),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+    expect(await (await lookupKeyReceiptV2(request('key-receipt',{originChallengeId:key.originChallengeId}))).json()).toMatchObject({outcome:'key_receipt',key:{keyId:key.id}});
+    const peer=await employee();caller=peer.ctx;
+    expect(await (await revokeKeyV2(request('revoke',{keyId:key.id}))).json()).toMatchObject({outcome:'refused',code:'subject_unavailable'});
+    caller=f.ctx;expect(await (await revokeKeyV2(request('revoke',{keyId:key.id}))).json()).toMatchObject({outcome:'revoked',key:{keyId:key.id}});
+    revoked=true;expect((await ownKeysV2(new Request(url))).status).toBe(401);
+  });
   it('mounts own key recovery independently of vendor settings and receipt encryption availability',async()=>{
     const f=await enrolled();config=null;const secret=process.env.AI_CONFIG_SECRET;
     vi.stubEnv('AI_CONFIG_SECRET','');

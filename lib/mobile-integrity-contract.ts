@@ -17,6 +17,11 @@ export const IntegrityKeyReceipt=z.object({keyId:uuid,originChallengeId:uuid,pla
   environment:z.enum(['production','development']),proofKind:z.enum(['apple_key_proof','apple_app_metadata']),
   nativeKeyBinding:z.string().length(64).regex(/^[a-f0-9]{64}$/),
   createdAt:z.string().datetime(),revokedAt:z.string().datetime().nullable()});
+/** Explicit v2 recovery only. V1 remains an Apple-only wire contract. */
+export const IntegrityKeyReceiptV2=z.discriminatedUnion('platform',[
+  IntegrityKeyReceipt,
+  IntegrityKeyReceipt.extend({platform:z.literal('android'),environment:z.null(),proofKind:z.literal('google_key_generation_proof')}),
+]);
 export const IntegrityRefused=z.object({outcome:z.literal('refused'),code:z.enum(['subject_unavailable','key_unavailable','key_exists','key_limit',
   'binding_conflict','challenge_unavailable','invalid_proof','clock_conflict','corrected_day','location_required','outside_geofence','photo_required','photo_invalid','device_required']),
   locationReason:z.enum(['location_required','invalid_location','poor_accuracy','no_assigned_site','outside_site']).optional()});
@@ -33,5 +38,8 @@ export const IntegrityEnrollmentResult=result(z.object({outcome:z.literal('enrol
 export const IntegrityKeyLookupResult=result(z.object({outcome:z.literal('key_receipt'),key:IntegrityKeyReceipt.nullable()}));
 export const IntegrityKeysResult=result(z.object({outcome:z.literal('keys'),items:z.array(IntegrityKeyReceipt).max(20)}));
 export const IntegrityRevocationResult=result(z.object({outcome:z.literal('revoked'),key:IntegrityKeyReceipt}));
+export const IntegrityKeyLookupResultV2=result(z.object({outcome:z.literal('key_receipt'),key:IntegrityKeyReceiptV2.nullable()}));
+export const IntegrityKeysResultV2=result(z.object({outcome:z.literal('keys'),items:z.array(IntegrityKeyReceiptV2).max(20)}));
+export const IntegrityRevocationResultV2=result(z.object({outcome:z.literal('revoked'),key:IntegrityKeyReceiptV2}));
 export const IntegrityClockPrepared=result(z.object({outcome:z.literal('prepared'),protocol:z.literal(1),context:OnlineClockIntegrityData,state}));
 export const IntegrityClockResult=result(z.object({outcome:z.literal('accepted'),receipt:ClockReceipt}));
