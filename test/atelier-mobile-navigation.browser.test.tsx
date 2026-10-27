@@ -19,7 +19,7 @@ function mount(messages:typeof en|typeof ta=en){
  document.documentElement.setAttribute('data-ui-theme','atelier');document.body.style.margin='0';
  return render(<NextIntlClientProvider locale={messages===ta?'ta':'en'} messages={messages}>
   <div data-app-shell className="flex" style={{height:'100dvh'}}>
-   <Sidebar isAdmin canApprove enabledModules={null}/>
+   <Sidebar isAdmin canApprove defaultCollapsed={false} enabledModules={null}/>
    <div data-app-content className="flex min-w-0 flex-1 flex-col"><main data-testid="working-page">Working page</main></div>
   </div>
  </NextIntlClientProvider>);
@@ -53,7 +53,7 @@ describe('Atelier navigation remains reachable in actual compact CSS',()=>{
  });
  it('closes the phone navigation after choosing an allowed destination without exposing HR-only links',async()=>{
   await page.viewport(390,844);document.documentElement.setAttribute('data-ui-theme','atelier');
-  render(<NextIntlClientProvider locale="en" messages={en}><Sidebar isAdmin={false} canApprove={false} enabledModules={null}/></NextIntlClientProvider>);
+  render(<NextIntlClientProvider locale="en" messages={en}><Sidebar isAdmin={false} canApprove={false} defaultCollapsed={false} enabledModules={null}/></NextIntlClientProvider>);
   const toggle=screen.getByRole('button',{name:en.nav.workspaceSwitch});fireEvent.click(toggle);
   fireEvent.click(screen.getByRole('button',{name:en.nav.payroll}));
   const panel=screen.getByRole('navigation',{name:en.nav.payroll});
