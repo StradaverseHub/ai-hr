@@ -52,7 +52,7 @@ export function receiptDatabase(connection:ReturnType<typeof postgres>):ReceiptD
    const [r]=await connection`select current_database() as database,current_user as actor,inet_server_addr()::text as address,inet_server_port() as port,
     c.relowner=(select oid from pg_roles where rolname=current_user) as owns,
     (select datdba=(select oid from pg_roles where rolname=current_user) from pg_database where datname=current_database()) as database_owner,c.relrowsecurity as rls,
-    to_regprocedure('public.hmac(bytea,bytea,text)') is not null and to_regprocedure('public.digest(bytea,text)') is not null as crypto
+    to_regprocedure('app._ai_spend_hmac_sha256(bytea,bytea)') is not null and to_regprocedure('pg_catalog.sha256(bytea)') is not null as crypto
     from pg_class c where c.oid=to_regclass('app.ai_spend_receipt_verifier')`;
    if(!r?.owns||!r.database_owner||!r.rls||!r.crypto)refuse();
    // Read the ACTUAL required columns; missing/incompatible migrations refuse, never auto-create.

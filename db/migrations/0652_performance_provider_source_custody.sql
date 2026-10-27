@@ -1,12 +1,23 @@
--- UNALLOCATED / UNJOURNALED / UNAPPLIED. Coordinate allocation before any application/exposure.
+-- Performance provider source custody (N6).
 -- Finite native source footprint for standard/OneHR provider admission, not universal HR-writer protection.
 -- Access ownership precedes reader custody; custody precedes the actual fresh native projections.
--- Readers retain shared tenant custody through ai_admit COMMIT, never through external transport.
--- Actual native DML (including hidden->visible UPDATE and INSERT/DELETE phantoms) takes exclusive
--- TRY custody in BEFORE triggers. Busy means WHOLE caller transaction rollback; no hidden retries.
--- Writers can already hold native rows: they MUST NOT wait for custody or introduce a reverse wait.
--- A shared global key separates ordinary tenant DML from privileged TRUNCATE, without serializing
--- independent tenants. No table lock, new row grants, definer data projection or payroll logic added.
+-- Actual native DML (including hidden->visible UPDATE and INSERT/DELETE phantoms) joins tenant custody
+-- in BEFORE triggers. Busy means WHOLE caller transaction rollback; no hidden retries.
+-- Lock protocol (tenant key 'performance-provider-source-tenant-v1', global key 'performance-provider-source-global-v1'):
+--  * Native writers (the BEFORE row triggers below) take the TENANT key SHARED with TRY, held to commit.
+--    Shared holds are compatible, so two ordinary concurrent HR writes in one tenant never refuse each
+--    other because of this footprint.
+--  * The provider-source reader (performance_provider_source_read_hold_v1) takes the TENANT key EXCLUSIVE with
+--    TRY and keeps it through ai_admit COMMIT, never through external transport. It refuses (55P03,
+--    fail closed) while any uncommitted native write in that tenant holds the shared key; while it holds
+--    the key every native write in that tenant refuses with 55P03 and must roll back its whole
+--    transaction. Capture/write exclusion is therefore unchanged; only writer/writer exclusion is gone.
+--    Two concurrent captures in one tenant now also exclude each other (the second refuses busy).
+--  * Nobody waits for custody: writers can already hold native rows, so a wait could invert lock order.
+--    A backend's own shared and exclusive holds never conflict, so one transaction may write and capture.
+--  * TRUNCATE (privileged DDL) takes the GLOBAL key EXCLUSIVE; readers and row writers take it SHARED,
+--    so independent tenants are never serialized.
+-- No table lock, new row grants, definer data projection or payroll logic added.
 CREATE FUNCTION app.performance_provider_source_read_hold_v1() RETURNS void
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE tid uuid:=app.current_tenant_id();uid uuid:=app.current_user_id();
@@ -17,7 +28,8 @@ BEGIN
  IF NOT pg_try_advisory_xact_lock_shared(hashtext('performance-provider-source-global-v1'),0) THEN
   RAISE EXCEPTION 'Performance source is busy' USING ERRCODE='55P03';
  END IF;
- IF NOT pg_try_advisory_xact_lock_shared(hashtext('performance-provider-source-tenant-v1'),hashtext(tid::text)) THEN
+ -- EXCLUSIVE tenant custody: refuses while any native writer in this tenant is uncommitted.
+ IF NOT pg_try_advisory_xact_lock(hashtext('performance-provider-source-tenant-v1'),hashtext(tid::text)) THEN
   RAISE EXCEPTION 'Performance source is busy' USING ERRCODE='55P03';
  END IF;
  -- Recheck the actual login AFTER ownership. This is still no subject/role/data grant: every
@@ -48,7 +60,8 @@ BEGIN
  subjects:=CASE TG_OP WHEN 'INSERT' THEN ARRAY[NEW.tenant_id] WHEN 'DELETE' THEN ARRAY[OLD.tenant_id]
    ELSE ARRAY[OLD.tenant_id,NEW.tenant_id] END;
  FOR tid IN SELECT DISTINCT id FROM unnest(subjects) ids(id) WHERE id IS NOT NULL ORDER BY id LOOP
-  IF NOT pg_try_advisory_xact_lock(hashtext('performance-provider-source-tenant-v1'),hashtext(tid::text)) THEN
+  -- SHARED tenant custody: concurrent native writers coexist; only a holding reader refuses them.
+  IF NOT pg_try_advisory_xact_lock_shared(hashtext('performance-provider-source-tenant-v1'),hashtext(tid::text)) THEN
    RAISE EXCEPTION 'Performance source is busy' USING ERRCODE='55P03';
   END IF;
  END LOOP;

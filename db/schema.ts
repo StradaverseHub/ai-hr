@@ -10694,7 +10694,7 @@ export const aiSpendCapability=aiSpendPrivate.table('ai_spend_capability',{
 });
 export const aiSpendBudget=aiSpendPrivate.table('ai_spend_budget',{
  tenantId:tenantId(),scopeKey:text('scope_key').notNull(),kind:text('kind').notNull(),subjectId:uuid('subject_id'),featureId:text('feature_id'),
- monthlyNanos:bigint('monthly_nanos',{mode:'bigint'}).notNull(),rootNanos:bigint('root_nanos',{mode:'bigint'}).notNull(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),updatedBy:uuid('updated_by').references(()=>appUser.id),
+ monthlyNanos:bigint('monthly_nanos',{mode:'bigint'}),rootNanos:bigint('root_nanos',{mode:'bigint'}),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),updatedBy:uuid('updated_by').references(()=>appUser.id),
 },t=>[primaryKey({columns:[t.tenantId,t.scopeKey]})]);
 export const aiSpendRoot=aiSpendPrivate.table('ai_spend_root',{
  tenantId:tenantId(),rootId:uuid('root_id').notNull(),kind:text('kind').notNull(),createdAt:createdAt(),
@@ -10707,6 +10707,63 @@ export const aiSpendReservation=aiSpendPrivate.table('ai_spend_reservation',{
  runId:uuid('run_id').primaryKey().references(()=>aiModelRun.id),tenantId:tenantId(),rootId:uuid('root_id').notNull(),userId:uuid('user_id').notNull().references(()=>appUser.id),companyIds:uuid('company_ids').array().notNull(),featureId:text('feature_id').notNull(),
  capabilityDigest:text('capability_digest').notNull().references(()=>aiSpendCapability.digest),requestDigest:text('request_digest').notNull(),configurationDigest:text('configuration_digest').notNull(),generationId:text('generation_id'),receiptDigest:text('receipt_digest'),reservedNanos:bigint('reserved_nanos',{mode:'bigint'}).notNull(),confirmedNanos:bigint('confirmed_nanos',{mode:'bigint'}),state:text('state').notNull().default('held'),createdAt:createdAt(),settledAt:timestamp('settled_at',{withTimezone:true}),
 },t=>[foreignKey({columns:[t.tenantId,t.rootId],foreignColumns:[aiSpendRoot.tenantId,aiSpendRoot.rootId]})]);
+/** Migration 0651: source-owned native spend task roots. Private; reached only through definer functions. */
+export const aiSpendTask=aiSpendPrivate.table('ai_spend_task',{
+ id:id(),tenantId:tenantId(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),featureId:text('feature_id').notNull(),
+ sourceKind:text('source_kind').notNull(),sourceId:uuid('source_id').notNull(),operation:text('operation').notNull(),createdAt:createdAt(),
+});
+/** Migration 0651: release-owned reviewed carrier certificates (free and metered). No app grant. */
+export const aiSpendReviewedCarrierCatalog=aiSpendPrivate.table('ai_spend_reviewed_carrier_catalog',{
+ capabilityDigest:text('capability_digest').primaryKey().references(()=>aiSpendCapability.digest),tenantId:tenantId(),carrier:text('carrier').notNull(),
+ configurationDigest:text('configuration_digest').notNull(),model:text('model').notNull(),operation:text('operation').notNull(),endpointSlug:text('endpoint_slug').notNull(),
+ sourceDigest:text('source_digest').notNull(),workspaceControlDigest:text('workspace_control_digest').notNull(),reviewEvidenceDigest:text('review_evidence_digest').notNull(),
+ independentEvidenceDigest:text('independent_evidence_digest').notNull(),invariants:jsonb('invariants').notNull(),
+ reviewedAt:timestamp('reviewed_at',{withTimezone:true}).notNull(),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),revokedAt:timestamp('revoked_at',{withTimezone:true}),
+});
+export const aiSpendReviewedMeteredCarrierCatalog=aiSpendPrivate.table('ai_spend_reviewed_metered_carrier_catalog',{
+ capabilityDigest:text('capability_digest').primaryKey().references(()=>aiSpendCapability.digest),tenantId:tenantId(),carrier:text('carrier').notNull(),
+ configurationDigest:text('configuration_digest').notNull(),model:text('model').notNull(),operation:text('operation').notNull(),endpointSlug:text('endpoint_slug').notNull(),
+ nativeContextTokens:bigint('native_context_tokens',{mode:'bigint'}).notNull(),completionTokens:bigint('completion_tokens',{mode:'bigint'}).notNull(),
+ promptUsdPerMillion:bigint('prompt_usd_per_million',{mode:'bigint'}).notNull(),completionUsdPerMillion:bigint('completion_usd_per_million',{mode:'bigint'}).notNull(),
+ nativeContractDigest:text('native_contract_digest').notNull(),endpointRevisionDigest:text('endpoint_revision_digest').notNull(),documentationDigest:text('documentation_digest').notNull(),
+ sourceDigest:text('source_digest').notNull(),workspaceControlDigest:text('workspace_control_digest').notNull(),reviewEvidenceDigest:text('review_evidence_digest').notNull(),
+ independentEvidenceDigest:text('independent_evidence_digest').notNull(),invariants:jsonb('invariants').notNull(),
+ reviewedAt:timestamp('reviewed_at',{withTimezone:true}).notNull(),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),revokedAt:timestamp('revoked_at',{withTimezone:true}),
+});
+/** Migration 0654: per-admission money mode, including historical UNKNOWN markers. Private. */
+export const aiSpendAdmissionScope=aiSpendPrivate.table('ai_spend_admission_scope',{
+ runId:uuid('run_id').primaryKey().references(()=>aiModelRun.id),tenantId:tenantId(),userId:uuid('user_id').references(()=>appUser.id),
+ companyIds:uuid('company_ids').array().notNull(),featureId:text('feature_id').notNull(),rootId:uuid('root_id'),rootKind:text('root_kind'),
+ requestDigest:text('request_digest'),configurationDigest:text('configuration_digest'),captureKind:text('capture_kind').notNull().default('actual_admission'),
+ moneyMode:text('money_mode').notNull(),createdAt:createdAt(),
+},t=>[foreignKey({columns:[t.tenantId,t.rootId],foreignColumns:[aiSpendRoot.tenantId,aiSpendRoot.rootId]})]);
+
+/** Migration 0650: own native outcome association metadata (FORCE RLS; app role SELECT/INSERT/DELETE only).
+ * Evidence association, not an execution ledger; job/review/import columns reference AI tables not modelled here. */
+export const aiNativeOutcomeAssociation=pgTable('ai_native_outcome_association',{
+ id:uuid('id').primaryKey(),tenantId:uuid('tenant_id').notNull().references(()=>tenant.id,{onDelete:'cascade'}),
+ userId:uuid('user_id').notNull().references(()=>appUser.id,{onDelete:'cascade'}),personId:uuid('person_id').references(()=>person.id,{onDelete:'cascade'}),
+ jobId:uuid('job_id').notNull(),requestNonce:uuid('request_nonce').notNull(),requestDigest:text('request_digest').notNull(),action:text('action').notNull(),
+ sourceKind:text('source_kind').notNull(),reviewId:uuid('review_id'),importAttemptId:uuid('import_attempt_id'),
+ eventId:uuid('event_id').notNull().references(()=>domainEvent.id,{onDelete:'cascade'}),nativeDigest:text('native_digest').notNull(),
+ jobReceiptDigest:text('job_receipt_digest').notNull(),receipt:text('receipt').notNull(),consented:boolean('consented').notNull(),
+ createdAt:createdAt(),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),sourceCaptureId:uuid('source_capture_id').notNull(),
+});
+/** Migration 0650: private native outcome privacy index. No app grant; definer functions only. */
+const nativeOutcomePrivate=pgSchema('app');
+export const nativeOutcomeSourceCapture=nativeOutcomePrivate.table('native_outcome_source_capture',{
+ id:id(),tenantId:uuid('tenant_id').notNull().references(()=>tenant.id,{onDelete:'cascade'}),userId:uuid('user_id').notNull().references(()=>appUser.id,{onDelete:'cascade'}),
+ personId:uuid('person_id').references(()=>person.id,{onDelete:'cascade'}),action:text('action').notNull(),sourceId:uuid('source_id').notNull(),sourceKind:text('source_kind').notNull(),
+ reviewId:uuid('review_id'),importAttemptId:uuid('import_attempt_id'),eventId:uuid('event_id').notNull().references(()=>domainEvent.id,{onDelete:'cascade'}),
+ targetCount:integer('target_count').notNull(),createdAt:createdAt(),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),
+});
+export const nativeOutcomeSourceTarget=nativeOutcomePrivate.table('native_outcome_source_target',{
+ captureId:uuid('capture_id').notNull().references(()=>nativeOutcomeSourceCapture.id,{onDelete:'cascade'}),kind:text('kind').notNull(),targetId:uuid('target_id').notNull(),
+},t=>[primaryKey({columns:[t.captureId,t.kind,t.targetId]})]);
+export const nativeOutcomeErasureIntent=nativeOutcomePrivate.table('native_outcome_erasure_intent',{
+ xactId:customType<{data:string}>({dataType:()=> 'xid8'})('xact_id').notNull(),tenantId:uuid('tenant_id').notNull(),userId:uuid('user_id').notNull(),personId:uuid('person_id').notNull(),employmentId:uuid('employment_id').notNull(),
+ cleared:integer('cleared').notNull(),eventId:uuid('event_id'),
+},t=>[primaryKey({columns:[t.xactId,t.tenantId,t.userId,t.personId]})]);
 
 // fcc2ea42 — OT-only version/assignment and immutable source evidence. Schedule Group stays independent.
 export const overtimePatternEpoch = pgTable('overtime_pattern_epoch', {

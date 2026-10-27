@@ -3,7 +3,8 @@
  * signing/verifier key is REQUIRED separately; this module never writes secrets or activates a route.
  * Official semantics checked27Oct2026: https://openrouter.ai/docs/faq (APIbaseUSD),
  * https://openrouter.ai/docs/api/api-reference/generations/get-generation (total_cost/is_byok),
- * https://www.postgresql.org/docs/16/pgcrypto.html (HMAC-SHA256). No invoice/tax/BYOK-cost claim. */
+ * RFC 2104 HMAC-SHA256 (verified in SQL by app._ai_spend_hmac_sha256 over built-in sha256, migration 0651).
+ * No invoice/tax/BYOK-cost claim. */
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {createHash,createHmac} from 'node:crypto';
 import type {ResolvedAiConfig} from './types';

@@ -3627,6 +3627,62 @@
       "when": 1793130000012,
       "tag": "0628_employee_import_ai_evaluation",
       "breakpoints": true
+    },
+    {
+      "idx": 633,
+      "version": "7",
+      "when": 1793130000013,
+      "tag": "0642_module_specialist_diagnostic_playbook",
+      "breakpoints": true
+    },
+    {
+      "idx": 634,
+      "version": "7",
+      "when": 1793130000014,
+      "tag": "0648_ai_concurrency_controls",
+      "breakpoints": true
+    },
+    {
+      "idx": 635,
+      "version": "7",
+      "when": 1793130000015,
+      "tag": "0649_ai_provider_accounting_summary",
+      "breakpoints": true
+    },
+    {
+      "idx": 636,
+      "version": "7",
+      "when": 1793130000016,
+      "tag": "0650_ai_native_outcomes",
+      "breakpoints": true
+    },
+    {
+      "idx": 637,
+      "version": "7",
+      "when": 1793130000017,
+      "tag": "0651_ai_spend_controls",
+      "breakpoints": true
+    },
+    {
+      "idx": 638,
+      "version": "7",
+      "when": 1793130000018,
+      "tag": "0652_performance_provider_source_custody",
+      "breakpoints": true
+    },
+    {
+      "idx": 639,
+      "version": "7",
+      "when": 1793130000019,
+      "tag": "0653_claims_provider_source_custody",
+      "breakpoints": true
+    },
+    {
+      "idx": 640,
+      "version": "7",
+      "when": 1793130000020,
+      "tag": "0654_ai_optional_usd_policy",
+      "breakpoints": true
     }
   ]
 }

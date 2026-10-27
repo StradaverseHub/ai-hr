@@ -1,10 +1,102 @@
--- SOURCE ONLY / UNALLOCATED / UNJOURNALED / UNAPPLIED. Consolidate AFTER the base association
--- definition in ONE centrally allocated native-outcome migration before its first normal application.
+-- AI native outcomes (N4): association metadata, target custody, workspace discovery and candidate
+-- signals as ONE migration. target custody adds a NOT NULL column without a default to the association
+-- table created here, which is only valid while that table is empty, i.e. in this same migration.
+-- Part 1 of 4: association metadata.
+-- Evidence association metadata, NOT an execution ledger or permission to replay an action.
+-- SQL integrity alone never proves canonical-engine provenance; trusted native owners still do.
+CREATE FUNCTION app.native_outcome_review_completed(p_kind text,p_id uuid) RETURNS boolean
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp SET row_security=on AS $$
+ SELECT app.current_user_id() IS NOT NULL AND app.current_tenant_id() IS NOT NULL
+ AND app.principal_snapshot_current() AND p_kind IN('org.reporting.change','leave.apply','ess.profile.request','approvals.leave.decide','knowledge_base.article.create','payroll.close','attendance.correction.request','claims.draft.save','claims.submit','performance.review.acknowledge','performance.onehr.plan.acknowledge','rewards.post','lifecycle.acknowledgement.submit','toil.replacement.request','multi_cycle_payroll.create_run','typed_pay_components.create','country-my.statutory.update','notifications.email_preferences.save','system_testing.execution.save')
+ AND EXISTS(SELECT 1 FROM app.assistant_own_leave_review r WHERE r.id=p_id AND r.tenant_id=app.current_tenant_id()
+  AND r.user_id=app.current_user_id() AND r.action_kind=p_kind AND r.state='completed'
+  AND r.created_at<=now() AND r.created_at>now()-interval '30 days')
+$$;
+REVOKE ALL ON FUNCTION app.native_outcome_review_completed(text,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.native_outcome_review_completed(text,uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- This is a new bounded association evidence window, NOT pending confirmation expiry or a
+-- claim about physical/native completed receipt retention. Every reopen still rechecks authority.
+CREATE FUNCTION app.native_outcome_review_retention(p_kind text,p_id uuid) RETURNS timestamptz
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp SET row_security=on AS $$
+ SELECT r.created_at+interval '30 days' FROM app.assistant_own_leave_review r
+ WHERE app.native_outcome_review_completed(p_kind,p_id) AND r.id=p_id AND r.action_kind=p_kind
+ AND r.tenant_id=app.current_tenant_id() AND r.user_id=app.current_user_id()
+$$;
+REVOKE ALL ON FUNCTION app.native_outcome_review_retention(text,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.native_outcome_review_retention(text,uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE TABLE public.ai_native_outcome_association(
+ id uuid PRIMARY KEY,tenant_id uuid NOT NULL REFERENCES public.tenant(id) ON DELETE CASCADE,user_id uuid NOT NULL REFERENCES public.app_user(id) ON DELETE CASCADE,
+ person_id uuid REFERENCES public.person(id) ON DELETE CASCADE,job_id uuid NOT NULL REFERENCES public.ai_agent_job_receipt(id) ON DELETE CASCADE,
+ request_nonce uuid NOT NULL,request_digest text NOT NULL CHECK(request_digest~'^[a-f0-9]{64}$'),
+ action text NOT NULL CHECK(action IN('employees.import','org.reporting.change','leave.apply','ess.profile.request','approvals.leave.decide','knowledge_base.article.create','payroll.close','attendance.correction.request','claims.draft.save','claims.submit','performance.review.acknowledge','performance.onehr.plan.acknowledge','rewards.post','lifecycle.acknowledgement.submit','toil.replacement.request','multi_cycle_payroll.create_run','typed_pay_components.create','country-my.statutory.update','notifications.email_preferences.save','system_testing.execution.save')),source_kind text NOT NULL CHECK(source_kind IN('review','employee_import')),
+ review_id uuid REFERENCES app.assistant_own_leave_review(id) ON DELETE CASCADE,
+ import_attempt_id uuid REFERENCES public.employee_import_evaluation_attempt(id) ON DELETE CASCADE,
+ event_id uuid NOT NULL REFERENCES public.domain_event(id) ON DELETE CASCADE,native_digest text NOT NULL CHECK(native_digest~'^[a-f0-9]{64}$'),
+ job_receipt_digest text NOT NULL CHECK(job_receipt_digest~'^[a-f0-9]{64}$'),receipt text NOT NULL CHECK(octet_length(receipt) BETWEEN 1 AND 16384),
+ consented boolean NOT NULL CHECK(consented),created_at timestamptz NOT NULL DEFAULT now(),expires_at timestamptz NOT NULL,
+ CHECK(expires_at>created_at AND expires_at<=created_at+interval '30 days'),
+ CHECK((source_kind='review' AND action<>'employees.import' AND review_id IS NOT NULL AND import_attempt_id IS NULL)
+ OR(source_kind='employee_import' AND action='employees.import' AND import_attempt_id IS NOT NULL AND review_id IS NULL)),
+ UNIQUE(tenant_id,user_id,request_nonce),UNIQUE(tenant_id,user_id,event_id)
+);
+ALTER TABLE public.ai_native_outcome_association ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ai_native_outcome_association FORCE ROW LEVEL SECURITY;
+CREATE POLICY native_outcome_own_read ON public.ai_native_outcome_association FOR SELECT TO ai_hr_app
+ USING(tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND app.principal_snapshot_current() AND expires_at>now());
+CREATE POLICY native_outcome_own_create ON public.ai_native_outcome_association FOR INSERT TO ai_hr_app
+ WITH CHECK(tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND person_id IS NOT DISTINCT FROM (SELECT u.person_id FROM public.app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id())
+ AND app.principal_snapshot_current() AND consented AND EXISTS(SELECT 1 FROM public.ai_agent_job_receipt j
+ WHERE j.id=job_id AND j.tenant_id=ai_native_outcome_association.tenant_id AND j.user_id=app.current_user_id() AND j.expires_at>=ai_native_outcome_association.expires_at AND encode(sha256(convert_to(j.receipt,'UTF8')),'hex')=ai_native_outcome_association.job_receipt_digest)
+ AND((source_kind='review' AND app.native_outcome_review_completed(action,review_id) AND app.native_outcome_review_retention(action,review_id)>=expires_at) OR(source_kind='employee_import'
+ AND EXISTS(SELECT 1 FROM public.employee_import_evaluation_attempt e WHERE e.id=import_attempt_id AND e.tenant_id=app.current_tenant_id()
+ AND e.user_id=app.current_user_id() AND e.state='committed' AND e.event_id=ai_native_outcome_association.event_id AND e.expires_at>=ai_native_outcome_association.expires_at))));
+-- Own erasure remains possible after Assistant/native grants are revoked; returns no private rows.
+CREATE POLICY native_outcome_own_delete ON public.ai_native_outcome_association FOR DELETE TO ai_hr_app
+ USING(tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND app.principal_snapshot_current());
+REVOKE ALL ON public.ai_native_outcome_association FROM PUBLIC,ai_hr_app;
+GRANT SELECT,INSERT,DELETE ON public.ai_native_outcome_association TO ai_hr_app;
+CREATE INDEX native_outcome_expiry ON public.ai_native_outcome_association(expires_at,id);
+--> statement-breakpoint
+-- Same normal session-owner expired-only retention path; no app table/role/bypass grants.
+CREATE POLICY native_outcome_expired_owner_read ON public.ai_native_outcome_association FOR SELECT TO PUBLIC
+ USING(expires_at<=now() AND current_user=session_user AND session_user<>'ai_hr_app'
+ AND session_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='public.ai_native_outcome_association'::regclass)));
+CREATE POLICY native_outcome_expired_owner_delete ON public.ai_native_outcome_association FOR DELETE TO PUBLIC
+ USING(expires_at<=now() AND current_user=session_user AND session_user<>'ai_hr_app'
+ AND session_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='public.ai_native_outcome_association'::regclass)));
+
+--> statement-breakpoint
+-- Every physical append/delete, including owner expiry and FK cascade, joins the same custody
+-- interval. This grants no data authority; normal privilege/RLS/FK checks remain mandatory.
+-- Multi-owner cleanup refuses/rolls back on busy rather than waiting or ignoring a partial set.
+CREATE FUNCTION app.native_outcome_custody_mutation_lock() RETURNS trigger
+ LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid; u uuid;
+BEGIN
+ IF TG_OP='INSERT' THEN t:=NEW.tenant_id;u:=NEW.user_id;
+ ELSIF TG_OP='DELETE' THEN t:=OLD.tenant_id;u:=OLD.user_id;
+ ELSE RAISE EXCEPTION 'Native outcome custody operation refused'; END IF;
+ IF t IS NULL OR u IS NULL OR NOT pg_try_advisory_xact_lock(hashtextextended('native-outcome:v1:'||t::text||':'||u::text,0))
+ THEN RAISE EXCEPTION 'Native outcome custody is busy' USING ERRCODE='55P03'; END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD; END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.native_outcome_custody_mutation_lock() FROM PUBLIC;
+CREATE TRIGGER native_outcome_custody_mutation BEFORE INSERT OR DELETE ON public.ai_native_outcome_association
+ FOR EACH ROW EXECUTE FUNCTION app.native_outcome_custody_mutation_lock();
+--> statement-breakpoint
+-- Part 2 of 4: target custody, after the association table above.
 -- Private source-owned COMPLETE privacy index. It does not establish canonical-engine provenance,
 -- action quality, benefit, authority or causal attribution. Never expose these targets to a model.
 -- SQL-only callers/physical identity triggers also bound their first new metadata wait. This
 -- grants no authority and never raises a stricter caller timeout. Application commands install the
 -- same bounds as a separate first statement before entering SQL owners.
+-- Every SQL owner below that applies these bounds restores the caller's prior statement_timeout and
+-- lock_timeout before it returns, so a trigger (for example a person, employment or lc_case DELETE)
+-- never lowers the timeouts of the rest of the caller's transaction. When an owner raises instead,
+-- the failed (sub)transaction rolls the SET LOCAL values back to the caller's.
 CREATE FUNCTION app._native_outcome_bounds() RETURNS void
  LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE n integer;
@@ -64,6 +156,7 @@ CREATE FUNCTION app.native_outcome_targets_capture(p_tenant uuid,p_user uuid,p_p
 DECLARE r app.assistant_own_leave_review%ROWTYPE;e public.employee_import_evaluation_attempt%ROWTYPE;
  t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();people uuid[];employees uuid[];cases uuid[];
  id uuid;total integer;expiry timestamptz;kind text;source_person uuid;
+ saved_statement text:=current_setting('statement_timeout');saved_lock text:=current_setting('lock_timeout');
 BEGIN
  PERFORM app._native_outcome_bounds();
  IF p_tenant IS DISTINCT FROM t OR p_user IS DISTINCT FROM u OR t IS NULL OR u IS NULL
@@ -141,6 +234,7 @@ BEGIN
  VALUES(t,u,p_person,p_action,p_source,kind,CASE WHEN kind='review' THEN p_source END,CASE WHEN kind='employee_import' THEN p_source END,p_event,total,expiry) RETURNING native_outcome_source_capture.id INTO id;
  INSERT INTO app.native_outcome_source_target(capture_id,kind,target_id)
  SELECT id,'person',x FROM unnest(people) x UNION SELECT id,'employment',x FROM unnest(employees) x UNION SELECT id,'lifecycle_case',x FROM unnest(cases) x;
+ PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);
  RETURN true;
 END $$;
 REVOKE ALL ON FUNCTION app.native_outcome_targets_capture(uuid,uuid,uuid,text,uuid,uuid,jsonb) FROM PUBLIC;
@@ -189,6 +283,7 @@ ALTER TABLE public.ai_native_outcome_association ADD COLUMN source_capture_id uu
 CREATE FUNCTION app.native_outcome_association_capture() RETURNS trigger
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE c app.native_outcome_source_capture%ROWTYPE;source uuid;
+ saved_statement text:=current_setting('statement_timeout');saved_lock text:=current_setting('lock_timeout');
 BEGIN
  PERFORM app._native_outcome_bounds();
  source:=CASE WHEN NEW.source_kind='review' THEN NEW.review_id ELSE NEW.import_attempt_id END;
@@ -196,7 +291,9 @@ BEGIN
   RAISE EXCEPTION 'Native outcome privacy capture unavailable' USING ERRCODE='42501';END IF;
  SELECT * INTO c FROM app.native_outcome_source_capture WHERE tenant_id=NEW.tenant_id AND user_id=NEW.user_id AND action=NEW.action AND source_id=source AND event_id=NEW.event_id;
  IF NOT FOUND OR c.expires_at<NEW.expires_at THEN RAISE EXCEPTION 'Native outcome privacy capture unavailable' USING ERRCODE='42501';END IF;
- NEW.source_capture_id:=c.id;RETURN NEW;
+ NEW.source_capture_id:=c.id;
+ PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);
+ RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION app.native_outcome_association_capture() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER native_outcome_association_capture BEFORE INSERT ON public.ai_native_outcome_association FOR EACH ROW EXECUTE FUNCTION app.native_outcome_association_capture();
@@ -224,6 +321,7 @@ CREATE TRIGGER native_outcome_target_mutation BEFORE DELETE ON app.native_outcom
 CREATE FUNCTION app.native_outcome_own_erase() RETURNS boolean
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();
+ saved_statement text:=current_setting('statement_timeout');saved_lock text:=current_setting('lock_timeout');
 BEGIN
  PERFORM app._native_outcome_bounds();
  IF t IS NULL OR u IS NULL OR app.principal_snapshot_current() IS NOT TRUE OR NOT EXISTS(
@@ -232,6 +330,7 @@ BEGIN
  IF NOT pg_try_advisory_xact_lock(hashtextextended('native-outcome:v1:'||t::text||':'||u::text,0)) THEN
   RAISE EXCEPTION 'Native outcome privacy custody is busy' USING ERRCODE='55P03';END IF;
  DELETE FROM app.native_outcome_source_capture WHERE tenant_id=t AND user_id=u;
+ PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);
  RETURN true;
 END $$;
 REVOKE ALL ON FUNCTION app.native_outcome_own_erase() FROM PUBLIC;
@@ -256,6 +355,7 @@ REVOKE ALL ON FUNCTION app._native_outcome_target_person(text,uuid,uuid,uuid,uui
 CREATE FUNCTION app.native_outcome_targets_redact(p_employment uuid) RETURNS integer
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE i app.home_greeting_erasure_intent%ROWTYPE;total integer;subject_user uuid;
+ saved_statement text:=current_setting('statement_timeout');saved_lock text:=current_setting('lock_timeout');
 BEGIN
  PERFORM app._native_outcome_bounds();
  SELECT * INTO i FROM app.home_greeting_erasure_intent WHERE xact_id=pg_current_xact_id() AND tenant_id=app.current_tenant_id()
@@ -278,6 +378,7 @@ BEGIN
    SELECT 1 FROM app.native_outcome_source_target t WHERE t.capture_id=c.id AND app._native_outcome_target_person(t.kind,t.target_id,i.person_id,i.employment_id,i.tenant_id)) RETURNING c.id)
  SELECT count(*)::integer INTO total FROM erased;
  INSERT INTO app.native_outcome_erasure_intent VALUES(i.xact_id,i.tenant_id,i.user_id,i.person_id,i.employment_id,total,NULL);
+ PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);
  RETURN total;
 END $$;
 REVOKE ALL ON FUNCTION app.native_outcome_targets_redact(uuid) FROM PUBLIC;
@@ -333,14 +434,111 @@ CREATE CONSTRAINT TRIGGER native_outcome_erasure_complete AFTER INSERT ON app.na
 CREATE FUNCTION app.native_outcome_identity_deleted() RETURNS trigger
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE k text;
+ saved_statement text:=current_setting('statement_timeout');saved_lock text:=current_setting('lock_timeout');
 BEGIN
  PERFORM app._native_outcome_bounds();
  k:=CASE TG_TABLE_NAME WHEN 'person' THEN 'person' WHEN 'employment' THEN 'employment' WHEN 'lc_case' THEN 'lifecycle_case' END;
  DELETE FROM app.native_outcome_source_capture c WHERE c.tenant_id=OLD.tenant_id AND EXISTS(
   SELECT 1 FROM app.native_outcome_source_target t WHERE t.capture_id=c.id AND t.kind=k AND t.target_id=OLD.id);
+ -- Scoped bounds: a canonical identity DELETE keeps its own transaction's timeouts afterwards.
+ PERFORM set_config('statement_timeout',saved_statement,true),set_config('lock_timeout',saved_lock,true);
  RETURN OLD;
 END $$;
 REVOKE ALL ON FUNCTION app.native_outcome_identity_deleted() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER native_outcome_person_deleted BEFORE DELETE ON public.person FOR EACH ROW EXECUTE FUNCTION app.native_outcome_identity_deleted();
 CREATE TRIGGER native_outcome_employment_deleted BEFORE DELETE ON public.employment FOR EACH ROW EXECUTE FUNCTION app.native_outcome_identity_deleted();
 CREATE TRIGGER native_outcome_case_deleted BEFORE DELETE ON public.lc_case FOR EACH ROW EXECUTE FUNCTION app.native_outcome_identity_deleted();
+--> statement-breakpoint
+-- Part 3 of 4: workspace discovery, after the private target-custody helpers above.
+-- Discovery remains nomination-only, never canonical proof.
+
+--> statement-breakpoint
+-- Own completed discovery only. The calling owner proves the selected governed job/modules first;
+-- this function grants no native facts or permission to associate. Every record reopens its source.
+CREATE FUNCTION app.native_outcome_completed_review_choices(p_kinds jsonb)
+ RETURNS TABLE(action text,action_id uuid,created_at timestamptz)
+ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp SET row_security=on AS $$
+BEGIN
+ IF app.current_tenant_id() IS NULL OR app.current_user_id() IS NULL OR NOT app.principal_snapshot_current()
+ OR jsonb_typeof(p_kinds) IS DISTINCT FROM 'array' OR jsonb_array_length(p_kinds) NOT BETWEEN 1 AND 19
+ THEN RAISE EXCEPTION 'Outcome choices unavailable'; END IF;
+ IF EXISTS(SELECT 1 FROM jsonb_array_elements(p_kinds) v WHERE jsonb_typeof(v)<>'string')
+ OR (SELECT count(DISTINCT v) FROM jsonb_array_elements_text(p_kinds) v)<>jsonb_array_length(p_kinds)
+ OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(p_kinds) v WHERE v NOT IN
+ ('org.reporting.change','leave.apply','ess.profile.request','approvals.leave.decide','knowledge_base.article.create','payroll.close','attendance.correction.request','claims.draft.save','claims.submit','performance.review.acknowledge','performance.onehr.plan.acknowledge','rewards.post','lifecycle.acknowledgement.submit','toil.replacement.request','multi_cycle_payroll.create_run','typed_pay_components.create','country-my.statutory.update','notifications.email_preferences.save','system_testing.execution.save'))
+ THEN RAISE EXCEPTION 'Outcome choices unavailable'; END IF;
+ RETURN QUERY SELECT r.action_kind,r.id,r.created_at FROM app.assistant_own_leave_review r
+ WHERE r.tenant_id=app.current_tenant_id() AND r.user_id=app.current_user_id()
+ AND r.state='completed' AND r.action_kind IN(SELECT jsonb_array_elements_text(p_kinds))
+ AND r.created_at<=now() AND r.created_at>now()-interval '30 days'
+ AND app.native_outcome_capture_available(r.action_kind,r.id)
+ ORDER BY r.created_at DESC,r.id DESC LIMIT 26;
+END $$;
+REVOKE ALL ON FUNCTION app.native_outcome_completed_review_choices(jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.native_outcome_completed_review_choices(jsonb) TO ai_hr_app;
+--> statement-breakpoint
+-- Part 4 of 4: candidate signals. Never edit the 0627 file this extends.
+-- Historical proof of a human-selected canonical completion is not current HR truth, a quality
+-- score or causal attribution. Independent evaluators read their own freshly authorized facts.
+ALTER TABLE public.ai_agent_candidate_provenance ADD COLUMN native_refs jsonb NOT NULL DEFAULT '[]'::jsonb
+ CHECK(jsonb_typeof(native_refs)='array' AND jsonb_array_length(native_refs)<=1);
+--> statement-breakpoint
+-- Only metadata already bound to a currently visible candidate can be checked by the migration
+-- owner's FORCE-RLS policy. No arbitrary association/job reader or author impersonation is exposed.
+CREATE FUNCTION app.agent_native_signal_custody_visible(wanted_kind text,wanted_id uuid,wanted_tenant uuid,wanted_owner uuid)
+ RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp SET row_security=on AS $$
+BEGIN
+ IF wanted_kind IS NULL OR wanted_kind NOT IN('association','job') OR wanted_id IS NULL OR wanted_tenant IS NULL OR wanted_owner IS NULL
+ OR app.current_user_id() IS NULL OR app.current_tenant_id() IS NULL OR wanted_tenant IS DISTINCT FROM app.current_tenant_id()
+ OR app.principal_snapshot_current() IS DISTINCT FROM true OR current_setting('transaction_isolation')<>'read committed' THEN RETURN false;END IF;
+ RETURN EXISTS(SELECT 1 FROM public.ai_agent_candidate c JOIN public.ai_agent_candidate_provenance p
+ ON p.candidate_id=c.id AND p.tenant_id=c.tenant_id AND p.owner_user_id=c.owner_user_id
+ WHERE c.tenant_id=wanted_tenant AND c.owner_user_id=wanted_owner AND(c.owner_user_id=app.current_user_id() OR app.is_group_admin())
+ AND EXISTS(SELECT 1 FROM jsonb_array_elements(p.native_refs) r WHERE
+ CASE wanted_kind WHEN 'association' THEN r->>'associationId' ELSE r->>'jobId' END=wanted_id::text));
+END $$;
+REVOKE ALL ON FUNCTION app.agent_native_signal_custody_visible(text,uuid,uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.agent_native_signal_custody_visible(text,uuid,uuid,uuid) TO ai_hr_app;
+CREATE POLICY native_outcome_candidate_owner ON public.ai_native_outcome_association FOR SELECT TO PUBLIC
+ USING(current_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='public.ai_native_outcome_association'::regclass))
+ AND tenant_id=app.current_tenant_id() AND app.principal_snapshot_current()
+ AND app.agent_native_signal_custody_visible('association',id,tenant_id,user_id));
+CREATE POLICY native_outcome_job_candidate_owner ON public.ai_agent_job_receipt FOR SELECT TO PUBLIC
+ USING(current_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='public.ai_agent_job_receipt'::regclass))
+ AND tenant_id=app.current_tenant_id() AND app.principal_snapshot_current()
+ AND app.agent_native_signal_custody_visible('job',id,tenant_id,user_id));
+--> statement-breakpoint
+CREATE FUNCTION app.agent_candidate_native_signals_current(wanted_candidate uuid) RETURNS boolean
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp SET row_security=on AS $$
+DECLARE c public.ai_agent_candidate%ROWTYPE;p public.ai_agent_candidate_provenance%ROWTYPE;r jsonb;
+BEGIN
+ IF wanted_candidate IS NULL OR app.current_user_id() IS NULL OR app.current_tenant_id() IS NULL
+ OR app.principal_snapshot_current() IS DISTINCT FROM true OR current_setting('transaction_isolation')<>'read committed' THEN RETURN false;END IF;
+ SELECT * INTO c FROM public.ai_agent_candidate WHERE id=wanted_candidate AND tenant_id=app.current_tenant_id()
+ AND(owner_user_id=app.current_user_id() OR app.is_group_admin());IF NOT FOUND THEN RETURN false;END IF;
+ SELECT * INTO p FROM public.ai_agent_candidate_provenance WHERE candidate_id=c.id AND tenant_id=c.tenant_id AND owner_user_id=c.owner_user_id;
+ IF NOT FOUND OR coalesce(jsonb_typeof(p.native_refs),'')<>'array' OR jsonb_array_length(p.native_refs)>1 THEN RETURN false;END IF;
+ IF NOT pg_try_advisory_xact_lock_shared(hashtextextended('native-outcome:v1:'||c.tenant_id::text||':'||c.owner_user_id::text,0)) THEN RETURN false;END IF;
+ FOR r IN SELECT value FROM jsonb_array_elements(p.native_refs) LOOP
+  IF coalesce(jsonb_typeof(r),'')<>'object' OR (SELECT count(*) FROM jsonb_object_keys(r))<>8
+  OR coalesce(r->>'associationId','')!~'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$'
+  OR coalesce(r->>'jobId','')!~'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$'
+  OR coalesce(r->>'associationReceiptDigest','')!~'^[a-f0-9]{64}$' OR coalesce(r->>'nativeDigest','')!~'^[a-f0-9]{64}$'
+  OR coalesce(r->>'jobReceiptDigest','')!~'^[a-f0-9]{64}$' OR coalesce(r->>'expiresAt','')!~'^20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z$'
+  OR(c.kind='canonical_specialist_v1' AND c.module_code IS DISTINCT FROM r->>'module') THEN RETURN false;END IF;
+  IF NOT EXISTS(SELECT 1 FROM public.ai_native_outcome_association a JOIN public.ai_agent_job_receipt j
+   ON j.id=a.job_id AND j.tenant_id=a.tenant_id AND j.user_id=a.user_id
+   WHERE a.id=(r->>'associationId')::uuid AND j.id=(r->>'jobId')::uuid AND a.tenant_id=c.tenant_id AND a.user_id=c.owner_user_id
+   AND a.consented AND a.action=r->>'action' AND a.expires_at>now() AND a.expires_at=(r->>'expiresAt')::timestamptz
+   AND EXISTS(SELECT 1 FROM app.native_outcome_source_capture source WHERE source.id=a.source_capture_id
+    AND source.tenant_id=a.tenant_id AND source.user_id=a.user_id AND source.person_id IS NOT DISTINCT FROM a.person_id
+    AND source.action=a.action AND source.event_id=a.event_id AND source.source_id=coalesce(a.review_id,a.import_attempt_id)
+    AND source.expires_at>=a.expires_at AND source.target_count=(SELECT count(*) FROM app.native_outcome_source_target target WHERE target.capture_id=source.id))
+   AND j.expires_at>=a.expires_at AND j.request_nonce IS NOT NULL AND a.native_digest=r->>'nativeDigest'
+   AND a.job_receipt_digest=r->>'jobReceiptDigest' AND encode(sha256(convert_to(a.receipt,'UTF8')),'hex')=r->>'associationReceiptDigest'
+   AND encode(sha256(convert_to(j.receipt,'UTF8')),'hex')=r->>'jobReceiptDigest') THEN RETURN false;END IF;
+ END LOOP;
+ RETURN true;
+END $$;
+REVOKE ALL ON FUNCTION app.agent_candidate_native_signals_current(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.agent_candidate_native_signals_current(uuid) TO ai_hr_app;

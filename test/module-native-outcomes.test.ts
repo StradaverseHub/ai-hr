@@ -25,7 +25,7 @@ describe('closed native outcome association contract',()=>{
   for(const invalid of [{...view,quality:'verified_correct'},{...view,causalCredit:true},{...view,salary:'100'}])expect(NativeOutcomeAssociationView.safeParse(invalid).success).toBe(false);
  });
  it('keeps custody append/delete-only and enforces actual mutations under the same canonical interval',()=>{
-  const source=readFileSync(new URL('../db/migration-drafts/module-native-outcome-associations.sql',import.meta.url),'utf8');
+  const source=readFileSync(new URL('../db/migrations/0650_ai_native_outcomes.sql',import.meta.url),'utf8');
   expect(source).toContain('GRANT SELECT,INSERT,DELETE ON public.ai_native_outcome_association TO ai_hr_app');
   expect(source).not.toMatch(/GRANT[^;]*UPDATE[^;]*TO ai_hr_app/);
   expect(source).toContain('BEFORE INSERT OR DELETE ON public.ai_native_outcome_association');

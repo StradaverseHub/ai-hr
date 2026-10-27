@@ -1,4 +1,4 @@
--- UNALLOCATED / UNJOURNALED / UNAPPLIED. Coordinate allocation; do not edit the installed prefix.
+-- AI provider accounting summary (N3). Requires the forwarded 0625; replaces app.ai_provider_evaluation_record_v1 with the same signature.
 -- Extends only nullable observed-credit validation; exact seven metrics, fixed three calls and receipt ownership remain.
 CREATE OR REPLACE FUNCTION app.ai_provider_evaluation_record_v1(evaluation_id uuid,candidate uuid,candidate_version uuid,fingerprint text,principal text,metrics jsonb)
  RETURNS TABLE(issued_at timestamptz,expires_at timestamptz) LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$

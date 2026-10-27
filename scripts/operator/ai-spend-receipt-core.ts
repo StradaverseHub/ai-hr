@@ -16,7 +16,7 @@ export type ReceiptFiles={
  replaceEnvironment(expected:string,replacement:string):Promise<void>;
 };
 export type ReceiptDatabase={
- /** Must verify actual table owner, schema/column constraints and supported pgcrypto first. */
+ /** Must verify actual table owner, schema/column constraints and the built-in HMAC-SHA256 helper first. */
  inspect():Promise<Readonly<{identity:string;activeKeys:number}>>;
  find(id:string):Promise<Verifier|null>;
  /** Transactional parameterized insert, never UPDATE/retire/delete any existing key. */

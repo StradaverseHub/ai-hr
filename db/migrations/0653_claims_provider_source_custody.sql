@@ -1,10 +1,24 @@
--- UNALLOCATED / UNJOURNALED / UNAPPLIED. Coordinate allocation before exposure.
+-- Claims provider source custody (N7).
 -- Finite source footprint ONLY for claims triage and current-own claim status provider replay.
 -- Actual source: claim status/type/item/amount/dates/redacted description, own employment membership
 -- and native scope predicates. No receipt bytes, attachment content, policy math or new data grants.
--- Access -> shared global/tenant TRY custody -> exact native projection -> ai_admit COMMIT.
--- Native row DML takes exclusive tenant TRY even for hidden-row changes and membership phantoms.
+-- Access -> shared global + exclusive tenant TRY custody -> exact native projection -> ai_admit COMMIT.
+-- Native row DML takes shared tenant TRY custody even for hidden-row changes and membership phantoms.
 -- Any partial/busy acquisition requires WHOLE Tx rollback. No lock spans provider latency.
+-- Lock protocol (tenant key 'claims-provider-source-tenant-v1', global key 'claims-provider-source-global-v1'):
+--  * Native writers (the BEFORE row triggers below) take the TENANT key SHARED with TRY, held to commit.
+--    Shared holds are compatible, so two ordinary concurrent HR writes in one tenant never refuse each
+--    other because of this footprint.
+--  * The provider-source reader (claims_provider_source_read_hold_v1) takes the TENANT key EXCLUSIVE with
+--    TRY and keeps it through ai_admit COMMIT, never through external transport. It refuses (55P03,
+--    fail closed) while any uncommitted native write in that tenant holds the shared key; while it holds
+--    the key every native write in that tenant refuses with 55P03 and must roll back its whole
+--    transaction. Capture/write exclusion is therefore unchanged; only writer/writer exclusion is gone.
+--    Two concurrent captures in one tenant now also exclude each other (the second refuses busy).
+--  * Nobody waits for custody: writers can already hold native rows, so a wait could invert lock order.
+--    A backend's own shared and exclusive holds never conflict, so one transaction may write and capture.
+--  * TRUNCATE (privileged DDL) takes the GLOBAL key EXCLUSIVE; readers and row writers take it SHARED,
+--    so independent tenants are never serialized.
 -- TRUNCATE is privileged/native PostgreSQL DDL: its normal table locking is not bypassed or removed.
 CREATE FUNCTION app.claims_provider_source_read_hold_v1() RETURNS void
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -16,7 +30,8 @@ BEGIN
  IF NOT pg_try_advisory_xact_lock_shared(hashtext('claims-provider-source-global-v1'),0) THEN
   RAISE EXCEPTION 'Claims source is busy' USING ERRCODE='55P03';
  END IF;
- IF NOT pg_try_advisory_xact_lock_shared(hashtext('claims-provider-source-tenant-v1'),hashtext(tid::text)) THEN
+ -- EXCLUSIVE tenant custody: refuses while any native writer in this tenant is uncommitted.
+ IF NOT pg_try_advisory_xact_lock(hashtext('claims-provider-source-tenant-v1'),hashtext(tid::text)) THEN
   RAISE EXCEPTION 'Claims source is busy' USING ERRCODE='55P03';
  END IF;
  -- Recheck the actual login AFTER ownership. This is still no subject/role/data grant: every
@@ -47,7 +62,8 @@ BEGIN
  subjects:=CASE TG_OP WHEN 'INSERT' THEN ARRAY[NEW.tenant_id] WHEN 'DELETE' THEN ARRAY[OLD.tenant_id]
    ELSE ARRAY[OLD.tenant_id,NEW.tenant_id] END;
  FOR tid IN SELECT DISTINCT id FROM unnest(subjects) ids(id) WHERE id IS NOT NULL ORDER BY id LOOP
-  IF NOT pg_try_advisory_xact_lock(hashtext('claims-provider-source-tenant-v1'),hashtext(tid::text)) THEN
+  -- SHARED tenant custody: concurrent native writers coexist; only a holding reader refuses them.
+  IF NOT pg_try_advisory_xact_lock_shared(hashtext('claims-provider-source-tenant-v1'),hashtext(tid::text)) THEN
    RAISE EXCEPTION 'Claims source is busy' USING ERRCODE='55P03';
   END IF;
  END LOOP;

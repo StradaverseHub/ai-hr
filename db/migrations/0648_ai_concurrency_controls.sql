@@ -1,8 +1,10 @@
--- UNALLOCATED / UNJOURNALED / UNAPPLIED. Coordinate one allocation before release.
+-- AI concurrency controls (N2). Requires 0541 and the forwarded 0621; replaces app.ai_admit with the same signature.
 -- Extends canonical admission under its EXISTING tenant ai-control lock and applicable-policy owner.
 -- NULL is no additional cap; zero stops new calls. No invoice/spend cap or TTL recovery is inferred.
 ALTER TABLE public.ai_control_policy ADD COLUMN max_concurrent integer CHECK(max_concurrent BETWEEN 0 AND 1000000);
 --> statement-breakpoint
+-- Plain CREATE INDEX: Drizzle applies a migration run inside one transaction, so CONCURRENTLY is not
+-- available. The build holds a SHARE lock on ai_model_run (AI admissions/settlements wait) for its duration.
 CREATE INDEX ai_model_run_pending_scope ON public.ai_model_run(tenant_id,user_id,feature_id) WHERE state='pending';
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.ai_admit(wanted_feature text,wanted_operation text,wanted_provider text,wanted_model text,reserve bigint,forced_pause boolean DEFAULT false)

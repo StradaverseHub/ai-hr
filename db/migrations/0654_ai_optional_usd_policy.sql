@@ -1,5 +1,5 @@
--- UNALLOCATED / UNJOURNALED / UNAPPLIED. Logical group8, AFTER allocation + receipt + native-task
--- + reviewed-free + reviewed-metered + concurrency groups. Preserve every existing value, including0.
+-- AI optional USD policy (N8). After 0651 (allocation, receipt, native tasks, reviewed carriers) and 0648.
+-- Preserve every existing value, including 0.
 -- Explicit human policy: USD limits optional; native source/identity and nonmoney admission mandatory.
 ALTER TABLE app.ai_spend_budget ALTER COLUMN monthly_nanos DROP NOT NULL;
 ALTER TABLE app.ai_spend_budget ALTER COLUMN root_nanos DROP NOT NULL;

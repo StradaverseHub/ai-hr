@@ -1,5 +1,5 @@
--- Centrally reserved filename0642 only. Journal index/timestamp UNASSIGNED; UNAPPLIED.
--- Source-only draft. Actual shadow/baseline PostgreSQL validation is required before release.
+-- AI specialist diagnostic playbook (N1). Filename 0642 per docs/MIGRATION-RESERVATIONS.md (AI filename map).
+-- Journaled after the forwarded 0627 it depends on. Shadow/installed-baseline validation is still required.
 -- One atomic persistent change: replace only the exact old closed configuration CHECK.
 -- The temporary oracle compares complete PostgreSQL-parsed expressions, not guessed deparser text.
 DO $migration$
