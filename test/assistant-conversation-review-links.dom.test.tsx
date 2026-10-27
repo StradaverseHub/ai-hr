@@ -4,7 +4,10 @@
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,render,screen} from '@testing-library/react';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import viCopy from '../messages/vi.json';
-const state=vi.hoisted(()=>({locale:'en'})),copies:Record<string,typeof en>={en,ms,zh,ta,th,vi:viCopy};
+const state=vi.hoisted(()=>({locale:'en'}));
+// Imported catalogues initialize normally; including them in the hoisted declaration accesses
+// Vitest's transformed import binding before initialization and prevents every suite case running.
+const copies:Record<string,typeof en>={en,ms,zh,ta,th,vi:viCopy};
 vi.mock('next-intl/server',()=>({getTranslations:async()=>(key:string)=>{const value=copies[state.locale].assistant.workspace.jobs[key as keyof typeof en.assistant.workspace.jobs];if(typeof value!=='string')throw Error('Missing handoff translation');return value;}}));
 vi.mock('../core/module-agent-releases',()=>({readGovernedSpecialistToolResultTx:vi.fn(),reopenGovernedModuleReadJobTx:vi.fn()}));
 vi.mock('../core/assistant-tools',()=>({toolsFor:()=>[]}));

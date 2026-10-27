@@ -38,7 +38,7 @@ export async function ConversationExplanation({view,explanation,ctx}:{view:Canon
   }
   if(c.kind==='leave_rules'){
    if(!Object.hasOwn(ruleKeys,c.state)||c.key!==ruleKeys[c.state]||explanation.code!==`leave_rule:${c.state}`||!Array.isArray(c.rules)||c.rules.length===0||c.rules.length>100)return unavailable();
-   const[t,criteria,org]=await Promise.all([getTranslations('leave.breakdown'),getTranslations('criteria'),getTranslations('orgCategory')]);
+   const[t,criteria,org]=await Promise.all([getTranslations('leave.breakdown'),getTranslations('admin.leave.adjustmentsCriteria'),getTranslations('admin.profileOptions.category')]);
    const rows=c.rules.map((rule,index)=>{
     if(typeof rule.name!=='string'||rule.name.trim()===''||rule.name.length>500||typeof rule.tested!=='boolean'||typeof rule.failsOnCombination!=='boolean'||rule.failsOnCombination&&!rule.tested)throw Error();
     const dated=c.state==='expired'||c.state==='not_yet';if(dated?!dateOnly(rule.date):rule.date!==null)throw Error();
