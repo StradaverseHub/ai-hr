@@ -54,7 +54,7 @@ describe('out-of-band expired AI custody maintenance', () => {
   it('retires expired private bytes and opinions only, leaves active custody and HR facts unchanged, then is idempotent', async () => {
     const expired = await review(true), active = await review(false), expiredFeedback = await feedback(true), activeFeedback = await feedback(false);
     const before = await state(), result = await runAiRetentionTick(owner);
-    expect(result).toEqual({ tenants: 1, busy: 0, reviews: 1, feedback: 1,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0, backlog: false, oldestExpiredAgeSeconds: null });
+    expect(result).toEqual({ tenants: 1, busy: 0, reviews: 1, feedback: 1,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0, backlog: false, oldestExpiredAgeSeconds: null });
     for (const id of [expired, active, expiredFeedback, activeFeedback, base.tenantId]) expect(JSON.stringify(result)).not.toContain(id);
     const after = await state();
     expect(after.reviews.find(row => row.id === expired)).toMatchObject({ state: 'expired', intent_digest: null, reviewed_digest: null, ciphertext: null });
@@ -62,7 +62,7 @@ describe('out-of-band expired AI custody maintenance', () => {
     expect(after.feedback.some(row => row.id === expiredFeedback)).toBe(false);
     expect(after.feedback.find(row => row.id === activeFeedback)).toEqual(before.feedback.find(row => row.id === activeFeedback));
     expect(after.requests).toEqual(before.requests); expect(after.ledger).toEqual(before.ledger); expect(after.events).toEqual(before.events);
-    expect(await runAiRetentionTick(owner)).toEqual({ tenants: 0, busy: 0, reviews: 0, feedback: 0,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0, backlog: false, oldestExpiredAgeSeconds: null });
+    expect(await runAiRetentionTick(owner)).toEqual({ tenants: 0, busy: 0, reviews: 0, feedback: 0,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0, backlog: false, oldestExpiredAgeSeconds: null });
   });
   it('rejects an app-role carrier despite administrator claims, without any mutation', async () => {
     await review(true); await feedback(true); const before = await state();
@@ -78,7 +78,7 @@ describe('out-of-band expired AI custody maintenance', () => {
     await owner.db.transaction(async tx => {
       await tx.execute(sql`set local statement_timeout='4000ms'`);
       await tx.execute(sql`set local lock_timeout='400ms'`);
-      expect(await retireExpiredAiCustodyTx(tx as unknown as Tx)).toEqual({ tenants: 0, busy: 0, reviews: 0, feedback: 0,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0 });
+      expect(await retireExpiredAiCustodyTx(tx as unknown as Tx)).toEqual({ tenants: 0, busy: 0, reviews: 0, feedback: 0,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0 });
       const rows = await tx.execute<{ name: string; setting: string }>(sql`select name,setting from pg_settings
         where name in ('statement_timeout','lock_timeout') order by name`);
       expect(rows).toEqual([{ name: 'lock_timeout', setting: '400' }, { name: 'statement_timeout', setting: '4000' }]);
@@ -93,21 +93,21 @@ describe('out-of-band expired AI custody maintenance', () => {
     void holder.catch(fail);
     try {
       await started; const result = await runAiRetentionTick(owner);
-      expect(result).toMatchObject({ tenants: 1, busy: 1, reviews: 0, feedback: 0,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0, backlog: true });
+      expect(result).toMatchObject({ tenants: 1, busy: 1, reviews: 0, feedback: 0,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0, backlog: true });
       expect(result.oldestExpiredAgeSeconds).toBeGreaterThanOrEqual(1); expect(await state()).toEqual(before);
     }
     finally { release(); clearTimeout(watchdog); await holder; }
-    expect(await runAiRetentionTick(owner)).toEqual({ tenants: 1, busy: 0, reviews: 1, feedback: 1,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0, backlog: false, oldestExpiredAgeSeconds: null });
+    expect(await runAiRetentionTick(owner)).toEqual({ tenants: 1, busy: 0, reviews: 1, feedback: 1,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0, backlog: false, oldestExpiredAgeSeconds: null });
   });
   it('reports real remaining expired custody after the100-row bound, then clears it in a separate pass', async () => {
     const ids: string[] = [];
     for (let index=0; index<101; index++) ids.push(await review(true));
     const first = await runAiRetentionTick(owner);
-    expect(first).toMatchObject({ tenants: 1, busy: 0, reviews: 100, feedback: 0,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0, backlog: true });
+    expect(first).toMatchObject({ tenants: 1, busy: 0, reviews: 100, feedback: 0,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0, backlog: true });
     expect(first.oldestExpiredAgeSeconds).toBeGreaterThanOrEqual(1);
     expect(JSON.stringify(first)).not.toContain(base.tenantId);
     for (const id of ids) expect(JSON.stringify(first)).not.toContain(id);
-    expect(await runAiRetentionTick(owner)).toEqual({ tenants: 1, busy: 0, reviews: 1, feedback: 0,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0, backlog: false, oldestExpiredAgeSeconds: null });
+    expect(await runAiRetentionTick(owner)).toEqual({ tenants: 1, busy: 0, reviews: 1, feedback: 0,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0, backlog: false, oldestExpiredAgeSeconds: null });
     const after=await state();expect(after.reviews).toHaveLength(101);
     expect(after.reviews.every(row=>row.state==='expired'&&row.ciphertext===null&&row.intent_digest===null&&row.reviewed_digest===null)).toBe(true);
   });
@@ -124,6 +124,9 @@ describe('out-of-band expired AI custody maintenance', () => {
       await tx.execute(sql`alter table app.assistant_own_leave_review_content owner to ${role}`);
       await tx.execute(sql`alter table public.ai_agent_feedback owner to ${role}`);
       for(const table of ['ai_agent_plan_proposal','ai_agent_job_feedback','ai_agent_candidate_provenance','ai_agent_job_receipt','personnel_import_assistance_attempt','employee_import_evaluation_attempt','employee_import_evaluation_run_membership'])await tx.execute(sql`alter table public.${sql.identifier(table)} owner to ${role}`);
+      await tx.execute(sql`alter table public.ai_native_outcome_association owner to ${role}`);
+      await tx.execute(sql`alter table app.native_outcome_source_capture owner to ${role}`);
+      await tx.execute(sql`alter table app.native_outcome_source_target owner to ${role}`);
       await tx.execute(sql`set local session authorization ${role}`);
       const [identity] = await tx.execute<{ current_role_name: string; session_role_name: string; rolsuper: boolean; rolbypassrls: boolean }>(sql`
         select current_user as current_role_name,session_user as session_role_name,r.rolsuper,r.rolbypassrls
@@ -134,7 +137,7 @@ describe('out-of-band expired AI custody maintenance', () => {
       await tx.execute(sql`savepoint feedback_update_refusal`);
       await expect(tx.execute(sql`update public.ai_agent_feedback set outcome='helpful' where expires_at<=now()`)).rejects.toThrow();
       await tx.execute(sql`rollback to savepoint feedback_update_refusal`);
-      expect(await retireExpiredAiCustodyTx(tx as unknown as Tx)).toEqual({ tenants: 1, busy: 0, reviews: 1, feedback: 1,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0 });
+      expect(await retireExpiredAiCustodyTx(tx as unknown as Tx)).toEqual({ tenants: 1, busy: 0, reviews: 1, feedback: 1,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0 });
       const [hidden] = await tx.execute<{ count: number }>(sql`select count(*)::int as count from public.ai_agent_feedback where expires_at>now()`);
       expect(hidden.count).toBe(0);
       throw Error('owned role fixture rollback');

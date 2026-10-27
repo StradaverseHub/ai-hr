@@ -79,10 +79,17 @@ export async function erasePersonPii(
     if (!reviews || !Number.isSafeInteger(reviews.cleared) || reviews.cleared < 0)
       throw new Error('Assistant review erasure unavailable.');
 
+    // Source-owned original effect-subject links cover HR/bulk actions where actor PERSON differs
+    // from the subject. This joins the existing admitted erasure and exact deferred pii.erased audit,
+    // removes learning metadata only, and never touches canonical/statutory records.
+    const [outcomes]=await tx.execute<{cleared:number}>(sql`select app.native_outcome_targets_redact(${p.subjectEmploymentId}::uuid) as cleared`);
+    if(!outcomes||!Number.isSafeInteger(outcomes.cleared)||outcomes.cleared<0)throw new Error('Assistant outcome erasure unavailable.');
+
     // (2) retention guard
     const lifted = retentionLifted(emp.terminatedOn, erasureAt);
     const erased: string[] = [];
     if (reviews.cleared > 0) erased.push('assistantPreparedReviews');
+    if(outcomes.cleared>0)erased.push('assistantOutcomeLearning');
     const withheld: { field: string; reason: string }[] = [];
     for (const f of PII_FIELDS) {
       if (!inScope(f, p.scope)) continue;
