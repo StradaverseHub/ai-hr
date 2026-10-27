@@ -18061,7 +18061,128 @@
     "returnedReason": "Reason for return",
     "returnedNext": "Revise the review and submit it again.",
     "decidedBy": "By {actor}",
-    "aReviewer": "a reviewer"
+    "aReviewer": "a reviewer",
+    "postNeedsAdmin": "Posting needs a company HR administrator who also holds the Payroll seat.",
+    "noPayrollBatch": "There is no draft payroll batch for this company, so bonus and lump-sum awards cannot be posted yet. Salary changes can still be posted on their own. Payroll creates the draft batch for the pay period; posting itself needs a company HR administrator who also holds the Payroll seat.",
+    "dueOn": "Due {date}",
+    "board": {
+      "title": "Approvals",
+      "open": "Approvals board",
+      "view": {
+        "label": "Paparan",
+        "matrix": "Matriks",
+        "list": "Senarai"
+      },
+      "yourStep": "Your step: {steps}.",
+      "stepPhrase": {
+        "post": "post approved reviews to payroll"
+      },
+      "nothingYours": "No step on this board sits with you; you follow these reviews along the route.",
+      "groups": "Business groups",
+      "allGroups": "All groups",
+      "waiting": "Waiting on you · {count}",
+      "elsewhere": "Elsewhere on the route · {count}",
+      "noneWaiting": "Nothing is waiting on you.",
+      "empty": "No reviews are on the route for you in the selected companies.",
+      "columns": {
+        "unit": "Unit",
+        "stage": "Stage",
+        "due": "Due",
+        "people": "People",
+        "salary": "Salary increase",
+        "bonus": "Bonus",
+        "exceptions": "Exceptions",
+        "blocking": "Blocking",
+        "flags": "Penanda",
+        "action": "Action"
+      },
+      "seat": {
+        "bu": "BU CEO",
+        "bg": "BG CEO",
+        "gr": "Group Rewards",
+        "ctro": "CTRO",
+        "ec": "Executive Chairman",
+        "pbp": "PBP",
+        "payroll": "Payroll"
+      },
+      "seatShort": {
+        "ec": "EC"
+      },
+      "route": {
+        "annual": "Laluan akhir tahun · kenaikan gaji dan bonus diluluskan bersama",
+        "offcycle": "Laluan luar kitaran"
+      },
+      "duty": {
+        "bu": "Syor · hantar",
+        "bg": "Luluskan",
+        "gr": "Semak · majukan",
+        "ctro": "Selaras · HR bersetuju",
+        "ec": "Kelulusan muktamad",
+        "payroll": "Bayar"
+      },
+      "payOn": "Bayar · {date}",
+      "stepState": {
+        "done": "Selesai",
+        "yours": "Langkah anda",
+        "withThem": "Pada pihak lain",
+        "returned": "Dikembalikan",
+        "notReached": "Belum sampai"
+      },
+      "with": "With {seat}",
+      "stepOf": "Step {step} of {steps}",
+      "dueOn": "Tarikh akhir {date}",
+      "overdueOn": "Lewat {date}",
+      "peopleCount": "{count, plural, other {# orang}}",
+      "dueToday": "today",
+      "dueTomorrow": "tomorrow",
+      "dueIn": "in {days, plural, one {# day} other {# days}}",
+      "overdue": "{days, plural, one {# day} other {# days}} overdue",
+      "ofPool": "{percent} of pool",
+      "ofBudget": "{percent} of budget",
+      "overLimit": "over limit",
+      "openReview": "Open review",
+      "sendTo": "Majukan kepada {seat}",
+      "submitTo": "Hantar kepada {seat}",
+      "approveFinal": "Luluskan untuk penggajian",
+      "button": {
+        "submit": "Hantar",
+        "approve": "Luluskan"
+      },
+      "returnTo": {
+        "bg": "Kembalikan kepada BU CEO",
+        "gr": "Kembalikan kepada BG / BU",
+        "ctro": "Kembalikan kepada BG / BU",
+        "ec": "Tolak · kembali kepada BG / BU"
+      },
+      "stepOr": "{action} atau {return}",
+      "blockedHint": "Clear the blocking checks first",
+      "sendAll": "Send all ready ({count})",
+      "sendResult": "{sent} sent · {skipped} skipped (blocking) · {refused} refused (changed since you opened the page)",
+      "refusedItem": "{name}: {message}",
+      "decided": "Decision recorded.",
+      "footer": "Salary increase is the monthly total in RM (RM/mo) for the standard and JG H plans, against the salary increase pool. Bonus is the total in RM, including lump sums, against the bonus budget. Totals count only the records you are allowed to see. Open a row to see its review."
+    },
+    "calendar": {
+      "title": "Reward calendar",
+      "help": "Due dates for this reward cycle in this company. They appear on the Approvals board and on each review; they never move, block or approve a review. Leave a date empty when there is no deadline.",
+      "annual": "Annual review: date each step is due",
+      "stage": {
+        "bu": "BU CEO submits",
+        "returned": "Returned review resubmitted",
+        "bg": "BG CEO approves",
+        "gr": "Group Rewards approves",
+        "ctro": "CTRO approves",
+        "ec": "Executive Chairman approves",
+        "payroll": "Posted to payroll"
+      },
+      "caseDue": "ER and PIP case decisions due",
+      "offcycle": "Off-cycle requests: days allowed at each step",
+      "offcycleHelp": "An off-cycle request is due this many days after it reaches the step (1 to 90).",
+      "save": "Save calendar",
+      "readOnly": "Group Rewards or a company HR administrator maintains this calendar.",
+      "notSet": "Not set",
+      "days": "{days, plural, one {# day} other {# days}}"
+    }
   },
   "identityEmail": {
     "title": "Penghantaran e-mel",
@@ -19319,7 +19440,8 @@
       "failed": "Perpindahan tidak dapat disimpan. Cuba lagi.",
       "saving": "Menyimpan…",
       "save": "Simpan perpindahan",
-      "cancel": "Batal"
+      "cancel": "Batal",
+      "reasonRequired": "Reason (required) · the tier above reads it"
     },
     "talentCurve": {
       "title": "Taburan {axis} — {unit}",
@@ -19684,6 +19806,62 @@
         "partial": "Partly locked",
         "locked": "Locked"
       }
+    },
+    "talentBoard": {
+      "title": "Talent Box",
+      "people": "{count, plural, one {# person} other {# people}}",
+      "units": "{count, plural, one {# business unit} other {# business units}}",
+      "placed": "{placed} of {total} placed",
+      "lockedState": "Locked",
+      "openState": "Open for review",
+      "sources": "Potential from {cycle} · performance from {cycle}",
+      "businessUnit": "Business unit",
+      "all": "All",
+      "department": "Department",
+      "allDepartments": "All departments",
+      "grade": "Job grade",
+      "allGrades": "All grades",
+      "clearFilters": "Clear filters",
+      "wholeScope": "Showing the whole scope. Narrow it by business unit, department or grade to measure the distribution against that group instead.",
+      "filtered": "{count, plural, one {Measured against the # person in this selection.} other {Measured against the # people in this selection.}}",
+      "views": "Talent Box views",
+      "grid9": "9-box",
+      "grid15": "15-box",
+      "table": "Table",
+      "referenceTitle": "Reference guideline",
+      "showDetails": "Show details",
+      "hideDetails": "Hide details",
+      "onTarget": "On target in every category",
+      "onTargetShort": "On target",
+      "deltaTitle": "{actual} now, {target} at the reference share",
+      "noReference": "This scope has no single performance reference, so no reference shares are shown.",
+      "referenceNote": "Performance reference × potential {high}/{mid}/{low}, over the {placed} placed. It is guidance for the conversation, not a quota.",
+      "columns": {
+        "category": "Category",
+        "count": "Count",
+        "share": "Share",
+        "reference": "Reference",
+        "toMove": "To meet reference"
+      },
+      "capChip": "Moves {used} of {cap}",
+      "capChipUnits": "Moves {used} of {cap} across {count} business units",
+      "capNote": "Category-change limit: {pct}% of each business unit's people, counted per unit. Only a change of talent category counts, and moving someone back returns the allowance.",
+      "cellLabel": "{category}, {potential} potential, {performance}: {count}",
+      "vsRef": "vs {pct}%",
+      "movedUp": "Moved up from {category}",
+      "movedDown": "Moved down from {category}",
+      "moveTo": "Move {name} to another box",
+      "moveMenu": "Move to…",
+      "legendUp": "moved up a box in this calibration",
+      "legendDown": "moved down a box",
+      "potentialAxis": "Potential",
+      "performanceAxis": "Performance →",
+      "columnPerformance": "{level} performance",
+      "footerOpen": "{placed} placed{filtered, select, yes { in this selection} other {}} · locking covers both performance and potential for {scope}",
+      "footerLocked": "Calibration locked for {scope}: performance and potential are final.",
+      "pickUnitToLock": "Choose a business unit above to lock it.",
+      "categoryHelp": "Everyone here whose performance and potential place them in {category}.",
+      "categoryEmpty": "No one here is in {category} right now."
     }
   },
   "allowanceV2": {
@@ -24726,6 +24904,69 @@
       "assetSearch": "Cari nama aset",
       "companyCodeUnavailable": "Konfigurasikan kod rujukan syarikat yang pendek atau gunakan format tanpa pemegang tempat syarikat.",
       "version": "Versi konfigurasi {number}"
+    }
+  },
+  "performanceHome": {
+    "title": "Prestasi",
+    "closes": "Tutup {date}",
+    "progress": "{done} daripada {total} selesai",
+    "stripLabel": "Langkah dalam kitaran ini",
+    "steps": {
+      "kpi": "Semakan KPI",
+      "kpiSetting": "Penetapan KPI",
+      "feedback360": "Maklum Balas 360",
+      "competency": "Kompetensi",
+      "careerPlan": "Pelan Kerjaya",
+      "teamReview": "Semakan pasukan",
+      "calibration": "Kalibrasi",
+      "results": "Keputusan dikeluarkan"
+    },
+    "states": {
+      "done": "Selesai",
+      "yourTurn": "Giliran anda",
+      "waiting": "{count} menunggu",
+      "locked": "Dikunci",
+      "inProgress": "Sedang berjalan",
+      "released": "Dikeluarkan",
+      "notRequired": "Tidak diperlukan"
+    },
+    "next": {
+      "label": "Langkah seterusnya",
+      "kpiTitle": "Semakan KPI anda",
+      "kpiLine": "{done} daripada {total} KPI diisi",
+      "kpiSettingTitle": "Tetapkan KPI anda",
+      "kpiSettingLine": "{done} daripada {total} KPI dicadangkan",
+      "competencyTitle": "Nilai kompetensi anda",
+      "competencyLine": "{done} daripada {total} dijawab",
+      "careerPlanTitle": "Tulis Pelan Kerjaya anda",
+      "careerPlanLine": "{done} matlamat ditulis, sekurang-kurangnya {total} diperlukan",
+      "feedback360Title": "Maklum balas 360 untuk {count, plural, other {# rakan sekerja}}",
+      "feedback360Line": "Jawab setiap kenyataan, kemudian hantar.",
+      "due": "Tarikh akhir {date}",
+      "open": "Teruskan",
+      "none": "Tiada apa-apa untuk anda lakukan sekarang",
+      "opens": "Langkah seterusnya dibuka {date}",
+      "closesOn": "Kitaran ini ditutup {date}"
+    },
+    "team": {
+      "title": "Pasukan anda",
+      "waiting": "{count, plural, =0 {tiada yang menunggu anda} other {# semakan menunggu anda}}",
+      "open": "Buka semakan pasukan"
+    },
+    "standing": {
+      "title": "Kedudukan anda",
+      "details": "Butiran",
+      "performance": "Prestasi",
+      "competency": "Kompetensi",
+      "feedback360": "Maklum balas 360",
+      "careerTarget": "Sasaran kerjaya",
+      "awaitingManager": "Menunggu pengurus anda",
+      "notReleased": "Belum dikeluarkan",
+      "notSubmitted": "Belum dihantar",
+      "withManager": "Dengan pengurus anda",
+      "reviewed": "Disemak oleh pengurus anda",
+      "reportReleased": "Laporan dikeluarkan",
+      "notSet": "Belum ditetapkan"
     }
   }
 }

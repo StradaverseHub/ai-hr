@@ -13,8 +13,10 @@ export type HomeSurfaceLabels={
  * canonical actions. Preferences may hide/reorder supplied nodes, never authorize a missing card.
  * This component does not await a combined dashboard payload or infer facts from absent cards.
  */
-export function EmployeeHomeSurface({identity,preferences,cards,labels,selectionPath='/',selectionMonth}:{
+export function EmployeeHomeSurface({identity,preferences,cards,labels,selectionPath='/',selectionMonth,lead}:{
   identity:EmployeeHomeIdentity;preferences:unknown;
+  /** WP-A2: an optional block under the header, independent of the card preferences (never a card). */
+  lead?:ReactNode;
   cards:Partial<Record<EmployeeHomeCard,ReactNode>>;labels:HomeSurfaceLabels;
   selectionPath?:'/'|'/me/calendar';selectionMonth?:string;
 }){
@@ -50,6 +52,7 @@ export function EmployeeHomeSurface({identity,preferences,cards,labels,selection
     {!ready&&<p id="home-employment-help" role="status" className="max-w-prose text-sm leading-relaxed text-muted-foreground">
       {identity.employmentState==='none'?labels.noEmployment:labels.chooseHelp}
     </p>}
+    {lead}
     {visible.length>0&&<div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-12">
       {visible.map(card=><div key={card} id={`home-card-${card}`} data-home-slot={card} className={`min-w-0 ${width(card)}`}><HomeCardUsage card={card}>{cards[card]}</HomeCardUsage></div>)}
     </div>}

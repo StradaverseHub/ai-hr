@@ -18061,7 +18061,128 @@
     "returnedReason": "Reason for return",
     "returnedNext": "Revise the review and submit it again.",
     "decidedBy": "By {actor}",
-    "aReviewer": "a reviewer"
+    "aReviewer": "a reviewer",
+    "postNeedsAdmin": "Posting needs a company HR administrator who also holds the Payroll seat.",
+    "noPayrollBatch": "There is no draft payroll batch for this company, so bonus and lump-sum awards cannot be posted yet. Salary changes can still be posted on their own. Payroll creates the draft batch for the pay period; posting itself needs a company HR administrator who also holds the Payroll seat.",
+    "dueOn": "Due {date}",
+    "board": {
+      "title": "Approvals",
+      "open": "Approvals board",
+      "view": {
+        "label": "காட்சி",
+        "matrix": "கட்டம்",
+        "list": "பட்டியல்"
+      },
+      "yourStep": "Your step: {steps}.",
+      "stepPhrase": {
+        "post": "post approved reviews to payroll"
+      },
+      "nothingYours": "No step on this board sits with you; you follow these reviews along the route.",
+      "groups": "Business groups",
+      "allGroups": "All groups",
+      "waiting": "Waiting on you · {count}",
+      "elsewhere": "Elsewhere on the route · {count}",
+      "noneWaiting": "Nothing is waiting on you.",
+      "empty": "No reviews are on the route for you in the selected companies.",
+      "columns": {
+        "unit": "Unit",
+        "stage": "Stage",
+        "due": "Due",
+        "people": "People",
+        "salary": "Salary increase",
+        "bonus": "Bonus",
+        "exceptions": "Exceptions",
+        "blocking": "Blocking",
+        "flags": "எச்சரிக்கைகள்",
+        "action": "Action"
+      },
+      "seat": {
+        "bu": "BU CEO",
+        "bg": "BG CEO",
+        "gr": "Group Rewards",
+        "ctro": "CTRO",
+        "ec": "Executive Chairman",
+        "pbp": "PBP",
+        "payroll": "Payroll"
+      },
+      "seatShort": {
+        "ec": "EC"
+      },
+      "route": {
+        "annual": "ஆண்டு இறுதி வழி · சம்பள உயர்வும் போனஸும் ஒன்றாக அங்கீகரிக்கப்படும்",
+        "offcycle": "சுழற்சிக்கு வெளியிலான வழி"
+      },
+      "duty": {
+        "bu": "பரிந்துரை · சமர்ப்பிப்பு",
+        "bg": "அங்கீகாரம்",
+        "gr": "சரிபார்ப்பு · அனுப்புதல்",
+        "ctro": "ஒருங்கிணைப்பு · HR ஒப்புதல்",
+        "ec": "இறுதி அங்கீகாரம்",
+        "payroll": "சம்பளம்"
+      },
+      "payOn": "சம்பளம் · {date}",
+      "stepState": {
+        "done": "முடிந்தது",
+        "yours": "உங்கள் படி",
+        "withThem": "அவர்களிடம்",
+        "returned": "திருப்பி அனுப்பப்பட்டது",
+        "notReached": "இன்னும் எட்டவில்லை"
+      },
+      "with": "With {seat}",
+      "stepOf": "Step {step} of {steps}",
+      "dueOn": "கெடு {date}",
+      "overdueOn": "கெடு தாண்டியது {date}",
+      "peopleCount": "{count, plural, one {# நபர்} other {# நபர்கள்}}",
+      "dueToday": "today",
+      "dueTomorrow": "tomorrow",
+      "dueIn": "in {days, plural, one {# day} other {# days}}",
+      "overdue": "{days, plural, one {# day} other {# days}} overdue",
+      "ofPool": "{percent} of pool",
+      "ofBudget": "{percent} of budget",
+      "overLimit": "over limit",
+      "openReview": "Open review",
+      "sendTo": "{seat} இடம் அனுப்பவும்",
+      "submitTo": "{seat} இடம் சமர்ப்பிக்கவும்",
+      "approveFinal": "சம்பளப்பட்டியலுக்கு அங்கீகரிக்கவும்",
+      "button": {
+        "submit": "சமர்ப்பிக்கவும்",
+        "approve": "அங்கீகரிக்கவும்"
+      },
+      "returnTo": {
+        "bg": "BU CEO இடம் திருப்பவும்",
+        "gr": "BG / BU இடம் திருப்பவும்",
+        "ctro": "BG / BU இடம் திருப்பவும்",
+        "ec": "நிராகரிக்கவும் · BG / BU இடம் திருப்பவும்"
+      },
+      "stepOr": "{action} அல்லது {return}",
+      "blockedHint": "Clear the blocking checks first",
+      "sendAll": "Send all ready ({count})",
+      "sendResult": "{sent} sent · {skipped} skipped (blocking) · {refused} refused (changed since you opened the page)",
+      "refusedItem": "{name}: {message}",
+      "decided": "Decision recorded.",
+      "footer": "Salary increase is the monthly total in RM (RM/mo) for the standard and JG H plans, against the salary increase pool. Bonus is the total in RM, including lump sums, against the bonus budget. Totals count only the records you are allowed to see. Open a row to see its review."
+    },
+    "calendar": {
+      "title": "Reward calendar",
+      "help": "Due dates for this reward cycle in this company. They appear on the Approvals board and on each review; they never move, block or approve a review. Leave a date empty when there is no deadline.",
+      "annual": "Annual review: date each step is due",
+      "stage": {
+        "bu": "BU CEO submits",
+        "returned": "Returned review resubmitted",
+        "bg": "BG CEO approves",
+        "gr": "Group Rewards approves",
+        "ctro": "CTRO approves",
+        "ec": "Executive Chairman approves",
+        "payroll": "Posted to payroll"
+      },
+      "caseDue": "ER and PIP case decisions due",
+      "offcycle": "Off-cycle requests: days allowed at each step",
+      "offcycleHelp": "An off-cycle request is due this many days after it reaches the step (1 to 90).",
+      "save": "Save calendar",
+      "readOnly": "Group Rewards or a company HR administrator maintains this calendar.",
+      "notSet": "Not set",
+      "days": "{days, plural, one {# day} other {# days}}"
+    }
   },
   "identityEmail": {
     "title": "மின்னஞ்சல் அனுப்புதல்",
@@ -19319,7 +19440,8 @@
       "failed": "மாற்றத்தைச் சேமிக்க முடியவில்லை. மீண்டும் முயலவும்.",
       "saving": "சேமிக்கிறது…",
       "save": "மாற்றத்தைச் சேமி",
-      "cancel": "ரத்துசெய்"
+      "cancel": "ரத்துசெய்",
+      "reasonRequired": "Reason (required) · the tier above reads it"
     },
     "talentCurve": {
       "title": "{axis} பகிர்வு — {unit}",
@@ -19684,6 +19806,62 @@
         "partial": "Partly locked",
         "locked": "Locked"
       }
+    },
+    "talentBoard": {
+      "title": "Talent Box",
+      "people": "{count, plural, one {# person} other {# people}}",
+      "units": "{count, plural, one {# business unit} other {# business units}}",
+      "placed": "{placed} of {total} placed",
+      "lockedState": "Locked",
+      "openState": "Open for review",
+      "sources": "Potential from {cycle} · performance from {cycle}",
+      "businessUnit": "Business unit",
+      "all": "All",
+      "department": "Department",
+      "allDepartments": "All departments",
+      "grade": "Job grade",
+      "allGrades": "All grades",
+      "clearFilters": "Clear filters",
+      "wholeScope": "Showing the whole scope. Narrow it by business unit, department or grade to measure the distribution against that group instead.",
+      "filtered": "{count, plural, one {Measured against the # person in this selection.} other {Measured against the # people in this selection.}}",
+      "views": "Talent Box views",
+      "grid9": "9-box",
+      "grid15": "15-box",
+      "table": "Table",
+      "referenceTitle": "Reference guideline",
+      "showDetails": "Show details",
+      "hideDetails": "Hide details",
+      "onTarget": "On target in every category",
+      "onTargetShort": "On target",
+      "deltaTitle": "{actual} now, {target} at the reference share",
+      "noReference": "This scope has no single performance reference, so no reference shares are shown.",
+      "referenceNote": "Performance reference × potential {high}/{mid}/{low}, over the {placed} placed. It is guidance for the conversation, not a quota.",
+      "columns": {
+        "category": "Category",
+        "count": "Count",
+        "share": "Share",
+        "reference": "Reference",
+        "toMove": "To meet reference"
+      },
+      "capChip": "Moves {used} of {cap}",
+      "capChipUnits": "Moves {used} of {cap} across {count} business units",
+      "capNote": "Category-change limit: {pct}% of each business unit's people, counted per unit. Only a change of talent category counts, and moving someone back returns the allowance.",
+      "cellLabel": "{category}, {potential} potential, {performance}: {count}",
+      "vsRef": "vs {pct}%",
+      "movedUp": "Moved up from {category}",
+      "movedDown": "Moved down from {category}",
+      "moveTo": "Move {name} to another box",
+      "moveMenu": "Move to…",
+      "legendUp": "moved up a box in this calibration",
+      "legendDown": "moved down a box",
+      "potentialAxis": "Potential",
+      "performanceAxis": "Performance →",
+      "columnPerformance": "{level} performance",
+      "footerOpen": "{placed} placed{filtered, select, yes { in this selection} other {}} · locking covers both performance and potential for {scope}",
+      "footerLocked": "Calibration locked for {scope}: performance and potential are final.",
+      "pickUnitToLock": "Choose a business unit above to lock it.",
+      "categoryHelp": "Everyone here whose performance and potential place them in {category}.",
+      "categoryEmpty": "No one here is in {category} right now."
     }
   },
   "allowanceV2": {
@@ -24726,6 +24904,69 @@
       "assetSearch": "வளப் பெயர்களைத் தேடு",
       "companyCodeUnavailable": "சுருக்கமான நிறுவனக் குறியீட்டை அமைக்கவும் அல்லது நிறுவன இடக்குறி இல்லாத வடிவத்தைப் பயன்படுத்தவும்.",
       "version": "அமைப்புப் பதிப்பு {number}"
+    }
+  },
+  "performanceHome": {
+    "title": "Performance",
+    "closes": "Closes {date}",
+    "progress": "{done} of {total} done",
+    "stripLabel": "Steps in this cycle",
+    "steps": {
+      "kpi": "KPI Check-in",
+      "kpiSetting": "KPI setting",
+      "feedback360": "360 Feedback",
+      "competency": "Competency",
+      "careerPlan": "Career Plan",
+      "teamReview": "Team review",
+      "calibration": "Calibration",
+      "results": "Results released"
+    },
+    "states": {
+      "done": "Done",
+      "yourTurn": "Your turn",
+      "waiting": "{count} waiting",
+      "locked": "Locked",
+      "inProgress": "In progress",
+      "released": "Released",
+      "notRequired": "Not required"
+    },
+    "next": {
+      "label": "Your next step",
+      "kpiTitle": "Your KPI check-in",
+      "kpiLine": "{done} of {total} KPIs filled in",
+      "kpiSettingTitle": "Set your KPIs",
+      "kpiSettingLine": "{done} of {total} KPIs proposed",
+      "competencyTitle": "Rate your competencies",
+      "competencyLine": "{done} of {total} answered",
+      "careerPlanTitle": "Write your Career Plan",
+      "careerPlanLine": "{done} goals written, at least {total} needed",
+      "feedback360Title": "360 feedback for {count, plural, one {# colleague} other {# colleagues}}",
+      "feedback360Line": "Answer each statement, then submit.",
+      "due": "Due {date}",
+      "open": "Continue",
+      "none": "Nothing for you to do right now",
+      "opens": "Your next step opens {date}",
+      "closesOn": "This cycle closes {date}"
+    },
+    "team": {
+      "title": "Your team",
+      "waiting": "{count, plural, =0 {nothing waiting on you} one {# review waiting on you} other {# reviews waiting on you}}",
+      "open": "Open team review"
+    },
+    "standing": {
+      "title": "Where you stand",
+      "details": "Details",
+      "performance": "Performance",
+      "competency": "Competency",
+      "feedback360": "360 feedback",
+      "careerTarget": "Career target",
+      "awaitingManager": "Awaiting your manager",
+      "notReleased": "Not released yet",
+      "notSubmitted": "Not submitted yet",
+      "withManager": "With your manager",
+      "reviewed": "Reviewed by your manager",
+      "reportReleased": "Report released",
+      "notSet": "Not set yet"
     }
   }
 }

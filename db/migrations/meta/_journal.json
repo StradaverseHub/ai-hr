@@ -3536,6 +3536,13 @@
       "when": 1793110000000,
       "tag": "0640_onehr_plan_reviewer_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 620,
+      "version": "7",
+      "when": 1793120000000,
+      "tag": "0646_reward_calendar",
+      "breakpoints": true
     }
   ]
 }

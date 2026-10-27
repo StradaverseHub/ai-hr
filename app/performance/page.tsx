@@ -6,7 +6,7 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { canManagePerfComp, isAdmin, isOnehrOnlyPerformanceAdmin, requireModule } from '@/lib/authz';
-import { onehrAssignments } from '@/packs/performance/service';
+import { hasAssignedPerformanceWork, onehrAssignments } from '@/packs/performance/service';
 import { listCompanies } from '@/core/read';
 import { listCycles, listOnehrAdminCompanyIds, listOnehrAdminCycles, managerCheckIns, managerPendingReviews, type OnehrAdminCycleSummary } from '@/core/performance';
 import { Button, Card, EmployeeCode, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, inputCls } from '@/components/ui';
@@ -40,7 +40,10 @@ export default async function PerformancePage({
   const onehrOnly = isOnehrOnlyPerformanceAdmin(s);
   const performanceAdmin = admin || onehrOnly;
   const manager = (s.roles ?? []).includes('manager');
-  if (!performanceAdmin && !manager) redirect('/');
+  // D-P1-03 — a person named on performance work (a reviewer, moderator, plan reviewer or calibration reviewer)
+  // gets tasks that land here, whatever their platform role. The bell's own projection decides who that is;
+  // reaching the page grants nothing (ADR-0132): every read below is fenced by its own service and RLS.
+  if (!performanceAdmin && !manager && !(await hasAssignedPerformanceWork(s, scopeIds))) redirect('/');
   const sp = await searchParams;
   const { error } = sp;
   const today = todayInKualaLumpur();

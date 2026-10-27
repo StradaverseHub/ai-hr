@@ -9,8 +9,8 @@ vi.mock('next-intl/server', () => ({ getTranslations: async (namespace: keyof ty
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('../lib/scope', () => ({ scopedAdmin: ports.scopedAdmin, scopedSession: ports.scopedSession }));
 vi.mock('../lib/authz', () => ({ requireModule: ports.requireModule }));
-vi.mock('../packs/rewards/service', () => ({ listRewardUnits: ports.list, rewardSetupChoices: ports.choices, getRewardConfiguration: ports.configuration, getRewardSeniorMembership: vi.fn(), rewardSharedPolicyChoices: ports.shared }));
-vi.mock('../app/rewards/actions', () => ({ createRewardAction: vi.fn(), memberAction: vi.fn(), policyAction: vi.fn(), deleteRewardAction: vi.fn() }));
+vi.mock('../packs/rewards/service', () => ({ listRewardUnits: ports.list, rewardSetupChoices: ports.choices, getRewardConfiguration: ports.configuration, getRewardSeniorMembership: vi.fn(), rewardSharedPolicyChoices: ports.shared, getRewardCalendar: async () => ({ revision: 1, canEdit: true, values: { due: { bu: '2026-12-11' }, caseDue: null, offcycleDays: {} } }), rewardCalendarStages: ['bu'], rewardOffcycleSlaStages: ['bg'] }));
+vi.mock('../app/rewards/actions', () => ({ createRewardAction: vi.fn(), memberAction: vi.fn(), policyAction: vi.fn(), deleteRewardAction: vi.fn(), calendarAction: vi.fn() }));
 import AdminPage from '../app/admin/rewards/page';
 import ConfigurationPage from '../app/admin/rewards/[unitId]/page';
 import ReviewsPage from '../app/rewards/page';
