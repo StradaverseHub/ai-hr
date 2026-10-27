@@ -1478,3 +1478,28 @@ flags, explicitly allowed accessory facts and unsupported/unevaluated distinctio
 eligibility binds the server command/configuration/policy while explicitly withholding key and GPS
 verification claims. No route, tenant rollout or attendance write was enabled. Transactional
 integration and actual signed-device checks remain subsequent acceptance work.
+
+
+### Current Android evidence transaction verification
+
+Frozen source `8e76913c7d11c3d33eeb0ca6078d2cdb2f6e4797` passed the existing standard hosted
+[focused Actions run](https://github.com/StradaverseHub/ai-hr/actions/runs/40478941524).
+The selected-test job passed five files / 45 cases: `mobile-android-verified-clock.test.ts` (17),
+`mobile-android-clock-command.test.ts` (15), `mobile-signed-clock-http.test.ts` (8), plus
+`attendance-pack-drift.test.ts` and `mobile-integrity-import-isolation.test.ts` (5 combined).
+The separate root TypeScript job and Next type generation succeeded; TypeScript took 4m17.72s with
+maximum RSS 7,786,380 KiB. The Linux production build was not requested and was skipped. The DB test
+phase took 32.97s and dropped its three worker databases and template. The uploaded
+[focused development artifact](https://github.com/StradaverseHub/ai-hr/actions/runs/40478941524/artifacts/12721753328)
+has ZIP SHA-256 `192f28f40a8728b4361915d0023cb9aba73a6262ffbea7266d7cf0c33e652687`.
+
+The new 17-case suite uses real worker-only custody schema, scoped RLS, ECDSA signatures, challenge
+consumption and canonical attendance writes with synthetic enrollment provenance and Google HTTP
+responses. It exercises vendor work outside key/challenge row locks, exact one-punch replay,
+pre-vendor signature rejection, provider/hash/device/mock refusals, opaque-token validation,
+post-vendor revocation and employment changes, transaction-guard rollback, token expiry before
+business work and after tentative writes, cleared concurrent response recovery, committed receipt
+recovery during outages, immutable inputs and request cancellation. These tests do not certify a
+real deployment guard, Google configuration or physical devices. The signed-clock HTTP carrier
+still uses the historical signature-only Android factory and remains unmounted; this run does not
+prove current Google evidence is required by a mounted HTTP route or native client.

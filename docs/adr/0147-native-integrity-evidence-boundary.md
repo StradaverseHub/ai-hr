@@ -878,10 +878,43 @@ This module performs no database work, signature/key validation, challenge consu
 write, trust-tier assignment or HR adjudication. Network verification must occur outside database
 locks; the acceptance transaction must revalidate ownership, signature, challenge/time, revocation
 and exact command/configuration/policy bindings before one authoritative write. A serializable
-assessment is not a bearer permission. Clock routing, transaction integration, native orchestration,
-legacy-channel policy and signed-device verification remain required before activation.
+assessment is not a bearer permission. The transaction integration described below enforces this
+boundary; clock routing, native orchestration, legacy-channel policy and signed-device verification
+remain required before activation.
 
 This interpretation follows Google's [verdict reference](https://developer.android.com/google/play/integrity/verdicts)
 and [standard-request flow](https://developer.android.com/google/play/integrity/standard).
 Focused synthetic-transport verification and guard-removal evidence are recorded in the platform
 research appendix; they do not constitute Google production provisioning or device certification.
+
+
+## Current Android evidence joins the attendance transaction
+
+`createAndroidVerifiedClockService` composes the existing key-signature owner, current Google
+standard-token verifier and canonical attendance writer. Its configuration and explicit policy are
+snapshots from trusted server assembly. A mandatory deployment transaction guard must re-read the
+current clock rollout/settings using the supplied transaction. The factory does not implement that
+rollout owner or activate a route; a synthetic no-op test guard proves neither deployment readiness
+nor policy revocation semantics.
+
+An active challenge first receives a scoped, read-only ownership/key/provenance/signature precheck.
+Google verification then runs outside challenge/key row locks. Consumption repeats authorization,
+key revocation and provenance, signature and challenge freshness under its existing transaction
+locks. Current evidence must bind the reconstructed command and exact configuration/policy digests.
+Database wall-clock checks enforce token age and future skew before attendance work and again after
+tentative writes and the deployment guard. Cancellation or any veto rolls back attendance,
+consumption and audit together. The signature-only primitive remains internal and is not evidence
+of current device eligibility.
+
+Concurrent retries may receive a cleared Google verdict after another request committed. The error
+path re-reads the exact owned challenge and permits only its already-consumed receipt observation;
+it cannot turn a failed vendor check into fresh attendance. Exact committed receipt recovery also
+survives later key revocation or provider/secret outage, subject to current own-employment access.
+The audit retains historical key/signature evidence separately from the current Google assessment.
+Neither Google eligibility nor an enrolled signing key authenticates GPS or proves physical presence.
+
+At checkpoint `8e76913c7d11c3d33eeb0ca6078d2cdb2f6e4797`, the existing standard GitHub Actions
+focused workflow passed the five selected files (45 cases) and whole-root TypeScript check. This is
+focused development evidence, not a full release gate, actual vendor provisioning, tenant activation
+or signed physical-device acceptance. Detailed scope and adversarial verification belong in the
+platform evidence appendix.
