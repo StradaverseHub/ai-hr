@@ -29,12 +29,17 @@ async function fixture(asAdmin=false){
   return{ctx,subject};};
  return{admin,mine:await make(),peer:await make()};
 }
+function nominationFor(f:Awaited<ReturnType<typeof fixture>>){
+ const date=new Date(todayInKualaLumpur()+'T00:00:00Z');do{date.setUTCDate(date.getUTCDate()+1);}while([0,6].includes(date.getUTCDay()));
+ return{action:'leave.apply' as const,contractVersion:1 as const,employmentId:f.mine.subject.employmentId,leaveTypeId:base.annualLeaveTypeId,date:date.toISOString().slice(0,10),durationType:'full_day' as const};
+}
 async function preparation(f:Awaited<ReturnType<typeof fixture>>){
  const job=await runGovernedModuleReadPlan(f.mine.ctx,{version:1,modules:['leave']},{nonce:randomUUID()});
- const date=new Date(todayInKualaLumpur()+'T00:00:00Z');do{date.setUTCDate(date.getUTCDate()+1);}while([0,6].includes(date.getUTCDay()));
- const nomination={action:'leave.apply' as const,contractVersion:1 as const,employmentId:f.mine.subject.employmentId,leaveTypeId:base.annualLeaveTypeId,date:date.toISOString().slice(0,10),durationType:'full_day' as const};
- const prepared=await withTenant(f.mine.ctx,tx=>prepareOwnLeaveReviewTx(tx,f.mine.ctx,nomination,{employmentId:nomination.employmentId,leaveTypeId:nomination.leaveTypeId},{reason:'Fictional HUMAN PRIVATE REASON',employeeRemark:''},'en'));
- if(prepared.kind!=='prepared')throw Error('Canonical fixture failed to prepare');
+ const nomination=nominationFor(f);
+ // Human text as the human input owner sends it: an empty remark box is ABSENT, never ''
+ // (components/assistant/own-leave-command-panel.tsx). '' is refused by the bounded slice; see below.
+ const prepared=await withTenant(f.mine.ctx,tx=>prepareOwnLeaveReviewTx(tx,f.mine.ctx,nomination,{employmentId:nomination.employmentId,leaveTypeId:nomination.leaveTypeId},{reason:'Fictional HUMAN PRIVATE REASON'},'en'));
+ if(prepared.kind!=='prepared')throw Error('Canonical fixture failed to prepare: '+prepared.kind);
  const review=prepared.review;return{job,review,input:{jobId:job.jobId,reference:{source:'review' as const,action:'leave.apply' as const,actionId:review.actionId},nonce:randomUUID(),consented:true as const}};
 }
 async function complete(f:Awaited<ReturnType<typeof fixture>>,p:Awaited<ReturnType<typeof preparation>>){
@@ -66,7 +71,7 @@ describe('actual own native outcome links',()=>{
   await expect(recordOwnNativeOutcomeAssociation(f.mine.ctx,p.input)).rejects.toThrow(unavailable);
   await expect(withTenant(f.mine.ctx,tx=>readCompletedOwnLeaveOutcomeTx(tx,f.mine.ctx,p.review.actionId))).rejects.toThrow();
   expect(await counts()).toEqual(before);
-  await withTenant(f.mine.ctx,tx=>discardOwnLeaveReviewTx(tx,{actionId:p.review.actionId,contractVersion:p.review.contractVersion}));
+  await withTenant(f.mine.ctx, tx => discardOwnLeaveReviewTx(tx, f.mine.ctx, {actionId:p.review.actionId,contractVersion:p.review.contractVersion}));
   await expect(recordOwnNativeOutcomeAssociation(f.mine.ctx,p.input)).rejects.toThrow(unavailable);expect(await counts()).toEqual(before);
  });
  it('refuses foreign owner/tenant, revoked Assistant and module kill before association; own erasure survives revocation',async()=>{
@@ -227,4 +232,14 @@ it('rolls an already inserted private capture back if final native completion fa
  try{await expect(complete(f,p)).rejects.toThrow();expect(await counts()).toEqual(before);const [capture]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from app.native_outcome_source_capture where source_id=${p.review.actionId}::uuid`);expect(capture.n).toBe(0);}
  finally{await owner.db.execute(sql`drop trigger fictional_native_completion_failure on app.assistant_own_leave_review`);await owner.db.execute(sql`drop function app.fictional_native_completion_failure()`);}
  await complete(f,p);
+});
+/** The canonical writer stores an empty remark as NULL. The bounded slice binds the human's exact text
+ * into the reviewed intent, so text the writer would normalise is handed to the full form instead. */
+it('hands an empty employee remark to the full Leave form without storing a review, and prepares once it is absent',async()=>{
+ const f=await fixture(),nomination=nominationFor(f),selection={employmentId:nomination.employmentId,leaveTypeId:nomination.leaveTypeId};
+ const reviews=async()=>(await owner.db.execute<{n:number}>(sql`select count(*)::int as n from app.assistant_own_leave_review`))[0].n,before=await reviews();
+ expect(await withTenant(f.mine.ctx,tx=>prepareOwnLeaveReviewTx(tx,f.mine.ctx,nomination,selection,{reason:'Fictional HUMAN PRIVATE REASON',employeeRemark:''},'en'))).toEqual({kind:'use_leave_form'});
+ expect(await reviews()).toBe(before);
+ expect((await withTenant(f.mine.ctx,tx=>prepareOwnLeaveReviewTx(tx,f.mine.ctx,nomination,selection,{reason:'Fictional HUMAN PRIVATE REASON'},'en'))).kind).toBe('prepared');
+ expect(await reviews()).toBe(before+1);
 });

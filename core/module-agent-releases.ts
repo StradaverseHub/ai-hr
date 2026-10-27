@@ -35,7 +35,7 @@ import { executeRoutingHoldout, type RoutingEvaluationReport } from './module-ag
 import { capturePromptPlanCandidate,adjudicatePromptReadPlan,promptCandidateSystem,PROMPT_HOLDOUTS,PROMPT_HOLDOUT_REQUEST_LIMIT,PROMPT_SUITE_DIGEST,PROMPT_ENGINE_DIGEST,PROMPT_POLICY_DIGEST,PROMPT_INPUT_DIGEST,PROMPT_BASELINE } from '../lib/ai/module-agent-prompt-candidate';
 import { resolveAiProviderSnapshotTx } from './ai-provider-snapshot';
 import { governedAiConfig,withAiAdmissionCheck,withAiAdmissionLifecycle,bindStrictAiSpendRoot } from './ai-governance';
-import { executePromptHoldout,promptMeasuredComparison,type PromptHoldoutReport } from './module-agent-prompt-harness';
+import { executePromptHoldout,promptMeasuredComparison,type PromptHoldoutReport,type PromptCase } from './module-agent-prompt-harness';
 import {draftInputDigest} from '../lib/ai/draft-input';
 import {HUMAN_PLAN_HOLDOUTS,HUMAN_PLAN_SUITE_DIGEST,humanQuestionPrompt} from '../lib/ai/human-plan-holdouts';
 import { generateDraft } from '../lib/ai';
@@ -498,12 +498,45 @@ export async function createPromptAgentCandidate(ctx:SessionContext,input:{versi
   return {candidateId:id,candidateDigest:row.candidate_digest,state:'unevaluated' as const};
  });}catch{return fail();}
 }
+/** public.ai_agent_evaluation.receipt is bounded to 65536 characters (0627). Sealed as keyed objects, a complete
+ * multilingual prompt suite (2 x PROMPT_HOLDOUTS cases, each with its measurement) is about twice that bound, so
+ * the insert failed its CHECK part-way through and no prompt candidate could ever complete evaluation. Receipt
+ * version 2 seals each case positionally and rebuilds it EXACTLY (same fields, key order, digests and
+ * measurements) before the unchanged validation in authenticatedPromptReport. The index is bound by the
+ * suite digest that receipt validation already requires; nothing is dropped or derived. */
+type PackedPromptCase=readonly [number,0|1,0|1|2,string|null,0|1|2,0|1|2,readonly [0|1,0|1,number,number,number|null,number|null]|null];
+const PROMPT_CASE_STATES=['passed','failed','unavailable'] as const;
+function packPromptCases(cases:readonly PromptCase[]):PackedPromptCase[]{
+ return cases.map(row=>{const index=PROMPT_HOLDOUTS.findIndex(fixture=>fixture.id===row.id),state=PROMPT_CASE_STATES.indexOf(row.state),m=row.measurement;
+  if(index<0||state<0||(row.outputDigest!==undefined&&!/^[a-f0-9]{64}$/.test(row.outputDigest))||(m!==undefined&&m.id!==row.id))return fail();
+  const packed:PackedPromptCase=[index,row.arm==='baseline'?0:1,state as 0|1|2,row.outputDigest===undefined?null:Buffer.from(row.outputDigest,'hex').toString('base64url'),
+   row.securityFailure===undefined?2:row.securityFailure?1:0,row.retained===undefined?2:row.retained?1:0,
+   m===undefined?null:[m.passed?1:0,m.securityFailure?1:0,m.elapsedMs,m.readCount,m.tokens,m.costCredits]];
+  return packed;});
+}
+function unpackPromptCases(value:unknown):PromptCase[]{
+ if(!Array.isArray(value)||value.length>2*PROMPT_HOLDOUTS.length)return fail();
+ return value.map((item:unknown)=>{
+  if(!Array.isArray(item)||item.length!==7)return fail();const [index,arm,state,digest,security,retained,measured]=item as unknown[];
+  const fixture=typeof index==='number'&&Number.isSafeInteger(index)&&index>=0?PROMPT_HOLDOUTS[index]:undefined;
+  if(!fixture||(arm!==0&&arm!==1)||(state!==0&&state!==1&&state!==2)||(security!==0&&security!==1&&security!==2)||(retained!==0&&retained!==1&&retained!==2))return fail();
+  const row:Record<string,unknown>={id:fixture.id,arm:arm===0?'baseline':'candidate',state:PROMPT_CASE_STATES[state as 0|1|2]};
+  if(digest!==null){if(typeof digest!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(digest))return fail();const bytes=Buffer.from(digest,'base64url');if(bytes.length!==32)return fail();row.outputDigest=bytes.toString('hex');}
+  if(security!==2)row.securityFailure=security===1;
+  if(measured!==null){if(!Array.isArray(measured)||measured.length!==6)return fail();const [passed,securityFailure,elapsedMs,readCount,tokens,costCredits]=measured as unknown[];
+   if((passed!==0&&passed!==1)||(securityFailure!==0&&securityFailure!==1))return fail();
+   row.measurement={id:fixture.id,passed:passed===1,securityFailure:securityFailure===1,elapsedMs,readCount,tokens,costCredits};}
+  if(retained!==2)row.retained=retained===1;
+  return row as unknown as PromptCase;
+ });
+}
 function authenticatedPromptReport(row:{id:string;evaluator_user_id:string;suite_digest:string;receipt:string},candidate:CandidateRow,tenant:string,providerFingerprint:string){
  const proof=open('prompt-evaluation',tenant,row.id,row.receipt);
- if(!exact(proof,['version','candidateDigest','binding','evaluatorId','providerFingerprint','report'])||proof.version!==1||
+ if(!exact(proof,['version','candidateDigest','binding','evaluatorId','providerFingerprint','report'])||proof.version!==2||
   proof.candidateDigest!==candidate.candidate_digest||routingDigest(proof.binding)!==routingDigest(binding(candidate))||
   proof.evaluatorId!==row.evaluator_user_id||row.suite_digest!==PROMPT_SUITE_DIGEST||proof.providerFingerprint!==providerFingerprint)return fail();
- const report=proof.report as PromptHoldoutReport;
+ const sealed=proof.report;if(!sealed||typeof sealed!=='object'||Array.isArray(sealed))return fail();
+ const report={...(sealed as Record<string,unknown>),cases:unpackPromptCases((sealed as Record<string,unknown>).cases)} as unknown as PromptHoldoutReport;
  if(!report||!exact(report,['version','coverage','suiteDigest','inputDigest','baselineDigest','candidateConfigurationDigest','attemptedRequests','completedRequests','completedCases','state','securityFailures','qualityFailures','elapsedMs','retainedPasses','retainedFailures','unavailableAttempts','cases','comparison'])||report.version!==2||report.suiteDigest!==PROMPT_SUITE_DIGEST||report.inputDigest!==PROMPT_INPUT_DIGEST||report.baselineDigest!==routingDigest(PROMPT_BASELINE)||report.candidateConfigurationDigest!==routingDigest(capturePromptPlanCandidate(candidate.configuration))||
   report.coverage!=='model-to-typed-read-plan-only'||!Array.isArray(report.cases)||report.cases.length>2*PROMPT_HOLDOUTS.length||!Number.isSafeInteger(report.attemptedRequests)||report.attemptedRequests<0||report.attemptedRequests>PROMPT_HOLDOUT_REQUEST_LIMIT||!Number.isSafeInteger(report.completedRequests)||report.completedRequests<0||report.completedRequests>report.attemptedRequests||!Number.isSafeInteger(report.unavailableAttempts)||report.unavailableAttempts<0||report.completedRequests+report.unavailableAttempts!==report.attemptedRequests||typeof report.elapsedMs!=='number'||!Number.isFinite(report.elapsedMs)||report.elapsedMs<0)return fail();
  const unique=new Set<string>();for(const row of report.cases){const key=row.arm+':'+row.id;
@@ -545,8 +578,8 @@ export async function evaluatePromptAgentCandidate(ctx:SessionContext,input:{can
   return await withTenant(current,async tx=>{
    await guard(tx,current,true,false);const proof=issuedPrompt.get(evidence);if(!proof)return fail();issuedPrompt.delete(evidence);
    const candidate=await candidateTx(tx,current,candidateId);if(proof.evaluatorId!==current.userId||candidate.candidate_digest!==proof.candidate.candidate_digest)return fail();
-   const receipt=seal('prompt-evaluation',current.tenantId,proof.id,{version:1,candidateDigest:candidate.candidate_digest,binding:binding(candidate),
-    evaluatorId:proof.evaluatorId,providerFingerprint:proof.providerFingerprint,report:proof.report});
+   const receipt=seal('prompt-evaluation',current.tenantId,proof.id,{version:2,candidateDigest:candidate.candidate_digest,binding:binding(candidate),
+    evaluatorId:proof.evaluatorId,providerFingerprint:proof.providerFingerprint,report:{...proof.report,cases:packPromptCases(proof.report.cases)}});
    await tx.execute(sql`insert into public.ai_agent_evaluation(id,tenant_id,candidate_id,evaluator_user_id,suite_digest,receipt)
     values(${proof.id}::uuid,${current.tenantId}::uuid,${candidateId}::uuid,${current.userId}::uuid,${PROMPT_SUITE_DIGEST},${receipt})`);
    return {evaluationId:proof.id,coverage:report.coverage,state:report.state,attemptedRequests:report.attemptedRequests,
@@ -923,7 +956,15 @@ async function assessSpecialistTx(tx:Tx,ctx:SessionContext,admission:SpecialistA
  * Any storage/busy refusal propagates and rolls the complete owner transaction back. */
 async function completeSpecialistsTx(tx:Tx,ctx:SessionContext,admissions:readonly SpecialistAdmission[],results:readonly AgentReadResult[]){
  const completed:{selection:SpecialistSelection;assessment:SpecialistAssessment}[]=[];
- for(const admission of admissions){const result=results.find(row=>row.module===admission.module);if(!result)return fail();if(admission.candidate)await assertCandidateSignalsTx(tx,ctx,admission.candidate);
+ for(const admission of admissions){const result=results.find(row=>row.module===admission.module);if(!result)return fail();
+  // Native privacy custody deferred at nomination is checked here, after every canonical read. An erased or
+  // retired native signal behind a PROMOTED specialist is a source change exactly as at nomination: retire
+  // that promotion and answer from the baseline. A busy interval or storage failure still propagates, and an
+  // unpromoted candidate (no promotion to retire) still refuses.
+  if(admission.candidate&&admission.promotion){try{await assertCandidateSignalsTx(tx,ctx,admission.candidate);}
+   catch(error){if(error instanceof AgentSignalBusy||!(error instanceof AiGatewayError)&&!(error instanceof Error&&error.name==='ZodError'))throw error;
+    await retireSpecialistTx(tx,ctx,admission.promotion.id,'source_changed');admission.candidate=null;admission.promotion=null;delete admission.assessment;}}
+  else if(admission.candidate)await assertCandidateSignalsTx(tx,ctx,admission.candidate);
   const assessment=await assessSpecialistTx(tx,ctx,admission,result),candidate=admission.candidate,promotion=admission.promotion,configuration=candidate?SpecialistCandidate.parse(candidate.configuration):baselineConfiguration(admission.module);
   if(candidate&&promotion){const updated=await tx.execute<{id:string}>(sql`update public.ai_agent_promotion set used_jobs=used_jobs+1 where id=${promotion.id}::uuid and tenant_id=${ctx.tenantId}::uuid and owner_user_id=${ctx.userId}::uuid and used_jobs<max_jobs and expires_at>now() and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=${promotion.id}::uuid) returning id`);if(updated.length!==1)return fail();}
   const selection=captureSpecialistSelections([{binding:{configuration,nativeContractDigest:specialistNativeContractDigest(admission.module),suiteDigest:specialistSuiteDigest(admission.module),assessmentDigest:routingDigest(assessment)},mode:candidate?'promoted':'baseline',candidateDigest:candidate?.candidate_digest??specialistBaselineDigest(admission.module),promotionId:promotion?.id??null,version:candidate?.version??0}])[0];completed.push({selection,assessment});
@@ -1100,10 +1141,16 @@ type ConversationStrategyUse={ctx:SessionContext;id:string;incarnation:string;pr
 const conversationStrategyUses=new WeakMap<object,ConversationStrategyUse>();
 const strategyPrincipal=(ctx:SessionContext)=>routingDigest([ctx.tenantId,ctx.userId,ctx.personId??null,ctx.roles??null,ctx.grants??null]);
 /** Calling command already owns its native assistant_question spend root. Composition preserves that
- * issued root and all prior checks; this helper never rebinds a human question to candidate budget. */
-export async function prepareAssistantConversationStrategyTx(tx:Tx,supplied:SessionContext,configuration:ResolvedAiConfig,question:string){
- if(typeof question!=='string'||!question.trim()||question.length>ASSISTANT_CONVERSATION_LIMITS.history)return fail();const questionDigest=routingDigest([supplied.tenantId,supplied.userId,question]);
- const ctx=capture(supplied),fresh=await guard(tx,ctx,false);await agentReleaseIntervalTx(tx,ctx,ctx.userId!,false);await signalIntervalTx(tx,ctx,ctx.userId!);const snapshot=await resolveAiProviderSnapshotTx(tx,fresh);if(!snapshot)return fail();
+ * issued root and all prior checks; this helper never rebinds a human question to candidate budget.
+ * `continuationSourceTx` (a clarification continuation only) rechecks the caller's transient source
+ * context in this marker transaction and before every provider round trip; it can only refuse. */
+export async function prepareAssistantConversationStrategyTx(tx:Tx,supplied:SessionContext,configuration:ResolvedAiConfig,question:string,continuationSourceTx?:(tx:Tx)=>Promise<void>){
+ if(typeof question!=='string'||!question.trim()||question.length>ASSISTANT_CONVERSATION_LIMITS.history||(continuationSourceTx!==undefined&&typeof continuationSourceTx!=='function'))return fail();const questionDigest=routingDigest([supplied.tenantId,supplied.userId,question]);
+ const ctx=capture(supplied),fresh=await guard(tx,ctx,false);await agentReleaseIntervalTx(tx,ctx,ctx.userId!,false);await signalIntervalTx(tx,ctx,ctx.userId!);
+ // Under the guard's Access interval and before this marker exists: an erasure committed after the
+ // caller's own read is visible here, and a later one waits for this commit and then invalidates it.
+ if(continuationSourceTx)await continuationSourceTx(tx);
+ const snapshot=await resolveAiProviderSnapshotTx(tx,fresh);if(!snapshot)return fail();
  const [selected]=await tx.execute<{id:string}>(sql`select p.id from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id where p.tenant_id=${ctx.tenantId}::uuid and p.owner_user_id=${ctx.userId}::uuid and c.kind='assistant_answer_prompt_v1' and p.expires_at>clock_timestamp() and p.used_jobs<p.max_jobs and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id) order by p.created_at desc,p.id desc limit 1 for update of p nowait`);
  let strategy:AssistantConversationCandidate=ASSISTANT_CONVERSATION_BASELINE,promotionId:string|null=null,version=0,candidateDigest=conversationBaselineDigest;
  if(selected){const selectedPromotion=await currentConversationPromotionTx(tx,ctx,selected.id,snapshot.fingerprint);strategy=captureAssistantConversationCandidate(selectedPromotion.candidate.configuration);promotionId=selected.id;version=selectedPromotion.candidate.version;candidateDigest=selectedPromotion.candidate.candidate_digest;await tx.execute(sql`update public.ai_agent_promotion set used_jobs=used_jobs+1 where id=${selected.id}::uuid and tenant_id=${ctx.tenantId}::uuid`);}
@@ -1111,7 +1158,7 @@ export async function prepareAssistantConversationStrategyTx(tx:Tx,supplied:Sess
  const receipt=seal('conversation-use',ctx.tenantId,id,{version:1,userId:ctx.userId,personId:ctx.personId??null,promotionId,candidateDigest,providerFingerprint:snapshot.fingerprint,sourceDigest:MODULE_AGENT_SOURCE_DIGEST,questionDigest,provenance});
  const [created]=await tx.execute<{incarnation:string}>(sql`insert into public.ai_assistant_answer_strategy_use(id,tenant_id,user_id,person_id,promotion_id,candidate_digest,provider_fingerprint,source_digest,receipt) values(${id}::uuid,${ctx.tenantId}::uuid,${ctx.userId}::uuid,${ctx.personId??null}::uuid,${promotionId}::uuid,${candidateDigest},${snapshot.fingerprint},${MODULE_AGENT_SOURCE_DIGEST},${receipt}) returning incarnation::text as incarnation`);if(!created||!/^\d+$/.test(created.incarnation))return fail();
  const record:ConversationStrategyUse={ctx,id,incarnation:created.incarnation,promotionId,candidateDigest,providerFingerprint:snapshot.fingerprint,questionDigest,provenance};conversationStrategyUses.set(capability,record);
- const wrapped=withAiAdmissionCheck(configuration,'hr_assistant',async carrier=>{await recheckAssistantConversationStrategyTx(carrier,ctx,capability);});
+ const wrapped=withAiAdmissionCheck(configuration,'hr_assistant',async carrier=>{await recheckAssistantConversationStrategyTx(carrier,ctx,capability);if(continuationSourceTx)await continuationSourceTx(carrier);});
  return Object.freeze({configuration:wrapped,system:assistantConversationCandidateSystem(strategy),capability:capability as AssistantConversationStrategyCapability,provenance});
 }
 /** Rechecked before each provider round-trip and before the actual exchange insert. No missing or

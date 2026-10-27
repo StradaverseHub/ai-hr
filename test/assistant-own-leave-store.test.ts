@@ -93,7 +93,7 @@ describe('pending own-leave review custody', () => {
     if(operation==='expireOwn'||operation==='expireAdmin')await owner.db.execute(sql`update app.assistant_own_leave_review set created_at=now()-interval '11 minutes',expires_at=now()-interval '1 minute' where id=${review.actionId}::uuid`);
     const invoke=()=>operation==='confirm'?confirmOwnLeaveReview(ctx,confirmation(review),'en'):
       operation==='reopen'?withTenant(ctx,tx=>reopenOwnLeaveReviewTx(tx,ctx,review.actionId,'en')):
-      operation==='discard'?withTenant(ctx,tx=>discardOwnLeaveReviewTx(tx,confirmation(review))):
+      operation==='discard'?withTenant(ctx, tx => discardOwnLeaveReviewTx(tx, ctx, confirmation(review))):
       operation==='expireOwn'?withTenant(ctx,tx=>expireOwnLeaveReviewsForCallerTx(tx)):
       withTenant(adminCtx(base),tx=>expireOwnLeaveReviewsTx(tx));
     const before=await counts(),ledger=await owner.db.select().from(schema.leaveLedger).orderBy(schema.leaveLedger.id),events=await owner.db.select().from(schema.domainEvent).orderBy(schema.domainEvent.id);
@@ -143,7 +143,7 @@ describe('pending own-leave review custody', () => {
 
   it('retires the same review idempotently and deletes its body and wrapped action key', async () => {
     const review = await prepare();
-    const discard = () => withTenant(ctx, tx => discardOwnLeaveReviewTx(tx, confirmation(review)));
+    const discard = () => withTenant(ctx, tx => discardOwnLeaveReviewTx(tx, ctx, confirmation(review)));
     const retired = { kind: 'retired', receipt: { actionId: review.actionId, contractVersion: 1, state: 'discarded' } };
     expect(await discard()).toEqual(retired);
     expect(await discard()).toEqual(retired);
@@ -153,7 +153,7 @@ describe('pending own-leave review custody', () => {
 
   it('reconciles simultaneous discard deliveries to the same retired reference', async () => {
     const review = await prepare();
-    const retire = () => withTenant(ctx, tx => discardOwnLeaveReviewTx(tx, confirmation(review)));
+    const retire = () => withTenant(ctx, tx => discardOwnLeaveReviewTx(tx, ctx, confirmation(review)));
     const results = await Promise.all([retire(), retire()]);
     const expected = { kind: 'retired', receipt: { actionId: review.actionId, contractVersion: 1, state: 'discarded' } };
     expect(results).toEqual([expected, expected]);
@@ -167,7 +167,7 @@ describe('pending own-leave review custody', () => {
       dailyRequests: null, monthlyTokens: null });
     await revokeAssistant(adminCtx(base), { appUserId: ctx.userId! });
     await expect(withTenant(ctx, tx => reopenOwnLeaveReviewTx(tx, ctx, review.actionId))).rejects.toThrow();
-    expect(await withTenant(ctx, tx => discardOwnLeaveReviewTx(tx, confirmation(review))))
+    expect(await withTenant(ctx, tx => discardOwnLeaveReviewTx(tx, ctx, confirmation(review))))
       .toMatchObject({ kind: 'retired', receipt: { state: 'discarded' } });
     expect(await counts()).toMatchObject({ bodies: 0, requests: 0, model_runs: 0 });
   });
@@ -177,7 +177,7 @@ describe('pending own-leave review custody', () => {
       dailyRequests: 0, monthlyTokens: 0 });
     const review = await prepare();
     await withTenant(ctx, tx => reopenOwnLeaveReviewTx(tx, ctx, review.actionId));
-    await withTenant(ctx, tx => discardOwnLeaveReviewTx(tx, confirmation(review)));
+    await withTenant(ctx, tx => discardOwnLeaveReviewTx(tx, ctx, confirmation(review)));
     expect(await counts()).toMatchObject({ model_runs: 0, requests: 0 });
   });
 
@@ -192,7 +192,7 @@ describe('pending own-leave review custody', () => {
     const secondId = await createAppUser(base.tenantId, subject.personId, 'employee');
     await grantAssistant(adminCtx(base), { appUserId: secondId });
     await prepare({ ...ctx, userId: secondId });
-    await withTenant(ctx, tx => discardOwnLeaveReviewTx(tx, confirmation(reviews[0])));
+    await withTenant(ctx, tx => discardOwnLeaveReviewTx(tx, ctx, confirmation(reviews[0])));
     await prepare();
     expect(await counts()).toMatchObject({ bodies: 6, pending: 6, model_runs: 0, requests: 0 });
   });
@@ -212,7 +212,7 @@ describe('pending own-leave review custody', () => {
 
   it('does not let retirement bypass the rolling preparation budget or count old reviews forever', async () => {
     const review = await prepare();
-    await withTenant(ctx, tx => discardOwnLeaveReviewTx(tx, confirmation(review)));
+    await withTenant(ctx, tx => discardOwnLeaveReviewTx(tx, ctx, confirmation(review)));
     // Historical, already retired fixtures exhaust only the creation budget. No ciphertext or
     // pending row exists, so a refusal cannot accidentally pin only the outstanding-review cap.
     await owner.db.execute(sql`insert into app.assistant_own_leave_review
@@ -241,17 +241,17 @@ describe('pending own-leave review custody', () => {
     expect((await prepare(second)).actionId).not.toBe(review.actionId);
     await expect(withTenant(second, tx => reopenOwnLeaveReviewTx(tx, second, review.actionId)))
       .rejects.toThrow(OwnLeaveContentUnavailable);
-    await expect(withTenant(second, tx => discardOwnLeaveReviewTx(tx, confirmation(review))))
+    await expect(withTenant(second, tx => discardOwnLeaveReviewTx(tx, second, confirmation(review))))
       .rejects.toThrow(OwnLeaveContentUnavailable);
     const foreign = await seedBase();
-    await expect(withTenant(adminCtx(foreign), tx => discardOwnLeaveReviewTx(tx, confirmation(review))))
+    await expect(withTenant(adminCtx(foreign), tx => discardOwnLeaveReviewTx(tx, adminCtx(foreign), confirmation(review))))
       .rejects.toThrow(OwnLeaveContentUnavailable);
     expect(await withTenant(ctx, tx => reopenOwnLeaveReviewTx(tx, ctx, review.actionId)))
       .toEqual({ kind: 'prepared', review });
     const before = await counts();
     // Retirement destroys private pending content; it cannot submit or confirm the review.
     // The exact login remains authoritative, while a legacy digest is deliberately unnecessary.
-    expect(await withTenant(ctx, tx => discardOwnLeaveReviewTx(tx, { ...confirmation(review), reviewedDigest: 'a'.repeat(64) })))
+    expect(await withTenant(ctx, tx => discardOwnLeaveReviewTx(tx, ctx, { ...confirmation(review), reviewedDigest: 'a'.repeat(64) })))
       .toMatchObject({ kind: 'retired', receipt: { actionId: review.actionId, state: 'discarded' } });
     expect(await counts()).toEqual({ ...before, bodies: before.bodies - 1, pending: before.pending - 1 });
     expect(await withTenant(ctx, tx => reopenOwnLeaveReviewTx(tx, ctx, review.actionId)))
@@ -342,7 +342,7 @@ describe('pending own-leave review custody', () => {
 
   it('retires text-derived digests on discard/expiry/completion and never re-executes terminal retries', async () => {
     const discarded=await prepare(), done=await prepare(), expired=await prepare(), pending=await prepare();
-    await withTenant(ctx,tx=>discardOwnLeaveReviewTx(tx,confirmation(discarded)));
+    await withTenant(ctx, tx => discardOwnLeaveReviewTx(tx, ctx, confirmation(discarded)));
     await owner.db.execute(sql`update app.assistant_own_leave_review set created_at=clock_timestamp()-interval '11 minutes',expires_at=clock_timestamp()-interval '1 minute' where id=${expired.actionId}::uuid`);
     await withTenant(ctx,tx=>expireOwnLeaveReviewsForCallerTx(tx));
     const result=await confirmOwnLeaveReview(ctx,confirmation(done),'en');expect(result.kind).toBe('completed');
@@ -437,7 +437,7 @@ describe('pending own-leave review custody', () => {
     vi.stubEnv('AI_CONFIG_SECRET', '');
     await expect(prepare()).rejects.toThrow(OwnLeaveContentUnavailable);
     expect(await counts()).toEqual(before);
-    expect(await withTenant(ctx, tx => discardOwnLeaveReviewTx(tx, confirmation(review))))
+    expect(await withTenant(ctx, tx => discardOwnLeaveReviewTx(tx, ctx, confirmation(review))))
       .toMatchObject({ kind: 'retired', receipt: { state: 'discarded' } });
     expect(await counts()).toMatchObject({ bodies: 0, pending: 0, requests: 0, model_runs: 0 });
   });

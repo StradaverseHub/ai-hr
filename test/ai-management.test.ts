@@ -167,6 +167,9 @@ describe('scoped administration and inventory',()=>{
   await setModule(base.tenantId,'assistant','active');group={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};
   await limit('user',base.adminUserId,0,null);
   vi.stubEnv('OPENAI_API_KEY','fixture-never-sent');vi.stubEnv('ANTHROPIC_API_KEY','');vi.stubEnv('GOOGLE_API_KEY','');vi.stubEnv('GEMINI_API_KEY','');
+  // The main Assistant question seals its strategy-use marker with the operator secret the customer environment
+  // check requires; without it the marker fails closed before the allowance refusal this case observes.
+  vi.stubEnv('AI_CONFIG_SECRET','fictional-allowance-marker-secret');
   const transport=vi.spyOn(openaiAdapter,'converse');
   try{await expect(askAssistant(group,{question:'What can you help with?'})).rejects.toMatchObject({code:'ai_control'});expect(transport).not.toHaveBeenCalled();}
   finally{vi.restoreAllMocks();vi.unstubAllEnvs();}

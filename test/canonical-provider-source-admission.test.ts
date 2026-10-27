@@ -23,8 +23,17 @@ import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,
 let b:Base,a:SessionContext,beforeAdmission:(()=>Promise<void>)|undefined,afterSourceReplay:((tx:Tx)=>Promise<void>)|undefined,alterInput=false,transport:MockInstance<typeof openaiAdapter.generate>;
 const PRIOR='2026-04',PERIOD='2026-05',PEERS=12;
 beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
-beforeEach(async()=>{await resetDb();b=await seedBase();for(const code of ['assistant','performance','payroll','claims'])await setModule(b.tenantId,code,'active');a={...await entitledCtx(b,['hr_admin']),grants:[{role:'hr_admin',companyId:null}]};await grantAssistant(a,{appUserId:b.adminUserId});vi.stubEnv('OPENAI_API_KEY','fictional-source-boundary-never-sent');for(const key of ['ANTHROPIC_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY'])vi.stubEnv(key,'');beforeAdmission=undefined;afterSourceReplay=undefined;alterInput=false;
- const issue=governance.withAiAdmissionCheck;vi.spyOn(governance,'withAiAdmissionCheck').mockImplementation((config,feature,check)=>issue(config,feature,async(tx,request)=>{await check(tx,request);const tail=afterSourceReplay;afterSourceReplay=undefined;if(tail)await tail(tx);}));
+beforeEach(async()=>{await resetDb();b=await seedBase();for(const code of ['assistant','performance','payroll','claims'])await setModule(b.tenantId,code,'active');a={...await entitledCtx(b,['hr_admin']),grants:[{role:'hr_admin',companyId:null}]};await grantAssistant(a,{appUserId:b.adminUserId});vi.stubEnv('OPENAI_API_KEY','fictional-source-boundary-never-sent');for(const key of ['ANTHROPIC_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY'])vi.stubEnv(key,'');
+ // Every main Assistant question seals its strategy-use marker with the operator secret that the customer
+ // environment check requires (deploy/check-customer-env.mjs); without it the marker fails closed.
+ vi.stubEnv('AI_CONFIG_SECRET','fictional-source-admission-marker-secret');beforeAdmission=undefined;afterSourceReplay=undefined;alterInput=false;
+ // Composed admission checks run inner-first. The Assistant composes its per-turn source replay OVER the
+ // strategy-marker recheck, so the tail must follow only the OUTERMOST check of a chain (the source
+ // replay), never an inner one that a later check still wraps. Single-check chains are unchanged.
+ const issue=governance.withAiAdmissionCheck,spied=new WeakSet<object>(),wrapped=new WeakSet<object>();
+ vi.spyOn(governance,'withAiAdmissionCheck').mockImplementation((config,feature,check)=>{if(spied.has(config))wrapped.add(config);let self:object|undefined;
+  const issued=issue(config,feature,async(tx,request)=>{await check(tx,request);if(self&&wrapped.has(self))return;const tail=afterSourceReplay;afterSourceReplay=undefined;if(tail)await tail(tx);});
+  self=issued;spied.add(issued);return issued;});
  const original=ai.generateDraft;vi.spyOn(ai,'generateDraft').mockImplementation(async(cfg,args)=>{const hook=beforeAdmission;beforeAdmission=undefined;if(hook)await hook();return original(cfg,alterInput?{...args,prompt:args.prompt+' CHANGED'}:args);});
  transport=vi.spyOn(openaiAdapter,'generate').mockImplementation(async(_cfg,args)=>{args.onUsage?.({inputTokens:0,outputTokens:0,cachedInputTokens:0});return args.prompt.startsWith('Check:')?'The difference is 820.':args.prompt.startsWith('Claim type:')?'{"verdict":"ok"}':args.prompt.startsWith('colleagues on this run:')?'{"claim":"nothing_notable","evidence":[]}':'A fictional editable manager draft.';});
 });

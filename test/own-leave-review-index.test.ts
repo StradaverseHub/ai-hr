@@ -10,6 +10,7 @@ import {hireEmployee} from '../core/org';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {listOwnLeaveReviewsTx,prepareOwnLeaveReviewTx,reopenOwnLeaveReviewTx} from '../core/assistant-actions/own-leave-store';
 import {createOwnLeaveBrowserHandler,OwnLeaveReviewIndexResult} from '../lib/assistant-actions/own-leave-http';
+import {OwnLeaveContentUnavailable} from '../core/assistant-actions/own-leave-content';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let base:Base;
@@ -67,6 +68,15 @@ describe('own authenticated metadata discovery',()=>{
   expect((await list({...a,ctx:{...a.ctx,personId:b.personId}})).reviews).toEqual([]);
   await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,a.ctx.userId!));
   await expect(list({...a,ctx:{...a.ctx,personId:b.personId}})).rejects.toThrow();
+ });
+ it('refuses a mismatched calling person exactly like an archived login, so the refusal confirms nothing',async()=>{
+  const a=await subject(),b=await subject(),c=await subject(),own=await terminal(a,new Date(Date.now()-5000));
+  await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,c.ctx.userId!));
+  const refusal=async(ctx:SessionContext)=>{try{await withTenant(ctx,tx=>listOwnLeaveReviewsTx(tx,ctx));}catch(error){return error;}throw Error('Expected a refusal');};
+  const mismatched=await refusal({...a.ctx,personId:b.personId}),archived=await refusal(c.ctx);
+  for(const error of [mismatched,archived]){expect(error).toBeInstanceOf(OwnLeaveContentUnavailable);
+   for(const secret of [own.actionId,a.personId,b.personId,a.employmentId,a.ctx.userId!])expect(String(error)+JSON.stringify(error)).not.toContain(secret);}
+  expect(String(mismatched)).toBe(String(archived));expect((await list(a)).reviews).toEqual([own]);
  });
  it('returns at most25 newest rows with stable action-ID ties and excludes metadata outside30day visibility',async()=>{
   const who=await subject(),stamp=new Date(Math.floor(Date.now()/1000)*1000-3600000),expected=[];
