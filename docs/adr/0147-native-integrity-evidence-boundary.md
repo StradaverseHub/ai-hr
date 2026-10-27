@@ -715,3 +715,38 @@ Keep the deployment variable unset until the paired migration chain and signed-d
 for the named pilot population are approved. The unjournaled Android draft still cannot be applied
 by inventing a timestamp. Source-mounting these default-closed routes does not grant migration,
 deployment, store submission or HarmonyOS activation authority.
+
+## Connected device enrollment and receipt-only recovery
+
+The device-key screen now imports the app assembly. iPhone/Android discovery is decoded against
+the requested platform; missing endpoints do not downgrade. New setup requires current successful
+capability discovery, supported native bridge/recovery methods, readable local state and explicit
+confirmation. Initial loading is not empty registration. Refresh errors retain saved content while
+withholding new setup controls. Opening the screen never generates a key or uploads a proof.
+
+`reconcile` is a distinct journal operation used by **Check status**. It reads only the saved exact
+challenge receipt, then validates its immutable native-key binding before committing recovery.
+It may read a known native alias or release acknowledged Apple proof cache; it never prepares a
+challenge, generates/attests a key, submits proof or repeats revocation. An absent receipt is not
+permission to advance and never clears pending work. Registered keys also reconcile server
+revocation without resurrecting historical receipts. Both platforms use the same pending-receipt
+helper for this operation and the receipt-first step of explicit continuation.
+
+This recovery stays available when enrollment rollout is disabled. Previous-employment intent may
+recover an exact accepted receipt through a current own selector, but cannot continue generation or
+upload under a different subject. Revocation continuation remains an explicit confirmed action.
+Android replacement requires known retirement and the journal's fresh server check/history limits;
+iPhone replacement remains unfinished. Unreadable storage exposes retry/help, never an empty setup
+or automatic reset. Cached registration is described as saved state, not verified attendance/location.
+
+The UI checks live capability/local state again when confirmation is accepted. Its operation lineage
+increments across account, connection, locale, employment and privacy transitions. A callback from
+before lock stays obsolete after unlock, even when the same identity returns. In-flight callbacks
+cannot publish into another render/actor or sign out a replacement session. Registered/pending/
+revoked outcomes use accessibility alerts. Copy follows the existing English/Malay pipeline; other
+locale and physical accessibility acceptance work is still outstanding.
+
+Local Metro entry graphs now include the actual screen, app adapter, both journals and current
+transport. This supersedes the earlier unreachable-assembly description. Reachability and synthetic
+port tests do not establish signed-device acceptance, activation, store distribution or Huawei NEXT
+support. The default-closed deployment policy remains unchanged.

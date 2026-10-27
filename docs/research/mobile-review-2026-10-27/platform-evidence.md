@@ -1110,3 +1110,36 @@ No full regression/build or signed-device acceptance is established. Enrollment/
 now exist in source under default-closed deployment policy; this supersedes earlier unmounted
 source descriptions only. No live policy, staging migration, deployment or native screen activation
 occurred. Android's exclusive0636/idx634 reservation remains unjournaled and unchanged.
+
+### Connected enrollment UI and exact-receipt recovery evidence
+
+Candidate `25f492f0b` passed171 assertions across ten DOM files, root TypeScript and native
+TypeScript under a two-slot/no-database complete reservation. Actual shipped UI/assembly/model
+sources execute with synthetic native view, SDK, storage and transport ports. Cases cover explicit
+confirmation/double submission, disabled/older/unsupported/stale discovery, exact receipt recovery,
+lost replies, prior-employment no-adoption, storage failure, revocation/replacement, account changes,
+lock/unlock lineage and obsolete callbacks. No physical-device or real vendor enrollment is proved.
+
+Three controlled regressions failed as intended: removing live capability rechecking failed its
+confirmation case; removing monotonic UI lineage failed lock/unlock invalidation; allowing prepare
+from receipt-only recovery failed both platform cases. Exact byte restoration passed all38 affected
+cases. Logs are `/tmp/mobile-enrollment-screen-{dom,root-types,native-types}.log` and
+`/tmp/mobile-enrollment-screen-probe-{capability,privacy,receipt-only,restored}.log`.
+
+The accessibility outcome change at `76e7a49c0f43754a0ffa165e6c28e0e3b461bd65` passed both compilers
+and both Metro exports. Its screen test initially had17 passes/one failure: DOM rendered the alert
+and expected text, but the assertion incorrectly expected an implicit accessible name. The test-only
+correction `f67a1613c` checks the status text's actual alert role. All18 screen cases and root
+TypeScript then passed. Production mobile bytes are unchanged between those two commits; native
+compiler and packaging evidence is retained. Logs are `/tmp/mobile-enrollment-screen-final-*.log`
+and `/tmp/mobile-enrollment-alert-retry-{ui,root-types}.log`. The original failed assertion remains
+recorded, not relabeled as a successful attempt.
+
+Final iOS/Android exports contain1344/1475 source entries. Each contains exactly the current screen,
+app adapter, API transport, Apple/Android journal and key-screen source bytes. Checked server PKI,
+ASN.1, custody core, database schema/client, rollout and secret-encryption paths were absent.
+Map SHA256 values are `0796b4f72a086eaf51d66b09f39563a04d66e403d66a6a12cf68b8c15530bd7f`
+(iOS) and `1805a7ccb63d2ddd818000d30274d474d7949b1a1116df4ef13ffded206e17fe` (Android).
+Artifacts and per-platform logs are `/tmp/mobile-enrollment-screen-final-export-{ios,android}`.
+Earlier exports remain historical witnesses. No pilot configuration, migration application, signed
+device build, full release gate, deployment or HarmonyOS client acceptance occurred.
