@@ -458,3 +458,26 @@ server signature checker. They verify byte identity, non-ASCII UTF8, capability 
 foreground/owner changes, unavailable/invalid/malformed/timeouts and no retry. This establishes the
 code boundary, not Android Keystore availability, non-exportability, signing dialogs, hardware or
 signed-device lifecycle behavior. Those remain native acceptance work.
+
+
+## Android enrollment context and challenge ownership
+
+Android enrollment has a separate portable target/context and positional UTF8 encoding. The digest
+binds API origin, server installation, tenant, actor, employment, app installation, request, challenge,
+nonce, issuance/expiry and every configured package/signer/build/hardware/provisioning/patch policy
+requirement. Policy sets are copied, deduplicated and sorted. The server reconstructs scope from the
+authenticated owner and stored challenge; the strict input accepts only employment/request/app-install
+references. Client context and client hashes do not supply server authority.
+
+The Android challenge owner uses the shared actor admission/TTL/recovery transaction and a distinct
+Android binding domain. Configuration changes cannot adopt the original request under new policy.
+Concurrent retries and reads retain the original context, digest and alias, including consumed state.
+Cross-actor, cross-tenant, administrator and archived-owner reads are refused. Four pending challenges
+prevent new issuance while exact recovery remains available. Challenge issuance creates no key and
+provides no attestation verdict. The portable Expo digest adapter rechecks its live owner after both
+successful and failed digest operations.
+
+The Android policy schema is shared by the portable context and server evidence matcher; patch-date
+validation still comes from the same non-null field validators. No public enrollment route, native
+key-generation controller or key registration transaction invokes this new owner yet. Custody needs
+the separately reserved append-only migration and proof/transaction integration before release.

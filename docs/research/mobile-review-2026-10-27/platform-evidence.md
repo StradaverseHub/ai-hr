@@ -745,3 +745,27 @@ matched: `mutation=1 restored=0 exact=true`. A routine coordination request was 
 future Android-custody migration allocation; no tag/index/timestamp was guessed and existing0635 SQL
 was not edited. The519-row overlay remains development-only pending paired Board+AI runtime ancestry.
 No migration, shared database, vendor service, cloud/public publication or deployment changed here.
+
+
+## Android enrollment binding verification — 27 October 2026
+
+Source checkpoint88c473a09 introduced the portable context, shared policy schema, Expo digest port
+and database challenge owner. The first run passed four byte/port cases and four database cases but
+failed its fifth database assertion: the existing RequestBudgetExceeded class has Error.name, not a
+custom name. Repair71e76dc0f checks the class. The five database cases subsequently passed. The policy
+consumer regression and root TypeScript then exposed missing month/day references from the schema
+extraction; those four policy failures and three compiler diagnostics remain failed attempts.
+Repaire1e712cac reuses the shared field validators. All12 policy cases and root TypeScript passed
+following that repair. Native TypeScript passed during the preceding complete-set run. Combined
+valid coverage is21 cases (4 byte/port,5 database,12 policy), not a full release gate.
+
+Two controlled mutations omitted the canonical package and the stored configuration binding,
+respectively. Both intended behavioral probes failed, exact source restoration passed and source
+bytes matched: mutation=1 restored=0 exact=True. Logs are the local /tmp/mobile-android-binding-*
+and /tmp/mobile-android-policy-* artifacts. These tests use synthetic cryptography/Expo ports and a
+disposable fresh database, not Android hardware, a vendor acceptance call or a live schema upgrade.
+
+Coordinator reserved0636_mobile_android_key_custody and journalidx634 exclusively; final when is
+deferred until actual SQL/dependency freeze. The hold was acknowledged. No SQL or journal entry was
+created from that reservation, no0635 bytes changed, and no shared/staging application or deployment
+occurred. Paired Board/AI runtime integration remains a release prerequisite for the519-row overlay.
