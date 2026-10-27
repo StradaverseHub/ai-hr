@@ -36,6 +36,8 @@ const manager: PerformanceHomeBlock = {
   detailsHref: '/me/performance',
 };
 const H = en.performanceHome;
+// The locale's own date form (the block formats through next-intl), never a hardcoded spelling.
+const DAY = createFormatter({ locale: 'en', timeZone: 'UTC' }).dateTime(new Date('2026-12-31T00:00:00Z'), { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 const words = () => [...document.querySelectorAll('[data-step]')].map((li) => li.textContent);
 
 describe.each(['classic', 'monolith', 'atelier'])('the Performance block under the %s theme', (theme) => {
@@ -43,7 +45,7 @@ describe.each(['classic', 'monolith', 'atelier'])('the Performance block under t
     if (theme !== 'classic') document.documentElement.dataset.uiTheme = theme;
     render(await PerformanceHomeView({ block: manager }));
     expect(screen.getByText('Fictional year-end')).toBeTruthy();
-    expect(screen.getByText('Closes 31 Dec 2026')).toBeTruthy();
+    expect(screen.getByText(`Closes ${DAY}`)).toBeTruthy();
     expect(screen.getByText('3 of 7 done')).toBeTruthy();
     expect(words()).toEqual([
       'KPI Check-inDone', '360 FeedbackDone', 'CompetencyYour turn', 'Career PlanLocked', 'Team review12 waiting', 'CalibrationIn progress', 'Results releasedReleased',
@@ -51,9 +53,9 @@ describe.each(['classic', 'monolith', 'atelier'])('the Performance block under t
     expect(document.querySelector('[data-step="competency"]')?.getAttribute('aria-current')).toBe('step');
     const next = document.querySelector('[data-performance-next]') as HTMLElement;
     expect(within(next).getByRole('heading', { name: H.next.competencyTitle })).toBeTruthy();
-    expect(within(next).getByText('0 of 10 answered · Due 31 Dec 2026')).toBeTruthy();
+    expect(within(next).getByText(`0 of 10 answered · Due ${DAY}`)).toBeTruthy();
     expect(within(next).getByRole('link', { name: H.next.open }).getAttribute('href')).toBe('/performance/workspace?cycle=c1&view=mine&module=tm');
-    expect(within(next).getByText('12 reviews waiting on you')).toBeTruthy();
+    expect(next.querySelector('[data-performance-team] p')?.textContent).toBe('Your team · 12 reviews waiting on you');
     expect([...next.querySelectorAll('[data-chip]')].map((c) => c.textContent)).toEqual(['Performance review 2', 'Performance assessment 1', 'Career plan review 9']);
     expect(within(next).getByRole('link', { name: H.team.open }).getAttribute('href')).toBe('/performance/workspace?cycle=c1&view=team');
     const standing = document.querySelector('[data-performance-standing]') as HTMLElement;
@@ -79,7 +81,7 @@ describe('released results only, in the DOM', () => {
     expect(text).toContain('PerformanceNot released yet');
     for (const band of ['UA', 'BE', 'ME', 'AE', 'OU']) expect(text).not.toMatch(new RegExp(`\\b${band}\\b`));
     expect(screen.getByText(H.next.none)).toBeTruthy();
-    expect(screen.getByText('This cycle closes 31 Dec 2026')).toBeTruthy();
+    expect(screen.getByText(`This cycle closes ${DAY}`)).toBeTruthy();
     expect(screen.queryByRole('link', { name: H.next.open })).toBeNull();
     expect(document.querySelector('[data-performance-team]')).toBeNull();
     unmount();

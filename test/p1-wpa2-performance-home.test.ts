@@ -155,7 +155,9 @@ describe('the Performance block for a line manager and an employee (PM only)', (
     expect(await words()).toEqual(['kpi:yourTurn', 'results:locked']);
     expect(must(await block(self), 'block').next).toMatchObject({ kind: 'kpi', done: 0, total: 1 });
     await perf.submitOnehrResults(self, reviewId, await rev(self), [{ id: kpiId, actual: 2, note: 'Fictional record.' }], 'Delivered the agreed milestones this year.');
-    expect(await words()).toEqual(['kpi:inProgress', 'results:locked']);
+    // The workspace derivation marks the subject's own part done once submitted; moderation is the manager's.
+    expect(await words()).toEqual(['kpi:done', 'results:locked']);
+    expect(must(await block(self), 'block').standing.performance).toEqual({ state: 'awaitingManager' });
   });
 
   it('a window that has not opened yet is Locked, and "your next step" names when it opens', async () => {
@@ -219,6 +221,13 @@ describe('the Performance block with competencies and a Career Plan', () => {
       p.profiles = [{ id: profileId, companyId: b.companyId, grade: '12', name: 'Engineering', jobTitle: 'Engineer', competencies: [{ id: 'skill-1', principle: 'Technical', text: 'Current skill', future: false }, { id: 'skill-2', principle: 'Technical', text: 'Second skill', future: false }] }];
     });
     const self = await as(subject, 'employee');
+    // No profile matched at opening: competency is not required of this person (and is not counted).
+    const unassigned = must(await block(self), 'block');
+    expect(unassigned.steps.map((s) => `${s.key}:${s.state}`)).toEqual(['kpiSetting:yourTurn', 'competency:notRequired', 'careerPlan:locked', 'results:locked']);
+    expect(unassigned).toMatchObject({ done: 0, total: 3 });
+    expect(unassigned.standing.competency).toBeNull();
+    const reviewId = await reviewIdFor(cycleId, subject);
+    await perf.assignAssessmentProfile(a, reviewId, must(await perf.getOnehrReview(a, reviewId), 'view').revision, profileId);
     const blk = must(await block(self), 'block');
     expect(blk.steps.map((s) => `${s.key}:${s.state}`)).toEqual(['kpiSetting:yourTurn', 'competency:yourTurn', 'careerPlan:locked', 'results:locked']);
     expect(blk).toMatchObject({ done: 0, total: 4 });
