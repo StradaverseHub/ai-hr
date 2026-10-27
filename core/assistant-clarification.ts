@@ -1,10 +1,11 @@
 /** A clarification continues only the actual caller's authenticated exchange. Historical model prose
  * and source rows are never reused as authority or copied into the next provider request. */
 import {eq,and,isNull,sql} from 'drizzle-orm';
-import {withTenant,type SessionContext} from '../db/client';
+import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {assistantExchange} from '../db/schema';
 import {boundNativeOutcomeTransactionTx as boundClarificationReadTx} from './module-native-outcome-bounds';
 import {assertAiPrincipalTx} from './ai-principal';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {mayUseAssistant} from './assistant-grant';
 import {resolveEntitlementsTx} from './entitlements';
 import {openAssistantAnswerDisclosure} from '../lib/ai/assistant-disclosure';
@@ -14,6 +15,8 @@ export const ASSISTANT_CONVERSATION_LIMITS=Object.freeze({humanAnswer:500,histor
 /** `originalQuestion` is TRANSIENT provider context for the continuation and is never stored on the new
  * exchange: the original raw text must retire with its own exchange, 30 days from that question. */
 export type OwnAssistantClarification=Readonly<{originalQuestion:string;slot:AssistantClarificationSlot;answer:string}>;
+/** Server-only source binding of each clarification this owner issued. Never serialized or returned. */
+const clarificationSources=new WeakMap<object,Readonly<{tenantId:string;userId:string;exchangeId:string}>>();
 /** A conservative UI offer: every allowed next human answer must fit, without truncation. */
 export function canClarifyAssistantQuestion(question:unknown):boolean{
  return typeof question==='string'&&question.length+2+ASSISTANT_CONVERSATION_LIMITS.humanAnswer<=ASSISTANT_CONVERSATION_LIMITS.history;
@@ -41,6 +44,28 @@ export async function ownAssistantClarification(ctx:SessionContext,exchangeId:un
   // Both text fields were human supplied. The authenticated slot is context, never an effect argument
   // or a source capability. The next real model turn must freshly query canonical tools as usual.
   if(row.question.length+2+answer.length>ASSISTANT_CONVERSATION_LIMITS.history)return refuse();
-  return Object.freeze({originalQuestion:row.question,slot:proof.plan.slot,answer});
+  const issued:OwnAssistantClarification=Object.freeze({originalQuestion:row.question,slot:proof.plan.slot,answer});
+  clarificationSources.set(issued,Object.freeze({tenantId:captured.tenantId,userId,exchangeId:row.id}));
+  return issued;
  });}catch{return refuse();}
+}
+
+/** Re-run in every later transaction that admits `originalQuestion` towards a provider: the strategy-marker
+ * transaction and each provider round trip. The caller must already hold the Access-configuration interval
+ * that own-history erasure and PDPA redaction also join (taken again here; it is reentrant). A source
+ * exchange erased, retired, past its own 30 days or changed since the read refuses exactly as the read
+ * would. Nothing is reopened, recreated or stored, and only an object this owner issued for the same
+ * tenant and login can pass: a copied or hand-built clarification has no source binding. */
+export async function assertOwnAssistantClarificationCurrentTx(tx:Tx,ctx:SessionContext,clarification:OwnAssistantClarification):Promise<void>{
+ const source=clarificationSources.get(clarification);
+ if(!source||source.tenantId!==ctx.tenantId||source.userId!==ctx.userId)throw new AssistantClarificationError();
+ let current=false;
+ try{
+  await lockAccessConfigurationTx(tx,source.tenantId);
+  const [row]=await tx.select({question:assistantExchange.question}).from(assistantExchange)
+   .where(and(eq(assistantExchange.id,source.exchangeId),eq(assistantExchange.tenantId,source.tenantId),eq(assistantExchange.appUserId,source.userId),
+    isNull(assistantExchange.contentRetiredAt),sql`${assistantExchange.askedAt}>clock_timestamp()-interval '30 days'`)).limit(1);
+  current=row?.question===clarification.originalQuestion;
+ }catch{/* A storage failure aborts the caller's transaction; it is never read as a current source. */}
+ if(!current)throw new AssistantClarificationError();
 }

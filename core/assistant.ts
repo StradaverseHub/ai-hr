@@ -34,7 +34,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { assistantSourceDigest, sealAssistantDisclosure, type AssistantSourceRead } from '../lib/ai/assistant-disclosure';
-import { ownAssistantClarification } from './assistant-clarification';
+import { ownAssistantClarification, assertOwnAssistantClarificationCurrentTx } from './assistant-clarification';
 import {buildAssistantConversationSystem} from '../lib/ai/assistant-conversation-system';
 import {prepareAssistantConversationStrategyTx,completeAssistantConversationStrategyTx,retireAssistantConversationStrategyCapability,type AssistantConversationStrategyCapability} from './module-agent-releases';
 import { parseAssistantAnswerPlan, adjudicateAssistantAnswerPlan, type AssistantAnswerPlan, type AssistantAnswerRead } from '../lib/ai/assistant-answer-plan';
@@ -244,7 +244,11 @@ export async function askAssistant(
     // Persist a new human-question intent BEFORE provider work. Its root is held in the issued
     // configuration through every converse/tool step; no late completed exchange ID or prompt hash.
     const rooted=await bindAiSpendTaskTx(tx,ctx,cfg,{kind:'assistant_question'});
-    const conversationStrategy=await prepareAssistantConversationStrategyTx(tx,ctx,rooted,question);
+    // A continuation's original question is transient provider context read in its own earlier
+    // transaction. The strategy owner rechecks that own source exchange in this marker transaction and
+    // before every provider round trip, so history erased or retired since that read never reaches one.
+    const conversationStrategy=await prepareAssistantConversationStrategyTx(tx,ctx,rooted,question,
+      clarification?carrier=>assertOwnAssistantClarificationCurrentTx(carrier,ctx,clarification):undefined);
     return { cfg:conversationStrategy.configuration, conversationStrategy, budget, spentBefore: budget ? await spentThisPeriod(tx, ctx, period) : 0 };
   });
 

@@ -1100,10 +1100,16 @@ type ConversationStrategyUse={ctx:SessionContext;id:string;incarnation:string;pr
 const conversationStrategyUses=new WeakMap<object,ConversationStrategyUse>();
 const strategyPrincipal=(ctx:SessionContext)=>routingDigest([ctx.tenantId,ctx.userId,ctx.personId??null,ctx.roles??null,ctx.grants??null]);
 /** Calling command already owns its native assistant_question spend root. Composition preserves that
- * issued root and all prior checks; this helper never rebinds a human question to candidate budget. */
-export async function prepareAssistantConversationStrategyTx(tx:Tx,supplied:SessionContext,configuration:ResolvedAiConfig,question:string){
- if(typeof question!=='string'||!question.trim()||question.length>ASSISTANT_CONVERSATION_LIMITS.history)return fail();const questionDigest=routingDigest([supplied.tenantId,supplied.userId,question]);
- const ctx=capture(supplied),fresh=await guard(tx,ctx,false);await agentReleaseIntervalTx(tx,ctx,ctx.userId!,false);await signalIntervalTx(tx,ctx,ctx.userId!);const snapshot=await resolveAiProviderSnapshotTx(tx,fresh);if(!snapshot)return fail();
+ * issued root and all prior checks; this helper never rebinds a human question to candidate budget.
+ * `continuationSourceTx` (a clarification continuation only) rechecks the caller's transient source
+ * context in this marker transaction and before every provider round trip; it can only refuse. */
+export async function prepareAssistantConversationStrategyTx(tx:Tx,supplied:SessionContext,configuration:ResolvedAiConfig,question:string,continuationSourceTx?:(tx:Tx)=>Promise<void>){
+ if(typeof question!=='string'||!question.trim()||question.length>ASSISTANT_CONVERSATION_LIMITS.history||(continuationSourceTx!==undefined&&typeof continuationSourceTx!=='function'))return fail();const questionDigest=routingDigest([supplied.tenantId,supplied.userId,question]);
+ const ctx=capture(supplied),fresh=await guard(tx,ctx,false);await agentReleaseIntervalTx(tx,ctx,ctx.userId!,false);await signalIntervalTx(tx,ctx,ctx.userId!);
+ // Under the guard's Access interval and before this marker exists: an erasure committed after the
+ // caller's own read is visible here, and a later one waits for this commit and then invalidates it.
+ if(continuationSourceTx)await continuationSourceTx(tx);
+ const snapshot=await resolveAiProviderSnapshotTx(tx,fresh);if(!snapshot)return fail();
  const [selected]=await tx.execute<{id:string}>(sql`select p.id from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id where p.tenant_id=${ctx.tenantId}::uuid and p.owner_user_id=${ctx.userId}::uuid and c.kind='assistant_answer_prompt_v1' and p.expires_at>clock_timestamp() and p.used_jobs<p.max_jobs and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id) order by p.created_at desc,p.id desc limit 1 for update of p nowait`);
  let strategy:AssistantConversationCandidate=ASSISTANT_CONVERSATION_BASELINE,promotionId:string|null=null,version=0,candidateDigest=conversationBaselineDigest;
  if(selected){const selectedPromotion=await currentConversationPromotionTx(tx,ctx,selected.id,snapshot.fingerprint);strategy=captureAssistantConversationCandidate(selectedPromotion.candidate.configuration);promotionId=selected.id;version=selectedPromotion.candidate.version;candidateDigest=selectedPromotion.candidate.candidate_digest;await tx.execute(sql`update public.ai_agent_promotion set used_jobs=used_jobs+1 where id=${selected.id}::uuid and tenant_id=${ctx.tenantId}::uuid`);}
@@ -1111,7 +1117,7 @@ export async function prepareAssistantConversationStrategyTx(tx:Tx,supplied:Sess
  const receipt=seal('conversation-use',ctx.tenantId,id,{version:1,userId:ctx.userId,personId:ctx.personId??null,promotionId,candidateDigest,providerFingerprint:snapshot.fingerprint,sourceDigest:MODULE_AGENT_SOURCE_DIGEST,questionDigest,provenance});
  const [created]=await tx.execute<{incarnation:string}>(sql`insert into public.ai_assistant_answer_strategy_use(id,tenant_id,user_id,person_id,promotion_id,candidate_digest,provider_fingerprint,source_digest,receipt) values(${id}::uuid,${ctx.tenantId}::uuid,${ctx.userId}::uuid,${ctx.personId??null}::uuid,${promotionId}::uuid,${candidateDigest},${snapshot.fingerprint},${MODULE_AGENT_SOURCE_DIGEST},${receipt}) returning incarnation::text as incarnation`);if(!created||!/^\d+$/.test(created.incarnation))return fail();
  const record:ConversationStrategyUse={ctx,id,incarnation:created.incarnation,promotionId,candidateDigest,providerFingerprint:snapshot.fingerprint,questionDigest,provenance};conversationStrategyUses.set(capability,record);
- const wrapped=withAiAdmissionCheck(configuration,'hr_assistant',async carrier=>{await recheckAssistantConversationStrategyTx(carrier,ctx,capability);});
+ const wrapped=withAiAdmissionCheck(configuration,'hr_assistant',async carrier=>{await recheckAssistantConversationStrategyTx(carrier,ctx,capability);if(continuationSourceTx)await continuationSourceTx(carrier);});
  return Object.freeze({configuration:wrapped,system:assistantConversationCandidateSystem(strategy),capability:capability as AssistantConversationStrategyCapability,provenance});
 }
 /** Rechecked before each provider round-trip and before the actual exchange insert. No missing or
