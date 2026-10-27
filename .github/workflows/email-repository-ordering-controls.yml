@@ -1,0 +1,26 @@
+name: Email repository ordering controls
+run-name: Exact approved email journal union · repository only
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: email-repository-ordering-${{ github.run_id }}
+  cancel-in-progress: false
+jobs:
+  ordering-controls:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22.23.3'
+      - name: Exact ordering exception and applied-history refusal controls
+        run: node --test .github/ci/email-ordering-exception.test.mjs .github/ci/migration-history.test.mjs
+      - name: Actual canonical-base journal comparison
+        run: node .github/ci/check-migration-order.mjs d8b2bac9705fd8fbc4d3eb500262b19858bf297d
