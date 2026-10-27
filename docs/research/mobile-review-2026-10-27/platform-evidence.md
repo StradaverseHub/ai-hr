@@ -1231,3 +1231,55 @@ Android's0636 custody draft SHA256 remains
 The tests temporarily install/restore it only in their disposable worker. No public clock route,
 rollout enablement, current Play/vendor proof, signed-device acceptance, full release gate,
 migration application, deployment or HarmonyOS native client is established by this work.
+
+
+### Signed-clock HTTP, commit guard and command-size evidence
+
+`ff00af317` adds shared Apple/Android clock HTTP operations, explicit v2 Android contracts and
+transactional configuration guard ports through both attendance carriers/core owners. Tests invoke
+real bearer wrappers, schema/body parsing, signatures, custody, RLS and attendance writes; only bearer
+resolution, deployment configuration/guard and enrollment seed proof are synthetic ports. No real
+vendor enrollment, device execution or deployment-policy semantics are established by these ports.
+
+The original six-file focused attempt completed67 passes/three failures out of70 cases. Both root
+and native TypeScript passed. All three failures were the Android HTTP fixture comparing raw
+settings JSON against parsed/canonical settings with a different property order; valid commands were
+refused. Parsing the fixture's current configuration before comparison resolved them. Both HTTP
+files then passed29 cases and root/native TypeScript passed. The other four files retain41 passing
+cases (Apple/Android core transactions, attendance import ratchet and configuration reader).
+Original failure logs remain `/tmp/mobile-signed-clock-http-{tests,root-types,native-types}.log`;
+repair logs are `/tmp/mobile-signed-clock-http-repair-{tests,root-types,native-types}.log`.
+
+Atff00af317, controlled removal of both core commit calls incorrectly accepted all three selected
+policy/cancellation cases, including the Apple counter/attendance case. Removing missing-guard
+refusal issued a challenge; removing the post-guard cancellation check accepted a cancelled request;
+raising the multipart cap accepted the oversized body. Each named assertion failed. Exact restoration
+passed all29 cases. Probe logs are `/tmp/mobile-signed-clock-http-probe-{commit,guard-required,post-abort,body-cap,restored}.log`.
+
+Review then added a separate command-field bound in `b50ecbd69`: at most16384 UTF-8 bytes before
+JSON parsing. Both HTTP files passed30 cases and root TypeScript passed. The new boundary case
+accepts exactly16384 bytes and refuses16385 without consumption or writes. Removing only this bound
+returned200 for the over-limit command and failed the expected400 assertion; restoring exact source
+passed all eight Android HTTP cases. Logs:
+`/tmp/mobile-signed-clock-command-cap-{tests,root-types}.log` and
+`/tmp/mobile-signed-clock-command-cap-probe-{red,restored}.log`.
+The earlier multipart-cap mutation is evidence aboutff00af317; the later command bound is additional
+defense, not a claim that the same single-cap mutation independently bypasses the final parser.
+Every test request used complete two-slot/database admission and owned worker databases; teardown
+reported all three owned worker/template databases dropped for each run.
+
+Both Metro exports atff00af317 passed and contain1344 iOS/1475 Android entries. Checked current
+screen, assembly, transport, both journals, native/shared storage and portable wire contract source
+bytes match exactly, including after the server-only command-bound repair. Checked server clock/
+enrollment owners, HTTP handlers, database and rollout/attestation verifier paths were absent.
+Map SHA256: iOS `f089f8b82ebb5b9d58b908e4f1d44c06d1d41ccf2fd54410aff07edad9a19617`;
+Android `e26456aaa7222c3838f45140bd614ebf101bb432023666cfa61f4e47f2cffd2f`.
+Exports and logs: `/tmp/mobile-signed-clock-wire-export-{ios,android}` and matching`.log` files.
+Native TypeScript atff00af317 remains valid for b50ecbd69's server/test-only repair.
+
+No public clock route, native clock-screen activation, current vendor/Play proof, full release gate,
+migration application or deployment occurred. On this Mac, xcode-select still resolves to Command
+Line Tools; no full Xcode app was found in Applications. The earlier Android worklets UAST lint
+failure remains unresolved. These prevent any claim of complete native build/device acceptance.
+The owner has now deferred Huawei and asked to prioritize working Android and iPhone; Huawei
+sign-in/DevEco installation is no longer an active dependency for this work order.

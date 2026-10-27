@@ -812,3 +812,37 @@ GPS authenticity or physical presence. Current vendor evidence and trust/review 
 activation work. Public Android clock handlers, discovery, commit-time rollout revalidation and
 native journal/clock-screen orchestration are not yet connected; both platform clock routes remain
 unmounted. Enrollment configuration must not be treated as clock activation permission.
+
+
+## Shared signed-clock HTTP parsing and transactional configuration veto
+
+The separate signed-clock HTTP factory now supports Apple v1 assertions and Android v2 ECDSA
+signatures. The existing unmounted Apple factory delegates its clock operations to that owner.
+Apple wire requests/preparations require iOS evidence; Android uses distinct signature/preparation
+contracts requiring Android evidence and protocol2. No proof or platform substitution is accepted.
+
+Both paths retain mobile bearer admission/shared budgets, explicit own-subject selection, no-store
+responses and private error codes. Multipart bodies are limited to3 MiB, with only command/photo
+fields, one instance of each and at most2 MiB per permitted JPEG/PNG attachment. The command field
+has an independent16 KiB UTF-8 bound before JSON parsing; photo allowance does not grant megabytes
+of JSON parsing. Exact photo bytes reach the canonical owner; phone-supplied digest, actor, tenant,
+settings, verifier, trust or accepted-state fields are refused. Proof encodings are canonical base64
+and bounded separately (Apple8192 bytes; Android72 bytes).
+
+Clock preparation and completion are unavailable without a trusted transaction-aware commit guard.
+The Apple factory omits its clock feature when no guard is supplied. During completion, both platform
+core owners call the guard inside the same transaction after tentative attendance work, before final
+own-subject/time checks and proof audit. A policy veto rolls back attendance/capture, challenge,
+Apple counter and audit together. Request cancellation is checked before and after the guard.
+Already-consumed exact receipts remain recovery observations and never invoke the writer again.
+
+The guard must use the supplied transaction and the clock policy owner. It must not open a pooled
+configuration read while those locks are held. The HTTP layer verifies guard presence and invokes
+it; that does not certify the supplied guard's policy semantics. Enrollment permission is not clock
+activation permission. A dedicated clock rollout/configuration/discovery owner, native journal/UI
+orchestration and explicit treatment of legacy clock channels are still required before activation.
+No new clock route is mounted by these factories. Current device/Play/vendor evidence and trust or
+review policy remain separate from command-signature acceptance.
+
+The owner has deferred Huawei work for now and prioritized Android and iPhone. That changes the
+work order, not the evidence bar: full native builds and physical-device acceptance remain required.
