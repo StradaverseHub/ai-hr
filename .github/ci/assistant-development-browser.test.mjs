@@ -5,7 +5,7 @@ import {createRequire} from 'node:module';
 import {join} from 'node:path';
 import {EventEmitter} from 'node:events';
 import {PassThrough} from 'node:stream';
-import {fixturePreparationPlan,buildFixtureBootstrap,confirmedContainerAbsent,parseNativeReadbackResponse,nativeReadbackBootstrap,createPrivateNativeReadbackClient,MODULES,REMAINING,unitFor,childEnvironment,validateFixture,publicReport,parseOwnedGroupSnapshot} from './assistant-development-browser.mjs';
+import {closedDatabaseIdentifier,freshDatabaseBootstrapSql,fixturePreparationPlan,buildFixtureBootstrap,confirmedContainerAbsent,parseNativeReadbackResponse,nativeReadbackBootstrap,createPrivateNativeReadbackClient,MODULES,REMAINING,unitFor,childEnvironment,validateFixture,publicReport,parseOwnedGroupSnapshot} from './assistant-development-browser.mjs';
 const id=n=>'00000000-0000-4000-8000-'+String(n).padStart(12,'0');
 function packet(){const actors=Array.from({length:6},(_,n)=>({userId:id(n+1),personId:id(n+11),employmentId:id(n+21)}));return {format:1,state:'native_prerequisites_prepared_not_experienced',actors:{operator:actors[0],self:actors[1],reviewers:[actors[2],actors[3]],peer:actors[4],manager:actors[5]},finalNativePrerequisites:[0,2,3].map(n=>({userId:actors[n].userId,modules:MODULES.map(module=>({module,state:'complete',nativeEvidence:'present',qualityFailures:0,securityFailures:0,cases:[{id:module+':nonempty-business-evidence',category:'native',passed:true}]}))})),expectedNative:{selfLeaveRequests:0,selfProfileRequests:0,closeTargetStatus:'processed'},limits:{uiTargetEffects:'not_executed',providerCapability:'UNVERIFIED_NO_CALLS',notificationEmailConsent:'UNAVAILABLE_REQUIRES_ACTUAL_VERIFIED_PROVIDER_IDENTITY',releaseGate:'NOT_RUN'}};}
 test('exact candidate/run/attempt own distinct finite container keys',()=>{const sha='a'.repeat(40);assert.match(unitFor('12','1',sha),/^db-[a-f0-9]{16}$/);assert.notEqual(unitFor('12','1',sha),unitFor('12','2',sha));assert.notEqual(unitFor('12','1',sha),unitFor('12','1','b'.repeat(40)));for(const args of [['x','1',sha],['1','0x1',sha],['1','1','main']])assert.throws(()=>unitFor(...args));});
@@ -61,12 +61,29 @@ test('both generated TS bootstrap variants parse with real statement separators 
  }
 });
 
-test('fresh fictional setup executes canonical catalog CLI after migrations before full native fixture',()=>{
- const plan=fixturePreparationPlan('/fictional/source','file:///fictional/source/node_modules/tsx/dist/loader.mjs','/fictional/private/prepare.ts');
- assert.deepEqual(plan.map(stage=>stage.label),['migration','seed-native-catalogs','fixture']);
- assert.equal(plan[0].command,'pnpm');assert.deepEqual(plan[0].args,['db:migrate']);
- assert.equal(plan[1].command,process.execPath);assert.deepEqual(plan[1].args,['--import','file:///fictional/source/node_modules/tsx/dist/loader.mjs','/fictional/source/scripts/seed-catalogs.ts']);
- assert.equal(plan[2].command,process.execPath);assert.deepEqual(plan[2].args,['--import','file:///fictional/source/node_modules/tsx/dist/loader.mjs','/fictional/private/prepare.ts']);
+test('fresh fictional setup applies normal ACL BEFORE migrate and canonical catalog CLI before fixture',()=>{
+ const database='aihr_assistant_browser_0123456789abcdef',container='aihr-ci-123-1-db-0123456789abcdef';
+ const plan=fixturePreparationPlan('/fictional/source','file:///fictional/source/node_modules/tsx/dist/loader.mjs','/fictional/private/prepare.ts',database,container);
+ assert.deepEqual(plan.map(stage=>stage.label),['bootstrap-normal-app-acl','migration','seed-native-catalogs','fixture']);
+ assert.equal(plan[0].command,'docker');assert.deepEqual(plan[0].args.slice(0,-1),['exec',container,'psql','-h','127.0.0.1','-U','postgres','-p','5433','-v','ON_ERROR_STOP=1','-d',database,'-c']);assert.equal(plan[0].args.at(-1),freshDatabaseBootstrapSql(database));
+ assert.equal(plan[1].command,'pnpm');assert.deepEqual(plan[1].args,['db:migrate']);
+ assert.equal(plan[2].command,process.execPath);assert.deepEqual(plan[2].args,['--import','file:///fictional/source/node_modules/tsx/dist/loader.mjs','/fictional/source/scripts/seed-catalogs.ts']);
+ assert.equal(plan[3].command,process.execPath);assert.deepEqual(plan[3].args,['--import','file:///fictional/source/node_modules/tsx/dist/loader.mjs','/fictional/private/prepare.ts']);
  assert(Object.isFrozen(plan)&&plan.every(stage=>Object.isFrozen(stage)&&Object.isFrozen(stage.args)));assert(plan.every(stage=>Number.isSafeInteger(stage.timeout)&&stage.timeout>0));
  assert(!JSON.stringify(plan).includes('seed:catalogs'));assert(!JSON.stringify(plan).includes('db/seed.ts'));assert(!JSON.stringify(plan).includes('reset'));
+ assert.throws(()=>fixturePreparationPlan('/fictional','tsx','/prepare.ts',database,'aihr-ci-123-1-db-ffffffffffffffff'));
+});
+test('normal bootstrap SQL is only fresh target/actual owner/restricted app ACL and keeps migration revokes authoritative',()=>{
+ const database='aihr_assistant_browser_0123456789abcdef',sql=freshDatabaseBootstrapSql(database);
+ assert.equal(closedDatabaseIdentifier(database),'"'+database+'"');
+ assert(sql.startsWith('BEGIN;\n'));assert(sql.endsWith('COMMIT;\n'));
+ assert(sql.includes("current_user <> 'postgres'"));assert(sql.includes("current_database() <> '"+database+"'"));assert(sql.includes('datdba=current_user::regrole'));assert(sql.includes('inet_server_port() IS DISTINCT FROM 5433'));
+ assert(sql.includes("rolname='ai_hr_app' AND rolcanlogin AND NOT rolsuper AND NOT rolbypassrls AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolreplication"));assert(sql.includes('FROM pg_class'));assert(sql.includes('FROM pg_proc'));
+ assert(sql.includes('GRANT CONNECT ON DATABASE "'+database+'" TO ai_hr_app;'));assert(sql.includes('GRANT USAGE ON SCHEMA public TO ai_hr_app;'));
+ assert(sql.includes('ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ai_hr_app;'));
+ assert(sql.includes('ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO ai_hr_app;'));
+ assert(!/GRANT\s+ALL|GRANT\s+CREATE|CREATE\s+ROLE|ALTER\s+ROLE|PASSWORD|ALL TABLES/i.test(sql));
+ for(const name of ['ai_hr_dev','postgres','AIHR_ASSISTANT_BROWSER_0123456789abcdef',database+'; DROP DATABASE postgres','"'+database+'"']){assert.throws(()=>freshDatabaseBootstrapSql(name));assert.throws(()=>closedDatabaseIdentifier(name));}
+ const fixture=buildFixtureBootstrap('/fictional/source','/fictional/private/fixture.json',database);
+ assert(fixture.includes("has_column_privilege('ai_hr_app','public.ai_provider_config','api_key_ciphertext','SELECT')"));assert(fixture.includes('acl.ciphertext!==false||acl.metadata!==true'));assert(!/GRANT\s+ALL|GRANT\s+SELECT/i.test(fixture));
 });

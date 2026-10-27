@@ -35,9 +35,36 @@ export function parseOwnedGroupSnapshot(text,inspectorPid,group){
  assert(Number.isSafeInteger(inspectorPid)&&inspectorPid>1&&Number.isSafeInteger(group)&&group>1);assert(typeof text==='string'&&text.trim());
  const result=[];for(const line of text.trim().split('\n')){const match=line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)$/);assert(match,'Unknown process snapshot');const [pid,pgid,sid]=match.slice(1).map(Number);assert([pid,pgid,sid].every(n=>Number.isSafeInteger(n)&&n>0));if(pgid===group&&pid!==inspectorPid){assert.equal(sid,group,'Owned group identity changed');result.push(pid);}}return result;
 }
-/** C11 fresh bootstrap order: schema, code-owned catalogs, then native fictional business facts. */
-export function fixturePreparationPlan(root,tsx,bootstrap){
+/** Only this generated fictional target is an SQL identifier; arbitrary names are refused. */
+export function closedDatabaseIdentifier(database){assert(/^aihr_assistant_browser_[a-f0-9]{16}$/.test(database));return '"'+database+'"';}
+/** deploy/bootstrap-db.sql normal app ACL subset, BEFORE migrations and their deliberate REVOKEs.
+ * postgres is the verified actual migration/database owner of this maintained disposable container.
+ * No app CREATE, role/password changes, table GRANT ALL, or existing-runtime repair. */
+export function freshDatabaseBootstrapSql(database){
+ const identifier=closedDatabaseIdentifier(database);
+ return `BEGIN;
+DO $bootstrap$
+BEGIN
+ IF current_user <> 'postgres' OR current_database() <> '${database}'
+  OR inet_server_port() IS DISTINCT FROM 5433 OR coalesce(host(inet_server_addr()),'') NOT IN ('127.0.0.1','::1')
+  OR NOT EXISTS(SELECT 1 FROM pg_database WHERE datname=current_database() AND datdba=current_user::regrole)
+  OR NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='ai_hr_app' AND rolcanlogin AND NOT rolsuper AND NOT rolbypassrls AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolreplication)
+  OR EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema')
+  OR EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema')
+ THEN RAISE EXCEPTION 'Fresh fictional database bootstrap refused'; END IF;
+END $bootstrap$;
+GRANT CONNECT ON DATABASE ${identifier} TO ai_hr_app;
+GRANT USAGE ON SCHEMA public TO ai_hr_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ai_hr_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO ai_hr_app;
+COMMIT;
+`;
+}
+/** Normal fresh setup order is executable code, never a metadata-only attestation. */
+export function fixturePreparationPlan(root,tsx,bootstrap,database,container){
+ const sql=freshDatabaseBootstrapSql(database);assert(/^aihr-ci-\d+-\d+-db-[a-f0-9]{16}$/.test(container));assert(container.endsWith('db-'+database.slice('aihr_assistant_browser_'.length)));
  return Object.freeze([
+  {label:'bootstrap-normal-app-acl',command:'docker',args:['exec',container,'psql','-h','127.0.0.1','-U','postgres','-p','5433','-v','ON_ERROR_STOP=1','-d',database,'-c',sql],timeout:120000},
   {label:'migration',command:'pnpm',args:['db:migrate'],timeout:900000},
   {label:'seed-native-catalogs',command:process.execPath,args:['--import',tsx,join(root,'scripts/seed-catalogs.ts')],timeout:120000},
   {label:'fixture',command:process.execPath,args:['--import',tsx,bootstrap],timeout:1200000},
@@ -64,6 +91,7 @@ async function prepare(){
    const [p]=await pool.unsafe("select current_user as role,current_database() as db,inet_server_port() as port,host(inet_server_addr()) as address,rolsuper or rolbypassrls as privileged from pg_roles where rolname=current_user");
    if(p.role!==role||p.db!==${JSON.stringify(database)}||p.port!==5433||!['127.0.0.1','::1'].includes(p.address)||p.privileged!==superuser)throw Error('Physical fixture ownership refused');
   }
+  const [acl]=await owner.client.unsafe("select has_column_privilege('ai_hr_app','public.ai_provider_config','api_key_ciphertext','SELECT') as ciphertext,has_column_privilege('ai_hr_app','public.ai_provider_config','model','SELECT') as metadata");if(acl.ciphertext!==false||acl.metadata!==true)throw Error('Normal migration provider ACL not preserved');
   const before=await owner.client.unsafe('select count(*)::int n from public.ai_provider_config');if(before[0].n!==0)throw Error('Provider configuration forbidden');
   const fixture=await populateAiDeliveryFullFixture(owner);
   const after=await owner.client.unsafe('select count(*)::int n from public.ai_provider_config');if(after[0].n!==0)throw Error('Provider configuration forbidden');
@@ -173,11 +201,11 @@ async function main(){
   const inspect=spawnSync('docker',['container','inspect',container],{env:basic,encoding:'utf8',timeout:30000,maxBuffer:1048576});assert(confirmedContainerAbsent(inspect,container),'Unknown docker inspection is not absence');
   writeFileSync(join(privateDir,'owned-unit'),unit,{mode:0o600});postgresOwned=true;report.databaseCleanup='unconfirmed';
   await command('postgres', 'bash',[join(here,'postgres.sh'),'reset'],basic,120000);
-  sync('docker',['exec',container,'psql','-U','postgres','-p','5433','-v','ON_ERROR_STOP=1','-d','postgres','-c',`CREATE DATABASE ${database};`]);
+  sync('docker',['exec',container,'psql','-U','postgres','-p','5433','-v','ON_ERROR_STOP=1','-d','postgres','-c',`CREATE DATABASE ${closedDatabaseIdentifier(database)};`]);
   const require=createRequire(join(root,'package.json')),tsx=pathToFileURL(require.resolve('tsx')).href;
   const fixturePath=join(privateDir,'fixture.json'),bootstrap=join(privateDir,'prepare.ts');
   writeFileSync(bootstrap,buildFixtureBootstrap(root,fixturePath,database),{mode:0o600});
-  for(const stage of fixturePreparationPlan(root,tsx,bootstrap))await command(stage.label,stage.command,stage.args,{...fixtureEnv,TSX_TSCONFIG_PATH:join(root,'tsconfig.json')},stage.timeout);
+  for(const stage of fixturePreparationPlan(root,tsx,bootstrap,database,container))await command(stage.label,stage.command,stage.args,{...fixtureEnv,TSX_TSCONFIG_PATH:join(root,'tsconfig.json')},stage.timeout);
   const packet=JSON.parse(readFileSync(fixturePath,'utf8')),fixture=validateFixture(packet.fixture);
   assert.deepEqual(packet.declarations.map(d=>d.module).sort(),[...MODULES].sort());
   for(const d of packet.declarations){assert(['partial_actions','read_only','orchestration_only'].includes(d.coverage),'Unknown declaration coverage');for(const a of d.actions){assert(typeof a.id==='string'&&a.id.length<100);assert(['implemented','read_context_only','human_workflow_only','pending_adapter','unavailable'].includes(a.prepare));assert(['implemented','read_context_only','human_workflow_only','pending_adapter','unavailable'].includes(a.confirm));}}
