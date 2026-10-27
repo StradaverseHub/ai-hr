@@ -6,14 +6,14 @@ on:
       control_scope:
         type: choice
         default: runtime-controls
-        options: [focused, browser-partial, runtime-controls, bonus-negative, bonus-controls, email-controls, email-compiler, email-grant-controls, retention-controls]
+        options: [focused, browser-partial, runtime-controls, bonus-negative, bonus-controls, email-controls, email-compiler, email-grant-controls, retention-controls, email-union-controls]
 permissions: {contents: read, actions: read}
 concurrency:
   group: runtime-evidence-controls-${{ github.run_id }}
   cancel-in-progress: false
 jobs:
   verifier-controls:
-    if: inputs.control_scope != 'bonus-negative' && inputs.control_scope != 'email-compiler' && inputs.control_scope != 'retention-controls'
+    if: inputs.control_scope != 'bonus-negative' && inputs.control_scope != 'email-compiler' && inputs.control_scope != 'retention-controls' && inputs.control_scope != 'email-union-controls'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
@@ -218,3 +218,21 @@ jobs:
           PYTHONDONTWRITEBYTECODE: '1'
           RETENTION_TEST_DATABASE_URL: postgres://postgres:disposable-retention-controls@127.0.0.1:5432/retention_controls
         run: python3 -I .github/ci/email-retention-maintenance.test.py
+
+  email-union-controls:
+    if: inputs.control_scope == 'email-union-controls'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: 03612095d12b6355771c21952a4b4de61ffd1b26
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22.23.3'
+      - name: Exact approved repository union and historical SQL refusal controls
+        run: node --test .github/ci/email-ordering-exception.test.mjs .github/ci/migration-history.test.mjs
+      - name: Actual canonical-base journal comparison
+        run: node .github/ci/check-migration-order.mjs d8b2bac9705fd8fbc4d3eb500262b19858bf297d
