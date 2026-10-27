@@ -7,14 +7,22 @@ import {assertAiPrincipalTx} from './ai-principal';
 import {mayUseAssistant} from './assistant-grant';
 import {resolveEntitlementsTx} from './entitlements';
 import {openAssistantAnswerDisclosure} from '../lib/ai/assistant-disclosure';
+import type {AssistantClarificationSlot} from '../lib/ai/assistant-answer-plan';
+
+export const ASSISTANT_CONVERSATION_LIMITS=Object.freeze({humanAnswer:500,history:8000});
+export type OwnAssistantClarification=Readonly<{originalQuestion:string;slot:AssistantClarificationSlot;answer:string}>;
+/** A conservative UI offer: every allowed next human answer must fit, without truncation. */
+export function canClarifyAssistantQuestion(question:unknown):boolean{
+ return typeof question==='string'&&question.length+2+ASSISTANT_CONVERSATION_LIMITS.humanAnswer<=ASSISTANT_CONVERSATION_LIMITS.history;
+}
 
 export class AssistantClarificationError extends Error { constructor(){super('Current clarification unavailable.');this.name='AssistantClarificationError';} }
 
-export async function ownAssistantClarificationQuestion(ctx:SessionContext,exchangeId:unknown,response:unknown):Promise<string>{
+export async function ownAssistantClarification(ctx:SessionContext,exchangeId:unknown,response:unknown):Promise<OwnAssistantClarification>{
  const captured={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  const id=exchangeId,answer=typeof response==='string'?response.trim():null;
  const refuse=():never=>{throw new AssistantClarificationError();};
- if(!captured.userId||typeof id!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(id)||!answer||answer.length>500)return refuse();
+ if(!captured.userId||typeof id!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(id)||!answer||answer.length>ASSISTANT_CONVERSATION_LIMITS.humanAnswer)return refuse();
  const userId=captured.userId;
  return withTenant(captured,async tx=>{
   await tx.execute(sql`SET TRANSACTION READ ONLY`);
@@ -28,8 +36,7 @@ export async function ownAssistantClarificationQuestion(ctx:SessionContext,excha
   if(proof?.plan?.mode!=='clarify')return refuse();
   // Both text fields were human supplied. The authenticated slot is context, never an effect argument
   // or a source capability. The next real model turn must freshly query canonical tools as usual.
-  const question=JSON.stringify({originalQuestion:row.question,humanClarification:{slot:proof.plan.slot,answer}});
-  if(question.length>2000)return refuse();
-  return question;
+  if(row.question.length+2+answer.length>ASSISTANT_CONVERSATION_LIMITS.history)return refuse();
+  return Object.freeze({originalQuestion:row.question,slot:proof.plan.slot,answer});
  });
 }

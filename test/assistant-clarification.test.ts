@@ -9,7 +9,7 @@ import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
-import {ownAssistantClarificationQuestion} from '../core/assistant-clarification';
+import {ownAssistantClarification,canClarifyAssistantQuestion,ASSISTANT_CONVERSATION_LIMITS,type OwnAssistantClarification} from '../core/assistant-clarification';
 import {sealAssistantDisclosure,assistantSourceDigest,type AssistantDisclosureBinding} from '../lib/ai/assistant-disclosure';
 import type {AssistantAnswerPlan} from '../lib/ai/assistant-answer-plan';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -34,15 +34,16 @@ async function exchange(ctx:SessionContext,plan:AssistantAnswerPlan|undefined={v
 }
 const state=async()=>({exchanges:await owner.db.select().from(s.assistantExchange).orderBy(s.assistantExchange.id),
  events:await owner.db.select({id:s.domainEvent.id}).from(s.domainEvent).orderBy(s.domainEvent.id),runs:await owner.db.select().from(s.aiModelRun).orderBy(s.aiModelRun.id)});
-const refused=(ctx:SessionContext,id:unknown,response:unknown='This calendar year')=>expect(ownAssistantClarificationQuestion(ctx,id,response)).rejects.toThrow(/^Current clarification unavailable\.$/);
+const refused=(ctx:SessionContext,id:unknown,response:unknown='This calendar year')=>expect(ownAssistantClarification(ctx,id,response)).rejects.toThrow(/^Current clarification unavailable\.$/);
 describe('actual caller-bound Assistant clarification continuation',()=>{
  it.each(['employment','leave_type','period','module'] as const)('continues the authenticated %s slot using only original human question and new human answer',async slot=>{
   const {ctx}=await actor(),stored=await exchange(ctx,{version:1,mode:'clarify',slot}),before=await state();
   const [identity]=await withTenant(ctx,tx=>tx.execute<{role:string;user_id:string}>(sql`select current_user as role,app.current_user_id() as user_id`));
   expect(identity).toEqual({role:'ai_hr_app',user_id:ctx.userId});
-  const answer=await ownAssistantClarificationQuestion(ctx,stored.binding.exchangeId,'  My own current record  ');
-  expect(JSON.parse(answer)).toEqual({originalQuestion:stored.binding.question,humanClarification:{slot,answer:'My own current record'}});
-  expect(answer).not.toContain(terminal);expect(answer).not.toContain(sourcePrivate);expect(answer).not.toContain(stored.receipt);
+  const answer=await ownAssistantClarification(ctx,stored.binding.exchangeId,'  My own current record  ');
+  expect(answer).toEqual({originalQuestion:stored.binding.question,slot,answer:'My own current record'});expect(Object.isFrozen(answer)).toBe(true);
+  expect(Object.keys(answer).sort()).toEqual(['answer','originalQuestion','slot']);
+  expect(JSON.stringify(answer)).not.toContain(terminal);expect(JSON.stringify(answer)).not.toContain(sourcePrivate);expect(JSON.stringify(answer)).not.toContain(stored.receipt);
   expect(await state()).toEqual(before);
  });
  it('exercises actual app-role own-row RLS and uniformly refuses another user, tenant and missing exchange',async()=>{
@@ -57,7 +58,7 @@ describe('actual caller-bound Assistant clarification continuation',()=>{
  });
  it('rechecks actual Assistant grant even when a caller retains its valid sealed own history',async()=>{
   const {ctx,admin,userId}=await actor(),stored=await exchange(ctx);
-  expect(await ownAssistantClarificationQuestion(ctx,stored.binding.exchangeId,'2026')).toContain('2026');
+  expect(await ownAssistantClarification(ctx,stored.binding.exchangeId,'2026')).toMatchObject({answer:'2026'});
   await revokeAssistant(admin,{appUserId:userId});const before=await state();
   await refused(ctx,stored.binding.exchangeId);expect(await state()).toEqual(before);
  });
@@ -72,10 +73,22 @@ describe('actual caller-bound Assistant clarification continuation',()=>{
   const before=await state();for(const row of [legacy,nonclarify,corrupt,swapped])await refused(ctx,row.binding.exchangeId);
   expect(await state()).toEqual(before);
  });
- it('enforces exact human response and composed question bounds without trimming away meaningful content or truncating',async()=>{
-  const {ctx}=await actor(),answer='x'.repeat(500),overhead=JSON.stringify({originalQuestion:'',humanClarification:{slot:'period',answer}}).length;
-  const stored=await exchange(ctx,undefined,'q'.repeat(2000-overhead)),tooLong=await exchange(ctx,undefined,'q'.repeat(2001-overhead));
-  const before=await state(),exact=await ownAssistantClarificationQuestion(ctx,stored.binding.exchangeId,answer);expect(exact).toHaveLength(2000);expect(JSON.parse(exact).humanClarification.answer).toBe(answer);
+ it('accepts a full original 2000-character human question and 500-character clarification without serialization overhead or truncation',async()=>{
+  const {ctx}=await actor(),question='q'.repeat(2000),answer='x'.repeat(500),stored=await exchange(ctx,undefined,question),before=await state();
+  const result=await ownAssistantClarification(ctx,stored.binding.exchangeId,answer);
+  expect(result).toEqual({originalQuestion:question,slot:'period',answer});expect(Object.isFrozen(result)).toBe(true);
+  expect(await state()).toEqual(before);
+ });
+ it('enforces exact 8000-character human history and 500-character response bounds without truncation',async()=>{
+  const {ctx}=await actor(),answer='x'.repeat(ASSISTANT_CONVERSATION_LIMITS.humanAnswer),length=ASSISTANT_CONVERSATION_LIMITS.history-2-answer.length;
+  const stored=await exchange(ctx,undefined,'q'.repeat(length)),tooLong=await exchange(ctx,undefined,'q'.repeat(length+1));
+  const before=await state(),exact=await ownAssistantClarification(ctx,stored.binding.exchangeId,answer);
+  expect(exact).toEqual({originalQuestion:stored.binding.question,slot:'period',answer});
+  expect((exact.originalQuestion+'\n\n'+exact.answer).length).toBe(8000);
+  expect(canClarifyAssistantQuestion(stored.binding.question)).toBe(true);expect(canClarifyAssistantQuestion(tooLong.binding.question)).toBe(false);
+  expect(canClarifyAssistantQuestion('q'.repeat(2000))).toBe(true);expect(canClarifyAssistantQuestion('q'.repeat(8000))).toBe(false);
+  expect(Object.isFrozen(ASSISTANT_CONVERSATION_LIMITS)).toBe(true);
+  for(const malformed of [null,undefined,{},[],42])expect(canClarifyAssistantQuestion(malformed)).toBe(false);
   await refused(ctx,tooLong.binding.exchangeId,answer);await refused(ctx,stored.binding.exchangeId,'x'.repeat(501));
   await refused(ctx,stored.binding.exchangeId,'  ');await refused(ctx,stored.binding.exchangeId,null);await refused(ctx,'not-an-id');
   let invoked=false;await refused(ctx,stored.binding.exchangeId,{toString(){invoked=true;return '2026';}});expect(invoked).toBe(false);expect(await state()).toEqual(before);
@@ -86,9 +99,9 @@ describe('actual caller-bound Assistant clarification continuation',()=>{
   const started=new Promise<void>((yes,no)=>{ready=yes;fail=no;}),finish=new Promise<void>(yes=>{release=yes;});
   const watchdog=setTimeout(()=>{fail(Error('owned clarification handshake timed out'));release();},10000);
   const holder=withTenant(admin,async tx=>{await lockAccessConfigurationTx(tx,b.tenantId);ready();await finish;});void holder.catch(fail);
-  let pending:Promise<string>|undefined,error:unknown;let result:string|undefined;
+  let pending:Promise<OwnAssistantClarification>|undefined,error:unknown;let result:OwnAssistantClarification|undefined;
   try{await started;const supplied={...ctx,roles:ctx.roles!.slice(),grants:ctx.grants!.map(g=>({...g}))};let scalar='My original human answer';
-   pending=ownAssistantClarificationQuestion(supplied,stored.binding.exchangeId,scalar);void pending.catch(e=>{error=e;});
+   pending=ownAssistantClarification(supplied,stored.binding.exchangeId,scalar);void pending.catch(e=>{error=e;});
    const deadline=Date.now()+4000;let waiting=false;
    while(Date.now()<deadline){if(error)throw error;const [r]=await owner.db.execute<{waiting:boolean}>(sql`select exists(select 1 from pg_locks l where l.locktype='advisory' and not l.granted and l.objsubid=1
     and l.database=(select oid from pg_database where datname=current_database()) and ((l.classid::bigint<<32)|l.objid::bigint)=hashtextextended(${'access-configuration:'+b.tenantId},0)) as waiting`);
@@ -96,6 +109,6 @@ describe('actual caller-bound Assistant clarification continuation',()=>{
    expect(waiting,'actual authority wait must be observed before caller mutation').toBe(true);
    supplied.userId=randomUUID();supplied.personId=randomUUID();supplied.roles!.splice(0,1,'super_admin');supplied.grants![0].role='super_admin';scalar='Retargeted';
   }finally{release();clearTimeout(watchdog);await holder;if(pending)result=await pending;}
-  expect(JSON.parse(result!)).toEqual({originalQuestion:stored.binding.question,humanClarification:{slot:'period',answer:'My original human answer'}});expect(await state()).toEqual(before);
+  expect(result).toEqual({originalQuestion:stored.binding.question,slot:'period',answer:'My original human answer'});expect(Object.isFrozen(result)).toBe(true);expect(await state()).toEqual(before);
  });
 });
