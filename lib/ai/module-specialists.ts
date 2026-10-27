@@ -2,13 +2,14 @@
  * A playbook interprets permitted current facts; it never computes payroll/entitlement or approves work.
  * v1 is an explicit evaluated behavior candidate, not a cosmetic prompt/template variant. */
 import {z} from 'zod';
+import {canonicalSpecialistFollowup,FOLLOWUP_CODES,type SpecialistDiagnostic} from './module-specialist-followup';
 import {AGENT_MODULE_CODES,MODULE_AGENT_CAPABILITIES,type AgentModuleCode} from './module-agents';
 import {MODULE_AGENT_ACTIONS} from './module-agent-actions';
 import {moduleHumanActionHandoffs} from './module-human-handoffs';
 import {presentCanonicalModuleData} from './module-job-presentation';
 import type {JobPresentation} from './module-jobs';
 import {routingDigest} from './module-agent-routing';
-export const SpecialistCandidate=z.object({kind:z.literal('canonical_specialist_v1'),module:z.enum(AGENT_MODULE_CODES),playbook:z.literal('canonical_domain_v1')}).strict();
+export const SpecialistCandidate=z.object({kind:z.literal('canonical_specialist_v1'),module:z.enum(AGENT_MODULE_CODES),playbook:z.enum(['canonical_domain_v1','canonical_followup_v1'])}).strict();
 export type SpecialistCandidate=z.infer<typeof SpecialistCandidate>;
 export const SPECIALIST_FINDINGS=[
  'scope_current_caller','empty_is_not_tenant_absence','bounded_results','withheld_not_reconstructable',
@@ -27,13 +28,13 @@ export const SPECIALIST_FINDINGS=[
  'human_test_pass_not_independent_verification','human_test_failure_needs_native_followup','test_work_incomplete','test_not_applicable_not_pass',
 ] as const;
 export type SpecialistFinding=typeof SPECIALIST_FINDINGS[number];
-export type SpecialistAssessment=Readonly<{version:1;module:AgentModuleCode;coverage:'canonical_domain_guidance_only';findings:readonly SpecialistFinding[];presentation:JobPresentation;humanActions:ReturnType<typeof moduleHumanActionHandoffs>;effects:readonly [];requiresFreshNativeReview:true}>;
+export type SpecialistAssessment=Readonly<{version:1;module:AgentModuleCode;coverage:'canonical_domain_guidance_only';findings:readonly SpecialistFinding[];presentation:JobPresentation;humanActions:ReturnType<typeof moduleHumanActionHandoffs>;effects:readonly [];requiresFreshNativeReview:true;diagnostic?:SpecialistDiagnostic}>;
 const fail=():never=>{throw Error('Current specialist evidence unavailable.');},object=(value:unknown):Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:fail(),array=(value:unknown)=>Array.isArray(value)?value.map(object):fail();
 const bounded=(value:unknown)=>{const v=object(value);if(typeof v.truncated!=='boolean')return fail();return array(v.rows);};
 const number=(value:unknown)=>{const parsed=typeof value==='number'?value:typeof value==='string'&&/^-?\d+(?:\.\d+)?$/.test(value)?Number(value):NaN;return Number.isFinite(parsed)?parsed:null;};
 const positive=(value:unknown)=>{const n=number(value);return n!==null&&n>0;};
 export function specialistNativeContractDigest(module:AgentModuleCode){return routingDigest(['specialist-native-contract-v1',module,MODULE_AGENT_CAPABILITIES.find(row=>row[0]===module),MODULE_AGENT_ACTIONS[module],moduleHumanActionHandoffs(module)]);}
-export const SPECIALIST_ENGINE_DIGEST=routingDigest(['canonical-specialist-engine-v1',SPECIALIST_FINDINGS,'native-states-only','no-financial-or-entitlement-arithmetic','fresh-caller-only','fieldwise-native-leave-disclosure']);
+export const SPECIALIST_ENGINE_DIGEST=routingDigest(['canonical-specialist-engine-v1',SPECIALIST_FINDINGS,'native-states-only','no-financial-or-entitlement-arithmetic','fresh-caller-only','fieldwise-native-leave-disclosure','canonical-followup-v1',FOLLOWUP_CODES]);
 export const SPECIALIST_POLICY=Object.freeze({securityFailures:0,qualityFailures:0,independentEvaluators:2,maxJobs:100,maxHours:24,requiresNonemptyNativeEvidence:true,coverage:'canonical_domain_guidance_only' as const});
 export const SPECIALIST_POLICY_DIGEST=routingDigest(SPECIALIST_POLICY);
 /** Raw input must come from the actual current-caller owner, never a posted/model result. */
@@ -67,5 +68,5 @@ export function executeCanonicalSpecialist(candidateValue:unknown,source:{module
   case'system_testing':for(const row of bounded(data)){if(row.status==='passed')add('human_test_pass_not_independent_verification');else if(['failed','blocked','retest_required'].includes(String(row.status)))add('human_test_failure_needs_native_followup');else if(row.status==='not_applicable')add('test_not_applicable_not_pass');else add('test_work_incomplete');}break;
   default:{const unsupported:never=module;void unsupported;return fail();}
  }
- return Object.freeze({version:1,module,coverage:'canonical_domain_guidance_only',findings:Object.freeze([...findings].sort()),presentation,humanActions:moduleHumanActionHandoffs(module),effects:Object.freeze([]) as readonly [],requiresFreshNativeReview:true});
+ return Object.freeze({version:1,module,coverage:'canonical_domain_guidance_only',findings:Object.freeze([...findings].sort()),presentation,humanActions:moduleHumanActionHandoffs(module),effects:Object.freeze([]) as readonly [],requiresFreshNativeReview:true,...(candidate.playbook==='canonical_followup_v1'?{diagnostic:canonicalSpecialistFollowup(module,data,presentation)}:{})});
 }

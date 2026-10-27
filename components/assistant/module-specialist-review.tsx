@@ -30,6 +30,7 @@ export async function ModuleSpecialistReview({view}:{view:View}){
     <label className="block text-sm">{t('module')}<select name="moduleVersion" required className={`${inputCls} mt-1 min-h-11 w-full`}>
      {view.modules.map(row=><option key={row.module} value={`${row.module}:${row.nextVersion}`}>{record({module:row.module,version:row.nextVersion})}</option>)}
     </select></label>
+    <label className="block text-sm">{t('strategy')}<select name="playbook" defaultValue="canonical_domain_v1" required className={`${inputCls} mt-1 min-h-11 w-full`}><option value="canonical_domain_v1">{t('strategySummary')}</option><option value="canonical_followup_v1">{t('strategyDiagnostic')}</option></select></label><p className="text-xs text-muted-foreground">{t('strategyScope')}</p>
     {view.ownSignalChoices.length>0&&<fieldset className="space-y-2"><legend className="text-sm">{t('signalsTitle')}</legend><p className="text-xs text-muted-foreground">{t('signalsConsent')}</p>
      {view.ownSignalChoices.map(signal=><label key={signal.id} className="flex min-h-11 items-center gap-2 text-xs"><input type="checkbox" name="signalId" value={signal.id}/><span>{jobs(`module_${signal.module}`)} · {signals(`signal_${signal.outcome}`)}</span></label>)}
     </fieldset>}
@@ -37,7 +38,7 @@ export async function ModuleSpecialistReview({view}:{view:View}){
     <button type="submit" disabled={!view.modules.length} className={`${btnPrimary} min-h-11`}>{t('create')}</button>
    </form>
    {view.candidates.length?<ul className="space-y-3">{view.candidates.map(row=><li key={row.id} className="rounded-lg border p-3 text-sm">
-    <p className="font-medium">{record(row)}</p><p className="mt-1 text-xs text-muted-foreground">{row.evaluations===null||row.passingEvaluators===null||row.incompleteEvaluators===null?t('evaluationsUnknown'):<>{t('evaluations',{count:row.evaluations})} · {t('passing',{count:row.passingEvaluators})} · {t('incomplete',{count:row.incompleteEvaluators})}</>}</p>
+    <p className="font-medium">{record(row)}{row.playbook&&<> · {t(row.playbook==='canonical_followup_v1'?'strategyDiagnostic':'strategySummary')}</>}</p><p className="mt-1 text-xs text-muted-foreground">{row.evaluations===null||row.passingEvaluators===null||row.incompleteEvaluators===null?t('evaluationsUnknown'):<>{t('evaluations',{count:row.evaluations})} · {t('passing',{count:row.passingEvaluators})} · {t('incomplete',{count:row.incompleteEvaluators})}</>}</p>
    </li>)}</ul>:<p className="text-sm text-muted-foreground">{t('empty')}</p>}
    {reviewable.length>0&&<form action={evaluateSpecialistCandidateAction} className="space-y-3">
     <label className="block text-sm">{t('chooseCandidate')}<select name="candidateId" required className={`${inputCls} mt-1 min-h-11 w-full`}>{reviewable.map(row=><option key={row.id} value={row.id}>{record(row)}</option>)}</select></label>

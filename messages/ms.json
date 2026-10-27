@@ -16761,7 +16761,19 @@
         "signalsTitle": "Pilih maklum balas untuk disertakan",
         "signalsConsent": "Pilihan: pilih sehingga sepuluh maklum balas anda yang telah disahkan untuk modul yang sama seperti dipilih di atas. Penarafan mencadangkan penambahbaikan; ia tidak membuktikan ketepatan.",
         "signalsTruncated": "Hanya pilihan terkini yang terhad dipaparkan; ini bukan keseluruhan sejarah maklum balas anda.",
-        "evaluationsUnknown": "Bukti penilaian tidak tersedia atau tidak lagi terkini."
+        "evaluationsUnknown": "Bukti penilaian tidak tersedia atau tidak lagi terkini.",
+        "strategy": "Tingkah laku untuk dinilai",
+        "strategySummary": "Penjelasan keadaan direkodkan",
+        "strategyDiagnostic": "Susulan diagnostik berasaskan bukti",
+        "strategyScope": "Diagnostik boleh mengenal pasti rekod untuk diperiksa atau menyatakan bukti tidak mencukupi. Ia tidak membenarkan perubahan atau membuktikan maklum balas menambah baik hasil.",
+        "diagnosticTitle": "Susulan diagnostik semasa",
+        "diagnosticState_review": "Semak rekod asal yang berkaitan. Aliran kerja asal mesti menentukan sebarang pembetulan.",
+        "diagnosticState_recorded": "Jejaki status yang direkodkan. Tiada tindakan HR baharu tersirat.",
+        "diagnosticState_insufficient": "Bukti yang lengkap dan dibenarkan tidak mencukupi untuk mencadangkan langkah seterusnya.",
+        "diagnosticState_no_followup": "Tiada susulan dikenal pasti dalam paparan terhad ini. Ini bukan jaminan kesediaan umum.",
+        "diagnosticScope": "Keputusan ini menggunakan rekod semasa yang dibenarkan di atas. Ia tidak membuat perubahan; sebarang aliran kerja manusia memerlukan niat anda sendiri.",
+        "diagnosticInspect": "Periksa rekod semasa",
+        "diagnosticRecord": "Periksa rekod sumber {n} di atas."
       },
       "specialistFindings": {
         "scope_current_caller": "Nota ini hanya menggunakan rekod semasa yang boleh anda akses.",

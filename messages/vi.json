@@ -16761,7 +16761,19 @@
         "signalsTitle": "Chọn phản hồi để đưa vào",
         "signalsConsent": "Không bắt buộc: chọn tối đa mười phản hồi đã được xác minh của chính bạn cho cùng mô-đun đã chọn ở trên. Xếp hạng gợi ý cải tiến, không chứng minh tính đúng đắn.",
         "signalsTruncated": "Chỉ hiển thị một tập phản hồi gần đây có giới hạn; đây không phải toàn bộ lịch sử phản hồi của bạn.",
-        "evaluationsUnknown": "Bằng chứng đánh giá không khả dụng hoặc không còn cập nhật."
+        "evaluationsUnknown": "Bằng chứng đánh giá không khả dụng hoặc không còn cập nhật.",
+        "strategy": "Hành vi cần đánh giá",
+        "strategySummary": "Giải thích trạng thái đã ghi nhận",
+        "strategyDiagnostic": "Theo dõi chẩn đoán dựa trên bằng chứng",
+        "strategyScope": "Chẩn đoán có thể chỉ ra hồ sơ cần xem hoặc cho biết chưa đủ bằng chứng. Nó không cho phép thay đổi hay chứng minh phản hồi đã cải thiện kết quả.",
+        "diagnosticTitle": "Hướng theo dõi chẩn đoán hiện tại",
+        "diagnosticState_review": "Xem hồ sơ gốc liên quan. Mọi chỉnh sửa phải do quy trình gốc quyết định.",
+        "diagnosticState_recorded": "Theo dõi trạng thái đã ghi nhận. Không hàm ý cần thao tác nhân sự mới.",
+        "diagnosticState_insufficient": "Chưa đủ bằng chứng đầy đủ và được phép để đề xuất bước tiếp theo.",
+        "diagnosticState_no_followup": "Không thấy việc cần theo dõi trong phạm vi giới hạn này. Đây không phải bảo đảm sẵn sàng chung.",
+        "diagnosticScope": "Quyết định này dùng các hồ sơ hiện tại được phép xem ở trên. Không thay đổi dữ liệu; mọi quy trình do người thực hiện vẫn cần ý định rõ ràng của bạn.",
+        "diagnosticInspect": "Xem hồ sơ hiện tại",
+        "diagnosticRecord": "Xem hồ sơ nguồn số {n} ở trên."
       },
       "specialistFindings": {
         "scope_current_caller": "Các ghi chú này chỉ dùng những hồ sơ hiện tại mà bạn được phép xem.",

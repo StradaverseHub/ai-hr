@@ -20,4 +20,11 @@ describe('actual candidate domain evaluator protocol',()=>{
   expect(report.cases.find(row=>row.id==='leave:poisoned-withheld-refused')).toBeUndefined();
  });
  it('propagates actual source authority/storage refusal without inventing a completed evaluation',async()=>{const carrier={moduleWork:vi.fn(async()=>{throw Error('Actual source refused');})} as unknown as AssistantReadSession;await expect(executeSpecialistHoldout(configuration('payroll'),carrier)).rejects.toThrow('Actual source refused');});
+ it.each(AGENT_MODULE_CODES)('%s compares the diagnostic against independently required tasks without inventing an all-module improvement',async module=>{
+  const fixture=SPECIALIST_HOLDOUTS.find(row=>row.module===module)!,report=await executeSpecialistHoldout({...configuration(module),playbook:'canonical_followup_v1'},read(module,fixture.data));
+  expect(report).toMatchObject({state:'complete',securityFailures:0,qualityFailures:0});expect(report.diagnosticComparison.applicable).toBe(true);expect(report.diagnosticComparison.candidateCorrect).toBe(report.diagnosticComparison.required);
+  expect(report.diagnosticComparison.improved).toBe(['org','leave','attendance','claims','performance'].includes(module));
+  if(report.diagnosticComparison.improved)expect(report.diagnosticComparison.candidateCorrect).toBeGreaterThan(report.diagnosticComparison.baselineCorrect);else expect(report.diagnosticComparison.candidateCorrect).toBe(report.diagnosticComparison.baselineCorrect);
+ });
+
 });

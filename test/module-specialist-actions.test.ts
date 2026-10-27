@@ -12,7 +12,7 @@ beforeEach(()=>{vi.resetAllMocks();state.session.mockResolvedValue(ctx);state.re
 describe('specialist human actions forward no posted authority or success evidence',()=>{
  it('captures a closed candidate selection and explicit feedback IDs with the authenticated session',async()=>{
   await expect(createSpecialistCandidateAction(form({moduleVersion:'leave:3',signalId:['chosen-own-signal'],userId:'FOREIGN',tenantId:'FOREIGN',roles:'super_admin',qualityScore:'1'}))).rejects.toThrow('FRAMEWORK_REDIRECT /assistant');
-  expect(state.create).toHaveBeenCalledExactlyOnceWith(ctx,{module:'leave',version:3,signalIds:['chosen-own-signal']});
+  expect(state.create).toHaveBeenCalledExactlyOnceWith(ctx,{module:'leave',version:3,signalIds:['chosen-own-signal'],playbook:'canonical_domain_v1'});
  });
  it.each(['foreign:1','leave:0','leave:NaN','leave:2:effect'])('refuses unsupported selection %s before authentication or an owner call',async choice=>{
   await expect(createSpecialistCandidateAction(form({moduleVersion:choice}))).rejects.toThrow('/assistant?error=agent_review');expect(state.session).not.toHaveBeenCalled();expect(state.create).not.toHaveBeenCalled();
@@ -31,4 +31,8 @@ describe('specialist human actions forward no posted authority or success eviden
   state.rollback.mockRejectedValueOnce(Error('PRIVATE SQL OR PROVIDER BODY'));
   await expect(rollbackSpecialistCandidateAction(form({promotionId:'nominated',reason:'grant privileges'}))).rejects.toThrow('FRAMEWORK_REDIRECT /assistant?error=agent_review');expect(state.rollback).toHaveBeenCalledExactlyOnceWith(ctx,{promotionId:'nominated',reason:'human'});expect(state.redirect).not.toHaveBeenCalledWith(expect.stringContaining('PRIVATE'));
  });
+ it('forwards only the explicit closed diagnostic strategy while the canonical owner validates its versioned meaning',async()=>{
+  await expect(createSpecialistCandidateAction(form({moduleVersion:'claims:4',playbook:'canonical_followup_v1',qualityFailures:'0'}))).rejects.toThrow('FRAMEWORK_REDIRECT /assistant');expect(state.create).toHaveBeenCalledExactlyOnceWith(ctx,{module:'claims',version:4,signalIds:[],playbook:'canonical_followup_v1'});
+ });
+
 });

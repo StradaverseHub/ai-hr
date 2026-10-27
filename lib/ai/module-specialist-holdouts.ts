@@ -3,6 +3,7 @@
 import type {AgentModuleCode} from './module-agents';
 import type {SpecialistFinding} from './module-specialists';
 import {routingDigest} from './module-agent-routing';
+import {specialistFollowupCases} from './module-specialist-followup-cases';
 export type SpecialistHoldout=Readonly<{id:string;module:AgentModuleCode;data:unknown;expected:readonly SpecialistFinding[]}>;
 const b=(rows:unknown[],truncated=false)=>({rows,truncated}),f=(module:AgentModuleCode,id:string,data:unknown,expected:SpecialistFinding[]):SpecialistHoldout=>Object.freeze({id:module+':'+id,module,data,expected:Object.freeze(['scope_current_caller' as const,...expected].sort())});
 const states:SpecialistHoldout[]=[
@@ -78,5 +79,5 @@ export const SPECIALIST_EXPECTED_FACTS:Readonly<Record<string,readonly Readonly<
 function freeze(value:unknown):void{if(value&&typeof value==='object'){Object.freeze(value);for(const child of Object.values(value))freeze(child);}}
 for(const row of states)freeze(row);freeze(SPECIALIST_EXPECTED_FACTS);
 export const SPECIALIST_HOLDOUTS:readonly SpecialistHoldout[]=Object.freeze(states);
-export function specialistInputDigest(module:AgentModuleCode){return routingDigest(['specialist-independent-domain-input-v1',SPECIALIST_HOLDOUTS.filter(row=>row.module===module),Object.entries(SPECIALIST_EXPECTED_FACTS).filter(([id])=>id.startsWith(module+':'))]);}
-export function specialistSuiteDigest(module:AgentModuleCode){return routingDigest(['specialist-domain-suite-v1',module,specialistInputDigest(module),'exact-facts+domain-meaning+fresh-native-nonempty+no-effect+scope']);}
+export function specialistInputDigest(module:AgentModuleCode){return routingDigest(['specialist-independent-domain-input-v2-diagnostic',specialistFollowupCases(module),SPECIALIST_HOLDOUTS.filter(row=>row.module===module),Object.entries(SPECIALIST_EXPECTED_FACTS).filter(([id])=>id.startsWith(module+':'))]);}
+export function specialistSuiteDigest(module:AgentModuleCode){return routingDigest(['specialist-domain-suite-v2-diagnostic-comparison',module,specialistInputDigest(module),'exact-facts+domain-meaning+fresh-native-nonempty+no-effect+scope+independent-diagnostic-baseline-comparison']);}

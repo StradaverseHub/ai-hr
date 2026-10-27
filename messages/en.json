@@ -16761,7 +16761,19 @@
         "signalsTitle": "Choose feedback to include",
         "signalsConsent": "Optional: choose up to ten of your verified feedback items for the same module selected above. Ratings suggest improvements; they do not prove correctness.",
         "signalsTruncated": "Only a bounded recent selection is shown; this is not your complete feedback history.",
-        "evaluationsUnknown": "Evaluation evidence is unavailable or no longer current."
+        "evaluationsUnknown": "Evaluation evidence is unavailable or no longer current.",
+        "strategy": "Behavior to evaluate",
+        "strategySummary": "Recorded-state explanation",
+        "strategyDiagnostic": "Evidence-based diagnostic follow-up",
+        "strategyScope": "Diagnostics may identify a record to inspect or say the evidence is insufficient. They do not authorize changes or prove that feedback improved outcomes.",
+        "diagnosticTitle": "Current diagnostic follow-up",
+        "diagnosticState_review": "Review the relevant original record. A native workflow must decide any correction.",
+        "diagnosticState_recorded": "Track the recorded status. No new HR action is implied.",
+        "diagnosticState_insufficient": "There is not enough complete, permitted evidence to recommend a next step.",
+        "diagnosticState_no_followup": "No follow-up is identified in this bounded view. This is not a general readiness guarantee.",
+        "diagnosticScope": "This decision uses the current permitted records above. It makes no changes and requires your own intent before any human workflow.",
+        "diagnosticInspect": "Inspect current records",
+        "diagnosticRecord": "Inspect source record {n} above."
       },
       "specialistFindings": {
         "scope_current_caller": "These notes use only the current records available to you.",

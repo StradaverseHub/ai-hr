@@ -12,7 +12,7 @@ export async function createSpecialistCandidateAction(form:FormData){
  const choice=String(form.get('moduleVersion')??'').split(':'),module=choice[0],version=Number(choice[1]);
  const signalIds=form.getAll('signalId').map(value=>String(value));
  if(choice.length!==2||!isAgentModuleCode(module)||!Number.isSafeInteger(version)||version<1)return fail();
- try{const ctx=await getBrowserCommandSession();await createCanonicalSpecialistCandidate(ctx,{module,version,signalIds});}catch{fail();}finish();
+ try{const ctx=await getBrowserCommandSession();await createCanonicalSpecialistCandidate(ctx,{module,version,signalIds,playbook:String(form.get('playbook')??'canonical_domain_v1') as 'canonical_domain_v1'|'canonical_followup_v1'});}catch{fail();}finish();
 }
 export async function evaluateSpecialistCandidateAction(form:FormData){
  const candidateId=String(form.get('candidateId')??'');if(form.get('consented')!=='yes')fail();

@@ -16761,7 +16761,19 @@
         "signalsTitle": "选择要纳入的反馈",
         "signalsConsent": "可选：为上方所选的同一模块，选择最多十项您本人已核验的反馈。评分可用于提出改进建议，但不能证明结果正确。",
         "signalsTruncated": "仅显示近期反馈的有限选项，并非您的完整反馈历史。",
-        "evaluationsUnknown": "评估证据不可用或已不再有效。"
+        "evaluationsUnknown": "评估证据不可用或已不再有效。",
+        "strategy": "要评估的行为",
+        "strategySummary": "已记录状态说明",
+        "strategyDiagnostic": "基于证据的诊断跟进",
+        "strategyScope": "诊断可指出需要查看的记录，或说明证据不足。它不授权更改，也不证明反馈改善了结果。",
+        "diagnosticTitle": "当前诊断跟进",
+        "diagnosticState_review": "查看相关原始记录。任何更正都必须由原生工作流程决定。",
+        "diagnosticState_recorded": "跟踪已记录状态。这不代表需要新的 HR 操作。",
+        "diagnosticState_insufficient": "完整且获准访问的证据不足，无法推荐下一步。",
+        "diagnosticState_no_followup": "此有限视图中未发现跟进事项。这不保证整体已准备就绪。",
+        "diagnosticScope": "此判断仅使用上方当前获准访问的记录。它不作任何更改；开始人工工作流程前仍需您的明确意愿。",
+        "diagnosticInspect": "查看当前记录",
+        "diagnosticRecord": "查看上方第 {n} 条来源记录。"
       },
       "specialistFindings": {
         "scope_current_caller": "这些说明仅使用您当前获准查看的记录。",
