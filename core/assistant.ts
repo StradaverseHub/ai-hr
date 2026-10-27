@@ -206,7 +206,11 @@ export async function askAssistant(
   const clarification = p.clarificationExchangeId===undefined?null:await ownAssistantClarification(ctx,p.clarificationExchangeId,humanQuestion);
   // Stored history is human-readable. Each new clarification is loaded by the actual own-row owner,
   // and only human text enters context; no prior model answer or historical HR result is replayed.
-  const question = clarification ? clarification.originalQuestion+'\n\n'+clarification.answer : humanQuestion;
+  // RETENTION (owner rule: raw chat content lives 30 days from ITS OWN question). A continuation stores
+  // ONLY the new human reply. The original question stays in the original exchange under that exchange's
+  // deadline and reaches the provider below as transient turn context; copying it into this new row would
+  // give it a fresh 30 days, so a clarification read on day 29 would carry it to day 59.
+  const question = humanQuestion;
 
   const now = p.now ?? new Date();
   const period = periodOf(now);
@@ -359,7 +363,8 @@ export async function askAssistant(
     throw new AssistantError('provider_error');
   }
 
-  const exchangeId = await persist(ctx, {
+  // From here the question is ADMITTED: it counts against the allowance exactly once whatever happens.
+  const recorded = await persist(ctx, {
     strategy:conversationStrategy.capability,
     appUserId,
     question,
@@ -375,8 +380,11 @@ export async function askAssistant(
     sourceReads: sourcesComplete ? sourceReads : undefined,
     answerPlan,
   });
+  // Content withdrawn mid-flight (history cleared, erasure, access change): accounting was recorded, the
+  // answer was not. The caller sees the generic, warm failure and nothing that confirms what was erased.
+  if (!recorded.retained) throw new AssistantError('provider_error');
 
-  return { exchangeId, stop, turns: turnCount, hitTurnCap, toolsUsed: audit.map((a) => a.name) };
+  return { exchangeId: recorded.exchangeId, stop, turns: turnCount, hitTurnCap, toolsUsed: audit.map((a) => a.name) };
 }
 
 /**
@@ -413,31 +421,65 @@ async function runTools(
  }
 }
 
-/** Write the audit row and roll the period counter, in ONE transaction so usage can never be recorded
- *  without the exchange that caused it. */
-async function persist(
-  ctx: SessionContext,
-  p: {
-    strategy:AssistantConversationStrategyCapability;
-    appUserId: string;
-    question: string;
-    answer: string;
-    audit: { name: string; input: unknown; rowCount: number | null; refusal?: string }[];
-    turnCount: number;
-    hitTurnCap: boolean;
-    stop: AiStop;
-    cfg: { provider: string; model: string };
-    spend: AiUsage;
-    period: string;
-    error: string | null;
-    sourceReads?: readonly AssistantSourceRead[];
-    answerPlan?: AssistantAnswerPlan;
-  },
-): Promise<string> {
+type PersistInput = {
+  strategy:AssistantConversationStrategyCapability;
+  appUserId: string;
+  question: string;
+  answer: string;
+  audit: { name: string; input: unknown; rowCount: number | null; refusal?: string }[];
+  turnCount: number;
+  hitTurnCap: boolean;
+  stop: AiStop;
+  cfg: { provider: string; model: string };
+  spend: AiUsage;
+  period: string;
+  error: string | null;
+  sourceReads?: readonly AssistantSourceRead[];
+  answerPlan?: AssistantAnswerPlan;
+};
+
+/** `retained` is false when the exchange's raw content could not be kept; its accounting still was. */
+type RecordedExchange = Readonly<{ exchangeId: string; retained: boolean }>;
+
+/**
+ * Record ONE ADMITTED question. Called exactly once per admission, on every outcome (answer, refusal,
+ * provider failure), and it always leaves exactly one accounting row and one usage increment behind.
+ *
+ * WHY TWO TRANSACTIONS. The content transaction completes the strategy-use marker, which is how history
+ * clearing and PDPA erasure fence in-flight work: an erased marker makes completion refuse, and the whole
+ * content transaction rolls back so erased raw text is never recreated. Before this split that rollback
+ * also took the exchange row (the per-user daily COUNTER) and the period usage with it, so "ask, clear
+ * history mid-flight, repeat" walked past the daily ceiling and spent provider tokens that were never
+ * counted. The fallback records the same exchange id with its content already retired — counts, tokens,
+ * provider and dates only — plus the usage, in one transaction. ON CONFLICT on that id makes a lost commit
+ * acknowledgement harmless: if the content transaction did commit, the fallback inserts nothing and adds
+ * no usage, so nothing is counted twice.
+ */
+async function persist(ctx: SessionContext, p: PersistInput): Promise<RecordedExchange> {
   const id = randomUUID();
+  try {
+    try {
+      await persistWithContent(ctx, id, p);
+      return Object.freeze({ exchangeId: id, retained: true });
+    } catch {
+      // Deliberately undiagnosed: erasure, revoked access, a lock timeout and a storage fault all end the
+      // same way — no raw content, full accounting. A failure here is never shown to the caller.
+    }
+    const inserted = await persistAccountingOnly(ctx, id, p);
+    // No insert means the content transaction's commit landed after all; that row is the whole record.
+    return Object.freeze({ exchangeId: id, retained: !inserted });
+  } finally {
+    // The request is finished either way; a pending DB marker that was not completed stays refused.
+    retireAssistantConversationStrategyCapability(p.strategy);
+  }
+}
+
+/** The exchange with its content, the strategy completion and the usage, in ONE transaction so usage can
+ *  never be recorded without the exchange that caused it. */
+async function persistWithContent(ctx: SessionContext, id: string, p: PersistInput): Promise<void> {
   const disclosureReceipt = sealAssistantDisclosure({ tenantId: ctx.tenantId, userId: p.appUserId,
     exchangeId: id, question: p.question, answer: p.answer }, p.sourceReads, p.answerPlan);
-  const completed=await withTenant(ctx, async (tx) => {
+  await withTenant(ctx, async (tx) => {
     const [row] = await tx
       .insert(assistantExchange)
       .values({
@@ -460,33 +502,65 @@ async function persist(
       })
       .returning({ id: assistantExchange.id });
     await completeAssistantConversationStrategyTx(tx,ctx,p.strategy,row!.id);
+    await addUsageTx(tx, ctx, p);
+  });
+}
 
-    // Upsert the period counter. ON CONFLICT so two concurrent exchanges cannot lose one another's
-    // tokens — a ceiling that under-counts under load is a ceiling that does not hold.
-    await tx
-      .insert(assistantUsage)
+/** Accounting with NO raw content: the row is born retired (question '', no answer, receipt, tool inputs
+ *  or error text — the shape the retirement CHECK pins), so nothing erased can come back through it.
+ *  Returns false when the id already exists, i.e. the content transaction committed. */
+async function persistAccountingOnly(ctx: SessionContext, id: string, p: PersistInput): Promise<boolean> {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .insert(assistantExchange)
       .values({
         tenantId: ctx.tenantId,
-        period: p.period,
+        appUserId: p.appUserId,
+        id,
+        question: '',
+        answer: null,
+        disclosureReceipt: null,
+        toolCalls: [],
+        contentRetiredAt: sql`clock_timestamp()`,
+        turnCount: p.turnCount,
+        hitTurnCap: p.hitTurnCap,
+        stop: p.stop,
+        provider: p.cfg.provider,
+        model: p.cfg.model,
         inputTokens: p.spend.inputTokens,
         outputTokens: p.spend.outputTokens,
         cachedInputTokens: p.spend.cachedInputTokens,
-        exchangeCount: 1,
+        error: null,
       })
-      .onConflictDoUpdate({
-        target: [assistantUsage.tenantId, assistantUsage.period],
-        set: {
-          inputTokens: sql`${assistantUsage.inputTokens} + ${p.spend.inputTokens}`,
-          outputTokens: sql`${assistantUsage.outputTokens} + ${p.spend.outputTokens}`,
-          cachedInputTokens: sql`${assistantUsage.cachedInputTokens} + ${p.spend.cachedInputTokens}`,
-          exchangeCount: sql`${assistantUsage.exchangeCount} + 1`,
-          updatedAt: sql`now()`,
-        },
-      });
-
-    return row!.id;
+      .onConflictDoNothing({ target: assistantExchange.id })
+      .returning({ id: assistantExchange.id });
+    if (!row) return false;
+    await addUsageTx(tx, ctx, p);
+    return true;
   });
-  // A rollback must not turn an unfinished marker into a completed in-memory capability.
-  retireAssistantConversationStrategyCapability(p.strategy);
-  return completed;
+}
+
+/** Upsert the period counter. ON CONFLICT so two concurrent exchanges cannot lose one another's tokens —
+ *  a ceiling that under-counts under load is a ceiling that does not hold. */
+async function addUsageTx(tx: Tx, ctx: SessionContext, p: PersistInput): Promise<void> {
+  await tx
+    .insert(assistantUsage)
+    .values({
+      tenantId: ctx.tenantId,
+      period: p.period,
+      inputTokens: p.spend.inputTokens,
+      outputTokens: p.spend.outputTokens,
+      cachedInputTokens: p.spend.cachedInputTokens,
+      exchangeCount: 1,
+    })
+    .onConflictDoUpdate({
+      target: [assistantUsage.tenantId, assistantUsage.period],
+      set: {
+        inputTokens: sql`${assistantUsage.inputTokens} + ${p.spend.inputTokens}`,
+        outputTokens: sql`${assistantUsage.outputTokens} + ${p.spend.outputTokens}`,
+        cachedInputTokens: sql`${assistantUsage.cachedInputTokens} + ${p.spend.cachedInputTokens}`,
+        exchangeCount: sql`${assistantUsage.exchangeCount} + 1`,
+        updatedAt: sql`now()`,
+      },
+    });
 }

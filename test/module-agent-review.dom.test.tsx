@@ -8,14 +8,15 @@ vi.mock('next-intl/server',()=>({getLocale:async()=>state.locale,getTranslations
  let value:unknown=copies[state.locale];for(const part of [...namespace.split('.'),...key.split('.')])value=(value as Record<string,unknown>)[part];
  if(typeof value!=='string')throw Error('Missing fixture translation');return value.replace(/\{(\w+)\}/g,(_whole,name:string)=>String(args?.[name]??'{'+name+'}'));
 }}));
-vi.mock('../app/assistant/agent-review-actions',()=>({createAgentCandidateAction:async()=>{},evaluateAgentCandidateAction:async()=>{},promoteAgentCandidateAction:async()=>{},rollbackAgentCandidateAction:async()=>{},tryAgentCandidateAction:async()=>{}}));
+vi.mock('../app/assistant/agent-review-actions',()=>({createAgentCandidateAction:async()=>{},evaluateAgentCandidateAction:async()=>{},promoteAgentCandidateAction:async()=>{},rollbackAgentCandidateAction:async()=>{},tryAgentCandidateAction:async()=>{},
+ createConversationCandidateAction:async()=>{},evaluateConversationCandidateAction:async()=>{},promoteConversationCandidateAction:async()=>{},eraseConversationMetadataAction:async()=>{}}));
 import {ModuleAgentReview} from '../components/assistant/module-agent-review';
 import {PROMPT_HOLDOUTS,PROMPT_HOLDOUT_REQUEST_LIMIT} from '../lib/ai/module-agent-prompt-candidate';
 import {compareMeasuredQuality} from '../lib/ai/paired-evaluation';
 import {MODULE_AGENT_SOURCE_DIGEST} from '../lib/ai/module-agent-source-manifest';
 type View=Parameters<typeof ModuleAgentReview>[0]['view'];
 function view(progress:View['candidates'][number]['progress']):View{return {sourceDigest:MODULE_AGENT_SOURCE_DIGEST,nextVersion:2,lastTrial:null,ownSignalChoices:[],ownNativeSignalChoices:[],nativeSignalChoicesTruncated:false,
- candidates:[{id:'candidate',version:1,kind:'read_plan_prompt_v1',own:false,attempts:1,progress,verifiedSignalCount:null}],promotions:[]};}
+ candidates:[{id:'candidate',version:1,kind:'read_plan_prompt_v1',own:false,attempts:1,progress,verifiedSignalCount:null}],promotions:[],conversationCandidates:[],conversationPromotions:[]};}
 beforeEach(()=>{state.locale='en';});afterEach(cleanup);
 describe('human evaluation scope, consent and authenticated progress',()=>{
  it.each(['en','ms','zh','ta','th','vi'])('%s shows only its fixed trial questions and the real per-click request cap',async locale=>{

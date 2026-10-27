@@ -12,6 +12,8 @@ import {bindAiSpendTaskTx} from '../core/ai-spend-task';
 import {erasePersonPii,erasePersonPiiTx} from '../core/pdpa';
 import {prepareAssistantConversationStrategyTx,recheckAssistantConversationStrategyTx} from '../core/module-agent-releases';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+/** Narrows the canonical pii.erased payload (typed unknown by appendEvent) without asserting its shape. */
+function erasedPayload(payload:unknown):payload is Record<string,unknown>&{erasedFields:string[]}{return typeof payload==='object'&&payload!==null&&'erasedFields' in payload&&Array.isArray(payload.erasedFields)&&payload.erasedFields.every(field=>typeof field==='string');}
 let base:Base;
 beforeAll(migrateTestDb);afterAll(async()=>{vi.unstubAllEnvs();await closeAll();});afterEach(()=>vi.restoreAllMocks());
 beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-conversation-privacy');vi.stubEnv('OPENAI_API_KEY','fictional-conversation-key');vi.stubEnv('ANTHROPIC_API_KEY','');vi.stubEnv('GOOGLE_API_KEY','');vi.stubEnv('GEMINI_API_KEY','');await resetDb();base=await seedBase();await setModule(base.tenantId,'assistant','active');});
@@ -32,7 +34,7 @@ describe('canonical conversation metadata erasure and non-resurrection',()=>{
  });
  it('rolls back actual metadata erasure when the real canonical audit omits its required positive-count flag',async()=>{
   const ctx=await actor();await prepare(ctx);const before=await stored(),append=events.appendEvent;
-  vi.spyOn(events,'appendEvent').mockImplementation(async(tx,event,options)=>{if(event.eventType==='pii.erased'){const fields=event.payload.erasedFields as string[];return append(tx,{...event,payload:{...event.payload,erasedFields:fields.filter(field=>field!=='assistantConversationLearning')}},options);}return append(tx,event,options);});
+  vi.spyOn(events,'appendEvent').mockImplementation(async(tx,event,options)=>{if(event.eventType==='pii.erased'){const payload=event.payload;if(!erasedPayload(payload))throw Error('Canonical pii.erased payload unavailable');const fields=payload.erasedFields;return append(tx,{...event,payload:{...payload,erasedFields:fields.filter(field=>field!=='assistantConversationLearning')}},options);}return append(tx,event,options);});
   await expect(erasePersonPii(ctx,request(ctx.employmentId))).rejects.toThrow();expect(await stored()).toEqual(before);const[rows]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from public.domain_event where event_type='pii.erased'`);expect(rows.n).toBe(0);
  });
 });
