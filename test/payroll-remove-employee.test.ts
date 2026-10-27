@@ -473,6 +473,11 @@ describe('Payroll — removeEmployeePayroll (DB)', () => {
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
     await generatePayslips(a, { batchId });
 
+    // Native payroll owners refuse a claimed role the login does not actually hold (stale or forged), so
+    // the admin really holds payroll_partner: the refusal below is the partner role's OWN missing key.
+    await owner.db
+      .insert(schema.roleAssignment)
+      .values({ tenantId: base.tenantId, appUserId: base.adminUserId, companyId: null, role: 'payroll_partner' });
     const partner: SessionContext = { ...(await entitledCtx(base)), roles: ['payroll_partner'] };
     await expect(
       removeEmployeePayroll(partner, { batchId, employmentIds: [e1.employmentId], reason: 'x' }),
