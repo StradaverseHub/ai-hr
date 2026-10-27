@@ -69,7 +69,7 @@ describe('Android enrollment custody transaction',()=>{
   const [row]=await owner.db.select().from(schema.mobileIntegrityKey);expect(row.platform).toBe('android');expect(row.environment).toBeNull();expect(row.assertionCounter).toBe(0);
   expect(row.publicKeySpki).toEqual(f.publicKeySpki);expect(row.metadata).toMatchObject({androidKeyGeneration:{version:1,versionCode:'4',securityLevel:'tee'}});
   const aad=JSON.stringify(['mobile-integrity-key-receipt',1,base.tenantId,e.ctx.userId,row.id,prepared.challenge.id]);
-  expect(JSON.parse(decryptSecret(row.receiptCiphertext,aad))).toEqual(['aihr.android.enrollment.proof',1,f.publicKeySpki.toString('base64'),f.certificateChain.map(value=>value.toString('base64'))]);
+  expect(JSON.parse(decryptSecret(row.receiptCiphertext,aad))).toEqual(['aihr.android.key.provenance',1,prepared.context,['aihr.android.enrollment.proof',1,f.publicKeySpki.toString('base64'),f.certificateChain.map(value=>value.toString('base64'))]]);
   expect(()=>decryptSecret(row.receiptCiphertext,aad+'wrong')).toThrow();
   expect(a).toMatchObject({platform:'android',proofKind:'google_key_generation_proof',environment:null});expect(a).not.toHaveProperty('metadata');expect(a).not.toHaveProperty('vendorKeyId');
   const events=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,row.id));expect(events.filter(event=>event.eventType==='mobile.integrity.key.enrolled')).toHaveLength(1);

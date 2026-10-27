@@ -62,7 +62,11 @@ export function createAndroidEnrollmentService(settings:unknown,ports:{verifyPro
    const jwk=createPublicKey({key:publicKeySpki,type:'spki',format:'der'}).export({format:'jwk'}),x=Buffer.from(jwk.x??'','base64url'),y=Buffer.from(jwk.y??'','base64url');
    if(x.length!==32||y.length!==32)fail('invalid_proof');
    const fingerprint=hash(Buffer.concat([Buffer.from([4]),x,y])),vendorKeyId=fingerprint.toString('base64'),id=randomUUID();
-   const aad=JSON.stringify(['mobile-integrity-key-receipt',1,ctx.tenantId,ctx.userId,id,challengeId]),receiptCiphertext=encryptSecret(serialized,aad);
+   // Retain the original server context for later policy re-evaluation and audit. Reconstructing it
+   // from a changed deployment policy would change the attested digest and destroy that evidence.
+   const provenance=JSON.stringify(['aihr.android.key.provenance',1,prepared.context,JSON.parse(serialized)]);
+   if(Buffer.byteLength(provenance)>48000)fail('invalid_proof');
+   const aad=JSON.stringify(['mobile-integrity-key-receipt',1,ctx.tenantId,ctx.userId,id,challengeId]),receiptCiphertext=encryptSecret(provenance,aad);
    const consumed=await consumeOwnIntegrityChallenge(ctx,{...intent,purpose:'device.enrollment',bindingHash:prepared.challenge.bindingHash,challengeId},async tx=>{
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':mobile-integrity:'+ctx.userId},0))`);
     const active=await tx.select({appInstallationId:mobileIntegrityKey.appInstallationId}).from(mobileIntegrityKey).where(and(eq(mobileIntegrityKey.actorId,ctx.userId!),isNull(mobileIntegrityKey.revokedAt))).limit(5);
