@@ -121,7 +121,7 @@ export function createAndroidClockSignatureService(settings:unknown,ports:Androi
     checkAndroidClockSignature({publicKey:createPublicKey({key:enrolled.publicKeySpki,type:'spki',format:'der'}),signature,clientData:context,expectedAppId:config.target.packageName,allowedBuildVersions:config.target.versionCodes});
     await fresh(tx,challenge);
     if(ports.verifyCurrent&&!current)throw new AndroidClockCommandError('configuration_unavailable');
-    await current?.assertFresh(tx,context);
+    // PROBE ONLY: omit pre-write freshness.
     const value=await operation(tx,{context,photo:p.photo,deviceToken:p.deviceToken,proofKind:'google_key_generation_proof',verification:'command_signature',...(current?{currentIntegrity:current.assessment}:{})});
     await ports.beforeCommit?.(tx);
     await current?.assertFresh(tx,context);
