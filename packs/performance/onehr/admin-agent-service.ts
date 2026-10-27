@@ -9,7 +9,7 @@ import type {SessionContext,Tx} from '../../../db/client';
 import {withPerformanceTenant} from '../../../core/module-gate';
 import {company,onehrCycle,onehrReview,reviewCycle} from '../../../db/schema';
 import {todayInKualaLumpur} from '../../../lib/hr-date';
-import {generateDraft,redactPII} from '../../../lib/ai';
+import {AiGatewayError,generateDraft,redactPII} from '../../../lib/ai';
 import {assessmentAiConfigTx,assessmentAiStateTx,assessmentAiFeatureEnabledTx} from './ai-settings';
 import {assessmentReminderSettingsTx} from './reminder-service';
 import {screenPerformanceQuestion} from './guide-screen';
@@ -119,7 +119,11 @@ export async function askAssessmentAdmin(ctx:SessionContext,cycleId:string|undef
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
  const selectedCycleId=cycleId;
  const question=z.string().trim().min(1).max(1000).parse(rawQuestion),history=z.array(z.object({role:z.enum(['user','agent']),content:z.string().max(1000)}).strict()).max(12).parse(rawHistory);
- const index=()=>withPerformanceTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);return getAssessmentAdminIndex(ctx,selectedCycleId,tx);});
+ // Both checks stay required. When the calling login has lost Performance administration, its stale AI
+ // snapshot must not mask the product refusal: the fresh product check answers in its own transaction,
+ // and only a still-authorized administrator sees the AI calling-authority refusal.
+ const index=async()=>{try{return await withPerformanceTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);return getAssessmentAdminIndex(ctx,selectedCycleId,tx);});}
+  catch(error){if(error instanceof AiGatewayError)await getAssessmentAdminIndex(ctx,selectedCycleId);throw error;}};
  const before=await index(),screen=screenPerformanceQuestion(question);
  if(screen)return {text:screen==='injection'?'I can’t change how I work or share my instructions. I can find settings and pages, and build reports.':screen==='not_allowed'?'I can find settings and pages and build reports. Make changes on the relevant page.':'Ask about a Performance setting, page or report.',mode:'declined',cards:[]};
  const config=(id?:string)=>withPerformanceTenant(ctx,async tx=>{if(id)await assessmentAdminReadCycleTx(tx,id);else await adminHomeTx(tx);try{return await assessmentAiConfigTx(tx,ctx,'review');}catch{return null;}}),cfg=await config(before.cycle?.id);
