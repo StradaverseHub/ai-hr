@@ -2032,3 +2032,14 @@ and production JS bundles passed for iPhone (1,368 modules / 28,072 ms) and Andr
 cad993d68. These checks do not establish full native binaries, vendor acceptance, OS location
 flags or physical airplane-mode/continuity behavior. Server-issued contexts, key leases,
 transactional consumption/adjudication and the employee offline flow remain unfinished.
+
+Server original-proof candidate `e4cca1f10633ef3467fc2ade19131db01594d021` passed
+[40545181084](https://github.com/StradaverseHub/ai-hr/actions/runs/40545181084): 94 cases in six
+portable/DOM crypto-contract suites and 49 cases in three existing database/API regression suites
+(143 total / nine suites). Root TypeScript passed (3:36.76, peak RSS 7,703,964 KiB, exit 0).
+The test selection covers the new offline verifier, existing Android online signature and Apple
+assertion primitives, context signatures, claim contract, native signing adapter, Android command
+transactions, verified clock transactions and signed-clock HTTP boundary. All planned jobs finished.
+Unchanged native app TypeScript/bundles retain 68e6738a9 evidence; unchanged Swift recovery stores
+retain cad993d68 host-model evidence. No native rebuild or physical SDK/vendor acceptance was run.
+No context issuance/stream lease/permit transaction or offline route is enabled by these checks.
