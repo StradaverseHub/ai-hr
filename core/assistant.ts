@@ -42,7 +42,9 @@ import { converse } from '../lib/ai';
 import { AiAllowanceError, type AiStop, type AiToolCall, type AiToolResult, type AiTurn, type AiUsage } from '../lib/ai/types';
 import { resolveActiveAiConfig } from './ai-config';
 import { assertMayUseAssistant } from './assistant-grant';
-import { withAssistantRead } from './assistant-read-session';
+import { withAssistantRead,type AssistantReadSession } from './assistant-read-session';
+import {withGovernedSpecialistReadBatch} from './module-agent-releases';
+import {isAgentModuleCode,type AgentModuleCode} from '../lib/ai/module-agents';
 import { prepareAssistantConversation } from './assistant-provider-input';
 import { ASSISTANT_PUBLIC_REPLIES, assistantPublicToolResult } from '../lib/ai/assistant-public-replies';
 import { ASSISTANT_TOOLS, toolsFor, type AssistantTool, type ToolOutcome } from './assistant-tools';
@@ -280,6 +282,7 @@ export async function askAssistant(
   const audit: { name: string; input: unknown; rowCount: number | null; refusal?: string }[] = [];
 
   const sourceReads: AssistantSourceRead[] = [];
+  const toolBatchNonces=new Map<string,string>();
   let sourcesComplete = true;
   let answer = '';
   let stop: AiStop = 'other';
@@ -330,7 +333,8 @@ export async function askAssistant(
         toolCalls: [...capturedCalls],
         providerState: res.providerState,
       });
-      const results = await runTools(ctx, offered, capturedCalls, audit, sourceReads);
+      const batchKey=JSON.stringify(capturedCalls);let batchNonce=toolBatchNonces.get(batchKey);if(!batchNonce){batchNonce=randomUUID();toolBatchNonces.set(batchKey,batchNonce);}
+      const results = await runTools(ctx, offered, capturedCalls, audit, sourceReads,batchNonce);
       if (results.some(result => result.isError)) sourcesComplete = false;
       turns.push({ role: 'tool', results });
 
@@ -376,54 +380,32 @@ export async function askAssistant(
  * Result order remains the request order. No provider call happens inside this transaction.
  */
 async function runTools(
-  ctx: SessionContext,
-  offered: readonly AssistantTool[],
-  calls: readonly AiToolCall[],
-  audit: { name: string; input: unknown; rowCount: number | null; refusal?: string }[],
-  sourceReads: AssistantSourceRead[],
-): Promise<AiToolResult[]> {
-  return withAssistantRead(ctx, null, session => Promise.all(
-    calls.map(async (call): Promise<AiToolResult> => {
-      const tool = offered.find((t) => t.spec.name === call.name);
-      if (!tool) {
-        // Resolved ONLY from what this exchange offered. A name that exists in the registry but was not
-        // offered (a module the tenant does not hold) is a module-gate bypass if it runs, whether the model
-        // hallucinated it or a tool result injected it. The model gets the SAME sentence as for a name
-        // that does not exist, so the reply is no oracle for which tools exist; only the audit tells the
-        // two apart. An error, not a refusal: there is nothing for the model to relay.
-        const exists = ASSISTANT_TOOL_NAMES.has(call.name);
-        audit.push({ name: call.name, input: call.input, rowCount: null, refusal: exists ? 'not_offered' : 'unknown_tool' });
-        return { id: call.id, name: call.name, content: ASSISTANT_PUBLIC_REPLIES.tool, isError: true };
-      }
-      // `input === undefined` means the provider produced arguments we could not parse. AiToolCall's own
-      // comment requires this be an isError RESULT rather than a dropped one.
-      if (call.input === undefined) {
-        audit.push({ name: call.name, input: null, rowCount: null, refusal: 'unparseable_input' });
-        return { id: call.id, name: call.name, content: ASSISTANT_PUBLIC_REPLIES.arguments, isError: true };
-      }
-      try {
-        const outcome = await tool.run(ctx, call.input, session);
-        const publicOutcome = assistantPublicToolResult(outcome);
-        const content = serializeAgentReadResult(publicOutcome);
-        sourceReads.push(Object.freeze({ name: call.name, input: call.input, digest: assistantSourceDigest(publicOutcome) }));
-        const rowCount = rowCountOf(outcome);
-        audit.push({
-          name: call.name,
-          input: call.input,
-          rowCount,
-          ...(outcome.ok ? {} : { refusal: outcome.refusal }),
-        });
-        // A REFUSAL IS NOT AN ERROR — see the file header. It goes back as content so the model can
-        // relay it; marking it isError invites a retry of a call that will decline identically.
-        return { id: call.id, name: call.name, content };
-      } catch {
-        // The wrapper threw. The message is NOT relayed: it may carry a database error naming a column
-        // or a value, and it is going into a model's context and then to a person.
-        audit.push({ name: call.name, input: call.input, rowCount: null, refusal: 'tool_error' });
-        return { id: call.id, name: call.name, content: ASSISTANT_PUBLIC_REPLIES.lookup, isError: true };
-      }
-    }),
-  ));
+ ctx:SessionContext,offered:readonly AssistantTool[],supplied:readonly AiToolCall[],
+ audit:{name:string;input:unknown;rowCount:number|null;refusal?:string}[],sourceReads:AssistantSourceRead[],nonce:string,
+):Promise<AiToolResult[]>{
+ const calls=captureAgentReadBatch(supplied),modules:AgentModuleCode[]=[];
+ for(const call of calls){if(call.name!=='my_module_work'||!offered.some(tool=>tool.spec.name===call.name)||!call.input||typeof call.input!=='object'||Array.isArray(call.input))continue;const input=call.input as Record<string,unknown>;
+  if(Object.keys(input).length===1&&isAgentModuleCode(input.module)&&!modules.includes(input.module))modules.push(input.module);
+ }
+ const observations:{name:string;input:unknown;rowCount:number|null;refusal?:string}[]=[],reads:AssistantSourceRead[]=[];
+ const consume=async(session:AssistantReadSession)=>{const results:AiToolResult[]=[];for(const call of calls){const result=await(async():Promise<AiToolResult>=>{
+  const tool=offered.find(row=>row.spec.name===call.name);
+  if(!tool){observations.push({name:call.name,input:call.input,rowCount:null,refusal:ASSISTANT_TOOL_NAMES.has(call.name)?'not_offered':'unknown_tool'});return{id:call.id,name:call.name,content:ASSISTANT_PUBLIC_REPLIES.tool,isError:true};}
+  if(call.input===undefined){observations.push({name:call.name,input:null,rowCount:null,refusal:'unparseable_input'});return{id:call.id,name:call.name,content:ASSISTANT_PUBLIC_REPLIES.arguments,isError:true};}
+  // No per-tool catch inside the carrier: a storage/partial-reservation error MUST unwind the
+  // complete source transaction before any bounded reply or source evidence can be returned.
+  const outcome=await tool.run(ctx,call.input,session),publicOutcome=assistantPublicToolResult(outcome),content=serializeAgentReadResult(publicOutcome);
+  reads.push(Object.freeze({name:call.name,input:call.input,digest:assistantSourceDigest(publicOutcome)}));
+  observations.push({name:call.name,input:call.input,rowCount:rowCountOf(outcome),...(outcome.ok?{}:{refusal:outcome.refusal})});return{id:call.id,name:call.name,content};
+ })();results.push(result);}return results;};
+ try{
+  const batch=modules.length?await withGovernedSpecialistReadBatch(ctx,{version:1,modules},{nonce},consume):{jobId:null,value:await withAssistantRead(ctx,null,consume)};
+  audit.push(...observations);sourceReads.push(...reads.map(row=>{const input=row.input&&typeof row.input==='object'&&!Array.isArray(row.input)?row.input as Record<string,unknown>:null;return row.name==='my_module_work'&&batch.jobId&&input&&Object.keys(input).length===1&&isAgentModuleCode(input.module)?Object.freeze({...row,moduleJobId:batch.jobId}):row;}));return batch.value;
+ }catch{
+  // This boundary is AFTER rollback. Failed/cancelled work never becomes a verified source read.
+  audit.push(...calls.map(call=>({name:call.name,input:call.input??null,rowCount:null,refusal:'tool_error'})));
+  return calls.map(call=>({id:call.id,name:call.name,content:ASSISTANT_PUBLIC_REPLIES.lookup,isError:true}));
+ }
 }
 
 /** Write the audit row and roll the period counter, in ONE transaction so usage can never be recorded

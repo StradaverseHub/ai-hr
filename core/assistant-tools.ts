@@ -972,7 +972,7 @@ const myModuleWork: AssistantTool = {
     }
     const module = object.module;
     return withAssistantRead(ctx, module, async (read): Promise<ToolOutcome> => ({
-      ok: true, ...(await read.moduleWork(module)),
+      ok: true, ...(await read.moduleSpecialistWork(module)),
     }), readSession);
   },
 };

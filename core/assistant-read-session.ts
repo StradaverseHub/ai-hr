@@ -9,20 +9,32 @@ import { assertAiActionUnpausedTx } from './ai-governance';
 import * as reads from './read';
 import { ownClaimStatuses } from '../packs/claims/service';
 import { createModuleAgentReaders } from './module-agent-readers';
+import {executeCanonicalSpecialist,compactSpecialistWork,type CompactSpecialistWork} from '../lib/ai/module-specialists';
+import type {AgentModuleCode} from '../lib/ai/module-agents';
+export type CanonicalModuleRead=Awaited<ReturnType<ReturnType<typeof createModuleAgentReaders>['moduleWork']>>;
+export type InterpretedModuleRead=CanonicalModuleRead&Readonly<{specialistWork:CompactSpecialistWork}>;
+/** Source-owned interpretation only. Never accepted from a browser/model or stored in shared state. */
+export type AssistantModuleInterpreter=(module:AgentModuleCode,canonical:()=>Promise<CanonicalModuleRead>)=>Promise<InterpretedModuleRead>;
 
 const unavailable = (): never => { throw new AiGatewayError('Assistant data access could not be confirmed.'); };
 const principalKey = (ctx: SessionContext) => JSON.stringify([ctx.tenantId, ctx.userId, ctx.personId ?? null, ctx.roles ?? null, ctx.grants ?? null]);
 const owners = new WeakMap<object, { active: boolean; principal: string; tx: Tx }>();
 
-function createReads(ctx: SessionContext, tx: Tx, active: () => boolean) {
+function createReads(ctx: SessionContext, tx: Tx, active: () => boolean,interpret?:AssistantModuleInterpreter) {
   const checked = async <T>(read: () => Promise<T>): Promise<T> => {
     if (!active()) return unavailable();
     const result = await read();
     if (!active()) return unavailable();
     return result;
   };
+  const canonical=createModuleAgentReaders(ctx,tx,active);
   return Object.freeze({
-    ...createModuleAgentReaders(ctx, tx, active),
+    ...canonical,
+    moduleSpecialistWork:(module:AgentModuleCode)=>checked(async()=>{
+      if(interpret)return interpret(module,()=>canonical.moduleWork(module));
+      const result=await canonical.moduleWork(module),configuration={kind:'canonical_specialist_v1' as const,module,playbook:'canonical_domain_v1' as const};
+      return{...result,specialistWork:compactSpecialistWork(executeCanonicalSpecialist(configuration,result),{mode:'baseline',version:0,configuration})};
+    }),
     myEmployment: (selected?: { employmentId: string }) => checked(() => reads.myEmployment(ctx, selected, tx)),
     myEmployments: (opts?: { profileEdit?: boolean }) => checked(() => reads.myEmployments(ctx, opts, tx)),
     myEmploymentIdsAll: () => checked(() => reads.myEmploymentIdsAll(ctx, tx)),
@@ -87,14 +99,14 @@ export async function withAssistantRead<T>(ctx: SessionContext, module: string |
  * the transaction remains private to the trusted source/admission owner.
  */
 async function withBoundAssistantReadsTx<T>(ctx: SessionContext, tx: Tx, modeExpected: 'on' | 'off',
-  consume: (session: AssistantReadSession) => Promise<T>): Promise<T> {
+  consume: (session: AssistantReadSession) => Promise<T>,interpret?:AssistantModuleInterpreter): Promise<T> {
   const captured = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   try {
     const [mode] = await tx.execute<{ readonly: string }>(sql`select current_setting('transaction_read_only') as readonly`);
     if (mode?.readonly !== modeExpected) return unavailable();
     const fresh = await guard(tx, captured, null);
     const owner = { active: true, principal: principalKey(captured), tx };
-    const session = createReads(fresh, tx, () => owner.active);
+    const session = createReads(fresh, tx, () => owner.active,interpret);
     owners.set(session, owner);
     try { return await consume(session); }
     finally { owner.active = false; }
@@ -124,6 +136,6 @@ export function withAssistantAdmissionReadsTx<T>(ctx: SessionContext, tx: Tx,
  * ends with this callback. This is neither provider admission nor a model effect capability.
  */
 export function withAssistantJobReadsTx<T>(ctx: SessionContext, tx: Tx,
-  consume: (session: AssistantReadSession) => Promise<T>): Promise<T> {
-  return withBoundAssistantReadsTx(ctx, tx, 'off', consume);
+  consume: (session: AssistantReadSession) => Promise<T>,interpret?:AssistantModuleInterpreter): Promise<T> {
+  return withBoundAssistantReadsTx(ctx, tx, 'off', consume,interpret);
 }

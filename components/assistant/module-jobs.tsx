@@ -65,7 +65,7 @@ export async function CanonicalModuleJob({view,ctx}:{view:CanonicalModuleJobView
    {card.href&&<a href={card.href} className="mt-3 inline-flex min-h-11 items-center text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t(card.linkPurpose==='human_review'?'reviewAction':'original')}</a>}
   </Card>)}</div>
   {presentation.truncated&&<p className="text-sm text-muted-foreground">{t('truncated')}</p>}
-  {view.specialist&&<ModuleSpecialistFindings assessment={view.specialist}/>}
+  {view.specialist&&<ModuleSpecialistFindings assessment={view.specialist} selection={view.specialistVersion}/>}
   {['payroll','typed_pay_components'].includes(presentation.module)&&<p className="text-xs text-muted-foreground">{t('moneyNote')}</p>}
   {presentation.module==='notifications'&&<p className="text-xs text-muted-foreground">{t('notificationNote')}</p>}
  </section>;

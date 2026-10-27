@@ -9,7 +9,7 @@ import { assistantPublicToolResult } from '../lib/ai/assistant-public-replies';
  * It lives only in the current authorized read transaction, never a cross-user/process cache.
  * A changed result retires this answer; it never silently rewrites historical facts as current ones.
  */
-export function assistantSourceReplay(ctx: SessionContext, session: AssistantReadSession) {
+export function assistantSourceReplay(ctx: SessionContext, session: AssistantReadSession,reopenModule?:(source:AssistantSourceRead)=>Promise<unknown>) {
   let remaining = 128;
   const checked = new Map<string, boolean>();
   const offered = toolsFor(ctx);
@@ -18,12 +18,12 @@ export function assistantSourceReplay(ctx: SessionContext, session: AssistantRea
     for (const source of reads) {
       const tool = offered.find(item => item.spec.name === source.name);
       if (!tool) return false;
-      const key = JSON.stringify([source.name, source.input, source.digest]);
+      const key = JSON.stringify([source.name, source.input, source.digest,source.moduleJobId??null]);
       const prior = checked.get(key);
       if (prior !== undefined) { if (!prior) return false; continue; }
       if (remaining-- <= 0) return false;
       let allowed = false;
-      try { allowed = assistantSourceDigest(assistantPublicToolResult(await tool.run(ctx, source.input, session))) === source.digest; }
+      try { allowed = assistantSourceDigest(source.moduleJobId?(reopenModule?await reopenModule(source):null):assistantPublicToolResult(await tool.run(ctx, source.input, session))) === source.digest; }
       catch { allowed = false; }
       checked.set(key, allowed);
       if (!allowed) return false;

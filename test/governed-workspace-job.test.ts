@@ -31,7 +31,7 @@ describe('human-invoked current-user governed jobs',()=>{
   expect(row.promotion_id).toBeNull();expect(row.request_nonce).toBe(nonce);expect(row.requested_plan_digest).toMatch(/^[a-f0-9]{64}$/);
   expect(new Date(row.expires_at).getTime()-new Date(row.created_at).getTime()).toBe(30*86400000);
   const plain=decryptSecret(row.receipt,JSON.stringify(['ai-hr.module-agent.v1','governed-job-v2',base.tenantId,first.jobId]));
-  const proof=JSON.parse(plain);expect(proof).toMatchObject({version:2,stage:'completed',userId:f.mine.ctx.userId,requestedPlan:plan,executedPlan:plan});
+  const proof=JSON.parse(plain);expect(proof).toMatchObject({version:3,jobKind:'module_plan',stage:'completed',userId:f.mine.ctx.userId,requestedPlan:plan,executedPlan:plan});
   expect(proof).not.toHaveProperty('results');for(const text of ['Canonical governed caller','PRIVATE_OTHER_CALLER',f.mine.subject.employmentId,f.peer.subject.employmentId])expect(plain).not.toContain(text);
  });
  it('makes concurrent duplicate submissions at most one completed job rather than two successful-job receipts',async()=>{

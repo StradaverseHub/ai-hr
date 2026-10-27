@@ -123,7 +123,7 @@ describe('real native-backed specialist generations',()=>{
   await expect(reopenOwnNativeOutcomeAssociation(author,{associationId:f.secondLink.association.associationId})).rejects.toThrow();
   expect(await reopenOrgActionReview(author,f.secondNative.review.actionId)).toEqual(f.secondNative.done);
   await expect(evaluateCanonicalSpecialistCandidate(reviewer,f.secondCandidate.candidateId)).rejects.toThrow();
-  const fallback=await runGovernedSpecialistJob(author,{module:'org'},{nonce:randomUUID()});expect(fallback).toMatchObject({mode:'baseline',specialist:null,effects:[]});
+  const fallback=await runGovernedSpecialistJob(author,{module:'org'},{nonce:randomUUID()});expect(fallback).toMatchObject({mode:'baseline',specialist:{coverage:'canonical_domain_guidance_only',requiresFreshNativeReview:true},effects:[]});
   const after=await counts();expect(after).toEqual({...before,jobs:before.jobs+1,rollbacks:before.rollbacks+1,links:0,captures:0});
   const [retirement]=await owner.db.execute<{reason:string}>(sql`select reason from public.ai_agent_rollback where promotion_id=${f.secondPromotion.promotionId}::uuid`);expect(retirement.reason).toBe('source_changed');
   expect(await reportingState()).toEqual(native);

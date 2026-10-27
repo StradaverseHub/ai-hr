@@ -8,6 +8,8 @@ import { AiGatewayError, type ConverseArgs, type ResolvedAiConfig } from '../lib
 import { withAiAdmissionCheck } from './ai-governance';
 import { withAssistantAdmissionReadsTx } from './assistant-read-session';
 import { assistantSourceReplay } from './assistant-disclosure-read';
+import {readGovernedSpecialistToolResultTx} from './module-agent-releases';
+import {isAgentModuleCode} from '../lib/ai/module-agents';
 import { resolveEntitlementsTx } from './entitlements';
 import { specsFor } from './assistant-tools';
 import { ASSISTANT_PUBLIC_REPLIES } from '../lib/ai/assistant-public-replies';
@@ -66,7 +68,7 @@ export function prepareAssistantConversation(ctx: SessionContext, configuration:
     if (Date.now() >= expiresAt || request.operation !== 'conversation' || request.inputDigest !== expected) return refused();
     const fresh = { ...captured, entitlements: await resolveEntitlementsTx(tx, captured.tenantId) };
     if (JSON.stringify(specsFor(fresh)) !== JSON.stringify(args.tools)) return refused();
-    const current = await withAssistantAdmissionReadsTx(fresh, tx, session => assistantSourceReplay(fresh, session)(sources));
+    const current = await withAssistantAdmissionReadsTx(fresh, tx, session => assistantSourceReplay(fresh, session,async source=>{const input=source.input&&typeof source.input==='object'&&!Array.isArray(source.input)?source.input as Record<string,unknown>:null;if(source.name!=='my_module_work'||!source.moduleJobId||!input||Object.keys(input).length!==1||!isAgentModuleCode(input.module))return refused();return(await readGovernedSpecialistToolResultTx(tx,fresh,source.moduleJobId,input.module)).outcome;})(sources));
     if (!current || Date.now() >= expiresAt) return refused();
   });
   return Object.freeze({ configuration: bound, args });

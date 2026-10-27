@@ -3,7 +3,7 @@ import {captureNativeCandidateSignals,captureNativeCandidateSignalIds,type Nativ
 import {nominateOwnNativeOutcomeJobTx,readVerifiedNativeOutcomeAssociationTx,ownNativeCandidateSignalChoicesTx,bindNativeOutcomeJobRecheckTx} from './module-native-outcome-references';
 import {boundNativeOutcomeTransactionTx} from './module-native-outcome-bounds';
 import {specialistFollowupCases} from '../lib/ai/module-specialist-followup-cases';
-import {SpecialistCandidate,executeCanonicalSpecialist,specialistNativeContractDigest,SPECIALIST_ENGINE_DIGEST,SPECIALIST_POLICY_DIGEST,SPECIALIST_POLICY,type SpecialistAssessment} from '../lib/ai/module-specialists';
+import {SpecialistCandidate,executeCanonicalSpecialist,specialistNativeContractDigest,SPECIALIST_ENGINE_DIGEST,SPECIALIST_POLICY_DIGEST,SPECIALIST_POLICY,type SpecialistAssessment,compactSpecialistWork} from '../lib/ai/module-specialists';
 import {specialistInputDigest,specialistSuiteDigest,SPECIALIST_HOLDOUTS} from '../lib/ai/module-specialist-holdouts';
 import {executeSpecialistHoldout,type SpecialistEvaluationReport} from './module-specialist-harness';
 import {AGENT_MODULE_CODES,isAgentModuleCode,type AgentModuleCode} from '../lib/ai/module-agents';
@@ -24,7 +24,7 @@ import { assertAiPrincipalTx,isAiPrincipalCurrentTx } from './ai-principal';
 import { assertMayUseAssistant } from './assistant-grant';
 import { assertAiActionUnpausedTx } from './ai-governance';
 import { resolveEntitlementsTx,assertModuleEnabled } from './entitlements';
-import { withAssistantReadTx, withAssistantJobReadsTx, type AssistantReadSession } from './assistant-read-session';
+import { withAssistantReadTx, withAssistantJobReadsTx,withAssistantAdmissionReadsTx, type AssistantReadSession,type CanonicalModuleRead,type InterpretedModuleRead } from './assistant-read-session';
 import { executeRoutingHoldout, type RoutingEvaluationReport } from './module-agent-evaluation-harness';
 import { capturePromptPlanCandidate,adjudicatePromptReadPlan,promptCandidateSystem,PROMPT_HOLDOUTS,PROMPT_HOLDOUT_REQUEST_LIMIT,PROMPT_SUITE_DIGEST,PROMPT_ENGINE_DIGEST,PROMPT_POLICY_DIGEST,PROMPT_INPUT_DIGEST } from '../lib/ai/module-agent-prompt-candidate';
 import { resolveAiProviderSnapshotTx } from './ai-provider-snapshot';
@@ -261,25 +261,23 @@ type GovernedJobRow={id:string;user_id:string;promotion_id:string|null;request_n
 const jobProjection=sql`id,user_id,promotion_id,request_nonce,requested_plan_digest,receipt,created_at::text,expires_at::text,(expires_at>now()) as fresh`;
 function verifiedGovernedJob(row:GovernedJobRow,ctx:SessionContext){
  if(!ctx.userId||row.user_id!==ctx.userId||!row.request_nonce||!row.expires_at||!row.fresh)return fail();
- const proof=open('governed-job-v2',ctx.tenantId,row.id,row.receipt),specialist=proof.specialist===undefined?undefined:captureSpecialistJobBinding(proof.specialist);
- if(!exact(proof,['version','stage','tenantId','userId','commandNonce','mode','candidateDigest','promotionId','sourceDigest','engineDigest','policyDigest','requestedPlan','executedPlan','requestedPlanDigest','executedPlanDigest','resultDigest','createdAt','expiresAt','elapsedMs',...(proof.planning===undefined?[]:['planning']),...(proof.specialist===undefined?[]:['specialist'])])||
-  proof.version!==2||proof.stage!=='completed'||proof.tenantId!==ctx.tenantId||proof.userId!==ctx.userId||proof.commandNonce!==row.request_nonce||
-  proof.sourceDigest!==MODULE_AGENT_SOURCE_DIGEST||proof.engineDigest!==(specialist===undefined?ROUTING_ENGINE_DIGEST:specialistModuleEngineDigest(specialist.configuration.module))||proof.policyDigest!==(proof.specialist===undefined?ROUTING_POLICY_DIGEST:SPECIALIST_POLICY_DIGEST)||
-  proof.promotionId!==row.promotion_id||(proof.mode!=='baseline'&&proof.mode!=='promoted')||
-  (proof.mode==='promoted')!==Boolean(row.promotion_id)||typeof proof.candidateDigest!=='string'||!/^[a-f0-9]{64}$/.test(proof.candidateDigest)||
-  typeof proof.resultDigest!=='string'||!/^[a-f0-9]{64}$/.test(proof.resultDigest)||!Number.isSafeInteger(proof.elapsedMs)||Number(proof.elapsedMs)<0||
-  new Date(String(proof.createdAt)).getTime()!==new Date(row.created_at).getTime()||new Date(String(proof.expiresAt)).getTime()!==new Date(row.expires_at).getTime())return fail();
- const requested=captureTypedModulePlan(proof.requestedPlan),executed=captureTypedModulePlan(proof.executedPlan);
- if(routingDigest(requested)!==row.requested_plan_digest||proof.requestedPlanDigest!==row.requested_plan_digest||routingDigest(executed)!==proof.executedPlanDigest||
-  [...requested.modules].sort().join(',')!==[...executed.modules].sort().join(',')||
-  new Date(row.expires_at).getTime()-new Date(row.created_at).getTime()>GOVERNED_JOB_RETENTION_DAYS*86400000)return fail();
- const planning=proof.planning===undefined?undefined:capturePlanningBinding(proof.planning);if(specialist&&(planning||requested.modules.length!==1||requested.modules[0]!==specialist.configuration.module||executed.modules[0]!==specialist.configuration.module||(proof.mode==='promoted')!==(specialist.assessmentDigest!==null)||proof.mode==='baseline'&&proof.candidateDigest!==specialistBaselineDigest(specialist.configuration.module)))return fail();
- return {requested,executed,mode:proof.mode as 'baseline'|'promoted',candidateDigest:proof.candidateDigest,resultDigest:proof.resultDigest,planning,specialist};
+ // Stable encryption domain; strict v3 body deliberately refuses legacy unassessed v2 jobs.
+ const proof=open('governed-job-v2',ctx.tenantId,row.id,row.receipt),selections=captureSpecialistSelections(proof.specialists);
+ if(!exact(proof,['version','jobKind','stage','tenantId','userId','commandNonce','mode','candidateDigest','promotionId','sourceDigest','engineDigest','policyDigest','requestedPlan','executedPlan','requestedPlanDigest','executedPlanDigest','resultDigest','createdAt','expiresAt','elapsedMs','specialists',...(proof.planning===undefined?[]:['planning'])])||
+  proof.version!==3||!['module_plan','specialist','tool_batch'].includes(String(proof.jobKind))||proof.stage!=='completed'||proof.tenantId!==ctx.tenantId||proof.userId!==ctx.userId||proof.commandNonce!==row.request_nonce||proof.sourceDigest!==MODULE_AGENT_SOURCE_DIGEST||
+  proof.engineDigest!==(proof.jobKind==='specialist'?specialistModuleEngineDigest(selections[0].binding.configuration.module):ROUTING_ENGINE_DIGEST)||proof.policyDigest!==(proof.jobKind==='specialist'?SPECIALIST_POLICY_DIGEST:ROUTING_POLICY_DIGEST)||
+  proof.promotionId!==row.promotion_id||(proof.mode!=='baseline'&&proof.mode!=='promoted')||(proof.mode==='promoted')!==Boolean(row.promotion_id)||typeof proof.candidateDigest!=='string'||!/^[a-f0-9]{64}$/.test(proof.candidateDigest)||
+  typeof proof.resultDigest!=='string'||!/^[a-f0-9]{64}$/.test(proof.resultDigest)||!Number.isSafeInteger(proof.elapsedMs)||Number(proof.elapsedMs)<0||new Date(String(proof.createdAt)).getTime()!==new Date(row.created_at).getTime()||new Date(String(proof.expiresAt)).getTime()!==new Date(row.expires_at).getTime())return fail();
+ const requested=captureTypedModulePlan(proof.requestedPlan),executed=captureTypedModulePlan(proof.executedPlan),planning=proof.planning===undefined?undefined:capturePlanningBinding(proof.planning);
+ if(routingDigest(requested)!==row.requested_plan_digest||proof.requestedPlanDigest!==row.requested_plan_digest||routingDigest(executed)!==proof.executedPlanDigest||[...requested.modules].sort().join(',')!==[...executed.modules].sort().join(',')||routingDigest(selections.map(item=>item.binding.configuration.module))!==routingDigest(executed.modules)||new Date(row.expires_at).getTime()-new Date(row.created_at).getTime()>GOVERNED_JOB_RETENTION_DAYS*86400000)return fail();
+ if(proof.jobKind==='specialist'&&(planning||selections.length!==1||proof.mode!==selections[0].mode||proof.candidateDigest!==selections[0].candidateDigest||row.promotion_id!==selections[0].promotionId))return fail();
+ if(proof.jobKind==='tool_batch'&&(planning||proof.mode!=='baseline'||proof.candidateDigest!==baselineDigest))return fail();
+ return{requested,executed,mode:proof.mode as 'baseline'|'promoted',candidateDigest:proof.candidateDigest,resultDigest:proof.resultDigest,planning,jobKind:proof.jobKind as 'module_plan'|'specialist'|'tool_batch',specialists:selections,specialist:proof.jobKind==='specialist'?selections[0].binding:undefined};
 }
 async function assertGovernedJobCandidateTx(tx:Tx,ctx:SessionContext,job:GovernedJobRow,completed:ReturnType<typeof verifiedGovernedJob>,deferNativeCustody=false){
  if(completed.planning)await currentPlanningBindingTx(tx,ctx,completed.planning,deferNativeCustody);
- if(!job.promotion_id)return;const [promotion]=await tx.execute<{candidate_id:string}>(sql`select candidate_id from public.ai_agent_promotion where id=${job.promotion_id}::uuid and tenant_id=${ctx.tenantId}::uuid and owner_user_id=${ctx.userId}::uuid`);
- if(!promotion)return fail();const candidate=await candidateTx(tx,ctx,promotion.candidate_id,true,deferNativeCustody);if(candidate.candidate_digest!==completed.candidateDigest||completed.specialist&&(candidate.kind!=='canonical_specialist_v1'||candidate.module_code!==completed.specialist.configuration.module||routingDigest(candidate.configuration)!==routingDigest(completed.specialist.configuration)))return fail();
+ if(job.promotion_id&&completed.jobKind==='module_plan'){const[promotion]=await tx.execute<{candidate_id:string}>(sql`select candidate_id from public.ai_agent_promotion where id=${job.promotion_id}::uuid and tenant_id=${ctx.tenantId}::uuid and owner_user_id=${ctx.userId}::uuid`);if(!promotion)return fail();const candidate=await candidateTx(tx,ctx,promotion.candidate_id,true,deferNativeCustody);if(candidate.kind!=='typed_route_priority_v1'||candidate.candidate_digest!==completed.candidateDigest)return fail();}
+ for(const selection of completed.specialists){if(selection.mode==='baseline')continue;const[promotion]=await tx.execute<{id:string;candidate_id:string;receipt:string;max_jobs:number;expires_at:string}>(sql`select id,candidate_id,receipt,max_jobs,expires_at::text from public.ai_agent_promotion where id=${selection.promotionId}::uuid and tenant_id=${ctx.tenantId}::uuid and owner_user_id=${ctx.userId}::uuid and module_code=${selection.binding.configuration.module}`);if(!promotion)return fail();const candidate=await candidateTx(tx,ctx,promotion.candidate_id,true,deferNativeCustody);checkedSpecialistPromotion(candidate,promotion,ctx.tenantId);if(candidate.kind!=='canonical_specialist_v1'||candidate.version!==selection.version||candidate.candidate_digest!==selection.candidateDigest||routingDigest(candidate.configuration)!==routingDigest(selection.binding.configuration))return fail();}
 }
 /** Historical command provenance for a distinct human-linked native outcome. This is neither
  * feedback truth nor new promoted-run admission. A native action may intentionally change read
@@ -300,11 +298,11 @@ export async function beginOwnNativeOutcomeJobProvenanceTx(tx:Tx,supplied:Sessio
 export async function recordOwnGovernedJobFeedback(ctx:SessionContext,input:{jobId:string;outcome:typeof GOVERNED_JOB_FEEDBACK_OUTCOMES[number];consented:true}){
  const current=capture(ctx),p={jobId:input.jobId,outcome:input.outcome,consented:input.consented};
  if(!exact(input,['jobId','outcome','consented'])||!uuid(p.jobId)||!GOVERNED_JOB_FEEDBACK_OUTCOMES.includes(p.outcome)||p.consented!==true)return fail();
- try{return await withTenant(current,async tx=>{const fresh=await guard(tx,current,false);await signalIntervalTx(tx,current,current.userId!,true);
+ try{return await withTenant(current,async tx=>{const fresh=await guard(tx,current,false);await agentReleaseIntervalTx(tx,current,current.userId!,false);await signalIntervalTx(tx,current,current.userId!,true);
   const [job]=await tx.execute<GovernedJobRow>(sql`select ${jobProjection} from public.ai_agent_job_receipt where id=${p.jobId}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);if(!job)return fail();
-  const completed=verifiedGovernedJob(job,current);await assertGovernedJobCandidateTx(tx,current,job,completed);
+  const completed=verifiedGovernedJob(job,current);await assertGovernedJobCandidateTx(tx,current,job,completed,true);
   const results=await withAssistantJobReadsTx(fresh,tx,async read=>{const rows:AgentReadResult[]=[];for(const module of completed.executed.modules)rows.push(await read.moduleWork(module));return rows;});
-  if(assistantSourceDigest(results)!==completed.resultDigest)return fail();if(completed.specialist&&completed.specialist.assessmentDigest!==null&&routingDigest(executeCanonicalSpecialist(completed.specialist.configuration,results[0]))!==completed.specialist.assessmentDigest)return fail();
+  await assertGovernedJobCandidateTx(tx,current,job,completed);if(assistantSourceDigest(results)!==completed.resultDigest)return fail();for(const selection of completed.specialists){const result=results.find(row=>row.module===selection.binding.configuration.module);if(!result||routingDigest(executeCanonicalSpecialist(selection.binding.configuration,result))!==selection.binding.assessmentDigest)return fail();}
   const [previous]=await tx.execute<{id:string;outcome:string;receipt:string}>(sql`select id,outcome,receipt from public.ai_agent_job_feedback where job_id=${job.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid for update nowait`);
   if(previous?.outcome===p.outcome){await ownSignalRefsTx(tx,current,[previous.id]);return {feedbackId:previous.id};}
   const id=previous?.id??randomUUID();const [clock]=await tx.execute<{now:string;expires:string}>(sql`select now()::text as now,least(${job.expires_at}::timestamptz,now()+interval '720 hours')::text as expires`);
@@ -324,68 +322,123 @@ export async function eraseOwnGovernedJobFeedback(ctx:SessionContext){const curr
 /** Read-only replay: old v1 receipts remain audit-only. Current canonical facts are loaded afresh;
  * the encrypted receipt nominates a bounded plan, never a stored HR fact or current permission.
  */
-export async function reopenGovernedModuleReadJobTx(tx:Tx,ctx:SessionContext,id:string){
- const current=capture(ctx);if(!uuid(id))return fail();
- const [mode]=await tx.execute<{readonly:string}>(sql`select current_setting('transaction_read_only') as readonly`);if(mode?.readonly!=='on')return fail();
- const fresh=await guard(tx,current,false);
- const [row]=await tx.execute<GovernedJobRow>(sql`select ${jobProjection} from public.ai_agent_job_receipt
-  where id=${id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);
- if(!row)return fail();const proof=verifiedGovernedJob(row,current);await assertGovernedJobCandidateTx(tx,current,row,proof);
- const results=await withAssistantReadTx(fresh,tx,async read=>{const rows:AgentReadResult[]=[];for(const module of proof.executed.modules)rows.push(await read.moduleWork(module));return rows;});
- const [feedback]=await tx.execute<{id:string;outcome:typeof GOVERNED_JOB_FEEDBACK_OUTCOMES[number]}>(sql`select id,outcome from public.ai_agent_job_feedback where job_id=${row.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid and expires_at>now()`);
- let feedbackOutcome:typeof GOVERNED_JOB_FEEDBACK_OUTCOMES[number]|null=null;
- if(feedback){try{await ownSignalRefsTx(tx,current,[feedback.id]);feedbackOutcome=feedback.outcome;}catch(error){if(error instanceof AgentSignalBusy)throw error;}}
- const specialist=proof.specialist?await currentSpecialistJobAssessmentTx(tx,current,row,proof,results):null;return {jobId:row.id,mode:proof.mode,changedSinceRun:assistantSourceDigest(results)!==proof.resultDigest,results,feedbackOutcome,...(proof.specialist?{specialist}:{})};
+export async function reopenGovernedModuleReadJobTx(tx:Tx,ctx:SessionContext,id:string){return reopenGovernedReadSourceTx(tx,ctx,id,true);}
+async function reopenGovernedReadSourceTx(tx:Tx,ctx:SessionContext,id:string,requireReadonly:boolean,onlyModule?:AgentModuleCode){
+ const current=capture(ctx);if(!uuid(id))return fail();await boundNativeOutcomeTransactionTx(tx);
+ const [mode]=await tx.execute<{readonly:string}>(sql`select current_setting('transaction_read_only') as readonly`);if(!mode||requireReadonly&&mode.readonly!=='on'||!['on','off'].includes(mode.readonly))return fail();
+ const fresh=await guard(tx,current,false);await agentReleaseIntervalTx(tx,current,current.userId!,false);await signalIntervalTx(tx,current,current.userId!);
+ const[row]=await tx.execute<GovernedJobRow>(sql`select ${jobProjection} from public.ai_agent_job_receipt where id=${id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);if(!row)return fail();
+ const proof=verifiedGovernedJob(row,current);if(onlyModule&&!proof.executed.modules.includes(onlyModule))return fail();await assertGovernedJobCandidateTx(tx,current,row,proof,true);
+ const modules=onlyModule?[onlyModule]:proof.executed.modules;
+ const consume=async(read:AssistantReadSession)=>{const rows:AgentReadResult[]=[];for(const module of modules)rows.push(await read.moduleWork(module));return rows;};
+ const results=mode.readonly==='on'?await withAssistantReadTx(fresh,tx,consume):await withAssistantAdmissionReadsTx(fresh,tx,consume);
+ await assertGovernedJobCandidateTx(tx,current,row,proof);
+ const specialists=await currentSpecialistAssessmentsTx(tx,current,{...proof,specialists:proof.specialists.filter(item=>modules.includes(item.binding.configuration.module))},results);
+ const[feedback]=await tx.execute<{id:string;outcome:typeof GOVERNED_JOB_FEEDBACK_OUTCOMES[number]}>(sql`select id,outcome from public.ai_agent_job_feedback where job_id=${row.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid and expires_at>now()`);
+ let feedbackOutcome:typeof GOVERNED_JOB_FEEDBACK_OUTCOMES[number]|null=null;if(feedback){try{await ownSignalRefsTx(tx,current,[feedback.id]);feedbackOutcome=feedback.outcome;}catch(error){if(error instanceof AgentSignalBusy||!(error instanceof AiGatewayError)&&!(error instanceof Error&&error.name==='ZodError'))throw error;}}
+ return{jobId:row.id,jobKind:proof.jobKind,mode:proof.jobKind==='specialist'?specialists[0].work.mode:proof.mode,changedSinceRun:assistantSourceDigest(results)!==proof.resultDigest,results,specialists,feedbackOutcome,...(proof.specialist?{specialist:specialists[0].assessment}:{})};
+}
+/** Recheck an already admitted chat batch in the actual read/admission carrier. No job/permit is
+ * created or incremented. The opaque job reference is sealed source evidence, never model input. */
+export async function readGovernedSpecialistToolResultTx(tx:Tx,ctx:SessionContext,jobId:string,module:AgentModuleCode){
+ if(!isAgentModuleCode(module))return fail();const current=await reopenGovernedReadSourceTx(tx,ctx,jobId,false,module);if(current.jobKind!=='tool_batch')return fail();const row=current.results.find(row=>row.module===module),specialist=current.specialists.find(row=>row.module===module);if(!row||!specialist)return fail();return{outcome:{ok:true as const,...row,specialistWork:specialist.work},assessment:specialist.assessment};
 }
 /** Explicit metadata-writing job owner, not a read tool or provider admission. Whole job rolls back on failure.
  * Every command caller supplies a retained nonce; no read or retry path invents a new command identity.
  */
-export async function runGovernedModuleReadPlan(ctx:SessionContext,proposed:unknown,command:{nonce:string;proposalId?:string}) {
+export async function runGovernedModuleReadPlan(ctx:SessionContext,proposed:unknown,command:{nonce:string;proposalId?:string}) {return runGovernedReadJob(ctx,proposed,command,'module_plan');}
+async function runGovernedReadJob(ctx:SessionContext,proposed:unknown,command:{nonce:string;proposalId?:string},kind:'module_plan'|'specialist') {
   const current=capture(ctx),plan=captureTypedModulePlan(proposed),nonce=command?.nonce,proposalId=command?.proposalId,started=Date.now();
   if(!command||typeof nonce!=='string'||!uuid(nonce)||!exact(command,proposalId===undefined?['nonce']:['nonce','proposalId'])||(proposalId!==undefined&&!uuid(proposalId)))return fail();
   try{return await withTenant(current,async tx=>{
-    const fresh=await guard(tx,current,false);await agentReleaseIntervalTx(tx,current,current.userId!,false);await signalIntervalTx(tx,current,current.userId!);
+    await boundNativeOutcomeTransactionTx(tx);const fresh=await guard(tx,current,false);await agentReleaseIntervalTx(tx,current,current.userId!,false);await signalIntervalTx(tx,current,current.userId!);
     const [owned]=await tx.execute<{owned:boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${'agent-job:'+current.tenantId+':'+current.userId+':'+nonce},0)) as owned`);if(owned?.owned!==true)return fail();
-    const reviewed=proposalId?await checkedOwnPlanProposalTx(tx,current,proposalId,plan):null;
+    const reviewed=proposalId?await checkedOwnPlanProposalTx(tx,current,proposalId,plan,true):null;
     const [existing]=await tx.execute<GovernedJobRow>(sql`select ${jobProjection} from public.ai_agent_job_receipt
      where tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid and request_nonce=${nonce}::uuid`);
-    if(existing){const proof=verifiedGovernedJob(existing,current);if(proof.specialist)return fail();if((reviewed?.row.consumed_job_id??null)!==(proposalId?existing.id:null)||proof.planning?.proposalId!==(proposalId??undefined))return fail();if(routingDigest(plan)!==routingDigest(proof.requested))return fail();await assertGovernedJobCandidateTx(tx,current,existing,proof);
+    if(existing){const proof=verifiedGovernedJob(existing,current);if(proof.jobKind!==kind)return fail();if((reviewed?.row.consumed_job_id??null)!==(proposalId?existing.id:null)||proof.planning?.proposalId!==(proposalId??undefined))return fail();if(routingDigest(plan)!==routingDigest(proof.requested))return fail();await assertGovernedJobCandidateTx(tx,current,existing,proof,true);
+     for(const module of proof.executed.modules)assertModuleEnabled(fresh,module);
      const results=await withAssistantJobReadsTx(fresh,tx,async read=>{const rows:AgentReadResult[]=[];for(const module of proof.executed.modules)rows.push(await read.moduleWork(module));return rows;});
-     return {version:1 as const,jobId:existing.id,candidateDigest:proof.candidateDigest,mode:proof.mode,results,effects:[],replayed:true};}
+     await assertGovernedJobCandidateTx(tx,current,existing,proof);const specialists=await currentSpecialistAssessmentsTx(tx,current,proof,results);
+     return {version:1 as const,jobId:existing.id,candidateDigest:proof.candidateDigest,mode:kind==='specialist'?specialists[0].work.mode:proof.mode,results,specialists,...(kind==='specialist'?{specialist:specialists[0].assessment}:{}),effects:[],replayed:true};}
     if(reviewed?.row.consumed_job_id)return fail();
-    const [promotion]=await tx.execute<{id:string;candidate_id:string;receipt:string;max_jobs:number;used_jobs:number;expires_at:string}>(sql`select p.id,p.candidate_id,p.receipt,p.max_jobs,p.used_jobs,p.expires_at::text
+    const [promotion]=kind==='module_plan'?await tx.execute<{id:string;candidate_id:string;receipt:string;max_jobs:number;used_jobs:number;expires_at:string}>(sql`select p.id,p.candidate_id,p.receipt,p.max_jobs,p.used_jobs,p.expires_at::text
       from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id and c.kind='typed_route_priority_v1' where p.tenant_id=${current.tenantId}::uuid and p.owner_user_id=${current.userId}::uuid and p.module_code='assistant'
       and p.expires_at>now() and p.used_jobs<p.max_jobs and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id and r.tenant_id=p.tenant_id)
-      order by p.created_at desc,p.id desc limit 1 for update of p nowait`);
+      order by p.created_at desc,p.id desc limit 1 for update of p nowait`):[];
     let selected=plan,candidateDigest=baselineDigest;let activePromotion:typeof promotion|undefined=promotion;
     if(promotion){const candidate=await candidateTx(tx,current,promotion.candidate_id,false);
-      let currentSource=true;try{assertCurrent(candidate);await assertCandidateSignalsTx(tx,current,candidate);}catch(error){if(error instanceof AgentSignalBusy)throw error;currentSource=false;}
+      let currentSource=true;try{assertCurrent(candidate);await assertCandidateSignalsTx(tx,current,candidate,true);}catch(error){if(error instanceof AgentSignalBusy||!(error instanceof AiGatewayError)&&!(error instanceof Error&&error.name==='ZodError'))throw error;currentSource=false;}
       if(!currentSource){
         await tx.execute(sql`insert into public.ai_agent_rollback(tenant_id,promotion_id,actor_user_id,reason)
           values(${current.tenantId}::uuid,${promotion.id}::uuid,${current.userId}::uuid,'source_changed') on conflict(promotion_id) do nothing`);
         activePromotion=undefined;
       }
     }
-    if(activePromotion){const candidate=await candidateTx(tx,current,activePromotion.candidate_id);const proof=open('promotion',current.tenantId,activePromotion.id,activePromotion.receipt);
+    if(activePromotion){const candidate=await candidateTx(tx,current,activePromotion.candidate_id,true,true);const proof=open('promotion',current.tenantId,activePromotion.id,activePromotion.receipt);
       if(proof.version!==1||proof.candidateDigest!==candidate.candidate_digest||routingDigest(proof.binding)!==routingDigest(binding(candidate))||
         proof.maxJobs!==activePromotion.max_jobs||new Date(String(proof.expiresAt)).getTime()!==new Date(activePromotion.expires_at).getTime())return fail();
       selected=applyTypedRouteCandidate(candidate.configuration,plan);candidateDigest=candidate.candidate_digest;
       await tx.execute(sql`update public.ai_agent_promotion set used_jobs=used_jobs+1 where id=${activePromotion.id}::uuid and tenant_id=${current.tenantId}::uuid`);
     }
+    const admissions:SpecialistAdmission[]=[];for(const module of [...selected.modules].sort()){assertModuleEnabled(fresh,module);admissions.push(await nominateSpecialistTx(tx,current,module));}
     const results=await withAssistantJobReadsTx(fresh,tx,async read=>{
       const rows:AgentReadResult[]=[];for(const module of selected.modules)rows.push(await read.moduleWork(module));return rows;
     });
+    const completed=await completeSpecialistsTx(tx,current,admissions,results),specialists=selected.modules.map(module=>completed.find(row=>row.selection.binding.configuration.module===module)!);
+    if(activePromotion)await assertCandidateSignalsTx(tx,current,await candidateTx(tx,current,activePromotion.candidate_id,false));
+    if(reviewed)await currentPlanningBindingTx(tx,current,reviewed.binding);
     const id=randomUUID();const [clock]=await tx.execute<{now:string;expires:string}>(sql`select now()::text as now,(now()+make_interval(secs=>${GOVERNED_JOB_RETENTION_DAYS*86400}))::text as expires`);
-    const mode=activePromotion?'promoted' as const:'baseline' as const;
-    const receipt=seal('governed-job-v2',current.tenantId,id,{version:2,stage:'completed',tenantId:current.tenantId,userId:current.userId,commandNonce:nonce,
-     mode,candidateDigest,promotionId:activePromotion?.id??null,sourceDigest:MODULE_AGENT_SOURCE_DIGEST,engineDigest:ROUTING_ENGINE_DIGEST,policyDigest:ROUTING_POLICY_DIGEST,
+    const mode=kind==='specialist'?specialists[0].selection.mode:activePromotion?'promoted' as const:'baseline' as const;
+    if(kind==='specialist')candidateDigest=specialists[0].selection.candidateDigest;const promotionId=kind==='specialist'?specialists[0].selection.promotionId:activePromotion?.id??null;
+    const receipt=seal('governed-job-v2',current.tenantId,id,{version:3,jobKind:kind,stage:'completed',tenantId:current.tenantId,userId:current.userId,commandNonce:nonce,
+     mode,candidateDigest,promotionId,sourceDigest:MODULE_AGENT_SOURCE_DIGEST,engineDigest:kind==='specialist'?specialistModuleEngineDigest(selected.modules[0]):ROUTING_ENGINE_DIGEST,policyDigest:kind==='specialist'?SPECIALIST_POLICY_DIGEST:ROUTING_POLICY_DIGEST,specialists:specialists.map(row=>row.selection),
      requestedPlan:plan,executedPlan:selected,requestedPlanDigest:routingDigest(plan),executedPlanDigest:routingDigest(selected),resultDigest:assistantSourceDigest(results),
      createdAt:clock.now,expiresAt:clock.expires,elapsedMs:Math.max(0,Date.now()-started),...(reviewed?{planning:reviewed.binding}:{})});
     await tx.execute(sql`insert into public.ai_agent_job_receipt(id,tenant_id,user_id,promotion_id,request_nonce,requested_plan_digest,expires_at,receipt)
-      values(${id}::uuid,${current.tenantId}::uuid,${current.userId}::uuid,${activePromotion?.id??null}::uuid,${nonce}::uuid,${routingDigest(plan)},${clock.expires}::timestamptz,${receipt})`);
+      values(${id}::uuid,${current.tenantId}::uuid,${current.userId}::uuid,${promotionId}::uuid,${nonce}::uuid,${routingDigest(plan)},${clock.expires}::timestamptz,${receipt})`);
     if(reviewed){const linked=await tx.execute<{id:string}>(sql`update public.ai_agent_plan_proposal set consumed_job_id=${id}::uuid where id=${reviewed.row.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid and consumed_job_id is null returning id`);if(linked.length!==1||linked[0].id!==reviewed.row.id)return fail();}
-    return {version:1 as const,jobId:id,candidateDigest,mode,results,effects:[],replayed:false};
+    return {version:1 as const,jobId:id,candidateDigest,mode,results,specialists:specialists.map(row=>({module:row.assessment.module,assessment:row.assessment,work:compactSpecialistWork(row.assessment,{mode:row.selection.mode,version:row.selection.version,configuration:row.selection.binding.configuration})})),...(kind==='specialist'?{specialist:specialists[0].assessment}:{}),effects:[],replayed:false};
   });}catch{return fail();}
+}
+
+/** Source-owned POST tool batch. Preselected module metadata is complete and ordered before
+ * source reads; the tool registry receives no Tx, query, promotion command or caller-supplied facts.
+ * Repeating the SAME server-issued batch nonce rechecks facts without spending another permit. */
+export async function withGovernedSpecialistReadBatch<T>(supplied:SessionContext,proposed:unknown,command:{nonce:string},consume:(read:AssistantReadSession)=>Promise<T>){
+ const ctx=capture(supplied),plan=captureTypedModulePlan(proposed),nonce=command?.nonce,started=Date.now();if(!command||!exact(command,['nonce'])||!uuid(nonce))return fail();
+ return withTenant(ctx,async tx=>{
+  await boundNativeOutcomeTransactionTx(tx);const fresh=await guard(tx,ctx,false);await agentReleaseIntervalTx(tx,ctx,ctx.userId!,false);await signalIntervalTx(tx,ctx,ctx.userId!);
+  const[lock]=await tx.execute<{owned:boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${'agent-job:'+ctx.tenantId+':'+ctx.userId+':'+nonce},0)) as owned`);if(lock?.owned!==true)return fail();
+  const[old]=await tx.execute<GovernedJobRow>(sql`select ${jobProjection} from public.ai_agent_job_receipt where tenant_id=${ctx.tenantId}::uuid and user_id=${ctx.userId}::uuid and request_nonce=${nonce}::uuid`);
+  const prior=old?verifiedGovernedJob(old,ctx):null;if(prior&&(prior.jobKind!=='tool_batch'||routingDigest(prior.requested)!==routingDigest(plan)))return fail();if(old&&prior)await assertGovernedJobCandidateTx(tx,ctx,old,prior,true);
+  const admissions:SpecialistAdmission[]=[];
+  for(const module of [...plan.modules].sort()){
+   assertModuleEnabled(fresh,module);if(!prior){admissions.push(await nominateSpecialistTx(tx,ctx,module));continue;}
+   const selection=prior.specialists.find(row=>row.binding.configuration.module===module)!;let candidate:CandidateRow|null=null,promotion:SpecialistAdmission['promotion']=null;
+   if(selection.mode==='promoted'){
+    const[row]=await tx.execute<NonNullable<SpecialistAdmission['promotion']>>(sql`select id,candidate_id,receipt,max_jobs,expires_at::text from public.ai_agent_promotion p where p.id=${selection.promotionId}::uuid and p.tenant_id=${ctx.tenantId}::uuid and p.owner_user_id=${ctx.userId}::uuid and p.module_code=${module} and p.expires_at>now() and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id)`);
+    if(row){promotion=row;candidate=await candidateTx(tx,ctx,row.candidate_id,true,true);checkedSpecialistPromotion(candidate,row,ctx.tenantId);}
+   }
+   admissions.push({module,candidate,promotion});
+  }
+  const sources=new Map<AgentModuleCode,Promise<AgentReadResult>>(),works=new Map<AgentModuleCode,Promise<InterpretedModuleRead>>();
+  const interpret=async(module:AgentModuleCode,canonical:()=>Promise<CanonicalModuleRead>)=>{
+   const admission=admissions.find(row=>row.module===module);if(!admission)return fail();let work=works.get(module);if(!work){work=(async()=>{
+    const result=await canonical();sources.set(module,Promise.resolve(result));
+    const assessment=prior?executeCanonicalSpecialist(admission.candidate?SpecialistCandidate.parse(admission.candidate.configuration):baselineConfiguration(module),result):await assessSpecialistTx(tx,ctx,admission,result);
+    return{...result,specialistWork:compactSpecialistWork(assessment,{mode:admission.candidate?'promoted':'baseline',version:admission.candidate?.version??0,configuration:admission.candidate?SpecialistCandidate.parse(admission.candidate.configuration):baselineConfiguration(module)})};
+   })();works.set(module,work);}return work;
+  };
+  const value=await withAssistantJobReadsTx(fresh,tx,consume,interpret);
+  if(sources.size!==plan.modules.length)return fail();const results:AgentReadResult[]=[];for(const module of plan.modules)results.push(await sources.get(module)!);
+  if(old&&prior){await assertGovernedJobCandidateTx(tx,ctx,old,prior);return{jobId:old.id,value,replayed:true};}
+  const completed=await completeSpecialistsTx(tx,ctx,admissions,results),selections=plan.modules.map(module=>completed.find(row=>row.selection.binding.configuration.module===module)!.selection);
+  const id=randomUUID(),[clock]=await tx.execute<{now:string;expires:string}>(sql`select now()::text as now,(now()+make_interval(secs=>${GOVERNED_JOB_RETENTION_DAYS*86400}))::text as expires`);
+  const receipt=seal('governed-job-v2',ctx.tenantId,id,{version:3,jobKind:'tool_batch',stage:'completed',tenantId:ctx.tenantId,userId:ctx.userId,commandNonce:nonce,mode:'baseline',candidateDigest:baselineDigest,promotionId:null,sourceDigest:MODULE_AGENT_SOURCE_DIGEST,engineDigest:ROUTING_ENGINE_DIGEST,policyDigest:ROUTING_POLICY_DIGEST,requestedPlan:plan,executedPlan:plan,requestedPlanDigest:routingDigest(plan),executedPlanDigest:routingDigest(plan),resultDigest:assistantSourceDigest(results),createdAt:clock.now,expiresAt:clock.expires,elapsedMs:Math.max(0,Date.now()-started),specialists:selections});
+  await tx.execute(sql`insert into public.ai_agent_job_receipt(id,tenant_id,user_id,promotion_id,request_nonce,requested_plan_digest,expires_at,receipt) values(${id}::uuid,${ctx.tenantId}::uuid,${ctx.userId}::uuid,null,${nonce}::uuid,${routingDigest(plan)},${clock.expires}::timestamptz,${receipt})`);
+  return{jobId:id,value,replayed:false};
+ });
 }
 
 /** Administrative expiry/exhaustion receipts; no source data or impersonation is returned. */
@@ -679,9 +732,9 @@ function openProposal(row:PlanProposalRow,ctx:SessionContext){
 async function proposalNonceTx(tx:Tx,ctx:SessionContext,nonce:string){
  const [owned]=await tx.execute<{owned:boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${'agent-plan:'+ctx.tenantId+':'+ctx.userId+':'+nonce},0)) as owned`);if(owned?.owned!==true)return fail();
 }
-async function checkedOwnPlanProposalTx(tx:Tx,ctx:SessionContext,id:string,plan:ReturnType<typeof captureTypedModulePlan>){
+async function checkedOwnPlanProposalTx(tx:Tx,ctx:SessionContext,id:string,plan:ReturnType<typeof captureTypedModulePlan>,deferNativeCustody=false){
  if(!uuid(id))return fail();const [row]=await tx.execute<PlanProposalRow>(sql`select ${proposalProjection} from public.ai_agent_plan_proposal where id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid and user_id=${ctx.userId}::uuid`);if(!row)return fail();
- await proposalNonceTx(tx,ctx,row.request_nonce);const opened=openProposal(row,ctx);await currentPlanningBindingTx(tx,ctx,opened.binding);
+ await proposalNonceTx(tx,ctx,row.request_nonce);const opened=openProposal(row,ctx);await currentPlanningBindingTx(tx,ctx,opened.binding,deferNativeCustody);
  if(row.state!=='ready'||routingDigest(captureTypedModulePlan(opened.proof.plan))!==routingDigest(plan))return fail();return {row,binding:opened.binding};
 }
 export type OwnModulePlanView=Readonly<{state:'ready';proposalId:string;modules:ReturnType<typeof captureTypedModulePlan>['modules'];consumedJobId:string|null;expiresAt:string}|{state:'reserved'|'refused'|'failed';proposalId:string;expiresAt:string}>;
@@ -808,11 +861,52 @@ export async function evaluateHumanQuestionPlannerCandidate(ctx:SessionContext,i
 // ── Closed per-module canonical specialist lifecycle. No provider/model, raw learning or HR effect. ──
 function specialistBaselineDigest(module:AgentModuleCode){return routingDigest(['canonical-module-facts-baseline-v1',module,MODULE_AGENT_SOURCE_DIGEST,specialistNativeContractDigest(module)]);}
 function specialistModuleEngineDigest(module:AgentModuleCode){return routingDigest([SPECIALIST_ENGINE_DIGEST,specialistNativeContractDigest(module)]);}
-type SpecialistJobBinding=Readonly<{configuration:SpecialistCandidate;nativeContractDigest:string;suiteDigest:string;assessmentDigest:string|null}>;
+type SpecialistJobBinding=Readonly<{configuration:SpecialistCandidate;nativeContractDigest:string;suiteDigest:string;assessmentDigest:string}>;
+type SpecialistSelection=Readonly<{binding:SpecialistJobBinding;mode:'baseline'|'promoted';candidateDigest:string;promotionId:string|null;version:number}>;
 function captureSpecialistJobBinding(value:unknown):SpecialistJobBinding{
  if(!value||typeof value!=='object'||Array.isArray(value)||!exact(value,['configuration','nativeContractDigest','suiteDigest','assessmentDigest']))return fail();const row=value as Record<string,unknown>,configuration=SpecialistCandidate.parse(row.configuration);
- if(row.nativeContractDigest!==specialistNativeContractDigest(configuration.module)||row.suiteDigest!==specialistSuiteDigest(configuration.module)||row.assessmentDigest!==null&&(typeof row.assessmentDigest!=='string'||!/^[a-f0-9]{64}$/.test(row.assessmentDigest)))return fail();
- return Object.freeze({configuration,nativeContractDigest:row.nativeContractDigest as string,suiteDigest:row.suiteDigest as string,assessmentDigest:row.assessmentDigest as string|null});
+ if(row.nativeContractDigest!==specialistNativeContractDigest(configuration.module)||row.suiteDigest!==specialistSuiteDigest(configuration.module)||typeof row.assessmentDigest!=='string'||!/^[a-f0-9]{64}$/.test(row.assessmentDigest))return fail();
+ return Object.freeze({configuration,nativeContractDigest:row.nativeContractDigest as string,suiteDigest:row.suiteDigest as string,assessmentDigest:row.assessmentDigest});
+}
+function captureSpecialistSelections(value:unknown):readonly SpecialistSelection[]{
+ if(!Array.isArray(value)||value.length<1||value.length>4)return fail();const rows=value.map(item=>{
+  if(!item||typeof item!=='object'||Array.isArray(item)||!exact(item,['binding','mode','candidateDigest','promotionId','version']))return fail();
+  const binding=captureSpecialistJobBinding(item.binding),baseline=item.mode==='baseline';
+  if(!baseline&&item.mode!=='promoted'||typeof item.candidateDigest!=='string'||!/^[a-f0-9]{64}$/.test(item.candidateDigest)||!Number.isSafeInteger(item.version)||
+   (baseline?(item.version!==0||item.promotionId!==null||binding.configuration.playbook!=='canonical_domain_v1'||item.candidateDigest!==specialistBaselineDigest(binding.configuration.module)):(item.version<1||typeof item.promotionId!=='string'||!uuid(item.promotionId)||binding.configuration.playbook!=='canonical_followup_v1')))return fail();
+  return Object.freeze({binding,mode:item.mode as 'baseline'|'promoted',candidateDigest:item.candidateDigest,promotionId:item.promotionId as string|null,version:item.version});
+ });if(new Set(rows.map(row=>row.binding.configuration.module)).size!==rows.length)return fail();return Object.freeze(rows);
+}
+type SpecialistAdmission={module:AgentModuleCode;candidate:CandidateRow|null;promotion:{id:string;candidate_id:string;receipt:string;max_jobs:number;expires_at:string}|null;assessment?:SpecialistAssessment};
+/** All metadata nomination happens BEFORE the first canonical source. Native privacy custody is
+ * deliberately deferred until ALL canonical reads finish; this is not a late source/configuration lock. */
+async function nominateSpecialistTx(tx:Tx,ctx:SessionContext,module:AgentModuleCode):Promise<SpecialistAdmission>{
+ const [promotion]=await tx.execute<{id:string;candidate_id:string;receipt:string;max_jobs:number;expires_at:string}>(sql`select p.id,p.candidate_id,p.receipt,p.max_jobs,p.expires_at::text from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id and c.kind='canonical_specialist_v1' where p.tenant_id=${ctx.tenantId}::uuid and p.owner_user_id=${ctx.userId}::uuid and p.module_code=${module} and p.expires_at>now() and p.used_jobs<p.max_jobs and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id) order by p.created_at desc,p.id desc limit 1 for update of p nowait`);
+ if(!promotion)return{module,candidate:null,promotion:null};const candidate=await candidateTx(tx,ctx,promotion.candidate_id,false);
+ try{assertCurrent(candidate);if(candidate.kind!=='canonical_specialist_v1'||candidate.module_code!==module||SpecialistCandidate.parse(candidate.configuration).playbook==='canonical_domain_v1')return fail();await assertCandidateSignalsTx(tx,ctx,candidate,true);checkedSpecialistPromotion(candidate,promotion,ctx.tenantId);}
+ catch(error){if(error instanceof AgentSignalBusy||!(error instanceof AiGatewayError)&&!(error instanceof Error&&error.name==='ZodError'))throw error;await retireSpecialistTx(tx,ctx,promotion.id,'source_changed');return{module,candidate:null,promotion:null};}
+ return{module,candidate,promotion};
+}
+async function retireSpecialistTx(tx:Tx,ctx:SessionContext,promotionId:string,reason:'source_changed'|'quality_regression'){
+ await tx.execute(sql`insert into public.ai_agent_rollback(tenant_id,promotion_id,actor_user_id,reason) values(${ctx.tenantId}::uuid,${promotionId}::uuid,${ctx.userId}::uuid,${reason}) on conflict(promotion_id) do nothing`);
+}
+function baselineConfiguration(module:AgentModuleCode){return SpecialistCandidate.parse({kind:'canonical_specialist_v1',module,playbook:'canonical_domain_v1'});}
+async function assessSpecialistTx(tx:Tx,ctx:SessionContext,admission:SpecialistAdmission,result:AgentReadResult){
+ if(admission.assessment)return admission.assessment;const configuration=admission.candidate?SpecialistCandidate.parse(admission.candidate.configuration):baselineConfiguration(admission.module);
+ try{admission.assessment=executeCanonicalSpecialist(configuration,result);}
+ catch(error){if(!admission.promotion)throw error;await retireSpecialistTx(tx,ctx,admission.promotion.id,'quality_regression');admission.candidate=null;admission.promotion=null;admission.assessment=executeCanonicalSpecialist(baselineConfiguration(admission.module),result);}
+ return admission.assessment;
+}
+/** Complete privacy validation after ALL canonical reads, then commit bounded metadata permits.
+ * Any storage/busy refusal propagates and rolls the complete owner transaction back. */
+async function completeSpecialistsTx(tx:Tx,ctx:SessionContext,admissions:readonly SpecialistAdmission[],results:readonly AgentReadResult[]){
+ const completed:{selection:SpecialistSelection;assessment:SpecialistAssessment}[]=[];
+ for(const admission of admissions){const result=results.find(row=>row.module===admission.module);if(!result)return fail();if(admission.candidate)await assertCandidateSignalsTx(tx,ctx,admission.candidate);
+  const assessment=await assessSpecialistTx(tx,ctx,admission,result),candidate=admission.candidate,promotion=admission.promotion,configuration=candidate?SpecialistCandidate.parse(candidate.configuration):baselineConfiguration(admission.module);
+  if(candidate&&promotion){const updated=await tx.execute<{id:string}>(sql`update public.ai_agent_promotion set used_jobs=used_jobs+1 where id=${promotion.id}::uuid and tenant_id=${ctx.tenantId}::uuid and owner_user_id=${ctx.userId}::uuid and used_jobs<max_jobs and expires_at>now() and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=${promotion.id}::uuid) returning id`);if(updated.length!==1)return fail();}
+  const selection=captureSpecialistSelections([{binding:{configuration,nativeContractDigest:specialistNativeContractDigest(admission.module),suiteDigest:specialistSuiteDigest(admission.module),assessmentDigest:routingDigest(assessment)},mode:candidate?'promoted':'baseline',candidateDigest:candidate?.candidate_digest??specialistBaselineDigest(admission.module),promotionId:promotion?.id??null,version:candidate?.version??0}])[0];completed.push({selection,assessment});
+ }
+ return completed;
 }
 export async function createCanonicalSpecialistCandidate(ctx:SessionContext,input:{module:AgentModuleCode;version:number;signalIds?:readonly string[];nativeSignalIds?:readonly string[];playbook?:SpecialistCandidate['playbook']},server:NativeOutcomeServerContext={}){
  const current=capture(ctx),module=input.module,version=input.version,playbook=input.playbook??'canonical_domain_v1',signalIds=captureSignalIds(input.signalIds),nativeSignalIds=captureNativeCandidateSignalIds(input.nativeSignalIds),capability=Object.freeze({notificationIdentity:server.notificationIdentity});if(!exact(input,['module','version',...(input.signalIds===undefined?[]:['signalIds']),...(input.nativeSignalIds===undefined?[]:['nativeSignalIds']),...(input.playbook===undefined?[]:['playbook'])])||!isAgentModuleCode(module)||!Number.isSafeInteger(version)||version<1)return fail();
@@ -841,21 +935,18 @@ export async function promoteCanonicalSpecialistCandidate(ctx:SessionContext,inp
  await tx.execute(sql`insert into public.ai_agent_promotion(id,tenant_id,candidate_id,owner_user_id,module_code,approver_user_id,receipt,max_jobs,expires_at) values(${id}::uuid,${current.tenantId}::uuid,${candidate.id}::uuid,${candidate.owner_user_id}::uuid,${module},${current.userId}::uuid,${receipt},${p.maxJobs},${clock.expires}::timestamptz)`);return{promotionId:id,module,coverage:'canonical_domain_guidance_only' as const,maxJobs:p.maxJobs,expiresAt:clock.expires};});}catch{return fail();}
 }
 function checkedSpecialistPromotion(candidate:CandidateRow,promotion:{id:string;receipt:string;max_jobs:number;expires_at:string},tenant:string){if(SpecialistCandidate.parse(candidate.configuration).playbook==='canonical_domain_v1')return fail();const proof=open('specialist-promotion',tenant,promotion.id,promotion.receipt);if(!exact(proof,['version','candidateDigest','binding','approverId','evaluations','maxJobs','createdAt','expiresAt'])||proof.version!==1||proof.candidateDigest!==candidate.candidate_digest||routingDigest(proof.binding)!==routingDigest(binding(candidate))||proof.maxJobs!==promotion.max_jobs||new Date(String(proof.expiresAt)).getTime()!==new Date(promotion.expires_at).getTime()||typeof proof.approverId!=='string'||proof.approverId===candidate.author_user_id||!Array.isArray(proof.evaluations)||proof.evaluations.length<2||proof.evaluations.length>8||new Set(proof.evaluations.map(row=>row.evaluatorId)).size!==proof.evaluations.length)return fail();return proof;}
-async function currentSpecialistJobAssessmentTx(tx:Tx,ctx:SessionContext,job:GovernedJobRow,completed:ReturnType<typeof verifiedGovernedJob>,results:AgentReadResult[]):Promise<SpecialistAssessment|null>{
- if(!completed.specialist||!job.promotion_id)return null;const [promotion]=await tx.execute<{id:string;candidate_id:string;receipt:string;max_jobs:number;expires_at:string}>(sql`select p.id,p.candidate_id,p.receipt,p.max_jobs,p.expires_at::text from public.ai_agent_promotion p where p.id=${job.promotion_id}::uuid and p.tenant_id=${ctx.tenantId}::uuid and p.owner_user_id=${ctx.userId}::uuid and p.module_code=${completed.specialist.configuration.module} and p.expires_at>now() and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id)`);if(!promotion)return null;const candidate=await candidateTx(tx,ctx,promotion.candidate_id);if(candidate.kind!=='canonical_specialist_v1'||candidate.candidate_digest!==completed.candidateDigest)return fail();checkedSpecialistPromotion(candidate,promotion,ctx.tenantId);return executeCanonicalSpecialist(completed.specialist.configuration,results[0]);
+async function currentSpecialistAssessmentsTx(tx:Tx,ctx:SessionContext,completed:ReturnType<typeof verifiedGovernedJob>,results:readonly AgentReadResult[]){
+ const current:{module:AgentModuleCode;assessment:SpecialistAssessment;work:ReturnType<typeof compactSpecialistWork>}[]=[];
+ for(const selection of completed.specialists){const module=selection.binding.configuration.module,result=results.find(row=>row.module===module);if(!result)return fail();let active=selection.mode==='promoted';
+  if(active){const[row]=await tx.execute<{active:boolean}>(sql`select exists(select 1 from public.ai_agent_promotion p where p.id=${selection.promotionId}::uuid and p.tenant_id=${ctx.tenantId}::uuid and p.owner_user_id=${ctx.userId}::uuid and p.module_code=${module} and p.expires_at>now() and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id)) as active`);active=row?.active===true;}
+  const configuration=active?selection.binding.configuration:baselineConfiguration(module),assessment=executeCanonicalSpecialist(configuration,result);current.push({module,assessment,work:compactSpecialistWork(assessment,{mode:active?'promoted':'baseline',version:active?selection.version:0,configuration})});
+ }
+ return current;
 }
-/** Explicit one-module human command. Source facts and permit increment share one canonical Tx. */
+/** Same source-owned selection and canonical interpreter as shared plans and chatbot tool batches. */
 export async function runGovernedSpecialistJob(ctx:SessionContext,input:{module:AgentModuleCode},command:{nonce:string}){
- const current=capture(ctx),module=input.module,nonce=command?.nonce,started=Date.now();if(!exact(input,['module'])||!isAgentModuleCode(module)||!command||!exact(command,['nonce'])||typeof nonce!=='string'||!uuid(nonce))return fail();const plan=captureTypedModulePlan({version:1,modules:[module]});
- try{return await withTenant(current,async tx=>{const fresh=await guard(tx,current,false);assertModuleEnabled(fresh,module);await agentReleaseIntervalTx(tx,current,current.userId!,false);await signalIntervalTx(tx,current,current.userId!);const [owned]=await tx.execute<{owned:boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${'agent-job:'+current.tenantId+':'+current.userId+':'+nonce},0)) as owned`);if(owned?.owned!==true)return fail();const [existing]=await tx.execute<GovernedJobRow>(sql`select ${jobProjection} from public.ai_agent_job_receipt where tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid and request_nonce=${nonce}::uuid`);
- if(existing){const completed=verifiedGovernedJob(existing,current);if(!completed.specialist||completed.specialist.configuration.module!==module)return fail();await assertGovernedJobCandidateTx(tx,current,existing,completed);const results=await withAssistantJobReadsTx(fresh,tx,async read=>[await read.moduleWork(module)]),specialist=await currentSpecialistJobAssessmentTx(tx,current,existing,completed,results);return{version:1 as const,jobId:existing.id,mode:completed.mode,results,specialist,effects:[],replayed:true};}
- const [promotion]=await tx.execute<{id:string;candidate_id:string;receipt:string;max_jobs:number;expires_at:string}>(sql`select p.id,p.candidate_id,p.receipt,p.max_jobs,p.expires_at::text from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id and c.kind='canonical_specialist_v1' where p.tenant_id=${current.tenantId}::uuid and p.owner_user_id=${current.userId}::uuid and p.module_code=${module} and p.expires_at>now() and p.used_jobs<p.max_jobs and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id) order by p.created_at desc,p.id desc limit 1 for update of p nowait`);
- let selected:CandidateRow|undefined;if(promotion){const candidate=await candidateTx(tx,current,promotion.candidate_id,false);let valid=true;try{assertCurrent(candidate);if(candidate.kind==='canonical_specialist_v1'&&SpecialistCandidate.parse(candidate.configuration).playbook==='canonical_domain_v1')return fail();await assertCandidateSignalsTx(tx,current,candidate);}catch(error){if(!(error instanceof AiGatewayError)&&!(error instanceof Error&&error.name==='ZodError'))throw error;valid=false;}if(!valid)await tx.execute(sql`insert into public.ai_agent_rollback(tenant_id,promotion_id,actor_user_id,reason) values(${current.tenantId}::uuid,${promotion.id}::uuid,${current.userId}::uuid,'source_changed') on conflict(promotion_id) do nothing`);else{if(candidate.kind!=='canonical_specialist_v1'||candidate.module_code!==module)return fail();checkedSpecialistPromotion(candidate,promotion,current.tenantId);selected=candidate;}}
- const configuration=selected?SpecialistCandidate.parse(selected.configuration):SpecialistCandidate.parse({kind:'canonical_specialist_v1',module,playbook:'canonical_domain_v1'}),results=await withAssistantJobReadsTx(fresh,tx,async read=>[await read.moduleWork(module)]);let specialist:SpecialistAssessment|null=null;if(selected){try{specialist=executeCanonicalSpecialist(configuration,results[0]);}catch{await tx.execute(sql`insert into public.ai_agent_rollback(tenant_id,promotion_id,actor_user_id,reason) values(${current.tenantId}::uuid,${promotion.id}::uuid,${current.userId}::uuid,'quality_regression') on conflict(promotion_id) do nothing`);selected=undefined;}}
- if(selected)await tx.execute(sql`update public.ai_agent_promotion set used_jobs=used_jobs+1 where id=${promotion.id}::uuid and tenant_id=${current.tenantId}::uuid`);
- const id=randomUUID(),[clock]=await tx.execute<{now:string;expires:string}>(sql`select now()::text as now,(now()+make_interval(secs=>${GOVERNED_JOB_RETENTION_DAYS*86400}))::text as expires`),mode=selected?'promoted' as const:'baseline' as const,candidateDigest=selected?.candidate_digest??specialistBaselineDigest(module),specialistProof=captureSpecialistJobBinding({configuration,nativeContractDigest:specialistNativeContractDigest(module),suiteDigest:specialistSuiteDigest(module),assessmentDigest:specialist?routingDigest(specialist):null});
- const receipt=seal('governed-job-v2',current.tenantId,id,{version:2,stage:'completed',tenantId:current.tenantId,userId:current.userId,commandNonce:nonce,mode,candidateDigest,promotionId:selected?promotion.id:null,sourceDigest:MODULE_AGENT_SOURCE_DIGEST,engineDigest:specialistModuleEngineDigest(module),policyDigest:SPECIALIST_POLICY_DIGEST,requestedPlan:plan,executedPlan:plan,requestedPlanDigest:routingDigest(plan),executedPlanDigest:routingDigest(plan),resultDigest:assistantSourceDigest(results),createdAt:clock.now,expiresAt:clock.expires,elapsedMs:Math.max(0,Date.now()-started),specialist:specialistProof});
- await tx.execute(sql`insert into public.ai_agent_job_receipt(id,tenant_id,user_id,promotion_id,request_nonce,requested_plan_digest,expires_at,receipt) values(${id}::uuid,${current.tenantId}::uuid,${current.userId}::uuid,${selected?promotion.id:null}::uuid,${nonce}::uuid,${routingDigest(plan)},${clock.expires}::timestamptz,${receipt})`);return{version:1 as const,jobId:id,mode,results,specialist,effects:[],replayed:false};});}catch{return fail();}
+ const current=capture(ctx),module=input.module,nonce=command?.nonce;if(!exact(input,['module'])||!isAgentModuleCode(module)||!command||!exact(command,['nonce'])||typeof nonce!=='string'||!uuid(nonce))return fail();
+ return runGovernedReadJob(current,{version:1,modules:[module]},{nonce},'specialist');
 }
 export async function specialistReviewWorkspaceTx(tx:Tx,ctx:SessionContext){const current=capture(ctx);await assertAiPrincipalTx(tx,current);if(!isGroupAdmin(current))return null;const [admin]=await tx.execute<{allowed:boolean}>(sql`select app.is_group_admin() as allowed`);if(admin?.allowed!==true)return null;const fresh={...current,entitlements:await resolveEntitlementsTx(tx,current.tenantId)};
  const versions=await tx.execute<{module:string;version:number}>(sql`select module_code as module,max(version)::int as version from public.ai_agent_candidate where tenant_id=${current.tenantId}::uuid and owner_user_id=${current.userId}::uuid group by module_code`),modules=AGENT_MODULE_CODES.filter(module=>{try{assertModuleEnabled(fresh,module);return true;}catch{return false;}}).map(module=>({module,nextVersion:(versions.find(row=>row.module===module)?.version??0)+1}));

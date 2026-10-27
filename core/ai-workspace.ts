@@ -40,7 +40,7 @@ export async function loadAiWorkspace(ctx: SessionContext, options:{includeHisto
     }).from(assistantExchange).where(eq(assistantExchange.appUserId, userId))
       .orderBy(desc(assistantExchange.askedAt), desc(assistantExchange.id)).limit(10):[];
     const history = includeHistory?await withAssistantReadTx(fresh, tx, async session => {
-      const replay = workspaceGroundedAnswers(fresh, session);
+      const replay = workspaceGroundedAnswers(fresh, session,tx);
       const history = [];
       for (const row of rows) {
         const selected=selectedExchangeId===row.id;

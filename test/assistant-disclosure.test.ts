@@ -53,3 +53,12 @@ describe('Assistant historical disclosure receipt', () => {
       expect(openAssistantDisclosure(binding, encryptSecret(JSON.stringify(changed), aad(binding)))).toBeNull();
   });
 });
+
+describe('sealed source-owned specialist job references',()=>{
+ it('captures only an internal module-work job reference and binds it to the actual exchange principal',()=>{
+  const {binding}=fixture(),moduleJobId=randomUUID(),source={name:'my_module_work',input:{module:'org'},digest:assistantSourceDigest({ok:true,module:'org'}),moduleJobId};
+  const token=sealAssistantDisclosure(binding,[source])!;expect(token).toBeTruthy();expect(token).not.toContain(moduleJobId);expect(openAssistantDisclosure(binding,token)).toEqual([source]);
+  expect(openAssistantDisclosure({...binding,userId:randomUUID()},token)).toBeNull();
+  for(const invalid of [{...source,name:'employee_profile'},{...source,moduleJobId:'model-provided-version'},{...source,promotionId:randomUUID()}])expect(sealAssistantDisclosure(binding,[invalid])).toBeNull();
+ });
+});

@@ -8,7 +8,7 @@ import { decryptSecret, encryptSecret, isSecretStorable } from './crypto';
 export const ASSISTANT_DISCLOSURE_VERSION = 1;
 export const ASSISTANT_DISCLOSURE_LIMITS = Object.freeze({ reads: 128, tokenBytes: 786_432, plainBytes: 524_288 });
 export type AssistantDisclosureBinding = Readonly<{ tenantId: string; userId: string; exchangeId: string; question: string; answer: string }>;
-export type AssistantSourceRead = Readonly<{ name: string; input: unknown; digest: string }>;
+export type AssistantSourceRead = Readonly<{ name: string; input: unknown; digest: string;moduleJobId?:string }>;
 const digest = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex');
 export const assistantSourceDigest = (outcome: unknown) => digest(serializeAgentReadResult(outcome));
 const exact = (value: Record<string, unknown>, keys: string[]) => Object.keys(value).length === keys.length && keys.every(key => Object.prototype.hasOwnProperty.call(value, key));
@@ -22,13 +22,14 @@ export function captureAssistantSourceReads(value: unknown): readonly AssistantS
   for (let offset = 0; offset < value.length; offset += 16) {
     const entries = value.slice(offset, offset + 16);
     for (const entry of entries) {
-      if (!entry || typeof entry !== 'object' || Array.isArray(entry) || !exact(entry, ['name', 'input', 'digest']) ||
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry) || !exact(entry, ['name', 'input', 'digest',...(entry.moduleJobId===undefined?[]:['moduleJobId'])]) ||
+          (entry.moduleJobId!==undefined&&(entry.name!=='my_module_work'||typeof entry.moduleJobId!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(entry.moduleJobId))) ||
           typeof entry.digest !== 'string' || !/^[a-f0-9]{64}$/.test(entry.digest)) throw Error();
     }
     const captured = captureAgentReadBatch(entries.map((entry, index) => ({ id: String(offset + index), name: entry.name, input: entry.input })));
     captured.forEach((call, index) => {
       if (call.input === undefined) throw Error();
-      result.push(Object.freeze({ name: call.name, input: call.input, digest: entries[index].digest }));
+      result.push(Object.freeze({ name: call.name, input: call.input, digest: entries[index].digest,...(entries[index].moduleJobId===undefined?{}:{moduleJobId:entries[index].moduleJobId}) }));
     });
   }
   return Object.freeze(result);

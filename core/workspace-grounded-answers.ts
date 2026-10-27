@@ -2,14 +2,14 @@
  * Sealed executed lookups nominate reads; current canonical tool/RLS/field policy owns every card.
  * Cache lifetime is this one actor's actual read transaction only. No provider, effect or ambient query.
  */
-import type {SessionContext} from '../db/client';
+import type {SessionContext,Tx} from '../db/client';
 import {withAssistantRead,type AssistantReadSession} from './assistant-read-session';
 import {openAssistantDisclosure,type AssistantDisclosureBinding} from '../lib/ai/assistant-disclosure';
-import {loadCanonicalToolJob,type CanonicalModuleJobView} from './workspace-module-jobs';
+import {loadCanonicalToolJob,loadGovernedSpecialistToolJob,type CanonicalModuleJobView} from './workspace-module-jobs';
 import {isGroundedToolName,GROUNDED_TOOL_MODULES} from '../lib/ai/grounded-tool-presentation';
 import {isAgentModuleCode,type AgentModuleCode} from '../lib/ai/module-agents';
 export type GroundedWorkspaceAnswer=Readonly<{mode:'grounded'|'generic'|'unavailable';views:readonly CanonicalModuleJobView[];fallbackModules:readonly AgentModuleCode[];partial:boolean;tools:readonly string[]}>;
-export function workspaceGroundedAnswers(ctx:SessionContext,session:AssistantReadSession){
+export function workspaceGroundedAnswers(ctx:SessionContext,session:AssistantReadSession,tx?:Tx){
  let remaining=32;const cache=new Map<string,Promise<CanonicalModuleJobView>>();
  return async(binding:AssistantDisclosureBinding,receipt:unknown):Promise<GroundedWorkspaceAnswer>=>{
   const empty=(mode:'generic'|'unavailable'):GroundedWorkspaceAnswer=>Object.freeze({mode,views:Object.freeze([]),fallbackModules:Object.freeze([]),partial:false,tools:Object.freeze([])});
@@ -21,9 +21,9 @@ export function workspaceGroundedAnswers(ctx:SessionContext,session:AssistantRea
    if(!isGroundedToolName(source.name)){partial=true;continue;}
    const input=source.input&&typeof source.input==='object'&&!Array.isArray(source.input)?source.input as Record<string,unknown>:null;
    const fallbackModule=source.name==='my_module_work'&&isAgentModuleCode(input?.module)?input.module:GROUNDED_TOOL_MODULES[source.name];
-   const key=JSON.stringify([source.name,source.input,source.digest]);if(seen.has(key))continue;seen.add(key);
+   const key=JSON.stringify([source.name,source.input,source.digest,source.moduleJobId??null]);if(seen.has(key))continue;seen.add(key);
    let pending=cache.get(key);if(!pending){if(remaining--<=0){partial=true;fallback.add(fallbackModule);continue;}
-    pending=loadCanonicalToolJob(ctx,source.name,source.input,source.digest,session);cache.set(key,pending);}
+    pending=source.moduleJobId&&tx&&source.name==='my_module_work'?loadGovernedSpecialistToolJob(ctx,tx,source.input,source.moduleJobId,source.digest):loadCanonicalToolJob(ctx,source.name,source.input,source.digest,session);cache.set(key,pending);}
    const view=await pending;
    if(view.state==='ready'){views.push(view);tools.push(source.name);}else{partial=true;fallback.add(fallbackModule);}
   }

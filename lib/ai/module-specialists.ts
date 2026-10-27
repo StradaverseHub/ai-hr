@@ -70,3 +70,12 @@ export function executeCanonicalSpecialist(candidateValue:unknown,source:{module
  }
  return Object.freeze({version:1,module,coverage:'canonical_domain_guidance_only',findings:Object.freeze([...findings].sort()),presentation,humanActions:moduleHumanActionHandoffs(module),effects:Object.freeze([]) as readonly [],requiresFreshNativeReview:true,...(candidate.playbook==='canonical_followup_v1'?{diagnostic:canonicalSpecialistFollowup(module,data,presentation)}:{})});
 }
+
+/** Compact source-owned handoff to the shared Assistant. Facts stay in the original canonical data;
+ * no duplicate card/transcript payload, actor capability, candidate ID or effect instruction. */
+export type CompactSpecialistWork=Readonly<{version:1;module:AgentModuleCode;mode:'baseline'|'promoted';candidateVersion:number;playbook:SpecialistCandidate['playbook'];configurationDigest:string;findings:readonly SpecialistFinding[];diagnostic?:SpecialistDiagnostic;effects:readonly [];requiresFreshNativeReview:true}>;
+export function compactSpecialistWork(assessment:SpecialistAssessment,selection:{mode:'baseline'|'promoted';version:number;configuration:SpecialistCandidate}):CompactSpecialistWork{
+ const configuration=SpecialistCandidate.parse(selection.configuration);
+ if(configuration.module!==assessment.module||!['baseline','promoted'].includes(selection.mode)||!Number.isSafeInteger(selection.version)||(selection.mode==='baseline'?(selection.version!==0||configuration.playbook!=='canonical_domain_v1'):(selection.version<1||configuration.playbook!=='canonical_followup_v1')))return fail();
+ return Object.freeze({version:1,module:assessment.module,mode:selection.mode,candidateVersion:selection.version,playbook:configuration.playbook,configurationDigest:routingDigest(configuration),findings:assessment.findings,...(assessment.diagnostic?{diagnostic:assessment.diagnostic}:{}),effects:Object.freeze([]) as readonly [],requiresFreshNativeReview:true});
+}
