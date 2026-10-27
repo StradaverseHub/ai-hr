@@ -1,4 +1,4 @@
-/** Scoped Apple enrollment orchestration. No public endpoint or attendance trust tier is enabled. */
+/** Scoped Apple enrollment orchestration. No enrollment endpoint or attendance trust tier is enabled. */
 import {createHash,KeyObject,randomUUID} from 'node:crypto';
 import {and,eq,isNull,sql} from 'drizzle-orm';
 import {z} from 'zod';

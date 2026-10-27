@@ -1,4 +1,4 @@
-/** HTTP handlers for the reviewed integrity protocol; no filesystem route activates them yet.
+/** Enrollment and signed-clock HTTP handlers remain unmounted; key recovery has separate routes.
  * A trusted company/deployment configuration owner must be supplied by the eventual route assembly.
  * Never obtain that configuration, expected app identity or a verifier from request data/headers.
  */

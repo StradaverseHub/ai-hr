@@ -19,11 +19,11 @@ export function createIntegrityKeyHttpHandlers(resolve?:MobileSessionResolver){
     },resolve);
   }
   return {
-    keys:route(C.IntegrityKeysResult,async(ctx,req)=>({outcome:'keys',items:await listOwnIntegrityKeys(ctx,await integrityEmployment(ctx,req))})),
+    keys:route(C.IntegrityKeysResult,async(ctx,req)=>({outcome:'keys' as const,items:await listOwnIntegrityKeys(ctx,await integrityEmployment(ctx,req))})),
     revoke:route(C.IntegrityRevocationResult,async(ctx,req)=>{
       const id=await integrityEmployment(ctx,req),input=C.IntegrityRevokeIntent.safeParse(await mobileInput(req,256));
       if(!input.success)throw new MobileBadRequest('Invalid integrity command');
-      return {outcome:'revoked',key:await revokeOwnIntegrityKey(ctx,{...input.data,employmentId:id})};
+      return {outcome:'revoked' as const,key:await revokeOwnIntegrityKey(ctx,{...input.data,employmentId:id})};
     }),
   };
 }
