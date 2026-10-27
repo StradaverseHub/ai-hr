@@ -1,7 +1,7 @@
 /** Actual current-actor/RLS/menu source cases, authored UNRUN. Requires coordinated AI controls.
  * No provider, mock authority, menu-as-effect claim or client-origin SessionContext is used. */
 import {randomUUID} from 'node:crypto';
-import {eq} from 'drizzle-orm';
+import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
@@ -34,6 +34,31 @@ describe('shared first-slice type qualification',()=>{
  });
 });
 describe('bounded canonical own-leave choices',()=>{
+ it('bounds the actual Access wait before chooser custody, returns no private choices/effects, then succeeds after release',async()=>{
+  const f=await fixture(),initial=await menu(f.ctx);expect(initial.kind).toBe('choices');
+  if(initial.kind!=='choices')throw Error('Fictional chooser positive control unavailable');
+  expect(initial.employments.some(row=>row.id===f.employmentId)).toBe(true);
+  const before={events:await owner.db.select().from(s.domainEvent).orderBy(s.domainEvent.id),requests:await owner.db.select().from(s.leaveRequest).orderBy(s.leaveRequest.id),runs:await owner.db.select().from(s.aiModelRun).orderBy(s.aiModelRun.id),reviews:await owner.db.execute(sql`select count(*)::int as count from app.assistant_own_leave_review where tenant_id=${b.tenantId}::uuid`)};
+  let release!:()=>void,ready!:()=>void,failed!:(error:unknown)=>void;
+  const gate=new Promise<void>(resolve=>{release=resolve;}),held=new Promise<void>((resolve,reject)=>{ready=resolve;failed=reject;});
+  const holding=owner.client.begin(async tx=>{await tx`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+b.tenantId},0))`;ready();await gate;}).catch(error=>{failed(error);throw error;});
+  await held;let timer:ReturnType<typeof setTimeout>|undefined,pending:ReturnType<typeof menu>|undefined;
+  try{
+   pending=menu(f.ctx);const deadline=new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error('Actual chooser Access wait was not bounded')),4000);});
+   expect(await Promise.race([pending,deadline])).toEqual({kind:'unavailable'});
+  }finally{if(timer)clearTimeout(timer);release();await holding;if(pending)await pending.catch(()=>undefined);}
+  expect(await menu(f.ctx)).toEqual(initial);
+  expect({events:await owner.db.select().from(s.domainEvent).orderBy(s.domainEvent.id),requests:await owner.db.select().from(s.leaveRequest).orderBy(s.leaveRequest.id),runs:await owner.db.select().from(s.aiModelRun).orderBy(s.aiModelRun.id),reviews:await owner.db.execute(sql`select count(*)::int as count from app.assistant_own_leave_review where tenant_id=${b.tenantId}::uuid`)}).toEqual(before);
+ });
+ it('keeps stricter caller timeouts while installing chooser bounds before source reads',async()=>{
+  const f=await fixture();await withTenant(f.ctx,async tx=>{
+   await tx.execute(sql`set local statement_timeout='3000ms'`);await tx.execute(sql`set local lock_timeout='125ms'`);
+   expect((await readOwnLeaveChoicesTx(tx,f.ctx,'en')).kind).toBe('choices');
+   const [limits]=await tx.execute<{statement:string;lock:string}>(sql`select (select setting from pg_catalog.pg_settings where name='statement_timeout') as statement,(select setting from pg_catalog.pg_settings where name='lock_timeout') as lock`);
+   expect(limits).toEqual({statement:'3000',lock:'125'});
+  });
+ });
+
  it('projects only current own labels/IDs and canonical eligible annual types without salary/balance/actor data or effects',async()=>{
   const first=await fixture(),other=await fixture();await setCompensation(adminCtx(b),{employmentId:first.employmentId,basicSalary:9876.54,monthlyAllowance:123.45,effectiveFrom:'2020-01-01'});
   const before=await owner.db.select().from(s.domainEvent);const result=await menu(first.ctx);

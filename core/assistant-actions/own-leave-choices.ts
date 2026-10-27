@@ -10,6 +10,7 @@ import {assertAiActionUnpausedTx} from '../ai-governance';
 import {isEmploymentEnded} from '../employment-status';
 import {listEligibleLeaveTypesFor,myOwnEmploymentSubjectsTx} from '../read';
 import {readOwnLeaveActorTx} from './own-leave-actor';
+import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 import {ownLeaveFirstSliceTypeQualifies} from './own-leave-candidate';
 
 export type OwnLeaveChoiceEmployment=Readonly<{id:string;label:string;leaveTypes:readonly Readonly<{id:string;label:string}>[]}>;
@@ -25,6 +26,7 @@ export async function readOwnLeaveChoicesTx(tx:Tx,supplied:SessionContext,locale
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
  try{
   if(!isLocale(locale))return{kind:'unavailable'};
+  await boundNativeOutcomeTransactionTx(tx);
   const actor=await readOwnLeaveActorTx(tx,ctx);if(!actor)return{kind:'unavailable'};
   await assertAiActionUnpausedTx(tx,actor,'hr_assistant');
   await lockLeaveDependencyReadConfigurationTx(tx,actor.tenantId);
