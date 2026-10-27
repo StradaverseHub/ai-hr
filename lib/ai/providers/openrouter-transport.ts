@@ -7,6 +7,7 @@ import { buildOpenRouterRoutingPolicy } from './openrouter-policy';
 import { readOpenRouterCompletion } from './openrouter-completion';
 import { readOpenRouterAccounting,type OpenRouterAccounting } from './openrouter-accounting';
 import {observeOpenRouterSpendTerminal} from '../spend-receipt';
+import {enforceReviewedMeteredBody,consumeReviewedMeteredPost} from './openrouter-fixed-metered-carrier';
 import {enforceReviewedFreeBody,consumeReviewedFreePost} from './openrouter-fixed-free-carrier';
 import {readOpenRouterOptions} from './openrouter-configuration';
 
@@ -82,12 +83,12 @@ export function buildOpenRouterRequest(configuration: unknown, argumentsValue: u
       }
     }
     if (pending.size) throw unavailable();
-    const body = JSON.stringify(enforceReviewedFreeBody(cfg,argumentsValue as ConverseArgs,{ model: cfg.model, messages, stream: false,
+    const body = JSON.stringify(enforceReviewedMeteredBody(cfg,argumentsValue as ConverseArgs,enforceReviewedFreeBody(cfg,argumentsValue as ConverseArgs,{ model: cfg.model, messages, stream: false,
       max_completion_tokens: args.maxTokens ?? 2048, provider: buildOpenRouterRoutingPolicy(cfg.routing),
       plugins: DISABLED_PROCESSORS.map(id=>({id,enabled:false})),
       ...(args.tools.length ? { tools: args.tools.map(tool => ({ type: 'function', function: {
         name: tool.name, description: tool.description, parameters: tool.inputSchema, strict: true,
-      } })), tool_choice: 'auto', parallel_tool_calls: false } : {}) }));
+      } })), tool_choice: 'auto', parallel_tool_calls: false } : {}) })));
     if (Buffer.byteLength(body, 'utf8') > MAX_BYTES) throw unavailable();
     return body;
   } catch { throw unavailable(); }
@@ -144,6 +145,7 @@ export function createOpenRouterTransport(fetcher: typeof fetch) {
       if (controller.signal.aborted) throw unavailable();
       const run = async () => {
         consumeReviewedFreePost({provider:'openrouter',model:cfg.model,apiKey:cfg.apiKey,providerOptions:readOpenRouterOptions({version:1,routing:cfg.routing})},body);
+        consumeReviewedMeteredPost({provider:'openrouter',model:cfg.model,apiKey:cfg.apiKey,providerOptions:readOpenRouterOptions({version:1,routing:cfg.routing})},body);
         const response = await fetcher(ENDPOINT, { method: 'POST', redirect: 'error', cache: 'no-store',
           headers: { Authorization: 'Bearer ' + cfg.apiKey, 'Content-Type': 'application/json' },
           body, signal: controller.signal });
