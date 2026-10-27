@@ -43,7 +43,14 @@ it('binds two actual employees as UUID arrays across source versions/privacy, re
   const second=await hireEmployee(group(),{person:{fullName:'Fictional second close employee',primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employeeCode:'FIC-CLOSE-SECOND',employmentType:'full_time',hiredOn});
   await setCompensation(group(),{employmentId:second.employmentId,basicSalary:3500,effectiveFrom:hiredOn});
   await requirePackFor('MY').statutory.set(group(),{personId:second.personId,icNumber:'900101019666'});
-  const prior=await batch('regular',month(-2)),id=await batch(),before=await state(),review=await prepare(id);
+  const prior=await batch('regular',month(-2)),id=await batch();
+  // ADR-0076 §4 parity: a run the anomaly layer never evaluated never reads the prior cycle, so the
+  // prior batch is not part of its close source. (The 0631 gate's LEFT JOIN flag used to report every
+  // un-evaluated run as evaluated; that defect is what this expectation previously pinned.)
+  expect((await prepare(id)).erasureSource).toEqual({priorBatchId:null,coverageEmploymentIds:[employmentId,second.employmentId].sort()});
+  // Actual layer use, exactly as the circuit-input regression below: the breaker now reads the prior cycle.
+  await owner.db.insert(s.payrollAnomalyVerdict).values({tenantId:b.tenantId,batchId:id,employmentId,disposition:'auto_clear'});
+  const before=await state(),review=await prepare(id);
   expect(await state()).toEqual(before);
   expect(review.review).toMatchObject({batchId:id,visiblePayslipCount:2});
   expect(review.erasureSource).toEqual({priorBatchId:prior,coverageEmploymentIds:[employmentId,second.employmentId].sort()});
