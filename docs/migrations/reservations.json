@@ -15,7 +15,8 @@
       "rows": 503,
       "lastIdx": 617,
       "maxWhen": 1793025815553
-    }
+    },
+    "pendingRelease": "28 October: REA reports a staging release in progress taking the ledger from 504 to 506 rows (0640 idx619, 0646 idx620), watermark 1793120000000. Re-read the ledger before journaling."
   },
   "integrationRules": [
     "Preserve applied SQL and the exact applied journal prefix.",
@@ -64,10 +65,11 @@
         645
       ],
       "owner": null,
-      "status": "unresolved_hold_do_not_recycle",
+      "status": "released_free",
       "notes": [
         "28 October: the REA/P1 session states P1 never wrote, branched or journaled 0643-0645 and disclaims them. No owner has claimed them. AI does not need them; they stay unallocated and are not recycled without a recorded claim.",
-        "REA confirms (relayed by Mobile, 28 October) it holds none of 0643-0645; no hold exists on its behalf."
+        "REA confirms (relayed by Mobile, 28 October) it holds none of 0643-0645; no hold exists on its behalf.",
+        "28 October: the REA P1 owner session (local_5ebcdea2) released 0643-0645 explicitly. The unbuilt REA packages that might have used them will request fresh numbers above 0658. Free for a future recorded claim."
       ]
     },
     {

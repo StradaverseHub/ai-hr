@@ -8,7 +8,7 @@ Allocate filename numbers here before parallel SQL work. The machine-readable [r
 
 ## AI reservation (28 October 2026)
 
-The owner designated the AI delivery session as migration allocator for the AI logical groups. It reserves the filename block **0648–0658** for AI, above every recorded hold. A scan of all Git refs and working trees on 28 October found no filename at or above 0648. AI keeps its recorded **0642**; an unrecorded cross-session message saying AI had released 0642 is not adopted. Holds 0643–0645 stay unresolved and untouched.
+The owner designated the AI delivery session as migration allocator for the AI logical groups. It reserves the filename block **0648–0658** for AI, above every recorded hold. A scan of all Git refs and working trees on 28 October found no filename at or above 0648. AI keeps its recorded **0642**; an unrecorded cross-session message saying AI had released 0642 is not adopted. 0643–0645 were later released by the REA P1 owner and are free for a recorded claim. REA reports a staging release in progress (504 → 506 rows, watermark1793120000000); re-read the ledger before journaling.
 
 Final `idx`/`when` values are assigned at journaling: unique append positions after every applied or approved predecessor, with `when` strictly above the live watermark and every pending predecessor. A read-only staging ledger check on 28 October found 504 applied rows, last idx618 (`0641`), watermark1793109999999, source ref `fffabc90922c3d43b2570dc29a33ce8b70b69aca`. Unused numbers in the block are released here once the AI group count is final. AI journal entries append after alpha's idx620 (`0646`) with `when` strictly above1793120000000.
 
@@ -20,7 +20,7 @@ Final `idx`/`when` values are assigned at journaling: unique append positions af
 | 0641 | Reports email delivery history | Applied on staging (idx618 / when1793109999999, observed 28 October) |
 | 0640 | REA P1 wave 1 reviewer scope (PR #19) | Journaled on alpha idx619 / when1793110000000; not yet applied on staging |
 | 0642 | AI specialist diagnostic playbook | Reserved draft; idx/when deferred |
-| 0643–0645 | Unclaimed | P1 disclaims them (never written, branched or journaled); not recycled without a recorded claim |
+| 0643–0645 | Free | Released by the REA P1 owner on 28 October; never written, branched or journaled. Record a claim here before use |
 | 0646 | REA P1 wave 2 Reward Calendar (PR #23) | Journaled on alpha idx620 / when1793120000000; not yet applied on staging |
 | 0647 | Mobile offline attendance | Reserved filename; idx/when deferred |
 | 0648–0658 | AI delivery (block) | Reserved filenames; idx/when integration-bound; unused numbers released when the group count is final |
