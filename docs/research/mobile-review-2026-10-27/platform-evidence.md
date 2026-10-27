@@ -810,3 +810,30 @@ DB recovery and v1 Android mutation refusal remain to be exercised after schema 
 current app still uses v1; no native bundle/export or Android enrollment flow was claimed. The draft
 0636 remains unjournaled/unapplied pending central timestamp/dependency review. No staging deployment
 or public publication occurred.
+
+
+## Mixed-platform custody recovery — 27 October 2026
+
+Synthetic Apple/Android custody rows now exercise real mounted v1/v2 HTTP routes, services and RLS.
+Three cases passed at31ee4d178 plus root TypeScript: v1 selects an older Apple receipt despite21 newer
+Android revoked keys; v2 stays bounded20 and exact lookup returns Android without private proof;
+v1 Android revocation leaves the row unchanged, v2 revocation reconciles identically with exactly one
+audit event; peer/cross-tenant/admin/archived callers cannot retrieve or mutate the owned key. Fixtures
+apply the draft0636 only to this disposable worker, restore the original check definitions and
+nullability, then verify check equality. The fixture also tolerates already-integrated custody schema
+without assuming it is still legacy; this latter branch is not a live upgrade acceptance claim.
+
+Two mutations removed the v1 database platform read filter and the pre-mutation platform guard.
+Each intended test failed; exact restoration passed all3 cases, then root TypeScript passed:
+read-filter/mutation-refusal both mutation=1 restored=0 exact=True. The initial revocation probe
+observed the broken error response before checking persisted state. Strengthening6bba3a86e checks
+persisted revokedAt first; the additional targeted mutation failed on an actual non-null database
+revocation timestamp, then exact restoration passed: mutation=1 restored=0 exact=True.
+Logs: /tmp/mobile-mixed-recovery.log, /tmp/mobile-mixed-recovery-ts.log,
+/tmp/mobile-mixed-*-mutation.log, /tmp/mobile-mixed-*-restored.log,
+/tmp/mobile-mixed-recovery-final-ts.log and /tmp/mobile-mixed-revocation-state-*.log.
+
+These are synthetic custody fixtures, not Google-verified Android enrollment. Draft0636 hash remains
+9063b27c0cc316b715d552561d636ffc6412e447ca9275758bf497870c995df7; no journal entry, shared schema,
+staging application, publication or deployment changed. Android enrollment/proof persistence and
+current mobile v2 transport still require implementation.

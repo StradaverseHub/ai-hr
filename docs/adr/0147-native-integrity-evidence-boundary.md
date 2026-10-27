@@ -519,7 +519,7 @@ revocation. V2 uses the same own-actor/current-employment and immutable-history 
 legacy platform filter. Every mounted recovery route explicitly invokes mobileRoute; shared
 operations handle business logic and closed outcomes underneath the authenticated boundary.
 
-Current mobile UI/enrollment journal still uses v1. V2 Android database reads/revocation need mixed
-platform transaction tests after the custody migration is integrated; current mounted HTTP tests
-exercise real Apple rows. The new Android receipt decoder is tested using synthetic public fixtures,
+Current mobile UI/enrollment journal still uses v1. Mixed-platform database/HTTP fixtures now exercise v1 filtering/refusal and v2 Android
+lookup/revocation against the draft custody schema in a disposable worker. They use synthetic custody
+rows; actual verified Android enrollment and migration integration remain unfinished. The new Android receipt decoder is tested using synthetic public fixtures,
 not an enrolled Android key. This is protocol preparation, not completed Android enrollment rollout.
