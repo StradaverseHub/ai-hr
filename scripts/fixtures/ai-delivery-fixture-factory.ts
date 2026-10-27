@@ -21,7 +21,14 @@ export async function createAiDeliveryFixtureContext(owner:ReturnType<typeof cre
  if(missingModuleDependencies(modules).length)throw Error('Full native module catalogue dependency closure is incomplete.');
  const token=randomUUID(),today=todayInKualaLumpur(),year=Number(today.slice(0,4)),hiredOn=String(year-1)+'-01-01';
  const made=await aiDeliveryFixturePhase('provisionTenant all native noncore modules',()=>owner.db.transaction(tx=>provisionTenant(tx,{name:'Fictional full AI browser '+token,adminEmail:'ai-browser-bootstrap-'+token+'@example.test',country:'MY',modules,baseUrl:'http://127.0.0.1:3177'})));
- // Native provisioning creates the actual group HR grant. Do not synthesize an exempt principal.
+ // Provisioning deliberately leaves the first HR grant to single-use invitation activation.
+ // Exercise that native owner with a fictional legacy subject; this is not verified OIDC evidence.
+ await aiDeliveryFixturePhase('native bootstrap invitation activation',async()=>{
+  const token=new URL(made.activationUrl).pathname.split('/invite/')[1];
+  if(!token)throw Error('Provisioned bootstrap activation token is missing.');
+  const rows=await owner.client<{app_user_id:string;tenant_id:string}[]>`select app_user_id,tenant_id from app.consume_invitation(${token},${'ai-browser-bootstrap:'+randomUUID()})`;
+  if(rows.length!==1||rows[0].app_user_id!==made.appUserId||rows[0].tenant_id!==made.tenantId)throw Error('Native bootstrap activation binding differs.');
+ });
  async function context(userId:string,personId:string):Promise<SessionContext>{
   const [identity]=await owner.db.select({personId:s.appUser.personId,tenantId:s.appUser.tenantId,archivedAt:s.appUser.archivedAt}).from(s.appUser).where(eq(s.appUser.id,userId));
   if(identity?.tenantId!==made.tenantId||identity.personId!==personId||identity.archivedAt!==null)throw Error('Actual fixture login/person binding differs.');

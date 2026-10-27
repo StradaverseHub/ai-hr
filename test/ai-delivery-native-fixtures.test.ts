@@ -22,6 +22,9 @@ const participants=(c:Awaited<ReturnType<typeof createAiDeliveryFixtureContext>>
 describe('actual complete AI browser native prerequisite composition',()=>{
  it('provisions the exact noncore catalogue and six native employed current callers without fake principals',async()=>{
   const c=await phase('factory normal provision and actors',()=>createAiDeliveryFixtureContext(owner));
+  expect(c.bootstrapCtx.grants).toEqual([{role:'hr_admin',companyId:null}]);
+  const bootstrapGrants=await owner.db.select({role:s.roleAssignment.role,companyId:s.roleAssignment.companyId}).from(s.roleAssignment).where(and(eq(s.roleAssignment.tenantId,c.tenantId),eq(s.roleAssignment.appUserId,c.bootstrapCtx.userId!))).orderBy(s.roleAssignment.id);
+  expect(bootstrapGrants).toEqual([{role:'hr_admin',companyId:null}]);
   const expected=MODULE_CATALOG.filter(module=>!module.isCore).map(module=>module.code);expect(missingModuleDependencies(expected)).toEqual([]);
   const rows=await owner.db.select().from(s.tenantModule).where(eq(s.tenantModule.tenantId,c.tenantId));expect(rows.map(row=>row.moduleCode).sort()).toEqual([...expected].sort());expect(rows.every(row=>!MODULE_CATALOG.find(module=>module.code===row.moduleCode)?.isCore)).toBe(true);
   for(const module of MODULE_CATALOG)expect(isModuleEnabled(c.bootstrapCtx,module.code),module.code).toBe(true);
