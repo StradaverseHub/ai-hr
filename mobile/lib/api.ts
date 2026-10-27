@@ -6,6 +6,8 @@
  * Failure mapping mirrors the server's: 401 ⇒ refresh once and retry, then SignInRequiredError; a network
  * failure or 5xx ⇒ UnavailableError and the session is KEPT.
  */
+import type {z} from 'zod';
+import {IntegrityKeysResult,IntegrityRevocationResult} from '../../lib/mobile-integrity-contract';
 import { useCallback, useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 import { fetch as nativeFetch } from 'expo/fetch';
@@ -26,6 +28,7 @@ import { appLocale } from './i18n';
 export type { LeaveResponse, MeResponse, NotificationsResponse, PayslipsResponse };
 
 type Endpoints = {
+  'integrity/keys':z.infer<typeof IntegrityKeysResult>;
   'clock-attempts':ClockAttemptsResponse;
   'submission-receipt': SubmissionReceiptResponse;
   tasks: TasksResponse;
@@ -46,13 +49,14 @@ function url(path: string, params: Record<string, string | undefined>,origin:str
 }
 
 const responses = {
+  'integrity/keys':IntegrityKeysResult,
   'clock-attempts':ClockAttemptsResponse,
   'submission-receipt': SubmissionReceiptResponse,
   tasks: TasksResponse, clock: ClockResponse, team: TeamResponse, 'leave-options': LeaveOptionsResponse,
   'leave-requests': LeaveRequestsResponse, design: MobileDesignResponse, me: MeResponse,
   payslips: PayslipsResponse, leave: LeaveResponse, notifications: NotificationsResponse,
 };
-const commands = {'clock-attempts':ClockAttemptReceipt,'clock-location':ClockLocationResponse, 'submission-abandon':SubmissionAbandonResponse, clock: ClockResult, 'clock-device': DeviceResponse, 'leave-requests': LeaveResult, 'leave-preview': LeavePreviewResponse };
+const commands = {'integrity/revoke':IntegrityRevocationResult,'clock-attempts':ClockAttemptReceipt,'clock-location':ClockLocationResponse, 'submission-abandon':SubmissionAbandonResponse, clock: ClockResult, 'clock-device': DeviceResponse, 'leave-requests': LeaveResult, 'leave-preview': LeavePreviewResponse };
 
 const supportReference=(value:string|null)=>value?.length===36&&/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)?value.toLowerCase():undefined;
 async function apiRequest<T>(path:string,params:Record<string,string|undefined>,request?:{body:FormData|string;json:boolean},signal?:AbortSignal):Promise<T> {
@@ -119,8 +123,8 @@ export async function apiGet<P extends keyof Endpoints>(path:P,params:Record<str
     return apiRequest<Endpoints[P]>(path,snapshot,undefined,sharedSignal);
   },signal);
 }
-type Commands = {'clock-attempts':ClockAttemptReceipt;'clock-location':ClockLocationResponse;'submission-abandon':SubmissionAbandonResponse;clock:ClockResult;'clock-device':DeviceResponse;'leave-requests':LeaveResult;'leave-preview':LeavePreviewResponse};
-export async function apiPost<P extends keyof Commands>(path:P,body:FormData|LeaveCommand|ClockPreparation|{lat:number;lng:number;accuracy:number;sampledAt:number}|{label:string}|{kind:'clock'|'leave';requestId:string},params:Record<string,string|undefined>={}):Promise<Commands[P]>{
+type Commands = {'integrity/revoke':z.infer<typeof IntegrityRevocationResult>;'clock-attempts':ClockAttemptReceipt;'clock-location':ClockLocationResponse;'submission-abandon':SubmissionAbandonResponse;clock:ClockResult;'clock-device':DeviceResponse;'leave-requests':LeaveResult;'leave-preview':LeavePreviewResponse};
+export async function apiPost<P extends keyof Commands>(path:P,body:FormData|LeaveCommand|ClockPreparation|{keyId:string}|{lat:number;lng:number;accuracy:number;sampledAt:number}|{label:string}|{kind:'clock'|'leave';requestId:string},params:Record<string,string|undefined>={}):Promise<Commands[P]>{
   const form=body instanceof FormData;
   return apiRequest(path,params,{body:form?body:JSON.stringify(body),json:!form});
 }

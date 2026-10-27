@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { transpileModule, ModuleKind } from 'typescript';
 import * as React from 'react';
+import * as integrity from '../lib/mobile-integrity-contract';
 import * as contract from '../lib/mobile-api/contract';
 import {readBoundedBody} from '../lib/bounded-body';
 import {createReadCoordinator,retryAfterSeconds} from '../mobile/lib/read-coordinator';
@@ -30,6 +31,7 @@ function clientFixture() {
       if (id === 'react-native') return {AppState:appState};
       if (id === 'expo/fetch') return {fetch:response};
       if (id === '../../lib/bounded-body') return {readBoundedBody};
+      if (id === '../../lib/mobile-integrity-contract') return integrity;
       if (id === '../../lib/mobile-api/contract') return contract;
       if (id === './auth') return auth;
       if (id === './config') return { config, apiOriginProblem, configProblem: () => null,identityNamespace:()=>namespace };
@@ -43,6 +45,20 @@ function clientFixture() {
 afterEach(()=>{cleanup();vi.useRealTimers();});
 
 describe('native API transport', () => {
+  it('validates key recovery contracts and sends only the selected key command through normal bearer transport',async()=>{
+    const f=clientFixture(),id='11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const key={keyId:id,originChallengeId:id,platform:'ios',appId:'ABCDEFGHIJ.ai.hr',environment:'production',proofKind:'apple_key_proof',nativeKeyBinding:'a'.repeat(64),createdAt:'2026-10-27T00:00:00.000Z',revokedAt:null};
+    f.response.mockResolvedValueOnce(Response.json({outcome:'keys',items:[{...key,vendorKeyId:'private'}]}));
+    expect(await f.api.apiGet('integrity/keys',{employmentId:id})).toEqual({outcome:'keys',items:[key]});
+    const revoked={...key,revokedAt:'2026-10-28T00:00:00.000Z'};
+    f.response.mockResolvedValueOnce(Response.json({outcome:'revoked',key:revoked}));
+    expect(await f.api.apiPost('integrity/revoke',{keyId:id},{employmentId:id})).toEqual({outcome:'revoked',key:revoked});
+    const [url,request]=f.response.mock.calls[1];expect(url).toBe('https://hr.example.com/api/mobile/v1/integrity/revoke?employmentId='+id);
+    expect(request?.body).toBe(JSON.stringify({keyId:id}));expect(request?.credentials).toBe('omit');expect(request?.redirect).toBe('error');
+    expect(request?.headers).toMatchObject({authorization:'Bearer access-token','content-type':'application/json'});
+    f.response.mockResolvedValueOnce(Response.json({outcome:'keys',items:Array(21).fill(key)}));
+    await expect(f.api.apiGet('integrity/keys',{employmentId:id})).rejects.toBeInstanceOf(UnavailableError);
+  });
   it('retains only a bounded UUID support reference from server failures',async()=>{
     const f=clientFixture(),reference='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
     f.response.mockResolvedValueOnce(new Response('',{status:500,headers:{'x-aihr-support-id':reference.toUpperCase()}}));
