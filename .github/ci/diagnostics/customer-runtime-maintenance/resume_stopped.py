@@ -160,9 +160,17 @@ def continue_cutover(host, plan, authority, m):
               'Unrelated restored process environment changed')
     prior = json.loads(m.read_regular(host.root / 'unit-properties.private.json')[0])
     actual = host.unit_properties()
-    m.require({k: v for k, v in prior.items() if k not in ('ActiveState', 'MainPID')} ==
-              {k: v for k, v in actual.items() if k not in ('ActiveState', 'MainPID')},
+    # systemd includes invocation timestamps/status inside displayed ExecStart rows.
+    # Actual typed executable flags are independently checked by proposals().
+    ignored = ('ActiveState', 'MainPID', 'ExecStart', 'ExecStartEx')
+    m.require({k: v for k, v in prior.items() if k not in ignored} ==
+              {k: v for k, v in actual.items() if k not in ignored},
               'Original effective unit properties changed')
+    for key in ('ExecStart', 'ExecStartEx'):
+        pattern = r'path=([^;]+?)\s*;.*?argv\[\]=([^;]+?)\s*;'
+        m.require(re.findall(pattern, prior[key]) == re.findall(pattern, actual[key])
+                  and len(re.findall(pattern, actual[key])) == 1,
+                  'Original executable or arguments changed')
     m.require(host.database() == plan['database'], 'Database custody changed')
     host.verify_node_and_package_manager()
     prove_restored_process(host, private, authority, m)
