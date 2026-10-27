@@ -1,0 +1,153 @@
+/** A model selects references, never HR values or statement meaning. This pure boundary is not an
+ * authority issuer: `current` MUST be built by the actual current-caller source owner, from the
+ * executed read whose ORIGINAL source ordinal is `read`. Never pass posted/model catalogues here.
+ * Adjudication returns immutable selectors only; current source owners/localized explainers render
+ * their values. No provider, storage, arithmetic, URL, effect, permission or free-prose surface.
+ */
+import {JOB_FACT_FIELDS,type JobPresentation} from './module-jobs';
+import {isAgentModuleCode} from './module-agents';
+import {SPECIALIST_FINDINGS,type SpecialistFinding} from './module-specialists';
+import {FOLLOWUP_CODES,type FollowupCode} from './module-specialist-followup';
+import {LEAVE_SUMMARY_EXPLAIN_KEYS,type LeaveSummaryExplainKey} from '../leave-summary-explain';
+
+export const ANSWER_PLAN_LIMITS=Object.freeze({bytes:8192,reads:128,blocks:16,cards:25,factsPerCard:64,explanationsPerRead:512,textBytes:2000});
+export type AssistantExplanationCode=`specialist_finding:${SpecialistFinding}`|`specialist_followup:${FollowupCode}`|`leave_summary:${LeaveSummaryExplainKey}`;
+export const ASSISTANT_EXPLANATION_CODES:readonly AssistantExplanationCode[]=Object.freeze([
+ ...SPECIALIST_FINDINGS.map(code=>`specialist_finding:${code}` as const),
+ ...FOLLOWUP_CODES.map(code=>`specialist_followup:${code}` as const),
+ ...LEAVE_SUMMARY_EXPLAIN_KEYS.map(code=>`leave_summary:${code}` as const),
+]);
+export const ASSISTANT_CLARIFICATION_SLOTS=Object.freeze(['employment','leave_type','period','module'] as const);
+export type AssistantClarificationSlot=typeof ASSISTANT_CLARIFICATION_SLOTS[number];
+export type AssistantAnswerBlock=Readonly<{kind:'fact';read:number;card:number;fact:number}>|
+ Readonly<{kind:'explanation';read:number;card:number|null;code:AssistantExplanationCode}>;
+export type AssistantAnswerPlan=Readonly<{version:1;mode:'answer';blocks:readonly AssistantAnswerBlock[]}>|
+ Readonly<{version:1;mode:'clarify';slot:AssistantClarificationSlot}>|
+ Readonly<{version:1;mode:'insufficient';code:'no_verified_facts'|'unsupported_explanation'}>|
+ Readonly<{version:1;mode:'refuse';code:'unsupported_request'|'human_review_required'}>;
+export type AssistantAnswerRead=Readonly<{read:number;presentation:JobPresentation;
+ explanations:readonly Readonly<{card:number|null;code:AssistantExplanationCode}>[]}>;
+
+/** Keep the original read ordinal in the real tool catalogue. The model chooses ordering/focus;
+ * code owns semantic clauses and canonical calculations. Unknown causes require insufficiency.
+ */
+export const ASSISTANT_ANSWER_PROTOCOL=[
+ 'Your final response must be one strict JSON object, without markdown or prose.',
+ 'Use exactly one of these shapes: {"version":1,"mode":"answer","blocks":[{"kind":"fact","read":0,"card":0,"fact":0}]}',
+ 'or {"version":1,"mode":"answer","blocks":[{"kind":"explanation","read":0,"card":null,"code":"<available exact code>"}]}',
+ 'or {"version":1,"mode":"clarify","slot":"employment|leave_type|period|module"}',
+ 'or {"version":1,"mode":"insufficient","code":"no_verified_facts|unsupported_explanation"}',
+ 'or {"version":1,"mode":"refuse","code":"unsupported_request|human_review_required"}.',
+ 'Order 1 to 16 distinct fact/explanation blocks relevant to this question. The catalogue numbers original actual executed reads; use only its ordinals and available codes.',
+ 'A fact states only its recorded field. An explanation selects only its canonical clause for the same read/card (null means source-wide). Never infer causes, calculations, comparisons, decisions or permission reasons.',
+ 'Never supply prose, HR values, URLs, effects or guessed selectors. Null, blank and withheld facts are unavailable; truncation proves neither absence nor all-clear.',
+ 'Clarify one missing selection using a slot only, without guessed choices. no_verified_facts requires no selectable evidence; unsupported_explanation means the requested meaning lacks support. Human review/confirmation remains separate.',
+ 'Use ordinary nonnegative integer ordinals and exact unescaped catalogue strings.',
+].join(' ');
+
+const explanationCodes=new Set<string>(ASSISTANT_EXPLANATION_CODES),factFields=new Set<string>(JOB_FACT_FIELDS);
+const formats=new Set(['text','number','date','status','boolean','money','module','gap','blocks','performanceFramework','performanceArtifact','testingStatus']);
+const fail=():never=>{throw Error('Assistant answer plan unavailable.');};
+function object(value:unknown):Record<string,unknown>{
+ if(value===null||typeof value!=='object'||Array.isArray(value))return fail();
+ const prototype=Object.getPrototypeOf(value);if(prototype!==Object.prototype&&prototype!==null)return fail();
+ for(const key of Reflect.ownKeys(value)){if(typeof key!=='string')return fail();const descriptor=Object.getOwnPropertyDescriptor(value,key);if(!descriptor||!('value'in descriptor)||!descriptor.enumerable)return fail();}
+ return value as Record<string,unknown>;
+}
+function exact(row:Record<string,unknown>,keys:readonly string[]):void{if(Object.keys(row).length!==keys.length||keys.some(key=>!Object.hasOwn(row,key)))return fail();}
+function array(value:unknown,max:number):readonly unknown[]{
+ if(!Array.isArray(value)||Object.getPrototypeOf(value)!==Array.prototype||value.length>max)return fail();
+ if(Reflect.ownKeys(value).length!==value.length+1)return fail();
+ for(let index=0;index<value.length;index++){const d=Object.getOwnPropertyDescriptor(value,String(index));if(!d||!('value'in d)||!d.enumerable)return fail();}
+ return value;
+}
+function ordinal(value:unknown,max:number):number{if(typeof value!=='number'||!Number.isSafeInteger(value)||Object.is(value,-0)||value<0||value>=max)return fail();return value;}
+function code(value:unknown):AssistantExplanationCode{if(typeof value!=='string'||!explanationCodes.has(value))return fail();return value as AssistantExplanationCode;}
+const referenceKey=(block:AssistantAnswerBlock)=>block.kind==='fact'?`fact:${block.read}:${block.card}:${block.fact}`:`explanation:${block.read}:${block.card}:${block.code}`;
+
+/** Capture before the caller awaits: no mutable caller object, prototype, getter or symbol survives. */
+export function captureAssistantAnswerPlan(value:unknown):AssistantAnswerPlan{
+ const row=object(value);if(row.version!==1)return fail();
+ if(row.mode==='answer'){
+  exact(row,['version','mode','blocks']);const blocks:AssistantAnswerBlock[]=[],seen=new Set<string>();
+  for(const value of array(row.blocks,ANSWER_PLAN_LIMITS.blocks)){
+   const item=object(value),read=ordinal(item.read,ANSWER_PLAN_LIMITS.reads);let block:AssistantAnswerBlock;
+   if(item.kind==='fact'){exact(item,['kind','read','card','fact']);block=Object.freeze({kind:'fact',read,card:ordinal(item.card,ANSWER_PLAN_LIMITS.cards),fact:ordinal(item.fact,ANSWER_PLAN_LIMITS.factsPerCard)});}
+   else if(item.kind==='explanation'){exact(item,['kind','read','card','code']);block=Object.freeze({kind:'explanation',read,card:item.card===null?null:ordinal(item.card,ANSWER_PLAN_LIMITS.cards),code:code(item.code)});}
+   else return fail();
+   const key=referenceKey(block);if(seen.has(key))return fail();seen.add(key);blocks.push(block);
+  }
+  if(!blocks.length)return fail();return Object.freeze({version:1,mode:'answer',blocks:Object.freeze(blocks)});
+ }
+ if(row.mode==='clarify'){
+  exact(row,['version','mode','slot']);if(!ASSISTANT_CLARIFICATION_SLOTS.includes(row.slot as AssistantClarificationSlot))return fail();
+  return Object.freeze({version:1,mode:'clarify',slot:row.slot as AssistantClarificationSlot});
+ }
+ if(row.mode==='insufficient'){
+  exact(row,['version','mode','code']);if(row.code!=='no_verified_facts'&&row.code!=='unsupported_explanation')return fail();
+  return Object.freeze({version:1,mode:'insufficient',code:row.code});
+ }
+ if(row.mode==='refuse'){
+  exact(row,['version','mode','code']);if(row.code!=='unsupported_request'&&row.code!=='human_review_required')return fail();
+  return Object.freeze({version:1,mode:'refuse',code:row.code});
+ }
+ return fail();
+}
+
+/** Canonical JSON spelling also rejects duplicate keys, ambiguous numeric spellings and escaped
+ * selector aliases. Only structural JSON whitespace is ignored; string bytes are never rewritten.
+ */
+export function parseAssistantAnswerPlan(text:unknown):AssistantAnswerPlan{
+ try{
+  if(typeof text!=='string'||Buffer.byteLength(text,'utf8')>ANSWER_PLAN_LIMITS.bytes)return fail();
+  const value:unknown=JSON.parse(text);let compact='',quoted=false,escaped=false;
+  for(const character of text){if(quoted){compact+=character;if(escaped)escaped=false;else if(character==='\\')escaped=true;else if(character==='"')quoted=false;}
+   else if(character==='"'){quoted=true;compact+=character;}else if(![' ','\t','\r','\n'].includes(character))compact+=character;}
+  if(compact!==JSON.stringify(value))return fail();return captureAssistantAnswerPlan(value);
+ }catch{return fail();}
+}
+
+type CurrentRead=Readonly<{read:number;cards:readonly Readonly<{withheld:boolean;facts:readonly Readonly<{known:boolean}>[]}>[];explanations:ReadonlySet<string>}>;
+function currentReads(input:readonly AssistantAnswerRead[]):readonly CurrentRead[]{
+ const reads:CurrentRead[]=[],seen=new Set<number>();
+ for(const value of array(input,ANSWER_PLAN_LIMITS.reads)){
+  const row=object(value);exact(row,['read','presentation','explanations']);const read=ordinal(row.read,ANSWER_PLAN_LIMITS.reads);if(seen.has(read))return fail();seen.add(read);
+  const p=object(row.presentation);exact(p,['module','cards','truncated',...(Object.hasOwn(p,'hasEmployment')?['hasEmployment']:[])]);
+  if(!isAgentModuleCode(p.module)||typeof p.truncated!=='boolean'||Object.hasOwn(p,'hasEmployment')&&typeof p.hasEmployment!=='boolean')return fail();
+  const cards:CurrentRead['cards'][number][]=[];
+  for(const value of array(p.cards,ANSWER_PLAN_LIMITS.cards)){
+   const card=object(value);if(card.withheld!==undefined&&typeof card.withheld!=='boolean')return fail();
+   const facts:Readonly<{known:boolean}>[]=[];
+   for(const value of array(card.facts,ANSWER_PLAN_LIMITS.factsPerCard)){
+    const fact=object(value);exact(fact,['field','value','format']);if(typeof fact.field!=='string'||!factFields.has(fact.field)||typeof fact.format!=='string'||!formats.has(fact.format))return fail();
+    const v=fact.value;if(v!==null&&typeof v!=='string'&&typeof v!=='boolean'&&typeof v!=='number')return fail();
+    if(typeof v==='number'&&!Number.isFinite(v)||typeof v==='string'&&Buffer.byteLength(v,'utf8')>ANSWER_PLAN_LIMITS.textBytes)return fail();
+    facts.push(Object.freeze({known:v!==null&&(typeof v!=='string'||v.trim().length>0)}));
+   }
+   cards.push(Object.freeze({withheld:card.withheld===true,facts:Object.freeze(facts)}));
+  }
+  const explanations=new Set<string>();
+  for(const value of array(row.explanations,ANSWER_PLAN_LIMITS.explanationsPerRead)){
+   const e=object(value);exact(e,['card','code']);const card=e.card===null?null:ordinal(e.card,ANSWER_PLAN_LIMITS.cards),c=code(e.code);if(c.startsWith('leave_summary:')&&p.module!=='leave')return fail();
+   if(card!==null&&(!cards[card]||cards[card].withheld))return fail();
+   const key=`${card}:${c}`;if(explanations.has(key))return fail();explanations.add(key);
+  }
+  reads.push(Object.freeze({read,cards:Object.freeze(cards),explanations}));
+ }
+ return Object.freeze(reads);
+}
+
+/** This validates selector meaning/availability, not model prose or arbitrary causal assertions.
+ * Known global codes are never evidence by themselves. The exact source owner supplies availability;
+ * withheld/null facts cannot become assertions. A truncated read may still state an individual fact.
+ */
+export function adjudicateAssistantAnswerPlan(value:unknown,current:readonly AssistantAnswerRead[]):AssistantAnswerPlan{
+ const plan=captureAssistantAnswerPlan(value),reads=currentReads(current),byRead=new Map(reads.map(read=>[read.read,read]));
+ if(plan.mode==='answer')for(const block of plan.blocks){
+  const read=byRead.get(block.read);if(!read)return fail();
+  if(block.kind==='fact'){const card=read.cards[block.card];if(!card||card.withheld||!card.facts[block.fact]?.known)return fail();}
+  else if(!read.explanations.has(`${block.card}:${block.code}`))return fail();
+ }
+ else if(plan.mode==='insufficient'&&plan.code==='no_verified_facts'&&reads.some(read=>read.explanations.size>0||read.cards.some(card=>!card.withheld&&card.facts.some(fact=>fact.known))))return fail();
+ return plan;
+}
