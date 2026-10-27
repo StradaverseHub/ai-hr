@@ -8,7 +8,7 @@ import {hireEmployee} from '../core/org';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {applyLeaveAdjustmentBatch} from '../packs/leave/service';
 import {prepareOwnLeaveReviewTx,confirmOwnLeaveReview,discardOwnLeaveReviewTx,readCompletedOwnLeaveOutcomeTx} from '../core/assistant-actions/own-leave-store';
-import {runGovernedModuleReadPlan,readVerifiedOwnGovernedJobProvenanceTx} from '../core/module-agent-releases';
+import {runGovernedModuleReadPlan,readVerifiedOwnGovernedJobProvenanceTx,createCanonicalSpecialistCandidate,promoteCanonicalSpecialistCandidate} from '../core/module-agent-releases';
 import {recordOwnNativeOutcomeAssociation,reopenOwnNativeOutcomeAssociation,eraseOwnNativeOutcomeAssociations} from '../core/module-native-outcomes';
 import {readVerifiedNativeOutcomeAssociationTx,recordVerifiedNativeOutcomeAssociationTx} from '../core/module-native-outcome-references';
 import {boundNativeOutcomeTransactionTx} from '../core/module-native-outcome-bounds';
@@ -18,11 +18,11 @@ let base:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
 beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-native-outcome-association-master-secret');await resetDb();base=await seedBase();await setModule(base.tenantId,'assistant','active');});
-async function fixture(){
+async function fixture(asAdmin=false){
  const admin=adminCtx(base);
  const make=async()=>{const subject=await hireEmployee(admin,{person:{fullName:'Fictional outcome applicant',primaryEmail:randomUUID()+'@example.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
-  const userId=await createAppUser(base.tenantId,subject.personId,'employee');await grantAssistant(admin,{appUserId:userId});
-  const ctx:SessionContext={...await entitledCtx(base,['employee']),userId,personId:subject.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+  const userId=await createAppUser(base.tenantId,subject.personId,asAdmin?'hr_admin':'employee');await grantAssistant(admin,{appUserId:userId});
+  const ctx:SessionContext={...await entitledCtx(base,['employee']),userId,personId:subject.personId,roles:[asAdmin?'hr_admin':'employee'],grants:[{role:asAdmin?'hr_admin':'employee',companyId:null}]};
   expect((await applyLeaveAdjustmentBatch(admin,{leaveTypeIds:[base.annualLeaveTypeId],days:10,effectiveOn:todayInKualaLumpur(),reason:'Fictional native outcome fixture opening credit',targetMode:'individual',employmentIds:[subject.employmentId]})).written).toBe(1);
   return{ctx,subject};};
  return{admin,mine:await make(),peer:await make()};
@@ -151,4 +151,33 @@ describe('actual own native outcome links',()=>{
   });
  });
 
+});
+
+/** Authored UNRUN. Actual same-owner completed Leave effect, association, candidate provenance,
+ * erasure and independent admission must run after the normal consolidated migration install. */
+describe('native completion as human-selected candidate hypothesis',()=>{
+ it('binds actual completion to the same-module candidate without making it an independent PASS, then invalidates on own erasure',async()=>{
+  const f=await fixture(true),p=await preparation(f);await complete(f,p);
+  const linked=await recordOwnNativeOutcomeAssociation(f.mine.ctx,p.input),before=await counts();
+  const candidate=await createCanonicalSpecialistCandidate(f.mine.ctx,{module:'leave',version:1,playbook:'canonical_followup_v1',nativeSignalIds:[linked.associationId]});
+  const [provenance]=await owner.db.execute<{refs:unknown[];native_refs:{associationId:string;module:string}[];receipt:string}>(sql`select refs,native_refs,receipt from public.ai_agent_candidate_provenance where candidate_id=${candidate.candidateId}::uuid`);
+  expect(provenance.refs).toEqual([]);expect(provenance.native_refs).toHaveLength(1);expect(provenance.native_refs[0]).toMatchObject({associationId:linked.associationId,module:'leave'});expect(provenance.receipt).not.toContain('Fictional HUMAN PRIVATE REASON');
+  const current=()=>withTenant(f.peer.ctx,async tx=>{const [row]=await tx.execute<{allowed:boolean}>(sql`select app.agent_candidate_native_signals_current(${candidate.candidateId}::uuid) as allowed`);return row.allowed;});
+  expect(await current()).toBe(true);
+  await expect(promoteCanonicalSpecialistCandidate(f.peer.ctx,{candidateId:candidate.candidateId,maxJobs:1,hours:1})).rejects.toThrow();
+  expect(await counts()).toEqual(before);
+  await eraseOwnNativeOutcomeAssociations(f.mine.ctx);expect(await current()).toBe(false);
+  const [evaluation]=await owner.db.execute<{evaluations:number;promotions:number}>(sql`select (select count(*)::int from public.ai_agent_evaluation) as evaluations,(select count(*)::int from public.ai_agent_promotion) as promotions`);expect(evaluation).toEqual({evaluations:0,promotions:0});
+ });
+ it('refuses a different module, different owner, union or held custody without publishing partial candidate provenance',async()=>{
+  const f=await fixture(true),p=await preparation(f);await complete(f,p);const linked=await recordOwnNativeOutcomeAssociation(f.mine.ctx,p.input);
+  const count=async()=>{const [row]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from public.ai_agent_candidate`);return row.n;};const before=await count();
+  await expect(createCanonicalSpecialistCandidate(f.mine.ctx,{module:'claims',version:1,nativeSignalIds:[linked.associationId]})).rejects.toThrow();
+  await expect(createCanonicalSpecialistCandidate(f.peer.ctx,{module:'leave',version:1,nativeSignalIds:[linked.associationId]})).rejects.toThrow();
+  await expect(createCanonicalSpecialistCandidate(f.mine.ctx,{module:'leave',version:1,nativeSignalIds:[linked.associationId,linked.associationId]})).rejects.toThrow();
+  let entered!:()=>void,release!:()=>void;const started=new Promise<void>(resolve=>{entered=resolve;}),resume=new Promise<void>(resolve=>{release=resolve;});
+  const holder=owner.db.transaction(async tx=>{await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'native-outcome:v1:'+base.tenantId+':'+f.mine.ctx.userId},0))`);entered();await resume;});
+  try{await started;await expect(createCanonicalSpecialistCandidate(f.mine.ctx,{module:'leave',version:1,nativeSignalIds:[linked.associationId]})).rejects.toThrow();expect(await count()).toBe(before);}finally{release();await holder;}
+  expect((await createCanonicalSpecialistCandidate(f.mine.ctx,{module:'leave',version:1,nativeSignalIds:[linked.associationId]})).state).toBe('unevaluated');expect(await count()).toBe(before+1);
+ });
 });

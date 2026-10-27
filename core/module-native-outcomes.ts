@@ -33,5 +33,5 @@ export async function reopenOwnNativeOutcomeAssociation(supplied:SessionContext,
 /** Identity-only self-erasure survives Assistant/native module/grant revocation, without row echoes.
  * Static DELETE has no WHERE/RETURNING: normal own-user RLS supplies the entire permitted scope. */
 export async function eraseOwnNativeOutcomeAssociations(supplied:SessionContext){
- const ctx=capture(supplied);try{return await withTenant(ctx,async tx=>{await boundNativeOutcomeTransactionTx(tx);await assertAiPrincipalTx(tx,ctx);await lockNativeOutcomeCustodyTx(tx,ctx);await tx.execute(sql`delete from public.ai_native_outcome_association`);return{erased:true as const};});}catch{throw new NativeOutcomeUnavailable();}
+ const ctx=capture(supplied);try{return await withTenant(ctx,async tx=>{await boundNativeOutcomeTransactionTx(tx);await assertAiPrincipalTx(tx,ctx);await lockNativeOutcomeCustodyTx(tx,ctx);await tx.execute(sql`select app.native_outcome_own_erase()`);await tx.execute(sql`delete from public.ai_native_outcome_association`);return{erased:true as const};});}catch{throw new NativeOutcomeUnavailable();}
 }

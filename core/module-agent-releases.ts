@@ -1,3 +1,7 @@
+import type {NativeOutcomeServerContext} from './assistant-actions/completed-outcome-readers';
+import {captureNativeCandidateSignals,captureNativeCandidateSignalIds,type NativeCandidateSignal} from '../lib/ai/module-native-signals';
+import {nominateOwnNativeOutcomeJobTx,readVerifiedNativeOutcomeAssociationTx,ownNativeCandidateSignalChoicesTx} from './module-native-outcome-references';
+import {boundNativeOutcomeTransactionTx} from './module-native-outcome-bounds';
 import {specialistFollowupCases} from '../lib/ai/module-specialist-followup-cases';
 import {SpecialistCandidate,executeCanonicalSpecialist,specialistNativeContractDigest,SPECIALIST_ENGINE_DIGEST,SPECIALIST_POLICY_DIGEST,SPECIALIST_POLICY,type SpecialistAssessment} from '../lib/ai/module-specialists';
 import {specialistInputDigest,specialistSuiteDigest,SPECIALIST_HOLDOUTS} from '../lib/ai/module-specialist-holdouts';
@@ -48,12 +52,12 @@ async function guard(tx: Tx, ctx: SessionContext, admin: boolean, admission = tr
 }
 type CandidateRow = { id: string; owner_user_id: string; author_user_id: string; module_code: string; version: number; kind:'typed_route_priority_v1'|'read_plan_prompt_v1'|'canonical_specialist_v1';
   configuration: unknown; candidate_digest: string; baseline_digest: string; source_digest: string;
-  engine_digest: string; policy_digest: string; input_digest: string;signal_refs:unknown;signal_receipt:string|null };
+  engine_digest: string; policy_digest: string; input_digest: string;signal_refs:unknown;signal_receipt:string|null;native_signal_refs?:unknown };
 function binding(row: CandidateRow) {
   const configuration = row.kind==='canonical_specialist_v1'?SpecialistCandidate.parse(row.configuration):row.kind==='read_plan_prompt_v1'?capturePromptPlanCandidate(row.configuration):captureTypedRouteCandidate(row.configuration);
   return { ownerUserId: row.owner_user_id, authorUserId: row.author_user_id, module: row.module_code,
     version: row.version, configuration, baselineDigest: row.baseline_digest, sourceDigest: row.source_digest,
-    engineDigest: row.engine_digest, policyDigest: row.policy_digest, inputDigest: row.input_digest,signalDigest:routingDigest(captureSignalRefs(row.signal_refs)) };
+    engineDigest: row.engine_digest, policyDigest: row.policy_digest, inputDigest: row.input_digest,signalDigest:routingDigest(captureSignalRefs(row.signal_refs)),...(captureNativeCandidateSignals(row.native_signal_refs).length?{nativeSignalDigest:routingDigest(captureNativeCandidateSignals(row.native_signal_refs))}:{}) };
 }
 function assertCurrent(row: CandidateRow) {
   if(row.kind==='canonical_specialist_v1'){const configuration=SpecialistCandidate.parse(row.configuration);if(row.module_code!==configuration.module||row.source_digest!==MODULE_AGENT_SOURCE_DIGEST||row.engine_digest!==specialistModuleEngineDigest(configuration.module)||row.policy_digest!==SPECIALIST_POLICY_DIGEST||row.input_digest!==specialistInputDigest(configuration.module)||row.baseline_digest!==specialistBaselineDigest(configuration.module)||row.candidate_digest!==routingDigest(binding(row)))return fail();return configuration;}
@@ -68,7 +72,7 @@ function assertCurrent(row: CandidateRow) {
 async function candidateTx(tx: Tx, ctx: SessionContext, id: string, validate = true) {
   if (!uuid(id)) return fail();
   const [row] = await tx.execute<CandidateRow>(sql`select c.id,c.owner_user_id,c.author_user_id,c.module_code,c.version,c.kind,c.configuration,
-    c.candidate_digest,c.baseline_digest,c.source_digest,c.engine_digest,c.policy_digest,c.input_digest,p.refs as signal_refs,p.receipt as signal_receipt from public.ai_agent_candidate c
+    c.candidate_digest,c.baseline_digest,c.source_digest,c.engine_digest,c.policy_digest,c.input_digest,p.refs as signal_refs,p.receipt as signal_receipt,p.native_refs as native_signal_refs from public.ai_agent_candidate c
     left join public.ai_agent_candidate_provenance p on p.candidate_id=c.id and p.tenant_id=c.tenant_id
     where c.id=${id}::uuid and c.tenant_id=${ctx.tenantId}::uuid`);
   if (!row) return fail(); if (validate){assertCurrent(row);await assertCandidateSignalsTx(tx,ctx,row);} return row;
@@ -112,16 +116,24 @@ async function signalIntervalTx(tx:Tx,ctx:SessionContext,ownerId:string,exclusiv
   sql`select pg_try_advisory_xact_lock(hashtextextended(${key},0)) as owned`:sql`select pg_try_advisory_xact_lock_shared(hashtextextended(${key},0)) as owned`);if(row?.owned!==true)throw new AgentSignalBusy('Agent review could not be confirmed.');
 }
 async function assertCandidateSignalsTx(tx:Tx,ctx:SessionContext,candidate:CandidateRow){
- await signalIntervalTx(tx,ctx,candidate.owner_user_id);const refs=captureSignalRefs(candidate.signal_refs);
+ await signalIntervalTx(tx,ctx,candidate.owner_user_id);const refs=captureSignalRefs(candidate.signal_refs),nativeRefs=captureNativeCandidateSignals(candidate.native_signal_refs);
  if(!candidate.signal_receipt)return fail();const proof=open('candidate-signals',ctx.tenantId,candidate.id,candidate.signal_receipt);
- if(!exact(proof,['version','candidateDigest','ownerId','sourceDigest','refs'])||proof.version!==1||proof.candidateDigest!==candidate.candidate_digest||proof.ownerId!==candidate.owner_user_id||
-  proof.sourceDigest!==MODULE_AGENT_SOURCE_DIGEST||routingDigest(captureSignalRefs(proof.refs))!==routingDigest(refs))return fail();
- const [current]=await tx.execute<{allowed:boolean}>(sql`select app.agent_candidate_signals_current(${candidate.id}::uuid) as allowed`);if(current?.allowed!==true)return fail();return refs.length;
+ if(!exact(proof,['version','candidateDigest','ownerId','sourceDigest','refs',...(nativeRefs.length?['nativeRefs']:[])])||proof.version!==(nativeRefs.length?2:1)||proof.candidateDigest!==candidate.candidate_digest||proof.ownerId!==candidate.owner_user_id||
+  proof.sourceDigest!==MODULE_AGENT_SOURCE_DIGEST||routingDigest(captureSignalRefs(proof.refs))!==routingDigest(refs)||routingDigest(captureNativeCandidateSignals(proof.nativeRefs))!==routingDigest(nativeRefs))return fail();
+ const [current]=await tx.execute<{allowed:boolean}>(sql`select app.agent_candidate_signals_current(${candidate.id}::uuid) as allowed`);if(current?.allowed!==true)return fail();
+ if(nativeRefs.length){
+  // A competing erasure/retention interval is transient busy, not evidence of source retirement.
+  // Match the trigger's canonical UUID key and propagate the existing busy classification.
+  const [ownership]=await tx.execute<{owned:boolean}>(sql`select pg_try_advisory_xact_lock_shared(hashtextextended('native-outcome:v1:'||(${ctx.tenantId}::uuid)::text||':'||(${candidate.owner_user_id}::uuid)::text,0)) as owned`);
+  if(ownership?.owned!==true)throw new AgentSignalBusy('Agent review could not be confirmed.');
+  const [native]=await tx.execute<{allowed:boolean}>(sql`select app.agent_candidate_native_signals_current(${candidate.id}::uuid) as allowed`);if(native?.allowed!==true)return fail();
+ }
+ return refs.length+nativeRefs.length;
 }
 async function persistCandidateSignalsTx(tx:Tx,ctx:SessionContext,candidate:CandidateRow){
- const refs=captureSignalRefs(candidate.signal_refs),receipt=seal('candidate-signals',ctx.tenantId,candidate.id,{version:1,candidateDigest:candidate.candidate_digest,ownerId:candidate.owner_user_id,sourceDigest:MODULE_AGENT_SOURCE_DIGEST,refs});
- await tx.execute(sql`insert into public.ai_agent_candidate_provenance(candidate_id,tenant_id,owner_user_id,refs,receipt)
-  values(${candidate.id}::uuid,${ctx.tenantId}::uuid,${candidate.owner_user_id}::uuid,${JSON.stringify(refs)}::jsonb,${receipt})`);
+ const refs=captureSignalRefs(candidate.signal_refs),nativeRefs=captureNativeCandidateSignals(candidate.native_signal_refs),receipt=seal('candidate-signals',ctx.tenantId,candidate.id,{version:nativeRefs.length?2:1,candidateDigest:candidate.candidate_digest,ownerId:candidate.owner_user_id,sourceDigest:MODULE_AGENT_SOURCE_DIGEST,refs,...(nativeRefs.length?{nativeRefs}:{})});
+ await tx.execute(sql`insert into public.ai_agent_candidate_provenance(candidate_id,tenant_id,owner_user_id,refs,native_refs,receipt)
+  values(${candidate.id}::uuid,${ctx.tenantId}::uuid,${candidate.owner_user_id}::uuid,${JSON.stringify(refs)}::jsonb,${JSON.stringify(nativeRefs)}::jsonb,${receipt})`);
 }
 async function ownSignalRefsTx(tx:Tx,ctx:SessionContext,ids:readonly string[]){
  await signalIntervalTx(tx,ctx,ctx.userId!);const refs:SignalRef[]=[];
@@ -137,15 +149,27 @@ async function ownSignalRefsTx(tx:Tx,ctx:SessionContext,ids:readonly string[]){
  return captureSignalRefs(refs);
 }
 
-export async function createRoutingAgentCandidate(ctx: SessionContext, input: { version: number; configuration: unknown;signalIds?:readonly string[] }) {
-  const current = capture(ctx), configuration = captureTypedRouteCandidate(input.configuration), version = input.version,signalIds=captureSignalIds(input.signalIds);
-  if (!exact(input, input.signalIds===undefined?['version','configuration']:['version','configuration','signalIds']) || !Number.isSafeInteger(version) || version < 1) return fail();
+/** Human-selected canonical completion is a historical hypothesis input, not an evaluator rating.
+ * Native job provenance takes release/signals before the canonical owner, then append/delete
+ * association custody. One source per candidate prevents late cross-subject lock acquisition. */
+async function ownNativeCandidateSignalsTx(tx:Tx,ctx:SessionContext,ids:readonly string[],module?:AgentModuleCode,server:NativeOutcomeServerContext={}):Promise<readonly NativeCandidateSignal[]>{
+ if(!ids.length)return Object.freeze([]);
+ await boundNativeOutcomeTransactionTx(tx);
+ const jobId=await nominateOwnNativeOutcomeJobTx(tx,ctx,ids[0]);
+ const provenance=await readVerifiedOwnGovernedJobProvenanceTx(tx,ctx,jobId);
+ const proof=await readVerifiedNativeOutcomeAssociationTx(tx,ctx,ids[0],provenance,server);
+ const refs=captureNativeCandidateSignals([proof.reference]);if(module&&refs[0].module!==module)return fail();return refs;
+}
+
+export async function createRoutingAgentCandidate(ctx: SessionContext, input: { version: number; configuration: unknown;signalIds?:readonly string[];nativeSignalIds?:readonly string[] },server:NativeOutcomeServerContext={}) {
+  const current = capture(ctx), configuration = captureTypedRouteCandidate(input.configuration), version = input.version,signalIds=captureSignalIds(input.signalIds),nativeSignalIds=captureNativeCandidateSignalIds(input.nativeSignalIds),capability=Object.freeze({notificationIdentity:server.notificationIdentity});
+  if (!exact(input, ['version','configuration',...(input.signalIds===undefined?[]:['signalIds']),...(input.nativeSignalIds===undefined?[]:['nativeSignalIds'])]) || !Number.isSafeInteger(version) || version < 1) return fail();
   try { return await withTenant(current, async tx => {
-    await guard(tx, current, true);
-    const id = randomUUID(),signal_refs=await ownSignalRefsTx(tx,current,signalIds);
+    if(nativeSignalIds.length)await boundNativeOutcomeTransactionTx(tx);await guard(tx, current, true);
+    const id = randomUUID(),native_signal_refs=await ownNativeCandidateSignalsTx(tx,current,nativeSignalIds,undefined,capability),signal_refs=await ownSignalRefsTx(tx,current,signalIds);
     const row: CandidateRow = { id, owner_user_id: current.userId!, author_user_id: current.userId!, module_code: 'assistant',
       version, kind:'typed_route_priority_v1', configuration, candidate_digest: '', baseline_digest: baselineDigest, source_digest: MODULE_AGENT_SOURCE_DIGEST,
-      engine_digest: ROUTING_ENGINE_DIGEST, policy_digest: ROUTING_POLICY_DIGEST, input_digest: ROUTING_INPUT_DIGEST,signal_refs,signal_receipt:null };
+      engine_digest: ROUTING_ENGINE_DIGEST, policy_digest: ROUTING_POLICY_DIGEST, input_digest: ROUTING_INPUT_DIGEST,signal_refs,signal_receipt:null,native_signal_refs };
     row.candidate_digest = routingDigest(binding(row));
     await tx.execute(sql`insert into public.ai_agent_candidate(id,tenant_id,owner_user_id,author_user_id,module_code,version,kind,
       configuration,candidate_digest,baseline_digest,source_digest,engine_digest,policy_digest,input_digest)
@@ -391,15 +415,15 @@ function captureSyntheticConsent(value:AgentSyntheticConsent,requests:number=PRO
   value.maxRequests!==requests||value.sourceDigest!==MODULE_AGENT_SOURCE_DIGEST)return fail();
  return Object.freeze({synthetic:true as const,maxRequests:value.maxRequests,sourceDigest:value.sourceDigest});
 }
-export async function createPromptAgentCandidate(ctx:SessionContext,input:{version:number;configuration:unknown;signalIds?:readonly string[]}){
- const current=capture(ctx),configuration=capturePromptPlanCandidate(input.configuration),version=input.version,signalIds=captureSignalIds(input.signalIds);
- if(!exact(input,input.signalIds===undefined?['version','configuration']:['version','configuration','signalIds'])||!Number.isSafeInteger(version)||version<1)return fail();
+export async function createPromptAgentCandidate(ctx:SessionContext,input:{version:number;configuration:unknown;signalIds?:readonly string[];nativeSignalIds?:readonly string[]},server:NativeOutcomeServerContext={}){
+ const current=capture(ctx),configuration=capturePromptPlanCandidate(input.configuration),version=input.version,signalIds=captureSignalIds(input.signalIds),nativeSignalIds=captureNativeCandidateSignalIds(input.nativeSignalIds),capability=Object.freeze({notificationIdentity:server.notificationIdentity});
+ if(!exact(input,['version','configuration',...(input.signalIds===undefined?[]:['signalIds']),...(input.nativeSignalIds===undefined?[]:['nativeSignalIds'])])||!Number.isSafeInteger(version)||version<1)return fail();
  try{return await withTenant(current,async tx=>{
-  await guard(tx,current,true);const id=randomUUID(),base=routingDigest(['no-model-plan-baseline-v1',PROMPT_ENGINE_DIGEST]);
-  const signal_refs=await ownSignalRefsTx(tx,current,signalIds);
+  if(nativeSignalIds.length)await boundNativeOutcomeTransactionTx(tx);await guard(tx,current,true);const id=randomUUID(),base=routingDigest(['no-model-plan-baseline-v1',PROMPT_ENGINE_DIGEST]);
+  const native_signal_refs=await ownNativeCandidateSignalsTx(tx,current,nativeSignalIds,undefined,capability),signal_refs=await ownSignalRefsTx(tx,current,signalIds);
   const row:CandidateRow={id,owner_user_id:current.userId!,author_user_id:current.userId!,module_code:'assistant',kind:'read_plan_prompt_v1',
    version,configuration,candidate_digest:'',baseline_digest:base,source_digest:MODULE_AGENT_SOURCE_DIGEST,
-   engine_digest:PROMPT_ENGINE_DIGEST,policy_digest:PROMPT_POLICY_DIGEST,input_digest:PROMPT_INPUT_DIGEST,signal_refs,signal_receipt:null};
+   engine_digest:PROMPT_ENGINE_DIGEST,policy_digest:PROMPT_POLICY_DIGEST,input_digest:PROMPT_INPUT_DIGEST,signal_refs,signal_receipt:null,native_signal_refs};
   row.candidate_digest=routingDigest(binding(row));
   await tx.execute(sql`insert into public.ai_agent_candidate(id,tenant_id,owner_user_id,author_user_id,module_code,version,kind,configuration,
    candidate_digest,baseline_digest,source_digest,engine_digest,policy_digest,input_digest)
@@ -588,8 +612,8 @@ export async function agentReviewWorkspaceTx(tx:Tx,ctx:SessionContext){
   (select count(*)::int from public.ai_agent_evaluation e where e.candidate_id=c.id and e.tenant_id=c.tenant_id) as attempts
   from public.ai_agent_candidate c where c.tenant_id=${ctx.tenantId}::uuid and c.kind in('typed_route_priority_v1','read_plan_prompt_v1') order by c.created_at desc,c.id desc limit 20`);
  let providerFingerprint:string|null=null;try{providerFingerprint=(await resolveAiProviderSnapshotTx(tx,ctx))?.fingerprint??null;}catch{/* No current issued provider means progress is unknown, never0. */}
- const verifiedSignalCount=new Map<string,number|null>();for(const row of rows){try{const candidate=await candidateTx(tx,ctx,row.id);verifiedSignalCount.set(row.id,captureSignalRefs(candidate.signal_refs).length);}catch{verifiedSignalCount.set(row.id,null);}}
- const ownSignalChoices=await ownSignalChoicesTx(tx,ctx);
+ const verifiedSignalCount=new Map<string,number|null>();for(const row of rows){try{const candidate=await candidateTx(tx,ctx,row.id);verifiedSignalCount.set(row.id,captureSignalRefs(candidate.signal_refs).length+captureNativeCandidateSignals(candidate.native_signal_refs).length);}catch{verifiedSignalCount.set(row.id,null);}}
+ const ownSignalChoices=await ownSignalChoicesTx(tx,ctx),nativeSignals=await ownNativeCandidateSignalChoicesTx(tx,ctx);
  const progress=new Map<string,PromptEvaluationProgress|null>();for(const row of rows){progress.set(row.id,row.kind==='read_plan_prompt_v1'&&!row.own&&providerFingerprint?await promptEvaluationProgressTx(tx,ctx,row.id,providerFingerprint):null);}
  const promotions=await tx.execute<{id:string;version:number;kind:string;used:number;maximum:number;expiresAt:string;retired:boolean}>(sql`select p.id,c.version,c.kind,
   p.used_jobs as used,p.max_jobs as maximum,p.expires_at::text as "expiresAt",exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id and r.tenant_id=p.tenant_id) as retired
@@ -607,7 +631,7 @@ export async function agentReviewWorkspaceTx(tx:Tx,ctx:SessionContext){
   if(proof.version!==1||proof.candidateDigest!==candidate.candidate_digest||!PROMPT_HOLDOUTS.some(row=>row.id===proof.fixtureId))throw Error();
   lastTrial={state:proof.stage==='reserved'?'pending':proof.stage==='completed'?'completed':proof.stage==='refused'?'refused':'unavailable',fixtureId:String(proof.fixtureId)};
  }catch{lastTrial={state:'unavailable',fixtureId:null};}}
- return {sourceDigest:MODULE_AGENT_SOURCE_DIGEST,nextVersion:latest.version+1,lastTrial,ownSignalChoices,
+ return {sourceDigest:MODULE_AGENT_SOURCE_DIGEST,nextVersion:latest.version+1,lastTrial,ownSignalChoices,ownNativeSignalChoices:nativeSignals.choices,nativeSignalChoicesTruncated:nativeSignals.truncated,
   candidates:rows.map(row=>({id:row.id,version:row.version,kind:row.kind,own:row.own,attempts:row.attempts,progress:progress.get(row.id)??null,verifiedSignalCount:verifiedSignalCount.get(row.id)??null})),
   promotions:promotions.map(row=>({id:row.id,version:row.version,kind:row.kind,used:row.used,maximum:row.maximum,expiresAt:row.expiresAt,retired:row.retired}))};
 }
@@ -790,10 +814,10 @@ function captureSpecialistJobBinding(value:unknown):SpecialistJobBinding{
  if(row.nativeContractDigest!==specialistNativeContractDigest(configuration.module)||row.suiteDigest!==specialistSuiteDigest(configuration.module)||row.assessmentDigest!==null&&(typeof row.assessmentDigest!=='string'||!/^[a-f0-9]{64}$/.test(row.assessmentDigest)))return fail();
  return Object.freeze({configuration,nativeContractDigest:row.nativeContractDigest as string,suiteDigest:row.suiteDigest as string,assessmentDigest:row.assessmentDigest as string|null});
 }
-export async function createCanonicalSpecialistCandidate(ctx:SessionContext,input:{module:AgentModuleCode;version:number;signalIds?:readonly string[];playbook?:SpecialistCandidate['playbook']}){
- const current=capture(ctx),module=input.module,version=input.version,playbook=input.playbook??'canonical_domain_v1',signalIds=captureSignalIds(input.signalIds);if(!exact(input,['module','version',...(input.signalIds===undefined?[]:['signalIds']),...(input.playbook===undefined?[]:['playbook'])])||!isAgentModuleCode(module)||!Number.isSafeInteger(version)||version<1)return fail();
- try{return await withTenant(current,async tx=>{const fresh=await guard(tx,current,true);assertModuleEnabled(fresh,module);const configuration=SpecialistCandidate.parse({kind:'canonical_specialist_v1',module,playbook}),refs=await ownSpecialistSignalRefsTx(tx,current,signalIds,module),id=randomUUID();
- const row:CandidateRow={id,owner_user_id:current.userId!,author_user_id:current.userId!,module_code:module,version,kind:'canonical_specialist_v1',configuration,candidate_digest:'',baseline_digest:specialistBaselineDigest(module),source_digest:MODULE_AGENT_SOURCE_DIGEST,engine_digest:specialistModuleEngineDigest(module),policy_digest:SPECIALIST_POLICY_DIGEST,input_digest:specialistInputDigest(module),signal_refs:refs,signal_receipt:null};row.candidate_digest=routingDigest(binding(row));
+export async function createCanonicalSpecialistCandidate(ctx:SessionContext,input:{module:AgentModuleCode;version:number;signalIds?:readonly string[];nativeSignalIds?:readonly string[];playbook?:SpecialistCandidate['playbook']},server:NativeOutcomeServerContext={}){
+ const current=capture(ctx),module=input.module,version=input.version,playbook=input.playbook??'canonical_domain_v1',signalIds=captureSignalIds(input.signalIds),nativeSignalIds=captureNativeCandidateSignalIds(input.nativeSignalIds),capability=Object.freeze({notificationIdentity:server.notificationIdentity});if(!exact(input,['module','version',...(input.signalIds===undefined?[]:['signalIds']),...(input.nativeSignalIds===undefined?[]:['nativeSignalIds']),...(input.playbook===undefined?[]:['playbook'])])||!isAgentModuleCode(module)||!Number.isSafeInteger(version)||version<1)return fail();
+ try{return await withTenant(current,async tx=>{if(nativeSignalIds.length)await boundNativeOutcomeTransactionTx(tx);const fresh=await guard(tx,current,true);assertModuleEnabled(fresh,module);const configuration=SpecialistCandidate.parse({kind:'canonical_specialist_v1',module,playbook}),native_signal_refs=await ownNativeCandidateSignalsTx(tx,current,nativeSignalIds,module,capability),refs=await ownSpecialistSignalRefsTx(tx,current,signalIds,module),id=randomUUID();
+ const row:CandidateRow={id,owner_user_id:current.userId!,author_user_id:current.userId!,module_code:module,version,kind:'canonical_specialist_v1',configuration,candidate_digest:'',baseline_digest:specialistBaselineDigest(module),source_digest:MODULE_AGENT_SOURCE_DIGEST,engine_digest:specialistModuleEngineDigest(module),policy_digest:SPECIALIST_POLICY_DIGEST,input_digest:specialistInputDigest(module),signal_refs:refs,signal_receipt:null,native_signal_refs};row.candidate_digest=routingDigest(binding(row));
  await tx.execute(sql`insert into public.ai_agent_candidate(id,tenant_id,owner_user_id,author_user_id,module_code,version,kind,configuration,candidate_digest,baseline_digest,source_digest,engine_digest,policy_digest,input_digest) values(${id}::uuid,${current.tenantId}::uuid,${current.userId}::uuid,${current.userId}::uuid,${module},${version},'canonical_specialist_v1',${JSON.stringify(configuration)}::jsonb,${row.candidate_digest},${row.baseline_digest},${row.source_digest},${row.engine_digest},${row.policy_digest},${row.input_digest})`);await persistCandidateSignalsTx(tx,current,row);return{candidateId:id,candidateDigest:row.candidate_digest,state:'unevaluated' as const};});}catch{return fail();}
 }
 const specialistIssued=new WeakMap<object,{candidate:CandidateRow;evaluatorId:string;id:string;report:SpecialistEvaluationReport}>();
@@ -837,7 +861,7 @@ export async function specialistReviewWorkspaceTx(tx:Tx,ctx:SessionContext){cons
  const versions=await tx.execute<{module:string;version:number}>(sql`select module_code as module,max(version)::int as version from public.ai_agent_candidate where tenant_id=${current.tenantId}::uuid and owner_user_id=${current.userId}::uuid group by module_code`),modules=AGENT_MODULE_CODES.filter(module=>{try{assertModuleEnabled(fresh,module);return true;}catch{return false;}}).map(module=>({module,nextVersion:(versions.find(row=>row.module===module)?.version??0)+1}));
  const rows=await tx.execute<{id:string;module:AgentModuleCode;version:number;playbook:SpecialistCandidate['playbook'];own:boolean}>(sql`select id,module_code as module,version,configuration->>'playbook' as playbook,owner_user_id=app.current_user_id() as own from public.ai_agent_candidate where tenant_id=${current.tenantId}::uuid and kind='canonical_specialist_v1' order by created_at desc,id desc limit 40`),candidates:{id:string;module:AgentModuleCode;version:number;playbook:SpecialistCandidate['playbook'];own:boolean;evaluations:number|null;passingEvaluators:number|null;incompleteEvaluators:number|null}[]=[];
  for(const row of rows){if(!isAgentModuleCode(row.module))continue;let evaluations:number|null=null,passingEvaluators:number|null=null,incompleteEvaluators:number|null=null;try{const candidate=await candidateTx(tx,current,row.id),checked=await specialistEvaluationsTx(tx,current,candidate);evaluations=checked.length;passingEvaluators=checked.filter(e=>e.report.diagnosticComparison.improved&&e.report.state==='complete'&&e.report.securityFailures===0&&e.report.qualityFailures===0&&e.report.cases.every(item=>item.passed)).length;incompleteEvaluators=checked.filter(e=>e.report.state==='incomplete').length;}catch(error){if(!(error instanceof AiGatewayError)&&!(error instanceof Error&&error.name==='ZodError'))throw error;}candidates.push({...row,evaluations,passingEvaluators,incompleteEvaluators});}
- const promotions=await tx.execute<{id:string;module:AgentModuleCode;version:number;used:number;maximum:number;expiresAt:string;retired:boolean}>(sql`select p.id,p.module_code as module,c.version,p.used_jobs as used,p.max_jobs as maximum,p.expires_at::text as "expiresAt",exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id) as retired from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id and c.kind='canonical_specialist_v1' where p.tenant_id=${current.tenantId}::uuid order by p.created_at desc,p.id desc limit 40`);const signals=await ownSpecialistSignalChoicesTx(tx,current);return{modules,candidates,promotions:Array.from(promotions),ownSignalChoices:signals.choices,signalChoicesTruncated:signals.truncated};
+ const promotions=await tx.execute<{id:string;module:AgentModuleCode;version:number;used:number;maximum:number;expiresAt:string;retired:boolean}>(sql`select p.id,p.module_code as module,c.version,p.used_jobs as used,p.max_jobs as maximum,p.expires_at::text as "expiresAt",exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id) as retired from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id and c.kind='canonical_specialist_v1' where p.tenant_id=${current.tenantId}::uuid order by p.created_at desc,p.id desc limit 40`);const signals=await ownSpecialistSignalChoicesTx(tx,current),nativeSignals=await ownNativeCandidateSignalChoicesTx(tx,current);return{modules,candidates,promotions:Array.from(promotions),ownSignalChoices:signals.choices,signalChoicesTruncated:signals.truncated,ownNativeSignalChoices:nativeSignals.choices,nativeSignalChoicesTruncated:nativeSignals.truncated};
 }
 
 /** A per-module candidate may use only explicit own feedback from a verified job of THAT module.

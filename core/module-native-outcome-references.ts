@@ -73,3 +73,19 @@ export async function recordVerifiedNativeOutcomeAssociationTx(tx:Tx,ctx:Session
  values(${id}::uuid,${ctx.tenantId}::uuid,${ctx.userId}::uuid,${ctx.personId??null}::uuid,${job.jobId}::uuid,${input.nonce}::uuid,${requestDigest},${input.reference.action},${input.reference.source},${input.reference.source==='review'?input.reference.actionId:null}::uuid,${input.reference.source==='employee_import'?input.reference.attemptId:null}::uuid,${native.evidence.eventId}::uuid,${nativeDigest},${job.jobReceiptDigest},${receipt},true,${proof.createdAt}::timestamptz,${proof.expiresAt}::timestamptz)`);
  return view(await rowTx(tx,ctx,id),proof);
 }
+
+/** Own sealed metadata choices only. This is not fresh canonical proof: a human POST must reopen
+ * the selected job and canonical native source before binding a candidate. No cross-user choice. */
+export async function ownNativeCandidateSignalChoicesTx(tx:Tx,ctx:SessionContext){
+ await boundNativeOutcomeTransactionTx(tx);
+ const rows=await tx.execute(sql`select ${projection} from public.ai_native_outcome_association
+ where tenant_id=${ctx.tenantId}::uuid and user_id=${ctx.userId}::uuid and expires_at>now()
+ order by created_at desc,id desc limit 11`);
+ const choices:{associationId:string;module:AgentModuleCode;action:NativeOutcomeReference['action'];semantics:string;createdAt:string}[]=[];
+ for(const raw of Array.from(rows).slice(0,10)){
+  try{const row=Row.parse(raw),proof=openRow(ctx,row),descriptor=nativeOutcomeDescriptor(proof.reference.action);
+   choices.push({associationId:row.id,module:descriptor.module,action:proof.reference.action,semantics:descriptor.semantics,createdAt:instant(row.created_at)});
+  }catch{/* Corrupt or retired sealed metadata is not advertised; SQL failures abort above. */}
+ }
+ return {choices,truncated:rows.length>10};
+}

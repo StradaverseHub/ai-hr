@@ -21,7 +21,7 @@ export async function SpecialistJobComposer({modules}:{modules:readonly AgentMod
 }
 /** Only source-owned group-admin metadata reaches these management forms. No posted score is used. */
 export async function ModuleSpecialistReview({view}:{view:View}){
- const t=await getTranslations('assistant.workspace.specialists'),jobs=await getTranslations('assistant.workspace.jobs'),signals=await getTranslations('assistant.workspace.governed');
+ const t=await getTranslations('assistant.workspace.specialists'),jobs=await getTranslations('assistant.workspace.jobs'),signals=await getTranslations('assistant.workspace.governed'),native=await getTranslations('assistant.workspace.nativeOutcomes');
  const reviewable=view.candidates.filter(row=>!row.own),promotable=reviewable.filter(row=>(row.passingEvaluators??0)>=2),active=view.promotions.filter(row=>!row.retired);
  const record=(row:{module:AgentModuleCode;version:number})=>t('record',{module:jobs(`module_${row.module}`),version:row.version});
  return <Card className="p-5"><details><summary className="min-h-11 cursor-pointer text-sm font-medium">{t('title')}</summary>
@@ -35,6 +35,12 @@ export async function ModuleSpecialistReview({view}:{view:View}){
      {view.ownSignalChoices.map(signal=><label key={signal.id} className="flex min-h-11 items-center gap-2 text-xs"><input type="checkbox" name="signalId" value={signal.id}/><span>{jobs(`module_${signal.module}`)} · {signals(`signal_${signal.outcome}`)}</span></label>)}
     </fieldset>}
     {view.signalChoicesTruncated&&<p className="text-xs text-muted-foreground">{t('signalsTruncated')}</p>}
+    {view.ownNativeSignalChoices.length>0&&<label className="block text-sm">{native('candidateTitle')}
+     <span className="mt-1 block text-xs text-muted-foreground">{native('candidateIntro')}</span>
+     <select name="nativeSignalId" defaultValue="" className={`${inputCls} mt-1 min-h-11 w-full`}>
+      <option value="">{native('candidateNone')}</option>{view.ownNativeSignalChoices.map(signal=><option key={signal.associationId} value={signal.associationId}>{jobs(`module_${signal.module}`)} · {native(`action_${signal.action.replace(/[.-]/g,'_')}`)}</option>)}
+     </select></label>}
+    {view.nativeSignalChoicesTruncated&&<p className="text-xs text-muted-foreground">{t('signalsTruncated')}</p>}
     <button type="submit" disabled={!view.modules.length} className={`${btnPrimary} min-h-11`}>{t('create')}</button>
    </form>
    {view.candidates.length?<ul className="space-y-3">{view.candidates.map(row=><li key={row.id} className="rounded-lg border p-3 text-sm">

@@ -13,7 +13,7 @@ import {ModuleAgentReview} from '../components/assistant/module-agent-review';
 import {PROMPT_HOLDOUTS,PROMPT_HOLDOUT_REQUEST_LIMIT} from '../lib/ai/module-agent-prompt-candidate';
 import {MODULE_AGENT_SOURCE_DIGEST} from '../lib/ai/module-agent-source-manifest';
 type View=Parameters<typeof ModuleAgentReview>[0]['view'];
-function view(progress:View['candidates'][number]['progress']):View{return {sourceDigest:MODULE_AGENT_SOURCE_DIGEST,nextVersion:2,lastTrial:null,ownSignalChoices:[],
+function view(progress:View['candidates'][number]['progress']):View{return {sourceDigest:MODULE_AGENT_SOURCE_DIGEST,nextVersion:2,lastTrial:null,ownSignalChoices:[],ownNativeSignalChoices:[],nativeSignalChoicesTruncated:false,
  candidates:[{id:'candidate',version:1,kind:'read_plan_prompt_v1',own:false,attempts:1,progress,verifiedSignalCount:null}],promotions:[]};}
 beforeEach(()=>{state.locale='en';});afterEach(cleanup);
 describe('human evaluation scope, consent and authenticated progress',()=>{

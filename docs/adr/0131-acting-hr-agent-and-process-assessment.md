@@ -2875,3 +2875,14 @@ source interval, then association custody; refusal requires whole-transaction ro
 outcome store/owner reconciliation and user journey are still being implemented. Such an association
 will prove neither causal AI benefit nor business correctness, approval, payment or measured savings.
 All three stages, actual experience/security evidence and the combined final gate remain required.
+
+
+### 27 October 2026 — source-only human-selected native candidate evidence
+
+Candidate creation now accepts one optional own native-outcome association in addition to human opinion signals. It reopens the actual own governed job and canonical completed source before sealing the association reference into candidate provenance. Specialist evidence must match that specialist module. Typed routing and prompt candidates can use an own completed action as a historical hypothesis input; this grants no source authority and supplies no quality, benefit or causal score. Independent held-out/security/quality evaluation and bounded promotion remain required. Opinion feedback retains its existing unchanged-result requirement.
+
+A v2 candidate provenance receipt binds the exact association/job/receipt/native digests, module/action and expiry. Empty-native candidates retain the v1 proof shape. Reviewers validate only the already-bound historical reference metadata under a guarded boolean surface and read fresh HR facts as themselves; they never impersonate the original actor or receive its private source. Association erasure/expiry/cascade invalidates candidate evidence. A competing custody holder is classified as transient busy, not a source-changed rollback. One native source per candidate avoids unordered native multi-subject ownership.
+
+The management UI defaults to no native evidence and labels the optional link as evidence rather than a rating. Server commands capture choices before awaiting authentication and use the existing browser Origin/CSRF owner; notification identity remains an opaque server capability resolved outside the business transaction. Own erasure will remove private source captures plus associations through the coordinated privacy helper, preserving native human receipts.
+
+All new candidate/DOM/DB cases are authored UNRUN. Static syntax/diff review only. Native association, target-custody, UI metadata and candidate-provenance fragments must become one normally installed centrally allocated migration before runtime checks; no prefix/index/timestamp is inferred. Source capture, retention/PDPA integration and representative browser/security/erasure proof remain unfinished. No combined final gate, staging deployment, current runtime security proof or completion claim.

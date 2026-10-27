@@ -7,7 +7,7 @@ import {AGENT_MODULE_CODES} from '../../lib/ai/module-agents';
 import {createAgentCandidateAction,evaluateAgentCandidateAction,promoteAgentCandidateAction,rollbackAgentCandidateAction,tryAgentCandidateAction} from '../../app/assistant/agent-review-actions';
 type View=NonNullable<Awaited<ReturnType<typeof agentReviewWorkspaceTx>>>;
 export async function ModuleAgentReview({view}:{view:View}){
- const t=await getTranslations('assistant.workspace.agentReview');
+ const t=await getTranslations('assistant.workspace.agentReview'),native=await getTranslations('assistant.workspace.nativeOutcomes'),jobs=await getTranslations('assistant.workspace.jobs');
  const locale=await getLocale();const trials=PROMPT_HOLDOUTS.filter(row=>row.locale===locale);
  const reviewable=view.candidates.filter(row=>!row.own&&row.kind==='read_plan_prompt_v1');
  const label=(row:View['candidates'][number])=>t('record',{version:row.version,kind:t(row.kind==='read_plan_prompt_v1'?'kindPrompt':'kindRoute'),attempts:row.attempts});
@@ -20,6 +20,10 @@ export async function ModuleAgentReview({view}:{view:View}){
      <option value="concise_v1">{t('concise')}</option><option value="explicit_scope_v1">{t('explicit')}</option>
     </select></label>
     {view.ownSignalChoices.length>0&&<fieldset className="space-y-2"><legend className="text-sm">{t('signalsTitle')}</legend><p className="text-xs text-muted-foreground">{t('signalsConsent')}</p>{view.ownSignalChoices.map(signal=><label key={signal.id} className="flex min-h-11 items-center gap-2 text-xs"><input type="checkbox" name="signalId" value={signal.id}/><span>{t(`signal_${signal.outcome}`)}</span></label>)}</fieldset>}
+    {view.ownNativeSignalChoices.length>0&&<label className="block text-sm">{native('candidateTitle')}
+     <span className="mt-1 block text-xs text-muted-foreground">{native('candidateIntro')}</span>
+     <select name="nativeSignalId" defaultValue="" className={`${inputCls} mt-1 min-h-11 w-full`}><option value="">{native('candidateNone')}</option>{view.ownNativeSignalChoices.map(signal=><option key={signal.associationId} value={signal.associationId}>{jobs(`module_${signal.module}`)} · {native(`action_${signal.action.replace(/[.-]/g,'_')}`)}</option>)}</select></label>}
+    {view.nativeSignalChoicesTruncated&&<p className="text-xs text-muted-foreground">{native('bounded')}</p>}
     <button type="submit" className={`${btnPrimary} min-h-11`}>{t('create')}</button>
    </form>
    <div className="space-y-1"><h3 className="text-sm font-medium">{t('candidates')}</h3>

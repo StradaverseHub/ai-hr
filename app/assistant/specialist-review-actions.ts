@@ -2,6 +2,7 @@
 import {redirect} from 'next/navigation';
 import {revalidatePath} from 'next/cache';
 import {getBrowserCommandSession} from '@/lib/session';
+import {resolveOwnNotificationServerIdentity} from '@/core/assistant-actions/own-notification-preferences-source';
 import {isAgentModuleCode} from '@/lib/ai/module-agents';
 import {createCanonicalSpecialistCandidate,evaluateCanonicalSpecialistCandidate,promoteCanonicalSpecialistCandidate,rollbackRoutingAgent,runGovernedSpecialistJob} from '@/core/module-agent-releases';
 
@@ -10,9 +11,9 @@ const finish=():never=>{revalidatePath('/assistant');redirect('/assistant');};
 /** Posted choices nominate a closed module only. Every owner rechecks actual current authority. */
 export async function createSpecialistCandidateAction(form:FormData){
  const choice=String(form.get('moduleVersion')??'').split(':'),module=choice[0],version=Number(choice[1]);
- const signalIds=form.getAll('signalId').map(value=>String(value));
+ const signalIds=form.getAll('signalId').map(value=>String(value)),nativeSignalId=String(form.get('nativeSignalId')??''),nativeSignalIds=nativeSignalId?[nativeSignalId]:[],playbook=String(form.get('playbook')??'canonical_domain_v1');
  if(choice.length!==2||!isAgentModuleCode(module)||!Number.isSafeInteger(version)||version<1)return fail();
- try{const ctx=await getBrowserCommandSession();await createCanonicalSpecialistCandidate(ctx,{module,version,signalIds,playbook:String(form.get('playbook')??'canonical_domain_v1') as 'canonical_domain_v1'|'canonical_followup_v1'});}catch{fail();}finish();
+ try{const ctx=await getBrowserCommandSession();await createCanonicalSpecialistCandidate(ctx,{module,version,signalIds,nativeSignalIds,playbook:playbook as 'canonical_domain_v1'|'canonical_followup_v1'},module==='notifications'&&nativeSignalIds.length?{notificationIdentity:await resolveOwnNotificationServerIdentity()}:{});}catch{fail();}finish();
 }
 export async function evaluateSpecialistCandidateAction(form:FormData){
  const candidateId=String(form.get('candidateId')??'');if(form.get('consented')!=='yes')fail();
