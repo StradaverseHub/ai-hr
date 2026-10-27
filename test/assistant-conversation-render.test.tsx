@@ -4,7 +4,7 @@
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,within} from '@testing-library/react';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import viCopy from '../messages/vi.json';
-const state=vi.hoisted(()=>({locale:'en',data:{} as unknown}));
+const state=vi.hoisted(()=>({locale:'en',data:{} as unknown,reviewLinks:vi.fn()}));
 const copies:Record<string,unknown>={en,ms,zh,ta,th,vi:viCopy};
 vi.mock('next-intl/server',()=>({getLocale:async()=>state.locale,getTranslations:async(namespace:string)=>(key:string,params?:Record<string,string|number>)=>{
  let value:unknown=copies[state.locale];for(const part of [...namespace.split('.'),...key.split('.')])value=(value as Record<string,unknown>)[part];if(typeof value!=='string')throw Error('Missing translated conversation copy');return value.replace(/\{(\w+)\}/g,(_whole,field:string)=>String(params?.[field]??''));
@@ -12,8 +12,10 @@ vi.mock('next-intl/server',()=>({getLocale:async()=>state.locale,getTranslations
 vi.mock('../app/assistant/actions',()=>({askAssistantAction:vi.fn()}));
 vi.mock('../app/assistant/job-feedback-actions',()=>({saveGovernedJobFeedbackAction:vi.fn(),eraseGovernedJobFeedbackAction:vi.fn()}));
 vi.mock('../app/assistant/governed-job-actions',()=>({runGovernedPlanAction:vi.fn()}));
+// This spy tests the parent composition condition only; separate real-view footer cases own route boundaries.
+vi.mock('../components/assistant/conversation-review-links',()=>({ConversationReviewLinks:async(props:unknown)=>{state.reviewLinks(props);return null;}}));
 vi.mock('../components/assistant/module-specialist-findings',()=>({ModuleSpecialistFindings:()=>null}));
-vi.mock('../core/module-agent-releases',()=>({reopenGovernedModuleReadJobTx:vi.fn()}));
+vi.mock('../core/module-agent-releases',()=>({reopenGovernedModuleReadJobTx:vi.fn(),readGovernedSpecialistToolResultTx:vi.fn()}));
 vi.mock('../core/assistant-tools',()=>({toolsFor:()=>[]}));
 vi.mock('../core/assistant-read-session',()=>({withAssistantRead:vi.fn(async(_ctx:unknown,module:string,consume:(read:unknown)=>Promise<unknown>)=>consume({moduleWork:async()=>({module,capability:MODULE_AGENT_CAPABILITIES.find(row=>row[0]===module)![1],scope:'current-caller',data:state.data})}))}));
 import {askAssistantAction} from '../app/assistant/actions';
@@ -21,13 +23,15 @@ import {loadCanonicalModuleJob,type CanonicalModuleJobView} from '../core/worksp
 import {GroundedWorkspaceReply} from '../components/assistant/module-jobs';
 import {MODULE_AGENT_CAPABILITIES,type AgentModuleCode} from '../lib/ai/module-agents';
 import type {AssistantAnswerPlan} from '../lib/ai/assistant-answer-plan';
+import type {AssistantAnswerExplanation} from '../lib/ai/assistant-answer-explanations';
 import type {GroundedWorkspaceAnswer} from '../core/workspace-grounded-answers';
 import type {SessionContext} from '../db/client';
 const ctx:SessionContext={tenantId:'fictional-tenant',userId:'fictional-user',personId:'fictional-person',roles:['employee'],grants:[{role:'employee',companyId:null}]};
 const localeCopy=(locale:string)=>copies[locale] as typeof en;
 const exchangeId='00000000-0000-4000-8000-000000000001';
 type Selected=Readonly<{view:CanonicalModuleJobView;card:number;fact:number}>;
-type Reply=GroundedWorkspaceAnswer&{conversation:{plan:AssistantAnswerPlan;facts:readonly Selected[]}|null};
+type Segment=Readonly<{kind:'fact';view:CanonicalModuleJobView;card:number;fact:number}>|Readonly<{kind:'explanation';view:CanonicalModuleJobView;explanation:AssistantAnswerExplanation}>;
+type Reply=GroundedWorkspaceAnswer&{conversation:{plan:AssistantAnswerPlan;facts:readonly Selected[];segments?:readonly Segment[];clarificationAllowed?:false}|null};
 function reply(plan:AssistantAnswerPlan,facts:readonly Selected[]=[]):Reply{return{mode:'generic',views:[],fallbackModules:[],partial:false,tools:[],conversation:{plan,facts}};}
 function select(view:CanonicalModuleJobView,card:number,field:string):Selected{if(view.state!=='ready')throw Error('Expected actual issued canonical fixture');const fact=view.presentation.cards[card].facts.findIndex(value=>value.field===field);if(fact<0)throw Error('Missing canonical fixture field');return{view,card,fact};}
 function answer(facts:readonly Selected[]):Reply{return reply({version:1,mode:'answer',blocks:facts.map(row=>({kind:'fact',read:0,card:row.card,fact:row.fact}))},facts);}
@@ -39,6 +43,30 @@ describe('grounded conversation rendering',()=>{
   const result=render(await GroundedWorkspaceReply({ctx,reply:answer(facts)})),copy=localeCopy(locale).assistant.workspace;
   const region=screen.getByRole('region',{name:copy.conversation.answerLabel}),list=region.querySelector('ul')!;expect(within(list).getAllByRole('listitem').map(row=>row.textContent)).toEqual([`Fictional second employer — ${copy.jobs.field_employeeCode}: REC-SECOND`,`Fictional first employer — ${copy.jobs.field_employeeCode}: REC-FIRST`]);
   const details=result.container.querySelector('details')!;expect(details.open).toBe(false);expect(details.querySelector('summary')?.textContent).toBe(copy.conversation.sources);expect(details.textContent).toContain('REC-FIRST');expect(details.textContent).toContain('REC-SECOND');expect(askAssistantAction).not.toHaveBeenCalled();
+ });
+ it('renders mixed facts and an original canonical explanation in exact plan order with only paired facts in the fact subset',async()=>{
+  const issued=await view('employees',{rows:[{employeeCode:'MIXED-RECORD',company:'Canonical employer',hiredOn:'2020-01-01',terminatedOn:null,status:'active'}],truncated:false});
+  if(issued.state!=='ready')throw Error('Actual canonical view unavailable');const explanation=issued.answerExplanations?.find(row=>row.code==='specialist_finding:employment_active');if(!explanation)throw Error('Actual owner must attach source explanations before issuance');
+  const first=select(issued,0,'employeeCode'),last=select(issued,0,'company'),segments:readonly Segment[]=[{kind:'fact',...first},{kind:'explanation',view:issued,explanation},{kind:'fact',...last}],plan:AssistantAnswerPlan={version:1,mode:'answer',blocks:[{kind:'fact',read:0,card:0,fact:first.fact},{kind:'explanation',read:0,card:explanation.card,code:explanation.code},{kind:'fact',read:0,card:0,fact:last.fact}]};
+  const shown=render(await GroundedWorkspaceReply({ctx,reply:{...reply(plan,[first,last]),conversation:{plan,facts:[first,last],segments}}}));const region=screen.getByRole('region',{name:en.assistant.workspace.conversation.answerLabel}),list=region.querySelector('ul')!;
+  expect(within(list).getAllByRole('listitem').map(row=>row.textContent)).toEqual([`Canonical employer — ${en.assistant.workspace.jobs.field_employeeCode}: MIXED-RECORD`,`${en.assistant.workspace.jobs.module_employees}${en.assistant.workspace.specialistFindings.employment_active}`,`Canonical employer — ${en.assistant.workspace.jobs.field_company}: Canonical employer`]);
+  expect(shown.container.querySelectorAll('details')).toHaveLength(1);expect(state.reviewLinks).not.toHaveBeenCalled();
+ });
+ it('refuses a whole mixed answer before disclosing facts for a cloned, foreign or plan-mismatched explanation',async()=>{
+  const issued=await view('employees',{rows:[{employeeCode:'MIXED-PRIVATE-RECORD',company:'MIXED-PRIVATE-COMPANY',hiredOn:'2020-01-01',terminatedOn:null,status:'active'}],truncated:false}),other=await view('employees',{rows:[{employeeCode:'OTHER-PRIVATE',company:'OTHER-PRIVATE-COMPANY',hiredOn:'2020-01-01',terminatedOn:null,status:'active'}],truncated:false});
+  if(issued.state!=='ready'||other.state!=='ready')throw Error('Actual canonical views unavailable');const explanation=issued.answerExplanations?.find(row=>row.code==='specialist_finding:employment_active'),foreign=other.answerExplanations?.find(row=>row.code==='specialist_finding:employment_active');if(!explanation||!foreign)throw Error('Missing original source explanations');const selected=select(issued,0,'employeeCode');
+  for(const selectedExplanation of [JSON.parse(JSON.stringify(explanation)) as AssistantAnswerExplanation,foreign,explanation]){
+   const mismatch=selectedExplanation===explanation,plan:AssistantAnswerPlan={version:1,mode:'answer',blocks:[{kind:'fact',read:0,card:0,fact:selected.fact},{kind:'explanation',read:0,card:explanation.card,code:mismatch?'specialist_finding:scope_current_caller':explanation.code}]},segments:readonly Segment[]=[{kind:'fact',...selected},{kind:'explanation',view:issued,explanation:selectedExplanation}];
+   const shown=render(await GroundedWorkspaceReply({ctx,reply:{...reply(plan,[selected]),conversation:{plan,facts:[selected],segments}}}));expect(screen.getByRole('status').textContent).toBe(en.assistant.workspace.conversation.unavailable);expect(shown.container.textContent).not.toMatch(/MIXED-PRIVATE|OTHER-PRIVATE/);expect(shown.container.querySelector('details')).toBeNull();shown.unmount();
+  }
+ });
+ it.each(['en','ms','zh','ta','th','vi'])('%s removes the clarification form when the sealed human context cannot accept another reply',async locale=>{
+  state.locale=locale;const plan:AssistantAnswerPlan={version:1,mode:'clarify',slot:'period'},shown=render(await GroundedWorkspaceReply({ctx,exchangeId,reply:{...reply(plan),conversation:{plan,facts:[],clarificationAllowed:false}}}));expect(screen.getByRole('status').textContent).toBe(localeCopy(locale).assistant.workspace.conversation.contextLimit);expect(shown.container.querySelector('form')).toBeNull();expect(screen.queryByRole('textbox')).toBeNull();expect(askAssistantAction).not.toHaveBeenCalled();expect(state.reviewLinks).not.toHaveBeenCalled();
+ });
+ it('composes the source-owned handoff footer only for human_review_required, without claiming route or effect authorization',async()=>{
+  const issued=await view('employees',{rows:[{employeeCode:'CONDITION-RECORD',company:'Canonical employer',hiredOn:'2020-01-01',terminatedOn:null,status:'active'}],truncated:false}),selected=select(issued,0,'employeeCode'),views=[issued];
+  for(const input of [answer([selected]),reply({version:1,mode:'clarify',slot:'module'}),reply({version:1,mode:'refuse',code:'unsupported_request'}),reply({version:1,mode:'insufficient',code:'no_verified_facts'}),reply({version:1,mode:'insufficient',code:'unsupported_explanation'})]){const shown=render(await GroundedWorkspaceReply({ctx,exchangeId,reply:{...input,views}}));expect(state.reviewLinks).not.toHaveBeenCalled();shown.unmount();}
+  const shown=render(await GroundedWorkspaceReply({ctx,reply:{...reply({version:1,mode:'refuse',code:'human_review_required'}),views}}));expect(state.reviewLinks).toHaveBeenCalledTimes(1);expect(state.reviewLinks).toHaveBeenCalledWith({views,ctx});expect(shown.container.querySelector('a')).toBeNull();expect(askAssistantAction).not.toHaveBeenCalled();
  });
  it('copies canonical money decimals without model arithmetic, symbol substitution or rounding',async()=>{
   const issued=await view('payroll',{rows:[{payPeriod:'2026-01',company:'Fictional employer',gross:'1234.5600',deductions:'123.3300',net:'1111.2300',currency:'MYR',runType:'regular',runSeq:1}],truncated:false});render(await GroundedWorkspaceReply({ctx,reply:answer([select(issued,0,'net'),select(issued,0,'gross')])}));
