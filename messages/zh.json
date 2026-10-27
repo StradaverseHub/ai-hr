@@ -463,7 +463,8 @@
     "jobDescriptions": "职位说明",
     "rewardsAccess": "薪酬评审访问权限",
     "peopleGeneral": "常规",
-    "loginPresentation": "登录页与浏览器外观"
+    "loginPresentation": "登录页与浏览器外观",
+    "calibration": "Calibration"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -19461,6 +19462,40 @@
         "all": "全部",
         "outstanding": "未完成",
         "done": "已完成"
+      }
+    },
+    "calibrationList": {
+      "title": "Calibration",
+      "description": "The calibration sessions you can open. Sessions with an open window come first.",
+      "empty": "No calibration is assigned to you.",
+      "groupWide": "Group-wide",
+      "opensOn": "Opens {date}",
+      "closesOn": "Closes {date}",
+      "tiers": {
+        "group": "Group",
+        "bg": "Business group (BG)",
+        "bu": "Business unit (BU)",
+        "hod": "Department (HOD)",
+        "final": "Final"
+      },
+      "columns": {
+        "session": "Session",
+        "cycle": "Cycle",
+        "company": "Company",
+        "window": "Window",
+        "people": "People",
+        "toDo": "To do",
+        "status": "Status"
+      },
+      "window": {
+        "open": "Open",
+        "upcoming": "Not open yet",
+        "closed": "Closed"
+      },
+      "lock": {
+        "open": "In progress",
+        "partial": "Partly locked",
+        "locked": "Locked"
       }
     }
   },

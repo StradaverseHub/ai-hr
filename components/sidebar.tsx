@@ -163,7 +163,10 @@ const ONBOARDING_REQUISITIONS_NODE:CollapsibleGroupItem={collapsible:true,labelK
 // it), placed at its pre-rung-4 position in the Manage group below, after Approvals. The `group`
 // tag is the pack's placement declaration; position WITHIN the group stays this file's concern.
 const PERSONAL_PERFORMANCE_ROW: ChildItem = modulePackById('performance')!.navLinks!.find((l) => l.group === 'main')!;
-const PERFORMANCE_ROW: ChildItem = modulePackById('performance')!.navLinks!.find((l) => l.group === 'manage')!;
+const PERFORMANCE_ROW: ChildItem = modulePackById('performance')!.navLinks!.find((l) => l.group === 'manage' && l.labelKey === 'performance')!;
+// WP-B1 (APR-020) — Calibration. No role flag on the descriptor: canSeeChild gates it by canEnterCalibration
+// (a named reviewer on a session they may enter) OR canAdministerOnehr.
+const CALIBRATION_ROW: ChildItem = modulePackById('performance')!.navLinks!.find((l) => l.group === 'manage' && l.labelKey === 'calibration')!;
 
 // Leave nav rows (ADR-0080 rung 6): two flat rows the leave pack contributes (packs/leave/index.ts,
 // LEAVE_NAV_LINKS — provenance comments moved with them), placed at their pre-rung-6 positions below:
@@ -431,6 +434,7 @@ const GROUPS: Group[] = [
       MY_TEAM_ROW,
       { href: '/approvals', labelKey: 'approvals', icon: ListChecks, tour: 'nav-approvals', managerUp: true },
       PERFORMANCE_ROW,
+      CALIBRATION_ROW,
       ...modulePackById('rewards')!.navLinks!.filter(l => l.group === 'manage'),
       // a324a4b3 rev3: Roster + Import come back here as FLAT rows. rev2 put them inside the Attendance
       // node, which was safe while that node sat in the ungated group; it is not safe now the node has
@@ -553,6 +557,7 @@ export function Sidebar({
   canReviewProfileChanges = false,
   canAccessTeam = false,
   canAdministerOnehr = false,
+  canEnterCalibration = false,
   approvalCount = 0,
   taskCount = 0,
   onboardingAccess = false,
@@ -585,6 +590,11 @@ export function Sidebar({
    * Shows ONLY the manager-up Performance row; it never opens the admin rail, approvals or My Team.
    */
   canAdministerOnehr?: boolean;
+  /**
+   * WP-B1 — the viewer is a named reviewer on at least one non-final calibration session they may enter
+   * (packs/performance hasCalibrationAssignment: one existence query per request). Shows ONLY the Calibration row.
+   */
+  canEnterCalibration?: boolean;
   /**
    * ADR-0077 slice 4 — module codes whose rows may be shown. `null` means "no opinion, show
    * everything", which is NOT the same as `[]` ("show nothing"): a session whose entitlement snapshot
@@ -680,7 +690,7 @@ export function Sidebar({
   // Per-child visibility for flyout nodes (per-child gating vs. whole-group gating). Role gating and
   // module gating are ANDed: a row needs both the role AND the module to appear.
   const canSeeChild = (c: ChildItem) =>
-    moduleAllows(c.href) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) || c.href === PERFORMANCE_ROW.href && canAdministerOnehr : true);
+    moduleAllows(c.href) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === CALIBRATION_ROW.href ? canEnterCalibration || canAdministerOnehr : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) || c.href === PERFORMANCE_ROW.href && canAdministerOnehr : true);
   // The former audience inventory still supplies its original visibility boundaries.
   // Only authorized rows are handed to the workspace placement owner below.
   const authorizedGroups = GROUPS
