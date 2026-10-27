@@ -45,6 +45,11 @@ function privateFailure(status:500|503,error:ErrorResponse['error'],stage:'sessi
   return mobileError(status,error,supportId);
 }
 
+/** A known temporary dependency/configuration failure; never serialize its private cause. */
+export class MobileServiceUnavailable extends Error {
+  constructor(){super('Mobile service unavailable');this.name='MobileServiceUnavailable';}
+}
+
 /** Thrown by a handler for input it refuses; answered 400 with no detail. */
 export class MobileBadRequest extends Error {
   constructor(message: string) {
@@ -88,6 +93,7 @@ export function mobileRoute<S extends z.ZodType>(
         out = await fn(s, req);
       } catch (e) {
         if (e instanceof RequestBudgetExceeded) throw e;
+        if (e instanceof MobileServiceUnavailable) return mobileError(503,'unavailable');
         if (e instanceof MobileBadRequest) return mobileError(400, 'bad_request');
         if (e instanceof AuthRequiredError) return mobileError(401, 'auth_required');
         return privateFailure(500,'internal','handler');

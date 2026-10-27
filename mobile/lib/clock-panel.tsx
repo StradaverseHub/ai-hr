@@ -17,7 +17,7 @@ import { useSubmissionRecovery } from './submission-recovery';
 import { ClockCommand,ClockPreparation } from '../../lib/mobile-api/contract';
 import {SubmissionJournalFull,PendingSubmissionConflict} from './submission-journal';
 import { Button,Card,LoadState,Muted,Row } from './ui';
-const refusals={corrected_day:'correctedDay',clock_conflict:'clockConflict',location_required:'locationPermission',outside_geofence:'outsideGeofence',photo_required:'photoRequired',photo_invalid:'photoTooLarge',device_required:'registerDevice',mock_location:'mockLocation'} as const;
+const refusals={corrected_day:'correctedDay',clock_conflict:'clockConflict',location_required:'locationPermission',outside_geofence:'outsideGeofence',photo_required:'photoRequired',photo_invalid:'photoTooLarge',device_required:'registerDevice',mock_location:'mockLocation',integrity_required:'clockIntegrityRequired'} as const;
 const locationRefusals={location_required:'locationPermission',invalid_location:'locationInvalid',poor_accuracy:'locationPoorAccuracy',no_assigned_site:'locationNoSite',outside_site:'locationOutsideSite',stale_fix:'locationExpired',future_fix:'locationFuture'} as const;
 export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
   const {employmentId,signOut}=useSession();

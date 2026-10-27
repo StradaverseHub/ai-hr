@@ -177,7 +177,7 @@ function ClockFlow({initial,shiftName,employmentId,embedded=false,initialAction,
         const result=await response.json();
         if(!response.ok){
           if(result.error==='accountChanged')throw new Error('accountChanged');
-          const definite=['origin','invalid','photoInvalid','photoRequired','outsideGeofence','locationRequired','conflict','correctedDay'];
+          const definite=['integrityRequired','origin','invalid','photoInvalid','photoRequired','outsideGeofence','locationRequired','conflict','correctedDay'];
           if(!definite.includes(result.error))throw new Error('unconfirmed');
           // A refusal of this retry cannot prove an earlier uncertain attempt has finished.
           if(!recovering){command.current=null;setPending(false);}
@@ -194,7 +194,7 @@ function ClockFlow({initial,shiftName,employmentId,embedded=false,initialAction,
     }catch(error){
       const code=(error as Error).message;
       if(!command.current && today.attendancePhotoSetting==='not_required')setAction(null);
-      const known=['outsideGeofence','photoInvalid','photoRequired','conflict','correctedDay','locationRequired','locationDenied','locationUnavailable','locationTimeout','locationUnsupported','authentication','accountChanged','origin','invalid','sync'];
+      const known=['integrityRequired','outsideGeofence','photoInvalid','photoRequired','conflict','correctedDay','locationRequired','locationDenied','locationUnavailable','locationTimeout','locationUnsupported','authentication','accountChanged','origin','invalid','sync'];
       setError(t(code==='sync'?'syncFailed':known.includes(code)?code:'retryFailed'));
     }finally{inFlight.current=false;setBusy(false);}
   }

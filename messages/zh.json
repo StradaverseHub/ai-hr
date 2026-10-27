@@ -3385,6 +3385,7 @@
       "pendingCommand": "一条打卡记录正在等待确认。开始另一次打卡前请先检查。",
       "checkSubmission": "检查提交结果",
       "signInAgain": "重新登录",
+      "integrityRequired": "您的工作档案要求使用设备签名打卡。如无法使用，请联系 HR。",
       "accountChanged": "登录的员工账号已更改。请登录原账号以核对此次打卡。",
       "locationUnavailableAllowed": "位置信息不可用 — 无需地理围栏。仍可上班或下班打卡。",
       "retryCamera": "重试相机",

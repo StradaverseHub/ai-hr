@@ -13,3 +13,5 @@ export {readMobileEnrollmentConfiguration,assertMobileEnrollmentCommit} from '..
 export {createAndroidClockService} from './mobile-android-clock';
 export {AndroidClockCommandError} from '../../core/mobile-android-clock-signature';
 export {createAndroidVerifiedClockService,AndroidClockIntegrityError} from './mobile-android-verified-clock';
+
+export {readMobileClockDeployment,readMobileClockConfiguration,assertMobileClockCommit} from '../../core/mobile-clock-rollout';

@@ -3385,6 +3385,7 @@
       "pendingCommand": "A clocking is awaiting confirmation. Check it before starting another.",
       "checkSubmission": "Check submission",
       "signInAgain": "Sign in again",
+      "integrityRequired": "Your work profile requires signed device clocking. Contact HR if it is not available.",
       "accountChanged": "The signed-in employee account has changed. Sign in to the original account to check this clocking.",
       "locationUnavailableAllowed": "Location unavailable — geofencing not required. You can clock in or out.",
       "retryCamera": "Try camera again",

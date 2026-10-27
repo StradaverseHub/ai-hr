@@ -12,7 +12,7 @@ type Platform='ios'|'android';
 const unavailable=()=>new IntegrityConfigurationUnavailable('configuration_unavailable');
 /** Readiness detects missing/partial prerequisites; migration semantic/release checks remain required.
  * Read only system catalog metadata, under the ordinary application role; never migration credentials. */
-async function storageReady(ctx:SessionContext,platform:Platform){
+export async function isMobileIntegrityStorageReady(ctx:SessionContext,platform:Platform){
  return withAttendanceTenant(ctx,async tx=>{
   const [row]=await tx.execute(sql`
    SELECT
@@ -48,7 +48,7 @@ export async function readMobileEnrollmentConfiguration(platform:Platform,ctx:Se
  if(!companyId)return null;
  assertModuleEnabled(ctx,'attendance',companyId);
  const settings=configured(platform,ctx,companyId);if(!settings)return null;
- if(!isSecretStorable()||!await storageReady(ctx,platform)||signal.aborted)throw unavailable();
+ if(!isSecretStorable()||!await isMobileIntegrityStorageReady(ctx,platform)||signal.aborted)throw unavailable();
  return settings;
 }
 /** Recheck the allowlist and exact original target after vendor work, inside the consumption/custody

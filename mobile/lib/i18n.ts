@@ -11,6 +11,7 @@
 import { getLocales } from 'expo-localization';
 
 const en = {
+  clockIntegrityRequired: "Your work profile requires signed device clocking. Contact HR if it is not available.",
   integrityEnrollmentTitle: "This device",
   integrityEnrollmentHint: "Register this device with your work profile. Registration does not confirm attendance or location.",
   integrityEnrollmentNotConfigured: "Device registration is not enabled for this work profile.",
@@ -263,6 +264,7 @@ const en = {
 export type MessageKey = keyof typeof en;
 
 const ms: Record<MessageKey, string> = {
+  clockIntegrityRequired: "Profil kerja anda memerlukan rekod waktu bertandatangan peranti. Hubungi HR jika fungsi ini tidak tersedia.",
   integrityRevokeLabel: "Batalkan kunci {id}",
   integrityEnrollmentTitle: "Peranti ini",
   integrityEnrollmentHint: "Daftarkan peranti ini dengan profil pekerjaan anda. Pendaftaran tidak mengesahkan kehadiran atau lokasi.",

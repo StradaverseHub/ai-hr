@@ -3385,6 +3385,7 @@
       "pendingCommand": "Rekod waktu menunggu pengesahan. Semak sebelum memulakan rekod lain.",
       "checkSubmission": "Semak penghantaran",
       "signInAgain": "Log masuk semula",
+      "integrityRequired": "Profil kerja anda memerlukan rekod waktu bertandatangan peranti. Hubungi HR jika fungsi ini tidak tersedia.",
       "accountChanged": "Akaun pekerja yang dilog masuk telah berubah. Log masuk ke akaun asal untuk menyemak rekod waktu ini.",
       "locationUnavailableAllowed": "Lokasi tidak tersedia — geofencing tidak diperlukan. Anda boleh merekod masuk atau keluar.",
       "retryCamera": "Cuba kamera semula",
