@@ -1,0 +1,12 @@
+import {it,expect,vi} from 'vitest';
+import {render,screen,waitFor} from '@testing-library/react';
+import {LetterRichEditor,type LetterEditorLabels} from '../components/letters/rich-editor';
+import type {LetterDocument,LetterField} from '../lib/letter-model';
+const labels:LetterEditorLabels={body:'Letter body',toolbar:'Formatting',bold:'Bold',italic:'Italic',underline:'Underline',paragraph:'Paragraph',heading:'Heading',bulletList:'Bullet list',orderedList:'Numbered list',table:'Insert table',addRow:'Add row',deleteRow:'Delete row',addColumn:'Add column',deleteColumn:'Delete column',deleteTable:'Delete table',undo:'Undo',redo:'Redo',field:'Merge field',insertField:'Insert field',conditional:'Conditional block',then:'When true',otherwise:'Otherwise',editCondition:'Edit condition',apply:'Apply',cancel:'Cancel',invalid:'Correct invalid fields or conditions before saving',pasteHelp:'Supported formatting is preserved',condition:{operator:'Operator',field:'Field',value:'Value',currency:'Currency',present:'Is present',equals:'Equals',after:'After date',greater:'Greater amount',all:'All',any:'Any',not:'Not',add:'Add condition',remove:'Remove condition'}};
+const field:LetterField={key:'effective',label:'Effective date',description:'Custom date',kind:'date',source:'custom.date',required:false,editable:true,sensitive:false};
+const initial:LetterDocument={version:1,language:'en',blocks:[{type:'paragraph',content:[{type:'text',text:'Preserve this draft'}]},{type:'if',condition:{type:'after',field:'effective',value:{kind:'date',value:'2025-01-01'}},then:[{type:'paragraph',content:[{type:'text',text:'Conditional wording'}]}],otherwise:[]}]};
+it('retains the current editor content and flags an incompatible explicit field-version change',async()=>{
+ const onChange=vi.fn(),view=render(<LetterRichEditor initial={initial} fields={[field]} language="en" labels={labels} onChange={onChange}/>);await screen.findByRole('textbox',{name:labels.body});await waitFor(()=>expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({type:'doc'}),true));
+ view.rerender(<LetterRichEditor initial={initial} fields={[{...field,kind:'text',source:'custom.text'}]} language="en" labels={labels} onChange={onChange}/>);
+ expect((await screen.findByRole('alert')).textContent).toBe(labels.invalid);expect(screen.getByRole('textbox',{name:labels.body}).textContent).toContain('Preserve this draft');expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({type:'doc'}),false);
+});

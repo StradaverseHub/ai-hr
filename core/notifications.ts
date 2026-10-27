@@ -22,7 +22,7 @@ import { rewardNotificationRecipients } from '../packs/rewards/service';
 import { randomUUID } from 'node:crypto';
 import { notificationEmailCategory, type NotificationEmailCategory } from '../lib/notification-email-model';
 import {assertNotificationSweepConnection,noticeNotificationRecipientsTx,noticeSnapshotIdsTx,type NoticeRecipientReader,type NoticeEventReader,type NotificationSweepConnection} from './notice-projection';
-import { and, asc, desc, eq, gt, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, isNotNull, isNull, lte, ne, or, sql, inArray } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
   appUser,
@@ -1020,10 +1020,10 @@ export async function projectHomeGreetingInTx(tx:Tx,greetingId:string):Promise<v
 export function unreadNotificationCount(
   ctx: SessionContext,
   employmentId?: string,
-  opts: { action?: boolean } = {}, existingTx?: AiReadTx
+  opts: { action?: boolean;letterCompanyIds?:string[] } = {}, existingTx?: AiReadTx
 ): Promise<number> {
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
-  opts = { ...opts };
+  opts = { ...opts, letterCompanyIds:opts.letterCompanyIds?.slice() };
 
 
   return withCanonicalAiReadTx(ctx, existingTx, 'notifications', withTenant, async (tx) => {
@@ -1033,7 +1033,8 @@ export function unreadNotificationCount(
       .where(
         and(
           isNull(notification.readAt),
-          employmentId ? eq(notification.recipientEmploymentId, employmentId) : undefined,
+          employmentId ? or(eq(notification.recipientEmploymentId, employmentId),eq(notification.recipientUserId,ctx.userId??'00000000-0000-0000-0000-000000000000')) : undefined,
+          opts.letterCompanyIds!==undefined?and(isNotNull(notification.recipientUserId),inArray(notification.companyId,opts.letterCompanyIds)):undefined,
           opts.action === true ? eq(notification.severity, 'action') : undefined,
           opts.action === false ? ne(notification.severity, 'action') : undefined,
         ),
@@ -1059,10 +1060,10 @@ export type NotificationRow = {
 export function listNotifications(
   ctx: SessionContext,
   employmentId?: string,
-  opts: { limit?: number; read?: boolean; action?: boolean } = {}, existingTx?: AiReadTx
+  opts: { limit?: number; read?: boolean; action?: boolean;letterCompanyIds?:string[] } = {}, existingTx?: AiReadTx
 ): Promise<NotificationRow[]> {
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
-  opts = { ...opts };
+  opts = { ...opts, letterCompanyIds:opts.letterCompanyIds?.slice() };
 
   return withCanonicalAiReadTx(ctx, existingTx, 'notifications', withTenant, (tx) =>
     tx
@@ -1079,9 +1080,10 @@ export function listNotifications(
       .from(notification)
       .where(
         and(
-          employmentId ? eq(notification.recipientEmploymentId, employmentId) : undefined,
+          employmentId ? or(eq(notification.recipientEmploymentId, employmentId),eq(notification.recipientUserId,ctx.userId??'00000000-0000-0000-0000-000000000000')) : undefined,
           opts.read === true ? isNotNull(notification.readAt) : undefined,
           opts.read === false ? isNull(notification.readAt) : undefined,
+          opts.letterCompanyIds!==undefined?and(isNotNull(notification.recipientUserId),inArray(notification.companyId,opts.letterCompanyIds)):undefined,
           opts.action === true ? eq(notification.severity, 'action') : undefined,
           opts.action === false ? ne(notification.severity, 'action') : undefined,
         ),
@@ -1098,11 +1100,11 @@ export async function markNotificationRead(ctx: SessionContext, notificationId: 
   );
 }
 
-export async function markAllNotificationsRead(ctx: SessionContext, employmentId?: string): Promise<void> {
+export async function markAllNotificationsRead(ctx: SessionContext, employmentId?: string,opts:{letterCompanyIds?:string[]}={}): Promise<void> {
   await withTenant(ctx, (tx) =>
     tx
       .update(notification)
       .set({ readAt: sql`now()` })
-      .where(and(isNull(notification.readAt), employmentId ? eq(notification.recipientEmploymentId, employmentId) : undefined)),
+      .where(and(isNull(notification.readAt),opts.letterCompanyIds!==undefined?and(isNotNull(notification.recipientUserId),inArray(notification.companyId,opts.letterCompanyIds)):undefined, employmentId ? or(eq(notification.recipientEmploymentId, employmentId),eq(notification.recipientUserId,ctx.userId??'00000000-0000-0000-0000-000000000000')) : undefined)),
   );
 }

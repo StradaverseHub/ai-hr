@@ -5,7 +5,7 @@ import {and,eq,sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../../db/client';
 import {domainEvent} from '../../db/schema';
 import {currentProviderSession} from '../../lib/identity/provider';
-import {notificationPreferenceCategories} from '../../lib/notification-email-model';
+import {employmentNotificationPreferenceCategories as notificationPreferenceCategories} from '../../lib/notification-email-model';
 import {OwnNotificationPreferencesIntent,OwnNotificationPreferencesReview,OwnNotificationPreferencesReceipt} from '../../lib/assistant-actions/own-notification-preferences-contract';
 import {assertAiPrincipalTx} from '../ai-principal';
 import {assertMayUseAssistant} from '../assistant-grant';

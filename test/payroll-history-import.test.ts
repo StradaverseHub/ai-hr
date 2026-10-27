@@ -181,7 +181,7 @@ describe('import payroll history — the long (seven-column) contract', () => {
     expect(st.pcb).toBeCloseTo(150, 2);
   });
 
-  it('Override=1 on an occupied period imports NOTHING and reports Existing record', async () => {
+  it('an occupied ordinary period rejects the complete compatibility file atomically', async () => {
     const a = adminCtx(b);
     await hire(a, 'A1001');
     await hire(a, 'A1002');
@@ -190,7 +190,7 @@ describe('import payroll history — the long (seven-column) contract', () => {
 
     const records = file(
       ...completeMonth('A1001', '202401', { override: '1' }), // occupied → held
-      ...completeMonth('A1002', '202402', { override: '1' }), // empty → imported
+      ...completeMonth('A1002', '202402', { override: '1' }), // valid alone; complete file is refused
     );
 
     const dry = await validatePayrollHistoryImport(a, { companyId: b.companyId, records });
@@ -206,10 +206,10 @@ describe('import payroll history — the long (seven-column) contract', () => {
     const r = await commitPayrollHistoryImport(a, { companyId: b.companyId, records });
     expect(r.existing).toBe(1);
     expect(r.updated).toBe(0); // never, whatever Override says
-    expect(r.importedMonths).toBe(1);
+    expect(r.importedMonths).toBe(0);
 
     // NOTHING landed in the occupied period: it still has exactly the one pre-existing batch, and that
-    // batch still has no payslips. The empty period got its own imported batch.
+    // batch still has no payslips. Complete-file validation also keeps the empty period unchanged.
     const jan = await owner.db
       .select()
       .from(schema.payrollBatch)
@@ -224,10 +224,8 @@ describe('import payroll history — the long (seven-column) contract', () => {
       .select()
       .from(schema.payrollBatch)
       .where(eq(schema.payrollBatch.payPeriod, '2024-02'));
-    expect(feb).toHaveLength(1);
-    expect(
-      await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, feb[0].id)),
-    ).toHaveLength(1);
+    expect(feb).toHaveLength(0);
+    expect(await owner.db.select().from(schema.payslip)).toHaveLength(0);
   });
 
   it('an unknown DOE code stops its line (and holds its month) rather than being dropped', async () => {
@@ -540,23 +538,15 @@ describe('import payroll history — the long (seven-column) contract', () => {
     expect(period.status).toBe('closed');
   });
 
-  it('appends a payroll-history-import.completed domain event', async () => {
-    const a = adminCtx(b);
-    await hire(a, 'A1001');
-    await commitPayrollHistoryImport(a, {
-      companyId: b.companyId,
-      records: file(...completeMonth('A1001', '202401')),
-    });
-    const events = await owner.db
-      .select()
-      .from(schema.domainEvent)
-      .where(eq(schema.domainEvent.aggregateId, b.companyId));
-    const completed = events.filter((e) => e.eventType === 'payroll-history-import.completed');
-    expect(completed).toHaveLength(1);
-    const payload = completed[0].payload as { imported: number; importedMonths: number; periods: string[] };
-    expect(payload.imported).toBe(9);
-    expect(payload.importedMonths).toBe(1);
-    expect(payload.periods).toContain('2024-01');
+  it('commits payroll and its immutable attempt audit together through the revision owner', async () => {
+    const a=adminCtx(b);await hire(a,'A1001');
+    const result=await commitPayrollHistoryImport(a,{companyId:b.companyId,records:file(...completeMonth('A1001','202401'))});
+    expect(result.attemptId).toBeDefined();
+    const events=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,result.attemptId!));
+    expect(events.filter(event=>event.eventType==='payroll-history-import.committed')).toHaveLength(1);
+    const [attempt]=await owner.db.select().from(schema.payrollHistoryImportAttempt).where(eq(schema.payrollHistoryImportAttempt.id,result.attemptId!));
+    expect(attempt.sourceName).toBe('normalised-records.csv');expect(attempt.plan.counts.created).toBe(1);
+    expect(await owner.db.select().from(schema.payrollHistoryImportRevision)).toHaveLength(1);
   });
 
   it('EA + monthly aggregation pick up the imported payslip without double-counting, with the breakdown', async () => {
@@ -584,20 +574,15 @@ describe('import payroll history — the long (seven-column) contract', () => {
     expect(Number(mine.pcb)).toBeCloseTo(150, 2);
   });
 
-  it('a non-admin commit is blocked at the DB layer (payroll_batch/payslip WITH CHECK = is_admin)', async () => {
+  it('a non-admin compatibility commit is refused by the canonical owner before any write', async () => {
     const a = adminCtx(b);
     const { personId } = await hire(a, 'A1001');
     const uid = await createAppUser(b.tenantId, personId, 'employee');
     const empCtx: SessionContext = { tenantId: b.tenantId, userId: uid, personId, roles: ['employee'], entitlements: harnessSnapshot(b.tenantId) };
 
-    // The per-period write is isolated in its own transaction, so RLS denial surfaces as a failed
-    // period (not a thrown call) — but the crucial guarantee is the same: NOTHING is written.
-    const r = await commitPayrollHistoryImport(empCtx, {
-      companyId: b.companyId,
-      records: file(...completeMonth('A1001', '202401')),
-    });
-    expect(r.imported).toBe(0);
-    expect(r.issues.some((i) => i.status === 'Failed')).toBe(true);
+    await expect(commitPayrollHistoryImport(empCtx, {
+      companyId:b.companyId,records:file(...completeMonth('A1001','202401')),
+    })).rejects.toThrow();
 
     expect(await owner.db.select().from(schema.payrollBatch)).toHaveLength(0);
     expect(await owner.db.select().from(schema.payslip)).toHaveLength(0);

@@ -20,7 +20,6 @@ export default async function RewardsConfigurationPage({ searchParams }: { searc
   return <div className="w-full space-y-6">
     <div data-tour="rewards-configuration"><PageHeader title={t('adminTitle')} description={t('adminDescription')} /></div>
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-      <Link href="/rewards" className="text-sm text-primary hover:underline">{t('openReviews')}</Link>
       <Link href="/admin/rewards/shared" className="text-sm text-primary hover:underline">{t('sharedPolicy.title')}</Link>
       <Link href="/admin/rewards/access" className="text-sm text-primary hover:underline">{(await getTranslations('rewardsAccess'))('title')}</Link>
     </div>

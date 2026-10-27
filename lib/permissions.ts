@@ -113,6 +113,14 @@ export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'myEa',href:'/me/ea',labelKey:'nav.myEa',guard:'scopedSession',routes:['/me/ea'],hasScopeNote:true},
   {screenKey:'myTp1',href:'/me/tax-relief',labelKey:'nav.taxRelief',guard:'scopedSession',routes:['/me/tax-relief'],hasScopeNote:true},
   {screenKey:'myPayslip',href:'/me/payslip',labelKey:'nav.myPayslips',guard:'scopedSession',routes:['/me/payslip'],hasScopeNote:true},
+  {screenKey:'myLetters',href:'/me/letters',labelKey:'nav.myLetters',guard:'scopedSession',routes:['/me/letters','/me/letters/[letterId]'],hasScopeNote:true},
+  {screenKey:'letterReports',href:'/letters/reports',labelKey:'letters.reports.title',guard:'scopedSession',routes:['/letters/reports'],hasScopeNote:true},
+  {screenKey:'letterSettings',href:'/letters/settings',labelKey:'letters.settings.title',guard:'scopedSession',routes:['/letters/settings','/letters/settings/policy','/letters/settings/automation'],hasScopeNote:true},
+  {screenKey:'letterRegister',href:'/letters/register',labelKey:'letters.register.title',guard:'scopedSession',routes:['/letters/register','/letters/register/[letterId]'],hasScopeNote:true},
+  {screenKey:'letterApproval',href:'/letters/approval',labelKey:'letters.approval.title',guard:'scopedSession',routes:['/letters/approval','/letters/approval/[letterId]'],hasScopeNote:true},
+  {screenKey:'letterGenerate',href:'/letters/generate',labelKey:'letters.generate.page.title',guard:'scopedSession',routes:['/letters/generate','/letters/generate/new','/letters/generate/[batchId]'],hasScopeNote:true},
+  {screenKey:'letterTemplates',href:'/letters/templates',labelKey:'letters.templates.page.title',guard:'scopedSession',routes:['/letters/templates','/letters/templates/new','/letters/templates/[versionId]','/letters/templates/[versionId]/edit'],hasScopeNote:true},
+  {screenKey:'letterFields',href:'/letters/fields',labelKey:'letters.fields.title',guard:'scopedSession',routes:['/letters/fields','/letters/fields/[fieldId]'],hasScopeNote:true},
   // This is a capability gate, not a role grant. The reference grid renders it conditionally for all
   // roles; the page reads current SQL authority and a matching individual denial always wins.
   {screenKey:'accessConfiguration',href:'/admin/users/access',labelKey:'accessConfiguration.title',guard:'requireAccessConfiguration',routes:['/admin/users/access'],hasScopeNote:true},
@@ -1152,6 +1160,8 @@ export const SCREENS: readonly ScreenEntry[] = [
       // Same scopedAdmin key as the rest of the hub: the screen shows per-employee salary differences.
       '/payroll/back-pay',
       '/payroll/history-import',
+      '/payroll/history-import/logs',
+      '/payroll/history-import/logs/[attemptId]',
       // 169e3c24: the pre-release Individual Payslip viewer. Registered on the SAME scopedAdmin key as
       // the rest of the hub, because it is the admin's review of a payslip before it is released — it
       // reads through `payslipForReview`, never the ESS gate, so it must be admin-scoped exactly like

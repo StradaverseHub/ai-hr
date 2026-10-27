@@ -1,6 +1,6 @@
 /** Human selection only: identity, sender, recipients, templates and delivery retries are absent. */
 import {z} from 'zod';
-import {notificationPreferenceCategory,notificationPreferenceCategories,notificationEmailLocales} from '../notification-email-model';
+import {employmentNotificationPreferenceCategory as notificationPreferenceCategory,employmentNotificationPreferenceCategories as notificationPreferenceCategories,notificationEmailLocales} from '../notification-email-model';
 export const OwnNotificationPreferencesIntent=z.object({version:z.literal(1),employmentId:z.uuid(),
  enabledCategories:z.array(notificationPreferenceCategory).max(notificationPreferenceCategories.length).refine(values=>new Set(values).size===values.length),
  locale:z.enum(notificationEmailLocales),consent:z.literal('selected_categories_only')}).strict().transform(input=>({...input,

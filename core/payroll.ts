@@ -10,6 +10,7 @@ import { releaseOvertimeSettlementsForDraftTeardownTx } from '../packs/attendanc
 import {readPcbExemptions, type PcbExemptionRow} from './pcb-exemptions';
 import { classifyNonCashBenefit, NonCashBenefitConfigurationError, readPcbNonCash, totalNonCash, taxableNonCash, type NonCashEntry, type NonCashEaEntry, type PcbNonCashSnapshot } from '../localization/noncash-benefits';
 import { businessUnit, payslipInformationSetting } from '../db/schema';
+import { payrollHistoryEffectiveBatch } from '../db/schema';
 /**
  * Payroll kernel — generic, jurisdiction-neutral (ADR-0008). Computes gross→net and delegates
  * every statutory contribution to the company's country pack. Each mutation appends an event.
@@ -10087,12 +10088,14 @@ export function listBatches(
         // which is exactly where one hard-coded "RM" mislabels somebody's payroll.
         currency: company.currency,
         payPeriod: payrollBatch.payPeriod,
+        historyImportAttemptId: payrollBatch.historyImportAttemptId,
+        historyImportCycleName: payrollBatch.historyImportCycleName,
         runType: payrollBatch.runType,
         runSeq: payrollBatch.runSeq,
         status: payrollBatch.status,
         employeeCount: payrollBatch.employeeCount,
         totals: payrollBatch.totals,
-        batchDate: payrollBatch.batchDate,
+        batchDate: sql<string | null>`case when ${payrollBatch.historyImportAttemptId} is null then ${payrollBatch.batchDate} else null end`,
         // Build #10 follow-up: `remarks` carries the wizard's real cycle selection for advance/midmonth
         // runs (both stored as runType='off_cycle'). Surfaced in the listing's "Payroll Cycle" column so
         // they display distinctly, matching the batch detail page. Read-only; no schema/migration change.
@@ -10116,12 +10119,13 @@ export function listBatches(
         // only for the two off_cycle presets that happen to carry a label, and by string comparison.
         payrollCycleId: payrollBatch.payrollCycleId,
       })
-      .from(payrollBatch)
+      .from(payrollHistoryEffectiveBatch)
       .innerJoin(company, eq(company.id, payrollBatch.companyId))
       .where(
         and(
           companyIds && companyIds.length ? inArray(payrollBatch.companyId, companyIds) : undefined,
           periodFilter,
+          or(isNull(payrollBatch.historyImportAttemptId),gt(payrollBatch.employeeCount,0)),
         ),
       )
       .orderBy(desc(payrollBatch.payPeriod), payrollBatch.runSeq),
@@ -10820,7 +10824,7 @@ export function preProcessAdvisoryForSelection(
 
 export function batchDetail(ctx: SessionContext, batchId: string) {
   return withTenant(ctx, async (tx) => {
-    const [batch] = await tx.select().from(payrollBatch).where(eq(payrollBatch.id, batchId)).limit(1);
+    const [batch] = await tx.select().from(payrollHistoryEffectiveBatch).where(eq(payrollBatch.id, batchId)).limit(1);
     if (!batch) return null;
     const slips = await tx
       .select({
@@ -10871,6 +10875,7 @@ export function paymentSummaryForBatch(ctx: SessionContext, batchId: string) {
   return withTenant(ctx, async (tx) => {
     const [batch] = await tx
       .select({
+        historyImportAttemptId: payrollBatch.historyImportAttemptId,
         status: payrollBatch.status,
         payPeriod: payrollBatch.payPeriod,
         company: company.legalName,
@@ -10880,6 +10885,7 @@ export function paymentSummaryForBatch(ctx: SessionContext, batchId: string) {
       .where(eq(payrollBatch.id, batchId))
       .limit(1);
     if (!batch) throw new PaymentSummaryNotReadyError('Payroll batch not found.');
+    if(batch.historyImportAttemptId)throw new PaymentSummaryNotReadyError('Imported history cannot initiate a payment.');
     if (batch.status === 'draft') {
       throw new PaymentSummaryNotReadyError(
         'Process the batch before exporting a payment summary — a draft has no payslips yet.',
@@ -11080,7 +11086,7 @@ export function payslipDetail(ctx: SessionContext, payslipId: string, ownOnly = 
       .leftJoin(position, eq(position.id, assignment.positionId))
       .leftJoin(jobGrade, eq(jobGrade.id, employment.gradeId))
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
-      .where(and(eq(payslip.id, payslipId), ownOnly ? ctx.personId ? and(eq(employment.personId,ctx.personId),sql`app.principal_snapshot_current() AND app.is_self_person(${employment.personId})`) : sql`false` : undefined))
+      .where(and(eq(payslip.id, payslipId),isNull(payrollBatch.historyImportAttemptId), ownOnly ? ctx.personId ? and(eq(employment.personId,ctx.personId),sql`app.principal_snapshot_current() AND app.is_self_person(${employment.personId})`) : sql`false` : undefined))
       .limit(1);
     if (!row) return null;
     // Step 6 — hide a payslip whose batch is not yet closed OR whose release instant has not passed, so the ESS

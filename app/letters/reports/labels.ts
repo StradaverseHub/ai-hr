@@ -1,0 +1,10 @@
+import {getTranslations} from 'next-intl/server';
+import type {LetterReportLabels} from '@/lib/letter-report';
+export async function reportLabels():Promise<LetterReportLabels>{
+ const t=await getTranslations('letters.reports');return {
+  title:t('title'),generatedBy:t('generatedBy'),generatedAt:t('generatedAt'),period:t('period'),timezone:t('timezone'),dataHash:t('dataHash'),summary:t('summary'),details:t('details'),unknown:t('unknown'),yes:t('yes'),no:t('no'),
+  columns:{reference:t('columns.reference'),employee_name:t('columns.employee_name'),employee_code:t('columns.employee_code'),company_name:t('columns.company_name'),department_name:t('columns.department_name'),category:t('columns.category'),state:t('columns.state'),created_at:t('columns.created_at'),submitted_at:t('columns.submitted_at'),approved_at:t('columns.approved_at'),issued_at:t('columns.issued_at'),viewed_at:t('columns.viewed_at'),acknowledged_at:t('columns.acknowledged_at'),approval_due_at:t('columns.approval_due_at'),acknowledgement_due_at:t('columns.acknowledgement_due_at'),approval_overdue:t('columns.approval_overdue'),acknowledgement_overdue:t('columns.acknowledgement_overdue'),approval_hours:t('columns.approval_hours'),issue_hours:t('columns.issue_hours'),acknowledgement_hours:t('columns.acknowledgement_hours')},
+  metrics:{total:t('metrics.total'),issued:t('metrics.issued'),void:t('metrics.void'),historicalIssued:t('metrics.historicalIssued'),pendingApproval:t('metrics.pendingApproval'),pendingAcknowledgement:t('metrics.pendingAcknowledgement'),approvalOverdue:t('metrics.approvalOverdue'),acknowledgementOverdue:t('metrics.acknowledgementOverdue'),meanApprovalHours:t('metrics.meanApprovalHours'),meanIssueHours:t('metrics.meanIssueHours'),meanAcknowledgementHours:t('metrics.meanAcknowledgementHours')},
+  states:{draft:t('states.draft'),submitted:t('states.submitted'),returned:t('states.returned'),rejected:t('states.rejected'),approved:t('states.approved'),issued:t('states.issued'),void:t('states.void'),withdrawn:t('states.withdrawn')},
+ };
+}

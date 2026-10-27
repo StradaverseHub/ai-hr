@@ -33,6 +33,7 @@ export async function deliverNotificationEmails(ctx:SessionContext,transport:Not
   const status=await readNotificationEmailTransport(transport);
   let attempted=0,skipped=0,unavailable=!status?.ready;
   for (const job of due) {
+    if(job.category==='letters')continue; // Account-addressed Letters use their explicit maintenance delivery port.
     if(!allCategories&&job.kind!=='performance.reminder')continue;
     if(status?.ready&&job.kind==='performance.reminder'&&(!status.assessmentReminders||!status.assessmentReminderWords)){unavailable=true;continue;}
     const leaseToken=randomUUID();

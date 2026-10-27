@@ -1334,6 +1334,30 @@ export async function lastAppliedPromotionOnTx(tx: Tx, tenantId: string, employm
   return {known:true,date:dates.at(-1)??null};
 }
 
+/** Minimal canonical facts for a real, tenant-bound maintenance worker. A scheduled
+ * intent remains pending even after its date arrives if application failed. Advisory
+ * review decisions are not effective employment changes and cannot trigger letters. */
+export type MovementAutomationFact={
+ movementId:string;kind:'confirmation'|'promotion';effectiveDate:string;status:MovementStatus;
+ sourceEventId:string|null;sourceSequence:number|null;
+};
+export async function movementAutomationFactsTx(tx:Tx,input:{tenantId:string;companyId:string;employmentId:string;today?:string}):Promise<MovementAutomationFact[]>{
+ const [authority]=await tx.execute<{ok:boolean}>(sql`select app.current_tenant_id()=${input.tenantId}::uuid and app.current_user_id() is null and app.access_workforce_storage_owner() as ok`);
+ if(authority?.ok!==true)throw Error('Movement automation facts require a tenant-bound maintenance connection.');
+ if(input.today&&!isCalendarDate(input.today))throw Error('Invalid movement automation date.');
+ const [subject]=await tx.select({id:employment.id}).from(employment).where(and(eq(employment.id,input.employmentId),eq(employment.tenantId,input.tenantId),eq(employment.companyId,input.companyId)));
+ if(!subject)return [];
+ const {rows,events,statusOf,resolvedTypes}=await projectRows(tx,input.tenantId,input.employmentId,input.today);
+ const eventById=new Map(events.map(event=>[event.id,event])),applications=new Map<string,RawEvent>();
+ for(const event of events){if(event.eventType!=='employment.movement.applied'||!event.payload||typeof event.payload!=='object'||Array.isArray(event.payload))continue;const scheduledId=Reflect.get(event.payload,'scheduledId');if(typeof scheduledId==='string')applications.set(scheduledId,event);}
+ return rows.flatMap(row=>{
+  const kind=resolvedTypes.get(row.kind)?.behaviourKind,recorded=eventById.get(row.id);
+  if((kind!=='confirmation'&&kind!=='promotion')||!recorded||recorded.eventType==='employment-review.decided')return [];
+  const source=row.scheduled?applications.get(row.id):recorded;
+  return [{movementId:row.id,kind,effectiveDate:row.effectiveDate,status:statusOf(row),sourceEventId:source?.id??null,sourceSequence:source?.sequence??null}];
+ });
+}
+
 /** The Employment History list — a Hired-first, date-ascending projection over the event ledger. */
 export function movementHistory(ctx: SessionContext, employmentId: string): Promise<MovementHistoryRow[]> {
   return withTenant(ctx, tx => movementHistoryTx(tx, ctx, employmentId));

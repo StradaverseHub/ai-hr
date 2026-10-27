@@ -1,0 +1,11 @@
+'use client';
+import {useActionState,useRef,useEffect} from 'react';
+import {updateRegister} from '@/app/letters/register/actions';
+import {Field,inputCls} from '@/components/ui';
+import {LetterSubmit} from './submit';
+import type {LetterRegisterLabels} from '@/lib/letter-register-ui';
+export function LetterRegisterUpdate({action,id,revisionId,lockVersion,retainUntil,legalHold,labels,errors}:{action:'issue'|'void'|'retention';id:string;revisionId:string;lockVersion:number;retainUntil:string;legalHold:boolean;labels:LetterRegisterLabels;errors:Record<string,string>}){
+ const [state,dispatch,pending]=useActionState(updateRegister,null),ref=useRef<HTMLFormElement>(null);
+ useEffect(()=>{const form=ref.current;if(!form)return;const retain=(event:Event)=>event.preventDefault();form.addEventListener('reset',retain);return()=>form.removeEventListener('reset',retain);},[]);
+ return <form ref={ref} action={dispatch} className="space-y-4">{state?.error&&<p role="alert" className="text-sm text-destructive">{Object.hasOwn(errors,state.error)?errors[state.error]:errors.unavailable}</p>}<fieldset disabled={pending} className="space-y-4"><input type="hidden" name="action" value={action}/><input type="hidden" name="letterId" value={id}/><input type="hidden" name="expectedRevisionId" value={revisionId}/><input type="hidden" name="expectedLockVersion" value={lockVersion}/>{action==='retention'&&<><Field label={labels.retainUntil}><input type="date" name="retainUntil" className={`${inputCls} min-h-11`} min={retainUntil} defaultValue={retainUntil} required/></Field><label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" className="size-5" name="legalHold" value="yes" defaultChecked={legalHold}/>{labels.legalHold}</label></>}{action!=='issue'&&<Field label={labels.reason}><textarea name="reason" maxLength={2000} className={`${inputCls} min-h-24`} required/></Field>}{action!=='retention'&&<label className="flex min-h-11 items-start gap-3 text-sm"><input type="checkbox" name="confirm" value="yes" required className="mt-1 size-5 shrink-0"/>{action==='issue'?labels.issueConfirm:labels.voidConfirm}</label>}<LetterSubmit label={action==='retention'?labels.saveRetention:labels[action]} pendingLabel={labels.working} secondary={action!=='issue'}/></fieldset></form>;
+}

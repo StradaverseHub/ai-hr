@@ -39,7 +39,8 @@
  * of both are part of the answer.
  */
 import { and, eq, inArray, like } from 'drizzle-orm';
-import { withTenant, type SessionContext, type Tx } from '../../db/client';
+import { type SessionContext, type Tx } from '../../db/client';
+import { withPayrollHistoryTenant as withTenant } from '../../core/payroll-history-lock';
 import {
   company,
   employeeStatutoryMy,

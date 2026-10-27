@@ -68,7 +68,8 @@
  * refusal answers for the form; the i-Akaun file (r407 `refuseEmpty: false`) still builds, with no 02 line.
  */
 import { and, eq, inArray, isNull } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../../db/client';
+import { type SessionContext } from '../../db/client';
+import { withPayrollHistoryTenant as withTenant } from '../../core/payroll-history-lock';
 import {
   assignment,
   company,

@@ -35,6 +35,8 @@ export type MovementTag = {
 };
 
 export type AppendEventArgs = {
+  /** Optional preallocated identity binds durable work to this same committed event. */
+  id?: string;
   tenantId: string;
   aggregateType: string;
   aggregateId: string;
@@ -63,6 +65,7 @@ export async function appendEvent(
   tx: Tx, e: AppendEventArgs, options?: { returnId: boolean },
 ): Promise<string | void> {
   const insert = tx.insert(domainEvent).values({
+    id: e.id,
     tenantId: e.tenantId,
     aggregateType: e.aggregateType,
     aggregateId: e.aggregateId,
@@ -87,6 +90,7 @@ export async function appendEvents(tx: Tx, es: AppendEventArgs[]): Promise<void>
   if (es.length === 0) return;
   await tx.insert(domainEvent).values(
     es.map((e) => ({
+      id: e.id,
       tenantId: e.tenantId,
       aggregateType: e.aggregateType,
       aggregateId: e.aggregateId,

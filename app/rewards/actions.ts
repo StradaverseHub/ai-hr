@@ -64,6 +64,17 @@ export async function policyAction(f: FormData) {
   },true);
 }
 
+/** A narrow edit through the existing revision-checked policy owner. */
+export async function bonusMultiplierAction(f: FormData) {
+  const s = await getSession(), id = str(f, 'unitId');
+  const url = `/rewards/${encodeURIComponent(id)}?view=budget`;
+  try {
+    const view = await getRewardUnit(s, id);
+    await saveRewardPolicy(s, id, number(f, 'revision'), {...view.unit.policy, multiplierBp: scaled(f, 'multiplier', 10000)});
+  } catch (error) { redirect(`${url}&error=${encodeURIComponent(errorText(error))}`); }
+  revalidatePath('/rewards', 'layout'); revalidatePath('/admin/rewards', 'layout'); redirect(url);
+}
+
 export async function importFactsAction(f: FormData) {
   return change(f, async (s, id, rev) => {
     const file = f.get('file');

@@ -67,6 +67,7 @@ import {
 // server-only code into the bundle. See that file's header.
 import '@/packs/register-all';
 import { modulePackById } from '@/packs/registry';
+import {LETTER_NAV_ITEMS} from '@/lib/letter-navigation';
 import { NAVIGATION_MODULES, NAVIGATION_SECTIONS, placeNavigation, navigationPlacement, navigationRouteOwner, type NavigationWorkspace } from '@/lib/navigation-workspaces';
 import { usePublishNavIndex, type NavIndexEntry } from '@/components/nav-index-context';
 import { openCommandBar } from '@/lib/command-bar-events';
@@ -246,6 +247,8 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
   ['/admin/system-testing', 'system_testing'] as const,
   ['/system-testing', 'system_testing'] as const,
   ['/me/payslip', 'payroll'] as const,
+  ['/me/letters', 'employees'] as const,
+  ...LETTER_NAV_ITEMS.map(item=>[item.href,'employees'] as const),
   ['/me/tax-relief', 'payroll'] as const,
   ['/me/ea', 'payroll'] as const,
   ['/me/tp3', 'payroll'] as const,
@@ -552,6 +555,7 @@ export function Sidebar({
   hasAssignedApproval = false,
   canReviewProfileChanges = false,
   canAccessTeam = false,
+  letterDestinations = [],
   canAdministerOnehr = false,
   approvalCount = 0,
   taskCount = 0,
@@ -580,6 +584,7 @@ export function Sidebar({
   canReviewProfileChanges?: boolean;
   /** Actual My Team role authority, independent of the broader partner administration rail. */
   canAccessTeam?: boolean;
+  letterDestinations?: readonly string[];
   /**
    * ADR-0142 — OneHR performance administration (admins, perf-comp partners, OneHR performance partners).
    * Shows ONLY the manager-up Performance row; it never opens the admin rail, approvals or My Team.
@@ -656,6 +661,13 @@ export function Sidebar({
   const [openSections, setOpenSections] = useState<Readonly<Record<string, boolean>>>({});
   // Escape returns focus to the trigger that opened the panel.
   const triggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const pendingTriggerFocus = useRef<string | null>(null);
+  useEffect(() => {
+    if (openKey === null && pendingTriggerFocus.current) {
+      triggerRefs.current[pendingTriggerFocus.current]?.focus();
+      pendingTriggerFocus.current = null;
+    }
+  }, [openKey]);
   // Safety net for back/forward navigation only — picking a sub-item closes via its onClick
   // (mandatory: the Reports children share one pathname and differ only in the query, so this
   // effect never fires when switching report categories).
@@ -680,7 +692,7 @@ export function Sidebar({
   // Per-child visibility for flyout nodes (per-child gating vs. whole-group gating). Role gating and
   // module gating are ANDed: a row needs both the role AND the module to appear.
   const canSeeChild = (c: ChildItem) =>
-    moduleAllows(c.href) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) || c.href === PERFORMANCE_ROW.href && canAdministerOnehr : true);
+    moduleAllows(c.href) && (!c.href.startsWith('/letters/')||letterDestinations.includes(c.href)) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) || c.href === PERFORMANCE_ROW.href && canAdministerOnehr : true);
   // The former audience inventory still supplies its original visibility boundaries.
   // Only authorized rows are handed to the workspace placement owner below.
   const authorizedGroups = GROUPS
@@ -700,8 +712,10 @@ export function Sidebar({
   )).filter(row => row.href !== '/mobile-preview' || isAdmin)
     .map(row=>row.href==='/performance/workspace'?{...row,navigationHref:'/performance/workspace?module=pm'}:row);
   const additionalRows: ChildItem[] = [
+    ...LETTER_NAV_ITEMS.map(item=>({href:item.href,labelKey:item.labelKey,icon:FileBarChart,ownedSubpaths:[item.href]})),
     {href:'/admin/personnel/profile-changes',labelKey:'profileChanges',icon:ListChecks,adminOnly:true},
     {href:'/me/payslip',labelKey:'myPayslips',icon:Wallet,ownedSubpaths:['/me/payslip']},
+    {href:'/me/letters',labelKey:'myLetters',icon:FileBarChart,ownedSubpaths:['/me/letters']},
     {href:'/me/tax-relief',labelKey:'taxRelief',icon:Receipt},
     {href:'/me/tp3',labelKey:'myTp3',icon:Receipt},
     {href:'/me/ea',labelKey:'myEa',icon:Receipt,ownedSubpaths:['/me/ea']},
@@ -832,7 +846,7 @@ export function Sidebar({
   usePublishNavIndex(navEntries, activeEntry);
 
   const openNode = openKey && !monolith
-    ? groups.flatMap((g) => g.items).find((r): r is CollapsibleGroupItem => isCollapsible(r) && r.labelKey === openKey && (!r.defaultHref || collapsed)) ?? null
+    ? groups.flatMap((g) => g.items).find((r): r is CollapsibleGroupItem => isCollapsible(r) && r.labelKey === openKey && (atelier || !r.defaultHref || collapsed)) ?? null
     : null;
   const openChildren = openNode ? openNode.children.filter(canSeeChild) : [];
   // Inside a panel the LONGEST matching href wins, so exactly one row ever reads as the current page
@@ -1017,7 +1031,7 @@ export function Sidebar({
      only, like Monolith's: the SAME `groups`, `canSeeChild`, `isRowActive` and section state, so which rows
      exist, in which order, and which one is current cannot differ between themes. What differs: the
      workspace line, a Quick actions button (it opens the one command bar, lib/command-bar-events.ts), 16px
-     icons on 30px rows, a module's children inline under a hairline instead of a flyout, and the viewer at
+     icons on 30px rows, a separate theme-scoped submenu track, and the viewer at
      the foot. No collapse to an icon rail: like Monolith, the rail is always open on desktop. */
   if (atelier) {
     const atelierCount = (href: string) => {
@@ -1029,13 +1043,12 @@ export function Sidebar({
       if (children.length === 0) return null;
       const active = item.defaultHref || item.activeMatch === 'children'
         ? children.some(isRowActive) : isParentActive(pathname, children.flatMap(childPaths));
-      const expanded = inlineOpen[item.labelKey] ?? active;
+      const expanded = openNode?.labelKey === item.labelKey;
       const Icon = item.icon;
       const label = t(item.labelKey);
-      const kidsId = `atelier-kids-${item.labelKey}`;
-      const currentHref = children.filter((c) => isRowActive(c))
-        .sort((a, b) => b.href.split('?')[0].length - a.href.split('?')[0].length)[0]?.href;
-      const flip = () => setInlineOpen((old) => ({ ...old, [item.labelKey]: !expanded }));
+      const kidsId = `atelier-flyout-${item.labelKey}`;
+      const flip = () => setOpenKey(expanded ? null : item.labelKey);
+      const register = (element: HTMLButtonElement | null) => { triggerRefs.current[item.labelKey] = element; };
       return (
         <div key={item.labelKey} data-atelier-module={item.labelKey}>
           {item.defaultHref ? (
@@ -1043,38 +1056,23 @@ export function Sidebar({
               <Link href={item.defaultHref} className="flex min-w-0 flex-1 items-center gap-2.5 text-inherit no-underline">
                 <Icon aria-hidden /><span className="truncate">{label}</span>
               </Link>
-              <button type="button" aria-label={label} aria-expanded={expanded} aria-controls={kidsId} onClick={flip}
+              <button ref={register} type="button" aria-label={label} aria-expanded={expanded} aria-controls={kidsId} onClick={flip}
                 className="atelier-row w-auto px-1.5">
                 <ChevronDown aria-hidden className="atelier-chevron" />
               </button>
             </div>
           ) : (
-            <button type="button" aria-expanded={expanded} aria-controls={kidsId} onClick={flip} className="atelier-row">
+            <button ref={register} type="button" aria-expanded={expanded} aria-controls={kidsId} onClick={flip} className={cn('atelier-row', (active || expanded) && 'bg-accent font-medium text-foreground')}>
               <Icon aria-hidden /><span className="truncate">{label}</span>
               <ChevronDown aria-hidden className="atelier-chevron" />
             </button>
-          )}
-          {expanded && (
-            <nav id={kidsId} aria-label={label} className="atelier-kids">
-              {children.map((child, index) => {
-                const heading = sectionLabel(child.href);
-                return <Fragment key={child.href}>
-                  {heading && heading !== sectionLabel(children[index - 1]?.href ?? '') &&
-                    <h3 className="atelier-subheading">{t(heading)}</h3>}
-                  <Link href={child.navigationHref ?? child.href} data-tour={child.tour}
-                    aria-current={child.href === currentHref ? 'page' : undefined} className="atelier-row">
-                    {childCaption(child)}
-                  </Link>
-                </Fragment>;
-              })}
-            </nav>
           )}
         </div>
       );
     };
     const initials = (viewerName ?? '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('');
     return (
-      <div className="relative hidden h-full shrink-0 sm:block">
+      <div className={cn('atelier-navigation-shell relative hidden h-full shrink-0 sm:flex', openNode && 'atelier-flyout-open z-50')}>
         <aside data-app-sidebar data-atelier-navigation className="atelier-rail">
           <Link href="/" aria-label={t('home')} className="atelier-workspace">
             <span data-brand-tile aria-hidden>AI</span>
@@ -1130,6 +1128,10 @@ export function Sidebar({
             </div>
           )}
         </aside>
+        {openNode && <NavFlyoutPanel key={openNode.labelKey} layout="atelier" labelKey={openNode.labelKey}
+          items={openChildren.map(child=>({...child,sectionKey:sectionLabel(child.href),pendingCount:child.href==='/tasks'?taskCount:child.href==='/approvals'?approvalCount:0})) as FlyoutChild[]}
+          isActive={href=>href===activeChildHref} rowBase="atelier-row" panelId={`atelier-flyout-${openNode.labelKey}`}
+          onClose={()=>setOpenKey(null)} onEscape={()=>{pendingTriggerFocus.current=openNode.labelKey;setOpenKey(null);}}/>}
       </div>
     );
   }

@@ -1,5 +1,7 @@
 import {assertReviewedPayrollScopeCompanyTx} from './payroll-run-selection';
 import {assertWorkforceCompanyTx,workforceEmploymentPredicate} from './workforce-access';
+import {isCalendarDate} from '../lib/calendar-date';
+import {lockPayrollHistoryReadTx,tryLockPayrollHistoryReadTx} from './payroll-history-lock';
 import {ownPersonPredicate} from './own-person';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {emergencyLeaveGroupOriginSql,cancellationSplitGroupSql} from './leave-group-origin-sql';
@@ -173,6 +175,7 @@ import {
   reportingLineTypeEnum,
   toilAccrual,
 } from '../db/schema';
+import { payrollHistoryEffectiveBatch } from '../db/schema';
 import { ALL_ROW_CEILING } from '../lib/pagination';
 import { daysInMonth } from './payroll';
 import { filterDelegationOrgScopeTx } from './approvals';
@@ -432,17 +435,38 @@ const workforceListWhere = (p: EmployeeListFilters, columns: EmployeeListColumns
 
 /** Whole authorized Workforce picker population. Do not repurpose the independent payroll/clocking
  * picker or transfer its person/card identifiers into a new grant's screen props. */
+function workforcePickerColumns(){return {
+  employmentId: workforceListUuid('employmentId'), name: workforceListValue<string>('name'),
+  employeeCode: workforceListValue<string | null>('employeeCode'), companyId: workforceListUuid('companyId'),
+  company: workforceListValue<string>('company'), department: workforceListValue<string | null>('department'),
+  terminatedOn: workforceListValue<string | null>('terminatedOn'),
+};}
 export function listWorkforcePickOptions(ctx: SessionContext, companyIds?: string[]) {
   return withTenant(ctx, async tx => {
     await lockAccessConfigurationTx(tx, ctx.tenantId);
-    return tx.select({
-      employmentId: workforceListUuid('employmentId'), name: workforceListValue<string>('name'),
-      employeeCode: workforceListValue<string | null>('employeeCode'), companyId: workforceListUuid('companyId'),
-      company: workforceListValue<string>('company'), department: workforceListValue<string | null>('department'),
-      terminatedOn: workforceListValue<string | null>('terminatedOn'),
-    }).from(workforceListSource).where(workforceListWhere({ companyIds }, workforceListColumns()))
+    return tx.select(workforcePickerColumns()).from(workforceListSource).where(workforceListWhere({ companyIds }, workforceListColumns()))
       .orderBy(workforceListValue('name'), workforceListUuid('employmentId'));
   });
+}
+/** Resolve an explicit bounded identity set through the same current Workforce projection. */
+export async function readWorkforcePickRowsTx(ctx:SessionContext,tx:Tx,ids:string[]){
+ if(ids.length>500||ids.some(id=>!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)))throw new RangeError('Invalid workforce identity selection');
+ if(!ids.length)return [];await lockAccessConfigurationTx(tx,ctx.tenantId);const columns=workforcePickerColumns();
+ return tx.select(columns).from(workforceListSource).where(inArray(columns.employmentId,ids)).orderBy(columns.employmentId);
+}
+/** Bounded picker over the same purpose projection, reusable inside a caller's authorization transaction.
+ * Resolve a cursor only inside this exact authorized search; equal names are ordered by employment ID. */
+export async function listWorkforcePickPageTx(ctx:SessionContext,tx:Tx,input:{companyIds:string[];q?:string;after?:string;limit:number;departmentId?:string;departmentSearch?:string;branch?:string;hiredFrom?:string;hiredTo?:string}){
+  if(!Number.isInteger(input.limit)||input.limit<1||input.limit>100||(input.q?.length??0)>200||input.after&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.after))throw new RangeError('Invalid workforce picker');
+  if((input.departmentSearch?.length??0)>200||(input.branch?.length??0)>200||input.departmentId&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.departmentId)||input.hiredFrom&&!isCalendarDate(input.hiredFrom)||input.hiredTo&&!isCalendarDate(input.hiredTo)||input.hiredFrom&&input.hiredTo&&input.hiredFrom>input.hiredTo)throw new RangeError('Invalid workforce picker filters');
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  const source=sql`app.access_workforce_picker_rows(${input.branch?.trim()||null},${input.hiredFrom??null}::date,${input.hiredTo??null}::date) as workforce_row(value)`;
+  const departmentSearch=input.departmentSearch?.trim(),needle=departmentSearch?'%'+departmentSearch.replace(/[\\%_]/g,'\\$&')+'%':undefined;
+  const where=and(workforceListWhere({companyIds:input.companyIds,q:input.q,departmentId:input.departmentId},workforceListColumns()),needle?sql`${workforceListValue('department')} ilike ${needle}`:undefined),columns=workforcePickerColumns();
+  const [cursor]=input.after?await tx.select({name:columns.name}).from(source).where(and(where,eq(columns.employmentId,input.after))).limit(1):[];
+  if(input.after&&!cursor)return {rows:[],nextCursor:null};
+  const rows=await tx.select(columns).from(source).where(and(where,cursor?or(gt(columns.name,cursor.name),and(eq(columns.name,cursor.name),gt(columns.employmentId,input.after!))):undefined)).orderBy(columns.name,columns.employmentId).limit(input.limit+1);
+  return {rows:rows.slice(0,input.limit),nextCursor:rows.length>input.limit?rows[input.limit-1].employmentId:null};
 }
 
 
@@ -5603,6 +5627,7 @@ export function orgChartData(ctx: SessionContext, companyIds?: string[]) {
  *  the dashboard is switcher-scoped ON PURPOSE and stays that way. */
 export function dashboardStats(ctx: SessionContext, companyIds?: string[]) {
   return withTenant(ctx, async (tx) => {
+    await lockPayrollHistoryReadTx(tx,ctx.tenantId);
     const one = sql<number>`count(*)::int`;
     const scopeIds = companyIds && companyIds.length ? companyIds : null;
     const scope = (col: AnyColumn) => (scopeIds ? inArray(col, scopeIds) : sql`true`);
@@ -5686,8 +5711,8 @@ export function dashboardStats(ctx: SessionContext, companyIds?: string[]) {
             status: payrollBatch.status,
             totals: payrollBatch.totals,
           })
-          .from(payrollBatch)
-          .where(scope(payrollBatch.companyId))
+          .from(payrollHistoryEffectiveBatch)
+          .where(and(scope(payrollBatch.companyId),or(isNull(payrollBatch.historyImportAttemptId),gt(payrollBatch.employeeCount,0))))
           .orderBy(desc(payrollBatch.payPeriod))
       : [];
     const head = latestRows[0];
@@ -6342,6 +6367,7 @@ export function concurrentEmploymentPersons(ctx: SessionContext) {
 /** The current principal's payslips (RLS already restricts to own employment). */
 export function myPayslips(ctx: SessionContext, employmentIds: string[], ownOnly = false, existingTx?: Tx) {
   return withReadTx(ctx, existingTx, async (tx) => {
+    if(existingTx)await tryLockPayrollHistoryReadTx(tx,ctx.tenantId);else await lockPayrollHistoryReadTx(tx,ctx.tenantId);
     if (employmentIds.length === 0) return [];
     const rows = await tx
       .select({
@@ -6360,6 +6386,7 @@ export function myPayslips(ctx: SessionContext, employmentIds: string[], ownOnly
         // Step 6 (f3148da1) — the release instant, materialized at close time (RLS-safe via the batch, unlike
         // the admin-only company_payroll_config which the employee session cannot read).
         releasedAt: payrollBatch.releasedAt,
+        historyImportAttemptId: payrollBatch.historyImportAttemptId,
       })
       .from(payslip)
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
@@ -6373,7 +6400,8 @@ export function myPayslips(ctx: SessionContext, employmentIds: string[], ownOnly
     const now = new Date();
     return rows.map((r) => ({
       ...r,
-      released: payrollPublicationState(r,now)==='published',
+      released: r.historyImportAttemptId == null && payrollPublicationState(r,now)==='published',
+      historyImported: r.historyImportAttemptId != null,
     }));
   });
 }
@@ -6390,6 +6418,7 @@ export function myReleasedPayslipRuns(ctx:SessionContext, existingTx?: Tx) {
 
   assertModuleGate(ctx,'payroll');
   return withReadTx(ctx, existingTx,async tx=>{
+    if(existingTx)await tryLockPayrollHistoryReadTx(tx,ctx.tenantId);else await lockPayrollHistoryReadTx(tx,ctx.tenantId);
     if(!ctx.personId)return [];
     return tx.select({payslipId:payslip.id,employmentId:employment.id,employeeCode:employment.employeeCode,
       companyId:payrollBatch.companyId,company:company.legalName,payPeriod:payrollBatch.payPeriod,
@@ -6397,7 +6426,7 @@ export function myReleasedPayslipRuns(ctx:SessionContext, existingTx?: Tx) {
       .from(payslip).innerJoin(employment,eq(employment.id,payslip.employmentId))
       .innerJoin(payrollBatch,eq(payrollBatch.id,payslip.batchId)).innerJoin(company,eq(company.id,payrollBatch.companyId))
       .leftJoin(payrollCycle,eq(payrollCycle.id,payrollBatch.payrollCycleId))
-      .where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId),sql`app.principal_snapshot_current() AND app.is_self_person(${employment.personId})`,eq(payrollBatch.status,'closed'),or(isNull(payrollBatch.releasedAt),lte(payrollBatch.releasedAt,new Date()))))
+      .where(and(isNull(payrollBatch.historyImportAttemptId),eq(employment.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId),sql`app.principal_snapshot_current() AND app.is_self_person(${employment.personId})`,eq(payrollBatch.status,'closed'),or(isNull(payrollBatch.releasedAt),lte(payrollBatch.releasedAt,new Date()))))
       .orderBy(desc(payrollBatch.payPeriod),asc(payrollBatch.companyId),asc(payrollBatch.runSeq),asc(payslip.id));
   });
 }

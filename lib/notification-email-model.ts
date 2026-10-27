@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 /** Categories describe the existing event registry; they do not decide recipients. */
 export const notificationEmailCategories = [
-  'attendance', 'claims', 'delegation', 'leave', 'notice', 'offboarding', 'payroll',
+  'attendance', 'claims', 'delegation', 'leave', 'letters', 'notice', 'offboarding', 'payroll',
   'onboarding', 'performance', 'profile', 'readiness', 'review', 'rewards', 'toil',
 ] as const;
 export type NotificationEmailCategory = typeof notificationEmailCategories[number];
@@ -10,6 +10,9 @@ export const notificationEmailCategory = z.enum(notificationEmailCategories);
 /** Preference/policy categories include report attachments; workflow dispatch remains the tuple above. */
 export const notificationPreferenceCategories = [...notificationEmailCategories, 'employee_master_reports'] as const;
 export const notificationPreferenceCategory = z.enum(notificationPreferenceCategories);
+/** Employment email consent excludes Letters, whose recipient-user consent has a separate owner. */
+export const employmentNotificationPreferenceCategories=notificationPreferenceCategories.filter(category=>category!=='letters');
+export const employmentNotificationPreferenceCategory=z.enum(employmentNotificationPreferenceCategories);
 export type NotificationPreferenceCategory = typeof notificationPreferenceCategories[number];
 export const notificationEmailLocales = ['en', 'ms', 'zh', 'vi', 'ta', 'th'] as const;
 export type NotificationEmailLocale = typeof notificationEmailLocales[number];
@@ -20,7 +23,7 @@ export const notificationEmailRequest = z.discriminatedUnion('op', [
   z.object({op:z.literal('attendanceCcSend'),deliveryId:z.uuid(),leaseToken:z.uuid()}).strict(),
 ]);
 export type NotificationEmailRequest = z.infer<typeof notificationEmailRequest>;
-export type NotificationEmailStatus = { version: 1; ready: boolean; assessmentReminders?:boolean;assessmentReminderWords?:boolean;attendanceCc?:boolean };
+export type NotificationEmailStatus = { version: 1; ready: boolean; assessmentReminders?:boolean;assessmentReminderWords?:boolean;attendanceCc?:boolean;letters?:boolean };
 export type NotificationEmailOutcome = 'sent' | 'retry' | 'failed' | 'skipped' | 'uncertain';
 export const notificationEmailErrors = [
   'relayUnavailable', 'recipientUnavailable', 'recipientChanged', 'notEligible',

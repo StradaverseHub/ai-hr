@@ -6,7 +6,7 @@ import {useEffect,useId,useRef,useState,type FormEvent} from 'react';
 import {useFormatter,useTranslations} from 'next-intl';
 import {z} from 'zod';
 import {Button,inputCls} from '@/components/ui';
-import {notificationPreferenceCategories,notificationEmailLocales,type NotificationPreferenceCategory,type NotificationEmailLocale} from '@/lib/notification-email-model';
+import {employmentNotificationPreferenceCategories as notificationPreferenceCategories,notificationEmailLocales,type NotificationPreferenceCategory,type NotificationEmailLocale} from '@/lib/notification-email-model';
 import {ModuleActionBrowserPacket,ModuleActionBrowserResult,ModuleActionBrowserError,parseModuleActionBrowserResult} from '@/lib/assistant-actions/module-action-http';
 import {MODULE_NOTIFICATION_ACTION,ModuleActionPrepare,ModuleActionConfirmation,type ModuleActionPreparedReview,type ModuleActionCompletedReceipt,type ModuleActionRetiredReceipt,type ModuleActionReviewIndexResult} from '@/lib/assistant-actions/module-action-review-contract';
 export type NotificationActionChoices=Readonly<{kind:'choices';employments:readonly Readonly<{employmentId:string;employeeCode:string|null;companyName:string}>[]}>|Readonly<{kind:'unavailable'}>;

@@ -3,7 +3,8 @@
  * Salary is comp *history*: a change CLOSE + INSERTs a new version. Amounts are tenant data.
  */
 import { and, desc, eq, gt, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { type SessionContext, type Tx } from '../db/client';
+import { withPayrollHistoryTenant as withTenant } from './payroll-history-lock';
 import { actorOf, appendEvent, type MovementTag } from '../db/events';
 import {
   appUser,

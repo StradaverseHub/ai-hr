@@ -45,6 +45,7 @@ export * from '../../core/payroll-view';
 export * from '../../core/payroll-self-metadata';
 export * from '../../core/payroll-readiness';
 export * from '../../core/payroll-history-import';
+export * from '../../core/payroll-history-revisions';
 export * from '../../core/payroll-permissions-admin';
 export * from '../../core/pay-components';
 export * from '../../core/pay-rule';

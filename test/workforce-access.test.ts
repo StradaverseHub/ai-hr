@@ -16,7 +16,7 @@ import {toCsv} from '../lib/csv';
 import {setCompensation} from '../core/comp';
 import {setEmploymentTestRecord} from '../core/employment-test-record';
 import {setPersonPhoto} from '../core/person-photo';
-import {listEmployees,listWorkforcePickOptions,listEmployeesPage,countEmployeesByStatus,employeeDetail,type EmployeeListFilters} from '../core/read';
+import {listEmployees,listWorkforcePickOptions,listWorkforcePickPageTx,readWorkforcePickRowsTx,listEmployeesPage,countEmployeesByStatus,employeeDetail,type EmployeeListFilters} from '../core/read';
 import {workforceRecord} from '../core/workforce-record';
 import {WORKFORCE_PROFILE_FIELDS} from '../lib/workforce-record-fields';
 import {workforceCompanies,workforceViewScope,workforceCommandAccess,WorkforceAccessError} from '../core/workforce-access';
@@ -67,6 +67,27 @@ describe('fresh Workforce-purpose record consumers',()=>{
   expect(await page(admin())).toEqual(await listEmployeesPage(admin(),{companyIds:[b.companyId],limit:25,offset:0}));
   expect(await employeeDetail(admin(),subject.employmentId,'workforce')).toEqual(await employeeDetail(admin(),subject.employmentId));
   expect(await countEmployeesByStatus(admin(),{companyIds:[b.companyId]},'workforce')).toEqual(await countEmployeesByStatus(admin(),{companyIds:[b.companyId]}));
+ });
+
+ it('pages the canonical picker with stable equal-name order, current search cursors and fresh denials',async()=>{
+  const first=await hire('Fictional Same'),second=await hire('Fictional Same');await activate();
+  const ids=[first.employmentId,second.employmentId].sort(),ctx=admin();
+  const pick=(after?:string,companyIds=[b.companyId])=>withTenant(ctx,tx=>listWorkforcePickPageTx(ctx,tx,{companyIds,q:'Fictional Same',after,limit:1}));
+  const one=await pick();expect(one.rows.map(row=>row.employmentId)).toEqual([ids[0]]);expect(one.nextCursor).toBe(ids[0]);
+  const two=await pick(one.nextCursor!);expect(two.rows.map(row=>row.employmentId)).toEqual([ids[1]]);expect(two.nextCursor).toBeNull();
+  expect(await pick(randomUUID())).toEqual({rows:[],nextCursor:null});expect(await pick(undefined,[])).toEqual({rows:[],nextCursor:null});
+  expect((await withTenant(ctx,tx=>readWorkforcePickRowsTx(ctx,tx,[first.employmentId]))).map(row=>row.employmentId)).toEqual([first.employmentId]);
+  await override(b.adminUserId,'workforce.view',b.companyId,'deny');expect(await pick()).toEqual({rows:[],nextCursor:null});expect(await withTenant(ctx,tx=>readWorkforcePickRowsTx(ctx,tx,[first.employmentId]))).toEqual([]);
+ });
+
+ it('filters the picker by the canonical branch, department and inclusive hire-date range',async()=>{
+  const a=await hire('Fictional branch employee A'),z=await hire('Fictional branch employee B'),day=todayInKualaLumpur(),earlier=new Date(Date.parse(day+'T00:00:00Z')-2*86400000).toISOString().slice(0,10);
+  await owner.db.update(employment).set({orgBranch:'Fictional Branch A'}).where(eq(employment.id,a.employmentId));await owner.db.update(employment).set({orgBranch:'Fictional Branch B',hiredOn:earlier}).where(eq(employment.id,z.employmentId));
+  const ctx=admin(),base={companyIds:[b.companyId],limit:25};
+  const picked=await withTenant(ctx,tx=>listWorkforcePickPageTx(ctx,tx,{...base,branch:'Fictional Branch A',departmentId:b.deptA,hiredFrom:day,hiredTo:day}));expect(picked.rows.map(row=>row.employmentId)).toEqual([a.employmentId]);
+  expect((await withTenant(ctx,tx=>listWorkforcePickPageTx(ctx,tx,{...base,departmentSearch:'Unmatched department '+randomUUID()}))).rows).toEqual([]);
+  expect((await withTenant(ctx,tx=>listWorkforcePickPageTx(ctx,tx,{...base,branch:'Fictional Branch B',hiredFrom:earlier,hiredTo:earlier}))).rows.map(row=>row.employmentId)).toEqual([z.employmentId]);
+  expect((await withTenant(ctx,tx=>listWorkforcePickPageTx(ctx,tx,{...base,branch:'Fictional Branch A',departmentId:b.deptB}))).rows).toEqual([]);
  });
  it('uses the same filters, status ladder, paging and column values through the bounded projection',async()=>{
   const a=await hire('Fictional Alpha'),z=await hire('Fictional Zulu');

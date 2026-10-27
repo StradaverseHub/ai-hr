@@ -11,6 +11,7 @@ export async function internalNotificationEmailRequest<T>(input: NotificationEma
   const origin = internalConfig().origin;
   const service = createNotificationEmailService({
     origin, ready: recoveryMailReady,
+    async lettersReady(){try{return (await client`select app.internal_auth_letter_mail_ready() as ready`)[0]?.ready===true;}catch{return false;}},
     async target(id, token) {
       const rows = await client<WorkflowMailTarget[]>`select * from app.internal_auth_notification_target(${id}::uuid,${token}::uuid,${origin})`;
       return rows.length === 1 ? rows[0] : null;

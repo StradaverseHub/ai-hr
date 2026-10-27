@@ -30,12 +30,14 @@
  * released, and history-imported runs (core/payroll-history-import.ts) are inserted closed with both
  * closed_at and released_at NULL.
  */
-export type PayrollPublicationState = 'draft' | 'unpublished' | 'scheduled' | 'published';
+export type PayrollPublicationState = 'draft' | 'unpublished' | 'scheduled' | 'published' | 'history';
 
 export function payrollPublicationState(
-  batch: { status: string; releasedAt?: Date | null },
+  batch: { status: string; releasedAt?: Date | null; historyImportAttemptId?: string | null },
   now: Date = new Date(),
 ): PayrollPublicationState {
+  // Committed imported history contributes to YTD without publishing an employee document.
+  if (batch.historyImportAttemptId) return 'history';
   if (batch.status === 'closed') {
     const releasedAt = batch.releasedAt ?? null;
     if (releasedAt == null) return 'published';
@@ -53,6 +55,7 @@ export function payrollPublicationState(
  * amber this repo already uses for "needs your attention, nothing is broken".
  */
 export const PAYROLL_PUBLICATION_PILL: Record<PayrollPublicationState, string> = {
+  history: 'bg-muted text-muted-foreground',
   draft: 'bg-muted text-muted-foreground',
   unpublished: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
   scheduled: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',

@@ -343,6 +343,8 @@ export type HistoryImportPreview = {
  */
 export type HistoryImportResult = {
   companyId: string;
+  /** Canonical immutable attempt, including refused compatibility imports. */
+  attemptId?: string;
   total: number;
   valid: number;
   invalid: number;
