@@ -46,9 +46,10 @@
     {
       "tag": "0640_onehr_plan_reviewer_scope",
       "owner": "P1",
-      "status": "approved_after_0641_pending_integration",
+      "status": "journaled_on_alpha_unapplied",
       "idx": 619,
-      "when": 1793110000000
+      "when": 1793110000000,
+      "observedJournal": "origin/alpha 6e0c067a0, 28 October: idx619 when1793110000000; not in staging ledger"
     },
     {
       "tag": "0642_module_specialist_diagnostic_playbook",
@@ -63,16 +64,20 @@
         645
       ],
       "owner": null,
-      "status": "unresolved_hold_do_not_recycle"
+      "status": "unresolved_hold_do_not_recycle",
+      "notes": [
+        "28 October: the REA/P1 session states P1 never wrote, branched or journaled 0643-0645 and disclaims them. No owner has claimed them. AI does not need them; they stay unallocated and are not recycled without a recorded claim."
+      ]
     },
     {
       "tag": "0646_reward_calendar",
-      "owner": "P1 rewards source branch; allocation owner unconfirmed",
-      "status": "occupied_unapplied_source",
-      "idx": null,
-      "when": null,
+      "owner": "P1 (REA/P1 session confirmed 28 October)",
+      "status": "journaled_on_alpha_unapplied",
+      "idx": 620,
+      "when": 1793120000000,
       "sourceObservedIdx": 619,
-      "sourceObservedWhen": 1793120000000
+      "sourceObservedWhen": 1793120000000,
+      "observedJournal": "origin/alpha 6e0c067a0, 28 October: idx620 when1793120000000; not in staging ledger"
     },
     {
       "tag": "0647_mobile_offline_attendance",
@@ -102,7 +107,8 @@
         "Filenames only. idx/when are integration-bound: unique append positions after every applied or approved predecessor, when strictly above the live watermark and every pending predecessor.",
         "Above every recorded hold (0636, 0640, 0641, 0642, 0643-0645, 0646, 0647). All Git refs and working trees scanned on 2026-10-28; no filename at or above 0648 existed.",
         "AI keeps its recorded 0642 reservation. An unrecorded cross-session message claiming AI released 0642 is not adopted.",
-        "Unused numbers in this block are released back here once the AI logical-group count is final."
+        "Unused numbers in this block are released back here once the AI logical-group count is final.",
+        "Journal floor observed 28 October on origin/alpha: AI entries append after idx620 (0646) with when strictly above 1793120000000."
       ]
     }
   ],
