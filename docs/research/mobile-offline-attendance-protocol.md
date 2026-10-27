@@ -373,3 +373,28 @@ inaccessible installed storage fails closed. Future context issuance must acquir
 locks and reconcile active online challenges before inserting any lease; this draft does not yet
 provide that issuance path. Final SQL/hash/dependencies and journal allocation still require central
 coordination. No migration journal entry or application is authorized by the reserved filename.
+
+### Transactional context issuance service
+
+`core/mobile-offline-context.ts` now owns context/permit minting and exact response recovery in one
+attendance transaction. It authorizes the current own employment/company, takes the existing actor
+admission lock then the registered key lock, rechecks current subject/key ownership, and refuses
+unresolved offline leases or active online clock challenges. Fresh snapshots come only from a
+mandatory trusted policy/site/attendance/key-eligibility port; there is no phone-supplied policy or
+implicit offline enablement. A required bounded actor issuance budget is deployment configuration,
+separate from HR attendance rules. Duplicate request recovery precedes new snapshot/budget work.
+
+New contexts use database time, explicit configured window bounded by the issuer validity, random
+one-use permits and actual Ed25519 signatures. AES-GCM stores the exact signed response under a
+purpose/tenant/actor/context/request AAD. Recovery checks the immutable record, canonical digest,
+original request/nonce/full scope, issuer/policy/time metadata and actual permit inventory. Ordinary
+signer rotation and snapshot changes do not replace the original signed response or time anchor.
+Expired retries return the original context; they neither refresh its expiry nor release its lease.
+A closed request cannot mint another inventory. A new online challenge must be reconciled first.
+
+A mandatory final configuration/key-eligibility port runs after tentative context, permits and audit
+writes. The service then repeats own-company/key/storage, open-context and database-time checks.
+Failure rolls back all records, audit and issuance budget. The service exposes no HTTP route and has
+no default live policy/key loader. Trusted registry provisioning/rotation delivery, actual deployment
+snapshot/eligibility assembly, offline transport/consumption/adjudication and employee/HR flows still
+need integration. Issuance returns `authorization: not_granted`; it is not an attendance receipt.
