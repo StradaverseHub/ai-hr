@@ -11,6 +11,8 @@ import {openAssistantAnswerDisclosure} from '../lib/ai/assistant-disclosure';
 import type {AssistantClarificationSlot} from '../lib/ai/assistant-answer-plan';
 
 export const ASSISTANT_CONVERSATION_LIMITS=Object.freeze({humanAnswer:500,history:8000});
+/** `originalQuestion` is TRANSIENT provider context for the continuation and is never stored on the new
+ * exchange: the original raw text must retire with its own exchange, 30 days from that question. */
 export type OwnAssistantClarification=Readonly<{originalQuestion:string;slot:AssistantClarificationSlot;answer:string}>;
 /** A conservative UI offer: every allowed next human answer must fit, without truncation. */
 export function canClarifyAssistantQuestion(question:unknown):boolean{
