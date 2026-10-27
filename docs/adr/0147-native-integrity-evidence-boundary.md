@@ -605,3 +605,30 @@ on React Native ambient types entering through a VM test type import. A test-onl
 resolved it without changing production code or weakening compiler policy. These are focused source
 checks with synthetic vendor/native ports; no real Android hardware acceptance, mounted enrollment
 flow, complete durable journal, migration integration or release readiness is claimed.
+
+## Enrollment HTTP boundary and concurrent receipt recovery
+
+`createAndroidEnrollmentHttpHandlers` composes the actual enrollment owner with `mobileRoute`, the
+shared request budgets and explicit own-employment authorization before configuration access.
+The body cannot supply actor, tenant, expected policy or a verifier. Canonical SPKI/certificate
+representations and their aggregate proof size are checked before creating buffers or running PKI.
+Expected vendor/policy failures become closed refusal/unavailability responses; unexpected failures
+remain inside the private HTTP error boundary. Exact accepted proof retries return the same minimal
+receipt without re-verifying vendor evidence or requiring receipt-encryption availability.
+
+iPhone and Android use one bounded server-configuration reader. It cancels its owned reader on
+request abort/deadline/completion and prevents a late configuration result from starting enrollment.
+No request-controlled host or policy becomes configuration authority. Missing configuration remains
+distinct from malformed/unavailable configuration. Independent mounted key recovery remains usable
+during configuration outages.
+
+There are two separate receipt-reconciliation windows: before proof work, and after observing an
+inactive challenge. A competing request can commit between the initial receipt lookup and the
+challenge read. Both native enrollment owners therefore recheck the exact actor, original subject,
+installation and proof digest before returning a committed receipt in that second window. Challenge
+consumption alone is never success. A conflicting proof remains a binding refusal, and an absent
+matching key remains unavailable. Neither challenge nor custody history is reopened or rewritten.
+
+These handlers remain unmounted. Rollout still requires the actual custody schema, trusted
+company/deployment policy assembly, signed-device acceptance and app orchestration. This boundary
+does not activate Android clock assertions, offline acceptance or Huawei support.

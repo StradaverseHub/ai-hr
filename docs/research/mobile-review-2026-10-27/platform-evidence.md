@@ -1018,3 +1018,32 @@ At the earlier `8a217c467` journal/protocol/storage checkpoint, that work was UN
 26-case/root/native evidence was bound to `b921025c8` and did not cover those changes. The later
 92-assertion candidate and its narrower limits are recorded above; neither checkpoint establishes
 deployment or signed-device acceptance.
+
+### Enrollment HTTP integration and reproduced concurrency repair
+
+At `3117fa79df62a207996d8b971b6d8275d2a6440c`,
+[hosted run40453000100](https://github.com/StradaverseHub/ai-hr/actions/runs/40453000100) finished with
+root TypeScript PASS and selected tests FAIL:40/41 assertions passed, none skipped. All seven new
+Android HTTP cases, five shared configuration cases and existing iPhone HTTP cases passed. The
+existing Android concurrent-completion case exposed a receipt-lookup/challenge-read interleaving;
+the original failed run remains failed. No compiler or unrelated test failure was hidden.
+
+At test-only checkpoint `bdc3a47eb778378a490ca0ca7dedfab062eb9756`, a one-shot challenge-read timing
+spy forced the competing request to finish after the initial receipt lookup on each platform.
+All four new cases failed before the repair: identical proofs returned key-unavailable, and changed
+proofs returned key-unavailable instead of binding-conflict. All database reads, transactions and
+ownership checks remained real; vendor proofs remained synthetic. The other21 cases passed.
+
+Repair candidate `de5432791ecccf1bceb7c30630b51f31a6fa2882` passed all57 assertions across five files
+and root TypeScript locally. The complete reservation held both memory slots and the database;
+admission took0.002s. The full planned test/compiler sequence finished with exits0/0, and test
+teardown dropped its three owned namespace databases. Evidence logs:
+`/tmp/mobile-enrollment-race-red.log`, `/tmp/mobile-enrollment-http-green-tests.log` and
+`/tmp/mobile-enrollment-http-green-root-types.log`. The earlier sandboxed admission attempt ended78
+before running tests because `ps` was unavailable; it was rerun with authorized process visibility,
+not bypassed with a different lock root or a foreign-lease change.
+
+The repair returns only an exact matching committed receipt after the late inactive-challenge read.
+Regression assertions cover both identical and changed proofs, one verifier call, one stored key and
+one enrollment event. No full release gate/build, signed-device attestation or live upgrade/apply is
+established by these checks. The new Android HTTP composition is still unmounted.
