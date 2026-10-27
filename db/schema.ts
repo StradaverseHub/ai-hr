@@ -10667,7 +10667,7 @@ export const aiModelRun=pgTable('ai_model_run',{
  reportedInputTokens:bigint('reported_input_tokens',{mode:'number'}),reportedOutputTokens:bigint('reported_output_tokens',{mode:'number'}),reportedCachedInputTokens:bigint('reported_cached_input_tokens',{mode:'number'}),
  openrouterAccountCostCredits:numeric('openrouter_account_cost_credits'),observedRoundTripMs:doublePrecision('observed_round_trip_ms'),providerObservationStatus:text('provider_observation_status').$type<'missing'|'reported'|'conflicting'|'invalid'>(),
  actualTokens:bigint('actual_tokens',{mode:'number'}),startedAt:timestamp('started_at',{withTimezone:true}).notNull().defaultNow(),finishedAt:timestamp('finished_at',{withTimezone:true}),
-},t=>[index('ai_model_run_period').on(t.tenantId,t.startedAt),index('ai_model_run_user').on(t.tenantId,t.userId,t.startedAt),index('ai_model_run_company').using('gin',t.companyIds)]);
+},t=>[index('ai_model_run_period').on(t.tenantId,t.startedAt),index('ai_model_run_user').on(t.tenantId,t.userId,t.startedAt),index('ai_model_run_company').using('gin',t.companyIds),index('ai_model_run_pending_scope').on(t.tenantId,t.userId,t.featureId).where(sql`${t.state}='pending'`)]);
 
 // fcc2ea42 — OT-only version/assignment and immutable source evidence. Schedule Group stays independent.
 export const overtimePatternEpoch = pgTable('overtime_pattern_epoch', {
