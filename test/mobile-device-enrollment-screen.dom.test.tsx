@@ -51,7 +51,7 @@ describe('explicit device enrollment screen',()=>{
  it('requires confirmation and prevents double submission before reporting saved registration',async()=>{
   const f=fixture();render(<f.View employmentId={id} onChanged={f.changed}/>);fireEvent.click(await screen.findByText('integrityEnrollmentStart'));
   expect(f.controller.begin).not.toHaveBeenCalled();const confirm=f.accept();await act(async()=>{confirm();confirm();});
-  await screen.findByText('integrityEnrollmentSaved');expect(screen.getByRole('alert',{name:'integrityEnrollmentSaved'})).toBeTruthy();expect(f.controller.begin).toHaveBeenCalledOnce();expect(f.controller.advance).toHaveBeenCalledOnce();expect(f.changed).toHaveBeenCalledOnce();
+  await screen.findByText('integrityEnrollmentSaved');expect(screen.getByText('integrityEnrollmentSaved').getAttribute('role')).toBe('alert');expect(f.controller.begin).toHaveBeenCalledOnce();expect(f.controller.advance).toHaveBeenCalledOnce();expect(f.changed).toHaveBeenCalledOnce();
  });
  it('rechecks current capability state when an old confirmation is accepted',async()=>{
   const f=fixture(),view=render(<f.View employmentId={id} onChanged={f.changed}/>);fireEvent.click(await screen.findByText('integrityEnrollmentStart'));const confirm=f.accept();
