@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { getBrowserCommandSession } from '@/lib/session';
 import { AuthRequiredError } from '@/lib/auth-errors';
 import { askAssistant, AssistantError } from '@/core/assistant';
-import { ownAssistantClarificationQuestion, AssistantClarificationError } from '@/core/assistant-clarification';
+import { AssistantClarificationError } from '@/core/assistant-clarification';
 
 /**
  * ADR-0082 slice 4 — ask one question.
@@ -26,12 +26,12 @@ export async function askAssistantAction(formData: FormData) {
   let exchangeId: string;
   try {
     const s = await getBrowserCommandSession();
-    const question = clarificationExchangeId === null ? submittedQuestion
-      : await ownAssistantClarificationQuestion(s,clarificationExchangeId,clarificationAnswer);
-    const res = await askAssistant(s, { question });
+    if(clarificationExchangeId!==null&&(typeof clarificationExchangeId!=='string'||typeof clarificationAnswer!=='string'))throw new AssistantClarificationError();
+    const res = await askAssistant(s, clarificationExchangeId===null?{question:submittedQuestion}
+      : {question:clarificationAnswer as string,clarificationExchangeId:clarificationExchangeId as string});
     exchangeId = res.exchangeId;
   } catch (e) {
-    const code = e instanceof AuthRequiredError || e instanceof AssistantClarificationError ? 'ai_control' : e instanceof AssistantError ? e.code : 'provider_error';
+    const code = e instanceof AssistantClarificationError ? 'clarification_unavailable' : e instanceof AuthRequiredError ? 'ai_control' : e instanceof AssistantError ? e.code : 'provider_error';
     redirect(`/assistant?error=${encodeURIComponent(code)}`);
   }
 

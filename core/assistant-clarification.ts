@@ -3,6 +3,7 @@
 import {eq,and,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {assistantExchange} from '../db/schema';
+import {boundNativeOutcomeTransactionTx as boundClarificationReadTx} from './module-native-outcome-bounds';
 import {assertAiPrincipalTx} from './ai-principal';
 import {mayUseAssistant} from './assistant-grant';
 import {resolveEntitlementsTx} from './entitlements';
@@ -24,8 +25,9 @@ export async function ownAssistantClarification(ctx:SessionContext,exchangeId:un
  const refuse=():never=>{throw new AssistantClarificationError();};
  if(!captured.userId||typeof id!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(id)||!answer||answer.length>ASSISTANT_CONVERSATION_LIMITS.humanAnswer)return refuse();
  const userId=captured.userId;
- return withTenant(captured,async tx=>{
+ try{return await withTenant(captured,async tx=>{
   await tx.execute(sql`SET TRANSACTION READ ONLY`);
+  await boundClarificationReadTx(tx);
   await assertAiPrincipalTx(tx,captured);
   const fresh={...captured,entitlements:await resolveEntitlementsTx(tx,captured.tenantId)};
   if(!(await mayUseAssistant(fresh,tx)).allowed)return refuse();
@@ -38,5 +40,5 @@ export async function ownAssistantClarification(ctx:SessionContext,exchangeId:un
   // or a source capability. The next real model turn must freshly query canonical tools as usual.
   if(row.question.length+2+answer.length>ASSISTANT_CONVERSATION_LIMITS.history)return refuse();
   return Object.freeze({originalQuestion:row.question,slot:proof.plan.slot,answer});
- });
+ });}catch{return refuse();}
 }

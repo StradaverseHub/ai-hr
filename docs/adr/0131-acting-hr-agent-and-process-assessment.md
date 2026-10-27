@@ -2923,3 +2923,20 @@ a fresh real model turn. Historical model prose and historical HR rows are not r
 This mechanism does not grant effects, bypass human confirmation, prove arbitrary causal explanations,
 or make source-only implementation a verified conversational experience. Runtime, current-role/RLS,
 revocation, persistence and rendered-journey checks remain required before release.
+
+
+The conversation compositor resolves selected explanation clauses from the freshly issued canonical
+view itself. Leave status and eligibility clauses preserve the engine's status, dated-rule and tested-axis
+semantics; unavailable derivations never become invented proration explanations. Specialist clauses
+retain the actual admitted playbook and diagnostic rather than recomputing a promoted result as a baseline.
+The model may choose which supported clauses and recorded facts answer the question, and their order;
+source-owned locale copy supplies their meaning. Human-review requests expose only the actual source
+view's verified hand-off pages. Opening a hand-off is not effect permission or confirmation.
+
+Clarification context is structured separately from the new human reply. Ordinary questions retain their
+2,000-character input limit; a valid full question can be followed by a 500-character clarification.
+History contains readable human text, with an 8,000-character bounded conversation and a fresh-question
+prompt before a further maximum-length reply would overflow. No text is silently truncated. Current
+principal/grant and sealed own-exchange custody are checked before that context is reused, with local
+non-increasing transaction wait bounds installed before the Access lock. Busy or invalid continuations
+produce a generic refresh outcome after rollback, not a fabricated pause/allowance explanation.

@@ -21,7 +21,7 @@ import * as schema from '../db/schema';
 import type { ConverseResult } from '../lib/ai/types';
 import { askAssistant } from '../core/assistant';
 import { loadAiWorkspace } from '../core/ai-workspace';
-import { ownAssistantClarificationQuestion } from '../core/assistant-clarification';
+import { ownAssistantClarification } from '../core/assistant-clarification';
 import { ASSISTANT_PUBLIC_REPLIES } from '../lib/ai/assistant-public-replies';
 import { grantAssistant } from '../core/assistant-grant';
 import { ASSISTANT_TOOLS, toolsFor } from '../core/assistant-tools';
@@ -292,8 +292,35 @@ describe('model-selected conversational plan reaches current canonical facts',()
   const res=await askAssistant(ctx,{question:'Which pay period should we look at?'});
   const workspace=await loadAiWorkspace(ctx,{selectedExchangeId:res.exchangeId,includeGovernance:false});
   expect(workspace.history[0].grounded?.conversation).toEqual({plan:{version:1,mode:'clarify',slot:'period'},facts:[]});
-  const question=await ownAssistantClarificationQuestion(ctx,res.exchangeId,'March 2026');
-  expect(JSON.parse(question)).toEqual({originalQuestion:'Which pay period should we look at?',humanClarification:{slot:'period',answer:'March 2026'}});
+  const question=await ownAssistantClarification(ctx,res.exchangeId,'March 2026');
+  expect(question).toEqual({originalQuestion:'Which pay period should we look at?',slot:'period',answer:'March 2026'});
   expect(converse).toHaveBeenCalledTimes(1);
+ });
+});
+
+
+describe('actual model selection of current canonical explanation clauses',()=>{
+ it('uses the recorded payroll specialist and retires its explanation after module revocation',async()=>{
+  const {ctx}=await employeeWithReleasedPayslip(true);
+  converse.mockResolvedValueOnce(toolUse([{id:'explain-recorded-pay',name:'my_module_work',input:{module:'payroll'}}]));
+  converse.mockImplementationOnce(async(_cfg,args)=>{
+   const turn=args.turns.find((row:{role:string;content?:string})=>row.role==='user'&&row.content?.includes('source_owned_answer_catalogue'));
+   expect(turn).toBeTruthy();const catalogue=JSON.parse(turn.content),read=catalogue.reads[0];
+   const clause=read.explanations.find((row:{code:string})=>row.code==='specialist_finding:released_pay_stored_only');
+   expect(clause,'the actual source must offer this clause, not merely register its global code').toBeTruthy();
+   return {...end,text:JSON.stringify({version:1,mode:'answer',blocks:[{kind:'explanation',read:read.read,card:clause.card,code:clause.code}]})};
+  });
+  const res=await askAssistant(ctx,{question:'What does this recorded payroll result establish?'});
+  const reopened=await loadAiWorkspace(ctx,{selectedExchangeId:res.exchangeId,includeGovernance:false});
+  const conversation=reopened.history[0].grounded?.conversation;
+  expect(conversation?.facts).toEqual([]);expect(conversation?.segments).toHaveLength(1);
+  const segment=conversation!.segments![0];expect(segment.kind).toBe('explanation');
+  if(segment.kind!=='explanation'||segment.view.state!=='ready')throw Error('actual explanation source unavailable');
+  expect(segment.explanation.content).toEqual({kind:'specialist_finding',finding:'released_pay_stored_only'});
+  expect(segment.view.answerExplanations).toContain(segment.explanation);
+  await setModule(base.tenantId,'payroll',null);
+  const retired=await loadAiWorkspace(ctx,{selectedExchangeId:res.exchangeId,includeGovernance:false});
+  expect(retired.history[0].grounded?.conversation).toBeUndefined();
+  expect(JSON.stringify(retired.history[0])).not.toContain('released_pay_stored_only');
  });
 });

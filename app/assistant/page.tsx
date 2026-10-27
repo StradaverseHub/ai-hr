@@ -47,6 +47,8 @@ export default async function AssistantPage({
   const s = await getSession();
   const t = await getTranslations('assistant');
   const sp = await searchParams;
+  const errorMessage=sp.error==='clarification_unavailable'?t('workspace.conversation.unavailable'):
+    sp.error&&/^[a-z_]{1,40}$/.test(sp.error)&&t.has(`err_${sp.error}`)?t(`err_${sp.error}`):undefined;
   const workspace = await loadAiWorkspace(s,{includeHistory:sp.job===undefined&&sp.governed===undefined&&sp.proposal===undefined,includeGovernance:sp.job===undefined&&sp.governed===undefined&&sp.proposal===undefined,selectedExchangeId:sp.e,governedJobId:sp.governed,proposalId:sp.proposal});
   const access = workspace.access;
 
@@ -79,7 +81,7 @@ export default async function AssistantPage({
   return (
     <div data-tour="intelligence-assistant" className="mx-auto max-w-5xl space-y-5">
       <PageHeader title={t('title')} description={t('description')} />
-      <ErrorBanner message={sp.error ? t(`err_${sp.error}`) : undefined} />
+      <ErrorBanner message={errorMessage} />
 
       <ModuleJobChooser modules={workspace.jobModules} selected={sp.job}/>
       {selectedJob&&<CanonicalModuleJob view={selectedJob} ctx={s}/>}

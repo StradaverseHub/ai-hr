@@ -1,7 +1,6 @@
 /** Canonical typed facts only. A model answer, copied receipt or arbitrary JSON cannot render here. */
 import {randomUUID} from 'node:crypto';
 import {askAssistantAction} from '../../app/assistant/actions';
-import type {AssistantAnswerPlan} from '../../lib/ai/assistant-answer-plan';
 import {saveGovernedJobFeedbackAction,eraseGovernedJobFeedbackAction} from '../../app/assistant/job-feedback-actions';
 import {runGovernedPlanAction} from '../../app/assistant/governed-job-actions';
 import type {GovernedWorkspaceJobView} from '../../core/workspace-module-jobs';
@@ -13,6 +12,8 @@ import type {AgentModuleCode} from '../../lib/ai/module-agents';
 import type {JobFact,JobCard} from '../../lib/ai/module-jobs';
 import type {GroundedWorkspaceAnswer} from '../../core/workspace-grounded-answers';
 import {MODULE_JOBS} from '../../lib/ai/module-jobs';
+import {ConversationReviewLinks} from './conversation-review-links';
+import {ConversationExplanation} from './conversation-explanation';
 import {ModuleSpecialistFindings} from './module-specialist-findings';
 const knownStates=new Set(['active','probation','resigned','terminated','pending','approved','rejected','cancelled','draft','paid','closed','completed','in_progress','not_tested','passed','failed','skipped','annual','offcycle','regular','day','hour','not_started','self_review','manager_review','submitted','acknowledged','present','absent','late','half_day','active_serving_notice','blacklisted','withhold','full_day','half_day_am','half_day_pm','hourly','administrative','functional','taken','converted_to_pay','lapsed','reversed','pass','fail','blocked','partial','manager','report']);
 export async function ModuleJobChooser({modules,selected}:{modules:readonly AgentModuleCode[];selected?:string}){
@@ -79,7 +80,7 @@ export async function CanonicalModuleJob({view,ctx}:{view:CanonicalModuleJobView
  </section>;
 }
 
-type ConversationReply=Readonly<{plan:AssistantAnswerPlan;facts:readonly Readonly<{view:CanonicalModuleJobView;card:number;fact:number}>[]}>;
+type ConversationReply=NonNullable<GroundedWorkspaceAnswer['conversation']>;
 const closedConversationFields=(value:object,fields:readonly string[])=>JSON.stringify(Object.keys(value).sort())===JSON.stringify([...fields].sort());
 /** Selection/order comes from the checked plan; every displayed value still comes from an original
  * fresh canonical view. Unknown plans, withheld/null facts and unsupported explanations refuse. */
@@ -87,12 +88,13 @@ async function ConversationReplyBody({conversation,ctx,exchangeId}:{conversation
  const[copy,text]=await Promise.all([getTranslations('assistant.workspace.conversation'),canonicalJobText()]);
  const unavailable=()=> <p role="status" className="text-sm text-muted-foreground">{copy('unavailable')}</p>;
  try{
-  const plan=conversation.plan;if(!closedConversationFields(conversation,['plan','facts'])||!Array.isArray(conversation.facts)||!plan||plan.version!==1)return unavailable();
+  const plan=conversation.plan;if(!closedConversationFields(conversation,['plan','facts',...(conversation.clarificationAllowed===undefined?[]:['clarificationAllowed']),...(conversation.segments===undefined?[]:['segments'])])||!Array.isArray(conversation.facts)||(conversation.clarificationAllowed!==undefined&&conversation.clarificationAllowed!==false)||!plan||plan.version!==1)return unavailable();
+  if(plan.mode!=='answer'&&conversation.segments!==undefined)return unavailable();
   if(plan.mode==='clarify'){
    if(!closedConversationFields(plan,['version','mode','slot'])||!['employment','leave_type','period','module'].includes(plan.slot)||conversation.facts.length!==0)return unavailable();
    const bound=typeof exchangeId==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(exchangeId),labelId=bound?'assistant-clarification-'+exchangeId:'assistant-clarification-unavailable';
    return <section aria-labelledby={labelId} className="space-y-3"><h2 id={labelId} className="text-base font-medium">{copy(`clarify_${plan.slot}`)}</h2>
-    {bound?<form action={askAssistantAction} className="space-y-3"><input type="hidden" name="clarificationExchangeId" value={exchangeId}/>
+    {conversation.clarificationAllowed===false?<p role="status" className="text-sm text-muted-foreground">{copy('contextLimit')}</p>:bound?<form action={askAssistantAction} className="space-y-3"><input type="hidden" name="clarificationExchangeId" value={exchangeId}/>
      <label className="block text-sm">{copy('replyLabel')}<textarea name="clarificationAnswer" required maxLength={500} rows={2} className="mt-1 min-h-11 w-full rounded-md border bg-background px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"/></label>
      <button type="submit" className="min-h-11 rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{copy('continue')}</button>
     </form>:<p role="status" className="text-sm text-muted-foreground">{copy('reopenBeforeReply')}</p>}
@@ -103,9 +105,23 @@ async function ConversationReplyBody({conversation,ctx,exchangeId}:{conversation
    if(!closedConversationFields(plan,['version','mode','code'])||!codes.includes(plan.code)||conversation.facts.length!==0)return unavailable();
    return <p role="status" className="text-sm">{copy(`${plan.mode}_${plan.code}`)}</p>;
   }
-  if(plan.mode!=='answer'||!closedConversationFields(plan,['version','mode','blocks'])||!Array.isArray(plan.blocks)||plan.blocks.length===0||plan.blocks.length>16||plan.blocks.length!==conversation.facts.length)return unavailable();
-  const views:CanonicalModuleJobView[]=[],lines=plan.blocks.map((block,index)=>{
-   const selected=conversation.facts[index];
+  if(plan.mode!=='answer'||!closedConversationFields(plan,['version','mode','blocks'])||!Array.isArray(plan.blocks)||plan.blocks.length===0||plan.blocks.length>16||plan.blocks.filter(block=>block.kind==='fact').length!==conversation.facts.length)return unavailable();
+  const segments=conversation.segments??conversation.facts.map(fact=>({kind:'fact' as const,...fact}));
+  if(!Array.isArray(segments)||segments.length!==plan.blocks.length)return unavailable();
+  let factIndex=0;const views:CanonicalModuleJobView[]=[],lines=await Promise.all(plan.blocks.map(async(block,index)=>{
+   const selected=segments[index];
+   if(!selected||!Number.isSafeInteger(block.read)||block.read<0||block.read>=128)throw Error();
+   assertCanonicalModuleJobView(selected.view,ctx);if(selected.view.state!=='ready')throw Error();
+   if(!views.includes(selected.view))views.push(selected.view);
+   if(block.kind==='explanation'){
+    if(selected.kind!=='explanation'||!closedConversationFields(block,['kind','read','card','code'])||!closedConversationFields(selected,['kind','view','explanation'])||selected.explanation.card!==block.card||selected.explanation.code!==block.code||!selected.view.answerExplanations?.includes(selected.explanation))throw Error();
+    const card=selected.explanation.card===null?null:selected.view.presentation.cards[selected.explanation.card];
+    const company=card?.facts.find(fact=>fact.field==='company'&&typeof fact.value==='string')?.value;
+    const heading=card?canonicalHeading(card,text):text.t(`module_${selected.view.presentation.module}`);
+    return <li key={index} className="space-y-1 break-words text-sm leading-relaxed"><p className="font-medium">{heading}{typeof company==='string'&&company!==heading?` (${company})`:''}</p>{await ConversationExplanation({view:selected.view,explanation:selected.explanation,ctx})}</li>;
+   }
+   const paired=conversation.facts[factIndex++];
+   if(selected.kind!=='fact'||!closedConversationFields(selected,['kind','view','card','fact'])||!paired||paired.view!==selected.view||paired.card!==selected.card||paired.fact!==selected.fact)throw Error();
    if(block.kind!=='fact'||!closedConversationFields(block,['kind','read','card','fact'])||!Number.isSafeInteger(block.read)||block.read<0||!selected||selected.card!==block.card||selected.fact!==block.fact||!Number.isSafeInteger(selected.card)||selected.card<0||!Number.isSafeInteger(selected.fact)||selected.fact<0)throw Error();
    assertCanonicalModuleJobView(selected.view,ctx);if(selected.view.state!=='ready')throw Error();
    const card=selected.view.presentation.cards[selected.card],fact=card?.facts[selected.fact];if(!card||card.withheld||!fact||fact.value===null||typeof fact.value==='string'&&fact.value.trim()===''||typeof fact.value==='number'&&!Number.isFinite(fact.value))throw Error();
@@ -116,7 +132,7 @@ async function ConversationReplyBody({conversation,ctx,exchangeId}:{conversation
    }
    if(!views.includes(selected.view))views.push(selected.view);
    return <li key={index} className="break-words text-sm leading-relaxed"><span className="font-medium">{canonicalHeading(card,text)}</span>{' — '}{text.t(`field_${fact.field}`)}{': '}<span className="tabular-nums">{value}</span></li>;
-  });
+  }));
   const sources=await Promise.all(views.map(async view=>({id:view.viewId,card:await CanonicalModuleJob({view,ctx})})));
   return <section aria-label={copy('answerLabel')} className="space-y-3"><p className="text-xs text-muted-foreground">{copy('canonicalNote')}</p><ul className="space-y-2">{lines}</ul>
    <details className="rounded-lg border border-border p-3"><summary className="min-h-11 cursor-pointer py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{copy('sources')}</summary><div className="mt-3 space-y-4">{sources.map(source=><div key={source.id}>{source.card}</div>)}</div></details>
@@ -131,6 +147,7 @@ export async function GroundedWorkspaceReply({reply,ctx,exchangeId}:{reply:Groun
    {reply.views.map(view=><CanonicalModuleJob key={view.viewId} view={view} ctx={ctx}/>)}
    {reply.partial&&<p className="text-xs text-muted-foreground">{t('partial')}</p>}</>:
    <p className="text-sm text-muted-foreground">{t(reply.mode==='generic'?'generic':'unavailable')}</p>}
+  {conversation?.plan.mode==='refuse'&&conversation.plan.code==='human_review_required'&&await ConversationReviewLinks({views:reply.views,ctx})}
   {conversation?.plan.mode==='answer'&&reply.partial&&<p className="text-xs text-muted-foreground">{t('partial')}</p>}
   {reply.fallbackModules.filter(module=>MODULE_JOBS.some(([code])=>code===module)).map(module=><a key={module} href={'/assistant?job='+encodeURIComponent(module)}
    className="mr-3 inline-flex min-h-11 items-center text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('openTask')}</a>)}

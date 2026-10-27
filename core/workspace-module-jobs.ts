@@ -11,10 +11,12 @@ import {assistantPublicToolResult} from '../lib/ai/assistant-public-replies';
 import {presentGroundedToolOutcome,isGroundedToolName,type GroundedToolName} from '../lib/ai/grounded-tool-presentation';
 import {presentCanonicalModuleData} from '../lib/ai/module-job-presentation';
 import {assistantSourceDigest} from '../lib/ai/assistant-disclosure';
+import {assistantToolAnswerExplanations} from '../lib/ai/assistant-tool-answer-evidence';
+import {specialistAnswerExplanations,type AssistantAnswerExplanation} from '../lib/ai/assistant-answer-explanations';
 import type {JobPresentation} from '../lib/ai/module-jobs';
 const owners=new WeakMap<object,{principal:string;issuedAt:number;digest:string}>();
 const principal=(ctx:SessionContext)=>JSON.stringify([ctx.tenantId,ctx.userId,ctx.personId??null,ctx.roles??null,ctx.grants??null]);
-export type CanonicalModuleJobView=Readonly<{state:'ready';presentation:JobPresentation;checkedAt:number;viewId:string;toolName?:GroundedToolName;specialist?:SpecialistAssessment|null;specialistVersion?:CompactSpecialistWork}|{state:'unavailable';module:AgentModuleCode|null;checkedAt:number;viewId:string}>;
+export type CanonicalModuleJobView=Readonly<{state:'ready';presentation:JobPresentation;checkedAt:number;viewId:string;toolName?:GroundedToolName;answerExplanations?:readonly AssistantAnswerExplanation[];specialist?:SpecialistAssessment|null;specialistVersion?:CompactSpecialistWork}|{state:'unavailable';module:AgentModuleCode|null;checkedAt:number;viewId:string}>;
 export async function loadCanonicalModuleJob(ctx:SessionContext,input:unknown):Promise<CanonicalModuleJobView>{
  const captured={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  const request=input&&typeof input==='object'&&!Array.isArray(input)?input as Record<string,unknown>:null;
@@ -26,7 +28,7 @@ export async function loadCanonicalModuleJob(ctx:SessionContext,input:unknown):P
    if(result.module!==module||result.capability!==expected||result.scope!=='current-caller')throw Error();
    return{presentation:presentCanonicalModuleData(module,result.data),specialist:executeCanonicalSpecialist({kind:'canonical_specialist_v1',module,playbook:'canonical_domain_v1'},result)};
   });
-  view=Object.freeze({state:'ready',presentation:presentation.presentation,specialist:presentation.specialist,specialistVersion:compactSpecialistWork(presentation.specialist,{mode:'baseline',version:0,configuration:{kind:'canonical_specialist_v1',module,playbook:'canonical_domain_v1'}}),checkedAt:Date.now(),viewId:randomUUID()});
+  view=Object.freeze({state:'ready',presentation:presentation.presentation,answerExplanations:specialistAnswerExplanations(presentation.specialist,presentation.presentation),specialist:presentation.specialist,specialistVersion:compactSpecialistWork(presentation.specialist,{mode:'baseline',version:0,configuration:{kind:'canonical_specialist_v1',module,playbook:'canonical_domain_v1'}}),checkedAt:Date.now(),viewId:randomUUID()});
  }catch{view=Object.freeze({state:'unavailable',module,checkedAt:Date.now(),viewId:randomUUID()});}
  owners.set(view,{principal:principal(captured),issuedAt:Date.now(),digest:assistantSourceDigest(view)});return view;
 }
@@ -43,11 +45,13 @@ export async function loadCanonicalToolJob(ctx:SessionContext,name:string,input:
   // Unrenderable legacy comparisons are withheld rather than treating their numbers as typed facts.
   if(name==='my_pay_change'||name==='team_leave_summary')throw Error();
   const tool=toolsFor(current).find(row=>row.spec.name===name);if(!tool)throw Error();
-  const presentation=await withAssistantRead(current,tool.module,async read=>{
+  const answer=await withAssistantRead(current,tool.module,async read=>{
    const result=assistantPublicToolResult(await tool.run(current,input,read));
-   if(assistantSourceDigest(result)!==expectedDigest)throw Error();return presentGroundedToolOutcome(name,result);
+   if(assistantSourceDigest(result)!==expectedDigest)throw Error();
+   const presentation=presentGroundedToolOutcome(name,result);if(!presentation)throw Error();
+   return {presentation,explanations:assistantToolAnswerExplanations(name,result,presentation)};
   },session);
-  if(!presentation)throw Error();view=Object.freeze({state:'ready',presentation,checkedAt:Date.now(),viewId:randomUUID(),toolName:name});
+  view=Object.freeze({state:'ready',presentation:answer.presentation,answerExplanations:answer.explanations,checkedAt:Date.now(),viewId:randomUUID(),toolName:name});
  }catch{view=Object.freeze({state:'unavailable',module:null,checkedAt:Date.now(),viewId:randomUUID()});}
  owners.set(view,{principal:principal(current),issuedAt:Date.now(),digest:assistantSourceDigest(view)});return view;
 }
@@ -58,7 +62,8 @@ export async function loadGovernedWorkspaceJobTx(ctx:SessionContext,tx:Tx,id:str
  const current={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  try{const result=await reopenGovernedModuleReadJobTx(tx,current,id),views:CanonicalModuleJobView[]=[];
   for(const row of result.results){if(!isAgentModuleCode(row.module)||row.scope!=='current-caller'||row.capability!==MODULE_AGENT_CAPABILITIES.find(binding=>binding[0]===row.module)![1])throw Error();
-   const view=Object.freeze({state:'ready' as const,presentation:presentCanonicalModuleData(row.module,row.data),checkedAt:Date.now(),viewId:randomUUID(),specialist:result.specialists.find(item=>item.module===row.module)?.assessment??null,specialistVersion:result.specialists.find(item=>item.module===row.module)?.work});
+   const presentation=presentCanonicalModuleData(row.module,row.data),assessment=result.specialists.find(item=>item.module===row.module)?.assessment??null;
+   const view=Object.freeze({state:'ready' as const,presentation,answerExplanations:assessment?specialistAnswerExplanations(assessment,presentation):Object.freeze([]),checkedAt:Date.now(),viewId:randomUUID(),specialist:assessment,specialistVersion:result.specialists.find(item=>item.module===row.module)?.work});
    owners.set(view,{principal:principal(current),issuedAt:Date.now(),digest:assistantSourceDigest(view)});views.push(view);
   }
   return Object.freeze({state:'ready',jobId:result.jobId,mode:result.mode,changedSinceRun:result.changedSinceRun,feedbackOutcome:result.feedbackOutcome,views:Object.freeze(views)});
@@ -75,7 +80,7 @@ export async function loadGovernedSpecialistToolJob(ctx:SessionContext,tx:Tx,inp
   // Storage/current-authority failures propagate to the actual workspace owner and its rollback;
   // they never become a per-card success/continuation in an aborted source transaction.
   const read=await readGovernedSpecialistToolResultTx(tx,current,jobId,module);
-  try{if(assistantSourceDigest(read.outcome)!==expectedDigest)throw Error();const presentation=presentGroundedToolOutcome('my_module_work',read.outcome);if(!presentation)throw Error();view=Object.freeze({state:'ready',presentation,checkedAt:Date.now(),viewId:randomUUID(),toolName:'my_module_work',specialist:read.assessment,specialistVersion:read.outcome.specialistWork});}
+  try{if(assistantSourceDigest(read.outcome)!==expectedDigest)throw Error();const presentation=presentGroundedToolOutcome('my_module_work',read.outcome);if(!presentation)throw Error();view=Object.freeze({state:'ready',presentation,checkedAt:Date.now(),viewId:randomUUID(),toolName:'my_module_work',answerExplanations:specialistAnswerExplanations(read.assessment,presentation),specialist:read.assessment,specialistVersion:read.outcome.specialistWork});}
   catch{view=Object.freeze({state:'unavailable',module:null,checkedAt:Date.now(),viewId:randomUUID()});}
  }
  owners.set(view,{principal:principal(current),issuedAt:Date.now(),digest:assistantSourceDigest(view)});return view;
