@@ -11,12 +11,12 @@ export function parseReceiptArguments(args:readonly string[]):Preparation&{recov
  const value=new Map<string,string>();let apply=false,recover=false;
  for(let i=0;i<args.length;i++){
   const key=args[i];if(key==='--apply'){if(apply)refuse();apply=true;continue;}if(key==='--recover'){if(recover)refuse();recover=true;continue;}
-  if(!['--environment','--env-file','--recovery-directory','--release-window-evidence'].includes(key)||value.has(key)||!args[i+1]||args[i+1].startsWith('--'))refuse();value.set(key,args[++i]);
+  if(!['--environment','--env-file','--recovery-directory','--release-window-evidence','--expected-database-identity'].includes(key)||value.has(key)||!args[i+1]||args[i+1].startsWith('--'))refuse();value.set(key,args[++i]);
  }
- if(apply&&value.get('--environment')!=='staging')refuse();
+ if(apply&&(value.get('--environment')!=='staging'||!value.get('--expected-database-identity')||!/^[a-f0-9]{64}$/.test(value.get('--expected-database-identity')!)))refuse();
  const envPath=value.get('--env-file')??'',recoveryDirectory=value.get('--recovery-directory')??'';
  if(!isAbsolute(envPath)||resolve(envPath)!==envPath||!isAbsolute(recoveryDirectory)||resolve(recoveryDirectory)!==recoveryDirectory)refuse();
- return{environment:value.get('--environment')??'staging',envPath,recoveryDirectory,apply,recover,releaseWindowEvidence:value.get('--release-window-evidence')};
+ return{environment:value.get('--environment')??'staging',envPath,recoveryDirectory,apply,recover,releaseWindowEvidence:value.get('--release-window-evidence'),expectedDatabaseIdentity:value.get('--expected-database-identity')};
 }
 /** Reject links, public permissions and foreign-owned files. Never shell-source environment text. */
 export async function privateReceiptFiles(envPath:string,recoveryDirectory:string):Promise<ReceiptFiles>{

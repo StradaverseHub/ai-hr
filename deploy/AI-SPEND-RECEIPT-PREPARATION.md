@@ -41,8 +41,18 @@ key and a matching verifier establish receipt authenticity, not provider capabil
    It returns only `ready` or `needs_provisioning`, whether writes occurred, the staging label and
    `routeActivated:false`. Existing environment and database key must agree exactly and be active;
    partial/mismatched pairs or an env-less installation with active verifier keys refuse.
-6. Only in the approved admitted window, add `--apply --release-window-evidence` followed by the
-   existing private release-window evidence reference. This does not run the release or restart.
+6. Before applying, obtain the independently verified expected database identity from the existing
+   private staging release-window evidence. Its SHA256 is over the compact UTF-8 JSON array
+   `[current_database(), current_user, inet_server_addr()::text-or-null, inet_server_port()-or-null]`
+   with that exact order and no extra whitespace/newline (the port is a number or null). The release
+   operator must establish these facts through the independently approved staging connection and
+   installation identity, not infer the expected value from the DSN supplied to this tool. This is
+   a target-mismatch fence, not a cryptographic host attestation or admission capability. Keep the
+   digest and underlying metadata in private release evidence; the tool never prints them.
+
+   Only in the approved admitted window, add `--apply --environment staging`,
+   `--expected-database-identity` followed by that independently verified 64-character lowercase
+   SHA256, and `--release-window-evidence` followed by the existing private evidence-file reference. This does not run the release or restart.
    A fresh installation generates a cryptographic 32-byte key and a random key ID, durably writes
    mode-0600 recovery material, inserts only that new verifier in an owner transaction, then uses
    a same-directory mode-0600 temporary file, fsync and atomic rename to append the two environment
@@ -57,7 +67,7 @@ key and a matching verifier establish receipt authenticity, not provider capabil
 ## Recovery and refusal
 
 `ai-spend-receipt.pending.json` is mode 0600 and deliberately retained. It contains the original full
-private environment, replacement environment, exact hashes, private database identity hash and new
+private environment, replacement environment, exact hashes, actual and independently expected private database identity hashes and new
 key. Treat it as a secret backup. Never commit it or attach it to public logs. Keep it under the
 installation's existing secret backup/retention policy; this tool does not copy or delete backups.
 
@@ -70,7 +80,11 @@ replacement, then remove only that owned temporary file after the same verificat
 recovery record throughout.
 
 Then use the same paths and owner target with `--apply --recover --environment staging` and the
-approved release-window evidence reference. Recovery requires exact database identity, original
+approved release-window evidence reference. Recovery also requires `--expected-database-identity` from the independently verified private
+release evidence. It must agree with both the actual connection identity and the expected identity
+saved before the first mutation; changing the expectation cannot transplant recovery to another
+database. The initial comparison occurs before even creating a process lock or recovery file.
+Recovery requires exact database identity, original
 hashes and matching key material. It resolves a failed/uncertain DB commit by reading the actual
 key: insert the recorded key only if absent and no active verifier exists, or reuse the exact
 already committed key. It writes the environment only if it still matches the original bytes.

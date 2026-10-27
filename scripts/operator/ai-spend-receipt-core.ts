@@ -5,7 +5,7 @@ const digest=(text:string)=>createHash('sha256').update(text,'utf8').digest('hex
 const fail=():never=>{throw Error('Receipt preparation refused; inspect private recovery material with the release operator.');};
 export type Pair=Readonly<{id:string;secret:string}>;
 export type Verifier=Pair&Readonly<{enabled:boolean;usable:boolean}>;
-export type Pending=Readonly<{version:1;environment:'staging';databaseIdentity:string;envPath:string;original:string;originalDigest:string;replacement:string;replacementDigest:string;pair:Pair}>;
+export type Pending=Readonly<{version:1;environment:'staging';databaseIdentity:string;expectedDatabaseIdentity:string;envPath:string;original:string;originalDigest:string;replacement:string;replacementDigest:string;pair:Pair}>;
 export type ReceiptFiles={
  readEnvironment():Promise<string>;
  readPending():Promise<string|null>;
@@ -22,7 +22,7 @@ export type ReceiptDatabase={
  /** Transactional parameterized insert, never UPDATE/retire/delete any existing key. */
  insert(pair:Pair):Promise<void>;
 };
-export type Preparation={environment:string;apply?:boolean;recover?:boolean;releaseWindowEvidence?:string;envPath:string};
+export type Preparation={environment:string;apply?:boolean;recover?:boolean;releaseWindowEvidence?:string;expectedDatabaseIdentity?:string;envPath:string};
 export type Result=Readonly<{status:'ready'|'needs_provisioning'|'prepared';writes:boolean}>;
 export function readReceiptPair(text:string):Pair|null{
  if(Buffer.byteLength(text,'utf8')>262144||text.startsWith('\uFEFF')||text.includes('\0'))fail();
@@ -40,7 +40,7 @@ export function readReceiptPair(text:string):Pair|null{
 function same(left:Pair,right:Pair):boolean{return left.id===right.id&&timingSafeEqual(Buffer.from(left.secret,'hex'),Buffer.from(right.secret,'hex'));}
 function pendingValue(text:string,options:Preparation,identity:string):Pending{
  let p:Pending;try{p=JSON.parse(text) as Pending;}catch{return fail();}
- if(!p||Object.keys(p).sort().join(',')!=='databaseIdentity,envPath,environment,original,originalDigest,pair,replacement,replacementDigest,version'||p.version!==1||p.environment!=='staging'||p.databaseIdentity!==identity||p.envPath!==options.envPath||typeof p.original!=='string'||typeof p.replacement!=='string'||digest(p.original)!==p.originalDigest||digest(p.replacement)!==p.replacementDigest||readReceiptPair(p.original)!==null)return fail();
+ if(!p||Object.keys(p).sort().join(',')!=='databaseIdentity,envPath,environment,expectedDatabaseIdentity,original,originalDigest,pair,replacement,replacementDigest,version'||p.version!==1||p.environment!=='staging'||p.databaseIdentity!==identity||p.expectedDatabaseIdentity!==identity||options.expectedDatabaseIdentity!==undefined&&p.expectedDatabaseIdentity!==options.expectedDatabaseIdentity||p.envPath!==options.envPath||typeof p.original!=='string'||typeof p.replacement!=='string'||digest(p.original)!==p.originalDigest||digest(p.replacement)!==p.replacementDigest||readReceiptPair(p.original)!==null)return fail();
  const actual=readReceiptPair(p.replacement);if(!actual||!p.pair||!same(actual,p.pair))fail();
  const expected=p.original+(p.original.endsWith('\n')?'':'\n')+`${KEY_ID}=${actual.id}\n${KEY_SECRET}=${actual.secret}\n`;
  if(expected!==p.replacement)fail();return p;
@@ -48,11 +48,13 @@ function pendingValue(text:string,options:Preparation,identity:string):Pending{
 /** Plan/check is the default. Explicit recovery is required after any pending phase exists.
  * Evidence is an operator's private release-window reference, NOT a substitute for admission. */
 export async function prepareReceipt(options:Preparation,files:ReceiptFiles,db:ReceiptDatabase,generate:()=>Buffer=()=>randomBytes(32)):Promise<Result>{
- if(options.environment!=='staging'||!options.envPath.startsWith('/')||options.recover&&!options.apply||options.apply&&(!options.releaseWindowEvidence?.trim()||options.releaseWindowEvidence.length>1024))fail();
+ if(options.environment!=='staging'||!options.envPath.startsWith('/')||options.recover&&!options.apply||options.apply&&(!options.releaseWindowEvidence?.trim()||options.releaseWindowEvidence.length>1024||!options.expectedDatabaseIdentity||!/^[a-f0-9]{64}$/.test(options.expectedDatabaseIdentity))||options.expectedDatabaseIdentity!==undefined&&!/^[a-f0-9]{64}$/.test(options.expectedDatabaseIdentity))fail();
+ // Verify independently supplied target identity BEFORE even creating the process lock/recovery files.
+ const info=await db.inspect();if(options.expectedDatabaseIdentity!==undefined&&options.expectedDatabaseIdentity!==info.identity)fail();
  const unlock=options.apply?await files.lock():null;
  try{
   const initial=await files.readEnvironment();if(Buffer.byteLength(initial,'utf8')>260000)fail();
-  const pair=readReceiptPair(initial),info=await db.inspect(),pending=await files.readPending();
+  const pair=readReceiptPair(initial),pending=await files.readPending();
   if(pending!==null){
    const saved=pendingValue(pending,options,info.identity);
    if(initial!==saved.original&&initial!==saved.replacement)fail();
@@ -73,7 +75,7 @@ export async function prepareReceipt(options:Preparation,files:ReceiptFiles,db:R
   const next=Object.freeze({id:'receipt-'+randomBytes(12).toString('hex'),secret:bytes.toString('hex')});
   if(await db.find(next.id))fail();
   const replacement=initial+(initial.endsWith('\n')?'':'\n')+`${KEY_ID}=${next.id}\n${KEY_SECRET}=${next.secret}\n`;
-  const saved:Pending={version:1,environment:'staging',databaseIdentity:info.identity,envPath:options.envPath,original:initial,originalDigest:digest(initial),replacement,replacementDigest:digest(replacement),pair:next};
+  const saved:Pending={version:1,environment:'staging',databaseIdentity:info.identity,expectedDatabaseIdentity:options.expectedDatabaseIdentity!,envPath:options.envPath,original:initial,originalDigest:digest(initial),replacement,replacementDigest:digest(replacement),pair:next};
   // Durable recovery precedes database insertion. Never clear it automatically or rotate keys.
   await files.createPending(JSON.stringify(saved));await db.insert(next);await files.replaceEnvironment(initial,replacement);
   return Object.freeze({status:'prepared',writes:true});
