@@ -134,17 +134,18 @@ export function createAndroidEnrollmentJournal(rawScope:EnrollmentScope,ports:An
    await checkKey(key,original.prepared,original.publicKeySpki);return status(await save(s,null,{...original,key}));
   }),
   advance:(employmentId:string)=>exclusive(queue,async()=>{
-   const selected=uuid.parse(employmentId);let s:State=await read(),p=s.pending;
-   if(!p){if(!s.key)return status(s);const found=await reconcileKey(s,selected);return status(found.state,found.reason);}
+   const selected=uuid.parse(employmentId);let s:State=await read();const retained=s.pending;
+   if(!retained){if(!s.key)return status(s);const found=await reconcileKey(s,selected);return status(found.state,found.reason);}
+   let p:Pending=retained;
    if(p.employmentId!==selected)throw new EnrollmentConflict();const intentRef={employmentId:p.employmentId,requestId:p.requestId};let refreshed=false,reconciled=false;
    for(let steps=0;steps<6;steps++){
     ports.assertCurrent();
     if(p.phase==='requested'){
-     const value=checked(C.IntegrityAndroidEnrollmentPrepared,await owned(()=>ports.prepare(selected,{requestId:p!.requestId,appInstallationId:scope.appInstallationId})));
+     const value=checked(C.IntegrityAndroidEnrollmentPrepared,await owned(()=>ports.prepare(selected,{requestId:intentRef.requestId,appInstallationId:scope.appInstallationId})));
      if(value.outcome!=='prepared')return status(s,value.outcome==='refused'?'server_refused':'server_unavailable');
      await checkPrepared(value,intentRef);p={...intentRef,phase:'prepared',prepared:value};s=await save(s,p);refreshed=true;
     }
-    const current=p,preparedRef=current.prepared;await checkPrepared(preparedRef,intentRef);
+    const current:Exclude<Pending,{phase:'requested'}>=p,preparedRef:Prepared=current.prepared;await checkPrepared(preparedRef,intentRef);
     if(!reconciled){
      const value=await lookup(selected,preparedRef.context.challengeId);if(value.outcome!=='key_receipt')return status(s,value.outcome==='refused'?'server_refused':'server_unavailable');
      if(value.key){
