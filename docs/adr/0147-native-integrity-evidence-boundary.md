@@ -563,3 +563,20 @@ context alongside the immutable ordered proof. Without this context, a later tar
 would prevent reconstructing the original attested digest for audit. The original proof identity is
 still bounded32KiB; the complete provenance plaintext is bounded48KiB before AES-GCM/base64url, below
 the64KiB ciphertext column bound. This follow-up is unverified pending shared test resources.
+
+
+## Native Android enrollment operation boundary (unverified)
+
+The native adapter validates a protocol2 active preparation, derives the canonical challenge and
+alias with the shared portable encoder and checks the actual app package/build capability. Only a
+caller-supplied durable generation-intent commit can precede createAndroidKey. A failed/obsolete/
+background commit cannot start generation. StrongBox-only policy requests StrongBox without automatic
+downgrade. The adapter has separate create and read operations: read only invokes androidKeyInfo for
+the saved alias; creation never replaces, retries, or automatically reads an existing/uncertain key.
+
+Native evidence remains not_verified, including reported hardware-level hints. Artifact bounds match
+the server protocol. Ownership and foreground checks surround crypto/storage/native awaits. This is
+an internal adapter with a durability contract; it is not a complete journal or a mounted enrollment
+flow. The real journal still must persist generation/proof/outcome states, reconcile exact receipts
+and retain uncertain aliases. No native SDK/device or Metro export was exercised by this source
+change. Six shipped-adapter/bridge tests were added but remain unrun pending test resources.

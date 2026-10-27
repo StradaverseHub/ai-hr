@@ -874,3 +874,21 @@ provenance change, compiler repair and three added cases are UNVERIFIED. No broa
 PASS is attributed to them.0636 SQL bytes/journal state are unchanged, with no shared/staging apply,
 publication or deployment. The authorized migration coordinator received the source/verification
 report and terminal resource handback.
+
+
+## Native Android enrollment operations — unverified checkpoint
+
+The cf6e88160 provenance candidate's focused admission request (session32031) ended75 after300s,
+holding no resources and starting no test/type phase. No /tmp/mobile-android-owner-provenance*.log
+exists. Other live compiler owners were observed; no lease/process was modified. This is an
+admission timeout, not a failed test or compiler verdict.
+
+4bba37d6e adds a shared portable alias encoder and a native adapter separating create from saved-alias
+read. Its explicit contract persists generation intent before SDK creation, rechecks owner/foreground,
+requires matching app/build/context/digest/alias, never retries/replaces/downgrades, and preserves
+not_verified evidence. Six VM/bridge/crypto-port cases were added but have not run. The locally
+installed expo-crypto declaration confirms CryptoEncoding.HEX support; that read is not a test PASS.
+Original Android native code was inspected: synchronized creation refuses an existing alias, while
+androidKeyInfo reads it without creation. A short complete-set verification window was requested
+through the existing authorized coordinator conversation. Source, compiler repair, provenance and
+new race/adapter cases remain unverified. No migration journal/apply, publication or deployment.
