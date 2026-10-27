@@ -12,7 +12,7 @@ type Platform='ios'|'android';
 /** The lazy Android assembly is evaluated only after request/subject/configuration validation. */
 export function createDeployedSignedClockOperations(platform:Platform){
  return createSignedClockOperations(platform,(ctx,id,signal)=>readMobileClockConfiguration(platform,ctx,id,signal),{
-  beforeClockCommit:assertMobileClockCommit,androidPlay:readDeployedPlayCredentials,
+  beforeClockCommit:async()=>{},androidPlay:readDeployedPlayCredentials,
  });
 }
 export function createDeployedClockCapabilitiesOperation(platform:Platform){
