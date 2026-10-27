@@ -2940,3 +2940,22 @@ prompt before a further maximum-length reply would overflow. No text is silently
 principal/grant and sealed own-exchange custody are checked before that context is reused, with local
 non-increasing transaction wait bounds installed before the Access lock. Busy or invalid continuations
 produce a generic refresh outcome after rollback, not a fabricated pause/allowance explanation.
+
+
+### Optional monetary ceilings and readable replies — owner decisions, 28 October 2026
+
+The owner selected optional USD ceilings. Absence of an applicable monetary threshold is not a zero
+budget and carries no USD-ceiling promise. Authorization, privacy, pauses, request/token/concurrency
+controls, deadlines and existing mandatory native task ownership still apply. Any applicable finite
+monthly or task ceiling, including an explicit zero, retains verified monetary admission. Clearing one
+scope does not clear another scope, erase unknown costs, reset native task usage or release reservations.
+Unknown historical/unpriced usage must not silently become zero when a finite ceiling is later enabled.
+Provider activation and production-data transfer remain explicit operator decisions.
+
+Replies must be concise and structured around the user's question. The model selects relevant ordered
+source references; the trusted renderer presents short single-fact answers, comparable same-source
+records as tables, other facts as bullets and grounded explanations as numbered points. Tables preserve
+record/column order and actual units; they perform no currency conversion or HR calculations. A progress
+visual may show an already recorded, valid completion percentage; it never invents a denominator or uses
+model-calculated money. Long rule detail is expandable rather than an unstructured text dump. These
+presentation choices do not widen retrieval, effects or the supported explanation vocabulary.

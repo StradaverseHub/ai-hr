@@ -1,4 +1,6 @@
 /** Canonical typed facts only. A model answer, copied receipt or arbitrary JSON cannot render here. */
+import type {ReactNode} from 'react';
+import {conversationFactLayout} from '../../lib/ai/assistant-answer-layout';
 import {randomUUID} from 'node:crypto';
 import {askAssistantAction} from '../../app/assistant/actions';
 import {saveGovernedJobFeedbackAction,eraseGovernedJobFeedbackAction} from '../../app/assistant/job-feedback-actions';
@@ -83,7 +85,7 @@ export async function CanonicalModuleJob({view,ctx}:{view:CanonicalModuleJobView
 type ConversationReply=NonNullable<GroundedWorkspaceAnswer['conversation']>;
 const closedConversationFields=(value:object,fields:readonly string[])=>JSON.stringify(Object.keys(value).sort())===JSON.stringify([...fields].sort());
 /** Selection/order comes from the checked plan; every displayed value still comes from an original
- * fresh canonical view. Unknown plans, withheld/null facts and unsupported explanations refuse. */
+ * fresh canonical view. Unknown plans, hidden/null facts and unsupported explanations refuse. */
 async function ConversationReplyBody({conversation,ctx,exchangeId}:{conversation:ConversationReply;ctx:SessionContext;exchangeId?:string}){
  const[copy,text]=await Promise.all([getTranslations('assistant.workspace.conversation'),canonicalJobText()]);
  const unavailable=()=> <p role="status" className="text-sm text-muted-foreground">{copy('unavailable')}</p>;
@@ -108,6 +110,7 @@ async function ConversationReplyBody({conversation,ctx,exchangeId}:{conversation
   if(plan.mode!=='answer'||!closedConversationFields(plan,['version','mode','blocks'])||!Array.isArray(plan.blocks)||plan.blocks.length===0||plan.blocks.length>16||plan.blocks.filter(block=>block.kind==='fact').length!==conversation.facts.length)return unavailable();
   const segments=conversation.segments??conversation.facts.map(fact=>({kind:'fact' as const,...fact}));
   if(!Array.isArray(segments)||segments.length!==plan.blocks.length)return unavailable();
+  const renderedFacts:{view:Extract<CanonicalModuleJobView,{state:'ready'}>;card:number;fact:number;value:string;content:ReactNode}[]=[];
   let factIndex=0;const views:CanonicalModuleJobView[]=[],lines=await Promise.all(plan.blocks.map(async(block,index)=>{
    const selected:AssistantConversationSegment=segments[index];
    if(!selected||!Number.isSafeInteger(block.read)||block.read<0||block.read>=128)throw Error();
@@ -124,17 +127,30 @@ async function ConversationReplyBody({conversation,ctx,exchangeId}:{conversation
    if(selected.kind!=='fact'||!closedConversationFields(selected,['kind','view','card','fact'])||!paired||paired.view!==selected.view||paired.card!==selected.card||paired.fact!==selected.fact)throw Error();
    if(block.kind!=='fact'||!closedConversationFields(block,['kind','read','card','fact'])||!Number.isSafeInteger(block.read)||block.read<0||!selected||selected.card!==block.card||selected.fact!==block.fact||!Number.isSafeInteger(selected.card)||selected.card<0||!Number.isSafeInteger(selected.fact)||selected.fact<0)throw Error();
    assertCanonicalModuleJobView(selected.view,ctx);if(selected.view.state!=='ready')throw Error();
-   const card=selected.view.presentation.cards[selected.card],fact=card?.facts[selected.fact];if(!card||card.withheld||!fact||fact.value===null||typeof fact.value==='string'&&fact.value.trim()===''||typeof fact.value==='number'&&!Number.isFinite(fact.value))throw Error();
+   const card=selected.view.presentation.cards[selected.card],fact=card?.facts[selected.fact];if(!card||(card.withheld&&selected.view.presentation.module!=='leave')||!fact||fact.value===null||typeof fact.value==='string'&&fact.value.trim()===''||typeof fact.value==='number'&&!Number.isFinite(fact.value))throw Error();
    let value=displayCanonicalFact(fact,selected.view.presentation.module,text);
    if(fact.format==='money'){
     const units=card.facts.filter(row=>row.field==='currency');if(units.length!==1||typeof units[0].value!=='string'||!/^[A-Z]{3}$/.test(units[0].value))throw Error();
     value=String(value)+' '+units[0].value;
    }
-   if(!views.includes(selected.view))views.push(selected.view);
-   return <li key={index} className="break-words text-sm leading-relaxed"><span className="font-medium">{canonicalHeading(card,text)}</span>{' — '}{text.t(`field_${fact.field}`)}{': '}<span className="tabular-nums">{value}</span></li>;
+   const progress=fact.field==='progressPercent'&&typeof fact.value==='number'&&fact.value>=0&&fact.value<=100
+    ? <progress aria-label={text.t('field_progressPercent')} value={fact.value} max={100} className="mt-2 block h-2 w-full max-w-sm accent-primary">{fact.value}%</progress>:null;
+   const content=<><span className="font-medium">{canonicalHeading(card,text)}</span>{' — '}{text.t(`field_${fact.field}`)}{': '}<span className="tabular-nums">{value}</span>{progress}{card.withheld&&<span className="block text-xs text-muted-foreground">{text.t('withheld')}</span>}</>;
+   renderedFacts.push({view:selected.view,card:selected.card,fact:selected.fact,value:String(value),content});
+   return <li key={index} className="break-words text-sm leading-relaxed">{content}</li>;
   }));
+  const factOnly=plan.blocks.every(block=>block.kind==='fact');
+  const layout=factOnly?conversationFactLayout(renderedFacts.map(row=>({sourceKey:row.view.viewId,presentation:row.view.presentation,card:row.card,fact:row.fact}))):{kind:'list' as const};
+  const answerBody=layout.kind==='comparison'?<div role="region" aria-label={copy('comparison')} tabIndex={0} className="max-w-full overflow-x-auto rounded-md border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+   <table className="w-full text-left text-sm"><caption className="px-3 py-2 text-left text-xs text-muted-foreground">{copy('comparison')}</caption>
+    <thead className="bg-muted/40"><tr><th scope="col" className="px-3 py-2 font-medium">{copy('recordColumn')}</th>{layout.columns.map(column=><th key={column.field} scope="col" className="px-3 py-2 font-medium">{text.t(`field_${column.field}`)}</th>)}</tr></thead>
+    <tbody>{layout.rows.map(row=>{const first=renderedFacts[row.positions[0]],card=first.view.presentation.cards[first.card],heading=canonicalHeading(card,text),company=card.facts.find(fact=>fact.field==='company'&&typeof fact.value==='string')?.value;
+     return <tr key={row.sourceKey+':'+row.card} className="border-t"><th scope="row" className="max-w-xs break-words px-3 py-2 align-top font-medium">{heading}{typeof company==='string'&&company!==heading?` (${company})`:''}</th>{row.positions.map((position,index)=><td key={index} className="break-words px-3 py-2 align-top tabular-nums">{renderedFacts[position].value}</td>)}</tr>;
+    })}</tbody>
+   </table></div>:factOnly&&renderedFacts.length===1?<p className="break-words text-sm leading-relaxed">{renderedFacts[0].content}</p>:
+    factOnly?<ul className="space-y-2">{lines}</ul>:<ol className="list-decimal space-y-3 pl-5">{lines}</ol>;
   const sources=await Promise.all(views.map(async view=>({id:view.viewId,card:await CanonicalModuleJob({view,ctx})})));
-  return <section aria-label={copy('answerLabel')} className="space-y-3"><p className="text-xs text-muted-foreground">{copy('canonicalNote')}</p><ul className="space-y-2">{lines}</ul>
+  return <section aria-label={copy('answerLabel')} className="space-y-3"><p className="text-xs text-muted-foreground">{copy('canonicalNote')}</p>{answerBody}
    <details className="rounded-lg border border-border p-3"><summary className="min-h-11 cursor-pointer py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{copy('sources')}</summary><div className="mt-3 space-y-4">{sources.map(source=><div key={source.id}>{source.card}</div>)}</div></details>
   </section>;
  }catch{return unavailable();}

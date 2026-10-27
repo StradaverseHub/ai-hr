@@ -18540,7 +18540,10 @@
         "insufficient_unsupported_explanation": "Tôi có thể hiển thị các giá trị đã ghi nhận, nhưng chưa thể xác minh lời giải thích đó. Hãy kiểm tra trang thường dùng hoặc hỏi bộ phận nhân sự.",
         "refuse_unsupported_request": "Việc đó nằm ngoài phạm vi tôi có thể hỗ trợ tại đây. Hãy chọn một công việc được hỗ trợ bên dưới.",
         "refuse_human_review_required": "Việc này cần con người quyết định. Hãy mở trang thường dùng để xem xét với người phụ trách phù hợp.",
-        "contextLimit": "Hãy bắt đầu câu hỏi mới để bổ sung thêm chi tiết."
+        "contextLimit": "Hãy bắt đầu câu hỏi mới để bổ sung thêm chi tiết.",
+        "comparison": "Các giá trị đã ghi nhận, đặt cạnh nhau",
+        "recordColumn": "Bản ghi",
+        "moreRules": "Hiển thị thêm {count} quy tắc"
       }
     },
     "denied_unavailable": "Phía tôi gặp chút trục trặc. Vui lòng thử lại sau giây lát.",

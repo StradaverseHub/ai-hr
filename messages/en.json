@@ -18540,7 +18540,10 @@
         "insufficient_unsupported_explanation": "I can show recorded values, but I cannot verify that explanation yet. Check the usual page or ask HR.",
         "refuse_unsupported_request": "That is outside my lane here. Choose a supported task below.",
         "refuse_human_review_required": "This needs a human decision. Open the usual page to review it with the right person.",
-        "contextLimit": "Start a fresh question to add more details."
+        "contextLimit": "Start a fresh question to add more details.",
+        "comparison": "Recorded values, side by side",
+        "recordColumn": "Record",
+        "moreRules": "Show {count} more rules"
       }
     },
     "denied_unavailable": "A little snag on my side. Please try again in a moment.",

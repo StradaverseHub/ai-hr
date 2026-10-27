@@ -18540,7 +18540,10 @@
         "insufficient_unsupported_explanation": "Saya boleh menunjukkan nilai dalam rekod, tetapi belum dapat mengesahkan penjelasan itu. Semak halaman biasa atau tanya HR.",
         "refuse_unsupported_request": "Yang itu di luar bidang saya di sini. Pilih tugasan yang disokong di bawah.",
         "refuse_human_review_required": "Ini memerlukan keputusan manusia. Buka halaman biasa untuk menyemaknya dengan pihak yang sesuai.",
-        "contextLimit": "Mulakan soalan baharu untuk menambah butiran lanjut."
+        "contextLimit": "Mulakan soalan baharu untuk menambah butiran lanjut.",
+        "comparison": "Nilai direkodkan, sebelah menyebelah",
+        "recordColumn": "Rekod",
+        "moreRules": "Tunjukkan {count} peraturan lagi"
       }
     },
     "denied_unavailable": "Ada sedikit masalah di pihak saya. Sila cuba lagi sebentar nanti.",

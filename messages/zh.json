@@ -18540,7 +18540,10 @@
         "insufficient_unsupported_explanation": "我可以展示记录中的数值，但目前无法核实这个解释。请查看常用页面或咨询人力资源部。",
         "refuse_unsupported_request": "这超出了我在这里能协助的范围。请选择下方支持的任务。",
         "refuse_human_review_required": "这需要由人作出决定。请打开常用页面，与适当的负责人一起审核。",
-        "contextLimit": "请发起新问题，以便补充更多详情。"
+        "contextLimit": "请发起新问题，以便补充更多详情。",
+        "comparison": "并列查看已记录的数据",
+        "recordColumn": "记录",
+        "moreRules": "显示其余 {count} 条规则"
       }
     },
     "denied_unavailable": "我这边遇到了小状况，请稍后再试。",

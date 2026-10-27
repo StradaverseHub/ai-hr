@@ -44,7 +44,7 @@ export async function ConversationExplanation({view,explanation,ctx}:{view:Canon
     const dated=c.state==='expired'||c.state==='not_yet';if(dated?!dateOnly(rule.date):rule.date!==null)throw Error();
     let axis:string|null=null;if(rule.axisLabel){const label=rule.axisLabel;if(!rule.tested||!Object.values(ELIGIBILITY_AXIS_LABEL_KEY).some(value=>value.ns===label.ns&&value.key===label.key))throw Error();axis=label.ns==='criteria'?criteria(label.key):org(label.key);}
     return <p key={index} className="text-sm"><span className="font-medium">{rule.name}</span>{' — '}{t(c.key,{date:rule.date??''})}{axis&&<span className="block">{t('eligibilityWhyAxis',{axis})}</span>}{rule.failsOnCombination&&<span className="block">{t('eligibilityWhyCombination')}</span>}</p>;
-   });return <div className="space-y-2">{rows}</div>;
+   });return <div className="space-y-2">{rows.slice(0,3)}{rows.length>3&&<details className="rounded-md border p-3"><summary className="min-h-11 cursor-pointer py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{copy('moreRules',{count:rows.length-3})}</summary><div className="mt-2 space-y-2">{rows.slice(3)}</div></details>}</div>;
   }
   if(c.kind==='specialist_finding'){
    if(!SPECIALIST_FINDINGS.includes(c.finding)||explanation.code!==`specialist_finding:${c.finding}`||!view.specialist?.findings.includes(c.finding))return unavailable();

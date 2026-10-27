@@ -1,6 +1,7 @@
 /** Main-conversation strategy is source-owned; no learned prompt, HR value or security knob. Pure
  * contracts issue no authority. The actual release owner must authenticate each retained arm. */
 import {ASSISTANT_ANSWER_PROTOCOL,adjudicateAssistantAnswerPlan,parseAssistantAnswerPlan,type AssistantAnswerPlan,type AssistantAnswerRead} from './assistant-answer-plan';
+import {ASSISTANT_CONVERSATION_SYSTEM} from './assistant-conversation-system';
 import {routingDigest} from './module-agent-routing';
 export const ASSISTANT_CONVERSATION_KIND='assistant_answer_prompt_v1' as const;
 export type AssistantConversationCandidate=Readonly<{kind:typeof ASSISTANT_CONVERSATION_KIND;variant:'baseline_v1'|'focused_v1'}>;
@@ -14,7 +15,7 @@ export function captureAssistantConversationCandidate(value:unknown):AssistantCo
  if(row.kind!==ASSISTANT_CONVERSATION_KIND||(row.variant!=='baseline_v1'&&row.variant!=='focused_v1'))return fail();return Object.freeze({kind:ASSISTANT_CONVERSATION_KIND,variant:row.variant});
 }
 export function assistantConversationCandidateSystem(value:unknown):string{const candidate=captureAssistantConversationCandidate(value);return[mandatory,ASSISTANT_ANSWER_PROTOCOL,strategies[candidate.variant]].join(' ');}
-export const ASSISTANT_CONVERSATION_ENGINE_DIGEST=routingDigest(['main-conversation-source-strategies-v1',mandatory,ASSISTANT_ANSWER_PROTOCOL,strategies]);
+export const ASSISTANT_CONVERSATION_ENGINE_DIGEST=routingDigest(['main-conversation-source-strategies-v1',ASSISTANT_CONVERSATION_SYSTEM,mandatory,ASSISTANT_ANSWER_PROTOCOL,strategies]);
 export const ASSISTANT_CONVERSATION_POLICY=Object.freeze({version:1,coverage:'synthetic-canonical-terminal-plans-and-tool-minimality',maxNewCalls:12,maxPairs:6,independentEvaluators:2,securityFailures:0,qualityFailures:0,improvement:'strict-independent-quality-gain',resources:'observations-only',unknownIsNull:true});
 export const ASSISTANT_CONVERSATION_POLICY_DIGEST=routingDigest(ASSISTANT_CONVERSATION_POLICY);
 export type ConversationToolObservation=Readonly<{name:string;input:unknown}>;
