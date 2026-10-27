@@ -160,7 +160,14 @@ const PAYSLIPS = [
 vi.mock('@/core/loans', () => ({ listLoansForEmployment: vi.fn(async () => []) }));
 vi.mock('@/core/profile', () => ({ myProfileChangeRequests: vi.fn(async () => []) }));
 vi.mock('@/core/offboarding', () => ({ myResignation: vi.fn(async () => null) }));
-vi.mock('@/core/dependents', () => ({ isChildReliefEligible: () => false, childAgeYears: () => null }));
+// core/profile-options reads the dependents vocabulary at module load, so the mock carries the real
+// client-safe vocabulary and the category key (core/dependents re-exports both) beside its two stubs.
+vi.mock('@/core/dependents', async () => ({
+  ...(await import('../lib/dependent-vocabulary')),
+  DEPENDENT_RELATIONSHIP_CATEGORY: 'dependentRelationship',
+  isChildReliefEligible: () => false,
+  childAgeYears: () => null,
+}));
 vi.mock('@/packs/leave/service', () => ({ serviceYearsMonthsDaysAt: () => ({ years: 5, months: 7, days: 19 }) }));
 vi.mock('../app/me/review-card', () => ({ MeReviewCard: () => null }));
 vi.mock('../app/me/actions', () => ({

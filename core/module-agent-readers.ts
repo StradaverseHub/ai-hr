@@ -19,7 +19,7 @@ import { storedComponentLines } from './payslip-earning-lines';
 import { listDocuments } from './knowledge-base';
 import { listNotifications } from './notifications';
 import {ownPerformanceWorkStatusesTx} from '../packs/performance/service';
-import { getMyOnboarding } from './lifecycle-self';
+import { getMyOnboarding } from '../packs/lifecycle/service';
 import { listRewardUnits } from '../packs/rewards/service';
 import { ownClaimStatuses } from '../packs/claims/service';
 import { listSchemaTables } from './schema-explorer';

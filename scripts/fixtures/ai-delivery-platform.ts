@@ -14,8 +14,7 @@ import {resolveEntitlementsTx} from '../../core/entitlements';
 import {createShift,assignDefaultShift,setRestDay} from '../../core/roster'; // Shared roster spine has no public pack facade.
 import {checkIn,checkOut,saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../../packs/attendance/service';
 import {setToilPolicy,replacementRequestAvailability,leaveCreditOfferForEmployment} from '../../packs/leave/service';
-import {createOnboardingCase,tickStep,getMyOnboarding} from '../../packs/lifecycle/service';
-import {ONBOARDING_STEPS} from '../../core/lifecycle-defaults';
+import {createOnboardingCase,tickStep,getMyOnboarding,ONBOARDING_STEPS} from '../../packs/lifecycle/service';
 import * as testing from '../../core/system-testing-workspace'; // No System Testing pack service exists.
 import type {InstructionDefinition} from '../../lib/system-testing/model';
 import {withAssistantRead} from '../../core/assistant-read-session';

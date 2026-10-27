@@ -62,7 +62,9 @@ export async function backfillCountryModules(url: string): Promise<{
   const nominations = await owner.db.selectDistinct({ tenantId: company.tenantId }).from(company).orderBy(company.tenantId);
   let granted = 0, alreadyPresent = 0;
   const unpacked: { company: string; country: string }[] = [];
-  try {
+  // The pool is NOT ended here: createDb caches pools by connection string, so this is the same client
+  // every other owner of `url` holds (the test harness's `owner` included). The CLI below exits the
+  // process; a library caller owns its own pool lifetime.
     for (const { tenantId } of nominations) {
       const result = await owner.db.transaction(async tx => {
         await lockOwnerTenantCatalogsTx(tx, tenantId);
@@ -105,7 +107,6 @@ export async function backfillCountryModules(url: string): Promise<{
       });
       granted += result.granted; alreadyPresent += result.alreadyPresent; unpacked.push(...result.unpacked);
     }
-  } finally { await owner.client.end(); }
 
   return { granted, alreadyPresent, unpacked };
 }

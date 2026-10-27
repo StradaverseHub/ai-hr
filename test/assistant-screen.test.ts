@@ -35,14 +35,21 @@ describe('ADR-0082 slice 4 — the screen exists and is wired', () => {
     expect(read('components/sidebar.tsx')).toContain("['/assistant', 'assistant'] as const");
   });
 
-  it('is NOT in the function-access matrix, because it is not a guarded screen', () => {
-    // r225's lesson, and it is a real trap: AGENTS 20 demands a SCREENS column for a guarded page, and
-    // test/function-access.test.ts's guard regex matches only requireAdmin | requirePayrollAccess |
-    // requirePerfCompAccess | scopedAdmin | scopedSession. /assistant uses getSession, like /me and
-    // /leave, so adding a column would fail that file's sibling "no stale routes" case. ADR-0082 §2.8
-    // asks for the column, and is wrong about this page for that reason.
+  it('is in the function-access matrix only as the conditional, layout-authenticated Assistant column', () => {
+    // History: ADR-0082 slice 4 kept /assistant OUT of the matrix because the page used getSession and
+    // the function-access guard regex knew no session guard (r225's trap). ADR-0131 ("Shared Assistant
+    // page authentication and access reference") replaced that: app/assistant/layout.tsx authenticates
+    // the workspace and every human review page through the selected browser session, and the matrix
+    // carries ONE conditional `assistantSession` column covering exactly those routes
+    // (test/function-access.test.ts pins the route set). Role eligibility there is not an Assistant
+    // grant: the grant, module, pause and native permission remain with each reader or command.
     expect(read('app/assistant/page.tsx')).toContain('getSession');
-    expect(read('lib/permissions.ts')).not.toContain("'/assistant'");
+    expect(read('app/assistant/layout.tsx')).toContain('await getBrowserCommandSession()');
+    const permissions = read('lib/permissions.ts');
+    expect(permissions).toContain("{screenKey:'assistantWorkspace',href:'/assistant',labelKey:'nav.assistant',guard:'assistantSession',");
+    expect(permissions.match(/href:'\/assistant'/g) ?? []).toHaveLength(1);
+    // Conditional, never an unconditional "accessible" claim for any role.
+    expect(read('components/function-access-grid.tsx')).toContain("screen.guard==='assistantSession'");
   });
 
   it('the screen never renders an unexplained refusal', () => {

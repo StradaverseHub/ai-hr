@@ -160,7 +160,9 @@ describe('core/leave.ts: the new read-only exports', () => {
 
   it('rest and off day stay ONE popup bucket, resolved from the same dated schedule as deduction', () => {
     const start = core.indexOf('export type LeaveApplyDayStatus =');
-    const end = core.indexOf('/** Phase-B #15:', start);
+    // End marker: the docblock that follows resolveApplyDayRows. The Phase-B #15 warning helper it used
+    // to name became the dated-calendar owner leaveHolidayCompletenessTx.
+    const end = core.indexOf('/** One dated-calendar owner for read-only previews', start);
     expect(start).toBeGreaterThanOrEqual(0);
     expect(end).toBeGreaterThan(start);
     const popup = core.slice(start, end);

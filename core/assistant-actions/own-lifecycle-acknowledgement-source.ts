@@ -5,7 +5,7 @@ import {createHash} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import type {SessionContext,Tx} from '../../db/client';
-import {normalizeMyAcknowledgement,submitReviewedMyAcknowledgementTx} from '../lifecycle-self';
+import {normalizeMyAcknowledgement,submitReviewedMyAcknowledgementTx} from '../../packs/lifecycle/service';
 import {assertAiPrincipalTx} from '../ai-principal';
 import {assertMayUseAssistant} from '../assistant-grant';
 import {assertAiActionUnpausedTx} from '../ai-governance';
