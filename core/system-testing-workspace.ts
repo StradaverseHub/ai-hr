@@ -1,4 +1,5 @@
 /** Canonical extension of core/system-testing: immutable instructions, assignments and personal saves. */
+import {randomUUID} from 'node:crypto';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
@@ -71,7 +72,12 @@ export async function saveTestInstructionDraft(ctx: SessionContext, p: { caseId:
   });
 }
 async function event(tx: Tx, ctx: SessionContext, caseId: string, type: string, payload: Record<string, unknown>,returnId=false) {
-  return appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'test_case', aggregateId: caseId, eventType: type, actor: actorOf(ctx), payload },{returnId});
+  const native={tenantId:ctx.tenantId,aggregateType:'test_case',aggregateId:caseId,eventType:type,actor:actorOf(ctx),payload};
+  if(!returnId)return appendEvent(tx,native);
+  // A real assigned standalone USER may append this NULL-subject event without SELECT authority.
+  // Await the exact native INSERT; do not widen event RLS merely to obtain its source-owned UUID.
+  // This is a source reference, not commit proof; the fixed-purpose receipt owner still reconciles it.
+  const id=randomUUID();await appendEvent(tx,{...native,id});return id;
 }
 /** Shared publication owner used by manual publication and exact-hash catalogue confirmation. */
 export async function publishTestInstructionTx(tx: Tx, ctx: SessionContext, p: {

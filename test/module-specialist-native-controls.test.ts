@@ -4,7 +4,7 @@
 import {randomUUID} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
-import type {SessionContext} from '../db/client';
+import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {assignRole} from '../core/admin';
 import {hireEmployee,setReportingLine} from '../core/org';
@@ -21,6 +21,7 @@ import * as perf from '../packs/performance/service';
 import {defaultPolicy} from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
 import * as testing from '../core/system-testing-workspace';
+import {reopenOwnTestingExecutionEventTx} from '../core/assistant-actions/own-testing-execution-source';
 import type {InstructionDefinition} from '../lib/system-testing/model';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -66,8 +67,8 @@ async function standalone(){
 }
 beforeAll(async()=>{
  await migrateTestDb();
- const [installed]=await owner.db.execute<{controls:boolean}>(sql`select to_regprocedure('app.ai_action_unpaused(text,boolean)') is not null as controls`);
- expect(installed,'Install the reviewed AI action-control migration through the normal owner before these native controls').toEqual({controls:true});
+ const [installed]=await owner.db.execute<{controls:boolean;testingReceipt:boolean}>(sql`select to_regprocedure('app.ai_action_unpaused(text,boolean)') is not null as controls,to_regprocedure('app.testing_own_execution_event_source(uuid,uuid)') is not null as "testingReceipt"`);
+ expect(installed,'Install the reviewed AI action-control and fixed-purpose Testing receipt migrations through the normal owner before these native controls').toEqual({controls:true,testingReceipt:true});
 });
 afterAll(closeAll);
 beforeEach(async()=>{
@@ -170,7 +171,19 @@ describe('canonical specialist native business controls (seven modules)',()=>{
   const assignment=await testing.assignTestingCase(a,{caseId:draft.caseId,testerUserId:ctx.userId!,expectedVersionId:version.versionId,active:true,expectedRevision:null});
   const start=await checked(ctx,'system_testing');expect(start.assessment.findings).toContain('test_work_incomplete');
   const execution=await testing.beginTestingExecution(ctx,{assignmentId:assignment.assignmentId,expectedVersionId:version.versionId,newAttempt:false});
-  await testing.saveTestingExecution(ctx,{executionId:execution.executionId,assignmentId:assignment.assignmentId,versionId:version.versionId,expectedRevision:execution.revision,status:'passed',actualResult:'PRIVATE_OBSERVED_RESULT',comments:'PRIVATE_COMMENT',defectNotes:'',improvementNotes:''});
+  const saved=await testing.saveTestingExecution(ctx,{executionId:execution.executionId,assignmentId:assignment.assignmentId,versionId:version.versionId,expectedRevision:execution.revision,status:'passed',actualResult:'PRIVATE_OBSERVED_RESULT',comments:'PRIVATE_COMMENT',defectNotes:'',improvementNotes:''});
+  expect(saved).toEqual({runId:expect.any(String),revision:execution.revision+1});expect(ctx.personId).toBeNull();expect(ctx.roles).toEqual(['employee']);
+  // Native event provenance is checked through fixture-owner evidence, never a forged subject/HR role.
+  const observationEvents=await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.tenantId,b.tenantId),eq(s.domainEvent.aggregateId,draft.caseId),eq(s.domainEvent.eventType,'test_execution.observation_saved')));
+  expect(observationEvents).toHaveLength(1);const recorded=observationEvents[0];
+  expect(recorded).toMatchObject({actorType:'user',actorId:ctx.userId,subjectEmploymentId:null,payload:{executionId:execution.executionId,runId:saved.runId,versionId:version.versionId,revision:saved.revision,status:'passed',testerUserId:ctx.userId}});
+  // INSERT remains legitimate while broad event SELECT is still withheld from this standalone tester.
+  expect(await withTenant(ctx,tx=>tx.select({id:s.domainEvent.id}).from(s.domainEvent).where(eq(s.domainEvent.id,recorded.id)))).toEqual([]);
+  const beforeReopen=await events(),reference={runId:saved.runId,eventId:recorded.id};
+  const receipt=await withTenant(ctx,tx=>reopenOwnTestingExecutionEventTx(tx,ctx,reference));
+  expect(receipt).toMatchObject({...reference,caseId:draft.caseId,assignmentId:assignment.assignmentId,executionId:execution.executionId,versionId:version.versionId,revision:saved.revision,status:'passed',meaning:'human_observation_recorded_not_independently_verified'});
+  expect(await withTenant(ctx,tx=>reopenOwnTestingExecutionEventTx(tx,ctx,reference))).toEqual(receipt);
+  expect(await events()).toEqual(beforeReopen);expect(await owner.db.select().from(s.testRun).where(eq(s.testRun.executionId,execution.executionId))).toHaveLength(1);
   const passed=await checked(ctx,'system_testing');expect(passed.assessment.findings).toContain('human_test_pass_not_independent_verification');
   expect((passed.native.data as {rows:unknown[]}).rows).toContainEqual(expect.objectContaining({assignmentId:assignment.assignmentId,status:'passed'}));
   const unassigned=await evaluate(peer,'system_testing');expect(unassigned).toMatchObject({state:'incomplete',nativeEvidence:'missing'});
