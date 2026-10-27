@@ -8,6 +8,23 @@ Business, financial, authorization, tenant-isolation and data-integrity coverage
 
 
 
+## Installed-byte verification investigation — 27 October 2026
+
+A read-only profile on the unchanged Board staging source `9bf924ff3389fd5f5a41c03d062a40c429216585`, build `CNDVi3xD2mMsepV9c5nta`, found **65.477 seconds** in the complete active compiled/package inventory check. Environment fingerprinting took 0.268s, declared installed-source verification 0.465s, the exact 503-row ledger comparison 2.119s and health 0.033s. Source/build/PID remained unchanged. These are current read-only observations, not a breakdown of the earlier release's unexplained post-activation interval.
+
+A separate pure-manifest profile took only **1.237 seconds** for 12,888 files and 1,124 directories, rejecting directory membership as the main bottleneck. Full `cProfile` instrumentation took 102.714s, of which 95.098s was attributed to file opening; its profiling overhead means those durations must not be compared directly with the uninstrumented release.
+
+An isolated four-reader/eight-pending experiment retained every file hash, permission, file mutation, package recheck and root identity check. Standard-runner [40462814807](https://github.com/StradaverseHub/ai-hr/actions/runs/40462814807), exact `345fead7bf3464ec8353872efd76ecbf0a89ebeb`, passed 417 Node and 49 Python controls, including actual concurrency bounds, every-file-once coverage, reader-error propagation/join and same-byte inode replacement refusal. This was only a tooling check; no application gate or deployment ran.
+
+The full read-only comparison loaded both immutable implementations in memory, never installing the proposal, and checked the same **12,888 files / 746,961,324 bytes** on every observation:
+
+| Order | Original verifier | Four-reader proposal |
+|---|---:|---:|
+| First original, then proposal | 50.702s | 21.200s |
+| Proposal, then original | 11.547s | 11.954s |
+
+The strong warming effect prevents attributing the initial reduction to parallelism; the final warmed original was slightly faster. **The parallel-reader change and provisional v16 policy were withdrawn.** The original experiment commit and raw comparison remain retained; v15 stays the current proposed policy. No claim of a reliable deployment speedup is justified. Future work should assess duplicate arrival/cleanup verification and overlap of immutable byte transport, preserving the before-deletion and after-deletion integrity/health/source proofs rather than caching PASS or dropping coverage.
+
 ## Version15: complete hosted CI measured; end-to-end release still unproved
 
 The database batch cap stays **24 files**, with **two workers**, **2 GiB PostgreSQL**, **JIT on**, the same complete classifier inventory and standard `ubuntu-24.04` jobs. No assertion, test file, migration, browser engine, compiler check or resource guard is removed. The hint-data hash and version15 fingerprint deliberately invalidate old topology receipts.

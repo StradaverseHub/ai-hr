@@ -12,8 +12,6 @@ import tempfile
 import unittest
 from unittest import mock
 import sys
-import threading
-from collections import Counter
 sys.dont_write_bytecode=True
 
 path=Path(__file__).with_name('build-bundle.py')
@@ -230,66 +228,6 @@ class BundleTests(unittest.TestCase):
         self.assertEqual(bundle.verify_directory(self.destination,manifest,self.target,str(self.source)),m)
         after={str(p.relative_to(self.destination)):(p.lstat().st_ino,p.lstat().st_mtime_ns,os.readlink(p) if p.is_symlink() else None if p.is_dir() else p.read_bytes()) for p in self.destination.rglob('*')}
         self.assertEqual(before,after)
-
-    def test_verify_bounds_readers_and_pending_work_and_hashes_every_file_once(self):
-        for i in range(40):(self.source/'.next/static/chunks'/f'part-{i:03}.js').write_text(str(i))
-        m,archive,manifest=self.packed();bundle.unpack(archive,manifest,self.destination,self.target)
-        original_digest=bundle.digest_file;original_pool=bundle.ThreadPoolExecutor
-        lock=threading.Lock();barrier=threading.Barrier(4);counts=Counter()
-        active=peak=peak_queued=started=0;submitted=[]
-        class ObservedPool(original_pool):
-            def __init__(pool,*args,**kwargs):
-                self.assertEqual(kwargs.get('max_workers'),4);super().__init__(*args,**kwargs)
-            def submit(pool,fn,*args,**kwargs):
-                nonlocal peak_queued
-                future=super().submit(fn,*args,**kwargs)
-                submitted.append(future);peak_queued=max(peak_queued,sum(not f.done() for f in submitted))
-                return future
-        def digest(path):
-            nonlocal active,peak,started
-            if not path.is_relative_to(self.destination):return original_digest(path)
-            with lock:
-                active+=1;peak=max(peak,active);started+=1;first_four=started<=4
-                counts[path.relative_to(self.destination).as_posix()]+=1
-            try:
-                if first_four:barrier.wait(timeout=5)
-                return original_digest(path)
-            finally:
-                with lock:active-=1
-        with mock.patch.object(bundle,'ThreadPoolExecutor',ObservedPool),mock.patch.object(bundle,'digest_file',side_effect=digest):
-            self.assertEqual(bundle.verify_directory(self.destination,manifest,self.target,str(self.source)),m)
-        self.assertEqual(peak,4);self.assertLessEqual(peak_queued,8)
-        self.assertEqual(active,0);self.assertTrue(all(f.done() for f in submitted))
-        self.assertEqual(counts,Counter({r['path']:1 for r in m['files']}))
-
-    def test_verify_propagates_reader_failure_after_join_without_deleting_output(self):
-        m,archive,manifest=self.packed();bundle.unpack(archive,manifest,self.destination,self.target)
-        original=bundle.digest_file;active=0;lock=threading.Lock()
-        def fail(path):
-            nonlocal active
-            with lock:active+=1
-            try:
-                if path==self.destination/'server/app/page.js':raise OSError('actual reader fixture failure')
-                return original(path)
-            finally:
-                with lock:active-=1
-        with mock.patch.object(bundle,'digest_file',side_effect=fail):
-            with self.assertRaisesRegex(OSError,'actual reader fixture failure'):
-                bundle.verify_directory(self.destination,manifest,self.target,str(self.source))
-        self.assertEqual(active,0);self.assertEqual((self.destination/'server/app/page.js').read_bytes(),b'module.exports=1;')
-
-    def test_verify_still_refuses_file_replacement_during_worker_hash(self):
-        m,archive,manifest=self.packed();bundle.unpack(archive,manifest,self.destination,self.target)
-        original=bundle.digest_file;selected=self.destination/'server/app/page.js'
-        def replace_after_hash(path):
-            digest=original(path)
-            if path==selected:
-                replacement=path.with_suffix('.replacement');replacement.write_bytes(path.read_bytes());replacement.replace(path)
-            return digest
-        with mock.patch.object(bundle,'digest_file',side_effect=replace_after_hash):
-            with self.assertRaisesRegex(ValueError,'installed file changed while hashing'):
-                bundle.verify_directory(self.destination,manifest,self.target,str(self.source))
-        self.assertEqual(selected.read_bytes(),b'module.exports=1;')
 
     def test_verify_refuses_tampering_without_deleting_or_changing_selected_tree(self):
         m,archive,manifest=self.packed()
