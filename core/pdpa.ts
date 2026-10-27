@@ -12,7 +12,7 @@ import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
  * Admin/DPO-gated via RLS. Atomic — everything runs in one transaction.
  */
 import { eq, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { employeeDependent, employeeStatutoryMy, employment, person, personEmergencyContact, personPhoto } from '../db/schema';
 import { shredSubjectInTx } from './pii-vault';
@@ -51,13 +51,15 @@ export type ErasureReport = {
   shreddedKeys: number;
 };
 
-export async function erasePersonPii(
-  ctx: SessionContext,
-  p: { subjectEmploymentId: string; scope: ErasureScope; reason: string; requestRef: string },
-): Promise<ErasureReport> {
-  p=structuredClone(p);
-  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-  return withTenant(ctx, async (tx) => {
+export type ErasePersonPiiInput={subjectEmploymentId:string;scope:ErasureScope;reason:string;requestRef:string};
+export async function erasePersonPii(ctx:SessionContext,p:ErasePersonPiiInput):Promise<ErasureReport>{
+ const input=structuredClone(p),captured={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+ return withTenant(captured,tx=>erasePersonPiiTx(tx,captured,input));
+}
+/** Actual canonical privacy owner for trusted caller-owned transactions. Same current authority,
+ * admission, protected facts, PII effects and exact audit; no alternate policy or model executor. */
+export async function erasePersonPiiTx(tx:Tx,ctx:SessionContext,p:ErasePersonPiiInput):Promise<ErasureReport>{
+ p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
     await tx.execute(sql`select app.access_workforce_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // The canonical Access/privacy owner admits the original exact nullable effects first. Home's
@@ -206,5 +208,5 @@ export async function erasePersonPii(
     });
 
     return { erased, withheld, shreddedKeys: shredded };
-  });
+
 }

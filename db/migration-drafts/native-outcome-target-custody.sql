@@ -121,7 +121,15 @@ BEGIN
  INTO people,employees FROM public.lc_case c WHERE c.id=ANY(cases) AND c.tenant_id=t;
  SELECT people||coalesce(array_agg(actual.person_id),'{}'::uuid[]) INTO people FROM public.employment actual WHERE actual.id=ANY(employees) AND actual.tenant_id=t;
  IF array_position(people,NULL) IS NOT NULL OR EXISTS(SELECT 1 FROM unnest(people) x WHERE NOT EXISTS(SELECT 1 FROM public.person actual WHERE actual.id=x AND actual.tenant_id=t))
-  OR expiry<=now() OR EXISTS(SELECT 1 FROM app.home_greeting_erasure_intent i WHERE i.xact_id=pg_current_xact_id() AND i.tenant_id=t AND (i.person_id=ANY(people) OR i.employment_id=ANY(employees))) THEN
+  OR expiry<=now() OR EXISTS(SELECT 1 FROM app.home_greeting_erasure_intent i WHERE i.xact_id=pg_current_xact_id() AND i.tenant_id=t AND (i.person_id=ANY(people) OR i.employment_id=ANY(employees)))
+  -- 0586 intentionally deletes greeting intent/effect on deferred completion, including after
+  -- SET CONSTRAINTS IMMEDIATE. Never treat that ephemeral intent as a lasting same-Tx barrier.
+  -- Canonical immutable audited PII events survive, and the canonical Assistant review owner also
+  -- retains its exact top-level transaction barrier (including effects produced in a savepoint).
+  OR EXISTS(SELECT 1 FROM public.domain_event d WHERE d.tenant_id=t AND d.event_type='pii.erased' AND d.aggregate_type='person'
+    AND d.xmin=pg_current_xact_id()::xid AND(d.aggregate_id=ANY(people) OR d.subject_employment_id=ANY(employees)))
+  OR EXISTS(SELECT 1 FROM app.assistant_review_erasure_intent i WHERE i.xact_id=pg_current_xact_id() AND i.tenant_id=t
+    AND(i.person_id=ANY(people) OR i.employment_id=ANY(employees))) THEN
   RAISE EXCEPTION 'Native outcome privacy custody unavailable' USING ERRCODE='42501';END IF;
  IF NOT pg_try_advisory_xact_lock(hashtextextended('native-outcome:v1:'||t::text||':'||u::text,0)) THEN
   RAISE EXCEPTION 'Native outcome privacy custody is busy' USING ERRCODE='55P03';END IF;
@@ -161,6 +169,19 @@ CREATE FUNCTION app.native_outcome_targets_require(p_tenant uuid,p_user uuid,p_p
 $$;
 REVOKE ALL ON FUNCTION app.native_outcome_targets_require(uuid,uuid,uuid,text,uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.native_outcome_targets_require(uuid,uuid,uuid,text,uuid,uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- Own-only metadata discovery filter; not a canonical-source read or effect authority. Missing,
+-- erased, historical unindexed or incomplete captures all return false without target/HR echoes.
+CREATE FUNCTION app.native_outcome_capture_available(p_action text,p_source uuid) RETURNS boolean
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT coalesce(app.principal_snapshot_current() AND EXISTS(
+  SELECT 1 FROM app.native_outcome_source_capture c WHERE c.tenant_id=app.current_tenant_id() AND c.user_id=app.current_user_id()
+   AND c.action=p_action AND c.source_id=p_source AND c.expires_at>now()
+   AND app.native_outcome_targets_require(c.tenant_id,c.user_id,c.person_id,c.action,c.source_id,c.event_id)
+ ),false)
+$$;
+REVOKE ALL ON FUNCTION app.native_outcome_capture_available(text,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.native_outcome_capture_available(text,uuid) TO ai_hr_app;
 --> statement-breakpoint
 -- Every association MUST have a complete source capture; legacy unindexed effects cannot become
 -- new learning evidence. Deleting a capture erases linked learning metadata via the FK, not HR facts.
@@ -299,9 +320,8 @@ BEGIN
   OR EXISTS(SELECT 1 FROM app.native_outcome_source_capture c JOIN app.native_outcome_source_target t ON t.capture_id=c.id WHERE c.tenant_id=i.tenant_id
    AND app._native_outcome_target_person(t.kind,t.target_id,i.person_id,i.employment_id,i.tenant_id)) THEN
   RAISE EXCEPTION 'Native outcome erasure incomplete' USING ERRCODE='42501';END IF;
- -- Do not retain a new person-indexed audit cache after successful erasure. The authoritative
- -- home_greeting_erasure_intent remains the current-xact barrier even after SET CONSTRAINTS
- -- IMMEDIATE; capture explicitly checks it, so retiring this derivative marker cannot reopen writes.
+ -- Retire this derivative marker after proof; capture uses the immutable canonical same-Tx
+ -- pii.erased event and retained Assistant review barrier, not the deleted 0586 greeting intent.
  DELETE FROM app.native_outcome_erasure_intent WHERE xact_id=i.xact_id AND tenant_id=i.tenant_id AND user_id=i.user_id AND person_id=i.person_id;
  RETURN NULL;
 END $$;

@@ -7,7 +7,9 @@ import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant,type Tx} from '../db/client';
 import {hireEmployee} from '../core/org';
-import {erasePersonPii} from '../core/pdpa';
+import {erasePersonPii,erasePersonPiiTx} from '../core/pdpa';
+import {appendEvent,actorOf} from '../db/events';
+import {captureNativeOutcomeTargetsTx} from '../core/module-native-outcome-targets';
 import {retireExpiredAiCustodyTx} from '../core/ai-retention-maintenance';
 import {runAiRetentionTick} from '../scripts/ai-retention-runner';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
@@ -75,6 +77,14 @@ describe('bounded private native outcome retention',()=>{
  });
 });
 describe('admitted native outcome learning privacy cleanup',()=>{
+ it('offers only a complete fresh own capture as metadata, hides foreign/missing/expired/incomplete captures, and offers nothing after erasure',async()=>{
+  const target=await subject(),source=await storageCapture({targets:[{kind:'person',id:target.personId}]}),expired=await storageCapture({expired:true}),other=await seedBase();
+  const available=(b:Base,id:string,action='typed_pay_components.create')=>withTenant(adminCtx(b),tx=>tx.execute<{available:boolean}>(sql`select app.native_outcome_capture_available(${action},${id}::uuid) as available`));
+  expect(await available(base,source.review)).toEqual([{available:true}]);expect(await available(other,source.review)).toEqual([{available:false}]);expect(await available(base,randomUUID())).toEqual([{available:false}]);expect(await available(base,source.review,'leave.apply')).toEqual([{available:false}]);expect(await available(base,expired.review)).toEqual([{available:false}]);
+  await owner.db.execute(sql`delete from app.native_outcome_source_target where capture_id=${source.id}::uuid`);expect(await available(base,source.review)).toEqual([{available:false}]);
+  await withTenant(adminCtx(base),tx=>tx.execute(sql`select app.native_outcome_own_erase()`));expect(await available(base,source.review)).toEqual([{available:false}]);
+ });
+
  it("erases an HR actor's links about a different subject and exact original PERSON after relink, preserving unrelated learning and native receipts",async()=>{
   const original=await subject(),other=await subject(),job=await storageJob();
   const affected=await storageCapture({targets:[{kind:'person',id:original.personId},{kind:'employment',id:original.employmentId}]}),unrelated=await storageCapture({targets:[{kind:'person',id:other.personId}]});
@@ -107,6 +117,27 @@ describe('admitted native outcome learning privacy cleanup',()=>{
    expect(await owner.db.execute(sql`select id,event_type,payload from public.domain_event order by id`)).toEqual(events);expect(await owner.db.execute(sql`select * from app.home_greeting_erasure_intent order by xact_id,tenant_id,user_id,person_id`)).toEqual(intents);
   }finally{release();await holder;}
   expect((await erasePersonPii(adminCtx(base),request)).erased).toContain('assistantOutcomeLearning');expect(await counts()).toEqual({sources:0,targets:0,associations:0});
+ });
+ it('refuses same-Tx privacy resurrection after the actual canonical erasure audit and SET CONSTRAINTS ALL IMMEDIATE',async()=>{
+  const target=await subject(),source=await storageCapture({targets:[{kind:'person',id:target.personId}]}),job=await storageJob();await storageAssociation(source,job,false);
+  const pending=randomUUID(),ctx=adminCtx(base);
+  // Raw privacy-index fixture only: an actor-only pending review conservatively declares an
+  // additional PERSON target through the internal capture API. This is not native action proof.
+  await owner.db.execute(sql`insert into app.assistant_own_leave_review(id,action_kind,tenant_id,user_id,state,intent_digest,reviewed_digest,created_at,expires_at)
+   values(${pending}::uuid,'typed_pay_components.create',${base.tenantId}::uuid,${base.adminUserId}::uuid,'awaiting_confirmation',${'a'.repeat(64)},${'b'.repeat(64)},now(),now()+interval '10 minutes')`);
+  const effect=async(tx:Tx)=>{const event=await appendEvent(tx,{tenantId:base.tenantId,aggregateType:'fictional-custody',aggregateId:pending,eventType:'fictional-custody.created',actor:actorOf(ctx),payload:{}},{returnId:true});await captureNativeOutcomeTargetsTx(tx,ctx,{action:'typed_pay_components.create',sourceId:pending,eventId:event,targets:[{kind:'person',id:target.personId}]});};
+  // Positive control proves these exact capture inputs reach the capture path without erasure;
+  // rollback deliberately preserves the fixture for the actual same-transaction regression.
+  await expect(withTenant(ctx,async tx=>{await effect(tx);throw Error('positive capture rollback');})).rejects.toThrow('positive capture rollback');
+  const before=await counts(),events=await owner.db.execute(sql`select id,event_type,payload from public.domain_event order by id`);
+  await expect(withTenant(ctx,async tx=>{
+   const result=await erasePersonPiiTx(tx,ctx,{subjectEmploymentId:target.employmentId,scope:'financial',reason:'Fictional same transaction privacy request',requestRef:'fictional-after-constraints'});expect(result.erased).toContain('assistantOutcomeLearning');
+   const [audit]=await tx.execute<{n:number}>(sql`select count(*)::integer as n from public.domain_event where event_type='pii.erased' and aggregate_type='person' and aggregate_id=${target.personId}::uuid and tenant_id=${base.tenantId}::uuid and xmin=pg_current_xact_id()::xid`);expect(audit.n).toBe(1);
+   // Runs the real deferred owners: 0586 deletes its ephemeral greeting intent and effect here.
+   await tx.execute(sql`set constraints all immediate`);
+   await effect(tx); // MUST refuse: immutable audit / exact Assistant Tx barrier still applies.
+  })).rejects.toThrow();
+  expect(await counts()).toEqual(before);expect(await owner.db.execute(sql`select id,event_type,payload from public.domain_event order by id`)).toEqual(events);
  });
  it('refuses unadmitted erasure and missing exact pii.erased audit, rolling source/association deletion back; identity-only own erasure is idempotent',async()=>{
   const target=await subject(),source=await storageCapture({targets:[{kind:'person',id:target.personId}]}),job=await storageJob();await storageAssociation(source,job,false);const before=await counts();
