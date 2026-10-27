@@ -63,6 +63,17 @@ describe('Android canonical online command signatures',()=>{
    Buffer.from('3026022100ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551020101','hex')])expect(()=>checkAndroidClockSignature({...f.input,signature})).toThrow();
   for(let length=0;length<f.input.signature.length;length++)expect(()=>checkAndroidClockSignature({...f.input,signature:f.input.signature.subarray(0,length)})).toThrow();
  });
+ it('does not confuse distinct valid ECDSA signatures with distinct command identities',()=>{
+  const f=fixture(),signature=f.input.signature,rLength=signature[3],sOffset=4+rLength,sLength=signature[sOffset+1];
+  const s=BigInt('0x'+signature.subarray(sOffset+2,sOffset+2+sLength).toString('hex'));
+  const opposite=BigInt('0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551')-s;
+  let hex=opposite.toString(16);if(hex.length%2)hex='0'+hex;
+  let encoded=Buffer.from(hex,'hex');if(encoded[0]&128)encoded=Buffer.concat([Buffer.from([0]),encoded]);
+  const pair=Buffer.concat([signature.subarray(2,sOffset),Buffer.from([2,encoded.length]),encoded]);
+  const alternative=Buffer.concat([Buffer.from([0x30,pair.length]),pair]);
+  expect(alternative.equals(signature)).toBe(false);
+  expect(checkAndroidClockSignature({...f.input,signature:alternative})).toEqual(checkAndroidClockSignature(f.input));
+ });
  it('does not present signature validation as a one-use receipt, time, GPS or attendance decision',()=>{
   const f=fixture(),first=checkAndroidClockSignature(f.input),second=checkAndroidClockSignature(f.input);
   expect(second).toEqual(first);for(const field of ['accepted','nextCounter','presence','recordedAt','trustTier'])expect(first).not.toHaveProperty(field);
