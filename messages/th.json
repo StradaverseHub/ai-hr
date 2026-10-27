@@ -18046,7 +18046,16 @@
       "currencyHelp": "การตั้งค่าร่วมใช้นโยบาย Reward Desk สกุล MYR ที่มีอยู่ หน้านี้ไม่มีนโยบายสกุลเงินอื่น",
       "archive": "เก็บการตั้งค่าถาวร",
       "archiveHelp": "การบันทึกโดยไม่เลือกคู่จะหยุดใช้การตั้งค่านี้สำหรับการทบทวนในอนาคต โดยยังเก็บเวอร์ชันและการทบทวนเดิมไว้"
-    }
+    },
+    "returnedTo": {
+      "bu": "Returned to BU CEO",
+      "bg": "Returned to BG CEO"
+    },
+    "returnedBy": "Returned by {actor} on {date}",
+    "returnedReason": "Reason for return",
+    "returnedNext": "Revise the review and submit it again.",
+    "decidedBy": "By {actor}",
+    "aReviewer": "a reviewer"
   },
   "identityEmail": {
     "title": "การส่งอีเมล",

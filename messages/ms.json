@@ -18046,7 +18046,16 @@
       "currencyHelp": "Konfigurasi dikongsi menggunakan dasar Reward Desk MYR sedia ada; dasar mata wang lain tidak ditawarkan di sini.",
       "archive": "Arkibkan konfigurasi",
       "archiveHelp": "Menyimpan tanpa pasangan dipilih menghentikan konfigurasi ini untuk semakan akan datang. Versi tersimpan dan semakan sedia ada dikekalkan."
-    }
+    },
+    "returnedTo": {
+      "bu": "Returned to BU CEO",
+      "bg": "Returned to BG CEO"
+    },
+    "returnedBy": "Returned by {actor} on {date}",
+    "returnedReason": "Reason for return",
+    "returnedNext": "Revise the review and submit it again.",
+    "decidedBy": "By {actor}",
+    "aReviewer": "a reviewer"
   },
   "identityEmail": {
     "title": "Penghantaran e-mel",
