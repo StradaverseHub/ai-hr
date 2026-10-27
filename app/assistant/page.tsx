@@ -1,3 +1,4 @@
+import {AssistantHistoryPrivacy} from '../../components/assistant/history-privacy';
 import {eraseConversationMetadataAction} from './agent-review-actions';
 import {NativeOutcomes,NativeOutcomePrivacy} from '@/components/assistant/native-outcomes';
 import {ImportPreparationPrivacy} from '@/components/assistant/import-privacy';
@@ -43,7 +44,7 @@ import { saveAgentFeedbackAction, eraseAgentFeedbackAction } from './feedback-ac
 export default async function AssistantPage({
   searchParams,
 }: {
-  searchParams: Promise<{ e?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string;importHistory?:string;nativeOutcome?:string;nativeLink?:string }>;
+  searchParams: Promise<{ e?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string;importHistory?:string;nativeOutcome?:string;nativeLink?:string;historyPrivacy?:string }>;
 }) {
   const s = await getSession();
   const t = await getTranslations('assistant');
@@ -57,6 +58,7 @@ export default async function AssistantPage({
     return (
       <div data-tour="intelligence-assistant" className="mx-auto max-w-5xl space-y-5">
         <PageHeader title={t('title')} description={t('description')} />
+      <AssistantHistoryPrivacy status={sp.historyPrivacy}/>
         <Card className="p-6">
           {/* Three different reasons, three different next steps. "No" with no route forward is the one
               thing this must not render. */}
@@ -83,6 +85,7 @@ export default async function AssistantPage({
   return (
     <div data-tour="intelligence-assistant" className="mx-auto max-w-5xl space-y-5">
       <PageHeader title={t('title')} description={t('description')} />
+      <AssistantHistoryPrivacy status={sp.historyPrivacy}/>
       <form action={eraseConversationMetadataAction}><button type="submit" className="min-h-11 text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.conversationGovernance.erase')}</button></form>
       <ErrorBanner message={errorMessage} />
 

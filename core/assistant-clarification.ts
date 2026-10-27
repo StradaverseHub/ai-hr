@@ -1,6 +1,6 @@
 /** A clarification continues only the actual caller's authenticated exchange. Historical model prose
  * and source rows are never reused as authority or copied into the next provider request. */
-import {eq,and,sql} from 'drizzle-orm';
+import {eq,and,isNull,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {assistantExchange} from '../db/schema';
 import {boundNativeOutcomeTransactionTx as boundClarificationReadTx} from './module-native-outcome-bounds';
@@ -32,7 +32,7 @@ export async function ownAssistantClarification(ctx:SessionContext,exchangeId:un
   const fresh={...captured,entitlements:await resolveEntitlementsTx(tx,captured.tenantId)};
   if(!(await mayUseAssistant(fresh,tx)).allowed)return refuse();
   const [row]=await tx.select({id:assistantExchange.id,question:assistantExchange.question,answer:assistantExchange.answer,receipt:assistantExchange.disclosureReceipt})
-   .from(assistantExchange).where(and(eq(assistantExchange.id,id),eq(assistantExchange.appUserId,userId))).limit(1);
+   .from(assistantExchange).where(and(eq(assistantExchange.id,id),eq(assistantExchange.appUserId,userId),isNull(assistantExchange.contentRetiredAt),sql`${assistantExchange.askedAt}>clock_timestamp()-interval '30 days'`)).limit(1);
   if(!row?.answer)return refuse();
   const proof=openAssistantAnswerDisclosure({tenantId:captured.tenantId,userId,exchangeId:row.id,question:row.question,answer:row.answer},row.receipt);
   if(proof?.plan?.mode!=='clarify')return refuse();

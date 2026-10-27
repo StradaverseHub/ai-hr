@@ -9626,6 +9626,8 @@ export const assistantExchange = pgTable(
       .references(() => appUser.id),
     askedAt: timestamp('asked_at', { withTimezone: true }).defaultNow().notNull(),
     question: text('question').notNull(),
+    /** Content is retired without deleting quota/accounting identity. */
+    contentRetiredAt: timestamp('content_retired_at', { withTimezone: true }),
     /** NULL when refused, errored, or still in flight. */
     answer: text('answer'),
     /** Sealed canonical-source fingerprints, bound to owner, exchange and exact question/answer. */
@@ -9655,6 +9657,8 @@ export const assistantExchange = pgTable(
     // one the database actually has, which is the drift a later `db:generate` turns into a spurious
     // migration.
     index('assistant_exchange_user_asked_idx').on(t.tenantId, t.appUserId, t.askedAt.desc()),
+    index('assistant_transcript_expiry').on(t.tenantId,t.askedAt,t.id).where(sql`${t.contentRetiredAt} IS NULL`),
+    check('assistant_exchange_retired_content',sql`${t.contentRetiredAt} IS NULL OR (${t.question}='' AND ${t.answer} IS NULL AND ${t.toolCalls}='[]'::jsonb AND ${t.disclosureReceipt} IS NULL AND ${t.error} IS NULL)`),
     check('assistant_exchange_disclosure_size_ck', sql`${t.disclosureReceipt} IS NULL OR octet_length(${t.disclosureReceipt}) <= 786432`),
     check(
       'assistant_exchange_stop_ck',

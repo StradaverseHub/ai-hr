@@ -1,5 +1,5 @@
 /** Current-user AI workspace read model. No shared cache, provider call or background/effect dispatch. */
-import { desc, eq, sql } from 'drizzle-orm';
+import { and, isNull, desc, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { assistantExchange } from '../db/schema';
 import { assertAiPrincipalTx } from './ai-principal';
@@ -37,7 +37,7 @@ export async function loadAiWorkspace(ctx: SessionContext, options:{includeHisto
       stop: assistantExchange.stop, hitTurnCap: assistantExchange.hitTurnCap,
       toolCalls: assistantExchange.toolCalls, askedAt: assistantExchange.askedAt,
       disclosureReceipt: assistantExchange.disclosureReceipt,
-    }).from(assistantExchange).where(eq(assistantExchange.appUserId, userId))
+    }).from(assistantExchange).where(and(eq(assistantExchange.appUserId, userId),isNull(assistantExchange.contentRetiredAt),sql`${assistantExchange.askedAt}>clock_timestamp()-interval '30 days'`))
       .orderBy(desc(assistantExchange.askedAt), desc(assistantExchange.id)).limit(10):[];
     const history = includeHistory?await withAssistantReadTx(fresh, tx, async session => {
       const replay = workspaceGroundedAnswers(fresh, session,tx);

@@ -18562,6 +18562,13 @@
         "unknown": "Tidak diketahui / belum disahkan",
         "noCandidates": "Belum ada calon perbualan.",
         "metrics": "Betul {correct}; kegagalan keselamatan {security}. p50/p95 {p50}/{p95} ms. Token masuk/keluar {input}/{output}. Kredit akaun {credits}."
+      },
+      "historyPrivacy": {
+        "title": "Sejarah sembang anda",
+        "description": "Tempoh penyimpanan teks sembang ialah 30 hari. Anda boleh memadamnya sekarang walaupun akses Pembantu dimatikan. Bilangan permintaan dan rekod penggunaan kekal; rekod HR anda tidak berubah.",
+        "clear": "Padam teks sembang saya",
+        "retired": "Teks sembang tersimpan anda telah dipadam.",
+        "unavailable": "Sejarah sembang anda tidak dapat dipadam. Sila cuba lagi."
       }
     },
     "denied_unavailable": "Ada sedikit masalah di pihak saya. Sila cuba lagi sebentar nanti.",

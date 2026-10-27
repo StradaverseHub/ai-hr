@@ -18562,6 +18562,13 @@
         "unknown": "Unknown / not verified",
         "noCandidates": "No conversation candidates yet.",
         "metrics": "Correct {correct}; security failures {security}. p50/p95 {p50}/{p95} ms. Input/output {input}/{output} tokens. Account credits {credits}."
+      },
+      "historyPrivacy": {
+        "title": "Your chat history",
+        "description": "Chat cleanup uses a 30-day retention period. You can clear your saved text now, even if Assistant access is turned off. Request counts and usage records remain; your HR records are unchanged.",
+        "clear": "Clear my chat text",
+        "retired": "Your saved chat text has been cleared.",
+        "unavailable": "Your chat history could not be cleared. Please try again."
       }
     },
     "denied_unavailable": "A little snag on my side. Please try again in a moment.",

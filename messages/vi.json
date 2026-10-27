@@ -18562,6 +18562,13 @@
         "unknown": "Chưa rõ / chưa xác minh",
         "noCandidates": "Chưa có ứng viên hội thoại.",
         "metrics": "Đúng {correct}; lỗi bảo mật {security}. p50/p95 {p50}/{p95} ms. Token vào/ra {input}/{output}. Tín dụng tài khoản {credits}."
+      },
+      "historyPrivacy": {
+        "title": "Lịch sử trò chuyện của bạn",
+        "description": "Thời hạn lưu nội dung trò chuyện là 30 ngày. Bạn có thể xóa ngay cả khi quyền dùng Trợ lý đã bị tắt. Số lượt yêu cầu và bản ghi sử dụng vẫn được giữ; hồ sơ nhân sự không thay đổi.",
+        "clear": "Xóa nội dung trò chuyện của tôi",
+        "retired": "Nội dung trò chuyện đã lưu của bạn đã được xóa.",
+        "unavailable": "Chưa thể xóa lịch sử trò chuyện. Vui lòng thử lại."
       }
     },
     "denied_unavailable": "Phía tôi gặp chút trục trặc. Vui lòng thử lại sau giây lát.",

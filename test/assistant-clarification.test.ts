@@ -25,11 +25,11 @@ async function actor(base:Base=b){
  const ctx:SessionContext={...await entitledCtx(base,['employee']),userId,personId:employee.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
  return {ctx,admin,userId};
 }
-async function exchange(ctx:SessionContext,plan:AssistantAnswerPlan|undefined={version:1,mode:'clarify',slot:'period'},question='Which period does my leave question cover?'){
+async function exchange(ctx:SessionContext,plan:AssistantAnswerPlan|undefined={version:1,mode:'clarify',slot:'period'},question='Which period does my leave question cover?',askedAt?:Date){
  const binding:AssistantDisclosureBinding={tenantId:ctx.tenantId,userId:ctx.userId!,exchangeId:randomUUID(),question,answer:terminal};
  const reads=[{name:'employee_profile',input:{},digest:assistantSourceDigest({ok:true,sourcePrivate})}];
  const receipt=sealAssistantDisclosure(binding,reads,plan);expect(receipt).toBeTruthy();
- await owner.db.insert(s.assistantExchange).values({id:binding.exchangeId,tenantId:ctx.tenantId,appUserId:ctx.userId!,question,answer:terminal,disclosureReceipt:receipt,stop:'end'});
+ await owner.db.insert(s.assistantExchange).values({id:binding.exchangeId,tenantId:ctx.tenantId,appUserId:ctx.userId!,question,answer:terminal,disclosureReceipt:receipt,stop:'end',...(askedAt?{askedAt}:{})});
  return {binding,receipt:receipt!};
 }
 const state=async()=>({exchanges:await owner.db.select().from(s.assistantExchange).orderBy(s.assistantExchange.id),
@@ -55,6 +55,11 @@ describe('actual caller-bound Assistant clarification continuation',()=>{
   expect(cross).toEqual([]);
   await refused(other.ctx,owned.binding.exchangeId);await refused(mine.ctx,foreignStored.binding.exchangeId);await refused(mine.ctx,randomUUID());
   expect(await state()).toEqual(before);
+ });
+ it('refuses an expired 30-day conversation before delayed cleanup without deleting its accounting row',async()=>{
+  const {ctx}=await actor(),stored=await exchange(ctx,undefined,undefined,new Date(Date.now()-31*24*60*60*1000)),before=await state();
+  await refused(ctx,stored.binding.exchangeId);expect(await state()).toEqual(before);
+  expect(before.exchanges.find(row=>row.id===stored.binding.exchangeId)?.question).toBe(stored.binding.question);
  });
  it('rechecks actual Assistant grant even when a caller retains its valid sealed own history',async()=>{
   const {ctx,admin,userId}=await actor(),stored=await exchange(ctx);

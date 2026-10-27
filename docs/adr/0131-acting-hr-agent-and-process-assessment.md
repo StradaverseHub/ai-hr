@@ -2965,3 +2965,16 @@ notice does not suppress a separately permitted non-null projected field. Hidden
 remain unavailable, and partial-card explanations remain refused. The reply retains its withholding
 notice and does not turn partial records into comparison tables. New regression cases are authored;
 runtime verification remains pending the exact-candidate development run.
+
+### Owner decision — chat-content retirement, 28 October 2026
+
+The owner selected **30 days** for automatic raw assistant chat-content retirement, with an
+identity-scoped own-clear action also available after Assistant permission revocation. Retirement
+must clear the question, raw answer, tool-input audit and disclosure receipt together. Exchange
+identity, timestamps, tokens, request counts, financial accounting and canonical HR records remain;
+deleting exchange rows would incorrectly reset the existing daily-question count. Original actor
+PERSON custody must use actual source evidence; historical unknown links and arbitrary free-text
+mentions are not invented identity evidence. In-flight conversation/evaluation ownership must be
+invalidated so a response finishing after retirement cannot recreate erased content or metadata.
+Source integration and focused checks are in progress; no migration application, runtime erasure
+proof or final-release acceptance follows from this decision alone.

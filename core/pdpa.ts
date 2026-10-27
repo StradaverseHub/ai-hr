@@ -1,3 +1,4 @@
+import {redactAssistantHistoryForEmploymentTx} from './assistant-history-retention';
 import {boundNativeOutcomeTransactionTx} from './module-native-outcome-bounds';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 /**
@@ -87,6 +88,7 @@ export async function erasePersonPiiTx(tx:Tx,ctx:SessionContext,p:ErasePersonPii
     // from the subject. This joins the existing admitted erasure and exact deferred pii.erased audit,
     // removes learning metadata only, and never touches canonical/statutory records.
     const [outcomes]=await tx.execute<{cleared:number}>(sql`select app.native_outcome_targets_redact(${p.subjectEmploymentId}::uuid) as cleared`);
+    const transcript=await redactAssistantHistoryForEmploymentTx(tx,ctx,p.subjectEmploymentId);
     const [conversation]=await tx.execute<{cleared:number}>(sql`select app.assistant_conversation_metadata_redact(${p.subjectEmploymentId}::uuid) as cleared`);
     if(!conversation||!Number.isSafeInteger(conversation.cleared)||conversation.cleared<0)throw new Error('Conversation metadata erasure unavailable.');
     if(!outcomes||!Number.isSafeInteger(outcomes.cleared)||outcomes.cleared<0)throw new Error('Assistant outcome erasure unavailable.');
@@ -97,6 +99,7 @@ export async function erasePersonPiiTx(tx:Tx,ctx:SessionContext,p:ErasePersonPii
     if (reviews.cleared > 0) erased.push('assistantPreparedReviews');
     if(outcomes.cleared>0)erased.push('assistantOutcomeLearning');
     if(conversation.cleared>0)erased.push('assistantConversationLearning');
+    if(transcript>0)erased.push('assistantChatContent');
     const withheld: { field: string; reason: string }[] = [];
     for (const f of PII_FIELDS) {
       if (!inScope(f, p.scope)) continue;

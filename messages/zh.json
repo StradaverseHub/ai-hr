@@ -18562,6 +18562,13 @@
         "unknown": "未知／尚未验证",
         "noCandidates": "暂无对话候选方案。",
         "metrics": "正确 {correct}；安全失败 {security}。p50/p95 为 {p50}/{p95} 毫秒。输入／输出 {input}/{output} 个令牌。账号额度费用 {credits}。"
+      },
+      "historyPrivacy": {
+        "title": "你的聊天记录",
+        "description": "聊天文字的保留期限为30天。即使助手访问权限已关闭，你仍可现在清除文字。请求次数和用量记录会保留，人事记录不受影响。",
+        "clear": "清除我的聊天文字",
+        "retired": "已清除你保存的聊天文字。",
+        "unavailable": "暂时无法清除聊天记录，请重试。"
       }
     },
     "denied_unavailable": "我这边遇到了小状况，请稍后再试。",
