@@ -4,12 +4,14 @@
  * No provider, certificate or model quality/activation claim is established by fixture responses.
  */
 import {randomUUID} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {saveAiProviderConfig,resolveActiveAiConfig,setActiveProvider} from '../core/ai-config';
 import {bindStrictAiSpendRoot} from '../core/ai-governance';
+import {AI_SPEND_CONTROL_REFUSALS} from '../core/ai-spend-capability';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {setAiSpendBudget,aiSpendStatusTx} from '../core/ai-spend-management';
 import {setAiAllowance,setAiFeature} from '../core/ai-management';
@@ -141,6 +143,10 @@ describe('actual optional USD policy with mandatory nonmoney controls',()=>{
   });
   // Without the restore these read 500/5000: the owners' bounds would govern the rest of the caller's transaction.
   expect(settings.map(row=>({name:row.name,setting:Number(row.setting)}))).toEqual([{name:'lock_timeout',setting:10000},{name:'statement_timeout',setting:30000}]);
+ });
+ it('types exactly the spend-control RAISE texts the migrations emit, so a renamed refusal cannot silently fall through',()=>{
+  const source=['0651_ai_spend_controls','0654_ai_optional_usd_policy'].map(name=>readFileSync(`db/migrations/${name}.sql`,'utf8')).join('\n');expect(source.length).toBeGreaterThan(20000);
+  for(const text of [...AI_SPEND_CONTROL_REFUSALS,'AI spend task paused'])expect(source.includes(`RAISE EXCEPTION '${text}'`),text).toBe(true);
  });
  it('completes real candidate readiness and explicit one-use activation with three mocked HTTP calls and no monetary certificate',async()=>{
   http();const options=readOpenRouterOptions({version:1,routing:{allowedProviders:['approved-a'],allowFallbacks:false,sort:'latency'}});await saveAiProviderConfig(a,{provider:'openrouter',model:'fictional/model',apiKey:'fictional-only-key',providerOptions:options});

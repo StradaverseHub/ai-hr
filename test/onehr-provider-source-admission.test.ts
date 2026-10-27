@@ -2,6 +2,7 @@
  * provider transport and its explicitly fictional monetary certificate are mocked.
  * No live provider/key, forged governance, source permissions or receipts. */
 import {randomUUID} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
@@ -12,6 +13,9 @@ import * as moduleGate from '../core/module-gate';
 import {createArticle} from '../core/knowledge-base';
 import {resolveActiveAiConfig} from '../core/ai-config';
 import {bindPerformanceMessageSpend} from '../core/ai-spend-task';
+import {AiSpendControlError} from '../core/ai-spend-capability';
+import {AiAllowanceError} from '../lib/ai/types';
+import {performanceAiErrorMessage} from '../packs/performance/onehr/ai-refusal';
 import {installSyntheticSpendCapability} from './ai-spend-fixture';
 import {openaiAdapter} from '../lib/ai/providers/openai';
 import {hireEmployee,setReportingLine} from '../core/org';
@@ -116,9 +120,29 @@ describe('legacy rootless Performance drafting under the optional USD policy',()
  });
  it('a zero USD cap is still a configured cap that refuses the rootless call; with no cap configured the same call is admitted',async()=>{
   await owner.db.execute(sql`update app.ai_spend_budget set monthly_nanos=0,root_nanos=null where tenant_id=${b.tenantId}::uuid and kind='tenant'`);
-  await expect(call('narrative')).rejects.toMatchObject({cause:expect.objectContaining({code:'P0001',message:'This monetary limit requires a native AI task root'})});
+  await expect(call('narrative')).rejects.toBeInstanceOf(AiSpendControlError);
   expect(openaiAdapter.generate).not.toHaveBeenCalled();expect(await runs()).toEqual([]);
   await withoutUsdCap();await call('narrative');expect(openaiAdapter.generate).toHaveBeenCalled();const observed=await runs();expect(observed.length).toBeGreaterThan(0);expect(observed.every(row=>row.state==='completed')).toBe(true);
+ });
+ // Owner rule: the user sees the product's brief, translated AI refusal: no raw error, SQL, provider or internal
+ // detail, and nothing that confirms a hidden record. The action layer maps through performanceAiErrorMessage.
+ const LEAK=/Failed query|params:|select |from app\.|ai_spend|P0001|monetary|native AI task root|performance_[a-z]+|Unpriced|openai|fictional-model/i;
+ const shownRefusals=()=>['en','ms','ta','th','vi','zh'].map(locale=>(JSON.parse(readFileSync(`messages/${locale}.json`,'utf8')) as {assistant:{err_ai_control:string}}).assistant.err_ai_control);
+ it.each(['narrative','development','career'] as const)('%s refused by a USD cap reaches its user only as the translated AI control refusal, with no SQL or internal text',async kind=>{
+  await prepare(kind);const refusal=await call(kind).then(()=>null,(error:unknown)=>error);
+  // Before the typed mapping this was Drizzle's 'Failed query: select monetary_required from app.ai_spend_policy_context(...) params: performance_...'.
+  expect(refusal).toBeInstanceOf(AiSpendControlError);expect(refusal).toBeInstanceOf(AiAllowanceError);expect((refusal as Error).cause).toBeUndefined();expect((refusal as Error).message).not.toMatch(LEAK);
+  const sentences=shownRefusals();expect(sentences).toHaveLength(6);
+  for(const sentence of sentences){expect(sentence.trim().length).toBeGreaterThan(10);expect(sentence).not.toMatch(LEAK);expect(await performanceAiErrorMessage(refusal,key=>{expect(key).toBe('err_ai_control');return sentence;})).toBe(sentence);}
+  expect(openaiAdapter.generate).not.toHaveBeenCalled();expect(await runs()).toEqual([]);
+ });
+ it('competency insight keeps its designed non-AI summary under a USD cap, with no transport and no raw text',async()=>{
+  await f.complete();const insight=await perf.getAssessmentCompetencyInsight(mgr,reviewId,{generate:true});expect(insight).toMatchObject({source:'plain'});expect(JSON.stringify(insight)).not.toMatch(/Failed query|params:|app\.ai_spend|P0001|monetary limit/i);
+  expect(openaiAdapter.generate).not.toHaveBeenCalled();expect(await runs()).toEqual([]);
+ });
+ it('colleague draft keeps its designed guidance reply under a USD cap, with no transport and no raw text',async()=>{
+  const id=await assignedFeedback(),reply=await perf.sendFeedbackMessage(peers[0].ctx,reviewId,id,null,randomUUID(),'Clear follow-through in our agreed delivery.','draft');
+  expect(JSON.stringify(reply)).not.toMatch(/Failed query|params:|app\.ai_spend|P0001|monetary limit/i);expect(openaiAdapter.generate).not.toHaveBeenCalled();expect(await runs()).toEqual([]);
  });
 });
 

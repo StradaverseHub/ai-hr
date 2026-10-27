@@ -9,7 +9,7 @@ import {saveAiProviderConfig,setActiveProvider,resolveActiveAiConfig} from '../c
 import {resolveAiProviderCandidateSnapshotTx} from '../core/ai-provider-snapshot';
 import {aiSpendStatusTx} from '../core/ai-spend-management';
 import {governedAiConfig,bindStrictAiSpendRoot} from '../core/ai-governance';
-import {resolveReviewedAiSpendCapabilityTx,withReviewedAiSpendDispatch} from '../core/ai-spend-capability';
+import {AiSpendControlError,resolveReviewedAiSpendCapabilityTx,withReviewedAiSpendDispatch} from '../core/ai-spend-capability';
 import {aiSpendConfigurationDigest} from '../lib/ai/spend-receipt';
 import {FIXED_FREE_CARRIER_SOURCE_DIGEST,FIXED_FREE_INVARIANTS} from '../lib/ai/providers/openrouter-fixed-free-carrier';
 import {openrouterAdapter,createOpenRouterAdapter} from '../lib/ai/providers/openrouter';
@@ -76,7 +76,8 @@ describe('conditional private reviewed monetary carrier',()=>{
   expect(await owner.db.execute(sql`select run_id from app.ai_spend_reservation where tenant_id=${base.tenantId}::uuid`)).toEqual([]);
   expect(await owner.db.execute<{root:string;money_mode:string}>(sql`select root_id::text as root,money_mode from app.ai_spend_admission_scope where tenant_id=${base.tenantId}::uuid`)).toEqual([{root:missing.candidate!.id,money_mode:'uncapped'}]);
   // The run stays unpriced debt: a later cap on this root refuses instead of treating it as zero.
-  await cap();await expect(generateDraft(await configuration(missing),args)).rejects.toMatchObject({cause:expect.objectContaining({code:'P0001',message:'Unpriced AI history requires monetary review'})});expect(fetcher).toHaveBeenCalledOnce();
+  await cap();await expect(generateDraft(await configuration(missing),args)).rejects.toBeInstanceOf(AiSpendControlError);expect(fetcher).toHaveBeenCalledOnce();
+  await expect(withTenant(ctx,tx=>tx.execute(sql`select * from app.ai_spend_policy_context('provider_evaluation',${missing.candidate!.id}::uuid,'evaluation')`))).rejects.toMatchObject({cause:expect.objectContaining({code:'P0001',message:'Unpriced AI history requires monetary review'})});
  });
  it.each(['expired','staleSource'] as const)('refuses actual private %s certification before network',async kind=>{const f=await reviewed({[kind]:true}),fetcher=transport();await expect(generateDraft(await configuration(f.snapshot),args)).rejects.toThrow();expect(fetcher).not.toHaveBeenCalled();});
  it('binds signer challenge to the actual app principal/tenant and keeps historical certificate identity immutable',async()=>{
