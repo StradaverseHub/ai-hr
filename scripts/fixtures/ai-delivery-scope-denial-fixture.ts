@@ -31,7 +31,7 @@ export async function populateAiDeliveryScopeDenials(context:AiDeliveryFixtureCo
  const primaryEmploymentIds=()=>c.owner.db.select({id:s.employment.id}).from(s.employment).where(and(eq(s.employment.tenantId,c.tenantId),eq(s.employment.companyId,c.companyId))).orderBy(s.employment.id);
  const primaryEmploymentBefore=await primaryEmploymentIds();
  const year=Number(c.today.slice(0,4)),hiredOn=String(year-1)+'-01-01',token=randomUUID();
- const [annual]=await c.owner.db.select({id:s.leaveType.id,code:s.leaveType.code,template:s.leaveType.defaultTemplateLineageId}).from(s.leaveType).where(and(eq(s.leaveType.tenantId,c.tenantId),eq(s.leaveType.id,selected.annualTypeId))).limit(1);
+ const [annual]=await c.owner.db.select({id:s.leaveType.id,code:s.leaveType.code,template:s.leaveType.defaultEntitlementTemplateLineageId}).from(s.leaveType).where(and(eq(s.leaveType.tenantId,c.tenantId),eq(s.leaveType.id,selected.annualTypeId))).limit(1);
  requireFact(annual?.code==='ANNUAL'&&annual.template!==null);
  async function counters(tenantId:string,employmentId?:string){
   const [requests]=await c.owner.db.select({n:count()}).from(s.leaveRequest).where(and(eq(s.leaveRequest.tenantId,tenantId),employmentId?eq(s.leaveRequest.employmentId,employmentId):undefined));
