@@ -1872,3 +1872,17 @@ The subsequent offline design is in `mobile-offline-attendance-protocol.md`. The
 migration-number reservation request to the coordinator; it has been received, but the offline
 prefix/index/timestamp remain explicitly unallocated until central confirmation. The held Android
 custody draft and all other reservations remain untouched. No migration apply or rollout is implied.
+
+### Offline exchange timing prerequisite (27 October 2026)
+
+Checkpoint `5f7179771fbe4f53c27d298d18cd46eaa3d9e0e8` passed
+[40519648838](https://github.com/StradaverseHub/ai-hr/actions/runs/40519648838):
+all thirteen elapsed/continuity/privacy cases, root TypeScript and strict native TypeScript.
+Root compilation took 4:12.16, maximum RSS 7,638,524 KiB, exit 0. The new helper combines the
+response-to-event lower bound with original-request-to-event upper bound. It includes network/server
+uncertainty rather than treating response receipt as the issuance instant. It ignores wall-time
+changes, rejects reversed/source-inconsistent samples, keeps iPhone restart continuity unknown,
+requires matching local Android boot evidence across process restart, and exports no raw clock,
+boot or runtime identifiers. Results remain explicitly unverified elapsed evidence. Context
+issuance/nonce binding, time adjudication, offline claim storage and physical measurements remain
+unfinished; this helper enables none of them.

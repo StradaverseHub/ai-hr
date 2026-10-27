@@ -62,6 +62,16 @@ Alternatives rejected:
 | Mark every received claim clocked-in | Receipt/review and authoritative punch are different facts |
 | Write a second payroll/day aggregate | Duplicates the existing canonical calculation owner |
 
+The first portable claim byte contract is `lib/mobile-offline-clock.ts`. It binds the complete scope,
+server-context digest, exact permit/nonce, context-local sequence/previous digest, original command,
+photo digest, claimed wall instant, reported elapsed interval and source/app facts. Its current
+32-slot context limit is a protocol resource bound, not an attendance policy or authorization.
+Unknown/expired time can be represented for a later named review/refusal; the parser does not
+apply the company's acceptance window. Local verification markers and raw native clock/boot/runtime
+snapshots are deliberately absent from the wire shape. Context issuance, trusted issuer registry,
+permit consumption, proof ordering, persistence and adjudication remain mandatory implementation
+steps; this parser exposes no route or offline business effect.
+
 ## Context, trust and local storage
 
 Issue context only after fresh own-employment authorization and reconciled device-key ownership.
