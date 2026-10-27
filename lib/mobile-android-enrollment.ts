@@ -10,6 +10,13 @@ export type AndroidEnrollmentContext=z.infer<typeof AndroidEnrollmentContext>;
 const spkiReference=z.string().min(88).max(344).refine(value=>value.trim()===value)
  .regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$/)
  .refine(value=>{const size=value.length/4*3-(value.endsWith('==')?2:value.endsWith('=')?1:0);return size>=64&&size<=256;});
+const certificate=z.string().min(4).max(21848).refine(value=>value.trim()===value)
+ .regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$/)
+ .refine(value=>value.length/4*3-(value.endsWith('==')?2:value.endsWith('=')?1:0)<=16384);
+export const AndroidEnrollmentKeyArtifact=z.object({publicKeySpki:spkiReference,certificateChain:z.array(certificate).min(2).max(8)}).strict()
+ .refine(value=>JSON.stringify(['aihr.android.enrollment.proof',1,value.publicKeySpki,value.certificateChain]).length<=32768);
+export const AndroidEnrollmentPreparation=z.object({protocol:z.literal(2),state:z.enum(['active','expired','consumed']),context:AndroidEnrollmentContext,
+ clientDataHash:z.string().length(44).regex(/^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$/),alias:z.string().length(69).regex(/^aihr_[0-9a-f]{64}$/)});
 /** Public-key receipt reference only. Parsing these bytes never verifies a key or certificate. */
 export function androidNativeKeyReferenceData(publicKeySpki:string):string{
  return JSON.stringify(['aihr.android.native-key',1,spkiReference.parse(publicKeySpki)]);

@@ -1,6 +1,7 @@
 /** Integrity protocol v1. A capability or prepared proof is never accepted attendance. */
 import {z} from 'zod';
 import {KeyEnrollmentContext} from './mobile-key-enrollment';
+import {AndroidEnrollmentPreparation,AndroidEnrollmentKeyArtifact} from './mobile-android-enrollment';
 import {OnlineClockIntegrityData} from './mobile-clock-integrity';
 import {ClockReceipt} from './mobile-api/contract';
 const uuid=z.string().uuid().transform(value=>value.toLowerCase());
@@ -18,16 +19,17 @@ export const IntegrityKeyReceipt=z.object({keyId:uuid,originChallengeId:uuid,pla
   nativeKeyBinding:z.string().length(64).regex(/^[a-f0-9]{64}$/),
   createdAt:z.string().datetime(),revokedAt:z.string().datetime().nullable()});
 /** Explicit v2 recovery only. V1 remains an Apple-only wire contract. */
-export const IntegrityKeyReceiptV2=z.discriminatedUnion('platform',[
-  IntegrityKeyReceipt,
-  IntegrityKeyReceipt.extend({platform:z.literal('android'),environment:z.null(),proofKind:z.literal('google_key_generation_proof')}),
-]);
+export const IntegrityAndroidKeyReceipt=IntegrityKeyReceipt.extend({platform:z.literal('android'),environment:z.null(),proofKind:z.literal('google_key_generation_proof')});
+export const IntegrityKeyReceiptV2=z.discriminatedUnion('platform',[IntegrityKeyReceipt,IntegrityAndroidKeyReceipt]);
 export const IntegrityRefused=z.object({outcome:z.literal('refused'),code:z.enum(['subject_unavailable','key_unavailable','key_exists','key_limit',
   'binding_conflict','challenge_unavailable','invalid_proof','clock_conflict','corrected_day','location_required','outside_geofence','photo_required','photo_invalid','device_required']),
   locationReason:z.enum(['location_required','invalid_location','poor_accuracy','no_assigned_site','outside_site']).optional()});
 export const IntegrityUnavailable=z.object({outcome:z.literal('unavailable'),code:z.enum(['not_configured','configuration_unavailable','metadata_unavailable','proof_unavailable','module_unavailable'])});
 const state=z.enum(['active','expired','consumed']);
 const result=<S extends z.ZodType>(success:S)=>z.union([success,IntegrityRefused,IntegrityUnavailable]);
+export const IntegrityAndroidEnrollmentPrepared=result(AndroidEnrollmentPreparation.extend({outcome:z.literal('prepared')}));
+export const IntegrityAndroidEnrollmentProof=AndroidEnrollmentKeyArtifact.safeExtend({requestId:uuid,appInstallationId:uuid,challengeId:uuid}).strict();
+export const IntegrityAndroidEnrollmentResult=result(z.object({outcome:z.literal('enrolled'),key:IntegrityAndroidKeyReceipt}));
 // Discovery may add feature names. Clients act only on understood names; no name itself grants trust.
 // Response envelopes strip additive fields for older supported apps; signed contexts stay version-fixed.
 export const IntegrityCapabilities=result(z.object({outcome:z.literal('capabilities'),protocol:z.literal(1),platform:z.literal('ios'),
