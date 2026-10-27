@@ -8,6 +8,9 @@ export const FOCUSED_REPAIR_BRANCH='claude/letters-repair-controller-20261027';
 export const FOCUSED_TOOLING_CONTROLLER='abd8d5b462e984f80cb5bdf8ef471d048fe7437b';
 export const FOCUSED_TOOLING_BRANCH='codex/letters-repair-tooling-20261027';
 export const FOCUSED_TOOLING_SHA256='d19bf2ee709c909918654918652c68f248e16ca9ab569cb53eee5706c5b67270';
+export const FOCUSED_PINNED_CONTROLLER='9c7261e0990b89e094dc69e8423a731289766e84';
+export const FOCUSED_PINNED_BRANCH='claude/bonus-node22-pinned-controller-20261027';
+export const FOCUSED_PINNED_SHA256='f48fd50a8147fb13c0b0599011478a519e98aacf1895af7e4da47a1f4a2e0e8f';
 const path='.github/workflows/alpha-focused-checks.yml';
 export function withIndependentRepairQueue(before){
  assert(typeof before==='string'&&Buffer.byteLength(before)<128*1024,'Bounded trusted focused workflow required');
@@ -15,8 +18,17 @@ export function withIndependentRepairQueue(before){
  assert(before.split(old).length===2,'Exactly one original concurrency declaration required');
  return before.replace(old,'  group: alpha-focused-${{ inputs.candidate_ref }}-${{ github.run_id }}\n');
 }
+export function withPinnedRepairRuntime(before){
+ const old='with: {capacity_profile: "${{ github.run_attempt == 1 && \'bounded-suite-setup\' || \'legacy\' }}"}';
+ assert(typeof before==='string'&&before.split(old).length===2,'Exactly one original suite runtime required');
+ return before.replace(old,'with: {node: \'22.23.3\', capacity_profile: "${{ github.run_attempt == 1 && \'bounded-suite-setup\' || \'legacy\' }}"}');
+}
 export function validateReviewedFocusedControllerProof(proof,{controller,branch}){
  const {proofSha256,...body}=proof??{};
+ if(controller===FOCUSED_PINNED_CONTROLLER){
+  assert(proofSha256===installHash(installJson(body))&&body.kind==='EXACT_FOCUSED_NODE_PIN_SOURCE_NOT_RELEASE'&&body.format===1&&body.parent===FOCUSED_TOOLING_CONTROLLER&&body.controller===controller&&body.branch===FOCUSED_PINNED_BRANCH&&branch===body.branch&&body.path===path&&body.afterSha256===FOCUSED_PINNED_SHA256&&body.onlyNodeVersionPinned===true&&body.releaseAuthorized===false&&/^[a-f0-9]{64}$/.test(body.beforeSha256),'Exact independently reconstructed Node pin proof required');return proof;
+ }
+
  if(controller===FOCUSED_TOOLING_CONTROLLER){
   assert(proofSha256===installHash(installJson(body))&&body.format===1&&body.kind==='EXACT_FOCUSED_TOOLING_CONTROLLER_SOURCE_NOT_RELEASE'
    &&body.parent===FOCUSED_REPAIR_CONTROLLER&&body.controller===controller&&body.branch===FOCUSED_TOOLING_BRANCH&&branch===body.branch
@@ -32,10 +44,20 @@ export function validateReviewedFocusedControllerProof(proof,{controller,branch}
 }
 /** Authenticate actual immutable source; never accept a caller's self-hashed proof as source authority. */
 export function proveReviewedFocusedController({repository,controller,branch}){
+ const pinned=controller===FOCUSED_PINNED_CONTROLLER&&branch===FOCUSED_PINNED_BRANCH;
  const tooling=controller===FOCUSED_TOOLING_CONTROLLER&&branch===FOCUSED_TOOLING_BRANCH;
- assert(tooling||(controller===FOCUSED_REPAIR_CONTROLLER&&branch===FOCUSED_REPAIR_BRANCH),'Unreviewed focused controller');
+ assert(pinned||tooling||(controller===FOCUSED_REPAIR_CONTROLLER&&branch===FOCUSED_REPAIR_BRANCH),'Unreviewed focused controller');
  const git=(...args)=>execFileSync('git',['-C',repository,...args],{encoding:'utf8',maxBuffer:2*1024**2,timeout:10000}).trim();
  assert(['https://github.com/stradaversehub/ai-hr.git','https://github.com/stradaversehub/ai-hr'].includes(git('remote','get-url','origin').toLowerCase()),'Foreign source repository');
+ if(pinned){
+  proveReviewedFocusedController({repository,controller:FOCUSED_TOOLING_CONTROLLER,branch:FOCUSED_TOOLING_BRANCH});
+  assert(git('rev-parse',controller+'^')===FOCUSED_TOOLING_CONTROLLER&&git('diff','--name-only',FOCUSED_TOOLING_CONTROLLER,controller)===path,'Node pin changed unrelated controller inputs');
+  assert(/^100644 blob [a-f0-9]{40}\t/.test(git('ls-tree',controller,'--',path)),'Regular frozen Node pin source required');
+  const source=ref=>execFileSync('git',['-C',repository,'show',ref+':'+path],{encoding:'utf8',maxBuffer:128*1024}),before=source(FOCUSED_TOOLING_CONTROLLER),after=source(controller);
+  assert(withPinnedRepairRuntime(before)===after&&installHash(after)===FOCUSED_PINNED_SHA256,'Only the exact test Node runtime may change');
+  const body={format:1,kind:'EXACT_FOCUSED_NODE_PIN_SOURCE_NOT_RELEASE',parent:FOCUSED_TOOLING_CONTROLLER,controller,branch,path,beforeSha256:installHash(before),afterSha256:installHash(after),onlyNodeVersionPinned:true,releaseAuthorized:false};
+  return validateReviewedFocusedControllerProof({...body,proofSha256:installHash(installJson(body))},{controller,branch});
+ }
  if(tooling){
   proveReviewedFocusedController({repository,controller:FOCUSED_REPAIR_CONTROLLER,branch:FOCUSED_REPAIR_BRANCH});
   assert(git('rev-parse',controller+'^')===FOCUSED_REPAIR_CONTROLLER,'Unexpected tooling controller parent');
