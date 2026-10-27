@@ -5,6 +5,8 @@
  * Native verifier must be createAiDeliveryEmployeeImportNativeReadback (or independently reviewed
  * equivalent actual fresh app-role implementation), NEVER an expected-facts echo. Private input and
  * returned callback facts must not be included in public reports. One fresh fixture per source mode. */
+import {createRequire} from 'node:module';
+import {resolve} from 'node:path';
 const fail=code=>{throw Error('assistant_employee_import_experience:'+code);};
 const requireFact=(condition,code)=>{if(!condition)fail(code);};
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
@@ -39,7 +41,9 @@ export async function runAssistantEmployeeImportEnglishExperience({page,fixture,
    if(sourceMode==='xlsx'){
     // Generated source has exactly the SAME messy original cells. No supplemented date, salary,
     // department or employment type is smuggled into a rewritten workbook.
-    const imported=await import('xlsx'),xlsx=imported.default??imported;
+    // Approved controller proves cwd is the exact clean SOURCE checkout; automation has no deps.
+    // Resolve this one literal package there, never a caller path/module/URL.
+    const xlsx=createRequire(resolve(process.cwd(),'package.json'))('xlsx');
     const book=xlsx.utils.book_new(),sheet=xlsx.utils.aoa_to_sheet([['Employee ID','Full Name','Personal Email','Join Date','Unresolved Heading'],['AI-IMPORT-NEW','Fictional Imported Human','fictional-import@example.test','','human must map or exclude']]);xlsx.utils.book_append_sheet(book,sheet,'Messy source');buffer=Buffer.from(xlsx.write(book,{type:'buffer',bookType:'xlsx'}));
    }
    const chooser=page.waitForEvent('filechooser');await page.getByRole('button',{name:/Drop a file here or click to browse/}).click();await(await chooser).setFiles({name:'fictional-messy-employees.'+sourceMode,mimeType:sourceMode==='csv'?'text/csv':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer});
