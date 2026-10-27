@@ -1,0 +1,5 @@
+import test from'node:test';import assert from'node:assert/strict';import{validateTypeRepairPlan}from'./verify-type-repair.mjs';import{operatorRelease}from'./operator-release.mjs';
+const valid=()=>({originalCandidate:'a'.repeat(40),compilerCandidate:'b'.repeat(40),originalController:'c'.repeat(40),ciBaseline:'d'.repeat(40),originalRunId:1,compilerRunId:2,buildRunId:3});
+test('exact private plan pins three separate original evidence sources',()=>{const p=valid();assert.equal(validateTypeRepairPlan(p),p);});
+for(const[name,change]of[['symbolic ref',p=>p.ciBaseline='alpha'],['run path injection',p=>p.buildRunId='3/jobs'],['same origin',p=>p.compilerRunId=1],['extra capability',p=>p.command='deploy anything'],['relative cache',p=>p.buildPrefetchDirectory='../other']])test('refuses '+name,()=>{const p=valid();change(p);assert.throws(()=>validateTypeRepairPlan(p));});
+test('unknown operator capability refuses before importing candidate or opening SSH',async()=>{await assert.rejects(operatorRelease({candidatePath:'/private/tmp/nonexistent-private-candidate',evidenceProtocol:{kind:'unreviewed'}}),/Unknown explicit evidence protocol/);});
