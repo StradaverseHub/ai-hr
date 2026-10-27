@@ -86,6 +86,21 @@ describe('automatic 30-day raw transcript retirement through operator maintenanc
   await expect(withTenant(adminCtx(base),tx=>retireExpiredAiCustodyTx(tx))).rejects.toThrow('AI retention maintenance could not be confirmed');
   expect(await exchanges()).toEqual(before);
  });
+ it('captures no identity for an accounting-only row the app role inserts already retired; a normal app-role row still captures one',async()=>{
+  const born=randomUUID(),normal=randomUUID();
+  // Born-retired: admitted question whose content could not be kept. Aged past 30 days so every
+  // retirement queue would see it if it selected anything but content_retired_at IS NULL.
+  await withTenant(adminCtx(base),async tx=>{
+   await tx.execute(sql`insert into public.assistant_exchange(id,tenant_id,app_user_id,asked_at,question,answer,tool_calls,disclosure_receipt,error,content_retired_at)
+    values(${born}::uuid,${base.tenantId}::uuid,${base.adminUserId}::uuid,clock_timestamp()-interval '31 days','',null,'[]'::jsonb,null,null,clock_timestamp())`);
+   await tx.execute(sql`insert into public.assistant_exchange(id,tenant_id,app_user_id,question) values(${normal}::uuid,${base.tenantId}::uuid,${base.adminUserId}::uuid,'Fictional kept question')`);
+  });
+  expect(await identities(born)).toBe(0);expect(await identities(normal)).toBe(1);
+  const before=await exchanges();retired(before.find(row=>row.id===born));
+  // The 30-day owner neither re-retires nor counts it, and needs no identity row to leave it alone.
+  expect(await runAiRetentionTick(owner)).toEqual({...zero,tenants:0,busy:0,backlog:false,oldestExpiredAgeSeconds:null});
+  expect(await exchanges()).toEqual(before);expect(await identities(born)).toBe(0);expect(await identities(normal)).toBe(1);
+ });
  it('expires evaluation intents as counted metadata and leaves in-window pending intents untouched',async()=>{
   const candidate=randomUUID(),digest='c'.repeat(64);
   await owner.db.execute(sql`insert into public.ai_agent_candidate(id,tenant_id,owner_user_id,author_user_id,module_code,version,kind,configuration,candidate_digest,baseline_digest,source_digest,engine_digest,policy_digest,input_digest)

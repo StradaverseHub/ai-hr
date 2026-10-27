@@ -65,7 +65,10 @@ BEGIN
  RETURN NULL;
 END $$;
 REVOKE ALL ON FUNCTION app.assistant_transcript_source_capture() FROM PUBLIC,ai_hr_app;
-CREATE TRIGGER assistant_transcript_source_capture AFTER INSERT ON public.assistant_exchange FOR EACH ROW EXECUTE FUNCTION app.assistant_transcript_source_capture();
+-- A row born already retired (accounting-only: admitted question whose content could not be kept)
+-- carries no transcript, so it captures no USER->PERSON identity. Nothing would ever retire that link:
+-- every retirement owner selects content_retired_at IS NULL only.
+CREATE TRIGGER assistant_transcript_source_capture AFTER INSERT ON public.assistant_exchange FOR EACH ROW WHEN(NEW.content_retired_at IS NULL) EXECUTE FUNCTION app.assistant_transcript_source_capture();
 --> statement-breakpoint
 -- Ephemeral exact-row scope permits only this private retirement owner through FORCE RLS.
 CREATE TABLE app.assistant_transcript_retirement_scope(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,exchange_id uuid NOT NULL,PRIMARY KEY(xact_id,tenant_id,exchange_id));
