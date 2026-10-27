@@ -3683,6 +3683,20 @@
       "when": 1793130000020,
       "tag": "0654_ai_optional_usd_policy",
       "breakpoints": true
+    },
+    {
+      "idx": 641,
+      "version": "7",
+      "when": 1793130000021,
+      "tag": "0655_assistant_conversation_candidates",
+      "breakpoints": true
+    },
+    {
+      "idx": 642,
+      "version": "7",
+      "when": 1793130000022,
+      "tag": "0656_assistant_transcript_retention",
+      "breakpoints": true
     }
   ]
 }

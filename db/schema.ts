@@ -10764,6 +10764,49 @@ export const nativeOutcomeErasureIntent=nativeOutcomePrivate.table('native_outco
  xactId:customType<{data:string}>({dataType:()=> 'xid8'})('xact_id').notNull(),tenantId:uuid('tenant_id').notNull(),userId:uuid('user_id').notNull(),personId:uuid('person_id').notNull(),employmentId:uuid('employment_id').notNull(),
  cleared:integer('cleared').notNull(),eventId:uuid('event_id'),
 },t=>[primaryKey({columns:[t.xactId,t.tenantId,t.userId,t.personId]})]);
+/** Migration 0655: conversation evaluation checkpoint arms (FORCE RLS; column-scoped app grants).
+ * candidate_id references ai_agent_candidate(id,tenant_id), which is not modelled here. */
+export const aiAssistantAnswerEvaluationArm=pgTable('ai_assistant_answer_evaluation_arm',{
+ id:uuid('id').primaryKey(),tenantId:tenantId(),candidateId:uuid('candidate_id').notNull(),
+ evaluatorUserId:uuid('evaluator_user_id').notNull().references(()=>appUser.id),evaluatorPersonId:uuid('evaluator_person_id').references(()=>person.id,{onDelete:'cascade'}),
+ providerFingerprint:text('provider_fingerprint').notNull(),suiteDigest:text('suite_digest').notNull(),fixtureId:text('fixture_id').notNull(),arm:text('arm').notNull(),
+ passed:boolean('passed').notNull(),receipt:text('receipt').notNull(),
+ createdAt:timestamp('created_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull().default(sql`(clock_timestamp()+interval '30 days')`),
+},t=>[index('ai_answer_arm_expiry').on(t.expiresAt,t.id)]);
+/** Migration 0655: evaluation intents with a database-advanced incarnation (FORCE RLS). */
+export const aiAssistantAnswerEvaluationIntent=pgTable('ai_assistant_answer_evaluation_intent',{
+ id:uuid('id').primaryKey(),incarnation:bigint('incarnation',{mode:'number'}).generatedAlwaysAsIdentity(),tenantId:tenantId(),candidateId:uuid('candidate_id').notNull(),
+ evaluatorUserId:uuid('evaluator_user_id').notNull().references(()=>appUser.id),evaluatorPersonId:uuid('evaluator_person_id').references(()=>person.id,{onDelete:'cascade'}),
+ sourceDigest:text('source_digest').notNull(),providerFingerprint:text('provider_fingerprint').notNull(),suiteDigest:text('suite_digest').notNull(),
+ state:text('state').notNull().default('pending'),evaluationId:uuid('evaluation_id').unique('ai_assistant_answer_evaluation_intent_evaluation_id_key'),receipt:text('receipt').notNull(),
+ createdAt:timestamp('created_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull().default(sql`(clock_timestamp()+interval '30 days')`),
+},t=>[index('answer_evaluation_intent_expiry').on(t.expiresAt,t.id)]);
+/** Migration 0655: cumulative per-candidate/arm provider-call ledger; holds no person, user or content. */
+export const aiAssistantAnswerEvaluationBudget=pgTable('ai_assistant_answer_evaluation_budget',{
+ tenantId:tenantId(),candidateId:uuid('candidate_id').notNull(),fixtureId:text('fixture_id').notNull(),arm:text('arm').notNull(),
+ admitted:integer('admitted').notNull().default(1),
+},t=>[primaryKey({columns:[t.tenantId,t.candidateId,t.fixtureId,t.arm]})]);
+/** Migration 0655: per-question strategy markers with a database-advanced incarnation (FORCE RLS). */
+export const aiAssistantAnswerStrategyUse=pgTable('ai_assistant_answer_strategy_use',{
+ id:uuid('id').primaryKey(),incarnation:bigint('incarnation',{mode:'number'}).generatedAlwaysAsIdentity(),tenantId:tenantId(),
+ userId:uuid('user_id').notNull().references(()=>appUser.id),personId:uuid('person_id').references(()=>person.id,{onDelete:'cascade'}),
+ promotionId:uuid('promotion_id'),candidateDigest:text('candidate_digest').notNull(),providerFingerprint:text('provider_fingerprint').notNull(),sourceDigest:text('source_digest').notNull(),
+ state:text('state').notNull().default('pending'),exchangeId:uuid('exchange_id').unique('ai_assistant_answer_strategy_use_exchange_id_key').references(()=>assistantExchange.id,{onDelete:'cascade'}),receipt:text('receipt').notNull(),
+ createdAt:timestamp('created_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull().default(sql`(clock_timestamp()+interval '30 days')`),
+},t=>[index('ai_answer_use_expiry').on(t.expiresAt,t.id)]);
+/** Migrations 0655/0656: private erasure and transcript custody. No app grant; definer functions only. */
+const assistantPrivate=pgSchema('app');
+export const assistantAnswerErasureIntent=assistantPrivate.table('assistant_answer_erasure_intent',{
+ xactId:customType<{data:string}>({dataType:()=> 'xid8'})('xact_id').notNull(),tenantId:uuid('tenant_id').notNull(),userId:uuid('user_id').notNull(),
+ personId:uuid('person_id').notNull(),employmentId:uuid('employment_id').notNull(),cleared:integer('cleared').notNull(),
+},t=>[primaryKey({columns:[t.xactId,t.tenantId,t.personId]})]);
+export const assistantTranscriptIdentity=assistantPrivate.table('assistant_transcript_identity',{
+ exchangeId:uuid('exchange_id').primaryKey().references(()=>assistantExchange.id,{onDelete:'cascade'}),tenantId:tenantId(),
+ userId:uuid('user_id').notNull().references(()=>appUser.id),personId:uuid('person_id').references(()=>person.id),
+});
+export const assistantTranscriptRetirementScope=assistantPrivate.table('assistant_transcript_retirement_scope',{
+ xactId:customType<{data:string}>({dataType:()=> 'xid8'})('xact_id').notNull(),tenantId:uuid('tenant_id').notNull(),exchangeId:uuid('exchange_id').notNull(),
+},t=>[primaryKey({columns:[t.xactId,t.tenantId,t.exchangeId]})]);
 
 // fcc2ea42 — OT-only version/assignment and immutable source evidence. Schedule Group stays independent.
 export const overtimePatternEpoch = pgTable('overtime_pattern_epoch', {

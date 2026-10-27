@@ -1,9 +1,9 @@
 /** Pure composition contract for the out-of-band AI custody maintenance tick. A scripted fake carrier
  * answers each statement: no database, migration, provider, clock or credential is used. This proves
  * the TypeScript ordering, bounds, counters and DERIVED owner inventory only. SQL/RLS/role/rollback
- * behaviour is proven solely by the authored DB cases once the AI drafts are journaled.
+ * behaviour is proven solely by the authored DB cases (the AI drafts are journaled as 0650/0655/0656).
  */
-import {readFileSync,readdirSync} from 'node:fs';
+import {existsSync,readFileSync,readdirSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {describe,expect,it} from 'vitest';
 import {PgDialect} from 'drizzle-orm/pg-core';
@@ -43,7 +43,11 @@ const index=(log:Step[],predicate:(step:Step)=>boolean)=>log.findIndex(predicate
 const mutated=(text:string)=>[...text.matchAll(/\b(?:delete\s+from|update)\s+((?:public|app)\.[a-z_]+)/gi)].map(match=>match[1].toLowerCase());
 const deleted=(text:string)=>[...text.matchAll(/\bdelete\s+from\s+((?:public|app)\.[a-z_]+)/gi)].map(match=>match[1].toLowerCase());
 const read=(path:string)=>readFileSync(fileURLToPath(new URL(path,import.meta.url)),'utf8');
-const sqlSources=['../db/migrations/','../db/migration-drafts/'].flatMap(dir=>readdirSync(fileURLToPath(new URL(dir,import.meta.url))).filter(name=>name.endsWith('.sql')).map(name=>read(dir+name)));
+// Every SQL source: journaled migrations plus any still-unjournaled drafts. The AI drafts this proof
+// was written against are journaled now (0650 native outcomes, 0655 conversation, 0656 transcript), so
+// the drafts folder may be absent; its absence must not hide the journaled SQL.
+const sqlDirectories=['../db/migrations/','../db/migration-drafts/'].filter(dir=>existsSync(fileURLToPath(new URL(dir,import.meta.url))));
+const sqlSources=sqlDirectories.flatMap(dir=>readdirSync(fileURLToPath(new URL(dir,import.meta.url))).filter(name=>name.endsWith('.sql')).map(name=>read(dir+name)));
 const qualify=(name:string)=>{const bare=name.replaceAll('"','').toLowerCase();return bare.includes('.')?bare:'public.'+bare;};
 /** Every table whose FK declares ON DELETE CASCADE to one of the given parents, from actual SQL sources. */
 function cascadeChildren(parents:ReadonlySet<string>):Set<string>{
@@ -56,9 +60,9 @@ function cascadeChildren(parents:ReadonlySet<string>):Set<string>{
  }
  return children;
 }
-/** Statements inside the owner-only transcript helper body, from the actual draft (slice proven non-empty). */
+/** Statements inside the owner-only transcript helper body, from journaled 0656 (slice proven non-empty). */
 function transcriptHelperBody(){
- const draft=read('../db/migration-drafts/assistant-transcript-retention.sql');
+ const draft=read('../db/migrations/0656_assistant_transcript_retention.sql');
  const start=draft.indexOf('CREATE FUNCTION app._assistant_transcripts_retire('),end=draft.indexOf('END $$;',start);
  expect(start).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(start);
  const body=draft.slice(start,end);expect(body.length).toBeGreaterThan(400);return body;
@@ -71,6 +75,9 @@ describe('AI custody maintenance composition (pure, fake carrier)',()=>{
   expect(new Set(helperStatements)).toEqual(new Set(['app.assistant_transcript_retirement_scope','public.assistant_exchange','public.ai_agent_feedback','public.ai_assistant_answer_strategy_use','app.assistant_transcript_identity']));
   const direct=new Set([...log.flatMap(step=>mutated(step.text)),...helperStatements]);
   const deletes=new Set([...log.flatMap(step=>deleted(step.text)),...[...helper.matchAll(/\bDELETE FROM\s+((?:public|app)\.[a-z_]+)/gi)].map(match=>match[1].toLowerCase())]);
+  // Non-vacuity: the cascade sources must include the journaled tables that declare these cascades.
+  expect(sqlDirectories).toContain('../db/migrations/');
+  for(const table of ['CREATE TABLE app.assistant_transcript_identity','CREATE TABLE public.ai_assistant_answer_strategy_use','CREATE TABLE app.native_outcome_source_target'])expect(sqlSources.some(text=>text.includes(table)),table).toBe(true);
   // Close over declared FK cascades: deleting a parent physically deletes these children too.
   const closure=new Set(direct);for(let frontier=deletes;frontier.size;){const next=new Set([...cascadeChildren(frontier)].filter(name=>!closure.has(name)));next.forEach(name=>closure.add(name));frontier=next;}
   expect(log.flatMap(step=>mutated(step.text)).length).toBeGreaterThanOrEqual(12);
