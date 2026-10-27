@@ -153,16 +153,8 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, nativ
     if(!joined)await assertLegacySelfServiceClockTx(tx,ctx,me.employmentId);
     const now = new Date();
     if (native && (!Number.isFinite(native.sampledAt) || Math.abs(now.getTime()-native.sampledAt)>120000)) throw new ClockLocationError('Capture a fresh location before clocking');
-    let date = todayInKualaLumpur(now);
+    const date = await clockAttendanceDateTx(tx, me.employmentId, p.action, now, await openClockSessionDateTx(tx, me.employmentId));
     const time = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kuala_Lumpur', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(now);
-    const [unclosed] = await tx.select({ date: attendance.attendanceDate }).from(attendance).where(and(eq(attendance.employmentId, me.employmentId), isNotNull(attendance.checkInAt), isNull(attendance.checkOutAt))).orderBy(desc(attendance.attendanceDate)).limit(1);
-    if (unclosed && unclosed.date !== date) {
-      const previousDate = new Date(now.getTime() - 86400000);
-      const overnight = await clockScheduleForTx(tx, me.employmentId, unclosed.date);
-      // Keep the existing day-based clock policy. Only an actual overnight OUT anchors to yesterday;
-      // historical incomplete records never become invented receipts or block a new ordinary day.
-      if (unclosed.date === todayInKualaLumpur(previousDate) && overnight.crossesMidnight && p.action === 'out') date = unclosed.date;
-    }
     const [lastCapture] = await tx.select({ direction: attendanceClockCapture.direction, time: attendanceClockCapture.serverRecordedAt }).from(attendanceClockCapture).where(eq(attendanceClockCapture.employmentId, me.employmentId)).orderBy(desc(attendanceClockCapture.serverRecordedAt), desc(attendanceClockCapture.id)).limit(1);
     const [day] = await tx.select({ id: attendance.id, checkIn: attendance.checkInAt, checkOut: attendance.checkOutAt }).from(attendance).where(and(eq(attendance.employmentId, me.employmentId), eq(attendance.attendanceDate, date))).limit(1).for('update');
     // r430 — the direction/state mismatch guard that used to require strict in-then-out is GONE: Clock In
@@ -204,6 +196,25 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, nativ
     return publicReceipt(capture);
   };
   return joined?execute(joined.tx):withTenant(ctx,execute);
+}
+
+/** The newest open session (a check-in with no check-out) that a clock-out may close. Read under the subject lock. */
+export async function openClockSessionDateTx(tx:Tx,employmentId:string){
+  const [unclosed] = await tx.select({ date: attendance.attendanceDate }).from(attendance).where(and(eq(attendance.employmentId, employmentId), isNotNull(attendance.checkInAt), isNull(attendance.checkOutAt))).orderBy(desc(attendance.attendanceDate)).limit(1);
+  return unclosed?.date ?? null;
+}
+/** Sole owner of a clocking's attendance day, online and offline (owner decision 2026-10-28): the instant's
+ * MYT day, except that an actual overnight OUT belongs to the open session's start day. punch_at stays the
+ * instant's MYT wall time either way, so that out's instant is (start day + 1) + punch_at. `unclosed` is
+ * openClockSessionDateTx read before the punch is written. */
+export async function clockAttendanceDateTx(tx:Tx,employmentId:string,action:'in'|'out',at:Date,unclosed:string|null){
+  const date = todayInKualaLumpur(at);
+  if (!unclosed || unclosed === date) return date;
+  const previousDate = new Date(at.getTime() - 86400000);
+  const overnight = await clockScheduleForTx(tx, employmentId, unclosed);
+  // Keep the existing day-based clock policy. Only an actual overnight OUT anchors to yesterday;
+  // historical incomplete records never become invented receipts or block a new ordinary day.
+  return unclosed === todayInKualaLumpur(previousDate) && overnight.crossesMidnight && action === 'out' ? unclosed : date;
 }
 
 /** Native online carrier: own active employment, same transaction and rules, device policy enforced. */

@@ -7,7 +7,8 @@ import * as S from '../db/schema';
 import {createOfflineClaimService,offlineClaimPhotoAAD,type OfflineClaimPorts} from '../core/mobile-offline-claim';
 import {purgeExpiredOfflinePhotos} from '../core/mobile-offline-photo-retention';
 import {revokeOwnIntegrityKey} from '../core/mobile-integrity-key';
-import {checkOutTx} from '../core/attendance';
+import {checkInTx,checkOutTx,clockScheduleForTx} from '../core/attendance';
+import {createShift} from '../core/roster';
 import {setAttendancePolicy} from '../packs/attendance/service';
 import {withAttendanceTenant} from '../core/module-gate';
 import {decryptSecret} from '../lib/ai/crypto';
@@ -26,19 +27,38 @@ function consumer(){
  const fresh=vi.fn(async()=>{}),prepare=vi.fn<OfflineClaimPorts['prepare']>(async()=>({assertFresh:fresh})),adjudicate=vi.fn<OfflineClaimPorts['adjudicate']>(async()=>({outcome:'needs_review',reason:'review_required'})),beforeCommit=vi.fn<OfflineClaimPorts['beforeCommit']>(async()=>{}),ports={prepare,adjudicate,beforeCommit};
  const config={apiOrigin:'https://hr.example.com',photoRetentionMs:3600000};return {fresh,prepare,adjudicate,beforeCommit,ports,config,service:()=>createOfflineClaimService(config,ports)};
 }
-async function untouched(f:Awaited<ReturnType<typeof offlineServiceFixture>>){
- expect(await owner.db.select().from(S.mobileOfflineClaim)).toHaveLength(0);expect(await owner.db.select().from(S.mobileOfflinePhoto)).toHaveLength(0);expect(await owner.db.select().from(S.attendancePunch)).toHaveLength(0);
+/** `kept` lists punches that existed before the consumption (an open session); nothing else may remain. */
+async function untouched(f:Awaited<ReturnType<typeof offlineServiceFixture>>,kept:string[]=[]){
+ expect(await owner.db.select().from(S.mobileOfflineClaim)).toHaveLength(0);expect(await owner.db.select().from(S.mobileOfflinePhoto)).toHaveLength(0);
+ expect((await owner.db.select({id:S.attendancePunch.id}).from(S.attendancePunch).orderBy(asc(S.attendancePunch.id))).map(row=>row.id)).toEqual([...kept].sort());
  const [key]=await owner.db.select().from(S.mobileIntegrityKey).where(eq(S.mobileIntegrityKey.id,f.key.id)),[stream]=await owner.db.select().from(S.mobileOfflineContext).where(eq(S.mobileOfflineContext.id,f.context.id));
  expect(key.assertionCounter).toBe(0);expect(stream.nextSequence).toBe(1);expect(stream.previousDigest).toBeNull();expect(stream.closedAt).toBeNull();
 }
 // Canonical punch_at is MYT wall time; milliseconds are written so an exact effectiveAt can be linked.
 const mytTime=(at:number)=>new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kuala_Lumpur',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(new Date(at))+'.'+String(at%1000).padStart(3,'0');
-/** `written` shifts only the canonical punch away from the returned effectiveAt (a faulty policy owner). */
+/** `written` shifts only the canonical punch away from the returned effectiveAt (a faulty policy owner); `days`
+ * moves only attendance_date, so days:-1 with ms:0 is the online writer's overnight-out encoding. */
 async function accept(tx:Parameters<OfflineClaimPorts['adjudicate']>[0],ctx:Parameters<OfflineClaimPorts['adjudicate']>[1],facts:Parameters<OfflineClaimPorts['adjudicate']>[2],at=facts.bounds.status==='reported_interval'?facts.bounds.minimum:facts.context.issuedAt,written:{ms?:number;days?:number}={}){
  const punchAt=at+(written.ms??0),date=todayInKualaLumpur(new Date(punchAt+(written.days??0)*86400000)),time=mytTime(punchAt);
  const [capture]=await tx.insert(S.attendanceClockCapture).values({tenantId:ctx.tenantId,employmentId:facts.claim.scope.employmentId,attendanceDate:date,direction:facts.claim.command.action,requestId:facts.claim.command.requestId,serverRecordedAt:new Date(facts.receivedAt),lat:facts.claim.command.lat,lng:facts.claim.command.lng,accuracyM:facts.claim.command.accuracy,commandDigest:digest(offlineClockClaimClientData(facts.claim))}).returning();
- await checkOutTx(ctx,{employmentId:facts.claim.scope.employmentId,date,time,geo:{lat:facts.claim.command.lat,lng:facts.claim.command.lng,accuracy:facts.claim.command.accuracy},clockCaptureId:capture.id,preciseOrder:true},tx);
+ await (facts.claim.command.action==='in'?checkInTx:checkOutTx)(ctx,{employmentId:facts.claim.scope.employmentId,date,time,geo:{lat:facts.claim.command.lat,lng:facts.claim.command.lng,accuracy:facts.claim.command.accuracy},clockCaptureId:capture.id,preciseOrder:true},tx);
  return {outcome:'accepted',reason:'clock_accepted',captureId:capture.id,effectiveAt:at};
+}
+/** A real open overnight session: a rostered midnight-crossing shift on the MYT day before effectiveAt's day
+ * (effectiveAt is the fixture's issuedAt), checked in at 22:00 by the canonical writer. */
+async function overnight(f:Awaited<ReturnType<typeof offlineServiceFixture>>){
+ const start=todayInKualaLumpur(new Date(f.context.issuedAt-86400000)),shift=await createShift(adminCtx(base),{name:'Offline overnight',code:'OFFLINE_NIGHT',startTime:'22:00',endTime:'06:00'});
+ await owner.db.insert(S.rosterAssignment).values({tenantId:base.tenantId,employmentId:f.e.employmentId,shiftDate:start,shiftId:shift.id});
+ await withAttendanceTenant(f.ctx,tx=>checkInTx(f.ctx,{employmentId:f.e.employmentId,date:start,time:'22:00:00',geo:{lat:3,lng:101,accuracy:5}},tx));
+ // Non-vacuous: the start day is the previous MYT day, its schedule crosses midnight and its session is open.
+ expect(start).not.toBe(todayInKualaLumpur(new Date(f.context.issuedAt)));expect((await withAttendanceTenant(f.ctx,tx=>clockScheduleForTx(tx,f.e.employmentId,start))).crossesMidnight).toBe(true);
+ const punches=await owner.db.select().from(S.attendancePunch);expect(punches).toMatchObject([{attendanceDate:start,direction:'in',punchAt:'22:00:00',voidedAt:null}]);
+ expect(await owner.db.select({checkIn:S.attendance.checkInAt,checkOut:S.attendance.checkOutAt}).from(S.attendance).where(and(eq(S.attendance.employmentId,f.e.employmentId),eq(S.attendance.attendanceDate,start)))).toEqual([{checkIn:'22:00:00',checkOut:null}]);
+ return {start,kept:[punches[0].id]};
+}
+/** Readers' reconstruction, independent of the service: the punch's instant is (attendance_date + days) + punch_at in MYT. */
+async function instant(punchId:string,days:0|1,at:number){
+ const [row]=await owner.db.execute<{exact:boolean}>(sql`select timezone('Asia/Kuala_Lumpur',attendance_date+${days}::int+punch_at)=${new Date(at).toISOString()}::timestamptz exact from attendance_punch where id=${punchId}::uuid`);return row?.exact;
 }
 async function policy(){await setAttendancePolicy(adminCtx(base),{companyId:base.companyId,workStart:'09:00',workEnd:'18:00',breakMinutes:60,lateAfter:'09:15',halfDayBefore:'13:00',workingDays:[1,2,3,4,5]});}
 describe('ordered transactional offline claim consumption',()=>{
@@ -100,6 +120,29 @@ describe('ordered transactional offline claim consumption',()=>{
   c.adjudicate.mockImplementation((tx,ctx,facts)=>accept(tx,ctx,facts));const result=await c.service().consume(f.ctx,f.signed());
   expect(result).toMatchObject({outcome:'accepted',reason:'clock_accepted',effectiveAt:f.context.issuedAt});
   const [punch]=await owner.db.select().from(S.attendancePunch).where(eq(S.attendancePunch.clockCaptureId,result.captureId!));expect(punch.attendanceDate).toBe(todayInKualaLumpur(new Date(result.effectiveAt!)));
+ });
+ // Owner decision 2026-10-28: an offline overnight out belongs to the open session's start day, as the online writer files it.
+ it.each([['one millisecond after',{ms:1,days:-1}],['on the day before the session start',{days:-2}],['on effectiveAt\'s own day instead of the open session start day',{days:0}]] as const)('rolls back an overnight out recorded %s, and accepts the start-day encoding of the exact instant',async(_label,written)=>{
+  await policy();const f=await offlineServiceFixture(base),{start,kept}=await overnight(f),c=consumer();c.adjudicate.mockImplementation((tx,ctx,facts)=>accept(tx,ctx,facts,undefined,written));
+  await expect(c.service().consume(f.ctx,f.signed())).rejects.toMatchObject({reason:'configuration_unavailable'});expect(c.adjudicate).toHaveBeenCalledOnce();
+  await untouched(f,kept);expect(await owner.db.select().from(S.attendanceClockCapture)).toHaveLength(0);
+  expect(await owner.db.select({date:S.attendance.attendanceDate,checkOut:S.attendance.checkOutAt}).from(S.attendance).where(eq(S.attendance.employmentId,f.e.employmentId))).toEqual([{date:start,checkOut:null}]);
+  expect(await owner.db.select().from(S.domainEvent).where(eq(S.domainEvent.eventType,'mobile.offline.claim.processed'))).toHaveLength(0);
+  c.adjudicate.mockImplementation((tx,ctx,facts)=>accept(tx,ctx,facts,undefined,{days:-1}));const result=await c.service().consume(f.ctx,f.signed());
+  expect(result).toMatchObject({outcome:'accepted',reason:'clock_accepted',effectiveAt:f.context.issuedAt});expect(todayInKualaLumpur(new Date(result.effectiveAt!))).not.toBe(start);
+  const [punch]=await owner.db.select().from(S.attendancePunch).where(eq(S.attendancePunch.clockCaptureId,result.captureId!));
+  expect(punch).toMatchObject({attendanceDate:start,direction:'out',voidedAt:null});expect(await instant(punch.id,1,result.effectiveAt!)).toBe(true);
+  expect(await owner.db.select({date:S.attendance.attendanceDate}).from(S.attendance).where(eq(S.attendance.employmentId,f.e.employmentId))).toEqual([{date:start}]);
+ });
+ it('rolls back an in punch filed on the prior day even while an overnight session is open, and accepts it on its own day',async()=>{
+  await policy();const f=await offlineServiceFixture(base),{start,kept}=await overnight(f),c=consumer(),claim={...f.claim,command:{...f.claim.command,action:'in' as const}};
+  c.adjudicate.mockImplementation((tx,ctx,facts)=>accept(tx,ctx,facts,undefined,{days:-1}));
+  await expect(c.service().consume(f.ctx,f.signed(claim))).rejects.toMatchObject({reason:'configuration_unavailable'});expect(c.adjudicate).toHaveBeenCalledOnce();
+  await untouched(f,kept);expect(await owner.db.select().from(S.attendanceClockCapture)).toHaveLength(0);
+  c.adjudicate.mockImplementation((tx,ctx,facts)=>accept(tx,ctx,facts));const result=await c.service().consume(f.ctx,f.signed(claim));
+  expect(result).toMatchObject({outcome:'accepted',reason:'clock_accepted',effectiveAt:f.context.issuedAt});
+  const [punch]=await owner.db.select().from(S.attendancePunch).where(eq(S.attendancePunch.clockCaptureId,result.captureId!));
+  expect(punch).toMatchObject({attendanceDate:todayInKualaLumpur(new Date(result.effectiveAt!)),direction:'in',voidedAt:null});expect(punch.attendanceDate).not.toBe(start);expect(await instant(punch.id,0,result.effectiveAt!)).toBe(true);
  });
  it('refuses a request ID an attendance capture already holds before policy runs, with a stable terminal receipt',async()=>{
   await policy();const f=await offlineServiceFixture(base),c=consumer(),requestId=f.claim.command.requestId;c.adjudicate.mockImplementation((tx,ctx,facts)=>accept(tx,ctx,facts));

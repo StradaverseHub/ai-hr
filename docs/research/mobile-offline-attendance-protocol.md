@@ -415,13 +415,21 @@ hosted run [40561470126](https://github.com/StradaverseHub/ai-hr/actions/runs/40
    Residual: an online capture created after this refusal commits is not refused by the online
    writer, which does not read offline claims. An accepted claim cannot duplicate a capture, because
    the capture unique key rejects the second insert.
-2. An accepted punch records exactly `effectiveAt`. The linked live punch's `attendance_date` plus
-   `punch_at`, read as Asia/Kuala_Lumpur wall time, must equal the integer-millisecond `effectiveAt`
-   at PostgreSQL `time` precision (microseconds), and `attendance_date` must be its MYT day from
-   `todayInKualaLumpur`. Otherwise the transaction rolls back with `configuration_unavailable`, the
-   error already used for a missing linked punch. A writer that stores whole seconds can link only a
-   whole-second `effectiveAt`. An overnight clock-out written to the previous attendance day, as the
-   online writer anchors one, cannot satisfy this rule, so it rolls back rather than being accepted.
+2. An accepted punch records exactly `effectiveAt` in the online writer's encoding. The linked live
+   punch's `punch_at` must equal the Asia/Kuala_Lumpur wall time of the integer-millisecond
+   `effectiveAt` at PostgreSQL `time` precision (microseconds). Its `attendance_date` must be the day
+   the online writer would file. Amended by a further owner decision on 28 October 2026: an offline
+   overnight clock-out belongs to the shift's start day, as the online writer files it, and must still
+   match `effectiveAt` exactly. The check and the online writer share one rule,
+   `clockAttendanceDateTx` in `core/attendance-clock.ts`. It returns the instant's MYT day, except
+   that a clock-out belongs to the start day of the newest open session when that day is the
+   instant's previous MYT day and its schedule crosses midnight. The service reads that session
+   (`openClockSessionDateTx`) under the subject lock before adjudication, as the writer reads it
+   before writing. The overnight out's instant is therefore the start day plus one day plus
+   `punch_at`. Any other date, a one-millisecond difference, an overnight out filed on the
+   instant's own day, or a clock-in filed on a prior day rolls back with `configuration_unavailable`,
+   the error already used for a missing linked punch. A writer that stores whole seconds can link only
+   a whole-second `effectiveAt`. The overnight amendment is UNVERIFIED until a hosted run passes.
 3. A group admin may read and delete only expired photo custody (`retained_until <=
    clock_timestamp()`), never retained ciphertext; the purge's `DELETE ... RETURNING` passes the
    same read policy. The actor's own read is unchanged. GRANTs, immutability and the deferred

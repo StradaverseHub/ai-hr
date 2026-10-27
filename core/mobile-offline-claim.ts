@@ -10,13 +10,14 @@ import {encryptSecret,isSecretStorable} from '../lib/ai/crypto';
 import {AppleEnrollmentSettings} from '../lib/mobile-key-enrollment';
 import {OfflineClockSignedClaim,offlineClockClaimClientData} from '../lib/mobile-offline-clock';
 import {OfflineClockDecision,OfflineClockReceipt,type OfflineClockDisposition} from '../lib/mobile-offline-receipt';
-import {HR_LOCAL_TZ,todayInKualaLumpur} from '../lib/hr-date';
+import {HR_LOCAL_TZ} from '../lib/hr-date';
 import {offlineClockContextClientData,type OfflineClockContextData} from '../lib/mobile-offline-context';
 import {verifyOfflineClockProof} from '../lib/mobile-api/offline-clock-proof';
 import {offlineClockReportedBounds,type OfflineClockReportedBounds} from '../lib/mobile-api/offline-clock-time';
 import {readIssuedOfflineContextTx} from './mobile-offline-context';
 import {ownIntegrityEnrollmentCompanyTx} from './mobile-integrity-key';
 import {withAttendanceTenant} from './module-gate';
+import {clockAttendanceDateTx,openClockSessionDateTx} from '../packs/attendance/service';
 type KeyRow=typeof mobileIntegrityKey.$inferSelect;
 type ClaimRow=typeof mobileOfflineClaim.$inferSelect;
 export type OfflineClaimFacts={claim:OfflineClockSignedClaim['claim'];context:OfflineClockContextData;key:Readonly<KeyRow>;
@@ -120,6 +121,8 @@ export function createOfflineClaimService(settings:unknown,ports:OfflineClaimPor
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+facts.claim.scope.employmentId},0))`);
     const [recorded]=await tx.select({id:attendanceClockCapture.id}).from(attendanceClockCapture).where(and(eq(attendanceClockCapture.tenantId,ctx.tenantId),
      eq(attendanceClockCapture.employmentId,facts.claim.scope.employmentId),eq(attendanceClockCapture.requestId,facts.claim.command.requestId))).limit(1);
+    // The session an overnight out may close, read as the canonical writer reads it: under this lock, before any punch.
+    const unclosed=await openClockSessionDateTx(tx,facts.claim.scope.employmentId);
     // The policy owner receives a copy; the image bytes retained below never leave this service.
     let decision:OfflineClockDisposition;
     if(recorded)decision={outcome:'refused',reason:'request_conflict'};
@@ -129,15 +132,17 @@ export function createOfflineClaimService(settings:unknown,ports:OfflineClaimPor
     if(facts.currentCompanyId!==facts.context.scope.companyId&&(decision.outcome==='accepted'||(decision.reason!=='scope_changed'&&decision.reason!=='request_conflict')))throw unavailable();
     if(decision.outcome==='accepted'&&(facts.bounds.status!=='reported_interval'||facts.bounds.minimum<facts.context.issuedAt||facts.bounds.maximum>facts.context.expiresAt||decision.effectiveAt<facts.bounds.minimum||decision.effectiveAt>facts.bounds.maximum))throw unavailable();
     if(decision.outcome==='accepted'){
-     // Owner decision 2026-10-28: the linked live punch records exactly effectiveAt, else the whole tx rolls back.
-     // punch_at is PostgreSQL time (microsecond) on attendance_date, both MYT wall clock; the integer-millisecond
-     // instant must equal it at that native precision, and attendance_date must be the instant's MYT day.
-     const effective=new Date(decision.effectiveAt);
+     // Owner decisions 2026-10-28: the linked live punch records exactly effectiveAt, else the whole tx rolls back,
+     // and an overnight out belongs to the open session's start day, as the online writer files it. punch_at is
+     // PostgreSQL time (microsecond), the MYT wall clock of the instant; it must equal the integer-millisecond
+     // instant at that native precision. attendance_date must be the canonical writer's day for this action and
+     // instant: its MYT day, or for that overnight out only the start day (instant = start day + 1 + punch_at).
+     const effective=new Date(decision.effectiveAt),date=await clockAttendanceDateTx(tx,facts.claim.scope.employmentId,facts.claim.command.action,effective,unclosed);
      const [punch]=await tx.select({id:attendancePunch.id,date:attendancePunch.attendanceDate,
-      exact:sql<boolean>`timezone(${HR_LOCAL_TZ}::text,${attendancePunch.attendanceDate}+${attendancePunch.punchAt})=${effective.toISOString()}::timestamptz`}).from(attendancePunch).innerJoin(attendanceClockCapture,eq(attendanceClockCapture.id,attendancePunch.clockCaptureId)).where(and(
+      exact:sql<boolean>`${attendancePunch.punchAt}=(${effective.toISOString()}::timestamptz at time zone ${HR_LOCAL_TZ}::text)::time`}).from(attendancePunch).innerJoin(attendanceClockCapture,eq(attendanceClockCapture.id,attendancePunch.clockCaptureId)).where(and(
       eq(attendanceClockCapture.id,decision.captureId),eq(attendanceClockCapture.tenantId,ctx.tenantId),eq(attendanceClockCapture.employmentId,facts.claim.scope.employmentId),eq(attendanceClockCapture.requestId,facts.claim.command.requestId),
       eq(attendancePunch.tenantId,ctx.tenantId),eq(attendancePunch.employmentId,facts.claim.scope.employmentId),eq(attendancePunch.direction,facts.claim.command.action),isNull(attendancePunch.voidedAt))).limit(1);
-     if(!punch||punch.date!==todayInKualaLumpur(effective)||punch.exact!==true)throw unavailable();
+     if(!punch||punch.date!==date||punch.exact!==true)throw unavailable();
     }
     const now=await stamp(tx),retainedUntil=photo?new Date(now.getTime()+config.photoRetentionMs):null;
     if(retainedUntil&&!Number.isFinite(retainedUntil.getTime()))throw unavailable();

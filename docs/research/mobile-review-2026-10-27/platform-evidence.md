@@ -2121,5 +2121,7 @@ same twelve suites, no failures or skips. The no-database batch passed 360 in fi
 the database batch 119 in seven (claim consumption now 22). Root TypeScript passed (5:01.68, peak RSS
 7,822,696 KiB, exit 0). Native checks were skipped as unchanged and `migration-journal-ordering`
 remained excluded for the same reason. The same synthetic-proof, no-device, no-production-adjudicator
-and acceptance-disabled limits apply. Overnight clock-outs cannot be accepted offline under the exact
-instant rule until the owner defines their attendance day.
+and acceptance-disabled limits apply. On 28 October 2026 the owner decided that an offline
+overnight clock-out belongs to the shift's start day, as the online writer files it, and must still
+match `effectiveAt` exactly. The acceptance check now uses the online writer's own anchoring rule,
+and this change is UNVERIFIED until a hosted run passes.
