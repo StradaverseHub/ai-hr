@@ -35,7 +35,7 @@ import { executeRoutingHoldout, type RoutingEvaluationReport } from './module-ag
 import { capturePromptPlanCandidate,adjudicatePromptReadPlan,promptCandidateSystem,PROMPT_HOLDOUTS,PROMPT_HOLDOUT_REQUEST_LIMIT,PROMPT_SUITE_DIGEST,PROMPT_ENGINE_DIGEST,PROMPT_POLICY_DIGEST,PROMPT_INPUT_DIGEST,PROMPT_BASELINE } from '../lib/ai/module-agent-prompt-candidate';
 import { resolveAiProviderSnapshotTx } from './ai-provider-snapshot';
 import { governedAiConfig,withAiAdmissionCheck,withAiAdmissionLifecycle,bindStrictAiSpendRoot } from './ai-governance';
-import { executePromptHoldout,promptMeasuredComparison,type PromptHoldoutReport } from './module-agent-prompt-harness';
+import { executePromptHoldout,promptMeasuredComparison,type PromptHoldoutReport,type PromptCase } from './module-agent-prompt-harness';
 import {draftInputDigest} from '../lib/ai/draft-input';
 import {HUMAN_PLAN_HOLDOUTS,HUMAN_PLAN_SUITE_DIGEST,humanQuestionPrompt} from '../lib/ai/human-plan-holdouts';
 import { generateDraft } from '../lib/ai';
@@ -498,12 +498,45 @@ export async function createPromptAgentCandidate(ctx:SessionContext,input:{versi
   return {candidateId:id,candidateDigest:row.candidate_digest,state:'unevaluated' as const};
  });}catch{return fail();}
 }
+/** public.ai_agent_evaluation.receipt is bounded to 65536 characters (0627). Sealed as keyed objects, a complete
+ * multilingual prompt suite (2 x PROMPT_HOLDOUTS cases, each with its measurement) is about twice that bound, so
+ * the insert failed its CHECK part-way through and no prompt candidate could ever complete evaluation. Receipt
+ * version 2 seals each case positionally and rebuilds it EXACTLY (same fields, key order, digests and
+ * measurements) before the unchanged validation in authenticatedPromptReport. The index is bound by the
+ * suite digest that receipt validation already requires; nothing is dropped or derived. */
+type PackedPromptCase=readonly [number,0|1,0|1|2,string|null,0|1|2,0|1|2,readonly [0|1,0|1,number,number,number|null,number|null]|null];
+const PROMPT_CASE_STATES=['passed','failed','unavailable'] as const;
+function packPromptCases(cases:readonly PromptCase[]):PackedPromptCase[]{
+ return cases.map(row=>{const index=PROMPT_HOLDOUTS.findIndex(fixture=>fixture.id===row.id),state=PROMPT_CASE_STATES.indexOf(row.state),m=row.measurement;
+  if(index<0||state<0||(row.outputDigest!==undefined&&!/^[a-f0-9]{64}$/.test(row.outputDigest))||(m!==undefined&&m.id!==row.id))return fail();
+  const packed:PackedPromptCase=[index,row.arm==='baseline'?0:1,state as 0|1|2,row.outputDigest===undefined?null:Buffer.from(row.outputDigest,'hex').toString('base64url'),
+   row.securityFailure===undefined?2:row.securityFailure?1:0,row.retained===undefined?2:row.retained?1:0,
+   m===undefined?null:[m.passed?1:0,m.securityFailure?1:0,m.elapsedMs,m.readCount,m.tokens,m.costCredits]];
+  return packed;});
+}
+function unpackPromptCases(value:unknown):PromptCase[]{
+ if(!Array.isArray(value)||value.length>2*PROMPT_HOLDOUTS.length)return fail();
+ return value.map((item:unknown)=>{
+  if(!Array.isArray(item)||item.length!==7)return fail();const [index,arm,state,digest,security,retained,measured]=item as unknown[];
+  const fixture=typeof index==='number'&&Number.isSafeInteger(index)&&index>=0?PROMPT_HOLDOUTS[index]:undefined;
+  if(!fixture||(arm!==0&&arm!==1)||(state!==0&&state!==1&&state!==2)||(security!==0&&security!==1&&security!==2)||(retained!==0&&retained!==1&&retained!==2))return fail();
+  const row:Record<string,unknown>={id:fixture.id,arm:arm===0?'baseline':'candidate',state:PROMPT_CASE_STATES[state as 0|1|2]};
+  if(digest!==null){if(typeof digest!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(digest))return fail();const bytes=Buffer.from(digest,'base64url');if(bytes.length!==32)return fail();row.outputDigest=bytes.toString('hex');}
+  if(security!==2)row.securityFailure=security===1;
+  if(measured!==null){if(!Array.isArray(measured)||measured.length!==6)return fail();const [passed,securityFailure,elapsedMs,readCount,tokens,costCredits]=measured as unknown[];
+   if((passed!==0&&passed!==1)||(securityFailure!==0&&securityFailure!==1))return fail();
+   row.measurement={id:fixture.id,passed:passed===1,securityFailure:securityFailure===1,elapsedMs,readCount,tokens,costCredits};}
+  if(retained!==2)row.retained=retained===1;
+  return row as unknown as PromptCase;
+ });
+}
 function authenticatedPromptReport(row:{id:string;evaluator_user_id:string;suite_digest:string;receipt:string},candidate:CandidateRow,tenant:string,providerFingerprint:string){
  const proof=open('prompt-evaluation',tenant,row.id,row.receipt);
- if(!exact(proof,['version','candidateDigest','binding','evaluatorId','providerFingerprint','report'])||proof.version!==1||
+ if(!exact(proof,['version','candidateDigest','binding','evaluatorId','providerFingerprint','report'])||proof.version!==2||
   proof.candidateDigest!==candidate.candidate_digest||routingDigest(proof.binding)!==routingDigest(binding(candidate))||
   proof.evaluatorId!==row.evaluator_user_id||row.suite_digest!==PROMPT_SUITE_DIGEST||proof.providerFingerprint!==providerFingerprint)return fail();
- const report=proof.report as PromptHoldoutReport;
+ const sealed=proof.report;if(!sealed||typeof sealed!=='object'||Array.isArray(sealed))return fail();
+ const report={...(sealed as Record<string,unknown>),cases:unpackPromptCases((sealed as Record<string,unknown>).cases)} as unknown as PromptHoldoutReport;
  if(!report||!exact(report,['version','coverage','suiteDigest','inputDigest','baselineDigest','candidateConfigurationDigest','attemptedRequests','completedRequests','completedCases','state','securityFailures','qualityFailures','elapsedMs','retainedPasses','retainedFailures','unavailableAttempts','cases','comparison'])||report.version!==2||report.suiteDigest!==PROMPT_SUITE_DIGEST||report.inputDigest!==PROMPT_INPUT_DIGEST||report.baselineDigest!==routingDigest(PROMPT_BASELINE)||report.candidateConfigurationDigest!==routingDigest(capturePromptPlanCandidate(candidate.configuration))||
   report.coverage!=='model-to-typed-read-plan-only'||!Array.isArray(report.cases)||report.cases.length>2*PROMPT_HOLDOUTS.length||!Number.isSafeInteger(report.attemptedRequests)||report.attemptedRequests<0||report.attemptedRequests>PROMPT_HOLDOUT_REQUEST_LIMIT||!Number.isSafeInteger(report.completedRequests)||report.completedRequests<0||report.completedRequests>report.attemptedRequests||!Number.isSafeInteger(report.unavailableAttempts)||report.unavailableAttempts<0||report.completedRequests+report.unavailableAttempts!==report.attemptedRequests||typeof report.elapsedMs!=='number'||!Number.isFinite(report.elapsedMs)||report.elapsedMs<0)return fail();
  const unique=new Set<string>();for(const row of report.cases){const key=row.arm+':'+row.id;
@@ -545,8 +578,8 @@ export async function evaluatePromptAgentCandidate(ctx:SessionContext,input:{can
   return await withTenant(current,async tx=>{
    await guard(tx,current,true,false);const proof=issuedPrompt.get(evidence);if(!proof)return fail();issuedPrompt.delete(evidence);
    const candidate=await candidateTx(tx,current,candidateId);if(proof.evaluatorId!==current.userId||candidate.candidate_digest!==proof.candidate.candidate_digest)return fail();
-   const receipt=seal('prompt-evaluation',current.tenantId,proof.id,{version:1,candidateDigest:candidate.candidate_digest,binding:binding(candidate),
-    evaluatorId:proof.evaluatorId,providerFingerprint:proof.providerFingerprint,report:proof.report});
+   const receipt=seal('prompt-evaluation',current.tenantId,proof.id,{version:2,candidateDigest:candidate.candidate_digest,binding:binding(candidate),
+    evaluatorId:proof.evaluatorId,providerFingerprint:proof.providerFingerprint,report:{...proof.report,cases:packPromptCases(proof.report.cases)}});
    await tx.execute(sql`insert into public.ai_agent_evaluation(id,tenant_id,candidate_id,evaluator_user_id,suite_digest,receipt)
     values(${proof.id}::uuid,${current.tenantId}::uuid,${candidateId}::uuid,${current.userId}::uuid,${PROMPT_SUITE_DIGEST},${receipt})`);
    return {evaluationId:proof.id,coverage:report.coverage,state:report.state,attemptedRequests:report.attemptedRequests,

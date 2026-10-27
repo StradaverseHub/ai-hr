@@ -93,6 +93,9 @@ describe('actual independent prompt-to-plan evaluation custody',()=>{
 
  it('reaches the actual unmocked missing-capability guard and sends no request or token/spend reservation',async()=>{
   const a=await candidate(),selected=vi.spyOn(spend,'certifiedAiSpendEnvelope'),sent=vi.spyOn(openaiAdapter,'generate').mockResolvedValue('MUST_NOT_SEND');
+  // 0654 makes USD limits optional: the certified capability is required only where a USD limit applies.
+  // Configure one (operator provisioning, as the shared spend fixture does) and certify no capability.
+  await owner.db.execute(sql`insert into app.ai_spend_budget(tenant_id,scope_key,kind,monthly_nanos,root_nanos,updated_by) values(${base.tenantId}::uuid,'tenant','tenant',1000000000,1000000000,${a.reviewer.userId}::uuid)`);
   const report=await evaluatePromptAgentCandidate(a.reviewer,{candidateId:a.candidateId,consent:consent()});expect(report).toMatchObject({state:'incomplete',attemptedRequests:1,completedRequests:0,qualityFailures:null});
   expect(selected).toHaveBeenCalledTimes(1);expect(sent).not.toHaveBeenCalled();const[rows]=await owner.db.execute<{runs:number;spend:number}>(sql`select(select count(*)::int from public.ai_model_run where tenant_id=${base.tenantId}::uuid) as runs,(select count(*)::int from app.ai_spend_reservation where tenant_id=${base.tenantId}::uuid) as spend`);expect(rows).toEqual({runs:0,spend:0});
  });

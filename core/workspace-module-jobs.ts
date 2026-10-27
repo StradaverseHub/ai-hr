@@ -77,10 +77,13 @@ export async function loadGovernedSpecialistToolJob(ctx:SessionContext,tx:Tx,inp
  if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).length!==1||!isAgentModuleCode((input as {module?:unknown}).module)||!/^[a-f0-9]{64}$/.test(expectedDigest))view=Object.freeze({state:'unavailable',module:null,checkedAt:Date.now(),viewId:randomUUID()});
  else{
   const module=(input as {module:AgentModuleCode}).module;
-  // Storage/current-authority failures propagate to the actual workspace owner and its rollback;
-  // they never become a per-card success/continuation in an aborted source transaction.
-  const read=await readGovernedSpecialistToolResultTx(tx,current,jobId,module);
-  try{if(assistantSourceDigest(read.outcome)!==expectedDigest)throw Error();const presentation=presentGroundedToolOutcome('my_module_work',read.outcome);if(!presentation)throw Error();view=Object.freeze({state:'ready',presentation,checkedAt:Date.now(),viewId:randomUUID(),toolName:'my_module_work',answerExplanations:specialistAnswerExplanations(read.assessment,presentation),specialist:read.assessment,specialistVersion:read.outcome.specialistWork});}
+  // A per-card refusal (module revoked, job or specialist no longer current, storage failure) is
+  // contained in a SAVEPOINT, so it can never leave the caller's source transaction aborted, and the
+  // card is withheld as unavailable, never shown as a success. The workspace owner has already proved
+  // its principal under the Access interval it holds; a refusal here withholds only this card.
+  let read:Awaited<ReturnType<typeof readGovernedSpecialistToolResultTx>>|null=null;
+  try{read=await tx.transaction(savepoint=>readGovernedSpecialistToolResultTx(savepoint,current,jobId,module));}catch{read=null;}
+  try{if(!read||assistantSourceDigest(read.outcome)!==expectedDigest)throw Error();const presentation=presentGroundedToolOutcome('my_module_work',read.outcome);if(!presentation)throw Error();view=Object.freeze({state:'ready',presentation,checkedAt:Date.now(),viewId:randomUUID(),toolName:'my_module_work',answerExplanations:specialistAnswerExplanations(read.assessment,presentation),specialist:read.assessment,specialistVersion:read.outcome.specialistWork});}
   catch{view=Object.freeze({state:'unavailable',module:null,checkedAt:Date.now(),viewId:randomUUID()});}
  }
  owners.set(view,{principal:principal(current),issuedAt:Date.now(),digest:assistantSourceDigest(view)});return view;

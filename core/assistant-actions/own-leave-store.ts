@@ -266,17 +266,21 @@ export async function confirmOwnLeaveReview(supplied: SessionContext, confirmati
 /** Own login's bounded metadata discovery, including after Assistant grant/pause revocation. This
  * grants no review-content, request/event or leave-effect access. Explicit reopen keeps its full gates.
  * Expired private-body cleanup is a separate caller transaction and is not hidden in this reader.
+ * ADR-0131 binds own-leave custody to the same login, tenant AND person: the shared AI principal proof
+ * refuses a mismatched or stale (relinked) person before any review row is read, with the same generic
+ * refusal as every other failure, and the person-bound index lists only the CURRENT person's reviews.
  */
 export async function listOwnLeaveReviewsTx(tx:Tx,supplied:SessionContext):Promise<z.infer<typeof OwnLeaveReviewIndexResult>>{
   const ctx=captureContext(supplied);
   try{
     await boundNativeOutcomeTransactionTx(tx);
-    const [carrier]=await tx.execute<{matches:boolean}>(sql`select app.current_tenant_id()=${ctx.tenantId}::uuid and app.current_user_id()=${ctx.userId??null}::uuid as matches`);
-    if(carrier?.matches!==true)throw new OwnLeaveContentUnavailable();
+    // Carrier tenant/login, read-committed isolation, live unblocked login, current roles/grants AND
+    // u.person_id = ctx.personId, under the Access interval every relink/role writer joins.
+    await assertAiPrincipalTx(tx,ctx);
     const rows=await tx.execute<{actionId:unknown;state:unknown;createdAt:unknown;expiresAt:unknown}>(sql`select action_id as "actionId",state,
       to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",
       to_char(expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "expiresAt"
-      from app.assistant_legacy_reviews_index('leave.apply')`);
+      from app.assistant_own_leave_reviews_index()`);
     return OwnLeaveReviewIndexResult.parse({kind:'review_index',reviews:Array.from(rows)});
   }catch{throw new OwnLeaveContentUnavailable();}
 }

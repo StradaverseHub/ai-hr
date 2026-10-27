@@ -241,3 +241,35 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.answer_evaluation_intent_custody() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER answer_evaluation_intent_custody BEFORE INSERT OR UPDATE OR DELETE ON public.ai_assistant_answer_evaluation_intent FOR EACH ROW EXECUTE FUNCTION app.answer_evaluation_intent_custody();
+--> statement-breakpoint
+-- Repair of app.assistant_org_review_prepare (0622 is applied on the candidate, so it is not edited in place).
+-- reporting_line.line_type is the reporting_line_type enum and p_line_type is validated text; `enum = text`
+-- has no operator (SQLSTATE 42883), so EVERY org reporting-change review refused at preparation. The body is
+-- otherwise identical: the already-validated text is cast to the enum in both comparisons. Same grants.
+CREATE OR REPLACE FUNCTION app.assistant_org_review_prepare(p_id uuid,p_person uuid,p_employment uuid,p_company uuid,p_subject_person uuid,p_manager uuid,p_previous_manager uuid,p_line_type text,p_intent_digest text,p_reviewed_digest text,p_kid text,p_wrapped_dek text,p_ciphertext text) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();at_time timestamptz;manager_person uuid;previous_person uuid;actual_previous uuid;people uuid[];
+BEGIN
+ PERFORM app._assistant_org_review_source(p_person,p_employment,p_company,p_subject_person);
+ IF p_line_type IS NULL OR p_line_type NOT IN ('administrative','functional') OR app.access_workforce_employment(p_manager,'workforce.view') IS NOT TRUE THEN RAISE EXCEPTION 'Org review unavailable' USING ERRCODE='42501';END IF;
+ SELECT e.person_id INTO manager_person FROM public.employment e WHERE e.tenant_id=t AND e.id=p_manager;
+ IF (SELECT count(*) FROM public.reporting_line r WHERE r.tenant_id=t AND r.subordinate_employment_id=p_employment AND r.line_type=p_line_type::public.reporting_line_type AND r.valid_to IS NULL AND r.superseded_at IS NULL)>1 THEN RAISE EXCEPTION 'Org review unavailable' USING ERRCODE='42501';END IF;
+ SELECT r.manager_employment_id INTO actual_previous FROM public.reporting_line r WHERE r.tenant_id=t AND r.subordinate_employment_id=p_employment AND r.line_type=p_line_type::public.reporting_line_type AND r.valid_to IS NULL AND r.superseded_at IS NULL;
+ IF actual_previous IS DISTINCT FROM p_previous_manager OR manager_person IS NULL THEN RAISE EXCEPTION 'Org review unavailable' USING ERRCODE='42501';END IF;
+ IF actual_previous IS NOT NULL THEN
+  IF app.access_workforce_employment(actual_previous,'workforce.view') IS NOT TRUE THEN RAISE EXCEPTION 'Org review unavailable' USING ERRCODE='42501';END IF;
+  SELECT e.person_id INTO previous_person FROM public.employment e WHERE e.id=actual_previous AND e.tenant_id=t;
+  IF previous_person IS NULL THEN RAISE EXCEPTION 'Org review unavailable' USING ERRCODE='42501';END IF;
+ END IF;
+ people:=ARRAY[p_person,p_subject_person,manager_person,previous_person];
+ IF EXISTS(SELECT 1 FROM app.home_greeting_erasure_intent i WHERE i.xact_id=pg_current_xact_id() AND i.tenant_id=t AND i.person_id=ANY(people)) OR EXISTS(SELECT 1 FROM app.assistant_review_erasure_intent i WHERE i.xact_id=pg_current_xact_id() AND i.tenant_id=t AND i.person_id=ANY(people)) THEN RAISE EXCEPTION 'Org review unavailable' USING ERRCODE='42501';END IF;
+ IF p_id IS NULL OR p_intent_digest IS NULL OR p_intent_digest !~ '^[a-f0-9]{64}$' OR p_reviewed_digest IS NULL OR p_reviewed_digest !~ '^[a-f0-9]{64}$' OR p_kid IS NULL OR p_kid !~ '^[a-f0-9]{16}$' OR p_wrapped_dek IS NULL OR length(p_wrapped_dek) NOT BETWEEN 1 AND 512 OR p_ciphertext IS NULL OR octet_length(p_ciphertext) NOT BETWEEN 1 AND 65536 THEN RAISE EXCEPTION 'Org review unavailable' USING ERRCODE='22023';END IF;
+ at_time:=clock_timestamp();
+ IF (SELECT count(*) FROM app.assistant_own_leave_review WHERE tenant_id=t AND user_id=u AND state='awaiting_confirmation' AND expires_at>at_time)>=5 OR (SELECT count(*) FROM app.assistant_own_leave_review WHERE tenant_id=t AND user_id=u AND created_at>at_time-interval '10 minutes')>=20 THEN RAISE EXCEPTION 'Org review unavailable' USING ERRCODE='54000';END IF;
+ INSERT INTO app.assistant_own_leave_review(action_kind,id,tenant_id,user_id,person_id,employment_id,company_id,org_subject_person_id,org_manager_person_id,org_previous_manager_person_id,intent_digest,reviewed_digest,state,created_at,expires_at)
+ VALUES('org.reporting.change',p_id,t,u,p_person,p_employment,p_company,p_subject_person,manager_person,previous_person,p_intent_digest,p_reviewed_digest,'awaiting_confirmation',at_time,at_time+interval '10 minutes') ON CONFLICT(id) DO NOTHING;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Org review unavailable' USING ERRCODE='42501';END IF;
+ INSERT INTO app.assistant_own_leave_review_content VALUES(p_id,p_kid,p_wrapped_dek,p_ciphertext);RETURN app._assistant_org_review_json(p_id);
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_org_review_prepare(uuid,uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,text,text,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_org_review_prepare(uuid,uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,text,text,text) TO ai_hr_app;
