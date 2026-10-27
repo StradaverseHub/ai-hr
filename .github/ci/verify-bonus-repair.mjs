@@ -8,6 +8,7 @@ import {fileURLToPath} from 'node:url';
 import {isDeepStrictEqual} from 'node:util';
 import {BONUS_REFS as refs,validateHistoricalRuntimeCollection,assessBonusOwnerCoverage} from './bonus-owner-acceptance.mjs';
 import {bonusRepairSource} from './bonus-repair-source.mjs';
+import {proveBonusCanonicalAdvance} from './bonus-canonical-advance.mjs';
 import {verifyBonusInputContinuity} from './bonus-input-continuity.mjs';
 import {proveReviewedFocusedController} from './reviewed-focused-controller.mjs';
 import {immutablePlan} from './immutable-plan.mjs';
@@ -42,6 +43,7 @@ export async function verifyBonusRepairCi({candidatePath,deploymentBaseline,plan
  const verifier=cleanHead(controllerRoot),verifierBinding=bindOriginalController({repository:controllerRoot,verifier,controller:'9541b1686d7941f89e564723271e48bf85a21a89'}),directory=join(controllerRoot,'scratchpad','validated-bonus-'+refs.buildRunId+'-'+randomUUID());mkdirSync(directory,{mode:0o700});
  const save=(name,data)=>writeFileSync(join(directory,name),JSON.stringify(data,null,2)+'\n',{flag:'wx',mode:0o600});
  const ids=[...new Set([...plan.wave.map(r=>r.runId),...plan.runtimeMismatches.map(r=>r.runId),plan.positive.runId,plan.tool.runId,refs.buildRunId,40512563694,40509167972,plan.controlRunId])];
+ const canonical=JSON.parse(execFileSync('gh',['api','repos/StradaverseHub/ai-hr/git/ref/heads/alpha'],{encoding:'utf8'}));const heldCanonical=proveBonusCanonicalAdvance({repository:candidatePath,head:canonical.object.sha});save('held-canonical-continuity.json',heldCanonical);
  const before=await fetchRunSnapshots(ids);assertOperatorControls(before.get(plan.controlRunId),verifier);save('first-api-snapshots.json',Object.fromEntries(before));
  const source=await bonusRepairSource({repository:candidatePath});assert(isDeepStrictEqual(source,load(plan.sourceImpact)),'Actual immutable source/impact differs from original source witness');save('source-proof.json',source);
  const historical=validateHistoricalRuntimeCollection({verification:load(join(plan.historicalDirectory,'verification.json')),grant:load(join(plan.historicalDirectory,'installation-grant.json'))});
@@ -61,19 +63,20 @@ export async function verifyBonusRepairCi({candidatePath,deploymentBaseline,plan
  const diagnostic=[];for(const row of plan.runtimeMismatches){const actual=await read(row,{...runtime,node:'22.23.4'});assert.equal(actual.originalFocusedExitCode,0);diagnostic.push({runId:row.runId,actualRuntime:'22.23.4',targetRuntime:'22.23.3',refusal:'EXACT_TARGET_RUNTIME_MISMATCH',passingFiles:actual.passingFiles,notAcceptedAsTargetCoverage:true});}save('original-runtime-mismatch-outcomes.json',diagnostic);
  const browser=await authenticateBonusBrowser({repository:candidatePath,outputParent:directory}),compiler=authenticateBonusCompiler({repository:candidatePath});save('compiler-evidence.json',compiler);
  const negative=before.get(40509167972);assert(negative.run.head_sha==='e33213148f71d71bbeabfcf3333cfc5d9a2a2058'&&negative.run.conclusion==='success'&&negative.jobs.some(j=>j.name==='bonus-negative'&&j.conclusion==='success'),'Original-component assertion control missing');
+ assert.equal(installHash(readFileSync(plan.experienceEvidence)),'63bf898eb86d83ec4cd4d3eaccbc75d528564e60c972748964c106017cc048ae','Frozen owner experience artifact changed');
  const experience=load(plan.experienceEvidence),acceptance=assessBonusOwnerCoverage({historical,source,continuity,wave,positive,browser,compiler,experience});save('combined-coverage.json',acceptance);
  const snapshot=before.get(refs.buildRunId),expected={candidate:refs.candidate,controller:refs.controller,runId:refs.buildRunId},inventory=inspectBonusRepairBuildOnlySnapshot({...snapshot,expected});
  save('run.json',snapshot.run);save('jobs.json',snapshot.jobs);save('artifacts.json',snapshot.artifacts);save('archive-downloads.json',await downloadCiArchives([inventory.artifact],directory,{prefetchDirectory:plan.buildPrefetchDirectory}));
  const archive=join(directory,BUILD_ARTIFACT+'.zip');readCiArchive(inventory.artifact,archive);execFileSync('python3',[fileURLToPath(new URL('./build-transport-extract.py',import.meta.url)),archive,join(directory,BUILD_ARTIFACT),inventory.artifact.digest.slice(7)],{timeout:60000,stdio:'inherit'});
  const buildParams={...expected,baseline:CI_BASE,controllerBranch:'alpha'},build=await sourceBoundBuild({candidatePath,dir:directory,p:buildParams,jobs:snapshot.jobs}),baselineAdvance=forwardBaselineSource({repository:candidatePath,candidate:refs.candidate,ciBaseline:CI_BASE,deploymentBaseline});
- const evidence={kind:'AUTHENTICATED_BONUS_OWNER_EXCEPTION_AND_CANONICAL_BUILD',tier:'ci-runtime-owner-exception-v1',result:'ACCEPTED_WITH_OWNER_EXCEPTION',sha:refs.candidate,controller:refs.controller,controllerBranch:'alpha',runId:refs.buildRunId,baseline:CI_BASE,deploymentBaseline,baselineAdvance,verifierBinding,build,artifact:{id:inventory.artifact.id,digest:inventory.artifact.digest},acceptance,sourceProof:source,candidatePath,evidenceDirectory:directory,verifiedAt:new Date().toISOString(),fullGatePassCreated:false,createsNewFullPassBaseline:false,releaseAuthorized:false};
+ const evidence={kind:'AUTHENTICATED_BONUS_OWNER_EXCEPTION_AND_CANONICAL_BUILD',tier:'ci-runtime-owner-exception-v1',result:'ACCEPTED_WITH_OWNER_EXCEPTION',sha:refs.candidate,controller:refs.controller,controllerBranch:'alpha',runId:refs.buildRunId,baseline:CI_BASE,deploymentBaseline,baselineAdvance,heldCanonical,verifierBinding,build,artifact:{id:inventory.artifact.id,digest:inventory.artifact.digest},acceptance,sourceProof:source,candidatePath,evidenceDirectory:directory,verifiedAt:new Date().toISOString(),fullGatePassCreated:false,createsNewFullPassBaseline:false,releaseAuthorized:false};
  const revalidate=async()=>{
   assert.equal(cleanHead(candidatePath),refs.candidate);assert.equal(cleanHead(controllerRoot),verifier);assertSnapshotSetsUnchanged(before,await fetchRunSnapshots(ids));
   assert(isDeepStrictEqual(await bonusRepairSource({repository:candidatePath}),source),'Frozen actual source graph changed');
   await verifyBonusInputContinuity({repository:candidatePath,toolRepository:plan.toolRepository,source,continuity,originalToolAuthentication:load(plan.originalToolAuthentication),toolAuthentication:tool});
   validateHistoricalRuntimeCollection({verification:load(join(plan.historicalDirectory,'verification.json')),grant:load(join(plan.historicalDirectory,'installation-grant.json'))});
   assert(isDeepStrictEqual(await sourceBoundBuild({candidatePath,dir:directory,p:buildParams,jobs:snapshot.jobs}),build),'Canonical candidate inputs changed');
-  const alpha=JSON.parse(execFileSync('gh',['api','repos/StradaverseHub/ai-hr/git/ref/heads/alpha'],{encoding:'utf8'}));assert.equal(alpha.object.sha,refs.controller,'Held alpha changed');assert.equal(installHash(installJson(load(plan.experienceEvidence))),acceptance.experienceEvidenceSha256);return true;
+  const alpha=JSON.parse(execFileSync('gh',['api','repos/StradaverseHub/ai-hr/git/ref/heads/alpha'],{encoding:'utf8'}));assert.equal(alpha.object.sha,heldCanonical.head,'Held canonical alpha changed');assert(isDeepStrictEqual(proveBonusCanonicalAdvance({repository:candidatePath,head:alpha.object.sha}),heldCanonical),'Reviewed canonical advancement changed');assert.equal(installHash(installJson(load(plan.experienceEvidence))),acceptance.experienceEvidenceSha256);return true;
  };
  await revalidate();save('verification.json',evidence);save('verification-timing.json',{elapsedMs:Date.now()-began,sharedImmutablePlans:plans.size,apiSnapshots:ids.length,releaseAuthorized:false});return {evidence,snapshot,revalidate};
 }
