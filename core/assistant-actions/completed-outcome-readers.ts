@@ -55,7 +55,7 @@ export async function readCompletedNativeOutcomeTx(tx:Tx,supplied:SessionContext
   case 'typed_pay_components.create':result=await readCompletedPayComponentOutcomeTx(tx,ctx,id);break;
   case 'payroll.close':result=await readCompletedPayrollCloseOutcomeTx(tx,ctx,id);break;
   case 'rewards.post':result=await readCompletedRewardsPostOutcomeTx(tx,ctx,id);break;
-  default:{const never:never=reference.action;void never;return unavailable();}
+  default:{const never:never=reference;void never;return unavailable();}
  }
  const evidence=NativeOutcomeEvidence.parse({action:reference.action,sourceId:id,eventId:result.eventId,currentStatus:currentStatus(result.completion)});
  await requireNativeOutcomeTargetsTx(tx,ctx,{action:reference.action,sourceId:id,eventId:result.eventId});
