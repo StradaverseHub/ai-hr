@@ -141,3 +141,23 @@ export function factsFromOnehr(source: NonNullable<RewardSource['onehr']>, exist
   const talent: RewardFacts['talent'] = source.pip ? 'PIP' : source.talent === 'Super Star' ? 'SSTAR' : source.talent === 'Star' ? 'STAR' : source.talent === 'Solid Core' ? 'SCORE' : source.talent === 'PIP/Improvement' ? 'IMPRO' : existing.talent;
   return { ...existing, performance: source.performance ?? existing.performance, talent, pipCase: source.pip || existing.pipCase, reviewed: false };
 }
+
+/** The seat a returned review waits on: the BU CEO, or the BG CEO for a BG-originated off-cycle request. */
+export type RewardReturnSeat = 'bu' | 'bg';
+export type RewardDecisionFact = { action: string; fromStage: string; toStage: string; reason: string; actorId: string; createdAt: Date | string };
+export type RewardReturnedState = { reason: string; actorId: string; at: string; fromStage: string; toSeat: RewardReturnSeat };
+/**
+ * "Returned" is DERIVED, never a stored stage (RW-131): a draft whose LATEST decision is a return.
+ * `latest` must be the newest decision by (created_at DESC, id DESC). A resubmission moves the unit out
+ * of draft, so the state clears itself; a later non-return decision on a draft also clears it.
+ */
+export function returnedState(status: RewardStage, latest: RewardDecisionFact | null | undefined, bgOrigin: boolean): RewardReturnedState | null {
+  if (status !== 'draft' || !latest || latest.action !== 'return' || latest.toStage !== 'draft') return null;
+  return { reason: latest.reason, actorId: latest.actorId, at: new Date(latest.createdAt).toISOString(), fromStage: latest.fromStage, toSeat: bgOrigin ? 'bg' : 'bu' };
+}
+/** Which of the actor's unit roles signed a decision; used only when the viewer cannot read the actor's name. */
+export function decisionActorRole(fromStage: string, actorRoles: readonly RewardRole[]): RewardRole | null {
+  if (actorRoles.includes(fromStage as RewardRole)) return fromStage as RewardRole;
+  const order: RewardRole[] = fromStage === 'approved' ? ['gr', 'ctro', 'ec'] : fromStage === 'draft' ? ['bu', 'bg', 'gr'] : [];
+  return order.find(r => actorRoles.includes(r)) ?? null;
+}

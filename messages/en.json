@@ -17893,7 +17893,16 @@
       "currencyHelp": "Shared configurations use the existing MYR Reward Desk policy; other currency policies are not offered here.",
       "archive": "Archive configuration",
       "archiveHelp": "Saving with no selected pairs stops this configuration for future reviews. Its saved versions and existing reviews are retained."
-    }
+    },
+    "returnedTo": {
+      "bu": "Returned to BU CEO",
+      "bg": "Returned to BG CEO"
+    },
+    "returnedBy": "Returned by {actor} on {date}",
+    "returnedReason": "Reason for return",
+    "returnedNext": "Revise the review and submit it again.",
+    "decidedBy": "By {actor}",
+    "aReviewer": "a reviewer"
   },
   "identityEmail": {
     "title": "Email delivery",

@@ -17893,7 +17893,16 @@
       "currencyHelp": "Cấu hình dùng chung sử dụng chính sách Reward Desk MYR hiện có; không cung cấp chính sách tiền tệ khác tại đây.",
       "archive": "Lưu trữ cấu hình",
       "archiveHelp": "Lưu mà không chọn cặp nào sẽ ngừng áp dụng cấu hình này cho đợt xét duyệt tương lai. Vẫn giữ các phiên bản đã lưu và đợt xét duyệt hiện có."
-    }
+    },
+    "returnedTo": {
+      "bu": "Returned to BU CEO",
+      "bg": "Returned to BG CEO"
+    },
+    "returnedBy": "Returned by {actor} on {date}",
+    "returnedReason": "Reason for return",
+    "returnedNext": "Revise the review and submit it again.",
+    "decidedBy": "By {actor}",
+    "aReviewer": "a reviewer"
   },
   "identityEmail": {
     "title": "Gửi email",

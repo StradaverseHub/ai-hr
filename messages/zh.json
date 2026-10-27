@@ -17893,7 +17893,16 @@
       "currencyHelp": "共享配置使用现有的 MYR 奖励政策；此处不提供其他币种政策。",
       "archive": "归档配置",
       "archiveHelp": "不选择任何组合保存后，此配置将不再用于未来评审。已保存版本与现有评审均予保留。"
-    }
+    },
+    "returnedTo": {
+      "bu": "Returned to BU CEO",
+      "bg": "Returned to BG CEO"
+    },
+    "returnedBy": "Returned by {actor} on {date}",
+    "returnedReason": "Reason for return",
+    "returnedNext": "Revise the review and submit it again.",
+    "decidedBy": "By {actor}",
+    "aReviewer": "a reviewer"
   },
   "identityEmail": {
     "title": "邮件发送",
