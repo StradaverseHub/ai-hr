@@ -19,7 +19,7 @@ export function inspectEmailUnitFiles(plan,report){
   const raw=batch.result;assert(Array.isArray(raw?.testResults)&&raw.testResults.length>0,'Missing original raw files');
   let good=0,bad=0,failedFiles=0;
   for(const file of raw.testResults){
-   assert(typeof file.name==='string'&&report.cwd==='/home/runner/work/ai-hr/ai-hr/source','Exact hosted checkout required');
+   assert(typeof file.name==='string'&&report.cwd===(unit.kind==='browser'?'/__w/ai-hr/ai-hr/source':'/home/runner/work/ai-hr/ai-hr/source'),'Exact hosted checkout required');
    const path=relative(report.cwd,file.name).split('\\').join('/');assert(unit.files.includes(path)&&!seen.has(path),'Foreign or repeated original file');seen.add(path);
    assert(Array.isArray(file.assertionResults)&&file.assertionResults.length>0&&file.assertionResults.every(a=>['passed','failed'].includes(a.status)),'Empty or skipped assertions');
    const failed=file.assertionResults.filter(a=>a.status==='failed').length,passed=file.assertionResults.length-failed;

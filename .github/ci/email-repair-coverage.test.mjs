@@ -16,6 +16,15 @@ test('passing cases inside a failed batch remain file evidence, never a passing 
  const {plan,report}=reportFixture();report.exitCode=1;report.batches[0].exitCode=1;const raw=report.batches[0].result;raw.testResults=[file(plan.units[0].files[0],true)];Object.assign(raw,{numPassedTests:0,numFailedTests:1,numFailedTestSuites:1,success:false});
  const checked=inspectEmailUnitFiles(plan,report);assert.equal(checked.originalUnitExitCode,1);assert.equal(checked.files[0].state,'FAILED');
 });
+test('binds browser files to the actual pinned container root and ordinary files to the hosted runner root',()=>{
+ const {plan,report}=reportFixture();
+ report.cwd='/__w/ai-hr/ai-hr/source';report.batches[0].result.testResults[0].name=report.cwd+'/test/example.test.ts';
+ assert.throws(()=>inspectEmailUnitFiles(plan,report));
+ plan.units[0].kind='browser';plan.units[0].engine='chromium';
+ assert.equal(inspectEmailUnitFiles(plan,report).files[0].engine,'chromium');
+ report.cwd='/unreviewed/source';report.batches[0].result.testResults[0].name=report.cwd+'/test/example.test.ts';
+ assert.throws(()=>inspectEmailUnitFiles(plan,report));
+});
 function coverageFixture(){
  const ordinary=[...EMAIL_REPAIRED_FILES,'test/unchanged.test.ts'];
  const units=[{id:'nodb-8bdb44999773d9ff',kind:'nodb',files:ordinary,pdfTools:false},...['chromium','firefox','webkit'].map(engine=>({id:'browser-'+engine,kind:'browser',engine,files:['test/page.browser.test.tsx']}))];

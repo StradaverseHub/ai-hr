@@ -43,7 +43,7 @@ jobs:
         if: inputs.control_scope == 'email-grant-controls'
         run: node --import tsx --input-type=module -e "await import('./.github/ci/operator-email-repair.mjs')"
       - name: Email exact-source and retained-coverage refusal controls
-        if: inputs.control_scope == 'email-controls'
+        if: inputs.control_scope == 'email-controls' || inputs.control_scope == 'email-grant-controls'
         run: node --experimental-strip-types --test .github/ci/email-repair-source.test.mjs .github/ci/email-repair-coverage.test.mjs .github/ci/retained-units.test.mjs .github/ci/authenticated-focused.test.mjs .github/ci/reviewed-focused-controller.test.mjs
       - name: Exact Bonus build inventory and refusal boundaries
         if: inputs.control_scope == 'bonus-controls'
