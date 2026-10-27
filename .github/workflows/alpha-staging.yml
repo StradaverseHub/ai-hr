@@ -80,7 +80,7 @@ jobs:
       - name: Install isolated controller analysis dependencies
         if: ${{ inputs.controller_only }}
         uses: ./.github/actions/setup-alpha
-        with: {capacity_profile: bounded-suite-setup}
+        with: {path: ., mobile: "false", capacity_profile: legacy}
       - name: Validate versioned repair selection and evidence boundaries
         if: ${{ inputs.controller_only }}
         run: |
