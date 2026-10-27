@@ -16,7 +16,7 @@ export function assertAiDeliveryBrowserAdmission(){
  const target=AI_DELIVERY_BROWSER_TARGET,state=path.join(os.homedir(),'.aihr-gate-state');
  const ancestors=new Set<number>();let pid=process.ppid;
  for(let n=0;pid>1&&n<64;n++){if(ancestors.has(pid))throw refusal();ancestors.add(pid);pid=Number(execFileSync('ps',['-o','ppid=','-p',String(pid)],{encoding:'utf8'}).trim());if(!Number.isSafeInteger(pid)||pid<0)throw refusal();}
- const records=[];
+ const records:{schema:number;pid:number;token:string;name:string}[]=[];
  for(const relative of ['locks/slot.1','locks/slot.2','devdb-locks/slot.1']){
   const directory=path.join(state,relative),stat=fs.lstatSync(directory);if(!stat.isDirectory()||stat.isSymbolicLink()||fs.realpathSync(directory)!==directory||stat.uid!==process.getuid?.())throw refusal();
   const file=path.join(directory,'lease.json'),recordStat=fs.lstatSync(file);if(!recordStat.isFile()||recordStat.isSymbolicLink()||recordStat.nlink!==1||recordStat.size>1024||recordStat.uid!==process.getuid?.())throw refusal();
@@ -74,8 +74,8 @@ export async function prepareAiDeliveryBrowserFixture(){
   const own=actors.own,ownCtx=await context(own.userId,own.personId),selection={employmentId:own.employmentId!,leaveTypeId:annual.id},humanText={reason:'Fictional personal appointment entered by the human',employeeRemark:'Fictional browser review only'};
   // Ask the actual candidate owner; a guessed weekday is not canonical eligibility proof.
   let checked:Awaited<ReturnType<typeof readOwnLeaveCandidateTx>>|undefined,requestedDate='';const date=new Date(today+'T00:00:00Z');
-  for(let n=0;n<31;n++){date.setUTCDate(date.getUTCDate()+1);requestedDate=date.toISOString().slice(0,10);const nomination={action:'leave.apply',contractVersion:1,employmentId:own.employmentId!,leaveTypeId:annual.id,date:requestedDate,durationType:'full_day'};checked=await withTenant(ownCtx,tx=>readOwnLeaveCandidateTx(tx,ownCtx,nomination,selection,humanText,'en'));if(checked.kind==='candidate'&&checked.candidate.deductionDays===1&&checked.candidate.availableBalance>=1)break;}
-  if(checked?.kind!=='candidate'||checked.candidate.deductionDays!==1||checked.candidate.availableBalance<1)throw refusal();
+  for(let n=0;n<31;n++){date.setUTCDate(date.getUTCDate()+1);requestedDate=date.toISOString().slice(0,10);const nomination={action:'leave.apply',contractVersion:1,employmentId:own.employmentId!,leaveTypeId:annual.id,date:requestedDate,durationType:'full_day'};checked=await withTenant(ownCtx,tx=>readOwnLeaveCandidateTx(tx,ownCtx,nomination,selection,humanText,'en'));if(checked.kind==='candidate'&&checked.candidate.deductionDays===1&&typeof checked.candidate.availableBalance==='number'&&Number.isFinite(checked.candidate.availableBalance)&&checked.candidate.availableBalance>=1)break;}
+  if(checked?.kind!=='candidate'||checked.candidate.deductionDays!==1||typeof checked.candidate.availableBalance!=='number'||!Number.isFinite(checked.candidate.availableBalance)||checked.candidate.availableBalance<1)throw refusal();
   const workspace:Record<string,unknown>={};for(const module of ['employees','leave','ess'] as const)workspace[module]=await withAssistantRead(ownCtx,module,read=>read.moduleWork(module));
   const [counts]=await owner.client`select (select count(*)::int from leave_request where tenant_id=${made.tenantId}::uuid) as leave_requests,(select count(*)::int from domain_event where tenant_id=${made.tenantId}::uuid and event_type='leave-request.submitted') as submitted_events`;
   if(counts.leave_requests!==0||counts.submitted_events!==0)throw refusal();
