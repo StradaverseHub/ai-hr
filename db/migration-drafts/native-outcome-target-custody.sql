@@ -2,6 +2,21 @@
 -- definition in ONE centrally allocated native-outcome migration before its first normal application.
 -- Private source-owned COMPLETE privacy index. It does not establish canonical-engine provenance,
 -- action quality, benefit, authority or causal attribution. Never expose these targets to a model.
+-- SQL-only callers/physical identity triggers also bound their first new metadata wait. This
+-- grants no authority and never raises a stricter caller timeout. Application commands install the
+-- same bounds as a separate first statement before entering SQL owners.
+CREATE FUNCTION app._native_outcome_bounds() RETURNS void
+ LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE n integer;
+BEGIN
+ PERFORM name,set_config(name,(CASE WHEN setting::bigint=0 THEN CASE name WHEN 'statement_timeout' THEN 5000 ELSE 500 END
+  ELSE least(setting::bigint,CASE name WHEN 'statement_timeout' THEN 5000 ELSE 500 END) END)::text,true)
+  FROM pg_catalog.pg_settings WHERE name IN('statement_timeout','lock_timeout') AND unit='ms';
+ GET DIAGNOSTICS n=ROW_COUNT;
+ IF n<>2 THEN RAISE EXCEPTION 'Native outcome transaction bounds unavailable';END IF;
+END $$;
+REVOKE ALL ON FUNCTION app._native_outcome_bounds() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 CREATE TABLE app.native_outcome_source_capture(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES public.tenant(id) ON DELETE CASCADE,
  user_id uuid NOT NULL REFERENCES public.app_user(id) ON DELETE CASCADE,person_id uuid REFERENCES public.person(id) ON DELETE CASCADE,
@@ -50,6 +65,7 @@ DECLARE r app.assistant_own_leave_review%ROWTYPE;e public.employee_import_evalua
  t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();people uuid[];employees uuid[];cases uuid[];
  id uuid;total integer;expiry timestamptz;kind text;source_person uuid;
 BEGIN
+ PERFORM app._native_outcome_bounds();
  IF p_tenant IS DISTINCT FROM t OR p_user IS DISTINCT FROM u OR t IS NULL OR u IS NULL
   OR app.principal_snapshot_current() IS NOT TRUE OR current_setting('transaction_isolation')<>'read committed'
   OR current_setting('transaction_read_only')<>'off' OR p_action IS NULL OR p_source IS NULL OR p_event IS NULL
@@ -153,6 +169,7 @@ CREATE FUNCTION app.native_outcome_association_capture() RETURNS trigger
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE c app.native_outcome_source_capture%ROWTYPE;source uuid;
 BEGIN
+ PERFORM app._native_outcome_bounds();
  source:=CASE WHEN NEW.source_kind='review' THEN NEW.review_id ELSE NEW.import_attempt_id END;
  IF app.native_outcome_targets_require(NEW.tenant_id,NEW.user_id,NEW.person_id,NEW.action,source,NEW.event_id) IS NOT TRUE THEN
   RAISE EXCEPTION 'Native outcome privacy capture unavailable' USING ERRCODE='42501';END IF;
@@ -187,6 +204,7 @@ CREATE FUNCTION app.native_outcome_own_erase() RETURNS boolean
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();
 BEGIN
+ PERFORM app._native_outcome_bounds();
  IF t IS NULL OR u IS NULL OR app.principal_snapshot_current() IS NOT TRUE OR NOT EXISTS(
   SELECT 1 FROM public.app_user actual WHERE actual.id=u AND actual.tenant_id=t AND actual.archived_at IS NULL AND NOT app.login_blocked(actual.id)) THEN
   RAISE EXCEPTION 'Native outcome erasure identity unavailable' USING ERRCODE='42501';END IF;
@@ -218,6 +236,7 @@ CREATE FUNCTION app.native_outcome_targets_redact(p_employment uuid) RETURNS int
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE i app.home_greeting_erasure_intent%ROWTYPE;total integer;subject_user uuid;
 BEGIN
+ PERFORM app._native_outcome_bounds();
  SELECT * INTO i FROM app.home_greeting_erasure_intent WHERE xact_id=pg_current_xact_id() AND tenant_id=app.current_tenant_id()
   AND user_id=app.current_user_id() AND employment_id=p_employment;
  IF NOT FOUND OR app.principal_snapshot_current() IS NOT TRUE OR app.can_admin_employment(p_employment) IS NOT TRUE THEN
@@ -295,6 +314,7 @@ CREATE FUNCTION app.native_outcome_identity_deleted() RETURNS trigger
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE k text;
 BEGIN
+ PERFORM app._native_outcome_bounds();
  k:=CASE TG_TABLE_NAME WHEN 'person' THEN 'person' WHEN 'employment' THEN 'employment' WHEN 'lc_case' THEN 'lifecycle_case' END;
  DELETE FROM app.native_outcome_source_capture c WHERE c.tenant_id=OLD.tenant_id AND EXISTS(
   SELECT 1 FROM app.native_outcome_source_target t WHERE t.capture_id=c.id AND t.kind=k AND t.target_id=OLD.id);

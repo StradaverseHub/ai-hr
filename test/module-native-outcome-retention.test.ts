@@ -95,6 +95,19 @@ describe('admitted native outcome learning privacy cleanup',()=>{
   await owner.db.execute(sql`delete from public.person where id=${target.id}::uuid`);
   expect(await counts()).toEqual({sources:0,targets:0,associations:0});expect(await owner.db.execute(sql`select id,event_type,payload from public.domain_event order by id`)).toEqual(before);
  });
+ it('bounds an actual held source row during admitted privacy erasure, rolls back admission and metadata, then erases after release',async()=>{
+  const target=await subject(),source=await storageCapture({targets:[{kind:'person',id:target.personId}]}),job=await storageJob();await storageAssociation(source,job,false);const before=await counts();
+  const events=await owner.db.execute(sql`select id,event_type,payload from public.domain_event order by id`);
+  const intents=await owner.db.execute(sql`select * from app.home_greeting_erasure_intent order by xact_id,tenant_id,user_id,person_id`);
+  let entered!:()=>void,release!:()=>void;const ready=new Promise<void>(yes=>{entered=yes;}),done=new Promise<void>(yes=>{release=yes;});
+  // Deliberately no advisory/Access holder: actual source DELETE row wait must be bounded itself.
+  const holder=owner.db.transaction(async tx=>{expect(await tx.execute(sql`select id from app.native_outcome_source_capture where id=${source.id}::uuid for update`)).toHaveLength(1);entered();await done;});
+  const request={subjectEmploymentId:target.employmentId,scope:'contact' as const,reason:'Fictional source row bound',requestRef:'fictional-source-row-holder'};
+  try{await ready;const started=Date.now();await expect(erasePersonPii(adminCtx(base),request)).rejects.toThrow();expect(Date.now()-started).toBeLessThan(4500);expect(await counts()).toEqual(before);
+   expect(await owner.db.execute(sql`select id,event_type,payload from public.domain_event order by id`)).toEqual(events);expect(await owner.db.execute(sql`select * from app.home_greeting_erasure_intent order by xact_id,tenant_id,user_id,person_id`)).toEqual(intents);
+  }finally{release();await holder;}
+  expect((await erasePersonPii(adminCtx(base),request)).erased).toContain('assistantOutcomeLearning');expect(await counts()).toEqual({sources:0,targets:0,associations:0});
+ });
  it('refuses unadmitted erasure and missing exact pii.erased audit, rolling source/association deletion back; identity-only own erasure is idempotent',async()=>{
   const target=await subject(),source=await storageCapture({targets:[{kind:'person',id:target.personId}]}),job=await storageJob();await storageAssociation(source,job,false);const before=await counts();
   await expect(withTenant(adminCtx(base),tx=>tx.execute(sql`select app.native_outcome_targets_redact(${target.employmentId}::uuid)`))).rejects.toThrow();expect(await counts()).toEqual(before);

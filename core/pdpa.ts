@@ -1,3 +1,4 @@
+import {boundNativeOutcomeTransactionTx} from './module-native-outcome-bounds';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 /**
  * PDPA erasure-equivalent service (ADR-0030 §2 erasePersonPii). Malaysia has NO GDPR-style erasure right,
@@ -82,6 +83,7 @@ export async function erasePersonPii(
     // Source-owned original effect-subject links cover HR/bulk actions where actor PERSON differs
     // from the subject. This joins the existing admitted erasure and exact deferred pii.erased audit,
     // removes learning metadata only, and never touches canonical/statutory records.
+    await boundNativeOutcomeTransactionTx(tx);
     const [outcomes]=await tx.execute<{cleared:number}>(sql`select app.native_outcome_targets_redact(${p.subjectEmploymentId}::uuid) as cleared`);
     if(!outcomes||!Number.isSafeInteger(outcomes.cleared)||outcomes.cleared<0)throw new Error('Assistant outcome erasure unavailable.');
 
