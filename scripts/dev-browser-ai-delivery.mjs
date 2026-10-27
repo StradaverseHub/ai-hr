@@ -10,9 +10,10 @@ import {fileURLToPath} from 'node:url';
 import {createRequire} from 'node:module';
 import {spawn,execFileSync} from 'node:child_process';
 import {createHash,randomUUID,randomBytes} from 'node:crypto';
-import {ownedAiDeliveryProcessMembers} from './ai-delivery-process-members.ts';
 import {AI_DELIVERY_BROWSER_TARGET as target,assertAiDeliveryBrowserAdmission} from './ai-delivery-browser-fixture.ts';
 const mainwt='/Users/zenlam/Projects/ai-hr/.claude/worktrees/mainwt',filename=fileURLToPath(import.meta.url),root=path.resolve(path.dirname(filename),'..');
+// This fixed pure helper has no import.meta dependency; load its actual TSX CommonJS exports.
+const {ownedAiDeliveryProcessMembers}=createRequire(import.meta.url)('./ai-delivery-process-members.ts');
 const tsxLoader=createRequire(path.join(root,'package.json')).resolve('tsx');
 const worker=process.argv.slice(2);if(worker.length>1||worker.length===1&&worker[0]!=='--held-lock-worker')throw Error('Use the closed browser coordinator invocation.');
 if(process.env.NODE_ENV==='production')throw Error('Development only.');
