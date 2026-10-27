@@ -7,7 +7,7 @@ vi.mock('../lib/ai',async importActual=>{const actual=await importActual<typeof 
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import * as perf from '../packs/performance/service';
-import {defaultPolicy} from '../packs/performance/onehr/model';
+import {defaultPolicy,frameworkFor} from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
 import {rewriteAssessmentField} from '../packs/performance/onehr/rewrite-service';
 import {getAssessmentPerformanceInsight} from '../packs/performance/onehr/insight-service';
@@ -16,6 +16,7 @@ import {anthropicAdapter} from '../lib/ai/providers/anthropic';
 import {encryptSecret} from '../lib/ai/crypto';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {hireEmployee,setReportingLine} from '../core/org';
+import {createJobGrade} from '../core/admin';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base,a:SessionContext,self:SessionContext,mgr:SessionContext,subject:{personId:string;employmentId:string},manager:{personId:string;employmentId:string},reviewId:string,kpiId:string;
 const year=Number(todayInKualaLumpur().slice(0,4));
@@ -25,10 +26,12 @@ const view=async(ctx=self)=>{const v=await perf.getOnehrReview(ctx,reviewId);if(
 beforeAll(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-performance-source-secret-01234567890123456789');await migrateTestDb();});
 beforeEach(async()=>{hooks.draft=undefined;hooks.image=undefined;await resetDb();b=await seedBase();await setModule(b.tenantId,'performance','active');a={...await entitledCtx(b),grants:[{role:'hr_admin',companyId:null}]};
  await withTenant(a,async tx=>{const [proof]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() and app.is_group_admin() as ok`);expect(proof.ok).toBe(true);});
- const hire=(name:string)=>hireEmployee(a,{person:{fullName:name,primaryEmail:`${randomUUID()}@synthetic.test`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:`${year-2}-01-01`});subject=await hire('Fictional assessment subject');manager=await hire('Fictional assessment manager');
+ // A real grade must match exactly one native framework before opening the cycle.
+ const grade=await createJobGrade(a,{code:'JG12',name:'Fictional grade 12'});
+ const hire=(name:string)=>hireEmployee(a,{person:{fullName:name,primaryEmail:`${randomUUID()}@synthetic.test`},companyId:b.companyId,departmentId:b.deptA,gradeId:grade.id,employmentType:'full_time',hiredOn:`${year-2}-01-01`});subject=await hire('Fictional assessment subject');manager=await hire('Fictional assessment manager');
  const ctx=async(personId:string,role:'employee'|'manager'):Promise<SessionContext>=>({...a,userId:await createAppUser(b.tenantId,personId,role),personId,roles:[role],grants:undefined});self=await ctx(subject.personId,'employee');mgr=await ctx(manager.personId,'manager');
  await setReportingLine(a,{subordinateEmploymentId:subject.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:`${year-2}-01-01`});
- const {cycleId}=await perf.createCycle(a,{name:'Fictional native annual cycle',companyId:b.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`});const policy=defaultPolicy(framework);policy.modules.evidence=true;await perf.configureOnehrCycle(a,cycleId,null,policy);await perf.openCycle(a,{cycleId});
+ const {cycleId}=await perf.createCycle(a,{name:'Fictional native annual cycle',companyId:b.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`});const policy=defaultPolicy(framework);expect(frameworkFor(policy,'JG12').length).toBeGreaterThan(0);policy.modules.evidence=true;await perf.configureOnehrCycle(a,cycleId,null,policy);await perf.openCycle(a,{cycleId});
  const [review]=await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,cycleId),eq(schema.performanceReview.employmentId,subject.employmentId)));reviewId=review.id;kpiId=randomUUID();
  await perf.saveOnehrKpis(self,reviewId,(await view()).revision,[{id:kpiId,title:'Fictional agreed delivery',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,50,100,150,200]},moderatorEmploymentId:manager.employmentId}],true);await perf.approveOnehrScorecard(mgr,reviewId,(await view(mgr)).revision,true,'Fictional agreed target');
  // Owner fixtures an existing active provider, not a claimed protocol evaluation or live activation.
