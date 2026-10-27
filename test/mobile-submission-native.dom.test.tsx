@@ -80,6 +80,17 @@ const scope={namespace:'https://hr.example.com',actorId:'aaaaaaaa-aaaa-4aaa-8aaa
 const requestId='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const command=JSON.stringify({requestId,action:'in',lat:3,lng:101,accuracy:5,sampledAt:Date.now()});
 describe('native encrypted submission adapter',()=>{
+  it('retains maximum-size Apple proof beside a full retirement history and recovers it after restart',async()=>{
+    const f=fixture(),e=appleReplacementFixture(true),open=()=>f.native.openNativeEnrollmentJournal(e.scope,e.ports.assertCurrent,e.ports);
+    const journal=await open();await journal.begin(e.employmentId,e.requestId);await journal.advance(e.employmentId);
+    for(let n=0;n<14;n++){await journal.revoke(e.employmentId);await journal.replace(e.employmentId,enrollmentId(1000+n));await journal.advance(e.employmentId);}
+    await journal.revoke(e.employmentId);await journal.replace(e.employmentId,enrollmentId(2000));
+    vi.mocked(e.ports.complete).mockRejectedValueOnce(new Error('offline'));
+    await expect(journal.advance(e.employmentId)).rejects.toThrow('offline');
+    const bytes=[...f.files.values()][0];expect(bytes.byteLength).toBeGreaterThan(131072);expect(bytes.byteLength).toBeLessThan(262144+64);
+    const reopened=await open();expect(await reopened.status()).toMatchObject({status:'pending',phase:'proof_ready',requestId:enrollmentId(2000)});
+    expect(await reopened.advance(e.employmentId)).toMatchObject({status:'stored_key',revoked:false});expect(e.native.generateAppleKey).toHaveBeenCalledTimes(16);expect(e.native.attestAppleKey).toHaveBeenCalledTimes(16);
+  });
   it('seals iPhone retirement history across reopening without retaining uploaded attestation bytes',async()=>{
     const f=fixture(),e=appleReplacementFixture();
     const first=await f.native.openNativeEnrollmentJournal(e.scope,e.ports.assertCurrent,e.ports);

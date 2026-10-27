@@ -140,7 +140,10 @@ async function nativeEnrollmentStorage<T extends {revision:number;pending:unknow
   const scopeId=await hash(JSON.stringify([domain,scope.namespace,scope.apiOrigin,scope.actorId,scope.appInstallationId]));assertCurrent();
   const key=await encryptionKey(assertCurrent);assertCurrent();
   const keyId=await hash(await key.encoded('base64'));assertCurrent();
-  const pointer=`aihr.${prefix}.${keyId.slice(0,16)}.${scopeId}`,directory=new Directory(root(),`${prefix}-${scopeId}`),maximum=131072;
+  const pointer=`aihr.${prefix}.${keyId.slice(0,16)}.${scopeId}`,directory=new Directory(root(),`${prefix}-${scopeId}`);
+  // Apple retains up to fifteen predecessor contexts beside a 64 KiB attestation (base64 in JSON).
+  // Keep that bounded history and one-use proof recoverable together; install-wide quota is unchanged.
+  const maximum=domain==='enrollment-v1'?262144:131072;
   const aad=new TextEncoder().encode(`aihr-${domain}:${scopeId}:journal`);
   const file=(slot:0|1)=>new File(directory,`journal-${slot}.sealed`);
   const reclaim=(revision:number)=>{assertCurrent();const old=file((1-revision%2) as 0|1);if(old.exists)old.delete();};

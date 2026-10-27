@@ -6,15 +6,16 @@ import {keyEnrollmentClientData,nativeKeyBindingData} from '../../lib/mobile-key
 import {createEnrollmentJournal,type EnrollmentPorts} from '../../mobile/lib/enrollment-journal';
 import {createIntegrityBridge} from '../../mobile/lib/integrity-bridge';
 import {enrollmentFixture,enrollmentId as id} from './mobile-enrollment-fixture';
-export function appleReplacementFixture(){
+export function appleReplacementFixture(largeProof=false){
  const base=enrollmentFixture(),keys=new Map<string,string>(),cache=new Map<string,{hash:string;state:'completed'|'released';attestation:string}>();
+ if(largeProof)base.context.target.requiredMetadata={validationCategory:4,bundleVersions:['4',...Array.from({length:19},(_,n)=>String(n).padStart(2,'0')+'1'.repeat(62))]};
  const prepared=new Map<string,ReturnType<typeof base.prepared>>(),receipts=new Map<string,ReturnType<typeof C.IntegrityKeyReceipt.parse>>();
  const hash=(value:string,encoding:'hex'|'base64')=>createHash('sha256').update(value).digest(encoding);
  const native={...base.native,
   appleKeyInfo:vi.fn(async(alias:string)=>keys.get(alias)??null),
   generateAppleKey:vi.fn(async(alias:string)=>{const key=hash(alias,'base64');keys.set(alias,key);return key;}),
   appleAttestationInfo:vi.fn(async(key:string,digest:string)=>{const record=cache.get(key);if(!record)return {state:'absent'};if(record.hash!==digest)throw new Error('hash conflict');return record.state==='released'?{state:'released'}:{state:'completed',attestation:record.attestation};}),
-  attestAppleKey:vi.fn(async(key:string,digest:string)=>{if(cache.has(key))throw new Error('one-use operation repeated');const attestation=Buffer.from('synthetic:'+key).toString('base64');cache.set(key,{hash:digest,state:'completed',attestation});return attestation;}),
+  attestAppleKey:vi.fn(async(key:string,digest:string)=>{if(cache.has(key))throw new Error('one-use operation repeated');const attestation=(largeProof?Buffer.alloc(65536,255):Buffer.from('synthetic:'+key)).toString('base64');cache.set(key,{hash:digest,state:'completed',attestation});return attestation;}),
   releaseAppleAttestation:vi.fn(async(key:string,digest:string)=>{const record=cache.get(key);if(record){if(record.hash!==digest)throw new Error('hash conflict');record.state='released';}return null;}),
  };
  const ports:EnrollmentPorts={...base.ports,native:createIntegrityBridge(native,base.ports.assertCurrent),
@@ -27,7 +28,7 @@ export function appleReplacementFixture(){
   }),
   complete:vi.fn(async(_employmentId,input)=>{
    let key=receipts.get(input.challengeId);
-   if(!key){key=C.IntegrityKeyReceipt.parse({keyId:id(500+receipts.size),originChallengeId:input.challengeId,platform:'ios',appId:base.context.target.appId,environment:'production',proofKind:'apple_key_proof',
+   if(!key){key=C.IntegrityKeyReceipt.parse({keyId:id(500+receipts.size),originChallengeId:input.challengeId,platform:'ios',appId:base.context.target.appId,environment:'production',proofKind:base.context.target.requiredMetadata?'apple_app_metadata':'apple_key_proof',
     nativeKeyBinding:hash(nativeKeyBindingData(input.challengeId,input.vendorKeyId),'hex'),createdAt:'2026-10-27T00:00:00.000Z',revokedAt:null});receipts.set(input.challengeId,key);}
    return {outcome:'enrolled',key:structuredClone(key)};
   }),
