@@ -1,9 +1,10 @@
 /** Encrypted local claims. Opening this store never sends a request or grants server authority. */
 import { Directory, File, Paths } from 'expo-file-system';
 import * as SecureStore from 'expo-secure-store';
-import { AESEncryptionKey, AESSealedData, aesEncryptAsync, aesDecryptAsync, CryptoDigestAlgorithm, digest, digestStringAsync, randomUUID } from 'expo-crypto';
+import { AESEncryptionKey, AESSealedData, aesEncryptAsync, aesDecryptAsync, CryptoDigestAlgorithm,CryptoEncoding, digest, digestStringAsync, randomUUID } from 'expo-crypto';
 import { createSubmissionJournal, SubmissionJournalFull, SubmissionJournalUnavailable, type SubmissionScope } from './submission-journal';
-import { createSubmissionStorage } from './submission-storage';
+import { createSubmissionStorage,createSealedJournalStorage } from './submission-storage';
+import {createEnrollmentJournal,parseEnrollmentSnapshot,EnrollmentScope,EnrollmentJournalUnavailable,type EnrollmentPorts} from './enrollment-journal';
 
 const KEY='aihr.submissions.key.v1';
 const MAX_INSTALL_BYTES=64*1024*1024;
@@ -20,18 +21,19 @@ export function resetSubmissionInstallation(){return serializedKey(async()=>{
   await SecureStore.deleteItemAsync(KEY,OPTIONS);
   const directory=root();if(directory.exists)directory.delete();
 });}
-
-export async function openNativeSubmissionJournal(scope:SubmissionScope,assertCurrent:()=>void){
-  assertCurrent();
-  const scopeId=await hash(JSON.stringify([scope.namespace,scope.actorId,scope.employmentId]));assertCurrent();
-  const key=await serializedKey(async()=>{
+function encryptionKey(assertCurrent:()=>void){return serializedKey(async()=>{
     assertCurrent();const encoded=await SecureStore.getItemAsync(KEY,OPTIONS);assertCurrent();
     if(encoded)return AESEncryptionKey.import(encoded,'base64');
     // A restored filesystem without its device-bound key is quarantined, never treated as empty.
     if(root().exists)throw new SubmissionJournalUnavailable('Submission encryption key is unavailable');
     const generated=await AESEncryptionKey.generate(256);assertCurrent();
     await SecureStore.setItemAsync(KEY,await generated.encoded('base64'),OPTIONS);assertCurrent();return generated;
-  });assertCurrent();
+  });}
+
+export async function openNativeSubmissionJournal(scope:SubmissionScope,assertCurrent:()=>void){
+  assertCurrent();
+  const scopeId=await hash(JSON.stringify([scope.namespace,scope.actorId,scope.employmentId]));assertCurrent();
+  const key=await encryptionKey(assertCurrent);assertCurrent();
   // Keychain can survive reinstall. A new master key must never inherit an old commit pointer.
   const keyId=await hash(await key.encoded('base64'));assertCurrent();
   const pointerKey=`aihr.submissions.${keyId.slice(0,16)}.${scopeId}`;
@@ -105,5 +107,53 @@ export async function openNativeSubmissionJournal(scope:SubmissionScope,assertCu
       return {uri:restored.uri,name:metadata.name,mimeType:metadata.mimeType,size:metadata.size};
     },
     async deleteEvidence(reference){assertCurrent();const file=new File(directory,evidenceName(reference));if(file.exists)file.delete();},
+  });
+}
+
+/** Installation identity is bound to the device-only master generation. Old Keychain pointers cannot
+ * restore another install after the first-install owner resets that master. No network/native SDK call. */
+export async function nativeIntegrityInstallationId(assertCurrent:()=>void){
+  assertCurrent();const key=await encryptionKey(assertCurrent);assertCurrent();
+  const keyId=await hash(await key.encoded('base64'));assertCurrent();
+  return serializedKey(async()=>{
+    assertCurrent();const pointer=`aihr.enrollment.installation.${keyId.slice(0,16)}`,old=await SecureStore.getItemAsync(pointer,OPTIONS);assertCurrent();
+    if(old){if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(old))throw new EnrollmentJournalUnavailable();return old.toLowerCase();}
+    const id=randomUUID();await SecureStore.setItemAsync(pointer,id,OPTIONS);assertCurrent();return id;
+  });
+}
+
+/** Shares the established AES-GCM owner and install quota, with a distinct purpose/scope AAD. Opening
+ * the journal performs no enrollment, auto-replay or key replacement. The model serializes all owners. */
+export async function openNativeEnrollmentJournal(rawScope:EnrollmentScope,assertCurrent:()=>void,ports:Omit<EnrollmentPorts,'assertCurrent'|'read'|'commit'|'digest'>){
+  const scope=EnrollmentScope.parse(rawScope);assertCurrent();
+  const scopeId=await hash(JSON.stringify(['enrollment-v1',scope.namespace,scope.apiOrigin,scope.actorId,scope.appInstallationId]));assertCurrent();
+  const key=await encryptionKey(assertCurrent);assertCurrent();
+  const keyId=await hash(await key.encoded('base64'));assertCurrent();
+  const pointer=`aihr.enrollment.${keyId.slice(0,16)}.${scopeId}`,directory=new Directory(root(),`enrollment-${scopeId}`),maximum=131072;
+  const aad=new TextEncoder().encode(`aihr-enrollment-v1:${scopeId}:journal`);
+  const file=(slot:0|1)=>new File(directory,`journal-${slot}.sealed`);
+  const reclaim=(revision:number)=>{assertCurrent();const old=file((1-revision%2) as 0|1);if(old.exists)old.delete();};
+  const storage=createSealedJournalStorage(value=>parseEnrollmentSnapshot(value,scope),{
+    assertCurrent,
+    readPointer:()=>SecureStore.getItemAsync(pointer,OPTIONS),writePointer:value=>SecureStore.setItemAsync(pointer,value,OPTIONS),
+    async readSlot(slot){
+      assertCurrent();const f=file(slot);if(!f.exists)return null;
+      if(f.size<1||f.size>maximum+64)throw new EnrollmentJournalUnavailable();const bytes=await f.bytes();assertCurrent();
+      if(bytes.byteLength>maximum+64)throw new EnrollmentJournalUnavailable();return bytes;
+    },
+    async writeSlot(slot,bytes,snapshot){
+      assertCurrent();const f=file(slot),used=root().exists?root().size:0;
+      if(used==null||!Number.isFinite(used)||used<0)throw new EnrollmentJournalUnavailable();
+      // A bounded receipt resolution must remain possible at the admission cap, as for submissions.
+      if(snapshot.pending&&used+Math.max(0,bytes.byteLength-(f.exists?f.size:0))>MAX_INSTALL_BYTES)throw new EnrollmentJournalUnavailable();
+      if(!directory.exists)directory.create({intermediates:true});f.write(bytes);
+    },
+    async seal(bytes){assertCurrent();const result=await aesEncryptAsync(bytes,key,{additionalData:aad});assertCurrent();return result.combined();},
+    async open(bytes){assertCurrent();const result=await aesDecryptAsync(AESSealedData.fromCombined(bytes),key,{additionalData:aad});assertCurrent();return result;},
+  },{maximumBytes:maximum,refuseOrphanSlots:true,error:()=>new EnrollmentJournalUnavailable()});
+  return createEnrollmentJournal(scope,{...ports,assertCurrent,
+    async read(){const s=await storage.read();if(s){try{reclaim(s.revision);}catch{/* A cleanup failure cannot hide a committed enrollment. */}}assertCurrent();return s;},
+    async commit(s){await storage.commit(s);try{reclaim(s.revision);}catch{/* Keep the committed receipt even if old ciphertext cleanup must retry. */}assertCurrent();},
+    async digest(value,encoding){assertCurrent();const result=await digestStringAsync(CryptoDigestAlgorithm.SHA256,value,{encoding:encoding==='base64'?CryptoEncoding.BASE64:CryptoEncoding.HEX});assertCurrent();return result;},
   });
 }

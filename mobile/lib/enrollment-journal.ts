@@ -27,6 +27,7 @@ export type EnrollmentSnapshot=z.infer<typeof snapshot>;
 type Pending=z.infer<typeof pending>;
 type Prepared=z.infer<typeof prepared>;
 type Key=z.infer<typeof C.IntegrityKeyReceipt>;
+function checked<S extends z.ZodType>(schema:S,value:unknown):z.output<S>{try{return schema.parse(value);}catch{throw new EnrollmentJournalUnavailable();}}
 export class EnrollmentJournalUnavailable extends Error{constructor(){super('Device enrollment storage unavailable');this.name='EnrollmentJournalUnavailable';}}
 export class EnrollmentConflict extends Error{constructor(){super('Reconcile the retained device enrollment');this.name='EnrollmentConflict';}}
 function receiptMatches(key:Key,p:Prepared){
@@ -69,7 +70,12 @@ function exclusive<T>(key:string,run:()=>Promise<T>):Promise<T>{
 export function createEnrollmentJournal(rawScope:EnrollmentScope,ports:EnrollmentPorts){
   const scope=EnrollmentScope.parse(rawScope),queue=JSON.stringify(scope);
   async function owned<T>(work:()=>Promise<T>){ports.assertCurrent();try{const value=await work();ports.assertCurrent();return value;}catch(error){ports.assertCurrent();throw error;}}
-  async function read(){const s=await owned(()=>ports.read());return s?parseEnrollmentSnapshot(s,scope):{version:1 as const,revision:0,scope,pending:null,key:null};}
+  async function read(){
+    const raw=await owned(()=>ports.read());if(!raw)return {version:1 as const,revision:0,scope,pending:null,key:null};
+    const s=parseEnrollmentSnapshot(raw,scope);
+    if(s.pending&&s.pending.phase!=='requested')await checkPrepared(s.pending.prepared,s.pending);
+    if(s.key)await checkPrepared(s.key.prepared,s.key);return s;
+  }
   async function save(s:Awaited<ReturnType<typeof read>>,p:Pending|null,key:EnrollmentSnapshot['key']=null){
     const next=parseEnrollmentSnapshot({...s,revision:s.revision+1,pending:p,key},scope);
     try{await owned(()=>ports.commit(structuredClone(next)));}catch(error){ports.assertCurrent();throw new EnrollmentJournalUnavailable();}return next;
@@ -87,7 +93,7 @@ export function createEnrollmentJournal(rawScope:EnrollmentScope,ports:Enrollmen
   function nativeReason(result:{status:string}):PendingReason{return result.status==='unsupported'?'unsupported':'native_unavailable';}
   async function keyReference(p:Prepared){
     const value=await owned(()=>ports.native.appleKeyInfo(p.alias));
-    return value.status==='evidence'&&value.evidence!==null?hash32.parse(value.evidence):null;
+    return value.status==='evidence'&&value.evidence!==null?checked(hash32,value.evidence):null;
   }
   return {
     status:()=>exclusive(queue,async()=>status(await read())),
@@ -101,19 +107,21 @@ export function createEnrollmentJournal(rawScope:EnrollmentScope,ports:Enrollmen
       const selected=uuid.parse(employmentId);let s=await read(),p=s.pending;
       if(!p)return status(s);
       if(p.employmentId!==selected)throw new EnrollmentConflict();
+      const intentRef={employmentId:p.employmentId,requestId:p.requestId};
       let refreshed=false,reconciled=false;
       for(let steps=0;steps<8;steps++){
         ports.assertCurrent();
         if(p.phase==='requested'){
-          const value=C.IntegrityEnrollmentPrepared.parse(await owned(()=>ports.prepare(p!.employmentId,{requestId:p!.requestId,appInstallationId:scope.appInstallationId})));
+          const value=checked(C.IntegrityEnrollmentPrepared,await owned(()=>ports.prepare(intentRef.employmentId,{requestId:intentRef.requestId,appInstallationId:scope.appInstallationId})));
           if(value.outcome!=='prepared')return status(s,value.outcome==='refused'?'server_refused':'server_unavailable');
           await checkPrepared(value,p);p={...p,phase:'prepared',prepared:value};s=await save(s,p);refreshed=true;
         }
         await checkPrepared(p.prepared,p);
+        const preparedRef=p.prepared;
         if(!reconciled){
-          const catalog=C.IntegrityKeysResult.parse(await owned(()=>ports.keys(p!.employmentId)));
+          const catalog=checked(C.IntegrityKeysResult,await owned(()=>ports.keys(intentRef.employmentId)));
           if(catalog.outcome!=='keys')return status(s,catalog.outcome==='refused'?'server_refused':'server_unavailable');
-          const matches=catalog.items.filter(key=>key.originChallengeId===p!.prepared.context.challengeId);
+          const matches=catalog.items.filter(key=>key.originChallengeId===preparedRef.context.challengeId);
           if(matches.length>1||matches[0]&&!receiptMatches(matches[0],p.prepared))throw new EnrollmentConflict();
           if(matches[0]){
             const vendorKeyId=await keyReference(p.prepared);if(!vendorKeyId)return status(s,'recovery_required');
@@ -125,14 +133,15 @@ export function createEnrollmentJournal(rawScope:EnrollmentScope,ports:Enrollmen
         if(p.phase==='proof_ready'){
           // A bounded catalog may omit older revoked keys. Replay only these exact saved bytes under
           // the original intent; the server's receipt owner resolves duplicates before re-verification.
-          const value=C.IntegrityEnrollmentResult.parse(await owned(()=>ports.complete(p!.employmentId,{requestId:p!.requestId,appInstallationId:scope.appInstallationId,
-            challengeId:p!.prepared.context.challengeId,vendorKeyId:(p as Extract<Pending,{phase:'proof_ready'}>).vendorKeyId,attestation:(p as Extract<Pending,{phase:'proof_ready'}>).attestation})));
+          const proof=p;
+          const value=checked(C.IntegrityEnrollmentResult,await owned(()=>ports.complete(intentRef.employmentId,{requestId:intentRef.requestId,appInstallationId:scope.appInstallationId,
+            challengeId:preparedRef.context.challengeId,vendorKeyId:proof.vendorKeyId,attestation:proof.attestation})));
           if(value.outcome!=='enrolled')return status(s,value.outcome==='refused'?'server_refused':'server_unavailable');
           if(!receiptMatches(value.key,p.prepared))throw new EnrollmentConflict();
           return status(await save(s,null,{employmentId:p.employmentId,requestId:p.requestId,prepared:p.prepared,vendorKeyId:p.vendorKeyId,key:value.key}));
         }
         if(!refreshed){
-          const value=C.IntegrityEnrollmentPrepared.parse(await owned(()=>ports.prepare(p!.employmentId,{requestId:p!.requestId,appInstallationId:scope.appInstallationId})));
+          const value=checked(C.IntegrityEnrollmentPrepared,await owned(()=>ports.prepare(intentRef.employmentId,{requestId:intentRef.requestId,appInstallationId:scope.appInstallationId})));
           if(value.outcome!=='prepared')return status(s,value.outcome==='refused'?'server_refused':'server_unavailable');
           await checkPrepared(value,p);
           if(keyEnrollmentClientData(value.context)!==keyEnrollmentClientData(p.prepared.context)||value.alias!==p.prepared.alias||value.clientDataHash!==p.prepared.clientDataHash)throw new EnrollmentConflict();
@@ -146,24 +155,25 @@ export function createEnrollmentJournal(rawScope:EnrollmentScope,ports:Enrollmen
           // Require the recovery method before generating any key on an older native binary.
           if(!ports.native.appleProofRecoverySupported())return status(s,'unsupported');
           p={...p,phase:'key_requested'};s=await save(s,p);
-          const value=await owned(()=>ports.native.generateAppleKey(p!.prepared.alias));
+          const value=await owned(()=>ports.native.generateAppleKey(preparedRef.alias));
           if(value.status!=='evidence')return status(s,nativeReason(value));
-          p={...p,phase:'key_ready',vendorKeyId:hash32.parse(value.evidence)};s=await save(s,p);continue;
+          p={...p,phase:'key_ready',vendorKeyId:checked(hash32,value.evidence)};s=await save(s,p);continue;
         }
         if(p.phase==='key_requested'){
           const vendorKeyId=await keyReference(p.prepared);if(!vendorKeyId)return status(s,'recovery_required');
           p={...p,phase:'key_ready',vendorKeyId};s=await save(s,p);continue;
         }
-        const cache=await owned(()=>ports.native.appleAttestationInfo(p!.vendorKeyId,p!.prepared.clientDataHash));
+        const vendorKeyId=p.vendorKeyId;
+        const cache=await owned(()=>ports.native.appleAttestationInfo(vendorKeyId,preparedRef.clientDataHash));
         if(cache.status!=='evidence')return status(s,nativeReason(cache));
         if(cache.evidence.state==='completed'){
-          p={...p,phase:'proof_ready',attestation:artifact.parse(cache.evidence.attestation)};s=await save(s,p);continue;
+          p={...p,phase:'proof_ready',attestation:checked(artifact,cache.evidence.attestation)};s=await save(s,p);continue;
         }
         if(cache.evidence.state==='requested'||cache.evidence.state==='absent'&&p.phase==='attestation_requested')return status(s,'recovery_required');
         p={...p,phase:'attestation_requested'};s=await save(s,p);
-        const value=await owned(()=>ports.native.attestAppleKey(p!.vendorKeyId,p!.prepared.clientDataHash));
+        const value=await owned(()=>ports.native.attestAppleKey(vendorKeyId,preparedRef.clientDataHash));
         if(value.status!=='evidence')return status(s,nativeReason(value));
-        p={...p,phase:'proof_ready',attestation:artifact.parse(value.evidence)};s=await save(s,p);
+        p={...p,phase:'proof_ready',attestation:checked(artifact,value.evidence)};s=await save(s,p);
       }
       throw new EnrollmentJournalUnavailable();
     }),

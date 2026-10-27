@@ -5,6 +5,8 @@ import { ModuleKind, transpileModule } from 'typescript';
 import { describe, expect, it, vi } from 'vitest';
 import * as journal from '../mobile/lib/submission-journal';
 import * as storage from '../mobile/lib/submission-storage';
+import * as enrollment from '../mobile/lib/enrollment-journal';
+import {enrollmentFixture,enrollmentId} from './helpers/mobile-enrollment-fixture';
 
 /** Execute the shipped native adapter. Files/Keychain/native AES are ports; AES-GCM uses real crypto. */
 function fixture(){
@@ -32,8 +34,8 @@ function fixture(){
     getItemAsync:vi.fn(async(key:string)=>secrets.get(key)??null),
     setItemAsync:vi.fn(async(key:string,value:string)=>{secrets.set(key,value);}),
     deleteItemAsync:vi.fn(async(key:string)=>{secrets.delete(key);})};
-  const crypto={randomUUID,CryptoDigestAlgorithm:{SHA256:'sha256'},
-    digestStringAsync:async(_:string,value:string)=>createHash('sha256').update(value).digest('hex'),
+  const crypto={randomUUID,CryptoDigestAlgorithm:{SHA256:'sha256'},CryptoEncoding:{HEX:'hex',BASE64:'base64'},
+    digestStringAsync:async(_:string,value:string,options?:{encoding:'hex'|'base64'})=>createHash('sha256').update(value).digest(options?.encoding??'hex'),
     digest:async(_:string,value:Uint8Array)=>Uint8Array.from(createHash('sha256').update(value).digest()).buffer,
     AESEncryptionKey:{generate:async()=>key(randomBytes(32)),import:async(encoded:string)=>key(Buffer.from(encoded,'base64'))},
     AESSealedData:{fromCombined:(bytes:Uint8Array)=>bytes},
@@ -53,12 +55,14 @@ function fixture(){
   const output={exports:{} as {
     openNativeSubmissionJournal:(scope:journal.SubmissionScope,assertCurrent:()=>void)=>Promise<ReturnType<typeof journal.createSubmissionJournal>>;
     resetSubmissionInstallation:()=>Promise<void>;
+    nativeIntegrityInstallationId:(assertCurrent:()=>void)=>Promise<string>;
+    openNativeEnrollmentJournal:(scope:enrollment.EnrollmentScope,assertCurrent:()=>void,ports:Omit<enrollment.EnrollmentPorts,'assertCurrent'|'read'|'commit'|'digest'>)=>Promise<ReturnType<typeof enrollment.createEnrollmentJournal>>;
   }};
   const code=transpileModule(readFileSync('mobile/lib/submission-native.ts','utf8'),{compilerOptions:{module:ModuleKind.CommonJS}}).outputText;
   runInNewContext(code,{exports:output.exports,module:output,Uint8Array,TextEncoder,TextDecoder,require:(id:string)=>{
     if(id==='expo-file-system')return {Directory,File,Paths:{document:'document',cache:'cache'}};
     if(id==='expo-secure-store')return secure;if(id==='expo-crypto')return crypto;
-    if(id==='./submission-journal')return journal;if(id==='./submission-storage')return storage;throw new Error(id);
+    if(id==='./submission-journal')return journal;if(id==='./submission-storage')return storage;if(id==='./enrollment-journal')return enrollment;throw new Error(id);
   }});
   return {native:output.exports,files,directories,secrets,secure,occupy:(bytes:number)=>{occupiedBytes=bytes;}};
 }
@@ -66,6 +70,42 @@ const scope={namespace:'https://hr.example.com',actorId:'aaaaaaaa-aaaa-4aaa-8aaa
 const requestId='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const command=JSON.stringify({requestId,action:'in',lat:3,lng:101,accuracy:5,sampledAt:Date.now()});
 describe('native encrypted submission adapter',()=>{
+  it('keeps enrollment identity stable within one master generation and changes it after installation reset',async()=>{
+    const f=fixture(),first=await f.native.nativeIntegrityInstallationId(()=>{});
+    expect(await f.native.nativeIntegrityInstallationId(()=>{})).toBe(first);
+    await f.native.resetSubmissionInstallation();expect(await f.native.nativeIntegrityInstallationId(()=>{})).not.toBe(first);
+  });
+  it('encrypts enrollment context and proof, survives restart and clears proof only after server receipt commit',async()=>{
+    const f=fixture(),e=enrollmentFixture();
+    const opened=await f.native.openNativeEnrollmentJournal(e.scope,e.ports.assertCurrent,e.ports);
+    await opened.begin(e.employmentId,e.requestId);
+    vi.mocked(e.ports.complete).mockRejectedValueOnce(new Error('response unavailable'));
+    await expect(opened.advance(e.employmentId)).rejects.toThrow('response unavailable');
+    const bytes=[...f.files].filter(([name])=>name.startsWith('document/'));
+    expect(bytes).toHaveLength(1);
+    for(const [,value] of bytes){expect(Buffer.from(value).toString()).not.toContain(e.attestation);expect(Buffer.from(value).toString()).not.toContain(e.requestId);}
+    const restarted=await f.native.openNativeEnrollmentJournal(e.scope,e.ports.assertCurrent,e.ports);
+    expect(await restarted.status()).toMatchObject({phase:'proof_ready',requestId:e.requestId});
+    expect((await restarted.advance(e.employmentId)).status).toBe('stored_key');
+    expect(e.native.attestAppleKey).toHaveBeenCalledOnce();
+    expect([...f.files].filter(([name])=>name.startsWith('document/'))).toHaveLength(1);
+    expect(f.secure.setItemAsync).toHaveBeenCalledWith(expect.any(String),expect.any(String),{keychainAccessible:'device-unlocked'});
+  });
+  it('refuses missing enrollment pointers/slots, tampered ciphertext and cross-actor slot transplants',async()=>{
+    for(const fault of ['pointer','slot','tamper','transplant'] as const){
+      const f=fixture(),e=enrollmentFixture(),opened=await f.native.openNativeEnrollmentJournal(e.scope,e.ports.assertCurrent,e.ports);
+      await opened.begin(e.employmentId,e.requestId);
+      const path=[...f.files.keys()].find(name=>name.startsWith('document/'))!,pointer=[...f.secrets.keys()].find(name=>name.startsWith('aihr.enrollment.'))!;
+      let scope=e.scope;
+      if(fault==='pointer')f.secrets.delete(pointer);if(fault==='slot')f.files.delete(path);if(fault==='tamper')f.files.get(path)![15]^=1;
+      if(fault==='transplant'){
+        scope={...scope,actorId:enrollmentId(9)};const foreign=await f.native.openNativeEnrollmentJournal(scope,e.ports.assertCurrent,e.ports);await foreign.begin(e.employmentId,e.requestId);
+        const other=[...f.files.keys()].find(name=>name.startsWith('document/')&&name!==path)!;f.files.set(other,f.files.get(path)!.slice());
+      }
+      const restarted=await f.native.openNativeEnrollmentJournal(scope,e.ports.assertCurrent,e.ports);
+      await expect(restarted.status()).rejects.toThrow();expect(e.native.generateAppleKey).not.toHaveBeenCalled();
+    }
+  });
   it('retains the preparation if command adoption loses its secure commit pointer',async()=>{
     const f=fixture();f.files.set('photo',new Uint8Array([7,8,9]));
     const opened=await f.native.openNativeSubmissionJournal(scope,()=>{}),entry=await opened.prepareClock('in',requestId);
