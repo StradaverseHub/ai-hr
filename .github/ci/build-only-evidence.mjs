@@ -17,6 +17,13 @@ export function inspectRuntimeRepairBuildOnlySnapshot(options){
   &&Number.isSafeInteger(options.expected.runId)&&options.expected.runId>0,'Exact reviewed runtime repair source and trusted controller required');
  return inspectBuildOnlyInventory({...options,now:options.now??Date.now()});
 }
+/** Frozen two-file Bonus display repair. This authenticates bytes only, never retained coverage or an install grant. */
+export function inspectBonusRepairBuildOnlySnapshot(options){
+ assert(options.expected?.candidate==='d52563c666d39074217ed42191866add4a2793a0'
+  &&options.expected.controller==='dc74b804fcecb4bab3207e82c9b9f099b9bf13be'
+  &&options.expected.runId===40508894540,'Exact Bonus repair source, trusted controller and build run required');
+ return inspectBuildOnlyInventory({...options,now:options.now??Date.now()});
+}
 function inspectBuildOnlyInventory({run,jobs,artifacts,expected,now}){
  assert(run.id===expected.runId&&run.repository?.id===REPOSITORY_ID&&run.repository.full_name===REPOSITORY&&run.head_repository?.id===REPOSITORY_ID&&run.workflow_id===WORKFLOW_ID&&run.path===WORKFLOW_PATH&&run.head_sha===expected.controller&&run.head_branch==='alpha'&&run.event==='workflow_dispatch'&&run.status==='completed'&&run.conclusion==='success'&&run.run_attempt===1,'Actual successful trusted build-only run required');
  const began=Date.parse(run.created_at),ended=Date.parse(run.updated_at);assert(Number.isFinite(began)&&Number.isFinite(ended)&&began<=ended&&ended<=now+60000&&now-began<=86400000,'Fresh original build run required');
