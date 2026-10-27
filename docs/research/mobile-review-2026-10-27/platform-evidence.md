@@ -1420,3 +1420,35 @@ The command-only Android lint9.0.1 diagnostic still exited1 in1m17s at
 declaration. Log:`/tmp/mobile-android-lint-9.0.1.log`. The stack remains in Kotlin-script UAST analysis,
 matching the failure family discussed in [Google issue430991549](https://issuetracker.google.com/issues/430991549).
 No lint override was committed, no checks were disabled, and this is not a lint pass or a proven fix.
+
+### iPhone first-screen launch and Android setup contrast repair
+
+FACT: after explicit owner authorization for `simctl` control of only the isolated test device,
+`044B884B-000A-4D41-8AF1-33E9EC6A26A4` (AIHR mobile isolated faa206fbe) booted with iOS26.5,
+installed the previously verified simulator app and launched `ai.stradaverse.aihr.test` as PID48531.
+Current JavaScript at `faa206fbe` rendered the actual **Connect to your company** screen. Metro
+reported1521 modules. Screenshot, boot/Metro/shutdown logs and bounded process-specific error output
+are retained in `/var/folders/8x/sb7ssym50_35f0ks9m11bjm80000gn/T/aihr-ios-launch-sbiidhms/`.
+The error output includes refused development-endpoint connections on8081/8097 and a UIKit focus
+diagnostic; it is not a clean-log claim. The rendered screen establishes startup, not authenticated
+HR workflows or physical-device App Attest. The harness exited0 after stopping its owned device and
+Metro. Existing simulator data was preserved. Desktop control had opened the existing iOS18
+simulator automatically, but no app was installed or employee data modified there.
+
+The initial Android screenshot exposed white status-bar icons on the light setup screen: the root
+default `StatusBar` was inside children withheld by company initialization. Commit`eb7834f52` moves
+that existing default outside the company/session gate; authenticated tenant styling still has its
+existing owner. All12 existing `mobile-company-setup.dom.test.tsx` cases and the native TypeScript
+check passed. A second fresh Android guest, using the existing native APK plus this current
+JavaScript, rendered the setup screen with dark readable system icons. Screenshot and logs:
+`/var/folders/8x/sb7ssym50_35f0ks9m11bjm80000gn/T/aihr-android-runtime-b8jozxyj/`.
+The final bounded crash buffer was empty and the owned runtime harness exited0 after cleanup.
+Using `NODE_OPTIONS=--dns-result-order=ipv4first` made the loopback-only Metro8081 listener reachable
+at the emulator's default host address without a bridge. The source-only UI change does not claim a
+new native APK/iOS compilation; it was verified through the actual existing native Android binary.
+
+A second command-only lint-engine diagnostic,9.3.3, also exited1 in1m39s at Worklets Kotlin-script
+UAST analysis with `findFirCompiledSymbol`; log:`/tmp/mobile-android-lint-9.3.3.log`. The underlying
+upstream issue has a [later Google source repair](https://android.googlesource.com/platform/tools/base/+/44330ad8b855e38930c70ca44f65e781dd95d1ab)
+for included-script content-root classification. A newer engine number alone is therefore not
+evidence of a fix. No dependency-script patch, lint suppression or engine override was committed.
