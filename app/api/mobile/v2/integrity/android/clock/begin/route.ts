@@ -2,4 +2,4 @@ import {mobileRoute} from '@/lib/mobile-api/handler';
 import {createDeployedSignedClockOperations} from '@/lib/mobile-api/deployed-signed-clock';
 import {IntegrityAndroidClockPrepared} from '@/lib/mobile-integrity-contract';
 const operations=createDeployedSignedClockOperations('android');
-export const POST = mobileRoute(IntegrityAndroidClockPrepared,operations.clockBegin);
+export const POST = mobileRoute(IntegrityAndroidClockPrepared,async(ctx,req)=>IntegrityAndroidClockPrepared.parse(await operations.clockBegin(ctx,req)));

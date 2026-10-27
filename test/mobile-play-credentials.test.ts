@@ -33,13 +33,20 @@ describe('bounded Play service-account assembly with the actual Google JWT clien
   await expect(provider(scope,signal())).rejects.toMatchObject({name:'PlayCredentialsUnavailableError',message:'Google authorization unavailable'});expect(transport).toHaveBeenCalledOnce();
  });
  it.each(['bad-token','bad-type','bad-expiry','invalid-json','oversized'] as const)('refuses %s OAuth response with no usable access token',async kind=>{
-  const transport=vi.fn<typeof fetch>(async()=>kind==='invalid-json'?new Response('{'):kind==='oversized'?new Response('x'.repeat(32769)):Response.json({access_token:kind==='bad-token'?'with space':'synthetic-oauth-access',token_type:kind==='bad-type'?'Other':'Bearer',expires_in:kind==='bad-expiry'?0:3600}));
+  const transport=vi.fn<typeof fetch>(async()=>kind==='invalid-json'?new Response('{'):kind==='oversized'?Response.json({access_token:'synthetic-oauth-access',token_type:'Bearer',expires_in:3600,padding:'x'.repeat(32769)}):Response.json({access_token:kind==='bad-token'?'with space':'synthetic-oauth-access',token_type:kind==='bad-type'?'Other':'Bearer',expires_in:kind==='bad-expiry'?0:3600}));
   await expect(createPlayServiceAccountProvider(credential,{transport})!(scope,signal())).rejects.toBeInstanceOf(PlayCredentialsUnavailableError);expect(transport).toHaveBeenCalledOnce();
  });
  it('bounds a stalled OAuth body, cancels its owned reader and never retries',async()=>{
   let cancelled=false;const transport=vi.fn<typeof fetch>(async()=>new Response(new ReadableStream({start(controller){controller.enqueue(new TextEncoder().encode('{'));},cancel(){cancelled=true;}})));
   await expect(createPlayServiceAccountProvider(credential,{transport,timeoutMs:200})!(scope,signal())).rejects.toBeInstanceOf(PlayCredentialsUnavailableError);
   expect(transport).toHaveBeenCalledOnce();expect(transport.mock.calls[0][1]!.signal!.aborted).toBe(true);await vi.waitFor(()=>expect(cancelled).toBe(true));
+ });
+ it('bounds a fetch that ignores cancellation before any OAuth headers arrive',async()=>{
+  let release!:(value:Response)=>void,lateReturned=false;const pending=new Promise<Response>(r=>{release=r;});
+  const late=setTimeout(()=>{lateReturned=true;release(response());},1200),transport=vi.fn<typeof fetch>(async()=>pending);
+  try{await expect(createPlayServiceAccountProvider(credential,{transport,timeoutMs:200})!(scope,signal())).rejects.toBeInstanceOf(PlayCredentialsUnavailableError);
+   expect(lateReturned).toBe(false);expect(transport).toHaveBeenCalledOnce();expect(transport.mock.calls[0][1]!.signal!.aborted).toBe(true);
+  }finally{clearTimeout(late);release(response());}
  });
  it('cancels a pending exchange, ignores its late result and leaves the next call independent',async()=>{
   let release!:(value:Response)=>void;const pending=new Promise<Response>(r=>{release=r;}),transport=vi.fn<typeof fetch>().mockImplementationOnce(()=>pending).mockImplementation(async()=>response());
