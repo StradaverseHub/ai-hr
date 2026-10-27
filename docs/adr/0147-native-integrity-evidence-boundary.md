@@ -632,3 +632,38 @@ matching key remains unavailable. Neither challenge nor custody history is reope
 These handlers remain unmounted. Rollout still requires the actual custody schema, trusted
 company/deployment policy assembly, signed-device acceptance and app orchestration. This boundary
 does not activate Android clock assertions, offline acceptance or Huawei support.
+
+## App assembly and installation-pointer loss
+
+`openOwnedDeviceEnrollment` assembles the actual platform journal, encrypted native storage, SDK
+adapter and normal bearer transport. It fetches current own identity/employments before obtaining
+the existing device-only-master-bound installation ID or opening a scoped journal. Missing actor or
+an unowned selected employment refuses assembly. Actor generation, company namespace, API origin,
+platform, current unlock state and foreground state are checked across asynchronous boundaries.
+The supplied unlock predicate must read the current session and be invalidated on unmount or
+employment selection change. Handles bind the selected employment; historical receipt recovery
+retains the original command subject rather than rewriting it.
+
+Opening exposes no automatic generation, preparation, proof submission or revocation. `begin`
+persists explicit intent; `advance` performs the journal's exact-receipt-first recovery; `revoke`
+retains the existing durable intent semantics. Android replacement stays an explicit operation
+after fresh server-confirmed retirement. A network exception leaves the committed pending stage
+available for another owned handle. A missing command endpoint is not downgraded or sent to another
+platform's protocol. A cached receipt still cannot authorize attendance.
+
+The transport contracts reserve Apple v1 `integrity/enrollment/begin|complete` and Android v2
+`integrity/android/enrollment/begin|complete`. Native transport uses the same bounded-body/deadline,
+bearer refresh and scope checks as existing commands. Responses must match the selected platform's
+preparation/result schema. No server route is activated by adding these client command mappings.
+
+The installation ID is one existing owner, not a second actor or hardware identity. If its current
+master-generation pointer disappears while either platform's enrollment directory remains, refuse
+new identity creation: selecting a fresh ID would hide an existing pending journal behind an empty
+scope. Empty/corrupt pointer values also refuse. A legacy submission-only installation may initialize
+its first enrollment ID. First-install reset still owns master reset and the consequent new ID.
+This detects retained enrollment directories; it does not recover an OS backup that lost all local
+evidence or implement a pending-enrollment discard/exception protocol.
+
+The assembly is not yet connected to a screen or imported by the app entry graph. A reviewed
+capability/rollout owner and explicit user interface remain required before enrollment is offered.
+The existing key inventory/revocation screen remains independently available.

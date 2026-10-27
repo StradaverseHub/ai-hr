@@ -1047,3 +1047,36 @@ The repair returns only an exact matching committed receipt after the late inact
 Regression assertions cover both identical and changed proofs, one verifier call, one stored key and
 one enrollment event. No full release gate/build, signed-device attestation or live upgrade/apply is
 established by these checks. The new Android HTTP composition is still unmounted.
+
+### Owned native enrollment assembly and packaging evidence
+
+Candidate `4e053ecce` added app assembly and typed normal-transport enrollment commands. Six focused
+DOM files passed113 assertions; root and native TypeScript passed. A controlled removal of the
+current-unlock guard caused the selected iPhone and Android cases to fail. Exact byte restoration
+passed all50 affected assembly/transport cases. These execute the shipped assembly and real journal
+models with synthetic SDK/storage/server ports; they do not verify actual native attestation.
+
+Candidate `b5db3b5a4ff5ba2197e437ad9eb3e5954b45fc73` additionally refuses installation-pointer
+replacement while retained enrollment directories exist and rejects an empty corrupt pointer.
+Six focused DOM files passed116 assertions, followed by root and native TypeScript exits0/0. All
+planned phases completed under a two-slot/no-database complete reservation. Removing the retained
+directory protection failed both selected platform cases; exact restoration passed all22 storage
+cases. Partial/skipped mutation selections are regression probes, not complete-suite witnesses.
+Logs are `/tmp/mobile-owned-enrollment-{dom,root-types,native-types}.log`,
+`/tmp/mobile-enrollment-pointer-{dom,root-types,native-types}.log`,
+`/tmp/mobile-enrollment-unlock-{mutation,restored}.log` and
+`/tmp/mobile-enrollment-pointer-{mutation,restored}.log`.
+
+Both final local Metro exports at `b5db3b5a4` passed with Hermes bundles and external source maps.
+The iOS map has1340 source entries; Android has1471. Each map contains exactly the current API and
+native-storage source bytes. Checked PKI/ASN.1, custody core, database schema/client and server crypto
+source paths were absent. Map SHA256 values are
+`f528a23181f9e3f19ab9d3115bcef819560ce727a84c0dc8cd67f5aebe3e58a0` (iOS) and
+`f4e0059f5024381525740147114871a9dd83e7aa85770cac684558fd7888e2d2` (Android).
+Artifacts/logs are `/tmp/mobile-enrollment-final-export-{ios,android}` and the corresponding `.log`
+files. Earlier pre-pointer exports remain narrower historical witnesses, not final-source bundles.
+
+The new assembly is deliberately absent from both app entry graphs because screen/capability rollout
+integration remains unfinished. Packaging establishes the updated shared transport/storage graph,
+not a reachable enrollment journey, signed device binary, installed-app behavior or Huawei support.
+No cloud build, store submission, migration apply or deployment occurred.
