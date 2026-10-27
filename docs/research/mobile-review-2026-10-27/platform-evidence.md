@@ -671,3 +671,29 @@ policy/path cases, including legacy-unavailable versus required-modern metadata 
 strict root TypeScript compiler exited0. No mobile runtime/native build, migration, shared
 DB, vendor call, public/cloud publication or deployment changed. Android custody, challenge protocol,
 Play composition, rollout and actual device/distribution acceptance remain open.
+
+
+Coordinated migration source integration at `cd9833e89` independently refreshed published alpha and
+confirmed9541b1686d7941f89e564723271e48bf85a21a89. All501 prefix journal entries and501 canonical SQL
+files matched exactly. The18 addition hashes were checked against the coordinator's pinned manifest:
+Board616–617, AI618–629, Mobile630–633. The actual Board source ref and AI frozen96c2 draft blobs matched
+the bound hashes before copying. All original SQL bytes/timestamps were preserved. Only unapplied
+Mobile0621/22/23 names changed to0633/34/35;0613 remained. Ordinary descendant commits preserve earlier
+candidates; no historical proof was relabelled for the new519-entry tree.
+
+The complete source chain migrated into disposable local template/worker databases. All62 cases across
+journal ordering, budgets, Mobile enrollment/challenge/HTTP transactions passed. This is fresh-development
+installation evidence, not populated staging upgrade proof. No shared DB/schema/ledger was altered.
+A separate frozen allocation witness at79b607ced initially failed on an extra parenthesis in its new
+assertion; compiler syntax checks failed too. Repair `a1346f9c4` changed only that syntax, retaining all
+expected hashes. All8 allocation/journal guard cases and strict root compilation then passed. The
+source manifest/prefix/order/SQL-body witness is now independently retained in test fixtures.
+
+Coordinator was notified under human-authorized routine coordination. It explicitly reiterated that
+this519-row SQL overlay is NOT deployable without actual paired Board+AI application ancestry and
+semantic verification. Mobile acknowledged that boundary. Board0602 affects existing payroll history
+visibility and needs its runtime reader/writer/schema/facade/import companions;0603 needs its Letters
+and private-agent capability companions. No full feature/gate evidence for those workstreams is
+inherited by copying SQL. No canonical ref advance, staging application, publication or deployment
+occurred. Further Mobile implementation continues locally against this development overlay until the
+paired integration and complete required verification can be established.

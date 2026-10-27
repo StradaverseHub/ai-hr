@@ -184,3 +184,28 @@ No filesystem API route is registered yet. Route assembly still requires the com
 policy/configuration source, supported-version behavior, treatment of older carriers and the human
 exception path from the approved review. Do not invent a deployment-wide feature environment flag or
 blanket hardware refusal as a substitute. This assembly changes no existing v1 response or deployment.
+
+
+## Coordinated source allocation, 27 October 2026
+
+The coordinator resolved the unapplied Mobile filename collisions after the human-authorized report.
+Ordinary descendant `cd9833e89` preserves the exact501-entry alpha9541 journal prefix and all canonical
+SQL bytes. It appends Board616–617, AI618–629 and Mobile630–633 in the coordinated order. Mobile retains
+`0613_request_abuse_budgets`, then renames the unapplied geofence/challenge/key files to
+`0633_geofence_reported_uncertainty`, `0634_mobile_integrity_challenges` and `0635_mobile_integrity_keys`.
+All eighteen allocated SQL hashes and timestamps remain unchanged. Original candidates/evidence stay
+in Git history; old local indices616–619 and names0621–0623 describe historical candidates only.
+
+The external allocation witness is pinned in the test fixture, including the source manifest hash,
+canonical-prefix digest and all ordered additions. Its guard checks prevent omitted prerequisite rows,
+altered SQL bodies or accidental resurrection of superseded Mobile filenames. This source integration
+has been applied only to disposable local test databases. It does not authorize shared/staging apply,
+branch advancement, publication or deployment.
+
+This is a development SQL overlay, not a deployable application integration. Board0602 changes payroll
+visibility and requires its paired history locks/readers/reporting/compensation/YTD/headcount/schema/
+facade/import code;0603 pairs Letters services/private-agent capabilities. The paired Board and AI
+application ancestry must be integrated and semantically verified before any runtime-ready/release
+claim. Full gate and populated/live-baseline upgrade rehearsals remain required, including reconciliation
+of the earlier reported historical staging-ledger differences. Never deploy later Mobile timestamps
+while silently omitting earlier allocated prerequisites or their application owners.
