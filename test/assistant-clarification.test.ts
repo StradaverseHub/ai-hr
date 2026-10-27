@@ -9,7 +9,11 @@ import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
-import {ownAssistantClarification,canClarifyAssistantQuestion,ASSISTANT_CONVERSATION_LIMITS,type OwnAssistantClarification} from '../core/assistant-clarification';
+import {ownAssistantClarification,canClarifyAssistantQuestion,ASSISTANT_CONVERSATION_LIMITS,AssistantClarificationError,type OwnAssistantClarification} from '../core/assistant-clarification';
+import * as clarificationOwner from '../core/assistant-clarification';
+import {askAssistant} from '../core/assistant';
+import {eraseOwnAssistantHistory} from '../core/assistant-history-retention';
+import {openaiAdapter} from '../lib/ai/providers/openai';
 import {sealAssistantDisclosure,assistantSourceDigest,type AssistantDisclosureBinding} from '../lib/ai/assistant-disclosure';
 import type {AssistantAnswerPlan} from '../lib/ai/assistant-answer-plan';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -142,4 +146,50 @@ describe('actual caller-bound Assistant clarification continuation',()=>{
   expect(Object.isFrozen(result)).toBe(true);expect(await state()).toEqual(before);
  });
 
+});
+
+/** Actual app-role admission with ONLY the provider transport mocked. The original question is transient
+ * provider context; it may leave only while its own exchange is still current at each admission. */
+describe('a continuation rechecks its own original exchange before every provider round trip',()=>{
+ const usage={inputTokens:0,outputTokens:0,cachedInputTokens:0};
+ const end={text:'Fictional continuation answer',stop:'end' as const,toolCalls:[],usage,usageReported:true};
+ const tool={...end,text:'',stop:'tool_use' as const,toolCalls:[{id:'fictional-continuation-call',name:'unknown_fictional_tool',input:{}}]};
+ const reply='This calendar year';
+ const provider=()=>{vi.stubEnv('OPENAI_API_KEY','fictional-continuation-never-sent');for(const key of ['ANTHROPIC_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY'])vi.stubEnv(key,'');};
+ const custody=async(tenantId:string)=>(await owner.db.execute<{markers:number;tasks:number}>(sql`select (select count(*)::int from public.ai_assistant_answer_strategy_use where tenant_id=${tenantId}::uuid) as markers,(select count(*)::int from app.ai_spend_task where tenant_id=${tenantId}::uuid) as tasks`))[0];
+ const own=(ctx:SessionContext)=>owner.db.select().from(s.assistantExchange).where(eq(s.assistantExchange.appUserId,ctx.userId!)).orderBy(s.assistantExchange.id);
+ afterEach(()=>vi.restoreAllMocks());
+ it('positive control: carries the original question on every round trip while its own exchange stays current',async()=>{
+  provider();const {ctx}=await actor(),stored=await exchange(ctx);
+  const transport=vi.spyOn(openaiAdapter,'converse').mockResolvedValueOnce(tool).mockResolvedValueOnce(end);
+  const result=await askAssistant(ctx,{question:reply,clarificationExchangeId:stored.binding.exchangeId});
+  expect(transport).toHaveBeenCalledTimes(2);
+  for(const [,args] of transport.mock.calls)expect(args.turns[0]).toEqual({role:'user',content:stored.binding.question});
+  expect((await own(ctx)).find(row=>row.id===result.exchangeId)?.question).toBe(reply);
+ });
+ it('refuses in the strategy-marker transaction when own history is erased after the clarification read',async()=>{
+  provider();const {ctx}=await actor(),stored=await exchange(ctx),read=clarificationOwner.ownAssistantClarification;
+  const transport=vi.spyOn(openaiAdapter,'converse').mockResolvedValue(end);
+  // The actual own-history owner erases between the read and the admission transaction.
+  vi.spyOn(clarificationOwner,'ownAssistantClarification').mockImplementationOnce(async(supplied,id,response)=>{
+   const issued=await read(supplied,id,response);expect(await eraseOwnAssistantHistory(ctx)).toEqual({retired:1});return issued;});
+  const before=await custody(ctx.tenantId);
+  await expect(askAssistant(ctx,{question:reply,clarificationExchangeId:stored.binding.exchangeId})).rejects.toBeInstanceOf(AssistantClarificationError);
+  expect(transport).not.toHaveBeenCalled();expect(await custody(ctx.tenantId)).toEqual(before);
+  const rows=await own(ctx);expect(rows.map(row=>row.id)).toEqual([stored.binding.exchangeId]);
+  expect(rows[0].question).toBe('');expect(rows[0].contentRetiredAt).not.toBeNull();
+ });
+ it('refuses the next provider round trip when the original exchange retires between turns',async()=>{
+  provider();const {ctx}=await actor(),stored=await exchange(ctx);
+  const transport=vi.spyOn(openaiAdapter,'converse').mockImplementationOnce(async()=>{
+   // The physical retirement primitive the 30-day expiry owner applies, run by the table owner between
+   // turns. It deletes only markers LINKED to the retired exchange, so this continuation's own pending
+   // marker survives and the strategy recheck alone would admit the original question again.
+   await owner.db.execute(sql`select app._assistant_transcripts_retire(${ctx.tenantId}::uuid,array[${stored.binding.exchangeId}::uuid],true)`);
+   return tool;}).mockResolvedValue(end);
+  await expect(askAssistant(ctx,{question:reply,clarificationExchangeId:stored.binding.exchangeId})).rejects.toMatchObject({code:'provider_error'});
+  expect(transport).toHaveBeenCalledOnce();expect(transport.mock.calls[0][1].turns[0]).toEqual({role:'user',content:stored.binding.question});
+  const rows=await own(ctx);expect(rows.find(row=>row.id===stored.binding.exchangeId)?.contentRetiredAt).not.toBeNull();
+  expect(JSON.stringify(rows)).not.toContain(stored.binding.question);
+ });
 });

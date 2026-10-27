@@ -77,7 +77,7 @@ const h=vi.hoisted(()=>{
   if(state.providerFailure)throw state.providerFailure;
   return {text:'{"version":1,"mode":"insufficient","code":"no_verified_facts"}',toolCalls:[],stop:'end',usage:{inputTokens:5,outputTokens:7,cachedInputTokens:0}};
  });
- const prepareStrategy=vi.fn(async(_tx:unknown,_ctx:unknown,configuration:unknown,_question:string)=>{
+ const prepareStrategy=vi.fn(async(_tx:unknown,_ctx:unknown,configuration:unknown,_question:string,_continuationSourceTx?:unknown)=>{
   if(state.prepareFails)throw Error('Agent review could not be confirmed.');
   return {configuration,system:'fixture-strategy',capability:{},provenance:{mode:'baseline',version:0,configurationDigest:'fixture'}};
  });
@@ -151,6 +151,8 @@ describe('every admitted Assistant question counts exactly once',()=>{
   expect(row).toMatchObject({id:answer.exchangeId,question:QUESTION,disclosureReceipt:'sealed-fixture-receipt',error:null});
   expect(row.contentRetiredAt).toBeUndefined();
   expect(h.completeStrategy).toHaveBeenCalledTimes(1);expect(h.completeStrategy.mock.calls[0][3]).toBe(answer.exchangeId);
+  // A new question has no transient continuation source to recheck.
+  expect(h.prepareStrategy.mock.calls[0][4]).toBeUndefined();
   expect(usage()).toEqual([expect.objectContaining({inputTokens:5,outputTokens:7,exchangeCount:1})]);expect(h.retireStrategy).toHaveBeenCalledTimes(1);
  });
  it('a provider failure with the marker intact is recorded once with its generic error',async()=>{
@@ -199,6 +201,9 @@ describe('a clarification continuation cannot carry the original question past i
   expect(rawText(row)).not.toContain('ORIGINAL-QUESTION');
   // The marker digest and the sealed receipt bind the STORED question, so completion still verifies.
   expect(h.prepareStrategy.mock.calls[0][3]).toBe('Annual leave');
+  // The original question is transient context: its own source is handed to the strategy owner to
+  // recheck in the marker transaction and at every provider admission (DB-proven in assistant-clarification).
+  expect(typeof h.prepareStrategy.mock.calls[0][4]).toBe('function');
   expect(h.seal.mock.calls[0][0].question).toBe('Annual leave');
   const turns=h.converse.mock.calls[0][1].turns;
   expect(turns[0]).toEqual({role:'user',content:original});
