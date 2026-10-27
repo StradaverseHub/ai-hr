@@ -18068,10 +18068,13 @@
     "board": {
       "title": "Approvals",
       "open": "Approvals board",
+      "view": {
+        "label": "காட்சி",
+        "matrix": "கட்டம்",
+        "list": "பட்டியல்"
+      },
       "yourStep": "Your step: {steps}.",
       "stepPhrase": {
-        "submit": "submit your unit's recommendations",
-        "approve": "approve and send on, or return with a reason",
         "post": "post approved reviews to payroll"
       },
       "nothingYours": "No step on this board sits with you; you follow these reviews along the route.",
@@ -18090,6 +18093,7 @@
         "bonus": "Bonus",
         "exceptions": "Exceptions",
         "blocking": "Blocking",
+        "flags": "எச்சரிக்கைகள்",
         "action": "Action"
       },
       "seat": {
@@ -18101,8 +18105,34 @@
         "pbp": "PBP",
         "payroll": "Payroll"
       },
+      "seatShort": {
+        "ec": "EC"
+      },
+      "route": {
+        "annual": "ஆண்டு இறுதி வழி · சம்பள உயர்வும் போனஸும் ஒன்றாக அங்கீகரிக்கப்படும்",
+        "offcycle": "சுழற்சிக்கு வெளியிலான வழி"
+      },
+      "duty": {
+        "bu": "பரிந்துரை · சமர்ப்பிப்பு",
+        "bg": "அங்கீகாரம்",
+        "gr": "சரிபார்ப்பு · அனுப்புதல்",
+        "ctro": "ஒருங்கிணைப்பு · HR ஒப்புதல்",
+        "ec": "இறுதி அங்கீகாரம்",
+        "payroll": "சம்பளம்"
+      },
+      "payOn": "சம்பளம் · {date}",
+      "stepState": {
+        "done": "முடிந்தது",
+        "yours": "உங்கள் படி",
+        "withThem": "அவர்களிடம்",
+        "returned": "திருப்பி அனுப்பப்பட்டது",
+        "notReached": "இன்னும் எட்டவில்லை"
+      },
       "with": "With {seat}",
       "stepOf": "Step {step} of {steps}",
+      "dueOn": "கெடு {date}",
+      "overdueOn": "கெடு தாண்டியது {date}",
+      "peopleCount": "{count, plural, one {# நபர்} other {# நபர்கள்}}",
       "dueToday": "today",
       "dueTomorrow": "tomorrow",
       "dueIn": "in {days, plural, one {# day} other {# days}}",
@@ -18111,7 +18141,20 @@
       "ofBudget": "{percent} of budget",
       "overLimit": "over limit",
       "openReview": "Open review",
-      "return": "Return",
+      "sendTo": "{seat} இடம் அனுப்பவும்",
+      "submitTo": "{seat} இடம் சமர்ப்பிக்கவும்",
+      "approveFinal": "சம்பளப்பட்டியலுக்கு அங்கீகரிக்கவும்",
+      "button": {
+        "submit": "சமர்ப்பிக்கவும்",
+        "approve": "அங்கீகரிக்கவும்"
+      },
+      "returnTo": {
+        "bg": "BU CEO இடம் திருப்பவும்",
+        "gr": "BG / BU இடம் திருப்பவும்",
+        "ctro": "BG / BU இடம் திருப்பவும்",
+        "ec": "நிராகரிக்கவும் · BG / BU இடம் திருப்பவும்"
+      },
+      "stepOr": "{action} அல்லது {return}",
       "blockedHint": "Clear the blocking checks first",
       "sendAll": "Send all ready ({count})",
       "sendResult": "{sent} sent · {skipped} skipped (blocking) · {refused} refused (changed since you opened the page)",

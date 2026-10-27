@@ -155,6 +155,14 @@ describe('Rewards approvals board, posting authority and reward calendar', () =>
       const buJson = JSON.stringify(await rewardApprovalsBoard(actors.bu!, [b.companyId]));
       expect(buJson).not.toContain(String(inc(500000) + inc(700000)));
     });
+    it('carries the route progress and next seat of the unit\'s stage after a real decision', async () => {
+      const id = await unit('PROG', [{ salary: 5000 }]);
+      await submit(id); await approveTo(id, ['bg']);
+      expect((await getRewardUnit(admin, id)).unit.status).toBe('gr');
+      const [row] = (await rewardApprovalsBoard(actors.grOnly!, [b.companyId])).filter(r => r.id === id);
+      expect({ steps: row.progress?.map(p => `${p.seat}:${p.state}`), nextSeat: row.nextSeat, waiting: row.waiting }).toEqual({
+        steps: ['bu:done', 'bg:done', 'gr:current', 'ctro:pending', 'ec:pending', 'payroll:pending'], nextSeat: 'ctro', waiting: true });
+    });
     it('shows "—" money when the viewer can see no record of the review', async () => {
       const id = await unit('NONE', [{ salary: 5000, confidentiality: 'bg' }]);
       const [row] = (await rewardApprovalsBoard(actors.bu!, [b.companyId])).filter(r => r.id === id);

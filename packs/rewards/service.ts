@@ -20,9 +20,9 @@ export type {RewardSharedChoice} from './policy-groups';
 import { calculateOffcycle, offcycleRoute, offcycleTransition, type Funding } from './offcycle';
 import { canEditStage, defaultPolicy, emptyFacts, emptyRecommendation, factsSchema, isoDateSchema, policySchema, recommendationSchema, rewardRoles, transition, visibleEntry, type RewardEntry, type RewardFacts, type RewardPolicy, type RewardRole, type RewardSource } from './model';
 
-import { emptyRewardCalendar, rewardCalendarSchema, rewardDaysUntil, rewardStageDue, rewardStageSeat, rewardStageStep, type RewardCalendarValues } from './calendar';
-export { rewardCalendarStages, rewardOffcycleSlaStages, emptyRewardCalendar, rewardDueWording } from './calendar';
-export type { RewardCalendarValues, RewardCalendarStage, RewardOffcycleSlaStage } from './calendar';
+import { emptyRewardCalendar, rewardCalendarSchema, rewardDaysUntil, rewardNextSeat, rewardRouteProgress, rewardStageDue, rewardStageSeat, rewardStageStep, type RewardCalendarValues, type RewardRouteStep } from './calendar';
+export { rewardCalendarStages, rewardOffcycleSlaStages, emptyRewardCalendar, rewardDueWording, rewardNextSeat, rewardRouteProgress } from './calendar';
+export type { RewardCalendarValues, RewardCalendarStage, RewardOffcycleSlaStage, RewardRouteStep } from './calendar';
 import {changeRewardMember} from './maintenance';
 export {rewardAccessAdministration,previewRewardAccessChange,saveRewardAccessChange,rewardDeletionEligibility,deleteRewardReview,RewardMaintenanceError} from './maintenance';
 export type {RewardAccessChange,RewardAccessAdministration,RewardDeletionReason} from './maintenance';
@@ -141,7 +141,10 @@ async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string) {
     const route: RewardRole[] = unit.kind === 'annual' ? ['bu', 'bg', 'gr', 'ctro', 'ec'] : offcycleRoute(unit.kind, unit.offcycle!, entries);
     // The latest decision is the one that moved the review to its current step (or returned it).
     const entered = decisions[0] && decisions[0].toStage === unit.status ? todayInKualaLumpur(new Date(decisions[0].createdAt)) : null;
-    const due = rewardStageDue(await calendarTx(tx, unit.cycleId, unit.companyId), { kind: unit.kind, status: unit.status, returned: !!returned, enteredOn: entered });
+    const calendar = await calendarTx(tx, unit.cycleId, unit.companyId);
+    const due = rewardStageDue(calendar, { kind: unit.kind, status: unit.status, returned: !!returned, enteredOn: entered });
+    // The payroll step's calendar date, whatever the current step (annual only; an off-cycle request has none).
+    const payrollDue = rewardStageDue(calendar, { kind: unit.kind, status: 'approved', returned: false, enteredOn: null });
     // EC totals are derived ONLY from the rows the viewer may see (including the own-person exclusion).
     const ecRows = visible.filter(e => e.plan === 'ec');
     const bonusCounts = (plan: 'standard' | 'h') => {
@@ -153,7 +156,7 @@ async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string) {
         reductions: group.filter(e => e.bonusCents < e.standardBonusCents).length,
         lump: group.filter(e => e.lumpCents > 0).length };
     };
-    return { unit, cycle, route, due, name: bu?.name ?? 'Business unit', roles, members, decisions, returned,
+    return { unit, cycle, route, due, payrollDue, name: bu?.name ?? 'Business unit', roles, members, decisions, returned,
       rows: visible, flags, hiddenCount: entries.length - visible.length,
       budgets: { standard: calculated.budgets.standard, h: calculated.budgets.h },
       bonusCounts: { standard: bonusCounts('standard'), h: bonusCounts('h') },
@@ -728,7 +731,13 @@ export type RewardBoardRow = {
   id: string; kind: 'annual' | 'adhoc' | 'midyear'; name: string; cycle: string; companyId: string; company: string;
   status: typeof BOARD_STAGES[number]; revision: number; returnedTo: 'bu' | 'bg' | null;
   seat: RewardRole | null; step: { step: number; steps: number } | null;
+  /** Every step of the route with its state (rewardRouteProgress); null once the review has left the route. */
+  progress: RewardRouteStep[] | null;
+  /** Where a decision at the current step sends the review (rewardNextSeat); null at payroll or off the route. */
+  nextSeat: RewardRole | null;
   due: string | null; daysUntilDue: number | null;
+  /** The calendar's payroll date for this review (annual only), shown on the Matrix view's payroll column. */
+  payrollDue: string | null;
   waiting: boolean; action: RewardBoardAction | null; canReturn: boolean;
   /** Waiting on the viewer, no blocking check and nothing that needs a written reason: the decision needs no note. */
   ready: boolean;
@@ -767,7 +776,8 @@ function boardRow(v: ReviewProjection, meta: { cycle: string; company: string },
   return {
     id: unit.id, kind: unit.kind, name: v.name, cycle: meta.cycle, companyId: unit.companyId, company: meta.company,
     status, revision: unit.revision, returnedTo: v.returned?.toSeat ?? null, seat, step,
-    due: v.due, daysUntilDue: v.due ? rewardDaysUntil(v.due, today) : null,
+    progress: rewardRouteProgress(unit.status, v.route, v.decisions), nextSeat: rewardNextSeat(unit.status, v.route),
+    due: v.due, daysUntilDue: v.due ? rewardDaysUntil(v.due, today) : null, payrollDue: v.payrollDue,
     waiting, action, canReturn: waiting && action === 'approve',
     ready: waiting && (action === 'approve' || action === 'submit') && blocking === 0 && !needsReason && !needsAcknowledgement,
     people: v.rows.length,
