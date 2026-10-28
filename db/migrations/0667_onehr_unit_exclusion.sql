@@ -441,15 +441,21 @@ GRANT EXECUTE ON FUNCTION app.assessment_unit_exclusion_company_in_use(uuid) TO 
 
 -- ── 8. X1: the subject arm (restatements) ──────────────────────────────────────────────────────────────
 -- Restates app.assessment_review_participates (latest: 0540:40-50): the unit-rule arm after the terminated arm (frozen results exempt, D7); the access arm admits the effective reviewer.
+-- Fast path (plan R2): a cycle with no active rule and no close-time pin (two index probes, inline) excludes nobody, and
+-- there the effective reviewer is exactly app.onehr_manager, so neither nested call is made. PostgreSQL re-plans a nested
+-- SQL function on every call of its caller; these calls run per calibration row and made the BG board read ~1.5x slower.
 CREATE OR REPLACE FUNCTION app.assessment_review_participates(wanted_review uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM performance_review r JOIN review_cycle c ON c.id=r.cycle_id AND c.tenant_id=r.tenant_id
   JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id
   JOIN performance_assessment_participation p ON p.cycle_id=r.cycle_id AND p.employment_id=r.employment_id AND p.tenant_id=r.tenant_id
   WHERE r.id=wanted_review AND r.tenant_id=app.current_tenant_id()
    AND (c.status='closed' OR e.terminated_on IS NULL OR e.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
-   AND (NOT app.assessment_unit_excluded(r.cycle_id,r.employment_id) OR EXISTS(SELECT 1 FROM performance_onehr_result f WHERE f.review_id=r.id AND f.tenant_id=r.tenant_id))
+   AND (NOT (EXISTS(SELECT 1 FROM performance_assessment_unit_exclusion x WHERE x.tenant_id=r.tenant_id AND x.cycle_id=r.cycle_id AND x.ended_at IS NULL) OR EXISTS(SELECT 1 FROM performance_assessment_unit_exclusion_pin xp WHERE xp.tenant_id=r.tenant_id AND xp.cycle_id=r.cycle_id))
+    OR NOT app.assessment_unit_excluded(r.cycle_id,r.employment_id) OR EXISTS(SELECT 1 FROM performance_onehr_result f WHERE f.review_id=r.id AND f.tenant_id=r.tenant_id))
    AND CASE WHEN p.override='add' THEN true WHEN p.override='remove' THEN false ELSE p.eligible_at_open END
-   AND (app.assessment_dispatcher_scope() OR app.can_see_employment(e.id) OR app.onehr_cycle_admin(r.cycle_id) OR app.onehr_manager(r.id) OR app.onehr_effective_reviewer(r.id) OR app.onehr_moderator(r.id)
+   AND (app.assessment_dispatcher_scope() OR app.can_see_employment(e.id) OR app.onehr_cycle_admin(r.cycle_id) OR app.onehr_manager(r.id)
+    OR (EXISTS(SELECT 1 FROM performance_assessment_unit_exclusion x WHERE x.tenant_id=r.tenant_id AND x.cycle_id=r.cycle_id AND x.ended_at IS NULL) OR EXISTS(SELECT 1 FROM performance_assessment_unit_exclusion_pin xp WHERE xp.tenant_id=r.tenant_id AND xp.cycle_id=r.cycle_id)) AND app.onehr_effective_reviewer(r.id)
+    OR app.onehr_moderator(r.id)
     OR EXISTS(SELECT 1 FROM performance_onehr_panel panel JOIN employment peer ON peer.id=panel.peer_employment_id AND peer.tenant_id=panel.tenant_id JOIN app_user actor ON actor.person_id=peer.person_id AND actor.tenant_id=peer.tenant_id WHERE panel.review_id=r.id AND panel.tenant_id=r.tenant_id AND panel.archived_at IS NULL AND actor.id=app.current_user_id() AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id) AND (peer.terminated_on IS NULL OR peer.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date))
     OR EXISTS(SELECT 1 FROM performance_onehr_calibration_entry ce WHERE ce.review_id=r.id AND ce.tenant_id=r.tenant_id AND app.onehr_calibration_access(ce.session_id))))
 $$;
@@ -617,11 +623,11 @@ CREATE OR REPLACE FUNCTION app.assessment_skill_history(wanted_review uuid) RETU
   AND (app.is_self_person(e.person_id) OR app.onehr_effective_reviewer(r.review_id) OR app.onehr_cycle_admin(r.cycle_id))
 $$;
 --> statement-breakpoint
--- Restates app.onehr_assessment_inputs (latest: 0540:370-374): O2: the 360 inside the competency review moves one level up; an effective-only reviewer sees the same 360 aggregates as the stored reviewer, without the PM band, score or submitted KPIs.
+-- Restates app.onehr_assessment_inputs (latest: 0540:370-374): O2: the 360 inside the competency review moves one level up; an effective-only reviewer sees the same 360 aggregates as the stored reviewer, without the PM band, score or submitted KPIs. pm is computed once per review: OFFSET 0 keeps the planner from copying the access check into each of its four uses.
 CREATE OR REPLACE FUNCTION app.onehr_assessment_inputs(wanted_review uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
  SELECT jsonb_build_object('reviewId',r.review_id,'employmentId',r.employment_id,'companyId',r.company_id,'department',coalesce((SELECT d.name FROM assignment a JOIN department d ON d.id=a.department_id AND d.tenant_id=a.tenant_id WHERE a.employment_id=e.id AND a.tenant_id=e.tenant_id AND a.superseded_at IS NULL AND a.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (a.valid_to IS NULL OR a.valid_to>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) ORDER BY a.valid_from DESC,a.id LIMIT 1),''),'businessGroupId',coalesce((SELECT c.parent_company_id::text FROM company c WHERE c.id=r.company_id AND c.tenant_id=r.tenant_id),''),'businessGroup',coalesce((SELECT g.legal_name FROM company c JOIN company g ON g.id=c.parent_company_id AND g.tenant_id=c.tenant_id WHERE c.id=r.company_id AND c.tenant_id=r.tenant_id),''),'grade',r.grade,'name',p.full_name,'performance',CASE WHEN pm.ok THEN r.manager_performance END,'managerScore',CASE WHEN pm.ok THEN r.manager_score END,'finalized',EXISTS(SELECT 1 FROM performance_onehr_result f WHERE f.review_id=r.review_id),'competencyStatus',r.competency_status,'competencyAssigned',jsonb_array_length(r.competencies)>0,'selfCompetencies',CASE WHEN r.competency_status IN ('submitted','reviewed') THEN r.competencies ELSE '[]'::jsonb END,'submittedKpis',CASE WHEN r.results_submitted_at IS NOT NULL AND pm.ok THEN r.kpis ELSE '[]'::jsonb END,'competencies',CASE WHEN r.competency_status='reviewed' THEN r.competencies ELSE '[]'::jsonb END,'principles',coalesce((SELECT jsonb_agg(jsonb_build_object('principle',q.principle,'pct',q.pct)) FROM (SELECT st->>'principle' principle,100*sum(CASE WHEN a.answers->>(st->>'id')='yes' THEN CASE WHEN (st->>'future')::boolean THEN 1.5 ELSE 1 END ELSE 0 END)/nullif(sum(CASE WHEN (st->>'future')::boolean THEN 1.5 ELSE 1 END),0) pct FROM performance_onehr_panel a CROSS JOIN LATERAL jsonb_array_elements(r.statements) st WHERE a.review_id=r.review_id AND a.submitted_at IS NOT NULL AND a.archived_at IS NULL GROUP BY st->>'principle') q),'[]'::jsonb),'leadership',coalesce((SELECT jsonb_agg(jsonb_build_object('score',app.onehr_adjusted_score(a.request_id,(SELECT sum(CASE WHEN a.answers->>(st->>'id')='yes' THEN CASE WHEN (st->>'future')::boolean THEN 1.5 ELSE 1 END ELSE 0 END) FROM jsonb_array_elements(r.statements) st),(SELECT sum(CASE WHEN (st->>'future')::boolean THEN 1.5 ELSE 1 END) FROM jsonb_array_elements(r.statements) st)),'max',(SELECT sum(CASE WHEN (st->>'future')::boolean THEN 1.5 ELSE 1 END) FROM jsonb_array_elements(r.statements) st))) FROM performance_onehr_panel a WHERE a.review_id=r.review_id AND a.submitted_at IS NOT NULL AND a.archived_at IS NULL),'[]'::jsonb))
  FROM performance_onehr_review r JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id JOIN person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
- CROSS JOIN LATERAL (SELECT (app.onehr_cycle_admin(r.cycle_id) OR app.onehr_manager(r.review_id) OR EXISTS(SELECT 1 FROM performance_onehr_calibration_entry ce JOIN performance_onehr_calibration cs ON cs.id=ce.session_id WHERE ce.review_id=r.review_id AND app.onehr_calibration_access(cs.id) AND NOT app.is_self_person(p.id))) AS ok) pm
+ CROSS JOIN LATERAL (SELECT (app.onehr_cycle_admin(r.cycle_id) OR app.onehr_manager(r.review_id) OR EXISTS(SELECT 1 FROM performance_onehr_calibration_entry ce JOIN performance_onehr_calibration cs ON cs.id=ce.session_id WHERE ce.review_id=r.review_id AND app.onehr_calibration_access(cs.id) AND NOT app.is_self_person(p.id))) AS ok OFFSET 0) pm
  WHERE r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id() AND NOT app.is_self_person(p.id) AND (pm.ok OR app.onehr_effective_reviewer(r.review_id))
 $$;
 --> statement-breakpoint
@@ -645,12 +651,15 @@ CREATE OR REPLACE FUNCTION app.onehr_calibration_seat_users(wanted_session uuid)
 $$;
 --> statement-breakpoint
 -- Restates app.onehr_calibration_reviewer (latest: 0663:461-467): D9: an explicit grant is off when every live in-scope employment of the login is out; the seat arm is filtered in seat_users.
+-- Fast path (plan R2), as in app.assessment_review_participates: with no active rule and no pin in the cycle no login is out,
+-- so the named arm skips app.onehr_user_unit_excluded (this check runs inside every calibration access check).
 CREATE OR REPLACE FUNCTION app.onehr_calibration_reviewer(wanted_session uuid, wanted_user uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM performance_onehr_calibration s JOIN app_user u ON u.id=wanted_user AND u.tenant_id=s.tenant_id
   WHERE s.id=wanted_session AND s.tenant_id=app.current_tenant_id() AND s.tier<>'final'
    AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
    AND (u.id=app.current_user_id() OR app.assessment_dispatcher_scope() OR app.onehr_admin(s.company_id))
-   AND (u.id=ANY(s.reviewer_user_ids) AND NOT app.onehr_user_unit_excluded(s.cycle_id,u.id) OR u.id=ANY(app.onehr_calibration_seat_users(s.id))))
+   AND (u.id=ANY(s.reviewer_user_ids) AND (NOT (EXISTS(SELECT 1 FROM performance_assessment_unit_exclusion x WHERE x.tenant_id=s.tenant_id AND x.cycle_id=s.cycle_id AND x.ended_at IS NULL) OR EXISTS(SELECT 1 FROM performance_assessment_unit_exclusion_pin xp WHERE xp.tenant_id=s.tenant_id AND xp.cycle_id=s.cycle_id))
+     OR NOT app.onehr_user_unit_excluded(s.cycle_id,u.id)) OR u.id=ANY(app.onehr_calibration_seat_users(s.id))))
 $$;
 --> statement-breakpoint
 -- Restates app.assessment_pending_work (latest: 0663:513-560): reminders name the effective reviewer and drop moderators who are out; session reviewers already follow onehr_calibration_reviewer.
