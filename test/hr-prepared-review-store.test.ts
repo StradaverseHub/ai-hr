@@ -48,7 +48,7 @@ async function login(personId:string,role:Role,base:Base=b,companyId:string|null
 beforeAll(async()=>{await migrateTestDb();const [installed]=await owner.db.execute<{ok:boolean}>(sql`select app._assistant_assigned_review_subject_kind('leave.adjustment.apply')='employment' as ok`);expect(installed.ok,'Migration 0677 must be installed.').toBe(true);});
 afterAll(closeAll);afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
 beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-hr-prepared-custody-key-1234');
- await resetDb();b=await seedBase();for(const code of ['assistant','leave','employees'])await setModule(b.tenantId,code,'active');
+ await resetDb();b=await seedBase();for(const code of ['assistant'])await setModule(b.tenantId,code,'active');
  subject=await hire('Fictional Adjusted Employee');hrPerson=await hire('Fictional HR Administrator');outsider=await hire('Fictional Unrelated Colleague');
  hr=await login(hrPerson.personId,'hr_admin');stranger=await login(outsider.personId,'employee');
  // An HR administrator scoped to ANOTHER company of the same tenant (wrong company scope).
@@ -122,7 +122,7 @@ describe.each(['leave','movement'] as const)('ADR-0151 HR-prepared %s custody',n
   await expect(confirm({actionId:r.actionId,reviewedDigest:'0'.repeat(64)},hr)).rejects.toThrow();
   const second=await login(hrPerson.personId,'hr_admin');
   await expect(confirm(r,second)).rejects.toThrow();await expect(k().store.discard(second,{actionId:r.actionId})).rejects.toThrow();expect((await k().store.list(second)).reviews).toEqual([]);
-  const foreign=await seedBase();for(const code of ['assistant','leave','employees'])await setModule(foreign.tenantId,code,'active');
+  const foreign=await seedBase();for(const code of ['assistant'])await setModule(foreign.tenantId,code,'active');
   const foreignHr=await login((await hire('Fictional Foreign HR',foreign)).personId,'hr_admin',foreign);
   await expect(confirm(r,foreignHr)).rejects.toThrow();await expect(prepare(foreignHr,k().human(subject.employmentId))).rejects.toThrow();
   expect((await k().store.list(foreignHr)).reviews).toEqual([]);
