@@ -235,3 +235,16 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.email_design_authenticated(text,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.email_design_authenticated(text,text) TO ai_hr_app;
+--> statement-breakpoint
+-- The legacy value is retained as history, with no customer writer competing with the design owner.
+UPDATE public.setting_definition SET customer_visible=false,description='Historical assessment wording, migrated to Email templates; no longer editable.' WHERE key='performance.reminder_words';
+--> statement-breakpoint
+CREATE FUNCTION app.email_design_legacy_words_retired() RETURNS trigger
+LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF (CASE WHEN TG_OP='DELETE' THEN OLD.key ELSE NEW.key END)='performance.reminder_words' AND NOT app.acting_as_owner() THEN RAISE EXCEPTION 'Use Email templates for assessment wording' USING ERRCODE='23514'; END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD; END IF;RETURN NEW;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.email_design_legacy_words_retired() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER email_design_legacy_words_retired BEFORE INSERT OR UPDATE OR DELETE ON tenant_setting FOR EACH ROW EXECUTE FUNCTION app.email_design_legacy_words_retired();

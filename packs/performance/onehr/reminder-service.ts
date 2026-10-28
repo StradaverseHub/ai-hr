@@ -82,7 +82,7 @@ export async function saveAssessmentReminderRules(ctx:SessionContext,raw:unknown
  await setTenantSetting(ctx,{key:'performance.reminder_rules',value:JSON.stringify(parsed)});
 }
 
-/** Wording has its own central setting, so changing the schedule cannot erase a template. */
+/** Compatibility entry point: wording writes append an Email templates version, never the retired setting. */
 export async function saveAssessmentReminderWords(ctx:SessionContext,raw:unknown){
  if(!isGroupAdmin(ctx))throw Error('Only group HR administrators may change reminder wording.');
  const parsed=assessmentReminderWordsSchema.nullable().parse(raw);
