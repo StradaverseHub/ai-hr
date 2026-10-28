@@ -20643,6 +20643,34 @@
       "branch": "分行",
       "rating": "分行评级",
       "empty": "尚未配置分行系数。"
+    },
+    "reviewList": {
+      "waiting": "等待我处理：{count}",
+      "upcoming": "{count} 项审核正在进行，将在{stage}阶段交由您处理。",
+      "filters": "筛选审核",
+      "all": "全部",
+      "returned": "已退回",
+      "waitingOnly": "等待我处理",
+      "apply": "应用筛选",
+      "clear": "清除筛选",
+      "myRole": "我的角色",
+      "with": "当前负责人",
+      "due": "阶段截止日期",
+      "salary": "已用加薪额度",
+      "bonus": "已用奖金额度",
+      "blocks": "阻碍与例外",
+      "unavailable": "您的角色无法查看",
+      "restrictedName": "指定审核人",
+      "blocking": "{count} 项阻碍",
+      "exceptions": "{count} 项例外",
+      "noMatches": "没有符合筛选条件的审核。",
+      "create": "创建单位审核",
+      "empty": {
+        "noScope": "您当前范围内没有可用公司。请联系管理员。",
+        "noCycle": "所选公司尚未创建 {year} 年审核周期。",
+        "noRole": "您尚未获分配薪酬审核角色。请联系集团薪酬团队。",
+        "otherScope": "您的薪酬审核位于当前公司筛选范围之外。请更改顶部筛选以查看。"
+      }
     }
   },
   "identityEmail": {

@@ -20643,6 +20643,34 @@
       "branch": "Chi nhánh",
       "rating": "Xếp loại chi nhánh",
       "empty": "Chưa cấu hình hệ số chi nhánh."
+    },
+    "reviewList": {
+      "waiting": "Đang chờ tôi xử lý: {count}",
+      "upcoming": "{count} đợt xét duyệt đang diễn ra và sẽ đến lượt bạn ở bước {stage}.",
+      "filters": "Lọc đợt xét duyệt",
+      "all": "Tất cả",
+      "returned": "Đã trả lại",
+      "waitingOnly": "Chờ tôi xử lý",
+      "apply": "Áp dụng bộ lọc",
+      "clear": "Xóa bộ lọc",
+      "myRole": "Vai trò của tôi",
+      "with": "Đang ở",
+      "due": "Hạn của bước",
+      "salary": "Mức tăng lương đã dùng",
+      "bonus": "Thưởng đã dùng",
+      "blocks": "Vướng mắc và ngoại lệ",
+      "unavailable": "Vai trò của bạn không được xem",
+      "restrictedName": "Người xét duyệt được chỉ định",
+      "blocking": "{count} vướng mắc",
+      "exceptions": "{count} ngoại lệ",
+      "noMatches": "Không có đợt xét duyệt phù hợp bộ lọc.",
+      "create": "Tạo xét duyệt đơn vị",
+      "empty": {
+        "noScope": "Không có công ty trong phạm vi hiện tại. Hãy liên hệ quản trị viên.",
+        "noCycle": "Chưa tạo chu kỳ xét duyệt {year} cho các công ty đã chọn.",
+        "noRole": "Bạn chưa được phân vai trò xét duyệt đãi ngộ. Hãy liên hệ Group Rewards.",
+        "otherScope": "Đợt xét duyệt của bạn thuộc công ty ngoài bộ lọc hiện tại. Hãy đổi bộ lọc ở trên để xem."
+      }
     }
   },
   "identityEmail": {

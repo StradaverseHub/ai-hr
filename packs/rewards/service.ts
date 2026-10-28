@@ -245,7 +245,9 @@ export async function listRewardUnits(ctx: SessionContext, companyIds: string[],
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   companyIds = companyIds.slice();
 
-  return withCanonicalAiReadTx(ctx, existingTx, 'rewards', withRewardsTenant, async tx => {
+  return withCanonicalAiReadTx(ctx, existingTx, 'rewards', withRewardsTenant, tx=>listRewardUnitsTx(tx,companyIds));
+}
+async function listRewardUnitsTx(tx:Tx,companyIds:string[]){
     if (!companyIds.length) return [];
     const seated = sql`exists(select 1 from app.reward_roles(${rewardUnit.id}))`;
     const rows = await tx.select({ id: rewardUnit.id, cycleId: rewardCycle.id, cycle: rewardCycle.name, kind: rewardUnit.kind, year: rewardCycle.year, companyId: rewardUnit.companyId, company: company.legalName, businessUnitId: rewardUnit.businessUnitId, unit: businessUnitDisplayName, status: rewardUnit.status, returnedTo: returnedSeatSql, revision: rewardUnit.revision, canConfigure:sql<boolean>`${rewardUnit.status}='draft' and ${rewardUnit.kind}='annual' and 'gr' in (select app.reward_roles(${rewardUnit.id}))`, deletionReason:sql<import('./maintenance').RewardDeletionReason|null>`case when app.reward_admin(${rewardUnit.companyId}) then app.reward_deletion_reason(${rewardUnit.id}) else 'locked' end`,
@@ -285,7 +287,6 @@ export async function listRewardUnits(ctx: SessionContext, companyIds: string[],
       return { ...r, seat, holders: seat ? holders.filter(h => h.unitId === r.id && h.role === seat).map(h => h.name ?? null) : [], due, daysUntilDue: due ? rewardDaysUntil(due, today) : null,
         cancellation: c ? { on: todayInKualaLumpur(new Date(c.at)), reason: c.reason ?? '', by: c.actorName ?? null } : null };
     });
-  });
 }
 
 export async function rewardSetupChoices(ctx: SessionContext, companyIds: string[],options:{includeArchived?:boolean;sharedPolicy?:boolean}={}) {
@@ -1280,6 +1281,37 @@ export async function rewardApprovalsBoard(ctx: SessionContext, companyIds: stri
     return rows;
   });
 }
+
+/** 9040c2eb / b4729de7: the list uses exactly the review/board projection for seated viewers.
+ * An administrator without a seat receives metadata only. Empty-state scope checks return booleans,
+ * never names or counts from reviews outside the selected company scope. */
+export async function listRewardReviewStatus(ctx:SessionContext,companyIds:string[]){
+ return withRewardsTenant(ctx,async tx=>{
+  const units=await listRewardUnitsTx(tx,companyIds),today=todayInKualaLumpur(),year=Number(today.slice(0,4));
+  const rows=[];
+  for(const unit of units){
+   const roles=await rolesFor(tx,unit.id);
+   if(!roles.length){rows.push({...unit,roles,waiting:false,salary:null,bonus:null,blocking:null,exceptions:null,laterSeats:[] as RewardRole[]});continue;}
+   const projection=await reviewProjectionTx(tx,ctx,unit.id),board=boardRow(projection,{cycle:unit.cycle,company:unit.company},today);
+   const step=rewardStageStep(projection.unit.status,projection.route);
+   const laterSeats=step?([...projection.route,'payroll'] as RewardRole[]).filter((seat,index)=>index>=step.step&&roles.includes(seat)):[];
+   rows.push({...unit,roles,waiting:board.waiting,salary:board.salary,bonus:board.bonus,blocking:board.blocking,exceptions:board.exceptions,laterSeats});
+  }
+  let emptyReason:'noScope'|'noCycle'|'noRole'|'otherScope'|null=null;
+  if(!rows.length){
+   if(!companyIds.length)emptyReason='noScope';
+   else{
+    const [access]=await tx.execute<{admin:boolean;has_seat:boolean;has_cycle:boolean}>(sql`select
+     exists(select 1 from company c where c.id in ${sql`(${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`,`)})`} and app.reward_admin(c.id)) as admin,
+     exists(select 1 from reward_unit r where r.deleted_at is null and exists(select 1 from app.reward_roles(r.id))) as has_seat,
+     exists(select 1 from reward_cycle c join reward_unit r on r.cycle_id=c.id where c.year=${year} and r.deleted_at is null and r.company_id in ${sql`(${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`,`)})`}) as has_cycle`);
+    emptyReason=access?.admin&&!access.has_cycle?'noCycle':!access?.has_seat?'noRole':'otherScope';
+   }
+  }
+  return {rows,emptyReason,year};
+ });
+}
+export type RewardReviewListRow=Awaited<ReturnType<typeof listRewardReviewStatus>>['rows'][number];
 
 const sendReadySchema = z.array(z.object({ unitId: idSchema, revision: z.number().int().positive() }).strict()).max(500);
 export type RewardSendReadyResult = { sent: string[]; skipped: string[]; refused: { id: string; name: string; message: string }[] };
