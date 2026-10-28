@@ -19,9 +19,11 @@ export { getReviewConversation, sendReviewMessage, keepCompetencyReflection, typ
 export { getCalibrationConversation,sendCalibrationMessage } from './onehr/calibration-conversation';
 
 export { previewAssessmentParticipantsTx, snapshotAssessmentParticipantsTx, assessmentParticipantsTx, setAssessmentParticipation } from './onehr/participation-service';
-// D-P1-22 (ADR-0150): the cycle exclusion rule (service functions only; the administration screen waits for X5).
+// D-P1-22 (ADR-0150): the cycle exclusion rule.
 export { listUnitExclusionRules, previewUnitExclusion, saveUnitExclusion, endUnitExclusion, unitExclusionPlanTx, type UnitExclusionScope } from './onehr/unit-exclusion-service';
 export { planUnitExclusion, planKpiLine, dedupeChain, fullPanelTarget, type UnitExclusionPlan, type UnitExclusionFacts } from './onehr/unit-exclusion-model';
+// D-P1-22 X5: the cycle page card's read projections (labels and choices; the plan and its numbers stay above).
+export { getUnitExclusionScreen, previewUnitExclusionScreen, type UnitExclusionScreen, type UnitExclusionPreviewView, type UnitExclusionRuleView, type UnitExclusionChoice } from './onehr/unit-exclusion-screen';
 
 export * from './onehr/rating-record-service';
 export type { RatingRecordSnapshot } from './onehr/rating-record-model';

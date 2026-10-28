@@ -21197,6 +21197,7 @@
       "left": "已离职",
       "native_rule": "不符合周期资格规则",
       "existing_review": "保留现有评估",
+      "unit_out": "Not taking part — unit or department not taking part",
       "noReview": "无开放时快照；选择纳入以创建评估。"
     },
     "interimResult": "当前已发布结果",
@@ -22169,6 +22170,77 @@
         "AE": "Above Expectation",
         "OU": "Outstanding"
       }
+    },
+    "unitExclusion": {
+      "title": "Units not taking part",
+      "help": "Leave a company, or one of its departments, out of this cycle. Its people take no part, and the competency and Career Plan reviews they hold move one level up.",
+      "rulesTitle": "Rules",
+      "company": "Company",
+      "scope": "Scope",
+      "setBy": "Set by",
+      "on": "On",
+      "actions": "Actions",
+      "bringBack": "Bring back",
+      "none": "Every unit in this cycle takes part.",
+      "history": "Ended rules ({count})",
+      "historyHelp": "Ended rules stay in the history. Nothing is deleted.",
+      "set": "Set",
+      "ended": "Ended",
+      "why": "Why",
+      "endReasons": {
+        "brought_back": "Brought back",
+        "subsumed": "Subsumed"
+      },
+      "wholeCompany": "Whole company",
+      "scopeDepartment": "{department} ({company})",
+      "leaveOutTitle": "Leave out a unit",
+      "chooseCompany": "Choose a company",
+      "departments": "A department",
+      "noDepartments": "This company has no departments.",
+      "preview": "Preview",
+      "previewTitle": "Preview",
+      "previewHelp": "This is exactly what Leave out will do.",
+      "alreadyActive": "This unit is already left out. Saving changes nothing.",
+      "tiles": {
+        "people": "Take no part",
+        "places": "Places on others' 360 panels",
+        "placesDetail": "{submitted} submitted · {below} people drop below a full panel",
+        "own": "Own 360 rows",
+        "oneLevelUp": "Reviewed one level up"
+      },
+      "person": "Person",
+      "reviewerNow": "Reviewer now",
+      "becomes": "Becomes",
+      "kpiMoves": "{count} untouched KPI lines move one level up.",
+      "subsumed": "{count} department rules of this company end and move to the history.",
+      "seats": "Seats held by people left out: {seats}. Those steps stay closed until the seat is changed on",
+      "leadersLink": "Leaders",
+      "seatTypes": {
+        "bu_ceo": "BU CEO",
+        "bg_ceo": "BG CEO",
+        "group_chief": "Group chief",
+        "hod": "Head of department",
+        "hodSession": "Department calibration"
+      },
+      "sessionReviewers": "{count} calibration reviewer places are held by people left out. Their calibration access is off while the unit is out.",
+      "nobodyAbove": "Nobody above: these people have nobody to move to and need fixing by hand.",
+      "nobodyReasons": {
+        "review": "no reviewer one level up",
+        "kpi": "KPI lines not moved"
+      },
+      "frozen": "{people} people with a frozen result and {rows} 360 rows on frozen reviews are not changed.",
+      "nothingDeleted": "Nothing anyone entered is deleted.",
+      "cancel": "Cancel",
+      "continue": "Continue",
+      "back": "Back",
+      "leaveOut": "Leave out",
+      "confirmTitle": "Leave {scope} out of {cycle}?",
+      "confirmBody": "{people} people will take no part, {places} places on others' 360 panels and {own} own 360 rows will be archived, {moves} KPI lines move and {oneLevelUp} reviews move one level up. Bringing the unit back later restores participation and routing, but not archived panel places or moved KPI lines.",
+      "bringBackTitle": "Bring {scope} back into {cycle}?",
+      "bringBackBody": "Participation and review routing return now. Archived panel places and moved KPI lines stay as they are.",
+      "saved": "The unit is left out of this cycle.",
+      "broughtBack": "The unit takes part again.",
+      "failed": "Something went wrong. Try again."
     }
   },
   "allowanceV2": {
