@@ -2,11 +2,11 @@
 CREATE TABLE reward_company_exclusion (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL REFERENCES tenant(id),
  company_id uuid NOT NULL REFERENCES company(id), year integer NOT NULL CHECK(year BETWEEN 2000 AND 2200),
- reason text NOT NULL CHECK(length(btrim(reason)) BETWEEN 10 AND 2000),
+ reason text NOT NULL CHECK(length(btrim(reason,E' \t\n\r')) BETWEEN 10 AND 2000),
  created_by uuid NOT NULL REFERENCES app_user(id), created_at timestamptz NOT NULL DEFAULT now(),
  ended_by uuid REFERENCES app_user(id), ended_at timestamptz, end_reason text,
  CHECK((ended_at IS NULL AND ended_by IS NULL AND end_reason IS NULL) OR
- (ended_at IS NOT NULL AND ended_by IS NOT NULL AND length(btrim(end_reason)) BETWEEN 10 AND 2000))
+ (ended_at IS NOT NULL AND ended_by IS NOT NULL AND end_reason IS NOT NULL AND length(btrim(end_reason,E' \t\n\r')) BETWEEN 10 AND 2000))
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX reward_company_exclusion_active ON reward_company_exclusion(tenant_id,company_id,year) WHERE ended_at IS NULL;
@@ -25,7 +25,7 @@ CREATE POLICY reward_company_exclusion_update ON reward_company_exclusion FOR UP
 --> statement-breakpoint
 CREATE FUNCTION app.reward_company_available(p_company uuid,p_year integer) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT EXISTS(SELECT 1 FROM public.company c WHERE c.id=p_company AND c.tenant_id=app.current_tenant_id() AND c.archived_at IS NULL)
+ SELECT p_year IS NOT NULL AND p_year BETWEEN 2000 AND 2200 AND EXISTS(SELECT 1 FROM public.company c WHERE c.id=p_company AND c.tenant_id=app.current_tenant_id() AND c.archived_at IS NULL)
  AND NOT EXISTS(SELECT 1 FROM public.reward_company_exclusion e WHERE e.tenant_id=app.current_tenant_id() AND e.company_id=p_company AND e.year=p_year AND e.ended_at IS NULL)
 $$;
 REVOKE ALL ON FUNCTION app.reward_company_available(uuid,integer) FROM PUBLIC;
@@ -46,19 +46,19 @@ BEGIN
  PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0));
  IF actor IS NULL OR NOT app.reward_admin(p_company) OR NOT EXISTS(SELECT 1 FROM public.company c WHERE c.id=p_company AND c.tenant_id=t)
  THEN RAISE EXCEPTION 'Rewards company permission required' USING ERRCODE='42501'; END IF;
- IF p_year IS NULL OR p_year NOT BETWEEN 2000 AND 2200 OR p_reason IS NULL OR length(btrim(p_reason)) NOT BETWEEN 10 AND 2000
+ IF p_year IS NULL OR p_year NOT BETWEEN 2000 AND 2200 OR p_reason IS NULL OR length(btrim(p_reason,E' \t\n\r')) NOT BETWEEN 10 AND 2000
  THEN RAISE EXCEPTION 'A reward year and reason of 10 to 2000 characters are required' USING ERRCODE='23514'; END IF;
  IF p_end_id IS NULL THEN
-  INSERT INTO public.reward_company_exclusion(tenant_id,company_id,year,reason,created_by) VALUES(t,p_company,p_year,btrim(p_reason),actor) RETURNING id INTO result;
+  INSERT INTO public.reward_company_exclusion(tenant_id,company_id,year,reason,created_by) VALUES(t,p_company,p_year,btrim(p_reason,E' \t\n\r'),actor) RETURNING id INTO result;
   event_name:='reward.company-excluded';
  ELSE
-  UPDATE public.reward_company_exclusion SET ended_by=actor,ended_at=now(),end_reason=btrim(p_reason)
+  UPDATE public.reward_company_exclusion SET ended_by=actor,ended_at=now(),end_reason=btrim(p_reason,E' \t\n\r')
    WHERE id=p_end_id AND tenant_id=t AND company_id=p_company AND year=p_year AND ended_at IS NULL RETURNING id INTO result;
   IF result IS NULL THEN RAISE EXCEPTION 'Company exclusion changed' USING ERRCODE='40001'; END IF;
   event_name:='reward.company-exclusion-ended';
  END IF;
  INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
- VALUES(t,'reward-company-exclusion',result,event_name,'user',actor,jsonb_build_object('companyId',p_company,'year',p_year,'reason',btrim(p_reason)));
+ VALUES(t,'reward-company-exclusion',result,event_name,'user',actor,jsonb_build_object('companyId',p_company,'year',p_year,'reason',btrim(p_reason,E' \t\n\r')));
  RETURN result;
 END $$;
 REVOKE ALL ON FUNCTION app.reward_company_exclusion_change(uuid,integer,text,uuid) FROM PUBLIC;

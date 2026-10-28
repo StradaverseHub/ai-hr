@@ -19,6 +19,7 @@ afterAll(closeAll);
 const group=(targets=[{companyId:b.companyId,businessUnitId:buA}])=>saveRewardPolicyGroup(admin,{groupId:null,expectedRevision:0,name:`Fictional ${randomUUID()}`,policy:defaultPolicy(year),targets});
 describe('shared Rewards company participation and history',()=>{
  it('records exclusion and ending reasons, denies new shared coverage/reviews, and leaves old reviews intact',async()=>{
+  await expect(withTenant(admin,tx=>tx.execute(sql`select app.reward_company_exclusion_change(${b.companyId}::uuid,${year},repeat(chr(9),12),NULL)`))).rejects.toBeDefined();
   const v=await group(),review=await createRewardUnit(admin,{name:'Fictional cycle',year,companyId:b.companyId,businessUnitId:buA,snapshotDate:today,sharedPolicyVersionId:v.versionId});
   const before=await owner.db.select().from(s.rewardUnit).where(eq(s.rewardUnit.id,review));
   const id=await changeRewardCompanyExclusion(admin,{companyId:b.companyId,year,reason:'No rewards cycle for this year',endId:null});
