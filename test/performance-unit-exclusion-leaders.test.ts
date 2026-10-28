@@ -119,7 +119,11 @@ describe('the stored reviewer whose unit is out', () => {
   });
 
   it('while the stored reviewer is out, any reviewer of the line may write the overall plan remark', async () => {
-    const lines = [kpiLine({ title: 'Line manager KPI', moderator: f.P.M0.employmentId }), kpiLine({ title: 'Matrix KPI', moderator: f.P.A.employmentId, source: 'matrix' })];
+    // The stored reviewer's line is one it already moderated, so the save does not move it (E5) and Bring back
+    // tests only the derived arm. An untouched line would move to M1 once, at save, and stay there after Bring
+    // back (D3, amended D5); the stored reviewer would then no longer own the remark under the 0540 rule.
+    const now = new Date().toISOString();
+    const lines = [kpiLine({ title: 'Line manager KPI', moderator: f.P.M0.employmentId, chain: [{ employmentId: f.P.M0.employmentId, at: now }], setting: 'approved', actual: 100, locked: true }), kpiLine({ title: 'Matrix KPI', moderator: f.P.A.employmentId, source: 'matrix' })];
     await setKpis(f.a, rid.S, lines);
     const writer = () => flagAs(f.U.A, sql`app.assessment_plan_remark_writer(${rid.S}::uuid)`);
     expect(await writer(), 'non-vacuous: the stored reviewer owns the remark while taking part').toBe(false);
@@ -130,7 +134,10 @@ describe('the stored reviewer whose unit is out', () => {
   });
 
   it('the manager one level up gets no PM, panel or band right', async () => {
-    await setKpis(f.a, rid.S, [kpiLine({ title: 'Delivery', moderator: f.P.M0.employmentId, weightBp: 10000 })]);
+    // A line the stored reviewer still holds after the save: acted on by A, its next step is M0, so it does not
+    // move (E5, E6). Untouched lines do move to M1 once, at save (amended D5); the save tests pin that.
+    const now = new Date().toISOString();
+    await setKpis(f.a, rid.S, [kpiLine({ title: 'Delivery', moderator: f.P.A.employmentId, source: 'matrix', chain: [{ employmentId: f.P.A.employmentId, at: now }, { employmentId: f.P.M0.employmentId, at: null }], setting: 'approved', actual: 100, weightBp: 10000 })]);
     await ruleX();
     const [line] = (await owner.db.select({ kpis: schema.onehrReview.kpis }).from(schema.onehrReview).where(eq(schema.onehrReview.reviewId, rid.S)))[0].kpis as { id: string }[];
     expect(await refusal(perf.confirmOnehrPerformance(f.U.M1, rid.S, await revisionOf(rid.S), 'ME', ''))).toMatch(/not assigned to you/);

@@ -147,12 +147,12 @@ export async function terminateToday(e: Hired) {
   await owner.db.update(schema.employment).set({ terminatedOn: todayInKualaLumpur() }).where(eq(schema.employment.id, e.employmentId));
 }
 /** A KPI line that passes the real kpiSchema. `chain` defaults to the single moderator, nobody acted. */
-export function kpiLine(p: { title: string; moderator: string; chain?: { employmentId: string; at: string | null }[]; hrOwned?: boolean; source?: 'line' | 'matrix'; setting?: KPI['setting']; actual?: number | null; weightBp?: number }): KPI {
+export function kpiLine(p: { title: string; moderator: string; chain?: { employmentId: string; at: string | null }[]; hrOwned?: boolean; source?: 'line' | 'matrix'; setting?: KPI['setting']; actual?: number | null; weightBp?: number; locked?: boolean }): KPI {
   return kpiSchema.parse({
     id: randomUUID(), title: p.title, description: '', weightBp: p.weightBp ?? 2500, unit: 'units', scoring: { mechanism: 'A', method: 'more', rates: [0, 50, 100, 150, 200] },
     moderatorEmploymentId: p.moderator, moderatorSource: p.source ?? 'line',
     approvalChain: (p.chain ?? [{ employmentId: p.moderator, at: null }]).map((s) => ({ employmentId: s.employmentId, actual: s.at ? 100 : null, remark: s.at ? 'Checked.' : '', at: s.at })),
-    setting: p.setting ?? (p.hrOwned ? 'approved' : 'draft'), settingApprovals: [], settingRemark: '', actual: p.actual ?? null, note: '', approvedActual: null, moderationRemark: '', locked: false,
+    setting: p.setting ?? (p.hrOwned ? 'approved' : 'draft'), settingApprovals: [], settingRemark: '', actual: p.actual ?? null, note: '', approvedActual: null, moderationRemark: '', locked: !!p.locked,
     ...(p.hrOwned ? { hrOwned: true } : {}),
   });
 }
