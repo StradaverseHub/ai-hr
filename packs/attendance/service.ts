@@ -104,3 +104,5 @@ export {retainedAttendancePolicyPlanCancellationTx,attendancePolicyCompleteAppro
 
 // Deterministic offline-claim adjudicator and the per-company offline settings read (draft 0647). Unmounted.
 export {createOfflineAdjudicator,readOfflineClockingPolicyTx,offlineEffectiveInstant,OfflineAdjudicationError,OFFLINE_PROVEN_WINDOW_SECONDS,type OfflineAdjudication,type OfflineClockingPolicy,type OfflineEffectiveInstant} from './mobile-offline-adjudicator';
+// The production offline clock snapshot: the one port context issuance and the adjudicator both take. Unmounted.
+export {readOfflineClockSnapshotTx,offlineClockSnapshotPort,offlineClockPolicyRevision,type OfflineClockSnapshotDeployment} from './mobile-offline-snapshot';

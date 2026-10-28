@@ -7,7 +7,7 @@ import {z} from 'zod';
 import type {SessionContext,Tx} from '../../db/client';
 import {employment} from '../../db/schema';
 import type {OfflineClaimFacts,OfflineClaimPhoto,OfflineClaimPorts} from '../../core/mobile-offline-claim';
-import type {OfflineContextIssuePorts} from '../../core/mobile-offline-context';
+import {OfflineContextIssueError,type OfflineContextIssuePorts} from '../../core/mobile-offline-context';
 import {captureOfflineClockTx,clockAttendanceDateTx,openClockSessionDateTx,planOfflineClockTx,type OfflineClockCommand,type OfflineClockRefusalReason} from '../../core/attendance-clock';
 import {assertDayNotOwnedByCorrectionTx,CorrectedClockConflictError} from '../../core/attendance';
 import {requireRegisteredDeviceTx} from '../../core/attendance-device';
@@ -76,8 +76,8 @@ const command=(facts:OfflineClaimFacts,photo:OfflineClaimPhoto|null,effectiveAt:
 export type OfflineAdjudication={outcome:'accept';effectiveAt:number}|{outcome:'needs_review'|'refused';reason:Reason};
 
 /** `snapshot` is the same trusted current policy/site owner that context issuance signs (OfflineContextIssuePorts);
- * drift is measured against it, never against the phone. A production snapshot port must take offlineEnabled from
- * readOfflineClockingPolicyTx; none is supplied yet. */
+ * drift is measured against it, never against the phone. The production port is offlineClockSnapshotPort
+ * (./mobile-offline-snapshot), the identical function issuance takes; nothing passes it yet. */
 export function createOfflineAdjudicator(ports:{snapshot:OfflineContextIssuePorts['snapshot']}){
  if(typeof ports?.snapshot!=='function')throw unavailable();
  /** Decides from current owners, in this order, before any write. The first failing check names the outcome. */
@@ -94,8 +94,18 @@ export function createOfflineAdjudicator(ports:{snapshot:OfflineContextIssuePort
   if(e.mock===true)return review('mock_reported');
   if(e.simulated===true)return review('simulated_reported');
   if(e.accessory===true)return review('accessory_reported');
-  const current=Current.safeParse(await ports.snapshot(tx,ctx,{employmentId,companyId:facts.currentCompanyId,key:facts.key}));
-  if(!current.success)throw unavailable();
+  // A current world the signed context cannot represent (more than 32 sites, an over-long name, an unparsable value)
+  // differs from what was signed: review, so a held claim never sticks. A rebound employment is a changed scope.
+  // Only the snapshot owner's own typed refusals are mapped; any other failure still throws.
+  let raw:unknown;
+  try{raw=await ports.snapshot(tx,ctx,{employmentId,companyId:facts.currentCompanyId,key:facts.key});}
+  catch(error){
+   if(error instanceof OfflineContextIssueError&&error.reason==='configuration_unavailable')return review('site_changed');
+   if(error instanceof OfflineContextIssueError&&error.reason==='binding_conflict')return review('scope_changed');
+   throw error;
+  }
+  const current=Current.safeParse(raw);
+  if(!current.success)return review('site_changed');
   if(policyKey(current.data.policy)!==policyKey(context.policy))return review('policy_changed');
   if(sitesKey(current.data.sites)!==sitesKey(context.sites))return review('site_changed');
   // An offline claim carries no legacy device token, so a company requiring a registered device reviews it.

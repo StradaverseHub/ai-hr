@@ -556,12 +556,50 @@ in the claim's transaction, and `decide` finishes before the only write, the can
   order the correction and removal effects use.
 - New review/refusal reasons in `lib/mobile-offline-receipt.ts`: `offline_disabled`,
   `proven_window_too_wide`, `employment_inactive` and `overtime_settled`.
-- Still open: a production snapshot port (it must take `offlineEnabled` from
-  `readOfflineClockingPolicyTx`), the settings UI and write service, the HR review screen and routes
-  (the service is below), route mounting and enabling acceptance. Attendance-baseline drift is not used: the ordering plan
+- Still open: the settings UI and write service, the HR review screen and routes (the service is
+  below), production wiring of the snapshot port (below), route mounting and enabling acceptance. Attendance-baseline drift is not used: the ordering plan
   checks actual current facts, and a context's own accepted claims change its baseline.
 - The clocking import now counts a `mobile_offline` punch as an employee clocking: an uncoded import line
   on an offline-clocked day is listed (`uncoded_on_clocked_day`), as on a web-clocked day.
+
+### Production offline clock snapshot (28 October 2026)
+
+IMPLEMENTED, UNVERIFIED pending a hosted run: no vitest, TypeScript, build or database command was run.
+`packs/attendance/mobile-offline-snapshot.ts` (through `packs/attendance/service`) is the one trusted
+current snapshot. `readOfflineClockSnapshotTx(tx, ctx, {employmentId, companyId, key}, {target,
+windowMs, permitCount})` returns exactly the `{policy, sites, attendance, target, permitCount}` shape
+context issuance parses, and `offlineClockSnapshotPort(deployment)` returns it as the port function.
+Context issuance and `createOfflineAdjudicator` must both take that same function, so an unchanged
+world signs and compares identical values and shows no drift. It is UNMOUNTED: no route or production
+wiring passes it yet, and no company has offline clocking enabled.
+
+- Owners. `offlineEnabled` is `readOfflineClockingPolicyTx`. `geofencingRequired` is
+  `employment.geofencing_enabled`. `maximumAccuracyM` is the company's
+  `attendance_policy.geofence_maximum_accuracy_m`, and is null while geofencing is off (the online
+  geofence does not read it then, so editing it is not drift). `photoRequirement` is
+  `employment.attendance_photo_setting`. The sites are `assignedClockingSitesTx` in
+  `core/attendance.ts`, the query extracted unchanged from `resolveGeofence`, which now calls it:
+  assigned, not archived, open to the employment's current company. A site with no radius can never
+  match and cannot be signed, so the snapshot leaves it out; with geofencing off there are no sites.
+  Sites are ordered by id. The attendance date, clocked-in state and open-since instant come from
+  `liveClockStateTx` in `core/attendance-clock-read.ts`, a thin export of the reader behind
+  `ownClockToday`. The baseline is `clockFingerprint` over `punchesForCorrectionTx` for that date, the
+  value `ownClockToday` reports as `removalBaseline`. Target, window and permit count are the
+  deployment's. The device requirement is not in the snapshot.
+- Revision. SHA-256 over the five policy fields in the signed context's positional order, with no
+  time, site or attendance value. Equal policy gives an equal revision; changing any policy field,
+  including the deployment window, changes it.
+- Values a signed context cannot represent (more than 32 sites, a site name over 200 characters, or
+  any other value outside the context schema) are refused with the context service's own typed
+  `OfflineContextIssueError('configuration_unavailable')`, so issuance refuses before signing and
+  writes nothing. Nothing is truncated. A subject company other than the employment's own is refused as
+  `binding_conflict`.
+- Adjudicator. A current snapshot that the port refuses as `configuration_unavailable`, or that does
+  not parse, is now `site_changed` review instead of an error, so a held claim can never stick. A
+  `binding_conflict` refusal is `scope_changed` review. Any other port failure still throws.
+- Tests: `test/mobile-offline-snapshot.test.ts` (draft 0647 in a disposable worker), using the real
+  issuance and claim services through `test/helpers/mobile-offline-service-fixture.ts`, which now
+  accepts an optional snapshot port and a pre-issuance hook.
 
 ### HR review and resolution of held claims (28 October 2026)
 

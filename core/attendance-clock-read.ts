@@ -84,6 +84,13 @@ async function ownClockCoreTx(tx:Tx,employmentId:string,geo?:ClockGeo){
  return {date,live,crossesMidnight:schedule.crossesMidnight,summary:{serverNow:now.toISOString(),date,clockedIn:anchor!=null,openSince:anchor==null?null:new Date(anchor).toISOString(),workedSeconds:Math.floor(workedMs/1000),locationValid,locationAvailable,geofencingRequired,attendancePhotoSetting,shift:{code:schedule.code,start:schedule.start,end:schedule.end}}};
 }
 
+/** The live clock state ownClockToday reports (clocking date, clocked in, open-since instant), in the caller's
+ *  transaction and RLS, for a server owner that must sign it. No position, so no geofence read; no write. */
+export async function liveClockStateTx(tx:Tx,employmentId:string){
+ const {date,summary}=await ownClockCoreTx(tx,employmentId);
+ return {date,clockedIn:summary.clockedIn,openSince:summary.openSince===null?null:Date.parse(summary.openSince)};
+}
+
 // r430 — deviceToken is GONE (Web Clocking no longer registers or presents a device).
 export async function ownClockToday(ctx: SessionContext, geo?: { lat: number; lng: number; accuracy: number }, selectedEmploymentId?: string) {
   const me=await resolveOwnClockEmployment(ctx,selectedEmploymentId);

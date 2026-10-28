@@ -265,6 +265,31 @@ type GeofenceCheck =
       assessment:GeofenceAssessment;
     };
 
+/** The ONE owner of "which sites count" for an enforced geofence (r423, see resolveGeofence): assigned to the employment,
+ *  not archived, open to `companyId` (the employment's current company). resolveGeofence matches against
+ *  exactly these rows; the offline context snapshot signs them. Unordered: callers that compare sort by id.
+ *  A null-radius row is returned as stored (it can never match); a caller that cannot represent it filters. */
+export function assignedClockingSitesTx(tx: Tx, employmentId: string, companyId: string) {
+  return tx
+    .select({
+      id: clockingLocation.id,
+      name: clockingLocation.name,
+      lat: clockingLocation.lat,
+      lng: clockingLocation.lng,
+      radiusM: clockingLocation.radiusM,
+    })
+    .from(employeeClockingLocation)
+    .innerJoin(clockingLocation, eq(clockingLocation.id, employeeClockingLocation.clockingLocationId))
+    .where(
+      and(
+        eq(employeeClockingLocation.employmentId, employmentId),
+        isNull(clockingLocation.archivedAt),
+        sql`exists (select 1 from clocking_location_company gc
+                    where gc.clocking_location_id = ${clockingLocation.id} and gc.company_id = ${companyId})`,
+      ),
+    );
+}
+
 /**
  * Resolve the geofence outcome for one punch. When geofencing is OFF, never queries the assignment
  * join or computes a distance (ADR-0070 §8 — keeps the non-enforced hot path lean); stamps raw
@@ -325,23 +350,7 @@ export async function resolveGeofence(
   const [policy]=await tx.select({maximum:attendancePolicy.geofenceMaximumAccuracyM}).from(attendancePolicy)
     .where(eq(attendancePolicy.companyId,emp!.companyId)).limit(1);
 
-  const sites = await tx
-    .select({
-      id: clockingLocation.id,
-      lat: clockingLocation.lat,
-      lng: clockingLocation.lng,
-      radiusM: clockingLocation.radiusM,
-    })
-    .from(employeeClockingLocation)
-    .innerJoin(clockingLocation, eq(clockingLocation.id, employeeClockingLocation.clockingLocationId))
-    .where(
-      and(
-        eq(employeeClockingLocation.employmentId, p.employmentId),
-        isNull(clockingLocation.archivedAt),
-        sql`exists (select 1 from clocking_location_company gc
-                    where gc.clocking_location_id = ${clockingLocation.id} and gc.company_id = ${emp!.companyId})`,
-      ),
-    );
+  const sites = await assignedClockingSitesTx(tx, p.employmentId, emp!.companyId);
 
   const assessment=assessGeofence(p,sites,policy?.maximum??null,haversineMetres);
   if(assessment.outcome==='location_required'||assessment.outcome==='invalid_location'||assessment.outcome==='poor_accuracy')
