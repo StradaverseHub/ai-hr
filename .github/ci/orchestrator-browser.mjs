@@ -168,7 +168,7 @@ async function main() {
       page.on('console', message => { if (message.type() === 'error') report.consoleErrors.push(scrub(message.text())); });
       page.on('response', response => { if (response.status() >= 500) report.serverErrors.push({url: response.url(), status: response.status()}); });
       await page.goto(base + '/login');
-      await page.locator(`form[action="/login/as"]:has(input[name="userId"][value="${actor.userId}"]) button[type="submit"]`).click();
+      await page.locator(`form[action="/login/as"]:has(input[name="userId"][value="${actor.userId}"]) button[type="submit"]:visible`).click();
       await page.waitForURL(url => url.pathname !== '/login' && url.pathname !== '/login/as');
       return {context, page};
     };
