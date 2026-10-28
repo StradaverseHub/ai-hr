@@ -20028,6 +20028,31 @@
     }
   },
   "rewards": {
+    "unitBonus": {
+      "noReduction": "Không được phép giảm lương trong đợt xét duyệt lương.",
+      "appliesOnlyTo": "Chỉ áp dụng cho đợt xét duyệt này: {company} / {unit}",
+      "saveUnitMultiplierFor": "Lưu hệ số đơn vị cho {unit}",
+      "saveLumpFor": "Lưu khoản trả một lần cho {unit}",
+      "suggestedTitle": "Hệ số đơn vị đề xuất",
+      "achievement": "Mức đạt PAT (thực tế / mục tiêu)",
+      "targetMonths": "Số tháng thưởng mục tiêu",
+      "poolMultiplier": "Hệ số quỹ · mức đạt × số tháng mục tiêu",
+      "rule": "Quy tắc",
+      "ruleText": "Hệ số cao nhất mà cả hai chương trình đều đáp ứng được, làm tròn xuống đến 0.01",
+      "patMissing": "Chưa nhập PAT thực tế, vì vậy đề xuất là 0.00.",
+      "bothPlans": "Hệ số đơn vị áp dụng cho cả chương trình Standard và chương trình JG H.",
+      "reason": "Lý do (bắt buộc)",
+      "reasonHelp": "Nhập lý do ít nhất 10 ký tự trước khi lưu.",
+      "checkImpact": "Kiểm tra tác động",
+      "plan": "Chương trình",
+      "usedNow": "Quỹ đã dùng hiện tại",
+      "usedWith": "Với {multiplier}",
+      "overBudget": "vượt ngân sách",
+      "overBlocked": "Không thể lưu: một chương trình sẽ vượt 100% quỹ và đợt xét duyệt này không có miễn trừ trần ngân sách.",
+      "overExempt": "Một chương trình sẽ vượt 100% quỹ; đợt xét duyệt này có miễn trừ trần ngân sách.",
+      "branchNotUsed": "Hệ số đơn vị không được dùng vì đợt xét duyệt này dùng hệ số chi nhánh (cấu trúc PPCH).",
+      "multiplierSaved": "Đã lưu hệ số đơn vị."
+    },
     "bonusPresentation": {
       "separatePools": "Mỗi chương trình có quỹ riêng. Khoản thưởng cố định được chi từ quỹ của cùng chương trình.",
       "over": "Vượt ngân sách",

@@ -20028,6 +20028,31 @@
     }
   },
   "rewards": {
+    "unitBonus": {
+      "noReduction": "Salary reductions are not allowed in the salary review.",
+      "appliesOnlyTo": "Applies only to this review: {company} / {unit}",
+      "saveUnitMultiplierFor": "Save unit multiplier for {unit}",
+      "saveLumpFor": "Save lump sum for {unit}",
+      "suggestedTitle": "Suggested unit multiplier",
+      "achievement": "PAT achievement (actual / target)",
+      "targetMonths": "Target bonus months",
+      "poolMultiplier": "Pool multiplier · achievement × target months",
+      "rule": "Rule",
+      "ruleText": "Highest multiplier both plans can afford, rounded down to 0.01",
+      "patMissing": "Actual PAT has not been entered yet, so the suggestion is 0.00.",
+      "bothPlans": "The unit multiplier applies to both the Standard plan and the JG H plan.",
+      "reason": "Reason (required)",
+      "reasonHelp": "Give a reason of at least 10 characters before saving.",
+      "checkImpact": "Check impact",
+      "plan": "Plan",
+      "usedNow": "Pool used now",
+      "usedWith": "With {multiplier}",
+      "overBudget": "over budget",
+      "overBlocked": "Cannot save: a plan would go above 100% of its pool and this review has no budget-cap exemption.",
+      "overExempt": "A plan would go above 100% of its pool; this review has a budget-cap exemption.",
+      "branchNotUsed": "The unit multiplier is not used because this review uses branch factors (PPCH structure).",
+      "multiplierSaved": "Unit multiplier saved."
+    },
     "bonusPresentation": {
       "separatePools": "Each plan has its own pool. Lump sums are paid from the same plan’s pool.",
       "over": "Over budget",

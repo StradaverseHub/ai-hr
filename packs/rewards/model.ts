@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z, ZodError } from 'zod';
 
 export const rewardRoles = ['bu', 'bg', 'gr', 'ctro', 'ec', 'pbp', 'payroll'] as const;
 export type RewardRole = typeof rewardRoles[number];
@@ -82,6 +82,9 @@ export const recommendationSchema: z.ZodType<Recommendation> = z.object({
   reason: z.string().trim().max(4000),
   currentRoleSummary: z.string().trim().max(8000).default(''), proposedRoleSummary: z.string().trim().max(8000).default(''),
 }).strict();
+/** 328ebe84 — a negative increase or award is a salary reduction attempt, not a technical range error. */
+const reductionFields = ['meritBp', 'promotionBp', 'specialBp', 'bonusCents', 'lumpCents'];
+export const isSalaryReductionAttempt = (e: unknown) => e instanceof ZodError && e.issues.some(i => i.code === 'too_small' && reductionFields.includes(String(i.path[0])));
 export const emptyFacts = (): RewardFacts => ({ talent: null, performance: null, confidentiality: 'standard', seniorPlan: false, erCase: false, pipCase: false, erDecision: 'pending', pipDecision: 'pending', caseReason: '', segment: '', branch: '', reviewed: false });
 export const emptyRecommendation = (): Recommendation => ({ meritBp: null, promotionGrade: null, promotionBp: null, specialBp: null, multiplierBp: null, bonusCents: null, lumpCents: null, reason: '', currentRoleSummary: '', proposedRoleSummary: '' });
 

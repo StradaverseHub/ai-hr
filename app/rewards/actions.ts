@@ -3,22 +3,25 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { ZodError } from 'zod';
+import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { publicErrorMessage } from '@/lib/public-error';
 import {rewardPolicyFromForm} from './policy-input';
-import { rewardCalendarStages, rewardOffcycleSlaStages, saveRewardCalendar, RewardMaintenanceError, previewRewardAccessChange, saveRewardAccessChange, deleteRewardReview, RewardPolicyGroupError, previewRewardSeniorMembership, saveRewardSeniorMembership, importOnehrRewardResults, createOffcycleReview, createRewardUnit, decideRewardUnit, getRewardUnit, importRewardFacts, postRewardUnit, refreshRewardSources, saveRewardEntry, saveRewardPolicy, setRewardMember, setRewardUnitLump } from '@/packs/rewards/service';
-import { emptyFacts, performances, talents, type RewardPolicy, type RewardRole } from '@/packs/rewards/model';
+import { rewardCalendarStages, rewardOffcycleSlaStages, saveRewardCalendar, RewardMaintenanceError, previewRewardAccessChange, saveRewardAccessChange, deleteRewardReview, RewardPolicyGroupError, previewRewardSeniorMembership, saveRewardSeniorMembership, importOnehrRewardResults, createOffcycleReview, createRewardUnit, decideRewardUnit, getRewardUnit, importRewardFacts, postRewardUnit, refreshRewardSources, saveRewardEntry, saveRewardPolicy, previewRewardMultiplier, saveRewardMultiplier, setRewardMember, setRewardUnitLump } from '@/packs/rewards/service';
+import { emptyFacts, isSalaryReductionAttempt, performances, talents, type RewardPolicy, type RewardRole } from '@/packs/rewards/model';
 
 const str = (f: FormData, key: string) => String(f.get(key) ?? '').trim();
 const number = (f: FormData, key: string) => Number(str(f, key));
 const scaled = (f: FormData, key: string, scale = 100) => str(f, key) === '' ? null : Math.round(number(f, key) * scale);
 const errorText = (e: unknown) => e instanceof ZodError ? e.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ') : publicErrorMessage(e);
+/** 328ebe84: a negative merit/promotion/special (or EC bonus/lump) reads as the business rule, in the viewer's language. */
+const rewardErrorText = async (e: unknown) => isSalaryReductionAttempt(e) ? (await getTranslations('rewards'))('unitBonus.noReduction') : errorText(e);
 
 async function change(f: FormData, work: (s: Awaited<ReturnType<typeof getSession>>, unitId: string, revision: number) => Promise<unknown>, configuration = false) {
   const s = await getSession(); const unitId = str(f, 'unitId');
   const url = `${configuration ? '/admin/rewards' : '/rewards'}/${encodeURIComponent(unitId)}`;
   try { await work(s, unitId, number(f, 'revision')); }
-  catch (e) { redirect(`${url}?error=${encodeURIComponent(errorText(e))}`); }
+  catch (e) { redirect(`${url}?error=${encodeURIComponent(await rewardErrorText(e))}`); }
   revalidatePath('/rewards', 'layout'); revalidatePath('/admin/rewards', 'layout'); redirect(url);
 }
 
@@ -74,15 +77,17 @@ export async function policyAction(f: FormData) {
   },true);
 }
 
-/** A narrow edit through the existing revision-checked policy owner. */
-export async function bonusMultiplierAction(f: FormData) {
-  const s = await getSession(), id = str(f, 'unitId');
-  const url = `/rewards/${encodeURIComponent(id)}?view=budget`;
+/** bcd7cc0f: the unit multiplier is previewed per plan, then saved with a reason through its one owner. */
+export async function previewRewardMultiplierAction(unitId: string, revision: number, multiplierBp: number | null) {
+  try { return { ok: true as const, preview: await previewRewardMultiplier(await getSession(), unitId, revision, multiplierBp) }; }
+  catch (error) { return { ok: false as const, error: errorText(error) }; }
+}
+export async function saveRewardMultiplierAction(unitId: string, revision: number, multiplierBp: number | null, reason: string, previewDigest: string) {
   try {
-    const view = await getRewardUnit(s, id);
-    await saveRewardPolicy(s, id, number(f, 'revision'), {...view.unit.policy, multiplierBp: scaled(f, 'multiplier', 10000)});
-  } catch (error) { redirect(`${url}&error=${encodeURIComponent(errorText(error))}`); }
-  revalidatePath('/rewards', 'layout'); revalidatePath('/admin/rewards', 'layout'); redirect(url);
+    await saveRewardMultiplier(await getSession(), unitId, revision, multiplierBp, reason, previewDigest);
+    revalidatePath('/rewards', 'layout'); revalidatePath('/admin/rewards', 'layout');
+    return { ok: true as const };
+  } catch (error) { return { ok: false as const, error: errorText(error) }; }
 }
 
 export async function importFactsAction(f: FormData) {

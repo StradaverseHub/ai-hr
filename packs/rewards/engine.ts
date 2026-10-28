@@ -22,6 +22,11 @@ export type CalculatedEntry = RewardEntry & {
 export type PlanBudget = { payrollCents: number; pools: number[]; used: number[]; bonusPayrollCents: number; bonusPoolCents: number; bonusUsedCents: number; standardBonusCents: number; increasesCents: number; reductionsCents: number; lumpCents: number; lumpCount: number; balanceCents: number };
 export const blankBudget = (): PlanBudget => ({ payrollCents: 0, pools: [0, 0, 0], used: [0, 0, 0], bonusPayrollCents: 0, bonusPoolCents: 0, bonusUsedCents: 0, standardBonusCents: 0, increasesCents: 0, reductionsCents: 0, lumpCents: 0, lumpCount: 0, balanceCents: 0 });
 
+/** 328ebe84 — defensive invariant: a salary review never lowers basic salary. Every component is >= 0
+ *  today, so this only fires on a forged or corrupted row; any block flag refuses submit, approval and posting. */
+export const salaryReductionFlags = (rows: Pick<CalculatedEntry, 'id' | 'source' | 'newBasicCents'>[]): RewardFlag[] =>
+  rows.filter(x => x.newBasicCents < x.source.basicCents).map(x => ({ severity: 'block', code: 'SAL-01', message: 'Salary reductions are not allowed in the salary review.', entryId: x.id }));
+
 export function calculateRewards(entries: RewardEntry[], input: RewardPolicy) {
   const policy = policySchema.parse(input);
   const flags: RewardFlag[] = [];
@@ -99,8 +104,12 @@ export function calculateRewards(entries: RewardEntry[], input: RewardPolicy) {
     return ratio(ratio(x.source.basicCents, months, 10000), days, yearDays);
   };
   // A single unit multiplier must fit BOTH independently funded plans. EC never consumes either pot.
-  const affordable = (['standard', 'h'] as const).flatMap(plan => { const cost = sum(rows.filter(x => x.plan === plan).map(bonusBase)); return cost > 0 ? [ratio(budgets[plan].bonusPoolCents, 10000, cost)] : []; });
+  const affordableBy = Object.fromEntries((['standard', 'h'] as const).map(plan => { const cost = sum(rows.filter(x => x.plan === plan).map(bonusBase)); return [plan, cost > 0 ? ratio(budgets[plan].bonusPoolCents, 10000, cost) : null]; })) as Record<'standard' | 'h', number | null>;
+  const affordable = Object.values(affordableBy).filter((bp): bp is number => bp != null);
   const suggestedMultiplierBp = affordable.length ? Math.floor(Math.min(...affordable) / 100) * 100 : 0;
+  // bcd7cc0f: the inputs of the suggestion, as rates only (no money beyond the budget tab's own figures).
+  const suggestion = { patActualMissing: policy.patActual === 0, achievementBp: ratio(policy.patActual, 10000, policy.patTarget), targetMonthsBp: policy.targetMonthsBp,
+    poolMultiplierBp: ratio(policy.patActual, policy.targetMonthsBp, policy.patTarget), affordableBp: affordableBy };
   for (const x of rows) {
     const r = x.recommendation;
     let multiplier = policy.multiplierBp ?? suggestedMultiplierBp;
@@ -144,5 +153,6 @@ export function calculateRewards(entries: RewardEntry[], input: RewardPolicy) {
     if (b.bonusUsedCents > b.bonusPoolCents) add(severity, policy.exemptReason ? 'CFG-01' : 'BUD-01', `${plan === 'h' ? 'JG H' : 'Standard'} bonus exceeds the 100% budget cap.`);
     if (b.bonusPoolCents > 0 && b.bonusUsedCents * 100 < b.bonusPoolCents * 80) add('warning', 'BUD-07', `${plan === 'h' ? 'JG H' : 'Standard'} bonus budget is less than 80% utilised.`);
   }
-  return { rows, budgets, flags, suggestedMultiplierBp, suggestedLumpCents, lumpUnitCents, lumpWorking };
+  flags.push(...salaryReductionFlags(rows));
+  return { rows, budgets, flags, suggestedMultiplierBp, suggestion, suggestedLumpCents, lumpUnitCents, lumpWorking };
 }

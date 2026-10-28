@@ -8,10 +8,12 @@ import { getRewardUnit, rewardPayrollChoices, rewardSetupChoices } from '@/packs
 // 179539d1: rows follow the talent order (SSTAR…PIP), not the policy's jsonb key order.
 import { meritMatrixRows, performances } from '@/packs/rewards/model';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls, tableWrapCls, theadCls, thCls, tbodyCls } from '@/components/ui';
-import { importOnehrAction, decideAction, importFactsAction, lumpAction, offcycleAction, postAction, refreshAction, bonusMultiplierAction } from '../actions';
+import { importOnehrAction, decideAction, importFactsAction, lumpAction, offcycleAction, postAction, refreshAction } from '../actions';
 import { redirect } from 'next/navigation';
 import { ReturnedBanner, rewardDecisionTime } from '../returned-status';
 import { RewardPostPanel } from '../post-panel';
+import { rewardReviewTitle, UnitLumpForm } from './unit-scope';
+import { UnitMultiplier } from './unit-multiplier';
 
 const rm = (cents: number) => new Intl.NumberFormat('en-MY', { style: 'currency', currency: 'MYR' }).format(cents / 100);
 export default async function RewardUnitPage({ params, searchParams }: { params: Promise<{ unitId: string }>; searchParams: Promise<{ view?: string; q?: string; error?: string }> }) {
@@ -28,10 +30,11 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
   const annual = unit.kind === 'annual';
   const locale=await getLocale();
   const canSubmit = editable && v.roles.includes(v.route[0]);
+  const scope = t('unitBonus.appliesOnlyTo', { company: v.companyName, unit: v.name });
   const canApprove = ['bg', 'gr', 'ctro', 'ec'].some(role => role === unit.status && v.roles.includes(role as 'bg' | 'gr' | 'ctro' | 'ec'));
   return <div className="w-full space-y-5">
     <Link href="/rewards" className="text-sm text-primary hover:underline">← {t('title')}</Link>
-    <PageHeader title={`${v.cycle?.name ?? t('title')} · ${v.name}`} description={`${t(`kinds.${unit.kind}`)} · ${v.returned ? t(`returnedTo.${v.returned.toSeat}`) : t(`stages.${unit.status}`)}${v.due ? ` · ${t('dueOn', { date: v.due })}` : ''} · ${t('snapshotDate')}: ${unit.snapshotDate}`} />
+    <PageHeader title={rewardReviewTitle(v.cycle?.name ?? t('title'), v.companyName, v.name)} description={`${t(`kinds.${unit.kind}`)} · ${v.returned ? t(`returnedTo.${v.returned.toSeat}`) : t(`stages.${unit.status}`)}${v.due ? ` · ${t('dueOn', { date: v.due })}` : ''} · ${t('snapshotDate')}: ${unit.snapshotDate}`} />
     <ErrorBanner message={sp.error} />
     {v.returned && <ReturnedBanner returned={v.returned} />}
     {(v.roles.includes('gr') || choices.companies.some(c => c.id === unit.companyId)) && <Link href={`/admin/rewards/${unitId}`} className="inline-block text-sm font-medium text-primary hover:underline">{t('adminTitle')}</Link>}
@@ -42,10 +45,10 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
       <Card><SectionHeader title={t('salaryBudgets')} /><div className="overflow-x-auto"><table className="w-full text-sm"><thead className={theadCls}><tr><th className={thCls}>{t('type')}</th>{(['standard', 'h'] as const).map(plan => <th key={plan} className={`${thCls} text-right`}>{t(plan)} · {t('usedPool')}</th>)}</tr></thead><tbody className={tbodyCls}>{[0, 1, 2].map(i => <tr key={i}><th className="px-4 py-3 text-left font-medium">{t(['merit', 'promotion', 'special'][i])}</th>{(['standard', 'h'] as const).map(plan => <td key={plan} className="px-4 py-3 text-right tabular-nums"><span className={v.budgets[plan].used[i] > v.budgets[plan].pools[i] ? 'font-semibold text-destructive' : ''}>{rm(v.budgets[plan].used[i])}</span><span className="text-muted-foreground"> / {rm(v.budgets[plan].pools[i])}</span></td>)}</tr>)}</tbody></table></div>
         <details className="border-t border-border p-4"><summary className="cursor-pointer text-sm font-medium">{t('meritMatrix')}</summary><p className="my-3 text-sm text-muted-foreground">{t('matrixHelp')}</p><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr><th className={thCls}>{t('talent')}</th>{['below', 'within', 'above'].map(k => <th key={k} className={thCls}>{t(k)}</th>)}</tr></thead><tbody>{meritMatrixRows(unit.policy.meritMatrix).map(([talent, values]) => <tr key={talent}><th className={thCls}>{talent}</th>{values.map((n, i) => <td key={i} className="px-3 py-2 text-center">{n / 100}%</td>)}</tr>)}</tbody></table></div></details>
       </Card>
-      <BonusBudgetCards value={v} t={key=>t(key)} locale={locale} adjustment={v.canConfigure&&unit.policy.bonusStructure==='standard'?<form action={bonusMultiplierAction} className="flex flex-wrap items-end gap-3">{fields}<Field label={t('multiplierAuto')}><input type="number" min="0" step="0.01" name="multiplier" defaultValue={unit.policy.multiplierBp==null?'':unit.policy.multiplierBp/10000} placeholder={t('automatic')} className={inputCls}/></Field><RewardSubmit type="submit" variant="secondary">{t('savePolicy')}</RewardSubmit></form>:undefined}/>
+      <BonusBudgetCards value={v} t={key=>t(key)} locale={locale} adjustment={<UnitMultiplier value={{ unitId, revision: unit.revision, unitName: v.name, scope, multiplierBp: unit.policy.multiplierBp, suggestedMultiplierBp: v.suggestedMultiplierBp, suggestion: v.suggestion && { patActualMissing: v.suggestion.patActualMissing, achievementBp: v.suggestion.achievementBp, targetMonthsBp: v.suggestion.targetMonthsBp, poolMultiplierBp: v.suggestion.poolMultiplierBp }, branch: unit.policy.bonusStructure === 'branch', canConfigure: v.canConfigure }} />}/>
       <Card>
         <div className="space-y-3 border-t border-border p-4"><h3 className="font-medium">{t('lumpSum')}</h3><p className="max-w-3xl text-sm text-muted-foreground">{t('lumpHelp')}</p><p className="text-sm">{t('suggested')}: <strong className="tabular-nums">{rm(v.suggestedLumpCents)}</strong> · {t('unitAmount')}: <strong className="tabular-nums">{rm(v.lumpUnitCents)}</strong></p>
-          {editable && <form action={lumpAction} className="flex flex-wrap items-end gap-3">{fields}<Field label={t('unitAmount')}><input type="number" min="0" step="0.01" name="lump" defaultValue={unit.policy.lumpUnitCents == null ? '' : unit.policy.lumpUnitCents / 100} className={inputCls} placeholder={t('automatic')} /></Field><RewardSubmit type="submit" variant="secondary">{t('saveAmount')}</RewardSubmit></form>}
+          {editable && <UnitLumpForm action={lumpAction} fields={fields} scope={scope} label={t('unitAmount')} placeholder={t('automatic')} submit={t('unitBonus.saveLumpFor', { unit: v.name })} defaultValue={unit.policy.lumpUnitCents == null ? '' : unit.policy.lumpUnitCents / 100} />}
           <details><summary className="cursor-pointer text-sm">{t('showWorking')}</summary><ul className="mt-2 space-y-1 text-sm">{v.lumpWorking.map(p => <li key={p.plan}>{t(p.plan)}: {rm(p.balanceCents)} / {p.count} → {rm(p.perPersonCents)}</li>)}</ul></details>
         </div><details className="border-t border-border p-4"><summary className="cursor-pointer text-sm font-medium">{t('bonusMatrix')}</summary><div className="mt-3 overflow-x-auto"><table className="w-full text-sm"><thead><tr><th className={thCls}>{t('grade')}</th>{performances.map(k => <th key={k} className={thCls}>{k}</th>)}</tr></thead><tbody>{Object.entries(unit.policy.bonusMatrix).map(([g, values]) => <tr key={g}><th className={thCls}>{g}</th>{values.map((n, i) => <td key={i} className="px-3 py-2 text-center">{n / 10000}</td>)}</tr>)}</tbody></table></div></details>
       </Card>

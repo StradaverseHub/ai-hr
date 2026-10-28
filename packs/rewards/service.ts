@@ -14,14 +14,14 @@ import { lockLeaveDependencyConfigurationTx, lockLeaveDependenciesTx } from '../
 import { setPayrollInput } from '../payroll/service';
 import { todayInKualaLumpur } from '../../lib/hr-date';
 import type { PackTaskItem } from '../../lib/assigned-work';
-import { calculateRewards } from './engine';
+import { calculateRewards, ratio } from './engine';
 import { onehrRewardResultTx } from '../performance/service';
 import { decisionActorRole, factsFromOnehr, isSeniorPlanMember, returnedState } from './model';
 import {rewardPolicyForReviewTx} from './policy-groups';
 export {saveRewardPolicyGroup,listRewardPolicyGroups,rewardSharedPolicyChoices,rewardPolicyGroupUsage,RewardPolicyGroupError} from './policy-groups';
 export type {RewardSharedChoice,RewardPolicySummary} from './policy-groups';
 import { calculateOffcycle, offcycleRoute, offcycleTransition, type Funding } from './offcycle';
-import { canEditStage, defaultPolicy, emptyFacts, emptyRecommendation, factsSchema, isoDateSchema, policySchema, recommendationSchema, rewardRoles, transition, visibleEntry, type RewardEntry, type RewardFacts, type RewardPolicy, type RewardRole, type RewardSource } from './model';
+import { bpSchema, canEditStage, defaultPolicy, emptyFacts, emptyRecommendation, factsSchema, isoDateSchema, policySchema, recommendationSchema, rewardRoles, transition, visibleEntry, type RewardEntry, type RewardFacts, type RewardPolicy, type RewardRole, type RewardSource } from './model';
 
 import { emptyRewardCalendar, rewardCalendarSchema, rewardDaysUntil, rewardNextSeat, rewardRouteProgress, rewardStageDue, rewardStageSeat, rewardStageStep, type RewardCalendarValues, type RewardRouteStep } from './calendar';
 export { rewardCalendarStages, rewardOffcycleSlaStages, emptyRewardCalendar, rewardDueWording, rewardNextSeat, rewardRouteProgress } from './calendar';
@@ -148,6 +148,8 @@ async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string) {
     if (hiddenBlocks) flags.push({ severity: 'block', code: 'ACCESS-01', message: 'A restricted record needs review by its authorised reviewer.' });
     const [cycle] = await tx.select().from(rewardCycle).where(eq(rewardCycle.id, unit.cycleId));
     const [bu] = await tx.select({ name: businessUnitDisplayName }).from(businessUnit).where(eq(businessUnit.id, unit.businessUnitId));
+    // 9070acae: a review is always one company and one unit; the page names both on every save.
+    const [co] = await tx.select({ name: company.legalName }).from(company).where(eq(company.id, unit.companyId));
     const members = await tx.select({ id: rewardMember.id, role: rewardMember.role, userId: rewardMember.userId }).from(rewardMember).where(eq(rewardMember.unitId, unitId)).orderBy(asc(rewardMember.role), asc(rewardMember.userId));
     const decisions = await decisionHistory(tx, unitId, members);
     const returned = returnedProjection(unit, decisions[0]);
@@ -169,13 +171,13 @@ async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string) {
         reductions: group.filter(e => e.bonusCents < e.standardBonusCents).length,
         lump: group.filter(e => e.lumpCents > 0).length };
     };
-    return { unit, cycle, route, due, payrollDue, name: bu?.name ?? 'Business unit', roles, members, decisions, returned,
+    return { unit, cycle, route, due, payrollDue, name: bu?.name ?? 'Business unit', companyName: co?.name ?? '', roles, members, decisions, returned,
       rows: visible, flags, hiddenCount: entries.length - visible.length,
       budgets: { standard: calculated.budgets.standard, h: calculated.budgets.h },
       bonusCounts: { standard: bonusCounts('standard'), h: bonusCounts('h') },
       ec: roles.some(r => ['gr', 'ctro', 'ec'].includes(r)) ? { count: ecRows.length, referenceCents: Math.round(ecRows.reduce((v, e) => v + e.source.basicCents, 0) * .07), incrementCents: ecRows.reduce((v, e) => v + e.newBasicCents - e.source.basicCents, 0), bonusCents: ecRows.reduce((v, e) => v + e.bonusCents + e.lumpCents, 0) } : null,
       suggestedLumpCents: calculated.suggestedLumpCents, lumpUnitCents: calculated.lumpUnitCents,
-      suggestedMultiplierBp: calculated.suggestedMultiplierBp, lumpWorking: calculated.lumpWorking,
+      suggestedMultiplierBp: calculated.suggestedMultiplierBp, suggestion: 'suggestion' in calculated ? calculated.suggestion : null, lumpWorking: calculated.lumpWorking,
       canEdit: canEditStage(unit.status, roles) || unit.kind !== 'annual' && unit.status === 'draft' && roles.includes('bg'), canConfigure: roles.includes('gr') && unit.status === 'draft' && unit.kind === 'annual',
       posting: await rewardPostingAuthorityTx(tx, unit, roles),
     };
@@ -352,9 +354,11 @@ export async function createRewardUnit(ctx: SessionContext, raw: { name?: string
 }
 
 export async function saveRewardPolicy(ctx: SessionContext, unitId: string, revision: number, raw: unknown) {
-  const policy = policySchema.parse(raw);
+  const parsed = policySchema.parse(raw);
   return withRewardsTenant(ctx, async tx => {
     const { unit, roles } = await load(tx, unitId, true); assertRevision(unit, revision); assertUnlocked(unit);
+    // bcd7cc0f: the unit multiplier has one writer (saveRewardMultiplier), which previews it and records a reason.
+    const policy = { ...parsed, multiplierBp: unit.policy.multiplierBp };
     if (!roles.includes('gr')) throw new RewardError('Only Group Rewards may change policy.');
     if (unit.kind !== 'annual') throw new RewardError('Off-cycle reviews inherit their annual policy.');
     if (policy.year !== unit.policy.year) throw new RewardError('The reward year cannot change after the roster is created.');
@@ -366,6 +370,50 @@ export async function saveRewardPolicy(ctx: SessionContext, unitId: string, revi
     // Field-level before/after of the changed policy keys (62e743ed); policy inputs only, never employee pay.
     const changed = (Object.keys(policy) as (keyof RewardPolicy)[]).filter(k => !isDeepStrictEqual(policy[k], unit.policy[k]));
     await stamp(tx, ctx, unitId, 'policy-updated', { revision: unit.revision + 1, before: Object.fromEntries(changed.map(k => [k, unit.policy[k] ?? null])), after: Object.fromEntries(changed.map(k => [k, policy[k] ?? null])) });
+  });
+}
+
+/**
+ * bcd7cc0f — the unit bonus multiplier override (Group Rewards, Draft annual review, standard structure).
+ * A preview recalculates both plans with the candidate and binds the result to the actor, revision and inputs;
+ * the save refuses a stale preview, a reason under 10 characters, and any plan above 100% of its bonus pool
+ * unless the review already holds a budget-cap exemption. Utilisation is returned as rates, never amounts.
+ */
+const multiplierInputSchema = bpSchema.nullable();
+function assertMultiplierAuthority(unit: typeof rewardUnit.$inferSelect, revision: number, roles: RewardRole[]) {
+  assertRevision(unit, revision); assertUnlocked(unit);
+  if (!roles.includes('gr')) throw new RewardError('Only Group Rewards may change the unit multiplier.');
+  if (unit.kind !== 'annual') throw new RewardError('Off-cycle reviews inherit their annual policy.');
+  if (unit.policy.bonusStructure === 'branch') throw new RewardError('The unit multiplier is not used because this review uses branch factors.');
+}
+function prepareRewardMultiplier(ctx: SessionContext, unit: typeof rewardUnit.$inferSelect, entries: RewardEntry[], multiplierBp: number | null) {
+  const now = calculateRewards(entries, unit.policy), next = calculateRewards(entries, { ...unit.policy, multiplierBp });
+  const utilisation = (b: { bonusUsedCents: number; bonusPoolCents: number }) => b.bonusPoolCents > 0 ? ratio(b.bonusUsedCents, 10000, b.bonusPoolCents, 'nearest') : null;
+  const plans = (['standard', 'h'] as const).map(plan => ({ plan, nowBp: utilisation(now.budgets[plan]), afterBp: utilisation(next.budgets[plan]), over: next.budgets[plan].bonusUsedCents > next.budgets[plan].bonusPoolCents }));
+  const exempt = !!unit.policy.exemptReason;
+  const token = createHash('sha256').update(JSON.stringify({ actor: { userId: ctx.userId, personId: ctx.personId }, unitId: unit.id, revision: unit.revision, snapshot: digest(unit, entries), multiplierBp })).digest('hex');
+  return { unitId: unit.id, revision: unit.revision, beforeBp: unit.policy.multiplierBp, requestedBp: multiplierBp, effectiveBp: multiplierBp ?? next.suggestedMultiplierBp, plans, exempt, blocked: !exempt && plans.some(p => p.over), digest: token };
+}
+export async function previewRewardMultiplier(ctx: SessionContext, unitId: string, revision: number, multiplierBp: number | null) {
+  const value = multiplierInputSchema.parse(multiplierBp);
+  return withRewardsTenant(ctx, async tx => {
+    const { unit, roles, entries } = await load(tx, unitId);
+    assertMultiplierAuthority(unit, revision, roles);
+    return prepareRewardMultiplier(ctx, unit, entries, value);
+  });
+}
+export async function saveRewardMultiplier(ctx: SessionContext, unitId: string, revision: number, multiplierBp: number | null, reason: string, previewDigest: string) {
+  const value = multiplierInputSchema.parse(multiplierBp); z.string().regex(/^[a-f0-9]{64}$/).parse(previewDigest);
+  const why = z.string().trim().max(2000).parse(reason);
+  if (why.length < 10) throw new RewardError('Explain the unit multiplier change in at least 10 characters.');
+  return withRewardsTenant(ctx, async tx => {
+    const { unit, roles, entries } = await load(tx, unitId, true);
+    assertMultiplierAuthority(unit, revision, roles);
+    const prepared = prepareRewardMultiplier(ctx, unit, entries, value);
+    if (prepared.digest !== previewDigest) throw new RewardError('The review changed. Check the impact again before saving.');
+    if (prepared.blocked) throw new RewardError('A plan would exceed 100% of its bonus pool and this review has no budget-cap exemption.');
+    await tx.update(rewardUnit).set({ policy: { ...unit.policy, multiplierBp: value } }).where(eq(rewardUnit.id, unitId)); await touch(tx, unitId);
+    await stamp(tx, ctx, unitId, 'multiplier-updated', { revision: unit.revision + 1, before: unit.policy.multiplierBp, after: value, reason: why });
   });
 }
 

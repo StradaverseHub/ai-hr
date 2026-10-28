@@ -45,6 +45,6 @@ export function BonusBudgetCards({value:v,t,locale,adjustment}:{value:BudgetView
         </Card>;
       })}
     </div>
-    <div className="space-y-3 border-t border-border pt-4"><p className="text-sm">{t('suggested')}: <strong className="tabular-nums">{decimal(v.suggestedMultiplierBp/10000)}</strong>{policy.bonusStructure==='branch'&&<span className="ml-2 text-muted-foreground">{t('branchStructure')}</span>}</p>{adjustment}{policy.exemptReason&&<p className="text-sm">{t('exemptionReason')}: {policy.exemptReason}</p>}</div>
+    <div className="space-y-3 border-t border-border pt-4">{adjustment??<p className="text-sm">{t('suggested')}: <strong className="tabular-nums">{decimal(v.suggestedMultiplierBp/10000)}</strong>{policy.bonusStructure==='branch'&&<span className="ml-2 text-muted-foreground">{t('branchStructure')}</span>}</p>}{policy.exemptReason&&<p className="text-sm">{t('exemptionReason')}: {policy.exemptReason}</p>}</div>
   </section>;
 }
