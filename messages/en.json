@@ -22770,7 +22770,9 @@
     "switchAccountTitle": "Use a different account",
     "switchAccountHelp": "This invitation belongs to a different organization or verified email. Sign out to set up or sign in to the invited account. Your current HR account stays separate.",
     "switchAccountSubmit": "Sign out and open invitation",
-    "workplaceLoginHelp": "Your workplace is selected. Enter your username and password."
+    "workplaceLoginHelp": "Your workplace is selected. Enter your username and password.",
+    "signingInTitle": "Signing you in…",
+    "signingInHelp": "Taking you to AIHR."
   },
   "aiManagement": {
     "title": "AI management",

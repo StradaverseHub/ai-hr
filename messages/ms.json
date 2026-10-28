@@ -22770,7 +22770,9 @@
     "switchAccountTitle": "Gunakan akaun lain",
     "switchAccountHelp": "Jemputan ini adalah untuk organisasi atau e-mel disahkan yang berbeza. Log keluar untuk menyediakan atau log masuk ke akaun yang dijemput. Akaun HR semasa anda kekal berasingan.",
     "switchAccountSubmit": "Log keluar dan buka jemputan",
-    "workplaceLoginHelp": "Tempat kerja anda telah dipilih. Masukkan nama pengguna dan kata laluan."
+    "workplaceLoginHelp": "Tempat kerja anda telah dipilih. Masukkan nama pengguna dan kata laluan.",
+    "signingInTitle": "Mendaftar masuk…",
+    "signingInHelp": "Membawa anda ke AIHR."
   },
   "aiManagement": {
     "title": "Pengurusan AI",

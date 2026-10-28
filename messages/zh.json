@@ -22770,7 +22770,9 @@
     "switchAccountTitle": "使用其他账户",
     "switchAccountHelp": "此邀请属于其他组织或已验证邮箱。请退出当前账户，再设置或登录受邀账户。您当前的 HR 账户将保持独立。",
     "switchAccountSubmit": "退出并打开邀请",
-    "workplaceLoginHelp": "已选择您的工作单位。请输入用户名和密码。"
+    "workplaceLoginHelp": "已选择您的工作单位。请输入用户名和密码。",
+    "signingInTitle": "正在登录…",
+    "signingInHelp": "正在进入 AIHR。"
   },
   "aiManagement": {
     "title": "AI 管理",

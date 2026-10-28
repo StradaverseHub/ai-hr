@@ -55,6 +55,32 @@ describe('embedded browser forms', () => {
     await waitFor(() => expect(navigation.replace).toHaveBeenCalledExactlyOnceWith('/login?organization=new-customer'));
     expect(fetcher.mock.calls[0][0]).toBe('/login/api/accept-invite');
   });
+  it('8e830f17: a correct authenticator code shows "Signing you in…" with nothing to press, then opens AIHR', async () => {
+    const assign = vi.fn();
+    vi.stubGlobal('location', { ...window.location, assign });
+    fetcher.mockResolvedValueOnce(Response.json({ step: 'mfa', challenge: 'c'.repeat(43) }))
+      .mockResolvedValueOnce(Response.json({ step: 'complete' }));
+    view({ returnTo: '/home' }); const user = userEvent.setup();
+    await user.type(screen.getByLabelText(en.internalAuth.username), 'employee');
+    await user.type(screen.getByLabelText(en.internalAuth.password), 'Private fixture password');
+    await user.click(screen.getByRole('button', { name: en.internalAuth.signIn }));
+    await user.type(await screen.findByLabelText(en.internalAuth.codeOrRecovery), '123456');
+    await user.click(screen.getByRole('button', { name: en.internalAuth.continue }));
+    expect(await screen.findByRole('heading', { name: en.internalAuth.signingInTitle })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(en.internalAuth.signingInHelp);
+    // The stray screen this replaces: a "Sign in" heading with a Continue button that POSTed /login/api/complete.
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.queryByRole('heading', { name: en.internalAuth.loginTitle })).toBeNull();
+    expect(assign).toHaveBeenCalledExactlyOnceWith('/home');
+    expect(fetcher.mock.calls.map(([url]) => url)).toEqual(['/login/api/login', '/login/api/mfa']);
+  });
+  it('8e830f17: an activation without recovery codes shows the same status, not the generic form', async () => {
+    fetcher.mockResolvedValueOnce(Response.json({ step: 'activated', organization: 'new-customer' }));
+    view({ mode: 'accept', invitation: 'i'.repeat(43) });
+    await userEvent.setup().click(screen.getByRole('button', { name: en.internalAuth.continue }));
+    expect(await screen.findByRole('heading', { name: en.internalAuth.signingInTitle })).toBeInTheDocument();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
   it('removes a recovery token from browser history and submits it only in the reset POST body', async () => {
     const token = 'r'.repeat(43); window.history.replaceState(null, '', '/reset-password#token=' + token);
     fetcher.mockResolvedValue(Response.json({ step: 'resetDone' })); view({ mode: 'recovery' });

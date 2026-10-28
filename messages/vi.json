@@ -22770,7 +22770,9 @@
     "switchAccountTitle": "Sử dụng tài khoản khác",
     "switchAccountHelp": "Lời mời này thuộc tổ chức hoặc email đã xác minh khác. Đăng xuất để thiết lập hoặc đăng nhập tài khoản được mời. Tài khoản HR hiện tại của bạn vẫn riêng biệt.",
     "switchAccountSubmit": "Đăng xuất và mở lời mời",
-    "workplaceLoginHelp": "Nơi làm việc đã được chọn. Nhập tên người dùng và mật khẩu."
+    "workplaceLoginHelp": "Nơi làm việc đã được chọn. Nhập tên người dùng và mật khẩu.",
+    "signingInTitle": "Đang đăng nhập…",
+    "signingInHelp": "Đang đưa bạn đến AIHR."
   },
   "aiManagement": {
     "title": "Quản lý AI",
