@@ -182,14 +182,16 @@
       ]
     },
     {
-      "prefixRange": [
-        658,
-        658
-      ],
-      "owner": null,
-      "status": "released_free",
+      "tag": "0658_assistant_exchange_continuation",
+      "owner": "AI delivery (AI GAPS session, owner decision 28 October 2026)",
+      "status": "reserved",
+      "idx": null,
+      "when": 1793166000000,
+      "branch": "claude/ai-owner-decisions-20261028",
+      "allocatedBy": "AI delivery allocator (0648-0658 block), 28 October 2026",
+      "scope": "ALTER assistant_exchange ADD continues_exchange_id (self FK ON DELETE SET NULL, same tenant+login guard, immutable except FK nulling) + index. No data rewrite.",
       "notes": [
-        "Free; record a claim here before use."
+        "when 1793166000000 is above applied 0668 (1793165000000) and below the REA P1 wave 3 reservations 0663-0667 (1793170000000+). If P1 journals first, re-time this above them."
       ]
     },
     {
