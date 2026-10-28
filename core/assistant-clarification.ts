@@ -1,6 +1,6 @@
 /** A clarification continues only the actual caller's authenticated exchange. Historical model prose
  * and source rows are never reused as authority or copied into the next provider request. */
-import {eq,and,isNull,sql} from 'drizzle-orm';
+import {eq,and,inArray,isNull,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {assistantExchange} from '../db/schema';
 import {boundNativeOutcomeTransactionTx as boundClarificationReadTx} from './module-native-outcome-bounds';
@@ -14,9 +14,21 @@ import type {AssistantClarificationSlot} from '../lib/ai/assistant-answer-plan';
 export const ASSISTANT_CONVERSATION_LIMITS=Object.freeze({humanAnswer:500,history:8000});
 /** `originalQuestion` is TRANSIENT provider context for the continuation and is never stored on the new
  * exchange: the original raw text must retire with its own exchange, 30 days from that question. */
-export type OwnAssistantClarification=Readonly<{originalQuestion:string;slot:AssistantClarificationSlot;answer:string}>;
+export type OwnAssistantClarification=Readonly<{originalQuestion:string;slot:AssistantClarificationSlot;answer:string;
+ /** Owner decision 28 Oct 2026: the earlier human turns of the same conversation, oldest first, each with the
+  * slot it was asked. Linked through `continues_exchange_id` (0658); every row is still own, current and
+  * within its own 30 days. Transient context exactly like `originalQuestion`; never stored again. */
+ earlier:readonly Readonly<{question:string;slot:AssistantClarificationSlot}>[]}>;
+/** How many earlier linked replies one continuation may carry, besides the exchange it answers. */
+export const ASSISTANT_CONTINUATION_DEPTH=6;
+type SourceRow=Readonly<{exchangeId:string;question:string}>;
 /** Server-only source binding of each clarification this owner issued. Never serialized or returned. */
-const clarificationSources=new WeakMap<object,Readonly<{tenantId:string;userId:string;exchangeId:string}>>();
+const clarificationSources=new WeakMap<object,Readonly<{tenantId:string;userId:string;exchangeId:string;rows:readonly SourceRow[]}>>();
+/** The exchange this clarification answers, for the new row's `continues_exchange_id`. Only an object this
+ * owner issued has one; anything else gets null and is stored without a link. */
+export function assistantClarificationSourceExchangeId(clarification:OwnAssistantClarification|null):string|null{
+ return clarification?clarificationSources.get(clarification)?.exchangeId??null;
+}
 /** A conservative UI offer: every allowed next human answer must fit, without truncation. */
 export function canClarifyAssistantQuestion(question:unknown):boolean{
  return typeof question==='string'&&question.length+2+ASSISTANT_CONVERSATION_LIMITS.humanAnswer<=ASSISTANT_CONVERSATION_LIMITS.history;
@@ -36,16 +48,33 @@ export async function ownAssistantClarification(ctx:SessionContext,exchangeId:un
   await assertAiPrincipalTx(tx,captured);
   const fresh={...captured,entitlements:await resolveEntitlementsTx(tx,captured.tenantId)};
   if(!(await mayUseAssistant(fresh,tx)).allowed)return refuse();
-  const [row]=await tx.select({id:assistantExchange.id,question:assistantExchange.question,answer:assistantExchange.answer,receipt:assistantExchange.disclosureReceipt})
-   .from(assistantExchange).where(and(eq(assistantExchange.id,id),eq(assistantExchange.appUserId,userId),isNull(assistantExchange.contentRetiredAt),sql`${assistantExchange.askedAt}>clock_timestamp()-interval '30 days'`)).limit(1);
-  if(!row?.answer)return refuse();
-  const proof=openAssistantAnswerDisclosure({tenantId:captured.tenantId,userId,exchangeId:row.id,question:row.question,answer:row.answer},row.receipt);
-  if(proof?.plan?.mode!=='clarify')return refuse();
+  // Own, unretired and inside its own 30 days, with an authenticated clarify plan; null otherwise.
+  const step=async(stepId:string)=>{
+   const [row]=await tx.select({id:assistantExchange.id,question:assistantExchange.question,answer:assistantExchange.answer,receipt:assistantExchange.disclosureReceipt,continues:assistantExchange.continuesExchangeId})
+    .from(assistantExchange).where(and(eq(assistantExchange.id,stepId),eq(assistantExchange.tenantId,captured.tenantId),eq(assistantExchange.appUserId,userId),isNull(assistantExchange.contentRetiredAt),sql`${assistantExchange.askedAt}>clock_timestamp()-interval '30 days'`)).limit(1);
+   if(!row?.answer)return null;
+   const proof=openAssistantAnswerDisclosure({tenantId:captured.tenantId,userId,exchangeId:row.id,question:row.question,answer:row.answer},row.receipt);
+   return proof?.plan?.mode==='clarify'?{id:row.id,question:row.question,slot:proof.plan.slot,continues:row.continues}:null;
+  };
+  const row=await step(id);
+  if(!row)return refuse();
   // Both text fields were human supplied. The authenticated slot is context, never an effect argument
   // or a source capability. The next real model turn must freshly query canonical tools as usual.
-  if(row.question.length+2+answer.length>ASSISTANT_CONVERSATION_LIMITS.history)return refuse();
-  const issued:OwnAssistantClarification=Object.freeze({originalQuestion:row.question,slot:proof.plan.slot,answer});
-  clarificationSources.set(issued,Object.freeze({tenantId:captured.tenantId,userId,exchangeId:row.id}));
+  let used=row.question.length+2+answer.length;
+  if(used>ASSISTANT_CONVERSATION_LIMITS.history)return refuse();
+  // Walk back through earlier replies of the same conversation. Stop, without refusing, at the depth or
+  // history bound, a deleted link, or any row that is retired, foreign, expired or not a clarification:
+  // the conversation simply starts later. Nothing older than a row's own 30 days is ever carried.
+  const earlier:{question:string;slot:AssistantClarificationSlot}[]=[],rows:SourceRow[]=[{exchangeId:row.id,question:row.question}],seen=new Set([row.id]);
+  for(let next=row.continues;next&&!seen.has(next)&&earlier.length<ASSISTANT_CONTINUATION_DEPTH;){
+   const prior=await step(next);
+   if(!prior||used+prior.question.length+2>ASSISTANT_CONVERSATION_LIMITS.history)break;
+   used+=prior.question.length+2;seen.add(prior.id);
+   earlier.unshift({question:prior.question,slot:prior.slot});rows.unshift({exchangeId:prior.id,question:prior.question});
+   next=prior.continues;
+  }
+  const issued:OwnAssistantClarification=Object.freeze({originalQuestion:row.question,slot:row.slot,answer,earlier:Object.freeze(earlier.map(e=>Object.freeze(e)))});
+  clarificationSources.set(issued,Object.freeze({tenantId:captured.tenantId,userId,exchangeId:row.id,rows:Object.freeze(rows)}));
   return issued;
  });}catch{return refuse();}
 }
@@ -62,10 +91,13 @@ export async function assertOwnAssistantClarificationCurrentTx(tx:Tx,ctx:Session
  let current=false;
  try{
   await lockAccessConfigurationTx(tx,source.tenantId);
-  const [row]=await tx.select({question:assistantExchange.question}).from(assistantExchange)
-   .where(and(eq(assistantExchange.id,source.exchangeId),eq(assistantExchange.tenantId,source.tenantId),eq(assistantExchange.appUserId,source.userId),
-    isNull(assistantExchange.contentRetiredAt),sql`${assistantExchange.askedAt}>clock_timestamp()-interval '30 days'`)).limit(1);
-  current=row?.question===clarification.originalQuestion;
+  // Every carried row, not only the answered one: an earlier reply erased or retired since the read
+  // refuses the whole continuation rather than reaching a provider.
+  const found=await tx.select({id:assistantExchange.id,question:assistantExchange.question}).from(assistantExchange)
+   .where(and(inArray(assistantExchange.id,source.rows.map(r=>r.exchangeId)),eq(assistantExchange.tenantId,source.tenantId),eq(assistantExchange.appUserId,source.userId),
+    isNull(assistantExchange.contentRetiredAt),sql`${assistantExchange.askedAt}>clock_timestamp()-interval '30 days'`));
+  const byId=new Map(found.map(r=>[r.id,r.question]));
+  current=source.rows.at(-1)?.question===clarification.originalQuestion&&source.rows.every(r=>byId.get(r.exchangeId)===r.question);
  }catch{/* A storage failure aborts the caller's transaction; it is never read as a current source. */}
  if(!current)throw new AssistantClarificationError();
 }

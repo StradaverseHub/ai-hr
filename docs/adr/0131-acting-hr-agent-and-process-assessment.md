@@ -3035,9 +3035,19 @@ is disabled (C7). They appear once a tenant is entitled to them.
   recorded up to 72 provider calls per arm for a full batch; each invocation is consent-bounded (for
   example `PROMPT_HOLDOUT_REQUEST_LIMIT` = 12).
 
-**Open owner decisions (not decided here).** Whether named `specific_employee` leave approvers may see the
-requests they approve; whether overtime-pattern writers join the leave-dependency lock; whether Assistant
-clarifications carry earlier chat context (needs a schema link); and live provider activation and choice.
+**Owner decisions (28 October 2026, answered in the known-gaps session).**
+- Named `specific_employee` leave approvers may see the requests they approve: yes, built as a separate task
+  (migration 0669, its own branch).
+- Overtime-pattern writers join the leave-dependency lock: yes. The pattern owner and the group-policy writer
+  take the non-waiting leave-dependency configuration lock after the overtime lock; a held lock refuses the
+  save as busy ("Leave balances that depend on overtime are being updated…") with nothing written.
+- Assistant clarifications carry earlier chat context: yes. `0658_assistant_exchange_continuation` adds
+  `assistant_exchange.continues_exchange_id` (same tenant and login, set once, nulled when the earlier row
+  is deleted). A reply carries up to six earlier human turns of its conversation, oldest first, within the
+  8,000-character history bound; only human text is sent, never a prior model answer. Each carried row must
+  still be own, unretired and inside its own 30 days, rechecked before every provider call; the chain starts
+  later at any gap. Only the new reply is stored, so no text outlives its own 30 days.
+- Live provider activation: not yet. Model-backed paths stay off until the owner enters a key.
 
 ## Follow-up decisions, 28 October 2026 (owner-approved in the known-gaps session)
 
