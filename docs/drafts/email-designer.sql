@@ -54,6 +54,9 @@ CREATE FUNCTION app.email_design_history_immutable() RETURNS trigger LANGUAGE pl
 REVOKE ALL ON FUNCTION app.email_design_history_immutable() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER email_design_history_immutable BEFORE UPDATE OR DELETE ON email_design_version FOR EACH ROW EXECUTE FUNCTION app.email_design_history_immutable();
 --> statement-breakpoint
+-- Preserve the canonical prepared-reminder epoch when wording changes owner.
+CREATE TRIGGER email_design_reminder_touch AFTER INSERT OR UPDATE ON email_design FOR EACH ROW WHEN (NEW.kind='assessment_reminder') EXECUTE FUNCTION app.assessment_reminder_touch('tenant');
+--> statement-breakpoint
 CREATE FUNCTION app.email_design_save(p_kind text,p_locale text,p_document jsonb,p_expected integer) RETURNS integer
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE t uuid:=app.current_tenant_id();actor uuid:=app.current_user_id();r integer;
