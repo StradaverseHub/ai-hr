@@ -10885,7 +10885,7 @@
       "subtitle": "Choose an AI provider and model, and store your API key. The active provider powers the HR assistant and AI drafting. A new OpenRouter setup stays inactive until you evaluate and activate it.",
       "secretMissing": "Set AI_CONFIG_SECRET on the server to store API keys securely. Until then, keys cannot be saved here.",
       "usingEnv": "No provider is active for your organization — AI features use the platform default ({provider} · {model}).",
-      "privacyNote": "Draft with AI sends redacted review context — no names, emails, or ID numbers — to your chosen provider. It only proposes text; a manager always edits and submits.",
+      "privacyNote": "Each AI feature sends your chosen provider the information its task uses. Depending on the feature, this can include names, pay figures, claim or review text and uploaded images. Some features mask emails, IC numbers and phone numbers they recognise, but none mask names; provider and agent evaluations use made-up examples only.",
       "active": "Active",
       "envKeyPresent": "Platform key available",
       "model": "Model",

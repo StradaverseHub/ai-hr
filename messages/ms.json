@@ -10885,7 +10885,7 @@
       "subtitle": "Pilih penyedia dan model AI, dan simpan kunci API anda. Penyedia aktif menggerakkan Pembantu HR dan drafan AI. Tetapan OpenRouter baharu kekal tidak aktif sehingga anda menilai dan mengaktifkannya.",
       "secretMissing": "Tetapkan AI_CONFIG_SECRET pada pelayan untuk menyimpan kunci API dengan selamat. Sehingga itu, kunci tidak boleh disimpan di sini.",
       "usingEnv": "Tiada penyedia aktif untuk organisasi anda — ciri AI menggunakan lalai platform ({provider} · {model}).",
-      "privacyNote": "Draf dengan AI menghantar konteks penilaian yang disunting — tiada nama, e-mel atau nombor ID — kepada penyedia pilihan anda. Ia hanya mencadangkan teks; pengurus sentiasa menyunting dan menghantarnya.",
+      "privacyNote": "Setiap ciri AI menghantar maklumat yang digunakan oleh tugasnya kepada penyedia pilihan anda. Bergantung pada ciri, ini boleh termasuk nama, angka gaji, teks tuntutan atau penilaian dan imej yang dimuat naik. Sesetengah ciri menyembunyikan e-mel, nombor IC dan nombor telefon yang dikenal pasti, tetapi tiada yang menyembunyikan nama; penilaian penyedia dan ejen menggunakan contoh rekaan sahaja.",
       "active": "Aktif",
       "envKeyPresent": "Kunci platform tersedia",
       "model": "Model",

@@ -10885,7 +10885,7 @@
       "subtitle": "Chọn nhà cung cấp AI và mô hình, rồi lưu khóa API của bạn. Nhà cung cấp đang hoạt động sẽ vận hành Trợ lý HR và soạn thảo bằng AI. Thiết lập OpenRouter mới vẫn chưa hoạt động cho đến khi bạn đánh giá và kích hoạt.",
       "secretMissing": "Đặt AI_CONFIG_SECRET trên máy chủ để lưu khóa API một cách an toàn. Cho đến lúc đó, không thể lưu khóa tại đây.",
       "usingEnv": "Không có nhà cung cấp nào đang hoạt động cho tổ chức của bạn — các tính năng AI sử dụng mặc định của nền tảng ({provider} · {model}).",
-      "privacyNote": "Soạn thảo bằng AI gửi ngữ cảnh đánh giá đã được ẩn — không có tên, email hay số CMND/CCCD — đến nhà cung cấp bạn chọn. Nó chỉ đề xuất văn bản; người quản lý luôn chỉnh sửa và gửi.",
+      "privacyNote": "Mỗi tính năng AI gửi cho nhà cung cấp bạn chọn những thông tin mà tác vụ đó sử dụng. Tùy tính năng, thông tin này có thể gồm tên, số liệu lương, nội dung yêu cầu thanh toán hoặc đánh giá và hình ảnh đã tải lên. Một số tính năng che email, số IC và số điện thoại mà chúng nhận ra, nhưng không tính năng nào che tên; việc đánh giá nhà cung cấp và tác tử chỉ dùng ví dụ giả định.",
       "active": "Đang hoạt động",
       "envKeyPresent": "Có khóa nền tảng",
       "model": "Mô hình",
