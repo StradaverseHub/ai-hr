@@ -84,7 +84,7 @@ function context(source,e){
  assert.equal(JSON.parse(regular(join(source,'tsconfig.json'),1024*1024)).compilerOptions.incremental,true);
  const generated=generatedTypes(source);
  const options=['--noEmit','--pretty','false','--extendedDiagnostics','--tsBuildInfoFile',CACHE_RELATIVE];
- const invoked={options,nodeOptions:'--max-old-space-size=8192',sourcePath:source,generatedTypes:generated,
+ const invoked={options,nodeOptions:'--max-old-space-size=12288',sourcePath:source,generatedTypes:generated,
   actualCompiler:Object.fromEntries(['package.json','lib/tsc.js','lib/_tsc.js','lib/typescript.js'].map(n=>[n,hash(regular(join(source,'node_modules/typescript',n),32*1024*1024))])),
   sourceInvocation:hash(regular(join(source,'.github/ci/typecheck.sh'),1024*1024)),
   mobileInputs:Object.fromEntries(['mobile/package.json','mobile/package-lock.json'].map(n=>[n,hash(regular(join(source,n),16*1024*1024))]))};
@@ -114,7 +114,7 @@ async function compile(source,cache,out,report,name,expectedErrorPath=null){
  const command=[process.execPath,join(source,'node_modules/typescript/lib/tsc.js'),'--noEmit','--pretty','false','--extendedDiagnostics','--tsBuildInfoFile',cache.file];
  const args=process.env.AIHR_CI_CAPACITY_PROFILE==='bounded-whole-compiler'
   ?['-v','/usr/bin/prlimit','--fsize=67108864','--',...command]:['-v',...command];
- const result=await measuredCommand('/usr/bin/time',args,{cwd:source,env:{...process.env,NODE_OPTIONS:'--max-old-space-size=8192'},log});
+ const result=await measuredCommand('/usr/bin/time',args,{cwd:source,env:{...process.env,NODE_OPTIONS:'--max-old-space-size=12288'},log});
  Object.assign(row,result,{processExitCode:result.code,endedAt:new Date().toISOString()});
  diskSample(source,report,name+'-after');
  const text=regular(log,MAX_LOG).toString('utf8');Object.assign(row,validateCompilerPhase(result,text,expectedErrorPath));
