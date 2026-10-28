@@ -310,6 +310,18 @@
         "28 October: one migration adding people_general_policy.allow_duplicated_email.",
         "when 1793165000000 sits above the live watermark (1793160000000, 0662) and below REA P1 wave 3 (0663-0667, 1793170000000+). Valid only if released BEFORE those; if REA releases first, this entry is re-timed above REA's last applied when before journaling (it is unapplied, so re-timing is safe)."
       ]
+    },
+    {
+      "tag": "0669_leave_named_approver_read",
+      "owner": "Named leave approver visibility (session local_333024cb child, branch claude/practical-panini-1bf6ec)",
+      "status": "reserved",
+      "idx": null,
+      "when": 1793180000000,
+      "allocatedBy": "Owner decision 28 October 2026 relayed by the AI GAPS session (named approvers must see the requests they are asked to approve)",
+      "scope": "SELECT-only RLS arm on leave_request / leave_approval_step / leave_request_date / leave_request_attachment for the named (specific_employee) approver of a step, plus a definer function returning the employee display name for those requests only",
+      "notes": [
+        "when 1793180000000 sits above every recorded hold (REA 0663-0667 up to 1793170000005). If any later when is applied first, re-time above the live watermark before journaling (it is unapplied, so re-timing is safe)."
+      ]
     }
   ],
   "unallocatedAiLogicalGroups": [
