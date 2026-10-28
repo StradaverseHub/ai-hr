@@ -104,10 +104,22 @@ jobs:
           persist-credentials: false
       - uses: ./automation/.github/actions/setup-alpha
         with: {capacity_profile: "${{ github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}"}
+      - name: Install multilingual fonts for AI review fixture screenshots
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends fonts-noto-core fonts-noto-cjk
+          fc-match ':lang=ta'
+          fc-match ':lang=th'
+          fc-match ':lang=zh-cn'
       - name: Classify and execute only selected files
         run: node ../automation/.github/ci/focused-checks.mjs run "$RUNNER_TEMP/aihr-focused"
         env:
           AIHR_FOCUSED_EVIDENCE_DIR: ${{ runner.temp }}/aihr-focused
+      - name: Record screenshot font environment
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/aihr-focused/ui-screenshots"
+          dpkg-query -W fonts-noto-core fonts-noto-cjk > "$RUNNER_TEMP/aihr-focused/ui-screenshots/runner-fonts.txt"
       - name: Summarize opt-in harness phase timings
         if: ${{ always() && inputs.profile_database }}
         run: node scripts/report-test-profile.mjs "$RUNNER_TEMP/aihr-focused/harness-profile" "$RUNNER_TEMP/aihr-focused/profile-summary.json"
