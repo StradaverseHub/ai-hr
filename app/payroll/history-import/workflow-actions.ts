@@ -4,7 +4,7 @@ import {revalidatePath} from 'next/cache';
 import {requireAdmin} from '@/lib/authz';
 import {confirmPayrollHistoryUpload,previewPayrollHistoryRevert,revertPayrollHistoryUpload,PayrollHistoryRevisionError} from '@/packs/payroll/service';
 
-export async function confirmHistoryUploadAction(input:{attemptId:string;previewHash:string;confirmReplacement:boolean;skipReplacements?:boolean}){
+export async function confirmHistoryUploadAction(input:{attemptId:string;previewHash:string;confirmReplacement:boolean;skipReplacements?:boolean;selectedRecordKeys?:string[];acknowledgeWarnings?:boolean}){
  const ctx=await requireAdmin();
  try{
   const result=await confirmPayrollHistoryUpload(ctx,input);

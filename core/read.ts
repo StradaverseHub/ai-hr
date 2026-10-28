@@ -6420,7 +6420,12 @@ export function myReleasedPayslipRuns(ctx:SessionContext, existingTx?: Tx) {
   return withReadTx(ctx, existingTx,async tx=>{
     if(existingTx)await tryLockPayrollHistoryReadTx(tx,ctx.tenantId);else await lockPayrollHistoryReadTx(tx,ctx.tenantId);
     if(!ctx.personId)return [];
-    return tx.select({payslipId:payslip.id,employmentId:employment.id,employeeCode:employment.employeeCode,
+    // d28501b8 r2 — the employee keeps the payslip they were ISSUED, even after Import Payroll History set it
+    // aside for HR (migration 0660; own adopted originals only). Switched on for this one query and off again,
+    // because a caller-supplied transaction may go on to read year-to-date figures.
+    await tx.execute(sql`select set_config('app.payslip_self_issued','on',true)`);
+    try{
+    return await tx.select({payslipId:payslip.id,employmentId:employment.id,employeeCode:employment.employeeCode,
       companyId:payrollBatch.companyId,company:company.legalName,payPeriod:payrollBatch.payPeriod,
       cycleId:payrollBatch.payrollCycleId,cycleName:payrollCycle.name,runType:payrollBatch.runType,runSeq:payrollBatch.runSeq})
       .from(payslip).innerJoin(employment,eq(employment.id,payslip.employmentId))
@@ -6428,6 +6433,7 @@ export function myReleasedPayslipRuns(ctx:SessionContext, existingTx?: Tx) {
       .leftJoin(payrollCycle,eq(payrollCycle.id,payrollBatch.payrollCycleId))
       .where(and(isNull(payrollBatch.historyImportAttemptId),eq(employment.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId),sql`app.principal_snapshot_current() AND app.is_self_person(${employment.personId})`,eq(payrollBatch.status,'closed'),or(isNull(payrollBatch.releasedAt),lte(payrollBatch.releasedAt,new Date()))))
       .orderBy(desc(payrollBatch.payPeriod),asc(payrollBatch.companyId),asc(payrollBatch.runSeq),asc(payslip.id));
+    }finally{await tx.execute(sql`select set_config('app.payslip_self_issued','off',true)`);}
   });
 }
 

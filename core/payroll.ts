@@ -9038,6 +9038,11 @@ export async function unlockClosedBatch(ctx: SessionContext, p: { batchId: strin
     if (!batch) throw new Error('batch not found');
     await assertPayrollPermission(tx, ctx, 'payroll.unlock', batch.companyId);
     if (batch.status !== 'closed') throw new BatchNotUnlockableError();
+    // d28501b8 r2 — a run with a payslip that Import Payroll History overwrote stays closed: reopening it
+    // would let the set-aside original change under the import that replaced it (migration 0660 freezes the
+    // payslip; this says why, before anything is touched).
+    const [adopted] = await tx.execute<{ yes: boolean }>(sql`select app.payroll_history_batch_adopted(${p.batchId}::uuid) as yes`);
+    if (adopted?.yes) throw new BatchOverwrittenByImportError();
 
     // Warning flags (reporter req.: warn if payment disbursed or statutory submission filed). 49e7e0a2
     // moved the derivation into `batchDownstreamWarnings` so the Individual Transaction screen can show the
@@ -11007,6 +11012,9 @@ export function paymentSummaryForBatch(ctx: SessionContext, batchId: string) {
  *  THE RELEASE GATE BELOW IS UNCHANGED. Widening the select does not widen who may read the row. */
 export function payslipDetail(ctx: SessionContext, payslipId: string, ownOnly = false) {
   return withTenant(ctx, async (tx) => {
+    // d28501b8 r2 — the employee's own copy is the payslip they were issued, even if an import later set it
+    // aside for HR. Only the self path asks; HR detail stays on the effective figures.
+    if (ownOnly) await tx.execute(sql`select set_config('app.payslip_self_issued','on',true)`);
     const [row] = await tx
       .select({
         id: payslip.id,
@@ -11160,6 +11168,14 @@ export function batchScopeHeadcount(ctx: SessionContext, batchId: string): Promi
     const [count] = await tx.select({total: sql<number>`count(*)::int`}).from(employment).where(population.filter);
     return count.total;
   });
+}
+
+/** d28501b8 r2 — the run holds a payslip that Import Payroll History overwrote; revert the import first. */
+export class BatchOverwrittenByImportError extends Error {
+  constructor() {
+    super('A payslip in this run was overwritten by Import Payroll History. Revert that import from its Log File before unlocking the run.');
+    this.name = 'BatchOverwrittenByImportError';
+  }
 }
 
 /**

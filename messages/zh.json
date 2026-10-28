@@ -6469,7 +6469,8 @@
       "reprocessOutcomeRemarksHeading": "备注",
       "reprocessLegacyOutcomeUnavailable": "此较早的任务未记录个人处理结果。其已保存的计算历史仍可在下方查看。",
       "publishStateHistory": "导入历史",
-      "historyNoPayment": "历史导入不记录付款日期。"
+      "historyNoPayment": "历史导入不记录付款日期。",
+      "unlockOverwrittenByImport": "此工资运行中的工资单已被导入工资历史覆盖。请先从其 Log File 撤销该导入，再解锁此运行。"
     },
     "transactions": {
       "title": "交易录入",
@@ -9075,8 +9076,8 @@
       "unchanged": "未变更",
       "invalid": "无效",
       "amount": "金额",
-      "before": "之前",
-      "after": "导入值",
+      "before": "当前记录",
+      "after": "来自您的文件",
       "company": "公司",
       "companies": "公司",
       "employee": "员工编号",
@@ -9116,10 +9117,10 @@
       "reviewRevert": "查看恢复详情",
       "cancel": "取消",
       "operations": {
-        "create": "新增",
-        "replace": "替换",
+        "create": "新记录",
+        "replace": "需要确认覆盖",
         "unchanged": "未变更",
-        "invalid": "无效",
+        "invalid": "已拒绝",
         "protected": "受保护"
       },
       "states": {
@@ -9179,10 +9180,17 @@
       },
       "items": "项目",
       "protectedHint": "该月工资已在 AIHR 中处理或申报，导入不会替换它。请从文件中删除这些行，或通过补发工资或调整运行更正该月。",
-      "overwriteTitle": "发现 {count} 个员工月份已有工资历史，包括已关闭工资期间的记录。是否覆盖现有记录？",
-      "overwriteReplace": "确认覆盖 — 替换之前导入的记录。原始数字保留在审计历史中，已关闭的期间保持关闭。",
-      "overwriteSkip": "仅导入新记录，现有记录保持不变。",
-      "successSkipped": "已按选择保留 {count} 条现有记录不变。"
+      "successSkipped": "已按选择保留 {count} 条现有记录不变。",
+      "selectAll": "选择所有要覆盖的记录",
+      "tickRow": "覆盖 {employee} {period}",
+      "sourceProcessed": "已在 AIHR 中处理",
+      "sourceImported": "之前导入",
+      "warningsTitle": "确认前，请注意这些月份已发出的内容：",
+      "tickedTitle": "您已勾选 {count} 个员工月份进行覆盖。文件中的金额将按原样替换现有记录。不会重新计算、不会运行工资、也不会生成工资单。",
+      "tickHint": "部分记录已有工资数据。勾选要覆盖的记录；未勾选的记录保持不变。",
+      "acknowledge": "我已了解。用我的文件数值替换已勾选的记录。原始数值保留在审计历史中，可从 Log File 撤销覆盖。",
+      "confirmOverwrite": "确认覆盖并导入",
+      "importNewOnly": "仅导入新记录"
     }
   },
   "admin": {

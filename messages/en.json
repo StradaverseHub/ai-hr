@@ -5745,7 +5745,8 @@
       "reprocessOutcomeRemarksHeading": "Remarks",
       "reprocessLegacyOutcomeUnavailable": "This earlier job did not record individual outcomes. Its saved calculation history remains available below.",
       "publishStateHistory": "Imported history",
-      "historyNoPayment": "No payment date is recorded by a history import."
+      "historyNoPayment": "No payment date is recorded by a history import.",
+      "unlockOverwrittenByImport": "A payslip in this run was overwritten by Import Payroll History. Revert that import from its Log File before unlocking the run."
     },
     "reports": {
       "pageTitle": "Payroll",
@@ -9075,8 +9076,8 @@
       "unchanged": "Unchanged",
       "invalid": "Invalid",
       "amount": "Amount",
-      "before": "Before",
-      "after": "Imported value",
+      "before": "On file now",
+      "after": "From your file",
       "company": "Company",
       "companies": "Companies",
       "employee": "Employee No",
@@ -9116,10 +9117,10 @@
       "reviewRevert": "Review recovery",
       "cancel": "Cancel",
       "operations": {
-        "create": "Create",
-        "replace": "Replace",
+        "create": "New record",
+        "replace": "Overwrite confirmation required",
         "unchanged": "Unchanged",
-        "invalid": "Invalid",
+        "invalid": "Rejected",
         "protected": "Protected"
       },
       "states": {
@@ -9179,10 +9180,17 @@
       },
       "items": "Items",
       "protectedHint": "Payroll for this month was processed or reported in AIHR and is never replaced by an import. Remove these rows from the file, or correct the month with Back Pay or an adjustment run.",
-      "overwriteTitle": "Existing payroll history was found for {count, plural, one {# employee-month} other {# employee-months}}, including records in Closed payroll periods. Do you want to overwrite the existing records?",
-      "overwriteReplace": "Confirm overwrite — replace the previously imported records. Their original figures stay in the audit history and Closed periods stay Closed.",
-      "overwriteSkip": "Import only the new records and leave the existing records as they are.",
-      "successSkipped": "{count, plural, one {# existing record was} other {# existing records were}} left unchanged, as chosen."
+      "successSkipped": "{count, plural, one {# existing record was} other {# existing records were}} left unchanged, as chosen.",
+      "selectAll": "Select all records to overwrite",
+      "tickRow": "Overwrite {employee} {period}",
+      "sourceProcessed": "Processed in AIHR",
+      "sourceImported": "Imported earlier",
+      "warningsTitle": "Before you confirm, note what has already gone out for these months:",
+      "tickedTitle": "You have ticked {count, plural, one {# employee-month} other {# employee-months}} for overwrite. Your file's amounts replace what is on file exactly as written. Nothing is recalculated, no payroll is run and no payslip is generated.",
+      "tickHint": "Payroll is already on file for some records. Tick the ones you want to overwrite; records you do not tick stay as they are.",
+      "acknowledge": "I understand. Replace the ticked records with my file's values. The original values stay in the audit history and the overwrite can be undone from Log File.",
+      "confirmOverwrite": "Confirm overwrite and import",
+      "importNewOnly": "Import new records only"
     }
   },
   "admin": {

@@ -6469,7 +6469,8 @@
       "reprocessOutcomeRemarksHeading": "Ghi chú",
       "reprocessLegacyOutcomeUnavailable": "Tác vụ trước đây không ghi nhận kết quả từng người. Lịch sử tính toán đã lưu vẫn có ở bên dưới.",
       "publishStateHistory": "Lịch sử đã nhập",
-      "historyNoPayment": "Nhập lịch sử không ghi nhận ngày thanh toán."
+      "historyNoPayment": "Nhập lịch sử không ghi nhận ngày thanh toán.",
+      "unlockOverwrittenByImport": "Một phiếu lương trong đợt này đã bị ghi đè bởi Nhập lịch sử lương. Hãy hoàn tác lần nhập đó từ Log File trước khi mở khóa đợt."
     },
     "transactions": {
       "title": "Nhập liệu giao dịch",
@@ -9075,8 +9076,8 @@
       "unchanged": "Không đổi",
       "invalid": "Không hợp lệ",
       "amount": "Số tiền",
-      "before": "Trước",
-      "after": "Giá trị nhập",
+      "before": "Hiện có",
+      "after": "Từ tệp của bạn",
       "company": "Công ty",
       "companies": "Các công ty",
       "employee": "Mã nhân viên",
@@ -9116,10 +9117,10 @@
       "reviewRevert": "Xem xét khôi phục",
       "cancel": "Hủy",
       "operations": {
-        "create": "Tạo",
-        "replace": "Thay thế",
+        "create": "Bản ghi mới",
+        "replace": "Cần xác nhận ghi đè",
         "unchanged": "Không đổi",
-        "invalid": "Không hợp lệ",
+        "invalid": "Bị từ chối",
         "protected": "Được bảo vệ"
       },
       "states": {
@@ -9179,10 +9180,17 @@
       },
       "items": "Khoản mục",
       "protectedHint": "Lương tháng này đã được xử lý hoặc báo cáo trong AIHR và không bao giờ bị thay thế bởi việc nhập. Hãy xóa các dòng này khỏi tệp, hoặc sửa tháng đó qua Back Pay hoặc một đợt điều chỉnh.",
-      "overwriteTitle": "Đã tìm thấy lịch sử lương hiện có cho {count} nhân viên-tháng, bao gồm các bản ghi trong kỳ lương Đã đóng. Bạn có muốn ghi đè các bản ghi hiện có không?",
-      "overwriteReplace": "Xác nhận ghi đè — thay thế các bản ghi đã nhập trước đó. Số liệu gốc vẫn nằm trong lịch sử kiểm toán và các kỳ Đã đóng vẫn đóng.",
-      "overwriteSkip": "Chỉ nhập các bản ghi mới và giữ nguyên các bản ghi hiện có.",
-      "successSkipped": "Đã giữ nguyên {count} bản ghi hiện có theo lựa chọn."
+      "successSkipped": "Đã giữ nguyên {count} bản ghi hiện có theo lựa chọn.",
+      "selectAll": "Chọn tất cả bản ghi để ghi đè",
+      "tickRow": "Ghi đè {employee} {period}",
+      "sourceProcessed": "Đã xử lý trong AIHR",
+      "sourceImported": "Đã nhập trước đó",
+      "warningsTitle": "Trước khi xác nhận, hãy lưu ý những gì đã gửi đi cho các tháng này:",
+      "tickedTitle": "Bạn đã chọn {count} nhân viên-tháng để ghi đè. Số tiền trong tệp thay thế dữ liệu hiện có đúng như đã ghi. Không tính lại, không chạy lương và không tạo phiếu lương.",
+      "tickHint": "Một số bản ghi đã có dữ liệu lương. Chọn các bản ghi muốn ghi đè; bản ghi không chọn được giữ nguyên.",
+      "acknowledge": "Tôi hiểu. Thay thế các bản ghi đã chọn bằng giá trị trong tệp của tôi. Giá trị gốc vẫn nằm trong lịch sử kiểm toán và có thể hoàn tác từ Log File.",
+      "confirmOverwrite": "Xác nhận ghi đè và nhập",
+      "importNewOnly": "Chỉ nhập bản ghi mới"
     }
   },
   "admin": {

@@ -6,7 +6,10 @@ import * as schema from '../db/schema';
 import {previewPayrollHistoryUpload,confirmPayrollHistoryUpload,previewPayrollHistoryRevert,revertPayrollHistoryUpload,listPayrollHistoryAttempts,getPayrollHistoryAttempt,payrollHistorySource} from '../core/payroll-history-revisions';
 import {hireEmployee} from '../core/org';
 import {createCompany,createDepartment} from '../core/admin';
-import {createBatch,myPayslipDetail,listBatches,paymentSummaryForBatch} from '../core/payroll';
+import {createBatch,generatePayslips,closeBatch,myPayslipDetail,listBatches,paymentSummaryForBatch} from '../core/payroll';
+import {setCompensation} from '../core/comp';
+import {setStatutoryProfileMY} from '../localization/my/statutory';
+import {historyRecordKey} from '../lib/payroll-history-revisions';
 import {payrollComparisonSourcesTx} from '../core/payroll-view';
 import {myEaSources} from '../core/reporting';
 import {myReleasedPayslipRuns,dashboardStats} from '../core/read';
@@ -69,6 +72,54 @@ describe('immutable payroll history correction and recovery',()=>{
   const only=await upload('7000.00');
   await expect(confirmPayrollHistoryUpload(ctx,{attemptId:only.attemptId,previewHash:only.plan.previewHash,confirmReplacement:false,skipReplacements:true})).rejects.toThrow(/no new records/);
   expect((await effective()).filter(row=>row.employmentId===employeeId).map(row=>Number(row.grossPay))).toEqual([5000]);
+ });
+ it('d28501b8 r2: overwrites a closed processed month append-only, keeps the issued payslip for the employee, and reverts',async()=>{
+  await setCompensation(ctx,{employmentId:employeeId,basicSalary:4000,effectiveFrom:`${year-1}-01-01`});
+  await setStatutoryProfileMY(ctx,{personId:employeePersonId,icNumber:'850202025555',taxCategory:1,numChildren:0});
+  const run=await createBatch(ctx,{companyId:b.companyId,payPeriod:period});
+  await generatePayslips(ctx,{batchId:run.batchId});await closeBatch(ctx,{batchId:run.batchId});
+  const [original]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,run.batchId));
+  expect(original,'fixture: the processed run must hold the employee').toBeTruthy();
+  const preview=await upload('6000.00');
+  expect(preview.plan.counts).toEqual({created:0,replaced:1,unchanged:0,invalid:0});
+  const row=preview.plan.rows[0];
+  expect(row).toMatchObject({operation:'replace',overwriteSource:'processed',expectedOrdinaryPayslipId:original.id,employeeName:'Fictional history employee'});
+  expect(row.beforeValues?.grossPay).toBe(original.grossPay);
+  expect(row.warnings?.join(' ')).toMatch(/issued a payslip/);
+  const confirmWith=(extra:Record<string,unknown>)=>confirmPayrollHistoryUpload(ctx,{attemptId:preview.attemptId,previewHash:preview.plan.previewHash,confirmReplacement:true,...extra});
+  await expect(confirmWith({selectedRecordKeys:[]})).rejects.toThrow(/Nothing is selected/);
+  await expect(confirmWith({selectedRecordKeys:[historyRecordKey(row)]})).rejects.toThrow(/Acknowledge/);
+  const done=await confirmWith({selectedRecordKeys:[historyRecordKey(row)],acknowledgeWarnings:true});
+  expect(done.changes).toHaveLength(1);
+  // The overwrite is a straight replacement: HR reads the file's figures; no payroll run was added.
+  expect((await effective()).map(p=>Number(p.grossPay))).toEqual([6000]);
+  const runs=await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.companyId,b.companyId));
+  expect(runs.filter(r=>r.historyImportAttemptId==null).map(r=>r.id)).toEqual([run.batchId]);
+  // The processed original is untouched and frozen, and its run reports derived totals now.
+  expect((await owner.db.select().from(schema.payslip).where(eq(schema.payslip.id,original.id)))[0]).toEqual(original);
+  await expect(owner.db.update(schema.payslip).set({grossPay:'1.00'}).where(eq(schema.payslip.id,original.id))).rejects.toMatchObject({cause:{code:'23514'}});
+  const [ordinaryRun]=(await listBatches(ctx,[b.companyId])).filter(r=>r.id===run.batchId);
+  if(ordinaryRun)expect(Number(ordinaryRun.employeeCount)).toBe(0);
+  // The employee keeps the payslip they were issued.
+  const userId=await createAppUser(b.tenantId,employeePersonId,'employee');
+  const own={...ctx,userId,personId:employeePersonId,roles:['employee'],grants:undefined};
+  expect((await myReleasedPayslipRuns(own)).map(r=>r.payslipId)).toEqual([original.id]);
+  expect((await myPayslipDetail(own,original.id))?.basic).toBe(original.basicSalary);
+  // Revert puts the processed figures back for everyone.
+  const recovery=await previewPayrollHistoryRevert(ctx,preview.attemptId);
+  await revertPayrollHistoryUpload(ctx,preview.attemptId,recovery.previewHash);
+  expect((await effective()).map(p=>p.id)).toEqual([original.id]);
+ });
+ it('d28501b8 r2: a processed payslip cannot be adopted under figures it never had',async()=>{
+  await setCompensation(ctx,{employmentId:employeeId,basicSalary:4000,effectiveFrom:`${year-1}-01-01`});
+  await setStatutoryProfileMY(ctx,{personId:employeePersonId,icNumber:'850202025555',taxCategory:1,numChildren:0});
+  const run=await createBatch(ctx,{companyId:b.companyId,payPeriod:period});
+  await generatePayslips(ctx,{batchId:run.batchId});await closeBatch(ctx,{batchId:run.batchId});
+  const [original]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,run.batchId));
+  const [cycle]=await owner.db.select().from(schema.payrollCycle).where(eq(schema.payrollCycle.companyId,b.companyId)).limit(1);
+  const [rec]=await owner.db.insert(schema.payrollHistoryImportRecord).values({tenantId:b.tenantId,companyId:b.companyId,employmentId:employeeId,period,cycleId:cycle.id}).returning();
+  const forged={basicSalary:'1.00',allowance:'0.00',overtimePay:'0.00',bonus:'0.00',grossPay:'1.00',statutory:{},otherDeductions:'0.00',totalDeductions:'0.00',netPay:'1.00',employerCost:'1.00'};
+  await expect(owner.db.insert(schema.payrollHistoryImportSnapshot).values({id:original.id,tenantId:b.tenantId,recordId:rec.id,valueHash:'0'.repeat(64),values:forged})).rejects.toThrow();
  });
  it('retires a newly created effective entry without erasing its physical snapshot or audit',async()=>{
   const first=await upload();await confirm(first);const recovery=await previewPayrollHistoryRevert(ctx,first.attemptId);await revertPayrollHistoryUpload(ctx,first.attemptId,recovery.previewHash);
@@ -147,8 +198,9 @@ describe('immutable payroll history correction and recovery',()=>{
   const next=`${year}-02`;const ordinary=await createBatch(ctx,{companyId:b.companyId,payPeriod:next});
   const content=Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...rows().map(row=>row.map((cell,index)=>index===1?next:cell))]));
   const preview=await previewPayrollHistoryUpload(ctx,{name:'ordinary.csv',content});expect(preview.plan.counts.invalid).toBeGreaterThan(0);
-  // d28501b8 — named Protected, not presented as a mistake in the file.
-  expect(preview.plan.rows.map(row=>[row.operation,row.protected])).toEqual([['invalid',true]]);
+  // d28501b8 r2 — payroll still open in Payroll is never overwritten; finish or discard it there.
+  expect(preview.plan.rows.map(row=>row.operation)).toEqual(['invalid']);
+  expect(preview.plan.rows[0].reasons.join(' ')).toMatch(/still open in Payroll/);
   await expect(confirm(preview)).rejects.toThrow();
   const [batch]=await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id,ordinary.batchId));expect(batch.status).toBe('draft');
  });

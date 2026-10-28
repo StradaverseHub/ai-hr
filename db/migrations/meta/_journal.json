@@ -3704,6 +3704,13 @@
       "when": 1793130000023,
       "tag": "0657_ai_integration_repairs",
       "breakpoints": true
+    },
+    {
+      "idx": 644,
+      "version": "7",
+      "when": 1793140000000,
+      "tag": "0660_payroll_history_adopt_ordinary",
+      "breakpoints": true
     }
   ]
 }
