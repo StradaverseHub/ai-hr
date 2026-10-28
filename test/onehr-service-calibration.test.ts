@@ -277,24 +277,18 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await expect(perf.saveOnehrCalibration(reviewer,unfinished,1,{reviewId:pending.reviewId,axis:'performance',performance:'UA',potential:null,performanceNote:'Direct assignment must fail.',potentialNote:''})).rejects.toThrow(/line manager rating/);
     await expect(perf.lockOnehrCalibration(reviewer,unfinished,1,'','performance',pending.reviewId)).rejects.toThrow(/line manager rating/);
   });
-  it('APR-011 on the Group performance list: a changed call needs its reason, is audited with it, and is not held by the box ceiling',async()=>{
+  it('APR-011 on the Group performance list: a changed call needs its reason and is audited with it',async()=>{
     await complete();const reviewer=peers[0].ctx;
-    // The ceiling on: 20% of four people allows one category change in the unit.
-    const [config]=await owner.db.select().from(schema.onehrCycle).where(eq(schema.onehrCycle.cycleId,cycleId));
-    await owner.db.update(schema.onehrCycle).set({policy:{...(config.policy as Record<string,unknown>),talentBox:{moveCap:{enabled:true,pct:20}}}}).where(eq(schema.onehrCycle.cycleId,cycleId));
     const others=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),inArray(schema.onehrReview.employmentId,peers.slice(1).map(p=>p.employmentId)))).orderBy(schema.onehrReview.reviewId);
     const group=await perf.createOnehrCalibration(a,cycleId,{name:'Group list reasons',companyId:b.companyId,tier:'group',reviewerUserIds:[reviewer.userId!],reviewIds:[reviewId,...others.map(o=>o.reviewId)],pbtAchievement:null,mode:'after'});
     const rev=async()=>(await perf.getOnehrCalibration(reviewer,group)).session.revision;
     const list=async(band:'BE'|'ME'|'AE',note:string)=>perf.saveOnehrCalibration(reviewer,group,await rev(),{reviewId,axis:'performance',performance:band,potential:null,performanceNote:note,potentialNote:''});
     expect((await perf.getOnehrCalibration(reviewer,group,'performance')).rows.find(r=>r.entry.reviewId===reviewId)).toMatchObject({currentPerformance:'ME',canWrite:{pm:true}});
-    // Spend the unit's one category change on the box, so the box refuses the subject's change.
-    await perf.moveAssessmentTalentBox(reviewer,group,await rev(),{reviewId:others[0].reviewId,performance:'ME',potential:null,performanceNote:'Box move with its reason.',potentialNote:''});
-    await expect(perf.moveAssessmentTalentBox(reviewer,group,await rev(),{reviewId,performance:'AE',potential:null,performanceNote:'Box move with its reason.',potentialNote:''})).rejects.toThrow(/limit .* used up: 1 of 1/);
     await expect(list('AE','')).rejects.toThrow(/Explain each changed band/);
     await expect(list('AE','   ')).rejects.toThrow(/Explain each changed band/);
     expect((await perf.getOnehrCalibration(reviewer,group)).rows.find(r=>r.entry.reviewId===reviewId)?.entry.performance).toBeNull();
     await list('ME','');// the line manager's band it already shows: no reason needed
-    // Business-exact: the list page is not capped; the same change the box refused saves here with its reason.
+    // The list page is not capped (business-exact); that is pinned against a live ceiling in onehr-service-talent-box.
     await list('AE','Group view of the full year.');
     expect((await perf.getOnehrCalibration(reviewer,group)).rows.find(r=>r.entry.reviewId===reviewId)?.entry).toMatchObject({performance:'AE',performanceNote:'Group view of the full year.'});
     const events=await owner.db.select({payload:schema.domainEvent.payload}).from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,group),eq(schema.domainEvent.eventType,'onehr.calibration-recorded')));

@@ -72,21 +72,25 @@ describe('Talent Box moves (real RLS)',()=>{
   const reviewId=await reviewOf(cycleA,subjects[0]);
   const save=async(ctx:SessionContext,id:string,bands:{performance?:'UA'|'BE'|'ME'|'AE'|'OU';potential?:'Low'|'Mid'|'High'},note='')=>
    perf.saveOnehrCalibration(ctx,id,await revision(ctx,id),{reviewId,axis:'both',performance:bands.performance??null,potential:bands.potential??null,performanceNote:note,potentialNote:note});
+  // One BG scope per person per cycle: the BG checks run on a session over all ten (20% → 2 category changes).
+  const ids=await Promise.all(subjects.map(s=>reviewOf(cycleA,s))),bg=await session(cycleA,'bg',b.companyId,bgCeo,subjects);
+  const entry=async(ctx:SessionContext,id:string,r=reviewId)=>(await perf.getOnehrCalibration(ctx,id)).rows.find(x=>x.entry.reviewId===r)!.entry;
   for(const [tier,ctx] of [['bu',buCeo],['bg',bgCeo]] as const){
-   const id=await session(cycleA,tier,b.companyId,ctx,[subjects[0]]);
+   const id=tier==='bu'?await session(cycleA,'bu',b.companyId,ctx,[subjects[0]]):bg;
    await expect(save(ctx,id,{performance:'ME'}),tier).rejects.toThrow(/Explain each changed band/);
    await expect(save(ctx,id,{potential:'High'},'  '),tier).rejects.toThrow(/Explain each changed band/);
-   expect((await perf.getOnehrCalibration(ctx,id)).rows[0].entry,tier).toMatchObject({performance:null,potential:null});
+   expect(await entry(ctx,id),tier).toMatchObject({performance:null,potential:null});
    await save(ctx,id,{performance:'UA',potential:'Low'});// the bands it already shows: no reason needed
    await save(ctx,id,{performance:'ME',potential:'High'},'Discussed in the calibration meeting.');
-   expect((await perf.getOnehrCalibration(ctx,id)).rows[0].entry,tier).toMatchObject({performance:'ME',potential:'High',performanceNote:'Discussed in the calibration meeting.'});
+   expect(await entry(ctx,id),tier).toMatchObject({performance:'ME',potential:'High',performanceNote:'Discussed in the calibration meeting.'});
   }
-  // The ceiling belongs to the box and its chat, not to the form: with the BG allowance used up, the form still saves.
-  const bg=await session(cycleA,'bg',b.companyId,bgCeo,subjects),ids=await Promise.all(subjects.map(s=>reviewOf(cycleA,s)));
-  await move(bgCeo,bg,ids[1],{performance:'ME'});await move(bgCeo,bg,ids[2],{performance:'ME'});
-  await expect(move(bgCeo,bg,ids[3],{performance:'ME'})).rejects.toThrow(/used up/);
-  await perf.saveOnehrCalibration(bgCeo,bg,await revision(bgCeo,bg),{reviewId:ids[3],axis:'performance',performance:'ME',potential:null,performanceNote:'Form decision with its reason.',potentialNote:''});
-  expect((await perf.getOnehrCalibration(bgCeo,bg)).rows.find(r=>r.entry.reviewId===ids[3])?.entry.performance).toBe('ME');
+  // The ceiling belongs to the box and its chat, not to the form: the box spends the unit's allowance (2 of 2) until
+  // it refuses a move, and the form then saves that same change with its reason.
+  let refused:string|null=null;
+  for(const id of ids.slice(1)){try{await move(bgCeo,bg,id,{performance:'ME'});}catch(e){expect(String(e)).toMatch(/used up: 2 of 2/);refused=id;break;}}
+  expect(refused,'the box refused a move once the allowance was used').not.toBeNull();
+  await perf.saveOnehrCalibration(bgCeo,bg,await revision(bgCeo,bg),{reviewId:refused!,axis:'performance',performance:'ME',potential:null,performanceNote:'Form decision with its reason.',potentialNote:''});
+  expect((await entry(bgCeo,bg,refused!)).performance).toBe('ME');
  });
 
  it('allows the Nth category change in a unit, refuses the next, and gives the allowance back when someone returns',async()=>{
