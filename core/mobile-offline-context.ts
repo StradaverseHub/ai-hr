@@ -21,8 +21,13 @@ export type OfflineContextSnapshot=z.infer<typeof Snapshot>;
 type KeyRow=typeof mobileIntegrityKey.$inferSelect;
 export type IssuedOfflineContextRow=typeof mobileOfflineContext.$inferSelect;
 export class OfflineContextIssueError extends Error{
- constructor(readonly reason:'configuration_unavailable'|'key_unavailable'|'binding_conflict'|'online_pending'|'context_closed'|'time_unavailable'){
+ constructor(readonly reason:'configuration_unavailable'|'key_unavailable'|'binding_conflict'|'online_pending'|'context_closed'|'time_unavailable'|'offline_disabled'){
   super('Offline context unavailable');this.name='OfflineContextIssueError';
+ }
+}
+export class OfflineContextCloseError extends Error{
+ constructor(readonly reason:'context_unavailable'|'key_unavailable'|'context_closed'|'claims_pending'|'cursor_mismatch'|'binding_conflict'){
+  super('Offline context close unavailable');this.name='OfflineContextCloseError';
  }
 }
 export type OfflineContextIssuePorts={
@@ -103,7 +108,9 @@ export function createOfflineContextIssueService(settings:unknown,ports:OfflineC
     const now=await stamp(tx);
     const pending=await tx.select({id:mobileIntegrityChallenge.id}).from(mobileIntegrityChallenge).where(and(eq(mobileIntegrityChallenge.tenantId,ctx.tenantId),eq(mobileIntegrityChallenge.actorId,ctx.userId!),eq(mobileIntegrityChallenge.appInstallationId,input.request.appInstallationId),eq(mobileIntegrityChallenge.purpose,'clock.online'),isNull(mobileIntegrityChallenge.consumedAt),gt(mobileIntegrityChallenge.expiresAt,now))).limit(1);
     if(pending.length)throw new OfflineContextIssueError('online_pending');
-    const snapshot=Snapshot.safeParse(await ports.snapshot(tx,ctx,{employmentId:input.employmentId,companyId,key:enrolled}));if(!snapshot.success||!snapshot.data.policy.offlineEnabled)throw unavailable();
+    const snapshot=Snapshot.safeParse(await ports.snapshot(tx,ctx,{employmentId:input.employmentId,companyId,key:enrolled}));if(!snapshot.success)throw unavailable();
+    // The trusted owner says offline is off for this company: a clean refusal, nothing written.
+    if(!snapshot.data.policy.offlineEnabled)throw new OfflineContextIssueError('offline_disabled');
     const p=snapshot.data;
     if(p.target.platform!==enrolled.platform||p.target.appId!==enrolled.appId||p.target.environment!==enrolled.environment)throw new OfflineContextIssueError('key_unavailable');
     const minted=await stamp(tx),issuedAt=minted.getTime(),expiresAt=Math.min(issuedAt+p.policy.windowMs,config.issuer.validUntil);
@@ -124,4 +131,45 @@ export function createOfflineContextIssueService(settings:unknown,ports:OfflineC
    });
   },
  };
+}
+const CloseInput=z.object({contextId:uuid,closeRequestId:uuid,consumedThrough:z.number().int().min(0).max(32)}).strict();
+export type OfflineContextClosed={outcome:'closed';contextId:string;reason:'exhausted'|'retired'|'revoked';closeRequestId:string;consumedThrough:number;closedAt:number};
+function closed(row:IssuedOfflineContextRow):OfflineContextClosed{
+ if(!row.closedAt||!row.closeReason||!row.closeRequestId)throw new OfflineContextCloseError('context_unavailable');
+ return {outcome:'closed',contextId:row.id,reason:row.closeReason,closeRequestId:row.closeRequestId,consumedThrough:row.nextSequence-1,closedAt:row.closedAt.getTime()};
+}
+/** Explicit own retirement, releasing the key lease (0647's open-context unique index and lease function), so online
+ * clocking and a later issuance can proceed. Authority is the bearer session's actor plus ownership of the context's
+ * registered key (revoked or not); no deployment, issuer or company policy is read here. Closes with reason 'retired'
+ * only when the phone's consumedThrough equals the server cursor (nextSequence-1): claims the phone holds but has not
+ * uploaded (claims_pending), or a phone behind the server (cursor_mismatch), are refused and nothing changes. A closed
+ * context is never reopened. An exact retry (same closeRequestId and consumedThrough) returns the recorded closure;
+ * any other request on a closed context is context_closed. Same lock order as issuance, consumption and revocation:
+ * actor admission, registered key, then stream. An unreadable former employment hides the context (RLS); revoking
+ * the key remains the release path then. */
+export async function closeOwnOfflineContext(ctx:SessionContext,raw:unknown):Promise<OfflineContextClosed>{
+ const input=CloseInput.parse(raw);
+ return withAttendanceTenant(ctx,async tx=>{
+  if(!ctx.userId)throw new OfflineContextCloseError('context_unavailable');
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':mobile-integrity:'+ctx.userId},0))`);
+  const own=and(eq(mobileOfflineContext.id,input.contextId),eq(mobileOfflineContext.tenantId,ctx.tenantId),eq(mobileOfflineContext.actorId,ctx.userId));
+  const [located]=await tx.select({deviceKeyId:mobileOfflineContext.deviceKeyId}).from(mobileOfflineContext).where(own).limit(1);
+  if(!located)throw new OfflineContextCloseError('context_unavailable');
+  const [key]=await tx.select({id:mobileIntegrityKey.id}).from(mobileIntegrityKey).where(and(eq(mobileIntegrityKey.id,located.deviceKeyId),eq(mobileIntegrityKey.tenantId,ctx.tenantId),eq(mobileIntegrityKey.actorId,ctx.userId))).limit(1).for('update');
+  if(!key)throw new OfflineContextCloseError('key_unavailable');
+  const [row]=await tx.select().from(mobileOfflineContext).where(own).limit(1).for('update');
+  if(!row||row.deviceKeyId!==key.id)throw new OfflineContextCloseError('context_unavailable');
+  const consumed=row.nextSequence-1;
+  if(row.closedAt){
+   if(row.closeRequestId===input.closeRequestId){if(consumed!==input.consumedThrough)throw new OfflineContextCloseError('binding_conflict');return closed(row);}
+   throw new OfflineContextCloseError('context_closed');
+  }
+  if(input.consumedThrough!==consumed)throw new OfflineContextCloseError(input.consumedThrough>consumed?'claims_pending':'cursor_mismatch');
+  const [retired]=await tx.update(mobileOfflineContext).set({closedAt:sql`clock_timestamp()`,closeReason:'retired',closeRequestId:input.closeRequestId})
+   .where(and(eq(mobileOfflineContext.id,row.id),eq(mobileOfflineContext.nextSequence,row.nextSequence),isNull(mobileOfflineContext.closedAt))).returning();
+  if(!retired)throw new OfflineContextCloseError('context_closed');
+  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'mobile-offline-context',aggregateId:row.id,eventType:'mobile.offline.context.closed',actor:actorOf(ctx),subjectEmploymentId:row.employmentId,
+   payload:{reason:'retired',consumedThrough:consumed,keyId:row.deviceKeyId}});
+  return closed(retired);
+ });
 }

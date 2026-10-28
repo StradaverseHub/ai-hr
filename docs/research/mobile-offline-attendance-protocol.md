@@ -675,3 +675,107 @@ UNMOUNTED: no route, screen or production caller, and it is not exported through
   a later-level rejection, pending blocking a second resolution, and a group admin refused while the
   photo is retained (service and trigger) but able to reject, or to accept after expiry or with no
   photo.
+
+### Deployment configuration and assembly (28 October 2026; IMPLEMENTED, UNVERIFIED)
+
+Status: implemented on `claude/mobile-offline-assembly`; hosted verification pending. No route mounts it, so
+offline attendance stays off on every installation. Absent configuration is `not_configured`; anything malformed
+or inconsistent is `configuration_unavailable`. Nothing is cached: each request and each commit guard re-reads the
+environment.
+
+Owners. `AIHR_MOBILE_OFFLINE_POLICY` (`lib/mobile-offline-rollout-policy.ts`) owns the per-actor allowlist
+(tenant, company, actor ids), the issuer registry, `signingKeyId`, `windowMs`, `permitCount`,
+`maximumIssuesPerHour`, `photoRetentionMs` and `mode`. `AIHR_MOBILE_OFFLINE_SIGNING_KEY` holds the Ed25519 PKCS#8
+PEM for `signingKeyId`. The actor must also be in `AIHR_MOBILE_CLOCK_POLICY` for the platform. That entry owns
+`apiOrigin`, the app target and the Play settings; the offline policy does not repeat them. The snapshot port
+still owns offline-enabled, policy revision, sites and attendance. The assembly
+(`lib/mobile-api/deployed-offline-clock.ts`) puts the deployment's window, permit count and target into the
+snapshot it hands to issuance, and into the one it hands to the adjudicator. Both see the same values, so drift is
+measured consistently. A side effect: changing `windowMs` while claims are in flight sends those claims to review
+as `policy_changed`. It never accepts them.
+
+Schema bounds. These are engineering admission limits, not HR, retention or legal rules: version 1; mode `active`
+or `drain`; 1 to 16 issuers with unique key ids, where each `keyId` is the SHA-256 of its raw public key;
+`signingKeyId` must be one of the issuers; `windowMs` from 60 000 ms to 72 h; `permitCount` from 1 to 32;
+`maximumIssuesPerHour` from 1 to 24; `photoRetentionMs` from 1 h to 366 days; at most 100 entries, unique by
+tenant and company, each with 1 to 1000 unique actor ids; policy JSON at most 262 144 UTF-8 bytes; key PEM at most
+4096 bytes.
+
+Fail-closed table (`core/mobile-offline-rollout.ts`, `readMobileOfflineDeployment`):
+
+| Condition | Result |
+| --- | --- |
+| `AIHR_MOBILE_OFFLINE_POLICY` absent or empty | `not_configured`, before any database or snapshot work |
+| Actor/company not in the offline entries | `not_configured` |
+| Actor not in the clock rollout for this platform, or that platform entry is null | `not_configured` |
+| Offline policy over 262 144 bytes, not JSON, or failing the schema (bounds, registry, unknown keys) | `configuration_unavailable` |
+| `signingKeyId` not among the issuers | `configuration_unavailable` |
+| Active mode: signer revoked, not yet valid or expired, or no key configured | `configuration_unavailable` |
+| Key over 4096 bytes, unparsable, public, not Ed25519, or not matching the signer's public key | `configuration_unavailable` |
+| Clock rollout malformed | `configuration_unavailable` |
+| `AI_CONFIG_SECRET` storage unavailable, integrity storage not ready, or 0647 storage not ready | `configuration_unavailable` |
+| Attendance module not enabled for the company | `module_unavailable` |
+
+`isMobileOfflineStorageReady` follows the enrollment precedent. It reads only catalog metadata, as the
+application role, and checks four things. First, the four 0647 tables exist with forced RLS and SELECT/INSERT
+grants, plus UPDATE on the context's cursor and close columns. Second, all twelve 0647 triggers are present and
+enabled. Third, `app.mobile_offline_key_leased` can be executed. Fourth, the capture's `effective_at` column and
+the `mobile_offline` clock method exist. It detects missing or partial storage. It does not replace the migration
+release checks.
+
+Commit guards. Both run inside the service's own transaction, after its tentative writes, and use no pooled read.
+- `assertOfflineIssueCommit`, for a new issuance (`issue`). The deployment must still be configured for this
+  actor and the context's company, be in active mode (otherwise `draining`), and be identical in every fact it
+  signs or admits: origin, target, clock entry, signer, key digest, window, permit count and budget. The signer
+  must be unrevoked, with validity covering the context. The context must carry the configured window, permit
+  count and signer. A failure rolls back the context, permits, audit and admission budget.
+- `assertOfflineIssueCommit`, for recovery (`recover`). The deployment must still be configured, active or drain,
+  with the same origin and target. The original issuer does not have to be active or still listed.
+- `assertOfflineClaimCommit`. The deployment must still be configured, active or drain, with unchanged origin,
+  target, clock entry and photo retention. It deliberately does not check company offline-enabled, so an
+  adjudicated `offline_disabled` refusal commits and advances the stream. It does not check mode or the issuer
+  registry either: the stored AES-GCM record is the authority.
+
+Drain mode. Claim upload and close stay available. A new issuance is refused before any snapshot read or budget
+charge, and the commit guard refuses it again. If a valid key is still configured, an exact retry of an earlier
+issuance can recover the original bytes, so a phone that lost the response can learn its context id and close
+it. Drain allows a revoked signer, for incident response. Removing the variable altogether stops close and
+upload too, and leaves open leases held until the key is revoked. Withdraw a deployment by switching to drain.
+
+Close (`closeOwnOfflineContext` in `core/mobile-offline-context.ts`). Authority is the bearer session's actor
+plus ownership of the context's registered key, revoked or not. The lock order is the actor admission lock, then
+the key, then the stream. The service retires the context (`retired`) only when the phone's `consumedThrough`
+equals `nextSequence - 1`. If the phone holds claims it has not uploaded, the result is `claims_pending`; if the
+phone is behind the server, it is `cursor_mismatch`. Either way nothing changes. An exact retry (same
+`closeRequestId` and `consumedThrough`) returns the recorded closure. Any other request on a closed or exhausted
+context is `context_closed`. A closed context is never reopened. One `mobile.offline.context.closed` event is
+written. Closing releases the lease, so online clocking and a new issuance work again. If the employment has
+become unreadable, RLS hides the context, and revoking the key is the release path. The deployed close finds the
+deployment through the company the context was issued under, and so does claim upload. Issuance gained the
+refusal `offline_disabled` for the case where the trusted snapshot reports offline as off; no rows are written.
+
+Platforms. iOS claim upload uses the claim's own App Attest assertion and creates no later transport assertion.
+Android claim upload answers `configuration_unavailable` until the transport task supplies the fresh,
+payload-bound Play preparer. The Android capabilities report says so (`claimUpload: unavailable`).
+
+Owner decisions (28 October 2026):
+1. Signing key custody. An environment secret (`AIHR_MOBILE_OFFLINE_SIGNING_KEY`) for the fictional-data pilot;
+   a managed KMS before any real employee data. Rotation: publish the new issuer's public key at least 72 hours
+   plus one registry refresh ahead, then switch `signingKeyId`. Keep the old issuer listed and unrevoked until
+   its contexts expire.
+2. Limits are owned by the deployment: `windowMs` 24 h (cap 72 h), `permitCount` 8, `maximumIssuesPerHour` 4.
+3. `photoRetentionMs` is 30 days. The owner will confirm this with counsel before real data.
+4. If the Android Play verdict fails at sync, the transport refuses with no receipt. The phone keeps the claim
+   queued and retries; HR can revoke the key to release a stuck queue. This is enforced in the later transport
+   task, not here.
+5. Taken as recommended: a company that requires a registered device has issuance refused; drain mode when a
+   deployment is withdrawn; close requires the bearer session plus key ownership; a per-actor rollout allowlist;
+   Android freshness means a payload-bound token plus `maxTokenAgeMs`.
+
+NOT done here: routes and transport; the Android Play preparer; delivering or refreshing the trusted registry to
+phones (capabilities expose no issuers); refusing issuance for a registered-device company (decision 5 is
+recorded, but its enforcement point is the snapshot owner or a later task, UNKNOWN which); wiring
+`offlineClockSnapshotPort(deployment)` from the snapshot branch into `deps.snapshot`; KMS custody. Operator
+inputs still needed: an Ed25519 key pair generated off-repo, the issuer's `keyId`/`publicKey` and its
+`validFrom`/`validUntil` instants (validity must cover every context window that will be issued), and the actor
+allowlist together with matching clock-rollout entries.
