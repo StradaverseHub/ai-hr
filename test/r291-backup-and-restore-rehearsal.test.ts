@@ -858,12 +858,15 @@ describe('source shape (not executable — see file header)', () => {
   });
 
   it('the readiness checklist records what was built and what is still the owner\'s to decide', () => {
+    // 2b3e8c5a4 condensed the checklist: the long "### 1.5" section became one requirement line. What
+    // that section existed to keep true is unchanged — installing off-host backups, a real restore and
+    // PITR remain the owner's to commission, and the scripts existing does not count as done.
     const md = fs.readFileSync(path.join(REPO, 'docs/CUSTOMER-DEPLOYMENT-READINESS.md'), 'utf8');
-    const section = md.slice(md.indexOf('### 1.5'), md.indexOf('### 1.6'));
-    expect(section).toContain('scripts/backup-db.sh');
-    expect(section).toContain('scripts/restore-rehearsal.sh');
-    // The two boxes that cannot be ticked from inside the repo are still unticked.
-    expect(section).toMatch(/- \[ \] .*off-box/);
-    expect(section).toMatch(/- \[ \] .*point-in-time/i);
+    const line = md.split('\n').find((l) => l.includes('Install off-host backups')) ?? '';
+    expect(line.length).toBeGreaterThan(80);
+    expect(line).toMatch(/real restore/);
+    expect(line).toMatch(/app-role/);
+    expect(line).toMatch(/WAL\/PITR/);
+    expect(line).toContain('Backup script existence or a fixture pass is insufficient');
   });
 });
