@@ -7,10 +7,11 @@ import { actorOf, appendEvent } from '../../db/events';
 import { appUser, businessUnit, company, person, rewardCycle, rewardMember, rewardUnit } from '../../db/schema';
 import { withRewardsTenant } from '../../core/module-gate';
 import { rewardRoles, type RewardRole } from './model';
-export type RewardMaintenanceCode = 'scope' | 'changed' | 'locked' | 'account' | 'lastGr' | 'membership' | 'preview' | 'confirmation' | 'used' | 'missing';
-const errorMessages: Record<RewardMaintenanceCode, string> = { scope: 'Company administrator access is required.', changed: 'This review changed in another session. Reload before saving.', locked: 'Return the unit to draft before changing its approved inputs.', account: 'Choose an active existing login account in this tenant.', lastGr: 'Keep at least one active Group Rewards reviewer assigned.', membership: 'The selected membership changed. Reload before saving.', preview: 'Access or account eligibility changed. Preview it again before saving.', confirmation: 'Confirm the exact review before deleting.', used: 'This review is in use and its history must be retained.', missing: 'Reward unit not found or access has been removed.' };
+import { activeRewardLogin, rewardRequiredRoles, rewardRoleLabels, rewardUnitCoverage } from './coverage';
+export type RewardMaintenanceCode = 'scope' | 'changed' | 'locked' | 'account' | 'lastGr' | 'lastRequired' | 'membership' | 'preview' | 'confirmation' | 'used' | 'missing';
+const errorMessages: Record<RewardMaintenanceCode, string> = { scope: 'Company administrator access is required.', changed: 'This review changed in another session. Reload before saving.', locked: 'Return the unit to draft before changing its approved inputs.', account: 'Choose an active existing login account in this tenant.', lastGr: 'Keep at least one active Group Rewards reviewer assigned.', lastRequired: 'Keep at least one active person in every required approval role; replace them in one edit.', membership: 'The selected membership changed. Reload before saving.', preview: 'Access or account eligibility changed. Preview it again before saving.', confirmation: 'Confirm the exact review before deleting.', used: 'This review is in use and its history must be retained.', missing: 'Reward unit not found or access has been removed.' };
 export class RewardMaintenanceError extends Error {
-    constructor(readonly code: RewardMaintenanceCode) { super(errorMessages[code]); this.name = 'RewardMaintenanceError'; }
+    constructor(readonly code: RewardMaintenanceCode, readonly role?: RewardRole) { super(code === 'lastRequired' && role ? `Keep at least one active ${rewardRoleLabels[role]} assigned; replace them in one edit.` : errorMessages[code]); this.name = 'RewardMaintenanceError'; }
 }
 const uuid = z.uuid();
 const memberSchema = z.object({ userId: uuid, role: z.enum(rewardRoles) }).strict();
@@ -42,13 +43,18 @@ const pairKey = (m: {
     userId: string;
     role: string;
 }) => `${m.userId}:${m.role}`;
-async function prepareAccess(tx: Tx, ctx: SessionContext, input: RewardAccessChange, lock = false) {
-    // Access/eligibility writers share this barrier. Join before review locks and authority reads,
-    // so an in-flight employment suspension or scope revocation cannot pass stale eligibility.
-    if (lock)
-        await tx.execute(sql `select app.access_workforce_write_lock()`);
-    const unit = await adminUnit(tx, input.unitId, input.revision, lock);
-    const current = await tx.select({ id: rewardMember.id, userId: rewardMember.userId, role: rewardMember.role }).from(rewardMember).where(eq(rewardMember.unitId, unit.id)).orderBy(asc(rewardMember.userId), asc(rewardMember.role));
+type AccessRow = {
+    id: string;
+    userId: string;
+    role: RewardRole;
+};
+async function accessState(tx: Tx, unitId: string, revision: number, lock: boolean) {
+    const unit = await adminUnit(tx, unitId, revision, lock);
+    const current: AccessRow[] = await tx.select({ id: rewardMember.id, userId: rewardMember.userId, role: rewardMember.role }).from(rewardMember).where(eq(rewardMember.unitId, unit.id)).orderBy(asc(rewardMember.userId), asc(rewardMember.role));
+    return { unit, current };
+}
+/** One change against a unit's membership as it stands (a batch passes its accumulating state). */
+async function applyAccess(tx: Tx, ctx: SessionContext, unit: typeof rewardUnit.$inferSelect, current: AccessRow[], input: RewardAccessChange) {
     if (input.before && !current.some(m => pairKey(m) === pairKey(input.before!)))
         throw new RewardMaintenanceError('membership');
     const next = current.filter(m => !input.before || pairKey(m) !== pairKey(input.before));
@@ -63,11 +69,27 @@ async function prepareAccess(tx: Tx, ctx: SessionContext, input: RewardAccessCha
             throw new RewardMaintenanceError('membership');
         next.push({ id: '', ...input.after });
     }
-    const gr = next.filter(m => m.role === 'gr').map(m => m.userId);
-    const activeGr = gr.length ? await tx.select({ id: appUser.id }).from(appUser).where(and(inArray(appUser.id, gr), eq(appUser.tenantId, ctx.tenantId), isNull(appUser.archivedAt), sql `not app.login_blocked(${appUser.id})`)) : [];
-    if (!activeGr.length)
+    // cd72f915: Group Rewards must always stay covered (as before); any other required seat may not lose its
+    // last active holder. Coverage is judged on the next state, so a replacement in one edit passes.
+    const required = rewardRequiredRoles(unit);
+    const seats = [...new Set([...current, ...next].filter(m => m.role === 'gr' || required.includes(m.role)).map(m => m.userId))];
+    const active = seats.length ? (await tx.select({ id: appUser.id }).from(appUser).where(and(inArray(appUser.id, seats), eq(appUser.tenantId, ctx.tenantId), activeRewardLogin()))).map(x => x.id).sort() : [];
+    const covered = (rows: AccessRow[], role: RewardRole) => rows.some(m => m.role === role && active.includes(m.userId));
+    if (!covered(next, 'gr'))
         throw new RewardMaintenanceError('lastGr');
-    const digest = createHash('sha256').update(JSON.stringify({ actor: ctx.userId, tenant: ctx.tenantId, input, current, activeGr: activeGr.map(x => x.id).sort() })).digest('hex');
+    const lost = required.find(role => covered(current, role) && !covered(next, role));
+    if (lost)
+        throw new RewardMaintenanceError('lastRequired', lost);
+    return { next, active };
+}
+async function prepareAccess(tx: Tx, ctx: SessionContext, input: RewardAccessChange, lock = false) {
+    // Access/eligibility writers share this barrier. Join before review locks and authority reads,
+    // so an in-flight employment suspension or scope revocation cannot pass stale eligibility.
+    if (lock)
+        await tx.execute(sql `select app.access_workforce_write_lock()`);
+    const { unit, current } = await accessState(tx, input.unitId, input.revision, lock);
+    const { next, active } = await applyAccess(tx, ctx, unit, current, input);
+    const digest = createHash('sha256').update(JSON.stringify({ actor: ctx.userId, tenant: ctx.tenantId, input, current, active })).digest('hex');
     return { unit, current, next, digest };
 }
 export async function previewRewardAccessChange(ctx: SessionContext, raw: unknown) { const input = rewardAccessChangeSchema.parse(raw); return withRewardsTenant(ctx, async (tx) => { const p = await prepareAccess(tx, ctx, input); return { ...input, digest: p.digest }; }); }
@@ -97,9 +119,10 @@ export async function rewardAccessAdministration(ctx: SessionContext, companyIds
         const reviews = await tx.select({ id: rewardUnit.id, companyId: company.id, company: company.legalName, businessUnitId: businessUnit.id, unit: sql<string> `coalesce(nullif(trim(${businessUnit.label}),''),${businessUnit.code})`, cycleId: rewardCycle.id, cycle: rewardCycle.name, year: rewardCycle.year, kind: rewardUnit.kind, status: rewardUnit.status, revision: rewardUnit.revision }).from(rewardUnit).innerJoin(company, eq(company.id, rewardUnit.companyId)).innerJoin(businessUnit, eq(businessUnit.id, rewardUnit.businessUnitId)).innerJoin(rewardCycle, eq(rewardCycle.id, rewardUnit.cycleId)).where(and(inArray(rewardUnit.companyId, ids), isNull(rewardUnit.deletedAt), sql `app.reward_admin(${rewardUnit.companyId})`)).orderBy(desc(rewardCycle.year), asc(rewardCycle.name), asc(company.legalName), asc(businessUnit.code), asc(rewardUnit.id));
         if (!reviews.length)
             return { reviews: [], members: [], users: [] };
+        const coverage = new Map((await rewardUnitCoverage(tx, reviews.map(r => r.id))).map(c => [c.unitId, c]));
         const members = await tx.select({ id: rewardMember.id, unitId: rewardMember.unitId, userId: rewardMember.userId, role: rewardMember.role, name: person.fullName, email: person.primaryEmail, disabled: sql<boolean> `${appUser.archivedAt} is not null or app.login_blocked(${appUser.id})` }).from(rewardMember).innerJoin(appUser, and(eq(appUser.id, rewardMember.userId), eq(appUser.tenantId, rewardMember.tenantId))).leftJoin(person, and(eq(person.id, appUser.personId), visibleCandidate)).where(inArray(rewardMember.unitId, reviews.map(r => r.id))).orderBy(asc(person.fullName), asc(appUser.id), asc(rewardMember.unitId), asc(rewardMember.role));
         const users = await tx.select({ id: appUser.id, name: person.fullName, email: person.primaryEmail }).from(appUser).innerJoin(person, and(eq(person.id, appUser.personId), visibleCandidate)).where(and(eq(appUser.tenantId, ctx.tenantId), isNull(appUser.archivedAt), sql `not app.login_blocked(${appUser.id})`)).orderBy(asc(person.fullName), asc(appUser.id));
-        return { reviews, members, users };
+        return { reviews: reviews.map(r => ({ ...r, coverage: coverage.get(r.id)! })), members, users };
     });
 }
 export type RewardAccessAdministration = Awaited<ReturnType<typeof rewardAccessAdministration>>;

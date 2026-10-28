@@ -41,6 +41,10 @@ describe('Rewards review maintenance and canonical scoped access', () => {
         expect((await rewardAccessAdministration(admin, [b.companyId])).members.some(m => m.userId === reviewer.userId)).toBe(false);
         await save(p);
         await save(await preview({ userId: reviewer.userId!, role: 'pbp' }));
+        // cd72f915: a required seat may not lose its last active holder, so another person keeps BU and BG.
+        const keep = await user();
+        await save(await preview({ userId: keep.userId!, role: 'bu' }));
+        await save(await preview({ userId: keep.userId!, role: 'bg' }));
         await save(await preview({ userId: reviewer.userId!, role: 'bg' }, { userId: reviewer.userId!, role: 'bu' }));
         let state = await rewardAccessAdministration(admin, [b.companyId]);
         expect(state.members.filter(m => m.userId === reviewer.userId).map(m => m.role).sort()).toEqual(['bg', 'pbp']);
@@ -49,8 +53,8 @@ describe('Rewards review maintenance and canonical scoped access', () => {
         expect(state.members.filter(m => m.userId === reviewer.userId).map(m => m.role)).toEqual(['pbp']);
         expect((await getRewardUnit(reviewer, id)).roles).toEqual(['pbp']);
         const events = await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId, id), eq(s.domainEvent.eventType, 'reward-unit.access-changed'))).orderBy(asc(s.domainEvent.sequence));
-        expect(events).toHaveLength(4);
-        expect(events[2].payload).toMatchObject({ before: { role: 'bu' }, after: { role: 'bg' } });
+        expect(events).toHaveLength(6);
+        expect(events[4].payload).toMatchObject({ before: { role: 'bu' }, after: { role: 'bg' } });
         for (const privateKey of ['basicCents', 'compensationId', 'recommendation', 'budget'])
             expect(JSON.stringify(state)).not.toContain(privateKey);
     });
@@ -135,6 +139,33 @@ describe('Rewards review maintenance and canonical scoped access', () => {
         expect(state.members.filter(m => m.role === 'gr')).toMatchObject([{ userId: reviewer.userId }]);
         await expect(getRewardUnit(admin, id)).rejects.toThrow(/assign your Reward Desk role/);
         expect((await getRewardConfiguration(admin, id)).canManageMembers).toBe(true);
+    });
+    it('cd72f915: projects required-seat coverage with the submit login predicate and refuses losing the last active holder', async () => {
+        let state = await rewardAccessAdministration(admin, [b.companyId]);
+        let coverage = state.reviews.find(r => r.id === id)!.coverage;
+        // A new review starts with only its creator as Group Rewards; the rest of the route is missing.
+        expect(coverage.missing).toEqual(['bu', 'bg', 'ctro', 'ec', 'payroll']);
+        expect(coverage.roles.find(r => r.role === 'pbp')).toMatchObject({ required: false, activeHolders: [] });
+        expect(coverage.roles.find(r => r.role === 'gr')!.activeHolders.map(h => h.userId)).toEqual([admin.userId]);
+        const ctro = reviewer, spare = await user(), departed = await user();
+        await save(await preview({ userId: ctro.userId!, role: 'ctro' }));
+        await save(await preview({ userId: departed.userId!, role: 'ec' }));
+        await owner.db.update(s.appUser).set({ archivedAt: new Date() }).where(eq(s.appUser.id, departed.userId!));
+        coverage = (await rewardAccessAdministration(admin, [b.companyId])).reviews.find(r => r.id === id)!.coverage;
+        expect(coverage.missing).toEqual(['bu', 'bg', 'ec', 'payroll']);
+        expect(coverage.roles.find(r => r.role === 'ec')!.activeHolders).toEqual([]);
+        expect(coverage.roles.find(r => r.role === 'ctro')!.activeHolders.map(h => h.userId)).toEqual([ctro.userId]);
+        // Removing the last active CTRO is refused and names the role; nothing changes.
+        const rev = await revision();
+        await expect(preview(null, { userId: ctro.userId!, role: 'ctro' })).rejects.toMatchObject({ code: 'lastRequired', role: 'ctro', message: expect.stringMatching(/active CTRO/) });
+        await expect(setRewardMember(admin, id, rev, ctro.userId!, 'ctro', true)).rejects.toMatchObject({ code: 'lastRequired' });
+        expect(await revision()).toBe(rev);
+        // A disabled holder never was coverage, so removing it loses nothing; an Edit replacement passes (add first).
+        await save(await preview(null, { userId: departed.userId!, role: 'ec' }));
+        await save(await preview({ userId: spare.userId!, role: 'ctro' }, { userId: ctro.userId!, role: 'ctro' }));
+        state = await rewardAccessAdministration(admin, [b.companyId]);
+        expect(state.members.filter(m => m.role === 'ctro').map(m => m.userId)).toEqual([spare.userId]);
+        expect(state.members.some(m => m.role === 'ec')).toBe(false);
     });
     it('rechecks revocation for detail, configuration, entry actions and previously open previews', async () => {
         await setRewardMember(admin, id, await revision(), reviewer.userId!, 'gr');

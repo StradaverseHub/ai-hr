@@ -7,8 +7,10 @@ import type { RewardAccessAdministration } from '../packs/rewards/service';
 const ports = vi.hoisted(() => ({ preview: vi.fn(), save: vi.fn(), refresh: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: ports.refresh }) }));
 vi.mock('../app/rewards/actions', () => ({ previewRewardAccessAction: ports.preview, saveRewardAccessAction: ports.save }));
-const review = { id: 'review', companyId: 'company', company: 'Example Company', businessUnitId: 'unit', unit: 'Operations', cycleId: 'cycle', cycle: 'Annual cycle', year: 2026, kind: 'annual' as const, status: 'draft' as const, revision: 4 };
-const value: RewardAccessAdministration = { reviews: [review, { ...review, id: 'locked', businessUnitId: 'locked-unit', unit: 'Finance', status: 'approved' }], users: [{ id: 'admin', name: 'Rewards Lead', email: 'lead@example.test' }, { id: 'user', name: 'New Reviewer', email: 'new@example.test' }], members: [{ id: 'gr', unitId: 'review', userId: 'admin', role: 'gr', name: 'Rewards Lead', email: 'lead@example.test', disabled: false }, { id: 'pbp', unitId: 'locked', userId: 'user', role: 'pbp', name: 'New Reviewer', email: 'new@example.test', disabled: true }] };
+const roles = ['bu', 'bg', 'gr', 'ctro', 'ec', 'pbp', 'payroll'] as const;
+const coverage = (unitId: string, holders: Partial<Record<(typeof roles)[number], string>>) => ({ unitId, roles: roles.map(role => ({ role, required: role !== 'pbp', activeHolders: holders[role] ? [{ userId: role, name: holders[role]!, email: null }] : [] })), missing: roles.filter(role => role !== 'pbp' && !holders[role]) });
+const review = { id: 'review', companyId: 'company', company: 'Example Company', businessUnitId: 'unit', unit: 'Operations', cycleId: 'cycle', cycle: 'Annual cycle', year: 2026, kind: 'annual' as const, status: 'draft' as const, revision: 4, coverage: coverage('review', { gr: 'Rewards Lead' }) };
+const value: RewardAccessAdministration = { reviews: [review, { ...review, id: 'locked', businessUnitId: 'locked-unit', unit: 'Finance', status: 'approved', coverage: coverage('locked', { bu: 'A', bg: 'B', gr: 'C', ctro: 'D', ec: 'E', payroll: 'F' }) }], users: [{ id: 'admin', name: 'Rewards Lead', email: 'lead@example.test' }, { id: 'user', name: 'New Reviewer', email: 'new@example.test' }], members: [{ id: 'gr', unitId: 'review', userId: 'admin', role: 'gr', name: 'Rewards Lead', email: 'lead@example.test', disabled: false }, { id: 'pbp', unitId: 'locked', userId: 'user', role: 'pbp', name: 'New Reviewer', email: 'new@example.test', disabled: true }] };
 const show = () => render(<NextIntlClientProvider locale="en" messages={en}><RewardAccessEditor value={value}/></NextIntlClientProvider>);
 beforeEach(() => { vi.clearAllMocks(); Element.prototype.scrollIntoView = vi.fn(); ports.preview.mockImplementation(async (input) => ({ ok: true, preview: { ...input, digest: 'a'.repeat(64) } })); ports.save.mockResolvedValue({ ok: true }); });
 afterEach(cleanup);
@@ -20,11 +22,23 @@ describe('Central Rewards access journey', () => {
         expect(screen.getByText('Locked review')).toBeTruthy();
         const locked = screen.getByText('Example Company / Finance').closest('tr')!;
         expect(within(locked).getByRole('button', { name: /Edit/ }).hasAttribute('disabled')).toBe(true);
-        const gr = screen.getByText('Rewards Lead').closest('tr')!;
+        const gr = within(screen.getAllByRole('table')[0]).getByText('Rewards Lead').closest('tr')!;
         expect(within(gr).getByRole('button', { name: /Remove/ }).hasAttribute('disabled')).toBe(true);
         expect(within(gr).getByRole('button', { name: /Edit/ }).hasAttribute('disabled')).toBe(false);
         fireEvent.change(screen.getByLabelText('Search users'), { target: { value: 'lead' } });
         expect(screen.queryByText('Example Company / Finance')).toBeNull();
+    });
+    it('cd72f915: shows required-seat coverage per review with missing and optional seats', () => {
+        show();
+        const panel = screen.getByRole('region', { name: en.rewardsAccess.coverageTitle });
+        const draft = within(panel).getByText('Example Company / Operations · Annual cycle').closest('details')!;
+        expect(within(draft).getByText('5 roles missing')).toBeTruthy();
+        expect(within(draft).getAllByText('Missing')).toHaveLength(5);
+        expect(within(draft).getByText('Optional, none')).toBeTruthy();
+        expect(within(draft).getByText('Rewards Lead')).toBeTruthy();
+        const complete = within(panel).getByText('Example Company / Finance · Annual cycle').closest('details')!;
+        expect(within(complete).getByText('All roles assigned')).toBeTruthy();
+        expect(within(complete).queryByText('Missing')).toBeNull();
     });
     it('previews one exact assignment and saves only the previewed before/after with its digest', async () => {
         show();

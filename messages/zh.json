@@ -25908,9 +25908,19 @@
       "confirmation": "请确认所选评审。",
       "used": "此评审已在使用，须保留历史。",
       "missing": "评审不可用或权限已被移除。",
-      "system": "无法保存更改。请重新加载后再试。"
+      "system": "无法保存更改。请重新加载后再试。",
+      "lastRequired": "每个必需的审批角色至少保留一名有效人员；请在一次编辑中完成替换。"
     },
-    "unavailable": "不可用账户 · {id}"
+    "unavailable": "不可用账户 · {id}",
+    "lastRequiredHelp": "必需的审批角色。请通过编辑替换此人。",
+    "coverageTitle": "审批角色覆盖情况",
+    "coverageHelp": "每项评审的审批路线上每个角色以及薪资交接都需要一名有效人员。已停用、已暂停或已离职的登录账户不计入。",
+    "coverageRule": "在没有缺失角色之前，BU CEO 无法提交。移除必需角色中最后一名有效人员将被拒绝；请使用编辑进行替换。",
+    "rolesMissing": "{count, plural, other {缺少 # 个角色}}",
+    "coverageComplete": "所有角色均已分配",
+    "assigned": "已分配",
+    "missingRole": "缺失",
+    "optionalNone": "可选，无"
   },
   "rewardsDeletion": {
     "view": "查看",

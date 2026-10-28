@@ -177,7 +177,9 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
   it('enforces tenant, live membership, module and read-only boundaries', async () => {
     const v = await view();
     await expect(saveRewardEntry(actors.pbp!, unitId, v.unit.revision, v.rows[0].id, v.rows[0].recommendation)).rejects.toThrow(/cannot edit|not found/);
-    await setRewardMember(admin, unitId, v.unit.revision, actors.bu!.userId!, 'bu', true);
+    // cd72f915: the last active BU CEO cannot be removed, so a second holder keeps the seat covered.
+    await setRewardMember(admin, unitId, v.unit.revision, actors.ctro!.userId!, 'bu');
+    await setRewardMember(admin, unitId, (await view()).unit.revision, actors.bu!.userId!, 'bu', true);
     await expect(getRewardUnit(actors.bu!, unitId)).rejects.toThrow(/not found|removed/);
     expect(await withTenant(actors.bu!, tx => tx.select().from(schema.rewardEntry))).toEqual([]);
     const other = await seedBase(); await setModule(other.tenantId, 'rewards', 'active');
@@ -191,7 +193,11 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     await owner.db.update(schema.appUser).set({ archivedAt: new Date() }).where(eq(schema.appUser.id, ctx.userId!));
     await expect(getRewardUnit(ctx, unitId)).rejects.toThrow();
     expect(await withTenant(ctx, tx => tx.select().from(schema.rewardEntry))).toEqual([]);
-    await expect(decideRewardUnit(actors.bu!, unitId, (await view()).unit.revision, 'submit', 'Reviewed recommendations')).rejects.toThrow(/Assign every approval role/);
+    await expect(decideRewardUnit(actors.bu!, unitId, (await view()).unit.revision, 'submit', 'Reviewed recommendations')).rejects.toThrow(/Assign every approval role.*Missing: BG CEO \/ authorised proxy\.$/);
+    // cd72f915: every missing seat is named, in route order, payroll handoff included.
+    await owner.db.update(schema.appUser).set({ archivedAt: new Date() }).where(eq(schema.appUser.id, actors.ctro!.userId!));
+    await owner.db.delete(schema.rewardMember).where(and(eq(schema.rewardMember.unitId, unitId), eq(schema.rewardMember.role, 'payroll')));
+    await expect(decideRewardUnit(actors.bu!, unitId, (await view()).unit.revision, 'submit', 'Reviewed recommendations')).rejects.toThrow('Missing: BG CEO / authorised proxy, CTRO, Payroll handoff.');
   });
   it('delivers current-stage notifications from the userless overnight dispatcher without pay details', async () => {
     await setModule(b.tenantId, 'notifications', 'active');

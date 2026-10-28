@@ -25908,9 +25908,19 @@
       "confirmation": "Confirm the selected review.",
       "used": "This review is in use; retain its history.",
       "missing": "This review is unavailable or access was removed.",
-      "system": "The change could not be saved. Reload and try again."
+      "system": "The change could not be saved. Reload and try again.",
+      "lastRequired": "Keep at least one active person in every required approval role; replace them in one edit."
     },
-    "unavailable": "Unavailable account · {id}"
+    "unavailable": "Unavailable account · {id}",
+    "lastRequiredHelp": "Required approval role. Edit to replace this person.",
+    "coverageTitle": "Approval role coverage",
+    "coverageHelp": "Each review needs an active person in every approval role on its route and the payroll handoff. Disabled, suspended or departed logins do not count.",
+    "coverageRule": "The BU CEO cannot submit until nothing is missing. Removing the last active person in a required role is refused; use Edit to replace them.",
+    "rolesMissing": "{count, plural, one {# role missing} other {# roles missing}}",
+    "coverageComplete": "All roles assigned",
+    "assigned": "Assigned",
+    "missingRole": "Missing",
+    "optionalNone": "Optional, none"
   },
   "rewardsDeletion": {
     "view": "View",
