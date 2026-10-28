@@ -235,6 +235,11 @@ export async function apiPostV2<S extends z.ZodType>(path:V2Path,schema:S,body:R
   operation?.assertCurrent();
   return apiRequest<z.output<S>>(path,canonicalParams(params),{body:JSON.stringify(body),json:true},undefined,operation,{schema});
 }
+/** M11 — one v2 MULTIPART command (a claim and its receipt) decoded by its own result schema. One call, one POST. */
+export async function apiPostFormV2<S extends z.ZodType>(path:V2Path,schema:S,form:FormData,params:Record<string,string|undefined>={},operation?:{assertCurrent():void}):Promise<z.output<S>>{
+  operation?.assertCurrent();
+  return apiRequest<z.output<S>>(path,canonicalParams(params),{body:form,json:false},undefined,operation,{schema});
+}
 
 /**
  * Download a protected file into a random-named cache file (protected-document.ts) and hand back its

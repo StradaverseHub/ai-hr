@@ -8,6 +8,10 @@
  * confirmation that repeats what is being decided, and carries a client requestId the server's receipt replays:
  * when the answer is lost, "Try again" resends the SAME reference, so it is never applied twice. A refusal reloads
  * the task and says why (a moved step/stage is `stale_step`). Nothing is queued or persisted.
+ *
+ * D12 (M11) — expense claims are decided here too: who, the type, the amount (the server's two-place string, never
+ * computed), the date, the employee's description and custom answers, and each receipt viewable through the
+ * task-scoped document route (an image in the app; a PDF says to open it on the web). A rejection needs a reason.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Linking, Pressable, TextInput, View } from 'react-native';
@@ -15,7 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import { DesignText as Text, useTenantDesign } from './design';
-import { apiGetV2, apiPostV2, v2Page } from './api';
+import { apiDownload, apiGetV2, apiPostV2, v2Download, v2Page } from './api';
 import { assertAuthGeneration, authGeneration } from './auth';
 import { config, identityNamespace } from './config';
 import { RequestRejectedError, SignInRequiredError } from './errors';
@@ -23,6 +27,8 @@ import { appLocale, t, type MessageKey } from './i18n';
 import { PagedList, usePagedResource } from './paged-list';
 import { useSession } from './session';
 import { Button, Card, LoadState, Muted, Screen, Title, fmtDays } from './ui';
+import { ClaimAnswers, ReceiptLink, claimMoney } from './claim-parts';
+import { CLAIM_RECEIPT_MAX_BYTES, CLAIM_RECEIPT_TYPES } from '../../lib/mobile-api/v2/claims';
 import {
   TaskDecisionResult, TaskDetailResult, TaskItemV2,
   type TaskDecisionRefusal, type TaskDecisionRefusalCode, type TaskDetailV2, type TaskKind,
@@ -30,9 +36,9 @@ import {
 
 export const TASKS = v2Page('v2/tasks', TaskItemV2);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const NATIVE = ['leave', 'leaveCancellation', 'attendance'] as const;
+const NATIVE = ['leave', 'leaveCancellation', 'attendance', 'claim'] as const;
 /** The only path the app builds: a natively decided kind and a validated UUID. */
-export function taskPath(kind: string, id: string, action?: 'decision'): `v2/${string}` {
+export function taskPath(kind: string, id: string, action?: 'decision' | 'document'): `v2/${string}` {
   if (!(NATIVE as readonly string[]).includes(kind) || !UUID.test(id)) throw new Error('Invalid task reference');
   return `v2/tasks/${kind}/${id.toLowerCase()}${action ? `/${action}` : ''}`;
 }
@@ -128,6 +134,7 @@ type Sent = { body: Body; phase: 'sending' | 'uncertain' };
 
 /** What the task asks, in one line: type · dates · days, or the attendance application's own facts. */
 export function taskLine(task: TaskDetailV2): string {
+  if (task.kind === 'claim') return t('claimsApprovalLine', { type: task.claimItem ? `${task.claimType} · ${task.claimItem}` : task.claimType, amount: claimMoney(task.amount, task.currency), date: task.incurredOn });
   if (task.kind === 'leave') return t('approvalLeaveLine', { type: task.leaveType, dates: span(task.startDate, task.endDate), days: fmtDays(task.days) })
     + (task.fromTime && task.toTime ? ` · ${task.fromTime}–${task.toTime}` : '');
   if (task.kind === 'leaveCancellation') return t('approvalCancellationLine', { type: task.leaveType, dates: task.cancelDates.join(', '), days: fmtDays(task.requestedDays) });
@@ -211,6 +218,16 @@ export function ApprovalDetailScreen({ kind, id }: { kind: string; id: string })
       <Text style={{ color: palette.text, fontSize: 17, lineHeight: 24 }}>{taskLine(task)}</Text>
       {task.employeeReason && <Muted>{t('approvalEmployeeNote', { note: task.employeeReason })}</Muted>}
       {((task.kind === 'leave' && task.hasDocument) || (task.kind === 'attendance' && task.hasAttachment)) && <Muted>{t('approvalDocumentOnWeb')}</Muted>}
+      {task.kind === 'claim' && <>
+        {task.quantityKm && <Muted>{t('claimsKm', { km: task.quantityKm })}</Muted>}
+        {task.fields.length > 0 && <Card>{heading(t('claimsFieldsHeading'))}<ClaimAnswers fields={task.fields} /></Card>}
+        <Card>
+          {heading(t('claimsReceiptsHeading'))}
+          {task.receipts.length === 0 ? <Muted>{t('claimsNoReceipts')}</Muted>
+            : task.receipts.map((r) => <ReceiptLink key={r.id} receipt={r} onSignInRequired={signOut}
+              open={() => apiDownload(v2Download(taskPath('claim', task.id, 'document'), CLAIM_RECEIPT_MAX_BYTES, CLAIM_RECEIPT_TYPES), { attachment: r.id })} />)}
+        </Card>
+      </>}
       {task.kind === 'leave' && task.teamCover && task.teamCover.length > 0 && <Card>
         {heading(t('approvalTeamCover'))}
         {task.teamCover.map((m) => <Muted key={m.name + m.dates.map((d) => d.date).join()}>{t('approvalTeamCoverLine', { name: m.name, dates: m.dates.map((d) => d.status === 'pending' ? t('approvalTeamPendingDate', { date: d.date }) : d.date).join(', ') })}</Muted>)}
