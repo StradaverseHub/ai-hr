@@ -19,7 +19,10 @@ async function rehearsal(run:(tx:Tx,row:typeof schema.mobileIntegrityKey.$inferI
    (select jsonb_agg(pg_get_triggerdef(oid) order by tgname) from pg_trigger where tgrelid='mobile_integrity_key'::regclass and not tgisinternal) triggers`);
   const originalGuards=await guards();
   const original=await tx.execute(sql`select relrowsecurity,relforcerowsecurity,relacl::text from pg_class where oid='mobile_integrity_key'::regclass`);
-  for(const block of migration.split('--> statement-breakpoint').filter(value=>value.trim()))await tx.execute(sql.raw(block));
+  // Journaled 0636 is already applied by the test migrator; re-running it would re-add its new evidence check. Apply the
+  // file only where the worker still has the pre-0636 schema, and pin the same post-migration invariants either way.
+  const [applied]=await tx.execute(sql`select exists(select 1 from pg_constraint where conrelid='mobile_integrity_key'::regclass and conname='mobile_integrity_key_platform_evidence_check') present`);
+  if(!applied.present)for(const block of migration.split('--> statement-breakpoint').filter(value=>value.trim()))await tx.execute(sql.raw(block));
   expect(await tx.execute(sql`select relrowsecurity,relforcerowsecurity,relacl::text from pg_class where oid='mobile_integrity_key'::regclass`)).toEqual(original);
   expect(await guards()).toEqual(originalGuards);
   const identity=await tx.execute(sql`select app.mobile_integrity_installation_id() id`),installationId=String(identity[0].id),challengeId=randomUUID(),appInstallationId=randomUUID();
