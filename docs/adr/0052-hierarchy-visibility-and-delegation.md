@@ -1,5 +1,7 @@
 # ADR-0052 — Hierarchy visibility (direct + indirect / HOD) and approval delegation
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 **Status:** Accepted · **Date:** 2026-06-27 · **Extends:** ADR-0009 (company-scoped authz), reuses the `reporting_line` graph
 
 ## Context

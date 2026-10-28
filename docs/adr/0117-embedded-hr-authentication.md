@@ -1,5 +1,7 @@
 # ADR-0117: First-party authentication inside the HR application
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Owner-directed replacement, 2026-10-15. Supersedes ADR-0098's Keycloak implementation direction. The owner explicitly requires username/password, MFA and password recovery inside the HR app for cloud and on-prem, and cancelled Keycloak activation. No claim of completed activation or device acceptance is made by this decision.
 
 ## Ownership and graph

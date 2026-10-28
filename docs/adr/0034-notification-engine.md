@@ -1,5 +1,7 @@
 # ADR-0034 — Notification engine (multi-channel, event-derived)
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Status:** Accepted. The event-derived in-app engine is live. Workflow email and per-employment consent use the managed SMTP service as specified in §7; activation still requires the private-service upgrade, active relay and verified internal authentication. Additional time-based producers, WhatsApp and push remain deferred. The runtime master gate is the tenant's `notifications` module entitlement.
 - **Date:** 2026-06-22 (34-2b: 2026-06-24)
 - **Builds on:** ADR-0006 (domain-event substrate — the spine notifications derive from), ADR-0033 (TOIL — the first concrete consumer), the existing topbar bell (`core/approvals-inbox.ts` + `components/notification-bell.tsx`)

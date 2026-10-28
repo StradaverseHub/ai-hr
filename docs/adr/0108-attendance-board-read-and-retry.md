@@ -1,5 +1,7 @@
 # ADR-0108: attendance retry identity, duration and earned-credit projections
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted for the approved October board round; verification and release pending.
 
 ## Decisions

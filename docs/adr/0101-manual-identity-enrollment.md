@@ -1,5 +1,7 @@
 # ADR-0101: Administrator-created usernames and temporary passwords
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted, 2026-10-11. The owner explicitly requested an Admin → Users option for manually assigning a username and initial password. This extends ADR-0072's invitation-only enrollment without enabling self-registration, and consumes ADR-0098's deployment-owned identity.
 
 ## Ownership and authorization

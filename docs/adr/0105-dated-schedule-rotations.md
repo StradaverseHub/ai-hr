@@ -1,5 +1,7 @@
 # ADR-0105 — Dated Schedule Group rotations
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Date: 2026-10-12
 Status: Implemented on a build branch; verification and release pending
 Board item: e5fa2d79-618c-4bc7-a5d5-ef696ed845c1

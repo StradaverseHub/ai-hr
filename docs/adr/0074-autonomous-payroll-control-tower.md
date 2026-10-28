@@ -1,5 +1,7 @@
 # ADR-0074 — Autonomous Payroll Control Tower (closed-loop, exception-driven payroll)
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Proposed — **operating model SUPERSEDED by [ADR-0083](0083-hr-operations-control-plane.md)**
 (strategy / target architecture — NOT a build order)
 

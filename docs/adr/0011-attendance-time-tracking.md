@@ -1,5 +1,7 @@
 # ADR-0011 — Attendance & time tracking: from punch-clock to a time engine
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: **Accepted** (Phase A + Phase B implemented) · Date: 2026-06-10
 
 ## Context

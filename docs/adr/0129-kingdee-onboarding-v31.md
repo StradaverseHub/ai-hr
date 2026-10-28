@@ -1,5 +1,7 @@
 # ADR 0129 Kingdee onboarding and requisition workflow
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Date: 18 October 2026
 Status: Accepted for implementation by the owner
 Supersedes: ADR 0095 onboarding decisions only

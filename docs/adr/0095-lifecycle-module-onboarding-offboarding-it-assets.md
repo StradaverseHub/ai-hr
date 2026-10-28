@@ -1,5 +1,7 @@
 # ADR-0095 — The Lifecycle module: employee onboarding and offboarding, IT requisitions, the asset register and asset requests
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Date:** 2026-10-08
 - **Status:** Built on branch `claude/chgb-onboarding-assets-module-c5e840`, not merged, not deployed. Migration 0516.
 - **Source:** the CHGB handover package (`CHGB_Onboarding_IT_Assets_Handover`, 7 October 2026): a brief, field dictionary, API reference, email templates, reference data, an 84-step UAT guide and the proof-of-concept source. Everything below marked FACT was checked in that package or in this repository; everything marked ASSUMPTION or DECISION REQUIRED was not settled by it.

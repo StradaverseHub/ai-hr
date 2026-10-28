@@ -1,5 +1,7 @@
 # ADR-0086 — Retiring the work-site register, and with it ADR-0067's location→calendar mapping
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Status:** Accepted (supersedes [ADR-0067](0067-location-holiday-calendars.md) in part)
 - **Date:** 2026-09-23
 - **Supersedes:** ADR-0067 §(b) and §(c) — the `location.holiday_group_id` mapping and the resolver

@@ -1,5 +1,7 @@
 # ADR-0035 — Payroll Configuration & Pay-Component Completion (Wave 1)
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Status:** Proposed (design only — no code yet). Each slice ships behind the existing `TYPED_PAY_COMPONENTS_ENABLED` flag where it touches the typed-component path; pure-UI/config slices need no new flag.
 - **Date:** 2026-06-22
 - **Builds on:** ADR-0025 (typed pay-components — the catalog + kernel integration we extend), ADR-0028 (EPF contribution modes), ADR-0024 (multi-cycle / `pay_period`), Wave 2A (HRDF levy), ADR-0020 (statutory pack distribution), the existing `/payroll/configuration` page.

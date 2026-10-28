@@ -1,5 +1,7 @@
 # ADR-0013 — Performance & talent management: a cycle-anchored module that closes the loop into pay
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: **Accepted** (Phase A building) · Date: 2026-06-10 · Decisions logged 2026-06-13
 
 ## Decision log (Phase A, accepted 2026-06-13)

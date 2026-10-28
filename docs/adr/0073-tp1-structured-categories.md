@@ -1,5 +1,7 @@
 # ADR-0073 — TP1 Relief: structured per-category breakdown (PDF form → interactive)
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted · 2026-07-06 · Feedback a2f1fa24 · Extends ADR-0050
 
 ## Context

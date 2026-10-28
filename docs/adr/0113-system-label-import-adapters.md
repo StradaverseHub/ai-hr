@@ -1,5 +1,7 @@
 # ADR-0113 — System Labels import uses the existing editors and mutation owners
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - Date: 2026-10-13
 - Status: Accepted
 - Related: ADR-0073, ADR-0080; approved feedback 71b6c25f revision 1.

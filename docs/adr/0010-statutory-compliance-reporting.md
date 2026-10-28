@@ -1,5 +1,7 @@
 # ADR-0010: Statutory & compliance reporting
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 **Status:** Proposed
 
 **Supersedes:** none · **Related:** [0006](0006-event-and-audit-substrate.md) (event/audit substrate),

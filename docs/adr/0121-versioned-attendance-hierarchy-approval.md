@@ -1,5 +1,7 @@
 # ADR-0121: Versioned Attendance hierarchy approvals
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Date: 2026-10-15. Board: 797ba70b. Decision: approved implementation direction; verification remains required.
 
 Attendance templates already own immutable versions, criteria, priority, ordered stages and on-submit

@@ -1,5 +1,7 @@
 # ADR-0084 — Propose · adjudicate · learn: making the AI operational rather than advisory
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Status:** Proposed (operating pattern + build order)
 - **Date:** 2026-09-01
 - **Builds on:** [ADR-0083](0083-hr-operations-control-plane.md) (HR operations as a control plane — this

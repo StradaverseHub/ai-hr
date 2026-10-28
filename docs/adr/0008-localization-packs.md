@@ -1,5 +1,7 @@
 # ADR-0008: Localization via installable country packs
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Status:** Accepted — *architecture now; the Malaysia pack is built incrementally*
 - **Date:** 2026-06-05
 - **Deciders:** Founder (solo) + Claude (acting architect)

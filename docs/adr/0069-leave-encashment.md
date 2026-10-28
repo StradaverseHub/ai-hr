@@ -1,5 +1,7 @@
 # ADR-0069: Leave Encashment (leave-side only)
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted
 Feedback: "Leave Encashment Setting under Leave Module" — Leave module calculates + freezes + exposes
 encashable days; Payroll module (existing `encashmentDivisor`, untouched) does the money conversion.

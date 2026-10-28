@@ -1,5 +1,7 @@
 # ADR-0060 — Employee loan instalments (1.2.8)
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 **Status:** Accepted
 **Date:** 2026-06-27
 **Supersedes:** —

@@ -1,5 +1,7 @@
 # ADR-0088 — Native mobile app: one identity resolver, a narrow versioned API, an evidence ledger for clocking
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations. Authentication direction is superseded where applicable by [ADR-0117](0117-embedded-hr-authentication.md); legacy adapters do not establish deployment activation.
+
 Status: **Accepted** (2026-09-30). Proposed, revised the same day after the market benchmark, and approved
 by the owner ("Yes go ahead") on the revised text. Phase 1 started in r370.
 
