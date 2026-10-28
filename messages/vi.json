@@ -485,7 +485,8 @@
     "aiManagementAllowances": "Hạn mức",
     "aiManagementSpending": "Chi tiêu",
     "aiManagementOrchestrator": "Bộ điều phối HR trung tâm",
-    "aiManagementRuns": "Lượt gọi mô hình gần đây"
+    "aiManagementRuns": "Lượt gọi mô hình gần đây",
+    "moduleELetter": "Thư điện tử"
   },
   "dashboard": {
     "title": "Bảng điều khiển",

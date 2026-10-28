@@ -485,7 +485,8 @@
     "aiManagementAllowances": "额度",
     "aiManagementSpending": "支出",
     "aiManagementOrchestrator": "中央 HR 编排器",
-    "aiManagementRuns": "最近模型调用"
+    "aiManagementRuns": "最近模型调用",
+    "moduleELetter": "电子信函"
   },
   "dashboard": {
     "title": "仪表盘",

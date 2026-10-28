@@ -485,7 +485,8 @@
     "aiManagementAllowances": "Allowances",
     "aiManagementSpending": "Spending",
     "aiManagementOrchestrator": "Central HR orchestrator",
-    "aiManagementRuns": "Recent model calls"
+    "aiManagementRuns": "Recent model calls",
+    "moduleELetter": "E-Letter"
   },
   "dashboard": {
     "title": "Dashboard",

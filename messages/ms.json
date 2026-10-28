@@ -485,7 +485,8 @@
     "aiManagementAllowances": "Peruntukan",
     "aiManagementSpending": "Perbelanjaan",
     "aiManagementOrchestrator": "Orkestrator HR pusat",
-    "aiManagementRuns": "Panggilan model terkini"
+    "aiManagementRuns": "Panggilan model terkini",
+    "moduleELetter": "E-Surat"
   },
   "dashboard": {
     "title": "Papan pemuka",

@@ -485,7 +485,8 @@
     "aiManagementAllowances": "โควตา",
     "aiManagementSpending": "ค่าใช้จ่าย",
     "aiManagementOrchestrator": "ตัวประสานงาน HR กลาง",
-    "aiManagementRuns": "การเรียกโมเดลล่าสุด"
+    "aiManagementRuns": "การเรียกโมเดลล่าสุด",
+    "moduleELetter": "จดหมายอิเล็กทรอนิกส์"
   },
   "dashboard": {
     "title": "แดชบอร์ด",

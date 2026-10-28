@@ -485,7 +485,8 @@
     "aiManagementAllowances": "ஒதுக்கீடுகள்",
     "aiManagementSpending": "செலவு",
     "aiManagementOrchestrator": "மத்திய HR ஒருங்கிணைப்பாளர்",
-    "aiManagementRuns": "சமீபத்திய மாதிரி அழைப்புகள்"
+    "aiManagementRuns": "சமீபத்திய மாதிரி அழைப்புகள்",
+    "moduleELetter": "மின்-கடிதம்"
   },
   "dashboard": {
     "title": "டாஷ்போர்டு",
