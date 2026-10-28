@@ -1,7 +1,8 @@
 /** HR review and human resolution of offline claims (owner decisions 2026-10-28; protocol decision 6), on draft 0647.
  * Read: a holder of attendance-correction authority over the claim's employment (app.can_correct_attendance) lists that
- * employment's claims and, unless a group admin, reads an UNEXPIRED retained photo; every listed claim and every photo
- * read appends an audit event. Resolve: one immutable human decision per needs_review claim, with a reason. An accept
+ * employment's claims and, unless a group admin, reads an UNEXPIRED retained photo; every photo read appends an audit
+ * event (owner decision: photo reads are audited). Listing claims writes nothing: a list load is a read of metadata the
+ * session may already see under RLS, and auditing every row of every page load recorded no decision. Resolve: one immutable human decision per needs_review claim, with a reason. An accept
  * is an HR punch correction: the existing correction owner (requestAttendanceCorrection then decideAttendanceCorrection,
  * core/attendance.ts) files a clock-data correction adding one 'admin' punch at the instant the resolver chooses inside
  * the claim's proven interval, and the resolver decides its first level, in this transaction. Its rules apply, not the
@@ -13,7 +14,9 @@
  * Owner decision D-B: while the claim's photo is retained only a session that may read it (correction authority that
  * is not a group admin) accepts; a group admin may reject, and may accept once the photo has expired or been purged or
  * when there is none. The resolution row links the claim to that correction. The claim row is never changed.
- * Permission is checked here as well as by RLS and the bound trigger. UNMOUNTED: no route, screen or production caller.
+ * Permission is checked here as well as by RLS and the bound trigger. Mounted by the HR review tab of Attendance ›
+ * Application History (app/attendance/application-history) and its photo route; not exported through the facade,
+ * because core/mobile-offline-claim (its AAD owner) is server-only.
  *
  * Lock order of a resolution: the subject advisory lock (tenant:employment), then the correction owner's own order
  * (payroll batches by id on filing; on approval the same subject lock again, re-entrant, the correction row, its
@@ -22,11 +25,11 @@
  * stream lock, so it cannot wait on one while holding the subject lock, and below the subject lock both serialize on
  * that one lock per employment. */
 import {createHash} from 'node:crypto';
-import {and,desc,eq,isNull,sql} from 'drizzle-orm';
+import {and,desc,eq,inArray,isNull,sql} from 'drizzle-orm';
 import {z} from 'zod';
 import type {SessionContext,Tx} from '../../db/client';
-import {employment,mobileOfflineClaim,mobileOfflineClaimResolution,mobileOfflinePhoto} from '../../db/schema';
-import {actorOf,appendEvent,appendEvents} from '../../db/events';
+import {employment,mobileOfflineClaim,mobileOfflineClaimResolution,mobileOfflinePhoto,person} from '../../db/schema';
+import {actorOf,appendEvent} from '../../db/events';
 import {decryptSecret} from '../../lib/ai/crypto';
 import {HR_LOCAL_TZ,todayInKualaLumpur} from '../../lib/hr-date';
 import {OfflineClockSignedClaim,offlineClockClaimClientData,type OfflineClockClaimData} from '../../lib/mobile-offline-clock';
@@ -85,7 +88,7 @@ async function retainedPhotoTx(tx:Tx,ctx:SessionContext,claim:ClaimRow){
  return {bytes,mimeType:p.mimeType,sha256:p.photoDigest,retainedUntil:p.retainedUntil.getTime()};
 }
 
-const ListFilters=z.object({companyId:uuid.optional(),employmentId:uuid.optional(),outcome:z.enum(['accepted','needs_review','refused']).optional(),unresolved:z.boolean().optional(),
+const ListFilters=z.object({companyId:uuid.optional(),companyIds:z.array(uuid).max(1000).optional(),employmentId:uuid.optional(),outcome:z.enum(['accepted','needs_review','refused']).optional(),unresolved:z.boolean().optional(),
  limit:z.number().int().min(1).max(100).default(50),before:uuid.optional()}).strict();
 export type OfflineClaimReviewFilters=z.input<typeof ListFilters>;
 /** A resolution's state: a reject is 'rejected'; an accept is its correction's status ('approved' read as 'accepted'). */
@@ -105,31 +108,40 @@ const resolutionView=(r:ResolutionRow,state:ResolutionState|undefined)=>{if(!sta
   reason:r.reason,resolvedBy:r.resolvedBy,resolvedAt:r.resolvedAt.getTime()};};
 export type OfflineClaimResolutionView=ReturnType<typeof resolutionView>;
 /** Claims the session may correct, newest received first (received_at desc, id desc); `before` is the last claim id of
- * the previous page. Metadata, outcome, reason, the signed command's action/location/source flags and any resolution;
- * never photo bytes or the signed proof. Each returned claim appends one audit event. */
+ * the previous page. Metadata, the employee's name, outcome, reason, the signed command's action/location/source flags
+ * and any resolution; never photo bytes or the signed proof. Read-only: no audit event (only a photo read is audited). */
 export async function listOfflineClaimsForReviewTx(tx:Tx,ctx:SessionContext,filters:OfflineClaimReviewFilters={}){
  const parsed=ListFilters.safeParse(filters);if(!parsed.success)throw refuse('invalid_input');const f=parsed.data;
  if(!ctx.userId)throw refuse('forbidden');
  if(f.employmentId&&!(await authorityTx(tx,f.employmentId)).correct)throw refuse('forbidden');
  const c=mobileOfflineClaim,r=mobileOfflineClaimResolution;
- const rows=await tx.select({claim:c,companyId:employment.companyId,resolution:r,photoLive:sql<boolean>`coalesce(${c.photoRetainedUntil}>clock_timestamp(),false)`}).from(c)
-  .innerJoin(employment,eq(employment.id,c.employmentId)).leftJoin(r,eq(r.claimId,c.id))
+ const rows=await tx.select({claim:c,companyId:employment.companyId,employeeName:person.fullName,resolution:r,photoLive:sql<boolean>`coalesce(${c.photoRetainedUntil}>clock_timestamp(),false)`}).from(c)
+  .innerJoin(employment,eq(employment.id,c.employmentId)).leftJoin(person,eq(person.id,employment.personId)).leftJoin(r,eq(r.claimId,c.id))
   .where(and(eq(c.tenantId,ctx.tenantId),sql`app.can_correct_attendance(${c.employmentId})`,f.employmentId?eq(c.employmentId,f.employmentId):undefined,
-   f.companyId?eq(employment.companyId,f.companyId):undefined,f.outcome?eq(c.outcome,f.outcome):undefined,f.unresolved?isNull(r.claimId):undefined,
+   f.companyId?eq(employment.companyId,f.companyId):undefined,f.companyIds?(f.companyIds.length?inArray(employment.companyId,f.companyIds):sql`false`):undefined,f.outcome?eq(c.outcome,f.outcome):undefined,f.unresolved?isNull(r.claimId):undefined,
    f.before?sql`(${c.receivedAt},${c.id})<(select b.received_at,b.id from mobile_offline_claim b where b.id=${f.before}::uuid and b.tenant_id=${ctx.tenantId}::uuid)`:undefined))
   .orderBy(desc(c.receivedAt),desc(c.id)).limit(f.limit);
  const states=await resolutionStatesTx(tx,rows.flatMap(row=>row.resolution?[row.resolution.claimId]:[]));
- const claims=rows.map(({claim,companyId,resolution,photoLive})=>{const signed=signedClaimOf(claim);return {id:claim.id,employmentId:claim.employmentId,companyId,actorId:claim.actorId,
+ const claims=rows.map(({claim,companyId,employeeName,resolution,photoLive})=>{const signed=signedClaimOf(claim);return {id:claim.id,employmentId:claim.employmentId,companyId,employeeName:employeeName??null,actorId:claim.actorId,
   contextId:claim.contextId,sequence:claim.sequence,requestId:claim.requestId,outcome:claim.outcome,reason:claim.reason,claimedAt:claim.claimedAt.getTime(),sampledAt:claim.sampledAt.getTime(),
   receivedAt:claim.receivedAt.getTime(),effectiveMinimum:claim.effectiveMinimum?.getTime()??null,effectiveMaximum:claim.effectiveMaximum?.getTime()??null,effectiveAt:claim.effectiveAt?.getTime()??null,
   captureId:claim.captureId,command:{action:signed.command.action,lat:signed.command.lat,lng:signed.command.lng,accuracy:signed.command.accuracy},
   evidence:{mock:signed.evidence.mock,simulated:signed.evidence.simulated,accessory:signed.evidence.accessory},
   photo:claim.photoDigest&&claim.photoRetainedUntil?{sha256:claim.photoDigest,retainedUntil:claim.photoRetainedUntil.getTime(),retained:photoLive===true}:null,
   resolution:resolution?resolutionView(resolution,states.get(resolution.claimId)):null};});
- await appendEvents(tx,claims.map(claim=>({tenantId:ctx.tenantId,aggregateType:'mobile-offline-claim',aggregateId:claim.id,eventType:'mobile.offline.claim.reviewed',actor:actorOf(ctx),subjectEmploymentId:claim.employmentId,payload:{reason:'review'}})));
  return {claims,next:claims.length===f.limit?claims[claims.length-1].id:null};
 }
 export function listOfflineClaimsForReview(ctx:SessionContext,filters:OfflineClaimReviewFilters={}){return withAttendanceTenant(ctx,tx=>listOfflineClaimsForReviewTx(tx,ctx,filters));}
+export type OfflineClaimReviewRow=Awaited<ReturnType<typeof listOfflineClaimsForReviewTx>>['claims'][number];
+/** The HR review tab's one read: held claims of `companyIds` (unresolved only unless `all`), newest first, and whether
+ * this session is a group admin (owner decision D-B: no retained photo and no accept while the photo is kept). */
+export function readOfflineClaimReviewPage(ctx:SessionContext,p:{companyIds:readonly string[];all:boolean;before?:string}){
+ return withAttendanceTenant(ctx,async tx=>{
+  const [row]=await tx.execute<{group:boolean}>(sql`select app.is_group_admin() "group"`);
+  const page=await listOfflineClaimsForReviewTx(tx,ctx,{companyIds:[...p.companyIds],outcome:'needs_review',...(p.all?{}:{unresolved:true}),...(p.before?{before:p.before}:{})});
+  return {groupAdmin:row?.group===true,...page};
+ });
+}
 
 /** The retained original photo of one claim, for a correction-authority holder that is not a group admin. Each read is
  * audited (actor, claim, reason "review"). No photo, an expired one or purged custody is a typed refusal. */

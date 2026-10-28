@@ -12,9 +12,14 @@ vi.mock('next/headers', () => ({ cookies: async () => ({ get: cookie }) }));
 vi.mock('next-intl/server', () => ({ getTranslations: async () => createTranslator({ locale: 'en', messages: { attendanceHistory: en.attendanceHistory }, namespace: 'attendanceHistory', onError: error => { throw error; } }) }));
 vi.mock('../packs/attendance/service', () => ({ listAttendanceApplicationHistory: list, attendanceApplicationFilterOptions: options }));
 vi.mock('../components/attendance-history-table', () => ({ AttendanceHistoryTable: ({ returnTo }: { returnTo: string }) => <a href={`/detail?returnTo=${encodeURIComponent(returnTo)}`}>Saved context</a> }));
+// The Offline punches tab (draft 0647) reads the database; without the draft it is absent, which this suite pins.
+// Its own rendering is covered by test/offline-claims-review.dom.test.tsx.
+const offline = vi.hoisted(() => ({ count: null as number | null }));
+vi.mock('../app/attendance/application-history/offline-data', () => ({ offlineReviewTabCount: async () => offline.count, loadOfflineReview: vi.fn() }));
+vi.mock('../app/attendance/application-history/offline-review', () => ({ OfflineClaimsReview: () => null }));
 import Page from '../app/attendance/application-history/page';
 beforeEach(() => {
-  vi.clearAllMocks(); cookie.mockReturnValue(undefined);
+  vi.clearAllMocks(); cookie.mockReturnValue(undefined); offline.count = null;
   list.mockResolvedValue({ rows: [], total: 3, page: 1, pageSize: 25, counts: { pending: 3, approved: 5, rejected: 2, cancelled: 1, withdrawn: 2, cancelledWithdrawn: 3, all: 13 } });
   options.mockResolvedValue({ employees: [{ id: 'employee', name: 'Fictional worker', employeeCode: '0007', companyId: 'company', company: 'Fictional company', departmentId: null, department: null, businessUnitId: null, businessUnit: null, terminatedOn: null }], companies: [], departments: [], businessUnits: [], grades: [], divisions: [] });
 });
@@ -60,4 +65,16 @@ it('hides the employee list independently while retaining picker and unsaved app
   fireEvent.click(screen.getAllByRole('button', { name: en.employeePanel.showEmployees })[0]);
   expect(screen.getByRole('searchbox')).toHaveValue('Fictional');
   expect(query).toHaveValue('unsaved request search');
+});
+
+it('shows no Offline punches tab without draft 0647, and the tab with its count when it is installed', async () => {
+  await show();
+  expect(screen.queryByRole('link', { name: /Offline punches/ })).toBeNull();
+  cleanup(); offline.count = 4;
+  await show({ status: 'approved' });
+  const tab = screen.getByRole('link', { name: en.attendanceHistory.offline.tab.replace('{count}', '4') });
+  expect(tab).toHaveAttribute('href', '/attendance/application-history?view=offline');
+  expect(tab).not.toHaveAttribute('aria-current');
+  // The status tabs never carry the offline view's own keys.
+  expect(new URL(screen.getByRole('link', { name: 'Pending 3' }).getAttribute('href')!, 'http://localhost').searchParams.get('view')).toBeNull();
 });

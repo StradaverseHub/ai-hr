@@ -13,8 +13,8 @@ import {setCompensation} from '../core/comp';
 import {withAttendanceTenant} from '../core/module-gate';
 import {AttendanceCorrectionPendingError,decideAttendanceCorrection,requestAttendanceCorrection} from '../core/attendance';
 import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../core/attendance-workflow';
-import {AttendancePayrollClosedError,ClockDataChangedError,attendanceClockData,captureOfflineClockTx,planOfflineClockTx} from '../packs/attendance/service';
-import {listOfflineClaimsForReview,ownOfflineClaimResolution,readOfflineClaimPhotoForReview,readOfflineClaimResolutionBaselineTx,resolveOfflineClaim} from '../packs/attendance/mobile-offline-claim-review';
+import {AttendancePayrollClosedError,ClockDataChangedError,attendanceClockData,captureOfflineClockTx,countOfflineClaimsAwaitingReview,planOfflineClockTx} from '../packs/attendance/service';
+import {listOfflineClaimsForReview,ownOfflineClaimResolution,readOfflineClaimPhotoForReview,readOfflineClaimResolutionBaselineTx,readOfflineClaimReviewPage,resolveOfflineClaim} from '../packs/attendance/mobile-offline-claim-review';
 import {createBatch,generatePayslips,lockPayrollForAttendanceChange} from '../packs/payroll/service';
 import type {OfflineClockClaimData} from '../lib/mobile-offline-clock';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -123,7 +123,7 @@ const visible=(ctx:SessionContext)=>withAttendanceTenant(ctx,async tx=>({
 const failure=(work:Promise<unknown>)=>work.then(()=>'resolved',(error:{message?:string;cause?:{message?:string}})=>[error?.message,error?.cause?.message].join(' | '));
 
 describe('HR read access to offline claims (owner decision 2026-10-28)',()=>{
- it('lets HR with correction rights for the company list claims and read an unexpired photo, auditing every read',async()=>{
+ it('lets HR with correction rights for the company list claims and read an unexpired photo, auditing the photo read',async()=>{
   const f=await offlineServiceFixture(base),bytes=Buffer.from('held offline photo'),receipt=await held(f,{photo:bytes}),hr=await scopedUser('hr_admin',base.companyId);
   // Non-vacuous: the owner sees the claim and its retained custody.
   expect(await owner.db.select({id:S.mobileOfflineClaim.id,outcome:S.mobileOfflineClaim.outcome}).from(S.mobileOfflineClaim)).toEqual([{id:receipt.id,outcome:'needs_review'}]);
@@ -137,11 +137,44 @@ describe('HR read access to offline claims (owner decision 2026-10-28)',()=>{
   expect(JSON.stringify(page)).not.toContain(bytes.toString('base64'));expect(JSON.stringify(page)).not.toContain(bytes.toString());
   const photo=await readOfflineClaimPhotoForReview(hr,receipt.id);
   expect(photo.bytes).toEqual(bytes);expect(photo).toMatchObject({mimeType:'image/jpeg',sha256:digest(bytes),retainedUntil:receipt.photo!.retainedUntil});
-  expect(await events(receipt.id)).toEqual([{eventType:'mobile.offline.claim.reviewed',actorId:hr.userId,payload:{reason:'review'}},
-   {eventType:'mobile.offline.photo.reviewed',actorId:hr.userId,payload:{reason:'review',digest:digest(bytes),retainedUntil:new Date(receipt.photo!.retainedUntil).toISOString()}}]);
+  // A list load writes no audit row (owner decision: only photo reads are audited); the photo read writes one.
+  expect(await events(receipt.id)).toEqual([{eventType:'mobile.offline.photo.reviewed',actorId:hr.userId,payload:{reason:'review',digest:digest(bytes),retainedUntil:new Date(receipt.photo!.retainedUntil).toISOString()}}]);
   // The employee keeps reading only their own claim and custody.
   expect(await visible(f.ctx)).toEqual({claims:[receipt.id],photos:[receipt.id],resolutions:[]});
   await expect(readOfflineClaimPhotoForReview(f.ctx,receipt.id)).rejects.toMatchObject({reason:'forbidden'});
+ });
+ it('writes no audit row for a list load, however often, while every photo read still writes one',async()=>{
+  const f=await offlineServiceFixture(base),bytes=Buffer.from('audited photo only'),receipt=await held(f,{photo:bytes}),hr=await scopedUser('hr_admin',base.companyId);
+  const total=async()=>Number((await owner.db.execute<{n:number}>(sql`select count(*)::int n from domain_event where tenant_id=${base.tenantId}::uuid`))[0].n);
+  const before=await total();
+  // Non-vacuous: the list returns the claim, with the employee's name, on every load.
+  for(const filters of [{},{outcome:'needs_review' as const,unresolved:true},{companyIds:[base.companyId]}]){
+   const page=await listOfflineClaimsForReview(hr,filters);
+   expect(page.claims.map(claim=>claim.id)).toEqual([receipt.id]);expect(page.claims[0].employeeName).toEqual(expect.any(String));
+  }
+  expect(await total()).toBe(before);
+  expect(await events(receipt.id)).toEqual([]);
+  await readOfflineClaimPhotoForReview(hr,receipt.id);await readOfflineClaimPhotoForReview(hr,receipt.id);
+  expect(await total()).toBe(before+2);
+  expect((await events(receipt.id)).map(event=>[event.eventType,event.actorId])).toEqual([['mobile.offline.photo.reviewed',hr.userId],['mobile.offline.photo.reviewed',hr.userId]]);
+ });
+ it('counts held claims awaiting a human decision per company, for HR who may correct them, until one is resolved',async()=>{
+  const f=await offlineServiceFixture(base),receipt=await held(f),hr=await scopedUser('hr_admin',base.companyId),foreign=await scopedUser('hr_admin',other);
+  // Non-vacuous: the owner sees one held claim with no resolution.
+  expect(await owner.db.select({id:S.mobileOfflineClaim.id,outcome:S.mobileOfflineClaim.outcome}).from(S.mobileOfflineClaim)).toEqual([{id:receipt.id,outcome:'needs_review'}]);
+  expect(await countOfflineClaimsAwaitingReview(hr,[base.companyId])).toBe(1);
+  expect(await countOfflineClaimsAwaitingReview(hr,[base.companyId,other])).toBe(1);
+  expect(await countOfflineClaimsAwaitingReview(hr,[other])).toBe(0);
+  expect(await countOfflineClaimsAwaitingReview(hr,[])).toBe(0);
+  expect(await countOfflineClaimsAwaitingReview(foreign,[base.companyId,other])).toBe(0);
+  // The review tab's page agrees with the count, and the waiting view drops the claim once it is decided.
+  expect((await readOfflineClaimReviewPage(hr,{companyIds:[base.companyId],all:false})).claims.map(claim=>claim.id)).toEqual([receipt.id]);
+  await resolveOfflineClaim(hr,{claimId:receipt.id,decision:'rejected',reason:'No supporting record'});
+  expect(await countOfflineClaimsAwaitingReview(hr,[base.companyId])).toBe(0);
+  expect((await readOfflineClaimReviewPage(hr,{companyIds:[base.companyId],all:false})).claims).toEqual([]);
+  expect((await readOfflineClaimReviewPage(hr,{companyIds:[base.companyId],all:true})).claims.map(claim=>[claim.id,claim.resolution?.status])).toEqual([[receipt.id,'rejected']]);
+  expect(await readOfflineClaimReviewPage(hr,{companyIds:[other],all:true})).toMatchObject({groupAdmin:false,claims:[]});
+  expect((await readOfflineClaimReviewPage(adminCtx(base),{companyIds:[base.companyId],all:true})).groupAdmin).toBe(true);
  });
  it('shows HR of another company and a plain colleague nothing, through RLS as the application role',async()=>{
   const f=await offlineServiceFixture(base),bytes=Buffer.from('another company may not see this'),receipt=await held(f,{photo:bytes});

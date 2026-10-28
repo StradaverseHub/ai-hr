@@ -68,6 +68,16 @@ const sameTarget=(a:MobileOfflineDeployment['target'],b:MobileOfflineDeployment[
 const issueFingerprint=(d:MobileOfflineDeployment)=>JSON.stringify([d.mode,d.apiOrigin,d.target,d.clock,d.signingKeyId,d.signing?.issuer??null,d.signing?.pemDigest??null,d.windowMs,d.permitCount,d.maximumIssuesPerHour]);
 const claimFingerprint=(d:MobileOfflineDeployment)=>JSON.stringify([d.apiOrigin,d.target,d.clock,d.photoRetentionMs]);
 export const isMobileOfflineDeploymentPresent=()=>Boolean(process.env.AIHR_MOBILE_OFFLINE_POLICY);
+/** The company settings card's "available on this server" answer: an ACTIVE deployment policy that lists this tenant
+ * and company for at least one actor. Absent, malformed, oversized or draining is not available. Display only: it
+ * checks no signer, key or storage, and issuance and claims keep their own checks. */
+export function isMobileOfflineDeploymentActiveForCompany(tenantId:string,companyId:string){
+ const raw=process.env.AIHR_MOBILE_OFFLINE_POLICY;
+ if(!raw||Buffer.byteLength(raw,'utf8')>OFFLINE_ROLLOUT_LIMITS.policyBytes)return false;
+ let input:unknown;try{input=JSON.parse(raw);}catch{return false;}
+ const parsed=MobileOfflineRolloutPolicy.safeParse(input);
+ return parsed.success&&parsed.data.mode==='active'&&parsed.data.entries.some(entry=>entry.tenantId===tenantId&&entry.companyId===companyId);
+}
 const trigger=(table:string,name:string)=>sql`EXISTS(SELECT 1 FROM pg_trigger WHERE tgrelid=to_regclass(${'public.'+table}::text) AND tgname=${name}::text AND tgenabled='O')`;
 const forced=(table:string)=>sql`EXISTS(SELECT 1 FROM pg_class WHERE oid=to_regclass(${'public.'+table}::text) AND relrowsecurity AND relforcerowsecurity)`;
 const granted=(table:string,privilege:string)=>sql`coalesce(has_table_privilege(current_user,to_regclass(${'public.'+table}::text),${privilege}::text),false)`;

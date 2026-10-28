@@ -106,3 +106,5 @@ export {retainedAttendancePolicyPlanCancellationTx,attendancePolicyCompleteAppro
 export {createOfflineAdjudicator,readOfflineClockingPolicyTx,offlineEffectiveInstant,OfflineAdjudicationError,OFFLINE_PROVEN_WINDOW_SECONDS,type OfflineAdjudication,type OfflineClockingPolicy,type OfflineEffectiveInstant} from './mobile-offline-adjudicator';
 // The production offline clock snapshot: the one port context issuance and the adjudicator both take. Unmounted.
 export {readOfflineClockSnapshotTx,offlineClockSnapshotPort,offlineClockPolicyRevision,type OfflineClockSnapshotDeployment} from './mobile-offline-snapshot';
+// The per-company offline clocking settings write and the review count (draft 0647). No server-only import below.
+export {setOfflineClockingPolicy,readOfflineClockingSettings,readOfflineClockingSettingsTx,offlineClockingColumnsPresentTx,countOfflineClaimsAwaitingReview,countOfflineClaimsAwaitingReviewTx,OfflineClockingSettingsError,type OfflineClockingSettingsRefusal,type OfflineClockingSettingsView,type OfflineClockingPolicyInput} from './mobile-offline-settings';
