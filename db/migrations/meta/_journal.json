@@ -3725,6 +3725,13 @@
       "when": 1793160000000,
       "tag": "0662_ai_group_allowance",
       "breakpoints": true
+    },
+    {
+      "idx": 647,
+      "version": "7",
+      "when": 1793165000000,
+      "tag": "0668_people_duplicate_email_policy",
+      "breakpoints": true
     }
   ]
 }

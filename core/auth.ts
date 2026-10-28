@@ -18,7 +18,7 @@ import { keycloakSelected } from '../lib/identity/config';
  */
 import { randomBytes, createHash, randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { and, eq, isNull, ne } from 'drizzle-orm';
+import { and, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { client, withTenant, type SessionContext, type Tx } from '../db/client';
 import { appInvitation, appUser, roleAssignment, accountEmailDelivery } from '../db/schema';
 import { appendEvent, actorOf, subjectEmploymentForPerson } from '../db/events';
@@ -162,6 +162,12 @@ async function createInvitationTx(tx:Tx,ctx:SessionContext,input:InviteUserInput
       throw error;
     }
   }
+  // 5e0b2154 — employee records may now share an email, but a sign-in account may not: password recovery
+  // mails the account's own address, so whoever reads a shared inbox could recover the other person's login.
+  // A re-invitation of the SAME person (retry, resend) is unaffected.
+  const [clash]=await tx.select({id:appInvitation.id}).from(appInvitation).where(and(sql`lower(${appInvitation.email})=${email}`,
+    inArray(appInvitation.status,['pending','accepted']),personId?sql`${appInvitation.personId} is distinct from ${personId}::uuid`:sql`true`)).limit(1);
+  if(clash)throw new Error('Another person already has a sign-in invitation or account for this email. Each sign-in account needs its own email address.');
   const token=newRawToken(),leaseToken=randomUUID();
   const [row]=await tx.insert(appInvitation).values({tenantId:ctx.tenantId,companyId:input.companyId??null,email,
     role:input.role,personId,tokenHash:hashToken(token),status:'pending',

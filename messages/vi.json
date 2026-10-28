@@ -25957,7 +25957,12 @@
     "duplicateFile": "Tệp này gán cùng một NRIC cho nhiều nhân viên. Cài đặt chung về nhân sự hiện tại không cho phép NRIC trùng lặp.",
     "importOn": "Cho phép NRIC trùng lặp đang BẬT: các mã nhân viên khác nhau có thể dùng chung NRIC. Mã nhân viên phải duy nhất. Chính sách hiện tại được kiểm tra lại khi nhập.",
     "importOff": "Cho phép NRIC trùng lặp đang TẮT: chặn NRIC trùng lặp mới với nhân viên hiện có hoặc trong tệp này. NRIC hiện có không thay đổi được giữ lại. Chính sách hiện tại được kiểm tra lại khi nhập.",
-    "ambiguous": "Danh tính nhân viên không rõ ràng. Hãy sử dụng mã nhân viên duy nhất."
+    "ambiguous": "Danh tính nhân viên không rõ ràng. Hãy sử dụng mã nhân viên duy nhất.",
+    "allowDuplicatedEmail": "Cho phép trùng email công việc hoặc email cá nhân",
+    "emailToggleHint": "Cho phép nhiều hồ sơ nhân viên dùng cùng email công việc hoặc email cá nhân, kể cả giữa các công ty.",
+    "emailOnExplanation": "Nhập nhân viên chấp nhận email công việc hoặc cá nhân đã được nhân viên hoặc dòng khác sử dụng và nêu rõ điều đó. Định dạng email vẫn được kiểm tra.",
+    "emailOffExplanation": "Nhập nhân viên chặn email công việc đã thuộc nhân viên khác hoặc lặp lại trong cùng tệp. Định dạng email luôn được kiểm tra.",
+    "emailLoginNote": "Đăng nhập là riêng: người dùng đăng nhập bằng mã tổ chức và tên người dùng, và vẫn không thể tạo hai tài khoản đăng nhập cho cùng một email."
   },
   "costAllocations": {
     "title": "Phân bổ Trung tâm Chi phí",

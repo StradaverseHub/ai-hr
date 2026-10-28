@@ -3,7 +3,9 @@ import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { pgSqlState } from '../lib/db-error';
 
-export type PeopleGeneralPolicy = { allowDuplicatedNric: boolean; revision: string | null };
+/** 5e0b2154 — allowDuplicatedEmail relaxes the employee-import duplicate work/personal email checks only;
+ *  login identity stays unique (app.create_login_person). */
+export type PeopleGeneralPolicy = { allowDuplicatedNric: boolean; allowDuplicatedEmail: boolean; revision: string | null };
 export class PeopleGeneralError extends Error {
   constructor(readonly reason: 'forbidden' | 'stale' | 'invalid') {
     super(`people-general:${reason}`);
@@ -11,8 +13,8 @@ export class PeopleGeneralError extends Error {
   }
 }
 export async function readPeopleGeneralTx(tx: Tx): Promise<PeopleGeneralPolicy> {
-  const [row] = await tx.execute<{ allow_duplicated_nric: boolean; revision: string | null }>(sql`select * from app.people_general_read()`);
-  return { allowDuplicatedNric: row?.allow_duplicated_nric === true, revision: row?.revision ?? null };
+  const [row] = await tx.execute<{ allow_duplicated_nric: boolean; allow_duplicated_email: boolean; revision: string | null }>(sql`select * from app.people_general_read()`);
+  return { allowDuplicatedNric: row?.allow_duplicated_nric === true, allowDuplicatedEmail: row?.allow_duplicated_email === true, revision: row?.revision ?? null };
 }
 export function getPeopleGeneral(ctx: SessionContext) {
   return withTenant(ctx, readPeopleGeneralTx);
@@ -24,11 +26,11 @@ export function canConfigurePeopleGeneral(ctx: SessionContext) {
   });
 }
 export async function savePeopleGeneral(ctx: SessionContext, policy: PeopleGeneralPolicy) {
-  if (typeof policy.allowDuplicatedNric !== 'boolean' || (policy.revision !== null && !/^[0-9a-f-]{36}$/i.test(policy.revision))) throw new PeopleGeneralError('invalid');
+  if (typeof policy.allowDuplicatedNric !== 'boolean' || typeof policy.allowDuplicatedEmail !== 'boolean' || (policy.revision !== null && !/^[0-9a-f-]{36}$/i.test(policy.revision))) throw new PeopleGeneralError('invalid');
   try {
     return await withTenant(ctx, async tx => {
-      const [row] = await tx.execute<{ revision: string }>(sql`select app.people_general_set(${policy.allowDuplicatedNric},${policy.revision}::uuid) as revision`);
-      return { allowDuplicatedNric: policy.allowDuplicatedNric, revision: row.revision };
+      const [row] = await tx.execute<{ revision: string }>(sql`select app.people_general_set(${policy.allowDuplicatedNric},${policy.allowDuplicatedEmail},${policy.revision}::uuid) as revision`);
+      return { allowDuplicatedNric: policy.allowDuplicatedNric, allowDuplicatedEmail: policy.allowDuplicatedEmail, revision: row.revision };
     });
   } catch (error) {
     if (pgSqlState(error) === '42501') throw new PeopleGeneralError('forbidden');

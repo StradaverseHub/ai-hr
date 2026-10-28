@@ -263,7 +263,7 @@ async function analyze(
     suppliedTx,
   );
 
-  const { allowDuplicatedNric } = await (suppliedTx?readPeopleGeneralTx(suppliedTx):getPeopleGeneral(ctx));
+  const { allowDuplicatedNric, allowDuplicatedEmail } = await (suppliedTx?readPeopleGeneralTx(suppliedTx):getPeopleGeneral(ctx));
   const seenCodes = new Set<string>();
   /**
    * IN-FILE COLLISIONS ON THE TWO IDENTIFIERS THAT MUST STAY UNIQUE PER PERSON.
@@ -333,6 +333,8 @@ async function analyze(
           catalog,
           icOwners,
           allowDuplicatedNric,
+          allowDuplicatedEmail,
+          warnings,
           emailOwners,
           seenIcs,
           seenEmails,
@@ -573,6 +575,9 @@ function buildProfile(
     catalog: Map<string, Set<string>>;
     icOwners: Map<string, Set<string>>;
     allowDuplicatedNric: boolean;
+    /** 5e0b2154 — People General "Allow Duplicated Work Email or Personal Email". */
+    allowDuplicatedEmail: boolean;
+    warnings: string[];
     emailOwners: Map<string, string>;
     seenIcs: Map<string, {rowNum:number;personId:string}>;
     seenEmails: Map<string, number>;
@@ -602,13 +607,16 @@ function buildProfile(
     if (!EMAIL_RE.test(email)) {
       errors.push(`Invalid email "${email}"`);
       email = undefined;
-    } else if (alreadyInFile !== undefined) {
+    } else if (alreadyInFile !== undefined && !x.allowDuplicatedEmail) {
       errors.push(`Duplicate email in this file — row ${alreadyInFile} already assigns "${email}"`);
       email = undefined;
-    } else if (owner && owner !== subject.personId) {
-      errors.push(`Another employee already has the work email "${email}" — it is a login identity and cannot be shared`);
+    } else if (owner && owner !== subject.personId && !x.allowDuplicatedEmail) {
+      errors.push(`Another employee already has the work email "${email}" — duplicate emails are not allowed under the current People General Settings`);
       email = undefined;
     } else {
+      // 5e0b2154 — allowed to share, but said so: HR should see that the address is not unique.
+      if (alreadyInFile !== undefined) x.warnings.push(`Row ${alreadyInFile} also uses the email "${email}"`);
+      else if (owner && owner !== subject.personId) x.warnings.push(`Another employee also uses the email "${email}"`);
       x.seenEmails.set(key, x.rowNum);
     }
   }

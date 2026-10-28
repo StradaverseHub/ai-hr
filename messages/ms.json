@@ -25957,7 +25957,12 @@
     "duplicateFile": "Fail ini menetapkan NRIC yang sama kepada lebih daripada seorang pekerja. NRIC pendua tidak dibenarkan di bawah Tetapan Umum Orang semasa.",
     "importOn": "Benarkan NRIC Pendua HIDUP: ID Pekerja yang berbeza boleh berkongsi NRIC. ID Pekerja mesti kekal unik. Dasar semasa diperiksa semula semasa import.",
     "importOff": "Benarkan NRIC Pendua MATI: pendua baharu dengan pekerja sedia ada atau dalam fail ini disekat. NRIC sedia ada yang tidak berubah dikekalkan. Dasar semasa diperiksa semula semasa import.",
-    "ambiguous": "Identiti pekerja tidak jelas. Gunakan ID Pekerja yang unik."
+    "ambiguous": "Identiti pekerja tidak jelas. Gunakan ID Pekerja yang unik.",
+    "allowDuplicatedEmail": "Benarkan E-mel Kerja atau E-mel Peribadi Berulang",
+    "emailToggleHint": "Benarkan lebih daripada satu rekod pekerja menggunakan e-mel kerja atau e-mel peribadi yang sama, termasuk merentas syarikat.",
+    "emailOnExplanation": "Import pekerja menerima e-mel kerja atau peribadi yang sudah digunakan oleh pekerja atau baris lain, dan menandakannya. Format e-mel tetap disemak.",
+    "emailOffExplanation": "Import pekerja menyekat e-mel kerja yang sudah dimiliki pekerja lain atau berulang dalam fail yang sama. Format e-mel sentiasa disemak.",
+    "emailLoginNote": "Log masuk adalah berasingan: pengguna log masuk dengan kod organisasi dan nama pengguna, dan akaun log masuk masih tidak boleh dibuat dua kali untuk e-mel yang sama."
   },
   "costAllocations": {
     "title": "Peruntukan Pusat Kos",

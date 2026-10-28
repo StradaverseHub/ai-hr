@@ -26,6 +26,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { commitEmployeeImport, listEmployeeImportRuns } from '../core/import';
+import { getPeopleGeneral, savePeopleGeneral } from '../core/people-general';
 import { commitSectionImport, validateSectionImport, writeFailureMessage } from '../core/import-sections';
 import {
   foreignColumns,
@@ -524,6 +525,20 @@ describe('2983802f §6 · two employees can never be given one identity', () => 
     expect(result.updated).toBe(1);
     expect((await personOf('SEC0061')).primaryEmail).toBe('shared@acme.test');
     expect((await personOf('SEC0062')).primaryEmail).toBe('sec62@acme.test');
+  });
+
+  it('5e0b2154: with Allow Duplicated Work Email or Personal Email ON, shared emails are accepted and pointed out', async () => {
+    await seedEmployee(65, 'SEC0065');
+    await seedEmployee(66, 'SEC0066');
+    await seedEmployee(67, 'SEC0067');
+    await savePeopleGeneral(a, { ...(await getPeopleGeneral(a)), allowDuplicatedEmail: true });
+    const records = recs('employee_code,email', ['SEC0065,shared@acme.test', 'SEC0066,shared@acme.test', 'SEC0067,sec65@acme.test']);
+    const preview = await validateSectionImport(a, { section: 'profile', records });
+    expect(preview.rows.map(row => row.errors)).toEqual([[], [], []]);
+    expect(preview.rows[1].warnings.join(' ')).toContain('also uses the email "shared@acme.test"');
+    expect(preview.rows[2].warnings.join(' ')).toContain('Another employee also uses the email');
+    expect((await commitSectionImport(a, { section: 'profile', records })).updated).toBe(3);
+    expect((await personOf('SEC0066')).primaryEmail).toBe('shared@acme.test');
   });
 
   it('refuses a work email that another employee already holds', async () => {

@@ -354,7 +354,7 @@ async function analyze(
   // built with the DEFAULT company's pack — the same pack that produced every stored IC in a
   // single-jurisdiction tenant. `normalizeIC` is digit-stripping in every pack today, so this stays
   // correct across a mixed file; if a pack ever normalises differently, this is where to revisit.
-  const { allowDuplicatedNric } = await (outerTx?readPeopleGeneralTx(outerTx):getPeopleGeneral(ctx));
+  const { allowDuplicatedNric, allowDuplicatedEmail } = await (outerTx?readPeopleGeneralTx(outerTx):getPeopleGeneral(ctx));
   let normPack = contexts.get(companyId)?.pack ?? [...contexts.values()][0]?.pack;
   const {
     existingEmails,
@@ -501,7 +501,8 @@ async function analyze(
     if (!fullName) errors.push('Missing full_name');
     if (!email) errors.push('Missing email');
     else if (!EMAIL_RE.test(email)) errors.push(`Invalid email "${email}"`);
-    else if (seenEmails.has(email.toLowerCase())) errors.push('Duplicate email in this file');
+    // 5e0b2154 — with Allow Duplicated Work Email or Personal Email ON, a shared email is reported, not refused.
+    else if (seenEmails.has(email.toLowerCase())) (allowDuplicatedEmail ? warnings : errors).push(allowDuplicatedEmail ? 'This email is also used by another row in this file' : 'Duplicate email in this file');
     else if (existingEmails.has(email.toLowerCase())) warnings.push('A person with this email already exists');
     if (email) seenEmails.add(email.toLowerCase());
 

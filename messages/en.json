@@ -25957,7 +25957,12 @@
     "duplicateFile": "This file assigns the same NRIC to more than one employee. Duplicate NRIC numbers are not allowed under the current People General Settings.",
     "importOn": "Allow Duplicated NRIC is ON: different Employee IDs may share an NRIC. Employee IDs must remain unique. The current policy is checked again when importing.",
     "importOff": "Allow Duplicated NRIC is OFF: new duplicates against existing employees or within this file are blocked. Unchanged existing NRICs are retained. The current policy is checked again when importing.",
-    "ambiguous": "Employee identity is ambiguous. Use a unique Employee ID."
+    "ambiguous": "Employee identity is ambiguous. Use a unique Employee ID.",
+    "allowDuplicatedEmail": "Allow Duplicated Work Email or Personal Email",
+    "emailToggleHint": "Allow more than one employee record to use the same work email or personal email, including across companies.",
+    "emailOnExplanation": "Employee imports accept a work or personal email that another employee or another row already uses, and point it out. Email format is still checked.",
+    "emailOffExplanation": "Employee imports block a work email that another employee already has or that repeats in the same file. Email format is always checked.",
+    "emailLoginNote": "Sign-in is separate: people sign in with organization code and username, and a sign-in account still cannot be created twice for the same email."
   },
   "costAllocations": {
     "title": "Cost Center Allocation",
