@@ -253,7 +253,8 @@ async function main() {
             await language(page, context, locale);
             await page.goto(base + '/control-tower/opportunities');
             const o = outcomeCopy[locale];
-            const section = title => page.locator('[data-ui-section-header]', {hasText: title}).locator('xpath=ancestor::*[@data-ui-card][1]');
+            // Streaming can leave a hidden copy of a card in the document; only the visible one is the page.
+            const section = title => page.locator('[data-ui-section-header]:visible', {hasText: title}).locator('xpath=ancestor::*[@data-ui-card][1]');
             const table = section(o.title);
             await table.waitFor({state: 'visible'});
             const row = kind => table.locator('tr', {has: page.locator('span.font-mono', {hasText: new RegExp(`^${kind.replace('.', '\\.')}$`)})});
