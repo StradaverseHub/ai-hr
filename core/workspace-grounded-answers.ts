@@ -11,18 +11,21 @@ import {isGroundedToolName,GROUNDED_TOOL_MODULES} from '../lib/ai/grounded-tool-
 import {assistantAnswerExplanationAvailability,type AssistantAnswerExplanation} from '../lib/ai/assistant-answer-explanations';
 import {adjudicateAssistantAnswerPlan,type AssistantAnswerPlan,type AssistantAnswerRead} from '../lib/ai/assistant-answer-plan';
 import {isAgentModuleCode,type AgentModuleCode} from '../lib/ai/module-agents';
+import {assistantReadableModules} from './assistant-readable-modules';
 export type AssistantConversationSegment=Readonly<{kind:'fact';view:CanonicalModuleJobView;card:number;fact:number}>|Readonly<{kind:'explanation';view:CanonicalModuleJobView;explanation:AssistantAnswerExplanation}>;
 export type AssistantConversationView=Readonly<{plan:AssistantAnswerPlan;clarificationAllowed?:false;segments?:readonly AssistantConversationSegment[];facts:readonly Readonly<{view:CanonicalModuleJobView;card:number;fact:number}>[]}>;
 export type GroundedWorkspaceAnswer=Readonly<{mode:'grounded'|'generic'|'unavailable';views:readonly CanonicalModuleJobView[];fallbackModules:readonly AgentModuleCode[];partial:boolean;tools:readonly string[];conversation?:AssistantConversationView|null}>;
 export function workspaceGroundedAnswers(ctx:SessionContext,session:AssistantReadSession,tx?:Tx){
  let remaining=32;const cache=new Map<string,Promise<CanonicalModuleJobView>>();
+ // A sealed proposal is re-adjudicated against the caller's CURRENT module read set on every replay.
+ const caller=(plan:AssistantAnswerPlan)=>plan.mode==='propose'?{readableModules:assistantReadableModules(ctx)}:{};
  return async(binding:AssistantDisclosureBinding,receipt:unknown):Promise<GroundedWorkspaceAnswer>=>{
   const empty=(mode:'generic'|'unavailable'):GroundedWorkspaceAnswer=>Object.freeze({mode,views:Object.freeze([]),fallbackModules:Object.freeze([]),partial:false,tools:Object.freeze([])});
   try{await withAssistantRead(ctx,null,async()=>undefined,session);}catch{return empty('unavailable');}
   if(binding.tenantId!==ctx.tenantId||binding.userId!==ctx.userId)return empty('unavailable');
   const disclosure=openAssistantAnswerDisclosure(binding,receipt);if(disclosure===null)return empty('unavailable');
   const {reads,plan}=disclosure;
-  if(reads.length===0){if(plan)try{return Object.freeze({...empty('generic'),conversation:Object.freeze({plan:adjudicateAssistantAnswerPlan(plan,[]),...(plan.mode==='clarify'&&!canClarifyAssistantQuestion(binding.question)?{clarificationAllowed:false as const}:{}),facts:Object.freeze([])})});}catch{return empty('unavailable');}return empty('generic');}
+  if(reads.length===0){if(plan)try{return Object.freeze({...empty('generic'),conversation:Object.freeze({plan:adjudicateAssistantAnswerPlan(plan,[],caller(plan)),...(plan.mode==='clarify'&&!canClarifyAssistantQuestion(binding.question)?{clarificationAllowed:false as const}:{}),facts:Object.freeze([])})});}catch{return empty('unavailable');}return empty('generic');}
   const answerReads:AssistantAnswerRead[]=[],indexedViews=new Map<number,CanonicalModuleJobView>();
   const views:CanonicalModuleJobView[]=[],fallback=new Set<AgentModuleCode>(),tools:string[]=[],seen=new Set<string>();let partial=reads.length>8;
   for(const [read,source] of reads.slice(0,8).entries()){
@@ -36,7 +39,7 @@ export function workspaceGroundedAnswers(ctx:SessionContext,session:AssistantRea
    if(view.state==='ready'){views.push(view);tools.push(source.name);indexedViews.set(read,view);answerReads.push(Object.freeze({read,presentation:view.presentation,explanations:assistantAnswerExplanationAvailability(view.answerExplanations??[])}));}else{partial=true;fallback.add(fallbackModule);}
   }
   let conversation:AssistantConversationView|null=null;
-  if(plan)try{const checked=adjudicateAssistantAnswerPlan(plan,answerReads);
+  if(plan)try{const checked=adjudicateAssistantAnswerPlan(plan,answerReads,caller(plan));
    const segments:AssistantConversationSegment[]=checked.mode==='answer'?checked.blocks.map((block):AssistantConversationSegment=>{
     const view=indexedViews.get(block.read);if(!view||view.state!=='ready')throw Error();
     if(block.kind==='fact')return Object.freeze({kind:'fact',view,card:block.card,fact:block.fact});
