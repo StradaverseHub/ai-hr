@@ -10,7 +10,7 @@ export function renderEmailDesign(raw:unknown|null,kind:EmailKind,locale:string,
  const systemHtml=escape(system.text).replace(/\n/g,'<br>');
  const text:string[]=[];
  const html=doc.blocks.map(block=>{
-  const s=block.style,style=`background:${s.background??'#ffffff'};color:${s.color??'#202020'};`+('font' in s?`font-family:${s.font??'Arial'},sans-serif;font-size:${s.size??16}px;text-align:${s.align??'left'};padding:${s.padding??20}px;`:'padding:24px;font-family:Arial,sans-serif;font-size:16px;');
+  const s=block.style,editableStyle=block.type==='system'?null:block.style,style=`background:${s.background??'#ffffff'};color:${s.color??'#202020'};`+(editableStyle?`font-family:${editableStyle.font??'Arial'},sans-serif;font-size:${editableStyle.size??16}px;text-align:${editableStyle.align??'left'};padding:${editableStyle.padding??20}px;`:'padding:24px;font-family:Arial,sans-serif;font-size:16px;');
   let content='';
   switch(block.type){
    case 'header':text.push(fill(block.label));content=(block.src?`<img src="${escape(block.src)}" alt="" width="48" style="max-width:100%;height:auto;vertical-align:middle"> `:'')+escape(fill(block.label));break;

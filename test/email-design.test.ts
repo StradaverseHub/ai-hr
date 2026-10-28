@@ -31,6 +31,11 @@ describe('validated email designs',()=>{
   // Preview and send use this exact deterministic function, including the text alternative.
   expect(renderEmailDesign(doc,'invitation','en',system,data)).toEqual(output);
  });
+ it('applies size, alignment and spacing even when the default font is unchanged',()=>{
+  const doc=design();doc.blocks[0].style={size:24,align:'right',padding:40};
+  const html=renderEmailDesign(doc,'invitation','en',system).html;
+  expect(html).toContain('font-size:24px;text-align:right;padding:40px;');
+ });
  it('makes the isolated sender reject malformed design documents and wrong bindings',()=>{
   const mail={category:'leave' as const,locale:'en' as const,link:'https://example.com/app',action:true,messageId:'<fixture@example.com>'};
   expect(()=>workflowEmailMessage({...mail,design:{kind:'workflow.leave',locale:'en',document:{rawHtml:'<script/>'} as never}})).toThrow();
