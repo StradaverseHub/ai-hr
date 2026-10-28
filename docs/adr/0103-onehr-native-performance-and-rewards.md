@@ -106,3 +106,11 @@ A subject's line manager no longer reads `performance_onehr_panel` rows. Before 
 The manager reads and changes panel membership only through two security-definer helpers. Both pin the tenant and require the subject's live line manager. `app.onehr_manager_panel(review)` returns the request, rater employment, relationship, submitted/archived/reset timestamps and, for active members only, the archive reason. It never returns answers, remarks or principle comments. `app.onehr_manager_panel_member(request, archived, relationship)` archives or restores an unsubmitted member and sets its relationship label. Submitted members, resets and archive reasons stay with scoped HR. The manager's review screen and panel assignment use these helpers, so their output is unchanged. Rater answers remain readable only by the rater, through their own live card, and by scoped HR.
 
 Not addressed here: `app.onehr_assessment_inputs` still gives the manager per-rater leadership scores, without identities, for the potential calculation.
+
+## Two-step release and leader reads (2026-10-28, WP-E, CF-08; merge held)
+
+ADR-0149 adds a release to leaders before the release to the person, for performance, potential and talent. The release grants stay separate from immutable results and keep one owner, `performance_assessment_release`. Three consequences change this record:
+- **Leaders read results through a definer projection.** `app.onehr_leader_result` returns band movement step by step, cut at the leader's own step until the release to leaders, and never rater identities, scores or counts. The employee projection is unchanged: the person still sees only components released to them.
+- **Leaders see calibration reasons (E-2).** On every step they may read, from the HOD up, leaders see that tier's recorded reason, as the source does. Hidden steps carry none. Reasons still never enter the employee projection or the export contract.
+- **Line managers are masked (E-1).** A line manager who is not a cycle administrator no longer reads a frozen band before it is released to leaders. The mask is applied in the readers (`app.onehr_frozen_visible`); `onehr_result_read` keeps admitting the manager for the services' is-it-frozen guards.
+
