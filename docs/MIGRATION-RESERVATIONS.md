@@ -89,3 +89,4 @@ AI DEV confirmed it allocates for the AI groups only and that 0663 onward is unc
 | `0667_onehr_unit_exclusion` | D-P1-22 X1+X2; restates `onehr_calibration_access` after 0663 | 1793170000004 |
 
 idx is assigned at journaling, after staging's idx 644 (0660) and the AI 0661/0662 entries. Re-read the live ledger before journaling; if a later `when` lands first, re-allocate rather than journal below the watermark.
+- Update (later, 28 October): **0666 released** (free, never written or journaled). WP-H2 needs no migration: under APR-022 the reward design source has no payroll actor, so no posting arm is added. 0663–0665 and 0667 stay claimed; 0667 keeps `when` 1793170000004.
