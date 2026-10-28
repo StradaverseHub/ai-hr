@@ -4,6 +4,7 @@ import {and,asc,eq,inArray} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../../db/client';
 import {attendanceClockCapture,type attendancePunch} from '../../db/schema';
 import {HR_LOCAL_TZ} from '../../lib/hr-date';
+import {clockCaptureInstantTx} from '../../core/attendance-clock';
 export type RecordedPolicyClockSource=
  |{state:'unavailable';authority:'sourceOnly';reason:'missingCapture'|'captureMismatch'|'outsidePeriod'}
  |{state:'known';authority:'sourceOnly';timeZone:typeof HR_LOCAL_TZ;periodMilliseconds:number;
@@ -19,7 +20,8 @@ export async function recordedPolicyClockSourceTx(tx:Tx,ctx:SessionContext,p:{at
  if(new Set(ids).size!==ids.length)return unavailable('captureMismatch');
  const rows=ids.length?await tx.select({id:attendanceClockCapture.id,tenantId:attendanceClockCapture.tenantId,
   employmentId:attendanceClockCapture.employmentId,date:attendanceClockCapture.attendanceDate,
-  direction:attendanceClockCapture.direction,recordedAt:attendanceClockCapture.serverRecordedAt})
+  // The capture's true instant: an accepted offline punch's effective time, never its later arrival.
+  direction:attendanceClockCapture.direction,recordedAt:await clockCaptureInstantTx(tx)})
   .from(attendanceClockCapture).where(and(eq(attendanceClockCapture.tenantId,ctx.tenantId),inArray(attendanceClockCapture.id,ids)))
   .orderBy(asc(attendanceClockCapture.id)).limit(129):[];
  if(rows.length!==ids.length)return unavailable('missingCapture');

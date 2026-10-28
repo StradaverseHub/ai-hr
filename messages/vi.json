@@ -3423,6 +3423,8 @@
       "admin": "HR thêm",
       "import": "Tệp nhập",
       "web": "Chấm công web",
+      "offline": "Ngoại tuyến",
+      "received": "Đã nhận lúc {datetime}",
       "used": "Đang dùng",
       "proposed": "Đề xuất",
       "remove": "Loại bỏ",

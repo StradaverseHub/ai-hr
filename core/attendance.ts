@@ -6979,7 +6979,8 @@ export async function requestOwnClockRemoval(ctx:SessionContext,p:{punchId:strin
     const [previous]=await tx.select().from(attendanceCorrection).where(eq(attendanceCorrection.id,p.requestId)).limit(1);
     if(previous){if(previous.employmentId!==me.employmentId||previous.removalPunchId!==p.punchId||previous.reason!==reason||previous.clockChanges?.baseline!==p.baseline)throw new Error('This removal identity is already in use.');return {correctionId:previous.id};}
     const [target]=await tx.select({punch:attendancePunch,capture:attendanceClockCapture.id,deviceId:attendanceClockCapture.deviceId}).from(attendancePunch).innerJoin(attendanceClockCapture,eq(attendanceClockCapture.id,attendancePunch.clockCaptureId)).where(and(eq(attendancePunch.id,p.punchId),eq(attendancePunch.employmentId,me.employmentId),eq(attendanceClockCapture.employmentId,me.employmentId))).limit(1);
-    if(!target||target.deviceId||target.punch.voidedAt)throw new Error('This active Web Clocking record is not available for removal.');
+    // Owner decision 2026-10-28: an accepted offline punch is not the employee's to remove; HR corrects it.
+    if(!target||target.deviceId||target.punch.method==='mobile_offline'||target.punch.voidedAt)throw new Error('This active Web Clocking record is not available for removal.');
     const date=target.punch.attendanceDate;
     if(date>todayInKualaLumpur())throw new AttendanceCorrectionFutureDateError();
     // Payroll precedes attendance row locks, matching the final correction effect.

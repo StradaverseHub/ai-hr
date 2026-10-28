@@ -3423,6 +3423,8 @@
       "admin": "人事添加",
       "import": "导入文件",
       "web": "网页打卡",
+      "offline": "离线",
+      "received": "接收于 {datetime}",
       "used": "使用中",
       "proposed": "拟议更改",
       "remove": "移除",

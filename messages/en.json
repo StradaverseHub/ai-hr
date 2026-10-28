@@ -3423,6 +3423,8 @@
       "admin": "Added by HR",
       "import": "Imported file",
       "web": "Web clocking",
+      "offline": "Offline",
+      "received": "Received {datetime}",
       "used": "In use",
       "proposed": "Proposed",
       "remove": "Remove",

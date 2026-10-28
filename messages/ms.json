@@ -3423,6 +3423,8 @@
       "admin": "Ditambah oleh HR",
       "import": "Fail diimport",
       "web": "Rekod waktu web",
+      "offline": "Luar talian",
+      "received": "Diterima {datetime}",
       "used": "Digunakan",
       "proposed": "Cadangan",
       "remove": "Buang",

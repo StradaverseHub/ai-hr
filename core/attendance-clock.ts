@@ -1,7 +1,7 @@
 import { LOCATION_CAPTURE_STATUSES, type LocationCaptureStatus } from '../lib/attendance-removal';
 /** Employee web command. A private capture and the existing attendance writer share one transaction. */
 import { createHash, randomUUID } from 'node:crypto';
-import { and, desc, eq, getTableColumns, inArray, isNull, isNotNull, sql, type DriverValueEncoder } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns, inArray, isNull, isNotNull, sql, type DriverValueEncoder, type SQL } from 'drizzle-orm';
 import type { SessionContext,Tx } from '../db/client';
 import { attendance, attendanceClockCapture, attendancePunch, attendanceCorrection, clockingLocation, employment, domainEvent, employeeDevice } from '../db/schema';
 import { actorOf, appendEvent } from '../db/events';
@@ -239,6 +239,29 @@ async function applyClockTx(tx:Tx,ctx:SessionContext,plan:ClockPlan) {
 // Draft 0647's column, named explicitly: db/schema.ts declares it only once 0647 is journaled (see the note there).
 export const attendanceClockCaptureEffectiveAt = sql`${attendanceClockCapture}.effective_at`;
 const captureEffectiveAt = attendanceClockCaptureEffectiveAt;
+// Readers outside the offline writer run where draft 0647 may be ABSENT (production today, every suite that does
+// not apply it), so they never name effective_at unconditionally. The column's presence is read once per
+// transaction from pg_attribute (readable by every role, no RLS) and never cached per process: a hosted worker
+// installs and drops the draft at runtime, so a process-wide answer would describe the wrong schema.
+const effectiveColumnByTx = new WeakMap<Tx, Promise<boolean>>();
+function clockCaptureEffectiveColumnTx(tx: Tx): Promise<boolean> {
+  let present = effectiveColumnByTx.get(tx);
+  if (!present) {
+    present = tx.execute<{ present: boolean }>(sql`select exists(select 1 from pg_attribute where attrelid = to_regclass('attendance_clock_capture') and attname = 'effective_at' and not attisdropped) as present`).then(([row]) => row?.present === true);
+    effectiveColumnByTx.set(tx, present);
+  }
+  return present;
+}
+/** A capture's offline effective instant, or NULL for an online capture and on a database without draft 0647. */
+export async function clockCaptureEffectiveAtTx(tx: Tx): Promise<SQL<Date | null>> {
+  // mapWith decodes a non-NULL value only; its type is the column's, so the nullable result is stated here.
+  return ((await clockCaptureEffectiveColumnTx(tx)) ? sql`${captureEffectiveAt}`.mapWith(attendanceClockCapture.serverRecordedAt) : sql`null::timestamptz`.mapWith(attendanceClockCapture.serverRecordedAt)) as SQL<Date | null>;
+}
+/** A capture's true instant, coalesce(effective_at, server_recorded_at): an offline capture's server_recorded_at is
+ * when it ARRIVED, not when it happened. Without the draft every capture is online and the receipt instant is exact. */
+export async function clockCaptureInstantTx(tx: Tx): Promise<SQL<Date>> {
+  return (await clockCaptureEffectiveColumnTx(tx)) ? sql<Date>`coalesce(${captureEffectiveAt}, ${attendanceClockCapture.serverRecordedAt})`.mapWith(attendanceClockCapture.serverRecordedAt) : sql<Date>`${attendanceClockCapture.serverRecordedAt}`.mapWith(attendanceClockCapture.serverRecordedAt);
+}
 /** The canonical capture row plus its effective instant, from the same values object as the online insert. */
 async function insertOfflineCaptureTx(tx:Tx,values:CaptureValues,effectiveAt:Date) {
   const columns = getTableColumns(attendanceClockCapture), set = Object.entries(values).filter(([, value]) => value !== undefined) as [keyof typeof columns, unknown][];
@@ -351,7 +374,8 @@ export async function clockCapturePhoto(ctx: SessionContext, id: string, thumbna
 }
 
 export async function ownClockCaptures(ctx: SessionContext, employmentId: string, date: string) {
-  return withTenant(ctx, tx => tx.select({ id: attendanceClockCapture.id, direction: attendanceClockCapture.direction, recordedAt: attendanceClockCapture.serverRecordedAt, date: attendanceClockCapture.attendanceDate, photoPurgedAt: attendanceClockCapture.photoPurgedAt, locationId: attendanceClockCapture.clockingLocationId }).from(attendanceClockCapture).where(and(eq(attendanceClockCapture.employmentId, employmentId), eq(attendanceClockCapture.attendanceDate, date))).orderBy(desc(attendanceClockCapture.serverRecordedAt), desc(attendanceClockCapture.id)));
+  // recordedAt is each capture's true instant (an offline capture's effective time), and orders the list.
+  return withTenant(ctx, async tx => { const instant = await clockCaptureInstantTx(tx); return tx.select({ id: attendanceClockCapture.id, direction: attendanceClockCapture.direction, recordedAt: instant, date: attendanceClockCapture.attendanceDate, photoPurgedAt: attendanceClockCapture.photoPurgedAt, locationId: attendanceClockCapture.clockingLocationId }).from(attendanceClockCapture).where(and(eq(attendanceClockCapture.employmentId, employmentId), eq(attendanceClockCapture.attendanceDate, date))).orderBy(desc(instant), desc(attendanceClockCapture.id)); });
 }
 
 export async function purgeClockPhoto(ctx: SessionContext, captureId: string) {
