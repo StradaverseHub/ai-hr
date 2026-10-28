@@ -9,9 +9,9 @@ import { createTranslator } from 'next-intl';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
-import { createCompany } from '../core/admin';
+import { assignRole, createCompany } from '../core/admin';
 import { setCompensation } from '../core/comp';
-import { createBatch } from '../packs/payroll/service';
+import { createBatch, setPayrollInput } from '../packs/payroll/service';
 import { canPostRewardUnit, createRewardUnit, decideRewardUnit, getRewardCalendar, getRewardUnit, postRewardUnit, rewardApprovalsBoard, rewardDueWording, saveRewardCalendar, saveRewardEntry, saveRewardPolicy, sendReadyRewardUnits, setRewardMember, emptyRewardCalendar } from '../packs/rewards/service';
 import { emptyFacts, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
@@ -89,6 +89,59 @@ describe('Rewards approvals board, posting authority and reward calendar', () =>
       expect(await canPostRewardUnit(actors.payrollOnly!, id)).toBe(false);
       await expect(postRewardUnit(actors.payrollOnly!, id, v.unit.revision)).rejects.toThrow(/Company administrator access is required/);
       expect((await getRewardUnit(admin, id)).unit.status).toBe('approved');
+    });
+    // DR-13 (APR-022): the reward design source has no payroll actor, so AI-HR adds no posting authority.
+    // These two pins hold rewardPostingAuthorityTx to "payroll seat AND company HR administration".
+    /** An account built from the harness: an employee login plus one company-scoped role grant. */
+    async function scopedAccount(label: string, role: 'payroll_partner' | 'hr_admin'): Promise<SessionContext> {
+      const p = await person(label);
+      const userId = await createAppUser(b.tenantId, p.id, 'employee');
+      await assignRole(admin, { appUserId: userId, role, companyId: b.companyId });
+      return { ...admin, userId, personId: p.id, roles: ['employee', role], grants: [{ role: 'employee', companyId: null }, { role, companyId: b.companyId }] };
+    }
+    const enactedState = async () => ({
+      compensation: await owner.db.select().from(schema.compensation).where(eq(schema.compensation.tenantId, b.tenantId)).orderBy(asc(schema.compensation.id)),
+      employment: await owner.db.select().from(schema.employment).where(eq(schema.employment.tenantId, b.tenantId)).orderBy(asc(schema.employment.id)),
+      payrollInput: await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.tenantId, b.tenantId)).orderBy(asc(schema.payrollInput.id)),
+      unit: await owner.db.select().from(schema.rewardUnit).where(eq(schema.rewardUnit.tenantId, b.tenantId)).orderBy(asc(schema.rewardUnit.id)),
+    });
+    const isRewardAdmin = (who: SessionContext) => withTenant(who, async tx => (await tx.execute<{ ok: boolean }>(sql`select app.reward_admin(${b.companyId}::uuid) as ok`))[0]?.ok === true);
+    it('DR-13: a payroll partner holding the payroll seat but not HR administration cannot post, and nothing is enacted', async () => {
+      const partner = await scopedAccount('payroll-partner', 'payroll_partner');
+      const id = await unit('DR13A', [{ salary: 5000 }]);
+      await setRewardMember(admin, id, (await getRewardUnit(admin, id)).unit.revision, partner.userId!, 'payroll');
+      await submit(id); await approveTo(id, ['bg', 'gr', 'ctro', 'ec']);
+      const v = await getRewardUnit(partner, id);
+      expect(v.unit.status).toBe('approved');
+      expect(v.posting).toBe('needs-admin');
+      expect(await isRewardAdmin(partner)).toBe(false);
+      expect(await canPostRewardUnit(partner, id)).toBe(false);
+      const batch = await createBatch(admin, { companyId: b.companyId, payPeriod: today.slice(0, 7) });
+      const employmentId = (await getRewardUnit(admin, id)).rows[0].source.employmentId;
+      await setPayrollInput(admin, { batchId: batch.batchId, employmentId, overtimeAmount: 123, bonusAmount: 55, tp1Deduction: 44, zakat: 9 });
+      const before = await enactedState();
+      expect(before.compensation.length).toBeGreaterThan(0);
+      expect(before.employment.some(e => e.id === employmentId && e.gradeId)).toBe(true);
+      expect(before.payrollInput.some(r => r.batchId === batch.batchId && r.employmentId === employmentId)).toBe(true);
+      await expect(postRewardUnit(partner, id, v.unit.revision, batch.batchId)).rejects.toThrow(/Company administrator access is required/);
+      await expect(postRewardUnit(partner, id, v.unit.revision)).rejects.toThrow(/Company administrator access is required/);
+      expect(await enactedState()).toEqual(before);
+      expect((await getRewardUnit(admin, id)).unit.status).toBe('approved');
+    });
+    it('DR-13: a company HR administrator without the payroll seat is refused on the no-seat path', async () => {
+      const hrAdmin = await scopedAccount('company-admin', 'hr_admin');
+      const id = await unit('DR13B', [{ salary: 5000 }]);
+      await setRewardMember(admin, id, (await getRewardUnit(admin, id)).unit.revision, hrAdmin.userId!, 'pbp');
+      await submit(id); await approveTo(id, ['bg', 'gr', 'ctro', 'ec']);
+      const v = await getRewardUnit(hrAdmin, id);
+      expect(v.unit.status).toBe('approved');
+      expect(v.posting).toBe('no-seat');
+      expect(await isRewardAdmin(hrAdmin)).toBe(true);
+      expect(await canPostRewardUnit(hrAdmin, id)).toBe(false);
+      const before = await enactedState();
+      expect(before.compensation.length).toBeGreaterThan(0);
+      await expect(postRewardUnit(hrAdmin, id, v.unit.revision)).rejects.toThrow(/The assigned payroll role is required/);
+      expect(await enactedState()).toEqual(before);
     });
     it('an HR administrator holding the payroll seat sees Post and it posts', async () => {
       const id = await unit('H1B', [{ salary: 5000 }]);
