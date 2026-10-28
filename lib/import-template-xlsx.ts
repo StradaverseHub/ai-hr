@@ -33,7 +33,13 @@ import { PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,PERSONNEL_EPF_CITIZENSHIPS 
  */
 import { DEPENDENT_IMPORT_COLUMNS } from './import-schema';
 import { employeeTemplate } from './import-template';
-import { PAYROLL_HISTORY_HEADERS, PAYROLL_HISTORY_SAMPLE_ROWS } from './payroll-history-import-schema';
+import {
+  PAYROLL_HISTORY_HEADERS,
+  historySampleRows,
+  importCodeCategory,
+  type ImportCodeAmountType,
+  type ImportCodeCategory,
+} from './payroll-history-import-schema';
 import {
   TXN_IMPORT_HEADERS,
   TXN_IMPORT_SAMPLE_ROWS,
@@ -259,9 +265,9 @@ export const PAYROLL_HISTORY_XLSX_FILENAME = 'payroll-history-import-template.xl
  * Period is text for the same reason: 202501 survives as a number, but 0 does not belong in a period and
  * an accidental date format would.
  */
-export const PAYROLL_HISTORY_TEXT_COLUMN_INDEXES: readonly number[] = [0, 1, 2, 3, 4, 6];
+export const PAYROLL_HISTORY_TEXT_COLUMN_INDEXES: readonly number[] = [0, 1, 2, 3, 4];
 
-/** The headings the Codes sheet and its explanatory line carry, supplied translated by the caller. */
+/** The headings the Codes and Sample sheets carry, supplied translated by the caller. */
 export type ImportCodeSheetHeadings = {
   title: string;
   code: string;
@@ -269,7 +275,16 @@ export type ImportCodeSheetHeadings = {
   destination: string;
   direction: string;
   note: string;
+  /** d28501b8 — the two descriptive columns, and the translated name of each value they can hold. */
+  category: string;
+  amountType: string;
+  categoryNames: Record<ImportCodeCategory, string>;
+  amountTypeNames: Record<ImportCodeAmountType, string>;
+  /** The line above the Sample sheet's example, saying it is illustrative and not anyone's payroll. */
+  sampleNote: string;
 };
+
+type ImportCodeRow = { code: string; label: string; destination: string; direction: string; source?: string };
 
 /**
  * Build the reporter's Payroll Result Import workbook.
@@ -279,11 +294,12 @@ export type ImportCodeSheetHeadings = {
  * anything if the artifact HR receives is the artifact that was checked, not a re-implementation of it.
  *
  * Three sheets: the blank one to fill in (FIRST, because workbookToCsvText reads the first worksheet on
- * re-upload), the reporter's worked example, and every code the import accepts.
+ * re-upload), the worked example, and every code the import accepts. The example is built from the same
+ * codes the Codes sheet lists (historySampleRows), so it cannot use a code the sheet does not offer.
  */
 export async function buildPayrollHistoryWorkbook(
   headings: ImportCodeSheetHeadings,
-  codes: { code: string; label: string; destination: string; direction: string }[],
+  codes: ImportCodeRow[],
 ): Promise<Uint8Array> {
   const { buildXlsx } = await import('./spreadsheet');
   return buildXlsx([...PAYROLL_HISTORY_HEADERS], [], {
@@ -292,7 +308,7 @@ export async function buildPayrollHistoryWorkbook(
     extraSheets: [
       {
         name: PAYROLL_HISTORY_XLSX_SHEETS.sample,
-        rows: [[...PAYROLL_HISTORY_HEADERS], ...PAYROLL_HISTORY_SAMPLE_ROWS.map((r) => [...r])],
+        rows: [[headings.sampleNote], [], [...PAYROLL_HISTORY_HEADERS], ...historySampleRows(codes)],
       },
       { name: PAYROLL_HISTORY_XLSX_SHEETS.codes, rows: buildImportCodeRows(headings, codes) },
     ],
@@ -304,18 +320,19 @@ export async function buildPayrollHistoryWorkbook(
  *
  * This is the sheet the plan calls "the list of every code the import will accept" — it is generated
  * from the SAME resolver the validator uses (core/payroll-history-import.ts resolveImportCodes), so a
- * code on this sheet is a code that validates, and there is no second list to drift.
+ * code on this sheet is a code that validates, and there is no second list to drift. Category and Amount
+ * Type (d28501b8) are derived from the destination by importCodeCategory, for the same reason.
  */
-export function buildImportCodeRows(
-  headings: { title: string; code: string; label: string; destination: string; direction: string; note: string },
-  codes: { code: string; label: string; destination: string; direction: string }[],
-): string[][] {
+export function buildImportCodeRows(headings: ImportCodeSheetHeadings, codes: ImportCodeRow[]): string[][] {
   return [
     [headings.title],
     [headings.note],
     [],
-    [headings.code, headings.label, headings.destination, headings.direction],
-    ...codes.map((c) => [c.code, c.label, c.destination, c.direction]),
+    [headings.code, headings.label, headings.category, headings.amountType, headings.destination, headings.direction],
+    ...codes.map((c) => {
+      const { category, amountType } = importCodeCategory(c);
+      return [c.code, c.label, headings.categoryNames[category], headings.amountTypeNames[amountType], c.destination, c.direction];
+    }),
   ];
 }
 
