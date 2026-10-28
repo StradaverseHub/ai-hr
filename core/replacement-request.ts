@@ -459,6 +459,8 @@ export async function submitReplacementLeaveRequest(
     /** Injected for deterministic tests; the submission date and the eligibility as-of date. */
     today: string;
   },
+  /** D13 (mobile M12): the caller's transaction (the mobile command receipt's). Omitted: its own, as before. */
+  existingTx?: Tx,
 ): Promise<SubmitReplacementRequestResult> {
   // Control 1 — the chargeable add-on. No module, no new credits, and no request that would mint one.
   assertModuleEnabled(ctx, 'toil');
@@ -538,7 +540,7 @@ export async function submitReplacementLeaveRequest(
   // validate — it is derived inside the transaction below, from the attendance record.
   const aTotals = totalsFor(p.unit, aLines);
 
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx: Tx): Promise<SubmitReplacementRequestResult> => {
     const resolved = await resolvePolicyForTx(tx, p.employmentId);
     if (!resolved) throw new ReplacementRequestInvalidError('No employment on record for this request.');
     const { policy } = resolved;
@@ -840,7 +842,8 @@ export async function submitReplacementLeaveRequest(
     });
 
     return { requestId: header.id, totalDays, totalHours };
-  });
+  };
+  return existingTx ? run(existingTx) : withTenant(ctx, run);
 }
 
 /**

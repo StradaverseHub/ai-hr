@@ -5933,8 +5933,59 @@ export function myAttendanceCorrections(
   employmentId: string,
   opts: { limit?: number; date?: string; status?: 'pending' | 'approved' | 'rejected' | 'cancelled' } = {},
 ): Promise<MyAttendanceRequestRow[]> {
-  const limit = Math.min(Math.max(1, Math.trunc(opts.limit ?? 100)), MY_ATTENDANCE_REQUEST_ROW_CEILING + 1);
+  // D13 (mobile M12): the read moved into `ownAttendanceRequestRowsTx` below so the keyset page reads the SAME
+  // rows in the SAME order; this caller asks for neither the keyset nor the cursor text and gets what it always got.
+  return withTenant(ctx, async (tx) => (await ownAttendanceRequestRowsTx(tx, employmentId, opts)).map(({ cursorAt: _cursorAt, ...row }) => row));
+}
+
+/**
+ * D13 (mobile M12) keyset position in `myAttendanceCorrections`' one order (attendance date desc, created desc, id
+ * desc): the row's attendance date, its exact `created_at` as UTC text with microseconds (`cursorAt`), and its id.
+ */
+export type MyAttendanceRequestCursor = { date: string; at: string; id: string };
+
+/**
+ * D13 (mobile M12) — the same own-request read as `myAttendanceCorrections`, one page at a time: strictly past
+ * `before` in the same order, optionally narrowed to `ids` (one request's detail re-read under the caller's own
+ * session), each row carrying its exact `cursorAt`. RLS still scopes the rows and `employmentId` still narrows them.
+ * No web caller passes either option.
+ */
+export function myAttendanceCorrectionsPage(
+  ctx: SessionContext,
+  employmentId: string,
+  opts: { limit: number; date?: string; status?: 'pending' | 'approved' | 'rejected' | 'cancelled'; before?: MyAttendanceRequestCursor | null; ids?: readonly string[] },
+): Promise<(MyAttendanceRequestRow & { cursorAt: string })[]> {
+  return withTenant(ctx, (tx) => ownAttendanceRequestRowsTx(tx, employmentId, opts));
+}
+
+/**
+ * D13 (mobile M12) — how many of ONE employment's requests the caller can see, per stored status (the four the
+ * history's chips filter by). The same RLS scope and employment narrowing as `myAttendanceCorrections`.
+ */
+export function myAttendanceCorrectionCounts(
+  ctx: SessionContext,
+  employmentId: string,
+): Promise<Record<'pending' | 'approved' | 'rejected' | 'cancelled', number>> {
   return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({ status: attendanceCorrection.status, n: sql<number>`count(*)::int` })
+      .from(attendanceCorrection)
+      .where(eq(attendanceCorrection.employmentId, employmentId))
+      .groupBy(attendanceCorrection.status);
+    const out = { pending: 0, approved: 0, rejected: 0, cancelled: 0 };
+    for (const r of rows) if (r.status in out) out[r.status as keyof typeof out] = Number(r.n);
+    return out;
+  });
+}
+
+async function ownAttendanceRequestRowsTx(
+  tx: Tx,
+  employmentId: string,
+  opts: { limit?: number; date?: string; status?: 'pending' | 'approved' | 'rejected' | 'cancelled'; before?: MyAttendanceRequestCursor | null; ids?: readonly string[] },
+): Promise<(MyAttendanceRequestRow & { cursorAt: string })[]> {
+  const limit = Math.min(Math.max(1, Math.trunc(opts.limit ?? 100)), MY_ATTENDANCE_REQUEST_ROW_CEILING + 1);
+  if (opts.ids && opts.ids.length === 0) return [];
+  {
     const rows = await tx
       .select({
         id: attendanceCorrection.id,
@@ -5957,12 +6008,16 @@ export function myAttendanceCorrections(
         appliedAt: attendanceCorrection.appliedAt,
         decidedAt: attendanceCorrection.decidedAt,
         createdAt: attendanceCorrection.createdAt,
+        cursorAt: sql<string>`to_char(${attendanceCorrection.createdAt} at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
       })
       .from(attendanceCorrection)
       .where(and(
         eq(attendanceCorrection.employmentId, employmentId),
         opts.status ? eq(attendanceCorrection.status, opts.status) : undefined,
         opts.date ? eq(attendanceCorrection.attendanceDate, opts.date) : undefined,
+        opts.ids ? inArray(attendanceCorrection.id, [...opts.ids]) : undefined,
+        // Strictly after the cursor in the one order below (every key descending).
+        opts.before ? sql`(${attendanceCorrection.attendanceDate}, ${attendanceCorrection.createdAt}, ${attendanceCorrection.id}) < (${opts.before.date}::date, ${opts.before.at}::timestamptz, ${opts.before.id}::uuid)` : undefined,
       ))
       // Newest first BY THE ATTENDANCE DATE, then by when it was filed — the same ordering the Plan OT
       // list uses, so two lists on one screen are not sorted two different ways.
@@ -5986,7 +6041,12 @@ export function myAttendanceCorrections(
     );
     const workflows = await attendanceWorkflowsForTx(tx, rows.map(r => r.id));
     return rows.map((r) => ({ ...r, hasAttachment: withFiles.has(r.id), workflow: workflows.get(r.id) ?? null }));
-  });
+  }
+}
+
+export class AttendanceWithdrawRefusedError extends Error {
+  /** D13 (mobile M12): cancelOwnAttendanceCorrection's two state refusals, typed so a caller can tell them apart. Same sentences as before. */
+  constructor(readonly refusal: 'overtime' | 'not_pending', message: string) { super(message); this.name = 'AttendanceWithdrawRefusedError'; }
 }
 
 /**
@@ -6011,13 +6071,15 @@ export function myAttendanceCorrections(
 export async function cancelOwnAttendanceCorrection(
   ctx: SessionContext,
   p: { correctionId: string },
+  /** D13 (mobile M12): the caller's transaction (the mobile command receipt's). Omitted: its own, as before. */
+  existingTx?: Tx,
 ): Promise<{ status: 'cancelled' }> {
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx: Tx) => {
     const req = await lockAttendanceApplicationTx(tx, ctx, p.correctionId);
     if (!req) throw new Error('attendance request not found (or not visible)');
     await assertOwnCorrectionTx(tx, ctx, req.employmentId);
     if (attendanceApplicationType(req) === 'self_overtime') {
-      throw new Error('This is an overtime plan — withdraw it from the Self Overtime list.');
+      throw new AttendanceWithdrawRefusedError('overtime', 'This is an overtime plan — withdraw it from the Self Overtime list.');
     }
     if (req.status !== 'pending') {
       // r363 — DO NOT INTERPOLATE `req.status` HERE. It is the stored enum, and 4c8aae68 made
@@ -6029,7 +6091,7 @@ export async function cancelOwnAttendanceCorrection(
       // kernel. Naming the state is not what the sentence is for: the reader needs to know the request
       // is no longer pending and why that ends it, and "no longer waiting for a decision" is true of
       // approved, rejected and withdrawn alike. So it says that, and names nothing.
-      throw new Error('This request is no longer waiting for a decision, so it can no longer be withdrawn.');
+      throw new AttendanceWithdrawRefusedError('not_pending', 'This request is no longer waiting for a decision, so it can no longer be withdrawn.');
     }
     await tx
       .update(attendanceCorrection)
@@ -6045,7 +6107,8 @@ export async function cancelOwnAttendanceCorrection(
       payload: { date: req.attendanceDate, previousStatus: req.status, requestKind: req.requestKind },
     });
     return { status: 'cancelled' as const };
-  });
+  };
+  return existingTx ? run(existingTx) : withTenant(ctx, run);
 }
 
 /** SUBJECT-ONLY. Enforced in code rather than by RLS, because RLS makes an employee's own rows writable AND
