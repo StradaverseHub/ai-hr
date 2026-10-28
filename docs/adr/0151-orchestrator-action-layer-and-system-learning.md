@@ -3,10 +3,12 @@
 > Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
 
 - **Date:** 2026-10-28
-- **Status:** Proposed — design only. On 2026-10-28 the owner lifted the ADR-0131 Phase 2 hold **for design**
-  ("Yes go ahead for step 1"), and added: "we also have to consider the agent learning from the system itself
-  as we will be enhancing and adding functionalities to the system as time pass." Implementation, migrations,
-  provider changes and new autonomy remain unauthorized until the owner accepts this record.
+- **Status:** Accepted by the owner on 2026-10-28 ("Accept, start wave 1"), including the six first-wave entries
+  (§5) and the generic receipt shape on the existing prepared-action store (§4.3). The design go-ahead came the
+  same day ("Yes go ahead for step 1"), with the added requirement that "we also have to consider the agent
+  learning from the system itself as we will be enhancing and adding functionalities to the system as time pass."
+  Wave 1 implementation is authorized. Bulk manager decisions, scheduled agents and any provider change are not
+  part of wave 1 (§8). Accepted is not merged, tested, installed or released.
 - **Extends:** [ADR-0131](0131-acting-hr-agent-and-process-assessment.md) Phase 2–4 (registry, ledger, agent
   principal, harness), [ADR-0109](0109-central-hr-orchestrator.md), [ADR-0116](0116-central-ai-inventory-and-allowances.md),
   [ADR-0084](0084-propose-adjudicate-learn.md), [ADR-0082](0082-ai-assistant-access-scoped-tool-calling.md).
@@ -235,10 +237,14 @@ payroll preparation (inputs and checks, never close or unlock as Automatic), the
 Each increment still needs its focused checks, the impact-selected gate on GitHub Actions and staging
 acceptance; merged, tested, installed and accepted remain separate states.
 
-## 8. Open questions for the owner
+## 8. Owner answers and remaining questions
 
-1. Confirm the first wave in §5, or substitute other actions.
-2. Storage: accept the generic receipt shape on the existing store (§4.3).
-3. Should managers get **bulk** decisions (each item still individually reviewed), or single items only at first?
-4. Which scheduled agents should come first once the agent principal exists?
-5. Provider data handling: which provider/model may receive prepared-action content for argument extraction?
+Answered on acceptance (2026-10-28): the §5 first wave as written, and the generic receipt shape (§4.3).
+
+Still open, outside wave 1:
+1. Should managers get **bulk** decisions (each item still individually reviewed), or single items only? Wave 1
+   ships single items.
+2. Which scheduled agents should come first once the agent principal exists?
+3. Provider data handling: wave 1 uses the tenant's existing configured provider under the existing Assistant
+   grant, allowances and pause; it sends no prepared-action content to any new provider. Any provider change
+   remains a separate decision (ADR-0131 amendment of 2026-10-25).
