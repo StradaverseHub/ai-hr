@@ -19,6 +19,7 @@ import { getMobileSession } from '@/lib/session';
 import {randomUUID} from 'node:crypto';
 import type { ErrorResponse } from './contract';
 import { PageRequestRefused } from './v2/common';
+import { hasMobileBinarySignature, isMobileBinaryType, MOBILE_BINARY_TYPES, safeMobileFileName, type MobileBinaryType } from './binary-types';
 import { createRequestAdmission, createScopedAdmission, RequestBudgetExceeded, takeRequestBudget, trustedRequestSource } from '../request-budget';
 
 const admit = createRequestAdmission(24);
@@ -141,29 +142,28 @@ export function mobileRoute<S extends z.ZodType>(
 
 // ── Authenticated binary responses (protected PDFs) ────────────────────────────────────────────────
 
-export const MOBILE_BINARY_TYPES = ['application/pdf'] as const;
-export type MobileBinaryType = (typeof MOBILE_BINARY_TYPES)[number];
+export { MOBILE_BINARY_TYPES, MOBILE_ATTACHMENT_TYPES, type MobileBinaryType } from './binary-types';
 /** Hard ceiling for any binary route; a route may declare a lower one. */
 export const MOBILE_BINARY_MAX_BYTES = 10 * 1024 * 1024;
 export type MobileBinary = { outcome: 'file'; contentType: MobileBinaryType; fileName: string; bytes: Uint8Array };
-const PDF_MAGIC = [0x25, 0x50, 0x44, 0x46, 0x2d]; // %PDF-
-const safeFileName = (name: string) => /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(name) && name.toLowerCase().endsWith('.pdf') ? name : 'document.pdf';
 
 /**
  * `mobileRoute` for a file the phone saves: the same bearer session, budgets and failure mapping, plus an
  * hourly per-actor document allowance. A success is the bytes, never JSON: `Cache-Control: private,
- * no-store`, `Content-Disposition: attachment`, a content type from MOBILE_BINARY_TYPES, a size bound and
- * the PDF signature checked. A business refusal is JSON `{outcome:'refused',...}` at HTTP 200, parsed
- * through the route's own `refusal` schema. Anything else is a logged 500, never a best-effort send.
+ * no-store`, `Content-Disposition: attachment`, a content type the route allows (`options.types`, default
+ * MOBILE_BINARY_TYPES: PDF only), a size bound and the type's signature checked. A business refusal is JSON
+ * `{outcome:'refused',...}` at HTTP 200, parsed through the route's own `refusal` schema. Anything else is a
+ * logged 500, never a best-effort send.
  */
 export function mobileBinaryRoute<R extends z.ZodType>(
   refusal: R,
   fn: (s: SessionContext, req: Request) => Promise<MobileBinary | z.input<R>>,
-  options: { maxBytes?: number } = {},
+  options: { maxBytes?: number; types?: readonly MobileBinaryType[] } = {},
   resolve: MobileSessionResolver = () => getMobileSession(),
   budget: MobileBudget = takeRequestBudget,
 ): (req: Request) => Promise<Response> {
   const maxBytes = Math.min(options.maxBytes ?? MOBILE_BINARY_MAX_BYTES, MOBILE_BINARY_MAX_BYTES);
+  const types: readonly string[] = options.types ?? MOBILE_BINARY_TYPES;
   return (req: Request) => admitMobile(req, resolve, budget, true, async (s) => {
     let out: unknown;
     try {
@@ -174,15 +174,15 @@ export function mobileBinaryRoute<R extends z.ZodType>(
     if (typeof out === 'object' && out !== null && (out as { outcome?: unknown }).outcome === 'file') {
       const file = out as MobileBinary;
       const bytes = file.bytes;
-      if (!(MOBILE_BINARY_TYPES as readonly string[]).includes(file.contentType) || !(bytes instanceof Uint8Array) ||
-        bytes.byteLength < PDF_MAGIC.length || bytes.byteLength > maxBytes || PDF_MAGIC.some((b, i) => bytes[i] !== b)) {
+      if (typeof file.contentType !== 'string' || !isMobileBinaryType(file.contentType, types) || !(bytes instanceof Uint8Array) ||
+        bytes.byteLength > maxBytes || !hasMobileBinarySignature(file.contentType, bytes)) {
         return privateFailure(500,'internal','contract');
       }
       const body = new Uint8Array(bytes.byteLength);
       body.set(bytes);
       return new Response(body, { status: 200, headers: {
         'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff', 'content-type': file.contentType,
-        'content-length': String(body.byteLength), 'content-disposition': `attachment; filename="${safeFileName(file.fileName)}"`,
+        'content-length': String(body.byteLength), 'content-disposition': `attachment; filename="${safeMobileFileName(file.contentType, typeof file.fileName === 'string' ? file.fileName : '')}"`,
       } });
     }
     const parsed = refusal.safeParse(out);
