@@ -124,3 +124,25 @@ summary remain the decision record. These limits must be stated in release commu
 
 Reader API references: [JSZip streaming](https://stuk.github.io/jszip/documentation/api_zipobject/internal_stream.html)
 and [Mozilla PDF.js](https://mozilla.github.io/pdf.js/examples/).
+
+## DR-13 (APR-022): no new posting authority — 28 Oct 2026
+
+Decision DR-13, as amended by APR-022, asked that the Payroll seat post exactly as the reward design
+source does. Re-reading that source shows it has no payroll actor: "Payroll" is only the name of the
+hand-off step that follows the final executive approval (the review is approved and ready for payroll).
+Nothing is posted or written inside the source tool at that step.
+
+AI-HR therefore adds no posting authority. Enactment stays administrator-owned: `postRewardUnit` and
+the review page both ask `rewardPostingAuthorityTx` (`packs/rewards/service.ts`), which still requires
+the unit's payroll seat AND fresh company HR administration, because the salary and grade writers it
+calls are administrator-owned. No RLS arm and no migration were added. The payroll seat is the hand-off
+recipient: it sees the approved unit and, without administration, the explanatory line instead of a
+Post control. A payroll partner who holds the seat but not HR administration cannot post, and an HR
+administrator without the seat is refused on the no-seat path.
+
+Pin tests:
+- `test/rewards-approvals-board.test.ts` — "DR-13: a payroll partner holding the payroll seat but not
+  HR administration cannot post, and nothing is enacted" and "DR-13: a company HR administrator without
+  the payroll seat is refused on the no-seat path" (alongside the existing H1 cases).
+- `test/rewards-post-panel.dom.test.tsx` — "DR-13 (APR-022): a payroll seat holder who cannot post sees
+  the explanatory line and no Post control".

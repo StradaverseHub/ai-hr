@@ -29,7 +29,8 @@ async function authorized(ctx:SessionContext,reviewId:string,stage:ConversationS
 async function authorizedTx(tx:Tx,ctx:SessionContext,reviewId:string,stage:ConversationStage){
  z.uuid().parse(reviewId);conversationStage.parse(stage);if(stage==='feedback')throw Error('Use the assigned colleague feedback conversation.');
  const v=await getOnehrReviewTx(tx,ctx,reviewId);
- if(!v||!v.self&&!v.manager&&!v.moderator)throw Error('This review conversation is not assigned to you.');
+ if(!v||!v.self&&!v.manager&&!v.moderator&&!v.reviewer)throw Error('This review conversation is not assigned to you.');
+ if(!v.self&&!v.manager&&!v.moderator&&!['competency','career'].includes(stage))throw Error('This review conversation is not assigned to you.');
  if(v.policy.modules.review===false)throw Error('Guided review is disabled.');
  if(['setting','results','moderation'].includes(stage)&&!v.policy.modules.pm||stage==='competency'&&!v.policy.modules.tm||stage==='career'&&!v.policy.modules.idp||stage==='evidence'&&!v.policy.modules.evidence)throw Error('This review module is disabled.');
  return v;
@@ -37,7 +38,7 @@ async function authorizedTx(tx:Tx,ctx:SessionContext,reviewId:string,stage:Conve
 function commandContext(view:NonNullable<Awaited<ReturnType<typeof getOnehrReview>>>,stage:ConversationStage,text:string){
  const reading=stage==='competency'&&view.self&&/^read saved reflection:/i.test(text.trim());
  if(!reading&&(view.finalized||view.policy.kind==='quarterly'))return null;
- const kind=stage==='results'&&view.self?'results':stage==='moderation'&&(view.manager||view.moderator)?'moderation':stage==='competency'&&view.self?'competency_self':stage==='competency'&&view.manager?'competency_manager':null;
+ const kind=stage==='results'&&view.self?'results':stage==='moderation'&&(view.manager||view.moderator)?'moderation':stage==='competency'&&view.self?'competency_self':stage==='competency'&&(view.manager||view.reviewer)?'competency_manager':null;
  if(!kind||kind==='results'&&view.resultsSubmitted||kind==='moderation'&&!view.canModerateIds.length||kind==='competency_self'&&!reading&&view.competencyStatus!=='pending'||kind==='competency_manager'&&view.competencyStatus!=='submitted')return null;
  const prior=reading&&view.competencyStatus!=='pending'?undefined:view.drafts.find(d=>d.kind===kind);
  const kpis=view.kpis.filter(k=>!k.hrOwned&&(kind==='results'||view.canModerateIds.includes(k.id)));
@@ -63,7 +64,7 @@ function evidenceContext(view:NonNullable<Awaited<ReturnType<typeof getOnehrRevi
 type ReviewView=NonNullable<Awaited<ReturnType<typeof getOnehrReview>>>;
 function humanManagerContext(view:ReviewView,stage:ConversationStage,text:string){
  const plan=view.plans.find(p=>p.planYear===view.planYear)??null;
- const command=readManagerCommand(text,{stage,self:view.self,manager:view.manager,moderator:view.moderator,finalized:!view.participating||view.cycle.status==='closed'||stage!=='career'&&view.finalized,kpis:view.kpis.filter(k=>view.canModerateIds.includes(k.id)),competencyStatus:view.competencyStatus,planRemarkWriter:view.planRemarkWriter,plan});
+ const command=readManagerCommand(text,{stage,self:view.self,manager:view.manager,moderator:view.moderator,reviewer:view.reviewer,finalized:!view.participating||view.cycle.status==='closed'||stage!=='career'&&view.finalized,kpis:view.kpis.filter(k=>view.canModerateIds.includes(k.id)),competencyStatus:view.competencyStatus,planRemarkWriter:view.planRemarkWriter,plan});
  return command?{command,revision:view.revision,ownReviewerRemark:view.ownReviewerRemark,privateDraft:commandContext(view,stage,text),plan,careerRevision:view.careerProfile?.revision??null}:null;
 }
 async function applyHumanManagerCommand(tx:Tx,ctx:SessionContext,view:ReviewView,input:NonNullable<ReturnType<typeof humanManagerContext>>){

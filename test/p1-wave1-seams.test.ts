@@ -4,9 +4,10 @@
  *
  *   (a) A Rewards review returned to the BU seat is a `rewardReview` task for the BU member only — not the
  *       BG member who returned it, not PBP, not Group Rewards — and stops being one on resubmission.
- *   (b) A calibration session is a `calibration` task only for a NAMED reviewer whose tier window is open and
- *       who still has people to decide; never for an HR administrator who merely administers it, never
- *       across companies, never on the final tier.
+ *   (b) A calibration session is a `calibration` task only for a NAMED reviewer (named in reviewer_user_ids, or
+ *       the live holder of the session anchor's leader seat — WP-B2) whose tier window is open and who still has
+ *       people to decide; never for an HR administrator who merely administers it, never across companies,
+ *       never on the final tier, never for a seat that has ended.
  *   (c) Every pack task still carries exactly {id, kind, subjectName, createdAt, linkPath}.
  *
  * Fixtures follow test/wpa1-pack-task-projection.test.ts (Rewards) and test/performance-calibration-list.test.ts
@@ -112,7 +113,7 @@ describe('(a) a returned Rewards review in the shared task list', () => {
 
 describe('(b) calibration in the shared task list', () => {
   let coB: string, hod: SessionContext, reviewerB: SessionContext, finalNamed: SessionContext, partner: SessionContext;
-  let cycleA: string, hodSession: string, buSessionB: string, buSession: string;
+  let cycleA: string, hodSession: string, buSessionB: string, buSession: string, seatSubject: Hired;
 
   async function userCtx(personId: string, role: 'employee' | 'manager'): Promise<SessionContext> {
     const userId = await createAppUser(b.tenantId, personId, role);
@@ -149,6 +150,7 @@ describe('(b) calibration in the shared task list', () => {
     const finalPerson = await hire('Named on final only');
     const partnerPerson = await hire('Performance partner', b.companyId, b.deptB);
     const subjects = [await hire('Subject one'), await hire('Subject two')];
+    seatSubject = await hire('Seat subject'); // WP-B2: in no hand-built session, so an anchored BU scope can hold them
     ({ id: coB } = await createCompany(a, { legalName: 'Other Company Sdn Bhd' }));
     const deptB = await createDepartment(a, { companyId: coB, name: 'B-Dept' });
     const subjectB = await hire('Company B subject', coB, deptB.id);
@@ -213,6 +215,24 @@ describe('(b) calibration in the shared task list', () => {
     expect(b2.map((t) => t.id)).not.toContain(hodSession);
     expect(b2.map((t) => t.id)).not.toContain(buSession);
     expect(b2.map((t) => t.id)).toEqual([buSessionB]);
+  });
+
+  it('a live BU CEO seat holder gets exactly one calibration task without being named; an ended seat gets none (WP-B2)', async () => {
+    const [review] = await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId, cycleA), eq(schema.performanceReview.employmentId, seatSubject.employmentId)));
+    const seatSession = await withTenant(a, async (tx) => {
+      const [s] = await tx.insert(schema.onehrCalibration).values({ tenantId: b.tenantId, cycleId: cycleA, companyId: b.companyId, name: 'Seat business unit', tier: 'bu', reviewerUserIds: [], anchorKind: 'bu_ceo' }).returning();
+      await tx.insert(schema.onehrCalibrationEntry).values({ tenantId: b.tenantId, sessionId: s.id, reviewId: review.id, employmentId: seatSubject.employmentId });
+      return s.id;
+    });
+    const holderPerson = await hire('BU seat holder');
+    const holder = await userCtx(holderPerson.personId, 'manager');
+    expect(await calibrationTasks(holder)).toEqual([]); // non-vacuous: no seat, no task
+    const seat = await perf.appointLeaderSeat(a, { seatType: 'bu_ceo', companyId: b.companyId, holderEmploymentId: holderPerson.employmentId });
+    const [row] = await owner.db.select().from(schema.onehrCalibration).where(eq(schema.onehrCalibration.id, seatSession));
+    expect(await calibrationTasks(holder)).toEqual([{ id: seatSession, kind: 'calibration', subjectName: 'Seat business unit', createdAt: row.createdAt.toISOString(), linkPath: `/performance/assessment/calibration/${seatSession}` }]);
+    expect(await calibrationTasks(holder, [coB])).toEqual([]);
+    await perf.endLeaderSeat(a, seat.id);
+    expect(await calibrationTasks(holder)).toEqual([]);
   });
 });
 

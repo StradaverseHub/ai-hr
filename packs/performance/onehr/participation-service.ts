@@ -44,12 +44,15 @@ export async function assessmentParticipantsTx(tx:Tx,cycleId:string){
  // projection (performance partner, who cannot read person). Same companies as the onehr_admin filter.
  // VF-07: employment the same way, through app.onehr_employment (HR: its own rows, unchanged).
  const name=onehrLabel.labelOrPerson(person.fullName,onehrEmployment.id);
- const rows=await tx.select({employmentId:onehrEmployment.id,name,companyId:onehrEmployment.companyId,hiredOn:onehrEmployment.hiredOn,confirmationDate:onehrEmployment.confirmationDate,terminatedOn:onehrEmployment.terminatedOn,snapshot:assessmentParticipationSnapshot})
+ // D-P1-22: the cycle exclusion rule, read through the administrators' narrow predicate; a frozen result is exempt (D7).
+ const unitOut=sql<boolean>`(app.assessment_unit_out(${cycleId}::uuid,${onehrEmployment.id}) and not exists(select 1 from performance_onehr_result f where f.cycle_id=${cycleId}::uuid and f.employment_id=${onehrEmployment.id}))`;
+ const rows=await tx.select({employmentId:onehrEmployment.id,name,companyId:onehrEmployment.companyId,hiredOn:onehrEmployment.hiredOn,confirmationDate:onehrEmployment.confirmationDate,terminatedOn:onehrEmployment.terminatedOn,snapshot:assessmentParticipationSnapshot,unitOut})
   .from(onehrEmployment).leftJoin(person,eq(person.id,onehrEmployment.personId)).leftJoin(assessmentParticipationSnapshot,and(eq(assessmentParticipationSnapshot.employmentId,onehrEmployment.id),eq(assessmentParticipationSnapshot.cycleId,cycleId)))
   .where(and(cycle.companyId?eq(onehrEmployment.companyId,cycle.companyId):undefined,isNull(onehrEmployment.terminatedOn),sql`app.onehr_admin(${onehrEmployment.companyId})`,sql`(${person.id} is not null or ${onehrLabel.visible(onehrEmployment.id)})`)).orderBy(asc(name),asc(onehrEmployment.id));
- return rows.map(({snapshot,...e})=>{
+ return rows.map(({snapshot,unitOut,...e})=>{
   const original=snapshot?{takingPart:snapshot.eligibleAtOpen,reason:snapshot.reason as ParticipationReason}:defaultParticipation(e,cycle.openedOn??todayInKualaLumpur());
   const override=snapshot?.override as ParticipationOverride;
+  if(unitOut)return {employmentId:e.employmentId,name:e.name,companyId:e.companyId,takingPart:false,reason:'unit_out' as const,override,revision:snapshot?.revision??null,hasSnapshot:!!snapshot};
   return {employmentId:e.employmentId,name:e.name,companyId:e.companyId,takingPart:override?override==='add':original.takingPart,reason:override?override==='add'?'added' as const:'removed' as const:original.reason,override,revision:snapshot?.revision??null,hasSnapshot:!!snapshot};
  });
 }
@@ -68,6 +71,7 @@ export async function setAssessmentParticipation(ctx:SessionContext,cycleId:stri
   if(!e||!allowed?.ok||e.terminatedOn&&e.terminatedOn<=todayInKualaLumpur())throw Error('Choose an active employee in this cycle and your authorized company scope.');
   const [existingReview]=await tx.select({id:performanceReview.id}).from(performanceReview).where(and(eq(performanceReview.cycleId,cycleId),eq(performanceReview.employmentId,employmentId)));
   if(existingReview){await tx.select({id:onehrReview.reviewId}).from(onehrReview).where(eq(onehrReview.reviewId,existingReview.id)).for('update');const [frozen]=await tx.select({id:onehrResult.id}).from(onehrResult).where(eq(onehrResult.reviewId,existingReview.id));if(frozen)throw Error('A finalized assessment retains its participation and history.');}
+  if(mode==='add'){const [unit]=await tx.execute<{out:boolean}>(sql`select app.assessment_unit_out(${cycleId}::uuid,${employmentId}::uuid) as out`);if(unit?.out)throw Error('This employee\'s unit is not taking part in the cycle. Bring the unit back before including them.');}
   const [old]=await tx.select().from(assessmentParticipationSnapshot).where(and(eq(assessmentParticipationSnapshot.cycleId,cycleId),eq(assessmentParticipationSnapshot.employmentId,employmentId))).for('update');
   if((old?.revision??null)!==expectedParticipant)throw Error('This participation record changed. Reload before saving.');
   const initial=defaultParticipation(e,config.participationOpenedOn??cycle.createdAt.toISOString().slice(0,10));

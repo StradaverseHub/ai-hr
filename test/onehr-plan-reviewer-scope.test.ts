@@ -6,9 +6,13 @@
  * managers, heads of department) no longer reaches a plan's content. Migration 0640.
  *
  * Every read and write below runs as ai_hr_app with tenant context (withTenant), so RLS is what answers.
+ *
+ * D-P1-22 (ADR-0150, migration 0667): when the line manager's unit or department is left out of the cycle, the
+ * Career Plan review moves to the nearest manager above who takes part (app.onehr_effective_reviewer). A per-person
+ * removal never moves it (kept below).
  */
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
@@ -264,8 +268,8 @@ describe('Career Plan reviewer scope (TASK-030, migration 0640)', () => {
     // OneHR moves review one level up only when the manager's UNIT or DEPARTMENT is left out by the cycle's
     // exclusion rule (_cycle_review_managers, app.py:15495, reads unit_out only). Removing one person
     // (cycle_participants mode 'remove') touches only that person's own participation (app.py:7429, :7481), so
-    // the removed manager still reviews and the skip-level manager gains nothing. AI-HR's only exclusion is per
-    // person, so this is a match, not a divergence. AI-HR has no unit/department exclusion rule (ADR-0141, D-P1-22).
+    // the removed manager still reviews and the skip-level manager gains nothing. AI-HR's per-person override
+    // matches this. The unit/department rule (ADR-0150, migration 0667) is the next case.
     const view = (await perf.getOnehrCycle(a, cycleId))!;
     const lm = view.participants.find((p) => p.employmentId === manager.employmentId)!;
     await perf.setAssessmentParticipation(a, cycleId, view.revision, manager.employmentId, lm.revision, 'remove');
@@ -276,5 +280,24 @@ describe('Career Plan reviewer scope (TASK-030, migration 0640)', () => {
     expect(await reviewerAs(skipCtx), 'the skip-level manager does not become the reviewer (OneHR: same)').toBe(false);
     expect(await idsAs(mgr)).toEqual([sharedPlanId]);
     expect(await idsAs(skipCtx)).toEqual([]);
+  });
+
+  it('leaving the line manager\'s department out of the cycle moves the plan review one level up; Bring back returns it (D-P1-22)', async () => {
+    // OneHR moves Career Plan review one level up only through the cycle exclusion rule (_cycle_review_managers
+    // reads unit_out). AI-HR derives it on every read: app.onehr_effective_reviewer inside app.assessment_plan_reviewer.
+    const leftOut = await createDepartment(a, { companyId: b.companyId, name: 'Left out of the cycle' });
+    await owner.db.update(schema.assignment).set({ departmentId: leftOut.id }).where(and(eq(schema.assignment.employmentId, manager.employmentId), isNull(schema.assignment.supersededAt)));
+    const reviewerAs = async (ctx: SessionContext) =>
+      (await withTenant(ctx, (tx) => tx.execute<{ reviewer: boolean }>(sql`select app.assessment_plan_reviewer(${sharedPlanId}::uuid) as reviewer`)))[0].reviewer;
+    expect([await reviewerAs(mgr), await reviewerAs(skipCtx)], 'non-vacuous: no rule yet').toEqual([true, false]);
+    const preview = await perf.previewUnitExclusion(a, cycleId, { companyId: b.companyId, departmentId: leftOut.id });
+    const saved = await perf.saveUnitExclusion(a, cycleId, { companyId: b.companyId, departmentId: leftOut.id, digest: preview.digest, revision: preview.revision });
+    expect([await reviewerAs(mgr), await reviewerAs(skipCtx), await reviewerAs(approverCtx)]).toEqual([false, true, true]);
+    expect(await idsAs(skipCtx)).toEqual([sharedPlanId]);
+    expect(await idsAs(mgr)).toEqual([]);
+    expect(await idsAs(hodCtx), 'the department head is still not a reviewer').toEqual([]);
+    const [cycle] = await owner.db.select({ revision: schema.onehrCycle.revision }).from(schema.onehrCycle).where(eq(schema.onehrCycle.cycleId, cycleId));
+    await perf.endUnitExclusion(a, saved.ruleId, { revision: cycle.revision });
+    expect([await reviewerAs(mgr), await reviewerAs(skipCtx)]).toEqual([true, false]);
   });
 });

@@ -67,4 +67,16 @@ describe('current per-login assessment reminder summary',()=>{
   g.sessions[0].entries.push({...entry,reviewId:'remaining',performanceLocked:false});
   expect(assessmentReminderWork(g,companies,now).find(r=>r.userId==='manager')?.tasks.map(t=>t.key)).toEqual(['hod_potential','group_performance']);
  });
+ it('reminds a seat-only BU reviewer exactly like a named one: the graph already lists live seat holders (WP-B2)',()=>{
+  // app.assessment_pending_work emits reviewerUserIds = the logins app.onehr_calibration_reviewer admits: explicit
+  // names and live seat holders. 'outsider' holds the BU CEO seat and is named nowhere; the shape is unchanged.
+  const g=graph();g.reviews=[];g.panels=[];
+  const entry={reviewId:'review',companyId:'company',personId:'employee-person',employmentId:'employee-job',performanceLocked:false,potentialLocked:false,frozen:false,decisions:[],performanceReady:true};
+  g.sessions=[{id:'bu',companyId:'company',tier:'bu',reviewerUserIds:['outsider'],adminUserIds:[],lockedAt:null,performanceLockedAt:null,potentialLockedAt:null,entries:[entry,{...entry,reviewId:'own',personId:'outsider-person'}]}];
+  const out=assessmentReminderWork(g,companies,now);
+  expect(out.map(r=>[r.userId,r.employmentIds])).toEqual([['outsider',['other-job']]]);
+  expect(out[0].tasks.map(t=>[t.key,t.count]).sort()).toEqual([['bu_performance',1],['bu_potential',1]]);
+  g.sessions[0].reviewerUserIds=[];// the seat ended: the graph no longer lists them
+  expect(assessmentReminderWork(g,companies,now)).toEqual([]);
+ });
 });

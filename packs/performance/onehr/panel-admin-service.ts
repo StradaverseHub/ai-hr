@@ -24,7 +24,8 @@ async function population(tx:Tx,cycleId:string){
   department:sql<string>`coalesce((select d.name from app.onehr_assignment a join department d on d.id=a.department_id and d.tenant_id=a.tenant_id where a.employment_id=${onehrEmployment.id} and a.superseded_at is null and a.valid_from<=${today}::date and (a.valid_to is null or a.valid_to>${today}::date) order by a.valid_from desc,a.id limit 1),'')`,
   managerId:sql<string|null>`coalesce((select pr.reviewer_employment_id from performance_review pr where pr.employment_id=${onehrEmployment.id} and pr.cycle_id=${cycleId}::uuid),(select l.manager_employment_id from reporting_line l where l.subordinate_employment_id=${onehrEmployment.id} and l.line_type='administrative' and l.superseded_at is null and l.valid_from<=${today}::date and (l.valid_to is null or l.valid_to>${today}::date) order by l.valid_from desc,l.id limit 1))`,
   participates:sql<boolean>`exists(select 1 from performance_onehr_review r where r.employment_id=${onehrEmployment.id} and r.cycle_id=${cycleId}::uuid and app.assessment_review_participates(r.review_id))`,
-  canAssess:sql<boolean>`exists(select 1 from app_user u where u.tenant_id=${onehrEmployment.tenantId} and u.person_id=${onehrEmployment.personId} and u.archived_at is null and not app.login_blocked(u.id))`,
+  canAssess:sql<boolean>`(exists(select 1 from app_user u where u.tenant_id=${onehrEmployment.tenantId} and u.person_id=${onehrEmployment.personId} and u.archived_at is null and not app.login_blocked(u.id)) and not app.assessment_unit_out(${cycleId}::uuid,${onehrEmployment.id}))`,
+  unitOut:sql<boolean>`app.assessment_unit_out(${cycleId}::uuid,${onehrEmployment.id})`,
  // ADR-0142: a person row the caller can read (HR) keeps its old meaning; a performance partner, who cannot
  // read person, gets the label projection instead. Same row set as the former INNER JOIN for HR.
  }).from(onehrEmployment).leftJoin(person,eq(person.id,onehrEmployment.personId)).innerJoin(company,eq(company.id,onehrEmployment.companyId)).leftJoin(jobGrade,eq(jobGrade.id,onehrEmployment.gradeId)).where(sql`${onehrEmployment.employeeCode} is not null and (${onehrEmployment.terminatedOn} is null or ${onehrEmployment.terminatedOn}>${today}::date) and (${person.id} is not null or ${onehrLabel.visible(onehrEmployment.id)})`).orderBy(asc(onehrEmployment.employeeCode),asc(onehrEmployment.id));
@@ -68,6 +69,7 @@ export async function importAssessmentPanels(ctx:SessionContext,cycleId:string,c
    const subject=resolve(row.subject),assessor=resolve(row.assessor),review=current.reviews.find(r=>r.employmentId===subject.id);
    if(!review||!subject.participates||review.self||review.finalized)throw Error(`Row ${row.row}: the subject is unavailable, finalized or outside your administration scope.`);
    if(subject.personId===assessor.personId||assessor.grade==null)throw Error(`Row ${row.row}: choose a different active assessor with a numeric job grade.`);
+   if(assessor.unitOut)throw Error(`Row ${row.row}: the assessor's unit is not taking part in this cycle.`);
    if(row.relationship==='line_manager'&&assessor.id!==subject.managerId||row.relationship==='direct_report'&&assessor.managerId!==subject.id)throw Error(`Row ${row.row}: the relationship disagrees with the current review or organization.`);
    const selected=incoming.get(review.id)??new Map<string,PanelRelationship>();if(selected.has(assessor.id))throw Error(`Row ${row.row}: this subject/assessor pair appears twice.`);selected.set(assessor.id,row.relationship);incoming.set(review.id,selected);
   }
