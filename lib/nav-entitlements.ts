@@ -59,6 +59,10 @@ export const MODULE_CODES_WITH_NAV = [
   // system_explorer's. Listed here for the same reason as the rest — without it the rail would advertise
   // a module the tenant has not bought.
   'system_testing',
+  // ADR-0082 — the AI Assistant row (components/sidebar.tsx maps '/assistant' → 'assistant' by hand, like
+  // system_explorer). It was mapped there but missing here, so every resolved snapshot hid the row even
+  // with the module active (r231, 8f79dbe83). The per-user assistant grant is a separate gate on the page.
+  'assistant',
 ] as const;
 
 /** Module codes whose nav rows are always shown, whatever the snapshot says. */
