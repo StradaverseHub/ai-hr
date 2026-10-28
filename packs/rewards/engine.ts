@@ -104,8 +104,12 @@ export function calculateRewards(entries: RewardEntry[], input: RewardPolicy) {
     return ratio(ratio(x.source.basicCents, months, 10000), days, yearDays);
   };
   // A single unit multiplier must fit BOTH independently funded plans. EC never consumes either pot.
-  const affordable = (['standard', 'h'] as const).flatMap(plan => { const cost = sum(rows.filter(x => x.plan === plan).map(bonusBase)); return cost > 0 ? [ratio(budgets[plan].bonusPoolCents, 10000, cost)] : []; });
+  const affordableBy = Object.fromEntries((['standard', 'h'] as const).map(plan => { const cost = sum(rows.filter(x => x.plan === plan).map(bonusBase)); return [plan, cost > 0 ? ratio(budgets[plan].bonusPoolCents, 10000, cost) : null]; })) as Record<'standard' | 'h', number | null>;
+  const affordable = Object.values(affordableBy).filter((bp): bp is number => bp != null);
   const suggestedMultiplierBp = affordable.length ? Math.floor(Math.min(...affordable) / 100) * 100 : 0;
+  // bcd7cc0f: the inputs of the suggestion, as rates only (no money beyond the budget tab's own figures).
+  const suggestion = { patActualMissing: policy.patActual === 0, achievementBp: ratio(policy.patActual, 10000, policy.patTarget), targetMonthsBp: policy.targetMonthsBp,
+    poolMultiplierBp: ratio(policy.patActual, policy.targetMonthsBp, policy.patTarget), affordableBp: affordableBy };
   for (const x of rows) {
     const r = x.recommendation;
     let multiplier = policy.multiplierBp ?? suggestedMultiplierBp;
@@ -150,5 +154,5 @@ export function calculateRewards(entries: RewardEntry[], input: RewardPolicy) {
     if (b.bonusPoolCents > 0 && b.bonusUsedCents * 100 < b.bonusPoolCents * 80) add('warning', 'BUD-07', `${plan === 'h' ? 'JG H' : 'Standard'} bonus budget is less than 80% utilised.`);
   }
   flags.push(...salaryReductionFlags(rows));
-  return { rows, budgets, flags, suggestedMultiplierBp, suggestedLumpCents, lumpUnitCents, lumpWorking };
+  return { rows, budgets, flags, suggestedMultiplierBp, suggestion, suggestedLumpCents, lumpUnitCents, lumpWorking };
 }
