@@ -418,7 +418,7 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/performance',
     labelKey: 'nav.performance',
     guard: 'scopedSession',
-    routes: ['/performance', '/performance/[cycleId]', '/performance/[cycleId]/records', '/performance/[cycleId]/reports'],
+    routes: ['/performance', '/performance/[cycleId]', '/performance/[cycleId]/records', '/performance/[cycleId]/reports', '/performance/leaders'],
     hasScopeNote: true,
   },
   // ── Admin org / people (requireAdmin → hr_admin + super_admin) ──

@@ -74,6 +74,7 @@ export {getAssessmentOverview} from './onehr/overview-service';
 export {listMyCalibrationSessions,hasCalibrationAssignment,pendingCalibrationTasks,calibrationListTierOrder,type CalibrationListSession} from './onehr/calibration-list';
 // WP-B2 — leader seat registry (BU CEO, BG CEO, group chief), HOD assignment, calibration groups, generated scopes.
 export {listLeaderSeats,appointLeaderSeat,endLeaderSeat,listHodAssignments,previewHodChange,applyHodChange,listCalibrationGroups,createCalibrationGroup,renameCalibrationGroup,retireCalibrationGroup,listCalibrationGroupMembers,addCalibrationGroupMembers,endCalibrationGroupMember,generateCalibrationScopes,importLeaders,type LeaderSeatRow,type HodAssignmentRow,type HodPlan,type HodPreviewRow,type GeneratedScopes} from './onehr/leader-seat-service';
+export {getLeaderRoster,type LeaderRoster,type LeaderRosterPerson,type LeaderRosterCompany} from './onehr/leader-roster-service';
 export {LEADER_SEAT_TYPES,mapLeaderImport,partitionHodPlan,hodPlanFingerprint,type LeaderSeatType,type HodBlocker,type HodWarning,type LeaderImportInput,type LeaderImportPlan} from './onehr/leader-seat-model';
 // WP-C (APR-022) — the HOD department view (read-only) and its link flag.
 export {getDepartmentView,hasDepartmentView,type DepartmentView} from './onehr/department-view';
