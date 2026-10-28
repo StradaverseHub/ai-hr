@@ -36,7 +36,7 @@ export const AGENT_ACTION_TIER_CEILING=Object.freeze({
  'system_testing.execution.save':'confirm','knowledge_base.article.create':'confirm',
  'approvals.leave.decide':'approve','org.reporting.change':'approve','payroll.close':'approve',
  'multi_cycle_payroll.create_run':'approve','typed_pay_components.create':'approve','rewards.post':'approve',
- 'country-my.statutory.update':'approve','employees.import':'handoff',
+ 'country-my.statutory.update':'approve','employees.import':'handoff','claims.cancel':'confirm',
 } as const satisfies Record<ModuleEffectActionId,AgentTier>);
 
 export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<string,AgentCapabilityClass>>>>=Object.freeze({
@@ -152,7 +152,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/attendance/my-records/[date]/actions.ts":{"requestOwnAttendanceDayAction":"registered:attendance.correction.request"},
  "app/attendance/recompute/actions.ts":{"applyRecomputeAction":"backlog:confirm","previewRecomputeAction":"backlog:confirm"},
  "app/auth-actions.ts":{"logoutAction":"handoff:access_and_authentication","requestPasswordResetAction":"handoff:access_and_authentication","signOutUnlinkedAction":"handoff:access_and_authentication"},
- "app/claims/actions.ts":{"cancelClaimAction":"backlog:confirm","deleteDraftAction":"backlog:confirm","submitClaimAction":"backlog:confirm","submitDraftsAction":"registered:claims.submit"},
+ "app/claims/actions.ts":{"cancelClaimAction":"registered:claims.cancel","deleteDraftAction":"backlog:confirm","submitClaimAction":"backlog:confirm","submitDraftsAction":"registered:claims.submit"},
  "app/control-tower/actions/actions.ts":{"approveAgentActionAction":"handoff:ai_governance"},
  "app/control-tower/agents/actions.ts":{"applyBulkAssistantAction":"handoff:ai_governance","clearGroupAllowanceAction":"handoff:ai_governance","clearUserAllowanceAction":"handoff:ai_governance","setAiAllowanceAction":"handoff:ai_governance","setAiFeatureAction":"handoff:ai_governance","setAiSpendBudgetAction":"handoff:ai_governance","setAssistantPermissionAction":"handoff:ai_governance","setGroupAllowanceAction":"handoff:ai_governance"},
  "app/control-tower/agents/launcher-actions.ts":{"setAssistantLauncherAction":"handoff:ai_governance"},

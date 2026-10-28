@@ -15,6 +15,7 @@ export const NATIVE_OUTCOME_ACTIONS=Object.freeze({
  'attendance.correction.request':entry('attendance','correction_requested_not_approved'),
  'claims.draft.save':entry('claims','draft_saved_not_submitted_or_reimbursed'),
  'claims.submit':entry('claims','submitted_not_approved_or_reimbursed'),
+ 'claims.cancel':entry('claims','pending_claim_cancelled_no_payment_effect'),
  'performance.review.acknowledge':entry('performance','review_acknowledged_not_rating_endorsement'),
  'performance.onehr.plan.acknowledge':entry('performance','career_conversation_acknowledged_not_rating_endorsement'),
  'rewards.post':entry('rewards','posted_to_payroll_inputs_not_processed_or_paid'),
