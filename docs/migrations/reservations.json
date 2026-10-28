@@ -206,16 +206,29 @@
       ]
     },
     {
-      "tag": "0661_ai_openai_compatible_provider",
+      "tag": "0661_ai_gateway_provider",
       "owner": "AI delivery (known-gaps session local_333024cb)",
-      "status": "reserved_pending_owner_db_approval",
+      "status": "reserved_owner_approved_per_ai_gaps_session",
       "idx": null,
       "when": 1793150000000,
       "allocatedBy": "AI delivery allocator, 28 October 2026",
-      "scope": "ALTER TYPE ai_provider ADD VALUE openai_compatible; replace ai_provider_config_options_ck for {version:1,baseUrl} (https only) via app.ai_compatible_options_valid; possibly a candidate/evaluation column.",
+      "scope": "ALTER TYPE ai_provider ADD VALUE ai_gateway (general OpenRouter-like gateways, e.g. router.flatkey.ai/v1; public https only); config options check via app.ai_compatible_options_valid; possibly a candidate/evaluation column.",
       "notes": [
         "Journal it only AFTER 0660 (when 1793140000000) is applied on staging, at the next idx then (expected 645). If Mobile or anyone else applies a later when first, re-allocate rather than journal below the watermark.",
-        "0659 is unrecorded: do not use it without a registry claim."
+        "0659 is unrecorded: do not use it without a registry claim.",
+        "28 October: renamed from 0661_ai_openai_compatible_provider; the owner approved the change in the AI GAPS session (relayed, not observed by the allocator). Same when/idx rules."
+      ]
+    },
+    {
+      "tag": "0662_ai_group_allowance",
+      "owner": "AI delivery (known-gaps session local_333024cb)",
+      "status": "reserved_owner_approved_per_ai_gaps_session",
+      "idx": null,
+      "when": 1793160000000,
+      "allocatedBy": "AI delivery allocator, 28 October 2026",
+      "scope": "CREATE TABLE ai_group_allowance (tenant, scope role/company/department, daily_requests, monthly_tokens, max_concurrent, enabled) with FORCE RLS and grants like ai_control_policy; no bulk bookkeeping table (domain events only). Precedence individual > group (department > company > role, then strictest) > default, never additive.",
+      "notes": [
+        "Journal after 0660 and 0661, at the next idx (expected 646). Re-allocate if a later when is applied first."
       ]
     }
   ],

@@ -74,3 +74,4 @@ This reconciliation changes documentation only. Optimization remains paused; no 
 - Next: Board items' `0660_payroll_history_adopt_ordinary` (when 1793140000000, expected idx 644).
 - Reserved: `0661_ai_openai_compatible_provider`, when 1793150000000, for the AI known-gaps session (OpenAI-compatible provider by base URL). It is pending owner approval of the DB change. Journal it only after 0660 is applied, at the next free idx (expected 645). If any later when is applied first, re-allocate rather than journal below the watermark.
 - 0659 has no recorded claim; do not use it without one.
+- Update (later, 28 October): 0661 is renamed `0661_ai_gateway_provider`, a general AI gateway type with public https only; the owner approval was relayed by the AI GAPS session. Reserved `0662_ai_group_allowance`, when 1793160000000, expected idx 646, journaled after 0660 and 0661.
