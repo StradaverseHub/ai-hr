@@ -158,6 +158,34 @@ describe('consolidated Control Tower', () => {
     expect(screen.getByText(messages.receiptNote)).toBeTruthy();
     expect(screen.queryByText(messages.incomplete)).toBeNull();
   });
+  it('groups each person\'s open gaps together: company, then name, then gap, whatever order the cases opened in', async () => {
+    // Walkthrough 28 October 2026: one person's gaps were spread across rows 1, 3, 13, 14 and 16.
+    const base = populatedQueue(), [bank] = base.rows;
+    const row = (id: string, company: string, employmentId: string, name: string, gap: typeof bank.gap) => ({ ...bank, id, company, employmentId, name, gap });
+    const rows = [
+      row('c1', 'Beta Fixture Sdn Bhd', 'e-wei', 'Wei Fixture', 'no_tax_number'),
+      row('c2', 'Alpha Fixture Sdn Bhd', 'e-zara', 'Zara Fixture', 'no_bank_account'),
+      row('c3', 'Beta Fixture Sdn Bhd', 'e-adam', 'Adam Fixture', 'no_epf_number'),
+      row('c4', 'Beta Fixture Sdn Bhd', 'e-wei', 'Wei Fixture', 'no_bank_account'),
+      row('c5', 'Alpha Fixture Sdn Bhd', 'e-zara', 'Zara Fixture', 'no_identity'),
+      row('c6', 'Beta Fixture Sdn Bhd', 'e-wei', 'Wei Fixture', 'no_epf_number'),
+    ];
+    const order = async (view: typeof base) => {
+      cleanup();
+      show(await OrchestrationWorkQueue({ view }));
+      return screen.getAllByRole('row').slice(1).map(tr => { const cells = within(tr).getAllByRole('cell'); return [cells[0].textContent, cells[1].textContent]; });
+    };
+    const forward = { ...base, rows }, reversed = { ...base, rows: [...rows].reverse() };
+    const gap = en.controlTower.readinessScreen.gap;
+    const expected = [
+      ['Zara FixtureAlpha Fixture Sdn Bhd', gap.no_bank_account], ['Zara FixtureAlpha Fixture Sdn Bhd', gap.no_identity],
+      ['Adam FixtureBeta Fixture Sdn Bhd', gap.no_epf_number],
+      ['Wei FixtureBeta Fixture Sdn Bhd', gap.no_bank_account], ['Wei FixtureBeta Fixture Sdn Bhd', gap.no_epf_number], ['Wei FixtureBeta Fixture Sdn Bhd', gap.no_tax_number],
+    ];
+    expect(await order(forward)).toEqual(expected);
+    expect(await order(reversed)).toEqual(expected);
+    expect(forward.rows.map(r => r.id), 'the owner\'s rows are not reordered in place').toEqual(['c1', 'c2', 'c3', 'c4', 'c5', 'c6']);
+  });
 });
 
 

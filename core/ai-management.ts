@@ -10,6 +10,7 @@ import { getAiConfigView, resolveActiveAiConfig } from './ai-config';
 import { grantAssistant, revokeAssistant } from './assistant-grant';
 import { setTenantSetting } from './tenant-settings';
 import { assertAiPrincipalTx } from './ai-principal';
+import { isZeroCapped } from './ai-zero-cap';
 import {aiSpendStatusTx} from './ai-spend-management';
 
 export class AiControlError extends Error {}
@@ -42,8 +43,9 @@ const meter=(used:number,limit:number|null|undefined):AiMeter=>({used,limit:limi
 export type AiAllowanceUse = {daily:AiMeter;tokens:AiMeter;recorded:number;held:number;enabled:boolean;maxConcurrent:number|null};
 const allowanceUse=(daily:number,recorded:number,held:number,policy?:{enabled:boolean;dailyRequests:number|null;monthlyTokens:number|null;maxConcurrent?:number|null}):AiAllowanceUse=>
   ({daily:meter(daily,policy?.dailyRequests),tokens:meter(recorded+held,policy?.monthlyTokens),recorded,held,enabled:policy?.enabled!==false,maxConcurrent:policy?.maxConcurrent??null});
-/** Attention is about pressure on a cap, so a deliberately zero cap with no attempts is not listed. */
-const pressing=(u:AiAllowanceUse)=>u.enabled&&((u.daily.level!==null&&u.daily.used>0)||(u.tokens.level!==null&&u.tokens.used>0));
+/** Attention lists pressure on a cap (usage at 80% or more) and scopes paused by a zero cap, even before
+ *  anyone tries a call. A subject paused by its access switch is not listed. */
+const pressing=(u:AiAllowanceUse)=>u.enabled&&(isZeroCapped(u)||(u.daily.level!==null&&u.daily.used>0)||(u.tokens.level!==null&&u.tokens.used>0));
 export const AI_RUN_STATE_FILTERS = ['blocked','failed'] as const;
 export type AiRunFilter = {state?:typeof AI_RUN_STATE_FILTERS[number];feature?:AiFeatureId};
 const DAY_START=sql`(date_trunc('day',now() at time zone 'Asia/Kuala_Lumpur') at time zone 'Asia/Kuala_Lumpur')`;

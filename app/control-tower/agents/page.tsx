@@ -7,6 +7,8 @@ import { AI_FEATURES, isAiFeature } from '@/lib/ai/features';
 import { orchestrationQueue } from '@/core/hr-orchestrator';
 import { Badge, Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, btnGhost, inputCls, pageWideCls } from '@/components/ui';
 import { OrchestrationWorkQueue } from '../work-queue';
+import { usdDisplay } from './usd-display';
+import { isZeroCapped } from '@/core/ai-zero-cap';
 import { clearUserAllowanceAction, setAiSpendBudgetAction, setAiAllowanceAction, setAiFeatureAction, setAssistantPermissionAction } from './actions';
 
 type Search = {error?:string;toast?:string;q?:string;refresh?:string;runs?:string;feature?:string};
@@ -21,6 +23,8 @@ export default async function AiManagementPage({searchParams}:{searchParams:Prom
   const queue = await orchestrationQueue(s);
   const numbers = (value:unknown) => f.number(Number(value??0));
   const compact = (value:number) => f.number(value,{notation:'compact',maximumFractionDigits:1});
+  // Display only: stored nano-USD stays exact. Unknown is never shown as zero; a non-zero amount is never shown as US$0.00.
+  const usd = (nanos:string|null) => { const d = usdDisplay(nanos); return d.kind==='unknown'?t('spendUnknown'):d.kind==='belowCent'?t('spendBelowCent'):t('spendUsd',{amount:f.number(d.value,{minimumFractionDigits:2,maximumFractionDigits:2})}); };
   const usage = (row?:Partial<AiUsageSummary>) => <span className="text-xs text-muted-foreground">{t('usage',{daily:numbers(row?.daily_requests),tokens:numbers(row?.monthly_tokens),held:numbers(row?.held_tokens)})}</span>;
   // Usage against the cap that admission applies: requests today, and recorded plus reserved tokens this month.
   const meters = (u:AiAllowanceUse) => {
@@ -29,7 +33,7 @@ export default async function AiManagementPage({searchParams}:{searchParams:Prom
       <span>{u.daily.limit==null?t('requestsNoCap',{used:numbers(u.daily.used)}):t('requestsOfLimit',{used:numbers(u.daily.used),limit:numbers(u.daily.limit)})}</span>
       <span aria-hidden>·</span>
       <span>{u.tokens.limit==null?t('tokensNoCap',{used:compact(u.tokens.used)}):t('tokensOfLimit',{used:compact(u.tokens.used),limit:compact(u.tokens.limit)})}{u.held>0&&` (${t('heldIncluded',{held:compact(u.held)})})`}</span>
-      {!u.enabled?<Badge>{t('paused')}</Badge>:level&&<Badge variant={level==='at'?'danger':'warning'}>{t(`levels.${level}`)}</Badge>}
+      {!u.enabled?<Badge>{t('paused')}</Badge>:isZeroCapped(u)?<Badge variant="danger">{t('zeroCapPaused')}</Badge>:level&&<Badge variant={level==='at'?'danger':'warning'}>{t(`levels.${level}`)}</Badge>}
     </p>;
   };
   const query = sp.q??'';
@@ -42,14 +46,14 @@ export default async function AiManagementPage({searchParams}:{searchParams:Prom
     <button className={btnPrimary} type="submit">{t('save')}</button>
   </>;
   const formGrid = 'grid items-end gap-3 md:grid-cols-2 xl:grid-cols-[minmax(10rem,1fr)_minmax(7rem,10rem)_minmax(8rem,12rem)_minmax(7rem,10rem)_minmax(6rem,8rem)_auto]';
-  const companyRow = (c:typeof view.companies[number]) => <li key={c.id} className="py-4">
+  const companyRow = (c:typeof view.companies[number]) => <li key={c.id} id={`ai-company-${c.id}`} className="scroll-mt-4 py-4">
     <form action={setAiAllowanceAction} className={formGrid}>
       <input type="hidden" name="q" value={query}/><input type="hidden" name="kind" value="company"/><input type="hidden" name="subjectId" value={c.id}/>
       <div className="min-w-0 md:col-span-2 xl:col-span-1"><p className="break-words font-medium">{c.label}</p>{meters(c)}{(c.blocked>0||c.failed>0)&&<p className="text-xs text-muted-foreground">{t('exceptions',{blocked:numbers(c.blocked),failed:numbers(c.failed)})}</p>}</div>
       {limitFields(c.label,c)}
     </form>
   </li>;
-  const userRow = (u:typeof view.users[number]) => <li key={u.id} className="py-4">
+  const userRow = (u:typeof view.users[number]) => <li key={u.id} id={`ai-user-${u.id}`} className="scroll-mt-4 py-4">
     {/* A login following the default is prefilled with the default's values: saving it creates an individual copy, never an accidental "no cap". */}
     <form action={setAiAllowanceAction} className={formGrid}>
       <input type="hidden" name="q" value={query}/><input type="hidden" name="kind" value="user"/><input type="hidden" name="subjectId" value={u.id}/>
@@ -102,7 +106,7 @@ export default async function AiManagementPage({searchParams}:{searchParams:Prom
         <thead className="border-y border-border bg-muted/40"><tr>{['feature','state','activity','control'].map(key=><th key={key} scope="col" className="px-5 py-3 font-medium">{t(key)}</th>)}</tr></thead>
         <tbody className="divide-y divide-border">{view.features.map(feature=>{
           const activity=view.usage.find(u=>u.feature_id===feature.id);
-          return <tr key={feature.id}>
+          return <tr key={feature.id} id={`ai-feature-${feature.id}`} className="scroll-mt-4">
             <td className="px-5 py-4"><p className="font-medium">{t(`features.${feature.id}`)}</p><p className="mt-1 text-xs text-muted-foreground">{t(`kinds.${feature.kind}`)}{feature.id.startsWith('performance_')?` · ${t('imagesIncluded')}`:''}</p></td>
             <td className="px-5 py-4"><span className={feature.state==='ready'?'text-emerald-700 dark:text-emerald-300':'text-muted-foreground'}>{t(`states.${feature.state}`)}</span></td>
             <td className="px-5 py-4">{usage(activity)}{activity&&<p className="mt-1 text-xs text-muted-foreground">{t('exceptions',{blocked:numbers(activity.blocked),failed:numbers(activity.failed)})}</p>}</td>
@@ -118,7 +122,7 @@ export default async function AiManagementPage({searchParams}:{searchParams:Prom
     {view.mayWriteUsers&&<Card id="user-limits" className="scroll-mt-4 p-5">
       <SectionHeader title={t('userLimits')}/><p className="mt-1 text-sm text-muted-foreground">{t('userHelp')}</p>
       <section aria-labelledby="ai-user-default" className="mt-4 rounded-lg border border-border p-4">
-        <h3 id="ai-user-default" className="text-sm font-medium">{t('defaultAllowance')}</h3><p className="mt-1 max-w-4xl text-xs text-muted-foreground">{t('defaultHelp')}</p>
+        <h3 id="ai-user-default" className="scroll-mt-4 text-sm font-medium">{t('defaultAllowance')}</h3><p className="mt-1 max-w-4xl text-xs text-muted-foreground">{t('defaultHelp')}</p>
         <form action={setAiAllowanceAction} className={`mt-3 ${formGrid}`}>
           <input type="hidden" name="q" value={query}/><input type="hidden" name="kind" value="user_default"/>
           <p className="min-w-0 text-xs text-muted-foreground md:col-span-2 xl:col-span-1">{t(view.userDefault?'defaultSet':'defaultNotSet')}</p>
@@ -131,15 +135,15 @@ export default async function AiManagementPage({searchParams}:{searchParams:Prom
       <ul className="mt-2 divide-y divide-border">{view.users.map(userRow)}</ul>
       {view.users.length===0&&<p className="py-4 text-sm text-muted-foreground">{t('noUsers')}</p>}{view.moreUsers&&<p className="text-xs text-muted-foreground">{t('moreUsers')}</p>}
     </Card>}
-    {view.spend&&<Card className="p-5"><SectionHeader title={t('spendTitle')}/>
+    {view.spend&&<Card id="ai-spend" className="scroll-mt-4 p-5"><SectionHeader title={t('spendTitle')}/>
       <p className="mt-2 text-sm">{t('spendOptionalPolicy')}</p><p className="mt-2 text-sm">{view.spend.reviewedCarrierRecords===null?t('spendRecordsUnknown'):t('spendRecords',{count:view.spend.reviewedCarrierRecords})}</p><p className="mt-2 text-xs text-muted-foreground">{t('spendLiveUnverified')}</p><p className="mt-2 text-xs text-muted-foreground">{t('spendSemantics')}</p>
-      <p className="mt-2 text-sm">{t('spendHeld',{value:view.spend.heldNanos})} · {t('spendConfirmed',{value:view.spend.confirmedNanos??t('spendUnknown')})}</p>
+      <p className="mt-2 text-sm">{t('spendHeld',{value:usd(view.spend.heldNanos)})} · {t('spendConfirmed',{value:usd(view.spend.confirmedNanos)})}</p>
       {view.spend.breached&&<p role="alert">{t('spendBreach')}</p>}
       <p className="mt-2 text-xs text-muted-foreground">{t('spendUnpricedUnknown',{count:view.spend.unpricedUnknownRuns==null?t('spendUnknown'):String(view.spend.unpricedUnknownRuns)})}</p>
       <p className="mt-2 text-xs text-muted-foreground">{t('spendOptionalHelp')}</p>
       <form action={setAiSpendBudgetAction} className="mt-4 flex flex-wrap items-end gap-3">
-        <label className="text-sm">{t('spendMonthly')}<input className={inputCls} name="monthlyUsd" inputMode="decimal" defaultValue={view.spend.budgets.find(b=>b.scopeKey==='tenant')?.monthlyNanos!=null?nanosToUsd(view.spend.budgets.find(b=>b.scopeKey==='tenant')!.monthlyNanos!):''}/></label>
-        <label className="text-sm">{t('spendRoot')}<input className={inputCls} name="rootUsd" inputMode="decimal" defaultValue={view.spend.budgets.find(b=>b.scopeKey==='tenant')?.rootNanos!=null?nanosToUsd(view.spend.budgets.find(b=>b.scopeKey==='tenant')!.rootNanos!):''}/></label>
+        <label htmlFor="ai-spend-monthly" className="text-sm">{t('spendMonthly')}<input id="ai-spend-monthly" className={inputCls} name="monthlyUsd" inputMode="decimal" defaultValue={view.spend.budgets.find(b=>b.scopeKey==='tenant')?.monthlyNanos!=null?nanosToUsd(view.spend.budgets.find(b=>b.scopeKey==='tenant')!.monthlyNanos!):''}/></label>
+        <label htmlFor="ai-spend-root" className="text-sm">{t('spendRoot')}<input id="ai-spend-root" className={inputCls} name="rootUsd" inputMode="decimal" defaultValue={view.spend.budgets.find(b=>b.scopeKey==='tenant')?.rootNanos!=null?nanosToUsd(view.spend.budgets.find(b=>b.scopeKey==='tenant')!.rootNanos!):''}/></label>
         <button className={btnPrimary}>{t('save')}</button>
       </form></Card>}
     <Card className="p-5"><SectionHeader title={t('inherited')}/><p className="mt-1 text-sm text-muted-foreground">{t('businessLimits')}</p>{view.legacyBudget&&<p className="mt-2 text-sm">{t('legacyAssistant',{daily:numbers(view.legacyBudget.daily),tokens:numbers(view.legacyBudget.monthly)})}</p>}<p className="mt-2 text-xs text-muted-foreground">{t('humanDecisions')}</p></Card>

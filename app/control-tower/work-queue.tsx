@@ -19,6 +19,11 @@ export async function OrchestrationWorkQueue({ view, refresh, canViewRuns = fals
   const run = view.lastRun;
   const runOutcome = run?.failed === true ? 'failed' : run?.failed === false ? 'succeeded' : 'unknown';
   const incompleteRun = run && (run.failed === null || run.harnessVersion === null || Object.values(run.steps).includes('unknown'));
+  // Display order only, so each person's gaps sit together: company, then name, then the gap as shown.
+  // The id tie-breaks keep two people with one name apart and the order deterministic.
+  const gapLabel = (gap: string) => gaps.has(gap) ? gaps(gap) : gap;
+  const rows = [...view.rows].sort((a, b) => (a.company ?? '').localeCompare(b.company ?? '') || (a.name ?? '').localeCompare(b.name ?? '')
+    || a.employmentId.localeCompare(b.employmentId) || gapLabel(a.gap).localeCompare(gapLabel(b.gap)) || a.id.localeCompare(b.id));
   return <Card className="overflow-hidden">
     <div className="flex flex-wrap items-center justify-between gap-3 p-5">
       <div><h2 className="text-lg font-semibold">{t('workTitle')}</h2><p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('workDescription')}</p></div>
@@ -57,9 +62,9 @@ export async function OrchestrationWorkQueue({ view, refresh, canViewRuns = fals
         <thead className="border-b border-border text-muted-foreground"><tr>
           {['employee', 'issue', 'next', 'owner'].map(k => <th key={k} scope="col" className="px-5 py-3 font-medium">{t(k)}</th>)}
         </tr></thead>
-        <tbody className="divide-y divide-border">{view.rows.map(row => <tr key={row.id}>
+        <tbody className="divide-y divide-border">{rows.map(row => <tr key={row.id}>
           <td className="px-5 py-3"><Link className="font-medium text-primary hover:underline" href={`/admin/personnel/${row.employmentId}`}>{row.name}</Link><p className="mt-1 text-xs text-muted-foreground">{row.company}</p></td>
-          <td className="px-5 py-3">{gaps.has(row.gap) ? gaps(row.gap) : row.gap}{row.reopenCount > 0 && <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{t('reopened', { count: row.reopenCount })}</p>}</td>
+          <td className="px-5 py-3">{gapLabel(row.gap)}{row.reopenCount > 0 && <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{t('reopened', { count: row.reopenCount })}</p>}</td>
           <td className="px-5 py-3">{view.actionsUnavailable ? corrections('actionUnavailable') : row.action?.type === 'review_submission'
             ? row.action.mayReview
               ? <Link href="/approvals" className="font-medium text-primary hover:underline">{corrections('review')}</Link>

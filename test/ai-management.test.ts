@@ -294,6 +294,20 @@ describe('tenant default user allowance, usage against limits and attention',()=
   expect(view.attention.companies.map(c=>c.id)).toEqual([base.companyId]);expect(view.attention.users).toEqual([]);expect(view.attention.blocked).toEqual([]);expect(view.users).toEqual([]);
   const serialized=JSON.stringify(view.attention)+JSON.stringify(view.companies);expect(serialized).not.toContain(other.id);expect(serialized).not.toContain(base.adminUserId);
  });
+ it('lists a company paused by a configured zero cap before any attempt, but not one paused by its switch or without a cap',async()=>{
+  // Walkthrough 28 October 2026: a company with a zero daily cap blocks every call, and blocked calls never
+  // count as usage, so the old "usage above zero" rule could never list it.
+  const [switchedOff]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Switched Off Company'}).returning();
+  const [noConcurrency]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Zero Concurrency Company'}).returning();
+  expect((await aiManagementView(group)).attention.companies).toEqual([]);
+  await limit('company',base.companyId,0,null);await limit('company',switchedOff.id,0,null,false);
+  await setAiAllowance(group,{kind:'company',subjectId:noConcurrency.id,dailyRequests:null,monthlyTokens:null,maxConcurrent:0,enabled:true});
+  const view=await aiManagementView(group);
+  expect(view.attention.companies.map(c=>c.id).sort()).toEqual([base.companyId,noConcurrency.id].sort());
+  expect(view.attention.companies.find(c=>c.id===base.companyId)!.daily).toEqual({used:0,limit:0,level:'at'});
+  await limit('company',base.companyId,null,null);
+  expect((await aiManagementView(group)).attention.companies.map(c=>c.id)).toEqual([noConcurrency.id]);
+ });
  it('filters recent runs by blocked, failed and capability for group administrators only',async()=>{
   await run(base.adminUserId,'completed',100,10);await run(base.adminUserId,'failed',100,null,'report_insight');await run(null,'blocked',100,null,'report_insight','paused');await run(base.adminUserId,'blocked',100,null,'pay_rule_draft','daily_limit');
   expect((await aiManagementView(group)).runs).toHaveLength(4);
