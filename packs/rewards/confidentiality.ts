@@ -17,4 +17,3 @@ export async function deriveConfidentialityTx(tx:Tx,unitId:string,employmentIds:
 }
 export const sourceWithFloor = (source: RewardSource, floor: ConfidentialityFloor | undefined) =>
   withConfidentialityFloor(source, floor ? { level: floor.level, reason: { seat: floor.level, managerEmploymentId: floor.managerEmploymentId } } : null);
-
