@@ -31,7 +31,7 @@ describe('shared Rewards company participation and history',()=>{
   expect(await owner.db.select().from(s.rewardUnit).where(eq(s.rewardUnit.id,review))).toEqual(before);
   await changeRewardCompanyExclusion(admin,{companyId:b.companyId,year,reason:'Company is taking part again',endId:id});
   expect((await rewardCompanyExclusions(admin,year))[0]).toMatchObject({id,endReason:'Company is taking part again'});
-  const events=await owner.db.select({type:s.domainEvent.eventType}).from(s.domainEvent).where(eq(s.domainEvent.aggregateId,id)).orderBy(s.domainEvent.createdAt,s.domainEvent.id);
+  const events=await owner.db.select({type:s.domainEvent.eventType}).from(s.domainEvent).where(eq(s.domainEvent.aggregateId,id)).orderBy(s.domainEvent.occurredAt,s.domainEvent.id);
   expect(events.map(row=>row.type).sort()).toEqual(['reward.company-excluded','reward.company-exclusion-ended']);
  });
  it('keeps scope, immutable versions, hidden counts and current-group authority separate',async()=>{
