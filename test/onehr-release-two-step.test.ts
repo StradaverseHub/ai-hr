@@ -420,11 +420,12 @@ describe('W3-F6: leader-off while a unit is out of the cycle (D-P1-22 E7)', () =
   }, 120_000);
 
   it('per acting employment (D9): a right held through the employment that takes part stays; one held through the left-out employment goes', async () => {
-    const review = await calibrated(cycleId, S[0]);
     const out = await leftOut();
     // The BU CEO's person also holds a second live employment, in the left-out department, and heads the subject's department through it.
+    // The HOD change comes before calibration locks anything: over locked calibration work it needs a group-wide override reason.
     const second = await hireEmployee(a, { person: { id: P.buCeo.personId }, companyId: b.companyId, departmentId: out, employmentType: 'full_time', hiredOn: `${year - 2}-01-01` });
     await assignHod([S[0]], second);
+    const review = await calibrated(cycleId, S[0]);
     expect(await reach(review), 'non-vacuous: both rights before the rule').toEqual([['bu', P.buCeo.employmentId], ['hod', second.employmentId], ['lm', P.lm.employmentId]]);
     expect(await ledTabs(U.buCeo)).toEqual(['bu', 'dept']);
     const { saved } = await exclude(a, cycleId, b.companyId, out);
