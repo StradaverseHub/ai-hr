@@ -474,7 +474,8 @@
     "letterRegister": "已签发信函登记册",
     "letterReports": "信函报表",
     "letterSettings": "信函设置",
-    "calibration": "Calibration"
+    "calibration": "Calibration",
+    "moduleELetter": "电子信函"
   },
   "dashboard": {
     "title": "仪表盘",

@@ -474,7 +474,8 @@
     "letterRegister": "Sổ đăng ký thư đã phát hành",
     "letterReports": "Báo cáo thư",
     "letterSettings": "Cài đặt thư",
-    "calibration": "Calibration"
+    "calibration": "Calibration",
+    "moduleELetter": "Thư điện tử"
   },
   "dashboard": {
     "title": "Bảng điều khiển",

@@ -474,7 +474,8 @@
     "letterRegister": "ทะเบียนจดหมายที่ออกแล้ว",
     "letterReports": "รายงานจดหมาย",
     "letterSettings": "การตั้งค่าจดหมาย",
-    "calibration": "Calibration"
+    "calibration": "Calibration",
+    "moduleELetter": "จดหมายอิเล็กทรอนิกส์"
   },
   "dashboard": {
     "title": "แดชบอร์ด",

@@ -474,7 +474,8 @@
     "letterRegister": "Issued Letter Register",
     "letterReports": "Letter Reports",
     "letterSettings": "Letter Settings",
-    "calibration": "Calibration"
+    "calibration": "Calibration",
+    "moduleELetter": "E-Letter"
   },
   "dashboard": {
     "title": "Dashboard",

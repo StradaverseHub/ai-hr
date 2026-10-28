@@ -1,12 +1,14 @@
 /** Navigation placement only. Callers supply already-authorized destinations; this file grants nothing. */
 export type NavigationWorkspace = 'ops' | 'strata';
 export type NavigationSection = 'mine' | 'team' | 'hr' | 'config';
-export type NavigationModule = 'controlTower' | 'people' | 'onboarding' | 'leave' | 'attendance' | 'claims' | 'payroll'
+export type NavigationModule = 'controlTower' | 'people' | 'eLetter' | 'onboarding' | 'leave' | 'attendance' | 'claims' | 'payroll'
   | 'performance' | 'talent' | 'development' | 'rewards' | 'workforceInsights';
 export type NavigationPlacement = {area:'shared' | 'system'} | {area:NavigationWorkspace;module:NavigationModule;section:NavigationSection};
 export const NAVIGATION_MODULES: readonly {id:NavigationModule;workspace:NavigationWorkspace;labelKey:string}[] = [
   {id:'controlTower',workspace:'ops',labelKey:'aiControlTower'},
   {id:'people',workspace:'ops',labelKey:'modulePeople'},
+  // 7baeb78e — Letters is its own module, beside People. Same pages and addresses; placement only.
+  {id:'eLetter',workspace:'ops',labelKey:'moduleELetter'},
   {id:'onboarding',workspace:'ops',labelKey:'moduleOnboarding'},
   {id:'leave',workspace:'ops',labelKey:'moduleLeave'},
   {id:'attendance',workspace:'ops',labelKey:'moduleAttendance'},
@@ -42,9 +44,9 @@ export function navigationPlacement(href:string):NavigationPlacement | undefined
   if(system.has(path))return {area:'system'};
   if(peopleConfig.has(path))return modulePlacement('people','config');
   if(path==='/personnel')return modulePlacement('people','mine');
-  if(path.startsWith('/me/letters'))return modulePlacement('people','mine');
-  if(path.startsWith('/letters/settings'))return modulePlacement('people','config');
-  if(path.startsWith('/letters'))return modulePlacement('people','hr');
+  if(path.startsWith('/me/letters'))return modulePlacement('eLetter','mine');
+  if(path.startsWith('/letters/settings'))return modulePlacement('eLetter','config');
+  if(path.startsWith('/letters'))return modulePlacement('eLetter','hr');
   if(path==='/manage/my-team')return modulePlacement('people','team');
   if(path.startsWith('/admin/personnel')||path.startsWith('/admin/job-descriptions')||path==='/admin/notice-board')return modulePlacement('people','hr');
   if(path.startsWith('/control-tower'))return modulePlacement('controlTower','hr');

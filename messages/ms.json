@@ -474,7 +474,8 @@
     "letterRegister": "Daftar Surat Dikeluarkan",
     "letterReports": "Laporan Surat",
     "letterSettings": "Tetapan Surat",
-    "calibration": "Calibration"
+    "calibration": "Calibration",
+    "moduleELetter": "E-Surat"
   },
   "dashboard": {
     "title": "Papan pemuka",

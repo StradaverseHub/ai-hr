@@ -474,7 +474,8 @@
     "letterRegister": "வழங்கப்பட்ட கடிதப் பதிவேடு",
     "letterReports": "கடித அறிக்கைகள்",
     "letterSettings": "கடித அமைப்புகள்",
-    "calibration": "Calibration"
+    "calibration": "Calibration",
+    "moduleELetter": "மின்-கடிதம்"
   },
   "dashboard": {
     "title": "டாஷ்போர்டு",
