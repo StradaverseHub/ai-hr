@@ -75,7 +75,7 @@ export default async function PerformancePage({
       {performanceAdmin&&<PerformanceAdminAssistant/>}
       {performanceAdmin&&<PerformanceOverview session={s}/>}
       {performanceAdmin&&<PerformanceGuideReportPanel companies={companies.map(c=>({id:c.id,name:c.name}))}/>}
-      <Link href="/performance/workspace" className="flex min-h-11 items-center justify-between rounded-lg border border-primary bg-primary/5 px-5 py-4 font-medium text-primary">{to('workspace.title')}<span className="text-sm font-normal">{to('workspace.description')} →</span></Link>
+      <Link href="/performance/workspace" className="flex min-h-11 flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-lg border border-primary bg-primary/5 px-5 py-4 font-medium text-primary">{to('workspace.title')}<span className="text-sm font-normal">{to('workspace.description')} →</span></Link>
       {(onehr.reviews.length>0||onehr.sessions.length>0)&&<Card className="space-y-3 p-5"><h2 className="font-semibold">{to('assignments')}</h2>{onehr.reviews.map(r=><p key={r.id}><Link className="text-primary hover:underline" href={`/performance/review/${r.id}`}>{r.name} · {r.cycle} · {r.periodEnd}</Link></p>)}{onehr.sessions.map(c=><p key={c.id}><Link className="text-primary hover:underline" href={`/performance/assessment/calibration/${c.id}`}>{c.name}</Link></p>)}</Card>}
 
       {pending.length > 0 && (

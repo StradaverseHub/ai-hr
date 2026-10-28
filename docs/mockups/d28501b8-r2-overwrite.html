@@ -1,0 +1,79 @@
+<meta charset="utf-8">
+<title>Import Payroll History — overwrite processed and closed payroll</title>
+<!--
+  Mockup for d28501b8 plan revision 2 (contested). Product tokens from app/globals.css; everything inline.
+  Deliberately carries NO money figures: amounts on a payroll mockup read as promises.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:15px;margin:0 0 4px}
+  .sub{font-size:12.5px;color:var(--mf);margin:0 0 12px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600;padding:6px 9px;background:var(--muted)}
+  td{padding:8px 9px;border-top:1px solid var(--border);vertical-align:top}
+  .mono{font-family:ui-monospace,Menlo,monospace;font-weight:600;font-size:12px}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+  .ok{background:#d1fae5;color:#065f46}.warn{background:#fef3c7;color:#92400e}.bad{background:#fee2e2;color:#991b1b}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
+  .tile{border:1px solid var(--border);border-radius:10px;padding:10px}
+  .tile .k{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600}
+  .tile .v{font-size:12.5px;margin-top:4px}
+  .box{width:15px;height:15px;border:1.5px solid #9ca3af;border-radius:4px;display:inline-block;vertical-align:middle}
+  .box.on{background:#b45309;border-color:#b45309;position:relative}
+  .box.on::after{content:'';position:absolute;left:4px;top:1px;width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+  .note{font-size:12px;color:var(--mf)}
+  .cmp{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-top:6px;font-size:12px}
+  .cmp div{padding:5px 8px;border-top:1px solid var(--border)}
+  .cmp .h{background:var(--muted);font-weight:600;color:var(--mf);border-top:0;text-transform:uppercase;font-size:12px;letter-spacing:.04em}
+  .cmp .ch{background:#fff7ed}
+  .banner{border:1px solid #fcd34d;background:#fffbeb;border-radius:10px;padding:12px;margin-top:12px}
+  .banner b{display:block;margin-bottom:6px}
+  .banner ul{margin:6px 0 8px 18px;padding:0;font-size:12.5px}
+  .btns{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+  .btn{padding:7px 14px;border-radius:8px;font-weight:600;font-size:12.5px;border:1px solid var(--border);background:#fff}
+  .btn.p{background:#b45309;color:#fff;border-color:#b45309}
+  .ack{display:flex;gap:8px;align-items:flex-start;margin-top:8px;font-size:12.5px}
+</style>
+
+<div class="card">
+  <h2>Import Payroll History · after Validate <span class="chip new">proposed</span></h2>
+  <p class="sub">One row per employee per month. Nothing has been saved yet.</p>
+  <div class="tiles">
+    <div class="tile"><div class="k">New record</div><div class="v">No payroll on file for that employee and month — will be added</div></div>
+    <div class="tile"><div class="k">Overwrite confirmation required</div><div class="v">Payroll is on file — processed, closed or imported. Tick the ones to replace</div></div>
+    <div class="tile"><div class="k">Rejected</div><div class="v">Row, code and reason shown. The file is fixed and uploaded again before anything is imported</div></div>
+  </div>
+  <table>
+    <tr><th style="width:34px"><span class="box"></span></th><th>Employee</th><th>Company</th><th>Year / month</th><th>Pay Cycle</th><th>Result</th><th>Detail</th></tr>
+    <tr><td></td><td>A1001 · Sample Employee One</td><td>ABCDE</td><td>2025 / 01</td><td>ME</td><td><span class="chip ok">New record</span></td><td class="note">Rows 2–16 · <span class="mono">BASIC, EEEPF, PCB …</span></td></tr>
+    <tr><td><span class="box on"></span></td><td>A1002 · Sample Employee Two</td><td>ABCDE</td><td>2025 / 06</td><td>ME</td><td><span class="chip warn">Overwrite confirmation required</span></td>
+      <td>Processed in AIHR · period Closed · payslip issued
+        <div class="cmp">
+          <div class="h">Item</div><div class="h">On file now</div><div class="h">From your file</div>
+          <div class="mono">BASIC</div><div>—</div><div>—</div>
+          <div class="mono ch">EEEPF</div><div class="ch">—</div><div class="ch">—</div>
+          <div class="mono">PCB</div><div>—</div><div>—</div>
+          <div class="mono">NETPAY</div><div>—</div><div>—</div>
+        </div>
+        <div class="note" style="margin-top:4px">Changed items are highlighted.</div>
+      </td></tr>
+    <tr><td><span class="box"></span></td><td>A1003 · Sample Employee Three</td><td>ABCDE</td><td>2024 / 12</td><td>ME</td><td><span class="chip warn">Overwrite confirmation required</span></td><td>Imported earlier · period Closed · <span class="note">not ticked — will be left as it is</span></td></tr>
+  </table>
+
+  <div class="banner">
+    <b>You have ticked 1 employee-month for overwrite, including payroll that was processed and closed in AIHR.</b>
+    Your file's amounts will replace what is on file exactly as written. Nothing is recalculated, no payroll is run and no payslip is generated.
+    Before you confirm, note what has already gone out for these months:
+    <ul>
+      <li>A bank payment file was exported for 2025 / 06.</li>
+      <li>EPF and SOCSO returns were generated for 2025 / 06. They are not regenerated or resubmitted for you.</li>
+      <li>Tax (PCB) for later months of 2025 was worked out from the old figures and stays as it was paid.</li>
+    </ul>
+    <label class="ack"><span class="box on"></span><span>I understand. Replace the ticked records with my file's values. The original values stay in the audit history and the overwrite can be undone from Log File.</span></label>
+    <div class="btns"><span class="btn p">Confirm overwrite and import</span><span class="btn">Import new records only</span><span class="btn">Cancel</span></div>
+  </div>
+</div>

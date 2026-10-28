@@ -21520,7 +21520,9 @@
       "movedFrom": "Chuyển từ {band}",
       "differsBg": "Khác với CEO khối kinh doanh",
       "businessGroup": "Khối kinh doanh",
-      "department": "Phòng ban"
+      "department": "Phòng ban",
+      "changeTitle": "Change the call for {name}",
+      "saveCall": "Save call"
     },
     "developmentSuggestions": {
       "title": "Gợi ý mục tiêu",

@@ -81,15 +81,17 @@ export async function sendCalibrationMessage(ctx:SessionContext,id:string,axis:'
   if(messages.length>296)throw Error('This conversation has reached its limit. The saved review remains available.');
   let held=heldCalibrationSchema.parse(row?.held??emptyHeldCalibration),reply='',kind:ReviewMessage['kind']='guide';
   if(command){
+   // A leader's chat move keeps the box's movement ceiling (source: the box and its chat share one move). It is not a
+   // box move: the command names one axis, and its reason is required by the parser and again by the writer.
    const target=view.rows.find(r=>r.entry.reviewId===command.reviewId)!;
    if(target.finalized||view.session.lockedAt||command.axis==='performance'&&(view.session.performanceLockedAt||target.entry.performanceLockedAt)||command.axis==='potential'&&(view.session.potentialLockedAt||target.entry.potentialLockedAt))throw Error('This assessment axis is locked.');
    if(view.session.tier==='hod'&&!command.submit){
-    await saveOnehrCalibrationTx(tx,ctx,id,view.session.revision,{reviewId:command.reviewId,axis:command.axis,performance:command.axis==='performance'?command.band as PMBand:null,potential:command.axis==='potential'?command.band as PotentialBand:null,performanceNote:command.axis==='performance'?command.reason:'',potentialNote:command.axis==='potential'?command.reason:''},true);
+    await saveOnehrCalibrationTx(tx,ctx,id,view.session.revision,{reviewId:command.reviewId,axis:command.axis,performance:command.axis==='performance'?command.band as PMBand:null,potential:command.axis==='potential'?command.band as PotentialBand:null,performanceNote:command.axis==='performance'?command.reason:'',potentialNote:command.axis==='potential'?command.reason:''},true,false,{enforceMoveCap:true});
     const line={reviewId:command.reviewId,sessionRevision:view.session.revision,axis:command.axis,band:command.band,reason:command.reason};
     held={lines:[...held.lines.filter(l=>l.reviewId!==command.reviewId||l.axis!==command.axis),line],focus:command.reviewId,requestId};
     reply=`The ${command.axis} band and your explanation are on ${target.name}’s review sheet. Review them and use Save to confirm the department decision.`;kind='draft';
    }else{
-    await saveOnehrCalibrationTx(tx,ctx,id,view.session.revision,{reviewId:command.reviewId,axis:command.axis,performance:command.axis==='performance'?command.band as PMBand:null,potential:command.axis==='potential'?command.band as PotentialBand:null,performanceNote:command.axis==='performance'?command.reason:'',potentialNote:command.axis==='potential'?command.reason:''});
+    await saveOnehrCalibrationTx(tx,ctx,id,view.session.revision,{reviewId:command.reviewId,axis:command.axis,performance:command.axis==='performance'?command.band as PMBand:null,potential:command.axis==='potential'?command.band as PotentialBand:null,performanceNote:command.axis==='performance'?command.reason:'',potentialNote:command.axis==='potential'?command.reason:''},false,false,{enforceMoveCap:true});
     held={...held,lines:held.lines.filter(l=>l.reviewId!==command.reviewId||l.axis!==command.axis),focus:null};
     reply=`${target.name}’s ${command.axis} band is saved as ${command.band}.${view.session.tier==='hod'?' This department decision is confirmed.':' You can revise it until calibration is locked.'}`;kind='action';
    }

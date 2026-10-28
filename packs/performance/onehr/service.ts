@@ -598,7 +598,12 @@ export async function moveAssessmentTalentBox(ctx:SessionContext,sessionId:strin
  const p=z.object({reviewId:uuid,performance:z.enum(pmBands).nullable(),potential:z.enum(potentialBands).nullable(),performanceNote:note,potentialNote:note}).parse(raw);
  return withPerformanceTenant(ctx,tx=>saveOnehrCalibrationTx(tx,ctx,sessionId,expected,{...p,axis:'both'},false,true));
 }
-export async function saveOnehrCalibrationTx(tx:Tx,ctx:SessionContext,sessionId:string,expected:number,p:{reviewId:string;axis:'performance'|'potential'|'both';performance:PMBand|null;potential:PotentialBand|null;performanceNote:string;potentialNote:string;pip?:boolean;promotion?:boolean;specialReward?:boolean;confirmTalentDecisions?:boolean},dryRun=false,talentBoxMove=false) {
+/**
+ * The one calibration band writer. `talentBoxMove` is the box's reversible move (only changed axes are written);
+ * `enforceMoveCap` applies the box's movement ceiling to another surface that routes a leader's move through the
+ * box's rules (the calibration chat). The list pages, the generic form and the fit Apply stay uncapped.
+ */
+export async function saveOnehrCalibrationTx(tx:Tx,ctx:SessionContext,sessionId:string,expected:number,p:{reviewId:string;axis:'performance'|'potential'|'both';performance:PMBand|null;potential:PotentialBand|null;performanceNote:string;potentialNote:string;pip?:boolean;promotion?:boolean;specialReward?:boolean;confirmTalentDecisions?:boolean},dryRun=false,talentBoxMove=false,options:{enforceMoveCap?:boolean}={}) {
   const {session,cycle}=await loadCalibration(tx,sessionId,expected);if(session.lockedAt||!['open','calibration'].includes(cycle.native.status))throw Error('This calibration is locked.');
   let {pm,pot}=needsAxes(cycle.policy,p.axis,session.tier);if(!pm&&!pot)throw Error('This assessment axis is disabled.');calibrationWindows(cycle.policy,session.tier as Tier,p.axis);
   if(talentBoxMove&&!['bu','bg','group'].includes(session.tier))throw Error('This action belongs to the Talent Box.');
@@ -608,11 +613,9 @@ export async function saveOnehrCalibrationTx(tx:Tx,ctx:SessionContext,sessionId:
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${p.reviewId},0))`);
   const current=await resolved(tx,p.reviewId,cycle.policy);if(current.input.finalized)throw Error('Assessment is finalized.');
   const display=boxBands(current,session.tier,p.axis),visible={performance:z.enum(pmBands).nullable().parse(entry.performance??display.performance),potential:z.enum(potentialBands).nullable().parse(entry.potential??display.potential)};
-  if(talentBoxMove){assertPrecedingTier(current.rows,session.tier as Tier,session.mode,pm,pot);const changed=talentMoveAxes(visible,p);pm=pm&&changed.pm;pot=pot&&changed.pot;if(!pm&&!pot)return;
-   // APR-011: every leader band change on the box carries its reason (BU, BG and Group; the HOD rule is below).
-   if(pm&&!p.performanceNote.trim()||pot&&!p.potentialNote.trim())throw Error('Explain each changed band.');
-   await assertTalentMoveCapTx(tx,session,cycle.policy,{companyId:current.input.companyId,from:talentOrigin(entry,visible),current:visible},{performance:pm?p.performance:null,potential:pot?p.potential:null});
-  }
+  // A band differs from what this tier currently shows (the same comparison on every path).
+  const leader=['bu','bg','group'].includes(session.tier),changed=talentMoveAxes(visible,p);
+  if(talentBoxMove){assertPrecedingTier(current.rows,session.tier as Tier,session.mode,pm,pot);pm=pm&&changed.pm;pot=pot&&changed.pot;if(!pm&&!pot)return;}
   if(session.tier==='final'&&pm&&!current.input.performance)throw Error('The line manager rating must be confirmed before a final band is decided.');
   assertPrecedingTier(current.rows,session.tier as Tier,session.mode,pm,pot);
   const below=current.rows.filter(d=>tiers.indexOf(d.tier)<tiers.indexOf(session.tier as Tier)&&!(d.tier==='group'&&d.mode==='blend'));
@@ -620,6 +623,9 @@ export async function saveOnehrCalibrationTx(tx:Tx,ctx:SessionContext,sessionId:
   if(session.tier==='group'&&p.axis==='performance'&&!baselinePm)throw Error('The line manager rating must be confirmed before Group calibration.');
   const baselinePot=session.tier==='hod'&&current.input.competencyAssigned&&current.input.competencyStatus!=='reviewed'?null:resolveBand(current.input.potential.band,below.map(d=>({...d,band:d.potential,locked:d.potentialLocked}))).band;
   if(session.tier==='hod'&&(pm&&p.performance!=null&&p.performance!==baselinePm&&!p.performanceNote.trim()||pot&&p.potential!=null&&p.potential!==baselinePot&&!p.potentialNote.trim()))throw Error('Explain each changed band.');
+  // APR-011: every BU, BG and Group band change carries its reason, whichever surface sends it (box, list, form, chat, fit).
+  if(leader&&(pm&&changed.pm&&!p.performanceNote.trim()||pot&&changed.pot&&!p.potentialNote.trim()))throw Error('Explain each changed band.');
+  if(leader&&(talentBoxMove||options.enforceMoveCap))await assertTalentMoveCapTx(tx,session,cycle.policy,{companyId:current.input.companyId,from:talentOrigin(entry,visible),current:visible},{performance:pm&&changed.pm?p.performance:null,potential:pot&&changed.pot?p.potential:null});
   if((p.pip||p.promotion||p.specialReward)&&!['bg','group','final'].includes(session.tier))throw Error('Talent decisions require BG, Group or final reviewer confirmation.');
   if(p.pip||p.promotion||p.specialReward||p.confirmTalentDecisions)throw Error('Confirm talent decisions in the decision lists after locking calibration.');
   const chosenPm=pm?p.performance??entry.performance??baselinePm:entry.performance,chosenPot=pot?p.potential??entry.potential??baselinePot:entry.potential;
@@ -938,6 +944,12 @@ async function calibrationFitContextTx(tx:Tx,ctx:SessionContext,sessionId:string
 export async function previewAssessmentCalibrationFit(ctx:SessionContext,sessionId:string,axis:'performance'|'potential',companyId:string|null=null){
  uuid.parse(sessionId);z.enum(['performance','potential']).parse(axis);uuid.nullable().parse(companyId);
  return withPerformanceTenant(ctx,async tx=>{
+  const {session,result,unscored}=await calibrationFitTx(tx,ctx,sessionId,axis,companyId);
+  return {sessionId,axis,companyId,revision:session.revision,moves:result.moves,withinAfter:result.withinAfter,unscored};
+ });
+}
+/** The deterministic fit over the current cohort: the preview shows it, and Apply recomputes it for each move's reasons. */
+async function calibrationFitTx(tx:Tx,ctx:SessionContext,sessionId:string,axis:'performance'|'potential',companyId:string|null){
   const {session,cycle,data,reference}=await calibrationFitContextTx(tx,ctx,sessionId,axis,companyId),order=axis==='performance'?pmBands:potentialBands;
   const counts:Record<string,number>=Object.fromEntries(order.map(b=>[b,0])),pmPeople:PerformanceFitPerson[]=[],potPeople:PotentialFitPerson[]=[],unscored:string[]=[];
   for(const {row,result} of data){
@@ -962,22 +974,29 @@ export async function previewAssessmentCalibrationFit(ctx:SessionContext,session
    }
   }
   const result=axis==='performance'?calibrationFit(pmBands,counts,pmPeople,reference,cycle.policy,data.length,performanceFitCase,performanceFitReasons):calibrationFit(potentialBands,counts,potPeople,reference,cycle.policy,data.length,potentialFitCase,potentialFitReasons);
-  return {sessionId,axis,companyId,revision:session.revision,moves:result.moves,withinAfter:result.withinAfter,unscored};
- });
+  return {session,cycle,data,result,unscored};
 }
-/** Explicit human Apply only. Stale/locked/unscored people are skipped; every accepted move uses the manual writer. */
+/**
+ * Explicit human Apply only. Stale/locked/unscored people are skipped; every accepted move uses the manual writer.
+ * APR-011: a move whose person has no reason on that axis carries the fit's own reasons, recomputed here from the
+ * same cohort facts the preview used (never the client's text); a move the server fit does not make is skipped.
+ */
 export async function applyAssessmentCalibrationFit(ctx:SessionContext,sessionId:string,axis:'performance'|'potential',companyId:string|null,raw:unknown){
  uuid.parse(sessionId);z.enum(['performance','potential']).parse(axis);uuid.nullable().parse(companyId);
  const band=axis==='performance'?z.enum(pmBands):z.enum(potentialBands),moves=z.array(z.object({id:uuid,from:band,to:band})).max(200).parse(raw);
  if(new Set(moves.map(m=>m.id)).size!==moves.length)throw Error('Select each person once.');
  return withPerformanceTenant(ctx,async tx=>{
-  const {session,cycle,data}=await calibrationFitContextTx(tx,ctx,sessionId,axis,companyId);let expected=session.revision;const applied:string[]=[],skipped:string[]=[];
+  const {session,cycle,data,result:fit}=await calibrationFitTx(tx,ctx,sessionId,axis,companyId);let expected=session.revision;const applied:string[]=[],skipped:string[]=[];
+  // The stored reason keeps only the fit's deterministic facts: an AI verdict line is advice shown in the preview, never
+  // a person's recorded justification.
+  const fitReason=(move:{id:string;from:string;to:string})=>{const m=fit.moves.find(f=>f.id===move.id&&f.from===move.from&&f.to===move.to),facts=(m?.reasons??[]).filter(r=>!r.startsWith('AI insight:'));return facts.length?`Distribution fit: ${facts.join('; ')}`.slice(0,4000):'';};
   for(const move of moves){
    const found=data.find(d=>d.row.entry.reviewId===move.id);if(!found){skipped.push(move.id);continue;}
    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${move.id},0))`);
    const fresh=await resolved(tx,move.id,cycle.policy),row=await calibrationRow(tx,ctx,found.row.entry,cycle.policy,session,cycle.native.status,axis,fresh);
    if(companyId&&row.companyId!==companyId||!(axis==='performance'?row.canWrite.pm:row.canWrite.pot)||(axis==='performance'?row.entry.performance??row.currentPerformance:row.entry.potential??row.currentPotential)!==move.from||move.from===move.to||fresh.rows.some(d=>d.tier==='final'&&(axis==='performance'?d.performanceLocked:d.potentialLocked))||axis==='potential'&&!fresh.input.potential.valid){skipped.push(move.id);continue;}
-   const payload={reviewId:move.id,axis,performance:axis==='performance'?move.to as PMBand:null,potential:axis==='potential'?move.to as PotentialBand:null,performanceNote:row.entry.performanceNote,potentialNote:row.entry.potentialNote};
+   const own=axis==='performance'?row.entry.performanceNote:row.entry.potentialNote,reason=own.trim()?own:fitReason(move);
+   const payload={reviewId:move.id,axis,performance:axis==='performance'?move.to as PMBand:null,potential:axis==='potential'?move.to as PotentialBand:null,performanceNote:axis==='performance'?reason:row.entry.performanceNote,potentialNote:axis==='potential'?reason:row.entry.potentialNote};
    // The dry-run takes the same review lock and evaluates the same preconditions before any write.
    try{await saveOnehrCalibrationTx(tx,ctx,sessionId,expected,payload,true);}catch{skipped.push(move.id);continue;}
    await saveOnehrCalibrationTx(tx,ctx,sessionId,expected,payload);expected++;applied.push(move.id);

@@ -21520,7 +21520,9 @@
       "movedFrom": "{band} இலிருந்து மாற்றப்பட்டது",
       "differsBg": "வணிகக் குழு CEO முடிவிலிருந்து மாறுபடுகிறது",
       "businessGroup": "வணிகக் குழு",
-      "department": "துறை"
+      "department": "துறை",
+      "changeTitle": "Change the call for {name}",
+      "saveCall": "Save call"
     },
     "developmentSuggestions": {
       "title": "இலக்குப் பரிந்துரைகள்",

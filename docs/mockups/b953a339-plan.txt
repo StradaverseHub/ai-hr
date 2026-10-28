@@ -1,0 +1,45 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+The Atelier theme already opens each module's sub-menu as a flyout to the right of the menu, as you asked last time. But we built it as a second column that sits beside the menu, so the page is pushed to the right and loses that width while the sub-menu is open. Tables, forms and configuration pages get noticeably narrower.
+
+Atelier also has no way to collapse the menu. Classic has a Collapse button that shrinks the menu to icons and gives the page the space; Atelier always shows the full-width menu.
+
+WHAT WE'LL CHANGE
+
+- The sub-menu will float over the page, the way Classic's does, instead of sitting beside the menu. The page keeps its full width and does not move or reflow when the sub-menu opens or closes.
+
+- The floating sub-menu keeps Atelier's look: the same headings, links, icons, counts and order as today. It closes when you choose a link, click anywhere outside it, press Esc, or press its close button. Clicking another module switches the sub-menu in one click.
+
+- A Collapse menu button is added at the bottom of the Atelier menu, with a tooltip. Collapsed, the menu shows icons only, with each module's name on hover, and the page widens to use the space. An Expand button brings the full menu back.
+
+- With the menu collapsed, clicking a module's icon opens the same floating sub-menu, so every page stays reachable.
+
+- Your choice is remembered on that browser. It is the same remembered setting Classic uses, so collapsing in one theme keeps the menu collapsed if you switch to the other.
+
+- Tablets get the same floating sub-menu. Phones keep today's Menu button at the top of the screen, which already gives the page the full width.
+
+WHAT YOU'LL GET
+
+More working space on every screen: the sub-menu no longer squeezes the page, and the menu can be folded away entirely when you want the widest view, with Atelier's styling kept throughout.
+
+GOOD TO KNOW
+
+- This changes only how the Atelier menu is laid out. No menu item, link, permission, page or workflow changes, and the Classic and Monolith themes stay exactly as they are.
+
+- The sub-menu covers the left edge of the page while it is open. That is what floating over the page means; it disappears as soon as you pick a link or click away.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Cause (FACT, alpha a6657ddf6): components/nav-flyout.tsx renders the Atelier panel (layout='atelier') as class atelier-flyout, a relative flex sibling of the rail inside .atelier-navigation-shell; app/atelier.css gives it width 15.5rem and flex none, so the shell grows by 15.5rem and data-app-content shrinks. Classic's overlay layout is absolute left-[calc(100%+0.75rem)] beside a relative wrapper. At 640-1023px atelier.css hides the rail while the panel is open.
+
+1. Overlay: make the Atelier panel absolute (top/bottom of the shell, left 100% of the rail, z-50, var(--shadow-pop), radius) anchored to .atelier-navigation-shell, which stays the rail's width. Keep the existing fixed inset-0 z-40 backdrop, Escape focus return and single-open state. Drop the 640-1023 rule that hides the rail; the panel overlays there too. Phone (below 640px) keeps the in-flow full-width panel unchanged.
+
+2. Collapse: reuse the existing collapsed state and rail_collapsed cookie (sidebar.tsx toggle, read SSR-side). Today collapsed is ignored by the Atelier branch; honour it there: rail width about 4rem, labels visually hidden but kept as accessible names, title tooltips, quick search as an icon button opening the same command bar, user block as avatar only, collapsible modules open the floating panel (expanded rows keep current behaviour). Add the Collapse/Expand button (PanelLeftClose/PanelLeftOpen, existing collapse/expand messages, aria-label and title) above the user block. Width transition via CSS only; respect reduced motion.
+
+3. Tests: DOM test that opening a module in Atelier does not change the measured width class of data-app-content and that the panel has the overlay class; collapsed Atelier rail renders icon rows with accessible names, opens the panel from an icon, and the toggle writes rail_collapsed. Update any guard pinning .atelier-flyout as in-flow. Browser check in three engines at 1440, 900 and 375: content width identical with the panel open and closed; no horizontal overflow.
+
+No data, permission, routing or message-catalogue change beyond reusing existing collapse/expand keys. Classic and Monolith render paths untouched.

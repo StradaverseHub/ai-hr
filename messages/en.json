@@ -21520,7 +21520,9 @@
       "movedFrom": "Moved from {band}",
       "differsBg": "Differs from BG CEO",
       "businessGroup": "Business group",
-      "department": "Department"
+      "department": "Department",
+      "changeTitle": "Change the call for {name}",
+      "saveCall": "Save call"
     },
     "developmentSuggestions": {
       "title": "Goal suggestions",

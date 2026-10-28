@@ -260,12 +260,12 @@ describe('Career Plan reviewer scope (TASK-030, migration 0640)', () => {
     `);
   });
 
-  it('OneHR "one level up past a left-out line manager" is NOT derived in AI-HR (recorded divergence)', async () => {
-    // OneHR (_cycle_review_managers, app.py:15495) hands the subject's plan to the skip-level manager when the line
-    // manager's unit is left out of the cycle. AI-HR's reviewer is performance_review.reviewer_employment_id (the
-    // administrative line manager at launch) or a KPI approver; participation never re-routes it. This records
-    // the current behaviour: removing the line manager from the cycle leaves them the reviewer, and the
-    // skip-level manager gains nothing.
+  it('removing the line manager from the cycle keeps them the plan reviewer, as in OneHR (per-person removal never moves review up)', async () => {
+    // OneHR moves review one level up only when the manager's UNIT or DEPARTMENT is left out by the cycle's
+    // exclusion rule (_cycle_review_managers, app.py:15495, reads unit_out only). Removing one person
+    // (cycle_participants mode 'remove') touches only that person's own participation (app.py:7429, :7481), so
+    // the removed manager still reviews and the skip-level manager gains nothing. AI-HR's only exclusion is per
+    // person, so this is a match, not a divergence. AI-HR has no unit/department exclusion rule (ADR-0141, D-P1-22).
     const view = (await perf.getOnehrCycle(a, cycleId))!;
     const lm = view.participants.find((p) => p.employmentId === manager.employmentId)!;
     await perf.setAssessmentParticipation(a, cycleId, view.revision, manager.employmentId, lm.revision, 'remove');
@@ -273,7 +273,7 @@ describe('Career Plan reviewer scope (TASK-030, migration 0640)', () => {
     const reviewerAs = async (ctx: SessionContext) =>
       (await withTenant(ctx, (tx) => tx.execute<{ reviewer: boolean }>(sql`select app.assessment_plan_reviewer(${sharedPlanId}::uuid) as reviewer`)))[0].reviewer;
     expect(await reviewerAs(mgr), 'the left-out line manager stays the reviewer').toBe(true);
-    expect(await reviewerAs(skipCtx), 'DIVERGENCE: OneHR would make the skip-level manager the reviewer').toBe(false);
+    expect(await reviewerAs(skipCtx), 'the skip-level manager does not become the reviewer (OneHR: same)').toBe(false);
     expect(await idsAs(mgr)).toEqual([sharedPlanId]);
     expect(await idsAs(skipCtx)).toEqual([]);
   });

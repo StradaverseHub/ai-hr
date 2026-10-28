@@ -195,9 +195,10 @@ export async function lockGroupPeopleAction(f:FormData){
  try{await perf.lockAssessmentGroupPeople(s,id,num(f,'revision'),ids(f,'reviewId'));}catch(error){redirect(withError(url,error));}
  revalidatePath('/performance/workspace');revalidatePath(url.split('?')[0]);redirect(url);
 }
-export async function changeGroupBandAction(sessionId:string,revision:number,reviewId:string,band:PMBand){
+/** The Group performance list: a changed call carries the Group Chief's reason (APR-011); the writer enforces it. */
+export async function changeGroupBandAction(sessionId:string,revision:number,reviewId:string,band:PMBand,reason:string){
  const s=await getSession();
- try{const v=await perf.getOnehrCalibration(s,sessionId);if(v.session.tier!=='group')throw Error('This action belongs to Group calibration.');await perf.saveOnehrCalibration(s,sessionId,revision,{reviewId,axis:'performance',performance:band,potential:null,performanceNote:'',potentialNote:''});revalidatePath('/performance/workspace');return {ok:true as const};}catch(error){return {error:await actionError(error)};}
+ try{const v=await perf.getOnehrCalibration(s,sessionId);if(v.session.tier!=='group')throw Error('This action belongs to Group calibration.');await perf.saveOnehrCalibration(s,sessionId,revision,{reviewId,axis:'performance',performance:band,potential:null,performanceNote:reason,potentialNote:''});revalidatePath('/performance/workspace');return {ok:true as const};}catch(error){return {error:await actionError(error)};}
 }
 /** Reversible Talent Box saves refresh the same route, retaining the person's list filters. */
 export async function saveCalibrationBandAction(f:FormData){

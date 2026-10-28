@@ -213,13 +213,15 @@ export function NavFlyoutPanel({
 
   return (
     <>
+      {/* b953a339: Atelier's panel floats over the page (positioned in app/atelier.css) instead of taking
+          width from it, exactly as the overlay layout below does. */}
       {/* Backdrop dismissal (language-switcher.tsx idiom). The rail is raised to z-50 by the
           sidebar while open, so its rows stay clickable above this z-40 layer. */}
       <div className="fixed inset-0 z-40" onClick={onClose} />
       <div
         id={panelId}
         aria-label={label}
-        className={layout === 'atelier' ? 'atelier-flyout relative z-50 flex h-full min-h-0 flex-col overflow-hidden bg-sidebar px-3 py-4' : 'absolute bottom-0 left-[calc(100%+0.75rem)] top-0 z-50 flex w-64 flex-col overflow-hidden rounded-[1.25rem] border border-border bg-sidebar px-3 py-4 shadow-[var(--shadow-card)] lg:left-[calc(100%+1rem)]'}
+        className={layout === 'atelier' ? 'atelier-flyout z-50 flex min-h-0 flex-col overflow-hidden px-3 py-4' : 'absolute bottom-0 left-[calc(100%+0.75rem)] top-0 z-50 flex w-64 flex-col overflow-hidden rounded-[1.25rem] border border-border bg-sidebar px-3 py-4 shadow-[var(--shadow-card)] lg:left-[calc(100%+1rem)]'}
       >
         <div className={layout === 'atelier' ? 'mb-2 flex items-center justify-between gap-2 px-2 text-sm font-semibold' : 'px-3 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80'}>
           <span>{label}</span>
