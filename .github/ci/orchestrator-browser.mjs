@@ -243,7 +243,7 @@ async function main() {
     } finally { await context.close(); }
     // ADR-0151 §4.6c: the outcome view beside the process assessment, on fictional rows, per administrator scope.
     psql(outcomeFixtureSql(second));
-    const outcomeCopy = Object.fromEntries(locales.map(locale => [locale, JSON.parse(readFileSync(`messages/${locale}.json`, 'utf8')).processAssessment.outcomes]));
+    const messages = Object.fromEntries(locales.map(locale => [locale, JSON.parse(readFileSync(`messages/${locale}.json`, 'utf8'))]));
     for (const [key, expected] of Object.entries(OUTCOME_EXPECTED)) {
       const {context, page} = await login(second.actors.find(row => row.key === key));
       try {
@@ -252,7 +252,10 @@ async function main() {
           for (const locale of key === 'group-admin' ? locales : ['en']) {
             await language(page, context, locale);
             await page.goto(base + '/control-tower/opportunities');
-            const o = outcomeCopy[locale];
+            const o = messages[locale].processAssessment.outcomes;
+            // The first-visit product tour covers the page; dismiss it as a person would.
+            const skip = page.getByRole('button', {name: messages[locale].onboarding.skip, exact: true});
+            if (await skip.isVisible().catch(() => false)) { await skip.click(); await skip.waitFor({state: 'hidden'}); }
             // Streaming can leave a hidden copy of a card in the document; only the visible one is the page.
             const section = title => page.locator('[data-ui-section-header]:visible', {hasText: title}).locator('xpath=ancestor::*[@data-ui-card][1]');
             const table = section(o.title);
@@ -267,6 +270,10 @@ async function main() {
             assert(dimensions.scroll <= dimensions.width + 1, 'Outcome page overflows viewport');
             const image = `outcomes-${key}-${locale}-${viewport.name}.png`;
             await page.screenshot({path: join(out, image), fullPage: true, animations: 'disabled'});
+            // The shell scrolls inside its own container, so each new card is also captured whole.
+            const leaveCard = page.locator('[data-ui-card]:visible', {has: page.getByRole('heading', {name: messages[locale].processAssessment.processes.leave})});
+            for (const [part, locator] of [['table', table], ['coverage', section(o.coverageTitle)], ['leave', leaveCard]])
+              await locator.screenshot({path: join(out, `outcomes-${key}-${locale}-${viewport.name}-${part}.png`), animations: 'disabled'});
             report.visits.push({actor: key, locale, route: '/control-tower/opportunities', viewport: viewport.name, image, dimensions});
           }
         }

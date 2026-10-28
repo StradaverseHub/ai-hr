@@ -55,18 +55,20 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
     if (!c) return null;
     if (!c.firstUse) return <p className="mt-3 text-sm text-muted-foreground">{o('noUse')}</p>;
     if (!c.before || !c.after) return <p className="mt-3 text-sm text-muted-foreground">{o('firstUse', { date: day(c.firstUse) })} {o('notLinked')}</p>;
+    // No case started before first use means there is no baseline, not a baseline of zero.
+    const baseline = c.before.started > 0;
     const delta = c.after.per30 - c.before.per30;
     return <div className="mt-3 rounded-lg border border-border p-4">
       <p className="text-xs font-medium text-muted-foreground">{o('beforeAfterTitle', { date: day(c.firstUse) })}</p>
       <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
         <div><dt className="text-xs text-muted-foreground">{o('before')}</dt>
-          <dd className="text-xl font-semibold tabular-nums">{n(c.before.per30)}</dd>
-          <dd className="text-xs text-muted-foreground">{o('periodCases', { from: day(c.before.from), n: n(c.before.started) })}</dd></div>
+          <dd className="text-xl font-semibold tabular-nums">{baseline ? n(c.before.per30) : '—'}</dd>
+          <dd className="text-xs text-muted-foreground">{baseline ? o('periodCases', { from: day(c.before.from), n: n(c.before.started) }) : o('noBaseline', { from: day(c.before.from) })}</dd></div>
         <div><dt className="text-xs text-muted-foreground">{o('after')}</dt>
           <dd className="text-xl font-semibold tabular-nums">{n(c.after.per30)}</dd>
           <dd className="text-xs text-muted-foreground">{o('periodCases', { from: day(c.after.from), n: n(c.after.started) })}</dd></div>
         <div><dt className="text-xs text-muted-foreground">{o('change')}</dt>
-          <dd className="text-xl font-semibold tabular-nums">{delta > 0 ? '+' : ''}{n(delta)}</dd></div>
+          <dd className="text-xl font-semibold tabular-nums">{baseline ? `${delta > 0 ? '+' : ''}${n(delta)}` : '—'}</dd></div>
         <div><dt className="text-xs text-muted-foreground">{o('assistantConfirmed')}</dt>
           <dd className="text-xl font-semibold tabular-nums">{n(c.assistantCompleted)}</dd></div>
       </dl>

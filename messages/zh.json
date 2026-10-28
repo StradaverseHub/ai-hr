@@ -25699,6 +25699,7 @@
       "before": "之前",
       "after": "之后",
       "periodCases": "自 {from} 起，{n} 个案例",
+      "noBaseline": "从 {from} 到首次使用之间没有新案例，因此没有基准。",
       "change": "变化",
       "assistantConfirmed": "通过助手确认",
       "early": "距首次使用不足 {days} 天，之后的数字尚不可靠。",

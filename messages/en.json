@@ -25699,6 +25699,7 @@
       "before": "Before",
       "after": "After",
       "periodCases": "From {from}, {n} cases",
+      "noBaseline": "No cases started from {from} until first use, so there is no baseline.",
       "change": "Change",
       "assistantConfirmed": "Confirmed through the Assistant",
       "early": "Fewer than {days} days since first use, so the after figure is not yet reliable.",

@@ -25699,6 +25699,7 @@
       "before": "Trước",
       "after": "Sau",
       "periodCases": "Từ {from}, {n} hồ sơ",
+      "noBaseline": "Không có hồ sơ nào bắt đầu từ {from} đến lần dùng đầu, nên chưa có mốc so sánh.",
       "change": "Thay đổi",
       "assistantConfirmed": "Xác nhận qua Trợ lý",
       "early": "Chưa đủ {days} ngày kể từ lần dùng đầu, nên số liệu sau chưa đáng tin cậy.",

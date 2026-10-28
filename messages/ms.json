@@ -25699,6 +25699,7 @@
       "before": "Sebelum",
       "after": "Selepas",
       "periodCases": "Dari {from}, {n} kes",
+      "noBaseline": "Tiada kes bermula dari {from} hingga penggunaan pertama, jadi tiada garis asas.",
       "change": "Perubahan",
       "assistantConfirmed": "Disahkan melalui Pembantu",
       "early": "Kurang daripada {days} hari sejak penggunaan pertama, jadi angka selepas belum boleh dipercayai.",
