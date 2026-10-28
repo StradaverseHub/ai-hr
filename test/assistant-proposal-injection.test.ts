@@ -78,7 +78,7 @@ function script(terminal:string){
   .mockResolvedValueOnce({text:terminal,toolCalls:[],stop:'end',usage});
 }
 const sealedPlan=()=>{expect(h.seal).toHaveBeenCalledTimes(1);return h.seal.mock.calls[0][2];};
-beforeEach(()=>{Object.assign(h.state,{readable:['leave','claims','attendance'],writes:[],exchanges:[]});h.seal.mockClear();});
+beforeEach(()=>{Object.assign(h.state,{readable:['leave','claims','attendance'],writes:[],exchanges:[]});h.seal.mockClear();h.run.mockClear();});
 
 describe('record text cannot turn a chat turn into a confirmation or an effect',()=>{
  for(const [name,terminal] of Object.entries(INJECTED))it(`refuses an injected ${name} instruction and writes only the audit row`,async()=>{
