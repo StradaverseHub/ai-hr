@@ -981,6 +981,10 @@ Orchestrator decisions (28 October 2026), implemented:
 `keepOfflineSynced(c)` subscribes to the foreground and runs `syncOffline` on every return to `active` (backoff respected),
 uploading saved claims, resending a saved close and re-arming without user action.
 
-NOT done: the screens (clock-panel wiring, Couldn't-be-sent confirmation, outcome list, offline employment selection on an
+Superseded the same day: the screens were built in `c46fd6848` (clock states, saved-punch list with reasons,
+Remove-with-confirmation, offline cold start from the anchored employment) and passed hosted checks (evidence in
+`docs/research/mobile-review-2026-10-27/platform-evidence.md`). Originally NOT done: the screens (clock-panel wiring, Couldn't-be-sent confirmation, outcome list, offline employment selection on an
 offline cold start); no HR-outcome fetch (decision 4).
+Still by design: no HR-outcome fetch on the phone (decision 4). HR resolves a held punch through an attendance
+correction, which the employee sees in My attendance > applications (M12, 29 October 2026).
 
