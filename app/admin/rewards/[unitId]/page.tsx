@@ -32,7 +32,7 @@ export default async function RewardConfigurationPage({ params, searchParams }: 
   const fields = <><input type="hidden" name="unitId" value={unitId} /><input type="hidden" name="revision" value={unit.revision} /></>;
   return <div className="w-full space-y-6">
     {choices.companies.length > 0 && <Link href="/admin/rewards" className="text-sm text-primary hover:underline">← {t('adminTitle')}</Link>}
-    <PageHeader title={`${t('configuration')} · ${v.cycle?.name ?? t('title')} · ${v.name}`} description={`${t(`kinds.${unit.kind}`)} · ${t(`stages.${unit.status}`)}`} />
+    <PageHeader title={`${t('configuration')} · ${v.cycle?.name ?? t('title')} · ${v.name}`} description={`${t(`kinds.${unit.kind}`)} · ${unit.kind === 'annual' && unit.status === 'withdrawn' ? tc('cancelled') : t(`stages.${unit.status}`)}`} />
     <ErrorBanner message={error} />
     {readOnly&&<p className="rounded-md border p-3 text-sm">{td('viewHelp')}</p>}
     {v.policyOrigin&&<p className="rounded-md border p-3 text-sm">{t('sharedPolicy.origin',{name:v.policyOrigin.name,version:v.policyOrigin.revision})}{v.policyOrigin.changed&&<><Badge variant="info" className="ml-2 normal-case">{tc('shared.changedInReview')}</Badge><span className="mt-1 block text-muted-foreground">{t('sharedPolicy.reviewChanged')}</span></>}</p>}

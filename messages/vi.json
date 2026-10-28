@@ -27495,6 +27495,17 @@
       "bonusByGrade": "Theo bậc và xếp loại ({count, plural, other {# bậc}})",
       "exemption": "Miễn trừ trần ngân sách",
       "noExemption": "Không (áp dụng trần)"
+    },
+    "actions": {
+      "editDeadlines": "Sửa hạn chót",
+      "cancel": "Hủy đợt xét duyệt",
+      "keep": "Giữ đợt xét duyệt",
+      "cancelTitle": "Hủy đợt xét duyệt này?",
+      "cancelHelp": "Đề xuất và phê duyệt được giữ ở chế độ chỉ xem. Đợt đã hủy không gửi gì sang bảng lương và sẽ biến khỏi danh sách việc của mọi người.",
+      "reason": "Lý do (bắt buộc, ít nhất 10 ký tự)",
+      "cancelledBy": "Đã hủy ngày {date} bởi {name}: {reason}",
+      "cancelledOn": "Đã hủy ngày {date}: {reason}",
+      "cancelledSaved": "Đã hủy đợt xét duyệt. Đề xuất và phê duyệt được giữ ở chế độ chỉ xem."
     }
   }
 }

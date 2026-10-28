@@ -27495,6 +27495,17 @@
       "bonusByGrade": "Mengikut gred dan penarafan ({count, plural, other {# gred}})",
       "exemption": "Pengecualian had bajet",
       "noExemption": "Tiada (had dikenakan)"
+    },
+    "actions": {
+      "editDeadlines": "Edit tarikh akhir",
+      "cancel": "Batalkan semakan",
+      "keep": "Kekalkan semakan",
+      "cancelTitle": "Batalkan semakan ini?",
+      "cancelHelp": "Cadangan dan kelulusan disimpan sebagai baca sahaja. Tiada apa-apa dihantar ke penggajian daripada semakan yang dibatalkan, dan ia keluar daripada senarai tugas semua orang.",
+      "reason": "Sebab (wajib, sekurang-kurangnya 10 aksara)",
+      "cancelledBy": "Dibatalkan {date} oleh {name}: {reason}",
+      "cancelledOn": "Dibatalkan {date}: {reason}",
+      "cancelledSaved": "Semakan dibatalkan. Cadangan dan kelulusannya disimpan sebagai baca sahaja."
     }
   }
 }

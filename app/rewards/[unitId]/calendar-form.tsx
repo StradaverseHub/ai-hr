@@ -8,7 +8,7 @@ import { calendarAction } from '../actions';
 export async function RewardCalendarForm({ unitId, revision, values, canEdit }: { unitId: string; revision: number; values: RewardCalendarValues; canEdit: boolean }) {
   const t = await getTranslations('rewards');
   const days = (n: number | null) => n == null ? t('calendar.notSet') : t('calendar.days', { days: n });
-  return <section className="max-w-3xl space-y-4">
+  return <section id="calendar" className="max-w-3xl scroll-mt-20 space-y-4">
     <h2 className="font-semibold">{t('calendar.title')}</h2>
     <p className="text-sm text-muted-foreground">{t('calendar.help')}</p>
     {!canEdit && <p className="text-sm text-muted-foreground">{t('calendar.readOnly')}</p>}

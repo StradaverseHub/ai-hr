@@ -27495,6 +27495,17 @@
       "bonusByGrade": "By grade and rating ({count, plural, one {# grade} other {# grades}})",
       "exemption": "Budget-cap exemption",
       "noExemption": "None (caps apply)"
+    },
+    "actions": {
+      "editDeadlines": "Edit deadlines",
+      "cancel": "Cancel review",
+      "keep": "Keep review",
+      "cancelTitle": "Cancel this review?",
+      "cancelHelp": "Recommendations and approvals are kept read-only. Nothing is sent to payroll from a cancelled review, and it leaves everyone’s task list.",
+      "reason": "Reason (required, at least 10 characters)",
+      "cancelledBy": "Cancelled {date} by {name}: {reason}",
+      "cancelledOn": "Cancelled {date}: {reason}",
+      "cancelledSaved": "Review cancelled. Its recommendations and approvals are kept read-only."
     }
   }
 }

@@ -13,7 +13,8 @@ vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...p
 vi.mock('../lib/scope', () => ({ scopedAdmin: async () => ({ s: { tenantId: 'tenant', userId: 'actor' }, scopeIds: ['company'] }) }));
 vi.mock('../lib/authz', () => ({ requireModule: vi.fn() }));
 vi.mock('../packs/rewards/service', async () => ({ listRewardUnits: ports.list, rewardSetupChoices: ports.choices, rewardSharedPolicyChoices: ports.shared, rewardDueWording: (await import('../packs/rewards/calendar')).rewardDueWording }));
-vi.mock('../app/rewards/actions', () => ({ createRewardAction: vi.fn(), deleteRewardAction: vi.fn(), cancelRewardAction: vi.fn() }));
+vi.mock('../app/rewards/actions', () => ({ createRewardAction: vi.fn(), deleteRewardAction: vi.fn() }));
+vi.mock('../app/admin/rewards/actions', () => ({ cancelRewardAction: vi.fn() }));
 import AdminPage from '../app/admin/rewards/page';
 import { RewardReviewCreateForm } from '../app/admin/rewards/create-review-form';
 
@@ -89,6 +90,43 @@ describe('Create unit review cycle name (7a8102a7)', () => {
     const policy = { effectiveFrom: `${year + 1}-04-01`, meritMatrix: { SSTAR: [1, 1, 1], STAR: [1, 1, 1], SCORE: [1, 1, 1], IMPRO: [0, 0, 0], PIP: [0, 0, 0] }, standardPools: [500, 100, 100], hPools: [500, 100, 100], targetMonthsBp: 20000, bonusMatrix: { '12': [0, 1, 2, 3, 4] }, exemptReason: '' };
     render(wrap(<RewardReviewCreateForm {...props} shared={[{ groupId: 'g', versionId: 'v', revision: 3, name: 'Group Standard', year, companyId: 'company', businessUnitId: 'bu-1', policy: policy as any }]} />));
     expect(screen.getByLabelText<HTMLInputElement>('Salary effective date').value).toBe(`${year + 1}-04-01`);
+  });
+});
+
+describe('Row actions by stage (62e743ed)', () => {
+  const actionsOf = async (row: Record<string, unknown>) => {
+    ports.list.mockResolvedValue([{ ...rows[0], ...row }]);
+    render(wrap(await page({})));
+    const cell = within(screen.getAllByRole('row')[1]).getAllByRole('cell').at(-1)!;
+    return [...cell.querySelectorAll('a,button')].map(e => e.textContent);
+  };
+  it.each([
+    ['unused draft', { status: 'draft', deletionReason: null, canConfigure: true }, ['View', 'Edit', 'Delete']],
+    ['draft in use', { status: 'draft', deletionReason: 'recommendations', canConfigure: true }, ['View', 'Edit', 'Cancel review']],
+    ['approval stage', { status: 'bg', deletionReason: 'locked', canConfigure: false }, ['View', 'Edit deadlines', 'Cancel review']],
+    ['approved', { status: 'approved', deletionReason: 'locked', canConfigure: false }, ['View', 'Edit deadlines', 'Cancel review']],
+    ['posted', { status: 'posted', deletionReason: 'locked', canConfigure: false, canCancel: false }, ['View']],
+    ['cancelled', { status: 'withdrawn', deletionReason: 'locked', canConfigure: false, canCancel: false }, ['View']],
+  ])('%s offers only its allowed actions', async (_label, row, expected) => {
+    expect(await actionsOf(row)).toEqual(expected);
+  });
+  it('hides Cancel without cancel authority and shows who cancelled, when and why', async () => {
+    expect(await actionsOf({ status: 'bg', deletionReason: 'locked', canCancel: false })).toEqual(['View', 'Edit deadlines']);
+    cleanup();
+    await actionsOf({ status: 'withdrawn', deletionReason: 'locked', canCancel: false, cancellation: { on: '2026-11-12', by: 'A. Admin', reason: 'Unit merged into Northern Sales review' } });
+    expect(screen.getByText('Cancelled 12/11/2026 by A. Admin: Unit merged into Northern Sales review')).toBeTruthy();
+    expect(screen.getAllByText('Cancelled').length).toBeGreaterThan(0);
+  });
+  it('asks for a reason in the cancel confirmation', async () => {
+    await actionsOf({ status: 'bg', deletionReason: 'locked' });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel review' }));
+    const dialog = screen.getByRole('alertdialog');
+    expect(within(dialog).getByText('Cancel this review?')).toBeTruthy();
+    const confirm = within(dialog).getByRole<HTMLButtonElement>('button', { name: 'Cancel review' });
+    expect(confirm.disabled).toBe(true);
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'Unit merged into another review' } });
+    expect(confirm.disabled).toBe(false);
+    expect(within(dialog).getByRole('button', { name: 'Keep review' })).toBeTruthy();
   });
 });
 

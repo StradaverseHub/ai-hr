@@ -13,9 +13,9 @@ type Filters = { cycle?: string; company?: string; unit?: string; stage?: string
 const day = (locale: string, iso: string) => new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${iso}T00:00:00Z`));
 
 
-export default async function RewardsConfigurationPage({ searchParams }: { searchParams: Promise<{ error?: string;sharedError?:string; deleted?:string; deletionError?:string } & Filters> }) {
+export default async function RewardsConfigurationPage({ searchParams }: { searchParams: Promise<{ error?: string;sharedError?:string; deleted?:string; deletionError?:string; cancelled?: string } & Filters> }) {
   await requireModule('rewards'); const { s, scopeIds } = await scopedAdmin();
-  const t = await getTranslations('rewards'); const { error,sharedError,deleted,deletionError,...filter } = await searchParams;
+  const t = await getTranslations('rewards'); const { error,sharedError,deleted,deletionError,cancelled,...filter } = await searchParams;
   const td=await getTranslations('rewardsDeletion'),tc=await getTranslations('rewardsConfig'),locale=await getLocale();
   const choices = await rewardSetupChoices(s, scopeIds);
   const all = await listRewardUnits(s, choices.companies.map(c => c.id));
@@ -34,6 +34,7 @@ export default async function RewardsConfigurationPage({ searchParams }: { searc
     <ErrorBanner message={error} />
     <ErrorBanner message={deletionError?td('error'):undefined}/>
     {deleted==='1'&&<p role="status" className="rounded-md border p-3 text-sm">{td('saved')}</p>}
+    {cancelled==='1'&&<p role="status" className="rounded-md border p-3 text-sm">{tc('actions.cancelledSaved')}</p>}
     <ErrorBanner message={['invalid','changed','scope','system'].includes(sharedError??'')?t(`sharedPolicy.errors.${sharedError as 'invalid'|'changed'|'scope'|'system'}`):undefined}/>
     {all.length>0&&<form method="get" className="flex flex-wrap items-end gap-3" aria-label={tc('filters.label')}>
       {filters.map(([key, values]) => <Field key={key} label={tc(`filters.${key}`)}><select name={key} defaultValue={filter[key] ?? ''} className={inputCls}><option value="">{tc('filters.all')}</option>{values.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>)}

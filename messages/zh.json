@@ -27495,6 +27495,17 @@
       "bonusByGrade": "按职级和评级（{count, plural, other {# 个职级}}）",
       "exemption": "预算上限豁免",
       "noExemption": "无（适用上限）"
+    },
+    "actions": {
+      "editDeadlines": "编辑截止日期",
+      "cancel": "取消评审",
+      "keep": "保留评审",
+      "cancelTitle": "取消此评审？",
+      "cancelHelp": "建议和审批将以只读方式保留。已取消的评审不会向薪资发送任何内容，并会从所有人的待办列表中移除。",
+      "reason": "原因（必填，至少 10 个字符）",
+      "cancelledBy": "{date} 由 {name} 取消：{reason}",
+      "cancelledOn": "{date} 已取消：{reason}",
+      "cancelledSaved": "评审已取消。其建议和审批以只读方式保留。"
     }
   }
 }
