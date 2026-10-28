@@ -20632,6 +20632,26 @@
       "branch": "Branch",
       "rating": "Branch rating",
       "empty": "No branch factors are configured yet."
+    },
+    "desk": {
+      "salary": "1 · Salary increase",
+      "bonus": "2 · Bonus",
+      "ec": "3 · EC direct reports",
+      "where": "Where it is",
+      "flags": "Flags",
+      "within": "Within budget",
+      "over": "Over budget",
+      "notSet": "Not set",
+      "usedOf": "{used} of {pool}",
+      "goToSection": "Go to section",
+      "approvalHistory": "Approval history",
+      "noDue": "No due date set",
+      "total": "Total",
+      "payrollShare": "{percent} of payroll",
+      "amountOver": "{amount} over",
+      "amountLeft": "{amount} left",
+      "cellsAdjusted": "{count, plural, one {# cell adjusted} other {# cells adjusted}}",
+      "poolFormula": "PAT achievement × target bonus months × eligible payroll. Each plan keeps its own pool."
     }
   },
   "identityEmail": {

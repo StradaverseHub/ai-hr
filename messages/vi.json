@@ -20632,6 +20632,26 @@
       "branch": "Chi nhánh",
       "rating": "Xếp loại chi nhánh",
       "empty": "Chưa cấu hình hệ số chi nhánh."
+    },
+    "desk": {
+      "salary": "1 · Tăng lương",
+      "bonus": "2 · Thưởng",
+      "ec": "3 · Nhân viên trực thuộc EC",
+      "where": "Tiến độ hiện tại",
+      "flags": "Điểm cần xem",
+      "within": "Trong ngân sách",
+      "over": "Vượt ngân sách",
+      "notSet": "Chưa thiết lập",
+      "usedOf": "{used} trên {pool}",
+      "goToSection": "Đến phần này",
+      "approvalHistory": "Lịch sử phê duyệt",
+      "noDue": "Chưa đặt hạn",
+      "total": "Tổng",
+      "payrollShare": "{percent} quỹ lương",
+      "amountOver": "Vượt {amount}",
+      "amountLeft": "Còn {amount}",
+      "cellsAdjusted": "Đã điều chỉnh {count} ô",
+      "poolFormula": "Tỷ lệ đạt PAT × số tháng thưởng mục tiêu × quỹ lương đủ điều kiện. Mỗi kế hoạch có quỹ riêng."
     }
   },
   "identityEmail": {
