@@ -109,7 +109,8 @@ const documentOf = (d: SharedDocumentV2) => d.kind === 'payslip'
 const sameDocument = (a: unknown, b: ReturnType<typeof documentOf>) => { try { return canonicalJson(a) === canonicalJson(b); } catch { return false; } };
 
 /** This share's prior stages, as this actor recorded them (none without a signed-in user). */
-async function priorStagesTx(tx: Tx, ctx: SessionContext, shareId: string) {
+type PriorStage = { eventType: string; subject: string | null; payload: unknown };
+async function priorStagesTx(tx: Tx, ctx: SessionContext, shareId: string): Promise<PriorStage[]> {
   if (!ctx.userId) return [];
   return tx.select({ eventType: domainEvent.eventType, subject: domainEvent.subjectEmploymentId, payload: domainEvent.payload }).from(domainEvent).where(and(
     eq(domainEvent.tenantId, ctx.tenantId), eq(domainEvent.aggregateType, DOCUMENT_SHARE_AGGREGATE), eq(domainEvent.aggregateId, shareId),
