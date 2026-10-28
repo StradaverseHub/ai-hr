@@ -6,7 +6,7 @@ import {describe,expect,it} from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
-import {AGENT_CAPABILITY_INVENTORY,AGENT_ACTION_TIER_CEILING,AGENT_HANDOFF_REASONS,AGENT_INTERNAL_REASONS,agentCapabilityCoverage} from '../lib/ai/agent-capability-inventory';
+import {AGENT_PRINCIPAL_SPECIALISTS,AGENT_CAPABILITY_INVENTORY,AGENT_ACTION_TIER_CEILING,AGENT_HANDOFF_REASONS,AGENT_INTERNAL_REASONS,agentCapabilityCoverage} from '../lib/ai/agent-capability-inventory';
 import {NATIVE_OUTCOME_ACTIONS} from '../lib/ai/module-native-outcomes';
 
 const ROOT=path.resolve(__dirname,'..');
@@ -92,6 +92,18 @@ describe('ADR-0151 agent capability inventory',()=>{
    if(kind==='handoff')expect(AGENT_HANDOFF_REASONS as readonly string[]).toContain(reason);
    if(kind==='internal')expect(AGENT_INTERNAL_REASONS as readonly string[]).toContain(reason);
    expect(['registered','backlog','handoff','internal']).toContain(kind);
+  }
+ });
+
+ it('lets the agent principal run only Automatic specialists that exist and match its switches (ADR-0151 §4.5)',()=>{
+  // The same switches migration 0672 names in its attribution read and its event stamp check.
+  const migration=fs.readFileSync(path.join(process.cwd(),'db/migrations/0672_ai_agent_principal.sql'),'utf8');
+  expect(Object.keys(AGENT_PRINCIPAL_SPECIALISTS).sort()).toEqual(['claims_triage','readiness_reminders']);
+  for(const entry of Object.values(AGENT_PRINCIPAL_SPECIALISTS))expect(migration).toContain(`'${entry.setting}'`);
+  for(const [feature,entry] of Object.entries(AGENT_PRINCIPAL_SPECIALISTS)){
+   expect(entry.tier,feature).toBe('automatic');
+   const [file,fn]=entry.service.split('#');
+   expect(fs.readFileSync(path.join(process.cwd(),file),'utf8'),entry.service).toMatch(new RegExp(`export async function ${fn}\\(`));
   }
  });
 

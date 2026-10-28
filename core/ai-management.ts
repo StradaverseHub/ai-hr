@@ -13,6 +13,7 @@ import { setTenantSetting } from './tenant-settings';
 import { assertAiPrincipalTx } from './ai-principal';
 import { isZeroCapped } from './ai-zero-cap';
 import {aiSpendStatusTx} from './ai-spend-management';
+import { agentSwitchStatesTx, type AgentFeature } from './agent-principal';
 
 export class AiControlError extends Error {}
 const assertAdmin = (ctx: SessionContext) => { if (!isAdmin(ctx)) throw new AiControlError('Only HR administrators may manage AI.'); };
@@ -85,6 +86,15 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
       const state = !enabled ? 'paused' : !moduleHeld ? 'module' : !effective ? 'restricted' : !selectedProvider && f.id !== 'readiness_reminders' ? 'provider' : 'ready';
       return {...f,enabled,state,mayWrite:isGroupAdmin(ctx)&&f.kind!=='platform'};
     });
+    // ADR-0151 §4.5 — the switch-on each agent specialist runs under, and who made it. An agent that is on
+    // without a named administrator does not run until somebody switches it off and on again.
+    const switches = await agentSwitchStatesTx(tx, fresh);
+    const switchedBy = switches.flatMap(s => s.state === 'attributed' ? [s.userId] : []);
+    const switchNames = new Map(switchedBy.length ? Array.from(await tx.execute<{id:string;label:string}>(sql`
+      select u.id,coalesce(p.full_name,u.workos_user_id) as label from app_user u left join person p on p.id=u.person_id
+      where u.tenant_id=${ctx.tenantId}::uuid and u.id in (${sql.join(switchedBy.map(id=>sql`${id}::uuid`),sql`,`)})`)).map(r=>[r.id,r.label]) : []);
+    const agentSwitches: Partial<Record<AgentFeature,{state:'attributed';by:string|null;at:Date}|{state:'unattributed'|'off'}>> =
+      Object.fromEntries(switches.map(s => [s.feature, s.state === 'attributed' ? {state:s.state,by:switchNames.get(s.userId)??null,at:s.at} : {state:s.state}]));
     const companyRows = await tx.select({id:company.id,label:company.legalName}).from(company)
       .where(sql`app.is_admin_for(${company.id})`).orderBy(asc(company.legalName),asc(company.id));
     const companyUsage = Array.from(await tx.execute<AiUsageSummary & {company_id:string}>(sql`select * from app.ai_company_usage() order by company_id,feature_id`));
@@ -166,7 +176,7 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
       blocked: activity.filter(r=>Number(r.blocked_today)>0).map(r=>({id:r.id,label:r.label,count:Number(r.blocked_today),reason:r.last_reason}))
         .sort((a,b)=>b.count-a.count||a.label.localeCompare(b.label)),
     };
-    return {spend:await aiSpendStatusTx(tx,ctx),features,policies,userDefault,companies,companyUsage,usage:Array.from(usage),users,moreUsers:userRows.length>50,attention,groups:isGroupAdmin(ctx)?groups:[],runs,runFilter,provider:selectedProvider,mayWriteUsers:isGroupAdmin(ctx),legacyBudget:legacyBudgets[0]??null};
+    return {spend:await aiSpendStatusTx(tx,ctx),features,agentSwitches,policies,userDefault,companies,companyUsage,usage:Array.from(usage),users,moreUsers:userRows.length>50,attention,groups:isGroupAdmin(ctx)?groups:[],runs,runFilter,provider:selectedProvider,mayWriteUsers:isGroupAdmin(ctx),legacyBudget:legacyBudgets[0]??null};
   });
 }
 

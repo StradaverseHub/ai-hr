@@ -3781,6 +3781,13 @@
       "when": 1793190000000,
       "tag": "0670_ai_orchestrator_wave1_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 655,
+      "version": "7",
+      "when": 1793280000000,
+      "tag": "0672_ai_agent_principal",
+      "breakpoints": true
     }
   ]
 }

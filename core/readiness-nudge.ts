@@ -33,7 +33,8 @@ import { appendEvent } from '../db/events';
 import * as schema from '../db/schema';
 import { settingEnabled } from './entitlements';
 import { hrAdminsForCompany } from './notifications';
-import { GAP_BLOCKS, readinessSnapshot, type ReadinessGapId } from './record-readiness';
+import { agentReadinessSnapshot, GAP_BLOCKS, readinessSnapshot, type ReadinessGapId } from './record-readiness';
+import { agentActor, agentHolds, agentSpecialistCurrentTx, agentStamp, isAgentContext } from './agent-principal';
 import { loadReadinessActions } from './readiness-actions';
 import { resolveEntitlementsTx } from './entitlements';
 import { recordDecision, recordProposal } from './agent-proposal';
@@ -152,6 +153,9 @@ async function draftBody(
   gap: ReadinessGapId,
   audience: NudgeAudience,
 ): Promise<string> {
+  // ADR-0151 §4.5: the agent principal is not admitted to model spend (no login, no allowance subject), so
+  // it does not attempt a provider call at all. The fixed template is the reminder it sends.
+  if (isAgentContext(ctx)) return fallbackBody(gap, audience);
   const cfg = await withTenant(ctx,async tx=>{const resolved=await resolveActiveAiConfig(tx,ctx,'readiness_reminders');return resolved?bindAiSpendTaskTx(tx,ctx,resolved,{kind:'readiness_template',gap,audience}):null;}).catch(()=>null);
   // No provider is not a failure — it is the ordinary state of a tenant that has not bought one, and the
   // deterministic body is a perfectly good chaser. Nothing is recorded, because nothing was proposed.
@@ -272,12 +276,15 @@ export async function sweepReadinessNudges(ctx: SessionContext): Promise<NudgeSw
   };
   // The literal, not NUDGE_SETTING_KEY — see that constant's note.
   if (!settingEnabled(ctx, 'notifications.readiness_nudge_enabled')) return { ...empty, disabled: true };
+  // Under the agent principal it runs only behind an administrator's attributed switch-on.
+  if (isAgentContext(ctx) && !agentHolds(ctx, 'readiness_reminders')) return { ...empty, disabled: true };
 
   // UNCAPPED, deliberately. `recordReadiness`'s default trims each gap to 25 names so a screen stays
   // readable; iterating that list would chase only the first 25 people per gap and report a clean run.
   // The blast-radius cap below is the ONLY thing that bounds this sweep, and it says so when it bites.
   const { view, activeEmploymentIds, actions } = await withTenant(ctx, async tx => {
-    const snapshot = await readinessSnapshot(tx, Number.POSITIVE_INFINITY);
+    const snapshot = isAgentContext(ctx) ? await agentReadinessSnapshot(tx, Number.POSITIVE_INFINITY)
+      : await readinessSnapshot(tx, Number.POSITIVE_INFINITY);
     return { ...snapshot, actions: await loadReadinessActions(tx, ctx, snapshot.activeEmploymentIds) };
   });
   const openGapKeys = new Set<string>();
@@ -363,7 +370,10 @@ export async function sweepReadinessNudges(ctx: SessionContext): Promise<NudgeSw
         const entitlements = await resolveEntitlementsTx(tx, ctx.tenantId);
         const fresh = { ...ctx, entitlements, entitlementsExempt: undefined };
         if (!settingEnabled(fresh, 'notifications.readiness_nudge_enabled')) return 'changed';
-        const snapshot = await readinessSnapshot(tx, Number.POSITIVE_INFINITY, false, { employmentIds: [person.employmentId] });
+        // The switch-on this run relies on must still be the current one (switched off and on again ends it).
+        if (isAgentContext(fresh) && !(await agentSpecialistCurrentTx(tx, fresh, 'readiness_reminders'))) return 'changed';
+        const snapshot = isAgentContext(fresh) ? await agentReadinessSnapshot(tx, Number.POSITIVE_INFINITY, [person.employmentId])
+          : await readinessSnapshot(tx, Number.POSITIVE_INFINITY, false, { employmentIds: [person.employmentId] });
         if (!snapshot.view.gaps.some(g => g.id === gap.id)) return 'changed';
         const nowAction = (await loadReadinessActions(tx, fresh, snapshot.activeEmploymentIds))
           .get(`${person.employmentId}:${gap.id}`);
@@ -379,13 +389,13 @@ export async function sweepReadinessNudges(ctx: SessionContext): Promise<NudgeSw
           aggregateType: 'employment',
           aggregateId: person.employmentId,
           eventType: 'readiness.nudge-raised',
-          // No userId on a sweep context, so `actorOf` records this as `system` — which is the truth:
-          // nobody pressed send.
-          actor: { type: 'agent' },
+          // Nobody pressed send. Under the agent principal the actor is the principal, and the payload names
+          // the administrator whose switch-on this reminder relies on (0672 refuses the event otherwise).
+          actor: agentActor(ctx),
           subjectEmploymentId: person.employmentId,
           // The BODY travels on the event because the notification registry renders from the payload and
           // stores the result. `audience` is what the registry's recipient resolver branches on.
-          payload: { gap: gap.id, audience, action: action.type, body, recipients },
+          payload: { gap: gap.id, audience, action: action.type, body, recipients, ...agentStamp(ctx, ['readiness_reminders']) },
         });
         return 'sent';
       });

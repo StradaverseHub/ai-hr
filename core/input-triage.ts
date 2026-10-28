@@ -1,4 +1,5 @@
 import {assertClaimsProviderSourceTx} from './claims-provider-source';
+import { agentHolds, isAgentContext } from './agent-principal';
 import {withAiAdmissionCheck} from './ai-governance';
 import {bindAiSpendTaskTx} from './ai-spend-task';
 import {draftInputDigest} from '../lib/ai/draft-input';
@@ -258,7 +259,8 @@ function parseTriage(text: string): TriageProposal | null {
 export type TriageRun = {
   /** The tenant has not switched it on. Everything else is zero and nothing was spent. */
   disabled: boolean;
-  /** No AI provider configured. Nothing is recorded — nothing was proposed. */
+  /** No AI provider configured, or the caller is not admitted to model spend (the agent principal,
+   *  ADR-0151 §4.5). Nothing is recorded — nothing was proposed. */
   notConfigured: boolean;
   /** Pending claims inside the window that have not been triaged before. */
   candidates: number;
@@ -340,6 +342,10 @@ export async function triagePendingClaims(ctx: SessionContext): Promise<TriageRu
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   // The literal, not TRIAGE_SETTING_KEY — see that constant's note.
   if (!settingEnabled(ctx, 'claims.input_triage_enabled')) return { ...EMPTY, disabled: true };
+  // ADR-0151 §4.5: under the agent principal it runs only behind an attributed switch-on, and stops before
+  // reading any claim — the principal is not admitted to model spend, so there is nothing it could ask. The
+  // anonymous context this replaced reached the same outcome later, after reading every pending claim.
+  if (isAgentContext(ctx)) return agentHolds(ctx, 'claims_triage') ? { ...EMPTY, notConfigured: true } : { ...EMPTY, disabled: true };
 
   const since = daysAgo(TRIAGE_WINDOW_DAYS);
   const claims=await withTenant(ctx,tx=>ctx.userId?pendingClaimAiSourceTx(tx,ctx,since):pendingClaimNativeSourceTx(tx,since));

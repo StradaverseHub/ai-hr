@@ -3,7 +3,8 @@ import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { appendEvent } from '../db/events';
 import * as schema from '../db/schema';
-import { GAP_BLOCKS, readinessSnapshot, type ReadinessGapId } from './record-readiness';
+import { agentReadinessSnapshot, GAP_BLOCKS, readinessSnapshot, type ReadinessGapId } from './record-readiness';
+import { agentActor, agentStamp, isAgentContext } from './agent-principal';
 import { sweepReadinessNudges } from './readiness-nudge';
 import { loadReadinessActions } from './readiness-actions';
 import { EntitlementError } from './entitlements';
@@ -12,13 +13,22 @@ import { triagePendingClaims } from './input-triage';
 import { digestOf } from './agent-proposal';
 import { HR_HARNESS_VERSION, readinessTransition, runOrchestrationPass, summarizeOrchestrationPass } from './orchestrator-harness';
 
-/** Run state is administrative. Employee self-service continues through its existing services. */
+/** Run state is administrative. Employee self-service continues through its existing services.
+ *  The tenant's agent principal may run the pass (ADR-0151 §4.5) but never reads the admin queue. */
+function assertRunner(ctx: SessionContext) {
+  if (isAgentContext(ctx)) return;
+  assertAdmin(ctx);
+}
+
 function assertAdmin(ctx: SessionContext) {
+  if (isAgentContext(ctx)) throw new Error('Orchestrator access denied');
   if (!(ctx.grants ?? ctx.roles?.map(role => ({ role, companyId: null })) ?? [])
     .some(g => g.role === 'hr_admin' || g.role === 'super_admin')) throw new Error('Orchestrator access denied');
 }
 
 function scopeDigest(ctx: SessionContext) {
+  // The principal observes every active employment of its tenant, the same scope as a group administrator.
+  if (isAgentContext(ctx)) return digestOf(['all-employments']);
   const grants = ctx.grants ?? ctx.roles?.map(role => ({ role, companyId: null })) ?? [];
   // Match effective administrative authority, not unrelated employee/manager grants on the same user.
   if (grants.some(g => g.role === 'super_admin' || (g.role === 'hr_admin' && g.companyId == null))) {
@@ -28,11 +38,13 @@ function scopeDigest(ctx: SessionContext) {
 }
 
 export async function reconcileReadinessCases(ctx: SessionContext) {
-  assertAdmin(ctx);
+  assertRunner(ctx);
+  const actor = isAgentContext(ctx) ? agentActor(ctx) : ctx.userId ? { type: 'user' as const, id: ctx.userId } : { type: 'agent' as const };
   return withTenant(ctx, async tx => {
     // Serialize overlapping reconcilers before reading source facts. No model/network call holds this lock.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext('hr-orchestrator'), hashtext(${ctx.tenantId}))`);
-    const { view, activeEmploymentIds } = await readinessSnapshot(tx, Number.POSITIVE_INFINITY, true);
+    const { view, activeEmploymentIds } = isAgentContext(ctx) ? await agentReadinessSnapshot(tx, Number.POSITIVE_INFINITY)
+      : await readinessSnapshot(tx, Number.POSITIVE_INFINITY, true);
     const actions = await loadReadinessActions(tx, ctx, activeEmploymentIds);
     const active = new Set(activeEmploymentIds);
     const existing = await tx.select().from(schema.hrOrchestrationCase);
@@ -84,10 +96,9 @@ export async function reconcileReadinessCases(ctx: SessionContext) {
       if (changed) await appendEvent(tx, {
         tenantId: ctx.tenantId, aggregateType: 'hr_orchestration_case', aggregateId: id!,
         eventType: `orchestrator.case-${reopened ? 'reopened' : state}`,
-        actor: ctx.userId ? { type: 'user', id: ctx.userId } : { type: 'agent' },
-        subjectEmploymentId: employmentId,
+        actor, subjectEmploymentId: employmentId,
         payload: { gap, from: previous?.state ?? null, to: state, action: action?.type ?? null,
-          requestId: action?.requestId ?? null, harnessVersion: HR_HARNESS_VERSION },
+          requestId: action?.requestId ?? null, harnessVersion: HR_HARNESS_VERSION, ...agentStamp(ctx) },
       });
     }
     for (let offset = 0; offset < unchanged.length; offset += 500) {
@@ -96,8 +107,7 @@ export async function reconcileReadinessCases(ctx: SessionContext) {
     }
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'hr_orchestrator',
       aggregateId: ctx.tenantId, eventType: 'orchestrator.readiness-checked',
-      actor: ctx.userId ? { type: 'user', id: ctx.userId } : { type: 'agent' },
-      payload: { scopeDigest: scopeDigest(ctx), harnessVersion: HR_HARNESS_VERSION },
+      actor, payload: { scopeDigest: scopeDigest(ctx), harnessVersion: HR_HARNESS_VERSION, ...agentStamp(ctx) },
     });
     return counts;
   });
@@ -108,15 +118,15 @@ export async function reconcileReadinessCases(ctx: SessionContext) {
  * A failed specialist does not suppress the others. Effects are never retried inside this pass.
  */
 export async function runHrOrchestrator(ctx: SessionContext) {
-  assertAdmin(ctx);
+  assertRunner(ctx);
   return runOrchestrationPass({
     observe: () => reconcileReadinessCases(ctx),
     readiness: () => sweepReadinessNudges(ctx),
     claims: () => triagePendingClaims(ctx),
     recordTrace: trace => withTenant(ctx, tx => appendEvent(tx, {
       tenantId: ctx.tenantId, aggregateType: 'hr_orchestrator', aggregateId: ctx.tenantId,
-      eventType: 'orchestrator.pass-finished', actor: { type: 'agent' },
-      payload: { scopeDigest: scopeDigest(ctx), ...trace },
+      eventType: 'orchestrator.pass-finished', actor: agentActor(ctx),
+      payload: { scopeDigest: scopeDigest(ctx), ...trace, ...agentStamp(ctx) },
     })),
   });
 }

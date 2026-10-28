@@ -11217,3 +11217,8 @@ export const letterCounter=pgTable('letter_counter',{
 export const letterVerificationRate=pgTable('letter_verification_rate',{
  scope:text('scope').notNull(),bucket:bigint('bucket',{mode:'number'}).notNull(),hits:integer('hits').notNull(),
 },t=>[primaryKey({columns:[t.scope,t.bucket]})]);
+// ADR-0151 §4.5 (0672) — one named agent principal per tenant. Not a login: no app_user, role or credential.
+const agentPrincipalPrivate=pgSchema('app');
+export const aiAgentPrincipal=agentPrincipalPrivate.table('ai_agent_principal',{
+ id:id(),tenantId:uuid('tenant_id').notNull().unique().references(()=>tenant.id),createdAt:createdAt(),
+});
