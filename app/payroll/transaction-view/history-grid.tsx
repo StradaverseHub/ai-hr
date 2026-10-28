@@ -3,6 +3,8 @@
 import { Fragment, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { SUBJECT_COLUMNS, filterGridRows, type GridRowGroup, type HistoryGridRow } from './history-pivot';
+// b240c0ff — imported payroll history reads "Monthly - By Import", never the stored "Adjustment".
+import { payrollRunLabel } from '@/core/payslip-cycle-label';
 
 /**
  * Feedback 080de5cf — the spreadsheet grid for Transaction View › History › Grid.
@@ -271,7 +273,7 @@ export function HistoryGrid({
                       <td
                         className={`${COL.cycle.th} ${COL.cycle.left} sticky z-10 bg-card px-3 py-2 text-muted-foreground`}
                       >
-                        {cycleLabels[r.runType] ?? r.runType}
+                        {payrollRunLabel(r, cycleLabels[r.runType] ?? r.runType)}
                       </td>
                       {/* 3c88d593 — the employer, and underneath it the days that employer actually
                           covered when the month was split by an entity transfer. The dates come from the

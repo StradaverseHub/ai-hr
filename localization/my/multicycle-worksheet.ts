@@ -188,6 +188,10 @@ export type WorksheetVerdict = (typeof WORKSHEET_VERDICTS)[number];
 export type WorksheetRunView = {
   runSeq: number;
   runType: RunType;
+  /** b240c0ff — display only: imported payroll history is labelled by its Pay Cycle ("Monthly - By
+   *  Import"). Never read by the replay. Absent on every other run. */
+  historyImportAttemptId?: string | null;
+  historyImportCycleName?: string | null;
   /** Normal remuneration this run carried (the EPF wage base it was charged on). */
   normal: number;
   /** Additional remuneration (bonus / off-cycle) this run itself paid. */
@@ -298,6 +302,8 @@ type SlipRow = {
   batchId: string;
   runSeq: number;
   runType: RunType;
+  historyImportAttemptId: string | null;
+  historyImportCycleName: string | null;
   needsRecalc: boolean;
   employmentId: string;
   employeeCode: string | null;
@@ -674,6 +680,9 @@ function replayEmployeeMonth(p: {
       runs: runs.map((r, i) => ({
         runSeq: r.runSeq,
         runType: r.runType,
+        ...(r.historyImportAttemptId
+          ? { historyImportAttemptId: r.historyImportAttemptId, historyImportCycleName: r.historyImportCycleName }
+          : {}),
         normal: i === 0 ? normal : 0,
         additional: ownAdditional[i],
         overtime: i === 0 ? overtime : 0,
@@ -797,6 +806,8 @@ async function loadSlips(tx: Tx, batchIds: string[]): Promise<SlipRow[]> {
       batchId: payrollBatch.id,
       runSeq: payrollBatch.runSeq,
       runType: payrollBatch.runType,
+      historyImportAttemptId: payrollBatch.historyImportAttemptId,
+      historyImportCycleName: payrollBatch.historyImportCycleName,
       needsRecalcAt: payrollBatch.needsRecalcAt,
       employmentId: payslip.employmentId,
       employeeCode: employment.employeeCode,
@@ -822,6 +833,8 @@ async function loadSlips(tx: Tx, batchIds: string[]): Promise<SlipRow[]> {
     batchId: r.batchId,
     runSeq: r.runSeq,
     runType: r.runType as RunType,
+    historyImportAttemptId: r.historyImportAttemptId,
+    historyImportCycleName: r.historyImportCycleName,
     needsRecalc: r.needsRecalcAt != null,
     employmentId: r.employmentId,
     employeeCode: r.employeeCode,

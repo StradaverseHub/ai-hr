@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
@@ -668,7 +669,7 @@ export default async function BatchPage({
                   MISSING_MESSAGE. Same class as the bug r127 shipped and r130 fixed, and found the same
                   way — by rendering the page and reading the dev log, not by any gate step.
                   Read where they live rather than minting a fourth copy (r130's rule). */}
-              <div className="text-sm font-medium">{batch.historyImportAttemptId?`${batch.historyImportCycleName} - By Import`:<>{tList(`runType.${batch.runType}`)}{batch.remarks ? ` — ${batch.remarks}` : ''}</>}</div>
+              <div className="text-sm font-medium">{batch.historyImportAttemptId?payrollRunLabel(batch,tList(`runType.${batch.runType}`)):<>{tList(`runType.${batch.runType}`)}{batch.remarks ? ` — ${batch.remarks}` : ''}</>}</div>
             </div>
             <div className="p-3">
               <div className="text-xs text-muted-foreground">{t('summaryPaymentDate')}</div>
