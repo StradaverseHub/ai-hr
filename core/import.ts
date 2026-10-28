@@ -20,6 +20,17 @@ import { personnelBankValues, type PersonnelBankValues } from '../lib/personnel-
 import { personnelFamilyValues, personnelFamilyCatalogErrors } from '../lib/personnel-family-import';
 import { personnelImportProposedValues, PERSONNEL_EMPLOYMENT_IMPORT_FIELDS, PERSONNEL_PROFILE_IMPORT_FIELDS, PERSONNEL_COMPLIANCE_IMPORT_FIELDS, personnelScalarIssue } from '../lib/personnel-import-contract';
 import { isCalendarDate } from '../lib/calendar-date';
+// 524303d9 — the "Everything — new employees" template adopts every Bank & Statutory setting through the SAME
+// parser, cross-field rules and merged writer as the Bank & Statutory import, inside the hire transaction.
+import {buildBankStatutoryPatch,applyBankStatutoryPatchTx,bankStatutoryRefusal} from './bank-statutory-import';
+import {bankStatutoryStateFrom,MERGED_STATUTORY_COLUMNS} from '../lib/bank-statutory-import';
+import {copyPermanentToCorrespondence} from '../lib/address-blocks';
+import {createImportAttemptTx,recordImportEventTx,recordImportFailure,recordImportItemTx,sealImportPlan,ImportHistoryError} from './import-history';
+import type {EmployeeFullImportPlan,EmployeeFullItemState} from './employee-import-history';
+import {assignPolicy} from '../packs/payroll/service';
+import {setEmploymentScheduleGroupTx} from './roster';
+import {isModuleEnabled} from './entitlements';
+import {toCsv} from '../lib/csv';
 /**
  * Day-one employee importer (ADR-0008 localization stays in the pack; this is the generic
  * bulk-load path). Parses a validated set of CSV records and reuses the same services the
@@ -45,6 +56,8 @@ import {
   employeeImportRun,
   appUser,
   profileOption,
+  payrollPolicy,
+  attendanceRule,
 } from '../db/schema';
 import { and, desc, eq, isNotNull, sql } from 'drizzle-orm';
 import {updatePerson} from './org';
@@ -123,6 +136,8 @@ type CompanyContext = {
   organisationDisplay: Map<string,string>;
   departmentBusinessUnits:Map<string,string|null>;
   pack: CountryPack;
+  /** 524303d9 — the company's country, for the client pack's tax-circumstance categories. */
+  country: string;
 };
 
 type ResolvedRow = {
@@ -207,6 +222,16 @@ type ResolvedRow = {
    */
   salaryRemarks?: string;
   effectiveFrom: string;
+  /** 524303d9 — the hire's employer-scoped income tax selection: Non-Resident when the row says so through
+   *  `is_resident` or `tax_residency`, otherwise Resident (an incentive scheme moves onto its scheme below). */
+  initialTaxScheme: 'resident' | 'non_resident';
+  /** 524303d9 — Bank & Statutory settings beyond the original create columns, as canonical values, written by
+   *  the merged statutory writer in the hire transaction. Undefined when the row supplied none. */
+  statutoryPatch?: Record<string, string>;
+  country: string;
+  /** 524303d9 — single-value hire-time settings, each through its own owner in the hire transaction. */
+  payrollPolicyId?: string;
+  scheduleGroupId?: string;
 };
 
 /** Item 2983802f — one validated row of the FAMILY sheet, with the employee row it belongs to. */
@@ -302,6 +327,7 @@ async function loadCompanyContext(
     // Rung 5a (ADR-0080 D1/D6): IC rules come from the COMPANY'S country pack, fail-loud when the
     // country resolves nothing — so a per-row company change also changes the statutory rules applied.
     pack: requirePackFor(co.country),
+    country: co.country ?? '',
   };
 }
 
@@ -364,6 +390,8 @@ async function analyze(
     catalog,
     superiorByCode,
     superiorByEmail,
+    policies,
+    scheduleGroups,
   } = await read(async (tx) => {
     if (!normPack) {
       // No company resolved from `listCompanies` — which EXCLUDES archived companies, so this is
@@ -377,7 +405,12 @@ async function analyze(
         .limit(1);
       normPack = requirePackFor(co?.country);
     }
+    // 524303d9 — RLS (`person_rls`, migration 0676) leaves out the person of a voided import employment, so a
+    // reverted file's emails are free again.
     const ppl = await tx.select({ email: person.primaryEmail }).from(person);
+    // 524303d9 — hire-time settings resolved by name/code in the dry run, so a typo fails before any write.
+    const policies = await tx.select({ id: payrollPolicy.id, companyId: payrollPolicy.companyId, name: payrollPolicy.name, code: payrollPolicy.code, status: payrollPolicy.status }).from(payrollPolicy);
+    const scheduleGroups = await tx.select({ id: attendanceRule.id, name: attendanceRule.name, label: attendanceRule.label, status: attendanceRule.status }).from(attendanceRule);
     const hiddenConflicts = allowDuplicatedNric ? [] : await occupiedNricsTx(tx,{companyId,keys:records.map(record=>normPack!.statutory.normalizeIC(norm(record.ic_number)))});
     const ics = await tx.select({ ic: employeeStatutoryMy.icNumber }).from(employeeStatutoryMy);
     // Employee IDs already in use in this tenant (feedback 38668d9b) — an import must not collide with an
@@ -419,6 +452,8 @@ async function analyze(
       catalog,
       superiorByCode,
       superiorByEmail,
+      policies,
+      scheduleGroups,
       reservedCodes: new Set(reserved.map((r) => normalizeEmployeeCode(r.code as string))),
       existingEmails: new Set(ppl.map((r) => r.email.toLowerCase())),
       // Item e3ce0d4d — icNumber is now nullable (non-Malaysian passport rows); skip null ICs so a blank never
@@ -503,7 +538,9 @@ async function analyze(
     else if (!EMAIL_RE.test(email)) errors.push(`Invalid email "${email}"`);
     // 5e0b2154 — with Allow Duplicated Work Email or Personal Email ON, a shared email is reported, not refused.
     else if (seenEmails.has(email.toLowerCase())) (allowDuplicatedEmail ? warnings : errors).push(allowDuplicatedEmail ? 'This email is also used by another row in this file' : 'Duplicate email in this file');
-    else if (existingEmails.has(email.toLowerCase())) warnings.push('A person with this email already exists');
+    // 524303d9 — the duplicate policy applies in full, exactly like NRIC: with "Allow Duplicated Work Email or
+    // Personal Email" OFF an email another person already holds is refused; ON it is reported.
+    else if (existingEmails.has(email.toLowerCase())) (allowDuplicatedEmail ? warnings : errors).push(allowDuplicatedEmail ? 'A person with this email already exists' : `Email "${email}" is already used by another employee (Allow Duplicated Work Email is off)`);
     if (email) seenEmails.add(email.toLowerCase());
 
     // Department (required, canonical code before an unambiguous legacy label)
@@ -781,6 +818,66 @@ async function analyze(
       else (compliance as Record<string,string>)[field.ownerField]=value;
     }
     if(profile.personalEmail && !EMAIL_RE.test(profile.personalEmail))errors.push('Invalid personal_email');
+    // 524303d9 — "Same as permanent address": Yes copies the permanent block into the correspondence block
+    // through the same writer, exactly as draft completion does (`copyPermanentToCorrespondence`).
+    const sameAsPermanent = boolField(rec.correspondence_same_as_permanent ?? '', 'correspondence_same_as_permanent');
+    if (sameAsPermanent === true) {
+      if (Object.keys(rec).some((column) => /^correspondence_(address_line_[123]|postcode|city|state|country)$/.test(column) && norm(rec[column]) !== ''))
+        errors.push('correspondence_same_as_permanent: leave the correspondence address columns blank when this is Yes');
+      else for (const [key, value] of Object.entries(copyPermanentToCorrespondence(profile))) if (value !== undefined && value !== null) profile[key] = value as string;
+    }
+
+    // 524303d9 — PAYROLL POLICY and SCHEDULE GROUP at hire, judged here as draft completion judges them: the
+    // policy must be an ACTIVE policy of the row's company and Payroll must be switched on for it.
+    let payrollPolicyId: string | undefined;
+    const policyRaw = norm(rec.payroll_policy);
+    if (policyRaw && cctx) {
+      const wanted = policyRaw.toLowerCase();
+      const hits = policies.filter((policy) => policy.companyId === cctx.id && (policy.name.toLowerCase() === wanted || (policy.code ?? '').toLowerCase() === wanted));
+      if (!isModuleEnabled(ctx, 'payroll', cctx.id)) errors.push(`payroll_policy: Payroll is not switched on for ${cctx.name}`);
+      else if (hits.length > 1) errors.push(`Ambiguous payroll_policy "${policyRaw}" — use its policy code`);
+      else if (!hits.length) errors.push(`Unknown payroll_policy "${policyRaw}" for ${cctx.name}`);
+      else if (hits[0].status !== 'active') errors.push(`payroll_policy "${policyRaw}" is inactive`);
+      else payrollPolicyId = hits[0].id;
+    }
+    let scheduleGroupId: string | undefined;
+    const groupRaw = norm(rec.schedule_group);
+    if (groupRaw) {
+      const wanted = groupRaw.toLowerCase();
+      const hits = scheduleGroups.filter((group) => group.name.toLowerCase() === wanted || (group.label ?? '').toLowerCase() === wanted);
+      if (hits.length > 1) errors.push(`Ambiguous schedule_group "${groupRaw}"`);
+      else if (!hits.length) errors.push(`Unknown schedule_group "${groupRaw}"`);
+      else if (hits[0].status !== 'active') errors.push(`schedule_group "${groupRaw}" is inactive`);
+      else scheduleGroupId = hits[0].id;
+    }
+
+    // 524303d9 — EVERY BANK & STATUTORY SETTING, validated in full before anything is written. The cells go
+    // through the Bank & Statutory import's own parser and the tab's cross-field rules (EPF election via the
+    // pack's `validateEpfElection`, tax circumstance ↔ category, residency ↔ EPF citizenship) against the
+    // values this hire will hold. Columns the original create path already writes (tax number, tax category,
+    // children, EPF citizenship, the legacy yes/no adapters) keep their parsers; tax category is passed only
+    // when valid so the circumstance rule can see it.
+    const legacyStatutory = new Set(['tax_number', 'num_children', 'epf_citizenship', 'eis_eligible', 'is_resident', 'tax_category']);
+    const statutoryCell = (column: string) => {
+      if (column === 'tax_category') return taxCategory !== undefined && [1, 2, 3].includes(taxCategory) ? String(taxCategory) : undefined;
+      if (legacyStatutory.has(column)) return undefined;
+      const v = norm(rec[column]);
+      return v === '' ? undefined : v;
+    };
+    const residencyCell = statutoryCell('tax_residency')?.toLowerCase().replace(/[\s-]+/g, '_');
+    const initialTaxScheme: 'resident' | 'non_resident' = isResident === false || residencyCell === 'non_resident' ? 'non_resident' : 'resident';
+    const expected = bankStatutoryStateFrom({
+      epfCitizenship: epfCitizenship ?? 'citizen', socsoCategory: 'auto', eisCategory: eisEligible === false ? 'none' : 'auto',
+      taxCategory: taxCategory ?? 1, numChildren: numChildren ?? 0, childReliefMode: 'manual', taxNumber: norm(rec.tax_number) || null,
+    }, { taxResidency: initialTaxScheme, paymentMethod: operations.values.paymentMethod ?? null });
+    const built = buildBankStatutoryPatch(statutoryCell, { pack, country: cctx?.country ?? '' }, expected);
+    errors.push(...built.errors);
+    if (isResident !== undefined && built.patch.tax_residency && (isResident === false) !== (built.patch.tax_residency === 'non_resident'))
+      errors.push('is_resident disagrees with tax_residency; keep one of the two columns');
+    if (eisEligible !== undefined && built.patch.eis_category && (eisEligible === false) !== (built.patch.eis_category === 'none'))
+      errors.push('eis_eligible disagrees with eis_category; keep one of the two columns');
+    const statutoryPatch = Object.fromEntries(Object.entries(built.patch).filter(([column, value]) =>
+      MERGED_STATUTORY_COLUMNS.includes(column) && column !== 'tax_category' && !(column === 'tax_residency' && value === initialTaxScheme)));
 
     // PROBATION + NOTICE PERIOD. `probation_end_date` writes the employment's provisional end date, which
     // IS the probation end for a full-time hire — and means the END OF THE CONTRACT for a contract or an
@@ -887,6 +984,11 @@ async function analyze(
       rateAmount,
       salaryRemarks,
       effectiveFrom: hiredOn,
+      initialTaxScheme,
+      statutoryPatch: Object.keys(statutoryPatch).length ? statutoryPatch : undefined,
+      country: cctx?.country ?? '',
+      payrollPolicyId,
+      scheduleGroupId,
     });
   });
 
@@ -1186,9 +1288,12 @@ function measuredImportReplay(companyId:string,evaluationReceipt:EmployeeImportE
 }
 export async function commitEmployeeImport(
   ctx: SessionContext,
-  p: { companyId: string; records: ImportRecord[]; dependentRecords?: ImportRecord[]; registerRecords?:PersonnelRegisterRecords; allocationRecords?:AllocationImportRecords; allocationToken?:string; fileName?: string; evaluationBinding?:EmployeeImportEvaluationBinding },
+  p: { companyId: string; records: ImportRecord[]; dependentRecords?: ImportRecord[]; registerRecords?:PersonnelRegisterRecords; allocationRecords?:AllocationImportRecords; allocationToken?:string; fileName?: string; evaluationBinding?:EmployeeImportEvaluationBinding;
+    /** 524303d9 — the ORIGINAL uploaded file for Import History (absent for a paste: the rows are recorded as CSV text). */
+    source?:{name:string;content:Buffer;operationKey?:string} },
 ): Promise<ImportResult & {evaluationReceipt?:EmployeeImportEvaluationReceipt}> {
-  p=structuredClone(p);
+  const source=p.source?{...p.source,content:Buffer.from(p.source.content)}:undefined;
+  p=structuredClone({...p,source:undefined});p.source=source;
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if(p.evaluationBinding){const replay=await withTenant(ctx,tx=>readEmployeeImportEvaluationTx(tx,ctx,p.evaluationBinding!,p));if(replay)return measuredImportReplay(p.companyId,replay);}
   let { preview, resolved, dependents,registers } = await analyze(
@@ -1216,7 +1321,11 @@ export async function commitEmployeeImport(
 
   // Item 2983802f — A FILE-LEVEL REFUSAL WRITES NOTHING. Re-derived here from the records, never taken
   // from a client-supplied preview, so a tampered payload cannot talk the server into a half-import.
+  // 524303d9 — Import History (ADR-0155 kind `employee_full`): the uploaded file (or, for a paste, the rows as
+  // text), the per-row outcome and the companies, recorded before the write so a refused file is listed too.
+  const attemptId=await recordEmployeeImportAttempt(ctx,p,preview,resolved);
   if (preview.fileErrors.length > 0) {
+    if(attemptId)await recordImportFailure(ctx,attemptId,'employee_full','failed',new ImportHistoryError(preview.fileErrors.join(' ')));
     return {
       companyId: p.companyId,
       imported: 0,
@@ -1226,6 +1335,7 @@ export async function commitEmployeeImport(
       superiorFailed: [],
       fileErrors: preview.fileErrors,
       runId: null,
+      attemptId,
     };
   }
 
@@ -1276,13 +1386,21 @@ export async function commitEmployeeImport(
     const pack = row.pack;
     try {
       const saved = await (async()=>{
-      const { employmentId, personId } = await hireEmployee(ctx, {...row.hire,initialTaxScheme:row.statutory.isResident===false?'non_resident':'resident'}, tx);
+      const { employmentId, personId } = await hireEmployee(ctx, {...row.hire,initialTaxScheme:row.initialTaxScheme}, tx);
       if(allocationPreview)await writeNewEmployeeCostAllocationsTx(tx,ctx,allocationPreview.groups,index,employmentId);
       let familyCount=0;
       await pack.statutory.set(ctx, { personId, ...row.statutory }, tx);
       if(row.oldIcNumber)await pack.statutory.setIc(ctx,{personId,icNumber:row.statutory.icNumber??'',oldIcNumber:row.oldIcNumber},tx);
       if(row.bankExtra)await pack.statutory.setBank(ctx,{personId,...row.bankExtra},tx);
       if(row.operations)await applyPersonnelOperationalValuesTx(tx,ctx,employmentId,row.operations);
+      // 524303d9 — the remaining Bank & Statutory settings, through the merged writer over the row just written
+      // (it re-reads under lock and re-validates; a refusal rolls the whole import back).
+      if(row.statutoryPatch){
+        try{await applyBankStatutoryPatchTx(tx,ctx,{employmentId,personId,pack,country:row.country},row.statutoryPatch);}
+        catch(error){const message=bankStatutoryRefusal(error);if(message)throw new Error(message);throw error;}
+      }
+      if(row.payrollPolicyId)await assignPolicy(ctx,{employmentId,policyId:row.payrollPolicyId},tx);
+      if(row.scheduleGroupId)await setEmploymentScheduleGroupTx(tx,ctx,{employmentId,attendanceRuleId:row.scheduleGroupId});
       // Feedback b9fd8fd5 — imports behave like manual entry (setIcAction, item 354a500d): a valid IC also
       // persists the derived Date of Birth so the Profile tab's Age never reads "Not Available" for an
       // imported employee. `dobOnlyIfEmpty` guarantees an existing DOB is never overwritten; an IC whose
@@ -1330,6 +1448,12 @@ export async function commitEmployeeImport(
       for (const d of familyByRow.get(index) ?? []) {
         await addDependentTx(tx,ctx,personId,d.add);
         familyCount++;
+      }
+      // 524303d9 — the attempt's item for this employment, in the SAME transaction as the hire (ADR-0155).
+      if(attemptId){
+        const [created]=await tx.select({code:employment.employeeCode}).from(employment).where(eq(employment.id,employmentId));
+        const after:EmployeeFullItemState={employeeCode:created?.code??'',fullName:row.result.fullName,rowNum:row.result.rowNum};
+        await recordImportItemTx(tx,ctx,{attemptId,companyId:row.hire.companyId,employmentId,itemKey:`row:${row.result.rowNum}`,label:`${after.employeeCode||'—'} · ${after.fullName}`,ordinal:index,status:'applied',after});
       }
       return {employmentId,personId,familyCount};
       })();
@@ -1394,6 +1518,7 @@ export async function commitEmployeeImport(
     }
   }
 
+  if(attemptId)await recordImportEventTx(tx,ctx,{attemptId,kind:'confirmed',importKind:'employee_full',detail:{succeeded:imported,failed:resolved.length-valid.length}});
   const evaluationEventId=await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'employee-import',
@@ -1426,7 +1551,11 @@ export async function commitEmployeeImport(
     superiorFailed.splice(0);imported=0;dependentsImported=0;registersImported.qualification=0;registersImported.emergency=0;employmentByRow.clear();
   }
 
-  if(replayedEvaluation&&evaluationReceipt)return measuredImportReplay(p.companyId,evaluationReceipt);
+  if(writeFileErrors.length&&attemptId)await recordImportFailure(ctx,attemptId,'employee_full','failed',new ImportHistoryError(writeFileErrors.join(' ')));
+  if(replayedEvaluation&&evaluationReceipt){
+    if(attemptId)await recordImportFailure(ctx,attemptId,'employee_full','failed',new ImportHistoryError('This import was already completed; nothing new was written.'));
+    return measuredImportReplay(p.companyId,evaluationReceipt);
+  }
 
   // A post-commit refresh failure must never be described as a rolled-back employee import.
   if(!writeFileErrors.length) for(const personId of familySyncPersonIds) {
@@ -1453,8 +1582,32 @@ export async function commitEmployeeImport(
     fileErrors: writeFileErrors,
     warnings: [...new Set(writeWarnings)],
     runId,
+    attemptId,
     ...(evaluationReceipt?{evaluationReceipt}:{}),
   };
+}
+
+/** Rows as CSV text, for an import that arrived without its file (a paste, or a direct service call). */
+function recordsAsCsv(records:ImportRecord[]){
+  const columns=[...new Set(records.flatMap(record=>Object.keys(record)))];
+  return toCsv([columns,...records.map(record=>columns.map(column=>record[column]??''))]);
+}
+/**
+ * 524303d9 — the import attempt (ADR-0155). Only for a signed-in actor: a system context has no history owner.
+ * Every listed company is one this actor maintains (analyze() already refused any other), so the attempt's
+ * insert policy holds. A repeated upload operation is refused, never re-imported.
+ */
+async function recordEmployeeImportAttempt(ctx:SessionContext,p:{companyId:string;records:ImportRecord[];fileName?:string;source?:{name:string;content:Buffer;operationKey?:string}},preview:ImportPreview,resolved:ResolvedRow[]):Promise<string|null>{
+  if(!ctx.userId)return null;
+  const name=p.source?.name||p.fileName||'pasted-employees.csv';
+  const content=p.source?.content??Buffer.from(recordsAsCsv(p.records),'utf8');
+  const rows=resolved.map(row=>({rowNum:row.result.rowNum,fullName:row.result.fullName,employeeCode:row.hire.employeeCode??'',company:row.result.company,ok:row.result.ok,errors:row.result.errors}));
+  const plan=sealImportPlan<EmployeeFullImportPlan>({version:1,kind:'employee_full',companyId:p.companyId,rows,counts:{total:rows.length,valid:preview.validCount,invalid:rows.length-preview.validCount},
+    issues:[...preview.fileErrors.map(reason=>({rowNum:0,reason})),...rows.filter(row=>!row.ok).map(row=>({rowNum:row.rowNum,reason:`Row ${row.rowNum} (${row.fullName||row.employeeCode||'no name'}): ${row.errors.join('; ')}`}))],previewHash:''});
+  const companyIds=[...new Set(resolved.filter(row=>row.result.ok).map(row=>row.hire.companyId))];
+  const created=await withTenant(ctx,tx=>createImportAttemptTx(tx,ctx,{kind:'employee_full',sourceName:name,content,companyIds,plan,operationKey:p.source?.operationKey}));
+  if(created.existing)throw new ImportHistoryError('This upload was already received. Open Import History to see its outcome.');
+  return created.attemptId;
 }
 
 /**

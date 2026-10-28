@@ -77,6 +77,8 @@ export type BreakdownStat = {
    *  the detail was never written down, so it cannot be recovered; that is what `detailNotRecorded` says
    *  on screen instead of rendering an empty breakdown that reads as a bug. */
   componentLines?: ComponentLine[];
+  /** b240c0ff — an imported payroll-history month's own pay item lines (core/payslip-imported-lines.ts). */
+  importedLines?: ComponentLine[];
   otConvert?: { code: string; name: string; amount: number };
 };
 
@@ -170,6 +172,13 @@ export type HistoryBreakdown = {
    */
   overtimeLines: RecordLine[];
   bonusLines: RecordLine[];
+  /**
+   * b240c0ff — the named pay items behind the "Other deductions" row (`absence.residual`), reconciled like
+   * the three lists above: EMPTY unless they add up to that row exactly. Imported payroll history stamps
+   * every deduction line it was given, so "UPL · Unpaid leave" and a second deduction are listed under the
+   * row instead of vanishing into it. Nothing here moves a figure or a subtotal.
+   */
+  deductionLines: RecordLine[];
   /** This run predates the per-item stamp (or had no pay items), so there is nothing to disclose. The
    *  screen must SAY this — an empty breakdown under a non-zero total reads as a defect. */
   detailNotRecorded: boolean;
@@ -222,7 +231,9 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBre
   // (the engine resolves an absent company statutory row to 'not_registered'), which is why it reads 0
   // on most payslips today rather than being absent.
   const hrdf = num(st.hrdf);
-  const componentLines = st.componentLines ?? [];
+  // b240c0ff — plus an imported history month's own pay item lines (`statutory.importedLines`, display only).
+  const importedLines = st.importedLines ?? [];
+  const componentLines = importedLines.length ? [...(st.componentLines ?? []), ...importedLines] : (st.componentLines ?? []);
   // 3c473773 — the boxes come from the payslip's OWN stamp when it carries one, and from the stored columns
   // when it does not. Never re-derived from today's pay-item setup: a category changed in March must not
   // rewrite what January's payslip said. `allowance` still carries otConvert inside it, so `allowanceNet`
@@ -235,6 +246,7 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBre
   // Hoisted so the reconciliation gate below can compare against the SAME expression the field carries —
   // computing it twice is how the figure and the guard on the figure start to disagree.
   const allowanceNet = disp.allowance - otConvertAmount;
+  const absence = payslipAbsenceLines(row.statutory, row.otherDeductions);
   return {
     st,
     basic: disp.basic,
@@ -248,7 +260,7 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBre
     otherDeductions: num(row.otherDeductions),
     // 970e4143 — ASKED, not answered here. All three come out of the shared deciders so this panel, its
     // download, the grid, the employee's payslip and the printed document give one slip one answer.
-    absence: payslipAbsenceLines(row.statutory, row.otherDeductions),
+    absence,
     cp38Lumped: { amount: lumped.line.applied, show: lumped.show },
     otherDeductionsLumped: lumped.residual,
     net: num(row.net),
@@ -276,6 +288,8 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBre
     // did. An unstamped run yields [] here too, which is exactly the pre-862ed0ad rendering.
     overtimeLines: reconciled(byBucket.ot, disp.overtime),
     bonusLines: reconciled(byBucket.bonus, disp.bonus),
+    // Imported lines only: a kernel run's deduction stamp never replaces its row (core/payslip-imported-lines.ts).
+    deductionLines: absence.showResidual ? reconciled(groupByBucket(importedLines).deduct, absence.residual) : [],
     detailNotRecorded: componentLines.length === 0,
     // 0253dc7c — read through the kernel's own accessor so "absent" means the same thing here as it
     // does in the payslip-version diff. It returns null (never zeroes) for a slip with no stamp.

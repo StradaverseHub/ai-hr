@@ -2092,7 +2092,7 @@
       "sectionStep4": "Check what will change",
       "sectionStep5Hint": "Check who each row lands on and what it changes, then update. This is the point at which records are changed.",
       "sectionColumnsHeading": "Columns in this template",
-      "sectionColumnsNotice": "Only these columns may appear in the file. A column belonging to another section is refused, and the refusal names the section that owns it. Some columns of the full template — company, department, position, cost centre, employment type, join date, pay, and the EPF, SOCSO, EIS and tax-residency fields — belong to no section and cannot be imported per section at all; change those on the employee’s own Personnel record.",
+      "sectionColumnsNotice": "Only these columns may appear in the file. A column belonging to another section is refused, and the refusal names the section that owns it. Some columns of the full template — company, department, position, cost centre, employment type, join date and pay — belong to no section and cannot be imported per section at all; change those on the employee’s own Personnel record.",
       "sectionInstructionKey": "Employee ID says which person to update. It must match somebody who already exists — this template cannot create anybody. Add new people with the full employee template first.",
       "sectionInstructionBlank": "Leave a cell blank to keep what is already recorded. A blank never clears a value.",
       "sectionInstructionOneRow": "One row per employee. Two rows carrying the same Employee ID are refused.",
@@ -2306,7 +2306,15 @@
           "invalid_filter": "A filter is unavailable in this company. Refresh the choices and select again.",
           "invalid_file": "Choose an original XLSX workbook or a valid CSV for the selected type.",
           "origin": "Reload the page and upload from this application.",
-          "blacklist_input_required": "Choose Blacklisted or enter Remarks. Employee ID alone is not a blacklist instruction."
+          "blacklist_input_required": "Choose Blacklisted or enter Remarks. Employee ID alone is not a blacklist instruction.",
+          "company_required": "Company ID is required.",
+          "company_unknown": "This Company ID does not match a company you can import movements for. Use the Company ID listed on the Reference sheet.",
+          "company_ambiguous": "This Company ID matches more than one company. Use the Company ID listed on the Reference sheet.",
+          "unknown_system_field": "This System Field cannot be changed by this event type. See the Reference sheet.",
+          "duplicate_system_field": "The same System Field appears more than once for this movement.",
+          "system_field_required": "Choose the System Field this row changes, or leave Before and After blank.",
+          "before_mismatch": "Before does not match the employee’s current record; it has changed since the file was prepared. This employee is not imported.",
+          "workbook_old_layout": "This file uses the old Movement template (one sheet per movement type for one company). Download the new template and copy your rows into it."
         },
         "v2": {
           "type": "Movement type",
@@ -2362,6 +2370,45 @@
           "employedScope": "Employees on probation or serving notice remain included. Ended or blacklisted employments are excluded from prefill.",
           "referenceGuide": "Dropdowns use exact system codes from Reference. Labels explain each code. A distinct label from an older file remains supported; preview checks the row company.",
           "baselineGuide": "When current salary is blank, green salary calculations stay blank. Check and preview supplies the authoritative salary baseline, including blank or repeated employee rows. A recorded zero remains a salary baseline."
+        },
+        "sheet": {
+          "guideRows": "Use the Movements sheet. Enter one row for each field that changes. Rows with the same Company ID, Employee ID, Effective Date and Event Type are imported together as one movement.",
+          "guideCompany": "Company ID is the Company Code shown in People Management, or the registration number where a company has no code. The Reference sheet lists the exact value for every company you may import for.",
+          "guideFields": "Event Type and System Fields have drop-down lists. The Reference sheet shows which System Fields each event type may change and the allowed values for each company.",
+          "guideBefore": "Before is the value you expect the employee to have now. It is checked before anything is saved: if the record has changed since you prepared the file, that employee is stopped with a message and nothing is overwritten. Leave Before blank to skip the check.",
+          "guideAfter": "After is the new value. Use the code from the Reference sheet for grades, departments, positions, locations and other lists.",
+          "guideDates": "Dates: DD-MMM-YYYY (for example 01-Jan-2027) or YYYY-MM-DD. Blacklist uses the current Kuala Lumpur day.",
+          "guideLimits": "At most 200 rows and 50 employees per file, and 20 movements per employee. Each employee’s movements are saved together or not at all; other employees still go through.",
+          "guideNoRow": "A movement with no field change (for example a Confirmation with no salary change) is one row with System Fields, Before and After left blank.",
+          "referenceTypes": "Event types and the System Fields each may change",
+          "colEventType": "Event Type",
+          "colCode": "Code",
+          "colFields": "System Fields",
+          "noFields": "No field change (leave System Fields blank)",
+          "referenceCompanies": "Company ID to enter for each company",
+          "colCompany": "Company",
+          "referenceValues": "Allowed values for each company",
+          "colValue": "Value to enter in After",
+          "colLabel": "Meaning",
+          "screenHint": "One template for every movement type and company. Enter one row per field that changes; rows with the same company, employee, date and event type are one movement.",
+          "downloadTemplate": "Download template",
+          "history": "Import history",
+          "wholeEmployee": "Each employee’s movements are imported together or not at all. Other employees still go through.",
+          "included": "Include employee",
+          "rows": "Rows",
+          "viewImport": "View this import in Import History",
+          "companyId": "Company ID",
+          "templateFailed": "The template could not be downloaded. Retry, or check that you can maintain at least one company and that movement types are active.",
+          "col": {
+            "companyId": "Company ID",
+            "employeeId": "Employee ID",
+            "employeeName": "Employee Name",
+            "effectiveDate": "Effective Date",
+            "eventType": "Event Type",
+            "systemField": "System Fields",
+            "before": "Before",
+            "after": "After"
+          }
         }
       },
       "headerAssistance": {
@@ -2652,6 +2699,29 @@
         "exclusionsRetained": "Excluded fields and records remain in this original evidence; they are not silently merged or imported.",
         "limit": "Eight local revisions are already preserved. Finish this import or explicitly pick a new source to start another review; originals are never silently evicted.",
         "humanSupplied": "Human supplied — absent from the original source."
+      },
+      "importHistoryLink": "Open Import History (original files, before and after, revert)",
+      "choiceYes": "Yes",
+      "choiceNo": "No",
+      "choiceHrdfDefault": "Default (follow the company’s HRDF registration)",
+      "instructionColumnsHeading": "Columns — what each one holds, whether it is required, and the values it accepts",
+      "instructionAccepted": "Accepted values: {values}",
+      "bankStatutoryUploadFailed": "The import could not be saved. Nothing was changed. Try again, or open Import History to check.",
+      "viewImportHistoryEntry": "View this import in Import History",
+      "employeeUploadFailed": "The import could not be saved. Nothing was changed. Try again, or open Import History to check.",
+      "instructionDuplicateEmail": "Email: with \"Allow Duplicated Work Email or Personal Email\" switched off (People General settings), an email already used by another employee is refused, the same as a duplicate NRIC. With it switched on, the row is imported with a warning.",
+      "instructionStatutorySettings": "Bank & Statutory: every setting on the tab can be filled in here, the same columns as the Bank & Statutory template — EPF category with rates or amounts and the reason, employer-bears switches, SOCSO and EIS categories, Subject to SKBBK, HRDF (Yes, No or Default), tax circumstance, the income tax residency, OKU, child relief mode and table, and Employer bears tax. Tick-box settings take Yes or No. Each row is checked with the same rules as the employee screens before anything is saved; a row with any error creates nothing.",
+      "instructionHireSettings": "Hire-time settings: Same as permanent address (Yes copies the permanent address into the correspondence address; leave the correspondence columns blank), Schedule group (its name), and Applied policy (an active payroll policy of the row's company, by name or code, only where Payroll is switched on).",
+      "instructionRevert": "Import History keeps this file, who imported it and the Employee IDs it created. A successful import can be reverted once, while none of its employees has anything attached since (payroll, leave, attendance, claims, documents, movements or a login). Reverted employees disappear from lists, headcount and payroll but stay in the audit trail, and their Employee IDs, emails and NRIC numbers are freed so the corrected file can be imported again.",
+      "notImported": {
+        "heading": "Not in this template, and why:",
+        "photos": "Photos — a picture is uploaded on the employee's Profile, not typed into a cell.",
+        "documents": "Documents — files are uploaded on the Documents tab.",
+        "leaveBalances": "Leave balances — entitlements come from the leave policy at hire; opening balances use the Leave balance import.",
+        "delegations": "Approval delegations — they name another employee and dates, checked by the delegation screen.",
+        "payItems": "Recurring pay items beyond basic salary and monthly allowance — add them on the Payroll tab or with the pay item import.",
+        "openingTax": "Opening tax balances for mid-year joiners (TP3) — entered on the Payroll tab.",
+        "holidayCalendar": "Holiday calendar — a dated assignment with its own history; set it on the Attendance tab after the import."
       }
     },
     "wizard": {
@@ -2965,6 +3035,95 @@
       "gapNotAnErrorNote": "A missing category is not a mistake on the record — it is information the employer may simply never have been given.",
       "gapNoBulkNote": "There is no bulk fill, and there should not be: a child’s category is a fact about that child, and it can only be set on their own record.",
       "gapManualNote": "Employees on a typed figure are not listed here. For them the typed number decides, so a category would change nothing."
+    },
+    "importHistory": {
+      "title": "Import History",
+      "description": "Every personnel import file: who imported it, when, for which companies, what each employee held before and after, and a once-only Revert.",
+      "back": "Personnel import",
+      "filterLabel": "Import type",
+      "filterAll": "All imports",
+      "kinds": {
+        "cost_allocations": "Cost Center Allocation",
+        "bank_statutory": "Bank & Statutory",
+        "employee_full": "Everything — new employees",
+        "movement": "Movement"
+      },
+      "reference": "Reference",
+      "referenceLabel": "Reference {reference}",
+      "type": "Type",
+      "file": "File",
+      "time": "Date and time",
+      "user": "Imported by",
+      "unknownUser": "Unavailable user",
+      "companies": "Companies",
+      "records": "Records",
+      "status": "Status",
+      "counts": "{succeeded} succeeded · {failed} failed",
+      "states": {
+        "validated": "Checked, not saved",
+        "invalid": "Not imported (errors)",
+        "succeeded": "Succeeded",
+        "partial": "Partly succeeded",
+        "failed": "Failed",
+        "reverted": "Reverted"
+      },
+      "noAttempts": "No imports have been recorded yet.",
+      "older": "Older imports",
+      "downloadSource": "Download original file",
+      "sourceRestricted": "The original file covers companies you cannot view, so it cannot be downloaded here.",
+      "fingerprint": "File fingerprint (SHA-256)",
+      "fileIssues": "Problems with the file",
+      "audit": "Audit trail",
+      "events": {
+        "previewed": "File checked",
+        "confirmed": "Imported",
+        "failed": "Import failed",
+        "reverted": "Reverted",
+        "revert_failed": "Revert refused or failed"
+      },
+      "eventReason": "Reason: {reason}",
+      "items": "Changes by employee",
+      "itemsHint": "Only employees of companies you can view are shown.",
+      "noItems": "This import saved no changes.",
+      "colRecord": "Employee and date",
+      "colCompany": "Company",
+      "colResult": "Result",
+      "colBefore": "Before",
+      "colAfter": "After",
+      "itemApplied": "Saved",
+      "itemFailed": "Not saved",
+      "allocation": {
+        "none": "No allocation",
+        "clear": "Cleared (no allocation)"
+      },
+      "revert": {
+        "title": "Revert this import",
+        "hint": "Restores what each record held before this import. It is allowed once, and only if nothing this import changed has been changed since. The import and the audit trail are kept.",
+        "review": "Review revert",
+        "working": "Working…",
+        "restoreTitle": "What will be restored",
+        "blocked": "This import cannot be reverted because these records changed after it:",
+        "reason": "Reason for revert",
+        "reasonHint": "Required (3 to 1,000 characters). Recorded in the audit trail.",
+        "acknowledge": "I understand this restores the earlier values for every record listed and can be done only once.",
+        "confirm": "Revert import",
+        "cancel": "Cancel",
+        "failed": "The revert could not be completed. Nothing was changed.",
+        "noPermission": "Reverting this import needs Workforce maintain permission for every company in it."
+      },
+      "bankStatutory": {
+        "blank": "(blank)"
+      },
+      "movementItem": {
+        "movement": "Movement",
+        "noMovement": "No history entry",
+        "scheduled": "Scheduled for its effective date",
+        "rows": "Rows {rows}"
+      },
+      "employeeFull": {
+        "created": "Created {code} · {name}",
+        "willVoid": "This employee will be voided: removed from lists, headcount and payroll, kept in the audit trail. The Employee ID, email and NRIC are freed."
+      }
     }
   },
   "leave": {
@@ -7283,7 +7442,7 @@
       "emptySheet": "The first sheet of that workbook is empty.",
       "pasteToggle": "Or paste the rows instead",
       "csvData": "Pasted rows",
-      "csvPlaceholder": "Employee No,Payroll Period,Payroll Cycle,DOE Code,Company Code,Amount,Override?",
+      "csvPlaceholder": "Employee No,Payroll Period,Payroll Cycle,Pay Items Code,Company Code,Amount,Override?",
       "validate": "Check the file",
       "validating": "Checking…",
       "downloadTemplate": "Download template",
@@ -7295,7 +7454,7 @@
       "cycleReference": "Payroll cycles",
       "noCycleCodes": "This company has no active payroll cycles yet.",
       "cycleReferenceHint": "The Payroll Cycle column may name either the code or the cycle name. Codes are set under Admin → Payroll Cycle.",
-      "codeReference": "Accepted DOE codes",
+      "codeReference": "Accepted Pay Items Codes",
       "codeReferenceHint": "A code the system does not recognise stops its line with a plain message rather than being dropped in silence.",
       "colCode": "Code",
       "colCodeLabel": "Meaning",
@@ -7332,7 +7491,7 @@
       "noMonths": "Nothing to import from this file yet.",
       "issuesTitle": "Validation result",
       "colRow": "Excel Row No.",
-      "colDoeCode": "DOE Code",
+      "colDoeCode": "Pay Items Code",
       "colErrorType": "Error Type",
       "colErrorDescription": "Error Description",
       "colImportStatus": "Import Status",
@@ -10699,7 +10858,8 @@
         "letterGenerate": "Current company context, Letters generate/read permissions and current Workforce and financial access.",
         "letterApproval": "Current company context, Letters read/approve access and the assigned current approval stage.",
         "letterRegister": "Current company context and current Letters read, issue, generate or settings permissions for each action.",
-        "letterSettings": "Current company context. Settings permission configures workflows; Approve permission manages only your own signing images."
+        "letterSettings": "Current company context. Settings permission configures workflows; Approve permission manages only your own signing images.",
+        "importHistory": "Lists an import when you have Workforce view for at least one of its companies, and shows only the employees of companies you can view. The original file needs view for every company in it; Revert needs Workforce maintain for every company in it."
       },
       "scopedTo": "Scoped to {company} and its sub-companies",
       "screen": {
@@ -10711,7 +10871,8 @@
         "leaveEmployeeBalances": "Employee Balances",
         "leaveEmployeeRecords": "Employee Leave Record",
         "duplicatePersonRecords": "Duplicate employee records",
-        "childReliefReview": "Child relief review (PCB)"
+        "childReliefReview": "Child relief review (PCB)",
+        "importHistory": "Import History"
       },
       "screenColumn": "Screen",
       "sectionFunctionAccess": "Function access",
@@ -26871,11 +27032,11 @@
     "superseded": "Superseded",
     "unset": "No allocation has been recorded.",
     "importTitle": "Import Cost Center Allocations",
-    "importHelp": "Update existing employees using one repeated row per cost center. Each company, Employee ID and effective date forms one complete replacement set.",
+    "importHelp": "Update existing employees with one row per cost center. Each Company Code, Employee ID and Effective Date forms one complete replacement set. One file can cover several companies.",
     "referenceCompany": "Company for code reference",
     "downloadCsv": "Download allocation CSV",
     "downloadWorkbook": "Download allocation workbook and codes",
-    "upload": "Upload CSV or workbook",
+    "upload": "Upload the completed template (.xlsx or .csv)",
     "csv": "Allocation CSV",
     "employeeId": "Employee ID",
     "sourceRows": "Source rows",
@@ -26883,7 +27044,7 @@
     "ready": "Ready: replace complete set",
     "saveImport": "Save {count} valid sets",
     "companion": "Companion allocation worksheet: {count} employee/date sets. It is validated with the complete new-joiner workbook.",
-    "instructions": "Optional repeated-row worksheet. Use company_id from Allocation Codes and the exact Employee ID from the employee worksheet. Enter YYYY-MM-DD effective_date and operation replace on every allocation row. Percentages must be positive, at most 100, with up to two decimal places; the total may be below 100. Use one clear row with blank code and percentage to explicitly clear the complete set. An omitted or empty worksheet changes nothing. Only cost_center_code is accepted; descriptions are reference text. Existing employees use the dedicated allocation import. No payroll values are changed.",
+    "instructions": "How to fill in the Cost Center Allocations sheet. Company Code: the Company Code shown in People Management (where a company has no code yet, its registration number also works); the Allocation Reference sheet lists every company you may import for. Employee ID: the employee's ID in that company on the effective date. Effective Date: YYYY-MM-DD; the split applies from this date onwards and earlier history is kept. Operation: Replace on every row of a set, or Clear on one row with a blank Cost Center Code and Percentage to remove the whole set on that date. Cost Center Code: a code listed for that company on the Allocation Reference sheet. Percentage: greater than 0 and at most 100, with up to two decimal places; one employee's percentages on one date may not total more than 100 and may total less. Use one row per cost center. Rows with errors are not imported and each error names the row and the reason. No payroll values are changed.",
     "replace": "Replace set",
     "manual": "Manual entry",
     "imported": "Imported",
@@ -26901,7 +27062,15 @@
       "transfer": "Save a clear set at the transfer date and clear later scheduled sets before transferring. Then save a new destination-company allocation."
     },
     "totalField": "Total allocation",
-    "remainderField": "Unallocated remainder"
+    "remainderField": "Unallocated remainder",
+    "downloadTemplate": "Download template",
+    "historyLink": "Import History",
+    "companyCode": "Company Code",
+    "fileTooLarge": "Choose a file no larger than 10 MB.",
+    "uploadFailed": "The file could not be checked. Try again.",
+    "saveFailed": "The import could not be saved. Nothing was changed for employees not listed as saved.",
+    "savedSummary": "{succeeded} saved · {failed} not saved",
+    "viewHistoryEntry": "Open this import in Import History"
   },
   "employeeHome": {
     "title": "Home",

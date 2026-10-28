@@ -12,7 +12,7 @@ import {resolvePayrollPermission,batchDownstreamWarnings} from './payroll';
 import {preparePayrollHistoryRevisionTx,toIsoPeriod} from './payroll-history-import';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {parseCsvRecords} from '../lib/csv';
-import {readHistoryField,type PayrollHistoryRecord} from '../lib/payroll-history-import-schema';
+import {historyColumnLabel,readHistoryField,type PayrollHistoryRecord} from '../lib/payroll-history-import-schema';
 import {historyRecordKey,type HistoryRevisionPlan,type HistoryRevisionRow,type ImportedPayrollValues,type HistoryRevisionChange} from '../lib/payroll-history-revisions';
 
 export class PayrollHistoryRevisionError extends Error{constructor(message:string){super(message);this.name='PayrollHistoryRevisionError';}}
@@ -156,7 +156,7 @@ async function planRows(tx:Tx,ctx:SessionContext,records:PayrollHistoryRecord[],
   const prepared=await preparePayrollHistoryRevisionTx(ctx,tx,group.company.id,group.records);
   const rowNumber=(number:number)=>group.indices[number-2]??number;
   for(const problem of prepared.preview.issues)if(problem.status!=='Warning')plan.issues.push({rowNum:rowNumber(problem.rowNum),reason:problem.description});
-  for(const missing of prepared.preview.missingColumns)plan.issues.push({rowNum:1,reason:'Missing required column: '+missing});
+  for(const missing of prepared.preview.missingColumns)plan.issues.push({rowNum:1,reason:'Missing required column: '+historyColumnLabel(missing)});
   for(const month of prepared.preview.months){
    const resolved=prepared.months.find(m=>m.month.key===month.key),rowNums=month.rowNums.map(rowNumber);
    const reasons=prepared.preview.issues.filter(issue=>issue.status!=='Warning'&&month.rowNums.includes(issue.rowNum)).map(issue=>issue.description);

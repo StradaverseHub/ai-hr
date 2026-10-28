@@ -9,7 +9,7 @@ const calls=vi.hoisted(()=>({validate:vi.fn(),commit:vi.fn(),prepare:vi.fn(),ass
 vi.mock('next/navigation',()=>({useRouter:()=>({push:vi.fn(),replace:vi.fn(),refresh:vi.fn()}),useSearchParams:()=>new URLSearchParams()}));
 vi.mock('../app/admin/personnel/import/actions',()=>({validateImportAction:calls.validate,commitImportAction:calls.commit}));
 vi.mock('../app/admin/personnel/import/assistance-actions',()=>({preparePersonnelImportHeadersAction:calls.prepare,assistPersonnelImportHeadersAction:calls.assist,reopenPersonnelImportHeadersAction:calls.reopen}));
-vi.mock('../app/admin/personnel/import/cost-allocation-actions',()=>({allocationWorkbookReferencesAction:async()=>({ok:true,rows:[]})}));
+vi.mock('../app/admin/personnel/import/cost-allocation-actions',()=>({allocationWorkbookReferencesAction:async()=>({ok:true,references:{companies:[],costCenters:[]}})}));
 vi.mock('../components/personnel-import-evaluation-panel',async()=>{const R=await import('react');return{PersonnelImportEvaluationPanel:R.forwardRef((_props,ref)=>{R.useImperativeHandle(ref,()=>({binding:()=>undefined,record:calls.record,prepareCommit:async()=>undefined,commitUncertain:()=>{},acceptCommit:()=>{}}));return null;})};});
 import {EmployeeImport} from '../app/admin/personnel/import/employee-import';
 const t=messages.people.import,original='Unclear person,Unclear contact,Unclear start\n Alice ,alice@fixture.test,2020-01-01\n';
