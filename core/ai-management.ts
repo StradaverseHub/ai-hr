@@ -129,7 +129,7 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
     const idleRows = idleOwnZero.length ? Array.from(await tx.execute<UserUsageRow>(sql`
       select u.id,coalesce(p.full_name,u.workos_user_id) as label,0 as daily_requests,0 as monthly_tokens,0 as held_tokens,0 as blocked_today,null as last_reason
       from app_user u left join person p on p.id=u.person_id
-      where u.tenant_id=${ctx.tenantId}::uuid and u.id=any(${idleOwnZero}::uuid[]) order by u.id`)) : [];
+      where u.tenant_id=${ctx.tenantId}::uuid and u.id=any(${`{${idleOwnZero.join(',')}}`}::uuid[]) order by u.id`)) : [];
     // Company administrators see only their own companies' aggregates here: no login identities.
     const attention = {
       companies: companies.filter(pressing),
