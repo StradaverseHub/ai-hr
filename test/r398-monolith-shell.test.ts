@@ -85,7 +85,8 @@ describe('Monolith shell wiring', () => {
 
   it('the Monolith rail opens no flyout panel and offers no collapse (README §3: always open on desktop)', () => {
     expect(SIDEBAR).toContain('const openNode = openKey && !monolith');
-    expect(SIDEBAR).toContain('const collapsed = monolith ? false : collapsedPref;');
+    // Monolith never collapses; Classic follows the preference, except in the D-P1-28 phone drawer (labels shown).
+    expect(SIDEBAR).toContain('const collapsed = monolith ? false : collapsedPref && !(mobileNavigationOpen && !atelier);');
   });
 });
 

@@ -11,7 +11,8 @@ const ports=vi.hoisted(()=>({calibration:vi.fn(),person:vi.fn(),session:vi.fn()}
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>createTranslator({locale:'en',messages:en,namespace:namespace as never})}));
 vi.mock('next/navigation',async importActual=>({...await importActual<typeof import('next/navigation')>(),useRouter:()=>({refresh:vi.fn()})}));
 vi.mock('../lib/scope',()=>({scopedSession:ports.session}));
-vi.mock('../packs/performance/service',()=>({getOnehrCalibration:ports.calibration}));
+// D-P1-32 PT-X2: the session page reads the Calibration strip's gate facts; none here, so the strip draws nothing.
+vi.mock('../packs/performance/service',()=>({getOnehrCalibration:ports.calibration,getPerformanceAreaFacts:async()=>({performanceOn:false,items:[],ownFeedbackReport:'none'})}));
 vi.mock('../app/performance/onehr-actions',()=>({assessmentCalibrationPersonAction:ports.person,assessmentTalentPersonAction:vi.fn().mockResolvedValue({error:'No person frame in this fixture.'}),assessmentTalentInsightAction:vi.fn().mockResolvedValue({pending:true,source:null,data:null}),saveCalibrationBandAction:vi.fn(),assessmentInsightAction:vi.fn(),onehrReviewAction:vi.fn(),agreeDepartmentAction:vi.fn(),onehrCalibrationAction:vi.fn(),onehrFeedbackAction:vi.fn(),onehrDraftAction:vi.fn(),saveAssessmentDraftAction:vi.fn(),saveAssessmentKpiSettingAction:vi.fn().mockResolvedValue({revision:2})}));
 vi.mock('../app/performance/actions',()=>({uploadAttachmentAction:vi.fn()}));
 import CalibrationPage from '../app/performance/assessment/calibration/[sessionId]/page';

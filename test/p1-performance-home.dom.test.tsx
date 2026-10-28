@@ -338,7 +338,7 @@ describe('the AI-HR home "Your review" card', () => {
     const c = document.querySelector('[data-performance-review-card]') as HTMLElement;
     expect(within(c).getByRole('heading', { name: A.homeCard.title })).toBeTruthy();
     expect(within(c).getByRole('link').getAttribute('href')).toBe('/performance/home');
-    expect(within(c).getByRole('link').textContent).toContain(A.nav.performanceTalent);
+    expect(within(c).getByRole('link').textContent).toContain(en.nav.performanceTalent);
     expect(c.compareDocumentPosition(document.querySelector('[data-performance-strip]')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
   it('without an own open review: the card alone when work is assigned, nothing otherwise', async () => {

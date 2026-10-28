@@ -32,7 +32,7 @@ const DOT: Record<StatusTone, string> = {
  * Monolith, Atelier) shows it wherever the block is mounted.
  */
 export async function PerformanceReviewCard() {
-  const t = await getTranslations('performanceArea');
+  const [t, tNav] = await Promise.all([getTranslations('performanceArea'), getTranslations('nav')]);
   return (
     <Card data-performance-review-card className="flex min-w-0 flex-wrap items-center justify-between gap-3 p-4 sm:p-5">
       <div className="min-w-0 space-y-1">
@@ -40,7 +40,8 @@ export async function PerformanceReviewCard() {
         <p className="text-sm text-muted-foreground">{t('homeHelp.homeCard.line')}</p>
       </div>
       <Link href="/performance/home" className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline-offset-4 hover:underline">
-        {t('nav.performanceTalent')} <span aria-hidden="true" className="ml-1">→</span>
+        {/* The one label key for the area (nav.performanceTalent, D-P1-32 PT-X5). */}
+        {tNav('performanceTalent')} <span aria-hidden="true" className="ml-1">→</span>
       </Link>
     </Card>
   );
