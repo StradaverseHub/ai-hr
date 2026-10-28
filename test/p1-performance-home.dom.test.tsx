@@ -12,7 +12,7 @@ import { NextIntlClientProvider, createFormatter, createTranslator } from 'next-
 import en from '../messages/en.json';
 import type { PerformanceHomeBlock, HomeStanding } from '../packs/performance/onehr/home-cards';
 import type { LeaderStatus } from '../packs/performance/onehr/leader-status-service';
-import { homeNext, homeSlot, toolDoors, type HomeWorkItem, type NotInReason, type PerformanceHomeView, type RunningLeaderStatus } from '../packs/performance/onehr/performance-home-model';
+import { homeNext, homeSlot, toolDoors, type HomeWorkItem, type NotInReason, type PerformanceHomeView as AreaHomeView, type RunningLeaderStatus } from '../packs/performance/onehr/performance-home-model';
 import type { PerformanceAreaFacts } from '../packs/performance/onehr/tab-model';
 
 vi.mock('next-intl/server', () => ({
@@ -99,7 +99,7 @@ function running(p: { block: PerformanceHomeBlock | null; items: HomeWorkItem[];
 const own = () => item({ kind: 'review', view: 'mine', module: 'pm', stage: 'results' });
 const teamItems = () => [item({ kind: 'review', view: 'team', module: 'pm', stage: 'moderation', id: 'team-1' }), item({ kind: 'review', view: 'team', module: 'pm', stage: 'results', id: 'team-2', state: 'waiting' })];
 
-const PERSONAS: Record<string, () => PerformanceHomeView> = {
+const PERSONAS: Record<string, () => AreaHomeView> = {
   employee: () => running({ block: employeeBlock, items: [own()] }),
   lineManager: () => running({ block: lmBlock, items: [own(), ...teamItems()] }),
   hod: () => running({ block: lmBlock, items: [own(), ...teamItems(), item({ kind: 'calibration', view: 'dept', module: 'cal', stage: 'department_review', axis: 'performance', title: 'Fictional department' })] }),
@@ -125,7 +125,7 @@ const EXPECT: Record<string, { cards: string[]; doors: string[]; solid: number }
   admin: { cards: ['results', 'tools', 'history'], doors: [], solid: 0 },
 };
 
-async function draw(view: PerformanceHomeView, unit?: string) {
+async function draw(view: AreaHomeView, unit?: string) {
   const tree = await PerformanceAreaHome({ view, unit });
   return render(<NextIntlClientProvider locale="en" messages={en} onError={(e) => { throw e; }}>{tree}</NextIntlClientProvider>);
 }
@@ -293,7 +293,7 @@ describe('not in this cycle\'s review', () => {
 });
 
 describe('between cycles', () => {
-  const record = (): PerformanceHomeView => ({
+  const record = (): AreaHomeView => ({
     ...PERSONAS.admin!(),
     past: { cycleName: 'Fictional 2025 year-end', steps: [{ key: 'kpi', done: true }, { key: 'competency', done: false }, { key: 'results', done: true }] },
     results: { id: 'rev-old', name: 'Fictional 2025 year-end', performance: 'ME', potential: null, talent: null, recordHref: '/me/performance?recordFor=rev-old&record=rev-old', reportHref: null },
