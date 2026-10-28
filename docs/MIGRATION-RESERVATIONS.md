@@ -67,3 +67,10 @@ The inventory covered227 working trees and all reachable Git history for0640+ mi
 5. Use the normal migration rehearsal, coverage and release process. This document authorizes none of those operations.
 
 This reconciliation changes documentation only. Optimization remains paused; no journal, SQL, database, service or deployment was changed.
+
+## 28 October 2026 — AI release applied; 0661 reserved
+
+- Applied on staging by the AI release `b30c562e4`: 0621, 0629–0632, 0622–0628 (idx 621–632), 0642 (idx 633), 0648–0656 (idx 634–642) and 0657 (idx 643); when 1793130000001…023. Ledger 506 → 529, watermark 1793130000023.
+- Next: Board items' `0660_payroll_history_adopt_ordinary` (when 1793140000000, expected idx 644).
+- Reserved: `0661_ai_openai_compatible_provider`, when 1793150000000, for the AI known-gaps session (OpenAI-compatible provider by base URL). It is pending owner approval of the DB change. Journal it only after 0660 is applied, at the next free idx (expected 645). If any later when is applied first, re-allocate rather than journal below the watermark.
+- 0659 has no recorded claim; do not use it without one.

@@ -55,9 +55,12 @@
     {
       "tag": "0642_module_specialist_diagnostic_playbook",
       "owner": "AI dev2",
-      "status": "reserved_draft",
-      "idx": null,
-      "when": null
+      "status": "applied_on_staging",
+      "idx": 633,
+      "when": 1793130000013,
+      "notes": [
+        "28 October 2026: applied on staging by the AI release b30c562e4 (ledger 506 -> 529, watermark 1793130000023); alpha=main contain it."
+      ]
     },
     {
       "prefixRange": [
@@ -102,7 +105,7 @@
         656
       ],
       "owner": "AI delivery",
-      "status": "reserved_filenames_mapped",
+      "status": "applied_on_staging",
       "idx": null,
       "when": null,
       "allocatedBy": "AI delivery Claude session; owner designated it AI-group migration allocator on 2026-10-28",
@@ -113,7 +116,8 @@
         "Unused numbers in this block are released back here once the AI logical-group count is final.",
         "Journal floor observed 28 October on origin/alpha: AI entries append after idx620 (0646) with when strictly above 1793120000000.",
         "28 October: AI group count is final at 10 logical migrations (0642 + 0648-0656). 0657 and 0658 are released back to the registry.",
-        "Journal order: alpha 506 entries, then the 12 pending AI entries 0621,0629,0630,0631,0632,0622-0628 moved forward to idx621-632, then 0642,0648,0649,0650,0651,0652,0653,0654,0655,0656 at idx633-642, every when strictly increasing above max(live watermark, 1793120000000). Exact values assigned at journaling after re-reading the ledger."
+        "Journal order: alpha 506 entries, then the 12 pending AI entries 0621,0629,0630,0631,0632,0622-0628 moved forward to idx621-632, then 0642,0648,0649,0650,0651,0652,0653,0654,0655,0656 at idx633-642, every when strictly increasing above max(live watermark, 1793120000000). Exact values assigned at journaling after re-reading the ledger.",
+        "28 October 2026: applied on staging by the AI release b30c562e4 (ledger 506 -> 529, watermark 1793130000023); alpha=main contain it."
       ],
       "filenames": [
         {
@@ -156,16 +160,25 @@
           "tag": "0656_assistant_transcript_retention",
           "scope": "N10; after 0655"
         }
+      ],
+      "idxRange": [
+        634,
+        642
+      ],
+      "whenRange": [
+        1793130000014,
+        1793130000022
       ]
     },
     {
       "tag": "0657_ai_integration_repairs",
       "owner": "AI delivery",
-      "status": "reserved_filename",
-      "idx": null,
-      "when": null,
+      "status": "applied_on_staging",
+      "idx": 643,
+      "when": 1793130000023,
       "notes": [
-        "28 October: re-allocated to AI for SQL repairs found by the integrated full run, so the forwarded byte-identical 0621-0632 files stay unchanged. Intended idx643, when strictly above 1793130000022."
+        "28 October: re-allocated to AI for SQL repairs found by the integrated full run, so the forwarded byte-identical 0621-0632 files stay unchanged. Intended idx643, when strictly above 1793130000022.",
+        "28 October 2026: applied on staging by the AI release b30c562e4 (ledger 506 -> 529, watermark 1793130000023); alpha=main contain it."
       ]
     },
     {
@@ -190,6 +203,19 @@
         "28 October: allocated when 1793140000000, above the AI journal end (0657, when 1793130000023). Agreed with AI delivery: the AI release reaches staging first; 0660 is journaled after it (expected idx644).",
         "Any later migration (Mobile 0613, 0633-0636, 0647, ...) must take a when strictly above 1793140000000 if it is journaled after 0660, or be released before 0660 with a when below it.",
         "0659 is not claimed by this entry."
+      ]
+    },
+    {
+      "tag": "0661_ai_openai_compatible_provider",
+      "owner": "AI delivery (known-gaps session local_333024cb)",
+      "status": "reserved_pending_owner_db_approval",
+      "idx": null,
+      "when": 1793150000000,
+      "allocatedBy": "AI delivery allocator, 28 October 2026",
+      "scope": "ALTER TYPE ai_provider ADD VALUE openai_compatible; replace ai_provider_config_options_ck for {version:1,baseUrl} (https only) via app.ai_compatible_options_valid; possibly a candidate/evaluation column.",
+      "notes": [
+        "Journal it only AFTER 0660 (when 1793140000000) is applied on staging, at the next idx then (expected 645). If Mobile or anyone else applies a later when first, re-allocate rather than journal below the watermark.",
+        "0659 is unrecorded: do not use it without a registry claim."
       ]
     }
   ],
