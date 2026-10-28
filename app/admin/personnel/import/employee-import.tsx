@@ -9,7 +9,7 @@ import {PersonnelImportHeaderReview,type PersonnelImportHeaderReviewMessages,typ
 import {capturePersonnelImportSource,applyPersonnelHeaderMapping,currentPersonnelImportMatrix,appendPersonnelImportLocalEvidence,PERSONNEL_IMPORT_LOCAL_EVIDENCE_LIMIT,personnelWorksheetMatrixRows,type PersonnelImportLocalEvidence,type PersonnelImportSource,type PersonnelWorkbookSource,type PersonnelSheetRole} from '@/lib/personnel-import-assistance-source';
 import { personnelTemplateReferenceLists, type PersonnelReferenceOption } from '@/lib/personnel-template-reference';
 import { useNricPolicyMessage } from '@/components/nric-policy-message';
-import {ALLOCATION_SHEET} from '@/lib/employment-cost-allocation';
+import {ALLOCATION_SHEET,ALLOCATION_REFERENCE_SHEET,ALLOCATION_INSTRUCTIONS_SHEET} from '@/lib/employment-cost-allocation';
 import {allocationWorkbookSheets} from '@/lib/cost-allocation-workbook';
 import {allocationWorkbookReferencesAction} from './cost-allocation-actions';
 import {buildPersonnelCsv,decodePersonnelCsvRows,PERSONNEL_CSV_FRAME} from '@/lib/personnel-csv';
@@ -234,7 +234,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
       const { name, format,text, dependentsText,extraTexts,source,preparation } = await readImportFile(file, {
         captureSource:true,preparePersonnel:preparing,
         extraSheets: [EMPLOYEE_XLSX_SHEETS.family,ALLOCATION_SHEET,...Object.values(PERSONNEL_REGISTER_SHEETS)],
-        allowedSheets:[ALLOCATION_SHEET,'Allocation Codes','Allocation Instructions',EMPLOYEE_XLSX_SHEETS.family,EMPLOYEE_XLSX_SHEETS.reference,EMPLOYEE_XLSX_SHEETS.instructions,...Object.values(PERSONNEL_REGISTER_SHEETS),'__PersonnelLists'],
+        allowedSheets:[ALLOCATION_SHEET,ALLOCATION_REFERENCE_SHEET,ALLOCATION_INSTRUCTIONS_SHEET,EMPLOYEE_XLSX_SHEETS.family,EMPLOYEE_XLSX_SHEETS.reference,EMPLOYEE_XLSX_SHEETS.instructions,...Object.values(PERSONNEL_REGISTER_SHEETS),'__PersonnelLists'],
       });
       // The canonical reader has already enforced file/decode bounds before allocating hash bytes.
       let originalDigest:string|null=null;
@@ -299,9 +299,11 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
     setError(null);
     try {
       const { buildXlsx } = await import('@/lib/spreadsheet');
-      const allocationReferenceResult=await allocationWorkbookReferencesAction(companies.map(c=>c.id),companyId);
+      // c4055300 — the Cost Center Allocations sheet uses the same Company Code layout and codes for
+      // every company the actor may maintain, exactly as the standalone allocation template.
+      const allocationReferenceResult=await allocationWorkbookReferencesAction();
       if(!allocationReferenceResult.ok){setError(ta(`errors.${allocationReferenceResult.error}`));return;}
-      const allocationReferences=allocationReferenceResult.rows;
+      const allocationReferences=allocationReferenceResult.references;
       const bytes = await buildXlsx(
         employeeTemplate.columns.map(column=>employeeColumnLabel(column.key)),
         employeeTemplate.sampleRows.map(row=>employeeTemplate.columns.map((_,i)=>row[i]??'')),

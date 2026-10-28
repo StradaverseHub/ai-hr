@@ -108,7 +108,7 @@ export function ImportWorkbench({
       </Card>
 
       {choice!=='cost_allocations'&&<ImportExplanations choice={choice}/>}
-      {choice==='cost_allocations'?<CostAllocationImport companies={companies} defaultCompanyId={defaultCompanyId} onCommitPendingChange={setCommitting}/>:choice === 'full' ? (
+      {choice==='cost_allocations'?<CostAllocationImport onCommitPendingChange={setCommitting}/>:choice === 'full' ? (
         <EmployeeImport companies={companies} defaultCompanyId={defaultCompanyId} reference={reference} onCommitPendingChange={setCommitting} />
       ) : choice==='movement' ? (
         <MovementImport companies={companies} defaultCompanyId={defaultCompanyId} onCommitPendingChange={setCommitting}/>

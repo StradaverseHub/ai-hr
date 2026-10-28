@@ -21,7 +21,7 @@ const reference:ImportReference={departments:['D001'],positions:['P001'],costCen
  catalogOptions:{base:[{value:'001',label:'Shared base'},{value:'002',label:'Shared base'}],qualificationLevel:[{value:'Q001',label:'Academic qualification'}],dependentRelationship:[{value:'child',label:'Dependent child'}],relationship:[{value:'REL001',label:'Emergency relation'}]},
 };
 beforeEach(()=>{
- mocks.build.mockReset().mockResolvedValue(new Uint8Array([1]));mocks.allocations.mockReset().mockResolvedValue({ok:true,rows:[{companyId:'company',id:'allocation-id',code:'C001',label:'Central costs'}]});
+ mocks.build.mockReset().mockResolvedValue(new Uint8Array([1]));mocks.allocations.mockReset().mockResolvedValue({ok:true,references:{companies:[{code:'FIC',name:'Fictional company'}],costCenters:[{companyCode:'FIC',code:'C001',label:'Central costs'}]}});
  Object.defineProperty(URL,'createObjectURL',{configurable:true,value:()=> 'blob:codes'});Object.defineProperty(URL,'revokeObjectURL',{configurable:true,value:()=>{}});
  vi.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(()=>{});
 });
@@ -34,7 +34,7 @@ describe('actual full and update download handlers',()=>{
   expect(opts.validationLists?.find(list=>list.column===EMPLOYEE_XLSX_COLUMNS.indexOf('org_base'))?.values).toEqual(['001','002']);
   expect(opts.validationLists?.find(list=>list.column===EMPLOYEE_XLSX_COLUMNS.indexOf('department'))?.values).toEqual(['D001']);
   expect(opts.validationLists?.find(list=>list.column===EMPLOYEE_XLSX_COLUMNS.indexOf('employment_type'))?.values).toEqual(['full_time','part_time','contract','intern']);
-  expect(opts.extraSheets?.map(sheet=>sheet.name)).toEqual(expect.arrayContaining(['Cost Center Allocations','Allocation Codes','Allocation Instructions','Family','Qualifications','Emergency Contacts','Reference','Instructions']));
+  expect(opts.extraSheets?.map(sheet=>sheet.name)).toEqual(expect.arrayContaining(['Cost Center Allocations','Allocation Reference','Allocation Instructions','Family','Qualifications','Emergency Contacts','Reference','Instructions']));
   const rows=opts.extraSheets!.find(sheet=>sheet.name==='Reference')!.rows;
   expect(rows).toContainEqual(['001','Shared base']);expect(rows).toContainEqual(['D001','People department']);
   expect(opts.extraSheets!.find(sheet=>sheet.name==='Cost Center Allocations')!.validationLists?.find(list=>list.column===4)?.values).toEqual(['C001']);

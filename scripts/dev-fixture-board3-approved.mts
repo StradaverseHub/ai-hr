@@ -190,7 +190,9 @@ async function main(){
  await fs.mkdir(path.join(out,'uploads'),{recursive:true});
  const files:{name:string;purpose:string}[]=[];
  async function allocationCsv(name:string,rows:ImportRecord[],purpose:string){await fs.writeFile(path.join(out,'uploads',name),toCsv([[...ALLOCATION_COLUMNS],...rows.map(r=>ALLOCATION_COLUMNS.map(k=>r[k]??''))]));files.push({name,purpose});}
- const allocationRow={company_id:companies.Main,employee_code:people.Subject.employeeCode,effective_date:today,operation:'replace',cost_center_code:masters.costA.code,percentage:'60.25'};
+ const[mainCompany]=await owner.db.select({legalName:s.company.legalName,label:s.company.companyLabel,registrationNo:s.company.registrationNo}).from(s.company).where(eq(s.company.id,companies.Main));
+ // c4055300 — allocation files name the company by its Company Code, never by its internal identifier.
+ const allocationRow={company_code:mainCompany.label?.trim()||mainCompany.registrationNo?.trim()||mainCompany.legalName,employee_code:people.Subject.employeeCode,effective_date:today,operation:'replace',cost_center_code:masters.costA.code,percentage:'60.25'};
  await allocationCsv('allocation-valid.csv',[allocationRow,{...allocationRow,cost_center_code:masters.costB.code,percentage:'20.25'}],'UI check/apply/reopen 80.50% total, 19.50% unallocated.');
  await allocationCsv('allocation-over-total.csv',[{...allocationRow,percentage:'75.01'},{...allocationRow,cost_center_code:masters.costB.code,percentage:'25.00'}],'Whole-set refusal; current allocations unchanged.');
  await allocationCsv('allocation-clear.csv',[{...allocationRow,operation:'clear',cost_center_code:'',percentage:''}],'Explicit clear preview/apply; history retained.');
