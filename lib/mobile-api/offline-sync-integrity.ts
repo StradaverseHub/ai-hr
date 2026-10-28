@@ -68,6 +68,8 @@ export function createOfflineSyncIntegrityVerifier(settings:unknown,policy:unkno
   if(!opaque.success||!build.success||!sha.safeParse(request.claimDigest).success||!sha.safeParse(request.signatureSha256).success)return refused('invalid_input');
   // Checked before any provider call, so a build the deployment does not admit never spends a Google request.
   if(!target.versionCodes.includes(build.data))return refused('version_mismatch');
+  // Narrowed here: the provider closure below cannot see the success check.
+  const syncBuildVersion=build.data;
   const expectedHash=offlineSyncRequestHash({claimDigest:request.claimDigest,signatureSha256:request.signatureSha256,syncBuildVersion:build.data});
   let started:number;try{started=now();}catch{return unavailable('time_unavailable');}
   if(!Number.isSafeInteger(started)||started<1)return unavailable('time_unavailable');
@@ -110,7 +112,7 @@ export function createOfflineSyncIntegrityVerifier(settings:unknown,policy:unkno
    const licensing=value.accountDetails.appLicensingVerdict;
    if(licensing==='UNEVALUATED')return unavailable('licensing_unavailable');
    if(p.licensing==='licensed'&&licensing!=='LICENSED')return refused('unlicensed_app');
-   return {status:'eligible',assessment:{version:1,verification:'google_play_standard',scope:'sync_upload',requestHash:expectedHash,versionCode:build.data,
+   return {status:'eligible',assessment:{version:1,verification:'google_play_standard',scope:'sync_upload',requestHash:expectedHash,versionCode:syncBuildVersion,
     checkedAt,requestedAt,deviceLabels:knownLabels.filter(label=>labels.includes(label)),licensing,captureVerification:'not_verified'}};
   }
   try{return await Promise.race([execute(),interrupted]);}
