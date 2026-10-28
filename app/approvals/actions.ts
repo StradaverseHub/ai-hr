@@ -19,7 +19,7 @@ import { approvalsReturnUrl } from '@/lib/approvals-categories';
 import { localizeLeaveError } from '@/app/me/actions';
 import { decideAttendanceCorrection, MissingAttendanceRejectReasonError } from '@/core/attendance';
 import { decideProfileChange } from '@/core/profile';
-import { decideClaim } from '@/core/claims';
+import { ClaimError, decideClaim } from '@/core/claims';
 import { decideResignation } from '@/core/offboarding';
 import {
   decideReview,
@@ -291,10 +291,13 @@ async function dispatchBulkItem(
       await decideLeaveCancellation(s, { cancellationRequestId: item.id, decision, deciderEmploymentId });
       return;
     case 'claim':
+      // As leave: a claim rejected without a reason is a skip, never a reasonless rejection.
+      if (decision === 'rejected' && !rejectReason) throw new ClaimError('A reason is required to reject a claim.');
       await decideClaim(s, {
         claimRequestId: item.id,
         decision: decision === 'approved' ? 'approve' : 'reject',
         deciderEmploymentId: deciderEmploymentId ?? null,
+        rejectReason: decision === 'rejected' ? rejectReason ?? null : null,
       });
       return;
     case 'attendance':
@@ -340,12 +343,17 @@ export async function approveClaimAction(formData: FormData) {
   const s = await getSession();
   const nav = navOf(formData);
   const approved = String(formData.get('decision')) === 'approved';
+  // Owner decision (Phase F defaults, 29 Oct 2026): a claim rejection carries the approver's reason, as in the app;
+  // it is stamped on the rejection event (decideClaim's rejectReason) and shown to the employee on /claims.
+  const rejectReason = String(formData.get('rejectReason') ?? '').trim();
   try {
+    if (!approved && !rejectReason) throw new ClaimError('A reason is required to reject a claim.');
     const me = await myEmployment(s);
     await decideClaim(s, {
       claimRequestId: String(formData.get('id')),
       decision: approved ? 'approve' : 'reject',
       deciderEmploymentId: me?.employmentId ?? null,
+      rejectReason: approved ? null : rejectReason,
     });
   } catch (e) {
     await fail(e, nav, s);

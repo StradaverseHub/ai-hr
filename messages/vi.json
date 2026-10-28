@@ -12861,6 +12861,7 @@
     "status_pending": "Chờ duyệt",
     "status_approved": "Đã duyệt",
     "status_rejected": "Bị từ chối",
+    "rejectReasonShown": "Lý do: {reason}",
     "status_cancelled": "Đã hủy",
     "status_paid": "Đã thanh toán",
     "taxableBadge": "· chịu thuế",

@@ -12861,6 +12861,7 @@
     "status_pending": "待审",
     "status_approved": "已批准",
     "status_rejected": "已驳回",
+    "rejectReasonShown": "原因：{reason}",
     "status_cancelled": "已取消",
     "status_paid": "已支付",
     "taxableBadge": "· 应税",

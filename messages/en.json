@@ -12861,6 +12861,7 @@
     "status_pending": "Pending",
     "status_approved": "Approved",
     "status_rejected": "Rejected",
+    "rejectReasonShown": "Reason: {reason}",
     "status_cancelled": "Cancelled",
     "status_paid": "Paid",
     "taxableBadge": "· taxable",

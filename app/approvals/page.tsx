@@ -979,7 +979,7 @@ export default async function ApprovalsPage({
                   <td className="px-4 py-2.5 text-right tabular-nums">{rm(c.amount)}</td>
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{c.incurredOn}</td>
                   <td className="px-4 py-2.5">
-                    <DecideButtons action={approveClaimAction} id={c.id} disabled={mine(c.personId)} labels={decideLabels} nav={nav} />
+                    <DecideButtons action={approveClaimAction} id={c.id} disabled={mine(c.personId)} labels={decideLabels} rejectReasonLabel={t('rejectReasonPlaceholder')} nav={nav} />
                   </td>
                 </tr>
               ))}

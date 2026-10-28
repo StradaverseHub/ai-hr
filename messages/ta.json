@@ -12861,6 +12861,7 @@
     "status_pending": "நிலுவையில்",
     "status_approved": "ஒப்புதலளிக்கப்பட்டது",
     "status_rejected": "நிராகரிக்கப்பட்டது",
+    "rejectReasonShown": "காரணம்: {reason}",
     "status_cancelled": "ரத்துசெய்யப்பட்டது",
     "status_paid": "செலுத்தப்பட்டது",
     "taxableBadge": "· வரிக்குட்பட்டது",

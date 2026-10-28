@@ -12861,6 +12861,7 @@
     "status_pending": "รออนุมัติ",
     "status_approved": "อนุมัติแล้ว",
     "status_rejected": "ปฏิเสธแล้ว",
+    "rejectReasonShown": "เหตุผล: {reason}",
     "status_cancelled": "ยกเลิกแล้ว",
     "status_paid": "จ่ายแล้ว",
     "taxableBadge": "· คิดภาษี",

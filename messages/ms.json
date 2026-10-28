@@ -12861,6 +12861,7 @@
     "status_pending": "Tertangguh",
     "status_approved": "Diluluskan",
     "status_rejected": "Ditolak",
+    "rejectReasonShown": "Sebab: {reason}",
     "status_cancelled": "Dibatalkan",
     "status_paid": "Dibayar",
     "taxableBadge": "· bercukai",
