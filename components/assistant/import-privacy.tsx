@@ -1,6 +1,6 @@
 import {getTranslations} from 'next-intl/server';
 import {eraseImportPreparationHistoryAction} from '../../app/assistant/import-privacy-actions';
-import {OwnClearForm} from './own-clear';
+import {OwnClearForm,ownClearCopy} from './own-clear';
 
 /** No private history, grant or employee metadata is needed to render this self-erasure control. It asks
  * first; the outcome sits OUTSIDE the collapsible so the post-redirect page shows it. */
@@ -12,7 +12,7 @@ export async function ImportPreparationPrivacy({status}:{status?:string}){
   <details className="rounded-md border p-3 text-sm">
   <summary className="flex min-h-11 cursor-pointer items-center font-medium">{t('title')}</summary>
   <div className="mt-2 space-y-3"><p className="text-xs text-muted-foreground">{t('description')}</p>
-   <OwnClearForm kind="importHistory" action={eraseImportPreparationHistoryAction} label={t('clear')}/>
+   <OwnClearForm copy={await ownClearCopy('importHistory')} action={eraseImportPreparationHistoryAction} label={t('clear')}/>
   </div>
   </details>
  </div>;

@@ -18,7 +18,7 @@ import type {ModuleActionEntry} from '../../lib/assistant-actions/module-action-
 import {ConversationReviewLinks} from './conversation-review-links';
 import {ConversationExplanation} from './conversation-explanation';
 import {ModuleSpecialistFindings} from './module-specialist-findings';
-import {OwnClearForm} from './own-clear';
+import {OwnClearForm,ownClearCopy} from './own-clear';
 const knownStates=new Set(['active','probation','resigned','terminated','pending','approved','rejected','cancelled','draft','paid','closed','completed','in_progress','not_tested','passed','failed','skipped','annual','offcycle','regular','day','hour','not_started','self_review','manager_review','submitted','acknowledged','present','absent','late','half_day','active_serving_notice','blacklisted','withhold','full_day','half_day_am','half_day_pm','hourly','administrative','functional','taken','converted_to_pay','lapsed','reversed','pass','fail','blocked','partial','manager','report']);
 /** Gated native-action shortcuts render only when the caller passes them in `actions` (server-computed
  * from the target's own authorization rules). Missing means hidden. Targets still refuse on their own. */
@@ -187,6 +187,7 @@ export async function GovernedModuleJobComposer({modules}:{modules:readonly Agen
   </form></Card>;
 }
 export async function GovernedWorkspaceJob({view,ctx}:{view:GovernedWorkspaceJobView;ctx:SessionContext}){
+ const clearCopy=await ownClearCopy('ratings');
  const t=await getTranslations('assistant.workspace.governed');
  if(view.state!=='ready')return <Card className="p-5"><p role="status" className="text-sm text-muted-foreground">{t('unavailable')}</p></Card>;
  return <section className="space-y-4" aria-label={t('result')}><p className="text-sm text-muted-foreground">{t(view.mode==='promoted'?'promoted':'baseline')}</p>
@@ -198,6 +199,6 @@ export async function GovernedWorkspaceJob({view,ctx}:{view:GovernedWorkspaceJob
    <div className="flex flex-wrap gap-2">{(['helpful','needs_correction','incorrect'] as const).map(outcome=><button key={outcome} type="submit" name="outcome" value={outcome}
     className="min-h-11 rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t(`signal_${outcome}`)}</button>)}</div>
   </form>:<p className="text-xs text-muted-foreground">{t('signalChanged')}</p>}
-  <OwnClearForm kind="ratings" action={eraseGovernedJobFeedbackAction} label={t('eraseSignals')}/>
+  <OwnClearForm copy={clearCopy} action={eraseGovernedJobFeedbackAction} label={t('eraseSignals')}/>
  </section>;
 }

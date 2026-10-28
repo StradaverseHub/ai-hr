@@ -1,5 +1,5 @@
 import {AssistantHistoryPrivacy} from '../../components/assistant/history-privacy';
-import {OwnClearForm,OwnClearStatus} from '../../components/assistant/own-clear';
+import {OwnClearForm,ownClearCopy,OwnClearStatus} from '../../components/assistant/own-clear';
 import {eraseConversationMetadataAction} from './agent-review-actions';
 import {NativeOutcomes,NativeOutcomePrivacy} from '@/components/assistant/native-outcomes';
 import {ImportPreparationPrivacy} from '@/components/assistant/import-privacy';
@@ -66,11 +66,11 @@ export default async function AssistantPage({
           {/* Three different reasons, three different next steps. "No" with no route forward is the one
               thing this must not render. */}
           <p className="text-sm text-muted-foreground">{t(`denied_${access.reason}`)}</p>
-          <div className="mt-4"><OwnClearForm kind="feedback" action={eraseAgentFeedbackAction} label={t('workspace.feedbackErase')}/></div>
-          <OwnClearForm kind="conversation" action={eraseConversationMetadataAction} label={t('workspace.conversationGovernance.erase')}/>
-          <OwnClearForm kind="proposals" action={eraseModuleProposalsAction} label={t('workspace.planning.erase')}/>
+          <div className="mt-4"><OwnClearForm copy={await ownClearCopy('feedback')} action={eraseAgentFeedbackAction} label={t('workspace.feedbackErase')}/></div>
+          <OwnClearForm copy={await ownClearCopy('conversation')} action={eraseConversationMetadataAction} label={t('workspace.conversationGovernance.erase')}/>
+          <OwnClearForm copy={await ownClearCopy('proposals')} action={eraseModuleProposalsAction} label={t('workspace.planning.erase')}/>
           <ImportPreparationPrivacy status={sp.importHistory}/><NativeOutcomePrivacy status={sp.nativeOutcome}/>
-          <OwnClearForm kind="ratings" action={eraseGovernedJobFeedbackAction} label={t('workspace.governed.eraseSignals')}/>
+          <OwnClearForm copy={await ownClearCopy('ratings')} action={eraseGovernedJobFeedbackAction} label={t('workspace.governed.eraseSignals')}/>
         </Card>
       </div>
     );
@@ -90,7 +90,7 @@ export default async function AssistantPage({
       <PageHeader title={t('title')} description={t('description')} />
       <AssistantHistoryPrivacy status={sp.historyPrivacy}/>
       <OwnClearStatus status={sp.ownClear}/>
-      <OwnClearForm kind="conversation" action={eraseConversationMetadataAction} label={t('workspace.conversationGovernance.erase')}/>
+      <OwnClearForm copy={await ownClearCopy('conversation')} action={eraseConversationMetadataAction} label={t('workspace.conversationGovernance.erase')}/>
       <ErrorBanner message={errorMessage} />
 
       <ModuleJobChooser modules={workspace.jobModules} selected={sp.job} actions={actionEntries}/>
@@ -153,7 +153,7 @@ export default async function AssistantPage({
         </Card>
       ))}
 
-      <OwnClearForm kind="feedback" action={eraseAgentFeedbackAction} label={t('workspace.feedbackErase')}/>
+      <OwnClearForm copy={await ownClearCopy('feedback')} action={eraseAgentFeedbackAction} label={t('workspace.feedbackErase')}/>
       </section>}
       {!selectedJob&&!workspace.governedJob&&history.length === 0 && (
         <Card className="p-6">

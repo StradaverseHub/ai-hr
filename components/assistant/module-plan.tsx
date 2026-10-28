@@ -4,11 +4,12 @@ import {getTranslations} from 'next-intl/server';
 import {Card} from '../ui';
 import {proposeModulePlanAction,eraseModuleProposalsAction,evaluateHumanPlannerAction} from '../../app/assistant/module-plan-actions';
 import {runGovernedPlanAction} from '../../app/assistant/governed-job-actions';
-import {OwnClearForm} from './own-clear';
+import {OwnClearForm,ownClearCopy} from './own-clear';
 import type {OwnModulePlanView} from '../../core/module-agent-releases';
 /** First render asks nothing, so it reports no failure: only a submitted request's own status may say
  * "snag". No provider means "not set up" (calm), never an error. */
 export async function ModuleQuestionPlanner({view,status,permit,availability}:{view:OwnModulePlanView|null;status?:string;permit:string|null;availability?:'ready'|'no_provider'|'resting'}){
+ const clearCopy=await ownClearCopy('proposals');
  const t=await getTranslations('assistant.workspace.planning'),jobs=await getTranslations('assistant.workspace.jobs');
  return <Card className="space-y-4 p-5"><div><h2 className="text-base font-semibold">{t('title')}</h2><p className="mt-1 text-sm text-muted-foreground">{t('intro')}</p></div>
   {status&&<p role="status" className="text-sm text-muted-foreground">{t(status==='chooser'?'chooser':status==='evaluated'?'evaluated':'unavailable')}</p>}
@@ -21,7 +22,7 @@ export async function ModuleQuestionPlanner({view,status,permit,availability}:{v
    {view.consumedJobId?<a href={'/assistant?governed='+encodeURIComponent(view.consumedJobId)} className="inline-flex min-h-11 items-center text-sm underline">{t('reopen')}</a>:
     <form action={runGovernedPlanAction}><input type="hidden" name="commandNonce" value={randomUUID()}/><input type="hidden" name="proposalId" value={view.proposalId}/>{view.modules.map(module=><input key={module} type="hidden" name="module" value={module}/>)}<button className="min-h-11 rounded-md border px-4 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('confirm')}</button></form>}
   </section>:<p role="status" className="text-sm text-muted-foreground">{t(view.state)}</p>)}
-  <OwnClearForm kind="proposals" action={eraseModuleProposalsAction} label={t('erase')}/>
+  <OwnClearForm copy={clearCopy} action={eraseModuleProposalsAction} label={t('erase')}/>
  </Card>;
 }
 export async function HumanPlannerEvaluation({candidates}:{candidates:readonly {id:string;kind:string;own:boolean;version:number}[]}){
