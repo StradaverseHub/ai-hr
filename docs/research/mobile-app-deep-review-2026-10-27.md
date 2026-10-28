@@ -483,3 +483,40 @@ Status of every item below: **DECIDED, not built yet.** Phase F covers M11, M12 
   fields through `submitOwnProfileEdit`, plus the status of pending requests. Addresses and the family, bank and
   statutory registers open on the web. Notices, documents, onboarding, resignation and performance stay deferred.
   Team availability gains date/week navigation over the existing My Team projection.
+
+### Phase F (M11 claims, M12 attendance, M13 profile/team) — IMPLEMENTED; hosted checks green (29 October 2026)
+
+Built by three builders on `claude/mobile-f-claims`, `claude/mobile-f-attendance` and `claude/mobile-f-profile` (each
+in its own worktree), integrated on the Mobile work branch (catalogue and Me links unioned: 808 keys in `en` and
+`ms`, no duplicates, none one-sided). Published to `codex/mobile-native-integrity-20261027`.
+
+- **Evidence (owner full-run rule: the whole run finished, only failed parts were rerun).**
+  - Run 40720440064 @ `39e7cf677`: refused at manifest validation (the test list was passed as text, not a JSON
+    array); no check ran. Not evidence either way.
+  - Run 40720716293 @ `39e7cf677`, 41 files: 40 files / 534 of 535 tests passed; native typecheck, both native bundles
+    and the Linux build passed. Failed: root typecheck (four test-only errors in `test/mobile-profile.dom.test.tsx` and
+    `test/mobile-v2-claims.test.ts`) and one assertion in `test/mobile-v2-attendance.test.ts`, whose file-load
+    `today` was compared with a server answer after Kuala Lumpur midnight (run started 23:58).
+  - Run 40722627716 @ `b0a3105cc` (repair: day pinned at answer time; type errors fixed): root typecheck and the
+    profile and claims files passed; the attendance test reached its next line for the first time and failed. Its
+    premise was wrong: enabling the replacement-leave policy creates the Replacement Leave type
+    (`core/toil.ts:547`), so `no_leave_type` is now reached by archiving that type.
+  - Run 40724654200 @ `5a4174edf`: root typecheck and `test/mobile-v2-attendance.test.ts` passed.
+- **Not evidence of:** a dev-server render, a device or simulator run, the Malay copy, or any release step. Nothing
+  is merged to main or alpha, deployed, or journaled.
+- **Kernel seams (all optional; web callers unchanged; pinned):** an optional transaction on the claim commands and
+  `decideClaim` plus an optional `rejectReason` stamped on the rejection event and a shared `priceMileageTx`;
+  `myAttendanceCorrectionsPage`/`Counts`, an optional transaction and typed refusal on
+  `cancelOwnAttendanceCorrection`, an optional transaction on the replacement-leave and leave-credit submits; an
+  optional transaction on `submitOwnProfileEdit`. `moneyText` moved unchanged to `lib/mobile-api/money-text.ts`.
+- **Not built:** duplicate-receipt detection (nothing hashes receipts); resubmitting a rejected claim (the kernel
+  treats rejection as final); overnight-day corrections (the kernel requires check-out after check-in, as on the
+  web); correction attachments; a replacement-leave history screen; several worked dates in one native request;
+  overtime-plan application (D13); notices, documents, onboarding, resignation, performance (D14).
+- **DECISION REQUIRED:** (1) claims store no rejection reason column — the app's reason lives on the event only;
+  should the web ask for and show one? (2) the iOS camera permission text speaks only of attendance photos; it
+  needs a native rebuild to cover receipts. (3) the 17-field "simple" profile set (names and primary email go to
+  HR approval). (4) corrections on a closed-payroll date are accepted at submission and refused at approval, as on
+  the web. (5) the team headline wording outside the current week.
+- **Process note:** the three builders could not use Write/Edit in worktrees under `.claude/` (a PreToolUse hook)
+  and wrote through the shell inside their own worktree; reported to the owner for a ruling.
