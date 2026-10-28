@@ -1,4 +1,5 @@
 vi.mock('../app/performance/assessment-rewrite-actions',()=>({rewriteAssessmentFieldAction:vi.fn()}));
+import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider, createTranslator } from 'next-intl';
@@ -21,10 +22,19 @@ import { KpiEditor } from '../app/performance/onehr/kpi-editor';
 import { OnehrReviewView } from '../app/performance/onehr/review-view';
 import { ItemNavigator } from '../app/performance/workspace/item-navigator';
 const show=(element:React.ReactNode)=>render(<NextIntlClientProvider locale="en" messages={en}>{element}</NextIntlClientProvider>);
+/** Every element of `type` in a returned element tree, walking props.children (the page wraps the view, PT-X2). */
+function elementsOf(node:React.ReactNode,type:unknown):React.ReactElement[]{
+ if(Array.isArray(node))return node.flatMap(child=>elementsOf(child,type));
+ if(!React.isValidElement(node))return [];
+ const el=node as React.ReactElement<{children?:React.ReactNode}>;
+ return el.type===type?[el]:elementsOf(el.props.children,type);
+}
 async function calibrationScreen(){
  const page=await CalibrationPage({params:Promise.resolve({sessionId:'session'}),searchParams:Promise.resolve({})});
- expect(page.type).toBe(AssessmentCalibrationView);
- return AssessmentCalibrationView(page.props);
+ // Since D-P1-32 PT-X2 the page is the Calibration strip above the view; the view itself is still the one screen.
+ const views=elementsOf(page,AssessmentCalibrationView);
+ expect(views).toHaveLength(1);
+ return AssessmentCalibrationView(views[0]!.props as Parameters<typeof AssessmentCalibrationView>[0]);
 }
 beforeEach(()=>{vi.clearAllMocks();ports.session.mockResolvedValue({s:{tenantId:'tenant'}});});
 afterEach(cleanup);
