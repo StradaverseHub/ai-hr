@@ -1,9 +1,9 @@
 /** The production offline clock snapshot: the ONE trusted current policy/site/attendance read that context issuance
- * signs and the adjudicator measures drift against (OfflineContextIssuePorts['snapshot']). Every value comes from its
+ * records and the adjudicator measures drift against (OfflineContextIssuePorts['snapshot']). Every value comes from its
  * owner in the caller's transaction and RLS; nothing is stored or duplicated here. Target, window and permit count are
  * deployment-owned and passed in. The device requirement is not part of it (the adjudicator and plan read it live).
  * Read-only: no write, network, nested transaction or clock beyond what the owners read. UNMOUNTED: no route or
- * production wiring passes it yet. A value the signed context cannot represent (more than 32 sites, a site name over
+ * production wiring passes it yet. A value the issued context cannot represent (more than 32 sites, a site name over
  * 200 characters) is refused as the context service's own typed configuration_unavailable, never truncated. */
 import {createHash} from 'node:crypto';
 import {eq} from 'drizzle-orm';
@@ -21,11 +21,11 @@ import {readOfflineClockingPolicyTx} from './mobile-offline-adjudicator';
 export type OfflineClockSnapshotDeployment={target:OfflineContextSnapshot['target'];windowMs:number;permitCount:number};
 const Deployment=z.object({target:OfflineClockContextTarget,windowMs:OfflineClockContextData.shape.policy.shape.windowMs,
  permitCount:z.number().int().min(1).max(OFFLINE_CLOCK_CONTEXT_CLAIM_LIMIT)}).strict();
-// The signed context's own bounds (lib/mobile-offline-context.ts), checked here so issuance refuses before signing.
+// The issued context's own bounds (lib/mobile-offline-context.ts), checked here so issuance refuses before recording.
 const Checked=z.object({policy:OfflineClockContextData.shape.policy,sites:OfflineClockContextData.shape.sites,attendance:OfflineClockContextData.shape.attendance,
  target:OfflineClockContextTarget,permitCount:Deployment.shape.permitCount}).strict();
 const unrepresentable=()=>new OfflineContextIssueError('configuration_unavailable');
-/** Deterministic over the policy fields alone, in the signed context's positional order; no time, site or attendance. */
+/** Deterministic over the policy fields alone, in the issued context's positional order; no time, site or attendance. */
 export function offlineClockPolicyRevision(p:Omit<OfflineContextSnapshot['policy'],'revision'>){
  return createHash('sha256').update(JSON.stringify(['attendance.clock.offline.policy',1,p.offlineEnabled,p.windowMs,p.geofencingRequired,p.maximumAccuracyM,p.photoRequirement]),'utf8').digest('hex');
 }

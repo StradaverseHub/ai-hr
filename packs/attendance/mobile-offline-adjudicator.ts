@@ -61,7 +61,7 @@ const PLAN_REVIEW:Record<OfflineClockRefusalReason,Reason>={invalid_command:'rev
  geofence_quality:'poor_accuracy',outside_geofence:'outside_geofence',effective_time_invalid:'time_unverifiable'};
 const Current=z.object({policy:OfflineClockContextData.shape.policy,sites:OfflineClockContextData.shape.sites});
 type Context=OfflineClaimFacts['context'];
-// The signed context's own canonical order (lib/mobile-offline-context.ts): policy fields positional, sites by id.
+// The issued context's own canonical order (lib/mobile-offline-context.ts): policy fields positional, sites by id.
 const policyKey=(p:Context['policy'])=>JSON.stringify([p.revision,p.offlineEnabled,p.windowMs,p.geofencingRequired,p.maximumAccuracyM,p.photoRequirement]);
 const sitesKey=(sites:Context['sites'])=>JSON.stringify([...sites].sort((x,y)=>x.id<y.id?-1:x.id>y.id?1:0).map(s=>[s.id,s.name,s.lat,s.lng,s.radiusM]));
 /** The exact guard of app.own_attendance_removal_payroll_protection (0539), checked first so that definer can never
@@ -95,7 +95,7 @@ export function createOfflineAdjudicator(ports:{snapshot:OfflineContextIssuePort
   if(e.mock===true)return review('mock_reported');
   if(e.simulated===true)return review('simulated_reported');
   if(e.accessory===true)return review('accessory_reported');
-  // A current world the signed context cannot represent (more than 32 sites, an over-long name, an unparsable value)
+  // A current world the issued context cannot represent (more than 32 sites, an over-long name, an unparsable value)
   // differs from what was signed: review, so a held claim never sticks. A rebound employment is a changed scope.
   // Only the snapshot owner's own typed refusals are mapped; any other failure still throws.
   let raw:unknown;

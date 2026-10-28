@@ -39,7 +39,7 @@ export const OfflineClockContextData=z.object({
  .refine(value=>value.permits.every((p,index)=>p.ordinal===index+1))
  .refine(value=>value.policy.offlineEnabled?value.permits.length>0&&(!value.policy.geofencingRequired||value.sites.length>0):value.permits.length===0);
 export type OfflineClockContextData=z.infer<typeof OfflineClockContextData>;
-/** Current owner supplies these expectations independently of the submitted signed context. */
+/** Current owner supplies these expectations independently of the submitted context. */
 export const OfflineClockContextBinding=z.object({scope:OfflineClockClaimData.shape.scope,request:OfflineClockContextRequest,target:OfflineClockContextTarget}).strict()
  .refine(value=>value.request.appInstallationId===value.scope.appInstallationId&&value.request.keyId===value.scope.deviceKeyId);
 export type OfflineClockContextBinding=z.infer<typeof OfflineClockContextBinding>;
@@ -85,14 +85,19 @@ export function parseOfflineClockContextJson(raw:unknown):OfflineClockContextDat
 }
 export type OfflineClockContextCheck={outcome:'bound';context:OfflineClockContextData;canonical:string}|
  {outcome:'invalid';reason:'malformed'|'scope_mismatch'|'request_mismatch'|'target_mismatch'};
+type Scope=OfflineClockContextData['scope'];type Target=OfflineClockContextData['target'];
+const scopeFields=(s:Scope)=>JSON.stringify([s.apiOrigin,s.installationId,s.tenantId,s.companyId,s.actorId,s.employmentId,s.appInstallationId,s.deviceKeyId]);
+const targetFields=(t:Target)=>JSON.stringify([t.platform,t.appId,t.environment]);
 /** D16 binding check, shared by the phone. `binding` is the current connection owner's own expectation (scope including
  * apiOrigin, installation, employment, app installation and device key; request id/nonce; app target), never read from
- * the context. Expiry and window rules stay with the schema, capture-time elapsed bounds and server adjudication. */
-export function bindOfflineClockContext(raw:unknown,binding:OfflineClockContextBinding):OfflineClockContextCheck{
+ * the context; a malformed binding is a trusted-input fault and throws. Fields are compared positionally, so object key
+ * order never matters. Expiry and window rules stay with the schema, capture-time elapsed bounds and server adjudication. */
+export function bindOfflineClockContext(raw:unknown,expected:OfflineClockContextBinding):OfflineClockContextCheck{
+ const binding=OfflineClockContextBinding.parse(expected);
  let context:OfflineClockContextData;
  try{context=parseOfflineClockContextJson(raw);}catch{return {outcome:'invalid',reason:'malformed'};}
- if(JSON.stringify(context.scope)!==JSON.stringify(binding.scope))return {outcome:'invalid',reason:'scope_mismatch'};
+ if(scopeFields(context.scope)!==scopeFields(binding.scope))return {outcome:'invalid',reason:'scope_mismatch'};
  if(context.requestId!==binding.request.requestId||context.requestNonce!==binding.request.requestNonce)return {outcome:'invalid',reason:'request_mismatch'};
- if(JSON.stringify(context.target)!==JSON.stringify(binding.target))return {outcome:'invalid',reason:'target_mismatch'};
+ if(targetFields(context.target)!==targetFields(binding.target))return {outcome:'invalid',reason:'target_mismatch'};
  return {outcome:'bound',context,canonical:offlineClockContextClientData(context)};
 }

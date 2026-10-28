@@ -49,8 +49,15 @@ describe('keyless offline context contract (owner decision D16)',()=>{
   expect(OfflineClockContextData.safeParse({...f.context,issuer:{algorithm:'ed25519',keyId:'c'.repeat(64)}}).success).toBe(false);
  });
  it.each(['installationId','tenantId','companyId','actorId','employmentId','appInstallationId','deviceKeyId','apiOrigin'] as const)('refuses a context bound to a different %s',field=>{
-  const f=fixture(),value=field==='apiOrigin'?'https://other.example.com':id(99);
-  expect(bindOfflineClockContext(f.raw(),{...f.binding,scope:{...f.binding.scope,[field]:value}})).toEqual({outcome:'invalid',reason:'scope_mismatch'});
+  const f=fixture(),scope={...f.binding.scope,[field]:field==='apiOrigin'?'https://other.example.com':id(99)};
+  const request={...f.binding.request,appInstallationId:scope.appInstallationId,keyId:scope.deviceKeyId};
+  expect(bindOfflineClockContext(f.raw(),{...f.binding,scope,request})).toEqual({outcome:'invalid',reason:'scope_mismatch'});
+ });
+ it('compares the binding by field, not by object key order, and throws on a malformed trusted binding',()=>{
+  const f=fixture(),reordered={...f.binding,scope:Object.fromEntries(Object.entries(f.binding.scope).reverse()) as typeof f.binding.scope};
+  expect(bindOfflineClockContext(f.raw(),reordered)).toMatchObject({outcome:'bound'});
+  // The binding's own consistency rule: request key/app installation must be the scope's.
+  expect(()=>bindOfflineClockContext(f.raw(),{...f.binding,request:{...f.binding.request,keyId:id(99)}})).toThrow();
  });
  it('refuses another request id or nonce, and another app, platform or environment',()=>{
   const f=fixture();

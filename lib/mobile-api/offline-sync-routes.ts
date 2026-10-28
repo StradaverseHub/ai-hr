@@ -50,7 +50,7 @@ export function createOfflineSyncOperations(platform:Platform,options:DeployedOf
   capabilities:async(ctx:SessionContext,req:Request)=>C.OfflineCapabilitiesResult.parse(await guarded(async()=>{
    const id=await integrityEmployment(ctx,req);return deployed.capabilities(ctx,id);
   })),
-  /** Issue or refresh: re-posting the same request returns the exact original signed context. */
+  /** Issue or refresh: re-posting the same request returns the exact original recorded context (unsigned, D16). */
   context:async(ctx:SessionContext,req:Request)=>C.OfflineContextResult.parse(await guarded(async()=>{
    const id=await integrityEmployment(ctx,req),request=await json(req,C.OfflineContextIssueRequest,C.OFFLINE_SYNC_LIMITS.contextBytes);
    return deployed.issue(ctx,{employmentId:id,request});

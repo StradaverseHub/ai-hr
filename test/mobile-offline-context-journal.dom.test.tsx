@@ -3,11 +3,10 @@
 import {createHash} from 'node:crypto';
 import {describe,it,expect,vi} from 'vitest';
 import {createSignedClockJournal,parseSignedClockSnapshot,SignedClockConflict,type SignedClockPorts,type SignedClockSnapshot} from '../mobile/lib/signed-clock-journal';
-import {bindOfflineClockContext,offlineClockContextJson,type OfflineClockContextVerificationResult} from '../lib/mobile-offline-context';
+import {bindOfflineClockContext,offlineClockContextJson,type OfflineClockContextData,type OfflineClockContextBinding,type OfflineClockContextVerificationResult} from '../lib/mobile-offline-context';
 import {NativeCapabilities} from '../mobile/lib/integrity-bridge';
 import {offlineClockPhotoReference,type OfflineClockProofPorts} from '../mobile/lib/offline-clock-state';
 import {offlineClockClaimClientData} from '../lib/mobile-offline-clock';
-import type {OfflineClockContextData,OfflineClockContextBinding} from '../lib/mobile-offline-context';
 const id=(n:number)=>String(n).padStart(8,'0')+'-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 /** The phone's check (mobile/lib/offline-context.ts) with Node SHA-256: shape and binding, then the claim digest. */
 async function keylessCheck(raw:string,expected:OfflineClockContextBinding):Promise<OfflineClockContextVerificationResult>{
