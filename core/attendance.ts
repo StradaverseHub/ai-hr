@@ -3510,6 +3510,9 @@ export async function requestAttendanceCorrection(
     remark?: string | null;
     requestKind?: AttendanceRequestKind | null;
   },
+  /** The caller's transaction, so another owner can file and decide in one atomic unit (the offline claim
+   *  resolution in packs/attendance/mobile-offline-claim-review.ts). Omitted: its own transaction, as before. */
+  existingTx?: Tx,
 ) {
   if (p.clockChanges && (p.clockChanges.version !== 1 || !/^[0-9a-f]{64}$/.test(p.clockChanges.baseline))) throw new Error('Invalid clock-data correction.');
   const clockChanges = p.clockChanges ? { version: 1 as const, baseline: p.clockChanges.baseline, entries: validateClockEntries(p.clockChanges.entries) } : null;
@@ -3566,7 +3569,7 @@ export async function requestAttendanceCorrection(
   if (p.requestKind && ((p.requestKind === 'self_overtime') !== (!clockChanges && !checkIn && !checkOut && hasOt))) throw new Error('The application type does not match the requested clock or overtime changes.');
   const requestKind = p.requestKind ?? (attendanceApplicationType({ proposedCheckIn: checkIn, proposedCheckOut: checkOut, clockChanges, requestedOtMinutes }) === 'self_overtime' ? 'self_overtime' : 'other');
 
-  return withTenant(ctx, async (tx) => {
+  const submit = async (tx: Tx) => {
     if(unclockedWork){
       const [subject]=await tx.select({admin:sql<boolean>`app.can_admin_employment(${employment.id})`,
         own:sql<boolean>`app.is_self_person(${employment.personId})`}).from(employment)
@@ -3669,7 +3672,8 @@ export async function requestAttendanceCorrection(
       }
     }
     return insertAttendanceCorrectionRequestTx(tx,ctx,{employmentId:p.employmentId,date:p.date,clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind,unclockedWork});
-  }).catch((error: unknown) => {
+  };
+  return (existingTx ? submit(existingTx) : withTenant(ctx, submit)).catch((error: unknown) => {
     // Preserve the database's atomic pending-request fence, including simultaneous submissions.
     let cause: unknown = error;
     for (let depth = 0; cause && typeof cause === 'object' && depth < 5; depth++) {

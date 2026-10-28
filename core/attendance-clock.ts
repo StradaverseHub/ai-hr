@@ -117,9 +117,7 @@ export async function captureEmployeeClock(ctx: SessionContext, p: ClockIntent) 
 }
 
 type NativeCarrier = { employmentId: string; deviceToken?: string; sampledAt: number };
-/** onBehalfOf: an HR resolution of a held offline claim records for the claim's employment under the caller's
- * attendance-correction authority (never the caller's own employment) and reads the claim actor's abandonments. */
-type JoinedCarrier = { tx: Tx; requireNew: boolean; onBehalfOf?: string };
+type JoinedCarrier = { tx: Tx; requireNew: boolean };
 /** Who records the punch. An online instant is read where it always was, after the subject lock and the request
  * lookup, never at the call site (a tab that waited on the lock must still order after its sibling). An offline
  * instant is the accepted claim's effective time, fixed before planning; its receipt instant is read at planning. */
@@ -150,8 +148,8 @@ async function planClockTx(tx:Tx,ctx:SessionContext,me:ClockSubject,p:ClockInten
     const offline=clock.source==='mobile_offline';
     // Lock the subject even before its first attendance row exists. Concurrent tabs serialize here.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + me.employmentId}, 0))`);
-    if(joined&&!(joined.onBehalfOf?await correctableClockSubjectTx(tx,me.employmentId):(await myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:true})).some(e=>e.employmentId===me.employmentId)))throw new OwnClockEmploymentUnavailableError();
-    if(await submissionAbandonedTx(tx,joined?.onBehalfOf?{...ctx,userId:joined.onBehalfOf}:ctx,me.employmentId,'clock',p.requestId))throw new ClockConflictError('This submission was abandoned before it recorded.');
+    if(joined&&!(await myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:true})).some(e=>e.employmentId===me.employmentId))throw new OwnClockEmploymentUnavailableError();
+    if(await submissionAbandonedTx(tx,ctx,me.employmentId,'clock',p.requestId))throw new ClockConflictError('This submission was abandoned before it recorded.');
     // An offline claim carries no legacy device token: a company requiring a registered device refuses it.
     if (native || offline) await enforceDeviceGateTx(tx, { employmentId: me.employmentId, deviceToken: native?.deviceToken });
     const [nativeDevice] = native?.deviceToken ? await tx.select({id:employeeDevice.id}).from(employeeDevice).where(and(eq(employeeDevice.employmentId,me.employmentId),eq(employeeDevice.deviceToken,native.deviceToken),isNull(employeeDevice.revokedAt))).limit(1) : [];
@@ -274,18 +272,6 @@ async function insertOfflineCaptureTx(tx:Tx,values:CaptureValues,effectiveAt:Dat
   return row;
 }
 
-/** Attendance-correction authority over an employment (app.can_correct_attendance), read in the caller's transaction. */
-async function correctableClockSubjectTx(tx: Tx, employmentId: string) {
-  const [row] = await tx.execute<{ ok: boolean }>(sql`select app.can_correct_attendance(${employmentId}::uuid) ok`);
-  return row?.ok === true;
-}
-/** Whom an offline command records for. own (the default): the caller's own employment, as the claim service consumes.
- * resolution: an HR resolution of a held claim (packs/attendance/mobile-offline-claim-review.ts), recorded for the
- * claim's employment under the caller's attendance-correction authority (the review service and the resolution insert
- * policy refuse the resolver's own employment); actorId is the claim's actor,
- * whose abandoned submissions still refuse the request. The punch stays mobile_offline at the capture's effective_at,
- * and every other online rule (ordering, geofence, photo, device, corrected day) applies unchanged. */
-export type OfflineClockSubject = { kind: 'own' } | { kind: 'resolution'; actorId: string };
 /** An accepted offline claim's command. Whole-second effectiveAt; claimDigest is the signed claim's sha256. */
 export type OfflineClockCommand = { employmentId: string; requestId: string; action: 'in' | 'out'; lat: number; lng: number; accuracy: number;
   photo?: { bytes: Buffer; mimeType: 'image/jpeg' | 'image/png' }; effectiveAt: Date; claimDigest: string };
@@ -312,19 +298,16 @@ function offlineClockRefusal(error: unknown): OfflineClockRefusal | null {
 }
 /** Plans an offline punch in the CALLER's transaction: every online rule except the 120 s fresh-sample rule,
  * ordered by the effective instant, under the subject lock. Writes nothing; a refusal leaves the transaction usable. */
-export async function planOfflineClockTx(tx: Tx, ctx: SessionContext, p: OfflineClockCommand, subject: OfflineClockSubject = { kind: 'own' }): Promise<OfflineClockPlan | OfflineClockRefusal> {
+export async function planOfflineClockTx(tx: Tx, ctx: SessionContext, p: OfflineClockCommand): Promise<OfflineClockPlan | OfflineClockRefusal> {
   try {
     if (!['in', 'out'].includes(p.action) || !UUID.test(p.requestId) || !UUID.test(p.employmentId) || !/^[a-f0-9]{64}$/.test(p.claimDigest) || !(p.effectiveAt instanceof Date))
       throw new OfflineClockPlanRefusal('invalid_command', 'Invalid offline clock command');
     const intent: ClockIntent = { action: p.action, requestId: p.requestId, lat: p.lat, lng: p.lng, accuracy: p.accuracy, ...(p.photo ? { photo: p.photo.bytes, mime: p.photo.mimeType } : {}), locationStatus: 'recorded', employmentId: p.employmentId };
     const point = clockLocation(intent);
     if (!point) throw new ClockLocationError('Offline clocking requires its sampled location');
-    const onBehalfOf = subject.kind === 'resolution' ? subject.actorId : undefined;
-    if (onBehalfOf !== undefined && !UUID.test(onBehalfOf)) throw new OfflineClockPlanRefusal('invalid_command', 'Invalid offline clock command');
-    const me = onBehalfOf !== undefined ? (await correctableClockSubjectTx(tx, p.employmentId) ? { employmentId: p.employmentId } : undefined)
-      : (await myOwnEmploymentSubjectsTx(tx, ctx, { profileEdit: true })).find(e => e.employmentId === p.employmentId);
+    const me = (await myOwnEmploymentSubjectsTx(tx, ctx, { profileEdit: true })).find(e => e.employmentId === p.employmentId);
     if (!me) throw new OwnClockEmploymentUnavailableError();
-    const plan = await planClockTx(tx, ctx, me, intent, point, { source: 'mobile_offline', at: new Date(p.effectiveAt.getTime()), claimDigest: p.claimDigest }, undefined, { tx, requireNew: true, ...(onBehalfOf !== undefined ? { onBehalfOf } : {}) });
+    const plan = await planClockTx(tx, ctx, me, intent, point, { source: 'mobile_offline', at: new Date(p.effectiveAt.getTime()), claimDigest: p.claimDigest }, undefined, { tx, requireNew: true });
     // requireNew refuses any held request ID, so a replayed receipt cannot reach here.
     if (plan.kind !== 'plan') throw new ClockConflictError('This clock reference already recorded');
     return plan;
@@ -337,8 +320,8 @@ export async function planOfflineClockTx(tx: Tx, ctx: SessionContext, p: Offline
 /** The canonical offline attendance writer: plans, then writes capture (effective_at), punch (mobile_offline) and
  * audit in the CALLER's transaction; no nested transaction. A refusal writes nothing. Any throw after the first
  * write also aborts that transaction, so a caller that catches it can still never commit a partial clocking. */
-export async function captureOfflineClockTx(tx: Tx, ctx: SessionContext, p: OfflineClockCommand, subject: OfflineClockSubject = { kind: 'own' }) {
-  const plan = await planOfflineClockTx(tx, ctx, p, subject);
+export async function captureOfflineClockTx(tx: Tx, ctx: SessionContext, p: OfflineClockCommand) {
+  const plan = await planOfflineClockTx(tx, ctx, p);
   if (plan.kind === 'refused') return plan;
   try {
     const receipt = await applyClockTx(tx, ctx, plan);

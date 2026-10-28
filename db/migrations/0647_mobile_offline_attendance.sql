@@ -7,8 +7,7 @@ ALTER TYPE clock_method ADD VALUE IF NOT EXISTS 'mobile_offline';--> statement-b
 -- (never overloaded: 0528's legacy-in synthesis needs it within 5 s). Whole seconds, as online punch_at is, and
 -- never after the receipt. Epoch arithmetic keeps the CHECK independent of the session TimeZone.
 -- Writers of attendance_clock_capture, none broken (only the first ever sets the column; NULL satisfies it):
--- core/attendance-clock.ts (sole application insert; only its mobile_offline source sets effective_at, under the
--- employee's session or, for an HR-accepted held claim, the resolver's through the resolution insert policy at the end),
+-- core/attendance-clock.ts (sole application insert; only its mobile_offline source sets effective_at),
 -- scripts/dev-fixture-board1-policy-release.ts and test fixtures (owner inserts), app.purge_attendance_clock_photo
 -- (0500; UPDATEs photo columns only, so the CHECK re-evaluates unchanged values). Nothing else updates or
 -- deletes the table. ai_hr_app's table-level SELECT, INSERT (0500) covers the new column; no grant added.
@@ -293,19 +292,24 @@ CREATE POLICY mobile_offline_claim_review_read ON mobile_offline_claim FOR SELEC
 CREATE POLICY mobile_offline_photo_review_read ON mobile_offline_photo FOR SELECT USING
  (tenant_id=app.current_tenant_id() AND retained_until>clock_timestamp() AND NOT app.is_group_admin() AND app.can_correct_attendance(employment_id));
 -- One human resolution per held claim. The claim row stays immutable (its outcome remains needs_review); this row is
--- the decision of record. An accept links the capture the canonical offline writer made for the claim's request (the
--- capture owns effective_at and its punch is mobile_offline); day_revision is the correction model's day baseline
--- (clockFingerprint of the filed day's punches) the resolver decided against, read under the subject lock before the
--- write. input_digest identifies the decision for idempotent retry. resolved_by and resolved_at are server-stamped.
+-- the decision of record. An accept (owner decision 2026-10-28) is an HR punch correction: the existing correction
+-- owner files and approves it (attendance_correction, clock_changes) and inserts an 'admin' punch at the accepted
+-- instant, so later punches never block it and HR's reasoned decision overrides the hold. This row links that
+-- correction and that punch and holds effective_at, the accepted instant; no capture is written for an accept, so
+-- attendance_clock_capture.effective_at stays the canonical offline writer's alone. day_revision is the correction's
+-- baseline (clockFingerprint of the filed day's punches) the resolver decided against. input_digest identifies the
+-- decision for idempotent retry. resolved_by and resolved_at are server-stamped.
 CREATE TABLE mobile_offline_claim_resolution (
  claim_id uuid PRIMARY KEY,tenant_id uuid NOT NULL,actor_id uuid NOT NULL,employment_id uuid NOT NULL,
- decision text NOT NULL CHECK(decision IN ('accepted','rejected')),effective_at timestamptz,capture_id uuid REFERENCES attendance_clock_capture(id),
+ decision text NOT NULL CHECK(decision IN ('accepted','rejected')),effective_at timestamptz,
+ correction_id uuid REFERENCES attendance_correction(id),punch_id uuid REFERENCES attendance_punch(id),
  day_revision text CHECK(day_revision ~ '^[a-f0-9]{64}$'),reason text NOT NULL CHECK(reason=btrim(reason) AND length(reason) BETWEEN 1 AND 500),
  input_digest text NOT NULL CHECK(input_digest ~ '^[a-f0-9]{64}$'),resolved_by uuid NOT NULL REFERENCES app_user(id),resolved_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  FOREIGN KEY(claim_id,tenant_id,actor_id,employment_id) REFERENCES mobile_offline_claim(id,tenant_id,actor_id,employment_id),
- CHECK((decision='accepted')=(capture_id IS NOT NULL)),CHECK((decision='accepted')=(effective_at IS NOT NULL)),CHECK((decision='accepted')=(day_revision IS NOT NULL)),
+ CHECK((decision='accepted')=(correction_id IS NOT NULL)),CHECK((decision='accepted')=(punch_id IS NOT NULL)),
+ CHECK((decision='accepted')=(effective_at IS NOT NULL)),CHECK((decision='accepted')=(day_revision IS NOT NULL)),
  CHECK(effective_at IS NULL OR extract(epoch FROM effective_at)=trunc(extract(epoch FROM effective_at))),
- CONSTRAINT mobile_offline_claim_resolution_capture_uq UNIQUE(capture_id)
+ CONSTRAINT mobile_offline_claim_resolution_correction_uq UNIQUE(correction_id),CONSTRAINT mobile_offline_claim_resolution_punch_uq UNIQUE(punch_id)
 );
 CREATE INDEX mobile_offline_claim_resolution_subject_idx ON mobile_offline_claim_resolution(tenant_id,employment_id,resolved_at);
 ALTER TABLE mobile_offline_claim_resolution ENABLE ROW LEVEL SECURITY;
@@ -332,11 +336,12 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public AS $$
 $$;
 REVOKE ALL ON FUNCTION app.mobile_offline_claim_window(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.mobile_offline_claim_window(uuid) TO ai_hr_app;
--- Binds a resolution to its held claim and an accept to the capture the canonical writer made for that claim's
--- request: same tenant, employment and request, effective_at equal to the resolution's and inside the window rule,
--- a live mobile_offline punch linked, and no claim already holding that capture. Definer: the context is actor-only.
--- The claim's ordering trigger (mobile_offline_claim_ordered) is unchanged: it runs only when a claim row is inserted,
--- and a held claim was inserted with no capture; its capture is created later and linked here, never on the claim.
+-- Binds a resolution to its held claim, and an accept to the correction that recorded it: an approved clock-data
+-- correction of the claim's employment on the punch's day, whose submitted entries added that punch (an entry with
+-- no id at its time and direction), and a live 'admin' punch of that tenant and employment whose MYT wall time on its
+-- day is effective_at (on the next day for an overnight out filed to its shift's start day). effective_at follows the
+-- window rule. Definer: the context is actor-only. The claim's ordering trigger (mobile_offline_claim_ordered) is
+-- unchanged: it runs only when a claim row is inserted, and a resolution never writes the claim.
 CREATE FUNCTION app.mobile_offline_claim_resolution_bound() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
 DECLARE c public.mobile_offline_claim%ROWTYPE;x public.mobile_offline_context%ROWTYPE;
 BEGIN
@@ -346,25 +351,15 @@ BEGIN
  IF NEW.decision='accepted' THEN
   SELECT * INTO x FROM public.mobile_offline_context WHERE id=c.context_id;
   IF NOT FOUND OR c.effective_minimum IS NULL OR c.effective_minimum<x.issued_at OR NEW.effective_at<c.effective_minimum OR NEW.effective_at>least(c.effective_maximum,x.expires_at)
-  OR EXISTS(SELECT 1 FROM public.mobile_offline_claim o WHERE o.capture_id=NEW.capture_id)
-  OR NOT EXISTS(SELECT 1 FROM public.attendance_clock_capture a JOIN public.attendance_punch p ON p.clock_capture_id=a.id
-   WHERE a.id=NEW.capture_id AND a.tenant_id=c.tenant_id AND a.employment_id=c.employment_id AND a.request_id=c.request_id AND a.effective_at=NEW.effective_at
-   AND p.tenant_id=a.tenant_id AND p.employment_id=a.employment_id AND p.method::text='mobile_offline' AND p.voided_at IS NULL)
-  THEN RAISE EXCEPTION 'Offline claim resolution capture binding mismatch'; END IF;
+  OR NOT EXISTS(SELECT 1 FROM public.attendance_punch p JOIN public.attendance_correction r ON r.id=NEW.correction_id
+   WHERE p.id=NEW.punch_id AND p.tenant_id=c.tenant_id AND p.employment_id=c.employment_id AND p.method::text='admin' AND p.voided_at IS NULL AND p.clock_capture_id IS NULL
+   AND (NEW.effective_at AT TIME ZONE 'Asia/Kuala_Lumpur') IN (p.attendance_date+p.punch_at,(p.attendance_date+1)+p.punch_at)
+   AND r.tenant_id=c.tenant_id AND r.employment_id=c.employment_id AND r.attendance_date=p.attendance_date AND r.status::text='approved'
+   AND EXISTS(SELECT 1 FROM jsonb_array_elements(r.clock_changes->'entries') e WHERE e->'id' IS NULL AND e->>'punchAt'=p.punch_at::text AND e->>'direction'=p.direction::text))
+  THEN RAISE EXCEPTION 'Offline claim resolution correction binding mismatch'; END IF;
  END IF;
  RETURN NEW;
 END;
 $$;
 REVOKE ALL ON FUNCTION app.mobile_offline_claim_resolution_bound() FROM PUBLIC;
 CREATE TRIGGER mobile_offline_claim_resolution_bound BEFORE INSERT ON mobile_offline_claim_resolution FOR EACH ROW EXECUTE FUNCTION app.mobile_offline_claim_resolution_bound();
--- The capture of an HR-accepted held claim. The canonical offline writer inserts it under the resolver's session, which
--- 0500's own-person insert policy cannot admit. This permissive policy admits only an offline capture (effective_at
--- set) for the request of a held claim of that employment with no resolution yet, by a holder of correction authority
--- over it, at an instant inside that claim's proven interval; the resolution trigger above then binds the two in the
--- same transaction. Online captures, and every other writer of the table (header of this file), are unaffected.
-CREATE POLICY attendance_clock_capture_offline_resolution_insert ON attendance_clock_capture FOR INSERT WITH CHECK
- (tenant_id=app.current_tenant_id() AND effective_at IS NOT NULL AND app.can_correct_attendance(employment_id)
- AND EXISTS(SELECT 1 FROM mobile_offline_claim c WHERE c.tenant_id=attendance_clock_capture.tenant_id AND c.employment_id=attendance_clock_capture.employment_id
-  AND c.request_id=attendance_clock_capture.request_id AND c.outcome='needs_review'
-  AND attendance_clock_capture.effective_at BETWEEN c.effective_minimum AND c.effective_maximum
-  AND NOT EXISTS(SELECT 1 FROM mobile_offline_claim_resolution r WHERE r.claim_id=c.id)));

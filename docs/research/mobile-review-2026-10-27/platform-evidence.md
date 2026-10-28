@@ -2179,3 +2179,19 @@ for the resolver's canonical capture. `captureOfflineClockTx`/`planOfflineClockT
 New 0647 SHA-256 `30000abe0403786e704a575e02ddb990b421a46a472cb4e036e802effc4a86f1`; held 0636 is unchanged
 (`9063b27c0cc316b715d552561d636ffc6412e447ca9275758bf497870c995df7`) and the migration journal is unchanged.
 No route, screen or enabled company; vendor proofs remain synthetic and no device ran.
+
+### HR accept of a held offline claim through the correction rules (28 October 2026)
+
+UNVERIFIED pending a hosted run: no vitest, TypeScript, build or database command was run for this change
+(only `git diff --check`). Owner decision 2026-10-28: an HR accept inserts the punch at its effective time
+through the existing attendance-correction owner (`requestAttendanceCorrection`, which gains an optional
+caller transaction, then `decideAttendanceCorrection`), so later punches no longer block it and HR's reasoned
+decision overrides geofence, photo and device holds; payroll locks and correction permissions still apply and
+the day recomputes. The punch is method `admin` with no capture; the resolution row now links
+`correction_id` and `punch_id` (each unique) with `effective_at`, and its BEFORE INSERT trigger binds both.
+Removed: the resolver capture insert policy `attendance_clock_capture_offline_resolution_insert`, the
+resolution's `capture_id`, and the `resolution` subject of `captureOfflineClockTx`/`planOfflineClockTx`
+(`core/attendance-clock.ts` is back to its pre-resolution state). The draft worker restore no longer drops the
+policy and now checks the binding function is gone. New 0647 SHA-256 `bd89b2e0a3342e1f4d24bf0c7a4e79ab37ccc9718b9dad70c2c1bad57eb0f991`;
+held 0636 is unchanged (`9063b27c0cc316b715d552561d636ffc6412e447ca9275758bf497870c995df7`) and the migration
+journal is unchanged. Unmounted: no route, screen or enabled company; vendor proofs remain synthetic.

@@ -453,6 +453,12 @@ YET IMPLEMENTED: no code, policy or test enforces it yet.
    held claims was built with it. See "HR review and resolution of held claims" below.
 7. No self-removal (DECIDED, NOT YET IMPLEMENTED). Employees cannot remove their own offline
    punches. They must request a correction, the same as registered-device captures.
+8. HR accept is a punch correction (owner decision 28 October 2026; IMPLEMENTED, UNVERIFIED pending a
+   hosted run). When HR accepts a held claim, the punch is inserted at its effective time through the
+   existing attendance-correction rules, like any HR punch correction. Later punches do not block it.
+   HR's decision, with its reason, overrides the original hold (geofence, photo, device). Payroll locks
+   and correction permissions still apply, and the day recalculates. This replaces the earlier accept
+   through the live clock rules. See "HR review and resolution of held claims" below.
 
 ### Canonical offline attendance writer and provenance (28 October 2026)
 
@@ -562,56 +568,75 @@ UNMOUNTED: no route, screen or production caller, and it is not exported through
   photo or purged custody is a typed refusal.
 - Resolution table. `mobile_offline_claim_resolution` holds one immutable row per claim: decision
   `accepted` or `rejected`, a reason (1 to 500 characters), the resolver and time (stamped by the server),
-  an input digest for retry, and for an accept the capture, `effective_at` and `day_revision`. The day
-  revision is the correction model's baseline (`clockFingerprint` of the filed day's punches) the resolver
-  decided against. The claim row is never changed: it stays `needs_review` with no capture. The table has
+  an input digest for retry, and for an accept the correction (`correction_id`), its punch (`punch_id`),
+  `effective_at` and `day_revision`. Each correction and each punch is held by at most one resolution. The
+  day revision is the correction model's baseline (`clockFingerprint` of the filed day's punches) the
+  resolver decided against. The claim row is never changed: it stays `needs_review` with no capture. The table has
   GRANT SELECT and INSERT only, forced RLS and an immutable trigger on update and delete. Reads are for the
   claim's actor or correction rights. Inserts need correction rights, the session's own user as resolver,
   and a subject that is not the resolver's own employment (as 0533 refuses deciding one's own request).
-- Accept. Only a `needs_review` claim with a proven interval and no resolution can be resolved. The
-  resolver picks the instant. It must be a whole second inside the proven interval, cut at the context's
-  expiry, and the interval must not start before issuance. The rule is `offlineEffectiveInstant`, the
-  adjudicator's own, with no width limit, because choosing inside a wide interval is the decision under
-  review. The context window is read through `app.mobile_offline_claim_window`, a definer that returns only
-  those four instants to correction rights. Context rows stay actor-only. The punch is written by
-  `captureOfflineClockTx`, the canonical writer, with a new `resolution` subject. That subject swaps the
-  writer's own-employment check for correction authority and reads the claim actor's abandoned
-  submissions. Every other online rule still applies: ordering, geofence, photo setting, registered
-  device and corrected day. A refusal is `not_acceptable` with the writer's reason, and nothing is written.
-  Payroll is locked first through `lockAttendancePayrollTx`. Closed payroll raises the existing
-  `AttendancePayrollClosedError` ("Reopen the payroll") before any write. Processed payroll is marked for
-  recalculation through `markAttendancePayrollTx`. An unreleased overtime settlement is refused, an
-  inactive employment is refused, and a stale `expectedRevision` raises the existing
-  `ClockDataChangedError`. A still-retained photo is the evidence under review: the resolver must be able
-  to read it, so a group admin cannot accept such a claim. The canonical writer then applies the
-  employee's photo setting to it.
-- Linkage. 0500's insert policy on `attendance_clock_capture` admits only the employee's own person. A new
-  permissive policy, `attendance_clock_capture_offline_resolution_insert`, admits one capture for the
-  resolver: it must have `effective_at` set, belong to a held claim's request on that employment, fall
-  inside that claim's interval, and the claim must have no resolution yet. The resolution's BEFORE INSERT
-  trigger (definer) then binds the capture: same tenant, employment and request, equal `effective_at`
-  within the window rule, a live `mobile_offline` punch, and no claim holding it. The claim ordering
-  trigger needs no change, because it runs only when a claim is inserted and a held claim was inserted with
-  no capture. The punch guard needs no change, because a capture-linked `mobile_offline` punch is checked
-  against its capture for every role.
+- Accept (decision 8, 28 October 2026; IMPLEMENTED, UNVERIFIED). Only a `needs_review` claim with a
+  proven interval and no resolution can be resolved. The resolver picks the instant. It must be a whole
+  second inside the proven interval, cut at the context's expiry, and the interval must not start before
+  issuance. The rule is `offlineEffectiveInstant`, the adjudicator's own, with no width limit, because
+  choosing inside a wide interval is the decision under review. The context window is read through
+  `app.mobile_offline_claim_window`, a definer that returns only those four instants to correction rights.
+  Context rows stay actor-only. The attendance day is the canonical clock day rule
+  (`clockAttendanceDateTx`), and an employment inactive on that day is refused. The punch is then written
+  by the existing correction owner, in the same transaction, as any HR punch correction:
+  `requestAttendanceCorrection` (which now takes an optional caller transaction) files a clock-data
+  correction whose entries are the day's live punches unchanged plus one entry at the accepted instant,
+  against the baseline read under the subject lock, with the resolution's reason; then
+  `decideAttendanceCorrection` approves it (`expectedStageIndex` 0, as the HR day screen does). The live
+  clock rules do not run, so later punches, geofence, photo setting and registered device do not refuse
+  it. The correction rules do: clock-data editing needs `app.can_admin_employment`, the decision needs
+  the existing workflow authority, closed payroll raises `AttendancePayrollClosedError` ("Reopen the
+  payroll") before the correction is inserted, a stale `expectedRevision` or a changed day raises
+  `ClockDataChangedError`, a pending request for the day raises `AttendanceCorrectionPendingError`, and an
+  existing punch at the same time and direction is refused. Approval applies the punch set, recomputes
+  the day ("Corrected"), refreshes overtime and marks processed payroll for recalculation. If the day's
+  workflow needs a further approver the accept refuses with `correction_pending` and nothing is recorded:
+  the accept is one atomic decision. After the first write any throw also aborts the transaction, so a
+  caller that catches it cannot commit a partial correction. The previous `overtime_settled` and
+  `not_acceptable` refusals are gone with the live-rule path; the correction owner decides those days.
+  No photo is read or written by an accept, so a group admin may accept a claim whose photo it cannot
+  read; the photo stays in claim custody.
+- Provenance (decision 8). The punch is method `admin`, with no capture, exactly as a correction's punch.
+  `attendance_clock_capture.effective_at` stays the canonical offline writer's alone. The chain is claim,
+  then resolution (`effective_at`, `correction_id`, `punch_id`), then the approved correction and its
+  `attendance.punch.added` event naming that correction. The resolution's BEFORE INSERT trigger (definer)
+  binds an accept: an approved clock-data correction of the claim's employment on the punch's day, whose
+  submitted entries added that punch (an entry with no id at its time and direction), and a live `admin`
+  punch with no capture whose MYT wall time is `effective_at` (on the next day for an overnight out filed
+  to its shift's start day). Visible consequence: HR and the employee see the punch as an HR correction
+  ("Corrected", method admin), not as an offline clocking. The correction's reason is the HR resolution
+  reason, and attendance_correction's RLS (`app.can_see_employment`) lets the employee's session read that
+  row; which screens list it was not checked (UNKNOWN). The approved
+  correction then owns the day, as every punch correction does (r434): later clockings that day, online
+  or offline, are refused or held as `corrected_day` until HR corrects again. "Offline, accepted by HR" is
+  read through the resolution, not from the punch.
+- Linkage removed. The permissive capture insert policy `attendance_clock_capture_offline_resolution_insert`
+  and the `resolution` subject of `captureOfflineClockTx`/`planOfflineClockTx` are removed, restoring the
+  canonical writer's own-employment surface and 0500's insert policy as the only capture insert path for
+  the application role. The claim ordering trigger and the punch guard need no change: a correction's
+  `admin` punch with no capture already passes the guard for correction authority.
 - Reject records the resolution only. Every resolution appends `mobile.offline.claim.resolved` with the
   actor, reason and held-for reason. A retry with the same decision, instant and reason by the same
   resolver returns the recorded resolution, and any other input then conflicts.
-- Lock order. A resolution takes the subject advisory lock, then the attendance day row, its overtime
-  source and the payroll batches (by id) through `lockAttendancePayrollTx`, then the canonical writer
-  (which takes the same subject lock again and the held day row). This is the tail of the consumption
+- Lock order. A resolution takes the subject advisory lock, then the correction owner's own order: the
+  payroll batches (by id) when filing, then on approval the same subject lock again (re-entrant), the
+  correction row, its workflow, payroll and the attendance day row. This is the tail of the consumption
   order (actor admission, key, stream, subject, then payroll and attendance) with the first three locks
   left out. A resolution never asks for an actor, key or stream lock, so it cannot wait on one while
   holding the subject lock. Below the subject lock, both paths queue on the same per-employment lock.
 - Employee view. `ownOfflineClaimResolution` returns the actor's own claim outcome and its resolution
-  (decision, instant, capture, time). It leaves out the resolver, reason and baseline. It is a separate
+  (decision, instant, correction, punch, time). It leaves out the resolver, reason and baseline. It is a separate
   read, not a v1 receipt field.
-- RISK (owner decision needed before mounting). Accepting runs every canonical rule at the chosen instant,
-  including ordering after the employee's latest capture. Review usually happens after later clockings,
-  so a held claim often cannot be accepted once the employee has clocked again, and the refusal is
-  `not_acceptable` / `clock_conflict`. The same goes for geofence, photo and device holds unless the
-  setting has changed. Those cases are rejected or handled through the existing correction workflow. A
-  rule letting resolution override ordering or any other check is not built, because the owner has not
-  decided one.
-- New suite: `test/mobile-offline-claim-review.test.ts`. The draft worker restore drops the new table,
-  both functions and the capture policy, and checks each is gone.
+- Superseded RISK. The earlier accept ran every live clock rule at the chosen instant, so a claim
+  reviewed after later clockings, or held for geofence, photo or device, could not be accepted. Decision 8
+  (above) replaces that path. UNKNOWN: whether a multi-level attendance workflow should let an accept wait
+  for its further approvers instead of refusing with `correction_pending`; not decided.
+- New suite: `test/mobile-offline-claim-review.test.ts`, including an accept behind a later offline
+  clocking the live rules refuse, geofence and photo holds overridden, the day recomputed, the provenance
+  chain and its trigger binding. The draft worker restore drops the new table and both functions and
+  checks each is gone (the capture policy no longer exists).
