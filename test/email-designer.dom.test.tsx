@@ -5,10 +5,10 @@ import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 import {EmailDesigner} from '../app/admin/settings/email-templates/designer';
 import {sampleEmailSystem} from '../lib/email-design/catalogue';
-import {emailKinds,emailLocale,type EmailKind,type EmailLocale,defaultEmailDocument} from '../lib/email-design/model';
-const actions=vi.hoisted(()=>({saveEmailDesignAction:vi.fn(async(..._args:unknown[])=>1),loadEmailDesignHistoryAction:vi.fn(async()=>[]),uploadEmailDesignAssetAction:vi.fn(),sendEmailDesignTestAction:vi.fn(async()=>({sent:true}))}));
+import {emailKinds,emailLocale,type EmailKind,type EmailLocale,type EmailDocument,defaultEmailDocument} from '../lib/email-design/model';
+const actions=vi.hoisted(()=>({saveEmailDesignAction:vi.fn(async(..._args:unknown[])=>1),loadEmailDesignHistoryAction:vi.fn(async():Promise<{revision:number;document:EmailDocument|null;createdAt:string;createdBy:string|null}[]>=>[]),uploadEmailDesignAssetAction:vi.fn(),sendEmailDesignTestAction:vi.fn(async()=>({sent:true}))}));
 vi.mock('../app/admin/settings/email-templates/actions',()=>actions);
-afterEach(()=>{cleanup();vi.clearAllMocks();});
+afterEach(()=>{cleanup();vi.clearAllMocks();actions.loadEmailDesignHistoryAction.mockResolvedValue([]);});
 const sampleSystems=Object.fromEntries(emailKinds.map(kind=>[kind,Object.fromEntries(emailLocale.options.map(locale=>[locale,sampleEmailSystem(kind,locale)]))])) as Record<EmailKind,Record<EmailLocale,ReturnType<typeof sampleEmailSystem>>>;
 const setup=()=>render(<NextIntlClientProvider locale="en" messages={en}><EmailDesigner designs={[]} sampleSystems={sampleSystems}/></NextIntlClientProvider>);
 describe('email designer',()=>{
@@ -33,4 +33,13 @@ describe('email designer',()=>{
   fireEvent.change(screen.getByRole('combobox',{name:en.emailDesign.language}),{target:{value:'ms'}});
   expect(screen.queryByDisplayValue('Saved subject')).toBeNull();
  });
+ it('restores a historical system-default version as the default marker, not a custom copy',async()=>{
+  actions.loadEmailDesignHistoryAction.mockResolvedValue([{revision:1,document:null,createdAt:'2026-10-29T00:00:00Z',createdBy:'Fictional admin'}]);
+  setup();fireEvent.click(screen.getByRole('button',{name:en.emailDesign.history}));
+  fireEvent.click(await screen.findByRole('button',{name:en.emailDesign.restoreVersion}));
+  await waitFor(()=>expect(screen.getByRole<HTMLButtonElement>('button',{name:en.emailDesign.save}).disabled).toBe(false));
+  fireEvent.click(screen.getByRole('button',{name:en.emailDesign.save}));
+  await waitFor(()=>expect(actions.saveEmailDesignAction).toHaveBeenCalled());expect(actions.saveEmailDesignAction.mock.calls[0][2]).toBeNull();
+ });
+
 });

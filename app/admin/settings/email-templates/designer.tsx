@@ -57,10 +57,11 @@ export function EmailDesigner({ designs,sampleSystems }: {
     const [kind, setKind] = useState<EmailKind>('invitation'), [locale, setLocale] = useState<EmailLocale>('en');
     const [rows, setRows] = useState(designs), [doc, setDoc] = useState<EmailDocument>(() => designs.find(row => row.kind === 'invitation' && row.locale === 'en')?.document ?? defaultEmailDocument('invitation'));
     const [selected, setSelected] = useState(doc.blocks[0]?.id), [mobile, setMobile] = useState(false), [busy, setBusy] = useState(false), [dirty, setDirty] = useState(false), [message, setMessage] = useState('');
+    const [restoringDefault,setRestoringDefault]=useState(false);
     const [history, setHistory] = useState<Awaited<ReturnType<typeof loadEmailDesignHistoryAction>>>([]), [copyFrom, setCopyFrom] = useState('');
     useEffect(()=>{if(!dirty)return;const warn=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue='';};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);},[dirty]);
     const gate = useRef(false), current = rows.find(row => row.kind === kind && row.locale === locale), block = doc.blocks.find(value => value.id === selected);
-    const edit = (next: EmailDocument) => { setDoc(next); setDirty(true); setMessage(''); };
+    const edit = (next: EmailDocument) => { setRestoringDefault(false);setDoc(next); setDirty(true); setMessage(''); };
     const update = (next: EmailBlock) => edit({ ...doc, blocks: doc.blocks.map(value => value.id === next.id ? next : value) });
     const switchDesign = (nextKind: EmailKind, nextLocale: EmailLocale) => {
         if (dirty && !window.confirm(t('discard')))
@@ -71,7 +72,7 @@ export function EmailDesigner({ designs,sampleSystems }: {
         setDoc(value);
         setSelected(value.blocks[0]?.id);
         setHistory([]);
-        setDirty(false);
+        setDirty(false);setRestoringDefault(false);
         setMessage('');
     };
     async function perform(work: () => Promise<void>) { if (gate.current)
@@ -87,14 +88,15 @@ export function EmailDesigner({ designs,sampleSystems }: {
     } }
     async function save(reset = false) {
         await perform(async () => {
-            const parsed = reset ? null : emailDocument.parse(doc), revision = await saveEmailDesignAction(kind, locale, parsed, current?.revision ?? 0);
+            const restoreSystem=reset||restoringDefault;
+            const parsed = restoreSystem ? null : emailDocument.parse(doc), revision = await saveEmailDesignAction(kind, locale, parsed, current?.revision ?? 0);
             setRows(previous => [...previous.filter(row => row.kind !== kind || row.locale !== locale), { kind, locale, revision, document: parsed, updatedAt: new Date().toISOString(), updatedBy: '' }]);
-            if (reset) {
+            if (restoreSystem) {
                 const value = defaultEmailDocument(kind);
                 setDoc(value);
                 setSelected(value.blocks[0].id);
             }
-            setDirty(false);
+            setDirty(false);setRestoringDefault(false);
             setHistory([]);
             setMessage(t('saved'));
         });
@@ -121,7 +123,7 @@ export function EmailDesigner({ designs,sampleSystems }: {
         void save(true); }}>{t('restoreDefault')}</Button><Button type="button" variant="outline" onClick={() => setMobile(value => !value)}>{t(mobile ? 'desktop' : 'mobile')}</Button><Button type="button" variant="outline" disabled={busy} onClick={() => perform(async () => setHistory(await loadEmailDesignHistoryAction(kind, locale)))}>{t('history')}</Button>{dirty && <span className="text-sm text-amber-700">{t('unsaved')}</span>}</div>
   {message && <p role="status" className="rounded-md border p-3 text-sm">{message}</p>}
   {!preview && <p role="alert" className="text-sm text-destructive">{t('invalid')}</p>}
-  {history.length > 0 && <Card className="p-4"><h2 className="font-semibold">{t('history')}</h2><ul className="divide-y">{history.map(row => <li key={row.revision} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm"><span>{t('revision', { revision: row.revision })} · {row.createdAt} · {row.createdBy}</span><Button type="button" variant="outline" onClick={() => { const value = row.document ?? defaultEmailDocument(kind); edit(value); setSelected(value.blocks[0].id); }}>{t('restoreVersion')}</Button></li>)}</ul></Card>}
+  {history.length > 0 && <Card className="p-4"><h2 className="font-semibold">{t('history')}</h2><ul className="divide-y">{history.map(row => <li key={row.revision} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm"><span>{t('revision', { revision: row.revision })} · {row.createdAt} · {row.createdBy}</span><Button type="button" variant="outline" onClick={() => { const value = row.document ?? defaultEmailDocument(kind); edit(value);setRestoringDefault(row.document===null); setSelected(value.blocks[0].id); }}>{t('restoreVersion')}</Button></li>)}</ul></Card>}
   <div className="grid items-start gap-5 xl:grid-cols-[240px_minmax(320px,1fr)_300px]">
    <Card className="space-y-3 p-4"><h2 className="font-semibold">{t('blocks')}</h2><p className="text-xs text-muted-foreground">{t('reorderHelp')}</p><fieldset disabled={busy} className="grid gap-2">{blockTypes.map(type => <Button key={type} type="button" variant="outline" onClick={() => { const value = newBlock(type); edit({ ...doc, blocks: [...doc.blocks, value] }); setSelected(value.id); }}>{t(`blocksNames.${type}`)}</Button>)}</fieldset><Field label={t('reuse')}><select className={inputCls} value={copyFrom} onChange={event => setCopyFrom(event.target.value)}><option value="">{t('choose')}</option>{rows.filter(row => row.document).map(row => <option key={row.kind + row.locale} value={row.kind + ':' + row.locale}>{t(`kinds.${row.kind.replace('.', '_')}`)} · {t(`languages.${row.locale}`)}</option>)}</select></Field><Button type="button" variant="outline" disabled={!copyFrom || busy} onClick={() => { const source = rows.find(row => row.kind + ':' + row.locale === copyFrom)?.document; if (source) {
         const value = { ...source, kind, blocks: source.blocks.map(block => ({ ...block, id: crypto.randomUUID() })) };
