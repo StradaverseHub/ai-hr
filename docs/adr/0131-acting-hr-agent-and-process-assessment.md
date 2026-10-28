@@ -3084,3 +3084,9 @@ refused.
 
 **Language.** Assistant answers are canonical cards rendered in the viewer's current locale; model prose
 is audit-only, so switching language re-renders past answers.
+
+## Amendment, 2026-10-28: Phase 2 design moved to ADR-0151
+
+The owner lifted the Phase 2 hold for design only. [ADR-0151](0151-orchestrator-action-layer-and-system-learning.md)
+proposes the registry, user-parity rule, inline confirmation, agent principal and system-learning loop. Until the
+owner accepts it, implementation of Phases 2–4 remains held as recorded above.
