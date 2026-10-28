@@ -312,7 +312,7 @@ describe('signed clock transport and operation ownership',()=>{
 });
 
 describe('offline clocking transport',()=>{
-  const id='11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa',issuer={keyId:'a'.repeat(64),publicKey:'A'.repeat(43),validFrom:1,validUntil:2,revoked:false};
+  const id='11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
   it('reports no HTTP response as the connectivity signal and keeps every HTTP outage a plain UnavailableError',async()=>{
     const f=clientFixture();f.response.mockRejectedValueOnce(new TypeError('Network request failed'));
     const offline=await f.api.apiGet('v2/integrity/ios/offline/capabilities',{employmentId:id}).catch((error:unknown)=>error);
@@ -329,8 +329,10 @@ describe('offline clocking transport',()=>{
   });
   it.each(['ios','android'] as const)('uses the exact %s offline URLs, JSON bodies and validated results',async platform=>{
     const f=clientFixture(),base='/api/mobile/v2/integrity/'+platform+'/offline/';
-    f.response.mockResolvedValueOnce(Response.json({outcome:'offline',enabled:true,apiOrigin:'https://hr.example.com',companyId:id,issuers:[issuer],windowMs:86400000,permitCount:8}));
-    expect(await f.api.apiGet('v2/integrity/'+platform+'/offline/capabilities',{employmentId:id})).toMatchObject({outcome:'offline',companyId:id});
+    // Keyless (owner decision D16): capabilities carry no issuer registry.
+    const capabilities={outcome:'offline',enabled:true,apiOrigin:'https://hr.example.com',companyId:id,windowMs:86400000,permitCount:8};
+    f.response.mockResolvedValueOnce(Response.json(capabilities));
+    expect(await f.api.apiGet('v2/integrity/'+platform+'/offline/capabilities',{employmentId:id})).toEqual(capabilities);
     expect(new URL(f.response.mock.calls[0][0]).pathname).toBe(base+'capabilities');
     f.response.mockResolvedValueOnce(Response.json({outcome:'refused',code:'online_pending'}));
     const request={requestId:id,requestNonce:'A'.repeat(43),appInstallationId:id,keyId:id};

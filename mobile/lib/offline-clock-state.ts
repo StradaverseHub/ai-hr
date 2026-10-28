@@ -1,6 +1,6 @@
 /** App-local context exchange state under the installed-account proof owner. Never transport it. */
 import {z} from 'zod';
-import {OfflineClockContextBinding,OfflineClockContextEnvelope,OFFLINE_CLOCK_CONTEXT_MAX_BYTES,parseOfflineClockContext} from '../../lib/mobile-offline-context';
+import {OfflineClockContextBinding,OFFLINE_CLOCK_CONTEXT_MAX_BYTES,parseOfflineClockContextJson} from '../../lib/mobile-offline-context';
 import {OfflineClockClaimData,OfflineClockAppleAssertion,OfflineClockAndroidSignature,type OfflineClockElapsed,OFFLINE_CLOCK_CONTEXT_CLAIM_LIMIT} from '../../lib/mobile-offline-clock';
 import {OfflineClockReceipt} from '../../lib/mobile-offline-receipt';
 import {elapsedFromServerExchange} from './clock-elapsed';
@@ -58,7 +58,8 @@ export const OfflineClockExchange=z.discriminatedUnion('phase',[
 ]);
 export type OfflineClockExchange=z.infer<typeof OfflineClockExchange>;
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
-/** Structural validation is local storage integrity, never signature verification/attendance authority. */
+/** Structural validation is local storage integrity, never context verification/attendance authority. rawContext is the
+ * exact canonical context JSON the server handed out (D16: unsigned; the server's record is the authority). */
 export function validateOfflineClockExchange(input:unknown,scope:EnrollmentScope):OfflineClockExchange{
  const value=OfflineClockExchange.parse(input),{binding,key,requestStarted}=value,s=binding.scope;
  if(s.apiOrigin!==scope.apiOrigin||s.actorId!==scope.actorId||s.appInstallationId!==scope.appInstallationId||
@@ -69,10 +70,7 @@ export function validateOfflineClockExchange(input:unknown,scope:EnrollmentScope
  if(value.phase!=='context_requested'){
   if(new TextEncoder().encode(value.rawContext).byteLength>OFFLINE_CLOCK_CONTEXT_MAX_BYTES)throw new Error('Invalid offline context size');
   if(value.responseReceived.source!==source)throw new Error('Invalid offline clock source');
-  const raw:unknown=JSON.parse(value.rawContext);
-  if(!raw||typeof raw!=='object')throw new Error('Invalid offline context');
-  parseOfflineClockContext(Reflect.get(raw,'context'));
-  const {context}=OfflineClockContextEnvelope.parse(raw);
+  const context=parseOfflineClockContextJson(value.rawContext);
   if(!same(context.scope,s)||!same(context.target,binding.target)||context.requestId!==binding.request.requestId||context.requestNonce!==binding.request.requestNonce)throw new Error('Invalid offline context binding');
   const seen=new Set<string>();let proofPrefixReady=true,receiptPrefix=true,undeliverableSeen=false;
   for(const [index,entry] of value.claims.entries()){

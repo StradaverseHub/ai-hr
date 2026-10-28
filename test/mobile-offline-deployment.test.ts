@@ -1,13 +1,13 @@
 /** The mounted offline sync route files reach the deployed operations: real getMobileSession wrapper (session mocked),
- * env deployment, draft 0647, signatures, the production snapshot port, adjudicator and canonical writer, and on Android
- * the deployed service-account provider and Play decode over a stubbed global fetch. Without AIHR_MOBILE_OFFLINE_POLICY
- * every mounted route answers not_configured. Synthetic: enrollment proof, issuer key, RSA credential, vendor HTTP. */
+ * env deployment, draft 0647, hardware-key claim proofs, the production snapshot port, adjudicator and canonical writer, and
+ * on Android the deployed service-account provider and Play decode over a stubbed global fetch. Without
+ * AIHR_MOBILE_OFFLINE_POLICY every mounted route answers not_configured. Keyless (owner decision D16): no context-signing
+ * key is configured anywhere. Synthetic: enrollment proof, RSA credential, vendor HTTP. */
 import {createHash,generateKeyPairSync,randomBytes,randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {SessionContext} from '../db/client';
 import * as S from '../db/schema';
-import {offlineContextIssuerIdentity} from '../lib/mobile-api/offline-context-signature';
 import {offlineClockClaimClientData} from '../lib/mobile-offline-clock';
 import {setAttendancePolicy} from '../packs/attendance/service';
 import {GET as iosCapabilities} from '../app/api/mobile/v2/integrity/ios/offline/capabilities/route';
@@ -41,13 +41,10 @@ beforeAll(async()=>{restoreCustody=await installCustodyDraftForWorker();restore=
 beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','synthetic-offline-mounted-fixture-secret-2026');for(const name of ENV)vi.stubEnv(name,'');fetchStub.mockClear();decode=()=>new Response(null,{status:400});vi.stubGlobal('fetch',fetchStub);await resetDb();base=await seedBase();});
 afterAll(async()=>{try{await resetDb();await restore?.();await restoreCustody?.();}finally{vi.unstubAllEnvs();vi.unstubAllGlobals();await closeAll();}});
 function configure(actorId:string){
- const {privateKey}=generateKeyPairSync('ed25519'),identity=offlineContextIssuerIdentity(privateKey),issuer={...identity,validFrom:Date.now()-86400000,validUntil:Date.now()+7*86400000,revoked:false};
  vi.stubEnv('AIHR_MOBILE_CLOCK_POLICY',JSON.stringify({version:1,entries:[{tenantId:base.tenantId,companyId:base.companyId,actorIds:[actorId],legacySelfService:'allow_unverified',
   platforms:{ios:{configuration:ios},android:{configuration:{settings:android,policy:androidPolicy},cloudProjectNumber:'123456789'}}}]}));
- vi.stubEnv('AIHR_MOBILE_OFFLINE_POLICY',JSON.stringify({version:1,mode:'active',signingKeyId:issuer.keyId,issuers:[issuer],windowMs:86400000,permitCount:2,maximumIssuesPerHour:4,
+ vi.stubEnv('AIHR_MOBILE_OFFLINE_POLICY',JSON.stringify({version:1,mode:'active',windowMs:86400000,permitCount:2,maximumIssuesPerHour:4,
   photoRetentionMs:2592000000,entries:[{tenantId:base.tenantId,companyId:base.companyId,actorIds:[actorId]}]}));
- vi.stubEnv('AIHR_MOBILE_OFFLINE_SIGNING_KEY',privateKey.export({type:'pkcs8',format:'pem'}).toString());
- return issuer;
 }
 async function offlineOn(){
  await setAttendancePolicy(adminCtx(base),{companyId:base.companyId,workStart:'09:00',workEnd:'18:00',breakMinutes:60,lateAfter:'09:15',halfDayBefore:'13:00',workingDays:[1,2,3,4,5]});
@@ -83,13 +80,15 @@ describe.each(['ios','android'] as const)('%s mounted offline sync routes',platf
  });
  it('reach the deployed operations: issue, capabilities, a processed claim, its replay and close',async()=>{
   await offlineOn();if(platform==='android')vi.stubEnv('AIHR_MOBILE_GOOGLE_SERVICE_ACCOUNT',credential);
-  let issuer:ReturnType<typeof configure>|undefined;
   const f=await offlineServiceFixture(base,platform,{issue:async(ctx,input)=>{
-   caller=ctx;issuer=configure(ctx.userId!);if(platform==='android')vi.stubEnv('AIHR_MOBILE_GOOGLE_SERVICE_ACCOUNT',credential);
+   caller=ctx;configure(ctx.userId!);if(platform==='android')vi.stubEnv('AIHR_MOBILE_GOOGLE_SERVICE_ACCOUNT',credential);
    const r=await call(platform,'context',input.employmentId,input.request);if(r.body.outcome!=='issued')throw new Error('Not issued: '+JSON.stringify(r.body));return {raw:r.body.context};
   }});
-  expect((await call(platform,'capabilities',f.e.employmentId)).body).toEqual({outcome:'offline',enabled:true,apiOrigin,companyId:base.companyId,issuers:[issuer],windowMs:86400000,permitCount:2});
+  expect((await call(platform,'capabilities',f.e.employmentId)).body).toEqual({outcome:'offline',enabled:true,apiOrigin,companyId:base.companyId,windowMs:86400000,permitCount:2});
   expect(f.context.target.platform).toBe(platform);expect(f.context.permits).toHaveLength(2);
+  // The route handed out exactly the recorded canonical bytes; no key was ever configured, and a retired key variable is not read.
+  expect((await owner.db.select().from(S.mobileOfflineContext).where(eq(S.mobileOfflineContext.id,f.context.id)))[0].contextJson).toBe(f.raw);
+  vi.stubEnv('AIHR_MOBILE_OFFLINE_SIGNING_KEY','not a key');
   const signed=f.signed();await settled(f.context);
   if(platform==='android'){
    const signature=(signed.proof as unknown as {signature:string}).signature;

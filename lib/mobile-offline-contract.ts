@@ -1,10 +1,10 @@
 /** Offline clock sync transport v1 (ADR-0088): wire shapes only, shared with the native client, so no Node API here.
- * A capability, a signed context, a closure or a receipt never authorizes attendance by itself; the issuance, claim and
+ * A capability, an issued context, a closure or a receipt never authorizes attendance by itself; the issuance, claim and
  * close services and the deterministic adjudicator decide. Byte bounds are engineering admission limits, enforced on
  * the stream before parsing (lib/mobile-api/body.ts), not HR policy. Routes (all bearer-session, ?employmentId=):
  *   GET  /api/mobile/v2/integrity/{ios|android}/offline/capabilities  -> OfflineCapabilitiesResult
  *   POST /api/mobile/v2/integrity/{ios|android}/offline/context       JSON OfflineContextIssueRequest -> OfflineContextResult
- *        (re-posting the same request is the refresh: the exact original signed bytes come back)
+ *        (re-posting the same request is the refresh: the exact original recorded bytes come back)
  *   POST /api/mobile/v2/integrity/{ios|android}/offline/context/close JSON OfflineContextCloseRequest -> OfflineCloseResult
  *   POST /api/mobile/v2/integrity/{ios|android}/offline/claim         multipart `claim` (+ `photo`; Android `playIntegrityToken`,
  *        `syncBuildVersion`) -> OfflineClaimResult
@@ -14,7 +14,7 @@
 import {z} from 'zod';
 import {AppleEnrollmentSettings} from './mobile-key-enrollment';
 import {AndroidClockOpaqueToken} from './mobile-android-clock-policy';
-import {OfflineClockContextIssuer,OfflineClockContextRequest,OFFLINE_CLOCK_CONTEXT_MAX_BYTES,OFFLINE_CLOCK_MAX_WINDOW_MS} from './mobile-offline-context';
+import {OfflineClockContextRequest,OFFLINE_CLOCK_CONTEXT_MAX_BYTES,OFFLINE_CLOCK_MAX_WINDOW_MS} from './mobile-offline-context';
 import {OfflineClockSignedClaim,OFFLINE_CLOCK_CONTEXT_CLAIM_LIMIT} from './mobile-offline-clock';
 import {OfflineClockReceipt} from './mobile-offline-receipt';
 const uuid=z.string().uuid().transform(value=>value.toLowerCase());
@@ -43,12 +43,13 @@ export const OfflineUnavailable=z.object({outcome:z.literal('unavailable'),code:
  integrityReason:OfflineSyncIntegrityUnavailable.optional()});
 const result=<S extends z.ZodType>(success:S)=>z.union([success,OfflineRefused,OfflineUnavailable]);
 /** enabled: new issuance is open (deployment active). false while draining: close and claim upload stay available.
- * issuers: the deployment's trusted context-signing registry (public keys), for verifying signed contexts.
+ * No issuer registry (owner decision D16, keyless): a context is checked against the server's own record at claim time.
  * companyId: the selected employment's own company (the same owner the deployment lookup used), which the phone
  * binds into the context request scope; additive, a scope fact the session can already read, never an authorization. */
 export const OfflineCapabilitiesResult=result(z.object({outcome:z.literal('offline'),enabled:z.boolean(),apiOrigin:AppleEnrollmentSettings.shape.apiOrigin,companyId:uuid,
- issuers:z.array(OfflineClockContextIssuer).min(1).max(16),windowMs:z.number().int().min(60000).max(OFFLINE_CLOCK_MAX_WINDOW_MS),permitCount:z.number().int().min(1).max(OFFLINE_CLOCK_CONTEXT_CLAIM_LIMIT)}));
-/** context: the exact signed envelope JSON (OfflineClockContextEnvelope); verify it against `issuers` before use. */
+ windowMs:z.number().int().min(60000).max(OFFLINE_CLOCK_MAX_WINDOW_MS),permitCount:z.number().int().min(1).max(OFFLINE_CLOCK_CONTEXT_CLAIM_LIMIT)}));
+/** context: the exact canonical context JSON the server recorded (parseOfflineClockContextJson). Unsigned by design (D16):
+ * the phone checks it is well-formed and bound to its own request/scope/target; the server's record decides the claim. */
 export const OfflineContextResult=result(z.object({outcome:z.literal('issued'),context:z.string().min(2).max(OFFLINE_CLOCK_CONTEXT_MAX_BYTES),contextId:uuid,authorization:z.literal('not_granted')}));
 export const OfflineCloseResult=result(z.object({outcome:z.literal('closed'),contextId:uuid,reason:z.enum(['exhausted','retired','revoked']),closeRequestId:uuid,
  consumedThrough:z.number().int().min(0).max(OFFLINE_CLOCK_CONTEXT_CLAIM_LIMIT),closedAt:instant}));

@@ -27,7 +27,7 @@ const configurationUnavailable={outcome:'unavailable',code:'configuration_unavai
 const field=(value:unknown,...path:string[])=>path.reduce<unknown>((at,key)=>at&&typeof at==='object'?Reflect.get(at,key):undefined,value);
 /** The ONE snapshot port, built per request from the resolved deployment: window, permit count and app target have a
  * single owner (this deployment and its clock rollout entry), and issuance and the adjudicator take the same function,
- * so an unchanged world signs and compares identical values. Policy, sites and attendance are the snapshot owner's. */
+ * so an unchanged world records and compares identical values. Policy, sites and attendance are the snapshot owner's. */
 const deploymentSnapshot=(d:MobileOfflineDeployment):Snapshot=>offlineClockSnapshotPort({target:d.target,windowMs:d.windowMs,permitCount:d.permitCount});
 /** Server-owned Google credentials and transport, never selected by request fields (the online signed-clock shape). */
 export type OfflineAndroidPlayAssembly={accessToken:PlayAccessTokenProvider|null;transport?:typeof fetch;timeoutMs?:number;assertCurrent?:()=>void};
@@ -80,18 +80,17 @@ export function createDeployedOfflineClockOperations(platform:Platform,options:D
    const {d,companyId}=found;if(!playReady())return configurationUnavailable;
    const company=await withAttendanceTenant(ctx,tx=>readOfflineClockingPolicyTx(tx,companyId));
    if(!company.enabled)return {outcome:'refused',code:'offline_disabled'} as const;
-   return {outcome:'offline',enabled:d.mode==='active',apiOrigin:d.apiOrigin,companyId,issuers:d.issuers.map(issuer=>({...issuer})),windowMs:d.windowMs,permitCount:d.permitCount} as const;
+   return {outcome:'offline',enabled:d.mode==='active',apiOrigin:d.apiOrigin,companyId,windowMs:d.windowMs,permitCount:d.permitCount} as const;
   }),
-  /** Issue, or the exact recovery of an earlier request (the refresh). */
+  /** Issue, or the exact recovery of an earlier request (the refresh). Keyless (D16): recovery needs no key in either mode,
+   * so a drained deployment still returns the recorded bytes and the phone can learn its context id and close it. */
   issue:(ctx:SessionContext,raw:unknown)=>run(async()=>{
    if(!isMobileOfflineDeploymentPresent())return notConfigured;
    const found=await forEmployment(ctx,field(raw,'employmentId'));if(!found)return notConfigured;
    const {d}=found;if(!playReady())return configurationUnavailable;
-   // Drain without a configured key cannot even recover an exact earlier response; with one, recovery proceeds and
-   // new issuance is refused before any snapshot read or budget charge (and again by the commit guard).
-   if(!d.signing)return {outcome:'unavailable',code:'draining'} as const;
+   // Drain: recovery proceeds; new issuance is refused before any snapshot read or budget charge (and again by the commit guard).
    const snapshot:Snapshot=d.mode==='active'?deploymentSnapshot(d):async()=>{throw new OfflineIssuanceDrainingError();};
-   const service=createOfflineContextIssueService({apiOrigin:d.apiOrigin,issuer:d.signing.issuer,privateKey:d.signing.privateKey,maximumIssuesPerHour:d.maximumIssuesPerHour},
+   const service=createOfflineContextIssueService({apiOrigin:d.apiOrigin,maximumIssuesPerHour:d.maximumIssuesPerHour},
     {snapshot,beforeCommit:(tx,current,checked)=>assertOfflineIssueCommit(tx,current,d,checked)});
    const issued=await service.issue(ctx,raw);
    return {outcome:'issued',context:issued.raw,contextId:issued.contextId,authorization:issued.authorization} as const;

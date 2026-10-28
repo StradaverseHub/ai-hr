@@ -41,7 +41,7 @@ const reasons:Record<string,MessageKey>={
  location_required:'offlineReasonLocation',poor_accuracy:'offlineReasonLocation',outside_geofence:'offlineReasonOutsideSite',
  mock_reported:'offlineReasonLocationSource',simulated_reported:'offlineReasonLocationSource',accessory_reported:'offlineReasonLocationSource',
  photo_required:'offlineReasonPhoto',photo_invalid:'offlineReasonPhoto',device_required:'offlineReasonDevice',review_required:'offlineReasonReview',
- offline_disabled:'offlineReasonDisabled',employment_inactive:'offlineReasonInactive',request_conflict:'offlineReasonDuplicate',issuer_unavailable:'offlineReasonPassCheck',
+ offline_disabled:'offlineReasonDisabled',employment_inactive:'offlineReasonInactive',request_conflict:'offlineReasonDuplicate',
  key_unavailable:'offlineReasonKey',context_closed:'offlineReasonPassEnded',context_unavailable:'offlineReasonPassEnded',
  binding_conflict:'offlineReasonNotVerified',invalid_proof:'offlineReasonNotVerified',invalid_claim:'offlineReasonNotVerified',bad_request:'offlineReasonNotVerified',
  attachment_mismatch:'offlineReasonPhotoMismatch',earlier_undeliverable:'offlineReasonEarlier',

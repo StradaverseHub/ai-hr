@@ -1,7 +1,7 @@
-/** Offline sync engine (owner decisions 1-7, 2026-10-28): the shipped journal with real context signatures, the shipped
+/** Offline sync engine (owner decisions 1-7, 2026-10-28): the shipped journal with the keyless context check (D16), the shipped
  * driver (offline-sync.ts), ports (offline-clock-ports.ts) and anchor (offline-anchor.ts) executed through the VM with
  * synthetic OS, storage and server. A synthetic server is not the real claim service: no attendance acceptance is shown. */
-import {createHash,generateKeyPairSync,randomBytes,randomUUID} from 'node:crypto';
+import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 import {transpileModule,ModuleKind} from 'typescript';
@@ -13,19 +13,23 @@ import * as errors from '../mobile/lib/errors';
 import * as hashModule from '../mobile/lib/offline-sync-hash';
 import {NativeCapabilities} from '../mobile/lib/integrity-bridge';
 import {offlineClockPhotoReference} from '../mobile/lib/offline-clock-state';
-import {offlineContextIssuerIdentity,signOfflineClockContext,verifyOfflineClockContextSignature} from '../lib/mobile-api/offline-context-signature';
 import {offlineSyncRequestHash} from '../lib/mobile-api/offline-sync-integrity';
 import * as offlineContract from '../lib/mobile-offline-contract';
 import * as offlineClock from '../lib/mobile-offline-clock';
 import * as keyEnrollment from '../lib/mobile-key-enrollment';
 import * as offlineContext from '../lib/mobile-offline-context';
-import type {OfflineClockContextBinding,OfflineClockContextData} from '../lib/mobile-offline-context';
+import type {OfflineClockContextBinding,OfflineClockContextData,OfflineClockContextVerificationResult} from '../lib/mobile-offline-context';
 import type {OfflineClockSignedClaim} from '../lib/mobile-offline-clock';
 
 const id=(n:number)=>String(n).padStart(8,'0')+'-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const apiOrigin='https://hr.example.com',issuedAt=1793055753390,employmentId=id(7);
 type Answer={outcome:'refused'|'unavailable';code:string;integrityReason?:string};
 class ServerAnswer extends Error{constructor(readonly answer:Answer){super('Offline context not issued');}}
+/** The phone's keyless check (mobile/lib/offline-context.ts) with Node SHA-256: shape and binding, then the claim digest. */
+async function keylessCheck(raw:string,expected:OfflineClockContextBinding):Promise<OfflineClockContextVerificationResult>{
+ const checked=offlineContext.bindOfflineClockContext(raw,expected);
+ return checked.outcome==='bound'?{outcome:'context_valid',context:checked.context,digest:createHash('sha256').update(checked.canonical,'utf8').digest('hex'),authorization:'not_granted'}:checked;
+}
 function compile<T>(path:string,modules:Record<string,unknown>,globals:Record<string,unknown>={}):T{
  const output={exports:{}};
  runInNewContext(transpileModule(readFileSync(path,'utf8'),{compilerOptions:{module:ModuleKind.CommonJS}}).outputText,{exports:output.exports,module:output,...globals,
@@ -41,23 +45,21 @@ type Receipt=Record<string,unknown>;
 
 /** Synthetic server: exact recovery by request id, strict chain order, auto-close after the last permit, exact close retry. */
 function makeServer(permits:number){
- const pair=generateKeyPairSync('ed25519'),identity=offlineContextIssuerIdentity(pair.privateKey);
- const issuer={...identity,validFrom:issuedAt-1,validUntil:issuedAt+86400000,revoked:false};
  type Stream={raw:string;context:OfflineClockContextData;next:number;closed:null|{requestId:string;consumedThrough:number}};
  const streams=new Map<string,Stream>(),receipts=new Map<string,Receipt>(),calls:{op:string;body:string}[]=[];
- const s={issuer,streams,receipts,calls,outcomes:new Map<string,'accepted'|'needs_review'|'refused'>(),issueAnswer:null as Answer|null,
+ const s={streams,receipts,calls,outcomes:new Map<string,'accepted'|'needs_review'|'refused'>(),issueAnswer:null as Answer|null,
   uploadScript:[] as Array<(signed:OfflineClockSignedClaim,entry:{digest:string})=>unknown>,closeScript:[] as Array<(request:{contextId:string;closeRequestId:string;consumedThrough:number})=>unknown>,
-  caps:{outcome:'offline',enabled:true,apiOrigin,companyId:id(5),issuers:[issuer],windowMs:86400000,permitCount:permits} as Record<string,unknown>,
+  caps:{outcome:'offline',enabled:true,apiOrigin,companyId:id(5),windowMs:86400000,permitCount:permits} as Record<string,unknown>,
   stream:(contextId:string)=>[...streams.values()].find(value=>value.context.id===contextId),
   issue(binding:OfflineClockContextBinding){
    calls.push({op:'context',body:JSON.stringify(binding.request)});if(s.issueAnswer)throw new ServerAnswer(s.issueAnswer);
    const existing=streams.get(binding.request.requestId);if(existing)return existing.raw;
-   const context:OfflineClockContextData={version:1,purpose:'attendance.clock.offline.context',issuer:{algorithm:'ed25519',keyId:identity.keyId},id:randomUUID(),requestId:binding.request.requestId,
+   const context:OfflineClockContextData={version:1,purpose:'attendance.clock.offline.context',id:randomUUID(),requestId:binding.request.requestId,
     requestNonce:binding.request.requestNonce,scope:binding.scope,target:binding.target,issuedAt,expiresAt:issuedAt+3600000,
     policy:{revision:'a'.repeat(64),offlineEnabled:true,windowMs:86400000,geofencingRequired:false,maximumAccuracyM:null,photoRequirement:'optional'},sites:[],
     attendance:{baseline:'b'.repeat(64),date:'2026-10-27',clockedIn:false,openSince:null},
     permits:Array.from({length:permits},(_,index)=>({id:randomUUID(),ordinal:index+1,nonce:randomBytes(32).toString('base64url')}))};
-   const raw=signOfflineClockContext(context,pair.privateKey);streams.set(binding.request.requestId,{raw,context,next:1,closed:null});return raw;
+   const raw=offlineContext.offlineClockContextJson(context);streams.set(binding.request.requestId,{raw,context,next:1,closed:null});return raw;
   },
   upload(signed:OfflineClockSignedClaim,entry:{digest:string}){
    calls.push({op:'claim',body:JSON.stringify(signed)});const scripted=s.uploadScript.shift();if(scripted)return scripted(signed,entry);
@@ -114,7 +116,7 @@ function world(options:{platform?:'ios'|'android';permits?:number;build?:boolean
    begin:vi.fn(async()=>({})),sign:vi.fn(async()=>({status:'unavailable' as const,reason:'unavailable' as const})),play:vi.fn(async()=>({status:'unavailable' as const,reason:'unavailable' as const})),
    complete:vi.fn(async()=>({})),receipt:vi.fn(async()=>({})),abandon:vi.fn(async()=>({})),resolveBase:vi.fn(async()=>{}),
    offline:{snapshot:()=>({status:'evidence',evidence:snap(),verification:'not_verified'}),request:vi.fn(async binding=>offline(()=>server.issue(binding))),
-    verify:vi.fn(async(raw,expected)=>verifyOfflineClockContextSignature(raw,[server.issuer],expected.scope)),
+    verify:vi.fn(async(raw,expected)=>keylessCheck(raw,expected)),
     signing:{inspect:vi.fn(async()=>({status:'evidence' as const,evidence:{state:'absent' as const},verification:'not_verified' as const})),sign:vi.fn(async()=>({status:'evidence' as const,evidence:proof,verification:'not_verified' as const})),
      release:vi.fn(async()=>({status:'evidence' as const,evidence:null,verification:'not_verified' as const})),verifyPhoto:vi.fn(async()=>{})},
     capture:{capabilities:()=>({status:'evidence',evidence:NativeCapabilities.parse(capability),verification:'not_verified'}),digest:async canonical=>createHash('sha256').update(canonical).digest('hex'),
@@ -288,7 +290,7 @@ describe('claim upload response mapping (journal)',()=>{
  it('uploads only a durable, natively released proof, one claim per call, lowest first',async()=>{
   const w=world();await w.ready();w.net.offline=true;
   const snapshot=w.a.c.offline.snapshot();if(snapshot.status!=='evidence')throw new Error('no snapshot');
-  await w.a.journal.captureOffline({requestId:id(20),expectedContextId:JSON.parse(w.exchange().rawContext).context.id,claimedAt:issuedAt,eventSnapshot:snapshot.evidence});w.net.offline=false;
+  await w.a.journal.captureOffline({requestId:id(20),expectedContextId:JSON.parse(w.exchange().rawContext).id,claimedAt:issuedAt,eventSnapshot:snapshot.evidence});w.net.offline=false;
   expect(await w.a.journal.uploadNextOffline()).toEqual({status:'not_signed',requestId:id(20)});expect(w.uploads()).toEqual([]);
  });
 });
@@ -415,7 +417,7 @@ describe('restart safety: a crash at every commit point converges with identical
 
 describe('expiry (decision 7)',()=>{
  it('blocks capture once the proven elapsed lower bound reaches the window; unknown continuity is allowed',async()=>{
-  const w=world();await w.ready();const exchange=w.exchange(),contextId=JSON.parse(exchange.rawContext).context.id;
+  const w=world();await w.ready();const exchange=w.exchange(),contextId=JSON.parse(exchange.rawContext).id;
   const start=BigInt(exchange.responseReceived.elapsedAfterNs)+BigInt(3600000)*BigInt(1000000);
   const expired={...exchange.responseReceived,elapsedBeforeNs:String(start),elapsedAfterNs:String(start+BigInt(1))};
   await expect(w.a.journal.captureOffline({requestId:id(20),expectedContextId:contextId,claimedAt:issuedAt,eventSnapshot:expired})).rejects.toMatchObject({reason:'expired'});
@@ -448,19 +450,20 @@ describe('live offline ports (offline-clock-ports.ts)',()=>{
  }
  function ports(platform:'ios'|'android'){
   const apiPost=vi.fn(async(_path:string,_body:unknown,_params:unknown,_operation:unknown)=>({outcome:'processed'}));
-  const apiGet=vi.fn(async(_path:string,_params:unknown):Promise<Record<string,unknown>>=>({outcome:'offline',enabled:true,apiOrigin,companyId:id(5),issuers:[],windowMs:86400000,permitCount:8}));
+  const apiGet=vi.fn(async(_path:string,_params:unknown):Promise<Record<string,unknown>>=>({outcome:'offline',enabled:true,apiOrigin,companyId:id(5),windowMs:86400000,permitCount:8}));
   const native={capabilities:vi.fn(()=>({status:'evidence',evidence:{version:1,platform,appId:'ai.hr',appVersion:'1',buildVersion:'4',keyMechanism:platform==='ios'?'apple_app_attest':'android_keystore'},verification:'not_verified'})),
    clockSnapshot:vi.fn(),preparePlayIntegrity:vi.fn(async(_project:string)=>({status:'evidence',evidence:null,verification:'not_verified'})),
    requestPlayIntegrity:vi.fn(async(_hash:string)=>({status:'evidence',evidence:'fresh-token',verification:'not_verified'}))};
-  const registry={anchoredIdentity:vi.fn(),readIssuerRegistry:vi.fn(async()=>null),writeIssuerRegistry:vi.fn(async()=>{})};
+  // D16: the ports read no issuer registry; the anchor module supplies only the cold-start identity.
+  const registry={anchoredIdentity:vi.fn()},verifier=vi.fn(async(..._args:unknown[])=>({outcome:'invalid',reason:'malformed'}));
   const module=compile<{createOfflineClockPorts:(deps:unknown)=>NonNullable<SignedClockPorts['offline']>;readOfflineCapabilities:(deps:unknown)=>Promise<unknown>}>('mobile/lib/offline-clock-ports.ts',{
    'expo-crypto':{CryptoDigestAlgorithm:{SHA256:'sha256'},CryptoEncoding:{HEX:'hex'},digest:async(_:string,bytes:Uint8Array)=>Uint8Array.from(createHash('sha256').update(bytes).digest()).buffer,
     digestStringAsync:async(_:string,value:string)=>createHash('sha256').update(value).digest('hex')},
-   './api':{apiGet,apiPost},'../../lib/mobile-offline-contract':offlineContract,'../../lib/mobile-offline-clock':offlineClock,'./offline-context':{verifyNativeOfflineClockContext:vi.fn()},
+   './api':{apiGet,apiPost},'../../lib/mobile-offline-contract':offlineContract,'../../lib/mobile-offline-clock':offlineClock,'./offline-context':{verifyNativeOfflineClockContext:verifier},
    './offline-clock-signing':{createOfflineClockSigner:()=>({})},'./offline-anchor':registry,'./offline-sync-hash':hashModule,'./signed-clock-journal':journalModule},{FormData:Form});
   const photos={read:vi.fn(async()=>Uint8Array.from([1,2,3])),retain:vi.fn(),remove:vi.fn(async()=>{})};
   const deps={platform,employmentId,namespace:'company',apiOrigin,check:()=>{},operation:{assertCurrent(){}},isForeground:()=>true,native,photos,basePhoto:vi.fn(),resolveBase:vi.fn(),cloudProject:vi.fn(async()=>'123456789')};
-  return {module,live:module.createOfflineClockPorts(deps),apiPost,apiGet,native,photos,registry,deps};
+  return {module,live:module.createOfflineClockPorts(deps),apiPost,apiGet,native,photos,registry,verifier,deps};
  }
  it('Android: a fresh payload-bound Play token per attempt, bound to the digest, the original signature and the running build',async()=>{
   const {signed,entry}=await signedClaim('android'),p=ports('android');
@@ -485,15 +488,16 @@ describe('live offline ports (offline-clock-ports.ts)',()=>{
   await expect(p.live.sync!.upload(signed,{requestId:id(20),digest:entry.digest})).rejects.toBeInstanceOf(SignedClockConflict);
   expect(p.apiPost).not.toHaveBeenCalled();expect(p.native.requestPlayIntegrity).not.toHaveBeenCalled();
  });
- it('close sends the exact JSON request; photo deletion goes to the guarded store; the issuer cache follows each capabilities read',async()=>{
+ it('close sends the exact JSON request; photo deletion goes to the guarded store; capabilities cache nothing; verify is the keyless check alone',async()=>{
   const p=ports('ios'),request={contextId:id(1),closeRequestId:id(2),consumedThrough:0};
   await p.live.sync!.close(request);expect(p.apiPost).toHaveBeenCalledWith('v2/integrity/ios/offline/context/close',request,{employmentId},expect.anything());
   await p.live.sync!.deletePhoto(id(20));expect(p.photos.remove).toHaveBeenCalledWith(id(20));
-  await p.module.readOfflineCapabilities(p.deps);expect(p.registry.writeIssuerRegistry).toHaveBeenCalledWith({namespace:'company',apiOrigin,platform:'ios',issuers:[]},expect.any(Function));
-  p.apiGet.mockResolvedValueOnce({outcome:'offline',enabled:true,apiOrigin:'https://other.example.com',companyId:id(5),issuers:[],windowMs:86400000,permitCount:8});
-  p.apiGet.mockResolvedValueOnce({outcome:'unavailable',code:'not_configured'});
-  await p.module.readOfflineCapabilities(p.deps);await p.module.readOfflineCapabilities(p.deps);expect(p.registry.writeIssuerRegistry).toHaveBeenCalledOnce();
-  await expect(p.live.verify('{}',{} as OfflineClockContextBinding)).rejects.toMatchObject({reason:'configuration'});
+  expect(await p.module.readOfflineCapabilities(p.deps)).toEqual({outcome:'offline',enabled:true,apiOrigin,companyId:id(5),windowMs:86400000,permitCount:8});
+  expect(p.apiGet).toHaveBeenCalledWith('v2/integrity/ios/offline/capabilities',{employmentId});
+  // The context check receives only the raw text, the connection owner's binding and its ownership check: no registry or key.
+  const binding={scope:{employmentId}} as unknown as OfflineClockContextBinding;
+  expect(await p.live.verify('{}',binding)).toEqual({outcome:'invalid',reason:'malformed'});expect(p.verifier).toHaveBeenCalledWith('{}',binding,p.deps.check);
+  expect(p.verifier.mock.calls[0]).toHaveLength(3);
  });
  it('a context request answered without issuing raises the server answer for the driver',async()=>{
   const p=ports('ios');p.apiPost.mockResolvedValueOnce({outcome:'refused',code:'online_pending'} as never);
@@ -508,8 +512,8 @@ describe('device-only identity anchor (offline-anchor.ts)',()=>{
   const storage={readSealedDeviceRecord:vi.fn(async(name:string)=>records.get(name)??null),writeSealedDeviceRecord:vi.fn(async(name:string,value:unknown)=>{records.set(name,structuredClone(value));}),
    deleteSealedDeviceRecord:vi.fn((name:string)=>{records.delete(name);})};
   const module=compile<{readOfflineAnchor(check:()=>void):Promise<unknown>;writeOfflineAnchor(anchor:unknown,check:()=>void):Promise<void>;clearOfflineAnchor(expected:unknown,check:()=>void):Promise<void>;
-   endOfflineAnchor():void;anchoredIdentity(error:unknown,expected:unknown,check:()=>void):Promise<unknown>;readIssuerRegistry(expected:unknown,check:()=>void):Promise<unknown>;writeIssuerRegistry(value:unknown,check:()=>void):Promise<void>}>(
-   'mobile/lib/offline-anchor.ts',{zod:{z},'../../lib/mobile-key-enrollment':keyEnrollment,'../../lib/mobile-offline-context':offlineContext,'./config':{offlineClockingBuild:build},'./errors':errors,'./submission-native':storage});
+   endOfflineAnchor():void;anchoredIdentity(error:unknown,expected:unknown,check:()=>void):Promise<unknown>}>(
+   'mobile/lib/offline-anchor.ts',{zod:{z},'../../lib/mobile-key-enrollment':keyEnrollment,'./config':{offlineClockingBuild:build},'./errors':errors,'./submission-native':storage});
   return {module,records,storage};
  }
  const anchor={version:1,namespace:'company',apiOrigin,actorId:id(6),employmentId,companyId:id(5),platform:'ios'};
@@ -524,7 +528,8 @@ describe('device-only identity anchor (offline-anchor.ts)',()=>{
   const a=anchorModule();await a.module.writeOfflineAnchor(anchor,()=>{});a.module.endOfflineAnchor();
   expect(a.storage.deleteSealedDeviceRecord).toHaveBeenCalledWith('offline-anchor');
   expect(await a.module.anchoredIdentity(new errors.NetworkUnavailableError(),expected,()=>{})).toBeNull();
-  expect(a.storage.deleteSealedDeviceRecord).not.toHaveBeenCalledWith('offline-issuers');
+  // The only device record left after D16 is the anchor itself (no issuer-registry cache exists).
+  expect(a.storage.deleteSealedDeviceRecord.mock.calls).toEqual([['offline-anchor']]);
  });
  it('clears only its own actor\'s anchor; an unreadable record is absent; the switch off reads nothing',async()=>{
   const a=anchorModule();await a.module.writeOfflineAnchor(anchor,()=>{});
@@ -534,12 +539,11 @@ describe('device-only identity anchor (offline-anchor.ts)',()=>{
   const off=anchorModule(false);off.records.set('offline-anchor',anchor);expect(await off.module.readOfflineAnchor(()=>{})).toBeNull();
   expect(await off.module.anchoredIdentity(new errors.NetworkUnavailableError(),expected,()=>{})).toBeNull();
  });
- it('serves the cached issuer registry only for the same namespace, origin and platform',async()=>{
-  const a=anchorModule(),issuer={keyId:'a'.repeat(64),publicKey:'A'.repeat(43),validFrom:1,validUntil:2,revoked:false};
-  await a.module.writeIssuerRegistry({namespace:'company',apiOrigin,platform:'ios',issuers:[issuer]},()=>{});
-  expect(await a.module.readIssuerRegistry({namespace:'company',apiOrigin,platform:'ios'},()=>{})).toEqual([issuer]);
-  expect(await a.module.readIssuerRegistry({namespace:'company',apiOrigin,platform:'android'},()=>{})).toBeNull();
-  expect(await a.module.readIssuerRegistry({namespace:'company',apiOrigin:'https://other.example.com',platform:'ios'},()=>{})).toBeNull();
+ it('writes and reads only the anchor record: the issuer-registry cache is gone (owner decision D16)',async()=>{
+  const a=anchorModule();await a.module.writeOfflineAnchor(anchor,()=>{});
+  expect(a.storage.writeSealedDeviceRecord.mock.calls.map(call=>call[0])).toEqual(['offline-anchor']);
+  expect(new Set(a.storage.readSealedDeviceRecord.mock.calls.map(call=>call[0]))).toEqual(new Set(['offline-anchor']));
+  expect(Object.keys(a.module).sort()).toEqual(['OfflineAnchor','anchoredIdentity','clearOfflineAnchor','endOfflineAnchor','readOfflineAnchor','writeOfflineAnchor']);
  });
 });
 

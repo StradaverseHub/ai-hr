@@ -1,6 +1,6 @@
 /** Own retirement of an offline context: real SQL/RLS/locks/0647 triggers, real issuance and consumption owners.
  * Vendor preparation and adjudication policy are synthetic (review only), so no attendance fact is involved. */
-import {generateKeyPairSync,randomBytes,randomUUID} from 'node:crypto';
+import {randomBytes,randomUUID} from 'node:crypto';
 import {eq} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import * as S from '../db/schema';
@@ -9,7 +9,6 @@ import {closeOwnOfflineContext,createOfflineContextIssueService} from '../core/m
 import {createOfflineClaimService,type OfflineClaimPorts} from '../core/mobile-offline-claim';
 import {createAppleClockAssertionService} from '../core/mobile-apple-clock-assertion';
 import {assertNoOfflineClockLeaseTx} from '../core/mobile-offline-lease';
-import {offlineContextIssuerIdentity} from '../lib/mobile-api/offline-context-signature';
 import {closeAll,owner,resetDb,seedBase,type Base} from './harness';
 import {offlineServiceFixture} from './helpers/mobile-offline-service-fixture';
 import {installCustodyDraftForWorker} from './helpers/mobile-custody-draft';
@@ -72,8 +71,8 @@ describe('own offline context retirement',()=>{
   await closeOwnOfflineContext(f.ctx,{contextId:f.context.id,closeRequestId:randomUUID(),consumedThrough:0});
   await withTenant(f.ctx,tx=>assertNoOfflineClockLeaseTx(tx,f.ctx,f.key.appInstallationId,f.key.id));
   // A new stream can be issued on the same key, and it holds the lease again until it too is retired.
-  const pair=generateKeyPairSync('ed25519'),identity=offlineContextIssuerIdentity(pair.privateKey);
-  const service=createOfflineContextIssueService({apiOrigin:apple.apiOrigin,privateKey:pair.privateKey,issuer:{...identity,validFrom:Date.now()-60000,validUntil:Date.now()+86400000,revoked:false},maximumIssuesPerHour:4},
+  // Keyless (D16): the issuance service takes no key material.
+  const service=createOfflineContextIssueService({apiOrigin:apple.apiOrigin,maximumIssuesPerHour:4},
    {snapshot:async()=>({policy:f.context.policy,sites:f.context.sites,attendance:f.context.attendance,target:f.context.target,permitCount:2}),beforeCommit:async()=>{}});
   const request={requestId:randomUUID(),requestNonce:randomBytes(32).toString('base64url'),appInstallationId:f.key.appInstallationId,keyId:f.key.id};
   const next=await service.issue(f.ctx,{employmentId:f.e.employmentId,request});expect(next.outcome).toBe('issued');

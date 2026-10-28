@@ -8,7 +8,7 @@ import {AndroidPlayCloudProject} from '../../lib/mobile-android-clock-policy';
 import {EnrollmentScope} from './enrollment-journal';
 import {ClockSigningKey} from './clock-signing-key';
 import {NativeCapabilities,NativeClockSnapshot,AppleOfflineProofSnapshot,type NativeIntegrityResult} from './integrity-bridge';
-import {OfflineClockContextBinding,OfflineClockContextData,offlineClockContextClientData,type OfflineClockContextVerificationResult} from '../../lib/mobile-offline-context';
+import {OfflineClockContextBinding,OfflineClockContextData,offlineClockContextClientData,parseOfflineClockContextJson,type OfflineClockContextVerificationResult} from '../../lib/mobile-offline-context';
 import {OfflineClockClaimData,OfflineClockAppleAssertion,OfflineClockAndroidSignature,OfflineClockSignedClaim,offlineClockClaimClientData} from '../../lib/mobile-offline-clock';
 import {OfflineClockReceipt} from '../../lib/mobile-offline-receipt';
 import {OfflineClaimResult,OfflineCloseResult,type OfflineSyncIntegrityRefusal} from '../../lib/mobile-offline-contract';
@@ -151,7 +151,7 @@ export function createSignedClockJournal(rawScope:EnrollmentScope,ports:SignedCl
  function localSnapshot(){const result=offlinePorts().snapshot();ports.assertCurrent();if(result.status!=='evidence')throw new SignedClockUnavailable(result.status==='unsupported'?'unsupported':'native_unavailable');return NativeClockSnapshot.parse(result.evidence);}
  async function verifyOffline(raw:string,binding:OfflineClockContextBinding){
   const result=await owned(()=>offlinePorts().verify(raw,structuredClone(binding)));
-  if(result.outcome!=='signature_valid'||result.authorization!=='not_granted'||!sha.safeParse(result.digest).success)throw new SignedClockUnavailable('configuration');
+  if(result.outcome!=='context_valid'||result.authorization!=='not_granted'||!sha.safeParse(result.digest).success)throw new SignedClockUnavailable('configuration');
   return {...result,context:OfflineClockContextData.parse(result.context)};
  }
  async function verifyCapturedDigests(p:Extract<OfflineClockExchange,{phase:'context_ready'}>){
@@ -176,7 +176,7 @@ export function createSignedClockJournal(rawScope:EnrollmentScope,ports:SignedCl
  }
  type Ready=Exclude<OfflineClockExchange,{phase:'context_requested'}>;
  function syncPorts(){const value=offlinePorts().sync;if(!value)throw new SignedClockUnavailable('configuration');return value;}
- const contextOf=(p:Ready)=>OfflineClockContextData.parse((JSON.parse(p.rawContext) as {context:unknown}).context);
+ const contextOf=(p:Ready)=>parseOfflineClockContextJson(p.rawContext);
  const allReceived=(p:Ready)=>p.claims.length>0&&p.claims.length===contextOf(p).permits.length&&p.claims.every(entry=>offlineReceiptHeld(entry.phase));
  function withClaim(p:Ready,index:number,entry:OfflineClockCapturedClaim):Ready{return {...p,claims:p.claims.map((value,at)=>at===index?entry:value)};}
  /** C6 -> C7: the receipt is committed before the photo is deleted; a restart deletes again (idempotent), then commits C7. */
@@ -325,7 +325,7 @@ export function createSignedClockJournal(rawScope:EnrollmentScope,ports:SignedCl
   signOffline:(requestId:string,expectedContextId:string)=>exclusive(queue,async():Promise<OfflineSignResult>=>{
    const id=uuid.parse(requestId),contextId=uuid.parse(expectedContextId);let s=await read();const initial=s.offline,signer=signingPorts();
    if(!initial||initial.phase!=='context_ready'||s.pending)throw new SignedClockConflict();
-   const context=OfflineClockContextData.parse((JSON.parse(initial.rawContext) as {context:unknown}).context);
+   const context=parseOfflineClockContextJson(initial.rawContext);
    if(context.id!==contextId)throw new SignedClockConflict();
    const index=initial.claims.findIndex(entry=>entry.claim.command.requestId===id);if(index<0)throw new SignedClockConflict();
    if(initial.claims.slice(0,index).some(entry=>!offlineProofHeld(entry.phase)||!entry.nativeReleased))return {status:'pending',requestId:id,reason:'earlier_claim'};
@@ -366,8 +366,7 @@ export function createSignedClockJournal(rawScope:EnrollmentScope,ports:SignedCl
   captureOffline:(input:unknown)=>exclusive(queue,async()=>{
    const request=OfflineClockCaptureInput.parse(input);let s=await read();const p=s.offline;capturePorts();
    if(!p||p.phase!=='context_ready'||s.pending)throw new SignedClockConflict();
-   const rawContext=(JSON.parse(p.rawContext) as {context:unknown}).context;
-   const context=OfflineClockContextData.parse(rawContext);
+   const context=parseOfflineClockContextJson(p.rawContext);
    if(context.id!==request.expectedContextId)throw new SignedClockConflict();
    await verifyCapturedDigests(p);
    const existing=p.claims.findIndex(entry=>entry.claim.command.requestId===request.requestId);
@@ -413,14 +412,13 @@ export function createSignedClockJournal(rawScope:EnrollmentScope,ports:SignedCl
    if(p.phase==='closing')return status(s,p.binding.scope.employmentId);
    if(p.phase==='context_ready'){
     const verified=await verifyOffline(p.rawContext,p.binding);
-    if(verified.digest!==p.digest||offlineClockContextClientData(verified.context)!==offlineClockContextClientData((JSON.parse(p.rawContext) as {context:unknown}).context))throw new SignedClockConflict();
+    if(verified.digest!==p.digest||offlineClockContextClientData(verified.context)!==offlineClockContextClientData(parseOfflineClockContextJson(p.rawContext)))throw new SignedClockConflict();
     return status(s,p.binding.scope.employmentId);
    }
    const raw=await owned(()=>offlinePorts().request(structuredClone(p.binding))),responseReceived=localSnapshot();
    const verified=await verifyOffline(raw,p.binding);
    const next=validateOfflineClockExchange({...p,phase:'context_ready',rawContext:raw,digest:verified.digest,responseReceived},scope);
-   const parsed=JSON.parse(raw) as {context:unknown};
-   if(offlineClockContextClientData(verified.context)!==offlineClockContextClientData(parsed.context))throw new SignedClockConflict();
+   if(offlineClockContextClientData(verified.context)!==offlineClockContextClientData(parseOfflineClockContextJson(raw)))throw new SignedClockConflict();
    return status(await saveOffline(s,next),p.binding.scope.employmentId);
   }),
   status:(employmentId:string)=>exclusive(queue,async()=>status(await read(),uuid.parse(employmentId))),

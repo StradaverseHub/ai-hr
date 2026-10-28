@@ -1,15 +1,15 @@
-/** Transactional preissued context/permit owner. No route activation or attendance adjudication. */
+/** Transactional preissued context/permit owner. No route activation or attendance adjudication. Keyless (owner decision
+ * D16, 29 October 2026): the server signs nothing and needs no key or secret here. The issued record (exact canonical
+ * context JSON, its digest and the permit inventory) is the authority claims are checked against. */
 import 'server-only';
-import {createHash,KeyObject,randomBytes,randomUUID} from 'node:crypto';
+import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {and,eq,gt,isNull,sql} from 'drizzle-orm';
 import {z} from 'zod';
 import type {SessionContext,Tx} from '../db/client';
 import {mobileIntegrityChallenge,mobileIntegrityKey,mobileOfflineContext,mobileOfflinePermit} from '../db/schema';
 import {actorOf,appendEvent} from '../db/events';
-import {encryptSecret,decryptSecret,isSecretStorable} from '../lib/ai/crypto';
 import {AppleEnrollmentSettings} from '../lib/mobile-key-enrollment';
-import {OfflineClockContextData,OfflineClockContextEnvelope,OfflineClockContextIssuer,OfflineClockContextRequest,OFFLINE_CLOCK_CONTEXT_MAX_BYTES,offlineClockContextClientData} from '../lib/mobile-offline-context';
-import {offlineContextIssuerIdentity,signOfflineClockContext} from '../lib/mobile-api/offline-context-signature';
+import {OfflineClockContextData,OfflineClockContextRequest,offlineClockContextClientData,offlineClockContextJson,parseOfflineClockContextJson} from '../lib/mobile-offline-context';
 import {RequestBudgetExceeded} from '../lib/request-budget';
 import {withAttendanceTenant} from './module-gate';
 import {ownIntegrityEnrollmentCompanyTx} from './mobile-integrity-key';
@@ -33,25 +33,23 @@ export type OfflineContextIssuePorts={
  /** Trusted current policy/site/attendance and key-configuration owner; no network/nested tx. */
  snapshot(tx:Tx,ctx:SessionContext,subject:{employmentId:string;companyId:string;key:Readonly<KeyRow>}):Promise<unknown>;
  /** Mandatory deployment/current-key eligibility check, including same-transaction revalidation.
-  * Recover mode preserves historical signed bytes through ordinary issuer/policy rotation. */
+  * Recover mode preserves the exact recorded bytes through ordinary policy/deployment changes. */
  beforeCommit(tx:Tx,ctx:SessionContext,checked:{context:OfflineClockContextData;key:Readonly<KeyRow>;mode:'issue'|'recover'}):Promise<void>;
 };
 const hash=(value:string)=>createHash('sha256').update(value,'utf8').digest('hex');
-const aad=(row:Pick<IssuedOfflineContextRow,'tenantId'|'actorId'|'id'|'requestId'>)=>JSON.stringify(['mobile-offline-context',1,row.tenantId,row.actorId,row.id,row.requestId]);
 const unavailable=()=>new OfflineContextIssueError('configuration_unavailable');
 async function stamp(tx:Tx){
  const [row]=await tx.execute(sql`select clock_timestamp() stamp`),value=row?.stamp,date=value instanceof Date?value:new Date(String(value));
  if(!Number.isFinite(date.getTime()))throw new OfflineContextIssueError('time_unavailable');return date;
 }
-/** The caller must first load this own issued row under the appropriate stream/key locks. AES-GCM
- * and immutable record checks bind recovery to original issuance, including after signer rotation.
- * This is not an HTTP-supplied context verifier and grants no authority to a submitted envelope. */
+/** The caller must first load this own issued row under the appropriate stream/key locks. The server's own record is the
+ * authority (D16): the stored text must be the canonical context JSON, its digest must equal the recorded digest, and every
+ * bound column and the actual permit inventory must agree, else configuration_unavailable. No key, secret or signature is
+ * involved. This is not an HTTP-supplied context verifier and grants no authority to a submitted context. */
 export async function readIssuedOfflineContextTx(tx:Tx,row:IssuedOfflineContextRow,apiOrigin:string){
  try{
-  if(!isSecretStorable())throw unavailable();
-  const raw=decryptSecret(row.contextCiphertext,aad(row));if(Buffer.byteLength(raw,'utf8')>OFFLINE_CLOCK_CONTEXT_MAX_BYTES)throw unavailable();
-  const {context}=OfflineClockContextEnvelope.parse(JSON.parse(raw)),s=context.scope,digest=hash(offlineClockContextClientData(context));
-  if(context.id!==row.id||context.requestId!==row.requestId||context.requestNonce!==row.requestNonce||digest!==row.contextDigest||context.issuer.keyId!==row.issuerKeyId||
+  const raw=row.contextJson,context=parseOfflineClockContextJson(raw),s=context.scope,digest=hash(offlineClockContextClientData(context));
+  if(context.id!==row.id||context.requestId!==row.requestId||context.requestNonce!==row.requestNonce||digest!==row.contextDigest||
    context.policy.revision!==row.policyRevision||context.issuedAt!==row.issuedAt.getTime()||context.expiresAt!==row.expiresAt.getTime()||context.permits.length!==row.permitCount||
    s.apiOrigin!==apiOrigin||s.tenantId!==row.tenantId||s.actorId!==row.actorId||s.employmentId!==row.employmentId||s.companyId!==row.companyId||s.deviceKeyId!==row.deviceKeyId||s.installationId!==row.installationId||s.appInstallationId!==row.appInstallationId)throw unavailable();
   const permits=await tx.select().from(mobileOfflinePermit).where(eq(mobileOfflinePermit.contextId,row.id)).orderBy(mobileOfflinePermit.ordinal);
@@ -59,15 +57,12 @@ export async function readIssuedOfflineContextTx(tx:Tx,row:IssuedOfflineContextR
   return {raw,context,digest};
  }catch(error){if(error instanceof OfflineContextIssueError)throw error;throw unavailable();}
 }
-/** Config/private material and both policy ports are server-owned. Required admission cap is an
- * engineering request budget, not an attendance rule. There is deliberately no default policy,
- * issuer/private-key loader or mounted offline endpoint in this service. */
+/** Config and both policy ports are server-owned. Required admission cap is an engineering request budget, not an
+ * attendance rule. There is deliberately no default policy, key material or mounted offline endpoint in this service. */
 export function createOfflineContextIssueService(settings:unknown,ports:OfflineContextIssuePorts){
- const Config=z.object({apiOrigin:AppleEnrollmentSettings.shape.apiOrigin,issuer:OfflineClockContextIssuer,
-  privateKey:z.custom<KeyObject>(value=>value instanceof KeyObject),maximumIssuesPerHour:z.number().int().min(1).max(24)}).strict();
+ const Config=z.object({apiOrigin:AppleEnrollmentSettings.shape.apiOrigin,maximumIssuesPerHour:z.number().int().min(1).max(24)}).strict();
  const parsed=Config.safeParse(settings);if(!parsed.success||typeof ports?.snapshot!=='function'||typeof ports.beforeCommit!=='function')throw unavailable();
  const config=parsed.data;
- try{const identity=offlineContextIssuerIdentity(config.privateKey);if(identity.keyId!==config.issuer.keyId||identity.publicKey!==config.issuer.publicKey)throw unavailable();}catch{throw unavailable();}
  async function own(tx:Tx,ctx:SessionContext,employmentId:string){
   const companyId=await ownIntegrityEnrollmentCompanyTx(tx,ctx,employmentId);if(!companyId)throw unavailable();return companyId;
  }
@@ -83,13 +78,13 @@ export function createOfflineContextIssueService(settings:unknown,ports:OfflineC
   await key(tx,ctx,input);
   const [current]=await tx.select().from(mobileOfflineContext).where(eq(mobileOfflineContext.id,context.id)).limit(1).for('update');
   if(!current||current.closedAt)throw new OfflineContextIssueError('context_closed');
-  if(current.contextDigest!==hash(offlineClockContextClientData(context)))throw unavailable();
-  if(!isSecretStorable())throw unavailable();
+  // The record still holds exactly these canonical bytes and their digest (what the phone receives is what was recorded).
+  if(current.contextDigest!==hash(offlineClockContextClientData(context))||current.contextJson!==offlineClockContextJson(context))throw unavailable();
   const now=await stamp(tx);if(now.getTime()<context.issuedAt||mode==='issue'&&now.getTime()>=context.expiresAt)throw new OfflineContextIssueError('time_unavailable');
  }
  return {
   async issue(ctx:SessionContext,raw:unknown):Promise<{outcome:'issued';raw:string;contextId:string;authorization:'not_granted'}>{
-   const input=Input.parse(raw);if(!isSecretStorable())throw unavailable();
+   const input=Input.parse(raw);
    return withAttendanceTenant(ctx,async tx=>{
     await own(tx,ctx,input.employmentId);
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':mobile-integrity:'+ctx.userId},0))`);
@@ -116,21 +111,23 @@ export function createOfflineContextIssueService(settings:unknown,ports:OfflineC
     if(await requireRegisteredDeviceTx(tx,input.employmentId))throw new OfflineContextIssueError('device_required');
     const p=snapshot.data;
     if(p.target.platform!==enrolled.platform||p.target.appId!==enrolled.appId||p.target.environment!==enrolled.environment)throw new OfflineContextIssueError('key_unavailable');
-    const minted=await stamp(tx),issuedAt=minted.getTime(),expiresAt=Math.min(issuedAt+p.policy.windowMs,config.issuer.validUntil);
-    if(config.issuer.revoked||issuedAt<config.issuer.validFrom||expiresAt<=issuedAt)throw unavailable();
+    const minted=await stamp(tx),issuedAt=minted.getTime(),expiresAt=issuedAt+p.policy.windowMs;
     const [budget]=await tx.execute(sql`select app.consume_request_budget(${hash(JSON.stringify(['mobile-offline-context-issue',ctx.tenantId,ctx.userId]))},${config.maximumIssuesPerHour},3600) retry_after`),retry=Number(budget?.retry_after);
     if(budget?.retry_after==null||!Number.isFinite(retry)||retry<0)throw unavailable();if(retry>0)throw new RequestBudgetExceeded(Math.max(1,Math.ceil(retry)));
-    const checkedContext=OfflineClockContextData.safeParse({version:1,purpose:'attendance.clock.offline.context',issuer:{algorithm:'ed25519',keyId:config.issuer.keyId},id:randomUUID(),requestId:input.request.requestId,requestNonce:input.request.requestNonce,
+    const checkedContext=OfflineClockContextData.safeParse({version:1,purpose:'attendance.clock.offline.context',id:randomUUID(),requestId:input.request.requestId,requestNonce:input.request.requestNonce,
      scope:{apiOrigin:config.apiOrigin,installationId:enrolled.installationId,tenantId:ctx.tenantId,companyId,actorId:ctx.userId,employmentId:input.employmentId,appInstallationId:input.request.appInstallationId,deviceKeyId:enrolled.id},target:p.target,
      issuedAt,expiresAt,policy:p.policy,sites:p.sites,attendance:p.attendance,permits:Array.from({length:p.permitCount},(_,index)=>({id:randomUUID(),ordinal:index+1,nonce:randomBytes(32).toString('base64url')}))});
     if(!checkedContext.success)throw unavailable();const context=checkedContext.data;
-    const signed=signOfflineClockContext(context,config.privateKey),digest=hash(offlineClockContextClientData(context));
+    // The exact bytes handed out are the bytes recorded (plaintext: identifiers, instants, nonces, policy facts and the
+    // company's own site configuration, each already stored unencrypted elsewhere; see the D16 storage finding).
+    let issued:string;try{issued=offlineClockContextJson(context);}catch{throw unavailable();}
+    const digest=hash(offlineClockContextClientData(context));
     await tx.insert(mobileOfflineContext).values({id:context.id,tenantId:ctx.tenantId,actorId:ctx.userId!,employmentId:input.employmentId,companyId,deviceKeyId:enrolled.id,installationId:enrolled.installationId,appInstallationId:input.request.appInstallationId,
-     requestId:input.request.requestId,requestNonce:input.request.requestNonce,contextDigest:digest,issuerKeyId:config.issuer.keyId,policyRevision:p.policy.revision,contextCiphertext:encryptSecret(signed,aad({tenantId:ctx.tenantId,actorId:ctx.userId!,id:context.id,requestId:input.request.requestId})),issuedAt:minted,expiresAt:new Date(expiresAt),permitCount:p.permitCount});
+     requestId:input.request.requestId,requestNonce:input.request.requestNonce,contextDigest:digest,policyRevision:p.policy.revision,contextJson:issued,issuedAt:minted,expiresAt:new Date(expiresAt),permitCount:p.permitCount});
     await tx.insert(mobileOfflinePermit).values(context.permits.map(permit=>({...permit,tenantId:ctx.tenantId,actorId:ctx.userId!,contextId:context.id})));
     await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'mobile-offline-context',aggregateId:context.id,eventType:'mobile.offline.context.issued',actor:actorOf(ctx),subjectEmploymentId:input.employmentId,payload:{keyId:enrolled.id,permitCount:p.permitCount,policyRevision:p.policy.revision}});
     await final(tx,ctx,input,context,enrolled,'issue');
-    return {outcome:'issued',raw:signed,contextId:context.id,authorization:'not_granted'};
+    return {outcome:'issued',raw:issued,contextId:context.id,authorization:'not_granted'};
    });
   },
  };
@@ -143,7 +140,7 @@ function closed(row:IssuedOfflineContextRow):OfflineContextClosed{
 }
 /** Explicit own retirement, releasing the key lease (0647's open-context unique index and lease function), so online
  * clocking and a later issuance can proceed. Authority is the bearer session's actor plus ownership of the context's
- * registered key (revoked or not); no deployment, issuer or company policy is read here. Closes with reason 'retired'
+ * registered key (revoked or not); no deployment or company policy is read here. Closes with reason 'retired'
  * only when the phone's consumedThrough equals the server cursor (nextSequence-1): claims the phone holds but has not
  * uploaded (claims_pending), or a phone behind the server (cursor_mismatch), are refused and nothing changes. A closed
  * context is never reopened. An exact retry (same closeRequestId and consumedThrough) returns the recorded closure;

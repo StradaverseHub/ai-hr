@@ -40,13 +40,19 @@ BEGIN
  RETURN NEW;
 END $$;
 --> statement-breakpoint
+-- Keyless (owner decision D16, 29 October 2026): the server signs no context and holds no key for it. context_json is the
+-- exact canonical context JSON the server handed out, stored verbatim as plaintext, and context_digest is SHA-256 of its
+-- positional encoding, which each claim's hardware-key proof commits to. The record is the authority a claim is checked
+-- against. Plaintext because a context holds only identifiers, instants, request/permit nonces (request_nonce and the
+-- permit table already hold them in clear), policy facts and the company's own clocking-site configuration
+-- (clocking_location is plaintext): no salary, medical, free text or home location. Byte bound = OFFLINE_CLOCK_CONTEXT_MAX_BYTES.
 CREATE TABLE mobile_offline_context (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),actor_id uuid NOT NULL REFERENCES app_user(id),
  employment_id uuid NOT NULL REFERENCES employment(id),company_id uuid NOT NULL REFERENCES company(id),
  device_key_id uuid NOT NULL REFERENCES mobile_integrity_key(id),installation_id uuid NOT NULL REFERENCES mobile_integrity_installation(installation_id),
  app_installation_id uuid NOT NULL,request_id uuid NOT NULL,request_nonce text NOT NULL CHECK(request_nonce ~ '^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$'),
- context_digest text NOT NULL CHECK(context_digest ~ '^[a-f0-9]{64}$'),issuer_key_id text NOT NULL CHECK(issuer_key_id ~ '^[a-f0-9]{64}$'),
- policy_revision text NOT NULL CHECK(policy_revision ~ '^[a-f0-9]{64}$'),context_ciphertext text NOT NULL CHECK(length(context_ciphertext) BETWEEN 1 AND 131072),
+ context_digest text NOT NULL CHECK(context_digest ~ '^[a-f0-9]{64}$'),
+ policy_revision text NOT NULL CHECK(policy_revision ~ '^[a-f0-9]{64}$'),context_json text NOT NULL CHECK(octet_length(context_json) BETWEEN 2 AND 65536),
  issued_at timestamptz NOT NULL,expires_at timestamptz NOT NULL CHECK(expires_at>issued_at AND expires_at<=issued_at+interval '72 hours'),
  permit_count integer NOT NULL CHECK(permit_count BETWEEN 1 AND 32),next_sequence integer NOT NULL DEFAULT 1,
  previous_digest text CHECK(previous_digest ~ '^[a-f0-9]{64}$'),

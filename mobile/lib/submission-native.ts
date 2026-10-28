@@ -154,7 +154,7 @@ async function nativeEnrollmentStorage<T extends {revision:number;pending:unknow
   const keyId=await hash(await key.encoded('base64'));assertCurrent();
   const pointer=`aihr.${prefix}.${keyId.slice(0,16)}.${scopeId}`,directory=new Directory(root(),`${prefix}-${scopeId}`);
   // Apple retains predecessor enrollment contexts beside a bounded attestation. The shared clock
-  // owner retains up to 32 bounded claim proofs beside its signed context: 1 MiB. Apple enrollment
+  // owner retains up to 32 bounded claim proofs beside its context: 1 MiB. Apple enrollment
   // retains 256 KiB, Android enrollment 128 KiB. The install-wide allocation quota is unchanged.
   const maximum=domain==='signed-clock-v1'?1048576:domain==='android-enrollment-v1'?131072:262144;
   const aad=new TextEncoder().encode(`aihr-${domain}:${scopeId}:journal`);
@@ -254,10 +254,11 @@ export async function openNativeSignedClockJournal(rawScope:EnrollmentScope,asse
 
 }
 
-/** Small device-only records sealed under the installation master (offline identity anchor, issuer registry cache).
+/** Small device-only records sealed under the installation master (the offline identity anchor; the issuer-registry cache
+ * was retired by owner decision D16, so 'offline-issuers' is no longer a record name).
  * SecureStore item size limits are UNKNOWN, so these live as sealed files beside the journals. Staged then moved into
  * place; an unreadable or tampered record reads as unavailable, never as another account's data. */
-export type SealedDeviceRecord='offline-anchor'|'offline-issuers';
+export type SealedDeviceRecord='offline-anchor';
 const RECORD_LIMIT=16384;
 const recordFile=(name:SealedDeviceRecord)=>new File(root(),`${name}.sealed`);
 const recordAad=(name:SealedDeviceRecord)=>new TextEncoder().encode(`aihr-device-record-v1:${name}`);

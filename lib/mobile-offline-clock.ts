@@ -1,5 +1,5 @@
 /** Offline claim protocol bytes only. Parsing/hashing grants no permit, identity, time or punch.
- * Issuance, trusted context signature, key ownership, ordered consumption and adjudication remain
+ * Issuance and the issued context record, key ownership, ordered consumption and adjudication remain
  * mandatory server owners; this contract does not enable an offline route or reuse online proofs. */
 import {z} from 'zod';
 import {OnlineClockIntegrityData} from './mobile-clock-integrity';

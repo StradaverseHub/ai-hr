@@ -31,7 +31,7 @@ export type OfflineClaimPorts={
   * this same tx and return its capture, whose live mobile_offline punch records exactly effectiveAt; review/refusal creates
   * no attendance fact. No network/nested tx. Not called for a request ID an attendance capture already holds. */
  adjudicate(tx:Tx,ctx:SessionContext,facts:OfflineClaimFacts,photo:OfflineClaimPhoto|null):Promise<unknown>;
- /** Recheck deployment/issuer/current-key/policy eligibility after tentative writes. */
+ /** Recheck deployment/current-key/policy eligibility after tentative writes. */
  beforeCommit(tx:Tx,ctx:SessionContext,facts:OfflineClaimFacts,decision:OfflineClockDisposition):Promise<void>;
 };
 export class OfflineClaimError extends Error{
@@ -100,7 +100,7 @@ export function createOfflineClaimService(settings:unknown,ports:OfflineClaimPor
    const signed=OfflineClockSignedClaim.parse(raw),digest=hash(offlineClockClaimClientData(signed.claim));
    let photo:OfflineClaimPhoto|null=null;
    if(attachment){if(!Buffer.isBuffer(attachment.bytes)||attachment.bytes.length<1||attachment.bytes.length>2097152||!['image/jpeg','image/png'].includes(attachment.mimeType))throw new OfflineClaimError('attachment_mismatch');photo={bytes:Buffer.from(attachment.bytes),mimeType:attachment.mimeType};}
-   // Recovery needs no old image, issuer private key, provider call, active key or encryption key.
+   // Recovery needs no old image, provider call, active key or encryption key (and no server key exists: D16).
    const prior=await recover(ctx,signed,digest);if(prior)return prior;
    if(!photoMatches(signed,photo))throw new OfflineClaimError('attachment_mismatch');if(!isSecretStorable())throw unavailable();
    let initial:Awaited<ReturnType<typeof checked>>;

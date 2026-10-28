@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { ModuleKind, transpileModule } from 'typescript';
@@ -6,8 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import * as journal from '../mobile/lib/submission-journal';
 import {OfflineClockClaimData} from '../lib/mobile-offline-clock';
 import * as offlineState from '../mobile/lib/offline-clock-state';
-import {offlineContextIssuerIdentity,signOfflineClockContext,verifyOfflineClockContextSignature} from '../lib/mobile-api/offline-context-signature';
-import type {OfflineClockContextData} from '../lib/mobile-offline-context';
+import {bindOfflineClockContext,offlineClockContextJson,type OfflineClockContextData} from '../lib/mobile-offline-context';
 import * as signedClock from '../mobile/lib/signed-clock-journal';
 import * as storage from '../mobile/lib/submission-storage';
 import * as enrollment from '../mobile/lib/enrollment-journal';
@@ -67,9 +66,9 @@ function fixture(nativeAvailable=true){
   // Keep native global declarations out of the server compiler; execute its implementation via VM.
   const output={exports:{} as {
     openNativeSignedClockJournal:(scope:enrollment.EnrollmentScope,assertCurrent:()=>void,ports:Omit<signedClock.SignedClockPorts,'assertCurrent'|'read'|'commit'>)=>Promise<ReturnType<typeof signedClock.createSignedClockJournal>&{retainOfflinePhoto(requestId:string,photo:unknown,bytes:Uint8Array):Promise<string>;readOfflinePhoto(requestId:string,photo:unknown):Promise<Uint8Array>;deleteOfflinePhoto(requestId:string):Promise<void>}>;
-    readSealedDeviceRecord:(name:'offline-anchor'|'offline-issuers',assertCurrent:()=>void)=>Promise<unknown>;
-    writeSealedDeviceRecord:(name:'offline-anchor'|'offline-issuers',value:unknown,assertCurrent:()=>void)=>Promise<void>;
-    deleteSealedDeviceRecord:(name:'offline-anchor'|'offline-issuers')=>void;
+    readSealedDeviceRecord:(name:'offline-anchor',assertCurrent:()=>void)=>Promise<unknown>;
+    writeSealedDeviceRecord:(name:'offline-anchor',value:unknown,assertCurrent:()=>void)=>Promise<void>;
+    deleteSealedDeviceRecord:(name:'offline-anchor')=>void;
     openNativeSubmissionJournal:(scope:journal.SubmissionScope,assertCurrent:()=>void)=>Promise<ReturnType<typeof journal.createSubmissionJournal>>;
     resetSubmissionInstallation:()=>Promise<void>;
     nativeIntegrityInstallationId:(assertCurrent:()=>void)=>Promise<string>;
@@ -389,17 +388,18 @@ it('does not treat new offline preparation as quota-exempt resolution merely bec
 });
 
 async function offlinePhotoFixture(permitCount=2){
- const f=fixture(),s=signedPorts(),binding=offlinePortsForStorage(s),pair=generateKeyPairSync('ed25519'),identity=offlineContextIssuerIdentity(pair.privateKey),issuedAt=1793055753390;
- const context:OfflineClockContextData={version:1,purpose:'attendance.clock.offline.context',issuer:{algorithm:'ed25519',keyId:identity.keyId},id:requestId,requestId,requestNonce:binding.request.requestNonce,
+ const f=fixture(),s=signedPorts(),binding=offlinePortsForStorage(s),issuedAt=1793055753390;
+ const context:OfflineClockContextData={version:1,purpose:'attendance.clock.offline.context',id:requestId,requestId,requestNonce:binding.request.requestNonce,
   scope:binding.scope,target:binding.target,issuedAt,expiresAt:issuedAt+3600000,policy:{revision:'a'.repeat(64),offlineEnabled:true,windowMs:86400000,geofencingRequired:false,maximumAccuracyM:null,photoRequirement:'optional'},sites:[],
   attendance:{baseline:'b'.repeat(64),date:'2026-10-27',clockedIn:false,openSince:null},permits:Array.from({length:permitCount},(_,index)=>({id:String(index+1).padStart(8,'0')+'-aaaa-4aaa-8aaa-aaaaaaaaaaaa',ordinal:index+1,nonce:Buffer.alloc(32,index+1).toString('base64url')}))};
- const issuer={...identity,validFrom:issuedAt-1,validUntil:issuedAt+86400000,revoked:false};
- const raw=signOfflineClockContext(context,pair.privateKey),source={provider:null,mock:null,simulated:null,accessory:null},photoBytes=Uint8Array.from([1,2,3,4]);
+ const raw=offlineClockContextJson(context),source={provider:null,mock:null,simulated:null,accessory:null},photoBytes=Uint8Array.from([1,2,3,4]);
  const baseScope={namespace:'offline-base',actorId:scope.actorId,employmentId:scope.employmentId},base=await f.native.openNativeSubmissionJournal(baseScope,()=>{});
  let controller:Awaited<ReturnType<typeof f.native.openNativeSignedClockJournal>>;
  s.ports.base=async(_employment,id)=>{const entry=(await base.pending()).find(value=>value.requestId===id);if(!entry)throw Error('base unavailable');return {digest:entry.digest,command:JSON.parse(entry.command),source,
   photo:entry.evidence?{sha256:entry.evidence.digest,byteLength:entry.evidence.size,mimeType:'image/jpeg'}:null};};
- s.ports.offline!.request=async()=>raw;s.ports.offline!.verify=async(text,expected)=>verifyOfflineClockContextSignature(text,[issuer],expected.scope);
+ // The phone's keyless check (D16) with Node SHA-256: shape and binding, then the digest the claim names.
+ s.ports.offline!.request=async()=>raw;s.ports.offline!.verify=async(text,expected)=>{const checked=bindOfflineClockContext(text,expected);
+  return checked.outcome==='bound'?{outcome:'context_valid',context:checked.context,digest:createHash('sha256').update(checked.canonical,'utf8').digest('hex'),authorization:'not_granted'}:checked;};
  const release=vi.fn(async(reference:signedClock.SignedClockReference)=>{
   const entry=(await base.pending()).find(value=>value.requestId===reference.requestId);if(!entry)return;
   if(entry.digest!==reference.baseDigest)throw Error('changed base');await base.resolve('clock',reference.requestId);
@@ -507,7 +507,7 @@ describe('offline receipt, photo custody end and close in the sealed store',()=>
   expect(await (await f.open()).offlineClaims(scope.employmentId)).toMatchObject({exchange:null,claims:[{requestId,state:'recorded'}]});
  });
 });
-describe('sealed device-only records (offline anchor, issuer registry)',()=>{
+describe('sealed device-only records (the offline anchor; the issuer-registry cache was retired by D16)',()=>{
  it('seals, replaces, removes and refuses tampered records without exposing plaintext',async()=>{
   const f=fixture(),value={version:1,actorId:scope.actorId,marker:'plaintext-marker'};
   expect(await f.native.readSealedDeviceRecord('offline-anchor',()=>{})).toBeNull();
@@ -515,7 +515,7 @@ describe('sealed device-only records (offline anchor, issuer registry)',()=>{
   const path='document/aihr-submissions-v1/offline-anchor.sealed';expect(Buffer.from(f.files.get(path)!).toString()).not.toContain('plaintext-marker');
   expect(await f.native.readSealedDeviceRecord('offline-anchor',()=>{})).toEqual(value);
   await f.native.writeSealedDeviceRecord('offline-anchor',{...value,marker:'next'},()=>{});expect(await f.native.readSealedDeviceRecord('offline-anchor',()=>{})).toMatchObject({marker:'next'});
-  expect(await f.native.readSealedDeviceRecord('offline-issuers',()=>{})).toBeNull();
+  expect([...f.files.keys()].filter(name=>name.includes('offline-issuers'))).toEqual([]);
   const sealed=f.files.get(path)!.slice();sealed[sealed.length-1]^=1;f.files.set(path,sealed);
   await expect(f.native.readSealedDeviceRecord('offline-anchor',()=>{})).rejects.toThrow();
   f.native.deleteSealedDeviceRecord('offline-anchor');expect(f.files.has(path)).toBe(false);expect(await f.native.readSealedDeviceRecord('offline-anchor',()=>{})).toBeNull();

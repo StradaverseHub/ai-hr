@@ -635,7 +635,8 @@ export const mobileOfflineContext=pgTable('mobile_offline_context',{
  employmentId:uuid('employment_id').notNull().references(()=>employment.id),companyId:uuid('company_id').notNull().references(()=>company.id),
  deviceKeyId:uuid('device_key_id').notNull().references(()=>mobileIntegrityKey.id),installationId:uuid('installation_id').notNull().references(()=>mobileIntegrityInstallation.installationId),
  appInstallationId:uuid('app_installation_id').notNull(),requestId:uuid('request_id').notNull(),requestNonce:text('request_nonce').notNull(),
- contextDigest:text('context_digest').notNull(),issuerKeyId:text('issuer_key_id').notNull(),policyRevision:text('policy_revision').notNull(),contextCiphertext:text('context_ciphertext').notNull(),
+ // D16 (keyless): the exact canonical context JSON as handed out, plaintext; context_digest is what claims commit to.
+ contextDigest:text('context_digest').notNull(),policyRevision:text('policy_revision').notNull(),contextJson:text('context_json').notNull(),
  issuedAt:timestamp('issued_at',{withTimezone:true}).notNull(),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),
  permitCount:integer('permit_count').notNull(),nextSequence:integer('next_sequence').notNull().default(1),previousDigest:text('previous_digest'),
  closedAt:timestamp('closed_at',{withTimezone:true}),closeReason:text('close_reason').$type<'exhausted'|'retired'|'revoked'>(),closeRequestId:uuid('close_request_id'),

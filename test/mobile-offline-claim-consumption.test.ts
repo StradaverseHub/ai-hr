@@ -13,6 +13,7 @@ import {captureOfflineClockTx,setAttendancePolicy} from '../packs/attendance/ser
 import {withAttendanceTenant} from '../core/module-gate';
 import {decryptSecret} from '../lib/ai/crypto';
 import {offlineClockClaimClientData} from '../lib/mobile-offline-clock';
+import {offlineClockContextClientData} from '../lib/mobile-offline-context';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,owner,resetDb,seedBase,type Base} from './harness';
 import {offlineServiceFixture} from './helpers/mobile-offline-service-fixture';
@@ -246,5 +247,61 @@ describe('ordered transactional offline claim consumption',()=>{
  });
  it('requires all current verification/adjudication guards and explicit photo retention configuration',()=>{
   const c=consumer();expect(()=>createOfflineClaimService(c.config,{prepare:c.prepare,adjudicate:c.adjudicate} as never)).toThrow();expect(()=>createOfflineClaimService({...c.config,photoRetentionMs:0},c.ports)).toThrow();
+ });
+});
+/** Owner decision D16 (29 October 2026): the server signs no context. Trust comes from its own record (exact canonical
+ * JSON, digest, binding columns, permits) plus the claim's proof by the phone's leased hardware key. Each case below is one
+ * the former server signature or issuer registry used to answer, now answered by the record. */
+describe('the issued context record is the authority (owner decision D16, keyless)',()=>{
+ it.each(['ios','android'] as const)('refuses a %s claim, validly signed by the leased hardware key, that names a forged or altered context digest',async platform=>{
+  const f=await offlineServiceFixture(base,platform),c=consumer();
+  // A context changed after issuance (say, a wider site handed to the phone in transit) has a different digest.
+  const altered={...f.context,policy:{...f.context.policy,geofencingRequired:true},sites:[{id:randomUUID(),name:'Anywhere',lat:3,lng:101,radiusM:100000}]};
+  for(const sha256 of ['e'.repeat(64),digest(offlineClockContextClientData(altered))])
+   await expect(c.service().consume(f.ctx,f.signed({...f.claim,context:{id:f.context.id,sha256}}))).rejects.toMatchObject({reason:'binding_conflict'});
+  expect(c.prepare).not.toHaveBeenCalled();expect(c.adjudicate).not.toHaveBeenCalled();await untouched(f);
+  // Non-vacuous: the genuine digest, with the same key and permit, is consumed.
+  expect(await c.service().consume(f.ctx,f.signed())).toMatchObject({outcome:'needs_review',sequence:1,contextId:f.context.id});
+ });
+ it('refuses a claim naming a context the server never recorded (forged, another deployment, lost to a restore) or another actor\'s',async()=>{
+  const f=await offlineServiceFixture(base),peer=await offlineServiceFixture(base),c=consumer();
+  await expect(c.service().consume(f.ctx,f.signed({...f.claim,context:{id:randomUUID(),sha256:f.claim.context.sha256}}))).rejects.toMatchObject({reason:'context_unavailable'});
+  // Another actor's real context id, digest and permit, under this actor's own scope and key.
+  await expect(c.service().consume(f.ctx,f.signed({...f.claim,context:peer.claim.context,permit:peer.context.permits[0]}))).rejects.toMatchObject({reason:'context_unavailable'});
+  expect(c.prepare).not.toHaveBeenCalled();await untouched(f);await untouched(peer);
+ });
+ it('refuses a claim bound to another installation, app installation, device key or deployment origin',async()=>{
+  const f=await offlineServiceFixture(base),c=consumer();
+  for(const scope of [{...f.claim.scope,appInstallationId:randomUUID()},{...f.claim.scope,installationId:randomUUID()},{...f.claim.scope,deviceKeyId:randomUUID()}])
+   await expect(c.service().consume(f.ctx,f.signed({...f.claim,scope}))).rejects.toMatchObject({reason:'key_unavailable'});
+  await expect(c.service().consume(f.ctx,f.signed({...f.claim,scope:{...f.claim.scope,apiOrigin:'https://other.example.com'}}))).rejects.toMatchObject({reason:'scope_unavailable'});
+  expect(c.prepare).not.toHaveBeenCalled();await untouched(f);
+ });
+ it.each(['ios','android'] as const)('refuses a replayed %s permit under a new request id, while the exact retry returns its receipt',async platform=>{
+  const f=await offlineServiceFixture(base,platform),c=consumer(),first=await c.service().consume(f.ctx,f.signed());
+  await expect(c.service().consume(f.ctx,f.signed({...f.claim,command:{...f.claim.command,requestId:randomUUID()}},2))).rejects.toMatchObject({reason:'chain_conflict'});
+  expect(await c.service().consume(f.ctx,f.signed())).toEqual(first);expect(await owner.db.select().from(S.mobileOfflineClaim)).toHaveLength(1);
+  expect((await owner.db.select().from(S.mobileOfflineContext))[0]).toMatchObject({nextSequence:2,previousDigest:first.digest});
+ });
+ it('consumes a claim against a context issued with no key configured, the record alone being its authority',async()=>{
+  // A leftover pre-D16 key variable is not read anywhere.
+  vi.stubEnv('AIHR_MOBILE_OFFLINE_SIGNING_KEY','not a key');
+  const f=await offlineServiceFixture(base),c=consumer(),[row]=await owner.db.select().from(S.mobileOfflineContext);
+  expect(row.contextJson).toBe(f.raw);expect(row.contextDigest).toBe(f.claim.context.sha256);
+  expect(await c.service().consume(f.ctx,f.signed())).toMatchObject({outcome:'needs_review',sequence:1,contextId:f.context.id});
+ });
+ it('fails closed when the recorded context is rewritten behind its triggers, with or without a matching digest',async()=>{
+  const f=await offlineServiceFixture(base),c=consumer(),stored=JSON.parse(f.raw);
+  const wider=JSON.stringify({...stored,policy:{...stored.policy,geofencingRequired:true},sites:[{id:randomUUID(),name:'Anywhere',lat:3,lng:101,radiusM:100000}]});
+  await owner.db.execute(sql`ALTER TABLE mobile_offline_context DISABLE TRIGGER mobile_offline_context_progress`);
+  try{
+   // Bytes changed, digest kept: the record no longer matches itself.
+   await owner.db.execute(sql`update mobile_offline_context set context_json=${wider} where id=${f.context.id}::uuid`);
+   await expect(c.service().consume(f.ctx,f.signed())).rejects.toMatchObject({reason:'configuration_unavailable'});
+   // Bytes and digest both rewritten: the hardware-signed claim still names the digest the phone was actually given.
+   await owner.db.execute(sql`update mobile_offline_context set context_digest=${digest(offlineClockContextClientData(JSON.parse(wider)))} where id=${f.context.id}::uuid`);
+   await expect(c.service().consume(f.ctx,f.signed())).rejects.toMatchObject({reason:'binding_conflict'});
+  }finally{await owner.db.execute(sql`ALTER TABLE mobile_offline_context ENABLE TRIGGER mobile_offline_context_progress`);}
+  expect(c.prepare).not.toHaveBeenCalled();expect(c.adjudicate).not.toHaveBeenCalled();expect(await owner.db.select().from(S.mobileOfflineClaim)).toHaveLength(0);
  });
 });

@@ -11,7 +11,7 @@ const id=(n:number)=>String(n).padStart(8,'0')+'-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const hash=(data:string|Buffer)=>createHash('sha256').update(data).digest();
 function fixture(platform:'ios'|'android'='ios'){
  const pair=generateKeyPairSync('ec',{namedCurve:'prime256v1'}),issuedAt=1793055753390;
- const context:OfflineClockContextData={version:1,purpose:'attendance.clock.offline.context',issuer:{algorithm:'ed25519',keyId:'a'.repeat(64)},id:id(1),requestId:id(2),requestNonce:'A'.repeat(43),
+ const context:OfflineClockContextData={version:1,purpose:'attendance.clock.offline.context',id:id(1),requestId:id(2),requestNonce:'A'.repeat(43),
  scope:{apiOrigin:'https://hr.example.com',installationId:id(3),tenantId:id(4),companyId:id(5),actorId:id(6),employmentId:id(7),appInstallationId:id(8),deviceKeyId:id(9)},
  target:platform==='ios'?{platform,appId:'ABCDEFGHIJ.ai.hr',environment:'production'}:{platform,appId:'ai.hr',environment:null},issuedAt,expiresAt:issuedAt+3600000,
  policy:{revision:'a'.repeat(64),offlineEnabled:true,windowMs:86400000,geofencingRequired:false,maximumAccuracyM:null,photoRequirement:'optional'},sites:[],

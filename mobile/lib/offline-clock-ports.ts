@@ -1,13 +1,14 @@
 /** Live offline ports for the installed-account clock journal (ADR-0088; owner decisions 2026-10-28). Assembled by
  * openOwnedSignedClock only when the offline build switch is on. Nothing here authorizes attendance: the server's
- * processed receipt is the only claim outcome, and a verified context only proves what the server signed. */
+ * processed receipt is the only claim outcome. Keyless (owner decision D16): a context is checked for shape and binding
+ * only; the server accepts a claim against its own record of that context and the phone's hardware-key proof. */
 import {CryptoDigestAlgorithm,CryptoEncoding,digest,digestStringAsync} from 'expo-crypto';
 import {apiGet,apiPost} from './api';
 import {OfflineContextIssueRequest,OfflineContextCloseRequest,OfflineSyncBuildVersion,OfflineSyncPlayToken} from '../../lib/mobile-offline-contract';
 import {OfflineClockSignedClaim,type OfflineClockClaimData} from '../../lib/mobile-offline-clock';
 import {verifyNativeOfflineClockContext} from './offline-context';
 import {createOfflineClockSigner} from './offline-clock-signing';
-import {anchoredIdentity,readIssuerRegistry,writeIssuerRegistry} from './offline-anchor';
+import {anchoredIdentity} from './offline-anchor';
 import {offlineSyncRequestHash} from './offline-sync-hash';
 import {SignedClockConflict,SignedClockUnavailable,type SignedClockPorts,type SignedClockReference} from './signed-clock-journal';
 import type {createIntegrityBridge} from './integrity-bridge';
@@ -30,11 +31,9 @@ const sha256=async(bytes:Uint8Array)=>new Uint8Array(await digest(CryptoDigestAl
 const unavailable=(status:string)=>new SignedClockUnavailable(status==='unsupported'?'unsupported':'native_unavailable');
 /** The offline cold-start identity for openOwnedSignedClock (see offline-anchor.ts). */
 export const offlineClockIdentity=anchoredIdentity;
-/** Owner decision 5: the server's offline capabilities. A successful answer for this exact origin replaces the cached
- * issuer registry (used to verify contexts, including offline at capture time). */
+/** Owner decision 5: the server's offline capabilities. Nothing is cached from it (D16: there is no issuer registry). */
 export async function readOfflineCapabilities(d:Pick<OfflineClockPortDeps,'platform'|'employmentId'|'namespace'|'apiOrigin'|'check'>){
  d.check();const value=await apiGet(d.platform==='ios'?'v2/integrity/ios/offline/capabilities':'v2/integrity/android/offline/capabilities',{employmentId:d.employmentId});d.check();
- if(value.outcome==='offline'&&value.apiOrigin===d.apiOrigin){await writeIssuerRegistry({namespace:d.namespace,apiOrigin:d.apiOrigin,platform:d.platform,issuers:value.issuers},d.check);d.check();}
  return value;
 }
 export function createOfflineClockPorts(d:OfflineClockPortDeps):NonNullable<SignedClockPorts['offline']>{
@@ -48,11 +47,8 @@ export function createOfflineClockPorts(d:OfflineClockPortDeps):NonNullable<Sign
    if(result.outcome==='issued')return result.context;
    throw new OfflineServerAnswer(result);
   },
-  async verify(raw,binding){
-   const issuers=await owned(()=>readIssuerRegistry({namespace:d.namespace,apiOrigin:d.apiOrigin,platform:p},d.check));
-   if(!issuers)throw new SignedClockUnavailable('configuration');
-   return verifyNativeOfflineClockContext(raw,issuers,binding,d.check);
-  },
+  // Shape and binding only (D16); works offline at capture time with nothing cached beyond the journal's own context.
+  verify:(raw,binding)=>owned(()=>verifyNativeOfflineClockContext(raw,binding,d.check)),
   signing:{...createOfflineClockSigner(d.native,d.check,d.isForeground),verifyPhoto:async(requestId,photo)=>{await owned(()=>d.photos.read(requestId,photo));}},
   capture:{
    capabilities:()=>d.native.capabilities(),

@@ -1,7 +1,9 @@
 # Offline attendance protocol and integration design
 
 Status: proposed implementation design under ADR-0088 and M05 of the mobile review.
-Offline attendance remains disabled. This document does not claim implementation, migration
+Offline attendance remains disabled. Owner decision D16 (29 October 2026, keyless server) supersedes every passage below
+about a server context signature, issuer registry, signing key, rotation or KMS; those passages are kept as history and
+marked SUPERSEDED BY D16. See the D16 section at the end. This document does not claim implementation, migration
 allocation, field acceptance or rollout approval.
 
 The owner requested security/reliability before attendance integrity, offline attendance and the
@@ -70,7 +72,8 @@ Unknown/expired time can be represented for a later named review/refusal; the pa
 apply the company's acceptance window. Local verification markers and raw native clock/boot/runtime
 snapshots are deliberately absent from the wire shape. Context issuance, trusted issuer registry,
 permit consumption, proof ordering, persistence and adjudication remain mandatory implementation
-steps; this parser exposes no route or offline business effect.
+steps; this parser exposes no route or offline business effect. (SUPERSEDED BY D16 for the issuer
+registry: the server-context digest is checked against the server's own issued record instead.)
 
 ## Context, trust and local storage
 
@@ -79,12 +82,14 @@ Bind origin, server installation, tenant, company, actor, employment, app instal
 key. Include the effective policy revision, bounded site/uncertainty/photo/device requirements,
 expected attendance baseline, issued/expiry instants, nonce and bounded permit inventory.
 
-Use purpose-separated server signatures and a trusted context-signing key registry. Establish
-that registry online through the verified company origin and authenticated installation/key scope;
-cache it separately from signed contexts in device-bound protected storage. A payload-supplied key
-cannot approve itself. The exact registry/key-rotation contract must be implemented and tested before
-issuing contexts; receipt encryption keys must not double as signing keys. Historical verification
-and exact terminal receipt lookup must survive ordinary signing-key rotation.
+SUPERSEDED BY D16 (29 October 2026): "Use purpose-separated server signatures and a trusted context-signing key
+registry. Establish that registry online through the verified company origin and authenticated installation/key scope;
+cache it separately from signed contexts in device-bound protected storage. A payload-supplied key cannot approve itself.
+The exact registry/key-rotation contract must be implemented and tested before issuing contexts; receipt encryption keys
+must not double as signing keys. Historical verification and exact terminal receipt lookup must survive ordinary
+signing-key rotation." Now: the server signs nothing; it records the exact canonical context it handed out and its
+digest, and accepts a claim only against that record and the phone's leased hardware key. The phone keeps strict shape
+and binding checks only; a payload-supplied key still approves nothing (there is no key to supply).
 
 Encrypt only the minimal context, claim queue, proofs and owned photo bytes. Extend the existing
 installation-wide quota and device-only key lifecycle. Do not persist salary, team, balance or inbox
@@ -107,7 +112,8 @@ reports these bounds without authenticating the server instant or granting atten
 
 1. Bound the manifest, individual artifacts and total request before expensive work. Authenticate
    afresh. Resolve every claimed employment under the original actor/tenant; refuse adoption.
-2. Decode strictly, verify context signature/issuer/scope/permit and canonical command/photo hashes.
+2. Decode strictly, verify the context against the server's own issued record (digest, binding, permit; D16 replaced
+   "context signature/issuer"), scope and canonical command/photo hashes.
    Recover exact committed claim receipts first under the same subject; a reused UUID with a
    different digest is a conflict, not replay success.
 3. Verify native signatures and current upload-time Android evidence. Play Integrity at upload
@@ -170,7 +176,13 @@ mislabelled server-arrival instant. Keep all new issuance/acceptance rollout pat
   airplane-mode, continuity and OS-location behavior before rollout. Those witnesses are currently
   unavailable; they must not be replaced with synthetic success.
 
-### Context signature primitive
+### Context signature primitive (SUPERSEDED BY D16)
+
+SUPERSEDED BY D16 (29 October 2026). `lib/mobile-api/offline-context-signature.ts` and the phone's Noble Ed25519
+verification were deleted. `lib/mobile-offline-context.ts` keeps the strict context schema (now without `issuer`),
+the positional digest bytes, and adds `offlineClockContextJson` / `parseOfflineClockContextJson` (the exact canonical
+JSON the server records and hands out) and `bindOfflineClockContext` (the binding check the phone runs). The text below
+is the original record.
 
 `lib/mobile-offline-context.ts` defines a bounded strict context and purpose-separated positional
 bytes. The signed context binds the original request UUID and client nonce, full scope, platform
@@ -215,7 +227,8 @@ Offline reservation saves the original request binding, reconciled key reference
 request-start clock snapshot before the context request port may run. Same-binding retries retain
 that first anchor; another request/employment cannot replace it. After the response, a second local
 snapshot is captured before signature verification and committed alongside the exact verified raw
-context/digest. A ready context is reverified before reuse, without fetching a replacement or moving
+context/digest. (D16: "signature verification" is now the keyless shape/binding check; the raw context is the exact
+canonical context JSON, no envelope.) A ready context is reverified before reuse, without fetching a replacement or moving
 the anchor. Online start, advance, receipt lookup and abandonment cannot bypass this owner. The
 employee clock displays a distinct unfinished offline-preparation state and disables online preparation.
 
@@ -286,7 +299,7 @@ requirement to recover a now-missing photo first. An unknown live request remain
 `retryable` or actual process-replacement permission allows explicit same-payload generation again.
 Before generating new proof, retained photos must still pass their owned integrity read. A proof
 is saved before native cleanup; lost proof-write/cleanup acknowledgements reuse the durable proof
-or cache on retry. Cleanup may finish without refetching the issuer registry, since it transfers
+or cache on retry. Cleanup may finish without refetching the issuer registry (D16: there is none now), since it transfers
 local custody and grants no attendance authority. Ownership loss never publishes proof or advances
 cleanup state. No claim is sent or resolved as attendance by this signing method.
 
@@ -350,7 +363,8 @@ server primitive is not mounted in an offline route. The migration and live flow
 Unjournaled `0647_mobile_offline_attendance.sql` introduces context/stream, immutable permit
 inventory and immutable processed-claim outcomes. Context ownership binds tenant/actor/employment,
 company, registered key and both installations; canonical context and claim artifacts use bounded
-ciphertexts. The per-key unique open context is the lease. Expiry leaves it held. Explicit closure
+ciphertexts. (D16: the context is now the plaintext canonical JSON `context_json` with no `issuer_key_id`; claim and photo
+artifacts stay encrypted.) The per-key unique open context is the lease. Expiry leaves it held. Explicit closure
 retains a reason/request reference; an exhausted close requires the complete consumed prefix.
 Review/refused outcomes carry no capture or effective attendance instant. An accepted outcome must
 link the matching canonical capture and explicit effective bounds, with received time kept separate.
@@ -384,18 +398,22 @@ mandatory trusted policy/site/attendance/key-eligibility port; there is no phone
 implicit offline enablement. A required bounded actor issuance budget is deployment configuration,
 separate from HR attendance rules. Duplicate request recovery precedes new snapshot/budget work.
 
-New contexts use database time, explicit configured window bounded by the issuer validity, random
-one-use permits and actual Ed25519 signatures. AES-GCM stores the exact signed response under a
-purpose/tenant/actor/context/request AAD. Recovery checks the immutable record, canonical digest,
-original request/nonce/full scope, issuer/policy/time metadata and actual permit inventory. Ordinary
-signer rotation and snapshot changes do not replace the original signed response or time anchor.
+SUPERSEDED BY D16 (the original text): "New contexts use database time, explicit configured window bounded by the
+issuer validity, random one-use permits and actual Ed25519 signatures. AES-GCM stores the exact signed response under a
+purpose/tenant/actor/context/request AAD. Recovery checks the immutable record, canonical digest, original
+request/nonce/full scope, issuer/policy/time metadata and actual permit inventory. Ordinary signer rotation and snapshot
+changes do not replace the original signed response or time anchor." Now: new contexts use database time, exactly the
+configured window (`expiresAt = issuedAt + windowMs`), random one-use permits and no signature. The exact canonical JSON
+is stored in plaintext (`context_json`) beside its digest. Recovery checks that the stored text is canonical, its digest,
+the original request/nonce/full scope, policy/time metadata and the actual permit inventory, and returns the recorded
+bytes. Snapshot or deployment changes do not replace the original response or time anchor.
 Expired retries return the original context; they neither refresh its expiry nor release its lease.
 A closed request cannot mint another inventory. A new online challenge must be reconciled first.
 
 A mandatory final configuration/key-eligibility port runs after tentative context, permits and audit
 writes. The service then repeats own-company/key/storage, open-context and database-time checks.
 Failure rolls back all records, audit and issuance budget. The service exposes no HTTP route and has
-no default live policy/key loader. Trusted registry provisioning/rotation delivery, actual deployment
+no default live policy/key loader. (D16: no key loader exists at all.) Trusted registry provisioning/rotation delivery (D16: removed), actual deployment
 snapshot/eligibility assembly, offline transport/consumption/adjudication and employee/HR flows still
 need integration. Issuance returns `authorization: not_granted`; it is not an attendance receipt.
 
@@ -586,12 +604,12 @@ wiring passes it yet, and no company has offline clocking enabled.
   `ownClockToday`. The baseline is `clockFingerprint` over `punchesForCorrectionTx` for that date, the
   value `ownClockToday` reports as `removalBaseline`. Target, window and permit count are the
   deployment's. The device requirement is not in the snapshot.
-- Revision. SHA-256 over the five policy fields in the signed context's positional order, with no
+- Revision. SHA-256 over the five policy fields in the context's positional order, with no
   time, site or attendance value. Equal policy gives an equal revision; changing any policy field,
   including the deployment window, changes it.
-- Values a signed context cannot represent (more than 32 sites, a site name over 200 characters, or
+- Values a context cannot represent (more than 32 sites, a site name over 200 characters, or
   any other value outside the context schema) are refused with the context service's own typed
-  `OfflineContextIssueError('configuration_unavailable')`, so issuance refuses before signing and
+  `OfflineContextIssueError('configuration_unavailable')`, so issuance refuses before recording and
   writes nothing. Nothing is truncated. A subject company other than the employment's own is refused as
   `binding_conflict`.
 - Adjudicator. A current snapshot that the port refuses as `configuration_unavailable`, or that does
@@ -721,10 +739,15 @@ offline attendance stays off on every installation. Absent configuration is `not
 or inconsistent is `configuration_unavailable`. Nothing is cached: each request and each commit guard re-reads the
 environment.
 
+D16 (29 October 2026) changed this section: the issuer registry, `signingKeyId`, `AIHR_MOBILE_OFFLINE_SIGNING_KEY`, the
+signer rows of the fail-closed table, the signer facts of the commit guards and the drain-mode key rules are gone. The
+superseded wording is quoted where it was a decision.
+
 Owners. `AIHR_MOBILE_OFFLINE_POLICY` (`lib/mobile-offline-rollout-policy.ts`) owns the per-actor allowlist
-(tenant, company, actor ids), the issuer registry, `signingKeyId`, `windowMs`, `permitCount`,
-`maximumIssuesPerHour`, `photoRetentionMs` and `mode`. `AIHR_MOBILE_OFFLINE_SIGNING_KEY` holds the Ed25519 PKCS#8
-PEM for `signingKeyId`. The actor must also be in `AIHR_MOBILE_CLOCK_POLICY` for the platform. That entry owns
+(tenant, company, actor ids), `windowMs`, `permitCount`, `maximumIssuesPerHour`, `photoRetentionMs` and `mode`.
+SUPERSEDED BY D16: "the issuer registry, `signingKeyId` ... `AIHR_MOBILE_OFFLINE_SIGNING_KEY` holds the Ed25519 PKCS#8
+PEM for `signingKeyId`." No key variable exists; a policy that still carries `issuers` or `signingKeyId` fails the strict
+schema (`configuration_unavailable`) until they are removed. The actor must also be in `AIHR_MOBILE_CLOCK_POLICY` for the platform. That entry owns
 `apiOrigin`, the app target and the Play settings; the offline policy does not repeat them. The snapshot port
 still owns offline-enabled, policy revision, sites and attendance. The assembly
 (`lib/mobile-api/deployed-offline-clock.ts`) puts the deployment's window, permit count and target into the
@@ -733,11 +756,10 @@ measured consistently. A side effect: changing `windowMs` while claims are in fl
 as `policy_changed`. It never accepts them.
 
 Schema bounds. These are engineering admission limits, not HR, retention or legal rules: version 1; mode `active`
-or `drain`; 1 to 16 issuers with unique key ids, where each `keyId` is the SHA-256 of its raw public key;
-`signingKeyId` must be one of the issuers; `windowMs` from 60 000 ms to 72 h; `permitCount` from 1 to 32;
+or `drain`; `windowMs` from 60 000 ms to 72 h; `permitCount` from 1 to 32;
 `maximumIssuesPerHour` from 1 to 24; `photoRetentionMs` from 1 h to 366 days; at most 100 entries, unique by
-tenant and company, each with 1 to 1000 unique actor ids; policy JSON at most 262 144 UTF-8 bytes; key PEM at most
-4096 bytes.
+tenant and company, each with 1 to 1000 unique actor ids; policy JSON at most 262 144 UTF-8 bytes. (Removed by D16:
+1 to 16 issuers keyed by public-key SHA-256, `signingKeyId` among them, key PEM at most 4096 bytes.)
 
 Fail-closed table (`core/mobile-offline-rollout.ts`, `readMobileOfflineDeployment`):
 
@@ -746,12 +768,13 @@ Fail-closed table (`core/mobile-offline-rollout.ts`, `readMobileOfflineDeploymen
 | `AIHR_MOBILE_OFFLINE_POLICY` absent or empty | `not_configured`, before any database or snapshot work |
 | Actor/company not in the offline entries | `not_configured` |
 | Actor not in the clock rollout for this platform, or that platform entry is null | `not_configured` |
-| Offline policy over 262 144 bytes, not JSON, or failing the schema (bounds, registry, unknown keys) | `configuration_unavailable` |
-| `signingKeyId` not among the issuers | `configuration_unavailable` |
-| Active mode: signer revoked, not yet valid or expired, or no key configured | `configuration_unavailable` |
-| Key over 4096 bytes, unparsable, public, not Ed25519, or not matching the signer's public key | `configuration_unavailable` |
+| Offline policy over 262 144 bytes, not JSON, or failing the schema (bounds, unknown keys, including the retired `issuers`/`signingKeyId`) | `configuration_unavailable` |
 | Clock rollout malformed | `configuration_unavailable` |
-| `AI_CONFIG_SECRET` storage unavailable, integrity storage not ready, or 0647 storage not ready | `configuration_unavailable` |
+| `AI_CONFIG_SECRET` storage unavailable (claims and photos are stored encrypted), integrity storage not ready, or 0647 storage not ready | `configuration_unavailable` |
+
+Removed by D16 (no key exists): "`signingKeyId` not among the issuers", "Active mode: signer revoked, not yet valid or
+expired, or no key configured" and "Key over 4096 bytes, unparsable, public, not Ed25519, or not matching the signer's
+public key". `AIHR_MOBILE_OFFLINE_SIGNING_KEY` is read by nothing; a leftover value changes nothing.
 | Attendance module not enabled for the company | `module_unavailable` |
 
 `isMobileOfflineStorageReady` follows the enrollment precedent. It reads only catalog metadata, as the
@@ -764,21 +787,21 @@ release checks.
 Commit guards. Both run inside the service's own transaction, after its tentative writes, and use no pooled read.
 - `assertOfflineIssueCommit`, for a new issuance (`issue`). The deployment must still be configured for this
   actor and the context's company, be in active mode (otherwise `draining`), and be identical in every fact it
-  signs or admits: origin, target, clock entry, signer, key digest, window, permit count and budget. The signer
-  must be unrevoked, with validity covering the context. The context must carry the configured window, permit
-  count and signer. A failure rolls back the context, permits, audit and admission budget.
+  records or admits: origin, target, clock entry, window, permit count and budget. The context must carry exactly
+  the configured window (`expiresAt = issuedAt + windowMs`) and permit count. A failure rolls back the context,
+  permits, audit and admission budget. (D16 removed the signer, key-digest and signer-validity facts.)
 - `assertOfflineIssueCommit`, for recovery (`recover`). The deployment must still be configured, active or drain,
-  with the same origin and target. The original issuer does not have to be active or still listed.
+  with the same origin and target. The recorded bytes are returned; there is no issuer to keep listed.
 - `assertOfflineClaimCommit`. The deployment must still be configured, active or drain, with unchanged origin,
   target, clock entry and photo retention. It deliberately does not check company offline-enabled, so an
-  adjudicated `offline_disabled` refusal commits and advances the stream. It does not check mode or the issuer
-  registry either: the stored AES-GCM record is the authority.
+  adjudicated `offline_disabled` refusal commits and advances the stream. It does not check mode either: the
+  server's own issued record is the context's authority (D16; formerly "the stored AES-GCM record").
 
 Drain mode. Claim upload and close stay available. A new issuance is refused before any snapshot read or budget
-charge, and the commit guard refuses it again. If a valid key is still configured, an exact retry of an earlier
-issuance can recover the original bytes, so a phone that lost the response can learn its context id and close
-it. Drain allows a revoked signer, for incident response. Removing the variable altogether stops close and
-upload too, and leaves open leases held until the key is revoked. Withdraw a deployment by switching to drain.
+charge, and the commit guard refuses it again. An exact retry of an earlier issuance always recovers the original
+bytes (D16: no key is needed; formerly only "if a valid key is still configured"), so a phone that lost the response
+can learn its context id and close it. Removing the variable altogether stops close and upload too, and leaves open
+leases held until the key is revoked. Withdraw a deployment by switching to drain.
 
 Close (`closeOwnOfflineContext` in `core/mobile-offline-context.ts`). Authority is the bearer session's actor
 plus ownership of the context's registered key, revoked or not. The lock order is the actor admission lock, then
@@ -796,10 +819,10 @@ Platforms. iOS claim upload uses the claim's own App Attest assertion and create
 Android claim upload runs the fresh, payload-bound Play preparer (see "Offline sync transport" below).
 
 Owner decisions (28 October 2026):
-1. Signing key custody. An environment secret (`AIHR_MOBILE_OFFLINE_SIGNING_KEY`) for the fictional-data pilot;
+1. SUPERSEDED BY D16 (29 October 2026). Signing key custody. An environment secret (`AIHR_MOBILE_OFFLINE_SIGNING_KEY`) for the fictional-data pilot;
    a managed KMS before any real employee data. Rotation: publish the new issuer's public key at least 72 hours
    plus one registry refresh ahead, then switch `signingKeyId`. Keep the old issuer listed and unrevoked until
-   its contexts expire.
+   its contexts expire. (Now: no signing key, KMS or rotation exists.)
 2. Limits are owned by the deployment: `windowMs` 24 h (cap 72 h), `permitCount` 8, `maximumIssuesPerHour` 4.
 3. `photoRetentionMs` is 30 days. The owner will confirm this with counsel before real data.
 4. If the Android Play verdict fails at sync, the transport refuses with no receipt. The phone keeps the claim
@@ -809,11 +832,11 @@ Owner decisions (28 October 2026):
    deployment is withdrawn; close requires the bearer session plus key ownership; a per-actor rollout allowlist;
    Android freshness means a payload-bound token plus `maxTokenAgeMs`.
 
-NOT done here: KMS custody. The routes and transport, the Android Play preparer, the issuer registry in capabilities,
-the registered-device refusal and the snapshot wiring were done by the transport task below. Operator
-inputs still needed: an Ed25519 key pair generated off-repo, the issuer's `keyId`/`publicKey` and its
-`validFrom`/`validUntil` instants (validity must cover every context window that will be issued), and the actor
-allowlist together with matching clock-rollout entries.
+NOT done here: KMS custody (D16: no longer needed). The routes and transport, the Android Play preparer, the issuer
+registry in capabilities (D16: removed again), the registered-device refusal and the snapshot wiring were done by the
+transport task below. Operator inputs still needed: the actor allowlist together with matching clock-rollout entries.
+(D16 removed the former inputs "an Ed25519 key pair generated off-repo, the issuer's `keyId`/`publicKey` and its
+`validFrom`/`validUntil` instants".)
 
 ### Offline sync transport (28 October 2026; IMPLEMENTED, UNVERIFIED)
 
@@ -829,14 +852,14 @@ reading a body or the deployment. Contracts are `lib/mobile-offline-contract.ts`
 
 | Method and path (`/api/mobile/v2/integrity/{ios,android}/offline/...`) | Body (limit) | Success |
 | --- | --- | --- |
-| `GET capabilities` | none | `{outcome:'offline',enabled,apiOrigin,companyId,issuers,windowMs,permitCount}` |
-| `POST context` | JSON `OfflineClockContextRequest` (1 KiB) | `{outcome:'issued',context,contextId,authorization:'not_granted'}` |
+| `GET capabilities` | none | `{outcome:'offline',enabled,apiOrigin,companyId,windowMs,permitCount}` (D16: no `issuers`) |
+| `POST context` | JSON `OfflineClockContextRequest` (1 KiB) | `{outcome:'issued',context,contextId,authorization:'not_granted'}` (`context`: the exact recorded canonical context JSON) |
 | `POST context/close` | JSON `{contextId,closeRequestId,consumedThrough}` (1 KiB) | `{outcome:'closed',...}` |
 | `POST claim` | multipart, 3 MiB total: `claim` JSON (16 KiB), `photo` (jpeg/png, 2 MiB), Android `playIntegrityToken` + `syncBuildVersion` | `{outcome:'processed',receipt}` |
 
-- `enabled` is false while the deployment drains; close and claim upload stay available. `issuers` is the deployment's
-  public context-signing registry, so a phone can verify a signed context.
-- Refresh is re-posting the same context request: the exact original signed bytes come back. A different nonce for the
+- `enabled` is false while the deployment drains; close and claim upload stay available. SUPERSEDED BY D16: "`issuers`
+  is the deployment's public context-signing registry, so a phone can verify a signed context." No registry is sent.
+- Refresh is re-posting the same context request: the exact original recorded bytes come back. A different nonce for the
   same request id is `binding_conflict`; a second request while a context is open is `offline_pending`.
 - Framing and size violations are HTTP 400 `bad_request`, as on the online routes. A framed but malformed claim, or one
   whose proof platform is not the route's, is the typed refusal `invalid_claim` and never reaches consumption.
@@ -883,9 +906,9 @@ recovery of an earlier request still works so the phone can close it. `OfflineCo
 Tests: `test/mobile-offline-http.test.ts` (handler level) and `test/mobile-offline-deployment.test.ts` (mounted routes).
 `test/mobile-offline-deployment-config.test.ts` now observes the real port instead of injecting one.
 
-NOT done: the native client; storing the sync verdict or a sync audit event; delivering registry updates other than
-through capabilities; KMS custody; physical-device, vendor and airplane-mode witnesses; settings UI for the company
-switch.
+NOT done: the native client; storing the sync verdict or a sync audit event; physical-device, vendor and airplane-mode
+witnesses; settings UI for the company switch. (D16 removed the former items "delivering registry updates other than
+through capabilities" and "KMS custody".)
 
 ### Native client sync engine (28 October 2026; IMPLEMENTED, UNVERIFIED)
 
@@ -909,7 +932,7 @@ existing device-only master; every step commits before its side effect):
 | State | Meaning | Next |
 | --- | --- | --- |
 | E1 `context_requested` | binding + request-start snapshot saved before the context POST | E2; or none via `abandonReservation` only for `offline_pending`, `online_pending`, `offline_disabled`, `device_required`, `context_closed`, `key_unavailable` |
-| E2 `context_ready` | verified signed context + response snapshot; claims C1-C7 | E3, or E4 directly after the last permit's receipt (the server closed it as exhausted) |
+| E2 `context_ready` | checked context (D16: shape and binding, no signature) + response snapshot; claims C1-C7 | E3, or E4 directly after the last permit's receipt (the server closed it as exhausted) |
 | E3 `closing` | `{close:{requestId,consumedThrough}}` saved before the close POST; only when every claim is settled | E4 on `closed`, or on `context_closed`/`key_unavailable`/`context_unavailable`; back to E2 on `cursor_mismatch` (unreceived claims requeued); held on `claims_pending`/`binding_conflict`; kept on `unavailable` or transport failure (identical resend) |
 | E4 closed | `offline:null`; the receipts move to the snapshot's `recent` list for the employee's view | re-arm |
 
@@ -934,8 +957,9 @@ multipart claim upload with the retained photo bytes (no plaintext file); Androi
 attempt with requestHash from `entry.digest` + hex sha256(base64-decoded original signature) + the RUNNING build's
 `capabilities().buildVersion` (`mobile/lib/offline-sync-hash.ts`, pinned to the server owner by
 `test/mobile-offline-sync-hash.test.ts`); iPhone makes no native call at upload. Photo deletion is guarded like `checkPhoto`
-(own exchange, settled claim). The issuer registry is a sealed cache replaced on every successful capabilities read and used to
-verify contexts, including offline at capture.
+(own exchange, settled claim). SUPERSEDED BY D16: "The issuer registry is a sealed cache replaced on every successful
+capabilities read and used to verify contexts, including offline at capture." There is no registry cache; the context
+check needs nothing but the journal's own saved context, so it works offline at capture unchanged.
 
 Identity anchor (blocker b). `{namespace,apiOrigin,actorId,employmentId,companyId,platform}` is a sealed file
 (`mobile/lib/offline-anchor.ts`; SecureStore size limits are UNKNOWN), written before the reservation and on each online sync of
@@ -989,12 +1013,141 @@ Still by design: no HR-outcome fetch on the phone (decision 4). HR resolves a he
 correction, which the employee sees in My attendance > applications (M12, 29 October 2026).
 
 
-## Owner decision D16 — keyless server (29 October 2026) — DECIDED, not built yet
+## Owner decision D16 — keyless server (29 October 2026) — IMPLEMENTED, UNVERIFIED
 
-The product runs on customer premises and in our cloud, so offline attendance must not depend on a server-held
-key or a particular KMS. Decision: the server signs no offline context. It accepts a claim only when it matches the
-context the server itself recorded (`mobile_offline_context`: digest, nonce, device lease, permits, expiry) and is
-signed by the phone's own hardware key (App Attest / Android Keystore), which never leaves the phone. Removed: the
-`AIHR_MOBILE_OFFLINE_SIGNING_KEY` signer, the issuer registry and its rotation, and the phone's Ed25519 verification.
-Contexts are stored without the shared master secret if they contain nothing sensitive (verified during the build).
-Supersedes owner decision 1 (signing key custody) of 28 October 2026. Default off; 0647 remains an unapplied draft.
+Decision as recorded (owner, 29 October 2026): the product runs on customer premises and in our cloud, so offline
+attendance must not depend on a server-held key or a particular KMS. The server signs no offline context. It accepts a
+claim only when it matches the context the server itself recorded (`mobile_offline_context`: digest, nonce, device lease,
+permits, expiry) and is signed by the phone's own hardware key (App Attest / Android Keystore), which never leaves the
+phone. Removed: the `AIHR_MOBILE_OFFLINE_SIGNING_KEY` signer, the issuer registry and its rotation, and the phone's
+Ed25519 verification. Contexts are stored without the shared master secret if they contain nothing sensitive (verified
+during the build). Supersedes owner decision 1 (signing key custody) of 28 October 2026. Default off; 0647 remains an
+unapplied draft.
+
+Status: implemented on `claude/mobile-offline-keyless`. UNVERIFIED: no vitest, TypeScript, build, Metro or database
+command was run locally; hosted CI must verify it. Offline attendance stays off by default; draft 0647 is still
+unjournaled and unapplied (changed in place, see below). No physical device has exercised any of it.
+
+### What the server does now
+
+- Issuance (`core/mobile-offline-context.ts`) takes `{apiOrigin, maximumIssuesPerHour}` and the two trusted ports, and no
+  key material. A new context has `expiresAt = issuedAt + windowMs` exactly (formerly capped by the issuer validity) and
+  no `issuer` field. The server hands out `offlineClockContextJson(context)`: the canonical JSON of the strictly parsed
+  context, in schema key order. It records that exact text, unencrypted, in `mobile_offline_context.context_json`, beside
+  `context_digest` = SHA-256 of the positional bytes (`offlineClockContextClientData`), which every claim names. The final
+  issuance check also confirms the row still holds exactly those bytes and that digest.
+- Recovery and claims read the record through `readIssuedOfflineContextTx`. The stored text must be canonical
+  (re-serializing the parsed context reproduces it byte for byte), its digest must equal `context_digest`, every bound
+  column (id, request id/nonce, policy revision, issued/expiry instants, permit count, apiOrigin, tenant, actor,
+  employment, company, device key, both installations) must agree, and the permit rows must equal the recorded
+  inventory, else `configuration_unavailable`. No key, secret or signature is involved.
+- A claim is accepted only along this chain, unchanged except for where the context comes from: the claim names a context
+  id and digest; the service loads its own row for this tenant, actor, employment and device key (else
+  `context_unavailable`) under the existing actor, key and stream locks; `verifyOfflineClockProof` requires the claim
+  scope to equal the recorded scope, the claim digest to equal the recorded digest, the registered leased key to match
+  the recorded scope and target, the permit to be that context's permit for the ordinal, and the chain to continue the
+  recorded cursor; then the claim's own hardware proof is verified (App Attest assertion and counter on iPhone; Android
+  Keystore ECDSA, plus the payload-bound Play check at sync). Adjudication, receipts, replay and idempotency, drain mode,
+  the 15-minute proven window, HR review and every refusal code are unchanged.
+- Deployment (`core/mobile-offline-rollout.ts`, `lib/mobile-offline-rollout-policy.ts`): `AIHR_MOBILE_OFFLINE_POLICY` keeps
+  version, mode, windowMs, permitCount, maximumIssuesPerHour, photoRetentionMs and the actor allowlist; the Android/iOS
+  integrity policy stays in `AIHR_MOBILE_CLOCK_POLICY`. `issuers` and `signingKeyId` are gone, and a policy that still
+  carries them fails closed. `AIHR_MOBILE_OFFLINE_SIGNING_KEY` is read by nothing. `AI_CONFIG_SECRET` (already required for
+  other features) stays required, because claims and their photos are still stored encrypted; the offline feature needs
+  no new secret. In drain mode an exact retry now always recovers the recorded bytes.
+- Capabilities no longer carry `issuers`. `lib/mobile-api/offline-context-signature.ts` is deleted.
+
+### What the phone does now
+
+`mobile/lib/offline-context.ts` `verifyNativeOfflineClockContext(raw, binding, assertCurrent)` runs the shared
+`bindOfflineClockContext`: strict, bounded, canonical-text-only parsing; scope (apiOrigin, installation, tenant, company,
+actor, employment, app installation, device key), request id/nonce and app target must equal the current connection
+owner's own binding; then Expo SHA-256 gives the digest the claim references (`context_valid`, `authorization:
+not_granted`). Expiry and window rules are unchanged (schema refinements at parse, the capture-time elapsed bound and
+server adjudication). There is no signature verification and no sealed issuer-registry cache: `readIssuerRegistry` and
+`writeIssuerRegistry` and the `offline-issuers` device record are gone, and capabilities reads cache nothing. The journal's
+`rawContext` is the canonical context JSON itself (no `{context, signature}` envelope). FACT: `@noble/curves` is still
+used by the phone (`mobile/lib/company-profile.ts` verifies the signed company setup profile with it), so the dependency
+stays; no offline module imports it.
+
+### Storage finding: why the context record is plaintext
+
+Every field of a context, and where the same fact is already stored unencrypted:
+
+| Context field | Already plaintext in |
+| --- | --- |
+| `version`, `purpose`, `id`, `requestId`, `requestNonce` | constants; `mobile_offline_context.id`, `request_id`, `request_nonce` |
+| `scope` (apiOrigin, installation, tenant, company, actor, employment, app installation, device key) | the same row's columns; the deployment's clock rollout |
+| `target` (platform, app id, environment) | `mobile_integrity_key.platform`, `app_id`, `environment` |
+| `issuedAt`, `expiresAt` | `issued_at`, `expires_at` |
+| `policy` (revision, offline enabled, window, geofencing required, maximum accuracy, photo requirement) | `policy_revision`; `attendance_policy`; `employment.geofencing_enabled`, `attendance_photo_setting`; the deployment policy |
+| `sites` (id, name, lat, lng, radius) | `clocking_location` (the company's configured clocking sites) |
+| `attendance` (baseline fingerprint, date, clocked in, open since) | derived from `attendance_punch` and `attendance` |
+| `permits` (id, ordinal, nonce) | `mobile_offline_permit` |
+
+FACT: no salary, medical data, free text, photo or punch location is in a context (the claim carries the punch location
+and stays encrypted, as does its photo). Decision: plaintext, no `encryptSecret` on the context path. RISK (unchanged, not
+new): an administrator could configure a clocking site at someone's home; that coordinate is already plaintext in
+`clocking_location`, so the context adds no exposure. No DECISION REQUIRED arises from this finding.
+
+### Draft 0647 changes (in place; still unjournaled)
+
+`mobile_offline_context` loses `issuer_key_id`; `context_ciphertext` becomes `context_json text NOT NULL
+CHECK(octet_length(context_json) BETWEEN 2 AND 65536)`. Nothing else in 0647 referred to the issuer or the context
+ciphertext. The immutability trigger already refuses any change to these columns, for the table owner too. The
+test worker restore (`test/helpers/mobile-offline-draft.ts`) drops the whole table, so it needed no change; no function,
+table or trigger was added or removed. `db/schema.ts` declares `contextJson` and no `issuerKeyId`.
+
+### Refusal mapping (old to new)
+
+| Former outcome | Where | Now |
+| --- | --- | --- |
+| `invalid_signature`: context bytes altered | server verifier (`offline-context-signature.ts`, used by tests; the claim path already used the stored record) | A claim naming altered bytes names another digest: proof `context_mismatch`, refused `binding_conflict` (the phone marks it undeliverable) |
+| `issuer_unavailable`: unknown, revoked or out-of-validity issuer | server verifier | A context the server never recorded (forged, another deployment, lost to a backup restore) is refused `context_unavailable`; an expired one meets the unchanged window rules |
+| `invalid_signature` / `issuer_unavailable` on the phone | `mobile/lib/offline-context.ts` | None: the phone checks shape and binding only (`malformed`, `scope_mismatch`, `request_mismatch`, `target_mismatch` unchanged); the server's record refuses the claims |
+| Missing issuer-registry cache (`SignedClockUnavailable('configuration')`) | `mobile/lib/offline-clock-ports.ts` | None: nothing is cached |
+| AES-GCM failure of the stored record | `readIssuedOfflineContextTx` | Noncanonical text, digest or bound-column mismatch, or a different permit inventory: `configuration_unavailable` (same code) |
+| Signer/key deployment errors (`configuration_unavailable`) | `readMobileOfflineDeployment` | Gone; a policy still carrying `issuers`/`signingKeyId` is `configuration_unavailable` |
+| Drain with no key: even an exact retry was `draining` | `deployed-offline-clock.ts` | An exact retry returns the recorded bytes; a new issuance is still `draining` |
+| Receipt review reason `issuer_unavailable` | `lib/mobile-offline-receipt.ts` | Removed, with its HR labels (six locales) and the phone label `offlineReasonPassCheck`. No adjudicator ever produced it and no receipt can hold it (0647 was never applied). An unknown stored reason still shows the generic label on both screens |
+
+### Threat analysis: what the server signature protected, and what covers it now
+
+1. Tampering in transit. Before, the phone verified an Ed25519 signature. Now the context arrives over HTTPS from the
+   paired company origin (the company profile, signed with a key built into the app, pins `apiOrigin`). A context changed
+   in transit is still useless: each claim's hardware-key proof commits to the digest of the bytes the phone received,
+   and the server accepts only its recorded digest (`binding_conflict`). Residual: such a change can make a phone capture
+   claims that are then refused. That is denial of service, which an attacker able to break TLS could cause anyway.
+2. Authenticity (did this server issue it?). The server's own row, filtered by tenant, actor, employment and device key,
+   with canonical bytes, digest and permits, replaces signature plus registry. Anything unrecorded is `context_unavailable`.
+3. Integrity of the stored record. Before, AES-GCM with AAD. Now: the app role can change only cursor and close columns,
+   and the `mobile_offline_context_progress` trigger refuses any other change even for the table owner; every read checks
+   canonical bytes against the digest and the bound columns; and the hardware-signed claim names the original digest, so
+   rewriting both text and digest makes genuine claims fail closed, never accepts a claim the phone did not sign. An
+   attacker with superuser database access could already write attendance directly; that is outside this boundary
+   (unchanged).
+4. Replay. Permits and nonces are recorded per context. Consumption checks the chain cursor and the permit ordinal, with
+   unique permit, request and App Attest counter constraints. A permit replayed under a new request id is
+   `chain_conflict`; an exact retry returns the same receipt. The signature never protected replay; nothing changed.
+5. Cross-deployment (cloud versus on-premises). Before, the other deployment's registry lacked the key. Now the other
+   server has no record of the context id (`context_unavailable`), and the scope binds `apiOrigin` and the installation
+   (`scope_unavailable` or `binding_conflict`).
+6. Backup restore. A context issued after the backup point is unknown to the restored server, so its claims are refused
+   `context_unavailable` (the phone marks them undeliverable). RISK, unchanged by D16: for a context recorded before the
+   backup, the restored cursor is behind the phone's receipts, so the phone's next claim meets `chain_conflict` and waits;
+   and claims already receipted could be uploaded again by someone holding their bytes. Neither case was protected by the
+   signature.
+7. Device and employee proof. The leased hardware key signs every claim, exactly as before.
+8. Key compromise and custody. Before, a leaked signing key let anyone mint contexts that phones accepted (the server's
+   record check still applied), and the key needed a KMS and rotation. Now there is no key to leak, store or rotate.
+
+### Tests
+
+Updated or rewritten: `test/mobile-offline-context-keyless.test.ts` (formerly `mobile-offline-context-signature.test.ts`:
+canonical JSON and digest, binding check, retired fields refused, and a pin that no offline module reads
+`AIHR_MOBILE_OFFLINE_SIGNING_KEY`, imports a signer or Noble, or names the registry cache), the issuance, consumption
+(new stored-record cases: forged or altered digest, unknown context, another actor's context, another installation, app
+installation, device key or origin, replayed permit, a context issued with no key, a record rewritten behind its
+triggers), close, stream-storage (owner cannot rewrite the record), deployment-config, deployment, HTTP, clock-proof,
+context-journal, context-native (the shipped phone check, without Noble), sync, submission-native and native-client
+suites. NOT done: an ADR for D16 (the orchestrator decides), physical-device witnesses, journaling 0647.

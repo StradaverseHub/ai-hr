@@ -90,7 +90,7 @@ export function OfflineClaimsReview({ rows, groupAdmin, all }: { rows: readonly 
 /** Every review reason has a label; an unknown stored value (a reason added later) reads as the generic one. */
 const REASONS = new Set(['continuity_unknown', 'time_unverifiable', 'outside_context_window', 'policy_changed', 'site_changed', 'attendance_changed', 'corrected_day', 'payroll_locked',
   'location_required', 'poor_accuracy', 'outside_geofence', 'mock_reported', 'simulated_reported', 'accessory_reported', 'photo_required', 'photo_invalid', 'scope_changed',
-  'issuer_unavailable', 'device_required', 'review_required', 'offline_disabled', 'proven_window_too_wide', 'employment_inactive', 'overtime_settled']);
+  'device_required', 'review_required', 'offline_disabled', 'proven_window_too_wide', 'employment_inactive', 'overtime_settled']);
 const reasonKey = (reason: string) => (REASONS.has(reason) ? reason : 'review_required');
 
 export function OfflineClaimPanel({ row, groupAdmin, name, onClose }: { row: OfflineReviewRow; groupAdmin: boolean; name: string; onClose: () => void }) {

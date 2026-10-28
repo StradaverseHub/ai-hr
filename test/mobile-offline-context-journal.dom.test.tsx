@@ -1,24 +1,29 @@
-/** Shared proof-owner model with real context signatures; no OS/DB/attendance acceptance. */
-import {createHash,generateKeyPairSync} from 'node:crypto';
+/** Shared proof-owner model with the real keyless context check (owner decision D16: bindOfflineClockContext plus SHA-256,
+ * no server signature); no OS/DB/attendance acceptance. */
+import {createHash} from 'node:crypto';
 import {describe,it,expect,vi} from 'vitest';
 import {createSignedClockJournal,parseSignedClockSnapshot,SignedClockConflict,type SignedClockPorts,type SignedClockSnapshot} from '../mobile/lib/signed-clock-journal';
-import {offlineContextIssuerIdentity,signOfflineClockContext,verifyOfflineClockContextSignature} from '../lib/mobile-api/offline-context-signature';
+import {bindOfflineClockContext,offlineClockContextJson,type OfflineClockContextVerificationResult} from '../lib/mobile-offline-context';
 import {NativeCapabilities} from '../mobile/lib/integrity-bridge';
 import {offlineClockPhotoReference,type OfflineClockProofPorts} from '../mobile/lib/offline-clock-state';
 import {offlineClockClaimClientData} from '../lib/mobile-offline-clock';
 import type {OfflineClockContextData,OfflineClockContextBinding} from '../lib/mobile-offline-context';
 const id=(n:number)=>String(n).padStart(8,'0')+'-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+/** The phone's check (mobile/lib/offline-context.ts) with Node SHA-256: shape and binding, then the claim digest. */
+async function keylessCheck(raw:string,expected:OfflineClockContextBinding):Promise<OfflineClockContextVerificationResult>{
+ const checked=bindOfflineClockContext(raw,expected);
+ return checked.outcome==='bound'?{outcome:'context_valid',context:checked.context,digest:createHash('sha256').update(checked.canonical,'utf8').digest('hex'),authorization:'not_granted'}:checked;
+}
 function fixture(platform:'ios'|'android'='ios'){
  let stored:SignedClockSnapshot|null=null,current=true,counter=100;
  const scope={namespace:'fixture',apiOrigin:'https://hr.example.com',actorId:id(6),appInstallationId:id(8)};
  const key={platform,apiOrigin:scope.apiOrigin,actorId:scope.actorId,appInstallationId:scope.appInstallationId,installationId:id(3),tenantId:id(4),keyId:id(9),appId:platform==='ios'?'ABCDEFGHIJ.ai.hr':'ai.hr',nativeReference:platform==='ios'?Buffer.alloc(32,7).toString('base64'):'aihr_'+'a'.repeat(64)};
  const capability={version:1,platform,appId:'ai.hr',appVersion:'1',buildVersion:'4',keyMechanism:platform==='ios'?'apple_app_attest':'android_keystore'};
  const binding:OfflineClockContextBinding={scope:{apiOrigin:scope.apiOrigin,actorId:scope.actorId,appInstallationId:scope.appInstallationId,installationId:id(3),tenantId:id(4),companyId:id(5),employmentId:id(7),deviceKeyId:id(9)},request:{requestId:id(2),requestNonce:'A'.repeat(43),appInstallationId:id(8),keyId:id(9)},target:platform==='ios'?{platform:'ios',appId:key.appId,environment:'production'}:{platform:'android',appId:key.appId,environment:null}};
- const pair=generateKeyPairSync('ed25519'),identity=offlineContextIssuerIdentity(pair.privateKey),issuedAt=1793055753390;
- const context:OfflineClockContextData={version:1,purpose:'attendance.clock.offline.context',issuer:{algorithm:'ed25519',keyId:identity.keyId},id:id(1),requestId:binding.request.requestId,requestNonce:binding.request.requestNonce,
+ const issuedAt=1793055753390;
+ const context:OfflineClockContextData={version:1,purpose:'attendance.clock.offline.context',id:id(1),requestId:binding.request.requestId,requestNonce:binding.request.requestNonce,
   scope:binding.scope,target:binding.target,issuedAt,expiresAt:issuedAt+3600000,policy:{revision:'a'.repeat(64),offlineEnabled:true,windowMs:86400000,geofencingRequired:false,maximumAccuracyM:null,photoRequirement:'optional'},sites:[],
   attendance:{baseline:'b'.repeat(64),date:'2026-10-27',clockedIn:false,openSince:null},permits:[{id:id(11),ordinal:1,nonce:'A'.repeat(43)}]};
- const issuer={...identity,validFrom:issuedAt-1,validUntil:issuedAt+86400000,revoked:false};
  const snapshot=()=>({localOnly:true as const,runtimeId:id(12),source:platform==='ios'?'ios_continuous' as const:'android_elapsed_realtime' as const,elapsedBeforeNs:String(counter+=10),elapsedAfterNs:String(counter+1),wallTimeMs:issuedAt,bootId:platform==='ios'?null:'1'});
  const command={requestId:id(20),action:'in' as const,lat:3,lng:101,accuracy:5,sampledAt:issuedAt};
  const source={provider:null,mock:null,simulated:null,accessory:null};
@@ -26,9 +31,9 @@ function fixture(platform:'ios'|'android'='ios'){
   base:vi.fn(async()=>({digest:'a'.repeat(64),command,photo:null,source})),key:vi.fn(async()=>({key,capability})) as SignedClockPorts['key'],
   capabilities:vi.fn(async()=>({outcome:'capabilities',protocol:2,platform,commandProtocol:platform==='ios'?1:2,features:platform==='ios'?['online_clock_assertion']:['online_clock_signature','current_play_integrity'],offline:false,cloudProjectNumber:platform==='ios'?null:'123456789'})),
   begin:vi.fn(async()=>({})),sign:vi.fn(async()=>({status:'unavailable' as const,reason:'unavailable' as const})),play:vi.fn(async()=>({status:'unavailable' as const,reason:'unavailable' as const})),complete:vi.fn(async()=>({})),receipt:vi.fn(async()=>({})),abandon:vi.fn(async()=>({})),resolveBase:vi.fn(async()=>{}),
-  offline:{snapshot:vi.fn<NonNullable<SignedClockPorts['offline']>['snapshot']>(()=>({status:'evidence',evidence:snapshot(),verification:'not_verified'})),request:vi.fn(async()=>signOfflineClockContext(context,pair.privateKey)),verify:vi.fn(async(raw,expected)=>verifyOfflineClockContextSignature(raw,[issuer],expected.scope))},
+  offline:{snapshot:vi.fn<NonNullable<SignedClockPorts['offline']>['snapshot']>(()=>({status:'evidence',evidence:snapshot(),verification:'not_verified'})),request:vi.fn(async()=>offlineClockContextJson(context)),verify:vi.fn(async(raw,expected)=>keylessCheck(raw,expected))},
  };
- return {scope,key,capability,command,snapshot,binding,context,ports,stored:()=>stored,setStored:(s:SignedClockSnapshot)=>{stored=s;},journal:()=>createSignedClockJournal(scope,ports),obsolete:()=>{current=false;},raw:()=>signOfflineClockContext(context,pair.privateKey)};
+ return {scope,key,capability,command,snapshot,binding,context,ports,stored:()=>stored,setStored:(s:SignedClockSnapshot)=>{stored=s;},journal:()=>createSignedClockJournal(scope,ports),obsolete:()=>{current=false;},raw:()=>offlineClockContextJson(context)};
 }
 describe('shared online/offline context exchange owner',()=>{
  it.each(['ios','android'] as const)('%s saves request and original local snapshot before any network/verification operation',async platform=>{
@@ -74,7 +79,7 @@ describe('shared online/offline context exchange owner',()=>{
  it('reverifies a ready context without replacing its response anchor or requesting another context',async()=>{
   const f=fixture();await f.journal().reserveOffline(f.binding);await f.journal().prepareOffline(f.binding.request.requestId);const before=structuredClone(f.stored());
   await f.journal().prepareOffline(f.binding.request.requestId);expect(f.stored()).toEqual(before);expect(f.ports.offline!.request).toHaveBeenCalledOnce();expect(f.ports.offline!.verify).toHaveBeenCalledTimes(2);
-  vi.mocked(f.ports.offline!.verify).mockResolvedValueOnce({outcome:'invalid',reason:'issuer_unavailable'});
+  vi.mocked(f.ports.offline!.verify).mockResolvedValueOnce({outcome:'invalid',reason:'scope_mismatch'});
   await expect(f.journal().prepareOffline(f.binding.request.requestId)).rejects.toThrow('Signed clocking unavailable');expect(f.stored()).toEqual(before);
  });
  it('does not request a context after a lost reservation commit acknowledgement or owner loss',async()=>{
@@ -87,7 +92,7 @@ describe('shared online/offline context exchange owner',()=>{
   vi.mocked(f.ports.offline!.request).mockImplementationOnce(async()=>{f.obsolete();return f.raw();});
   await expect(f.journal().prepareOffline(f.binding.request.requestId)).rejects.toThrow('Session changed');expect(f.stored()).toEqual(before);expect(f.ports.offline!.verify).not.toHaveBeenCalled();
  });
- it('refuses a valid signature with substituted request binding before saving a ready context',async()=>{
+ it('refuses a well-formed context with a substituted request binding before saving a ready context',async()=>{
   const f=fixture();await f.journal().reserveOffline(f.binding);const before=structuredClone(f.stored());f.context.requestNonce='B'.repeat(42)+'A';
   await expect(f.journal().prepareOffline(f.binding.request.requestId)).rejects.toThrow();expect(f.stored()).toEqual(before);
  });
@@ -211,8 +216,8 @@ describe('durable offline claim capture and photo/base ownership transfer',()=>{
   const f=captureFixture();await f.ready();const input=f.input();
   const results=await Promise.all([f.journal().captureOffline(input),f.journal().captureOffline(input)]);expect(results[0]).toEqual(results[1]);expect(f.ports.base).toHaveBeenCalledOnce();expect(f.capture.retainPhoto).toHaveBeenCalledOnce();expect(f.capture.releaseBase).toHaveBeenCalledOnce();
  });
- it('does not allocate a new claim under a revoked issuer or unsupported native capability',async()=>{
-  const f=captureFixture();await f.ready();vi.mocked(f.ports.offline!.verify).mockResolvedValueOnce({outcome:'invalid',reason:'issuer_unavailable'});
+ it('does not allocate a new claim under a context that no longer checks or an unsupported native capability',async()=>{
+  const f=captureFixture();await f.ready();vi.mocked(f.ports.offline!.verify).mockResolvedValueOnce({outcome:'invalid',reason:'target_mismatch'});
   await expect(f.journal().captureOffline(f.input())).rejects.toThrow('Signed clocking unavailable');expect(f.ports.base).not.toHaveBeenCalled();
   vi.mocked(f.capture.capabilities).mockReturnValueOnce({status:'unsupported',reason:'unsupported'});
   await expect(f.journal().captureOffline(f.input())).rejects.toThrow('Signed clocking unavailable');expect(f.stored()!.offline).toMatchObject({claims:[]});expect(f.capture.retainPhoto).not.toHaveBeenCalled();

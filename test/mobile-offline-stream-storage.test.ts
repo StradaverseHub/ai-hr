@@ -37,7 +37,7 @@ async function fixture(platform:'ios'|'android'='ios'){
  }
  const [key]=await owner.db.select().from(S.mobileIntegrityKey).where(eq(S.mobileIntegrityKey.id,keyId));
  const issuedAt=new Date(Date.now()-3600000),context={id:randomUUID(),tenantId:ctx.tenantId,actorId:userId,employmentId:e.employmentId,companyId:base.companyId,deviceKeyId:keyId,installationId:key.installationId,appInstallationId:intent.appInstallationId,
- requestId:randomUUID(),requestNonce:randomBytes(32).toString('base64url'),contextDigest:'a'.repeat(64),issuerKeyId:'b'.repeat(64),policyRevision:'c'.repeat(64),contextCiphertext:'synthetic ciphertext',issuedAt,expiresAt:new Date(issuedAt.getTime()+1800000),permitCount:2};
+ requestId:randomUUID(),requestNonce:randomBytes(32).toString('base64url'),contextDigest:'a'.repeat(64),policyRevision:'c'.repeat(64),contextJson:'{"synthetic":"context"}',issuedAt,expiresAt:new Date(issuedAt.getTime()+1800000),permitCount:2};
  const permits=[1,2].map(ordinal=>({id:randomUUID(),tenantId:ctx.tenantId,actorId:userId,contextId:context.id,ordinal,nonce:randomBytes(32).toString('base64url')}));
  const input={employmentId:e.employmentId,appInstallationId:intent.appInstallationId,keyId,command:{requestId:randomUUID(),action:'out' as const,lat:3,lng:101,accuracy:4,sampledAt:Date.now()},evidence:{platform,appId:'ai.hr',appVersion:'1',buildVersion:'4',provider:null,mock:null,simulated:null,accessory:null}};
  const lease=()=>withTenant(ctx,async tx=>{await tx.select().from(S.mobileIntegrityKey).where(eq(S.mobileIntegrityKey.id,keyId)).for('update');await tx.insert(S.mobileOfflineContext).values(context);await tx.insert(S.mobileOfflinePermit).values(permits);});
@@ -97,7 +97,13 @@ describe('reserved offline stream storage and exclusion',()=>{
   await withTenant(peer.ctx,async tx=>{expect(await tx.select().from(S.mobileOfflineContext)).toHaveLength(0);expect(await tx.select().from(S.mobileOfflinePermit)).toHaveLength(0);expect(await tx.select().from(S.mobileOfflineClaim)).toHaveLength(0);await assertNoOfflineClockLeaseTx(tx,peer.ctx,f.input.appInstallationId);});
   await expect(withTenant(peer.ctx,tx=>tx.insert(S.mobileOfflineClaim).values({...claim,id:randomUUID()}))).rejects.toThrow();
   await expect(withTenant(peer.ctx,tx=>tx.insert(S.mobileOfflineContext).values({...f.context,id:randomUUID(),actorId:peer.ctx.userId!,requestId:randomUUID()}))).rejects.toThrow();
-  for(const statement of [sql`update mobile_offline_claim set reason='changed' where id=${claim.id}`,sql`delete from mobile_offline_claim where id=${claim.id}`,sql`update mobile_offline_permit set nonce=${randomBytes(32).toString('base64url')} where id=${f.permits[1].id}`,sql`update mobile_offline_context set context_digest=${'e'.repeat(64)} where id=${f.context.id}`])await expect(withTenant(f.ctx,tx=>tx.execute(statement))).rejects.toThrow();
+  for(const statement of [sql`update mobile_offline_claim set reason='changed' where id=${claim.id}`,sql`delete from mobile_offline_claim where id=${claim.id}`,sql`update mobile_offline_permit set nonce=${randomBytes(32).toString('base64url')} where id=${f.permits[1].id}`,sql`update mobile_offline_context set context_digest=${'e'.repeat(64)} where id=${f.context.id}`,
+   sql`update mobile_offline_context set context_json=${'{"changed":true}'} where id=${f.context.id}`])await expect(withTenant(f.ctx,tx=>tx.execute(statement))).rejects.toThrow();
+  // D16: the plaintext record is the authority claims are checked against, so even the table owner cannot rewrite it.
+  for(const statement of [sql`update mobile_offline_context set context_json=${'{"changed":true}'} where id=${f.context.id}`,sql`update mobile_offline_context set context_digest=${'e'.repeat(64)} where id=${f.context.id}`])
+   await expect(owner.db.execute(statement)).rejects.toMatchObject({cause:expect.objectContaining({code:'P0001',message:'Offline context is immutable'})});
+  const [stored]=await owner.db.select({json:S.mobileOfflineContext.contextJson,digest:S.mobileOfflineContext.contextDigest}).from(S.mobileOfflineContext).where(eq(S.mobileOfflineContext.id,f.context.id));
+  expect(stored).toEqual({json:f.context.contextJson,digest:f.context.contextDigest});
  });
  it('retains a blind lease after the original employment becomes unreadable',async()=>{
   const f=await fixture();await f.lease();await owner.db.update(S.employment).set({hiredOn:'2099-01-01'}).where(eq(S.employment.id,f.input.employmentId));

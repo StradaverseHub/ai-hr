@@ -1,4 +1,5 @@
-/** Actual SQL/Ed25519/AES-GCM/identity/locks; synthetic attestation and explicit policy ports. */
+/** Actual SQL/identity/locks; synthetic attestation and explicit policy ports. Keyless (owner decision D16): no signer,
+ * issuer or context encryption; the issued record (canonical JSON, digest, permits) is the authority. */
 import {createHash,generateKeyPairSync,randomBytes,randomUUID,sign} from 'node:crypto';
 import cbor from 'cbor';
 import {eq,sql} from 'drizzle-orm';
@@ -10,8 +11,7 @@ import {createAppleEnrollmentService} from '../core/mobile-apple-enrollment';
 import {createAndroidEnrollmentService} from '../core/mobile-android-enrollment';
 import {createAppleClockAssertionService} from '../core/mobile-apple-clock-assertion';
 import {createOfflineContextIssueService,readIssuedOfflineContextTx,type OfflineContextIssuePorts,type OfflineContextSnapshot} from '../core/mobile-offline-context';
-import {offlineContextIssuerIdentity,verifyOfflineClockContextSignature} from '../lib/mobile-api/offline-context-signature';
-import {OfflineClockContextEnvelope,offlineClockContextClientData} from '../lib/mobile-offline-context';
+import {bindOfflineClockContext,offlineClockContextClientData,parseOfflineClockContextJson} from '../lib/mobile-offline-context';
 import {onlineClockClientData} from '../lib/mobile-clock-integrity';
 import {RequestBudgetExceeded} from '../lib/request-budget';
 import {adminCtx,closeAll,createAppUser,harnessSnapshot,owner,resetDb,seedBase,type Base} from './harness';
@@ -23,10 +23,7 @@ let base:Base,restore:(()=>Promise<void>)|undefined,restoreCustody:(()=>Promise<
 beforeAll(async()=>{restoreCustody=await installCustodyDraftForWorker();restore=await installOfflineDraftForWorker();});
 beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','synthetic-offline-issuance-fixture-secret-2026');await resetDb();base=await seedBase();});
 afterAll(async()=>{try{await resetDb();await restore?.();await restoreCustody?.();}finally{vi.unstubAllEnvs();await closeAll();}});
-function issuer(){
- const {privateKey}=generateKeyPairSync('ed25519'),identity=offlineContextIssuerIdentity(privateKey);
- return {apiOrigin:apple.apiOrigin,privateKey,issuer:{...identity,validFrom:Date.now()-86400000,validUntil:Date.now()+7*86400000,revoked:false},maximumIssuesPerHour:4};
-}
+function settings(){return {apiOrigin:apple.apiOrigin,maximumIssuesPerHour:4};}
 async function fixture(platform:'ios'|'android'='ios'){
  const e=await hireEmployee(adminCtx(base),{person:{fullName:'Offline issuer employee',primaryEmail:randomUUID()+'@issue.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2024-01-01'}),userId=await createAppUser(base.tenantId,e.personId,'employee');
  const ctx:SessionContext={tenantId:base.tenantId,userId,personId:e.personId,roles:['employee'],grants:[{role:'employee',companyId:base.companyId}],entitlements:harnessSnapshot(base.tenantId)};
@@ -40,7 +37,7 @@ async function fixture(platform:'ios'|'android'='ios'){
   const begin=await enroll.begin(ctx,intent);keyId=(await enroll.complete(ctx,{...intent,challengeId:begin.challenge.id,publicKeySpki:pair.publicKey.export({format:'der',type:'spki'}),certificateChain:[Buffer.from('synthetic leaf'),Buffer.from('synthetic issuer')]})).keyId;
  }
  const [key]=await owner.db.select().from(S.mobileIntegrityKey).where(eq(S.mobileIntegrityKey.id,keyId));
- const input={employmentId:e.employmentId,request:{requestId:randomUUID(),requestNonce:randomBytes(32).toString('base64url'),appInstallationId:intent.appInstallationId,keyId:key.id}},config=issuer();
+ const input={employmentId:e.employmentId,request:{requestId:randomUUID(),requestNonce:randomBytes(32).toString('base64url'),appInstallationId:intent.appInstallationId,keyId:key.id}},config=settings();
  let policy:OfflineContextSnapshot={policy:{revision:'a'.repeat(64),offlineEnabled:true,windowMs:3600000,geofencingRequired:false,maximumAccuracyM:null,photoRequirement:'optional'},sites:[],attendance:{baseline:'b'.repeat(64),date:'2026-10-27',clockedIn:false,openSince:null},target:platform==='ios'?{platform,appId:apple.target.appId,environment:'production'}:{platform,appId:'ai.hr',environment:null},permitCount:2};
  const snapshot=vi.fn<OfflineContextIssuePorts['snapshot']>(async()=>structuredClone(policy)),beforeCommit=vi.fn<OfflineContextIssuePorts['beforeCommit']>(async()=>{}),ports={snapshot,beforeCommit};
  const service=(settings:unknown=config)=>createOfflineContextIssueService(settings,ports),issue=()=>service().issue(ctx,input);
@@ -49,35 +46,39 @@ async function fixture(platform:'ios'|'android'='ios'){
 async function counts(){return {contexts:(await owner.db.select().from(S.mobileOfflineContext)).length,permits:(await owner.db.select().from(S.mobileOfflinePermit)).length,punches:(await owner.db.select().from(S.attendancePunch)).length};}
 async function untouched(){expect(await counts()).toEqual({contexts:0,permits:0,punches:0});expect(await owner.db.select().from(S.domainEvent).where(eq(S.domainEvent.eventType,'mobile.offline.context.issued'))).toHaveLength(0);}
 async function retire(f:Awaited<ReturnType<typeof fixture>>,id:string){await withTenant(f.ctx,async tx=>{await tx.select().from(S.mobileIntegrityKey).where(eq(S.mobileIntegrityKey.id,f.key.id)).for('update');await tx.update(S.mobileOfflineContext).set({closedAt:sql`clock_timestamp()`,closeReason:'retired',closeRequestId:randomUUID()}).where(eq(S.mobileOfflineContext.id,id));});}
-describe('transactional signed offline context issuance',()=>{
- it.each(['ios','android'] as const)('issues one exact encrypted %s context and permit inventory across concurrent retries, with real signature verification',async platform=>{
+describe('transactional keyless offline context issuance (owner decision D16)',()=>{
+ it.each(['ios','android'] as const)('issues one exact recorded %s context and permit inventory across concurrent retries, with no key or signature',async platform=>{
   const f=await fixture(platform),[a,b]=await Promise.all([f.issue(),f.issue()]);expect(a).toEqual(b);expect(a.authorization).toBe('not_granted');
-  const {context}=OfflineClockContextEnvelope.parse(JSON.parse(a.raw)),[row]=await owner.db.select().from(S.mobileOfflineContext);
+  const context=parseOfflineClockContextJson(a.raw),[row]=await owner.db.select().from(S.mobileOfflineContext);
   const scope={apiOrigin:apple.apiOrigin,installationId:f.key.installationId,tenantId:f.ctx.tenantId,companyId:base.companyId,actorId:f.ctx.userId!,employmentId:f.e.employmentId,appInstallationId:f.input.request.appInstallationId,deviceKeyId:f.key.id};
   expect(context.scope).toEqual(scope);expect(context.requestId).toBe(f.input.request.requestId);expect(context.requestNonce).toBe(f.input.request.requestNonce);
-  expect(verifyOfflineClockContextSignature(a.raw,[f.config.issuer],scope)).toMatchObject({outcome:'signature_valid',authorization:'not_granted'});
-  expect(row.contextDigest).toBe(createHash('sha256').update(offlineClockContextClientData(context)).digest('hex'));expect(row.contextCiphertext).not.toContain('attendance.clock');expect(row.contextCiphertext).not.toContain(context.permits[0].nonce);
+  // What the phone receives binds to its own request/scope/target, and carries no issuer or signature.
+  expect(bindOfflineClockContext(a.raw,{scope,request:f.input.request,target:context.target})).toMatchObject({outcome:'bound',context});
+  expect(Object.keys(JSON.parse(a.raw)).sort()).toEqual(['attendance','expiresAt','id','issuedAt','permits','policy','purpose','requestId','requestNonce','scope','sites','target','version']);
+  // The record holds exactly the handed-out bytes, in plaintext, beside the digest every claim commits to.
+  expect(row.contextJson).toBe(a.raw);expect(row).not.toHaveProperty('issuerKeyId');expect(row).not.toHaveProperty('contextCiphertext');
+  expect(row.contextDigest).toBe(createHash('sha256').update(offlineClockContextClientData(context)).digest('hex'));
+  expect(context.expiresAt-context.issuedAt).toBe(f.policy().policy.windowMs);
   expect((await withTenant(f.ctx,tx=>readIssuedOfflineContextTx(tx,row,apple.apiOrigin))).raw).toBe(a.raw);
   expect(await counts()).toEqual({contexts:1,permits:2,punches:0});expect(f.snapshot).toHaveBeenCalledOnce();expect(f.beforeCommit.mock.calls.map(call=>call[2].mode).sort()).toEqual(['issue','recover']);
   const events=await owner.db.select().from(S.domainEvent).where(eq(S.domainEvent.eventType,'mobile.offline.context.issued'));expect(events).toHaveLength(1);const payload=events[0].payload;if(payload===null||typeof payload!=='object'||Array.isArray(payload))throw Error('Invalid issuance audit payload');expect(Object.keys(payload).sort()).toEqual(['keyId','permitCount','policyRevision']);
  });
- it('recovers original bytes and anchors through changed snapshots and ordinary signer rotation',async()=>{
+ it('recovers the exact recorded bytes and anchors through changed snapshots and a changed issuance budget, with no key to rotate',async()=>{
   const f=await fixture(),original=await f.issue();f.snapshot.mockRejectedValueOnce(new Error('must not fetch a new snapshot'));
-  const rotated=issuer(),retry=await f.service(rotated).issue(f.ctx,f.input);expect(retry).toEqual(original);expect(f.snapshot).toHaveBeenCalledOnce();
-  const {context}=OfflineClockContextEnvelope.parse(JSON.parse(original.raw));expect(verifyOfflineClockContextSignature(retry.raw,[f.config.issuer],context.scope)).toMatchObject({outcome:'signature_valid'});
-  expect(verifyOfflineClockContextSignature(retry.raw,[rotated.issuer],context.scope)).toEqual({outcome:'invalid',reason:'issuer_unavailable'});
+  const retry=await f.service({...settings(),maximumIssuesPerHour:1}).issue(f.ctx,f.input);expect(retry).toEqual(original);expect(f.snapshot).toHaveBeenCalledOnce();
+  const [row]=await owner.db.select().from(S.mobileOfflineContext);expect(row.contextJson).toBe(retry.raw);
  });
  it('keeps expired context retries stable and refuses allocating a replacement stream implicitly',async()=>{
-  const f=await fixture();f.setPolicy({...f.policy(),policy:{...f.policy().policy,windowMs:1000}});const original=await f.issue(),{context}=JSON.parse(original.raw);
+  const f=await fixture();f.setPolicy({...f.policy(),policy:{...f.policy().policy,windowMs:1000}});const original=await f.issue(),context=parseOfflineClockContextJson(original.raw);
   await owner.db.execute(sql`select pg_sleep(greatest(0,extract(epoch from (${new Date(context.expiresAt).toISOString()}::timestamptz-clock_timestamp())))+0.02)`);
   expect(await f.issue()).toEqual(original);
   await expect(f.service().issue(f.ctx,{...f.input,request:{...f.input.request,requestId:randomUUID(),requestNonce:randomBytes(32).toString('base64url')}})).rejects.toMatchObject({reason:'offline_pending'});
   expect(await counts()).toEqual({contexts:1,permits:2,punches:0});
  });
- it('refuses changed request bindings and client-supplied policy, scope or issuer authority',async()=>{
+ it('refuses changed request bindings and client-supplied policy, scope, key or digest authority',async()=>{
   const f=await fixture();await f.issue();
   await expect(f.service().issue(f.ctx,{...f.input,request:{...f.input.request,requestNonce:randomBytes(32).toString('base64url')}})).rejects.toMatchObject({reason:'binding_conflict'});
-  for(const extra of [{actorId:randomUUID()},{companyId:randomUUID()},{policy:f.policy()},{issuer:f.config.issuer}])await expect(f.service().issue(f.ctx,{...f.input,...extra})).rejects.toThrow();
+  for(const extra of [{actorId:randomUUID()},{companyId:randomUUID()},{policy:f.policy()},{issuer:{algorithm:'ed25519',keyId:'c'.repeat(64)}},{contextDigest:'c'.repeat(64)}])await expect(f.service().issue(f.ctx,{...f.input,...extra})).rejects.toThrow();
   await expect(f.service().issue(f.ctx,{...f.input,request:{...f.input.request,appInstallationId:randomUUID()}})).rejects.toMatchObject({reason:'key_unavailable'});
   expect(await counts()).toEqual({contexts:1,permits:2,punches:0});
  });
@@ -106,11 +107,13 @@ describe('transactional signed offline context issuance',()=>{
   await expect(f.issue()).rejects.toThrow('policy changed');await untouched();
   expect((await f.issue()).outcome).toBe('issued');
  });
- it.each(['employment','key','storage'] as const)('rechecks %s after the final guard and rolls back tentative writes',async change=>{
-  const f=await fixture();f.beforeCommit.mockImplementationOnce(async tx=>{
+ // 'record' replaces the former 'storage' case (D16: the context service holds no secret; the deployment commit guard still
+ // rechecks claim/photo encryption storage, test/mobile-offline-deployment-config.test.ts). The record itself is rechecked.
+ it.each(['employment','key','record'] as const)('rechecks %s after the final guard and rolls back tentative writes',async change=>{
+  const f=await fixture();f.beforeCommit.mockImplementationOnce(async(tx,_ctx,checked)=>{
    if(change==='employment')await tx.update(S.employment).set({hiredOn:'2099-01-01'}).where(eq(S.employment.id,f.e.employmentId));
    if(change==='key')await tx.update(S.mobileIntegrityKey).set({revokedAt:sql`clock_timestamp()`}).where(eq(S.mobileIntegrityKey.id,f.key.id));
-   if(change==='storage')vi.stubEnv('AI_CONFIG_SECRET','');
+   if(change==='record')await tx.update(S.mobileOfflineContext).set({closedAt:sql`clock_timestamp()`,closeReason:'retired',closeRequestId:randomUUID()}).where(eq(S.mobileOfflineContext.id,checked.context.id));
   });
   await expect(f.issue()).rejects.toThrow();await untouched();
   expect((await owner.db.select().from(S.mobileIntegrityKey).where(eq(S.mobileIntegrityKey.id,f.key.id)))[0].revokedAt).toBeNull();
@@ -126,15 +129,28 @@ describe('transactional signed offline context issuance',()=>{
    f.snapshot.mockResolvedValueOnce(changed);await expect(f.issue()).rejects.toThrow();await untouched();
   }
  });
- it('requires matching private issuer material, configured admission, and both trusted policy ports',async()=>{
-  const f=await fixture();for(const config of [{...f.config,privateKey:generateKeyPairSync('ed25519').privateKey},{...f.config,maximumIssuesPerHour:0},{...f.config,issuer:{...f.config.issuer,keyId:'c'.repeat(64)}}])expect(()=>f.service(config)).toThrow();
+ it('requires configured admission and both trusted policy ports, and accepts no key material at all',async()=>{
+  const f=await fixture();
+  for(const config of [{...f.config,maximumIssuesPerHour:0},{...f.config,privateKey:generateKeyPairSync('ed25519').privateKey},{...f.config,issuer:{keyId:'c'.repeat(64)}},{apiOrigin:apple.apiOrigin}])expect(()=>f.service(config)).toThrow();
   expect(()=>createOfflineContextIssueService(f.config,{snapshot:f.snapshot} as never)).toThrow();
-  for(const issuer of [{...f.config.issuer,revoked:true},{...f.config.issuer,validFrom:Date.now()+86400000},{...f.config.issuer,validUntil:Date.now()-1}])await expect(f.service({...f.config,issuer}).issue(f.ctx,f.input)).rejects.toThrow();
   await untouched();
  });
- it('keeps record recovery bound to ciphertext AAD, issuer metadata, canonical digest and the real permit inventory',async()=>{
-  const f=await fixture();await f.issue();const [row]=await owner.db.select().from(S.mobileOfflineContext);
-  for(const changed of [{...row,requestId:randomUUID()},{...row,contextCiphertext:row.contextCiphertext.slice(0,-5)+'AAAAA'},{...row,contextDigest:'d'.repeat(64)},{...row,issuerKeyId:'d'.repeat(64)},{...row,permitCount:1}])await expect(withTenant(f.ctx,tx=>readIssuedOfflineContextTx(tx,changed,apple.apiOrigin))).rejects.toMatchObject({reason:'configuration_unavailable'});
+ it('needs no AI_CONFIG_SECRET to issue or recover: the context record is plaintext, not encrypted',async()=>{
+  // Enrollment (in the fixture) still stores its receipt encrypted; only the context path is secret-free.
+  const f=await fixture();vi.stubEnv('AI_CONFIG_SECRET','');const original=await f.issue();
+  expect(await f.issue()).toEqual(original);expect(await counts()).toEqual({contexts:1,permits:2,punches:0});
+ });
+ it('keeps record recovery bound to the exact canonical bytes, recorded digest, bound columns and the real permit inventory',async()=>{
+  const f=await fixture();await f.issue();const [row]=await owner.db.select().from(S.mobileOfflineContext),stored=JSON.parse(row.contextJson);
+  // A wider geofence with the original digest, the same context with a recomputed-looking digest, whitespace or reordered
+  // keys (not the canonical text), another request id, a missing permit: every one is refused, none is repaired.
+  const wider=JSON.stringify({...stored,sites:[{id:randomUUID(),name:'Anywhere',lat:3,lng:101,radiusM:100000}],policy:{...stored.policy,geofencingRequired:true}});
+  const reordered=JSON.stringify(Object.fromEntries(Object.entries(stored).reverse()));
+  for(const changed of [{...row,requestId:randomUUID()},{...row,contextJson:wider},{...row,contextJson:row.contextJson+' '},{...row,contextJson:reordered},{...row,contextJson:JSON.stringify(stored,null,1)},
+   {...row,contextJson:JSON.stringify({...stored,issuer:{algorithm:'ed25519',keyId:'d'.repeat(64)}})},{...row,contextDigest:'d'.repeat(64)},{...row,permitCount:1},{...row,expiresAt:new Date(row.expiresAt.getTime()+1)}])
+   await expect(withTenant(f.ctx,tx=>readIssuedOfflineContextTx(tx,changed,apple.apiOrigin))).rejects.toMatchObject({reason:'configuration_unavailable'});
+  // Non-vacuous: the reordered text parses to the same context, so only the exact-bytes rule refuses it.
+  expect(offlineClockContextClientData(JSON.parse(reordered))).toBe(offlineClockContextClientData(stored));
   await expect(f.service({...f.config,apiOrigin:'https://other.example.com'}).issue(f.ctx,f.input)).rejects.toMatchObject({reason:'configuration_unavailable'});
  });
  it('rechecks employment after waiting for the actual registered-key lock',async()=>{

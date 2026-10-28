@@ -1,15 +1,15 @@
 /** Offline clock sync HTTP boundary, handler level: real bearer-session wrapper (resolver injected), env deployment,
- * catalog readiness, draft 0647 SQL/RLS, Ed25519 context signatures, App Attest/ECDSA claim proofs, the production
- * snapshot port, the deterministic adjudicator and the canonical writer. Synthetic: enrollment proof, the Ed25519 issuer
- * (generated in-process), the Google access token and the Play decode transport. No vendor is contacted. */
-import {createHash,generateKeyPairSync,randomBytes,randomUUID} from 'node:crypto';
+ * catalog readiness, draft 0647 SQL/RLS, the keyless issued-context record (owner decision D16: no server signature),
+ * App Attest/ECDSA claim proofs, the production snapshot port, the deterministic adjudicator and the canonical writer.
+ * Synthetic: enrollment proof, the Google access token and the Play decode transport. No vendor is contacted. */
+import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {SessionContext} from '../db/client';
 import * as S from '../db/schema';
 import {createOfflineSyncHttpHandlers} from '../lib/mobile-api/offline-sync-routes';
 import type {MobileBudget} from '../lib/mobile-api/handler';
-import {offlineContextIssuerIdentity,verifyOfflineClockContextSignature} from '../lib/mobile-api/offline-context-signature';
+import {bindOfflineClockContext} from '../lib/mobile-offline-context';
 import {offlineClockClaimClientData,type OfflineClockClaimData} from '../lib/mobile-offline-clock';
 import {RequestBudgetExceeded} from '../lib/request-budget';
 import {AuthRequiredError} from '../lib/auth-errors';
@@ -36,17 +36,11 @@ type Handlers=ReturnType<typeof createOfflineSyncHttpHandlers>;
 beforeAll(async()=>{restoreCustody=await installCustodyDraftForWorker();restore=await installOfflineDraftForWorker();});
 beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','synthetic-offline-http-fixture-secret-2026');for(const name of ENV)vi.stubEnv(name,'');verdicts.clear();accessToken.mockClear();transport.mockClear();unauthenticated=false;await resetDb();base=await seedBase();});
 afterAll(async()=>{try{await resetDb();await restore?.();await restoreCustody?.();}finally{vi.unstubAllEnvs();await closeAll();}});
-function signer(){
- const {privateKey}=generateKeyPairSync('ed25519'),identity=offlineContextIssuerIdentity(privateKey);
- return {pem:privateKey.export({type:'pkcs8',format:'pem'}).toString(),issuer:{...identity,validFrom:Date.now()-86400000,validUntil:Date.now()+7*86400000,revoked:false}};
-}
-type Signer=ReturnType<typeof signer>;
-function configure(actorId:string,s:Signer,overrides:Record<string,unknown>={}){
+function configure(actorId:string,overrides:Record<string,unknown>={}){
  vi.stubEnv('AIHR_MOBILE_CLOCK_POLICY',JSON.stringify({version:1,entries:[{tenantId:base.tenantId,companyId:base.companyId,actorIds:[actorId],legacySelfService:'allow_unverified',
   platforms:{ios:{configuration:ios},android:{configuration:{settings:android,policy:androidPolicy},cloudProjectNumber:'123456789'}}}]}));
- vi.stubEnv('AIHR_MOBILE_OFFLINE_POLICY',JSON.stringify({version:1,mode:'active',signingKeyId:s.issuer.keyId,issuers:[s.issuer],windowMs:86400000,permitCount:2,maximumIssuesPerHour:4,
+ vi.stubEnv('AIHR_MOBILE_OFFLINE_POLICY',JSON.stringify({version:1,mode:'active',windowMs:86400000,permitCount:2,maximumIssuesPerHour:4,
   photoRetentionMs:2592000000,entries:[{tenantId:base.tenantId,companyId:base.companyId,actorIds:[actorId]}],...overrides}));
- vi.stubEnv('AIHR_MOBILE_OFFLINE_SIGNING_KEY',s.pem);
 }
 /** The company's policy row through its own writer, then 0647's offline switch. */
 async function offlineOn(enabled=true){
@@ -83,14 +77,14 @@ type Hook=(ctx:SessionContext,input:{employmentId:string;request:unknown})=>Prom
 /** Enroll through the service fixture, then issue through the mounted context route under the real deployment.
  * `before` runs with the deployment configured and before the issuing request; the baseline is restored after it. */
 async function enrolled(platform:Platform,options:{before?:Hook;overrides?:Record<string,unknown>}={}){
- const s=signer(),state:{issued?:Result}={};
+ const state:{issued?:Result}={};
  const f=await offlineServiceFixture(base,platform,{issue:async(ctx,input)=>{
-  caller=ctx;configure(ctx.userId!,s,options.overrides);await options.before?.(ctx,input);configure(ctx.userId!,s,options.overrides);
+  caller=ctx;configure(ctx.userId!,options.overrides);await options.before?.(ctx,input);configure(ctx.userId!,options.overrides);
   const issued=await call(platform,'context',input.employmentId,{json:input.request});state.issued=issued;
   if(issued.status!==200||issued.body?.outcome!=='issued')throw new Error('Not issued: '+JSON.stringify(issued.body));
   return {raw:issued.body.context};
  }});
- return {...f,s,platform,issued:state.issued!,configure:(overrides:Record<string,unknown>={})=>configure(f.ctx.userId!,s,{...options.overrides,...overrides})};
+ return {...f,platform,issued:state.issued!,configure:(overrides:Record<string,unknown>={})=>configure(f.ctx.userId!,{...options.overrides,...overrides})};
 }
 type Fixture=Awaited<ReturnType<typeof enrolled>>;
 function claimAt(f:Fixture,sequence:number,previousSha256:string|null,command:Partial<OfflineClockClaimData['command']>={}):OfflineClockClaimData{
@@ -147,7 +141,7 @@ describe('offline sync routes stay inert until the deployment and the company en
  });
  it('drain: no new issuance; exact recovery, claim upload and close stay available',async()=>{
   await offlineOn();const f=await enrolled('ios');f.configure({mode:'drain'});
-  expect((await call('ios','capabilities',f.e.employmentId)).body).toEqual({outcome:'offline',enabled:false,apiOrigin,companyId:base.companyId,issuers:[f.s.issuer],windowMs:86400000,permitCount:2});
+  expect((await call('ios','capabilities',f.e.employmentId)).body).toEqual({outcome:'offline',enabled:false,apiOrigin,companyId:base.companyId,windowMs:86400000,permitCount:2});
   expect((await post(f,'context',{json:f.request.request})).body).toEqual(f.issued.body);
   await settled(f.context);expect((await post(f,'claim',upload(f.signed()))).body).toMatchObject({outcome:'processed',receipt:{sequence:1}});
   expect((await post(f,'close',{json:{contextId:f.context.id,closeRequestId:randomUUID(),consumedThrough:1}})).body).toMatchObject({outcome:'closed',reason:'retired',consumedThrough:1});
@@ -158,12 +152,13 @@ describe('offline sync routes stay inert until the deployment and the company en
 });
 
 describe('context issuance, refresh and close',()=>{
- it('issues a signed context with the deployment window and permit count, and re-posting returns the exact bytes',async()=>{
+ it('issues a recorded (unsigned) context with the deployment window and permit count, and re-posting returns the exact bytes',async()=>{
   await offlineOn();const f=await enrolled('ios');
   const capabilities=await call('ios','capabilities',f.e.employmentId);expect(capabilities.headers.get('cache-control')).toBe('no-store');
-  expect(capabilities.body).toEqual({outcome:'offline',enabled:true,apiOrigin,companyId:base.companyId,issuers:[f.s.issuer],windowMs:86400000,permitCount:2});
+  expect(capabilities.body).toEqual({outcome:'offline',enabled:true,apiOrigin,companyId:base.companyId,windowMs:86400000,permitCount:2});
   expect(f.issued.body).toEqual({outcome:'issued',context:f.raw,contextId:f.context.id,authorization:'not_granted'});
-  expect(verifyOfflineClockContextSignature(f.raw,[f.s.issuer],f.context.scope)).toMatchObject({outcome:'signature_valid'});
+  expect(bindOfflineClockContext(f.raw,{scope:f.context.scope,request:f.request.request,target:f.context.target})).toMatchObject({outcome:'bound'});
+  expect((await stream(f.context.id)).contextJson).toBe(f.raw);
   expect(f.context.policy.windowMs).toBe(86400000);expect(f.context.permits).toHaveLength(2);expect(f.context.target).toEqual({platform:'ios',appId,environment:'production'});
   const again=await post(f,'context',{json:f.request.request});expect(again.body).toEqual(f.issued.body);expect(await counts()).toMatchObject({contexts:1,permits:2,issued:1});
   // The same request id with another nonce is a conflict, not a refresh; a second request meets the held lease.

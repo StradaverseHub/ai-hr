@@ -22,7 +22,7 @@ export type OfflineClockProofResult={outcome:'proof_valid';authorization:'not_gr
  nextCounter:number|null;cursor:OfflineClockStreamCursor}|
  {outcome:'invalid';reason:'malformed'|'scope_mismatch'|'context_mismatch'|'key_mismatch'|'permit_mismatch'|'chain_mismatch'|'invalid_proof'|'replayed_counter'};
 const hash=(bytes:string)=>createHash('sha256').update(bytes,'utf8').digest('hex');
-/** trustedContext must come from independently verified signature AND issued server record.
+/** trustedContext must come from the issued server record (readIssuedOfflineContextTx; D16, no server signature exists).
  * key and cursor must be read from the locked registered-key/stream owners. A caller-supplied
  * context/key/cursor cannot establish those facts. This function performs no DB/provider work.
  * Keep the original claim assertion counter ordered: never replace it with a later batch proof.
