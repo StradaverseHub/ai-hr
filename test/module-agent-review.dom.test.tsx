@@ -1,7 +1,9 @@
 /** @vitest-environment jsdom */
 /** Presentation only; metadata fixtures are not evaluation, role or provider proof. */
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
-import {cleanup,render,screen} from '@testing-library/react';
+import type {ReactNode} from 'react';
+import {cleanup,render as rtlRender,screen} from '@testing-library/react';
+import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import viCopy from '../messages/vi.json';
 const state=vi.hoisted(()=>({locale:'en'}));const copies:Record<string,typeof en>={en,ms,zh,ta,th,vi:viCopy};
 vi.mock('next-intl/server',()=>({getLocale:async()=>state.locale,getTranslations:async(namespace:string)=>(key:string,args?:Record<string,string|number>)=>{
@@ -17,6 +19,8 @@ import {MODULE_AGENT_SOURCE_DIGEST} from '../lib/ai/module-agent-source-manifest
 type View=Parameters<typeof ModuleAgentReview>[0]['view'];
 function view(progress:View['candidates'][number]['progress']):View{return {sourceDigest:MODULE_AGENT_SOURCE_DIGEST,nextVersion:2,lastTrial:null,ownSignalChoices:[],ownNativeSignalChoices:[],nativeSignalChoicesTruncated:false,
  candidates:[{id:'candidate',version:1,kind:'read_plan_prompt_v1',own:false,attempts:1,progress,verifiedSignalCount:null}],promotions:[],conversationCandidates:[],conversationPromotions:[]};}
+// The erase controls ask first through the shared client confirm dialog, which needs the client intl provider.
+const render=(ui:ReactNode)=>rtlRender(ui,{wrapper:({children})=><NextIntlClientProvider locale={state.locale} messages={copies[state.locale]}>{children}</NextIntlClientProvider>});
 beforeEach(()=>{state.locale='en';});afterEach(cleanup);
 describe('human evaluation scope, consent and authenticated progress',()=>{
  it.each(['en','ms','zh','ta','th','vi'])('%s shows only its fixed trial questions and the real per-click request cap',async locale=>{

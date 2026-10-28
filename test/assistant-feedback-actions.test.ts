@@ -11,10 +11,11 @@ beforeEach(()=>{for(const mock of Object.values(owner))mock.mockReset();owner.se
 function packet(){const form=new FormData();form.set('exchangeId','original-exchange');form.set('outcome','helpful');form.set('consented','yes');return form;}
 async function location(call:()=>Promise<unknown>){try{await call();throw Error('Expected navigation');}catch(error){const value=(error as {location?:unknown}).location;if(typeof value!=='string')throw error;return value;}}
 it('bounds session and owner failures for record and erasure without echoing private diagnostics',async()=>{
- for(const call of [()=>saveAgentFeedbackAction(packet()),()=>eraseAgentFeedbackAction()]){owner.session.mockRejectedValueOnce(Error('PRIVATE_SESSION_OR_DATABASE'));expect(await location(call)).toBe('/assistant?error=feedback');}
+ owner.session.mockRejectedValueOnce(Error('PRIVATE_SESSION_OR_DATABASE'));expect(await location(()=>saveAgentFeedbackAction(packet()))).toBe('/assistant?error=feedback');
+ owner.session.mockRejectedValueOnce(Error('PRIVATE_SESSION_OR_DATABASE'));expect(await location(eraseAgentFeedbackAction)).toBe('/assistant?ownClear=unavailable');
  expect(owner.record).not.toHaveBeenCalled();expect(owner.erase).not.toHaveBeenCalled();
  owner.record.mockRejectedValueOnce(Error('PRIVATE_CUSTODY_DETAIL'));owner.erase.mockRejectedValueOnce(Error('PRIVATE_CUSTODY_DETAIL'));
- expect(await location(()=>saveAgentFeedbackAction(packet()))).toBe('/assistant?error=feedback');expect(await location(eraseAgentFeedbackAction)).toBe('/assistant?error=feedback');
+ expect(await location(()=>saveAgentFeedbackAction(packet()))).toBe('/assistant?error=feedback');expect(await location(eraseAgentFeedbackAction)).toBe('/assistant?ownClear=unavailable');
 });
 it('does not authenticate or write without an explicit closed consented rating',async()=>{
  const form=packet();form.delete('consented');expect(await location(()=>saveAgentFeedbackAction(form))).toBe('/assistant?error=feedback');expect(owner.session).not.toHaveBeenCalled();expect(owner.record).not.toHaveBeenCalled();

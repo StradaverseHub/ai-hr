@@ -3,6 +3,8 @@
 import React,{isValidElement,type ReactElement} from 'react';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,render,screen} from '@testing-library/react';
+import {NextIntlClientProvider} from 'next-intl';
+import en from '../messages/en.json';
 const source=vi.hoisted(()=>({session:vi.fn(),locale:vi.fn(),workspace:vi.fn(),reopen:vi.fn(),notification:vi.fn(),record:vi.fn(),erase:vi.fn()}));
 vi.mock('../lib/session',()=>({getBrowserCommandSession:source.session}));
 vi.mock('next-intl/server',()=>({getTranslations:async()=>(key:string)=>key,getLocale:source.locale}));
@@ -33,7 +35,7 @@ describe('selected own job outcome composition',()=>{
  });
  it('does not turn an edited saved query flag into an unverified success receipt',async()=>{render(await NativeOutcomes({jobId:job,status:'saved'}));expect(screen.queryByText('saved')).toBeNull();expect(source.reopen).not.toHaveBeenCalled();});
  it('keeps privacy erasure available without module, job or principal lookups in a denied branch',async()=>{
-  render(await NativeOutcomePrivacy({status:'erased'}));expect(source.session).not.toHaveBeenCalled();expect(source.workspace).not.toHaveBeenCalled();expect(screen.getByText('erase')).toHaveAttribute('type','submit');expect(screen.getByText('erased')).toHaveAttribute('role','status');expect(document.querySelector('[name="personId"],[name="jobId"],[name="userId"]')).toBeNull();
+  render(<NextIntlClientProvider locale="en" messages={en}>{await NativeOutcomePrivacy({status:'erased'})}</NextIntlClientProvider>);expect(source.session).not.toHaveBeenCalled();expect(source.workspace).not.toHaveBeenCalled();expect(screen.getByText('erase')).toHaveAttribute('type','button');expect(screen.getByText('erased')).toHaveAttribute('role','status');expect(screen.getByText('erased').closest('details')).toBeNull();expect(document.querySelector('[name="personId"],[name="jobId"],[name="userId"]')).toBeNull();
  });
  it('covers strict selected-cookie authentication failure with the same bounded outward copy',async()=>{
   source.session.mockRejectedValueOnce(Error('PRIVATE cookie lookup'));const result=await NativeOutcomes({jobId:job});render(result);expect(screen.getByRole('alert')).toHaveTextContent('unavailable');expect(source.workspace).not.toHaveBeenCalled();expect(JSON.stringify(result)).not.toContain('PRIVATE');

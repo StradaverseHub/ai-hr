@@ -2,6 +2,7 @@
 /** In-app walkthrough defects on /assistant: planner first render, chat-text clearing confirmation and its
  * visible outcome. Presentation only; the server actions are stubbed and proved elsewhere. */
 import {afterEach,describe,expect,it,vi} from 'vitest';
+import type {ReactNode} from 'react';
 import {cleanup,render,screen,within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {NextIntlClientProvider} from 'next-intl';
@@ -22,27 +23,29 @@ afterEach(()=>{cleanup();vi.restoreAllMocks();state.locale='en';});
 const locales=['en','ms','zh','ta','th','vi'] as const;
 const planning=(locale:string)=>(copies[locale] as typeof en).assistant.workspace.planning;
 const privacy=(locale:string)=>(copies[locale] as typeof en).assistant.workspace.historyPrivacy;
+// The planner's own-clear control uses the client confirm dialog, which needs the client intl provider.
+const plan=(ui:ReactNode)=>render(<NextIntlClientProvider locale={state.locale} messages={copies[state.locale] as typeof en}>{ui}</NextIntlClientProvider>);
 
 describe('Suggest my next tasks: nothing asked means nothing failed',()=>{
  it.each(locales)('%s shows a calm setup note, not a snag, when no provider is configured',async locale=>{
   state.locale=locale;const copy=planning(locale);
-  render(await ModuleQuestionPlanner({view:null,permit:null,availability:'no_provider'}));
+  plan(await ModuleQuestionPlanner({view:null,permit:null,availability:'no_provider'}));
   expect(screen.getByRole('status')).toHaveTextContent(copy.noProvider);
   expect(screen.queryByText(copy.unavailable)).toBeNull();expect(screen.queryByRole('alert')).toBeNull();
   expect(document.querySelector('textarea[name="question"]')).toBeNull();
  });
  it.each(locales)('%s says the planner is resting, not broken, when no permit could be issued',async locale=>{
   state.locale=locale;const copy=planning(locale);
-  render(await ModuleQuestionPlanner({view:null,permit:null,availability:'resting'}));
+  plan(await ModuleQuestionPlanner({view:null,permit:null,availability:'resting'}));
   expect(screen.getByRole('status')).toHaveTextContent(copy.resting);expect(screen.queryByText(copy.unavailable)).toBeNull();
  });
  it('renders the question form and no status line on a ready first load',async()=>{
-  render(await ModuleQuestionPlanner({view:null,permit:'sealed-permit',availability:'ready'}));
+  plan(await ModuleQuestionPlanner({view:null,permit:'sealed-permit',availability:'ready'}));
   expect(document.querySelector('textarea[name="question"]')).not.toBeNull();expect(screen.queryByRole('status')).toBeNull();
   expect(screen.queryByText(en.assistant.workspace.planning.unavailable)).toBeNull();
  });
  it('still reports a snag after a submitted request actually failed',async()=>{
-  render(await ModuleQuestionPlanner({view:null,permit:'sealed-permit',availability:'ready',status:'unavailable'}));
+  plan(await ModuleQuestionPlanner({view:null,permit:'sealed-permit',availability:'ready',status:'unavailable'}));
   expect(screen.getByText(en.assistant.workspace.planning.unavailable)).toBeInTheDocument();
  });
 });
