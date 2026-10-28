@@ -235,7 +235,7 @@ export function parseLeaveChangeModuleActionBrowserResult(packet:LeaveChangeModu
  const index=result.kind==='leave_cancellation_review_index'||result.kind==='leave_edit_review_index';
  const fits=op==='choices'?result.kind==='choices'||result.kind==='unavailable':op==='list'?index:op==='prepare'?result.kind==='prepared':op==='reopen'?result.kind==='prepared'||result.kind==='completed'||result.kind==='retired':op==='confirm'?result.kind==='completed'||result.kind==='retired':result.kind==='retired';
  if(!fits)throw Error('Module action response unavailable.');
- const id=result.kind==='prepared'?result.review.actionId:result.kind==='completed'||result.kind==='retired'?result.receipt.actionId:null,expected=op==='reopen'?packet.actionId:op==='confirm'||op==='discard'?packet.confirmation.actionId:null;if(expected&&id!==expected)throw Error('Module action response unavailable.');
+ const id=result.kind==='prepared'?result.review.actionId:result.kind==='completed'||result.kind==='retired'?result.receipt.actionId:null,expected=op==='reopen'?packet.actionId:op==='confirm'||op==='discard'?(packet.confirmation as {actionId:string}).actionId:null;if(expected&&id!==expected)throw Error('Module action response unavailable.');
  if(result.kind==='prepared'){const r=result.review,subject='before' in r.review?r.review.before:r.review;if(subject.leaveRequestId!==r.content.leaveRequestId||subject.employmentId!==r.content.employmentId||Date.parse(r.expiresAt)<=Date.parse(r.createdAt))throw Error('Module action response unavailable.');}
  if(op==='prepare'&&(result.kind!=='prepared'||JSON.stringify(result.review.content)!==JSON.stringify(packet.input)))throw Error('Module action response unavailable.');
  return result;
