@@ -28076,6 +28076,250 @@
       "notSet": "Not set yet"
     }
   },
+  "performanceArea": {
+    "nav": {
+      "performanceTalent": "Performance & Talent",
+      "performanceAdmin": "Performance admin"
+    },
+    "tabs": {
+      "home": "Dashboard",
+      "pm": {
+        "setting": "Set my KPIs",
+        "my": "My PM",
+        "approve": "Approve KPIs",
+        "team": "Team PM"
+      },
+      "f360": {
+        "assessments": "My Assessments",
+        "feedback": "Feedback"
+      },
+      "competency": {
+        "my": "My assessment",
+        "team": "Team view"
+      },
+      "idp": {
+        "my": "My plan",
+        "career": "Career profile",
+        "team": "My team"
+      },
+      "cal": {
+        "performance": "Performance",
+        "potential": "Potential",
+        "talentBox": "Talent box"
+      }
+    },
+    "admin": {
+      "groups": {
+        "modules": "Modules",
+        "org": "Organisation"
+      },
+      "sections": {
+        "home": "Home",
+        "cycle": "Cycle",
+        "pm": "Performance",
+        "f360": "360 Feedback",
+        "competency": "Competency",
+        "calibration": "Calibration & Talent",
+        "idp": "Career Plan",
+        "leaders": "Leaders and admins",
+        "email": "Email",
+        "reports": "Reports"
+      },
+      "tabs": {
+        "calendar": "Calendar",
+        "participants": "Participants",
+        "release": "Release results",
+        "cycles": "All cycles",
+        "overview": "Overview",
+        "run": "Run",
+        "settings": "Settings",
+        "leaders": "Leaders",
+        "schedule": "Schedule",
+        "reports": "Reports"
+      },
+      "pages": {
+        "list": "List",
+        "progress": "Progress",
+        "importKpiTargets": "Import KPI targets",
+        "fillBuKpi": "Fill BU KPI",
+        "scoring": "Scoring",
+        "people": "People",
+        "raterProgress": "Rater progress",
+        "panels": "Panels",
+        "importPanels": "Import panels",
+        "clearPanels": "Clear panels",
+        "framework": "Framework",
+        "assignCompetencies": "Assign competencies",
+        "importJobCodes": "Import job codes",
+        "competencyLibrary": "Competency library",
+        "catalogue": "Catalogue",
+        "lockStatus": "Lock status",
+        "finalBands": "Final bands",
+        "patAchievement": "PAT achievement",
+        "calibrationGroups": "Calibration groups",
+        "careerRoutes": "Career routes",
+        "everyoneReminder": "Everyone's reminder",
+        "leaderProgress": "Leader progress",
+        "resultsAnalysis": "Results analysis",
+        "ratingsRecord": "Ratings record"
+      },
+      "state": {
+        "on": "On",
+        "off": "Off"
+      },
+      "cycle": {
+        "thisCycle": "This cycle",
+        "editCycle": "Edit cycle",
+        "modules": "Modules on this cycle"
+      },
+      "participants": {
+        "unitsOut": "Units and departments not taking part"
+      }
+    },
+    "home": {
+      "title": "Your dashboard",
+      "rail": {
+        "progress": "{done} of {total} done",
+        "nothing": "Nothing for you to do in it",
+        "past": "{cycle}: your journey through it",
+        "pastState": {
+          "complete": "Complete · {done} of {total} steps",
+          "closed": "Closed · {done} of {total} steps"
+        },
+        "states": {
+          "turn": "Your turn",
+          "open": "To do",
+          "waiting": "Waiting",
+          "locked": "Locked",
+          "later": "Not yet",
+          "closed": "Closed",
+          "done": "Done",
+          "progress": "In progress"
+        }
+      },
+      "next": {
+        "title": "Your next step",
+        "here": "You are here",
+        "none": "Nothing needs you right now",
+        "headOne": "One thing needs you",
+        "headMany": "{count} things need you",
+        "headCaughtUp": "You're all caught up",
+        "waiting": "Waiting · {who}"
+      },
+      "bu": {
+        "title": "Where your BU is",
+        "columns": {
+          "department": "Department",
+          "performance": "Performance",
+          "potential": "Potential"
+        },
+        "in": "✓ in {date}",
+        "toSubmit": "to submit",
+        "midYearDepartmentReviews": "Department reviews",
+        "midYearNoHodReview": "No HOD review"
+      },
+      "axis": {
+        "locked": "Locked {date}",
+        "ready": "Ready to lock",
+        "notReady": "Not ready to lock"
+      },
+      "bg": {
+        "title": "Where the group is",
+        "columns": {
+          "businessUnit": "Business unit",
+          "buCalibration": "BU calibration",
+          "batch": "Batch",
+          "ratings": "ratings",
+          "departmentReviews": "department reviews",
+          "talentBox": "Talent Box",
+          "reviewsIn": "Reviews in"
+        },
+        "calibrating": "Calibrating"
+      },
+      "group": {
+        "title": "Where your group is"
+      },
+      "notIn": {
+        "title": "Not in this cycle's review",
+        "team": "Your team this cycle",
+        "department": "Your department's review",
+        "yours": "Still yours this cycle",
+        "counts": {
+          "waitingOnYou": "waiting on you",
+          "stillWriting": "still writing theirs",
+          "done": "done"
+        }
+      },
+      "stand": {
+        "title": "Where you stand",
+        "details": "Details →",
+        "rows": {
+          "kpis": "Your KPIs",
+          "performance": "Performance",
+          "competency": "Competency",
+          "f360": "360 feedback",
+          "careerTarget": "Career target"
+        },
+        "values": {
+          "awaitingManager": "Awaiting your manager",
+          "withManager": "With your manager",
+          "notSubmitted": "Not submitted yet",
+          "demonstrated": "{done} of {total} demonstrated",
+          "reportReleased": "Report released",
+          "notReleased": "Not released yet",
+          "notSet": "Not set yet"
+        }
+      },
+      "await": {
+        "reviewNothing": "Your review: nothing to do yet",
+        "nothing": "Nothing to do yet",
+        "notOpened": "Your {cycle} hasn't opened yet",
+        "nothingIn": "Nothing for you in the {cycle} yet",
+        "notOpen": "Not open yet"
+      },
+      "led": {
+        "title": "What you led",
+        "people": "See your people ›"
+      },
+      "box": {
+        "title": "The Talent Box · {unit}",
+        "unitsOne": "Your business unit",
+        "unitsMany": "Your business units",
+        "axes": "Final performance → · potential ↑"
+      },
+      "results": {
+        "title": "Your {cycle} results",
+        "tiles": {
+          "performance": "Final performance",
+          "potential": "Final potential",
+          "talent": "Talent status"
+        },
+        "aiRead": "AI read of this cycle",
+        "record": "Open this cycle's record ›",
+        "report": "Your 360 report ›",
+        "empty": "Your record starts here"
+      },
+      "plan": {
+        "title": "This year: your {year} plan",
+        "empty": "Your Career Plan",
+        "checkIn": "Check in on your plan",
+        "open": "Open your Career Plan"
+      },
+      "history": {
+        "titleMine": "Your history",
+        "titleLed": "Cycles you led",
+        "full": "Full record →"
+      },
+      "tools": {
+        "title": "Your tools",
+        "careerPlan": "Career Plan",
+        "report360": "My 360 report"
+      }
+    },
+    "homeCard": {
+      "title": "Your review"
+    }
+  },
   "rewardsConfig": {
     "filters": {
       "label": "Filter reviews",

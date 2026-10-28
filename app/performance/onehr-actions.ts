@@ -2,6 +2,7 @@
 import {readCompetencySections} from '@/packs/performance/onehr/competency-section-model';
 import { readKpiSettingForm } from '@/packs/performance/onehr/setting-form-model';
 import { assessmentReturnPath } from '@/lib/performance-navigation';
+import { revalidateAssessmentWorkspace } from './workspace-revalidation';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -34,10 +35,10 @@ export async function careerPlanDraftAction(reviewId:string){
  const s=await getSession();try{return await perf.suggestAssessmentCareerPlan(s,reviewId,crypto.randomUUID());}catch(error){return {error:await actionError(error)};}
 }
 export async function applyCareerPlanDraftAction(f:FormData,selected:import('@/packs/performance/onehr/career-draft-model').CareerDraftGoal[],aspirationLong:string,sourceDigest:string){
- const s=await getSession();try{const id=z.uuid().parse(str(f,'reviewId'));await perf.applyAssessmentCareerPlan(s,id,str(f,'planRevision')?num(f,'planRevision'):null,planInput(f),selected,aspirationLong,sourceDigest);revalidatePath('/performance/workspace');revalidatePath('/me/performance');revalidatePath(`/performance/assessment/${id}`);return {ok:true as const};}catch(error){return {error:await actionError(error)};}
+ const s=await getSession();try{const id=z.uuid().parse(str(f,'reviewId'));await perf.applyAssessmentCareerPlan(s,id,str(f,'planRevision')?num(f,'planRevision'):null,planInput(f),selected,aspirationLong,sourceDigest);revalidateAssessmentWorkspace();revalidatePath('/me/performance');revalidatePath(`/performance/assessment/${id}`);return {ok:true as const};}catch(error){return {error:await actionError(error)};}
 }
 export async function applyDevelopmentSuggestionsAction(f:FormData,selected:import('@/packs/performance/onehr/development-suggestion-model').SuggestedDevelopmentGoal[],sourceDigest:string){
- const s=await getSession();try{const id=z.uuid().parse(str(f,'reviewId'));await perf.applyAssessmentDevelopmentGoals(s,id,str(f,'planRevision')?num(f,'planRevision'):null,planInput(f),selected,sourceDigest);revalidatePath('/performance/workspace');revalidatePath('/me/performance');revalidatePath(`/performance/assessment/${id}`);return {ok:true as const};}catch(error){return {error:await actionError(error)};}
+ const s=await getSession();try{const id=z.uuid().parse(str(f,'reviewId'));await perf.applyAssessmentDevelopmentGoals(s,id,str(f,'planRevision')?num(f,'planRevision'):null,planInput(f),selected,sourceDigest);revalidateAssessmentWorkspace();revalidatePath('/me/performance');revalidatePath(`/performance/assessment/${id}`);return {ok:true as const};}catch(error){return {error:await actionError(error)};}
 }
 
 
@@ -71,7 +72,7 @@ export async function assessmentInsightAction(reviewId:string,contextId:string,g
 }
 export async function calibrationConversationAction(sessionId:string,axis:'performance'|'potential'|'both',expected:number|null,requestId:string,text:string){
  const s=await getSession();
- try{const result=await perf.sendCalibrationMessage(s,z.uuid().parse(sessionId),z.enum(['performance','potential','both']).parse(axis),expected,requestId,text);revalidatePath('/performance/workspace');return result;}
+ try{const result=await perf.sendCalibrationMessage(s,z.uuid().parse(sessionId),z.enum(['performance','potential','both']).parse(axis),expected,requestId,text);revalidateAssessmentWorkspace();return result;}
  catch(error){return {error:await actionError(error)};}
 }
 
@@ -88,7 +89,7 @@ export async function finalBandsAction(f:FormData){
   if(str(f,'action')==='mode')await perf.configureAssessmentGroupMode(s,id,num(f,'revision'),z.enum(['after','replace','blend']).parse(str(f,'mode')),num(f,'bgWeight'));
   else await perf.decideAssessmentFinalBands(s,id,str(f,'sourceDigest'),{action:str(f,'action'),reviewId:str(f,'reviewId')||undefined,band:str(f,'band')||undefined,reason:str(f,'reason')});
  }catch(error){redirect(withError(url,error));}
- revalidatePath(`/performance/assessment/calibration/${id}`);revalidatePath('/performance/workspace');revalidatePath('/me/performance');redirect(url);
+ revalidatePath(`/performance/assessment/calibration/${id}`);revalidateAssessmentWorkspace();revalidatePath('/me/performance');redirect(url);
 }
 export async function onehrCycleAction(f:FormData){
   const s=await getSession(),id=z.uuid().parse(str(f,'cycleId'));const url=`/performance/${id}`;
@@ -121,7 +122,7 @@ export async function onehrCycleAction(f:FormData){
       await perf.createOnehrCalibration(s,id,{name:str(f,'name'),companyId:str(f,'companyId')||null,tier:str(f,'tier'),reviewerUserIds:ids(f,'reviewerIds'),reviewIds:ids(f,'reviewIds'),pbtAchievement:nullableNumber(f,'pbt'),mode:str(f,'mode'),bgWeight:nullableNumber(f,'bgWeight')??50});
     }else throw Error('Unknown action.');
   }catch(e){redirect(withError(url,e));}
-  revalidatePath(url.split('?')[0]);revalidatePath('/performance/workspace');redirect(url);
+  revalidatePath(url.split('?')[0]);revalidateAssessmentWorkspace();redirect(url);
 }
 export async function onehrReviewAction(f:FormData){
   const s=await getSession(),id=z.uuid().parse(str(f,'reviewId'));const url=destination(f,`/performance/review/${id}`);
@@ -177,39 +178,39 @@ export async function onehrReviewAction(f:FormData){
       default:throw Error('Unknown assessment action.');
     }
   }catch(e){redirect(withError(url,e));}
-  revalidatePath(url.split('?')[0]);revalidatePath('/performance/workspace');revalidatePath('/me/performance');redirect(url);
+  revalidatePath(url.split('?')[0]);revalidateAssessmentWorkspace();revalidatePath('/me/performance');redirect(url);
 }
 export async function onehrFeedbackAction(f:FormData){
   const s=await getSession(),id=z.uuid().parse(str(f,'requestId'));const url=destination(f,`/performance/assessment/feedback/${id}`);
   const declined=str(f,'action')==='decline';
   try{if(declined)await perf.declineOnehrFeedback(s,id);else if(str(f,'intent')==='draft')await saveDraftForm(s,f);else await perf.submitOnehrFeedback(s,id,Object.fromEntries(f.getAll('statementId').map(v=>[String(v),str(f,`answer.${v}`)])),str(f,'remark'),Object.fromEntries(f.getAll('principle').map(p=>[String(p),str(f,`comment.${p}`)])));}catch(e){redirect(withError(url,e));}
-  revalidatePath('/me/performance');revalidatePath(url.split('?')[0]);revalidatePath('/performance/workspace');redirect(declined?'/me/performance':url);
+  revalidatePath('/me/performance');revalidatePath(url.split('?')[0]);revalidateAssessmentWorkspace();redirect(declined?'/me/performance':url);
 }
 export async function agreeDepartmentAction(f:FormData){
  const s=await getSession(),id=z.uuid().parse(str(f,'sessionId')),url=destination(f,`/performance/assessment/calibration/${id}`);
  try{await perf.agreeAssessmentDepartment(s,id,num(f,'revision'),z.enum(['performance','potential']).parse(str(f,'axis')),ids(f,'reviewId'));}catch(error){redirect(withError(url,error));}
- revalidatePath('/performance/workspace');revalidatePath(url.split('?')[0]);redirect(url);
+ revalidateAssessmentWorkspace();revalidatePath(url.split('?')[0]);redirect(url);
 }
 export async function lockGroupPeopleAction(f:FormData){
  const s=await getSession(),id=z.uuid().parse(str(f,'sessionId')),url=destination(f,`/performance/assessment/calibration/${id}`);
  try{await perf.lockAssessmentGroupPeople(s,id,num(f,'revision'),ids(f,'reviewId'));}catch(error){redirect(withError(url,error));}
- revalidatePath('/performance/workspace');revalidatePath(url.split('?')[0]);redirect(url);
+ revalidateAssessmentWorkspace();revalidatePath(url.split('?')[0]);redirect(url);
 }
 /** The Group performance list: a changed call may carry the Group Chief's reason (optional under APR-022); a given one is stored. */
 export async function changeGroupBandAction(sessionId:string,revision:number,reviewId:string,band:PMBand,reason:string){
  const s=await getSession();
- try{const v=await perf.getOnehrCalibration(s,sessionId);if(v.session.tier!=='group')throw Error('This action belongs to Group calibration.');await perf.saveOnehrCalibration(s,sessionId,revision,{reviewId,axis:'performance',performance:band,potential:null,performanceNote:reason,potentialNote:''});revalidatePath('/performance/workspace');return {ok:true as const};}catch(error){return {error:await actionError(error)};}
+ try{const v=await perf.getOnehrCalibration(s,sessionId);if(v.session.tier!=='group')throw Error('This action belongs to Group calibration.');await perf.saveOnehrCalibration(s,sessionId,revision,{reviewId,axis:'performance',performance:band,potential:null,performanceNote:reason,potentialNote:''});revalidateAssessmentWorkspace();return {ok:true as const};}catch(error){return {error:await actionError(error)};}
 }
 /** Reversible Talent Box saves refresh the same route, retaining the person's list filters. */
 export async function saveCalibrationBandAction(f:FormData){
  const s=await getSession();
- try{const id=z.uuid().parse(str(f,'sessionId'));await perf.moveAssessmentTalentBox(s,id,num(f,'revision'),{reviewId:str(f,'reviewId'),performance:str(f,'performance')||null,potential:str(f,'potential')||null,performanceNote:str(f,'performanceNote'),potentialNote:str(f,'potentialNote')});revalidatePath('/performance/workspace');revalidatePath(`/performance/assessment/calibration/${id}`);return {ok:true as const};}
+ try{const id=z.uuid().parse(str(f,'sessionId'));await perf.moveAssessmentTalentBox(s,id,num(f,'revision'),{reviewId:str(f,'reviewId'),performance:str(f,'performance')||null,potential:str(f,'potential')||null,performanceNote:str(f,'performanceNote'),potentialNote:str(f,'potentialNote')});revalidateAssessmentWorkspace();revalidatePath(`/performance/assessment/calibration/${id}`);return {ok:true as const};}
  catch(error){return {error:await actionError(error)};}
 }
 export async function onehrCalibrationAction(f:FormData){
   const s=await getSession(),id=z.uuid().parse(str(f,'sessionId'));const url=destination(f,`/performance/assessment/calibration/${id}`);
   try{if(str(f,'action')==='talent-save')await perf.saveAssessmentTalentDecision(s,id,num(f,'revision'),str(f,'reviewId'),str(f,'kind') as 'pip'|'promotion'|'specialReward'|'nomination',f.has('selected'),str(f,'reason'),{grade:str(f,'grade'),title:str(f,'title'),talentRevision:f.has('talentRevision')?num(f,'talentRevision'):undefined});else if(['talent-lock','talent-reopen'].includes(str(f,'action')))await perf.confirmAssessmentTalentList(s,id,num(f,'revision'),str(f,'kind') as 'pip'|'promotion',str(f,'action')==='talent-reopen',str(f,'reason'));else if(str(f,'action')==='unlock')await perf.unlockOnehrCalibration(s,id,num(f,'revision'),str(f,'reason'),(str(f,'axis')||'both') as 'performance'|'potential'|'both',str(f,'reviewId')||undefined);else if(str(f,'action')==='lock')await perf.lockOnehrCalibration(s,id,num(f,'revision'),str(f,'reason'),(str(f,'axis')||'both') as 'performance'|'potential'|'both',str(f,'reviewId')||undefined,str(f,'companyId')||undefined);else await perf.saveOnehrCalibration(s,id,num(f,'revision'),{reviewId:str(f,'reviewId'),axis:str(f,'axis')||'both',performance:str(f,'performance') as PMBand||null,potential:str(f,'potential') as PotentialBand||null,performanceNote:str(f,'performanceNote'),potentialNote:str(f,'potentialNote'),confirmTalentDecisions:f.has('confirmTalentDecisions'),pip:f.has('pip'),promotion:f.has('promotion'),specialReward:f.has('specialReward')});}catch(e){redirect(withError(url,e));}
-  revalidatePath(url.split('?')[0]);revalidatePath('/performance/workspace');redirect(url);
+  revalidatePath(url.split('?')[0]);revalidateAssessmentWorkspace();redirect(url);
 }
 export async function onehrDraftAction(reviewId:string,words:string) {
   const s=await getSession();
@@ -238,7 +239,7 @@ export async function assessmentKpiImportAction(cycleId:string,csv:string,kind:'
  const session=await getSession();
  try {
   const result=await perf.importAssessmentKpis(session,cycleId,csv,kind,previewToken);
-  if(result.applied){revalidatePath(`/performance/${cycleId}`);revalidatePath('/performance/workspace');}
+  if(result.applied){revalidatePath(`/performance/${cycleId}`);revalidateAssessmentWorkspace();}
   return {result};
  } catch(error){return {error:await actionError(error)};}
 }
@@ -247,7 +248,7 @@ export async function assessmentCompanyKpiAction(cycleId:string,input:{companyId
  const session=await getSession();
  try {
   const result=await perf.fillAssessmentCompanyKpi(session,cycleId,input,previewToken);
-  if(result.applied){revalidatePath(`/performance/${cycleId}`);revalidatePath('/performance/workspace');}
+  if(result.applied){revalidatePath(`/performance/${cycleId}`);revalidateAssessmentWorkspace();}
   return {result};
  } catch(error){return {error:await actionError(error)};}
 }
@@ -275,17 +276,17 @@ export async function bulkReleaseAction(f:FormData){
  revalidatePath(base);revalidatePath(`/performance/${cycleId}`);revalidatePath('/performance/led');redirect(`${base}?${q}`);
 }
 export async function assessmentArchitectureAction(cycleId:string,sheets:{Job_Profile:string;Job_Skills:string},token?:string){
- const s=await getSession();try{const result=await perf.importAssessmentArchitecture(s,cycleId,sheets,token);if(result.applied){revalidatePath(`/performance/${cycleId}`);revalidatePath('/performance/workspace');}return {result};}catch(error){return {error:await actionError(error)};}
+ const s=await getSession();try{const result=await perf.importAssessmentArchitecture(s,cycleId,sheets,token);if(result.applied){revalidatePath(`/performance/${cycleId}`);revalidateAssessmentWorkspace();}return {result};}catch(error){return {error:await actionError(error)};}
 }
 export async function assessmentGenerateProfilesAction(cycleId:string,token?:string){
- const s=await getSession();try{const result=await perf.generateAssessmentProfiles(s,cycleId,token);if(result.applied){revalidatePath(`/performance/${cycleId}`);revalidatePath('/performance/workspace');}return {result};}catch(error){return {error:await actionError(error)};}
+ const s=await getSession();try{const result=await perf.generateAssessmentProfiles(s,cycleId,token);if(result.applied){revalidatePath(`/performance/${cycleId}`);revalidateAssessmentWorkspace();}return {result};}catch(error){return {error:await actionError(error)};}
 }
 
 export async function assessmentPanelsBuildAction(cycleId:string,mode:'missing'|'topup',token?:string){
- const s=await getSession();try{const result=await perf.buildAssessmentPanels(s,cycleId,mode,token);if(result.applied){revalidatePath(`/performance/${cycleId}`);revalidatePath('/performance/workspace');}return {result};}catch(error){return {error:await actionError(error)};}
+ const s=await getSession();try{const result=await perf.buildAssessmentPanels(s,cycleId,mode,token);if(result.applied){revalidatePath(`/performance/${cycleId}`);revalidateAssessmentWorkspace();}return {result};}catch(error){return {error:await actionError(error)};}
 }
 export async function assessmentPanelsImportAction(cycleId:string,csv:string,mode:'add'|'replace',token?:string){
- const s=await getSession();try{const result=await perf.importAssessmentPanels(s,cycleId,csv,mode,token);if(result.applied){revalidatePath(`/performance/${cycleId}`);revalidatePath('/performance/workspace');}return {result};}catch(error){return {error:await actionError(error)};}
+ const s=await getSession();try{const result=await perf.importAssessmentPanels(s,cycleId,csv,mode,token);if(result.applied){revalidatePath(`/performance/${cycleId}`);revalidateAssessmentWorkspace();}return {result};}catch(error){return {error:await actionError(error)};}
 }
 
 export async function saveAssessmentKpiSettingAction(f:FormData){
@@ -312,11 +313,11 @@ export async function previewCalibrationFitAction(sessionId:string,axis:'perform
  const s=await getSession();try{return await perf.previewAssessmentCalibrationFit(s,sessionId,axis,companyId);}catch(error){return {error:await actionError(error)};}
 }
 export async function applyCalibrationFitAction(sessionId:string,axis:'performance'|'potential',companyId:string|null,moves:unknown){
- const s=await getSession();try{const result=await perf.applyAssessmentCalibrationFit(s,sessionId,axis,companyId,moves);revalidatePath('/performance/workspace');revalidatePath(`/performance/assessment/calibration/${sessionId}`);return result;}catch(error){return {error:await actionError(error)};}
+ const s=await getSession();try{const result=await perf.applyAssessmentCalibrationFit(s,sessionId,axis,companyId,moves);revalidateAssessmentWorkspace();revalidatePath(`/performance/assessment/calibration/${sessionId}`);return result;}catch(error){return {error:await actionError(error)};}
 }
 
 export async function keepCompetencyReflectionAction(reviewId:string,messageId:string){
- const ctx=await getSession();try{const result=await perf.keepCompetencyReflection(ctx,reviewId,messageId);revalidatePath('/performance/workspace');return result;}catch(error){return {error:await actionError(error)};}
+ const ctx=await getSession();try{const result=await perf.keepCompetencyReflection(ctx,reviewId,messageId);revalidateAssessmentWorkspace();return result;}catch(error){return {error:await actionError(error)};}
 }
 
 export async function assessmentCalibrationPersonAction(sessionId:string,reviewId:string,axis:'performance'|'potential'|'both'){

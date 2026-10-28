@@ -3,6 +3,7 @@
 import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { assessmentReturnPath } from '@/lib/performance-navigation';
+import { revalidateAssessmentWorkspace } from './workspace-revalidation';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import {
@@ -486,6 +487,7 @@ export async function uploadAttachmentAction(formData: FormData) {
     redirect(`${returnTo}${returnTo.includes('?')?'&':'?'}error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(`/performance/review/${reviewId}`);
-  revalidatePath('/performance/workspace');
+  revalidatePath(returnTo.split('?')[0]);
+  revalidateAssessmentWorkspace();
   redirect(returnTo);
 }
