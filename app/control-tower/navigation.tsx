@@ -15,7 +15,8 @@ export function ControlTowerNavigation({ payrollEnabled = true }: { payrollEnabl
   return <nav aria-label={t('navigation')} className="mb-6 flex flex-wrap gap-x-5 gap-y-2 border-b border-border">
     {tabs.filter(([path]) => payrollEnabled || (path !== '/exceptions' && path !== '/actions')).map(([path, label]) => {
       const href = `/control-tower${path}`;
-      const active = pathname === href;
+      // AI management has its own sub-menu pages; its tab stays current on every one of them.
+      const active = pathname === href || (path === '/agents' && pathname.startsWith(href + '/'));
       return <Link key={href} href={href} aria-current={active ? 'page' : undefined}
         className={`border-b-2 px-1 py-3 text-sm font-medium outline-offset-4 focus-visible:outline-2 focus-visible:outline-primary ${active ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
         {t(label)}

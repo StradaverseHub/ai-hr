@@ -1,6 +1,6 @@
 /** Walkthrough 28 October 2026: every save on /control-tower/agents returned the admin to the top of a very
- * long page. A successful save now returns to the saved row on its own sub-menu tab (?view=) with a closed
- * toast code; a refusal stays at the top of that tab beside the error banner. Owners are spies; no database
+ * long page. A successful save now returns to the saved row on its own sub-menu page with a closed
+ * toast code; a refusal stays at the top of that page beside the error banner. Owners are spies; no database
  * is touched.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -32,8 +32,8 @@ describe('AI management saves return to the saved form',()=>{
     ];
     for(const [invoke,hash,view,toast] of cases){
       const url=await target(invoke);
-      expect(url.pathname).toBe('/control-tower/agents');expect(url.hash).toBe(hash);
-      expect(url.searchParams.get('view')).toBe(view);expect(url.searchParams.get('toast')).toBe(toast);
+      expect(url.pathname).toBe(`/control-tower/agents/${view}`);expect(url.hash).toBe(hash);
+      expect(url.searchParams.get('toast')).toBe(toast);
     }
     // The user search survives a save on the users tab.
     expect((await target(()=>setAiAllowanceAction(form({kind:'user',subjectId:USER})))).searchParams.get('q')).toBe('fictional search');
@@ -45,9 +45,9 @@ describe('AI management saves return to the saved form',()=>{
   it('keeps refusals at the top, beside the error banner',async()=>{
     owners.allowance.mockRejectedValueOnce(new errors.AiControlError('Owned validation sentence'));
     const url=await target(()=>setAiAllowanceAction(form({kind:'company',subjectId:COMPANY})));
-    expect(url.searchParams.get('error')).toBe('Owned validation sentence');expect(url.hash).toBe('');expect(url.searchParams.get('view')).toBe('companies');
+    expect(url.searchParams.get('error')).toBe('Owned validation sentence');expect(url.hash).toBe('');expect(url.pathname).toBe('/control-tower/agents/companies');
     owners.spend.mockRejectedValueOnce(new errors.AiControlError('Owned spend sentence'));
     const spend=await target(()=>setAiSpendBudgetAction(form({monthlyUsd:'x',rootUsd:''})));
-    expect(spend.searchParams.get('error')).toBe('Owned spend sentence');expect(spend.hash).toBe('');expect(spend.searchParams.get('view')).toBe('spending');
+    expect(spend.searchParams.get('error')).toBe('Owned spend sentence');expect(spend.hash).toBe('');expect(spend.pathname).toBe('/control-tower/agents/spending');
   });
 });

@@ -1133,6 +1133,13 @@ export const SCREENS: readonly ScreenEntry[] = [
       // still, on isGroupAdmin, mirroring 0313's tenant_setting_write — this registry is the coarse
       // "may the role open the screen at all", by design.)
       '/control-tower/agents',
+      // AI management sub-menu: each section is its own page behind the same requireAdmin guard.
+      '/control-tower/agents/features',
+      '/control-tower/agents/companies',
+      '/control-tower/agents/users',
+      '/control-tower/agents/spending',
+      '/control-tower/agents/orchestrator',
+      '/control-tower/agents/runs',
       // ADR-0074 r245 — the cross-run exceptions queue. Same requireAdmin guard as its siblings and the
       // per-run queue it complements, so it needs a column here or test/function-access.test.ts fails.
       '/control-tower/exceptions',

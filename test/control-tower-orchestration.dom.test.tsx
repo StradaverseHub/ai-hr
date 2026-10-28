@@ -13,7 +13,8 @@ import type { orchestrationQueue } from '../core/hr-orchestrator';
 const catalogues = { en, ms, zh, vi: viMessages, th, ta };
 let renderLocale: keyof typeof catalogues = 'en';
 
-vi.mock('next/navigation', () => ({ usePathname: () => '/control-tower/readiness' }));
+const route = vi.hoisted(() => ({ pathname: '/control-tower/readiness' }));
+vi.mock('next/navigation', () => ({ usePathname: () => route.pathname }));
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('next-intl/server', () => ({
   getTranslations: async (namespace: any) => createTranslator({ locale: renderLocale, messages: catalogues[renderLocale], namespace }),
@@ -51,6 +52,20 @@ describe('consolidated Control Tower', () => {
     expect(screen.getByRole('link', { name: 'AI management' }).getAttribute('href')).toBe('/control-tower/agents');
     expect(screen.getByRole('link', { name: 'Opportunities' }).getAttribute('href')).toBe('/control-tower/opportunities');
     expect(screen.getAllByRole('link')).toHaveLength(7);
+  });
+  it('keeps AI management current on each of its sub-menu pages, and only there', () => {
+    try {
+      for (const path of ['/control-tower/agents', '/control-tower/agents/users', '/control-tower/agents/runs']) {
+        route.pathname = path;
+        const view = show(<ControlTowerNavigation />);
+        const current = screen.getAllByRole('link').filter((link) => link.getAttribute('aria-current') === 'page');
+        expect(current.map((link) => link.textContent), path).toEqual(['AI management']);
+        view.unmount();
+      }
+      route.pathname = '/control-tower/agentsX';
+      show(<ControlTowerNavigation />);
+      expect(screen.getAllByRole('link').filter((link) => link.getAttribute('aria-current') === 'page')).toEqual([]);
+    } finally { route.pathname = '/control-tower/readiness'; }
   });
   it('does not present an unobserved queue as a successful clean check', async () => {
     show(await OrchestrationWorkQueue({ view: empty }));

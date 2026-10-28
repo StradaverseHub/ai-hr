@@ -20,7 +20,8 @@ import en from '../messages/en.json';
 
 const read = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 const SERVICE = read('core/tenant-settings.ts');
-const PAGE = read('app/control-tower/agents/page.tsx');
+// The AI management sections share one screen; each sub-menu page only guards and picks its section.
+const PAGE = read('app/control-tower/agents/screen.tsx');
 const ACTION = read('app/control-tower/agents/actions.ts');
 const code = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 
