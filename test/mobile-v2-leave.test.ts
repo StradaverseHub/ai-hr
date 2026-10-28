@@ -27,7 +27,7 @@ import { decodeCursor } from '../lib/mobile-api/v2/common';
 import { LEAVE_REQUESTS_CURSOR, LeaveRequestsCursor } from '../lib/mobile-api/v2/leave';
 import { AuthRequiredError } from '../lib/auth-errors';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { adminCtx, closeAll, createAppUser, harnessSnapshot, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, createAppUser, harnessSnapshot, migrateTestDb, owner, resetDb, seedBase, seedEntitlement, type Base } from './harness';
 
 let caller: SessionContext;
 let blocked = false;
@@ -295,6 +295,7 @@ describe('v1 additive: hourly preview and the entitlement notice text', () => {
   });
 
   it('a card whose entitlement needs a notice carries it as text in the caller’s language; v1’s key field is unchanged', async () => {
+    await seedEntitlement(adminCtx(base), { leaveTypeId: base.annualLeaveTypeId, annualDays: 30, validFrom: TODAY.slice(0, 4) + '-01-01' });
     caller = employee.ctx;
     const r = await v1leave.GET(new Request('https://hr.example.com/api/mobile/v1/leave?locale=ms'));
     const body = await r.json() as { cards: { entitlementNotice: string | null; entitlementNoticeText?: { label: string; detail: string | null } | null }[] };

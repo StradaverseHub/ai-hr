@@ -180,7 +180,8 @@ describe('native leave job',()=>{
   });
   it('D9: Android opens the system dialog and a dismissed dialog changes nothing',()=>{
     const f=fixture('android');render(<f.App kind="leave"/>);fireEvent.click(screen.getByText('Annual leave'));
-    fireEvent.click(screen.getByText('2026-01-01',{selector:'button'}));expect(f.androidOpen).toHaveBeenCalledTimes(1);
+    // Start date is the first picker; End date shows the same day on a fresh full-day draft.
+    fireEvent.click(screen.getAllByText('2026-01-01',{selector:'button'})[0]);expect(f.androidOpen).toHaveBeenCalledTimes(1);expect(screen.queryByRole('textbox',{name:'startDate'})).toBeNull();
     const opened=f.androidOpen.mock.calls[0][0];expect(opened.mode).toBe('date');
     act(()=>opened.onChange({type:'dismissed'},new Date(2026,0,9)));expect(f.drafts().leave.command.startDate).toBe('2026-01-01');
     act(()=>opened.onChange({type:'set'},new Date(2026,0,9)));expect(f.drafts().leave.command.startDate).toBe('2026-01-09');
