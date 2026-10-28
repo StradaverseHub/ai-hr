@@ -680,6 +680,8 @@ strategy. A stale repeatable-read snapshot must not be presented as a fresh cont
 
 ### Draft integration and required acceptance
 
+> **Shipped state (28 October 2026):** see [Shipped state and known limits](#shipped-state-and-known-limits-28-october-2026). This draft was journaled as `db/migrations/0621_ai_action_controls.sql`; `db/migration-drafts/` no longer exists.
+
 `db/migration-drafts/ai-action-controls.sql` is deliberately outside the migration journal and must
 never be applied manually. Allocate a migration only after coordinating the current unpublished
 Board 3 reservations and their ascending release order. No existing applied migration is edited.
@@ -2040,6 +2042,8 @@ universal barrier, canonical app-role behavior, security or production readiness
 
 ### Versioned provider options storage boundary (26 October 2026; source only)
 
+> **Shipped state (28 October 2026):** see [Shipped state and known limits](#shipped-state-and-known-limits-28-october-2026). This draft was journaled as `db/migrations/0623_openrouter_provider_options.sql`.
+
 OpenRouter preparation now has one strict version-1 persisted-options reader with
 an explicit ordered approved provider list, conservative defaults and deeply frozen
 normalized output. It reuses the routing policy's canonical schema; unknown versions,
@@ -2696,6 +2700,8 @@ diff and source comparison checks ran; compiler/DB/runtime/security proof is pen
 Source tracing found four automatic Attendance parents: checkOutTx, attendance-correction
 decision, approved-plan application and imported-punch batches. Their earlier source
 reads and locks still require owner integration, as do other remaining dependencies.
+(Superseded by the 28 October shipped state: all four, plus check-in and the clock
+command, now begin with `lockAttendanceLeaveDependenciesTx`; see the shipped-state section.)
 These changes are partial participation, not universal protection or fresh principal
 revocation proof, and do not expose Assistant effects.
 
@@ -2980,3 +2986,55 @@ mentions are not invented identity evidence. In-flight conversation/evaluation o
 invalidated so a response finishing after retirement cannot recreate erased content or metadata.
 Source integration and focused checks are in progress; no migration application, runtime erasure
 proof or final-release acceptance follows from this decision alone.
+
+## Shipped state and known limits, 28 October 2026
+
+Recorded after the three-stage AI delivery reached staging (source `b30c562e4`; 529 applied
+migrations, watermark `1793130000023`). This describes what shipped; earlier "source only" and
+"unrun" sections above are historical.
+
+**Migrations.** The former drafts are journaled: `0621_ai_action_controls`, `0623_openrouter_provider_options`,
+and the AI series through `0657_ai_integration_repairs` (0622–0632, 0642, 0648–0657).
+
+**Attendance writers.** Check-in, check-out, the clock command, correction decision/application
+(`packs/attendance/day-adjustment.ts`, `lockAttendanceApplicationTx`) and imported-punch batches
+(`addImportedPunchesBatchTx`) all begin with `lockAttendanceLeaveDependenciesTx`
+(`core/attendance.ts`), which takes the tenant Access-configuration lock, the leave-dependency
+configuration lock and the employment locks. The "require owner integration" note above no longer applies.
+
+**Unsupported surfaces in the AI path.** No retrieval-augmented generation (RAG) over documents,
+no file attachments in Assistant conversations, and no exports produced by the AI path. Model-backed
+paths are verified by automated tests only. No provider is enabled on any installation, and no HR data
+has been sent to a provider.
+
+**Privacy wording.** `redactPII` masks emails, Malaysian IC numbers and phone-like runs only. It never
+masks names. Code comments were corrected to say so. The user-facing `admin.ai.privacyNote` already did.
+
+**Demo tenant shows 14 of 20 module specialists.** Not a defect. The workspace lists a module only when
+`isModuleEnabled` admits it (`core/ai-workspace.ts`; `system_explorer` also needs an administrator).
+On a seeded demo tenant: 6 core modules are always on (employees, org, leave, ess, approvals,
+knowledge_base). `db/seed.ts` adds `legacyEnabledModulesIn(env)` rows: payroll, attendance, claims,
+performance, plus notifications, multi_cycle_payroll and typed_pay_components when their env flags are on
+(they are in `.env.local`). The walkthrough recipe adds the `assistant` row. That makes 14. lifecycle,
+toil, country-my, rewards, system_explorer and system_testing have no `tenant_module` row: a missing row
+is disabled (C7). They appear once a tenant is entitled to them.
+
+**Known risks (accepted for staging; revisit before production).**
+- The tenant-wide Access-configuration advisory lock is exclusive. It serializes clock-ins within a tenant
+  and the AI principal checks that take the same lock. Busy periods will queue clock-ins behind each other.
+- Leave-dependency locks use `pg_try_advisory_xact_lock` (no waiting). A native statutory or other writer
+  that meets a held lock fails immediately with `LeaveDependencyUnavailable` and must be retried by the person.
+- PDPA erasure of Assistant transcripts runs under `lock_timeout` ≤ 500 ms
+  (`0656_assistant_transcript_retention.sql`). Under contention it refuses rather than waits.
+- `0654_ai_optional_usd_policy.sql` backfills `app.ai_spend_admission_scope` in one set-based pass under
+  SHARE ROW EXCLUSIVE locks on `ai_model_run` and its parents. Work is linear in `ai_model_run` rows; the
+  review estimate was about 10–30 s per million rows (not measured). Run it in a quiesced window.
+- `0648` and `0656` use plain `CREATE INDEX` (Drizzle applies each file in one transaction, so
+  `CONCURRENTLY` is unavailable). The index builds block writes to the table while they run.
+- Evaluation request budgets are chosen by the evaluating worker, not by a tenant setting. The review
+  recorded up to 72 provider calls per arm for a full batch; each invocation is consent-bounded (for
+  example `PROMPT_HOLDOUT_REQUEST_LIMIT` = 12).
+
+**Open owner decisions (not decided here).** Whether named `specific_employee` leave approvers may see the
+requests they approve; whether overtime-pattern writers join the leave-dependency lock; whether Assistant
+clarifications carry earlier chat context (needs a schema link); and live provider activation and choice.
