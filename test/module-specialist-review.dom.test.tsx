@@ -14,6 +14,13 @@ function view(){return{modules:[{module:'leave' as const,nextVersion:3}],candida
  {id:'independently-passed',module:'leave' as const,version:3,playbook:'canonical_followup_v1' as const,own:false,evaluations:2,passingEvaluators:2,incompleteEvaluators:0}],
  promotions:[],ownNativeSignalChoices:[{associationId:'own-completed-link',module:'leave' as const,action:'leave.apply' as const,semantics:'submitted_not_approved',createdAt:'2026-01-01'}],nativeSignalChoicesTruncated:false,ownSignalChoices:[{id:'own-verified-signal',module:'leave' as const,outcome:'needs_correction' as const,createdAt:'2026-01-01'}],signalChoicesTruncated:true};}
 describe('specialist human governance presentation',()=>{
+ it('labels the picker with the NEXT candidate version and each saved row with its OWN candidate version',async()=>{
+  const{container}=render(await ModuleSpecialistReview({view:view()}));const module='assistant.workspace.jobs.module_leave';
+  const picker=container.querySelector<HTMLSelectElement>('select[name="moduleVersion"]')!;
+  expect(Array.from(picker.options).map(option=>option.textContent)).toEqual(['assistant.workspace.specialists.nextRecord '+JSON.stringify({module,version:3})]);
+  expect(picker.value).toBe('leave:3');
+  for(const version of [1,2,3])expect(screen.getAllByText((_text,node)=>node?.tagName==='P'&&node.textContent?.startsWith('assistant.workspace.specialists.record '+JSON.stringify({module,version}))===true)).toHaveLength(1);
+ });
  it('keeps own candidates out of independent evaluation and incomplete candidates out of promotion',async()=>{
   const{container}=render(await ModuleSpecialistReview({view:view()}));
   const selects=container.querySelectorAll<HTMLSelectElement>('select[name="candidateId"]');expect(selects).toHaveLength(2);
