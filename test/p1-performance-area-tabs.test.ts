@@ -94,8 +94,8 @@ const PERSONAS: Persona[] = [
   {
     name: 'Group Chief: group calibration and the Talent Box; the Calibration strip shows (DQ-7)',
     facts: facts([calibration('group', 'group_calibration', 'performance'), calibration('group', 'talent_box', 'both')]),
-    // A both-axes item satisfies both axis gates (DQ-8), so the Group Chief's Talent Box also opens Potential.
-    expected: { home: 'open', 'calibration.performance': 'open', 'calibration.potential': 'open', 'calibration.talentBox': 'open' },
+    // DQ-8 opens both axes for the BG view only: the Group Talent Box opens no Potential (no Group potential page).
+    expected: { home: 'open', 'calibration.performance': 'open', 'calibration.talentBox': 'open' },
   },
   {
     name: 'admin with no review of their own: the Dashboard only',
@@ -135,7 +135,7 @@ describe('Talent box is never an HOD tab', () => {
   it('an HOD department view carrying a talent_box item is still refused', () => {
     const hod = facts([calibration('dept', 'department_review', 'performance'), calibration('dept', 'talent_box', 'both')]);
     expect(performanceTabState(hod, 'calibration.talentBox')).toBe('hidden');
-    expect(performanceAreaStrip(hod, 'calibration').map(view => view.id)).toEqual(['calibration.performance', 'calibration.potential']);
+    expect(performanceAreaStrip(hod, 'calibration').map(view => view.id)).toEqual(['calibration.performance']);
   });
   it('an HOD who also holds a BU seat gets it through the BU item', () => {
     expect(performanceTabState(facts([calibration('dept', 'department_review', 'performance'), calibration('bu', 'talent_box', 'both')]), 'calibration.talentBox')).toBe('open');
@@ -143,9 +143,13 @@ describe('Talent box is never an HOD tab', () => {
 });
 
 describe('DQ-8: a both-axes calibration item', () => {
-  it('opens Performance and Potential; Talent box only through a talent_box stage', () => {
+  it('opens Performance and Potential in the BG view only; Talent box only through a talent_box stage', () => {
     const both = facts([calibration('bg', 'talent_box', 'both')]);
     expect(performanceAreaStrip(both, 'calibration').map(view => view.id)).toEqual(['calibration.performance', 'calibration.potential', 'calibration.talentBox']);
+    expect(performanceTabState(facts([calibration('group', 'talent_box', 'both')]), 'calibration.potential')).toBe('hidden');
+    expect(performanceTabState(facts([calibration('group', 'talent_box', 'both')]), 'calibration.performance')).toBe('hidden');
+    expect(performanceTabState(facts([calibration('bu', 'talent_box', 'both')]), 'calibration.potential')).toBe('hidden');
+    expect(performanceTabState(facts([calibration('dept', 'talent_box', 'both')]), 'calibration.potential')).toBe('hidden');
     const onlyPerformance = facts([calibration('bu', 'calibration', 'performance')]);
     expect(performanceAreaStrip(onlyPerformance, 'calibration').map(view => view.id)).toEqual(['calibration.performance']);
     const onlyPotential = facts([calibration('bu', 'potential_calibration', 'potential')]);
@@ -199,7 +203,7 @@ describe('the gates read the words the workspace actually emits', () => {
     ['hod', ['calibration.performance', 'calibration.potential']],
     ['bu', ['calibration.performance', 'calibration.potential', 'calibration.talentBox']],
     ['bg', ['calibration.performance', 'calibration.potential', 'calibration.talentBox']],
-    ['group', ['calibration.performance', 'calibration.potential', 'calibration.talentBox']],
+    ['group', ['calibration.performance', 'calibration.talentBox']],
   ])('the %s tier calibration items give the strip %j', (tier, expected) => {
     const view = (tier === 'hod' ? 'dept' : tier) as PerformanceAreaItem['view'];
     const parts = leaderWorkspaceParts(policy, tier, { lockedAt: null, performanceLockedAt: null, potentialLockedAt: null });

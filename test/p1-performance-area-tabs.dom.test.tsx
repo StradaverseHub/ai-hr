@@ -61,9 +61,9 @@ describe('a tab is drawn exactly when its gate passes', () => {
     { ...item('dept', 'cal', 'department_review'), kind: 'calibration', axis: 'performance' },
     { ...item('dept', 'cal', 'talent_box'), kind: 'calibration', axis: 'both' },
   ] };
-  it('an HOD sees the per-axis tabs in Calibration, never Talent box, and no Feedback tab', () => {
+  it('an HOD sees Performance only in Calibration, never Talent box, and no Feedback tab', () => {
     draw('calibration', hod);
-    expect(within(nav('calibration')).getAllByRole('link').map(link => link.textContent)).toEqual([messages.performanceArea.tabs.cal.performance, messages.performanceArea.tabs.cal.potential]);
+    expect(within(nav('calibration')).getAllByRole('link').map(link => link.textContent)).toEqual([messages.performanceArea.tabs.cal.performance]);
     expect(screen.queryByText(messages.performanceArea.tabs.cal.talentBox)).toBeNull();
     cleanup();
     draw('feedback', hod);

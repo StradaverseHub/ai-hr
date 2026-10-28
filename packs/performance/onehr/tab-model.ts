@@ -82,9 +82,12 @@ const pm = (view: WorkspaceView, stages: readonly string[]) => (facts: Performan
   holds(facts, item => item.view === view && item.module === 'pm' && stages.includes(item.stage));
 const competency = (view: WorkspaceView) => (facts: PerformanceAreaFacts) =>
   holds(facts, item => item.view === view && item.module === 'tm' && item.stage === 'competency');
-/** DQ-8: an item calibrating both axes (the BG Talent Box) opens both per-axis lists. */
+/**
+ * DQ-8: the BG Talent Box (an item calibrating both axes in the BG view) opens both per-axis lists. Only the BG
+ * view: a BU or Group Talent Box opens no per-axis list of its own (there is no Group potential page).
+ */
 const axis = (wanted: 'performance' | 'potential') => (facts: PerformanceAreaFacts) =>
-  holds(facts, item => item.module === 'cal' && (item.axis === wanted || item.axis === 'both'));
+  holds(facts, item => item.module === 'cal' && (item.axis === wanted || (item.axis === 'both' && item.view === 'bg')));
 const sessionRules = (hint: PerformanceCalibrationHint): PerformanceTabMatch[] =>
   CALIBRATION_SESSION_PATHS.map(path => ({ path, prefix: true, hint }));
 
@@ -105,8 +108,8 @@ function tab<const Id extends string>(
  *   tiers; an HOD's department view (`dept`) is excluded again here so an HOD can never be offered it.
  * - Feedback: the viewer's own 360 report exists, confirmed (not yet released) or released, as the source draws
  *   it. A manager or HOD without an own report gets no Feedback tab (DQ-5).
- * - Calibration Performance / Potential: an item on that axis, or on both (DQ-8: a BG CEO's Talent Box opens
- *   read-only per-axis lists of the BG session).
+ * - Calibration Performance / Potential: an item on that axis, or a BG item on both (DQ-8: a BG CEO's Talent
+ *   Box opens read-only per-axis lists of the BG session). A Group or BU `both` item opens neither.
  * - Calibration strip: a Group Chief holds group_calibration and talent_box items, so sees the strip (DQ-7, a recorded
  *   deviation from the source, which drew no strip for that tier).
  * - Career Plan: disabled while every plan item held is locked (wave 2).
