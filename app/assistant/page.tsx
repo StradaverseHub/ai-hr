@@ -15,6 +15,8 @@ import {eraseModuleProposalsAction} from './module-plan-actions';
 import {SpecialistJobComposer} from '@/components/assistant/module-specialist-review';
 import { WorkspaceComposer } from '@/components/assistant/workspace-composer';
 import { MAX_TURNS } from '@/core/assistant';
+import Link from 'next/link';
+import { isGroupAdmin } from '@/lib/authz';
 import { Card, ErrorBanner, PageHeader } from '@/components/ui';
 import { askAssistantAction } from './actions';
 import { viewerIdentity } from '@/lib/viewer';
@@ -61,22 +63,49 @@ export default async function AssistantPage({
   const workspace = await loadAiWorkspace(s,{includeHistory:sp.job===undefined&&sp.governed===undefined&&sp.proposal===undefined,includeGovernance:false,selectedExchangeId:sp.e,governedJobId:sp.governed,proposalId:sp.proposal});
   const access = workspace.access;
 
+  // Home: a greeting, the question box, then "My work" and "Calendar". Both panels are the existing home
+  // cards, each reading its own authorized facts for the signed-in person's selected employment. A login
+  // with no employment (or an unreadable one) simply sees a short note instead of the two panels.
+  const clock = homeDisplayClock(new Date(), 'Asia/Kuala_Lumpur');
+  const name = await viewerIdentity(s).then(viewer => viewer.name?.trim() || null).catch(() => null);
+  const greeting = clock.hour < 12 ? (name ? t('home.morning', { name }) : t('home.morningNoName'))
+    : clock.hour < 18 ? (name ? t('home.afternoon', { name }) : t('home.afternoonNoName'))
+    : (name ? t('home.evening', { name }) : t('home.eveningNoName'));
+  const employmentId = await readEmployeeHomeIdentity(s).then(identity => identity.selectedEmploymentId).catch(() => null);
+  const homeTabs = employmentId ? <AssistantHomeTabs labels={{tabs:t('home.tabs'),work:t('home.myWork'),calendar:t('home.calendar')}}
+    work={<HomeTasksCard employmentId={employmentId}/>}
+    calendar={<HomeCalendarCard employmentId={employmentId} initialMonth={clock.date.slice(0,7)}/>}/>
+    : <p className="text-center text-sm text-muted-foreground">{t('home.noEmployment')}</p>;
+
   if (!access.allowed) {
+    // Same home as the full view, without the question box: why the Assistant is unavailable and who can
+    // change it (three reasons, three next steps), the person's own work and calendar, and every own-data
+    // control, which stays usable after access is removed.
+    const mayGrant = access.reason === 'no_grant' && isGroupAdmin(s);
     return (
-      <div data-tour="intelligence-assistant" className="mx-auto max-w-5xl space-y-5">
-        <PageHeader title={t('title')} description={t('description')} />
-      <AssistantHistoryPrivacy status={sp.historyPrivacy}/>
-      <OwnClearStatus status={sp.ownClear}/>
-        <Card className="p-6">
-          {/* Three different reasons, three different next steps. "No" with no route forward is the one
-              thing this must not render. */}
-          <p className="text-sm text-muted-foreground">{t(`denied_${access.reason}`)}</p>
-          <div className="mt-4"><OwnClearForm kind="feedback" action={eraseAgentFeedbackAction} label={t('workspace.feedbackErase')}/></div>
-          <OwnClearForm kind="conversation" action={eraseConversationMetadataAction} label={t('workspace.conversationGovernance.erase')}/>
-          <OwnClearForm kind="proposals" action={eraseModuleProposalsAction} label={t('workspace.planning.erase')}/>
+      <div data-tour="intelligence-assistant" className="mx-auto max-w-5xl space-y-6">
+        <div className="mx-auto max-w-3xl space-y-4 pt-2">
+          <PageHeader title={greeting} description={t('description')} />
+          <OwnClearStatus status={sp.ownClear}/>
+          <section aria-labelledby="assistant-access-heading" className="rounded-xl border border-border bg-card p-5 shadow-sm">
+            <h2 id="assistant-access-heading" className="text-base font-semibold">{t('home.accessTitle')}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{t(`denied_${access.reason}`)}</p>
+            {mayGrant && <Link href="/control-tower/agents/allowances#user-limits" className="mt-3 inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">{t('home.grantSelf')}</Link>}
+          </section>
+          {homeTabs}
+        </div>
+        <section id="assistant-privacy" aria-labelledby="assistant-privacy-heading" className="scroll-mt-4 space-y-2 border-t border-border pt-4">
+          <h2 id="assistant-privacy-heading" className="text-sm font-medium">{t('home.privacy')}</h2>
+          <p className="text-xs text-muted-foreground">{t('home.privacyHelp')}</p>
+          <AssistantHistoryPrivacy status={sp.historyPrivacy}/>
           <ImportPreparationPrivacy status={sp.importHistory}/><NativeOutcomePrivacy status={sp.nativeOutcome}/>
-          <OwnClearForm kind="ratings" action={eraseGovernedJobFeedbackAction} label={t('workspace.governed.eraseSignals')}/>
-        </Card>
+          <ul className="grid gap-x-6 sm:grid-cols-2">
+            <li><OwnClearForm kind="feedback" action={eraseAgentFeedbackAction} label={t('workspace.feedbackErase')}/></li>
+            <li><OwnClearForm kind="ratings" action={eraseGovernedJobFeedbackAction} label={t('workspace.governed.eraseSignals')}/></li>
+            <li><OwnClearForm kind="proposals" action={eraseModuleProposalsAction} label={t('workspace.planning.erase')}/></li>
+            <li><OwnClearForm kind="conversation" action={eraseConversationMetadataAction} label={t('workspace.conversationGovernance.erase')}/></li>
+          </ul>
+        </section>
       </div>
     );
   }
@@ -89,15 +118,6 @@ export default async function AssistantPage({
   const tasks = workspace.taskIds.map(id => ({
     id, label: t(`workspace.${id}_label`), prompt: t(`workspace.${id}_prompt`, { date: today }),
   }));
-  // Home: a greeting, the question box, then "My work" and "Calendar". Both panels are the existing home
-  // cards, each reading its own authorized facts for the signed-in person's selected employment. A login
-  // with no employment (or an unreadable one) simply sees a short note instead of the two panels.
-  const clock = homeDisplayClock(new Date(), 'Asia/Kuala_Lumpur');
-  const name = await viewerIdentity(s).then(viewer => viewer.name?.trim() || null).catch(() => null);
-  const greeting = clock.hour < 12 ? (name ? t('home.morning', { name }) : t('home.morningNoName'))
-    : clock.hour < 18 ? (name ? t('home.afternoon', { name }) : t('home.afternoonNoName'))
-    : (name ? t('home.evening', { name }) : t('home.eveningNoName'));
-  const employmentId = await readEmployeeHomeIdentity(s).then(identity => identity.selectedEmploymentId).catch(() => null);
 
   return (
     <div data-tour="intelligence-assistant" className="mx-auto max-w-5xl space-y-6">
@@ -109,10 +129,7 @@ export default async function AssistantPage({
           tasks: t('workspace.tasks'), taskHint: t('workspace.taskHint'), question: t('workspace.question'),
           placeholder: t('placeholder'), ask: t('ask'), working: t('workspace.working'), scope: t('scopeNote'),
         }} />
-        {employmentId ? <AssistantHomeTabs labels={{tabs:t('home.tabs'),work:t('home.myWork'),calendar:t('home.calendar')}}
-          work={<HomeTasksCard employmentId={employmentId}/>}
-          calendar={<HomeCalendarCard employmentId={employmentId} initialMonth={clock.date.slice(0,7)}/>}/>
-          : <p className="text-center text-sm text-muted-foreground">{t('home.noEmployment')}</p>}
+        {homeTabs}
       </div>
 
       <ModuleJobChooser modules={workspace.jobModules} selected={sp.job} actions={actionEntries}/>

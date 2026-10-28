@@ -15,8 +15,8 @@ vi.mock('../components/delegation-manager',()=>({DelegationManager:()=>null}));
 
 import {Sidebar} from '../components/sidebar';
 
-const rail=(enabledModules:string[]|null)=>render(<NextIntlClientProvider locale="en" messages={messages}>
- <Sidebar isAdmin canApprove canAccessTeam enabledModules={enabledModules} defaultCollapsed={false}/>
+const rail=(enabledModules:string[]|null,assistantAccess=true)=>render(<NextIntlClientProvider locale="en" messages={messages}>
+ <Sidebar isAdmin canApprove canAccessTeam enabledModules={enabledModules} assistantAccess={assistantAccess} defaultCollapsed={false}/>
 </NextIntlClientProvider>);
 const assistantRows=()=>document.querySelectorAll('a[href="/assistant"]');
 afterEach(cleanup);
@@ -32,6 +32,10 @@ describe('AI Assistant sidebar row',()=>{
   expect(assistantRows()).toHaveLength(0);
   // Discriminating, not blank: other Home rows still render.
   expect(document.querySelector('a[href="/knowledge-base"]')).not.toBeNull();
+ });
+ it('hides the row from a login without Assistant access, even with the module active',()=>{
+  rail(['employees','leave','assistant'],false);
+  expect(assistantRows()).toHaveLength(0);
  });
  it('fails open like every other module row when no snapshot resolved',()=>{
   rail(null);

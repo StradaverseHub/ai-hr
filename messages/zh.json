@@ -18658,7 +18658,13 @@
       "myWork": "我的工作",
       "calendar": "日历",
       "noEmployment": "您的登录账号关联到雇佣记录后，这里会显示“我的工作”和“日历”。",
-      "privacy": "您的助手数据"
+      "privacy": "您的助手数据",
+      "accessTitle": "助手权限",
+      "grantSelf": "在 AI 管理中为自己开通权限",
+      "privacyHelp": "每一项在删除前都会先确认。您的人事记录不会被更改。",
+      "dataTitle": "您的助手数据",
+      "dataHelp": "即使您已不再拥有权限，也可以清除已保存的聊天内容、反馈、评分和其他助手数据。",
+      "dataLink": "管理您的助手数据"
     },
     "launcher": {
       "open": "询问助手",

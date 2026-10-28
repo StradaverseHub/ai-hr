@@ -603,6 +603,7 @@ export function Sidebar({
   onboardingJoinerCount,
   onboardingChecklistCount,
   enabledModules = null,
+  assistantAccess = true,
   performanceNavigation = { tm: false, idp: 'none' },
   defaultCollapsed,
   viewerName = null,
@@ -642,6 +643,10 @@ export function Sidebar({
    * page these rows point at refuses on its own (D3).
    */
   enabledModules?: string[] | null;
+  /** 28 Oct 2026 (owner): the Assistant row is offered only to a login that may use the Assistant (module,
+   * grant). app/layout.tsx computes it and passes false on any failure. Own-data controls stay reachable from
+   * My workspace, and /assistant itself still refuses and explains on its own. */
+  assistantAccess?: boolean;
   /**
    * The review journey's module offer (packs/performance performanceNavigationOffer, computed once in
    * app/layout.tsx): Talent only with TM work, Development only with IDP work, and Development disabled while
@@ -746,7 +751,7 @@ export function Sidebar({
   // Per-child visibility for flyout nodes (per-child gating vs. whole-group gating). Role gating and
   // module gating are ANDed: a row needs both the role AND the module to appear.
   const canSeeChild = (c: ChildItem) =>
-    moduleAllows(c.href) && (c.href !== TALENT_HREF || performanceNavigation.tm) && (c.href !== DEVELOPMENT_HREF || performanceNavigation.idp !== 'none') && (!c.href.startsWith('/letters/')||letterDestinations.includes(c.href)) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === CALIBRATION_ROW.href ? canEnterCalibration || canAdministerOnehr : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) || c.href === PERFORMANCE_ROW.href && canAdministerOnehr : true);
+    moduleAllows(c.href) && (c.href !== '/assistant' || assistantAccess) && (c.href !== TALENT_HREF || performanceNavigation.tm) && (c.href !== DEVELOPMENT_HREF || performanceNavigation.idp !== 'none') && (!c.href.startsWith('/letters/')||letterDestinations.includes(c.href)) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === CALIBRATION_ROW.href ? canEnterCalibration || canAdministerOnehr : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) || c.href === PERFORMANCE_ROW.href && canAdministerOnehr : true);
   // The former audience inventory still supplies its original visibility boundaries.
   // Only authorized rows are handed to the workspace placement owner below.
   const authorizedGroups = GROUPS

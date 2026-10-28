@@ -18658,7 +18658,13 @@
       "myWork": "Kerja saya",
       "calendar": "Kalendar",
       "noEmployment": "Kerja saya dan Kalendar akan muncul sebaik sahaja log masuk anda dipautkan kepada rekod pekerjaan.",
-      "privacy": "Data Pembantu anda"
+      "privacy": "Data Pembantu anda",
+      "accessTitle": "Akses Pembantu",
+      "grantSelf": "Beri diri anda akses dalam Pengurusan AI",
+      "privacyHelp": "Setiap satu bertanya dahulu sebelum memadam. Rekod HR anda tidak pernah diubah.",
+      "dataTitle": "Data Pembantu anda",
+      "dataHelp": "Kosongkan teks sembang, maklum balas, penilaian dan data Pembantu lain yang disimpan, walaupun anda tidak lagi mempunyai akses.",
+      "dataLink": "Urus data Pembantu anda"
     },
     "launcher": {
       "open": "Tanya Pembantu",
