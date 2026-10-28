@@ -46,7 +46,7 @@
  * adjudication above, which is the statement that the choice and `worked_day_kind` are equal; a second
  * column holding the same fact would be a second owner of it (CLAUDE.md §1).
  */
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { LEGACY_CLAIM_SOURCE_TYPE, type ReplacementClaimSourceType, type ToilWorkedDayKind } from '../db/schema';
 import { leaveCreditRosterKindsTx } from './toil';
 import {
@@ -197,6 +197,11 @@ export async function submitLeaveCreditRequest(
     firstScheduleConsent?: boolean;
     today: string;
   },
+  /**
+   * D13 (mobile M12): the caller's transaction (the mobile command receipt's), used for BOTH the roster
+   * adjudication and the write, so the receipt and the request commit together. Omitted: two transactions, as before.
+   */
+  existingTx?: Tx,
 ): Promise<SubmitReplacementRequestResult> {
   if (!p.reason?.trim()) throw new ReplacementRequestInvalidError('Enter a reason for the leave credit request.');
   if (p.rows.length === 0) throw new ReplacementRequestInvalidError('Add at least one worked date.');
@@ -219,7 +224,9 @@ export async function submitLeaveCreditRequest(
 
   const mismatches = adjudicateDayTypes(
     p.rows.map((r) => ({ workedDate: r.workedDate, dayType: r.dayType })),
-    await leaveCreditRosterKinds(ctx, p.employmentId, p.rows.map((r) => r.workedDate)),
+    existingTx
+      ? await leaveCreditRosterKindsTx(existingTx, p.employmentId, p.rows.map((r) => r.workedDate), ctx)
+      : await leaveCreditRosterKinds(ctx, p.employmentId, p.rows.map((r) => r.workedDate)),
   );
   if (mismatches.length > 0) throw new LeaveCreditDayTypeMismatchError(mismatches);
 
@@ -247,5 +254,5 @@ export async function submitLeaveCreditRequest(
     reason: p.reason,
     firstScheduleConsent: p.firstScheduleConsent,
     today: p.today,
-  });
+  }, existingTx);
 }
