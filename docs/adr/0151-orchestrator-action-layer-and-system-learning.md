@@ -232,6 +232,23 @@ add a second generic binding mode, **assigned**, modelled on the leave-decision 
 - One pending review per item per decider, so one approver's open review neither blocks nor reveals itself
   to another approver of the same item. Index and discard are bound to the login's current person.
 
+### 5.2 Amendment, 29 Oct 2026: inline review cards (§4.3), first increment
+
+- The model proposes through a new answer-plan mode, never a tool:
+  `{"version":1,"mode":"propose","action":"<id>","hints":{...}}`. It is parsed by the same strict canonical-JSON
+  parser and sealed in the same exchange record as every other plan; no table or ledger is added and the chat
+  tool loop stays read-only. Nothing is prepared or written during the model turn.
+- Proposable now: the seven generic wave 1/1b actions with typed hints only (`leave.cancel` {startDate?},
+  `leave.edit` {startDate?, newStartDate, newEndDate}, `claims.cancel` {incurredOn?},
+  `attendance.overtime.request` {date, plannedStartTime, plannedEndTime}, and the three assigned decisions with
+  no hints). Hints carry no IDs, names or human text, and never a decision. A proposal is accepted only for an
+  implemented prepare nomination whose module the caller can currently read; otherwise it fails closed.
+- After the turn the card resolves hints against the caller's own fresh `choices` from the guarded module-action
+  endpoint: one match is preselected, zero or several ask the person to pick. Human fields start empty;
+  preparation, confirmation and lost-response reopening use the existing panels and digest-bound commands.
+- Not yet covered: the other implemented actions keep their bespoke protocols and the existing human-review link
+  card. Each needs its own typed hint shape and panel prefill before it can be proposed inline.
+
 ## 6. Alternatives considered
 
 - **Give the agent its own broad role** (as the nightly sweep does today). Rejected: authority would no longer
