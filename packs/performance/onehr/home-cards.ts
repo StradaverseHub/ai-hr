@@ -22,7 +22,7 @@ import { withPerformanceTenant } from '../../../core/module-gate';
 import { isModuleEnabled } from '../../../core/entitlements';
 import { todayInKualaLumpur } from '../../../lib/hr-date';
 import type { PackTaskItem, PackTaskKind } from '../../../lib/assigned-work';
-import type { PMBand, Policy, WindowCell } from './model';
+import { pmBands, type PMBand, type Policy, type WindowCell } from './model';
 import { assessmentWorkWindowOpen, reviewWorkspaceParts, type ReviewWorkPart } from './workspace-model';
 import { getOnehrReview, pendingOnehrFeedbackTaskMetadata } from './service';
 import { pendingPerformanceTasks } from './tasks';
@@ -37,10 +37,16 @@ export type HomeNextStep =
   | { kind: 'none'; nextDate: { kind: 'opens' | 'closes'; on: string } | null };
 export type HomeTeamChip = { kind: PackTaskKind; count: number };
 export type HomeTeam = { total: number; chips: HomeTeamChip[]; href: string };
-/** "Where you stand". `band` exists ONLY on a released performance row: the key set is the guarantee. */
+/**
+ * "Where you stand". Under the default rule (WHERE_YOU_STAND_RULE = 'releasedOnly') `band` exists ONLY on a released
+ * performance row: the key set is the guarantee. The 'lineManagerApproved' row is produced only when the DQ-1 switch
+ * below is flipped; it carries the line manager's approved band, never a score.
+ */
 export type HomeStanding = {
-  performance: { state: 'released'; band: PMBand } | { state: 'awaitingManager' | 'notReleased' } | null;
+  performance: { state: 'released'; band: PMBand } | { state: 'lineManagerApproved'; band: PMBand } | { state: 'awaitingManager' | 'notReleased' } | null;
   competency: 'notSubmitted' | 'withManager' | 'reviewed' | null;
+  /** Only once the line manager has reviewed the competencies: how many they marked demonstrated, of all. */
+  competencyDemonstrated?: { done: number; total: number };
   feedback360: 'released' | 'notReleased';
   careerTarget: { state: 'set'; title: string } | { state: 'notSet' };
 };
@@ -50,6 +56,26 @@ export type PerformanceHomeBlock = {
   next: HomeNextStep; team: HomeTeam | null; standing: HomeStanding;
   detailsHref: string;
 };
+
+/**
+ * DQ-1 (owner decision OPEN): what the Performance row of "Where you stand" shows before release.
+ *   'releasedOnly'         AI-HR's rule (wave 2, P1-02): the band only once it is released to the person; before
+ *                          that a state word ("Awaiting your manager" / "Not released yet"). THE DEFAULT.
+ *   'lineManagerApproved'  the source's rule: the line manager's approved overall band as soon as the manager has
+ *                          approved it, with a note that calibration may still change it.
+ * This constant is the ONE switch. Both the AI-HR home block and /performance/home read it through deriveHomeBlock.
+ * Neither rule ever shows a score, and neither shows a band the line manager has not approved.
+ */
+export type WhereYouStandRule = 'releasedOnly' | 'lineManagerApproved';
+export const WHERE_YOU_STAND_RULE: WhereYouStandRule = 'releasedOnly';
+
+/** The Performance row under a rule. `released` is the band the own-person projection returns (null until release). */
+export function standingPerformance(rule: WhereYouStandRule, facts: { released: PMBand | null; managerPerformance: string | null }): NonNullable<HomeStanding['performance']> {
+  if (facts.released) return { state: 'released', band: facts.released };
+  const approved = pmBands.find((b) => b === facts.managerPerformance);
+  if (rule === 'lineManagerApproved' && approved) return { state: 'lineManagerApproved', band: approved };
+  return { state: facts.managerPerformance ? 'notReleased' : 'awaitingManager' };
+}
 
 const PART_STATE: Record<ReviewWorkPart['state'], HomeStepState> = { open: 'yourTurn', waiting: 'inProgress', done: 'done', later: 'locked' };
 const TEAM_KINDS: readonly PackTaskKind[] = ['performanceReview', 'assessmentWork', 'careerPlan'];
@@ -144,8 +170,11 @@ export function deriveHomeBlock(input: {
   sessions: readonly { id: string; lockedAt: Date | null }[];
   inCycle: ReadonlySet<string>;
   now: Date;
+  /** DQ-1. Tests pass both values; every caller in the app takes the default. */
+  standingRule?: WhereYouStandRule;
 }): PerformanceHomeBlock {
   const { own, review, tasks, feedbackOpen, team, sessions, inCycle, now } = input;
+  const standingRule = input.standingRule ?? WHERE_YOU_STAND_RULE;
   const policy = review.policy;
   const plan = review.plans.find((p) => p.planYear === review.planYear);
   const parts = reviewWorkspaceParts(policy, {
@@ -213,13 +242,35 @@ export function deriveHomeBlock(input: {
   const profileId = review.careerProfile?.career.targetProfileId ?? null;
   const target = profileId ? policy.profiles.find((p) => p.id === profileId) : undefined;
   const standing: HomeStanding = {
-    performance: !policy.modules.pm ? null : band ? { state: 'released', band } : { state: review.managerPerformance ? 'notReleased' : 'awaitingManager' },
+    performance: !policy.modules.pm ? null : standingPerformance(standingRule, { released: band, managerPerformance: review.managerPerformance }),
     competency: !policy.modules.tm || review.competencies.length === 0 ? null
       : review.competencyStatus === 'reviewed' ? 'reviewed' : review.competencyStatus === 'submitted' ? 'withManager' : 'notSubmitted',
+    ...(policy.modules.tm && review.competencies.length > 0 && review.competencyStatus === 'reviewed'
+      ? { competencyDemonstrated: { done: review.competencies.filter((c) => c.manager === 'yes').length, total: review.competencies.length } } : {}),
     feedback360: review.result?.feedbackReleased ? 'released' : 'notReleased',
     careerTarget: target ? { state: 'set', title: target.jobTitle || target.name } : { state: 'notSet' },
   };
   return { cycle: { id: own.cycleId, name: own.cycleName, closesOn: own.periodEnd }, steps, ...stripProgress(steps), next, team: teamRow, standing, detailsHref: '/me/performance' };
+}
+
+/**
+ * D-P1-32 PT-X3: the rail of a viewer who leads in the cycle but has no participating own review there (a leader
+ * outside their own review, a BG CEO). Only what the worklist (performanceWorkspaceTx items of that cycle)
+ * derives: the 360 they owe, the team review and their calibration work, in the strip's order. No own step and no
+ * results step: neither is derivable for them, and a step that cannot be derived is omitted, never guessed.
+ */
+export function leaderRailSteps(items: readonly { id: string; kind: 'review' | 'feedback' | 'calibration'; view: string; state: 'open' | 'waiting' | 'done' | 'later' }[]): HomeStep[] {
+  const steps: HomeStep[] = [];
+  const owed = items.filter((i) => i.kind === 'feedback');
+  const owedOpen = owed.filter((i) => i.state === 'open').length;
+  if (owed.length) steps.push(owedOpen ? { key: 'feedback360', state: 'yourTurn', count: owedOpen } : { key: 'feedback360', state: 'done' });
+  const team = items.filter((i) => i.kind === 'review' && i.view === 'team');
+  const teamOpen = new Set(team.filter((i) => i.state === 'open').map((i) => i.id)).size;
+  if (team.length) steps.push(teamOpen ? { key: 'teamReview', state: 'waiting', count: teamOpen } : { key: 'teamReview', state: team.every((i) => i.state === 'done') ? 'done' : 'inProgress' });
+  const lead = items.filter((i) => i.kind === 'calibration');
+  const leadOpen = lead.filter((i) => i.state === 'open').length;
+  if (lead.length) steps.push(leadOpen ? { key: 'calibration', state: 'waiting', count: leadOpen } : { key: 'calibration', state: lead.every((i) => i.state === 'done') ? 'done' : 'inProgress' });
+  return steps;
 }
 
 /** D-P1-03: has the viewer any performance work assigned — the bell's own projection, nothing wider? */

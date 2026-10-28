@@ -12,7 +12,7 @@ import type { SessionContext, Tx } from '../../../db/client';
 import { onehrCycle, onehrReview, reviewCycle } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
 import { isModuleEnabled } from '../../../core/entitlements';
-import { performanceWorkspaceTx } from './service';
+import { performanceWorkspaceTx, type PerformanceWorkspaceItem } from './service';
 import { performanceTabState, type OwnFeedbackReport, type PerformanceAreaFacts, type PerformanceTabState } from './tab-model';
 
 const noFacts: PerformanceAreaFacts = { performanceOn: false, items: [], ownFeedbackReport: 'none' };
@@ -39,12 +39,24 @@ async function ownFeedbackReportTx(tx: Tx): Promise<OwnFeedbackReport> {
  * cycle the viewer holds nothing in leaves only the Dashboard tab). The 360 report fact is cycle-independent.
  */
 export async function getPerformanceAreaFacts(ctx: SessionContext, opts: { cycleId?: string } = {}): Promise<PerformanceAreaFacts> {
-  if (!ctx.userId || !isModuleEnabled(ctx, 'performance')) return noFacts;
+  return (await getPerformanceAreaFactsAndItems(ctx, opts)).facts;
+}
+
+/**
+ * PT-X3: the same facts, plus the worklist items they were projected from, in the SAME read, for a page that needs
+ * both (the Performance home's next-step rows and rail), so the workspace projection is not read twice.
+ */
+export async function getPerformanceAreaFactsAndItems(ctx: SessionContext, opts: { cycleId?: string } = {}): Promise<{ facts: PerformanceAreaFacts; items: PerformanceWorkspaceItem[] }> {
+  if (!ctx.userId || !isModuleEnabled(ctx, 'performance')) return { facts: noFacts, items: [] };
   return withPerformanceTenant(ctx, async tx => {
     const all = await performanceWorkspaceTx(tx, ctx);
-    const items = (opts.cycleId ? all.filter(item => item.cycleId === opts.cycleId) : all)
-      .map(({ kind, cycleId, view, module, stage, axis, locked }) => ({ kind, cycleId, view, module, stage, axis, locked }));
-    return { performanceOn: true, items, ownFeedbackReport: await ownFeedbackReportTx(tx) };
+    const items = opts.cycleId ? all.filter(item => item.cycleId === opts.cycleId) : all;
+    const facts: PerformanceAreaFacts = {
+      performanceOn: true,
+      items: items.map(({ kind, cycleId, view, module, stage, axis, locked }) => ({ kind, cycleId, view, module, stage, axis, locked })),
+      ownFeedbackReport: await ownFeedbackReportTx(tx),
+    };
+    return { facts, items };
   });
 }
 
