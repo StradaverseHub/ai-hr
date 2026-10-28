@@ -49,7 +49,7 @@ describe('own-clear controls ask first',()=>{
  const wrap=(ui:ReactNode)=>render(<NextIntlClientProvider locale={state.locale} messages={copies[state.locale] as typeof en}>{ui}</NextIntlClientProvider>);
  it.each(['proposals','ratings','feedback','conversation','importHistory','outcomes'] as const)('%s does not submit on the first click; Keep cancels; only the confirmation submits',async kind=>{
   const submit=vi.spyOn(HTMLFormElement.prototype,'requestSubmit').mockImplementation(()=>undefined);const user=userEvent.setup(),copy=clear('en');
-  const view=wrap(await OwnClearForm({kind,action:async()=>{},label:'Erase mine'}));const form=view.container.querySelector('form')!;
+  const view=wrap(<OwnClearForm kind={kind} action={async()=>{}} label="Erase mine"/>);const form=view.container.querySelector('form')!;
   expect([...new FormData(form).keys()]).toEqual([]);
   await user.click(screen.getByRole('button',{name:'Erase mine'}));const dialog=await screen.findByRole('alertdialog');
   expect(within(dialog).getByText(copy[kind].title)).toBeInTheDocument();expect(within(dialog).getByText(copy[kind].body)).toBeInTheDocument();expect(submit).not.toHaveBeenCalled();

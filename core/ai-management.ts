@@ -121,7 +121,7 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
     const quietRows = quietCapped.length ? Array.from(await tx.execute<UserUsageRow>(sql`
       select u.id,coalesce(p.full_name,u.workos_user_id) as label,0 as daily_requests,0 as monthly_tokens,0 as held_tokens,0 as blocked_today,null as last_reason
       from app_user u left join person p on p.id=u.person_id
-      where u.tenant_id=${ctx.tenantId}::uuid and u.id::text = any(${quietCapped}::text[]) order by u.id`)) : [];
+      where u.tenant_id=${ctx.tenantId}::uuid and u.id in (${sql.join(quietCapped.map(id=>sql`${id}::uuid`),sql`,`)}) order by u.id`)) : [];
     const runs = isGroupAdmin(ctx) ? await tx.select({id:aiModelRun.id,actor:sql<string|null>`coalesce(${person.fullName},${appUser.workosUserId})`,feature:aiModelRun.featureId,operation:aiModelRun.operation,provider:aiModelRun.provider,model:aiModelRun.model,state:aiModelRun.state,reason:aiModelRun.reason,actual:aiModelRun.actualTokens,reserved:aiModelRun.reservedTokens,startedAt:aiModelRun.startedAt,finishedAt:aiModelRun.finishedAt,reportedCredits:aiModelRun.openrouterAccountCostCredits,roundTripMs:aiModelRun.observedRoundTripMs,observationStatus:aiModelRun.providerObservationStatus})
       .from(aiModelRun).leftJoin(appUser,eq(aiModelRun.userId,appUser.id)).leftJoin(person,eq(appUser.personId,person.id))
       .where(and(runFilter.state?eq(aiModelRun.state,runFilter.state):undefined,runFilter.feature?eq(aiModelRun.featureId,runFilter.feature):undefined))

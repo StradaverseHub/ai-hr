@@ -14,10 +14,11 @@ export const AI_MANAGEMENT_PATHS: Readonly<Record<AiManagementSection,string>> =
 };
 /** Closed save outcomes; the page translates them. Free text from a query string is never displayed. */
 export type AiManagementToast='saved'|'default';
-export function aiManagementHref(section:AiManagementSection,extra:{q?:string;toast?:AiManagementToast;anchor?:string}={}):string{
+export function aiManagementHref(section:AiManagementSection,extra:{q?:string;toast?:AiManagementToast;error?:string;anchor?:string}={}):string{
   const params=new URLSearchParams();
   if(extra.q)params.set('q',extra.q.slice(0,100));
   if(extra.toast)params.set('toast',extra.toast);
+  if(extra.error)params.set('error',extra.error);
   const query=params.toString();
   return `${AI_MANAGEMENT_PAGE}${AI_MANAGEMENT_PATHS[section]}${query?'?'+query:''}${extra.anchor??''}`;
 }

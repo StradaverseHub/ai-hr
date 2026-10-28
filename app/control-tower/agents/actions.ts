@@ -13,7 +13,7 @@ import { AiControlError, clearUserAllowance, parseAiAllowance, setAiAllowance, s
 
 const PAGE = '/control-tower/agents';
 /** Refusals return to the section the admin was on, beside its error banner. */
-const failedAt = (section:AiManagementSection, message:string, q?:string) => `${aiManagementHref(section,{q})}&error=${encodeURIComponent(message)}`;
+const failedAt = (section:AiManagementSection, message:string, q?:string) => aiManagementHref(section,{q,error:message});
 const ROW_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** A successful save returns to the saved row (or its section) on its own sub-menu tab, with a closed
  *  toast code the page translates. Refusals stay at the top of that tab, beside the error banner. Only a well-formed id ever reaches the fragment. */
