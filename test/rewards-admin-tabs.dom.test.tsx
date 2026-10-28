@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { cleanup, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
@@ -14,15 +15,15 @@ describe('086915a8: Rewards admin tabs', () => {
         expect(links.filter(a => a.getAttribute('aria-current') === 'page').map(a => a.getAttribute('href'))).toEqual([href]);
     });
     it('replaces the loose header links on the access and shared pages', () => {
-        const access = readFileSync(new URL('../app/admin/rewards/access/page.tsx', import.meta.url), 'utf8');
-        const shared = readFileSync(new URL('../app/admin/rewards/shared/page.tsx', import.meta.url), 'utf8');
+        const access = readFileSync(join(process.cwd(), 'app/admin/rewards/access/page.tsx'), 'utf8');
+        const shared = readFileSync(join(process.cwd(), 'app/admin/rewards/shared/page.tsx'), 'utf8');
         expect(access).toContain('<RewardsAdminTabs current="access"/>');
         expect(access).not.toContain('href="/admin/rewards"');
         expect(shared).toContain('<RewardsAdminTabs current="shared"/>');
         expect(shared).not.toContain("t('backToReviews')");
     });
     it('replaces the loose links on the configuration page and flags reviews with roles missing', () => {
-        const config = readFileSync(new URL('../app/admin/rewards/page.tsx', import.meta.url), 'utf8');
+        const config = readFileSync(join(process.cwd(), 'app/admin/rewards/page.tsx'), 'utf8');
         expect(config).toContain('<RewardsAdminTabs current="configuration"/>');
         expect(config).not.toContain('href="/admin/rewards/access"');
         expect(config).toContain("ta('rolesMissing'");

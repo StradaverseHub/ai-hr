@@ -14,7 +14,7 @@ import { lockLeaveDependencyConfigurationTx, lockLeaveDependenciesTx } from '../
 import { setPayrollInput } from '../payroll/service';
 import { todayInKualaLumpur } from '../../lib/hr-date';
 import type { PackTaskItem } from '../../lib/assigned-work';
-import { calculateRewards, ratio } from './engine';
+import { calculateRewards, ratio, type RewardMultiplierSuggestion } from './engine';
 import { onehrRewardResultTx } from '../performance/service';
 import { decisionActorRole, factsFromOnehr, isSeniorPlanMember, returnedState } from './model';
 import {rewardPolicyForReviewTx} from './policy-groups';
@@ -185,7 +185,7 @@ async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string) {
       bonusCounts: { standard: bonusCounts('standard'), h: bonusCounts('h') },
       ec: roles.some(r => ['gr', 'ctro', 'ec'].includes(r)) ? { count: ecRows.length, referenceCents: Math.round(ecRows.reduce((v, e) => v + e.source.basicCents, 0) * .07), incrementCents: ecRows.reduce((v, e) => v + e.newBasicCents - e.source.basicCents, 0), bonusCents: ecRows.reduce((v, e) => v + e.bonusCents + e.lumpCents, 0) } : null,
       suggestedLumpCents: calculated.suggestedLumpCents, lumpUnitCents: calculated.lumpUnitCents,
-      suggestedMultiplierBp: calculated.suggestedMultiplierBp, suggestion: 'suggestion' in calculated ? calculated.suggestion : null, lumpWorking: calculated.lumpWorking,
+      suggestedMultiplierBp: calculated.suggestedMultiplierBp, suggestion: ('suggestion' in calculated ? calculated.suggestion : null) as RewardMultiplierSuggestion | null, lumpWorking: calculated.lumpWorking,
       canEdit: canEditStage(unit.status, roles) || unit.kind !== 'annual' && unit.status === 'draft' && roles.includes('bg'), canConfigure: roles.includes('gr') && unit.status === 'draft' && unit.kind === 'annual',
       posting: await rewardPostingAuthorityTx(tx, unit, roles),
     };

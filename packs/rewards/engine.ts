@@ -27,6 +27,7 @@ export const blankBudget = (): PlanBudget => ({ payrollCents: 0, pools: [0, 0, 0
 export const salaryReductionFlags = (rows: Pick<CalculatedEntry, 'id' | 'source' | 'newBasicCents'>[]): RewardFlag[] =>
   rows.filter(x => x.newBasicCents < x.source.basicCents).map(x => ({ severity: 'block', code: 'SAL-01', message: 'Salary reductions are not allowed in the salary review.', entryId: x.id }));
 
+export type RewardMultiplierSuggestion = ReturnType<typeof calculateRewards>['suggestion'];
 export function calculateRewards(entries: RewardEntry[], input: RewardPolicy) {
   const policy = policySchema.parse(input);
   const flags: RewardFlag[] = [];

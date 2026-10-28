@@ -75,7 +75,9 @@ describe('Rewards access batches', () => {
     it('copies an earlier cycle onto matching Draft reviews, skipping inactive logins and never applying a BU-head suggestion', async () => {
         const reviewer = await account('Copied BU CEO'), departed = await account('Departed CTRO');
         const finFirst = await createRewardUnit(admin, { name: 'Earlier finance', cycleId: cycle, year, companyId: b.companyId, businessUnitId: fin, snapshotDate: today });
-        for (const c of [await change(first, reviewer, 'bu'), await change(first, departed, 'ctro')]) {
+        // Each change reads the review's current revision, so build it only after the previous save.
+        for (const [user, role] of [[reviewer, 'bu'], [departed, 'ctro']] as const) {
+            const c = await change(first, user, role);
             const p = await previewRewardAccessBatch(admin, { changes: [c] });
             await saveRewardAccessBatch(admin, { changes: [c] }, p.digest);
         }

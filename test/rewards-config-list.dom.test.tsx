@@ -12,7 +12,7 @@ vi.mock('next-intl/server', () => ({ getLocale: async () => 'en-GB', getTranslat
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('../lib/scope', () => ({ scopedAdmin: async () => ({ s: { tenantId: 'tenant', userId: 'actor' }, scopeIds: ['company'] }) }));
 vi.mock('../lib/authz', () => ({ requireModule: vi.fn() }));
-vi.mock('../packs/rewards/service', async () => ({ listRewardUnits: ports.list, rewardSetupChoices: ports.choices, rewardSharedPolicyChoices: ports.shared, rewardDueWording: (await import('../packs/rewards/calendar')).rewardDueWording }));
+vi.mock('../packs/rewards/service', async () => ({ listRewardUnits: ports.list, rewardCoverageForUnits: async () => [], rewardSetupChoices: ports.choices, rewardSharedPolicyChoices: ports.shared, rewardDueWording: (await import('../packs/rewards/calendar')).rewardDueWording }));
 vi.mock('../app/rewards/actions', () => ({ createRewardAction: vi.fn(), deleteRewardAction: vi.fn() }));
 vi.mock('../app/admin/rewards/actions', () => ({ cancelRewardAction: vi.fn() }));
 import AdminPage from '../app/admin/rewards/page';

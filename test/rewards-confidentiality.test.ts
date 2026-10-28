@@ -83,6 +83,9 @@ describe('Rewards derived confidentiality', () => {
     const plain = (await row('plain'))!;
     await saveRewardEntry(admin, unitId, (await view()).unit.revision, plain.id, plain.recommendation, { ...plain.facts, confidentiality: 'ec' });
     await line('plain', 'bgCeo');
+    // The last BG holder cannot be removed (cd72f915), so a stand-in with no reporting lines takes the seat first.
+    const [standIn] = await owner.db.insert(schema.person).values({ tenantId: b.tenantId, fullName: 'Stand-in BG CEO', primaryEmail: 'stand-in-bg@rewards.test' }).returning();
+    await setRewardMember(admin, unitId, (await view()).unit.revision, await createAppUser(b.tenantId, standIn.id, 'employee'), 'bg');
     await setRewardMember(admin, unitId, (await view()).unit.revision, actors.bg!.userId!, 'bg', true);
     const after = (await row('bgReport'))!;
     expect(after.facts).toMatchObject({ confidentiality: 'standard', reviewed: false });

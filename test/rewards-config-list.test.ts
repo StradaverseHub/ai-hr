@@ -71,7 +71,8 @@ describe('Rewards configuration list (7a8102a7) and review cancellation (62e743e
   });
 
   it('shows no holder when the seat is empty and no due date when the calendar has none', async () => {
-    await setRewardMember(admin, unitId, (await view()).unit.revision, actors.bu!.userId!, 'bu', true);
+    // Access maintenance refuses to empty a required seat (cd72f915); a review created before that rule can still have one.
+    await owner.db.delete(schema.rewardMember).where(and(eq(schema.rewardMember.unitId, unitId), eq(schema.rewardMember.role, 'bu')));
     const r = await row();
     expect(r.holders).toEqual([]); expect(r.due).toBeNull(); expect(r.daysUntilDue).toBeNull();
   });
