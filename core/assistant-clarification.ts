@@ -27,7 +27,7 @@ const clarificationSources=new WeakMap<object,Readonly<{tenantId:string;userId:s
 /** The exchange this clarification answers, for the new row's `continues_exchange_id`. Only an object this
  * owner issued has one; anything else gets null and is stored without a link. */
 export function assistantClarificationSourceExchangeId(clarification:OwnAssistantClarification|null):string|null{
- return clarification?clarificationSources.get(clarification)?.exchangeId??null;
+ return clarification===null?null:clarificationSources.get(clarification)?.exchangeId??null;
 }
 /** A conservative UI offer: every allowed next human answer must fit, without truncation. */
 export function canClarifyAssistantQuestion(question:unknown):boolean{
