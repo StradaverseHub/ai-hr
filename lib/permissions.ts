@@ -126,7 +126,10 @@ export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'accessConfiguration',href:'/admin/users/access',labelKey:'accessConfiguration.title',guard:'requireAccessConfiguration',routes:['/admin/users/access'],hasScopeNote:true},
   {screenKey:'myTasks',href:'/tasks',labelKey:'nav.myTasks',guard:'scopedSession',routes:['/tasks'],hasScopeNote:true},
   {screenKey:'employeeMasterReports',href:'/reports/employee-master',labelKey:'employeeMasterReports.title',guard:'scopedSession',routes:['/reports/employee-master','/reports/employee-master/[id]']},
-  {screenKey:'onehrAssignments',href:'/me/performance',labelKey:'onehr.assignments',guard:'scopedSession',routes:['/performance/workspace','/performance/calibration','/performance/department','/performance/assessment/feedback/[requestId]','/performance/assessment/calibration/[sessionId]','/performance/led'],hasScopeNote:true},
+  {screenKey:'performanceHome',href:'/performance/home',labelKey:'nav.performanceTalent',guard:'scopedSession',routes:['/performance/home'],hasScopeNote:true},
+  {screenKey:'onehrAssignments',href:'/me/performance',labelKey:'onehr.assignments',guard:'scopedSession',routes:['/performance/workspace','/performance/calibration','/performance/department','/performance/assessment/feedback/[requestId]','/performance/assessment/calibration/[sessionId]','/performance/led','/performance/calibration/talent-box'],hasScopeNote:true},
+  // D-P1-32 PT-X2: the Performance & Talent employee/leader tab routes. Each page adds its tab's gate (404 when hidden).
+  {screenKey:'performanceTabs',href:'/performance/my',labelKey:'nav.performanceTalent',guard:'scopedSession',routes:['/performance/my','/performance/my/kpis','/performance/team','/performance/team/kpis','/performance/team/[reviewId]','/performance/assessments','/performance/feedback','/performance/competency','/performance/competency/team','/performance/plan','/performance/plan/profile','/performance/plan/team']},
   {screenKey:'attendanceConfigurationDestinations',href:'/admin/attendance/settings/company-policy',labelKey:'attendanceSettingsHub.companyPolicy.title',guard:'scopedAdmin',routes:['/admin/attendance/settings/company-policy','/admin/attendance/settings/work-schedule-overtime','/admin/attendance/settings/registered-devices']},
   {screenKey:'attendanceApprovalWorkflow',href:'/admin/attendance/approval-workflow',labelKey:'nav.attendanceApprovalWorkflow',guard:'scopedAdmin',routes:['/admin/attendance/approval-workflow','/admin/attendance/approval-workflow/new','/admin/attendance/approval-workflow/[lineageId]','/admin/attendance/approval-workflow/[lineageId]/edit']},
   {screenKey:'attendanceApplicationHistory',href:'/attendance/application-history',labelKey:'nav.applicationHistory',guard:'scopedAdmin',routes:['/attendance/application-history','/attendance/application-history/[id]']},
@@ -418,7 +421,7 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/performance',
     labelKey: 'nav.performance',
     guard: 'scopedSession',
-    routes: ['/performance', '/performance/[cycleId]', '/performance/[cycleId]/records', '/performance/[cycleId]/reports', '/performance/leaders', '/performance/[cycleId]/release'],
+    routes: ['/performance', '/performance/[cycleId]', '/performance/[cycleId]/records', '/performance/[cycleId]/reports', '/performance/leaders', '/performance/[cycleId]/release', '/performance/[cycleId]/[section]/[tab]'],
     hasScopeNote: true,
   },
   // ── Admin org / people (requireAdmin → hr_admin + super_admin) ──
@@ -484,7 +487,7 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/admin/personnel/new',
     ],
   },
-  // c4055300 / ADR-0152 — Import History. Its own column because what a reader sees is narrower than the
+  // c4055300 / ADR-0155 — Import History. Its own column because what a reader sees is narrower than the
   // page floor: an import is listed for Workforce view on at least one of its companies, each item only for
   // its own company, the original file only with view on every company, and Revert only with Workforce
   // maintain on every company. The guard MATCHES the pages' own requireAdmin().

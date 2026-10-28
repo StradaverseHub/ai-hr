@@ -5,7 +5,7 @@ import {listImportAttempts} from '@/core/import-history';
 import {isImportKind} from '@/lib/import-history';
 import {PageHeader,pageWideCls} from '@/components/ui';
 import {ImportAttemptTable,ImportKindFilter,IMPORT_HISTORY_PATH} from './import-history-views';
-/** Import History for personnel imports (ADR-0152). View: Workforce view for at least one listed company. */
+/** Import History for personnel imports (ADR-0155). View: Workforce view for at least one listed company. */
 export default async function ImportHistoryPage({searchParams}:{searchParams:Promise<{kind?:string;before?:string}>}){
  const ctx=await requireAdmin(),t=await getTranslations('people.importHistory');
  const params=await searchParams,kind=isImportKind(params.kind)?params.kind:undefined;

@@ -9,14 +9,13 @@ import { canManagePerfComp, isAdmin, isOnehrOnlyPerformanceAdmin, requireModule 
 import { hasAssignedPerformanceWork, hasLedPeople, onehrAssignments } from '@/packs/performance/service';
 import { listCompanies } from '@/core/read';
 import { listCycles, listOnehrAdminCompanyIds, listOnehrAdminCycles, managerCheckIns, managerPendingReviews, type OnehrAdminCycleSummary } from '@/core/performance';
-import { Button, Card, EmployeeCode, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, inputCls } from '@/components/ui';
+import { Button, Card, EmployeeCode, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import {
   cancelCheckInAction,
   completeCheckInAction,
   scheduleCheckInAction,
 } from './actions';
-import { NewCycleForm } from './new-cycle-form';
-import { Pager } from '@/components/pager';
+import { PerformanceCyclesAdmin } from './onehr/admin-cycles';
 import { paginateRows, parsePageQuery } from '@/lib/pagination';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
@@ -172,75 +171,7 @@ export default async function PerformancePage({
         </Card>
       )}
 
-      {performanceAdmin && (
-        <>
-          <Card className="overflow-hidden" data-tour="performance-cycles">
-            <SectionHeader title={t('reviewCycles')} count={cycles.length} />
-            <div className="border-b border-border px-4 py-2 text-sm"><Link href="/performance/leaders" className="text-primary hover:underline">{to('leaders.title')} →</Link> <span className="text-muted-foreground">{to('leaders.listHint')}</span></div>
-            {cycles.length === 0 ? (
-              <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-                {t('noCycles')}
-              </p>
-            ) : (
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-2 font-medium">{t('colCycle')}</th>
-                    <th className="px-4 py-2 font-medium">{t('colPeriod')}</th>
-                    <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
-                    <th className="px-4 py-2 text-right font-medium">{t('colProgress')}</th>
-                    {admin && <th className="px-4 py-2 text-right font-medium">{t('colPendingPay')}</th>}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {cyclePage.map((c) => (
-                    <tr key={c.id} className="hover:bg-muted/40">
-                      <td className="px-4 py-3">
-                        <Link href={`/performance/${c.id}`} className="font-medium text-foreground hover:text-primary">
-                          {c.name}
-                        </Link>
-                        <div className="text-xs text-muted-foreground">
-                          {c.companyId ? t('scopeCompany') : t('scopeGroup')}
-                          {c.releasedAt ? t('releasedSuffix') : ''}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                        {c.periodStart} → {c.periodEnd}
-                      </td>
-                      <td className="px-4 py-3">
-                        <StatusBadge status={c.status} />
-                      </td>
-                      <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
-                        {c.acknowledged}/{c.submitted}/{c.total}
-                        <div className="text-[10px] uppercase">{t('progressLegend')}</div>
-                      </td>
-                      {admin && (
-                        <td className="px-4 py-3 text-right tabular-nums">
-                          {(c.pendingComp ?? 0) > 0 ? (
-                            <span className="font-medium text-amber-600 dark:text-amber-400">{c.pendingComp}</span>
-                          ) : (
-                            '—'
-                          )}
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-            <Pager basePath="/performance" state={pgState} />
-          </Card>
-
-          {admin && (
-            <Card data-tour="performance-new-cycle">
-              <details>
-                <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium">{t('newCycle')}</summary>
-                <NewCycleForm companies={companies.filter(c=>scopeIds.includes(c.id))} today={today} />
-              </details>
-            </Card>
-          )}
-        </>
-      )}
+      {performanceAdmin && <PerformanceCyclesAdmin cycles={cycles} rows={cyclePage} pgState={pgState} basePath="/performance" admin={admin} companies={companies.filter(c=>scopeIds.includes(c.id))} today={today} />}
     </div>
   );
 }

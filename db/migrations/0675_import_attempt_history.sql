@@ -1,4 +1,4 @@
--- Shared personnel import history and revert (ADR-0152). One append-only record per uploaded file for the
+-- Shared personnel import history and revert (ADR-0155). One append-only record per uploaded file for the
 -- Cost Center Allocation (c4055300), Bank & Statutory (0db97f14), "Everything" (524303d9) and movement
 -- (ac6645ec) imports. Attempts, items and events are immutable; a revert appends an event and writes its
 -- compensation through each kind's own owner (never by editing these rows).

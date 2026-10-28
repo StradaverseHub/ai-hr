@@ -1,7 +1,7 @@
 /**
  * 524303d9 — "Everything — new employees": every Bank & Statutory setting and the single-value hire-time
  * settings in the create template, whole-row validation before any write, the duplicate email policy applied in
- * full, Import History (kind `employee_full`) and Revert as a VOID (ADR-0154) that frees the Employee IDs, emails
+ * full, Import History (kind `employee_full`) and Revert as a VOID (ADR-0157) that frees the Employee IDs, emails
  * and NRICs. Real database, real RLS, fictional fixtures.
  */
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';

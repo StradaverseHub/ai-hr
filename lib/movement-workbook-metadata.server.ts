@@ -46,7 +46,7 @@ export function verifyMovementErrorReceipt(token:string,context:{tenantId:string
 }
 
 /**
- * ac6645ec (ADR-0153) — the single-sheet template is signed to the TENANT and the movement-type catalogue,
+ * ac6645ec (ADR-0156) — the single-sheet template is signed to the TENANT and the movement-type catalogue,
  * not to a company: Company ID is a per-row cell resolved and authorized by the server. The MAC is context
  * binding only; it never authorizes a company, employee or value.
  */

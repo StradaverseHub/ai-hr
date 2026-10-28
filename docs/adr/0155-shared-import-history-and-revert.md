@@ -1,4 +1,4 @@
-# ADR-0152 — Shared personnel import history and all-or-nothing revert
+# ADR-0155 — Shared personnel import history and all-or-nothing revert
 
 > Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
 
@@ -94,7 +94,7 @@ and tenant-wide visibility.
   CSV text), the per-row outcome as the plan, and one applied item per created employment written in the hire
   transaction (`after` = Employee ID, name, row; no identity, salary or bank value). `confirmed` carries
   succeeded/failed; a refused file or a rolled-back write appends `failed`. `employee_import_run` is still written.
-- **Revert voids** the created employments (ADR-0154). `ImportRevertHandler.apply` now receives the normalized
+- **Revert voids** the created employments (ADR-0157). `ImportRevertHandler.apply` now receives the normalized
   revert reason as an optional fourth argument, so a kind can store it on its own rows.
 - **Bank & Statutory revert restores empty values the tab can hold.** Payment method "" is the Payroll tab's own
   "Not set" choice and its owner accepts null, so it is restored. Blank bank fields, numbers and tax circumstance

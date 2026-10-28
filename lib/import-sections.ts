@@ -346,7 +346,7 @@ export type SectionImportResult = {
   /** cf43c909 — the history row this run wrote, so the screen can link to it. Null when the history
    *  write itself failed: recording a run must never fail an update that already happened. */
   runId: string | null;
-  /** 0db97f14 — the Import History attempt (ADR-0152) this run recorded, when it recorded one. */
+  /** 0db97f14 — the Import History attempt (ADR-0155) this run recorded, when it recorded one. */
   attemptId?: string;
 };
 

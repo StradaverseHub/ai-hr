@@ -1,5 +1,5 @@
 /**
- * Revert handler registry (ADR-0152). Each import kind registers exactly one handler here; a kind with no
+ * Revert handler registry (ADR-0155). Each import kind registers exactly one handler here; a kind with no
  * handler shows its history but offers no Revert. Explicit imports, no side-effect registration.
  */
 import type {SessionContext} from '../db/client';

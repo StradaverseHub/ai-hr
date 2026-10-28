@@ -1,5 +1,5 @@
 /**
- * 0db97f14 — Bank & Statutory upload with Import History (ADR-0152 kind `bank_statutory`).
+ * 0db97f14 — Bank & Statutory upload with Import History (ADR-0155 kind `bank_statutory`).
  *
  * The browser previews the file exactly as before (section dry run). On Import, the ORIGINAL bytes are
  * sent here: they are read with the same reader and heading grammar, re-validated, recorded as an import

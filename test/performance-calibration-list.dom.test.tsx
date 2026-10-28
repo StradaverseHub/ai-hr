@@ -1,5 +1,6 @@
 /**
- * WP-B1 (APR-020) — the Calibration destination: the read-only list screen and the sidebar row's gate.
+ * WP-B1 (APR-020) — the Calibration destination: the read-only list screen, and (D-P1-32 PT-X5) that it is a tab of
+ * Performance & Talent rather than a sidebar row.
  * The service's authority facts (who sees which session) are pinned against real RLS in
  * test/performance-calibration-list.test.ts.
  */
@@ -24,11 +25,11 @@ afterEach(cleanup);
 
 const row = (over: Partial<CalibrationListSession>): CalibrationListSession => ({
   id: over.name ?? 'id', name: 'Session', tier: 'hod', cycleId: 'c', cycleName: 'Annual 2026', cycleClosed: false, companyName: 'Acme Sdn Bhd',
-  window: 'open', opensOn: null, closesOn: null, people: 3, toDo: 2, lock: 'open', href: `/performance/assessment/calibration/${over.name ?? 'id'}`, ...over,
+  window: 'open', opensOn: null, closesOn: null, people: 3, toDo: 2, lock: 'open', axes: ['performance', 'potential'], href: `/performance/assessment/calibration/${over.name ?? 'id'}`, ...over,
 });
 
-function page(sessions: CalibrationListSession[]) {
-  return render(<NextIntlClientProvider locale="en" messages={en}><CalibrationList sessions={sessions} /></NextIntlClientProvider>);
+function page(sessions: CalibrationListSession[], boards?: Record<string, string>) {
+  return render(<NextIntlClientProvider locale="en" messages={en}><CalibrationList sessions={sessions} boards={boards} /></NextIntlClientProvider>);
 }
 
 describe('Calibration list screen', () => {
@@ -59,6 +60,14 @@ describe('Calibration list screen', () => {
     expect(within(bu).getByText(t.lock.partial)).toBeTruthy();
     expect(within(screen.getByRole('region', { name: t.tiers.group })).getByText(t.groupWide)).toBeTruthy();
     expect(screen.getByRole('link', { name: 'BG box' }).getAttribute('href')).toBe('/performance/assessment/calibration/BG box');
+  });
+
+  it('links a session whose Talent Box the viewer holds to its standalone board, and only that row (PT-TB)', () => {
+    page([row({ name: 'BG box', tier: 'bg', axes: ['both'] }), row({ name: 'BU cohort', tier: 'bu' })], { 'BG box': '/performance/calibration/talent-box?session=BG%20box' });
+    const board = screen.getByRole('link', { name: en.performanceArea.tabs.cal.talentBox });
+    expect(board.getAttribute('href')).toBe('/performance/calibration/talent-box?session=BG%20box');
+    expect(within(screen.getByRole('region', { name: t.tiers.bg })).getAllByRole('link').map((a) => a.textContent)).toEqual(['BG box', en.performanceArea.tabs.cal.talentBox]);
+    expect(within(screen.getByRole('region', { name: t.tiers.bu })).getAllByRole('link').map((a) => a.textContent)).toEqual(['BU cohort']);
   });
 
   it('offers no write control: links into the session are the only interactive elements', () => {
@@ -95,34 +104,26 @@ describe('Calibration list model', () => {
   });
 });
 
-describe('Calibration sidebar row', () => {
-  function rail(props: { canEnterCalibration?: boolean; canAdministerOnehr?: boolean; canApprove?: boolean; isAdmin?: boolean; enabledModules?: string[] | null }) {
+describe('Calibration in the rail (D-P1-32 PT-X5)', () => {
+  // The Calibration row retired into the Performance & Talent area: the area's Calibration strip (tab-model.ts) is
+  // where its gate lives now, and the rail offers only the area entry, to every viewer with the module.
+  function rail(props: { canAdministerOnehr?: boolean; canApprove?: boolean; isAdmin?: boolean; enabledModules?: string[] | null }) {
     render(<NextIntlClientProvider locale="en" messages={en}>
-      <Sidebar isAdmin={props.isAdmin ?? false} canApprove={props.canApprove ?? false} canEnterCalibration={props.canEnterCalibration} canAdministerOnehr={props.canAdministerOnehr}
+      <Sidebar isAdmin={props.isAdmin ?? false} canApprove={props.canApprove ?? false} canAdministerOnehr={props.canAdministerOnehr}
         enabledModules={props.enabledModules === undefined ? ['leave', 'performance'] : props.enabledModules} defaultCollapsed={false} />
     </NextIntlClientProvider>);
-    // The rail opens on the Inbox workspace; Performance rows live under Strat → Performance and only exist
-    // once both are open. A viewer with no Performance row at all has no Performance module button.
     const strat = screen.queryByRole('button', { name: /Strat/ });
     if (strat) fireEvent.click(strat);
-    const perf = screen.queryByRole('button', { name: en.nav.performance });
-    if (perf) fireEvent.click(perf);
-    return document.querySelector('a[href="/performance/calibration"]');
+    return { calibration: document.querySelector('a[href^="/performance/calibration"]'), area: document.querySelector('a[href="/performance/home"]') };
   }
-  it('shows Calibration to a named reviewer who is neither a manager nor an administrator', () => {
-    expect(rail({ canEnterCalibration: true })).not.toBeNull();
+  it.each([{}, { canApprove: true }, { isAdmin: true }, { canAdministerOnehr: true }])('offers no Calibration row, only Performance & Talent (%o)', (props) => {
+    const { calibration, area } = rail(props);
+    expect(calibration).toBeNull();
+    expect(area).not.toBeNull();
   });
-  it('shows Calibration to a OneHR administrator with no session of their own', () => {
-    expect(rail({ canAdministerOnehr: true })).not.toBeNull();
-  });
-  it('hides Calibration from an employee with no access, and from a manager or payroll-style admin rail without it', () => {
-    expect(rail({})).toBeNull();
-    cleanup();
-    expect(rail({ canApprove: true })).toBeNull();
-    cleanup();
-    expect(rail({ isAdmin: true })).toBeNull();
-  });
-  it('hides Calibration when the performance module is not on the plan', () => {
-    expect(rail({ canEnterCalibration: true, enabledModules: ['leave'] })).toBeNull();
+  it('offers neither when the performance module is not on the plan', () => {
+    const { calibration, area } = rail({ canAdministerOnehr: true, enabledModules: ['leave'] });
+    expect(calibration).toBeNull();
+    expect(area).toBeNull();
   });
 });

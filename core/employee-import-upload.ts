@@ -1,5 +1,5 @@
 /**
- * 524303d9 — "Everything — new employees" upload with Import History (ADR-0152 kind `employee_full`).
+ * 524303d9 — "Everything — new employees" upload with Import History (ADR-0155 kind `employee_full`).
  *
  * The browser still decodes the workbook and previews it exactly as before; on Import it posts the ORIGINAL
  * file bytes together with the sheets as CSV text (the same text the preview validated). The rows are parsed

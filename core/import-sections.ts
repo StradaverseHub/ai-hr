@@ -909,7 +909,7 @@ export async function validateSectionImport(
 export async function commitSectionImport(
   ctx: SessionContext,
   p: { section: string; records: ImportRecord[]; fileName?: string;
-    /** 0db97f14 — record each employee's field-level change in this import attempt (ADR-0152), in the
+    /** 0db97f14 — record each employee's field-level change in this import attempt (ADR-0155), in the
      *  SAME transaction as the change, then the attempt's confirmed event. Bank & Statutory only. */
     history?: { attemptId: string } },
 ): Promise<SectionImportResult> {

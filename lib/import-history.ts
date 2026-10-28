@@ -1,4 +1,4 @@
-/** Shared import history vocabulary (ADR-0152). Client-safe: no database or server imports. */
+/** Shared import history vocabulary (ADR-0155). Client-safe: no database or server imports. */
 export const IMPORT_KINDS=['cost_allocations','bank_statutory','employee_full','movement'] as const;
 export type ImportKind=typeof IMPORT_KINDS[number];
 export const IMPORT_EVENT_KINDS=['previewed','confirmed','failed','reverted','revert_failed'] as const;

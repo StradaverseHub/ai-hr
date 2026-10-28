@@ -1,5 +1,5 @@
 /**
- * ac6645ec (ADR-0152, ADR-0153) — Movement import on the shared import history: every upload is an attempt
+ * ac6645ec (ADR-0155, ADR-0156) — Movement import on the shared import history: every upload is an attempt
  * with its original file, every movement an employee's transaction created is an item, and a whole import
  * can be reverted once, all or nothing, through the Movement owner's own rollback.
  */

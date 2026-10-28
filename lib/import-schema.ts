@@ -67,7 +67,7 @@ export type ImportResult = {
   /** cf43c909 — the history row this run wrote, so the screen can link straight to it. Null when the
    *  history write itself failed: recording a run must never fail an import that already happened. */
   runId?: string | null;
-  /** 524303d9 — the Import History attempt (ADR-0152 kind `employee_full`); null for a system context. */
+  /** 524303d9 — the Import History attempt (ADR-0155 kind `employee_full`); null for a system context. */
   attemptId?: string | null;
 };
 

@@ -1,11 +1,11 @@
-# ADR-0154 — Voiding employments created in error by an import
+# ADR-0157 — Voiding employments created in error by an import
 
 > Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
 
 - **Date:** 2026-10-29
 - **Status:** Proposed with board item 524303d9 ("Everything — new employees", approved plan). Accepted is not merged,
   tested, installed or released.
-- **Related:** ADR-0152 (shared import history and revert — this is the `employee_full` kind's compensation),
+- **Related:** ADR-0155 (shared import history and revert — this is the `employee_full` kind's compensation),
   ADR-0006 (domain events), ADR-0135 (configurable access), migration 0594 (NRIC policy), 0668 (duplicate email
   policy).
 - **Migration:** `0676_employment_import_void` (journal position provisional until integration).
@@ -62,7 +62,7 @@ append-only, and deleting an employee would destroy the audit trail of the impor
    on the live column), the statutory `ic_number` moves to `person.voided_ic_number` (the NRIC admission rule
    counts live rows), and the voided person's work email leaves every duplicate-email read with the person. A
    corrected file therefore re-imports the same Employee IDs, emails and NRICs.
-6. **Revert discipline is ADR-0152's:** writer locks, attempt `FOR UPDATE`, preview hash over the blockers and
+6. **Revert discipline is ADR-0155's:** writer locks, attempt `FOR UPDATE`, preview hash over the blockers and
    items, a 3–1,000 character reason (now passed to the kind's `apply`, stored on each void), once only.
 
 ## 3. Consequences

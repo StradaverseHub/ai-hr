@@ -1,5 +1,5 @@
 /**
- * Reusable Import History views (ADR-0152) for every personnel import kind. Server components; data
+ * Reusable Import History views (ADR-0155) for every personnel import kind. Server components; data
  * arrives already RLS-scoped from core/import-history (attempts by listed company, items by own company).
  */
 import Link from 'next/link';

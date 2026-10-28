@@ -70,8 +70,8 @@ type RegistryTable = {
  */
 const PLUMBING = 'row plumbing (surrogate key / tenancy / parent FK / timestamps / soft-delete), not employee information';
 
-/** 524303d9 (ADR-0154) — written only by an import revert (`app.employment_void`), never by a file. */
-const VOID_REASON = 'void state of an employment created in error by an import — written only by that import\'s Revert (ADR-0154), never by a spreadsheet';
+/** 524303d9 (ADR-0157) — written only by an import revert (`app.employment_void`), never by a file. */
+const VOID_REASON = 'void state of an employment created in error by an import — written only by that import\'s Revert (ADR-0157), never by a spreadsheet';
 /**
  * 524303d9 — import columns that write a persisted field under another name, or several columns into one field:
  * the EPF Category is the election mapped onto epfMode and its figures, HRDF's tri-state is subjectToHrdf, every

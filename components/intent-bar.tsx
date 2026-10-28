@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { openCommandBar } from '@/lib/command-bar-events';
 import { useIsMonolith } from '@/components/ui-theme-context';
+import { performanceAreaOwnsComposer } from '@/lib/performance-navigation';
 
 /**
  * r398 — the Monolith INTENT BAR (docs/design/monolith/README.md §3, shell.css `.intent`): 60px, 1px ink
@@ -27,8 +28,9 @@ export function IntentBar() {
   const t = useTranslations('commandBar');
   const id = useId();
   const [value, setValue] = useState('');
-  // The review workspace already has its own conversation composer. The global palette remains on ⌘K.
-  if (!monolith || pathname === '/performance/workspace') return null;
+  // The review workspace already has its own conversation composer, and so do the Performance & Talent routes over
+  // it, the area's home and its admin pages (lib/performance-navigation.ts). The global palette remains on ⌘K.
+  if (!monolith || performanceAreaOwnsComposer(pathname)) return null;
 
   return (
     <form

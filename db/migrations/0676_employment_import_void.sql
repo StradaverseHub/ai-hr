@@ -1,4 +1,4 @@
--- 524303d9 — VOID an employment created in error by an import (ADR-0154). Revert of an "Everything — new
+-- 524303d9 — VOID an employment created in error by an import (ADR-0157). Revert of an "Everything — new
 -- employees" import never deletes: the person, employment and every row and event the hire wrote stay for
 -- audit. A void is one-way, final and tied to the applied item of the import attempt (0675) that created
 -- the employment. Voided rows leave every ordinary read through the employment/person RLS policies (the one
@@ -86,7 +86,7 @@ FOR EACH ROW EXECUTE FUNCTION app.person_void_guard();
 -- Eligibility, derived from the foreign keys to employment and person at run time, so a table added later
 -- blocks a void by default. Counts are taken as the definer (RLS cannot hide a payslip from the check).
 -- Non-blocking references (written by the hire or the import itself, configuration, or audit) are listed
--- below with ADR-0154 §3's reasons; the hire's own rows are judged by shape (one assignment, one salary
+-- below with ADR-0157 §3's reasons; the hire's own rows are judged by shape (one assignment, one salary
 -- revision, opening leave grants on the hire date).
 CREATE FUNCTION app.employment_void_blockers(p_employments uuid[]) RETURNS TABLE(employment_id uuid,source text,row_count bigint)
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$

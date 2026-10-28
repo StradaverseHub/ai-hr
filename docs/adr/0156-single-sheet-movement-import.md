@@ -1,4 +1,4 @@
-# ADR-0153 — Single-sheet Movement import, per-row company and whole-import revert
+# ADR-0156 — Single-sheet Movement import, per-row company and whole-import revert
 
 > Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
 
@@ -7,7 +7,7 @@
 - **Supersedes:** the company binding and the per-type sheet envelope of [ADR-0130](0130-movement-workbook-admission.md).
   ADR-0130's other decisions (Movement owner adjudicates, private sequence rehearsal/replay, the employment Test
   record marker and its admission lock, the dedicated `MOVEMENT_IMPORT_WORKBOOK_KEY` custody contract) stand.
-- **Builds on:** [ADR-0152](0152-shared-import-history-and-revert.md) (shared import history and revert).
+- **Builds on:** [ADR-0155](0155-shared-import-history-and-revert.md) (shared import history and revert).
 - **Migration:** none.
 
 ## 1. Context
@@ -37,7 +37,7 @@ record, an import history and a safe undo of a whole import.
 5. **Before** is optional. When given it must equal the as-of value immediately before that movement in the
    rehearsed sequence (reference fields by id, code or label; money to the cent; dates by day). A mismatch is a
    row error, which stops that whole employee; nothing is overwritten.
-6. **History and revert (ADR-0152 kind `movement`).** The upload is an import attempt with the original bytes;
+6. **History and revert (ADR-0155 kind `movement`).** The upload is an import attempt with the original bytes;
    `apply` names only the attempt, its preview hash and the chosen employees, and the server re-reads the stored
    file. Inside each employee's transaction the ledger marker before and after each movement captures the
    history rows (movement ids) it created; each is an `applied` item with the changed fields' display values

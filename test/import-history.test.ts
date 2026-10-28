@@ -1,5 +1,5 @@
 /**
- * Shared import history + revert foundation (ADR-0152, migration 0675) and the Cost Center Allocation
+ * Shared import history + revert foundation (ADR-0155, migration 0675) and the Cost Center Allocation
  * import built on it (board item c4055300). Real database, real RLS, fictional fixtures.
  */
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';

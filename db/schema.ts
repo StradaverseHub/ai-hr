@@ -789,7 +789,7 @@ export const person = pgTable(
     // remuneration runs for PCB when they hold concurrent employments across the group's companies.
     // FK to employment is added in migration 0069 (avoids the person↔employment cycle in TS).
     designatedPaymasterEmploymentId: uuid('designated_paymaster_employment_id'),
-    // 524303d9 (ADR-0154, migration 0676) — the person of a voided import employment. Leaves every ordinary
+    // 524303d9 (ADR-0157, migration 0676) — the person of a voided import employment. Leaves every ordinary
     // read through `person_rls`, which releases the work email; the statutory IC moves to `voidedIcNumber`.
     voidedAt: timestamp('voided_at', { withTimezone: true }),
     voidedIcNumber: text('voided_ic_number'),
@@ -1181,7 +1181,7 @@ export const employment = pgTable(
     // Explicit HR classification; false means unmarked, never inferred or certified real.
     // Only new Direct Superior selection in Movement imports consumes this flag.
     isTestRecord: boolean('is_test_record').notNull().default(false),
-    // 524303d9 (ADR-0154, migration 0676) — VOID: an employment created in error by an import and reverted.
+    // 524303d9 (ADR-0157, migration 0676) — VOID: an employment created in error by an import and reverted.
     // Final and one-way (trigger `employment_void_guard`); a voided row leaves every ordinary read through
     // `employment_rls`. `employeeCode` is cleared (the original kept in `voidedEmployeeCode`) so the ID re-imports.
     voidedAt: timestamp('voided_at', { withTimezone: true }),
@@ -11134,7 +11134,7 @@ export const payrollHistoryImportEvent=pgTable('payroll_history_import_event',{
  kind:text('kind').notNull().$type<'confirmed'|'failed'|'reverted'|'revert_failed'>(),actorId:uuid('actor_id').notNull().references(()=>appUser.id),
  changes:jsonb('changes').notNull().$type<import('../lib/payroll-history-revisions').HistoryRevisionChange[]>(),detail:jsonb('detail').notNull().$type<Record<string,unknown>>(),createdAt:createdAt(),
 },t=>[uniqueIndex('payroll_history_confirm_once_uq').on(t.attemptId).where(sql`${t.kind}='confirmed'`),uniqueIndex('payroll_history_revert_once_uq').on(t.attemptId).where(sql`${t.kind}='reverted'`)]);
-/** Shared personnel import history (0675, ADR-0152). Append-only; writes only through core/import-history. */
+/** Shared personnel import history (0675, ADR-0155). Append-only; writes only through core/import-history. */
 export const importAttempt=pgTable('import_attempt',{
  id:id(),tenantId:tenantId(),kind:text('kind').notNull().$type<import('../lib/import-history').ImportKind>(),
  createdBy:uuid('created_by').notNull().references(()=>appUser.id),operationKey:uuid('operation_key').notNull(),

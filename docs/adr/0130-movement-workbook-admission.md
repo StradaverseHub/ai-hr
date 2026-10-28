@@ -3,7 +3,7 @@
 > Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
 
 Date: 2026-10-19. Direction accepted in Movement Import revision 2 (f17cf3c4).
-**Partly superseded by [ADR-0153](0153-single-sheet-movement-import.md):** the per-type sheets and the company
+**Partly superseded by [ADR-0156](0156-single-sheet-movement-import.md):** the per-type sheets and the company
 binding of the workbook envelope. The key custody, rehearsal and Test record decisions below stand.
 Implementation and runtime verification are pending; this decision is not a release receipt.
 

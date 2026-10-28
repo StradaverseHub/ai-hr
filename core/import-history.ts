@@ -1,5 +1,5 @@
 /**
- * Shared personnel import history and revert framework (ADR-0152, migration 0675).
+ * Shared personnel import history and revert framework (ADR-0155, migration 0675).
  *
  * One append-only attempt per uploaded file (source bytes up to 10 MB + sha256), one item per unit the kind
  * writes (an employee's allocation, a created employment, a movement), and append-only events. Visibility,

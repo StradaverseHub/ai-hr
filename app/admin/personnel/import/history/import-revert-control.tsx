@@ -12,13 +12,13 @@ export function RestoreSummary({restore}:{restore:unknown}){
  const t=useTranslations('people.importHistory');
  if(!restore||typeof restore!=='object')return null;
  const value=restore as {operation?:string;rows?:{code:string;label?:string;percentage:string}[];fields?:{field:string;value:string}[];void?:boolean};
- // 524303d9 — an "Everything — new employees" revert voids the employee the import created (ADR-0154).
+ // 524303d9 — an "Everything — new employees" revert voids the employee the import created (ADR-0157).
  if(value.void===true)return <p className="text-xs">{t('employeeFull.willVoid')}</p>;
  if(Array.isArray(value.rows))return value.rows.length?<ul className="text-xs">{value.rows.map((r,i)=><li key={i}>{r.code}{r.label&&r.label!==r.code?` (${r.label})`:''} · {r.percentage}%</li>)}</ul>:<p className="text-xs">{t('allocation.clear')}</p>;
  if(Array.isArray(value.fields))return <ul className="text-xs">{value.fields.map((f,i)=><li key={i}>{f.field}: {f.value}</li>)}</ul>;
  return null;
 }
-/** Reusable revert confirmation (ADR-0152): review, blockers, reason, acknowledgement, once-only confirm. */
+/** Reusable revert confirmation (ADR-0155): review, blockers, reason, acknowledgement, once-only confirm. */
 export function ImportRevertControl({attemptId}:{attemptId:string}){
  const t=useTranslations('people.importHistory'),router=useRouter();
  const[preview,setPreview]=useState<Preview|null>(null),[blockers,setBlockers]=useState<Blocker[]>([]),[reason,setReason]=useState(''),[acknowledged,setAcknowledged]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null);

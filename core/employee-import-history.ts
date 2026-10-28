@@ -1,6 +1,6 @@
 /**
- * 524303d9 — "Everything — new employees" Import History and Revert (ADR-0152 kind `employee_full`,
- * ADR-0154 employment void).
+ * 524303d9 — "Everything — new employees" Import History and Revert (ADR-0155 kind `employee_full`,
+ * ADR-0157 employment void).
  *
  * Each created employment is one applied item of the import attempt, written in the SAME transaction as the
  * hire. Revert VOIDS those employments, never deletes them: person, employment, the hire's rows and every

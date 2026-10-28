@@ -1321,7 +1321,7 @@ export async function commitEmployeeImport(
 
   // Item 2983802f — A FILE-LEVEL REFUSAL WRITES NOTHING. Re-derived here from the records, never taken
   // from a client-supplied preview, so a tampered payload cannot talk the server into a half-import.
-  // 524303d9 — Import History (ADR-0152 kind `employee_full`): the uploaded file (or, for a paste, the rows as
+  // 524303d9 — Import History (ADR-0155 kind `employee_full`): the uploaded file (or, for a paste, the rows as
   // text), the per-row outcome and the companies, recorded before the write so a refused file is listed too.
   const attemptId=await recordEmployeeImportAttempt(ctx,p,preview,resolved);
   if (preview.fileErrors.length > 0) {
@@ -1449,7 +1449,7 @@ export async function commitEmployeeImport(
         await addDependentTx(tx,ctx,personId,d.add);
         familyCount++;
       }
-      // 524303d9 — the attempt's item for this employment, in the SAME transaction as the hire (ADR-0152).
+      // 524303d9 — the attempt's item for this employment, in the SAME transaction as the hire (ADR-0155).
       if(attemptId){
         const [created]=await tx.select({code:employment.employeeCode}).from(employment).where(eq(employment.id,employmentId));
         const after:EmployeeFullItemState={employeeCode:created?.code??'',fullName:row.result.fullName,rowNum:row.result.rowNum};
@@ -1593,7 +1593,7 @@ function recordsAsCsv(records:ImportRecord[]){
   return toCsv([columns,...records.map(record=>columns.map(column=>record[column]??''))]);
 }
 /**
- * 524303d9 — the import attempt (ADR-0152). Only for a signed-in actor: a system context has no history owner.
+ * 524303d9 — the import attempt (ADR-0155). Only for a signed-in actor: a system context has no history owner.
  * Every listed company is one this actor maintains (analyze() already refused any other), so the attempt's
  * insert policy holds. A repeated upload operation is refused, never re-imported.
  */

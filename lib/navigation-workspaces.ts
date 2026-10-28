@@ -2,7 +2,7 @@
 export type NavigationWorkspace = 'ops' | 'strata';
 export type NavigationSection = 'mine' | 'team' | 'hr' | 'ai' | 'config';
 export type NavigationModule = 'controlTower' | 'people' | 'eLetter' | 'onboarding' | 'leave' | 'attendance' | 'claims' | 'payroll'
-  | 'performance' | 'talent' | 'development' | 'rewards' | 'workforceInsights';
+  | 'performance' | 'performanceAdmin' | 'rewards' | 'workforceInsights';
 export type NavigationPlacement = {area:'shared' | 'system'} | {area:NavigationWorkspace;module:NavigationModule;section:NavigationSection};
 export const NAVIGATION_MODULES: readonly {id:NavigationModule;workspace:NavigationWorkspace;labelKey:string}[] = [
   {id:'controlTower',workspace:'ops',labelKey:'aiControlTower'},
@@ -14,9 +14,10 @@ export const NAVIGATION_MODULES: readonly {id:NavigationModule;workspace:Navigat
   {id:'attendance',workspace:'ops',labelKey:'moduleAttendance'},
   {id:'claims',workspace:'ops',labelKey:'claims'},
   {id:'payroll',workspace:'ops',labelKey:'payroll'},
-  {id:'performance',workspace:'strata',labelKey:'performance'},
-  {id:'talent',workspace:'strata',labelKey:'talent'},
-  {id:'development',workspace:'strata',labelKey:'development'},
+  // D-P1-32 PT-X5 (APR-025 D4): Performance & Talent and Performance admin, one entry each. The former Talent and
+  // Development modules held the journey's ?module= entry points, which retired into the area's tabs.
+  {id:'performance',workspace:'strata',labelKey:'performanceTalent'},
+  {id:'performanceAdmin',workspace:'strata',labelKey:'performanceAdmin'},
   {id:'rewards',workspace:'strata',labelKey:'rewards'},
   {id:'workforceInsights',workspace:'strata',labelKey:'workforceInsights'},
 ];
@@ -34,6 +35,7 @@ const peopleConfig = new Set(['/admin/organization','/admin/settings/employee-id
 const leaveHr = new Set(['/admin/leave-config/adjustments','/admin/leave-config/data-import',
   '/admin/leave-config/generate','/admin/leave-config/earned-accrual','/admin/leave-config/balance-health',
   '/admin/leave-config/leave-credit','/leave/employee-balances']);
+const PERFORMANCE_CYCLE_PATH = /^\/performance\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\/|$)/i;
 const attendanceMine = new Set(['/attendance/clock','/attendance/my-records','/attendance/my-roster',
   '/attendance/requests','/attendance/plan-ot','/attendance/request-status']);
 
@@ -68,10 +70,9 @@ export function navigationPlacement(href:string):NavigationPlacement | undefined
   if(path.startsWith('/claims'))return modulePlacement('claims','mine');
   if(path.startsWith('/payroll/setup')||path.startsWith('/admin/pay-components'))return modulePlacement('payroll','config');
   if(path.startsWith('/payroll'))return modulePlacement('payroll','hr');
-  if(path==='/performance/workspace'&&params.get('module')==='tm')return modulePlacement('talent','team');
-  if(path==='/performance/workspace'&&params.get('module')==='idp')return modulePlacement('development','mine');
-  if(path==='/performance/workspace')return modulePlacement('performance','mine');
-  if(path.startsWith('/performance'))return modulePlacement('performance','team');
+  // Performance admin: the cycle list (no cycle yet) and the admin area of one cycle, /performance/<cycle>/….
+  if(path==='/performance'||PERFORMANCE_CYCLE_PATH.test(path))return modulePlacement('performanceAdmin','hr');
+  if(path.startsWith('/performance'))return modulePlacement('performance','mine');
   if(path.startsWith('/admin/rewards'))return modulePlacement('rewards','config');
   if(path.startsWith('/rewards'))return modulePlacement('rewards','mine');
   if(path==='/analytics'||path.startsWith('/reports'))return modulePlacement('workforceInsights','hr');
