@@ -21733,8 +21733,7 @@
       "failed": "无法保存移动，请重试。",
       "saving": "正在保存…",
       "save": "保存移动",
-      "cancel": "取消",
-      "reasonRequired": "Reason (required) · the tier above reads it"
+      "cancel": "取消"
     },
     "talentCurve": {
       "title": "{axis}分布 — {unit}",

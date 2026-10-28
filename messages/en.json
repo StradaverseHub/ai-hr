@@ -21733,8 +21733,7 @@
       "failed": "Could not save the move. Try again.",
       "saving": "Saving…",
       "save": "Save move",
-      "cancel": "Cancel",
-      "reasonRequired": "Reason (required) · the tier above reads it"
+      "cancel": "Cancel"
     },
     "talentCurve": {
       "title": "{axis} distribution — {unit}",

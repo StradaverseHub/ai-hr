@@ -21733,8 +21733,7 @@
       "failed": "Không thể lưu thay đổi. Vui lòng thử lại.",
       "saving": "Đang lưu…",
       "save": "Lưu thay đổi",
-      "cancel": "Hủy",
-      "reasonRequired": "Reason (required) · the tier above reads it"
+      "cancel": "Hủy"
     },
     "talentCurve": {
       "title": "Phân bố {axis} — {unit}",

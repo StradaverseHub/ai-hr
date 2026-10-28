@@ -21733,8 +21733,7 @@
       "failed": "บันทึกการย้ายไม่ได้ โปรดลองอีกครั้ง",
       "saving": "กำลังบันทึก…",
       "save": "บันทึกการย้าย",
-      "cancel": "ยกเลิก",
-      "reasonRequired": "Reason (required) · the tier above reads it"
+      "cancel": "ยกเลิก"
     },
     "talentCurve": {
       "title": "การกระจาย{axis} — {unit}",

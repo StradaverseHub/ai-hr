@@ -91,6 +91,8 @@ Phase 3a, authorized 25 Oct 2026, covers only:
 
     Each is business-policy content awaiting Chin Hin confirmation. The owner explicitly kept AI-HR's reason-on-change for leaders' calibration band moves (CF-19) and AI-HR's confirmed PIP/promotion/special-reward decisions (CF-23).
 
+    **Amended 28 Oct 2026 (APR-022, reverses APR-011).** The owner reversed the leaders' reason-on-change above (CF-19, which APR-011 had extended to every surface): follow OneHR, including its justifications. A BU CEO, BG CEO or Group Chief band move needs no reason on any path (the Talent Box move, the Group performance list, the generic calibration form, the calibration chat and the distribution-fit Apply). The reason field stays available and optional; a given reason is stored and audited as before. Kept as platform safety rules: the HOD's remark on each changed band, the line manager's remark when the overall band moves, and the movement ceiling on the Talent Box and the calibration chat. The fit Apply no longer writes a generated "distribution fit" note (D-P1-23 lapses); a move keeps the person's own note on that axis or none. CF-23 is unchanged.
+
 ## Career Plan reviewer scope (TASK-030)
 
 Decided as CF-26 / AC-10; built in migration `0640_onehr_plan_reviewer_scope.sql`. Before 0640, `onehr_plan_access` admitted the whole department tree (`app.visible_employment_ids()`: skip-level managers through the administrative chain, heads of department through the department subtree) to every non-draft Career Plan, and `app.can_see_employment` let the same people write one. After 0640 a plan row is read and written only by:

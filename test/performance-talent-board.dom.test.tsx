@@ -49,9 +49,10 @@ it('shows no reference shares without a single reference, and a move counter whe
 async function save(reason:string){
  const dialog=await screen.findByRole('dialog',{name:'Move Person 0'});
  const button=within(dialog).getByRole('button',{name:en.onehr.talentMove.save}) as HTMLButtonElement;
- expect(button.disabled).toBe(true);// a reason is required before anything is saved
- fireEvent.change(within(dialog).getByLabelText(en.onehr.talentMove.reasonRequired),{target:{value:reason}});
- expect(button.disabled).toBe(false);fireEvent.click(button);
+ const box=within(dialog).getByLabelText(en.onehr.talentMove.reason) as HTMLTextAreaElement;
+ expect(box.required).toBe(false);expect(button.disabled).toBe(false);// the reason is optional (APR-022): a picked box saves as it is
+ if(reason)fireEvent.change(box,{target:{value:reason}});
+ fireEvent.click(button);
  await waitFor(()=>expect(saveCalibrationBandAction).toHaveBeenCalled());
  const form=vi.mocked(saveCalibrationBandAction).mock.calls.at(-1)![0] as FormData;return Object.fromEntries(form.entries());
 }
@@ -69,6 +70,12 @@ it('submits the same payload whether the box is reached by dragging or from the 
  const keyed=await save('Agreed in the calibration room.');
  expect(dragged).toEqual({sessionId:'session',revision:'3',reviewId:'p0',performance:'AE',potential:'High',performanceNote:'Agreed in the calibration room.',potentialNote:'Agreed in the calibration room.'});
  expect(keyed).toEqual(dragged);
+});
+it('saves a box move with no reason, sending empty notes (APR-022)',async()=>{
+ show();
+ fireEvent.click(screen.getByRole('button',{name:'Move Person 0 to another box'}));
+ fireEvent.click(within(await screen.findByRole('dialog',{name:'Move Person 0'})).getByRole('button',{name:/^Move to Super Star, High potential/}));
+ expect(await save('')).toEqual({sessionId:'session',revision:'3',reviewId:'p0',performance:'AE',potential:'High',performanceNote:'',potentialNote:''});
 });
 
 it('offers no drag or move on a locked board, for a read-only viewer, or onto the person’s own box',()=>{
