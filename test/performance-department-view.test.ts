@@ -20,7 +20,7 @@ import * as schema from '../db/schema';
 import { createCompany, createDepartment } from '../core/admin';
 import { hireEmployee } from '../core/org';
 import * as perf from '../packs/performance/service';
-import { defaultPolicy, scorecard, type KPI } from '../packs/performance/onehr/model';
+import { defaultPolicy, kpiSchema, scorecard, type KPI } from '../packs/performance/onehr/model';
 import { departmentSpread } from '../packs/performance/onehr/department-view-model';
 import { addDaysIso } from '../packs/performance/onehr/leader-seat-model';
 import framework from '../packs/performance/onehr/framework.json';
@@ -57,12 +57,19 @@ async function reviewOf(e: Hired) {
   expect(r, 'the opened OneHR cycle has a review for the fixture person').toBeDefined();
   return r;
 }
-const kpi = (title: string, approvedActual: number, locked: boolean): KPI => ({
-  id: randomUUID(), title, description: '', weightBp: 5000, unit: 'score', moderatorEmploymentId: null, setting: 'approved',
-  scoring: { mechanism: 'A', method: 'more', rates: [1, 2, 3, 4, 5] }, actual: approvedActual, approvedActual, locked,
-} as KPI);
+/**
+ * A complete KPI line, parsed by the real kpiSchema so every service reader that parses the review's kpis
+ * (participation, moderation, workspace) accepts what the fixture writes. Every required field is given.
+ */
+const kpi = (title: string, approvedActual: number, locked: boolean): KPI => kpiSchema.parse({
+  id: randomUUID(), title, description: '', weightBp: 5000, unit: 'score', moderatorEmploymentId: null,
+  scoring: { mechanism: 'A', method: 'more', rates: [1, 2, 3, 4, 5] },
+  setting: 'approved', settingRemark: '', actual: approvedActual, note: '', approvedActual, moderationRemark: '', locked,
+});
 /** KPI lines and the stored overall on a review, as the moderation writers leave them. */
-async function setResult(e: Hired, kpis: KPI[], stored: { band: string; score: number } | null) {
+async function setResult(e: Hired, lines: KPI[], stored: { band: string; score: number } | null) {
+  // Derived lines ({ ...line, locked: true }) are re-parsed too: the fixture writes only what the service reads.
+  const kpis = kpiSchema.array().parse(lines);
   const r = await reviewOf(e);
   await owner.db.transaction(async (tx) => {
     await tx.execute(sql`SET LOCAL session_replication_role = replica`);
