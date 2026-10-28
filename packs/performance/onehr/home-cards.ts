@@ -113,7 +113,7 @@ export async function getPerformanceHomeBlock(ctx: SessionContext, scopeIds: str
         sql`app.onehr_feedback_card(${onehrPanel.requestId})->>'cycleId' = ${own.cycleId}`,
         sql`exists(select 1 from employment e where e.id=${onehrPanel.peerEmploymentId} and app.is_self_person(e.person_id))`));
     const team = await tx.select({ reviewId: onehrReview.reviewId, managerPerformance: onehrReview.managerPerformance }).from(onehrReview)
-      .where(and(eq(onehrReview.cycleId, own.cycleId), ne(onehrReview.reviewId, own.reviewId), sql`app.onehr_manager(${onehrReview.reviewId})`,
+      .where(and(eq(onehrReview.cycleId, own.cycleId), ne(onehrReview.reviewId, own.reviewId), sql`app.onehr_effective_reviewer(${onehrReview.reviewId})`, sql`app.assessment_review_participates(${onehrReview.reviewId})`,
         sql`not exists(select 1 from employment e where e.id=${onehrReview.employmentId} and app.is_self_person(e.person_id))`));
     // Named-reviewer sessions in THIS cycle (explicit or live seat holder), by hasCalibrationAssignment's predicates (no per-session work read).
     const sessions = await tx.select({ id: onehrCalibration.id, lockedAt: onehrCalibration.lockedAt }).from(onehrCalibration)
