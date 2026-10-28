@@ -12,6 +12,8 @@ const routes=[
  {module:'attendance',action:'attendance.correction.request',route:'/assistant/attendance'},
  {module:'approvals',action:'approvals.leave.decide',route:'/assistant/approvals'},
  {module:'leave',action:'leave.apply',route:'/assistant/leave'},
+ {module:'leave',action:'leave.cancel',route:'/assistant/leave'},
+ {module:'leave',action:'leave.edit',route:'/assistant/leave'},
  {module:'toil',action:'toil.replacement.request',route:'/assistant/toil'},
  {module:'lifecycle',action:'lifecycle.acknowledgement.submit',route:'/assistant/lifecycle'},
  {module:'knowledge_base',action:'knowledge_base.article.create',route:'/assistant/knowledge-base'},
@@ -25,7 +27,7 @@ const routes=[
  {module:'performance',action:'performance.review.acknowledge',route:'/assistant/performance'},
  {module:'performance',action:'performance.onehr.plan.acknowledge',route:'/assistant/performance'},
 ] as const;
-const Handoff=z.object({module:z.enum(['multi_cycle_payroll','country-my','payroll','rewards','typed_pay_components','attendance','approvals','leave','ess','notifications','performance','claims','system_testing','org','knowledge_base','lifecycle','toil']),action:z.enum(['multi_cycle_payroll.create_run','country-my.statutory.update','payroll.close','rewards.post','typed_pay_components.create','attendance.correction.request','approvals.leave.decide','toil.replacement.request','lifecycle.acknowledgement.submit','knowledge_base.article.create','org.reporting.change','claims.submit','claims.cancel','system_testing.execution.save','claims.draft.save','leave.apply','ess.profile.request','notifications.email_preferences.save','performance.review.acknowledge','performance.onehr.plan.acknowledge']),
+const Handoff=z.object({module:z.enum(['multi_cycle_payroll','country-my','payroll','rewards','typed_pay_components','attendance','approvals','leave','ess','notifications','performance','claims','system_testing','org','knowledge_base','lifecycle','toil']),action:z.enum(['multi_cycle_payroll.create_run','country-my.statutory.update','payroll.close','rewards.post','typed_pay_components.create','attendance.correction.request','approvals.leave.decide','toil.replacement.request','lifecycle.acknowledgement.submit','knowledge_base.article.create','org.reporting.change','claims.submit','claims.cancel','leave.cancel','leave.edit','system_testing.execution.save','claims.draft.save','leave.apply','ess.profile.request','notifications.email_preferences.save','performance.review.acknowledge','performance.onehr.plan.acknowledge']),
  route:z.enum(['/assistant/payroll-runs','/assistant/statutory','/assistant/payroll-close','/assistant/rewards','/assistant/pay-codes','/assistant/attendance','/assistant/approvals','/assistant/toil','/assistant/lifecycle','/assistant/knowledge-base','/assistant/org','/assistant/testing','/assistant/claims','/assistant/leave','/assistant/profile','/assistant/notifications','/assistant/performance']),requiresHumanSelection:z.literal(true),effect:z.literal('none'),authority:z.literal('rechecked_on_review_page')}).strict();
 const AnyHandoff=z.union([Handoff,EMPLOYEE_IMPORT_HUMAN_HANDOFF_SCHEMA]);
 export type ModuleHumanHandoff=z.infer<typeof AnyHandoff>;

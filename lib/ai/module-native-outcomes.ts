@@ -8,6 +8,8 @@ export const NATIVE_OUTCOME_ACTIONS=Object.freeze({
  'employees.import':entry('employees','canonical_import_committed_not_quality_certified'),
  'org.reporting.change':entry('org','reporting_change_recorded'),
  'leave.apply':entry('leave','submitted_not_approved'),
+ 'leave.cancel':entry('leave','pending_leave_withdrawn_no_balance_effect'),
+ 'leave.edit':entry('leave','pending_leave_edited_still_not_approved'),
  'ess.profile.request':entry('ess','submitted_not_approved_or_applied'),
  'approvals.leave.decide':entry('approvals','decision_recorded_current_request_state_separate'),
  'knowledge_base.article.create':entry('knowledge_base','article_created_not_content_certified'),

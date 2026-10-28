@@ -1,5 +1,5 @@
--- ADR-0151 wave 1: generic receipts on the one prepared-action store, and the first generic kind,
--- claims.cancel (own pending claim cancellation). Reserved as 0670 (when 1793190000000) by the migration
+-- ADR-0151 wave 1: generic receipts on the one prepared-action store, and the first generic kinds:
+-- claims.cancel (own pending claim), leave.cancel and leave.edit (own pending plain leave). Reserved as 0670 (when 1793190000000) by the migration
 -- coordinator on 28 Oct 2026; the journal index is assigned at journaling.
 --
 -- The store keeps one owner (ADR-0131: no second ledger). New kinds use three generic receipt columns
@@ -28,15 +28,16 @@ BEGIN
  EXECUTE format('ALTER TABLE app.assistant_own_leave_review DROP CONSTRAINT %I',kind_check);
  EXECUTE format('ALTER TABLE app.assistant_own_leave_review DROP CONSTRAINT %I',columns_check);
  -- Generic kinds hold none of the legacy per-kind receipt columns; every legacy kind keeps its old rule.
- EXECUTE format('ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT assistant_review_kind_columns CHECK (CASE WHEN action_kind IN (''claims.cancel'') THEN leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL AND performance_ack_event_id IS NULL ELSE %s END)',columns_expr);
+ EXECUTE format('ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT assistant_review_kind_columns CHECK (CASE WHEN action_kind IN (''claims.cancel'',''leave.cancel'',''leave.edit'') THEN leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL AND performance_ack_event_id IS NULL ELSE %s END)',columns_expr);
 END $$;
 --> statement-breakpoint
 ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT assistant_review_action_kind CHECK(action_kind IN ('leave.apply','notifications.email_preferences.save','ess.profile.request','claims.draft.save','performance.review.acknowledge','performance.onehr.plan.acknowledge','system_testing.execution.save','claims.submit','org.reporting.change','knowledge_base.article.create','lifecycle.acknowledgement.submit','toil.replacement.request','approvals.leave.decide','attendance.correction.request','typed_pay_components.create','rewards.post','payroll.close','country-my.statutory.update','multi_cycle_payroll.create_run',
- 'claims.cancel'));
+ 'claims.cancel','leave.cancel','leave.edit'));
 --> statement-breakpoint
 -- A generic kind names its native subject at preparation and its own committed event at completion.
 ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT assistant_review_generic_receipt CHECK(CASE
  WHEN action_kind='claims.cancel' THEN receipt_subject_kind='claim_request' AND receipt_subject_id IS NOT NULL AND ((state='completed')=(receipt_event_id IS NOT NULL))
+ WHEN action_kind IN ('leave.cancel','leave.edit') THEN receipt_subject_kind='leave_request' AND receipt_subject_id IS NOT NULL AND ((state='completed')=(receipt_event_id IS NOT NULL))
  ELSE receipt_subject_kind IS NULL AND receipt_subject_id IS NULL AND receipt_event_id IS NULL END);
 --> statement-breakpoint
 -- One subject at a time: a second pending review for the same claim would let two confirmations race.
@@ -46,7 +47,7 @@ CREATE UNIQUE INDEX assistant_review_generic_pending_subject ON app.assistant_ow
 -- The closed generic kinds and the native subject each names. Anything else is refused.
 CREATE FUNCTION app._assistant_generic_review_subject_kind(p_kind text) RETURNS text
  LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT CASE p_kind WHEN 'claims.cancel' THEN 'claim_request' END;
+ SELECT CASE p_kind WHEN 'claims.cancel' THEN 'claim_request' WHEN 'leave.cancel' THEN 'leave_request' WHEN 'leave.edit' THEN 'leave_request' END;
 $$;
 REVOKE ALL ON FUNCTION app._assistant_generic_review_subject_kind(text) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
@@ -87,6 +88,9 @@ BEGIN
   RAISE EXCEPTION 'Review unavailable' USING ERRCODE='22023';END IF;
  -- The subject must be this employment's own row. Ownership of the effect is still the native service's.
  IF subject_kind='claim_request' AND NOT EXISTS(SELECT 1 FROM public.claim_request q
+   WHERE q.id=p_subject AND q.tenant_id=t AND q.employment_id=p_employment) THEN
+  RAISE EXCEPTION 'Review unavailable' USING ERRCODE='42501';END IF;
+ IF subject_kind='leave_request' AND NOT EXISTS(SELECT 1 FROM public.leave_request q
    WHERE q.id=p_subject AND q.tenant_id=t AND q.employment_id=p_employment) THEN
   RAISE EXCEPTION 'Review unavailable' USING ERRCODE='42501';END IF;
  at_time:=clock_timestamp();
@@ -166,6 +170,16 @@ BEGIN
     AND d.actor_type='user' AND d.actor_id=u AND d.subject_employment_id=q.employment_id
     AND d.xmin=pg_current_xact_id()::xid);
  END IF;
+ IF r.action_kind IN ('leave.cancel','leave.edit') THEN
+  RETURN EXISTS(SELECT 1 FROM public.leave_request q JOIN public.domain_event d ON d.aggregate_id=q.id AND d.tenant_id=q.tenant_id
+   WHERE q.id=r.receipt_subject_id AND q.tenant_id=t AND q.employment_id=r.employment_id AND q.parent_group_id IS NULL
+    AND q.status=CASE r.action_kind WHEN 'leave.cancel' THEN 'cancelled'::public.leave_request_status ELSE 'pending'::public.leave_request_status END
+    AND q.xmin=pg_current_xact_id()::xid
+    AND d.id=p_event AND d.aggregate_type='leave-request'
+    AND d.event_type=CASE r.action_kind WHEN 'leave.cancel' THEN 'leave-request.self-cancelled' ELSE 'leave-request.edited' END
+    AND d.actor_type='user' AND d.actor_id=u AND d.subject_employment_id=q.employment_id
+    AND d.xmin=pg_current_xact_id()::xid);
+ END IF;
  RETURN false;
 END $$;
 REVOKE ALL ON FUNCTION app._assistant_generic_review_verify(uuid,uuid) FROM PUBLIC,ai_hr_app;
@@ -229,12 +243,12 @@ BEGIN
 END $$;
 --> statement-breakpoint
 ALTER TABLE public.ai_native_outcome_association ADD CONSTRAINT ai_native_outcome_association_action CHECK(action IN('employees.import',
-'org.reporting.change','leave.apply','ess.profile.request','approvals.leave.decide','knowledge_base.article.create','payroll.close','attendance.correction.request','claims.draft.save','claims.submit','performance.review.acknowledge','performance.onehr.plan.acknowledge','rewards.post','lifecycle.acknowledgement.submit','toil.replacement.request','multi_cycle_payroll.create_run','typed_pay_components.create','country-my.statutory.update','notifications.email_preferences.save','system_testing.execution.save','claims.cancel'));
+'org.reporting.change','leave.apply','ess.profile.request','approvals.leave.decide','knowledge_base.article.create','payroll.close','attendance.correction.request','claims.draft.save','claims.submit','performance.review.acknowledge','performance.onehr.plan.acknowledge','rewards.post','lifecycle.acknowledgement.submit','toil.replacement.request','multi_cycle_payroll.create_run','typed_pay_components.create','country-my.statutory.update','notifications.email_preferences.save','system_testing.execution.save','claims.cancel','leave.cancel','leave.edit'));
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.native_outcome_review_completed(p_kind text,p_id uuid) RETURNS boolean
  LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp SET row_security=on AS $$
  SELECT app.current_user_id() IS NOT NULL AND app.current_tenant_id() IS NOT NULL
- AND app.principal_snapshot_current() AND p_kind IN('org.reporting.change','leave.apply','ess.profile.request','approvals.leave.decide','knowledge_base.article.create','payroll.close','attendance.correction.request','claims.draft.save','claims.submit','performance.review.acknowledge','performance.onehr.plan.acknowledge','rewards.post','lifecycle.acknowledgement.submit','toil.replacement.request','multi_cycle_payroll.create_run','typed_pay_components.create','country-my.statutory.update','notifications.email_preferences.save','system_testing.execution.save','claims.cancel')
+ AND app.principal_snapshot_current() AND p_kind IN('org.reporting.change','leave.apply','ess.profile.request','approvals.leave.decide','knowledge_base.article.create','payroll.close','attendance.correction.request','claims.draft.save','claims.submit','performance.review.acknowledge','performance.onehr.plan.acknowledge','rewards.post','lifecycle.acknowledgement.submit','toil.replacement.request','multi_cycle_payroll.create_run','typed_pay_components.create','country-my.statutory.update','notifications.email_preferences.save','system_testing.execution.save','claims.cancel','leave.cancel','leave.edit')
  AND EXISTS(SELECT 1 FROM app.assistant_own_leave_review r WHERE r.id=p_id AND r.tenant_id=app.current_tenant_id()
   AND r.user_id=app.current_user_id() AND r.action_kind=p_kind AND r.state='completed'
   AND r.created_at<=now() AND r.created_at>now()-interval '30 days')
@@ -261,7 +275,7 @@ CREATE OR REPLACE FUNCTION app.native_outcome_targets_require(p_tenant uuid,p_us
    WHEN 'lifecycle.acknowledgement.submit' THEN r.lifecycle_submitted_event_id WHEN 'toil.replacement.request' THEN r.toil_submitted_event_id
    WHEN 'multi_cycle_payroll.create_run' THEN r.multi_cycle_created_event_id WHEN 'typed_pay_components.create' THEN r.pay_component_created_event_id
    WHEN 'country-my.statutory.update' THEN r.country_statutory_event_id WHEN 'notifications.email_preferences.save' THEN r.notification_event_id
-   WHEN 'system_testing.execution.save' THEN r.testing_event_id WHEN 'claims.cancel' THEN r.receipt_event_id END=p_event)))
+   WHEN 'system_testing.execution.save' THEN r.testing_event_id WHEN 'claims.cancel' THEN r.receipt_event_id WHEN 'leave.cancel' THEN r.receipt_event_id WHEN 'leave.edit' THEN r.receipt_event_id END=p_event)))
 $$;
 REVOKE ALL ON FUNCTION app.native_outcome_targets_require(uuid,uuid,uuid,text,uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.native_outcome_targets_require(uuid,uuid,uuid,text,uuid,uuid) TO ai_hr_app;
@@ -271,12 +285,12 @@ CREATE OR REPLACE FUNCTION app.native_outcome_completed_review_choices(p_kinds j
  LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp SET row_security=on AS $$
 BEGIN
  IF app.current_tenant_id() IS NULL OR app.current_user_id() IS NULL OR NOT app.principal_snapshot_current()
- OR jsonb_typeof(p_kinds) IS DISTINCT FROM 'array' OR jsonb_array_length(p_kinds) NOT BETWEEN 1 AND 20
+ OR jsonb_typeof(p_kinds) IS DISTINCT FROM 'array' OR jsonb_array_length(p_kinds) NOT BETWEEN 1 AND 22
  THEN RAISE EXCEPTION 'Outcome choices unavailable'; END IF;
  IF EXISTS(SELECT 1 FROM jsonb_array_elements(p_kinds) v WHERE jsonb_typeof(v)<>'string')
  OR (SELECT count(DISTINCT v) FROM jsonb_array_elements_text(p_kinds) v)<>jsonb_array_length(p_kinds)
  OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(p_kinds) v WHERE v NOT IN
- ('org.reporting.change','leave.apply','ess.profile.request','approvals.leave.decide','knowledge_base.article.create','payroll.close','attendance.correction.request','claims.draft.save','claims.submit','performance.review.acknowledge','performance.onehr.plan.acknowledge','rewards.post','lifecycle.acknowledgement.submit','toil.replacement.request','multi_cycle_payroll.create_run','typed_pay_components.create','country-my.statutory.update','notifications.email_preferences.save','system_testing.execution.save','claims.cancel'))
+ ('org.reporting.change','leave.apply','ess.profile.request','approvals.leave.decide','knowledge_base.article.create','payroll.close','attendance.correction.request','claims.draft.save','claims.submit','performance.review.acknowledge','performance.onehr.plan.acknowledge','rewards.post','lifecycle.acknowledgement.submit','toil.replacement.request','multi_cycle_payroll.create_run','typed_pay_components.create','country-my.statutory.update','notifications.email_preferences.save','system_testing.execution.save','claims.cancel','leave.cancel','leave.edit'))
  THEN RAISE EXCEPTION 'Outcome choices unavailable'; END IF;
  RETURN QUERY SELECT r.action_kind,r.id,r.created_at FROM app.assistant_own_leave_review r
  WHERE r.tenant_id=app.current_tenant_id() AND r.user_id=app.current_user_id()
