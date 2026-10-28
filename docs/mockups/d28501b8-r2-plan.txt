@@ -1,0 +1,57 @@
+A CORRECTION FIRST: our last plan said that a mistake in an earlier import "can never be corrected by importing again". That was wrong. Re-importing a month that was loaded through this screen already replaced it, after a confirmation. What was, and still is, blocked is overwriting payroll that was processed in AIHR. That is what this plan changes.
+
+VERDICT: Partly there already   ·   SIZE: Large
+
+THE SITUATION TODAY
+
+Import Payroll History can already replace months that were loaded through the import screen. But any month that was processed in AIHR, or is linked to something already produced from it (a payment file, a statutory return, or later payroll in the same year), is rejected with one of the messages you quoted. There is no way to put corrected historical figures over it.
+
+WHAT WE'LL CHANGE
+
+- Processed and Closed payroll can be overwritten by import. When your file matches an employee, company, month and Pay Cycle that already has payroll on file, processed or imported, the row is marked "Overwrite confirmation required" instead of being rejected.
+
+- Each row is shown as one of three things: New record, Overwrite confirmation required, or Rejected. Every row shows the Employee ID and name, company, year and month, Pay Cycle, and the codes from your file. Rejected rows show the Excel row, the code and the exact reason.
+
+- For each overwrite row you can open a side-by-side view of what is on file now and what your file says, item by item, with changed items highlighted.
+
+- You tick the records you want to overwrite. Only ticked records are replaced; unticked ones are left exactly as they are. A Select all box is provided.
+
+- Overwriting is a straight replacement. Your file's earnings, deductions, net pay and every statutory amount (EPF, SOCSO, EIS, PCB, Zakat and the others) become the figures on file, exactly as written. Nothing is recalculated with today's rates or settings, no payroll is run, and no payslip is generated.
+
+- Before you confirm, the screen lists what has already gone out for the ticked months: a bank payment file, EPF, SOCSO, EIS or tax returns already generated, and later months in the same year whose tax was worked out from the old figures. These are shown as warnings for you to acknowledge, not as reasons to refuse.
+
+- Every overwrite is recorded: the original values, the new values, who did it and when. The original payroll is never erased; it is set aside. The whole import can be undone from Log File, which puts the original figures back.
+
+- A file with any Rejected row still has to be corrected and uploaded again before anything is imported. This keeps half a file from being loaded by accident.
+
+WHAT YOU'LL GET
+
+Corrected historical figures can be loaded over payroll that was already processed or closed, with a clear comparison, your explicit choice of which records to replace, a full record of what changed, and a way back.
+
+GOOD TO KNOW
+
+- The payslip an employee was already given is not changed or regenerated. In My Payslip they keep seeing the payslip they were issued. HR screens, payroll reports, the EA form and later statutory reports use the overwritten figures.
+
+- Nothing that already went out is redone for you. Bank files are not re-sent, and EPF, SOCSO, EIS and tax returns are not regenerated or resubmitted. If an amended return is needed, HR generates and submits it as usual. Tax already deducted in later months stays as it was paid.
+
+- Payroll that is still in draft (not yet processed) cannot be overwritten by import. Finish or discard it in Payroll first, so two versions of the same month are never being edited at once.
+
+- Only people who can import payroll history for that company can overwrite. Overwriting processed payroll changes money figures on record, so please check the comparison before confirming.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Reporter's reaffirmed instruction after the r1 challenge (Protected limit): owner decision, record in round entry. Design keeps immutability: nothing is deleted or updated; ordinary payslips are superseded through the existing revision owner (core/payroll-history-revisions.ts, migration 0602).
+
+1. Migration (allocate centrally, next free above 0657, when above 1793130000023): revision kind 'adopted'; app.payroll_history_bind_snapshot accepts a snapshot of an ORDINARY closed payslip (history_import_attempt_id IS NULL, status closed) only as the record's first revision with kind 'adopted' and values equal to the payslip's own columns. Batch summaries: payroll_history_effective_batch computes derived totals/employee_count for an ordinary batch when any of its payslips is non-effective (stored totals otherwise). GRANTs for anything new. RLS effective-only policy needs no change: once adopted and corrected, the ordinary payslip is non-effective for every app reader and the SECURITY DEFINER owners already filtered by app.payroll_history_effective.
+
+2. planRows: ordinary/legacy occupancy and dependencies() become warnings on a 'replace' row (operation replace, warnings[] new field, overwriteSource 'processed'|'imported'), except draft ordinary batches and ambiguous identity (multiple ordinary payslips for the identity), which stay invalid. beforeValues from the ordinary payslip. Row gains employeeName and codes. Confirm takes selectedRecordKeys (company|employment|period|cycle) and an acknowledgedWarnings hash; unselected replace rows are skipped (generalises skipReplacements). Commit: for an ordinary target, insert record, adopted snapshot+revision (attempt id = this attempt), then the correction revision, all in the existing locked transaction. Revert restores the adopted snapshot (existing revert path; previous revision = adopted).
+
+3. Own payslip: My Payslip / myPayslipDetail / released-run readers show the issued original for the employee even when superseded (reader-specific exception inside its SECURITY DEFINER owner, employee self-scope only); HR readers stay effective-only. Pin with a test that the employee view is unchanged and HR totals change.
+
+4. UI: three classes, per-row checkbox with Select all (default unticked), compare table keyed by payroll item, warning list and acknowledgement checkbox, Import new records only. Six locales.
+
+5. Tests: overwrite a closed ordinary month (effective HR sum = imported, original row unchanged byte-for-byte, trigger still blocks UPDATE/DELETE), no payroll run or payslip generated, only ticked rows replaced, warnings listed for payment export / statutory report / later-month PCB, draft run still refused, revert restores ordinary values, employee self view unchanged, cross-company and cross-tenant refusal, permission refusal. Full CI.
+
+NOT doing: regenerating or resubmitting statutory returns, re-sending bank files, recalculating later months' PCB, overwriting draft payroll.
