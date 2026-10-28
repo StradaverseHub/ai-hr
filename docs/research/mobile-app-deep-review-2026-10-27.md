@@ -364,3 +364,41 @@ verifies). Nothing below is evidence that it works until that run reports.
   employment, and widening `PendingTaskItem` breaks exact-equality pins on it. A leave-cancellation rejection asks
   no reason because decideLeaveCancellation records none (DECISION REQUIRED if the owner wants one stored).
 - **Tests written, not yet run.** `test/mobile-v2-approvals.test.ts`, `test/mobile-approvals.dom.test.tsx`.
+
+### M09 · full payslip and EA access without accidental disclosure — IMPLEMENTED, UNVERIFIED (28 October 2026)
+
+Built on the branch; no test, type check, build or device run has been executed by the builder (hosted CI
+verifies). Nothing below is evidence that it works until that run reports.
+
+- **Endpoints (v2, contracts in `lib/mobile-api/v2/pay.ts`, composition in `core/mobile-pay.ts` and
+  `lib/mobile-api/pay-routes.ts`), all behind the Payroll module gate.** `GET /api/mobile/v2/payslips` pages
+  `myReleasedPayslipRuns` (every employment of the login, current and past — D1) in a grouped order (year,
+  employer, period, run) with NO amount; `GET …/payslips/{id}` is `myPayslipDocument` drawn through
+  `payslipPresentationRows` with the web statement's rate formatter, amounts as two-place decimal strings plus
+  the company's currency; `GET …/payslips/{id}/pdf` and `GET …/ea/pdf?employmentId&year&company&lang` go through
+  `mobileBinaryRoute`; `GET …/ea` is `myEaSources`. Not own, unreleased, foreign or guessed: one `not_found`.
+- **One document, two transports.** The web routes' render and file name moved, verbatim, into
+  `app/me/payslip/pdf-file.ts` (`myPayslipPdfFile`) and `app/me/ea/document.ts` (`myEaPdfFile`); the web routes
+  keep their parsing, session, 404s and headers, and the mobile routes call the same functions. Source pins that
+  named the moved calls in the route files now name the new modules (individual-payslip, ea-pdf-i18n-keys,
+  fda53352). The web PDF routes still append no audit event (follow-up below).
+- **Share (D7).** `POST /api/mobile/v2/documents/share-events {requestId, shareId, document, stage}` records
+  `document.share.confirmed | completed | cancelled` inside the mobile command receipt, owned by the actor,
+  subject = the document's own employment, payload = identifiers only. `confirmed` admits through the owners;
+  a closing stage needs this actor's `confirmed` of the same document under the same shareId and closes once.
+  The app opens the OS share sheet (expo-sharing ~57.0.22, the SDK 57.0.26 bundled version) only after the
+  server acknowledged `confirmed`; offline there is no share.
+- **Temporary files.** The PDF lives only as a random-named file in the protected folder; it is deleted when the
+  share settles, whichever way. A file in an open share is exempt from the BACKGROUND sweep (Android backgrounds
+  the app for the share sheet) until its promise settles; launch, logout and employment-switch sweeps still take
+  it (`mobile/lib/protected-document.ts` `shareProtectedDocument`, `sweepProtectedDocuments({keepSharing})`).
+- **Native.** `mobile/app/pay/index.tsx`, `mobile/app/pay/[id].tsx`, `mobile/app/pay/ea.tsx`,
+  `mobile/lib/pay-documents.tsx`; Me links to the new screen and no longer reads v1 totals (the v1 endpoint stays
+  for installed clients). Held in memory only; offline shows "Payslips need a connection", never a stale copy.
+- **Not done / follow-ups.** The web PDF routes do not audit downloads (unchanged; DECISION REQUIRED whether they
+  should). The payslip document's labels resolve through next-intl's request locale, which is English for a bearer
+  request (`lib/payslip-pdf-strings.ts` takes no locale); the EA edition is explicit. `completed` means the OS share
+  sheet returned without error — neither platform reliably reports whether a target was chosen (UNKNOWN). A
+  closing event that cannot be delivered after one same-reference retry is lost; the audit then shows a
+  `confirmed` with no close.
+- **Tests written, not yet run.** `test/mobile-v2-documents.test.ts`, `test/mobile-pay-documents.dom.test.tsx`.
