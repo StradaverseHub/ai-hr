@@ -123,6 +123,9 @@ export async function syncOffline(c:Controller,options:{manual?:boolean;rearm?:b
    return {state:'blocked',reason:'held',code:closed.reason};
   }
   const next=live.find(claim=>claim.state==='waiting')!;
+  // Finish an interrupted local handoff first (same request, original claimed time; no network, no new permit).
+  const local=o.snapshot();
+  if(local.status==='evidence')await o.capture({requestId:next.requestId,expectedContextId:e.contextId!,claimedAt:next.claimedAt,eventSnapshot:local.evidence});
   const signed=await o.sign(next.requestId,e.contextId!);
   if(signed.status!=='proof_ready')return signed.reason==='native_unavailable'?defer(c,'backoff',undefined,signed.reason):{state:'blocked',reason:'not_signed',code:signed.reason};
   if(!spend(c))return {state:'waiting',retryAt:p.retryAt,code:'budget'};
