@@ -23476,7 +23476,7 @@
     "spendMonthly": "Organisation-wide monthly allocation (USD)",
     "spendRoot": "Per-task lifetime allocation (USD)",
     "orchestrator": "HR work queue",
-    "orchestratorHelp": "The HR work queue coordinates record readiness, ownership, review and verification using deterministic checks. Refresh its evidence below. Scheduled model drafting requires an admitted principal; a configured provider alone does not enable it.",
+    "orchestratorHelp": "The HR work queue coordinates record readiness, ownership, review and verification using fixed rules. Refresh its evidence below. Scheduled AI drafting is not enabled for nightly runs.",
     "recentRuns": "Recent model calls",
     "runsHelp": "Latest 50 calls, including blocked and failed attempts. Metadata only; prompts, answers, images and credentials are excluded. Refresh to see new activity.",
     "runsScoped": "Company totals appear above. Detailed run history is available to group administrators.",

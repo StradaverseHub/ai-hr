@@ -23476,7 +23476,7 @@
     "spendMonthly": "Peruntukan bulanan seluruh organisasi (USD)",
     "spendRoot": "Peruntukan sepanjang hayat setiap tugas (USD)",
     "orchestrator": "Baris kerja HR",
-    "orchestratorHelp": "Baris kerja HR menyelaraskan kesediaan rekod, pemilik, semakan dan pengesahan menggunakan peraturan tetap. Muat semula bukti di bawah. Draf model berjadual memerlukan prinsipal yang dibenarkan; penyedia yang dikonfigurasi sahaja tidak mencukupi.",
+    "orchestratorHelp": "Baris kerja HR menyelaraskan kesediaan rekod, pemilik, semakan dan pengesahan menggunakan peraturan tetap. Muat semula bukti di bawah. Draf AI tidak diaktifkan untuk larian malam berjadual.",
     "recentRuns": "Panggilan model terkini",
     "runsHelp": "50 panggilan terkini, termasuk cubaan disekat dan gagal. Metadata sahaja; arahan, jawapan, imej dan kelayakan dikecualikan. Muat semula untuk aktiviti baharu.",
     "runsScoped": "Jumlah syarikat dipaparkan di atas. Sejarah terperinci tersedia kepada pentadbir kumpulan.",

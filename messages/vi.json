@@ -23476,7 +23476,7 @@
     "spendMonthly": "Hạn mức tháng của tổ chức (USD)",
     "spendRoot": "Hạn mức suốt vòng đời mỗi tác vụ (USD)",
     "orchestrator": "Hàng đợi công việc HR",
-    "orchestratorHelp": "Hàng đợi công việc HR điều phối tình trạng hồ sơ, người phụ trách, xét duyệt và xác minh bằng quy tắc xác định. Làm mới bằng chứng bên dưới. Soạn thảo theo lịch cần chủ thể được phép; chỉ cấu hình nhà cung cấp là chưa đủ.",
+    "orchestratorHelp": "Hàng đợi công việc HR điều phối tình trạng hồ sơ, người phụ trách, xét duyệt và xác minh bằng quy tắc cố định. Làm mới bằng chứng bên dưới. Các lượt chạy hằng đêm chưa bật soạn thảo bằng AI.",
     "recentRuns": "Lượt gọi mô hình gần đây",
     "runsHelp": "50 lượt gần nhất, gồm lượt bị chặn và thất bại. Chỉ có siêu dữ liệu; không gồm lời nhắc, câu trả lời, ảnh hoặc thông tin xác thực. Làm mới để xem hoạt động mới.",
     "runsScoped": "Tổng công ty ở trên. Lịch sử chi tiết dành cho quản trị viên tập đoàn.",
