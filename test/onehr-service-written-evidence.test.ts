@@ -234,6 +234,12 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     vi.mocked(generateDraft).mockImplementationOnce(async()=>{await owner.db.update(schema.onehrCalibration).set({reviewerUserIds:[]}).where(eq(schema.onehrCalibration.id,sid));return raw;});
     await expect(perf.getAssessmentPerformanceInsight(peers[0].ctx,reviewId,sid,{generate:true})).rejects.toThrow(/not assigned/);
     expect(await owner.db.select().from(schema.assessmentInsight).where(eq(schema.assessmentInsight.contextId,sid))).toEqual([]);
+    // WP-B2: a live seat is revoked the same way. The seat ends during the provider call; the reply is discarded.
+    const seated=peers[1],seatScope=await withTenant(a,async tx=>{const [s]=await tx.insert(schema.onehrCalibration).values({tenantId:b.tenantId,cycleId,companyId:b.companyId,name:'Seat insight revocation',tier:'bu',reviewerUserIds:[],anchorKind:'bu_ceo'}).returning();await tx.insert(schema.onehrCalibrationEntry).values({tenantId:b.tenantId,sessionId:s.id,reviewId,employmentId:subject.employmentId});return s.id;});
+    const seat=await perf.appointLeaderSeat(a,{seatType:'bu_ceo',companyId:b.companyId,holderEmploymentId:seated.employmentId});
+    vi.mocked(generateDraft).mockImplementationOnce(async()=>{await perf.endLeaderSeat(a,seat.id);return raw;});
+    await expect(perf.getAssessmentPerformanceInsight(seated.ctx,reviewId,seatScope,{generate:true})).rejects.toThrow(/not assigned/);
+    expect(await owner.db.select().from(schema.assessmentInsight).where(eq(schema.assessmentInsight.contextId,seatScope))).toEqual([]);
   });
   it('projects insight facts and file text only for the assigned reviewer, retaining decimals and excluding private drafts',async()=>{
     const id=randomUUID(),scoring={mechanism:'A' as const,method:'more' as const,rates:[0,50,100,150,200] as [number,number,number,number,number]};
@@ -362,21 +368,25 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     const hod=await perf.createOnehrCalibration(a,cycleId,{name:'No department curve',companyId:b.companyId,tier:'hod',reviewerUserIds:[reviewer.userId!],reviewIds:[reviewId],pbtAchievement:100});await expect(perf.previewAssessmentCalibrationFit(reviewer,hod,'performance',b.companyId)).rejects.toThrow(/no curve/);
     const fresh=(await perf.getOnehrCycle(a,cycleId))!;await perf.updateOnehrWindows(a,cycleId,fresh.revision,{...fresh.policy.windows,pm_buceo:{opensAt:null,closesAt:new Date(Date.now()-60000).toISOString()}},'Close the preview window');await expect(perf.applyAssessmentCalibrationFit(reviewer,sessionId,'performance',b.companyId,preview.moves)).rejects.toThrow(/closed/);
   });
-  it('APR-011 on fit Apply: a move without a saved reason carries the server fit’s own reasons, and a move the server fit does not make is skipped',async()=>{
+  it('APR-022 on fit Apply: a move without a saved reason is applied with an empty note, never a generated or client-supplied one, and a move the server fit does not make is skipped',async()=>{
     await complete();const reviewer=peers[0].ctx,[thin]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,peers[1].employmentId))),sessionId=await perf.createOnehrCalibration(a,cycleId,{name:'Fit reasons',companyId:b.companyId,tier:'bu',reviewerUserIds:[reviewer.userId!],reviewIds:[reviewId,thin.reviewId],pbtAchievement:100});
     await perf.saveOnehrCalibration(reviewer,sessionId,1,{reviewId,axis:'performance',performance:'OU',potential:null,performanceNote:'Recorded with a reason.',potentialNote:''});
     await perf.saveOnehrCalibration(reviewer,sessionId,2,{reviewId:thin.reviewId,axis:'performance',performance:'OU',potential:null,performanceNote:'Awaiting score.',potentialNote:''});
-    // Bands that carry no saved reason (recorded before the rule reached every surface).
+    // Bands that carry no saved reason (a leader's reason is optional).
     await owner.db.update(schema.onehrCalibrationEntry).set({performanceNote:''}).where(eq(schema.onehrCalibrationEntry.sessionId,sessionId));
     const preview=await perf.previewAssessmentCalibrationFit(reviewer,sessionId,'performance',b.companyId),fit=preview.moves.find(m=>m.id===reviewId)!;
     expect(fit).toMatchObject({from:'OU',to:'AE'});expect(fit.reasons.length).toBeGreaterThan(0);expect(preview.moves.some(m=>m.id===thin.reviewId)).toBe(false);
-    // Client text never becomes the reason; the unscored person's crafted move has no server reason and is not written.
+    // No reason is required (D-P1-23 lapsed): the move keeps the person's own empty note; client text never becomes one.
+    // The unscored person's crafted move is not one the server fit makes, so it is skipped.
     expect(await perf.applyAssessmentCalibrationFit(reviewer,sessionId,'performance',b.companyId,[{id:thin.reviewId,from:'OU',to:'AE'},{id:fit.id,from:fit.from,to:fit.to,reasons:['Client supplied wording.']}])).toMatchObject({applied:[reviewId],skipped:[thin.reviewId]});
     const entries=await owner.db.select().from(schema.onehrCalibrationEntry).where(eq(schema.onehrCalibrationEntry.sessionId,sessionId));
-    expect(entries.find(e=>e.reviewId===reviewId)).toMatchObject({performance:'AE',performanceNote:`Distribution fit: ${fit.reasons.filter(r=>!r.startsWith('AI insight:')).join('; ')}`});
+    expect(entries.find(e=>e.reviewId===reviewId)).toMatchObject({performance:'AE',performanceNote:''});
+    expect(JSON.stringify(entries),'no generated fit note is stored').not.toContain('Distribution fit');
     expect(JSON.stringify(entries),'an AI verdict is never stored as a person’s reason').not.toContain('AI insight');
     expect(entries.find(e=>e.reviewId===thin.reviewId)).toMatchObject({performance:'OU',performanceNote:''});
     expect(JSON.stringify(entries)).not.toContain('Client supplied wording.');
+    // A move whose starting band is stale is still skipped.
+    expect(await perf.applyAssessmentCalibrationFit(reviewer,sessionId,'performance',b.companyId,[{id:fit.id,from:fit.from,to:fit.to}])).toMatchObject({applied:[],skipped:[reviewId]});
   });
   it('curve fit holds invalid potential and independently checks each axis and revoked cohort access',async()=>{
     await complete();const reviewer=peers[0].ctx,[thin]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,peers[1].employmentId)));
@@ -460,9 +470,14 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     expect((await view(self)).result).toMatchObject({id:frozenId,performance:null,potential:null,talent:null});
     expect(await withTenant(self,tx=>tx.select().from(schema.onehrResult))).toEqual([]);
     await perf.releaseOnehrResult(a,reviewId,'performance',true);expect((await view(self)).result).toMatchObject({performance:'ME',potential:null,talent:null});
+    // WP-E: the per-person panel is the single-step release, as step 'both': leaders and the person together.
+    const [both]=await owner.db.select().from(schema.assessmentRelease).where(eq(schema.assessmentRelease.reviewId,reviewId));
+    expect(both.performanceLeaderReleasedAt).toBeInstanceOf(Date);expect(both.performanceReleasedAt).toBeInstanceOf(Date);expect(both.potentialLeaderReleasedAt).toBeNull();
     await perf.releaseOnehrResult(a,reviewId,'talent',true);expect((await view(self)).result?.talent).toBe('Star');
     await perf.releaseOnehrResult(a,reviewId,'feedback',true);const own=await view(self);expect(own.feedbackReport).toHaveLength(7);expect(JSON.stringify(own.feedbackReport)).not.toMatch(/employmentId|requestId|count|relationship/);
     await perf.releaseOnehrResult(a,reviewId,'performance',false);expect((await view(self)).result?.performance).toBeNull();
+    const [revoked]=await owner.db.select().from(schema.assessmentRelease).where(eq(schema.assessmentRelease.reviewId,reviewId));
+    expect([revoked.performanceLeaderReleasedAt,revoked.performanceReleasedAt]).toEqual([null,null]);expect(revoked.talentLeaderReleasedAt).toBeInstanceOf(Date);
     await expect(perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[])).rejects.toThrow(/finalized/);
     await expect(withTenant(a,tx=>tx.update(schema.onehrResult).set({digest:'tampered'}).where(eq(schema.onehrResult.id,frozenId)))) .rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/immutable/)})});
     await expect(perf.configureOnehrCycle(a,cycleId,1,defaultPolicy(framework))).rejects.toThrow(/fixed/);

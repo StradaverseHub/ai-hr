@@ -195,7 +195,7 @@ export async function lockGroupPeopleAction(f:FormData){
  try{await perf.lockAssessmentGroupPeople(s,id,num(f,'revision'),ids(f,'reviewId'));}catch(error){redirect(withError(url,error));}
  revalidatePath('/performance/workspace');revalidatePath(url.split('?')[0]);redirect(url);
 }
-/** The Group performance list: a changed call carries the Group Chief's reason (APR-011); the writer enforces it. */
+/** The Group performance list: a changed call may carry the Group Chief's reason (optional under APR-022); a given one is stored. */
 export async function changeGroupBandAction(sessionId:string,revision:number,reviewId:string,band:PMBand,reason:string){
  const s=await getSession();
  try{const v=await perf.getOnehrCalibration(s,sessionId);if(v.session.tier!=='group')throw Error('This action belongs to Group calibration.');await perf.saveOnehrCalibration(s,sessionId,revision,{reviewId,axis:'performance',performance:band,potential:null,performanceNote:reason,potentialNote:''});revalidatePath('/performance/workspace');return {ok:true as const};}catch(error){return {error:await actionError(error)};}
@@ -260,6 +260,20 @@ export async function captureRatingRecordsAction(f:FormData){
  revalidatePath(`/performance/${id}/records`);redirect(url);
 }
 
+/** WP-E (CF-08) — one bulk release or revoke at one step; the page shows the per-person counts it returns. */
+export async function bulkReleaseAction(f:FormData){
+ const s=await getSession(),cycleId=z.uuid().parse(str(f,'cycleId'));
+ const filters=new URLSearchParams(Object.entries({businessGroup:str(f,'businessGroup'),companyId:str(f,'companyId'),department:str(f,'department'),status:str(f,'status')}).filter(([,v])=>!!v));
+ const base=`/performance/${cycleId}/release`,back=filters.size?`${base}?${filters}`:base;
+ let summary:string;
+ try{
+  const step=z.enum(perf.releaseSteps).parse(str(f,'to')),action=z.enum(['release','revoke']).parse(str(f,'action'));
+  const result=await perf.releaseOnehrResults(s,{cycleId,reviewIds:ids(f,'ids'),result:z.enum(perf.releaseResults).parse(str(f,'result')),step,action});
+  summary=Buffer.from(JSON.stringify({step,action,...result}),'utf8').toString('base64url');
+ }catch(e){redirect(withError(back,e));}
+ const q=new URLSearchParams(filters);q.set('outcome',summary);
+ revalidatePath(base);revalidatePath(`/performance/${cycleId}`);revalidatePath('/performance/led');redirect(`${base}?${q}`);
+}
 export async function assessmentArchitectureAction(cycleId:string,sheets:{Job_Profile:string;Job_Skills:string},token?:string){
  const s=await getSession();try{const result=await perf.importAssessmentArchitecture(s,cycleId,sheets,token);if(result.applied){revalidatePath(`/performance/${cycleId}`);revalidatePath('/performance/workspace');}return {result};}catch(error){return {error:await actionError(error)};}
 }

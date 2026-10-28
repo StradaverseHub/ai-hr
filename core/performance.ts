@@ -1802,7 +1802,7 @@ export function managerPendingReviews(ctx: SessionContext) {
     // Surface both 'manager_review' (employee self-submitted, your turn) and 'self_review' (employee
     // hasn't self-assessed — you can still finalize; the service allows it, so it must be findable).
     // Only on OPEN cycles (calibration/closed are frozen).
-    return tx
+    const own = await tx
       .select({
         reviewId: performanceReview.id,
         employee: person.fullName,
@@ -1823,9 +1823,24 @@ export function managerPendingReviews(ctx: SessionContext) {
           inArray(performanceReview.reviewerEmploymentId, myEmploymentIds),
           inArray(performanceReview.status, ['manager_review', 'self_review']),
           eq(reviewCycle.status, 'open'),
+          // D-P1-22 (ADR-0150): a OneHR review whose stored reviewer's unit is left out of the cycle is not
+          // theirs while the rule stands (leader-off). Read through the pack's SQL predicate only.
+          sql`not app.onehr_reviewer_unit_out(${performanceReview.id})`,
         ),
       )
       .orderBy(reviewCycle.name, person.fullName);
+    // ...and the reviews this viewer now reviews one level up (competency and Career Plan work), from the pack's
+    // SQL projection. With no active rule it returns nothing and the queue is exactly as before.
+    const stepped = await tx.execute<{ review_id: string; employee: string; employee_code: string | null; cycle_name: string; status: string; company_id: string; created_at: string | Date }>(
+      sql`select review_id, employee, employee_code, cycle_name, status, company_id, created_at from app.onehr_effective_review_queue()`,
+    );
+    const seen = new Set(own.map((r) => r.reviewId));
+    const extra = stepped.filter((r) => !seen.has(r.review_id)).map((r) => ({
+      reviewId: r.review_id, employee: r.employee, employeeCode: r.employee_code, cycleName: r.cycle_name,
+      status: r.status as (typeof own)[number]['status'], companyId: r.company_id, createdAt: new Date(r.created_at),
+    }));
+    if (!extra.length) return own;
+    return [...own, ...extra].sort((a, b) => a.cycleName.localeCompare(b.cycleName) || a.employee.localeCompare(b.employee) || a.reviewId.localeCompare(b.reviewId));
   });
 }
 

@@ -6,7 +6,7 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { canManagePerfComp, isAdmin, isOnehrOnlyPerformanceAdmin, requireModule } from '@/lib/authz';
-import { hasAssignedPerformanceWork, onehrAssignments } from '@/packs/performance/service';
+import { hasAssignedPerformanceWork, hasLedPeople, onehrAssignments } from '@/packs/performance/service';
 import { listCompanies } from '@/core/read';
 import { listCycles, listOnehrAdminCompanyIds, listOnehrAdminCycles, managerCheckIns, managerPendingReviews, type OnehrAdminCycleSummary } from '@/core/performance';
 import { Button, Card, EmployeeCode, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, inputCls } from '@/components/ui';
@@ -43,7 +43,9 @@ export default async function PerformancePage({
   // D-P1-03 — a person named on performance work (a reviewer, moderator, plan reviewer or calibration reviewer)
   // gets tasks that land here, whatever their platform role. The bell's own projection decides who that is;
   // reaching the page grants nothing (ADR-0132): every read below is fenced by its own service and RLS.
-  if (!performanceAdmin && !manager && !(await hasAssignedPerformanceWork(s, scopeIds))) redirect('/');
+  // WP-E — a leader (HOD, BU CEO, BG CEO or group chief seat) reaches "What you led" from here.
+  const leads = await hasLedPeople(s);
+  if (!performanceAdmin && !manager && !leads && !(await hasAssignedPerformanceWork(s, scopeIds))) redirect('/');
   const sp = await searchParams;
   const { error } = sp;
   const today = todayInKualaLumpur();
@@ -76,6 +78,7 @@ export default async function PerformancePage({
       {performanceAdmin&&<PerformanceOverview session={s}/>}
       {performanceAdmin&&<PerformanceGuideReportPanel companies={companies.map(c=>({id:c.id,name:c.name}))}/>}
       <Link href="/performance/workspace" className="flex min-h-11 flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-lg border border-primary bg-primary/5 px-5 py-4 font-medium text-primary">{to('workspace.title')}<span className="text-sm font-normal">{to('workspace.description')} →</span></Link>
+      {leads&&<Link href="/performance/led" className="flex min-h-11 flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-lg border border-border px-5 py-4 font-medium text-primary">{to('led.link')}<span className="text-sm font-normal">{to('led.linkHelp')} →</span></Link>}
       {(onehr.reviews.length>0||onehr.sessions.length>0)&&<Card className="space-y-3 p-5"><h2 className="font-semibold">{to('assignments')}</h2>{onehr.reviews.map(r=><p key={r.id}><Link className="text-primary hover:underline" href={`/performance/review/${r.id}`}>{r.name} · {r.cycle} · {r.periodEnd}</Link></p>)}{onehr.sessions.map(c=><p key={c.id}><Link className="text-primary hover:underline" href={`/performance/assessment/calibration/${c.id}`}>{c.name}</Link></p>)}</Card>}
 
       {pending.length > 0 && (
@@ -173,6 +176,7 @@ export default async function PerformancePage({
         <>
           <Card className="overflow-hidden" data-tour="performance-cycles">
             <SectionHeader title={t('reviewCycles')} count={cycles.length} />
+            <div className="border-b border-border px-4 py-2 text-sm"><Link href="/performance/leaders" className="text-primary hover:underline">{to('leaders.title')} →</Link> <span className="text-muted-foreground">{to('leaders.listHint')}</span></div>
             {cycles.length === 0 ? (
               <p className="px-4 py-8 text-center text-sm text-muted-foreground">
                 {t('noCycles')}
