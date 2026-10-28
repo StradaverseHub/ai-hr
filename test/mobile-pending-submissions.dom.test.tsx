@@ -14,6 +14,7 @@ function fixture(){
   const list=vi.fn(async()=>[item]);
   const reconcile=vi.fn<(...args:unknown[])=>Promise<any>>(async()=>({kind:'clock',requestId:item.requestId,receipt:null,abandoned:true}));
   const signOut=vi.fn(async()=>{}),setEmploymentId=vi.fn(),remove=vi.fn(),router={replace:vi.fn(),back:vi.fn()};
+  const releasePush=vi.fn(async(..._args:unknown[])=>{});
   const drafts={clock:{employmentId:'own',requestId:item.requestId,photo:{uri:'private-photo'}},leave:null,putClock:vi.fn(),putLeave:vi.fn()};
   let dialog:Array<{style?:string;onPress?:()=>void}>=[];
   const Container=({children}:React.PropsWithChildren)=><div>{children}</div>;
@@ -26,6 +27,7 @@ function fixture(){
     './auth':{authGeneration:()=>owner},'./config':{identityNamespace:()=>'https://hr.example.com'},
     './journey-drafts':{useJourneyDrafts:()=>drafts,removeLocalFile:remove},
     './i18n':{appLocale:()=>'en',t:(key:string,values?:{n:number})=>key==='pendingCount'||key==='offlineSignOutNote'?`${key} ${values?.n}`:key},
+    './push-core':{releasePushOnExit:releasePush},
     './offline-clock':{useQueuedOfflinePunches:(isUnlocked:()=>boolean)=>{expect(typeof isUnlocked).toBe('function');return queued;}},
     './ui':{Screen:Container,Card:Container,Muted:Text,Row:()=>null,Title:({children}:React.PropsWithChildren)=><h1>{children}</h1>,
       LoadState:({loading,error}:any)=><span>{loading?'loading':error?'load error':''}</span>,
@@ -34,7 +36,7 @@ function fixture(){
   const output={exports:{} as {PendingSubmissions:React.ComponentType<{intent?:'review'|'logout'|'company'}>}};
   runInNewContext(transpileModule(readFileSync('mobile/lib/pending-submissions.tsx','utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX}}).outputText,
     {module:output,exports:output.exports,Date,require:(name:string)=>{if(name in ports)return ports[name];throw new Error(name);}});
-  return {View:output.exports.PendingSubmissions,item,list,reconcile,signOut,setEmploymentId,remove,router,drafts,handlers,changeAccount:()=>{owner++;},dialog:()=>dialog,queue:(n:number)=>{queued=n;}};
+  return {View:output.exports.PendingSubmissions,item,list,reconcile,signOut,setEmploymentId,remove,router,drafts,handlers,releasePush,changeAccount:()=>{owner++;},dialog:()=>dialog,queue:(n:number)=>{queued=n;}};
 }
 afterEach(cleanup);
 describe('pending-aware voluntary exit',()=>{
@@ -76,6 +78,8 @@ describe('pending-aware voluntary exit',()=>{
     const f=fixture();render(<f.View intent="company"/>);await screen.findByText('pendingCount 1');
     fireEvent.click(screen.getByText('pendingReview'));expect(f.setEmploymentId).toHaveBeenCalledWith('own');expect(f.router.replace).toHaveBeenCalledWith('/');
     fireEvent.click(screen.getByText('pendingKeepCompany'));expect(f.router.replace).toHaveBeenCalledWith('/company');expect(f.signOut).not.toHaveBeenCalled();
+    // M10/D8: a company change releases this phone's push binding and reminders (sign-out does it inside the session).
+    expect(f.releasePush).toHaveBeenCalledWith('company',null);
   });
   it('notes saved offline punches before sign-out as information: not counted, not discardable, not a blocker',async()=>{
     const f=fixture();f.queue(2);render(<f.View intent="logout"/>);await screen.findByText('pendingCount 1');

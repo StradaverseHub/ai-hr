@@ -33,8 +33,8 @@ export function PendingSubmissions({intent='review'}:{intent?:'review'|'logout'|
   useEffect(()=>{flight.current=null;exiting.current=false;setBusy(false);setMessage('');},[key]);
   function continueExit(){
     if(!stillCurrent()||exiting.current)return;exiting.current=true;
-    // M10/D8: a company change revokes this phone's push binding and drops its reminders first (bounded, best effort);
-    // sign-out does the same inside the session's signOut.
+    // M10/D8: a company change starts revoking this phone's push binding and drops its reminders (bounded, best effort,
+    // not awaited: the tokens stay until the company screen applies a new company). Sign-out does it in the session.
     if(intent==='company'){void releasePushOnExit('company',employmentId??null);router.replace('/company');}else void signOut();
   }
   useEffect(()=>{

@@ -68,7 +68,7 @@ function fixture(options:{clock?:'loaded'|'offline';employmentId?:string|null}={
     './submission-recovery':{useSubmissionRecovery:()=>({ready:true,error:null,reload:()=>{},stage,resolve,prepareClock,reportAttempt,hasSignedAttempt:async(id:string)=>retained.has(id)})},
     './journey-drafts':{...provider,removeLocalFile:remove},'./ui':ui,
     './api':{apiGet:vi.fn(),apiPost:(path:string,...args:unknown[])=>path==='clock-location'?preview(...args):post(path,...args),useApi:(path:string)=>path==='clock'?clockRead:{data:{items:[]},reload:vi.fn(),loading:false,error:null}},
-    './capture':{capturePosition:capture,capturePhoto:vi.fn(async()=>null),appendAttachment:()=>{}},'./device-registration':{readClockDevice:async()=>null,writeClockDevice:async()=>{},clearClockDevice:async()=>{}},
+    './capture':{capturePosition:capture,capturePhoto:vi.fn(async()=>null),appendAttachment:()=>{}},'./device-registration':{readClockDevice:async()=>null,writeClockDevice:async()=>{},clearClockDevice:async()=>{}},'./shift-reminder-signal':{requestShiftReminderRefresh:()=>{}},
     './slide-confirm':{SlideConfirm:(p:any)=><button disabled={p.disabled} onClick={p.onConfirm}>{p.label}</button>},'./offline-clock':offlineUi};
   const {ClockPanel}=load('mobile/lib/clock-panel.tsx',shared);
   function Probe(){drafts=provider.useJourneyDrafts();return null;}

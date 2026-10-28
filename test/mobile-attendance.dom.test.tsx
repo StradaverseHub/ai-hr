@@ -112,7 +112,8 @@ function fixture() {
   const PickerField = (p: any) => <button disabled={p.disabled} aria-label={p.label} onClick={() => p.onChange(picks[p.label])}>{`${p.label}=${p.value ?? ''}`}</button>;
   const format = load('mobile/lib/attendance-format.ts', { './i18n': i18n });
   const paged = load('mobile/lib/paged-list.tsx', { ...base, './api': api });
-  const recordsLib = load('mobile/lib/attendance-records.tsx', { ...base, './api': api, './attendance-format': format });
+  // D8: a fresh roster re-plans shift reminders through this signal (mobile/lib/shift-reminder-signal.ts).
+  const recordsLib = load('mobile/lib/attendance-records.tsx', { ...base, './api': api, './attendance-format': format, './shift-reminder-signal': { requestShiftReminderRefresh: () => {} } });
   const applications = load('mobile/lib/attendance-applications.tsx', { ...base, './api': api, './paged-list': paged, './attendance-format': format, './attendance-records': recordsLib });
   const requests = load('mobile/lib/attendance-requests.tsx', { ...base, './api': api, './attendance-format': format, './attendance-records': recordsLib, './attendance-applications': applications, './leave-request-form': { PickerField } });
   const confirm = async (index = 0) => { const buttons = alert.mock.calls[index][2]; await act(async () => { buttons[1].onPress(); }); };

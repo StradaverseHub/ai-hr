@@ -91,6 +91,8 @@ describe('session lifecycle sweeps', () => {
       if (id === './i18n') return { t: (key: string) => key };
       if (id === './auth') return { hasStoredSession: async () => true, signOut: clearTokens, assertAuthGeneration() {}, workosLogoutUrl: () => null, redirectUri: () => 'aihr://auth/callback' };
       if (id === './protected-document') return { sweepProtectedDocuments: sweep };
+      // M10/D8: sign-out first releases this phone's push binding and shift reminders (mobile/lib/push-core.ts).
+      if (id === './push-core') return { releasePushOnExit: async () => undefined };
       throw new Error('Unexpected session dependency ' + id);
     });
     const probe: { current?: { status: string; employmentId: string | null; setEmploymentId: (id: string | null) => void; signOut: () => Promise<void> } } = {};
