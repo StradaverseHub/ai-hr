@@ -20393,7 +20393,7 @@
       "futureOnly": "Simpanan mencipta versi baharu untuk semakan akan datang. Senarai pekerja, belanjawan, akses dan kelulusan sedia ada kekal pada semakan masing-masing.",
       "name": "Nama konfigurasi",
       "year": "Tahun ganjaran",
-      "search": "Cari syarikat atau unit perniagaan",
+      "search": "Cari kumpulan, syarikat atau unit",
       "unavailable": "Tidak tersedia",
       "global": "Unit perniagaan global",
       "archived": "Diarkibkan",
@@ -20424,12 +20424,23 @@
         "invalid": "Semak dasar, nama unik dan pasangan syarikat/unit yang serasi.",
         "changed": "Konfigurasi berubah atau tidak lagi tersedia. Muat semula sebelum menyimpan.",
         "scope": "Anda tidak boleh mengurus semua syarikat dalam kumpulan sedia ada atau dipilih.",
-        "system": "Konfigurasi tidak dapat disimpan. Muat semula sebelum mencuba lagi."
+        "system": "Konfigurasi tidak dapat disimpan. Muat semula sebelum mencuba lagi.",
+        "overlap": "Sesetengah unit sudah ditetapkan kepada konfigurasi lain. Alih keluar atau muat semula penetapan."
       },
       "ownershipHelp": "Setiap pasangan syarikat/unit menggunakan satu konfigurasi dikongsi bagi setiap tahun ganjaran.",
       "currencyHelp": "Konfigurasi dikongsi menggunakan dasar Reward Desk MYR sedia ada; dasar mata wang lain tidak ditawarkan di sini.",
       "archive": "Arkibkan konfigurasi",
-      "archiveHelp": "Menyimpan tanpa pasangan dipilih menghentikan konfigurasi ini untuk semakan akan datang. Versi tersimpan dan semakan sedia ada dikekalkan."
+      "archiveHelp": "Menyimpan tanpa pasangan dipilih menghentikan konfigurasi ini untuk semakan akan datang. Versi tersimpan dan semakan sedia ada dikekalkan.",
+      "otherCompanies": "Syarikat lain",
+      "selectAll": "Pilih semua",
+      "selectedCount": "Dipilih: {companies} syarikat, {units} unit",
+      "assignedTo": "Dalam {name}",
+      "noUnits": "Tiada unit perniagaan disediakan.",
+      "manageUnits": "Sediakan dalam Pengurusan Kakitangan",
+      "loadingTaken": "Menyemak penetapan bagi tahun ganjaran ini…",
+      "loadFailed": "Penetapan tidak dapat disemak. Cuba lagi sebelum meneruskan.",
+      "retry": "Cuba lagi",
+      "conflict": "{unit} sudah dalam {name} bagi {year}."
     },
     "returnedTo": {
       "bu": "Returned to BU CEO",

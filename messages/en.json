@@ -20393,7 +20393,7 @@
       "futureOnly": "Saving creates a new version for future reviews. Existing employee lists, budgets, access and approvals stay with their own reviews.",
       "name": "Configuration name",
       "year": "Reward year",
-      "search": "Search companies or business units",
+      "search": "Search group, company or unit",
       "unavailable": "Unavailable",
       "global": "Global business unit",
       "archived": "Archived",
@@ -20424,12 +20424,23 @@
         "invalid": "Check the policy, unique name and compatible company/unit pairs.",
         "changed": "The configuration changed or is no longer available. Reload before saving.",
         "scope": "You cannot manage every company in the existing or selected group.",
-        "system": "The configuration could not be saved. Reload before trying again."
+        "system": "The configuration could not be saved. Reload before trying again.",
+        "overlap": "Some units are already assigned to another configuration. Remove them or reload the assignments."
       },
       "ownershipHelp": "A company/unit pair uses one shared configuration per reward year.",
       "currencyHelp": "Shared configurations use the existing MYR Reward Desk policy; other currency policies are not offered here.",
       "archive": "Archive configuration",
-      "archiveHelp": "Saving with no selected pairs stops this configuration for future reviews. Its saved versions and existing reviews are retained."
+      "archiveHelp": "Saving with no selected pairs stops this configuration for future reviews. Its saved versions and existing reviews are retained.",
+      "otherCompanies": "Other companies",
+      "selectAll": "Select all",
+      "selectedCount": "Selected: {companies} companies, {units} units",
+      "assignedTo": "In {name}",
+      "noUnits": "No business units set up.",
+      "manageUnits": "Set up in People Management",
+      "loadingTaken": "Checking assignments for this reward year…",
+      "loadFailed": "Assignments could not be checked. Try again before continuing.",
+      "retry": "Try again",
+      "conflict": "{unit} is already in {name} for {year}."
     },
     "returnedTo": {
       "bu": "Returned to BU CEO",

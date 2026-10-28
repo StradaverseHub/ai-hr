@@ -20393,7 +20393,7 @@
       "futureOnly": "保存将创建供未来评审使用的新版本。现有员工名单、预算、访问权限与审批仍归各自评审所有。",
       "name": "配置名称",
       "year": "奖励年度",
-      "search": "搜索公司或业务单位",
+      "search": "搜索集团、公司或业务单位",
       "unavailable": "不可用",
       "global": "全局业务单位",
       "archived": "已归档",
@@ -20424,12 +20424,23 @@
         "invalid": "请检查政策、唯一名称及可用的公司／业务单位组合。",
         "changed": "配置已更改或不再可用。请重新加载后再保存。",
         "scope": "您不能管理现有或所选分组中的所有公司。",
-        "system": "无法保存配置。请重新加载后再试。"
+        "system": "无法保存配置。请重新加载后再试。",
+        "overlap": "部分单位已分配给其他配置。请移除这些单位或重新加载分配。"
       },
       "ownershipHelp": "每个公司／业务单位组合在同一奖励年度使用一份共享配置。",
       "currencyHelp": "共享配置使用现有的 MYR 奖励政策；此处不提供其他币种政策。",
       "archive": "归档配置",
-      "archiveHelp": "不选择任何组合保存后，此配置将不再用于未来评审。已保存版本与现有评审均予保留。"
+      "archiveHelp": "不选择任何组合保存后，此配置将不再用于未来评审。已保存版本与现有评审均予保留。",
+      "otherCompanies": "其他公司",
+      "selectAll": "全选",
+      "selectedCount": "已选：{companies} 家公司，{units} 个单位",
+      "assignedTo": "已纳入 {name}",
+      "noUnits": "尚未设置业务单位。",
+      "manageUnits": "前往人事管理设置",
+      "loadingTaken": "正在检查此奖励年度的分配…",
+      "loadFailed": "无法检查分配。请重试后再继续。",
+      "retry": "重试",
+      "conflict": "{unit} 在 {year} 年已纳入 {name}。"
     },
     "returnedTo": {
       "bu": "Returned to BU CEO",
