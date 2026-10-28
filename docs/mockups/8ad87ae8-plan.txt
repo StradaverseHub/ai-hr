@@ -1,0 +1,59 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+AIHR already has this rule. Each review has a "pay-change exclusion" window that Group Rewards can change in the review settings. Anyone whose basic salary changed inside it gets no merit, promotion or special adjustment, their new basic stays the same, and their salary is left out of the salary increase pools. They stay in the bonus run, and their salary still counts towards the bonus pool.
+
+There are five gaps. The window for new reviews starts as 1 October to 31 January, not 31 December. Only the salary in effect on the snapshot date is checked, so a change dated after the snapshot is missed, and the bonus is then worked out on the old salary. A record that was re-saved without any change to basic salary, such as a transfer, can count as a change. The reason appears only on each person's own page, with no date or type of change. There is no list, no export, no override with a reason, and the pools do not show what was left out.
+
+WHAT WE'LL CHANGE
+
+- New reviews start with the window set to 1 October to 31 December of the reward year. Group Rewards can still change it. Existing reviews keep their current window.
+
+- The check looks at every basic salary change dated inside the window, including future-dated ones, not just the salary on the snapshot date. It runs again whenever the snapshot is refreshed.
+
+- Only a real change in basic salary counts. A lateral transfer (change of company, BU, department or position) with the same basic salary does not, and those employees stay eligible for both the salary increase and the bonus.
+
+- For these employees, the bonus and their share of the bonus pool use the adjusted basic salary, meaning the latest basic salary inside the window as recorded in AIHR.
+
+- In the people list, these employees are tagged "Salary adjusted 1 Oct to 31 Dec: not eligible for salary increase", with the date and type of the change (for example promotion or increment). Where AIHR has no type recorded, it says "Salary change".
+
+- Their merit, promotion and special adjustment show 0% and cannot be edited.
+
+- Under the salary increase pools: "Excluded from base: X employees, MYR Y payroll", with a link to the list.
+
+- Group Rewards gets a list of excluded employees with the change details, and can export it.
+
+- Group Rewards can keep a specific employee eligible with a written reason, for example a correction of a payroll error. The override is shown in the list and recorded with who, when and why.
+
+WHAT YOU'LL GET
+
+The rule follows your 1 October to 31 December policy, catches changes made after the snapshot, and everyone can see who was left out and why. The pools show the amount excluded.
+
+GOOD TO KNOW
+
+- We're not changing who counts for the bonus. These employees stay in the bonus run under the normal bonus rules, and their adjusted salary counts towards the bonus pool.
+
+- The type of change comes from how the change was entered in People. AIHR has types for promotion, increment, confirmation and salary adjustment; counter offers and off-cycle increments show the type they were entered as, or "Salary change" if none was given.
+
+- Your approved request about the snapshot date (refreshing it for year-end rules) works together with this one.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACTS (origin/alpha a5dbc80d0): engine.ts line 41 excludes when source.lastPayChange is within policy.blockedFrom..blockedTo ("Pay change in the exclusion window"); inPool (line 70) leaves them out of salary-increase payroll; bonus eligibility (line 50) ignores pay changes. model.ts defaultPolicy: blockedFrom year-10-01, blockedTo year+1-01-31. service.ts snapshotEmployees (259-289) reads only the compensation row in effect at snapshotDate; lastPayChange = that row's validFrom if after hiredOn. compensation (schema.ts 3219) has validFrom/validTo/supersededAt and remarks, no type column; movement type is on compensation.set events (core/comp.ts 307-311, movement kinds in core/movement-kinds.ts). source.basicCents is the snapshot-date row, so a future-dated adjustment is not in the bonus base today. Readers: movementReportFactsTx / movementHistoryTx in core/movement.ts. Export: app/rewards/[unitId]/export/route.ts (GR only).
+
+1. defaultPolicy blockedTo = year-12-31 (new reviews and new shared configurations only; existing jsonb untouched).
+
+2. snapshotEmployees: add source.payChanges [{validFrom, kind or null}] = non-superseded compensation rows for the employment with validFrom in blockedFrom..blockedTo and validFrom > hiredOn (any validFrom, not only <= snapshot) AND basicSalary different from the immediately preceding row (lateral transfers / re-saves with equal basic do not count), kind from the compensation.set event movement tag via core/movement reader (batched). Keep lastPayChange for old snapshots; engine uses payChanges when present, else lastPayChange.
+
+3. facts.payChangeOverride {keep: true, reason >= 10} editable by GR via saveRewardEntry; engine skips the window rule when set; event recommendation-updated already stamped, add before/after to payload.
+
+3b. source.adjustedBasicCents = basic of the latest qualifying row in the window (null when none). Engine: for window-excluded employees bonusBase and bonusPayrollCents use adjustedBasicCents ?? basicCents; increment fields keep basicCents (new basic = current basic). Display both on the person page.
+
+4. Engine output per plan: excludedForPayChange {count, payrollCents}; incrementReason code PAY_WINDOW for UI tag; the existing reason string stays.
+
+5. UI: tag + date/kind in people table (page.tsx review tab); disabled merit/promotion/special inputs already zero-forced, show them disabled on the person page; "Excluded from base" line under salary budgets; GR list view (view=excluded) with override form; export route adds shape=excluded (GR only).
+
+6. Strings in six locales. Tests: change after snapshot date but in window excludes; change on 1 Jan next year does not (new default); equal-basic transfer row does not exclude; future-dated in-window increase raises bonus base and bonus pool to the adjusted basic; override with reason re-includes in pool; bonus pool unchanged; old snapshots without payChanges behave as before; export GR only. No migration.
