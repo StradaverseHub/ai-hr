@@ -44,7 +44,9 @@ export const PAYROLL_HISTORY_HEADERS: readonly string[] = [
   'Employee No',
   'Payroll Period',
   'Payroll Cycle',
-  'DOE Code',
+  // b240c0ff — "Pay Items Code", the reporter's name for it. The contract key stays `doe_code`, and a file
+  // still headed "DOE Code" keeps uploading through the alias list below.
+  'Pay Items Code',
   'Company Code',
   'Amount',
 ];
@@ -59,7 +61,7 @@ export const PAYROLL_HISTORY_HEADER_ALIASES: Readonly<Record<string, readonly st
   employee_no: ['employee_no', 'employee_code', 'employee_number', 'employee', 'emp_no', 'staff_id', 'staff_no'],
   payroll_period: ['payroll_period', 'period', 'pay_period', 'payroll_month'],
   payroll_cycle: ['payroll_cycle', 'cycle', 'pay_cycle'],
-  doe_code: ['doe_code', 'doe', 'code', 'pay_code', 'component_code'],
+  doe_code: ['doe_code', 'pay_items_code', 'pay_item_code', 'doe', 'code', 'pay_code', 'component_code'],
   company_code: ['company_code', 'company', 'company_label', 'co_code'],
   amount: ['amount', 'value'],
 };
@@ -120,6 +122,13 @@ export function readHistoryField(rec: PayrollHistoryRecord, key: string): string
     if (v != null && String(v).trim() !== '') return String(v).trim();
   }
   return '';
+}
+
+/** b240c0ff — the heading a contract key is written under on the template ("doe_code" → "Pay Items Code"),
+ *  so a message about a missing column names the column the reader can see. Unknown keys pass through. */
+export function historyColumnLabel(key: string): string {
+  const i = (PAYROLL_HISTORY_COLUMNS.required as readonly string[]).indexOf(key);
+  return i >= 0 ? (PAYROLL_HISTORY_HEADERS[i] ?? key) : key;
 }
 
 /** Which required columns are absent from the uploaded header row (checked once, before the rows). */
@@ -315,7 +324,7 @@ export const HISTORY_ERROR_TYPES = [
   'Invalid Employee No',
   'Invalid Payroll Period',
   'Invalid Payroll Cycle',
-  'Invalid DOE Code',
+  'Invalid Pay Items Code',
   'Invalid Company Code',
   'Invalid Amount',
   'Missing mandatory field',
