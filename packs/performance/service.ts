@@ -70,3 +70,4 @@ export {getAssessmentOverview} from './onehr/overview-service';
 // WP-B1 (APR-020) — the Calibration destination (read-only list + the sidebar flag).
 export {listMyCalibrationSessions,hasCalibrationAssignment,pendingCalibrationTasks,calibrationListTierOrder,type CalibrationListSession} from './onehr/calibration-list';
 export {pendingPerformanceTasks} from './onehr/tasks';
+export {getPerformanceHomeBlock,hasAssignedPerformanceWork,type PerformanceHomeBlock,type HomeStep,type HomeStepKey,type HomeStepState,type HomeNextStep,type HomeStanding,type HomeTeam} from './onehr/home-cards';

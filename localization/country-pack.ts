@@ -360,6 +360,8 @@ type MyTaxSelectionModule = typeof import('./my/tax-selection');
  * names a jurisdiction directly (enforced by the drift-guard ratchet, ADR-0080 D7).
  */
 export interface CountryPack {
+  /** Presentation of audit instants; the stored timestamp remains UTC. */
+  displayClock?: {timeZone:string;label:string};
   eaReporting?: readonly {code: string; section: string; destination: string; label: string; order: number; active: boolean; aliases?: readonly string[]}[];
   /** ISO alpha-2 country code (uppercase) — the registry key, matching `company.country`. */
   country: string;

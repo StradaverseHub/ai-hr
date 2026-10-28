@@ -9,7 +9,8 @@ import {eq} from 'drizzle-orm';
 import {createDb} from '../db/client';
 import {payslip} from '../db/schema';
 
-/** Customer-shaped synthetic data, created on the actual upstream schema before either new migration.
+/** Customer-shaped synthetic data, created on the actual upstream schema before either board migration.
+ * Pin the board pair at its boundary; later journaled migrations must also preserve the populated rows.
  * Owns one random scratch database in the test container. Never copies customer data or resets a shared DB. */
 it('upgrades populated upstream data through both board migrations without changing existing payroll or access',async()=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8'));

@@ -19,7 +19,9 @@ import {HomeCelebrationsCard} from './celebrations-card';
 import {homeDisplayClock,type EmployeeHomeCard} from '@/lib/employee-home';
 
 /** Personal landing composition only. Every card retrieves its own authorized facts independently. */
-export async function EmployeePersonalHome({session,employmentId,greetingsEnabled=false}:{session:SessionContext;employmentId?:string;greetingsEnabled?:boolean}){
+export async function EmployeePersonalHome({session,employmentId,greetingsEnabled=false,lead}:{session:SessionContext;employmentId?:string;greetingsEnabled?:boolean;
+ /** WP-A2: a module block shown under the page header (the Performance block), reading its own facts. */
+ lead?:ReactNode}){
  const ownIdentity=readEmployeeHomeIdentity(session,employmentId).catch(error=>{
   if(error instanceof HomeAccessError&&error.code==='employmentUnavailable')notFound();
   throw error;
@@ -43,6 +45,6 @@ export async function EmployeePersonalHome({session,employmentId,greetingsEnable
    {identity.role==='manager'&&<Link href={'/?'+new URLSearchParams({workspace:'team',...(selected?{employmentId:selected}:{})})} className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('teamWorkbench')}</Link>}
    <Link href="/me/home" className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('preferences.title')}</Link>
   </nav>
-  <EmployeeHomeSurface identity={identity} preferences={preferences} cards={cards} labels={{title:t('title'),employment:t('employment'),chooseEmployment:t('chooseEmployment'),chooseHelp:t('chooseHelp'),showEmployment:t('showEmployment'),noEmployment:t('noEmployment'),companyUnavailable:t('companyUnavailable'),employeeCodeUnavailable:t('employeeCodeUnavailable')}}/>
+  <EmployeeHomeSurface identity={identity} preferences={preferences} cards={cards} lead={lead} labels={{title:t('title'),employment:t('employment'),chooseEmployment:t('chooseEmployment'),chooseHelp:t('chooseHelp'),showEmployment:t('showEmployment'),noEmployment:t('noEmployment'),companyUnavailable:t('companyUnavailable'),employeeCodeUnavailable:t('employeeCodeUnavailable')}}/>
  </div>;
 }

@@ -13,10 +13,10 @@ const button='inline-flex items-center justify-center rounded-lg border px-4 py-
 export function HistoryWorkflow({codes}:{codes:Code[]}){
  const t=useTranslations('payroll.historyRevisions'),old=useTranslations('payroll.historyImport');
  const [file,setFile]=useState<File|null>(null),[preview,setPreview]=useState<{attemptId:string;plan:HistoryRevisionPlan}|null>(null);
- const [busy,setBusy]=useState<'validate'|'confirm'|'template'|null>(null),[error,setError]=useState<string|null>(null),[confirmed,setConfirmed]=useState(false),[replacements,setReplacements]=useState(false),[done,setDone]=useState(false);
+ const [busy,setBusy]=useState<'validate'|'confirm'|'template'|null>(null),[error,setError]=useState<string|null>(null),[confirmed,setConfirmed]=useState(false),[replacements,setReplacements]=useState<'replace'|'skip'|null>(null),[skipped,setSkipped]=useState(0),[done,setDone]=useState(false);
  const operation=useRef<string|null>(null);
  async function validate(){
-  if(!file||busy)return;setBusy('validate');setError(null);setDone(false);setConfirmed(false);setReplacements(false);
+  if(!file||busy)return;setBusy('validate');setError(null);setDone(false);setConfirmed(false);setReplacements(null);setSkipped(0);
   try{
    operation.current??=crypto.randomUUID();
    const response=await fetch('/payroll/history-import/upload?name='+encodeURIComponent(file.name),{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Upload-Operation':operation.current},body:file});
@@ -26,11 +26,14 @@ export function HistoryWorkflow({codes}:{codes:Code[]}){
  }
  async function commit(){
   if(!preview||busy)return;setBusy('confirm');setError(null);
-  try{const result=await confirmHistoryUploadAction({attemptId:preview.attemptId,previewHash:preview.plan.previewHash,confirmReplacement:replacements});if(!result.ok)setError(result.error??t('failed'));else setDone(true);}catch{setError(t('failed'));}finally{setBusy(null);}
+  try{const result=await confirmHistoryUploadAction({attemptId:preview.attemptId,previewHash:preview.plan.previewHash,confirmReplacement:replacements==='replace',skipReplacements:replacements==='skip'});if(!result.ok)setError(result.error??t('failed'));else{setSkipped(result.result.skippedReplacements??0);setDone(true);}}catch{setError(t('failed'));}finally{setBusy(null);}
  }
  async function template(){
   setBusy('template');setError(null);
-  try{const bytes=await buildPayrollHistoryWorkbook({title:old('codeReference'),note:old('codeReferenceHint'),code:old('colCode'),label:old('colCodeLabel'),destination:old('colDestination'),direction:old('colDirection')},codes);
+  try{const bytes=await buildPayrollHistoryWorkbook({title:old('codeReference'),note:old('codeReferenceHint'),code:old('colCode'),label:old('colCodeLabel'),destination:old('colDestination'),direction:old('colDirection'),
+    category:old('colCategory'),amountType:old('colAmountType'),sampleNote:old('sampleNote'),
+    categoryNames:{basic:old('categories.basic'),earning:old('categories.earning'),deduction:old('categories.deduction'),employeeStatutory:old('categories.employeeStatutory'),employerStatutory:old('categories.employerStatutory'),payrollTotal:old('categories.payrollTotal')},
+    amountTypeNames:{employee:old('amountTypes.employee'),employer:old('amountTypes.employer'),check:old('amountTypes.check')}},codes);
    const url=URL.createObjectURL(new Blob([bytes as BlobPart],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})),link=document.createElement('a');link.href=url;link.download=PAYROLL_HISTORY_XLSX_FILENAME;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }catch{setError(t('failed'));}finally{setBusy(null);}
  }
@@ -44,10 +47,13 @@ export function HistoryWorkflow({codes}:{codes:Code[]}){
   {error&&<p role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{error}</p>}
   {preview&&<section className="space-y-5 rounded-xl border bg-card p-5"><div className="flex flex-wrap justify-between gap-3"><h2 className="font-semibold">{done?t('results'):t('preview')}</h2><Link className="text-sm font-medium text-primary underline" href={'/payroll/history-import/logs/'+preview.attemptId}>{t('openLog')}</Link></div>
    <RevisionPreview key={preview.attemptId} plan={preview.plan}/>
-   {done?<p role="status" className="rounded-lg border border-primary/30 bg-primary/5 p-4 text-sm">{t('success')}</p>:<div className="space-y-3 border-t pt-4"><p className="text-sm text-muted-foreground">{t('atomicHint')}</p>
-    {preview.plan.counts.replaced>0&&<label className="flex items-start gap-3 rounded-lg border border-amber-500/40 p-4 text-sm"><input type="checkbox" className="mt-1" checked={replacements} onChange={event=>setReplacements(event.target.checked)} disabled={busy!==null}/><span>{t('replacementConfirmation',{count:preview.plan.counts.replaced})}</span></label>}
+   {done?<p role="status" className="rounded-lg border border-primary/30 bg-primary/5 p-4 text-sm">{t('success')}{skipped>0&&<> {t('successSkipped',{count:skipped})}</>}</p>:<div className="space-y-3 border-t pt-4"><p className="text-sm text-muted-foreground">{t('atomicHint')}</p>
+    {preview.plan.counts.replaced>0&&<fieldset className="space-y-3 rounded-lg border border-amber-500/40 bg-amber-50/40 p-4 text-sm dark:bg-amber-500/5"><legend className="sr-only">{t('replaced')}</legend><p className="font-medium">{t('overwriteTitle',{count:preview.plan.counts.replaced})}</p>
+     <label className="flex items-start gap-3"><input type="radio" name="history-overwrite" className="mt-1" checked={replacements==='replace'} onChange={()=>setReplacements('replace')} disabled={busy!==null}/><span>{t('overwriteReplace')}</span></label>
+     {preview.plan.counts.created>0&&<label className="flex items-start gap-3"><input type="radio" name="history-overwrite" className="mt-1" checked={replacements==='skip'} onChange={()=>setReplacements('skip')} disabled={busy!==null}/><span>{t('overwriteSkip')}</span></label>}</fieldset>}
     <label className="flex items-start gap-3 text-sm"><input type="checkbox" className="mt-1" checked={confirmed} onChange={event=>setConfirmed(event.target.checked)} disabled={busy!==null}/><span>{t('confirmation')}</span></label>
-    <button type="button" className={button+' bg-primary text-primary-foreground'} onClick={commit} disabled={busy!==null||!confirmed||preview.plan.counts.invalid>0||preview.plan.issues.length>0||(preview.plan.counts.replaced>0&&!replacements)}>{busy==='confirm'?t('importing'):t('import')}</button>
+    <div className="flex flex-wrap gap-3"><button type="button" className={button+' bg-primary text-primary-foreground'} onClick={commit} disabled={busy!==null||!confirmed||preview.plan.counts.invalid>0||preview.plan.issues.length>0||(preview.plan.counts.replaced>0&&!replacements)}>{busy==='confirm'?t('importing'):t('import')}</button>
+     <button type="button" className={button} onClick={()=>{setPreview(null);setConfirmed(false);setReplacements(null);operation.current=null;}} disabled={busy!==null}>{t('cancel')}</button></div>
    </div>}
   </section>}
  </div>;

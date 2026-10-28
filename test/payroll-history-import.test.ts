@@ -3,7 +3,7 @@
  *
  * Asserts the load-bearing behaviours of the LONG (seven-column) contract:
  *
- *  · THE DOUBLE-COUNT GUARD — Override=1 on a period that already has payroll imports NOTHING and comes
+ *  · THE DOUBLE-COUNT GUARD — a period that already has payroll imports NOTHING and comes
  *    back as "Existing record". This is the single most important assertion in the file: the monthly and
  *    year-end readers sum every batch for a (company, period) with no run-type and no status filter, so a
  *    second load into an occupied month would submit someone paid 5,000 as 10,000, and migration 0011
@@ -23,7 +23,7 @@
  * completion domain event is appended, year-end (EA) and the monthly contributions report pick the
  * imported payslip up WITHOUT double-counting, and a non-admin commit is refused at the DB layer (RLS).
  */
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
@@ -66,7 +66,7 @@ const line = (
   period: string,
   code: string,
   amount: string,
-  opts: { cycle?: string; company?: string; override?: string } = {},
+  opts: { cycle?: string; company?: string } = {},
 ) =>
   [
     employeeNo,
@@ -75,7 +75,6 @@ const line = (
     code,
     opts.company ?? 'ACME',
     amount,
-    opts.override ?? '1',
   ].join(',');
 
 /**
@@ -87,7 +86,7 @@ const line = (
 const completeMonth = (
   employeeNo: string,
   period: string,
-  opts: { cycle?: string; company?: string; override?: string } = {},
+  opts: { cycle?: string; company?: string } = {},
 ) => [
   line(employeeNo, period, 'BASIC', '5000.00', opts),
   line(employeeNo, period, 'ALLOWANCE', '300.00', opts),
@@ -189,8 +188,8 @@ describe('import payroll history — the long (seven-column) contract', () => {
     await createBatch(a, { companyId: b.companyId, payPeriod: '2024-01' });
 
     const records = file(
-      ...completeMonth('A1001', '202401', { override: '1' }), // occupied → held
-      ...completeMonth('A1002', '202402', { override: '1' }), // valid alone; complete file is refused
+      ...completeMonth('A1001', '202401'), // occupied → held
+      ...completeMonth('A1002', '202402'), // valid alone; complete file is refused
     );
 
     const dry = await validatePayrollHistoryImport(a, { companyId: b.companyId, records });
@@ -205,7 +204,7 @@ describe('import payroll history — the long (seven-column) contract', () => {
 
     const r = await commitPayrollHistoryImport(a, { companyId: b.companyId, records });
     expect(r.existing).toBe(1);
-    expect(r.updated).toBe(0); // never, whatever Override says
+    expect(r.updated).toBe(0); // the record-based path never replaces
     expect(r.importedMonths).toBe(0);
 
     // NOTHING landed in the occupied period: it still has exactly the one pre-existing batch, and that
@@ -470,23 +469,71 @@ describe('import payroll history — the long (seven-column) contract', () => {
     expect(withSplit.months[0].ok).toBe(true);
   });
 
-  it('a non-numeric Amount, a bad Override and a blank mandatory field each stop their line', async () => {
+  it('a non-numeric Amount and a blank mandatory field each stop their line', async () => {
     const a = adminCtx(b);
     await hire(a, 'A1001');
     const records = file(
       // Thousands separators are tolerated in the cell — quoted here because a bare comma would
       // otherwise split the CSV row, which is a property of CSV and not of this importer.
-      ['A1001', '202401', 'ME', 'BASIC', 'ACME', '"5,000.00"', '1'].join(','),
+      ['A1001', '202401', 'ME', 'BASIC', 'ACME', '"5,000.00"'].join(','),
       line('A1001', '202401', 'ALLOWANCE', '3O0.00'), // letter O, not a zero
-      line('A1001', '202401', 'EEEPF', '583.00', { override: '2' }),
-      ',202401,ME,PCB,ACME,150.00,1', // blank Employee No
-      ',,,,,,', // wholly blank — ignored in silence, not an error
+      line('A1001', '202401', 'EEEPF', '583.00'),
+      ',202401,ME,PCB,ACME,150.00', // blank Employee No
+      ',,,,,', // wholly blank — ignored in silence, not an error
     );
     const dry = await validatePayrollHistoryImport(a, { companyId: b.companyId, records });
     expect(dry.total).toBe(4); // the blank line is not counted as uploaded
     expect(dry.issues.filter((i) => i.type === 'Invalid Amount')).toHaveLength(1);
-    expect(dry.issues.filter((i) => i.type === 'Invalid Override')).toHaveLength(1);
     expect(dry.issues.filter((i) => i.type === 'Missing mandatory field')).toHaveLength(1);
+  });
+
+  it('d28501b8: an older file with an Override? column validates exactly as it does without one', async () => {
+    const a = adminCtx(b);
+    await hire(a, 'A1001');
+    const legacy = parse(
+      [`${HEADER},Override?`, ...completeMonth('A1001', '202401').map((l, i) => `${l},${i === 0 ? '2' : '0'}`)].join('\n'),
+    );
+    const dry = await validatePayrollHistoryImport(a, { companyId: b.companyId, records: legacy });
+    expect(dry.issues.filter((i) => i.status === 'Failed')).toEqual([]);
+    expect(dry.months.map((m) => m.ok)).toEqual([true]);
+  });
+
+  it('d28501b8: BASIC is accepted when the company codes its basic pay item differently', async () => {
+    const a = adminCtx(b);
+    await hire(a, 'A1001');
+    await owner.db
+      .update(schema.payComponent)
+      .set({ code: 'E0001' })
+      .where(and(eq(schema.payComponent.tenantId, b.tenantId), eq(schema.payComponent.code, 'BASIC')));
+    const dry = await validatePayrollHistoryImport(a, {
+      companyId: b.companyId,
+      records: file(...completeMonth('A1001', '202401')),
+    });
+    expect(dry.issues.filter((i) => i.type === 'Invalid DOE Code')).toEqual([]);
+    expect(dry.months.map((m) => [m.ok, m.gross, m.codes.includes('BASIC')])).toEqual([[true, 5300, true]]);
+    // Letter case is not a reason to reject it.
+    const lower = await validatePayrollHistoryImport(a, {
+      companyId: b.companyId,
+      records: file(...completeMonth('A1001', '202402').map((l) => l.replace(',BASIC,', ',Basic,'))),
+    });
+    expect(lower.months.map((m) => m.ok)).toEqual([true]);
+  });
+
+  it('d28501b8: BASIC and the company’s own basic code in one month are stopped, never added together', async () => {
+    const a = adminCtx(b);
+    await hire(a, 'A1001');
+    await owner.db
+      .update(schema.payComponent)
+      .set({ code: 'E0001' })
+      .where(and(eq(schema.payComponent.tenantId, b.tenantId), eq(schema.payComponent.code, 'BASIC')));
+    const dry = await validatePayrollHistoryImport(a, {
+      companyId: b.companyId,
+      records: file(...completeMonth('A1001', '202401'), line('A1001', '202401', 'E0001', '5000.00')),
+    });
+    const dup = dry.issues.filter((i) => i.type === 'Duplicate record');
+    expect(dup).toHaveLength(1);
+    expect(dup[0].description).toContain('BASIC, E0001');
+    expect(dry.months.map((m) => m.ok)).toEqual([false]);
   });
 
   it('an unknown Payroll Cycle stops its line', async () => {

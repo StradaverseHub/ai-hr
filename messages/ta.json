@@ -7038,7 +7038,23 @@
       "noIssues": "ஒவ்வொரு வரியும் சரிபார்ப்பில் தேர்ச்சி பெற்றது.",
       "downloadErrors": "முடிவைப் பதிவிறக்கு (Excel)",
       "viewPayroll": "ஊதியத்தைப் பார் →",
-      "importAnother": "மற்றொரு கோப்பை இறக்குமதி செய்"
+      "importAnother": "மற்றொரு கோப்பை இறக்குமதி செய்",
+      "colCategory": "வகை",
+      "colAmountType": "தொகை வகை",
+      "sampleNote": "மாதிரி — உண்மையான தரவு அல்ல. ஒவ்வொரு குறியீடும் எப்படி எழுதப்படுகிறது என்பதைக் காட்டும் கற்பனை ஊழியர். இந்தத் தாளைப் பதிவேற்ற வேண்டாம்; முதல் தாளை நிரப்பவும்.",
+      "categories": {
+        "basic": "அடிப்படைச் சம்பளம்",
+        "earning": "வருமானம்",
+        "deduction": "கழிவு",
+        "employeeStatutory": "ஊழியர் சட்டப்பூர்வம்",
+        "employerStatutory": "முதலாளி சட்டப்பூர்வம்",
+        "payrollTotal": "சம்பள மொத்தம்"
+      },
+      "amountTypes": {
+        "employee": "ஊழியர் தொகை",
+        "employer": "முதலாளி தொகை",
+        "check": "சரிபார்ப்பு மட்டும் — ஒப்பிடப்படும், கூட்டப்படாது"
+      }
     },
     "process": {
       "taxSchemeDeclarationRequired": "ஊதியத்தைச் செயலாக்குமுன், இந்த வேலைவாய்ப்பு, முதலாளி மற்றும் ஊதியக் காலத்திற்கான அங்கீகரிக்கப்பட்ட வரித் திட்டத்தை அனுமதி குறிப்புடனும் HR தகுதி உறுதிப்படுத்தலுடனும் பதிவுசெய்யவும்.",
@@ -8814,7 +8830,8 @@
         "create": "உருவாக்கு",
         "replace": "மாற்று",
         "unchanged": "மாற்றமில்லை",
-        "invalid": "செல்லாது"
+        "invalid": "செல்லாது",
+        "protected": "பாதுகாக்கப்பட்டது"
       },
       "states": {
         "confirmed": "இறக்குமதி செய்யப்பட்டது",
@@ -8838,7 +8855,6 @@
       "failed": "செயல்பாட்டை முடிக்க முடியவில்லை. மீண்டும் முயலும் முன் பதிவுக் கோப்பைப் பார்க்கவும். பகுதியளவு சம்பள மாற்றங்கள் உறுதிசெய்யப்படாது.",
       "atomicHint": "முழுக் கோப்பும் சரிபார்ப்பில் தேர்ச்சி பெற வேண்டும். உறுதிசெய்யும்போது அணுகல், இலக்குப் பதிப்புகள், சார்புகள் மீண்டும் சரிபார்க்கப்படும். இறக்குமதி வரலாறு அறிக்கைகளையும் ஆண்டு மொத்தங்களையும் மாற்றும்; சம்பளம் கணக்கிடாது, சம்பளச் சீட்டு வெளியிடாது, பணம் செலுத்தத் தொடங்காது.",
       "confirmation": "மேலுள்ள நிறுவனங்கள், காலங்கள், சுழற்சிகள், மதிப்புகளை ஆய்வு செய்து இந்த முழு இறக்குமதிக்கு அனுமதி அளிக்கிறேன்.",
-      "replacementConfirmation": "மேலுள்ள {count} இறக்குமதிப் பதிவுகளை மாற்ற அனுமதிக்கிறேன். மூடப்பட்ட மூலப் பதிப்புகள் தணிக்கை வரலாற்றில் இருக்கும்.",
       "success": "இறக்குமதி உறுதிசெய்யப்பட்டது. நடப்பு வரலாறும் தணிக்கைப் பதிவும் ஒன்றாகச் சேமிக்கப்பட்டன. பதிவுக் கோப்பில் இந்த முயற்சியைப் பார்க்கவும்.",
       "logHint": "மூலக் கோப்புகள், சரிபார்ப்பு முடிவுகள், உறுதிசெய்த மாற்றங்கள், மீட்பு நிகழ்வுகள். ஒவ்வொரு முயற்சிக்கும் தனி வரலாறு இருக்கும்.",
       "auditHint": "கீழுள்ள முன்னோட்டம் சரிபார்ப்பின்போது கோப்பு முன்மொழிந்ததைப் பதிவு செய்கிறது. நிகழ்வுகள் உறுதிசெய்தல், மறுத்தல் அல்லது மீட்டமைத்தலைக் காட்டும்; பின்னர் திருத்தங்களுக்கு தனி முயற்சிகள் இருக்கும்.",
@@ -8871,7 +8887,13 @@
           "version": "மூல விதிப் பதிப்பு",
           "lp": "அங்கீகரிக்கப்பட்ட கழிவுகள் (TP1 / விருப்பம்)"
         }
-      }
+      },
+      "items": "உருப்படிகள்",
+      "protectedHint": "இந்த மாதச் சம்பளம் AIHR-இல் செயலாக்கப்பட்டது அல்லது அறிக்கையிடப்பட்டது; இறக்குமதி அதை மாற்றாது. இந்த வரிசைகளைக் கோப்பிலிருந்து நீக்கவும், அல்லது நிலுவைச் சம்பளம் அல்லது சரிசெய்தல் ஓட்டம் மூலம் திருத்தவும்.",
+      "overwriteTitle": "மூடப்பட்ட சம்பளக் காலங்களின் பதிவுகள் உட்பட {count} ஊழியர்-மாதங்களுக்கு ஏற்கனவே சம்பள வரலாறு உள்ளது. ஏற்கனவே உள்ள பதிவுகளை மேலெழுத வேண்டுமா?",
+      "overwriteReplace": "மேலெழுதுவதை உறுதிசெய் — முன்பு இறக்குமதி செய்த பதிவுகளை மாற்று. அசல் எண்கள் தணிக்கை வரலாற்றில் இருக்கும்; மூடப்பட்ட காலங்கள் மூடியே இருக்கும்.",
+      "overwriteSkip": "புதிய பதிவுகளை மட்டும் இறக்குமதி செய்; ஏற்கனவே உள்ளவற்றை மாற்றாதே.",
+      "successSkipped": "தேர்ந்தெடுத்தபடி {count} ஏற்கனவே உள்ள பதிவுகள் மாற்றப்படவில்லை."
     }
   },
   "admin": {
@@ -18061,7 +18083,128 @@
     "returnedReason": "Reason for return",
     "returnedNext": "Revise the review and submit it again.",
     "decidedBy": "By {actor}",
-    "aReviewer": "a reviewer"
+    "aReviewer": "a reviewer",
+    "postNeedsAdmin": "Posting needs a company HR administrator who also holds the Payroll seat.",
+    "noPayrollBatch": "There is no draft payroll batch for this company, so bonus and lump-sum awards cannot be posted yet. Salary changes can still be posted on their own. Payroll creates the draft batch for the pay period; posting itself needs a company HR administrator who also holds the Payroll seat.",
+    "dueOn": "Due {date}",
+    "board": {
+      "title": "Approvals",
+      "open": "Approvals board",
+      "view": {
+        "label": "காட்சி",
+        "matrix": "கட்டம்",
+        "list": "பட்டியல்"
+      },
+      "yourStep": "Your step: {steps}.",
+      "stepPhrase": {
+        "post": "post approved reviews to payroll"
+      },
+      "nothingYours": "No step on this board sits with you; you follow these reviews along the route.",
+      "groups": "Business groups",
+      "allGroups": "All groups",
+      "waiting": "Waiting on you · {count}",
+      "elsewhere": "Elsewhere on the route · {count}",
+      "noneWaiting": "Nothing is waiting on you.",
+      "empty": "No reviews are on the route for you in the selected companies.",
+      "columns": {
+        "unit": "Unit",
+        "stage": "Stage",
+        "due": "Due",
+        "people": "People",
+        "salary": "Salary increase",
+        "bonus": "Bonus",
+        "exceptions": "Exceptions",
+        "blocking": "Blocking",
+        "flags": "எச்சரிக்கைகள்",
+        "action": "Action"
+      },
+      "seat": {
+        "bu": "BU CEO",
+        "bg": "BG CEO",
+        "gr": "Group Rewards",
+        "ctro": "CTRO",
+        "ec": "Executive Chairman",
+        "pbp": "PBP",
+        "payroll": "Payroll"
+      },
+      "seatShort": {
+        "ec": "EC"
+      },
+      "route": {
+        "annual": "ஆண்டு இறுதி வழி · சம்பள உயர்வும் போனஸும் ஒன்றாக அங்கீகரிக்கப்படும்",
+        "offcycle": "சுழற்சிக்கு வெளியிலான வழி"
+      },
+      "duty": {
+        "bu": "பரிந்துரை · சமர்ப்பிப்பு",
+        "bg": "அங்கீகாரம்",
+        "gr": "சரிபார்ப்பு · அனுப்புதல்",
+        "ctro": "ஒருங்கிணைப்பு · HR ஒப்புதல்",
+        "ec": "இறுதி அங்கீகாரம்",
+        "payroll": "சம்பளம்"
+      },
+      "payOn": "சம்பளம் · {date}",
+      "stepState": {
+        "done": "முடிந்தது",
+        "yours": "உங்கள் படி",
+        "withThem": "அவர்களிடம்",
+        "returned": "திருப்பி அனுப்பப்பட்டது",
+        "notReached": "இன்னும் எட்டவில்லை"
+      },
+      "with": "With {seat}",
+      "stepOf": "Step {step} of {steps}",
+      "dueOn": "கெடு {date}",
+      "overdueOn": "கெடு தாண்டியது {date}",
+      "peopleCount": "{count, plural, one {# நபர்} other {# நபர்கள்}}",
+      "dueToday": "today",
+      "dueTomorrow": "tomorrow",
+      "dueIn": "in {days, plural, one {# day} other {# days}}",
+      "overdue": "{days, plural, one {# day} other {# days}} overdue",
+      "ofPool": "{percent} of pool",
+      "ofBudget": "{percent} of budget",
+      "overLimit": "over limit",
+      "openReview": "Open review",
+      "sendTo": "{seat} இடம் அனுப்பவும்",
+      "submitTo": "{seat} இடம் சமர்ப்பிக்கவும்",
+      "approveFinal": "சம்பளப்பட்டியலுக்கு அங்கீகரிக்கவும்",
+      "button": {
+        "submit": "சமர்ப்பிக்கவும்",
+        "approve": "அங்கீகரிக்கவும்"
+      },
+      "returnTo": {
+        "bg": "BU CEO இடம் திருப்பவும்",
+        "gr": "BG / BU இடம் திருப்பவும்",
+        "ctro": "BG / BU இடம் திருப்பவும்",
+        "ec": "நிராகரிக்கவும் · BG / BU இடம் திருப்பவும்"
+      },
+      "stepOr": "{action} அல்லது {return}",
+      "blockedHint": "Clear the blocking checks first",
+      "sendAll": "Send all ready ({count})",
+      "sendResult": "{sent} sent · {skipped} skipped (blocking) · {refused} refused (changed since you opened the page)",
+      "refusedItem": "{name}: {message}",
+      "decided": "Decision recorded.",
+      "footer": "Salary increase is the monthly total in RM (RM/mo) for the standard and JG H plans, against the salary increase pool. Bonus is the total in RM, including lump sums, against the bonus budget. Totals count only the records you are allowed to see. Open a row to see its review."
+    },
+    "calendar": {
+      "title": "Reward calendar",
+      "help": "Due dates for this reward cycle in this company. They appear on the Approvals board and on each review; they never move, block or approve a review. Leave a date empty when there is no deadline.",
+      "annual": "Annual review: date each step is due",
+      "stage": {
+        "bu": "BU CEO submits",
+        "returned": "Returned review resubmitted",
+        "bg": "BG CEO approves",
+        "gr": "Group Rewards approves",
+        "ctro": "CTRO approves",
+        "ec": "Executive Chairman approves",
+        "payroll": "Posted to payroll"
+      },
+      "caseDue": "ER and PIP case decisions due",
+      "offcycle": "Off-cycle requests: days allowed at each step",
+      "offcycleHelp": "An off-cycle request is due this many days after it reaches the step (1 to 90).",
+      "save": "Save calendar",
+      "readOnly": "Group Rewards or a company HR administrator maintains this calendar.",
+      "notSet": "Not set",
+      "days": "{days, plural, one {# day} other {# days}}"
+    }
   },
   "identityEmail": {
     "title": "மின்னஞ்சல் அனுப்புதல்",
@@ -18077,7 +18220,7 @@
     "clientSecret": "கிளையன்ட் ரகசியம்",
     "clientSecretKept": "அதே குத்தகையாளர், பயன்பாடு மற்றும் அஞ்சல் பெட்டிக்கான ரகசியத்தை வைத்திருக்க காலியாக விடவும்.",
     "clientSecretNeeded": "கிளையன்ட் ரகசியத்தின் மதிப்பை உள்ளிடவும்; அதன் ID-ஐ அல்ல.",
-    "microsoft365Help": "Microsoft 365 நிர்வாகி SMTP.SendAsApp மற்றும் நிர்வாக ஒப்புதல் வழங்கி, Exchange-இல் பயன்பாட்டைப் பதிவு செய்து அனுப்புநரின் அஞ்சல் பெட்டிக்கு மட்டும் அணுகல் வழங்க வேண்டும். பயனர்பெயர் அந்த அஞ்சல் பெட்டி ஆகும். AI HR குறுகிய கால டோக்கன்களைத் தானாகப் பெறும். வேறு From அஞ்சல் பெட்டிக்கு Send As அனுமதியும் தேவை.",
+    "microsoft365Help": "Microsoft 365 நிர்வாகி, நிர்வாக ஒப்புதலும் அஞ்சல்பெட்டி அனுமதிகளும் கொண்ட SMTP.SendAsApp அல்லது வரம்பிட்ட Exchange App RBAC மூலம் அனுப்பும் அஞ்சல்பெட்டிக்கு அனுமதி வழங்க வேண்டும். Exchange இல் பயன்பாட்டைப் பதிவு செய்து SMTP AUTH ஐ அனுமதிக்கவும். பயனர்பெயர் என்பது அங்கீகார அஞ்சல்பெட்டி; வேறு From முகவரிக்கு Send As அனுமதியும் தேவை.",
     "draftTitle": "ரிலே வரைவு",
     "host": "SMTP சேவையகம்",
     "port": "போர்ட்",
@@ -18140,7 +18283,21 @@
       "tlsFailed": "பாதுகாப்பான இணைப்பைச் சரிபார்க்க முடியவில்லை. குறியாக்க அமைப்பையும் சேவையகத்தின் TLS சான்றிதழையும் சரிபார்க்கவும்.",
       "connectionFailed": "SMTP சேவையகத்துடன் இணைக்க முடியவில்லை. புரவலன் பெயர், போர்ட், குறியாக்கம் மற்றும் வழங்குநரின் வலையமைப்பு அணுகல் விதிகளைச் சரிபார்க்கவும்.",
       "unavailable": "இணைப்புச் சோதனையை முடிக்க முடியவில்லை. கடவுச்சொல்லை மீண்டும் உள்ளிட்டு முயலவும்."
-    }
+    },
+    "connectionsTitle": "வெளிச்செல்லும் மின்னஞ்சல் இணைப்புகள்",
+    "connectionName": "இணைப்பின் பெயர்",
+    "connectionNamePlaceholder": "எடுத்துக்காட்டு: OneHR Microsoft 365",
+    "newConnection": "புதிய இணைப்பு",
+    "noConnections": "SMTP இணைப்புகள் இன்னும் சேமிக்கப்படவில்லை. கணக்கு மின்னஞ்சல்களை அனுப்ப இணைப்பை உருவாக்கவும்.",
+    "connectionStatus": "நிலை",
+    "lastTest": "கடைசி சோதனை",
+    "connectionActive": "செயலில் உள்ளது",
+    "connectionSaved": "சேமிக்கப்பட்டது",
+    "changesPending": "மாற்றங்கள் செயல்படுத்தப்படவில்லை",
+    "notRecorded": "பதிவு இல்லை",
+    "backToConnections": "இணைப்புகளுக்குத் திரும்பு",
+    "saveConnection": "இணைப்பைச் சேமி",
+    "activeChangesHelp": "செயலில் உள்ள ரிலே கடைசியாகச் செயல்படுத்தப்பட்ட அமைப்புகளையே பயன்படுத்தும். மாற்றங்களைச் செயல்படுத்தும் முன் சேமித்து, சோதித்து, மின்னஞ்சல் வந்ததை உறுதிப்படுத்தவும்."
   },
   "workflowEmail": {
     "letterAccountTitle": "இந்தக் கணக்கிற்கான கடிதங்கள்",
@@ -19305,7 +19462,8 @@
       "failed": "மாற்றத்தைச் சேமிக்க முடியவில்லை. மீண்டும் முயலவும்.",
       "saving": "சேமிக்கிறது…",
       "save": "மாற்றத்தைச் சேமி",
-      "cancel": "ரத்துசெய்"
+      "cancel": "ரத்துசெய்",
+      "reasonRequired": "Reason (required) · the tier above reads it"
     },
     "talentCurve": {
       "title": "{axis} பகிர்வு — {unit}",
@@ -19670,6 +19828,62 @@
         "partial": "Partly locked",
         "locked": "Locked"
       }
+    },
+    "talentBoard": {
+      "title": "Talent Box",
+      "people": "{count, plural, one {# person} other {# people}}",
+      "units": "{count, plural, one {# business unit} other {# business units}}",
+      "placed": "{placed} of {total} placed",
+      "lockedState": "Locked",
+      "openState": "Open for review",
+      "sources": "Potential from {cycle} · performance from {cycle}",
+      "businessUnit": "Business unit",
+      "all": "All",
+      "department": "Department",
+      "allDepartments": "All departments",
+      "grade": "Job grade",
+      "allGrades": "All grades",
+      "clearFilters": "Clear filters",
+      "wholeScope": "Showing the whole scope. Narrow it by business unit, department or grade to measure the distribution against that group instead.",
+      "filtered": "{count, plural, one {Measured against the # person in this selection.} other {Measured against the # people in this selection.}}",
+      "views": "Talent Box views",
+      "grid9": "9-box",
+      "grid15": "15-box",
+      "table": "Table",
+      "referenceTitle": "Reference guideline",
+      "showDetails": "Show details",
+      "hideDetails": "Hide details",
+      "onTarget": "On target in every category",
+      "onTargetShort": "On target",
+      "deltaTitle": "{actual} now, {target} at the reference share",
+      "noReference": "This scope has no single performance reference, so no reference shares are shown.",
+      "referenceNote": "Performance reference × potential {high}/{mid}/{low}, over the {placed} placed. It is guidance for the conversation, not a quota.",
+      "columns": {
+        "category": "Category",
+        "count": "Count",
+        "share": "Share",
+        "reference": "Reference",
+        "toMove": "To meet reference"
+      },
+      "capChip": "Moves {used} of {cap}",
+      "capChipUnits": "Moves {used} of {cap} across {count} business units",
+      "capNote": "Category-change limit: {pct}% of each business unit's people, counted per unit. Only a change of talent category counts, and moving someone back returns the allowance.",
+      "cellLabel": "{category}, {potential} potential, {performance}: {count}",
+      "vsRef": "vs {pct}%",
+      "movedUp": "Moved up from {category}",
+      "movedDown": "Moved down from {category}",
+      "moveTo": "Move {name} to another box",
+      "moveMenu": "Move to…",
+      "legendUp": "moved up a box in this calibration",
+      "legendDown": "moved down a box",
+      "potentialAxis": "Potential",
+      "performanceAxis": "Performance →",
+      "columnPerformance": "{level} performance",
+      "footerOpen": "{placed} placed{filtered, select, yes { in this selection} other {}} · locking covers both performance and potential for {scope}",
+      "footerLocked": "Calibration locked for {scope}: performance and potential are final.",
+      "pickUnitToLock": "Choose a business unit above to lock it.",
+      "categoryHelp": "Everyone here whose performance and potential place them in {category}.",
+      "categoryEmpty": "No one here is in {category} right now."
     }
   },
   "allowanceV2": {
@@ -20479,7 +20693,44 @@
       "notEligible": "அழைப்பு அல்லது மீட்பு மின்னஞ்சல் பெறுநர் இனி தகுதியானவர் அல்ல.",
       "uncertain": "அனுப்புதல் முடிவு உறுதியாக இல்லை. நகல்களைத் தவிர்க்க மீண்டும் அனுப்பும் முன் சரிபார்க்கவும்."
     },
-    "reference": "அனுப்புதல் குறிப்பு எண்"
+    "reference": "அனுப்புதல் குறிப்பு எண்",
+    "message": "செய்தி",
+    "recipient": "பெறுநர்",
+    "status": "நிலை",
+    "dateTime": "தேதி மற்றும் நேரம்",
+    "actions": "செயல்கள்",
+    "viewEmail": "மின்னஞ்சலைப் பார்",
+    "previewHelp": "வார்ப்புரு முன்னோட்டம். உண்மையான இணைப்புகளும் பாதுகாப்பு டோக்கன்களும் மறைக்கப்பட்டுள்ளன. இது சேமிக்கப்பட்ட அசல் செய்தியின் நகல் அல்ல.",
+    "resend": "மின்னஞ்சலை மீண்டும் அனுப்பு",
+    "fromDate": "தொடக்கத் தேதி",
+    "toDate": "முடிவுத் தேதி",
+    "filter": "வடிகட்டு",
+    "clearFilters": "வடிகட்டிகளை அழி",
+    "noMatchingEmails": "இந்தத் தேதி வரம்பில் கணக்கு மின்னஞ்சல்கள் இல்லை.",
+    "pagination": "மின்னஞ்சல் வரலாற்றுப் பக்கங்கள்",
+    "pageSize": "இந்தப் பக்கத்தில் {count} பதிவுகள்",
+    "newest": "புதியவை",
+    "older": "பழையவை",
+    "resendUnavailable": {
+      "superseded": "புதிய மின்னஞ்சலால் மாற்றப்பட்டது.",
+      "closed": "இந்த அழைப்பு இனி ஏற்றுக்கொள்ளக் காத்திருக்கவில்லை.",
+      "pending": "அனுப்பும் முயற்சி நடக்கிறது."
+    },
+    "historyUnavailable": "மின்னஞ்சல் வரலாற்றை ஏற்ற முடியவில்லை. தேதி வரம்பைச் சரிபார்த்து மீண்டும் முயலவும்.",
+    "providerManagedPreview": "இந்த மின்னஞ்சல் வார்ப்புருவை அடையாள வழங்குநர் நிர்வகிக்கிறார். அசல் செய்தியின் உள்ளடக்கம் AIHR இல் சேமிக்கப்படவில்லை.",
+    "retentionTitle": "மின்னஞ்சல் அனுப்பல் பதிவு தக்கவைப்பு",
+    "retentionPeriod": "தக்கவைப்புக் காலம்",
+    "retentionNever": "ஒருபோதும் நீக்க வேண்டாம்",
+    "retentionCustom": "குறிப்பிட்ட நாட்களுக்குப் பிறகு நீக்கு",
+    "retentionDays": "நாட்கள் (1–3650)",
+    "retentionSave": "தக்கவைப்புக் கொள்கையைச் சேமி",
+    "retentionHelp": "இந்த நிறுவல் முழுவதிலும் உள்ள அழைப்பு மற்றும் கணக்கு மீட்பு அனுப்பல் பதிவுகளுக்குப் பொருந்தும். பராமரிப்பு நேரக்கருவி நிறுவப்பட்டால் ஒவ்வொரு மணிநேரமும் சுத்திகரிப்பு இயங்கும். கடைசி அனுப்பல் செயல்பாட்டிலிருந்து வயது கணக்கிடப்படும். நிலுவை அனுப்பல்கள், காலாவதியாகாத அழைப்புகள் மற்றும் பாதுகாக்கப்பட்ட அல்லது சமீபத்திய செயல்பாடுகளுள்ள மறுஅனுப்பல் சங்கிலிகள் தக்கவைக்கப்படும். கணக்குகள், அழைப்புகள் மற்றும் பாதுகாப்புத் தணிக்கை நிகழ்வுகள் பாதுகாக்கப்படும்.",
+    "retentionAcknowledge": "இந்தக் காலத்தைவிடப் பழைய தகுதியுள்ள பதிவுகள், ஏற்கனவே உள்ள வரலாறு உட்பட, நிரந்தரமாக நீக்கப்படும் என்பதையும், பின்னர் இந்தப் பதிவிலிருந்து முன்னோட்டமிடவோ மீண்டும் அனுப்பவோ முடியாது என்பதையும் புரிந்துகொள்கிறேன்.",
+    "retentionSaved": "தக்கவைப்புக் கொள்கை சேமிக்கப்பட்டது. தகுதியுள்ள வரலாறு திட்டமிட்ட சுத்திகரிப்பில் நீக்கப்படும்.",
+    "retentionError": "கொள்கையைச் சேமிக்க முடியவில்லை. பக்கத்தை மீண்டும் ஏற்றி, நாட்களையும் நீக்குதல் ஒப்புதலையும் சரிபார்த்து மீண்டும் முயலவும்.",
+    "retentionLastRun": "கடைசியாக வெற்றிகரமாகச் சுத்திகரித்தது: {time}. நீக்கப்பட்ட பதிவுகள்: {count}.",
+    "retentionNotRun": "வெற்றிகரமான சுத்திகரிப்பு இன்னும் பதிவாகவில்லை. பராமரிப்பு இயக்குநர் சுத்திகரிப்பு நேரக்கருவியை நிறுவிச் சரிபார்க்க வேண்டும்.",
+    "retentionUnavailable": "தக்கவைப்பு அமைப்புகள் கிடைக்கவில்லை. பக்கத்தை மீண்டும் ஏற்றவும் அல்லது நிறுவல் நிர்வாகியைத் தொடர்புகொள்ளவும்."
   },
   "pageStyleRecovery": {
     "restoring": "பக்கம் மீட்டமைக்கப்படுகிறது…",
@@ -24675,6 +24926,69 @@
       "assetSearch": "வளப் பெயர்களைத் தேடு",
       "companyCodeUnavailable": "சுருக்கமான நிறுவனக் குறியீட்டை அமைக்கவும் அல்லது நிறுவன இடக்குறி இல்லாத வடிவத்தைப் பயன்படுத்தவும்.",
       "version": "அமைப்புப் பதிப்பு {number}"
+    }
+  },
+  "performanceHome": {
+    "title": "Performance",
+    "closes": "Closes {date}",
+    "progress": "{done} of {total} done",
+    "stripLabel": "Steps in this cycle",
+    "steps": {
+      "kpi": "KPI Check-in",
+      "kpiSetting": "KPI setting",
+      "feedback360": "360 Feedback",
+      "competency": "Competency",
+      "careerPlan": "Career Plan",
+      "teamReview": "Team review",
+      "calibration": "Calibration",
+      "results": "Results released"
+    },
+    "states": {
+      "done": "Done",
+      "yourTurn": "Your turn",
+      "waiting": "{count} waiting",
+      "locked": "Locked",
+      "inProgress": "In progress",
+      "released": "Released",
+      "notRequired": "Not required"
+    },
+    "next": {
+      "label": "Your next step",
+      "kpiTitle": "Your KPI check-in",
+      "kpiLine": "{done} of {total} KPIs filled in",
+      "kpiSettingTitle": "Set your KPIs",
+      "kpiSettingLine": "{done} of {total} KPIs proposed",
+      "competencyTitle": "Rate your competencies",
+      "competencyLine": "{done} of {total} answered",
+      "careerPlanTitle": "Write your Career Plan",
+      "careerPlanLine": "{done} goals written, at least {total} needed",
+      "feedback360Title": "360 feedback for {count, plural, one {# colleague} other {# colleagues}}",
+      "feedback360Line": "Answer each statement, then submit.",
+      "due": "Due {date}",
+      "open": "Continue",
+      "none": "Nothing for you to do right now",
+      "opens": "Your next step opens {date}",
+      "closesOn": "This cycle closes {date}"
+    },
+    "team": {
+      "title": "Your team",
+      "waiting": "{count, plural, =0 {nothing waiting on you} one {# review waiting on you} other {# reviews waiting on you}}",
+      "open": "Open team review"
+    },
+    "standing": {
+      "title": "Where you stand",
+      "details": "Details",
+      "performance": "Performance",
+      "competency": "Competency",
+      "feedback360": "360 feedback",
+      "careerTarget": "Career target",
+      "awaitingManager": "Awaiting your manager",
+      "notReleased": "Not released yet",
+      "notSubmitted": "Not submitted yet",
+      "withManager": "With your manager",
+      "reviewed": "Reviewed by your manager",
+      "reportReleased": "Report released",
+      "notSet": "Not set yet"
     }
   }
 }

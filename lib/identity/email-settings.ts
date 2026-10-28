@@ -23,6 +23,6 @@ export async function requireIdentityEmailAdmin(): Promise<{session:SessionConte
   if(!identity?.emailVerified || !identity.issuer || !session.userId) throw new EmailSettingsError('forbidden');
   return {session,actor:{userId:session.userId,tenantId:session.tenantId,issuer:identity.issuer,subject:identity.subject}};
 }
-export async function readIdentityEmailSettings(actor: IdentityEmailActor) {
-  return identityEmailRequest<EmailSettingsView>({op:'view',actor});
+export async function readIdentityEmailSettings(actor: IdentityEmailActor,connectionId?:string) {
+  return identityEmailRequest<EmailSettingsView>({op:'view',actor,...(connectionId?{connectionId}:{})});
 }

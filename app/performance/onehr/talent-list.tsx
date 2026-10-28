@@ -8,6 +8,7 @@ import { TalentBoxMove } from './talent-box-move';
 import { inputCls } from '@/components/ui';
 import { talentListColumns,talentListRows,talentListValue,talentListValues,type TalentListColumn,type TalentListFilters,type TalentListSort } from '@/packs/performance/onehr/talent-list-model';
 import type { CalibrationRosterRow } from './calibration-roster';
+import type { TalentBoxGrid } from '@/packs/performance/onehr/talent-board-model';
 
 function ColumnMenu({column,values,selected,sort,open,onOpen,onSelect,onSort}:{column:TalentListColumn;values:string[];selected:string[]|undefined;sort:TalentListSort;open:boolean;onOpen:(open:boolean)=>void;onSelect:(values:string[]|undefined)=>void;onSort:(direction:1|-1)=>void}){
  const t=useTranslations('onehr.talentList'),trigger=useRef<HTMLButtonElement>(null),panel=useRef<HTMLDivElement>(null),all=useRef<HTMLInputElement>(null);
@@ -33,7 +34,7 @@ function ColumnMenu({column,values,selected,sort,open,onOpen,onSelect,onSort}:{c
 }
 
 /** The source Talent Box List, with one unit's filters and both rating axes in the same row. */
-export function TalentList({rows,filters,sort,onFilters,onSort,onSelect,onRead,category,lastViewed,active,unitId,height,move}:{rows:CalibrationRosterRow[];filters:TalentListFilters;sort:TalentListSort;onFilters:(filters:TalentListFilters)=>void;onSort:(sort:TalentListSort)=>void;onSelect:(id:string)=>void;onRead?:(id:string)=>void;category:string;lastViewed:string|null;active:boolean;unitId:string;height?:number;move?:{sessionId:string;revision:number;onMoved?:(id:string)=>void}}){
+export function TalentList({rows,filters,sort,onFilters,onSort,onSelect,onRead,category,lastViewed,active,unitId,height,move}:{rows:CalibrationRosterRow[];filters:TalentListFilters;sort:TalentListSort;onFilters:(filters:TalentListFilters)=>void;onSort:(sort:TalentListSort)=>void;onSelect:(id:string)=>void;onRead?:(id:string)=>void;category:string;lastViewed:string|null;active:boolean;unitId:string;height?:number;move?:{sessionId:string;revision:number;grid?:TalentBoxGrid;onMoved?:(id:string)=>void}}){
  const t=useTranslations('onehr.talentList'),tr=useTranslations('onehr'),[openColumn,setOpenColumn]=useState<TalentListColumn|null>(null);
  const [page,setPage]=useState({key:'',limit:100}),key=JSON.stringify([unitId,category,filters,sort]),sorted=talentListRows(rows,filters,category,sort);
  const reached=lastViewed?sorted.findIndex(row=>row.id===lastViewed)+1:0,limit=Math.max(page.key===key?page.limit:100,Math.ceil(reached/100)*100);
@@ -52,7 +53,7 @@ export function TalentList({rows,filters,sort,onFilters,onSort,onSelect,onRead,c
      {(['performance','potential'] as const).map(axis=><td key={axis} translate="no" className="px-2 py-1"><div className="flex items-center gap-1"><span title={row[`${axis}Source`]==='default'?tr('talentTrail.default'):undefined} className={row[`${axis}Source`]==='default'?'text-muted-foreground':''}>{row[axis]??'—'}{row[`${axis}Source`]==='default'&&<span className="sr-only"> · {tr('talentTrail.default')}</span>}</span><TalentBandHistory active={active} name={row.name} axis={axis} current={row[axis]} source={row[`${axis}Source`]} steps={row.bandTrails?.[axis]??[]}/></div></td>)}
      <td className="px-2 py-1"><span className="font-medium">{talentListValue(row,'box')||'—'}</span>{row.moved&&<span className="mt-0.5 block text-xs text-muted-foreground">{origin(row)?t('movedFrom',{box:origin(row)}):tr('calibrationRoster.moved')}</span>}</td>
      <td className="px-2 py-1 text-center"><button type="button" aria-label={t('readFor',{name:row.name})} onClick={()=>(onRead??onSelect)(row.id)} className="inline-flex min-h-11 min-w-11 items-center justify-center text-primary"><Sparkles size={16}/></button></td>
-     <td className="px-2 py-1">{move?<TalentBoxMove person={row} sessionId={move.sessionId} revision={move.revision} disabled={row.locked||row.readOnly||row.canMove===false} onMoved={()=>move.onMoved?.(row.id)}/>:<button type="button" onClick={()=>onSelect(row.id)} className="min-h-11 text-sm text-primary hover:underline">{t('review')}</button>}</td>
+     <td className="px-2 py-1">{move?<TalentBoxMove person={row} sessionId={move.sessionId} revision={move.revision} grid={move.grid} disabled={row.locked||row.readOnly||row.canMove===false} onMoved={()=>move.onMoved?.(row.id)}/>:<button type="button" onClick={()=>onSelect(row.id)} className="min-h-11 text-sm text-primary hover:underline">{t('review')}</button>}</td>
     </tr>)}{!sorted.length&&<tr><td colSpan={8} className="px-5 py-8 text-sm text-muted-foreground">{t('empty')}</td></tr>}{sorted.length>limit&&<tr><td colSpan={8} className="px-5 py-2"><button type="button" className="min-h-11 text-sm text-primary" onClick={()=>setPage({key,limit:limit+100})}>{t('showMore',{count:Math.min(100,sorted.length-limit)})}</button></td></tr>}</tbody>
    </table>
   </div>

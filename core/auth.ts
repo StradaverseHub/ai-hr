@@ -191,7 +191,7 @@ export async function retryAccountEmail(ctx:SessionContext,id:string,acknowledge
   }
   const created=await withTenant(ctx,async tx=>{
     assertGroupAdmin(ctx);await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`account-email-retry:${id}`},0))`);
-    const [delivery]=await tx.select().from(accountEmailDelivery).where(and(eq(accountEmailDelivery.id,id),eq(accountEmailDelivery.kind,'invitation'),eq(accountEmailDelivery.status,'failed')));
+    const [delivery]=await tx.select().from(accountEmailDelivery).where(and(eq(accountEmailDelivery.id,id),eq(accountEmailDelivery.kind,'invitation'),sql`${accountEmailDelivery.status} in ('failed','sent')`));
     if(!delivery?.invitationId)throw Error('This account email cannot be retried.');
     const [replacement]=await tx.select({id:accountEmailDelivery.id}).from(accountEmailDelivery).where(eq(accountEmailDelivery.replacesDeliveryId,id));
     if(replacement)throw Error('This account email already has a replacement.');

@@ -71,7 +71,7 @@ describe('OneHR native workflow controls',()=>{
   ports.person.mockResolvedValue({...v,row:v.rows[0],held:{lines:[],focus:null,requestId:null,navigation:false}});
   show(await AssessmentCalibrationView({v:v as unknown as Parameters<typeof AssessmentCalibrationView>[0]['v'],embedded:true,axis:'both'}));
   expect(screen.queryByRole('button',{name:en.onehr.lockCalibration})).toBeNull();
-  expect(screen.queryByRole('button',{name:'15'})).toBeNull();fireEvent.click(within(screen.getByRole('region',{name:en.onehr.talentGrid})).getByRole('button',{name:'Employee'}));
+  expect(screen.queryByRole('button',{name:'15'})).toBeNull();fireEvent.click(within(screen.getByRole('region',{name:en.onehr.talentBoard.title})).getByRole('button',{name:'Employee'}));
   expect(await screen.findByRole('region',{name:'Employee'})).toBeTruthy();expect(screen.getByRole('tab',{name:'Summary'})).toBeTruthy();expect(await screen.findByLabelText(en.onehr.performance)).toBeTruthy();expect(screen.getByLabelText(en.onehr.potential)).toBeTruthy();
  });
  it('passes the current development allowance to the actual editable-plan suggestion control',async()=>{

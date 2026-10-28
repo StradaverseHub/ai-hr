@@ -6,11 +6,15 @@ const policy=defaultPolicy(framework),open={lockedAt:null,performanceLockedAt:nu
 describe('source leader workspace views',()=>{
  it('separates Dept and BU Performance/Potential parts and tracks independent locks',()=>{
   expect(leaderWorkspaceParts(policy,'hod',{...open,performanceLockedAt:'confirmed'})).toEqual([{stage:'department_review',axis:'performance',module:'cal',state:'done'},{stage:'department_potential_review',axis:'potential',module:'cal',state:'open'}]);
-  expect(leaderWorkspaceParts(policy,'bu',open).map(p=>p.stage)).toEqual(['calibration','potential_calibration']);
+  // OneHR's BU CEO has a Talent Box beside the two axis lists (P1 WP-D), only while both axes are on.
+  expect(leaderWorkspaceParts(policy,'bu',open).map(p=>p.stage)).toEqual(['calibration','potential_calibration','talent_box']);
+  expect(leaderWorkspaceParts({...policy,modules:{...policy.modules,tm:false}},'bu',open).map(p=>p.stage)).toEqual(['calibration']);
  });
- it('keeps BG combined and Group performance-only without misclassifying them as employee PM',()=>{
+ it('keeps BG combined and gives Group its PM table plus a both-axis Talent Box, without misclassifying them as employee PM',()=>{
   expect(leaderWorkspaceParts(policy,'bg',open)).toMatchObject([{module:'cal',stage:'talent_box',axis:'both'}]);
-  expect(leaderWorkspaceParts(policy,'group',open)).toMatchObject([{module:'cal',axis:'performance'}]);
+  expect(leaderWorkspaceParts(policy,'group',open)).toMatchObject([{module:'cal',stage:'group_calibration',axis:'performance'},{module:'cal',stage:'talent_box',axis:'both'}]);
+  expect(leaderWorkspaceParts({...policy,modules:{...policy.modules,tm:false}},'group',open)).toMatchObject([{stage:'group_calibration',axis:'performance'}]);
+  expect(leaderWorkspaceParts(policy,'final',open).map(p=>p.stage)).toEqual(['group_calibration']);
   expect(leaderWorkspaceParts({...policy,modules:{...policy.modules,pm:false}},'group',open)).toEqual([]);
  });
  it('omits disabled axes and every leader part outside year end',()=>{
