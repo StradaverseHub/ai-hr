@@ -18571,6 +18571,7 @@
         "action_attendance_correction_request": "ขอแก้ไขเวลาทำงานแล้ว ยังไม่อนุมัติ",
         "action_claims_draft_save": "บันทึกร่างเบิกแล้ว ยังไม่ส่งหรือคืนเงิน",
         "action_claims_submit": "ส่งคำขอเบิกแล้ว ยังไม่อนุมัติหรือคืนเงิน",
+        "action_claims_cancel": "ยกเลิกคำขอเบิกที่รออนุมัติแล้ว ไม่มีการจ่ายเงิน",
         "action_performance_review_acknowledge": "รับทราบการประเมินแล้ว ไม่ใช่การรับรองคะแนน",
         "action_performance_onehr_plan_acknowledge": "รับทราบการสนทนาอาชีพแล้ว ไม่ใช่การรับรองคะแนน",
         "action_rewards_post": "ส่งรางวัลเข้าข้อมูลเงินเดือนแล้ว ยังไม่ประมวลผลหรือจ่าย",

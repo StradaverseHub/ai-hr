@@ -18571,6 +18571,7 @@
         "action_attendance_correction_request": "Attendance correction requested; not approved",
         "action_claims_draft_save": "Claim draft saved; not submitted or reimbursed",
         "action_claims_submit": "Claim submitted; not approved or reimbursed",
+        "action_claims_cancel": "Pending claim cancelled; nothing paid",
         "action_performance_review_acknowledge": "Review acknowledged; rating not endorsed",
         "action_performance_onehr_plan_acknowledge": "Career conversation acknowledged; rating not endorsed",
         "action_rewards_post": "Rewards posted to payroll inputs; not processed or paid",

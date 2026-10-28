@@ -18571,6 +18571,7 @@
         "action_attendance_correction_request": "考勤更正已申请；尚未批准",
         "action_claims_draft_save": "报销草稿已保存；尚未提交或报销",
         "action_claims_submit": "报销已提交；尚未批准或报销",
+        "action_claims_cancel": "待审批报销已取消；未支付任何款项",
         "action_performance_review_acknowledge": "评审已确认；不代表认同评分",
         "action_performance_onehr_plan_acknowledge": "职业对话已确认；不代表认同评分",
         "action_rewards_post": "奖励已录入薪资输入；尚未处理或付款",

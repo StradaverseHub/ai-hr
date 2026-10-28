@@ -18571,6 +18571,7 @@
         "action_attendance_correction_request": "Pembetulan kehadiran dimohon; belum diluluskan",
         "action_claims_draft_save": "Draf tuntutan disimpan; belum dihantar atau dibayar balik",
         "action_claims_submit": "Tuntutan dihantar; belum diluluskan atau dibayar balik",
+        "action_claims_cancel": "Tuntutan belum selesai dibatalkan; tiada bayaran dibuat",
         "action_performance_review_acknowledge": "Ulasan diakui; bukan pengesahan penilaian",
         "action_performance_onehr_plan_acknowledge": "Perbualan kerjaya diakui; bukan pengesahan penilaian",
         "action_rewards_post": "Ganjaran dimasukkan ke input gaji; belum diproses atau dibayar",

@@ -18571,6 +18571,7 @@
         "action_attendance_correction_request": "Đã yêu cầu sửa chấm công; chưa phê duyệt",
         "action_claims_draft_save": "Đã lưu nháp yêu cầu chi; chưa gửi hoặc hoàn trả",
         "action_claims_submit": "Đã gửi yêu cầu chi; chưa phê duyệt hoặc hoàn trả",
+        "action_claims_cancel": "Đã hủy yêu cầu đang chờ; không có khoản nào được thanh toán",
         "action_performance_review_acknowledge": "Đã xác nhận xem đánh giá; không xác nhận điểm số",
         "action_performance_onehr_plan_acknowledge": "Đã xác nhận trao đổi nghề nghiệp; không xác nhận điểm số",
         "action_rewards_post": "Đã đưa thưởng vào đầu vào lương; chưa xử lý hoặc thanh toán",

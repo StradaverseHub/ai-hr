@@ -31,7 +31,7 @@ export async function readOwnClaimCancellationChoicesTx(tx:Tx,supplied:SessionCo
  const rows=await tx.execute<{employmentId:string;claimId:string;claimTypeName:string;incurredOn:string;amount:string}>(sql`select q.employment_id as "employmentId",q.id as "claimId",t.name as "claimTypeName",
   to_char(q.incurred_on,'YYYY-MM-DD') as "incurredOn",to_char(q.amount,'FM999999999990.00') as amount
   from public.claim_request q join public.claim_type t on t.id=q.claim_type_id and t.tenant_id=q.tenant_id
-  where q.tenant_id=${fresh.tenantId}::uuid and q.status='pending' and q.employment_id = any(${ids}::uuid[])
+  where q.tenant_id=${fresh.tenantId}::uuid and q.status='pending' and q.employment_id in (${sql.join(ids.map(id=>sql`${id}::uuid`),sql`,`)})
   order by q.created_at desc,q.id desc limit 26`);
  const list=rows as unknown as {employmentId:string;claimId:string;claimTypeName:string;incurredOn:string;amount:string}[];
  return Choices.parse({kind:'choices',claims:list.slice(0,25),truncated:list.length>25});
