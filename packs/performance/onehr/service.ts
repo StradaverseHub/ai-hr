@@ -622,7 +622,7 @@ export async function saveOnehrCalibrationTx(tx:Tx,ctx:SessionContext,sessionId:
   if(session.tier==='hod'&&(pm&&p.performance!=null&&p.performance!==baselinePm&&!p.performanceNote.trim()||pot&&p.potential!=null&&p.potential!==baselinePot&&!p.potentialNote.trim()))throw Error('Explain each changed band.');
   // APR-011: every BU, BG and Group band change carries its reason, whichever surface sends it (box, list, form, chat, fit).
   if(leader&&(pm&&changed.pm&&!p.performanceNote.trim()||pot&&changed.pot&&!p.potentialNote.trim()))throw Error('Explain each changed band.');
-  if(leader&&(talentBoxMove||options.enforceMoveCap))await assertTalentMoveCapTx(tx,session,cycle.policy,{companyId:current.input.companyId,from:talentOrigin(entry,visible),current:visible},{performance:pm&&changed.pm?p.performance:null,potential:pot&&changed.pot?p.potential:null});
+  if(leader&&talentBoxMove)await assertTalentMoveCapTx(tx,session,cycle.policy,{companyId:current.input.companyId,from:talentOrigin(entry,visible),current:visible},{performance:pm&&changed.pm?p.performance:null,potential:pot&&changed.pot?p.potential:null});
   if((p.pip||p.promotion||p.specialReward)&&!['bg','group','final'].includes(session.tier))throw Error('Talent decisions require BG, Group or final reviewer confirmation.');
   if(p.pip||p.promotion||p.specialReward||p.confirmTalentDecisions)throw Error('Confirm talent decisions in the decision lists after locking calibration.');
   const chosenPm=pm?p.performance??entry.performance??baselinePm:entry.performance,chosenPot=pot?p.potential??entry.potential??baselinePot:entry.potential;
