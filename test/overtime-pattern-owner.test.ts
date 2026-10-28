@@ -6,6 +6,7 @@ import {db,withTenant} from '../db/client';
 import * as s from '../db/schema';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {lockLeaveDependenciesTx} from '../core/leave-dependency-lock';
 import {createCompany} from '../core/admin';
 import {readOvertimeStarterSeed,prepareOvertimeStarter} from '../lib/overtime-pattern-starters';
 import type {OvertimePattern} from '../lib/overtime-pattern-model';
@@ -193,6 +194,16 @@ describe('Retained settlement lifecycle and DDL authority',()=>{
 });
 
 describe('Serialization and legacy owner continuity',()=>{
+ it('refuses an overtime configuration save as busy while a leave-dependency command holds the leave lock, saving nothing',async()=>{
+  const ctx=adminCtx(b);let holding!:()=>void,release!:()=>void;const held=new Promise<void>(resolve=>holding=resolve),done=new Promise<void>(resolve=>release=resolve);
+  const leave=withTenant(ctx,async tx=>{await lockLeaveDependenciesTx(tx,ctx.tenantId,[employmentId]);holding();await done;});
+  await held;
+  const before=(await owner.db.select().from(s.overtimePattern)).length;
+  try{await expect(saveOvertimePatternDraft(ctx,{draft:draft()})).rejects.toMatchObject({name:'OvertimeOwnerError',code:'busy'});}
+  finally{release();await leave;}
+  expect(await owner.db.select().from(s.overtimePattern)).toHaveLength(before);
+  await expect(saveOvertimePatternDraft(ctx,{draft:draft()})).resolves.toMatchObject({versionId:expect.any(String)});
+ });
  it('serializes competing READ COMMITTED equal-priority assignment saves',async()=>{const saved=await activated();const results=await Promise.allSettled([1,2].map(()=>saveOvertimePatternAssignment(adminCtx(b),{versionId:saved.versionId,target:{type:'individual',employmentIds:[employmentId]},priority:2,from:day(),to:null})));expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(1);expect(results.filter(r=>r.status==='rejected')).toHaveLength(1);});
  it('forces a pinned REPEATABLE READ configuration writer to restart after another edit',async()=>{await activated();let signalPinned!:()=>void,releasePinned!:()=>void;const pinned=new Promise<void>(resolve=>signalPinned=resolve),changed=new Promise<void>(resolve=>releasePinned=resolve);const ctx=adminCtx(b);
   const stale=db.transaction(async tx=>{await tx.execute(sql`select set_config('app.tenant_id',${ctx.tenantId},true),set_config('app.user_id',${ctx.userId!},true),set_config('app.roles','hr_admin',true),set_config('app.grants','[{"role":"hr_admin","companyId":null}]',true)`);await tx.select().from(s.overtimePatternEpoch);signalPinned();await changed;await tx.execute(sql`select app.lock_overtime_configuration(${b.tenantId}::uuid)`);},{isolationLevel:'repeatable read'});

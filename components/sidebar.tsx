@@ -100,6 +100,11 @@ type CollapsibleGroupItem = {
 };
 type Row = ChildItem | CollapsibleGroupItem;
 const isCollapsible = (r: Row): r is CollapsibleGroupItem => 'collapsible' in r && r.collapsible;
+// Control Tower pages and Administration › AI (which forwards into them) all run requireAdmin; a payroll or
+// performance partner shares the administration rail but is redirected away from these.
+// Provider setup is tenant-wide: its page reads the configuration only for a group-wide administrator.
+const AI_PROVIDER_HREF = '/control-tower/agents/provider';
+const isAiAdministrationHref = (href: string) => href === '/admin/ai' || href === '/control-tower' || href.startsWith('/control-tower/');
 type Group = { labelKey?: string; adminOnly?: boolean; managerUp?: boolean; items: Row[] };
 
 // Consolidated Attendance node (b3dc0f78 / 5cb199b3 / f60cd403 / 5249d43f). Since ADR-0080 rung 2
@@ -591,6 +596,8 @@ export function Sidebar({
   hasAssignedAttendanceApproval = false,
   hasAssignedApproval = false,
   canReviewProfileChanges = false,
+  canAdministerAi = false,
+  canConfigureAiProvider = false,
   canAccessTeam = false,
   letterDestinations = [],
   canAdministerOnehr = false,
@@ -622,6 +629,11 @@ export function Sidebar({
   hasAssignedApproval?: boolean;
   /** Actual HR administration, independent of the broader partner administration rail. */
   canReviewProfileChanges?: boolean;
+  /** Actual HR administration: the AI Control Tower and AI configuration run requireAdmin, so the
+   * broader partner administration rail must not list them. */
+  canAdministerAi?: boolean;
+  /** Group-wide administration: a company administrator is sent from Provider back to the AI Overview. */
+  canConfigureAiProvider?: boolean;
   /** Actual My Team role authority, independent of the broader partner administration rail. */
   canAccessTeam?: boolean;
   letterDestinations?: readonly string[];
@@ -751,7 +763,7 @@ export function Sidebar({
   // Per-child visibility for flyout nodes (per-child gating vs. whole-group gating). Role gating and
   // module gating are ANDed: a row needs both the role AND the module to appear.
   const canSeeChild = (c: ChildItem) =>
-    moduleAllows(c.href) && (c.href !== '/assistant' || assistantAccess) && (c.href !== TALENT_HREF || performanceNavigation.tm) && (c.href !== DEVELOPMENT_HREF || performanceNavigation.idp !== 'none') && (!c.href.startsWith('/letters/')||letterDestinations.includes(c.href)) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === CALIBRATION_ROW.href ? canEnterCalibration || canAdministerOnehr : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) || c.href === PERFORMANCE_ROW.href && canAdministerOnehr : true);
+    moduleAllows(c.href) && (c.href !== '/assistant' || assistantAccess) && (c.href !== TALENT_HREF || performanceNavigation.tm) && (c.href !== DEVELOPMENT_HREF || performanceNavigation.idp !== 'none') && (!c.href.startsWith('/letters/')||letterDestinations.includes(c.href)) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === CALIBRATION_ROW.href ? canEnterCalibration || canAdministerOnehr : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.href === AI_PROVIDER_HREF ? canConfigureAiProvider : isAiAdministrationHref(c.href) ? canAdministerAi : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) || c.href === PERFORMANCE_ROW.href && canAdministerOnehr : true);
   // The former audience inventory still supplies its original visibility boundaries.
   // Only authorized rows are handed to the workspace placement owner below.
   const authorizedGroups = GROUPS

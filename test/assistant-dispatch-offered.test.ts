@@ -293,11 +293,57 @@ describe('model-selected conversational plan reaches current canonical facts',()
   const workspace=await loadAiWorkspace(ctx,{selectedExchangeId:res.exchangeId,includeGovernance:false});
   expect(workspace.history[0].grounded?.conversation).toEqual({plan:{version:1,mode:'clarify',slot:'period'},facts:[]});
   const question=await ownAssistantClarification(ctx,res.exchangeId,'March 2026');
-  expect(question).toEqual({originalQuestion:'Which pay period should we look at?',slot:'period',answer:'March 2026'});
+  expect(question).toEqual({originalQuestion:'Which pay period should we look at?',slot:'period',answer:'March 2026',earlier:[]});
   expect(converse).toHaveBeenCalledTimes(1);
  });
 });
 
+
+describe('a clarification reply carries the earlier human turns of its conversation (0658)',()=>{
+ it('links each reply to the exchange it answered and sends only the human turns, oldest first',async()=>{
+  const {ctx}=await employeeWithReleasedPayslip(true);
+  converse.mockResolvedValueOnce({...end,text:JSON.stringify({version:1,mode:'clarify',slot:'period'})});
+  const first=await askAssistant(ctx,{question:'How much was I paid?'});
+  converse.mockResolvedValueOnce({...end,text:JSON.stringify({version:1,mode:'clarify',slot:'module'})});
+  const second=await askAssistant(ctx,{question:'March 2026',clarificationExchangeId:first.exchangeId});
+  const [stored]=await owner.db.select({continues:schema.assistantExchange.continuesExchangeId,question:schema.assistantExchange.question}).from(schema.assistantExchange).where(eq(schema.assistantExchange.id,second.exchangeId));
+  expect(stored).toEqual({continues:first.exchangeId,question:'March 2026'});
+  const carried=await ownAssistantClarification(ctx,second.exchangeId,'Payroll');
+  expect(carried).toEqual({originalQuestion:'March 2026',slot:'module',answer:'Payroll',earlier:[{question:'How much was I paid?',slot:'period'}]});
+  converse.mockResolvedValueOnce({...end,text:JSON.stringify({version:1,mode:'clarify',slot:'period'})});
+  await askAssistant(ctx,{question:'Payroll',clarificationExchangeId:second.exchangeId});
+  const turns=(converse.mock.calls.at(-1)![1].turns as {role:string;content:string}[]).slice(0,3);
+  expect(turns).toEqual([{role:'user',content:'How much was I paid?'},
+   {role:'user',content:JSON.stringify({humanClarification:{slot:'period',answer:'March 2026'}})},
+   {role:'user',content:JSON.stringify({humanClarification:{slot:'module',answer:'Payroll'}})}]);
+  expect(JSON.stringify(converse.mock.calls.at(-1)![1].turns)).not.toContain('"mode":"clarify"');
+ });
+ it('starts the conversation later when an earlier reply was cleared, and never carries it',async()=>{
+  const {ctx}=await employeeWithReleasedPayslip(true);
+  converse.mockResolvedValueOnce({...end,text:JSON.stringify({version:1,mode:'clarify',slot:'period'})});
+  const first=await askAssistant(ctx,{question:'Secret first question'});
+  converse.mockResolvedValueOnce({...end,text:JSON.stringify({version:1,mode:'clarify',slot:'module'})});
+  const second=await askAssistant(ctx,{question:'March 2026',clarificationExchangeId:first.exchangeId});
+  await owner.db.delete(schema.assistantExchange).where(eq(schema.assistantExchange.id,first.exchangeId));
+  const [stored]=await owner.db.select({continues:schema.assistantExchange.continuesExchangeId}).from(schema.assistantExchange).where(eq(schema.assistantExchange.id,second.exchangeId));
+  expect(stored.continues).toBeNull();
+  expect(await ownAssistantClarification(ctx,second.exchangeId,'Payroll')).toEqual({originalQuestion:'March 2026',slot:'module',answer:'Payroll',earlier:[]});
+ });
+ it('refuses a link to another login\'s exchange and any later re-pointing',async()=>{
+  const {ctx}=await employeeWithReleasedPayslip(true);
+  converse.mockResolvedValueOnce({...end,text:JSON.stringify({version:1,mode:'clarify',slot:'period'})});
+  const mine=await askAssistant(ctx,{question:'Mine'});
+  const row={tenantId:base.tenantId,appUserId:base.adminUserId,question:'Theirs',continuesExchangeId:mine.exchangeId};
+  // Non-vacuous: the same login may store its own row; only the foreign link is refused.
+  const {continuesExchangeId:_link,...unlinked}=row;await owner.db.insert(schema.assistantExchange).values(unlinked);
+  await expect(owner.db.insert(schema.assistantExchange).values(row)).rejects.toThrow();
+  converse.mockResolvedValueOnce({...end,text:JSON.stringify({version:1,mode:'clarify',slot:'module'})});
+  const reply=await askAssistant(ctx,{question:'March 2026',clarificationExchangeId:mine.exchangeId});
+  converse.mockResolvedValueOnce({...end,text:'Done.'});
+  const third=await askAssistant(ctx,{question:'Another'});
+  await expect(owner.db.update(schema.assistantExchange).set({continuesExchangeId:third.exchangeId}).where(eq(schema.assistantExchange.id,reply.exchangeId))).rejects.toThrow();
+ });
+});
 
 describe('actual model selection of current canonical explanation clauses',()=>{
  it('uses the recorded payroll specialist and retires its explanation after module revocation',async()=>{

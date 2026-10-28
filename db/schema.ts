@@ -9649,9 +9649,13 @@ export const assistantExchange = pgTable(
     cachedInputTokens: integer('cached_input_tokens').notNull().default(0),
     /** GENERIC reason only — never a provider body, never an SDK message. */
     error: text('error'),
+    /** 0658: the same login's exchange this one answered (a clarification reply). No content; nulled when
+     *  that row is deleted, immutable otherwise. */
+    continuesExchangeId: uuid('continues_exchange_id').references((): AnyPgColumn => assistantExchange.id, { onDelete: 'set null' }),
     createdAt: createdAt(),
   },
   (t) => [
+    index('assistant_exchange_continues_idx').on(t.continuesExchangeId).where(sql`${t.continuesExchangeId} IS NOT NULL`),
     // `.desc()` mirrors 0451, which creates this index with `asked_at DESC` — it serves a newest-first
     // history list and the per-user daily cap. Declared ASC here it read as a different index from the
     // one the database actually has, which is the drift a later `db:generate` turns into a spurious

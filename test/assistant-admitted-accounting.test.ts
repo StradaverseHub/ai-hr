@@ -98,7 +98,7 @@ vi.mock('../core/ai-spend-task',()=>({bindAiSpendTaskTx:async(_tx:unknown,_ctx:u
 vi.mock('../core/module-agent-releases',()=>({prepareAssistantConversationStrategyTx:h.prepareStrategy,completeAssistantConversationStrategyTx:h.completeStrategy,
  retireAssistantConversationStrategyCapability:h.retireStrategy,withGovernedSpecialistReadBatch:async()=>{throw Error('no specialist reads in this fixture');}}));
 vi.mock('../core/assistant-provider-input',()=>({prepareAssistantConversation:(_ctx:unknown,configuration:unknown,args:unknown)=>({configuration,args})}));
-vi.mock('../core/assistant-clarification',()=>({ownAssistantClarification:async()=>{if(!h.state.clarification)throw Error('Current clarification unavailable.');return Object.freeze({...h.state.clarification});}}));
+vi.mock('../core/assistant-clarification',()=>({ownAssistantClarification:async()=>{if(!h.state.clarification)throw Error('Current clarification unavailable.');return Object.freeze({earlier:[],...h.state.clarification});},assistantClarificationSourceExchangeId:()=>null}));
 vi.mock('../core/assistant-tools',()=>({ASSISTANT_TOOLS:[],toolsFor:()=>[]}));
 vi.mock('../core/assistant-read-session',()=>({withAssistantRead:async()=>{throw Error('no reads in this fixture');}}));
 vi.mock('../lib/ai/assistant-disclosure',()=>({sealAssistantDisclosure:h.seal,assistantSourceDigest:()=>'fixture-digest'}));

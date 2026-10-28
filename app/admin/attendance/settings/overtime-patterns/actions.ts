@@ -16,7 +16,7 @@ import type {OvertimeSampleDraft} from '@/lib/overtime-pattern-ui';
 import {overtimePatternTransferOptions,transferOvertimePatternToPayroll,OvertimePayrollError,type OvertimePayrollErrorCode} from '@/packs/payroll/service';
 import {isCalendarDate} from '@/lib/calendar-date';
 
-export type OvertimeActionFailure={ok:false;code:'permission'|'stale'|'invalid'|'unavailable'|'conflict'|'closed'|'limit'|'system'|OvertimePayrollErrorCode;reference?:string;issues?:OvertimeIssue[]};
+export type OvertimeActionFailure={ok:false;code:'permission'|'stale'|'invalid'|'unavailable'|'conflict'|'closed'|'limit'|'busy'|'system'|OvertimePayrollErrorCode;reference?:string;issues?:OvertimeIssue[]};
 export type OvertimeActionResult<T>={ok:true;value:T}|OvertimeActionFailure;
 const PAGE='/admin/attendance/settings/overtime-patterns';
 async function run<T>(work:()=>Promise<T>,mutation:boolean):Promise<OvertimeActionResult<T>> {

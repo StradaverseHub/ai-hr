@@ -17,6 +17,7 @@ import { payComponentReferenceStamp } from '../../lib/pay-component-contract';
 /** OT configuration/storage owner. No Attendance, Payroll or TOIL implementation import: parent
  * binds the canonical input reader once; the pure owner alone resolves/evaluates definitions. */
 import {createHash,randomUUID} from 'node:crypto';
+import {lockLeaveDependencyConfigurationTx,LeaveDependencyUnavailable} from '../../core/leave-dependency-lock';
 import {and,asc,desc,eq,gt,gte,inArray,isNull,lt,lte,or,sql,type SQL} from 'drizzle-orm';
 import {type SessionContext,type Tx} from '../../db/client';
 import {actorOf,appendEvent,appendEvents} from '../../db/events';
@@ -53,7 +54,7 @@ export type CanonicalOvertimeSnapshot={input:CanonicalOvertimeInput;resolvedLega
 export type CanonicalOvertimeReader=(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string})=>Promise<CanonicalOvertimeSnapshot>;
 declare const preparedBrand:unique symbol;
 export type PreparedOvertimeCalculation={readonly [preparedBrand]:true};
-export class OvertimeOwnerError extends Error{constructor(readonly code:'permission'|'stale'|'invalid'|'unavailable'|'conflict'|'closed'|'limit',message:string){super(message);this.name='OvertimeOwnerError';}}
+export class OvertimeOwnerError extends Error{constructor(readonly code:'permission'|'stale'|'invalid'|'unavailable'|'conflict'|'closed'|'limit'|'busy',message:string){super(message);this.name='OvertimeOwnerError';}}
 function fail(code:OvertimeOwnerError['code'],message:string):never{throw new OvertimeOwnerError(code,message);}
 const json=(value:unknown)=>JSON.parse(JSON.stringify(value)) as Record<string,unknown>;
 const canonical=(value:unknown):unknown=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([key,v])=>[key,canonical(v)])):value;
@@ -65,7 +66,11 @@ const reason=(value:string)=>text(value,500);
 const bounded=<T>(rows:T[],max:number)=>{if(rows.length>max)fail('limit','Narrow the selection; the supported result bound was exceeded.');return rows;};
 const gate=(ctx:SessionContext)=>assertModuleGate(ctx,'attendance');
 async function event(tx:Tx,ctx:SessionContext,id:string,name:string,payload:unknown,employmentId?:string){await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'overtime-pattern',aggregateId:id,eventType:'overtime.'+name,actor:actorOf(ctx),subjectEmploymentId:employmentId,payload});}
-async function lockConfiguration(tx:Tx,ctx:SessionContext){gate(ctx);await tx.execute(sql`select app.lock_overtime_configuration(${ctx.tenantId}::uuid)`);}
+// Overtime definitions feed time-off-in-lieu credits, so configuration writers also join the leave-dependency
+// configuration lock (owner decision, 28 Oct 2026). The waiting overtime lock comes first; the leave lock never
+// waits, so a leave command holding it makes this save refuse as busy instead of deadlocking.
+async function lockConfiguration(tx:Tx,ctx:SessionContext){gate(ctx);await tx.execute(sql`select app.lock_overtime_configuration(${ctx.tenantId}::uuid)`);
+ try{await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);}catch(error){if(error instanceof LeaveDependencyUnavailable)fail('busy','Leave balances that depend on overtime are being updated. Try again shortly.');throw error;}}
 async function administerCompanies(tx:Tx,ctx:SessionContext,ids:readonly string[]){
  const unique=[...new Set(ids.map(uuid))];if(!unique.length||unique.length>500)fail('invalid','Choose between one and 500 companies.');
  const rows=await tx.select({id:s.company.id,currency:s.company.currency,allowed:sql<boolean>`app.is_admin_for(${s.company.id})`}).from(s.company).where(and(eq(s.company.tenantId,ctx.tenantId),inArray(s.company.id,unique),isNull(s.company.archivedAt)));
