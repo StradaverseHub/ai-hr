@@ -79,7 +79,8 @@ function fixture() {
   /** Press the confirming (second) button of the Nth alert. */
   const confirm = async (index = 0) => { const buttons = alert.mock.calls[index][2] as { onPress?: () => void }[]; await act(async () => { buttons[1].onPress?.(); }); };
   const posted = (n = 0) => apiPostV2.mock.calls[n] as [string, unknown, Record<string, unknown>];
-  return { ...screens, apiGetPage, apiGetV2, apiPostV2, push, alert, openURL, signOut, confirm, posted };
+  // Object.assign keeps the loaded module's index signature (an object spread drops it).
+  return Object.assign({} as Loaded, screens, { apiGetPage, apiGetV2, apiPostV2, push, alert, openURL, signOut, confirm, posted });
 }
 afterEach(cleanup);
 
