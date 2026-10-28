@@ -30,6 +30,11 @@ export type { RewardCalendarValues, RewardCalendarStage, RewardOffcycleSlaStage,
 import {changeRewardMember} from './maintenance';
 export {rewardAccessAdministration,previewRewardAccessChange,saveRewardAccessChange,rewardDeletionEligibility,deleteRewardReview,RewardMaintenanceError} from './maintenance';
 export type {RewardAccessChange,RewardAccessAdministration,RewardDeletionReason} from './maintenance';
+export {previewRewardAccessBatch,saveRewardAccessBatch,previewRewardAccessCopy} from './maintenance';
+export type {RewardAccessBatch,RewardAccessCopyProposal} from './maintenance';
+import {activeRewardLogin,missingRewardRoles,rewardRequiredRoles,rewardRoleLabels} from './coverage';
+export {rewardRequiredRoles,rewardUnitCoverage} from './coverage';
+export type {RewardUnitCoverage,RewardRoleCoverage} from './coverage';
 
 export { calculateRewards } from './engine';
 export { defaultPolicy } from './model';
@@ -667,8 +672,9 @@ export async function decideRewardUnit(ctx: SessionContext, unitId: string, revi
       if (!entries.length) throw new RewardError('A review needs at least one employee.');
       if (calculated.flags.some(f => f.severity === 'block')) throw new RewardError('Resolve all blocking checks, including restricted records, before proceeding.');
       if (calculated.flags.some(f => ['exception', 'warning'].includes(f.severity)) && reason.length < 10) throw new RewardError('Record why the exceptions and warnings are acceptable.');
-      const members = await tx.select({ role: rewardMember.role }).from(rewardMember).innerJoin(appUser, eq(appUser.id, rewardMember.userId)).where(and(eq(rewardMember.unitId, unitId), isNull(appUser.archivedAt), sql`not app.login_blocked(${appUser.id})`));
-      if ([...route, 'payroll'].some(role => !members.some(m => m.role === role))) throw new RewardError('Assign every approval role and the payroll handoff before submitting.');
+      const members = await tx.select({ role: rewardMember.role }).from(rewardMember).innerJoin(appUser, eq(appUser.id, rewardMember.userId)).where(and(eq(rewardMember.unitId, unitId), activeRewardLogin()));
+      const missing = missingRewardRoles(rewardRequiredRoles(unit, entries), members);
+      if (missing.length) throw new RewardError(`Assign every approval role and the payroll handoff before submitting. Missing: ${missing.map(role => rewardRoleLabels[role]).join(', ')}.`);
       if (unit.status !== 'draft' && unit.approvedDigest !== hash) throw new RewardError('The inputs changed after submission. Return this review to draft.');
       // A person must not sign consecutive stages of the same revision, even if granted both roles.
       const [prior] = await tx.select().from(rewardDecision).where(and(eq(rewardDecision.unitId, unitId), eq(rewardDecision.revision, revision))).orderBy(desc(rewardDecision.createdAt), desc(rewardDecision.id)).limit(1);

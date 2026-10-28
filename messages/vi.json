@@ -25926,7 +25926,7 @@
     "allCycles": "Tất cả kỳ xét duyệt",
     "allUnits": "Tất cả đơn vị kinh doanh",
     "add": "Thêm quyền truy cập",
-    "count": "{count} phân công",
+    "count": "{count, plural, other {# phân công}}",
     "user": "Người dùng",
     "role": "Vai trò",
     "scope": "Phạm vi xét duyệt",
@@ -25990,9 +25990,27 @@
       "confirmation": "Xác nhận kỳ xét duyệt đã chọn.",
       "used": "Kỳ xét duyệt đang được sử dụng; giữ lại lịch sử.",
       "missing": "Kỳ xét duyệt không khả dụng hoặc quyền đã bị gỡ.",
-      "system": "Không thể lưu thay đổi. Tải lại và thử lại."
+      "system": "Không thể lưu thay đổi. Tải lại và thử lại.",
+      "lastRequired": "Giữ ít nhất một người đang hoạt động cho mỗi vai trò phê duyệt bắt buộc; thay thế họ trong một lần chỉnh sửa."
     },
-    "unavailable": "Tài khoản không khả dụng · {id}"
+    "unavailable": "Tài khoản không khả dụng · {id}",
+    "lastRequiredHelp": "Vai trò phê duyệt bắt buộc. Chỉnh sửa để thay thế người này.",
+    "coverageTitle": "Mức độ đầy đủ vai trò phê duyệt",
+    "coverageHelp": "Mỗi đợt xét duyệt cần một người đang hoạt động cho mỗi vai trò phê duyệt trên quy trình và bàn giao bảng lương. Tài khoản bị vô hiệu hóa, tạm ngưng hoặc đã nghỉ việc không được tính.",
+    "coverageRule": "BU CEO không thể gửi cho đến khi không còn vai trò nào thiếu. Việc gỡ người đang hoạt động cuối cùng của một vai trò bắt buộc sẽ bị từ chối; hãy dùng Chỉnh sửa để thay thế.",
+    "rolesMissing": "{count, plural, other {Thiếu # vai trò}}",
+    "coverageComplete": "Đã phân công đủ vai trò",
+    "assigned": "Người được phân công",
+    "missingRole": "Còn thiếu",
+    "optionalNone": "Không bắt buộc, chưa có",
+    "person": "Người",
+    "personSearch": "Tìm theo tên, mã nhân viên hoặc email",
+    "noPeople": "Không có nhân viên đang làm việc phù hợp",
+    "noLogin": "Chưa có tài khoản đăng nhập",
+    "noLoginHelp": "Những người được đánh dấu \"Chưa có tài khoản đăng nhập\" là nhân viên đang làm việc nhưng chưa được mời vào AIHR. Hãy đề nghị bộ phận nhân sự mời họ trước khi giao vai trò đãi ngộ.",
+    "coverageFilter": "Mức độ đầy đủ",
+    "coverageAll": "Tất cả đợt xét duyệt",
+    "coverageMissingOnly": "Chỉ các đợt xét duyệt thiếu vai trò bắt buộc"
   },
   "rewardsDeletion": {
     "view": "Xem",
@@ -27589,5 +27607,41 @@
       "cancelledOn": "Đã hủy ngày {date}: {reason}",
       "cancelledSaved": "Đã hủy đợt xét duyệt. Đề xuất và phê duyệt được giữ ở chế độ chỉ xem."
     }
+  },
+  "rewardsAdminTabs": {
+    "label": "Quản trị thưởng",
+    "configuration": "Cấu hình Thưởng",
+    "shared": "Cấu hình thưởng dùng chung",
+    "access": "Quyền truy cập Thưởng"
+  },
+  "rewardsAccessBatch": {
+    "bounded": "Chọn một tài khoản hiện có, một vai trò và một hoặc nhiều đợt xét duyệt Nháp. Chưa có quyền nào được cấp cho đến khi bạn xem trước và lưu.",
+    "searchReviews": "Tìm đợt xét duyệt",
+    "allDraftInCycle": "Tất cả đợt xét duyệt Nháp trong một chu kỳ",
+    "allDraftInCompany": "Tất cả đợt xét duyệt Nháp trong một công ty",
+    "chooseShortcut": "Chọn tất cả trong…",
+    "clear": "Bỏ chọn",
+    "selected": "{count, plural, other {Đã chọn # đợt xét duyệt}}",
+    "lockedReview": "đã khóa",
+    "suggestionsTitle": "BU CEO được đề xuất",
+    "suggestionsHelp": "Lấy từ trưởng đơn vị kinh doanh được ghi nhận trong People. Đề xuất chỉ được thêm khi bạn đánh dấu chọn.",
+    "suggestFor": "{name} làm BU CEO cho {scope}",
+    "suggestedTag": "đề xuất",
+    "newCount": "{count, plural, other {# phân công mới}}",
+    "presentCount": "{count, plural, other {# đã có sẵn}}",
+    "presentTitle": "Đã có sẵn (không thay đổi)",
+    "allOrNone": "Xác nhận và lưu sẽ thêm tất cả hoặc không thêm gì.",
+    "tooMany": "Chọn tối đa 500 thay đổi trong một lần lưu.",
+    "copyOpen": "Sao chép từ chu kỳ trước",
+    "copyTitle": "Sao chép quyền truy cập từ chu kỳ trước",
+    "copyHelp": "Ghép các đợt xét duyệt hằng năm theo công ty và đơn vị kinh doanh, rồi đề xuất cùng người với cùng vai trò. Chỉ các đợt xét duyệt Nháp trong chu kỳ đích được cấp quyền. Những người có tài khoản không còn hoạt động sẽ được liệt kê và bỏ qua.",
+    "from": "Từ",
+    "to": "Đến",
+    "chooseCycle": "Chọn chu kỳ",
+    "findMatches": "Tìm đợt xét duyệt tương ứng",
+    "proposalsTitle": "Phân công được đề xuất",
+    "noProposals": "Không có gì để sao chép cho các chu kỳ này.",
+    "skippedTitle": "Bỏ qua: tài khoản không còn hoạt động",
+    "unmatched": "{count, plural, other {# đợt xét duyệt Nháp}} trong chu kỳ đích không có đợt tương ứng để sao chép."
   }
 }

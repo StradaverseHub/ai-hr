@@ -25926,7 +25926,7 @@
     "allCycles": "Semua kitaran semakan",
     "allUnits": "Semua unit perniagaan",
     "add": "Tambah akses",
-    "count": "{count} penugasan",
+    "count": "{count, plural, other {# penugasan}}",
     "user": "Pengguna",
     "role": "Peranan",
     "scope": "Skop semakan",
@@ -25990,9 +25990,27 @@
       "confirmation": "Sahkan semakan yang dipilih.",
       "used": "Semakan sedang digunakan; kekalkan sejarahnya.",
       "missing": "Semakan tidak tersedia atau akses dibuang.",
-      "system": "Perubahan tidak dapat disimpan. Muat semula dan cuba lagi."
+      "system": "Perubahan tidak dapat disimpan. Muat semula dan cuba lagi.",
+      "lastRequired": "Kekalkan sekurang-kurangnya seorang yang aktif bagi setiap peranan kelulusan wajib; gantikan mereka dalam satu suntingan."
     },
-    "unavailable": "Akaun tidak tersedia · {id}"
+    "unavailable": "Akaun tidak tersedia · {id}",
+    "lastRequiredHelp": "Peranan kelulusan wajib. Sunting untuk menggantikan orang ini.",
+    "coverageTitle": "Liputan peranan kelulusan",
+    "coverageHelp": "Setiap semakan memerlukan seorang yang aktif bagi setiap peranan kelulusan dalam laluannya dan serahan gaji. Log masuk yang dinyahdayakan, digantung atau telah berhenti tidak dikira.",
+    "coverageRule": "BU CEO tidak boleh menghantar sehingga tiada peranan yang kurang. Mengalih keluar orang aktif terakhir dalam peranan wajib akan ditolak; gunakan Sunting untuk menggantikan mereka.",
+    "rolesMissing": "{count, plural, other {# peranan tiada}}",
+    "coverageComplete": "Semua peranan ditetapkan",
+    "assigned": "Ditetapkan",
+    "missingRole": "Tiada",
+    "optionalNone": "Pilihan, tiada",
+    "person": "Orang",
+    "personSearch": "Cari nama, nombor pekerja atau e-mel",
+    "noPeople": "Tiada pekerja aktif yang sepadan",
+    "noLogin": "Belum ada log masuk",
+    "noLoginHelp": "Orang bertanda \"Belum ada log masuk\" ialah pekerja aktif yang belum dijemput ke AIHR. Minta HR menjemput mereka sebelum memberikan peranan Ganjaran.",
+    "coverageFilter": "Liputan",
+    "coverageAll": "Semua semakan",
+    "coverageMissingOnly": "Hanya semakan yang kekurangan peranan wajib"
   },
   "rewardsDeletion": {
     "view": "Lihat",
@@ -27589,5 +27607,41 @@
       "cancelledOn": "Dibatalkan {date}: {reason}",
       "cancelledSaved": "Semakan dibatalkan. Cadangan dan kelulusannya disimpan sebagai baca sahaja."
     }
+  },
+  "rewardsAdminTabs": {
+    "label": "Pentadbiran Ganjaran",
+    "configuration": "Konfigurasi Ganjaran",
+    "shared": "Konfigurasi ganjaran dikongsi",
+    "access": "Akses Ganjaran"
+  },
+  "rewardsAccessBatch": {
+    "bounded": "Pilih log masuk sedia ada, satu peranan dan satu atau lebih semakan Draf. Tiada akses diberikan sehingga anda pratonton dan simpan.",
+    "searchReviews": "Cari semakan",
+    "allDraftInCycle": "Semua semakan Draf dalam satu kitaran",
+    "allDraftInCompany": "Semua semakan Draf dalam satu syarikat",
+    "chooseShortcut": "Tandakan semua dalam…",
+    "clear": "Kosongkan pilihan",
+    "selected": "{count, plural, other {# semakan dipilih}}",
+    "lockedReview": "dikunci",
+    "suggestionsTitle": "Cadangan BU CEO",
+    "suggestionsHelp": "Daripada ketua unit perniagaan yang direkodkan dalam People. Cadangan hanya ditambah jika anda menandakannya.",
+    "suggestFor": "{name} sebagai BU CEO untuk {scope}",
+    "suggestedTag": "dicadangkan",
+    "newCount": "{count, plural, other {# penugasan baharu}}",
+    "presentCount": "{count, plural, other {# sudah sedia ada}}",
+    "presentTitle": "Sudah sedia ada (tiada perubahan)",
+    "allOrNone": "Sahkan dan simpan akan menambah kesemuanya atau tiada langsung.",
+    "tooMany": "Pilih paling banyak 500 perubahan dalam satu simpanan.",
+    "copyOpen": "Salin daripada kitaran terdahulu",
+    "copyTitle": "Salin akses daripada kitaran terdahulu",
+    "copyHelp": "Memadankan semakan tahunan mengikut syarikat dan unit perniagaan serta mencadangkan orang yang sama dalam peranan yang sama. Hanya semakan Draf dalam kitaran sasaran menerima akses. Orang yang log masuknya tidak lagi aktif disenaraikan dan dilangkau.",
+    "from": "Daripada",
+    "to": "Kepada",
+    "chooseCycle": "Pilih kitaran",
+    "findMatches": "Cari semakan yang sepadan",
+    "proposalsTitle": "Penugasan dicadangkan",
+    "noProposals": "Tiada apa untuk disalin bagi kitaran ini.",
+    "skippedTitle": "Dilangkau: log masuk tidak lagi aktif",
+    "unmatched": "{count, plural, other {# semakan Draf}} dalam kitaran sasaran tiada semakan sepadan untuk disalin."
   }
 }

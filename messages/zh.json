@@ -25926,7 +25926,7 @@
     "allCycles": "所有评审周期",
     "allUnits": "所有业务单位",
     "add": "添加访问权限",
-    "count": "{count} 项分配",
+    "count": "{count, plural, other {# 项分配}}",
     "user": "用户",
     "role": "角色",
     "scope": "评审范围",
@@ -25990,9 +25990,27 @@
       "confirmation": "请确认所选评审。",
       "used": "此评审已在使用，须保留历史。",
       "missing": "评审不可用或权限已被移除。",
-      "system": "无法保存更改。请重新加载后再试。"
+      "system": "无法保存更改。请重新加载后再试。",
+      "lastRequired": "每个必需的审批角色至少保留一名有效人员；请在一次编辑中完成替换。"
     },
-    "unavailable": "不可用账户 · {id}"
+    "unavailable": "不可用账户 · {id}",
+    "lastRequiredHelp": "必需的审批角色。请通过编辑替换此人。",
+    "coverageTitle": "审批角色覆盖情况",
+    "coverageHelp": "每项评审的审批路线上每个角色以及薪资交接都需要一名有效人员。已停用、已暂停或已离职的登录账户不计入。",
+    "coverageRule": "在没有缺失角色之前，BU CEO 无法提交。移除必需角色中最后一名有效人员将被拒绝；请使用编辑进行替换。",
+    "rolesMissing": "{count, plural, other {缺少 # 个角色}}",
+    "coverageComplete": "所有角色均已分配",
+    "assigned": "已分配",
+    "missingRole": "缺失",
+    "optionalNone": "可选，无",
+    "person": "人员",
+    "personSearch": "搜索姓名、员工编号或电子邮件",
+    "noPeople": "没有匹配的在职员工",
+    "noLogin": "尚无登录账户",
+    "noLoginHelp": "标记为“尚无登录账户”的人员是尚未受邀加入 AIHR 的在职员工。请先让人力资源部邀请他们，再分配薪酬评审角色。",
+    "coverageFilter": "覆盖情况",
+    "coverageAll": "全部评审",
+    "coverageMissingOnly": "仅显示缺少必需角色的评审"
   },
   "rewardsDeletion": {
     "view": "查看",
@@ -27589,5 +27607,41 @@
       "cancelledOn": "{date} 已取消：{reason}",
       "cancelledSaved": "评审已取消。其建议和审批以只读方式保留。"
     }
+  },
+  "rewardsAdminTabs": {
+    "label": "奖励管理",
+    "configuration": "奖励配置",
+    "shared": "共享奖励配置",
+    "access": "奖励访问权限"
+  },
+  "rewardsAccessBatch": {
+    "bounded": "选择一个现有登录账户、一个角色以及一个或多个草稿评审。预览并保存之前不会授予任何权限。",
+    "searchReviews": "搜索评审",
+    "allDraftInCycle": "某周期内的全部草稿评审",
+    "allDraftInCompany": "某公司内的全部草稿评审",
+    "chooseShortcut": "全选…",
+    "clear": "清除选择",
+    "selected": "{count, plural, other {已选择 # 项评审}}",
+    "lockedReview": "已锁定",
+    "suggestionsTitle": "建议的 BU CEO",
+    "suggestionsHelp": "来自 People 中记录的业务单元负责人。只有勾选后才会添加建议。",
+    "suggestFor": "{name} 担任 {scope} 的 BU CEO",
+    "suggestedTag": "建议",
+    "newCount": "{count, plural, other {# 项新分配}}",
+    "presentCount": "{count, plural, other {# 项已存在}}",
+    "presentTitle": "已存在（无变更）",
+    "allOrNone": "确认并保存将全部添加，或全部不添加。",
+    "tooMany": "每次保存最多选择 500 项变更。",
+    "copyOpen": "从以往周期复制",
+    "copyTitle": "从以往周期复制访问权限",
+    "copyHelp": "按公司和业务单元匹配年度评审，并为相同人员建议相同角色。只有目标周期中的草稿评审会获得权限。登录已失效的人员会被列出并跳过。",
+    "from": "从",
+    "to": "到",
+    "chooseCycle": "选择周期",
+    "findMatches": "查找匹配的评审",
+    "proposalsTitle": "建议的分配",
+    "noProposals": "这些周期没有可复制的内容。",
+    "skippedTitle": "已跳过：登录已失效",
+    "unmatched": "目标周期中有 {count, plural, other {# 项草稿评审}}没有可复制的匹配评审。"
   }
 }
