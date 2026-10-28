@@ -40,7 +40,7 @@ export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'lo
       const operation = state.step === 'enroll' || state.step === 'mfa' ? 'mfa' : state.step === 'accept' ? 'accept-invite' : state.step;
       const response = await fetch(`/login/api/${operation}`, { method: 'POST', credentials: 'same-origin', redirect: 'error',
         headers: { 'content-type': 'application/json' }, body: JSON.stringify({
-          ...Object.fromEntries(data.entries()),locale, ...(state.challenge ? { challenge: state.challenge } : {}),
+          ...Object.fromEntries(data.entries()),...(operation==='recovery'?{locale}:{}), ...(state.challenge ? { challenge: state.challenge } : {}),
           ...(resetToken ? { token: resetToken } : {}), ...(invitation ? { token: invitation } : {}),
         }) });
       const reply: Reply = await response.json();
