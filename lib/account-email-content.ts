@@ -14,3 +14,8 @@ export function recoveryEmailContent(resetUrl:string,locale:EmailLocale='en'){co
 export function accountEmailPreview(kind:'invitation'|'recovery'){
  return kind==='invitation'?invitationEmailContent('[organization code]','[Activation link hidden]'):recoveryEmailContent('[Password reset link hidden]');
 }
+/** Protected call-to-action labels cannot be edited independently of their code-owned destination. */
+export function accountEmailAction(kind:'invitation'|'recovery',locale:EmailLocale='en'){
+ const labels={en:{invitation:'Activate my account',recovery:'Reset my password'},ms:{invitation:'Aktifkan akaun saya',recovery:'Tetapkan semula kata laluan saya'},zh:{invitation:'激活我的账户',recovery:'重置我的密码'},vi:{invitation:'Kích hoạt tài khoản của tôi',recovery:'Đặt lại mật khẩu của tôi'},ta:{invitation:'எனது கணக்கைச் செயல்படுத்து',recovery:'எனது கடவுச்சொல்லை மீட்டமை'},th:{invitation:'เปิดใช้งานบัญชีของฉัน',recovery:'รีเซ็ตรหัสผ่านของฉัน'}};
+ return labels[locale][kind];
+}

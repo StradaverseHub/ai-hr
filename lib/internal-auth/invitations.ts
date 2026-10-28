@@ -9,7 +9,7 @@ import { sendInternalMail, type MailTransport } from './mail';
 import { AccountEmailDeliveryError, type AccountEmailContext } from '../account-email-model';
 import {accountEmailDesign} from '../email-design/delivery';
 import {renderEmailDesign} from '../email-design/render';
-import {invitationEmailContent} from '../account-email-content';
+import {accountEmailAction,invitationEmailContent} from '../account-email-content';
 export async function sendInternalInvitation(email: string, activationPath: string, context?: AccountEmailContext, transport?: MailTransport) {
   const match = /^\/invite\/([A-Za-z0-9_-]{43})\/activate$/.exec(activationPath);
   if (!match || !context) throw new AccountEmailDeliveryError('notEligible');
@@ -18,7 +18,7 @@ export async function sendInternalInvitation(email: string, activationPath: stri
   const org = invitation ? await readRecord<Organization>(client, `tenant:${invitation.tenant_id}`) : null;
   if (!org || invitation.email !== email) throw new AccountEmailDeliveryError('notEligible');
   const design=await accountEmailDesign(context.deliveryId,context.leaseToken),link=internalConfig().origin+activationPath;
-  await sendInternalMail({to:email,...renderEmailDesign(design.document,'invitation',design.locale,{...invitationEmailContent(org.code,link,design.locale),link},{...design.data,company_name:design.data?.company_name??org.name,organization_code:org.code,expiry_days:'7'})},transport);
+  await sendInternalMail({to:email,...renderEmailDesign(design.document,'invitation',design.locale,{...invitationEmailContent(org.code,link,design.locale),link,buttonLabel:accountEmailAction('invitation',design.locale)},{...design.data,company_name:design.data?.company_name??org.name,organization_code:org.code,expiry_days:'7'})},transport);
   return { invitationId: 'internal' };
 }
 export async function startInvitation(token: string, username: string, password: string, native = false): Promise<AuthReply> {

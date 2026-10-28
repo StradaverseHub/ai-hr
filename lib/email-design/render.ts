@@ -1,5 +1,5 @@
 import {emailDocument,defaultEmailDocument,emailPlaceholders,secureEmailUrl,type EmailKind} from './model';
-export type EmailSystemContent={subject:string;text:string;link?:string};
+export type EmailSystemContent={subject:string;text:string;link?:string;buttonLabel?:string};
 const escape=(value:string)=>value.replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]!));
 /** Runtime data belongs to a recipient owner. Admin content is always escaped, never executable HTML. */
 export function renderEmailDesign(raw:unknown|null,kind:EmailKind,locale:string,system:EmailSystemContent,data:Readonly<Record<string,string>>={}){
@@ -22,7 +22,7 @@ export function renderEmailDesign(raw:unknown|null,kind:EmailKind,locale:string,
    case 'spacer':content=`<div style="height:${block.height}px;line-height:${block.height}px">&#160;</div>`;break;
    case 'social':text.push(...block.links.map(value=>`${fill(value.label)}: ${value.href}`));content=block.links.map(value=>`<a href="${escape(value.href)}" style="margin-right:12px">${escape(fill(value.label))}</a>`).join(' ');break;
    case 'footer':text.push(fill(block.text));content=escape(fill(block.text)).replace(/\n/g,'<br>');break;
-   case 'system':text.push(system.text);content=link?systemHtml.replaceAll(escape(link),`<a href="${escape(link)}">${escape(link)}</a>`):systemHtml;break;
+   case 'system':text.push(system.text);content=link?systemHtml.replaceAll(escape(link),`<a href="${escape(link)}"${system.buttonLabel?` style="display:inline-block;padding:12px 20px;border-radius:6px;background:${s.color??'#222244'};color:${s.background??'#ffffff'};text-decoration:none;font-weight:bold"`: ''}>${escape(system.buttonLabel??link)}</a>`):systemHtml;break;
   }
   return `<tr><td style="${style}">${content}</td></tr>`;
  }).join('');

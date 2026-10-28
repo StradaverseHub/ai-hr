@@ -32,6 +32,10 @@ describe('validated email designs',()=>{
   // Preview and send use this exact deterministic function, including the text alternative.
   expect(renderEmailDesign(doc,'invitation','en',system,data)).toEqual(output);
  });
+ it('renders the code-owned account action as a button while keeping its exact destination in both alternatives',()=>{
+  const result=renderEmailDesign(null,'invitation','en',{...system,buttonLabel:'Activate my account'});
+  expect(result.html).toContain('>Activate my account</a>');expect(result.html).toContain('href="https://example.com/activate"');expect(result.html).toContain('display:inline-block');expect(result.text).toContain(system.link);expect(result.text).toContain('Expires in seven days.');
+ });
  it('applies size, alignment and spacing even when the default font is unchanged',()=>{
   const doc=design();doc.blocks[0].style={size:24,align:'right',padding:40};
   const html=renderEmailDesign(doc,'invitation','en',system).html;
