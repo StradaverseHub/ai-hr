@@ -7327,7 +7327,23 @@
       "noIssues": "Setiap baris lulus semakan.",
       "downloadErrors": "Muat turun keputusan (Excel)",
       "viewPayroll": "Lihat gaji →",
-      "importAnother": "Import fail lain"
+      "importAnother": "Import fail lain",
+      "colCategory": "Kategori",
+      "colAmountType": "Jenis amaun",
+      "sampleNote": "CONTOH — BUKAN DATA SEBENAR. Pekerja rekaan yang menunjukkan cara setiap kod ditulis. Jangan muat naik helaian ini; isi helaian pertama.",
+      "categories": {
+        "basic": "Gaji Pokok",
+        "earning": "Pendapatan",
+        "deduction": "Potongan",
+        "employeeStatutory": "Berkanun Pekerja",
+        "employerStatutory": "Berkanun Majikan",
+        "payrollTotal": "Jumlah Gaji"
+      },
+      "amountTypes": {
+        "employee": "Amaun pekerja",
+        "employer": "Amaun majikan",
+        "check": "Semakan sahaja — dibandingkan, tidak dicampur"
+      }
     },
     "process": {
       "taxSchemeDeclarationRequired": "Rekodkan skim cukai diluluskan untuk pekerjaan, majikan dan tempoh penggajian ini, termasuk rujukan kelulusan dan pengesahan kelayakan HR, sebelum memproses penggajian.",
@@ -9103,7 +9119,8 @@
         "create": "Cipta",
         "replace": "Ganti",
         "unchanged": "Tidak berubah",
-        "invalid": "Tidak sah"
+        "invalid": "Tidak sah",
+        "protected": "Dilindungi"
       },
       "states": {
         "confirmed": "Diimport",
@@ -9127,7 +9144,6 @@
       "failed": "Operasi tidak dapat diselesaikan. Semak Fail Log sebelum mencuba lagi. Tiada perubahan gaji separa disimpan.",
       "atomicHint": "Seluruh fail mesti lulus pengesahan. Pengesahan import menyemak semula akses, versi sasaran dan kebergantungan. Sejarah diimport mengubah laporan dan nilai terkumpul tahunan; ia tidak mengira gaji, mengeluarkan slip gaji atau memulakan bayaran.",
       "confirmation": "Saya telah menyemak syarikat, tempoh, kitaran dan nilai di atas serta membenarkan keseluruhan import ini.",
-      "replacementConfirmation": "Saya membenarkan penggantian {count} rekod diimport di atas. Rekod asal yang ditutup akan kekal dalam sejarah audit.",
       "success": "Import disimpan. Sejarah berkuat kuasa dan rekod audit disimpan bersama. Semak percubaan ini dalam Fail Log.",
       "logHint": "Fail asal, hasil pengesahan, perubahan disimpan dan peristiwa pemulihan. Setiap percubaan mengekalkan sejarahnya sendiri.",
       "auditHint": "Pratonton di bawah merekodkan cadangan fail semasa pengesahan. Peristiwa menunjukkan sama ada ia disimpan, ditolak atau dikembalikan; pembetulan kemudian mempunyai percubaan sendiri.",
@@ -9160,7 +9176,13 @@
           "version": "Versi set peraturan sumber",
           "lp": "Potongan diluluskan (TP1 / pilihan)"
         }
-      }
+      },
+      "items": "Item",
+      "protectedHint": "Gaji bulan ini telah diproses atau dilaporkan dalam AIHR dan tidak akan diganti oleh import. Buang baris ini daripada fail, atau betulkan bulan itu melalui Back Pay atau larian pelarasan.",
+      "overwriteTitle": "Sejarah gaji sedia ada ditemui untuk {count} bulan-pekerja, termasuk rekod dalam tempoh gaji Ditutup. Adakah anda mahu menulis ganti rekod sedia ada?",
+      "overwriteReplace": "Sahkan tulis ganti — gantikan rekod yang diimport sebelum ini. Angka asal kekal dalam sejarah audit dan tempoh Ditutup kekal Ditutup.",
+      "overwriteSkip": "Import rekod baharu sahaja dan biarkan rekod sedia ada seperti sedia kala.",
+      "successSkipped": "{count} rekod sedia ada dibiarkan tanpa perubahan, seperti yang dipilih."
     }
   },
   "admin": {

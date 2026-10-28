@@ -1,5 +1,7 @@
 # ADR-0096 — Clocking file mapping and import: a file ADDS clockings, it never writes over a day
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Date:** 2026-10-08
 - **Status:** Accepted with the approved plan for board item 50ed39e1 (round r424). Numbered 0096 because
   0095 is held by an unmerged branch (the lifecycle module); renumber at merge if that changes.

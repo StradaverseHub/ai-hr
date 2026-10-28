@@ -1,5 +1,7 @@
 # ADR-0066 — Configurable Earned-Leave Entitlement per Company + Festive One-off Grants
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted
 Date: 2026-06-29
 Feedback: "Configurable Earned Leave Entitlement Rules"

@@ -7327,7 +7327,23 @@
       "noIssues": "Mọi dòng đều hợp lệ.",
       "downloadErrors": "Tải kết quả (Excel)",
       "viewPayroll": "Xem bảng lương →",
-      "importAnother": "Nhập tệp khác"
+      "importAnother": "Nhập tệp khác",
+      "colCategory": "Danh mục",
+      "colAmountType": "Loại số tiền",
+      "sampleNote": "MẪU — KHÔNG PHẢI DỮ LIỆU THẬT. Nhân viên hư cấu minh họa cách ghi từng mã. Không tải lên trang này; hãy điền vào trang đầu tiên.",
+      "categories": {
+        "basic": "Lương cơ bản",
+        "earning": "Thu nhập",
+        "deduction": "Khấu trừ",
+        "employeeStatutory": "Bắt buộc (nhân viên)",
+        "employerStatutory": "Bắt buộc (chủ lao động)",
+        "payrollTotal": "Tổng lương"
+      },
+      "amountTypes": {
+        "employee": "Số tiền nhân viên",
+        "employer": "Số tiền chủ lao động",
+        "check": "Chỉ đối chiếu — so sánh, không cộng"
+      }
     },
     "process": {
       "taxSchemeDeclarationRequired": "Trước khi xử lý lương, hãy ghi nhận chương trình thuế được phê duyệt cho quan hệ lao động, chủ lao động và kỳ lương này, gồm tham chiếu phê duyệt và xác nhận điều kiện của HR.",
@@ -9103,7 +9119,8 @@
         "create": "Tạo",
         "replace": "Thay thế",
         "unchanged": "Không đổi",
-        "invalid": "Không hợp lệ"
+        "invalid": "Không hợp lệ",
+        "protected": "Được bảo vệ"
       },
       "states": {
         "confirmed": "Đã nhập",
@@ -9127,7 +9144,6 @@
       "failed": "Không thể hoàn tất. Kiểm tra Tệp nhật ký trước khi thử lại. Không lưu thay đổi lương một phần.",
       "atomicHint": "Toàn bộ tệp phải qua kiểm tra. Khi xác nhận, hệ thống kiểm tra lại quyền, phiên bản đích và dữ liệu phụ thuộc. Lịch sử nhập ảnh hưởng báo cáo và lũy kế năm; không tính lương, phát phiếu lương hoặc khởi tạo thanh toán.",
       "confirmation": "Tôi đã xem các công ty, kỳ, chu kỳ và giá trị ở trên, và cho phép nhập toàn bộ.",
-      "replacementConfirmation": "Tôi cho phép thay thế {count} bản ghi nhập ở trên. Bản gốc đã đóng vẫn được giữ trong lịch sử kiểm toán.",
       "success": "Đã lưu lần nhập. Lịch sử có hiệu lực và bản kiểm toán được lưu cùng nhau. Xem lần nhập này trong Tệp nhật ký.",
       "logHint": "Tệp gốc, kết quả kiểm tra, thay đổi đã lưu và sự kiện khôi phục. Mỗi lần thực hiện giữ lịch sử riêng.",
       "auditHint": "Phần xem trước ghi lại đề xuất của tệp khi kiểm tra. Sự kiện cho biết đã lưu, bị từ chối hay hoàn tác; sửa đổi sau có lần thực hiện riêng.",
@@ -9160,7 +9176,13 @@
           "version": "Phiên bản quy tắc nguồn",
           "lp": "Khoản trừ được duyệt (TP1 / tùy chọn)"
         }
-      }
+      },
+      "items": "Khoản mục",
+      "protectedHint": "Lương tháng này đã được xử lý hoặc báo cáo trong AIHR và không bao giờ bị thay thế bởi việc nhập. Hãy xóa các dòng này khỏi tệp, hoặc sửa tháng đó qua Back Pay hoặc một đợt điều chỉnh.",
+      "overwriteTitle": "Đã tìm thấy lịch sử lương hiện có cho {count} nhân viên-tháng, bao gồm các bản ghi trong kỳ lương Đã đóng. Bạn có muốn ghi đè các bản ghi hiện có không?",
+      "overwriteReplace": "Xác nhận ghi đè — thay thế các bản ghi đã nhập trước đó. Số liệu gốc vẫn nằm trong lịch sử kiểm toán và các kỳ Đã đóng vẫn đóng.",
+      "overwriteSkip": "Chỉ nhập các bản ghi mới và giữ nguyên các bản ghi hiện có.",
+      "successSkipped": "Đã giữ nguyên {count} bản ghi hiện có theo lựa chọn."
     }
   },
   "admin": {

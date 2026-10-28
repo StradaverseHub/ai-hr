@@ -1,5 +1,7 @@
 # ADR-0064 — Monthly payroll-policy General Settings (config-at-run-time)
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted — PARTIALLY SUPERSEDED by ADR-0078 (642ecc55, migration 0290): ownership of Pay Mode,
 Payment Term and the non-monthly rate moved from the policy to the employee's own effective-dated
 compensation row. The policy's calculation config (proration, OT caps, leave divisors, cut-offs, rounding)

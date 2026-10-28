@@ -1,5 +1,7 @@
 # 0128 — Versioned System Testing and personal execution records
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: accepted implementation direction; verification and release pending.
 
 Board: 9689f5d3. This extends the existing System Testing owner. It does not grant access to any tested business function.

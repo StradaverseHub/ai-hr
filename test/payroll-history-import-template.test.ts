@@ -30,11 +30,26 @@ import {
   missingHistoryColumns,
   payComponentDestination,
   readHistoryField,
+  historySampleRows,
+  importCodeCategory,
 } from '../lib/payroll-history-import-schema';
 import { PAYROLL_HISTORY_TEXT_COLUMN_INDEXES, buildImportCodeRows } from '../lib/import-template-xlsx';
 import { buildTemplateCsv, payrollHistoryTemplate } from '../lib/import-template';
 
-const CONTRACT_KEYS = [...PAYROLL_HISTORY_COLUMNS.required, ...PAYROLL_HISTORY_COLUMNS.optional];
+const CONTRACT_KEYS: string[] = [...PAYROLL_HISTORY_COLUMNS.required, ...PAYROLL_HISTORY_COLUMNS.optional];
+const HEADINGS = {
+  title: 'Accepted DOE codes',
+  note: 'A code the system does not recognise stops its line.',
+  code: 'Code',
+  label: 'Meaning',
+  destination: 'Lands on',
+  direction: 'Direction',
+  category: 'Category',
+  amountType: 'Amount type',
+  sampleNote: 'SAMPLE — NOT REAL DATA',
+  categoryNames: { basic: 'Basic Salary', earning: 'Earning', deduction: 'Deduction', employeeStatutory: 'Employee Statutory', employerStatutory: 'Employer Statutory', payrollTotal: 'Payroll Total' },
+  amountTypeNames: { employee: 'Employee amount', employer: 'Employer amount', check: 'Check only' },
+};
 
 describe('payroll-history template', () => {
   it('the reporter’s headings round-trip to the contract keys, in their order', () => {
@@ -42,11 +57,11 @@ describe('payroll-history template', () => {
     const normalise = (h: string) => h.trim().toLowerCase().replace(/\s+/g, '_');
     expect(PAYROLL_HISTORY_HEADERS.map(normalise)).toEqual(CONTRACT_KEYS);
     // And through the real parser, on a real header row, including CRLF.
-    const { headers } = parseCsvRecords(`${PAYROLL_HISTORY_HEADERS.join(',')}\r\nA1001,202501,ME,BASIC,ABCDE,1,1\r\n`);
+    const { headers } = parseCsvRecords(`${PAYROLL_HISTORY_HEADERS.join(',')}\r\nA1001,202501,ME,BASIC,ABCDE,1\r\n`);
     expect(headers).toEqual(CONTRACT_KEYS);
   });
 
-  it('the reporter’s column ORDER is unchanged', () => {
+  it('the column ORDER is the reporter’s, with Override? retired (d28501b8)', () => {
     expect([...PAYROLL_HISTORY_HEADERS]).toEqual([
       'Employee No',
       'Payroll Period',
@@ -54,7 +69,6 @@ describe('payroll-history template', () => {
       'DOE Code',
       'Company Code',
       'Amount',
-      'Override?',
     ]);
   });
 
@@ -66,7 +80,7 @@ describe('payroll-history template', () => {
 
   it('readHistoryField reads a record parsed from the reporter’s own headings', () => {
     const { records } = parseCsvRecords(
-      `${PAYROLL_HISTORY_HEADERS.join(',')}\nA1001,202501,ME,BASIC,ABCDE,5000.00,1`,
+      `${PAYROLL_HISTORY_HEADERS.join(',')}\nA1001,202501,ME,BASIC,ABCDE,5000.00`,
     );
     const rec = records[0];
     expect(readHistoryField(rec, 'employee_no')).toBe('A1001');
@@ -75,7 +89,13 @@ describe('payroll-history template', () => {
     expect(readHistoryField(rec, 'doe_code')).toBe('BASIC');
     expect(readHistoryField(rec, 'company_code')).toBe('ABCDE');
     expect(readHistoryField(rec, 'amount')).toBe('5000.00');
-    expect(readHistoryField(rec, 'override?')).toBe('1');
+  });
+
+  it('an older file that still carries Override? parses the same and the column is read by nothing', () => {
+    const { headers, records } = parseCsvRecords('Employee No,Payroll Period,Payroll Cycle,DOE Code,Company Code,Amount,Override?\nA1001,202501,ME,BASIC,ABCDE,5000.00,0');
+    expect(missingHistoryColumns(headers)).toEqual([]);
+    expect(readHistoryField(records[0], 'amount')).toBe('5000.00');
+    expect(Object.keys(PAYROLL_HISTORY_HEADER_ALIASES)).not.toContain('override?');
   });
 
   it('missingHistoryColumns names every absent mandatory column and accepts aliases', () => {
@@ -145,24 +165,52 @@ describe('payroll-history template', () => {
     expect(new Set(keys).size).toBe(keys.length);
     // Every amount parses as money.
     for (const r of rows) expect(Number(r[5].replace(/,/g, ''))).not.toBeNaN();
-    // Override? is always a permitted value.
-    for (const r of rows) expect(['0', '1']).toContain(r[6]);
+    // Six columns: Override? is gone from the example as well as the headings.
+    for (const r of rows) expect(r).toHaveLength(PAYROLL_HISTORY_HEADERS.length);
+    // d28501b8 — every built-in code appears, so the sample is the statutory reference the reporter asked for.
+    for (const c of STATUTORY_IMPORT_CODES) expect(sampleCodes, `sample must carry ${c.code}`).toContain(c.code);
+    // Every code is one the Codes sheet lists when no tenant codes exist: the built-in floor alone.
+    for (const code of sampleCodes) expect(statutory.has(code), `${code} must be built in`).toBe(true);
+  });
+
+  it('the stated GROSS and NETPAY agree with the example’s own lines, with and without tenant codes', () => {
+    for (const codes of [[], [{ code: 'A0027', destination: 'allowance', source: 'component' }, { code: 'D0030', destination: 'other_deduction', source: 'component' }]]) {
+      const rows = historySampleRows(codes);
+      const amt = (c: string) => Number(rows.find((r) => r[3] === c)?.[5] ?? 0);
+      const gross = amt('BASIC') + amt('A0027');
+      expect(amt('GROSS')).toBeCloseTo(gross, 2);
+      const cash = ['EEEPF', 'EESOCSO', 'EESOCSOSKBBK', 'EEEIS', 'PCB', 'CP38', 'ZAKAT', 'D0030'].reduce((n, c) => n + amt(c), 0);
+      expect(amt('NETPAY')).toBeCloseTo(gross - cash, 2);
+    }
+    const withTenant = historySampleRows([{ code: 'A0027', destination: 'allowance', source: 'component' }]).map((r) => r[3]);
+    expect(withTenant).toContain('A0027');
+  });
+
+  it('BASIC is built in and every code gets a Category and Amount Type from where its money lands', () => {
+    expect(STATUTORY_IMPORT_CODES.find((c) => c.code === 'BASIC')).toMatchObject({ destination: 'basic', direction: 'earning' });
+    expect(importCodeCategory({ destination: 'basic', direction: 'earning' })).toEqual({ category: 'basic', amountType: 'employee' });
+    expect(importCodeCategory({ destination: 'allowance', direction: 'earning' })).toEqual({ category: 'earning', amountType: 'employee' });
+    expect(importCodeCategory({ destination: 'other_deduction', direction: 'deduction' })).toEqual({ category: 'deduction', amountType: 'employee' });
+    expect(importCodeCategory({ destination: 'epf_employee', direction: 'deduction' })).toEqual({ category: 'employeeStatutory', amountType: 'employee' });
+    expect(importCodeCategory({ destination: 'epf_employer', direction: 'employer' })).toEqual({ category: 'employerStatutory', amountType: 'employer' });
+    expect(importCodeCategory({ destination: 'net', direction: 'check' })).toEqual({ category: 'payrollTotal', amountType: 'check' });
   });
 
   it('the text-stamped columns are every identity column and never Amount', () => {
     // Amount must stay a real number so Excel can sum a column of them; everything else is an identifier.
-    expect([...PAYROLL_HISTORY_TEXT_COLUMN_INDEXES].sort((x, y) => x - y)).toEqual([0, 1, 2, 3, 4, 6]);
+    expect([...PAYROLL_HISTORY_TEXT_COLUMN_INDEXES].sort((x, y) => x - y)).toEqual([0, 1, 2, 3, 4]);
     expect(PAYROLL_HISTORY_TEXT_COLUMN_INDEXES).not.toContain(PAYROLL_HISTORY_HEADERS.indexOf('Amount'));
   });
 
   it('buildImportCodeRows lays the Codes sheet out with a heading row above the codes', () => {
-    const rows = buildImportCodeRows(
-      { title: 'Accepted DOE codes', note: 'note', code: 'Code', label: 'Meaning', destination: 'Lands on', direction: 'Direction' },
-      [{ code: 'EEEPF', label: 'Employee EPF', destination: 'epf_employee', direction: 'deduction' }],
-    );
+    const rows = buildImportCodeRows(HEADINGS, [
+      { code: 'EEEPF', label: 'Employee EPF', destination: 'epf_employee', direction: 'deduction' },
+      { code: 'EREPF', label: 'Employer EPF', destination: 'epf_employer', direction: 'employer' },
+    ]);
     expect(rows[0]).toEqual(['Accepted DOE codes']);
-    expect(rows[3]).toEqual(['Code', 'Meaning', 'Lands on', 'Direction']);
-    expect(rows[4]).toEqual(['EEEPF', 'Employee EPF', 'epf_employee', 'deduction']);
+    expect(rows[3]).toEqual(['Code', 'Meaning', 'Category', 'Amount type', 'Lands on', 'Direction']);
+    expect(rows[4]).toEqual(['EEEPF', 'Employee EPF', 'Employee Statutory', 'Employee amount', 'epf_employee', 'deduction']);
+    expect(rows[5]).toEqual(['EREPF', 'Employer EPF', 'Employer Statutory', 'Employer amount', 'epf_employer', 'employer']);
   });
 });
 
@@ -209,19 +257,12 @@ describe('pay component → import destination', () => {
  * workbook, not against the code that was supposed to produce it.
  */
 describe('the generated .xlsx, parsed back', () => {
-  it('has the three sheets, data first, with the reporter’s seven headings in order and text identity columns', async () => {
+  it('has the three sheets, data first, with the six headings in order and text identity columns', async () => {
     const XLSX = await import('xlsx');
     const { buildPayrollHistoryWorkbook, PAYROLL_HISTORY_XLSX_SHEETS } = await import('../lib/import-template-xlsx');
 
     const bytes = await buildPayrollHistoryWorkbook(
-      {
-        title: 'Accepted DOE codes',
-        note: 'A code the system does not recognise stops its line.',
-        code: 'Code',
-        label: 'Meaning',
-        destination: 'Lands on',
-        direction: 'Direction',
-      },
+      HEADINGS,
       STATUTORY_IMPORT_CODES.map((c) => ({
         code: c.code,
         label: c.label,
@@ -270,9 +311,11 @@ describe('the generated .xlsx, parsed back', () => {
       raw: true,
       blankrows: false,
     });
-    expect(sample[0]).toEqual([...PAYROLL_HISTORY_HEADERS]);
-    expect(sample).toHaveLength(PAYROLL_HISTORY_SAMPLE_ROWS.length + 1);
-    expect(sample[1].map(String)).toEqual([...PAYROLL_HISTORY_SAMPLE_ROWS[0]]);
+    // d28501b8 — the example is labelled as not real data before anything else on the sheet.
+    expect(sample[0]).toEqual(['SAMPLE — NOT REAL DATA']);
+    expect(sample[1]).toEqual([...PAYROLL_HISTORY_HEADERS]);
+    expect(sample).toHaveLength(PAYROLL_HISTORY_SAMPLE_ROWS.length + 2);
+    expect(sample[2].map(String)).toEqual([...PAYROLL_HISTORY_SAMPLE_ROWS[0]]);
 
     // Sheet 3: every code the import accepts.
     const codes = XLSX.utils.sheet_to_json<string[]>(wb.Sheets[PAYROLL_HISTORY_XLSX_SHEETS.codes], {
@@ -282,7 +325,7 @@ describe('the generated .xlsx, parsed back', () => {
     });
     expect(codes[0]).toEqual(['Accepted DOE codes']);
     const codeColumn = codes.slice(3).map((r) => r[0]);
-    for (const c of ['EEEPF', 'EESOCSO', 'EEEIS', 'PCB', 'CP38', 'ZAKAT', 'EREPF', 'ERSOCSO', 'EREIS', 'HRDF']) {
+    for (const c of ['BASIC', 'EEEPF', 'EESOCSO', 'EEEIS', 'PCB', 'CP38', 'ZAKAT', 'EREPF', 'ERSOCSO', 'EREIS', 'HRDF']) {
       expect(codeColumn, `Codes sheet must list ${c}`).toContain(c);
     }
   });
@@ -294,10 +337,7 @@ describe('the generated .xlsx, parsed back', () => {
 
     // Build a workbook whose FIRST sheet carries the sample rows — i.e. exactly what a migrator hands
     // back after filling the template in — and push it through the real upload reader.
-    const bytes = await buildPayrollHistoryWorkbook(
-      { title: 't', note: 'n', code: 'Code', label: 'Meaning', destination: 'Lands on', direction: 'Direction' },
-      [],
-    );
+    const bytes = await buildPayrollHistoryWorkbook(HEADINGS, []);
     // cellStyles: true — the `@` number format is written into the workbook's STYLE table, not onto the
     // cell record, so a plain read reports `z` as undefined even though the file is correct. Verified
     // against SheetJS 0.20.3 directly before trusting it.

@@ -72,7 +72,7 @@ async function parseSource(name:string,bytes:Buffer):Promise<PayrollHistoryRecor
 }
 function invalidRow(rowNum:number,input:PayrollHistoryRecord,reason:string):HistoryRevisionRow{
  return {companyId:'',companyName:readHistoryField(input,'company_code'),currency:null,employmentId:'',employeeNo:readHistoryField(input,'employee_no'),period:toIsoPeriod(readHistoryField(input,'payroll_period'))??readHistoryField(input,'payroll_period'),
-  cycleId:'',cycleName:readHistoryField(input,'payroll_cycle'),rowNums:[rowNum],operation:'invalid',reasons:[reason],recordId:null,expectedRevisionId:null,expectedSnapshotId:null,values:null,beforeValues:null,valueHash:null,overwrite:false};
+  cycleId:'',cycleName:readHistoryField(input,'payroll_cycle'),rowNums:[rowNum],operation:'invalid',reasons:[reason],recordId:null,expectedRevisionId:null,expectedSnapshotId:null,values:null,beforeValues:null,valueHash:null,overwrite:false,codes:readHistoryField(input,'doe_code')?[readHistoryField(input,'doe_code')]:[]};
 }
 async function dependencies(tx:Tx,row:Pick<HistoryRevisionRow,'companyId'|'employmentId'|'period'|'expectedSnapshotId'>):Promise<string[]>{
  const reasons:string[]=[];
@@ -143,7 +143,7 @@ async function planRows(tx:Tx,ctx:SessionContext,records:PayrollHistoryRecord[],
    if(values&&Object.entries(values).some(([name,value])=>name!=='statutory'&&(!Number.isFinite(Number(value))||Math.abs(Number(value))>9999999999.99)))reasons.push('An accumulated payroll amount exceeds the supported range.');
    const row:HistoryRevisionRow={companyId:group.company.id,companyName:group.company.name,currency:group.company.currency,employmentId:resolved?.employmentId??'',employeeNo:month.employeeNo,period:month.period,cycleId:group.cycle.id,cycleName:group.cycle.name,rowNums,
     operation:resolved&&!reasons.length?'create':'invalid',reasons,recordId:null,expectedRevisionId:null,expectedSnapshotId:null,values,beforeValues:null,valueHash:values?hash(canonical(values)):null,
-    overwrite:month.rowNums.every(number=>readHistoryField(group.records[number-2],'override?')!=='0')};
+    overwrite:true,codes:month.codes,protected:false};
    if(resolved){
     const [existing]=await tx.select().from(record).where(and(eq(record.companyId,row.companyId),eq(record.employmentId,row.employmentId),eq(record.period,row.period),eq(record.cycleId,row.cycleId)));
     const [latest]=existing?await tx.select().from(revision).where(eq(revision.recordId,existing.id)).orderBy(desc(revision.ordinal)).limit(1):[];
@@ -152,14 +152,15 @@ async function planRows(tx:Tx,ctx:SessionContext,records:PayrollHistoryRecord[],
      const [current]=await tx.select({valueHash:snapshot.valueHash,values:snapshot.values}).from(snapshot).where(eq(snapshot.id,row.expectedSnapshotId));
      row.beforeValues=current?.values??null;
      row.operation=current?.valueHash===row.valueHash?'unchanged':'replace';
-     if(row.operation==='replace'&&!row.overwrite)row.reasons.push('Replacement is disabled by Override? = 0.');
     }
     const collisions=await tx.select({id:payslip.id}).from(payslip).innerJoin(payrollBatch,eq(payrollBatch.id,payslip.batchId))
      .where(and(eq(payslip.employmentId,row.employmentId),eq(payrollBatch.companyId,row.companyId),eq(payrollBatch.payPeriod,row.period),or(isNull(payrollBatch.payrollCycleId),eq(payrollBatch.payrollCycleId,row.cycleId))));
-    if(collisions.some(p=>p.id!==row.expectedSnapshotId))row.reasons.push('An ordinary, legacy or competing payroll result already occupies this identity.');
+    if(collisions.some(p=>p.id!==row.expectedSnapshotId)){row.reasons.push('An ordinary, legacy or competing payroll result already occupies this identity.');row.protected=true;}
     const ordinary=await tx.select({id:payrollBatch.id}).from(payrollBatch).where(and(eq(payrollBatch.companyId,row.companyId),eq(payrollBatch.payPeriod,row.period),isNull(payrollBatch.historyImportAttemptId),or(isNull(payrollBatch.payrollCycleId),eq(payrollBatch.payrollCycleId,row.cycleId)))).limit(1);
-    if(ordinary.length)row.reasons.push('An ordinary payroll run already occupies this Pay Cycle and period.');
-    if(row.operation!=='unchanged')row.reasons.push(...await dependencies(tx,row));
+    if(ordinary.length){row.reasons.push('An ordinary payroll run already occupies this Pay Cycle and period.');row.protected=true;}
+    // d28501b8: payroll processed or reported on in AIHR is never replaced by a spreadsheet. Marked so the
+    // screen can say "Protected" rather than present it as a mistake in the file.
+    if(row.operation!=='unchanged'){const blocked=await dependencies(tx,row);if(blocked.length){row.reasons.push(...blocked);row.protected=true;}}
    }
    if(row.reasons.length||!values)row.operation='invalid';
    plan.rows.push(row);
@@ -208,7 +209,8 @@ async function failureEvent(ctx:SessionContext,id:string,kind:'failed'|'revert_f
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'payroll-history-import',aggregateId:id,eventType:'payroll-history-import.'+kind,actor:actorOf(ctx),payload:{reason}});
  });}catch(recordError){console.error('[payroll history failure audit]',recordError);}
 }
-export async function confirmPayrollHistoryUpload(ctx:SessionContext,input:{attemptId:string;previewHash:string;confirmReplacement:boolean;expectedCompanyId?:string}){
+/** `skipReplacements` (d28501b8) imports only the new records and leaves every earlier import as it is. */
+export async function confirmPayrollHistoryUpload(ctx:SessionContext,input:{attemptId:string;previewHash:string;confirmReplacement:boolean;skipReplacements?:boolean;expectedCompanyId?:string}){
  assertModuleGate(ctx,'payroll');if(!uuid.test(input.attemptId))fail('Import attempt unavailable.');
  try{return await withTenant(ctx,async tx=>{
   await lockPayrollHistoryWriteTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);await principal(tx,ctx);
@@ -219,7 +221,9 @@ export async function confirmPayrollHistoryUpload(ctx:SessionContext,input:{atte
   if(events.some(event=>event.kind==='reverted'))fail('This import was reverted. Validate a new upload to import again.');
   const confirmed=events.find(event=>event.kind==='confirmed');if(confirmed)return {attemptId:source.id,counts:source.plan.counts,changes:confirmed.changes,alreadyCommitted:true};
   if(input.previewHash!==source.plan.previewHash||source.plan.counts.invalid||source.plan.issues.length)fail('Correct the file and validate a new attempt before confirming.');
-  if(source.plan.counts.replaced&&!input.confirmReplacement)fail('Confirm replacement of the existing imported history before continuing.');
+  const skip=!!input.skipReplacements&&!input.confirmReplacement;
+  if(source.plan.counts.replaced&&!input.confirmReplacement&&!skip)fail('Confirm replacement of the existing imported history before continuing.');
+  if(skip&&!source.plan.counts.created)fail('This file has no new records. Confirm the replacement or cancel.');
   if(source.companyIds.length)await tx.select({id:company.id}).from(company).where(inArray(company.id,source.companyIds)).orderBy(asc(company.id)).for('share');
   const employmentIds=[...new Set(source.plan.rows.map(row=>row.employmentId).filter(Boolean))].sort(),cycleIds=[...new Set(source.plan.rows.map(row=>row.cycleId).filter(Boolean))].sort();
   if(employmentIds.length)await tx.select({id:employment.id}).from(employment).where(inArray(employment.id,employmentIds)).orderBy(asc(employment.id)).for('share');
@@ -228,7 +232,7 @@ export async function confirmPayrollHistoryUpload(ctx:SessionContext,input:{atte
   if(fresh.previewHash!==source.plan.previewHash||fresh.counts.invalid)fail('The source, master data, permissions or target revisions changed. Validate a new attempt.');
   const changes:HistoryRevisionChange[]=[];
   const groups=new Map<string,HistoryRevisionRow[]>();
-  for(const row of fresh.rows)if(row.operation!=='unchanged'){
+  for(const row of fresh.rows)if(row.operation!=='unchanged'&&!(skip&&row.operation==='replace')){
    const groupKey=[row.companyId,row.period,row.cycleId].join(':');
    const group=groups.get(groupKey)??[];group.push(row);groups.set(groupKey,group);
   }
@@ -261,9 +265,10 @@ export async function confirmPayrollHistoryUpload(ctx:SessionContext,input:{atte
     changes.push({recordId,revisionId:createdRevision.id,previousRevisionId:previous?.id??null,snapshotId:slipId});
    }
   }
-  await tx.insert(historyEvent).values({tenantId:ctx.tenantId,attemptId:source.id,kind:'confirmed',actorId:ctx.userId!,changes,detail:{counts:fresh.counts}});
-  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'payroll-history-import',aggregateId:source.id,eventType:'payroll-history-import.committed',actor:actorOf(ctx),payload:{counts:fresh.counts,changes}});
-  return {attemptId:source.id,counts:fresh.counts,changes,alreadyCommitted:false};
+  const skippedReplacements=skip?fresh.counts.replaced:0;
+  await tx.insert(historyEvent).values({tenantId:ctx.tenantId,attemptId:source.id,kind:'confirmed',actorId:ctx.userId!,changes,detail:{counts:fresh.counts,skippedReplacements}});
+  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'payroll-history-import',aggregateId:source.id,eventType:'payroll-history-import.committed',actor:actorOf(ctx),payload:{counts:fresh.counts,skippedReplacements,changes}});
+  return {attemptId:source.id,counts:fresh.counts,changes,skippedReplacements,alreadyCommitted:false};
  });}catch(error){await failureEvent(ctx,input.attemptId,'failed',error);throw error;}
 }
 

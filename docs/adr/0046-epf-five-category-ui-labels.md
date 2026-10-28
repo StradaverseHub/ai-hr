@@ -1,5 +1,7 @@
 # ADR-0046 — EPF five-category UI labels (addendum to ADR-0035 §4)
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted
 Date: 2026-06-25
 Supersedes: nothing. Refines: ADR-0035 §4 (EPF "5 modes", #2).

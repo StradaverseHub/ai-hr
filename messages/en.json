@@ -7327,7 +7327,23 @@
       "noIssues": "Every line checked out.",
       "downloadErrors": "Download result (Excel)",
       "viewPayroll": "View payroll →",
-      "importAnother": "Import another file"
+      "importAnother": "Import another file",
+      "colCategory": "Category",
+      "colAmountType": "Amount type",
+      "sampleNote": "SAMPLE — NOT REAL DATA. A fictional employee showing how each code is written. Do not upload this sheet; fill in the first sheet.",
+      "categories": {
+        "basic": "Basic Salary",
+        "earning": "Earning",
+        "deduction": "Deduction",
+        "employeeStatutory": "Employee Statutory",
+        "employerStatutory": "Employer Statutory",
+        "payrollTotal": "Payroll Total"
+      },
+      "amountTypes": {
+        "employee": "Employee amount",
+        "employer": "Employer amount",
+        "check": "Check only — compared, not added"
+      }
     },
     "process": {
       "taxSchemeDeclarationRequired": "Record the approved tax scheme for this employment, employer and payroll period, including the approval reference and HR eligibility confirmation, before processing payroll.",
@@ -9103,7 +9119,8 @@
         "create": "Create",
         "replace": "Replace",
         "unchanged": "Unchanged",
-        "invalid": "Invalid"
+        "invalid": "Invalid",
+        "protected": "Protected"
       },
       "states": {
         "confirmed": "Imported",
@@ -9127,7 +9144,6 @@
       "failed": "The operation could not finish. Check Log File before retrying. No partial payroll changes are committed.",
       "atomicHint": "The complete file must pass validation. Confirmation checks access, target revisions and dependencies again. Imported history changes reporting and year-to-date values; it does not calculate payroll, issue payslips or initiate payment.",
       "confirmation": "I have reviewed the companies, periods, cycles and values above and authorise this complete import.",
-      "replacementConfirmation": "I authorise replacement of {count} imported records listed above. Their original closed snapshots will remain in the audit history.",
       "success": "Import committed. The effective history and audit record were saved together. Review this attempt in Log File.",
       "logHint": "Original files, validation outcomes, committed changes and recovery events. Each attempt keeps its own history.",
       "auditHint": "The preview below records what this file proposed at validation time. The events show whether it was committed, refused or reverted; later corrections have their own attempts.",
@@ -9160,7 +9176,13 @@
           "version": "Source ruleset version",
           "lp": "Approved deductions (TP1 / optional)"
         }
-      }
+      },
+      "items": "Items",
+      "protectedHint": "Payroll for this month was processed or reported in AIHR and is never replaced by an import. Remove these rows from the file, or correct the month with Back Pay or an adjustment run.",
+      "overwriteTitle": "Existing payroll history was found for {count, plural, one {# employee-month} other {# employee-months}}, including records in Closed payroll periods. Do you want to overwrite the existing records?",
+      "overwriteReplace": "Confirm overwrite — replace the previously imported records. Their original figures stay in the audit history and Closed periods stay Closed.",
+      "overwriteSkip": "Import only the new records and leave the existing records as they are.",
+      "successSkipped": "{count, plural, one {# existing record was} other {# existing records were}} left unchanged, as chosen."
     }
   },
   "admin": {

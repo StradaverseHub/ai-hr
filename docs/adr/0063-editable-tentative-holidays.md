@@ -1,5 +1,7 @@
 # ADR-0063 — Editable + tentative state holidays
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted
 Date: 2026-06-28
 Supersedes / extends: ADR-0038 (state-specific holidays, 2C), ADR-0055 (org-based holiday hierarchy)

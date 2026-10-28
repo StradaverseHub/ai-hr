@@ -1,5 +1,7 @@
 # ADR-0083 — HR operations as a control plane: closed-loop automation with graduated agent autonomy
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Status:** Proposed (target operating model + build order — supersedes ADR-0074's operating model)
 - **Date:** 2026-08-31
 - **Supersedes:** [ADR-0074](0074-autonomous-payroll-control-tower.md) §"the reframe", §5's build order,

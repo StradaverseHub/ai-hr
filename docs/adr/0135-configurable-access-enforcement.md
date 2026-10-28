@@ -1,5 +1,7 @@
 # ADR-0135 — Configurable access has one effective-permission interpretation
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 ### Explicit installation publication
 
 The three bounded Workforce/view, Workforce/maintenance and Profile/review capabilities are published

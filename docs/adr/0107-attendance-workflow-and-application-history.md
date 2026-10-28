@@ -1,5 +1,7 @@
 # ADR-0107: Frozen Attendance approval routes and request-bound final effects
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 **Status:** Accepted for implementation; branch verification and release pending
 **Date:** 2026-10-12
 **Deciders:** Approved board plans 58f383e6 and aff9dc45; delegated effect design agreed with the integrating agent

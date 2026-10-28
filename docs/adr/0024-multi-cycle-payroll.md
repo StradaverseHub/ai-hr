@@ -1,5 +1,7 @@
 # ADR-0024 — Multiple payroll cycles in one month (Option B: `pay_period` parent)
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: **Accepted — ENABLED (owner-authorised §7 sign-off, 2026-06-20).** `MULTI_CYCLE_PAYROLL_ENABLED` +
 `TYPED_PAY_COMPONENTS_ENABLED` set on for the Chin Hin deployment. (2026-06-17)
 Consultant item #1 (Wave 2C). Owner decision: Option B (see `docs/wave2-payroll-design.md`).

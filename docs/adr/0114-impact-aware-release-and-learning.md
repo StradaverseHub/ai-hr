@@ -1,5 +1,7 @@
 # ADR-0114 — Deterministic test selection and release learning
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - Date: 2026-10-14
 - Status: Accepted by the owner: follow Anthropic's test-impact approach and learn from every release.
 - Supersedes ADR-0094's blanket full-gate rule for product logic. Its full runner and legacy receipts remain valid.

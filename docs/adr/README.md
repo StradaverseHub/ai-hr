@@ -1,88 +1,152 @@
-# Architecture Decision Records
+# Architecture decisions
 
-Each ADR records one load-bearing decision: its context, the decision, consequences,
-and the alternatives we rejected. ADRs are immutable once *Accepted* — to change a
-decision, add a new ADR that supersedes the old one.
+Decision records preserve their accepted meaning; their code inventories, rollout statuses and dated observations are historical. Inspect current implementation and subsequent amendments before acting. Inclusion here does not establish implementation or release acceptance. Full decision bodies are retained.
 
-| # | Decision | Status |
-|---|---|---|
-| [0001](0001-bitemporal-effective-dating.md) | Bitemporal effective dating on the org core | Accepted |
-| [0002](0002-multitenancy-rls.md) | Multi-tenancy via `tenant_id` + Row-Level Security | Accepted |
-| [0003](0003-organizational-model.md) | Org/identity model + typed reporting graph | Accepted |
-| [0004](0004-authorization.md) | Authorization: RBAC + ABAC enforced in the DB | Accepted |
-| [0005](0005-tech-stack.md) | Tech stack: Postgres, Drizzle, Next.js monolith, WorkOS | Accepted |
-| [0006](0006-event-and-audit-substrate.md) | Append-only domain-event & audit substrate | Accepted |
-| [0007](0007-ai-native-architecture.md) | AI-native architecture & the self-improvement loop | Accepted (deferred impl) |
-| [0008](0008-localization-packs.md) | Localization via installable country packs (MY first) | Accepted (pack built incrementally) |
-| [0009](0009-multi-company-group-model.md) | Multi-company group model (nested entities, scoped authz, consolidation) | Accepted (built in slices A–D) |
-| [0010](0010-statutory-compliance-reporting.md) | Statutory & compliance reporting (per-company filings, two output layers) | Proposed |
-| [0011](0011-attendance-time-tracking.md) | Attendance time engine (work schedules, day-type classification, OT, corrections) | Accepted (Phase A + B) |
-| [0012](0012-employee-self-service.md) | Employee self-service: read-write profile with an approval gate | Accepted (Phase 1 + 2) |
-| [0013](0013-performance-talent-management.md) | Performance & talent management: cycle-anchored, closes the loop into pay | Proposed (design only) |
-| [0014](0014-pcb-accumulators.md) | PCB accumulators derived from payslip history + TP3 opening balances | Accepted |
-| [0015](0015-domain-event-subject-scoping.md) | Subject-scoped reads on the domain-event log (close tenant-wide leak) | Accepted |
-| [0016](0016-ui-internationalization.md) | UI internationalization: cookie-scoped next-intl, English fallback, export/import matrix | Accepted (full extraction, 6 langs) |
-| [0017](0017-knowledge-base.md) | Knowledge Base: tenant-shared doc repository (articles + files) + seeded module guides | Accepted |
-| [0018](0018-system-user-onboarding.md) | System-user onboarding: first-login spotlight tour, role-aware, replayable | Accepted |
-| [0049](0049-job-function-partner-roles.md) | Job-function partner roles: additive `payroll_partner` + `performance_comp_partner` beside `hr_admin`, company-scopable, RLS+service gated | Accepted |
-| [0051](0051-feedback-loop-closure.md) | Feedback v2: post-deploy refute (deployed → contested, `reopened_count`) closes the loop; bulk review; in-app status dashboard | Accepted |
-| [0052](0052-hierarchy-visibility-and-delegation.md) | Hierarchy visibility (recursive manager + HOD) + delegate approver-routing; see≠decide asymmetry | Accepted |
-| [0053](0053-employment-review-workflow.md) | Automated probation/contract/internship review: employment_review aggregate, manager→HR state machine, sweep + PDF letter | Accepted |
-| [0054](0054-location-master-data.md) | Location master-data + unified state resolver (location.state ?? work_state ?? company default) for leave + attendance | Accepted |
-| [0055](0055-org-holiday-hierarchy.md) | Organization-based public-holiday hierarchy: National / State / Business-group scope, group→state→country resolution | Accepted |
-| [0056](0056-individual-payroll-transaction.md) | Individual (one-off) payroll transactions: dated, batch-scoped ledger (5 kinds), draft-gated, RLS | Accepted |
-| [0062](0062-maternity-allowance-s37.md) | Maternity: separate the unconditional 98-day leave from the conditional paid allowance (EA s.37 qualifying-service + 5th-child); per-request override drives unpaid | Accepted |
-| [0070](0070-clocking-locations-geofencing.md) | Clocking locations & geofencing: separate `clocking_location` catalog, tenant-catalog RLS, blocked attempts as domain events (not attendance rows) | Accepted |
-| [0079](0079-operator-console-tenant-provisioning.md) | Operator console: request-queue tenant provisioning (owner-role runner), `operator` tier, reveal-once activation link | Accepted |
-| [0081](0081-tp1-2026-full-form.md) | LHDN TP1 (1/2026) as a complete e-form: C1–C17 catalogue in the country pack, per-month records, employer consent gating the payroll feed (with backfill), drawn PDF | Accepted |
-| [0082](0082-ai-assistant-access-scoped-tool-calling.md) | The AI Assistant (north-star Phase B): read-only tool calling over the governed read layer inside the caller's own session — RLS is the retrieval filter, not a vector store | Proposed |
-| [0083](0083-hr-operations-control-plane.md) | HR operations as a control plane: closed-loop automation with graduated per-action agent autonomy; supersedes 0074's operating model (keeps its invariant) | Proposed |
-| [0084](0084-propose-adjudicate-learn.md) | Propose · adjudicate · learn: a model emits a structured proposal into a closed vocabulary, the kernel's own validators adjudicate it, and the outcome is recorded so accuracy is measured rather than claimed — plus initiative (scheduled agents) and the ledger that earns 0083's per-action autonomy | Proposed |
-| [0085](0085-signed-statutory-deltas-and-month-restatement.md) | Signed statutory deltas: a month may correct itself while it is still being assembled, and may not once a return has been filed — lifts ADR-0024 §6's reversal exclusion, closes the EPF step-down over-contribution, and is the precondition for processing payroll cycles in any order | Proposed |
-| [0067](0067-location-holiday-calendars.md) | Configurable public-holiday calendars by location/subsidiary — a thin naming-and-mapping layer over holiday_group, NOT a new holiday system | **Superseded in part by [0086](0086-retiring-location-holiday-calendars.md)** — §(b) the location→calendar mapping and §(c) the resolver precedence are retired; §(a) holiday_group.archetype is kept |
-| [0086](0086-retiring-location-holiday-calendars.md) | Retiring the work-site register: supersedes ADR-0067 §(b)/§(c) so a work site is no longer an input to holiday resolution — measured unused on production (0 of 8 sites map a calendar, 0 holidays move) and retired on the customer's say-so; holiday_group.archetype, clocking_location and per-company resolution all survive | Accepted |
+## Resolve common supersessions first
 
-| [0046](0046-epf-five-category-ui-labels.md) | EPF five-category UI labels over three lawful enum values | **Superseded in part by [0087](0087-epf-manual-amount-categories.md)** — the "Manual (By Fixed Amount) — DEFERRED" section is reversed; the naming, the `voluntary_excess` mapping and the no-below-statutory-RATE rule are kept |
-| [0087](0087-epf-manual-amount-categories.md) | Manual EPF contribution categories: a standing per-employee ringgit amount, substituted INSIDE the pack's EPF computation so a monthly figure is charged once across a regular + bonus pair and K₁ + Kₜ still holds; below-schedule allowed and recorded, negative refused at entry; supersedes ADR-0046's fixed-amount deferral | Accepted |
-| [0088](0088-native-mobile-app.md) | Native mobile app (Expo) for employees and approvers: the WorkOS subject arrives as a bearer JWT and resolves through the same principal_by_subject → SessionContext → core/ path as the web; a narrow frozen /api/mobile/v1; content-free push; ADR-0070's geofence stays the one rule for both doors, with an evidence ledger and deterministic trust tier beside it (mock flags one-sided, hardware-key attestation, rotating site QR); attempt records for every failed punch; offline punches are signed, chained, anchored claims, off by default; face matching out of scope | Accepted |
+- Authentication: ADR-0117 replaces ADR-0098's Keycloak direction and earlier WorkOS-only assumptions; legacy adapters remain in source.
+- Branches, deployment and integration: [repository policy](../REPOSITORY-AND-ENVIRONMENTS.md) overrides old main-to-existing-host release instructions, including historical release ADRs.
+- Gate selection/evidence: ADR-0114 and later applicable gate decisions plus executable current policy supersede old fixed test counts/topologies. [CI policy](../CI-STAGING-VERIFICATION-POLICY.md) owns CI release admission.
+- Holiday mapping: ADR-0086 retires the location/calendar parts of ADR-0067 while preserving its surviving concepts.
+- EPF fixed amounts: ADR-0087 amends ADR-0046's deferral.
+- Tax ownership: ADR-0090 supersedes ADR-0089 prospectively; ADR-0091 separates person-owned circumstance.
 
-| [0089](0089-employer-period-pcb-incentive-declarations.md) | Employer and payroll-period scoped HR declarations of PCB incentive approval; immutable facts, revocation and saved payroll provenance | Accepted; superseded prospectively by ADR-0090 |
+Read only records relevant to the task. A newer decision supersedes an older one only within its stated scope. Add amendments for changed decisions rather than silently rewriting accepted rationale.
 
-| [0090](0090-employment-owned-my-tax-selection.md) | One employment/employer MY tax selection, explicit human confirmation and immutable saved statutory provenance; supersedes 0089 prospectively | Accepted |
+## Index
 
-| [0095](0095-lifecycle-module-onboarding-offboarding-it-assets.md) | The Lifecycle module: employee onboarding and offboarding checklists, IT requisitions, the asset register and asset requests (CHGB handover). Module staff are their own table, not line managers; new-hire acknowledgement is login-gated instead of a public link; reminder emails are a live worklist because the repository has no email transport | Built on a branch, not deployed |
-
-See also: [Malaysia localization — spec mapping & gap closure](../architecture/my-localization.md).
-
-| [0100](0100-installation-email-administration.md) | Installation identity email relay administration | Accepted |
-| [0101](0101-manual-identity-enrollment.md) | Administrator-created usernames and temporary passwords | Accepted |
-| [0102](0102-attendance-clock-corrections.md) | Audited clock corrections with retained raw evidence, effective-punch readers and payroll protection | Accepted |
-| [0103](0103-onehr-native-performance-and-rewards.md) | OneHR workflows in native Performance, immutable assessment provenance and explicit Rewards import | Accepted |
-| [0105](0105-dated-schedule-rotations.md) | Immutable dated Schedule Group cycles, atomic allowed pools, shared calendar consumers and payroll protection | Built on a branch; verification pending |
-| [0106](0106-attendance-allowance-periods.md) | Immutable allowance definitions and calculation evidence, canonical attendance facts and source-owned payroll transfers | Built on a branch; verification pending |
-| [0107](0107-attendance-workflow-and-application-history.md) | Frozen Attendance approval routes, request-bound delegated final effects and scoped application history | Implementation accepted; verification pending |
-| [0108](0108-attendance-board-read-and-retry.md) | Clock retry identity, independent settings save scopes, earned-credit read model and Semi Flexi duration rules | Accepted; verification pending |
-
-| [0115](0115-native-performance-journey-parity.md) | Native Performance journey parity, retained decisions, reminders and Rewards ownership | Accepted |
-
-| [0116](0116-central-ai-inventory-and-allowances.md) | Central AI feature inventory, usage governance and company/user allowances | Accepted; release verification pending |
-| [0117](0117-embedded-hr-authentication.md) | HR-owned usernames/passwords, MFA, recovery and browser/native sessions for cloud and on-prem | Owner-directed; implementation and verification pending |
-| [0118](0118-schedule-membership-and-dated-exceptions.md) | Allowed shift membership separate from calculation defaults, dated exception decisions and controlled manual rosters | Accepted |
-| [0120](0120-employee-replacement-holidays.md) | Stable annual original calendar, explicit replacement policy and employee-specific audited allocations | Direction accepted; verification pending |
-
-| [0123](0123-versioned-overtime-patterns-and-source-settlement.md) | Immutable formula versions, explicit OT-stage assignment, recorded inputs and one cash/TOIL day source | Direction accepted; implementation and verification pending |
-
-| [0125](0125-personnel-employee-profile-ownership.md) | Shared Personnel facts, explicit employee field permissions and atomic self-service editing | Implementation direction accepted; verification pending |
-| [0128](0128-versioned-system-testing-and-personal-executions.md) | Immutable testing instructions, independent tester history and reviewed source-bound catalogue updates | Implementation direction accepted; verification pending |
-| [0129](0129-kingdee-onboarding-v31.md) | Personnel-linked onboarding, separate operational tasks, recorded approvals and preserved handover history | Accepted |
-| [0131](0131-acting-hr-agent-and-process-assessment.md) | Typed action registry, three autonomy tiers, named agent principal, versioned harness; deterministic process assessment first | Direction accepted; Phase 1 implemented |
-
-| [0132](0132-module-navigation-workspaces.md) | Ops/Strata module navigation, existing audience boundaries and canonical deep-link ownership | Direction accepted; implementation and verification pending |
-| [0134](0134-shared-attendance-policy-execution.md) | Dated Attendance policies, immutable calculation parts and canonical Payroll replay | Direction accepted; implementation and acceptance incomplete |
-| [0138](0138-home-notice-and-sharing-evidence.md) | Retained notice actions, scoped audiences and minimal Home sharing | Direction accepted; implementation and acceptance incomplete |
-
-- [0139 — Counted database phase reuse](0139-counted-database-phase-reuse.md)
-
+- [ADR-0001: Bitemporal effective dating on the organizational core](0001-bitemporal-effective-dating.md)
+- [ADR-0002: Multi-tenancy via `tenant_id` + Row-Level Security](0002-multitenancy-rls.md)
+- [ADR-0003: Organizational & identity model + typed reporting graph](0003-organizational-model.md)
+- [ADR-0004: Authorization — RBAC + ABAC enforced in the database](0004-authorization.md)
+- [ADR-0005: Tech stack — Postgres, Drizzle, Next.js monolith, WorkOS](0005-tech-stack.md)
+- [ADR-0006: Append-only domain-event & audit substrate](0006-event-and-audit-substrate.md)
+- [ADR-0007: AI-native architecture & the self-improvement loop](0007-ai-native-architecture.md)
+- [ADR-0008: Localization via installable country packs](0008-localization-packs.md)
+- [ADR-0009: Multi-company group model (nested entities, scoped authz, consolidation)](0009-multi-company-group-model.md)
+- [ADR-0010: Statutory & compliance reporting](0010-statutory-compliance-reporting.md)
+- [ADR-0011 — Attendance & time tracking: from punch-clock to a time engine](0011-attendance-time-tracking.md)
+- [ADR-0012 — Employee self-service: read-write profile with an approval gate](0012-employee-self-service.md)
+- [ADR-0013 — Performance & talent management: a cycle-anchored module that closes the loop into pay](0013-performance-talent-management.md)
+- [ADR-0014 — PCB accumulators: derived from payslip history, seeded by TP3 opening balances](0014-pcb-accumulators.md)
+- [ADR-0015 — Subject-scoped reads on the domain-event log](0015-domain-event-subject-scoping.md)
+- [ADR-0016 — UI internationalization (multi-language packs)](0016-ui-internationalization.md)
+- [ADR-0017 — Knowledge Base](0017-knowledge-base.md)
+- [ADR-0018 — System-user onboarding (first-login product tour)](0018-system-user-onboarding.md)
+- [ADR-0019 — Editable statutory / payroll configuration](0019-editable-statutory-config.md)
+- [ADR-0020 — Vendor statutory data-pack distribution (hardened)](0020-statutory-data-pack-distribution.md)
+- [ADR-0021 — Claims module (employee expense / benefit claims)](0021-claims-module.md)
+- [ADR-0022 — Performance Phase B: the continuous talent layer (goals, check-ins, 360, calibration, AI draft)](0022-performance-phase-b.md)
+- [ADR-0023 — Multi-provider AI configuration (per-tenant BYOK, encrypted at rest)](0023-multi-provider-ai-config.md)
+- [ADR-0024 — Multiple payroll cycles in one month (Option B: `pay_period` parent)](0024-multi-cycle-payroll.md)
+- [ADR-0025 — Typed pay components](0025-typed-pay-components.md)
+- [ADR-0029 — Cross-employer PCB (MTD) for concurrent employments](0029-cross-employer-pcb.md)
+- [ADR-0030 — Append-only audit log vs PDPA (Layer 0: redact-to-reference)](0030-audit-log-pdpa.md)
+- [ADR-0031 — Bank salary-disbursement (IBG bulk-payment) files](0031-bank-disbursement-files.md)
+- [ADR-0032 — Native attendance depth (Phase C): shift definitions & rosters](0032-attendance-phase-c-shift-rosters.md)
+- [ADR-0033 — Leave-in-lieu (Time Off In Lieu / compensatory replacement leave)](0033-leave-in-lieu-toil.md)
+- [ADR-0034 — Notification engine (multi-channel, event-derived)](0034-notification-engine.md)
+- [ADR-0035 — Payroll Configuration & Pay-Component Completion (Wave 1)](0035-payroll-config-pay-component-completion.md)
+- [ADR-0036 — Payslip PDF + template (#22)](0036-payslip-pdf.md)
+- [ADR-0037 — Per-body statutory versioning (overlay model)](0037-per-body-statutory-versioning.md)
+- [ADR-0038 — Leave 2.0 (eligibility, multi-level approval, state holidays, accrual & grade depth)](0038-leave-2.0.md)
+- [ADR-0039 — Configurable leave approval policy (Leave 2.0 · 2B-2)](0039-configurable-leave-approval-policy.md)
+- [ADR-0040 — Earned leave accrual (Leave 2.0 · 2D)](0040-earned-leave-accrual.md)
+- [ADR-0041 — Grade-based leave categories (Leave 2.0 · 2E)](0041-grade-based-leave.md)
+- [ADR-0042 — Submit Resignation self-service (#29)](0042-resignation-self-service.md)
+- [ADR-0043 — In-product feedback → AI-plan → review → build loop](0043-feedback-loop.md)
+- [ADR-0044 — Operator-side improvement loop (feedback → multi-agent plan → build → gated release)](0044-improvement-loop.md)
+- [ADR-0045 — Scheduled build → preview → gated-release agent (IL-4)](0045-scheduled-build-release-agent.md)
+- [ADR-0046 — EPF five-category UI labels (addendum to ADR-0035 §4)](0046-epf-five-category-ui-labels.md)
+- [ADR-0047 — Business-decision reports + multi-format export](0047-business-reports-multi-format-export.md)
+- [ADR-0048 — Half-Day & Hourly Leave Application](0048-half-day-hourly-leave.md)
+- [ADR-0049 — Job-function partner roles](0049-job-function-partner-roles.md)
+- [ADR-0050 — Self Personal Tax Relief (LHDN TP1), yearly self-service + PCB divisor fix](0050-tp1-self-relief.md)
+- [ADR-0051 — Feedback module v2: close the loop (post-deploy refute) + bulk review + dashboard](0051-feedback-loop-closure.md)
+- [ADR-0052 — Hierarchy visibility (direct + indirect / HOD) and approval delegation](0052-hierarchy-visibility-and-delegation.md)
+- [ADR-0053 — Automated Probation / Contract / Internship Review Workflow](0053-employment-review-workflow.md)
+- [ADR-0054 — Location master data (attendance state input)](0054-location-master-data.md)
+- [ADR-0055 — Organization-based public-holiday hierarchy](0055-org-holiday-hierarchy.md)
+- [ADR-0056 — Individual Transaction (dated one-off payroll transaction ledger)](0056-individual-payroll-transaction.md)
+- [ADR-0057 — CP38 Deduction (LHDN instalment instruction)](0057-cp38-deduction.md)
+- [ADR-0059 — EA Data Overwrite (EA-only amendment layer)](0059-ea-data-overwrite.md)
+- [ADR-0060 — Employee loan instalments (1.2.8)](0060-employee-loan-instalments.md)
+- [ADR-0061 — Emergency Leave: consent for the unpaid portion + paid-SICK routing](0061-emergency-leave-unpaid-consent-sick-routing.md)
+- [ADR-0062 — Maternity: separate the unconditional 98-day LEAVE from the conditional paid ALLOWANCE (EA s.37)](0062-maternity-allowance-s37.md)
+- [ADR-0063 — Editable + tentative state holidays](0063-editable-tentative-holidays.md)
+- [ADR-0064 — Monthly payroll-policy General Settings (config-at-run-time)](0064-payroll-policy-monthly-config.md)
+- [ADR-0065 — Partial Leave Cancellation after Approval](0065-partial-leave-cancellation.md)
+- [ADR-0066 — Configurable Earned-Leave Entitlement per Company + Festive One-off Grants](0066-configurable-entitlement-per-company.md)
+- [ADR-0067 — Configurable Public-Holiday Calendars by Location/Subsidiary](0067-location-holiday-calendars.md)
+- [ADR-0068: Partial Leave Approval — single-request model](0068-partial-leave-approval-single-aggregate.md)
+- [ADR-0069: Leave Encashment (leave-side only)](0069-leave-encashment.md)
+- [ADR-0070 — Clocking locations & geofencing](0070-clocking-locations-geofencing.md)
+- [ADR-0071 — Attendance Request Management (overtime requests, OT-approval calculation, travel marker)](0071-attendance-request-management.md)
+- [ADR-0071: Leave-Approval Rule Matrix](0071-leave-approval-rule-matrix.md)
+- [ADR-0072 — Attendance Allowance Management (Monthly, v1)](0072-attendance-allowance.md)
+- [ADR-0072 — Real per-user authentication (WorkOS AuthKit)](0072-real-auth-workos.md)
+- [ADR-0073 — TP1 Relief: structured per-category breakdown (PDF form → interactive)](0073-tp1-structured-categories.md)
+- [ADR-0074 — Autonomous Payroll Control Tower (closed-loop, exception-driven payroll)](0074-autonomous-payroll-control-tower.md)
+- [ADR-0075 — Sustainable verification gates](0075-sustainable-verification-gates.md)
+- [ADR-0076 — Payroll anomaly layer: detailed design](0076-payroll-anomaly-layer-design.md)
+- [ADR-0077 — SaaS tenancy, module entitlements, and the Stradaverse control plane](0077-saas-tenancy-and-module-entitlements.md)
+- [ADR-0078 — Employee-specific Pay Mode, Payment Term and Rate on the Basic Salary record](0078-employee-pay-mode-payment-term.md)
+- [ADR-0079 — Operator console: click-to-provision a new customer](0079-operator-console-tenant-provisioning.md)
+- [ADR-0080 — Packs as the module system: module packs and country packs](0080-country-packs-as-installable-modules.md)
+- [ADR-0081 — The LHDN TP1 (1/2026) as a complete e-form: pack catalogue, approval gate, printable output](0081-tp1-2026-full-form.md)
+- [ADR-0082 — The AI Assistant: access-scoped tool calling over the governed read layer, not RAG](0082-ai-assistant-access-scoped-tool-calling.md)
+- [ADR-0083 — HR operations as a control plane: closed-loop automation with graduated agent autonomy](0083-hr-operations-control-plane.md)
+- [ADR-0084 — Propose · adjudicate · learn: making the AI operational rather than advisory](0084-propose-adjudicate-learn.md)
+- [ADR-0085 — Signed statutory deltas: letting a month correct itself before it is filed](0085-signed-statutory-deltas-and-month-restatement.md)
+- [ADR-0086 — Retiring the work-site register, and with it ADR-0067's location→calendar mapping](0086-retiring-location-holiday-calendars.md)
+- [ADR-0087 — Manual EPF contribution categories: a standing per-employee ringgit amount](0087-epf-manual-amount-categories.md)
+- [ADR-0088 — Native mobile app: one identity resolver, a narrow versioned API, an evidence ledger for clocking](0088-native-mobile-app.md)
+- [ADR-0089 — Employer and period scoped PCB incentive declarations](0089-employer-period-pcb-incentive-declarations.md)
+- [ADR-0090 — Employment-owned MY tax selection and saved statutory provenance](0090-employment-owned-my-tax-selection.md)
+- [ADR-0091 — Person-owned MY tax circumstance and saved PCB applicability](0091-person-owned-my-tax-circumstance.md)
+- [ADR-0092 — Keep internal release history and decisions outside application deployment](0092-internal-records-outside-deployment.md)
+- [ADR-0093 — Resolve payroll compensation by period and preserve its saved salary basis](0093-period-effective-payroll-compensation.md)
+- [ADR-0094 — A tiered test gate: a faster full gate, and an affected tier for presentational diffs](0094-tiered-test-gate.md)
+- [ADR-0095 — The Lifecycle module: employee onboarding and offboarding, IT requisitions, the asset register and asset requests](0095-lifecycle-module-onboarding-offboarding-it-assets.md)
+- [ADR-0096 — Clocking file mapping and import: a file ADDS clockings, it never writes over a day](0096-clocking-file-mapping-and-import.md)
+- [ADR-0097: One store app, tenant-owned presentation](0097-tenant-mobile-app-builder.md)
+- [ADR-0098: Deployment-owned identity for cloud and on-premise](0098-deployment-owned-identity.md)
+- [ADR-0099 — Rewards reviews and payroll handoff](0099-rewards-review-and-payroll-handoff.md)
+- [ADR-0100: Installation email administration](0100-installation-email-administration.md)
+- [ADR-0101: Administrator-created usernames and temporary passwords](0101-manual-identity-enrollment.md)
+- [ADR-0102: Correct attendance punches without destroying their evidence](0102-attendance-clock-corrections.md)
+- [ADR-0103: OneHR workflows in native Performance and Rewards](0103-onehr-native-performance-and-rewards.md)
+- [ADR-0105 — Dated Schedule Group rotations](0105-dated-schedule-rotations.md)
+- [ADR-0106: Fixed attendance allowance periods and owned payroll sources](0106-attendance-allowance-periods.md)
+- [ADR-0107: Frozen Attendance approval routes and request-bound final effects](0107-attendance-workflow-and-application-history.md)
+- [ADR-0108: attendance retry identity, duration and earned-credit projections](0108-attendance-board-read-and-retry.md)
+- [ADR-0109: Central HR orchestration and the Control Tower](0109-central-hr-orchestrator.md)
+- [ADR-0111: Approval-aware readiness corrections](0111-approval-aware-readiness-corrections.md)
+- [ADR-0112 — Date corrections preserve schedule and application ownership](0112-attendance-date-correction-ownership.md)
+- [ADR-0113 — System Labels import uses the existing editors and mutation owners](0113-system-label-import-adapters.md)
+- [ADR-0114 — Deterministic test selection and release learning](0114-impact-aware-release-and-learning.md)
+- [ADR-0115: Native Performance journey parity and retained decisions](0115-native-performance-journey-parity.md)
+- [ADR-0116: Central AI inventory and allowances](0116-central-ai-inventory-and-allowances.md)
+- [ADR-0117: First-party authentication inside the HR application](0117-embedded-hr-authentication.md)
+- [ADR-0118: Separate allowed shift membership from calculation defaults](0118-schedule-membership-and-dated-exceptions.md)
+- [ADR-0119: Shared Personnel declarations and Employee Master report reads](0119-personnel-catalogue-master-reports.md)
+- [ADR-0120: Employee replacement holidays and stable original calendars](0120-employee-replacement-holidays.md)
+- [ADR-0121: Versioned Attendance hierarchy approvals](0121-versioned-attendance-hierarchy-approval.md)
+- [ADR-0122: One Criteria owner for System Labels availability](0122-system-label-company-criteria.md)
+- [ADR-0123: Versioned Overtime Patterns and source settlement](0123-versioned-overtime-patterns-and-source-settlement.md)
+- [ADR-0124: Preserve inherited System Label collisions without permitting new ambiguity](0124-preserving-inherited-label-collisions.md)
+- [ADR-0125: shared Personnel facts, explicit employee permissions and atomic editing](0125-personnel-employee-profile-ownership.md)
+- [0128 — Versioned System Testing and personal execution records](0128-versioned-system-testing-and-personal-executions.md)
+- [ADR 0129 Kingdee onboarding and requisition workflow](0129-kingdee-onboarding-v31.md)
+- [ADR-0130 — Movement workbook admission and employment test classification](0130-movement-workbook-admission.md)
+- [ADR-0131: Acting HR agent, harness and process assessment](0131-acting-hr-agent-and-process-assessment.md)
+- [ADR-0132 — Group navigation by module and job](0132-module-navigation-workspaces.md)
+- [ADR-0134: Execute dated attendance policies under one overtime source](0134-shared-attendance-policy-execution.md)
+- [ADR-0135 — Configurable access has one effective-permission interpretation](0135-configurable-access-enforcement.md)
+- [ADR-0136 — Photo approval and profile privacy share the existing request owner](0136-ess-photo-and-group-privacy.md)
+- [ADR-0137 — Shared Rewards policy versions with independent reviews](0137-shared-rewards-policy-versions.md)
+- [ADR-0138: Bind Home disclosures and notice actions to retained evidence](0138-home-notice-and-sharing-evidence.md)
+- [ADR-0139: counted database phase reuse for the Board 1 fixture repair](0139-counted-database-phase-reuse.md)
 - [ADR-0140: Operator customer workspace](0140-operator-customer-workspace.md)
-- [0141 — OneHR 6e0a14e migration decisions (ADR-M01…M16)](0141-onehr-6e0a14e-migration-decisions.md)
-- [0142 — OneHR performance partner: performance administration without compensation](0142-onehr-performance-partner.md)
+- [ADR-0141 — OneHR 6e0a14e migration decisions (ADR-M01…M16)](0141-onehr-6e0a14e-migration-decisions.md)
+- [ADR-0142 — OneHR performance partner: performance administration without compensation](0142-onehr-performance-partner.md)

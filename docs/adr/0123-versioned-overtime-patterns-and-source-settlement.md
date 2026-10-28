@@ -1,5 +1,7 @@
 # ADR-0123: Versioned Overtime Patterns and source settlement
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 **Status:** Accepted direction; implementation and verification pending  
 **Date:** 2026-10-16  
 **Deciders:** Reporter-approved fcc2ea42 plan; integration architect for the implementation decisions below

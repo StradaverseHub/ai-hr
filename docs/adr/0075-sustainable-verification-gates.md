@@ -1,5 +1,7 @@
 # ADR-0075 — Sustainable verification gates
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Status:** Accepted
 - **Date:** 2026-07-20
 - **Supersedes (in part):** the per-round clean-room contract in ADR-0045 (IL-4)

@@ -1,5 +1,7 @@
 # ADR-0130 — Movement workbook admission and employment test classification
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Date: 2026-10-19. Direction accepted in Movement Import revision 2 (f17cf3c4).
 Implementation and runtime verification are pending; this decision is not a release receipt.
 
