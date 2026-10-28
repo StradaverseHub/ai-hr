@@ -2230,3 +2230,9 @@ unaffected. D-C: no change. The correction owner (`core/attendance.ts`) is uncha
 `b8313345c31f0f0bcbbf11050ff85cd7b505efa74db3a2f886764fac97f936bf`; 0636 is unchanged
 (`9063b27c0cc316b715d552561d636ffc6412e447ca9275758bf497870c995df7`) and the migration journal is unchanged.
 Still unmounted: no route, screen or enabled company; synthetic vendor proofs, no device.
+
+Approvals candidate `362d5cc57b3bec8b7628798227bc01cea1ce90d5` (owner decisions D-A multi-level accept, D-B group-admin
+photo rule, D-C corrected-day unchanged) passed [40636835788](https://github.com/StradaverseHub/ai-hr/actions/runs/40636835788):
+32 files, 493 cases (DB 15 files/287, including claim review 19; no-DB 17 files/206), no failures or skips, plus root
+TypeScript. Draft 0647 is `b8313345c31f0f0bcbbf11050ff85cd7b505efa74db3a2f886764fac97f936bf`; 0636 and the journal are
+unchanged. The same unmounted, synthetic-proof and no-device limits apply.
