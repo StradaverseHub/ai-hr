@@ -11,7 +11,8 @@
  * Running cycle: per seat, as the source's dashboard ("where your BU / the group / your group is"); there is no
  * distribution-versus-target comparison, as the source has none. Between cycles (closed): per component, people
  * with a final result released to the viewer and still waiting, and aggregate band counts over the released
- * people only; a BU CEO and an HOD are release-gated (release 1). A group chief gets no tally, as in the source.
+ * people only; only a BU CEO or HOD seat is tallied, release-gated (release 1). A BG CEO or group chief holding
+ * neither seat gets no tally, as in the source.
  */
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -45,14 +46,16 @@ export const leaderStatusSchema = z.union([
   z.object({ seat: z.literal('bg'), ...running, ready: count, locked: count, total: count, rows: z.array(statusRow.extend({ companyId: z.uuid() }).strict()) }).strict(),
   /** Group chief: one row per batch. In/of: confirmed line-manager bands (Year-End) or department reviews in (Mid-Year). */
   z.object({ seat: z.literal('group'), ...running, ready: count, locked: count, total: count, rows: z.array(statusRow.strict()) }).strict(),
-  /** Group chief between cycles: no tally, as in the source; only how many people they led. */
-  z.object({ seat: z.literal('group'), mode: z.literal('record'), cycleId: z.uuid(), midYear: z.boolean(), gated: z.literal(false), people: count }).strict(),
+  /** BG CEO or group chief between cycles, holding no BU CEO or HOD seat: no tally, as in the source; only how many people they led. */
+  z.object({ seat: z.enum(['bg', 'group']), mode: z.literal('record'), cycleId: z.uuid(), midYear: z.boolean(), gated: z.literal(false), people: count }).strict(),
   z.object({
-    seat: z.enum(['bu', 'bg', 'hod']), mode: z.literal('record'), cycleId: z.uuid(), midYear: z.boolean(),
+    seat: z.enum(['bu', 'hod']), mode: z.literal('record'), cycleId: z.uuid(), midYear: z.boolean(),
     /**
-     * BU CEO and HOD: only people released to leaders count as released, and only they add to band counts; BG CEO:
-     * nothing waits. Bands: performance for every seat; potential (Low, Mid, High) and talent status (non-zero
-     * only, Super Star first) for a BU CEO only.
+     * The BU CEO's tally (also for a viewer who is BG CEO or group chief too), else the HOD's. Only people released
+     * to leaders count as released, and only they add to band counts, except people the viewer reads at once (their
+     * own business group as BG CEO; as group chief, performance and potential). `gated` is false when the whole
+     * scope is the viewer's own business group. Bands: performance always; potential (Low, Mid, High) and talent
+     * status (non-zero only, Super Star first) for a BU CEO only.
      */
     gated: z.boolean(), people: count,
     performance: tallyCounts, potential: tallyCounts, talent: tallyCounts,

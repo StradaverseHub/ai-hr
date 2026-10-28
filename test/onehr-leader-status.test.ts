@@ -270,7 +270,7 @@ describe('between cycles', () => {
   const pm = (UA: number, BE: number, ME: number, AE: number, OU: number) => Object.entries({ UA, BE, ME, AE, OU }).map(([band, n]) => ({ band, n }));
   const pot = (Low: number, Mid: number, High: number) => Object.entries({ Low, Mid, High }).map(([band, n]) => ({ band, n }));
 
-  it('counts only people released to the BU CEO or HOD, with band counts over them alone; the BG CEO waits for nothing; a revoke moves a person back', async () => {
+  it('counts only people released to the BU CEO or HOD, with band counts over them alone; a revoke moves a person back', async () => {
     await closedWithReleases();
     expect(await status(U.buA, cycleId)).toEqual({ seat: 'bu', mode: 'record', cycleId, midYear: false, gated: true, people: 5,
       performance: { released: 1, waiting: 2, bands: pm(0, 0, 1, 0, 0) },
@@ -280,9 +280,6 @@ describe('between cycles', () => {
     expect(await status(U.hodA, cycleId)).toEqual({ seat: 'hod', mode: 'record', cycleId, midYear: false, gated: true, people: 2,
       performance: { released: 1, waiting: 1, bands: pm(0, 0, 1, 0, 0) },
       potential: { released: 0, waiting: 2, bands: null }, talent: { released: 1, waiting: 1, bands: null }, departmentReviews: null });
-    expect(await status(U.bgCeo, cycleId)).toEqual({ seat: 'bg', mode: 'record', cycleId, midYear: false, gated: false, people: 8,
-      performance: { released: 5, waiting: 0, bands: pm(0, 1, 2, 1, 1) },
-      potential: { released: 5, waiting: 0, bands: null }, talent: { released: 5, waiting: 0, bands: null }, departmentReviews: null });
     expect(await status(U.outsider, cycleId)).toBeNull();
     expect(await status(U.A1, cycleId)).toBeNull();
   }, 120_000);
@@ -297,9 +294,28 @@ describe('between cycles', () => {
       expect((s.potential.bands ?? []).find((x) => x.band === 'High')?.n ?? 0).toBe(0);
       expect((s.talent.bands ?? []).map((x) => x.band)).not.toContain('Super Star');
     }
-    // Non-vacuity: the ungated BG CEO counts the same person's band.
-    const bg = (await status(U.bgCeo, cycleId)) as Tally;
-    expect(bg.performance.bands!.find((x) => x.band === 'OU')).toEqual({ band: 'OU', n: 1 });
+    // Non-vacuity on the one ungated path the source has: a BG CEO who takes the unit's BU CEO seat reads their own
+    // business group at once (dash_led passes no viewer), so the same person's bands are counted.
+    const acmeSeat = (await perf.listLeaderSeats(a, { seatType: 'bu_ceo', liveOnly: true })).find((x) => x.companyId === b.companyId)!;
+    await perf.endLeaderSeat(a, acmeSeat.id, { validTo: today });
+    await seatOn('bu_ceo', b.companyId, P.bgCeo);
+    expect(await status(U.bgCeo, cycleId)).toEqual({ seat: 'bu', mode: 'record', cycleId, midYear: false, gated: false, people: 5,
+      performance: { released: 3, waiting: 0, bands: pm(0, 0, 1, 1, 1) },
+      potential: { released: 3, waiting: 0, bands: pot(1, 1, 1) },
+      talent: { released: 3, waiting: 0, bands: [{ band: 'Super Star', n: 1 }, { band: 'Solid Core', n: 2 }] },
+      departmentReviews: { in: 0, of: 2 } });
+  }, 120_000);
+
+  it('a BG CEO gets a tally only with a BU CEO or HOD seat, and then that seat\'s tally; a BG CEO alone gets none', async () => {
+    await closedWithReleases();
+    // The fixture's BG CEO also holds Gamma's BU seat (nobody in it): the BU CEO's tally for Gamma, not the group's.
+    expect(await status(U.bgCeo, cycleId)).toEqual({ seat: 'bu', mode: 'record', cycleId, midYear: false, gated: false, people: 0,
+      performance: { released: 0, waiting: 0, bands: pm(0, 0, 0, 0, 0) }, potential: { released: 0, waiting: 0, bands: pot(0, 0, 0) },
+      talent: { released: 0, waiting: 0, bands: [] }, departmentReviews: { in: 0, of: 0 } });
+    const gammaSeat = (await perf.listLeaderSeats(a, { seatType: 'bu_ceo', liveOnly: true })).find((x) => x.companyId === gamma)!;
+    await perf.endLeaderSeat(a, gammaSeat.id, { validTo: today });
+    expect(await status(U.bgCeo, cycleId)).toEqual({ seat: 'bg', mode: 'record', cycleId, midYear: false, gated: false, people: 8 });
+    expect(await raw(U.bgCeo, cycleId)).toEqual({ seat: 'bg', mode: 'record', cycleId, midYear: false, gated: false, people: 8 });
   }, 120_000);
 
   it('a group chief gets no tally between cycles, as in the source: only how many people they led', async () => {
@@ -321,7 +337,7 @@ describe('what the projection carries', () => {
     const record = await Promise.all([U.buA, U.hodA, U.bgCeo, U.chief].map((ctx) => status(ctx, cycleId)));
     const all = [...running, ...record];
     expect(all.every((s) => s !== null)).toBe(true);
-    expect(all.map((s) => `${s!.seat}:${s!.mode}`)).toEqual(['bu:running', 'bu:running', 'bg:running', 'group:running', 'bu:running', 'bu:record', 'hod:record', 'bg:record', 'group:record']);
+    expect(all.map((s) => `${s!.seat}:${s!.mode}`)).toEqual(['bu:running', 'bu:running', 'bg:running', 'group:running', 'bu:running', 'bu:record', 'hod:record', 'bu:record', 'group:record']);
     // Band codes appear only as aggregate {band, n} entries inside a tally's bands; nowhere else.
     const entries: unknown[] = [];
     const stripped = withoutBands(all, entries);

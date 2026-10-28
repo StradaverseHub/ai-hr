@@ -21,10 +21,12 @@
 --  * HOD: nothing (the department review stays a task row).
 -- Between cycles (closed): per component, people with a final band released to the viewer and still waiting,
 -- and the band tally as the source's dashboard counts it: aggregate counts per band over released people only
--- (HOD: performance; BU CEO: performance, potential and talent status; BG CEO: performance). For a BU CEO or
--- HOD only people already released to leaders (release 1, 0665's *_leader_released_at) are counted, the rest
--- are "waiting" and add to no band count; a BG CEO reads results at once, so nothing waits. A group chief gets
--- no tally, as in the source: only how many people they led. Never a per-person band or a name-band pair.
+-- (HOD: performance; BU CEO: performance, potential and talent status). Only a BU CEO or HOD seat is tallied
+-- (BU CEO first), also for a viewer who is BG CEO or group chief too; only people already released to leaders
+-- (release 1, 0665's *_leader_released_at) are counted, the rest are "waiting" and add to no band count, except
+-- people the viewer reads at once (their own business group as BG CEO; as group chief, performance and
+-- potential). A BG CEO or group chief with neither seat gets no tally, as in the source: only how many people
+-- they led. Never a per-person band or a name-band pair.
 --
 -- The definer projection is needed because calibration rows are readable only through
 -- app.onehr_calibration_access: a seat holder cannot read another tier's sessions under RLS.
@@ -97,6 +99,9 @@ BEGIN
   AND h.valid_from<=today AND (h.valid_to IS NULL OR h.valid_to>today));
  seat:=CASE WHEN cardinality(bg_nodes)>0 THEN 'bg' WHEN cardinality(group_ids)>0 THEN 'group' WHEN cardinality(unit_ids)>0 THEN 'bu' WHEN heads THEN 'hod' END;
  IF seat IS NULL OR running AND seat='hod' THEN RETURN NULL; END IF;
+ -- Between cycles the source's "What you led" tallies only a BU CEO or HOD seat (BU CEO first), whatever else the
+ -- viewer holds; a BG CEO or group chief with neither gets a record without a tally.
+ IF NOT running AND (cardinality(unit_ids)>0 OR heads) THEN seat:=CASE WHEN cardinality(unit_ids)>0 THEN 'bu' ELSE 'hod' END; END IF;
 
  -- The seat's people in this cycle.
  SELECT coalesce(array_agg(p.review_id ORDER BY p.review_id),'{}') INTO scope FROM app.onehr_leader_status_people(cyc.id) p
@@ -108,21 +113,29 @@ BEGIN
   ELSE EXISTS(SELECT 1 FROM performance_hod_assignment h WHERE h.tenant_id=viewer.tenant_id AND h.subject_employment_id=p.employment_id
    AND h.hod_employment_id=ANY(mine) AND h.valid_from<=today AND (h.valid_to IS NULL OR h.valid_to>today)) END;
 
- -- Between cycles: a group chief gets no tally (the source's "What you led" has none), only how many they led.
- IF NOT running AND seat='group' THEN
-  RETURN jsonb_build_object('seat','group','mode','record','cycleId',cyc.id,'midYear',mid,'gated',false,'people',cardinality(scope));
+ -- Between cycles, a BG CEO or group chief without a BU CEO or HOD seat: no tally, only how many they led.
+ IF NOT running AND seat IN ('bg','group') THEN
+  RETURN jsonb_build_object('seat',seat,'mode','record','cycleId',cyc.id,'midYear',mid,'gated',false,'people',cardinality(scope));
  END IF;
 
- -- Between cycles: the release-gated tally. Band counts are aggregates over released people only.
+ -- Between cycles: the BU CEO's or HOD's tally. As the source's dash_led and _dash_band_tally: the release gate is
+ -- off for people in the viewer's own business group (a BG CEO reads them at once), and a performance or potential
+ -- band is also counted at once for a person the viewer calls as group chief. Everyone else counts only once
+ -- released to leaders. Band counts are aggregates over the people counted as released only.
  IF NOT running THEN
-  WITH p AS (SELECT x.review_id,x.employment_id FROM app.onehr_leader_status_people(cyc.id) x WHERE x.review_id=ANY(scope)),
-  r AS (SELECT p.employment_id,coalesce(f.result,app.assessment_working_result(p.review_id)) AS outcome,
-    rel.performance_leader_released_at IS NOT NULL OR seat='bg' AS pm_open,
-    rel.potential_leader_released_at IS NOT NULL OR seat='bg' AS pot_open,
-    rel.talent_leader_released_at IS NOT NULL OR seat='bg' AS talent_open
+  WITH p AS (SELECT x.review_id,x.employment_id,x.company_id,
+    app.onehr_business_group_node(x.company_id)=ANY(bg_nodes) AS own_group,
+    EXISTS(SELECT 1 FROM performance_calibration_group_member m WHERE m.tenant_id=viewer.tenant_id AND m.employment_id=x.employment_id
+     AND m.group_id=ANY(group_ids) AND m.valid_from<=today AND (m.valid_to IS NULL OR m.valid_to>today)) AS called
+   FROM app.onehr_leader_status_people(cyc.id) x WHERE x.review_id=ANY(scope)),
+  r AS (SELECT p.employment_id,p.own_group,coalesce(f.result,app.assessment_working_result(p.review_id)) AS outcome,
+    rel.performance_leader_released_at IS NOT NULL OR p.own_group OR p.called AS pm_open,
+    rel.potential_leader_released_at IS NOT NULL OR p.own_group OR p.called AS pot_open,
+    rel.talent_leader_released_at IS NOT NULL OR p.own_group AS talent_open
    FROM p LEFT JOIN performance_onehr_result f ON f.review_id=p.review_id AND f.tenant_id=viewer.tenant_id
    LEFT JOIN performance_assessment_release rel ON rel.review_id=p.review_id AND rel.tenant_id=viewer.tenant_id)
-  SELECT jsonb_build_object('seat',seat,'mode','record','cycleId',cyc.id,'midYear',mid,'gated',seat IN ('bu','hod'),'people',count(*),
+  SELECT jsonb_build_object('seat',seat,'mode','record','cycleId',cyc.id,'midYear',mid,'gated',NOT CASE WHEN seat='bu' THEN (SELECT bool_and(app.onehr_business_group_node(c.id)=ANY(bg_nodes)) FROM unnest(unit_ids) AS c(id))
+    ELSE coalesce(bool_and(r.own_group),false) END,'people',count(*),
    'performance',jsonb_build_object('released',count(*) FILTER (WHERE r.outcome->>'performance' IS NOT NULL AND r.pm_open),'waiting',count(*) FILTER (WHERE r.outcome->>'performance' IS NOT NULL AND NOT r.pm_open),
     'bands',(SELECT jsonb_agg(jsonb_build_object('band',v.band,'n',(SELECT count(*) FROM r q WHERE q.pm_open AND q.outcome->>'performance'=v.band)) ORDER BY v.ord)
      FROM unnest(ARRAY['UA','BE','ME','AE','OU']) WITH ORDINALITY v(band,ord))),
