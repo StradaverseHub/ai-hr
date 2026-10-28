@@ -27472,6 +27472,29 @@
     "create": {
       "defaultName": "Đợt xét duyệt lương thưởng năm {year}",
       "effectiveHelp": "Năm thưởng là năm hiệu suất được khen thưởng; ngày lương mới có hiệu lực lấy từ thiết lập của đợt xét duyệt."
+    },
+    "shared": {
+      "noneForPair": "Không có cho công ty, đơn vị kinh doanh và năm này. Đợt xét duyệt bắt đầu từ thiết lập chuẩn, Group Rewards có thể thay đổi khi còn ở trạng thái Nháp.",
+      "createOne": "Tạo cấu hình dùng chung",
+      "originLine": "{name} · Phiên bản {version}",
+      "changedInReview": "đã thay đổi trong đợt này"
+    },
+    "summary": {
+      "viewSettings": "Xem thiết lập",
+      "readOnly": "chỉ xem",
+      "close": "Đóng",
+      "help": "Đây là thiết lập mà đợt xét duyệt mới sẽ sao chép. Thay đổi sau này của cấu hình dùng chung không bao giờ ảnh hưởng đến đợt xét duyệt đã có.",
+      "defaultsTitle": "Thiết lập chuẩn năm {year}",
+      "setting": "Thiết lập",
+      "value": "Giá trị",
+      "merit": "Ma trận tăng lương (dưới / trong / trên khung)",
+      "standardPools": "Ngân sách gói chuẩn (thành tích / thăng chức / đặc biệt)",
+      "hPools": "Ngân sách gói JG H (thành tích / thăng chức / đặc biệt)",
+      "targetMonths": "Số tháng thưởng mục tiêu",
+      "bonusReference": "Bảng tham chiếu số tháng thưởng",
+      "bonusByGrade": "Theo bậc và xếp loại ({count, plural, other {# bậc}})",
+      "exemption": "Miễn trừ trần ngân sách",
+      "noExemption": "Không (áp dụng trần)"
     }
   }
 }

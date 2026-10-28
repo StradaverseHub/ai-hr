@@ -27472,6 +27472,29 @@
     "create": {
       "defaultName": "{year} Annual Compensation Review",
       "effectiveHelp": "Reward year is the performance year being rewarded; the salary effective date comes from the review settings."
+    },
+    "shared": {
+      "noneForPair": "None for this company, business unit and year. The review starts from the standard settings, which Group Rewards can change while it is in Draft.",
+      "createOne": "Create a shared configuration",
+      "originLine": "{name} · Version {version}",
+      "changedInReview": "changed in this review"
+    },
+    "summary": {
+      "viewSettings": "View settings",
+      "readOnly": "read only",
+      "close": "Close",
+      "help": "These are the settings a new review copies. Later changes to a shared configuration never alter a review that already exists.",
+      "defaultsTitle": "Standard settings for {year}",
+      "setting": "Setting",
+      "value": "Value",
+      "merit": "Merit matrix (below / within / above range)",
+      "standardPools": "Standard plan pools (merit / promotion / special)",
+      "hPools": "JG H plan pools (merit / promotion / special)",
+      "targetMonths": "Target bonus months",
+      "bonusReference": "Bonus months reference",
+      "bonusByGrade": "By grade and rating ({count, plural, one {# grade} other {# grades}})",
+      "exemption": "Budget-cap exemption",
+      "noExemption": "None (caps apply)"
     }
   }
 }

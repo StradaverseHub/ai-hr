@@ -233,7 +233,9 @@ export async function listRewardUnits(ctx: SessionContext, companyIds: string[],
       bgOrigin: sql<boolean>`coalesce(${rewardUnit.offcycle}->>'bgOrigin','false')='true'`,
       effectiveFrom: sql<string | null>`${rewardUnit.policy}->>'effectiveFrom'`,
       people: sql<number | null>`case when ${seated} then (select count(*)::int from reward_entry e where e.unit_id=${rewardUnit.id}) end`,
-      verified: sql<number | null>`case when ${seated} then (select count(*)::int from reward_entry e where e.unit_id=${rewardUnit.id} and e.facts->>'reviewed'='true') end` })
+      verified: sql<number | null>`case when ${seated} then (select count(*)::int from reward_entry e where e.unit_id=${rewardUnit.id} and e.facts->>'reviewed'='true') end`,
+      // 56595838: the shared configuration version the review started from, and whether its own settings changed since.
+      policyOrigin: sql<{ versionId: string; revision: number; name: string; changed: boolean } | null>`app.reward_policy_unit_origin(${rewardUnit.id})` })
       .from(rewardUnit).innerJoin(rewardCycle, eq(rewardCycle.id, rewardUnit.cycleId)).innerJoin(company, eq(company.id, rewardUnit.companyId)).innerJoin(businessUnit, eq(businessUnit.id, rewardUnit.businessUnitId))
       .where(and(inArray(rewardUnit.companyId, companyIds),isNull(rewardUnit.deletedAt))).orderBy(desc(rewardCycle.year), asc(rewardCycle.name), asc(businessUnitDisplayName), asc(rewardUnit.id));
     if (!rows.length) return [];

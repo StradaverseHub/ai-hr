@@ -91,3 +91,36 @@ describe('Create unit review cycle name (7a8102a7)', () => {
     expect(screen.getByLabelText<HTMLInputElement>('Salary effective date').value).toBe(`${year + 1}-04-01`);
   });
 });
+
+describe('Shared configuration visibility (56595838)', () => {
+  const props = { actorUserId: 'actor', today, companies: [{ id: 'company', name: 'Company' }], units: [{ id: 'bu-1', companyId: 'company', name: 'Unit', global: false }], cycles: [], shared: [] };
+  const policy = { effectiveFrom: `${year + 1}-01-01`, meritMatrix: { SSTAR: [1000, 800, 800], STAR: [800, 600, 600], SCORE: [600, 450, 300], IMPRO: [0, 0, 0], PIP: [0, 0, 0] }, standardPools: [500, 100, 100], hPools: [400, 100, 50], targetMonthsBp: 20000, bonusMatrix: { '12': [0, 1, 2, 3, 4], H: [0, 1, 2, 3, 4] }, exemptReason: '' };
+  it('names the version and opens its settings read-only', () => {
+    render(wrap(<RewardReviewCreateForm {...props} shared={[{ groupId: 'g', versionId: 'v', revision: 3, name: 'Group Standard 2026', year, companyId: 'company', businessUnitId: 'bu-1', policy: policy as any }]} />));
+    expect(screen.getByText('Group Standard 2026 · Version 3')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'View settings' }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText(/Group Standard 2026 · Version 3/)).toBeTruthy();
+    expect(within(dialog).getByText('read only')).toBeTruthy();
+    expect(within(dialog).getByText('SSTAR')).toBeTruthy();
+    expect(within(dialog).getByRole('row', { name: /Standard plan pools/ }).textContent).toContain('5% / 1% / 1%');
+    expect(within(dialog).getByRole('row', { name: /JG H plan pools/ }).textContent).toContain('4% / 1% / 0.5%');
+    expect(within(dialog).getByRole('row', { name: /Target bonus months/ }).textContent).toContain('2.00');
+    expect(within(dialog).getByText('None (caps apply)')).toBeTruthy();
+    expect(dialog.querySelectorAll('input,select,textarea')).toHaveLength(0);
+  });
+  it('says plainly when no shared configuration exists, links to create one and shows the standard settings', () => {
+    render(wrap(<RewardReviewCreateForm {...props} />));
+    expect(screen.getByText(/None for this company, business unit and year/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Create a shared configuration' }).getAttribute('href')).toBe('/admin/rewards/shared');
+    fireEvent.click(screen.getByRole('button', { name: 'View settings' }));
+    expect(within(screen.getByRole('dialog')).getByText(`Standard settings for ${year}`)).toBeTruthy();
+  });
+  it('shows the origin version and the changed badge in the list', async () => {
+    ports.list.mockResolvedValue([{ ...rows[0], policyOrigin: { versionId: 'v', revision: 3, name: 'Group Standard 2026', changed: true } }]);
+    render(wrap(await page({})));
+    const row = screen.getAllByRole('row')[1];
+    expect(within(row).getByText(/Group Standard 2026 · Version 3/)).toBeTruthy();
+    expect(within(row).getByText('changed in this review')).toBeTruthy();
+  });
+});

@@ -27472,6 +27472,29 @@
     "create": {
       "defaultName": "Semakan Pampasan Tahunan {year}",
       "effectiveHelp": "Tahun ganjaran ialah tahun prestasi yang diberi ganjaran; tarikh gaji berkuat kuasa diambil daripada tetapan semakan."
+    },
+    "shared": {
+      "noneForPair": "Tiada untuk syarikat, unit perniagaan dan tahun ini. Semakan bermula daripada tetapan standard, yang boleh diubah oleh Group Rewards semasa dalam Draf.",
+      "createOne": "Cipta konfigurasi kongsi",
+      "originLine": "{name} · Versi {version}",
+      "changedInReview": "diubah dalam semakan ini"
+    },
+    "summary": {
+      "viewSettings": "Lihat tetapan",
+      "readOnly": "baca sahaja",
+      "close": "Tutup",
+      "help": "Ini ialah tetapan yang disalin oleh semakan baharu. Perubahan kemudian pada konfigurasi kongsi tidak sesekali mengubah semakan sedia ada.",
+      "defaultsTitle": "Tetapan standard untuk {year}",
+      "setting": "Tetapan",
+      "value": "Nilai",
+      "merit": "Matriks merit (bawah / dalam / atas julat)",
+      "standardPools": "Peruntukan pelan standard (merit / kenaikan pangkat / khas)",
+      "hPools": "Peruntukan pelan JG H (merit / kenaikan pangkat / khas)",
+      "targetMonths": "Bulan bonus sasaran",
+      "bonusReference": "Rujukan bulan bonus",
+      "bonusByGrade": "Mengikut gred dan penarafan ({count, plural, other {# gred}})",
+      "exemption": "Pengecualian had bajet",
+      "noExemption": "Tiada (had dikenakan)"
     }
   }
 }

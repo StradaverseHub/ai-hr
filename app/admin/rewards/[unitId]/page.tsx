@@ -5,7 +5,7 @@ import { requireModule } from '@/lib/authz';
 import { getRewardCalendar, getRewardConfiguration, getRewardSeniorMembership, rewardSetupChoices } from '@/packs/rewards/service';
 import { RewardCalendarForm } from '@/app/rewards/[unitId]/calendar-form';
 import { rewardRoles } from '@/packs/rewards/model';
-import { ErrorBanner, Field, PageHeader, inputCls } from '@/components/ui';
+import { Badge, ErrorBanner, Field, PageHeader, inputCls } from '@/components/ui';
 import { PolicyForm, RewardPolicyFields } from '@/app/rewards/[unitId]/policy-form';
 import { RewardSubmit } from '@/app/rewards/submit-button';
 import { memberAction } from '@/app/rewards/actions';
@@ -23,7 +23,7 @@ export default async function RewardConfigurationPage({ params, searchParams }: 
   const { error,mode } = await searchParams;
   const readOnly=mode==='view';
   const t = await getTranslations('rewards');
-  const td=await getTranslations('rewardsDeletion');
+  const td=await getTranslations('rewardsDeletion'),tc=await getTranslations('rewardsConfig');
   const v = await getRewardConfiguration(s, unitId);
   const choices = await rewardSetupChoices(s, scopeIds);
   const { unit } = v;
@@ -35,7 +35,7 @@ export default async function RewardConfigurationPage({ params, searchParams }: 
     <PageHeader title={`${t('configuration')} · ${v.cycle?.name ?? t('title')} · ${v.name}`} description={`${t(`kinds.${unit.kind}`)} · ${t(`stages.${unit.status}`)}`} />
     <ErrorBanner message={error} />
     {readOnly&&<p className="rounded-md border p-3 text-sm">{td('viewHelp')}</p>}
-    {v.policyOrigin&&<p className="rounded-md border p-3 text-sm">{t('sharedPolicy.origin',{name:v.policyOrigin.name,version:v.policyOrigin.revision})}{v.policyOrigin.changed&&<span className="mt-1 block text-muted-foreground">{t('sharedPolicy.reviewChanged')}</span>}</p>}
+    {v.policyOrigin&&<p className="rounded-md border p-3 text-sm">{t('sharedPolicy.origin',{name:v.policyOrigin.name,version:v.policyOrigin.revision})}{v.policyOrigin.changed&&<><Badge variant="info" className="ml-2 normal-case">{tc('shared.changedInReview')}</Badge><span className="mt-1 block text-muted-foreground">{t('sharedPolicy.reviewChanged')}</span></>}</p>}
     <section className="space-y-3">
       <h2 className="font-semibold">{t('access')}</h2>
       <p className="max-w-3xl text-sm text-muted-foreground">{t('accessHelp')}</p>

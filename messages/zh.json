@@ -27472,6 +27472,29 @@
     "create": {
       "defaultName": "{year} 年度薪酬评审",
       "effectiveHelp": "奖励年度是被奖励的绩效年度；薪资生效日期取自评审设置。"
+    },
+    "shared": {
+      "noneForPair": "此公司、业务单元和年度没有共享配置。评审将从标准设置开始，Group Rewards 可在草稿阶段修改。",
+      "createOne": "创建共享配置",
+      "originLine": "{name} · 版本 {version}",
+      "changedInReview": "已在本评审中修改"
+    },
+    "summary": {
+      "viewSettings": "查看设置",
+      "readOnly": "只读",
+      "close": "关闭",
+      "help": "这些是新评审将复制的设置。之后对共享配置的修改不会改变已存在的评审。",
+      "defaultsTitle": "{year} 年标准设置",
+      "setting": "设置",
+      "value": "值",
+      "merit": "绩效加薪矩阵（低于 / 位于 / 高于区间）",
+      "standardPools": "标准计划预算池（绩效 / 晋升 / 特别）",
+      "hPools": "JG H 计划预算池（绩效 / 晋升 / 特别）",
+      "targetMonths": "目标奖金月数",
+      "bonusReference": "奖金月数参考",
+      "bonusByGrade": "按职级和评级（{count, plural, other {# 个职级}}）",
+      "exemption": "预算上限豁免",
+      "noExemption": "无（适用上限）"
     }
   }
 }
