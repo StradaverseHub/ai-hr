@@ -443,3 +443,24 @@ are still pending**: no push enrollment, token, payload or reminder code exists.
 - **Tests written, not yet run.** `test/mobile-v2-notifications.test.ts`, `test/mobile-inbox.dom.test.tsx`;
   `test/mobile-native-composition.dom.test.tsx` and `test/mobile-composer-tasks.test.ts` updated to pin the v2 widget
   source (v1 pins kept).
+
+### Phase E hosted evidence (28 October 2026)
+
+All runs are `alpha-focused-checks.yml` on standard runners at exact SHAs of `codex/mobile-native-integrity-20261027`.
+- Foundation `42b019bbb`: [40677097818](https://github.com/StradaverseHub/ai-hr/actions/runs/40677097818) passed 33 files,
+  root and native TypeScript, both Metro/Hermes bundles and the Linux build.
+- M07 leave `94c8c1cbb`: [40682130473](https://github.com/StradaverseHub/ai-hr/actions/runs/40682130473) passed 60 files
+  (including the web leave suites), native TypeScript, bundles and build; root TypeScript failed on three test-only
+  typings, repaired at `84ffe9f2b` ([40683274202](https://github.com/StradaverseHub/ai-hr/actions/runs/40683274202)).
+- M08 approvals `88dcb72be`: [40687376921](https://github.com/StradaverseHub/ai-hr/actions/runs/40687376921) passed 445 of
+  448 cases, native TypeScript, bundles and build; three attendance workflow fixtures targeted the whole department
+  (approvers without a superior) and one DOM fixture lost its index signature. Repaired at `30ede7b72`/`fdbe4e7ab`
+  ([40692195864](https://github.com/StradaverseHub/ai-hr/actions/runs/40692195864)).
+- M09 pay and EA `bb444aa99`: [40692017794](https://github.com/StradaverseHub/ai-hr/actions/runs/40692017794) passed 39 of
+  40 files, both type checks, bundles and build; `moneyText('')` printed `0.00` for an absent amount (a product bug).
+  Repaired at `45eb9f6de` ([40693260574](https://github.com/StradaverseHub/ai-hr/actions/runs/40693260574)).
+- M10 inbox and M14 Home `34fec1bd2`: [40695032744](https://github.com/StradaverseHub/ai-hr/actions/runs/40695032744)
+  passed 58 files (including the web notification, email and approvals suites), both type checks, bundles and build.
+Not verified: devices, screen readers, dark mode, real Play/Apple accounts, the Android share sheet, Malay copy review,
+and a dev-server render of any web route touched. Push and shift reminders are not built (migration number and
+APNs/FCM keys pending).
