@@ -2,8 +2,9 @@
  * gates they mirror; live-scope answers are stubbed at their source to prove fail-closed behaviour. No
  * database: the target actions' own refusals are proved by their own suites. */
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-const source=vi.hoisted(()=>({companies:vi.fn(),assigned:vi.fn()}));
+const source=vi.hoisted(()=>({companies:vi.fn(),assigned:vi.fn(),rewards:vi.fn()}));
 vi.mock('../core/workforce-access',()=>({workforceCompanies:source.companies}));
+vi.mock('../packs/rewards/service',()=>({administersRewardsForAnyCompany:source.rewards}));
 vi.mock('../core/assistant-actions/module-action-server',()=>({readAssignedLeaveModuleActionChoices:source.assigned}));
 import type {SessionContext} from '../db/client';
 import {MODULE_ACTION_ENTRIES,MODULE_ACTION_ENTRY_OF,moduleActionEntryRoleFloor} from '../lib/assistant-actions/module-action-entries';
@@ -12,7 +13,7 @@ import {canAuthor} from '../core/knowledge-base';
 import {AGENT_MODULE_CODES} from '../lib/ai/module-agents';
 const ctxOf=(role:string)=>({tenantId:'t',userId:'u',roles:[role],grants:[{role,companyId:null}]}) as SessionContext;
 const task={leaveRequestId:'10000000-0000-4000-8000-000000000002',currentStepId:null,stepIndex:null,applicantLabel:'Fictional applicant',createdAt:'2026-10-27T00:00:00Z'};
-beforeEach(()=>{vi.clearAllMocks();source.companies.mockResolvedValue([]);source.assigned.mockResolvedValue({kind:'choices',truncated:false,tasks:[]});});
+beforeEach(()=>{vi.clearAllMocks();source.companies.mockResolvedValue([]);source.assigned.mockResolvedValue({kind:'choices',truncated:false,tasks:[]});source.rewards.mockResolvedValue(false);});
 describe('role floors mirror the target gates',()=>{
  it('mirrors each target gate: admin-only floors refuse employees and managers, payroll floors admit the payroll partner only where the target does',()=>{
   const ctxOf=(role:string)=>({tenantId:'t',userId:'u',roles:[role],grants:[{role,companyId:null}]}) as SessionContext;
@@ -21,7 +22,9 @@ describe('role floors mirror the target gates',()=>{
   const partner=ctxOf('payroll_partner');expect(moduleActionEntryRoleFloor(partner,'payroll_close')).toBe(true);expect(moduleActionEntryRoleFloor(partner,'multi_cycle_run')).toBe(false);expect(moduleActionEntryRoleFloor(partner,'pay_component')).toBe(false);
   // The Knowledge Base floor IS the author gate, not a copy that can drift from it.
   for(const role of ['employee','manager','hr_admin','super_admin','payroll_partner'])expect(moduleActionEntryRoleFloor(ctxOf(role),'knowledge')).toBe(canAuthor(ctxOf(role)));
-  for(const entry of ['org','assigned_leave'] as const)expect(moduleActionEntryRoleFloor(ctxOf('hr_admin'),entry)).toBeNull();
+  for(const entry of ['org','assigned_leave','rewards'] as const)expect(moduleActionEntryRoleFloor(ctxOf('hr_admin'),entry)).toBeNull();
+  // app.reward_admin (0524) admits only hr_admin/super_admin role assignments, so nobody else is offered Rewards.
+  for(const role of ['employee','manager','payroll_partner'])expect(moduleActionEntryRoleFloor(ctxOf(role),'rewards')).toBe(false);
   expect(new Set(Object.values(MODULE_ACTION_ENTRY_OF))).toEqual(new Set(MODULE_ACTION_ENTRIES));
  });
 });
@@ -38,12 +41,19 @@ describe('live-scope shortcuts fail closed',()=>{
   source.assigned.mockResolvedValueOnce({kind:'unavailable'});expect(await moduleActionEntryAccess(ctxOf('employee'),'assigned_leave')).toBe('unknown');
   source.assigned.mockRejectedValueOnce(Error('PRIVATE'));expect(await moduleActionEntryAccess(ctxOf('employee'),'assigned_leave')).toBe('unknown');
  });
+ it('offers Rewards posting only where the live app.reward_admin read admits the login, and hides it when the read fails',async()=>{
+  expect(await moduleActionEntryAccess(ctxOf('employee'),'rewards')).toBe('refused');expect(source.rewards).not.toHaveBeenCalled();
+  expect(await moduleActionEntryAccess(ctxOf('hr_admin'),'rewards')).toBe('refused');expect(source.rewards).toHaveBeenCalledWith(expect.objectContaining({userId:'u',roles:['hr_admin']}));
+  source.rewards.mockResolvedValueOnce(true);expect(await moduleActionEntryAccess(ctxOf('super_admin'),'rewards')).toBe('allowed');
+  source.rewards.mockRejectedValueOnce(Error('PRIVATE rewards failure'));expect(await moduleActionEntryAccess(ctxOf('hr_admin'),'rewards')).toBe('unknown');
+  expect(await allowedModuleActionEntries(ctxOf('hr_admin'),['rewards'])).toEqual([]);
+ });
  it('lists nothing administrative for an ordinary employee and every shortcut for a scoped HR admin',async()=>{
   expect(await allowedModuleActionEntries(ctxOf('employee'),AGENT_MODULE_CODES)).toEqual([]);
-  source.companies.mockResolvedValue(['company']);expect(new Set(await allowedModuleActionEntries(ctxOf('hr_admin'),AGENT_MODULE_CODES))).toEqual(new Set(MODULE_ACTION_ENTRIES));
+  source.companies.mockResolvedValue(['company']);source.rewards.mockResolvedValue(true);expect(new Set(await allowedModuleActionEntries(ctxOf('hr_admin'),AGENT_MODULE_CODES))).toEqual(new Set(MODULE_ACTION_ENTRIES));
   source.companies.mockResolvedValue([]);expect(await allowedModuleActionEntries(ctxOf('manager'),AGENT_MODULE_CODES)).toEqual(['assigned_leave']);
  });
  it('reads nothing for task cards that are not shown',async()=>{
-  expect(await allowedModuleActionEntries(ctxOf('employee'),['leave','claims'])).toEqual([]);expect(source.companies).not.toHaveBeenCalled();expect(source.assigned).not.toHaveBeenCalled();
+  expect(await allowedModuleActionEntries(ctxOf('employee'),['leave','claims'])).toEqual([]);expect(source.companies).not.toHaveBeenCalled();expect(source.assigned).not.toHaveBeenCalled();expect(source.rewards).not.toHaveBeenCalled();
  });
 });

@@ -36,14 +36,14 @@ const ctx:SessionContext={tenantId:'fictional-tenant',userId:'fictional-user',pe
 beforeEach(()=>{vi.clearAllMocks();state.locale='en';state.fail=false;state.tools=[];state.data={rows:[{employeeCode:'CANONICAL-01',company:'Canonical employer',hiredOn:'2020-01-01',terminatedOn:null,status:'active'}],truncated:false};});
 afterEach(()=>{cleanup();vi.restoreAllMocks();});
 describe('native-action shortcuts follow the target action authorization',()=>{
- const gated=['/admin/personnel/import','/assistant/org','/assistant/payroll-close','/assistant/knowledge-base','/assistant/payroll-runs','/assistant/pay-codes','/assistant/approvals','/assistant/statutory'];
+ const gated=['/admin/personnel/import','/assistant/org','/assistant/payroll-close','/assistant/knowledge-base','/assistant/payroll-runs','/assistant/pay-codes','/assistant/approvals','/assistant/statutory','/assistant/rewards'];
  const hrefs=(container:HTMLElement)=>Array.from(container.querySelectorAll<HTMLAnchorElement>('a')).map(link=>link.getAttribute('href'));
  it('hides every administrative shortcut from an ordinary employee and keeps own-record shortcuts',async()=>{
   const view=render(await ModuleJobChooser({modules:AGENT_MODULE_CODES}));const shown=hrefs(view.container);
   for(const href of gated)expect(shown).not.toContain(href);
   for(const href of ['/assistant/leave','/assistant/profile','/assistant/claims','/assistant/attendance','/assistant/notifications'])expect(shown).toContain(href);
   expect(screen.queryByRole('link',{name:en.people.import.title})).toBeNull();expect(screen.queryByRole('link',{name:en.assistant.workspace.orgActions.title})).toBeNull();
-  expect(screen.queryByRole('link',{name:en.assistant.workspace.payComponentActions.title})).toBeNull();expect(screen.queryByRole('link',{name:en.assistant.workspace.approvalActions.title})).toBeNull();
+  expect(screen.queryByRole('link',{name:en.assistant.workspace.payComponentActions.title})).toBeNull();expect(screen.queryByRole('link',{name:en.assistant.workspace.approvalActions.title})).toBeNull();expect(screen.queryByRole('link',{name:en.assistant.workspace.rewardsActions.title})).toBeNull();
   expect(withAssistantRead).not.toHaveBeenCalled();
  });
  it('shows a manager only the assigned-decision shortcut it was granted, and HR admin every one',async()=>{

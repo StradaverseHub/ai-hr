@@ -7,6 +7,7 @@ import type {AgentModuleCode} from '../../lib/ai/module-agents';
 import {hasTeamAccess} from '../../lib/authz-model';
 import {MODULE_ACTION_ENTRY_OF,moduleActionEntryRoleFloor,type ModuleActionEntry,type ModuleActionEntryAccess} from '../../lib/assistant-actions/module-action-entries';
 import {workforceCompanies} from '../workforce-access';
+import {administersRewardsForAnyCompany} from '../../packs/rewards/service';
 import {readAssignedLeaveModuleActionChoices} from './module-action-server';
 
 export async function moduleActionEntryAccess(supplied:SessionContext,entry:ModuleActionEntry):Promise<ModuleActionEntryAccess>{
@@ -16,6 +17,8 @@ export async function moduleActionEntryAccess(supplied:SessionContext,entry:Modu
   // The reporting-line search admits only employments where app.access_workforce_employment(...,
   // 'workforce.maintain') holds, which is app.access_workforce_company on the employment's company.
   if(entry==='org')return (await workforceCompanies(ctx,'maintain')).length>0?'allowed':'refused';
+  // Posting needs app.reward_admin for the unit's company (plus its payroll seat, checked per unit).
+  if(entry==='rewards')return await administersRewardsForAnyCompany(ctx)?'allowed':'refused';
   // Same audience as the native Approvals entry (app/layout.tsx canApprove = admin or manager), plus
   // anyone the assigned-decision read itself currently finds an assigned leave task for.
   if(hasTeamAccess(ctx))return 'allowed';

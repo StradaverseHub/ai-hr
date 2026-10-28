@@ -4,6 +4,7 @@ import {getTranslations} from 'next-intl/server';
 import {Card} from '../ui';
 import {proposeModulePlanAction,eraseModuleProposalsAction,evaluateHumanPlannerAction} from '../../app/assistant/module-plan-actions';
 import {runGovernedPlanAction} from '../../app/assistant/governed-job-actions';
+import {OwnClearForm} from './own-clear';
 import type {OwnModulePlanView} from '../../core/module-agent-releases';
 /** First render asks nothing, so it reports no failure: only a submitted request's own status may say
  * "snag". No provider means "not set up" (calm), never an error. */
@@ -20,7 +21,7 @@ export async function ModuleQuestionPlanner({view,status,permit,availability}:{v
    {view.consumedJobId?<a href={'/assistant?governed='+encodeURIComponent(view.consumedJobId)} className="inline-flex min-h-11 items-center text-sm underline">{t('reopen')}</a>:
     <form action={runGovernedPlanAction}><input type="hidden" name="commandNonce" value={randomUUID()}/><input type="hidden" name="proposalId" value={view.proposalId}/>{view.modules.map(module=><input key={module} type="hidden" name="module" value={module}/>)}<button className="min-h-11 rounded-md border px-4 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('confirm')}</button></form>}
   </section>:<p role="status" className="text-sm text-muted-foreground">{t(view.state)}</p>)}
-  <form action={eraseModuleProposalsAction}><button className="min-h-11 text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('erase')}</button></form>
+  <OwnClearForm kind="proposals" action={eraseModuleProposalsAction} label={t('erase')}/>
  </Card>;
 }
 export async function HumanPlannerEvaluation({candidates}:{candidates:readonly {id:string;kind:string;own:boolean;version:number}[]}){

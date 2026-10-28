@@ -74,6 +74,16 @@ export async function canPostRewardUnit(ctx: SessionContext, unitId: string): Pr
     return (await rewardPostingAuthorityTx(tx, unit, roles)) === 'allowed';
   });
 }
+/** Assistant shortcut OFFER only, never a grant: does this login currently administer Rewards for any
+ * company in its tenant? Same app.reward_admin predicate every Rewards administrator writer and the
+ * Assistant posting review require. Read-only; a failure throws and the caller keeps the link hidden. */
+export async function administersRewardsForAnyCompany(ctx: SessionContext): Promise<boolean> {
+  return withRewardsTenant(ctx, async tx => {
+    await tx.execute(sql`SET TRANSACTION READ ONLY`);
+    const [r] = await tx.execute<{ ok: boolean }>(sql`select exists(select 1 from public.company c where c.tenant_id=app.current_tenant_id() and app.reward_admin(c.id)) as ok`);
+    return r?.ok === true;
+  });
+}
 async function requireAdmin(tx: Tx, companyId: string) {
   const [r] = await tx.execute<{ ok: boolean }>(sql`select app.reward_admin(${companyId}::uuid) as ok`);
   if (!r?.ok) throw new RewardError('Company administrator access is required.');

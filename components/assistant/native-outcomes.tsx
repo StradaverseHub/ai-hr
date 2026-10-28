@@ -8,6 +8,7 @@ import {reopenOwnNativeOutcomeAssociation} from '../../core/module-native-outcom
 import {resolveOwnNotificationServerIdentity} from '../../core/assistant-actions/own-notification-preferences-source';
 import {NativeOutcomeAssociationView,type NativeOutcomeAction} from '../../lib/ai/module-native-outcomes';
 import {NativeOutcomeForm} from './native-outcome-form';
+import {OwnClearForm} from './own-clear';
 import {eraseNativeOutcomesAction,reopenNativeOutcomeAction} from '../../app/assistant/native-outcome-actions';
 const actionKey=(action:NativeOutcomeAction)=>'action_'+action.replace(/[.-]/g,'_');
 const control='min-h-11 rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary';
@@ -44,8 +45,9 @@ export async function NativeOutcomes({jobId,status,selectedLink}:{jobId:string;s
   <p className="text-xs text-muted-foreground">{t('notQuality')}</p>
  </section>;
 }
-/** This control needs no module/grant/employee lookup and remains visible in the denied branch. */
+/** This control needs no module/grant/employee lookup and remains visible in the denied branch. It asks
+ * first; the outcome sits OUTSIDE the collapsible so the post-redirect page shows it. */
 export async function NativeOutcomePrivacy({status}:{status?:string}){
  const t=await getTranslations('assistant.workspace.nativeOutcomes');
- return <details className="rounded-md border p-3 text-sm"><summary className="flex min-h-11 cursor-pointer items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('privacy')}</summary><p className="my-2 text-xs text-muted-foreground">{t('privacyDescription')}</p>{status==='erased'&&<p role="status">{t('erased')}</p>}{status==='erase_unavailable'&&<p role="alert">{t('unavailable')}</p>}<form action={eraseNativeOutcomesAction}><button className={control} type="submit">{t('erase')}</button></form></details>;
+ return <div className="space-y-2">{status==='erased'&&<p role="status" className="text-xs">{t('erased')}</p>}{status==='erase_unavailable'&&<p role="alert" className="text-xs">{t('unavailable')}</p>}<details className="rounded-md border p-3 text-sm"><summary className="flex min-h-11 cursor-pointer items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('privacy')}</summary><p className="my-2 text-xs text-muted-foreground">{t('privacyDescription')}</p><OwnClearForm kind="outcomes" action={eraseNativeOutcomesAction} label={t('erase')} className="min-h-11 text-sm underline"/></details></div>;
 }

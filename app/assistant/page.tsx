@@ -1,4 +1,5 @@
 import {AssistantHistoryPrivacy} from '../../components/assistant/history-privacy';
+import {OwnClearForm,OwnClearStatus} from '../../components/assistant/own-clear';
 import {eraseConversationMetadataAction} from './agent-review-actions';
 import {NativeOutcomes,NativeOutcomePrivacy} from '@/components/assistant/native-outcomes';
 import {ImportPreparationPrivacy} from '@/components/assistant/import-privacy';
@@ -45,7 +46,7 @@ import { saveAgentFeedbackAction, eraseAgentFeedbackAction } from './feedback-ac
 export default async function AssistantPage({
   searchParams,
 }: {
-  searchParams: Promise<{ e?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string;importHistory?:string;nativeOutcome?:string;nativeLink?:string;historyPrivacy?:string }>;
+  searchParams: Promise<{ e?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string;importHistory?:string;nativeOutcome?:string;nativeLink?:string;historyPrivacy?:string;ownClear?:string }>;
 }) {
   const s = await getSession();
   const t = await getTranslations('assistant');
@@ -60,17 +61,16 @@ export default async function AssistantPage({
       <div data-tour="intelligence-assistant" className="mx-auto max-w-5xl space-y-5">
         <PageHeader title={t('title')} description={t('description')} />
       <AssistantHistoryPrivacy status={sp.historyPrivacy}/>
+      <OwnClearStatus status={sp.ownClear}/>
         <Card className="p-6">
           {/* Three different reasons, three different next steps. "No" with no route forward is the one
               thing this must not render. */}
           <p className="text-sm text-muted-foreground">{t(`denied_${access.reason}`)}</p>
-          <form action={eraseAgentFeedbackAction} className="mt-4">
-            <button type="submit" className="min-h-11 text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.feedbackErase')}</button>
-          </form>
-          <form action={eraseConversationMetadataAction}><button type="submit" className="min-h-11 text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.conversationGovernance.erase')}</button></form>
-          <form action={eraseModuleProposalsAction}><button type="submit" className="min-h-11 text-xs underline">{t('workspace.planning.erase')}</button></form>
+          <div className="mt-4"><OwnClearForm kind="feedback" action={eraseAgentFeedbackAction} label={t('workspace.feedbackErase')}/></div>
+          <OwnClearForm kind="conversation" action={eraseConversationMetadataAction} label={t('workspace.conversationGovernance.erase')}/>
+          <OwnClearForm kind="proposals" action={eraseModuleProposalsAction} label={t('workspace.planning.erase')}/>
           <ImportPreparationPrivacy status={sp.importHistory}/><NativeOutcomePrivacy status={sp.nativeOutcome}/>
-          <form action={eraseGovernedJobFeedbackAction}><button type="submit" className="min-h-11 text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.governed.eraseSignals')}</button></form>
+          <OwnClearForm kind="ratings" action={eraseGovernedJobFeedbackAction} label={t('workspace.governed.eraseSignals')}/>
         </Card>
       </div>
     );
@@ -89,7 +89,8 @@ export default async function AssistantPage({
     <div data-tour="intelligence-assistant" className="mx-auto max-w-5xl space-y-5">
       <PageHeader title={t('title')} description={t('description')} />
       <AssistantHistoryPrivacy status={sp.historyPrivacy}/>
-      <form action={eraseConversationMetadataAction}><button type="submit" className="min-h-11 text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.conversationGovernance.erase')}</button></form>
+      <OwnClearStatus status={sp.ownClear}/>
+      <OwnClearForm kind="conversation" action={eraseConversationMetadataAction} label={t('workspace.conversationGovernance.erase')}/>
       <ErrorBanner message={errorMessage} />
 
       <ModuleJobChooser modules={workspace.jobModules} selected={sp.job} actions={actionEntries}/>
@@ -152,9 +153,7 @@ export default async function AssistantPage({
         </Card>
       ))}
 
-      <form action={eraseAgentFeedbackAction}>
-        <button type="submit" className="min-h-11 text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.feedbackErase')}</button>
-      </form>
+      <OwnClearForm kind="feedback" action={eraseAgentFeedbackAction} label={t('workspace.feedbackErase')}/>
       </section>}
       {!selectedJob&&!workspace.governedJob&&history.length === 0 && (
         <Card className="p-6">

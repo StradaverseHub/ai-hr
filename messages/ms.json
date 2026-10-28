@@ -18605,6 +18605,44 @@
         "keep": "Simpan sembang saya",
         "retired": "Teks sembang anda telah dipadam. Bilangan penggunaan dan rekod HR anda kekal seperti biasa.",
         "unavailable": "Sejarah sembang anda tidak dapat dipadam. Sila cuba lagi."
+      },
+      "ownClear": {
+        "keep": "Simpan",
+        "unavailable": "Pembersihan tidak berjaya sebentar tadi, jadi tiada apa yang dibuang. Sila cuba lagi.",
+        "proposals": {
+          "title": "Padam cadangan tugas anda?",
+          "body": "Cadangan tugas yang disimpan akan dipadam sekarang dan tidak boleh dikembalikan. Rekod HR anda kekal seperti biasa.",
+          "confirm": "Padam cadangan",
+          "done": "Cadangan tugas anda telah dipadam. Rekod HR anda kekal seperti biasa."
+        },
+        "ratings": {
+          "title": "Padam penilaian tugas anda?",
+          "body": "Penilaian anda bagi larian tugas akan dipadam sekarang dan tidak boleh dikembalikan. Hasil tugas dan rekod HR anda kekal seperti biasa.",
+          "confirm": "Padam penilaian",
+          "done": "Penilaian tugas anda telah dipadam."
+        },
+        "feedback": {
+          "title": "Padam maklum balas anda?",
+          "body": "Penilaian jawapan anda akan dipadam sekarang dan tidak boleh dikembalikan. Sembang dan rekod HR anda kekal seperti biasa.",
+          "confirm": "Padam maklum balas",
+          "done": "Maklum balas anda telah dipadam."
+        },
+        "conversation": {
+          "title": "Padam data penilaian perbualan anda?",
+          "body": "Metadata penilaian perbualan dan penggunaan strategi anda akan dipadam sekarang dan tidak boleh dikembalikan. Sembang dan rekod HR anda kekal seperti biasa.",
+          "confirm": "Padam data penilaian",
+          "done": "Metadata penilaian perbualan dan penggunaan strategi anda telah dipadam."
+        },
+        "importHistory": {
+          "title": "Kosongkan sejarah penyediaan import anda?",
+          "body": "Cadangan import dan nota perbandingan yang disimpan akan dipadam sekarang dan tidak boleh dikembalikan. Rekod pekerja yang diimport kekal dalam Personel.",
+          "confirm": "Kosongkan sejarah"
+        },
+        "outcomes": {
+          "title": "Buang pautan hasil anda?",
+          "body": "Pautan hasil yang disimpan akan dibuang sekarang dan tidak boleh dikembalikan. Rekod HR dan sejarah auditnya kekal dalam aliran kerja biasa.",
+          "confirm": "Buang pautan"
+        }
       }
     },
     "denied_unavailable": "Ada sedikit masalah di pihak saya. Sila cuba lagi sebentar nanti.",

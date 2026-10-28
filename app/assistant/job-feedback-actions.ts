@@ -10,6 +10,6 @@ export async function saveGovernedJobFeedbackAction(form:FormData){
  redirect('/assistant?governed='+encodeURIComponent(jobId));
 }
 export async function eraseGovernedJobFeedbackAction(){
- try{const ctx=await getBrowserCommandSession();await eraseOwnGovernedJobFeedback(ctx);}catch{redirect('/assistant?error=governed_job');}
- redirect('/assistant');
+ try{const ctx=await getBrowserCommandSession();await eraseOwnGovernedJobFeedback(ctx);}catch{redirect('/assistant?ownClear=unavailable');}
+ redirect('/assistant?ownClear=ratings');
 }

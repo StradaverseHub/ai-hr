@@ -41,4 +41,4 @@ export async function evaluateConversationCandidateAction(form:FormData){
 export async function promoteConversationCandidateAction(form:FormData){
  const candidateId=String(form.get('candidateId')??''),maxJobs=Number(form.get('maxJobs')),hours=Number(form.get('hours'));try{await promoteConversationAgentCandidate(await getBrowserCommandSession(),{candidateId,maxJobs,hours});}catch{failed();}finish();
 }
-export async function eraseConversationMetadataAction(){try{await eraseOwnConversationStrategyMetadata(await getBrowserCommandSession());}catch{failed();}finish();}
+export async function eraseConversationMetadataAction(){try{await eraseOwnConversationStrategyMetadata(await getBrowserCommandSession());}catch{redirect('/assistant?ownClear=unavailable');}revalidatePath('/assistant');redirect('/assistant?ownClear=conversation');}

@@ -14,6 +14,6 @@ export async function saveAgentFeedbackAction(form: FormData) {
   revalidatePath('/assistant'); redirect('/assistant');
 }
 export async function eraseAgentFeedbackAction() {
-  try { const ctx = await getBrowserCommandSession(); await eraseOwnAgentFeedback(ctx); } catch { redirect('/assistant?error=feedback'); }
-  revalidatePath('/assistant'); redirect('/assistant');
+  try { const ctx = await getBrowserCommandSession(); await eraseOwnAgentFeedback(ctx); } catch { redirect('/assistant?ownClear=unavailable'); }
+  revalidatePath('/assistant'); redirect('/assistant?ownClear=feedback');
 }

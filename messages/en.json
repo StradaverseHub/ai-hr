@@ -18605,6 +18605,44 @@
         "keep": "Keep my chats",
         "retired": "Your chat text is cleared. Usage counts and your HR records stay as they are.",
         "unavailable": "Your chat history could not be cleared. Please try again."
+      },
+      "ownClear": {
+        "keep": "Keep them",
+        "unavailable": "That didn't clear just now, so nothing was removed. Please try again.",
+        "proposals": {
+          "title": "Erase your task proposals?",
+          "body": "Your saved task suggestions go now and can't be brought back. Your HR records stay as they are.",
+          "confirm": "Erase proposals",
+          "done": "Your task proposals are erased. Your HR records stay as they are."
+        },
+        "ratings": {
+          "title": "Erase your task ratings?",
+          "body": "Your ratings of task runs go now and can't be brought back. Task results and your HR records stay as they are.",
+          "confirm": "Erase ratings",
+          "done": "Your task ratings are erased."
+        },
+        "feedback": {
+          "title": "Delete your feedback?",
+          "body": "Your answer ratings go now and can't be brought back. Your chats and HR records stay as they are.",
+          "confirm": "Delete feedback",
+          "done": "Your feedback is deleted."
+        },
+        "conversation": {
+          "title": "Erase your conversation evaluation data?",
+          "body": "Your conversation evaluation and strategy-use metadata go now and can't be brought back. Your chats and HR records stay as they are.",
+          "confirm": "Erase evaluation data",
+          "done": "Your conversation evaluation and strategy-use metadata are erased."
+        },
+        "importHistory": {
+          "title": "Clear your import preparation history?",
+          "body": "Your saved import suggestions and comparison notes go now and can't be brought back. Imported employee records stay in Personnel.",
+          "confirm": "Clear history"
+        },
+        "outcomes": {
+          "title": "Remove your outcome links?",
+          "body": "Your saved outcome links go now and can't be brought back. HR records and their audit history stay in their normal workflows.",
+          "confirm": "Remove links"
+        }
       }
     },
     "denied_unavailable": "A little snag on my side. Please try again in a moment.",

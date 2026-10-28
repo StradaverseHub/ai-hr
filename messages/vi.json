@@ -18605,6 +18605,44 @@
         "keep": "Giữ lại trò chuyện",
         "retired": "Nội dung trò chuyện của bạn đã được xóa. Số lượt sử dụng và hồ sơ nhân sự của bạn vẫn giữ nguyên.",
         "unavailable": "Chưa thể xóa lịch sử trò chuyện. Vui lòng thử lại."
+      },
+      "ownClear": {
+        "keep": "Giữ lại",
+        "unavailable": "Chưa xóa được lúc này nên chưa có gì bị xóa. Vui lòng thử lại.",
+        "proposals": {
+          "title": "Xóa các đề xuất tác vụ của bạn?",
+          "body": "Các gợi ý tác vụ đã lưu sẽ bị xóa ngay và không thể khôi phục. Hồ sơ nhân sự của bạn vẫn giữ nguyên.",
+          "confirm": "Xóa đề xuất",
+          "done": "Đã xóa các đề xuất tác vụ của bạn. Hồ sơ nhân sự của bạn vẫn giữ nguyên."
+        },
+        "ratings": {
+          "title": "Xóa các đánh giá tác vụ của bạn?",
+          "body": "Các đánh giá của bạn cho những lần chạy tác vụ sẽ bị xóa ngay và không thể khôi phục. Kết quả tác vụ và hồ sơ nhân sự của bạn vẫn giữ nguyên.",
+          "confirm": "Xóa đánh giá",
+          "done": "Đã xóa các đánh giá tác vụ của bạn."
+        },
+        "feedback": {
+          "title": "Xóa phản hồi của bạn?",
+          "body": "Các đánh giá câu trả lời của bạn sẽ bị xóa ngay và không thể khôi phục. Cuộc trò chuyện và hồ sơ nhân sự của bạn vẫn giữ nguyên.",
+          "confirm": "Xóa phản hồi",
+          "done": "Đã xóa phản hồi của bạn."
+        },
+        "conversation": {
+          "title": "Xóa dữ liệu đánh giá hội thoại của bạn?",
+          "body": "Siêu dữ liệu đánh giá hội thoại và sử dụng chiến lược của bạn sẽ bị xóa ngay và không thể khôi phục. Cuộc trò chuyện và hồ sơ nhân sự của bạn vẫn giữ nguyên.",
+          "confirm": "Xóa dữ liệu đánh giá",
+          "done": "Đã xóa siêu dữ liệu đánh giá hội thoại và sử dụng chiến lược của bạn."
+        },
+        "importHistory": {
+          "title": "Xóa lịch sử chuẩn bị nhập của bạn?",
+          "body": "Các gợi ý nhập và ghi chú so sánh đã lưu sẽ bị xóa ngay và không thể khôi phục. Hồ sơ nhân viên đã nhập vẫn ở trong Nhân sự.",
+          "confirm": "Xóa lịch sử"
+        },
+        "outcomes": {
+          "title": "Gỡ các liên kết kết quả của bạn?",
+          "body": "Các liên kết kết quả đã lưu sẽ bị gỡ ngay và không thể khôi phục. Hồ sơ nhân sự và lịch sử kiểm tra vẫn nằm trong quy trình thông thường.",
+          "confirm": "Gỡ liên kết"
+        }
       }
     },
     "denied_unavailable": "Phía tôi gặp chút trục trặc. Vui lòng thử lại sau giây lát.",

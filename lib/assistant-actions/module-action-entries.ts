@@ -7,7 +7,7 @@ import type {SessionContext} from '../../db/client';
 import type {AgentModuleCode} from '../ai/module-agents';
 import {isAdmin,canManagePayroll,withEffectiveGrants} from '../authz-model';
 
-export const MODULE_ACTION_ENTRIES=['employee_import','org','payroll_close','knowledge','multi_cycle_run','pay_component','assigned_leave','country_statutory'] as const;
+export const MODULE_ACTION_ENTRIES=['employee_import','org','payroll_close','knowledge','multi_cycle_run','pay_component','assigned_leave','country_statutory','rewards'] as const;
 export type ModuleActionEntry=(typeof MODULE_ACTION_ENTRIES)[number];
 /** allowed = offer it; refused = the session's authorization rules it out; unknown = a source read
  * failed, so the link stays hidden and a page keeps its ordinary "cannot load" wording. */
@@ -16,7 +16,7 @@ export type ModuleActionEntryAccess='allowed'|'refused'|'unknown';
 /** The task card that carries each gated shortcut. Other shortcuts are own-record actions. */
 export const MODULE_ACTION_ENTRY_OF:Readonly<Partial<Record<AgentModuleCode,ModuleActionEntry>>>=Object.freeze({
  employees:'employee_import',org:'org',payroll:'payroll_close',knowledge_base:'knowledge',
- multi_cycle_payroll:'multi_cycle_run',typed_pay_components:'pay_component',approvals:'assigned_leave','country-my':'country_statutory',
+ multi_cycle_payroll:'multi_cycle_run',typed_pay_components:'pay_component',approvals:'assigned_leave','country-my':'country_statutory',rewards:'rewards',
 });
 
 /** Pure role floors, or null where only a fresh source read can answer. */
@@ -33,6 +33,8 @@ export function moduleActionEntryRoleFloor(ctx:SessionContext,entry:ModuleAction
   // readMultiCycleRunModuleActionChoices and reviewedCountryStatutoryChoiceMetadataTx both require
   // app.can_admin_payroll_for AND app.is_admin_for.
   case 'multi_cycle_run':case 'country_statutory':return isAdmin(ctx)&&canManagePayroll(withEffectiveGrants(ctx));
+  // app.reward_admin admits only hr_admin/super_admin assignments; which companies is a live read.
+  case 'rewards':return isAdmin(ctx)?null:false;
   // Reporting-line maintenance and assigned decisions depend on live scope/assignment rows.
   case 'org':case 'assigned_leave':return null;
  }
