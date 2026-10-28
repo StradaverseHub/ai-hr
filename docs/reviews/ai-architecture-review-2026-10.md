@@ -45,6 +45,11 @@ What sits on top of it is less than the names suggest, and partly does not work:
    nothing links an AI-prepared action to staff actions avoided. `agent_proposal` does not cover the
    Assistant, and there is no per-entry outcome aggregate.
 
+A second pass (§7.1) added R15–R22. The most important is R15: rank the action backlog by measured staff work,
+so that each wave moves the headcount measure. §7.2 lists the decisions needed from the owner.
+[ai-architecture-handoff-2026-10.md](ai-architecture-handoff-2026-10.md) turns all of this into ordered work
+packages, with a prompt for an implementing agent.
+
 **Top five recommendations** (full list in §7):
 
 1. Ship the named agent principal and make the scheduled agents honest in the meantime.
@@ -198,7 +203,7 @@ Re-check the merged state before acting on this note.
 | R4 | **Collapse stores onto the generic families** (own and assigned): migrate `claims.cancel`'s TS clone first, then the 12 dedicated stores. Add `withAgentActionGuard` (D6). Expected removal: roughly 800 lines of TS custody code and 12 SQL function families (estimate). | H | L (incremental) | M | 0151 §4.3, 0131 (no second ledger) | wave1b `generic-assigned-review-store.ts` is the target shape |
 | R5 | **Make learning real.** Delete the routing candidate kind and `module-agent-improvement.ts`/`module-agent-orchestrator.ts` (test-only). Promote at **tenant scope** chosen by the approver (ADR-0131 §146). Scope the source manifest to AI-relevant files. Require promoter ∉ evaluators. Schedule maintenance. Trigger rollback from measured outcomes. Add holdouts for all 12 tools, every action entry (injection in record text, cross-company, cross-tenant, salary, missing permission, ambiguity → question). | H | M | L | 0151 §4.6d–e, 0084, 0131 | `ai-learning-loop` (measurement side) |
 | R6 | **Derive the chat tool catalogue and action proposals from the registry**, filtered per caller, with inline review cards built from canonical prepared content. Keep the confirmation as a separate human command. Update the "stable per (tenant, role)" cache claims, since strategy selection is per user. | H | M | M | 0151 §4.3, §4.6a; 0082 | `ai-wave1b` (in-chat cards) |
-| R7 | **Measure reduced manual work.** Per entry: offered → prepared → edited → confirmed/discarded/expired/reversed, joined to `domain_event`. Add a disposition view into `agent_proposal` vocabulary. Add a "staff actions avoided" estimate per process: confirmed AI-prepared actions × the process assessment's baseline staff steps, with elapsed-time deltas. Show it beside ADR-0131 opportunities. Aggregates only, RLS-scoped. | H | M | L | 0151 §4.6c, 0131 Phase 4, 0084 | `ai-learning-loop` |
+| R7 | **Measure reduced manual work.** Per entry: offered → prepared → edited → confirmed/discarded/expired/reversed, joined to `domain_event`. Add a disposition view into `agent_proposal` vocabulary. Add a "staff actions avoided" estimate per process: confirmed AI-prepared actions × the process assessment's baseline staff steps, with elapsed-time deltas. Show it beside ADR-0131 opportunities. Aggregates only, RLS-scoped. | H | M | L | 0151 §4.6c, 0131 Phase 4, 0084 | `ai-learning-loop` PR #34 (open) adds per-kind lifecycle counts, a non-causal before/after per process and a coverage panel (migration 0674). Still open: the `agent_proposal` disposition view, "offered/edited/failed" (no source records them), and an attributed staff-actions-avoided estimate |
 | R8 | **One AI inventory screen**: every component (chat, read bindings, specialists, each action with tier, scheduled jobs, embedded features, orchestrator steps, operator loop as out-of-band). Each row shows its switch, allowance, pause key, last run, 30-day cost, outcome rates and audit events. Add a per-action pause key (e.g. `hr_assistant:<actionId>`) under the module pause. Add run paging and date range, and log connection probes. | H | M | L | 0116, 0151 §4.7 | `ai-learning-loop` (outcome tiles) |
 | R9 | **Gateway fail-closed.** `governed()` refuses without governance unless the config is an explicit `UngovernedProbe` type. Extend the drift test to `lib/` and `scripts/`, detect raw provider `fetch`, and make it always-run. | M | S | L | 0116 | — |
 | R10 | **Single switch owner.** Move the setting→feature map to one table read by SQL; forbid `feature:` policy rows for setting-backed features (or display them); merge the OneHR quota into allowances. Decide and document the performance AI default-on (comments in `core/entitlements.ts:322,870` say all defaults are false). | M | S–M | L | 0116 | — |
@@ -217,6 +222,40 @@ Re-check the merged state before acting on this note.
 
 Keep: the gateway, `ai_admit`, digest-bound confirmation, outcome semantics, the inventory drift guard, and the
 deterministic orchestrator.
+
+### 7.1 Second pass: recommendations added on 29 Oct 2026
+
+A second read against the owner goal found eight gaps that R1–R14 did not cover. The biggest is that nothing
+decides *which* backlog actions to build next by how much staff work they would remove. That choice drives the
+headcount goal more than any architectural clean-up.
+
+| Rank | Recommendation | Value | Effort | Risk | ADR | Evidence and notes |
+|---|---|---|---|---|---|---|
+| R15 | **Rank the capability backlog by measured staff work.** Join the inventory backlog (`agentBacklogByTier()` in PR #34, `agent-capability-inventory.ts`) to the ADR-0131 process assessment's staff-action volume per process. Publish a ranked build list (entry, tier, staff actions per 30 days, users affected). Each new wave picks from the top. Without this, waves are chosen by intuition and may not move the headcount measure. | H | S | L | 0131 Phase 1, 0151 §5 | `core/process-assessment.ts:19-46`; about 250 classified entry points, 22 prepared |
+| R16 | **A generic per-entry parity harness.** ADR-0151 §7 requires a role matrix per entry: employee, manager, assigned approver, company HR, group HR, payroll partner, performance partners and other tenant. Each role must get the same allow/deny from the agent as from the screen. No shared harness exists; parity is tested ad hoc per feature. Build one fixture matrix driven by the registry (R3), so every new entry gets parity, cross-company and cross-tenant refusal for free. | H | M | L | 0151 §4.1, §7 | No `test/*` runner over `MODULE_AGENT_ACTIONS`; existing matrix tests are feature-specific (e.g. `test/ess-permission-matrix.dom.test.tsx`) |
+| R17 | **Enforce tiers at runtime.** `AGENT_ACTION_TIER_CEILING` is read only by its test (`agent-capability-inventory.ts:31`). The prepare path, any future Automatic executor and the agent principal must refuse an entry above its ceiling. Make never-Automatic categories a type-level and runtime constant. This is a precondition for R18. | H | S | L | 0151 §4.4, §4.6e | as cited |
+| R18 | **First Automatic-tier entries under the agent principal**, all deterministic (no model):<br/>• chase overdue approvers along existing escalation routes (generalise `core/leave-escalation.ts` beyond leave to claims, attendance and replacement leave);<br/>• probation and contract-end reminders;<br/>• missing clock-in nudges;<br/>• expiring documents;<br/>• lifecycle step chasing.<br/>These are the cheapest real reductions in manual HR follow-up. They answer ADR-0151 open question 2, so the owner should confirm the order. | H | M | M | 0151 §4.4–4.5, 0109 | ADR-0151 §4.5 lists these; none exists as a registry entry |
+| R19 | **Treat a provider or model change as a release.** Promotions are bound to the provider fingerprint (`module-agent-releases.ts:571,601`), but the baseline itself is never re-evaluated. A tenant switching model, or an `AI_DRAFT_MODEL` change, silently changes behaviour for every feature. On a change, run the holdout suites against the baseline and show pass/fail in AI management before activation. Also allow per-feature caps: feature rows cannot hold caps today (0541:8, 0662:17). | M | M | L | 0116, 0084 | `lib/ai/registry.ts:22` |
+| R20 | **Alert, don't only display.** AI failure rate, principal refusals, spend near cap, scheduled-job failures and drift between configured and effective switches surface only on screens. Route them through the existing `deploy/cron-alert.sh` path and a Control Tower banner. | M | S | L | 0116, 0109 | `deploy/cron-alert.sh`; job counters gap in §4 |
+| R21 | **Provider data register (PDPA).** For each feature, record which fields leave the tenant for the provider, after which redaction. Names are never masked (`lib/ai/index.ts:170`), and `converse()` skips redaction (`:139-144`). Show it in AI management beside the provider choice, so an administrator consents knowingly. Keep it current through the R8 inventory. | M | S | L | 0023 (PDPA note :73), 0116, 0151 §8 Q3 | as cited |
+| R22 | **Close the two remaining anonymous jobs.** Move `scripts/anomaly-sweep.ts` and `scripts/feedback-plan.ts` onto the agent principal, or retire their model step explicitly. Either way, report "not admitted to model spend" instead of "not configured". This completes R1 and R2. | M | S | L | 0151 §4.5 | `anomaly-sweep.ts:114`, `feedback-plan.ts:48`, `payroll-hypothesis.ts:682` |
+
+**Not recommended, recorded for completeness:**
+- The mobile app has no Assistant (`mobile/` has no assistant screen). Add one only after R6's in-chat cards
+  exist, because mobile confirmation must reuse the same digest-bound command.
+- Bulk manager decisions remain an owner decision (ADR-0151 §8 Q1). The review takes no position until R7
+  shows single-decision volumes.
+
+### 7.2 Decisions needed from the owner
+
+1. **R18 order.** Which Automatic-tier reminders and chasers come first? ADR-0151 open question 2.
+2. **Model spend for the agent principal.** Currently "no" by design in `ai-hr-admin-agent`. Keep scheduled work
+   template-only, or give the principal its own allowance subject?
+3. **Performance AI switches.** Six of them default to on (`packs/catalog.ts:210-216`); every other AI switch
+   defaults to off. Keep or flip?
+4. **Naming (R13).** Approve the user-facing terms: "Assistant", "Control Tower", "HR work queue", "scheduled
+   agent", and dropping "module agent" and "specialist" from the UI.
+5. **Bulk manager decisions.** ADR-0151 §8 Q1.
 
 ## 8. Q4 — Gaps against the owner goal and ADR-0151
 
