@@ -1082,9 +1082,11 @@ export function Sidebar({
       const kidsId = `atelier-flyout-${item.labelKey}`;
       const flip = () => setOpenKey(expanded ? null : item.labelKey);
       const register = (element: HTMLButtonElement | null) => { triggerRefs.current[item.labelKey] = element; };
+      // Collapsed (b953a339), a module is its icon: it opens the floating sub-menu, which lists every page
+      // the module has — including a landing page, which is always one of its children.
       return (
         <div key={item.labelKey} data-atelier-module={item.labelKey}>
-          {item.defaultHref ? (
+          {item.defaultHref && !collapsed ? (
             <div className="atelier-row pr-0">
               <Link href={item.defaultHref} onClick={()=>setMobileNavigationOpen(false)} className="flex min-w-0 flex-1 items-center gap-2.5 text-inherit no-underline">
                 <Icon aria-hidden /><span className="truncate">{label}</span>
@@ -1095,8 +1097,8 @@ export function Sidebar({
               </button>
             </div>
           ) : (
-            <button ref={register} type="button" aria-expanded={expanded} aria-controls={kidsId} onClick={flip} className={cn('atelier-row', (active || expanded) && 'bg-accent font-medium text-foreground')}>
-              <Icon aria-hidden /><span className="truncate">{label}</span>
+            <button ref={register} type="button" aria-expanded={expanded} aria-controls={kidsId} onClick={flip} title={collapsed ? label : undefined} className={cn('atelier-row', (active || expanded) && 'bg-accent font-medium text-foreground')}>
+              <Icon aria-hidden /><span className="atelier-label truncate">{label}</span>
               <ChevronDown aria-hidden className="atelier-chevron" />
             </button>
           )}
@@ -1112,21 +1114,24 @@ export function Sidebar({
         onClick={()=>{setMobileNavigationOpen(open=>!open);setOpenKey(null);}}>
         <PanelLeftOpen aria-hidden className="size-4"/><span>{t('workspaceSwitch')}</span>
       </button>
-      <div id="atelier-mobile-navigation" className={cn('atelier-navigation-shell relative h-full shrink-0 sm:flex', mobileNavigationOpen?'flex':'hidden', openNode && 'atelier-flyout-open z-50')}>
+      <div id="atelier-mobile-navigation" className={cn('atelier-navigation-shell relative h-full shrink-0 sm:flex', mobileNavigationOpen?'flex':'hidden', openNode && 'atelier-flyout-open z-50', collapsed && 'atelier-collapsed')}>
         <aside data-app-sidebar data-atelier-navigation className="atelier-rail">
           <Link href="/" aria-label={t('home')} className="atelier-workspace">
             <span data-brand-tile aria-hidden>AI</span>
-            <span>{tCommon('appName')}</span>
+            <span className="atelier-label">{tCommon('appName')}</span>
           </Link>
-          <button type="button" className="atelier-quick" onClick={() => openCommandBar('')}>
+          <button type="button" className="atelier-quick" onClick={() => openCommandBar('')} title={collapsed ? tBar('quickActions') : undefined}>
             <Command aria-hidden className="size-3.5 shrink-0" />
-            <span>{tBar('quickActions')}</span>
+            <span className="atelier-label">{tBar('quickActions')}</span>
             <kbd aria-hidden>⌘K</kbd>
           </button>
           <nav data-tour="nav" aria-label={tCommon('appName')} className="atelier-nav">
             {groups.map((group, gi) => (
               <div key={gi}>
-                {group.labelKey && !isWorkspaceKey(group.labelKey) && (
+                {group.labelKey && !isWorkspaceKey(group.labelKey) && (collapsed ? (
+                  // Collapsed there is no room for a heading to toggle, so every section shows its icons.
+                  <div role="presentation" className="atelier-section atelier-section-static"><span>{t(group.labelKey)}</span></div>
+                ) : (
                   <button
                     type="button"
                     onClick={() => toggleSection(group.labelKey!)}
@@ -1137,23 +1142,23 @@ export function Sidebar({
                     <span>{t(group.labelKey)}</span>
                     <ChevronDown aria-hidden className={cn('size-3.5 shrink-0', !sectionOpen(group.labelKey) && '-rotate-90')} />
                   </button>
-                )}
+                ))}
                 <div id={group.labelKey ? `nav-section-${group.labelKey}` : undefined} className="flex flex-col gap-px">
-                  {sectionOpen(group.labelKey) && group.items.map((item) => {
+                  {(collapsed || sectionOpen(group.labelKey)) && group.items.map((item) => {
                     if (isCollapsible(item)) return atelierModule(item);
                     const Icon = item.icon;
                     const label = t(item.labelKey);
                     if (item.disabled) return (
-                      <span key={item.href} aria-disabled="true" title={tWorkspace('planLocked')} className="atelier-row cursor-not-allowed text-muted-foreground">
-                        <Icon aria-hidden /><span className="truncate">{label}</span><Lock aria-hidden className="ml-auto size-3.5 shrink-0" />
+                      <span key={item.href} aria-disabled="true" title={collapsed ? `${label} — ${tWorkspace('planLocked')}` : tWorkspace('planLocked')} className="atelier-row cursor-not-allowed text-muted-foreground">
+                        <Icon aria-hidden /><span className="atelier-label truncate">{label}</span><Lock aria-hidden className="ml-auto size-3.5 shrink-0" />
                       </span>
                     );
                     const count = atelierCount(item.href);
                     return (
                       <Link key={item.href} href={item.navigationHref ?? item.href} onClick={()=>setMobileNavigationOpen(false)} data-tour={item.tour}
                         aria-label={count ? `${label}, ${t('approvalsCount', { count })}` : label}
-                        aria-current={isRowActive(item) ? 'page' : undefined} className="atelier-row">
-                        <Icon aria-hidden /><span className="truncate">{label}</span>
+                        aria-current={isRowActive(item) ? 'page' : undefined} title={collapsed ? label : undefined} className="atelier-row">
+                        <Icon aria-hidden /><span className="atelier-label truncate">{label}</span>
                         {count && <span aria-hidden className="atelier-count">{count > 99 ? '99+' : count}</span>}
                       </Link>
                     );
@@ -1163,10 +1168,16 @@ export function Sidebar({
               </div>
             ))}
           </nav>
+          {/* b953a339 — Classic's collapse control, in Atelier's styling. Same remembered setting (rail_collapsed). */}
+          <button type="button" onClick={toggle} aria-label={collapsed ? t('expand') : t('collapse')} title={collapsed ? t('expand') : t('collapse')}
+            aria-pressed={collapsed} data-atelier-collapse className="atelier-row atelier-collapse">
+            {collapsed ? <PanelLeftOpen aria-hidden /> : <PanelLeftClose aria-hidden />}
+            <span className="atelier-label truncate">{collapsed ? t('expand') : t('collapse')}</span>
+          </button>
           {viewerName && (
-            <div className="atelier-user" data-rail-user>
+            <div className="atelier-user" data-rail-user title={collapsed ? viewerName : undefined}>
               <span aria-hidden className="atelier-avatar">{initials || '·'}</span>
-              <div className="min-w-0">
+              <div className="atelier-label min-w-0">
                 <b className="truncate">{viewerName}</b>
                 {viewerCode && <span>{viewerCode}</span>}
               </div>

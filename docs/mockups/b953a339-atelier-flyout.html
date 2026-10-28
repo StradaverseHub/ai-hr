@@ -1,0 +1,126 @@
+<meta charset="utf-8">
+<title>Atelier navigation — floating sub-menu and collapse button</title>
+<!--
+  Mockup for b953a339 (contested, plan revision 2). Atelier tokens from app/atelier.css; everything inline.
+  BEFORE is drawn from the shipped layout: components/nav-flyout.tsx renders the Atelier panel as a flex
+  sibling of the rail (.atelier-flyout, width 15.5rem), so opening it takes that width from the page.
+  No figures are drawn: the page area shows column headings only.
+-->
+<style>
+  :root{--bg:#fff;--fg:#1c1c1f;--side:#f8f8f9;--sf:#4b4b52;--sb:#e8e8eb;--primary:#c2410c;--muted:#5f5f67;--accent:#efeff1;
+        --pop:0 4px 12px -2px rgb(20 20 30/.08),0 16px 40px -8px rgb(20 20 30/.14)}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:#eceef2;color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h2{font-size:15px;margin:0 0 4px}
+  .sub{font-size:12.5px;color:var(--muted);margin:0 0 10px}
+  .frame{margin-bottom:22px}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600;margin-left:6px}
+  .now{background:#fee2e2;color:#991b1b}.new{background:#ffedd5;color:#9a3412}
+  .shell{position:relative;display:flex;height:300px;background:var(--bg);border:1px solid var(--sb);border-radius:12px;overflow:hidden}
+  .rail{width:200px;flex:none;background:var(--side);border-right:1px solid var(--sb);padding:12px 10px;color:var(--sf);display:flex;flex-direction:column;gap:2px}
+  .rail.mini{width:60px;align-items:center}
+  .brand{display:flex;align-items:center;gap:8px;font-weight:600;color:var(--fg);margin-bottom:8px}
+  .tile{width:26px;height:26px;border-radius:7px;background:var(--primary);flex:none}
+  .row{display:flex;align-items:center;gap:8px;height:30px;padding:0 8px;border-radius:6px;font-size:13px}
+  .row .ic{width:16px;height:16px;border-radius:4px;border:1.5px solid currentColor;flex:none;opacity:.7}
+  .row .chev{margin-left:auto;font-size:12px;opacity:.7}
+  .row.on{background:var(--accent);color:var(--fg);font-weight:600}
+  .mini .row{width:40px;justify-content:center;padding:0}
+  .grow{flex:1}
+  .toggle{display:flex;align-items:center;gap:8px;height:32px;padding:0 8px;border-radius:6px;border:1px dashed var(--primary);color:var(--primary);font-weight:600;font-size:12.5px}
+  .mini .toggle{width:40px;justify-content:center;padding:0}
+  .panel{width:200px;flex:none;background:var(--side);border-right:1px solid var(--sb);padding:12px 10px}
+  .panel.float{position:absolute;top:8px;bottom:8px;left:208px;border:1px solid var(--sb);border-radius:10px;box-shadow:var(--pop);background:#fff;z-index:2}
+  .panel.float.from-mini{left:68px}
+  .panel h4{margin:0 0 8px;font-size:13px;display:flex;justify-content:space-between}
+  .sh{font-size:12px;color:var(--muted);margin:8px 0 2px;text-transform:uppercase;letter-spacing:.04em}
+  .page{flex:1;min-width:0;padding:16px 18px;position:relative}
+  .page h3{margin:0 0 10px;font-size:15px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;table-layout:fixed}
+  th{text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:6px 8px;background:#f4f4f5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  td{border-top:1px solid var(--sb);height:30px}
+  .measure{position:absolute;bottom:10px;left:18px;right:18px;border-top:2px solid var(--primary);font-size:12px;color:var(--primary);font-weight:600;padding-top:3px;text-align:center}
+  .measure.cut{border-color:#b42318;color:#b42318}
+  .tip{position:absolute;left:66px;top:96px;background:var(--fg);color:#fff;font-size:12px;padding:3px 8px;border-radius:5px;z-index:3}
+  .dim{position:absolute;inset:0;background:rgb(20 20 30/.04);z-index:1}
+</style>
+
+<div class="frame">
+  <h2>Today <span class="tag now">current</span></h2>
+  <p class="sub">Opening Payroll puts its sub-menu beside the menu as a second column. The page is pushed right and loses that width.</p>
+  <div class="shell">
+    <div class="rail">
+      <div class="brand"><span class="tile"></span>AIHR</div>
+      <div class="row"><span class="ic"></span>Home</div>
+      <div class="row"><span class="ic"></span>Employees<span class="chev">›</span></div>
+      <div class="row on"><span class="ic"></span>Payroll<span class="chev">›</span></div>
+      <div class="row"><span class="ic"></span>Leave<span class="chev">›</span></div>
+      <div class="row"><span class="ic"></span>Reports</div>
+    </div>
+    <div class="panel">
+      <h4>Payroll <span>×</span></h4>
+      <div class="sh">Processing</div>
+      <div class="row">Transaction Entry</div><div class="row">Payroll Run</div>
+      <div class="sh">History</div>
+      <div class="row">Import Payroll History</div>
+    </div>
+    <div class="page">
+      <h3>Employees</h3>
+      <table><tr><th>Employee</th><th>Company</th><th>Department</th><th>Position</th><th>Joined</th><th>Status</th></tr><tr><td></td><td></td><td></td><td></td><td></td><td></td></tr><tr><td></td><td></td><td></td><td></td><td></td><td></td></tr></table>
+      <div class="measure cut">page narrowed while the sub-menu is open</div>
+    </div>
+  </div>
+</div>
+
+<div class="frame">
+  <h2>Proposed · menu expanded <span class="tag new">proposed</span></h2>
+  <p class="sub">The sub-menu floats over the page. The page keeps its full width and does not move. Click outside it or press Esc to close it.</p>
+  <div class="shell">
+    <div class="rail">
+      <div class="brand"><span class="tile"></span>AIHR</div>
+      <div class="row"><span class="ic"></span>Home</div>
+      <div class="row"><span class="ic"></span>Employees<span class="chev">›</span></div>
+      <div class="row on"><span class="ic"></span>Payroll<span class="chev">›</span></div>
+      <div class="row"><span class="ic"></span>Leave<span class="chev">›</span></div>
+      <div class="row"><span class="ic"></span>Reports</div>
+      <div class="grow"></div>
+      <div class="toggle">⇤ Collapse menu</div>
+    </div>
+    <div class="panel float">
+      <h4>Payroll <span>×</span></h4>
+      <div class="sh">Processing</div>
+      <div class="row">Transaction Entry</div><div class="row">Payroll Run</div>
+      <div class="sh">History</div>
+      <div class="row">Import Payroll History</div>
+    </div>
+    <div class="page">
+      <div class="dim"></div>
+      <h3>Employees</h3>
+      <table><tr><th>Employee</th><th>Company</th><th>Department</th><th>Position</th><th>Joined</th><th>Status</th></tr><tr><td></td><td></td><td></td><td></td><td></td><td></td></tr><tr><td></td><td></td><td></td><td></td><td></td><td></td></tr></table>
+      <div class="measure">page width unchanged</div>
+    </div>
+  </div>
+</div>
+
+<div class="frame">
+  <h2>Proposed · menu collapsed <span class="tag new">proposed</span></h2>
+  <p class="sub">Icons only, with the name on hover. The page uses the space. Clicking an icon opens the same floating sub-menu. The setting is remembered.</p>
+  <div class="shell">
+    <div class="rail mini">
+      <div class="brand"><span class="tile"></span></div>
+      <div class="row"><span class="ic"></span></div>
+      <div class="row"><span class="ic"></span></div>
+      <div class="row on"><span class="ic"></span></div>
+      <div class="row"><span class="ic"></span></div>
+      <div class="row"><span class="ic"></span></div>
+      <div class="grow"></div>
+      <div class="toggle">⇥</div>
+    </div>
+    <span class="tip">Payroll</span>
+    <div class="page">
+      <h3>Employees</h3>
+      <table><tr><th>Employee</th><th>Company</th><th>Department</th><th>Position</th><th>Joined</th><th>Status</th></tr><tr><td></td><td></td><td></td><td></td><td></td><td></td></tr><tr><td></td><td></td><td></td><td></td><td></td><td></td></tr></table>
+      <div class="measure">page widens to use the space</div>
+    </div>
+  </div>
+</div>

@@ -18,11 +18,11 @@ vi.mock('../components/intent-link',async()=>{
 const {Sidebar}=await import('../components/sidebar');
 afterEach(async()=>{cleanup();document.documentElement.removeAttribute('data-ui-theme');document.body.style.margin='';await page.viewport(1280,720);});
 const box=(element:Element)=>element.getBoundingClientRect();
-function mount(messages:typeof en|typeof ta=en){
+function mount(messages:typeof en|typeof ta=en,defaultCollapsed=false){
  document.documentElement.setAttribute('data-ui-theme','atelier');document.body.style.margin='0';
  return render(<NextIntlClientProvider locale={messages===ta?'ta':'en'} messages={messages}>
   <div data-app-shell className="flex" style={{height:'100dvh'}}>
-   <Sidebar isAdmin canApprove defaultCollapsed={false} enabledModules={null}/>
+   <Sidebar isAdmin canApprove defaultCollapsed={defaultCollapsed} enabledModules={null}/>
    <div data-app-content className="flex min-w-0 flex-1 flex-col"><main data-testid="working-page">Working page</main></div>
   </div>
  </NextIntlClientProvider>);
@@ -65,14 +65,51 @@ describe('Atelier navigation remains reachable in actual compact CSS',()=>{
   expect(toggle.getAttribute('aria-expanded')).toBe('false');
   expect(screen.queryByRole('navigation',{name:en.nav.payroll})).toBeNull();
  });
- it.each([768,1280])('keeps the existing navigation track and working page separate at %ipx',async width=>{
+ // b953a339 — reversed from the r-board-eight layout, which put the panel BESIDE the rail as a second
+ // in-flow column and so took its width from the page. The panel now floats over the page and the page
+ // does not move.
+ it.each([768,1280])('floats the sub-menu over the working page without resizing it at %ipx',async width=>{
   await page.viewport(width,900);mount();
   expect(screen.queryByRole('button',{name:en.nav.workspaceSwitch})).toBeNull();
+  const content=screen.getByTestId('working-page'),before=box(content);
   fireEvent.click(screen.getByRole('button',{name:en.nav.modulePeople}));
   const panel=screen.getByRole('navigation',{name:en.nav.modulePeople});
-  const content=screen.getByTestId('working-page');
+  const after=box(content);
   expect(box(panel).width).toBeGreaterThan(200);
-  expect(box(panel).right).toBeLessThanOrEqual(box(content).left+.5);
-  expect(box(content).right).toBeLessThanOrEqual(width+.5);
+  expect([after.left,after.width]).toEqual([before.left,before.width]);
+  expect(box(panel).right).toBeGreaterThan(after.left);
+  expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
+  // The rail stays visible beside it at tablet width too, so another module is one click away.
+  expect(box(document.querySelector('[data-atelier-navigation]')!).width).toBeGreaterThan(0);
+ });
+ it('collapses to icons, gives the page the space, and still opens every sub-menu',async()=>{
+  await page.viewport(1280,900);mount(en,false);
+  const content=screen.getByTestId('working-page'),expanded=box(content);
+  const collapse=screen.getByRole('button',{name:en.nav.collapse});
+  fireEvent.click(collapse);
+  expect(document.cookie).toContain('rail_collapsed=1');
+  const rail=document.querySelector('[data-atelier-navigation]')!;
+  // Wait for the width transition to finish: WebKit reports fractional widths mid-animation.
+  await waitFor(()=>expect(Math.abs(box(rail).width-64)).toBeLessThan(.01));
+  expect(box(content).width).toBeGreaterThan(expanded.width+150);
+  const people=screen.getByRole('button',{name:en.nav.modulePeople});
+  expect(people.getAttribute('title')).toBe(en.nav.modulePeople);
+  expect(box(people).width).toBeLessThanOrEqual(64);
+  const narrow=box(content);
+  fireEvent.click(people);
+  const panel=screen.getByRole('navigation',{name:en.nav.modulePeople});
+  expect(within(panel).getAllByRole('link').length).toBeGreaterThan(0);
+  expect([box(content).left,box(content).width]).toEqual([narrow.left,narrow.width]);
+  fireEvent.keyDown(document,{key:'Escape'});
+  fireEvent.click(screen.getByRole('button',{name:en.nav.expand}));
+  expect(document.cookie).toContain('rail_collapsed=0');
+  await waitFor(()=>expect(box(rail).width).toBeCloseTo(248,1));
+ });
+ it('ignores the collapsed setting on a phone, where the menu is full width',async()=>{
+  await page.viewport(390,844);mount(en,true);
+  fireEvent.click(screen.getByRole('button',{name:en.nav.workspaceSwitch}));
+  const people=screen.getByRole('button',{name:en.nav.modulePeople});
+  expect(box(document.querySelector('[data-atelier-navigation]')!).width).toBeGreaterThan(300);
+  expect(within(people).getByText(en.nav.modulePeople).getBoundingClientRect().width).toBeGreaterThan(20);
  });
 });
