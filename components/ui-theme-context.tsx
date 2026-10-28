@@ -39,9 +39,23 @@ function subscribe(onChange: () => void): () => void {
   return () => observer.disconnect();
 }
 
+/**
+ * D-P1-32 D3 — an AREA THEME (app/performance/layout.tsx, `data-area-theme`) paints the same in every UI theme:
+ * the `monolith:` / `atelier:` variants do not match inside it (app/globals.css) and its stylesheet neutralises
+ * the themes' structural rules. So inside it a structural branch must render Classic structure, whatever the
+ * document attribute says. Null (outside any area) means "follow the document", exactly as before.
+ */
+const UiThemeAreaContext = createContext<UiTheme | null>(null);
+
+export function UiThemeArea({ children }: { children: ReactNode }) {
+  return <UiThemeAreaContext.Provider value="classic">{children}</UiThemeAreaContext.Provider>;
+}
+
 export function useUiTheme(): UiTheme {
   const serverTheme = useContext(UiThemeContext);
-  return useSyncExternalStore(subscribe, readDocumentTheme, () => serverTheme);
+  const areaTheme = useContext(UiThemeAreaContext);
+  const documentTheme = useSyncExternalStore(subscribe, readDocumentTheme, () => serverTheme);
+  return areaTheme ?? documentTheme;
 }
 
 /** Shorthand for the one question every consumer actually asks. */

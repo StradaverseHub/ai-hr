@@ -90,7 +90,8 @@ describe('Atelier reaches the app only through its own scope', () => {
     expect(layout).toMatch(/^import '\.\/atelier\.css';$/m);
     expect(layout.indexOf("import './atelier.css';")).toBeGreaterThan(layout.indexOf("import './globals.css';"));
     expect(globals).not.toMatch(/@import\s+["']\.\/atelier\.css/);
-    expect(globals).toContain("@custom-variant atelier (&:where([data-ui-theme='atelier'] *));");
+    // D-P1-32 D3: the same variant, with an area theme (<div data-area-theme>) excluded at zero specificity.
+    expect(globals).toContain("@custom-variant atelier (&:where([data-ui-theme='atelier'] *):not(:where([data-area-theme], [data-area-theme] *)));");
   });
 });
 

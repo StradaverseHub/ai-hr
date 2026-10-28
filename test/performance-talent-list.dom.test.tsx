@@ -87,3 +87,12 @@ it('dismisses a floating trail when its list is no longer the active view',()=>{
 it('shows one band trail at a time even when another history button still has keyboard focus',()=>{
  render(<Harness/>);fireEvent.focus(screen.getByRole('button',{name:'Performance history for Alice Tan'}));expect(screen.getByRole('tooltip')).toBeTruthy();fireEvent.mouseEnter(screen.getByRole('button',{name:'Potential history for Bob Lim'}));expect(screen.getAllByRole('tooltip')).toHaveLength(1);expect(within(screen.getByRole('tooltip')).getByText('Potential history for Bob Lim')).toBeTruthy();expect(screen.queryByText('Performance history for Alice Tan')).toBeNull();
 });
+it('names the improvement box in full in the Box column, its filter menu and its sort labels (D-P1-26)',()=>{
+ render(<Harness/>);const table=screen.getByRole('region',{name:en.onehr.talentList.title});
+ expect(within(table).getAllByText('PIP/Improvement')).toHaveLength(1);expect(within(table).queryByText('PIP')).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'Box: sort and filter'}));const menu=screen.getByRole('dialog',{name:'Box: sort and filter'});
+ expect(within(menu).getByRole('checkbox',{name:'PIP/Improvement'})).toBeTruthy();expect(within(menu).queryByRole('checkbox',{name:'PIP'})).toBeNull();
+ expect(within(menu).getByRole('button',{name:'Sort PIP/Improvement → Super Star'})).toBeTruthy();
+ fireEvent.change(within(menu).getByRole('textbox',{name:'Search Box values'}),{target:{value:'Improvement'}});
+ expect(screen.getByText('1 of 3 people')).toBeTruthy();expect(within(table).getAllByRole('rowheader').map(h=>h.textContent)).toEqual(['Cara Lee']);
+});

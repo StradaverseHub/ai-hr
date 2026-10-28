@@ -27,7 +27,10 @@ import framework from '../packs/performance/onehr/framework.json';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
+// Only the year is read at load (a run across New Year is out of scope); every HR day is read where it is used.
 const year = Number(todayInKualaLumpur().slice(0, 4));
+/** A date the service stamped between two reads of the HR day: one of them, so a run across midnight still passes. */
+const hrDayBetween = (before: string, after: string) => expect.stringMatching(new RegExp(`^(${before}|${after})$`));
 type Hired = { employmentId: string; personId: string };
 const COLUMNS = ['employment_id', 'parent_employment_id', 'full_name', 'department_name', 'job_title', 'direct', 'finalized', 'overall_band', 'overall_score', 'mechanism'];
 
@@ -185,9 +188,10 @@ describe('population: the live per-person HOD assignment, and nothing else', () 
     await assignHod([mia], null, addDaysIso(today, 1));
     expect(await names(H), 'valid_to is exclusive: today is still Mia\'s last day').toEqual(['Ian', 'Mia']);
     await assignHod([ian], null);
+    const dayAfter = todayInKualaLumpur();
     expect(await names(H), 'an assignment ending today ended yesterday').toEqual(['Mia']);
     const [ended] = await owner.db.select().from(schema.hodAssignment).where(eq(schema.hodAssignment.subjectEmploymentId, ian.employmentId));
-    expect(ended).toMatchObject({ validTo: today, endedBy: b.adminUserId });
+    expect(ended).toMatchObject({ validTo: hrDayBetween(today, dayAfter), endedBy: b.adminUserId });
   });
 
   it('keeps tenants apart', async () => {
