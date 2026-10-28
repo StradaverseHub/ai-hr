@@ -29,7 +29,8 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
   // One section per page, chosen in the sidebar's AI management menu. A section this session cannot use
   // goes to the Overview.
   // Only the orchestrator page reads the work queue.
-  const sections = availableAiManagementSections({spend:!!view.spend});
+  // Provider setup is tenant-wide (getAiConfigView refuses a company administrator).
+  const sections = availableAiManagementSections({spend:!!view.spend,provider:isGroupAdmin(s)});
   if(!sections.includes(section)) redirect(aiManagementHref('overview'));
   const queue = section==='orchestrator' ? await orchestrationQueue(s) : null;
   // Closed save outcomes only: a query string can never put its own words on this screen.
@@ -93,7 +94,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
   const specialists = MODULE_JOBS.filter(([code])=>isModuleEnabledOrFalse(s,code)&&(code!=='system_explorer'||isAdmin(s)));
   const agents = view.features.filter(row=>row.kind==='agent'), builtIn = view.features.filter(row=>row.kind!=='agent'&&row.id!=='hr_assistant');
   const map = [
-    {key:'provider',title:t('mapProvider'),help:t('mapProviderHelp'),status:view.provider?t('provider',{provider:view.provider.provider,model:view.provider.model}):t('noProvider'),href:aiManagementHref('provider')},
+    {key:'provider',title:t('mapProvider'),help:t('mapProviderHelp'),status:view.provider?t('provider',{provider:view.provider.provider,model:view.provider.model}):t('noProvider'),href:sections.includes('provider')?aiManagementHref('provider'):null},
     {key:'assistant',title:t('mapAssistant'),help:t('mapAssistantHelp'),status:`${assistantFeature?t(`states.${assistantFeature.state}`):t('states.module')} · ${t('mapSpecialists',{available:specialists.length,total:MODULE_JOBS.length})}`,href:aiManagementHref('assistant')},
     {key:'agents',title:t('mapAgents'),help:t('mapAgentsHelp'),status:t('mapReady',{ready:ready(agents),total:agents.length}),href:aiManagementHref('features',{anchor:'#ai-features'})},
     {key:'features',title:t('mapFeatures'),help:t('mapFeaturesHelp'),status:t('mapReady',{ready:ready(builtIn),total:builtIn.length}),href:aiManagementHref('features',{anchor:'#ai-features'})},
@@ -131,13 +132,13 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
     {toast && <p role="status" className="sticky top-2 z-10 rounded-md border border-border bg-background p-3 text-sm shadow-sm">{toast}</p>}
     <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
       <p className="min-w-0 break-words">{view.provider?t('provider',{provider:view.provider.provider,model:view.provider.model}):t('noProvider')}</p>
-      <div className="flex flex-wrap gap-3"><Link href={aiManagementHref('provider')} className={btnGhost}>{t('configureProvider')}</Link><Link href={aiManagementHref(section)} className={btnGhost}>{t('refresh')}</Link></div>
+      <div className="flex flex-wrap gap-3">{sections.includes('provider')&&<Link href={aiManagementHref('provider')} className={btnGhost}>{t('configureProvider')}</Link>}<Link href={aiManagementHref(section)} className={btnGhost}>{t('refresh')}</Link></div>
     </div>
     {section==='overview'&&<Card id="ai-map" className="scroll-mt-4 p-5">
       <SectionHeader title={t('mapTitle')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{t('mapIntro')}</p>
       <ul className="mt-3 divide-y divide-border">{map.map(row=><li key={row.key} className="flex flex-wrap items-start justify-between gap-3 py-3">
         <div className="min-w-0 max-w-3xl"><p className="font-medium">{row.title}</p><p className="mt-1 text-xs text-muted-foreground">{row.help}</p><p className="mt-1 text-sm">{row.status}</p></div>
-        <Link href={row.href} className="py-2 text-sm font-medium text-primary hover:underline" aria-label={`${t('mapManage')} · ${row.title}`}>{t('mapManage')}</Link>
+        {row.href&&<Link href={row.href} className="py-2 text-sm font-medium text-primary hover:underline" aria-label={`${t('mapManage')} · ${row.title}`}>{t('mapManage')}</Link>}
       </li>)}</ul>
     </Card>}
     {section==='overview'&&<Card id="ai-attention" className="scroll-mt-4 p-5">
