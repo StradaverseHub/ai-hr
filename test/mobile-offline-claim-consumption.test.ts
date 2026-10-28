@@ -68,11 +68,12 @@ async function provenance(captureId:string){
  return row&&{effectiveAt:row.effectiveMs==null?null:Number(row.effectiveMs),later:row.later,method:row.method};
 }
 /** A real open overnight session: a rostered midnight-crossing shift on the MYT day before effectiveAt's day
- * (effectiveAt is the fixture's first whole second), checked in at 22:00 by the canonical writer. */
+ * (effectiveAt is the fixture's first whole second), checked in at 22:00 by HR, an authorised admin method: the
+ * capture guard refuses an employee's own uncaptured punch, and the online capture path cannot backdate. */
 async function overnight(f:Awaited<ReturnType<typeof offlineServiceFixture>>){
  const start=todayInKualaLumpur(new Date(whole(f)-86400000)),shift=await createShift(adminCtx(base),{name:'Offline overnight',code:'OFFLINE_NIGHT',startTime:'22:00',endTime:'06:00'});
  await owner.db.insert(S.rosterAssignment).values({tenantId:base.tenantId,employmentId:f.e.employmentId,shiftDate:start,shiftId:shift.id});
- await withAttendanceTenant(f.ctx,tx=>checkInTx(f.ctx,{employmentId:f.e.employmentId,date:start,time:'22:00:00',geo:{lat:3,lng:101,accuracy:5}},tx));
+ const hr=adminCtx(base);await withAttendanceTenant(hr,tx=>checkInTx(hr,{employmentId:f.e.employmentId,date:start,time:'22:00:00',geo:{lat:3,lng:101,accuracy:5}},tx));
  // Non-vacuous: the start day is the previous MYT day, its schedule crosses midnight and its session is open.
  expect(start).not.toBe(todayInKualaLumpur(new Date(whole(f))));expect((await withAttendanceTenant(f.ctx,tx=>clockScheduleForTx(tx,f.e.employmentId,start))).crossesMidnight).toBe(true);
  const punches=await owner.db.select().from(S.attendancePunch);expect(punches).toMatchObject([{attendanceDate:start,direction:'in',punchAt:'22:00:00',voidedAt:null}]);

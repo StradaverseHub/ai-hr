@@ -70,7 +70,8 @@ describe('canonical offline attendance writer',()=>{
   const {employmentId,ctx}=await employee(),outAt=second(60000),start=todayInKualaLumpur(new Date(outAt-86400000));
   const shift=await createShift(adminCtx(base),{name:'Offline writer night',code:'OFFLINE_WRITER_NIGHT',startTime:'22:00',endTime:'06:00'});
   await owner.db.insert(S.rosterAssignment).values({tenantId:base.tenantId,employmentId,shiftDate:start,shiftId:shift.id});
-  await withAttendanceTenant(ctx,tx=>checkInTx(ctx,{employmentId,date:start,time:'22:00:00',geo:{lat:3,lng:101,accuracy:5}},tx));
+  // HR opens the session (an authorised admin method): the capture guard refuses an employee's own uncaptured punch.
+  const hr=adminCtx(base);await withAttendanceTenant(hr,tx=>checkInTx(hr,{employmentId,date:start,time:'22:00:00',geo:{lat:3,lng:101,accuracy:5}},tx));
   expect(start).not.toBe(todayInKualaLumpur(new Date(outAt)));
   const written=await withAttendanceTenant(ctx,tx=>captureOfflineClockTx(tx,ctx,command(employmentId,'out',outAt)));
   expect(written).toMatchObject({kind:'recorded',date:start,effectiveAt:outAt});

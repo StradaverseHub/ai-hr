@@ -2137,3 +2137,4 @@ canonical writer. New 0647 SHA-256 `ae58b8f74eb58587005b682cdfaa426aab14c4155ecf
 held 0636 is unchanged (`9063b27c0cc316b715d552561d636ffc6412e447ca9275758bf497870c995df7`) and the
 migration journal is unchanged. Readers remain unchanged, routes remain unmounted and acceptance is not
 enabled. The online clock suites must pass unchanged for the split to be considered behavior-preserving.
+Parent `cf35f1908` run [40564944519](https://github.com/StradaverseHub/ai-hr/actions/runs/40564944519) had 9 failures (730 passed) across 27 files, with root TypeScript passing (3:00.18, peak RSS 7,671,720 KiB). Five were the pre-existing `board-four-clock-location-route` service-mock fault and four the overnight fixture's uncaptured employee check-in in `mobile-offline-claim-consumption`; both were repaired in the next commit with no production code change. The other 25 files passed, and that evidence is retained.

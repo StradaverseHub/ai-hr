@@ -435,6 +435,23 @@ hosted run [40561470126](https://github.com/StradaverseHub/ai-hr/actions/runs/40
    same read policy. The actor's own read is unchanged. GRANTs, immutability and the deferred
    custody constraint are unchanged.
 
+The owner also settled four adjudicator and HR rules on 28 October 2026. Each is DECIDED and NOT
+YET IMPLEMENTED: no code, policy or test enforces it yet.
+
+4. Effective instant (DECIDED, NOT YET IMPLEMENTED). The effective instant is the device's claimed
+   time, rounded to whole seconds and clamped into the server-proven interval. If that interval is
+   wider than an owner-configured limit, the claim goes to HR review. The limit value is not yet set.
+5. Failed checks go to review (DECIDED, NOT YET IMPLEMENTED). An ordering conflict, a punch outside
+   the geofence, a reported mock or simulated location or accessory, a missing registered device, or
+   processed payroll on that day sends the claim to `needs_review` for HR, not to refusal. This
+   supersedes ADR-0088's refusal wording for order conflicts. Closed payroll stays under the existing
+   lock owner.
+6. HR read access (DECIDED, NOT YET IMPLEMENTED). HR users with attendance-correction rights for the
+   claim's company may read that company's offline claims and unexpired retained photos, and each
+   read is audited. Group admins still only purge expired photos.
+7. No self-removal (DECIDED, NOT YET IMPLEMENTED). Employees cannot remove their own offline
+   punches. They must request a correction, the same as registered-device captures.
+
 ### Canonical offline attendance writer and provenance (28 October 2026)
 
 `captureOfflineClockTx` in `core/attendance-clock.ts`, exported through `packs/attendance/service`, is
