@@ -68,6 +68,7 @@ async function ItemValue({kind,value}:{kind:ImportKind;value:unknown}){
   const root=await getTranslations();const fields=Object.entries((value as {fields?:Record<string,string>}).fields??{});
   const resolve=(key:string,fallback:string)=>root.has(key)?root(key):fallback;
   return <dl className="space-y-1">{fields.map(([column,v])=><div key={column}><dt className="inline text-muted-foreground">{personnelColumnLabel(column,'employee',resolve)}: </dt><dd className="inline break-all">{v===''?t('bankStatutory.blank'):v}</dd></div>)}</dl>;
+ }
  if(kind==='movement'){
   // ac6645ec — one movement: its event type and date, then each changed field's value on this side.
   const root=await getTranslations(),resolve=(key:string,fallback:string)=>root.has(key)?root(key):fallback;
