@@ -149,8 +149,9 @@ export interface ImportRevertHandler{
  /** Per-item eligibility and the values that will be restored. `fingerprint` must change whenever the
   * current state an item would restore over changes; it is part of the preview hash. */
  inspect(tx:Tx,ctx:SessionContext,items:ImportAttemptItemRow[],options:{lock:boolean}):Promise<ImportRevertInspection>;
- /** Writes the compensation through the kind's owner. Called only when no item is blocked. */
- apply(tx:Tx,ctx:SessionContext,items:ImportAttemptItemRow[]):Promise<Record<string,unknown>>;
+ /** Writes the compensation through the kind's owner. Called only when no item is blocked. `reason` is the
+  * revert's validated reason, for owners whose own compensation records one (a movement rollback). */
+ apply(tx:Tx,ctx:SessionContext,items:ImportAttemptItemRow[],options:{reason:string}):Promise<Record<string,unknown>>;
 }
 async function revertPlanTx(tx:Tx,ctx:SessionContext,source:ImportAttemptRow,handler:ImportRevertHandler,lock:boolean){
  if(!await coversTx(tx,source.id,'maintain'))fail('Reverting this import needs maintain permission for every company in it.');
@@ -188,7 +189,7 @@ export async function revertImport(ctx:SessionContext,attemptId:string,handler:I
   const plan=await revertPlanTx(tx,ctx,source,handler,true);
   if(plan.blockers.length)fail('This import cannot be reverted because some records changed after it.',plan.blockers);
   if(plan.previewHash!==input.previewHash)fail('What this revert would restore has changed. Review it again before confirming.');
-  const detail=await handler.apply(tx,ctx,plan.items);
+  const detail=await handler.apply(tx,ctx,plan.items,{reason});
   await recordImportEventTx(tx,ctx,{attemptId,kind:'reverted',importKind:source.kind,reason,detail:{restored:plan.items.length,...detail}});
   return{attemptId,restored:plan.items.length};
  });}catch(error){

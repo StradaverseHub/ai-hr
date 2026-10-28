@@ -7,6 +7,7 @@ import {getTranslations,getFormatter} from 'next-intl/server';
 import {IMPORT_KINDS,importAttemptCounts,importAttemptStatus,type ImportKind} from '@/lib/import-history';
 import type {ImportAttemptDetail,ImportAttemptListItem} from '@/core/import-history';
 import {personnelColumnLabel} from '@/lib/personnel-import-contract';
+import {movementImportFieldLabel} from '@/lib/movement-import-issues';
 export const IMPORT_HISTORY_PATH='/admin/personnel/import/history';
 const dateTime={dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'} as const;
 export async function ImportKindFilter({active}:{active?:ImportKind}){
@@ -67,6 +68,16 @@ async function ItemValue({kind,value}:{kind:ImportKind;value:unknown}){
   const root=await getTranslations();const fields=Object.entries((value as {fields?:Record<string,string>}).fields??{});
   const resolve=(key:string,fallback:string)=>root.has(key)?root(key):fallback;
   return <dl className="space-y-1">{fields.map(([column,v])=><div key={column}><dt className="inline text-muted-foreground">{personnelColumnLabel(column,'employee',resolve)}: </dt><dd className="inline break-all">{v===''?t('bankStatutory.blank'):v}</dd></div>)}</dl>;
+ if(kind==='movement'){
+  // ac6645ec — one movement: its event type and date, then each changed field's value on this side.
+  const root=await getTranslations(),resolve=(key:string,fallback:string)=>root.has(key)?root(key):fallback;
+  const state=value as {eventLabel?:string;effectiveDate?:string;movementId?:string|null;scheduled?:boolean;sourceRows?:number[];values?:Record<string,string|null>};
+  const values=Object.entries(state.values??{});
+  return <div className="space-y-1"><p className="font-medium">{state.eventLabel??t('movementItem.movement')} · {state.effectiveDate}</p>
+   {state.sourceRows?.length?<p className="text-xs text-muted-foreground">{t('movementItem.rows',{rows:state.sourceRows.join(', ')})}</p>:null}
+   {!state.movementId&&<p className="text-xs text-muted-foreground">{t('movementItem.noMovement')}</p>}
+   {state.scheduled&&<p className="text-xs text-muted-foreground">{t('movementItem.scheduled')}</p>}
+   {values.length>0&&<dl className="space-y-1">{values.map(([field,v])=><div key={field}><dt className="inline text-muted-foreground">{movementImportFieldLabel(field,resolve)}: </dt><dd className="inline break-all">{v??'—'}</dd></div>)}</dl>}</div>;
  }
  // Kinds without a dedicated renderer show their recorded fields as plain pairs.
  if(typeof value==='object')return <dl className="space-y-1">{Object.entries(value as Record<string,unknown>).map(([k,v])=><div key={k}><dt className="inline text-muted-foreground">{k}: </dt><dd className="inline break-all">{typeof v==='object'?JSON.stringify(v):String(v)}</dd></div>)}</dl>;
