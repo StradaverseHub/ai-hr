@@ -27,7 +27,7 @@ const validators: Record<string, (id: string) => boolean> = {
 };
 
 function fakeTx() {
-  const execute = vi.fn(async () => [{ acquired: true }]);
+  const execute = vi.fn(async () => [{ carrier: true, acquired: true }]);
   return { tx: { execute } as unknown as Tx, execute };
 }
 
