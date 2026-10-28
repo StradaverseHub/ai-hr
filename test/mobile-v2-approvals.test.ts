@@ -330,8 +330,13 @@ describe('leave decisions', () => {
 });
 
 describe('attendance decisions (clock corrections and overtime share one decider)', () => {
+  // Activation resolves the stages for EVERY targeted employee (core/attendance-workflow.ts validateActivation). The
+  // whole fixture sits in deptA, where the manager and HR have no superior and HR would be its own only HR approver,
+  // so the workflow targets the subject alone — as test/attendance-workflow-hierarchy.test.ts does by keeping its
+  // approvers out of the criteria department.
   function workflow(stages: ('direct_manager' | 'hr_admin')[], over: Partial<AttendanceWorkflowInput> = {}): AttendanceWorkflowInput {
-    return { companyId: base.companyId, code: 'M08', name: 'Mobile review', description: 'M08', applicationType: 'irregularity', priority: 100, criteria: { departmentIds: [base.deptA] },
+    return { companyId: base.companyId, code: 'M08', name: 'Mobile review', description: 'M08', applicationType: 'irregularity', priority: 100,
+      criteria: { departmentIds: [base.deptA], employeeIds: [employee.employmentId] },
       stages: stages.map((kind, i) => ({ name: `Review ${i + 1}`, level: { kind, employmentId: null, alternates: [] } })), active: true, ...over };
   }
   async function correction(stages: ('direct_manager' | 'hr_admin')[], over: Partial<AttendanceWorkflowInput> = {}) {
