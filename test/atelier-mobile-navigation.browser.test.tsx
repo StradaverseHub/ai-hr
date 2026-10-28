@@ -89,7 +89,8 @@ describe('Atelier navigation remains reachable in actual compact CSS',()=>{
   fireEvent.click(collapse);
   expect(document.cookie).toContain('rail_collapsed=1');
   const rail=document.querySelector('[data-atelier-navigation]')!;
-  await waitFor(()=>expect(box(rail).width).toBeLessThanOrEqual(64.5));
+  // Wait for the width transition to finish: WebKit reports fractional widths mid-animation.
+  await waitFor(()=>expect(Math.abs(box(rail).width-64)).toBeLessThan(.01));
   expect(box(content).width).toBeGreaterThan(expanded.width+150);
   const people=screen.getByRole('button',{name:en.nav.modulePeople});
   expect(people.getAttribute('title')).toBe(en.nav.modulePeople);
@@ -102,7 +103,7 @@ describe('Atelier navigation remains reachable in actual compact CSS',()=>{
   fireEvent.keyDown(document,{key:'Escape'});
   fireEvent.click(screen.getByRole('button',{name:en.nav.expand}));
   expect(document.cookie).toContain('rail_collapsed=0');
-  await waitFor(()=>expect(box(rail).width).toBeGreaterThan(200));
+  await waitFor(()=>expect(box(rail).width).toBeCloseTo(248,1));
  });
  it('ignores the collapsed setting on a phone, where the menu is full width',async()=>{
   await page.viewport(390,844);mount(en,true);
