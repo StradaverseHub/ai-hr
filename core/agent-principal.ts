@@ -20,6 +20,11 @@ import { AGENT_PRINCIPAL_SPECIALISTS } from '../lib/ai/agent-capability-inventor
 export const AGENT_SPECIALISTS = (Object.keys(AGENT_PRINCIPAL_SPECIALISTS) as AgentEnablement['feature'][])
   .map(feature => ({ feature, setting: AGENT_PRINCIPAL_SPECIALISTS[feature].setting }));
 export type AgentFeature = AgentEnablement['feature'];
+/** Literal keys, not `spec.setting`: test/module-catalog-drift.test.ts can only see literal gate keys. */
+const SWITCHED_ON: Record<AgentFeature, (ctx: SessionContext) => boolean> = {
+  readiness_reminders: ctx => settingEnabled(ctx, 'notifications.readiness_nudge_enabled'),
+  claims_triage: ctx => settingEnabled(ctx, 'claims.input_triage_enabled'),
+};
 
 export const isAgentContext = (ctx: SessionContext): ctx is SessionContext & { agent: NonNullable<SessionContext['agent']> } =>
   ctx.agent != null;
@@ -52,7 +57,7 @@ export type AgentSwitchState =
 export async function agentSwitchStatesTx(tx: Tx, ctx: SessionContext): Promise<AgentSwitchState[]> {
   const out: AgentSwitchState[] = [];
   for (const spec of AGENT_SPECIALISTS) {
-    if (!settingEnabled(ctx, spec.setting)) { out.push({ feature: spec.feature, state: 'off' }); continue; }
+    if (!SWITCHED_ON[spec.feature](ctx)) { out.push({ feature: spec.feature, state: 'off' }); continue; }
     const [last] = await tx.select({ id: schema.domainEvent.id, actorType: schema.domainEvent.actorType,
       actorId: schema.domainEvent.actorId, value: sql<unknown>`${schema.domainEvent.payload} -> 'value'`, at: schema.domainEvent.occurredAt })
       .from(schema.domainEvent)
