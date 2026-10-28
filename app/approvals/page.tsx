@@ -239,13 +239,11 @@ export default async function ApprovalsPage({
   // b833a077 (r362) — `travel` stood between `corrections` and `profileChanges` in this destructuring and
   // `listTravelRequests` in the Promise.all below. My Travel was removed completely: no form can create a
   // travel request any more, so there is no queue to decide. The travel_request rows are kept for audit.
-  const [visibleLeave, namedLeave, leaveCancellations, replacementRequests, loadedCorrections, claims, resignations] = await Promise.all([
+  const [leave, leaveCancellations, replacementRequests, loadedCorrections, claims, resignations, namedLeave] = await Promise.all([
     // 8cb7b089 pre-fix: cap the 200-row limit over PENDING rows only. Without the status filter, a pending
     // request older than the 200 most recent rows of ANY status silently never reached this inbox — quietly
     // incomplete before, actively misleading once calendar pills deep-link straight to this section.
     attendanceOnly||!include('leave') ? Promise.resolve([]) : listLeaveRequests(s, queueScope, focus?1:200, { status: 'pending',requestId:focusedId('leave') }),
-    // 0669 — requests the viewer is NAMED to approve but cannot otherwise see (not their report, not HR).
-    attendanceOnly||!include('leave') ? Promise.resolve([]) : listNamedApproverLeaveRequests(s, queueScope, { requestId: focusedId('leave') }),
     attendanceOnly||!include('leaveCancellation') ? Promise.resolve([]) : listPendingLeaveCancellations(s, queueScope,undefined,focusedId('leaveCancellation')),
     // 5ff7daff: same reporting-line scope as every other queue on this page; RLS trims it further.
     attendanceOnly||!include('replacementLeave') ? Promise.resolve([]) : listPendingReplacementLeaveRequests(s, { companyIds: queueScope,requestId:focusedId('replacementLeave') }),
@@ -259,6 +257,8 @@ export default async function ApprovalsPage({
     attendanceOn&&include('attendance') ? listAttendanceCorrections(s, { companyIds: queueScope, status: 'pending',requestId:focusedId('attendance') }) : Promise.resolve([]),
     claimsOn && !attendanceOnly&&include('claim') ? listPendingClaims(s,{requestId:focusedId('claim')}) : Promise.resolve([]),
     admin&&include('resignation') ? listResignationRequests(s, { status: 'pending',requestId:focusedId('resignation') }) : Promise.resolve([]),
+    // 0669 — requests the viewer is NAMED to approve but cannot otherwise see (not their report, not HR).
+    attendanceOnly||!include('leave') ? Promise.resolve([]) : listNamedApproverLeaveRequests(s, queueScope, { requestId: focusedId('leave') }),
   ]);
   const corrections = attendanceOnly&&!focus ? loadedCorrections.filter(row => (row.workflow?.routingVersion === 3 || row.workflow?.routingVersion === 4) && row.canDecide && row.personId !== s.personId) : loadedCorrections;
   // 1e9145d4 — the kind of day each OVERTIME row is asking for, so a rest-day or public-holiday plan is
@@ -291,10 +291,10 @@ export default async function ApprovalsPage({
   ]);
 
   // 0669 — a row the viewer already sees through their normal access keeps that richer row.
-  const visibleLeaveIds = new Set(visibleLeave.map((r) => r.id));
-  const leave = [...visibleLeave, ...namedLeave.filter((r) => !visibleLeaveIds.has(r.id))];
-  const namedView = (r: (typeof leave)[number]) => 'namedApproverView' in r && !admin;
-  const pendingLeave = leave.filter((r) => r.status === 'pending');
+  const visibleLeaveIds = new Set(leave.map((r) => r.id));
+  const inboxLeave = [...leave, ...namedLeave.filter((r) => !visibleLeaveIds.has(r.id))];
+  const namedView = (r: (typeof inboxLeave)[number]) => 'namedApproverView' in r && !admin;
+  const pendingLeave = inboxLeave.filter((r) => r.status === 'pending');
   // ADR-0068 §6: eagerly fetch the per-date breakdown for each visible PENDING leave row. A non-empty result
   // means this is a per-date-approval request → render the per-date decision modal trigger instead of the
   // whole-request approve/reject. An empty result → the ordinary single control. RLS scopes each breakdown
