@@ -11,6 +11,8 @@ import {createOfflineClaimService,type OfflineClaimPorts} from '../core/mobile-o
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {withAttendanceTenant} from '../core/module-gate';
+import {AttendanceCorrectionPendingError,decideAttendanceCorrection,requestAttendanceCorrection} from '../core/attendance';
+import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../core/attendance-workflow';
 import {AttendancePayrollClosedError,ClockDataChangedError,attendanceClockData,captureOfflineClockTx,planOfflineClockTx} from '../packs/attendance/service';
 import {listOfflineClaimsForReview,ownOfflineClaimResolution,readOfflineClaimPhotoForReview,readOfflineClaimResolutionBaselineTx,resolveOfflineClaim} from '../packs/attendance/mobile-offline-claim-review';
 import {createBatch,generatePayslips,lockPayrollForAttendanceChange} from '../packs/payroll/service';
@@ -79,15 +81,30 @@ const writes=async(employmentId:string)=>{const [row]=await owner.db.execute<{ca
 async function exact(punchId:string,at:number){
  const [row]=await owner.db.execute<{exact:boolean}>(sql`select timezone('Asia/Kuala_Lumpur',attendance_date+punch_at)=${new Date(at).toISOString()}::timestamptz exact from attendance_punch where id=${punchId}::uuid`);return row?.exact;
 }
-/** The provenance chain of an accepted claim, joined as the owner: claim -> resolution -> punch and the correction that
- * added it (its punch-added audit event names that correction). */
+/** The provenance chain of an accepted claim, joined as the owner: claim -> resolution -> the correction it links ->
+ * the punch that correction's applied changes added (its punch-added audit event names that correction). The
+ * resolution stores no punch (owner decision D-A): every punch the correction added is listed, so a second is seen. */
 async function chain(claimId:string){
- const [row]=await owner.db.execute<{claimId:string;correctionId:string;punchId:string;method:string;captureId:string|null;status:string;effectiveMs:string;exact:boolean;added:boolean}>(sql`select
+ const rows=await owner.db.execute<{claimId:string;correctionId:string;punchId:string;method:string;captureId:string|null;status:string;effectiveMs:string;exact:boolean;added:boolean}>(sql`select
   c.id "claimId",r.correction_id "correctionId",p.id "punchId",p.method::text method,p.clock_capture_id "captureId",k.status::text status,(extract(epoch from r.effective_at)*1000)::bigint::text "effectiveMs",
-  timezone('Asia/Kuala_Lumpur',p.attendance_date+p.punch_at)=r.effective_at exact,
-  exists(select 1 from domain_event e where e.aggregate_id=p.id and e.event_type='attendance.punch.added' and e.payload->>'correctionId'=k.id::text) added
-  from mobile_offline_claim c join mobile_offline_claim_resolution r on r.claim_id=c.id join attendance_punch p on p.id=r.punch_id join attendance_correction k on k.id=r.correction_id where c.id=${claimId}::uuid`);
- if(!row)return null;const {effectiveMs,...rest}=row;return {...rest,effectiveAt:Number(effectiveMs)};
+  timezone('Asia/Kuala_Lumpur',p.attendance_date+p.punch_at)=r.effective_at exact,true added
+  from mobile_offline_claim c join mobile_offline_claim_resolution r on r.claim_id=c.id join attendance_correction k on k.id=r.correction_id
+  join domain_event e on e.event_type='attendance.punch.added' and e.payload->>'correctionId'=k.id::text join attendance_punch p on p.id=e.aggregate_id
+  where c.id=${claimId}::uuid order by p.id`);
+ expect(rows.length).toBeLessThanOrEqual(1);
+ const [row]=rows;if(!row)return null;const {effectiveMs,...rest}=row;return {...rest,effectiveAt:Number(effectiveMs)};
+}
+/** The subject's punches, read as the owner, in clock order. */
+const punchesOf=(employmentId:string)=>owner.db.select().from(S.attendancePunch).where(eq(S.attendancePunch.employmentId,employmentId)).orderBy(asc(S.attendancePunch.punchAt),asc(S.attendancePunch.id));
+const correctionOf=async(id:string)=>(await owner.db.select({status:S.attendanceCorrection.status,date:S.attendanceCorrection.attendanceDate}).from(S.attendanceCorrection).where(eq(S.attendanceCorrection.id,id)))[0];
+/** A two-level clock-correction workflow for the claim's department (base.deptA), both levels HR administrators, as
+ * the attendance-workflow suite configures one: the resolver decides the first level, a different HR the second. */
+async function twoLevels(){
+ const a=adminCtx(base);
+ await saveAttendanceWorkflow(a,{companyId:base.companyId,code:'OFFLINE_TWO',name:'Offline two levels',description:'Two approval levels',applicationType:'irregularity',priority:100,
+  criteria:{departmentIds:[base.deptA]},stages:[0,1].map(i=>({name:`Level ${i+1}`,level:{kind:'hr_admin' as const,employmentId:null,alternates:[]}})),active:true});
+ await setAttendanceWorkflowEnabled(a,base.companyId,'irregularity',true);
+ return a;
 }
 /** MYT wall time, as punch_at and the correction entries hold it. */
 const wall=(at:number)=>new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kuala_Lumpur',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(new Date(at));
@@ -146,10 +163,12 @@ describe('HR read access to offline claims (owner decision 2026-10-28)',()=>{
   expect(await owner.db.select({id:S.mobileOfflinePhoto.claimId}).from(S.mobileOfflinePhoto)).toEqual([{id:receipt.id}]);
   expect(await visible(admin)).toEqual({claims:[receipt.id],photos:[],resolutions:[]});
   await expect(readOfflineClaimPhotoForReview(admin,receipt.id)).rejects.toMatchObject({reason:'forbidden'});
-  // An accept is an HR punch correction and writes no capture, so it hands the retained photo to nobody: the group
-  // admin's reasoned accept is recorded without reading the photo, and photo custody is unchanged.
-  expect(await resolveOfflineClaim(admin,{claimId:receipt.id,decision:'accepted',effectiveAt:whole(f),reason:'Seen elsewhere'})).toMatchObject({decision:'accepted',resolvedBy:admin.userId});
-  expect(await writes(f.e.employmentId)).toEqual({captures:0,punches:1,days:1,resolutions:1,corrections:1});
+  // Owner decision D-B (2026-10-28) reverses the earlier rule: while the photo is retained, only someone who can see it
+  // accepts, so the group admin's accept is refused before anything is written; it may still reject.
+  await expect(resolveOfflineClaim(admin,{claimId:receipt.id,decision:'accepted',effectiveAt:whole(f),reason:'Seen elsewhere'})).rejects.toMatchObject({reason:'photo_review_required'});
+  expect(await writes(f.e.employmentId)).toEqual({captures:0,punches:0,days:0,resolutions:0,corrections:0});expect(await events(receipt.id)).toEqual([]);
+  expect(await resolveOfflineClaim(admin,{claimId:receipt.id,decision:'rejected',reason:'Not supported by the gate log'})).toMatchObject({decision:'rejected',status:'rejected',resolvedBy:admin.userId});
+  expect(await writes(f.e.employmentId)).toEqual({captures:0,punches:0,days:0,resolutions:1,corrections:0});
   expect((await events(receipt.id)).filter(event=>event.eventType==='mobile.offline.photo.reviewed')).toEqual([]);
   expect(await owner.db.select({id:S.mobileOfflinePhoto.claimId}).from(S.mobileOfflinePhoto)).toEqual([{id:receipt.id}]);
  });
@@ -173,7 +192,7 @@ describe('human resolution of a claim held for review',()=>{
   const baseline=await withAttendanceTenant(hr,tx=>readOfflineClaimResolutionBaselineTx(tx,hr,{claimId:receipt.id,effectiveAt:at}));
   expect(baseline.date).toBe(todayInKualaLumpur(new Date(at)));expect(baseline.revision).toMatch(/^[a-f0-9]{64}$/);
   const result=await resolveOfflineClaim(hr,{claimId:receipt.id,decision:'accepted',effectiveAt:at,reason:'  Gate log confirms the clock-out  ',expectedRevision:baseline.revision});
-  expect(result).toMatchObject({claimId:receipt.id,decision:'accepted',effectiveAt:at,reason:'Gate log confirms the clock-out',resolvedBy:hr.userId,dayRevision:baseline.revision,replayed:false});
+  expect(result).toMatchObject({claimId:receipt.id,decision:'accepted',status:'accepted',effectiveAt:at,reason:'Gate log confirms the clock-out',resolvedBy:hr.userId,dayRevision:baseline.revision,replayed:false});
   expect(result.correctionId).toMatch(/^[0-9a-f-]{36}$/);expect(result.punchId).toMatch(/^[0-9a-f-]{36}$/);
   const [punch]=await owner.db.select().from(S.attendancePunch).where(eq(S.attendancePunch.id,result.punchId!));
   expect(punch).toMatchObject({employmentId:f.e.employmentId,direction:'out',method:'admin',clockCaptureId:null,attendanceDate:baseline.date,voidedAt:null});
@@ -189,20 +208,20 @@ describe('human resolution of a claim held for review',()=>{
   expect(approved).toEqual({actorId:hr.userId});
   // Displayed as a correction by HR: the raw clock data shows an 'admin' punch with no offline capture.
   expect((await attendanceClockData(hr,f.e.employmentId,baseline.date)).rows).toEqual([expect.objectContaining({id:result.punchId,method:'admin',captureId:null,clockSource:null,effectiveAt:null})]);
-  // The claim row is untouched; the resolution is the decision of record and links the correction and its punch.
+  // The claim row is untouched; the resolution is the decision of record and links the correction, whose punch it is.
   expect(await owner.db.select({outcome:S.mobileOfflineClaim.outcome,reason:S.mobileOfflineClaim.reason,captureId:S.mobileOfflineClaim.captureId,effectiveAt:S.mobileOfflineClaim.effectiveAt}).from(S.mobileOfflineClaim))
    .toEqual([{outcome:'needs_review',reason:'mock_reported',captureId:null,effectiveAt:null}]);
-  expect(await owner.db.select({decision:S.mobileOfflineClaimResolution.decision,correctionId:S.mobileOfflineClaimResolution.correctionId,punchId:S.mobileOfflineClaimResolution.punchId,
+  expect(await owner.db.select({decision:S.mobileOfflineClaimResolution.decision,correctionId:S.mobileOfflineClaimResolution.correctionId,
    effectiveAt:S.mobileOfflineClaimResolution.effectiveAt,resolvedBy:S.mobileOfflineClaimResolution.resolvedBy}).from(S.mobileOfflineClaimResolution))
-   .toEqual([{decision:'accepted',correctionId:result.correctionId,punchId:result.punchId,effectiveAt:new Date(at),resolvedBy:hr.userId}]);
-  expect(await events(receipt.id)).toEqual([{eventType:'mobile.offline.claim.resolved',actorId:hr.userId,payload:{decision:'accepted',reason:'Gate log confirms the clock-out',heldFor:'mock_reported',
+   .toEqual([{decision:'accepted',correctionId:result.correctionId,effectiveAt:new Date(at),resolvedBy:hr.userId}]);
+  expect(await events(receipt.id)).toEqual([{eventType:'mobile.offline.claim.resolved',actorId:hr.userId,payload:{decision:'accepted',status:'accepted',reason:'Gate log confirms the clock-out',heldFor:'mock_reported',
    effectiveAt:new Date(at).toISOString(),correctionId:result.correctionId,punchId:result.punchId,date:baseline.date,dayRevision:baseline.revision}}]);
   // An identical retry, even with the now-stale baseline, returns the recorded resolution and writes nothing.
   expect(await resolveOfflineClaim(hr,{claimId:receipt.id,decision:'accepted',effectiveAt:at,reason:'Gate log confirms the clock-out',expectedRevision:baseline.revision})).toEqual({...result,replayed:true});
   expect(await writes(f.e.employmentId)).toEqual({captures:0,punches:1,days:1,resolutions:1,corrections:1});
   // The employee's own receipt view shows the outcome; it is not anyone else's.
   expect(await ownOfflineClaimResolution(f.ctx,receipt.id)).toEqual({claimId:receipt.id,outcome:'needs_review',reason:'mock_reported',
-   resolution:{decision:'accepted',effectiveAt:at,correctionId:result.correctionId,punchId:result.punchId,resolvedAt:result.resolvedAt}});
+   resolution:{decision:'accepted',status:'accepted',effectiveAt:at,correctionId:result.correctionId,punchId:result.punchId,resolvedAt:result.resolvedAt}});
   expect(await ownOfflineClaimResolution(hr,receipt.id)).toBeNull();
   expect(await visible(f.ctx)).toMatchObject({resolutions:[receipt.id]});
  });
@@ -259,11 +278,11 @@ describe('human resolution of a claim held for review',()=>{
  it('rejects with the resolution alone and no attendance write',async()=>{
   const f=await offlineServiceFixture(base),receipt=await held(f),hr=await scopedUser('hr_admin',base.companyId);
   const result=await resolveOfflineClaim(hr,{claimId:receipt.id,decision:'rejected',reason:'Employee was on leave'});
-  expect(result).toMatchObject({decision:'rejected',effectiveAt:null,correctionId:null,punchId:null,dayRevision:null,reason:'Employee was on leave',resolvedBy:hr.userId,replayed:false});
+  expect(result).toMatchObject({decision:'rejected',status:'rejected',effectiveAt:null,correctionId:null,punchId:null,dayRevision:null,reason:'Employee was on leave',resolvedBy:hr.userId,replayed:false});
   expect(await writes(f.e.employmentId)).toEqual({captures:0,punches:0,days:0,resolutions:1,corrections:0});
-  expect(await events(receipt.id)).toEqual([{eventType:'mobile.offline.claim.resolved',actorId:hr.userId,payload:{decision:'rejected',reason:'Employee was on leave',heldFor:'mock_reported',
+  expect(await events(receipt.id)).toEqual([{eventType:'mobile.offline.claim.resolved',actorId:hr.userId,payload:{decision:'rejected',status:'rejected',reason:'Employee was on leave',heldFor:'mock_reported',
    effectiveAt:null,correctionId:null,punchId:null,date:null,dayRevision:null}}]);
-  expect(await ownOfflineClaimResolution(f.ctx,receipt.id)).toMatchObject({resolution:{decision:'rejected',effectiveAt:null,correctionId:null,punchId:null}});
+  expect(await ownOfflineClaimResolution(f.ctx,receipt.id)).toMatchObject({resolution:{decision:'rejected',status:'rejected',effectiveAt:null,correctionId:null,punchId:null}});
   await expect(resolveOfflineClaim(hr,{claimId:receipt.id,decision:'rejected',reason:'With a revision',expectedRevision:'a'.repeat(64)} as never)).rejects.toMatchObject({reason:'invalid_input'});
  });
  it('makes an identical retry idempotent and any different second resolution a conflict',async()=>{
@@ -327,16 +346,117 @@ describe('human resolution of a claim held for review',()=>{
   expect(await owner.db.select({reason:S.mobileOfflineClaimResolution.reason,resolvedAt:S.mobileOfflineClaimResolution.resolvedAt}).from(S.mobileOfflineClaimResolution))
    .toEqual([{reason:'Immutable decision',resolvedAt:new Date(result.resolvedAt)}]);
  });
- it('binds a direct accepted insert to a correction that added its punch for that claim\'s employment',async()=>{
+ it('binds a direct accepted insert to a correction of that claim\'s employment that adds its punch',async()=>{
   const f=await offlineServiceFixture(base),receipt=await held(f),hr=await scopedUser('hr_admin',base.companyId);
   const accepted=await resolveOfflineClaim(hr,{claimId:receipt.id,decision:'accepted',effectiveAt:whole(f),reason:'Gate log'});
-  const g=await offlineServiceFixture(base),unresolved=await held(g),insert=(correctionId:string,punchId:string)=>withAttendanceTenant(hr,tx=>tx.execute(sql`insert into mobile_offline_claim_resolution
-   (claim_id,tenant_id,actor_id,employment_id,decision,effective_at,correction_id,punch_id,day_revision,reason,input_digest,resolved_by)
-   values(${unresolved.id}::uuid,${base.tenantId}::uuid,${g.ctx.userId}::uuid,${g.e.employmentId}::uuid,'accepted',${new Date(whole(g)).toISOString()}::timestamptz,${correctionId}::uuid,${punchId}::uuid,
+  expect(accepted.punchId).toMatch(/^[0-9a-f-]{36}$/);
+  const g=await offlineServiceFixture(base),unresolved=await held(g),insert=(correctionId:string)=>withAttendanceTenant(hr,tx=>tx.execute(sql`insert into mobile_offline_claim_resolution
+   (claim_id,tenant_id,actor_id,employment_id,decision,effective_at,correction_id,day_revision,reason,input_digest,resolved_by)
+   values(${unresolved.id}::uuid,${base.tenantId}::uuid,${g.ctx.userId}::uuid,${g.e.employmentId}::uuid,'accepted',${new Date(whole(g)).toISOString()}::timestamptz,${correctionId}::uuid,
    ${'a'.repeat(64)},'Borrowed correction',${'b'.repeat(64)},${hr.userId}::uuid)`));
-  // Another employment's correction and punch, and identifiers that exist nowhere, are both refused by the trigger.
-  for(const [correctionId,punchId] of [[accepted.correctionId!,accepted.punchId!],[randomUUID(),randomUUID()]])
-   expect(await failure(insert(correctionId,punchId))).toMatch(/Offline claim resolution correction binding mismatch/);
+  // Another employment's approved correction, and an identifier that exists nowhere, are both refused by the trigger.
+  for(const correctionId of [accepted.correctionId!,randomUUID()])
+   expect(await failure(insert(correctionId))).toMatch(/Offline claim resolution correction binding mismatch/);
   expect(await writes(g.e.employmentId)).toEqual({captures:0,punches:0,days:0,resolutions:0,corrections:0});
+ });
+});
+
+describe('an accept whose correction needs further approval (owner decision D-A, 2026-10-28)',()=>{
+ it('leaves the claim pending with no punch until the final approver approves, then writes the punch at effective_at',async()=>{
+  const f=await offlineServiceFixture(base),receipt=await held(f),hr=await scopedUser('hr_admin',base.companyId),second=await scopedUser('hr_admin',base.companyId),a=await twoLevels();
+  const at=whole(f),date=todayInKualaLumpur(new Date(at)),input={claimId:receipt.id,decision:'accepted' as const,effectiveAt:at,reason:'Gate log, first level'};
+  const result=await resolveOfflineClaim(hr,input);
+  expect(result).toMatchObject({claimId:receipt.id,decision:'accepted',status:'pending',effectiveAt:at,punchId:null,resolvedBy:hr.userId,replayed:false});
+  expect(result.correctionId).toMatch(/^[0-9a-f-]{36}$/);
+  // Non-vacuous: the day's workflow routed the correction through both levels, and only the resolver's first is decided.
+  expect(await correctionOf(result.correctionId!)).toEqual({status:'pending',date});
+  expect(await owner.db.select({stageIndex:S.attendanceWorkflowDecision.stageIndex,decision:S.attendanceWorkflowDecision.decision,actualUserId:S.attendanceWorkflowDecision.actualUserId})
+   .from(S.attendanceWorkflowDecision).orderBy(asc(S.attendanceWorkflowDecision.stageIndex))).toEqual([{stageIndex:0,decision:'approved',actualUserId:hr.userId}]);
+  expect(await punchesOf(f.e.employmentId)).toEqual([]);expect(await chain(receipt.id)).toBeNull();
+  expect(await writes(f.e.employmentId)).toEqual({captures:0,punches:0,days:0,resolutions:1,corrections:1});
+  expect(await events(receipt.id)).toMatchObject([{eventType:'mobile.offline.claim.resolved',actorId:hr.userId,payload:{decision:'accepted',status:'pending',correctionId:result.correctionId,punchId:null,date}}]);
+  expect(await ownOfflineClaimResolution(f.ctx,receipt.id)).toEqual({claimId:receipt.id,outcome:'needs_review',reason:'mock_reported',
+   resolution:{decision:'accepted',status:'pending',effectiveAt:at,correctionId:result.correctionId,punchId:null,resolvedAt:result.resolvedAt}});
+  // Pending blocks a second resolution: an identical retry replays, anything else conflicts, and no second correction is
+  // filed; the correction owner's own one-pending-per-day fence also holds the day.
+  expect(await resolveOfflineClaim(hr,input)).toEqual({...result,replayed:true});
+  for(const [ctx,other] of [[hr,{...input,reason:'A different reason'}],[hr,{claimId:receipt.id,decision:'rejected',reason:'Changed my mind'}],[second,input]] as const)
+   await expect(resolveOfflineClaim(ctx,other)).rejects.toMatchObject({reason:'resolution_conflict'});
+  await expect(requestAttendanceCorrection(a,{employmentId:f.e.employmentId,date,reason:'Another correction of the day',clockChanges:{version:1,baseline:result.dayRevision!,entries:[{punchAt:wall(at),direction:'out'}]}}))
+   .rejects.toBeInstanceOf(AttendanceCorrectionPendingError);
+  expect(await writes(f.e.employmentId)).toEqual({captures:0,punches:0,days:0,resolutions:1,corrections:1});
+  // The final approver approves, exactly as any correction: only then is the punch written, at the accepted instant.
+  expect(await decideAttendanceCorrection(a,{correctionId:result.correctionId!,decision:'approved',expectedStageIndex:1})).toMatchObject({status:'approved'});
+  const punches=await punchesOf(f.e.employmentId);
+  expect(punches).toEqual([expect.objectContaining({direction:'out',method:'admin',clockCaptureId:null,attendanceDate:date,voidedAt:null})]);
+  expect(await exact(punches[0].id,at)).toBe(true);
+  expect(await chain(receipt.id)).toEqual({claimId:receipt.id,correctionId:result.correctionId,punchId:punches[0].id,method:'admin',captureId:null,status:'approved',effectiveAt:at,exact:true,added:true});
+  expect(await writes(f.e.employmentId)).toEqual({captures:0,punches:1,days:1,resolutions:1,corrections:1});
+  expect((await dayRow(f.e.employmentId,date))?.remarks).toBe('Corrected');
+  // The employee's view and HR's list now show the accept as applied; the stored resolution row did not change.
+  expect(await ownOfflineClaimResolution(f.ctx,receipt.id)).toEqual({claimId:receipt.id,outcome:'needs_review',reason:'mock_reported',
+   resolution:{decision:'accepted',status:'accepted',effectiveAt:at,correctionId:result.correctionId,punchId:punches[0].id,resolvedAt:result.resolvedAt}});
+  expect((await listOfflineClaimsForReview(hr)).claims.map(claim=>claim.resolution)).toEqual([{claimId:receipt.id,decision:'accepted',status:'accepted',effectiveAt:at,correctionId:result.correctionId,
+   punchId:punches[0].id,dayRevision:result.dayRevision,reason:'Gate log, first level',resolvedBy:hr.userId,resolvedAt:result.resolvedAt}]);
+  expect(await resolveOfflineClaim(hr,input)).toEqual({...result,status:'accepted',punchId:punches[0].id,replayed:true});
+  expect((await events(receipt.id)).filter(event=>event.eventType==='mobile.offline.claim.resolved')).toHaveLength(1);
+ });
+ it('ends the claim rejected, with no punch, when a later approver rejects the correction',async()=>{
+  const f=await offlineServiceFixture(base),receipt=await held(f),hr=await scopedUser('hr_admin',base.companyId),a=await twoLevels();
+  const at=whole(f),date=todayInKualaLumpur(new Date(at)),input={claimId:receipt.id,decision:'accepted' as const,effectiveAt:at,reason:'Gate log, first level'};
+  const result=await resolveOfflineClaim(hr,input);
+  expect(result).toMatchObject({decision:'accepted',status:'pending',punchId:null});
+  expect(await decideAttendanceCorrection(a,{correctionId:result.correctionId!,decision:'rejected',rejectReason:'The gate log shows no exit',expectedStageIndex:1})).toMatchObject({status:'rejected'});
+  expect(await correctionOf(result.correctionId!)).toEqual({status:'rejected',date});
+  expect(await punchesOf(f.e.employmentId)).toEqual([]);expect(await chain(receipt.id)).toBeNull();
+  expect(await writes(f.e.employmentId)).toEqual({captures:0,punches:0,days:0,resolutions:1,corrections:1});
+  expect(await ownOfflineClaimResolution(f.ctx,receipt.id)).toMatchObject({resolution:{decision:'accepted',status:'rejected',correctionId:result.correctionId,punchId:null}});
+  expect((await listOfflineClaimsForReview(hr)).claims[0].resolution).toMatchObject({decision:'accepted',status:'rejected',punchId:null});
+  // A rejected correction is final, as every correction is: the claim stays resolved. A retry replays the rejected
+  // state, any other resolution conflicts, and the day takes an ordinary correction as after any rejected request.
+  expect(await resolveOfflineClaim(hr,input)).toEqual({...result,status:'rejected',replayed:true});
+  for(const other of [{claimId:receipt.id,decision:'rejected' as const,reason:'Close it as rejected'},{...input,reason:'Try again'}])
+   await expect(resolveOfflineClaim(hr,other)).rejects.toMatchObject({reason:'resolution_conflict'});
+  const {correctionId:ordinary}=await requestAttendanceCorrection(a,{employmentId:f.e.employmentId,date,reason:'Ordinary correction of the day',clockChanges:{version:1,baseline:result.dayRevision!,entries:[{punchAt:wall(at),direction:'out'}]}});
+  expect(ordinary).not.toBe(result.correctionId);
+  expect(await writes(f.e.employmentId)).toEqual({captures:0,punches:0,days:0,resolutions:1,corrections:2});
+  expect(await ownOfflineClaimResolution(f.ctx,receipt.id)).toMatchObject({resolution:{status:'rejected',correctionId:result.correctionId}});
+ });
+});
+
+describe('who may accept while the photo is retained (owner decision D-B, 2026-10-28)',()=>{
+ it('refuses a group admin\'s accept in the service and in the bound trigger, and lets HR who can see the photo accept',async()=>{
+  const f=await offlineServiceFixture(base),receipt=await held(f,{photo:Buffer.from('retained for HR review')}),admin=adminCtx(base),at=whole(f);
+  expect(receipt.photo!.retainedUntil).toBeGreaterThan(Date.now());
+  await expect(resolveOfflineClaim(admin,{claimId:receipt.id,decision:'accepted',effectiveAt:at,reason:'Seen elsewhere'})).rejects.toMatchObject({reason:'photo_review_required'});
+  expect(await writes(f.e.employmentId)).toEqual({captures:0,punches:0,days:0,resolutions:0,corrections:0});
+  // The same accept written directly, with a correction the group admin files in that transaction, is refused by the
+  // trigger before its correction binding is read; the whole transaction rolls back.
+  const direct=withAttendanceTenant(admin,async tx=>{
+   const {date,revision}=await readOfflineClaimResolutionBaselineTx(tx,admin,{claimId:receipt.id,effectiveAt:at});
+   const {correctionId}=await requestAttendanceCorrection(admin,{employmentId:f.e.employmentId,date,reason:'Direct accept',clockChanges:{version:1,baseline:revision,entries:[{punchAt:wall(at),direction:'out'}]}},tx);
+   await tx.execute(sql`insert into mobile_offline_claim_resolution(claim_id,tenant_id,actor_id,employment_id,decision,effective_at,correction_id,day_revision,reason,input_digest,resolved_by)
+    values(${receipt.id}::uuid,${base.tenantId}::uuid,${f.ctx.userId}::uuid,${f.e.employmentId}::uuid,'accepted',${new Date(at).toISOString()}::timestamptz,${correctionId}::uuid,${revision},'Direct accept',${'b'.repeat(64)},${admin.userId}::uuid)`);
+  });
+  expect(await failure(direct)).toMatch(/Offline claim photo review required/);
+  expect(await writes(f.e.employmentId)).toEqual({captures:0,punches:0,days:0,resolutions:0,corrections:0});
+  // HR with correction rights that is not a group admin reads the photo, and accepts.
+  const hr=await scopedUser('hr_admin',base.companyId);
+  expect(await visible(hr)).toMatchObject({photos:[receipt.id]});
+  expect(await resolveOfflineClaim(hr,{claimId:receipt.id,decision:'accepted',effectiveAt:at,reason:'Photo and gate log agree'})).toMatchObject({decision:'accepted',status:'accepted',resolvedBy:hr.userId});
+  expect(await writes(f.e.employmentId)).toEqual({captures:0,punches:1,days:1,resolutions:1,corrections:1});
+ });
+ it('lets a group admin accept once the photo has expired, or when the claim has none',async()=>{
+  const f=await offlineServiceFixture(base),receipt=await held(f,{photo:Buffer.from('short retention'),retentionMs:2000}),admin=adminCtx(base);
+  await after(receipt.photo!.retainedUntil);
+  // Non-vacuous: custody is still present, expired and not purged, which the group admin now reads (for the purge).
+  expect(await owner.db.select({id:S.mobileOfflinePhoto.claimId}).from(S.mobileOfflinePhoto)).toEqual([{id:receipt.id}]);
+  expect(await visible(admin)).toMatchObject({photos:[receipt.id]});
+  expect(await resolveOfflineClaim(admin,{claimId:receipt.id,decision:'accepted',effectiveAt:whole(f),reason:'Gate log after expiry'})).toMatchObject({decision:'accepted',status:'accepted',resolvedBy:admin.userId});
+  expect(await writes(f.e.employmentId)).toEqual({captures:0,punches:1,days:1,resolutions:1,corrections:1});
+  const g=await offlineServiceFixture(base),bare=await held(g);
+  expect(bare.photo).toBeNull();
+  expect(await resolveOfflineClaim(admin,{claimId:bare.id,decision:'accepted',effectiveAt:whole(g),reason:'No photo was taken'})).toMatchObject({decision:'accepted',status:'accepted',resolvedBy:admin.userId});
+  expect(await writes(g.e.employmentId)).toEqual({captures:0,punches:1,days:1,resolutions:1,corrections:1});
  });
 });

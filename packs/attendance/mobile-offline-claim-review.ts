@@ -3,12 +3,17 @@
  * employment's claims and, unless a group admin, reads an UNEXPIRED retained photo; every listed claim and every photo
  * read appends an audit event. Resolve: one immutable human decision per needs_review claim, with a reason. An accept
  * is an HR punch correction: the existing correction owner (requestAttendanceCorrection then decideAttendanceCorrection,
- * core/attendance.ts) files and approves a clock-data correction adding one 'admin' punch at the instant the resolver
- * chooses inside the claim's proven interval, in this transaction. Its rules apply, not the live clock rules: later
- * punches never block it, HR's reasoned decision overrides the hold (geofence, photo, device), payroll locks and
- * correction/decision authority still refuse, and the day recalculates. The resolution row links the claim to that
- * correction and punch. The claim row is never changed. Permission is checked here as well as by RLS. UNMOUNTED: no
- * route, screen or production caller.
+ * core/attendance.ts) files a clock-data correction adding one 'admin' punch at the instant the resolver chooses inside
+ * the claim's proven interval, and the resolver decides its first level, in this transaction. Its rules apply, not the
+ * live clock rules: later punches never block it, HR's reasoned decision overrides the hold (geofence, photo, device),
+ * payroll locks and correction/decision authority still refuse, and the day recalculates when the punch lands. Owner
+ * decision D-A: a workflow with further levels leaves the correction pending, and the punch is written only by its final
+ * approval, as for any correction; the resolution is recorded either way. Its state (pending, accepted, rejected,
+ * cancelled) and its punch are derived from the correction (app.mobile_offline_claim_resolution_state), never stored.
+ * Owner decision D-B: while the claim's photo is retained only a session that may read it (correction authority that
+ * is not a group admin) accepts; a group admin may reject, and may accept once the photo has expired or been purged or
+ * when there is none. The resolution row links the claim to that correction. The claim row is never changed.
+ * Permission is checked here as well as by RLS and the bound trigger. UNMOUNTED: no route, screen or production caller.
  *
  * Lock order of a resolution: the subject advisory lock (tenant:employment), then the correction owner's own order
  * (payroll batches by id on filing; on approval the same subject lock again, re-entrant, the correction row, its
@@ -20,7 +25,7 @@ import {createHash} from 'node:crypto';
 import {and,desc,eq,isNull,sql} from 'drizzle-orm';
 import {z} from 'zod';
 import type {SessionContext,Tx} from '../../db/client';
-import {attendancePunch,employment,mobileOfflineClaim,mobileOfflineClaimResolution,mobileOfflinePhoto} from '../../db/schema';
+import {employment,mobileOfflineClaim,mobileOfflineClaimResolution,mobileOfflinePhoto} from '../../db/schema';
 import {actorOf,appendEvent,appendEvents} from '../../db/events';
 import {decryptSecret} from '../../lib/ai/crypto';
 import {HR_LOCAL_TZ,todayInKualaLumpur} from '../../lib/hr-date';
@@ -35,11 +40,11 @@ import {offlineEffectiveInstant} from './mobile-offline-adjudicator';
 type ClaimRow=typeof mobileOfflineClaim.$inferSelect;
 type ResolutionRow=typeof mobileOfflineClaimResolution.$inferSelect;
 export type OfflineClaimReviewRefusal='invalid_input'|'not_found'|'forbidden'|'self_resolution'|'no_photo'|'photo_unavailable'|'not_resolvable'|'resolution_conflict'
- |'effective_time_invalid'|'employment_inactive'|'correction_pending'|'unavailable';
+ |'effective_time_invalid'|'employment_inactive'|'photo_review_required'|'unavailable';
 /** Typed refusal. The correction owner's own refusals pass through unchanged: closed payroll is the existing
  * AttendancePayrollClosedError ("Reopen the payroll"), a changed day ClockDataChangedError, a pending request for the
- * day AttendanceCorrectionPendingError, a stage the resolver may not decide AttendanceWorkflowError. correction_pending:
- * the day's workflow needs a further approver, so nothing is recorded (the accept is one atomic decision). */
+ * day AttendanceCorrectionPendingError, a stage the resolver may not decide AttendanceWorkflowError.
+ * photo_review_required: a group admin's accept while the claim's photo is still retained (owner decision D-B). */
 export class OfflineClaimReviewError extends Error{
  constructor(readonly reason:OfflineClaimReviewRefusal){super('Offline claim review unavailable');this.name='OfflineClaimReviewError';}
 }
@@ -83,8 +88,21 @@ async function retainedPhotoTx(tx:Tx,ctx:SessionContext,claim:ClaimRow){
 const ListFilters=z.object({companyId:uuid.optional(),employmentId:uuid.optional(),outcome:z.enum(['accepted','needs_review','refused']).optional(),unresolved:z.boolean().optional(),
  limit:z.number().int().min(1).max(100).default(50),before:uuid.optional()}).strict();
 export type OfflineClaimReviewFilters=z.input<typeof ListFilters>;
-const resolutionView=(r:ResolutionRow)=>({claimId:r.claimId,decision:r.decision,effectiveAt:r.effectiveAt?.getTime()??null,correctionId:r.correctionId,punchId:r.punchId,dayRevision:r.dayRevision,
- reason:r.reason,resolvedBy:r.resolvedBy,resolvedAt:r.resolvedAt.getTime()});
+/** A resolution's state: a reject is 'rejected'; an accept is its correction's status ('approved' read as 'accepted'). */
+export type OfflineClaimResolutionStatus='pending'|'accepted'|'rejected'|'cancelled';
+type ResolutionState={status:OfflineClaimResolutionStatus;punchId:string|null};
+/** The derived state of the visible resolutions of `claimIds` (app.mobile_offline_claim_resolution_state, owner decision
+ * D-A): the linked correction's status, and the punch its applied changes added once approved. Never stored. */
+async function resolutionStatesTx(tx:Tx,claimIds:string[]){
+ const states=new Map<string,ResolutionState>();if(!claimIds.length)return states;
+ const rows=await tx.execute<{claim_id:string;status:OfflineClaimResolutionStatus|null;punch_id:string|null}>(sql`select claim_id,status,punch_id
+  from app.mobile_offline_claim_resolution_state(array[${sql.join(claimIds.map(id=>sql`${id}::uuid`),sql`,`)}]::uuid[])`);
+ for(const row of rows){if(!row.status)throw refuse('unavailable');states.set(row.claim_id,{status:row.status,punchId:row.punch_id});}
+ return states;
+}
+const resolutionView=(r:ResolutionRow,state:ResolutionState|undefined)=>{if(!state)throw refuse('unavailable');
+ return {claimId:r.claimId,decision:r.decision,status:state.status,effectiveAt:r.effectiveAt?.getTime()??null,correctionId:r.correctionId,punchId:state.punchId,dayRevision:r.dayRevision,
+  reason:r.reason,resolvedBy:r.resolvedBy,resolvedAt:r.resolvedAt.getTime()};};
 export type OfflineClaimResolutionView=ReturnType<typeof resolutionView>;
 /** Claims the session may correct, newest received first (received_at desc, id desc); `before` is the last claim id of
  * the previous page. Metadata, outcome, reason, the signed command's action/location/source flags and any resolution;
@@ -100,13 +118,14 @@ export async function listOfflineClaimsForReviewTx(tx:Tx,ctx:SessionContext,filt
    f.companyId?eq(employment.companyId,f.companyId):undefined,f.outcome?eq(c.outcome,f.outcome):undefined,f.unresolved?isNull(r.claimId):undefined,
    f.before?sql`(${c.receivedAt},${c.id})<(select b.received_at,b.id from mobile_offline_claim b where b.id=${f.before}::uuid and b.tenant_id=${ctx.tenantId}::uuid)`:undefined))
   .orderBy(desc(c.receivedAt),desc(c.id)).limit(f.limit);
+ const states=await resolutionStatesTx(tx,rows.flatMap(row=>row.resolution?[row.resolution.claimId]:[]));
  const claims=rows.map(({claim,companyId,resolution,photoLive})=>{const signed=signedClaimOf(claim);return {id:claim.id,employmentId:claim.employmentId,companyId,actorId:claim.actorId,
   contextId:claim.contextId,sequence:claim.sequence,requestId:claim.requestId,outcome:claim.outcome,reason:claim.reason,claimedAt:claim.claimedAt.getTime(),sampledAt:claim.sampledAt.getTime(),
   receivedAt:claim.receivedAt.getTime(),effectiveMinimum:claim.effectiveMinimum?.getTime()??null,effectiveMaximum:claim.effectiveMaximum?.getTime()??null,effectiveAt:claim.effectiveAt?.getTime()??null,
   captureId:claim.captureId,command:{action:signed.command.action,lat:signed.command.lat,lng:signed.command.lng,accuracy:signed.command.accuracy},
   evidence:{mock:signed.evidence.mock,simulated:signed.evidence.simulated,accessory:signed.evidence.accessory},
   photo:claim.photoDigest&&claim.photoRetainedUntil?{sha256:claim.photoDigest,retainedUntil:claim.photoRetainedUntil.getTime(),retained:photoLive===true}:null,
-  resolution:resolution?resolutionView(resolution):null};});
+  resolution:resolution?resolutionView(resolution,states.get(resolution.claimId)):null};});
  await appendEvents(tx,claims.map(claim=>({tenantId:ctx.tenantId,aggregateType:'mobile-offline-claim',aggregateId:claim.id,eventType:'mobile.offline.claim.reviewed',actor:actorOf(ctx),subjectEmploymentId:claim.employmentId,payload:{reason:'review'}})));
  return {claims,next:claims.length===f.limit?claims[claims.length-1].id:null};
 }
@@ -150,7 +169,9 @@ export async function readOfflineClaimResolutionBaselineTx(tx:Tx,ctx:SessionCont
 /** The MYT wall time of an instant, as punch_at and the correction entries hold it (HH:MM:SS). */
 const wallTime=(at:Date)=>new Intl.DateTimeFormat('en-GB',{timeZone:HR_LOCAL_TZ,hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(at);
 /** Accept: reads and checks first, then the correction owner is the only attendance writer. Its punch set is the day's
- * live punches unchanged plus one entry at the accepted instant, against the baseline read under the subject lock. */
+ * live punches unchanged plus one entry at the accepted instant, against the baseline read under the subject lock.
+ * The resolver decides the first level; a final level writes the punch now, a further level leaves it to the
+ * correction's final approver (owner decision D-A). */
 async function acceptTx(tx:Tx,ctx:SessionContext,claim:ClaimRow,effectiveAt:number,reason:string,expectedRevision:string|undefined){
  if(!(await acceptableInstantTx(tx,claim.id,effectiveAt)))throw refuse('effective_time_invalid');
  const action=signedClaimOf(claim).command.action,effective=new Date(effectiveAt),punchAt=wallTime(effective);
@@ -163,27 +184,32 @@ async function acceptTx(tx:Tx,ctx:SessionContext,claim:ClaimRow,effectiveAt:numb
  if(expectedRevision!==undefined&&expectedRevision!==dayRevision)throw new ClockDataChangedError();
  const entries=[...rows.filter(row=>!row.voidedAt).map(row=>({id:row.id,punchAt:row.punchAt,direction:row.direction})),{punchAt,direction:action}];
  try{
-  // Filing locks payroll first (closed payroll refuses before its insert); approval applies the punch set, recomputes
-  // the day, refreshes overtime and marks processed payroll, as for any HR punch correction.
+  // Filing locks payroll first (closed payroll refuses before its insert); the final approval applies the punch set,
+  // recomputes the day, refreshes overtime and marks processed payroll, as for any HR punch correction. A further
+  // level returns pending with nothing applied; that correction's own final decision applies it later.
   const {correctionId}=await requestAttendanceCorrection(ctx,{employmentId:claim.employmentId,date,reason,clockChanges:{version:1,baseline:dayRevision,entries}},tx);
   const decided=await decideAttendanceCorrection(ctx,{correctionId,decision:'approved',expectedStageIndex:0},tx);
-  if(decided.status!=='approved')throw refuse('correction_pending');
-  // The punch that correction added: its only live punch of this time and direction without a capture.
-  const punches=await tx.select({id:attendancePunch.id,method:attendancePunch.method}).from(attendancePunch).where(and(eq(attendancePunch.tenantId,ctx.tenantId),
-   eq(attendancePunch.employmentId,claim.employmentId),eq(attendancePunch.attendanceDate,date),eq(attendancePunch.punchAt,punchAt),eq(attendancePunch.direction,action),
-   isNull(attendancePunch.voidedAt),isNull(attendancePunch.clockCaptureId))).limit(2);
-  if(punches.length!==1||punches[0].method!=='admin')throw refuse('unavailable');
-  return {correctionId,punchId:punches[0].id,effectiveAt:effective,date,dayRevision};
+  if(decided.status!=='approved'&&decided.status!=='pending')throw refuse('unavailable');
+  return {correctionId,effectiveAt:effective,date,dayRevision};
  }catch(error){
   // After the first write a throw must never leave a committable partial correction for a caller that catches it.
   await tx.execute(sql`select cast('offline claim resolution failed; transaction aborted' as integer)`).catch(()=>undefined);
   throw error;
  }
 }
+/** Whether the claim's photo is still retained (owner decision D-B). Custody is purged only after expiry (the photo's
+ * delete policy and trigger), so the claim's retention instant decides it for a group admin, which cannot read the
+ * custody row; the bound trigger checks the row itself. */
+async function photoRetainedTx(tx:Tx,claim:ClaimRow){
+ if(!claim.photoDigest||!claim.photoRetainedUntil)return false;
+ const [row]=await tx.execute<{retained:boolean}>(sql`select ${claim.photoRetainedUntil.toISOString()}::timestamptz>clock_timestamp() "retained"`);
+ return row?.retained===true;
+}
 /** Resolves one needs_review claim. A retry with the same decision, instant and reason by the same resolver returns the
- * recorded resolution (replayed); any other input once a resolution exists is resolution_conflict. Reject records the
- * resolution only; accept also records the HR punch correction (acceptTx). Every resolution appends an audit event with
- * the actor and reason. */
+ * recorded resolution (replayed) with its current derived state; any other input once a resolution exists, pending
+ * or final, is resolution_conflict. Reject records the resolution only; accept also files the HR punch correction
+ * (acceptTx). A group admin may not accept while the photo is retained. Every resolution appends an audit event with
+ * the actor, reason and the state at that moment. */
 export async function resolveOfflineClaimTx(tx:Tx,ctx:SessionContext,input:OfflineClaimResolutionInput){
  const parsed=ResolveInput.safeParse(input);if(!parsed.success)throw refuse('invalid_input');const p=parsed.data;
  if(!ctx.userId)throw refuse('forbidden');
@@ -192,29 +218,35 @@ export async function resolveOfflineClaimTx(tx:Tx,ctx:SessionContext,input:Offli
  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+claim.employmentId},0))`);
  const inputDigest=hash(JSON.stringify(['mobile-offline-claim-resolution',1,claim.id,p.decision,p.effectiveAt??null,p.reason]));
  const [prior]=await tx.select().from(mobileOfflineClaimResolution).where(and(eq(mobileOfflineClaimResolution.claimId,claim.id),eq(mobileOfflineClaimResolution.tenantId,ctx.tenantId))).limit(1);
- if(prior){if(prior.inputDigest===inputDigest&&prior.resolvedBy===ctx.userId)return {...resolutionView(prior),replayed:true};throw refuse('resolution_conflict');}
+ if(prior){if(prior.inputDigest===inputDigest&&prior.resolvedBy===ctx.userId)return {...resolutionView(prior,(await resolutionStatesTx(tx,[prior.claimId])).get(prior.claimId)),replayed:true};
+  throw refuse('resolution_conflict');}
  if(claim.outcome!=='needs_review')throw refuse('not_resolvable');
+ if(p.decision==='accepted'&&who.group&&(await photoRetainedTx(tx,claim)))throw refuse('photo_review_required');
  const accepted=p.decision==='accepted'?await acceptTx(tx,ctx,claim,p.effectiveAt!,p.reason,p.expectedRevision):null;
  const [stored]=await tx.insert(mobileOfflineClaimResolution).values({claimId:claim.id,tenantId:ctx.tenantId,actorId:claim.actorId,employmentId:claim.employmentId,decision:p.decision,
-  effectiveAt:accepted?.effectiveAt??null,correctionId:accepted?.correctionId??null,punchId:accepted?.punchId??null,dayRevision:accepted?.dayRevision??null,reason:p.reason,inputDigest,resolvedBy:ctx.userId}).returning();
+  effectiveAt:accepted?.effectiveAt??null,correctionId:accepted?.correctionId??null,dayRevision:accepted?.dayRevision??null,reason:p.reason,inputDigest,resolvedBy:ctx.userId}).returning();
  if(!stored)throw refuse('unavailable');
+ const view=resolutionView(stored,(await resolutionStatesTx(tx,[stored.claimId])).get(stored.claimId));
  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'mobile-offline-claim',aggregateId:claim.id,eventType:'mobile.offline.claim.resolved',actor:actorOf(ctx),subjectEmploymentId:claim.employmentId,
-  payload:{decision:p.decision,reason:p.reason,heldFor:claim.reason,effectiveAt:accepted?.effectiveAt.toISOString()??null,correctionId:accepted?.correctionId??null,punchId:accepted?.punchId??null,
+  payload:{decision:p.decision,status:view.status,reason:p.reason,heldFor:claim.reason,effectiveAt:accepted?.effectiveAt.toISOString()??null,correctionId:accepted?.correctionId??null,punchId:view.punchId,
    date:accepted?.date??null,dayRevision:accepted?.dayRevision??null}});
- return {...resolutionView(stored),replayed:false};
+ return {...view,replayed:false};
 }
 export function resolveOfflineClaim(ctx:SessionContext,input:OfflineClaimResolutionInput){return withAttendanceTenant(ctx,tx=>resolveOfflineClaimTx(tx,ctx,input));}
 
-/** The employee's own receipt view of a claim and its human resolution, if any. Read-only; the resolver's identity,
- * reason and day baseline are not part of it (the accepted punch is the employee's own record, shown as an HR
- * correction). Not a v1 receipt field: installed clients never see a new meaning. */
+/** The employee's own receipt view of a claim and its human resolution, if any: pending, accepted, rejected or cancelled
+ * (derived from the correction, owner decision D-A). Read-only; the resolver's identity, reason and day baseline are
+ * not part of it (the accepted punch is the employee's own record, shown as an HR correction). Not a v1 receipt
+ * field: installed clients never see a new meaning. */
 export async function ownOfflineClaimResolution(ctx:SessionContext,claimId:string){
  const id=uuid.safeParse(claimId);if(!id.success||!ctx.userId)return null;
  return withAttendanceTenant(ctx,async tx=>{
   const [row]=await tx.select({claim:mobileOfflineClaim,resolution:mobileOfflineClaimResolution}).from(mobileOfflineClaim).leftJoin(mobileOfflineClaimResolution,eq(mobileOfflineClaimResolution.claimId,mobileOfflineClaim.id))
    .where(and(eq(mobileOfflineClaim.id,id.data),eq(mobileOfflineClaim.tenantId,ctx.tenantId),eq(mobileOfflineClaim.actorId,ctx.userId!))).limit(1);
   if(!row)return null;
-  const r=row.resolution;
-  return {claimId:row.claim.id,outcome:row.claim.outcome,reason:row.claim.reason,resolution:r?{decision:r.decision,effectiveAt:r.effectiveAt?.getTime()??null,correctionId:r.correctionId,punchId:r.punchId,resolvedAt:r.resolvedAt.getTime()}:null};
+  const r=row.resolution,state=r?(await resolutionStatesTx(tx,[r.claimId])).get(r.claimId):undefined;
+  if(r&&!state)throw refuse('unavailable');
+  return {claimId:row.claim.id,outcome:row.claim.outcome,reason:row.claim.reason,
+   resolution:r&&state?{decision:r.decision,status:state.status,effectiveAt:r.effectiveAt?.getTime()??null,correctionId:r.correctionId,punchId:state.punchId,resolvedAt:r.resolvedAt.getTime()}:null};
  });
 }

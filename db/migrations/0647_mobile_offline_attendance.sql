@@ -293,23 +293,29 @@ CREATE POLICY mobile_offline_photo_review_read ON mobile_offline_photo FOR SELEC
  (tenant_id=app.current_tenant_id() AND retained_until>clock_timestamp() AND NOT app.is_group_admin() AND app.can_correct_attendance(employment_id));
 -- One human resolution per held claim. The claim row stays immutable (its outcome remains needs_review); this row is
 -- the decision of record. An accept (owner decision 2026-10-28) is an HR punch correction: the existing correction
--- owner files and approves it (attendance_correction, clock_changes) and inserts an 'admin' punch at the accepted
--- instant, so later punches never block it and HR's reasoned decision overrides the hold. This row links that
--- correction and that punch and holds effective_at, the accepted instant; no capture is written for an accept, so
--- attendance_clock_capture.effective_at stays the canonical offline writer's alone. day_revision is the correction's
--- baseline (clockFingerprint of the filed day's punches) the resolver decided against. input_digest identifies the
--- decision for idempotent retry. resolved_by and resolved_at are server-stamped.
+-- owner files it (attendance_correction, clock_changes) and the resolver decides its first level; the correction's
+-- final approval inserts an 'admin' punch at the accepted instant, so later punches never block it and HR's
+-- reasoned decision overrides the hold. Owner decision D-A (2026-10-28): when the day's workflow needs further
+-- approvers the accept is still recorded here, with the correction pending, and the punch is written only when the
+-- final approver approves, exactly as for any correction. This row links the correction and holds effective_at,
+-- the accepted instant. It holds no state and no punch: whether the accept is pending, applied, rejected or
+-- cancelled is the correction's status, and its punch is the one the correction's applied changes added
+-- (attendance.punch.added naming that correction), both read through app.mobile_offline_claim_resolution_state
+-- below. No capture is written for an accept, so attendance_clock_capture.effective_at stays the canonical offline
+-- writer's alone. day_revision is the correction's baseline (clockFingerprint of the filed day's punches) the
+-- resolver decided against. input_digest identifies the decision for idempotent retry. resolved_by and
+-- resolved_at are server-stamped.
 CREATE TABLE mobile_offline_claim_resolution (
  claim_id uuid PRIMARY KEY,tenant_id uuid NOT NULL,actor_id uuid NOT NULL,employment_id uuid NOT NULL,
  decision text NOT NULL CHECK(decision IN ('accepted','rejected')),effective_at timestamptz,
- correction_id uuid REFERENCES attendance_correction(id),punch_id uuid REFERENCES attendance_punch(id),
+ correction_id uuid REFERENCES attendance_correction(id),
  day_revision text CHECK(day_revision ~ '^[a-f0-9]{64}$'),reason text NOT NULL CHECK(reason=btrim(reason) AND length(reason) BETWEEN 1 AND 500),
  input_digest text NOT NULL CHECK(input_digest ~ '^[a-f0-9]{64}$'),resolved_by uuid NOT NULL REFERENCES app_user(id),resolved_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  FOREIGN KEY(claim_id,tenant_id,actor_id,employment_id) REFERENCES mobile_offline_claim(id,tenant_id,actor_id,employment_id),
- CHECK((decision='accepted')=(correction_id IS NOT NULL)),CHECK((decision='accepted')=(punch_id IS NOT NULL)),
+ CHECK((decision='accepted')=(correction_id IS NOT NULL)),
  CHECK((decision='accepted')=(effective_at IS NOT NULL)),CHECK((decision='accepted')=(day_revision IS NOT NULL)),
  CHECK(effective_at IS NULL OR extract(epoch FROM effective_at)=trunc(extract(epoch FROM effective_at))),
- CONSTRAINT mobile_offline_claim_resolution_correction_uq UNIQUE(correction_id),CONSTRAINT mobile_offline_claim_resolution_punch_uq UNIQUE(punch_id)
+ CONSTRAINT mobile_offline_claim_resolution_correction_uq UNIQUE(correction_id)
 );
 CREATE INDEX mobile_offline_claim_resolution_subject_idx ON mobile_offline_claim_resolution(tenant_id,employment_id,resolved_at);
 ALTER TABLE mobile_offline_claim_resolution ENABLE ROW LEVEL SECURITY;
@@ -336,12 +342,16 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public AS $$
 $$;
 REVOKE ALL ON FUNCTION app.mobile_offline_claim_window(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.mobile_offline_claim_window(uuid) TO ai_hr_app;
--- Binds a resolution to its held claim, and an accept to the correction that recorded it: an approved clock-data
--- correction of the claim's employment on the punch's day, whose submitted entries added that punch (an entry with
--- no id at its time and direction), and a live 'admin' punch of that tenant and employment whose MYT wall time on its
--- day is effective_at (on the next day for an overnight out filed to its shift's start day). effective_at follows the
--- window rule. Definer: the context is actor-only. The claim's ordering trigger (mobile_offline_claim_ordered) is
--- unchanged: it runs only when a claim row is inserted, and a resolution never writes the claim.
+-- Binds a resolution to its held claim, and an accept to the correction that recorded it: a pending or approved
+-- clock-data correction of the claim's employment whose submitted entries add exactly one punch (one entry with no
+-- id), at the MYT wall time of effective_at on the correction's day (or the next day, for an overnight out filed to
+-- its shift's start day); when that correction is already approved (a single-level workflow), the live 'admin' punch
+-- with no capture it added exists. effective_at follows the window rule. Owner decision D-B (2026-10-28): while the
+-- claim's photo is retained (custody row present and unexpired) only a session that may read it accepts, so a group
+-- admin, which never reads retained photos (mobile_offline_photo_review_read), may reject but not accept; once the
+-- photo has expired or been purged, or the claim has none, it may accept. Definer: the context and the photo are
+-- not readable by the resolver. The claim's ordering trigger (mobile_offline_claim_ordered) is unchanged: it runs
+-- only when a claim row is inserted, and a resolution never writes the claim.
 CREATE FUNCTION app.mobile_offline_claim_resolution_bound() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
 DECLARE c public.mobile_offline_claim%ROWTYPE;x public.mobile_offline_context%ROWTYPE;
 BEGIN
@@ -349,13 +359,16 @@ BEGIN
  IF NOT FOUND OR c.tenant_id<>NEW.tenant_id OR c.outcome<>'needs_review' OR NEW.resolved_by IS DISTINCT FROM app.current_user_id() THEN RAISE EXCEPTION 'Offline claim resolution unavailable'; END IF;
  NEW.resolved_at:=clock_timestamp();
  IF NEW.decision='accepted' THEN
+  IF app.is_group_admin() AND EXISTS(SELECT 1 FROM public.mobile_offline_photo p WHERE p.claim_id=c.id AND p.tenant_id=c.tenant_id AND p.retained_until>clock_timestamp())
+  THEN RAISE EXCEPTION 'Offline claim photo review required'; END IF;
   SELECT * INTO x FROM public.mobile_offline_context WHERE id=c.context_id;
   IF NOT FOUND OR c.effective_minimum IS NULL OR c.effective_minimum<x.issued_at OR NEW.effective_at<c.effective_minimum OR NEW.effective_at>least(c.effective_maximum,x.expires_at)
-  OR NOT EXISTS(SELECT 1 FROM public.attendance_punch p JOIN public.attendance_correction r ON r.id=NEW.correction_id
-   WHERE p.id=NEW.punch_id AND p.tenant_id=c.tenant_id AND p.employment_id=c.employment_id AND p.method::text='admin' AND p.voided_at IS NULL AND p.clock_capture_id IS NULL
-   AND (NEW.effective_at AT TIME ZONE 'Asia/Kuala_Lumpur') IN (p.attendance_date+p.punch_at,(p.attendance_date+1)+p.punch_at)
-   AND r.tenant_id=c.tenant_id AND r.employment_id=c.employment_id AND r.attendance_date=p.attendance_date AND r.status::text='approved'
-   AND EXISTS(SELECT 1 FROM jsonb_array_elements(r.clock_changes->'entries') e WHERE e->'id' IS NULL AND e->>'punchAt'=p.punch_at::text AND e->>'direction'=p.direction::text))
+  OR NOT EXISTS(SELECT 1 FROM public.attendance_correction r CROSS JOIN LATERAL jsonb_array_elements(r.clock_changes->'entries') e
+   WHERE r.id=NEW.correction_id AND r.tenant_id=c.tenant_id AND r.employment_id=c.employment_id AND r.status::text IN ('pending','approved') AND e->'id' IS NULL
+   AND (SELECT count(*) FROM jsonb_array_elements(r.clock_changes->'entries') n WHERE n->'id' IS NULL)=1
+   AND (NEW.effective_at AT TIME ZONE 'Asia/Kuala_Lumpur') IN (r.attendance_date+(e->>'punchAt')::time,(r.attendance_date+1)+(e->>'punchAt')::time)
+   AND (r.status::text='pending' OR EXISTS(SELECT 1 FROM public.attendance_punch p WHERE p.tenant_id=c.tenant_id AND p.employment_id=c.employment_id AND p.attendance_date=r.attendance_date
+    AND p.punch_at=(e->>'punchAt')::time AND p.direction::text=e->>'direction' AND p.method::text='admin' AND p.voided_at IS NULL AND p.clock_capture_id IS NULL)))
   THEN RAISE EXCEPTION 'Offline claim resolution correction binding mismatch'; END IF;
  END IF;
  RETURN NEW;
@@ -363,3 +376,23 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.mobile_offline_claim_resolution_bound() FROM PUBLIC;
 CREATE TRIGGER mobile_offline_claim_resolution_bound BEFORE INSERT ON mobile_offline_claim_resolution FOR EACH ROW EXECUTE FUNCTION app.mobile_offline_claim_resolution_bound();
+-- The state of a resolution, derived and never stored (owner decision D-A, 2026-10-28): a reject is 'rejected'; an
+-- accept is its correction's status ('pending', 'approved' read as 'accepted', 'rejected' or 'cancelled'). A
+-- correction rejected or withdrawn at any level ends the claim there, as a correction ends: the resolution stays the
+-- claim's one decision and a further attempt is an ordinary correction of the day. punch_id is the punch the
+-- approved correction's applied changes added (its attendance.punch.added event names the correction), voided or
+-- not; null otherwise. Same visibility as mobile_offline_claim_resolution_read; definer only so that the claim's
+-- actor need not read the correction and its events through their own policies.
+CREATE FUNCTION app.mobile_offline_claim_resolution_state(wanted uuid[]) RETURNS TABLE(claim_id uuid,status text,punch_id uuid)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public AS $$
+ SELECT r.claim_id,CASE WHEN r.decision='rejected' THEN 'rejected' WHEN k.status::text='approved' THEN 'accepted' ELSE k.status::text END,
+  CASE WHEN r.decision='accepted' AND k.status::text='approved' THEN (SELECT p.id FROM public.attendance_punch p WHERE p.tenant_id=r.tenant_id AND p.employment_id=r.employment_id
+   AND p.attendance_date=k.attendance_date AND p.method::text='admin' AND p.clock_capture_id IS NULL
+   AND EXISTS(SELECT 1 FROM public.domain_event e WHERE e.tenant_id=r.tenant_id AND e.aggregate_type='attendance-punch' AND e.aggregate_id=p.id
+    AND e.event_type='attendance.punch.added' AND e.payload->>'correctionId'=k.id::text) ORDER BY p.id LIMIT 1) END
+ FROM public.mobile_offline_claim_resolution r LEFT JOIN public.attendance_correction k ON k.id=r.correction_id AND k.tenant_id=r.tenant_id
+ WHERE r.claim_id=ANY(wanted) AND r.tenant_id=app.current_tenant_id()
+  AND ((r.actor_id=app.current_user_id() AND app.mobile_integrity_subject(r.employment_id)) OR app.can_correct_attendance(r.employment_id))
+$$;
+REVOKE ALL ON FUNCTION app.mobile_offline_claim_resolution_state(uuid[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.mobile_offline_claim_resolution_state(uuid[]) TO ai_hr_app;

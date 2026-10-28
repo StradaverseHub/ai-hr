@@ -459,6 +459,23 @@ YET IMPLEMENTED: no code, policy or test enforces it yet.
    HR's decision, with its reason, overrides the original hold (geofence, photo, device). Payroll locks
    and correction permissions still apply, and the day recalculates. This replaces the earlier accept
    through the live clock rules. See "HR review and resolution of held claims" below.
+9. D-A, multi-level approval (owner decision 28 October 2026; IMPLEMENTED, UNVERIFIED pending a hosted
+   run). HR's accept files the correction and decides its first level. When the day's workflow has
+   further levels, the claim shows "pending approval" and the punch is written only when the final
+   approver approves, exactly as for any other correction. If a later approver rejects (or the
+   correction is withdrawn), the claim ends there: it stays resolved, and its state reads rejected
+   (or cancelled). This matches how a correction ends. A rejected or withdrawn correction is final and
+   is never reopened; trying again means filing a new correction for the day. The resolution stays
+   the claim's one immutable decision, so no second resolution or second correction can be attached.
+   The employee's view shows pending, accepted or rejected (cancelled after a withdrawal).
+10. D-B, who may accept while a photo is retained (owner decision 28 October 2026; IMPLEMENTED,
+   UNVERIFIED pending a hosted run). While a claim's photo is still retained (not expired, not
+   purged), only someone who can see it may accept: HR with correction rights who is not a group
+   admin. A group admin may reject at any time. It may accept once the photo has expired or been
+   purged, or when the claim has no photo. This is enforced in the service and in the resolution's
+   bound trigger.
+11. D-C, the correction owns the day (owner decision 28 October 2026; no change). An accepted claim's
+   correction owns the day, as for every correction.
 
 ### Canonical offline attendance writer and provenance (28 October 2026)
 
@@ -568,8 +585,13 @@ UNMOUNTED: no route, screen or production caller, and it is not exported through
   photo or purged custody is a typed refusal.
 - Resolution table. `mobile_offline_claim_resolution` holds one immutable row per claim: decision
   `accepted` or `rejected`, a reason (1 to 500 characters), the resolver and time (stamped by the server),
-  an input digest for retry, and for an accept the correction (`correction_id`), its punch (`punch_id`),
-  `effective_at` and `day_revision`. Each correction and each punch is held by at most one resolution. The
+  an input digest for retry, and for an accept the correction (`correction_id`), `effective_at` and
+  `day_revision`. Each correction is held by at most one resolution. The row stores no state and no punch
+  (D-A): `app.mobile_offline_claim_resolution_state` derives them. A reject reads `rejected`. An accept
+  reads its correction's status, with `approved` read as `accepted` (so `pending`, `accepted`, `rejected`
+  or `cancelled`). Its punch is the one the approved correction's applied changes added, found through
+  the `attendance.punch.added` event that names the correction. The function is a definer with the same
+  visibility as the resolution's read policy. `punch_id` and its unique constraint were removed. The
   day revision is the correction model's baseline (`clockFingerprint` of the filed day's punches) the
   resolver decided against. The claim row is never changed: it stays `needs_review` with no capture. The table has
   GRANT SELECT and INSERT only, forced RLS and an immutable trigger on update and delete. Reads are for the
@@ -587,28 +609,37 @@ UNMOUNTED: no route, screen or production caller, and it is not exported through
   `requestAttendanceCorrection` (which now takes an optional caller transaction) files a clock-data
   correction whose entries are the day's live punches unchanged plus one entry at the accepted instant,
   against the baseline read under the subject lock, with the resolution's reason; then
-  `decideAttendanceCorrection` approves it (`expectedStageIndex` 0, as the HR day screen does). The live
+  `decideAttendanceCorrection` approves its first level (`expectedStageIndex` 0, as the HR day screen
+  does). The correction owner is unchanged: it never learns about offline claims. The live
   clock rules do not run, so later punches, geofence, photo setting and registered device do not refuse
   it. The correction rules do: clock-data editing needs `app.can_admin_employment`, the decision needs
   the existing workflow authority, closed payroll raises `AttendancePayrollClosedError` ("Reopen the
   payroll") before the correction is inserted, a stale `expectedRevision` or a changed day raises
   `ClockDataChangedError`, a pending request for the day raises `AttendanceCorrectionPendingError`, and an
-  existing punch at the same time and direction is refused. Approval applies the punch set, recomputes
-  the day ("Corrected"), refreshes overtime and marks processed payroll for recalculation. If the day's
-  workflow needs a further approver the accept refuses with `correction_pending` and nothing is recorded:
-  the accept is one atomic decision. After the first write any throw also aborts the transaction, so a
-  caller that catches it cannot commit a partial correction. The previous `overtime_settled` and
-  `not_acceptable` refusals are gone with the live-rule path; the correction owner decides those days.
-  No photo is read or written by an accept, so a group admin may accept a claim whose photo it cannot
-  read; the photo stays in claim custody.
+  existing punch at the same time and direction is refused. The final approval applies the punch set,
+  recomputes the day ("Corrected"), refreshes overtime and marks processed payroll for recalculation.
+  D-A: if the day's workflow needs a further approver, the correction stays pending. The resolution is
+  still recorded, its state reads `pending` with no punch, and the correction's own final decision
+  writes the punch later; nothing in the offline code runs then. The previous `correction_pending`
+  refusal is gone. While the correction is pending, an identical retry replays and any other
+  resolution is `resolution_conflict`. The correction owner's one-pending-per-day rule also holds the
+  day. After the first write any throw also aborts the transaction, so a caller that catches it cannot
+  commit a partial correction. The previous `overtime_settled` and `not_acceptable` refusals are gone
+  with the live-rule path; the correction owner decides those days. D-B: no photo is read or written by
+  an accept, but while the photo is retained a group admin's accept refuses with
+  `photo_review_required` before anything is written. The service compares the claim's
+  `photo_retained_until` with the database clock; custody is purged only after expiry, so that instant
+  decides. The bound trigger checks the custody row itself (`retained_until > clock_timestamp()`). A
+  group admin's reject is unaffected.
 - Provenance (decision 8). The punch is method `admin`, with no capture, exactly as a correction's punch.
   `attendance_clock_capture.effective_at` stays the canonical offline writer's alone. The chain is claim,
   then resolution (`effective_at`, `correction_id`, `punch_id`), then the approved correction and its
   `attendance.punch.added` event naming that correction. The resolution's BEFORE INSERT trigger (definer)
-  binds an accept: an approved clock-data correction of the claim's employment on the punch's day, whose
-  submitted entries added that punch (an entry with no id at its time and direction), and a live `admin`
-  punch with no capture whose MYT wall time is `effective_at` (on the next day for an overnight out filed
-  to its shift's start day). Visible consequence: HR and the employee see the punch as an HR correction
+  binds an accept: a pending or approved clock-data correction of the claim's employment, whose
+  submitted entries add exactly one punch (one entry with no id) at the MYT wall time of `effective_at`
+  on the correction's day (or the next day, for an overnight out filed to its shift's start day). When
+  that correction is already approved, the live `admin` punch with no capture that it added must exist.
+  The same trigger refuses a group admin's accept while the photo custody is retained (D-B). Visible consequence: HR and the employee see the punch as an HR correction
   ("Corrected", method admin), not as an offline clocking. The correction's reason is the HR resolution
   reason, and attendance_correction's RLS (`app.can_see_employment`) lets the employee's session read that
   row; which screens list it was not checked (UNKNOWN). The approved
@@ -630,13 +661,17 @@ UNMOUNTED: no route, screen or production caller, and it is not exported through
   left out. A resolution never asks for an actor, key or stream lock, so it cannot wait on one while
   holding the subject lock. Below the subject lock, both paths queue on the same per-employment lock.
 - Employee view. `ownOfflineClaimResolution` returns the actor's own claim outcome and its resolution
-  (decision, instant, correction, punch, time). It leaves out the resolver, reason and baseline. It is a separate
+  (decision, derived state `pending`/`accepted`/`rejected`/`cancelled`, instant, correction, derived
+  punch, time). HR's list and the resolve result carry the same derived state. It leaves out the resolver, reason and baseline. It is a separate
   read, not a v1 receipt field.
 - Superseded RISK. The earlier accept ran every live clock rule at the chosen instant, so a claim
   reviewed after later clockings, or held for geofence, photo or device, could not be accepted. Decision 8
-  (above) replaces that path. UNKNOWN: whether a multi-level attendance workflow should let an accept wait
-  for its further approvers instead of refusing with `correction_pending`; not decided.
+  (above) replaces that path. The former UNKNOWN about multi-level workflows is settled by D-A.
 - New suite: `test/mobile-offline-claim-review.test.ts`, including an accept behind a later offline
   clocking the live rules refuse, geofence and photo holds overridden, the day recomputed, the provenance
-  chain and its trigger binding. The draft worker restore drops the new table and both functions and
-  checks each is gone (the capture policy no longer exists).
+  chain and its trigger binding. The draft worker restore drops the new table and its three functions
+  (window, bound trigger, state) and checks each is gone (the capture policy no longer exists). D-A
+  and D-B cases (28 October 2026): a two-level accept pending with no punch until the final approval,
+  a later-level rejection, pending blocking a second resolution, and a group admin refused while the
+  photo is retained (service and trigger) but able to reject, or to accept after expiry or with no
+  photo.

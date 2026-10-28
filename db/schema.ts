@@ -665,14 +665,15 @@ export const mobileOfflinePhoto=pgTable('mobile_offline_photo',{
  photoCiphertext:text('photo_ciphertext').notNull(),createdAt:timestamp('created_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),
 },t=>[index('mobile_offline_photo_expiry_idx').on(t.tenantId,t.retainedUntil)]);
 // Reserved 0647 draft: one immutable human resolution per held claim; an accept links the HR punch correction that
-// recorded it (correction and its 'admin' punch) and holds the accepted instant.
+// records it and holds the accepted instant. Its state and punch are the correction's, derived by
+// app.mobile_offline_claim_resolution_state (owner decision D-A, 2026-10-28), never stored here.
 export const mobileOfflineClaimResolution=pgTable('mobile_offline_claim_resolution',{
  claimId:uuid('claim_id').primaryKey().references(()=>mobileOfflineClaim.id),tenantId:tenantId(),actorId:uuid('actor_id').notNull(),employmentId:uuid('employment_id').notNull(),
  decision:text('decision').notNull().$type<'accepted'|'rejected'>(),effectiveAt:timestamp('effective_at',{withTimezone:true}),
- correctionId:uuid('correction_id').references(():AnyPgColumn=>attendanceCorrection.id),punchId:uuid('punch_id').references(():AnyPgColumn=>attendancePunch.id),
+ correctionId:uuid('correction_id').references(():AnyPgColumn=>attendanceCorrection.id),
  dayRevision:text('day_revision'),reason:text('reason').notNull(),inputDigest:text('input_digest').notNull(),
  resolvedBy:uuid('resolved_by').notNull().references(()=>appUser.id),resolvedAt:timestamp('resolved_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),
-},t=>[uniqueIndex('mobile_offline_claim_resolution_correction_uq').on(t.correctionId),uniqueIndex('mobile_offline_claim_resolution_punch_uq').on(t.punchId),
+},t=>[uniqueIndex('mobile_offline_claim_resolution_correction_uq').on(t.correctionId),
  index('mobile_offline_claim_resolution_subject_idx').on(t.tenantId,t.employmentId,t.resolvedAt)]);
 
 // Deployment identities are private to SECURITY DEFINER functions; they do not duplicate HR membership.

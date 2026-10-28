@@ -2215,3 +2215,18 @@ attendance-workflow correction suites, the readers and clock-data suites). No fa
 40631379799 and 40631394419 that the HR-accept change does not reach are retained. Draft 0647 is
 `bd89b2e0a3342e1f4d24bf0c7a4e79ab37ccc9718b9dad70c2c1bad57eb0f991`; 0636 and the journal are unchanged. Still
 unmounted: no route, production snapshot port, settings or HR screen; synthetic vendor proofs, no device.
+
+### Multi-level accept and group-admin photo rule (owner decisions D-A, D-B, D-C, 28 October 2026)
+
+UNVERIFIED pending a hosted run: no vitest, TypeScript, build or database command was run for this change
+(only `git diff --check`). D-A: an HR accept still files the correction and decides its first level; a further
+level leaves it pending, the resolution is recorded, and the correction's own final approval writes the punch.
+The resolution row drops `punch_id` and its unique constraint. The new definer
+`app.mobile_offline_claim_resolution_state(uuid[])` derives each resolution's state (pending, accepted, rejected,
+cancelled) and punch from the linked correction, and the BEFORE INSERT bound trigger accepts a pending or
+approved correction that adds exactly one punch at `effective_at`. D-B: a group admin's accept is refused
+(`photo_review_required`) while the photo is retained, in the service and in the trigger; its reject is
+unaffected. D-C: no change. The correction owner (`core/attendance.ts`) is unchanged. New 0647 SHA-256
+`b8313345c31f0f0bcbbf11050ff85cd7b505efa74db3a2f886764fac97f936bf`; 0636 is unchanged
+(`9063b27c0cc316b715d552561d636ffc6412e447ca9275758bf497870c995df7`) and the migration journal is unchanged.
+Still unmounted: no route, screen or enabled company; synthetic vendor proofs, no device.
