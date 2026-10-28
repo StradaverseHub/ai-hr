@@ -25920,7 +25920,12 @@
     "coverageComplete": "Đã phân công đủ vai trò",
     "assigned": "Người được phân công",
     "missingRole": "Còn thiếu",
-    "optionalNone": "Không bắt buộc, chưa có"
+    "optionalNone": "Không bắt buộc, chưa có",
+    "person": "Người",
+    "personSearch": "Tìm theo tên, mã nhân viên hoặc email",
+    "noPeople": "Không có nhân viên đang làm việc phù hợp",
+    "noLogin": "Chưa có tài khoản đăng nhập",
+    "noLoginHelp": "Những người được đánh dấu \"Chưa có tài khoản đăng nhập\" là nhân viên đang làm việc nhưng chưa được mời vào AIHR. Hãy đề nghị bộ phận nhân sự mời họ trước khi giao vai trò đãi ngộ."
   },
   "rewardsDeletion": {
     "view": "Xem",

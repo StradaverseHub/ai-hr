@@ -8,6 +8,7 @@ import { rewardRoles, type RewardRole } from '@/packs/rewards/model';
 import type { RewardAccessAdministration, RewardAccessChange } from '@/packs/rewards/service';
 import { previewRewardAccessAction, saveRewardAccessAction } from '@/app/rewards/actions';
 import { RewardCoveragePanel } from './coverage-panel';
+import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 type Member = RewardAccessAdministration['members'][number];
 type Preview = RewardAccessChange & {
     digest: string;
@@ -23,15 +24,19 @@ export function RewardAccessEditor({ value }: {
     } | null>(null);
     const [unitId, setUnitId] = useState(''), [userId, setUserId] = useState(''), [role, setRole] = useState<RewardRole>('bu');
     const [preview, setPreview] = useState<Preview | null>(null), [error, setError] = useState(''), [saved, setSaved] = useState(false), [busy, start] = useTransition();
-    const editorRef = useRef<HTMLDivElement>(null), userRef = useRef<HTMLSelectElement>(null);
+    const editorRef = useRef<HTMLDivElement>(null), userRef = useRef<HTMLDivElement>(null), [pickerKey, setPickerKey] = useState(0);
     const clear = () => { setPreview(null); setError(''); setSaved(false); };
-    const open = (before: Member | null, remove = false) => { clear(); setEditor({ before, remove }); setUnitId(before?.unitId ?? value.reviews.find(x => x.status === 'draft')?.id ?? ''); setUserId(before?.userId ?? ''); setRole(before?.role ?? 'bu'); requestAnimationFrame(() => { editorRef.current?.scrollIntoView({ block: 'nearest', behavior: 'auto' }); userRef.current?.focus(); }); };
+    const open = (before: Member | null, remove = false) => { clear(); setEditor({ before, remove }); setUnitId(before?.unitId ?? value.reviews.find(x => x.status === 'draft')?.id ?? ''); setUserId(before?.userId ?? ''); setRole(before?.role ?? 'bu'); setPickerKey(k => k + 1); requestAnimationFrame(() => { editorRef.current?.scrollIntoView({ block: 'nearest', behavior: 'auto' }); userRef.current?.querySelector<HTMLElement>('button, input')?.focus(); }); };
     const review = value.reviews.find(x => x.id === unitId);
     const change: RewardAccessChange = { unitId, revision: review?.revision ?? 0, before: editor?.before ? { userId: editor.before.userId, role: editor.before.role } : null, after: editor?.remove ? null : { userId, role } };
     const name = (id: string) => { const account = value.users.find(x => x.id === id) ?? value.members.find(x => x.userId === id); return account?.name ?? account?.email ?? t('unavailable', { id }); };
     const scope = (id: string) => { const row = value.reviews.find(x => x.id === id); return row ? `${row.company} / ${row.unit} · ${row.cycle} · ${row.year} · ${r(`kinds.${row.kind}`)}` : ''; };
     const inScope = (v: RewardAccessAdministration['reviews'][number]) => (!company || v.companyId === company) && (!cycle || v.cycleId === cycle) && (!unitFilter || v.businessUnitId === unitFilter);
-    const rows = value.members.filter(m => { const v = value.reviews.find(x => x.id === m.unitId); return v && inScope(v) && `${m.name ?? ''} ${m.email ?? ''}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()); });
+    const rows = value.members.filter(m => { const v = value.reviews.find(x => x.id === m.unitId); return v && inScope(v) && `${m.name ?? ''} ${m.email ?? ''} ${m.employeeCode ?? ''}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()); });
+    // 68c84963: searchable people picker. Identification only (employee number, title, company, BU); a person
+    // without a login is listed but cannot be chosen, and prepareAccess still refuses anything but an active login.
+    const facts = (x: { employeeCode: string | null; jobTitle: string | null; companyName: string | null; businessUnitName: string | null }) => [x.employeeCode, x.jobTitle, x.companyName, x.businessUnitName].filter(Boolean).join(' · ');
+    const accounts: ComboboxOption[] = [...value.users.map(x => ({ value: x.id, label: x.name ?? x.email ?? t('unnamed'), description: [facts(x), x.email].filter(Boolean).join(' · '), keywords: x.employeeCode ?? '' })), ...value.candidates.map((x, i) => ({ value: `no-login:${i}`, label: x.name ?? x.email ?? t('unnamed'), description: [t('noLogin'), facts(x)].filter(Boolean).join(' · '), keywords: `${x.email ?? ''} ${x.employeeCode ?? ''}`, disabled: true }))];
     const unique = (field: 'companyId' | 'cycleId' | 'businessUnitId') => [...new Map(value.reviews.map(x => [x[field], x])).values()];
     const unchanged = !!editor?.before && !editor.remove && editor.before.userId === userId && editor.before.role === role;
     return <div className="space-y-6">
@@ -55,7 +60,7 @@ export function RewardAccessEditor({ value }: {
   {saved && <p role="status" className="rounded-md border p-3 text-sm">{t('saved')}</p>}
   <div ref={editorRef}>{editor && <Card className="p-5"><SectionHeader title={t(editor.remove ? 'removeTitle' : editor.before ? 'editTitle' : 'add')}/><p className="mb-4 max-w-3xl text-sm text-muted-foreground">{t('bounded')}</p>
    <fieldset disabled={busy} className="grid gap-4 md:grid-cols-2">
-    <Field label={t('account')}><select ref={userRef} className={inputCls} value={userId} disabled={editor.remove} onChange={e => { setUserId(e.target.value); clear(); }}><option value="">{t('chooseAccount')}</option>{editor.remove ? <option value={userId}>{name(userId)}</option> : value.users.map(x => <option key={x.id} value={x.id}>{x.name ?? x.email ?? t('unnamed')}{x.name && x.email ? ` · ${x.email}` : ''}</option>)}</select></Field>
+    <div ref={userRef}><Field label={t('person')}>{editor.remove ? <input className={inputCls} readOnly value={name(userId)}/> : <Combobox key={pickerKey} value={userId} options={accounts} placeholder={t('chooseAccount')} searchPlaceholder={t('personSearch')} noResultsLabel={t('noPeople')} legacySuffix="" onValueChange={v => { if (!v.startsWith('no-login:')) { setUserId(v); clear(); } }}/>}</Field>{!editor.remove && value.candidates.length > 0 && <p className="mt-1 text-xs text-muted-foreground">{t('noLoginHelp')}</p>}</div>
     <Field label={t('role')}><select className={inputCls} value={role} disabled={editor.remove} onChange={e => { setRole(e.target.value as RewardRole); clear(); }}>{rewardRoles.map(x => <option key={x} value={x}>{r(`roles.${x}`)}</option>)}</select></Field>
     <Field label={t('scope')}><select className={inputCls} value={unitId} disabled={!!editor.before} onChange={e => { setUnitId(e.target.value); clear(); }}><option value="">{t('chooseScope')}</option>{value.reviews.map(x => <option key={x.id} value={x.id} disabled={x.status !== 'draft'}>{scope(x.id)}</option>)}</select></Field>
     <div className="rounded-md border p-3 text-sm"><p className="font-medium">{r(`roles.${role}`)}</p><p className="mt-1 text-muted-foreground">{t(`permissions.${role}`)}</p></div>

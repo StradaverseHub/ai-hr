@@ -25920,7 +25920,12 @@
     "coverageComplete": "Semua peranan ditetapkan",
     "assigned": "Ditetapkan",
     "missingRole": "Tiada",
-    "optionalNone": "Pilihan, tiada"
+    "optionalNone": "Pilihan, tiada",
+    "person": "Orang",
+    "personSearch": "Cari nama, nombor pekerja atau e-mel",
+    "noPeople": "Tiada pekerja aktif yang sepadan",
+    "noLogin": "Belum ada log masuk",
+    "noLoginHelp": "Orang bertanda \"Belum ada log masuk\" ialah pekerja aktif yang belum dijemput ke AIHR. Minta HR menjemput mereka sebelum memberikan peranan Ganjaran."
   },
   "rewardsDeletion": {
     "view": "Lihat",

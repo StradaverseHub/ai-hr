@@ -167,6 +167,33 @@ describe('Rewards review maintenance and canonical scoped access', () => {
         expect(state.members.filter(m => m.role === 'ctro').map(m => m.userId)).toEqual([spare.userId]);
         expect(state.members.some(m => m.role === 'ec')).toBe(false);
     });
+    it('68c84963: offers active logins with employment facts and lists active employees without a login as not grantable', async () => {
+        const [title] = await owner.db.insert(s.position).values({ tenantId: b.tenantId, companyId: b.companyId, title: 'Regional Sales Head' }).returning();
+        const [own] = await owner.db.select().from(s.company).where(eq(s.company.id, b.companyId));
+        const hire = async (fullName: string) => hireEmployee(admin, { person: { fullName, primaryEmail: `${randomUUID()}@rewards.test` }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: `${year - 1}-01-01` });
+        const linked = await hire('Facts Reviewer');
+        await owner.db.update(s.employment).set({ employeeCode: 'RW-0042' }).where(eq(s.employment.id, linked.employmentId));
+        await owner.db.update(s.assignment).set({ businessUnitId: bu, positionId: title.id }).where(eq(s.assignment.employmentId, linked.employmentId));
+        const login = await createAppUser(b.tenantId, linked.personId, 'employee');
+        const unlinked = await hire('Unlinked Employee');
+        const departed = await hire('Departed Employee'), departedUnlinked = await hire('Departed Unlinked');
+        for (const e of [departed, departedUnlinked])
+            await owner.db.update(s.employment).set({ terminatedOn: `${year - 1}-06-30` }).where(eq(s.employment.id, e.employmentId));
+        const departedLogin = await createAppUser(b.tenantId, departed.personId, 'employee');
+        const state = await rewardAccessAdministration(admin, [b.companyId]);
+        expect(state.users.find(u => u.id === login)).toMatchObject({ name: 'Facts Reviewer', employeeCode: 'RW-0042', jobTitle: 'Regional Sales Head', companyName: own.legalName, businessUnitName: 'Operations' });
+        expect(state.users.some(u => u.id === departedLogin)).toBe(false);
+        expect(state.candidates.map(c => c.name)).toContain('Unlinked Employee');
+        expect(state.candidates.map(c => c.name)).not.toContain('Departed Unlinked');
+        expect(state.candidates.map(c => c.name)).not.toContain('Facts Reviewer');
+        expect(JSON.stringify(state)).not.toMatch(/basic|salary|Cents|personId/i);
+        // Being listed grants nothing: neither a person id nor a blocked login is an active login account.
+        await expect(preview({ userId: unlinked.personId, role: 'bu' })).rejects.toMatchObject({ code: 'account' });
+        await expect(preview({ userId: departedLogin, role: 'bu' })).rejects.toMatchObject({ code: 'account' });
+        // Members carry the same identification, so the assignment search can match an employee number.
+        await save(await preview({ userId: login, role: 'pbp' }));
+        expect((await rewardAccessAdministration(admin, [b.companyId])).members.find(m => m.userId === login)).toMatchObject({ employeeCode: 'RW-0042' });
+    });
     it('rechecks revocation for detail, configuration, entry actions and previously open previews', async () => {
         await setRewardMember(admin, id, await revision(), reviewer.userId!, 'gr');
         const open = await getRewardUnit(reviewer, id);

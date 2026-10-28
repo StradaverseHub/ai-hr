@@ -25920,7 +25920,12 @@
     "coverageComplete": "All roles assigned",
     "assigned": "Assigned",
     "missingRole": "Missing",
-    "optionalNone": "Optional, none"
+    "optionalNone": "Optional, none",
+    "person": "Person",
+    "personSearch": "Search name, employee number or email",
+    "noPeople": "No matching active employees",
+    "noLogin": "No login yet",
+    "noLoginHelp": "People marked \"No login yet\" are active employees who have not been invited to AIHR. Ask HR to invite them before giving them a Rewards role."
   },
   "rewardsDeletion": {
     "view": "View",

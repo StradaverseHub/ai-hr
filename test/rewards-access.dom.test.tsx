@@ -9,8 +9,13 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: ports.refresh }
 vi.mock('../app/rewards/actions', () => ({ previewRewardAccessAction: ports.preview, saveRewardAccessAction: ports.save }));
 const roles = ['bu', 'bg', 'gr', 'ctro', 'ec', 'pbp', 'payroll'] as const;
 const coverage = (unitId: string, holders: Partial<Record<(typeof roles)[number], string>>) => ({ unitId, roles: roles.map(role => ({ role, required: role !== 'pbp', activeHolders: holders[role] ? [{ userId: role, name: holders[role]!, email: null }] : [] })), missing: roles.filter(role => role !== 'pbp' && !holders[role]) });
+const none = { employeeCode: null, jobTitle: null, companyName: null, businessUnitName: null };
+const facts = { employeeCode: 'EMP-0042', jobTitle: 'Sales Head', companyName: 'Example Company', businessUnitName: 'Operations' };
 const review = { id: 'review', companyId: 'company', company: 'Example Company', businessUnitId: 'unit', unit: 'Operations', cycleId: 'cycle', cycle: 'Annual cycle', year: 2026, kind: 'annual' as const, status: 'draft' as const, revision: 4, coverage: coverage('review', { gr: 'Rewards Lead' }) };
-const value: RewardAccessAdministration = { reviews: [review, { ...review, id: 'locked', businessUnitId: 'locked-unit', unit: 'Finance', status: 'approved', coverage: coverage('locked', { bu: 'A', bg: 'B', gr: 'C', ctro: 'D', ec: 'E', payroll: 'F' }) }], users: [{ id: 'admin', name: 'Rewards Lead', email: 'lead@example.test' }, { id: 'user', name: 'New Reviewer', email: 'new@example.test' }], members: [{ id: 'gr', unitId: 'review', userId: 'admin', role: 'gr', name: 'Rewards Lead', email: 'lead@example.test', disabled: false }, { id: 'pbp', unitId: 'locked', userId: 'user', role: 'pbp', name: 'New Reviewer', email: 'new@example.test', disabled: true }] };
+const value: RewardAccessAdministration = { reviews: [review, { ...review, id: 'locked', businessUnitId: 'locked-unit', unit: 'Finance', status: 'approved', coverage: coverage('locked', { bu: 'A', bg: 'B', gr: 'C', ctro: 'D', ec: 'E', payroll: 'F' }) }], users: [{ id: 'admin', name: 'Rewards Lead', email: 'lead@example.test', ...none }, { id: 'user', name: 'New Reviewer', email: 'new@example.test', ...facts }], members: [{ id: 'gr', unitId: 'review', userId: 'admin', role: 'gr', name: 'Rewards Lead', email: 'lead@example.test', disabled: false, ...none }, { id: 'pbp', unitId: 'locked', userId: 'user', role: 'pbp', name: 'New Reviewer', email: 'new@example.test', disabled: true, ...facts }], candidates: [{ name: 'Invite Pending', email: 'pending@example.test', employeeCode: 'EMP-0077', jobTitle: 'Analyst', companyName: 'Example Company', businessUnitName: 'Finance' }] };
+// 68c84963: the person picker is a searchable combobox; a row is chosen by mousedown, as a pointer would.
+const trigger = () => document.querySelector<HTMLButtonElement>('button[aria-haspopup="listbox"]')!;
+const pick = (label: string) => { fireEvent.click(trigger()); fireEvent.mouseDown(screen.getByRole('option', { name: new RegExp(label) })); };
 const show = () => render(<NextIntlClientProvider locale="en" messages={en}><RewardAccessEditor value={value}/></NextIntlClientProvider>);
 beforeEach(() => { vi.clearAllMocks(); Element.prototype.scrollIntoView = vi.fn(); ports.preview.mockImplementation(async (input) => ({ ok: true, preview: { ...input, digest: 'a'.repeat(64) } })); ports.save.mockResolvedValue({ ok: true }); });
 afterEach(cleanup);
@@ -40,10 +45,29 @@ describe('Central Rewards access journey', () => {
         expect(within(complete).getByText('All roles assigned')).toBeTruthy();
         expect(within(complete).queryByText('Missing')).toBeNull();
     });
+    it('68c84963: searches people by employee number with job, company and unit, and never selects a person without a login', () => {
+        show();
+        fireEvent.change(screen.getByLabelText('Search users'), { target: { value: 'emp-0042' } });
+        expect(within(screen.getAllByRole('table')[0]).getByText('New Reviewer')).toBeTruthy();
+        expect(within(screen.getAllByRole('table')[0]).queryByText('Rewards Lead')).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Add access' }));
+        fireEvent.click(trigger());
+        fireEvent.change(screen.getByPlaceholderText(en.rewardsAccess.personSearch), { target: { value: 'EMP-0042' } });
+        const match = screen.getByRole('option', { name: /New Reviewer/ });
+        expect(match.textContent).toContain('EMP-0042 · Sales Head · Example Company · Operations');
+        expect(screen.queryByRole('option', { name: /Rewards Lead/ })).toBeNull();
+        fireEvent.change(screen.getByPlaceholderText(en.rewardsAccess.personSearch), { target: { value: 'pending' } });
+        const pending = screen.getByRole('option', { name: /Invite Pending/ });
+        expect(pending.getAttribute('aria-disabled')).toBe('true');
+        expect(pending.textContent).toContain(en.rewardsAccess.noLogin);
+        fireEvent.mouseDown(pending);
+        expect(trigger().textContent).toContain(en.rewardsAccess.chooseAccount);
+        expect(screen.getByText(en.rewardsAccess.noLoginHelp)).toBeTruthy();
+    });
     it('previews one exact assignment and saves only the previewed before/after with its digest', async () => {
         show();
         fireEvent.click(screen.getByRole('button', { name: 'Add access' }));
-        fireEvent.change(screen.getByLabelText('Existing login account'), { target: { value: 'user' } });
+        pick('New Reviewer');
         fireEvent.click(screen.getByRole('button', { name: 'Preview changes' }));
         await screen.findByRole('heading', { name: 'Review changes before saving' });
         expect(ports.preview).toHaveBeenCalledWith({ unitId: 'review', revision: 4, before: null, after: { userId: 'user', role: 'bu' } });
@@ -57,7 +81,7 @@ describe('Central Rewards access journey', () => {
     it('invalidates a preview after edits and displays a stale-preview refusal without claiming success', async () => {
         show();
         fireEvent.click(screen.getByRole('button', { name: 'Add access' }));
-        fireEvent.change(screen.getByLabelText('Existing login account'), { target: { value: 'user' } });
+        pick('New Reviewer');
         fireEvent.click(screen.getByRole('button', { name: 'Preview changes' }));
         await screen.findByRole('button', { name: 'Confirm and save' });
         // The preview can render before its transition settles; a user must wait for an enabled action.

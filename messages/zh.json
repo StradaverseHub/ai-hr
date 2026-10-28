@@ -25920,7 +25920,12 @@
     "coverageComplete": "所有角色均已分配",
     "assigned": "已分配",
     "missingRole": "缺失",
-    "optionalNone": "可选，无"
+    "optionalNone": "可选，无",
+    "person": "人员",
+    "personSearch": "搜索姓名、员工编号或电子邮件",
+    "noPeople": "没有匹配的在职员工",
+    "noLogin": "尚无登录账户",
+    "noLoginHelp": "标记为“尚无登录账户”的人员是尚未受邀加入 AIHR 的在职员工。请先让人力资源部邀请他们，再分配薪酬评审角色。"
   },
   "rewardsDeletion": {
     "view": "查看",

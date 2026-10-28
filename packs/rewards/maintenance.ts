@@ -1,10 +1,11 @@
 /** Review lifecycle and access administration. These projections never load the pay roster. */
 import { createHash } from 'node:crypto';
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { SessionContext, Tx } from '../../db/client';
 import { actorOf, appendEvent } from '../../db/events';
-import { appUser, businessUnit, company, person, rewardCycle, rewardMember, rewardUnit } from '../../db/schema';
+import { appUser, assignment, businessUnit, company, employment, person, position, rewardCycle, rewardMember, rewardUnit } from '../../db/schema';
+import { todayInKualaLumpur } from '../../lib/hr-date';
 import { withRewardsTenant } from '../../core/module-gate';
 import { rewardRoles, type RewardRole } from './model';
 import { activeRewardLogin, rewardRequiredRoles, rewardRoleLabels, rewardUnitCoverage } from './coverage';
@@ -39,6 +40,22 @@ async function adminUnit(tx: Tx, id: string, revision?: number, lock = false) {
 // General person RLS has a legacy any-admin read arm. Candidate names and new grants instead
 // use the canonical workforce read policy, which retains group-wide unassigned-person access.
 const visibleCandidate = sql<boolean> `app.access_workforce_person(${person.id}, 'workforce.view')`;
+const buName = sql<string> `coalesce(nullif(trim(${businessUnit.label}),''),${businessUnit.code})`;
+// Same rule as app.login_blocked_on: an employment counts until its earliest end date, unless suspended.
+const activeEmployment = (today: string) => and(isNull(employment.blacklistedAt), sql `(least(${employment.resignationDate},${employment.lastWorkingDate},${employment.terminatedOn}) is null or ${today}::date <= least(${employment.resignationDate},${employment.lastWorkingDate},${employment.terminatedOn}))`);
+/** 68c84963 — identification facts from the earliest-hired active employment and its assignment current on
+ *  `today` (Kuala Lumpur HR date). Employment/assignment RLS applies as for any People read; never pay. */
+async function workforceFacts(tx: Tx, personIds: string[], today: string) {
+    const facts = new Map<string, { employeeCode: string | null; jobTitle: string | null; companyName: string | null; businessUnitName: string | null }>();
+    if (!personIds.length)
+        return facts;
+    const rows = await tx.select({ personId: employment.personId, employeeCode: employment.employeeCode, jobTitle: position.title, companyName: company.legalName, businessUnitName: buName }).from(employment).innerJoin(company, eq(company.id, employment.companyId)).leftJoin(assignment, and(eq(assignment.employmentId, employment.id), isNull(assignment.supersededAt), lte(assignment.validFrom, today), or(isNull(assignment.validTo), gte(assignment.validTo, today)))).leftJoin(position, eq(position.id, assignment.positionId)).leftJoin(businessUnit, eq(businessUnit.id, assignment.businessUnitId)).where(and(inArray(employment.personId, [...new Set(personIds)]), activeEmployment(today))).orderBy(asc(employment.personId), asc(employment.hiredOn), asc(employment.id), desc(assignment.validFrom));
+    for (const { personId, ...row } of rows)
+        if (!facts.has(personId))
+            facts.set(personId, row);
+    return facts;
+}
+const noFacts = { employeeCode: null, jobTitle: null, companyName: null, businessUnitName: null };
 const pairKey = (m: {
     userId: string;
     role: string;
@@ -115,14 +132,21 @@ export async function rewardAccessAdministration(ctx: SessionContext, companyIds
     const ids = z.array(uuid).max(500).parse(companyIds);
     return withRewardsTenant(ctx, async (tx) => {
         if (!ids.length)
-            return { reviews: [], members: [], users: [] };
+            return { reviews: [], members: [], users: [], candidates: [] };
         const reviews = await tx.select({ id: rewardUnit.id, companyId: company.id, company: company.legalName, businessUnitId: businessUnit.id, unit: sql<string> `coalesce(nullif(trim(${businessUnit.label}),''),${businessUnit.code})`, cycleId: rewardCycle.id, cycle: rewardCycle.name, year: rewardCycle.year, kind: rewardUnit.kind, status: rewardUnit.status, revision: rewardUnit.revision }).from(rewardUnit).innerJoin(company, eq(company.id, rewardUnit.companyId)).innerJoin(businessUnit, eq(businessUnit.id, rewardUnit.businessUnitId)).innerJoin(rewardCycle, eq(rewardCycle.id, rewardUnit.cycleId)).where(and(inArray(rewardUnit.companyId, ids), isNull(rewardUnit.deletedAt), sql `app.reward_admin(${rewardUnit.companyId})`)).orderBy(desc(rewardCycle.year), asc(rewardCycle.name), asc(company.legalName), asc(businessUnit.code), asc(rewardUnit.id));
         if (!reviews.length)
-            return { reviews: [], members: [], users: [] };
+            return { reviews: [], members: [], users: [], candidates: [] };
         const coverage = new Map((await rewardUnitCoverage(tx, reviews.map(r => r.id))).map(c => [c.unitId, c]));
-        const members = await tx.select({ id: rewardMember.id, unitId: rewardMember.unitId, userId: rewardMember.userId, role: rewardMember.role, name: person.fullName, email: person.primaryEmail, disabled: sql<boolean> `${appUser.archivedAt} is not null or app.login_blocked(${appUser.id})` }).from(rewardMember).innerJoin(appUser, and(eq(appUser.id, rewardMember.userId), eq(appUser.tenantId, rewardMember.tenantId))).leftJoin(person, and(eq(person.id, appUser.personId), visibleCandidate)).where(inArray(rewardMember.unitId, reviews.map(r => r.id))).orderBy(asc(person.fullName), asc(appUser.id), asc(rewardMember.unitId), asc(rewardMember.role));
-        const users = await tx.select({ id: appUser.id, name: person.fullName, email: person.primaryEmail }).from(appUser).innerJoin(person, and(eq(person.id, appUser.personId), visibleCandidate)).where(and(eq(appUser.tenantId, ctx.tenantId), isNull(appUser.archivedAt), sql `not app.login_blocked(${appUser.id})`)).orderBy(asc(person.fullName), asc(appUser.id));
-        return { reviews: reviews.map(r => ({ ...r, coverage: coverage.get(r.id)! })), members, users };
+        const today = todayInKualaLumpur();
+        const memberRows = await tx.select({ id: rewardMember.id, unitId: rewardMember.unitId, userId: rewardMember.userId, role: rewardMember.role, name: person.fullName, email: person.primaryEmail, personId: person.id, disabled: sql<boolean> `${appUser.archivedAt} is not null or app.login_blocked(${appUser.id})` }).from(rewardMember).innerJoin(appUser, and(eq(appUser.id, rewardMember.userId), eq(appUser.tenantId, rewardMember.tenantId))).leftJoin(person, and(eq(person.id, appUser.personId), visibleCandidate)).where(inArray(rewardMember.unitId, reviews.map(r => r.id))).orderBy(asc(person.fullName), asc(appUser.id), asc(rewardMember.unitId), asc(rewardMember.role));
+        const userRows = await tx.select({ id: appUser.id, name: person.fullName, email: person.primaryEmail, personId: person.id }).from(appUser).innerJoin(person, and(eq(person.id, appUser.personId), visibleCandidate)).where(and(eq(appUser.tenantId, ctx.tenantId), isNull(appUser.archivedAt), sql `not app.login_blocked(${appUser.id})`)).orderBy(asc(person.fullName), asc(appUser.id));
+        // Active employees of these companies with no login yet: shown, never grantable (prepareAccess refuses).
+        const candidateRows = await tx.selectDistinctOn([person.id], { personId: person.id, name: person.fullName, email: person.primaryEmail }).from(employment).innerJoin(person, and(eq(person.id, employment.personId), visibleCandidate)).where(and(inArray(employment.companyId, ids), activeEmployment(today), sql `not exists(select 1 from app_user u where u.person_id=${person.id})`)).orderBy(asc(person.id)).limit(2000);
+        const facts = await workforceFacts(tx, [...memberRows, ...userRows, ...candidateRows].flatMap(r => r.personId ? [r.personId] : []), today);
+        const withFacts = <T extends { personId: string | null }>({ personId, ...row }: T) => ({ ...row, ...(personId && facts.get(personId) || noFacts) });
+        const members = memberRows.map(withFacts), users = userRows.map(withFacts);
+        const candidates = candidateRows.map(withFacts).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
+        return { reviews: reviews.map(r => ({ ...r, coverage: coverage.get(r.id)! })), members, users, candidates };
     });
 }
 export type RewardAccessAdministration = Awaited<ReturnType<typeof rewardAccessAdministration>>;
