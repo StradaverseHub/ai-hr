@@ -14,6 +14,10 @@ import './onboarding-workspace.css';
 // 2026-10-20); a module import is an explicit edge the cache cannot miss. All its rules are scoped to
 // :root[data-ui-theme='atelier'], so loading it for every theme changes nothing for the others.
 import './atelier.css';
+// The Performance & Talent area theme (D-P1-32 D3): every rule is scoped to [data-area-theme='performance']
+// (app/performance/layout.tsx). Imported after atelier.css so its layer is declared after Tailwind's, as an explicit
+// module edge for the same cache reason as above.
+import './performance/area-theme.css';
 import { Suspense } from 'react';
 import { Providers } from './providers';
 import { OperatorShell } from '@/components/operator-shell';
