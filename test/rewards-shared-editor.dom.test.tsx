@@ -60,6 +60,15 @@ describe('shared configuration pair picker',()=>{
   expect(JSON.parse(document.querySelector<HTMLInputElement>('input[name="targets"]')!.value)).toEqual([{companyId:id(1),businessUnitId:id(3)}]);
   expect(load.mock.calls.map(args=>args[0])).toEqual([year+1,year+2]);
  });
+ it('hides archived and excluded companies for new selection but retains saved unavailable coverage',()=>{
+  const props={actorUserId:id(9),groupId:null,revision:0,name:'Fictional',year,targets:[],companies:[{...companies[0],archived:true},{...companies[1],excludedYears:[year]}],units,policyFields:null,saveAction:vi.fn()};
+  const view=render(wrap(<SharedRewardEditor {...props}/>));
+  expect(screen.queryByRole('checkbox',{name:/Fictional Company/})).toBeNull();
+  view.rerender(wrap(<SharedRewardEditor {...props} groupId={id(6)} revision={1} targets={[{companyId:id(1),businessUnitId:id(3)}]}/>));
+  expect(screen.getByRole('checkbox',{name:`Fictional Company A · ${en.rewards.sharedPolicy.archived}`})).toBeTruthy();
+  expect(screen.getByRole<HTMLButtonElement>('button',{name:en.rewards.sharedPolicy.preview}).disabled).toBe(true);
+  expect(screen.getByRole('button',{name:en.rewards.sharedPolicy.removeUnavailable})).toBeTruthy();
+ });
  it('invalidates confirmation on policy edits and clears unsaved drafts on an actor change',()=>{
   const props={actorUserId:id(9),groupId:id(6),revision:1,name:'Saved group',year,targets:[{companyId:id(1),businessUnitId:id(3)}],companies,units,policyFields:<input aria-label="Fictional policy"/>,saveAction:vi.fn()};
   const view=render(wrap(<SharedRewardEditor {...props}/>));fireEvent.submit(document.querySelector('form')!);

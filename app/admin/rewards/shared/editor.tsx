@@ -5,33 +5,35 @@ import {useRouter} from 'next/navigation';
 import {useTranslations} from 'next-intl';
 import {Button,Card,Field,inputCls} from '@/components/ui';
 import {rewardTargetKey,removeRewardTargetCompany,type RewardPolicyTarget} from '@/packs/rewards/policy-group-model';
-import type {RewardPolicyTaken} from '@/packs/rewards/service';
+import {RewardCompanyExclusionsPanel} from './exclusions';
+import type {RewardCompanyExclusion,RewardPolicyTaken} from '@/packs/rewards/service';
 export type SharedRewardSaveResult={ok:true;value:{groupId:string;revision:number}}|{ok:false;code:'invalid'|'changed'|'scope'|'system'|'overlap';conflicts?:RewardPolicyTaken[]};
 type Props={actorUserId:string;groupId:string|null;revision:number;name:string;year:number;targets:RewardPolicyTarget[];
- companies:readonly {id:string;name:string;groupId?:string|null;groupName?:string|null}[];units:readonly {id:string;name:string;companyId:string;global:boolean;archived:boolean}[];
+ companies:readonly {id:string;name:string;groupId?:string|null;groupName?:string|null;archived?:boolean;excludedYears?:number[]}[];units:readonly {id:string;name:string;companyId:string;global:boolean;archived:boolean}[];
+ exclusions?:RewardCompanyExclusion[];exclusionAction?:(form:FormData)=>Promise<{ok:boolean}>;
  initialTaken?:RewardPolicyTaken[];loadTakenAction?:(year:number)=>Promise<RewardPolicyTaken[]>;canManageUnits?:boolean;
  policyFields:ReactNode;saveAction:(form:FormData)=>Promise<SharedRewardSaveResult>};
 /** All permissions, compatible pairs and policy content are independently checked by the server owner. */
 export function SharedRewardEditor(props:Props){
  return <SharedRewardEditorDraft key={props.actorUserId+':'+(props.groupId??'new')+':'+props.revision+':'+JSON.stringify(props.companies.map(c=>c.id))+':'+JSON.stringify(props.units)+':'+props.year+':'+JSON.stringify(props.initialTaken)} {...props}/>;
 }
-function SharedRewardEditorDraft({groupId,revision,name:initialName,year:initialYear,targets:initialTargets,companies,units,initialTaken=[],loadTakenAction,canManageUnits=false,policyFields,saveAction}:Props){
+function SharedRewardEditorDraft({groupId,revision,name:initialName,year:initialYear,targets:initialTargets,companies,units,initialTaken=[],loadTakenAction,canManageUnits=false,exclusions=[],exclusionAction,policyFields,saveAction}:Props){
  const t=useTranslations('rewards.sharedPolicy'),router=useRouter(),saving=useRef(false);
  const [name,setName]=useState(initialName),[targets,setTargets]=useState(initialTargets);
  const [year,setYear]=useState(initialYear),[taken,setTaken]=useState(initialTaken),[loading,setLoading]=useState(false),[loadFailed,setLoadFailed]=useState(false),[conflicts,setConflicts]=useState<RewardPolicyTaken[]>([]),request=useRef(0);
  const [query,setQuery]=useState(''),[reviewed,setReviewed]=useState(false),[pending,setPending]=useState(false),[saved,setSaved]=useState(false),[error,setError]=useState<null|'invalid'|'changed'|'scope'|'system'|'overlap'>(null);
  const unavailable=(p:RewardPolicyTarget)=>taken.find(row=>row.groupId!==groupId&&rewardTargetKey(row)===rewardTargetKey(p));
- const validPair=(p:RewardPolicyTarget)=>companies.some(c=>c.id===p.companyId)&&units.some(u=>u.id===p.businessUnitId&&!u.archived&&(u.companyId===p.companyId||u.global))&&!unavailable(p);
+ const validPair=(p:RewardPolicyTarget)=>companies.some(c=>c.id===p.companyId&&!c.archived&&!c.excludedYears?.includes(year))&&units.some(u=>u.id===p.businessUnitId&&!u.archived&&(u.companyId===p.companyId||u.global))&&!unavailable(p);
  const complete=(targets.length>0||groupId!==null)&&targets.length<=500&&targets.every(validPair)&&!loading&&!loadFailed&&Number.isInteger(year)&&year>=2000&&year<=2200;
  const label=(p:RewardPolicyTarget)=>`${companies.find(c=>c.id===p.companyId)?.name??t('unavailable')} · ${units.find(u=>u.id===p.businessUnitId)?.name??t('unavailable')}`;
  const search=query.trim().toLocaleLowerCase();
  const groups=new Map<string,{name:string;companies:typeof companies[number][]}>();
- for(const company of companies){
+ for(const company of companies.filter(c=>(!c.archived&&!c.excludedYears?.includes(year))||targets.some(pair=>pair.companyId===c.id))){
   const key=company.groupId??'other',group=groups.get(key)??{name:company.groupName??t('otherCompanies'),companies:[]};
   group.companies.push(company);groups.set(key,group);
  }
  const optionsFor=(companyId:string)=>units.filter(unit=>unit.companyId===companyId||unit.global);
- const availablePairs=(companyId:string)=>optionsFor(companyId).filter(unit=>!unit.archived&&!unavailable({companyId,businessUnitId:unit.id})).map(unit=>({companyId,businessUnitId:unit.id}));
+ const availablePairs=(companyId:string)=>optionsFor(companyId).filter(unit=>companies.some(c=>c.id===companyId&&!c.archived&&!c.excludedYears?.includes(year))).filter(unit=>!unit.archived&&!unavailable({companyId,businessUnitId:unit.id})).map(unit=>({companyId,businessUnitId:unit.id}));
  const has=(pair:RewardPolicyTarget)=>targets.some(row=>rewardTargetKey(row)===rewardTargetKey(pair));
  const changed=()=>{setReviewed(false);setError(null);setConflicts([]);};
  function select(pairs:RewardPolicyTarget[],checked:boolean){
@@ -57,7 +59,7 @@ function SharedRewardEditorDraft({groupId,revision,name:initialName,year:initial
   }catch{setReviewed(false);setError('system');}
   finally{saving.current=false;setPending(false);}
  }
- return <form action={save} className="space-y-6" onChange={changed} onSubmit={event=>{if(!reviewed){event.preventDefault();if(complete)setReviewed(true);}}}>
+ return <><form action={save} className="space-y-6" onChange={changed} onSubmit={event=>{if(!reviewed){event.preventDefault();if(complete)setReviewed(true);}}}>
   <input type="hidden" name="groupId" value={groupId??''}/><input type="hidden" name="revision" value={revision}/><input type="hidden" name="targets" value={JSON.stringify(targets)}/>
   {error&&<div role="alert" className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">{t(`errors.${error}`)}{conflicts.length>0&&<ul>{conflicts.map(row=><li key={rewardTargetKey(row)}>{t('conflict',{unit:label(row),name:row.name,year})}</li>)}</ul>}{error==='changed'&&<Button type="button" variant="outline" className="ml-3" onClick={()=>router.refresh()}>{t('reload')}</Button>}</div>}
   {saved&&<p role="status" className="text-sm">{t('saved')}</p>}
@@ -79,7 +81,7 @@ function SharedRewardEditorDraft({groupId,revision,name:initialName,year:initial
       <div className="grid gap-3 lg:grid-cols-2">{visible.map(company=>{
        const allOptions=optionsFor(company.id),pairs=availablePairs(company.id),checked=pairs.length>0&&pairs.every(has),selected=targets.some(row=>row.companyId===company.id);
        const options=allOptions.filter(u=>!search||groupMatches||company.name.toLocaleLowerCase().includes(search)||u.name.toLocaleLowerCase().includes(search));
-       return <fieldset key={company.id} className="min-w-0 rounded-md border p-3"><legend className="px-1 text-sm font-medium"><label className="flex items-center gap-2"><input type="checkbox" checked={checked} aria-checked={!checked&&selected?'mixed':checked} ref={node=>{if(node)node.indeterminate=!checked&&selected;}} disabled={!pairs.length&&!selected} onChange={event=>{changed();if(!event.target.checked)setTargets(rows=>removeRewardTargetCompany(rows,company.id));else select(pairs,true);}}/>{company.name}</label></legend>
+       return <fieldset key={company.id} className="min-w-0 rounded-md border p-3"><legend className="px-1 text-sm font-medium"><label className="flex items-center gap-2"><input type="checkbox" checked={checked} aria-checked={!checked&&selected?'mixed':checked} ref={node=>{if(node)node.indeterminate=!checked&&selected;}} disabled={!pairs.length&&!selected} onChange={event=>{changed();if(!event.target.checked)setTargets(rows=>removeRewardTargetCompany(rows,company.id));else select(pairs,true);}}/>{company.name}{company.archived&&<span className="text-xs text-muted-foreground"> · {t('archived')}</span>}{company.excludedYears?.includes(year)&&<span className="text-xs text-muted-foreground"> · {t('excludedCompany')}</span>}</label></legend>
         <div className="space-y-2">{options.map(unit=>{
          const pair={companyId:company.id,businessUnitId:unit.id},key=rewardTargetKey(pair),checked=has(pair),assignment=unavailable(pair);
          return <label key={key} className={`flex items-start gap-2 text-sm ${assignment||unit.archived?'text-muted-foreground':''}`}><input type="checkbox" className="mt-1" checked={checked} disabled={(unit.archived||!!assignment)&&!checked} onChange={event=>select([pair],event.target.checked)}/><span>{unit.name}{unit.global&&<span className="text-xs text-muted-foreground"> · {t('global')}</span>}{unit.archived&&<span className="text-xs text-muted-foreground"> · {t('archived')}</span>}{assignment&&<span className="text-xs"> · {t('assignedTo',{name:assignment.name})}</span>}</span></label>;
@@ -97,5 +99,5 @@ function SharedRewardEditorDraft({groupId,revision,name:initialName,year:initial
    {reviewed&&<Card className="space-y-3 p-4 sm:p-6"><h2 className="font-semibold">{t('review')}</h2><p className="text-sm">{name} · {t('version',{version:revision+1})}</p><p className="text-sm text-muted-foreground">{t('futureOnly')}</p><ul className="list-inside list-disc text-sm">{targets.map(pair=><li key={rewardTargetKey(pair)}>{label(pair)}</li>)}</ul></Card>}
    <div className="flex flex-wrap gap-3"><Button type="submit" disabled={!complete||pending||saved}>{pending?t('saving'):reviewed?(targets.length?t('confirm'):t('archive')):t('preview')}</Button>{reviewed&&<Button type="button" variant="outline" onClick={()=>setReviewed(false)}>{t('back')}</Button>}</div>
   </fieldset>
- </form>;
+ </form>{exclusionAction&&<RewardCompanyExclusionsPanel year={year} companies={companies} rows={exclusions} saveAction={exclusionAction}/>}</>;
 }
