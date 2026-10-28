@@ -342,8 +342,8 @@ type LedRaw = { review_id: string; tabs: string[]; full_name: string; employee_c
 export async function listOnehrLedPeople(ctx: SessionContext, raw: z.input<typeof ledSchema> = {}) {
   const p = ledSchema.parse(raw);
   return withPerformanceTenant(ctx, async (tx) => {
-    const cycles = (await tx.execute<{ cycle_id: string; name: string; period_end: string; status: string; people: number }>(sql`select * from app.onehr_led_cycles()`))
-      .map((c) => ({ id: c.cycle_id, name: c.name, periodEnd: String(c.period_end).slice(0, 10), status: c.status, people: c.people }));
+    const cycles = (await tx.execute<{ cycle_id: string; name: string; period_end: string | Date; status: string; people: number }>(sql`select * from app.onehr_led_cycles()`))
+      .map((c) => ({ id: c.cycle_id, name: c.name, periodEnd: c.period_end instanceof Date ? c.period_end.toISOString().slice(0, 10) : String(c.period_end).slice(0, 10), status: c.status, people: c.people }));
     const cycle = cycles.find((c) => c.id === p.cycleId) ?? cycles[0] ?? null;
     if (!cycle) return { cycles, cycle: null, tabs: [], tab: null, state: 'before' as const, atOnce: false, nFull: 0, nRes: 0, midYear: false, filter: null, people: [] };
     const rows = await tx.execute<LedRaw>(sql`select * from app.onehr_led_people(${cycle.id}::uuid)`);
