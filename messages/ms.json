@@ -2090,7 +2090,7 @@
       "sectionStep4": "Semak apa yang akan berubah",
       "sectionStep5Hint": "Semak siapa yang terlibat bagi setiap baris dan apa yang berubah, kemudian kemas kini. Di sinilah rekod mula diubah.",
       "sectionColumnsHeading": "Lajur dalam templat ini",
-      "sectionColumnsNotice": "Hanya lajur ini dibenarkan dalam fail. Lajur milik bahagian lain akan ditolak, dan penolakan itu menamakan bahagian yang memilikinya. Sesetengah lajur templat penuh — syarikat, jabatan, jawatan, pusat kos, jenis pekerjaan, tarikh mula, gaji, serta nombor KWSP, PERKESO, SIP dan status pemastautin cukai — tidak dimiliki mana-mana bahagian dan langsung tidak boleh diimport mengikut bahagian; ubah yang itu pada rekod Personel pekerja berkenaan.",
+      "sectionColumnsNotice": "Hanya lajur ini dibenarkan dalam fail. Lajur milik bahagian lain akan ditolak, dan penolakan itu menamakan bahagian yang memilikinya. Sesetengah lajur templat penuh — syarikat, jabatan, jawatan, pusat kos, jenis pekerjaan, tarikh mula dan gaji — tidak dimiliki mana-mana bahagian dan langsung tidak boleh diimport mengikut bahagian; ubah yang itu pada rekod Personel pekerja berkenaan.",
       "sectionInstructionKey": "ID Pekerja menyatakan siapa yang hendak dikemas kini. Ia mesti sepadan dengan seseorang yang sudah wujud — templat ini tidak boleh mencipta sesiapa. Tambah orang baharu dengan templat pekerja penuh terlebih dahulu.",
       "sectionInstructionBlank": "Biarkan sel kosong untuk mengekalkan apa yang sudah direkodkan. Sel kosong tidak sekali-kali memadamkan nilai.",
       "sectionInstructionOneRow": "Satu baris bagi setiap pekerja. Dua baris dengan ID Pekerja yang sama akan ditolak.",
@@ -2651,7 +2651,14 @@
         "limit": "Lapan semakan setempat telah disimpan. Selesaikan import ini atau pilih sumber baharu secara jelas untuk semakan lain; asal tidak dibuang secara senyap.",
         "humanSupplied": "Dibekalkan pengguna — tiada dalam sumber asal."
       },
-      "importHistoryLink": "Buka Sejarah Import (fail asal, sebelum dan selepas, kembalikan)"
+      "importHistoryLink": "Buka Sejarah Import (fail asal, sebelum dan selepas, kembalikan)",
+      "choiceYes": "Ya",
+      "choiceNo": "Tidak",
+      "choiceHrdfDefault": "Lalai (ikut pendaftaran HRDF syarikat)",
+      "instructionColumnsHeading": "Lajur — kandungan setiap lajur, sama ada wajib, dan nilai yang diterima",
+      "instructionAccepted": "Nilai yang diterima: {values}",
+      "bankStatutoryUploadFailed": "Import tidak dapat disimpan. Tiada apa-apa yang diubah. Cuba lagi, atau buka Sejarah Import untuk menyemak.",
+      "viewImportHistoryEntry": "Lihat import ini dalam Sejarah Import"
     },
     "wizard": {
       "deleteRecord": "Padam Rekod",
@@ -3039,6 +3046,9 @@
         "cancel": "Batal",
         "failed": "Pengembalian tidak dapat diselesaikan. Tiada apa yang diubah.",
         "noPermission": "Mengembalikan import ini memerlukan kebenaran penyelenggaraan Tenaga Kerja bagi setiap syarikat di dalamnya."
+      },
+      "bankStatutory": {
+        "blank": "(kosong)"
       }
     }
   },

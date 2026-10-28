@@ -592,10 +592,13 @@ const WRITER_TABLE: Record<string, string> = {
   'person-profile': 'person', 'person-compliance': 'person', 'employment-info': 'employment',
   operational: 'employment', dependent: 'employeeDependent', bank: 'employeeStatutoryMy',
   ic: 'employeeStatutoryMy', passport: 'employeeStatutoryMy', 'statutory-registration': 'employeeStatutoryMy',
+  statutory: 'employeeStatutoryMy',
 };
 for (const field of PERSONNEL_FIELDS) {
   const spec = field.import;
-  if (spec.column && spec.writer && field.owner !== 'emergencyContact') {
+  // 0db97f14 — update-only Bank & Statutory columns belong to the section contract (test/bank-statutory-import.test.ts)
+  // until the full template adopts them (524303d9); this file pins the full template.
+  if (spec.column && spec.writer && field.owner !== 'emergencyContact' && !spec.updateOnly) {
     const tableName = WRITER_TABLE[spec.writer];
     if (!tableName || !spec.writerField) throw new Error(`Unaccounted Personnel writer: ${field.id}`);
     REGISTRY[tableName].covered[spec.writerField] = spec.column;

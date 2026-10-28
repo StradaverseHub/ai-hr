@@ -66,3 +66,23 @@ and tenant-wide visibility.
 - Imports made before 0675 have no attempt and cannot be reverted as a batch.
 - The source bytes are personal data of the listed companies' employees; they are retained with the attempt
   and released only under rule 2.
+
+## 4. Amendment — Bank & Statutory (0db97f14)
+
+- **Kind `bank_statutory`.** The section file's original bytes are posted to
+  `/admin/personnel/import/bank-statutory/upload`, re-read with the browser's reader and heading grammar,
+  recorded as an attempt (plan = the dry run per row), then saved by the section importer one employee per
+  transaction. Each transaction writes the employee's item: `before`/`after` hold only the columns whose value
+  changed, as canonical strings of the tab's own projection (`lib/bank-statutory-import.ts`).
+  `employee_import_run` keeps being written for the existing run list.
+- **Merged writer.** `core/bank-statutory-import.ts` overlays supplied cells onto the locked statutory row,
+  validates with the tab's rules and calls the pack's `set`/`setTax`/`setOthersStatutory`/`setBank` with the
+  whole merged row. The three fence entries (`eis_eligible`, `epf_citizenship`, `is_resident`) are removed;
+  the first and last are bounded adapters onto EIS category and income tax residency. The new columns are
+  `import.updateOnly` and stay off the create template until 524303d9 adopts them.
+- **Revert** is eligible only while every changed field still equals the value the import set; it restores the
+  recorded values through the same writer. A field that was empty before (payment method, unconfirmed income
+  tax residency) cannot be emptied by a revert and blocks it.
+- **Permission** stays `workforce.view`/`workforce.maintain`: the section import already requires
+  `workforce.maintain` on each employment (`assertWorkforceEmploymentTx`), so `app.import_company_access` is
+  unchanged and no SQL is added.
