@@ -79,7 +79,8 @@ export default async function AiManagementPage({searchParams}:{searchParams:Prom
   return <div className={pageWideCls}>
     <PageHeader back={{href:'/control-tower',label:t('back')}} title={t('title')} description={t('description')}/>
     <ErrorBanner message={sp.error}/>
-    {sp.toast && <p role="status" className="rounded-md border border-border p-3 text-sm">{sp.toast}</p>}
+    {/* A save lands on its own row (#ai-…); the outcome is the global ToastFromQuery toast, which is pinned
+        to the viewport. An inline copy here sat at the top of the page, out of sight of the saved row. */}
     <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
       <p className="min-w-0 break-words">{view.provider?t('provider',{provider:view.provider.provider,model:view.provider.model}):t('noProvider')}</p>
       <div className="flex flex-wrap gap-3"><Link href="/admin/ai" className={btnGhost}>{t('configureProvider')}</Link><Link href="/control-tower/agents" className={btnGhost}>{t('refresh')}</Link></div>

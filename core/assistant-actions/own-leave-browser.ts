@@ -3,7 +3,7 @@
  * Migrations/relevant writer/security/retention/experience acceptance remain required before release. */
 import { withTenant, type SessionContext } from '../../db/client';
 import { createOwnLeaveBrowserHandler, OwnLeaveBusy, type OwnLeaveOriginPolicy } from '../../lib/assistant-actions/own-leave-http';
-import { LeaveDependencyUnavailable } from '../../packs/leave/service';
+import { LeaveDependencyBusy } from '../../packs/leave/service';
 import { confirmOwnLeaveReview, discardOwnLeaveReviewTx, expireOwnLeaveReviewsForCallerTx, listOwnLeaveReviewsTx, prepareOwnLeaveReviewTx, reopenOwnLeaveReviewTx } from './own-leave-store';
 
 type BrowserSession = Readonly<{ ctx: SessionContext; locale?: string }>;
@@ -26,8 +26,9 @@ export function createOwnLeaveBrowserCommandHandler(authenticate: () => Promise<
         return await withTenant(session.ctx, tx => prepareOwnLeaveReviewTx(tx, session.ctx, packet.nomination, packet.selection, packet.humanText, session.locale));
       } catch (error) {
         // The non-waiting leave dependency locks refuse a busy source before the review is written,
-        // inside this one transaction, which rolled back. Report busy; nothing was saved.
-        if (error instanceof LeaveDependencyUnavailable) throw new OwnLeaveBusy();
+        // inside this one transaction, which rolled back. Report busy; nothing was saved. A carrier or
+        // subject mismatch is not busy (retrying cannot help) and keeps the ordinary unavailable answer.
+        if (error instanceof LeaveDependencyBusy) throw new OwnLeaveBusy();
         throw error;
       }
     },

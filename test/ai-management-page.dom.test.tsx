@@ -31,9 +31,9 @@ function view(spend:{heldNanos:string;confirmedNanos:string|null}){
     spend:{currency:'USD',unit:'nano_usd',semantics:'application_inference_allocation',certifiedLiveRoutes:0,reviewedCarrierRecords:0,liveCapability:'not_verified_here',
       budgets:[{scopeKey:'tenant',monthlyNanos:null,rootNanos:null}],unpricedUnknownRuns:0,breached:false,...spend}};
 }
-async function show(spend:{heldNanos:string;confirmedNanos:string|null}){
+async function show(spend:{heldNanos:string;confirmedNanos:string|null},search:Record<string,string>={}){
   data.view=view(spend);
-  const page=await AiManagementPage({searchParams:Promise.resolve({})});
+  const page=await AiManagementPage({searchParams:Promise.resolve(search)});
   return render(<NextIntlClientProvider locale="en" messages={en}>{page}</NextIntlClientProvider>);
 }
 
@@ -58,6 +58,10 @@ describe('AI management page',()=>{
   it('says "less than US$0.01" rather than rounding a non-zero amount to zero',async()=>{
     await show({heldNanos:'1',confirmedNanos:'2500000000'});
     expect(screen.getByText('Awaiting confirmation: less than US$0.01 · Confirmed charges: US$2.50')).toBeTruthy();
+  });
+  it('leaves a save outcome to the viewport toast instead of a status line at the top, far from the saved row',async()=>{
+    await show({heldNanos:'0',confirmedNanos:null},{toast:'Saved fixture outcome'});
+    expect(screen.queryByText('Saved fixture outcome')).toBeNull();
   });
   it('names both USD inputs through their labels',async()=>{
     await show({heldNanos:'0',confirmedNanos:null});

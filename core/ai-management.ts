@@ -50,6 +50,7 @@ export const AI_RUN_STATE_FILTERS = ['blocked','failed'] as const;
 export type AiRunFilter = {state?:typeof AI_RUN_STATE_FILTERS[number];feature?:AiFeatureId};
 const DAY_START=sql`(date_trunc('day',now() at time zone 'Asia/Kuala_Lumpur') at time zone 'Asia/Kuala_Lumpur')`;
 const MONTH_START=sql`(date_trunc('month',now() at time zone 'Asia/Kuala_Lumpur') at time zone 'Asia/Kuala_Lumpur')`;
+const USER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type UserUsageRow = {id:string;label:string;daily_requests:string;monthly_tokens:string;held_tokens:string;blocked_today:string;last_reason:string|null};
 export async function aiManagementView(ctx: SessionContext, search = '', runFilter: AiRunFilter = {}) {
   ctx=captureControlContext(ctx);assertAdmin(ctx);
@@ -119,10 +120,20 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
       .where(and(runFilter.state?eq(aiModelRun.state,runFilter.state):undefined,runFilter.feature?eq(aiModelRun.featureId,runFilter.feature):undefined))
       .orderBy(desc(aiModelRun.startedAt),desc(aiModelRun.id)).limit(50) : [];
     const legacyBudgets = isGroupAdmin(ctx) ? await tx.select({monthly:assistantBudget.monthlyTokenCeiling,daily:assistantBudget.perUserDailyQuestions,effectiveFrom:assistantBudget.effectiveFrom}).from(assistantBudget).where(and(eq(assistantBudget.tenantId,ctx.tenantId),sql`${assistantBudget.archivedAt} is null`,sql`${assistantBudget.effectiveFrom} <= (now() at time zone 'UTC')::date`)).orderBy(desc(assistantBudget.effectiveFrom),desc(assistantBudget.id)).limit(1) : [];
+    // A login paused by its OWN zero cap makes no counted call (blocked calls are not usage), so it may
+    // have no run this month at all. List it anyway. The tenant default is shown on its own row instead
+    // of listing every login it pauses.
+    const active = new Set(activity.map(r=>r.id));
+    const idleOwnZero = isGroupAdmin(ctx) ? policies.map(p=>p.scopeKey.startsWith('user:')?p.scopeKey.slice(5):'')
+      .filter(id=>USER_ID.test(id)&&!active.has(id)&&pressing(toUser({id,label:'',daily_requests:'0',monthly_tokens:'0',held_tokens:'0',blocked_today:'0',last_reason:null}))) : [];
+    const idleRows = idleOwnZero.length ? Array.from(await tx.execute<UserUsageRow>(sql`
+      select u.id,coalesce(p.full_name,u.workos_user_id) as label,0 as daily_requests,0 as monthly_tokens,0 as held_tokens,0 as blocked_today,null as last_reason
+      from app_user u left join person p on p.id=u.person_id
+      where u.tenant_id=${ctx.tenantId}::uuid and u.id=any(${idleOwnZero}::uuid[]) order by u.id`)) : [];
     // Company administrators see only their own companies' aggregates here: no login identities.
     const attention = {
       companies: companies.filter(pressing),
-      users: activity.map(toUser).filter(pressing).sort((a,b)=>b.tokens.used-a.tokens.used||b.daily.used-a.daily.used||a.label.localeCompare(b.label)),
+      users: [...activity,...idleRows].map(toUser).filter(pressing).sort((a,b)=>b.tokens.used-a.tokens.used||b.daily.used-a.daily.used||a.label.localeCompare(b.label)),
       blocked: activity.filter(r=>Number(r.blocked_today)>0).map(r=>({id:r.id,label:r.label,count:Number(r.blocked_today),reason:r.last_reason}))
         .sort((a,b)=>b.count-a.count||a.label.localeCompare(b.label)),
     };

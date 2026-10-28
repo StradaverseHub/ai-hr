@@ -9,19 +9,26 @@ import type { Tx } from '../db/client';
 export class LeaveDependencyUnavailable extends Error {
   constructor() { super('Leave source is unavailable; review it again.'); this.name = 'LeaveDependencyUnavailable'; }
 }
+/** The carrier was valid and the lock was genuinely held by another transaction. Only this case is
+ * "busy, try again"; a wrong tenant, transaction mode or malformed id stays plain unavailable, because
+ * retrying the same request cannot help. Still a LeaveDependencyUnavailable for every existing catch. */
+export class LeaveDependencyBusy extends LeaveDependencyUnavailable {
+  constructor() { super(); this.name = 'LeaveDependencyBusy'; }
+}
 const uuid = z.guid();
 
 async function acquire(tx: Tx, tenantId: string, key: string, shared: boolean): Promise<void> {
   // CASE prevents a mismatched carrier from acquiring a foreign tenant's advisory lock. No waiting:
   // a busy source requires a fresh review rather than an unbounded response or an automatic retry.
-  const [row] = await tx.execute<{ acquired: boolean }>(sql`select case
-    when app.current_tenant_id()=${tenantId}::uuid
-      and current_setting('transaction_isolation')='read committed'
-      and current_setting('transaction_read_only')='off'
-    then ${shared ? sql`pg_try_advisory_xact_lock_shared(hashtextextended(${key},0))`
+  const [row] = await tx.execute<{ carrier: boolean; acquired: boolean }>(sql`select c.carrier, case
+    when c.carrier then ${shared ? sql`pg_try_advisory_xact_lock_shared(hashtextextended(${key},0))`
       : sql`pg_try_advisory_xact_lock(hashtextextended(${key},0))`}
-    else false end as acquired`);
-  if (row?.acquired !== true) throw new LeaveDependencyUnavailable();
+    else false end as acquired
+    from (select coalesce(app.current_tenant_id()=${tenantId}::uuid
+      and current_setting('transaction_isolation')='read committed'
+      and current_setting('transaction_read_only')='off',false) as carrier) c`);
+  if (row?.carrier !== true) throw new LeaveDependencyUnavailable();
+  if (row.acquired !== true) throw new LeaveDependencyBusy();
 }
 
 /** Shared configuration phase for a bounded server-owned target discovery, followed by subject locks
@@ -63,11 +70,12 @@ export async function lockLeaveDependenciesTx(tx: Tx, tenantId: string, employme
  * app-role/read-only/lock-mode interleavings remain required verification, not a source guarantee.
  */
 async function acquireReadOnlySource(tx:Tx,tenantId:string,key:string):Promise<void>{
- const [row]=await tx.execute<{acquired:boolean}>(sql`select case
-  when app.current_tenant_id()=${tenantId}::uuid and current_setting('transaction_isolation')='read committed'
-   and current_setting('transaction_read_only')='on'
-  then pg_try_advisory_xact_lock_shared(hashtextextended(${key},0)) else false end as acquired`);
- if(row?.acquired!==true)throw new LeaveDependencyUnavailable();
+ const [row]=await tx.execute<{carrier:boolean;acquired:boolean}>(sql`select c.carrier,case
+  when c.carrier then pg_try_advisory_xact_lock_shared(hashtextextended(${key},0)) else false end as acquired
+  from (select coalesce(app.current_tenant_id()=${tenantId}::uuid and current_setting('transaction_isolation')='read committed'
+   and current_setting('transaction_read_only')='on',false) as carrier) c`);
+ if(row?.carrier!==true)throw new LeaveDependencyUnavailable();
+ if(row.acquired!==true)throw new LeaveDependencyBusy();
 }
 export async function lockLeaveReadOnlySourceConfigurationTx(tx:Tx,tenantId:string):Promise<void>{
  if(!uuid.safeParse(tenantId).success)throw new LeaveDependencyUnavailable();tenantId=tenantId.toLowerCase();

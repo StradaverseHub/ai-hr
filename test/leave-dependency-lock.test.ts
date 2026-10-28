@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant, type Tx } from '../db/client';
-import { lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx, lockLeaveDependencyReadConfigurationTx,lockLeaveReadOnlySourceConfigurationTx,lockLeaveReadOnlySourceDependenciesTx, LeaveDependencyUnavailable } from '../core/leave-dependency-lock';
+import { lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx, lockLeaveDependencyReadConfigurationTx,lockLeaveReadOnlySourceConfigurationTx,lockLeaveReadOnlySourceDependenciesTx, LeaveDependencyUnavailable, LeaveDependencyBusy } from '../core/leave-dependency-lock';
 import { adminCtx, closeAll, harnessSnapshot, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
 const signal = () => {
@@ -28,8 +28,9 @@ describe('participating leave dependency locks, not universal fencing', () => {
   it('refuses a competing same-employment command and permits a different subject', async () => {
     const subject = randomUUID(), other = randomUUID(), ctx = adminCtx(base);
     await held(tx => lockLeaveDependenciesTx(tx, base.tenantId, [subject]), async () => {
+      // A genuinely held lock is the one refusal reported as busy (retrying later can help).
       await expect(withTenant(ctx, tx => lockLeaveDependenciesTx(tx, base.tenantId, [subject])))
-        .rejects.toThrow(LeaveDependencyUnavailable);
+        .rejects.toThrow(LeaveDependencyBusy);
       await withTenant(ctx, tx => lockLeaveDependenciesTx(tx, base.tenantId, [other]));
     });
     await withTenant(ctx, tx => lockLeaveDependenciesTx(tx, base.tenantId, [subject]));
@@ -127,8 +128,9 @@ describe('participating leave dependency locks, not universal fencing', () => {
   it('refuses a foreign tenant carrier and empty or malformed subject sets', async () => {
     for (const [tenant, subjects] of [[randomUUID(), [randomUUID()]], [base.tenantId, []],
       [base.tenantId, ['invalid']]] as [string, string[]][]) {
-      await expect(withTenant(adminCtx(base), tx => lockLeaveDependenciesTx(tx, tenant, subjects)))
-        .rejects.toThrow(LeaveDependencyUnavailable);
+      const refusal = await withTenant(adminCtx(base), tx => lockLeaveDependenciesTx(tx, tenant, subjects)).then(() => null, (error: unknown) => error);
+      // Unavailable, never busy: retrying the same mismatched request cannot help.
+      expect(refusal).toBeInstanceOf(LeaveDependencyUnavailable); expect(refusal).not.toBeInstanceOf(LeaveDependencyBusy);
     }
   });
 });

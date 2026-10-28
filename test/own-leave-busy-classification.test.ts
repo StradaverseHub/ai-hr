@@ -15,7 +15,7 @@ vi.mock('../core/assistant-actions/own-leave-store', () => ({
 }));
 import { createOwnLeaveBrowserCommandHandler } from '../core/assistant-actions/own-leave-browser';
 import { OwnLeaveBusy } from '../lib/assistant-actions/own-leave-http';
-import { LeaveDependencyUnavailable } from '../packs/leave/service';
+import { LeaveDependencyBusy, LeaveDependencyUnavailable } from '../packs/leave/service';
 
 const PUBLIC = 'https://hr.fixture.test';
 const actionId = '11111111-1111-4111-8111-111111111111', employmentId = '22222222-2222-4222-8222-222222222222';
@@ -48,9 +48,14 @@ beforeEach(() => {
 
 describe('own-leave preparation busy refusal', () => {
   it('reports a non-waiting leave dependency refusal inside preparation as busy', async () => {
-    owners.prepare.mockRejectedValueOnce(new LeaveDependencyUnavailable());
+    owners.prepare.mockRejectedValueOnce(new LeaveDependencyBusy());
     await expectBusy(await post(packets.prepare));
     expect(owners.prepare).toHaveBeenCalledOnce();
+  });
+  it('keeps a carrier or subject mismatch at the unconfirmed 503: retrying the same request cannot help', async () => {
+    owners.prepare.mockRejectedValueOnce(new LeaveDependencyUnavailable());
+    const response = await post(packets.prepare);
+    expect(response.status).toBe(503); expect(await response.json()).toEqual({ error: 'unavailable' });
   });
   it('reports an Access lock wait cut short by lock_timeout (55P03) inside preparation as busy', async () => {
     owners.prepare.mockRejectedValueOnce(lockTimeout());
@@ -68,7 +73,7 @@ describe('own-leave preparation busy refusal', () => {
     expect(response.status).toBe(503); expect(await response.json()).toEqual({ error: 'unavailable' });
   });
   it.each(['confirm', 'reopen', 'discard', 'list'] as const)('keeps %s at the unconfirmed 503 even when a lock was busy', async operation => {
-    for (const error of [lockTimeout(), new LeaveDependencyUnavailable(), new OwnLeaveBusy()]) {
+    for (const error of [lockTimeout(), new LeaveDependencyBusy(), new LeaveDependencyUnavailable(), new OwnLeaveBusy()]) {
       vi.clearAllMocks(); owners.expire.mockResolvedValue(0);
       if (operation === 'confirm') owners.confirm.mockRejectedValueOnce(error);
       else owners[operation].mockRejectedValueOnce(error);

@@ -308,6 +308,17 @@ describe('tenant default user allowance, usage against limits and attention',()=
   await limit('company',base.companyId,null,null);
   expect((await aiManagementView(group)).attention.companies.map(c=>c.id)).toEqual([noConcurrency.id]);
  });
+ it('lists a login paused by its own zero cap even with no call this month, but not one paused only by the tenant default',async()=>{
+  const {id:idle}=await login('zero-idle');
+  expect((await aiManagementView(group)).attention.users).toEqual([]);
+  await byDefault(0,null);
+  expect((await aiManagementView(group)).attention.users).toEqual([]);
+  await limit('user',idle,0,null);
+  const view=await aiManagementView(group);
+  expect(view.attention.users.map(u=>u.id)).toEqual([idle]);expect(view.attention.users[0].daily).toEqual({used:0,limit:0,level:'at'});expect(view.attention.users[0].source).toBe('individual');
+  await limit('user',idle,null,null);
+  expect((await aiManagementView(group)).attention.users).toEqual([]);
+ });
  it('filters recent runs by blocked, failed and capability for group administrators only',async()=>{
   await run(base.adminUserId,'completed',100,10);await run(base.adminUserId,'failed',100,null,'report_insight');await run(null,'blocked',100,null,'report_insight','paused');await run(base.adminUserId,'blocked',100,null,'pay_rule_draft','daily_limit');
   expect((await aiManagementView(group)).runs).toHaveLength(4);
