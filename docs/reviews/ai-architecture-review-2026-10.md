@@ -175,7 +175,25 @@ value against effort and dependency.
 | Rank | Recommendation | Value | Effort | Risk | ADR | Parallel work |
 |---|---|---|---|---|---|---|
 | R1 | **Make scheduled AI honest now.** Distinguish "principal refused" from "no provider" in nudge, triage and hypothesis results. Save triage and hypothesis counters in `job_run.result`. Show "AI drafting unavailable for scheduled runs" on status pages instead of "on, AI configured". Fix `scopeDigest` so company-scoped admins see the nightly run. | H | S | L | 0109, 0116 | — |
-| R2 | **Named per-tenant agent principal** for every scheduled job (review-sweep, anomaly-sweep, feedback-plan), with `actor_type='agent'`, enabling administrator, Automatic-tier-only authority and a principal path through `assertAiPrincipalTx`. Then decide per job whether the model step is worth keeping; the templates already work. | H | M | M (RLS, migration) | 0151 §4.5, 0131 §3 | `ai-hr-admin-agent` Part A (claim 0672) |
+| R2 | **Named per-tenant agent principal** for every scheduled job (review-sweep, anomaly-sweep, feedback-plan), with `actor_type='agent'`, enabling administrator, Automatic-tier-only authority and a principal path through `assertAiPrincipalTx`. Then decide per job whether the model step is worth keeping; the templates already work. | H | M | M (RLS, migration) | 0151 §4.5, 0131 §3 | `ai-hr-admin-agent` Part A (claim 0672); see the note below |
+
+**Note on R2 (29 Oct 2026, uncommitted work in `ai-hr-admin-agent`).** That session adds `core/agent-principal.ts`
+and migration 0672. The orchestrator pass in `scripts/review-sweep.ts` runs as the tenant's named agent
+principal. A scheduled specialist runs only behind an administrator's attributed switch-on, and effects name
+both the principal and that administrator. The principal is **deliberately not admitted to model spend**:
+
+- readiness reminders send the fixed template;
+- claims triage stops before reading claims and reports `notConfigured`.
+
+Overnight AI therefore stays model-free by design rather than by accident. This review accepts that as a
+reasonable choice; enabling model spend for the principal would be a separate decision with its own allowance
+subject. Still open after that work:
+
+- (a) The R1 log and status wording. `[no AI provider]` would still print for an agent run.
+- (b) `scripts/anomaly-sweep.ts` and `scripts/feedback-plan.ts` still use the anonymous `hr_admin` context and
+  were not changed.
+
+Re-check the merged state before acting on this note.
 | R3 | **One action registry.** `defineAgentAction` derives the effect union, nomination parser, tier ceiling, native-outcome list, handoff route, dispatch and outcome readers. A DB reference table plus FK replaces the CHECK lists. The drift test asserts registry = DB = inventory. | H | M | M | 0151 §4.2 | wave1b adds kinds the old way (0671 rewrites the CHECK again) |
 | R4 | **Collapse stores onto the generic families** (own and assigned): migrate `claims.cancel`'s TS clone first, then the 12 dedicated stores. Add `withAgentActionGuard` (D6). Expected removal: roughly 800 lines of TS custody code and 12 SQL function families (estimate). | H | L (incremental) | M | 0151 §4.3, 0131 (no second ledger) | wave1b `generic-assigned-review-store.ts` is the target shape |
 | R5 | **Make learning real.** Delete the routing candidate kind and `module-agent-improvement.ts`/`module-agent-orchestrator.ts` (test-only). Promote at **tenant scope** chosen by the approver (ADR-0131 §146). Scope the source manifest to AI-relevant files. Require promoter ∉ evaluators. Schedule maintenance. Trigger rollback from measured outcomes. Add holdouts for all 12 tools, every action entry (injection in record text, cross-company, cross-tenant, salary, missing permission, ambiguity → question). | H | M | L | 0151 §4.6d–e, 0084, 0131 | `ai-learning-loop` (measurement side) |
