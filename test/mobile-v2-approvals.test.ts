@@ -62,7 +62,7 @@ const fund = (employmentId: string, b: Base = base) =>
   owner.db.insert(schema.leaveLedger).values({ tenantId: b.tenantId, employmentId, leaveTypeId: b.annualLeaveTypeId, entryType: 'accrual', days: '60.00', effectiveOn: TODAY });
 const line = (sub: string, mgr: string, validFrom = '2024-01-01') =>
   setReportingLine(adminCtx(base), { subordinateEmploymentId: sub, managerEmploymentId: mgr, lineType: 'administrative', validFrom });
-const modules = (ctx: SessionContext) => ({ attendance: isModuleEnabled(ctx, 'attendance'), claims: isModuleEnabled(ctx, 'claims') });
+const modules = (ctx: SessionContext) => ({ attendance: isModuleEnabled(ctx, 'attendance'), claims: isModuleEnabled(ctx, 'claims'), performance: isModuleEnabled(ctx, 'performance'), rewards: isModuleEnabled(ctx, 'rewards') });
 const assigned = (who: Person, kind: Kind, id: string) => isCurrentAssignedApproval(who.ctx, { kind, id }, modules(who.ctx));
 
 const get = async (path: string) => {

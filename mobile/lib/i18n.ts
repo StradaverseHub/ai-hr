@@ -392,6 +392,8 @@ const en = {
   pickerDone: 'Done',
   // M08 — approvals (mobile/lib/approval-decision.tsx).
   task_replacementLeave: 'Replacement leave', task_noticeAcknowledgement: 'Notice acknowledgement',
+  task_performanceReview: 'Performance review', task_assessmentWork: 'Performance assessment', task_careerPlan: 'Career plan review',
+  task_calibration: 'Performance calibration', task_rewardReview: 'Rewards review',
   openOnWeb: 'Open on web',
   openApprovals: 'Review approvals',
   approvalsTitle: 'Approvals',
@@ -1235,6 +1237,8 @@ const ms: Record<MessageKey, string> = {
   pickerChoose: 'Pilih',
   pickerDone: 'Selesai',
   task_replacementLeave: 'Cuti ganti', task_noticeAcknowledgement: 'Pengakuan notis',
+  task_performanceReview: 'Semakan prestasi', task_assessmentWork: 'Penilaian prestasi', task_careerPlan: 'Semakan pelan kerjaya',
+  task_calibration: 'Kalibrasi prestasi', task_rewardReview: 'Semakan ganjaran',
   openOnWeb: 'Buka di web',
   openApprovals: 'Semak kelulusan',
   approvalsTitle: 'Kelulusan',

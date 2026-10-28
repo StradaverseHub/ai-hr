@@ -71,7 +71,8 @@ const refused = <C extends string>(code: C) => ({ outcome: 'refused' as const, c
 class TaskRefused extends Error {
   constructor(readonly code: TaskDecisionRefusalCode) { super(code); this.name = 'TaskRefused'; }
 }
-const modulesOf = (ctx: SessionContext) => ({ attendance: isModuleEnabled(ctx, 'attendance'), claims: isModuleEnabled(ctx, 'claims') });
+const modulesOf = (ctx: SessionContext) => ({ attendance: isModuleEnabled(ctx, 'attendance'), claims: isModuleEnabled(ctx, 'claims'),
+  performance: isModuleEnabled(ctx, 'performance'), rewards: isModuleEnabled(ctx, 'rewards') });
 const iso = (d: Date | string) => (d instanceof Date ? d : new Date(d)).toISOString();
 const hhmm = (v: unknown): string | null => (typeof v === 'string' && /^\d{2}:\d{2}/.test(v) ? v.slice(0, 5) : null);
 const num = (v: unknown): number => Number(v ?? 0);

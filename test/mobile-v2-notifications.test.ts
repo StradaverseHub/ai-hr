@@ -256,7 +256,7 @@ describe('Home summary (M14)', () => {
     caller = manager.ctx;
     const summary = await get('/home/summary', homeRoute.GET);
     expect(summary.status).toBe(200);
-    const canonical = await listPendingTasks(manager.ctx, undefined, { attendance: isModuleEnabled(manager.ctx, 'attendance'), claims: isModuleEnabled(manager.ctx, 'claims') });
+    const canonical = await listPendingTasks(manager.ctx, undefined, { attendance: isModuleEnabled(manager.ctx, 'attendance'), claims: isModuleEnabled(manager.ctx, 'claims'), performance: isModuleEnabled(manager.ctx, 'performance'), rewards: isModuleEnabled(manager.ctx, 'rewards') });
     expect(canonical.length).toBeGreaterThan(0);
     expect(summary.body).toEqual({ tasks: { status: 'ok', count: canonical.length }, inbox: { status: 'ok', enabled: true, unreadCount: 1 } });
 

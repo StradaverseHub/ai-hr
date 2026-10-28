@@ -33,7 +33,9 @@ const name = z.string().max(300);
 const clock = z.string().regex(/^\d{2}:\d{2}$/);
 
 /** Every kind the web inbox lists (core/approvals-inbox.ts PendingTaskKind). */
-export const TASK_KINDS = ['leave', 'leaveCancellation', 'replacementLeave', 'attendance', 'profile', 'claim', 'resignation', 'managerReview', 'hrReview', 'noticeAcknowledgement'] as const;
+export const TASK_KINDS = ['leave', 'leaveCancellation', 'replacementLeave', 'attendance', 'profile', 'claim', 'resignation', 'managerReview', 'hrReview', 'noticeAcknowledgement',
+  // Module-owned kinds (lib/assigned-work.ts PACK_TASK_KINDS), read-only in the app with their web path (D2).
+  'performanceReview', 'assessmentWork', 'careerPlan', 'calibration', 'rewardReview'] as const;
 export const TaskKind = z.enum(TASK_KINDS);
 export type TaskKind = z.infer<typeof TaskKind>;
 /** D2: the kinds decided natively. Attendance covers clock corrections AND overtime (one decider). D12 adds claims. */

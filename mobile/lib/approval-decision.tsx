@@ -50,7 +50,8 @@ export function webUrl(path: string): string | null {
 const KIND_LABEL: Record<TaskKind, MessageKey> = {
   leave: 'task_leave', leaveCancellation: 'task_leaveCancellation', replacementLeave: 'task_replacementLeave', attendance: 'task_attendance',
   profile: 'task_profile', claim: 'task_claim', resignation: 'task_resignation', managerReview: 'task_managerReview', hrReview: 'task_hrReview',
-  noticeAcknowledgement: 'task_noticeAcknowledgement',
+  noticeAcknowledgement: 'task_noticeAcknowledgement', performanceReview: 'task_performanceReview', assessmentWork: 'task_assessmentWork',
+  careerPlan: 'task_careerPlan', calibration: 'task_calibration', rewardReview: 'task_rewardReview',
 };
 const REFUSAL: Record<TaskDecisionRefusalCode, MessageKey> = {
   not_assigned: 'approvalRefusalNotAssigned', self_approval: 'approvalRefusalSelf', already_decided: 'approvalRefusalDecided',
