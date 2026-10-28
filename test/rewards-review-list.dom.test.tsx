@@ -19,6 +19,18 @@ describe('Rewards review overview',()=>{
   expect(screen.getByRole('link',{name:'Waiting for my action: 1'}).getAttribute('href')).toBe('/rewards?waiting=1');
   expect(screen.getByText(/1 review is in progress.*Executive Chairman/)).toBeTruthy();
  });
+ it('keeps the walkthrough anchor on the rendered review table and empty state',()=>{
+  const populated=show([base]);
+  const tableAnchor=populated.container.querySelector('[data-tour="rewards-review-units"]');
+  expect(tableAnchor).not.toBeNull();
+  expect(within(tableAnchor as HTMLElement).getByRole('table')).toBeTruthy();
+  expect(within(tableAnchor as HTMLElement).getByRole('link',{name:'Open review'}).getAttribute('href')).toBe('/rewards/r1');
+  populated.unmount();
+  const empty=show([],{},'noRole');
+  const emptyAnchor=empty.container.querySelector('[data-tour="rewards-review-units"]');
+  expect(emptyAnchor).not.toBeNull();
+  expect(within(emptyAnchor as HTMLElement).getByText(en.rewards.reviewList.empty.noRole)).toBeTruthy();
+ });
  it('narrows by every URL filter and preserves filter choices',()=>{
   for(const filters of [{cycle:'cycle',company:'co',unit:'bu',stage:'draft',waiting:'1'}])expect(filterRewardReviews([base,second],filters).map(row=>row.id)).toEqual(['r1']);
   show([base,second],{company:'co2'});expect(screen.getAllByRole('row')).toHaveLength(2);expect(within(screen.getAllByRole('row')[1]).getByText('Wholesale')).toBeTruthy();
