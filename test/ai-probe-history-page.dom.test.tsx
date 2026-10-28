@@ -1,3 +1,4 @@
+import {captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
 /** Actual screen component, fictional data owners. Optional HTML capture supports rendered review. */
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,render,screen} from '@testing-library/react';
@@ -32,7 +33,8 @@ describe('connection probe history in six rendered locales',()=>{
   render(<NextIntlClientProvider locale={locale} messages={copies[locale] as any}>{page}</NextIntlClientProvider>);
   expect(screen.getByText(copies[locale].aiManagement.operations.probe,{exact:false})).toBeInTheDocument();
   expect(screen.getByText('Fictional reviewer')).toBeInTheDocument();
+  await captureAiReviewScreenshots(document.body.innerHTML,locale,'probe');
   const out=process.env.AIHR_SCREENSHOT_HTML_DIR;
   if(out){mkdirSync(out,{recursive:true});writeFileSync(`${out}/${locale}-probe.html`,`<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/styles.css"></head><body class="bg-background text-foreground p-4">${document.body.innerHTML}</body></html>`);}
- });
+ },60000);
 });
