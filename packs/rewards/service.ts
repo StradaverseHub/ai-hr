@@ -32,9 +32,11 @@ export {rewardAccessAdministration,previewRewardAccessChange,saveRewardAccessCha
 export type {RewardAccessChange,RewardAccessAdministration,RewardDeletionReason} from './maintenance';
 export {previewRewardAccessBatch,saveRewardAccessBatch,previewRewardAccessCopy} from './maintenance';
 export type {RewardAccessBatch,RewardAccessCopyProposal} from './maintenance';
-import {activeRewardLogin,missingRewardRoles,rewardRequiredRoles,rewardRoleLabels} from './coverage';
+import {activeRewardLogin,missingRewardRoles,rewardRequiredRoles,rewardRoleLabels,rewardUnitCoverage} from './coverage';
 export {rewardRequiredRoles,rewardUnitCoverage} from './coverage';
 export type {RewardUnitCoverage,RewardRoleCoverage} from './coverage';
+/** cd72f915 — required-role coverage for the configuration list's "roles missing" badge (same predicate as submission). */
+export async function rewardCoverageForUnits(ctx: SessionContext, unitIds: string[]) { return withRewardsTenant(ctx, tx => rewardUnitCoverage(tx, unitIds)); }
 
 export { calculateRewards } from './engine';
 export { defaultPolicy } from './model';

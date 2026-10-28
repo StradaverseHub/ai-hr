@@ -21,4 +21,10 @@ describe('086915a8: Rewards admin tabs', () => {
         expect(shared).toContain('<RewardsAdminTabs current="shared"/>');
         expect(shared).not.toContain("t('backToReviews')");
     });
+    it('replaces the loose links on the configuration page and flags reviews with roles missing', () => {
+        const config = readFileSync(new URL('../app/admin/rewards/page.tsx', import.meta.url), 'utf8');
+        expect(config).toContain('<RewardsAdminTabs current="configuration"/>');
+        expect(config).not.toContain('href="/admin/rewards/access"');
+        expect(config).toContain("ta('rolesMissing'");
+    });
 });
