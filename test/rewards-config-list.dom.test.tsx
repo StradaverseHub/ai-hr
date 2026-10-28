@@ -59,7 +59,8 @@ describe('Rewards configuration list (7a8102a7)', () => {
   it('filters the list by company, business unit, cycle and stage through the URL', async () => {
     render(wrap(await page({ stage: 'bg' })));
     expect(screen.getAllByRole('row')).toHaveLength(2);
-    expect(screen.getByText('Precast')).toBeTruthy();
+    // The unit name also appears as a filter option; the filtered row is the one that matters.
+    expect(within(screen.getAllByRole('row')[1]).getByText('Precast')).toBeTruthy();
     cleanup();
     render(wrap(await page({ company: 'company', unit: 'bu-2' })));
     expect(screen.getByText('No reviews match these filters.')).toBeTruthy();
@@ -111,7 +112,7 @@ describe('Row actions by stage (62e743ed)', () => {
     expect(await actionsOf(row)).toEqual(expected);
   });
   it('hides Cancel without cancel authority and shows who cancelled, when and why', async () => {
-    expect(await actionsOf({ status: 'bg', deletionReason: 'locked', canCancel: false })).toEqual(['View', 'Edit deadlines']);
+    expect(await actionsOf({ status: 'bg', deletionReason: 'locked', canConfigure: false, canCancel: false })).toEqual(['View', 'Edit deadlines']);
     cleanup();
     await actionsOf({ status: 'withdrawn', deletionReason: 'locked', canCancel: false, cancellation: { on: '2026-11-12', by: 'A. Admin', reason: 'Unit merged into Northern Sales review' } });
     expect(screen.getByText('Cancelled 12/11/2026 by A. Admin: Unit merged into Northern Sales review')).toBeTruthy();
