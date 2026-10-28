@@ -170,6 +170,10 @@ export const UNSECTIONED_COLUMNS: Record<string, string> = {
   // basic salary it cannot see. It travels with the wide template, beside the amount it explains.
   salary_remarks:
     'the reason ONE salary revision has no basic amount; a section file carries no effective date, so it cannot name which revision it would be explaining (see basic_salary)',
+  // 524303d9 — single-value settings the full Employee import sets at hire; later changes have their own owner screens.
+  schedule_group: 'the full Employee import sets the initial Schedule Group at hire; later changes use the Attendance tab, whose owner re-checks the employee\'s current shifts',
+  payroll_policy: 'the full Employee import sets the initial Payroll Policy at hire; later reassignment uses the Payroll tab policy owner',
+  correspondence_same_as_permanent: 'a hire-time copy instruction, not a stored value: the full Employee import copies the permanent address into the correspondence address at hire',
 };
 
 /** Every accepted column, including bounded previous-generation adapters, key first. */

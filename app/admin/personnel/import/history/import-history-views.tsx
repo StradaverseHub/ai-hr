@@ -68,6 +68,11 @@ async function ItemValue({kind,value}:{kind:ImportKind;value:unknown}){
   const resolve=(key:string,fallback:string)=>root.has(key)?root(key):fallback;
   return <dl className="space-y-1">{fields.map(([column,v])=><div key={column}><dt className="inline text-muted-foreground">{personnelColumnLabel(column,'employee',resolve)}: </dt><dd className="inline break-all">{v===''?t('bankStatutory.blank'):v}</dd></div>)}</dl>;
  }
+ if(kind==='employee_full'){
+  // 524303d9 — the employee this import created (no identity, salary or bank value is recorded).
+  const state=value as {employeeCode?:string;fullName?:string};
+  return <span>{t('employeeFull.created',{code:state.employeeCode||'—',name:state.fullName??''})}</span>;
+ }
  // Kinds without a dedicated renderer show their recorded fields as plain pairs.
  if(typeof value==='object')return <dl className="space-y-1">{Object.entries(value as Record<string,unknown>).map(([k,v])=><div key={k}><dt className="inline text-muted-foreground">{k}: </dt><dd className="inline break-all">{typeof v==='object'?JSON.stringify(v):String(v)}</dd></div>)}</dl>;
  return <span>{String(value)}</span>;

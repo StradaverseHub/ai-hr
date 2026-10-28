@@ -62,8 +62,8 @@ describe('0db97f14 · the Bank & Statutory template carries every editable tab s
   for(const c of ['epf_category','socso_category','eis_category','subject_to_skbbk','subject_to_hrdf','tax_residency','tax_circumstance','disabled_individual','disabled_spouse','child_relief_mode','child_relief_under_18_full','employer_bears_tax','employer_bears_epf'])expect(template).toContain(c);
   // The legacy yes/no adapters are accepted, but the template offers only the canonical columns.
   expect(template).not.toContain('eis_eligible');expect(template).not.toContain('is_resident');
-  // The create path is untouched until the "Everything" template adopts these columns (524303d9).
-  expect([...IMPORT_COLUMNS.required,...IMPORT_COLUMNS.optional]).not.toContain('socso_category');
+  // 524303d9 — the "Everything — new employees" template adopts every one of these columns.
+  expect([...IMPORT_COLUMNS.required,...IMPORT_COLUMNS.optional]).toContain('socso_category');
   expect([...IMPORT_COLUMNS.optional]).toContain('epf_citizenship');
   // A Profile file carrying a statutory setting is refused and pointed at its section.
   expect(foreignColumns('profile',['employee_code','socso_category'])).toEqual(['socso_category']);

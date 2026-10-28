@@ -21,6 +21,7 @@ import {requirePackFor,type CountryPack} from '../localization/registry';
 import {clientPackFor} from '../localization/registry.client';
 import {mapEpfUiMode} from '../lib/epf-mode-map';
 import {applyPersonnelOperationalValuesTx} from './personnel-import-operations';
+import {setEmploymentPaymentMethod} from './org';
 import {isPaymentMethod} from '../lib/payment-methods';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {
@@ -182,8 +183,12 @@ export async function applyBankStatutoryPatchTx(tx:Tx,ctx:SessionContext,subject
  }
  if(has(OTHERS_COLUMNS)){const v=patch.subject_to_hrdf;await statutory.setOthersStatutory(ctx,{personId,subjectToHrdf:v==='yes'?true:v==='no'?false:null},tx);}
  if('payment_method' in patch){
-  const v=patch.payment_method??'';if(!isPaymentMethod(v))refuse(`${label('payment_method')}: cannot be emptied by an import or a revert`);
-  await applyPersonnelOperationalValuesTx(tx,ctx,subject.employmentId,{paymentMethod:v as Parameters<typeof applyPersonnelOperationalValuesTx>[3]['paymentMethod']});
+  // 524303d9 — "" is the tab's own "Not set" choice (the Payroll tab's select offers it and the owner
+  // accepts null), so a revert restores it. An import never reaches here with "": a blank cell is never patched.
+  const v=patch.payment_method??'';
+  if(v==='')await setEmploymentPaymentMethod(ctx,{employmentId:subject.employmentId,paymentMethod:null},tx);
+  else{if(!isPaymentMethod(v))refuse(`${label('payment_method')}: use one of the listed payment methods`);
+   await applyPersonnelOperationalValuesTx(tx,ctx,subject.employmentId,{paymentMethod:v as Parameters<typeof applyPersonnelOperationalValuesTx>[3]['paymentMethod']});}
  }
 }
 
@@ -218,7 +223,11 @@ export const bankStatutoryRevertHandler:ImportRevertHandler={
     fingerprint[i.id]=Object.fromEntries(Object.keys(after).map(c=>[c,state[c]??'']));
     for(const c of Object.keys(after)){
      if((state[c]??'')!==after[c])blockers.push(`${label(c)} has been changed since this import (now ${shown(state[c]??'')}, the import set ${shown(after[c])}).`);
-     else if(before[c]===''&&(c==='payment_method'||c==='tax_residency'))blockers.push(`${label(c)} had no value before this import, so a revert cannot empty it. Change it on the employee's profile instead.`);
+     // 524303d9 — an empty value is restored wherever the tab itself can hold it (payment method "Not set",
+     // blank bank, numbers, tax circumstance…). The ONE exception is income tax residency: "" there means the
+     // employer-scoped selection is awaiting confirmation, a state only the selection's transition produces —
+     // the tab cannot choose it and no owner writes it, so it still blocks.
+     else if(before[c]===''&&c==='tax_residency')blockers.push(`${label(c)} was awaiting confirmation before this import. That state cannot be restored; change the residency on the employee's profile instead.`);
     }
    }
    out.push({itemId:i.id,blockers,restore:{fields:Object.keys(before).map(c=>({field:label(c),value:shown(before[c])}))}});

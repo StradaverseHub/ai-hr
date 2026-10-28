@@ -81,8 +81,23 @@ and tenant-wide visibility.
   the first and last are bounded adapters onto EIS category and income tax residency. The new columns are
   `import.updateOnly` and stay off the create template until 524303d9 adopts them.
 - **Revert** is eligible only while every changed field still equals the value the import set; it restores the
-  recorded values through the same writer. A field that was empty before (payment method, unconfirmed income
-  tax residency) cannot be emptied by a revert and blocks it.
+  recorded values through the same writer. ~~A field that was empty before (payment method, unconfirmed income
+  tax residency) cannot be emptied by a revert and blocks it.~~ Superseded by §5.
 - **Permission** stays `workforce.view`/`workforce.maintain`: the section import already requires
   `workforce.maintain` on each employment (`assertWorkforceEmploymentTx`), so `app.import_company_access` is
   unchanged and no SQL is added.
+
+## 5. Amendment — "Everything — new employees" (524303d9)
+
+- **Kind `employee_full`.** The full import records an attempt for every commit by a signed-in actor: the
+  original file posted to `/admin/personnel/import/employee/upload` (a paste or prepared text is recorded as its
+  CSV text), the per-row outcome as the plan, and one applied item per created employment written in the hire
+  transaction (`after` = Employee ID, name, row; no identity, salary or bank value). `confirmed` carries
+  succeeded/failed; a refused file or a rolled-back write appends `failed`. `employee_import_run` is still written.
+- **Revert voids** the created employments (ADR-0153). `ImportRevertHandler.apply` now receives the normalized
+  revert reason as an optional fourth argument, so a kind can store it on its own rows.
+- **Bank & Statutory revert restores empty values the tab can hold.** Payment method "" is the Payroll tab's own
+  "Not set" choice and its owner accepts null, so it is restored. Blank bank fields, numbers and tax circumstance
+  were already restorable through the merged writer. The one blank that still blocks is income tax residency:
+  "" there means the employer-scoped selection is awaiting confirmation, a state only the selection's transition
+  produces — the tab cannot choose it and no owner writes it.

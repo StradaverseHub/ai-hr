@@ -2658,7 +2658,22 @@
       "instructionColumnsHeading": "Lajur — kandungan setiap lajur, sama ada wajib, dan nilai yang diterima",
       "instructionAccepted": "Nilai yang diterima: {values}",
       "bankStatutoryUploadFailed": "Import tidak dapat disimpan. Tiada apa-apa yang diubah. Cuba lagi, atau buka Sejarah Import untuk menyemak.",
-      "viewImportHistoryEntry": "Lihat import ini dalam Sejarah Import"
+      "viewImportHistoryEntry": "Lihat import ini dalam Sejarah Import",
+      "employeeUploadFailed": "Import tidak dapat disimpan. Tiada apa-apa yang diubah. Cuba lagi, atau buka Sejarah Import untuk menyemak.",
+      "instructionDuplicateEmail": "E-mel: apabila \"Benarkan E-mel Kerja atau E-mel Peribadi Berulang\" dimatikan (tetapan Am Kakitangan), e-mel yang sudah digunakan oleh pekerja lain ditolak, sama seperti NRIC berulang. Apabila dihidupkan, baris diimport dengan amaran.",
+      "instructionStatutorySettings": "Bank & Berkanun: setiap tetapan pada tab boleh diisi di sini, lajur yang sama seperti templat Bank & Berkanun — kategori KWSP dengan kadar atau amaun dan sebab, suis majikan menanggung, kategori PERKESO dan SIP, Tertakluk kepada SKBBK, HRDF (Ya, Tidak atau Lalai), keadaan cukai, status pemastautin cukai pendapatan, OKU, mod dan jadual pelepasan anak, dan Majikan menanggung cukai. Tetapan kotak tanda menerima Ya atau Tidak. Setiap baris disemak dengan peraturan yang sama seperti skrin pekerja sebelum apa-apa disimpan; baris yang mempunyai ralat tidak mencipta apa-apa.",
+      "instructionHireSettings": "Tetapan semasa pengambilan: Sama seperti alamat tetap (Ya menyalin alamat tetap ke alamat surat-menyurat; biarkan lajur surat-menyurat kosong), Kumpulan jadual (namanya), dan Polisi yang digunakan (polisi gaji aktif syarikat baris itu, mengikut nama atau kod, hanya jika Gaji dihidupkan).",
+      "instructionRevert": "Sejarah Import menyimpan fail ini, siapa yang mengimportnya dan ID Pekerja yang dicipta. Import yang berjaya boleh dibatalkan sekali, selagi tiada pekerjanya mempunyai apa-apa yang dilampirkan sejak itu (gaji, cuti, kehadiran, tuntutan, dokumen, pergerakan atau log masuk). Pekerja yang dibatalkan hilang daripada senarai, bilangan pekerja dan gaji tetapi kekal dalam jejak audit, dan ID Pekerja, e-mel serta nombor NRIC mereka dibebaskan supaya fail yang dibetulkan boleh diimport semula.",
+      "notImported": {
+        "heading": "Tiada dalam templat ini, dan sebabnya:",
+        "photos": "Foto — gambar dimuat naik pada Profil pekerja, bukan ditaip dalam sel.",
+        "documents": "Dokumen — fail dimuat naik pada tab Dokumen.",
+        "leaveBalances": "Baki cuti — kelayakan datang daripada polisi cuti semasa pengambilan; baki pembukaan menggunakan import baki Cuti.",
+        "delegations": "Delegasi kelulusan — ia menamakan pekerja lain dan tarikh, disemak oleh skrin delegasi.",
+        "payItems": "Item gaji berulang selain gaji pokok dan elaun bulanan — tambah pada tab Gaji atau dengan import item gaji.",
+        "openingTax": "Baki cukai pembukaan untuk pekerja yang menyertai pertengahan tahun (TP3) — dimasukkan pada tab Gaji.",
+        "holidayCalendar": "Kalendar cuti umum — tugasan bertarikh dengan sejarahnya sendiri; tetapkan pada tab Kehadiran selepas import."
+      }
     },
     "wizard": {
       "deleteRecord": "Padam Rekod",
@@ -3049,6 +3064,10 @@
       },
       "bankStatutory": {
         "blank": "(kosong)"
+      },
+      "employeeFull": {
+        "created": "Dicipta {code} · {name}",
+        "willVoid": "Pekerja ini akan dibatalkan: dikeluarkan daripada senarai, bilangan pekerja dan gaji, disimpan dalam jejak audit. ID Pekerja, e-mel dan NRIC dibebaskan."
       }
     }
   },
