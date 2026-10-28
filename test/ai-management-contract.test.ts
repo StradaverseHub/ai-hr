@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { AI_FEATURES } from '../lib/ai/features';
 import { MODULE_CATALOG, SETTING_CATALOG } from '../packs/catalog';
 const read=(p:string)=>readFileSync(p,'utf8');
-const walk=(p:string):string[]=>readdirSync(p,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(join(p,e.name)):/\.(ts|tsx)$/.test(e.name)?[join(p,e.name)]:[]);
+const walk=(p:string):string[]=>readdirSync(p,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(join(p,e.name)):/\.(?:[cm]?[jt]sx?)$/.test(e.name)?[join(p,e.name)]:[]);
 const coreCallers:Record<string,string>={'core/assistant.ts':'hr_assistant','core/feedback.ts':'feedback_planning','core/input-triage.ts':'claims_triage','core/pay-rule-ai.ts':'pay_rule_draft','core/payroll-anomaly-narrate.ts':'payroll_explanation','core/payroll-hypothesis.ts':'payroll_hypotheses','core/performance.ts':'performance_pm','core/readiness-nudge.ts':'readiness_reminders','core/report-ai.ts':'report_insight'};
 // Callers whose provider configuration is issued for ONE named workload by a governed seam other than a
 // literal resolveActiveAiConfig: the snapshot-governed module agent flows (governedAiConfig in the release
