@@ -459,6 +459,16 @@ const en = {
   payEaEmpty: 'No EA forms are available yet.',
   payEaNotAvailable: 'Not available yet.',
   payEaLayout: 'This EA form could not be prepared. Contact HR.',
+  inboxMarkAll: 'Mark all read',
+  inboxUnreadLabel: 'Unread',
+  inboxOpenLeave: 'Open leave ›',
+  inboxOpenLeaveHistory: 'Open leave requests ›',
+  inboxOpenApprovals: 'Open approvals ›',
+  inboxOpenPay: 'Open payslips ›',
+  inboxGone: 'This item is no longer available.',
+  inboxActionFailed: "Couldn't update this notification. Check your connection and try again.",
+  homeTasksCount: '{n} waiting for you',
+  homeCheckFailed: "Couldn't check — retry",
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -911,6 +921,16 @@ const ms: Record<MessageKey, string> = {
   payEaEmpty: 'Belum ada borang EA yang tersedia.',
   payEaNotAvailable: 'Belum tersedia.',
   payEaLayout: 'Borang EA ini tidak dapat disediakan. Hubungi HR.',
+  inboxMarkAll: 'Tandakan semua dibaca',
+  inboxUnreadLabel: 'Belum dibaca',
+  inboxOpenLeave: 'Buka cuti ›',
+  inboxOpenLeaveHistory: 'Buka permohonan cuti ›',
+  inboxOpenApprovals: 'Buka kelulusan ›',
+  inboxOpenPay: 'Buka slip gaji ›',
+  inboxGone: 'Item ini tidak lagi tersedia.',
+  inboxActionFailed: 'Pemberitahuan ini tidak dapat dikemas kini. Semak sambungan anda dan cuba lagi.',
+  homeTasksCount: '{n} menunggu anda',
+  homeCheckFailed: 'Tidak dapat menyemak — cuba lagi',
 };
 
 const catalogues: Record<string, Record<MessageKey, string>> = { en, ms };

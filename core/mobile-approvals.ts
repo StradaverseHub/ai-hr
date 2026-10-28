@@ -92,6 +92,11 @@ export async function tasksPageV2(ctx: SessionContext, q: { limit: number; curso
   };
 }
 
+/** M14 — Home's task count: exactly the v2 list's population (the same owner, modules and kinds), not a second rule. */
+export async function pendingTaskCountV2(ctx: SessionContext): Promise<number> {
+  return (await listPendingTasks(ctx, undefined, modulesOf(ctx))).length;
+}
+
 // ── Admission ──────────────────────────────────────────────────────────────────────────────────────────────
 
 /** The row's subject employment and status as the caller's RLS shows the raw row (null: not readable). */

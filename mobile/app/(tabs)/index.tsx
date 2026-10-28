@@ -1,16 +1,17 @@
 import { ComposedPage } from '../../lib/composed-page';
 import { ClockPanel } from '../../lib/clock-panel';
+import { HomeNeeds } from '../../lib/inbox';
 import { TeamPanel } from '../../lib/team-panel';
 import { Fragment,useState } from 'react';
 import { useTenantDesign } from '../../lib/design';
 /**
- * Home — task-first (the benchmark's best-rated pattern): what needs me, then my leave, then my pay.
+ * Home — task-first (the benchmark's best-rated pattern): what needs me, then my leave, then my pay. "What needs me"
+ * is M14's truthful card (mobile/lib/inbox.tsx HomeNeeds): never "nothing needs you" while a count is loading or failed.
  */
 import { useApi } from '../../lib/api';
 import { t } from '../../lib/i18n';
 import { useSession } from '../../lib/session';
-import { Button, Card, LoadState, Muted, Row, Screen, SectionLabel, Title, fmtDays, fmtMoney } from '../../lib/ui';
-import { router } from 'expo-router';
+import { Card, LoadState, Muted, Row, Screen, SectionLabel, Title, fmtDays, fmtMoney } from '../../lib/ui';
 
 export default function Home() {
   const { design } = useTenantDesign();
@@ -22,9 +23,8 @@ function LegacyHome() {
   const me = useApi('me', {}, signOut);
   const leave = useApi('leave', { employmentId: employmentId ?? undefined }, signOut);
   const payslips = useApi('payslips', {}, signOut);
-  const inbox = useApi('notifications', {}, signOut);
   const [refreshToken,setRefreshToken]=useState(0);
-  const reloadAll = () => { [me, leave, payslips, inbox].forEach((l) => l.reload()); setRefreshToken(n=>n+1); };
+  const reloadAll = () => { [me, leave, payslips].forEach((l) => l.reload()); setRefreshToken(n=>n+1); };
 
   const name = me.data?.person.name;
   const latest = payslips.data?.items[0];
@@ -35,11 +35,7 @@ function LegacyHome() {
       <LoadState loading={me.loading} hasData={me.data!=null} error={me.error} onRetry={me.reload} />
 
       {design.homeOrder.map(id => <Fragment key={id}>
-        {id === 'clock' ? <ClockPanel refreshToken={refreshToken}/> : id === 'team' ? <TeamPanel refreshToken={refreshToken}/> : id === 'tasks' ? <><SectionLabel>{t('needsYou')}</SectionLabel><Card>
-          {inbox.data?.enabled && inbox.data.unread > 0 ? <Row label={t('tabInbox')} value={t('unreadCount', { n: inbox.data.unread })} strong /> : <Muted>{t('nothingNeedsYou')}</Muted>}
-          {/* M08: the approver's tasks, decided natively or opened on the web. The list itself says when nothing waits. */}
-          <Button title={t('openApprovals')} kind="quiet" onPress={() => router.push('/approvals')} />
-        </Card></> : <><SectionLabel>{t('tabLeave')}</SectionLabel>
+        {id === 'clock' ? <ClockPanel refreshToken={refreshToken}/> : id === 'team' ? <TeamPanel refreshToken={refreshToken}/> : id === 'tasks' ? <><SectionLabel>{t('needsYou')}</SectionLabel><HomeNeeds refreshToken={refreshToken} /></> : <><SectionLabel>{t('tabLeave')}</SectionLabel>
           <LoadState loading={leave.loading} hasData={leave.data!=null} error={leave.error} onRetry={leave.reload} />
           {leave.data?.cards.map(c => <Card key={c.leaveTypeId}><Row label={c.leaveType} value={fmtDays(c.takenOnly ? c.taken : c.isCurrentCycle ? c.canApplyFor : c.balance)} strong />{c.sharedPool && <Muted>{t('sharedPool')}</Muted>}</Card>)}
           {leave.data?.cards.length === 0 && <Muted>{t('noLeaveTypes')}</Muted>}
