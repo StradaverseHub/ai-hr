@@ -22,6 +22,7 @@ import {appendAttachment} from './capture';
 import {SignedClockConflict,SignedClockUnavailable,type SignedClockReference} from './signed-clock-journal';
 import type {EvidenceFile,JournalEntry} from './submission-journal';
 import {createOfflineClockPorts,readOfflineCapabilities,offlineClockIdentity} from './offline-clock-ports';
+import type {z} from 'zod';
 import type {OfflineClockContextTarget} from '../../lib/mobile-offline-context';
 
 export async function openOwnedSignedClock(employmentId:string,isUnlocked:()=>boolean){
@@ -127,7 +128,7 @@ export async function openOwnedSignedClock(employmentId:string,isUnlocked:()=>bo
  }));
  store=journal;
  /** The offline context target: the enrolled key's app, and on iPhone the stored receipt's App Attest environment. */
- async function offlineTarget():Promise<OfflineClockContextTarget>{
+ async function offlineTarget():Promise<z.infer<typeof OfflineClockContextTarget>>{
   const current=(await key()).key;
   if(current.platform==='android')return {platform:'android',appId:current.appId,environment:null};
   const controller=await owned(()=>openOwnedDeviceEnrollment(employmentId,isUnlocked));
