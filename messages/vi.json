@@ -26484,6 +26484,7 @@
       "confirmNote": "Kiểm tra từng chi tiết. Chỉ gửi khi đây đúng là đơn bạn muốn gửi.",
       "uncertain": "Chưa thể xác nhận kết quả. Hãy kiểm tra chính thao tác này trước khi thử thao tác khác.",
       "prepareUncertain": "Chưa thể xác nhận bản xem lại đã được lưu. Hãy tìm các bản đã lưu trước khi chuẩn bị bản khác.",
+      "busy": "Hệ thống đang hơi bận một chút. Chưa có gì được lưu — chờ một lát rồi thử lại nhé.",
       "submitted": "Đã gửi đơn nghỉ",
       "submittedNote": "Đơn của bạn đã được gửi. Phê duyệt là bước riêng; hãy xem trạng thái hiện tại trong Nghỉ phép.",
       "discarded": "Đã bỏ bản xem lại đã lưu. Thao tác này không hủy đơn nghỉ.",

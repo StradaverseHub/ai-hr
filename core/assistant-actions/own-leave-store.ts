@@ -16,7 +16,7 @@ import { assertAiActionUnpausedTx } from '../ai-governance';
 import { OwnLeaveConfirmation, OwnLeaveRetirementRequest, OwnLeaveFinalReceipt, OwnLeavePreparedReview,
   type OwnLeaveFinalReceipt as Receipt, type OwnLeavePreparedReview as Card } from '../../lib/assistant-actions/own-leave-contract';
 import { assertAiPrincipalTx } from '../ai-principal';
-import { OwnLeaveReviewIndexResult } from '../../lib/assistant-actions/own-leave-http';
+import { OwnLeaveBusy, OwnLeaveReviewIndexResult, isOwnLeaveBusyRefusal } from '../../lib/assistant-actions/own-leave-http';
 import { readOwnLeaveActorTx } from './own-leave-actor';
 import { readOwnLeaveCandidateTx, type OwnLeaveCandidateResult } from './own-leave-candidate';
 import { OwnLeaveContentUnavailable, OwnLeaveSealedReview, sealOwnLeaveReview, unsealOwnLeaveReview } from './own-leave-content';
@@ -181,7 +181,11 @@ async function expireReviewsTx(tx: Tx, limit: number, own: boolean): Promise<num
     if (!row || !Number.isSafeInteger(row.expired) || row.expired < 0 || row.expired > limit)
       throw new OwnLeaveContentUnavailable();
     return row.expired;
-  } catch { throw new OwnLeaveContentUnavailable(); }
+  } catch (error) {
+    // The Access lock or a review row was busy past the bounded lock_timeout (55P03): the statement
+    // failed and the caller's transaction rolls back. Still bounded; no SQL or lock detail escapes.
+    throw isOwnLeaveBusyRefusal(error) ? new OwnLeaveBusy() : new OwnLeaveContentUnavailable();
+  }
 }
 
 /** Existing group-admin primitive; no synthetic system actor or anonymous maintenance grant. */

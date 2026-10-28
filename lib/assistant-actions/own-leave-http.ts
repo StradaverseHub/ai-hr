@@ -2,6 +2,7 @@
  * The eventual route must bind authenticate to its real server session and operations to canonical
  * store/command owners; do not release before source/security/migration/experience acceptance. */
 import { z } from 'zod';
+import { pgSqlState } from '../db-error';
 import { isSameOriginBrowserRequest } from '../request-origin';
 import { OwnLeaveRetirementRequest, OwnLeaveConfirmation, OwnLeaveFinalReceipt, OwnLeaveHumanSelection, OwnLeaveHumanText,
   OwnLeaveNomination, OwnLeavePreparedReview } from './own-leave-contract';
@@ -43,6 +44,22 @@ export type OwnLeaveBrowserOwners<Session> = Readonly<{
 const headers = { 'Cache-Control': 'private, no-store', 'Vary': 'Cookie, Authorization',
   'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' };
 const failure = (status: number) => Response.json({ error: 'unavailable' }, { status, headers });
+
+/** A preparation refused because a participating lock was busy, before anything was saved. Bounded:
+ * no lock name, SQL text or internals. Raised by the canonical owners; never parsed from a request. */
+export class OwnLeaveBusy extends Error {
+  constructor() { super('Own-leave review busy'); this.name = 'OwnLeaveBusy'; }
+}
+/** PostgreSQL raises SQLSTATE 55P03 (lock_not_available) both for NOWAIT and for a wait cut short by
+ * lock_timeout. The statement fails, so its whole transaction rolls back. 57014 (query_canceled, also a
+ * statement_timeout or a cancel) is NOT a lock refusal and stays unconfirmed. */
+export function isOwnLeaveBusyRefusal(error: unknown): boolean {
+  return error instanceof OwnLeaveBusy || pgSqlState(error) === '55P03';
+}
+/** The exact busy refusal body and status. The panel accepts only this shape as "nothing was saved". */
+export const OWN_LEAVE_BUSY_STATUS = 409;
+export const OwnLeaveBusyRefusal = z.object({ error: z.literal('busy') }).strict();
+const busy = () => Response.json(OwnLeaveBusyRefusal.parse({ error: 'busy' }), { status: OWN_LEAVE_BUSY_STATUS, headers });
 export const OWN_LEAVE_PREPARE_BYTES=28672;
 export const OWN_LEAVE_RESPONSE_BYTES=65536;
 const MAX_BYTES=OWN_LEAVE_PREPARE_BYTES;
@@ -121,6 +138,10 @@ export function createOwnLeaveBrowserHandler<Session>(owners: OwnLeaveBrowserOwn
       const checked=packet.operation==='list'?OwnLeaveReviewIndexResult.parse(result):PublicResult.parse(result);
       if(new TextEncoder().encode(JSON.stringify(checked)).byteLength>OWN_LEAVE_RESPONSE_BYTES)return failure(503);
       return Response.json(checked,{status:200,headers});
-    } catch { return failure(503); }
+    } catch (error) {
+      // Only PREPARE is classified: its owners refuse before commit, so a busy refusal saved nothing.
+      // Confirmation, reopen, discard and list keep the unconfirmed 503: never infer a rollback there.
+      return packet.operation === 'prepare' && isOwnLeaveBusyRefusal(error) ? busy() : failure(503);
+    }
   };
 }
