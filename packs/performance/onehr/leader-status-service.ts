@@ -4,13 +4,14 @@
  * One read, app.onehr_leader_status (0666), decides everything under the viewer's own login: the highest live
  * seat (BG CEO, then group chief, then BU CEO, then HOD), its people in the cycle, and their states and counts.
  * Authority is the seat itself: a viewer with no live seat, or an HOD while the cycle runs, gets null, never a
- * refusal that would tell them more. The projection carries counts, states, Malaysia calendar dates and
- * company/department labels only; the schema below is strict, so a field the database adds is refused here
- * rather than passed on to a card.
+ * refusal that would tell them more. The projection carries counts, states, Malaysia calendar dates, aggregate
+ * band counts and company/department labels only, never a per-person band; the schema below is strict, so a
+ * field the database adds is refused here rather than passed on to a card.
  *
  * Running cycle: per seat, as the source's dashboard ("where your BU / the group / your group is"); there is no
  * distribution-versus-target comparison, as the source has none. Between cycles (closed): per component, people
- * with a final result released to the viewer and still waiting; a BU CEO and an HOD are release-gated (release 1).
+ * with a final result released to the viewer and still waiting, and aggregate band counts over the released
+ * people only; a BU CEO and an HOD are release-gated (release 1). A group chief gets no tally, as in the source.
  */
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -33,7 +34,9 @@ const buUnit = z.object({
   depts: z.array(z.object({ name: z.string().nullable(), performanceInOn: isoDate.nullable(), potentialInOn: isoDate.nullable() }).strict()),
 }).strict();
 const statusRow = z.object({ label: z.string().nullable(), people: count, state: rowState, lockedOn: isoDate.nullable(), in: count, of: count });
-const tallyCounts = z.object({ released: count, waiting: count }).strict();
+/** Aggregate counts per band over people released to the viewer only; never a person. Null where the source shows no tally for that component. */
+const bandCounts = z.array(z.object({ band: z.string(), n: count }).strict()).nullable();
+const tallyCounts = z.object({ released: count, waiting: count, bands: bandCounts }).strict();
 
 const running = { mode: z.literal('running'), cycleId: z.uuid(), midYear: z.boolean() };
 export const leaderStatusSchema = z.union([
@@ -42,9 +45,15 @@ export const leaderStatusSchema = z.union([
   z.object({ seat: z.literal('bg'), ...running, ready: count, locked: count, total: count, rows: z.array(statusRow.extend({ companyId: z.uuid() }).strict()) }).strict(),
   /** Group chief: one row per batch. In/of: confirmed line-manager bands (Year-End) or department reviews in (Mid-Year). */
   z.object({ seat: z.literal('group'), ...running, ready: count, locked: count, total: count, rows: z.array(statusRow.strict()) }).strict(),
+  /** Group chief between cycles: no tally, as in the source; only how many people they led. */
+  z.object({ seat: z.literal('group'), mode: z.literal('record'), cycleId: z.uuid(), midYear: z.boolean(), gated: z.literal(false), people: count }).strict(),
   z.object({
-    seat: z.enum(['bu', 'bg', 'group', 'hod']), mode: z.literal('record'), cycleId: z.uuid(), midYear: z.boolean(),
-    /** BU CEO and HOD: only people released to leaders count as released; BG CEO and group chief: nothing waits. */
+    seat: z.enum(['bu', 'bg', 'hod']), mode: z.literal('record'), cycleId: z.uuid(), midYear: z.boolean(),
+    /**
+     * BU CEO and HOD: only people released to leaders count as released, and only they add to band counts; BG CEO:
+     * nothing waits. Bands: performance for every seat; potential (Low, Mid, High) and talent status (non-zero
+     * only, Super Star first) for a BU CEO only.
+     */
     gated: z.boolean(), people: count,
     performance: tallyCounts, potential: tallyCounts, talent: tallyCounts,
     /** BU CEO only: department reviews in on performance. */

@@ -33,11 +33,24 @@ const BAND = /\b(UA|BE|ME|AE|OU|Low|Mid|High|Super Star|Star|Solid Core|PIP)\b/;
 const ALLOWED_KEYS = new Set([
   'seat', 'mode', 'cycleId', 'midYear', 'units', 'companyId', 'label', 'people', 'departments', 'state', 'axes', 'axis', 'lockedOn', 'in', 'of',
   'depts', 'name', 'performanceInOn', 'potentialInOn', 'ready', 'locked', 'total', 'rows', 'gated', 'performance', 'potential', 'talent',
-  'released', 'waiting', 'departmentReviews',
+  'released', 'waiting', 'departmentReviews', 'bands',
 ]);
+/** The only keys inside a tally's `bands` array: an aggregate count per band, never a person. */
+const BAND_ENTRY_KEYS = ['band', 'n'];
+/** The value with every tally `bands` array removed, and the entries that were removed. */
+function withoutBands(value: unknown, removed: unknown[] = []): unknown {
+  if (Array.isArray(value)) return value.map((v) => withoutBands(v, removed));
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => {
+    if (k === 'bands') { if (Array.isArray(v)) removed.push(...v); return [k, null]; }
+    return [k, withoutBands(v, removed)];
+  }));
+  return value;
+}
 const PEOPLE = ['hodA', 'hodA2', 'hodB', 'A1', 'A2', 'A3', 'B1', 'B2', 'buA', 'buB', 'bgCeo', 'chief', 'outsider'] as const;
 type Name = (typeof PEOPLE)[number];
 type Hired = { employmentId: string; personId: string };
+/** The between-cycles tally (BU CEO, BG CEO, HOD); a group chief's record carries none. */
+type Tally = Extract<perf.LeaderStatus, { mode: 'record'; performance: unknown }>;
 
 let b: Base, a: SessionContext, holding: string, beta: string, gamma: string, delta: string, cycleId: string;
 const P = {} as Record<Name, Hired>;
@@ -241,28 +254,63 @@ describe('while the cycle runs', () => {
 });
 
 describe('between cycles', () => {
-  it('counts only people released to the BU CEO or HOD, the rest waiting; the BG CEO and group chief wait for nothing; a revoke moves a person back', async () => {
-    await scope(cycleId, { tier: 'final' }, (['A1', 'A2', 'A3', 'B1', 'B2'] as const).map((n) => ({ reviewId: R[n], employmentId: P[n].employmentId, performance: 'ME', potential: 'Mid' })));
-    const release = (reviewIds: string[], action: 'release' | 'revoke') => perf.releaseOnehrResults(a, { cycleId, reviewIds, result: 'performance', step: 'leaders', action });
-    await release([R.A1, R.A2], 'release');
-    await release([R.A2], 'revoke');
+  /**
+   * Final bands: A1 ME/Mid (Solid Core), A2 OU/High (Super Star), A3 AE/Low (Solid Core), B1 ME/Mid, B2 BE/Mid.
+   * Released to leaders: A1's performance and talent status. A2's performance was released, then revoked.
+   */
+  async function closedWithReleases() {
+    const finals: Record<string, [string, string]> = { A1: ['ME', 'Mid'], A2: ['OU', 'High'], A3: ['AE', 'Low'], B1: ['ME', 'Mid'], B2: ['BE', 'Mid'] };
+    await scope(cycleId, { tier: 'final' }, (['A1', 'A2', 'A3', 'B1', 'B2'] as const).map((n) => ({ reviewId: R[n], employmentId: P[n].employmentId, performance: finals[n][0], potential: finals[n][1] })));
+    const release = (reviewIds: string[], result: 'performance' | 'talent', action: 'release' | 'revoke') => perf.releaseOnehrResults(a, { cycleId, reviewIds, result, step: 'leaders', action });
+    await release([R.A1, R.A2], 'performance', 'release');
+    await release([R.A2], 'performance', 'revoke');
+    await release([R.A1], 'talent', 'release');
     await owner.db.update(schema.reviewCycle).set({ status: 'closed' }).where(eq(schema.reviewCycle.id, cycleId));
-    const counts = (released: number, waitingN: number) => ({ released, waiting: waitingN });
+  }
+  const pm = (UA: number, BE: number, ME: number, AE: number, OU: number) => Object.entries({ UA, BE, ME, AE, OU }).map(([band, n]) => ({ band, n }));
+  const pot = (Low: number, Mid: number, High: number) => Object.entries({ Low, Mid, High }).map(([band, n]) => ({ band, n }));
+
+  it('counts only people released to the BU CEO or HOD, with band counts over them alone; the BG CEO waits for nothing; a revoke moves a person back', async () => {
+    await closedWithReleases();
     expect(await status(U.buA, cycleId)).toEqual({ seat: 'bu', mode: 'record', cycleId, midYear: false, gated: true, people: 5,
-      performance: counts(1, 2), potential: counts(0, 3), talent: counts(0, 3), departmentReviews: { in: 0, of: 2 } });
+      performance: { released: 1, waiting: 2, bands: pm(0, 0, 1, 0, 0) },
+      potential: { released: 0, waiting: 3, bands: pot(0, 0, 0) },
+      talent: { released: 1, waiting: 2, bands: [{ band: 'Solid Core', n: 1 }] },
+      departmentReviews: { in: 0, of: 2 } });
     expect(await status(U.hodA, cycleId)).toEqual({ seat: 'hod', mode: 'record', cycleId, midYear: false, gated: true, people: 2,
-      performance: counts(1, 1), potential: counts(0, 2), talent: counts(0, 2), departmentReviews: null });
+      performance: { released: 1, waiting: 1, bands: pm(0, 0, 1, 0, 0) },
+      potential: { released: 0, waiting: 2, bands: null }, talent: { released: 1, waiting: 1, bands: null }, departmentReviews: null });
     expect(await status(U.bgCeo, cycleId)).toEqual({ seat: 'bg', mode: 'record', cycleId, midYear: false, gated: false, people: 8,
-      performance: counts(5, 0), potential: counts(5, 0), talent: counts(5, 0), departmentReviews: null });
-    expect(await status(U.chief, cycleId)).toEqual({ seat: 'group', mode: 'record', cycleId, midYear: false, gated: false, people: 3,
-      performance: counts(3, 0), potential: counts(3, 0), talent: counts(3, 0), departmentReviews: null });
+      performance: { released: 5, waiting: 0, bands: pm(0, 1, 2, 1, 1) },
+      potential: { released: 5, waiting: 0, bands: null }, talent: { released: 5, waiting: 0, bands: null }, departmentReviews: null });
     expect(await status(U.outsider, cycleId)).toBeNull();
     expect(await status(U.A1, cycleId)).toBeNull();
+  }, 120_000);
+
+  it('a person not yet released to the viewer is absent from every band count, though their band exists', async () => {
+    await closedWithReleases();
+    // A2 (OU, High, Super Star) is not released to leaders on any component.
+    for (const ctx of [U.buA, U.hodA]) {
+      const s = (await status(ctx, cycleId)) as Tally;
+      expect(s.performance.bands!.find((x) => x.band === 'OU')).toEqual({ band: 'OU', n: 0 });
+      expect(s.performance.bands!.reduce((sum, x) => sum + x.n, 0)).toBe(s.performance.released);
+      expect((s.potential.bands ?? []).find((x) => x.band === 'High')?.n ?? 0).toBe(0);
+      expect((s.talent.bands ?? []).map((x) => x.band)).not.toContain('Super Star');
+    }
+    // Non-vacuity: the ungated BG CEO counts the same person's band.
+    const bg = (await status(U.bgCeo, cycleId)) as Tally;
+    expect(bg.performance.bands!.find((x) => x.band === 'OU')).toEqual({ band: 'OU', n: 1 });
+  }, 120_000);
+
+  it('a group chief gets no tally between cycles, as in the source: only how many people they led', async () => {
+    await closedWithReleases();
+    expect(await status(U.chief, cycleId)).toEqual({ seat: 'group', mode: 'record', cycleId, midYear: false, gated: false, people: 3 });
+    expect(await raw(U.chief, cycleId)).toEqual({ seat: 'group', mode: 'record', cycleId, midYear: false, gated: false, people: 3 });
   }, 120_000);
 });
 
 describe('what the projection carries', () => {
-  it('only the documented keys, never a band, a name or a person id, in every seat and mode', async () => {
+  it('only the documented keys, band codes only as aggregate counts, never a per-person band, a name or a person id, in every seat and mode', async () => {
     await owner.db.update(schema.onehrReview).set({ managerPerformance: 'OU' }).where(inArray(schema.onehrReview.reviewId, Object.values(R)));
     await hodReview(cycleId, P.hodA, { performance: true, potential: true });
     await scope(cycleId, { tier: 'group' }, [{ reviewId: R.A1, employmentId: P.A1.employmentId, performance: 'OU', performanceLockedAt: new Date() }]);
@@ -274,10 +322,20 @@ describe('what the projection carries', () => {
     const all = [...running, ...record];
     expect(all.every((s) => s !== null)).toBe(true);
     expect(all.map((s) => `${s!.seat}:${s!.mode}`)).toEqual(['bu:running', 'bu:running', 'bg:running', 'group:running', 'bu:running', 'bu:record', 'hod:record', 'bg:record', 'group:record']);
-    const keys = keysOf(all);
-    expect([...keys].filter((k) => !ALLOWED_KEYS.has(k))).toEqual([]);
+    // Band codes appear only as aggregate {band, n} entries inside a tally's bands; nowhere else.
+    const entries: unknown[] = [];
+    const stripped = withoutBands(all, entries);
+    expect([...keysOf(stripped)].filter((k) => !ALLOWED_KEYS.has(k))).toEqual([]);
+    expect(JSON.stringify(stripped)).not.toMatch(BAND);
+    expect(entries.length).toBeGreaterThan(0);
+    for (const e of entries) {
+      expect(Object.keys(e as object).sort()).toEqual(BAND_ENTRY_KEYS);
+      expect((e as { band: string }).band).toMatch(/^(UA|BE|ME|AE|OU|Low|Mid|High|Super Star|Star|Solid Core|PIP\/Improvement)$/);
+      expect(Number.isInteger((e as { n: number }).n)).toBe(true);
+    }
+    // Only the record seats carry bands; the running cards carry none.
+    expect(JSON.stringify(withoutBands(running))).toBe(JSON.stringify(running));
     const text = JSON.stringify(all);
-    expect(text).not.toMatch(BAND);
     for (const name of PEOPLE) {
       expect(text).not.toContain(`Person ${name}`);
       expect(text).not.toContain(P[name].employmentId);
@@ -285,7 +343,7 @@ describe('what the projection carries', () => {
       expect(text).not.toContain(R[name]);
     }
     // The database payload itself, not only the parsed one, has the same key set.
-    expect([...keysOf(await raw(U.buA, cycleId))].filter((k) => !ALLOWED_KEYS.has(k))).toEqual([]);
+    expect([...keysOf(withoutBands(await raw(U.buA, cycleId)))].filter((k) => !ALLOWED_KEYS.has(k))).toEqual([]);
   }, 120_000);
 
   it('is granted to the app role only, as a definer with a pinned search path; its helpers are not callable', async () => {

@@ -1,8 +1,8 @@
 -- WP-A3 (APR-022 (4)): leader status data for the home cards. Data only; the cards are drawn elsewhere.
 --
 -- app.onehr_leader_status(cycle) answers, for the viewer's highest live seat, where that seat's people stand in
--- one cycle. Counts, states and Malaysia calendar dates only: never a review, employment or person id, never a
--- person's name, band, score, note or amount. Labels are company and department names.
+-- one cycle. Counts, states, Malaysia calendar dates and aggregate band counts only: never a review, employment or
+-- person id, never a person's name, a per-person band, a score, note or amount. Labels are company and department names.
 --
 -- Seat precedence (the source's dashboard rule, highest seat wins): business group CEO, then group chief, then
 -- business unit CEO, then HOD. Seats (0663) and HOD assignments are live on the Malaysia calendar day:
@@ -19,9 +19,12 @@
 --    member's group-tier call locked), ready (every member has the line manager's confirmed band), else
 --    calibrating with n of m confirmed. Mid-Year: department reviews in.
 --  * HOD: nothing (the department review stays a task row).
--- Between cycles (closed): a tally of people with a final band per component. For a BU CEO or HOD only people
--- already released to leaders (release 1, 0665's *_leader_released_at) are counted, the rest are "waiting";
--- a BG CEO and a group chief read results at once, so nothing waits. No band distribution is returned.
+-- Between cycles (closed): per component, people with a final band released to the viewer and still waiting,
+-- and the band tally as the source's dashboard counts it: aggregate counts per band over released people only
+-- (HOD: performance; BU CEO: performance, potential and talent status; BG CEO: performance). For a BU CEO or
+-- HOD only people already released to leaders (release 1, 0665's *_leader_released_at) are counted, the rest
+-- are "waiting" and add to no band count; a BG CEO reads results at once, so nothing waits. A group chief gets
+-- no tally, as in the source: only how many people they led. Never a per-person band or a name-band pair.
 --
 -- The definer projection is needed because calibration rows are readable only through
 -- app.onehr_calibration_access: a seat holder cannot read another tier's sessions under RLS.
@@ -105,19 +108,31 @@ BEGIN
   ELSE EXISTS(SELECT 1 FROM performance_hod_assignment h WHERE h.tenant_id=viewer.tenant_id AND h.subject_employment_id=p.employment_id
    AND h.hod_employment_id=ANY(mine) AND h.valid_from<=today AND (h.valid_to IS NULL OR h.valid_to>today)) END;
 
- -- Between cycles: the release-gated tally, counts only.
+ -- Between cycles: a group chief gets no tally (the source's "What you led" has none), only how many they led.
+ IF NOT running AND seat='group' THEN
+  RETURN jsonb_build_object('seat','group','mode','record','cycleId',cyc.id,'midYear',mid,'gated',false,'people',cardinality(scope));
+ END IF;
+
+ -- Between cycles: the release-gated tally. Band counts are aggregates over released people only.
  IF NOT running THEN
   WITH p AS (SELECT x.review_id,x.employment_id FROM app.onehr_leader_status_people(cyc.id) x WHERE x.review_id=ANY(scope)),
   r AS (SELECT p.employment_id,coalesce(f.result,app.assessment_working_result(p.review_id)) AS outcome,
-    rel.performance_leader_released_at IS NOT NULL OR seat IN ('bg','group') AS pm_open,
-    rel.potential_leader_released_at IS NOT NULL OR seat IN ('bg','group') AS pot_open,
-    rel.talent_leader_released_at IS NOT NULL OR seat IN ('bg','group') AS talent_open
+    rel.performance_leader_released_at IS NOT NULL OR seat='bg' AS pm_open,
+    rel.potential_leader_released_at IS NOT NULL OR seat='bg' AS pot_open,
+    rel.talent_leader_released_at IS NOT NULL OR seat='bg' AS talent_open
    FROM p LEFT JOIN performance_onehr_result f ON f.review_id=p.review_id AND f.tenant_id=viewer.tenant_id
    LEFT JOIN performance_assessment_release rel ON rel.review_id=p.review_id AND rel.tenant_id=viewer.tenant_id)
   SELECT jsonb_build_object('seat',seat,'mode','record','cycleId',cyc.id,'midYear',mid,'gated',seat IN ('bu','hod'),'people',count(*),
-   'performance',jsonb_build_object('released',count(*) FILTER (WHERE r.outcome->>'performance' IS NOT NULL AND r.pm_open),'waiting',count(*) FILTER (WHERE r.outcome->>'performance' IS NOT NULL AND NOT r.pm_open)),
-   'potential',jsonb_build_object('released',count(*) FILTER (WHERE r.outcome->>'potential' IS NOT NULL AND r.pot_open),'waiting',count(*) FILTER (WHERE r.outcome->>'potential' IS NOT NULL AND NOT r.pot_open)),
-   'talent',jsonb_build_object('released',count(*) FILTER (WHERE r.outcome->>'talent' IS NOT NULL AND r.talent_open),'waiting',count(*) FILTER (WHERE r.outcome->>'talent' IS NOT NULL AND NOT r.talent_open)),
+   'performance',jsonb_build_object('released',count(*) FILTER (WHERE r.outcome->>'performance' IS NOT NULL AND r.pm_open),'waiting',count(*) FILTER (WHERE r.outcome->>'performance' IS NOT NULL AND NOT r.pm_open),
+    'bands',(SELECT jsonb_agg(jsonb_build_object('band',v.band,'n',(SELECT count(*) FROM r q WHERE q.pm_open AND q.outcome->>'performance'=v.band)) ORDER BY v.ord)
+     FROM unnest(ARRAY['UA','BE','ME','AE','OU']) WITH ORDINALITY v(band,ord))),
+   'potential',jsonb_build_object('released',count(*) FILTER (WHERE r.outcome->>'potential' IS NOT NULL AND r.pot_open),'waiting',count(*) FILTER (WHERE r.outcome->>'potential' IS NOT NULL AND NOT r.pot_open),
+    'bands',CASE WHEN seat='bu' THEN (SELECT jsonb_agg(jsonb_build_object('band',v.band,'n',(SELECT count(*) FROM r q WHERE q.pot_open AND q.outcome->>'potential'=v.band)) ORDER BY v.ord)
+     FROM unnest(ARRAY['Low','Mid','High']) WITH ORDINALITY v(band,ord)) END),
+   'talent',jsonb_build_object('released',count(*) FILTER (WHERE r.outcome->>'talent' IS NOT NULL AND r.talent_open),'waiting',count(*) FILTER (WHERE r.outcome->>'talent' IS NOT NULL AND NOT r.talent_open),
+    'bands',CASE WHEN seat='bu' THEN (SELECT coalesce(jsonb_agg(jsonb_build_object('band',t.band,'n',t.n) ORDER BY t.ord),'[]'::jsonb) FROM (
+      SELECT v.band,v.ord,(SELECT count(*) FROM r q WHERE q.talent_open AND q.outcome->>'talent'=v.band) AS n
+      FROM unnest(ARRAY['Super Star','Star','Solid Core','PIP/Improvement']) WITH ORDINALITY v(band,ord)) t WHERE t.n>0) END),
    'departmentReviews',CASE WHEN seat='bu' THEN (SELECT jsonb_build_object('in',count(*) FILTER (WHERE d.performance_on IS NOT NULL),'of',count(*))
     FROM app.onehr_leader_status_depts(cyc.id,(SELECT coalesce(array_agg(q.employment_id),'{}') FROM p q)) d) END)
   INTO status_json FROM r;
