@@ -13,7 +13,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
-import { JsxEmit, ModuleKind, transpileModule } from 'typescript';
+import { JsxEmit, ModuleKind, ScriptTarget, transpileModule } from 'typescript';
 import * as React from 'react';
 import * as jsx from 'react/jsx-runtime';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -27,7 +27,9 @@ import * as v2notifications from '../lib/mobile-api/v2/notifications';
 type Loaded = Record<string, any>;
 function load(path: string, ports: Record<string, unknown>): Loaded {
   const module = { exports: {} as Loaded };
-  runInNewContext(transpileModule(readFileSync(path, 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS, jsx: JsxEmit.ReactJSX } }).outputText,
+  // ES2022, not transpileModule's ES5 default: ES5 spreads a Set (`[...listeners]` in push-core's stores) into an EMPTY
+  // array, so no screen was ever told a store changed. Metro/Hermes compile the spread correctly; only this harness did not.
+  runInNewContext(transpileModule(readFileSync(path, 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS, jsx: JsxEmit.ReactJSX, target: ScriptTarget.ES2022 } }).outputText,
     { module, exports: module.exports, Date, Error, Intl,
       // Resolved at call time, so a test's fake timers reach the module too.
       setTimeout: (fn: () => void, ms?: number) => globalThis.setTimeout(fn, ms), clearTimeout: (id?: ReturnType<typeof setTimeout>) => globalThis.clearTimeout(id),
@@ -73,7 +75,7 @@ function fixture(o: { permission?: 'granted' | 'denied' | 'undetermined'; grant?
   const today = isoDay(Date.now());
   const day = (n: number) => isoDay(Date.parse(`${today}T00:00:00Z`) + n * 86_400_000);
   const rosterDays = [1, 2].map((n) => ({ date: day(n), kind: 'shift', shift: { code: 'M', name: 'Morning', start: '09:00', end: '18:00', crossesMidnight: false, workingMinutes: 480 }, plannedMinutes: 480, note: null }));
-  const apiGetV2 = vi.fn(async (path: string) => {
+  const apiGetV2 = vi.fn(async (path: string, _schema?: unknown, _query?: Record<string, unknown>) => {
     if (path === 'v2/attendance/roster') return { enabled: true, employmentId: 'own-emp', timeZone: 'Asia/Kuala_Lumpur', from: day(-2), to: day(8), days: rosterDays, totals: { workDays: 2, rosteredDays: 2, restDays: 0, plannedMinutes: 960 } };
     if (path === 'v2/attendance/records') return { enabled: true, employmentId: 'own-emp', timeZone: 'Asia/Kuala_Lumpur', today, from: day(-2), to: day(8), days: [] };
     throw new Error('Unexpected read ' + path);
