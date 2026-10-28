@@ -10,7 +10,7 @@
  * dropping basePath from href() sends the scoped links to /performance/workspace.
  */
 import React from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import messages from '../messages/en.json';
@@ -43,7 +43,9 @@ vi.mock('../app/performance/onehr/calibration-view', () => ({ AssessmentCalibrat
 import { PerformanceWorkspaceScreen } from '../app/performance/workspace/workspace-screen';
 import { WORKSPACE_TAB_SCOPES } from '../packs/performance/onehr/tab-route-model';
 
-afterEach(() => { cleanup(); vi.clearAllMocks(); });
+// jsdom has no matchMedia; the workspace rail (workspace-rail.tsx) listens for the desktop breakpoint.
+beforeEach(() => { vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }))); });
+afterEach(() => { cleanup(); vi.clearAllMocks(); vi.unstubAllGlobals(); });
 const s = { tenantId: 'tenant', userId: 'viewer', personId: 'person' } as never;
 async function draw(node: Promise<React.ReactNode>) {
   return render(<NextIntlClientProvider locale="en" messages={messages}>{await node}</NextIntlClientProvider>);

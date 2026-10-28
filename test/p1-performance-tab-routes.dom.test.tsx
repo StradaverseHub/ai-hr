@@ -160,7 +160,7 @@ describe('workspace tab routes: render for a shown tab, 404 for a hidden one (cr
 });
 
 describe('old workspace URLs (D8)', () => {
-  it.each([
+  it.each<Record<string, string>>([
     { cycle: 'cycle-1', view: 'team', module: 'pm', review: 'r-1' },
     { view: 'mine', module: 'tm', stage: 'feedback', feedback: 'f-1' },
     { view: 'bu', module: 'cal', stage: 'talent_box', calibration: 's-1' },
@@ -264,7 +264,7 @@ describe('Calibration: per-axis lists and session pages', () => {
     expect(await open(PerformanceCalibrationPage as never, '/performance/calibration?axis=potential', query({ axis: 'potential' }))).toBe('NOT_FOUND');
     expect(mock.sessions).not.toHaveBeenCalled();
   });
-  it.each([{}, { axis: 'talent_box' }])('the old URL (%o) keeps the whole list and its links', async search => {
+  it.each<Record<string, string>>([{}, { axis: 'talent_box' }])('the old URL (%o) keeps the whole list and its links', async search => {
     state.facts = facts([]);
     expect(await open(PerformanceCalibrationPage as never, '/performance/calibration', query(search))).toBe('rendered');
     expect(sessionLinks()).toEqual(SESSIONS.map(s => s.href).sort());
