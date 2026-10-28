@@ -1,4 +1,5 @@
 'use client';
+import {todayInKualaLumpur} from '@/lib/hr-date';
 import { useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, Card, Field, SectionHeader, inputCls } from '@/components/ui';
@@ -48,6 +49,7 @@ function BatchPreview({ changes, labels, onSaved }: { changes: RewardAccessChang
 }
 export function BatchAddAccess({ value, accounts, labels, onSaved, onCancel }: { value: Value; accounts: ComboboxOption[]; labels: Labels; onSaved: (reviews: number) => void; onCancel: () => void }) {
     const t = useTranslations('rewardsAccess'), b = useTranslations('rewardsAccessBatch'), r = useTranslations('rewards');
+    const c=useTranslations('rewardsAccessControl'),[validFrom,setValidFrom]=useState(todayInKualaLumpur()),[validTo,setValidTo]=useState(''),[coversUserId,setCoversUserId]=useState('');
     const [userId, setUserId] = useState(''), [role, setRole] = useState<RewardRole>('bu'), [ticked, setTicked] = useState<string[]>([]), [suggested, setSuggested] = useState<string[]>([]), [search, setSearch] = useState('');
     const drafts = value.reviews.filter(x => x.status === 'draft');
     const shown = value.reviews.filter(x => labels.scope(x.id).toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
@@ -55,12 +57,13 @@ export function BatchAddAccess({ value, accounts, labels, onSaved, onCancel }: {
     const revision = (unitId: string) => value.reviews.find(x => x.id === unitId)?.revision ?? 0;
     // BU head suggestions are offered only for the BU CEO seat, and only take effect when ticked here.
     const offers = role === 'bu' ? value.suggestions.filter(s => ticked.includes(s.unitId) && s.userId !== userId) : [];
-    const changes: RewardAccessChange[] = [...(userId ? ticked.map(unitId => ({ unitId, revision: revision(unitId), before: null, after: { userId, role } })) : []), ...offers.filter(s => suggested.includes(s.unitId)).map(s => ({ unitId: s.unitId, revision: revision(s.unitId), before: null, after: { userId: s.userId, role: 'bu' as const } }))];
+    const changes: RewardAccessChange[] = [...(userId ? ticked.map(unitId => ({ unitId, revision: revision(unitId), before: null, after: { userId, role,validFrom,validTo:validTo||null,coversUserId:coversUserId||null } })) : []), ...offers.filter(s => suggested.includes(s.unitId)).map(s => ({ unitId: s.unitId, revision: revision(s.unitId), before: null, after: { userId: s.userId, role: 'bu' as const } }))];
     const unique = (field: 'companyId' | 'cycleId') => [...new Map(drafts.map(x => [x[field], x])).values()];
     return <Card className="p-5"><SectionHeader title={t('add')}/><p className="mb-4 max-w-3xl text-sm text-muted-foreground">{b('bounded')}</p>
   <div className="grid gap-4 md:grid-cols-2">
    <div><Field label={t('person')}><Combobox value={userId} options={accounts} placeholder={t('chooseAccount')} searchPlaceholder={t('personSearch')} noResultsLabel={t('noPeople')} legacySuffix="" onValueChange={v => { if (!v.startsWith('no-login:')) setUserId(v); }}/></Field>{value.candidates.length > 0 && <p className="mt-1 text-xs text-muted-foreground">{t('noLoginHelp')}</p>}</div>
    <Field label={t('role')}><select className={inputCls} value={role} onChange={e => setRole(e.target.value as RewardRole)}>{rewardRoles.map(x => <option key={x} value={x}>{r(`roles.${x}`)}</option>)}</select></Field>
+   <Field label={c('validFrom')}><input type="date" className={inputCls} value={validFrom} onChange={e=>setValidFrom(e.target.value)}/></Field><Field label={c('validTo')}><input type="date" min={validFrom} className={inputCls} value={validTo} onChange={e=>setValidTo(e.target.value)}/></Field><Field label={c('covers')}><select className={inputCls} value={coversUserId} onChange={e=>setCoversUserId(e.target.value)}><option value="">{c('notProxy')}</option>{[...new Map(value.members.filter(m=>m.role===role&&m.userId!==userId).map(m=>[m.userId,m])).values()].map(m=><option key={m.userId} value={m.userId}>{labels.name(m.userId)}</option>)}</select></Field>
   </div>
   <fieldset className="mt-4 space-y-3 rounded-md border p-4"><legend className="px-1 text-sm font-semibold">{t('scope')}</legend>
    <div className="flex flex-wrap items-end gap-3">

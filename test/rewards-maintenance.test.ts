@@ -1,10 +1,11 @@
+import {previewRewardAccessChange,saveRewardAccessChange,setRewardMember} from './rewards-access-fixture';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { withTenant, type SessionContext } from '../db/client';
 import * as s from '../db/schema';
 import { hireEmployee, setEmploymentBlacklist } from '../core/org';
-import { createRewardUnit, deleteRewardReview, getRewardConfiguration, getRewardUnit, listRewardUnits, previewRewardAccessChange, rewardAccessAdministration, rewardDeletionEligibility, saveRewardAccessChange, setRewardMember, saveRewardEntry, saveRewardPolicy } from '../packs/rewards/service';
+import { createRewardUnit, deleteRewardReview, getRewardConfiguration, getRewardUnit, listRewardUnits, rewardAccessAdministration, rewardDeletionEligibility, saveRewardEntry, saveRewardPolicy } from '../packs/rewards/service';
 import { emptyFacts, emptyRecommendation, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';

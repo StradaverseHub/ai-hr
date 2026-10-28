@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
+import {todayInKualaLumpur} from '../lib/hr-date';
 import { RewardAccessEditor } from '../app/admin/rewards/access/access-editor';
 import type { RewardAccessAdministration } from '../packs/rewards/service';
 const ports = vi.hoisted(() => ({ preview: vi.fn(), save: vi.fn(), refresh: vi.fn(), batchPreview: vi.fn(), batchSave: vi.fn(), copyPreview: vi.fn() }));
@@ -11,10 +12,10 @@ vi.mock('../app/admin/rewards/access/actions', () => ({ previewRewardAccessBatch
 const b = en.rewardsAccessBatch;
 const roles = ['bu', 'bg', 'gr', 'ctro', 'ec', 'pbp', 'payroll'] as const;
 const coverage = (unitId: string, holders: Partial<Record<(typeof roles)[number], string>>) => ({ unitId, roles: roles.map(role => ({ role, required: role !== 'pbp', activeHolders: holders[role] ? [{ userId: role, name: holders[role]!, email: null }] : [] })), missing: roles.filter(role => role !== 'pbp' && !holders[role]) });
-const none = { employeeCode: null, jobTitle: null, companyName: null, businessUnitName: null };
+const none = {validFrom:todayInKualaLumpur(),validTo:null,coversUserId:null,suspension:null,lastChangedAt:'2026-10-29', employeeCode: null, jobTitle: null, companyName: null, businessUnitName: null };
 const facts = { employeeCode: 'EMP-0042', jobTitle: 'Sales Head', companyName: 'Example Company', businessUnitName: 'Operations' };
 const review = { id: 'review', companyId: 'company', company: 'Example Company', businessUnitId: 'unit', unit: 'Operations', cycleId: 'cycle', cycle: 'Annual cycle', year: 2026, kind: 'annual' as const, status: 'draft' as const, revision: 4, coverage: coverage('review', { gr: 'Rewards Lead' }) };
-const value: RewardAccessAdministration = { reviews: [review, { ...review, id: 'second', businessUnitId: 'sales', unit: 'Sales', cycleId: 'next', cycle: 'Next cycle', revision: 2, coverage: coverage('second', {}) }, { ...review, id: 'locked', businessUnitId: 'locked-unit', unit: 'Finance', status: 'approved', coverage: coverage('locked', { bu: 'A', bg: 'B', gr: 'C', ctro: 'D', ec: 'E', payroll: 'F' }) }], users: [{ id: 'admin', name: 'Rewards Lead', email: 'lead@example.test', ...none }, { id: 'user', name: 'New Reviewer', email: 'new@example.test', ...facts }], members: [{ id: 'gr', unitId: 'review', userId: 'admin', role: 'gr', name: 'Rewards Lead', email: 'lead@example.test', disabled: false, ...none }, { id: 'pbp', unitId: 'locked', userId: 'user', role: 'pbp', name: 'New Reviewer', email: 'new@example.test', disabled: true, ...facts }], candidates: [{ name: 'Invite Pending', email: 'pending@example.test', employeeCode: 'EMP-0077', jobTitle: 'Analyst', companyName: 'Example Company', businessUnitName: 'Finance' }], suggestions: [{ unitId: 'review', userId: 'admin' }] };
+const value: RewardAccessAdministration = { reviews: [review, { ...review, id: 'second', businessUnitId: 'sales', unit: 'Sales', cycleId: 'next', cycle: 'Next cycle', revision: 2, coverage: coverage('second', {}) }, { ...review, id: 'locked', businessUnitId: 'locked-unit', unit: 'Finance', status: 'approved', coverage: coverage('locked', { bu: 'A', bg: 'B', gr: 'C', ctro: 'D', ec: 'E', payroll: 'F' }) }], users: [{ id: 'admin', name: 'Rewards Lead', email: 'lead@example.test', ...none }, { id: 'user', name: 'New Reviewer', email: 'new@example.test', ...facts }], members: [{ id: 'gr', unitId: 'review', userId: 'admin', role: 'gr', name: 'Rewards Lead', email: 'lead@example.test', disabled: false, ...none }, { id: 'pbp', unitId: 'locked', userId: 'user', role: 'pbp', name: 'New Reviewer', email: 'new@example.test', disabled: true, ...none,...facts }], candidates: [{ name: 'Invite Pending', email: 'pending@example.test', employeeCode: 'EMP-0077', jobTitle: 'Analyst', companyName: 'Example Company', businessUnitName: 'Finance' }], suggestions: [{ unitId: 'review', userId: 'admin' }] };
 // 68c84963: the person picker is a searchable combobox; a row is chosen by mousedown, as a pointer would.
 const trigger = () => document.querySelector<HTMLButtonElement>('button[aria-haspopup="listbox"]')!;
 const pick = (label: string) => { fireEvent.click(trigger()); fireEvent.mouseDown(screen.getByRole('option', { name: new RegExp(label) })); };
@@ -72,7 +73,7 @@ describe('Central Rewards access journey', () => {
         pick('New Reviewer');
         fireEvent.click(screen.getByRole('button', { name: 'Preview changes' }));
         await screen.findByRole('heading', { name: 'Review changes before saving' });
-        const change = { unitId: 'review', revision: 4, before: { userId: 'admin', role: 'gr' }, after: { userId: 'user', role: 'gr' } };
+        const change = { unitId: 'review', revision: 4, before: { userId: 'admin', role: 'gr' }, after: { userId: 'user', role: 'gr',validFrom:todayInKualaLumpur(),validTo:null,coversUserId:null } };
         expect(ports.preview).toHaveBeenCalledWith(change);
         expect(ports.save).not.toHaveBeenCalled();
         await waitFor(() => expect(screen.getByRole('button', { name: 'Confirm and save' }).hasAttribute('disabled')).toBe(false));

@@ -26511,7 +26511,7 @@
     "lastGrHelp": "Liputan Ganjaran Kumpulan diperlukan. Sunting untuk menggantikan penyemak ini.",
     "empty": "Tiada penugasan sepadan dengan penapis ini.",
     "noScopes": "Tiada skop semakan dibenarkan. Cipta semakan dalam konfigurasi Ganjaran dahulu.",
-    "saved": "Akses disimpan. Permintaan seterusnya menggunakan penugasan terkini.",
+    "saved": "Permintaan akses dihantar. Perubahan menunggu pentadbir bebas.",
     "removeTitle": "Buang akses",
     "editTitle": "Sunting akses",
     "bounded": "Pilih akaun sedia ada dan satu semakan yang tepat. Perubahan berkuat kuasa selepas pratonton dan simpan.",
@@ -26559,7 +26559,11 @@
       "used": "Semakan sedang digunakan; kekalkan sejarahnya.",
       "missing": "Semakan tidak tersedia atau akses dibuang.",
       "system": "Perubahan tidak dapat disimpan. Muat semula dan cuba lagi.",
-      "lastRequired": "Kekalkan sekurang-kurangnya seorang yang aktif bagi setiap peranan kelulusan wajib; gantikan mereka dalam satu suntingan."
+      "lastRequired": "Kekalkan sekurang-kurangnya seorang yang aktif bagi setiap peranan kelulusan wajib; gantikan mereka dalam satu suntingan.",
+      "checker": "Memerlukan pentadbir bebas yang lain",
+      "reason": "Sebab penolakan (sekurang-kurangnya 10 aksara)",
+      "proxy": "Orang yang diwakili",
+      "dates": "Hingga (pilihan)"
     },
     "unavailable": "Akaun tidak tersedia · {id}",
     "lastRequiredHelp": "Peranan kelulusan wajib. Sunting untuk menggantikan orang ini.",
@@ -28279,6 +28283,46 @@
       "approved": "Diluluskan",
       "rejected": "Ditolak",
       "cancelled": "Dibatalkan"
+    }
+  },
+  "rewardsAccessControl": {
+    "waiting": "Menunggu kelulusan ({count})",
+    "independent": "Perubahan hanya berkuat kuasa selepas diluluskan pentadbir lain. Anda tidak boleh meluluskan permintaan sendiri atau perubahan akses sendiri.",
+    "noPending": "Tiada permintaan akses menunggu kelulusan.",
+    "history": "Permintaan terdahulu",
+    "administrator": "Pentadbir",
+    "unavailable": "Tidak tersedia dalam skop anda",
+    "openEnded": "terbuka",
+    "proxyFor": "Wakil bagi {name}",
+    "none": "Tiada tugasan",
+    "requested": "{name} meminta {count} perubahan",
+    "before": "Sebelum",
+    "after": "Selepas",
+    "restoreReason": "Sebab memulihkan akses",
+    "rejectionReason": "Sebab penolakan (sekurang-kurangnya 10 aksara)",
+    "approve": "Luluskan perubahan ini",
+    "reject": "Tolak permintaan",
+    "needsChecker": "Memerlukan pentadbir bebas yang lain",
+    "decisionFailed": "Permintaan tidak dapat diputuskan. Muat semula dan semak status terkini.",
+    "singleAdmin": "Syarikat ini mempunyai kurang daripada dua pentadbir Ganjaran aktif: {companies}. Pentadbir kedua diperlukan untuk meluluskan permintaan akses.",
+    "export": "Eksport senarai akses (CSV)",
+    "validFrom": "Dari",
+    "validTo": "Hingga (pilihan)",
+    "covers": "Orang yang diwakili",
+    "notProxy": "Bukan wakil",
+    "restore": "Minta pemulihan akses yang digantung",
+    "statuses": {
+      "approved": "Diluluskan",
+      "rejected": "Ditolak",
+      "lapsed": "Luput — semakan atau akses berubah"
+    },
+    "suspensions": {
+      "login": "Digantung: log masuk tidak tersedia sejak {on}",
+      "future": "Bermula pada {on}",
+      "expired": "Tamat pada {on}",
+      "notice": "Digantung: peletakan jawatan dikemukakan {on}",
+      "assignment": "Digantung: penugasan People berubah {on}",
+      "unavailable": "Akses tidak tersedia sejak {on}"
     }
   }
 }

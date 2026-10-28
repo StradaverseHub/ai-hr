@@ -10276,6 +10276,9 @@ export const rewardMember = pgTable('reward_member', {
   id: id(), tenantId: tenantId(), unitId: uuid('unit_id').notNull().references(() => rewardUnit.id),
   userId: uuid('user_id').notNull().references(() => appUser.id),
   role: text('role').$type<import('../packs/rewards/model').RewardRole>().notNull(), createdAt: createdAt(),
+  validFrom: date('valid_from').notNull().default(sql`((now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)`),
+  validTo: date('valid_to'), coversUserId: uuid('covers_user_id').references(() => appUser.id),
+  restoredReason: text('restored_reason'), restoredFingerprint: text('restored_fingerprint'),
 });
 export const rewardEntry = pgTable('reward_entry', {
   id: id(), tenantId: tenantId(), unitId: uuid('unit_id').notNull().references(() => rewardUnit.id),

@@ -26511,7 +26511,7 @@
     "lastGrHelp": "必须保留集团奖励审核人。可通过编辑更换此审核人。",
     "empty": "没有符合筛选条件的角色分配。",
     "noScopes": "没有可管理的评审范围。请先在奖励配置中创建评审。",
-    "saved": "权限已保存。后续请求将使用更新后的角色分配。",
+    "saved": "权限申请已提交，等待另一位独立管理员批准。",
     "removeTitle": "移除访问权限",
     "editTitle": "编辑访问权限",
     "bounded": "选择现有登录账户和一个明确的评审。预览并保存后更改才会生效。",
@@ -26559,7 +26559,11 @@
       "used": "此评审已在使用，须保留历史。",
       "missing": "评审不可用或权限已被移除。",
       "system": "无法保存更改。请重新加载后再试。",
-      "lastRequired": "每个必需的审批角色至少保留一名有效人员；请在一次编辑中完成替换。"
+      "lastRequired": "每个必需的审批角色至少保留一名有效人员；请在一次编辑中完成替换。",
+      "checker": "需要另一位独立管理员",
+      "reason": "拒绝原因（至少10个字符）",
+      "proxy": "被代理人",
+      "dates": "结束日期（可选）"
     },
     "unavailable": "不可用账户 · {id}",
     "lastRequiredHelp": "必需的审批角色。请通过编辑替换此人。",
@@ -28279,6 +28283,46 @@
       "approved": "已批准",
       "rejected": "已拒绝",
       "cancelled": "已取消"
+    }
+  },
+  "rewardsAccessControl": {
+    "waiting": "待审批（{count}）",
+    "independent": "更改须经另一位管理员批准后生效。您不能批准自己的申请，也不能批准涉及自己权限的更改。",
+    "noPending": "没有待审批的权限申请。",
+    "history": "历史申请",
+    "administrator": "管理员",
+    "unavailable": "当前范围内不可用",
+    "openEnded": "无结束日期",
+    "proxyFor": "代理 {name}",
+    "none": "无分配",
+    "requested": "{name} 申请了 {count} 项更改",
+    "before": "更改前",
+    "after": "更改后",
+    "restoreReason": "恢复权限的原因",
+    "rejectionReason": "拒绝原因（至少10个字符）",
+    "approve": "批准这些更改",
+    "reject": "拒绝申请",
+    "needsChecker": "需要另一位独立管理员",
+    "decisionFailed": "无法处理申请。请刷新并查看当前状态。",
+    "singleAdmin": "以下公司的有效奖励管理员不足两位：{companies}。权限申请须由第二位管理员批准。",
+    "export": "导出权限列表（CSV）",
+    "validFrom": "开始日期",
+    "validTo": "结束日期（可选）",
+    "covers": "被代理人",
+    "notProxy": "非代理",
+    "restore": "申请恢复暂停的权限",
+    "statuses": {
+      "approved": "已批准",
+      "rejected": "已拒绝",
+      "lapsed": "已失效 — 审核或权限已更改"
+    },
+    "suspensions": {
+      "login": "已暂停：登录自 {on} 起不可用",
+      "future": "于 {on} 开始",
+      "expired": "于 {on} 到期",
+      "notice": "已暂停：于 {on} 提交辞职",
+      "assignment": "已暂停：People 岗位分配于 {on} 更改",
+      "unavailable": "权限自 {on} 起不可用"
     }
   }
 }

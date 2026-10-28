@@ -10,13 +10,15 @@ import { withRewardsTenant } from '../../core/module-gate';
 import { rewardRoles, type RewardRole } from './model';
 import { rewardSeatConfidentialityTx } from './confidentiality';
 import { activeRewardLogin, rewardRequiredRoles, rewardRoleLabels, rewardUnitCoverage } from './coverage';
-export type RewardMaintenanceCode = 'scope' | 'changed' | 'locked' | 'account' | 'lastGr' | 'lastRequired' | 'membership' | 'preview' | 'confirmation' | 'used' | 'missing';
-const errorMessages: Record<RewardMaintenanceCode, string> = { scope: 'Company administrator access is required.', changed: 'This review changed in another session. Reload before saving.', locked: 'Return the unit to draft before changing its approved inputs.', account: 'Choose an active existing login account in this tenant.', lastGr: 'Keep at least one active Group Rewards reviewer assigned.', lastRequired: 'Keep at least one active person in every required approval role; replace them in one edit.', membership: 'The selected membership changed. Reload before saving.', preview: 'Access or account eligibility changed. Preview it again before saving.', confirmation: 'Confirm the exact review before deleting.', used: 'This review is in use and its history must be retained.', missing: 'Reward unit not found or access has been removed.' };
+export type RewardMaintenanceCode = 'scope' | 'changed' | 'locked' | 'account' | 'lastGr' | 'lastRequired' | 'membership' | 'preview' | 'confirmation' | 'used' | 'missing' | 'checker' | 'reason' | 'proxy' | 'dates';
+const errorMessages: Record<RewardMaintenanceCode, string> = { checker: 'Another independent Rewards administrator must decide this request.', reason: 'Give a reason of at least 10 characters.', proxy: 'Choose an existing holder of this role to cover, with an end date.', dates: 'Choose a valid access date range.', scope: 'Company administrator access is required.', changed: 'This review changed in another session. Reload before saving.', locked: 'Return the unit to draft before changing its approved inputs.', account: 'Choose an active existing login account in this tenant.', lastGr: 'Keep at least one active Group Rewards reviewer assigned.', lastRequired: 'Keep at least one active person in every required approval role; replace them in one edit.', membership: 'The selected membership changed. Reload before saving.', preview: 'Access or account eligibility changed. Preview it again before saving.', confirmation: 'Confirm the exact review before deleting.', used: 'This review is in use and its history must be retained.', missing: 'Reward unit not found or access has been removed.' };
 export class RewardMaintenanceError extends Error {
     constructor(readonly code: RewardMaintenanceCode, readonly role?: RewardRole) { super(code === 'lastRequired' && role ? `Keep at least one active ${rewardRoleLabels[role]} assigned; replace them in one edit.` : errorMessages[code]); this.name = 'RewardMaintenanceError'; }
 }
 const uuid = z.uuid();
-const memberSchema = z.object({ userId: uuid, role: z.enum(rewardRoles) }).strict();
+const memberSchema = z.object({ userId: uuid, role: z.enum(rewardRoles), validFrom:z.iso.date().optional(),validTo:z.iso.date().nullable().optional(),coversUserId:uuid.nullable().optional(),restoreReason:z.string().trim().min(10).max(2000).optional(),restoreFingerprint:z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict()
+ .refine(m=>!m.validTo||!m.validFrom||m.validTo>=m.validFrom,'Choose a valid access date range.')
+ .refine(m=>!m.coversUserId||(m.coversUserId!==m.userId&&!!m.validTo),'A proxy needs another holder and an end date.');
 export const rewardAccessChangeSchema = z.object({ unitId: uuid, revision: z.number().int().positive(), before: memberSchema.nullable(), after: memberSchema.nullable() }).strict().refine(v => v.before || v.after);
 export type RewardAccessChange = z.infer<typeof rewardAccessChangeSchema>;
 async function admin(tx: Tx, companyId: string) {
@@ -65,10 +67,11 @@ type AccessRow = {
     id: string;
     userId: string;
     role: RewardRole;
+    validFrom?:string;validTo?:string|null;coversUserId?:string|null;
 };
 async function accessState(tx: Tx, unitId: string, revision: number, lock: boolean) {
     const unit = await adminUnit(tx, unitId, revision, lock);
-    const current: AccessRow[] = await tx.select({ id: rewardMember.id, userId: rewardMember.userId, role: rewardMember.role }).from(rewardMember).where(eq(rewardMember.unitId, unit.id)).orderBy(asc(rewardMember.userId), asc(rewardMember.role));
+    const current: AccessRow[] = await tx.select({ id: rewardMember.id, userId: rewardMember.userId, role: rewardMember.role,validFrom:rewardMember.validFrom,validTo:rewardMember.validTo,coversUserId:rewardMember.coversUserId }).from(rewardMember).where(eq(rewardMember.unitId, unit.id)).orderBy(asc(rewardMember.userId), asc(rewardMember.role));
     return { unit, current };
 }
 /** One change against a unit's membership as it stands (a batch passes its accumulating state). */
@@ -83,6 +86,12 @@ async function applyAccess(tx: Tx, ctx: SessionContext, unit: typeof rewardUnit.
         const [account] = await tx.select({ id: appUser.id }).from(appUser).innerJoin(person, and(eq(person.id, appUser.personId), visibleCandidate)).where(and(eq(appUser.id, input.after.userId), eq(appUser.tenantId, ctx.tenantId), isNull(appUser.archivedAt), sql `not app.login_blocked(${appUser.id})`));
         if (!account)
             throw new RewardMaintenanceError('account');
+        if(input.after.coversUserId&&!current.some(m=>m.userId===input.after!.coversUserId&&m.role===input.after!.role))throw new RewardMaintenanceError('proxy');
+        if(input.after.restoreReason&&!input.after.restoreFingerprint){
+          if(!input.before||pairKey(input.before)!==pairKey(input.after))throw new RewardMaintenanceError('membership');
+          const [gr]=await tx.execute<{ok:boolean}>(sql`select 'gr' in (select app.reward_roles(${unit.id}::uuid)) as ok`);
+          if(!gr?.ok)throw new RewardMaintenanceError('scope');
+        }
         if (next.some(m => pairKey(m) === pairKey(input.after!)))
             throw new RewardMaintenanceError('membership');
         next.push({ id: '', ...input.after });
@@ -90,9 +99,15 @@ async function applyAccess(tx: Tx, ctx: SessionContext, unit: typeof rewardUnit.
     // cd72f915: Group Rewards must always stay covered (as before); any other required seat may not lose its
     // last active holder. Coverage is judged on the next state, so a replacement in one edit passes.
     const required = rewardRequiredRoles(unit);
-    const seats = [...new Set([...current, ...next].filter(m => m.role === 'gr' || required.includes(m.role)).map(m => m.userId))];
-    const active = seats.length ? (await tx.select({ id: appUser.id }).from(appUser).where(and(inArray(appUser.id, seats), eq(appUser.tenantId, ctx.tenantId), activeRewardLogin()))).map(x => x.id).sort() : [];
-    const covered = (rows: AccessRow[], role: RewardRole) => rows.some(m => m.role === role && active.includes(m.userId));
+    const today=todayInKualaLumpur(),active:string[]=[];
+    const eligibilityKey=(m:AccessRow)=>JSON.stringify({userId:m.userId,role:m.role,validFrom:m.validFrom??today,validTo:m.validTo??null,coversUserId:m.coversUserId??null});
+    for(const member of [...current,...next]){
+      if((member.validFrom&&member.validFrom>today)||(member.validTo&&member.validTo<today))continue;
+      const [eligible]=await tx.execute<{ok:boolean}>(sql`select app.reward_access_candidate_eligible(${unit.id}::uuid,${member.userId}::uuid,${member.role}) as ok`);
+      const restored=input.after?.restoreReason&&pairKey(input.after)===pairKey(member);
+      if(eligible?.ok||restored)active.push(eligibilityKey(member));
+    }
+    const covered = (rows: AccessRow[], role: RewardRole) => rows.some(m => m.role === role && active.includes(eligibilityKey(m)));
     if (!covered(next, 'gr'))
         throw new RewardMaintenanceError('lastGr');
     const lost = required.find(role => covered(current, role) && !covered(next, role));
@@ -111,27 +126,19 @@ async function prepareAccess(tx: Tx, ctx: SessionContext, input: RewardAccessCha
     return { unit, current, next, digest };
 }
 export async function previewRewardAccessChange(ctx: SessionContext, raw: unknown) { const input = rewardAccessChangeSchema.parse(raw); return withRewardsTenant(ctx, async (tx) => { const p = await prepareAccess(tx, ctx, input); return { ...input, digest: p.digest }; }); }
-async function writeAccessChange(tx: Tx, ctx: SessionContext, unitId: string, input: RewardAccessChange) {
-    // Add first: a legitimate replacement never creates an intermediate loss of GR coverage.
-    if (input.after && (!input.before || pairKey(input.before) !== pairKey(input.after)))
-        await tx.insert(rewardMember).values({ tenantId: ctx.tenantId, unitId, ...input.after });
-    if (input.before && (!input.after || pairKey(input.before) !== pairKey(input.after)))
-        await tx.delete(rewardMember).where(and(eq(rewardMember.unitId, unitId), eq(rewardMember.userId, input.before.userId), eq(rewardMember.role, input.before.role)));
+async function storeAccessRequest(tx:Tx,changes:RewardAccessChange[]){
+ const [row]=await tx.execute<{id:string}>(sql`select app.reward_access_request_create(${JSON.stringify(changes)}::jsonb) as id`);
+ return {requestId:row.id,pending:true as const};
 }
-async function commitAccessTx(tx: Tx, ctx: SessionContext, input: RewardAccessChange, expectedDigest?: string) {
-    const p = await prepareAccess(tx, ctx, input, true);
-    if (expectedDigest !== undefined && p.digest !== expectedDigest)
-        throw new RewardMaintenanceError('preview');
-    await writeAccessChange(tx, ctx, p.unit.id, input);
-    await rewardSeatConfidentialityTx(tx, p.unit, input); // 6fd08f37: a BG/EC seat change re-derives markings (draft only).
-    await tx.update(rewardUnit).set({ revision: p.unit.revision + 1, approvedDigest: null, updatedAt: new Date() }).where(eq(rewardUnit.id, p.unit.id));
-    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'reward-unit', aggregateId: p.unit.id, eventType: 'reward-unit.access-changed', actor: actorOf(ctx), payload: { before: input.before, after: input.after, revision: p.unit.revision + 1 } });
+/** A saved change is a pending request. Membership is changed only by the independent checker. */
+export async function saveRewardAccessChange(ctx: SessionContext, raw: unknown, digest: string) {
+ const input=rewardAccessChangeSchema.parse(raw);z.string().regex(/^[a-f0-9]{64}$/).parse(digest);
+ return withRewardsTenant(ctx,async tx=>{const p=await prepareAccess(tx,ctx,input,true);if(p.digest!==digest)throw new RewardMaintenanceError('preview');return storeAccessRequest(tx,[input]);});
 }
-export async function saveRewardAccessChange(ctx: SessionContext, raw: unknown, digest: string) { const input = rewardAccessChangeSchema.parse(raw); z.string().regex(/^[a-f0-9]{64}$/).parse(digest); return withRewardsTenant(ctx, tx => commitAccessTx(tx, ctx, input, digest)); }
-/** Compatibility entry point: legacy configuration forms use the very same owner and locks. */
-export async function changeRewardMember(ctx: SessionContext, unitId: string, revision: number, userId: string, role: RewardRole, remove = false) {
-    const input = rewardAccessChangeSchema.parse({ unitId, revision, before: remove ? { userId, role } : null, after: remove ? null : { userId, role } });
-    return withRewardsTenant(ctx, tx => commitAccessTx(tx, ctx, input));
+/** Legacy forms propose through the same request owner; they cannot bypass the second person. */
+export async function changeRewardMember(ctx:SessionContext,unitId:string,revision:number,userId:string,role:RewardRole,remove=false){
+ const input=rewardAccessChangeSchema.parse({unitId,revision,before:remove?{userId,role}:null,after:remove?null:{userId,role}});
+ return withRewardsTenant(ctx,async tx=>{await prepareAccess(tx,ctx,input,true);return storeAccessRequest(tx,[input]);});
 }
 /** f38e5d8e — many exact per-review changes saved as one all-or-nothing unit. A batch is a self-contained value
  *  (changes + preview digest), so a later request/approval layer can hold and enact one batch as one request. */
@@ -176,27 +183,35 @@ export async function previewRewardAccessBatch(ctx: SessionContext, raw: unknown
     return withRewardsTenant(ctx, async (tx) => { const p = await prepareAccessBatch(tx, ctx, batch); return { changes: p.applied, alreadyPresent: p.alreadyPresent, digest: p.digest }; });
 }
 export async function saveRewardAccessBatch(ctx: SessionContext, raw: unknown, digest: string) {
-    const batch = rewardAccessBatchSchema.parse(raw);
-    z.string().regex(/^[a-f0-9]{64}$/).parse(digest);
-    return withRewardsTenant(ctx, async (tx) => {
-        const p = await prepareAccessBatch(tx, ctx, batch, true);
-        if (p.digest !== digest)
-            throw new RewardMaintenanceError('preview');
-        const batchId = randomUUID();
-        for (const change of p.applied)
-            await writeAccessChange(tx, ctx, change.unitId, change);
-        const touched = [...new Set(p.applied.map(c => c.unitId))].sort();
-        for (const unitId of touched) {
-            const { unit } = p.states.get(unitId)!;
-            await tx.update(rewardUnit).set({ revision: unit.revision + 1, approvedDigest: null, updatedAt: new Date() }).where(eq(rewardUnit.id, unitId));
-            for (const change of p.applied.filter(c => c.unitId === unitId))
-                await rewardSeatConfidentialityTx(tx, unit, change); // 6fd08f37: batch seat changes re-derive markings too.
-            // Unchanged per-change payload, plus the batch that enacted it.
-            for (const change of p.applied.filter(c => c.unitId === unitId))
-                await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'reward-unit', aggregateId: unitId, eventType: 'reward-unit.access-changed', actor: actorOf(ctx), payload: { before: change.before, after: change.after, revision: unit.revision + 1, batchId } });
-        }
-        return { batchId: touched.length ? batchId : null, reviews: touched.length, applied: p.applied.length, alreadyPresent: p.alreadyPresent.length };
-    });
+ const batch=rewardAccessBatchSchema.parse(raw);z.string().regex(/^[a-f0-9]{64}$/).parse(digest);
+ return withRewardsTenant(ctx,async tx=>{
+  const p=await prepareAccessBatch(tx,ctx,batch,true);if(p.digest!==digest)throw new RewardMaintenanceError('preview');
+  const stored=p.applied.length?await storeAccessRequest(tx,p.applied):{requestId:null,pending:false as const};
+  return {...stored,batchId:stored.requestId,reviews:new Set(p.applied.map(c=>c.unitId)).size,applied:p.applied.length,alreadyPresent:p.alreadyPresent.length};
+ });
+}
+export type RewardAccessRequest={id:string;changes:RewardAccessChange[];requestedBy:string;requestedName:string|null;requestedAt:string;status:'pending'|'approved'|'rejected'|'lapsed';canDecide:boolean;decidedAt:string|null;reason:string|null};
+export async function rewardAccessRequests(ctx:SessionContext):Promise<RewardAccessRequest[]>{
+ return withRewardsTenant(ctx,async tx=>{
+  await tx.execute(sql`select app.reward_access_lapse_requests()`);
+  const rows=await tx.execute<{id:string;changes:RewardAccessChange[];requested_by:string;requested_name:string|null;requested_at:string;status:RewardAccessRequest['status'];decided_at:string|null;reason:string|null}>(sql`select q.id,q.changes,q.requested_by,p.full_name as requested_name,q.requested_at::text,q.status,q.decided_at::text,q.reason from reward_access_request q left join app_user u on u.id=q.requested_by and u.tenant_id=q.tenant_id left join person p on p.id=u.person_id and p.tenant_id=q.tenant_id and app.access_workforce_person(p.id,'workforce.view') order by q.requested_at desc,q.id limit 500`);
+  return rows.map(q=>({id:q.id,changes:q.changes,requestedBy:q.requested_by,requestedName:q.requested_name,requestedAt:q.requested_at,status:q.status,decidedAt:q.decided_at,reason:q.reason,canDecide:q.status==='pending'&&q.requested_by!==ctx.userId&&!q.changes.some(c=>c.before?.userId===ctx.userId||c.after?.userId===ctx.userId)}));
+ });
+}
+export async function decideRewardAccessRequest(ctx:SessionContext,requestId:string,approve:boolean,reason=''){
+ uuid.parse(requestId);z.boolean().parse(approve);if(!approve&&reason.trim().length<10)throw new RewardMaintenanceError('reason');
+ return withRewardsTenant(ctx,async tx=>{
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  const [q]=await tx.execute<{changes:RewardAccessChange[];requested_by:string;status:string}>(sql`select changes,requested_by,status from reward_access_request where id=${requestId}::uuid`);
+  if(!q)throw new RewardMaintenanceError('scope');
+  if(q.status!=='pending')throw new RewardMaintenanceError('changed');
+  if(q.requested_by===ctx.userId||q.changes.some(c=>c.before?.userId===ctx.userId||c.after?.userId===ctx.userId))throw new RewardMaintenanceError('checker');
+  const [live]=await tx.execute<{stale:boolean}>(sql`select app.reward_access_request_stale(${requestId}::uuid) as stale`);
+  if(approve&&!live.stale)await prepareAccessBatch(tx,ctx,rewardAccessBatchSchema.parse({changes:q.changes}),true);
+  const [result]=await tx.execute<{status:'approved'|'rejected'|'lapsed'}>(sql`select app.reward_access_request_decide(${requestId}::uuid,${approve},${reason}) as status`);
+  if(result.status==='approved')for(const change of q.changes){const unit=await adminUnit(tx,change.unitId);await rewardSeatConfidentialityTx(tx,unit,change);}
+  return result;
+ });
 }
 /** BU CEO seat suggestion: business_unit.head_employment_id → employment.person_id → that person's own active login.
  *  Never matched by email; an ambiguous person (several logins) gets no suggestion. Suggestions are never applied. */
@@ -250,9 +265,10 @@ export async function rewardAccessAdministration(ctx: SessionContext, companyIds
         const reviews = await tx.select({ id: rewardUnit.id, companyId: company.id, company: company.legalName, businessUnitId: businessUnit.id, unit: sql<string> `coalesce(nullif(trim(${businessUnit.label}),''),${businessUnit.code})`, cycleId: rewardCycle.id, cycle: rewardCycle.name, year: rewardCycle.year, kind: rewardUnit.kind, status: rewardUnit.status, revision: rewardUnit.revision }).from(rewardUnit).innerJoin(company, eq(company.id, rewardUnit.companyId)).innerJoin(businessUnit, eq(businessUnit.id, rewardUnit.businessUnitId)).innerJoin(rewardCycle, eq(rewardCycle.id, rewardUnit.cycleId)).where(and(inArray(rewardUnit.companyId, ids), isNull(rewardUnit.deletedAt), sql `app.reward_admin(${rewardUnit.companyId})`)).orderBy(desc(rewardCycle.year), asc(rewardCycle.name), asc(company.legalName), asc(businessUnit.code), asc(rewardUnit.id));
         if (!reviews.length)
             return { reviews: [], members: [], users: [], candidates: [], suggestions: [] };
+        await tx.execute(sql`select app.reward_access_observe(NULL::uuid)`);
         const coverage = new Map((await rewardUnitCoverage(tx, reviews.map(r => r.id))).map(c => [c.unitId, c]));
         const today = todayInKualaLumpur();
-        const memberRows = await tx.select({ id: rewardMember.id, unitId: rewardMember.unitId, userId: rewardMember.userId, role: rewardMember.role, name: person.fullName, email: person.primaryEmail, personId: person.id, disabled: sql<boolean> `${appUser.archivedAt} is not null or app.login_blocked(${appUser.id})` }).from(rewardMember).innerJoin(appUser, and(eq(appUser.id, rewardMember.userId), eq(appUser.tenantId, rewardMember.tenantId))).leftJoin(person, and(eq(person.id, appUser.personId), visibleCandidate)).where(inArray(rewardMember.unitId, reviews.map(r => r.id))).orderBy(asc(person.fullName), asc(appUser.id), asc(rewardMember.unitId), asc(rewardMember.role));
+        const memberRows = await tx.select({ id: rewardMember.id, unitId: rewardMember.unitId, userId: rewardMember.userId, role: rewardMember.role,lastChangedAt:sql<string>`coalesce((select max(d.occurred_at)::text from domain_event d where d.tenant_id=${rewardMember.tenantId} and d.aggregate_id=${rewardMember.unitId} and d.event_type='reward-unit.access-changed' and (d.payload->'before'->>'userId'=${rewardMember.userId}::text or d.payload->'after'->>'userId'=${rewardMember.userId}::text)),${rewardMember.createdAt}::text)`,validFrom:rewardMember.validFrom,validTo:rewardMember.validTo,coversUserId:rewardMember.coversUserId,suspension:sql<{reason:string;on:string}|null>`app.reward_member_suspension(${rewardMember.id})`, name: person.fullName, email: person.primaryEmail, personId: person.id, disabled: sql<boolean> `not app.reward_member_eligible(${rewardMember.id})` }).from(rewardMember).innerJoin(appUser, and(eq(appUser.id, rewardMember.userId), eq(appUser.tenantId, rewardMember.tenantId))).leftJoin(person, and(eq(person.id, appUser.personId), visibleCandidate)).where(inArray(rewardMember.unitId, reviews.map(r => r.id))).orderBy(asc(person.fullName), asc(appUser.id), asc(rewardMember.unitId), asc(rewardMember.role));
         const userRows = await tx.select({ id: appUser.id, name: person.fullName, email: person.primaryEmail, personId: person.id }).from(appUser).innerJoin(person, and(eq(person.id, appUser.personId), visibleCandidate)).where(and(eq(appUser.tenantId, ctx.tenantId), isNull(appUser.archivedAt), sql `not app.login_blocked(${appUser.id})`)).orderBy(asc(person.fullName), asc(appUser.id));
         // Active employees of these companies with no login yet: shown, never grantable (prepareAccess refuses).
         const candidateRows = await tx.selectDistinctOn([person.id], { personId: person.id, name: person.fullName, email: person.primaryEmail }).from(employment).innerJoin(person, and(eq(person.id, employment.personId), visibleCandidate)).where(and(inArray(employment.companyId, ids), activeEmployment(today), sql `not exists(select 1 from app_user u where u.person_id=${person.id})`)).orderBy(asc(person.id)).limit(2000);
@@ -265,6 +281,16 @@ export async function rewardAccessAdministration(ctx: SessionContext, companyIds
     });
 }
 export type RewardAccessAdministration = Awaited<ReturnType<typeof rewardAccessAdministration>>;
+/** Count only active current Rewards administrators for companies the caller administers. */
+export function rewardAccessSingleAdminCompanies(ctx:SessionContext,companyIds:string[]){
+ const ids=z.array(uuid).max(500).parse(companyIds);
+ return withRewardsTenant(ctx,async tx=>{
+  if(!ids.length)return [];
+  const rows=await tx.select({name:company.legalName}).from(company).where(and(inArray(company.id,ids),sql`app.reward_admin(${company.id})`,sql`app.reward_access_admin_count(${company.id})<2`));
+  return rows.map(row=>row.name);
+ });
+}
+
 export type RewardDeletionReason = 'locked' | 'recommendations' | 'decisions' | 'children' | 'payroll' | 'external' | 'deleted';
 export async function rewardDeletionEligibility(ctx: SessionContext, unitId: string) {
     return withRewardsTenant(ctx, async (tx) => {

@@ -26511,7 +26511,7 @@
     "lastGrHelp": "Required Group Rewards coverage. Edit to replace this reviewer.",
     "empty": "No assignments match these filters.",
     "noScopes": "No authorised review scopes are available. Create a review in Rewards configuration first.",
-    "saved": "Access saved. Subsequent requests use the updated assignments.",
+    "saved": "Access request submitted. Changes wait for an independent administrator.",
     "removeTitle": "Remove access",
     "editTitle": "Edit access",
     "bounded": "Choose an existing login and one exact review. Changes apply only after preview and save.",
@@ -26559,7 +26559,11 @@
       "used": "This review is in use; retain its history.",
       "missing": "This review is unavailable or access was removed.",
       "system": "The change could not be saved. Reload and try again.",
-      "lastRequired": "Keep at least one active person in every required approval role; replace them in one edit."
+      "lastRequired": "Keep at least one active person in every required approval role; replace them in one edit.",
+      "checker": "Needs another independent administrator",
+      "reason": "Reason for rejection (at least 10 characters)",
+      "proxy": "Person being covered",
+      "dates": "Until (optional)"
     },
     "unavailable": "Unavailable account · {id}",
     "lastRequiredHelp": "Required approval role. Edit to replace this person.",
@@ -28279,6 +28283,46 @@
       "approved": "Approved",
       "rejected": "Rejected",
       "cancelled": "Cancelled"
+    }
+  },
+  "rewardsAccessControl": {
+    "waiting": "Waiting for approval ({count})",
+    "independent": "Changes take effect only after another administrator approves. You cannot approve your own request or a change to your own access.",
+    "noPending": "No access requests are waiting for approval.",
+    "history": "Earlier requests",
+    "administrator": "Administrator",
+    "unavailable": "Unavailable in your scope",
+    "openEnded": "open",
+    "proxyFor": "Proxy for {name}",
+    "none": "No assignment",
+    "requested": "{name} requested {count, plural, one {# change} other {# changes}}",
+    "before": "Before",
+    "after": "After",
+    "restoreReason": "Reason for restoring access",
+    "rejectionReason": "Reason for rejection (at least 10 characters)",
+    "approve": "Approve these changes",
+    "reject": "Reject request",
+    "needsChecker": "Needs another independent administrator",
+    "decisionFailed": "The request could not be decided. Reload and review its current status.",
+    "singleAdmin": "These companies have fewer than two active Rewards administrators: {companies}. A second administrator is needed to approve access requests.",
+    "export": "Export access list (CSV)",
+    "validFrom": "From",
+    "validTo": "Until (optional)",
+    "covers": "Person being covered",
+    "notProxy": "Not a proxy",
+    "restore": "Request restoration of suspended access",
+    "statuses": {
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "lapsed": "Lapsed — review or access changed"
+    },
+    "suspensions": {
+      "login": "Suspended: login unavailable since {on}",
+      "future": "Starts on {on}",
+      "expired": "Expired on {on}",
+      "notice": "Suspended: resignation tendered {on}",
+      "assignment": "Suspended: People assignment changed {on}",
+      "unavailable": "Access unavailable since {on}"
     }
   }
 }

@@ -1,3 +1,4 @@
+import {setRewardMember} from './rewards-access-fixture';
 import {expectNativeSourceCapture} from './native-outcome-source-capture.helpers';
 /** Authored UNRUN: actual approved fictional units/native financial owners, coordinated drafts required. */
 import {randomUUID} from 'node:crypto';
@@ -11,7 +12,7 @@ import {assignRole,revokeRole} from '../core/admin';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {setAiAllowance} from '../core/ai-management';
 import {createBatch,setPayrollInput} from '../packs/payroll/service';
-import {createRewardUnit,getRewardUnit,saveRewardPolicy,saveRewardEntry,setRewardMember,decideRewardUnit,refreshRewardSources} from '../packs/rewards/service';
+import { createRewardUnit, getRewardUnit, saveRewardPolicy, saveRewardEntry, decideRewardUnit, refreshRewardSources } from '../packs/rewards/service';
 import {emptyFacts,type RewardRole} from '../packs/rewards/model';
 import {prepareReviewedRewardsPostSourceTx,confirmReviewedRewardsPostSourceTx} from '../core/assistant-actions/reviewed-rewards-post-source';
 import {REVIEWED_REWARDS_POST_ACTION as action,type ReviewedRewardsPostHumanContent as Human} from '../lib/assistant-actions/reviewed-rewards-post-contract';

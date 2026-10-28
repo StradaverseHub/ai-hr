@@ -1,3 +1,4 @@
+import {setRewardMember} from './rewards-access-fixture';
 /**
  * WP-A1 — performance and Rewards work in the shared task list (bell Task tab, Home, dashboard tile).
  *
@@ -21,7 +22,7 @@ import { listPendingTasks, pendingApprovalsCount, type InboxModules, type Pendin
 import * as perf from '../packs/performance/service';
 import { defaultPolicy } from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
-import { createRewardUnit, decideRewardUnit, getRewardUnit, pendingRewardReviews, pendingRewardTasks, saveRewardEntry, saveRewardPolicy, setRewardMember } from '../packs/rewards/service';
+import { createRewardUnit, decideRewardUnit, getRewardUnit, pendingRewardReviews, pendingRewardTasks, saveRewardEntry, saveRewardPolicy } from '../packs/rewards/service';
 import { emptyFacts } from '../packs/rewards/model';
 import { PACK_TASK_KINDS } from '../lib/assigned-work';
 import { HOME_TASK_KINDS } from '../lib/employee-home';

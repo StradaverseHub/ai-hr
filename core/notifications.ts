@@ -1,7 +1,7 @@
 import type { Tx as AiReadTx } from '../db/client';
 import { withCanonicalAiReadTx } from './ai-read-transaction';
 import { assessmentReviewTaskRecipientsTx,assessmentReminderRecipientsTx } from '../packs/performance/service';
-import { rewardNotificationRecipients } from '../packs/rewards/service';
+import { rewardAccessSuspensionRecipients,rewardNotificationRecipients } from '../packs/rewards/service';
 /**
  * Notification engine (ADR-0034) — 34-2 registry + dispatch + reads. A sweep reads new domain events after a
  * per-tenant cursor and turns the mapped ones into recipient-scoped notifications. Gated by the per-tenant
@@ -261,6 +261,11 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
     kind:'performance.reminder',category:'performance',
     recipients:(tx,ev)=>assessmentReminderRecipientsTx(tx,ev.aggregateId),
     render:()=>({severity:'action',title:'Assessment work waiting on you',body:'Open your performance workspace to complete your pending review tasks.',linkPath:'/me/performance'}),
+  },
+  'reward-access.suspended': {
+    kind:'rewards.access-suspended',category:'rewards',
+    render:()=>({severity:'warning',title:'Rewards access suspended',body:'People records changed. Review the suspended assignment and any missing approval roles.',linkPath:'/admin/rewards/access'}),
+    recipients:(tx,ev)=>rewardAccessSuspensionRecipients(tx,ev.aggregateId),
   },
   'reward-unit.routed': {
     kind: 'rewards.review', category: 'rewards',
