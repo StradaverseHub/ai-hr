@@ -25,7 +25,7 @@ ALTER TABLE ai_control_policy ADD CONSTRAINT ai_control_policy_check CHECK(
 CREATE OR REPLACE FUNCTION app.ai_control_policy_delete_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $$
 BEGIN
  PERFORM pg_advisory_xact_lock(hashtext('ai-control'),hashtext(OLD.tenant_id::text));
- IF OLD.kind NOT IN ('user','group_role','group_company','group_department') THEN RAISE EXCEPTION 'Only an individual or group allowance can be removed';END IF;
+ IF OLD.kind NOT IN ('user','group_role','group_company','group_department') THEN RAISE EXCEPTION 'Only an individual user or group allowance can be removed';END IF;
  RETURN OLD;
 END $$;
 --> statement-breakpoint

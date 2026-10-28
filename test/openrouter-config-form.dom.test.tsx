@@ -14,7 +14,7 @@ vi.mock('sonner',()=>({toast:{success:vi.fn(),error:vi.fn()}}));
 afterEach(()=>{cleanup();vi.clearAllMocks();});
 const config:AiConfigView={storable:true,envFallback:null,usingEnvFallback:false,providers:[{
  provider:'openrouter',label:'OpenRouter',models:[],defaultModel:'',model:'',configured:false,keyLast4:null,
- isActive:false,envKeyPresent:false,providerOptions:null,candidateSaved:false,candidateId:null,candidateVersion:null,activeModel:null}]};
+ isActive:false,envKeyPresent:false,providerOptions:null,gatewayBaseUrl:null,candidateSaved:false,candidateId:null,candidateVersion:null,activeModel:null}]};
 type EvaluationSuccess=Extract<Awaited<ReturnType<typeof evaluateProviderCandidateAction>>,{ok:true}>;
 const summaryFixture:EvaluationSuccess['summary']={calls:3,elapsedMs:1,usageReportedCalls:3,inputTokens:0,outputTokens:0,cachedInputTokens:0,accountChargeCredits:null};
 const t=messages.admin.ai;

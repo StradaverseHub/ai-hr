@@ -394,7 +394,7 @@ describe('group allowances (0662): individual, then department, company, role, t
  const person=async(name:string,departmentId:string,role:'employee'|'manager'='employee')=>{
   const employment=await hireEmployee(group,{person:{fullName:name,primaryEmail:`${name.toLowerCase().replace(/[^a-z]/g,'')}@fixture.test`},companyId:base.companyId,departmentId,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
   const id=await createAppUser(base.tenantId,employment.personId,role);
-  return {id,ctx:{tenantId:base.tenantId,userId:id,roles:[role],grants:[{role,companyId:null}],entitlements:group.entitlements} as SessionContext};
+  return {id,ctx:{tenantId:base.tenantId,userId:id,personId:employment.personId,roles:[role],grants:[{role,companyId:null}],entitlements:group.entitlements} as SessionContext};
  };
  const groupLimit=(kind:string,subject:string,daily:number|null)=>setGroupAllowance(group,{kind,subject,dailyRequests:daily,monthlyTokens:null,enabled:true});
  it('applies the most specific matching tier, ignoring looser ones, and the strictest row within a tier',async()=>{

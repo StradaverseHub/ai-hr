@@ -19,7 +19,7 @@ vi.mock('../core/ai-management',()=>({AI_RUN_STATE_FILTERS:['blocked','failed'],
 vi.mock('../core/hr-orchestrator',()=>({orchestrationQueue:async()=>({})}));
 vi.mock('../app/control-tower/work-queue',()=>({OrchestrationWorkQueue:()=>null}));
 vi.mock('../lib/ai/spend-allocation',()=>({nanosToUsd:(value:string)=>value}));
-vi.mock('../app/control-tower/agents/actions',()=>({clearUserAllowanceAction:vi.fn(),setAiSpendBudgetAction:vi.fn(),setAiAllowanceAction:vi.fn(),setAiFeatureAction:vi.fn(),setAssistantPermissionAction:vi.fn()}));
+vi.mock('../app/control-tower/agents/actions',()=>({applyBulkAssistantAction:vi.fn(),setGroupAllowanceAction:vi.fn(),clearGroupAllowanceAction:vi.fn(),clearUserAllowanceAction:vi.fn(),setAiSpendBudgetAction:vi.fn(),setAiAllowanceAction:vi.fn(),setAiFeatureAction:vi.fn(),setAssistantPermissionAction:vi.fn()}));
 import { AiManagementScreen } from '../app/control-tower/agents/screen';
 import type { AiManagementSection } from '../app/control-tower/agents/sections';
 const navigation=vi.hoisted(()=>({redirect:vi.fn((location:string)=>{throw Object.assign(Error('fixture redirect'),{location});})}));
