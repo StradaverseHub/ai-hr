@@ -275,7 +275,8 @@ END $$;
 REVOKE ALL ON FUNCTION app.assistant_assigned_review_subject(uuid,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assistant_assigned_review_subject(uuid,text) TO ai_hr_app;
 --> statement-breakpoint
--- Discard is login-only retirement (no subject binding), so a decider who lost access can still retire it.
+-- Discard needs no subject binding, so a decider who lost access can still retire it; like every read it is
+-- still bound to this login's CURRENT person, so a relinked login cannot touch the former person's reviews.
 CREATE FUNCTION app.assistant_assigned_review_read(p_id uuid,p_kind text,p_discard boolean DEFAULT false) RETURNS jsonb
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE r app.assistant_own_leave_review%ROWTYPE;
@@ -284,8 +285,8 @@ BEGIN
  IF app._assistant_assigned_review_subject_kind(p_kind) IS NULL THEN RAISE EXCEPTION 'Decision review unavailable' USING ERRCODE='42501';END IF;
  SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND action_kind=p_kind FOR UPDATE NOWAIT;
  IF NOT FOUND OR (p_discard IS TRUE AND r.state='completed') THEN RAISE EXCEPTION 'Decision review unavailable' USING ERRCODE='42501';END IF;
- IF p_discard IS NOT TRUE THEN
-  PERFORM app._assistant_assigned_review_binding(r.action_kind,r.person_id,r.employment_id,r.company_id,r.decision_subject_person_id,r.receipt_subject_id);
+ IF p_discard IS TRUE THEN PERFORM app._assistant_leave_decision_login(r.person_id,true);
+ ELSE PERFORM app._assistant_assigned_review_binding(r.action_kind,r.person_id,r.employment_id,r.company_id,r.decision_subject_person_id,r.receipt_subject_id);
  END IF;
  IF r.state='awaiting_confirmation' THEN
   IF clock_timestamp()>=r.expires_at THEN
@@ -323,7 +324,7 @@ END $$;
 REVOKE ALL ON FUNCTION app.assistant_assigned_review_complete(uuid,text,text,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assistant_assigned_review_complete(uuid,text,text,uuid) TO ai_hr_app;
 --> statement-breakpoint
--- Metadata only, this login's own reviews, same 30-day window as the generic index.
+-- Metadata only: this login's reviews made as its current person, same 30-day window as the generic index.
 CREATE FUNCTION app.assistant_assigned_reviews_index(p_kind text)
  RETURNS TABLE(action text,action_id uuid,state text,created_at timestamptz,expires_at timestamptz)
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -334,6 +335,7 @@ BEGIN
  at_time:=clock_timestamp();
  RETURN QUERY SELECT r.action_kind,r.id,r.state,r.created_at,r.expires_at FROM app.assistant_own_leave_review r
   WHERE r.tenant_id=app.current_tenant_id() AND r.user_id=app.current_user_id() AND r.action_kind=p_kind
+   AND r.person_id IS NOT DISTINCT FROM (SELECT a.person_id FROM public.app_user a WHERE a.id=app.current_user_id() AND a.tenant_id=app.current_tenant_id())
    AND r.created_at>=at_time-interval '30 days' AND r.created_at<=at_time
   ORDER BY r.created_at DESC,r.id DESC LIMIT 25;
 END $$;

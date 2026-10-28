@@ -1,0 +1,30 @@
+/** ADR-0151 wave 1b: browser side of the generic six-operation protocol (choices, list, prepare, reopen,
+ * confirm, discard) for the own overtime request and the three assigned decisions. Every packet is checked
+ * against the action's strict schema before it leaves the page, and every response is checked against the
+ * operation, the echoed action id and the prepared subject before the page shows it. Nothing here retries. */
+import {GENERIC_CHOICES_RESPONSE_BYTES,OvertimeRequestModuleActionBrowserPacket,ClaimDecisionModuleActionBrowserPacket,AttendanceDecisionModuleActionBrowserPacket,ToilDecisionModuleActionBrowserPacket,parseGenericModuleActionBrowserResult,type GenericModuleAction,type GenericModuleActionBrowserPacket,type GenericModuleActionBrowserResult} from '@/lib/assistant-actions/module-action-http';
+import {OWN_OVERTIME_REQUEST_ACTION} from '@/lib/assistant-actions/own-overtime-request-contract';
+import {ASSIGNED_CLAIM_DECISION_ACTION,ASSIGNED_ATTENDANCE_DECISION_ACTION,ASSIGNED_TOIL_DECISION_ACTION} from '@/lib/assistant-actions/assigned-decision-contract';
+export type GenericPacket=GenericModuleActionBrowserPacket&{action:GenericModuleAction};
+const PACKETS={[OWN_OVERTIME_REQUEST_ACTION]:OvertimeRequestModuleActionBrowserPacket,[ASSIGNED_CLAIM_DECISION_ACTION]:ClaimDecisionModuleActionBrowserPacket,[ASSIGNED_ATTENDANCE_DECISION_ACTION]:AttendanceDecisionModuleActionBrowserPacket,[ASSIGNED_TOIL_DECISION_ACTION]:ToilDecisionModuleActionBrowserPacket} as const;
+const fail=()=>Error('Module action unavailable.');
+/** Strict packet or null. The clone keeps a later state change from altering what was checked. */
+export function checkGenericPacket(value:unknown):GenericPacket|null{
+ const action=(value as {action?:unknown}|null)?.action;if(typeof action!=='string'||!Object.hasOwn(PACKETS,action))return null;
+ const checked=PACKETS[action as keyof typeof PACKETS].safeParse(structuredClone(value));return checked.success?checked.data as GenericPacket:null;
+}
+export const packetActionId=(packet:GenericPacket):string|null=>packet.operation==='reopen'?packet.actionId:packet.operation==='confirm'||packet.operation==='discard'?(packet.confirmation as {actionId:string}).actionId:null;
+export async function readGenericModuleActionResponse(response:Response,packet:GenericPacket):Promise<GenericModuleActionBrowserResult>{
+ const reject=async():Promise<never>=>{await response.body?.cancel().catch(()=>undefined);throw fail();};
+ if(!response.ok||response.headers.get('content-type')?.split(';')[0].trim().toLowerCase()!=='application/json'||!response.body)return reject();
+ const limit=packet.operation==='choices'?GENERIC_CHOICES_RESPONSE_BYTES:32768,reader=response.body.getReader(),parts:Uint8Array[]=[];let bytes=0,fragments=0;
+ try{for(;;){const part=await reader.read();if(part.done)break;bytes+=part.value.byteLength;if(++fragments>1024||bytes>limit)throw fail();parts.push(part.value);}
+  const data=new Uint8Array(bytes);let offset=0;for(const part of parts){data.set(part,offset);offset+=part.byteLength;}
+  return parseGenericModuleActionBrowserResult(packet,JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(data)));
+ }catch{await reader.cancel().catch(()=>undefined);throw fail();}finally{reader.releaseLock();}
+}
+/** One POST to the same guarded endpoint the wave 1 panels use. */
+export async function sendGenericModuleAction(packet:GenericPacket,signal:AbortSignal):Promise<GenericModuleActionBrowserResult>{
+ const response=await fetch('/api/assistant/module-actions',{method:'POST',mode:'same-origin',credentials:'same-origin',cache:'no-store',redirect:'error',signal,headers:{'Content-Type':'application/json'},body:JSON.stringify(packet)});
+ return readGenericModuleActionResponse(response,packet);
+}

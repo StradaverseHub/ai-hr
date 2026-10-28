@@ -97,12 +97,21 @@ async function attendanceReview(tx:Tx,fresh:SessionContext,human:AssignedAttenda
  const note=human.note?.trim()??'';if(human.decision==='rejected'&&(note.length<1||note.length>1000))return fail();
  return attendanceItem(row);
 }
-export async function prepareAssignedAttendanceSourceTx(tx:Tx,fresh:SessionContext,human:AssignedAttendanceHuman){const review=await attendanceReview(tx,fresh,human);return{review,reviewedDigest:digestOf(review)};}
+/** The pending level (and, for participant workflows, this decider's slot) the native service must still be at.
+ * It is bound into the reviewed digest, so a level that advanced elsewhere is refused as stale. */
+async function attendanceLevel(tx:Tx,fresh:SessionContext,correctionId:string){
+ const [flow]=rowsOf<{stage:number;routing:number}>(await tx.execute(sql`select w.current_stage as stage,w.routing_version as routing from public.attendance_workflow_request w where w.correction_id=${correctionId}::uuid and w.tenant_id=${fresh.tenantId}::uuid`));
+ if(!flow)return{expectedStageIndex:undefined,expectedParticipantSlot:undefined};
+ const [slot]=flow.routing===3||flow.routing===4?rowsOf<{slot:string|null}>(await tx.execute(sql`select app.attendance_workflow_v3_decision_slot(${correctionId}::uuid)->>'slot' as slot`)):[{slot:null}];
+ if((flow.routing===3||flow.routing===4)&&!slot?.slot)return fail();
+ return{expectedStageIndex:Number(flow.stage),expectedParticipantSlot:slot?.slot??undefined};
+}
+export async function prepareAssignedAttendanceSourceTx(tx:Tx,fresh:SessionContext,human:AssignedAttendanceHuman){const review=await attendanceReview(tx,fresh,human),level=await attendanceLevel(tx,fresh,human.subjectId);return{review,reviewedDigest:digestOf({review,level})};}
 export async function confirmAssignedAttendanceSourceTx(tx:Tx,fresh:SessionContext,human:AssignedAttendanceHuman,reviewedDigest:string){
- if(digestOf(await attendanceReview(tx,fresh,human))!==reviewedDigest)return fail();
+ const review=await attendanceReview(tx,fresh,human),level=await attendanceLevel(tx,fresh,human.subjectId);if(digestOf({review,level})!==reviewedDigest)return fail();
  const note=human.note?.trim()||undefined;
  // The native decision locks the request, checks the frozen workflow and records a level or the final outcome.
- const outcome=await decideAttendanceCorrection(fresh,{correctionId:human.subjectId,decision:human.decision,...(human.decision==='rejected'?{rejectReason:note}:{remarks:note})},tx);
+ const outcome=await decideAttendanceCorrection(fresh,{correctionId:human.subjectId,decision:human.decision,...(level.expectedStageIndex!==undefined?{expectedStageIndex:level.expectedStageIndex}:{}),...(level.expectedParticipantSlot?{expectedParticipantSlot:level.expectedParticipantSlot}:{}),...(human.decision==='rejected'?{rejectReason:note}:{remarks:note})},tx);
  const final=outcome.status!=='pending';if(final&&outcome.status!==human.decision)return fail();
  const [event]=rowsOf<{id:string}>(await tx.execute(sql`select d.id from public.domain_event d where d.tenant_id=${fresh.tenantId}::uuid and d.aggregate_id=${human.subjectId}::uuid and d.aggregate_type='attendance-correction'
   and d.actor_id=${fresh.userId}::uuid and ${currentEvent} and d.subject_employment_id=${human.employmentId}::uuid
