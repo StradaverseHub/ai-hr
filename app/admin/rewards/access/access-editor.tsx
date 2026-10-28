@@ -2,12 +2,13 @@
 import { useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { Copy, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Button, Card, Field, SectionHeader, inputCls, tableWrapCls, theadCls, thCls, tbodyCls } from '@/components/ui';
 import { rewardRoles, type RewardRole } from '@/packs/rewards/model';
 import type { RewardAccessAdministration, RewardAccessChange } from '@/packs/rewards/service';
 import { previewRewardAccessAction, saveRewardAccessAction } from '@/app/rewards/actions';
 import { RewardCoveragePanel } from './coverage-panel';
+import { BatchAddAccess, CopyAccess } from './batch-access';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 type Member = RewardAccessAdministration['members'][number];
 type Preview = RewardAccessChange & {
@@ -16,7 +17,7 @@ type Preview = RewardAccessChange & {
 export function RewardAccessEditor({ value }: {
     value: RewardAccessAdministration;
 }) {
-    const t = useTranslations('rewardsAccess'), r = useTranslations('rewards'), router = useRouter();
+    const t = useTranslations('rewardsAccess'), b = useTranslations('rewardsAccessBatch'), r = useTranslations('rewards'), router = useRouter();
     const [query, setQuery] = useState(''), [company, setCompany] = useState(''), [cycle, setCycle] = useState(''), [unitFilter, setUnitFilter] = useState(''), [gaps, setGaps] = useState(false);
     const [editor, setEditor] = useState<{
         before: Member | null;
@@ -24,9 +25,9 @@ export function RewardAccessEditor({ value }: {
     } | null>(null);
     const [unitId, setUnitId] = useState(''), [userId, setUserId] = useState(''), [role, setRole] = useState<RewardRole>('bu');
     const [preview, setPreview] = useState<Preview | null>(null), [error, setError] = useState(''), [saved, setSaved] = useState(false), [busy, start] = useTransition();
-    const editorRef = useRef<HTMLDivElement>(null), userRef = useRef<HTMLDivElement>(null), [pickerKey, setPickerKey] = useState(0);
+    const editorRef = useRef<HTMLDivElement>(null), userRef = useRef<HTMLDivElement>(null), [pickerKey, setPickerKey] = useState(0), [mode, setMode] = useState<'add' | 'copy' | null>(null);
     const clear = () => { setPreview(null); setError(''); setSaved(false); };
-    const open = (before: Member | null, remove = false) => { clear(); setEditor({ before, remove }); setUnitId(before?.unitId ?? value.reviews.find(x => x.status === 'draft')?.id ?? ''); setUserId(before?.userId ?? ''); setRole(before?.role ?? 'bu'); setPickerKey(k => k + 1); requestAnimationFrame(() => { editorRef.current?.scrollIntoView({ block: 'nearest', behavior: 'auto' }); userRef.current?.querySelector<HTMLElement>('button, input')?.focus(); }); };
+    const open = (before: Member | null, remove = false) => { clear(); setMode(null); setEditor({ before, remove }); setUnitId(before?.unitId ?? value.reviews.find(x => x.status === 'draft')?.id ?? ''); setUserId(before?.userId ?? ''); setRole(before?.role ?? 'bu'); setPickerKey(k => k + 1); requestAnimationFrame(() => { editorRef.current?.scrollIntoView({ block: 'nearest', behavior: 'auto' }); userRef.current?.querySelector<HTMLElement>('button, input')?.focus(); }); };
     const review = value.reviews.find(x => x.id === unitId);
     const change: RewardAccessChange = { unitId, revision: review?.revision ?? 0, before: editor?.before ? { userId: editor.before.userId, role: editor.before.role } : null, after: editor?.remove ? null : { userId, role } };
     const name = (id: string) => { const account = value.users.find(x => x.id === id) ?? value.members.find(x => x.userId === id); return account?.name ?? account?.email ?? t('unavailable', { id }); };
@@ -37,6 +38,10 @@ export function RewardAccessEditor({ value }: {
     // without a login is listed but cannot be chosen, and prepareAccess still refuses anything but an active login.
     const facts = (x: { employeeCode: string | null; jobTitle: string | null; companyName: string | null; businessUnitName: string | null }) => [x.employeeCode, x.jobTitle, x.companyName, x.businessUnitName].filter(Boolean).join(' · ');
     const accounts: ComboboxOption[] = [...value.users.map(x => ({ value: x.id, label: x.name ?? x.email ?? t('unnamed'), description: [facts(x), x.email].filter(Boolean).join(' · '), keywords: x.employeeCode ?? '' })), ...value.candidates.map((x, i) => ({ value: `no-login:${i}`, label: x.name ?? x.email ?? t('unnamed'), description: [t('noLogin'), facts(x)].filter(Boolean).join(' · '), keywords: `${x.email ?? ''} ${x.employeeCode ?? ''}`, disabled: true }))];
+    // f38e5d8e: additions and cycle copies go through one all-or-nothing batch; Edit/Remove stay single exact changes.
+    const begin = (next: 'add' | 'copy') => { clear(); setEditor(null); setMode(next); requestAnimationFrame(() => editorRef.current?.scrollIntoView({ block: 'nearest', behavior: 'auto' })); };
+    const batchSaved = () => { setMode(null); setSaved(true); router.refresh(); };
+    const labels = { name, scope: (id: string) => { const row = value.reviews.find(x => x.id === id); return row ? `${row.company} / ${row.unit} · ${row.cycle}` : ''; } };
     const unique = (field: 'companyId' | 'cycleId' | 'businessUnitId') => [...new Map(value.reviews.map(x => [x[field], x])).values()];
     const unchanged = !!editor?.before && !editor.remove && editor.before.userId === userId && editor.before.role === role;
     return <div className="space-y-6">
@@ -46,7 +51,7 @@ export function RewardAccessEditor({ value }: {
    <Field label={r('cycle')}><select className={inputCls} value={cycle} onChange={e => setCycle(e.target.value)}><option value="">{t('allCycles')}</option>{unique('cycleId').map(x => <option key={x.cycleId} value={x.cycleId}>{x.cycle} · {x.year}</option>)}</select></Field>
    <Field label={r('unit')}><select className={inputCls} value={unitFilter} onChange={e => setUnitFilter(e.target.value)}><option value="">{t('allUnits')}</option>{unique('businessUnitId').map(x => <option key={x.businessUnitId} value={x.businessUnitId}>{x.unit}</option>)}</select></Field>
    <Field label={t('coverageFilter')}><select className={inputCls} value={gaps ? 'missing' : ''} onChange={e => setGaps(e.target.value === 'missing')}><option value="">{t('coverageAll')}</option><option value="missing">{t('coverageMissingOnly')}</option></select></Field>
-  </div><Button type="button" disabled={busy || !value.reviews.some(x => x.status === 'draft') || !value.users.length} onClick={() => open(null)}><Plus aria-hidden className="size-4"/>{t('add')}</Button></div>
+  </div><div className="flex flex-wrap gap-2"><Button type="button" disabled={busy || !value.reviews.some(x => x.status === 'draft') || !value.users.length} onClick={() => begin('add')}><Plus aria-hidden className="size-4"/>{t('add')}</Button><Button type="button" variant="outline" disabled={busy || new Set(value.reviews.filter(x => x.kind === 'annual').map(x => x.cycleId)).size < 2 || !value.reviews.some(x => x.status === 'draft')} onClick={() => begin('copy')}><Copy aria-hidden className="size-4"/>{b('copyOpen')}</Button></div></div>
   <p role="status" className="text-sm text-muted-foreground">{t('count', { count: rows.length })}</p>
   <div className={tableWrapCls}><table className="w-full text-sm"><thead className={theadCls}><tr>{['user', 'role', 'scope', 'state', 'actions'].map(k => <th key={k} className={thCls}>{t(k)}</th>)}</tr></thead><tbody className={tbodyCls}>{rows.map(m => {
             const v = value.reviews.find(x => x.id === m.unitId)!;
@@ -59,7 +64,7 @@ export function RewardAccessEditor({ value }: {
         })}</tbody></table>{!rows.length && <p className="px-5 py-10 text-sm text-muted-foreground">{t(value.reviews.length ? 'empty' : 'noScopes')}</p>}</div>
   <RewardCoveragePanel reviews={value.reviews.filter(inScope)}/>
   {saved && <p role="status" className="rounded-md border p-3 text-sm">{t('saved')}</p>}
-  <div ref={editorRef}>{editor && <Card className="p-5"><SectionHeader title={t(editor.remove ? 'removeTitle' : editor.before ? 'editTitle' : 'add')}/><p className="mb-4 max-w-3xl text-sm text-muted-foreground">{t('bounded')}</p>
+  <div ref={editorRef}>{mode === 'add' && <BatchAddAccess value={value} accounts={accounts} labels={labels} onSaved={batchSaved} onCancel={() => setMode(null)}/>}{mode === 'copy' && <CopyAccess value={value} labels={labels} onSaved={batchSaved} onCancel={() => setMode(null)}/>}{editor && <Card className="p-5"><SectionHeader title={t(editor.remove ? 'removeTitle' : editor.before ? 'editTitle' : 'add')}/><p className="mb-4 max-w-3xl text-sm text-muted-foreground">{t('bounded')}</p>
    <fieldset disabled={busy} className="grid gap-4 md:grid-cols-2">
     <div ref={userRef}><Field label={t('person')}>{editor.remove ? <input className={inputCls} readOnly value={name(userId)}/> : <Combobox key={pickerKey} value={userId} options={accounts} placeholder={t('chooseAccount')} searchPlaceholder={t('personSearch')} noResultsLabel={t('noPeople')} legacySuffix="" onValueChange={v => { if (!v.startsWith('no-login:')) { setUserId(v); clear(); } }}/>}</Field>{!editor.remove && value.candidates.length > 0 && <p className="mt-1 text-xs text-muted-foreground">{t('noLoginHelp')}</p>}</div>
     <Field label={t('role')}><select className={inputCls} value={role} disabled={editor.remove} onChange={e => { setRole(e.target.value as RewardRole); clear(); }}>{rewardRoles.map(x => <option key={x} value={x}>{r(`roles.${x}`)}</option>)}</select></Field>

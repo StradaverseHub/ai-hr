@@ -29,6 +29,8 @@ export type { RewardCalendarValues, RewardCalendarStage, RewardOffcycleSlaStage,
 import {changeRewardMember} from './maintenance';
 export {rewardAccessAdministration,previewRewardAccessChange,saveRewardAccessChange,rewardDeletionEligibility,deleteRewardReview,RewardMaintenanceError} from './maintenance';
 export type {RewardAccessChange,RewardAccessAdministration,RewardDeletionReason} from './maintenance';
+export {previewRewardAccessBatch,saveRewardAccessBatch,previewRewardAccessCopy} from './maintenance';
+export type {RewardAccessBatch,RewardAccessCopyProposal} from './maintenance';
 import {activeRewardLogin,missingRewardRoles,rewardRequiredRoles,rewardRoleLabels} from './coverage';
 export {rewardRequiredRoles,rewardUnitCoverage} from './coverage';
 export type {RewardUnitCoverage,RewardRoleCoverage} from './coverage';
