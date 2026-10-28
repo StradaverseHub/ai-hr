@@ -970,6 +970,7 @@ BEGIN
  talent_open:=leader IN ('bg','group') OR rel.talent_leader_released_at IS NOT NULL OR all_full;
  RETURN jsonb_build_object('role',leader,'midYear',mid,'frozen',f.id IS NOT NULL,'axes',axes,'talent',CASE WHEN talent_open THEN outcome->>'talent' END);
 END $$;
+--> statement-breakpoint
 -- ── X5. The screen's department choices (D-P1-22 X5, APR-024) ──────────────────────────────────────────
 -- Departments of a company in the cycle's scope that hold people today, with the count: the departments the
 -- "Units not taking part" card offers. Same placement and the same "active today" rule as the facts headcount
