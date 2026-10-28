@@ -312,6 +312,8 @@
     "approvals": "ஒப்புதல் உருப்படிகள்",
     "approvalsCount": "{count, plural, one {# உருப்படி உங்கள் முடிவுக்காகக் காத்திருக்கிறது} other {# உருப்படிகள் உங்கள் முடிவுக்காகக் காத்திருக்கின்றன}}",
     "performance": "செயல்திறன்",
+    "performanceTalent": "செயல்திறன் & திறமை",
+    "performanceAdmin": "Performance admin",
     "admin": "நிர்வாகம்",
     "organization": "நிறுவனம்",
     "systemLabels": "அமைப்பு லேபிள்கள்",
@@ -10680,6 +10682,7 @@
         "onboardingRequisitions": "அமைக்கப்பட்ட வழங்கல், ஒப்புதல் மற்றும் அமைப்பு சேர்க்கும் குழுக்கள், தொகுதி பயனர்கள் மற்றும் நிறுவன HR கோரிக்கைகளைப் படிக்கலாம். செயல்கள் தற்போதைய குழு, படி அல்லது உருப்படி உரிமைகளுக்கு உட்பட்டவை. குறிப்பிடப்படுவது அந்த உரையாடலை மட்டும் அணுக அனுமதிக்கும்.",
         "onboardingSettings": "தொகுதி பயனர்கள் கொள்கைகள், பட்டியல்கள், ஒப்புதல் ஓட்டங்கள் மற்றும் வழித்தடங்களை நிர்வகிக்கிறார்கள். தொகுதி அணுகல் இல்லாத முதன்மை நிர்வாகி குழுக்கள் மற்றும் அனுமதிகளை மட்டும் நிர்வகிக்கலாம்.",
         "onboardingV31": "HR பாத்திரத்திலிருந்து தனியாக வெளிப்படையான பணிச்சேர்ப்பு தொகுதி அனுமதி தேவை. HR அடையாளப் புலங்களுக்கு நிறுவன HR அணுகலும் தேவை.",
+        "performanceHome": "Everyone signed in reaches it while Performance is on. Each card shows only the viewer's own work and the results released to them; a leader seat adds aggregate counts for the people it leads, never one person's band.",
         "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked. The department view lists only the people whose current head-of-department assignment names you, read-only.",
         "payrollConfig": "அனைவரும் இதைத் திறக்கலாம்; நிறுவனத்தின் நிர்வாகிகள் மட்டுமே இதை மாற்ற முடியும்.",
         "people": "அனைவரும் இதைத் திறக்கலாம்; பட்டியல் நீங்கள் பார்க்க அனுமதிக்கப்பட்டவர்களுக்கு மட்டுமே.",
@@ -18745,6 +18748,10 @@
         "action_knowledge_base_article_create": "கட்டுரை உருவாக்கப்பட்டது; உள்ளடக்கம் சான்றளிக்கப்படவில்லை",
         "action_payroll_close": "ஊதியத் தொகுதி மூடப்பட்டது; பணம் செலுத்தப்படவில்லை",
         "action_attendance_correction_request": "வருகைத் திருத்தக் கோரிக்கை; அங்கீகரிக்கப்படவில்லை",
+        "action_attendance_overtime_request": "கூடுதல் நேரம் கோரப்பட்டது; அங்கீகரிக்கப்படவில்லை",
+        "action_approvals_claim_decide": "கோரிக்கை முடிவு பதிவு; பணம் தனியே கையாளப்படும்",
+        "action_approvals_attendance_decide": "வருகை முடிவு பதிவு; கோரிக்கை இன்னொரு அங்கீகாரியை எதிர்பார்க்கலாம்",
+        "action_approvals_toil_decide": "மாற்று விடுப்பு முடிவு பதிவு; அங்கீகரிக்கப்பட்டால் மட்டுமே வரவு",
         "action_claims_draft_save": "செலவுக் கோரிக்கை வரைவு சேமிப்பு; சமர்ப்பிக்கவோ திருப்பிச் செலுத்தவோ இல்லை",
         "action_claims_submit": "செலவுக் கோரிக்கை சமர்ப்பிப்பு; அங்கீகரிக்கவோ திருப்பிச் செலுத்தவோ இல்லை",
         "action_performance_review_acknowledge": "மதிப்பாய்வு வாசித்தது உறுதி; மதிப்பெண் ஒப்புதல் அல்ல",
@@ -21224,8 +21231,8 @@
     "promotion": "Confirm promotion nomination",
     "specialReward": "Confirm special reward nomination",
     "overrideReason": "Reason for a distribution exception",
-    "lockConfirm": "Lock this calibration cohort?",
-    "lockCalibration": "Lock calibration cohort",
+    "lockConfirm": "Lock this calibration?",
+    "lockCalibration": "Lock calibration",
     "enableHelp": "Set up KPI scoring, technical competencies, 360 feedback, calibration and development planning. Review the policy before opening the cycle.",
     "enable": "Set up performance and talent review",
     "rewardImportHelp": "Import finalized results for this reward year. The immutable assessment reference is retained and fact verification is reset. Pay recommendations and approvals remain with Rewards. An improvement category does not confirm a PIP case.",
@@ -22476,7 +22483,7 @@
       "referenceTitle": "Reference guideline",
       "showDetails": "Show details",
       "hideDetails": "Hide details",
-      "onTarget": "On target in every category",
+      "onTarget": "On target across every category",
       "onTargetShort": "On target",
       "deltaTitle": "{actual} now, {target} at the reference share",
       "noReference": "This scope has no single performance reference, so no reference shares are shown.",
@@ -22497,7 +22504,7 @@
       "movedDown": "Moved down from {category}",
       "moveTo": "Move {name} to another box",
       "moveMenu": "Move to…",
-      "legendUp": "moved up a box in this calibration",
+      "legendUp": "moved up a box this calibration",
       "legendDown": "moved down a box",
       "potentialAxis": "Potential",
       "performanceAxis": "Performance →",
@@ -22506,7 +22513,20 @@
       "footerLocked": "Calibration locked for {scope}: performance and potential are final.",
       "pickUnitToLock": "Choose a business unit above to lock it.",
       "categoryHelp": "Everyone here whose performance and potential place them in {category}.",
-      "categoryEmpty": "No one here is in {category} right now."
+      "categoryEmpty": "No one here is in {category} right now.",
+      "breadcrumb": "Talent Box ▸ {tier, select, bu {Business unit} bg {Business group} other {Calibration group}}",
+      "rowHigh": "3 – High",
+      "rowMid": "2 – Medium",
+      "rowLow": "1 – Low",
+      "legendSame": "adjusted, same box",
+      "adjustedSame": "Adjusted, same box",
+      "tabs": {
+        "performance": "Performance",
+        "potential": "Potential"
+      },
+      "sessions": "Talent Box sessions",
+      "axisListHelp": "Read only: each person's current {axis, select, performance {performance} other {potential}} band in this scope. Moves and the lock are made on the Talent box.",
+      "axisListEmpty": "No one is in this scope yet."
     },
     "department": {
       "link": "My department",
@@ -28298,6 +28318,298 @@
       "notSet": "Not set yet"
     }
   },
+  "performanceArea": {
+    "tabs": {
+      "home": "Dashboard",
+      "pm": {
+        "setting": "Set my KPIs",
+        "my": "My PM",
+        "approve": "Approve KPIs",
+        "team": "Team PM"
+      },
+      "f360": {
+        "assessments": "My Assessments",
+        "feedback": "Feedback"
+      },
+      "competency": {
+        "my": "My assessment",
+        "team": "Team view"
+      },
+      "idp": {
+        "my": "My plan",
+        "career": "Career profile",
+        "team": "My team"
+      },
+      "cal": {
+        "performance": "Performance",
+        "potential": "Potential",
+        "talentBox": "Talent box"
+      }
+    },
+    "admin": {
+      "groups": {
+        "modules": "Modules",
+        "org": "Organisation"
+      },
+      "sections": {
+        "home": "Home",
+        "cycle": "Cycle",
+        "pm": "Performance",
+        "f360": "360 Feedback",
+        "competency": "Competency",
+        "calibration": "Calibration & Talent",
+        "idp": "Career Plan",
+        "leaders": "Leaders and admins",
+        "email": "Email",
+        "reports": "Reports"
+      },
+      "tabs": {
+        "calendar": "Calendar",
+        "participants": "Participants",
+        "release": "Release results",
+        "cycles": "All cycles",
+        "overview": "Overview",
+        "run": "Run",
+        "settings": "Settings",
+        "leaders": "Leaders",
+        "schedule": "Schedule",
+        "reports": "Reports"
+      },
+      "pages": {
+        "list": "List",
+        "progress": "Progress",
+        "importKpiTargets": "Import KPI targets",
+        "fillBuKpi": "Fill BU KPI",
+        "scoring": "Scoring",
+        "people": "People",
+        "raterProgress": "Rater progress",
+        "panels": "Panels",
+        "importPanels": "Import panels",
+        "clearPanels": "Clear panels",
+        "framework": "Framework",
+        "assignCompetencies": "Assign competencies",
+        "importJobCodes": "Import job codes",
+        "competencyLibrary": "Competency library",
+        "catalogue": "Catalogue",
+        "lockStatus": "Lock status",
+        "finalBands": "Final bands",
+        "patAchievement": "PAT achievement",
+        "calibrationGroups": "Calibration groups",
+        "careerRoutes": "Career routes",
+        "everyoneReminder": "Everyone's reminder",
+        "leaderProgress": "Leader progress",
+        "resultsAnalysis": "Results analysis",
+        "ratingsRecord": "Ratings record"
+      },
+      "state": {
+        "on": "On",
+        "off": "Off"
+      },
+      "cycle": {
+        "thisCycle": "This cycle",
+        "editCycle": "Edit cycle",
+        "modules": "Modules on this cycle"
+      },
+      "participants": {
+        "unitsOut": "Units and departments not taking part"
+      }
+    },
+    "home": {
+      "title": "Your dashboard",
+      "rail": {
+        "progress": "{done} of {total} done",
+        "nothing": "Nothing for you to do in it",
+        "past": "{cycle}: your journey through it",
+        "pastState": {
+          "complete": "Complete · {done} of {total} steps",
+          "closed": "Closed · {done} of {total} steps"
+        },
+        "states": {
+          "turn": "Your turn",
+          "open": "To do",
+          "waiting": "Waiting",
+          "locked": "Locked",
+          "later": "Not yet",
+          "closed": "Closed",
+          "done": "Done",
+          "progress": "In progress"
+        }
+      },
+      "next": {
+        "title": "Your next step",
+        "here": "You are here",
+        "none": "Nothing needs you right now",
+        "headOne": "One thing needs you",
+        "headMany": "{count} things need you",
+        "headCaughtUp": "You're all caught up",
+        "waiting": "Waiting · {who}"
+      },
+      "bu": {
+        "title": "Where your BU is",
+        "columns": {
+          "department": "Department",
+          "performance": "Performance",
+          "potential": "Potential"
+        },
+        "in": "✓ in {date}",
+        "toSubmit": "to submit",
+        "midYearDepartmentReviews": "Department reviews",
+        "midYearNoHodReview": "No HOD review"
+      },
+      "axis": {
+        "locked": "Locked {date}",
+        "ready": "Ready to lock",
+        "notReady": "Not ready to lock"
+      },
+      "bg": {
+        "title": "Where the group is",
+        "columns": {
+          "businessUnit": "Business unit",
+          "buCalibration": "BU calibration",
+          "batch": "Batch",
+          "ratings": "ratings",
+          "departmentReviews": "department reviews",
+          "talentBox": "Talent Box",
+          "reviewsIn": "Reviews in"
+        },
+        "calibrating": "Calibrating"
+      },
+      "group": {
+        "title": "Where your group is"
+      },
+      "notIn": {
+        "title": "Not in this cycle's review",
+        "team": "Your team this cycle",
+        "department": "Your department's review",
+        "yours": "Still yours this cycle",
+        "counts": {
+          "waitingOnYou": "waiting on you",
+          "stillWriting": "still writing theirs",
+          "done": "done"
+        }
+      },
+      "stand": {
+        "title": "Where you stand",
+        "details": "Details →",
+        "rows": {
+          "kpis": "Your KPIs",
+          "performance": "Performance",
+          "competency": "Competency",
+          "f360": "360 feedback",
+          "careerTarget": "Career target"
+        },
+        "values": {
+          "awaitingManager": "Awaiting your manager",
+          "withManager": "With your manager",
+          "notSubmitted": "Not submitted yet",
+          "demonstrated": "{done} of {total} demonstrated",
+          "reportReleased": "Report released",
+          "notReleased": "Not released yet",
+          "notSet": "Not set yet"
+        }
+      },
+      "await": {
+        "reviewNothing": "Your review: nothing to do yet",
+        "nothing": "Nothing to do yet",
+        "notOpened": "Your {cycle} hasn't opened yet",
+        "nothingIn": "Nothing for you in the {cycle} yet",
+        "notOpen": "Not open yet"
+      },
+      "led": {
+        "title": "What you led",
+        "people": "See your people ›"
+      },
+      "box": {
+        "title": "The Talent Box · {unit}",
+        "unitsOne": "Your business unit",
+        "unitsMany": "Your business units",
+        "axes": "Final performance → · potential ↑"
+      },
+      "results": {
+        "title": "Your {cycle} results",
+        "tiles": {
+          "performance": "Final performance",
+          "potential": "Final potential",
+          "talent": "Talent status"
+        },
+        "aiRead": "AI read of this cycle",
+        "record": "Open this cycle's record ›",
+        "report": "Your 360 report ›",
+        "empty": "Your record starts here"
+      },
+      "plan": {
+        "title": "This year: your {year} plan",
+        "empty": "Your Career Plan",
+        "checkIn": "Check in on your plan",
+        "open": "Open your Career Plan"
+      },
+      "history": {
+        "titleMine": "Your history",
+        "titleLed": "Cycles you led",
+        "full": "Full record →"
+      },
+      "tools": {
+        "title": "Your tools",
+        "careerPlan": "Career Plan",
+        "report360": "My 360 report",
+        "checkIns": "சந்திப்புகள்"
+      }
+    },
+    "homeCard": {
+      "title": "Your review"
+    },
+    "homeHelp": {
+      "homeCard": {
+        "line": "Your cycle, your next step and where you stand, on one page."
+      },
+      "next": {
+        "nothingLine": "If a colleague asks for your 360 feedback, or your team needs something from you, it will show here."
+      },
+      "notIn": {
+        "why": "Your own review is not part of {cycle}: {reason}.",
+        "reasons": {
+          "unitOut": "your unit is not taking part in this cycle",
+          "joinedAfterOpen": "you joined after the cycle opened",
+          "confirmedAfterOpen": "your confirmation came after the cycle opened",
+          "probation": "you are still on probation",
+          "notPart": "you are not on its list of participants"
+        },
+        "leads": "Your team's review still runs, and you lead it.",
+        "nothingOwn": "You have no KPI check-in, competency or result this time.",
+        "foot": "Your own review starts with your first full cycle. If something here looks wrong, contact HR."
+      },
+      "people": "{count, plural, one {# person} other {# people}}",
+      "stand": {
+        "lineManagerApproved": "Approved by your line manager. Calibration can still change it."
+      },
+      "leader": {
+        "midYear": "Mid-Year",
+        "buMeta": "{people, plural, one {# person} other {# people}} · {departments, plural, one {# department} other {# departments}}",
+        "units": "Your units",
+        "inOf": "{in} of {of} in",
+        "reviewsLine": "{in} of {of} department reviews in",
+        "scrolls": "{label}, scrolls",
+        "bgMeta": "{ready} of {total} ready · {locked} locked",
+        "bgMetaMidYear": "{ready} of {total} with every review in"
+      },
+      "led": {
+        "people": "{count, plural, one {# person led} other {# people led}}",
+        "line": "{released} released · {waiting} still waiting"
+      },
+      "results": {
+        "emptyLine": "Your released results, your 360 report and your Career Plan will show here after your first cycle."
+      },
+      "plan": {
+        "goals": "{count, plural, one {# goal} other {# goals}}"
+      },
+      "history": {
+        "emptyLine": "Your past cycles show here once you have one, with your final results once they are released."
+      },
+      "tools": {
+        "emptyLine": "Doors to your Performance & Talent pages show here as work reaches you."
+      }
+    }
+  },
   "rewardsConfig": {
     "filters": {
       "label": "மதிப்பாய்வுகளை வடிகட்டு",
@@ -28403,6 +28715,83 @@
     "noProposals": "இந்த சுழற்சிகளுக்கு நகலெடுக்க எதுவும் இல்லை.",
     "skippedTitle": "தவிர்க்கப்பட்டது: உள்நுழைவு இனி செயலில் இல்லை",
     "unmatched": "இலக்கு சுழற்சியில் உள்ள {count, plural, one {# வரைவு மதிப்பாய்வுக்கு} other {# வரைவு மதிப்பாய்வுகளுக்கு}} நகலெடுக்கப் பொருந்தும் மதிப்பாய்வு இல்லை."
+  },
+  "performanceAdmin": {
+    "title": "Performance admin",
+    "nav": {
+      "sections": "Admin",
+      "pages": "Pages"
+    },
+    "groups": {
+      "modules": "Modules"
+    },
+    "sections": {
+      "cycle": "Cycle",
+      "performance": "Performance",
+      "feedback": "360 Feedback",
+      "competency": "Competency",
+      "calibration": "Calibration & Talent",
+      "career": "Career Plan",
+      "email": "Email",
+      "reports": "Reports"
+    },
+    "tabs": {
+      "calendar": "Calendar",
+      "participants": "Participants",
+      "release": "Release results",
+      "cycles": "All cycles",
+      "overview": "Overview",
+      "run": "Run",
+      "settings": "Settings",
+      "schedule": "Schedule",
+      "reports": "Reports"
+    },
+    "pages": {
+      "calendar": "Calendar",
+      "participants": "Participants",
+      "release": "Release results",
+      "cycles": "All cycles",
+      "overview": "Overview",
+      "progress": "Progress",
+      "importKpiTargets": "Import KPI targets",
+      "fillBuKpi": "Fill BU KPI",
+      "settings": "Settings",
+      "people": "People",
+      "raterProgress": "Rater progress",
+      "panels": "Panels",
+      "framework": "Framework",
+      "assignCompetencies": "Assign competencies",
+      "importJobCodes": "Import job codes",
+      "competencyLibrary": "Competency library",
+      "lockStatus": "Lock status",
+      "patAchievement": "PAT achievement",
+      "calibrationGroups": "Calibration groups",
+      "careerRoutes": "Career routes",
+      "everyonesReminder": "Everyone's reminder",
+      "ratingsRecord": "Ratings record",
+      "builtByAgent": "Built by the agent"
+    },
+    "state": {
+      "on": "On for {cycle}",
+      "off": "Off for {cycle}"
+    },
+    "empty": "Nothing on this page applies to the cycle at its current stage.",
+    "policyPointer": "This module's settings are part of the cycle policy, which stays whole on",
+    "overview": {
+      "title": "Overview",
+      "stages": "Stages",
+      "people": "{count, plural, one {# person} other {# people}}",
+      "opens": "Opens {date}",
+      "closes": "Closes {date}",
+      "closed": "Closed {date}",
+      "noDates": "No dates set",
+      "off": "This module is off for {cycle}.",
+      "late": "Late",
+      "notYet": "No one is late until the module's window closes.",
+      "noneLate": "No one is late.",
+      "submitted": "{done} of {assigned} submitted",
+      "more": "{count, plural, one {# more} other {# more}} in Run"
+    }
   },
   "ownLeaveChange": {
     "title": "நிலுவையிலுள்ள விடுப்பு விண்ணப்பத்தை மாற்று",

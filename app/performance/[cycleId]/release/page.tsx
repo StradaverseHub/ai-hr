@@ -6,6 +6,7 @@ import { isOnehrOnlyPerformanceAdmin, requireOnehrAdminAccess } from '@/lib/auth
 import { getOnehrReleaseBoard, isOnehrAdminCycle } from '@/packs/performance/service';
 import { Button, Card, ErrorBanner, Field, PageHeader, inputCls } from '@/components/ui';
 import { ReleaseBoard } from '../../onehr/release-board';
+import { PerformanceAdminShell } from '../../onehr/admin-shell';
 
 type Query = { businessGroup?: string; companyId?: string; department?: string; status?: string; outcome?: string; error?: string };
 const counts = z.partialRecord(z.enum(['performance', 'potential', 'talent', 'feedback']), z.number().int().min(0)).default({});
@@ -32,7 +33,8 @@ export default async function ReleaseResultsPage({ params, searchParams }: { par
   const list = (m: Partial<Record<string, number>>) => Object.entries(m).filter(([, n]) => n).map(([c, n]) => t('outcome.item', { component: t(`outcome.component.${c}`), count: n! })).join('; ');
   const verb = outcome ? `${outcome.action}${outcome.step === 'leaders' ? 'Leaders' : outcome.step === 'employees' ? 'Employees' : 'Both'}` : '';
   const chips = [['', 'showAll', v.counts.all], ['ready', 'showReady', v.counts.ready], ['with_leaders', 'showWithLeaders', v.counts.withLeaders], ['to_emp', 'showToEmp', v.counts.toEmp], ['notfinal', 'showNotFinal', v.counts.notFinal]] as const;
-  return <div className="mx-auto max-w-[1600px] space-y-6">
+  // D-P1-32 PT-X4: the page keeps its address and is drawn inside the admin area as Cycle › Release results.
+  return <PerformanceAdminShell cycleId={cycleId} cycleName={v.cycle.name} section="cycle" tab="release"><div className="mx-auto max-w-[1600px] space-y-6">
     <PageHeader back={{ href: `/performance/${cycleId}`, label: t('back') }} title={t('title')} description={v.cycle.name}/>
     <ErrorBanner message={q.error}/>
     {outcome && <section role="status" aria-label={t('outcome.label')} className="space-y-1 rounded-md border border-border bg-muted/30 p-4 text-sm">
@@ -71,5 +73,5 @@ export default async function ReleaseResultsPage({ params, searchParams }: { par
     </Card>
     {v.rows.length ? <ReleaseBoard cycleId={cycleId} cycleName={v.cycle.name} potential={v.cycle.potential} midYear={mid} email={v.email} filters={v.filters} rows={v.rows}/>
       : <Card className="p-5"><p className="text-sm text-muted-foreground">{v.filters.status ? t('emptyStatus') : t('empty')}</p></Card>}
-  </div>;
+  </div></PerformanceAdminShell>;
 }

@@ -3,6 +3,17 @@ export const progressModules=['pm','competency','feedback','calibration','career
 export type ProgressModule=typeof progressModules[number];
 export type ProgressState='pending'|'active'|'done';
 export type ProgressCell={state:ProgressState;label:string;count:number;completed:number};
+/** Every label assessmentProgress can give a module's cell, in the order the work moves: the stages the admin
+ * area's module Overview counts (D-P1-32 PT-X4). A Quarterly cycle's Performance is check-ins only. */
+export function progressStages(module:ProgressModule,kind:Policy['kind']):readonly string[]{
+ switch(module){
+  case 'pm':return kind==='quarterly'?['checkin_pending','checked_in']:['not_set','not_submitted','awaiting_approval','approved'];
+  case 'competency':return ['not_assigned','not_submitted','awaiting_review','reviewed'];
+  case 'feedback':return ['panel_missing','feedback_pending','feedback_complete'];
+  case 'calibration':return ['not_started','under_review','calibrated'];
+  case 'career':return ['not_shared','plan_shared','plan_closed'];
+ }
+}
 export function assessmentProgress(input:{kpis:KPI[];performanceConfirmed:boolean;resultsSubmitted:boolean;competencyStatus:string;competencyCount:number;panelCount:number;panelSubmitted:number;calibration:'none'|'draft'|'locked';planStatus:string|null;policy:Policy}):Partial<Record<ProgressModule,ProgressCell>>{
  const {policy}=input,out:Partial<Record<ProgressModule,ProgressCell>>={};
  const cell=(state:ProgressState,label:string,count:number,completed:number):ProgressCell=>({state,label,count,completed});
