@@ -5,6 +5,9 @@ export type RewardRole = typeof rewardRoles[number];
 export const rewardStages = ['draft', 'bg', 'gr', 'ctro', 'ec', 'approved', 'posted', 'rejected', 'withdrawn'] as const;
 export type RewardStage = typeof rewardStages[number];
 export const talents = ['SSTAR', 'STAR', 'SCORE', 'IMPRO', 'PIP'] as const;
+/** 179539d1 — merit matrix rows in talent order. A stored policy is jsonb, which keeps object keys
+ *  sorted by length (PIP, STAR, IMPRO, SCORE, SSTAR), so its own key order is never a display order. */
+export const meritMatrixRows = <T,>(matrix: Record<(typeof talents)[number], T>) => talents.map(talent => [talent, matrix[talent]] as const);
 export const performances = ['UA', 'BE', 'ME', 'AE', 'OU'] as const;
 export const centsSchema = z.number().int().min(0).max(100_000_000_000);
 export const bpSchema = z.number().int().min(0).max(100_000);
