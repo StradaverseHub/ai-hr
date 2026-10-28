@@ -230,6 +230,71 @@
       "notes": [
         "Journal after 0660 and 0661, at the next idx (expected 646). Re-allocate if a later when is applied first."
       ]
+    },
+    {
+      "tag": "0663_onehr_leader_seats",
+      "owner": "REA P1 wave 3 (session local_fbfd2268 under local_5ebcdea2)",
+      "status": "reserved",
+      "idx": null,
+      "when": 1793170000000,
+      "allocatedBy": "REA P1 owner claim, 28 October 2026 (AI DEV confirmed 0663+ unclaimed)",
+      "scope": "WP-B2: leader seat registry (BU CEO, BG CEO, Group Chief stored seats), per-person HOD assignment, calibration session anchor, app.onehr_calibration_access redefinition",
+      "notes": [
+        "Journal strictly in 0663→0667 order, after 0661 and 0662 if those are applied first. Re-check the live ledger: if any later when is applied first, re-allocate rather than journal below the watermark.",
+        "0663 and 0667 both redefine app.onehr_calibration_access: 0667 must restate the 0663 definition."
+      ]
+    },
+    {
+      "tag": "0664_onehr_hod_department_view",
+      "owner": "REA P1 wave 3 (session local_fbfd2268 under local_5ebcdea2)",
+      "status": "reserved",
+      "idx": null,
+      "when": 1793170000001,
+      "allocatedBy": "REA P1 owner claim, 28 October 2026 (AI DEV confirmed 0663+ unclaimed)",
+      "scope": "WP-C: HOD department read-only projection function",
+      "notes": [
+        "Journal strictly in 0663→0667 order, after 0661 and 0662 if those are applied first. Re-check the live ledger: if any later when is applied first, re-allocate rather than journal below the watermark.",
+        "0663 and 0667 both redefine app.onehr_calibration_access: 0667 must restate the 0663 definition."
+      ]
+    },
+    {
+      "tag": "0665_onehr_two_step_release",
+      "owner": "REA P1 wave 3 (session local_fbfd2268 under local_5ebcdea2)",
+      "status": "reserved",
+      "idx": null,
+      "when": 1793170000002,
+      "allocatedBy": "REA P1 owner claim, 28 October 2026 (AI DEV confirmed 0663+ unclaimed)",
+      "scope": "WP-E: nullable leader-release columns on performance_assessment_release and leader read policy (CF-08; merge held for client confirmation)",
+      "notes": [
+        "Journal strictly in 0663→0667 order, after 0661 and 0662 if those are applied first. Re-check the live ledger: if any later when is applied first, re-allocate rather than journal below the watermark.",
+        "0663 and 0667 both redefine app.onehr_calibration_access: 0667 must restate the 0663 definition."
+      ]
+    },
+    {
+      "tag": "0666_reward_payroll_posting",
+      "owner": "REA P1 wave 3 (session local_fbfd2268 under local_5ebcdea2)",
+      "status": "reserved",
+      "idx": null,
+      "when": 1793170000003,
+      "allocatedBy": "REA P1 owner claim, 28 October 2026 (AI DEV confirmed 0663+ unclaimed)",
+      "scope": "WP-H2: Reward Desk payroll-seat posting arm (DR-13 as amended by APR-022)",
+      "notes": [
+        "Journal strictly in 0663→0667 order, after 0661 and 0662 if those are applied first. Re-check the live ledger: if any later when is applied first, re-allocate rather than journal below the watermark.",
+        "0663 and 0667 both redefine app.onehr_calibration_access: 0667 must restate the 0663 definition."
+      ]
+    },
+    {
+      "tag": "0667_onehr_unit_exclusion",
+      "owner": "REA P1 wave 3 (session local_fbfd2268 under local_5ebcdea2)",
+      "status": "reserved",
+      "idx": null,
+      "when": 1793170000004,
+      "allocatedBy": "REA P1 owner claim, 28 October 2026 (AI DEV confirmed 0663+ unclaimed)",
+      "scope": "D-P1-22 X1+X2: cycle unit/department exclusion rule, participation arm, leader rights and effective reviewer; restates the latest app.onehr_calibration_access after 0663",
+      "notes": [
+        "Journal strictly in 0663→0667 order, after 0661 and 0662 if those are applied first. Re-check the live ledger: if any later when is applied first, re-allocate rather than journal below the watermark.",
+        "0663 and 0667 both redefine app.onehr_calibration_access: 0667 must restate the 0663 definition."
+      ]
     }
   ],
   "unallocatedAiLogicalGroups": [

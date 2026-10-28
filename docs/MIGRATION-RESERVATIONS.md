@@ -75,3 +75,17 @@ This reconciliation changes documentation only. Optimization remains paused; no 
 - Reserved: `0661_ai_openai_compatible_provider`, when 1793150000000, for the AI known-gaps session (OpenAI-compatible provider by base URL). It is pending owner approval of the DB change. Journal it only after 0660 is applied, at the next free idx (expected 645). If any later when is applied first, re-allocate rather than journal below the watermark.
 - 0659 has no recorded claim; do not use it without one.
 - Update (later, 28 October): 0661 is renamed `0661_ai_gateway_provider`, a general AI gateway type with public https only; the owner approval was relayed by the AI GAPS session. Reserved `0662_ai_group_allowance`, when 1793160000000, expected idx 646, journaled after 0660 and 0661.
+
+## 28 October 2026 — REA P1 wave 3 claim 0663–0667
+
+AI DEV confirmed it allocates for the AI groups only and that 0663 onward is unclaimed above every hold (0643–0645 and 0658 are recorded free; 0659 has no record). REA P1 wave 3 claims five ordered logical migrations:
+
+| File | Content | when |
+| --- | --- | --- |
+| `0663_onehr_leader_seats` | WP-B2 seat registry, HOD assignment, session anchor, `onehr_calibration_access` | 1793170000000 |
+| `0664_onehr_hod_department_view` | WP-C HOD projection | 1793170000001 |
+| `0665_onehr_two_step_release` | WP-E leader release columns (merge held for CF-08) | 1793170000002 |
+| `0666_reward_payroll_posting` | WP-H2 payroll-seat posting arm | 1793170000003 |
+| `0667_onehr_unit_exclusion` | D-P1-22 X1+X2; restates `onehr_calibration_access` after 0663 | 1793170000004 |
+
+idx is assigned at journaling, after staging's idx 644 (0660) and the AI 0661/0662 entries. Re-read the live ledger before journaling; if a later `when` lands first, re-allocate rather than journal below the watermark.
