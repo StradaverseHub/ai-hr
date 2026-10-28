@@ -1,7 +1,7 @@
 /** Validate raster signatures and dimensions without interpreting uploaded markup or following URLs. */
 import sharp from 'sharp';
-export const EMAIL_ASSET_MAX_BYTES=2*1024*1024;
-export const EMAIL_ASSET_MIMES=['image/png','image/jpeg','image/gif','image/webp'] as const;
+import {EMAIL_ASSET_MAX_BYTES,EMAIL_ASSET_MIMES} from './asset-limits';
+export {EMAIL_ASSET_MAX_BYTES,EMAIL_ASSET_MIMES} from './asset-limits';
 export async function validateEmailAsset(bytes:Uint8Array,mime:string){
  if(!EMAIL_ASSET_MIMES.includes(mime as typeof EMAIL_ASSET_MIMES[number])||!bytes.length||bytes.length>EMAIL_ASSET_MAX_BYTES)throw Error('Invalid email image.');
  const metadata=await sharp(bytes,{limitInputPixels:16_000_000,animated:false}).metadata();

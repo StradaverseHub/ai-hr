@@ -1,7 +1,7 @@
 /** Native database authority and immutable history. Run only after the allocated migration is journaled. */
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
-import {sql} from 'drizzle-orm';
+import {eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import * as schema from '../db/schema';
@@ -30,6 +30,13 @@ describe('email design native ownership',()=>{
   await expect(listEmailDesigns(employee)).rejects.toThrow();await expect(saveEmailDesign(employee,'invitation','en',null,1)).rejects.toThrow();
   await expect(withTenant(employee,tx=>tx.execute(sql`select app.email_design_delivery(${foreign.tenantId}::uuid,'invitation','en')`))).rejects.toThrow();
   expect(await withTenant(foreignAdmin,tx=>tx.execute(sql`select * from email_design where tenant_id=${b.tenantId}::uuid`))).toEqual([]);
+ });
+ it('refuses a revoked grant even if the caller still carries an administrator snapshot',async()=>{
+  const [user]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,workosUserId:'fictional_email_admin_'+randomUUID()}).returning({id:schema.appUser.id});
+  const [grant]=await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:user.id,role:'hr_admin',companyId:null}).returning({id:schema.roleAssignment.id});
+  const actor={...admin,userId:user.id};await saveEmailDesign(actor,'invitation','en',defaultEmailDocument('invitation'),0);
+  await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.id,grant.id));
+  await expect(saveEmailDesign(actor,'invitation','en',null,1)).rejects.toThrow();await expect(listEmailDesigns(actor)).rejects.toThrow();
  });
  it('restoring default does not copy another language’s customized wording',async()=>{
   await saveEmailDesign(admin,'invitation','en',{...defaultEmailDocument('invitation'),subject:'Fictional English design'},0);

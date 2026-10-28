@@ -28,12 +28,21 @@ ALTER TABLE email_design_version FORCE ROW LEVEL SECURITY;
 ALTER TABLE email_asset ENABLE ROW LEVEL SECURITY;
 ALTER TABLE email_asset FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
+CREATE FUNCTION app.email_design_admin() RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.app_user u JOIN public.role_assignment r ON r.app_user_id=u.id AND r.tenant_id=u.tenant_id
+ WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+ AND r.role::text IN ('hr_admin','super_admin') AND r.company_id IS NULL); $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.email_design_admin() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.email_design_admin() TO ai_hr_app;
+--> statement-breakpoint
 CREATE POLICY email_design_owner ON email_design FOR ALL USING(app.acting_as_owner()) WITH CHECK(app.acting_as_owner());
-CREATE POLICY email_design_admin ON email_design FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.is_group_admin());
+CREATE POLICY email_design_admin ON email_design FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.email_design_admin());
 CREATE POLICY email_design_version_owner ON email_design_version FOR ALL USING(app.acting_as_owner()) WITH CHECK(app.acting_as_owner());
-CREATE POLICY email_design_version_admin ON email_design_version FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.is_group_admin());
+CREATE POLICY email_design_version_admin ON email_design_version FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.email_design_admin());
 CREATE POLICY email_asset_owner ON email_asset FOR ALL USING(app.acting_as_owner()) WITH CHECK(app.acting_as_owner());
-CREATE POLICY email_asset_admin ON email_asset FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.is_group_admin());
+CREATE POLICY email_asset_admin ON email_asset FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.email_design_admin());
 --> statement-breakpoint
 REVOKE ALL ON email_design,email_design_version,email_asset FROM PUBLIC,ai_hr_app;
 GRANT SELECT ON email_design,email_design_version,email_asset TO ai_hr_app;
@@ -47,7 +56,7 @@ CREATE FUNCTION app.email_design_save(p_kind text,p_locale text,p_document jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE t uuid:=app.current_tenant_id();actor uuid:=app.current_user_id();r integer;
 BEGIN
- IF actor IS NULL OR NOT app.is_group_admin() THEN RAISE EXCEPTION 'Email design permission required' USING ERRCODE='42501'; END IF;
+ IF actor IS NULL OR NOT app.email_design_admin() THEN RAISE EXCEPTION 'Email design permission required' USING ERRCODE='42501'; END IF;
  IF p_kind IS NULL OR length(p_kind) NOT BETWEEN 1 AND 80 OR p_locale NOT IN ('en','ms','zh','vi','ta','th') OR p_expected IS NULL OR p_expected<0 OR (p_document IS NOT NULL AND (jsonb_typeof(p_document)<>'object' OR octet_length(p_document::text)>100000 OR p_document->>'kind' IS DISTINCT FROM p_kind)) THEN RAISE EXCEPTION 'Invalid email design' USING ERRCODE='23514'; END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended('email-design:'||t::text||':'||p_kind||':'||p_locale,0));
  SELECT revision INTO r FROM public.email_design WHERE tenant_id=t AND kind=p_kind AND locale=p_locale;
@@ -68,7 +77,7 @@ CREATE FUNCTION app.email_asset_save(p_mime text,p_bytes bytea) RETURNS text
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE token text;
 BEGIN
- IF app.current_user_id() IS NULL OR NOT app.is_group_admin() THEN RAISE EXCEPTION 'Email design permission required' USING ERRCODE='42501'; END IF;
+ IF app.current_user_id() IS NULL OR NOT app.email_design_admin() THEN RAISE EXCEPTION 'Email design permission required' USING ERRCODE='42501'; END IF;
  INSERT INTO public.email_asset(tenant_id,sha256,mime,bytes,uploaded_by) VALUES(app.current_tenant_id(),encode(sha256(p_bytes),'hex'),p_mime,p_bytes,app.current_user_id()) RETURNING email_asset.token INTO token;
  RETURN token;
 END; $$;

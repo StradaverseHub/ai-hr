@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef } from 'react';
+import { useState, useRef,useEffect } from 'react';
 import { useTranslations } from 'next-intl';
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
@@ -7,7 +7,8 @@ import { CSS } from '@dnd-kit/utilities';
 import { Button, Card, Field, inputCls } from '@/components/ui';
 import { emailKinds, emailDocument, defaultEmailDocument, emailPlaceholders, type EmailBlock, type EmailDocument, type EmailKind, type EmailLocale } from '@/lib/email-design/model';
 import { renderEmailDesign } from '@/lib/email-design/render';
-import { sampleEmailSystem, sampleEmailData } from '@/lib/email-design/catalogue';
+import {sampleEmailData} from '@/lib/email-design/sample-data';
+import type {EmailSystemContent} from '@/lib/email-design/render';
 import type { EmailDesignRow } from '@/core/email-design/service';
 import { saveEmailDesignAction, loadEmailDesignHistoryAction, uploadEmailDesignAssetAction, sendEmailDesignTestAction } from './actions';
 const blockTypes = ['header', 'banner', 'text', 'image', 'button', 'columns', 'divider', 'spacer', 'social', 'footer'] as const;
@@ -48,14 +49,16 @@ function SortableBlock({ block, index, selected, onSelect, onMove, onRemove, lab
   <div className="mt-2 flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={() => onMove(-1)}>{labels.up}</Button><Button type="button" variant="outline" onClick={() => onMove(1)}>{labels.down}</Button>{block.type !== 'system' && <Button type="button" variant="outline" onClick={onRemove}>{labels.remove}</Button>}</div>
  </div>;
 }
-export function EmailDesigner({ designs }: {
+export function EmailDesigner({ designs,sampleSystems }: {
     designs: EmailDesignRow[];
+    sampleSystems:Record<EmailKind,Record<EmailLocale,EmailSystemContent>>;
 }) {
     const t = useTranslations('emailDesign');
     const [kind, setKind] = useState<EmailKind>('invitation'), [locale, setLocale] = useState<EmailLocale>('en');
     const [rows, setRows] = useState(designs), [doc, setDoc] = useState<EmailDocument>(() => designs.find(row => row.kind === 'invitation' && row.locale === 'en')?.document ?? defaultEmailDocument('invitation'));
     const [selected, setSelected] = useState(doc.blocks[0]?.id), [mobile, setMobile] = useState(false), [busy, setBusy] = useState(false), [dirty, setDirty] = useState(false), [message, setMessage] = useState('');
     const [history, setHistory] = useState<Awaited<ReturnType<typeof loadEmailDesignHistoryAction>>>([]), [copyFrom, setCopyFrom] = useState('');
+    useEffect(()=>{if(!dirty)return;const warn=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue='';};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);},[dirty]);
     const gate = useRef(false), current = rows.find(row => row.kind === kind && row.locale === locale), block = doc.blocks.find(value => value.id === selected);
     const edit = (next: EmailDocument) => { setDoc(next); setDirty(true); setMessage(''); };
     const update = (next: EmailBlock) => edit({ ...doc, blocks: doc.blocks.map(value => value.id === next.id ? next : value) });
@@ -96,13 +99,13 @@ export function EmailDesigner({ designs }: {
             setMessage(t('saved'));
         });
     }
-    function move(id: string, offset: number) { const from = doc.blocks.findIndex(value => value.id === id), to = from + offset; if (to >= 0 && to < doc.blocks.length)
+    function move(id: string, offset: number) { if(gate.current)return;const from = doc.blocks.findIndex(value => value.id === id), to = from + offset; if (to >= 0 && to < doc.blocks.length)
         edit({ ...doc, blocks: arrayMove(doc.blocks, from, to) }); }
     function dropped(event: DragEndEvent) { if (gate.current || !event.over || event.active.id === event.over.id)
         return; edit({ ...doc, blocks: arrayMove(doc.blocks, doc.blocks.findIndex(value => value.id === event.active.id), doc.blocks.findIndex(value => value.id === event.over!.id)) }); }
     let preview = '';
     try {
-        preview = renderEmailDesign(doc, kind, locale, sampleEmailSystem(kind, locale), sampleEmailData).html;
+        preview = renderEmailDesign(doc, kind, locale, sampleSystems[kind][locale], sampleEmailData).html;
     }
     catch {
         preview = '';

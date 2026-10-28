@@ -3,7 +3,6 @@ import { sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { withTenant, type SessionContext } from '../../db/client';
 import { emailDocument, emailKind, emailLocale, type EmailDocument, type EmailKind, type EmailLocale } from '../../lib/email-design/model';
-import { validateEmailAsset } from '../../lib/email-design/assets';
 export type EmailDesignRow = {
     kind: EmailKind;
     locale: EmailLocale;
@@ -16,7 +15,7 @@ export async function listEmailDesigns(ctx: SessionContext): Promise<EmailDesign
     return withTenant(ctx, async (tx) => {
         const [access] = await tx.execute<{
             allowed: boolean;
-        }>(sql `select app.is_group_admin() as allowed`);
+        }>(sql `select app.email_design_admin() as allowed`);
         if (!access?.allowed)
             throw Error('Email design permission required.');
         const rows = await tx.execute<{
@@ -55,7 +54,7 @@ export async function emailDesignHistory(ctx: SessionContext, kind: EmailKind, l
     });
 }
 export async function uploadEmailAsset(ctx: SessionContext, mime: string, bytes: Uint8Array) {
-    await validateEmailAsset(bytes, mime);
+    await (await import('../../lib/email-design/assets')).validateEmailAsset(bytes,mime);
     return withTenant(ctx, async (tx) => {
         const [row] = await tx.execute<{
             token: string;

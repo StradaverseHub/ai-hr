@@ -4,11 +4,13 @@ import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 import {EmailDesigner} from '../app/admin/settings/email-templates/designer';
-import {defaultEmailDocument} from '../lib/email-design/model';
+import {sampleEmailSystem} from '../lib/email-design/catalogue';
+import {emailKinds,emailLocale,type EmailKind,type EmailLocale,defaultEmailDocument} from '../lib/email-design/model';
 const actions=vi.hoisted(()=>({saveEmailDesignAction:vi.fn(async(..._args:unknown[])=>1),loadEmailDesignHistoryAction:vi.fn(async()=>[]),uploadEmailDesignAssetAction:vi.fn(),sendEmailDesignTestAction:vi.fn(async()=>({sent:true}))}));
 vi.mock('../app/admin/settings/email-templates/actions',()=>actions);
 afterEach(()=>{cleanup();vi.clearAllMocks();});
-const setup=()=>render(<NextIntlClientProvider locale="en" messages={en}><EmailDesigner designs={[]}/></NextIntlClientProvider>);
+const sampleSystems=Object.fromEntries(emailKinds.map(kind=>[kind,Object.fromEntries(emailLocale.options.map(locale=>[locale,sampleEmailSystem(kind,locale)]))])) as Record<EmailKind,Record<EmailLocale,ReturnType<typeof sampleEmailSystem>>>;
+const setup=()=>render(<NextIntlClientProvider locale="en" messages={en}><EmailDesigner designs={[]} sampleSystems={sampleSystems}/></NextIntlClientProvider>);
 describe('email designer',()=>{
  it('protects the AIHR block, shows the available details and previews in a sandbox',()=>{
   setup();fireEvent.click(screen.getByRole('button',{name:'2. AIHR block'}));expect(screen.getByText(en.emailDesign.protectedHelp)).toBeTruthy();
@@ -26,7 +28,7 @@ describe('email designer',()=>{
  });
  it('changes language without copying customized wording into unedited languages',()=>{
   const custom={...defaultEmailDocument('invitation'),subject:'Saved subject'};
-  render(<NextIntlClientProvider locale="en" messages={en}><EmailDesigner designs={[{kind:'invitation',locale:'en',revision:1,document:custom,updatedAt:'2026-10-29T00:00:00Z',updatedBy:'Fictional admin'}]}/></NextIntlClientProvider>);
+  render(<NextIntlClientProvider locale="en" messages={en}><EmailDesigner designs={[{kind:'invitation',locale:'en',revision:1,document:custom,updatedAt:'2026-10-29T00:00:00Z',updatedBy:'Fictional admin'}]} sampleSystems={sampleSystems}/></NextIntlClientProvider>);
   expect(screen.getByDisplayValue('Saved subject')).toBeTruthy();
   fireEvent.change(screen.getByRole('combobox',{name:en.emailDesign.language}),{target:{value:'ms'}});
   expect(screen.queryByDisplayValue('Saved subject')).toBeNull();

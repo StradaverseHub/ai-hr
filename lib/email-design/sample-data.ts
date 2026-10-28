@@ -1,0 +1,1 @@
+export const sampleEmailData={first_name:'Alex',company_name:'Sample Company',organization_code:'SAMPLE',expiry_days:'7',expiry_minutes:'30',count:'1',cycle:'Sample review',category:'Sample approval'};

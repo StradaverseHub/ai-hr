@@ -1,7 +1,7 @@
 'use server';
 import {sql} from 'drizzle-orm';
 import {withTenant} from '@/db/client';
-import {EMAIL_ASSET_MAX_BYTES} from '@/lib/email-design/assets';
+import {EMAIL_ASSET_MAX_BYTES} from '@/lib/email-design/asset-limits';
 import {revalidatePath} from 'next/cache';
 import {getSession} from '@/lib/session';
 import {currentProviderSession} from '@/lib/identity/provider';
@@ -10,7 +10,8 @@ import {sendInternalMail} from '@/lib/internal-auth/mail';
 import {listEmailDesigns,saveEmailDesign,emailDesignHistory,uploadEmailAsset} from '@/core/email-design/service';
 import {emailKind,emailLocale,emailDocument,type EmailDocument} from '@/lib/email-design/model';
 import {renderEmailDesign} from '@/lib/email-design/render';
-import {sampleEmailSystem,sampleEmailData} from '@/lib/email-design/catalogue';
+import {sampleEmailSystem} from '@/lib/email-design/catalogue';
+import {sampleEmailData} from '@/lib/email-design/sample-data';
 import {internalConfig} from '@/lib/internal-auth/config';
 export async function saveEmailDesignAction(kind:string,locale:string,document:unknown|null,revision:number){
  const ctx=await getSession();const next=await saveEmailDesign(ctx,emailKind.parse(kind),emailLocale.parse(locale),document,revision);

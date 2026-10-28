@@ -34,7 +34,7 @@ export const emailBlock = z.discriminatedUnion('type', [
     z.object({ id: z.uuid(), type: z.literal('system'), style: z.object({ background: color.optional(), color: color.optional() }).strict() }).strict(),
 ]);
 export type EmailBlock = z.infer<typeof emailBlock>;
-export const emailDocument = z.object({ version: z.literal(1), kind: emailKind, subject: z.string().max(200).regex(/^[^\r\n]*$/), background: color, blocks: z.array(emailBlock).min(1).max(80) }).strict().superRefine((doc, ctx) => {
+export const emailDocument = z.object({ version: z.literal(1), kind: emailKind, subject: z.string().max(200).regex(/^[^\u0000-\u001f\u007f]*$/), background: color, blocks: z.array(emailBlock).min(1).max(80) }).strict().superRefine((doc, ctx) => {
     if (doc.blocks.filter(block => block.type === 'system').length !== 1)
         ctx.addIssue({ code: 'custom', message: 'Keep exactly one AIHR block.' });
     if (new Set(doc.blocks.map(block => block.id)).size !== doc.blocks.length)

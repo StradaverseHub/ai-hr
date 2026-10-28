@@ -10,4 +10,3 @@ export function sampleEmailSystem(kind:EmailKind,locale:EmailLocale){
  const category=kind.startsWith('workflow.')?kind.slice(9) as 'leave':kind==='assessment_reminder'?'performance':'attendance';
  return {...workflowEmailSystemMessage({category,locale,link,action:true,messageId:'<preview@example.com>',...(kind==='assessment_reminder'?{assessmentTasks:[{key:'own_results' as const,count:1,closesAt:null}]}:{})}),link};
 }
-export const sampleEmailData={first_name:'Alex',company_name:'Sample Company',organization_code:'SAMPLE',expiry_days:'7',expiry_minutes:'30',count:'1',cycle:'Sample review',category:'Sample approval'};

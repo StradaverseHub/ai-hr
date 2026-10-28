@@ -26,6 +26,6 @@ export function renderEmailDesign(raw:unknown|null,kind:EmailKind,locale:string,
   }
   return `<tr><td style="${style}">${content}</td></tr>`;
  }).join('');
- const subject=(doc.subject?fill(doc.subject):system.subject).replace(/[\r\n]/g,' ');
+ const subject=(doc.subject?fill(doc.subject):system.subject).replace(/[\u0000-\u001f\u007f]/g,' ');
  return {subject,text:text.filter(Boolean).join('\n\n'),html:`<!doctype html><html lang="${escape(locale)}"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:${doc.background}"><table role="presentation" width="100%" style="background:${doc.background}"><tr><td align="center" style="padding:24px 12px"><table role="presentation" width="600" style="width:100%;max-width:600px;border-collapse:collapse">${html}</table></td></tr></table></body></html>`};
 }
