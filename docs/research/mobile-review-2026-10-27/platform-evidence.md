@@ -2146,3 +2146,19 @@ clock-redesign 34/34 (43 cases, two DB suites), plus root TypeScript with no err
 print peak RSS). Together with the retained passing files of 40619923370 and 40619934414, all 79 selected files and
 root TypeScript now pass for the canonical offline writer. It remains unmounted with no production adjudicator,
 no readers integration and acceptance disabled; draft 0647 is `ae58b8f74eb58587005b682cdfaa426aab14c4155ecf602b02fecff25241d7d1`.
+
+### Deterministic offline adjudicator and company settings (28 October 2026)
+
+UNVERIFIED pending a hosted run: no vitest, TypeScript, build or database command was run for this
+change. It adds `packs/attendance/mobile-offline-adjudicator.ts` (owner decisions O1 to O3: the clamped
+whole-second effective instant, the per-company proven-window maximum and HR review for failed checks),
+two `attendance_policy` columns in reserved 0647 (`offline_clocking_enabled` default false,
+`offline_max_proven_window_seconds` default 900 with CHECK 60 to 86400), four receipt reasons
+(`offline_disabled`, `proven_window_too_wide`, `employment_inactive`, `overtime_settled`), the exported
+`requireRegisteredDeviceTx` and `employedOnDate`/`clockingEmploymentSpan`, and an uncoded clocking import
+that treats a `mobile_offline` punch as an employee clocking. New suite: `test/mobile-offline-adjudicator.test.ts`;
+the draft worker restore now drops both settings columns. New 0647 SHA-256
+`baf856b832a36590988d663fbcc8966fff50c64578d2fd77c668d7b87d8bcb85`; held 0636 is unchanged
+(`9063b27c0cc316b715d552561d636ffc6412e447ca9275758bf497870c995df7`) and the migration journal is unchanged.
+The adjudicator is unmounted: no route, no production snapshot port, no settings writer and no enabled
+company. Vendor proofs remain synthetic and no device ran.

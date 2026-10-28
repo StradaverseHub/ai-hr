@@ -3,7 +3,11 @@ import {z} from 'zod';
 import {OFFLINE_CLOCK_CONTEXT_CLAIM_LIMIT} from './mobile-offline-clock';
 const uuid=z.string().uuid().transform(value=>value.toLowerCase()),sha=z.string().length(64).regex(/^[a-f0-9]{64}$/);
 const instant=z.number().int().positive().max(8640000000000000);
-export const OfflineClockReviewReason=z.enum(['continuity_unknown','time_unverifiable','outside_context_window','policy_changed','site_changed','attendance_changed','corrected_day','payroll_locked','location_required','poor_accuracy','outside_geofence','mock_reported','simulated_reported','accessory_reported','photo_required','photo_invalid','scope_changed','issuer_unavailable','device_required','review_required']);
+// Owner decisions 2026-10-28 (packs/attendance/mobile-offline-adjudicator.ts): offline_disabled refuses a claim whose
+// company has offline clocking off at decision time; proven_window_too_wide sends one whose server-proven interval is
+// wider than the company's maximum to review; employment_inactive and overtime_settled are review reasons.
+export const OfflineClockReviewReason=z.enum(['continuity_unknown','time_unverifiable','outside_context_window','policy_changed','site_changed','attendance_changed','corrected_day','payroll_locked','location_required','poor_accuracy','outside_geofence','mock_reported','simulated_reported','accessory_reported','photo_required','photo_invalid','scope_changed','issuer_unavailable','device_required','review_required',
+ 'offline_disabled','proven_window_too_wide','employment_inactive','overtime_settled']);
 export const OfflineClockDecision=z.discriminatedUnion('outcome',[
  z.object({outcome:z.literal('accepted'),reason:z.literal('clock_accepted'),captureId:uuid,effectiveAt:instant}).strict(),
  z.object({outcome:z.literal('needs_review'),reason:OfflineClockReviewReason}).strict(),

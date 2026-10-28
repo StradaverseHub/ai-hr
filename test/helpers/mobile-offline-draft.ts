@@ -20,11 +20,14 @@ export async function installOfflineDraftForWorker(){
    // Drops its CHECK with it. clock_method keeps 'mobile_offline': PostgreSQL cannot drop an enum value, and
    // 0647's ADD VALUE IF NOT EXISTS re-applies idempotently. The restored guard refuses it on any capture-linked punch.
    await tx.execute(sql`ALTER TABLE attendance_clock_capture DROP COLUMN effective_at`);
+   // The per-company offline settings, with their CHECK.
+   await tx.execute(sql`ALTER TABLE attendance_policy DROP COLUMN offline_clocking_enabled, DROP COLUMN offline_max_proven_window_seconds`);
    await tx.execute(sql.raw(original.definition));
   });
   const [after]=await owner.db.execute(sql`select to_regclass('public.mobile_offline_context') IS NOT NULL installed, to_regprocedure('app.mobile_offline_key_leased(uuid,uuid)') IS NOT NULL ready,
-   EXISTS(select 1 from pg_attribute where attrelid='attendance_clock_capture'::regclass and attname='effective_at' and NOT attisdropped) effective`);
+   EXISTS(select 1 from pg_attribute where attrelid='attendance_clock_capture'::regclass and attname='effective_at' and NOT attisdropped) effective,
+   EXISTS(select 1 from pg_attribute where attrelid='attendance_policy'::regclass and attname in ('offline_clocking_enabled','offline_max_proven_window_seconds') and NOT attisdropped) settings`);
   const [restored]=await guard();
-  if(after.installed||after.ready||after.effective||restored?.source!==original.source||JSON.stringify(restored?.config)!==JSON.stringify(original.config))throw new Error('Offline worker schema restoration failed');
+  if(after.installed||after.ready||after.effective||after.settings||restored?.source!==original.source||JSON.stringify(restored?.config)!==JSON.stringify(original.config))throw new Error('Offline worker schema restoration failed');
  };
 }

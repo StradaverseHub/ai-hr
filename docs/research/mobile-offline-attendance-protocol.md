@@ -438,14 +438,15 @@ hosted run [40561470126](https://github.com/StradaverseHub/ai-hr/actions/runs/40
 The owner also settled four adjudicator and HR rules on 28 October 2026. Each is DECIDED and NOT
 YET IMPLEMENTED: no code, policy or test enforces it yet.
 
-4. Effective instant (DECIDED, NOT YET IMPLEMENTED). The effective instant is the device's claimed
-   time, rounded to whole seconds and clamped into the server-proven interval. If that interval is
-   wider than an owner-configured limit, the claim goes to HR review. The limit value is not yet set.
-5. Failed checks go to review (DECIDED, NOT YET IMPLEMENTED). An ordering conflict, a punch outside
-   the geofence, a reported mock or simulated location or accessory, a missing registered device, or
-   processed payroll on that day sends the claim to `needs_review` for HR, not to refusal. This
-   supersedes ADR-0088's refusal wording for order conflicts. Closed payroll stays under the existing
-   lock owner.
+4. Effective instant (IMPLEMENTED, UNVERIFIED pending a hosted run). The effective instant is the
+   device's claimed time, rounded to whole seconds and clamped into the server-proven interval. If that
+   interval is wider than the company's configured limit (default 15 minutes, see below), the claim goes
+   to HR review. See "Deterministic adjudicator and company settings" below.
+5. Failed checks go to review (IMPLEMENTED, UNVERIFIED pending a hosted run). An ordering conflict, a
+   punch outside the geofence, a reported mock or simulated location or accessory, a missing registered
+   device, or processed payroll on that day sends the claim to `needs_review` for HR, not to refusal.
+   This supersedes ADR-0088's refusal wording for order conflicts. Closed payroll stays under the
+   existing lock owner, which the adjudicator consults before any write, and is also review.
 6. HR read access (DECIDED, NOT YET IMPLEMENTED). HR users with attendance-correction rights for the
    claim's company may read that company's offline claims and unexpired retained photos, and each
    read is audited. Group admins still only purge expired photos.
@@ -495,3 +496,45 @@ production adjudicator and no acceptance is enabled.
   offline capture by its receipt instant or as non-web. This is required before enabling acceptance.
 
 This writer is UNVERIFIED until a hosted run passes.
+
+### Deterministic adjudicator and company settings (28 October 2026)
+
+IMPLEMENTED, UNVERIFIED pending a hosted run: no vitest, TypeScript, build or database command was run.
+`packs/attendance/mobile-offline-adjudicator.ts` (through `packs/attendance/service`) supplies the claim
+service's `adjudicate` port: `createOfflineAdjudicator({snapshot})` returns `decide`, `accept` and
+`adjudicate`. It is UNMOUNTED: no route or production wiring passes it to `createOfflineClaimService`,
+and no company has offline clocking enabled. No model takes part; every check is a current owner read
+in the claim's transaction, and `decide` finishes before the only write, the canonical offline writer.
+
+- Company settings (owner decision, 28 October 2026). Draft 0647 adds two columns to
+  `attendance_policy`, which has one row per company: `offline_clocking_enabled` (default false, as
+  ADR-0088 requires) and `offline_max_proven_window_seconds` (default 900, CHECK 60 to 86400).
+  `readOfflineClockingPolicyTx` reads them by name; no row is the default. The columns are not
+  declared in `db/schema.ts` while 0647 is unjournaled. Every existing writer leaves them at their
+  defaults or keeps them (the settings writer's upsert names only its own columns). There is no
+  settings screen or write service for them yet.
+- Decision order. A changed company is `scope_changed` (review). Offline off for the company at decision
+  time is refused as `offline_disabled`. A claimed time outside the context window, or a proven interval
+  wholly after it, is refused as `outside_context_window`. A missing interval is `continuity_unknown` or
+  `time_unverifiable` (review). An interval that runs past the window is `outside_context_window`
+  (review). One wider than the company maximum is `proven_window_too_wide` (review). One holding no whole
+  second is `time_unverifiable` (review). Then come reported mock, simulated or accessory flags; policy
+  or site drift against the trusted snapshot port (`policy_changed`, `site_changed`); a required
+  registered device (`device_required`); employment not active on the day (`employment_inactive`, the
+  clocking import's own rule, now `employedOnDate`); processed or closed payroll (`payroll_locked`); an
+  unreleased overtime settlement (`overtime_settled`); and an approved correction (`corrected_day`). Last
+  is the canonical read-only plan, whose typed refusals map to review reasons: ordering conflict becomes
+  `attendance_changed`, outside geofence `outside_geofence`, photo `photo_required`/`photo_invalid`, and
+  so on. Everything else accepts with the clamped instant.
+- No SQL abort. The payroll owner's definer raises unless the employment is the caller's own and active
+  today. The adjudicator first checks exactly that guard (`employment_inactive` otherwise), so a claim
+  transaction never aborts on it. Payroll is read before the plan takes the attendance row lock, the
+  order the correction and removal effects use.
+- New review/refusal reasons in `lib/mobile-offline-receipt.ts`: `offline_disabled`,
+  `proven_window_too_wide`, `employment_inactive` and `overtime_settled`.
+- Still open: a production snapshot port (it must take `offlineEnabled` from
+  `readOfflineClockingPolicyTx`), the settings UI and write service, HR read and resolution (decision
+  6), route mounting and enabling acceptance. Attendance-baseline drift is not used: the ordering plan
+  checks actual current facts, and a context's own accepted claims change its baseline.
+- The clocking import now counts a `mobile_offline` punch as an employee clocking: an uncoded import line
+  on an offline-clocked day is listed (`uncoded_on_clocked_day`), as on a web-clocked day.

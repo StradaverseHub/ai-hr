@@ -101,3 +101,6 @@ export {retainedAttestedPolicyCancellationTx} from './policy-attested-work-sourc
 export * from '../../core/attendance-allowance-selection';
 
 export {retainedAttendancePolicyPlanCancellationTx,attendancePolicyCompleteApprovedPlanSetTx,attendancePolicyPlanProtectionDatesTx} from './policy-plan-submission';
+
+// Deterministic offline-claim adjudicator and the per-company offline settings read (draft 0647). Unmounted.
+export {createOfflineAdjudicator,readOfflineClockingPolicyTx,offlineEffectiveInstant,OfflineAdjudicationError,OFFLINE_PROVEN_WINDOW_SECONDS,type OfflineAdjudication,type OfflineClockingPolicy,type OfflineEffectiveInstant} from './mobile-offline-adjudicator';

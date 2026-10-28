@@ -261,3 +261,22 @@ $$;
 REVOKE ALL ON FUNCTION app.mobile_offline_photo_committed() FROM PUBLIC;
 CREATE CONSTRAINT TRIGGER mobile_offline_photo_committed AFTER INSERT ON mobile_offline_claim
  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.mobile_offline_photo_committed();
+--> statement-breakpoint
+-- Per-company offline clocking settings (owner decisions 2026-10-28). attendance_policy is one row per company
+-- (attendance_policy_company_uq); no row is the engine default, read by readOfflineClockingPolicyTx
+-- (packs/attendance/mobile-offline-adjudicator.ts): offline clocking OFF (ADR-0088) and a 900 s maximum width of
+-- the server-proven interval before a claim goes to HR review. Bounds: 60 s to 86400 s (one day; the context window
+-- itself is at most 72 h). Not declared in db/schema.ts while 0647 is unjournaled; read by name.
+-- Writers of attendance_policy, none broken (each omits both columns, so the defaults apply; NOT NULL and the CHECK
+-- hold for every existing row through the defaults): core/attendance.ts setAttendancePolicy (INSERT ... ON CONFLICT
+-- (company_id) DO UPDATE of its own listed columns only, so an update keeps both settings), db/provision.ts
+-- seedCompanyCatalogs (defaults-only insert; tenant provisioning there and db/seed.ts call it), the dev
+-- fixtures scripts/dev-fixture-board{2-approved,-ten,15-holidays}.ts (through setAttendancePolicy), and test inserts
+-- (attendance-rule, employee-home-greeting-message (also UPDATEs its own columns), leave-approval-escalation,
+-- leave-rest-day-roster, partial-leave-cancellation, r301-schedule-general). db/seed.ts and the test harness TRUNCATE
+-- it. No trigger reads or writes the table; no DELETE writer. ai_hr_app's table-level SELECT/INSERT/UPDATE/DELETE
+-- (0008) covers both columns and RLS (0099) still requires can_admin_payroll_for(company_id) to write; no grant added.
+-- There is no settings screen or write service for these columns yet: until one exists only the owner role sets them.
+ALTER TABLE attendance_policy ADD COLUMN offline_clocking_enabled boolean NOT NULL DEFAULT false,
+ ADD COLUMN offline_max_proven_window_seconds integer NOT NULL DEFAULT 900
+  CONSTRAINT attendance_policy_offline_window_ck CHECK(offline_max_proven_window_seconds BETWEEN 60 AND 86400);
