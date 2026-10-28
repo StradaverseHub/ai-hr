@@ -12,19 +12,22 @@
  *   Acme: hodA (Finance) heads A1, A2; hodA2 (Operations) heads A3.   Beta: hodB (Sales) heads B1, B2.
  *   Seats: buA (Acme), buB (Beta), bgCeo (Holding, and Gamma's BU seat), hodA2 (Delta's BU seat), chief (group
  *   of A1, A2 and B1, B1 in batch "North"). outsider holds nothing.
+ * W3-F6 (D-P1-22 E7, ADR-0150): a seat or HOD assignment whose holder employment is out of the cycle by the unit
+ * rule gives no card and no tally, per acting employment (D9); rules are saved and ended through the service.
  */
 import { randomUUID } from 'node:crypto';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
-import { createCompany } from '../core/admin';
+import { createCompany, createDepartment } from '../core/admin';
 import { hireEmployee } from '../core/org';
 import * as perf from '../packs/performance/service';
 import { defaultPolicy, type Policy } from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
+import { bringBack, exclude, moveTo } from './performance-unit-exclusion-fixture';
 
 const today = todayInKualaLumpur();
 const year = Number(today.slice(0, 4));
@@ -100,6 +103,15 @@ const hodReview = (cycle: string, hod: Hired, locks: { performance?: boolean; po
 const status = (ctx: SessionContext, cycle?: string) => perf.getLeaderStatus(ctx, cycle);
 const raw = (ctx: SessionContext, cycle: string) => withTenant(ctx, async (tx) => (await tx.execute<{ v: unknown }>(sql`select app.onehr_leader_status(${cycle}::uuid) as v`))[0].v);
 const waiting = (of: number, inn = 0) => ({ state: 'waiting', lockedOn: null, in: inn, of });
+/** The employment's company and its current assignment's department (fixture read-back; one assignment each). */
+async function homeOf(e: Hired) {
+  const rows = await owner.db.select({ companyId: schema.employment.companyId, departmentId: schema.assignment.departmentId }).from(schema.employment)
+    .innerJoin(schema.assignment, eq(schema.assignment.employmentId, schema.employment.id))
+    .where(and(eq(schema.employment.id, e.employmentId), isNull(schema.assignment.supersededAt)));
+  expect(rows, 'the fixture person has one current assignment').toHaveLength(1);
+  expect(rows[0].departmentId, 'the fixture person has a department').toBeTruthy();
+  return { companyId: rows[0].companyId, departmentId: rows[0].departmentId! };
+}
 function keysOf(value: unknown, into = new Set<string>()): Set<string> {
   if (Array.isArray(value)) value.forEach((v) => keysOf(v, into));
   else if (value && typeof value === 'object') for (const [k, v] of Object.entries(value)) { into.add(k); keysOf(v, into); }
@@ -253,6 +265,40 @@ describe('while the cycle runs', () => {
   }, 120_000);
 });
 
+describe('W3-F6: leader-off while a unit is out of the cycle (D-P1-22 E7)', () => {
+  it('a seat holder whose unit is out gets no card while the cycle runs; a leader who takes part keeps theirs; Bring back restores it', async () => {
+    const seats = [U.buA, U.buB, U.bgCeo, U.chief];
+    const before = await Promise.all(seats.map((ctx) => status(ctx, cycleId)));
+    expect(before.map((x) => x?.seat), 'non-vacuous: every seat has a card before the rule').toEqual(['bu', 'bu', 'bg', 'group']);
+    const delta0 = await status(U.hodA2, cycleId);
+    const office = await homeOf(P.buA);
+    expect(await homeOf(P.chief), 'the seat holders share one department').toEqual(office);
+    const { saved } = await exclude(a, cycleId, office.companyId, office.departmentId);
+    for (const ctx of seats) {
+      expect(await status(ctx, cycleId)).toBeNull();
+      expect(await raw(ctx, cycleId)).toBeNull();
+    }
+    expect(await status(U.hodA2, cycleId), 'the HOD with a BU seat takes part').toEqual(delta0);
+    await bringBack(a, cycleId, saved.ruleId);
+    expect(await Promise.all(seats.map((ctx) => status(ctx, cycleId)))).toEqual(before);
+  }, 120_000);
+
+  it('per acting employment (D9): a seat held through the employment that takes part keeps its card; held through the left-out one, none', async () => {
+    const out = (await createDepartment(a, { companyId: b.companyId, name: 'Left out' })).id;
+    // The Beta CEO's person also holds a second live employment, in a left-out department of Acme.
+    const second = await hireEmployee(a, { person: { id: P.buB.personId }, companyId: b.companyId, departmentId: out, employmentType: 'full_time', hiredOn: `${year - 2}-01-01` });
+    const beta0 = await status(U.buB, cycleId);
+    expect(beta0, 'non-vacuous: the Beta card before the rule').toMatchObject({ seat: 'bu', units: [{ companyId: beta, people: 3 }] });
+    const { saved } = await exclude(a, cycleId, b.companyId, out);
+    expect(await status(U.buB, cycleId), 'the seat is held through the employment that takes part').toEqual(beta0);
+    await seatOn('bu_ceo', beta, second);
+    expect(await status(U.buB, cycleId)).toBeNull();
+    expect(await raw(U.buB, cycleId)).toBeNull();
+    await bringBack(a, cycleId, saved.ruleId);
+    expect(await status(U.buB, cycleId)).toEqual(beta0);
+  }, 120_000);
+});
+
 describe('between cycles', () => {
   /**
    * Final bands: A1 ME/Mid (Solid Core), A2 OU/High (Super Star), A3 AE/Low (Solid Core), B1 ME/Mid, B2 BE/Mid.
@@ -282,6 +328,20 @@ describe('between cycles', () => {
       potential: { released: 0, waiting: 2, bands: null }, talent: { released: 1, waiting: 1, bands: null }, departmentReviews: null });
     expect(await status(U.outsider, cycleId)).toBeNull();
     expect(await status(U.A1, cycleId)).toBeNull();
+  }, 120_000);
+
+  it('W3-F6: an HOD whose unit was out on the close day gets no tally (the pin, D8); the BU CEO above still gets theirs', async () => {
+    const out = (await createDepartment(a, { companyId: b.companyId, name: 'Left out' })).id;
+    await moveTo(P.hodA, out);
+    await exclude(a, cycleId, b.companyId, out);
+    // The close transaction pins the rule's employments; this fixture closes the cycle directly, so it pins first.
+    await withTenant(a, (tx) => tx.execute(sql`select app.assessment_unit_exclusion_pin(${cycleId}::uuid)`));
+    const pinned = await owner.db.select({ employmentId: schema.assessmentUnitExclusionPin.employmentId }).from(schema.assessmentUnitExclusionPin).where(eq(schema.assessmentUnitExclusionPin.cycleId, cycleId));
+    expect(pinned.map((r) => r.employmentId), 'the HOD alone is out; the people they head take part').toEqual([P.hodA.employmentId]);
+    await closedWithReleases();
+    expect(await status(U.hodA, cycleId)).toBeNull();
+    expect(await raw(U.hodA, cycleId)).toBeNull();
+    expect(await status(U.buA, cycleId)).toMatchObject({ seat: 'bu', mode: 'record', performance: { released: 1 } });
   }, 120_000);
 
   it('a person not yet released to the viewer is absent from every band count, though their band exists', async () => {

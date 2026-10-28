@@ -798,3 +798,98 @@ CREATE OR REPLACE FUNCTION app.assessment_insight_source(wanted_review uuid,want
    WHERE ce.review_id=a.review_id AND ce.tenant_id=a.tenant_id AND (app.assessment_calibration_axis_confirmed(s.tier,ce.performance_locked_at,s.performance_locked_at)) AND array_position(ARRAY['hod','bu','bg','group','final'],s.tier)<array_position(ARRAY['hod','bu','bg','group','final'],a.tier)),'[]'::jsonb) ELSE '[]'::jsonb END
  ) FROM scoped a
 $$;
+--> statement-breakpoint
+
+-- ── 11. W3: leader-off on the two-step release's leader reads (restatements of 0665) ───────────────────
+-- 0665 runs before this migration, so its leader helpers are restated here, after the predicates above, each as
+-- its 0665 body plus the leader-off arm (E7): a seat, HOD assignment or stored-reviewer right is off while its
+-- acting employment is out of the review's cycle by the unit rule (D9). Administrators are never stopped: the
+-- administrator arms (app.onehr_cycle_admin, app.onehr_release_admin) are unchanged. The line-manager arms of
+-- app.onehr_leader_role and app.onehr_led_tabs read app.onehr_manager, which carries leader-off since section 9;
+-- app.onehr_release_leaders reads the stored reviewer directly and gains the arm. Readers of these helpers follow without
+-- restatement: app.onehr_frozen_visible, app.onehr_leader_result and app.onehr_led_people (app.onehr_leader_role),
+-- app.onehr_led_people and app.onehr_led_cycles (app.onehr_led_tabs), and the release notices and release board
+-- (app.onehr_release_leaders). 0666 (after this one) carries the same arm in app.onehr_leader_status.
+-- Restates app.onehr_leader_role (latest: 0665:108-135): leader-off on the BG CEO, group chief and BU CEO seat arms and the HOD arm.
+CREATE OR REPLACE FUNCTION app.onehr_leader_role(wanted_review uuid) RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ WITH today AS (SELECT (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AS d),
+ me AS (SELECT u.id,u.person_id,u.tenant_id FROM app_user u
+  WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)),
+ mine AS (SELECT e.id FROM employment e JOIN me ON e.person_id=me.person_id AND e.tenant_id=me.tenant_id CROSS JOIN today
+  WHERE e.terminated_on IS NULL OR e.terminated_on>today.d),
+ r AS (SELECT o.review_id,o.employment_id,o.company_id,o.tenant_id,o.cycle_id FROM performance_onehr_review o
+  JOIN employment s ON s.id=o.employment_id AND s.tenant_id=o.tenant_id JOIN me ON me.tenant_id=o.tenant_id
+  WHERE o.review_id=wanted_review AND s.person_id<>me.person_id)
+ SELECT CASE
+  WHEN EXISTS(SELECT 1 FROM r CROSS JOIN today JOIN performance_leader_seat st ON st.tenant_id=r.tenant_id AND st.seat_type='bg_ceo'
+   AND st.company_id=app.onehr_business_group_node(r.company_id) AND st.valid_from<=today.d AND (st.valid_to IS NULL OR st.valid_to>today.d)
+   WHERE st.holder_employment_id IN (SELECT id FROM mine) AND NOT app.assessment_unit_excluded(r.cycle_id,st.holder_employment_id)) THEN 'bg'
+  WHEN EXISTS(SELECT 1 FROM r CROSS JOIN today JOIN performance_calibration_group_member m ON m.tenant_id=r.tenant_id AND m.employment_id=r.employment_id
+   AND m.valid_from<=today.d AND (m.valid_to IS NULL OR m.valid_to>today.d)
+   JOIN performance_calibration_group g ON g.id=m.group_id AND g.tenant_id=m.tenant_id AND g.retired_at IS NULL
+   JOIN performance_leader_seat st ON st.tenant_id=r.tenant_id AND st.seat_type='group_chief' AND st.calibration_group_id=g.id
+   AND st.valid_from<=today.d AND (st.valid_to IS NULL OR st.valid_to>today.d)
+   WHERE st.holder_employment_id IN (SELECT id FROM mine) AND NOT app.assessment_unit_excluded(r.cycle_id,st.holder_employment_id)) THEN 'group'
+  WHEN EXISTS(SELECT 1 FROM r CROSS JOIN today JOIN performance_leader_seat st ON st.tenant_id=r.tenant_id AND st.seat_type='bu_ceo'
+   AND st.company_id=r.company_id AND st.valid_from<=today.d AND (st.valid_to IS NULL OR st.valid_to>today.d)
+   WHERE st.holder_employment_id IN (SELECT id FROM mine) AND NOT app.assessment_unit_excluded(r.cycle_id,st.holder_employment_id)) THEN 'bu'
+  WHEN EXISTS(SELECT 1 FROM r CROSS JOIN today JOIN performance_hod_assignment h ON h.tenant_id=r.tenant_id AND h.subject_employment_id=r.employment_id
+   AND h.valid_from<=today.d AND (h.valid_to IS NULL OR h.valid_to>today.d)
+   WHERE h.hod_employment_id IN (SELECT id FROM mine) AND NOT app.assessment_unit_excluded(r.cycle_id,h.hod_employment_id)) THEN 'hod'
+  WHEN EXISTS(SELECT 1 FROM r) AND app.onehr_manager(wanted_review) THEN 'lm'
+ END
+$$;
+--> statement-breakpoint
+-- Restates app.onehr_release_leaders (latest: 0665:146-165): leader-off per recipient employment (the stored reviewer, the HOD, the BU CEO seat holder): an excluded leader is not told at release 1.
+CREATE OR REPLACE FUNCTION app.onehr_release_leaders(wanted_reviews uuid[]) RETURNS TABLE(review_id uuid, leader_role text, employment_id uuid, full_name text) LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ WITH today AS (SELECT (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AS d),
+ r AS (SELECT o.review_id,o.employment_id,o.company_id,o.tenant_id,o.cycle_id,s.person_id AS subject_person,p.reviewer_employment_id
+  FROM performance_onehr_review o JOIN employment s ON s.id=o.employment_id AND s.tenant_id=o.tenant_id
+  JOIN performance_review p ON p.id=o.review_id AND p.tenant_id=o.tenant_id
+  WHERE o.review_id=ANY(wanted_reviews) AND o.tenant_id=app.current_tenant_id() AND app.onehr_release_admin(o.review_id)),
+ reach AS (
+  SELECT r.review_id,'lm'::text AS leader_role,r.reviewer_employment_id AS employment_id,r.subject_person,r.tenant_id,r.cycle_id FROM r WHERE r.reviewer_employment_id IS NOT NULL
+  UNION ALL
+  SELECT r.review_id,'hod',h.hod_employment_id,r.subject_person,r.tenant_id,r.cycle_id FROM r CROSS JOIN today JOIN performance_hod_assignment h ON h.tenant_id=r.tenant_id
+   AND h.subject_employment_id=r.employment_id AND h.valid_from<=today.d AND (h.valid_to IS NULL OR h.valid_to>today.d)
+  UNION ALL
+  SELECT r.review_id,'bu',st.holder_employment_id,r.subject_person,r.tenant_id,r.cycle_id FROM r CROSS JOIN today JOIN performance_leader_seat st ON st.tenant_id=r.tenant_id
+   AND st.seat_type='bu_ceo' AND st.company_id=r.company_id AND st.valid_from<=today.d AND (st.valid_to IS NULL OR st.valid_to>today.d))
+ SELECT x.review_id,x.leader_role,x.employment_id,p.full_name FROM reach x CROSS JOIN today JOIN employment e ON e.id=x.employment_id AND e.tenant_id=x.tenant_id
+ JOIN person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+ WHERE e.person_id<>x.subject_person AND (e.terminated_on IS NULL OR e.terminated_on>today.d)
+  AND NOT app.assessment_unit_excluded(x.cycle_id,x.employment_id)
+  AND EXISTS(SELECT 1 FROM app_user u WHERE u.person_id=e.person_id AND u.tenant_id=e.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))
+ ORDER BY x.review_id,array_position(ARRAY['lm','hod','bu'],x.leader_role),x.employment_id
+$$;
+--> statement-breakpoint
+-- Restates app.onehr_led_tabs (latest: 0665:313-341): leader-off on the department, business unit, calibration group and business group tabs.
+CREATE OR REPLACE FUNCTION app.onehr_led_tabs(wanted_cycle uuid) RETURNS TABLE(review_id uuid, tabs text[]) LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ WITH today AS (SELECT (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AS d),
+ me AS (SELECT u.id,u.person_id,u.tenant_id FROM app_user u
+  WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)),
+ mine AS (SELECT e.id FROM employment e JOIN me ON e.person_id=me.person_id AND e.tenant_id=me.tenant_id CROSS JOIN today
+  WHERE e.terminated_on IS NULL OR e.terminated_on>today.d),
+ r AS (SELECT o.review_id,o.employment_id,o.company_id,o.tenant_id FROM performance_onehr_review o
+  JOIN employment s ON s.id=o.employment_id AND s.tenant_id=o.tenant_id JOIN me ON me.tenant_id=o.tenant_id CROSS JOIN today
+  WHERE o.cycle_id=wanted_cycle AND s.person_id<>me.person_id AND (s.terminated_on IS NULL OR s.terminated_on>today.d)),
+ tabbed AS (
+  SELECT r.review_id,'direct'::text AS tab FROM r WHERE app.onehr_manager(r.review_id)
+  UNION ALL
+  SELECT r.review_id,'dept' FROM r CROSS JOIN today JOIN performance_hod_assignment h ON h.tenant_id=r.tenant_id AND h.subject_employment_id=r.employment_id
+   AND h.valid_from<=today.d AND (h.valid_to IS NULL OR h.valid_to>today.d) WHERE h.hod_employment_id IN (SELECT id FROM mine) AND NOT app.assessment_unit_excluded(wanted_cycle,h.hod_employment_id)
+  UNION ALL
+  SELECT r.review_id,'bu' FROM r CROSS JOIN today JOIN performance_leader_seat st ON st.tenant_id=r.tenant_id AND st.seat_type='bu_ceo' AND st.company_id=r.company_id
+   AND st.valid_from<=today.d AND (st.valid_to IS NULL OR st.valid_to>today.d) WHERE st.holder_employment_id IN (SELECT id FROM mine) AND NOT app.assessment_unit_excluded(wanted_cycle,st.holder_employment_id)
+  UNION ALL
+  SELECT r.review_id,'group' FROM r CROSS JOIN today JOIN performance_calibration_group_member m ON m.tenant_id=r.tenant_id AND m.employment_id=r.employment_id
+   AND m.valid_from<=today.d AND (m.valid_to IS NULL OR m.valid_to>today.d)
+   JOIN performance_calibration_group g ON g.id=m.group_id AND g.tenant_id=m.tenant_id AND g.retired_at IS NULL
+   JOIN performance_leader_seat st ON st.tenant_id=r.tenant_id AND st.seat_type='group_chief' AND st.calibration_group_id=g.id
+   AND st.valid_from<=today.d AND (st.valid_to IS NULL OR st.valid_to>today.d) WHERE st.holder_employment_id IN (SELECT id FROM mine) AND NOT app.assessment_unit_excluded(wanted_cycle,st.holder_employment_id)
+  UNION ALL
+  SELECT r.review_id,'bg' FROM r CROSS JOIN today JOIN performance_leader_seat st ON st.tenant_id=r.tenant_id AND st.seat_type='bg_ceo'
+   AND st.company_id=app.onehr_business_group_node(r.company_id) AND st.valid_from<=today.d AND (st.valid_to IS NULL OR st.valid_to>today.d)
+   WHERE st.holder_employment_id IN (SELECT id FROM mine) AND NOT app.assessment_unit_excluded(wanted_cycle,st.holder_employment_id))
+ SELECT t.review_id,array_agg(DISTINCT t.tab ORDER BY t.tab) FROM tabbed t GROUP BY t.review_id
+$$;

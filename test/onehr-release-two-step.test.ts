@@ -10,13 +10,16 @@
  * (administrative reporting line), HOD `hod` (HOD assignment), BU CEO `buCeo` (unit seat), BG CEO `bgCeo`
  * (group node seat), group chief `chief` (calibration group seat). `outsider` manages the line manager: a
  * department-tree manager who is none of the subject's leaders.
+ *
+ * W3-F6 (D-P1-22 E7, ADR-0150): a leader whose unit is left out of the cycle has no leader right on it, per acting
+ * employment (D9); the rule is saved and ended through the unit-exclusion service by the group-wide HR administrator.
  */
 import { randomUUID } from 'node:crypto';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
-import { createCompany } from '../core/admin';
+import { createCompany, createDepartment } from '../core/admin';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { performanceReviewReport } from '../core/reporting';
 import { dispatchNotifications } from '../core/notifications';
@@ -25,6 +28,7 @@ import { defaultPolicy, type Policy } from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
+import { bringBack, exclude, moveTo } from './performance-unit-exclusion-fixture';
 
 const year = Number(todayInKualaLumpur().slice(0, 4));
 const BAND = /\b(UA|BE|ME|AE|OU|Low|Mid|High|Super Star|Star|Solid Core|PIP)\b/;
@@ -356,6 +360,88 @@ describe('who reads what', () => {
     const self = SU[0];
     expect(JSON.stringify(await perf.getOnehrReview(self, review))).not.toMatch(/HOD performance reason|BU performance reason|BG performance reason/);
   });
+});
+
+describe('W3-F6: leader-off while a unit is out of the cycle (D-P1-22 E7)', () => {
+  type Visible = { performance: boolean; potential: boolean; talent: boolean };
+  const visibleTo = (ctx: SessionContext, review: string) => withTenant(ctx, async (tx) => (await tx.execute<{ v: Visible | null }>(sql`select app.onehr_frozen_visible(${review}::uuid) as v`))[0].v);
+  const reach = async (review: string) => (await withTenant(a, (tx) => tx.execute<{ leader_role: string; employment_id: string }>(sql`select leader_role, employment_id from app.onehr_release_leaders(array[${review}::uuid]) order by leader_role, employment_id`))).map((r) => [r.leader_role, r.employment_id]);
+  const ledReviews = async (ctx: SessionContext) => (await perf.listOnehrLedPeople(ctx, { cycleId })).people.map((p) => p.reviewId);
+  const ledTabs = async (ctx: SessionContext) => (await perf.listOnehrLedPeople(ctx, { cycleId })).tabs.map((t) => t.key).sort();
+  const NONE: Visible = { performance: false, potential: false, talent: false }, ALL: Visible = { performance: true, potential: true, talent: true };
+  const leftOut = async () => (await createDepartment(a, { companyId: b.companyId, name: 'Left out' })).id;
+
+  it('an HOD, BU CEO and BG CEO whose unit is out have no leader role, notice or led row; an administrator in that unit is not stopped; Bring back restores every right', async () => {
+    const review = await calibrated(cycleId, S[0]);
+    await freeze(review);
+    const out = await leftOut();
+    const inUnit = await hireEmployee(a, { person: { fullName: 'HR administrator in the unit', primaryEmail: `${randomUUID()}@two-step.test` }, companyId: b.companyId, departmentId: out, employmentType: 'full_time', hiredOn: `${year - 2}-01-01` });
+    const hr: SessionContext = { ...a, userId: await createAppUser(b.tenantId, inUnit.personId, 'hr_admin'), personId: inUnit.personId, roles: ['hr_admin'] };
+    const excluded = [U.hod, U.buCeo, U.bgCeo];
+    expect([await roleOf(U.hod, review), await roleOf(U.buCeo, review), await roleOf(U.bgCeo, review)], 'non-vacuous: each leader before the rule').toEqual(['hod', 'bu', 'bg']);
+    expect(await ledReviews(U.hod), 'non-vacuous: the HOD lists the person before the rule').toContain(review);
+    for (const p of [P.hod, P.buCeo, P.bgCeo]) await moveTo(p, out);
+    const { saved } = await exclude(a, cycleId, b.companyId, out);
+    expect(await withTenant(a, async (tx) => (await tx.execute<{ v: boolean }>(sql`select app.assessment_unit_out(${cycleId}::uuid, ${inUnit.employmentId}::uuid) as v`))[0].v), 'the administrator is in the left-out unit').toBe(true);
+    for (const ctx of excluded) {
+      expect(await roleOf(ctx, review)).toBeNull();
+      expect(await chainOf(ctx, review)).toBeNull();
+      expect(await perf.getOnehrLedPerson(ctx, review)).toBeNull();
+      const led = await perf.listOnehrLedPeople(ctx, { cycleId });
+      expect([led.cycles, led.people]).toEqual([[], []]);
+      expect(await perf.hasLedPeople(ctx)).toBe(false);
+    }
+    expect([await roleOf(U.lm, review), await roleOf(U.chief, review)], 'leaders who take part keep their roles').toEqual(['lm', 'group']);
+    expect(await reach(review), 'release 1 reaches only the line manager').toEqual([['lm', P.lm.employmentId]]);
+    // The administrator in the left-out unit releases; only the line manager is told and written to the ledger.
+    expect(await release([review], 'three', 'leaders', 'release', hr)).toMatchObject({ done: { performance: 1, potential: 1, talent: 1 }, notAllowed: 0, notified: { leaders: 1, people: 0 } });
+    expect((await events('onehr.results-to-leader')).map((e) => e.subjectEmploymentId)).toEqual([P.lm.employmentId]);
+    expect([...new Set((await ledger([review])).map((r) => r.recipientEmploymentId))]).toEqual([P.lm.employmentId]);
+    await dispatchNotifications(a);
+    const delivered = await owner.db.select({ to: schema.notification.recipientEmploymentId, title: schema.notification.title }).from(schema.notification).where(eq(schema.notification.kind, 'performance.update'));
+    expect(delivered.filter((n) => n.title === 'Results released to you').map((n) => n.to), 'no release notice reaches an excluded leader').toEqual([P.lm.employmentId]);
+    // Released to leaders, the frozen bands still stay masked for the excluded leaders; the administrators read them all.
+    for (const ctx of excluded) expect(await visibleTo(ctx, review)).toEqual(NONE);
+    expect(await visibleTo(U.lm, review)).toEqual(ALL);
+    for (const admin of [a, hr]) {
+      expect(await visibleTo(admin, review)).toEqual(ALL);
+      expect((await perf.getOnehrReview(admin, review))!.result).toMatchObject({ performance: 'OU', potential: 'High', talent: 'Super Star' });
+    }
+    await bringBack(a, cycleId, saved.ruleId);
+    expect([await roleOf(U.hod, review), await roleOf(U.buCeo, review), await roleOf(U.bgCeo, review)]).toEqual(['hod', 'bu', 'bg']);
+    expect(await reach(review)).toEqual([['bu', P.buCeo.employmentId], ['hod', P.hod.employmentId], ['lm', P.lm.employmentId]]);
+    for (const ctx of excluded) {
+      expect(await visibleTo(ctx, review)).toEqual(ALL);
+      expect(await ledReviews(ctx)).toContain(review);
+    }
+    // The same release again now tells the HOD and the BU CEO, once; the line manager is not told twice.
+    expect((await release([review], 'three', 'leaders')).notified).toEqual({ leaders: 2, people: 0 });
+    expect((await events('onehr.results-to-leader')).map((e) => e.subjectEmploymentId).sort()).toEqual([P.lm, P.hod, P.buCeo].map((p) => p.employmentId).sort());
+  }, 120_000);
+
+  it('per acting employment (D9): a right held through the employment that takes part stays; one held through the left-out employment goes', async () => {
+    const review = await calibrated(cycleId, S[0]);
+    const out = await leftOut();
+    // The BU CEO's person also holds a second live employment, in the left-out department, and heads the subject's department through it.
+    const second = await hireEmployee(a, { person: { id: P.buCeo.personId }, companyId: b.companyId, departmentId: out, employmentType: 'full_time', hiredOn: `${year - 2}-01-01` });
+    await assignHod([S[0]], second);
+    expect(await reach(review), 'non-vacuous: both rights before the rule').toEqual([['bu', P.buCeo.employmentId], ['hod', second.employmentId], ['lm', P.lm.employmentId]]);
+    expect(await ledTabs(U.buCeo)).toEqual(['bu', 'dept']);
+    const { saved } = await exclude(a, cycleId, b.companyId, out);
+    expect(await roleOf(U.buCeo, review), 'the seat is held through the employment that takes part').toBe('bu');
+    expect(await reach(review)).toEqual([['bu', P.buCeo.employmentId], ['lm', P.lm.employmentId]]);
+    expect(await ledTabs(U.buCeo)).toEqual(['bu']);
+    expect(await chainOf(U.buCeo, review)).toMatchObject({ role: 'bu' });
+    // The seat moves to the left-out employment: the person still has an employment that takes part, but it acts for nothing.
+    expect(await seatBu(second)).toMatchObject({ unchanged: false });
+    expect((await perf.listLeaderSeats(a, { seatType: 'bu_ceo', liveOnly: true })).map((x) => x.holderEmploymentId)).toEqual([second.employmentId]);
+    expect(await roleOf(U.buCeo, review)).toBeNull();
+    expect(await reach(review)).toEqual([['lm', P.lm.employmentId]]);
+    expect(await ledReviews(U.buCeo)).toEqual([]);
+    await bringBack(a, cycleId, saved.ruleId);
+    expect(await roleOf(U.buCeo, review)).toBe('bu');
+    expect(await reach(review)).toEqual([['bu', second.employmentId], ['hod', second.employmentId], ['lm', P.lm.employmentId]]);
+  }, 120_000);
 });
 
 describe('the release writer', () => {

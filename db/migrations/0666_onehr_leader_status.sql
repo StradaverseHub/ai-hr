@@ -6,7 +6,8 @@
 --
 -- Seat precedence (the source's dashboard rule, highest seat wins): business group CEO, then group chief, then
 -- business unit CEO, then HOD. Seats (0663) and HOD assignments are live on the Malaysia calendar day:
--- valid_from <= today < valid_to. A person is never counted in their own leader's status.
+-- valid_from <= today < valid_to. A person is never counted in their own leader's status. Leader-off (D-P1-22, 0667):
+-- a seat or HOD assignment counts only while its holder employment is not out of the cycle by the unit rule.
 --
 -- While the cycle runs (open, calibration):
 --  * BU CEO, per unit seat: people; departments (the distinct live HODs of those people); per axis the unit's
@@ -86,7 +87,8 @@ BEGIN
  SELECT coalesce(oc.policy->>'kind','year_end')='mid_year' INTO mid FROM performance_onehr_cycle oc WHERE oc.cycle_id=cyc.id AND oc.tenant_id=cyc.tenant_id;
  running:=cyc.status IN ('open','calibration');
 
- -- The viewer's live employments and live seats, today.
+ -- The viewer's live employments and live seats, today. D-P1-22 leader-off (ADR-0150, E7/D9; 0667 runs before this):
+ -- a seat or HOD assignment whose holder employment is out of this cycle by the unit rule gives no card and no tally.
  SELECT coalesce(array_agg(e.id),'{}') INTO mine FROM employment e
  WHERE e.person_id=viewer.person_id AND e.tenant_id=viewer.tenant_id AND (e.terminated_on IS NULL OR e.terminated_on>today);
  SELECT coalesce(array_agg(DISTINCT st.company_id) FILTER (WHERE st.seat_type='bg_ceo'),'{}'),
@@ -94,9 +96,10 @@ BEGIN
   coalesce(array_agg(DISTINCT st.company_id) FILTER (WHERE st.seat_type='bu_ceo'),'{}')
  INTO bg_nodes,group_ids,unit_ids
  FROM performance_leader_seat st LEFT JOIN performance_calibration_group g ON g.id=st.calibration_group_id AND g.tenant_id=st.tenant_id AND g.retired_at IS NULL
- WHERE st.tenant_id=viewer.tenant_id AND st.holder_employment_id=ANY(mine) AND st.valid_from<=today AND (st.valid_to IS NULL OR st.valid_to>today);
+ WHERE st.tenant_id=viewer.tenant_id AND st.holder_employment_id=ANY(mine) AND st.valid_from<=today AND (st.valid_to IS NULL OR st.valid_to>today)
+  AND NOT app.assessment_unit_excluded(cyc.id,st.holder_employment_id);
  heads:=EXISTS(SELECT 1 FROM performance_hod_assignment h WHERE h.tenant_id=viewer.tenant_id AND h.hod_employment_id=ANY(mine)
-  AND h.valid_from<=today AND (h.valid_to IS NULL OR h.valid_to>today));
+  AND h.valid_from<=today AND (h.valid_to IS NULL OR h.valid_to>today) AND NOT app.assessment_unit_excluded(cyc.id,h.hod_employment_id));
  seat:=CASE WHEN cardinality(bg_nodes)>0 THEN 'bg' WHEN cardinality(group_ids)>0 THEN 'group' WHEN cardinality(unit_ids)>0 THEN 'bu' WHEN heads THEN 'hod' END;
  IF seat IS NULL OR running AND seat='hod' THEN RETURN NULL; END IF;
  -- Between cycles the source's "What you led" tallies only a BU CEO or HOD seat (BU CEO first), whatever else the
@@ -111,7 +114,7 @@ BEGIN
    AND m.group_id=ANY(group_ids) AND m.valid_from<=today AND (m.valid_to IS NULL OR m.valid_to>today))
   WHEN 'bu' THEN p.company_id=ANY(unit_ids)
   ELSE EXISTS(SELECT 1 FROM performance_hod_assignment h WHERE h.tenant_id=viewer.tenant_id AND h.subject_employment_id=p.employment_id
-   AND h.hod_employment_id=ANY(mine) AND h.valid_from<=today AND (h.valid_to IS NULL OR h.valid_to>today)) END;
+   AND h.hod_employment_id=ANY(mine) AND h.valid_from<=today AND (h.valid_to IS NULL OR h.valid_to>today) AND NOT app.assessment_unit_excluded(cyc.id,h.hod_employment_id)) END;
 
  -- Between cycles, a BG CEO or group chief without a BU CEO or HOD seat: no tally, only how many they led.
  IF NOT running AND seat IN ('bg','group') THEN
