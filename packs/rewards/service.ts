@@ -381,7 +381,7 @@ export async function createRewardUnit(ctx: SessionContext, raw: { name?: string
   const p = z.object({ name: z.string().trim().max(160).default(''), year: z.number().int().min(2000).max(2200), companyId: idSchema, businessUnitId: idSchema, cycleId: idSchema.optional(), snapshotDate: isoDateSchema,sharedPolicyVersionId:idSchema.optional() }).parse(raw);
   if (p.snapshotDate > todayInKualaLumpur()) throw new RewardError('The snapshot date cannot be in the future.');
   return withRewardsTenant(ctx, async tx => {
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended('access-configuration:'||app.current_tenant_id()::text,0))`);
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
     await requireAdmin(tx, p.companyId);
     const [available]=await tx.execute<{ok:boolean}>(sql`select app.reward_company_admin_available(${p.companyId}::uuid,${p.year}) as ok`);
     if(!available?.ok)throw new RewardError('This company is archived or excluded from rewards for the selected year.');
@@ -1023,6 +1023,7 @@ export async function createOffcycleReview(ctx: SessionContext, parentId: string
   if (new Set(p.entryIds).size !== p.entryIds.length) throw new RewardError('Select each employee only once.');
   if (p.exceptionReason && (p.kind !== 'adhoc' || p.exceptionReason.length < 30)) throw new RewardError('A budget exception is available only for an ad-hoc request and needs a reason of at least 30 characters.');
   return withRewardsTenant(ctx, async tx => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
     const { unit: parent, roles, entries } = await load(tx, parentId, true);
     if (parent.kind !== 'annual' || parent.status !== 'posted') throw new RewardError('Use a posted annual review as the funding source.');
     if (!roles.some(r => ['bu', 'bg', 'gr'].includes(r))) throw new RewardError('BU, BG or Group Rewards access is required.');

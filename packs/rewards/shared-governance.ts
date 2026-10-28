@@ -13,7 +13,7 @@ export function rewardCompanyExclusions(ctx:SessionContext,year?:number){
   const rows=await tx.execute<{id:string;company_id:string;company:string;year:number;reason:string;created_by:string|null;created_at:string;ended_at:string|null;end_reason:string|null}>(sql`
    select e.id,e.company_id,c.legal_name as company,e.year,e.reason,p.full_name as created_by,e.created_at::text,e.ended_at::text,e.end_reason
    from reward_company_exclusion e join company c on c.id=e.company_id and c.tenant_id=e.tenant_id
-   left join app_user u on u.id=e.created_by and u.tenant_id=e.tenant_id left join person p on p.id=u.person_id and p.tenant_id=e.tenant_id
+   left join app_user u on u.id=e.created_by and u.tenant_id=e.tenant_id left join person p on p.id=u.person_id and p.tenant_id=e.tenant_id and app.access_workforce_person(p.id,'workforce.view')
    where e.tenant_id=app.current_tenant_id() and app.reward_admin(e.company_id) and ${year===undefined?sql`true`:sql`e.year=${year}`}
    order by c.legal_name,e.created_at desc,e.id`);
   return rows.map(row=>({id:row.id,companyId:row.company_id,company:row.company,year:row.year,reason:row.reason,createdBy:row.created_by,createdAt:new Date(row.created_at).toISOString(),endedAt:row.ended_at?new Date(row.ended_at).toISOString():null,endReason:row.end_reason})) satisfies RewardCompanyExclusion[];
