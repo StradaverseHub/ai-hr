@@ -1,13 +1,14 @@
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { aiControlPolicy, aiModelRun, appUser, company, person, assistantBudget } from '../db/schema';
+import { aiControlPolicy, aiModelRun, appUser, assistantGrant, company, person, assistantBudget } from '../db/schema';
 import { isAdmin, isGroupAdmin } from '../lib/authz-model';
 import { AI_FEATURES, isAiFeature, type AiFeatureId } from '../lib/ai/features';
 import { resolveEntitlementsTx, isModuleEnabled, getSetting } from './entitlements';
 import { SETTING_CATALOG } from '../packs/catalog';
 import { getAiConfigView, resolveActiveAiConfig } from './ai-config';
 import { grantAssistant, revokeAssistant } from './assistant-grant';
+import { lockAccessConfigurationTx } from './access-configuration-lock';
 import { setTenantSetting } from './tenant-settings';
 import { assertAiPrincipalTx } from './ai-principal';
 import { isZeroCapped } from './ai-zero-cap';
@@ -207,4 +208,107 @@ export async function setAssistantPermission(ctx:SessionContext,userId:string,en
  const [target]=await withTenant(ctx,tx=>tx.select({id:appUser.id}).from(appUser).where(and(eq(appUser.id,userId),eq(appUser.tenantId,ctx.tenantId))));
  if(!target)throw new AiControlError('This user is outside your administrative scope.');
  if(enabled)await grantAssistant(ctx,{appUserId:target.id});else await revokeAssistant(ctx,{appUserId:target.id});
+}
+
+/** Bulk HR assistant access: everyone in one company, one department or one role, or an explicit list of
+ * logins (the user list's multi-select / "all matching this search"). Membership is the CURRENT
+ * assignment (not superseded, valid today) for company and department (an older assignment without its
+ * own company falls back to the employment's company), and a live role assignment for a
+ * role. Only active logins (not archived, not login-blocked) are counted. Group administrators only,
+ * exactly like the single-login control; a grant still never bypasses the module entitlement or the
+ * person's own permissions, which the Assistant re-checks on every question. */
+export type BulkAssistantScope =
+  | { kind: 'company'; companyId: string }
+  | { kind: 'department'; departmentId: string }
+  | { kind: 'role'; role: string }
+  | { kind: 'users'; userIds: string[] }
+  | { kind: 'search'; q: string };
+export type BulkAssistantPreview = { matched: number; changing: number };
+const BULK_ROLES = ['employee','manager','hr_admin','super_admin','payroll_partner','performance_comp_partner','performance_partner'] as const;
+function bulkScope(value: unknown): BulkAssistantScope {
+  const v = value as Record<string, unknown> | null;
+  if (v?.kind === 'company' && typeof v.companyId === 'string' && UUID.test(v.companyId)) return { kind: 'company', companyId: v.companyId };
+  if (v?.kind === 'department' && typeof v.departmentId === 'string' && UUID.test(v.departmentId)) return { kind: 'department', departmentId: v.departmentId };
+  if (v?.kind === 'role' && typeof v.role === 'string' && (BULK_ROLES as readonly string[]).includes(v.role)) return { kind: 'role', role: v.role };
+  if (v?.kind === 'users' && Array.isArray(v.userIds) && v.userIds.length > 0 && v.userIds.length <= 5000 && v.userIds.every(id => typeof id === 'string' && UUID.test(id))) return { kind: 'users', userIds: [...new Set(v.userIds as string[])] };
+  if (v?.kind === 'search' && typeof v.q === 'string' && v.q.trim().length > 0) return { kind: 'search', q: v.q.trim().slice(0, 100) };
+  throw new AiControlError('Choose who this change is for.');
+}
+async function bulkTargetsTx(tx: Tx, ctx: SessionContext, scope: BulkAssistantScope, enabled: boolean) {
+  const member = scope.kind === 'company'
+    ? sql`exists(select 1 from public.employment e join public.assignment a on a.employment_id=e.id and a.tenant_id=e.tenant_id
+        where e.tenant_id=u.tenant_id and e.person_id=u.person_id and coalesce(a.company_id,e.company_id)=${scope.companyId}::uuid and a.superseded_at is null
+        and a.valid_from<=(now() at time zone 'Asia/Kuala_Lumpur')::date and (a.valid_to is null or a.valid_to>=(now() at time zone 'Asia/Kuala_Lumpur')::date))`
+    : scope.kind === 'department'
+    ? sql`exists(select 1 from public.employment e join public.assignment a on a.employment_id=e.id and a.tenant_id=e.tenant_id
+        where e.tenant_id=u.tenant_id and e.person_id=u.person_id and a.department_id=${scope.departmentId}::uuid and a.superseded_at is null
+        and a.valid_from<=(now() at time zone 'Asia/Kuala_Lumpur')::date and (a.valid_to is null or a.valid_to>=(now() at time zone 'Asia/Kuala_Lumpur')::date))`
+    : scope.kind === 'role'
+    ? sql`exists(select 1 from public.role_assignment r where r.tenant_id=u.tenant_id and r.app_user_id=u.id and r.role::text=${scope.role})`
+    : scope.kind === 'users'
+    ? sql`u.id in (${sql.join(scope.userIds.map(id => sql`${id}::uuid`), sql`,`)})`
+    // The same match the user list's search applies, so "all matching this search" means exactly that.
+    : sql`exists(select 1 from public.person p where p.id=u.person_id and p.full_name ilike ${`%${scope.q.replace(/[\\%_]/g, '\\$&')}%`}) or u.workos_user_id ilike ${`%${scope.q.replace(/[\\%_]/g, '\\$&')}%`}`;
+  const rows = await tx.execute<{ id: string; live: boolean }>(sql`select u.id,
+      exists(select 1 from public.assistant_grant g where g.tenant_id=u.tenant_id and g.app_user_id=u.id and g.revoked_at is null) as live
+    from public.app_user u where u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and (${member})
+    order by u.id`);
+  const matched = Array.from(rows);
+  return { matched, changing: matched.filter(row => row.live !== enabled).map(row => row.id) };
+}
+/** How many logins the change covers, and how many it would actually change. Read-only. */
+export async function previewBulkAssistantAccess(ctx: SessionContext, scopeValue: unknown, enabled: boolean): Promise<BulkAssistantPreview> {
+  assertAdmin(ctx);
+  if (!isGroupAdmin(ctx)) throw new AiControlError('Only a group administrator may change shared AI permissions.');
+  const scope = bulkScope(scopeValue);
+  return withTenant(ctx, async tx => {
+    await tx.execute(sql`SET TRANSACTION READ ONLY`);
+    await assertAiPrincipalTx(tx, ctx);
+    const { matched, changing } = await bulkTargetsTx(tx, ctx, scope, enabled);
+    return { matched: matched.length, changing: changing.length };
+  });
+}
+/** Applies the change the admin confirmed. If the number of logins that would change differs from the
+ * confirmed count (someone joined, left or changed meanwhile), nothing is written and the admin is asked
+ * to review the new count. One transaction: each login gets its own grant row or revocation stamp and its
+ * own event (individually traceable), plus one bulk event carrying the scope and the count. */
+export async function applyBulkAssistantAccess(ctx: SessionContext, scopeValue: unknown, enabled: boolean, confirmedChanging: number): Promise<{ changed: number }> {
+  assertAdmin(ctx);
+  if (!isGroupAdmin(ctx)) throw new AiControlError('Only a group administrator may change shared AI permissions.');
+  if (typeof enabled !== 'boolean' || !Number.isSafeInteger(confirmedChanging) || confirmedChanging < 0) throw new AiControlError('Review the change again.');
+  const scope = bulkScope(scopeValue);
+  return withTenant(ctx, async tx => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await assertAiPrincipalTx(tx, ctx);
+    const [group] = await tx.execute<{ allowed: boolean }>(sql`select app.is_group_admin() as allowed`);
+    if (group?.allowed !== true) throw new AiControlError('Only a group administrator may change shared AI permissions.');
+    const { changing } = await bulkTargetsTx(tx, ctx, scope, enabled);
+    if (changing.length !== confirmedChanging) throw new AiControlError('The number of people changed since you reviewed it. Review the new count and confirm again.');
+    for (const appUserId of changing) {
+      if (enabled) {
+        const [row] = await tx.insert(assistantGrant).values({ tenantId: ctx.tenantId, appUserId, grantedByUserId: ctx.userId ?? null }).onConflictDoNothing().returning({ id: assistantGrant.id });
+        if (row) await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'assistant-grant', aggregateId: row.id, eventType: 'assistant-grant.granted', actor: actorOf(ctx), payload: { appUserId, bulk: true } });
+      } else {
+        const rows = await tx.update(assistantGrant).set({ revokedAt: new Date(), revokedByUserId: ctx.userId ?? null })
+          .where(and(eq(assistantGrant.appUserId, appUserId), eq(assistantGrant.tenantId, ctx.tenantId), isNull(assistantGrant.revokedAt))).returning({ id: assistantGrant.id });
+        for (const row of rows) await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'assistant-grant', aggregateId: row.id, eventType: 'assistant-grant.revoked', actor: actorOf(ctx), payload: { appUserId, bulk: true } });
+      }
+    }
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'assistant-grant-bulk', aggregateId: ctx.tenantId, eventType: enabled ? 'assistant-grant.bulk-granted' : 'assistant-grant.bulk-revoked', actor: actorOf(ctx),
+      payload: { scope: scope.kind === 'users' ? { kind: 'users', count: scope.userIds.length } : scope.kind === 'search' ? { kind: 'search' } : scope, changed: changing.length } });
+    return { changed: changing.length };
+  });
+}
+
+/** Choices for the bulk control: companies (from the AI management view) and active departments. */
+export async function bulkAssistantDepartments(ctx: SessionContext): Promise<{ id: string; label: string }[]> {
+  assertAdmin(ctx);
+  if (!isGroupAdmin(ctx)) return [];
+  return withTenant(ctx, async tx => {
+    await tx.execute(sql`SET TRANSACTION READ ONLY`);
+    const rows = await tx.execute<{ id: string; label: string }>(sql`select d.id, coalesce(nullif(trim(d.label),''),d.name)||' · '||c.legal_name as label
+      from public.department d join public.company c on c.id=d.company_id and c.tenant_id=d.tenant_id
+      where d.tenant_id=${ctx.tenantId}::uuid and d.archived_at is null order by c.legal_name, coalesce(nullif(trim(d.label),''),d.name), d.id limit 500`);
+    return Array.from(rows);
+  });
 }

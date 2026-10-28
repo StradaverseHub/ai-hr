@@ -14,7 +14,7 @@ export const AI_MANAGEMENT_PATHS: Readonly<Record<AiManagementSection,string>> =
   overview:'',provider:'/provider',assistant:'/assistant',features:'/features',allowances:'/allowances',spending:'/spending',orchestrator:'/orchestrator',runs:'/runs',
 };
 /** Closed save outcomes; the page translates them. Free text from a query string is never displayed. */
-export type AiManagementToast='saved'|'default';
+export type AiManagementToast='saved'|'default'|'bulk';
 export function aiManagementHref(section:AiManagementSection,extra:{q?:string;toast?:AiManagementToast;error?:string;anchor?:string}={}):string{
   const params=new URLSearchParams();
   if(extra.q)params.set('q',extra.q.slice(0,100));

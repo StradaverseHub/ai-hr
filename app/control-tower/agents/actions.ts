@@ -9,7 +9,7 @@ import { AuthRequiredError } from '@/lib/auth-errors';
 import { isAiFeature } from '@/lib/ai/features';
 import {setAiSpendBudget} from '@/core/ai-spend-management';
 import { aiManagementHref, type AiManagementSection } from './sections';
-import { AiControlError, clearUserAllowance, parseAiAllowance, setAiAllowance, setAiFeature, setAssistantPermission } from '@/core/ai-management';
+import { applyBulkAssistantAccess, AiControlError, clearUserAllowance, parseAiAllowance, setAiAllowance, setAiFeature, setAssistantPermission } from '@/core/ai-management';
 
 const PAGE = '/control-tower/agents';
 /** Refusals return to the section the admin was on, beside its error banner. */
@@ -90,4 +90,19 @@ export async function setAiSpendBudgetAction(formData:FormData){
  try{const session=await getBrowserCommandSession();await setAiSpendBudget(session,{kind:'tenant',monthlyUsd:String(formData.get('monthlyUsd')??''),rootUsd:String(formData.get('rootUsd')??'')});}
  catch(error){redirect(failedAt('spending',await commandError(error)));}
  revalidatePath(PAGE);redirect(aiManagementHref('spending',{toast:'saved',anchor:'#ai-spend'}));
+}
+
+/** Applies a bulk grant/revoke the admin reviewed. The scope and the confirmed count come from the review
+ * page; the owner re-derives the people and refuses if the count no longer matches. */
+export async function applyBulkAssistantAction(formData: FormData) {
+  try {
+    const s = await getBrowserCommandSession();
+    const enabled = formData.get('enabled');
+    if (enabled !== 'true' && enabled !== 'false') throw new AiControlError('Review the change again.');
+    let scope: unknown;
+    try { scope = JSON.parse(String(formData.get('scope') ?? '')); } catch { throw new AiControlError('Review the change again.'); }
+    await applyBulkAssistantAccess(s, scope, enabled === 'true', Number(formData.get('confirmed')));
+  } catch (e) { redirect(failedAt('allowances', await commandError(e))); }
+  revalidatePath(PAGE, 'layout'); revalidatePath('/assistant');
+  redirect(aiManagementHref('allowances', { toast: 'bulk', anchor: '#ai-bulk' }));
 }

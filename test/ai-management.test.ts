@@ -6,7 +6,7 @@ import * as schema from '../db/schema';
 import { resolveActiveAiConfig } from '../core/ai-config';
 import { bindAiSpendTaskTx } from '../core/ai-spend-task';
 import type { AiFeatureId } from '../lib/ai/features';
-import { aiManagementView, allowanceLevel, clearUserAllowance, parseAiAllowance, setAiAllowance, setAiFeature, setAssistantPermission } from '../core/ai-management';
+import { aiManagementView, allowanceLevel, applyBulkAssistantAccess, clearUserAllowance, parseAiAllowance, previewBulkAssistantAccess, setAiAllowance, setAiFeature, setAssistantPermission } from '../core/ai-management';
 import { generateDraft, converse, readImage } from '../lib/ai';
 import { openaiAdapter } from '../lib/ai/providers/openai';
 import { askAssistant } from '../core/assistant';
@@ -346,5 +346,46 @@ describe('current calling-login authority for AI control writes', () => {
   expect(await owner.db.select().from(schema.tenantSetting)).toEqual(beforeSettings);
   expect(await owner.db.select().from(schema.domainEvent)).toEqual(beforeEvents);
   expect(await runs()).toEqual([]);
+ });
+});
+
+describe('bulk HR assistant access',()=>{
+ const hire=async(name:string,departmentId:string)=>{const employment=await hireEmployee(group,{person:{fullName:name,primaryEmail:`${name.toLowerCase().replace(/[^a-z]/g,'')}@fixture.test`},companyId:base.companyId,departmentId,employmentType:'full_time',hiredOn:todayInKualaLumpur()});return createAppUser(base.tenantId,employment.personId,'employee');};
+ const login=async(name:string,role:'employee'|'manager'='employee')=>{const [u]=await owner.db.insert(schema.appUser).values({tenantId:base.tenantId,workosUserId:name}).returning();await owner.db.insert(schema.roleAssignment).values({tenantId:base.tenantId,appUserId:u.id,role,companyId:null});return {id:u.id};};
+ const live=async()=>Array.from(await owner.db.execute<{app_user_id:string}>(sql`select app_user_id from assistant_grant where tenant_id=${base.tenantId}::uuid and revoked_at is null order by app_user_id`)).map(r=>r.app_user_id);
+ const events=async(type:string)=>Array.from(await owner.db.execute<{payload:Record<string,unknown>}>(sql`select payload from domain_event where tenant_id=${base.tenantId}::uuid and event_type=${type} order by occurred_at,id`)).map(r=>r.payload);
+ it('previews, then grants a whole department with one bulk event and one event per person',async()=>{
+  const a1=await hire('Bulk Alpha One',base.deptA),a2=await hire('Bulk Alpha Two',base.deptA),b1=await hire('Bulk Beta One',base.deptB);
+  const scope={kind:'department',departmentId:base.deptA};
+  // Independent expectation: exactly the two people hired into department A.
+  expect(await previewBulkAssistantAccess(group,scope,true)).toEqual({matched:2,changing:2});
+  await expect(applyBulkAssistantAccess(group,scope,true,3)).rejects.toThrow('changed since you reviewed');
+  expect(await live()).toEqual([]);
+  expect(await applyBulkAssistantAccess(group,scope,true,2)).toEqual({changed:2});
+  expect(await live()).toEqual([a1,a2].sort());expect(await live()).not.toContain(b1);
+  expect((await events('assistant-grant.granted')).map(p=>p.appUserId).sort()).toEqual([a1,a2].sort());
+  expect(await events('assistant-grant.bulk-granted')).toEqual([{scope,changed:2}]);
+  // Already granted: nothing changes, and a confirmation of zero writes no per-person event.
+  expect(await previewBulkAssistantAccess(group,scope,true)).toEqual({matched:2,changing:0});
+ });
+ it('revokes by role and by explicit list, leaving other people untouched',async()=>{
+  const m=await login('bulk-manager','manager'),e=await login('bulk-employee');
+  await setAssistantPermission(group,m.id,true);await setAssistantPermission(group,e.id,true);
+  expect(await previewBulkAssistantAccess(group,{kind:'role',role:'manager'},false)).toEqual({matched:1,changing:1});
+  await applyBulkAssistantAccess(group,{kind:'role',role:'manager'},false,1);
+  expect(await live()).toEqual([e.id]);
+  await applyBulkAssistantAccess(group,{kind:'users',userIds:[e.id,m.id]},false,1);
+  expect(await live()).toEqual([]);
+  expect((await events('assistant-grant.bulk-revoked')).map(p=>p.changed)).toEqual([1,1]);
+ });
+ it('matches a search only inside the tenant and refuses company administrators and malformed scopes',async()=>{
+  const mine=await login('zz-search-target');const foreign=await seedBase();
+  await owner.db.insert(schema.appUser).values({tenantId:foreign.tenantId,workosUserId:'zz-search-target-foreign'});
+  expect(await previewBulkAssistantAccess(group,{kind:'search',q:'zz-search'},true)).toEqual({matched:1,changing:1});
+  await applyBulkAssistantAccess(group,{kind:'search',q:'zz-search'},true,1);expect(await live()).toEqual([mine.id]);
+  const scoped:SessionContext={...group,grants:[{role:'hr_admin',companyId:base.companyId}]};
+  await expect(previewBulkAssistantAccess(scoped,{kind:'role',role:'employee'},true)).rejects.toThrow('group administrator');
+  await expect(applyBulkAssistantAccess(scoped,{kind:'role',role:'employee'},true,0)).rejects.toThrow('group administrator');
+  for(const bad of [{kind:'role',role:'operator'},{kind:'company',companyId:'not-a-uuid'},{kind:'users',userIds:[]},{kind:'search',q:'  '},{kind:'everyone'}])await expect(previewBulkAssistantAccess(group,bad,true)).rejects.toThrow('Choose who');
  });
 });

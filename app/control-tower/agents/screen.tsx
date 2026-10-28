@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import {nanosToUsd} from '@/lib/ai/spend-allocation';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import { type requireAdmin, isAdmin, isGroupAdmin } from '@/lib/authz';
-import { AI_RUN_STATE_FILTERS, aiManagementView, type AiAllowanceUse, type AiRunFilter, type AiUsageSummary } from '@/core/ai-management';
+import { AI_RUN_STATE_FILTERS, aiManagementView, bulkAssistantDepartments, previewBulkAssistantAccess, type BulkAssistantPreview, type AiAllowanceUse, type AiRunFilter, type AiUsageSummary } from '@/core/ai-management';
 import { AI_FEATURES, isAiFeature } from '@/lib/ai/features';
 import { orchestrationQueue } from '@/core/hr-orchestrator';
 import { Badge, Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, btnGhost, inputCls, pageWideCls } from '@/components/ui';
@@ -14,9 +14,9 @@ import { isZeroCapped } from '@/core/ai-zero-cap';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { MODULE_JOBS } from '@/lib/ai/module-jobs';
 import { aiManagementHref, availableAiManagementSections, type AiManagementSection } from './sections';
-import { clearUserAllowanceAction, setAiSpendBudgetAction, setAiAllowanceAction, setAiFeatureAction, setAssistantPermissionAction } from './actions';
+import { applyBulkAssistantAction, clearUserAllowanceAction, setAiSpendBudgetAction, setAiAllowanceAction, setAiFeatureAction, setAssistantPermissionAction } from './actions';
 
-export type AiManagementSearch = {error?:string;toast?:string;q?:string;refresh?:string;runs?:string;feature?:string;planning?:string};
+export type AiManagementSearch = {error?:string;toast?:string;q?:string;refresh?:string;runs?:string;feature?:string;planning?:string;bulk?:string;bulkWho?:string;bulkUser?:string|string[]};
 
 /** One AI management section per route (app/control-tower/agents/<section>/page.tsx); the sub-menu links them.
  * Provider and Assistant pages pass their own content as children. */
@@ -34,7 +34,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
   // Literal keys so the i18n coverage check can see every tab label.
   const tabLabel:Record<typeof section,string> = {overview:t('overviewTab'),provider:t('providerTab'),assistant:t('assistantTab'),features:t('inventory'),allowances:t('allowancesTab'),spending:t('spendTab'),orchestrator:t('orchestrator'),runs:t('recentRuns')};
   // Closed save outcomes only: a query string can never put its own words on this screen.
-  const toast = sp.toast==='saved' ? t('saved') : sp.toast==='default' ? t('usesDefault') : undefined;
+  const toast = sp.toast==='saved' ? t('saved') : sp.toast==='default' ? t('usesDefault') : sp.toast==='bulk' ? t('bulkDone') : undefined;
   const numbers = (value:unknown) => f.number(Number(value??0));
   const compact = (value:number) => f.number(value,{notation:'compact',maximumFractionDigits:1});
   // Display only: stored nano-USD stays exact. Unknown is never shown as zero; a non-zero amount is never shown as US$0.00.
@@ -68,6 +68,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
     </form>
   </li>;
   const userRow = (u:typeof view.users[number]) => <li key={u.id} id={`ai-user-${u.id}`} className="scroll-mt-4 py-4">
+    <label className="mb-2 flex min-h-11 w-fit items-center gap-2 text-xs"><input type="checkbox" form="ai-bulk-selected" name="bulkUser" value={u.id} className="size-4"/>{t('bulkSelect',{name:u.label})}</label>
     {/* A login following the default is prefilled with the default's values: saving it creates an individual copy, never an accidental "no cap". */}
     <form action={setAiAllowanceAction} className={formGrid}>
       <input type="hidden" name="q" value={query}/><input type="hidden" name="kind" value="user"/><input type="hidden" name="subjectId" value={u.id}/>
@@ -100,6 +101,19 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
     {key:'limits',title:t('mapLimits'),help:t('mapLimitsHelp'),status:t('mapLimitsStatus',{count:view.attention.companies.length+view.attention.users.length}),href:aiManagementHref('allowances')},
   ];
   const attention = view.attention;
+  // Bulk HR assistant access (Allowances, group administrators): a GET review shows the count first; only
+  // the confirmed POST writes. The scope comes from closed controls and is re-derived by the owner.
+  const bulkEnabled = sp.bulk==='grant' ? true : sp.bulk==='revoke' ? false : null;
+  const bulkUsers = (Array.isArray(sp.bulkUser) ? sp.bulkUser : sp.bulkUser ? [sp.bulkUser] : []).slice(0,50);
+  const [whoKind, whoId] = (sp.bulkWho ?? '').split(':');
+  const bulkScope = whoKind==='company' ? {kind:'company',companyId:whoId} : whoKind==='department' ? {kind:'department',departmentId:whoId}
+    : whoKind==='role' ? {kind:'role',role:whoId} : whoKind==='search' ? {kind:'search',q:sp.q??''} : bulkUsers.length ? {kind:'users',userIds:bulkUsers} : null;
+  let bulkPreview: BulkAssistantPreview | 'invalid' | null = null;
+  if (section==='allowances' && view.mayWriteUsers && bulkEnabled!==null && bulkScope) {
+    try { bulkPreview = await previewBulkAssistantAccess(s, bulkScope, bulkEnabled); } catch { bulkPreview = 'invalid'; }
+  }
+  const departments = section==='allowances' && view.mayWriteUsers ? await bulkAssistantDepartments(s).catch(()=>[]) : [];
+  const roleLabels = await getTranslations('reports.permRole');
   const attentionEmpty = attention.companies.length+attention.users.length+attention.blocked.length===0;
   const filtered = !!(runFilter.state||runFilter.feature);
   const defaultUse = {daily:{used:0,limit:view.userDefault?.dailyRequests??null,level:null},tokens:{used:0,limit:view.userDefault?.monthlyTokens??null,level:null},enabled:view.userDefault?.enabled!==false,maxConcurrent:view.userDefault?.maxConcurrent??null};
@@ -154,6 +168,29 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
     </Card>
     {view.mayWriteUsers&&<Card id="user-limits" className="scroll-mt-4 p-5">
       <SectionHeader title={t('userLimits')}/><p className="mt-1 text-sm text-muted-foreground">{t('userHelp')}</p>
+      <section id="ai-bulk" aria-labelledby="ai-bulk-heading" className="mt-4 scroll-mt-4 rounded-lg border border-border p-4">
+        <h3 id="ai-bulk-heading" className="text-sm font-medium">{t('bulkTitle')}</h3><p className="mt-1 max-w-4xl text-xs text-muted-foreground">{t('bulkHelp')}</p>
+        {bulkPreview && bulkEnabled!==null && bulkScope && <div role="region" aria-label={t('bulkReview')} className="mt-3 rounded-md border border-primary/40 bg-primary/5 p-3 text-sm">
+          {bulkPreview==='invalid' ? <p role="alert">{t('bulkInvalid')}</p> : <>
+            <p className="font-medium">{bulkPreview.changing===0 ? t('bulkNothing') : t(bulkEnabled?'bulkConfirmGrant':'bulkConfirmRevoke',{count:bulkPreview.changing})}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{t('bulkMatched',{matched:bulkPreview.matched,changing:bulkPreview.changing})}</p>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              {bulkPreview.changing>0&&<form action={applyBulkAssistantAction}><input type="hidden" name="scope" value={JSON.stringify(bulkScope)}/><input type="hidden" name="enabled" value={String(bulkEnabled)}/><input type="hidden" name="confirmed" value={bulkPreview.changing}/><button type="submit" className={btnPrimary}>{t(bulkEnabled?'bulkConfirmGrantButton':'bulkConfirmRevokeButton',{count:bulkPreview.changing})}</button></form>}
+              <Link href={aiManagementHref('allowances',{q:query,anchor:'#ai-bulk'})} className="py-2 text-sm font-medium text-primary hover:underline">{t('bulkCancel')}</Link>
+            </div></>}
+        </div>}
+        <form method="get" action={aiManagementHref('allowances',{anchor:'#ai-bulk'})} className="mt-3 flex flex-wrap items-end gap-3">
+          {query&&<input type="hidden" name="q" value={query}/>}
+          <label className="text-xs">{t('bulkWho')}<select name="bulkWho" required defaultValue="" className={`${inputCls} mt-1 min-w-56`}>
+            <option value="" disabled>{t('bulkChoose')}</option>
+            <optgroup label={t('bulkCompany')}>{view.companies.map(c=><option key={c.id} value={`company:${c.id}`}>{c.label}</option>)}</optgroup>
+            {departments.length>0&&<optgroup label={t('bulkDepartment')}>{departments.map(d=><option key={d.id} value={`department:${d.id}`}>{d.label}</option>)}</optgroup>}
+            <optgroup label={t('bulkRole')}>{(['employee','manager','hr_admin','super_admin','payroll_partner','performance_comp_partner','performance_partner'] as const).map(r=><option key={r} value={`role:${r}`}>{roleLabels(r)}</option>)}</optgroup>
+          </select></label>
+          <label className="text-xs">{t('bulkChange')}<select name="bulk" defaultValue="grant" className={`${inputCls} mt-1`}><option value="grant">{t('bulkGrant')}</option><option value="revoke">{t('bulkRevoke')}</option></select></label>
+          <button type="submit" className={btnGhost}>{t('bulkReviewButton')}</button>
+        </form>
+      </section>
       <section aria-labelledby="ai-user-default" className="mt-4 rounded-lg border border-border p-4">
         <h3 id="ai-user-default" className="scroll-mt-4 text-sm font-medium">{t('defaultAllowance')}</h3><p className="mt-1 max-w-4xl text-xs text-muted-foreground">{t('defaultHelp')}</p>
         <form action={setAiAllowanceAction} className={`mt-3 ${formGrid}`}>
@@ -165,6 +202,12 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
       <p className="mt-4 text-xs text-muted-foreground">{t('individualHelp')}</p>
       <form method="get" action={aiManagementHref('allowances',{anchor:'#user-limits'})} className="mt-3 flex max-w-lg gap-2"><label className="flex-1"><span className="sr-only">{t('searchUsers')}</span><input name="q" defaultValue={query} placeholder={t('searchUsers')} className={inputCls}/></label><button className={btnGhost} type="submit">{t('search')}</button></form>
       <p className="mt-2 text-xs text-muted-foreground">{t('userSort')}</p>
+      <form id="ai-bulk-selected" method="get" action={aiManagementHref('allowances',{anchor:'#ai-bulk'})} className="mt-3 flex flex-wrap items-end gap-3 text-xs">
+        {query&&<input type="hidden" name="q" value={query}/>}
+        <label>{t('bulkSelectedChange')}<select name="bulk" defaultValue="grant" className={`${inputCls} mt-1`}><option value="grant">{t('bulkGrant')}</option><option value="revoke">{t('bulkRevoke')}</option></select></label>
+        <button type="submit" className={btnGhost}>{t('bulkSelectedButton')}</button>
+        {query&&<button type="submit" name="bulkWho" value="search" className={btnGhost}>{t('bulkAllMatching',{q:query})}</button>}
+      </form>
       <ul className="mt-2 divide-y divide-border">{view.users.map(userRow)}</ul>
       {view.users.length===0&&<p className="py-4 text-sm text-muted-foreground">{t('noUsers')}</p>}{view.moreUsers&&<p className="text-xs text-muted-foreground">{t('moreUsers')}</p>}
     </Card>}
