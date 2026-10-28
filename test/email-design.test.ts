@@ -1,3 +1,4 @@
+import ms from '../messages/ms.json';
 import {invitationEmailContent,recoveryEmailContent} from '../lib/account-email-content';
 import {describe,it,expect} from 'vitest';
 import {emailDocument,defaultEmailDocument,emailKinds,type EmailDocument} from '../lib/email-design/model';
@@ -40,6 +41,11 @@ describe('validated email designs',()=>{
   const mail={category:'leave' as const,locale:'en' as const,link:'https://example.com/app',action:true,messageId:'<fixture@example.com>'};
   expect(()=>workflowEmailMessage({...mail,design:{kind:'workflow.leave',locale:'en',document:{rawHtml:'<script/>'} as never}})).toThrow();
   expect(()=>workflowEmailMessage({...mail,design:{kind:'invitation',locale:'en',document:defaultEmailDocument('invitation')}})).toThrow('binding changed');
+ });
+ it('keeps an unedited assessment language on its system wording instead of an English design projection',()=>{
+  const mail={category:'performance' as const,locale:'ms' as const,link:'https://example.com/app',action:true,messageId:'<fixture@example.com>',assessmentTasks:[{key:'own_results' as const,count:1,closesAt:null}],assessmentWords:{subject:'Fictional English custom subject',opening:'Fictional English custom opening'}};
+  const result=workflowEmailMessage({...mail,design:{kind:'assessment_reminder',locale:'ms',document:null}});
+  expect(result.subject).toBe(ms.workflowEmail.assessmentReminder.subject.replace('{count}','1'));expect(result.text).toContain(ms.workflowEmail.assessmentReminder.opening);expect(result.text).not.toContain(mail.assessmentWords.opening);
  });
  it('provides safe defaults for every known kind and preserves all system wording',()=>{
   for(const kind of emailKinds){const message=renderEmailDesign(null,kind,'ms',system);expect(message.subject).toBe(system.subject);expect(message.text).toContain(system.text);expect(message.html).toContain('lang="ms"');}

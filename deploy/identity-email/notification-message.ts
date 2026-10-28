@@ -32,6 +32,9 @@ export function workflowEmailMessage(mail:WorkflowMail){
  const kind:EmailKind=mail.attendanceCc?'attendance_cc':mail.assessmentTasks?'assessment_reminder':`workflow.${mail.category}`;
  const design=mail.design?emailDesignEnvelope.parse(mail.design):null;
  if(design&&(design.kind!==kind||design.locale!==mail.locale))throw Error('Email design binding changed.');
- const system=workflowEmailSystemMessage(mail,kind==='assessment_reminder'&&!!design?.document);
+ // A recipient-bound design is the wording owner. The legacy prepared English projection
+ // must never become fallback wording for an unedited language.
+ const systemMail=design&&kind==='assessment_reminder'?{...mail,assessmentWords:null}:mail;
+ const system=workflowEmailSystemMessage(systemMail,kind==='assessment_reminder'&&!!design?.document);
  return renderEmailDesign(design?.document??null,kind,mail.locale,{subject:system.subject,text:system.text,link:mail.link},{...design?.data,category:mail.category});
 }
