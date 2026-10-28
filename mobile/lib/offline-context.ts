@@ -23,7 +23,7 @@ export async function verifyNativeOfflineClockContext(raw:string,expected:Expect
  const checked=bindOfflineClockContext(raw,binding);
  if(checked.outcome!=='bound')return checked;
  assertCurrent();let output:ArrayBuffer;
- try{output=await digest(CryptoDigestAlgorithm.SHA256,utf8(checked.canonical));}
+ try{output=await digest(CryptoDigestAlgorithm.SHA256,new Uint8Array(utf8(checked.canonical)));}
  catch{assertCurrent();throw new OfflineContextVerificationUnavailable();}
  assertCurrent();
  if(!(output instanceof ArrayBuffer)||output.byteLength!==32)throw new OfflineContextVerificationUnavailable();

@@ -63,7 +63,7 @@ describe('keyless offline context contract (owner decision D16)',()=>{
   const f=fixture();
   for(const request of [{...f.binding.request,requestId:id(99)},{...f.binding.request,requestNonce:'C'.repeat(42)+'A'}])
    expect(bindOfflineClockContext(f.raw(),{...f.binding,request})).toEqual({outcome:'invalid',reason:'request_mismatch'});
-  for(const target of [{...f.context.target,appId:'KLMNOPQRST.ai.hr'},{...f.context.target,environment:'development' as const},{platform:'android' as const,appId:'ai.hr',environment:null}])
+  for(const target of [{...f.context.target,appId:'KLMNOPQRST.ai.hr'},{...f.context.target,environment:'development' as const},{platform:'android' as const,appId:'ai.hr',environment:null}] as unknown as (typeof f.binding.target)[])
    expect(bindOfflineClockContext(f.raw(),{...f.binding,target})).toEqual({outcome:'invalid',reason:'target_mismatch'});
  });
  it('gives every altered field another digest, so a claim naming altered bytes can never match the server record',()=>{
