@@ -43,7 +43,8 @@ function fixture() {
   const store = { answers: {} as Record<string, { data: unknown; error: Error | null; loading: boolean }>, listeners: new Set<() => void>() };
   const reload = vi.fn();
   const set = (path: string, value: { data?: unknown; error?: Error | null; loading?: boolean }) => {
-    store.answers[path] = { data: null, error: null, loading: false, ...store.answers[path], ...value };
+    const empty = { data: null as unknown, error: null as Error | null, loading: false };
+    store.answers[path] = { ...empty, ...store.answers[path], ...value };
     act(() => { store.listeners.forEach((l) => l()); });
   };
   function useApiV2(path: string) {

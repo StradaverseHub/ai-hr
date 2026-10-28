@@ -70,7 +70,7 @@ const postJson = async (handler: (r: Request) => Promise<Response>, path: string
 const upload = async (handler: (r: Request) => Promise<Response>, path: string, command: Record<string, unknown>, receipt?: { bytes: Uint8Array; name: string; type: string }) => {
   const data = new FormData();
   data.append('command', JSON.stringify(command));
-  if (receipt) data.append('receipt', new File([receipt.bytes], receipt.name, { type: receipt.type }));
+  if (receipt) data.append('receipt', new File([new Uint8Array(receipt.bytes)],receipt.name, { type: receipt.type }));
   return json(await handler(new Request(URL0 + path, { method: 'POST', body: data })));
 };
 const recorded = () => owner.db.select({ id: schema.domainEvent.id }).from(schema.domainEvent).where(eq(schema.domainEvent.eventType, 'mobile.command.recorded'));

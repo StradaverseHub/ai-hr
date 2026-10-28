@@ -53,6 +53,9 @@ const rlDay = await import('../app/api/mobile/v2/attendance/replacement-leave/da
 
 const BASE = 'https://hr.example.com/api/mobile/v2/attendance';
 const TODAY = todayInKualaLumpur();
+/** The server's `today` is read when it answers, so a run crossing midnight in Kuala Lumpur sees a later day than TODAY:
+ *  pin "the tenant's day at answer time" (from the suite's start up to now), not the day the file loaded. */
+const CURRENT_DAY = { asymmetricMatch: (v: unknown) => typeof v === 'string' && v >= TODAY && v <= todayInKualaLumpur(), toString: () => 'CurrentKualaLumpurDay' };
 const addDays = (iso: string, n: number) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 // Fixed past dates in one month (all before today), so a window and a payroll period can name them.
 const JULY = { from: '2026-07-01', to: '2026-07-31' };
@@ -142,7 +145,7 @@ describe('records and roster', () => {
     caller = employee.ctx;
     const got = await call(records.GET, `/records?from=${JULY.from}&to=${JULY.to}`);
     expect(got.status).toBe(200);
-    expect(got.body).toMatchObject({ enabled: true, employmentId: employee.employmentId, timeZone: 'Asia/Kuala_Lumpur', today: TODAY, from: JULY.from, to: JULY.to });
+    expect(got.body).toMatchObject({ enabled: true, employmentId: employee.employmentId, timeZone: 'Asia/Kuala_Lumpur', today: CURRENT_DAY, from: JULY.from, to: JULY.to });
     const days = got.body.days as { date: string; schedule: any; punches: { at: string; direction: string }[]; outcome: any; exception: string | null }[];
     expect(days.map((d) => d.date)).toEqual(Array.from({ length: 31 }, (_, i) => addDays(JULY.from, i)));
     const on = (date: string) => days.find((d) => d.date === date)!;
@@ -176,7 +179,7 @@ describe('records and roster', () => {
     expect(on(VOIDED).outcome).toMatchObject({ recorded: true, checkIn: null, checkOut: null, status: 'absent' });
 
     const corrected = await call(dayRoute.GET, `/day?date=${CORRECTED}`);
-    expect(corrected.body).toMatchObject({ outcome: 'found', today: TODAY, correction: { offered: true, blockedBy: null } });
+    expect(corrected.body).toMatchObject({ outcome: 'found', today: CURRENT_DAY, correction: { offered: true, blockedBy: null } });
     expect(corrected.body.applications.map((x: { id: string; displayStatus: string }) => [x.id, x.displayStatus])).toEqual([[fix.correctionId, 'approved']]);
     expect(corrected.body.day).toEqual(on(CORRECTED));
     const future = await call(dayRoute.GET, `/day?date=${addDays(TODAY, 3)}`);
@@ -380,7 +383,7 @@ describe('replacement leave (Leave Credit)', () => {
   it('answers the kernel’s availability reason, and refuses an ineligible request without writing anything', async () => {
     const inside = await hire('Inside Worker'), outside = await hire('Outside Worker', 'employee', base.deptB);
     caller = inside.ctx;
-    expect((await call(rl.GET, '/replacement-leave')).body).toMatchObject({ allowed: false, reason: 'module_off', employmentId: inside.employmentId, timeZone: 'Asia/Kuala_Lumpur', today: TODAY });
+    expect((await call(rl.GET, '/replacement-leave')).body).toMatchObject({ allowed: false, reason: 'module_off', employmentId: inside.employmentId, timeZone: 'Asia/Kuala_Lumpur', today: CURRENT_DAY });
     const off = await post(rl.POST, '/replacement-leave', { requestId: randomUUID(), rows: [{ workedDate: MULTI, dayType: 'rest_day', claimStart: '09:00', claimEnd: '17:00' }], reason: 'Covered the stock take', firstScheduleConsent: false });
     expect(off.body).toEqual({ outcome: 'refused', code: 'module_off' });
 
