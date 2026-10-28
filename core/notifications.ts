@@ -1,7 +1,7 @@
 import type { Tx as AiReadTx } from '../db/client';
 import { withCanonicalAiReadTx } from './ai-read-transaction';
 import { assessmentReviewTaskRecipientsTx,assessmentReminderRecipientsTx } from '../packs/performance/service';
-import { rewardAccessSuspensionRecipients,rewardNotificationRecipients } from '../packs/rewards/service';
+import { rewardAccessSuspensionEventRecipients,rewardNotificationRecipients } from '../packs/rewards/service';
 /**
  * Notification engine (ADR-0034) — 34-2 registry + dispatch + reads. A sweep reads new domain events after a
  * per-tenant cursor and turns the mapped ones into recipient-scoped notifications. Gated by the per-tenant
@@ -210,7 +210,7 @@ export async function approverEmploymentsForKind(
 const enabled = (ctx: SessionContext) => isModuleEnabled(ctx, 'notifications');
 
 type Rendered = { severity: NotificationSeverity; title: string; body: string; linkPath: string };
-type EventRef = { aggregateId: string; subjectEmploymentId: string | null };
+type EventRef = { id?:string;aggregateId: string; subjectEmploymentId: string | null };
 type Spec = {
   kind: string;
   category: NotificationEmailCategory|null;
@@ -264,8 +264,8 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
   },
   'reward-access.suspended': {
     kind:'rewards.access-suspended',category:'rewards',
-    render:()=>({severity:'warning',title:'Rewards access suspended',body:'People records changed. Review the suspended assignment and any missing approval roles.',linkPath:'/admin/rewards/access'}),
-    recipients:(tx,ev)=>rewardAccessSuspensionRecipients(tx,ev.aggregateId),
+    render:(_payload,event)=>({severity:'warning',title:'Rewards access suspended',body:'People records changed. Check approval-role coverage and ask a Rewards administrator to review suspended access.',linkPath:`/rewards/${event.aggregateId}?view=approvals`}),
+    recipients:(tx,ev)=>rewardAccessSuspensionEventRecipients(tx,ev.id),
   },
   'reward-unit.routed': {
     kind: 'rewards.review', category: 'rewards',
@@ -971,7 +971,11 @@ async function projectNotificationsTx(tx:Tx,ctx:SessionContext,allCategories:boo
     for (const ev of rows) {
       const entry = REGISTRY[ev.eventType];
       if (!entry) continue;
-      const evRef: EventRef = { aggregateId: ev.aggregateId, subjectEmploymentId: ev.subjectEmploymentId };
+      if(ev.eventType==='reward-access.suspended'){
+        const [account]=await tx.execute<{created:number}>(sql`select app.reward_access_project_account_suspension(${ev.id}::uuid) as created`);
+        created+=account.created;
+      }
+      const evRef: EventRef = { id:ev.id,aggregateId: ev.aggregateId, subjectEmploymentId: ev.subjectEmploymentId };
       for (const spec of Array.isArray(entry) ? entry : [entry]) {
         // Recipients: a fan-out resolver (e.g. all payslips in a batch), else the event's single subject.
         const recipients = spec.recipients
@@ -1032,7 +1036,7 @@ export async function notificationStillTargets(tx: Tx, eventId: string, kind: st
   if (!ev) return false;
   const entry = REGISTRY[ev.eventType];
   if (!entry) return false;
-  const ref: EventRef = {aggregateId:ev.aggregateId,subjectEmploymentId:ev.subjectEmploymentId};
+  const ref: EventRef = {id:eventId,aggregateId:ev.aggregateId,subjectEmploymentId:ev.subjectEmploymentId};
   for (const spec of Array.isArray(entry) ? entry : [entry]) {
     if (spec.kind !== kind || spec.category !== category) continue;
     const recipients = spec.recipients ? await spec.recipients(tx,ref,(ev.payload as Record<string,unknown>|null)??null,noticeReader)

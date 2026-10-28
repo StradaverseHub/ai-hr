@@ -348,6 +348,8 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     const submit = async (who: RewardRole = 'bu', id = unitId) => decideRewardUnit(actors[who]!, id, (await getRewardUnit(actors[who]!, id)).unit.revision, 'submit', 'Reviewed recommendations');
     const giveEmployment = async (role: RewardRole, name: string) => {
       const hire = await hireEmployee(admin, { person: { fullName: name, primaryEmail: `${role}.employment@rewards.test` }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: `${year - 2}-01-01` });
+      const currentReview = await getRewardUnit(admin, unitId);
+      await owner.db.update(schema.assignment).set({ businessUnitId: currentReview.unit.businessUnitId }).where(eq(schema.assignment.employmentId, hire.employmentId));
       await owner.db.update(schema.appUser).set({ personId: hire.personId }).where(eq(schema.appUser.id, actors[role]!.userId!));
       actors[role] = { ...actors[role]!, personId: hire.personId };
       return hire;

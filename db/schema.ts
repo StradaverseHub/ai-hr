@@ -10289,7 +10289,7 @@ export const rewardAccessRequest=pgTable('reward_access_request',{
  decidedBy:uuid('decided_by').references(()=>appUser.id),decidedAt:timestamp('decided_at',{withTimezone:true}),reason:text('reason'),
 });
 export const rewardAccessObservation=pgTable('reward_access_observation',{
- tenantId:tenantId(),memberId:uuid('member_id').notNull().references(()=>rewardMember.id,{onDelete:'cascade'}),stateKey:text('state_key').notNull(),observedAt:timestamp('observed_at',{withTimezone:true}).notNull().defaultNow(),
+ tenantId:tenantId(),memberId:uuid('member_id').notNull().references(()=>rewardMember.id,{onDelete:'cascade'}),sourceEventId:uuid('source_event_id').notNull().references(()=>domainEvent.id),stateKey:text('state_key').notNull(),observedAt:timestamp('observed_at',{withTimezone:true}).notNull().defaultNow(),
 },table=>[primaryKey({columns:[table.tenantId,table.memberId,table.stateKey]})]);
 /** Soft unit pointer: internal transaction authorization must not block deletion of an unused review. */
 export const rewardAccessBootstrap=pgTable('reward_access_bootstrap',{

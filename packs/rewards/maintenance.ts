@@ -98,15 +98,11 @@ async function applyAccess(tx: Tx, ctx: SessionContext, unit: typeof rewardUnit.
     // cd72f915: Group Rewards must always stay covered (as before); any other required seat may not lose its
     // last active holder. Coverage is judged on the next state, so a replacement in one edit passes.
     const required = rewardRequiredRoles(unit);
-    const today=todayInKualaLumpur(),active:string[]=[];
+    const today=todayInKualaLumpur();
     const eligibilityKey=(m:AccessRow)=>JSON.stringify({userId:m.userId,role:m.role,validFrom:m.validFrom??today,validTo:m.validTo??null,coversUserId:m.coversUserId??null});
-    for(const member of [...current,...next]){
-      if((member.validFrom&&member.validFrom>today)||(member.validTo&&member.validTo<today))continue;
-      const existing=current.find(row=>pairKey(row)===pairKey(member));
-      const [eligible]=member.id?await tx.execute<{ok:boolean}>(sql`select app.reward_member_eligible(${member.id}::uuid) as ok`):await tx.execute<{ok:boolean}>(sql`select app.reward_access_candidate_eligible(${unit.id}::uuid,${member.userId}::uuid,${member.role}) or ${existing?.id?sql`app.reward_member_eligible(${existing.id}::uuid)`:sql`false`} as ok`);
-      const restored=input.after?.restoreReason&&pairKey(input.after)===pairKey(member);
-      if(eligible?.ok||restored)active.push(eligibilityKey(member));
-    }
+    const candidates=[...new Map([...current,...next].filter(member=>(!member.validFrom||member.validFrom<=today)&&(!member.validTo||today<=member.validTo)).map(member=>[eligibilityKey(member),{key:eligibilityKey(member),member_id:member.id||current.find(row=>pairKey(row)===pairKey(member))?.id||null,user_id:member.userId,role:member.role,restoring:!!input.after?.restoreReason&&pairKey(input.after)===pairKey(member)}])).values()];
+    const eligible=candidates.length?await tx.execute<{key:string}>(sql`select candidate.key from jsonb_to_recordset(${JSON.stringify(candidates)}::jsonb) as candidate(key text,member_id uuid,user_id uuid,role text,restoring boolean) where candidate.restoring or (candidate.member_id is not null and app.reward_member_eligible(candidate.member_id)) or app.reward_access_candidate_eligible(${unit.id}::uuid,candidate.user_id,candidate.role) order by candidate.key`):[];
+    const active=eligible.map(member=>member.key);
     const covered = (rows: AccessRow[], role: RewardRole) => rows.some(m => m.role === role && active.includes(eligibilityKey(m)));
     if (!covered(next, 'gr'))
         throw new RewardMaintenanceError('lastGr');

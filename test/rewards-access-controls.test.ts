@@ -3,6 +3,8 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
+import {dispatchNotifications} from '../core/notifications';
+import {pgSqlState} from '../lib/db-error';
 import {hireEmployee} from '../core/org';
 import {createRewardUnit,getRewardConfiguration,getRewardUnit,previewRewardAccessChange,saveRewardAccessChange,decideRewardAccessRequest,rewardAccessRequests,rewardAccessAdministration,rewardAccessSuspensionRecipients,setRewardMember} from '../packs/rewards/service';
 import {migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppUser,owner,closeAll,type Base} from './harness';
@@ -50,6 +52,7 @@ describe('Rewards two-person access and live People eligibility',()=>{
  it('records rejection with a reason and lapses requests after a real review revision change',async()=>{
   const one=await request({userId:target.userId!,role:'bu'});
   await expect(withTenant(checker,tx=>tx.execute(sql`select app.reward_access_request_decide(${one.requestId}::uuid,false,NULL)`))).rejects.toThrow();
+  await expect(withTenant(checker,tx=>tx.execute(sql`select app.reward_access_request_decide(${one.requestId}::uuid,false,repeat(chr(12)||chr(160),12))`))).rejects.toThrow();
   expect((await rewardAccessRequests(admin)).find(request=>request.id===one.requestId)?.status).toBe('pending');
   await expect(decideRewardAccessRequest(checker,one.requestId,false,'short')).rejects.toMatchObject({code:'reason'});
   expect(await decideRewardAccessRequest(checker,one.requestId,false,'Not the nominated reviewer')).toEqual({status:'rejected'});
@@ -72,7 +75,7 @@ describe('Rewards two-person access and live People eligibility',()=>{
   const pending=await request({userId:target.userId!,role:'bu',validFrom:today,validTo:today});await decideRewardAccessRequest(checker,pending.requestId,true);
   expect((await getRewardUnit(target,unitId)).roles).toContain('bu');
   await owner.db.update(s.employment).set({tenderResignationDate:today}).where(eq(s.employment.id,employmentId));
-  await expect(getRewardUnit(target,unitId)).rejects.toThrow(/assign your Reward Desk role/);
+  await expect(getRewardUnit(target,unitId)).rejects.toThrow(/access has been removed|assign your Reward Desk role/);
   const value=await rewardAccessAdministration(admin,[b.companyId]);expect(value.members.find(m=>m.userId===target.userId)?.suspension).toEqual({reason:'notice',on:today});
   expect(value.reviews[0].coverage.missing).toContain('bu');
   await expect(getRewardUnit(target,unitId)).rejects.toThrow();
@@ -143,6 +146,24 @@ describe('Rewards two-person access and live People eligibility',()=>{
   }
   expect((await rewardAccessRequests(admin)).find(request=>request.id===pending.requestId)?.status).toBe('pending');
   expect(await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,pending.requestId),eq(s.domainEvent.eventType,'reward-access.approved')))).toEqual([]);
+ });
+ it('projects an idempotent user-only GR bell warning from the exact native suspension event',async()=>{
+  await setModule(b.tenantId,'notifications','active');
+  const external=await account('Fictional account-only Group Rewards');
+  let pending=await request({userId:target.userId!,role:'bu'});await decideRewardAccessRequest(checker,pending.requestId,true);
+  pending=await request({userId:external.userId!,role:'gr'});await decideRewardAccessRequest(checker,pending.requestId,true);
+  await owner.db.update(s.employment).set({tenderResignationDate:today}).where(eq(s.employment.id,employmentId));await expect(getRewardUnit(target,unitId)).rejects.toThrow();
+  const [event]=await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,unitId),eq(s.domainEvent.eventType,'reward-access.suspended')));expect(event).toBeTruthy();
+  const activeAdmin=await entitledCtx(b);await dispatchNotifications(activeAdmin);
+  const own=await withTenant(external,tx=>tx.select().from(s.notification).where(eq(s.notification.sourceEventId,event.id)));
+  expect(own).toHaveLength(1);expect(own[0]).toMatchObject({recipientUserId:external.userId,recipientEmploymentId:null,kind:'rewards.access-suspended',linkPath:`/rewards/${unitId}?view=approvals`});
+  const [again]=await withTenant(admin,tx=>tx.execute<{created:number}>(sql`select app.reward_access_project_account_suspension(${event.id}::uuid) as created`));expect(again.created).toBe(0);
+  let denied:unknown;try{await withTenant(admin,tx=>tx.insert(s.notification).values({tenantId:b.tenantId,recipientUserId:external.userId,companyId:b.companyId,kind:'rewards.access-suspended',title:'Rewards access suspended',body:'People records changed. Check approval-role coverage and ask a Rewards administrator to review suspended access.',linkPath:`/rewards/${unitId}?view=approvals`,severity:'warning',sourceEventId:event.id}));}catch(error){denied=error;}expect(pgSqlState(denied)).toBe('42501');
+  const [wrong]=await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,unitId),eq(s.domainEvent.eventType,'reward-unit.created')));expect(wrong).toBeTruthy();
+  await expect(withTenant(admin,tx=>tx.execute(sql`select app.reward_access_project_account_suspension(${wrong.id}::uuid)`))).rejects.toThrow();
+  const foreign=await seedBase(),foreignActor=await entitledCtx(foreign);await expect(withTenant(foreignActor,tx=>tx.execute(sql`select app.reward_access_project_account_suspension(${event.id}::uuid)`))).rejects.toThrow();
+  const unrelated=await account('Fictional unrelated notice recipient');
+  await expect(withTenant(admin,tx=>tx.insert(s.notification).values({tenantId:b.tenantId,recipientUserId:unrelated.userId,companyId:b.companyId,kind:'rewards.access-suspended',title:'Rewards access suspended',body:'Forged',linkPath:`/rewards/${unitId}?view=approvals`,severity:'warning',sourceEventId:event.id}))).rejects.toThrow();
  });
  it('enforces tenant scope on the request reader and decision owner',async()=>{
   const pending=await request({userId:target.userId!,role:'bu'}),foreign=await seedBase();await setModule(foreign.tenantId,'rewards','active');const outsider=await entitledCtx(foreign);

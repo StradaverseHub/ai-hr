@@ -1067,6 +1067,11 @@ export async function rewardNotificationRecipients(tx: Tx, unitId: string, stage
   return rows.map(r => r.employmentId);
 }
 
+export async function rewardAccessSuspensionEventRecipients(tx:Tx,eventId:string|undefined):Promise<string[]>{
+ if(!eventId)return [];
+ const rows=await tx.execute<{employment_id:string}>(sql`select app.reward_access_suspension_event_recipients(${eventId}::uuid) as employment_id`);
+ return rows.map(row=>row.employment_id);
+}
 export async function rewardAccessSuspensionRecipients(tx:Tx,unitId:string):Promise<string[]>{
  const rows=await tx.execute<{employment_id:string}>(sql`select app.reward_access_suspension_recipients(${unitId}::uuid) as employment_id`);
  return rows.map(row=>row.employment_id);

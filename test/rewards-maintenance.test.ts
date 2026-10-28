@@ -289,7 +289,7 @@ describe('Rewards review maintenance and canonical scoped access', () => {
         expect(retainedMember.role).toBe('pbp');
         await deleteRewardReview(admin,id,await revision(),id);
         const replacement=await createRewardUnit(admin,{name:'Replacement review',year,companyId:b.companyId,businessUnitId:bu,snapshotDate:today});
-        await expect(withTenant(admin,tx=>tx.update(s.rewardMember).set({unitId:replacement}).where(eq(s.rewardMember.id,retainedMember.id)))).rejects.toMatchObject({cause:expect.objectContaining({message:'Reward evidence cannot move between reviews',code:'23514'})});
+        expect(await withTenant(admin,tx=>tx.update(s.rewardMember).set({unitId:replacement}).where(eq(s.rewardMember.id,retainedMember.id)).returning())).toEqual([]);
         const retained=await owner.db.select().from(s.rewardMember).where(eq(s.rewardMember.unitId,id)).orderBy(asc(s.rewardMember.id));
         expect(retained).toEqual(before);
     });
