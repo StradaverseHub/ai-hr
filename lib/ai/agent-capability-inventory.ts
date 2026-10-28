@@ -1,5 +1,5 @@
 /** ADR-0151 §4.2 — every human entry point that can change data, classified for the orchestrator.
- * Planning and drift metadata only: nothing here grants, checks or executes anything. Each owning service
+ * The tier ceiling also constrains runtime preparation and confirmation. Each owning service
  * keeps its own authorization; the agent reaches an effect only through a registered module action.
  *
  * Keys are server-action files ("use server") mapped export by export, and route files (suffix `#route`)
@@ -18,7 +18,8 @@
  */
 import type {ModuleEffectActionId} from './module-agent-actions';
 
-export type AgentTier='automatic'|'confirm'|'approve'|'handoff';
+export {type AgentTier} from './agent-action-tiers';
+import type {AgentTier,AgentActionPolicy} from './agent-action-tiers';
 export const AGENT_HANDOFF_REASONS=['access_and_authentication','ai_governance','platform_operator','privacy_erasure','payroll_reversal','employment_exit_or_discipline'] as const;
 export const AGENT_INTERNAL_REASONS=['assistant_surface','session_and_presentation','other_client_same_service'] as const;
 export type AgentHandoffReason=(typeof AGENT_HANDOFF_REASONS)[number];
@@ -38,6 +39,24 @@ export const AGENT_ACTION_TIER_CEILING=Object.freeze({
  'multi_cycle_payroll.create_run':'approve','typed_pay_components.create':'approve','rewards.post':'approve',
  'country-my.statutory.update':'approve','employees.import':'handoff','claims.cancel':'confirm','leave.cancel':'confirm','leave.edit':'confirm',
 } as const satisfies Record<ModuleEffectActionId,AgentTier>);
+
+/** Category classification is independent of the execution tier. Sensitive entries cannot acquire
+ * Automatic authority even if a future edit accidentally changes their tier ceiling. */
+export const AGENT_ACTION_CATEGORY=Object.freeze({
+ 'leave.apply':'own_work','ess.profile.request':'own_work','attendance.correction.request':'own_work',
+ 'toil.replacement.request':'own_work','claims.draft.save':'claim_money','claims.submit':'claim_money',
+ 'performance.review.acknowledge':'own_work','performance.onehr.plan.acknowledge':'own_work',
+ 'notifications.email_preferences.save':'own_work','lifecycle.acknowledgement.submit':'own_work',
+ 'system_testing.execution.save':'own_work','knowledge_base.article.create':'own_work',
+ 'approvals.leave.decide':'approvals','org.reporting.change':'personnel','payroll.close':'payroll',
+ 'multi_cycle_payroll.create_run':'payroll','typed_pay_components.create':'pay','rewards.post':'pay',
+ 'country-my.statutory.update':'payroll','employees.import':'personnel','claims.cancel':'claim_money',
+ 'leave.cancel':'own_work','leave.edit':'own_work',
+} as const);
+// A sensitive category paired with Automatic is a compile error, in addition to the runtime refusal.
+type CheckedPolicies={ [K in ModuleEffectActionId]: {category:(typeof AGENT_ACTION_CATEGORY)[K];tier:(typeof AGENT_ACTION_TIER_CEILING)[K]} };
+type ValidatePolicies<T extends Record<ModuleEffectActionId,AgentActionPolicy>>=T;
+export type RegisteredAgentActionPolicies=ValidatePolicies<CheckedPolicies>;
 
 export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<string,AgentCapabilityClass>>>>=Object.freeze({
  "app/admin/actions.ts":{"archiveBusinessUnitAction":"backlog:confirm","archiveClockingLocationAction":"backlog:confirm","archiveCompanyAction":"backlog:confirm","archiveCostCenterAction":"backlog:confirm","archiveDepartmentAction":"backlog:confirm","archiveLeaveTypeAction":"backlog:confirm","archiveLocationAction":"backlog:confirm","archivePositionAction":"backlog:confirm","archiveUserAction":"handoff:access_and_authentication","assignRoleAction":"handoff:access_and_authentication","closeReplacementLeaveYearAction":"backlog:confirm","countEmployeesInScopeAction":"backlog:automatic","createBusinessUnitAction":"backlog:confirm","createClockingLocationAction":"backlog:confirm","createCompanyAction":"backlog:confirm","createCostCenterAction":"backlog:confirm","createDepartmentAction":"backlog:confirm","createGradeGroupAction":"backlog:confirm","createHolidayGroupAction":"backlog:confirm","createLeaveSharedGroupAction":"backlog:confirm","createLeaveTypeAction":"backlog:confirm","createLocationAction":"backlog:confirm","createPositionAction":"backlog:confirm","deleteClockingLocationAction":"backlog:confirm","deleteCompanyAction":"backlog:confirm","deleteCostCenterAction":"backlog:confirm","deleteDepartmentAction":"backlog:confirm","deleteGradeGroupAction":"backlog:confirm","deleteHolidayAction":"backlog:confirm","deleteHolidayGroupAction":"backlog:confirm","deleteLeaveSharedGroupAction":"backlog:confirm","deleteLeaveTypeAction":"backlog:confirm","deletePositionAction":"backlog:confirm","inviteUserAction":"handoff:access_and_authentication","openLeaveYearAction":"backlog:confirm","previewEarnedAccrualAction":"backlog:automatic","removeCompanyBankProfileAction":"backlog:confirm","removeCompanyLogoAction":"backlog:confirm","removeCompanyStatutoryAuthorityAction":"backlog:confirm","restoreClockingLocationAction":"backlog:confirm","restoreLocationAction":"backlog:confirm","revokeInvitationAction":"handoff:access_and_authentication","revokeRoleAction":"handoff:access_and_authentication","runEarnedAccrualAction":"backlog:confirm","runToilExpiryAction":"backlog:confirm","saveCompanyGeneralTabAction":"backlog:confirm","saveHolidayAction":"backlog:confirm","setAssistantGrantAction":"handoff:access_and_authentication","setAttendancePolicyAction":"backlog:confirm","setCompanyBankProfileAction":"backlog:confirm","setCompanyLogoAction":"backlog:confirm","setCompanyParentAction":"backlog:confirm","setCompanyStatutoryAction":"backlog:confirm","setCompanyStatutoryAuthorityAction":"backlog:confirm","setLeaveEncashmentPolicyAction":"backlog:confirm","setLeaveHalfDayFullDeductionCompaniesAction":"backlog:confirm","setLeaveTypeRulesAction":"backlog:confirm","setToilPolicyAction":"backlog:confirm","updateBusinessUnitAction":"backlog:confirm","updateClockingLocationAction":"backlog:confirm","updateCompanyAction":"backlog:confirm","updateCompanyDefaultCycleAction":"backlog:confirm","updateCostCenterAction":"backlog:confirm","updateDepartmentAction":"backlog:confirm","updateGradeGroupAction":"backlog:confirm","updateHolidayGroupAction":"backlog:confirm","updateLeaveSharedGroupAction":"backlog:confirm","updateLeaveTypeAction":"backlog:confirm","updateLocationAction":"backlog:confirm","updatePositionAction":"backlog:confirm"},
