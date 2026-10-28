@@ -1165,8 +1165,10 @@ describe('what the shelves say about the forms that are not built', () => {
     // A real filing: it names an agency, which is what earns it the shelf and the suspended-tenant
     // override. See test/suspended-statutory-filing.test.ts for the other half.
     expect(other[0].submission!.agency).toBe('HRD Corp');
-    // The 15th is still SOURCED and still true of HRD Corp — that half of the original case is kept.
-    expect(read('docs/wave2-payroll-design.md')).toContain('due by the **15th of the following month**');
+    // The 15th is still SOURCED and still true of HRD Corp — that half of the original case is kept. The design
+    // brief was condensed to a summary (docs pruning, Oct 2026); its sourced levy table, with the 15th and its
+    // hrdcorp.gov.my citation, is kept at the commit the summary names.
+    expect(read('docs/wave2-payroll-design.md')).toContain('git show d8b2bac9705fd8fbc4d3eb500262b19858bf297d:docs/wave2-payroll-design.md');
     // ⚠️ BUT THE CATALOG DELIBERATELY CARRIES NULL, and this is a reversal of the assertion that stood
     // here. `dueDayOfNextMonth` is not "when is this due" — it is "compute a deadline for EVERY company
     // on the filter and colour it overdue". The levy is owed only by a company registered with PSMB, and

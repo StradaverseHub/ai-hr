@@ -858,12 +858,25 @@ describe('source shape (not executable — see file header)', () => {
   });
 
   it('the readiness checklist records what was built and what is still the owner\'s to decide', () => {
+    // The checklist was condensed (docs pruning, Oct 2026): it now states the requirement, and the deploy runbook
+    // holds what r291 built and the decisions still open. Both are pinned where they live now.
     const md = fs.readFileSync(path.join(REPO, 'docs/CUSTOMER-DEPLOYMENT-READINESS.md'), 'utf8');
-    const section = md.slice(md.indexOf('### 1.5'), md.indexOf('### 1.6'));
-    expect(section).toContain('scripts/backup-db.sh');
-    expect(section).toContain('scripts/restore-rehearsal.sh');
-    // The two boxes that cannot be ticked from inside the repo are still unticked.
-    expect(section).toMatch(/- \[ \] .*off-box/);
-    expect(section).toMatch(/- \[ \] .*point-in-time/i);
+    const start = md.indexOf('## Before real employee data'), end = md.indexOf('## Payroll and statutory acceptance');
+    expect(start, 'checklist section found').toBeGreaterThanOrEqual(0);
+    expect(end, 'next section found').toBeGreaterThan(start);
+    const section = md.slice(start, end);
+    expect(section.length).toBeGreaterThan(500);
+    expect(section).toMatch(/off-host backups/);
+    expect(section).toMatch(/real restore/);
+    const customer = fs.readFileSync(path.join(REPO, 'deploy/CUSTOMER.md'), 'utf8');
+    expect(customer).toContain('scripts/backup-db.sh');
+    expect(customer).toContain('scripts/restore-rehearsal.sh');
+    // The two choices that cannot be made from inside the repo are still the owner's.
+    const runbook = fs.readFileSync(path.join(REPO, 'deploy/DEPLOY.md'), 'utf8');
+    const owner = runbook.indexOf('### What the owner has to decide first');
+    expect(owner, 'owner decisions section found').toBeGreaterThanOrEqual(0);
+    const decide = runbook.slice(owner, owner + 2500);
+    expect(decide).toMatch(/`BACKUP_DEST` has no default/);
+    expect(decide).toMatch(/point-in-time recovery/i);
   });
 });
