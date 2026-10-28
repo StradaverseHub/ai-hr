@@ -466,9 +466,14 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     expect((await view(self)).result).toMatchObject({id:frozenId,performance:null,potential:null,talent:null});
     expect(await withTenant(self,tx=>tx.select().from(schema.onehrResult))).toEqual([]);
     await perf.releaseOnehrResult(a,reviewId,'performance',true);expect((await view(self)).result).toMatchObject({performance:'ME',potential:null,talent:null});
+    // WP-E: the per-person panel is the single-step release, as step 'both': leaders and the person together.
+    const [both]=await owner.db.select().from(schema.assessmentRelease).where(eq(schema.assessmentRelease.reviewId,reviewId));
+    expect(both.performanceLeaderReleasedAt).toBeInstanceOf(Date);expect(both.performanceReleasedAt).toBeInstanceOf(Date);expect(both.potentialLeaderReleasedAt).toBeNull();
     await perf.releaseOnehrResult(a,reviewId,'talent',true);expect((await view(self)).result?.talent).toBe('Star');
     await perf.releaseOnehrResult(a,reviewId,'feedback',true);const own=await view(self);expect(own.feedbackReport).toHaveLength(7);expect(JSON.stringify(own.feedbackReport)).not.toMatch(/employmentId|requestId|count|relationship/);
     await perf.releaseOnehrResult(a,reviewId,'performance',false);expect((await view(self)).result?.performance).toBeNull();
+    const [revoked]=await owner.db.select().from(schema.assessmentRelease).where(eq(schema.assessmentRelease.reviewId,reviewId));
+    expect([revoked.performanceLeaderReleasedAt,revoked.performanceReleasedAt]).toEqual([null,null]);expect(revoked.talentLeaderReleasedAt).toBeInstanceOf(Date);
     await expect(perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[])).rejects.toThrow(/finalized/);
     await expect(withTenant(a,tx=>tx.update(schema.onehrResult).set({digest:'tampered'}).where(eq(schema.onehrResult.id,frozenId)))) .rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/immutable/)})});
     await expect(perf.configureOnehrCycle(a,cycleId,1,defaultPolicy(framework))).rejects.toThrow(/fixed/);

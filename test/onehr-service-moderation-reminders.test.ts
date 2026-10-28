@@ -232,7 +232,11 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     let notices=await owner.db.select().from(schema.notification);expect(notices.filter(n=>n.kind==='performance.feedback-request')).toHaveLength(4);
     expect(new Set(notices.filter(n=>n.kind==='performance.feedback-request').map(n=>n.recipientEmploymentId))).toEqual(new Set(peers.map(p=>p.employmentId)));
     await complete();await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);await perf.releaseOnehrResult(a,reviewId,'performance',true);await dispatchNotifications(a);
-    notices=await owner.db.select().from(schema.notification);expect(notices.some(n=>n.kind==='performance.update'&&n.recipientEmploymentId===subject.employmentId)).toBe(true);
+    notices=await owner.db.select().from(schema.notification);
+    // WP-E: one notice per person per release action (the per-person panel releases both steps at once), plus one
+    // count-only notice to the line manager the release reached; never a band.
+    expect(notices.filter(n=>n.kind==='performance.update'&&n.recipientEmploymentId===subject.employmentId)).toHaveLength(1);
+    expect(notices.filter(n=>n.kind==='performance.update'&&n.recipientEmploymentId===manager.employmentId).map(n=>n.linkPath)).toEqual(['/performance/led']);
     expect(notices.map(n=>`${n.title} ${n.body}`).join(' ')).not.toMatch(/Assessment subject|ME|High|Star|5000/);
   });
   it('rejects AI access before contacting a provider or recording a proposal',async()=>{
