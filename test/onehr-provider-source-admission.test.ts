@@ -28,7 +28,7 @@ import {createOnehrServiceFixtures,year} from './onehr-service-fixture';
 import {closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base,a:SessionContext,self:SessionContext,mgr:SessionContext,subject:{employmentId:string;personId:string},manager:{employmentId:string;personId:string},peers:{employmentId:string;ctx:SessionContext}[],cycleId:string,reviewId:string;
 let spendPrice:Awaited<ReturnType<typeof installSyntheticSpendCapability>>;
-let beforeAdmission:(()=>Promise<void>)|undefined,afterSourceReplay:(()=>Promise<void>)|undefined,alterInput=false;
+let beforeAdmission:(()=>Promise<void>)|undefined,sourceChange:Promise<void>|undefined,afterSourceReplay:(()=>Promise<void>)|undefined,alterInput=false;
 const f=createOnehrServiceFixtures({get b(){return b;},get a(){return a;},get subject(){return subject;},get manager(){return manager;},get self(){return self;},get mgr(){return mgr;},get cycleId(){return cycleId;},get reviewId(){return reviewId;},get peers(){return peers;}});
 beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>{spendPrice?.restore();vi.restoreAllMocks();vi.unstubAllEnvs();});
 beforeEach(async()=>{
@@ -44,10 +44,13 @@ beforeEach(async()=>{
  const policy=defaultPolicy(framework);policy.modules.evidence=true;policy.profiles=[{id:randomUUID(),companyId:b.companyId,grade:'12',name:'Engineering',competencies:[{id:'skill-1',principle:'Technical',text:'Current skill',future:false},{id:'skill-2',principle:'Technical',text:'Future skill',future:true}]}];
  await perf.configureOnehrCycle(a,cycleId,null,policy);await perf.openCycle(a,{cycleId});
  const [review]=await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,cycleId),eq(schema.performanceReview.employmentId,subject.employmentId)));reviewId=review.id;
- vi.stubEnv('OPENAI_API_KEY','fictional-admission-transport-never-sent');for(const key of ['ANTHROPIC_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY'])vi.stubEnv(key,'');beforeAdmission=undefined;afterSourceReplay=undefined;alterInput=false;
+ vi.stubEnv('OPENAI_API_KEY','fictional-admission-transport-never-sent');for(const key of ['ANTHROPIC_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY'])vi.stubEnv(key,'');beforeAdmission=undefined;sourceChange=undefined;afterSourceReplay=undefined;alterInput=false;
  const issued=await withTenant(a,tx=>resolveActiveAiConfig(tx,a,'performance_review'));if(!issued)throw Error('Missing actual fixture provider');spendPrice=await installSyntheticSpendCapability(a,{provider:issued.provider,model:issued.model});
  const issue=governance.withAiAdmissionCheck;vi.spyOn(governance,'withAiAdmissionCheck').mockImplementation((config,feature,check)=>issue(config,feature,async(tx,request)=>{await check(tx,request);const tail=afterSourceReplay;afterSourceReplay=undefined;if(tail)await tail();}));
- const original=ai.generateDraft;vi.spyOn(ai,'generateDraft').mockImplementation(async(cfg,args)=>{const hook=beforeAdmission;beforeAdmission=undefined;if(hook)await hook();return original(cfg,alterInput?{...args,prompt:args.prompt+' CHANGED'}:args);});
+ const original=ai.generateDraft;vi.spyOn(ai,'generateDraft').mockImplementation(async(cfg,args)=>{
+  // Every concurrent call (the career plan sends two) waits for the one source change, so none reaches admission
+  // first and holds source custody while the change is refused as busy.
+  if(beforeAdmission){sourceChange=beforeAdmission();beforeAdmission=undefined;}if(sourceChange)await sourceChange;return original(cfg,alterInput?{...args,prompt:args.prompt+' CHANGED'}:args);});
  vi.spyOn(openaiAdapter,'generate').mockImplementation(async(_cfg,args)=>{args.onUsage?.({inputTokens:0,outputTokens:0,cachedInputTokens:0});if(args.system.includes('fact IDs'))return '{"facts":["dashboard"],"unanswered":false}';if(args.system.includes('longer-term career aspiration'))return '{"aspirationLong":"I aim to deepen my delivery practice."}';if(args.system.startsWith('Propose development goals'))return '[{"title":"Collaborative delivery","area":"Collaborative delivery","item_ids":["lp:0"],"experience":"Lead a delivery retrospective","exposure":"Seek colleague feedback","education":"Study facilitation"}]';return '{"items":[0]}';});
 });
 const runs=()=>owner.db.select().from(schema.aiModelRun).where(eq(schema.aiModelRun.tenantId,b.tenantId));
