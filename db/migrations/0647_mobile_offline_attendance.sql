@@ -276,7 +276,8 @@ CREATE CONSTRAINT TRIGGER mobile_offline_photo_committed AFTER INSERT ON mobile_
 -- leave-rest-day-roster, partial-leave-cancellation, r301-schedule-general). db/seed.ts and the test harness TRUNCATE
 -- it. No trigger reads or writes the table; no DELETE writer. ai_hr_app's table-level SELECT/INSERT/UPDATE/DELETE
 -- (0008) covers both columns and RLS (0099) still requires can_admin_payroll_for(company_id) to write; no grant added.
--- There is no settings screen or write service for these columns yet: until one exists only the owner role sets them.
+-- Their one application writer is packs/attendance/mobile-offline-settings.ts setOfflineClockingPolicy (the Offline
+-- clocking settings card), which names only these two columns and checks can_admin_payroll_for(company_id) first.
 ALTER TABLE attendance_policy ADD COLUMN offline_clocking_enabled boolean NOT NULL DEFAULT false,
  ADD COLUMN offline_max_proven_window_seconds integer NOT NULL DEFAULT 900
   CONSTRAINT attendance_policy_offline_window_ck CHECK(offline_max_proven_window_seconds BETWEEN 60 AND 86400);
@@ -396,3 +397,19 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public AS $$
 $$;
 REVOKE ALL ON FUNCTION app.mobile_offline_claim_resolution_state(uuid[]) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.mobile_offline_claim_resolution_state(uuid[]) TO ai_hr_app;
+--> statement-breakpoint
+-- The settings card's "phones offline now" (owner-approved design 2026-10-28): how many of a company's contexts are
+-- open now (not closed, not yet expired) in the current tenant. Context rows stay actor-only, so an administrator's
+-- own read would be a false zero; definer, returning one integer and no row data. The authority is the settings
+-- card's own (setOfflineClockingPolicy, packs/attendance/mobile-offline-settings.ts): a company of this tenant whose
+-- attendance policy the session may administer, app.can_admin_payroll_for (attendance_policy_rls, 0099). Anyone
+-- else, and a company of another tenant, gets NULL, never a count. company_id is the context's own column, bound at
+-- issuance to the enrollment's company.
+CREATE FUNCTION app.mobile_offline_open_context_count(company uuid) RETURNS integer
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT CASE WHEN EXISTS(SELECT 1 FROM public.company co WHERE co.id=$1 AND co.tenant_id=app.current_tenant_id()) AND coalesce(app.can_admin_payroll_for($1),false)
+  THEN (SELECT count(*)::integer FROM public.mobile_offline_context c WHERE c.tenant_id=app.current_tenant_id() AND c.company_id=$1
+   AND c.closed_at IS NULL AND c.expires_at>clock_timestamp()) END
+$$;
+REVOKE ALL ON FUNCTION app.mobile_offline_open_context_count(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.mobile_offline_open_context_count(uuid) TO ai_hr_app;

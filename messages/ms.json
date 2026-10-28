@@ -23881,6 +23881,7 @@
       "threshold": "Hantar untuk semakan HR apabila masa tidak pasti melebihi <field></field> minit",
       "thresholdLabel": "Minit ketidakpastian masa sebelum semakan HR",
       "help": "1 minit hingga 24 jam. Lalai 15 minit.",
+      "phonesOffline": "{count, plural, other {# telefon di luar talian sekarang}}",
       "waiting": "{count, plural, other {# rekod menunggu semakan}}",
       "save": "Simpan",
       "saving": "Menyimpan…",

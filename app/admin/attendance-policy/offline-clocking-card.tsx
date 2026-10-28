@@ -92,7 +92,10 @@ function CompanyOfflineClocking({ company, showName }: { company: OfflineClockin
       {result?.ok && <p role="status" className="text-sm text-muted-foreground">{t('saved')}</p>}
       {!company.canEdit && company.columns && <p className="text-xs text-muted-foreground">{t('readOnly')}</p>}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-muted-foreground">{company.waiting === null ? '' : t('waiting', { count: company.waiting })}</p>
+        <p className="text-xs text-muted-foreground">
+          {[company.phonesOffline === null ? null : t('phonesOffline', { count: company.phonesOffline }),
+            company.waiting === null ? null : t('waiting', { count: company.waiting })].filter(Boolean).join(' · ')}
+        </p>
         <Button type="submit" disabled={disabled}>{pending ? t('saving') : t('save')}</Button>
       </div>
     </form>

@@ -23881,6 +23881,7 @@
       "threshold": "当时间不确定超过 <field></field> 分钟时，交由人事审核",
       "thresholdLabel": "交由人事审核前允许的时间不确定分钟数",
       "help": "1 分钟至 24 小时。默认 15 分钟。",
+      "phonesOffline": "{count, plural, other {当前 # 部手机离线}}",
       "waiting": "{count, plural, other {# 条打卡待审核}}",
       "save": "保存",
       "saving": "正在保存…",

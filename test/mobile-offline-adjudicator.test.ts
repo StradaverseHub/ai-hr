@@ -40,7 +40,7 @@ function consumer(f:Fixture,snapshot:()=>unknown=()=>snapshotOf(f)){
  return {port,adjudicator,service};
 }
 const fields={workStart:'09:00',workEnd:'18:00',breakMinutes:60,lateAfter:'09:15',halfDayBefore:'13:00',workingDays:[1,2,3,4,5]};
-/** The company's policy row through its own writer, then the two 0647 settings as the owner (no settings writer yet). */
+/** The company's policy row through its own writer, then the two 0647 settings as the owner (a direct write; the service writer, setOfflineClockingPolicy, is test/mobile-offline-settings). */
 async function company(p:{enabled?:boolean;seconds?:number;device?:boolean}={}){
  await setAttendancePolicy(adminCtx(base),{companyId:base.companyId,...fields,requireRegisteredDevice:p.device??false});
  const rows=await owner.db.execute<{enabled:boolean;seconds:number}>(sql`update attendance_policy set offline_clocking_enabled=${p.enabled??true},offline_max_proven_window_seconds=${p.seconds??900}

@@ -23881,6 +23881,7 @@
       "threshold": "Send to HR review when time is uncertain by more than <field></field> minutes",
       "thresholdLabel": "Minutes of time uncertainty before HR review",
       "help": "1 minute to 24 hours. Default 15 minutes.",
+      "phonesOffline": "{count, plural, one {# phone offline now} other {# phones offline now}}",
       "waiting": "{count, plural, one {# punch waiting for review} other {# punches waiting for review}}",
       "save": "Save",
       "saving": "Saving…",

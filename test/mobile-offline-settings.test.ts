@@ -1,16 +1,19 @@
 /** The per-company offline clocking settings write (setOfflineClockingPolicy) and its read, on draft 0647 and on a
  * database without it: the attendance policy's own permission (can_admin_payroll_for), the 60..86400 s bounds, one
  * audit event with the previous and new values, every other attendance_policy column untouched, and a clean refusal
- * where the columns do not exist. Real RLS as the application role; the owner reads facts. */
+ * where the columns do not exist; and the card's two counts, including the definer "phones offline now" count that only
+ * the same administrator reads. Real RLS as the application role; the owner reads facts. */
 import {randomUUID} from 'node:crypto';
 import {and,asc,eq,sql} from 'drizzle-orm';
-import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
-import type {SessionContext} from '../db/client';
+import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
+import {withTenant,type SessionContext} from '../db/client';
 import * as S from '../db/schema';
-import {countOfflineClaimsAwaitingReview,readOfflineClockingSettings,setAttendancePolicy,setOfflineClockingPolicy} from '../packs/attendance/service';
+import {countOfflineClaimsAwaitingReview,countOpenOfflineContexts,readOfflineClockingSettings,setAttendancePolicy,setOfflineClockingPolicy} from '../packs/attendance/service';
+import {closeOwnOfflineContext} from '../core/mobile-offline-context';
 import {adminCtx,closeAll,harnessSnapshot,owner,resetDb,seedBase,type Base} from './harness';
 import {installCustodyDraftForWorker} from './helpers/mobile-custody-draft';
 import {installOfflineDraftForWorker} from './helpers/mobile-offline-draft';
+import {offlineServiceFixture} from './helpers/mobile-offline-service-fixture';
 
 let base:Base,other:string;
 beforeEach(async()=>{
@@ -43,6 +46,7 @@ describe('on a database without draft 0647',()=>{
   expect(await row(base.companyId)).toEqual(before);expect(await audit(base.companyId)).toEqual([]);
   expect(await readOfflineClockingSettings(adminCtx(base),base.companyId)).toEqual({columns:false,canEdit:true,policy:{enabled:false,maxProvenWindowSeconds:900}});
   expect(await countOfflineClaimsAwaitingReview(adminCtx(base),[base.companyId])).toBeNull();
+  expect(await countOpenOfflineContexts(adminCtx(base),base.companyId)).toBeNull();
  });
 });
 
@@ -108,5 +112,45 @@ describe('on draft 0647',()=>{
  it('counts no waiting punches for a company without held claims, and none for an empty company list',async()=>{
   expect(await countOfflineClaimsAwaitingReview(adminCtx(base),[base.companyId,other])).toBe(0);
   expect(await countOfflineClaimsAwaitingReview(adminCtx(base),[])).toBe(0);
+ });
+
+ it('counts a company\'s open offline contexts (not closed, not expired) for its attendance policy administrators only',async()=>{
+  vi.stubEnv('AI_CONFIG_SECRET','synthetic-offline-settings-fixture-secret-2026');
+  try{
+   const [{id:otherDept}]=await owner.db.insert(S.department).values({tenantId:base.tenantId,companyId:other,name:'Offline Settings Other Dept'}).returning({id:S.department.id});
+   const open=await offlineServiceFixture(base),closed=await offlineServiceFixture(base);
+   await closeOwnOfflineContext(closed.ctx,{contextId:closed.context.id,closeRequestId:randomUUID(),consumedThrough:0});
+   // A one-second window, then wait on the DB clock until it has passed.
+   const expired=await offlineServiceFixture(base,'ios',{snapshot:async()=>({policy:{revision:'a'.repeat(64),offlineEnabled:true,windowMs:1000,geofencingRequired:false,maximumAccuracyM:null,photoRequirement:'optional'},
+    sites:[],attendance:{baseline:'b'.repeat(64),date:'2026-10-27',clockedIn:false,openSince:null},target:{platform:'ios',appId:'ABCDEFGHIJ.ai.hr',environment:'production'},permitCount:2})});
+   await offlineServiceFixture({...base,companyId:other,deptA:otherDept});
+   const until=new Date(expired.context.expiresAt).toISOString();
+   await owner.db.execute(sql`select pg_sleep(greatest(0,extract(epoch from (${until}::timestamptz-clock_timestamp())))+0.05)`);
+   // Non-vacuous: the four contexts are what the case says, read as the owner.
+   const facts=await owner.db.execute<{id:string;company:string;closed:boolean;expired:boolean}>(sql`select id,company_id company,closed_at is not null closed,expires_at<=clock_timestamp() expired
+    from mobile_offline_context order by id`);
+   const byId=new Map(facts.map(f=>[f.id,f]));
+   expect(facts).toHaveLength(4);
+   expect(byId.get(open.context.id)).toMatchObject({company:base.companyId,closed:false,expired:false});
+   expect(byId.get(closed.context.id)).toMatchObject({company:base.companyId,closed:true,expired:false});
+   expect(byId.get(expired.context.id)).toMatchObject({company:base.companyId,closed:false,expired:true});
+   expect(facts.filter(f=>f.company===other)).toMatchObject([{closed:false,expired:false}]);
+   // The premise: an administrator's own read of the actor-only rows is a false zero, so the count needs the definer.
+   const [direct]=await withTenant(adminCtx(base),tx=>tx.execute<{count:number}>(sql`select count(*)::int count from mobile_offline_context`));
+   expect(direct.count).toBe(0);
+   const own=await scopedUser('hr_admin',base.companyId),foreign=await scopedUser('hr_admin',other),employee=await scopedUser('employee',base.companyId);
+   expect(await countOpenOfflineContexts(adminCtx(base),base.companyId)).toBe(1);
+   expect(await countOpenOfflineContexts(own,base.companyId)).toBe(1);
+   expect(await countOpenOfflineContexts(adminCtx(base),other)).toBe(1);
+   expect(await countOpenOfflineContexts(foreign,other)).toBe(1);
+   // Anyone without the settings card's authority gets no count, not a zero: another company's administrator, an
+   // employee, and the context's own actor.
+   for(const ctx of [foreign,employee,open.ctx])expect(await countOpenOfflineContexts(ctx,base.companyId)).toBeNull();
+   const [refused]=await withTenant(employee,tx=>tx.execute<{count:number|null}>(sql`select app.mobile_offline_open_context_count(${base.companyId}::uuid) count`));
+   expect(refused.count).toBeNull();
+   // A company of no tenant this session reaches, and a value that is not a company id.
+   expect(await countOpenOfflineContexts(adminCtx(base),randomUUID())).toBeNull();
+   expect(await countOpenOfflineContexts(adminCtx(base),'not-a-company')).toBeNull();
+  }finally{vi.unstubAllEnvs();}
  });
 });

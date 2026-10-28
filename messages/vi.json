@@ -23881,6 +23881,7 @@
       "threshold": "Chuyển cho nhân sự xem xét khi thời gian không chắc chắn quá <field></field> phút",
       "thresholdLabel": "Số phút thời gian không chắc chắn trước khi chuyển cho nhân sự xem xét",
       "help": "Từ 1 phút đến 24 giờ. Mặc định 15 phút.",
+      "phonesOffline": "{count, plural, other {# điện thoại đang ngoại tuyến}}",
       "waiting": "{count, plural, other {# lượt chấm công chờ xem xét}}",
       "save": "Lưu",
       "saving": "Đang lưu…",

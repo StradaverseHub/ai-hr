@@ -1,5 +1,5 @@
 /** Per-company offline clocking settings: the one write service for draft 0647's two attendance_policy columns, and
- * the settings card's waiting-for-review count (owner-approved design 2026-10-28). Reachable from the facade, so no
+ * the settings card's phones-offline-now and waiting-for-review counts (owner-approved design 2026-10-28). Reachable from the facade, so no
  * 'server-only' import here or below.
  *
  * The columns exist only where draft 0647 is installed and db/schema.ts does not declare them, so every statement
@@ -86,5 +86,17 @@ export async function countOfflineClaimsAwaitingReviewTx(tx:Tx,companyIds:readon
   and app.can_correct_attendance(c.employment_id) and not exists(select 1 from mobile_offline_claim_resolution r where r.claim_id=c.id and r.tenant_id=c.tenant_id)`);
  return Number(row?.count??0);
 }
+/** Open offline contexts of one company (phones that may clock offline now: not closed, not expired), counted by draft
+ * 0647's definer app.mobile_offline_open_context_count, because context rows are readable only by their own actor.
+ * null: the draft (the function) is not installed, or this session may not administer the company's attendance policy
+ * (the function refuses with NULL, never a count). */
+export async function countOpenOfflineContextsTx(tx:Tx,companyId:string):Promise<number|null>{
+ const id=z.string().uuid().safeParse(companyId);if(!id.success)return null;
+ const [ready]=await tx.execute<{ready:boolean}>(sql`select to_regprocedure('app.mobile_offline_open_context_count(uuid)') is not null as ready`);
+ if(ready?.ready!==true)return null;
+ const [row]=await tx.execute<{count:number|null}>(sql`select app.mobile_offline_open_context_count(${id.data}::uuid) as count`);
+ return row?.count==null?null:Number(row.count);
+}
+export function countOpenOfflineContexts(ctx:SessionContext,companyId:string){return withAttendanceTenant(ctx,tx=>countOpenOfflineContextsTx(tx,companyId));}
 export function countOfflineClaimsAwaitingReview(ctx:SessionContext,companyIds:readonly string[]){return withAttendanceTenant(ctx,tx=>countOfflineClaimsAwaitingReviewTx(tx,companyIds));}
 export function readOfflineClockingSettings(ctx:SessionContext,companyId:string){return withAttendanceTenant(ctx,tx=>readOfflineClockingSettingsTx(tx,companyId));}
