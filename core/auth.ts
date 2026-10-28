@@ -1,3 +1,4 @@
+import {emailLocale as emailLocaleSchema} from '../lib/email-design/model';
 import { manualIdentityError } from '../lib/identity/manual-model';
 import { internalSelected } from '../lib/internal-auth/config';
 import { keycloakSelected } from '../lib/identity/config';
@@ -132,6 +133,8 @@ async function appendAuthEvent(args: {
 // ─────────────────────────── Admin: invitations ───────────────────────────
 
 export type InviteUserInput = {
+  /** Language selected by the authorized inviter; retries retain this invitation fact. */
+  emailLocale?:string;
   /** Explicit new human login contact. Never creates an employment or matches by email. */
   fullName?: string;
   email: string;
@@ -148,7 +151,7 @@ export type InviteUserInput = {
  */
 async function createInvitationTx(tx:Tx,ctx:SessionContext,input:InviteUserInput,replacesDeliveryId?:string){
   assertGroupAdmin(ctx);
-  const email=input.email.trim().toLowerCase();
+  const email=input.email.trim().toLowerCase(),emailLocale=emailLocaleSchema.parse(input.emailLocale??'en');
   if(!email||!email.includes('@'))throw new Error('A valid email is required to invite a user.');
   if(!ROLES.has(input.role))throw new Error(`Unknown role: ${input.role}`);
   let personId=input.personId??null;
@@ -170,10 +173,10 @@ async function createInvitationTx(tx:Tx,ctx:SessionContext,input:InviteUserInput
   if(clash)throw new Error('Another person already has a sign-in invitation or account for this email. Each sign-in account needs its own email address.');
   const token=newRawToken(),leaseToken=randomUUID();
   const [row]=await tx.insert(appInvitation).values({tenantId:ctx.tenantId,companyId:input.companyId??null,email,
-    role:input.role,personId,tokenHash:hashToken(token),status:'pending',
+    role:input.role,emailLocale,personId,tokenHash:hashToken(token),status:'pending',
     expiresAt:sql`now()+(${INVITE_TTL_DAYS}||' days')::interval`,createdBy:ctx.userId??null}).returning({id:appInvitation.id});
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'app-invitation',aggregateId:row.id,
-    eventType:'app-user.invited',actor:actorOf(ctx),payload:{email,role:input.role,companyId:input.companyId??null}});
+    eventType:'app-user.invited',actor:actorOf(ctx),payload:{email,role:input.role,emailLocale,companyId:input.companyId??null}});
   const [delivery]=await tx.insert(accountEmailDelivery).values({tenantId:ctx.tenantId,kind:'invitation',invitationId:row.id,
     replacesDeliveryId:replacesDeliveryId??null,requestedBy:ctx.userId??null,leaseToken,leaseUntil:sql`now()+interval '90 seconds'`}).returning({id:accountEmailDelivery.id});
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'account-email',aggregateId:delivery.id,eventType:'account-email.requested',
@@ -205,7 +208,7 @@ export async function retryAccountEmail(ctx:SessionContext,id:string,acknowledge
     if(!invitation)throw Error('This invitation is no longer pending.');
     await tx.update(appInvitation).set({status:'revoked'}).where(eq(appInvitation.id,invitation.id));
     await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'app-invitation',aggregateId:invitation.id,eventType:'app-user.invitation.revoked',actor:actorOf(ctx),payload:{email:invitation.email}});
-    return createInvitationTx(tx,ctx,{email:invitation.email,role:invitation.role,companyId:invitation.companyId,personId:invitation.personId},id);
+    return createInvitationTx(tx,ctx,{email:invitation.email,role:invitation.role,emailLocale:invitation.emailLocale,companyId:invitation.companyId,personId:invitation.personId},id);
   });
   await attemptAccountEmail(created.deliveryId,created.leaseToken,provider,created.token);
 }

@@ -205,7 +205,7 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
  * tenant provisioned before the setting existed, so the two mechanisms are not interchangeable.
  */
 export const SETTING_CATALOG: SettingCatalogEntry[] = [
-  { key: 'performance.reminder_words', moduleCode: 'performance', scope: 'tenant', valueType: 'string', defaultValue: 'null', defaultOnInstall: null, customerVisible: true, description: 'Optional assessment reminder subject and opening templates. Validated by Performance.', sortOrder: 217 },
+  { key: 'performance.reminder_words', moduleCode: 'performance', scope: 'tenant', valueType: 'string', defaultValue: 'null', defaultOnInstall: null, customerVisible: false, description: 'Historical assessment wording, migrated to Email templates; no longer editable.', sortOrder: 217 },
   { key: 'performance.reminder_rules', moduleCode: 'performance', scope: 'tenant', valueType: 'string', defaultValue: '{"enabled":false,"onOpen":true,"daysBefore":[7,3,1],"everyDays":0,"sendTime":"09:00"}', defaultOnInstall: null, customerVisible: true, description: 'Assessment reminder schedule in Malaysia time. Validated by the Performance settings writer.', sortOrder: 216 },
   // Assisted drafting is on by default, as in the migrated source; a configured provider is still required.
   { key: 'performance.ai_360_enabled', moduleCode: 'performance', scope: 'tenant', valueType: 'boolean', defaultValue: true, defaultOnInstall: true, customerVisible: true, description: 'Draft colleague feedback comments.', sortOrder: 210 },

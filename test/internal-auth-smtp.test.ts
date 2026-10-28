@@ -5,6 +5,7 @@ const smtp=vi.hoisted(()=>({create:vi.fn(),send:vi.fn(),close:vi.fn()}));
 vi.mock('nodemailer',()=>({default:{createTransport:smtp.create}}));
 import { sendSmtp, type Mail, type Relay } from '../lib/internal-auth/smtp';
 import { XLSX_EMAIL_ATTACHMENT_MAX_BYTES, XLSX_EMAIL_ATTACHMENT_CONTENT_TYPE } from '../lib/email-attachment';
+import {renderEmailDesign} from '../lib/email-design/render';
 import { buildXlsx } from '../lib/spreadsheet';
 
 const relay:Relay={config:{host:'smtp.example.test',port:465,security:'tls',from:'owner@example.test',
@@ -25,6 +26,13 @@ describe('Auth-owned pure SMTP transport',()=>{
       replyTo:relay.config.replyTo,envelope:{from:relay.config.from,to:[plain.to]},subject:plain.subject,text:plain.text,
       disableFileAccess:true,disableUrlAccess:true});
     expect(smtp.close).toHaveBeenCalledOnce();
+  });
+
+  it('transmits the shared renderer HTML and plain-text alternative together',async()=>{
+    const rendered=renderEmailDesign(null,'invitation','en',{subject:'Fictional invitation',text:'Essential security notice.\nhttps://example.com/activate',link:'https://example.com/activate'});
+    await sendSmtp(relay,{to:plain.to,...rendered});
+    expect(smtp.send).toHaveBeenCalledWith(expect.objectContaining({to:plain.to,subject:rendered.subject,text:rendered.text,html:rendered.html}));
+    expect(rendered.text).toContain('Essential security notice.');expect(rendered.html).toContain('https://example.com/activate');
   });
 
   it('keeps authentication off and empty reply-to absent for existing callers',async()=>{

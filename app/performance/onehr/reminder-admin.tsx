@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import {ReminderPersonPreview} from './reminder-person-preview';
 import { getLocale,getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
@@ -25,7 +26,7 @@ export async function AssessmentReminderAdmin({cycleId,returnTo}:{cycleId:string
     {v.mayWrite?<Button type="submit" variant="secondary" className="self-end">{t('save')}</Button>:<p className="text-sm text-muted-foreground">{t('readonly')}</p>}
    </fieldset>
   </form>
-  <details><summary className="cursor-pointer text-sm font-medium">{t('words')}</summary><p className="mt-3 text-sm text-muted-foreground">{t('wordsHelp')}</p><p className="mt-2 break-words text-xs text-muted-foreground"><code>{'{first_name} · {count} · {things} · {cycle}'}</code></p><form action={assessmentReminderAction} className="mt-3 space-y-3"><input type="hidden" name="cycleId" value={cycleId}/>{back}<input type="hidden" name="action" value="words"/><fieldset disabled={!v.mayWrite} className="space-y-3"><Field label={t('subject')}><input name="subject" required maxLength={200} defaultValue={v.words?.subject??''} placeholder={t('useDefault')} className={inputCls}/></Field><Field label={t('opening')}><textarea name="opening" required maxLength={500} defaultValue={v.words?.opening??''} placeholder={t('useDefault')} className={inputCls}/></Field>{v.mayWrite&&<Button type="submit" variant="secondary">{t('saveWords')}</Button>}</fieldset></form>{v.mayWrite&&<form action={assessmentReminderAction} className="mt-3"><input type="hidden" name="cycleId" value={cycleId}/>{back}<input type="hidden" name="action" value="reset-words"/><Button type="submit" variant="outline">{t('resetWords')}</Button></form>}</details>
+  {v.mayWrite&&<p className="text-sm"><Link href="/admin/settings/email-templates" className="text-primary underline">{t('words')}</Link></p>}
   <ReminderPersonPreview cycleId={cycleId}/>
   <p className="text-sm text-muted-foreground">{t('saveFirst')}</p>
   <form action={assessmentReminderAction} className="space-y-3"><input type="hidden" name="cycleId" value={cycleId}/>{back}<input type="hidden" name="action" value="manual"/>

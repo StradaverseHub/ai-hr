@@ -9,7 +9,7 @@ import type {NotificationEmailLocale} from './notification-email-model';
 const catalogues={en:en.workflowEmail,ms:ms.workflowEmail,zh:zh.workflowEmail,vi:vi.workflowEmail,ta:ta.workflowEmail,th:th.workflowEmail};
 const escape=(s:string)=>s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 /** Shared renderer for the administrator preview and the isolated mail worker. */
-export function assessmentReminderMessage(mail:unknown,locale:NotificationEmailLocale,link:string){
+export function assessmentReminderMessage(mail:unknown,locale:NotificationEmailLocale,link:string,openingInDesign=false){
  const copy=catalogues[locale];
     const parsed=assessmentReminderMailSchema.parse(mail),tasks=parsed.tasks,c=copy.assessmentReminder;
     const groups=['feedback','team','own','lead'] as const;
@@ -25,6 +25,6 @@ export function assessmentReminderMessage(mail:unknown,locale:NotificationEmailL
       return [{label:c.groups[key],lines}];
     });
     const subject=parsed.words?.subject??c.subject.replace('{count}',String(tasks.length)),opening=parsed.words?.opening??c.opening;
-    return {subject,text:`${opening}\n\n${sections.map(s=>s.label+'\n'+s.lines.join('\n')).join('\n\n')}\n\n${copy.openApp}: ${link}\n`,
-      html:`<!doctype html><html lang="${locale}"><body><p>${escape(opening)}</p>${sections.map(s=>'<h2>'+escape(s.label)+'</h2><ul>'+s.lines.map(line=>'<li>'+escape(line)+'</li>').join('')+'</ul>').join('')}<p><a href="${escape(link)}">${escape(copy.openApp)}</a></p></body></html>`};
+    return {subject,text:`${openingInDesign?'':opening+'\n\n'}${sections.map(s=>s.label+'\n'+s.lines.join('\n')).join('\n\n')}\n\n${copy.openApp}: ${link}\n`,
+      html:`<!doctype html><html lang="${locale}"><body>${openingInDesign?'':'<p>'+escape(opening)+'</p>'}${sections.map(s=>'<h2>'+escape(s.label)+'</h2><ul>'+s.lines.map(line=>'<li>'+escape(line)+'</li>').join('')+'</ul>').join('')}<p><a href="${escape(link)}">${escape(copy.openApp)}</a></p></body></html>`};
 }

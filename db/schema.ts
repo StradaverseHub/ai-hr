@@ -648,6 +648,7 @@ export const roleAssignment = pgTable(
 export const appInvitation = pgTable(
   'app_invitation',
   {
+    emailLocale:text('email_locale').notNull().default('en'),
     id: id(),
     tenantId: tenantId(),
     companyId: uuid('company_id').references(() => company.id),
@@ -11238,3 +11239,17 @@ export const letterCounter=pgTable('letter_counter',{
 export const letterVerificationRate=pgTable('letter_verification_rate',{
  scope:text('scope').notNull(),bucket:bigint('bucket',{mode:'number'}).notNull(),hits:integer('hits').notNull(),
 },t=>[primaryKey({columns:[t.scope,t.bucket]})]);
+
+// Tenant-owned email designs. Versions and assets are appended through checked native owners.
+export const emailDesign=pgTable('email_design',{
+ tenantId:tenantId(),kind:text('kind').notNull(),locale:text('locale').notNull(),revision:integer('revision').notNull(),document:jsonb('document'),
+ updatedBy:uuid('updated_by').references(()=>appUser.id),updatedAt:timestamp('updated_at',{withTimezone:true}).defaultNow().notNull(),
+},t=>[primaryKey({columns:[t.tenantId,t.kind,t.locale]})]);
+export const emailDesignVersion=pgTable('email_design_version',{
+ tenantId:tenantId(),kind:text('kind').notNull(),locale:text('locale').notNull(),revision:integer('revision').notNull(),document:jsonb('document'),
+ createdBy:uuid('created_by').references(()=>appUser.id),createdAt:createdAt(),
+},t=>[primaryKey({columns:[t.tenantId,t.kind,t.locale,t.revision]})]);
+export const emailAsset=pgTable('email_asset',{
+ id:id(),tenantId:tenantId(),token:text('token').notNull().default(sql`replace(gen_random_uuid()::text||gen_random_uuid()::text,'-','')`),sha256:text('sha256').notNull(),mime:text('mime').notNull(),bytes:bytea('bytes').notNull(),
+ uploadedBy:uuid('uploaded_by').notNull().references(()=>appUser.id),uploadedAt:timestamp('uploaded_at',{withTimezone:true}).defaultNow().notNull(),
+},t=>[uniqueIndex('email_asset_token_key').on(t.token)]);

@@ -11,6 +11,7 @@ export async function internalNotificationEmailRequest<T>(input: NotificationEma
   const origin = internalConfig().origin;
   const service = createNotificationEmailService({
     origin, ready: recoveryMailReady,
+    async design(id,token,kind,locale,cc=false){return (await client`select app.email_design_notification(${id}::uuid,${token}::uuid,${origin},${kind},${locale},${cc}) as design`)[0]?.design;},
     async lettersReady(){try{return (await client`select app.internal_auth_letter_mail_ready() as ready`)[0]?.ready===true;}catch{return false;}},
     async target(id, token) {
       const rows = await client<WorkflowMailTarget[]>`select * from app.internal_auth_notification_target(${id}::uuid,${token}::uuid,${origin})`;
@@ -41,7 +42,7 @@ export async function internalNotificationEmailRequest<T>(input: NotificationEma
     async finish(id, token, outcome, error) {
       return (await client`select app.internal_auth_notification_finish(${id}::uuid,${token}::uuid,${outcome},${error}) finished`)[0]?.finished === true;
     },
-    async send(target, mail) { const message = workflowEmailMessage(mail); await sendInternalMail({ to: target.email, subject: message.subject, text: message.text }, transport); },
+    async send(target, mail) { const message = workflowEmailMessage(mail); await sendInternalMail({ to: target.email, ...message }, transport); },
   });
   return await service(input) as T;
 }

@@ -1,3 +1,5 @@
+import {saveEmailDesign} from '../core/email-design/service';
+import {defaultEmailDocument} from '../lib/email-design/model';
 import { randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { generate } from 'otplib';
@@ -10,7 +12,7 @@ import { digest } from '../lib/internal-auth/crypto';
 import { readRecord, writeRecord } from '../lib/internal-auth/store';
 import { changeInitialPassword, credentialByLogin, readSession, revokeSession, rotateRefresh, startLogin, verifyMfa, type AuthReply, type Credential } from '../lib/internal-auth/service';
 import { requestRecovery, completeRecovery, sendInternalRecovery } from '../lib/internal-auth/recovery';
-import { startInvitation, acceptInternalInvitation } from '../lib/internal-auth/invitations';
+import { sendInternalInvitation,startInvitation, acceptInternalInvitation } from '../lib/internal-auth/invitations';
 import { createManualAccount, resumeManualAccount } from '../core/manual-identity';
 import { readAccountEmailDeliveries } from '../core/account-email';
 import { withInternalRecoveryLabels } from '../lib/internal-auth/account-email-view';
@@ -209,11 +211,35 @@ describe('first-party authentication with real private storage and existing HR b
     expect(await owner.db.select().from(schema.employment).where(eq(schema.employment.personId,session.personId!))).toHaveLength(0);
     await expect(startInvitation(invite.token,'another.username',final,native)).rejects.toBeDefined();
   });
+  it('sends invitations in the inviter-selected language and preserves it on explicit retry',async()=>{
+    const design=defaultEmailDocument('invitation');design.blocks[0]={...design.blocks[0],type:'header',label:'Fictional Bahasa invitation',style:{}};
+    await saveEmailDesign(adminCtx(base),'invitation','ms',design,0);
+    await writeRecord(client,'email-state',{active:{config:{host:'smtp.invalid'}},revision:'test',drafts:{}},null);
+    const messages:string[]=[];
+    const provider:AuthProvider={sendInvitation:(email,path,context)=>sendInternalInvitation(email,path??'',context,async(_relay,mail)=>{messages.push(mail.text);}),revokeInvitation:async()=>{},sendPasswordReset:async()=>{},endSession:async()=>{},emailReadiness:async()=>null};
+    await inviteUser(adminCtx(base),{fullName:'Fictional invited colleague',email:'invited@example.test',role:'employee',emailLocale:'ms'},provider);
+    expect(messages).toHaveLength(1);expect(messages[0]).toContain('Fictional Bahasa invitation');
+    const jobs=await owner.db.select().from(schema.accountEmailDelivery);expect(jobs).toHaveLength(1);
+    await retryAccountEmail(adminCtx(base),jobs[0].id,true,undefined,provider);expect(messages).toHaveLength(2);expect(messages[1]).toContain('Fictional Bahasa invitation');
+    expect((await owner.db.select().from(schema.appInvitation)).every(row=>row.emailLocale==='ms')).toBe(true);
+  });
+  it('preserves the public recovery request language in its exact encrypted request context',async()=>{
+    await enroll();
+    const english=defaultEmailDocument('recovery'),malay=defaultEmailDocument('recovery');english.blocks[0]={...english.blocks[0],type:'header',label:'Fictional English recovery',style:{}};malay.blocks[0]={...malay.blocks[0],type:'header',label:'Fictional Bahasa recovery',style:{}};
+    await saveEmailDesign(adminCtx(base),'recovery','en',english,0);await saveEmailDesign(adminCtx(base),'recovery','ms',malay,0);
+    await writeRecord(client,'email-state',{active:{config:{host:'smtp.invalid'}},revision:'test',drafts:{}},null);
+    let text='';await requestRecovery('alpha','owner',async(_relay,mail)=>{text=mail.text;},attempt=>attempt(),'ms');
+    expect(text).toContain('Fictional Bahasa recovery');expect(text).not.toContain('Fictional English recovery');expect(text).toMatch(/#token=[A-Za-z0-9_-]{43}/);
+  });
   it('recovery keeps MFA, consumes its link once and invalidates every prior session', async () => {
     const { signedIn } = await enroll(); const c = (await credentialByLogin('alpha', 'owner'))!;
     await writeRecord(client, 'email-state', { active: { config: { host: 'smtp.invalid' } }, revision: 'test', drafts: {} }, null);
-    let sentText = '';
-    await requestRecovery('alpha', 'owner', async (_relay, mail) => { sentText = mail.text; });
+    const design=defaultEmailDocument('recovery');design.blocks[0]={...design.blocks[0],type:'header',label:'Fictional account-tenant design',style:{}};
+    await saveEmailDesign(adminCtx(base),'recovery','en',design,0);
+    let sentText = '',sentHtml='';
+    await requestRecovery('alpha', 'owner', async (_relay, mail) => { sentText = mail.text;sentHtml=mail.html??''; });
+    expect(sentText).toContain('Fictional account-tenant design');expect(sentHtml).toContain('Fictional account-tenant design');
+    expect(sentText).toContain('Your authenticator or a recovery code is still required');
     const rows = await owner.client`select id,status from account_email_delivery where kind='recovery'`;
     expect(rows).toHaveLength(1); expect(rows[0].status).toBe('sent');
     const token = sentText.match(/#token=([A-Za-z0-9_-]{43})/)![1];

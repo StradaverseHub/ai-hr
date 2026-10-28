@@ -7,7 +7,7 @@ import { ManualAccountSetup } from './manual-setup';
 import { AccountTargetFields } from './account-target-fields';
 import { UsersDirectory } from './users-directory';
 import type { UserDirectoryRow } from './directory-model';
-import { getTranslations } from 'next-intl/server';
+import { getTranslations,getLocale } from 'next-intl/server';
 import { isGroupAdmin, requireAdmin } from '@/lib/authz';
 import { listUsers } from '@/core/admin';
 import { listAssistantGrants } from '@/core/assistant-grant';
@@ -35,7 +35,7 @@ export default async function UsersPage({
 }: {
   searchParams: Promise<{ error?: string; archived?: string; manualError?:string; manualSuccess?:string; activate?:string }>;
 }) {
-  const t = await getTranslations('admin.users');
+  const t = await getTranslations('admin.users'),locale=await getLocale();
   const accessT=await getTranslations('accessConfiguration');
   // Registry column labels use complete keys across nav, admin and installed modules.
   const tAll = await getTranslations();
@@ -193,6 +193,7 @@ export default async function UsersPage({
                 <span className="text-xs font-medium text-muted-foreground">{t('inviteEmail')}</span>
                 <input type="email" name="email" required defaultValue={selectedPerson?.email ?? ''} placeholder="name@company.com" className={inputCls} />
               </label>
+              <label className="flex min-w-56 flex-1 flex-col gap-1"><span className="text-xs font-medium text-muted-foreground">{tAll('emailDesign.language')}</span><select name="emailLocale" defaultValue={locale} className={inputCls}>{['en','ms','zh','vi','ta','th'].map(language=><option key={language} value={language}>{tAll(`emailDesign.languages.${language}`)}</option>)}</select></label>
               </AccountTargetFields>
               <button type="submit" className={`${btnPrimary} w-fit`}>
                 {t('inviteSubmit')}

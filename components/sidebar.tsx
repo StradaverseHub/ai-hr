@@ -386,6 +386,7 @@ const SYSTEM_SETTINGS_NODE: CollapsibleGroupItem = {
     // Admins can inspect SMTP setup; only an enrolled installation identity can change it.
     { href: '/admin/settings/login', labelKey: 'loginPresentation', icon: Settings2, adminOnly: true, loginPresentationOnly: true },
     { href: '/admin/settings/email', labelKey: 'identityEmail', icon: Mail, identityEmailOnly: true },
+    { href: '/admin/settings/email-templates', labelKey: 'emailTemplates', icon: Mail, adminOnly: true },
     // 3f44a539 / 4a8a4fff — existing destinations, relocated from the flat Administration menu.
     // Explicit child admin gates preserve their previous group-level audience: the installation email
     // operator can open this node, but may still see only the identityEmailOnly child above.
