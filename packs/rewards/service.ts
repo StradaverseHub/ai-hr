@@ -245,6 +245,7 @@ const ANNUAL_ROUTE: RewardRole[] = ['bu', 'bg', 'gr', 'ctro', 'ec'];
 export async function listRewardUnits(ctx: SessionContext, companyIds: string[], existingTx?: AiReadTx) {
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   companyIds = companyIds.slice();
+  if(!existingTx)await withRewardsTenant(ctx,tx=>tx.execute(sql`select app.reward_access_observe(NULL::uuid)`));
 
   return withCanonicalAiReadTx(ctx, existingTx, 'rewards', withRewardsTenant, async tx => {
     if (!companyIds.length) return [];
@@ -1274,6 +1275,7 @@ function boardRow(v: ReviewProjection, meta: { cycle: string; company: string },
  * review page's own read — so membership, entry visibility and flags cannot drift between the two screens.
  */
 export async function rewardApprovalsBoard(ctx: SessionContext, companyIds: string[]) {
+  await withRewardsTenant(ctx,tx=>tx.execute(sql`select app.reward_access_observe(NULL::uuid)`));
   return withRewardsTenant(ctx, async tx => {
     if (!companyIds.length) return [] as RewardBoardRow[];
     const units = await tx.select({ id: rewardUnit.id, cycle: rewardCycle.name, company: company.legalName })

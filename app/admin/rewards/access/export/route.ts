@@ -9,7 +9,7 @@ export async function GET(){
  const value=await rewardAccessAdministration(session,scope);
  const rows=value.members.map(member=>{
   const review=value.reviews.find(review=>review.id===member.unitId)!;
-  return [member.name??member.email??'',rewardRoleLabels[member.role],review.company,review.unit,review.cycle,review.year,review.status,member.validFrom,member.validTo,member.suspension?.reason??(member.disabled?'login':'active'),member.suspension?.on,member.coversUserId,member.lastChangedAt];
+  return [member.name??member.email??'',rewardRoleLabels[member.role],review.company,review.unit,review.cycle,review.year,review.status,member.validFrom,member.validTo,member.suspension?.reason??(member.disabled?'login':'active'),member.suspension?.on,member.coversUserId?(value.users.find(user=>user.id===member.coversUserId)?.name??value.members.find(other=>other.userId===member.coversUserId)?.name??'Unavailable'):'',member.lastChangedAt];
  });
- return new Response('\uFEFF'+toCsv([['Person','Role','Company','Business unit','Review cycle','Year','Review status','From','Until','Access status','Status changed on','Proxy for login ID','Last change'],...rows]),{headers:{'Content-Type':'text/csv; charset=utf-8','Content-Disposition':'attachment; filename="rewards-access.csv"','Cache-Control':'private, no-store'}});
+ return new Response('\uFEFF'+toCsv([['Person','Role','Company','Business unit','Review cycle','Year','Review status','From','Until','Access status','Status changed on','Proxy for','Last change'],...rows]),{headers:{'Content-Type':'text/csv; charset=utf-8','Content-Disposition':'attachment; filename="rewards-access.csv"','Cache-Control':'private, no-store'}});
 }

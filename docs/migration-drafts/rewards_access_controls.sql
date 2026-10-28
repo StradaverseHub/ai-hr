@@ -95,10 +95,16 @@ CREATE POLICY reward_access_request_read ON reward_access_request FOR SELECT USI
 GRANT SELECT ON reward_access_request TO ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.reward_access_request_create(p_changes jsonb) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE t uuid:=app.current_tenant_id();actor uuid:=app.current_user_id();c jsonb;u public.reward_unit;k uuid;revisions jsonb:='{}';snapshots jsonb:='{}';fingerprints jsonb:='{}';request_id uuid:=gen_random_uuid();
+DECLARE t uuid:=app.current_tenant_id();actor uuid:=app.current_user_id();c jsonb;target jsonb;u public.reward_unit;k uuid;revisions jsonb:='{}';snapshots jsonb:='{}';fingerprints jsonb:='{}';request_id uuid:=gen_random_uuid();
 BEGIN
  PERFORM app.access_workforce_write_lock();
- IF actor IS NULL OR jsonb_typeof(p_changes)<>'array' OR jsonb_array_length(p_changes) NOT BETWEEN 1 AND 500 THEN RAISE EXCEPTION 'invalid access request' USING ERRCODE='23514'; END IF;
+ IF actor IS NULL OR jsonb_typeof(p_changes)<>'array' OR jsonb_array_length(p_changes) NOT BETWEEN 1 AND 500 OR octet_length(p_changes::text)>2000000 THEN RAISE EXCEPTION 'invalid access request' USING ERRCODE='23514'; END IF;
+ FOR c IN SELECT value FROM jsonb_array_elements(p_changes) LOOP
+ IF jsonb_typeof(c)<>'object' OR NOT (c ?& ARRAY['unitId','revision','before','after']) OR c-ARRAY['unitId','revision','before','after']<>'{}'::jsonb OR jsonb_typeof(c->'before') NOT IN('object','null') OR jsonb_typeof(c->'after') NOT IN('object','null') OR (c->'before'='null'::jsonb AND c->'after'='null'::jsonb) THEN RAISE EXCEPTION 'invalid access change shape' USING ERRCODE='23514'; END IF;
+ FOR target IN SELECT member FROM (VALUES(c->'before'),(c->'after')) x(member) WHERE member<>'null'::jsonb LOOP
+ IF NOT (target ?& ARRAY['userId','role']) OR target->>'role' NOT IN('bu','bg','gr','ctro','ec','pbp','payroll') OR target-ARRAY['userId','role','validFrom','validTo','coversUserId','restoreReason','restoreFingerprint']<>'{}'::jsonb THEN RAISE EXCEPTION 'invalid access assignment shape' USING ERRCODE='23514'; END IF;
+ END LOOP;
+ END LOOP;
  FOR k IN SELECT DISTINCT (value->>'unitId')::uuid FROM jsonb_array_elements(p_changes) ORDER BY 1 LOOP
  SELECT * INTO u FROM public.reward_unit WHERE id=k AND tenant_id=t FOR UPDATE;
  IF u.id IS NULL OR u.deleted_at IS NOT NULL OR NOT app.reward_admin(u.company_id) THEN RAISE EXCEPTION 'access request scope' USING ERRCODE='42501'; END IF;
@@ -106,11 +112,16 @@ BEGIN
  revisions:=revisions||jsonb_build_object(k::text,u.revision);snapshots:=snapshots||jsonb_build_object(k::text,app.reward_access_members_snapshot(k));
  END LOOP;
  FOR c IN SELECT value FROM jsonb_array_elements(p_changes) LOOP
+ IF c->'before'<>'null'::jsonb AND NOT EXISTS(SELECT 1 FROM public.reward_member m WHERE m.unit_id=(c->>'unitId')::uuid AND m.tenant_id=t AND m.user_id=(c->'before'->>'userId')::uuid AND m.role=c->'before'->>'role') THEN RAISE EXCEPTION 'access membership changed' USING ERRCODE='40001'; END IF;
  IF (c->>'revision')::int IS DISTINCT FROM (revisions->>(c->>'unitId'))::int THEN RAISE EXCEPTION 'access request changed' USING ERRCODE='40001'; END IF;
+ IF c->'after'->>'coversUserId' IS NOT NULL AND (c->'after'->>'validTo' IS NULL OR c->'after'->>'coversUserId'=c->'after'->>'userId' OR NOT EXISTS(SELECT 1 FROM public.reward_member m WHERE m.tenant_id=t AND m.unit_id=(c->>'unitId')::uuid AND m.user_id=(c->'after'->>'coversUserId')::uuid AND m.role=c->'after'->>'role')) THEN RAISE EXCEPTION 'a proxy needs an existing holder and an end date' USING ERRCODE='23514'; END IF;
  IF c->'after'->>'restoreReason' IS NOT NULL AND (c->'before'='null'::jsonb OR c->'before'->>'userId' IS DISTINCT FROM c->'after'->>'userId' OR c->'before'->>'role' IS DISTINCT FROM c->'after'->>'role' OR NOT EXISTS(SELECT 1 FROM public.reward_member m WHERE m.unit_id=(c->>'unitId')::uuid AND m.tenant_id=t AND m.user_id=(c->'before'->>'userId')::uuid AND m.role=c->'before'->>'role' AND app.reward_member_state(m.id)->>'reason' IN('notice','assignment'))) THEN RAISE EXCEPTION 'only a suspended existing assignment can be restored' USING ERRCODE='23514'; END IF;
  IF c->'after'->>'restoreReason' IS NOT NULL AND NOT EXISTS(SELECT 1 FROM app.reward_roles((c->>'unitId')::uuid) role WHERE role='gr') THEN RAISE EXCEPTION 'Group Rewards restore required' USING ERRCODE='42501'; END IF;
  IF c->'after'<>'null'::jsonb AND NOT EXISTS(SELECT 1 FROM public.app_user x WHERE x.id=(c->'after'->>'userId')::uuid AND x.tenant_id=t AND x.archived_at IS NULL AND NOT app.login_blocked(x.id)) THEN RAISE EXCEPTION 'access account unavailable' USING ERRCODE='42501'; END IF;
  END LOOP;
+ SELECT jsonb_agg(
+ jsonb_set(jsonb_set(value,'{before}',CASE WHEN value->'before'='null'::jsonb THEN 'null'::jsonb ELSE (SELECT jsonb_build_object('userId',m.user_id,'role',m.role,'validFrom',m.valid_from,'validTo',m.valid_to,'coversUserId',m.covers_user_id) FROM public.reward_member m WHERE m.tenant_id=t AND m.unit_id=(value->>'unitId')::uuid AND m.user_id=(value->'before'->>'userId')::uuid AND m.role=value->'before'->>'role') END),'{after}',CASE WHEN value->'after'='null'::jsonb THEN 'null'::jsonb ELSE jsonb_build_object('validFrom',COALESCE(value->'after'->>'validFrom',(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date::text),'validTo',NULL,'coversUserId',NULL)||value->'after' END)
+ ORDER BY ord) INTO p_changes FROM jsonb_array_elements(p_changes) WITH ORDINALITY x(value,ord);
  SELECT jsonb_agg(CASE WHEN value->'after'->>'restoreReason' IS NULL THEN value ELSE jsonb_set(value,'{after,restoreFingerprint}',to_jsonb(app.reward_member_people_fingerprint((value->'after'->>'userId')::uuid,(value->>'unitId')::uuid))) END ORDER BY ord) INTO p_changes FROM jsonb_array_elements(p_changes) WITH ORDINALITY x(value,ord);
  SELECT COALESCE(jsonb_object_agg(x.unit_id||':'||x.user_id,app.reward_member_people_fingerprint(x.user_id::uuid,x.unit_id::uuid)),'{}'::jsonb) INTO fingerprints FROM (SELECT DISTINCT value->>'unitId' as unit_id,member->>'userId' as user_id FROM jsonb_array_elements(p_changes) c(value) CROSS JOIN LATERAL (VALUES(value->'before'),(value->'after')) m(member) WHERE member<>'null'::jsonb) x;
  INSERT INTO public.reward_access_request(id,tenant_id,changes,unit_revisions,before_members,people_fingerprints,requested_by) VALUES(request_id,t,p_changes,revisions,snapshots,fingerprints,actor);
@@ -169,6 +180,7 @@ BEGIN
  IF q.id IS NULL OR NOT app.reward_access_request_authorised(q.id) THEN RAISE EXCEPTION 'access request scope' USING ERRCODE='42501'; END IF;
  IF q.status<>'pending' THEN RAISE EXCEPTION 'access request already decided' USING ERRCODE='40001'; END IF;
  IF actor IS NULL OR actor=q.requested_by OR EXISTS(SELECT 1 FROM jsonb_array_elements(q.changes) c WHERE actor::text IN(c->'before'->>'userId',c->'after'->>'userId')) THEN RAISE EXCEPTION 'second independent administrator required' USING ERRCODE='42501'; END IF;
+ IF p_approve IS NULL OR length(p_reason)>2000 THEN RAISE EXCEPTION 'invalid access decision' USING ERRCODE='23514'; END IF;
  outcome:=CASE WHEN p_approve THEN 'approved' ELSE 'rejected' END;
  IF NOT p_approve AND length(btrim(p_reason))<10 THEN RAISE EXCEPTION 'rejection reason required' USING ERRCODE='23514'; END IF;
  FOR k IN SELECT key::uuid FROM jsonb_each(q.unit_revisions) ORDER BY 1 LOOP
@@ -213,12 +225,31 @@ END $$;
 REVOKE ALL ON FUNCTION app.reward_access_request_decide(uuid,boolean,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.reward_access_request_decide(uuid,boolean,text) TO ai_hr_app;
 --> statement-breakpoint
--- All later changes go through the checker-owned SECURITY DEFINER. Bootstrap is restricted to the
--- just-created review in this transaction: creator GR, or exact inherited parent seats for an offcycle.
+-- Bootstrap custody is bound to the creating PostgreSQL transaction, not a forgeable timestamp/GUC.
+-- unit_id is a soft internal pointer so this authorization receipt cannot make unused reviews undeletable.
+CREATE TABLE reward_access_bootstrap(tenant_id uuid NOT NULL REFERENCES tenant(id),unit_id uuid PRIMARY KEY,transaction_id bigint NOT NULL,creator_id uuid NOT NULL REFERENCES app_user(id));
+ALTER TABLE reward_access_bootstrap ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reward_access_bootstrap FORCE ROW LEVEL SECURITY;
+CREATE POLICY reward_access_bootstrap_owner ON reward_access_bootstrap FOR ALL USING(app.acting_as_owner()) WITH CHECK(app.acting_as_owner());
+REVOKE ALL ON reward_access_bootstrap FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.reward_access_register_bootstrap() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NEW.created_by IS DISTINCT FROM app.current_user_id() OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() THEN RETURN NEW; END IF;
+ INSERT INTO public.reward_access_bootstrap(tenant_id,unit_id,transaction_id,creator_id) VALUES(NEW.tenant_id,NEW.id,txid_current(),NEW.created_by);
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_access_register_bootstrap() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER reward_access_register_bootstrap AFTER INSERT ON reward_unit FOR EACH ROW EXECUTE FUNCTION app.reward_access_register_bootstrap();
+CREATE FUNCTION app.reward_member_bootstrap_allowed(wanted_unit uuid,wanted_user uuid,wanted_role text,from_day date,to_day date,covers uuid,restore_reason text,restore_fingerprint text) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.reward_access_bootstrap b JOIN public.reward_unit r ON r.id=b.unit_id AND r.tenant_id=b.tenant_id
+ WHERE r.id=wanted_unit AND b.tenant_id=app.current_tenant_id() AND b.creator_id=app.current_user_id() AND b.transaction_id=txid_current() AND r.revision=1 AND r.status='draft'
+ AND ((wanted_user=app.current_user_id() AND wanted_role='gr' AND from_day=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND to_day IS NULL AND covers IS NULL AND restore_reason IS NULL AND restore_fingerprint IS NULL AND app.reward_admin(r.company_id))
+ OR (r.parent_unit_id IS NOT NULL AND EXISTS(SELECT 1 FROM app.reward_roles(r.parent_unit_id) role WHERE role IN('bu','bg','gr')) AND EXISTS(SELECT 1 FROM public.reward_member p WHERE p.unit_id=r.parent_unit_id AND p.tenant_id=r.tenant_id AND p.user_id=wanted_user AND p.role=wanted_role AND p.valid_from=from_day AND p.valid_to IS NOT DISTINCT FROM to_day AND p.covers_user_id IS NOT DISTINCT FROM covers AND p.restored_reason IS NOT DISTINCT FROM restore_reason AND p.restored_fingerprint IS NOT DISTINCT FROM restore_fingerprint AND app.reward_member_eligible(p.id)))));
+$$;
+REVOKE ALL ON FUNCTION app.reward_member_bootstrap_allowed(uuid,uuid,text,date,date,uuid,text,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_member_bootstrap_allowed(uuid,uuid,text,date,date,uuid,text,text) TO ai_hr_app;
 DROP POLICY reward_member_write ON reward_member;
-CREATE POLICY reward_member_bootstrap ON reward_member FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND EXISTS(
- SELECT 1 FROM reward_unit r WHERE r.id=unit_id AND r.tenant_id=reward_member.tenant_id AND r.created_by=app.current_user_id() AND r.revision=1 AND r.created_at>=transaction_timestamp()
- AND ((user_id=app.current_user_id() AND role='gr' AND app.reward_admin(r.company_id)) OR (r.parent_unit_id IS NOT NULL AND EXISTS(SELECT 1 FROM reward_member p WHERE p.unit_id=r.parent_unit_id AND p.user_id=reward_member.user_id AND p.role=reward_member.role AND p.valid_from=reward_member.valid_from AND p.valid_to IS NOT DISTINCT FROM reward_member.valid_to AND p.covers_user_id IS NOT DISTINCT FROM reward_member.covers_user_id AND p.restored_reason IS NOT DISTINCT FROM reward_member.restored_reason AND p.restored_fingerprint IS NOT DISTINCT FROM reward_member.restored_fingerprint AND app.reward_member_eligible(p.id))))));
+CREATE POLICY reward_member_bootstrap ON reward_member FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND app.reward_member_bootstrap_allowed(unit_id,user_id,role,valid_from,valid_to,covers_user_id,restored_reason,restored_fingerprint));
 
 --> statement-breakpoint
 CREATE FUNCTION app.reward_access_candidate_eligible(wanted_unit uuid,wanted_user uuid,wanted_role text) RETURNS boolean
@@ -248,7 +279,7 @@ DECLARE q public.reward_access_request;
 BEGIN
  FOR q IN SELECT * FROM public.reward_access_request x WHERE x.tenant_id=app.current_tenant_id() AND x.status='pending' AND app.reward_access_request_authorised(x.id) AND app.reward_access_request_stale(x.id) FOR UPDATE LOOP
  UPDATE public.reward_access_request SET status='lapsed',decided_by=app.current_user_id(),decided_at=now(),reason='Review or access changed' WHERE id=q.id;
- INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) VALUES(q.tenant_id,'reward-access-request',q.id,'reward-access.lapsed','user',app.current_user_id(),jsonb_build_object('requestedBy',q.requested_by,'changes',q.changes));
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) VALUES(q.tenant_id,'reward-access-request',q.id,'reward-access.lapsed',CASE WHEN app.current_user_id() IS NULL THEN 'system' ELSE 'user' END,app.current_user_id(),jsonb_build_object('requestedBy',q.requested_by,'changes',q.changes));
  END LOOP;
 END $$;
 REVOKE ALL ON FUNCTION app.reward_access_lapse_requests() FROM PUBLIC;
@@ -260,7 +291,7 @@ BEGIN
  IF NEW.revision=OLD.revision AND NEW.status=OLD.status AND NEW.deleted_at IS NOT DISTINCT FROM OLD.deleted_at THEN RETURN NEW; END IF;
  FOR q IN SELECT * FROM public.reward_access_request x WHERE x.tenant_id=NEW.tenant_id AND x.status='pending' AND x.unit_revisions ? NEW.id::text AND x.id::text IS DISTINCT FROM current_setting('app.reward_approving_request',true) FOR UPDATE LOOP
  UPDATE public.reward_access_request SET status='lapsed',decided_by=app.current_user_id(),decided_at=now(),reason='Review or access changed' WHERE id=q.id;
- INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) VALUES(q.tenant_id,'reward-access-request',q.id,'reward-access.lapsed','user',app.current_user_id(),jsonb_build_object('requestedBy',q.requested_by,'changes',q.changes));
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) VALUES(q.tenant_id,'reward-access-request',q.id,'reward-access.lapsed',CASE WHEN app.current_user_id() IS NULL THEN 'system' ELSE 'user' END,app.current_user_id(),jsonb_build_object('requestedBy',q.requested_by,'changes',q.changes));
  END LOOP;
  RETURN NEW;
 END $$;

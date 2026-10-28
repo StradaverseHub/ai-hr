@@ -198,7 +198,7 @@ export async function rewardAccessRequests(ctx:SessionContext):Promise<RewardAcc
  });
 }
 export async function decideRewardAccessRequest(ctx:SessionContext,requestId:string,approve:boolean,reason=''){
- uuid.parse(requestId);z.boolean().parse(approve);if(!approve&&reason.trim().length<10)throw new RewardMaintenanceError('reason');
+ uuid.parse(requestId);z.boolean().parse(approve);reason=z.string().trim().max(2000).parse(reason);if(!approve&&reason.trim().length<10)throw new RewardMaintenanceError('reason');
  return withRewardsTenant(ctx,async tx=>{
   await tx.execute(sql`select app.access_workforce_write_lock()`);
   const [q]=await tx.execute<{changes:RewardAccessChange[];requested_by:string;status:string}>(sql`select changes,requested_by,status from reward_access_request where id=${requestId}::uuid`);

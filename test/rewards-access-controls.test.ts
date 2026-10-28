@@ -61,6 +61,11 @@ describe('Rewards two-person access and live People eligibility',()=>{
   await expect(withTenant(admin,tx=>tx.insert(s.rewardMember).values({tenantId:b.tenantId,unitId,userId:target.userId!,role:'bu'}))).rejects.toThrow();
   expect((await rewardAccessAdministration(admin,[b.companyId])).members.some(m=>m.userId===target.userId)).toBe(false);
  });
+ it('does not reactivate bootstrap authority by forging a review timestamp in a later transaction',async()=>{
+  await owner.db.delete(s.rewardMember).where(eq(s.rewardMember.unitId,unitId));
+  await withTenant(admin,tx=>tx.update(s.rewardUnit).set({createdAt:new Date('2200-01-01')}).where(eq(s.rewardUnit.id,unitId)));
+  await expect(withTenant(admin,tx=>tx.insert(s.rewardMember).values({tenantId:b.tenantId,unitId,userId:admin.userId!,role:'gr'}))).rejects.toThrow();
+ });
  it('uses inclusive access windows and removes coverage as soon as People records notice',async()=>{
   const pending=await request({userId:target.userId!,role:'bu',validFrom:today,validTo:today});await decideRewardAccessRequest(checker,pending.requestId,true);
   expect((await getRewardUnit(target,unitId)).roles).toContain('bu');
