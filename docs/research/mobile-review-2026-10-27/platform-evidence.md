@@ -2236,3 +2236,18 @@ photo rule, D-C corrected-day unchanged) passed [40636835788](https://github.com
 32 files, 493 cases (DB 15 files/287, including claim review 19; no-DB 17 files/206), no failures or skips, plus root
 TypeScript. Draft 0647 is `b8313345c31f0f0bcbbf11050ff85cd7b505efa74db3a2f886764fac97f936bf`; 0636 and the journal are
 unchanged. The same unmounted, synthetic-proof and no-device limits apply.
+
+### Offline snapshot, deployment assembly and sync transport (28 October 2026)
+
+Assembly candidate `ab4161a1f` ([40644807652](https://github.com/StradaverseHub/ai-hr/actions/runs/40644807652)) passed
+811 of 813 cases in 29 files; root TypeScript failed once on a snapshot-test field, and `r290-customer-deploy-path`
+failed twice because the snapshot and adjudicator imported a `server-only` module through the attendance facade, which
+`db/seed.ts` loads as a plain process. Both were repaired in `d04f116f6`/`7a9966dcb` (the context issuance error moved to
+`lib/mobile-offline-errors.ts`, re-exported by core). Transport candidate `7a9966dcb`
+([40647391873](https://github.com/StradaverseHub/ai-hr/actions/runs/40647391873)) passed all 918 cases in 37 files,
+including the new HTTP (14) and deployment (5) suites and r290 (35), but root TypeScript and the Linux build failed on
+one TS2322 in `lib/mobile-api/offline-sync-integrity.ts`. Repair `bc6fd1ab4`
+([40648368720](https://github.com/StradaverseHub/ai-hr/actions/runs/40648368720)) passed root TypeScript, the Linux
+Node 20 production build and the two transport suites (19 cases). Routes answer `not_configured` until
+`AIHR_MOBILE_OFFLINE_POLICY` and the signing key are configured; no key is configured anywhere. Synthetic Play and
+vendor proofs only; no device, no native client.
