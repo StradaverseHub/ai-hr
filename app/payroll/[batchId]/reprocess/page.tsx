@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
@@ -138,7 +139,10 @@ export default async function ReprocessPage({
       label: t('summaryCycle'),
       // Same derivation as the list and the run screen: the run-type label plus the free-text remarks,
       // so wizard cycles stored under the generic 'off_cycle' bucket still read distinctly.
-      value: `${tl(`runType.${batch.runType}`)}${batch.remarks ? ` — ${batch.remarks}` : ''}`,
+      // b240c0ff — imported payroll history reads "Monthly - By Import", never "Adjustment — Imported payroll history".
+      value: batch.historyImportAttemptId
+        ? payrollRunLabel(batch, tl(`runType.${batch.runType}`))
+        : `${tl(`runType.${batch.runType}`)}${batch.remarks ? ` — ${batch.remarks}` : ''}`,
     },
     { label: tl('colCompany'), value: listed?.company ?? '—' },
     { label: t('summaryPaymentDate'), value: paymentDate },

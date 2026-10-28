@@ -28,6 +28,8 @@ import {
   STATUTORY_DESTINATIONS,
   STATUTORY_IMPORT_CODES,
   missingHistoryColumns,
+  historyColumnLabel,
+  HISTORY_ERROR_TYPES,
   payComponentDestination,
   readHistoryField,
   historySampleRows,
@@ -38,7 +40,7 @@ import { buildTemplateCsv, payrollHistoryTemplate } from '../lib/import-template
 
 const CONTRACT_KEYS: string[] = [...PAYROLL_HISTORY_COLUMNS.required, ...PAYROLL_HISTORY_COLUMNS.optional];
 const HEADINGS = {
-  title: 'Accepted DOE codes',
+  title: 'Accepted Pay Items Codes',
   note: 'A code the system does not recognise stops its line.',
   code: 'Code',
   label: 'Meaning',
@@ -53,12 +55,34 @@ const HEADINGS = {
 
 describe('payroll-history template', () => {
   it('the reporter’s headings round-trip to the contract keys, in their order', () => {
-    // Exactly what parseCsvRecords does to a header cell.
+    // Exactly what parseCsvRecords does to a header cell. b240c0ff — "Pay Items Code" normalises to
+    // `pay_items_code`, an ALIAS of the contract key `doe_code` (the internal key did not change), so each
+    // heading must land in its own key's alias list rather than equal the key.
     const normalise = (h: string) => h.trim().toLowerCase().replace(/\s+/g, '_');
-    expect(PAYROLL_HISTORY_HEADERS.map(normalise)).toEqual(CONTRACT_KEYS);
-    // And through the real parser, on a real header row, including CRLF.
+    const normalised = PAYROLL_HISTORY_HEADERS.map(normalise);
+    expect(normalised).toHaveLength(CONTRACT_KEYS.length);
+    CONTRACT_KEYS.forEach((key, i) => expect(PAYROLL_HISTORY_HEADER_ALIASES[key]).toContain(normalised[i]));
+    expect(normalised[3]).toBe('pay_items_code');
+    // And through the real parser, on a real header row, including CRLF — every column is found.
     const { headers } = parseCsvRecords(`${PAYROLL_HISTORY_HEADERS.join(',')}\r\nA1001,202501,ME,BASIC,ABCDE,1\r\n`);
-    expect(headers).toEqual(CONTRACT_KEYS);
+    expect(headers).toEqual(normalised);
+    expect(missingHistoryColumns(headers)).toEqual([]);
+  });
+
+  it('b240c0ff — "Pay Items Code", "Pay Item Code" and the old "DOE Code" heading all read the same column', () => {
+    for (const heading of ['Pay Items Code', 'Pay Item Code', 'DOE Code']) {
+      const { headers, records } = parseCsvRecords(
+        `Employee No,Payroll Period,Payroll Cycle,${heading},Company Code,Amount\nA1001,202501,ME,UPL,ABCDE,250.00`,
+      );
+      expect(missingHistoryColumns(headers), heading).toEqual([]);
+      expect(readHistoryField(records[0], 'doe_code'), heading).toBe('UPL');
+    }
+    // The internal key is unchanged, and a missing column is named by the heading the reader can see.
+    expect(PAYROLL_HISTORY_COLUMNS.required).toContain('doe_code');
+    expect(historyColumnLabel('doe_code')).toBe('Pay Items Code');
+    expect(historyColumnLabel('employee_no')).toBe('Employee No');
+    expect(HISTORY_ERROR_TYPES).toContain('Invalid Pay Items Code');
+    expect(HISTORY_ERROR_TYPES as readonly string[]).not.toContain('Invalid DOE Code');
   });
 
   it('the column ORDER is the reporter’s, with Override? retired (d28501b8)', () => {
@@ -66,7 +90,7 @@ describe('payroll-history template', () => {
       'Employee No',
       'Payroll Period',
       'Payroll Cycle',
-      'DOE Code',
+      'Pay Items Code',
       'Company Code',
       'Amount',
     ]);
@@ -207,7 +231,7 @@ describe('payroll-history template', () => {
       { code: 'EEEPF', label: 'Employee EPF', destination: 'epf_employee', direction: 'deduction' },
       { code: 'EREPF', label: 'Employer EPF', destination: 'epf_employer', direction: 'employer' },
     ]);
-    expect(rows[0]).toEqual(['Accepted DOE codes']);
+    expect(rows[0]).toEqual(['Accepted Pay Items Codes']);
     expect(rows[3]).toEqual(['Code', 'Meaning', 'Category', 'Amount type', 'Lands on', 'Direction']);
     expect(rows[4]).toEqual(['EEEPF', 'Employee EPF', 'Employee Statutory', 'Employee amount', 'epf_employee', 'deduction']);
     expect(rows[5]).toEqual(['EREPF', 'Employer EPF', 'Employer Statutory', 'Employer amount', 'epf_employer', 'employer']);
@@ -323,7 +347,7 @@ describe('the generated .xlsx, parsed back', () => {
       raw: true,
       blankrows: false,
     });
-    expect(codes[0]).toEqual(['Accepted DOE codes']);
+    expect(codes[0]).toEqual(['Accepted Pay Items Codes']);
     const codeColumn = codes.slice(3).map((r) => r[0]);
     for (const c of ['BASIC', 'EEEPF', 'EESOCSO', 'EEEIS', 'PCB', 'CP38', 'ZAKAT', 'EREPF', 'ERSOCSO', 'EREIS', 'HRDF']) {
       expect(codeColumn, `Codes sheet must list ${c}`).toContain(c);
@@ -352,7 +376,9 @@ describe('the generated .xlsx, parsed back', () => {
 
     const csv = await workbookToCsvText(filledBytes);
     const { headers, records } = parseCsvRecords(csv);
-    expect(headers).toEqual(CONTRACT_KEYS);
+    // b240c0ff — "Pay Items Code" reads back as `pay_items_code`, an alias of the contract key `doe_code`.
+    expect(headers).toEqual(CONTRACT_KEYS.map((k) => (k === 'doe_code' ? 'pay_items_code' : k)));
+    expect(missingHistoryColumns(headers)).toEqual([]);
     expect(records).toHaveLength(PAYROLL_HISTORY_SAMPLE_ROWS.length);
     expect(readHistoryField(records[0], 'employee_no')).toBe(PAYROLL_HISTORY_SAMPLE_ROWS[0][0]);
     expect(readHistoryField(records[0], 'payroll_period')).toBe(PAYROLL_HISTORY_SAMPLE_ROWS[0][1]);

@@ -50,3 +50,29 @@ export function payslipCycleLabel(p: {
   const fallback = typeof p.runTypeLabel === 'string' ? p.runTypeLabel.trim() : '';
   return fallback || null;
 }
+
+/**
+ * b240c0ff — WHAT A PAYROLL RUN IS CALLED ON SCREEN, when it may be imported payroll history.
+ *
+ * Imported history is stored as an `adjustment` run ON PURPOSE (core/payroll-history-revisions.ts): that
+ * keeps it out of `payroll_batch_one_regular_uq`, out of the live-run guard and out of the regular-only
+ * PCB/AR arithmetic, so an imported month can never block or double-count the real payroll for that month.
+ * None of that is the reader's business, and "Adjustment" is the wrong word for it. A run that came from
+ * the history import is shown as the Pay Cycle named in the file, "Monthly - By Import"; every other run
+ * keeps the label its screen already printed (`runTypeLabel`).
+ *
+ * ONE function for every surface (Transaction View, its grid and exports, the run pickers, the process /
+ * reprocess / remove / reset screens, the statutory previews, the multi-cycle worksheet, the register), so
+ * no screen can call the same run something different from its neighbour. The suffix is the literal the
+ * payroll list and the batch page already print. Display only: nothing here is read by a gate or a figure.
+ */
+export const BY_IMPORT_SUFFIX = ' - By Import';
+
+export function payrollRunLabel(
+  run: { historyImportAttemptId?: string | null; historyImportCycleName?: string | null },
+  runTypeLabel: string,
+): string {
+  if (!run.historyImportAttemptId) return runTypeLabel;
+  const name = typeof run.historyImportCycleName === 'string' ? run.historyImportCycleName.trim() : '';
+  return `${name || runTypeLabel}${BY_IMPORT_SUFFIX}`;
+}

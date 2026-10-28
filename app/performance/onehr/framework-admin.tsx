@@ -7,9 +7,9 @@ import {leadershipPrinciples} from '@/packs/performance/onehr/framework-model';
 import type {Policy} from '@/packs/performance/onehr/model';
 import {onehrCycleAction} from '../onehr-actions';
 
-export async function FrameworkAdmin({cycleId,revision,policy,closed}:{cycleId:string;revision:number;policy:Policy;closed:boolean}){
+export async function FrameworkAdmin({cycleId,revision,policy,closed,returnTo}:{cycleId:string;revision:number;policy:Policy;closed:boolean;returnTo?:string}){
  const [t,ctx]=await Promise.all([getTranslations('onehr.frameworkAdmin'),getSession()]),writable=!closed&&isGroupAdmin(ctx),principles=leadershipPrinciples(policy).filter(p=>!p.archived);
- const fields=(edit:string,principleId?:string,statementId?:string)=><><input type="hidden" name="cycleId" value={cycleId}/><input type="hidden" name="revision" value={revision}/><input type="hidden" name="action" value="framework"/><input type="hidden" name="edit" value={edit}/>{principleId&&<input type="hidden" name="principleId" value={principleId}/>} {statementId&&<input type="hidden" name="statementId" value={statementId}/>}</>;
+ const fields=(edit:string,principleId?:string,statementId?:string)=><><input type="hidden" name="cycleId" value={cycleId}/><input type="hidden" name="revision" value={revision}/>{returnTo&&<input type="hidden" name="returnTo" value={returnTo}/>}<input type="hidden" name="action" value="framework"/><input type="hidden" name="edit" value={edit}/>{principleId&&<input type="hidden" name="principleId" value={principleId}/>} {statementId&&<input type="hidden" name="statementId" value={statementId}/>}</>;
  return <Card className="space-y-3 p-5"><h2 className="font-semibold">{t('title')}</h2><p className="text-sm text-muted-foreground">{t('help')}</p>{!writable&&<p className="text-sm text-muted-foreground">{closed?t('closed'):t('readonly')}</p>}
   <details><summary className="cursor-pointer font-medium">{t('edit')}</summary><div className="mt-4 space-y-4">
    {principles.map(principle=><details key={principle.id} className="rounded-lg border border-border p-3"><summary className="cursor-pointer font-medium">{principle.name}</summary><div className="mt-3 space-y-4">

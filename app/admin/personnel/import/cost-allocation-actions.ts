@@ -2,11 +2,21 @@
 import {WorkforceAccessError} from '@/core/workforce-access';
 import {CostAllocationError} from '@/lib/employment-cost-allocation';
 import {getSession} from '@/lib/session';
+import {requireAdmin} from '@/lib/authz';
 import {revalidatePath} from 'next/cache';
-import {parseCostAllocationCsv} from '@/lib/cost-allocation-import';
-import {commitCostAllocationImport,previewCostAllocationImport,costAllocationReferences,costAllocationWorkbookReferences} from '@/core/cost-allocation-import';
+import {costAllocationReferences,costAllocationWorkbookReferences,confirmCostAllocationUpload} from '@/core/cost-allocation-import';
+import {ImportHistoryError} from '@/core/import-history';
 export async function allocationImportReferencesAction(companyId:string){return costAllocationReferences(await getSession(),companyId);}
-export async function previewAllocationImportAction(csv:string){return previewCostAllocationImport(await getSession(),parseCostAllocationCsv(csv));}
-export async function commitAllocationImportAction(csv:string,token:string){const result=await commitCostAllocationImport(await getSession(),parseCostAllocationCsv(csv),token);revalidatePath('/admin/personnel','layout');return result;}
-
-export async function allocationWorkbookReferencesAction(companyIds:string[],selectedCompanyId:string){try{return{ok:true as const,rows:await costAllocationWorkbookReferences(await getSession(),companyIds,selectedCompanyId)};}catch(e){return{ok:false as const,error:e instanceof WorkforceAccessError||e instanceof CostAllocationError&&e.code==='scope'?'scope' as const:'invalid' as const};}}
+/** Codes for every company the actor may maintain; used by both the allocation and the Everything template. */
+export async function allocationWorkbookReferencesAction(){try{return{ok:true as const,references:await costAllocationWorkbookReferences(await getSession())};}catch(e){return{ok:false as const,error:e instanceof WorkforceAccessError||e instanceof CostAllocationError&&e.code==='scope'?'scope' as const:'invalid' as const};}}
+export async function confirmAllocationImportAction(attemptId:string,previewHash:string){
+ const ctx=await requireAdmin();
+ try{
+  const result=await confirmCostAllocationUpload(ctx,{attemptId,previewHash});
+  revalidatePath('/admin/personnel','layout');revalidatePath('/admin/personnel/import/history');
+  return{ok:true as const,result};
+ }catch(error){
+  if(!(error instanceof ImportHistoryError||error instanceof CostAllocationError))console.error('[cost allocation import confirm]',error);
+  return{ok:false as const,error:error instanceof ImportHistoryError||error instanceof CostAllocationError?error.message:null};
+ }
+}

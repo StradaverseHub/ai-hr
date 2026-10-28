@@ -10,6 +10,7 @@ import { StepPeriod, type Company, type CycleRunType, type CycleOption, type Exi
 import { StepSelection, type Master, type PayrollRunEmployeeRow } from './steps/step-selection';
 import { StepValidation } from './steps/step-validation';
 import { PAYROLL_PHASES, payrollPhaseIndex, type PayrollPhaseKey } from '@/packs/payroll/phases';
+import { payrollRunLabel } from '@/core/payslip-cycle-label';
 
 /** Payroll Process wizard (3b) — STEPS registry, sequential gating, plain useState. No workflow engine:
  *  future steps slot in as additional entries in `STEPS` (plan §16, guardrail).
@@ -56,6 +57,10 @@ export type ResumeBatch = {
   paymentDate: string;
   remarks: string;
   scope: { departmentIds?: string[]; employmentIds?: string[] } | null;
+  /** b240c0ff — see `payrollRunLabel`. Imported history is never a draft today; carried so the label
+   *  cannot regress to "Adjustment — Imported payroll history" if that ever changes. */
+  historyImportAttemptId?: string | null;
+  historyImportCycleName?: string | null;
 };
 
 function defaultPayDate(payPeriod: string, payDay: number | null | undefined): string {
@@ -332,8 +337,14 @@ export function Wizard({
                 <dd className="mt-0.5 text-sm font-medium">
                   {/* Same runType-label + remarks pattern as the listing's Payroll Cycle column, so wizard
                       cycles stored under the generic 'off_cycle' bucket display distinctly. */}
-                  {t(`runType.${resumeBatch.cycle}`)}
-                  {resumeBatch.remarks ? ` — ${resumeBatch.remarks}` : ''}
+                  {resumeBatch.historyImportAttemptId ? (
+                    payrollRunLabel(resumeBatch, t(`runType.${resumeBatch.cycle}`))
+                  ) : (
+                    <>
+                      {t(`runType.${resumeBatch.cycle}`)}
+                      {resumeBatch.remarks ? ` — ${resumeBatch.remarks}` : ''}
+                    </>
+                  )}
                 </dd>
               </div>
               <div>

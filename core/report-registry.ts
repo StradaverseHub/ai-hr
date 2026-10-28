@@ -21,6 +21,7 @@ import { leaveBalancesSummary, type ReportFilter } from './analytics';
 import { overtimeReport, attendanceDailyReport, performanceGoalReport, performanceReviewReport } from './reporting';
 import { listProcessedPayslipsAcross, listPayrollRegisterAcross } from './payroll-view';
 import { payslipDisplayEarnings } from './pay-display-category';
+import { payrollRunLabel } from './payslip-cycle-label';
 import { listClaimTypes } from './claims';
 import { assertModuleGate } from './module-gate';
 
@@ -330,7 +331,8 @@ const PAYROLL_REGISTER: ReportDataset = {
       employmentStatus: r.employmentStatus,
       employmentType: r.employmentType,
       payPeriod: r.payPeriod,
-      payrollCycle: r.payrollCycle,
+      // b240c0ff — imported payroll history reads "Monthly - By Import"; every other run is unchanged.
+      payrollCycle: payrollRunLabel(r, r.payrollCycle),
       runSeq: r.runSeq,
       daysWorked: numStr(r.daysWorked),
       // 3c473773 — listPayrollRegisterAcross already resolves these four through the payslip's own box
@@ -400,7 +402,8 @@ const PAYROLL_HISTORY: ReportDataset = {
       // may be null but never undefined, and null is the "unknown currency" the runner buckets separately.
       currency: r.currency ?? null,
       payPeriod: r.payPeriod,
-      runType: r.runType,
+      // b240c0ff — imported payroll history reads "Monthly - By Import" rather than "adjustment".
+      runType: payrollRunLabel(r, r.runType),
       // 3c473773 — same box stamp as the register above, for the same reason.
       ...(() => {
         const d = payslipDisplayEarnings(r);

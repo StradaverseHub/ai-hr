@@ -30,6 +30,7 @@ import { payslipZakatLine } from '../core/payslip-zakat-line';
 // 6b134681 / 417d4937 — the ONE derivation of "which named pay items explain this figure, and how is a
 // line labelled". Shared with the ESS payslip screen and Transaction View → History so the printed
 // document cannot itemise a total differently from the screen it was printed from.
+import { deductionLinesFor, displayComponentLines } from '../core/payslip-imported-lines';
 import {
   earningRowShown,
   payItemLinesForBuckets,
@@ -237,6 +238,9 @@ export type PayslipPdfData = {
    */
   bonusLines?: PayslipEarningLine[];
   overtimeLines?: PayslipEarningLine[];
+  /** b240c0ff — the pay items behind the "Other deductions" row, already reconciled against
+   *  `absence.residual` (core/payslip-imported-lines.ts `deductionLinesFor`). Empty ⇒ the single row. */
+  deductionLines?: PayslipEarningLine[];
   /** This run predates the per-item stamp, so the grouped rows are all there is. The document SAYS so —
    *  an itemless earnings box under a non-zero allowance reads as a defect. */
   detailNotRecorded?: boolean;
@@ -416,13 +420,14 @@ export function buildPayslipPdfData(
   },
   borneLabels: Record<EmployerBorneKey, string>,
   extra: Partial<
-    Omit<PayslipPdfData, 'earningLines' | 'bonusLines' | 'overtimeLines' | 'detailNotRecorded' | 'hrdf'>
+    Omit<PayslipPdfData, 'earningLines' | 'bonusLines' | 'overtimeLines' | 'deductionLines' | 'detailNotRecorded' | 'hrdf'>
   > = {},
 ): PayslipPdfData {
   const st = (p.statutory ?? {}) as Record<string, unknown>;
   const disp = payslipDisplayEarnings(p);
   const eb = payslipEmployerBorne(p.statutory);
-  const componentLines = storedComponentLines(p.statutory);
+  // b240c0ff — plus an imported history month's own pay item lines (display only).
+  const componentLines = displayComponentLines(p.statutory);
   // 970e4143 — hoisted, because `cp38` below is read OUT of it. The carve decision (which of the three
   // claims on `other_deductions` fit inside it, and therefore which rows may print) is made once, in
   // core/payslip-absence-lines.ts, and this document reads the answer rather than deciding for itself.
@@ -485,6 +490,8 @@ export function buildPayslipPdfData(
     // decides whether either may replace the grouped row, so a wrong guess here degrades to today's
     // document rather than to a wrong one.
     overtimeLines: overtimeLinesOf(componentLines, p.statutory),
+    // b240c0ff — imported payroll history keeps each deduction line; reconciled against the row it replaces.
+    deductionLines: deductionLinesFor(p.statutory, absence.residual),
     detailNotRecorded: componentLines.length === 0,
     nonPayableLines: nonPayableLinesOf(st.recordLines),
     ...extra,
@@ -1464,7 +1471,14 @@ export function payslipPresentationRows(d:PayslipPdfData,t:PayslipPdfLabels,rate
     ...(d.absence.absent
       ? [{ label: t.absentLine, quantity: absenceDaysLabel(d.absence.absent.days, t.dayUnit, t.daysUnit), amount: d.absence.absent.amount }]
       : []),
-    ...(d.absence.showResidual ? [{ label: t.otherDeductions, amount: d.absence.residual }] : []),
+    // b240c0ff — the named deduction items REPLACE the "Other deductions" row only when they add up to it
+    // (the same reconcile-before-replacing rule the earnings box follows), so the box still sums to the
+    // TOTAL DEDUCTIONS printed under it. No stamp, or a residual nothing itemises ⇒ the single row as before.
+    ...(d.absence.showResidual
+      ? payItemLinesReconcile(d.deductionLines ?? [], d.absence.residual)
+        ? (d.deductionLines ?? []).filter((l) => earningRowShown(l.amount)).map((l) => ({ label: l.name, amount: l.amount }))
+        : [{ label: t.otherDeductions, amount: d.absence.residual }]
+      : []),
   ];
 
   return {earnings:earnRows,deductions:dedRows};
