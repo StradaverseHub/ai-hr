@@ -238,3 +238,10 @@ export function agentCapabilityCoverage(){
  for(const entries of Object.values(AGENT_CAPABILITY_INVENTORY))for(const value of Object.values(entries)){const kind=value.split(':')[0];counts[kind]=(counts[kind]??0)+1;}
  return Object.freeze(counts);
 }
+
+/** Backlog entry points by the highest tier each may ever get, so the coverage view shows which part shrinks. */
+export function agentBacklogByTier(){
+ const counts:Record<Exclude<AgentTier,'handoff'>,number>={automatic:0,confirm:0,approve:0};
+ for(const entries of Object.values(AGENT_CAPABILITY_INVENTORY))for(const value of Object.values(entries)){const [kind,tier]=value.split(':');if(kind==='backlog')counts[tier as Exclude<AgentTier,'handoff'>]++;}
+ return Object.freeze(counts);
+}

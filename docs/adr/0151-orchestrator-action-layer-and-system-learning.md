@@ -165,6 +165,19 @@ confirmed, discarded, refused, failed, expired and later reversed — derived fr
 existing RLS, shown beside the ADR-0131 process assessment in the Control Tower so each process has a
 before/after. No names, amounts or reasons leave their owners.
 
+*Implemented 29 Oct 2026 (`core/assistant-outcomes.ts`, migration 0674).* One read-only definer,
+`app.assistant_action_outcome_summary`, returns counts per kind and state, plus the all-time first use. A row
+counts only for an administrator of its company; a row without a company counts only for a group
+administrator. Counts per kind cover prepared, confirmed, discarded, expired (including unswept past-expiry
+pending), refused and waiting. "Later undone" is counted only where a canonical row or event proves it: a
+submitted leave, claim, attendance correction or profile change later rejected or cancelled, or an edited
+leave edited again or withdrawn. It is null for every other kind. Offered, edited before confirmation and
+failed have no recording source: digests are cleared at the end of review and a failed confirmation rolls
+back. They are shown as unmeasured, not zero. Native outcome associations are own-user consent records and
+are not aggregated. Each process's before/after compares staff actions per 30 days, using the ADR-0131
+counting rules, over two equal periods either side of the first Assistant use in scope. It is labelled
+non-causal. The coverage panel reads `agentCapabilityCoverage()` and `agentBacklogByTier()`.
+
 **d. Behaviour changes only through the existing promotion harness.** Prompt, routing, tool-description and
 argument-extraction changes are candidates evaluated on held-out suites (the existing holdout files plus the
 new entries' cases) by at least two independent evaluators with zero security and quality failures, promoted by

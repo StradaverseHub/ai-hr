@@ -67,3 +67,15 @@ test('successful current receipts have four complete successful steps', () => {
 test('unknown scenario input is refused rather than silently treated as success', () => {
   for (const value of ['', undefined, 'CURRENT', '../current', 'erase']) assert.throws(() => receiptExpectation(value));
 });
+
+test('outcome fixture rows are fictional, scoped to the manifest companies and match the expected counts', async () => {
+  const {outcomeFixtureSql, OUTCOME_EXPECTED} = await import('./orchestrator-browser.mjs');
+  const value = manifest(), statement = outcomeFixtureSql(value);
+  assert.match(statement, /^insert into app\.assistant_own_leave_review\(/);
+  assert.equal((statement.match(/'leave\.apply'/g) ?? []).length, 7);
+  assert(statement.includes(value.companies.A) && statement.includes(value.companies.B));
+  assert(!statement.includes(value.companies.Empty));
+  assert.deepEqual(Object.keys(OUTCOME_EXPECTED).sort(), ['A-hr', 'B-hr', 'group-admin']);
+  const broken = manifest(); broken.actors[2].userId = "x'; drop table person; --";
+  assert.throws(() => outcomeFixtureSql(broken));
+});

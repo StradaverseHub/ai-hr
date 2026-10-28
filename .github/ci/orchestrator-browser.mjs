@@ -42,6 +42,29 @@ export function validateFixture(value, reused) {
   return value;
 }
 
+/**
+ * ADR-0151 §4.6c fictional prepared-action rows, inserted as the database owner. Counts per administrator are
+ * fixed: company A's employee 6 leave.apply plus 1 claims.cancel, company B's 1 leave.apply, and one
+ * tenant-wide Knowledge Base review that only the group administrator may count.
+ */
+export function outcomeFixtureSql(fixture) {
+  const actor = key => fixture.actors.find(row => row.key === key);
+  const [a, b, group] = [actor('A-employee'), actor('B-employee'), actor('group-admin')];
+  for (const row of [a, b, group]) assert(uuid(row.userId) && (row.personId === null || uuid(row.personId)));
+  const own = (who, kind, state, days, extra = '') => `('${kind}',gen_random_uuid(),'${fixture.tenantId}','${who.userId}','${who.personId}',
+    (select e.id from employment e where e.person_id='${who.personId}' order by e.created_at limit 1),'${who.companyId}',
+    ${state === 'awaiting_confirmation' ? `repeat('a',64),repeat('b',64)` : 'null,null'},'${state}',
+    now()-interval '${days} days',now()-interval '${days} days'+interval '${state === 'awaiting_confirmation' ? '30 days' : '10 minutes'}'${extra})`;
+  const apply = ",gen_random_uuid(),gen_random_uuid(),null,null,null", cancel = ",null,null,'claim_request',gen_random_uuid(),gen_random_uuid()", none = ',null,null,null,null,null';
+  const rows = [own(a, 'leave.apply', 'completed', 12, apply), own(a, 'leave.apply', 'completed', 9, apply), own(a, 'leave.apply', 'discarded', 8, none),
+    own(a, 'leave.apply', 'expired', 6, none), own(a, 'leave.apply', 'refused', 4, none), own(a, 'leave.apply', 'awaiting_confirmation', 0, none),
+    own(a, 'claims.cancel', 'completed', 3, cancel), own(b, 'leave.apply', 'discarded', 2, none),
+    `('knowledge_base.article.create',gen_random_uuid(),'${fixture.tenantId}','${group.userId}',null,null,null,null,null,'discarded',now()-interval '1 day',now()-interval '1 day'+interval '10 minutes'${none})`];
+  return `insert into app.assistant_own_leave_review(action_kind,id,tenant_id,user_id,person_id,employment_id,company_id,intent_digest,reviewed_digest,state,created_at,expires_at,
+    leave_request_id,submission_event_id,receipt_subject_kind,receipt_subject_id,receipt_event_id) values ${rows.join(',')}`;
+}
+export const OUTCOME_EXPECTED = {'group-admin': {apply: '7', kb: true}, 'A-hr': {apply: '6', kb: false}, 'B-hr': {apply: '1', kb: false}};
+
 export function receiptExpectation(scenario) {
   const success = ['succeeded', 'succeeded', 'succeeded', 'succeeded'];
   switch (scenario) {
@@ -215,6 +238,36 @@ async function main() {
         report.scenarios.push({scenario, ...expected});
       }
     } finally { await context.close(); }
+    // ADR-0151 §4.6c: the outcome view beside the process assessment, on fictional rows, per administrator scope.
+    psql(outcomeFixtureSql(second));
+    const outcomeCopy = Object.fromEntries(locales.map(locale => [locale, JSON.parse(readFileSync(`messages/${locale}.json`, 'utf8')).processAssessment.outcomes]));
+    for (const [key, expected] of Object.entries(OUTCOME_EXPECTED)) {
+      const {context, page} = await login(second.actors.find(row => row.key === key));
+      try {
+        for (const viewport of [{name: 'desktop', width: 1440, height: 1000}, {name: 'mobile', width: 375, height: 812}]) {
+          await page.setViewportSize({width: viewport.width, height: viewport.height});
+          for (const locale of key === 'group-admin' ? locales : ['en']) {
+            await language(page, context, locale);
+            await page.goto(base + '/control-tower/opportunities');
+            const o = outcomeCopy[locale];
+            const section = title => page.locator('[data-ui-section-header]', {hasText: title}).locator('xpath=ancestor::*[@data-ui-card][1]');
+            const table = section(o.title);
+            await table.waitFor({state: 'visible'});
+            const row = kind => table.locator('tr', {has: page.locator('span.font-mono', {hasText: new RegExp(`^${kind.replace('.', '\\.')}$`)})});
+            const cells = (await row('leave.apply').locator('td').allTextContents()).map(text => text.trim());
+            assert.equal(cells[2], expected.apply, `${key} leave.apply prepared`);
+            assert.equal(await row('knowledge_base.article.create').count(), expected.kb ? 1 : 0, `${key} tenant-wide row visibility`);
+            await section(o.coverageTitle).waitFor({state: 'visible'});
+            await noPrivateText(page);
+            const dimensions = await page.evaluate(() => ({width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth}));
+            assert(dimensions.scroll <= dimensions.width + 1, 'Outcome page overflows viewport');
+            const image = `outcomes-${key}-${locale}-${viewport.name}.png`;
+            await page.screenshot({path: join(out, image), fullPage: true, animations: 'disabled'});
+            report.visits.push({actor: key, locale, route: '/control-tower/opportunities', viewport: viewport.name, image, dimensions});
+          }
+        }
+      } finally { await context.close(); }
+    }
     report.modelRunsAfter = Number(psql('select count(*) from ai_model_run'));
     assert.equal(report.modelRunsAfter, report.modelRunsBefore, 'Walkthrough created a model admission');
     assert.equal(report.browserErrors.length, 0); assert.equal(report.consoleErrors.length, 0); assert.equal(report.serverErrors.length, 0);

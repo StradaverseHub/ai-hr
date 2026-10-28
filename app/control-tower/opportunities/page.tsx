@@ -4,6 +4,8 @@ import { ASSESSMENT_WINDOWS, MIN_COMPLETED, AGED_OPEN_DAYS, assessProcesses, est
   type AgentRole, type ProcessAssessment } from '@/core/process-assessment';
 import { Info } from 'lucide-react';
 import { Card, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
+import { MIN_AFTER_DAYS, assistantOutcomes, type ProcessComparison } from '@/core/assistant-outcomes';
+import { agentBacklogByTier, agentCapabilityCoverage } from '@/lib/ai/agent-capability-inventory';
 
 /**
  * ADR-0131 Phase 1 — where agents could take work off HR. Every number is computed from records the engine
@@ -21,11 +23,19 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
   const s = await requireAdmin();
   const sp = await searchParams;
   const t = await getTranslations('processAssessment');
+  const o = await getTranslations('processAssessment.outcomes');
+  const kinds = await getTranslations('assistant.workspace.nativeOutcomes');
   const f = await getFormatter();
   const window = parseWindow(sp.days);
   const minutes = parseBoundedInt(sp.minutes, 1, 480);
   const fteHours = parseBoundedInt(sp.fteHours, 1, 400);
   const view = await assessProcesses(s, window);
+  // ADR-0151 §4.6c, beside the baseline. Counts only, scoped by the same administrator scope.
+  const outcomes = await assistantOutcomes(s, window);
+  const comparison = new Map(outcomes.processes.map(c => [c.id, c]));
+  const coverage = agentCapabilityCoverage(), backlog = agentBacklogByTier();
+  const day = (d: Date) => f.dateTime(d, { dateStyle: 'medium', timeZone: 'Asia/Kuala_Lumpur' });
+  const kindLabel = (action: string) => { const key = `action_${action.replace(/[.-]/g, '_')}`; return kinds.has(key) ? kinds(key) : action; };
   const n = (v: number) => f.number(v, { maximumFractionDigits: 1 });
   const duration = (hours: number | null) => hours == null ? '—'
     : hours * 60 < 1 ? t('underMinute')
@@ -39,6 +49,30 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
     <dd className="mt-1 text-2xl font-semibold leading-none tracking-tight tabular-nums">{value}</dd>
     {hint && <dd className="mt-1.5 text-xs leading-snug text-muted-foreground">{hint}</dd>}
   </div>;
+
+  // Staff actions per 30 days in equal periods before and after the first Assistant use for this process.
+  const beforeAfter = (c: ProcessComparison | undefined) => {
+    if (!c) return null;
+    if (!c.firstUse) return <p className="mt-3 text-sm text-muted-foreground">{o('noUse')}</p>;
+    if (!c.before || !c.after) return <p className="mt-3 text-sm text-muted-foreground">{o('firstUse', { date: day(c.firstUse) })} {o('notLinked')}</p>;
+    const delta = c.after.per30 - c.before.per30;
+    return <div className="mt-3 rounded-lg border border-border p-4">
+      <p className="text-xs font-medium text-muted-foreground">{o('beforeAfterTitle', { date: day(c.firstUse) })}</p>
+      <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
+        <div><dt className="text-xs text-muted-foreground">{o('before')}</dt>
+          <dd className="text-xl font-semibold tabular-nums">{n(c.before.per30)}</dd>
+          <dd className="text-xs text-muted-foreground">{o('periodCases', { from: day(c.before.from), n: n(c.before.started) })}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">{o('after')}</dt>
+          <dd className="text-xl font-semibold tabular-nums">{n(c.after.per30)}</dd>
+          <dd className="text-xs text-muted-foreground">{o('periodCases', { from: day(c.after.from), n: n(c.after.started) })}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">{o('change')}</dt>
+          <dd className="text-xl font-semibold tabular-nums">{delta > 0 ? '+' : ''}{n(delta)}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">{o('assistantConfirmed')}</dt>
+          <dd className="text-xl font-semibold tabular-nums">{n(c.assistantCompleted)}</dd></div>
+      </dl>
+      <p className="mt-2 text-xs text-muted-foreground">{c.early ? o('early', { days: MIN_AFTER_DAYS }) + ' ' : ''}{o('notCausal')}</p>
+    </div>;
+  };
 
   const card = (p: ProcessAssessment, rank: number) => {
     const m = p.measures;
@@ -65,6 +99,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
             ? metric(t('staffActions'), n(p.staffActionsPer30 ?? 0), acts ? t('automatedShare', { share: f.number(m.automatedActions / acts, { style: 'percent' }) }) : undefined)
             : metric(t('staffActions'), '—', t('notLinked'))}
         </dl>
+        {beforeAfter(comparison.get(p.id))}
         {load && <p className="mt-3 text-sm">{load.fte == null ? t('estimateHours', { hours: n(load.hours) }) : t('estimateFte', { hours: n(load.hours), fte: f.number(load.fte, { maximumFractionDigits: 2 }) })} <span className="text-xs text-muted-foreground">{t('estimateLabel')}</span></p>}
         <div className="mt-4 border-t border-border pt-3">
           <p className="text-xs font-medium text-muted-foreground">{t('candidates')}</p>
@@ -96,12 +131,59 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
       <p className="max-w-4xl text-sm text-muted-foreground">{t('rankHelp', { from: f.dateTime(view.from, { dateStyle: 'medium', timeZone: 'Asia/Kuala_Lumpur' }) })}</p>
       {view.processes.map((p, i) => card(p, i + 1))}
     </section>
+    <Card className="overflow-hidden">
+      <SectionHeader title={o('title')} subtitle={o('subtitle', { from: day(outcomes.from) })} />
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
+            <tr>
+              <th className="px-4 py-2 font-medium">{o('colAction')}</th>
+              {(['colOffered', 'colPrepared', 'colEdited', 'colConfirmed', 'colDiscarded', 'colExpired', 'colRefused', 'colFailed', 'colReversed', 'colWaiting'] as const)
+                .map(k => <th key={k} className="px-3 py-2 text-right font-medium">{o(k)}</th>)}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {outcomes.actions.filter(a => a.prepared > 0).map(a => <tr key={a.action}>
+              <td className="px-4 py-2.5"><span className="block">{kindLabel(a.action)}</span><span className="font-mono text-xs text-muted-foreground">{a.action}</span></td>
+              <td className="px-3 py-2.5 text-right text-muted-foreground" title={o('notRecorded')}>—</td>
+              <td className="px-3 py-2.5 text-right tabular-nums">{n(a.prepared)}</td>
+              <td className="px-3 py-2.5 text-right text-muted-foreground" title={o('notRecorded')}>—</td>
+              <td className="px-3 py-2.5 text-right tabular-nums">{n(a.completed)}</td>
+              <td className="px-3 py-2.5 text-right tabular-nums">{n(a.discarded)}</td>
+              <td className="px-3 py-2.5 text-right tabular-nums">{n(a.expired)}</td>
+              <td className="px-3 py-2.5 text-right tabular-nums">{n(a.refused)}</td>
+              <td className="px-3 py-2.5 text-right text-muted-foreground" title={o('notRecorded')}>—</td>
+              <td className="px-3 py-2.5 text-right tabular-nums" title={a.reversed == null ? o('reversalNotProvable') : undefined}>{a.reversed == null ? '—' : n(a.reversed)}</td>
+              <td className="px-3 py-2.5 text-right tabular-nums">{n(a.awaiting)}</td>
+            </tr>)}
+          </tbody>
+        </table>
+      </div>
+      {outcomes.actions.every(a => a.prepared === 0) && <p className="px-4 py-3 text-sm text-muted-foreground">{o('none')}</p>}
+      {outcomes.actions.some(a => a.prepared === 0) && <p className="px-4 py-3 text-xs text-muted-foreground">
+        {o('unused', { list: outcomes.actions.filter(a => a.prepared === 0).map(a => kindLabel(a.action)).join(' · ') })}</p>}
+      <ul className="max-w-4xl list-disc space-y-1 border-t border-border px-4 py-3 pl-9 text-xs text-muted-foreground">
+        <li>{o('limitUnrecorded')}</li><li>{o('limitReversed')}</li><li>{o('limitScope')}</li>
+      </ul>
+    </Card>
+    <Card className="p-5">
+      <SectionHeader title={o('coverageTitle')} subtitle={o('coverageSubtitle')} />
+      <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-5 rounded-lg bg-muted/40 p-4 sm:grid-cols-3 lg:grid-cols-6 lg:gap-x-0">
+        {metric(o('coverageRegistered'), n(coverage.registered ?? 0))}
+        {metric(o('coverageBacklogAutomatic'), n(backlog.automatic))}
+        {metric(o('coverageBacklogConfirm'), n(backlog.confirm))}
+        {metric(o('coverageBacklogApprove'), n(backlog.approve))}
+        {metric(o('coverageHandoff'), n(coverage.handoff ?? 0))}
+        {metric(o('coverageInternal'), n(coverage.internal ?? 0))}
+      </dl>
+      <p className="mt-3 max-w-4xl text-xs text-muted-foreground">{o('coverageHelp')}</p>
+    </Card>
     <Card className="p-5">
       <SectionHeader title={t('limitsTitle')} />
       <ul className="mt-2 max-w-4xl list-disc space-y-1 pl-5 text-sm text-muted-foreground">
         <li>{t('limitEffort')}</li><li>{t('limitOutside')}</li><li>{t('limitStaff')}</li><li>{t('limitNoChange')}</li>
       </ul>
-      <p className="mt-3 text-xs text-muted-foreground">{t('version', { version: view.version })}</p>
+      <p className="mt-3 text-xs text-muted-foreground">{t('version', { version: view.version })} · {o('version', { version: outcomes.version })}</p>
     </Card>
   </div>;
 }
