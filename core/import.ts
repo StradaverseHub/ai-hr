@@ -27,9 +27,9 @@ import {bankStatutoryStateFrom,MERGED_STATUTORY_COLUMNS} from '../lib/bank-statu
 import {copyPermanentToCorrespondence} from '../lib/address-blocks';
 import {createImportAttemptTx,recordImportEventTx,recordImportFailure,recordImportItemTx,sealImportPlan,ImportHistoryError} from './import-history';
 import type {EmployeeFullImportPlan,EmployeeFullItemState} from './employee-import-history';
-import {assignPolicy} from './payroll-policy';
+import {assignPolicy} from '../packs/payroll/service';
 import {setEmploymentScheduleGroupTx} from './roster';
-import {isModuleEnabledOrFalse} from './entitlements';
+import {isModuleEnabled} from './entitlements';
 import {toCsv} from '../lib/csv';
 /**
  * Day-one employee importer (ADR-0008 localization stays in the pack; this is the generic
@@ -834,7 +834,7 @@ async function analyze(
     if (policyRaw && cctx) {
       const wanted = policyRaw.toLowerCase();
       const hits = policies.filter((policy) => policy.companyId === cctx.id && (policy.name.toLowerCase() === wanted || (policy.code ?? '').toLowerCase() === wanted));
-      if (!isModuleEnabledOrFalse(ctx, 'payroll', cctx.id)) errors.push(`payroll_policy: Payroll is not switched on for ${cctx.name}`);
+      if (!isModuleEnabled(ctx, 'payroll', cctx.id)) errors.push(`payroll_policy: Payroll is not switched on for ${cctx.name}`);
       else if (hits.length > 1) errors.push(`Ambiguous payroll_policy "${policyRaw}" — use its policy code`);
       else if (!hits.length) errors.push(`Unknown payroll_policy "${policyRaw}" for ${cctx.name}`);
       else if (hits[0].status !== 'active') errors.push(`payroll_policy "${policyRaw}" is inactive`);
