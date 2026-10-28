@@ -857,13 +857,17 @@ describe('source shape (not executable — see file header)', () => {
     expect(md).toContain('BACKUP_DEST');
   });
 
-  it('the readiness checklist records what was built and what is still the owner\'s to decide', () => {
+  it('the readiness checklist still leaves off-host backups and a real restore to the installation', () => {
+    // The checklist was rewritten as an acceptance list (docs cleanup, 2026-10-28); the per-item 1.5
+    // section with its script names and unticked boxes is history (see the recovery commit the doc
+    // names). What must survive is the claim: a backup script in the repo is not a backup.
     const md = fs.readFileSync(path.join(REPO, 'docs/CUSTOMER-DEPLOYMENT-READINESS.md'), 'utf8');
-    const section = md.slice(md.indexOf('### 1.5'), md.indexOf('### 1.6'));
-    expect(section).toContain('scripts/backup-db.sh');
-    expect(section).toContain('scripts/restore-rehearsal.sh');
-    // The two boxes that cannot be ticked from inside the repo are still unticked.
-    expect(section).toMatch(/- \[ \] .*off-box/);
-    expect(section).toMatch(/- \[ \] .*point-in-time/i);
+    const start = md.indexOf('- Install off-host backups');
+    expect(start).toBeGreaterThanOrEqual(0);
+    const line = md.slice(start, md.indexOf('\n', start));
+    expect(line.length).toBeGreaterThan(200);
+    expect(line).toContain('real restore');
+    expect(line).toMatch(/WAL\/PITR/);
+    expect(line).toContain('Backup script existence or a fixture pass is insufficient');
   });
 });
