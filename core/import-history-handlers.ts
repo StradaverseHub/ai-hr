@@ -8,11 +8,13 @@ import {importAttemptKind,previewImportRevert,revertImport,ImportHistoryError,ty
 import {costAllocationRevertHandler} from './cost-allocation-import';
 import {bankStatutoryRevertHandler} from './bank-statutory-import';
 import {movementRevertHandler} from './movement-import-history';
+import {employeeFullRevertHandler} from './employee-import-history';
 
 export const IMPORT_REVERT_HANDLERS:Readonly<Partial<Record<ImportKind,ImportRevertHandler>>>={
  cost_allocations:costAllocationRevertHandler,
  bank_statutory:bankStatutoryRevertHandler,
  movement:movementRevertHandler,
+ employee_full:employeeFullRevertHandler,
 };
 export const importKindRevertible=(kind:ImportKind)=>!!IMPORT_REVERT_HANDLERS[kind];
 async function handlerFor(ctx:SessionContext,attemptId:string){

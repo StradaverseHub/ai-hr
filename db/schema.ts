@@ -789,6 +789,10 @@ export const person = pgTable(
     // remuneration runs for PCB when they hold concurrent employments across the group's companies.
     // FK to employment is added in migration 0069 (avoids the person↔employment cycle in TS).
     designatedPaymasterEmploymentId: uuid('designated_paymaster_employment_id'),
+    // 524303d9 (ADR-0154, migration 0676) — the person of a voided import employment. Leaves every ordinary
+    // read through `person_rls`, which releases the work email; the statutory IC moves to `voidedIcNumber`.
+    voidedAt: timestamp('voided_at', { withTimezone: true }),
+    voidedIcNumber: text('voided_ic_number'),
     createdAt: createdAt(),
   },
   (t) => [index('person_tenant_idx').on(t.tenantId)],
@@ -1177,6 +1181,14 @@ export const employment = pgTable(
     // Explicit HR classification; false means unmarked, never inferred or certified real.
     // Only new Direct Superior selection in Movement imports consumes this flag.
     isTestRecord: boolean('is_test_record').notNull().default(false),
+    // 524303d9 (ADR-0154, migration 0676) — VOID: an employment created in error by an import and reverted.
+    // Final and one-way (trigger `employment_void_guard`); a voided row leaves every ordinary read through
+    // `employment_rls`. `employeeCode` is cleared (the original kept in `voidedEmployeeCode`) so the ID re-imports.
+    voidedAt: timestamp('voided_at', { withTimezone: true }),
+    voidedBy: uuid('voided_by'),
+    voidReason: text('void_reason'),
+    voidedImportAttemptId: uuid('voided_import_attempt_id'),
+    voidedEmployeeCode: text('voided_employee_code'),
     createdAt: createdAt(),
   },
   (t) => [

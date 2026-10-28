@@ -2705,7 +2705,22 @@
       "instructionColumnsHeading": "Các cột — nội dung, có bắt buộc không và các giá trị được chấp nhận",
       "instructionAccepted": "Giá trị được chấp nhận: {values}",
       "bankStatutoryUploadFailed": "Không thể lưu lần nhập. Không có gì thay đổi. Hãy thử lại hoặc mở Lịch sử nhập để kiểm tra.",
-      "viewImportHistoryEntry": "Xem lần nhập này trong Lịch sử nhập"
+      "viewImportHistoryEntry": "Xem lần nhập này trong Lịch sử nhập",
+      "employeeUploadFailed": "Không thể lưu lần nhập. Không có gì thay đổi. Hãy thử lại, hoặc mở Lịch sử nhập để kiểm tra.",
+      "instructionDuplicateEmail": "Email: khi tắt \"Cho phép trùng email công việc hoặc email cá nhân\" (cài đặt Nhân sự chung), email đã được nhân viên khác sử dụng sẽ bị từ chối, giống như NRIC trùng. Khi bật, dòng đó được nhập kèm cảnh báo.",
+      "instructionStatutorySettings": "Ngân hàng & Luật định: mọi cài đặt trên thẻ đều có thể điền tại đây, cùng các cột với mẫu Ngân hàng & Luật định — hạng mục EPF với tỷ lệ hoặc số tiền và lý do, các công tắc chủ lao động chịu, hạng mục SOCSO và EIS, Thuộc diện SKBBK, HRDF (Có, Không hoặc Mặc định), hoàn cảnh thuế, tình trạng cư trú thuế thu nhập, OKU, chế độ và bảng giảm trừ con, và Chủ lao động chịu thuế. Các cài đặt dạng ô đánh dấu nhận Có hoặc Không. Mỗi dòng được kiểm tra bằng cùng quy tắc với màn hình nhân viên trước khi lưu; dòng có lỗi sẽ không tạo gì.",
+      "instructionHireSettings": "Cài đặt khi tuyển: Giống địa chỉ thường trú (Có sẽ sao chép địa chỉ thường trú sang địa chỉ liên lạc; để trống các cột liên lạc), Nhóm lịch làm việc (tên nhóm), và Chính sách áp dụng (chính sách lương đang hoạt động của công ty trên dòng, theo tên hoặc mã, chỉ khi Lương được bật).",
+      "instructionRevert": "Lịch sử nhập lưu tệp này, người nhập và các Mã nhân viên đã tạo. Một lần nhập thành công có thể hoàn tác một lần, miễn là chưa nhân viên nào có dữ liệu gắn thêm kể từ đó (lương, nghỉ phép, chấm công, yêu cầu thanh toán, tài liệu, biến động hoặc tài khoản đăng nhập). Nhân viên bị hoàn tác biến mất khỏi danh sách, số lượng nhân sự và bảng lương nhưng vẫn còn trong nhật ký kiểm tra, và Mã nhân viên, email, số NRIC được giải phóng để có thể nhập lại tệp đã sửa.",
+      "notImported": {
+        "heading": "Không có trong mẫu này, và lý do:",
+        "photos": "Ảnh — ảnh được tải lên ở Hồ sơ nhân viên, không nhập vào ô.",
+        "documents": "Tài liệu — tệp được tải lên ở thẻ Tài liệu.",
+        "leaveBalances": "Số dư nghỉ phép — quyền lợi đến từ chính sách nghỉ phép khi tuyển; số dư đầu kỳ dùng chức năng nhập số dư nghỉ phép.",
+        "delegations": "Ủy quyền phê duyệt — nêu tên nhân viên khác và ngày tháng, được màn hình ủy quyền kiểm tra.",
+        "payItems": "Các khoản lương định kỳ ngoài lương cơ bản và phụ cấp hằng tháng — thêm ở thẻ Lương hoặc bằng chức năng nhập khoản lương.",
+        "openingTax": "Số dư thuế đầu kỳ cho người vào giữa năm (TP3) — nhập ở thẻ Lương.",
+        "holidayCalendar": "Lịch ngày nghỉ — một phân công có ngày hiệu lực với lịch sử riêng; đặt ở thẻ Chấm công sau khi nhập."
+      }
     },
     "wizard": {
       "deleteRecord": "Xóa hồ sơ",
@@ -3102,6 +3117,10 @@
         "noMovement": "Không có mục lịch sử",
         "scheduled": "Đã lên lịch cho ngày hiệu lực",
         "rows": "Dòng {rows}"
+      },
+      "employeeFull": {
+        "created": "Đã tạo {code} · {name}",
+        "willVoid": "Nhân viên này sẽ bị vô hiệu: bị loại khỏi danh sách, số lượng nhân sự và bảng lương, vẫn giữ trong nhật ký kiểm tra. Mã nhân viên, email và NRIC được giải phóng."
       }
     }
   },

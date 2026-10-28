@@ -70,6 +70,17 @@ type RegistryTable = {
  */
 const PLUMBING = 'row plumbing (surrogate key / tenancy / parent FK / timestamps / soft-delete), not employee information';
 
+/** 524303d9 (ADR-0154) — written only by an import revert (`app.employment_void`), never by a file. */
+const VOID_REASON = 'void state of an employment created in error by an import — written only by that import\'s Revert (ADR-0154), never by a spreadsheet';
+/**
+ * 524303d9 — import columns that write a persisted field under another name, or several columns into one field:
+ * the EPF Category is the election mapped onto epfMode and its figures, HRDF's tri-state is subjectToHrdf, every
+ * child-relief grid cell writes the one childReliefTable document, and "Same as permanent address" copies the
+ * permanent columns into the correspondence fields (it has no stored value of its own).
+ */
+const PROJECTED_WRITER_FIELDS: Record<string, string> = { epfUiMode: 'epfMode', hrdfSubject: 'subjectToHrdf' };
+const ALSO_CLAIMED = new Set<string>(['correspondence_same_as_permanent']);
+
 const REGISTRY: Record<string, RegistryTable> = {
   // ───────────────────────────────── person — Profile tab ─────────────────────────────────
   person: {
@@ -91,6 +102,7 @@ const REGISTRY: Record<string, RegistryTable> = {
     },
     excluded: [
       { reason: PLUMBING, fields: ['id', 'tenantId', 'createdAt'] },
+      { reason: VOID_REASON, fields: ['voidedAt', 'voidedIcNumber'] },
       {
         reason:
           'derived, never keyed: date of birth is autofilled from the IC by the importer itself (b9fd8fd5), so a column for it would let a file contradict the identity number beside it',
@@ -175,6 +187,7 @@ const REGISTRY: Record<string, RegistryTable> = {
     },
     excluded: [
       { reason: PLUMBING, fields: ['id', 'tenantId', 'personId', 'createdAt'] },
+      { reason: VOID_REASON, fields: ['voidedAt', 'voidedBy', 'voidReason', 'voidedImportAttemptId', 'voidedEmployeeCode'] },
       { reason: 'HR-only guarded data classification is changed through setEmploymentTestRecord; workbooks and generic imports cannot change it.', fields: ['isTestRecord'] },
       {
         reason:
@@ -596,12 +609,13 @@ const WRITER_TABLE: Record<string, string> = {
 };
 for (const field of PERSONNEL_FIELDS) {
   const spec = field.import;
-  // 0db97f14 — update-only Bank & Statutory columns belong to the section contract (test/bank-statutory-import.test.ts)
-  // until the full template adopts them (524303d9); this file pins the full template.
+  // 0db97f14 — update-only columns belong to a section contract only; 524303d9 adopted every Bank & Statutory one.
   if (spec.column && spec.writer && field.owner !== 'emergencyContact' && !spec.updateOnly) {
     const tableName = WRITER_TABLE[spec.writer];
     if (!tableName || !spec.writerField) throw new Error(`Unaccounted Personnel writer: ${field.id}`);
-    REGISTRY[tableName].covered[spec.writerField] = spec.column;
+    const schemaField = PROJECTED_WRITER_FIELDS[spec.writerField] ?? spec.writerField;
+    if (REGISTRY[tableName].covered[schemaField]) ALSO_CLAIMED.add(spec.column);
+    else REGISTRY[tableName].covered[schemaField] = spec.column;
   }
   if (spec.register) {
     const tableName = spec.register.kind === 'qualification' ? 'employeeQualification' : 'personEmergencyContact';
@@ -610,6 +624,9 @@ for (const field of PERSONNEL_FIELDS) {
     entry.registerCovered.fields[spec.register.writerField] = spec.register.column;
   }
 }
+// 524303d9 — single-value hire-time settings written by their owners in the hire transaction.
+REGISTRY.employment.covered.attendanceRuleId = 'schedule_group';
+REGISTRY.employment.covered.payrollPolicyId = 'payroll_policy';
 for (const entry of Object.values(REGISTRY)) {
   const imported = new Set([...Object.keys(entry.covered), ...Object.keys(entry.registerCovered?.fields ?? {})]);
   entry.excluded = entry.excluded.map(group => ({ ...group, fields: group.fields.filter(field => !imported.has(field)) }))
@@ -673,6 +690,7 @@ describe('2983802f · the import template cannot drift from the employee record'
     const claimed: Record<Sheet, Set<string>> = { employee: new Set(), family: new Set(), qualification: new Set(), emergency: new Set() };
     for (const entry of Object.values(REGISTRY)) {
       for (const col of Object.values(entry.covered)) claimed[entry.sheet].add(col);
+      if (entry.sheet === 'employee') for (const col of ALSO_CLAIMED) claimed.employee.add(col);
       if (entry.registerCovered) for (const col of Object.values(entry.registerCovered.fields)) claimed[entry.registerCovered.sheet].add(col);
     }
     for (const sheet of Object.keys(SHEETS) as Sheet[]) {

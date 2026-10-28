@@ -67,6 +67,8 @@ export type ImportResult = {
   /** cf43c909 — the history row this run wrote, so the screen can link straight to it. Null when the
    *  history write itself failed: recording a run must never fail an import that already happened. */
   runId?: string | null;
+  /** 524303d9 — the Import History attempt (ADR-0152 kind `employee_full`); null for a system context. */
+  attemptId?: string | null;
 };
 
 /** cf43c909 — one rejected row, as stored on an import run and as re-exported to the error report.
@@ -125,8 +127,8 @@ export function importRunOutcome(r: {
  *  employee_code is OPTIONAL (38668d9b gives HR the ABILITY to key in an Employee ID, not an
  *  obligation): when the column is absent or a cell is blank, hireEmployee auto-generates the
  *  next code; when supplied it is validated (format + file/tenant uniqueness). */
-// 0db97f14 — `updateOnly` columns (the Bank & Statutory settings with a merged section writer) are not yet
-// written by the create path; "Everything — new employees" (524303d9) adopts them by clearing the flag.
+// 0db97f14 — `updateOnly` marks a column a section writer owns but the create path does not write. 524303d9
+// cleared it from every Bank & Statutory setting: "Everything — new employees" writes them in the hire transaction.
 const employeeFields=PERSONNEL_FIELDS.filter(field=>field.import.column && field.import.section!=='family' && !field.import.updateOnly);
 export const IMPORT_COLUMNS = {
   required: [...new Set(employeeFields.filter(field=>field.import.requiredCreate).map(field=>field.import.column!))],

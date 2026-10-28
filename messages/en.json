@@ -2705,7 +2705,22 @@
       "instructionColumnsHeading": "Columns — what each one holds, whether it is required, and the values it accepts",
       "instructionAccepted": "Accepted values: {values}",
       "bankStatutoryUploadFailed": "The import could not be saved. Nothing was changed. Try again, or open Import History to check.",
-      "viewImportHistoryEntry": "View this import in Import History"
+      "viewImportHistoryEntry": "View this import in Import History",
+      "employeeUploadFailed": "The import could not be saved. Nothing was changed. Try again, or open Import History to check.",
+      "instructionDuplicateEmail": "Email: with \"Allow Duplicated Work Email or Personal Email\" switched off (People General settings), an email already used by another employee is refused, the same as a duplicate NRIC. With it switched on, the row is imported with a warning.",
+      "instructionStatutorySettings": "Bank & Statutory: every setting on the tab can be filled in here, the same columns as the Bank & Statutory template — EPF category with rates or amounts and the reason, employer-bears switches, SOCSO and EIS categories, Subject to SKBBK, HRDF (Yes, No or Default), tax circumstance, the income tax residency, OKU, child relief mode and table, and Employer bears tax. Tick-box settings take Yes or No. Each row is checked with the same rules as the employee screens before anything is saved; a row with any error creates nothing.",
+      "instructionHireSettings": "Hire-time settings: Same as permanent address (Yes copies the permanent address into the correspondence address; leave the correspondence columns blank), Schedule group (its name), and Applied policy (an active payroll policy of the row's company, by name or code, only where Payroll is switched on).",
+      "instructionRevert": "Import History keeps this file, who imported it and the Employee IDs it created. A successful import can be reverted once, while none of its employees has anything attached since (payroll, leave, attendance, claims, documents, movements or a login). Reverted employees disappear from lists, headcount and payroll but stay in the audit trail, and their Employee IDs, emails and NRIC numbers are freed so the corrected file can be imported again.",
+      "notImported": {
+        "heading": "Not in this template, and why:",
+        "photos": "Photos — a picture is uploaded on the employee's Profile, not typed into a cell.",
+        "documents": "Documents — files are uploaded on the Documents tab.",
+        "leaveBalances": "Leave balances — entitlements come from the leave policy at hire; opening balances use the Leave balance import.",
+        "delegations": "Approval delegations — they name another employee and dates, checked by the delegation screen.",
+        "payItems": "Recurring pay items beyond basic salary and monthly allowance — add them on the Payroll tab or with the pay item import.",
+        "openingTax": "Opening tax balances for mid-year joiners (TP3) — entered on the Payroll tab.",
+        "holidayCalendar": "Holiday calendar — a dated assignment with its own history; set it on the Attendance tab after the import."
+      }
     },
     "wizard": {
       "deleteRecord": "Delete Record",
@@ -3102,6 +3117,10 @@
         "noMovement": "No history entry",
         "scheduled": "Scheduled for its effective date",
         "rows": "Rows {rows}"
+      },
+      "employeeFull": {
+        "created": "Created {code} · {name}",
+        "willVoid": "This employee will be voided: removed from lists, headcount and payroll, kept in the audit trail. The Employee ID, email and NRIC are freed."
       }
     }
   },

@@ -80,6 +80,11 @@ async function ItemValue({kind,value}:{kind:ImportKind;value:unknown}){
    {state.scheduled&&<p className="text-xs text-muted-foreground">{t('movementItem.scheduled')}</p>}
    {values.length>0&&<dl className="space-y-1">{values.map(([field,v])=><div key={field}><dt className="inline text-muted-foreground">{movementImportFieldLabel(field,resolve)}: </dt><dd className="inline break-all">{v??'—'}</dd></div>)}</dl>}</div>;
  }
+ if(kind==='employee_full'){
+  // 524303d9 — the employee this import created (no identity, salary or bank value is recorded).
+  const state=value as {employeeCode?:string;fullName?:string};
+  return <span>{t('employeeFull.created',{code:state.employeeCode||'—',name:state.fullName??''})}</span>;
+ }
  // Kinds without a dedicated renderer show their recorded fields as plain pairs.
  if(typeof value==='object')return <dl className="space-y-1">{Object.entries(value as Record<string,unknown>).map(([k,v])=><div key={k}><dt className="inline text-muted-foreground">{k}: </dt><dd className="inline break-all">{typeof v==='object'?JSON.stringify(v):String(v)}</dd></div>)}</dl>;
  return <span>{String(value)}</span>;

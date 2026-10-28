@@ -160,6 +160,9 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
   // reported from the click that does it and never inferred from something else being true.
   const [templateDownloaded, setTemplateDownloaded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // 524303d9 — the ORIGINAL file and the text read from it, so Import History keeps the uploaded file. Used
+  // only while the text being imported is still exactly that text (an edit or a prepared text is not it).
+  const sourceFile = useRef<{file:File;text:string}|null>(null);
   // A preview belongs to exact input; a slower read/validation cannot restore superseded input.
   const inputRevision = useRef(0);
   const fileReadRevision = useRef(0);
@@ -254,7 +257,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
       }
       // Recognised/manual file flow adopts only after decode AND fingerprint await are current.
       originalSourceFingerprint.current=originalDigest;setSourceEpoch(value=>value+1);setGuidedUsed(false);manualCorrection.current=false;
-      setLocalEvidence([]);setCsv(text);headerAssistanceAnnotation.current=null;
+      setLocalEvidence([]);setCsv(text);headerAssistanceAnnotation.current=null;sourceFile.current={file,text};
       try{setImportSource(capturePersonnelImportSource({text,fileName:name,format,source},crypto.randomUUID()));}catch{setImportSource(null);}
 
       setDependentsCsv(dependentsText);
@@ -374,6 +377,14 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
                 t('registerInstructions'),
                 t('registerFullInstructions'),
                 t('instructionSamples'),
+                // 524303d9 — the duplicate policy, the Bank & Statutory settings, the hire-time settings, Import
+                // History/Revert, and everything this template deliberately does not carry, each with its reason.
+                t('instructionDuplicateEmail'),
+                t('instructionStatutorySettings'),
+                t('instructionHireSettings'),
+                t('instructionRevert'),
+                t('notImported.heading'),
+                ...(['photos','documents','leaveBalances','delegations','payItems','openingTax','holidayCalendar'] as const).map(key=>t(`notImported.${key}`)),
               ]),[],...personnelImportExclusionRows('full',(key,fallback)=>personnelLabels.has(key)?personnelLabels(key):fallback)],
             },
           ],
@@ -424,8 +435,22 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
         const revision=inputRevision.current;
         const binding=await evaluation.current?.prepareCommit({csv,companyId,family:dependentsCsv,registers:registerTexts,allocations:allocationsCsv,revision});
         if(binding===null||revision!==inputRevision.current)return;
-        let r;
-        try{r=await commitImportAction(csv, companyId, fileName ?? '', dependentsCsv, registerTexts, allocationsCsv, preview.allocations?.token, binding);}catch(cause){if(binding)evaluation.current?.commitUncertain();throw cause;}
+        let r:Awaited<ReturnType<typeof commitImportAction>>;
+        try{
+          // 524303d9 — an uploaded file whose text is still exactly what is being imported goes to Import History
+          // as the original bytes; a paste, an edited or a prepared text is recorded by the action as its CSV text.
+          const original=!binding&&sourceFile.current&&sourceFile.current.text===csv?sourceFile.current.file:null;
+          if(!original)r=await commitImportAction(csv, companyId, fileName ?? '', dependentsCsv, registerTexts, allocationsCsv, preview.allocations?.token, binding);
+          else{
+            const body=new FormData();
+            body.append('file',original,original.name);
+            body.append('payload',JSON.stringify({companyId,csv,fileName:fileName??'',dependentsCsv,registers:registerTexts,allocationsCsv,allocationToken:preview.allocations?.token}));
+            const response=await fetch('/admin/personnel/import/employee/upload',{method:'POST',body,headers:{'x-upload-operation':crypto.randomUUID()}});
+            const payload=await response.json().catch(()=>({error:null}));
+            if(!response.ok)throw new Error(response.status===413?t('fileTooLarge'):payload.error??t('employeeUploadFailed'));
+            r=payload as Awaited<ReturnType<typeof commitImportAction>>;
+          }
+        }catch(cause){if(binding)evaluation.current?.commitUncertain();throw cause;}
         if(binding)evaluation.current?.acceptCommit(r.evaluationReceipt);
         setResult(r);
         setPhase('done');
@@ -752,6 +777,11 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
           {/* Item 2983802f — the file was refused whole; nothing was written. Shown here as well as on the
               preview because a stale preview could have been confirmed against a file the server then
               re-checked and rejected. */}
+          {result.attemptId && (
+            <p className="border-b border-border px-4 py-2 text-sm">
+              <Link href={`/admin/personnel/import/history/${result.attemptId}`} className="text-primary hover:underline">{t('viewImportHistoryEntry')}</Link>
+            </p>
+          )}
           {!!result.warnings?.length && <p role="status" className="px-4 py-3 text-sm text-amber-700 dark:text-amber-300">{result.warnings.join(' ')}</p>}
           {result.fileErrors.length > 0 && (
             <div className="border-b border-border bg-red-50/60 px-4 py-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
