@@ -144,6 +144,7 @@ export const performancePack: ModulePack = {
     { table: 'performance_leader_seat', note: 'dated BU CEO, BG CEO and group chief seats that grant calibration access (WP-B2)' },
     { table: 'performance_hod_assignment', note: 'dated per-person head of department; never department.head_employment_id (WP-B2)' },
     { table: 'performance_onehr_calibration_entry_retired', note: 'department-review entries retired when a person changes HOD, decisions kept (WP-B2)' },
+    { table: 'performance_assessment_release_notice', note: 'append-only ledger of release notices, one per review, component, step and recipient; no band (WP-E)' },
 
 
   ],
