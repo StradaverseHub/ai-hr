@@ -78,6 +78,26 @@ export type CompanyRef = {
 };
 
 export const COMPANY_REFERRERS: readonly CompanyRef[] = [
+  {table:'letter_asset',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'letter_automation_rule_version',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'letter_capability_grant',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'letter_generation_batch',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'letter_job',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'letter_merge_field_version',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'letter_policy_version',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'letter_record',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'letter_template',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'letter_template_version',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'notification',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  // AI review custody and import-assistance attempts: owner-only rows the administrator's own RLS view
+  // cannot count, so one fixed SECURITY DEFINER boolean answers for all four (repair fragment
+  // guards-fixtures). They refuse rather than cascade: they are audit of what a person reviewed or what a
+  // model was asked, and they leave only through their own expiry/retention owners.
+  {table:'assistant_own_leave_review',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'A reviewed Assistant action custody record scoped to this company is retained audit; expose only a scoped retention boolean.'},
+  {table:'personnel_import_assistance_attempt',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'An AI-assisted personnel import attempt for this company is retained until its own expiry owner removes it.'},
+  {table:'employee_import_evaluation_attempt',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'An employee import AI evaluation for this company is retained until its own expiry owner removes it.'},
+  {table:'employee_import_evaluation_run_membership',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'The model-run membership of an employee import AI evaluation retains its company with the evaluation.'},
+  {table:'payroll_history_import_record',column:'company_id',disposition:'payroll',note:'An imported payroll identity and every correction or recovery retain their original company permanently.'},
   { table: 'employment_cost_allocation_set', column: 'company_id', disposition: 'employees', existsFunction: 'app.board3_allocation_company_in_use', note: 'Every retained allocation set, including cleared or superseded sets after a transfer, retains its company without exposing employee rows.' },
   { table: 'job_document', column: 'company_id', disposition: 'other', existsFunction: 'app.board3_job_company_in_use', note: 'Job documentation and its approval history are retained records, never company setup to cascade.' },
   { table: 'job_document_form', column: 'company_id', disposition: 'other', existsFunction: 'app.board3_job_company_in_use', note: 'Versioned authored form definitions retain their company and must not be erased by company setup deletion.' },
@@ -137,6 +157,7 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'overtime_source_settlement', column: 'company_id', disposition: 'payroll', note: 'A cash or TOIL settlement receipt retains its company, including released claims.' },
 
   { table: 'reward_unit', column: 'company_id', disposition: 'payroll', note: 'A salary and bonus review with employee snapshots, funding and approval history. Preserve it even before posting.' },
+  { table: 'reward_calendar', column: 'company_id', disposition: 'payroll', note: 'The reward approval deadlines set for a cycle in this company. They belong to the reward review history; preserve them with the reviews.' },
 
   // ── other links: any row refuses until the link is removed ───────────────────────────────────────────
   { table: 'company', column: 'parent_company_id', disposition: 'other', note: 'A sub-company. Re-parent or delete it first; deleting a parent must never orphan a subtree.' },
@@ -154,6 +175,8 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'performance_kpi_library', column: 'company_id', disposition: 'other', existsFunction: 'app.performance_kpi_library_company_in_use', note: 'Retain the company scope of assessment catalogue entries.' },
   { table: 'performance_onehr_review', column: 'company_id', disposition: 'other', existsFunction: 'app.onehr_review_company_in_use', note: 'The opening-company snapshot of an assessment remains retained history after an employee transfers company, including in group-wide cycles.' },
   { table: 'performance_onehr_calibration', column: 'company_id', disposition: 'other', existsFunction: 'app.onehr_calibration_company_in_use', note: 'A company-scoped calibration retains its original cohort scope and approval history even when its members transfer away.' },
+  { table: 'performance_leader_seat', column: 'company_id', disposition: 'other', existsFunction: 'app.onehr_leader_seat_company_in_use', note: 'A business unit or business group CEO seat anchored on this company is dated history of who calibrated it; seats are ended, never deleted.' },
+  { table: 'performance_assessment_unit_exclusion', column: 'company_id', disposition: 'other', existsFunction: 'app.assessment_unit_exclusion_company_in_use', note: 'A cycle exclusion rule naming this company (D-P1-22) is the record of who took no part in that review; rules are ended, never deleted.' },
   { table: 'tenant_module', column: 'company_id', disposition: 'other', note: 'A module grant scoped to this company. Composite key with tenant_id. Entitlement is the platform\'s to remove.' },
   { table: 'module_change_request', column: 'company_id', disposition: 'other', note: 'A module activation request for this company. Composite key with tenant_id.' },
   { table: 'lc_staff', column: 'company_id', disposition: 'other', note: 'A user named as Onboarding & IT module staff for this company (ADR-0095). Access is removed deliberately, never as a side effect.' },
@@ -228,6 +251,7 @@ export type CompanyConfigDependent = {
 };
 
 export const COMPANY_CONFIG_DEPENDENTS: readonly CompanyConfigDependent[] = [
+  {table:'payroll_history_import_record',column:'cycle_id',references:'payroll_cycle',effect:'blocks',note:'Imported payroll identities retain the exact configured cycle even after every effective value is retired.'},
   { table: 'employment_cost_allocation_row', column: 'cost_center_id', references: 'cost_center', effect: 'blocks', existsFunction: 'app.board3_source_company_in_use', note: 'Retained Board 3 history keeps this organisation reference even outside current record visibility; expose only a scoped source-company retention boolean.' },
   { table: 'job_document_revision', column: 'business_unit_id', references: 'business_unit', effect: 'blocks', existsFunction: 'app.board3_source_company_in_use', note: 'Retained Board 3 history keeps this organisation reference even outside current record visibility; expose only a scoped source-company retention boolean.' },
   { table: 'job_document_revision', column: 'department_id', references: 'department', effect: 'blocks', existsFunction: 'app.board3_source_company_in_use', note: 'Retained Board 3 history keeps this organisation reference even outside current record visibility; expose only a scoped source-company retention boolean.' },
@@ -267,6 +291,7 @@ export const COMPANY_CONFIG_DEPENDENTS: readonly CompanyConfigDependent[] = [
   { table: 'employment_pay_component', column: 'payroll_cycle_id', references: 'payroll_cycle', effect: 'blocks', note: 'r392 (4fffe638, 0514): a fixed transaction linked to our cycle. Refuses, like an individual transaction aimed at it.' },
   { table: 'employee_draft', column: 'reserved_config_id', references: 'employee_id_config', effect: 'blocks', note: 'ON DELETE SET NULL. A draft holding a number from our running-number setup.' },
   { table: 'leave_approval_policy', column: 'department_id', references: 'department', effect: 'blocks', note: 'Another company\'s (or a tenant-wide) approval rule naming our department.' },
+  { table: 'performance_assessment_unit_exclusion', column: 'department_id', references: 'department', effect: 'blocks', existsFunction: 'app.assessment_unit_exclusion_company_in_use', note: 'A cycle exclusion rule naming our department (D-P1-22) is retained review history; rules are ended, never deleted.' },
   { table: 'leave_approval_policy', column: 'position_id', references: 'position', effect: 'blocks', note: 'An approval rule outside the company naming our position.' },
   { table: 'leave_approval_policy', column: 'business_unit_id', references: 'business_unit', effect: 'blocks', note: 'An approval rule outside the company naming our business unit.' },
   { table: 'department', column: 'parent_department_id', references: 'department', effect: 'blocks', note: 'Another company\'s department nested under ours.' },

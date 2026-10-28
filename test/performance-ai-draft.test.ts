@@ -6,12 +6,13 @@
  *   - PII redaction: emails / IC numbers in free text are scrubbed before they reach the gateway;
  *   - auditability: a generated draft appends a `performance-review.ai-draft-generated` event.
  *
- * The provider gateway (lib/ai generateDraft) and the config resolver (core/ai-config
- * resolveActiveAiConfig) are mocked — these tests never touch any SDK, the network, or a real key.
+ * The provider gateway is mocked; the config spy delegates to its real opaque issuer with a fake
+ * environment key. No SDK/network runs, and these legacy draft cases do NOT claim admission proof.
+ * Actual admission/source replay is authored separately in canonical-provider-source-admission.test.ts.
  * redactPII stays REAL (via importActual) so the redaction contract is genuinely exercised.
  */
 import { eq } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll,afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../lib/ai', async (importActual) => {
   const actual = await importActual<typeof import('../lib/ai')>();
@@ -25,7 +26,7 @@ vi.mock('../core/ai-config', async (importActual) => {
   const actual = await importActual<typeof import('../core/ai-config')>();
   return {
     ...actual,
-    resolveActiveAiConfig: vi.fn(async () => ({ provider: 'anthropic', model: 'claude-opus-4-8', apiKey: 'sk-test' })),
+    resolveActiveAiConfig: vi.fn(actual.resolveActiveAiConfig),
   };
 });
 
@@ -44,7 +45,7 @@ import {
   submitSelfReview,
 } from '../core/performance';
 import { hireEmployee, setReportingLine } from '../core/org';
-import { adminCtx, closeAll, createAppUser, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base, harnessSnapshot } from './harness';
+import { adminCtx, closeAll, createAppUser, eventTypesFor, migrateTestDb, owner, resetDb, seedBase,setModule, type Base, harnessSnapshot } from './harness';
 
 const hire = (ctx: SessionContext, b: Base, name: string) =>
   hireEmployee(ctx, {
@@ -62,12 +63,12 @@ describe('ADR-0022 — AI-assisted review drafting', () => {
   });
   beforeEach(async () => {
     await resetDb();
-    base = await seedBase();
+    base = await seedBase();await setModule(base.tenantId,'performance','active');vi.stubEnv('OPENAI_API_KEY','fictional-performance-draft-test-never-sent');for(const key of ['ANTHROPIC_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY'])vi.stubEnv(key,'');
     vi.mocked(generateDraft).mockReset().mockResolvedValue('DRAFT: the employee performed well this period.');
-    vi.mocked(resolveActiveAiConfig)
-      .mockReset()
-      .mockResolvedValue({ provider: 'anthropic', model: 'claude-opus-4-8', apiKey: 'sk-test' });
+    const real=await vi.importActual<typeof import('../core/ai-config')>('../core/ai-config');
+    vi.mocked(resolveActiveAiConfig).mockReset().mockImplementation(real.resolveActiveAiConfig);
   });
+  afterEach(()=>vi.unstubAllEnvs());
   afterAll(async () => {
     await closeAll();
   });

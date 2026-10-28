@@ -1,3 +1,7 @@
+import {assertClaimsProviderSourceTx} from './claims-provider-source';
+import {withAiAdmissionCheck} from './ai-governance';
+import {bindAiSpendTaskTx} from './ai-spend-task';
+import {draftInputDigest} from '../lib/ai/draft-input';
 /**
  * ADR-0084 §2.7 / §3 item 4 — INPUT-SIDE TRIAGE. The largest untouched surface in the product.
  *
@@ -34,12 +38,13 @@
  * ⚠️ **THIS IS THE FIRST SURFACE IN THE PRODUCT THAT SENDS EMPLOYEE-AUTHORED FREE TEXT TO A PROVIDER.**
  * `report-ai.ts`'s posture is *schema out, never data*, and the narrator sends only a bag of numbers. Here
  * the description IS the thing being read, so it cannot be withheld. What is withheld: the employee's
- * name, their employment id, their company, and anything `redactPII` can find (email, IC, phone). What is
- * sent: the claim type, the item, the amount, two dates and the redacted description. It is the tenant's
+ * name FIELD, their employment id, their company, and anything `redactPII` can find (email, IC, phone).
+ * What is sent: the claim type, the item, the amount, two dates and the description. `redactPII` does not
+ * detect names, so a name written INSIDE the description (the claimant's or anyone else's) is sent. It is the tenant's
  * own key (ADR-0023), and the switch below is off until they say otherwise.
  */
 import { and, desc, eq, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext,type Tx } from '../db/client';
 import { appendEvent } from '../db/events';
 import * as schema from '../db/schema';
 import { generateDraft, redactPII } from '../lib/ai';
@@ -218,7 +223,8 @@ const SYSTEM = [
   'No markdown, no code fences, no preamble.',
 ].join(' ');
 
-/** What the model is shown. No name, no employment id, no company — and the description is redacted. */
+/** What the model is shown. No name field, no employment id, no company — and the description with
+ * emails/IC/phone runs masked (a name written in it is not). */
 const claimAsText = (f: ClaimFacts) =>
   [
     `Claim type: ${f.type}`,
@@ -290,15 +296,12 @@ const daysAgo = (n: number) => new Date(Date.now() - n * 24 * 60 * 60 * 1000);
  * "already triaged" is a read of the ledger rather than a column on `claim_request`, and there is nothing
  * to migrate or to keep in step.
  */
-export async function triagePendingClaims(ctx: SessionContext): Promise<TriageRun> {
-  // The literal, not TRIAGE_SETTING_KEY — see that constant's note.
-  if (!settingEnabled(ctx, 'claims.input_triage_enabled')) return { ...EMPTY, disabled: true };
-
-  const since = daysAgo(TRIAGE_WINDOW_DAYS);
-  const claims = await withTenant(ctx, (tx) =>
-    tx
+/** Existing native pending-row projection, including historical SYSTEM deterministic/no-provider
+ * paths. This function is not a provider disclosure or USER admission owner. */
+async function pendingClaimNativeSourceTx(tx:Tx,since:Date,claimId?:string){
+  return tx
       .select({
-        id: schema.claimRequest.id,
+        id: schema.claimRequest.id,version:sql<string>`${schema.claimRequest}.xmin::text`,claimTypeId:schema.claimRequest.claimTypeId,claimItemId:schema.claimRequest.claimItemId,
         employmentId: schema.claimRequest.employmentId,
         amount: schema.claimRequest.amount,
         incurredOn: schema.claimRequest.incurredOn,
@@ -311,10 +314,35 @@ export async function triagePendingClaims(ctx: SessionContext): Promise<TriageRu
       .innerJoin(schema.claimType, eq(schema.claimType.id, schema.claimRequest.claimTypeId))
       // LEFT: a type with no items, and every claim filed before items existed, must still be seen.
       .leftJoin(schema.claimItem, eq(schema.claimItem.id, schema.claimRequest.claimItemId))
-      .where(and(eq(schema.claimRequest.status, 'pending'), gte(schema.claimRequest.createdAt, since)))
+      .where(and(eq(schema.claimRequest.status,'pending'),gte(schema.claimRequest.createdAt,since),claimId?eq(schema.claimRequest.id,claimId):undefined))
       .orderBy(desc(schema.claimRequest.createdAt))
-      .limit(500),
-  );
+      .limit(500);
+}
+/** Fresh actual USER/native RLS source required at EVERY provider admission. */
+async function pendingClaimAiSourceTx(tx:Tx,supplied:SessionContext,sinceValue:Date,claimId?:string){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},since=new Date(sinceValue.getTime());
+ const fresh=await assertClaimsProviderSourceTx(tx,ctx);if(!settingEnabled(fresh,'claims.input_triage_enabled'))throw Error('Current claim source unavailable.');
+ if(claimId){
+  // Nomination is not disclosure authority. Own exact native rows NOWAIT before the fresh projection;
+  // fixed table order is type -> item -> request. Existing claim-limit writer ordering is untouched.
+  const binding={employmentId:schema.claimRequest.employmentId,claimTypeId:schema.claimRequest.claimTypeId,claimItemId:schema.claimRequest.claimItemId};
+  const [nominee]=await tx.select(binding).from(schema.claimRequest).where(and(eq(schema.claimRequest.id,claimId),eq(schema.claimRequest.status,'pending'),gte(schema.claimRequest.createdAt,since))).limit(1);
+  if(!nominee)throw Error('Current claim source unavailable.');
+  const [type]=await tx.select({id:schema.claimType.id}).from(schema.claimType).where(eq(schema.claimType.id,nominee.claimTypeId)).for('share',{noWait:true});if(!type)throw Error('Current claim source unavailable.');
+  if(nominee.claimItemId){const [item]=await tx.select({id:schema.claimItem.id}).from(schema.claimItem).where(eq(schema.claimItem.id,nominee.claimItemId)).for('share',{noWait:true});if(!item)throw Error('Current claim source unavailable.');}
+  const [owned]=await tx.select(binding).from(schema.claimRequest).where(eq(schema.claimRequest.id,claimId)).for('share',{noWait:true});
+  if(!owned||JSON.stringify(owned)!==JSON.stringify(nominee))throw Error('Current claim source unavailable.');
+ }
+ return pendingClaimNativeSourceTx(tx,since,claimId);
+}
+
+export async function triagePendingClaims(ctx: SessionContext): Promise<TriageRun> {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
+  // The literal, not TRIAGE_SETTING_KEY — see that constant's note.
+  if (!settingEnabled(ctx, 'claims.input_triage_enabled')) return { ...EMPTY, disabled: true };
+
+  const since = daysAgo(TRIAGE_WINDOW_DAYS);
+  const claims=await withTenant(ctx,tx=>ctx.userId?pendingClaimAiSourceTx(tx,ctx,since):pendingClaimNativeSourceTx(tx,since));
   if (claims.length === 0) return { ...EMPTY };
 
   // ONE read for "which of these have been looked at already", rather than one per claim: this has to
@@ -367,7 +395,10 @@ export async function triagePendingClaims(ctx: SessionContext): Promise<TriageRu
 
     let raw = '';
     try {
-      raw = await generateDraft(cfg, { system: SYSTEM, prompt: claimAsText(facts), maxTokens: MAX_TOKENS });
+      const args=Object.freeze({system:SYSTEM,prompt:claimAsText(facts),maxTokens:MAX_TOKENS}),expectedInput=draftInputDigest(args),expectedSource=digestOf(c);
+      const bound=withAiAdmissionCheck(cfg,'claims_triage',async(tx,request)=>{const [current]=await pendingClaimAiSourceTx(tx,ctx,since,c.id);if(request.operation!=='draft'||request.inputDigest!==expectedInput||!current||digestOf(current)!==expectedSource)throw Error('Current claim source unavailable.');});
+      const rooted=await withTenant(ctx,async tx=>{const[current]=await pendingClaimAiSourceTx(tx,ctx,since,c.id);if(!current||digestOf(current)!==expectedSource)throw Error('Current claim source unavailable.');return bindAiSpendTaskTx(tx,ctx,bound,{kind:'claim_request',sourceId:c.id});});
+      raw=await generateDraft(rooted,args);
     } catch {
       // Provider down, timed out, refused. Nothing proposed, nothing recorded; the next pass re-asks
       // because no ledger row was written for this claim.
@@ -408,8 +439,9 @@ export async function triagePendingClaims(ctx: SessionContext): Promise<TriageRu
       continue;
     }
 
-    await withTenant(ctx, (tx) =>
-      appendEvent(tx, {
+    await withTenant(ctx, async tx => {
+      const [current]=await pendingClaimAiSourceTx(tx,ctx,since,c.id);if(!current||digestOf(current)!==digestOf(c))throw Error('Current claim source unavailable.');
+      return appendEvent(tx, {
         tenantId: ctx.tenantId,
         aggregateType: 'claim-request',
         aggregateId: c.id,
@@ -421,8 +453,8 @@ export async function triagePendingClaims(ctx: SessionContext): Promise<TriageRu
         // and stores the result (ADR-0034). The rule id rides along so the notification can be traced
         // back to the catalogue entry that produced it.
         payload: { policyRuleId: parsed!.policyRuleId, reason: parsed!.reason },
-      }),
-    );
+      });
+    });
     out.queried++;
   }
 

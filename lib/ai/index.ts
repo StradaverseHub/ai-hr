@@ -4,18 +4,24 @@
  * this dispatches to the right adapter. Draft-only by contract — nothing here writes a review or pay.
  *
  * Two rails baked in:
- *  1. redactPII() — scrub direct identifiers from any free text before it leaves the tenant, for
- *     EVERY provider (employee PII now potentially travels to a tenant-chosen third party).
+ *  1. redactPII() — mask emails, Malaysian IC numbers and phone-like runs in free text before it leaves
+ *     the tenant, for EVERY provider. It does NOT mask names or other identifying prose; employee
+ *     personal data can still reach a tenant-chosen third party through any free text a caller sends.
  *  2. Generic errors — adapters map provider SDK errors to AiGatewayError, so no key fragment or raw
  *     provider body ever reaches a log, a server-action return, or the browser.
  *
  * The provider client is constructed PER CALL inside each adapter from the resolved key — never cached
  * at module scope (a singleton would serve one tenant's drafts with another tenant's key).
  */
-import { governed,textReservation } from './governance';
+import { captureAiConfig,governed,textReservation } from './governance';
+import { captureConversationInput, conversationInputDigest } from './conversation-input';
+import {draftInputDigest} from './draft-input';
+import {captureImageInput,imageInputDigest} from './image-input';
 import { anthropicAdapter } from './providers/anthropic';
 import { googleAdapter } from './providers/google';
 import { openaiAdapter } from './providers/openai';
+import { openrouterAdapter } from './providers/openrouter';
+import { gatewayAdapter } from './providers/gateway';
 import { AiImageReadError,imageReadError,validImageBytes } from './image-protocol';
 import type { ImageReadArgs } from './types';
 export { AiImageReadError } from './image-protocol';
@@ -24,6 +30,7 @@ import {
   AiGatewayError,
   type AiAdapter,
   type AiProvider,
+  type AiRunObservation,
   type ConverseArgs,
   type ConverseResult,
   type GenerateArgs,
@@ -51,6 +58,8 @@ const ADAPTERS: Record<AiProvider, AiAdapter> = {
   anthropic: anthropicAdapter,
   openai: openaiAdapter,
   google: googleAdapter,
+  openrouter: openrouterAdapter,
+  ai_gateway: gatewayAdapter,
 };
 
 function adapterFor(provider: AiProvider): AiAdapter {
@@ -63,8 +72,10 @@ function adapterFor(provider: AiProvider): AiAdapter {
  *  the provider returns no text (e.g. the whole budget was spent on thinking, or a safety block) so a
  *  caller never silently receives an empty draft. */
 export async function generateDraft(cfg: ResolvedAiConfig, args: GenerateArgs): Promise<string> {
+  args=Object.freeze({...args,system:args.system,prompt:args.prompt,maxTokens:args.maxTokens??2048});
+  cfg=captureAiConfig(cfg);
   if(args.signal?.aborted)throw new AiGatewayError('Drafting was cancelled.');
-  return governed(cfg,{operation:'draft',reservedTokens:textReservation(args.system+args.prompt,args.maxTokens)},record=>generateDraftTransport(cfg,{...args,onUsage:record}));
+  return governed(cfg,{operation:'draft',reservedTokens:textReservation(args.system+args.prompt,args.maxTokens),inputDigest:draftInputDigest(args)},(record,observe)=>generateDraftTransport(cfg,{...args,onUsage:record,onObservation:cfg.provider==='openrouter'?observe:undefined}));
 }
 async function generateDraftTransport(cfg: ResolvedAiConfig, args: GenerateArgs): Promise<string> {
   const adapter=adapterFor(cfg.provider);
@@ -79,9 +90,11 @@ async function generateDraftTransport(cfg: ResolvedAiConfig, args: GenerateArgs)
 export function supportsImageReading(provider:AiProvider){return typeof ADAPTERS[provider]?.readImage==='function';}
 /** This operation never changes the existing text/conversation paths. Callers authorize the bytes before using it. */
 export async function readImage(cfg:ResolvedAiConfig,args:Omit<ImageReadArgs,'signal'|'timeoutMs'>&Partial<Pick<ImageReadArgs,'signal'|'timeoutMs'>>){
- if(!validImageBytes(args.data,args.mimeType)||!supportsImageReading(cfg.provider))throw new AiImageReadError(false);
- if(args.signal?.aborted)throw new AiImageReadError(true);
- return governed(cfg,{operation:'image',reservedTokens:Math.min(1000000000,Math.max(32768,args.data.length*2)+2500)},record=>readImageTransport(cfg,{...args,onUsage:record}));
+ const captured=captureImageInput(args);
+ cfg=captureAiConfig(cfg);
+ if(!supportsImageReading(cfg.provider))throw new AiImageReadError(false);
+ if(captured.signal?.aborted)throw new AiImageReadError(true);
+ return governed(cfg,{operation:'image',reservedTokens:Math.min(1000000000,Math.max(32768,captured.data.length*2)+2500),inputDigest:imageInputDigest(captured)},record=>readImageTransport(cfg,{...captured,onUsage:record}));
 }
 async function readImageTransport(cfg:ResolvedAiConfig,args:Omit<ImageReadArgs,'signal'|'timeoutMs'>&Partial<Pick<ImageReadArgs,'signal'|'timeoutMs'>>){
  if(!validImageBytes(args.data,args.mimeType))throw new AiImageReadError(false);
@@ -99,6 +112,7 @@ async function readImageTransport(cfg:ResolvedAiConfig,args:Omit<ImageReadArgs,'
 
 /** Cheapest credential+model probe. Returns ok/false + a generic reason; never throws. */
 export function validateConfig(cfg: ResolvedAiConfig) {
+  cfg=captureAiConfig(cfg);
   return adapterFor(cfg.provider).validate(cfg);
 }
 
@@ -130,19 +144,28 @@ export function supportsConverse(provider: AiProvider): boolean {
  * here.
  */
 export async function converse(cfg: ResolvedAiConfig, args: ConverseArgs): Promise<ConverseResult> {
+  cfg=captureAiConfig(cfg);
+  args=captureConversationInput(args);
   const adapter = adapterFor(cfg.provider);
   if (!adapter.converse) throw new AiGatewayError('This AI provider does not support the assistant.');
   // Defaults are normalised HERE, not per adapter, so a fourth adapter cannot silently send `undefined`
   // and inherit a server-side default nobody chose.
   const text=args.system.join('')+JSON.stringify(args.tools)+args.turns.map(t=>t.role==='tool'?t.results.map(r=>r.content).join(''):t.content).join('');
-  return governed(cfg,{operation:'conversation',reservedTokens:textReservation(text,args.maxTokens)},async record=>{const result=await adapter.converse!(cfg,{...args,maxTokens:args.maxTokens??2048,timeoutMs:args.timeoutMs??120_000});if(result.usageReported??[result.usage.inputTokens,result.usage.outputTokens,result.usage.cachedInputTokens].some(n=>n>0))record(result.usage);return result;});
+  return governed(cfg,{operation:'conversation',reservedTokens:textReservation(text,args.maxTokens),inputDigest:conversationInputDigest(args)},async(record,observe)=>{let terminalObserved=false;const terminal:{usage:AiRunObservation['usage']}={usage:null};const result=await adapter.converse!(cfg,{...args,...(cfg.provider==='openrouter'?{onObservation:(observation:AiRunObservation)=>{
+   terminalObserved=true;terminal.usage=observation.usage;observe?.(observation);if(observation.usage)record(observation.usage);
+  }}:{}),maxTokens:args.maxTokens??2048,timeoutMs:args.timeoutMs??120_000});
+  if(terminalObserved){const usage=terminal.usage,reported=result.usageReported===true;if(reported?(!usage||usage.inputTokens!==result.usage.inputTokens||usage.outputTokens!==result.usage.outputTokens||usage.cachedInputTokens!==result.usage.cachedInputTokens):usage!==null)throw new AiGatewayError('The AI provider usage could not be confirmed.');}
+  // A charged-but-rejected completion may never return. Actual terminal usage is already recorded
+  // by the trusted adapter callback; do not double-record successful OpenRouter counters.
+  if(!terminalObserved&&(result.usageReported??[result.usage.inputTokens,result.usage.outputTokens,result.usage.cachedInputTokens].some(n=>n>0)))record(result.usage);return result;});
 }
 
 /**
- * Scrub direct identifiers before any free text leaves the tenant for a model. Conservative — only
+ * Mask a few direct identifiers before free text leaves the tenant for a model. Conservative — only
  * high-precision patterns (emails, Malaysian IC numbers, long phone-like runs), so ordinary prose is
- * untouched. Names are handled at the prompt level (the employee is referred to generically; peer
- * feedback is anonymous).
+ * untouched. It NEVER masks names: a name typed into free text passes through, and some prompt builders
+ * deliberately send a first name or a structured name field. Callers that must withhold a name have to
+ * leave it out of the prompt themselves; this function is not a PII guarantee.
  */
 export function redactPII(text: string | null | undefined): string {
   if (!text) return '';

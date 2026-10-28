@@ -76,17 +76,32 @@
 import { Target } from 'lucide-react';
 import { registerPack, type ModulePack, type NavLinkDescriptor } from '../registry';
 
-// The performance sidebar presence, moved VERBATIM from components/sidebar.tsx at rung 4 — like
-// claims this is flat rows, not a collapsible node; unlike claims it is a SINGLE row in the
-// Manage group (which is why rung 4 added 'manage' to NavLinkDescriptor's group union):
-//   - the row sat in the Manage group after Approvals (1b35f17b: the group's whole-group gate was
-//     dropped when Personnel became every-employee, so the row carries its own managerUp flag —
-//     managers/admins see Manage → Performance; employees use My Performance in Home).
-// href, labelKey, the Target icon ref and the managerUp flag are the sidebar's verbatim; only the
-// mounting moved (the sidebar places the row via the registry).
+/**
+ * The performance sidebar presence. D-P1-32 PT-X5 (APR-025 D4) consolidated the five performance rows (My
+ * Performance, the manager-up Performance row, Calibration, and the journey's Talent and Development entry
+ * points) into EXACTLY TWO entries; Rewards keeps its own rows (packs/rewards).
+ *
+ * - Performance & Talent (`/performance/home`): employees and leaders. No role flag: the Performance module gate
+ *   (MODULE_OF_HREF in components/sidebar.tsx) is its only gate, the same as the area's Dashboard tab, which is
+ *   open whenever the module is (packs/performance/onehr/tab-model.ts). Every other place in the area is a tab
+ *   below it, so `ownedSubpaths` keep this entry lit across the area's employee and leader routes.
+ * - Performance admin: OneHR performance administration only. components/sidebar.tsx gates it by
+ *   canAdministerOnehr and points it at the admin area's first tab for the latest cycle the viewer administers
+ *   (app/layout.tsx); `/performance` (the cycle list) is the address when there is no cycle. It owns every other
+ *   /performance route (the cycle pages and the admin area).
+ *
+ * The `group` tag is the pack's placement declaration; the sidebar places each row by
+ * lib/navigation-workspaces.ts.
+ */
+export const PERFORMANCE_AREA_OWNED_PATHS = [
+  '/performance/home', '/performance/my', '/performance/team', '/performance/assessments', '/performance/feedback',
+  '/performance/competency', '/performance/plan', '/performance/calibration', '/performance/workspace',
+  '/performance/assessment', '/performance/onehr', '/performance/review', '/performance/department', '/performance/led',
+  '/me/performance',
+];
 const PERFORMANCE_NAV_LINKS: NavLinkDescriptor[] = [
-  { group: 'main', href: '/performance/workspace', labelKey: 'myPerformance', icon: Target },
-  { group: 'manage', href: '/performance', labelKey: 'performance', icon: Target, managerUp: true },
+  { group: 'main', href: '/performance/home', labelKey: 'performanceTalent', icon: Target, ownedSubpaths: PERFORMANCE_AREA_OWNED_PATHS },
+  { group: 'manage', href: '/performance', labelKey: 'performanceAdmin', icon: Target, ownedSubpaths: ['/performance'] },
 ];
 
 export const performancePack: ModulePack = {
@@ -135,6 +150,14 @@ export const performancePack: ModulePack = {
     { table: 'performance_assessment_career_profile', note: 'current career profile with yearly plan snapshots retained separately; ADR-0103' },
     { table: 'performance_assessment_rating_record', note: 'sign-off and calibration record sealed at cycle archive; ADR-0103' },
     { table: 'performance_assessment_release', note: 'component visibility grants independent of finalization; ADR-0103' },
+    { table: 'performance_calibration_group', note: 'named calibration group, the group chief seat anchor; retired, never deleted (WP-B2)' },
+    { table: 'performance_calibration_group_member', note: 'dated calibration group membership, one live group per employment (WP-B2)' },
+    { table: 'performance_leader_seat', note: 'dated BU CEO, BG CEO and group chief seats that grant calibration access (WP-B2)' },
+    { table: 'performance_hod_assignment', note: 'dated per-person head of department; never department.head_employment_id (WP-B2)' },
+    { table: 'performance_onehr_calibration_entry_retired', note: 'department-review entries retired when a person changes HOD, decisions kept (WP-B2)' },
+    { table: 'performance_assessment_unit_exclusion', note: 'cycle exclusion rule: a company or exact department not taking part in a cycle; ended, never deleted (D-P1-22, ADR-0150)' },
+    { table: 'performance_assessment_unit_exclusion_pin', note: 'employments a closed cycle\'s exclusion rules covered on its close day (D-P1-22 D8)' },
+    { table: 'performance_assessment_release_notice', note: 'append-only ledger of release notices, one per review, component, step and recipient; no band (WP-E)' },
 
 
   ],

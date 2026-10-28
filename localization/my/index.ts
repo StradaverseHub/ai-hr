@@ -7,7 +7,7 @@ import { MY_EA_REPORTING } from './ea-reporting';
  * holiday calendar, and payroll calculators (EPF/SOCSO/EIS/PCB) join here in later slices.
  */
 import { validateEpfElection } from './epf-election';
-import { correctAccidentalHrdfOptOutsMY, defaultSocsoEisNumber, dobFromIC, getStatutoryProfileMY, getStatutoryEditSnapshotMY, isValidIC, normalizeIC, setBankProfileMY, setRegistrationNumbersMY, setIcProfileMY, canApplyIcProfileChangeMY, setOthersStatutoryMY, setPassportProfileMY, validatePassportProfileMY, setStatutoryProfileMY, setTaxProfileMY, setTp3ProfileMY, taxNumberSharedWithMY } from './statutory';
+import { readReviewedStatutoryEditableMYTx,reviewedStatutoryChoiceMetadataMYTx,readReviewedStatutoryLabelsMYTx,lockReviewedStatutoryProfileMYTx,withStatutoryProfileWriteMY,prepareReviewedStatutoryProfileMYTx,confirmReviewedStatutoryProfileMYTx,readReviewedStatutoryProfileReferenceMYTx,correctAccidentalHrdfOptOutsMY, defaultSocsoEisNumber, dobFromIC, getStatutoryProfileMY, getStatutoryEditSnapshotMY, isValidIC, normalizeIC, setBankProfileMY, setRegistrationNumbersMY, setIcProfileMY, canApplyIcProfileChangeMY, setOthersStatutoryMY, setPassportProfileMY, validatePassportProfileMY, setStatutoryProfileMY, setTaxProfileMY, setTp3ProfileMY, taxNumberSharedWithMY } from './statutory';
 import { annualEntitlement, entitlement, MY_LEAVE_TYPES } from './leave';
 import { MY_HOLIDAYS_2026, MY_STATES } from './holidays';
 import {
@@ -71,6 +71,7 @@ import type { CountryPack } from '../country-pack';
 export const myPack: CountryPack = {
   eaReporting: MY_EA_REPORTING,
   country: 'MY' as const,
+  displayClock: {timeZone:'Asia/Kuala_Lumpur',label:'MYT'},
   // Rung 5b (ADR-0080 D4) — the client-safe vocabulary slice, ALSO served to 'use client'
   // components by localization/registry.client.ts (this reference makes it contract-declared).
   client: myClientPack,
@@ -79,6 +80,8 @@ export const myPack: CountryPack = {
   states: MY_STATES,
   statutory: {
     set: setStatutoryProfileMY,
+    withWrite:withStatutoryProfileWriteMY,
+    reviewed:{readEditable:readReviewedStatutoryEditableMYTx,choices:reviewedStatutoryChoiceMetadataMYTx,labels:readReviewedStatutoryLabelsMYTx,lockSubject:lockReviewedStatutoryProfileMYTx,prepare:prepareReviewedStatutoryProfileMYTx,confirm:confirmReviewedStatutoryProfileMYTx,readReference:readReviewedStatutoryProfileReferenceMYTx},
     get: getStatutoryProfileMY,
     getEditSnapshot: getStatutoryEditSnapshotMY,
     // Partial save of only the four TP3 opening-balance columns (item a6a47698 — TP3 relocated to the

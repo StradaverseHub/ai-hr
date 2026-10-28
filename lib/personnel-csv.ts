@@ -10,11 +10,11 @@ export class PersonnelCsvError extends Error {
  constructor(message:string){super(message);this.name='PersonnelCsvError';}
 }
 /** Strict RFC4180 syntax. Preserve embedded line endings; only record delimiters consume CRLF. */
-export function parseStrictPersonnelCsv(text:string):string[][] {
- const source=text.replace(/^\uFEFF/,''),rows:string[][]=[];let row:string[]=[],field='',state:'plain'|'quoted'|'closed'='plain';
+function strictPersonnelCsvSource(text:string):{rows:string[][];rowNumbers:number[]} {
+ const source=text.replace(/^\uFEFF/,''),rows:string[][]=[],rowNumbers:number[]=[];let recordNumber=1;let row:string[]=[],field='',state:'plain'|'quoted'|'closed'='plain';
  const fail=()=>{throw new PersonnelCsvError(`Malformed CSV near data row ${rows.length+1}. Close quoted cells and use doubled quotes inside them.`);};
  const endField=()=>{row.push(field);field='';state='plain';};
- const endRow=()=>{endField();if(row.some(value=>value!==''))rows.push(row);row=[];};
+ const endRow=()=>{endField();if(row.some(value=>value!=='')){rows.push(row);rowNumbers.push(recordNumber);}recordNumber++;row=[];};
  for(let i=0;i<source.length;i++) {
   const c=source[i];
   if(state==='quoted') {
@@ -28,8 +28,11 @@ export function parseStrictPersonnelCsv(text:string):string[][] {
  }
  if(state==='quoted')fail();
  if(field!==''||row.length||state==='closed')endRow();
- return rows;
+ return {rows,rowNumbers};
 }
+export function parseStrictPersonnelCsv(text:string):string[][] {return strictPersonnelCsvSource(text).rows;}
+/** Logical CSV record positions, including empty records; quoted multiline cells stay one record. */
+export function parseStrictPersonnelCsvWithSource(text:string){return strictPersonnelCsvSource(text);}
 function protectedCell(value:string) {return /^[\s]*[=+\-@]/.test(value)||/^[\t\r\n']/.test(value);}
 /** Neutral ~ prefix prevents spreadsheet formula interpretation without relying on Excel retaining
  * an initial apostrophe. Escape the prefix itself too; literal apostrophes stay inside this wrapper. */
@@ -46,7 +49,11 @@ export function buildPersonnelCsv(sheet:PersonnelImportSheet,rows:readonly (read
   ...rows.map(row=>row.map(value=>encodePersonnelCsvCell(value==null?'':String(value))))]);
 }
 export function parsePersonnelCsv(text:string,sheet:PersonnelImportSheet):string[][] {
- const rows=parseStrictPersonnelCsv(text);if(rows[0]?.[0]!==PERSONNEL_CSV_FRAME)return rows;
+ return decodePersonnelCsvRows(parseStrictPersonnelCsv(text),sheet);
+}
+/** Same frame decoder for already-decoded worksheet rows, preserving physical blank/formula rows. */
+export function decodePersonnelCsvRows(rows:string[][],sheet:PersonnelImportSheet):string[][] {
+ if(rows[0]?.[0]!==PERSONNEL_CSV_FRAME)return rows;
  const [frame,...data]=rows;
  if(frame[1]!==PERSONNEL_CSV_VERSION)throw new PersonnelCsvError('Unsupported Personnel CSV version. Download a new template.');
  if(!SHEETS.some(allowed=>allowed===sheet) || !SHEETS.some(allowed=>allowed===frame[2]) || frame[2]!==sheet)throw new PersonnelCsvError('This Personnel CSV belongs to another worksheet. Choose its matching import section.');

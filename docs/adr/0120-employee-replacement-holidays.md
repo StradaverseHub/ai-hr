@@ -1,5 +1,7 @@
 # ADR-0120: Employee replacement holidays and stable original calendars
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted direction — approved item 482eefff, 2026-10-15. Implementation and verification pending.
 
 ## Decision

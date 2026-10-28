@@ -312,7 +312,7 @@ export const payrollComponentTemplate: TemplateSpec = {
  *
  * THE CONTRACT IS LONG, NOT WIDE: seven columns, one line per figure, and an employee-month is however
  * many lines it takes. The sample below is the reporter's own worked example (A1001 / 202501 / ME /
- * BASIC / ABCDE / 5000.00 / 1) completed into a month that would actually pass validation — basic pay
+ * BASIC / ABCDE / 5000.00) completed into a month that would actually pass validation — basic pay
  * plus every statutory figure, because a month with earnings and no contribution or tax lines is stopped
  * rather than guessed at. A figure that genuinely was zero is written as 0.00, which is accepted.
  *
@@ -327,6 +327,6 @@ export const payrollHistoryTemplate: TemplateSpec = {
     ...PAYROLL_HISTORY_COLUMNS.optional.map((key) => ({ key, required: false })),
   ],
   // Order matches columns above: Employee No, Payroll Period, Payroll Cycle, DOE Code, Company Code,
-  // Amount, Override?. The reporter's worked example, completed into a month that passes validation.
+  // Amount. The worked example built from the built-in codes, which every tenant accepts.
   sampleRows: PAYROLL_HISTORY_SAMPLE_ROWS.map((r) => [...r]),
 };

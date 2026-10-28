@@ -3,8 +3,10 @@ import { eq, sql } from 'drizzle-orm';
 import * as tenantDb from '../db/client';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
-import { governedAiConfig } from '../core/ai-governance';
-import { aiManagementView, allowanceLevel, clearUserAllowance, parseAiAllowance, setAiAllowance, setAiFeature, setAssistantPermission } from '../core/ai-management';
+import { resolveActiveAiConfig } from '../core/ai-config';
+import { bindAiSpendTaskTx } from '../core/ai-spend-task';
+import type { AiFeatureId } from '../lib/ai/features';
+import { aiManagementView, allowanceLevel, applyBulkAssistantAccess, clearGroupAllowance, setGroupAllowance, clearUserAllowance, parseAiAllowance, previewBulkAssistantAccess, setAiAllowance, setAiFeature, setAssistantPermission } from '../core/ai-management';
 import { generateDraft, converse, readImage } from '../lib/ai';
 import { openaiAdapter } from '../lib/ai/providers/openai';
 import { askAssistant } from '../core/assistant';
@@ -14,14 +16,14 @@ import { setTenantSetting } from '../core/tenant-settings';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
 let base:Base, group:SessionContext;
-const cfg=()=>governedAiConfig(group,{provider:'openai',model:'test-model',apiKey:'never-a-real-key'},'pay_rule_draft');
-const call=(context=group,tokens:number|null=10,reserve=100)=>governedAiConfig(context,{provider:'openai',model:'test-model',apiKey:'never-a-real-key'},'pay_rule_draft').governance!.run({operation:'draft',reservedTokens:reserve},async record=>{if(tokens!==null)record({inputTokens:tokens,outputTokens:0,cachedInputTokens:0});return 'draft';});
+const cfg=async(context=group,feature:AiFeatureId='pay_rule_draft')=>{const resolved=await withTenant(context,tx=>resolveActiveAiConfig(tx,context,feature));if(!resolved)throw new Error('Missing fake fixture configuration');return resolved;};
+const call=async(context=group,tokens:number|null=10,reserve=100)=>(await cfg(context)).governance!.run({operation:'draft',reservedTokens:reserve},async record=>{if(tokens!==null)record({inputTokens:tokens,outputTokens:0,cachedInputTokens:0});return 'draft';});
 const limit=(kind:'company'|'user',id:string,daily:number|null,monthly:number|null,enabled=true)=>setAiAllowance(group,{kind,subjectId:id,dailyRequests:daily,monthlyTokens:monthly,enabled});
 const runs=()=>owner.db.select().from(schema.aiModelRun).where(eq(schema.aiModelRun.tenantId,base.tenantId)).orderBy(schema.aiModelRun.startedAt,schema.aiModelRun.id);
 
 beforeAll(migrateTestDb);
-beforeEach(async()=>{await resetDb();base=await seedBase();group={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};});
-afterAll(closeAll);
+beforeEach(async()=>{vi.stubEnv('ANTHROPIC_API_KEY','');vi.stubEnv('OPENAI_API_KEY','never-a-real-key');vi.stubEnv('GOOGLE_API_KEY','');vi.stubEnv('GEMINI_API_KEY','');await resetDb();base=await seedBase();group={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};});
+afterAll(async()=>{await closeAll();vi.unstubAllEnvs();});
 
 describe('central AI allowance admission and durable accounting',()=>{
  it('serializes simultaneous calls at a daily user ceiling and counts blocked calls separately',async()=>{
@@ -51,10 +53,10 @@ describe('central AI allowance admission and durable accounting',()=>{
   await setAiFeature(group,'pay_rule_draft',false);
   const draft=vi.spyOn(openaiAdapter,'generate'),chat=vi.spyOn(openaiAdapter,'converse'),image=vi.spyOn(openaiAdapter,'readImage');
   try{
-   await expect(generateDraft(cfg(),{system:'private instructions',prompt:'private employee text'})).rejects.toThrow('paused');
-   await expect(converse(cfg(),{system:['private instructions'],tools:[],turns:[{role:'user',content:'private text'}]})).rejects.toThrow('paused');
+   await expect(generateDraft(await cfg(),{system:'private instructions',prompt:'private employee text'})).rejects.toThrow('paused');
+   await expect(converse(await cfg(),{system:['private instructions'],tools:[],turns:[{role:'user',content:'private text'}]})).rejects.toThrow('paused');
    const data=Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000b49444154789c636000020000050001a5f645400000000049454e44ae426082','hex');
-   await expect(readImage(cfg(),{data,mimeType:'image/png'})).rejects.toThrow('paused');
+   await expect(readImage(await cfg(),{data,mimeType:'image/png'})).rejects.toThrow('paused');
    expect(draft).not.toHaveBeenCalled();expect(chat).not.toHaveBeenCalled();expect(image).not.toHaveBeenCalled();
    const serialized=JSON.stringify(await runs());expect(serialized).not.toContain('private');expect(serialized).not.toContain('never-a-real-key');
   }finally{vi.restoreAllMocks();}
@@ -62,9 +64,9 @@ describe('central AI allowance admission and durable accounting',()=>{
  it('records provider-reported usage, retains failures without usage and does not silently free capacity',async()=>{
   const adapter=vi.spyOn(openaiAdapter,'generate').mockImplementation(async(_cfg,args)=>{args.onUsage?.({inputTokens:8,cachedInputTokens:4,outputTokens:2});return 'draft';});
   try{
-   await expect(generateDraft(cfg(),{system:'system',prompt:'prompt'})).resolves.toBe('draft');
+   await expect(generateDraft(await cfg(),{system:'system',prompt:'prompt'})).resolves.toBe('draft');
    adapter.mockRejectedValueOnce(new Error('transport failed'));
-   await expect(generateDraft(cfg(),{system:'system',prompt:'prompt'})).rejects.toThrow();
+   await expect(generateDraft(await cfg(),{system:'system',prompt:'prompt'})).rejects.toThrow();
    const rows=await runs();expect(rows.find(r=>r.state==='completed')?.actualTokens).toBe(14);const failed=rows.find(r=>r.state==='failed')!;expect(failed.actualTokens).toBeNull();expect(failed.reservedTokens).toBeGreaterThan(0);
   }finally{vi.restoreAllMocks();}
  });
@@ -80,9 +82,10 @@ describe('central AI allowance admission and durable accounting',()=>{
  });
  it('distinguishes reported zero tokens from absent usage and preserves an unsettled reservation',async()=>{
   await call(group,0);expect((await runs())[0].actualTokens).toBe(0);
+  const prepared=await cfg();
   const original=tenantDb.withTenant;
   const write=vi.spyOn(tenantDb,'withTenant').mockImplementationOnce(original).mockRejectedValueOnce(new Error('private database failure'));
-  try{await expect(call(group,25)).rejects.toThrow('reservation remains held');}finally{write.mockRestore();}
+  try{await expect(prepared.governance!.run({operation:'draft',reservedTokens:100},async record=>{record({inputTokens:25,outputTokens:0,cachedInputTokens:0});return 'draft';})).rejects.toThrow('reservation remains held');}finally{write.mockRestore();}
   const pending=(await runs()).find(r=>r.state==='pending');expect(pending).toBeDefined();expect(pending?.actualTokens).toBeNull();expect(pending?.reservedTokens).toBe(100);
  });
  it('honors configured defaults, null fallbacks and platform restrictions in both status and admission',async()=>{
@@ -92,18 +95,21 @@ describe('central AI allowance admission and durable accounting',()=>{
   try{
    const row=(await aiManagementView(group)).features.find(f=>f.id==='performance_360')!;expect(row.enabled).toBe(true);expect(row.state).toBe('ready');
    await owner.db.insert(schema.tenantSetting).values({tenantId:base.tenantId,key:'performance.ai_360_enabled',value:sql`'null'::jsonb`,source:'platform'});
-   await expect(governedAiConfig(group,{provider:'openai',model:'fixture',apiKey:'never-sent'},'performance_360').governance!.run({operation:'draft',reservedTokens:100},async()=> 'draft')).resolves.toBe('draft');
+   await expect((await cfg(group,'performance_360')).governance!.run({operation:'draft',reservedTokens:100},async()=> 'draft')).resolves.toBe('draft');
    await setModule(base.tenantId,'notifications','active');
    await setTenantSetting(group,{key:'notifications.readiness_nudge_enabled',value:true});
    vi.stubEnv('SETTING_KILL','notifications.readiness_nudge_enabled');
    expect((await aiManagementView(group)).features.find(f=>f.id==='readiness_reminders')?.state).toBe('restricted');
-   await expect(governedAiConfig(group,{provider:'openai',model:'fixture',apiKey:'never-sent'},'readiness_reminders').governance!.run({operation:'draft',reservedTokens:100},async()=> 'must not run')).rejects.toThrow('paused');
+   // Readiness reminders are an autonomous workload: the product binds its native spend root before any
+   // admission (core/readiness-nudge.ts). Drive that real path so the platform kill is what refuses it.
+   const rooted=await withTenant(group,async tx=>{const resolved=await resolveActiveAiConfig(tx,group,'readiness_reminders');if(!resolved)throw new Error('Missing fake fixture configuration');return bindAiSpendTaskTx(tx,group,resolved,{kind:'readiness_template',gap:'no_bank_account',audience:'hr'});});
+   await expect(rooted.governance!.run({operation:'draft',reservedTokens:100},async()=> 'must not run')).rejects.toThrow('paused');
   }finally{vi.unstubAllEnvs();}
  });
  it('rechecks canonical switches rather than trusting a stale configuration',async()=>{
   await expect(withTenant(group,tx=>tx.insert(schema.aiControlPolicy).values({tenantId:base.tenantId,kind:'feature',scopeKey:'feature:performance_pm',featureId:'performance_pm',enabled:false}))).rejects.toThrow();
   await setTenantSetting(group,{key:'performance.ai_pm_enabled',value:true});
-  const stale=governedAiConfig(group,{provider:'openai',model:'test-model',apiKey:'never-a-real-key'},'performance_pm');
+  const stale=await cfg(group,'performance_pm');
   await setTenantSetting(group,{key:'performance.ai_pm_enabled',value:false});
   await expect(stale.governance!.run({operation:'draft',reservedTokens:100},async()=> 'must not run')).rejects.toThrow('paused');
  });
@@ -133,6 +139,7 @@ describe('scoped administration and inventory',()=>{
  it('allows a company administrator to edit only their company; exposes scoped totals without run rows',async()=>{
   const [other]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Other Company'}).returning();
   const [user]=await owner.db.insert(schema.appUser).values({tenantId:base.tenantId,workosUserId:'scoped-admin'}).returning();
+  await owner.db.insert(schema.roleAssignment).values({tenantId:base.tenantId,appUserId:user.id,companyId:base.companyId,role:'hr_admin'});
   const scoped:SessionContext={...group,userId:user.id,grants:[{role:'hr_admin',companyId:base.companyId}]};
   await setAiAllowance(scoped,{kind:'company',subjectId:base.companyId,dailyRequests:5,monthlyTokens:null,enabled:true});
   await expect(setAiAllowance(scoped,{kind:'company',subjectId:other.id,dailyRequests:0,monthlyTokens:null,enabled:true})).rejects.toThrow('scope');
@@ -164,6 +171,9 @@ describe('scoped administration and inventory',()=>{
   await setModule(base.tenantId,'assistant','active');group={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};
   await limit('user',base.adminUserId,0,null);
   vi.stubEnv('OPENAI_API_KEY','fixture-never-sent');vi.stubEnv('ANTHROPIC_API_KEY','');vi.stubEnv('GOOGLE_API_KEY','');vi.stubEnv('GEMINI_API_KEY','');
+  // The main Assistant question seals its strategy-use marker with the operator secret the customer environment
+  // check requires; without it the marker fails closed before the allowance refusal this case observes.
+  vi.stubEnv('AI_CONFIG_SECRET','fictional-allowance-marker-secret');
   const transport=vi.spyOn(openaiAdapter,'converse');
   try{await expect(askAssistant(group,{question:'What can you help with?'})).rejects.toMatchObject({code:'ai_control'});expect(transport).not.toHaveBeenCalled();}
   finally{vi.restoreAllMocks();vi.unstubAllEnvs();}
@@ -192,6 +202,7 @@ describe('tenant default user allowance, usage against limits and attention',()=
  const byDefault=(daily:number|null,monthly:number|null,enabled=true)=>setAiAllowance(group,{kind:'user_default',dailyRequests:daily,monthlyTokens:monthly,enabled});
  const login=async(name:string,role:'employee'|'hr_admin'='employee')=>{
   const [u]=await owner.db.insert(schema.appUser).values({tenantId:base.tenantId,workosUserId:name}).returning();
+  await owner.db.insert(schema.roleAssignment).values({tenantId:base.tenantId,appUserId:u.id,role,companyId:null});
   return {id:u.id,ctx:{tenantId:base.tenantId,userId:u.id,roles:[role],grants:[{role,companyId:null}],entitlements:group.entitlements} as SessionContext};
  };
  const run=(userId:string|null,state:'completed'|'pending'|'failed'|'blocked',reserved:number,actual:number|null,feature='pay_rule_draft',reason:string|null=null)=>
@@ -218,12 +229,13 @@ describe('tenant default user allowance, usage against limits and attention',()=
  it('leaves calls without a login and other tenants untouched by the default',async()=>{
   await byDefault(0,0,false);
   await expect(call()).rejects.toThrow('paused');
-  await expect(call({...group,userId:undefined})).resolves.toBe('draft');
+  await expect(call({...group,userId:undefined})).rejects.toThrow('Current AI calling authority');
   const foreign=await seedBase();const foreignGroup:SessionContext={...adminCtx(foreign),grants:[{role:'hr_admin',companyId:null}]};
   await expect(call(foreignGroup)).resolves.toBe('draft');
  });
  it('refuses the default to company administrators, by service and by raw app-role write, and never removes non-user policies',async()=>{
   const [user]=await owner.db.insert(schema.appUser).values({tenantId:base.tenantId,workosUserId:'scoped-admin'}).returning();
+  await owner.db.insert(schema.roleAssignment).values({tenantId:base.tenantId,appUserId:user.id,companyId:base.companyId,role:'hr_admin'});
   const scoped:SessionContext={...group,userId:user.id,grants:[{role:'hr_admin',companyId:base.companyId}]};
   await expect(setAiAllowance(scoped,{kind:'user_default',dailyRequests:0,monthlyTokens:null,enabled:true})).rejects.toThrow('group');
   await expect(withTenant(scoped,tx=>tx.insert(schema.aiControlPolicy).values({tenantId:base.tenantId,kind:'user_default',scopeKey:'user_default',dailyRequests:0}))).rejects.toMatchObject({cause:{code:'42501'}});
@@ -256,6 +268,14 @@ describe('tenant default user allowance, usage against limits and attention',()=
   const view=await aiManagementView(group);const [co]=view.companies;
   expect(co.daily).toEqual({used:4,limit:5,level:'near'});expect(co.tokens.limit).toBeNull();expect(view.attention.companies.map(c=>c.id)).toEqual([base.companyId]);
  });
+ it('lists a login paused by its own zero cap in attention even before it makes a call, and not one paused by its switch',async()=>{
+  const quiet=await login('quiet-zero');const switched=await login('quiet-switched');const capped=await login('quiet-capped');
+  await limit('user',quiet.id,0,null);await setAiAllowance(group,{kind:'user',subjectId:switched.id,dailyRequests:0,monthlyTokens:null,enabled:false});await limit('user',capped.id,5,null);
+  const view=await aiManagementView(group);
+  // Independent expectation: only the enabled login with a zero cap, and none of them has a run this month.
+  expect(view.attention.users.map(u=>u.id)).toEqual([quiet.id]);
+  expect(view.attention.users[0]).toMatchObject({label:'quiet-zero',daily:{used:0,limit:0}});
+ });
  it('sorts heavy users first and finds them beyond the first fifty names, with attention for near limits and blocks today',async()=>{
   for(let i=0;i<55;i++)await owner.db.insert(schema.appUser).values({tenantId:base.tenantId,workosUserId:`aa-light-${String(i).padStart(2,'0')}`});
   const heavy=await login('zz-heavy');const medium=await login('zz-medium');
@@ -271,6 +291,7 @@ describe('tenant default user allowance, usage against limits and attention',()=
  it('keeps attention scoped: company administrators see only their companies and no login identities',async()=>{
   const [other]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Other Company'}).returning();
   const [user]=await owner.db.insert(schema.appUser).values({tenantId:base.tenantId,workosUserId:'scoped-admin'}).returning();
+  await owner.db.insert(schema.roleAssignment).values({tenantId:base.tenantId,appUserId:user.id,companyId:base.companyId,role:'hr_admin'});
   const scoped:SessionContext={...group,userId:user.id,grants:[{role:'hr_admin',companyId:base.companyId}]};
   await limit('company',base.companyId,1,null);await limit('company',other.id,1,null);await byDefault(1,null);
   await call();await expect(call()).rejects.toThrow('daily');
@@ -280,6 +301,20 @@ describe('tenant default user allowance, usage against limits and attention',()=
   const view=await aiManagementView(scoped);
   expect(view.attention.companies.map(c=>c.id)).toEqual([base.companyId]);expect(view.attention.users).toEqual([]);expect(view.attention.blocked).toEqual([]);expect(view.users).toEqual([]);
   const serialized=JSON.stringify(view.attention)+JSON.stringify(view.companies);expect(serialized).not.toContain(other.id);expect(serialized).not.toContain(base.adminUserId);
+ });
+ it('lists a company paused by a configured zero cap before any attempt, but not one paused by its switch or without a cap',async()=>{
+  // Walkthrough 28 October 2026: a company with a zero daily cap blocks every call, and blocked calls never
+  // count as usage, so the old "usage above zero" rule could never list it.
+  const [switchedOff]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Switched Off Company'}).returning();
+  const [noConcurrency]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Zero Concurrency Company'}).returning();
+  expect((await aiManagementView(group)).attention.companies).toEqual([]);
+  await limit('company',base.companyId,0,null);await limit('company',switchedOff.id,0,null,false);
+  await setAiAllowance(group,{kind:'company',subjectId:noConcurrency.id,dailyRequests:null,monthlyTokens:null,maxConcurrent:0,enabled:true});
+  const view=await aiManagementView(group);
+  expect(view.attention.companies.map(c=>c.id).sort()).toEqual([base.companyId,noConcurrency.id].sort());
+  expect(view.attention.companies.find(c=>c.id===base.companyId)!.daily).toEqual({used:0,limit:0,level:'at'});
+  await limit('company',base.companyId,null,null);
+  expect((await aiManagementView(group)).attention.companies.map(c=>c.id)).toEqual([noConcurrency.id]);
  });
  it('filters recent runs by blocked, failed and capability for group administrators only',async()=>{
   await run(base.adminUserId,'completed',100,10);await run(base.adminUserId,'failed',100,null,'report_insight');await run(null,'blocked',100,null,'report_insight','paused');await run(base.adminUserId,'blocked',100,null,'pay_rule_draft','daily_limit');
@@ -293,3 +328,112 @@ describe('tenant default user allowance, usage against limits and attention',()=
  });
 });
 
+
+
+describe('current calling-login authority for AI control writes', () => {
+ it.each(['feature', 'allowance', 'clear', 'setting'] as const)('refuses an archived administrator before %s effects', async operation => {
+  await setAiAllowance(group, { kind: 'user', subjectId: base.adminUserId, dailyRequests: 3, monthlyTokens: 100, enabled: true });
+  const before = await owner.db.select().from(schema.aiControlPolicy);
+  const beforeSettings = await owner.db.select().from(schema.tenantSetting);
+  const beforeEvents = await owner.db.select().from(schema.domainEvent);
+  await owner.db.update(schema.appUser).set({ archivedAt: new Date() }).where(eq(schema.appUser.id, base.adminUserId));
+  const command = operation === 'feature' ? () => setAiFeature(group, 'hr_assistant', false)
+   : operation === 'setting' ? () => setAiFeature(group, 'claims_triage', false)
+   : operation === 'clear' ? () => clearUserAllowance(group, base.adminUserId)
+   : () => setAiAllowance(group, { kind: 'user', subjectId: base.adminUserId, dailyRequests: 0, monthlyTokens: 0, enabled: false });
+  await expect(command()).rejects.toThrow();
+  expect(await owner.db.select().from(schema.aiControlPolicy)).toEqual(before);
+  expect(await owner.db.select().from(schema.tenantSetting)).toEqual(beforeSettings);
+  expect(await owner.db.select().from(schema.domainEvent)).toEqual(beforeEvents);
+  expect(await runs()).toEqual([]);
+ });
+});
+
+describe('bulk HR assistant access',()=>{
+ const hire=async(name:string,departmentId:string)=>{const employment=await hireEmployee(group,{person:{fullName:name,primaryEmail:`${name.toLowerCase().replace(/[^a-z]/g,'')}@fixture.test`},companyId:base.companyId,departmentId,employmentType:'full_time',hiredOn:todayInKualaLumpur()});return createAppUser(base.tenantId,employment.personId,'employee');};
+ const login=async(name:string,role:'employee'|'manager'='employee')=>{const [u]=await owner.db.insert(schema.appUser).values({tenantId:base.tenantId,workosUserId:name}).returning();await owner.db.insert(schema.roleAssignment).values({tenantId:base.tenantId,appUserId:u.id,role,companyId:null});return {id:u.id};};
+ const live=async()=>Array.from(await owner.db.execute<{app_user_id:string}>(sql`select app_user_id from assistant_grant where tenant_id=${base.tenantId}::uuid and revoked_at is null order by app_user_id`)).map(r=>r.app_user_id);
+ const events=async(type:string)=>Array.from(await owner.db.execute<{payload:Record<string,unknown>}>(sql`select payload from domain_event where tenant_id=${base.tenantId}::uuid and event_type=${type} order by occurred_at,id`)).map(r=>r.payload);
+ it('previews, then grants a whole department with one bulk event and one event per person',async()=>{
+  const a1=await hire('Bulk Alpha One',base.deptA),a2=await hire('Bulk Alpha Two',base.deptA),b1=await hire('Bulk Beta One',base.deptB);
+  const scope={kind:'department',departmentId:base.deptA};
+  // Independent expectation: exactly the two people hired into department A.
+  expect(await previewBulkAssistantAccess(group,scope,true)).toEqual({matched:2,changing:2});
+  await expect(applyBulkAssistantAccess(group,scope,true,3)).rejects.toThrow('changed since you reviewed');
+  expect(await live()).toEqual([]);
+  expect(await applyBulkAssistantAccess(group,scope,true,2)).toEqual({changed:2});
+  expect(await live()).toEqual([a1,a2].sort());expect(await live()).not.toContain(b1);
+  expect((await events('assistant-grant.granted')).map(p=>p.appUserId).sort()).toEqual([a1,a2].sort());
+  expect(await events('assistant-grant.bulk-granted')).toEqual([{scope,changed:2}]);
+  // Already granted: nothing changes, and a confirmation of zero writes no per-person event.
+  expect(await previewBulkAssistantAccess(group,scope,true)).toEqual({matched:2,changing:0});
+ });
+ it('revokes by role and by explicit list, leaving other people untouched',async()=>{
+  const m=await login('bulk-manager','manager'),e=await login('bulk-employee');
+  await setAssistantPermission(group,m.id,true);await setAssistantPermission(group,e.id,true);
+  expect(await previewBulkAssistantAccess(group,{kind:'role',role:'manager'},false)).toEqual({matched:1,changing:1});
+  await applyBulkAssistantAccess(group,{kind:'role',role:'manager'},false,1);
+  expect(await live()).toEqual([e.id]);
+  await applyBulkAssistantAccess(group,{kind:'users',userIds:[e.id,m.id]},false,1);
+  expect(await live()).toEqual([]);
+  expect((await events('assistant-grant.bulk-revoked')).map(p=>p.changed)).toEqual([1,1]);
+ });
+ it('matches a search only inside the tenant and refuses company administrators and malformed scopes',async()=>{
+  const mine=await login('zz-search-target');const foreign=await seedBase();
+  await owner.db.insert(schema.appUser).values({tenantId:foreign.tenantId,workosUserId:'zz-search-target-foreign'});
+  expect(await previewBulkAssistantAccess(group,{kind:'search',q:'zz-search'},true)).toEqual({matched:1,changing:1});
+  await applyBulkAssistantAccess(group,{kind:'search',q:'zz-search'},true,1);expect(await live()).toEqual([mine.id]);
+  const scoped:SessionContext={...group,grants:[{role:'hr_admin',companyId:base.companyId}]};
+  await expect(previewBulkAssistantAccess(scoped,{kind:'role',role:'employee'},true)).rejects.toThrow('group administrator');
+  await expect(applyBulkAssistantAccess(scoped,{kind:'role',role:'employee'},true,0)).rejects.toThrow('group administrator');
+  for(const bad of [{kind:'role',role:'operator'},{kind:'company',companyId:'not-a-uuid'},{kind:'users',userIds:[]},{kind:'search',q:'  '},{kind:'everyone'}])await expect(previewBulkAssistantAccess(group,bad,true)).rejects.toThrow('Choose who');
+ });
+});
+
+describe('group allowances (0662): individual, then department, company, role, then default',()=>{
+ const person=async(name:string,departmentId:string,role:'employee'|'manager'='employee')=>{
+  const employment=await hireEmployee(group,{person:{fullName:name,primaryEmail:`${name.toLowerCase().replace(/[^a-z]/g,'')}@fixture.test`},companyId:base.companyId,departmentId,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
+  const id=await createAppUser(base.tenantId,employment.personId,role);
+  return {id,ctx:{tenantId:base.tenantId,userId:id,personId:employment.personId,roles:[role],grants:[{role,companyId:null}],entitlements:group.entitlements} as SessionContext};
+ };
+ const groupLimit=(kind:string,subject:string,daily:number|null)=>setGroupAllowance(group,{kind,subject,dailyRequests:daily,monthlyTokens:null,enabled:true});
+ it('applies the most specific matching tier, ignoring looser ones, and the strictest row within a tier',async()=>{
+  const a=await person('Group Alpha',base.deptA);
+  await setAiAllowance(group,{kind:'user_default',dailyRequests:100,monthlyTokens:null,enabled:true});
+  await groupLimit('group_role','employee',5);await groupLimit('group_company',base.companyId,3);await groupLimit('group_department',base.deptA,1);
+  // Department (1/day) wins over company (3) and role (5); the default (100) is not consulted.
+  await expect(call(a.ctx)).resolves.toBe('draft');await expect(call(a.ctx)).rejects.toThrow('daily');
+  await clearGroupAllowance(group,{kind:'group_department',subject:base.deptA});
+  // Company tier next: two more calls today (3 in total), then refused.
+  await expect(call(a.ctx)).resolves.toBe('draft');await expect(call(a.ctx)).resolves.toBe('draft');await expect(call(a.ctx)).rejects.toThrow('daily');
+  // An individual allowance replaces every group.
+  await setAiAllowance(group,{kind:'user',subjectId:a.id,dailyRequests:10,monthlyTokens:null,enabled:true});
+  await expect(call(a.ctx)).resolves.toBe('draft');
+ });
+ it('counts each login separately under the same group, and binds the strictest of two matching role groups',async()=>{
+  const one=await person('Group Beta One',base.deptB),two=await person('Group Beta Two',base.deptB,'manager');
+  await owner.db.insert(schema.roleAssignment).values({tenantId:base.tenantId,appUserId:two.id,role:'employee',companyId:null});
+  await groupLimit('group_role','employee',2);await groupLimit('group_role','manager',1);
+  await expect(call(one.ctx)).resolves.toBe('draft');await expect(call(one.ctx)).resolves.toBe('draft');await expect(call(one.ctx)).rejects.toThrow('daily');
+  // The manager-and-employee login: both role rows bind, so the stricter one (1) stops the second call.
+  await expect(call(two.ctx)).resolves.toBe('draft');await expect(call(two.ctx)).rejects.toThrow('daily');
+  const view=await aiManagementView(group,'Group Beta');
+  expect(view.users.find(u=>u.id===two.id)).toMatchObject({source:'group',daily:{limit:1}});
+  expect(view.users.find(u=>u.id===one.id)).toMatchObject({source:'group',daily:{limit:2}});
+ });
+ it('falls back to the default when the group is removed, and refuses company administrators, unknown scopes and outside subjects',async()=>{
+  const c=await person('Group Gamma',base.deptA);
+  await setAiAllowance(group,{kind:'user_default',dailyRequests:1,monthlyTokens:null,enabled:true});
+  await groupLimit('group_department',base.deptA,5);await clearGroupAllowance(group,{kind:'group_department',subject:base.deptA});
+  await expect(call(c.ctx)).resolves.toBe('draft');await expect(call(c.ctx)).rejects.toThrow('daily');
+  const scoped:SessionContext={...group,grants:[{role:'hr_admin',companyId:base.companyId}]};
+  await expect(setGroupAllowance(scoped,{kind:'group_company',subject:base.companyId,dailyRequests:1,monthlyTokens:null,enabled:true})).rejects.toThrow('group administrator');
+  await expect(withTenant(scoped,tx=>tx.insert(schema.aiControlPolicy).values({tenantId:base.tenantId,kind:'group_company',subjectId:base.companyId,scopeKey:`group_company:${base.companyId}`,dailyRequests:0}))).rejects.toMatchObject({cause:{code:'42501'}});
+  const foreign=await seedBase();
+  await expect(groupLimit('group_company',foreign.companyId,1)).rejects.toThrow('outside your administrative scope');
+  for(const [kind,subject] of [['group_role','operator'],['group_company','not-a-uuid'],['group_everyone','x']])await expect(groupLimit(kind,subject,1)).rejects.toThrow('Unknown allowance scope');
+  await expect(owner.db.insert(schema.aiControlPolicy).values({tenantId:base.tenantId,kind:'group_role',scopeKey:'group_role:operator'})).rejects.toMatchObject({cause:{code:'23514'}});
+  const events=Array.from(await owner.db.execute<{event_type:string;payload:{kind:string}}>(sql`select event_type,payload from domain_event where tenant_id=${base.tenantId}::uuid and aggregate_type='ai-control' and payload->>'kind' like 'group_%' order by occurred_at,id`));
+  expect(events.map(e=>e.event_type)).toEqual(['ai-control.allowance-changed','ai-control.allowance-cleared']);
+ });
+});

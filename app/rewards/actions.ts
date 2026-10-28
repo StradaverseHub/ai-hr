@@ -3,22 +3,25 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { ZodError } from 'zod';
+import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { publicErrorMessage } from '@/lib/public-error';
 import {rewardPolicyFromForm} from './policy-input';
-import { RewardMaintenanceError, previewRewardAccessChange, saveRewardAccessChange, deleteRewardReview, RewardPolicyGroupError, previewRewardSeniorMembership, saveRewardSeniorMembership, importOnehrRewardResults, createOffcycleReview, createRewardUnit, decideRewardUnit, getRewardUnit, importRewardFacts, postRewardUnit, refreshRewardSources, saveRewardEntry, saveRewardPolicy, setRewardMember, setRewardUnitLump } from '@/packs/rewards/service';
-import { emptyFacts, performances, talents, type RewardPolicy, type RewardRole } from '@/packs/rewards/model';
+import { rewardCalendarStages, rewardOffcycleSlaStages, saveRewardCalendar, RewardMaintenanceError, previewRewardAccessChange, saveRewardAccessChange, deleteRewardReview, RewardPolicyGroupError, previewRewardSeniorMembership, saveRewardSeniorMembership, importOnehrRewardResults, createOffcycleReview, createRewardUnit, decideRewardUnit, getRewardUnit, importRewardFacts, postRewardUnit, saveRewardEntry, saveRewardPolicy, previewRewardMultiplier, saveRewardMultiplier, setRewardMember, setRewardUnitLump, previewRewardLump, setRewardPayWindowKeep, previewRewardSourceRefresh, saveRewardSourceRefresh } from '@/packs/rewards/service';
+import { emptyFacts, isSalaryReductionAttempt, performances, talents, type RewardPolicy, type RewardRole } from '@/packs/rewards/model';
 
 const str = (f: FormData, key: string) => String(f.get(key) ?? '').trim();
 const number = (f: FormData, key: string) => Number(str(f, key));
 const scaled = (f: FormData, key: string, scale = 100) => str(f, key) === '' ? null : Math.round(number(f, key) * scale);
 const errorText = (e: unknown) => e instanceof ZodError ? e.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ') : publicErrorMessage(e);
+/** 328ebe84: a negative merit/promotion/special (or EC bonus/lump) reads as the business rule, in the viewer's language. */
+const rewardErrorText = async (e: unknown) => isSalaryReductionAttempt(e) ? (await getTranslations('rewards'))('unitBonus.noReduction') : errorText(e);
 
 async function change(f: FormData, work: (s: Awaited<ReturnType<typeof getSession>>, unitId: string, revision: number) => Promise<unknown>, configuration = false) {
   const s = await getSession(); const unitId = str(f, 'unitId');
   const url = `${configuration ? '/admin/rewards' : '/rewards'}/${encodeURIComponent(unitId)}`;
   try { await work(s, unitId, number(f, 'revision')); }
-  catch (e) { redirect(`${url}?error=${encodeURIComponent(errorText(e))}`); }
+  catch (e) { redirect(`${url}?error=${encodeURIComponent(await rewardErrorText(e))}`); }
   revalidatePath('/rewards', 'layout'); revalidatePath('/admin/rewards', 'layout'); redirect(url);
 }
 
@@ -29,10 +32,47 @@ export async function createRewardAction(f: FormData) {
   revalidatePath('/rewards'); revalidatePath('/admin/rewards'); redirect(`/admin/rewards/${unitId}`);
 }
 export async function memberAction(f: FormData) { return change(f, (s, id, rev) => setRewardMember(s, id, rev, str(f, 'userId'), str(f, 'role') as RewardRole, str(f, 'remove') === 'true'), true); }
-export async function lumpAction(f: FormData) { return change(f, (s, id, rev) => setRewardUnitLump(s, id, rev, scaled(f, 'lump'))); }
-export async function refreshAction(f: FormData) { return change(f, (s, id, rev) => refreshRewardSources(s, id, rev)); }
+/** 4e3e1af7: Use suggested amount / Set amount / Withhold for this BU, with a reason (required to withhold). */
+export async function lumpAction(f: FormData) {
+  const mode = str(f, 'mode'), reason = str(f, 'reason');
+  return change(f, (s, id, rev) => setRewardUnitLump(s, id, rev, mode === 'set' ? { mode, cents: scaled(f, 'lump') ?? 0, reason } : { mode: mode === 'withhold' ? 'withhold' : 'auto', reason }));
+}
+/** c28db2f0: per-plan effect of a candidate unit lump sum, recalculated as the amount is typed. */
+export async function previewRewardLumpAction(unitId: string, revision: number, cents: number | null) {
+  try { return { ok: true as const, preview: await previewRewardLump(await getSession(), unitId, revision, cents) }; }
+  catch (error) { return { ok: false as const, error: errorText(error) }; }
+}
+/** 8ad87ae8: keep (or stop keeping) one person eligible despite a pay change in the exclusion window. */
+export async function payWindowKeepAction(f: FormData) {
+  const s = await getSession(), unitId = str(f, 'unitId'), url = `/rewards/${encodeURIComponent(unitId)}?view=excluded`;
+  try { await setRewardPayWindowKeep(s, unitId, number(f, 'revision'), str(f, 'entryId'), str(f, 'keep') === 'true', str(f, 'reason')); }
+  catch (e) { redirect(`${url}&error=${encodeURIComponent(await rewardErrorText(e))}`); }
+  revalidatePath('/rewards', 'layout'); redirect(url);
+}
+/** 40bf44f7: refresh is preview → confirm; the confirm carries the previewed date and digest. */
+export async function previewSourceRefreshAction(unitId: string, revision: number, asOf: string) {
+  try { return { ok: true as const, preview: await previewRewardSourceRefresh(await getSession(), unitId, revision, asOf || undefined) }; }
+  catch (error) { return { ok: false as const, error: errorText(error) }; }
+}
+export async function saveSourceRefreshAction(unitId: string, revision: number, asOf: string, previewDigest: string) {
+  try {
+    await saveRewardSourceRefresh(await getSession(), unitId, revision, asOf, previewDigest);
+    revalidatePath('/rewards', 'layout'); revalidatePath('/admin/rewards', 'layout');
+    return { ok: true as const };
+  } catch (error) { return { ok: false as const, error: errorText(error) }; }
+}
 export async function decideAction(f: FormData) { return change(f, (s, id, rev) => decideRewardUnit(s, id, rev, str(f, 'action') as 'submit' | 'approve' | 'return' | 'reject' | 'withdraw', str(f, 'reason'), f.has('acknowledged'))); }
 export async function postAction(f: FormData) { return change(f, (s, id, rev) => postRewardUnit(s, id, rev, str(f, 'batchId') || undefined)); }
+/** Reward calendar (migration 0646). `revision` is the calendar's own revision (0 when not yet created). */
+export async function calendarAction(f: FormData) {
+  const date = (key: string) => str(f, key) || null;
+  const days = (key: string) => str(f, key) === '' ? null : number(f, key);
+  return change(f, (s, id, rev) => saveRewardCalendar(s, id, rev, {
+    due: Object.fromEntries(rewardCalendarStages.map(k => [k, date(`due.${k}`)])),
+    caseDue: date('caseDue'),
+    offcycleDays: Object.fromEntries(rewardOffcycleSlaStages.map(k => [k, days(`days.${k}`)])),
+  }), true);
+}
 
 export async function entryAction(f: FormData) {
   return change(f, async (s, id, rev) => {
@@ -62,6 +102,19 @@ export async function policyAction(f: FormData) {
     const view=await getRewardUnit(s,id);
     await saveRewardPolicy(s,id,rev,rewardPolicyFromForm(f,view.unit.policy));
   },true);
+}
+
+/** bcd7cc0f: the unit multiplier is previewed per plan, then saved with a reason through its one owner. */
+export async function previewRewardMultiplierAction(unitId: string, revision: number, multiplierBp: number | null) {
+  try { return { ok: true as const, preview: await previewRewardMultiplier(await getSession(), unitId, revision, multiplierBp) }; }
+  catch (error) { return { ok: false as const, error: errorText(error) }; }
+}
+export async function saveRewardMultiplierAction(unitId: string, revision: number, multiplierBp: number | null, reason: string, previewDigest: string) {
+  try {
+    await saveRewardMultiplier(await getSession(), unitId, revision, multiplierBp, reason, previewDigest);
+    revalidatePath('/rewards', 'layout'); revalidatePath('/admin/rewards', 'layout');
+    return { ok: true as const };
+  } catch (error) { return { ok: false as const, error: errorText(error) }; }
 }
 
 export async function importFactsAction(f: FormData) {

@@ -1,5 +1,7 @@
 # ADR-0092 — Keep internal release history and decisions outside application deployment
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Date:** 2026-10-03
 - **Status:** Accepted after verified release 90ae09d1.
 - **Related:** CLAUDE.md deployment/source-arrival instructions; `scripts/improve/release.ts`; `test/r385-release-document-boundary.test.ts`.

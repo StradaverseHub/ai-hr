@@ -5,12 +5,15 @@
  */
 import type { AiProvider, ResolvedAiConfig } from './types';
 
-export const PROVIDERS: AiProvider[] = ['anthropic', 'openai', 'google'];
+export const PROVIDERS: AiProvider[] = ['anthropic', 'openai', 'google', 'openrouter', 'ai_gateway'];
 
 export const PROVIDER_META: Record<
   AiProvider,
   { label: string; models: string[]; defaultModel: string; envKeyVars: string[]; envModelVar?: string }
 > = {
+  openrouter: { label: 'OpenRouter', models: [], defaultModel: '', envKeyVars: [] },
+  // 0661 — any gateway that accepts OpenAI-style requests at a public https address. Model is free text.
+  ai_gateway: { label: 'AI gateway', models: [], defaultModel: '', envKeyVars: [] },
   anthropic: {
     label: 'Anthropic (Claude)',
     models: ['claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5'],

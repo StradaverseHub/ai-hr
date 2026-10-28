@@ -72,6 +72,12 @@ describe('ADR-0080 rung 7: payroll pack registration', () => {
       'pay_component',
       // 4157a498 (migration 0427) — the payroll-history importer's DOE-code catalog.
       'payroll_import_code',
+      // Board history imports retain provenance, revisions and recovery within Payroll.
+      'payroll_history_import_attempt',
+      'payroll_history_import_record',
+      'payroll_history_import_snapshot',
+      'payroll_history_import_revision',
+      'payroll_history_import_event',
       'employment_pay_component',
       'payroll_batch_component',
       'payroll_attendance_allowance_source',

@@ -40,7 +40,8 @@ import {
 } from './attendance';
 import { breakRowMinutes, checkBreakRow, findBreakOverlaps } from './shift-break-rules';
 import { holidayCalendarFactsByEmployment } from './holidays';
-import { approvedLeavePresenceByEmploymentTx } from '../packs/leave/service';
+import { approvedLeavePresenceByEmploymentTx, lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx, lockLeaveDependencyConfigurationTx, LeaveDependencyUnavailable } from '../packs/leave/service';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
 import { approvedLeaveDates } from './leave';
 import {workingShiftSchedule, rotationLookupTx, assertRotationPoolWriteTx} from '../packs/attendance/service';
 import type { RotationCycle } from './week-pattern';
@@ -782,6 +783,8 @@ function shiftUniqueError(e: unknown, n: { name: string; code: string }): Error 
 }
 
 export async function createShift(ctx: SessionContext, p: ShiftInput) {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const n = normalizeShiftInput(p);
   // r429 (f6819e19) · D1 — a brand-new shift has nothing to preserve and nothing was ever asked for one:
   // undefined collapses to NO_WEEK (null / [] / []), not to whatever the caller happened to omit.
@@ -796,6 +799,8 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
   const flexibleBreakEnabled = n.flexibleBreakEnabled ?? false;
   const flexibleBreakMinutes = n.flexibleBreakMinutes ?? null;
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await assertRotationPoolWriteTx(tx,null,n.ruleId);
     let row: { id: string };
     try {
@@ -876,8 +881,12 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
 // created once and assignable to any employee. Use createShift (tenant-global).
 
 export async function updateShift(ctx: SessionContext, p: { shiftId: string } & Omit<ShiftInput, 'companyId'>) {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const n = normalizeShiftInput(p);
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // r429 (f6819e19) · D4 — READ THE STORED SWITCH FIRST. Two things need it, and neither can be answered
     // by this request's own input alone: (1) "turning it ON" is a REFUSAL, and whether this save turns it
     // on depends on what it was a moment ago; (2) when the stored switch is (or stays) ON, every break row
@@ -1017,7 +1026,11 @@ export async function updateShift(ctx: SessionContext, p: { shiftId: string } & 
  * where the operator changes the times that made them copy in the first place.
  */
 export async function copyShift(ctx: SessionContext, p: { shiftId: string }): Promise<{ id: string }> {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [src] = await tx.select().from(shift).where(eq(shift.id, p.shiftId)).limit(1);
     if (!src) throw new Error('Shift not found (or not visible)');
 
@@ -1164,7 +1177,11 @@ export class ShiftInUseError extends Error {
  * about the SET NULL on that column and still holds; this guard is what keeps the same promise for the ladder.
  */
 export async function deleteShift(ctx: SessionContext, p: { shiftId: string }): Promise<{ id: string }> {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [src] = await tx
       .select({ id: shift.id, companyId: shift.companyId, name: shift.name, code: shift.code })
       .from(shift)
@@ -1222,7 +1239,11 @@ export async function deleteShift(ctx: SessionContext, p: { shiftId: string }): 
 // everywhere else (leave types, pay components, business units). deleteShift (above, R17) is the hard path,
 // allowed only for an unreferenced template.
 export async function archiveShift(ctx: SessionContext, p: { shiftId: string }) {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await tx.update(shift).set({ archivedAt: new Date(), updatedAt: new Date() }).where(eq(shift.id, p.shiftId));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -1251,7 +1272,11 @@ export async function archiveShift(ctx: SessionContext, p: { shiftId: string }) 
  * Idempotent: un-archiving a shift that is already active is a no-op, not an error.
  */
 export async function unarchiveShift(ctx: SessionContext, p: { shiftId: string }) {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [src] = await tx
       .select({ id: shift.id, name: shift.name, code: shift.code, archivedAt: shift.archivedAt })
       .from(shift)
@@ -1303,8 +1328,9 @@ export function listShifts(ctx: SessionContext, companyId: string, opts?: { incl
  *  tenant-global NULL-company templates authored on the shift-settings page). RLS already scopes to the
  *  caller's tenant. This is what the shift-settings page, the roster picker, and the employee-profile
  *  Fixed-shift picker read, so a template authored once is assignable to any employee tenant-wide. */
-export function listShiftsForTenant(ctx: SessionContext, opts?: { includeArchived?: boolean }) {
-  return withTenant(ctx, async tx => {
+export function listShiftsForTenant(ctx: SessionContext, opts?: { includeArchived?: boolean },existingTx?:Tx) {
+  opts=opts?{...opts}:undefined;ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  const perform = async (tx:Tx) => {
     const conds=opts?.includeArchived?[]:[isNull(shift.archivedAt)];
     const rows=await tx.select().from(shift).where(conds.length?and(...conds):undefined).orderBy(asc(shift.startTime),asc(shift.name));
     const memberships=await tx.select().from(attendanceRuleShift).orderBy(asc(attendanceRuleShift.ruleId),asc(attendanceRuleShift.shiftId));
@@ -1312,7 +1338,8 @@ export function listShiftsForTenant(ctx: SessionContext, opts?: { includeArchive
     const ruleIds=[...new Set([...memberships.map(m=>m.ruleId),...versions.map(v=>v.ruleId)])];
     const pools=new Map(ruleIds.map(ruleId=>{const dated=rotationVersionOn(versions.filter(v=>v.ruleId===ruleId),todayInKualaLumpur());return [ruleId,new Set(dated?.allowedShiftIds??memberships.filter(m=>m.ruleId===ruleId).map(m=>m.shiftId))];}));
     return rows.map(sh=>({...sh,allowedRuleIds:ruleIds.filter(ruleId=>pools.get(ruleId)!.has(sh.id))}));
-  });
+  };
+  return existingTx?perform(existingTx):withTenant(ctx,perform);
 }
 
 // ── cf21e554 STAGE 2 · the shift's own Overtime Schedule ────────────────────────────────────────────
@@ -1348,7 +1375,13 @@ export async function replaceShiftOtWindows(
   ctx: SessionContext,
   p: { shiftId: string; windows: ShiftOtWindowInput[] },
 ): Promise<{ id: string; windows: number }> {
-  return withTenant(ctx, tx => replaceShiftOtWindowsTx(tx, ctx, p));
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  return withTenant(ctx, async tx => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+    return replaceShiftOtWindowsTx(tx, ctx, p);
+  });
 }
 
 async function replaceShiftOtWindowsTx(tx: Tx, ctx: SessionContext, p: { shiftId: string; windows: ShiftOtWindowInput[] }) {
@@ -1605,6 +1638,8 @@ export function setEmploymentScheduleGroup(
   ctx: SessionContext,
   p: { employmentId: string; attendanceRuleId: string | null },
 ): Promise<{ id: string; attendanceRuleId: string | null; changed: boolean }> {
+  p={...p};
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, (tx) => setEmploymentScheduleGroupTx(tx, ctx, p));
 }
 
@@ -1629,6 +1664,10 @@ export async function setEmploymentScheduleGroupTx(
   ctx: SessionContext,
   p: { employmentId: string; attendanceRuleId: string | null },
 ): Promise<{ id: string; attendanceRuleId: string | null; changed: boolean }> {
+  p={...p};
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await lockLeaveDependenciesTx(tx,ctx.tenantId,[p.employmentId]);
   const ruleId = p.attendanceRuleId?.trim() || null;
   const [emp] = await tx
     .select({ id: employment.id, before: employment.attendanceRuleId })
@@ -1743,9 +1782,13 @@ export async function setEmploymentScheduleGroupBulk(
   ctx: SessionContext,
   p: { employmentIds: readonly string[]; attendanceRuleId: string | null },
 ): Promise<{ requested: number; changed: number; unchanged: number }> {
+  p={...p,employmentIds:p.employmentIds.slice()};
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const ids = [...new Set(p.employmentIds.map((v) => v.trim()).filter(Boolean))].sort();
   if (ids.length === 0) throw new NoEmploymentsSelectedError();
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependenciesTx(tx,ctx.tenantId,ids);
     let changed = 0;
     for (const employmentId of ids) {
       try {
@@ -1835,10 +1878,15 @@ export type EmployeeShiftType = 'fixed' | 'roster';
 export async function assignEmployeeShift(
   ctx: SessionContext,
   p: { employmentId: string; shiftType: EmployeeShiftType; shiftId: string | null },
+  existingTx?: Tx,
 ): Promise<{ id: string }> {
+  p={...p};
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const shiftId = p.shiftId || null;
   if (!shiftId) throw new BackupShiftRequiredError();
-  return withTenant(ctx, async (tx) => {
+  const perform = async (tx: Tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependenciesTx(tx,ctx.tenantId,[p.employmentId]);
     const [emp] = await tx
       .select({
         id: employment.id,
@@ -1910,7 +1958,8 @@ export async function assignEmployeeShift(
       },
     });
     return { id: p.employmentId };
-  });
+  };
+  return existingTx ? perform(existingTx) : withTenant(ctx, perform);
 }
 
 /** Legacy default-shift assignment (ec4cbf63). Kept for back-compat: setting a shift is a Fixed
@@ -1920,6 +1969,7 @@ export async function assignDefaultShift(
   ctx: SessionContext,
   p: { employmentId: string; shiftId: string | null },
 ): Promise<{ id: string }> {
+  p={...p};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return assignEmployeeShift(ctx, {
     employmentId: p.employmentId,
     shiftType: 'fixed',
@@ -1949,15 +1999,17 @@ export type UncoveredEmployment = {
 export function employmentsWithoutBackupShift(
   ctx: SessionContext,
   p?: { companyIds?: string[] },
+  existingTx?:Tx,
 ): Promise<UncoveredEmployment[]> {
   // b8aa3466 — `companyIds` exists because the screen that renders this is COMPANY-SCOPED and this read was
   // not. Every other list on Attendance Policy is filtered through getScopeIds, so an admin who can see one
   // of nine companies was being told "12 employees have no backup shift" and shown names from companies
   // they cannot open, with a Fix button that would not reach them. Omitted ⇒ tenant-wide, which is what the
   // backfill script wants (it names its own tenant) and what the coverage gate wants before a global claim.
-  const scope = p?.companyIds;
+  const scope = p?.companyIds?.slice();
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if (scope && scope.length === 0) return Promise.resolve([]);
-  return withTenant(ctx, async (tx) =>
+  const perform=async(tx:Tx)=>
     tx
       .select({
         employmentId: employment.id,
@@ -1974,8 +2026,8 @@ export function employmentsWithoutBackupShift(
           ...(scope ? [inArray(employment.companyId, scope)] : []),
         ),
       )
-      .orderBy(asc(employment.employeeCode), asc(person.fullName)),
-  );
+      .orderBy(asc(employment.employeeCode), asc(person.fullName));
+  return existingTx?perform(existingTx):withTenant(ctx,perform);
 }
 
 export type BackfillBackupShiftResult = {
@@ -2008,9 +2060,15 @@ export async function backfillBackupShift(
   ctx: SessionContext,
   p: { shiftCode: string; apply: boolean },
 ): Promise<BackfillBackupShiftResult> {
-  const before = await employmentsWithoutBackupShift(ctx);
+  p={...p};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  // Initial discovery is nomination/preview only. It never owns an eventual profile write.
+  const nominated=await withTenant(ctx,async tx=>{
+    await lockAccessConfigurationTx(tx,ctx.tenantId);await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
+    return{before:await employmentsWithoutBackupShift(ctx,undefined,tx),shifts:await listShiftsForTenant(ctx,undefined,tx)};
+  });
+  const before=nominated.before;
   const wanted = p.shiftCode.trim().toLowerCase();
-  const matches = (await listShiftsForTenant(ctx)).filter((sh) => (sh.code ?? '').trim().toLowerCase() === wanted);
+  const matches = nominated.shifts.filter((sh) => (sh.code ?? '').trim().toLowerCase() === wanted);
   if (matches.length === 0) throw new Error(`No active shift with code "${p.shiftCode}"`);
   if (matches.length > 1) {
     throw new Error(
@@ -2021,6 +2079,8 @@ export async function backfillBackupShift(
   }
   if (!p.apply) return { before, after: before, assignedShiftId: null, applied: false };
   const target = matches[0];
+  const ids=before.map(row=>row.employmentId),completed=new Set<string>();
+  const image=(rows:UncoveredEmployment[])=>JSON.stringify(rows.slice().sort((a,b)=>a.employmentId.localeCompare(b.employmentId)));
   for (const row of before) {
     // The arrangement is stamped FIXED, not left alone, and that is deliberate. Migration 0162 defaulted
     // shift_type to 'roster' for everyone who had no default shift — which is precisely this population —
@@ -2028,7 +2088,16 @@ export async function backfillBackupShift(
     // the truthful label for "works this shift every working day, roster the exceptions", and it is one
     // click to change per employee afterwards. Nothing in the engine branches on shift_type either way.
     // One call per row on purpose — each needs its own DomainEvent to be individually reversible.
-    await assignEmployeeShift(ctx, { employmentId: row.employmentId, shiftType: 'fixed', shiftId: target.id });
+    await withTenant(ctx,async tx=>{
+      await tx.execute(sql`select app.access_workforce_write_lock()`);
+      await lockLeaveDependenciesTx(tx,ctx.tenantId,ids);
+      const current=await employmentsWithoutBackupShift(ctx,undefined,tx);
+      if(image(current)!==image(before.filter(row=>!completed.has(row.employmentId))))throw new LeaveDependencyUnavailable();
+      const freshMatches=(await listShiftsForTenant(ctx,undefined,tx)).filter(sh=>(sh.code??'').trim().toLowerCase()===wanted);
+      if(freshMatches.length!==1||freshMatches[0].id!==target.id)throw new LeaveDependencyUnavailable();
+      await assignEmployeeShift(ctx,{employmentId:row.employmentId,shiftType:'fixed',shiftId:target.id},tx);
+    });
+    completed.add(row.employmentId);
   }
   return { before, after: await employmentsWithoutBackupShift(ctx), assignedShiftId: target.id, applied: true };
 }
@@ -2054,6 +2123,8 @@ async function rosterRowBefore(
 
 /** Assign (or re-assign) a shift to an employee on a date. Upsert: one assignment per (employee, date). */
 export async function assignShift(ctx: SessionContext, p: { employmentId: string; shiftDate: string; shiftId: string }) {
+  p={...p};
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
     await assertDutyRosterWriteTx(tx,ctx,[{...p,isRestDay:false}]);
     // 870b79e2 — the Schedule Group's allowed-shift list, enforced before the upsert. assignRosterRow
@@ -2083,6 +2154,8 @@ export async function assignShift(ctx: SessionContext, p: { employmentId: string
 
 /** Mark a date as an explicit rest day for an employee (vs no row = company-policy fallback). */
 export async function setRestDay(ctx: SessionContext, p: { employmentId: string; shiftDate: string; note?: string }) {
+  p={...p};
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
     await assertDutyRosterWriteTx(tx,ctx,[{...p,shiftId:null,isRestDay:true}]);
     const before = await rosterRowBefore(tx, p.employmentId, p.shiftDate);
@@ -2137,8 +2210,10 @@ export async function setRestDay(ctx: SessionContext, p: { employmentId: string;
  * guard would now leave the roster intact — but it would also tell the operator the removal succeeded.
  * DO NOT ADD A CALLER THAT SKIPS `assertRosterAdmin`; it is what turns this into a visible refusal.
  */
-export async function clearRoster(ctx: SessionContext, p: { employmentId: string; shiftDate: string }) {
-  return withTenant(ctx, async (tx) => {
+export async function clearRoster(ctx: SessionContext, p: { employmentId: string; shiftDate: string },existingTx?:Tx) {
+  p={...p};
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  const perform=async(tx:Tx)=>{
     await assertDutyRosterWriteTx(tx,ctx,[{...p,clear:true}]);
     // The deleted row IS the "before" — returning it costs nothing and needs no second read.
     const [row] = await tx
@@ -2161,7 +2236,8 @@ export async function clearRoster(ctx: SessionContext, p: { employmentId: string
       },
     });
     return { id: row.id };
-  });
+  };
+  return existingTx?perform(existingTx):withTenant(ctx,perform);
 }
 
 /** Bulk-assign one shift to many employees across many dates (the roster-grid workhorse). One summary
@@ -2169,12 +2245,15 @@ export async function clearRoster(ctx: SessionContext, p: { employmentId: string
 export async function assignShiftBulk(
   ctx: SessionContext,
   p: { employmentIds: string[]; shiftDates: string[]; shiftId: string },
+  existingTx?: Tx,
 ) {
+  p={...p,employmentIds:p.employmentIds.slice(),shiftDates:p.shiftDates.slice()};
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if (p.employmentIds.length === 0 || p.shiftDates.length === 0) return { assigned: 0 };
   const values = p.employmentIds.flatMap((employmentId) =>
     p.shiftDates.map((shiftDate) => ({ tenantId: ctx.tenantId, employmentId, shiftDate, shiftId: p.shiftId, isRestDay: false })),
   );
-  return withTenant(ctx, async (tx) => {
+  const write = async (tx: Tx) => {
     await assertDutyRosterWriteTx(tx,ctx,values);
     // 870b79e2 — one batched check for the whole grid, BEFORE any row is written, so a generation run that
     // would put somebody on a shift their group forbids fails whole rather than half. This is the
@@ -2199,7 +2278,8 @@ export async function assignShiftBulk(
       payload: { shiftId: p.shiftId, employmentCount: p.employmentIds.length, dateCount: p.shiftDates.length, rows: values.length },
     });
     return { assigned: values.length };
-  });
+  };
+  return existingTx ? write(existingTx) : withTenant(ctx,write);
 }
 
 /** Bulk-mark rest days for many employees across many dates — the rest-day half of roster generation,
@@ -2218,14 +2298,17 @@ export async function setRestDayBulk(
      *  do with the change; one of the two must be supplied. */
     anchorId?: string;
   },
+  existingTx?: Tx,
 ) {
+  p={...p,employmentIds:p.employmentIds.slice(),shiftDates:p.shiftDates.slice()};
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if (p.employmentIds.length === 0 || p.shiftDates.length === 0) return { rested: 0 };
   const anchorId = p.forShiftId ?? p.anchorId;
   if (!anchorId) throw new Error('setRestDayBulk needs forShiftId or anchorId to anchor its event');
   const values = p.employmentIds.flatMap((employmentId) =>
     p.shiftDates.map((shiftDate) => ({ tenantId: ctx.tenantId, employmentId, shiftDate, shiftId: null, isRestDay: true })),
   );
-  return withTenant(ctx, async (tx) => {
+  const write = async (tx: Tx) => {
     await assertDutyRosterWriteTx(tx,ctx,values);
     await tx
       .insert(rosterAssignment)
@@ -2248,7 +2331,8 @@ export async function setRestDayBulk(
       },
     });
     return { rested: values.length };
-  });
+  };
+  return existingTx ? write(existingTx) : withTenant(ctx,write);
 }
 
 const DAY_MS = 86_400_000;
@@ -2279,11 +2363,18 @@ export async function generateRosterFromTemplate(
   ctx: SessionContext,
   p: { shiftId: string; employmentIds?: string[]; departmentId?: string; from: string; to: string },
 ) {
+  p={...p,employmentIds:p.employmentIds?.slice()};
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if (!isIsoDate(p.from) || !isIsoDate(p.to)) throw new Error('Dates must be YYYY-MM-DD');
   const fromMs = Date.parse(`${p.from}T00:00:00Z`);
   const toMs = Date.parse(`${p.to}T00:00:00Z`);
   if (toMs < fromMs) throw new Error('The end date must not be before the start date');
   if (toMs - fromMs > 366 * DAY_MS) throw new Error('Generate at most one year at a time');
+
+  return withTenant(ctx,async tx=>{
+  assertRosterAdmin(ctx);
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
 
   // 07ebd04d — the template's week is resolved through its SCHEDULE GROUP first (migration 0483). The
   // generator writes a row for every date in the window, so if it split the month by the shift's own week
@@ -2295,7 +2386,7 @@ export async function generateRosterFromTemplate(
   // The GROUP here is the SHIFT's (shift.rule_id), not any one employee's: this call generates for a whole
   // department, and the group guard (assertShiftsAllowedForEmploymentsTx) already refuses an employment
   // whose own group does not contain this shift, so on every assignment the system accepts the two agree.
-  const tpl = await withTenant(ctx, async (tx) => {
+  const tpl = await (async () => {
     const [row] = await tx
       .select({
         companyId: shift.companyId,
@@ -2316,7 +2407,7 @@ export async function generateRosterFromTemplate(
       offPattern: row.offPattern,
     });
     return { ...row, ...week };
-  });
+  })();
   if (!tpl) throw new Error('Shift not found (or not visible)');
   if (tpl.archivedAt) throw new Error('Cannot generate a roster from an archived shift');
   // b8aa3466 — Full ∪ Half. A shift that is all half days has a perfectly usable pattern; refusing it here
@@ -2337,12 +2428,22 @@ export async function generateRosterFromTemplate(
       status: 'active',
       limit: 100_000,
       offset: 0,
-    });
+    },undefined,tx);
+    if(page.total!==page.rows.length)throw new LeaveDependencyUnavailable();
     employmentIds = page.rows.map((r) => r.employmentId);
   } else {
     employmentIds = [...new Set(p.employmentIds ?? [])];
   }
   if (employmentIds.length === 0) throw new Error('No employees in scope — pick employees or a department with members');
+  await lockLeaveDependenciesTx(tx,ctx.tenantId,employmentIds);
+  if(p.departmentId){
+    const fresh=await listEmployeesPage(ctx,{departmentId:p.departmentId,
+      companyIds:tpl.companyId?[tpl.companyId]:undefined,status:'active',limit:100_000,offset:0},undefined,tx);
+    if(fresh.total!==fresh.rows.length)throw new LeaveDependencyUnavailable();
+    const nominated=[...new Set(employmentIds)].sort(),current=[...new Set(fresh.rows.map(row=>row.employmentId))].sort();
+    if(nominated.length!==current.length||nominated.some((id,index)=>id!==current[index]))throw new LeaveDependencyUnavailable();
+  }
+
 
   // b8aa3466 — generation reads the FOUR-WAY row through the shared resolver. Full and Half both generate
   // a shift row (a half day is a working day; its shorter hours are decided by the engine, not by whether a
@@ -2356,8 +2457,8 @@ export async function generateRosterFromTemplate(
     (isWorkingDayKind(kind) ? workingDates : restDates).push(iso);
   }
 
-  const assigned = await assignShiftBulk(ctx, { employmentIds, shiftDates: workingDates, shiftId: p.shiftId });
-  const rested = await setRestDayBulk(ctx, { employmentIds, shiftDates: restDates, forShiftId: p.shiftId });
+  const assigned = await assignShiftBulk(ctx, { employmentIds, shiftDates: workingDates, shiftId: p.shiftId },tx);
+  const rested = await setRestDayBulk(ctx, { employmentIds, shiftDates: restDates, forShiftId: p.shiftId },tx);
   return {
     employments: employmentIds.length,
     workingDates: workingDates.length,
@@ -2365,6 +2466,7 @@ export async function generateRosterFromTemplate(
     workingRows: assigned.assigned,
     restRows: rested.rested,
   };
+  });
 }
 
 /**
@@ -2385,6 +2487,8 @@ export async function copyRoster(
   ctx: SessionContext,
   p: { employmentIds?: string[]; sourceFrom: string; sourceTo: string; targetFrom: string },
 ): Promise<{ copied: number; sourceRows: number }> {
+  p={...p,employmentIds:p.employmentIds?.slice()};
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if (!isIsoDate(p.sourceFrom) || !isIsoDate(p.sourceTo) || !isIsoDate(p.targetFrom)) {
     throw new Error('Dates must be YYYY-MM-DD');
   }
@@ -2397,8 +2501,17 @@ export async function copyRoster(
 
   const empIds = [...new Set((p.employmentIds ?? []).filter(Boolean))];
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
     const srcConds = [gte(rosterAssignment.shiftDate, p.sourceFrom), lte(rosterAssignment.shiftDate, p.sourceTo)];
     if (empIds.length > 0) srcConds.push(inArray(rosterAssignment.employmentId, empIds));
+    // Nominate source/target subjects only, then reread membership before copying source facts.
+    const nominate=()=>tx.selectDistinct({employmentId:rosterAssignment.employmentId}).from(rosterAssignment)
+      .where(and(...srcConds)).orderBy(rosterAssignment.employmentId);
+    const nominated=await nominate();
+    if(!nominated.length)return {copied:0,sourceRows:0};
+    await lockLeaveDependenciesTx(tx,ctx.tenantId,nominated.map(row=>row.employmentId));
+    if(JSON.stringify(nominated)!==JSON.stringify(await nominate()))throw new LeaveDependencyUnavailable();
     const srcRows = await tx
       .select({
         employmentId: rosterAssignment.employmentId,
@@ -2458,8 +2571,9 @@ export async function copyRoster(
 }
 
 /** The roster grid for a date window (admin/manager view; RLS scopes which employees are visible). */
-export function rosterForRange(ctx: SessionContext, p: { employmentIds?: string[]; from: string; to: string }) {
-  return withTenant(ctx, (tx) => {
+export function rosterForRange(ctx: SessionContext, p: { employmentIds?: string[]; from: string; to: string },existingTx?:Tx) {
+  p={...p,employmentIds:p.employmentIds?.slice()};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  const perform=async(tx:Tx)=>{
     const conds = [gte(rosterAssignment.shiftDate, p.from), lte(rosterAssignment.shiftDate, p.to)];
     if (p.employmentIds && p.employmentIds.length > 0) conds.push(inArray(rosterAssignment.employmentId, p.employmentIds));
     return tx
@@ -2480,7 +2594,8 @@ export function rosterForRange(ctx: SessionContext, p: { employmentIds?: string[
       .from(rosterAssignment)
       .where(and(...conds))
       .orderBy(asc(rosterAssignment.shiftDate));
-  });
+  };
+  return existingTx?perform(existingTx):withTenant(ctx,perform);
 }
 
 // ── 23390097 · Monthly roster grid ──────────────────────────────────
@@ -2912,6 +3027,7 @@ export async function assignRosterRow(
   ctx: SessionContext,
   p: { employmentId: string; shiftDates: string[]; brush: string },
 ): Promise<{ applied: number }> {
+  p={...p,shiftDates:p.shiftDates.slice()};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const dates = [...new Set(p.shiftDates)].filter(isIsoDate).sort();
   // Both rights, in order: may this session write the roster at all, then may it write these dates.
   assertRosterAdmin(ctx);
@@ -2938,6 +3054,7 @@ export async function recordRosterUpload(
     rejected: number;
   },
 ): Promise<void> {
+  p={...p};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   await withTenant(ctx, (tx) =>
     appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -3386,8 +3503,12 @@ async function administrativeManagerNameTx(tx: Tx, employmentId: string): Promis
 
 /** Dedicated pay editor: validation and both changes commit together; basic shift saves omit pay fields. */
 export async function saveShiftPay(ctx: SessionContext, p: { shiftId: string; windows: ShiftOtWindowInput[]; differential: ShiftDifferential | null; confirmClear: boolean }) {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const differential = validateDifferential(p.differential);
   return withTenant(ctx, async tx => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [before] = await tx.select().from(shift).where(eq(shift.id, p.shiftId)).for('update');
     if (!before) throw new Error('Shift not found (or not visible)');
     const oldWindows = await tx.select({id:shiftOtWindow.id}).from(shiftOtWindow).where(eq(shiftOtWindow.shiftId, p.shiftId));

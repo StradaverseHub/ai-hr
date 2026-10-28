@@ -1,5 +1,7 @@
 # ADR-0103: OneHR workflows in native Performance and Rewards
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted architecture, 2026-10-12. Implementation requires the full repository gate before release.
 
 The owner requested understanding and merging the supplied OneHR handoff and source into this HR system, explicitly chose native integration, and authorized use of the current Git main checkout. Instructions inside the supplied documents are source material, not deployment commands or authorization.
@@ -76,6 +78,8 @@ Evidence drafts preserve absent slots on partial writes and expose the source’
 
 Feedback panels have the source’s configurable cap (default five, maximum twenty; letter-grade subjects keep a single line manager). Scoped HR can archive and restore submitted members while retaining their answers, or reset an active submission to a retained draft. Frozen assessments and closed cycles remain protected. Membership changes and resets revoke a released anonymous report atomically, with a subject-safe native audit event containing no rater identity or answer. Relationship labels and ordinary later submissions do not revoke it. Rating records continue to reflect their last sign-off/lock; panel edits do not silently recompute that stored observation.
 
+**Archive by the cycle exclusion rule (2026-10-28, D-P1-22, ADR-0150).** Saving a rule that leaves a unit or department out of a cycle archives, once, every live row where someone in the new scope is the rated person or the rater, through the same keeping writer: the row is retained with its time, a reason naming the rule and its per-row audit, and leaves scoring. There is no status filter, so submitted ratings are archived too, and the release trigger revokes a released anonymous report exactly as for any membership change. Frozen assessments are skipped and counted. Bringing the unit back restores no archived row, and the builder never restores an archived pairing; HR tops panels up by hand.
+
 
 The source file contract is four active files per evidence entry, two MiB each, with its twelve PDF/image/Office/CSV/text extensions. The existing ten-MiB native contract remains available to classic reviews. Direct KPI uploads create or reuse a shared, employee-authored recognition entry, including a file-only entry with no invented narrative. KPI proof is derived from that entry’s links; old direct attachment links remain compatible. A file on an unshared entry does not satisfy the standout-result proof requirement.
 
@@ -104,3 +108,11 @@ A subject's line manager no longer reads `performance_onehr_panel` rows. Before 
 The manager reads and changes panel membership only through two security-definer helpers. Both pin the tenant and require the subject's live line manager. `app.onehr_manager_panel(review)` returns the request, rater employment, relationship, submitted/archived/reset timestamps and, for active members only, the archive reason. It never returns answers, remarks or principle comments. `app.onehr_manager_panel_member(request, archived, relationship)` archives or restores an unsubmitted member and sets its relationship label. Submitted members, resets and archive reasons stay with scoped HR. The manager's review screen and panel assignment use these helpers, so their output is unchanged. Rater answers remain readable only by the rater, through their own live card, and by scoped HR.
 
 Not addressed here: `app.onehr_assessment_inputs` still gives the manager per-rater leadership scores, without identities, for the potential calculation.
+
+## Two-step release and leader reads (2026-10-28, WP-E, CF-08; merge held)
+
+ADR-0149 adds a release to leaders before the release to the person, for performance, potential and talent. The release grants stay separate from immutable results and keep one owner, `performance_assessment_release`. Three consequences change this record:
+- **Leaders read results through a definer projection.** `app.onehr_leader_result` returns band movement step by step, cut at the leader's own step until the release to leaders, and never rater identities, scores or counts. The employee projection is unchanged: the person still sees only components released to them.
+- **Leaders see calibration reasons (E-2).** On every step they may read, from the HOD up, leaders see that tier's recorded reason, as the source does. Hidden steps carry none. Reasons still never enter the employee projection or the export contract.
+- **Line managers are masked (E-1).** A line manager who is not a cycle administrator no longer reads a frozen band before it is released to leaders. The mask is applied in the readers (`app.onehr_frozen_visible`); `onehr_result_read` keeps admitting the manager for the services' is-it-frozen guards.
+

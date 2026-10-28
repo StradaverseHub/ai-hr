@@ -1,4 +1,5 @@
-import { getPeopleGeneral, occupiedNricsTx } from './people-general';
+import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
+import { getPeopleGeneral, readPeopleGeneralTx, occupiedNricsTx } from './people-general';
 import { NRIC_DUPLICATE_MESSAGE, NRIC_FILE_DUPLICATE_MESSAGE } from '../lib/nric-policy-message';
 import { pgSqlState } from '../lib/db-error';
 import { publicErrorMessage } from '../lib/public-error';
@@ -67,7 +68,7 @@ import { setPersonComplianceFields } from './workforce-commands';
  * when any row is unmatched, and the template chooser + this section's own notice say it BEFORE a
  * file is uploaded. The correction is being put to the reporter in the same words (AGENTS 31).
  */
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
   appUser,
@@ -210,6 +211,7 @@ async function analyze(
   ctx: SessionContext,
   section: ImportSection,
   records: ImportRecord[],
+  suppliedTx?:Tx,
 ): Promise<{ preview: SectionImportPreview; resolved: ResolvedSectionRow[] }> {
   const def = IMPORT_SECTION_DEFS[section];
   const present = records.length ? Object.keys(records[0]).map((c) => c.trim()) : [];
@@ -258,9 +260,10 @@ async function analyze(
     codes,
     section,
     records.map(record=>norm(record.ic_number).replace(/\D/g,'')),
+    suppliedTx,
   );
 
-  const { allowDuplicatedNric } = await getPeopleGeneral(ctx);
+  const { allowDuplicatedNric, allowDuplicatedEmail } = await (suppliedTx?readPeopleGeneralTx(suppliedTx):getPeopleGeneral(ctx));
   const seenCodes = new Set<string>();
   /**
    * IN-FILE COLLISIONS ON THE TWO IDENTIFIERS THAT MUST STAY UNIQUE PER PERSON.
@@ -330,6 +333,8 @@ async function analyze(
           catalog,
           icOwners,
           allowDuplicatedNric,
+          allowDuplicatedEmail,
+          warnings,
           emailOwners,
           seenIcs,
           seenEmails,
@@ -376,12 +381,12 @@ async function analyze(
   for(const row of resolved)if(row.result.ok && row.operations?.cardId && resolved.some(other=>other!==row && other.operations?.cardId?.toLowerCase()===row.operations!.cardId!.toLowerCase())) {row.result.ok=false;row.result.errors.push('Duplicate card_id in this file.');}
 
   for(const row of resolved)if(row.result.ok && row.subject && row.operations?.cardId) {
-    try {await withTenant(ctx,tx=>assertCardIdFree(tx,row.subject!.employmentId,row.operations!.cardId!));}
+    try {await (suppliedTx?assertCardIdFree(suppliedTx,row.subject!.employmentId,row.operations!.cardId!):withTenant(ctx,tx=>assertCardIdFree(tx,row.subject!.employmentId,row.operations!.cardId!)));}
     catch {row.result.ok=false;row.result.errors.push('card_id already identifies another employee; choose an unused card ID.');}
   }
 
   for(const row of resolved)if(row.result.ok && row.dependent) {
-    try { await assertDependentsValid(ctx,[row.dependent]); }
+    try { await assertDependentsValid(ctx,[row.dependent],suppliedTx); }
     catch(error) { row.result.ok=false;row.result.errors.push(error instanceof Error?error.message:'Invalid Family values'); }
   }
 
@@ -399,8 +404,8 @@ async function analyze(
 }
 
 /** Read every employee this file names, plus the catalogs and the IC ownership map, in one pass. */
-async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: ImportSection, submittedNrics: string[]) {
-  return withTenant(ctx, async (tx) => {
+async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: ImportSection, submittedNrics: string[],suppliedTx?:Tx) {
+  const read=async (tx:Tx) => {
     // The tenant's employments, keyed by Employee ID and by work email. Both keys are needed: the
     // Direct Superior column accepts either, exactly as the wide importer's does.
     const rows = await tx
@@ -537,7 +542,8 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
     }
 
     return { byCode, catalog, icOwners, emailOwners };
-  });
+  };
+  return suppliedTx?read(suppliedTx):withTenant(ctx,read);
 }
 
 type BuildCtx = { errors: string[]; changes: string[] };
@@ -569,6 +575,9 @@ function buildProfile(
     catalog: Map<string, Set<string>>;
     icOwners: Map<string, Set<string>>;
     allowDuplicatedNric: boolean;
+    /** 5e0b2154 — People General "Allow Duplicated Work Email or Personal Email". */
+    allowDuplicatedEmail: boolean;
+    warnings: string[];
     emailOwners: Map<string, string>;
     seenIcs: Map<string, {rowNum:number;personId:string}>;
     seenEmails: Map<string, number>;
@@ -598,13 +607,16 @@ function buildProfile(
     if (!EMAIL_RE.test(email)) {
       errors.push(`Invalid email "${email}"`);
       email = undefined;
-    } else if (alreadyInFile !== undefined) {
+    } else if (alreadyInFile !== undefined && !x.allowDuplicatedEmail) {
       errors.push(`Duplicate email in this file — row ${alreadyInFile} already assigns "${email}"`);
       email = undefined;
-    } else if (owner && owner !== subject.personId) {
-      errors.push(`Another employee already has the work email "${email}" — it is a login identity and cannot be shared`);
+    } else if (owner && owner !== subject.personId && !x.allowDuplicatedEmail) {
+      errors.push(`Another employee already has the work email "${email}" — duplicate emails are not allowed under the current People General Settings`);
       email = undefined;
     } else {
+      // 5e0b2154 — allowed to share, but said so: HR should see that the address is not unique.
+      if (alreadyInFile !== undefined) x.warnings.push(`Row ${alreadyInFile} also uses the email "${email}"`);
+      else if (owner && owner !== subject.personId) x.warnings.push(`Another employee also uses the email "${email}"`);
       x.seenEmails.set(key, x.rowNum);
     }
   }
@@ -918,6 +930,7 @@ export async function commitSectionImport(
   ctx: SessionContext,
   p: { section: string; records: ImportRecord[]; fileName?: string },
 ): Promise<SectionImportResult> {
+  p=structuredClone(p); ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if(!isImportSection(p.section))throw new Error('Unknown import section. Employment updates use dated Movement import.');
   if(isPersonnelRegisterKind(p.section)) {
     const result=await commitRegisterSection(ctx,p.section,p.records);
@@ -939,12 +952,27 @@ export async function commitSectionImport(
   const failed: SectionImportResult['failed'] = [];
   let updated = 0;
   const warnings:string[]=[];
+  const appliedPeople=new Set<string>();
   for (const row of resolved) {
     if (!row.result.ok || !row.subject) continue;
     const s = row.subject;
+    const nominatedRow=row;
     let step: WriteStep = 'person';
     try {
       const wrote=await withTenant(ctx,async tx=>{
+      await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+      const current=await analyze(ctx,p.section as ImportSection,p.records,tx);
+      const fresh=current.resolved[nominatedRow.result.rowNum-1];
+      if(current.preview.fileErrors.length||!fresh?.subject||fresh.subject.employmentId!==nominatedRow.subject!.employmentId||fresh.subject.personId!==nominatedRow.subject!.personId||fresh.subject.companyId!==nominatedRow.subject!.companyId||fresh.subject.employeeCode!==nominatedRow.subject!.employeeCode||fresh.subject.pack!==nominatedRow.subject!.pack)throw new Error('Section import inputs changed; preview the original file again.');
+      if(fresh.result.errors.length)throw new Error('Section import inputs changed; preview the original file again.');
+      // A later row naming a Person that an EARLIER row of this same commit already wrote re-analyses as
+      // 'skip' only because of that write. The preview counted it as an update and the native owner applies
+      // it exactly as previewed (each row its own write); an independent no-op still stays a skip.
+      const afterOwnEarlierRow=fresh.result.verdict==='skip'&&appliedPeople.has(fresh.subject.personId);
+      if(fresh.result.verdict==='skip'&&!afterOwnEarlierRow)return false;
+      const binding=(value:ResolvedSectionRow)=>JSON.stringify({...value,result:undefined,subject:undefined});
+      if(!(fresh.result.ok||afterOwnEarlierRow)||binding(fresh)!==binding(nominatedRow))throw new Error('Section import inputs changed; preview the original file again.');
+      const row=fresh,s=fresh.subject;
       await assertWorkforceEmploymentTx(tx,ctx,s.employmentId,'maintain');
       await assertWorkforcePersonTx(tx,ctx,s.personId,'maintain');
       step = 'person';
@@ -998,6 +1026,7 @@ export async function commitSectionImport(
       return true;
       });
       if(!wrote)continue;
+      appliedPeople.add(s.personId);
       updated++;
       if(row.dependent) {try {await syncChildReliefFromFamily(ctx,s.personId);}catch{warnings.push(`Row ${row.result.rowNum} was saved; review the child-relief refresh on Personnel.`);}}
     } catch (e) {

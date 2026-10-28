@@ -1,3 +1,4 @@
+import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 /**
  * 6fadb036 (R17) — Approval Workflow Enhancement under Leave Config.
  *
@@ -289,8 +290,11 @@ export async function listOrgScopedApprovalRules(ctx: SessionContext): Promise<O
 }
 
 export async function createApprovalTemplate(ctx: SessionContext, p: ApprovalTemplateInput) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const c = cleanTemplate(p);
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     let row: { id: string };
     try {
       [row] = await tx
@@ -316,8 +320,11 @@ export async function createApprovalTemplate(ctx: SessionContext, p: ApprovalTem
 }
 
 export async function updateApprovalTemplate(ctx: SessionContext, id: string, p: ApprovalTemplateInput) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const c = cleanTemplate(p);
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [before] = await tx
       .select({ levels: leaveApprovalTemplate.levels, name: leaveApprovalTemplate.name })
       .from(leaveApprovalTemplate)
@@ -348,7 +355,10 @@ export async function updateApprovalTemplate(ctx: SessionContext, id: string, p:
 }
 
 export async function duplicateApprovalTemplate(ctx: SessionContext, id: string) {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [src] = await tx
       .select({
         name: leaveApprovalTemplate.name,
@@ -392,7 +402,10 @@ export async function duplicateApprovalTemplate(ctx: SessionContext, id: string)
 }
 
 export async function setApprovalTemplateActive(ctx: SessionContext, id: string, active: boolean) {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     if (!active) {
       // Block deactivation while any ACTIVE rule references the template — admin must reassign first
       // (deterministic; avoids silently repointing live routing to the fallback chain).
@@ -422,7 +435,10 @@ export async function setApprovalTemplateActive(ctx: SessionContext, id: string,
 }
 
 export async function deleteApprovalTemplate(ctx: SessionContext, id: string) {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // Hard delete only when NO policy row (active OR archived) references it — the FK enforces this too,
     // but a pre-check gives a friendly error instead of a raw constraint failure.
     const [ref] = await tx
@@ -448,7 +464,10 @@ export async function deleteApprovalTemplate(ctx: SessionContext, id: string) {
 /** Set (or clear, with null) the tenant's single org-wide-default template. Flips the flag atomically:
  *  the previous holder is unset in the same transaction. An inactive template cannot become default. */
 export async function setTenantDefaultTemplate(ctx: SessionContext, id: string | null) {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // Clear whoever currently holds the flag (there is at most one).
     await tx
       .update(leaveApprovalTemplate)
@@ -672,6 +691,7 @@ export async function assignApprovalTemplate(
     maxDays?: number | null;
   },
 ) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const companyIds = [...new Set(p.companyIds.filter(Boolean))];
   const leaveTypeIds = [...new Set(p.leaveTypeIds.filter(Boolean))];
   const eligibilityRuleIds = [...new Set((p.eligibilityRuleIds ?? []).filter(Boolean))];
@@ -684,6 +704,8 @@ export async function assignApprovalTemplate(
   if (maxDays !== null && (!Number.isInteger(maxDays) || maxDays < 0)) throw new Error('Condition days must be a whole number of 0 or more');
   if (minDays !== null && maxDays !== null && minDays > maxDays) throw new Error('The condition range starts after it ends');
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [tpl] = await tx
       .select({ id: leaveApprovalTemplate.id, active: leaveApprovalTemplate.active })
       .from(leaveApprovalTemplate)
@@ -808,7 +830,10 @@ export async function assignApprovalTemplate(
 /** Unassign a template from one (company, leave-type): soft-archive the assignment row so resolution
  *  falls back to the company default / tenant default. */
 export async function unassignApprovalTemplate(ctx: SessionContext, ruleId: string, companyId: string) {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [row] = await tx
       .select({ templateId: leaveApprovalPolicy.templateId, leaveTypeId: leaveApprovalPolicy.leaveTypeId })
       .from(leaveApprovalPolicy)

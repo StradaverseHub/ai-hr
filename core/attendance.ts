@@ -1,3 +1,5 @@
+import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
 import {attendancePolicyAttestedRawTrace} from '../lib/attendance-policy-attested-trace';
 import {assessGeofence,type GeofenceAssessment} from '../lib/geofence-assessment';
 import {attendancePolicyUnclockedWorkDates,validateAttendancePolicyUnclockedWork,type AttendancePolicyUnclockedWork} from '../lib/attendance-policy-unclocked-work';
@@ -28,7 +30,7 @@ import { applyClockChangesTx, clockFingerprint, punchesForCorrectionTx, validate
 import { rotationLookupTx, rotationScheduleRow } from './attendance-rotation';
 import { isDeepStrictEqual } from 'node:util';
 import { hasGrantFor, withEffectiveGrants } from '../lib/authz-model';
-import { snapshotAttendanceWorkflowTx, assertCanDecideAttendanceApplicationTx, decideAttendanceWorkflowStageTx, attendanceWorkflowsForTx } from './attendance-workflow';
+import { prepareAttendanceWorkflowSnapshotTx, snapshotAttendanceWorkflowTx, assertCanDecideAttendanceApplicationTx, decideAttendanceWorkflowStageTx, attendanceWorkflowsForTx } from './attendance-workflow';
 import { attendanceApplicationType, AttendanceWorkflowError } from '../lib/attendance-workflow';
 import { plannedOvertimeMinutes } from '../lib/overtime-duration';
 import { and, asc, desc, eq, gt, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
@@ -45,9 +47,9 @@ import { type SessionContext, type Tx } from '../db/client';
 // read by core/leave.ts, core/roster.ts and core/absence-days.ts) open no transaction and stay ungated,
 // which is what keeps Leave and the roster working for a tenant without Attendance. See
 // core/module-gate.ts.
-import { withAttendanceTenant as withTenant } from './module-gate';
+import { assertModuleGate, withAttendanceTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent, appendEvents } from '../db/events';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { filterDelegationOrgScopeTx, assertAssignedWorkPrincipalTx, isApprovalDecisionRefusal } from './approvals';
 import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 import { scopeOf } from '../lib/delegation-scope';
@@ -2049,12 +2051,27 @@ function deriveDayFromPunchList(
   };
 }
 
+/** Attendance can bank TOIL and ensure its replacement catalogue. Own exclusive configuration
+ * BEFORE any schedule/credit/legacy Attendance lock; callers must roll back the WHOLE Tx on refusal.
+ * This is dependency protection, not authority: original self/admin/device/workflow gates still run. */
+export async function lockAttendanceLeaveDependenciesTx(tx: Tx, ctx: SessionContext, employmentIds: readonly string[]) {
+  const tenantId = ctx.tenantId, ids = [...new Set(employmentIds)].sort();
+  await lockAccessConfigurationTx(tx, tenantId);
+  await lockLeaveDependencyConfigurationTx(tx, tenantId);
+  if (ids.length) await lockLeaveDependenciesTx(tx, tenantId, ids);
+}
+function captureAttendanceContext(ctx: SessionContext): SessionContext {
+  return {...ctx, roles:ctx.roles?.slice(), grants:ctx.grants?.map(grant=>({...grant}))};
+}
+
 export async function checkInTx(
   ctx: SessionContext,
   p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string; deviceGateExempt?: boolean; clockCaptureId?: string; preciseOrder?: boolean; manual?: boolean; method?: 'web' | 'mobile_offline' },
   existingTx?: Tx,
 ) {
+  ctx = captureAttendanceContext(ctx); p = structuredClone(p);
   const perform = async (tx: Tx) => {
+    await lockAttendanceLeaveDependenciesTx(tx, ctx, [p.employmentId]);
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + p.employmentId}, 0))`);
     // Feedback 5249d43f: registered-device gate FIRST — when the company policy requires it, an absent /
     // unknown / revoked token throws the typed DeviceNotRegisteredError before anything is evaluated or
@@ -2199,7 +2216,9 @@ export async function checkOutTx(
   p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string; deviceGateExempt?: boolean; clockCaptureId?: string; preciseOrder?: boolean; manual?: boolean; method?: 'web' | 'mobile_offline' },
   existingTx?: Tx,
 ) {
+  ctx = captureAttendanceContext(ctx); p = structuredClone(p);
   const perform = async (tx: Tx) => {
+    await lockAttendanceLeaveDependenciesTx(tx, ctx, [p.employmentId]);
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + p.employmentId}, 0))`);
     // Feedback 5249d43f: same registered-device gate as checkInTx — see the comment there (r430: same
     // deviceGateExempt escape hatch).
@@ -3495,9 +3514,7 @@ export class AttendanceCorrectionPendingError extends Error {
   constructor() { super('A correction is already pending for this date.'); }
 }
 
-export async function requestAttendanceCorrection(
-  ctx: SessionContext,
-  p: {
+export type AttendanceCorrectionRequestInput={
     clockChanges?: ClockChanges;
     employmentId: string;
     date: string;
@@ -3518,11 +3535,10 @@ export async function requestAttendanceCorrection(
     // OT form, the tests, the import paths) omits them and stores NULL, which is byte-identical to before.
     remark?: string | null;
     requestKind?: AttendanceRequestKind | null;
-  },
-  /** The caller's transaction, so another owner can file and decide in one atomic unit (the offline claim
-   *  resolution in packs/attendance/mobile-offline-claim-review.ts). Omitted: its own transaction, as before. */
-  existingTx?: Tx,
-) {
+  };
+/** Canonical human-input validation shared by ordinary submission and supplied-Tx preparation. */
+function normalizeAttendanceCorrectionRequest(input:AttendanceCorrectionRequestInput){
+ const p=structuredClone(input);
   if (p.clockChanges && (p.clockChanges.version !== 1 || !/^[0-9a-f]{64}$/.test(p.clockChanges.baseline))) throw new Error('Invalid clock-data correction.');
   const clockChanges = p.clockChanges ? { version: 1 as const, baseline: p.clockChanges.baseline, entries: validateClockEntries(p.clockChanges.entries) } : null;
   if (clockChanges && (p.checkIn || p.checkOut || p.requestedOtMinutes != null)) throw new Error('Save clock data separately from overtime requests.');
@@ -3578,7 +3594,23 @@ export async function requestAttendanceCorrection(
   if (p.requestKind && ((p.requestKind === 'self_overtime') !== (!clockChanges && !checkIn && !checkOut && hasOt))) throw new Error('The application type does not match the requested clock or overtime changes.');
   const requestKind = p.requestKind ?? (attendanceApplicationType({ proposedCheckIn: checkIn, proposedCheckOut: checkOut, clockChanges, requestedOtMinutes }) === 'self_overtime' ? 'self_overtime' : 'other');
 
-  const submit = async (tx: Tx) => {
+ return {p,hasOt,clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind,unclockedWork};
+}
+/** Full canonical preflight with no correction/workflow/event INSERT. Infrastructure policy-epoch
+ * initialization remains the existing canonical barrier, not a request or an approval effect. */
+export async function prepareAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,input:AttendanceCorrectionRequestInput){
+ ctx=captureAttendanceContext(ctx);assertModuleGate(ctx,'attendance');
+ const {p,hasOt,clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind,unclockedWork}=normalizeAttendanceCorrectionRequest(input);
+ await lockAccessConfigurationTx(tx,ctx.tenantId);
+ const [subject]=await tx.select({id:employment.id}).from(employment).where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,ctx.tenantId))).limit(1);if(!subject)throw Error('Attendance subject is unavailable.');
+ p.employmentId=subject.id; // Canonical UUID spelling owns every shared source/credit lock key.
+ await lockLeaveDependenciesTx(tx,ctx.tenantId,[p.employmentId]);
+ await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+p.employmentId},0))`);
+ // Normal OT may consult the policy to position an additional approved plan before the legacy
+ // insertion owner. Own its existing epoch before that first lookup; unclocked work already takes
+ // its actual protected day locks then this epoch in the canonical branch below.
+ if(requestedOtMinutes!==null&&!unclockedWork)await lockAttendancePolicyImportTx(tx,ctx,[{employmentId:p.employmentId,date:p.date}]);
+
     if(unclockedWork){
       const [subject]=await tx.select({admin:sql<boolean>`app.can_admin_employment(${employment.id})`,
         own:sql<boolean>`app.is_self_person(${employment.personId})`}).from(employment)
@@ -3680,9 +3712,20 @@ export async function requestAttendanceCorrection(
         await assertNoCreditClaimForDatesTx(tx, p.employmentId, [p.date]);
       }
     }
-    return insertAttendanceCorrectionRequestTx(tx,ctx,{employmentId:p.employmentId,date:p.date,clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind,unclockedWork});
-  };
-  return (existingTx ? submit(existingTx) : withTenant(ctx, submit)).catch((error: unknown) => {
+ const pending=await tx.select({id:attendanceCorrection.id}).from(attendanceCorrection).where(and(eq(attendanceCorrection.employmentId,p.employmentId),eq(attendanceCorrection.attendanceDate,p.date),eq(attendanceCorrection.status,'pending'))).limit(1);if(pending.length)throw new AttendanceCorrectionPendingError();
+ const data={employmentId:p.employmentId,date:p.date,clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind,unclockedWork};
+ const source=await prepareAttendanceCorrectionInsertSourceTx(tx,ctx,data);
+ const workflow=await prepareAttendanceWorkflowSnapshotTx(tx,ctx,p.employmentId,attendanceApplicationType({requestKind,proposedCheckIn:checkIn,proposedCheckOut:checkOut,clockChanges,requestedOtMinutes}));
+ return {data,source,workflow,asOf:todayInKualaLumpur()};
+}
+export function attendanceCorrectionPreparedDigest(ctx:SessionContext,prepared:Awaited<ReturnType<typeof prepareAttendanceCorrectionRequestTx>>){return createHash('sha256').update(JSON.stringify({version:1,tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId,prepared})).digest('hex');}
+/** Reviewed digest is refusal-only, never a source of policy, clocks, routing, actor or approval. */
+export async function requestAttendanceCorrectionTx(tx:Tx,ctx:SessionContext,input:AttendanceCorrectionRequestInput,reviewed?:{expectedDigest:string}){
+ const current=captureAttendanceContext(ctx),captured=structuredClone(input),expected=reviewed?.expectedDigest,prepared=await prepareAttendanceCorrectionRequestTx(tx,current,captured);
+ if(reviewed&&(typeof expected!=='string'||attendanceCorrectionPreparedDigest(current,prepared)!==expected))throw Error('Attendance source changed; review it again.');
+ return insertAttendanceCorrectionRequestTx(tx,current,prepared.data,{returnEventId:true});
+}
+function attendanceCorrectionSubmissionFailure(error:unknown):never{
     // Preserve the database's atomic pending-request fence, including simultaneous submissions.
     let cause: unknown = error;
     for (let depth = 0; cause && typeof cause === 'object' && depth < 5; depth++) {
@@ -3693,7 +3736,14 @@ export async function requestAttendanceCorrection(
       cause = dbError.cause;
     }
     throw error;
-  });
+}
+/** `existingTx` — the caller's transaction, so another owner can file and decide in one atomic unit (the offline
+ *  claim resolution in packs/attendance/mobile-offline-claim-review.ts; the mobile command receipt). Omitted: its
+ *  own transaction, as before. Both paths run the same preparation, locks and insert (requestAttendanceCorrectionTx). */
+export async function requestAttendanceCorrection(ctx:SessionContext,p:AttendanceCorrectionRequestInput,existingTx?:Tx){
+ const current=captureAttendanceContext(ctx),captured=structuredClone(p);normalizeAttendanceCorrectionRequest(captured);
+ const run=async(tx:Tx)=>{const result=await requestAttendanceCorrectionTx(tx,current,captured);return {correctionId:result.correctionId};};
+ return (existingTx?run(existingTx):withTenant(current,run)).catch(attendanceCorrectionSubmissionFailure);
 }
 
 /**
@@ -3895,9 +3945,11 @@ async function attendanceFiguresByIdTx(tx: Tx, attendanceId: string): Promise<Am
  * the subject does not lock the request: clock-out/import can hold the subject lock while landing OT
  * on this same correction. Re-read after waiting, so status/authority checks never use the first image. */
 async function lockAttendanceApplicationTx(tx: Tx, ctx: SessionContext, correctionId: string) {
+  await lockAttendanceLeaveDependenciesTx(tx, ctx, []);
   const [visible] = await tx.select({ employmentId: attendanceCorrection.employmentId })
     .from(attendanceCorrection).where(eq(attendanceCorrection.id, correctionId)).limit(1);
   if (!visible) return undefined;
+  await lockLeaveDependenciesTx(tx, ctx.tenantId, [visible.employmentId]);
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + visible.employmentId}, 0))`);
   const [locked] = await tx.select().from(attendanceCorrection)
     .where(and(eq(attendanceCorrection.id, correctionId), eq(attendanceCorrection.employmentId, visible.employmentId)))
@@ -3941,6 +3993,7 @@ export async function decideAttendanceCorrection(
   p: { correctionId: string; decision: 'approved' | 'rejected'; rejectReason?: string; remarks?: string; expectedStageIndex?: number; expectedParticipantSlot?: string; deciderEmploymentId?: string; today?: string },
   existingTx?: Tx,
 ) {
+  p = structuredClone(p); ctx = captureAttendanceContext(ctx);
   ctx = {...ctx, roles:ctx.roles ?? (ctx.grants ?? []).map(grant=>grant.role)};
   const decide=async (tx:Tx) => {
     const original = await lockAttendanceApplicationTx(tx, ctx, p.correctionId);
@@ -5802,6 +5855,7 @@ export async function cancelPlannedOvertime(
   ctx: SessionContext,
   p: { correctionId: string; today?: string },
 ): Promise<{ status: 'cancelled' }> {
+  p = structuredClone(p); ctx = captureAttendanceContext(ctx);
   const today = p.today ?? todayInKualaLumpur();
   return withTenant(ctx, async (tx) => {
     const plan = await lockAttendanceApplicationTx(tx, ctx, p.correctionId);
@@ -6074,6 +6128,7 @@ export async function cancelOwnAttendanceCorrection(
   /** D13 (mobile M12): the caller's transaction (the mobile command receipt's). Omitted: its own, as before. */
   existingTx?: Tx,
 ): Promise<{ status: 'cancelled' }> {
+  p = structuredClone(p); ctx = captureAttendanceContext(ctx);
   const run = async (tx: Tx) => {
     const req = await lockAttendanceApplicationTx(tx, ctx, p.correctionId);
     if (!req) throw new Error('attendance request not found (or not visible)');
@@ -6223,6 +6278,7 @@ export async function setAttendancePolicy(
     geofenceMaximumAccuracyM?:number|null;
   },
 ) {
+  p=structuredClone(p);ctx=captureAttendanceContext(ctx);
   const workStart = asTime(p.workStart, 'Work start');
   const workEnd = asTime(p.workEnd, 'Work end');
   const lateAfter = asTime(p.lateAfter, 'Late-after');
@@ -6259,6 +6315,8 @@ export async function setAttendancePolicy(
     throw new Error('Maximum location uncertainty must be a positive whole number of metres.');
 
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [row] = await tx
       .insert(attendancePolicy)
       .values({
@@ -6435,8 +6493,10 @@ export async function addImportedPunchesBatchTx(
   ctx: SessionContext,
   p: { days: ImportedDayInput[]; runId: string },
 ): Promise<{ punchIds: string[][] }> {
+  ctx = captureAttendanceContext(ctx); p = structuredClone(p);
   const days = p.days.filter((d) => d.punches.length > 0);
   if (days.length === 0) return { punchIds: p.days.map(() => []) };
+  await lockAttendanceLeaveDependenciesTx(tx, ctx, days.map(day=>day.employmentId));
   // Acquire the checked shared policy epoch before any memoized schedule or dated selection.
   // The batch barrier proves actual visible subjects, including first imports with no day row yet.
   const policyConfigured=await lockAttendancePolicyImportTx(tx,ctx,days.map(d=>({employmentId:d.employmentId,date:d.day})));
@@ -6729,6 +6789,9 @@ export async function recomputeDayFigures(
     approvedOtMinutes?: number | null;
   },
 ) {
+  // Projection only: actual write roots own the complete interval BEFORE their earlier reads,
+  // Payroll/credit/day locks and writes. Do not introduce a late leaf lock or affect dry-run scopes.
+  p={...p};ctx=captureAttendanceContext(ctx);
   const projected=await policyRawDayProjectionTx(tx,ctx,{employmentId:p.employmentId,date:p.date,
     fallbackIn:p.checkInAt,fallbackOut:p.checkOutAt,classification:'currentSchedule'});
   if(projected.state==='policy'){
@@ -6794,6 +6857,7 @@ export async function cancelAttendanceApplication(ctx: SessionContext, p: {
     kind: 'cancelled' | 'withdrawn';
     reason: string;
 }) {
+  p = structuredClone(p); ctx = captureAttendanceContext(ctx);
     if (!['cancelled', 'withdrawn'].includes(p.kind) || !p.reason?.trim() || p.reason.trim().length > 1000)
         throw new Error('A cancellation reason of 1–1000 characters is required.');
     return withTenant(ctx, async (tx) => {
@@ -6959,13 +7023,14 @@ export async function attendanceDateOverridesTx(tx:Tx,employmentIds:string[],fro
 }
 
 /** Shared submission owner: employee removal constructs a narrow proposal before entering here. */
-async function insertAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,p:{
+type AttendanceCorrectionInsertInput={
   id?:string;removalPunchId?:string;employmentId:string;date:string;clockChanges:ClockChanges|null;
   checkIn:string|null;checkOut:string|null;requestedOtMinutes:number|null;reason:string;
   plannedStartTime:string|null;plannedEndTime:string|null;otReasonCategory:OtReasonCategory|null;
   remark:string|null;requestKind:AttendanceRequestKind;unclockedWork?:AttendancePolicyUnclockedWork;
-}){
-  const {clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind}=p;
+};
+async function prepareAttendanceCorrectionInsertSourceTx(tx:Tx,ctx:SessionContext,p:AttendanceCorrectionInsertInput){
+  const {clockChanges,checkIn,checkOut,requestedOtMinutes}=p;
   // Freeze the server resolver's selected identity, never a form-supplied rule/revision. Use the
   // existing configuration barrier BEFORE selection and the DB submission owner records/checks
   // the immutable revision under the same transaction. This binding proves neither work nor pay.
@@ -6984,8 +7049,15 @@ async function insertAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,p:{
   }
 
     const [original] = clockChanges || checkIn || checkOut ? await tx.select({
-      id: attendance.id, checkIn: attendance.checkInAt, checkOut: attendance.checkOutAt,
+      id: attendance.id, checkIn: attendance.checkInAt, checkOut: attendance.checkOutAt, version:sql<string>`${attendance}.xmin::text`,
     }).from(attendance).where(and(eq(attendance.employmentId, p.employmentId), eq(attendance.attendanceDate, p.date))).limit(1) : [];
+ return {executionPolicy,original:original??null};
+}
+async function insertAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,p:AttendanceCorrectionInsertInput,options:{returnEventId:true}):Promise<{correctionId:string;eventId:string}>;
+async function insertAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,p:AttendanceCorrectionInsertInput):Promise<{correctionId:string}>;
+async function insertAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,p:AttendanceCorrectionInsertInput,options?:{returnEventId:true}){
+ const {clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind}=p;
+ const {executionPolicy,original}=await prepareAttendanceCorrectionInsertSourceTx(tx,ctx,p);
     const originalClockSnapshot = clockChanges || checkIn || checkOut || executionPolicy ? {
       version: 1 as const, attendanceId: original?.id ?? null,
       originalCheckIn: original?.checkIn ?? null, originalCheckOut: original?.checkOut ?? null,
@@ -7015,7 +7087,7 @@ async function insertAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,p:{
       })
       .returning({ id: attendanceCorrection.id });
     await snapshotAttendanceWorkflowTx(tx, ctx, row.id, p.employmentId, attendanceApplicationType({ requestKind, proposedCheckIn: checkIn, proposedCheckOut: checkOut, clockChanges, requestedOtMinutes }));
-    await appendEvent(tx, {
+    const eventId=await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'attendance-correction',
       aggregateId: row.id,
@@ -7037,7 +7109,8 @@ async function insertAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,p:{
         originalClockSnapshot,
         clockChanges,
       },
-    });
+    },{returnId:!!options?.returnEventId});
+    if(options?.returnEventId){if(!eventId)throw Error('Attendance event reference unavailable.');return {correctionId:row.id,eventId};}
     return { correctionId: row.id };
 }
 

@@ -11,9 +11,9 @@ import {saveScheduleRotation,getScheduleRotation} from '../core/attendance-rotat
 import {assignEmployeeShiftDated} from '../core/shift-arrangement';
 import {checkIn,checkOut,setAttendancePolicy,rawScheduleDaysTx,rawScheduleDayFactsTx,attendancePolicyCalendarTx} from '../packs/attendance/service';
 import {partitionAttendancePolicyWork} from '../packs/attendance/policy-partition';
-import {workingDatesForSpan} from '../packs/leave/service';
+import {workingDatesForSpan,lockLeaveDependenciesTx} from '../packs/leave/service';
 import {holidayDatesFor,holidayDatesByEmployment,originalHolidayCalendarFor,holidayCalendarProvenanceFor} from '../core/holidays';
-import {adjustReplacementHoliday,reconcileReplacementHolidays,saveReplacementHolidayPolicy} from '../core/holiday-replacements';
+import {adjustReplacementHoliday,reconcileReplacementHolidays,reconcileReplacementHolidaysTx,saveReplacementHolidayPolicy} from '../core/holiday-replacements';
 import {listReplacementHolidays,replacementHolidayHistory,replacementHolidayReviewRows} from '../core/holiday-replacement-read';
 import {addHolidayDays} from '../lib/holiday-replacement';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -248,5 +248,46 @@ describe('employee replacement owner and shared calendar',()=>{
   expect(await withTenant(ctx,tx=>holidayCalendarProvenanceFor(tx,{employmentId:f.e.employmentId,startDate:f.sourceDate,endDate:day(3)}))).toEqual({originals:[],replacements:[]});
   expect(await listReplacementHolidays(ctx,{employmentId:f.e.employmentId})).toEqual([]);expect(()=>adjustReplacementHoliday(ctx,{allocationId:row.id,date:day(3),reason:'Forged employee adjustment.'})).toThrow('Only an HR administrator can adjust replacement holidays.');
   expect(await rows(f.e.employmentId)).toEqual([row]);expect(await replacementHolidayHistory(f.ctx,row.id)).toEqual(history);
+ });
+});
+
+/** Authored actual policy/allocator/manual writer participation; all new cases remain UNRUN. */
+describe('replacement holiday protected source intervals',()=>{
+ it.each(['policy','reconcile','reconcile-caller-tx','manual'] as const)
+ ('%s refuses with unchanged allocations/history/policy/queue/events while an employee interval is held',async command=>{
+  const f=await fixture(),policyDate=day(1);
+  if(command==='manual')await reconcileReplacementHolidays(f.ctx,f.e.employmentId);
+  const allocations=await rows(f.e.employmentId),allocation=allocations[0];
+  const mutate=()=>command==='policy'
+   ?saveReplacementHolidayPolicy(f.ctx,{companyId:b.companyId,effectiveFrom:policyDate,regime:'company_confirmed',confirmed:true,restMode:'scheduled_rest',halfEligible:false,searchDays:31,reason:'Fictional next policy interval'})
+   :command==='manual'?adjustReplacementHoliday(f.ctx,{allocationId:allocation.id,date:null,reason:'Fictional unused replacement removal'})
+    :command==='reconcile-caller-tx'?withTenant(f.ctx,tx=>reconcileReplacementHolidaysTx(tx,f.ctx,f.e.employmentId))
+     :reconcileReplacementHolidays(f.ctx,f.e.employmentId);
+  const state=async()=>({
+   allocations:await owner.db.select().from(schema.replacementHoliday).where(eq(schema.replacementHoliday.tenantId,b.tenantId)).orderBy(schema.replacementHoliday.id),
+   revisions:await owner.db.select().from(schema.replacementHolidayRevision).where(eq(schema.replacementHolidayRevision.tenantId,b.tenantId)).orderBy(schema.replacementHolidayRevision.id),
+   policies:await owner.db.select().from(schema.replacementHolidayPolicy).where(eq(schema.replacementHolidayPolicy.tenantId,b.tenantId)).orderBy(schema.replacementHolidayPolicy.id),
+   queue:await owner.db.select().from(schema.replacementHolidayQueue).where(eq(schema.replacementHolidayQueue.tenantId,b.tenantId)).orderBy(schema.replacementHolidayQueue.employmentId),
+   events:await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.tenantId,b.tenantId)).orderBy(schema.domainEvent.id),
+  });
+  const before=await state();
+  let ready!:()=>void,fail!:(error:unknown)=>void,release!:()=>void;
+  const started=new Promise<void>((yes,no)=>{ready=yes;fail=no;}),finish=new Promise<void>(yes=>{release=yes;});
+  const watchdog=setTimeout(()=>{fail(new Error('Owned replacement interval handshake timed out'));release();},10_000);
+  const holder=withTenant(f.ctx,async tx=>{await lockLeaveDependenciesTx(tx,b.tenantId,[f.e.employmentId]);ready();await finish;});void holder.catch(fail);
+  try{await started;await expect(mutate()).rejects.toThrow('Leave source is unavailable');expect(await state()).toEqual(before);}
+  finally{release();clearTimeout(watchdog);await holder;}
+  await mutate();const after=await state();
+  if(command==='policy'){
+   expect(after.policies).toHaveLength(before.policies.length+1);
+   expect(after.policies.find(row=>row.effectiveFrom===policyDate)?.searchDays).toBe(31);
+   expect(after.events).toHaveLength(before.events.length+1);
+  }else if(command==='manual'){
+   expect(after.allocations.find(row=>row.id===allocation.id)).toMatchObject({manual:true,status:'not_required',replacementDate:null});
+   expect(after.revisions).toHaveLength(before.revisions.length+1);expect(after.events).toHaveLength(before.events.length+1);
+  }else{
+   expect(after.allocations).toHaveLength(1);expect(after.allocations[0]).toMatchObject({employmentId:f.e.employmentId,status:'allocated',manual:false});
+   expect(after.revisions).toHaveLength(1);
+  }
  });
 });

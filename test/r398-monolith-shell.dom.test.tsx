@@ -96,6 +96,17 @@ describe('Performance workspace shell',()=>{
   fireEvent.keyDown(window,{key:'k',metaKey:true});
   expect(screen.getByRole('dialog')).toBeTruthy();
  });
+ // D-P1-32 PT-X5 — the exception covers the Performance & Talent routes: the tab routes over the workspace, Team PM's
+ // per-review route, the area home and the admin area's tab pages. Other performance pages keep the bar.
+ const cycle='0f9b4c1e-2d3a-4b5c-8d7e-6f5a4b3c2d1e';
+ it.each(['/performance/my','/performance/team/kpis','/performance/plan/profile',`/performance/team/${cycle}`,'/performance/home',`/performance/${cycle}/cycle/calendar`])('stands down on %s',path=>{
+  setTheme('monolith');pathname=path;wrap(<IntentBar/>);
+  expect(screen.queryByRole('search')).toBeNull();
+ });
+ it.each(['/performance','/performance/calibration',`/performance/${cycle}`,'/performance/team/not-a-review'])('stays on %s',path=>{
+  setTheme('monolith');pathname=path;wrap(<IntentBar/>);
+  expect(screen.getByRole('search')).toBeTruthy();
+ });
 });
 
 describe('Monolith rail', () => {

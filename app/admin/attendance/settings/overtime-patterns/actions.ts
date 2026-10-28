@@ -6,7 +6,7 @@ import {scopedAdmin} from '@/lib/scope';
 import {
   saveOvertimePatternDraft, ensureOvertimePatternStarters, forkOvertimePatternDraft, validateOvertimePatternActivation,
   activateOvertimePattern, stopOvertimePatternVersion, archiveOvertimePattern,
-  saveOvertimePatternAssignment, closeOvertimePatternAssignment, overtimePatternSetup,
+  saveOvertimePatternAssignment, closeOvertimePatternAssignment, overtimePatternSetup, overtimePositionChoices,
   OvertimeOwnerError, previewOvertimePatternEmployee, previewOvertimePatternSample, calculateOvertimePatternDay, readOvertimePatternCalculation,
 } from '@/packs/attendance/service';
 import {OvertimePatternError} from '@/lib/overtime-pattern-model';
@@ -16,7 +16,7 @@ import type {OvertimeSampleDraft} from '@/lib/overtime-pattern-ui';
 import {overtimePatternTransferOptions,transferOvertimePatternToPayroll,OvertimePayrollError,type OvertimePayrollErrorCode} from '@/packs/payroll/service';
 import {isCalendarDate} from '@/lib/calendar-date';
 
-export type OvertimeActionFailure={ok:false;code:'permission'|'stale'|'invalid'|'unavailable'|'conflict'|'closed'|'limit'|'system'|OvertimePayrollErrorCode;reference?:string;issues?:OvertimeIssue[]};
+export type OvertimeActionFailure={ok:false;code:'permission'|'stale'|'invalid'|'unavailable'|'conflict'|'closed'|'limit'|'busy'|'system'|OvertimePayrollErrorCode;reference?:string;issues?:OvertimeIssue[]};
 export type OvertimeActionResult<T>={ok:true;value:T}|OvertimeActionFailure;
 const PAGE='/admin/attendance/settings/overtime-patterns';
 async function run<T>(work:()=>Promise<T>,mutation:boolean):Promise<OvertimeActionResult<T>> {
@@ -143,4 +143,9 @@ function makeSampleInput(sample:OvertimeSampleDraft,tenantId:string,versionId:st
     approval:{status:sample.approvalStatus,minutes:quantity(sample.approvalMinutes),provenance},
     resources:sample.resources.map(resource=>({id:resource.id,resource:resource.resource,evidence:resource.evidence,basis:resource.basis,sessionId:resource.basis==='session'?resource.sessionId:null,sourceKeys:[`sample_${resource.id}`],measure:{unit:resource.unit,quantity:quantity(resource.quantity)}})),
   };
+}
+
+export async function overtimePositionChoicesAction(input:{search?:string;cursor?:string;selectedIds?:string[]}) {
+ const {s,scopeIds}=await scopedAdmin();
+ return run(()=>overtimePositionChoices(s,{...input,companyIds:scopeIds}),false);
 }

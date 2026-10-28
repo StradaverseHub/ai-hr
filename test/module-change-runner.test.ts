@@ -13,10 +13,13 @@ import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
-import type { Tx } from '../db/client';
+import { withTenant, type Tx } from '../db/client';
+import { hireEmployee } from '../core/org';
+import { lockLeaveDependenciesTx } from '../packs/leave/service';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import { applyModuleChange, assertActivatable, ModuleChangeRefused } from '../scripts/module-change-runner';
 import { inArray } from 'drizzle-orm';
-import { closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let b: Base;
 
@@ -252,4 +255,36 @@ describe('assertActivatable is the single place a refusal is decided', () => {
       ).rejects.toThrow(/subscription/);
     });
   });
+});
+
+
+/** Authored real runner/ordinary-command interleavings; UNRUN. */
+describe('module runner dependency ownership', () => {
+ it('refuses the owner runner under an active employee interval, then applies after release', async () => {
+  const ctx = adminCtx(b), code = uniq('guarded_module'); await defineModule(code);
+  const employee = await hireEmployee(ctx, { person: { fullName: 'Fictional Module Subject', primaryEmail: `module-${randomUUID()}@t.local` },
+   companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: todayInKualaLumpur() });
+  const req = request({ moduleCode: code });
+  const state = async () => ({
+   modules: await owner.db.select().from(schema.tenantModule).where(eq(schema.tenantModule.tenantId, b.tenantId)).orderBy(schema.tenantModule.id),
+   settings: await owner.db.select().from(schema.tenantSetting).where(eq(schema.tenantSetting.tenantId, b.tenantId)).orderBy(schema.tenantSetting.key),
+   events: await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.tenantId, b.tenantId)).orderBy(schema.domainEvent.id),
+  });
+  const before = await state();
+  let ready!: () => void, fail!: (error: unknown) => void, release!: () => void;
+  const started = new Promise<void>((yes, no) => { ready = yes; fail = no; }), finish = new Promise<void>(yes => { release = yes; });
+  const watchdog = setTimeout(() => { fail(new Error('owned module runner handshake timed out')); release(); }, 10_000);
+  const holder = withTenant(ctx, async tx => { await lockLeaveDependenciesTx(tx, b.tenantId, [employee.employmentId]); ready(); await finish; });
+  void holder.catch(fail);
+  try { await started; await expect(run(req)).rejects.toThrow('Module configuration is busy or unavailable'); expect(await state()).toEqual(before); }
+  finally { release(); clearTimeout(watchdog); await holder; }
+  await run(req);
+  expect((await state()).modules.find(row => row.moduleCode === code)).toMatchObject({ status: 'active' });
+ });
+ it('does not turn the app carrier into a privileged module writer', async () => {
+  const code = uniq('app_refused_module'); await defineModule(code);
+  const before = await owner.db.select().from(schema.tenantModule);
+  await expect(withTenant(adminCtx(b), tx => applyModuleChange(tx, request({ moduleCode: code })))).rejects.toThrow('Module configuration is busy or unavailable');
+  expect(await owner.db.select().from(schema.tenantModule)).toEqual(before);
+ });
 });

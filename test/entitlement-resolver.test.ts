@@ -852,6 +852,11 @@ describe('slice 2 — isModuleEnabled', () => {
       expect(body, `${carrier}: legacy Keycloak remains covered`).toContain('if (keycloakSelected())');
     }
     expect([...web.matchAll(/resolveDevPrincipal\(/g)]).toHaveLength(1);
+    // The selected-cookie command carrier (human effect commands) is a second dev path on web; it too
+    // must attach the tenant snapshot, and it is never offered to the bearer-only mobile carrier.
+    expect([...web.matchAll(/resolveCommandDevPrincipal\(/g)]).toHaveLength(1);
+    expect(web).toContain('withEntitlements(await resolveCommandDevPrincipal(');
+    expect(mobile).not.toContain('resolveCommandDevPrincipal(');
     expect(mobile, 'the bearer-only carrier must never resolve a demo principal').not.toContain('resolveDevPrincipal(');
     // …and the memoisation the "session-scoped means request-CONSISTENT" argument rests on.
     expect(src, 'getSession must stay memoised per request').toContain('export const getSession = cache(resolveSession)');

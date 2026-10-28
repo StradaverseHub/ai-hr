@@ -1,3 +1,5 @@
+import type { Tx as AiReadTx } from '../db/client';
+import { withCanonicalAiReadTx } from './ai-read-transaction';
 import { assessmentReviewTaskRecipientsTx,assessmentReminderRecipientsTx } from '../packs/performance/service';
 import { rewardNotificationRecipients } from '../packs/rewards/service';
 /**
@@ -221,6 +223,19 @@ type Spec = {
   recipients?: (tx: Tx, ev: EventRef, payload: Record<string, unknown> | null,noticeReader?:NoticeRecipientReader) => Promise<string[]>;
 };
 
+/**
+ * `reward-unit.routed` copy. A move back to draft from a later stage is a RETURN to the BU CEO (or the BG
+ * CEO for a BG-originated off-cycle request — the recipient resolver already picks that seat), so it says
+ * so. Neither branch carries an amount or the return reason: the reason is read in the app under
+ * reward_decision RLS, never frozen into a stored notice or an email.
+ */
+export function renderRewardRouted(p: Record<string, unknown> | null, ev: EventRef): Rendered {
+  const linkPath = `/rewards/${ev.aggregateId}?view=approvals`;
+  if (p?.to === 'draft' && typeof p?.from === 'string' && p.from !== 'draft')
+    return { severity: 'action', title: 'Rewards review returned to you', body: 'Open Reward Desk to see why it was returned and resubmit it.', linkPath };
+  return { severity: 'action', title: 'Rewards review needs attention', body: 'Open Reward Desk to review the assigned request.', linkPath };
+}
+
 // eventType → notification (or SEVERAL — 6522d26a: one event may fan out to different audiences with
 // different bodies, e.g. employment-review.decided → subject "complete" + HR "issue the letter").
 // Recipient defaults to the event's subjectEmploymentId. Keep titles/bodies short; deep-link into the
@@ -249,7 +264,7 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
   },
   'reward-unit.routed': {
     kind: 'rewards.review', category: 'rewards',
-    render: (_p, ev) => ({ severity: 'action', title: 'Rewards review needs attention', body: 'Open Reward Desk to review the assigned request.', linkPath: `/rewards/${ev.aggregateId}?view=approvals` }),
+    render: (p, ev) => renderRewardRouted(p, ev),
     recipients: (tx, ev, payload) => rewardNotificationRecipients(tx, ev.aggregateId, payload?.to),
   },
   'reward-unit.approved': {
@@ -625,10 +640,35 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
     recipients:(tx,ev,payload)=>payload?.phase==='setting'||payload?.phase==='results'?assessmentReviewTaskRecipientsTx(tx,ev.aggregateId,payload.phase):Promise.resolve([]),
     render:()=>({severity:'action',title:'Performance review task',body:'A KPI approval is awaiting your review. Open your performance tasks.',linkPath:'/me/performance'}),
   },
-  ...Object.fromEntries(['scorecard-approved','scorecard-returned','result-released','plan-reviewed','plan-closed'].map(event=>[`onehr.${event}`,{
+  // WP-E: a release is announced once per person per release action (onehr.results-to-person below), not once
+  // per component; onehr.result-released stays an audit event.
+  ...Object.fromEntries(['scorecard-approved','scorecard-returned','plan-reviewed','plan-closed'].map(event=>[`onehr.${event}`,{
     kind:'performance.update',category:'performance' as const,
     render:()=>({severity:'info' as const,title:'Performance assessment update',body:'There is an update to your assessment or development plan. Open your performance tasks.',linkPath:'/me/performance'}),
   }])),
+  // WP-E (CF-08) — release notices. The event's subject is the recipient (a leader, or the person). The release
+  // service's ledger already decided who is newly told; the copy carries a count or the kinds released, never a
+  // band and never another person's name. Delivery: the bell always; email under the tenant's performance
+  // category policy and the recipient's own consent (E-6).
+  'onehr.results-to-leader': {
+    kind:'performance.update',category:'performance',
+    render:(p)=>{
+      const count=typeof p?.count==='number'&&p.count>0?p.count:1,moved=typeof p?.moved==='number'&&p.moved>0?p.moved:0;
+      const people=count===1?'1 person you lead':`${count} people you lead`;
+      return {severity:'info',title:'Results released to you',
+        body:`HR has released the results of ${people} to you.${p?.both===true?' They can see their own results as well.':' They cannot see their own results yet, so you can talk them through first.'}${moved?` The business group CEO moved ${moved===1?'1 of them':`${moved} of them`}.`:''} Open What you led to see them.`,
+        linkPath:'/performance/led'};
+    },
+  },
+  'onehr.results-to-person': {
+    kind:'performance.update',category:'performance',
+    render:(p)=>{
+      const words:Record<string,string>={performance:'your performance band',potential:'your potential band',talent:'your talent status',feedback:'your 360 feedback report'};
+      const raw:unknown=p?.kinds,kinds=Array.isArray(raw)?raw.filter((k):k is string=>typeof k==='string'&&k in words).map(k=>words[k]):[];
+      const list=kinds.length>1?`${kinds.slice(0,-1).join(', ')} and ${kinds.at(-1)}`:kinds[0]??'your results';
+      return {severity:'info',title:'Your results are released',body:`HR has released ${list} to you. Open your performance record to see them.`,linkPath:'/me/performance'};
+    },
+  },
   // Performance closure (lifecycle G4). Release-safe: closeReview asserts the cycle is released before
   // closing, and the body says only that the review was finalized — never the score or ABC class (the
   // /me review surface gates the actual figures behind the existing release/showManager rules).
@@ -1018,16 +1058,21 @@ export async function projectHomeGreetingInTx(tx:Tx,greetingId:string):Promise<v
 export function unreadNotificationCount(
   ctx: SessionContext,
   employmentId?: string,
-  opts: { action?: boolean } = {},
+  opts: { action?: boolean;letterCompanyIds?:string[] } = {}, existingTx?: AiReadTx
 ): Promise<number> {
-  return withTenant(ctx, async (tx) => {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  opts = { ...opts, letterCompanyIds:opts.letterCompanyIds?.slice() };
+
+
+  return withCanonicalAiReadTx(ctx, existingTx, 'notifications', withTenant, async (tx) => {
     const [r] = await tx
       .select({ n: sql<number>`count(*)::int` })
       .from(notification)
       .where(
         and(
           isNull(notification.readAt),
-          employmentId ? eq(notification.recipientEmploymentId, employmentId) : undefined,
+          employmentId ? or(eq(notification.recipientEmploymentId, employmentId),eq(notification.recipientUserId,ctx.userId??'00000000-0000-0000-0000-000000000000')) : undefined,
+          opts.letterCompanyIds!==undefined?and(isNotNull(notification.recipientUserId),inArray(notification.companyId,opts.letterCompanyIds)):undefined,
           opts.action === true ? eq(notification.severity, 'action') : undefined,
           opts.action === false ? ne(notification.severity, 'action') : undefined,
         ),
@@ -1050,16 +1095,20 @@ export type NotificationRow = {
 /** D5 (mobile M10) keyset position: the row's exact `created_at` as UTC text with microseconds (`cursorAt`
  *  from listNotificationsPage — a JS Date drops the microseconds and would skip or repeat rows) and its id. */
 export type NotificationCursor = { at: string; id: string };
-type NotificationFilter = { read?: boolean; action?: boolean; after?: NotificationCursor | null; ids?: readonly string[] };
+type NotificationFilter = { read?: boolean; action?: boolean; after?: NotificationCursor | null; ids?: readonly string[]; letterCompanyIds?: string[] };
 const notificationColumns = {
   id: notification.id, kind: notification.kind, title: notification.title, body: notification.body, linkPath: notification.linkPath,
   severity: notification.severity, readAt: notification.readAt, createdAt: notification.createdAt,
 };
-function notificationWhere(employmentId: string | undefined, opts: NotificationFilter) {
+/** The one where-builder behind every recipient read: alpha's recipient rule (an employment narrows to its
+ *  rows PLUS the rows addressed to the caller's account — letter notices carry recipientUserId and no
+ *  employment) and letter-company scoping, with D5's keyset cursor and id narrowing. */
+function notificationWhere(ctx: SessionContext, employmentId: string | undefined, opts: NotificationFilter) {
   return and(
-    employmentId ? eq(notification.recipientEmploymentId, employmentId) : undefined,
+    employmentId ? or(eq(notification.recipientEmploymentId, employmentId), eq(notification.recipientUserId, ctx.userId ?? '00000000-0000-0000-0000-000000000000')) : undefined,
     opts.read === true ? isNotNull(notification.readAt) : undefined,
     opts.read === false ? isNull(notification.readAt) : undefined,
+    opts.letterCompanyIds !== undefined ? and(isNotNull(notification.recipientUserId), inArray(notification.companyId, opts.letterCompanyIds)) : undefined,
     opts.action === true ? eq(notification.severity, 'action') : undefined,
     opts.action === false ? ne(notification.severity, 'action') : undefined,
     // Strictly after the cursor in the one order below: (created_at desc, id desc).
@@ -1076,13 +1125,16 @@ function notificationWhere(employmentId: string | undefined, opts: NotificationF
 export function listNotifications(
   ctx: SessionContext,
   employmentId?: string,
-  opts: { limit?: number; read?: boolean; action?: boolean; after?: NotificationCursor } = {},
+  opts: { limit?: number; read?: boolean; action?: boolean; after?: NotificationCursor; letterCompanyIds?: string[] } = {}, existingTx?: AiReadTx
 ): Promise<NotificationRow[]> {
-  return withTenant(ctx, (tx) =>
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  opts = { ...opts, letterCompanyIds:opts.letterCompanyIds?.slice(), after: opts.after ? { ...opts.after } : opts.after };
+
+  return withCanonicalAiReadTx(ctx, existingTx, 'notifications', withTenant, (tx) =>
     tx
       .select(notificationColumns)
       .from(notification)
-      .where(notificationWhere(employmentId, opts))
+      .where(notificationWhere(ctx, employmentId, opts))
       .orderBy(desc(notification.createdAt), desc(notification.id))
       .limit(Math.min(Math.max(opts.limit ?? 20, 1), 100)),
   );
@@ -1099,7 +1151,7 @@ export function listNotificationsPage(
     tx
       .select({ ...notificationColumns, cursorAt: sql<string>`to_char(${notification.createdAt} at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')` })
       .from(notification)
-      .where(notificationWhere(opts.employmentId, opts))
+      .where(notificationWhere(ctx, opts.employmentId, opts))
       .orderBy(desc(notification.createdAt), desc(notification.id))
       .limit(Math.min(Math.max(opts.limit, 1), 101)),
   );
@@ -1112,11 +1164,11 @@ export async function markNotificationRead(ctx: SessionContext, notificationId: 
   );
 }
 
-export async function markAllNotificationsRead(ctx: SessionContext, employmentId?: string): Promise<void> {
+export async function markAllNotificationsRead(ctx: SessionContext, employmentId?: string,opts:{letterCompanyIds?:string[]}={}): Promise<void> {
   await withTenant(ctx, (tx) =>
     tx
       .update(notification)
       .set({ readAt: sql`now()` })
-      .where(and(isNull(notification.readAt), employmentId ? eq(notification.recipientEmploymentId, employmentId) : undefined)),
+      .where(and(isNull(notification.readAt),opts.letterCompanyIds!==undefined?and(isNotNull(notification.recipientUserId),inArray(notification.companyId,opts.letterCompanyIds)):undefined, employmentId ? or(eq(notification.recipientEmploymentId, employmentId),eq(notification.recipientUserId,ctx.userId??'00000000-0000-0000-0000-000000000000')) : undefined)),
   );
 }

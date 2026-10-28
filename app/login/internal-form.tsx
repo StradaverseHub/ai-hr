@@ -45,7 +45,12 @@ export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'lo
         }) });
       const reply: Reply = await response.json();
       if (!response.ok) { setError(reply.error || 'unavailable'); return; }
-      form.reset(); setShowPassword(false); setState(reply);
+      form.reset(); setShowPassword(false);
+      // 8e830f17 — a finished sign-in or activation has nothing left to submit. Rendering the reply itself fell
+      // through to the generic form ("Sign in" + Continue → /login/api/complete, which does not exist) while the
+      // next page loaded, so the terminal steps show a status with no form instead.
+      const terminal = (reply.step === 'complete' || reply.step === 'activated') && !reply.recoveryCodes?.length;
+      setState(terminal ? { step: 'signing-in' } : reply);
       if (reply.step === 'activated' && !reply.recoveryCodes?.length) router.replace(activationLoginHref(reply.organization));
       if (reply.step === 'complete' && !reply.recoveryCodes?.length) window.location.assign(returnTo);
     } catch { setError('unavailable'); } finally { setBusy(false); }
@@ -53,7 +58,7 @@ export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'lo
   const field = 'h-11 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring';
   const button = 'login-submit';
   const errors = ['invalidLogin', 'invalidChallenge', 'invalidCode', 'passwordPolicy', 'passwordMismatch', 'rateLimited', 'unavailable', 'conflict', 'forbidden'];
-  const title = ['complete', 'activated'].includes(state.step) && state.recoveryCodes ? 'codesTitle' : `${['login','recovery','invite','accept','password','enroll','mfa','sent','reset','resetDone'].includes(state.step) ? state.step : 'login'}Title`;
+  const title = state.step === 'signing-in' ? 'signingInTitle' : ['complete', 'activated'].includes(state.step) && state.recoveryCodes ? 'codesTitle' : `${['login','recovery','invite','accept','password','enroll','mfa','sent','reset','resetDone'].includes(state.step) ? state.step : 'login'}Title`;
   return <LoginShell presentation={presentation}>
     <section aria-labelledby="internal-auth-title" className="space-y-8">
       <header className="space-y-3">
@@ -61,7 +66,8 @@ export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'lo
         {state.step === 'login' && <p>{copy('signInSubtitle')}</p>}
       </header>
       {error && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{t(`errors.${errors.includes(error) ? error : 'unavailable'}`)}</p>}
-      {state.step === 'resetDone' ? <div className="space-y-4"><p role="status" className="text-sm">{t('resetDoneHelp')}</p><a href="/login" className="text-sm underline">{t('back')}</a></div> : state.step === 'sent' ? <div className="space-y-4"><p role="status" className="text-sm leading-relaxed">{t('sentHelp')}</p><a className="text-sm underline" href="/login">{t('back')}</a></div>
+      {state.step === 'signing-in' ? <p role="status" aria-live="polite" className="text-sm text-muted-foreground">{t('signingInHelp')}</p>
+      : state.step === 'resetDone' ? <div className="space-y-4"><p role="status" className="text-sm">{t('resetDoneHelp')}</p><a href="/login" className="text-sm underline">{t('back')}</a></div> : state.step === 'sent' ? <div className="space-y-4"><p role="status" className="text-sm leading-relaxed">{t('sentHelp')}</p><a className="text-sm underline" href="/login">{t('back')}</a></div>
       : state.step === 'reset' && !resetToken ? <a href="/login" className="text-sm underline">{t('back')}</a>
       : ['complete', 'activated'].includes(state.step) && state.recoveryCodes?.length ? <div className="space-y-4">
         <p className="text-sm leading-relaxed text-muted-foreground">{t('codesHelp')}</p>

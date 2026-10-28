@@ -1,8 +1,11 @@
-import { getPeopleGeneral, occupiedNricsTx } from './people-general';
+import {readEmployeeImportEvaluationTx,claimEmployeeImportEvaluationTx,completeEmployeeImportEvaluationTx} from './personnel-import-evaluation';
+import type {EmployeeImportEvaluationBinding,EmployeeImportEvaluationReceipt} from '../lib/personnel-import-evaluation';
+import { getPeopleGeneral, readPeopleGeneralTx, occupiedNricsTx } from './people-general';
 import { NRIC_DUPLICATE_MESSAGE, NRIC_FILE_DUPLICATE_MESSAGE } from '../lib/nric-policy-message';
 import {previewCostAllocationImportTx,writeNewEmployeeCostAllocationsTx} from './cost-allocation-import';
 import type {AllocationImportRecords,AllocationImportPreview} from '../lib/cost-allocation-import';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {workforceCompanies,workforceEmploymentPredicate,assertWorkforceCompanyTx,WorkforceAccessError} from './workforce-access';
 import {PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,PERSONNEL_EPF_CITIZENSHIPS} from '../lib/personnel-choice-vocabulary';
 import { personnelOperationalValues,type PersonnelOperationalPatch } from '../lib/personnel-operational-import';
@@ -10,7 +13,7 @@ import { applyPersonnelOperationalValuesTx } from './personnel-import-operations
 import { assertCardIdFreeForCompany } from './attendance-card';
 import { bankTransferLacksBank } from '../lib/payment-methods';
 import {PERSONNEL_REGISTER_KINDS,type PersonnelRegisterRecords} from '../lib/personnel-register-import';
-import {validateRegisterImport,writeRegisterRowsTx} from './personnel-register-import';
+import {analyzeRegisterImportTx,validateRegisterImport,writeRegisterRowsTx} from './personnel-register-import';
 import { PersonnelImportCatalog, normalizePersonnelCatalogRecord } from '../lib/personnel-import-catalog';
 import { PersonnelImportLookup, addUniqueImportAlias } from '../lib/personnel-import-lookup';
 import { personnelBankValues, type PersonnelBankValues } from '../lib/personnel-bank-import';
@@ -32,7 +35,7 @@ import { isCalendarDate } from '../lib/calendar-date';
  * post-commit derived Family refresh failures are warnings and never misreported as rollback.
  */
 import { publicErrorMessage } from '@/lib/public-error';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
   company,
   person,
@@ -264,13 +267,14 @@ export function carriedProfileValue(checked: CatalogCell | undefined, raw: strin
 async function loadCompanyContext(
   ctx: SessionContext,
   co: { id: string; name: string; country: string | null },
+  outerTx?:Tx,
 ): Promise<CompanyContext> {
   const [departments, positions, costCenters, businessUnits, grades] = await Promise.all([
-    listDepartments(ctx, { companyIds: [co.id] }),
-    listPositions(ctx, { companyIds: [co.id] }),
-    listCostCenters(ctx, { companyIds: [co.id] }),
-    listBusinessUnits(ctx, { companyIds: [co.id] }),
-    listJobGrades(ctx),
+    listDepartments(ctx, { companyIds: [co.id] },outerTx),
+    listPositions(ctx, { companyIds: [co.id] },outerTx),
+    listCostCenters(ctx, { companyIds: [co.id] },outerTx),
+    listBusinessUnits(ctx, { companyIds: [co.id] },outerTx),
+    listJobGrades(ctx,{},outerTx),
   ]);
   const deptByName=new PersonnelImportLookup<string>();
   const posByName=new PersonnelImportLookup<string>();
@@ -310,10 +314,12 @@ async function analyze(
    *  every file that imports today. */
   dependentRecords: ImportRecord[] = [],
   registerRecords:PersonnelRegisterRecords={},
+  outerTx?:Tx,
 ): Promise<{ preview: ImportPreview; resolved: ResolvedRow[]; dependents: ResolvedDependent[]; registers:Awaited<ReturnType<typeof validateRegisterImport>>[] }> {
+  const read=<T,>(fn:(tx:Tx)=>Promise<T>)=>outerTx?fn(outerTx):withTenant(ctx,fn);
   if(Object.keys(registerRecords).some(key=>!(PERSONNEL_REGISTER_KINDS as readonly string[]).includes(key)))throw new Error('Unknown register sheet.');
   const [catalogCompanies, leaveTypes, maintainIds, viewIds] = await Promise.all([
-    listCompanies(ctx,{adminOnly:true}), listLeaveTypes(ctx), workforceCompanies(ctx,'maintain'), workforceCompanies(ctx,'view'),
+    listCompanies(ctx,{adminOnly:true},outerTx), listLeaveTypes(ctx,{},outerTx), workforceCompanies(ctx,'maintain',outerTx), workforceCompanies(ctx,'view',outerTx),
   ]);
   const writable=new Set(maintainIds),readable=new Set(viewIds);
   if(!writable.has(companyId)||!readable.has(companyId))throw new WorkforceAccessError();
@@ -341,14 +347,14 @@ async function analyze(
   for (const rc of rowCompanies) if (rc.co) needed.set(rc.co.id, rc.co);
   if (defaultCompany) needed.set(defaultCompany.id, defaultCompany);
   const contexts = new Map<string, CompanyContext>();
-  for (const [id, co] of needed) contexts.set(id, await loadCompanyContext(ctx, co));
+  for (const [id, co] of needed) contexts.set(id, await loadCompanyContext(ctx, co,outerTx));
 
   // Existing identifiers (tenant-scoped via RLS) so the import can't create dup ICs (DB-unique)
   // or silently re-add someone by email. IC normalisation is pack-specific, so the collision set is
   // built with the DEFAULT company's pack — the same pack that produced every stored IC in a
   // single-jurisdiction tenant. `normalizeIC` is digit-stripping in every pack today, so this stays
   // correct across a mixed file; if a pack ever normalises differently, this is where to revisit.
-  const { allowDuplicatedNric } = await getPeopleGeneral(ctx);
+  const { allowDuplicatedNric, allowDuplicatedEmail } = await (outerTx?readPeopleGeneralTx(outerTx):getPeopleGeneral(ctx));
   let normPack = contexts.get(companyId)?.pack ?? [...contexts.values()][0]?.pack;
   const {
     existingEmails,
@@ -358,7 +364,7 @@ async function analyze(
     catalog,
     superiorByCode,
     superiorByEmail,
-  } = await withTenant(ctx, async (tx) => {
+  } = await read(async (tx) => {
     if (!normPack) {
       // No company resolved from `listCompanies` — which EXCLUDES archived companies, so this is
       // reachable when the screen's selected company has since been archived. Read its country
@@ -495,7 +501,8 @@ async function analyze(
     if (!fullName) errors.push('Missing full_name');
     if (!email) errors.push('Missing email');
     else if (!EMAIL_RE.test(email)) errors.push(`Invalid email "${email}"`);
-    else if (seenEmails.has(email.toLowerCase())) errors.push('Duplicate email in this file');
+    // 5e0b2154 — with Allow Duplicated Work Email or Personal Email ON, a shared email is reported, not refused.
+    else if (seenEmails.has(email.toLowerCase())) (allowDuplicatedEmail ? warnings : errors).push(allowDuplicatedEmail ? 'This email is also used by another row in this file' : 'Duplicate email in this file');
     else if (existingEmails.has(email.toLowerCase())) warnings.push('A person with this email already exists');
     if (email) seenEmails.add(email.toLowerCase());
 
@@ -885,7 +892,7 @@ async function analyze(
 
   // Operational card assignments resolve against current canonical identities before any employee is written.
   for(const [index,row] of resolved.entries())if(row.result.ok && row.operations?.cardId) {
-    try {await withTenant(ctx,tx=>assertCardIdFreeForCompany(tx,row.hire.companyId,row.operations!.cardId!));}
+    try {await read(tx=>assertCardIdFreeForCompany(tx,row.hire.companyId,row.operations!.cardId!));}
     catch {row.result.errors.push('card_id already identifies another employee; choose an unused card ID.');row.result.ok=false;}
     const wanted=row.operations.cardId.toLowerCase(),digits=wanted.replace(/\D/g,'');
     if(resolved.some((other,otherIndex)=>otherIndex!==index && (other.operations?.cardId?.toLowerCase()===wanted || other.hire.employeeCode?.toLowerCase()===wanted || Boolean(digits && other.statutory.icNumber?.replace(/\D/g,'')===digits)))) {
@@ -982,7 +989,7 @@ async function analyze(
   if(['tender_resignation_date','resignation_date','last_working_date'].some(field=>presentColumns.has(field)))fileErrors.push('Resignation dates must be recorded through Movement import. Remove these columns from the employee file. Nothing was imported.');
 
   for(const dependent of dependents)if(dependent.result.ok) {
-    try { await assertDependentsValid(ctx,[dependent.add]); }
+    try { await assertDependentsValid(ctx,[dependent.add],outerTx); }
     catch(error) { dependent.result.ok=false;dependent.result.errors.push(error instanceof Error?error.message:'Invalid Family values'); }
   }
   dependentPreview.validCount=dependents.filter(dependent=>dependent.result.ok).length;
@@ -992,7 +999,7 @@ async function analyze(
   const registers=[] as Awaited<ReturnType<typeof validateRegisterImport>>[];
   for(const kind of PERSONNEL_REGISTER_KINDS) {
     if(!registerRecords[kind]?.length)continue;
-    const checked=await validateRegisterImport(ctx,kind,registerRecords[kind]??[],{subjects,newEmployees:true});
+    const checked=await (outerTx?analyzeRegisterImportTx(outerTx,kind,registerRecords[kind]??[],{subjects,newEmployees:true}):validateRegisterImport(ctx,kind,registerRecords[kind]??[],{subjects,newEmployees:true}));
     registers.push(checked);
     fileErrors.push(...checked.preview.fileErrors.map(error=>`${kind}: ${error}`));
   }
@@ -1173,17 +1180,26 @@ export async function validateEmployeeImport(
 /** Commit the valid rows. Re-validates server-side (never trusts a client-supplied preview),
  *  imports row-by-row reusing the hire / statutory / compensation services, and records a
  *  batch event so the import itself shows up in the audit trail. */
+function measuredImportReplay(companyId:string,evaluationReceipt:EmployeeImportEvaluationReceipt):ImportResult&{evaluationReceipt:EmployeeImportEvaluationReceipt}{
+ const c=evaluationReceipt.canonicalCounts;if(!c)throw Error('The import receipt could not be confirmed.');
+ return{companyId,imported:c.imported,failed:[],skipped:c.skipped,dependentsImported:c.dependents,registersImported:{qualification:c.qualification,emergency:c.emergency},superiorFailed:[],fileErrors:[],runId:null,evaluationReceipt};
+}
 export async function commitEmployeeImport(
   ctx: SessionContext,
-  p: { companyId: string; records: ImportRecord[]; dependentRecords?: ImportRecord[]; registerRecords?:PersonnelRegisterRecords; allocationRecords?:AllocationImportRecords; allocationToken?:string; fileName?: string },
-): Promise<ImportResult> {
-  const { preview, resolved, dependents,registers } = await analyze(
+  p: { companyId: string; records: ImportRecord[]; dependentRecords?: ImportRecord[]; registerRecords?:PersonnelRegisterRecords; allocationRecords?:AllocationImportRecords; allocationToken?:string; fileName?: string; evaluationBinding?:EmployeeImportEvaluationBinding },
+): Promise<ImportResult & {evaluationReceipt?:EmployeeImportEvaluationReceipt}> {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  if(p.evaluationBinding){const replay=await withTenant(ctx,tx=>readEmployeeImportEvaluationTx(tx,ctx,p.evaluationBinding!,p));if(replay)return measuredImportReplay(p.companyId,replay);}
+  let { preview, resolved, dependents,registers } = await analyze(
     ctx,
     p.companyId,
     p.records,
     p.dependentRecords ?? [],
     p.registerRecords,
   );
+  const nominationPack=resolved.map(row=>row.pack);
+  const nominationBinding=JSON.stringify({preview,resolved:resolved.map(({pack,...row})=>row),dependents,registers});
   const allocationEmployees=resolved.flatMap((row,index)=>row.result.ok?[{companyId:row.hire.companyId,employeeCode:row.hire.employeeCode??'',hiredOn:row.hire.hiredOn,index}]:[]);
   let allocationPreview:AllocationImportPreview|undefined;
   if(p.allocationRecords?.length){
@@ -1226,15 +1242,29 @@ export async function commitEmployeeImport(
   // subordinate to a manager who was created by the SAME run.
   const employmentByRow = new Map<number, string>();
   const registerSubjects=new Map<string,{employmentId:string;personId:string}>();
+  // Private measured-outcome erasure refs come from actual canonical owners, never model/browser IDs.
+  const outcomeSubjects=new Map<string,{kind:'person'|'employment';id:string}>();
+  const outcomeEmployment=(id:string)=>{if(p.evaluationBinding)outcomeSubjects.set('employment:'+id,{kind:'employment',id});};
+  const outcomePerson=(id:string)=>{if(p.evaluationBinding)outcomeSubjects.set('person:'+id,{kind:'person',id});};
 
   // The validated subset and its forward reporting links form one import operation. Domain
   // writers share this explicit transaction; no failed file can leave a half-created employee.
   const familySyncPersonIds=new Set<string>();
   const writeFileErrors:string[]=[];
   const writeWarnings:string[]=[];
+  let evaluationReceipt:EmployeeImportEvaluationReceipt|undefined,replayedEvaluation=false;
   try {
     await withTenant(ctx,async tx=>{
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+  if(p.evaluationBinding){const claimed=await claimEmployeeImportEvaluationTx(tx,ctx,p.evaluationBinding,p);if(claimed.replayed){evaluationReceipt=claimed.replayed;replayedEvaluation=true;return;}}
+  // The outside analysis nominated this exact raw file. Resolve ALL protected facts in this actual
+  // transaction before any employee/assignment/reporting write; changing the binding requires preview.
+  const fresh=await analyze(ctx,p.companyId,p.records,p.dependentRecords??[],p.registerRecords,tx);
+  const freshBinding=JSON.stringify({preview:fresh.preview,resolved:fresh.resolved.map(({pack,...row})=>row),dependents:fresh.dependents,registers:fresh.registers});
+  if(freshBinding!==nominationBinding||fresh.resolved.some((row,index)=>row.pack!==nominationPack[index]))
+    throw new Error('Employee import inputs changed. Preview the complete file again.');
+  ({preview,resolved,dependents,registers}=fresh);
   if(p.allocationRecords?.length){
     allocationPreview=await previewCostAllocationImportTx(tx,ctx,p.allocationRecords,allocationEmployees);
     if(allocationPreview.token!==p.allocationToken||allocationPreview.groups.some(g=>g.errors.length))throw new Error('Cost Center Allocations changed. Preview the complete workbook again.');
@@ -1304,6 +1334,7 @@ export async function commitEmployeeImport(
       return {employmentId,personId,familyCount};
       })();
       employmentByRow.set(index,saved.employmentId);
+      outcomeEmployment(saved.employmentId);outcomePerson(saved.personId);
       if(row.hire.employeeCode)registerSubjects.set(row.hire.employeeCode,{employmentId:saved.employmentId,personId:saved.personId});
       dependentsImported+=saved.familyCount;
       if(saved.familyCount)familySyncPersonIds.add(saved.personId);
@@ -1342,6 +1373,7 @@ export async function commitEmployeeImport(
         lineType: 'administrative',
         validFrom: row.hire.hiredOn,
       },tx);
+      outcomeEmployment(subordinate);outcomeEmployment(manager);
     } catch (e) {
       // A reporting-link refusal aborts the enclosing import transaction as well.
       superiorFailed.push({
@@ -1353,9 +1385,16 @@ export async function commitEmployeeImport(
     }
   }
 
-  for(const register of registers)registersImported[register.preview.kind]=await writeRegisterRowsTx(tx,ctx,register.preview.kind,register.resolved,registerSubjects);
+  for(const register of registers){
+    registersImported[register.preview.kind]=await writeRegisterRowsTx(tx,ctx,register.preview.kind,register.resolved,registerSubjects);
+    if(p.evaluationBinding)for(const row of register.resolved){
+      const target=registerSubjects.get(row.preview.employeeCode)??row.subject;
+      if(!target?.employmentId||!target.personId)throw Error('The import receipt could not be confirmed.');
+      outcomeEmployment(target.employmentId);outcomePerson(target.personId);
+    }
+  }
 
-  await appendEvent(tx, {
+  const evaluationEventId=await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'employee-import',
       aggregateId: p.companyId,
@@ -1374,16 +1413,20 @@ export async function commitEmployeeImport(
         dependents: dependentsImported,
         registers:registersImported,
       },
-    });
+    },{returnId:Boolean(p.evaluationBinding)});
+  if(p.evaluationBinding){if(typeof evaluationEventId!=='string')throw Error('The import receipt could not be confirmed.');evaluationReceipt=await completeEmployeeImportEvaluationTx(tx,ctx,p.evaluationBinding,p.companyId,evaluationEventId,{imported,failed:failed.length,skipped:resolved.length-valid.length,dependents:dependentsImported,qualification:registersImported.qualification,emergency:registersImported.emergency},[...outcomeSubjects.values()]);}
 
     });
   } catch(error) {
+    evaluationReceipt=undefined;replayedEvaluation=false;
     const first=failed[0]??superiorFailed[0];
     const reason=first?.message??publicErrorMessage(error);
     writeFileErrors.push(`No employee rows were written. The import was rolled back${first?` after row ${first.rowNum} was refused`:''}. ${reason}`);
     failed.splice(0,failed.length,...valid.map(row=>({rowNum:row.result.rowNum,email:row.result.email,message:first?.rowNum===row.result.rowNum?reason:'Not written because the import was rolled back.'})));
     superiorFailed.splice(0);imported=0;dependentsImported=0;registersImported.qualification=0;registersImported.emergency=0;employmentByRow.clear();
   }
+
+  if(replayedEvaluation&&evaluationReceipt)return measuredImportReplay(p.companyId,evaluationReceipt);
 
   // A post-commit refresh failure must never be described as a rolled-back employee import.
   if(!writeFileErrors.length) for(const personId of familySyncPersonIds) {
@@ -1410,6 +1453,7 @@ export async function commitEmployeeImport(
     fileErrors: writeFileErrors,
     warnings: [...new Set(writeWarnings)],
     runId,
+    ...(evaluationReceipt?{evaluationReceipt}:{}),
   };
 }
 

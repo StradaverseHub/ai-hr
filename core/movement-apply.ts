@@ -27,6 +27,7 @@ import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { domainEvent, employment } from '../db/schema';
 import { applyDueMovementsTx } from './movement';
+import { lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
 // Workforce authorizes the actual transaction principal; the dated intent remains a ledger fact.
 import {assertWorkforceEmploymentTx} from './workforce-access';
 // Through the pack facade, not `core/leave` directly: this file is NEW, and ADR-0080 D9's import
@@ -98,6 +99,7 @@ export async function sweepDueMovements(
       // on ai_hr_app cannot turn an empty user ID into Workforce maintenance authority.
       const {r,gradeBefore}=await runTransaction(ctx,async tx=>{
         await assertWorkforceEmploymentTx(tx,ctx,c.employmentId!,'maintain');
+        await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
         const [before]=await tx.select({gradeId:employment.gradeId}).from(employment).where(eq(employment.id,c.employmentId!)).limit(1);
         const r=await applyDueMovementsTx(tx,ctx,c.employmentId!,today);
         return {r,gradeBefore:{gradeId:before?.gradeId??null}};

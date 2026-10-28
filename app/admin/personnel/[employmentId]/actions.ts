@@ -1471,7 +1471,8 @@ async function applyStatutorySection(
   // longer carries zakat fields, but the setter is a FULL overwrite of the statutory row — so read
   // the current election and pass it through unchanged. Without this, every Personnel statutory
   // save would silently wipe an existing election (resolveZakatElection treats absent as inactive).
-  const current = await pack.statutory.get(s, personId);
+  if(!pack.statutory.withWrite)throw new Error('No protected statutory writer for this country');
+  await pack.statutory.withWrite(s,personId,async(tx,current)=>{
   // Item 8b5334db — IC + the tax fields (taxNumber/taxCategory/numChildren/residency) were split out of this
   // full-row statutory form onto the Profile tab (IC → setIcAction) and the dedicated Identification & Tax card
   // (tax → setTaxAction). This form no longer carries those inputs, but setStatutoryProfileMY is a FULL overwrite
@@ -1572,6 +1573,7 @@ async function applyStatutorySection(
     zakatFixed: current?.zakatFixed != null ? Number(current.zakatFixed) : null,
     zakatEffectiveFrom: current?.zakatEffectiveFrom ?? null,
     zakatEffectiveTo: current?.zakatEffectiveTo ?? null,
+  },tx);
   });
 }
 

@@ -151,6 +151,20 @@ export function holidayCompletenessWarning(
   return { country, state, year, loaded, required: EA_S60D_MINIMUM_HOLIDAYS };
 }
 
+/** The same completeness answer without appending a warning event. Preview consumers must not
+ * call a writing guard and roll it back merely to discover what the person should review. */
+export async function readHolidayCompletenessWarnings(
+  tx: Tx, country: string, state: string | null, years: readonly number[],
+): Promise<HolidayCompletenessWarning[]> {
+  const warnings: HolidayCompletenessWarning[] = [];
+  for (const year of years) {
+    const warning = holidayCompletenessWarning(country, state, year,
+      await loadedHolidayCount(tx, country, state, year));
+    if (warning) warnings.push(warning);
+  }
+  return warnings;
+}
+
 /** Distinct calendar years a [start, end] window spans (handles a window crossing a year boundary). */
 export function yearsSpanned(startDate: string, endDate: string): number[] {
   const sy = Number(startDate.slice(0, 4));
@@ -249,12 +263,8 @@ export async function warnIfHolidaysIncomplete(
     context?: Record<string, unknown>;
   },
 ): Promise<HolidayCompletenessWarning[]> {
-  const warnings: HolidayCompletenessWarning[] = [];
-  for (const year of args.years) {
-    const loaded = await loadedHolidayCount(tx, args.country, args.state, year);
-    const warning = holidayCompletenessWarning(args.country, args.state, year, loaded);
-    if (!warning) continue;
-    warnings.push(warning);
+  const warnings = await readHolidayCompletenessWarnings(tx, args.country, args.state, args.years);
+  for (const warning of warnings) {
     // NON-BLOCKING: the gazetted-holiday count is below the s.60D minimum for this (state, year). Loud,
     // not fatal — the leave/payroll write still commits; HR must finish loading the state gazette.
     await appendEvent(tx, {

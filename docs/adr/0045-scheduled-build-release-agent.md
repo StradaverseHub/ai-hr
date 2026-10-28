@@ -1,5 +1,7 @@
 # ADR-0045 — Scheduled build → preview → gated-release agent (IL-4)
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 **Status:** Accepted · 2026-06-24
 **Extends:** [ADR-0044](0044-improvement-loop.md) (operator-side improvement loop)
 **Supersedes the deferred:** FB-4 (in-app autonomous build agent)

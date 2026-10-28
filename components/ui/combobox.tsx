@@ -29,7 +29,9 @@ import { ENTER_OWNER_ATTR } from '@/lib/tab-save-dom';
  *
  * Pure presentation — no data deps — so it is safe to import from either client or (indirectly) RSC trees.
  */
-export type ComboboxOption = { value: string; label: string };
+/** 68c84963 — optional, backward compatible: `description` is a muted second line that is also searched,
+ *  `keywords` are searched but not shown, and a `disabled` row is visible but can never be committed. */
+export type ComboboxOption = { value: string; label: string; description?: string; keywords?: string; disabled?: boolean };
 
 export function Combobox({
   name,
@@ -86,7 +88,7 @@ export function Combobox({
     const q = query.trim().toLowerCase();
     if (!q) return allRows;
     // Always keep the clear/placeholder row reachable; filter the rest by case-insensitive substring.
-    return allRows.filter((r) => r.value === '' || r.label.toLowerCase().includes(q) || r.value.toLowerCase().includes(q));
+    return allRows.filter((r) => r.value === '' || r.label.toLowerCase().includes(q) || r.value.toLowerCase().includes(q) || !!r.description?.toLowerCase().includes(q) || !!r.keywords?.toLowerCase().includes(q));
   }, [allRows, query]);
 
   const selectedLabel = allRows.find((r) => r.value === selected)?.label ?? placeholder;
@@ -136,7 +138,7 @@ export function Combobox({
       if (open) {
         e.preventDefault();
         const row = filtered[activeIdx];
-        if (row) commit(row.value);
+        if (row && !row.disabled) commit(row.value);
       }
     } else if (e.key === 'Escape') {
       if (open) {
@@ -203,17 +205,19 @@ export function Combobox({
                     }}
                     role="option"
                     aria-selected={isSelected}
+                    aria-disabled={r.disabled || undefined}
                     onMouseEnter={() => setActiveIdx(i)}
                     onMouseDown={(e) => {
                       // mousedown (not click) so we commit before the outside-click handler closes us.
                       e.preventDefault();
-                      commit(r.value);
+                      if (!r.disabled) commit(r.value);
                     }}
-                    className={`cursor-pointer truncate rounded px-2 py-1.5 ${
+                    className={`${r.disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'} truncate rounded px-2 py-1.5 ${
                       isActive ? 'bg-accent text-accent-foreground' : ''
                     } ${isSelected ? 'font-medium' : ''} ${r.value === '' ? 'text-muted-foreground' : ''}`}
                   >
                     {r.label}
+                    {r.description && <span className="block truncate text-xs text-muted-foreground">{r.description}</span>}
                   </li>
                 );
               })

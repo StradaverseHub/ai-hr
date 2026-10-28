@@ -3,7 +3,7 @@
 import Link from '@/components/intent-link';
 import { Fragment, useEffect, useRef, type Ref } from 'react';
 import { useTranslations } from 'next-intl';
-import { ChevronRight, type LucideIcon } from 'lucide-react';
+import { ChevronRight, X, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ApprovalCountBadge } from '@/components/approval-count-badge';
 
@@ -175,6 +175,7 @@ export function NavFlyoutPanel({
   panelId,
   onClose,
   onEscape,
+  layout = 'overlay',
 }: {
   labelKey: string;
   /** Already permission-filtered children, in display order. */
@@ -187,8 +188,10 @@ export function NavFlyoutPanel({
   onClose: () => void;
   /** Escape: close AND return focus to the trigger (the sidebar owns the trigger ref). */
   onEscape: () => void;
+  layout?: 'overlay' | 'atelier';
 }) {
   const t = useTranslations('nav');
+  const common = useTranslations('common');
   const label = t(labelKey);
   const firstLinkRef = useRef<HTMLAnchorElement | null>(null);
 
@@ -210,16 +213,19 @@ export function NavFlyoutPanel({
 
   return (
     <>
+      {/* b953a339: Atelier's panel floats over the page (positioned in app/atelier.css) instead of taking
+          width from it, exactly as the overlay layout below does. */}
       {/* Backdrop dismissal (language-switcher.tsx idiom). The rail is raised to z-50 by the
           sidebar while open, so its rows stay clickable above this z-40 layer. */}
       <div className="fixed inset-0 z-40" onClick={onClose} />
       <div
         id={panelId}
         aria-label={label}
-        className="absolute bottom-0 left-[calc(100%+0.75rem)] top-0 z-50 flex w-64 flex-col overflow-hidden rounded-[1.25rem] border border-border bg-sidebar px-3 py-4 shadow-[var(--shadow-card)] lg:left-[calc(100%+1rem)]"
+        className={layout === 'atelier' ? 'atelier-flyout z-50 flex min-h-0 flex-col overflow-hidden px-3 py-4' : 'absolute bottom-0 left-[calc(100%+0.75rem)] top-0 z-50 flex w-64 flex-col overflow-hidden rounded-[1.25rem] border border-border bg-sidebar px-3 py-4 shadow-[var(--shadow-card)] lg:left-[calc(100%+1rem)]'}
       >
-        <div className="px-3 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">
-          {label}
+        <div className={layout === 'atelier' ? 'mb-2 flex items-center justify-between gap-2 px-2 text-sm font-semibold' : 'px-3 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80'}>
+          <span>{label}</span>
+          {layout === 'atelier' && <button type="button" onClick={onEscape} aria-label={common('close')} className="inline-flex size-9 shrink-0 items-center justify-center rounded-md hover:bg-accent"><X aria-hidden className="size-4"/></button>}
         </div>
         <nav aria-label={label} className="flex flex-1 flex-col gap-1 overflow-y-auto">
           {items.map((child, i) => {
@@ -228,7 +234,7 @@ export function NavFlyoutPanel({
             const childLabel = t(child.labelKey);
             return (
               <Fragment key={child.href}>
-              {child.sectionKey && child.sectionKey!==items[i-1]?.sectionKey && <p className="mb-0 mt-3 px-3 text-xs font-medium text-muted-foreground">{t(child.sectionKey)}</p>}
+              {child.sectionKey && child.sectionKey!==items[i-1]?.sectionKey && (layout === 'atelier' ? <h3 className="atelier-subheading">{t(child.sectionKey)}</h3> : <p className="mb-0 mt-3 px-3 text-xs font-medium text-muted-foreground">{t(child.sectionKey)}</p>)}
               <Link
                 key={child.href}
                 ref={i === 0 ? firstLinkRef : undefined}

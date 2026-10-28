@@ -1,5 +1,7 @@
 # ADR-0077 — SaaS tenancy, module entitlements, and the Stradaverse control plane
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Status:** Proposed (architecture + build plan — no code written yet)
 - **Date:** 2026-07-20
 - **Relates to:** ADR-0072 (WorkOS auth / `app.principal`), the RLS substrate (migration 0002 onward),

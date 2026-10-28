@@ -1,0 +1,133 @@
+/** Read-only candidate, not a prepared action or permission to submit. No action ID, persistence,
+ * provider call, allowance admission or leave write is created here. The eventual lifecycle owner
+ * must check fresh authority/AI controls, protect intent content and freeze the reviewed effect. */
+import { and, eq, sql } from 'drizzle-orm';
+import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
+import {isModuleEnabled} from '../entitlements';
+import type { SessionContext, Tx } from '../../db/client';
+import { leaveType } from '../../db/schema';
+import { todayInKualaLumpur } from '../../lib/hr-date';
+import {
+  OwnLeaveHumanSelection, OwnLeaveHumanText, OwnLeaveNomination,
+} from '../../lib/assistant-actions/own-leave-contract';
+import { leaveTypeIs, normalizeLeaveEmployeeRemark, previewLeaveDeduction,lockLeaveDependencyReadConfigurationTx,lockLeaveDependenciesTx,lockLeaveReadOnlySourceConfigurationTx,lockLeaveReadOnlySourceDependenciesTx,LeaveDependencyUnavailable } from '../../packs/leave/service';
+import { provenCompanyDatesTx } from '../employment-company';
+import { isEmploymentEnded } from '../employment-status';
+import { resolveEssView } from '../ess-view';
+import { listEligibleLeaveTypesFor, myOwnEmploymentSubjectsTx } from '../read';
+import { OwnLeaveBinding, ownLeaveIntentDigest } from './own-leave-review';
+import { OwnLeaveReviewCandidate } from './own-leave-review-digest';
+import { readOwnLeaveActorTx } from './own-leave-actor';
+
+/** Shared first-slice capability filter, not eligibility or effect authority. Both callers must
+ * obtain identity and eligible type from canonical same-Tx source reads, never posted/model objects. */
+type FirstSliceIdentity = Pick<typeof leaveType.$inferSelect, 'role' | 'code' | 'country' | 'essViewConfig'>;
+type FirstSliceType = Pick<Awaited<ReturnType<typeof listEligibleLeaveTypesFor>>[number], 'paid' | 'requiresDocument' | 'balanceSourceTypeId'>;
+export function ownLeaveFirstSliceTypeQualifies(identity: FirstSliceIdentity | undefined,
+  type: FirstSliceType, country: string | null): identity is FirstSliceIdentity {
+  return !!identity && leaveTypeIs(identity, 'annual') && identity.country === country
+    && type.paid && !type.requiresDocument && type.balanceSourceTypeId === null;
+}
+
+export type { OwnLeaveReviewCandidate } from './own-leave-review-digest';
+export type OwnLeaveCandidateResult =
+  | { kind: 'candidate'; candidate: OwnLeaveReviewCandidate;
+      /** Server-only freshness expectation. NEVER serialize the entire result to a client or model. */
+      privateAvailableBalance: number }
+  | { kind: 'unavailable' }
+  | { kind: 'needs_selection' }
+  | { kind: 'needs_employee_remark' }
+  | { kind: 'use_leave_form' };
+
+/** The transaction must have THIS caller's context. Actor/module reads refresh through their owners.
+ * A candidate is advisory even in one transaction: the menu answers as of today, policy may change,
+ * and requestLeave remains the authority at submission. Never log/persist the returned private content
+ * as lifecycle metadata or tool traces. Selection and text must come from the human input owner. */
+export async function readOwnLeaveCandidateTx(
+  tx: Tx, ctx: SessionContext, nominationValue: unknown, selectionValue: unknown,
+  humanTextValue: unknown, locale?: string,
+): Promise<OwnLeaveCandidateResult> {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  // Capture this invocation's model nomination and separate human inputs before any database await.
+  // Defer their refusal responses until after authorization, preserving the unavailable boundary.
+  const nomination = OwnLeaveNomination.safeParse(nominationValue);
+  const text = OwnLeaveHumanText.safeParse(humanTextValue);
+  const selection = OwnLeaveHumanSelection.safeParse(selectionValue);
+  await boundNativeOutcomeTransactionTx(tx);
+  const actor = await readOwnLeaveActorTx(tx, ctx);
+  if (!actor || !isModuleEnabled(actor,'leave')) return { kind: 'unavailable' };
+  ctx = actor;
+  if (!nomination.success || !text.success) return { kind: 'use_leave_form' };
+  if (!selection.success || selection.data.employmentId !== nomination.data.employmentId
+    || selection.data.leaveTypeId !== nomination.data.leaveTypeId) return { kind: 'needs_selection' };
+  const intent = nomination.data;
+  const today = todayInKualaLumpur();
+  if (intent.date < today) return { kind: 'use_leave_form' };
+
+  // Access first: actor reads only authority/entitlements and Access-protected login/termination
+  // state. Protect leave configuration BEFORE the first own-subject/catalogue/calendar/balance
+  // read. The admitted native-readback contract remains genuinely READ ONLY, never converted to
+  // writable: its separate shared source barriers use the SAME keys as ordinary exclusive writers.
+  const [mode]=await tx.execute<{readonly:string}>(sql`select current_setting('transaction_read_only') as readonly`);
+  if(!mode||!['on','off'].includes(mode.readonly))throw new LeaveDependencyUnavailable();
+  const readOnly=mode.readonly==='on';
+  await (readOnly?lockLeaveReadOnlySourceConfigurationTx:lockLeaveDependencyReadConfigurationTx)(tx,ctx.tenantId);
+  const subjects = await myOwnEmploymentSubjectsTx(tx, ctx);
+  const nominated = subjects.find(row => row.employmentId === intent.employmentId);
+  if(!nominated)return {kind:'unavailable'}; // Original own-person gate BEFORE subject ownership.
+  await (readOnly?lockLeaveReadOnlySourceDependenciesTx:lockLeaveDependenciesTx)(tx,ctx.tenantId,[nominated.employmentId]);
+  const subject=(await myOwnEmploymentSubjectsTx(tx,ctx)).find(row=>row.employmentId===nominated.employmentId);
+  // No newly discovered subject, silent retarget or stale pre-ownership binding. Even this first
+  // card must use one coherent owned interval, not merely hope confirmation will refuse it later.
+  if(!subject||JSON.stringify(subject)!==JSON.stringify(nominated))throw new LeaveDependencyUnavailable();
+  if (subject.hiredOn > today || isEmploymentEnded(subject, today)
+    || isEmploymentEnded(subject, intent.date)) return { kind: 'unavailable' };
+  const dated = await provenCompanyDatesTx(tx, [{ employmentId: subject.employmentId, date: intent.date }]);
+  const requestedCompany = dated.get(`${subject.employmentId}|${intent.date}`);
+  // Missing/ambiguous dated assignment is Unknown. This first slice also hands a future company
+  // transfer to the full form rather than guessing which company's card the person reviewed.
+  if (!subject.companyProof.companyId || !requestedCompany?.companyId
+    || subject.companyProof.companyId !== subject.currentCompanyId
+    || requestedCompany.companyId !== subject.currentCompanyId) return { kind: 'use_leave_form' };
+  const binding = OwnLeaveBinding.safeParse({ tenantId: ctx.tenantId, userId: ctx.userId,
+    personId: subject.personId, companyId: requestedCompany.companyId, employmentId: subject.employmentId });
+  if (!binding.success) return { kind: 'unavailable' };
+
+  const eligible = await listEligibleLeaveTypesFor(ctx, subject.employmentId, locale, tx);
+  const type = eligible.find(row => row.id === intent.leaveTypeId);
+  if (!type) return { kind: 'unavailable' };
+  const [identity] = await tx.select({ role: leaveType.role, code: leaveType.code, country: leaveType.country,
+    essViewConfig: leaveType.essViewConfig }).from(leaveType)
+    .where(and(eq(leaveType.tenantId, ctx.tenantId), eq(leaveType.id, type.id))).limit(1);
+  if (!ownLeaveFirstSliceTypeQualifies(identity, type, subject.country)) return { kind: 'use_leave_form' };
+  const storedRemark = normalizeLeaveEmployeeRemark(text.data.employeeRemark);
+  if (type.employeeRemarkRequired && !storedRemark) return { kind: 'needs_employee_remark' };
+  // Retain the human's exact text in the intent. If the canonical writer would normalize it,
+  // this bounded slice cannot present that text as the effect it will record.
+  if (storedRemark !== (text.data.employeeRemark ?? null))
+    return { kind: 'use_leave_form' };
+
+  const preview = await previewLeaveDeduction(ctx, { employmentId: subject.employmentId,
+    leaveTypeId: type.id, startDate: intent.date, endDate: intent.date, durationType: 'full_day',
+    includeAvailableBalance: true, includeHolidayWarnings: true, today }, tx);
+  if (!Number.isFinite(preview.days) || preview.days <= 0 || preview.isEmergencySplit
+    || (preview.unpaidDays ?? 0) > 0 || (preview.overrides?.length ?? 0) > 0
+    || !Number.isFinite(preview.availableBalance) || !Number.isFinite(preview.availableAfter)
+    || preview.availableBalance === undefined || preview.availableAfter === undefined
+    || preview.availableBalance < preview.days || !Array.isArray(preview.holidayWarnings)
+    || preview.holidayWarnings.length > 1) return { kind: 'use_leave_form' };
+  const showAvailable = resolveEssView(identity.essViewConfig as Record<string, boolean> | null).available;
+  const candidate = OwnLeaveReviewCandidate.safeParse({
+    binding: binding.data, nomination: intent, humanText: text.data,
+    intentDigest: ownLeaveIntentDigest(binding.data, intent, text.data),
+    companyName: subject.company, employeeCode: subject.employeeCode, leaveTypeName: type.name,
+    deductionDays: preview.days,
+    availableBalance: showAvailable ? preview.availableBalance : null,
+    estimatedAvailableAfter: showAvailable ? preview.availableAfter : null,
+    holidayWarnings: preview.holidayWarnings,
+    approvalRouting: 'unknown',
+  });
+  return candidate.success
+    ? { kind: 'candidate', candidate: candidate.data, privateAvailableBalance: preview.availableBalance }
+    : { kind: 'unavailable' };
+}

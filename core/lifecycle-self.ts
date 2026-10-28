@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto';
+import type { Tx as AiReadTx } from '../db/client';
+import { withCanonicalAiReadTx } from './ai-read-transaction';
 /**
  * Lifecycle new-hire self-service (ADR-0095). A new hire sees ONLY their own onboarding checklist, through
  * two SECURITY DEFINER functions (migration 0516) that match the signed-in user's own person email to the
@@ -47,8 +50,11 @@ type Raw = {
 };
 
 /** The caller's own onboarding checklist, or null when no case is linked to their account. */
-export async function getMyOnboarding(ctx: SessionContext): Promise<MyOnboarding | null> {
-  return withTenant(ctx, async (tx) => {
+export async function getMyOnboarding(ctx: SessionContext, existingTx?: AiReadTx): Promise<MyOnboarding | null> {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+
+
+  return withCanonicalAiReadTx(ctx, existingTx, 'lifecycle', withTenant, async (tx) => {
     if (!ctx.userId) return null;
     const rows = (await tx.execute(sql`select app.lc_my_view() as v`)) as unknown as { v: Raw | null }[];
     const raw = rows[0]?.v;
@@ -82,7 +88,8 @@ export type AcknowledgementInput = {
 };
 
 /** Submit the Device Acceptance Acknowledgement for the caller's own case. One submission only. */
-export async function submitMyAcknowledgement(ctx: SessionContext, p: AcknowledgementInput): Promise<void> {
+export function normalizeMyAcknowledgement(p: AcknowledgementInput) {
+  p=structuredClone(p);
   if (p.acknowledged !== true) throw new LifecycleError('Please tick the acknowledgement to confirm you received the equipment.');
   const contact = clean(p.contactNumber, 40);
   const serial = clean(p.serialNumber, 100);
@@ -92,13 +99,22 @@ export async function submitMyAcknowledgement(ctx: SessionContext, p: Acknowledg
   const data = {
     contactNumber: contact, accessories: clean(p.accessories, 300), pcType: clean(p.pcType, 100), serialNumber: serial,
     hasMonitor: p.hasMonitor === true, monitorSerial: p.hasMonitor ? clean(p.monitorSerial, 100) : null,
-    receiptEmail: normEmail(p.receiptEmail), acknowledged: true, submittedAt: new Date().toISOString(),
+    receiptEmail: normEmail(p.receiptEmail), acknowledged: true as const,
   };
-  await withTenant(ctx, async (tx) => {
+  return data;
+}
+export type ReviewedAcknowledgementSource={caseId:string;caseNumber:string;caseRevision:string;distributionRevision:string};
+/** Original one-shot public API; a supplied-Tx owner returns only exact native references. */
+export async function submitMyAcknowledgement(ctx:SessionContext,p:AcknowledgementInput):Promise<void>{
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
+  const data={...normalizeMyAcknowledgement(p),submittedAt:new Date().toISOString()};
+  await withTenant(ctx,async tx=>{await submitMyAcknowledgementOwnerTx(tx,ctx,data);});
+}
+async function submitMyAcknowledgementOwnerTx(tx:AiReadTx,ctx:SessionContext,data:ReturnType<typeof normalizeMyAcknowledgement>&{submittedAt:string},expected?:ReviewedAcknowledgementSource){
     if (!ctx.userId) throw new LifecycleError('Not signed in.', 'forbidden');
     let id: string;
     try {
-      const rows = (await tx.execute(sql`select app.lc_my_daa_submit(${JSON.stringify(data)}::jsonb) as id`)) as unknown as { id: string }[];
+      const rows = (await (expected?tx.execute(sql`select app.lc_my_daa_submit_reviewed(${JSON.stringify(data)}::jsonb,${expected.caseId}::uuid,${expected.caseRevision},${expected.distributionRevision}) as id`):tx.execute(sql`select app.lc_my_daa_submit(${JSON.stringify(data)}::jsonb) as id`))) as unknown as { id: string }[];
       id = rows[0]!.id;
     } catch (e) {
       const m = (e as { cause?: { message?: string }; message?: string });
@@ -106,6 +122,15 @@ export async function submitMyAcknowledgement(ctx: SessionContext, p: Acknowledg
       if (/not available|not been marked|No onboarding case/.test(msg)) throw new LifecycleError(msg.replace(/^.*?:\s*/, ''), 'conflict');
       throw e;
     }
-    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'lifecycle-case', aggregateId: id, eventType: 'lifecycle-case.daa-submitted', actor: actorOf(ctx), payload: { action: 'daa.submitted' } });
-  });
+    // NULL-subject audit events are deliberately unreadable to ordinary new hires. Bind the
+    // exact native reference before INSERT; RETURNING would require unrelated audit SELECT.
+    // The awaited insert and native acknowledgement still share this caller's transaction.
+    const submittedEventId=randomUUID();
+    await appendEvent(tx, { id:submittedEventId, tenantId: ctx.tenantId, aggregateType: 'lifecycle-case', aggregateId: id, eventType: 'lifecycle-case.daa-submitted', actor: actorOf(ctx), payload: { action: 'daa.submitted' } });
+    return{caseId:id,submittedEventId};
+}
+/** Trusted reviewed command seam only. No nested commit; failure rolls back the enclosing command. */
+export async function submitReviewedMyAcknowledgementTx(tx:AiReadTx,ctx:SessionContext,p:AcknowledgementInput,expected:ReviewedAcknowledgementSource){
+ p=structuredClone(p);expected={...expected};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
+ return submitMyAcknowledgementOwnerTx(tx,ctx,{...normalizeMyAcknowledgement(p),submittedAt:new Date().toISOString()},expected);
 }

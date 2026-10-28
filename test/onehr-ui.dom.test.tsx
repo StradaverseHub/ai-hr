@@ -1,4 +1,5 @@
 vi.mock('../app/performance/assessment-rewrite-actions',()=>({rewriteAssessmentFieldAction:vi.fn()}));
+import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider, createTranslator } from 'next-intl';
@@ -11,7 +12,8 @@ const ports=vi.hoisted(()=>({calibration:vi.fn(),person:vi.fn(),session:vi.fn()}
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>createTranslator({locale:'en',messages:en,namespace:namespace as never})}));
 vi.mock('next/navigation',async importActual=>({...await importActual<typeof import('next/navigation')>(),useRouter:()=>({refresh:vi.fn()})}));
 vi.mock('../lib/scope',()=>({scopedSession:ports.session}));
-vi.mock('../packs/performance/service',()=>({getOnehrCalibration:ports.calibration}));
+// D-P1-32 PT-X2: the session page reads the Calibration strip's gate facts; none here, so the strip draws nothing.
+vi.mock('../packs/performance/service',()=>({getOnehrCalibration:ports.calibration,getPerformanceAreaFacts:async()=>({performanceOn:false,items:[],ownFeedbackReport:'none'})}));
 vi.mock('../app/performance/onehr-actions',()=>({assessmentCalibrationPersonAction:ports.person,assessmentTalentPersonAction:vi.fn().mockResolvedValue({error:'No person frame in this fixture.'}),assessmentTalentInsightAction:vi.fn().mockResolvedValue({pending:true,source:null,data:null}),saveCalibrationBandAction:vi.fn(),assessmentInsightAction:vi.fn(),onehrReviewAction:vi.fn(),agreeDepartmentAction:vi.fn(),onehrCalibrationAction:vi.fn(),onehrFeedbackAction:vi.fn(),onehrDraftAction:vi.fn(),saveAssessmentDraftAction:vi.fn(),saveAssessmentKpiSettingAction:vi.fn().mockResolvedValue({revision:2})}));
 vi.mock('../app/performance/actions',()=>({uploadAttachmentAction:vi.fn()}));
 import CalibrationPage from '../app/performance/assessment/calibration/[sessionId]/page';
@@ -20,10 +22,19 @@ import { KpiEditor } from '../app/performance/onehr/kpi-editor';
 import { OnehrReviewView } from '../app/performance/onehr/review-view';
 import { ItemNavigator } from '../app/performance/workspace/item-navigator';
 const show=(element:React.ReactNode)=>render(<NextIntlClientProvider locale="en" messages={en}>{element}</NextIntlClientProvider>);
+/** Every element of `type` in a returned element tree, walking props.children (the page wraps the view, PT-X2). */
+function elementsOf(node:React.ReactNode,type:unknown):React.ReactElement[]{
+ if(Array.isArray(node))return node.flatMap(child=>elementsOf(child,type));
+ if(!React.isValidElement(node))return [];
+ const el=node as React.ReactElement<{children?:React.ReactNode}>;
+ return el.type===type?[el]:elementsOf(el.props.children,type);
+}
 async function calibrationScreen(){
  const page=await CalibrationPage({params:Promise.resolve({sessionId:'session'}),searchParams:Promise.resolve({})});
- expect(page.type).toBe(AssessmentCalibrationView);
- return AssessmentCalibrationView(page.props);
+ // Since D-P1-32 PT-X2 the page is the Calibration strip above the view; the view itself is still the one screen.
+ const views=elementsOf(page,AssessmentCalibrationView);
+ expect(views).toHaveLength(1);
+ return AssessmentCalibrationView(views[0]!.props as Parameters<typeof AssessmentCalibrationView>[0]);
 }
 beforeEach(()=>{vi.clearAllMocks();ports.session.mockResolvedValue({s:{tenantId:'tenant'}});});
 afterEach(cleanup);
@@ -71,7 +82,7 @@ describe('OneHR native workflow controls',()=>{
   ports.person.mockResolvedValue({...v,row:v.rows[0],held:{lines:[],focus:null,requestId:null,navigation:false}});
   show(await AssessmentCalibrationView({v:v as unknown as Parameters<typeof AssessmentCalibrationView>[0]['v'],embedded:true,axis:'both'}));
   expect(screen.queryByRole('button',{name:en.onehr.lockCalibration})).toBeNull();
-  expect(screen.queryByRole('button',{name:'15'})).toBeNull();fireEvent.click(within(screen.getByRole('region',{name:en.onehr.talentGrid})).getByRole('button',{name:'Employee'}));
+  expect(screen.queryByRole('button',{name:'15'})).toBeNull();fireEvent.click(within(screen.getByRole('region',{name:en.onehr.talentBoard.title})).getByRole('button',{name:'Employee'}));
   expect(await screen.findByRole('region',{name:'Employee'})).toBeTruthy();expect(screen.getByRole('tab',{name:'Summary'})).toBeTruthy();expect(await screen.findByLabelText(en.onehr.performance)).toBeTruthy();expect(screen.getByLabelText(en.onehr.potential)).toBeTruthy();
  });
  it('passes the current development allowance to the actual editable-plan suggestion control',async()=>{

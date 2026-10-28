@@ -72,8 +72,9 @@
 // AFTER slice 7 gives operators a real plan-management plane, DELETE THIS FILE. Parity is a migration
 // artefact, not a policy: re-running it a year from now would re-grant modules a customer's plan change
 // legitimately removed.
-import { sql } from 'drizzle-orm';
-import { createDb } from '../db/client';
+import { eq, sql } from 'drizzle-orm';
+import { createDb, type Tx } from '../db/client';
+import { lockOwnerTenantCatalogsTx } from '../db/provision-ownership';
 import { tenant } from '../db/schema';
 import { SYSTEM_TENANT_ID } from '../core/sweep-scope';
 import {
@@ -101,6 +102,124 @@ function describeDb(url: string): string {
   } catch {
     return '(unparseable connection string)';
   }
+}
+
+export type EntitlementParityTenantOptions = Readonly<{ apply: boolean; modules: readonly string[]; settings: readonly Readonly<{key:string;value:unknown}>[]; createdBeforeAt: Date|null }>;
+/** Actual owner interval for one tenant. Earlier tenant commits remain intact on later failure;
+ * every grant/setting in the current tenant rolls back together. Dry runs acquire no write interval. */
+export async function reconcileEntitlementParityTenant(tx: Tx, tenantId: string, options: EntitlementParityTenantOptions) {
+  const apply=options.apply, modules=[...options.modules], settings=options.settings.map(item=>({key:item.key,value:JSON.parse(JSON.stringify(item.value)) as unknown}));
+  const createdBeforeAt=options.createdBeforeAt?new Date(options.createdBeforeAt.getTime()):null;
+  if(apply&&(!createdBeforeAt||!Number.isFinite(createdBeforeAt.getTime())))throw Error('A valid flip boundary is required for parity changes.');
+  if(apply) await lockOwnerTenantCatalogsTx(tx,tenantId);
+  const [t]=await tx.select({id:tenant.id,name:tenant.name,createdAt:tenant.createdAt}).from(tenant).where(eq(tenant.id,tenantId)).limit(1);
+  const report: {kind:'warn'|'log';message:string}[]=[];
+  let moduleGrants=0, settingGrants=0, outOfScope=0, skipped=0, inertTenants=0;
+  if(!t || t.id===SYSTEM_TENANT_ID)return {moduleGrants,settingGrants,outOfScope,skipped,inertTenants,report};
+    // OUT OF SCOPE: provisioned at or after the flip. `db/provision.ts` already wrote this tenant's
+    // install defaults; the env parity set is a statement about tenants that predate the flip, and
+    // applying it here would open two platform-scoped payroll switches for a brand-new customer. A
+    // tenant with no creation date at all is treated as in scope — the column is NOT NULL, so that
+    // cannot happen, and guessing "new" for an impossible row would silently skip a real gap.
+    if (createdBeforeAt && t.createdAt && new Date(t.createdAt) >= createdBeforeAt) {
+      outOfScope += 1;
+      return { moduleGrants, settingGrants, outOfScope, skipped, inertTenants, report };
+    }
+      // Per tenant, per code, so the summary can report WHO was short a row rather than a total —
+      // "three tenants were missing typed_pay_components" is the fact an operator needs to sanity-check
+      // this against the customer list before applying.
+      //
+      // ANY EXISTING ROW, AT ANY GRAIN, MEANS HANDS OFF. `ON CONFLICT DO NOTHING` alone is not that
+      // check, and the difference is a real escalation (review r2). 0313's grain index is
+      // `UNIQUE (tenant_id, module_code, COALESCE(company_id, '0…0'))`, so a tenant holding only a
+      // COMPANY-SCOPED grant does not conflict with a tenant-wide insert — the script would have added
+      // one beside it and promoted a single subsidiary's purchase to the whole group, which is exactly
+      // the fail-open branch `core/entitlements.ts`'s scoped check refuses. A company-scoped row is a
+      // deliberate scope decision, and a `disabled` row is a deliberate revocation; neither is a gap.
+      // So the existence test runs FIRST and identically in both modes, and the insert only ever
+      // touches a code with no row of any kind. (`ON CONFLICT DO NOTHING` stays as the race guard.)
+      // PLAN FIRST, WRITE AFTER. The dependency check below needs the whole proposed set, and an
+      // operator watching a streaming log needs the warning to appear before the grant it is about.
+      const missingModules: string[] = [];
+      const heldModules: string[] = [];
+      for (const moduleCode of modules) {
+        const existing = await tx.execute(sql`
+          SELECT 1 FROM tenant_module WHERE tenant_id = ${t.id}::uuid AND module_code = ${moduleCode}`);
+        if (existing.length > 0) heldModules.push(moduleCode);
+        else missingModules.push(moduleCode);
+      }
+      skipped += heldModules.length;
+
+      // THE dependsOn CLOSURE, checked over what this tenant will actually END UP WITH (review r3).
+      // `db/provision.ts` refuses an incoherent pick set at the same seam and for the same reason: slice
+      // 2's resolver ANDs the closure, so an ACTIVE row whose dependency is missing resolves DISABLED —
+      // "a paid entitlement that is silently inert". This script had no such check, and its own
+      // documented opt-out produced exactly that shape: the header (and DEPLOY.md) tell an operator who
+      // wants a tenant to stay WITHOUT a module to write a `disabled` row for it first, and a disabled
+      // `payroll` row is invisible to `enabledModules` — after which this run happily grants
+      // `typed_pay_components` and `multi_cycle_payroll` as ACTIVE rows that resolve OFF, and reports
+      // them as granted. `typed_pay_components` is the code the header calls "the one that hurts".
+      //
+      // FLAGGED, NOT REFUSED. The reconciliation is per tenant and per code; aborting the whole run over
+      // one tenant's shape would leave the rest half-reconciled, which is worse. The line is loud, it
+      // names the inert codes, and `inert` feeds the exit status below so a preflight cannot pass over it.
+      const enabledRows = await tx.execute(sql`
+        SELECT module_code FROM tenant_module
+         WHERE tenant_id = ${t.id}::uuid AND status IN ('active','trial')
+           AND (expires_at IS NULL OR expires_at > now())`);
+      const willHold = [
+        ...new Set([...enabledRows.map((r) => String((r as { module_code: string }).module_code)), ...missingModules]),
+      ];
+      const unsatisfied = missingModuleDependencies(willHold);
+      if (unsatisfied.length > 0 && missingModules.length > 0) {
+        inertTenants += 1;
+        report.push({kind:'warn',message:
+          `  ⚠ ${t.name} (${t.id}): ${apply ? 'granted' : 'would grant'} ${missingModules.join(', ')}, but ` +
+            `${unsatisfied.join(', ')} ${unsatisfied.length === 1 ? 'is' : 'are'} not enabled for this tenant ⇒ ` +
+            'the grant RESOLVES DISABLED (slice 2 ANDs the dependsOn closure). Sell the dependency or ' +
+            'write a `disabled` row for the dependent code.'
+        });
+      }
+      if (apply) {
+        for (const moduleCode of missingModules) {
+          // `ON CONFLICT DO NOTHING` stays as the RACE guard; the existence test above is the policy.
+          await tx.execute(sql`
+            INSERT INTO tenant_module (tenant_id, module_code, status)
+            VALUES (${t.id}::uuid, ${moduleCode}, 'active')
+            ON CONFLICT DO NOTHING`);
+        }
+      }
+
+      const missingSettings: string[] = [];
+      for (const { key, value } of settings) {
+        const existing = await tx.execute(sql`
+          SELECT 1 FROM tenant_setting WHERE tenant_id = ${t.id}::uuid AND key = ${key}`);
+        if (existing.length > 0) continue;
+        if (apply) {
+          await tx.execute(sql`
+            INSERT INTO tenant_setting (tenant_id, key, value, source)
+            VALUES (${t.id}::uuid, ${key}, ${JSON.stringify(value)}::jsonb, 'platform')
+            ON CONFLICT DO NOTHING`);
+        }
+        missingSettings.push(key);
+      }
+      moduleGrants += missingModules.length;
+      settingGrants += missingSettings.length;
+      // The creation date is printed for SIGN-OFF, not used as a rule: a tenant created before 0313 ran
+      // was covered by its backfill and should show nothing here, so a pre-0313 date next to a proposed
+      // grant is the signal that something else is going on and the operator should stop and look.
+      const created = t.createdAt ? new Date(t.createdAt).toISOString().slice(0, 10) : '????-??-??';
+      if (missingModules.length === 0 && missingSettings.length === 0) {
+        report.push({kind:'log',message:`  = ${t.name} (${t.id}, created ${created}): already at parity`});
+      } else {
+        report.push({kind:'log',message:
+          `  ${apply ? '+' : '!'} ${t.name} (${t.id}, created ${created}): ${apply ? 'granted' : 'WOULD grant'} ` +
+            `modules ${missingModules.join(', ') || '—'} | settings ${missingSettings.join(', ') || '—'}` +
+            (heldModules.length ? ` | left alone (row already exists) ${heldModules.join(', ')}` : '')
+        });
+      }
+
+  return {moduleGrants,settingGrants,outOfScope,skipped,inertTenants,report};
 }
 
 async function main() {
@@ -229,7 +348,8 @@ async function main() {
   }
 
   const owner = createDb(ownerUrl);
-  const tenants = await owner.db.select({ id: tenant.id, name: tenant.name, createdAt: tenant.createdAt }).from(tenant);
+  // Ordered IDs are nomination only; authoritative tenant boundary and grant facts are reread inside each interval.
+  const tenants = await owner.db.select({ id: tenant.id }).from(tenant).orderBy(tenant.id);
   console.log(`  ${tenants.length} tenant(s)`);
   console.log(`  flip boundary            : ${createdBefore ?? '(none — planning over EVERY tenant)'}`);
 
@@ -239,114 +359,13 @@ async function main() {
   let skipped = 0;
   let failures = 0;
   let inertTenants = 0;
-  for (const t of tenants) {
-    if (t.id === SYSTEM_TENANT_ID) continue;
-    // OUT OF SCOPE: provisioned at or after the flip. `db/provision.ts` already wrote this tenant's
-    // install defaults; the env parity set is a statement about tenants that predate the flip, and
-    // applying it here would open two platform-scoped payroll switches for a brand-new customer. A
-    // tenant with no creation date at all is treated as in scope — the column is NOT NULL, so that
-    // cannot happen, and guessing "new" for an impossible row would silently skip a real gap.
-    if (createdBeforeAt && t.createdAt && new Date(t.createdAt) >= createdBeforeAt) {
-      outOfScope += 1;
-      continue;
-    }
+  for (const nomination of tenants) {
     try {
-      // Per tenant, per code, so the summary can report WHO was short a row rather than a total —
-      // "three tenants were missing typed_pay_components" is the fact an operator needs to sanity-check
-      // this against the customer list before applying.
-      //
-      // ANY EXISTING ROW, AT ANY GRAIN, MEANS HANDS OFF. `ON CONFLICT DO NOTHING` alone is not that
-      // check, and the difference is a real escalation (review r2). 0313's grain index is
-      // `UNIQUE (tenant_id, module_code, COALESCE(company_id, '0…0'))`, so a tenant holding only a
-      // COMPANY-SCOPED grant does not conflict with a tenant-wide insert — the script would have added
-      // one beside it and promoted a single subsidiary's purchase to the whole group, which is exactly
-      // the fail-open branch `core/entitlements.ts`'s scoped check refuses. A company-scoped row is a
-      // deliberate scope decision, and a `disabled` row is a deliberate revocation; neither is a gap.
-      // So the existence test runs FIRST and identically in both modes, and the insert only ever
-      // touches a code with no row of any kind. (`ON CONFLICT DO NOTHING` stays as the race guard.)
-      // PLAN FIRST, WRITE AFTER. The dependency check below needs the whole proposed set, and an
-      // operator watching a streaming log needs the warning to appear before the grant it is about.
-      const missingModules: string[] = [];
-      const heldModules: string[] = [];
-      for (const moduleCode of modules) {
-        const existing = await owner.db.execute(sql`
-          SELECT 1 FROM tenant_module WHERE tenant_id = ${t.id}::uuid AND module_code = ${moduleCode}`);
-        if (existing.length > 0) heldModules.push(moduleCode);
-        else missingModules.push(moduleCode);
-      }
-      skipped += heldModules.length;
-
-      // THE dependsOn CLOSURE, checked over what this tenant will actually END UP WITH (review r3).
-      // `db/provision.ts` refuses an incoherent pick set at the same seam and for the same reason: slice
-      // 2's resolver ANDs the closure, so an ACTIVE row whose dependency is missing resolves DISABLED —
-      // "a paid entitlement that is silently inert". This script had no such check, and its own
-      // documented opt-out produced exactly that shape: the header (and DEPLOY.md) tell an operator who
-      // wants a tenant to stay WITHOUT a module to write a `disabled` row for it first, and a disabled
-      // `payroll` row is invisible to `enabledModules` — after which this run happily grants
-      // `typed_pay_components` and `multi_cycle_payroll` as ACTIVE rows that resolve OFF, and reports
-      // them as granted. `typed_pay_components` is the code the header calls "the one that hurts".
-      //
-      // FLAGGED, NOT REFUSED. The reconciliation is per tenant and per code; aborting the whole run over
-      // one tenant's shape would leave the rest half-reconciled, which is worse. The line is loud, it
-      // names the inert codes, and `inert` feeds the exit status below so a preflight cannot pass over it.
-      const enabledRows = await owner.db.execute(sql`
-        SELECT module_code FROM tenant_module
-         WHERE tenant_id = ${t.id}::uuid AND status IN ('active','trial')
-           AND (expires_at IS NULL OR expires_at > now())`);
-      const willHold = [
-        ...new Set([...enabledRows.map((r) => String((r as { module_code: string }).module_code)), ...missingModules]),
-      ];
-      const unsatisfied = missingModuleDependencies(willHold);
-      if (unsatisfied.length > 0 && missingModules.length > 0) {
-        inertTenants += 1;
-        console.warn(
-          `  ⚠ ${t.name} (${t.id}): ${apply ? 'granted' : 'would grant'} ${missingModules.join(', ')}, but ` +
-            `${unsatisfied.join(', ')} ${unsatisfied.length === 1 ? 'is' : 'are'} not enabled for this tenant ⇒ ` +
-            'the grant RESOLVES DISABLED (slice 2 ANDs the dependsOn closure). Sell the dependency or ' +
-            'write a `disabled` row for the dependent code.',
-        );
-      }
-      if (apply) {
-        for (const moduleCode of missingModules) {
-          // `ON CONFLICT DO NOTHING` stays as the RACE guard; the existence test above is the policy.
-          await owner.db.execute(sql`
-            INSERT INTO tenant_module (tenant_id, module_code, status)
-            VALUES (${t.id}::uuid, ${moduleCode}, 'active')
-            ON CONFLICT DO NOTHING`);
-        }
-      }
-
-      const missingSettings: string[] = [];
-      for (const { key, value } of settings) {
-        const existing = await owner.db.execute(sql`
-          SELECT 1 FROM tenant_setting WHERE tenant_id = ${t.id}::uuid AND key = ${key}`);
-        if (existing.length > 0) continue;
-        if (apply) {
-          await owner.db.execute(sql`
-            INSERT INTO tenant_setting (tenant_id, key, value, source)
-            VALUES (${t.id}::uuid, ${key}, ${JSON.stringify(value)}::jsonb, 'platform')
-            ON CONFLICT DO NOTHING`);
-        }
-        missingSettings.push(key);
-      }
-      moduleGrants += missingModules.length;
-      settingGrants += missingSettings.length;
-      // The creation date is printed for SIGN-OFF, not used as a rule: a tenant created before 0313 ran
-      // was covered by its backfill and should show nothing here, so a pre-0313 date next to a proposed
-      // grant is the signal that something else is going on and the operator should stop and look.
-      const created = t.createdAt ? new Date(t.createdAt).toISOString().slice(0, 10) : '????-??-??';
-      if (missingModules.length === 0 && missingSettings.length === 0) {
-        console.log(`  = ${t.name} (${t.id}, created ${created}): already at parity`);
-      } else {
-        console.log(
-          `  ${apply ? '+' : '!'} ${t.name} (${t.id}, created ${created}): ${apply ? 'granted' : 'WOULD grant'} ` +
-            `modules ${missingModules.join(', ') || '—'} | settings ${missingSettings.join(', ') || '—'}` +
-            (heldModules.length ? ` | left alone (row already exists) ${heldModules.join(', ')}` : ''),
-        );
-      }
+      const result=await owner.db.transaction(tx=>reconcileEntitlementParityTenant(tx,nomination.id,{apply,modules,settings,createdBeforeAt}));
+      for(const line of result.report)if(line.kind==='warn')console.warn(line.message);else console.log(line.message);
+      moduleGrants+=result.moduleGrants; settingGrants+=result.settingGrants; outOfScope+=result.outOfScope; skipped+=result.skipped; inertTenants+=result.inertTenants;
     } catch (e) {
-      failures += 1;
-      console.error(`  ✗ ${t.name} (${t.id}): ${(e as Error).message}`);
+      failures+=1; console.error(`  ✗ ${nomination.id}: ${(e as Error).message}`);
     }
   }
   console.log(
@@ -403,7 +422,7 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((e) => {
+if(process.argv[1]?.endsWith('reconcile-entitlement-parity.ts')) main().catch((e) => {
   console.error(e);
   process.exit(1);
 });

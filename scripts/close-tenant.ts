@@ -43,6 +43,7 @@ import { appendEvent } from '../db/events';
 import { company, employment, tenant } from '../db/schema';
 import { closureDecision, type ClosureDecision } from '../core/tenant-lifecycle';
 import { todayInKualaLumpur } from '../lib/hr-date';
+import { lockOwnerTenantLifecycleTx } from './tenant-lifecycle-ownership';
 
 /** What closure ENDS, gathered before the decision so the operator reads it before they read a verdict. */
 export type ClosureImpact = {
@@ -100,113 +101,115 @@ export type ClosureOptions = {
 };
 
 export async function runClosure(url: string, opts: ClosureOptions): Promise<ClosureOutcome> {
+  opts = { ...opts, requestedAt: new Date(opts.requestedAt.getTime()), approvedAt: new Date(opts.approvedAt.getTime()) };
   const owner = createDb(url);
   const today = opts.today ?? todayInKualaLumpur();
+  return owner.db.transaction<ClosureOutcome>(async tx => {
+    if (opts.apply) await lockOwnerTenantLifecycleTx(tx, opts.tenantId);
 
-  const [t] = await owner.db
-    .select({ id: tenant.id, name: tenant.name, status: tenant.status })
-    .from(tenant)
-    .where(eq(tenant.id, opts.tenantId))
-    .limit(1);
-  if (!t) {
-    return { impact: null, decision: { action: 'refuse', reason: `no such tenant: ${opts.tenantId}` }, applied: false };
-  }
+    const [t] = await tx
+      .select({ id: tenant.id, name: tenant.name, status: tenant.status })
+      .from(tenant)
+      .where(eq(tenant.id, opts.tenantId))
+      .limit(1);
+    if (!t) {
+      return { impact: null, decision: { action: 'refuse', reason: `no such tenant: ${opts.tenantId}` }, applied: false };
+    }
 
-  // WHAT CLOSURE ENDS — gathered BEFORE the decision, and printed before it, because a verdict read
-  // without the size of the thing it applies to is a verdict nobody actually checked.
-  const [companies] = await owner.db
-    .select({ n: count() })
-    .from(company)
-    .where(eq(company.tenantId, t.id));
-  const [employments] = await owner.db
-    .select({ n: count() })
-    .from(employment)
-    .where(eq(employment.tenantId, t.id));
-  const [active] = await owner.db
-    .select({ n: count() })
-    .from(employment)
-    .where(and(eq(employment.tenantId, t.id), isNull(employment.terminatedOn)));
-  const [lastLeaver] = await owner.db
-    .select({ on: max(employment.terminatedOn) })
-    .from(employment)
-    .where(and(eq(employment.tenantId, t.id), isNotNull(employment.terminatedOn)));
+    // WHAT CLOSURE ENDS — gathered BEFORE the decision, and printed before it, because a verdict read
+    // without the size of the thing it applies to is a verdict nobody actually checked.
+    const [companies] = await tx
+      .select({ n: count() })
+      .from(company)
+      .where(eq(company.tenantId, t.id));
+    const [employments] = await tx
+      .select({ n: count() })
+      .from(employment)
+      .where(eq(employment.tenantId, t.id));
+    const [active] = await tx
+      .select({ n: count() })
+      .from(employment)
+      .where(and(eq(employment.tenantId, t.id), isNull(employment.terminatedOn)));
+    const [lastLeaver] = await tx
+      .select({ on: max(employment.terminatedOn) })
+      .from(employment)
+      .where(and(eq(employment.tenantId, t.id), isNotNull(employment.terminatedOn)));
 
-  const impact: ClosureImpact = {
-    tenantId: t.id,
-    tenantName: t.name,
-    status: t.status,
-    companies: companies?.n ?? 0,
-    employments: employments?.n ?? 0,
-    activeEmployments: active?.n ?? 0,
-    latestTerminationOn: lastLeaver?.on ?? null,
-  };
-
-  // THE DECISION IS NOT MADE HERE. Dual control, the already-closed guard and the retention comparison
-  // all live in core/tenant-lifecycle.ts, are pinned by test/tenant-lifecycle.test.ts, and are reached
-  // through this one call. Re-deciding any of it in the runner would give the rules a second home that
-  // could drift — and the two homes would disagree on the day it mattered most.
-  const decision = closureDecision({
-    tenantStatus: t.status,
-    requestedBy: opts.requestedBy,
-    approvedBy: opts.approvedBy,
-    retentionHeldUntil: opts.retentionHeldUntil,
-    today,
-  });
-
-  if (decision.action === 'refuse' || !opts.apply) {
-    return { impact, decision, applied: false };
-  }
-
-  // Narrowed by the guard above: closureDecision returned 'close', so both ids are non-null and
-  // distinct. The DB CHECK (tenant_closure_dual_control_check, migration 0350) says the same thing a
-  // second time — it is the backstop against a hand-written UPDATE, not a duplicate of this check.
-  const requestedBy = opts.requestedBy!;
-  const approvedBy = opts.approvedBy!;
-  const closedAt = new Date();
-
-  await owner.db.transaction(async (tx) => {
-    await tx
-      .update(tenant)
-      .set({
-        status: 'closed',
-        closedAt,
-        closureRequestedBy: requestedBy,
-        closureRequestedAt: opts.requestedAt,
-        closureApprovedBy: approvedBy,
-        closureApprovedAt: opts.approvedAt,
-      })
-      .where(eq(tenant.id, t.id));
-
-    // The event is the record of WHY a customer's account ended and who agreed to it. The row's five
-    // closure columns carry the same facts, but a column can be UPDATEd and this log cannot.
-    //
-    // actor is `system`: the runner is what wrote the row. The two humans are evidence carried in the
-    // payload, not the actor — attributing the write to the approver would claim they were at this
-    // terminal, and scripts/reactivate-tenant.ts stamps its half of the lifecycle the same way.
-    await appendEvent(tx as never, {
+    const impact: ClosureImpact = {
       tenantId: t.id,
-      aggregateType: 'tenant',
-      aggregateId: t.id,
-      eventType: 'tenant.closed',
-      actor: { type: 'system' },
-      payload: {
-        reason: decision.reason,
-        statusBefore: impact.status,
-        requestedBy,
-        requestedAt: opts.requestedAt.toISOString(),
-        approvedBy,
-        approvedAt: opts.approvedAt.toISOString(),
-        closedAt: closedAt.toISOString(),
-        retentionHeldUntil: opts.retentionHeldUntil,
-        companies: impact.companies,
-        employments: impact.employments,
-        activeEmployments: impact.activeEmployments,
-        appliedOn: today,
-      },
-    });
-  });
+      tenantName: t.name,
+      status: t.status,
+      companies: companies?.n ?? 0,
+      employments: employments?.n ?? 0,
+      activeEmployments: active?.n ?? 0,
+      latestTerminationOn: lastLeaver?.on ?? null,
+    };
 
-  return { impact, decision, applied: true };
+    // THE DECISION IS NOT MADE HERE. Dual control, the already-closed guard and the retention comparison
+    // all live in core/tenant-lifecycle.ts, are pinned by test/tenant-lifecycle.test.ts, and are reached
+    // through this one call. Re-deciding any of it in the runner would give the rules a second home that
+    // could drift — and the two homes would disagree on the day it mattered most.
+    const decision = closureDecision({
+      tenantStatus: t.status,
+      requestedBy: opts.requestedBy,
+      approvedBy: opts.approvedBy,
+      retentionHeldUntil: opts.retentionHeldUntil,
+      today,
+    });
+
+    if (decision.action === 'refuse' || !opts.apply) {
+      return { impact, decision, applied: false };
+    }
+
+    // Narrowed by the guard above: closureDecision returned 'close', so both ids are non-null and
+    // distinct. The DB CHECK (tenant_closure_dual_control_check, migration 0350) says the same thing a
+    // second time — it is the backstop against a hand-written UPDATE, not a duplicate of this check.
+    const requestedBy = opts.requestedBy!;
+    const approvedBy = opts.approvedBy!;
+    const closedAt = new Date();
+
+      await tx
+        .update(tenant)
+        .set({
+          status: 'closed',
+          closedAt,
+          closureRequestedBy: requestedBy,
+          closureRequestedAt: opts.requestedAt,
+          closureApprovedBy: approvedBy,
+          closureApprovedAt: opts.approvedAt,
+        })
+        .where(eq(tenant.id, t.id));
+
+      // The event is the record of WHY a customer's account ended and who agreed to it. The row's five
+      // closure columns carry the same facts, but a column can be UPDATEd and this log cannot.
+      //
+      // actor is `system`: the runner is what wrote the row. The two humans are evidence carried in the
+      // payload, not the actor — attributing the write to the approver would claim they were at this
+      // terminal, and scripts/reactivate-tenant.ts stamps its half of the lifecycle the same way.
+      await appendEvent(tx as never, {
+        tenantId: t.id,
+        aggregateType: 'tenant',
+        aggregateId: t.id,
+        eventType: 'tenant.closed',
+        actor: { type: 'system' },
+        payload: {
+          reason: decision.reason,
+          statusBefore: impact.status,
+          requestedBy,
+          requestedAt: opts.requestedAt.toISOString(),
+          approvedBy,
+          approvedAt: opts.approvedAt.toISOString(),
+          closedAt: closedAt.toISOString(),
+          retentionHeldUntil: opts.retentionHeldUntil,
+          companies: impact.companies,
+          employments: impact.employments,
+          activeEmployments: impact.activeEmployments,
+          appliedOn: today,
+        },
+      });
+
+    return { impact, decision, applied: true };
+  });
 }
 
 // ── CLI ────────────────────────────────────────────────────────────────────────────────────────────

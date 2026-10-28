@@ -38,6 +38,8 @@
  * day, plus one `attendance-recompute.run` event carrying the whole per-day before/after array. That run
  * event is what lets the screen re-open a past run, and it is why the history needs no table of its own.
  */
+import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx, LeaveDependencyUnavailable } from '../packs/leave/service';
 import { and, asc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { withTenant, type SessionContext } from '../db/client';
@@ -210,6 +212,7 @@ const sameFigures = (a: RecomputeFigures, b: RecomputeFigures): boolean =>
  * shape an apply would, including the pay-run warnings, so the screen previews the real consequence.
  */
 export async function recomputeAttendance(ctx: SessionContext, p: RecomputeScope): Promise<RecomputeResult> {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if (!ISO_DATE.test(p.from) || !ISO_DATE.test(p.to)) {
     throw new RecomputeScopeError('A date range is required (YYYY-MM-DD).');
   }
@@ -221,6 +224,8 @@ export async function recomputeAttendance(ctx: SessionContext, p: RecomputeScope
   const narrowed = p.employmentIds && p.employmentIds.length > 0 ? p.employmentIds : null;
 
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
     // The employment set, through the SAME current-assignment join attendanceForDate uses for its
     // department filter, so the two screens cannot disagree about who is in a department. RLS fences the
     // company to the caller's scope; an out-of-scope companyId simply selects nobody.
@@ -229,7 +234,7 @@ export async function recomputeAttendance(ctx: SessionContext, p: RecomputeScope
       isNull(assignment.validTo),
       isNull(assignment.supersededAt),
     );
-    const people = await tx
+    const readPeople = () => tx
       .select({
         employmentId: employment.id,
         employeeCode: employment.employeeCode,
@@ -247,6 +252,7 @@ export async function recomputeAttendance(ctx: SessionContext, p: RecomputeScope
         ),
       )
       .orderBy(asc(person.fullName));
+    const people = await readPeople();
 
     const empty: RecomputeResult = {
       runId,
@@ -270,6 +276,12 @@ export async function recomputeAttendance(ctx: SessionContext, p: RecomputeScope
     const [authority] = await tx.execute(sql`select app.is_admin_for(${p.companyId}::uuid) as allowed`) as unknown as {allowed:boolean}[];
     if(!authority?.allowed)throw new RecomputeScopeError('Attendance recalculation requires administration of this company.');
     const empIds = people.map((x) => x.employmentId);
+    if(!p.dryRun){
+      await lockLeaveDependenciesTx(tx,ctx.tenantId,empIds);
+      const fresh=await readPeople();
+      const image=(rows:typeof people)=>JSON.stringify(rows.slice().sort((a,b)=>a.employmentId.localeCompare(b.employmentId)));
+      if(image(people)!==image(fresh))throw new LeaveDependencyUnavailable();
+    }
     for(const employmentId of [...empIds].sort())await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + employmentId}, 0))`);
     const who = new Map(people.map((x) => [x.employmentId, x]));
 

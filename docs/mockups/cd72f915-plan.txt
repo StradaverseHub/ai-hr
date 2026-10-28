@@ -1,0 +1,43 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+The launch check you asked for already exists, but it is invisible until the last moment. When the BU CEO presses Submit, AIHR refuses unless every seat on the route has at least one person with an active login: BU CEO, BG CEO / authorised proxy, Group Rewards, CTRO, Executive Chairman and Payroll handoff. The same check runs again at every approval step. So a review cannot stall at a stage with nobody assigned.
+
+What is missing: nobody can see in advance which roles are missing, and only the last Group Rewards person is protected from removal.
+
+WHAT WE'LL CHANGE
+
+- Each unit review gets a coverage status on the Rewards access page: every required role listed as assigned (with names) or Missing, and PBP shown as optional.
+
+- The same "roles missing" badge appears on the review's row in Rewards configuration.
+
+- When the BU CEO tries to submit with roles missing, the message names the missing roles instead of a general error.
+
+- Removing the last active person in any required role is refused, as it is today for Group Rewards. To change the person, use Edit and replace them in one step.
+
+WHAT YOU'LL GET
+
+Gaps are visible and fixed while the review is being set up, not discovered when the BU CEO tries to submit.
+
+GOOD TO KNOW
+
+- A person whose login is disabled, suspended or past their last working day does not count as coverage. This is already the rule and stays.
+
+- A brand-new review starts with only its creator as Group Rewards, so it will show the other roles as missing until access is added. That is expected.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACTS (origin/alpha 162a8f743): decideRewardUnit (service.ts) on submit/approve requires [...route, 'payroll'] each to have a member whose app_user is not archived and not app.login_blocked, else 'Assign every approval role and the payroll handoff before submitting.' packs/rewards/maintenance.ts prepareAccess blocks only loss of the last active 'gr' (code lastGr); access-editor.tsx shows lastGrHelp. Annual route = bu, bg, gr, ctro, ec.
+
+1. One owner for required roles: export rewardRequiredRoles(unit) = route + payroll (annual: fixed list; off-cycle: offcycleRoute) from packs/rewards, used by decideRewardUnit, prepareAccess and the projections.
+
+2. Coverage projection: in rewardAccessAdministration and listRewardUnits compute per unit {role, activeHolders[]} using the same active-login predicate as decideRewardUnit.
+
+3. prepareAccess: generalise lastGr to lastRequired(role) for any required role (draft only, since non-draft is already locked). Keep add-first ordering so Edit replacements pass. New error code lastRequired with role in the message.
+
+4. decideRewardUnit error lists missing role labels.
+
+5. UI: coverage panel per review on the access page; badge in the configuration list. Tests: coverage projection with disabled login; removing last CTRO refused; replace via edit allowed; submit message names roles. No data change, no migration.

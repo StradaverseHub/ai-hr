@@ -6,6 +6,8 @@
  * failure isolation; the direct-termination bypass; and the payroll (leaverAdvisory) exposure.
  */
 import { and, eq } from 'drizzle-orm';
+import { lockLeaveDependenciesTx } from '../core/leave-dependency-lock';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
@@ -435,5 +437,119 @@ describe('ADR-0069 — RLS smoke', () => {
         tx.update(schema.leaveEncashmentSnapshot).set({ overrideReason: 'self-edit attempt' }).where(eq(schema.leaveEncashmentSnapshot.id, snap!.id)),
       ),
     ).rejects.toThrow();
+  });
+});
+
+
+describe('participating encashment override ownership — authored, unrun acceptance', () => {
+  it.each(['unfreeze-employment', 'unfreeze-row', 'adjust-employment', 'adjust-row', 'policy-employment'] as const)('%s refuses contention without snapshot/event effects, then succeeds', async mode => {
+    const ctx = adminCtx(b), employeeId = await hire('FictionalEncashmentOwnership');
+    const today = todayInKualaLumpur(), lastDay = new Date(Date.parse(`${today}T00:00:00Z`) + 14 * 86_400_000).toISOString().slice(0, 10);
+    await grantAnnual(employeeId, '5', `${today.slice(0, 4)}-01-01`); await enablePolicy();
+    const [employee] = await owner.db.select({ personId: schema.employment.personId }).from(schema.employment)
+      .where(eq(schema.employment.id, employeeId));
+    const userId = await createAppUser(b.tenantId, employee.personId, 'employee');
+    const asEmployee: SessionContext = { tenantId: b.tenantId, userId, roles: ['employee'],
+      personId: employee.personId, entitlements: harnessSnapshot(b.tenantId) };
+    const requested = await submitResignation(asEmployee, { employmentId: employeeId, lastWorkingDay: lastDay });
+    await approveResignation(requested.requestId);
+    const snap = await encashmentSnapshotForEmployment(ctx, employeeId);
+    expect(snap).not.toBeNull();
+    const snapshotId = snap!.id;
+    const mutate = () => mode.startsWith('policy')
+      ? setEncashmentPolicy(ctx, { companyId: b.companyId, enabled: false, autoFreeze: false })
+      : mode.startsWith('unfreeze')
+      ? unfreezeEncashment(ctx, { snapshotId, reason: 'Fictional source correction' })
+      : adjustEncashment(ctx, { snapshotId, overrideDays: 3.5, reason: 'Fictional source correction' });
+    const state = async () => ({
+      policies: await owner.db.select().from(schema.leaveEncashmentPolicy)
+        .where(eq(schema.leaveEncashmentPolicy.companyId, b.companyId)),
+      snapshots: await owner.db.select().from(schema.leaveEncashmentSnapshot)
+        .where(eq(schema.leaveEncashmentSnapshot.id, snapshotId)),
+      events: await owner.db.select({ id: schema.domainEvent.id }).from(schema.domainEvent)
+        .where(eq(schema.domainEvent.tenantId, b.tenantId))
+        .orderBy(schema.domainEvent.id),
+    });
+    const before = await state();
+    let ready!: () => void, failed!: (error: unknown) => void, release!: () => void;
+    const started = new Promise<void>((yes, no) => { ready = yes; failed = no; });
+    const finish = new Promise<void>(yes => { release = yes; });
+    const watchdog = setTimeout(() => { failed(new Error('owned encashment handshake timed out')); release(); }, 10_000);
+    const holder = withTenant(ctx, async tx => {
+      if (mode.endsWith('employment')) await lockLeaveDependenciesTx(tx, b.tenantId, [employeeId]);
+      else {
+        const held = await tx.select({ id: schema.leaveEncashmentSnapshot.id }).from(schema.leaveEncashmentSnapshot)
+          .where(eq(schema.leaveEncashmentSnapshot.id, snapshotId)).for('update');
+        expect(held).toHaveLength(1);
+      }
+      ready(); await finish;
+    });
+    void holder.catch(failed);
+    try {
+      await started;
+      await expect(mutate()).rejects.toThrow(mode.endsWith('employment') ? 'Leave source is unavailable' : 'That encashment snapshot is busy');
+      expect(await state()).toEqual(before);
+    } finally { release(); clearTimeout(watchdog); await holder; }
+    await mutate();
+    const after = await state();
+    expect(after.snapshots).toHaveLength(1);
+    expect(after.snapshots[0].status).toBe(mode.startsWith('unfreeze') ? 'unfrozen' : 'frozen');
+    if (mode.startsWith('adjust')) expect(Number(after.snapshots[0].overrideDays)).toBe(3.5);
+    if (mode.startsWith('policy')) {
+      expect(after.policies).toHaveLength(1); expect(after.policies[0].enabled).toBe(false); expect(after.policies[0].autoFreeze).toBe(false);
+    }
+    expect(after.events).toHaveLength(before.events.length + 1);
+  });
+});
+
+
+describe('participating resignation acceptance and freeze — authored, unrun acceptance', () => {
+  it.each(['employee-interval', 'request-row'] as const)('refuses a held %s without termination/freeze effects, then accepts once', async heldKind => {
+    const ctx = adminCtx(b), employeeId = await hire('FictionalResignationOwnership');
+    const today = todayInKualaLumpur(), lastDay = new Date(Date.parse(`${today}T00:00:00Z`) + 14 * 86_400_000).toISOString().slice(0, 10);
+    await grantAnnual(employeeId, '5', `${today.slice(0, 4)}-01-01`); await enablePolicy();
+    const [employee] = await owner.db.select({ personId: schema.employment.personId }).from(schema.employment)
+      .where(eq(schema.employment.id, employeeId));
+    const userId = await createAppUser(b.tenantId, employee.personId, 'employee');
+    const asEmployee: SessionContext = { tenantId: b.tenantId, userId, roles: ['employee'],
+      personId: employee.personId, entitlements: harnessSnapshot(b.tenantId) };
+    const requested = await submitResignation(asEmployee, { employmentId: employeeId, lastWorkingDay: lastDay });
+    const state = async () => ({
+      employment: await owner.db.select().from(schema.employment).where(eq(schema.employment.id, employeeId)),
+      assignments: await owner.db.select().from(schema.assignment).where(eq(schema.assignment.employmentId, employeeId)).orderBy(schema.assignment.id),
+      requests: await owner.db.select().from(schema.resignationRequest).where(eq(schema.resignationRequest.id, requested.requestId)),
+      snapshots: await owner.db.select().from(schema.leaveEncashmentSnapshot).where(eq(schema.leaveEncashmentSnapshot.employmentId, employeeId)).orderBy(schema.leaveEncashmentSnapshot.id),
+      events: await owner.db.select({ id: schema.domainEvent.id }).from(schema.domainEvent).where(eq(schema.domainEvent.tenantId, b.tenantId)).orderBy(schema.domainEvent.id),
+    });
+    const before = await state();
+    expect(before.requests[0].status).toBe('pending'); expect(before.employment[0].terminatedOn).toBeNull();
+    expect(before.snapshots).toHaveLength(0);
+    let ready!: () => void, failed!: (error: unknown) => void, release!: () => void;
+    const started = new Promise<void>((yes, no) => { ready = yes; failed = no; });
+    const finish = new Promise<void>(yes => { release = yes; });
+    const watchdog = setTimeout(() => { failed(new Error('owned resignation handshake timed out')); release(); }, 10_000);
+    const holder = withTenant(ctx, async tx => {
+      if (heldKind === 'employee-interval') await lockLeaveDependenciesTx(tx, b.tenantId, [employeeId]);
+      else {
+        const held = await tx.select({ id: schema.resignationRequest.id }).from(schema.resignationRequest)
+          .where(eq(schema.resignationRequest.id, requested.requestId)).for('update');
+        expect(held).toHaveLength(1);
+      }
+      ready(); await finish;
+    });
+    void holder.catch(failed);
+    try {
+      await started;
+      await expect(approveResignation(requested.requestId)).rejects.toThrow(heldKind === 'employee-interval'
+        ? 'Leave source is unavailable' : 'That resignation is busy');
+      expect(await state()).toEqual(before);
+    } finally { release(); clearTimeout(watchdog); await holder; }
+    await approveResignation(requested.requestId);
+    const accepted = await state();
+    expect(accepted.requests[0].status).toBe('accepted'); expect(accepted.employment[0].terminatedOn).toBe(lastDay);
+    expect(accepted.snapshots).toHaveLength(1); expect(Number(accepted.snapshots[0].balanceDays)).toBe(5);
+    expect(accepted.snapshots[0].status).toBe('frozen');
+    await expect(approveResignation(requested.requestId)).rejects.toThrow('already accepted');
+    expect(await state()).toEqual(accepted);
   });
 });

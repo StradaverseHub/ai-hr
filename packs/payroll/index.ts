@@ -29,7 +29,8 @@
  *   `core/payroll-run-group.ts` (multi-company run groups),
  *   `core/payroll-view.ts` (processed-payslip read models + cross-company listings),
  *   `core/payroll-readiness.ts` (pre-run readiness checks), `core/payroll-history-import.ts`
- *   (historical payslip import), `core/payroll-permissions-admin.ts` (payroll permission grants +
+ *   (historical payslip analysis), `core/payroll-history-revisions.ts` (immutable multi-company import,
+ *   correction and guarded recovery), `core/payroll-permissions-admin.ts` (payroll permission grants +
  *   step-up), `core/pay-components.ts` (the pay-component catalog + statutory allowlist resolution
  *   via the active country pack — the D6 vocabulary consumer), `core/pay-rule.ts` +
  *   `core/pay-rule-ai.ts` (pay-rule library + AI drafting), `core/cp38.ts` (CP38/CP39 IRB deduction
@@ -270,6 +271,11 @@ export const payrollPack: ModulePack = {
     // 4157a498 (migration 0427). Declared rather than left undeclared because a satellite table with no
     // owner is exactly what D5 exists to prevent: it is read only by core/payroll-history-import.ts.
     { table: 'payroll_import_code', note: 'the DOE-code catalog the payroll-history importer validates against, and where each code lands on the folded month' },
+    { table: 'payroll_history_import_attempt', note: 'immutable source file, scoped validation plan and upload identity' },
+    { table: 'payroll_history_import_record', note: 'canonical imported company/employment/period/cycle identity' },
+    { table: 'payroll_history_import_snapshot', note: 'immutable provenance bound to the canonical payslip money' },
+    { table: 'payroll_history_import_revision', note: 'append-only effective-version selection and compensating recovery' },
+    { table: 'payroll_history_import_event', note: 'immutable confirmation, failure and recovery audit' },
     { table: 'employment_pay_component', note: 'per-employment recurring pay-component assignments (fixed txns)' },
     { table: 'payroll_batch_component', note: 'per-batch per-employee resolved component amounts' },
     { table: 'payroll_attendance_allowance_source', note: 'attendance allowance contribution identities' },

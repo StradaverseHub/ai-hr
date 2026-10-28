@@ -1,5 +1,7 @@
 # ADR-0049 — Job-function partner roles
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted
 Date: 2026-06-26
 References: ADR-0004 (capability layer was aspirational), ADR-0009 (company-scoped authz),

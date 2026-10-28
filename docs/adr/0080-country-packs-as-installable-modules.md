@@ -1,5 +1,7 @@
 # ADR-0080 — Packs as the module system: module packs and country packs
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Status:** Accepted — rung 1 (pack registry + CountryPack interface + both drift guards) landed 2026-07-23;
   rung 2 (Attendance module pack: `packs/attendance` declaration + service facade, registry-mounted
   sidebar node, boundary ratchet seeded with the audited kernel-contract debt) landed 2026-07-23 —

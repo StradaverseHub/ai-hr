@@ -1,3 +1,4 @@
+import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, eq, sql, isNull, inArray, getTableName } from 'drizzle-orm';
@@ -258,8 +259,11 @@ export function previewSystemLabelImport(ctx:SessionContext,bytes:Buffer,_legacy
 }
 
 export function applySystemLabelImport(ctx:SessionContext,p:{bytes:Buffer;mode?:LabelImportMode;token:string;confirmUpdates?:boolean;selectedKeys?:string[]}): Promise<{imported:number;updated:number;skipped:number;failed:number;errorReport?:string}> {
+  p={...p,bytes:Buffer.from(p.bytes),selectedKeys:p.selectedKeys?.slice()};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const rows=readSystemLabelWorkbook(p.bytes);
   return withTenant(ctx,async tx=>{
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // Same lock order as the canonical owners; an unexpected writer refusal rolls back all additions.
     await tx.execute(sql`LOCK TABLE profile_option, job_grade, grade_group, grade_group_member IN SHARE ROW EXCLUSIVE MODE`);
     await lockLabelCriteriaTx(tx,ctx.tenantId);

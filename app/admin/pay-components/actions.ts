@@ -4,7 +4,7 @@ import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
-import { getSession } from '@/lib/session';
+import { getBrowserCommandSession,getSession } from '@/lib/session';
 import { isAdmin } from '@/lib/authz';
 import {
   archivePayComponent,
@@ -252,20 +252,22 @@ export async function draftPayRuleAction(p: {
   componentCode: string | null;
   componentProrates: boolean;
 }): Promise<{ rule?: PayRule; explanation?: string; error?: string }> {
-  const s = await getSession();
+  const captured={description:p?.description,componentCode:p?.componentCode,componentProrates:p?.componentProrates};
   const t = await getTranslations('payRule');
   try {
+    const s=await getBrowserCommandSession();
+    if(!isAdmin(s))return {error:t('assistFailed')};
     const { rule, explanation } = await draftPayRule(s, {
-      description: p.description,
-      componentCode: p.componentCode,
-      componentProrates: p.componentProrates,
+      description: captured.description,
+      componentCode: captured.componentCode,
+      componentProrates: captured.componentProrates,
     });
     return { rule, explanation };
   } catch (e) {
     if (e instanceof PayRuleDraftError) {
       return { error: e.reason === 'not_configured' ? t('assistUnconfigured') : t('assistFailed') };
     }
-    return { error: publicErrorMessage(e) };
+    return { error:t('assistFailed') };
   }
 }
 

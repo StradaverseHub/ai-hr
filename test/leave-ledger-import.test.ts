@@ -28,6 +28,8 @@ import { createCompany, createDepartment, createLeaveType } from '../core/admin'
 import { openLeaveYear, leaveBalance } from '../core/leave';
 import { validateLeaveImport, commitLeaveImport } from '../core/leave-import';
 import { withTenant } from '../db/client';
+import { lockLeaveDependenciesTx } from '../core/leave-dependency-lock';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import {
   adminCtx,
   closeAll,
@@ -429,5 +431,44 @@ describe('leave import — TOIL (in_lieu_accrual) handling', () => {
     });
     expect(preview.rows[0].ok).toBe(false);
     expect(preview.rows[0].errors.join(' ')).toMatch(/TOIL import not supported/);
+  });
+});
+
+/** Authored actual per-row participant regression; UNRUN until coordinated local admission. */
+describe('leave ledger import protected row transactions', () => {
+  it('refuses the busy employee only, commits the independent row, and retries without duplicating it', async () => {
+    const ctx = adminCtx(b), today = todayInKualaLumpur();
+    const first = await hire({ hiredOn: `${today.slice(0, 4)}-01-01` });
+    const second = await hire({ hiredOn: `${today.slice(0, 4)}-01-01` });
+    const records = [first, second].map(employee => ({ employee_id: employee.code, leave_type: 'ANNUAL',
+      transaction_type: 'adjustment', days: '3', effective_date: today }));
+    const beforeFirst = await ledgerBalance(first.employmentId, b.annualLeaveTypeId);
+    const beforeSecond = await ledgerBalance(second.employmentId, b.annualLeaveTypeId);
+    let ready!: () => void, fail!: (error: unknown) => void, release!: () => void;
+    const started = new Promise<void>((yes, no) => { ready = yes; fail = no; });
+    const finish = new Promise<void>(yes => { release = yes; });
+    const watchdog = setTimeout(() => { fail(new Error('owned ledger import handshake timed out')); release(); }, 10_000);
+    const holder = withTenant(ctx, async tx => {
+      await lockLeaveDependenciesTx(tx, b.tenantId, [first.employmentId]); ready(); await finish;
+    });
+    void holder.catch(fail);
+    try {
+      await started;
+      const result = await commitLeaveImport(ctx, { records });
+      expect(result).toMatchObject({ imported: 1, skipped: 0, totalRows: 2 });
+      expect(result.failed).toHaveLength(1);
+      expect(result.failed[0]).toMatchObject({ rowNum: 1, employeeRef: first.code });
+      expect(await ledgerBalance(first.employmentId, b.annualLeaveTypeId)).toBe(beforeFirst);
+      expect(await ledgerBalance(second.employmentId, b.annualLeaveTypeId)).toBe(beforeSecond + 3);
+      const events = await owner.db.select().from(schema.domainEvent)
+        .where(eq(schema.domainEvent.tenantId, b.tenantId)).orderBy(schema.domainEvent.id);
+      const summaries = events.filter(event => event.eventType === 'leave.import.completed');
+      expect(summaries).toHaveLength(1);
+      expect(summaries[0].payload).toMatchObject({ imported: 1, failed: 1, skipped: 0, totalRows: 2 });
+    } finally { release(); clearTimeout(watchdog); await holder; }
+    expect(await commitLeaveImport(ctx, { records })).toMatchObject({ imported: 1, failed: [], skipped: 1, totalRows: 2 });
+    expect(await ledgerBalance(first.employmentId, b.annualLeaveTypeId)).toBe(beforeFirst + 3);
+    expect(await ledgerBalance(second.employmentId, b.annualLeaveTypeId)).toBe(beforeSecond + 3);
+    expect(await commitLeaveImport(ctx, { records })).toMatchObject({ imported: 0, failed: [], skipped: 2, totalRows: 2 });
   });
 });

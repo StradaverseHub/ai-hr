@@ -46,7 +46,7 @@ describe('Home other assigned-decision metadata owners',()=>{
    expect(await pendingAttendanceTaskMetadata(ctx,[])).toEqual([]);
    await expect(pendingAttendanceTaskMetadata({...ctx,personId:e.personId})).rejects.toThrow(AssignedWorkPrincipalUnavailableError);
   });
-  const inbox=await listPendingTasks(ctx,undefined,{attendance:true,claims:false});
+  const inbox=await listPendingTasks(ctx,undefined,{attendance:true,claims:false,performance:false,rewards:false});
   expect(inbox.filter(t=>t.kind==='attendance')).toHaveLength(211);
  });
  it('counts all resignation headers, reads no reason or attachment, and follows the actual rejection',async()=>{

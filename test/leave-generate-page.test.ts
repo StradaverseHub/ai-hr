@@ -75,6 +75,9 @@ function codeReferences(needle: string): string[] {
   const hits: string[] = [];
   for (const dir of ['app', 'components', 'core', 'db', 'lib', 'localization', 'packs', 'scripts']) {
     for (const file of walk(resolve(ROOT, dir))) {
+      // ADR-0151's capability inventory names every server-action export as classification metadata. It
+      // imports and calls nothing, so it is not a caller and never widens the closed set below.
+      if (relative(ROOT, file) === 'lib/ai/agent-capability-inventory.ts') continue;
       if (codeLines(readFileSync(file, 'utf8')).some((l) => l.includes(needle))) {
         hits.push(relative(ROOT, file));
       }

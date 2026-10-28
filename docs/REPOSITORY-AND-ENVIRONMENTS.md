@@ -1,67 +1,39 @@
-# Repository and deployment environments
+# Repository and environments
 
-Owner decision: 25 October 2026 (Asia/Kuala_Lumpur). This document owns the repository and branch-to-environment policy. Read it before changing Git remotes, CI/CD, release targets or branch roles.
+This file owns branch/environment policy. Owner decisions recorded 25–26 October 2026 remain in force until explicitly changed; query Git, CI and the target installation for current state.
 
-## Current branch integration instruction
+## Repository and integration
 
-Owner override: 25 October 2026, after the verified Board 3 staging release. The owner instructed: “Can merge to main also, make alpha and main the same commit. For now, merge to this two branch, until i tell you to stop in the future”.
+Canonical source: [StradaverseHub/ai-hr](https://github.com/StradaverseHub/ai-hr). `main` is the default branch.
 
-Until the owner revokes this instruction, integrate each verified release into both `alpha` and `main`, keeping both published branch heads at the same commit. Preserve existing history through normal merges and fast-forward pushes; do not force-reset either branch or include unrelated uncommitted work. This supersedes the earlier instruction to withhold Board 3 and later releases from `main` and the table's separate promotion timing. The existing host remains staging; the separate live installation remains unprovisioned. Branch alignment does not authorize an additional deployment or enable deployment automation.
-
-## Repository
-
-The sole canonical repository is **https://github.com/StradaverseHub/ai-hr** (public, GitHub organization `StradaverseHub`, repository ID `1333414856`). The earlier `zenlam/ai-hr` and personal-account `stradaverse-hub/ai-hr` locations are historical; use the organization URL for every new clone, push, pull request and CI integration.
-
-```sh
-git remote set-url origin https://github.com/StradaverseHub/ai-hr.git
-```
-
-## Public-repository Actions capacity
-
-On 26 October 2026 the owner made this repository public; authenticated GitHub metadata confirmed `visibility=PUBLIC` and `isPrivate=false`. [Standard GitHub-hosted Actions are free for public repositories](https://docs.github.com/en/billing/concepts/product-billing/github-actions), so the earlier private included-minute hold is superseded for these runs. Use standard runners only: larger runners remain separately billed, and artifact/cache storage has separate allowances. No paid capacity or billing-setting change is authorized by this visibility change.
-
-[Standard public Ubuntu runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) provide four CPUs and 16 GB RAM. Record actual execution resources and timings; results from the earlier private runners do not prove current performance. The existing complete-coverage, release-coordination and staging/main deployment rules remain in force.
-
-## Private production package distribution
-
-Owner decision, 26 October 2026: production release assets belong only in the separate **private** `StradaverseHub/ai-hr-releases` repository (ID `1434418441`). Public source visibility does not authorize public production downloads. Dated source tags identify the accepted commit and are mirrored unchanged to the private repository; packages, checksums, manifests and release notes are published there. See [Production packages](PRODUCTION-PACKAGES.md) for the explicit human staging-acceptance command. Publication does not authorize production deployment.
-
-## Branch and environment roles
-
-| Branch | Environment | Target |
-|---|---|---|
-| `alpha` | Staging / internal acceptance | The existing server, previously called production: SSH alias `aihr-staging` (connection settings are private; see [Operator access](../deploy/OPERATOR-ACCESS.md)), application `/opt/ai-hr`, service `aihr`, application listener `127.0.0.1:3000`. |
-| `main` | New production / live | Reserved for the separate live installation that the owner will set up. Its host, URL, database, credentials and deployment integration are not established by this decision. |
-| `codex/*` and other work branches | Isolated development | Target `alpha` for staging integration; promote a verified release to `main` for the future live environment. |
-
-Keep `main` as the repository default branch. Reserving it for production does not mean deleting its history, emptying the branch or resetting existing work. Staging acceptance and live promotion remain distinct actions.
-
-The name `.env.production`, Next.js production build mode, an old runbook saying "production", and a healthy running service do not identify the new live environment. The existing host is now designated **staging** by the owner. Preserve its existing database and data while changing this designation.
-
-## Transition and release coordination
-
-**Owner deployment rule — 26 October 2026.** Deploy verified changes to staging first and verify
-staging acceptance. Production deployment requires a subsequent explicit request from the owner.
-A staging deployment, successful checks, branch alignment, tag or package publication does not
-authorize production deployment. After staging verification, stop and report the result.
-
-- `alpha` starts from the existing host's verified deployed application commit **`c98bfed60f6330b57f5a67d959ce6e3757df3b53`**, not from an unshipped development candidate. Read-only server evidence on 25 October 2026 showed `ref=built_ref` at that commit, build ID `dhL_pFtVUIgHtI832fI05` and `stale_build=0`. This is the initial baseline, not a permanent claim about the current deployment. Documentation commits may advance `alpha` without deploying application code.
-- Board 3 owns the in-flight verification, server release and Mac resource window. Coordinate its eventual deployment to the existing host as a **staging / alpha** release. Its owner will reconcile the alpha ref and local WIP before integrating the verified candidate; the former automatic merge-to-main step is superseded by this branch decision.
-- Branch creation/publication and this document do not restart services, move data, provision the new live host, configure GitHub environments or enable deployment workflows. No runtime or infrastructure cutover is implied by a Git push.
-- Until release tooling has explicit environment selection, inspect its real target and coordinate with the release owner. Historical commands in `CLAUDE.md` and `deploy/DEPLOY.md` describe the existing host; their old main-to-production assumptions are superseded here. Never interpret a `main` release as permission to deploy to that host.
-- Before enabling automated deployment, bind `alpha` explicitly to staging and `main` explicitly to the new live environment. Configure separate hosts, databases, credentials/secrets and GitHub environment approvals as appropriate to each installation. Preserve the existing gate, migration, backup, arrival and health verification requirements.
-
-## Evidence for future builders
-
-Treat this file as the durable owner decision, and query live state for implementation facts:
+The owner instructed verified releases to be integrated into **both main and alpha at the same commit**, preserving history through normal merges and fast-forwards. This overrides older separate promotion timing. Do not force-reset branches or include unrelated WIP. Inspect/fetch both refs and their divergence before integration; do not treat either cached ref as automatically current.
 
 ```sh
 git remote -v
-git ls-remote --symref origin HEAD refs/heads/alpha refs/heads/main
+git worktree list
+git fetch origin main alpha
+git rev-list --left-right --count HEAD...origin/main
+git rev-list --left-right --count HEAD...origin/alpha
 ```
 
-For the existing server, its `deploy/deploy-state.sh status`, active service and verified source/build arrival determine what is actually running. A branch head or a Markdown note alone is not deployment proof. The new live environment remains pending until its installation and successful deployment are independently verified.
+Worktree paths are local state discovered through Git. A folder name or an old Markdown pointer does not identify its branch or freshness.
 
-## GitHub Actions rollout
+## Environments and authority
 
-Read [Alpha/staging Actions](ALPHA-STAGING-ACTIONS.md) for exact-commit CI dispatch, coverage and the explicit staging deployment hold during Board 3. Main deployment remains disabled.
+| Branch | Role |
+| --- | --- |
+| alpha | Existing staging/internal-acceptance installation; private SSH alias aihr-staging, application /opt/ai-hr, service aihr. |
+| main | Source for the separate production installation; see the [25–26 October commissioning record](PRODUCTION-DEPLOYMENT-RECORD.md). Branch alignment does not deploy that installation. |
+| Work branches | Isolated candidates based on a verified current integration ref. |
+
+Deploy verified changes to staging first. Verify exact source/build arrival, migration ledger, restart/health and acceptance. **Production requires a subsequent explicit owner request.** A test result, tag, package or aligned branch is not deployment authorization. `.env.production` and Next production mode do not identify the live environment.
+
+Preserve staging data and private target configuration. Read [operator access](../deploy/OPERATOR-ACCESS.md) before remote commands. Inspect release tooling's real target and coordinate with the current release owner. Determine installed source and build using `deploy/deploy-state.sh status` and independent arrival/service checks; an old commit or board-owner name in a note is not live evidence.
+
+## Public-repository Actions capacity
+
+Use standard public-repository GitHub-hosted runners only. The owner forbids paid larger runners and spending-limit increases. Inspect actual current runner resources, workflow, repository visibility and capacity before making performance/cost claims. [Actions procedure](ALPHA-STAGING-ACTIONS.md) and [CI policy](CI-STAGING-VERIFICATION-POLICY.md) own candidate dispatch and authenticated evidence. Inspect actual enable switches; this document grants no authority to enable automatic CD.
+
+## Private production package distribution
+
+Production packages, checksums, manifests and release notes belong only in private `StradaverseHub/ai-hr-releases`. Source tags identify the accepted commit and are mirrored unchanged. Follow [production packages](PRODUCTION-PACKAGES.md) only after explicit staging acceptance. Publication does not deploy or authorize database resets. Keep SSH configuration, installation secrets and private assets outside public source/artifacts.

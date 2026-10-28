@@ -34,6 +34,15 @@ export default async function HowItWorksPage() {
         back={{ href: '/control-tower', label: t('backToTower') }}
       />
 
+      {/* This page explains the Control Tower's checking loop. The other AI pieces (the HR assistant and its
+          module specialists, the background agents, AI inside other screens) are listed and managed on the
+          AI management Overview, so this page points there instead of repeating them. */}
+      <Card className="p-5">
+        <SectionHeader title={t('howAiTitle')} />
+        <p className="max-w-3xl text-sm text-muted-foreground">{t('howAiBody')}</p>
+        <Link href="/control-tower/agents" className="mt-3 inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">{t('howAiLink')}</Link>
+      </Card>
+
       {/* ── The loop, drawn. Inline SVG: no asset, no request, and it themes with the page. ────────── */}
       <Card className="p-5">
         <SectionHeader title={t('loopTitle')} />

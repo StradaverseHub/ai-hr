@@ -1,5 +1,7 @@
 # ADR-0076 — Payroll anomaly layer: detailed design
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Status:** Proposed (buildable specification — no code written yet)
 - **Date:** 2026-07-20
 - **Implements:** ADR-0074 §5 item 1 and §6 (the keystone), which committed to no code

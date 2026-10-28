@@ -14,10 +14,15 @@ import './onboarding-workspace.css';
 // 2026-10-20); a module import is an explicit edge the cache cannot miss. All its rules are scoped to
 // :root[data-ui-theme='atelier'], so loading it for every theme changes nothing for the others.
 import './atelier.css';
+// The Performance & Talent area theme (D-P1-32 D3): every rule is scoped to [data-area-theme='performance']
+// (app/performance/layout.tsx). Imported after atelier.css so its layer is declared after Tailwind's, as an explicit
+// module edge for the same cache reason as above.
+import './performance/area-theme.css';
 import { Suspense } from 'react';
 import { Providers } from './providers';
 import { OperatorShell } from '@/components/operator-shell';
 import { Sidebar } from '@/components/sidebar';
+import {letterNavigation} from '@/core/letter-navigation';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { LanguageSwitcher } from '@/components/language-switcher';
 import { Toaster } from '@/components/ui/sonner';
@@ -26,6 +31,9 @@ import { DevIdentitySwitcher } from '@/components/dev-identity-switcher';
 import { UserMenu } from '@/components/user-menu';
 import { CompanySwitcher } from '@/components/company-switcher';
 import { OnboardingTour } from '@/components/onboarding-tour';
+import { AssistantLauncher } from '@/components/assistant/assistant-launcher';
+import { assistantLauncherFor } from '@/core/assistant-launcher';
+import { mayUseAssistant } from '@/core/assistant-grant';
 import { NoticePopupSlot } from '@/components/notice/notice-surfaces';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
@@ -43,6 +51,7 @@ import { getScopeIds } from '@/lib/scope';
 import { getOnboardingStatus } from '@/core/onboarding';
 import { listPendingTasks } from '@/core/approvals-inbox';
 import { onboardingTasks, onboardingUnreadNoticeCount, onboardingNotices, onboardingNavigation } from '@/packs/lifecycle/service';
+import { adminSectionHref, latestOnehrAdminCycleId } from '@/packs/performance/service';
 import { NotificationCenter, type NotificationTaskItem } from '@/components/notification-center';
 import { onboardingNotificationTask } from '@/lib/onboarding-notification-task';
 import { CommandBar } from '@/components/command-bar';
@@ -162,6 +171,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     viewerIdentity(session),canConfigureAccess(session),
     isAdmin(session)?Promise.resolve(false):workforceViewScope(session).then(scope=>scope.canOpen),
   ]);
+  const letterDestinations=isModuleEnabledOrFalse(session,'employees')?await letterNavigation(session,scopeIds):[];
   const onboarded = await getOnboardingStatus(session);
   const tours = toursForRoles(session.roles);
   const canApprove = isAdmin(session) || (session.roles ?? []).includes('manager');
@@ -174,7 +184,15 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // swallows ONLY EntitlementsResolutionFailedError (the infrastructure state), and still throws for a
   // malformed or mis-attributed context, which is a wiring bug and must stay loud.
   const notifEnabled = isModuleEnabledOrFalse(session, 'notifications');
+  const letterNotificationCompanies=scopeIds.filter(id=>isModuleEnabledOrFalse(session,'notifications',id));
+  const bellNotificationsEnabled=notifEnabled||letterNotificationCompanies.length>0,notificationScope=notifEnabled?{}:{letterCompanyIds:letterNotificationCompanies};
   if (notifEnabled && isAdmin(session)) await dispatchNotifications(session).catch(() => {});
+  // D-P1-32 PT-X5 — where the sidebar's Performance admin entry opens: the admin area's first tab for the latest
+  // cycle this OneHR administrator administers, started here so it overlaps the task-list reads below. No cycle, a
+  // viewer who is not a OneHR administrator, the module off or a failed read all leave the pack's /performance.
+  const performanceAdminHref = canAdminOnehr(session) && isModuleEnabledOrFalse(session, 'performance')
+    ? latestOnehrAdminCycleId(session).then(id => (id ? adminSectionHref(id, 'cycle') : undefined), () => undefined)
+    : Promise.resolve(undefined);
   // 3-tab bell (feedback 1514d366) — one notification framework for every role, role-scoped by the reads:
   //   • Notification tab: unread informational (non-action) notifications + their unread badge.
   //   • Task tab: the live approvals queue (listPendingTasks — replaces the retired count-only legacy
@@ -187,6 +205,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const approvalTasks = await listPendingTasks(session, scopeIds, {
     attendance: isModuleEnabledOrFalse(session, 'attendance'),
     claims: isModuleEnabledOrFalse(session, 'claims'),
+    performance: isModuleEnabledOrFalse(session, 'performance'),
+    rewards: isModuleEnabledOrFalse(session, 'rewards'),
   });
   // The canonical inbox admits ordinary employees only for an actionable, non-self v3/v4 assignment.
   // Reuse that result; do not promote the viewer to manager or query the assignment owner twice.
@@ -202,11 +222,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const onboardingNoticesEnabled=isModuleEnabledOrFalse(session,'lifecycle');
   const [onboardingUnread,onboardingRead]=onboardingNoticesEnabled?await Promise.all([onboardingNotices(session),onboardingNotices(session,true)]):[[],[]];
   const onboardingUnreadCount=onboardingNoticesEnabled?await onboardingUnreadNoticeCount(session):0;
-  const notifUnread = notifEnabled ? await unreadNotificationCount(session, undefined, { action: false }) : 0;
-  const taskNotifCount = notifEnabled ? await unreadNotificationCount(session, undefined, { action: true }) : 0;
-  const notifItems = notifEnabled ? await listNotifications(session, undefined, { limit: 12, read: false, action: false }) : [];
-  const taskNotifs = notifEnabled ? await listNotifications(session, undefined, { limit: 12, read: false, action: true }) : [];
-  const readNotifs = notifEnabled ? await listNotifications(session, undefined, { limit: 12, read: true }) : [];
+  const notifUnread = bellNotificationsEnabled ? await unreadNotificationCount(session, undefined, {...notificationScope, action: false }) : 0;
+  const taskNotifCount = bellNotificationsEnabled ? await unreadNotificationCount(session, undefined, {...notificationScope, action: true }) : 0;
+  const notifItems = bellNotificationsEnabled ? await listNotifications(session, undefined, {...notificationScope, limit: 12, read: false, action: false }) : [];
+  const taskNotifs = bellNotificationsEnabled ? await listNotifications(session, undefined, {...notificationScope, limit: 12, read: false, action: true }) : [];
+  const readNotifs = bellNotificationsEnabled ? await listNotifications(session, undefined, {...notificationScope, limit: 12, read: true }) : [];
   // Approval history (44a89810): recent team decisions for the bell's History tab — canApprove only,
   // no dead query for regular employees.
   const approvalHistory = canApprove
@@ -217,6 +237,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         }),
       )
     : [];
+  // The floating Assistant: null unless the tenant switched it on, this login may use the Assistant and a
+  // provider is active (core/assistant-launcher.ts). Presentation only; every question is re-checked.
+  const launcher = await assistantLauncherFor(session);
+  // The Assistant row is offered only with actual access; any failure hides it (never fails open).
+  const assistantAccess = await mayUseAssistant(session).then(access => access.allowed).catch(() => false);
   return (
     <html
       lang={locale}
@@ -235,8 +260,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           {/* Atelier round 1 — the rail publishes its visible destinations here for the command bar's "Go to"
               list and the Atelier breadcrumb (components/nav-index-context.tsx). */}
           <NavIndexProvider>
-          <div data-app-shell className="flex h-full gap-3 lg:gap-4 monolith:gap-0!">
+          <div data-app-shell className="flex h-full gap-3 lg:gap-4 monolith:gap-0! max-sm:flex-col">
             <Sidebar
+              letterDestinations={letterDestinations}
               canConfigureLoginPresentation={isGroupAdmin(session)}
               // ADR-0049: a partner is an admin who sees a subset, so it gets the admin nav group;
               // each page's route guard (requirePayrollAccess / requirePerfCompAccess) 403/redirects
@@ -249,10 +275,15 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               hasAssignedAttendanceApproval={hasAssignedAttendanceApproval}
               hasAssignedApproval={hasAssignedApproval}
               canReviewProfileChanges={isAdmin(session)}
+              canAdministerAi={isAdmin(session)}
+              canConfigureAiProvider={isGroupAdmin(session)}
               canAccessTeam={hasTeamAccess(session)}
-              // ADR-0142 — the OneHR performance partner gets the Performance row only, NOT the admin rail:
+              // ADR-0142 — the OneHR performance partner gets the Performance admin entry only, NOT the admin rail:
               // it is deliberately absent from isAdmin above, because it can enter no admin screen.
               canAdministerOnehr={canAdminOnehr(session)}
+              // D-P1-32 PT-X5 — Performance & Talent needs no flag (the module gate is its gate); calibration,
+              // talent and development are tabs inside the area, so the rail no longer reads the worklist.
+              performanceAdminHref={await performanceAdminHref}
               // Pending-approval badge on the "Approval Items" row (feedback 836118c4). Reuses the
               // pendingTasks already resolved above for the bell — ZERO extra queries — so the badge is
               // by construction the same user-scoped queue: only items awaiting THIS viewer's decision,
@@ -271,6 +302,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               // opinion, show everything" and is what a degraded session produces on purpose — see
               // lib/nav-entitlements.ts for why nav fails OPEN while every service gate fails closed.
               enabledModules={visibleModuleCodes(session)}
+              assistantAccess={assistantAccess}
               defaultCollapsed={railCollapsed}
               // r398 — the Monolith rail's user line. Display only, the same identity the header shows.
               viewerName={viewer.name}
@@ -430,6 +462,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           </div>
           </NavIndexProvider>
           <OnboardingTour tours={tours} autoStartTourId={onboarded || (pathname==='/'&&!isAdmin(session)) ? null : WELCOME_TOUR_ID} />
+          {launcher && <AssistantLauncher position={launcher.position} hiddenAreas={launcher.hiddenAreas} />}
           {/* 6e122302 — the after-login notice popup, mounted beside the onboarding tour because that is
               the existing "show something once after login and remember the dismissal" surface. At most
               ONE notice, chosen server-side; the slot renders null when nothing is due, so this costs an

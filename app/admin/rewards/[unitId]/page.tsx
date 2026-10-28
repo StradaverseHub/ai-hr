@@ -2,9 +2,10 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
-import { getRewardConfiguration, getRewardSeniorMembership, rewardSetupChoices } from '@/packs/rewards/service';
+import { getRewardCalendar, getRewardConfiguration, getRewardSeniorMembership, rewardSetupChoices } from '@/packs/rewards/service';
+import { RewardCalendarForm } from '@/app/rewards/[unitId]/calendar-form';
 import { rewardRoles } from '@/packs/rewards/model';
-import { ErrorBanner, Field, PageHeader, inputCls } from '@/components/ui';
+import { Badge, ErrorBanner, Field, PageHeader, inputCls } from '@/components/ui';
 import { PolicyForm, RewardPolicyFields } from '@/app/rewards/[unitId]/policy-form';
 import { RewardSubmit } from '@/app/rewards/submit-button';
 import { memberAction } from '@/app/rewards/actions';
@@ -22,19 +23,19 @@ export default async function RewardConfigurationPage({ params, searchParams }: 
   const { error,mode } = await searchParams;
   const readOnly=mode==='view';
   const t = await getTranslations('rewards');
-  const td=await getTranslations('rewardsDeletion');
+  const td=await getTranslations('rewardsDeletion'),tc=await getTranslations('rewardsConfig');
   const v = await getRewardConfiguration(s, unitId);
   const choices = await rewardSetupChoices(s, scopeIds);
   const { unit } = v;
   const senior = !readOnly && v.canConfigure ? await getRewardSeniorMembership(s, unitId) : null;
+  const calendar = await getRewardCalendar(s, unitId);
   const fields = <><input type="hidden" name="unitId" value={unitId} /><input type="hidden" name="revision" value={unit.revision} /></>;
   return <div className="w-full space-y-6">
     {choices.companies.length > 0 && <Link href="/admin/rewards" className="text-sm text-primary hover:underline">← {t('adminTitle')}</Link>}
-    <PageHeader title={`${t('configuration')} · ${v.cycle?.name ?? t('title')} · ${v.name}`} description={`${t(`kinds.${unit.kind}`)} · ${t(`stages.${unit.status}`)}`} />
-    <Link href={`/rewards/${unitId}`} className="inline-block text-sm font-medium text-primary hover:underline">{t('openReview')}</Link>
+    <PageHeader title={`${t('configuration')} · ${v.cycle?.name ?? t('title')} · ${v.name}`} description={`${t(`kinds.${unit.kind}`)} · ${unit.kind === 'annual' && unit.status === 'withdrawn' ? tc('cancelled') : t(`stages.${unit.status}`)}`} />
     <ErrorBanner message={error} />
     {readOnly&&<p className="rounded-md border p-3 text-sm">{td('viewHelp')}</p>}
-    {v.policyOrigin&&<p className="rounded-md border p-3 text-sm">{t('sharedPolicy.origin',{name:v.policyOrigin.name,version:v.policyOrigin.revision})}{v.policyOrigin.changed&&<span className="mt-1 block text-muted-foreground">{t('sharedPolicy.reviewChanged')}</span>}</p>}
+    {v.policyOrigin&&<p className="rounded-md border p-3 text-sm">{t('sharedPolicy.origin',{name:v.policyOrigin.name,version:v.policyOrigin.revision})}{v.policyOrigin.changed&&<><Badge variant="info" className="ml-2 normal-case">{tc('shared.changedInReview')}</Badge><span className="mt-1 block text-muted-foreground">{t('sharedPolicy.reviewChanged')}</span></>}</p>}
     <section className="space-y-3">
       <h2 className="font-semibold">{t('access')}</h2>
       <p className="max-w-3xl text-sm text-muted-foreground">{t('accessHelp')}</p>
@@ -50,6 +51,7 @@ export default async function RewardConfigurationPage({ params, searchParams }: 
     </section>
     {unit.kind !== 'annual' && <p className="max-w-3xl text-sm text-muted-foreground">{t('inheritedPolicy')} <Link className="text-primary hover:underline" href={`/admin/rewards/${unit.parentUnitId}`}>{t('annualSource')}</Link></p>}
     {!v.canConfigure && <p className="max-w-3xl text-sm text-muted-foreground">{unit.status === 'draft' ? t('configurationPermission') : t('locked')}</p>}
+    <RewardCalendarForm unitId={unitId} revision={calendar.revision} values={calendar.values} canEdit={!readOnly && calendar.canEdit} />
     {senior && <SeniorMembership key={senior.revision} value={senior} />}
     <RewardPolicyContent readOnly={readOnly} canConfigure={v.canConfigure} unitId={unitId} revision={unit.revision} policy={unit.policy} />
   </div>;

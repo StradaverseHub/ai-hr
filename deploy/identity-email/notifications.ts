@@ -11,6 +11,7 @@ export type WorkflowMailTarget={user_id:string;subject:string;email:string;categ
 export type WorkflowMail={category:NotificationEmailCategory;locale:NotificationEmailLocale;link:string;action:boolean;messageId:string;assessmentTasks?:AssessmentReminderTask[];assessmentWords?:AssessmentReminderWords|null;attendanceCc?:AttendanceCcMessage};
 export interface WorkflowEmailDependencies {
   ready():Promise<boolean>;
+  lettersReady?():Promise<boolean>;
   target(id:string,token:string):Promise<WorkflowMailTarget|null>;
   verifyRecipient(target:WorkflowMailTarget):Promise<'verified'|'changed'|'unavailable'>;
   assessmentTasks?(id:string,token:string):Promise<unknown>;
@@ -36,12 +37,13 @@ export function createNotificationEmailService(d:WorkflowEmailDependencies) {
     if(request.op==='status') {
       // Validate the configured origin even before there is a queued job.
       notificationEmailLink(d.origin,'/');
-      return {version:1 as const,ready:await d.ready(),assessmentReminders:!!d.assessmentTasks,assessmentReminderWords:!!d.assessmentTasks,attendanceCc:!!d.cc};
+      return {version:1 as const,ready:await d.ready(),assessmentReminders:!!d.assessmentTasks,assessmentReminderWords:!!d.assessmentTasks,attendanceCc:!!d.cc,letters:d.lettersReady?await d.lettersReady():false};
     }
     const {deliveryId:id,leaseToken:token}=request;
     if(request.op==='attendanceCcSend')return d.cc?deliverAttendanceCc(id,token,{...d,cc:d.cc}):{outcome:'unavailable' as const};
     if(!await d.ready())return {outcome:'unavailable'};
     const target=await d.target(id,token);
+    if(target?.category==='letters'&&(!d.lettersReady||!await d.lettersReady()))return {outcome:'unavailable'};
     if(!target){await d.finish(id,token,'skipped','notEligible');return {outcome:'skipped'};}
     const category=notificationEmailCategory.safeParse(target.category),email=z.email().max(320).regex(/^[\x21-\x7e]+$/).safeParse(target.email);
     let link:string;

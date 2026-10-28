@@ -1,5 +1,7 @@
 # ADR-0025 — Typed pay components
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: **Accepted — building, GATED OFF behind `TYPED_PAY_COMPONENTS_ENABLED`.** (2026-06-17)
 Consultant item #9 (Wave 3). Design + decisions: `docs/wave34-design.md`. Statutory flag defaults:
 `docs/architecture/MY-pay-component-treatment-matrix.md`.

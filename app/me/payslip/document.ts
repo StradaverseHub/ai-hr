@@ -23,7 +23,8 @@ export async function myPayslipDocument(s:SessionContext,payslipId:string) {
     myOwnPayslips(s, [p.employmentId]),
     getCompanyLogo(s, p.companyId),
   ]);
-  const ytdRows = mine.filter((r) => r.released && r.payPeriod.startsWith(`${year}-`));
+  // Committed imported history contributes to the own YTD basis without issuing an imported payslip.
+  const ytdRows = mine.filter((r) => (r.released || r.historyImported) && r.payPeriod.startsWith(`${year}-`));
 
   const strings = await payslipPdfStrings({
     payPeriod: p.payPeriod,

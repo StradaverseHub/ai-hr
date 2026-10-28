@@ -156,10 +156,58 @@
   :root[data-ui-theme='atelier'] main table tbody tr:focus-within { background: var(--sidebar); }
 
   /* ── The rail (components/sidebar.tsx, data-atelier-navigation) ─────────────────────────────────── */
+  :root[data-ui-theme='atelier'] .atelier-navigation-container { display: contents; }
+  :root[data-ui-theme='atelier'] .atelier-mobile-toggle { display: none; }
   :root[data-ui-theme='atelier'] .atelier-rail {
     display: flex; flex-direction: column; width: 15.5rem; height: 100%; min-height: 0;
     background: var(--sidebar); border-right: 1px solid var(--sidebar-border); color: var(--sidebar-foreground);
     font-size: .84375rem;
+  }
+  /* b953a339 — the sub-menu FLOATS beside the rail, over the page, as Classic's does. It used to be a second
+     in-flow column, so opening it took 15.5rem from the page and every table and form reflowed. The shell
+     stays exactly the rail's width; the panel is out of flow. Phones (below) keep the in-flow full-width
+     panel, where the page is not beside the navigation at all. */
+  :root[data-ui-theme='atelier'] .atelier-flyout {
+    position: absolute; top: .5rem; bottom: .5rem; left: calc(100% + .5rem); width: 15.5rem;
+    background: var(--popover); border: 1px solid var(--sidebar-border); border-radius: var(--radius-panel);
+    box-shadow: var(--shadow-pop);
+  }
+  :root[data-ui-theme='atelier'] .atelier-flyout-open .atelier-rail { position: relative; z-index: 50; }
+  :root[data-ui-theme='atelier'] .atelier-flyout .atelier-row { min-height: 2.5rem; height: auto; padding-block: .5rem; }
+  :root[data-ui-theme='atelier'] .atelier-flyout .atelier-row > span { white-space: normal; overflow: visible; }
+  :root[data-ui-theme='atelier'] .atelier-row.atelier-collapse { margin: .25rem .5rem .375rem; width: auto; color: var(--atelier-ink-3, var(--muted-foreground)); }
+  :root[data-ui-theme='atelier'] .atelier-section-static { cursor: default; }
+  /* b953a339 — the collapsed rail: icons only, names on hover (title) and for assistive technology. Only
+     where the rail sits beside the page; a phone's rail is full-width and ignores the setting. */
+  @media (min-width: 640px) {
+    :root[data-ui-theme='atelier'] .atelier-collapsed .atelier-rail { width: 4rem; transition: width 150ms cubic-bezier(.23,1,.32,1); }
+    :root[data-ui-theme='atelier'] .atelier-collapsed .atelier-label {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+    }
+    :root[data-ui-theme='atelier'] .atelier-collapsed :is(.atelier-chevron, .atelier-count, .atelier-quick kbd) { display: none; }
+    :root[data-ui-theme='atelier'] .atelier-collapsed .atelier-rail :is(.atelier-row, .atelier-quick, .atelier-workspace, .atelier-user) { justify-content: center; padding-inline: 0; gap: 0; }
+    :root[data-ui-theme='atelier'] .atelier-collapsed .atelier-quick { margin-inline: .5rem; }
+    :root[data-ui-theme='atelier'] .atelier-collapsed .atelier-collapse { margin-inline: .5rem; }
+    :root[data-ui-theme='atelier'] .atelier-collapsed .atelier-section-static { height: 1px; min-height: 0; margin: .5rem .75rem; padding: 0; overflow: hidden; color: transparent; background: var(--sidebar-border); }
+    :root[data-ui-theme='atelier'] .atelier-collapsed .atelier-section-static > span { display: none; }
+    /* The Ops/Strata switch stacks in the narrow rail. CSS, not the Classic compact class, so a phone — which
+       ignores the setting — keeps its side-by-side switch. */
+    :root[data-ui-theme='atelier'] .atelier-collapsed .atelier-nav [role='group'] { flex-direction: column; }
+    :root[data-ui-theme='atelier'] .atelier-collapsed .atelier-nav [role='group'] > button { padding-inline: .125rem; font-size: .6875rem; overflow-wrap: anywhere; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :root[data-ui-theme='atelier'] .atelier-collapsed .atelier-rail { transition: none; }
+  }
+  @media (max-width: 639px) {
+    :root[data-ui-theme='atelier'] [data-app-shell] { flex-direction: column; }
+    :root[data-ui-theme='atelier'] [data-app-content] { min-height: 0; }
+    :root[data-ui-theme='atelier'] .atelier-navigation-container { display: flex; flex: none; flex-direction: column; min-height: 0; }
+    :root[data-ui-theme='atelier'] .atelier-mobile-toggle { display: flex; align-items: center; gap: .625rem; min-height: 2.75rem; padding: .5rem 1rem; border-bottom: 1px solid var(--sidebar-border); background: var(--sidebar); color: var(--sidebar-foreground); text-align: start; }
+    :root[data-ui-theme='atelier'] .atelier-navigation-shell { width: 100%; height: min(65dvh, 32rem); }
+    :root[data-ui-theme='atelier'] .atelier-rail,
+    :root[data-ui-theme='atelier'] .atelier-flyout { width: 100%; }
+    :root[data-ui-theme='atelier'] .atelier-flyout { position: static; height: 100%; border: 0; border-radius: 0; box-shadow: none; background: var(--sidebar); }
+    :root[data-ui-theme='atelier'] .atelier-flyout-open .atelier-rail { display: none; }
   }
   :root[data-ui-theme='atelier'] .atelier-workspace {
     display: flex; align-items: center; gap: .625rem; padding: .75rem .75rem .5rem .875rem;

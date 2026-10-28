@@ -46,7 +46,7 @@
  * adjudication above, which is the statement that the choice and `worked_day_kind` are equal; a second
  * column holding the same fact would be a second owner of it (CLAUDE.md §1).
  */
-import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { withTenant, type SessionContext,type Tx } from '../db/client';
 import { LEGACY_CLAIM_SOURCE_TYPE, type ReplacementClaimSourceType, type ToilWorkedDayKind } from '../db/schema';
 import { leaveCreditRosterKindsTx } from './toil';
 import {
@@ -185,24 +185,12 @@ export async function leaveCreditRosterKinds(
  * `submitReplacementLeaveRequest`. A roster that changed in between is caught by that function's own
  * re-resolution for a working/non-working crossover, and by `accrueSelfDeclaredToilTx` /
  * `accrueExtendedWorkdayToilTx` at approval, which is the binding moment for every one of these facts.
- * Reaching inside that function for a shared `tx` would mean copying its four controls out here.
+ * The reviewed source now has a supplied-Tx preparation seam below: it shares this exact adjudicator
+ * and delegates the four controls to the canonical request preparation, without copying them. The
+ * ordinary UI retains these two transactions; its historical behavior is unchanged.
  */
-export async function submitLeaveCreditRequest(
-  ctx: SessionContext,
-  p: {
-    employmentId: string;
-    leaveTypeId?: string | null;
-    rows: readonly LeaveCreditRowInput[];
-    reason?: string;
-    firstScheduleConsent?: boolean;
-    today: string;
-  },
-  /**
-   * D13 (mobile M12): the caller's transaction (the mobile command receipt's), used for BOTH the roster
-   * adjudication and the write, so the receipt and the request commit together. Omitted: two transactions, as before.
-   */
-  existingTx?: Tx,
-): Promise<SubmitReplacementRequestResult> {
+export type SubmitLeaveCreditInput={employmentId:string;leaveTypeId?:string|null;rows:readonly LeaveCreditRowInput[];reason?:string;firstScheduleConsent?:boolean;today:string};
+async function prepareLeaveCreditInput(ctx:SessionContext,p:SubmitLeaveCreditInput,readRoster:()=>Promise<Map<string,ToilWorkedDayKind>>){
   if (!p.reason?.trim()) throw new ReplacementRequestInvalidError('Enter a reason for the leave credit request.');
   if (p.rows.length === 0) throw new ReplacementRequestInvalidError('Add at least one worked date.');
   for (const r of p.rows) {
@@ -224,9 +212,7 @@ export async function submitLeaveCreditRequest(
 
   const mismatches = adjudicateDayTypes(
     p.rows.map((r) => ({ workedDate: r.workedDate, dayType: r.dayType })),
-    existingTx
-      ? await leaveCreditRosterKindsTx(existingTx, p.employmentId, p.rows.map((r) => r.workedDate), ctx)
-      : await leaveCreditRosterKinds(ctx, p.employmentId, p.rows.map((r) => r.workedDate)),
+    await readRoster(),
   );
   if (mismatches.length > 0) throw new LeaveCreditDayTypeMismatchError(mismatches);
 
@@ -246,13 +232,27 @@ export async function submitLeaveCreditRequest(
     toTime: r.claimEnd,
   }));
 
-  return submitReplacementLeaveRequest(ctx, {
+  return {
     employmentId: p.employmentId,
     leaveTypeId: p.leaveTypeId ?? null,
-    unit: 'day',
+    unit: 'day' as const,
     lines,
     reason: p.reason,
     firstScheduleConsent: p.firstScheduleConsent,
     today: p.today,
-  }, existingTx);
+  };
+}
+
+/** Same four-day-type adjudicator and canonical window mapping under a supplied source interval. */
+export async function prepareLeaveCreditRequestTx(tx:Tx,ctx:SessionContext,input:SubmitLeaveCreditInput){
+ ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};const p={...input,rows:input.rows.map(row=>({...row}))};return prepareLeaveCreditInput(ctx,p,()=>leaveCreditRosterKindsTx(tx,p.employmentId,p.rows.map(row=>row.workedDate),ctx));
+}
+/** Ordinary UI retains its historical read transaction followed by the canonical write transaction.
+ *  `existingTx` — D13 (mobile M12): the caller's transaction (the mobile command receipt's), used for BOTH the
+ *  roster adjudication and the write, so the receipt and the request commit together. Omitted: two
+ *  transactions, as before. */
+export async function submitLeaveCreditRequest(ctx:SessionContext,input:SubmitLeaveCreditInput,existingTx?:Tx):Promise<SubmitReplacementRequestResult>{
+ ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};const p={...input,rows:input.rows.map(row=>({...row}))};
+ const prepared=existingTx?await prepareLeaveCreditRequestTx(existingTx,ctx,p):await prepareLeaveCreditInput(ctx,p,()=>leaveCreditRosterKinds(ctx,p.employmentId,p.rows.map(row=>row.workedDate)));
+ return submitReplacementLeaveRequest(ctx,prepared,existingTx);
 }

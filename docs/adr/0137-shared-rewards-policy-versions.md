@@ -1,5 +1,7 @@
 # ADR-0137 — Shared Rewards policy versions with independent reviews
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - Date: 2026-10-21
 - Status: Approved direction, source implementation; execution and release pending.
 - Board item: d0643736-28f1-49da-9211-d27330d8d70a, approved revision 1.

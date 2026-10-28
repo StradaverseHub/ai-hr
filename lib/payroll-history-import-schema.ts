@@ -31,11 +31,15 @@ export type PayrollHistoryRecord = Record<string, string>;
 /** Contract keys, in the reporter's column order. These ARE the normalised forms of their headings. */
 export const PAYROLL_HISTORY_COLUMNS = {
   required: ['employee_no', 'payroll_period', 'payroll_cycle', 'doe_code', 'company_code', 'amount'],
-  /** Override? is optional in the FILE (it defaults to 1) but must be 1 or 0 when present. */
-  optional: ['override?'],
+  optional: [],
 } as const;
 
-/** The reporter's headings, verbatim and in their order. Never reorder or rename these. */
+/**
+ * The template's headings, in order. d28501b8 retired the seventh, "Override?": whether an earlier import is
+ * replaced is decided at validation, from what is actually on file, and confirmed once for the whole file —
+ * not guessed per row before anything has been checked. A file that still carries the column uploads
+ * normally; the column is read by nothing.
+ */
 export const PAYROLL_HISTORY_HEADERS: readonly string[] = [
   'Employee No',
   'Payroll Period',
@@ -43,7 +47,6 @@ export const PAYROLL_HISTORY_HEADERS: readonly string[] = [
   'DOE Code',
   'Company Code',
   'Amount',
-  'Override?',
 ];
 
 /**
@@ -59,33 +62,56 @@ export const PAYROLL_HISTORY_HEADER_ALIASES: Readonly<Record<string, readonly st
   doe_code: ['doe_code', 'doe', 'code', 'pay_code', 'component_code'],
   company_code: ['company_code', 'company', 'company_label', 'co_code'],
   amount: ['amount', 'value'],
-  'override?': ['override?', 'override', 'overwrite?', 'overwrite'],
 };
 
 /**
- * The reporter's own worked example — A1001 / 202501 / ME / BASIC / ABCDE / 5000.00 / 1 — COMPLETED into
- * a month that would actually pass validation.
+ * The worked example on the template's Sample sheet: one fictional employee-month that passes validation
+ * as it stands, using every built-in code (d28501b8: "examples for all applicable Malaysian statutory
+ * items", plus BASIC, GROSS and NETPAY).
  *
- * Their sample shows BASIC and EEEPF only. A month with earnings but no contribution or tax lines at all
- * is stopped rather than guessed at, so the sample carries every figure: the employee's EPF, SOCSO, EIS
- * and tax, and the employer's EPF, SOCSO, EIS and training levy. The zero-value lines are the point —
- * "this really was zero" is a statement the file has to make, and 0.00 is accepted.
+ * Built from the codes rather than written out, so the Sample sheet can only ever use codes the Codes sheet
+ * lists. With no tenant codes it uses the built-in floor alone, which every tenant accepts — that is the
+ * CSV template's form. Given the tenant's codes, it adds the first earning that lands in "allowance" and
+ * the first catch-all deduction, so the sheet shows how a company's own codes are written too.
  *
- * Shared by the CSV template (lib/import-template.ts) and the .xlsx Sample sheet so the two cannot drift.
- * Figures are illustrative; the amounts are the reporter's 5,000 basic with plausible MY statutory rates.
+ * GROSS and NETPAY are cross-check lines and are computed here from the example's own lines, exactly as
+ * the importer adds them up, so the example can never contradict itself. Figures are illustrative.
  */
-export const PAYROLL_HISTORY_SAMPLE_ROWS: readonly (readonly string[])[] = [
-  ['A1001', '202501', 'ME', 'BASIC', 'ABCDE', '5000.00', '1'],
-  ['A1001', '202501', 'ME', 'ALLOWANCE', 'ABCDE', '300.00', '1'],
-  ['A1001', '202501', 'ME', 'EEEPF', 'ABCDE', '583.00', '1'],
-  ['A1001', '202501', 'ME', 'EESOCSO', 'ABCDE', '24.75', '1'],
-  ['A1001', '202501', 'ME', 'EEEIS', 'ABCDE', '9.90', '1'],
-  ['A1001', '202501', 'ME', 'PCB', 'ABCDE', '150.00', '1'],
-  ['A1001', '202501', 'ME', 'EREPF', 'ABCDE', '689.00', '1'],
-  ['A1001', '202501', 'ME', 'ERSOCSO', 'ABCDE', '86.65', '1'],
-  ['A1001', '202501', 'ME', 'EREIS', 'ABCDE', '9.90', '1'],
-  ['A1001', '202501', 'ME', 'HRDF', 'ABCDE', '53.00', '1'],
-];
+const SAMPLE_EMPLOYEE = ['A1001', '202501', 'ME'] as const;
+const SAMPLE_COMPANY = 'ABCDE';
+export function historySampleRows(
+  codes: readonly { code: string; destination: string; source?: string }[] = [],
+): string[][] {
+  const pick = (destination: string) => codes.find((c) => c.destination === destination && c.source !== 'statutory')?.code;
+  const allowance = pick('allowance');
+  const otherDeduction = pick('other_deduction');
+  const lines: [string, number][] = [
+    ['BASIC', 5000],
+    ...(allowance ? ([[allowance, 300]] as [string, number][]) : []),
+    ['EEEPF', 583],
+    ['EESOCSO', 24.75],
+    ['EESOCSOSKBBK', 0],
+    ['EEEIS', 9.9],
+    ['PCB', 150],
+    ['CP38', 0],
+    ['ZAKAT', 0],
+    ['LP', 0],
+    ...(otherDeduction ? ([[otherDeduction, 0]] as [string, number][]) : []),
+    ['EREPF', 689],
+    ['ERSOCSO', 86.65],
+    ['EREIS', 9.9],
+    ['HRDF', 53],
+  ];
+  const sum = (names: string[]) => lines.filter(([c]) => names.includes(c)).reduce((n, [, v]) => n + v, 0);
+  const gross = sum(['BASIC', ...(allowance ? [allowance] : [])]);
+  // Cash deductions, as the importer counts them: LP is a tax relief, not money taken from pay.
+  const deductions = sum(['EEEPF', 'EESOCSO', 'EESOCSOSKBBK', 'EEEIS', 'PCB', 'CP38', 'ZAKAT', ...(otherDeduction ? [otherDeduction] : [])]);
+  lines.push(['GROSS', gross], ['NETPAY', Math.round((gross - deductions) * 100) / 100]);
+  return lines.map(([code, amount]) => [...SAMPLE_EMPLOYEE, code, SAMPLE_COMPANY, amount.toFixed(2)]);
+}
+
+/** The built-in-codes-only example (the CSV template's sample). */
+export const PAYROLL_HISTORY_SAMPLE_ROWS: readonly (readonly string[])[] = historySampleRows();
 
 /** Pull one contract field out of a parsed record, honouring the alias list. Trimmed; '' when absent. */
 export function readHistoryField(rec: PayrollHistoryRecord, key: string): string {
@@ -184,6 +210,11 @@ export type ImportCodeEntry = {
  * The names follow the reporter's own EEEPF example (EE = employee side, ER = employer side).
  */
 export const STATUTORY_IMPORT_CODES: readonly ImportCodeEntry[] = [
+  // d28501b8: Basic Salary is a payslip field, not a pay item, so a company whose basic pay item carries
+  // its own code (E0001, BASIC_SALARY…) had no BASIC at all and the reporter's own template was rejected.
+  // Built in, every tenant has it; a company's own code still works beside it, and naming both in one
+  // employee-month is stopped in analyze() so basic salary is never counted twice.
+  { code: 'BASIC', label: 'Basic salary', destination: 'basic', direction: 'earning', source: 'statutory' },
   { code: 'EEEPF', label: 'Employee EPF', destination: 'epf_employee', direction: 'deduction', source: 'statutory' },
   { code: 'EESOCSO', label: 'Employee SOCSO', destination: 'socso_employee', direction: 'deduction', source: 'statutory' },
   { code: 'EEEIS', label: 'Employee EIS', destination: 'eis_employee', direction: 'deduction', source: 'statutory' },
@@ -241,12 +272,32 @@ export function payComponentDestination(c: {
   return { destination: 'allowance', direction: 'earning' };
 }
 
+/**
+ * How the template's Codes sheet describes a code (d28501b8): what kind of figure it is and whose money it
+ * is. Derived from where the money lands, so it cannot disagree with the importer. Returns message keys;
+ * the caller translates them.
+ */
+export type ImportCodeCategory = 'basic' | 'earning' | 'deduction' | 'employeeStatutory' | 'employerStatutory' | 'payrollTotal';
+export type ImportCodeAmountType = 'employee' | 'employer' | 'check';
+export function importCodeCategory(c: { destination: string; direction: string }): {
+  category: ImportCodeCategory;
+  amountType: ImportCodeAmountType;
+} {
+  if (c.direction === 'check') return { category: 'payrollTotal', amountType: 'check' };
+  if (c.direction === 'employer') return { category: 'employerStatutory', amountType: 'employer' };
+  if (c.destination === 'basic') return { category: 'basic', amountType: 'employee' };
+  if (c.direction === 'earning') return { category: 'earning', amountType: 'employee' };
+  if (STATUTORY_DESTINATIONS.has(c.destination)) return { category: 'employeeStatutory', amountType: 'employee' };
+  return { category: 'deduction', amountType: 'employee' };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 // Results — the reporter's error report and summary, verbatim
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * The Error Type column's vocabulary. The first eleven are the reporter's list, verbatim. Three more
+ * The Error Type column's vocabulary. The first ten are the reporter's list, verbatim (their eleventh,
+ * Invalid Override, retired with its column in d28501b8). Three more
  * exist and each earns its place:
  *
  *   • `Inconsistent totals` — the file supplies a GROSS or NETPAY line that disagrees with the sum of its
@@ -267,7 +318,6 @@ export const HISTORY_ERROR_TYPES = [
   'Invalid DOE Code',
   'Invalid Company Code',
   'Invalid Amount',
-  'Invalid Override',
   'Missing mandatory field',
   'Duplicate record',
   'Incomplete month',
@@ -303,6 +353,8 @@ export type HistoryMonth = {
   /** Every Excel row that contributed, so an error reports at row level as specified. */
   rowNums: number[];
   lineCount: number;
+  /** The DOE codes its readable lines used, upper-cased and de-duplicated, in file order. */
+  codes: string[];
   /** Importable: every line valid, the month complete, and the period empty. */
   ok: boolean;
   /** The period already has payroll — held back, never overwritten. */
@@ -338,11 +390,14 @@ export type HistoryImportPreview = {
  * has payroll ADDS to what is there rather than replacing it — the monthly and year-end readers sum every
  * batch for a (company, period) with no run-type or status filter — so someone paid 5,000 in January
  * would be submitted as 10,000. There is also no undo: an imported batch is closed, and migration 0011
- * blocks UPDATE and DELETE on a closed batch at trigger level. Override? is therefore parsed and
- * validated but never permitted to overwrite; an occupied month comes back as "Existing record".
+ * blocks UPDATE and DELETE on a closed batch at trigger level. This record-based compatibility path
+ * therefore never replaces; an occupied month comes back as "Existing record". Replacing an earlier
+ * import is the original-file workflow's job (core/payroll-history-revisions.ts), behind one confirmation.
  */
 export type HistoryImportResult = {
   companyId: string;
+  /** Canonical immutable attempt, including refused compatibility imports. */
+  attemptId?: string;
   total: number;
   valid: number;
   invalid: number;

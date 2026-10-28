@@ -23,12 +23,15 @@ import type {EmployeeHomeConfiguration} from '../lib/employee-home';
  *    deliberate hardening follow-up (tracked), not silently skipped — RLS already blocks
  *    cross-tenant *reads*; composite FKs would also block cross-tenant *references*.
  */
-import { sql } from 'drizzle-orm';
+import { getTableColumns, sql } from 'drizzle-orm';
 // TYPE-ONLY, and the only core/ import in this file. core/attendance-trace.ts is a deliberate LEAF with
 // no imports of its own, so this cannot close a cycle; `import type` is erased at runtime regardless.
 import type { AttendanceTraceV1, TraceAttendancePolicyBinding } from '../core/attendance-trace';
 import {
   pgTable,
+  pgSchema,
+  pgView,
+  QueryBuilder,
   foreignKey,
   pgEnum,
   uuid,
@@ -146,7 +149,7 @@ export const checkinStatusEnum = pgEnum('checkin_status', ['scheduled', 'complet
 export const feedbackRequestStatusEnum = pgEnum('feedback_request_status', ['pending', 'submitted', 'declined']);
 // Calibration session lifecycle (ADR-0022, Phase B slice 4). Advisory: admins propose, then COMMIT.
 export const calibrationStatusEnum = pgEnum('calibration_status', ['open', 'committed']);
-export const aiProviderEnum = pgEnum('ai_provider', ['anthropic', 'openai', 'google']);
+export const aiProviderEnum = pgEnum('ai_provider', ['anthropic', 'openai', 'google', 'openrouter', 'ai_gateway']);
 // Performance lifecycle (ADR-0022 lifecycle extension). Goal-setting lock + closure classification.
 export const goalStageStatusEnum = pgEnum('perf_goal_stage_status', ['pending', 'locked']);
 export const goalApprovalEnum = pgEnum('perf_goal_approval', ['draft', 'proposed', 'approved']);
@@ -5491,9 +5494,11 @@ export const notification = pgTable(
   {
     id: id(),
     tenantId: tenantId(),
-    recipientEmploymentId: uuid('recipient_employment_id')
-      .notNull()
-      .references(() => employment.id),
+    recipientEmploymentId: uuid('recipient_employment_id').references(() => employment.id),
+    recipientUserId: uuid('recipient_user_id').references(() => appUser.id),
+    letterJobId: uuid('letter_job_id'),
+    portalVisible: boolean('portal_visible').notNull().default(true),
+    companyId: uuid('company_id').references(() => company.id),
     kind: text('kind').notNull(),
     title: text('title').notNull(),
     body: text('body').notNull(),
@@ -5504,6 +5509,8 @@ export const notification = pgTable(
     createdAt: createdAt(),
   },
   (t) => [
+    uniqueIndex('notification_letter_job_uq').on(t.letterJobId).where(sql`letter_job_id is not null`),
+    index('notification_user_recipient_idx').on(t.tenantId,t.recipientUserId,t.createdAt),
     index('notification_recipient_idx').on(t.tenantId, t.recipientEmploymentId, t.createdAt),
     index('notification_unread_idx').on(t.tenantId, t.recipientEmploymentId).where(sql`read_at is null`),
   ],
@@ -5515,9 +5522,12 @@ export const notificationPref = pgTable(
   {
     id: id(),
     tenantId: tenantId(),
-    recipientEmploymentId: uuid('recipient_employment_id')
-      .notNull()
-      .references(() => employment.id),
+    recipientEmploymentId: uuid('recipient_employment_id').references(() => employment.id),
+    recipientUserId: uuid('recipient_user_id').references(() => appUser.id),
+    emailConsentIssuer: text('email_consent_issuer'),
+    emailConsentSubject: text('email_consent_subject'),
+    emailConsentAddressHash: text('email_consent_address_hash'),
+    emailConsentVerifiedAt: timestamp('email_consent_verified_at',{withTimezone:true}),
     category: text('category').notNull(),
     channel: notificationChannelEnum('channel').notNull(),
     enabled: boolean('enabled').notNull().default(true),
@@ -5533,7 +5543,7 @@ export const notificationPref = pgTable(
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [uniqueIndex('notification_pref_uq').on(t.tenantId, t.recipientEmploymentId, t.category, t.channel)],
+  (t) => [uniqueIndex('notification_pref_user_uq').on(t.tenantId,t.recipientUserId,t.category,t.channel),uniqueIndex('notification_pref_uq').on(t.tenantId, t.recipientEmploymentId, t.category, t.channel)],
 );
 
 // Out-of-app delivery attempts (in-app needs no row — the notification IS the in-app delivery).
@@ -5556,6 +5566,8 @@ export const notificationDelivery = pgTable(
     leaseToken: uuid('lease_token'),
     leaseUntil: timestamp('lease_until', { withTimezone: true }),
     startedAt: timestamp('started_at', { withTimezone: true }),
+    letterPreparedStamp: text('letter_prepared_stamp'),
+    letterPreparedUntil: timestamp('letter_prepared_until',{withTimezone:true}),
     lastError: text('last_error'),
     sentAt: timestamp('sent_at', { withTimezone: true }),
     createdAt: createdAt(),
@@ -5968,6 +5980,7 @@ export const employeeDocument = pgTable(
     employmentId: uuid('employment_id')
       .notNull()
       .references(() => employment.id),
+    letterArtifactId:uuid('letter_artifact_id').references(():AnyPgColumn=>letterArtifact.id),
     title: text('title').notNull(),
     category: text('category'),
     description: text('description'),
@@ -5980,7 +5993,7 @@ export const employeeDocument = pgTable(
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [index('employee_document_employment_idx').on(t.tenantId, t.employmentId)],
+  (t) => [index('employee_document_employment_idx').on(t.tenantId, t.employmentId),uniqueIndex('employee_document_letter_artifact_uq').on(t.letterArtifactId).where(sql`${t.letterArtifactId} is not null`)],
 );
 
 // ADR-0050 (#1.1.3): yearly self-service TP1 personal tax relief. Keyed by `person_id` (TP1 is the
@@ -6576,6 +6589,8 @@ export const payrollBatch = pgTable(
     // whole company (today's behaviour). Generation narrows the active-employee set to this scope.
     scope: jsonb('scope'),
     remarks: text('remarks'),
+    historyImportAttemptId: uuid('history_import_attempt_id').references(()=>payrollHistoryImportAttempt.id),
+    historyImportCycleName: text('history_import_cycle_name'),
     // Step 6 (f3148da1) — when closeBatch finalized this run. NULL for legacy batches. Audit field.
     closedAt: timestamp('closed_at', { withTimezone: true }),
     // Step 6 (f3148da1) — the instant this batch's payslips become visible to employees in ESS, COMPUTED AT
@@ -8063,6 +8078,7 @@ export const aiProviderConfig = pgTable(
     tenantId: tenantId(),
     provider: aiProviderEnum('provider').notNull(),
     model: text('model').notNull(),
+    providerOptions: jsonb('provider_options').$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
     // Encrypted at rest; opaque base64url token. Never returned to the client.
     apiKeyCiphertext: text('api_key_ciphertext').notNull(),
     keyLast4: text('key_last4').notNull(),
@@ -9724,8 +9740,12 @@ export const assistantExchange = pgTable(
       .references(() => appUser.id),
     askedAt: timestamp('asked_at', { withTimezone: true }).defaultNow().notNull(),
     question: text('question').notNull(),
+    /** Content is retired without deleting quota/accounting identity. */
+    contentRetiredAt: timestamp('content_retired_at', { withTimezone: true }),
     /** NULL when refused, errored, or still in flight. */
     answer: text('answer'),
+    /** Sealed canonical-source fingerprints, bound to owner, exchange and exact question/answer. */
+    disclosureReceipt: text('disclosure_receipt'),
     /** [{ name, input, rowCount }] — the tool INPUTS and how many rows came back, never the rows. */
     toolCalls: jsonb('tool_calls')
       .$type<{ name: string; input: unknown; rowCount: number | null; refusal?: string }[]>()
@@ -9743,14 +9763,21 @@ export const assistantExchange = pgTable(
     cachedInputTokens: integer('cached_input_tokens').notNull().default(0),
     /** GENERIC reason only — never a provider body, never an SDK message. */
     error: text('error'),
+    /** 0658: the same login's exchange this one answered (a clarification reply). No content; nulled when
+     *  that row is deleted, immutable otherwise. */
+    continuesExchangeId: uuid('continues_exchange_id').references((): AnyPgColumn => assistantExchange.id, { onDelete: 'set null' }),
     createdAt: createdAt(),
   },
   (t) => [
+    index('assistant_exchange_continues_idx').on(t.continuesExchangeId).where(sql`${t.continuesExchangeId} IS NOT NULL`),
     // `.desc()` mirrors 0451, which creates this index with `asked_at DESC` — it serves a newest-first
     // history list and the per-user daily cap. Declared ASC here it read as a different index from the
     // one the database actually has, which is the drift a later `db:generate` turns into a spurious
     // migration.
     index('assistant_exchange_user_asked_idx').on(t.tenantId, t.appUserId, t.askedAt.desc()),
+    index('assistant_transcript_expiry').on(t.tenantId,t.askedAt,t.id).where(sql`${t.contentRetiredAt} IS NULL`),
+    check('assistant_exchange_retired_content',sql`${t.contentRetiredAt} IS NULL OR (${t.question}='' AND ${t.answer} IS NULL AND ${t.toolCalls}='[]'::jsonb AND ${t.disclosureReceipt} IS NULL AND ${t.error} IS NULL)`),
+    check('assistant_exchange_disclosure_size_ck', sql`${t.disclosureReceipt} IS NULL OR octet_length(${t.disclosureReceipt}) <= 786432`),
     check(
       'assistant_exchange_stop_ck',
       sql`${t.stop} IS NULL OR ${t.stop} IN ('end', 'tool_use', 'max_tokens', 'refusal', 'other')`,
@@ -10380,6 +10407,18 @@ export const rewardDecision = pgTable('reward_decision', {
   reason: text('reason').notNull().default(''), digest: text('digest').notNull(), createdAt: createdAt(),
 });
 
+// P1 WP-G (migration 0646): per (reward cycle, company) due dates. Display only; never moves a review.
+export const rewardCalendar = pgTable('reward_calendar', {
+  id: id(), tenantId: tenantId(), cycleId: uuid('cycle_id').notNull().references(() => rewardCycle.id),
+  companyId: uuid('company_id').notNull().references(() => company.id),
+  buDue: date('bu_due'), returnedDue: date('returned_due'), bgDue: date('bg_due'), grDue: date('gr_due'),
+  ctroDue: date('ctro_due'), ecDue: date('ec_due'), payrollDue: date('payroll_due'), caseDue: date('case_due'),
+  offcycleBgDays: smallint('offcycle_bg_days'), offcycleGrDays: smallint('offcycle_gr_days'), offcycleCtroDays: smallint('offcycle_ctro_days'),
+  offcycleEcDays: smallint('offcycle_ec_days'), offcycleReturnedDays: smallint('offcycle_returned_days'),
+  revision: integer('revision').notNull().default(1), updatedBy: uuid('updated_by').notNull().references(() => appUser.id),
+  createdAt: createdAt(), updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 // OneHR native aggregates. Identity, employment, organization and compensation remain kernel-owned.
 export const onehrCycle = pgTable('performance_onehr_cycle', {
   cycleId: uuid('cycle_id').primaryKey().references(() => reviewCycle.id), tenantId: tenantId(),
@@ -10451,6 +10490,9 @@ export const onehrCalibration = pgTable('performance_onehr_calibration', {
   reviewerUserIds: uuid('reviewer_user_ids').array().notNull(), pbtAchievement: numeric('pbt_achievement',{precision:12,scale:2}),
   mode:text('mode').notNull().default('after'), bgWeight:integer('bg_weight').notNull().default(50), performanceLockedAt:timestamp('performance_locked_at',{withTimezone:true}),potentialLockedAt:timestamp('potential_locked_at',{withTimezone:true}), lockedAt: timestamp('locked_at',{withTimezone:true}), revision:integer('revision').notNull().default(1), createdAt:createdAt(),
   pipLockedAt:timestamp('pip_locked_at',{withTimezone:true}), promotionLockedAt:timestamp('promotion_locked_at',{withTimezone:true}),
+  // WP-B2 (0663): generated scopes carry an anchor; hand-built sessions keep all three NULL (explicit grants only).
+  anchorKind:text('anchor_kind'), anchorEmploymentId:uuid('anchor_employment_id').references(()=>employment.id),
+  calibrationGroupId:uuid('calibration_group_id').references(():AnyPgColumn=>calibrationGroup.id),
 },t=>[index('performance_onehr_calibration_cycle_idx').on(t.cycleId)]);
 export const onehrCalibrationEntry = pgTable('performance_onehr_calibration_entry', {
   id:id(),tenantId:tenantId(),sessionId:uuid('session_id').notNull().references(()=>onehrCalibration.id),
@@ -10462,6 +10504,58 @@ export const onehrCalibrationEntry = pgTable('performance_onehr_calibration_entr
   pip:boolean('pip').notNull().default(false),promotion:boolean('promotion').notNull().default(false),specialReward:boolean('special_reward').notNull().default(false),
   pipReason:text('pip_reason').notNull().default(''),promotionReason:text('promotion_reason').notNull().default(''),specialRewardReason:text('special_reward_reason').notNull().default(''),
 },t=>[uniqueIndex('performance_onehr_calibration_entry_uq').on(t.sessionId,t.reviewId)]);
+/** WP-B2 (0663): an HOD-tier entry moved out of a department review when the person's HOD changed, decision kept. */
+export const onehrCalibrationEntryRetired = pgTable('performance_onehr_calibration_entry_retired', {
+  id:uuid('id').primaryKey(),tenantId:tenantId(),sessionId:uuid('session_id').notNull(),reviewId:uuid('review_id').notNull(),employmentId:uuid('employment_id').notNull(),
+  performance:text('performance'),potential:text('potential'),performanceNote:text('performance_note').notNull(),potentialNote:text('potential_note').notNull(),
+  performanceLockedAt:timestamp('performance_locked_at',{withTimezone:true}),potentialLockedAt:timestamp('potential_locked_at',{withTimezone:true}),lockedAt:timestamp('locked_at',{withTimezone:true}),
+  retiredAt:timestamp('retired_at',{withTimezone:true}).notNull(),retiredBy:uuid('retired_by').notNull().references(()=>appUser.id),retiredReason:text('retired_reason').notNull(),
+});
+/** WP-B2 (0663): a named calibration group, the group chief's anchor. Retired, never deleted. */
+export const calibrationGroup = pgTable('performance_calibration_group', {
+  id:id(),tenantId:tenantId(),name:text('name').notNull(),
+  createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+  retiredBy:uuid('retired_by').references(()=>appUser.id),retiredAt:timestamp('retired_at',{withTimezone:true}),
+});
+/** WP-B2 (0663): dated calibration group membership, one live group per employment. Ended, never deleted. */
+export const calibrationGroupMember = pgTable('performance_calibration_group_member', {
+  id:id(),tenantId:tenantId(),groupId:uuid('group_id').notNull().references(()=>calibrationGroup.id),
+  employmentId:uuid('employment_id').notNull().references(()=>employment.id),segment:text('segment'),source:text('source').notNull(),
+  validFrom:date('valid_from').notNull(),validTo:date('valid_to'),
+  createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+  endedBy:uuid('ended_by').references(()=>appUser.id),endedAt:timestamp('ended_at',{withTimezone:true}),
+},t=>[index('performance_calibration_group_member_group_idx').on(t.groupId)]);
+/** WP-B2 (0663): business unit CEO (unit company), business group CEO (group node company) and group chief seats. */
+export const leaderSeat = pgTable('performance_leader_seat', {
+  id:id(),tenantId:tenantId(),seatType:text('seat_type').notNull(),
+  companyId:uuid('company_id').references(()=>company.id),calibrationGroupId:uuid('calibration_group_id').references(()=>calibrationGroup.id),
+  holderEmploymentId:uuid('holder_employment_id').notNull().references(()=>employment.id),
+  validFrom:date('valid_from').notNull(),validTo:date('valid_to'),source:text('source').notNull(),sourceRef:text('source_ref'),
+  createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+  endedBy:uuid('ended_by').references(()=>appUser.id),endedAt:timestamp('ended_at',{withTimezone:true}),endReason:text('end_reason'),
+},t=>[index('performance_leader_seat_holder_idx').on(t.holderEmploymentId)]);
+/** WP-B2 (0663): the per-person head of department. Never department.head_employment_id. */
+export const hodAssignment = pgTable('performance_hod_assignment', {
+  id:id(),tenantId:tenantId(),subjectEmploymentId:uuid('subject_employment_id').notNull().references(()=>employment.id),
+  hodEmploymentId:uuid('hod_employment_id').notNull().references(()=>employment.id),
+  validFrom:date('valid_from').notNull(),validTo:date('valid_to'),source:text('source').notNull(),sourceRef:text('source_ref'),overrideReason:text('override_reason'),
+  createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+  endedBy:uuid('ended_by').references(()=>appUser.id),endedAt:timestamp('ended_at',{withTimezone:true}),
+},t=>[index('performance_hod_assignment_hod_idx').on(t.hodEmploymentId)]);
+/** D-P1-22 (0667): a unit (company, optional exact department) not taking part in a cycle. Ended, never deleted. */
+export const assessmentUnitExclusion = pgTable('performance_assessment_unit_exclusion', {
+  id:id(),tenantId:tenantId(),cycleId:uuid('cycle_id').notNull().references(()=>reviewCycle.id),
+  companyId:uuid('company_id').notNull().references(()=>company.id),departmentId:uuid('department_id').references(()=>department.id),
+  createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+  endedBy:uuid('ended_by').references(()=>appUser.id),endedAt:timestamp('ended_at',{withTimezone:true}),endReason:text('end_reason'),
+},t=>[index('performance_assessment_unit_exclusion_company_idx').on(t.companyId)]);
+/** D-P1-22 (0667): the employments a closed cycle's rules covered on its close day (D8). Written by a definer only. */
+export const assessmentUnitExclusionPin = pgTable('performance_assessment_unit_exclusion_pin', {
+  tenantId:tenantId(),cycleId:uuid('cycle_id').notNull().references(()=>reviewCycle.id),
+  employmentId:uuid('employment_id').notNull().references(()=>employment.id),
+  ruleId:uuid('rule_id').notNull().references(()=>assessmentUnitExclusion.id),
+  pinnedOn:date('pinned_on').notNull(),createdAt:createdAt(),
+},t=>[primaryKey({columns:[t.cycleId,t.employmentId]})]);
 // One shared optional BG remark per person/cohort; never part of employee or higher-tier projections.
 export const assessmentTalentRemark = pgTable('performance_assessment_talent_remark', {
  tenantId:tenantId(),sessionId:uuid('session_id').notNull().references(()=>onehrCalibration.id),reviewId:uuid('review_id').notNull().references(()=>onehrReview.reviewId),
@@ -10491,8 +10585,19 @@ export const assessmentRelease = pgTable('performance_assessment_release', {
   reviewId:uuid('review_id').primaryKey().references(()=>onehrReview.reviewId),tenantId:tenantId(),
   performanceReleasedAt:timestamp('performance_released_at',{withTimezone:true}),potentialReleasedAt:timestamp('potential_released_at',{withTimezone:true}),
   talentReleasedAt:timestamp('talent_released_at',{withTimezone:true}),feedbackReleasedAt:timestamp('feedback_released_at',{withTimezone:true}),
+  // WP-E (0665): release 1, to the person's leaders. Never mirrored into onehrResult; the release service owns order.
+  performanceLeaderReleasedAt:timestamp('performance_leader_released_at',{withTimezone:true}),potentialLeaderReleasedAt:timestamp('potential_leader_released_at',{withTimezone:true}),
+  talentLeaderReleasedAt:timestamp('talent_leader_released_at',{withTimezone:true}),
   updatedBy:uuid('updated_by').references(()=>appUser.id),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
 });
+/** WP-E (0665): append-only ledger; a (review, component, step, recipient) is told about a release once, ever. No band. */
+export const assessmentReleaseNotice = pgTable('performance_assessment_release_notice', {
+  id:id(),tenantId:tenantId(),reviewId:uuid('review_id').notNull().references(()=>onehrReview.reviewId),
+  component:text('component').notNull(),step:text('step').notNull(),
+  recipientEmploymentId:uuid('recipient_employment_id').notNull().references(()=>employment.id),
+  eventId:uuid('event_id').notNull(),notifiedBy:uuid('notified_by').notNull().references(()=>appUser.id),
+  notifiedAt:timestamp('notified_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('performance_assessment_release_notice_once').on(t.reviewId,t.component,t.step,t.recipientEmploymentId),index('performance_assessment_release_notice_recipient_idx').on(t.recipientEmploymentId)]);
 // Last sign-off/lock snapshot, sealed at cycle archive. HR reads the record without recomputing it.
 export const assessmentRatingRecord = pgTable('performance_assessment_rating_record', {
   reviewId:uuid('review_id').primaryKey().references(()=>onehrReview.reviewId),tenantId:tenantId(),
@@ -10753,15 +10858,139 @@ export const attendanceWorkflowReassignment = pgTable('attendance_workflow_reass
 /** Governance telemetry contains no prompt, output, image, secret or employee field values. */
 export const aiControlPolicy=pgTable('ai_control_policy',{
  id:id(),tenantId:tenantId(),scopeKey:text('scope_key').notNull(),kind:text('kind').notNull(),subjectId:uuid('subject_id'),featureId:text('feature_id'),
- enabled:boolean('enabled').notNull().default(true),dailyRequests:integer('daily_requests'),monthlyTokens:bigint('monthly_tokens',{mode:'number'}),
+ enabled:boolean('enabled').notNull().default(true),dailyRequests:integer('daily_requests'),monthlyTokens:bigint('monthly_tokens',{mode:'number'}),maxConcurrent:integer('max_concurrent'),
  updatedByUserId:uuid('updated_by_user_id').references(()=>appUser.id),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
 },t=>[uniqueIndex('ai_control_policy_scope_uq').on(t.tenantId,t.scopeKey)]);
 export const aiModelRun=pgTable('ai_model_run',{
  id:id(),tenantId:tenantId(),userId:uuid('user_id').references(()=>appUser.id),companyIds:uuid('company_ids').array().notNull().default(sql`'{}'::uuid[]`),
  featureId:text('feature_id').notNull(),operation:text('operation').notNull(),provider:text('provider').notNull(),model:text('model').notNull(),
  state:text('state').notNull(),reason:text('reason'),reservedTokens:bigint('reserved_tokens',{mode:'number'}).notNull(),
+ reportedInputTokens:bigint('reported_input_tokens',{mode:'number'}),reportedOutputTokens:bigint('reported_output_tokens',{mode:'number'}),reportedCachedInputTokens:bigint('reported_cached_input_tokens',{mode:'number'}),
+ openrouterAccountCostCredits:numeric('openrouter_account_cost_credits'),observedRoundTripMs:doublePrecision('observed_round_trip_ms'),providerObservationStatus:text('provider_observation_status').$type<'missing'|'reported'|'conflicting'|'invalid'>(),
  actualTokens:bigint('actual_tokens',{mode:'number'}),startedAt:timestamp('started_at',{withTimezone:true}).notNull().defaultNow(),finishedAt:timestamp('finished_at',{withTimezone:true}),
-},t=>[index('ai_model_run_period').on(t.tenantId,t.startedAt),index('ai_model_run_user').on(t.tenantId,t.userId,t.startedAt),index('ai_model_run_company').using('gin',t.companyIds)]);
+},t=>[index('ai_model_run_period').on(t.tenantId,t.startedAt),index('ai_model_run_user').on(t.tenantId,t.userId,t.startedAt),index('ai_model_run_company').using('gin',t.companyIds),index('ai_model_run_pending_scope').on(t.tenantId,t.userId,t.featureId).where(sql`${t.state}='pending'`)]);
+
+/** Private allocation metadata; migrations grant no direct table access to the app role. */
+const aiSpendPrivate=pgSchema('app');
+export const aiSpendCapability=aiSpendPrivate.table('ai_spend_capability',{
+ digest:text('digest').primaryKey(),provider:text('provider').notNull(),model:text('model').notNull(),operation:text('operation').notNull(),
+ maxRequestNanos:bigint('max_request_nanos',{mode:'bigint'}).notNull(),sourceDigest:text('source_digest').notNull(),verifiedAt:timestamp('verified_at',{withTimezone:true}).notNull(),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),revokedAt:timestamp('revoked_at',{withTimezone:true}),semantics:text('semantics').notNull(),
+});
+export const aiSpendBudget=aiSpendPrivate.table('ai_spend_budget',{
+ tenantId:tenantId(),scopeKey:text('scope_key').notNull(),kind:text('kind').notNull(),subjectId:uuid('subject_id'),featureId:text('feature_id'),
+ monthlyNanos:bigint('monthly_nanos',{mode:'bigint'}),rootNanos:bigint('root_nanos',{mode:'bigint'}),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),updatedBy:uuid('updated_by').references(()=>appUser.id),
+},t=>[primaryKey({columns:[t.tenantId,t.scopeKey]})]);
+export const aiSpendRoot=aiSpendPrivate.table('ai_spend_root',{
+ tenantId:tenantId(),rootId:uuid('root_id').notNull(),kind:text('kind').notNull(),createdAt:createdAt(),
+},t=>[primaryKey({columns:[t.tenantId,t.rootId]})]);
+/** Dedicated receipt verifier material is operator-owned; no app SELECT/INSERT/UPDATE grant. */
+export const aiSpendReceiptVerifier=aiSpendPrivate.table('ai_spend_receipt_verifier',{
+ keyId:text('key_id').primaryKey(),secret:bytea('secret').notNull(),enabled:boolean('enabled').notNull().default(true),validFrom:timestamp('valid_from',{withTimezone:true}).notNull().defaultNow(),retiredAt:timestamp('retired_at',{withTimezone:true}),
+});
+export const aiSpendReservation=aiSpendPrivate.table('ai_spend_reservation',{
+ runId:uuid('run_id').primaryKey().references(()=>aiModelRun.id),tenantId:tenantId(),rootId:uuid('root_id').notNull(),userId:uuid('user_id').notNull().references(()=>appUser.id),companyIds:uuid('company_ids').array().notNull(),featureId:text('feature_id').notNull(),
+ capabilityDigest:text('capability_digest').notNull().references(()=>aiSpendCapability.digest),requestDigest:text('request_digest').notNull(),configurationDigest:text('configuration_digest').notNull(),generationId:text('generation_id'),receiptDigest:text('receipt_digest'),reservedNanos:bigint('reserved_nanos',{mode:'bigint'}).notNull(),confirmedNanos:bigint('confirmed_nanos',{mode:'bigint'}),state:text('state').notNull().default('held'),createdAt:createdAt(),settledAt:timestamp('settled_at',{withTimezone:true}),
+},t=>[foreignKey({columns:[t.tenantId,t.rootId],foreignColumns:[aiSpendRoot.tenantId,aiSpendRoot.rootId]})]);
+/** Migration 0651: source-owned native spend task roots. Private; reached only through definer functions. */
+export const aiSpendTask=aiSpendPrivate.table('ai_spend_task',{
+ id:id(),tenantId:tenantId(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),featureId:text('feature_id').notNull(),
+ sourceKind:text('source_kind').notNull(),sourceId:uuid('source_id').notNull(),operation:text('operation').notNull(),createdAt:createdAt(),
+});
+/** Migration 0651: release-owned reviewed carrier certificates (free and metered). No app grant. */
+export const aiSpendReviewedCarrierCatalog=aiSpendPrivate.table('ai_spend_reviewed_carrier_catalog',{
+ capabilityDigest:text('capability_digest').primaryKey().references(()=>aiSpendCapability.digest),tenantId:tenantId(),carrier:text('carrier').notNull(),
+ configurationDigest:text('configuration_digest').notNull(),model:text('model').notNull(),operation:text('operation').notNull(),endpointSlug:text('endpoint_slug').notNull(),
+ sourceDigest:text('source_digest').notNull(),workspaceControlDigest:text('workspace_control_digest').notNull(),reviewEvidenceDigest:text('review_evidence_digest').notNull(),
+ independentEvidenceDigest:text('independent_evidence_digest').notNull(),invariants:jsonb('invariants').notNull(),
+ reviewedAt:timestamp('reviewed_at',{withTimezone:true}).notNull(),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),revokedAt:timestamp('revoked_at',{withTimezone:true}),
+});
+export const aiSpendReviewedMeteredCarrierCatalog=aiSpendPrivate.table('ai_spend_reviewed_metered_carrier_catalog',{
+ capabilityDigest:text('capability_digest').primaryKey().references(()=>aiSpendCapability.digest),tenantId:tenantId(),carrier:text('carrier').notNull(),
+ configurationDigest:text('configuration_digest').notNull(),model:text('model').notNull(),operation:text('operation').notNull(),endpointSlug:text('endpoint_slug').notNull(),
+ nativeContextTokens:bigint('native_context_tokens',{mode:'bigint'}).notNull(),completionTokens:bigint('completion_tokens',{mode:'bigint'}).notNull(),
+ promptUsdPerMillion:bigint('prompt_usd_per_million',{mode:'bigint'}).notNull(),completionUsdPerMillion:bigint('completion_usd_per_million',{mode:'bigint'}).notNull(),
+ nativeContractDigest:text('native_contract_digest').notNull(),endpointRevisionDigest:text('endpoint_revision_digest').notNull(),documentationDigest:text('documentation_digest').notNull(),
+ sourceDigest:text('source_digest').notNull(),workspaceControlDigest:text('workspace_control_digest').notNull(),reviewEvidenceDigest:text('review_evidence_digest').notNull(),
+ independentEvidenceDigest:text('independent_evidence_digest').notNull(),invariants:jsonb('invariants').notNull(),
+ reviewedAt:timestamp('reviewed_at',{withTimezone:true}).notNull(),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),revokedAt:timestamp('revoked_at',{withTimezone:true}),
+});
+/** Migration 0654: per-admission money mode, including historical UNKNOWN markers. Private. */
+export const aiSpendAdmissionScope=aiSpendPrivate.table('ai_spend_admission_scope',{
+ runId:uuid('run_id').primaryKey().references(()=>aiModelRun.id),tenantId:tenantId(),userId:uuid('user_id').references(()=>appUser.id),
+ companyIds:uuid('company_ids').array().notNull(),featureId:text('feature_id').notNull(),rootId:uuid('root_id'),rootKind:text('root_kind'),
+ requestDigest:text('request_digest'),configurationDigest:text('configuration_digest'),captureKind:text('capture_kind').notNull().default('actual_admission'),
+ moneyMode:text('money_mode').notNull(),createdAt:createdAt(),
+},t=>[foreignKey({columns:[t.tenantId,t.rootId],foreignColumns:[aiSpendRoot.tenantId,aiSpendRoot.rootId]})]);
+
+/** Migration 0650: own native outcome association metadata (FORCE RLS; app role SELECT/INSERT/DELETE only).
+ * Evidence association, not an execution ledger; job/review/import columns reference AI tables not modelled here. */
+export const aiNativeOutcomeAssociation=pgTable('ai_native_outcome_association',{
+ id:uuid('id').primaryKey(),tenantId:uuid('tenant_id').notNull().references(()=>tenant.id,{onDelete:'cascade'}),
+ userId:uuid('user_id').notNull().references(()=>appUser.id,{onDelete:'cascade'}),personId:uuid('person_id').references(()=>person.id,{onDelete:'cascade'}),
+ jobId:uuid('job_id').notNull(),requestNonce:uuid('request_nonce').notNull(),requestDigest:text('request_digest').notNull(),action:text('action').notNull(),
+ sourceKind:text('source_kind').notNull(),reviewId:uuid('review_id'),importAttemptId:uuid('import_attempt_id'),
+ eventId:uuid('event_id').notNull().references(()=>domainEvent.id,{onDelete:'cascade'}),nativeDigest:text('native_digest').notNull(),
+ jobReceiptDigest:text('job_receipt_digest').notNull(),receipt:text('receipt').notNull(),consented:boolean('consented').notNull(),
+ createdAt:createdAt(),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),sourceCaptureId:uuid('source_capture_id').notNull(),
+});
+/** Migration 0650: private native outcome privacy index. No app grant; definer functions only. */
+const nativeOutcomePrivate=pgSchema('app');
+export const nativeOutcomeSourceCapture=nativeOutcomePrivate.table('native_outcome_source_capture',{
+ id:id(),tenantId:uuid('tenant_id').notNull().references(()=>tenant.id,{onDelete:'cascade'}),userId:uuid('user_id').notNull().references(()=>appUser.id,{onDelete:'cascade'}),
+ personId:uuid('person_id').references(()=>person.id,{onDelete:'cascade'}),action:text('action').notNull(),sourceId:uuid('source_id').notNull(),sourceKind:text('source_kind').notNull(),
+ reviewId:uuid('review_id'),importAttemptId:uuid('import_attempt_id'),eventId:uuid('event_id').notNull().references(()=>domainEvent.id,{onDelete:'cascade'}),
+ targetCount:integer('target_count').notNull(),createdAt:createdAt(),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),
+});
+export const nativeOutcomeSourceTarget=nativeOutcomePrivate.table('native_outcome_source_target',{
+ captureId:uuid('capture_id').notNull().references(()=>nativeOutcomeSourceCapture.id,{onDelete:'cascade'}),kind:text('kind').notNull(),targetId:uuid('target_id').notNull(),
+},t=>[primaryKey({columns:[t.captureId,t.kind,t.targetId]})]);
+export const nativeOutcomeErasureIntent=nativeOutcomePrivate.table('native_outcome_erasure_intent',{
+ xactId:customType<{data:string}>({dataType:()=> 'xid8'})('xact_id').notNull(),tenantId:uuid('tenant_id').notNull(),userId:uuid('user_id').notNull(),personId:uuid('person_id').notNull(),employmentId:uuid('employment_id').notNull(),
+ cleared:integer('cleared').notNull(),eventId:uuid('event_id'),
+},t=>[primaryKey({columns:[t.xactId,t.tenantId,t.userId,t.personId]})]);
+/** Migration 0655: conversation evaluation checkpoint arms (FORCE RLS; column-scoped app grants).
+ * candidate_id references ai_agent_candidate(id,tenant_id), which is not modelled here. */
+export const aiAssistantAnswerEvaluationArm=pgTable('ai_assistant_answer_evaluation_arm',{
+ id:uuid('id').primaryKey(),tenantId:tenantId(),candidateId:uuid('candidate_id').notNull(),
+ evaluatorUserId:uuid('evaluator_user_id').notNull().references(()=>appUser.id),evaluatorPersonId:uuid('evaluator_person_id').references(()=>person.id,{onDelete:'cascade'}),
+ providerFingerprint:text('provider_fingerprint').notNull(),suiteDigest:text('suite_digest').notNull(),fixtureId:text('fixture_id').notNull(),arm:text('arm').notNull(),
+ passed:boolean('passed').notNull(),receipt:text('receipt').notNull(),
+ createdAt:timestamp('created_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull().default(sql`(clock_timestamp()+interval '30 days')`),
+},t=>[index('ai_answer_arm_expiry').on(t.expiresAt,t.id)]);
+/** Migration 0655: evaluation intents with a database-advanced incarnation (FORCE RLS). */
+export const aiAssistantAnswerEvaluationIntent=pgTable('ai_assistant_answer_evaluation_intent',{
+ id:uuid('id').primaryKey(),incarnation:bigint('incarnation',{mode:'number'}).generatedAlwaysAsIdentity(),tenantId:tenantId(),candidateId:uuid('candidate_id').notNull(),
+ evaluatorUserId:uuid('evaluator_user_id').notNull().references(()=>appUser.id),evaluatorPersonId:uuid('evaluator_person_id').references(()=>person.id,{onDelete:'cascade'}),
+ sourceDigest:text('source_digest').notNull(),providerFingerprint:text('provider_fingerprint').notNull(),suiteDigest:text('suite_digest').notNull(),
+ state:text('state').notNull().default('pending'),evaluationId:uuid('evaluation_id').unique('ai_assistant_answer_evaluation_intent_evaluation_id_key'),receipt:text('receipt').notNull(),
+ createdAt:timestamp('created_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull().default(sql`(clock_timestamp()+interval '30 days')`),
+},t=>[index('answer_evaluation_intent_expiry').on(t.expiresAt,t.id)]);
+/** Migration 0655: cumulative per-candidate/arm provider-call ledger; holds no person, user or content. */
+export const aiAssistantAnswerEvaluationBudget=pgTable('ai_assistant_answer_evaluation_budget',{
+ tenantId:tenantId(),candidateId:uuid('candidate_id').notNull(),fixtureId:text('fixture_id').notNull(),arm:text('arm').notNull(),
+ admitted:integer('admitted').notNull().default(1),
+},t=>[primaryKey({columns:[t.tenantId,t.candidateId,t.fixtureId,t.arm]})]);
+/** Migration 0655: per-question strategy markers with a database-advanced incarnation (FORCE RLS). */
+export const aiAssistantAnswerStrategyUse=pgTable('ai_assistant_answer_strategy_use',{
+ id:uuid('id').primaryKey(),incarnation:bigint('incarnation',{mode:'number'}).generatedAlwaysAsIdentity(),tenantId:tenantId(),
+ userId:uuid('user_id').notNull().references(()=>appUser.id),personId:uuid('person_id').references(()=>person.id,{onDelete:'cascade'}),
+ promotionId:uuid('promotion_id'),candidateDigest:text('candidate_digest').notNull(),providerFingerprint:text('provider_fingerprint').notNull(),sourceDigest:text('source_digest').notNull(),
+ state:text('state').notNull().default('pending'),exchangeId:uuid('exchange_id').unique('ai_assistant_answer_strategy_use_exchange_id_key').references(()=>assistantExchange.id,{onDelete:'cascade'}),receipt:text('receipt').notNull(),
+ createdAt:timestamp('created_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull().default(sql`(clock_timestamp()+interval '30 days')`),
+},t=>[index('ai_answer_use_expiry').on(t.expiresAt,t.id)]);
+/** Migrations 0655/0656: private erasure and transcript custody. No app grant; definer functions only. */
+const assistantPrivate=pgSchema('app');
+export const assistantAnswerErasureIntent=assistantPrivate.table('assistant_answer_erasure_intent',{
+ xactId:customType<{data:string}>({dataType:()=> 'xid8'})('xact_id').notNull(),tenantId:uuid('tenant_id').notNull(),userId:uuid('user_id').notNull(),
+ personId:uuid('person_id').notNull(),employmentId:uuid('employment_id').notNull(),cleared:integer('cleared').notNull(),
+},t=>[primaryKey({columns:[t.xactId,t.tenantId,t.personId]})]);
+export const assistantTranscriptIdentity=assistantPrivate.table('assistant_transcript_identity',{
+ exchangeId:uuid('exchange_id').primaryKey().references(()=>assistantExchange.id,{onDelete:'cascade'}),tenantId:tenantId(),
+ userId:uuid('user_id').notNull().references(()=>appUser.id),personId:uuid('person_id').references(()=>person.id),
+});
+export const assistantTranscriptRetirementScope=assistantPrivate.table('assistant_transcript_retirement_scope',{
+ xactId:customType<{data:string}>({dataType:()=> 'xid8'})('xact_id').notNull(),tenantId:uuid('tenant_id').notNull(),exchangeId:uuid('exchange_id').notNull(),
+},t=>[primaryKey({columns:[t.xactId,t.tenantId,t.exchangeId]})]);
 
 // fcc2ea42 — OT-only version/assignment and immutable source evidence. Schedule Group stays independent.
 export const overtimePatternEpoch = pgTable('overtime_pattern_epoch', {
@@ -10980,3 +11209,125 @@ export const loginPresentation = pgTable('login_presentation', {
   revision: integer('revision').notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// Approved payroll-history correction graph: attempts and revisions are append-only; a record's
+// latest ordinal is its effective snapshot. No closed payslip is updated or deleted for a correction.
+export const payrollHistoryImportAttempt=pgTable('payroll_history_import_attempt',{
+ id:id(),tenantId:tenantId(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),operationKey:uuid('operation_key').notNull(),
+ sourceName:text('source_name').notNull(),mimeType:text('mime_type').notNull(),sourceHash:text('source_hash').notNull(),
+ sourceContent:bytea('source_content').notNull(),companyIds:uuid('company_ids').array().notNull(),
+ plan:jsonb('plan').notNull().$type<import('../lib/payroll-history-revisions').HistoryRevisionPlan>(),createdAt:createdAt(),
+},t=>[uniqueIndex('payroll_history_attempt_operation_uq').on(t.tenantId,t.createdBy,t.operationKey),index('payroll_history_attempt_created_idx').on(t.tenantId,t.createdAt)]);
+export const payrollHistoryImportRecord=pgTable('payroll_history_import_record',{
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),
+ period:text('period').notNull(),cycleId:uuid('cycle_id').notNull().references(()=>payrollCycle.id),createdAt:createdAt(),
+},t=>[uniqueIndex('payroll_history_record_identity_uq').on(t.tenantId,t.companyId,t.employmentId,t.period,t.cycleId)]);
+export const payrollHistoryImportSnapshot=pgTable('payroll_history_import_snapshot',{
+ id:uuid('id').primaryKey().references(()=>payslip.id),tenantId:tenantId(),recordId:uuid('record_id').notNull().references(()=>payrollHistoryImportRecord.id),
+ valueHash:text('value_hash').notNull(),values:jsonb('values').notNull().$type<import('../lib/payroll-history-revisions').ImportedPayrollValues>(),createdAt:createdAt(),
+});
+export const payrollHistoryImportRevision=pgTable('payroll_history_import_revision',{
+ id:id(),tenantId:tenantId(),recordId:uuid('record_id').notNull().references(()=>payrollHistoryImportRecord.id),ordinal:integer('ordinal').notNull(),
+ attemptId:uuid('attempt_id').notNull().references(()=>payrollHistoryImportAttempt.id),snapshotId:uuid('snapshot_id').references(()=>payrollHistoryImportSnapshot.id),
+ previousRevisionId:uuid('previous_revision_id'),kind:text('kind').notNull().$type<'import'|'correction'|'revert'|'adopted'>(),cycleName:text('cycle_name').notNull(),createdAt:createdAt(),
+},t=>[uniqueIndex('payroll_history_revision_ordinal_uq').on(t.recordId,t.ordinal),index('payroll_history_revision_attempt_idx').on(t.tenantId,t.attemptId)]);
+export const payrollHistoryImportEvent=pgTable('payroll_history_import_event',{
+ id:id(),tenantId:tenantId(),attemptId:uuid('attempt_id').notNull().references(()=>payrollHistoryImportAttempt.id),
+ kind:text('kind').notNull().$type<'confirmed'|'failed'|'reverted'|'revert_failed'>(),actorId:uuid('actor_id').notNull().references(()=>appUser.id),
+ changes:jsonb('changes').notNull().$type<import('../lib/payroll-history-revisions').HistoryRevisionChange[]>(),detail:jsonb('detail').notNull().$type<Record<string,unknown>>(),createdAt:createdAt(),
+},t=>[uniqueIndex('payroll_history_confirm_once_uq').on(t.attemptId).where(sql`${t.kind}='confirmed'`),uniqueIndex('payroll_history_revert_once_uq').on(t.attemptId).where(sql`${t.kind}='reverted'`)]);
+/** Current import amounts for batch dashboards; original closed batch counters stay immutable. */
+const payrollHistoryBatchView=pgView('payroll_history_effective_batch').as(qb=>qb.select({
+ ...getTableColumns(payrollBatch),
+ totals:sql<unknown>`CASE WHEN ${payrollBatch.historyImportAttemptId} IS NULL THEN ${payrollBatch.totals} ELSE app.payroll_history_batch_totals(${payrollBatch.id}) END`.as('totals'),
+ employeeCount:sql<number>`CASE WHEN ${payrollBatch.historyImportAttemptId} IS NULL THEN ${payrollBatch.employeeCount} ELSE (app.payroll_history_batch_totals(${payrollBatch.id})->>'employeeCount')::integer END`.as('employee_count'),
+}).from(payrollBatch));
+// Alias a subquery, rather than the view: Drizzle emits an aliased view's name alone in FROM,
+// which would resolve to the physical payroll_batch table and bypass the effective projection.
+export const payrollHistoryEffectiveBatch=new QueryBuilder().select().from(payrollHistoryBatchView).as('payroll_batch');
+
+// Letter lifecycle. Existing employee/company rows remain the identity authority; versions and bytes
+// are immutable evidence, and letter_record is the locked current workflow projection.
+export const letterCapabilityGrant=pgTable('letter_capability_grant',{
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
+ capability:text('capability').notNull().$type<import('../lib/letter-workflow').LetterCapability>(),role:text('role').notNull(),allowed:boolean('allowed').notNull(),
+ createdAt:createdAt(),
+},t=>[uniqueIndex('letter_capability_role_uq').on(t.tenantId,t.companyId,t.capability,t.role)]);
+export const letterAsset=pgTable('letter_asset',{
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),ownerUserId:uuid('owner_user_id').notNull().references(()=>appUser.id),
+ kind:text('kind').notNull().$type<'letterhead'|'signature'>(),name:text('name').notNull(),mimeType:text('mime_type').notNull(),content:bytea('content').notNull(),contentHash:text('content_hash').notNull(),createdAt:createdAt(),
+});
+export const letterPolicyVersion=pgTable('letter_policy_version',{
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),category:text('category').notNull(),ordinal:integer('ordinal').notNull(),enabled:boolean('enabled').notNull(),
+ policy:jsonb('policy').notNull().$type<import('../lib/letter-workflow').LetterPolicy>(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+},t=>[uniqueIndex('letter_policy_version_uq').on(t.tenantId,t.companyId,t.category,t.ordinal)]);
+export const letterMergeFieldVersion=pgTable('letter_merge_field_version',{
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),key:text('key').notNull(),ordinal:integer('ordinal').notNull(),active:boolean('active').notNull(),
+ definition:jsonb('definition').notNull().$type<import('../lib/letter-model').LetterField>(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+},t=>[uniqueIndex('letter_merge_field_version_uq').on(t.tenantId,t.companyId,t.key,t.ordinal)]);
+export const letterTemplate=pgTable('letter_template',{
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),code:text('code').notNull(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),
+ deactivated:boolean('deactivated').notNull().default(false),revision:integer('revision').notNull().default(1),createdAt:createdAt(),
+},t=>[uniqueIndex('letter_template_code_uq').on(t.tenantId,t.companyId,t.code)]);
+export const letterTemplateVersion=pgTable('letter_template_version',{
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),templateId:uuid('template_id').notNull().references(()=>letterTemplate.id),ordinal:integer('ordinal').notNull(),
+ name:text('name').notNull(),category:text('category').notNull(),document:jsonb('document').notNull().$type<import('../lib/letter-model').LetterDocument>(),effectiveFrom:date('effective_from').notNull(),
+ presentation:jsonb('presentation').$type<import('../lib/letter-workflow').LetterTemplatePresentation>(),
+ status:text('status').notNull().$type<'draft'|'submitted'|'approved'|'rejected'>().default('draft'),createdBy:uuid('created_by').notNull().references(()=>appUser.id),approvedBy:uuid('approved_by').references(()=>appUser.id),approvedAt:timestamp('approved_at',{withTimezone:true}),createdAt:createdAt(),
+},t=>[uniqueIndex('letter_template_version_uq').on(t.templateId,t.ordinal)]);
+export const letterTemplateField=pgTable('letter_template_field',{
+ tenantId:tenantId(),templateVersionId:uuid('template_version_id').notNull().references(()=>letterTemplateVersion.id),fieldVersionId:uuid('field_version_id').notNull().references(()=>letterMergeFieldVersion.id),
+},t=>[primaryKey({columns:[t.templateVersionId,t.fieldVersionId]})]);
+/** Immutable, explicitly configured event rules. Saving a version binds its accountable draft owner. */
+export const letterAutomationRuleVersion=pgTable('letter_automation_rule_version',{
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),templateId:uuid('template_id').notNull().references(()=>letterTemplate.id),
+ trigger:text('trigger').notNull().$type<'probation_due'|'confirmation_applied'|'promotion_applied'>(),ordinal:integer('ordinal').notNull(),enabled:boolean('enabled').notNull(),startOn:date('start_on').notNull(),afterSequence:bigint('after_sequence',{mode:'number'}).notNull().default(0),
+ customValues:jsonb('custom_values').notNull().$type<Record<string,import('../lib/letter-model').LetterValue|null>>(),confidential:boolean('confidential').notNull().default(false),
+ createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+},t=>[uniqueIndex('letter_automation_rule_version_uq').on(t.tenantId,t.companyId,t.templateId,t.trigger,t.ordinal)]);
+export const letterGenerationBatch=pgTable('letter_generation_batch',{
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),templateVersionId:uuid('template_version_id').notNull().references(()=>letterTemplateVersion.id),policyVersionId:uuid('policy_version_id').notNull().references(()=>letterPolicyVersion.id),
+ selection:jsonb('selection').notNull().$type<{employmentIds:string[];customValues:Record<string,Record<string,import('../lib/letter-model').LetterValue|null>>;sourceAsOfDate:string}>(),inputHash:text('input_hash').notNull(),
+ createdBy:uuid('created_by').notNull().references(()=>appUser.id),operationKey:uuid('operation_key').notNull(),sourceEventId:uuid('source_event_id').references(()=>domainEvent.id),createdAt:createdAt(),
+},t=>[uniqueIndex('letter_batch_operation_uq').on(t.tenantId,t.createdBy,t.operationKey),uniqueIndex('letter_batch_source_event_uq').on(t.tenantId,t.sourceEventId,t.templateVersionId),index('letter_batch_author_created_idx').on(t.tenantId,t.companyId,t.createdBy,t.createdAt.desc(),t.id.desc())]);
+export const letterRecord=pgTable('letter_record',{
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),batchId:uuid('batch_id').notNull().references(()=>letterGenerationBatch.id),
+ reference:text('reference').notNull(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),currentRevisionId:uuid('current_revision_id').references(():AnyPgColumn=>letterRevision.id),
+ state:text('state').notNull().$type<import('../lib/letter-workflow').LetterState>().default('draft'),stageIndex:integer('stage_index').notNull().default(0),lockVersion:integer('lock_version').notNull().default(1),confidential:boolean('confidential').notNull(),
+ originalLetterId:uuid('original_letter_id').references(():AnyPgColumn=>letterRecord.id),legalHold:boolean('legal_hold').notNull().default(false),retainUntil:date('retain_until').notNull(),
+ submittedAt:timestamp('submitted_at',{withTimezone:true}),approvedAt:timestamp('approved_at',{withTimezone:true}),issuedAt:timestamp('issued_at',{withTimezone:true}),voidedAt:timestamp('voided_at',{withTimezone:true}),createdAt:createdAt(),
+},t=>[uniqueIndex('letter_reference_uq').on(t.tenantId,t.reference),uniqueIndex('letter_record_batch_employment_uq').on(t.tenantId,t.batchId,t.employmentId),index('letter_record_scope_idx').on(t.tenantId,t.companyId,t.employmentId)]);
+export const letterRevision=pgTable('letter_revision',{
+ id:id(),tenantId:tenantId(),letterId:uuid('letter_id').notNull().references(()=>letterRecord.id),ordinal:integer('ordinal').notNull(),
+ document:jsonb('document').notNull().$type<ReturnType<typeof import('../lib/letter-model').renderLetterDocument>['document']>(),
+ values:jsonb('values').notNull().$type<Record<string,import('../lib/letter-model').LetterValue|null>>(),editableValues:jsonb('editable_values').notNull().$type<Record<string,import('../lib/letter-model').LetterValue|null>>(),
+ sourceHash:text('source_hash').notNull(),contentHash:text('content_hash').notNull(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+},t=>[uniqueIndex('letter_revision_ordinal_uq').on(t.letterId,t.ordinal)]);
+export const letterApprovalDecision=pgTable('letter_approval_decision',{
+ id:id(),tenantId:tenantId(),letterId:uuid('letter_id').notNull().references(()=>letterRecord.id),revisionId:uuid('revision_id').notNull().references(()=>letterRevision.id),stageIndex:integer('stage_index').notNull(),
+ actorId:uuid('actor_id').notNull().references(()=>appUser.id),action:text('action').notNull().$type<'approve'|'reject'|'return'|'delegate'>(),comment:text('comment').notNull(),delegatedTo:uuid('delegated_to').references(()=>appUser.id),contentHash:text('content_hash').notNull(),createdAt:createdAt(),
+},t=>[uniqueIndex('letter_approve_stage_once_uq').on(t.revisionId,t.stageIndex).where(sql`${t.action}='approve'`)]);
+export const letterArtifact=pgTable('letter_artifact',{
+ id:id(),tenantId:tenantId(),letterId:uuid('letter_id').notNull().references(()=>letterRecord.id),revisionId:uuid('revision_id').notNull().references(()=>letterRevision.id),
+ content:bytea('content').notNull(),contentHash:text('content_hash').notNull(),signatoryUserId:uuid('signatory_user_id').notNull().references(()=>appUser.id),signingMode:text('signing_mode').notNull().$type<'authenticated'|'stamp'>(),authenticityTokenHash:text('authenticity_token_hash').notNull(),createdAt:createdAt(),
+},t=>[uniqueIndex('letter_artifact_revision_uq').on(t.revisionId),uniqueIndex('letter_authenticity_hash_uq').on(t.authenticityTokenHash)]);
+export const letterRecipientEvent=pgTable('letter_recipient_event',{
+ id:id(),tenantId:tenantId(),letterId:uuid('letter_id').notNull().references(()=>letterRecord.id),artifactId:uuid('artifact_id').notNull().references(()=>letterArtifact.id),actorId:uuid('actor_id').notNull().references(()=>appUser.id),
+ kind:text('kind').notNull().$type<'viewed'|'acknowledged'|'signed'>(),contentHash:text('content_hash').notNull(),intent:text('intent').notNull(),createdAt:createdAt(),
+},t=>[uniqueIndex('letter_recipient_action_once_uq').on(t.artifactId,t.actorId,t.kind)]);
+export const letterAccessToken=pgTable('letter_access_token',{
+ id:id(),tenantId:tenantId(),artifactId:uuid('artifact_id').notNull().references(()=>letterArtifact.id),audienceUserId:uuid('audience_user_id').notNull().references(()=>appUser.id),tokenHash:text('token_hash').notNull(),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),createdAt:createdAt(),
+},t=>[uniqueIndex('letter_access_token_hash_uq').on(t.tokenHash)]);
+export const letterJob=pgTable('letter_job',{
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),letterId:uuid('letter_id').references(()=>letterRecord.id),
+ kind:text('kind').notNull().$type<'notification'|'approvalReminder'|'acknowledgementReminder'|'escalation'|'eventDraft'>(),recipientUserId:uuid('recipient_user_id').references(()=>appUser.id),sourceEventId:uuid('source_event_id').references(()=>domainEvent.id),
+ dedupeKey:text('dedupe_key').notNull(),payload:jsonb('payload').notNull().$type<Record<string,unknown>>(),status:text('status').notNull().$type<'queued'|'completed'|'failed'|'cancelled'>().default('queued'),
+ dueAt:timestamp('due_at',{withTimezone:true}).notNull(),attempts:integer('attempts').notNull().default(0),lastError:text('last_error'),leaseToken:uuid('lease_token'),leaseUntil:timestamp('lease_until',{withTimezone:true}),createdAt:createdAt(),
+},t=>[uniqueIndex('letter_job_dedupe_uq').on(t.tenantId,t.dedupeKey)]);
+export const letterCounter=pgTable('letter_counter',{
+ tenantId:tenantId(),year:text('year').notNull(),nextValue:bigint('next_value',{mode:'bigint'}).notNull(),
+},t=>[primaryKey({columns:[t.tenantId,t.year]})]);
+// Anonymous purpose-bound verification counters contain neither tenant identities nor letter contents.
+export const letterVerificationRate=pgTable('letter_verification_rate',{
+ scope:text('scope').notNull(),bucket:bigint('bucket',{mode:'number'}).notNull(),hits:integer('hits').notNull(),
+},t=>[primaryKey({columns:[t.scope,t.bucket]})]);

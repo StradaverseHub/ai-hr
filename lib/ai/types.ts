@@ -3,7 +3,7 @@
  * implements, so the rest of the app is provider-agnostic. Draft-only: adapters generate text and
  * validate credentials; they never persist anything.
  */
-export type AiProvider = 'anthropic' | 'openai' | 'google';
+export type AiProvider = 'anthropic' | 'openai' | 'google' | 'openrouter' | 'ai_gateway';
 
 /** Resolved, ready-to-use config for one generation — the decrypted key lives only in request memory. */
 export type ResolvedAiConfig = {
@@ -11,6 +11,10 @@ export type ResolvedAiConfig = {
   provider: AiProvider;
   model: string;
   apiKey: string;
+  /** Explicit tenant-owned versioned routes; never sourced from an environment/model request. */
+  providerOptions?: import('./providers/openrouter-configuration').OpenRouterOptions;
+  /** ai_gateway only (0661): the checked https address of an OpenAI-style gateway. */
+  gatewayBaseUrl?: string;
 };
 
 export type GenerateArgs = {
@@ -21,6 +25,8 @@ export type GenerateArgs = {
   timeoutMs?: number;
   signal?: AbortSignal;
   onUsage?: (usage: AiUsage) => void;
+  /** Trusted adapter receipt; the gateway overwrites caller callbacks before dispatch. */
+  onObservation?: (observation: AiRunObservation) => void;
 };
 export type AiImageMime='image/png'|'image/jpeg'|'image/gif'|'image/webp';
 export type ImageReadArgs={data:Uint8Array;mimeType:AiImageMime;signal:AbortSignal;timeoutMs:number;onUsage?:(usage:AiUsage)=>void};
@@ -56,8 +62,8 @@ export class AiGatewayError extends Error {
 
 /** A control refusal is distinct from provider failure; it contains no tenant/company identifiers. */
 export class AiAllowanceError extends AiGatewayError {
-  constructor(readonly reason: 'paused' | 'daily_limit' | 'monthly_limit') {
-    super(reason === 'paused' ? 'This AI feature is paused.' : reason === 'daily_limit' ? 'The daily AI request allowance has been reached.' : 'The monthly AI token allowance has insufficient available capacity.');
+  constructor(readonly reason: 'paused' | 'daily_limit' | 'monthly_limit' | 'concurrent_limit') {
+    super(reason === 'concurrent_limit' ? 'All configured AI request slots are currently in use. Try again after an existing request finishes.' : reason === 'paused' ? 'This AI feature is paused.' : reason === 'daily_limit' ? 'The daily AI request allowance has been reached.' : 'The monthly AI token allowance has insufficient available capacity.');
     this.name = 'AiAllowanceError';
   }
 }
@@ -157,7 +163,13 @@ export type AiUsage = {
   cachedInputTokens: number;
 };
 
+/** One normalized terminal nonstreaming receipt. No raw provider body, key or estimated pricing. */
+export type AiRunObservation=Readonly<{version:1;provider:'openrouter';accountCostUnit:'openrouter_account_credits';
+ usage:Readonly<AiUsage>|null;accountCostCredits:number|null;elapsedMs:number|null}>;
+
 export type ConverseArgs = {
+  /** Internal adapter-only callback, attached after strict gateway input capture; never serialized. */
+  onObservation?: (observation:AiRunObservation)=>void;
   /**
    * Ordered system blocks. An ARRAY, not a string, because Anthropic can only carry a prompt-cache
    * breakpoint on a block (`system?: string | Array<TextBlockParam>`). Every element must be STABLE per

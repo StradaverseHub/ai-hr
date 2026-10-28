@@ -1,10 +1,18 @@
 'use client';
+import {PersonnelImportEvaluationPanel,type PersonnelImportEvaluationHandle,type PersonnelImportEvaluationStatus} from '@/components/personnel-import-evaluation-panel';
+import {employeeImportSourceFingerprint,personnelImportLocalDigest,personnelImportLocalBytesDigest} from '@/lib/personnel-import-evaluation-client';
+import {PersonnelImportEvidenceReview} from '@/components/personnel-import-evidence-review';
+import {PersonnelImportPreparationReview} from '@/components/personnel-import-preparation-review';
+import {preparePersonnelImportMatrix,preparePersonnelImportText,type PersonnelPreparation} from '@/lib/personnel-import-preparation';
+import {PersonnelImportWorkbookReview,type PersonnelWorkbookReviewMessages} from '@/components/personnel-import-workbook-review';
+import {PersonnelImportHeaderReview,type PersonnelImportHeaderReviewMessages,type PersonnelImportHeaderAssistanceAnnotation} from '@/components/personnel-import-header-review';
+import {capturePersonnelImportSource,applyPersonnelHeaderMapping,currentPersonnelImportMatrix,appendPersonnelImportLocalEvidence,PERSONNEL_IMPORT_LOCAL_EVIDENCE_LIMIT,personnelWorksheetMatrixRows,type PersonnelImportLocalEvidence,type PersonnelImportSource,type PersonnelWorkbookSource,type PersonnelSheetRole} from '@/lib/personnel-import-assistance-source';
 import { personnelTemplateReferenceLists, type PersonnelReferenceOption } from '@/lib/personnel-template-reference';
 import { useNricPolicyMessage } from '@/components/nric-policy-message';
 import {ALLOCATION_SHEET} from '@/lib/employment-cost-allocation';
 import {allocationWorkbookSheets} from '@/lib/cost-allocation-workbook';
 import {allocationWorkbookReferencesAction} from './cost-allocation-actions';
-import {buildPersonnelCsv} from '@/lib/personnel-csv';
+import {buildPersonnelCsv,decodePersonnelCsvRows,PERSONNEL_CSV_FRAME} from '@/lib/personnel-csv';
 import {personnelImportExclusionRows} from '@/lib/personnel-import-exclusions';
 import {PERSONNEL_REGISTER_KINDS,PERSONNEL_REGISTER_SHEETS,personnelRegisterColumns,type PersonnelRegisterTexts,type PersonnelRegisterKind} from '@/lib/personnel-register-import';
 import type {PersonnelImportSheet} from '@/lib/personnel-import-contract';
@@ -19,7 +27,7 @@ import { Button, Card, Field, inputCls } from '@/components/ui';
 import { DownloadTemplate } from '@/components/download-template';
 import { employeeTemplate } from '@/lib/import-template';
 import { IMPORT_COLUMNS, type ImportPreview, type ImportResult } from '@/lib/import-schema';
-import { IMPORT_FILE_ACCEPT, importFileMessageKey, readImportFile } from '@/lib/import-file';
+import { IMPORT_FILE_ACCEPT, MAX_IMPORT_CSV_BYTES, importFileMessageKey, readImportFile } from '@/lib/import-file';
 import { toCsv } from '@/lib/csv';
 import { personnelColumnLabel as descriptorColumnLabel, personnelColumnGuidance, personnelImportField } from '@/lib/personnel-import-contract';
 import {
@@ -79,6 +87,25 @@ export function EmployeeImport({
   onCommitPendingChange?: (pending: boolean) => void;
 }) {
   const t = useTranslations('people.import');
+  const headerMessages:PersonnelImportHeaderReviewMessages={title:t('headerAssistance.title'),
+localOnly:t('headerAssistance.localOnly'),
+sheet:t('headerAssistance.sheet'),
+column:t('headerAssistance.column'),
+sourceHeading:t('headerAssistance.sourceHeading'),
+sampleValues:t('headerAssistance.sampleValues'),
+destination:t('headerAssistance.destination'),
+chooseField:t('headerAssistance.chooseField'),
+unresolved:t('headerAssistance.unresolved'),
+ambiguous:t('headerAssistance.ambiguous'),
+duplicate:t('headerAssistance.duplicate'),
+applyMapping:t('headerAssistance.applyMapping'),
+cancel:t('headerAssistance.cancel'),
+reviewHeadings:t('headerAssistance.reviewHeadings'),
+invalidSource:t('headerAssistance.invalidSource'),
+acceptedRevision:t('headerAssistance.acceptedRevision'),
+sourceChanged:t('headerAssistance.sourceChanged'),
+unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTitle'),aiDescription:t('headerAssistance.aiDescription'),aiChoose:t('headerAssistance.aiChoose'),aiConsent:t('headerAssistance.aiConsent'),aiSend:t('headerAssistance.aiSend'),aiWorking:t('headerAssistance.aiWorking'),aiUnavailable:t('headerAssistance.aiUnavailable'),aiUncertain:t('headerAssistance.aiUncertain'),aiReopen:t('headerAssistance.aiReopen'),aiNewRequest:t('headerAssistance.aiNewRequest'),aiReady:t('headerAssistance.aiReady'),aiUseSuggestion:t('headerAssistance.aiUseSuggestion'),aiNoHeadings:t('headerAssistance.aiNoHeadings'),aiLimit:t('headerAssistance.aiLimit'),aiSelected:t('headerAssistance.aiSelected'),aiStale:t('headerAssistance.aiStale'),aiPrepareUnknown:t('headerAssistance.aiPrepareUnknown')};
+  const workbookMessages:PersonnelWorkbookReviewMessages={title:t('headerAssistance.workbook.title'),description:t('headerAssistance.workbook.description'),sheet:t('headerAssistance.workbook.sheet'),rows:t('headerAssistance.workbook.rows'),role:t('headerAssistance.workbook.role'),employee:t('headerAssistance.workbook.employee'),family:t('headerAssistance.workbook.family'),allocations:t('headerAssistance.workbook.allocations'),qualification:t('headerAssistance.workbook.qualification'),emergency:t('headerAssistance.workbook.emergency'),unassigned:t('headerAssistance.workbook.unassigned'),excluded:t('headerAssistance.workbook.excluded'),acknowledge:t('headerAssistance.workbook.acknowledge'),apply:t('headerAssistance.workbook.apply'),cancel:t('headerAssistance.workbook.cancel'),incomplete:t('headerAssistance.workbook.incomplete')};
   const nricMessage = useNricPolicyMessage();
   const nricTexts = useTranslations('peopleGeneral');
   const nricGuidance=nricTexts(reference.allowDuplicatedNric?'importOn':'importOff');
@@ -93,8 +120,29 @@ export function EmployeeImport({
   const [companyId, setCompanyId] = useState(defaultCompanyId);
   const organisationGuidance=reference.organisationByCompany?.[companyId]??{department:reference.departments,position:reference.positions,cost_center:reference.costCenters};
   const [csv, setCsv] = useState('');
+  const evaluation=useRef<PersonnelImportEvaluationHandle|null>(null);
+  const [evaluationStatus,setEvaluationStatus]=useState<PersonnelImportEvaluationStatus>({tracked:false,mode:null,blocked:false,committed:false});
+  const [sourceEpoch,setSourceEpoch]=useState(0),[guidedUsed,setGuidedUsed]=useState(false);
+  const manualCorrection=useRef(false);
+  const originalSourceFingerprint=useRef<string|null>(null);
+  const baseline=evaluationStatus.tracked&&evaluationStatus.mode==='baseline';
+  const [importSource,setImportSource]=useState<PersonnelImportSource|null>(null);
+  const [reviewHeaders,setReviewHeaders]=useState(false);
+  const headerReviewInputRevision=useRef<number|null>(null);
+  const [headerNotice,setHeaderNotice]=useState<string|null>(null);
+  // Opaque proposal-use metadata only. This does not claim a canonical commit or correctness.
+  const headerAssistanceAnnotation=useRef<PersonnelImportHeaderAssistanceAnnotation|null>(null);
   // Item 2983802f — the Family sheet's rows, as CSV text, decoded from the SAME workbook in the browser.
   // Always '' for a pasted or .csv upload: a CSV file is one sheet, so it cannot carry family members.
+  const [prepareIntake,setPrepareIntake]=useState(false);
+  type PendingFileSource={fingerprint:string|null;priorGuidedUsed:boolean};
+  const [workbookReview,setWorkbookReview]=useState<{revisionId:string;inputRevision:number;companyId:string;fileName:string;format:'xlsx'|'xls';workbook:PersonnelWorkbookSource;pendingSource:PendingFileSource}|null>(null);
+  type PreparationReview={revisionId:string;inputRevision:number;companyId:string;fileName:string|null;preparation:PersonnelPreparation;
+    companions:{family:string;allocations:string;registers:PersonnelRegisterTexts};replacesSource?:boolean;pendingSource?:PendingFileSource;workbook?:PersonnelWorkbookSource;sheetDecision?:{roles:Readonly<Record<string,PersonnelSheetRole>>;excluded:readonly string[];excludedAcknowledged:boolean}};
+  const [preparationReview,setPreparationReview]=useState<PreparationReview|null>(null);
+  const pendingFileSource=workbookReview?.pendingSource??preparationReview?.pendingSource;
+  // Original cell/span/sheet evidence stays browser-local even after an accepted normalized revision.
+  const [localEvidence,setLocalEvidence]=useState<readonly PersonnelImportLocalEvidence[]>([]);
   const [dependentsCsv, setDependentsCsv] = useState('');
   const [allocationsCsv,setAllocationsCsv]=useState('');
   const [registerTexts,setRegisterTexts]=useState<PersonnelRegisterTexts>({});
@@ -126,6 +174,7 @@ export function EmployeeImport({
     setResult(null);
     setPhase('idle');
     setError(null);
+    headerReviewInputRevision.current=null;setReviewHeaders(false);setHeaderNotice(null);
   };
 
   // Validate an explicit string rather than the `csv` state: after a file read the state update
@@ -142,6 +191,7 @@ export function EmployeeImport({
         setPreview(p);
         setResult(null);
         setPhase('previewed');
+        await evaluation.current?.record({kind:'preview',validRows:p.validCount,rejectedRows:p.total-p.validCount,fileErrors:p.fileErrors.length});
       } catch (e) {
         if (revision !== inputRevision.current) return;
         setError((e as Error).message);
@@ -151,25 +201,62 @@ export function EmployeeImport({
 
   const validate = () => runValidate(csv);
 
+  const beginTextPreparation=()=>{
+    if(commitPending.current||baseline||evaluationStatus.blocked)return;
+    setGuidedUsed(true);reset();setWorkbookReview(null);
+    const revisionId=crypto.randomUUID();
+    const source=importSource?.currentText===csv?importSource:null;
+    const options={columns:employeeTemplate.columns.map(column=>column.key),sheet:'employee' as const,resolvers:[resolveReferenceLabel]};
+    try{
+    const preparation=source?.provenance?preparePersonnelImportMatrix({revisionId,matrix:currentPersonnelImportMatrix(source),rowNumbers:source.rowNumbers,coordinateKind:source.coordinateKind,source:source.provenance,text:source.originalText},options):preparePersonnelImportText({revisionId,text:csv},options);
+    setPreparationReview({revisionId,inputRevision:inputRevision.current,companyId,fileName:source?.fileName??fileName,preparation,
+      companions:{family:dependentsCsv,allocations:allocationsCsv,registers:registerTexts}});
+    }catch{setHeaderNotice(headerMessages.invalidSource);setPreparationReview(null);}
+  };
+
   // Step 1 of the import (see lib/import-file): turn the chosen file into CSV text, then hand that
   // text to the SAME validate step the paste box uses. Nothing about parsing, validation or the
   // write path changes — this only replaces "open the file and copy its contents" for the user.
   const loadFile = async (file: File) => {
     if (commitPending.current) return;
-    reset();
+    // A picked candidate is not the active source. Preserve its file label, companions, original
+    // fingerprint and lineage until adoption; a failed/delayed read must not retarget old CSV.
+    const priorGuidedUsed=pendingFileSource?.priorGuidedUsed??guidedUsed;
+    if(pendingFileSource){setSourceEpoch(value=>value+1);setGuidedUsed(priorGuidedUsed);}
+    reset();setWorkbookReview(null);setPreparationReview(null);
+    const preparing=prepareIntake&&!baseline;
     const revision = inputRevision.current;
     const readRevision = ++fileReadRevision.current;
-    setFileName(null);
     setReading(true);
     try {
       // The reader maps the first requested companion to dependentsText, so Family must stay first.
       // A workbook without Family returns empty dependentsText, even when allocations are present.
-      const { name, text, dependentsText,extraTexts } = await readImportFile(file, {
+      const { name, format,text, dependentsText,extraTexts,source,preparation } = await readImportFile(file, {
+        captureSource:true,preparePersonnel:preparing,
         extraSheets: [EMPLOYEE_XLSX_SHEETS.family,ALLOCATION_SHEET,...Object.values(PERSONNEL_REGISTER_SHEETS)],
         allowedSheets:[ALLOCATION_SHEET,'Allocation Codes','Allocation Instructions',EMPLOYEE_XLSX_SHEETS.family,EMPLOYEE_XLSX_SHEETS.reference,EMPLOYEE_XLSX_SHEETS.instructions,...Object.values(PERSONNEL_REGISTER_SHEETS),'__PersonnelLists'],
       });
-      if (revision !== inputRevision.current) return;
-      setCsv(text);
+      // The canonical reader has already enforced file/decode bounds before allocating hash bytes.
+      let originalDigest:string|null=null;
+      try{originalDigest=await personnelImportLocalBytesDigest(await file.arrayBuffer());}catch{/* Measurement may be unavailable; the ordinary manual import stays usable. */}
+      if(revision!==inputRevision.current)return;
+      if(preparing){
+        // Explicitly isolate measurement for the candidate before any cleanup. Cancel/supersede
+        // invalidates this epoch; the still-active old CSV never inherits the candidate fingerprint.
+        const pendingSource:PendingFileSource={fingerprint:originalDigest,priorGuidedUsed};
+        const revisionId=crypto.randomUUID();
+        if(preparation&&format!=='csv')setWorkbookReview({revisionId,inputRevision:revision,companyId,fileName:name,format,workbook:preparation,pendingSource});
+        else setPreparationReview({revisionId,inputRevision:revision,companyId,fileName:name,
+          replacesSource:true,pendingSource,preparation:preparePersonnelImportText({revisionId,text},{columns:employeeTemplate.columns.map(column=>column.key),sheet:'employee',resolvers:[resolveReferenceLabel]}),
+          companions:{family:'',allocations:'',registers:{}}});
+        setSourceEpoch(value=>value+1);setGuidedUsed(false);
+        return;
+      }
+      // Recognised/manual file flow adopts only after decode AND fingerprint await are current.
+      originalSourceFingerprint.current=originalDigest;setSourceEpoch(value=>value+1);setGuidedUsed(false);manualCorrection.current=false;
+      setLocalEvidence([]);setCsv(text);headerAssistanceAnnotation.current=null;
+      try{setImportSource(capturePersonnelImportSource({text,fileName:name,format,source},crypto.randomUUID()));}catch{setImportSource(null);}
+
       setDependentsCsv(dependentsText);
       const allocations=extraTexts?.[ALLOCATION_SHEET]??'';setAllocationsCsv(allocations);
       const registers=Object.fromEntries(PERSONNEL_REGISTER_KINDS.map(kind=>[kind,extraTexts?.[PERSONNEL_REGISTER_SHEETS[kind]]??'']));
@@ -179,11 +266,8 @@ export function EmployeeImport({
       runValidate(text, dependentsText,registers,allocations);
     } catch (e) {
       if (revision !== inputRevision.current) return;
-      // Drop the file label and any earlier preview so a rejected pick can never leave a stale
-      // "ready to import" preview on screen next to an error. Whatever is in the paste box is left
-      // alone — the user must press Validate again to get a preview back.
-      setFileName(null);
-      setDependentsCsv('');setRegisterTexts({});setAllocationsCsv('');
+      // A rejected candidate owns none of the active source identity or companion data. The old
+      // preview stays invalidated, so the user must explicitly validate the unchanged old input again.
       reset();
       setError(t(importFileMessageKey(e)));
     } finally {
@@ -326,7 +410,7 @@ export function EmployeeImport({
   };
 
   const commit = () => {
-    if (commitPending.current || pending || reading || !preview) return;
+    if (commitPending.current || pending || reading || evaluationStatus.blocked || evaluationStatus.committed || !preview) return;
     commitPending.current = true;
     setCommitting(true);
     onCommitPendingChange?.(true);
@@ -335,12 +419,17 @@ export function EmployeeImport({
       try {
         // cf43c909 — the file's NAME rides along as the history row's label. The file itself never leaves
         // the browser: `csv` is still the only thing sent, so the write path is unchanged.
-        const r = await commitImportAction(csv, companyId, fileName ?? '', dependentsCsv,registerTexts,allocationsCsv,preview.allocations?.token);
+        const revision=inputRevision.current;
+        const binding=await evaluation.current?.prepareCommit({csv,companyId,family:dependentsCsv,registers:registerTexts,allocations:allocationsCsv,revision});
+        if(binding===null||revision!==inputRevision.current)return;
+        let r;
+        try{r=await commitImportAction(csv, companyId, fileName ?? '', dependentsCsv, registerTexts, allocationsCsv, preview.allocations?.token, binding);}catch(cause){if(binding)evaluation.current?.commitUncertain();throw cause;}
+        if(binding)evaluation.current?.acceptCommit(r.evaluationReceipt);
         setResult(r);
         setPhase('done');
         router.refresh();
       } catch (e) {
-        setError((e as Error).message);
+        setError(evaluationStatus.tracked?t('measurement.commitUncertain'):(e as Error).message);
       } finally {
         commitPending.current = false;
         setCommitting(false);
@@ -379,8 +468,15 @@ export function EmployeeImport({
       {allocationsCsv.trim()&&<p className="rounded-md border p-3 text-sm">{ta('companion',{count:preview?.allocations?.groups.length??0})}</p>}
       {preview?.allocations&&<section className="space-y-3 rounded-md border p-4" aria-label={ta('confirmTitle')}>{preview.allocations.groups.map(group=><div key={group.key} className="border-b pb-3 text-sm last:border-0"><p className="font-medium">{group.employeeCode} · {group.effectiveDate}</p><p className="text-xs text-muted-foreground">{group.companyId} · {ta('sourceRows')}: {group.rowNums.join(', ')}</p><ul>{group.displayRows?.map((row,i)=><li key={i}>{row.code} · {row.percentage}%</li>)}</ul>{group.operation==='clear'&&<p>{ta('clearHelp')}</p>}{group.errors.map((message,i)=><p key={i} className="text-destructive">{message}</p>)}</div>)}</section>}
       <StepRail current={currentStep} />
+      <PersonnelImportEvaluationPanel ref={evaluation} companyId={companyId} sourceEpoch={sourceEpoch} baselineAvailable={!workbookReview&&!preparationReview}
+        getSource={()=>{
+          // A candidate with unknown hash NEVER borrows the unrelated active source fingerprint.
+          const fingerprint=pendingFileSource?pendingFileSource.fingerprint:originalSourceFingerprint.current;
+          return{...(fingerprint?{fingerprint}:{}),text:workbookReview?JSON.stringify(workbookReview.workbook):preparationReview?.preparation?JSON.stringify(preparationReview.preparation):employeeImportSourceFingerprint(csv,dependentsCsv,registerTexts,allocationsCsv),revision:inputRevision.current};
+        }}
+        canBegin={!guidedUsed&&!!(csv.trim()||workbookReview||preparationReview)} disabled={pending||reading||committing} onStatus={setEvaluationStatus} onStarted={()=>{setPreview(null);setResult(null);setPhase('idle');}}/>
       <Card className="space-y-4 p-5">
-        <fieldset disabled={committing} className="min-w-0 space-y-4">
+        <fieldset disabled={committing||evaluationStatus.blocked} className="min-w-0 space-y-4">
         <div className="sm:max-w-[260px]">
           <Field label={t('targetCompany')}>
             <select
@@ -388,7 +484,7 @@ export function EmployeeImport({
               value={companyId}
               onChange={(e) => {
                 if (commitPending.current) return;
-                setCompanyId(e.target.value);
+                setCompanyId(e.target.value);setSourceEpoch(value=>value+1);setGuidedUsed(false);manualCorrection.current=false;originalSourceFingerprint.current=null;headerAssistanceAnnotation.current=null;setWorkbookReview(null);setPreparationReview(null);setLocalEvidence([]);
                 reset();
               }}
             >
@@ -431,6 +527,7 @@ export function EmployeeImport({
         <StepHeading num={3} label={t('step3')} />
         {/* Choose (or drop) the completed template. Reading it auto-runs the same validate step the
             paste box uses, so the file flows straight into the check-before-create preview below. */}
+        <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={prepareIntake&&!baseline} disabled={baseline||pending||reading||committing} onChange={e=>setPrepareIntake(e.target.checked)}/><span>{t('headerAssistance.workbook.prepareToggle')}<span className="mt-1 block text-xs text-muted-foreground">{t('headerAssistance.workbook.prepareHint')}</span></span></label>
         <div>
           <Field label={t('uploadFile')}>
             <div
@@ -495,9 +592,11 @@ export function EmployeeImport({
                 className={`${inputCls} h-44 resize-y font-mono text-xs leading-relaxed`}
                 placeholder={t('csvPlaceholder')}
                 value={csv}
+                onBlur={()=>{if(manualCorrection.current){manualCorrection.current=false;void evaluation.current?.record({kind:'correction',mappingChanges:null,editedRows:null,reason:'values'});}}}
                 onChange={(e) => {
                   if (commitPending.current) return;
-                  setCsv(e.target.value);
+                  if(pendingFileSource){setSourceEpoch(value=>value+1);setGuidedUsed(pendingFileSource.priorGuidedUsed);}
+                  manualCorrection.current=true;originalSourceFingerprint.current=null;setCsv(e.target.value);setImportSource(null);headerAssistanceAnnotation.current=null;setWorkbookReview(null);setPreparationReview(null);
                   setFileName(null);
                   reset();
                 }}
@@ -507,16 +606,74 @@ export function EmployeeImport({
           </div>
         </details>
 
+        <Button type="button" variant="outline" disabled={baseline||pending||reading||committing||!!workbookReview||!!preparationReview||!csv.trim()} onClick={beginTextPreparation}>{t('headerAssistance.workbook.prepareText')}</Button>
+        {!baseline&&workbookReview&&<PersonnelImportWorkbookReview key={workbookReview.revisionId} workbook={workbookReview.workbook} revisionId={workbookReview.revisionId}
+          knownRoles={Object.fromEntries(workbookReview.workbook.sheets.map(sheet=>{
+            const key=sheet.sheetName.trim().toLowerCase(),roles:Record<string,PersonnelSheetRole>={[EMPLOYEE_XLSX_SHEETS.family.trim().toLowerCase()]:'family',[ALLOCATION_SHEET.trim().toLowerCase()]:'allocations',[PERSONNEL_REGISTER_SHEETS.qualification.trim().toLowerCase()]:'qualification',[PERSONNEL_REGISTER_SHEETS.emergency.trim().toLowerCase()]:'emergency'};
+            return[sheet.sheetName,roles[key]??'unassigned'];
+          }))} messages={workbookMessages} disabled={pending||reading||committing}
+          onCancel={()=>{if(workbookReview.pendingSource){setSourceEpoch(value=>value+1);setGuidedUsed(workbookReview.pendingSource.priorGuidedUsed);}setWorkbookReview(null);}} onApply={(reviewed,expectedRevision)=>{
+            if(commitPending.current)return;
+            if(expectedRevision!==workbookReview.revisionId||workbookReview.inputRevision!==inputRevision.current||workbookReview.companyId!==companyId){setHeaderNotice(headerMessages.sourceChanged);setWorkbookReview(null);return;}
+            try{
+            setGuidedUsed(true);const employee=reviewed.employee,revisionId=crypto.randomUUID();
+            const framed=employee.source.rows[0]?.cells[0]?.decoded===PERSONNEL_CSV_FRAME;
+            const rows=employee.source.rows.slice(framed?1:0);
+            const matrix=decodePersonnelCsvRows(personnelWorksheetMatrixRows(employee.source),'employee');
+            const preparation=preparePersonnelImportMatrix({revisionId,matrix,rowNumbers:rows.map(row=>row.row),coordinateKind:'worksheet_row',source:employee.source,text:employee.text},
+              {columns:employeeTemplate.columns.map(column=>column.key),sheet:'employee',resolvers:[resolveReferenceLabel]});
+            setPreparationReview({revisionId,inputRevision:inputRevision.current,companyId,fileName:workbookReview.fileName,preparation,replacesSource:true,pendingSource:workbookReview.pendingSource,workbook:reviewed.original,sheetDecision:{roles:reviewed.roles,excluded:reviewed.excluded,excludedAcknowledged:reviewed.excludedAcknowledged},
+              companions:{family:reviewed.companions.family,allocations:reviewed.companions.allocations,registers:{qualification:reviewed.companions.qualification,emergency:reviewed.companions.emergency}}});
+            }catch{setHeaderNotice(headerMessages.invalidSource);return;}
+            setWorkbookReview(null);
+          }}/>}
+        {!baseline&&preparationReview&&<div className="space-y-3"><PersonnelImportPreparationReview key={preparationReview.revisionId} preparation={preparationReview.preparation} sourceRevisionId={preparationReview.revisionId} mode="create" onApply={applied=>{
+          if(commitPending.current)return;
+          if(applied.sourceRevisionId!==preparationReview.revisionId||preparationReview.inputRevision!==inputRevision.current||preparationReview.companyId!==companyId){setHeaderNotice(headerMessages.sourceChanged);setPreparationReview(null);return;}
+          if(!preparationReview.replacesSource&&localEvidence.length>=PERSONNEL_IMPORT_LOCAL_EVIDENCE_LIMIT){setHeaderNotice(t('localEvidence.limit'));return;}
+          const companions=preparationReview.companions;
+          if(new Blob([applied.text,companions.family,companions.allocations,...Object.values(companions.registers)]).size>MAX_IMPORT_CSV_BYTES){setError(t('fileTooLarge'));return;}
+          try{
+            const nextSource=capturePersonnelImportSource({text:applied.text,fileName:preparationReview.fileName,format:'paste'},applied.revisionId);
+            const evidence=appendPersonnelImportLocalEvidence(preparationReview.replacesSource?[]:localEvidence,{kind:'preparation',revisionId:applied.revisionId,text:applied.text,applied,...preparationReview.workbook?{workbook:preparationReview.workbook}:{},...preparationReview.sheetDecision?{sheetDecision:preparationReview.sheetDecision}:{}});setLocalEvidence(evidence);
+            if(preparationReview.pendingSource)originalSourceFingerprint.current=preparationReview.pendingSource.fingerprint;
+            reset();setCsv(applied.text);setImportSource(nextSource);setGuidedUsed(true);manualCorrection.current=false;
+            const capturedRevision=inputRevision.current;void personnelImportLocalDigest(applied.text).then(revision=>{if(capturedRevision===inputRevision.current)void evaluation.current?.record({kind:'preparation',revision,normalizations:null,corrections:null,unresolved:0,conflicts:null,duplicates:null,missingSourceEvidence:null});}).catch(()=>setHeaderNotice(t('measurement.observationUnavailable')));headerAssistanceAnnotation.current=null;
+            setDependentsCsv(companions.family);setAllocationsCsv(companions.allocations);setRegisterTexts(companions.registers);setFileName(preparationReview.fileName);setPreparationReview(null);setHeaderNotice(headerMessages.acceptedRevision);
+          }catch{setHeaderNotice(headerMessages.invalidSource);}
+        }}/><Button type="button" variant="outline" disabled={pending||reading||committing} onClick={()=>{if(preparationReview.pendingSource){setSourceEpoch(value=>value+1);setGuidedUsed(preparationReview.pendingSource.priorGuidedUsed);}setPreparationReview(null);}}>{workbookMessages.cancel}</Button></div>}
+
+        <div className="space-y-3">
+          <Button type="button" variant="outline" disabled={baseline||pending||reading||committing||!!workbookReview||!!preparationReview||!csv.trim()} onClick={()=>{
+            if(commitPending.current||baseline)return;setGuidedUsed(true);
+            try{const source=importSource?.currentText===csv?importSource:capturePersonnelImportSource({text:csv,format:'paste'},crypto.randomUUID());setImportSource(source);headerReviewInputRevision.current=inputRevision.current;setReviewHeaders(true);setHeaderNotice(null);}
+            catch{setHeaderNotice(headerMessages.invalidSource);setReviewHeaders(false);}
+          }}>{headerMessages.reviewHeadings}</Button>
+          {headerNotice&&<p role="status" className="text-sm text-muted-foreground">{headerNotice}</p>}
+          {!baseline&&reviewHeaders&&importSource&&<PersonnelImportHeaderReview key={importSource.revisionId} source={importSource} companyId={companyId}
+            options={{columns:employeeTemplate.columns.map(column=>column.key),sheet:'employee',resolvers:[resolveReferenceLabel]}}
+            choices={employeeTemplate.columns.map(column=>({key:column.key,label:employeeColumnLabel(column.key)}))}
+            messages={headerMessages} evaluationBinding={evaluation.current?.binding()} allowAi={!baseline&&!evaluationStatus.blocked} disabled={pending||reading||committing}
+            onCancel={()=>setReviewHeaders(false)} onApply={(destinations,revision,assistance)=>{
+              if(commitPending.current)return;
+              if(headerReviewInputRevision.current!==inputRevision.current||importSource.revisionId!==revision||importSource.currentText!==csv){setHeaderNotice(headerMessages.sourceChanged);setReviewHeaders(false);return;}
+              if(localEvidence.length>=PERSONNEL_IMPORT_LOCAL_EVIDENCE_LIMIT){setHeaderNotice(t('localEvidence.limit'));return;}
+              try{const accepted=applyPersonnelHeaderMapping(importSource,revision,destinations,employeeTemplate.columns.map(column=>column.key),crypto.randomUUID());const evidence=appendPersonnelImportLocalEvidence(localEvidence,{kind:'headers',revisionId:accepted.revisionId,text:accepted.text,source:accepted.source});setLocalEvidence(evidence);reset();setCsv(accepted.text);setImportSource(accepted.source);headerAssistanceAnnotation.current=assistance??null;void evaluation.current?.record({kind:'correction',mappingChanges:null,editedRows:0,reason:'mapping'});setHeaderNotice(headerMessages.acceptedRevision);}
+              catch{setHeaderNotice(headerMessages.invalidSource);}
+            }}/>}
+        </div>
+
+        <PersonnelImportEvidenceReview entries={localEvidence} currentText={csv}/>
         <StepHeading num={4} label={t('step4')} />
         <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={validate} disabled={pending || reading || !csv.trim()}>
+          <Button onClick={validate} disabled={pending || reading || !!workbookReview || !!preparationReview || !csv.trim()}>
             {pending && phase !== 'done' ? t('validating') : t('validate')}
           </Button>
           <Button
             variant="outline"
             onClick={() => {
               if (commitPending.current) return;
-              setCsv(SAMPLE);
+              setSourceEpoch(value=>value+1);setGuidedUsed(false);manualCorrection.current=false;originalSourceFingerprint.current=null;setCsv(SAMPLE);setImportSource(null);headerAssistanceAnnotation.current=null;setWorkbookReview(null);setPreparationReview(null);setLocalEvidence([]);
               setDependentsCsv('');setRegisterTexts({});setAllocationsCsv('');
               setFileName(null);
               reset();
@@ -638,7 +795,7 @@ export function EmployeeImport({
               type="button"
               className="text-muted-foreground hover:text-foreground"
               onClick={() => {
-                setCsv('');
+                setSourceEpoch(value=>value+1);setGuidedUsed(false);manualCorrection.current=false;originalSourceFingerprint.current=null;setCsv('');setImportSource(null);headerAssistanceAnnotation.current=null;setWorkbookReview(null);setPreparationReview(null);setLocalEvidence([]);
                 setDependentsCsv('');setRegisterTexts({});setAllocationsCsv('');
                 setFileName(null);
                 reset();
@@ -655,7 +812,7 @@ export function EmployeeImport({
           preview={preview}
           onImport={commit}
           onDownloadErrors={downloadErrors}
-          busy={pending}
+          busy={pending||evaluationStatus.blocked||evaluationStatus.committed}
         />
       )}
     </div>

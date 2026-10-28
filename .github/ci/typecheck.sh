@@ -66,7 +66,7 @@ if (( physical_kib < 12582912 && swap_kib < 4194304 )); then
 fi
 df -Pk "$RUNNER_TEMP"
 free -b
-export NODE_OPTIONS=--max-old-space-size=8192
+export NODE_OPTIONS=--max-old-space-size=12288
 # Whole repository, same strict config; no file exclusions or ignored build errors.
 if [[ "${1:-}" == --whole-cache ]]; then
   node "$(dirname "$0")/compiler-cache.mjs"

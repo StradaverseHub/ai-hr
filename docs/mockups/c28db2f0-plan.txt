@@ -1,0 +1,47 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+The Lump sum card shows the suggested amount and the unit amount. "Show calculation" shows, per plan, the remaining balance and the number of people, but you cannot see the total cost, what is left after the token, or how much of the pool is used. You only find out after saving, by looking at the plan cards above.
+
+Some pieces already exist: the plan cards show pool used and balance after everything, and the checks list already flags each person whose lump sum differs from the unit amount.
+
+WHAT WE'LL CHANGE
+
+- Beside the unit amount, a small table for each plan (Standard and JG H) shows: people receiving the token, total lump-sum cost, balance after the token, and percentage of the bonus pool used.
+
+- It also shows the number of individual amendments (people whose lump sum was changed from the unit amount), with a link to that list.
+
+- The figures update as you type a new amount, before you save. If a plan would go over its pool, the figure turns red with a short explanation.
+
+- People with individual amendments keep their own amount. They go to exception review, as the card already says.
+
+WHAT YOU'LL GET
+
+You see straight away how many people get the token, what it costs and what is left in each pool, before you commit to an amount.
+
+GOOD TO KNOW
+
+- We're not touching how anything is calculated. The figures come from the same calculation the review already uses.
+
+- The over-budget rule stays as today: a review above 100% of a pool cannot be submitted unless it has a budget-cap exemption.
+
+- Who can change the amount stays as today: the BU CEO and Group Rewards while the review is in Draft, and each approver during their own approval step.
+
+- A companion request (choosing between "Use suggested amount", "Set amount" and "Withhold for this BU") changes the same card. We will build them together.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACTS (origin/alpha a5dbc80d0): packs/rewards/engine.ts lumpWorking gives per plan {count of lumpEligible, balanceCents after bonuses, perPersonCents}; budgets[plan] has lumpCents, lumpCount, bonusUsedCents, bonusPoolCents, balanceCents (after bonus + lump). Exception flags code BUD-05 with entryId mark individual lump amendments. page.tsx lines 47-49 render the card; setRewardUnitLump (service.ts 460) saves, gated by canEditStage.
+
+1. Service previewRewardLump(ctx, unitId, revision, cents or null): load like getRewardUnit (same visibility), run calculateRewards with policy.lumpUnitCents replaced, return per plan {lumpCount, lumpCents, balanceCents, usedPct basis = bonusUsedCents / bonusPoolCents, amendmentCount = BUD-05 exception flags for entries in that plan}. No write, no event. Money stays in the deterministic engine; the client only displays.
+
+2. Client component LumpImpact: debounced (about 300 ms) server action call on input change; initial values from the current view. Over 100% shown red with existing BUD-01 wording.
+
+3. Amendments link: /rewards/[unitId]?view=review filtered to BUD-05 entries (add a flag filter param to the checks list, or anchor to it).
+
+4. Respect the existing restricted-count path (bonusCounts null): when counts are restricted for the viewer, show "—" for headcount, as bonus-budget.tsx does.
+
+5. Strings in six locales. Tests: preview equals calculateRewards for fixtures, including individual amendment and a plan over 100%; no write or event; non-viewer refused; DOM test for table and over-budget state. No migration. Coordinate with 4e3e1af7 (same card).

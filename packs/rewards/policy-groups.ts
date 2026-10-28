@@ -3,7 +3,7 @@ import {sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../../db/client';
 import {withRewardsTenant} from '../../core/module-gate';
 import {pgSqlState} from '../../lib/db-error';
-import {policySchema} from './model';
+import {policySchema,type RewardPolicy} from './model';
 import {normalizedRewardTargets,parseRewardPolicyGroupVersion,rewardPgUuid,rewardPolicyGroupEditSchema,type RewardPolicyGroupVersion} from './policy-group-model';
 export class RewardPolicyGroupError extends Error{
  constructor(readonly code:'invalid'|'changed'|'scope'|'system'){super(`Reward shared configuration: ${code}`);this.name='RewardPolicyGroupError';}
@@ -36,7 +36,10 @@ export function rewardPolicyGroupUsage(ctx:SessionContext,groupId:string){
   return rows.map(row=>({unitId:rewardPgUuid.parse(row.unit_id),cycle:row.cycle,company:row.company,businessUnit:row.business_unit,status:row.status,revision:row.revision}));
  });
 }
-export type RewardSharedChoice={groupId:string;versionId:string;revision:number;name:string;year:number;companyId:string;businessUnitId:string};
+/** The read-only settings a review creator sees (56595838): no salary ranges, profit figures or people. */
+export type RewardPolicySummary=Pick<RewardPolicy,'effectiveFrom'|'meritMatrix'|'standardPools'|'hPools'|'targetMonthsBp'|'bonusMatrix'|'exemptReason'>;
+const summary=(p:RewardPolicy):RewardPolicySummary=>({effectiveFrom:p.effectiveFrom,meritMatrix:p.meritMatrix,standardPools:p.standardPools,hPools:p.hPools,targetMonthsBp:p.targetMonthsBp,bonusMatrix:p.bonusMatrix,exemptReason:p.exemptReason});
+export type RewardSharedChoice={groupId:string;versionId:string;revision:number;name:string;year:number;companyId:string;businessUnitId:string;policy:RewardPolicySummary|null};
 export function rewardSharedPolicyChoices(ctx:SessionContext,companyIds:readonly string[]):Promise<RewardSharedChoice[]>{
  if(companyIds.length>500)throw new RewardPolicyGroupError('invalid');
  const ids=[...new Set(companyIds.map(value=>rewardPgUuid.parse(value)))];
@@ -44,7 +47,14 @@ export function rewardSharedPolicyChoices(ctx:SessionContext,companyIds:readonly
   const result:RewardSharedChoice[]=[];
   for(const companyId of ids){
    const rows=await tx.execute<{group_id:string;version_id:string;revision:number;name:string;year:number;business_unit_id:string}>(sql`select * from app.reward_policy_choices(${companyId}::uuid)`);
-   for(const row of rows)result.push({groupId:rewardPgUuid.parse(row.group_id),versionId:rewardPgUuid.parse(row.version_id),revision:row.revision,name:row.name,year:row.year,companyId,businessUnitId:rewardPgUuid.parse(row.business_unit_id)});
+   for(const row of rows){
+    // Contents come through the same consumption authority as creating a review from this version;
+    // a version that changed or left scope since the list read shows no contents rather than failing the page.
+    let policy:RewardPolicySummary|null=null;
+    try{policy=await tx.transaction(async sp=>{const [bound]=await sp.execute<{binding:{policy:unknown}|null}>(sql`select app.reward_policy_for_new_unit(${row.version_id}::uuid,${companyId}::uuid,${row.business_unit_id}::uuid) as binding`);return bound?.binding?summary(policySchema.parse(bound.binding.policy)):null;});}
+    catch(error){if(!['40001','42501'].includes(pgSqlState(error)??''))throw error;}
+    result.push({groupId:rewardPgUuid.parse(row.group_id),versionId:rewardPgUuid.parse(row.version_id),revision:row.revision,name:row.name,year:row.year,companyId,businessUnitId:rewardPgUuid.parse(row.business_unit_id),policy});
+   }
   }
   return result;
  });

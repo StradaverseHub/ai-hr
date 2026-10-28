@@ -174,6 +174,7 @@ import {
 import { carryAllowanceFrom, carryEnabled } from './leave-compute';
 import { earnedCycleStart, resolveLeaveYearCycle } from './leave';
 import { listLeaveTypes } from './read';
+import { lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx } from './leave-dependency-lock';
 
 export {
   LEAVE_BF_COLUMNS,
@@ -278,19 +279,23 @@ async function analyze(
   ctx: SessionContext,
   rawRecords: LeaveBfRecord[],
   opts?: LeaveBfImportOptions,
+  outerTx?: Tx,
+  employmentScope?: string,
 ): Promise<{
   preview: LeaveBfImportPreview;
   resolved: ResolvedRow[];
   /** The ONE resolution of the run's options, shared by the preview and the write. */
   options: { mode: LeaveBfImportMode };
 }> {
+  const read = <T>(query: (tx: Tx) => Promise<T>): Promise<T> =>
+    outerTx ? query(outerTx) : withTenant(ctx, query);
   const records = rawRecords.map(canonicalise);
   const options = resolveLeaveBfImportOptions(opts);
   const effective = withEffectiveGrants(ctx);
   const groupAdmin = isGroupAdmin(effective);
 
   // Leave types by code, case-insensitive, non-archived (listLeaveTypes excludes archived by default).
-  const types = await listLeaveTypes(ctx);
+  const types = await listLeaveTypes(ctx, {}, outerTx);
   const typeByCode = new Map(types.map((t) => [t.code.toLowerCase(), t.id]));
   const typeById = new Map(types.map((t) => [t.id, t]));
   const codeById = new Map(types.map((t) => [t.id, t.code]));
@@ -323,7 +328,7 @@ async function analyze(
     };
   };
 
-  const emps = await withTenant(ctx, async (tx) => {
+  const emps = await read(async (tx) => {
     // Every employment the caller may see (RLS-scoped). NOT active-only: a migration's opening figures are
     // partly about people who have since left, and "resigned or inactive" is a WARNING in the reporter's
     // own list rather than a rejection.
@@ -341,7 +346,8 @@ async function analyze(
       })
       .from(employment)
       .innerJoin(company, eq(company.id, employment.companyId))
-      .innerJoin(person, eq(person.id, employment.personId));
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(employmentScope ? eq(employment.id, employmentScope) : undefined);
   });
 
   const byCode = new Map<
@@ -511,6 +517,7 @@ async function analyze(
     codeById,
     carryRuleOf,
     options.mode,
+    outerTx,
   );
 
   /**
@@ -578,7 +585,10 @@ async function bfImpactOf(
   codeById: Map<string, string>,
   carryRuleOf: (id: string) => { carryMax: number; carryPercent: number | null; enabled: boolean },
   mode: LeaveBfImportMode,
+  outerTx?: Tx,
 ): Promise<{ impact: LeaveBfBalanceImpact[]; beforeByKey: Map<string, number> }> {
+  const read = <T>(query: (tx: Tx) => Promise<T>): Promise<T> =>
+    outerTx ? query(outerTx) : withTenant(ctx, query);
   if (writable.length === 0) return { impact: [], beforeByKey: new Map() };
 
   type Bucket = {
@@ -619,7 +629,7 @@ async function bfImpactOf(
 
   const employmentIds = [...new Set([...buckets.values()].map((b) => b.employmentId))];
   const typeIds = [...new Set([...buckets.values()].map((b) => b.balanceTypeId))];
-  const ledger = await withTenant(ctx, async (tx) => {
+  const ledger = await read(async (tx) => {
     const rows = await tx
       .select({
         employmentId: leaveLedger.employmentId,
@@ -701,6 +711,17 @@ async function bfImpactOf(
   return { impact, beforeByKey };
 }
 
+/** Server-only transaction-local resolution prerequisite for future per-row dependency fencing.
+ * Joins the supplied caller transaction for catalogue, employment, calendar and balance reads.
+ * This neither acquires a dependency barrier nor authorizes/writes an import. Do not serialize the
+ * resolved identities as an AI tool result. Existing callers retain ownership of their individual transactions. */
+export function resolveLeaveBfImportTx(
+  tx: Tx, ctx: SessionContext, records: LeaveBfRecord[], options?: LeaveBfImportOptions,
+  employmentScope?: string,
+) {
+  return analyze(ctx, records, options, tx, employmentScope);
+}
+
 /**
  * Dry run. Validates against the tenant's catalogue and the ledger as it stands; writes nothing at all.
  *
@@ -728,6 +749,10 @@ export async function commitLeaveBfImport(
   ctx: SessionContext,
   p: { records: LeaveBfRecord[]; source?: LeaveBfImportSource } & LeaveBfImportOptions,
 ): Promise<LeaveBfImportResult> {
+  // Capture the submitted file before the first await; later source re-resolution uses these same bytes.
+  p = { ...p, records: p.records.map(record => ({ ...record })) };
+  // Import rowNum is one-based data-row numbering (analyze owns the same index + 1 contract).
+  const recordsByRow = new Map(p.records.map((record, index) => [index + 1, record]));
   const { preview, resolved, options } = await analyze(ctx, p.records, p);
   const writable = resolved.filter((r) => r.result.status === 'valid');
 
@@ -766,9 +791,23 @@ export async function commitLeaveBfImport(
   // A REPLACE LINE'S TWO ROWS SHARE ITS TRANSACTION. The negation without the new figure would leave the
   // employee's brought-forward figure at zero rather than at the number in the file, which is worse than
   // not having run the line at all.
-  for (const r of writable) {
+  for (const nominated of writable) {
     try {
-      await withTenant(ctx, async (tx) => {
+      const wrote = await withTenant(ctx, async (tx) => {
+        // This is the actual row write transaction, not the preview or summary transaction. Nonparticipants
+        // remain outside this barrier until the remaining canonical owners are integrated.
+        await lockLeaveDependenciesTx(tx, ctx.tenantId, [nominated.employmentId]);
+        const run = await lockedBfRunTx(tx, runId, 'share');
+        if (!run || run.reversedAt) throw new LeaveBfImportError_('That import is no longer available for loading.');
+        const sourceRecord = recordsByRow.get(nominated.result.rowNum);
+        if (!sourceRecord) throw new Error('Leave source changed; validate this row again.');
+        const fresh = await resolveLeaveBfImportTx(tx, ctx, [sourceRecord], options, nominated.employmentId);
+        const r = fresh.resolved[0];
+        if (fresh.resolved.length !== 1 || !r || r.result.status !== 'valid'
+          || r.employmentId !== nominated.employmentId || r.leaveTypeId !== nominated.leaveTypeId
+          || r.balanceTypeId !== nominated.balanceTypeId || r.cycleStart !== nominated.cycleStart
+          || r.effectiveOn !== nominated.effectiveOn)
+          throw new Error('Leave source changed; validate this row again.');
         let wrote = 0;
         if (options.mode === 'replace') {
           /**
@@ -834,15 +873,16 @@ export async function commitLeaveBfImport(
           });
           wrote += 1;
         }
-        ledgerRows += wrote;
+        return wrote;
       });
+      ledgerRows += wrote;
       imported += 1;
     } catch (e) {
       writeFailures.push({
-        rowNum: r.result.rowNum,
-        employeeId: r.result.employeeId,
-        leaveCode: r.result.leaveCode,
-        entitlementYear: r.result.entitlementYear,
+        rowNum: nominated.result.rowNum,
+        employeeId: nominated.result.employeeId,
+        leaveCode: nominated.result.leaveCode,
+        entitlementYear: nominated.result.entitlementYear,
         errors: [(e as Error).message],
       });
     }
@@ -893,6 +933,16 @@ export async function commitLeaveBfImport(
     errorsTruncated: errors.length > LEAVE_BF_ERROR_CAP,
     runId,
   };
+}
+
+/** Run row follows configuration/subject barriers in both directions. NOWAIT prevents a held run
+ * from consuming an unbounded request interval. The outer transaction must abort on any refusal. */
+async function lockedBfRunTx(tx: Tx, runId: string, strength: 'share' | 'update') {
+  try {
+    const [run] = await tx.select({ id: leaveBfImportRun.id, reversedAt: leaveBfImportRun.reversedAt })
+      .from(leaveBfImportRun).where(eq(leaveBfImportRun.id, runId)).limit(1).for(strength, { noWait: true });
+    return run;
+  } catch { throw new LeaveBfImportError_('That import is busy; review it again.'); }
 }
 
 /** Open the run row. Throws rather than returning null — see `commitLeaveBfImport` for why. */
@@ -978,11 +1028,13 @@ export async function reverseLeaveBfImportRun(
   p: { runId: string },
 ): Promise<{ reversed: number }> {
   return withTenant(ctx, async (tx) => {
-    const [run] = await tx
-      .select({ id: leaveBfImportRun.id, reversedAt: leaveBfImportRun.reversedAt })
-      .from(leaveBfImportRun)
-      .where(eq(leaveBfImportRun.id, p.runId))
-      .limit(1);
+    await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
+    // IDs nominate lock targets only. Monetary rows and the reversal flag are read again AFTER locks.
+    const targets = await tx.selectDistinct({ employmentId: leaveLedger.employmentId }).from(leaveLedger)
+      .where(eq(leaveLedger.bfImportRunId, p.runId)).orderBy(leaveLedger.employmentId);
+    const subjectIds = targets.map(row => row.employmentId);
+    if (subjectIds.length) await lockLeaveDependenciesTx(tx, ctx.tenantId, subjectIds);
+    const run = await lockedBfRunTx(tx, p.runId, 'update');
     if (!run) throw new LeaveBfImportError_('That import could not be found.');
     if (run.reversedAt) throw new LeaveBfImportError_('That import has already been rolled back.');
 
@@ -1004,6 +1056,12 @@ export async function reverseLeaveBfImportRun(
       // Explicit ORDER BY: the inserted array is asserted in the guard, and an unordered scan is not a
       // fact (CLAUDE.md §8).
       .orderBy(leaveLedger.effectiveOn, leaveLedger.employmentId, leaveLedger.id);
+
+    // A row committed between target discovery and the run lock may introduce a new employment.
+    // Refuse rather than acquire a late subject lock while holding the run row in reversed order.
+    const protectedSubjects = new Set(subjectIds);
+    if (original.some(row => !protectedSubjects.has(row.employmentId)))
+      throw new LeaveBfImportError_('Leave source changed; review this import again.');
 
     if (original.length) {
       await tx.insert(leaveLedger).values(

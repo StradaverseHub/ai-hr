@@ -1,0 +1,25 @@
+VERDICT: Not built yet   ·   SIZE: Quick
+
+THE SITUATION TODAY
+
+This is the same request as your earlier item "Unit multiplier: show the basis, preview the impact, require a reason". That item already has an approved plan and is waiting to be built. The attached sketch is the one from that plan.
+
+WHAT WE'LL CHANGE
+
+- Nothing separately. Everything in this request is delivered by the earlier item: how the suggestion is worked out, the "Check impact" step, a required reason, no override above 100% of the pool unless the review is exempt, the "Save unit multiplier" button, a clear note that it applies to both the Standard and JG H plans, a notice instead of the box for PPCH reviews, and a full record of every change.
+
+- When the earlier item is delivered, this one is closed with it.
+
+WHAT YOU'LL GET
+
+One change on the screen, built once, with nothing left out from either request.
+
+GOOD TO KNOW
+
+- One point is handled differently from what you wrote, as the earlier plan explained: approvers will not change the multiplier during their own approval step. Each approval signs off the exact figures, so changing them mid-way would undo earlier sign-offs. An approver who disagrees returns the review to Draft with a reason; Group Rewards makes the change and it is approved again. If you want approvers to edit it directly, reject this plan and say so, and we will plan that as its own change.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+DUPLICATE of bcd7cc0f (approved; plan in docs/mockups/bcd7cc0f-plan.txt at ec130b0d9). Build nothing separately. When bcd7cc0f is built and deployed, mark this item deployed with the same build ref. The "edit rights follow the approval route" ask is deliberately not taken: saveRewardPolicy stays Group Rewards + draft (assertUnlocked), consistent with the bcd7cc0f plan.

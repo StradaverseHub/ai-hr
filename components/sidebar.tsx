@@ -67,6 +67,7 @@ import {
 // server-only code into the bundle. See that file's header.
 import '@/packs/register-all';
 import { modulePackById } from '@/packs/registry';
+import {LETTER_NAV_ITEMS} from '@/lib/letter-navigation';
 import { NAVIGATION_MODULES, NAVIGATION_SECTIONS, placeNavigation, navigationPlacement, navigationRouteOwner, type NavigationWorkspace } from '@/lib/navigation-workspaces';
 import { usePublishNavIndex, type NavIndexEntry } from '@/components/nav-index-context';
 import { openCommandBar } from '@/lib/command-bar-events';
@@ -84,6 +85,9 @@ type ChildItem = Item & {
   // 388e53c2 — highlighting only, never a gate. See NavChildDescriptor in packs/registry.ts.
   exactHref?: boolean;
   ownedSubpaths?: string[];
+  // A destination the viewer holds but may not open yet (the locked Development plan): rendered as a
+  // non-link and never the owner of the current route or a command-bar entry.
+  disabled?: boolean;
 };
 type CollapsibleGroupItem = {
   tour?: string;
@@ -96,6 +100,11 @@ type CollapsibleGroupItem = {
 };
 type Row = ChildItem | CollapsibleGroupItem;
 const isCollapsible = (r: Row): r is CollapsibleGroupItem => 'collapsible' in r && r.collapsible;
+// Control Tower pages and Administration › AI (which forwards into them) all run requireAdmin; a payroll or
+// performance partner shares the administration rail but is redirected away from these.
+// Provider setup is tenant-wide: its page reads the configuration only for a group-wide administrator.
+const AI_PROVIDER_HREF = '/control-tower/agents/provider';
+const isAiAdministrationHref = (href: string) => href === '/admin/ai' || href === '/control-tower' || href.startsWith('/control-tower/');
 type Group = { labelKey?: string; adminOnly?: boolean; managerUp?: boolean; items: Row[] };
 
 // Consolidated Attendance node (b3dc0f78 / 5cb199b3 / f60cd403 / 5249d43f). Since ADR-0080 rung 2
@@ -158,12 +167,14 @@ const LIFECYCLE_CONFIG_ROW: ChildItem = LIFECYCLE_LINKS.find((l) => l.group === 
 const ONBOARDING_NODE:CollapsibleGroupItem={...modulePackById('lifecycle')!.navNodes![0]!,collapsible:true};
 const ONBOARDING_REQUISITIONS_NODE:CollapsibleGroupItem={collapsible:true,labelKey:'onboardingRequisitions',icon:ONBOARDING_NODE.icon,defaultHref:'/lifecycle/requisitions/onboarding',children:[{...LIFECYCLE_LINKS.find(l=>l.href==='/lifecycle/requisitions/onboarding')!,labelKey:'allOnboardingRequisitions',exactHref:true,ownedSubpaths:['/lifecycle/requisitions/onboarding']}]};
 
-// Performance nav row (ADR-0080 rung 4): the single manager-up row the performance pack
-// contributes (packs/performance/index.ts, PERFORMANCE_NAV_LINKS — provenance comments moved with
-// it), placed at its pre-rung-4 position in the Manage group below, after Approvals. The `group`
-// tag is the pack's placement declaration; position WITHIN the group stays this file's concern.
-const PERSONAL_PERFORMANCE_ROW: ChildItem = modulePackById('performance')!.navLinks!.find((l) => l.group === 'main')!;
-const PERFORMANCE_ROW: ChildItem = modulePackById('performance')!.navLinks!.find((l) => l.group === 'manage')!;
+// Performance nav rows (ADR-0080 rung 4; D-P1-32 PT-X5, APR-025 D4): EXACTLY TWO entries the performance pack
+// contributes (packs/performance/index.ts, PERFORMANCE_NAV_LINKS — provenance comments moved with them).
+// Performance & Talent (every employee with the module; the area's tabs sit below it) and Performance admin
+// (canAdministerOnehr only, pointed at the admin area's first tab for the latest cycle by `performanceAdminHref`).
+// The former My Performance, Performance, Calibration, Talent and Development rows retired into the area's tabs.
+const REVIEW_WORKSPACE_PATH = '/performance/workspace';
+const PERFORMANCE_TALENT_ROW: ChildItem = modulePackById('performance')!.navLinks!.find((l) => l.group === 'main' && l.labelKey === 'performanceTalent')!;
+const PERFORMANCE_ADMIN_ROW: ChildItem = modulePackById('performance')!.navLinks!.find((l) => l.group === 'manage' && l.labelKey === 'performanceAdmin')!;
 
 // Leave nav rows (ADR-0080 rung 6): two flat rows the leave pack contributes (packs/leave/index.ts,
 // LEAVE_NAV_LINKS — provenance comments moved with them), placed at their pre-rung-6 positions below:
@@ -226,6 +237,7 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
   // exceptions, so without payroll this row is a permanently empty screen. It stops being payroll's when
   // an action type lands whose subject is not a payroll finding.
   ['/control-tower/actions', 'payroll'] as const,
+  ['/control-tower/exceptions', 'payroll'] as const,
   // NOT payroll-gated: record completeness is not a payroll question (see CONTROL_DOMAINS). Absent from
   // this map entirely, which is how a row says "always offered".
   ...(modulePackById('payroll')!.navLinks ?? []).map((l) => [l.href, 'payroll'] as const),
@@ -246,13 +258,13 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
   ['/admin/system-testing', 'system_testing'] as const,
   ['/system-testing', 'system_testing'] as const,
   ['/me/payslip', 'payroll'] as const,
+  ['/me/letters', 'employees'] as const,
+  ...LETTER_NAV_ITEMS.map(item=>[item.href,'employees'] as const),
   ['/me/tax-relief', 'payroll'] as const,
   ['/me/ea', 'payroll'] as const,
   ['/me/tp3', 'payroll'] as const,
   ['/admin/claims/reimbursements', 'claims'] as const,
   ['/admin/work-locations', 'attendance'] as const,
-  ['/performance/workspace?module=tm', 'performance'] as const,
-  ['/performance/workspace?module=idp', 'performance'] as const,
   // ADR-0082 — `assistant` is the SECOND hand-written entry and for the same reason as the first: it is
   // a catalog module with `packBacked: false`, so there is no pack descriptor to derive the href from.
   // Without this line the row would advertise a module the tenant has not bought. The per-user
@@ -277,6 +289,27 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
 // Reports node (c440b365) — the single "Report" parent that centralises all reporting. Its six children
 // map to the reporter's categories; each opens the Reports hub filtered to that category, where the
 // predefined reports AND the custom report builder live. Admin-only (every report surface is admin-gated).
+// AI management (28 Oct 2026, owner): one place to manage AI, each section its own page under
+// /control-tower/agents. A sub-menu in the AI Control Tower group rather than a tab row inside the page.
+// Overview is exact so it is not also current on the other sections. Spending opens only where a spend
+// policy exists; elsewhere its page returns to the Overview.
+const AI_MANAGEMENT_NODE: CollapsibleGroupItem = {
+  collapsible: true,
+  labelKey: 'aiManagement',
+  icon: Sparkles,
+  activeMatch: 'children',
+  defaultHref: '/control-tower/agents',
+  children: [
+    { href: '/control-tower/agents', labelKey: 'aiManagementOverview', icon: Gauge, adminOnly: true, exactHref: true },
+    { href: '/control-tower/agents/provider', labelKey: 'aiManagementProvider', icon: Settings2, adminOnly: true },
+    { href: '/control-tower/agents/assistant', labelKey: 'aiManagementAssistant', icon: MessageSquareText, adminOnly: true },
+    { href: '/control-tower/agents/features', labelKey: 'aiManagementFeatures', icon: ListChecks, adminOnly: true },
+    { href: '/control-tower/agents/allowances', labelKey: 'aiManagementAllowances', icon: Users, adminOnly: true },
+    { href: '/control-tower/agents/spending', labelKey: 'aiManagementSpending', icon: Wallet, adminOnly: true },
+    { href: '/control-tower/agents/orchestrator', labelKey: 'aiManagementOrchestrator', icon: Network, adminOnly: true },
+    { href: '/control-tower/agents/runs', labelKey: 'aiManagementRuns', icon: ScrollText, adminOnly: true },
+  ],
+};
 const REPORTS_NODE: CollapsibleGroupItem = {
   collapsible: true,
   labelKey: 'reports',
@@ -399,7 +432,7 @@ const GROUPS: Group[] = [
       // a324a4b3 rev3: My Attendance carries the two self-service rows (Clock in/out, Records). The
       // Attendance CONFIG menu moved into Administration — see the admin group below.
       MY_ATTENDANCE_NODE,
-      PERSONAL_PERFORMANCE_ROW,
+      PERFORMANCE_TALENT_ROW,
       CLAIMS_ROW,
       LIFECYCLE_ROW,
       { href: '/feedback', labelKey: 'feedback', icon: MessageSquareText },
@@ -430,7 +463,7 @@ const GROUPS: Group[] = [
       LEAVE_TRACKER_ROW,
       MY_TEAM_ROW,
       { href: '/approvals', labelKey: 'approvals', icon: ListChecks, tour: 'nav-approvals', managerUp: true },
-      PERFORMANCE_ROW,
+      PERFORMANCE_ADMIN_ROW,
       ...modulePackById('rewards')!.navLinks!.filter(l => l.group === 'manage'),
       // a324a4b3 rev3: Roster + Import come back here as FLAT rows. rev2 put them inside the Attendance
       // node, which was safe while that node sat in the ungated group; it is not safe now the node has
@@ -456,9 +489,14 @@ const GROUPS: Group[] = [
       // ADR-0083 §3 item 2 — the shift-left half. Sits ABOVE the explainer because it is a working screen
       // and the explainer is a reference one.
       { href: '/control-tower/readiness', labelKey: 'controlTowerReadiness', icon: ClipboardCheck, adminOnly: true },
+      // ADR-0074 r245 — the cross-run payroll exceptions queue; payroll-gated through MODULE_OF_HREF.
+      { href: '/control-tower/exceptions', labelKey: 'controlTowerExceptions', icon: Receipt, adminOnly: true },
       // ADR-0083 §2.5 — the approval queue. The only screen in the product where a person authorises an
       // agent to write, which is why it is a row of its own rather than a panel on another page.
       { href: '/control-tower/actions', labelKey: 'controlTowerActions', icon: Wand2, adminOnly: true },
+      // 28 Oct 2026 (owner) — this group IS the Control Tower menu; the in-page tab rows were retired, so the
+      // payroll exceptions queue and AI management live here too, in the same order the tabs used.
+      AI_MANAGEMENT_NODE,
       // ADR-0131 Phase 1 — where agents could take work off HR, measured from the records. A working
       // screen, so it sits above the reference explainer.
       { href: '/control-tower/opportunities', labelKey: 'controlTowerOpportunities', icon: TrendingUp, adminOnly: true },
@@ -551,8 +589,12 @@ export function Sidebar({
   hasAssignedAttendanceApproval = false,
   hasAssignedApproval = false,
   canReviewProfileChanges = false,
+  canAdministerAi = false,
+  canConfigureAiProvider = false,
   canAccessTeam = false,
+  letterDestinations = [],
   canAdministerOnehr = false,
+  performanceAdminHref,
   approvalCount = 0,
   taskCount = 0,
   onboardingAccess = false,
@@ -561,6 +603,7 @@ export function Sidebar({
   onboardingJoinerCount,
   onboardingChecklistCount,
   enabledModules = null,
+  assistantAccess = true,
   defaultCollapsed,
   viewerName = null,
   viewerCode = null,
@@ -578,13 +621,24 @@ export function Sidebar({
   hasAssignedApproval?: boolean;
   /** Actual HR administration, independent of the broader partner administration rail. */
   canReviewProfileChanges?: boolean;
+  /** Actual HR administration: the AI Control Tower and AI configuration run requireAdmin, so the
+   * broader partner administration rail must not list them. */
+  canAdministerAi?: boolean;
+  /** Group-wide administration: a company administrator is sent from Provider back to the AI Overview. */
+  canConfigureAiProvider?: boolean;
   /** Actual My Team role authority, independent of the broader partner administration rail. */
   canAccessTeam?: boolean;
+  letterDestinations?: readonly string[];
   /**
    * ADR-0142 — OneHR performance administration (admins, perf-comp partners, OneHR performance partners).
-   * Shows ONLY the manager-up Performance row; it never opens the admin rail, approvals or My Team.
+   * The ONLY gate of the Performance admin entry (D-P1-32 PT-X5); it never opens the admin rail, approvals or My Team.
    */
   canAdministerOnehr?: boolean;
+  /**
+   * D-P1-32 PT-X5 — where Performance admin opens: the admin area's first tab for the latest cycle the viewer
+   * administers (app/layout.tsx). Absent means the pack's own address, /performance (no cycle yet).
+   */
+  performanceAdminHref?: string;
   /**
    * ADR-0077 slice 4 — module codes whose rows may be shown. `null` means "no opinion, show
    * everything", which is NOT the same as `[]` ("show nothing"): a session whose entitlement snapshot
@@ -593,6 +647,10 @@ export function Sidebar({
    * page these rows point at refuses on its own (D3).
    */
   enabledModules?: string[] | null;
+  /** 28 Oct 2026 (owner): the Assistant row is offered only to a login that may use the Assistant (module,
+   * grant). app/layout.tsx computes it and passes false on any failure. Own-data controls stay reachable from
+   * My workspace, and /assistant itself still refuses and explains on its own. */
+  assistantAccess?: boolean;
   /** Pending items awaiting THIS viewer's decision (feedback 836118c4) — badge on the
    *  "Approval Items" row. Computed once in app/layout.tsx as listPendingTasks(...).length; the rail
    *  never queries. 0 (or a viewer without the row) renders no badge. */
@@ -616,6 +674,7 @@ export function Sidebar({
   const searchParams = useSearchParams();
   const search = searchParams.toString();
   const t = useTranslations('nav');
+  const tWorkspace = useTranslations('onehr.workspace');
   // `common`, NOT `nav`: the brand name lives at common.appName. Reading it off `t` would resolve
   // nav.appName, which does not exist — and a MISSING_MESSAGE passes tsc, the suite and `next build`
   // alike, so nothing would have told us until the screen rendered.
@@ -628,7 +687,6 @@ export function Sidebar({
   const [workspaceChoice, setWorkspaceChoice] = useState<NavigationWorkspace | null>(null);
   const atelier = useUiTheme() === 'atelier';
   const tBar = useTranslations('commandBar');
-  const collapsed = monolith ? false : collapsedPref;
   const locale = useLocale();
   // r398 — Monolith shows a module's children INLINE (no flyout panel). An explicit open/close per module
   // overrides "open while you are inside it"; the default is the active module open, every other closed.
@@ -636,6 +694,11 @@ export function Sidebar({
   // Single-open flyout state (fdc20776): the labelKey of the open module, or null. Clicking a
   // parent sets it (replacing any other open module); clicking the same parent again closes.
   const [openKey, setOpenKey] = useState<string | null>(null);
+  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
+  const mobileNavigationTrigger = useRef<HTMLButtonElement | null>(null);
+  // D-P1-28 — Classic's phone drawer shows the rail with its labels whatever the desktop collapse preference is
+  // (an icon strip is no menu on a phone). Atelier's own phone navigation keeps its rules.
+  const collapsed = monolith ? false : collapsedPref && !(mobileNavigationOpen && !atelier);
   /**
    * WHICH SECTIONS ARE EXPANDED — the fix for a rail that did not fit.
    *
@@ -656,11 +719,19 @@ export function Sidebar({
   const [openSections, setOpenSections] = useState<Readonly<Record<string, boolean>>>({});
   // Escape returns focus to the trigger that opened the panel.
   const triggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const pendingTriggerFocus = useRef<string | null>(null);
+  useEffect(() => {
+    if (openKey === null && pendingTriggerFocus.current) {
+      triggerRefs.current[pendingTriggerFocus.current]?.focus();
+      pendingTriggerFocus.current = null;
+    }
+  }, [openKey]);
   // Safety net for back/forward navigation only — picking a sub-item closes via its onClick
   // (mandatory: the Reports children share one pathname and differ only in the query, so this
   // effect never fires when switching report categories).
   useEffect(() => {
     setOpenKey(null);
+    setMobileNavigationOpen(false);
     setInlineOpen({});
     setRailKids({});
     setWorkspaceChoice(null);
@@ -680,7 +751,7 @@ export function Sidebar({
   // Per-child visibility for flyout nodes (per-child gating vs. whole-group gating). Role gating and
   // module gating are ANDed: a row needs both the role AND the module to appear.
   const canSeeChild = (c: ChildItem) =>
-    moduleAllows(c.href) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) || c.href === PERFORMANCE_ROW.href && canAdministerOnehr : true);
+    moduleAllows(c.href) && (c.href !== '/assistant' || assistantAccess) && (!c.href.startsWith('/letters/')||letterDestinations.includes(c.href)) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === PERFORMANCE_ADMIN_ROW.href ? canAdministerOnehr : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.href === AI_PROVIDER_HREF ? canConfigureAiProvider : isAiAdministrationHref(c.href) ? canAdministerAi : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) : true);
   // The former audience inventory still supplies its original visibility boundaries.
   // Only authorized rows are handed to the workspace placement owner below.
   const authorizedGroups = GROUPS
@@ -698,25 +769,27 @@ export function Sidebar({
   const authorizedRows = authorizedGroups.flatMap(group => group.items.flatMap(row =>
     isCollapsible(row) ? row.children.filter(canSeeChild) : [row],
   )).filter(row => row.href !== '/mobile-preview' || isAdmin)
-    .map(row=>row.href==='/performance/workspace'?{...row,navigationHref:'/performance/workspace?module=pm'}:row);
+    // Gated on the pack's address above; only then pointed at the latest cycle's admin area. It keeps owning every
+    // other /performance route through its ownedSubpaths, so the cycle pages and admin tabs light it.
+    .map(row => row === PERFORMANCE_ADMIN_ROW && performanceAdminHref ? {...row, href: performanceAdminHref} : row);
   const additionalRows: ChildItem[] = [
+    ...LETTER_NAV_ITEMS.map(item=>({href:item.href,labelKey:item.labelKey,icon:FileBarChart,ownedSubpaths:[item.href]})),
     {href:'/admin/personnel/profile-changes',labelKey:'profileChanges',icon:ListChecks,adminOnly:true},
     {href:'/me/payslip',labelKey:'myPayslips',icon:Wallet,ownedSubpaths:['/me/payslip']},
+    {href:'/me/letters',labelKey:'myLetters',icon:FileBarChart,ownedSubpaths:['/me/letters']},
     {href:'/me/tax-relief',labelKey:'taxRelief',icon:Receipt},
     {href:'/me/tp3',labelKey:'myTp3',icon:Receipt},
     {href:'/me/ea',labelKey:'myEa',icon:Receipt,ownedSubpaths:['/me/ea']},
     {href:'/admin/claims/reimbursements',labelKey:'reimbursementsDue',icon:Receipt,adminOnly:true},
     {href:'/admin/work-locations',labelKey:'workLocations',icon:Building2,adminOnly:true},
     {href:'/reports',labelKey:'reports',icon:FileBarChart,adminOnly:true,exactHref:true},
-    {href:'/performance/workspace?module=tm',labelKey:'talent',icon:Users,managerUp:true},
-    {href:'/performance/workspace?module=idp',labelKey:'development',icon:Target},
   ];
   const destinations = [...authorizedRows, ...additionalRows.filter(canSeeChild)];
   const navigation = placeNavigation(destinations);
   const availableWorkspaces = (['ops','strata'] as const).filter(workspace =>
     navigation.placed.some(row => row.placement.area === workspace),
   );
-  const routeOwner = navigationRouteOwner(pathname, search, destinations);
+  const routeOwner = navigationRouteOwner(pathname, search, destinations.filter(row => !row.disabled));
   const routeWorkspace = routeOwner?.placement.area;
   const selectedWorkspace = workspaceChoice && availableWorkspaces.includes(workspaceChoice) ? workspaceChoice
     : routeWorkspace === 'ops' || routeWorkspace === 'strata' ? routeWorkspace : availableWorkspaces[0];
@@ -754,7 +827,7 @@ export function Sidebar({
   </div> : null;
   const sectionLabel = (href:string) => {
     const placement=navigationPlacement(href);
-    return placement && 'section' in placement ? `section${placement.section==='hr'?'HR':placement.section==='config'?'Configuration':placement.section==='mine'?'Mine':'Team'}` : undefined;
+    return placement && 'section' in placement ? `section${placement.section==='hr'?'HR':placement.section==='ai'?'AiManagement':placement.section==='config'?'Configuration':placement.section==='mine'?'Mine':'Team'}` : undefined;
   };
 
   const childCaption=(child:{href:string;labelKey:string})=>{
@@ -764,7 +837,8 @@ export function Sidebar({
   };
   const isActive = (href: string) => isHrefActive(pathname, search, href);
   // The shared route owner preserves query intent and explicit owned subpaths across all themes.
-  const isRowActive = (r: { href: string; exactHref?: boolean; ownedSubpaths?: string[] }) => {
+  const isRowActive = (r: { href: string; exactHref?: boolean; ownedSubpaths?: string[]; disabled?: boolean }) => {
+    if(r.disabled)return false;
     // One owner across shared rows and modules, including query-based and non-descendant routes.
     if(routeOwner)return r.href===routeOwner.destination.href;
     return isNavRowActive(pathname,search,r);
@@ -813,7 +887,7 @@ export function Sidebar({
     const section = g.labelKey ? t(g.labelKey) : null;
     for (const r of g.items) {
       if (isCollapsible(r)) {
-        const kids = r.children.filter(canSeeChild);
+        const kids = r.children.filter(canSeeChild).filter((c) => !c.disabled);
         const parent = t(r.labelKey);
         const activeKid = kids.filter((c) => isRowActive(c))
           .sort((a, b) => b.href.split('?')[0].length - a.href.split('?')[0].length)[0];
@@ -822,7 +896,7 @@ export function Sidebar({
           navEntries.push(entry);
           if (!activeEntry && c === activeKid) activeEntry = entry;
         }
-      } else {
+      } else if (!r.disabled) {
         const entry = { href: r.navigationHref ?? r.href, label: t(r.labelKey), section, parent: null };
         navEntries.push(entry);
         if (!activeEntry && isRowActive(r)) activeEntry = entry;
@@ -832,7 +906,7 @@ export function Sidebar({
   usePublishNavIndex(navEntries, activeEntry);
 
   const openNode = openKey && !monolith
-    ? groups.flatMap((g) => g.items).find((r): r is CollapsibleGroupItem => isCollapsible(r) && r.labelKey === openKey && (!r.defaultHref || collapsed)) ?? null
+    ? groups.flatMap((g) => g.items).find((r): r is CollapsibleGroupItem => isCollapsible(r) && r.labelKey === openKey && (atelier || !r.defaultHref || collapsed)) ?? null
     : null;
   const openChildren = openNode ? openNode.children.filter(canSeeChild) : [];
   // Inside a panel the LONGEST matching href wins, so exactly one row ever reads as the current page
@@ -973,8 +1047,14 @@ export function Sidebar({
               {sectionOpen(group.labelKey) &&
                 group.items.map((item) => {
                   if (isCollapsible(item)) return monolithModule(item);
-                  const active = isRowActive(item);
                   const label = t(item.labelKey);
+                  if (item.disabled) return (
+                    <span key={item.href} aria-disabled="true" title={tWorkspace('planLocked')} className={cn(railRow, 'cursor-not-allowed hover:border-transparent hover:text-mid')}>
+                      <span className="min-w-0">{label}</span>
+                      <Lock aria-hidden className="size-3 shrink-0" />
+                    </span>
+                  );
+                  const active = isRowActive(item);
                   const rowCount = item.href === '/tasks' ? taskCount : approvalCount;
                   const showApprovalCount = (item.href === '/approvals' || item.href === '/tasks') && rowCount > 0;
                   return (
@@ -1010,14 +1090,16 @@ export function Sidebar({
     </>
   );
 
-  // The review journey owns its 224px navigator and floating route back to the dashboard.
-  if (pathname === modulePackById('performance')?.navLinks?.find(link => link.labelKey === 'myPerformance')?.href) return null;
+  // The review journey owns its 224px navigator and floating route back to the dashboard. Since D-P1-32 PT-X5 the
+  // workspace is no longer a nav row of its own (its tab routes sit under Performance & Talent), so its address is
+  // named here.
+  if (pathname === REVIEW_WORKSPACE_PATH) return null;
 
   /* ── Atelier round 1 — THE ASSISTANT-FIRST RAIL (brief: .impeccable/surfaces/app-layout-tsx.md). Rendering
      only, like Monolith's: the SAME `groups`, `canSeeChild`, `isRowActive` and section state, so which rows
      exist, in which order, and which one is current cannot differ between themes. What differs: the
      workspace line, a Quick actions button (it opens the one command bar, lib/command-bar-events.ts), 16px
-     icons on 30px rows, a module's children inline under a hairline instead of a flyout, and the viewer at
+     icons on 30px rows, a separate theme-scoped submenu track, and the viewer at
      the foot. No collapse to an icon rail: like Monolith, the rail is always open on desktop. */
   if (atelier) {
     const atelierCount = (href: string) => {
@@ -1029,66 +1111,62 @@ export function Sidebar({
       if (children.length === 0) return null;
       const active = item.defaultHref || item.activeMatch === 'children'
         ? children.some(isRowActive) : isParentActive(pathname, children.flatMap(childPaths));
-      const expanded = inlineOpen[item.labelKey] ?? active;
+      const expanded = openNode?.labelKey === item.labelKey;
       const Icon = item.icon;
       const label = t(item.labelKey);
-      const kidsId = `atelier-kids-${item.labelKey}`;
-      const currentHref = children.filter((c) => isRowActive(c))
-        .sort((a, b) => b.href.split('?')[0].length - a.href.split('?')[0].length)[0]?.href;
-      const flip = () => setInlineOpen((old) => ({ ...old, [item.labelKey]: !expanded }));
+      const kidsId = `atelier-flyout-${item.labelKey}`;
+      const flip = () => setOpenKey(expanded ? null : item.labelKey);
+      const register = (element: HTMLButtonElement | null) => { triggerRefs.current[item.labelKey] = element; };
+      // Collapsed (b953a339), a module is its icon: it opens the floating sub-menu, which lists every page
+      // the module has — including a landing page, which is always one of its children.
       return (
         <div key={item.labelKey} data-atelier-module={item.labelKey}>
-          {item.defaultHref ? (
+          {item.defaultHref && !collapsed ? (
             <div className="atelier-row pr-0">
-              <Link href={item.defaultHref} className="flex min-w-0 flex-1 items-center gap-2.5 text-inherit no-underline">
+              <Link href={item.defaultHref} onClick={()=>setMobileNavigationOpen(false)} className="flex min-w-0 flex-1 items-center gap-2.5 text-inherit no-underline">
                 <Icon aria-hidden /><span className="truncate">{label}</span>
               </Link>
-              <button type="button" aria-label={label} aria-expanded={expanded} aria-controls={kidsId} onClick={flip}
+              <button ref={register} type="button" aria-label={label} aria-expanded={expanded} aria-controls={kidsId} onClick={flip}
                 className="atelier-row w-auto px-1.5">
                 <ChevronDown aria-hidden className="atelier-chevron" />
               </button>
             </div>
           ) : (
-            <button type="button" aria-expanded={expanded} aria-controls={kidsId} onClick={flip} className="atelier-row">
-              <Icon aria-hidden /><span className="truncate">{label}</span>
+            <button ref={register} type="button" aria-expanded={expanded} aria-controls={kidsId} onClick={flip} title={collapsed ? label : undefined} className={cn('atelier-row', (active || expanded) && 'bg-accent font-medium text-foreground')}>
+              <Icon aria-hidden /><span className="atelier-label truncate">{label}</span>
               <ChevronDown aria-hidden className="atelier-chevron" />
             </button>
-          )}
-          {expanded && (
-            <nav id={kidsId} aria-label={label} className="atelier-kids">
-              {children.map((child, index) => {
-                const heading = sectionLabel(child.href);
-                return <Fragment key={child.href}>
-                  {heading && heading !== sectionLabel(children[index - 1]?.href ?? '') &&
-                    <h3 className="atelier-subheading">{t(heading)}</h3>}
-                  <Link href={child.navigationHref ?? child.href} data-tour={child.tour}
-                    aria-current={child.href === currentHref ? 'page' : undefined} className="atelier-row">
-                    {childCaption(child)}
-                  </Link>
-                </Fragment>;
-              })}
-            </nav>
           )}
         </div>
       );
     };
     const initials = (viewerName ?? '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('');
     return (
-      <div className="relative hidden h-full shrink-0 sm:block">
+      <div className="atelier-navigation-container" onKeyDown={event=>{
+        if(event.key==='Escape'&&!openNode&&mobileNavigationOpen){event.preventDefault();setMobileNavigationOpen(false);mobileNavigationTrigger.current?.focus();}
+      }}>
+      <button ref={mobileNavigationTrigger} type="button" className="atelier-mobile-toggle" aria-expanded={mobileNavigationOpen} aria-controls="atelier-mobile-navigation"
+        onClick={()=>{setMobileNavigationOpen(open=>!open);setOpenKey(null);}}>
+        <PanelLeftOpen aria-hidden className="size-4"/><span>{t('workspaceSwitch')}</span>
+      </button>
+      <div id="atelier-mobile-navigation" className={cn('atelier-navigation-shell relative h-full shrink-0 sm:flex', mobileNavigationOpen?'flex':'hidden', openNode && 'atelier-flyout-open z-50', collapsed && 'atelier-collapsed')}>
         <aside data-app-sidebar data-atelier-navigation className="atelier-rail">
           <Link href="/" aria-label={t('home')} className="atelier-workspace">
             <span data-brand-tile aria-hidden>AI</span>
-            <span>{tCommon('appName')}</span>
+            <span className="atelier-label">{tCommon('appName')}</span>
           </Link>
-          <button type="button" className="atelier-quick" onClick={() => openCommandBar('')}>
+          <button type="button" className="atelier-quick" onClick={() => openCommandBar('')} title={collapsed ? tBar('quickActions') : undefined}>
             <Command aria-hidden className="size-3.5 shrink-0" />
-            <span>{tBar('quickActions')}</span>
+            <span className="atelier-label">{tBar('quickActions')}</span>
             <kbd aria-hidden>⌘K</kbd>
           </button>
           <nav data-tour="nav" aria-label={tCommon('appName')} className="atelier-nav">
             {groups.map((group, gi) => (
               <div key={gi}>
-                {group.labelKey && !isWorkspaceKey(group.labelKey) && (
+                {group.labelKey && !isWorkspaceKey(group.labelKey) && (collapsed ? (
+                  // Collapsed there is no room for a heading to toggle, so every section shows its icons.
+                  <div role="presentation" className="atelier-section atelier-section-static"><span>{t(group.labelKey)}</span></div>
+                ) : (
                   <button
                     type="button"
                     onClick={() => toggleSection(group.labelKey!)}
@@ -1099,18 +1177,23 @@ export function Sidebar({
                     <span>{t(group.labelKey)}</span>
                     <ChevronDown aria-hidden className={cn('size-3.5 shrink-0', !sectionOpen(group.labelKey) && '-rotate-90')} />
                   </button>
-                )}
+                ))}
                 <div id={group.labelKey ? `nav-section-${group.labelKey}` : undefined} className="flex flex-col gap-px">
-                  {sectionOpen(group.labelKey) && group.items.map((item) => {
+                  {(collapsed || sectionOpen(group.labelKey)) && group.items.map((item) => {
                     if (isCollapsible(item)) return atelierModule(item);
                     const Icon = item.icon;
                     const label = t(item.labelKey);
+                    if (item.disabled) return (
+                      <span key={item.href} aria-disabled="true" title={collapsed ? `${label} — ${tWorkspace('planLocked')}` : tWorkspace('planLocked')} className="atelier-row cursor-not-allowed text-muted-foreground">
+                        <Icon aria-hidden /><span className="atelier-label truncate">{label}</span><Lock aria-hidden className="ml-auto size-3.5 shrink-0" />
+                      </span>
+                    );
                     const count = atelierCount(item.href);
                     return (
-                      <Link key={item.href} href={item.navigationHref ?? item.href} data-tour={item.tour}
+                      <Link key={item.href} href={item.navigationHref ?? item.href} onClick={()=>setMobileNavigationOpen(false)} data-tour={item.tour}
                         aria-label={count ? `${label}, ${t('approvalsCount', { count })}` : label}
-                        aria-current={isRowActive(item) ? 'page' : undefined} className="atelier-row">
-                        <Icon aria-hidden /><span className="truncate">{label}</span>
+                        aria-current={isRowActive(item) ? 'page' : undefined} title={collapsed ? label : undefined} className="atelier-row">
+                        <Icon aria-hidden /><span className="atelier-label truncate">{label}</span>
                         {count && <span aria-hidden className="atelier-count">{count > 99 ? '99+' : count}</span>}
                       </Link>
                     );
@@ -1120,31 +1203,60 @@ export function Sidebar({
               </div>
             ))}
           </nav>
+          {/* b953a339 — Classic's collapse control, in Atelier's styling. Same remembered setting (rail_collapsed). */}
+          <button type="button" onClick={toggle} aria-label={collapsed ? t('expand') : t('collapse')} title={collapsed ? t('expand') : t('collapse')}
+            aria-pressed={collapsed} data-atelier-collapse className="atelier-row atelier-collapse">
+            {collapsed ? <PanelLeftOpen aria-hidden /> : <PanelLeftClose aria-hidden />}
+            <span className="atelier-label truncate">{collapsed ? t('expand') : t('collapse')}</span>
+          </button>
           {viewerName && (
-            <div className="atelier-user" data-rail-user>
+            <div className="atelier-user" data-rail-user title={collapsed ? viewerName : undefined}>
               <span aria-hidden className="atelier-avatar">{initials || '·'}</span>
-              <div className="min-w-0">
+              <div className="atelier-label min-w-0">
                 <b className="truncate">{viewerName}</b>
                 {viewerCode && <span>{viewerCode}</span>}
               </div>
             </div>
           )}
         </aside>
+        {openNode && <NavFlyoutPanel key={openNode.labelKey} layout="atelier" labelKey={openNode.labelKey}
+          items={openChildren.map(child=>({...child,sectionKey:sectionLabel(child.href),pendingCount:child.href==='/tasks'?taskCount:child.href==='/approvals'?approvalCount:0})) as FlyoutChild[]}
+          isActive={href=>href===activeChildHref} rowBase="atelier-row" panelId={`atelier-flyout-${openNode.labelKey}`}
+          onClose={()=>{setOpenKey(null);setMobileNavigationOpen(false);}} onEscape={()=>{pendingTriggerFocus.current=openNode.labelKey;setOpenKey(null);}}/>}
+      </div>
       </div>
     );
   }
 
+  // D-P1-28 — below 640px Classic and Monolith used to hide the rail with no way to open it. A menu button (the label
+  // and icon Atelier's phone toggle uses) opens the same rail as a drawer over the page; Escape, the backdrop or a
+  // destination closes it, and focus returns to the button. The rail itself, and every breakpoint above 640px
+  // (My Team's 900px included), is unchanged.
+  const closeMobileNavigation = () => { setMobileNavigationOpen(false); mobileNavigationTrigger.current?.focus(); };
   return (
-    // Wrapper (fdc20776): the aside is overflow-hidden, so the flyout panel cannot live inside it —
-    // it anchors to this relative wrapper instead, which takes over the aside's responsive/flex-item
-    // classes (a bare wrapper would stay a visible zero-width flex item below sm and add a phantom
-    // layout gutter, and the aside's h-full needs the wrapper to have height). While a panel is open
-    // the wrapper is raised to z-50 so the rail rows stay clickable above the z-40 backdrop (module
-    // swap in one click); the raise is conditional so onboarding-tour stacking is unaffected otherwise.
-    <div className={cn('relative hidden h-full shrink-0', pathname === '/manage/my-team' ? 'min-[900px]:block' : 'sm:block', openNode && 'z-50')}>
+    <div className="contents" onKeyDown={event => {
+      if (event.key === 'Escape' && !openNode && mobileNavigationOpen) { event.preventDefault(); closeMobileNavigation(); }
+    }}>
+    <button ref={mobileNavigationTrigger} type="button" data-mobile-navigation-toggle aria-expanded={mobileNavigationOpen} aria-controls="app-mobile-navigation"
+      onClick={() => { setMobileNavigationOpen(open => !open); setOpenKey(null); }}
+      className={cn('flex min-h-11 shrink-0 items-center gap-2.5 rounded-[1.25rem] border border-border bg-card px-4 text-left text-sm font-medium text-foreground shadow-[var(--shadow-card)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring monolith:mx-4 monolith:mt-4 monolith:rounded-none monolith:border-0 monolith:border-b monolith:border-hairline monolith:bg-background monolith:px-0 monolith:shadow-none sm:hidden')}>
+      <PanelLeftOpen aria-hidden className="size-4 shrink-0" /><span>{t('workspaceSwitch')}</span>
+    </button>
+    {mobileNavigationOpen && <div aria-hidden="true" data-mobile-navigation-backdrop onClick={closeMobileNavigation}
+      className="fixed inset-0 z-40 bg-black/40 sm:hidden" />}
+    {/* Wrapper (fdc20776): the aside is overflow-hidden, so the flyout panel cannot live inside it —
+        it anchors to this relative wrapper instead, which takes over the aside's responsive/flex-item
+        classes (a bare wrapper would stay a visible zero-width flex item below sm and add a phantom
+        layout gutter, and the aside's h-full needs the wrapper to have height). While a panel is open
+        the wrapper is raised to z-50 so the rail rows stay clickable above the z-40 backdrop (module
+        swap in one click); the raise is conditional so onboarding-tour stacking is unaffected otherwise. */}
+    <div className={cn('relative hidden h-full shrink-0', pathname === '/manage/my-team' ? 'min-[900px]:block' : 'sm:block', openNode && 'z-50',
+      // D-P1-28 — open on a phone: the same wrapper, fixed over the page above the backdrop.
+      mobileNavigationOpen && 'max-sm:fixed max-sm:inset-y-0 max-sm:left-0 max-sm:z-50 max-sm:block max-sm:h-auto max-sm:p-3 monolith:max-sm:p-0')}>
     {/* r398 (parent): the Monolith rail follows Classic's breakpoints. The README hides it below 900px, but the app
         has no other way to open navigation at those widths, so hiding it would leave a tablet with no navigation. */}
       <aside
+        id="app-mobile-navigation"
         data-app-sidebar
         className={cn(
           'flex h-full flex-col overflow-hidden rounded-[1.25rem] border border-border bg-sidebar py-4 shadow-[var(--shadow-card)] transition-[width] duration-200 ease-snappy',
@@ -1259,9 +1371,17 @@ export function Sidebar({
                     />
                   );
                 }
-                const active = isRowActive(item);
                 const Icon = item.icon;
                 const label = t(item.labelKey);
+                if (item.disabled) return (
+                  <span key={item.href} aria-disabled="true" title={tWorkspace('planLocked')}
+                    className={cn(rowBase, collapsed ? 'size-11 justify-center' : 'w-full gap-3 px-3 py-2', 'cursor-not-allowed text-muted-foreground')}>
+                    <Icon className="size-[20px] shrink-0" strokeWidth={2} aria-hidden />
+                    {!collapsed && <span className="truncate text-sm">{label}</span>}
+                    {!collapsed && <Lock className="ml-auto size-4 shrink-0" aria-hidden />}
+                  </span>
+                );
+                const active = isRowActive(item);
                 // Pending-approval badge (feedback 836118c4). Keyed on the href, like every other
                 // row-specific behaviour in this file — no marker field on the Item type. The count
                 // arrives pre-computed from the layout; a viewer without the row never reaches here.
@@ -1312,6 +1432,8 @@ export function Sidebar({
           className={cn(
             rowBase,
             'mt-2 text-muted-foreground hover:bg-accent/60 hover:text-foreground',
+            // The desktop collapse preference does nothing in the phone drawer (D-P1-28).
+            mobileNavigationOpen && 'max-sm:hidden',
             collapsed ? 'size-11 justify-center' : 'w-full gap-3 px-3 py-2',
           )}
         >
@@ -1341,6 +1463,7 @@ export function Sidebar({
           }}
         />
       )}
+    </div>
     </div>
   );
 }

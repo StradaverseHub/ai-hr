@@ -1,5 +1,7 @@
 # ADR-0057 — CP38 Deduction (LHDN instalment instruction)
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted (1.2.3)
 Date: 2026-06-27
 

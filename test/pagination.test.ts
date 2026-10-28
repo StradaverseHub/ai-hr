@@ -254,7 +254,8 @@ describe('fc776376 — one implementation, not a sixth', () => {
       // r424 (50ed39e1) — punch-import.tsx STOOD HERE and is deleted; the import preview is now
       // clocking-import.tsx, still a capped preview (500 rendered rows), not a paged list.
       'app/attendance/import/clocking-import.tsx',
-      'app/payroll/history-import/history-import.tsx',
+      // Payroll history now uses the approved whole-file revision preview with visible paging;
+      // payroll-history-import-screen.dom.test.tsx proves all pages remain available before confirm.
       'app/admin/leave/import/leave-ledger-import.tsx',
       'app/approvals/leave-date-breakdown.tsx',
     ]) {

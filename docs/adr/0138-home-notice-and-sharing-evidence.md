@@ -1,5 +1,7 @@
 # ADR-0138: Bind Home disclosures and notice actions to retained evidence
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 **Status:** Accepted implementation direction; implementation and acceptance remain incomplete
 **Date:** 2026-10-21
 **Deciders:** Codex within the approved Employee Home plan

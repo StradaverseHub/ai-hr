@@ -1,3 +1,5 @@
+import type { Tx as AiReadTx } from '../db/client';
+import { withCanonicalAiReadTx } from './ai-read-transaction';
 /**
  * Knowledge Base (ADR-0017). A tenant-shared document repository: Markdown articles authored in-app
  * and uploaded binary files, in one `kb_document` table. RLS makes reads tenant-wide and writes
@@ -7,7 +9,7 @@
  * library and viewer stay light.
  */
 import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { kbDocument } from '../db/schema';
 import { isAdmin } from '../lib/authz-model';
@@ -71,13 +73,16 @@ export function listDocuments(
     includeArchived?: boolean;
     search?: string;
     locale?: string;
-  } = {},
+  } = {}, existingTx?: AiReadTx
 ) {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  opts = { ...opts };
+
   const localizedTitle =
     opts.locale && opts.locale !== 'en'
       ? sql<string | null>`${kbDocument.i18n} -> ${opts.locale} ->> 'title'`
       : sql<string | null>`null`;
-  return withTenant(ctx, async (tx) => {
+  return withCanonicalAiReadTx(ctx, existingTx, 'knowledge_base', withTenant, async (tx) => {
     const rows = await tx
       .select({
         id: kbDocument.id,
@@ -257,8 +262,9 @@ async function logEvent(
   id: string,
   eventType: string,
   payload: unknown,
+  returnId = false,
 ) {
-  await appendEvent(tx, {
+  return appendEvent(tx, {
     tenantId: ctx.tenantId,
     aggregateType: 'kb-document',
     aggregateId: id,
@@ -267,38 +273,37 @@ async function logEvent(
     // KB documents are org-level content, not employee-scoped PII → no subject (admin-only in audit).
     subjectEmploymentId: null,
     payload,
-  });
+  }, {returnId});
+}
+
+export type ArticleHumanInput={title:string;body:string;category?:string;audience?:KbAudience};
+/** Shared native normalization/author-clearance owner. A review displays these exact values. */
+export function prepareArticleContent(ctx:SessionContext,p:ArticleHumanInput){
+  assertKbAuthor(ctx);
+  const title=cleanTitle(p.title),body=String(p.body??'');
+  if(!body.trim())throw new Error('The article body is empty.');
+  const category=cleanCategory(p.category),audience=cleanAudience(p.audience);
+  assertAudienceWithinClearance(ctx,audience);return {title,body,category,audience};
+}
+async function createArticleOwnerTx(tx:Tx,ctx:SessionContext,content:ReturnType<typeof prepareArticleContent>,returnId=false){
+  const {title,body,category,audience}=content;
+  const [row]=await tx.insert(kbDocument).values({tenantId:ctx.tenantId,kind:'article',title,body,category,audience,
+    createdByUserId:ctx.userId??null,updatedByUserId:ctx.userId??null}).returning({id:kbDocument.id});
+  const eventId=await logEvent(tx,ctx,row.id,'kb.document.created',{kind:'article',title,category,audience},returnId);
+  return {id:row.id,eventId};
+}
+/** Supplied-transaction native article creation. The Assistant caller still owns fresh identity,
+ * human confirmation, shared custody and completion; this function is not a model tool. */
+export async function createArticleTx(tx:Tx,ctx:SessionContext,p:ArticleHumanInput){
+  const current={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
+  const content=prepareArticleContent(current,{...p}),effect=await createArticleOwnerTx(tx,current,content,true);
+  if(!effect.eventId)throw Error('Article event unavailable.');return {id:effect.id,eventId:effect.eventId};
 }
 
 /** Author a new Markdown article. */
-export async function createArticle(
-  ctx: SessionContext,
-  p: { title: string; body: string; category?: string; audience?: KbAudience },
-) {
-  assertKbAuthor(ctx);
-  const title = cleanTitle(p.title);
-  const body = String(p.body ?? '');
-  if (!body.trim()) throw new Error('The article body is empty.');
-  const category = cleanCategory(p.category);
-  const audience = cleanAudience(p.audience);
-  assertAudienceWithinClearance(ctx, audience);
-  return withTenant(ctx, async (tx) => {
-    const [row] = await tx
-      .insert(kbDocument)
-      .values({
-        tenantId: ctx.tenantId,
-        kind: 'article',
-        title,
-        body,
-        category,
-        audience,
-        createdByUserId: ctx.userId ?? null,
-        updatedByUserId: ctx.userId ?? null,
-      })
-      .returning({ id: kbDocument.id });
-    await logEvent(tx, ctx, row.id, 'kb.document.created', { kind: 'article', title, category, audience });
-    return { id: row.id };
-  });
+export async function createArticle(ctx:SessionContext,p:ArticleHumanInput){
+  const content=prepareArticleContent(ctx,p);
+  return withTenant(ctx,async tx=>{const {id}=await createArticleOwnerTx(tx,ctx,content);return {id};});
 }
 
 /** Edit an article (and/or its metadata). RLS confines it to admins + the author of a non-system doc. */
@@ -412,12 +417,15 @@ export async function restoreDocument(ctx: SessionContext, id: string) {
 /** Bounded article guidance. Tenant RLS and the ordinary audience ladder apply before ranking. */
 export async function searchKnowledgeArticles(ctx:SessionContext,query:string,category:string,mode:'journey'|'dashboard'='journey'){
  if(!ctx.userId||!query.trim()||query.length>2500)return [];
- return withTenant(ctx,async tx=>{
+ return withTenant(ctx,tx=>searchKnowledgeArticlesTx(tx,ctx,query,category,mode));
+}
+/** Same bounded, RLS/audience-filtered owner projection inside an admitted caller transaction. */
+export async function searchKnowledgeArticlesTx(tx:Tx,ctx:SessionContext,query:string,category:string,mode:'journey'|'dashboard'='journey'){
+ if(!ctx.userId||!query.trim()||query.length>2500)return [];
   const rows=await tx.select({id:kbDocument.id,title:kbDocument.title,body:sql<string>`left(${kbDocument.body},5000)`,slug:kbDocument.slug}).from(kbDocument)
    .where(and(eq(kbDocument.kind,'article'),eq(kbDocument.category,category),isNull(kbDocument.archivedAt),inArray(kbDocument.audience,visibleAudiencesFor(ctx))))
    .orderBy(asc(kbDocument.createdAt),asc(kbDocument.id)).limit(100);
   return (category==='performance-faq'?(mode==='dashboard'?rankPerformanceDashboardArticles:rankPerformanceArticles)(query,rows.filter(r=>r.body)):rankKnowledgeArticles(query,rows.filter(r=>r.body))).map(r=>({id:r.id,title:r.title,body:r.body.slice(0,1400)}));
- });
 }
 
 /** Home searches this existing library, not a second content index. Tenant RLS and the ordinary

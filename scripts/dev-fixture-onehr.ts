@@ -61,12 +61,12 @@ async function main(){
  const view=async(ctx:SessionContext)=>{const v=await perf.getOnehrReview(ctx,rid);if(!v)throw Error('Fixture review missing.');return v;};
  await perf.saveOnehrKpis(subject.ctx,rid,(await view(subject.ctx)).revision,[{id:kid,title:'Deliver agreed milestones',description:'Delivery verified against accepted release evidence.',weightBp:10000,unit:'milestones',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:manager.employmentId}],true);
  await perf.approveOnehrScorecard(manager.ctx,rid,(await view(manager.ctx)).revision,true,'Objectives agreed');
- await perf.submitOnehrResults(subject.ctx,rid,(await view(subject.ctx)).revision,[{id:kid,actual:2,note:'Completed the agreed release.'}]);
+ await perf.submitOnehrResults(subject.ctx,rid,(await view(subject.ctx)).revision,[{id:kid,actual:2,note:'Completed the agreed release.'}],'Delivered the agreed release on time.');
  await perf.moderateOnehrKpi(manager.ctx,rid,(await view(manager.ctx)).revision,kid,2,'Verified delivery');
  await perf.confirmOnehrPerformance(manager.ctx,rid,(await view(manager.ctx)).revision,'ME','');
  const answers={'fixture-current':{answer:'yes',remark:''},'fixture-future':{answer:'yes',remark:''}};
- await perf.submitOnehrCompetencies(subject.ctx,rid,(await view(subject.ctx)).revision,answers);
- await perf.submitOnehrCompetencies(manager.ctx,rid,(await view(manager.ctx)).revision,answers,true);
+ await perf.submitOnehrCompetencies(subject.ctx,rid,(await view(subject.ctx)).revision,answers,false,'Consistent delivery this year.');
+ await perf.submitOnehrCompetencies(manager.ctx,rid,(await view(manager.ctx)).revision,answers,true,'Consistent delivery this year.');
  await perf.assignOnehrPanel(manager.ctx,rid,(await view(manager.ctx)).revision,peers.map(p=>({employmentId:p.employmentId,relationship:'peer'})));
  for(let i=0;i<peers.length;i++){
   const req=(await perf.onehrAssignments(peers[i].ctx)).feedback.find(f=>f.subject==='OneHR Employee')!;
@@ -78,8 +78,10 @@ async function main(){
  await perf.saveOnehrPlan(subject.ctx,rid,null,{career:{aspiration:'Build coaching skills',mobility:'stay',mobilityNote:'',targetProfileId:null},goals:[{id:randomUUID(),area:'Coaching',dueOn:`${year+1}-06-01`,onJob:'Lead a retrospective each month',fromOthers:'Observe a mentor',formalLearning:'Practice coaching skills',status:'not_started'}]},true);
  const plan=(await view(manager.ctx)).plans[0];await perf.reviewOnehrPlan(manager.ctx,plan.id,plan.revision,'Agreed development activities','Discussed career goals and support.',true);
  const sid=await perf.createOnehrCalibration(a,cycleId,{name:'Group fixture confirmation',companyId,tier:'group',reviewerUserIds:[a.userId!],reviewIds:[rid],pbtAchievement:100,mode:'replace'});
- await perf.saveOnehrCalibration(a,sid,(await perf.getOnehrCalibration(a,sid)).session.revision,{reviewId:rid,performance:'ME',potential:'High',performanceNote:'',potentialNote:'',promotion:true,specialReward:true});
+ await perf.saveOnehrCalibration(a,sid,(await perf.getOnehrCalibration(a,sid)).session.revision,{reviewId:rid,performance:'ME',potential:'High',performanceNote:'Fictional Group calibration decision.',potentialNote:'Fictional Group calibration decision.'});
  await perf.lockOnehrCalibration(a,sid,(await perf.getOnehrCalibration(a,sid)).session.revision,'','both',rid);
+ // Talent decisions are confirmed as lists after the lock (the per-person flags left the calibration save).
+ for(const kind of ['pip','promotion'] as const)await perf.confirmAssessmentTalentList(a,sid,(await perf.getOnehrCalibration(a,sid)).session.revision,kind);
  await perf.freezeOnehrReview(a,rid,(await view(a)).revision);
  for(const c of ['performance','potential','talent','feedback'] as const)await perf.releaseOnehrResult(a,rid,c,true);
  await setCompensation(a,{employmentId:subject.employmentId,basicSalary:5000,effectiveFrom:`${year-2}-01-01`});
@@ -94,11 +96,11 @@ async function main(){
  const crid=correctionReview.reviewId,ckid=randomUUID(),cview=async(ctx:SessionContext)=>(await perf.getOnehrReview(ctx,crid))!;
  await perf.saveOnehrKpis(correctionPeer.ctx,crid,(await cview(correctionPeer.ctx)).revision,[{id:ckid,title:'Verified coaching delivery',description:'Fictional evidence for the correction workflow.',weightBp:10000,unit:'milestones',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:manager.employmentId}],true);
  await perf.approveOnehrScorecard(manager.ctx,crid,(await cview(manager.ctx)).revision,true,'');
- await perf.submitOnehrResults(correctionPeer.ctx,crid,(await cview(correctionPeer.ctx)).revision,[{id:ckid,actual:2,note:'Completed the agreed work.'}]);
+ await perf.submitOnehrResults(correctionPeer.ctx,crid,(await cview(correctionPeer.ctx)).revision,[{id:ckid,actual:2,note:'Completed the agreed work.'}],'Delivered the agreed coaching work.');
  await perf.moderateOnehrKpi(manager.ctx,crid,(await cview(manager.ctx)).revision,ckid,2,'');
  await perf.confirmOnehrPerformance(manager.ctx,crid,(await cview(manager.ctx)).revision,'ME','');
- await perf.submitOnehrCompetencies(correctionPeer.ctx,crid,(await cview(correctionPeer.ctx)).revision,answers);
- await perf.submitOnehrCompetencies(manager.ctx,crid,(await cview(manager.ctx)).revision,answers,true);
+ await perf.submitOnehrCompetencies(correctionPeer.ctx,crid,(await cview(correctionPeer.ctx)).revision,answers,false,'Consistent delivery this year.');
+ await perf.submitOnehrCompetencies(manager.ctx,crid,(await cview(manager.ctx)).revision,answers,true,'Consistent delivery this year.');
  const correctionRaters=[subject,peers[0],peers[2],peers[3]];
  await perf.assignOnehrPanel(manager.ctx,crid,(await cview(manager.ctx)).revision,correctionRaters.map(p=>({employmentId:p.employmentId,relationship:'peer'})));
  for(const rater of correctionRaters){
@@ -107,7 +109,7 @@ async function main(){
   await perf.submitOnehrFeedback(rater.ctx,req.id,Object.fromEntries(card.statements.map(st=>[st.id,'yes'])),'Observed the fictional coaching work.');
  }
  const correctionSession=await perf.createOnehrCalibration(a,cycleId,{name:'Group fixture correction',companyId,tier:'group',reviewerUserIds:[a.userId!],reviewIds:[crid],pbtAchievement:100,mode:'replace'});
- await perf.saveOnehrCalibration(a,correctionSession,1,{reviewId:crid,performance:'ME',potential:'High',performanceNote:'',potentialNote:'',promotion:true});
+ await perf.saveOnehrCalibration(a,correctionSession,1,{reviewId:crid,performance:'ME',potential:'High',performanceNote:'Fictional Group calibration decision.',potentialNote:'Fictional Group calibration decision.'});
  await perf.lockOnehrCalibration(a,correctionSession,(await perf.getOnehrCalibration(a,correctionSession)).session.revision,'');
  await perf.createOnehrCalibration(a,cycleId,{name:'BU fixture calibration',companyId,tier:'bu',reviewerUserIds:[a.userId!],reviewIds:[pendingReview.reviewId],pbtAchievement:100,mode:'after'});
  const {cycleId:draftCycleId}=await perf.createCycle(a,{name:'OneHR draft (dev fixture)',companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`});

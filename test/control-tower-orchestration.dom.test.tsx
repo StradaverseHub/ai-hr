@@ -13,7 +13,8 @@ import type { orchestrationQueue } from '../core/hr-orchestrator';
 const catalogues = { en, ms, zh, vi: viMessages, th, ta };
 let renderLocale: keyof typeof catalogues = 'en';
 
-vi.mock('next/navigation', () => ({ usePathname: () => '/control-tower/readiness' }));
+const route = vi.hoisted(() => ({ pathname: '/control-tower/readiness' }));
+vi.mock('next/navigation', () => ({ usePathname: () => route.pathname }));
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('next-intl/server', () => ({
   getTranslations: async (namespace: any) => createTranslator({ locale: renderLocale, messages: catalogues[renderLocale], namespace }),
@@ -23,7 +24,6 @@ vi.mock('../app/control-tower/orchestrator-actions', () => ({ refreshOrchestrati
 vi.mock('../core/readiness-actions', () => ({ myReadinessActions: vi.fn() }));
 import { myReadinessActions } from '../core/readiness-actions';
 import { MyReadinessWork } from '../app/me/readiness-work';
-import { ControlTowerNavigation } from '../app/control-tower/navigation';
 import { OrchestrationWorkQueue } from '../app/control-tower/work-queue';
 
 const show = (element: React.ReactNode) => render(<NextIntlClientProvider locale={renderLocale} messages={catalogues[renderLocale]}>{element}</NextIntlClientProvider>);
@@ -44,14 +44,6 @@ function populatedQueue(): Awaited<ReturnType<typeof orchestrationQueue>> {
 afterEach(() => { cleanup(); renderLocale = 'en'; });
 
 describe('consolidated Control Tower', () => {
-  it('keeps the existing queues and controls in one navigation with the active route identified', () => {
-    show(<ControlTowerNavigation />);
-    expect(screen.getByRole('link', { name: 'Employee data' }).getAttribute('aria-current')).toBe('page');
-    expect(screen.getByRole('link', { name: 'Approvals' }).getAttribute('href')).toBe('/control-tower/actions');
-    expect(screen.getByRole('link', { name: 'AI management' }).getAttribute('href')).toBe('/control-tower/agents');
-    expect(screen.getByRole('link', { name: 'Opportunities' }).getAttribute('href')).toBe('/control-tower/opportunities');
-    expect(screen.getAllByRole('link')).toHaveLength(7);
-  });
   it('does not present an unobserved queue as a successful clean check', async () => {
     show(await OrchestrationWorkQueue({ view: empty }));
     expect(screen.getByText(en.controlTower.orchestrator.unobserved)).toBeTruthy();
@@ -62,13 +54,6 @@ describe('consolidated Control Tower', () => {
   it('offers the system execution log only when the parent authorizes that view', async () => {
     show(await OrchestrationWorkQueue({ view: empty, canViewRuns: true }));
     expect(screen.getByRole('link', { name: 'Execution history' }).getAttribute('href')).toBe('/admin/scheduled-actions');
-  });
-  it('keeps core HR available without advertising payroll-specific queues', () => {
-    show(<ControlTowerNavigation payrollEnabled={false} />);
-    expect(screen.getByRole('link', { name: 'Overview' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Employee data' })).toBeTruthy();
-    expect(screen.queryByRole('link', { name: 'Payroll exceptions' })).toBeNull();
-    expect(screen.queryByRole('link', { name: 'Approvals' })).toBeNull();
   });
   it('shows failed execution separately from verified absence of open cases', async () => {
     const now = new Date();
@@ -157,6 +142,34 @@ describe('consolidated Control Tower', () => {
     expect(screen.getAllByText(messages.states.succeeded)).toHaveLength(4);
     expect(screen.getByText(messages.receiptNote)).toBeTruthy();
     expect(screen.queryByText(messages.incomplete)).toBeNull();
+  });
+  it('groups each person\'s open gaps together: company, then name, then gap, whatever order the cases opened in', async () => {
+    // Walkthrough 28 October 2026: one person's gaps were spread across rows 1, 3, 13, 14 and 16.
+    const base = populatedQueue(), [bank] = base.rows;
+    const row = (id: string, company: string, employmentId: string, name: string, gap: typeof bank.gap) => ({ ...bank, id, company, employmentId, name, gap });
+    const rows = [
+      row('c1', 'Beta Fixture Sdn Bhd', 'e-wei', 'Wei Fixture', 'no_tax_number'),
+      row('c2', 'Alpha Fixture Sdn Bhd', 'e-zara', 'Zara Fixture', 'no_bank_account'),
+      row('c3', 'Beta Fixture Sdn Bhd', 'e-adam', 'Adam Fixture', 'no_epf_number'),
+      row('c4', 'Beta Fixture Sdn Bhd', 'e-wei', 'Wei Fixture', 'no_bank_account'),
+      row('c5', 'Alpha Fixture Sdn Bhd', 'e-zara', 'Zara Fixture', 'no_identity'),
+      row('c6', 'Beta Fixture Sdn Bhd', 'e-wei', 'Wei Fixture', 'no_epf_number'),
+    ];
+    const order = async (view: typeof base) => {
+      cleanup();
+      show(await OrchestrationWorkQueue({ view }));
+      return screen.getAllByRole('row').slice(1).map(tr => { const cells = within(tr).getAllByRole('cell'); return [cells[0].textContent, cells[1].textContent]; });
+    };
+    const forward = { ...base, rows }, reversed = { ...base, rows: [...rows].reverse() };
+    const gap = en.controlTower.readinessScreen.gap;
+    const expected = [
+      ['Zara FixtureAlpha Fixture Sdn Bhd', gap.no_bank_account], ['Zara FixtureAlpha Fixture Sdn Bhd', gap.no_identity],
+      ['Adam FixtureBeta Fixture Sdn Bhd', gap.no_epf_number],
+      ['Wei FixtureBeta Fixture Sdn Bhd', gap.no_bank_account], ['Wei FixtureBeta Fixture Sdn Bhd', gap.no_epf_number], ['Wei FixtureBeta Fixture Sdn Bhd', gap.no_tax_number],
+    ];
+    expect(await order(forward)).toEqual(expected);
+    expect(await order(reversed)).toEqual(expected);
+    expect(forward.rows.map(r => r.id), 'the owner\'s rows are not reordered in place').toEqual(['c1', 'c2', 'c3', 'c4', 'c5', 'c6']);
   });
 });
 

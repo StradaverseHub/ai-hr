@@ -1,5 +1,7 @@
 # ADR-0071: Leave-Approval Rule Matrix
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted
 Date: 2026-07-04
 Supersedes routing key of: ADR-0039 (configurable leave approval chain) — extends, does not replace

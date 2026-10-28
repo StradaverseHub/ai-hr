@@ -1,3 +1,5 @@
+import {issuePerformanceMessageSpendTaskTx,type PerformanceMessageSpendTask} from '../../../core/ai-spend-task';
+import {assertPerformanceProviderSourceTx} from './provider-source-authority';
 import {assessmentHelp} from './help';
 import { competencyGuidance } from './competency-guide-model';
 import { competencyReflectionSchema,literalCompetencyReflection } from './review-command-model';
@@ -7,7 +9,7 @@ import { z } from 'zod';
 import type { SessionContext,Tx } from '../../../db/client';
 import { assessmentConversation } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
-import { getOnehrReview, saveAssessmentDraftTx, saveOnehrKpisTx, saveAssessmentCareerProfileTx, saveOnehrPlanTx, addOnehrEvidenceTx, saveOnehrKpiCheckInTx,moderateOnehrKpiTx,submitAssessmentModerationTx,confirmOnehrPerformanceTx,submitOnehrCompetenciesTx,commentAssessmentCareerProfileTx,reviewOnehrPlanTx,editAssessmentDevelopmentGoalTx } from './service';
+import { getOnehrReview,getOnehrReviewTx, saveAssessmentDraftTx, saveOnehrKpisTx, saveAssessmentCareerProfileTx, saveOnehrPlanTx, addOnehrEvidenceTx, saveOnehrKpiCheckInTx,moderateOnehrKpiTx,submitAssessmentModerationTx,confirmOnehrPerformanceTx,submitOnehrCompetenciesTx,commentAssessmentCareerProfileTx,reviewOnehrPlanTx,editAssessmentDevelopmentGoalTx } from './service';
 import { assessmentDraftSchema } from './journey-model';
 import { proposeSettingCommands, proposeSettingSuggestion, proposeCareerCommands, proposeJourneyCommands } from './review-command-ai';
 import { assessmentAiQuotaTx,recordAssessmentAiUseTx } from './ai-usage';
@@ -22,9 +24,13 @@ const messageSchema=z.object({id:z.uuid(),role:z.enum(['user','assistant']),text
 export type ReviewMessage=z.infer<typeof messageSchema>;
 export const reviewConversationMessages=z.array(messageSchema).max(300);
 async function authorized(ctx:SessionContext,reviewId:string,stage:ConversationStage){
+ return withPerformanceTenant(ctx,tx=>authorizedTx(tx,ctx,reviewId,stage));
+}
+async function authorizedTx(tx:Tx,ctx:SessionContext,reviewId:string,stage:ConversationStage){
  z.uuid().parse(reviewId);conversationStage.parse(stage);if(stage==='feedback')throw Error('Use the assigned colleague feedback conversation.');
- const v=await getOnehrReview(ctx,reviewId);
- if(!v||!v.self&&!v.manager&&!v.moderator)throw Error('This review conversation is not assigned to you.');
+ const v=await getOnehrReviewTx(tx,ctx,reviewId);
+ if(!v||!v.self&&!v.manager&&!v.moderator&&!v.reviewer)throw Error('This review conversation is not assigned to you.');
+ if(!v.self&&!v.manager&&!v.moderator&&!['competency','career'].includes(stage))throw Error('This review conversation is not assigned to you.');
  if(v.policy.modules.review===false)throw Error('Guided review is disabled.');
  if(['setting','results','moderation'].includes(stage)&&!v.policy.modules.pm||stage==='competency'&&!v.policy.modules.tm||stage==='career'&&!v.policy.modules.idp||stage==='evidence'&&!v.policy.modules.evidence)throw Error('This review module is disabled.');
  return v;
@@ -32,7 +38,7 @@ async function authorized(ctx:SessionContext,reviewId:string,stage:ConversationS
 function commandContext(view:NonNullable<Awaited<ReturnType<typeof getOnehrReview>>>,stage:ConversationStage,text:string){
  const reading=stage==='competency'&&view.self&&/^read saved reflection:/i.test(text.trim());
  if(!reading&&(view.finalized||view.policy.kind==='quarterly'))return null;
- const kind=stage==='results'&&view.self?'results':stage==='moderation'&&(view.manager||view.moderator)?'moderation':stage==='competency'&&view.self?'competency_self':stage==='competency'&&view.manager?'competency_manager':null;
+ const kind=stage==='results'&&view.self?'results':stage==='moderation'&&(view.manager||view.moderator)?'moderation':stage==='competency'&&view.self?'competency_self':stage==='competency'&&(view.manager||view.reviewer)?'competency_manager':null;
  if(!kind||kind==='results'&&view.resultsSubmitted||kind==='moderation'&&!view.canModerateIds.length||kind==='competency_self'&&!reading&&view.competencyStatus!=='pending'||kind==='competency_manager'&&view.competencyStatus!=='submitted')return null;
  const prior=reading&&view.competencyStatus!=='pending'?undefined:view.drafts.find(d=>d.kind===kind);
  const kpis=view.kpis.filter(k=>!k.hrOwned&&(kind==='results'||view.canModerateIds.includes(k.id)));
@@ -58,7 +64,7 @@ function evidenceContext(view:NonNullable<Awaited<ReturnType<typeof getOnehrRevi
 type ReviewView=NonNullable<Awaited<ReturnType<typeof getOnehrReview>>>;
 function humanManagerContext(view:ReviewView,stage:ConversationStage,text:string){
  const plan=view.plans.find(p=>p.planYear===view.planYear)??null;
- const command=readManagerCommand(text,{stage,self:view.self,manager:view.manager,moderator:view.moderator,finalized:!view.participating||view.cycle.status==='closed'||stage!=='career'&&view.finalized,kpis:view.kpis.filter(k=>view.canModerateIds.includes(k.id)),competencyStatus:view.competencyStatus,planRemarkWriter:view.planRemarkWriter,plan});
+ const command=readManagerCommand(text,{stage,self:view.self,manager:view.manager,moderator:view.moderator,reviewer:view.reviewer,finalized:!view.participating||view.cycle.status==='closed'||stage!=='career'&&view.finalized,kpis:view.kpis.filter(k=>view.canModerateIds.includes(k.id)),competencyStatus:view.competencyStatus,planRemarkWriter:view.planRemarkWriter,plan});
  return command?{command,revision:view.revision,ownReviewerRemark:view.ownReviewerRemark,privateDraft:commandContext(view,stage,text),plan,careerRevision:view.careerProfile?.revision??null}:null;
 }
 async function applyHumanManagerCommand(tx:Tx,ctx:SessionContext,view:ReviewView,input:NonNullable<ReturnType<typeof humanManagerContext>>){
@@ -106,21 +112,27 @@ export async function getReviewConversation(ctx:SessionContext,reviewId:string,s
 }
 /** Provider proposals stay private. Only an explicit human command may confirm through the canonical writer. */
 export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage:ConversationStage,expected:number|null,requestId:string,text:string,intent:'guide'|'draft'|'starter'='guide'){
+ ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
  z.uuid().parse(requestId);const words=z.string().trim().min(1).max(2500).parse(text);z.enum(['guide','draft','starter']).parse(intent);
  const view=await authorized(ctx,reviewId,stage);
  const previous=await withPerformanceTenant(ctx,async tx=>{
+  // A completed earlier authorization cannot admit a historical reply after stage policy changes.
+  // Hold the actual native source interval across the fresh gate, messages and optional quota read.
+  await assertPerformanceProviderSourceTx(tx,ctx);const current=await authorizedTx(tx,ctx,reviewId,stage);
   const [row]=await tx.select().from(assessmentConversation).where(and(eq(assessmentConversation.reviewId,reviewId),eq(assessmentConversation.actorUserId,ctx.userId!),eq(assessmentConversation.stage,storedStage(stage)),eq(assessmentConversation.contextId,reviewId)));
   if(!row)return null;const messages=reviewConversationMessages.parse(row.messages),index=messages.findIndex(m=>m.id===requestId);
-  return index<0?null:{revision:row.revision,messages,draftUpdated:['update','action'].includes(messages[index+1]?.kind),...(stage==='setting'&&view.self?{settingQuota:await assessmentAiQuotaTx(tx,ctx,`kpi_set:${view.cycle.id}`)}:{})};
+  return index<0?null:{revision:row.revision,messages,draftUpdated:['update','action'].includes(messages[index+1]?.kind),...(stage==='setting'&&current.self?{settingQuota:await assessmentAiQuotaTx(tx,ctx,`kpi_set:${current.cycle.id}`)}:{})};
  });
  if(previous)return previous;
+ let spendIntent:Promise<PerformanceMessageSpendTask>|undefined;
+ const spendTask=()=>spendIntent??=(withPerformanceTenant(ctx,async tx=>{await assertPerformanceProviderSourceTx(tx,ctx);await authorizedTx(tx,ctx,reviewId,stage);return issuePerformanceMessageSpendTaskTx(tx,ctx,{reviewId,contextId:reviewId,requestId,channel:stage});}));
  let reply='';
  const help=intent==='guide'?await assessmentHelp(ctx,words):null;
  const humanInput=intent==='guide'&&!help?humanManagerContext(view,stage,words):null;
  const commandInput=intent==='guide'&&!help&&!humanInput?commandContext(view,stage,words):null;
  const reflection=intent==='guide'&&stage==='competency'&&commandInput?literalCompetencyReflection(words,commandInput.facts):null;
  const evidenceInput=intent==='guide'&&!help&&!humanInput&&view.aiEnabled?evidenceContext(view,stage,words):null;
- const journey=!reflection&&view.aiEnabled&&(commandInput||evidenceInput)?await proposalOrNull(()=>proposeJourneyCommands(ctx,reviewId,commandInput?.facts??null,evidenceInput)):null;
+ const journey=!reflection&&view.aiEnabled&&(commandInput||evidenceInput)?await proposalOrNull(async ()=>proposeJourneyCommands(ctx,reviewId,commandInput?.facts??null,evidenceInput,async tx=>{const fresh=await authorizedTx(tx,ctx,reviewId,stage);if(!fresh.aiEnabled)throw Error('AI review assistance is unavailable.');return {review:commandInput?commandContext(fresh,stage,words)?.facts??null:null,evidence:evidenceInput?evidenceContext(fresh,stage,words):null};},await spendTask())):null;
  const command=reflection??journey?.review??null,evidence=journey?.evidence??null;
  const settingInput=['guide','starter'].includes(intent)&&!help&&!humanInput&&view.aiEnabled?settingContext(view,stage,words):null;
  const settingField=`kpi_set:${view.cycle.id}`;
@@ -130,11 +142,11 @@ export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage
   const quota=await withPerformanceTenant(ctx,tx=>assessmentAiQuotaTx(tx,ctx,settingField));
   if(!quota.remaining)throw Error('All 5 AI scorecard suggestions have been used today. The limit resets at midnight Malaysia time.');
  }
- const starter=intent==='starter'&&settingInput?await proposalOrNull(()=>proposeSettingSuggestion(ctx,reviewId,settingInput)):null;
+ const starter=intent==='starter'&&settingInput?await proposalOrNull(()=>proposeSettingSuggestion(ctx,reviewId,settingInput,async tx=>{const fresh=await authorizedTx(tx,ctx,reviewId,stage);if(!(await assessmentAiQuotaTx(tx,ctx,settingField)).remaining)throw Error('Current scorecard drafting allowance is unavailable.');return fresh.aiEnabled?settingContext(fresh,stage,words):null;})):null;
  if(intent==='starter'&&!starter)throw Error('Could not prepare a usable scorecard just now. You can add KPIs from the library and try again later.');
- const setting=starter??(intent==='guide'&&settingInput?await proposalOrNull(()=>proposeSettingCommands(ctx,reviewId,settingInput)):null);
+ const setting=starter??(intent==='guide'&&settingInput?await proposalOrNull(async ()=>proposeSettingCommands(ctx,reviewId,settingInput,async tx=>{const fresh=await authorizedTx(tx,ctx,reviewId,stage);return fresh.aiEnabled?settingContext(fresh,stage,words):null;},await spendTask())):null);
  const careerInput=intent==='guide'&&!help&&!humanInput&&view.aiEnabled?careerContext(view,stage,words):null;
- const career=careerInput?await proposalOrNull(()=>proposeCareerCommands(ctx,reviewId,careerInput)):null;
+ const career=careerInput?await proposalOrNull(async ()=>proposeCareerCommands(ctx,reviewId,careerInput,async tx=>{const fresh=await authorizedTx(tx,ctx,reviewId,stage);return fresh.aiEnabled?careerContext(fresh,stage,words):null;},await spendTask())):null;
 
  if(intent==='draft')reply=await draftOnehrNarrative(ctx,reviewId,words,stage==='competency'?'tc':stage==='career'?'idp':'pm');
  else{

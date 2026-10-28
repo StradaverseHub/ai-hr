@@ -1,5 +1,7 @@
 # ADR-0032 — Native attendance depth (Phase C): shift definitions & rosters
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Status:** Proposed
 - **Date:** 2026-06-21
 - **Supersedes nothing; extends** ADR-0011 (attendance time engine, Phase A/B)

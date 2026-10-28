@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 import {leaveCreditClaimReviewTx} from './toil';
 /**
  * 296fc027 · THE EMPLOYEE REPLACEMENT-LEAVE REQUEST — submit, decide, and grant on approval.
@@ -45,12 +46,14 @@ import {leaveCreditClaimReviewTx} from './toil';
  */
 import { and, desc, eq, inArray, isNull, ne,sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockLeaveDependencyConfigurationTx,lockLeaveDependencyReadConfigurationTx, lockLeaveDependenciesTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
 import {isOwnPersonTx,ownPersonPredicate} from './own-person';
 import { actorOf, appendEvent } from '../db/events';
 import { assertCanDecide,assertAssignedWorkPrincipalTx,isApprovalDecisionRefusal } from './approvals';
 import {
   company,
-  compensation,
+  compensation,domainEvent,
   employment,
   person,
   replacementLeaveRequest,
@@ -235,9 +238,10 @@ export async function replacementRequestAvailability(
   ctx: SessionContext,
   employmentId: string,
   asOf: string,
+  existingTx?:Tx,
 ): Promise<ReplacementRequestAvailability> {
   if (!isModuleEnabled(ctx, 'toil')) return { allowed: false, reason: 'module_off' };
-  return withTenant(ctx, async (tx) => {
+  const read=async(tx:Tx)=>{
     const resolved = await resolvePolicyForTx(tx, employmentId);
     if (!resolved) return { allowed: false, reason: 'no_employment' as const };
     const { policy } = resolved;
@@ -265,7 +269,8 @@ export async function replacementRequestAvailability(
     if (firstSchedule && !policy.allowFirstScheduleEligible)
       return { allowed: false, reason: 'first_schedule_protected' as const };
     return { allowed: true, requiresFirstScheduleConsent: firstSchedule };
-  });
+  };
+  return existingTx?read(existingTx):withTenant(ctx,read);
 }
 
 /**
@@ -422,8 +427,8 @@ export type LeaveCreditOffer = {
  * Null only when there is no resolved policy for the employment at all, which is the one case in which
  * the table cannot be drawn.
  */
-export function leaveCreditOfferForEmployment(ctx: SessionContext, employmentId: string): Promise<LeaveCreditOffer | null> {
-  return withTenant(ctx, async (tx) => {
+export function leaveCreditOfferForEmployment(ctx: SessionContext, employmentId: string, existingTx?:Tx): Promise<LeaveCreditOffer | null> {
+  const read=async(tx:Tx)=>{
     const resolved = await resolvePolicyForTx(tx, employmentId);
     if (!resolved) return null;
     const policy = await extendedHoursPolicyForCompanyTx(tx, resolved.companyId);
@@ -436,7 +441,8 @@ export function leaveCreditOfferForEmployment(ctx: SessionContext, employmentId:
       },
       ordinaryDayAllowed: policy.extendedHoursEnabled,
     };
-  });
+  };
+  return existingTx?read(existingTx):withTenant(ctx,read);
 }
 
 export type SubmitReplacementRequestResult = { requestId: string; totalDays: number; totalHours: number };
@@ -446,22 +452,11 @@ export type SubmitReplacementRequestResult = { requestId: string; totalDays: num
  * credit is minted only when a line manager approves (`decideReplacementLeaveRequest`), which is what
  * makes the approval date the honest anchor for the expiry period.
  */
-export async function submitReplacementLeaveRequest(
-  ctx: SessionContext,
-  p: {
-    employmentId: string;
-    leaveTypeId?: string | null;
-    unit: ReplacementLeaveRequestUnit;
-    lines: ReplacementRequestLineInput[];
-    reason?: string;
-    /** The employee's recorded agreement to bank time instead of the statutory overtime cash. */
-    firstScheduleConsent?: boolean;
-    /** Injected for deterministic tests; the submission date and the eligibility as-of date. */
-    today: string;
-  },
-  /** D13 (mobile M12): the caller's transaction (the mobile command receipt's). Omitted: its own, as before. */
-  existingTx?: Tx,
-): Promise<SubmitReplacementRequestResult> {
+export type SubmitReplacementRequestInput={employmentId:string;leaveTypeId?:string|null;unit:ReplacementLeaveRequestUnit;lines:ReplacementRequestLineInput[];reason?:string;firstScheduleConsent?:boolean;today:string};
+/** Read-only half of the actual canonical request owner; no rehearsal/temporary writes. Callers own
+ * dependency/credit intervals when composing a reviewed command. Ordinary API keeps its own transaction. */
+export async function prepareReplacementLeaveRequestTx(tx:Tx,ctx:SessionContext,input:SubmitReplacementRequestInput){
+ const p={...input,lines:input.lines.map(line=>({...line}))};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   // Control 1 — the chargeable add-on. No module, no new credits, and no request that would mint one.
   assertModuleEnabled(ctx, 'toil');
 
@@ -540,7 +535,12 @@ export async function submitReplacementLeaveRequest(
   // validate — it is derived inside the transaction below, from the attendance record.
   const aTotals = totalsFor(p.unit, aLines);
 
-  const run = async (tx: Tx): Promise<SubmitReplacementRequestResult> => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
+    const [visible]=await tx.select({id:employment.id}).from(employment).where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,ctx.tenantId))).limit(1);
+    if(!visible)throw new ReplacementRequestInvalidError('No employment on record for this request.');
+    await lockLeaveDependenciesTx(tx,ctx.tenantId,[visible.id]);
+    const [credit]=await tx.execute<{owned:boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+visible.id},0)) as owned`);if(credit?.owned!==true)throw new LeaveDependencyUnavailable();
     const resolved = await resolvePolicyForTx(tx, p.employmentId);
     if (!resolved) throw new ReplacementRequestInvalidError('No employment on record for this request.');
     const { policy } = resolved;
@@ -743,28 +743,11 @@ export async function submitReplacementLeaveRequest(
     // SAME predicate, which is the only reason the two can never disagree about what "open" means.
     await assertNoOvertimeClaimForDatesTx(tx, p.employmentId, dates);
 
-    const [header] = await tx
-      .insert(replacementLeaveRequest)
-      .values({
-        tenantId: ctx.tenantId,
-        employmentId: p.employmentId,
-        leaveTypeId: p.leaveTypeId ?? null,
-        unit: p.unit,
-        totalDays: totalDays.toFixed(2),
-        totalHours: totalHours.toFixed(2),
-        reason: p.reason?.trim() || null,
-        submittedOn: p.today,
-        status: 'pending',
-        firstScheduleConsent: p.firstScheduleConsent === true ? true : null,
-      })
-      .returning({ id: replacementLeaveRequest.id });
-
     const aPerLine = new Map(aTotals.perLine.map((l) => [l.workedDate, l]));
     const aDerivedByDate = new Map(aDerived.map((a) => [a.workedDate, a]));
     const bByDate = new Map(bDerived.map((b) => [b.workedDate, b]));
-    await tx.insert(replacementLeaveRequestDate).values(
-      p.lines.map((l) => {
-        const base = { tenantId: ctx.tenantId, requestId: header.id, subjectEmploymentId: p.employmentId, workedDate: l.workedDate };
+    const storedLines = p.lines.map((l) => {
+        const base = { tenantId: ctx.tenantId, subjectEmploymentId: p.employmentId, workedDate: l.workedDate };
         const b = bByDate.get(l.workedDate);
         if (sectionOf(l) === 'extended_hours' && b) {
           return {
@@ -818,10 +801,31 @@ export async function submitReplacementLeaveRequest(
           actualClockOut: null,
           eligibleMinutes: null,
         };
-      }),
-    );
+      });
 
-    await appendEvent(tx, {
+ return {ctx,p,resolved,totalDays,totalHours,dates,aLines,bDerived,storedLines};
+}
+async function writePreparedReplacementLeaveRequestTx(tx:Tx,prepared:Awaited<ReturnType<typeof prepareReplacementLeaveRequestTx>>,returnEvent=false){
+ const {ctx,p,totalDays,totalHours,dates,aLines,bDerived,storedLines}=prepared;
+    const [header] = await tx
+      .insert(replacementLeaveRequest)
+      .values({
+        tenantId: ctx.tenantId,
+        employmentId: p.employmentId,
+        leaveTypeId: p.leaveTypeId ?? null,
+        unit: p.unit,
+        totalDays: totalDays.toFixed(2),
+        totalHours: totalHours.toFixed(2),
+        reason: p.reason?.trim() || null,
+        submittedOn: p.today,
+        status: 'pending',
+        firstScheduleConsent: p.firstScheduleConsent === true ? true : null,
+      })
+      .returning({ id: replacementLeaveRequest.id });
+
+    await tx.insert(replacementLeaveRequestDate).values(storedLines.map(line=>({...line,requestId:header.id})));
+
+    const submittedEventId=await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'replacement-leave-request',
       aggregateId: header.id,
@@ -839,11 +843,70 @@ export async function submitReplacementLeaveRequest(
         nonWorkingDayDates: aLines.map((l) => l.workedDate),
         extendedHoursDates: bDerived.map((b) => ({ workedDate: b.workedDate, eligibleMinutes: b.eligibleMinutes, days: b.days })),
       },
-    });
+    },{returnId:returnEvent});
 
-    return { requestId: header.id, totalDays, totalHours };
-  };
-  return existingTx ? run(existingTx) : withTenant(ctx, run);
+ return {requestId:header.id,totalDays,totalHours,submittedEventId};
+}
+/** Same ordinary pending header/lines/event and public return shape; no grant on submission. */
+/** `existingTx` — D13 (mobile M12): the caller's transaction (the mobile command receipt's), so the receipt and
+ *  the request commit or roll back together. Omitted: its own transaction, as before. Same preparation, same
+ *  dependency locks, same write on both paths. */
+export async function submitReplacementLeaveRequest(ctx:SessionContext,p:SubmitReplacementRequestInput,existingTx?:Tx):Promise<SubmitReplacementRequestResult>{
+ const captured={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))},input={...p,lines:p.lines.map(line=>({...line}))};
+ const run=async(tx:Tx):Promise<SubmitReplacementRequestResult>=>{const result=await writePreparedReplacementLeaveRequestTx(tx,await prepareReplacementLeaveRequestTx(tx,captured,input));return {requestId:result.requestId,totalDays:result.totalDays,totalHours:result.totalHours};};
+ return existingTx?run(existingTx):withTenant(captured,run);
+}
+/** Private reviewed source preparation; raw preparations never become an exported effect API. */
+async function reviewedReplacementPreparationTx(tx:Tx,ctx:SessionContext,input:SubmitReplacementRequestInput){
+ ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};input={...input,lines:input.lines.map(line=>({...line}))};
+ const prepared=await prepareReplacementLeaveRequestTx(tx,ctx,input),dates=[...prepared.dates].sort();
+ // One typed date[] built from one bound parameter per date. Interpolating the JS array directly makes
+ // drizzle emit a parenthesised parameter LIST, so `(${dates})::date[]` casts a bare date string (or a
+ // row) to date[] and Postgres refuses it as a malformed array literal for every request.
+ const dateArray=sql`ARRAY[${sql.join(dates.map(date=>sql`${date}::date`),sql`, `)}]::date[]`;
+ // Bounded own-subject row versions, not other employees or a guessed global epoch. Formula proof
+ // supplies its real calculation/source revision; legacy schedule facts remain semantic evidence.
+ const versions=await tx.execute<{kind:string;id:string;revision:string}>(sql`select * from (
+ select 'employment' as kind,id::text,xmin::text as revision from public.employment where id=${input.employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid
+ union all select 'company',id::text,xmin::text from public.company where id=${prepared.resolved.companyId}::uuid and tenant_id=${ctx.tenantId}::uuid
+ union all select 'toil_policy',id::text,xmin::text from public.toil_policy where company_id=${prepared.resolved.companyId}::uuid and tenant_id=${ctx.tenantId}::uuid
+ union all select 'compensation',id::text,xmin::text from public.compensation where employment_id=${input.employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid
+ union all select 'assignment',id::text,xmin::text from public.assignment where employment_id=${input.employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid
+ union all select 'attendance',id::text,xmin::text from public.attendance where employment_id=${input.employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid and attendance_date=any(${dateArray})
+ union all select 'attendance_correction',id::text,xmin::text from public.attendance_correction where employment_id=${input.employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid and attendance_date=any(${dateArray})
+ union all select 'toil_accrual',id::text,xmin::text from public.toil_accrual where employment_id=${input.employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid and worked_date=any(${dateArray})
+ union all select 'replacement_request',q.id::text,q.xmin::text from public.replacement_leave_request q where q.employment_id=${input.employmentId}::uuid and q.tenant_id=${ctx.tenantId}::uuid and exists(select 1 from public.replacement_leave_request_date d where d.request_id=q.id and d.tenant_id=q.tenant_id and d.worked_date=any(${dateArray}))
+ union all select 'replacement_date',id::text,xmin::text from public.replacement_leave_request_date where subject_employment_id=${input.employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid and worked_date=any(${dateArray})
+ union all select 'roster',id::text,xmin::text from public.roster_assignment where employment_id=${input.employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid and shift_date=any(${dateArray})
+ union all select 'shift_arrangement',id::text,xmin::text from public.employment_shift_arrangement where employment_id=${input.employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid
+ ) evidence order by kind,id limit 4097`);if(versions.length>4096)throw new ReplacementRequestInvalidError('The reviewed source is unavailable.');
+ const dateEvidence=[];for(const line of prepared.p.lines){dateEvidence.push({date:line.workedDate,day:await extendedHoursDayForEmploymentTx(tx,prepared.p.employmentId,line.workedDate,ctx),credit:await leaveCreditClaimReviewTx(tx,ctx,{employmentId:prepared.p.employmentId,workedDate:line.workedDate,claimStart:line.fromTime,claimEnd:line.toTime})});}
+ const review={employmentId:prepared.p.employmentId,leaveTypeId:prepared.p.leaveTypeId??null,unit:prepared.p.unit,totalDays:prepared.totalDays,totalHours:prepared.totalHours,reason:prepared.p.reason?.trim()||null,submittedOn:prepared.p.today,firstScheduleConsent:prepared.p.firstScheduleConsent===true,lines:prepared.storedLines.map(({tenantId,subjectEmploymentId,...line})=>{void tenantId;void subjectEmploymentId;return line;})};
+ const reviewedDigest=createHash('sha256').update(JSON.stringify(['replacement-request-review:v1',{tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId},prepared.p,prepared.resolved,review,versions,dateEvidence])).digest('hex');return {prepared,review,reviewedDigest};
+}
+export async function prepareReviewedReplacementLeaveRequestTx(tx:Tx,ctx:SessionContext,input:SubmitReplacementRequestInput){const {review,reviewedDigest}=await reviewedReplacementPreparationTx(tx,ctx,input);return {review,reviewedDigest};}
+/** Fresh canonical source/digest before the private effect; never accepts caller-built preparation. */
+export async function submitReviewedReplacementLeaveRequestTx(tx:Tx,ctx:SessionContext,input:SubmitReplacementRequestInput,expectedDigest:string){const current=await reviewedReplacementPreparationTx(tx,ctx,input);if(current.reviewedDigest!==expectedDigest)throw new ReplacementRequestInvalidError('The reviewed source changed.');const result=await writePreparedReplacementLeaveRequestTx(tx,current.prepared,true);if(!result.submittedEventId)throw new ReplacementRequestInvalidError('The submitted event is unavailable.');return {...result,submittedEventId:result.submittedEventId};}
+/** Minimal current own request/exact ORIGINAL actor submitted-event receipt. No effect or credit grant. */
+export async function readOwnReplacementSubmissionTx(tx:Tx,ctx:SessionContext,requestId:string,eventId:string){
+ ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
+ if(!ctx.userId||!ctx.personId)return null;
+ const [row]=await tx.select({id:replacementLeaveRequest.id,employmentId:replacementLeaveRequest.employmentId,status:replacementLeaveRequest.status,totalDays:replacementLeaveRequest.totalDays,totalHours:replacementLeaveRequest.totalHours,submittedOn:replacementLeaveRequest.submittedOn,unit:replacementLeaveRequest.unit})
+ .from(replacementLeaveRequest).innerJoin(employment,and(eq(employment.id,replacementLeaveRequest.employmentId),eq(employment.tenantId,replacementLeaveRequest.tenantId))).where(and(eq(replacementLeaveRequest.id,requestId),eq(replacementLeaveRequest.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId))).limit(1);if(!row)return null;
+ const lines=await tx.select({workedDate:replacementLeaveRequestDate.workedDate}).from(replacementLeaveRequestDate).where(and(eq(replacementLeaveRequestDate.requestId,row.id),eq(replacementLeaveRequestDate.tenantId,ctx.tenantId),eq(replacementLeaveRequestDate.subjectEmploymentId,row.employmentId))).orderBy(replacementLeaveRequestDate.workedDate);
+ const [event]=await tx.select({id:domainEvent.id,payload:domainEvent.payload}).from(domainEvent).where(and(eq(domainEvent.id,eventId),eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.aggregateType,'replacement-leave-request'),eq(domainEvent.aggregateId,row.id),eq(domainEvent.eventType,'replacement-leave-request.submitted'),eq(domainEvent.actorType,'user'),eq(domainEvent.actorId,ctx.userId),eq(domainEvent.subjectEmploymentId,row.employmentId))).limit(1);
+ const payload=event?.payload as {unit?:unknown;totalDays?:unknown;totalHours?:unknown;dates?:unknown;submittedOn?:unknown}|null;
+ if(!event||!payload||payload.unit!==row.unit||typeof payload.totalDays!=='number'||!Number.isFinite(payload.totalDays)||payload.totalDays<=0
+  ||typeof payload.totalHours!=='number'||!Number.isFinite(payload.totalHours)||payload.totalHours<0||payload.submittedOn!==row.submittedOn
+  ||!Array.isArray(payload.dates)||!payload.dates.every(date=>typeof date==='string')||JSON.stringify([...payload.dates].sort())!==JSON.stringify(lines.map(line=>line.workedDate)))return null;
+ const currentTotalDays=Number(row.totalDays),currentTotalHours=Number(row.totalHours);
+ if(!Number.isFinite(currentTotalDays)||currentTotalDays<=0||!Number.isFinite(currentTotalHours)||currentTotalHours<0)return null;
+ // Approval deliberately re-derives and writes the credit totals. The immutable original submitted
+ // event owns the requested projection; the current header owns today's stored approved totals.
+ // Pending/rejected/cancelled requests have no native repricing transition and still must agree.
+ if(row.status!=='approved'&&(payload.totalDays!==currentTotalDays||payload.totalHours!==currentTotalHours))return null;
+ return {requestId:row.id,submittedEventId:event.id,employmentId:row.employmentId,currentStatus:row.status,
+  submittedTotalDays:payload.totalDays,submittedTotalHours:payload.totalHours,currentTotalDays,currentTotalHours};
 }
 
 /**
@@ -897,16 +960,29 @@ export async function decideReplacementLeaveRequest(
   ctx: SessionContext,
   p: { requestId: string; decision: 'approved' | 'rejected'; note?: string; decidedAt?: Date },
 ): Promise<DecideReplacementRequestResult> {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  p = { requestId: p.requestId, decision: p.decision, note: p.note,
+    decidedAt: p.decidedAt ? new Date(p.decidedAt.getTime()) : undefined };
   // The module gate applies to APPROVAL too, because approval is what mints the credit. Rejection is left
   // reachable on purpose — refusing to let an admin clear a pending queue after the module lapses would
   // strand the request, and a rejection grants nothing.
   return withTenant(ctx, async (tx) => {
-    const [req] = await tx
-      .select()
-      .from(replacementLeaveRequest)
-      .where(eq(replacementLeaveRequest.id, p.requestId))
-      .limit(1);
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    // Approval may create the shared replacement catalogue entry; own the exclusive phase first.
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
+    const [nominated] = await tx.select({ employmentId: replacementLeaveRequest.employmentId }).from(replacementLeaveRequest)
+      .where(eq(replacementLeaveRequest.id, p.requestId)).limit(1);
+    if (!nominated) throw new ReplacementRequestInvalidError('Replacement leave request not found.');
+    await lockLeaveDependenciesTx(tx, ctx.tenantId, [nominated.employmentId]);
+    const [credit] = await tx.execute<{ acquired: boolean }>(sql`select pg_try_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + nominated.employmentId},0)) as acquired`);
+    if (credit?.acquired !== true) throw new LeaveDependencyUnavailable();
+    let req: typeof replacementLeaveRequest.$inferSelect | undefined;
+    try {
+      [req] = await tx.select().from(replacementLeaveRequest).where(eq(replacementLeaveRequest.id, p.requestId))
+        .limit(1).for('update', { of: replacementLeaveRequest, noWait: true });
+    } catch { throw new LeaveDependencyUnavailable(); }
     if (!req) throw new ReplacementRequestInvalidError('Replacement leave request not found.');
+    if (req.employmentId !== nominated.employmentId) throw new LeaveDependencyUnavailable();
     if (req.status !== 'pending') throw new ReplacementRequestNotPendingError();
 
     // Line-manager-or-admin, with the self-grant ban. The plan is explicit that this is the whole approval
@@ -935,11 +1011,13 @@ export async function decideReplacementLeaveRequest(
     // Approving MINTS credits, so the add-on must be live for this half.
     assertModuleEnabled(ctx, 'toil');
 
-    const lines = await tx
-      .select()
-      .from(replacementLeaveRequestDate)
-      .where(eq(replacementLeaveRequestDate.requestId, p.requestId))
-      .orderBy(replacementLeaveRequestDate.workedDate);
+    let lines: (typeof replacementLeaveRequestDate.$inferSelect)[];
+    try {
+      lines = await tx.select().from(replacementLeaveRequestDate)
+        .where(eq(replacementLeaveRequestDate.requestId, p.requestId))
+        .orderBy(replacementLeaveRequestDate.workedDate)
+        .for('update', { of: replacementLeaveRequestDate, noWait: true });
+    } catch { throw new LeaveDependencyUnavailable(); }
 
     let granted = 0;
     let daysCredited = 0;

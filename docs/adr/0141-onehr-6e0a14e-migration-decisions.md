@@ -1,5 +1,7 @@
 # ADR-0141 — OneHR 6e0a14e migration decisions (ADR-M01…M16)
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Date:** 2026-10-25
 - **Status:** Direction accepted by the owner as platform decisions (25 Oct 2026). Business-policy content awaits Chin Hin confirmation. Implementation pending; nothing released.
 - **Extends:** ADR-0103 and ADR-0115 (the native OneHR integration built from OneHR `a644fd6`).
@@ -88,6 +90,25 @@ Phase 3a, authorized 25 Oct 2026, covers only:
     - Career Plan "remark + Approve".
 
     Each is business-policy content awaiting Chin Hin confirmation. The owner explicitly kept AI-HR's reason-on-change for leaders' calibration band moves (CF-19) and AI-HR's confirmed PIP/promotion/special-reward decisions (CF-23).
+
+    **Amended 28 Oct 2026 (APR-022, reverses APR-011).** The owner reversed the leaders' reason-on-change above (CF-19, which APR-011 had extended to every surface): follow OneHR, including its justifications. A BU CEO, BG CEO or Group Chief band move needs no reason on any path (the Talent Box move, the Group performance list, the generic calibration form, the calibration chat and the distribution-fit Apply). The reason field stays available and optional; a given reason is stored and audited as before. Kept as platform safety rules: the HOD's remark on each changed band, the line manager's remark when the overall band moves, and the movement ceiling on the Talent Box and the calibration chat. The fit Apply no longer writes a generated "distribution fit" note (D-P1-23 lapses); a move keeps the person's own note on that axis or none. CF-23 is unchanged.
+
+## Career Plan reviewer scope (TASK-030)
+
+Decided as CF-26 / AC-10; built in migration `0640_onehr_plan_reviewer_scope.sql`. Before 0640, `onehr_plan_access` admitted the whole department tree (`app.visible_employment_ids()`: skip-level managers through the administrative chain, heads of department through the department subtree) to every non-draft Career Plan, and `app.can_see_employment` let the same people write one. After 0640 a plan row is read and written only by:
+
+- **the subject**, at any status;
+- **the OneHR administrator of the plan's cycle** — `app.onehr_admin(employment company)` and `app.onehr_cycle_admin(cycle of the plan's review)`, at any status. That is HR administrators in scope and, under ADR-0142, a performance partner for a OneHR-native cycle it administers. A company-scoped grant never covers a group-wide cycle;
+- **the assigned reviewer** — `app.assessment_plan_reviewer`: the review's line manager, or an approver/moderator of any of the subject's KPI lines, for a review whose cycle owns the plan year. Shared or closed plans only; a draft stays with the subject and the administrator, as before.
+
+The visibility arm is gone from both USING and WITH CHECK, so no actor writes a plan just because they can see the employee. The scheduled dispatcher's SELECT (`assessment_plan_dispatch_read`, no human user) and the career profile policy (`assessment_career_access`: self, admin, open-review manager/moderator) had no department-tree arm and are unchanged. HR's progress and overview figures are unchanged (pinned in `test/onehr-plan-reviewer-scope.test.ts`). A performance partner now counts shared plans as HR does, where before 0640 it read none.
+
+**Skip-level review: what OneHR does, and how AI-HR matches it (corrected 28 Oct 2026, P1 wave 3a, D-P1-01; the unit rule built 28 Oct 2026, ADR-0150).** The earlier wording here said AI-HR diverges when a line manager is removed from the cycle. Re-reading the source shows that is not so:
+
+- OneHR moves Career Plan review one level up only when the line manager's **unit or department** is left out of the cycle by the administrator's exclusion rule (`cycle_exclusions`, read by `unit_out`). `_cycle_review_managers` walks down through managers that rule leaves out, and `_pm_is_approver_of` refuses an approver it leaves out (OneHR `app.py:15495`, `:7178`, `:7356`, `:29236`).
+- Removing **one person** from the cycle (`cycle_participants` mode `remove`) only affects that person's own participation predicates (`app.py:7429`, `:7481`). Their leader abilities are untouched (`leader_can` reads only the unit rule, `app.py:7196`), so a removed line manager keeps reviewing their reports' plans, and the skip-level manager gains nothing.
+- For the per-person exclusion (`assessment_participation_snapshot` override) AI-HR already matches OneHR: the removed line manager stays the reviewer (`performance_review.reviewer_employment_id` or a KPI approver), and after 0640 the skip-level manager neither reviews nor reads the plan. This is pinned in `test/onehr-plan-reviewer-scope.test.ts`.
+- **Built (D-P1-22, ADR-0150, migration `0667_onehr_unit_exclusion.sql`).** The former gap, the unit/department exclusion rule, now exists as one stored rule per cycle, company and optional exact department. Its effects follow the owner's decisions: the left-out people's 360 rows are archived and untouched KPI lines whose moderator is out move one level up, once, at save; the left-out leaders lose their cycle leader rights per acting employment; and, as amended by APR-022, only competency review and Career Plan review move one level up, live, through `app.onehr_effective_reviewer` inside `app.assessment_plan_reviewer` (`onehr_manager` itself is not widened). The per-person case above is unchanged. Both are pinned in `test/onehr-plan-reviewer-scope.test.ts`.
 
 ## Consequences
 

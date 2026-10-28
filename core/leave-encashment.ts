@@ -8,6 +8,7 @@ import { and, eq, gt, isNull, lte, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { leaveDaysAreThisSystems } from './leave-charge';
+import { lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx, lockLeaveDependencyReadConfigurationTx } from './leave-dependency-lock';
 import {
   employment,
   leaveApprovalStep,
@@ -65,7 +66,9 @@ export function getEncashmentPolicies(ctx: SessionContext) {
 
 /** Upsert one company's encashment policy. Write is admin-gated by RLS (app.is_admin_for(company_id)). */
 export async function setEncashmentPolicy(ctx: SessionContext, p: EncashmentPolicyInput) {
+  p = { ...p };
   return withTenant(ctx, async (tx) => {
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     const [before] = await tx
       .select()
       .from(leaveEncashmentPolicy)
@@ -151,6 +154,8 @@ export async function freezeOnResignationApprovalTx(
   ctx: SessionContext,
   p: { employmentId: string; companyId: string; resignationRequestId: string; asOf: string },
 ): Promise<{ snapshotId: string } | null> {
+  p = { ...p };
+  await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
   const [policy] = await tx
     .select()
     .from(leaveEncashmentPolicy)
@@ -160,6 +165,8 @@ export async function freezeOnResignationApprovalTx(
 
   const annualId = await annualLeaveTypeId(tx, ctx.tenantId);
   if (!annualId) return null; // documented skip: tenant has no ANNUAL type
+
+  await lockLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId]);
 
   // Idempotent: a retry (or a second call for the same resignation) returns the existing snapshot.
   const [existing] = await tx
@@ -267,14 +274,37 @@ export async function freezeOnResignationApprovalTx(
 
 // ─── overrides ───────────────────────────────────────────────────────────────────────────────────────
 
+/** Participating order: configuration -> employment -> snapshot. The initial read nominates an
+ * RLS-visible subject only. Every refusal must leave the entire caller transaction rolled back. */
+async function lockedEncashmentSnapshotTx(tx: Tx, ctx: SessionContext, snapshotId: string) {
+  await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
+  const [nominated] = await tx.select({ employmentId: leaveEncashmentSnapshot.employmentId })
+    .from(leaveEncashmentSnapshot).where(eq(leaveEncashmentSnapshot.id, snapshotId)).limit(1);
+  if (!nominated) throw new LeaveEncashmentError('Leave encashment snapshot not found (or not visible).');
+  await lockLeaveDependenciesTx(tx, ctx.tenantId, [nominated.employmentId]);
+  const snap = await (async () => {
+    try {
+      const [row] = await tx.select().from(leaveEncashmentSnapshot)
+        .where(eq(leaveEncashmentSnapshot.id, snapshotId)).limit(1).for('update', { noWait: true });
+      return row;
+    } catch {
+      throw new LeaveEncashmentError('That encashment snapshot is busy; review it again.');
+    }
+  })();
+  if (!snap || snap.employmentId !== nominated.employmentId) {
+    throw new LeaveEncashmentError('That encashment snapshot changed; review it again.');
+  }
+  return snap;
+}
+
 /** Admin-only (RLS), reason mandatory. Re-opens ledger writes for this employment+type by flipping the
  *  snapshot to 'unfrozen' (the freeze trigger's EXISTS predicate no longer matches). */
 export async function unfreezeEncashment(ctx: SessionContext, p: { snapshotId: string; reason: string }) {
+  const snapshotId = p.snapshotId;
   const reason = p.reason?.trim();
   if (!reason) throw new LeaveEncashmentError('A reason is required to unfreeze a leave encashment snapshot.');
   return withTenant(ctx, async (tx) => {
-    const [snap] = await tx.select().from(leaveEncashmentSnapshot).where(eq(leaveEncashmentSnapshot.id, p.snapshotId)).limit(1);
-    if (!snap) throw new LeaveEncashmentError('Leave encashment snapshot not found (or not visible).');
+    const snap = await lockedEncashmentSnapshotTx(tx, ctx, snapshotId);
     if (snap.status !== 'frozen') throw new LeaveEncashmentError('This snapshot is already unfrozen.');
     await tx
       .update(leaveEncashmentSnapshot)
@@ -299,6 +329,7 @@ export async function adjustEncashment(
   ctx: SessionContext,
   p: { snapshotId: string; overrideDays: number; reason: string },
 ) {
+  const snapshotId = p.snapshotId;
   const reason = p.reason?.trim();
   if (!reason) throw new LeaveEncashmentError('A reason is required to adjust a leave encashment figure.');
   if (!(Number.isFinite(p.overrideDays) && p.overrideDays >= 0)) {
@@ -306,8 +337,7 @@ export async function adjustEncashment(
   }
   const overrideDays = round2(p.overrideDays);
   return withTenant(ctx, async (tx) => {
-    const [snap] = await tx.select().from(leaveEncashmentSnapshot).where(eq(leaveEncashmentSnapshot.id, p.snapshotId)).limit(1);
-    if (!snap) throw new LeaveEncashmentError('Leave encashment snapshot not found (or not visible).');
+    const snap = await lockedEncashmentSnapshotTx(tx, ctx, snapshotId);
     const before = { overrideDays: snap.overrideDays, status: snap.status };
     await tx
       .update(leaveEncashmentSnapshot)

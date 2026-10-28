@@ -1,4 +1,5 @@
 import { personnelReferenceOptions } from '@/lib/personnel-template-reference';
+import {personnelImportBrowserKey} from '@/lib/personnel-import-browser-key';
 import { getPeopleGeneral } from '@/core/people-general';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
@@ -86,6 +87,7 @@ export default async function ImportPage() {
               full 49-column importer (unchanged, and the default) or one of the four narrow section
               importers; both read the same live catalogs below. */}
           <ImportWorkbench
+            key={personnelImportBrowserKey(s,companies.map(company=>company.id))}
             companies={companies.map((c) => ({ id: c.id, name: c.name }))}
             defaultCompanyId={defaultCompanyId}
             reference={{

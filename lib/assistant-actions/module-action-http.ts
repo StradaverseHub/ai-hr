@@ -1,0 +1,564 @@
+import {REVIEWED_COUNTRY_STATUTORY_ACTION as COUNTRY_STATUTORY_ACTION,ReviewedCountryStatutoryAfter} from './reviewed-country-statutory-contract';
+import {CountryStatutoryReviewPrepare,CountryStatutoryReviewConfirmation,CountryStatutoryReviewRetirement,CountryStatutoryPreparedReview,CountryStatutoryCompletedReview,CountryStatutoryRetiredReview,CountryStatutoryReviewIndex} from './country-statutory-review-contract';
+import {REVIEWED_MULTI_CYCLE_RUN_ACTION as MULTI_CYCLE_RUN_ACTION} from './reviewed-multi-cycle-run-contract';
+import {MultiCycleRunModuleActionBrowserPacket,parseMultiCycleRunModuleActionBrowserResult,MULTI_CYCLE_RUN_PREPARE_BYTES,MULTI_CYCLE_RUN_RESPONSE_BYTES} from './multi-cycle-run-browser-contract';
+/** Strict human browser transport. No model tools, posted actor, source receipt or executor. */
+import {z} from 'zod';
+import {REVIEWED_PAYROLL_CLOSE_ACTION as PAYROLL_CLOSE_ACTION} from './reviewed-payroll-close-contract';
+import {PayrollCloseReviewPrepare,PayrollCloseReviewConfirmation,PayrollCloseReviewRetirement,PayrollClosePreparedReview,PayrollCloseCompletedReview,PayrollCloseRetiredReview,PayrollCloseReviewIndex} from './payroll-close-review-contract';
+import {REVIEWED_REWARDS_POST_ACTION as REWARDS_POST_ACTION} from './reviewed-rewards-post-contract';
+import {RewardsPostReviewPrepare,RewardsPostReviewConfirmation,RewardsPostReviewRetirement,RewardsPostPreparedReview,RewardsPostCompletedReview,RewardsPostRetiredReview,RewardsPostReviewIndex} from './rewards-post-review-contract';
+import {REVIEWED_PAY_COMPONENT_ACTION as PAY_COMPONENT_ACTION} from './reviewed-pay-component-contract';
+import {PayComponentReviewPrepare,PayComponentReviewConfirmation,PayComponentReviewRetirement,PayComponentPreparedReview,PayComponentCompletedReview,PayComponentRetiredReview,PayComponentReviewIndex} from './pay-component-review-contract';
+import {ModuleActionRetirementRequest,ProfileModuleActionRetirementRequest,ClaimModuleActionRetirementRequest,ReviewModuleActionRetirementRequest,OnehrModuleActionRetirementRequest,TestingModuleActionRetirementRequest,ClaimSubmissionModuleActionRetirementRequest} from './module-action-review-contract';
+import {executionInputSchema,EXECUTION_STATUSES} from '../system-testing/model';
+import {MODULE_TESTING_EXECUTION_ACTION,TestingModuleActionPrepare,TestingModuleActionConfirmation,TestingModuleActionPreparedReview,TestingModuleActionCompletedReceipt,TestingModuleActionRetiredReceipt,TestingModuleActionReviewIndexResult} from './module-action-review-contract';
+import {OWN_CLAIM_SUBMISSION_ACTION} from './own-claim-submission-contract';
+import {OWN_LEAVE_CANCELLATION_ACTION,OWN_LEAVE_EDIT_ACTION,OwnLeaveChangeChoices,OwnLeaveCancellationHumanContent,OwnLeaveEditHumanContent,LeaveCancellationReviewConfirmation,LeaveCancellationReviewRetirement,LeaveCancellationPreparedReview,LeaveCancellationCompletedReview,LeaveCancellationRetiredReview,LeaveCancellationReviewIndex,LeaveEditReviewConfirmation,LeaveEditReviewRetirement,LeaveEditPreparedReview,LeaveEditCompletedReview,LeaveEditRetiredReview,LeaveEditReviewIndex} from './own-leave-change-contract';
+import {OWN_CLAIM_CANCELLATION_ACTION,OwnClaimCancellationChoices,ClaimCancellationReviewPrepare,ClaimCancellationReviewConfirmation,ClaimCancellationReviewRetirement,ClaimCancellationPreparedReview,ClaimCancellationCompletedReview,ClaimCancellationRetiredReview,ClaimCancellationReviewIndex} from './own-claim-cancellation-contract';
+import {ClaimSubmissionModuleActionPrepare,ClaimSubmissionModuleActionConfirmation,ClaimSubmissionModuleActionPreparedReview,ClaimSubmissionModuleActionCompletedReceipt,ClaimSubmissionModuleActionRetiredReceipt,ClaimSubmissionModuleActionReviewIndexResult} from './module-action-review-contract';
+import {OWN_CLAIM_DRAFT_ACTION} from './own-claim-contract';
+import {ClaimModuleActionPrepare,ClaimModuleActionConfirmation,ClaimModuleActionPreparedReview,ClaimModuleActionCompletedReceipt,ClaimModuleActionRetiredReceipt,ClaimModuleActionReviewIndexResult} from './module-action-review-contract';
+import {ModuleActionPrepare,ModuleActionConfirmation,ModuleActionPreparedReview,ModuleActionCompletedReceipt,ModuleActionRetiredReceipt,ModuleActionReviewIndexResult,ProfileModuleActionPrepare,ProfileModuleActionConfirmation,ProfileModuleActionPreparedReview,ProfileModuleActionCompletedReceipt,ProfileModuleActionRetiredReceipt,ProfileModuleActionReviewIndexResult,MODULE_REVIEW_ACK_ACTION,MODULE_ONEHR_ACK_ACTION,ReviewModuleActionPrepare,ReviewModuleActionConfirmation,ReviewModuleActionPreparedReview,ReviewModuleActionCompletedReceipt,ReviewModuleActionRetiredReceipt,ReviewModuleActionReviewIndexResult,OnehrModuleActionPrepare,OnehrModuleActionConfirmation,OnehrModuleActionPreparedReview,OnehrModuleActionCompletedReceipt,OnehrModuleActionRetiredReceipt,OnehrModuleActionReviewIndexResult} from './module-action-review-contract';
+export const ModuleActionBrowserPacket=z.discriminatedUnion('operation',[
+ z.object({operation:z.literal('list')}).strict(),
+ z.object({operation:z.literal('prepare'),input:ModuleActionPrepare}).strict(),
+ z.object({operation:z.literal('reopen'),actionId:z.guid()}).strict(),
+ z.object({operation:z.literal('confirm'),confirmation:ModuleActionConfirmation}).strict(),
+ z.object({operation:z.literal('discard'),confirmation:ModuleActionRetirementRequest}).strict(),
+]);
+export type ModuleActionBrowserPacket=z.infer<typeof ModuleActionBrowserPacket>;
+export const ModuleActionBrowserResult=z.discriminatedUnion('kind',[
+ ModuleActionReviewIndexResult,
+ z.object({kind:z.literal('prepared'),review:ModuleActionPreparedReview}).strict(),
+ z.object({kind:z.literal('completed'),receipt:ModuleActionCompletedReceipt}).strict(),
+ z.object({kind:z.literal('retired'),receipt:ModuleActionRetiredReceipt}).strict(),
+]);
+export type ModuleActionBrowserResult=z.infer<typeof ModuleActionBrowserResult>;
+export const ModuleActionBrowserError=z.object({error:z.literal('unavailable')}).strict();
+export function parseModuleActionBrowserResult(operation:ModuleActionBrowserPacket['operation'],value:unknown):ModuleActionBrowserResult{
+ const result=ModuleActionBrowserResult.parse(value);
+ const allowed=operation==='list'?result.kind==='module_review_index':operation==='prepare'?result.kind==='prepared':operation==='confirm'?result.kind==='completed'||result.kind==='retired':operation==='discard'?result.kind==='retired':result.kind!=='module_review_index';
+ if(!allowed)throw Error('Module action response unavailable.');return result;
+}
+/** Explicit top-level action discriminator keeps the original notification protocol byte-shaped
+ * and refuses implicit action/actor/service inference. ESS packets never resolve provider identity. */
+export const ProfileModuleActionBrowserPacket=z.discriminatedUnion('operation',[
+ z.object({action:z.literal('ess.profile.request'),operation:z.literal('list')}).strict(),
+ z.object({action:z.literal('ess.profile.request'),operation:z.literal('prepare'),input:ProfileModuleActionPrepare}).strict(),
+ z.object({action:z.literal('ess.profile.request'),operation:z.literal('reopen'),actionId:z.guid()}).strict(),
+ z.object({action:z.literal('ess.profile.request'),operation:z.literal('confirm'),confirmation:ProfileModuleActionConfirmation}).strict(),
+ z.object({action:z.literal('ess.profile.request'),operation:z.literal('discard'),confirmation:ProfileModuleActionRetirementRequest}).strict(),
+]);
+export type ProfileModuleActionBrowserPacket=z.infer<typeof ProfileModuleActionBrowserPacket>;
+export const ProfileModuleActionBrowserResult=z.discriminatedUnion('kind',[
+ ProfileModuleActionReviewIndexResult,z.object({kind:z.literal('prepared'),review:ProfileModuleActionPreparedReview}).strict(),
+ z.object({kind:z.literal('completed'),receipt:ProfileModuleActionCompletedReceipt}).strict(),z.object({kind:z.literal('retired'),receipt:ProfileModuleActionRetiredReceipt}).strict(),
+]);
+export type ProfileModuleActionBrowserResult=z.infer<typeof ProfileModuleActionBrowserResult>;
+export function parseProfileModuleActionBrowserResult(packet:ProfileModuleActionBrowserPacket,value:unknown):ProfileModuleActionBrowserResult{
+ const result=ProfileModuleActionBrowserResult.parse(value),operation=packet.operation;
+ const allowed=operation==='list'?result.kind==='profile_module_review_index':operation==='prepare'?result.kind==='prepared':operation==='confirm'?result.kind==='completed'||result.kind==='retired':operation==='discard'?result.kind==='retired':result.kind!=='profile_module_review_index';
+ if(!allowed)throw Error('Module action response unavailable.');
+ const id=result.kind==='prepared'?result.review.actionId:result.kind==='completed'||result.kind==='retired'?result.receipt.actionId:null;
+ const expected=operation==='reopen'?packet.actionId:operation==='confirm'||operation==='discard'?packet.confirmation.actionId:null;
+ if(expected&&id!==expected)throw Error('Module action response unavailable.');
+ if(operation==='prepare'&&(result.kind!=='prepared'||JSON.stringify(result.review.content)!==JSON.stringify(packet.input)))throw Error('Module action response unavailable.');
+ return result;
+}
+/** Metadata-only first text-control slice. Availability is still freshly checked by native owners. */
+export const ProfileActionChoices=z.discriminatedUnion('kind',[
+ z.object({kind:z.literal('choices'),employments:z.array(z.object({employmentId:z.guid(),employeeCode:z.string().max(100).nullable(),companyName:z.string().min(1).max(240),manualPending:z.boolean(),fields:z.array(z.object({fieldId:z.string().min(1).max(200),baseline:z.string().regex(/^sha256:[a-f0-9]{64}$/),type:z.literal('text')}).strict()).max(32).refine(rows=>new Set(rows.map(row=>row.fieldId)).size===rows.length)}).strict()).max(16).refine(rows=>new Set(rows.map(row=>row.employmentId)).size===rows.length)}).strict(),
+ z.object({kind:z.literal('unavailable')}).strict(),
+]);
+export type ProfileActionChoices=z.infer<typeof ProfileActionChoices>;
+type ProfileOwners<Session>=Readonly<{list(session:Session):Promise<unknown>;prepare(session:Session,input:z.infer<typeof ProfileModuleActionPrepare>):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:z.infer<typeof ProfileModuleActionConfirmation>):Promise<unknown>;discard(session:Session,input:z.infer<typeof ProfileModuleActionRetirementRequest>):Promise<unknown>}>;
+export const ReviewModuleActionBrowserPacket=z.discriminatedUnion('operation',[
+ z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),operation:z.literal('list')}).strict(),
+ z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),operation:z.literal('prepare'),input:ReviewModuleActionPrepare}).strict(),
+ z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),
+ z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),operation:z.literal('confirm'),confirmation:ReviewModuleActionConfirmation}).strict(),
+ z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),operation:z.literal('discard'),confirmation:ReviewModuleActionRetirementRequest}).strict(),
+]);
+export const OnehrModuleActionBrowserPacket=z.discriminatedUnion('operation',[
+ z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),operation:z.literal('list')}).strict(),
+ z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),operation:z.literal('prepare'),input:OnehrModuleActionPrepare}).strict(),
+ z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),
+ z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),operation:z.literal('confirm'),confirmation:OnehrModuleActionConfirmation}).strict(),
+ z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),operation:z.literal('discard'),confirmation:OnehrModuleActionRetirementRequest}).strict(),
+]);
+export const PerformanceModuleActionBrowserPacket=z.union([ReviewModuleActionBrowserPacket,OnehrModuleActionBrowserPacket]);
+export type PerformanceModuleActionBrowserPacket=z.infer<typeof PerformanceModuleActionBrowserPacket>;
+export const ReviewModuleActionBrowserResult=z.discriminatedUnion('kind',[ReviewModuleActionReviewIndexResult,z.object({kind:z.literal('prepared'),review:ReviewModuleActionPreparedReview}).strict(),z.object({kind:z.literal('completed'),receipt:ReviewModuleActionCompletedReceipt}).strict(),z.object({kind:z.literal('retired'),receipt:ReviewModuleActionRetiredReceipt}).strict()]);
+export const OnehrModuleActionBrowserResult=z.discriminatedUnion('kind',[OnehrModuleActionReviewIndexResult,z.object({kind:z.literal('prepared'),review:OnehrModuleActionPreparedReview}).strict(),z.object({kind:z.literal('completed'),receipt:OnehrModuleActionCompletedReceipt}).strict(),z.object({kind:z.literal('retired'),receipt:OnehrModuleActionRetiredReceipt}).strict()]);
+export type PerformanceModuleActionBrowserResult=z.infer<typeof ReviewModuleActionBrowserResult>|z.infer<typeof OnehrModuleActionBrowserResult>;
+export function parsePerformanceModuleActionBrowserResult(packet:PerformanceModuleActionBrowserPacket,value:unknown):PerformanceModuleActionBrowserResult{
+ const result=packet.action===MODULE_REVIEW_ACK_ACTION?ReviewModuleActionBrowserResult.parse(value):OnehrModuleActionBrowserResult.parse(value),operation=packet.operation;
+ const index=result.kind==='review_module_review_index'||result.kind==='onehr_module_review_index';
+ if(!(operation==='list'?index:operation==='prepare'?result.kind==='prepared':operation==='confirm'?result.kind==='completed'||result.kind==='retired':operation==='discard'?result.kind==='retired':!index))throw Error('Module action response unavailable.');
+ const id=result.kind==='prepared'?result.review.actionId:result.kind==='completed'||result.kind==='retired'?result.receipt.actionId:null;
+ const expected=operation==='reopen'?packet.actionId:operation==='confirm'||operation==='discard'?packet.confirmation.actionId:null;if(expected&&expected!==id)throw Error('Module action response unavailable.');
+ if(operation==='prepare'){if(result.kind!=='prepared')throw Error('Module action response unavailable.');const reviewed=result.review.review,source=reviewed.engine==='standard_cycle_only'?reviewed.reviewId:reviewed.planId;const selected=packet.action===MODULE_REVIEW_ACK_ACTION?packet.input.intent.reviewId:packet.input.intent.planId;if(source!==selected)throw Error('Module action response unavailable.');}
+ return result;
+}
+export const PerformanceActionChoices=z.discriminatedUnion('kind',[
+ z.object({kind:z.literal('choices'),truncated:z.boolean(),items:z.array(z.discriminatedUnion('action',[
+  z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),sourceId:z.guid(),employmentId:z.guid(),cycleName:z.string().min(1).max(240),periodStart:z.iso.date(),periodEnd:z.iso.date()}).strict(),
+  z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),sourceId:z.guid(),employmentId:z.guid(),reviewId:z.guid(),planYear:z.number().int(),conversationHeldOn:z.iso.date().nullable()}).strict(),
+ ])).max(25).refine(rows=>new Set(rows.map(row=>row.action+':'+row.sourceId)).size===rows.length)}).strict(),z.object({kind:z.literal('unavailable')}).strict(),
+]);
+export type PerformanceActionChoices=z.infer<typeof PerformanceActionChoices>;
+type PerformanceOwners<Session>=Readonly<{
+ list(session:Session,action:typeof MODULE_REVIEW_ACK_ACTION|typeof MODULE_ONEHR_ACK_ACTION):Promise<unknown>;
+ prepare(session:Session,input:z.infer<typeof ReviewModuleActionPrepare>|z.infer<typeof OnehrModuleActionPrepare>):Promise<unknown>;
+ reopen(session:Session,action:typeof MODULE_REVIEW_ACK_ACTION|typeof MODULE_ONEHR_ACK_ACTION,id:string):Promise<unknown>;
+ confirm(session:Session,input:z.infer<typeof ReviewModuleActionConfirmation>|z.infer<typeof OnehrModuleActionConfirmation>):Promise<unknown>;
+ discard(session:Session,input:z.infer<typeof ReviewModuleActionRetirementRequest>|z.infer<typeof OnehrModuleActionRetirementRequest>):Promise<unknown>;
+}>;
+const ClaimChoiceField=z.object({id:z.guid(),fieldKey:z.string().min(1).max(200),label:z.string().min(1).max(240),kind:z.enum(['text','number','money','date','select','boolean']),required:z.boolean(),options:z.array(z.string().max(240)).max(128),sortOrder:z.number().int()}).strict();
+export const ClaimDraftEditResult=z.object({kind:z.literal('draft_edit'),draft:z.object({type:z.object({id:z.guid(),code:z.string().max(100),name:z.string().min(1).max(240),isMileage:z.boolean(),requiresReceipt:z.boolean(),items:z.array(z.object({id:z.guid(),code:z.string().max(100),name:z.string().min(1).max(240)}).strict()).max(128),fields:z.array(ClaimChoiceField).max(128).refine(rows=>new Set(rows.map(row=>row.fieldKey)).size===rows.length&&new Set(rows.map(row=>row.id)).size===rows.length)}).strict(),draftId:z.guid(),employmentId:z.guid(),claimTypeId:z.guid(),claimItemId:z.guid().nullable(),draftRevision:z.string().regex(/^[0-9]+$/),enteredAmount:z.number().finite(),quantityKm:z.number().finite().nullable(),incurredOn:z.iso.date(),description:z.string().max(4000).nullable(),fieldValues:z.record(z.string().max(200),z.union([z.string().max(4000),z.number().finite(),z.boolean(),z.null()])),receipts:z.array(z.object({id:z.guid(),fileName:z.string().max(1000),mimeType:z.string().max(240),sizeBytes:z.number().int().nonnegative()}).strict()).max(25)}).strict()}).strict();
+export const ClaimModuleActionBrowserPacket=z.discriminatedUnion('operation',[
+ z.object({action:z.literal(OWN_CLAIM_DRAFT_ACTION),operation:z.literal('read_draft'),employmentId:z.guid(),draftId:z.guid()}).strict(),
+ z.object({action:z.literal(OWN_CLAIM_DRAFT_ACTION),operation:z.literal('list')}).strict(),
+ z.object({action:z.literal(OWN_CLAIM_DRAFT_ACTION),operation:z.literal('prepare'),input:ClaimModuleActionPrepare.refine(value=>value.draftId===null||typeof value.expectedDraftRevision==='string','Load the current draft first')}).strict(),
+ z.object({action:z.literal(OWN_CLAIM_DRAFT_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),
+ z.object({action:z.literal(OWN_CLAIM_DRAFT_ACTION),operation:z.literal('confirm'),confirmation:ClaimModuleActionConfirmation}).strict(),
+ z.object({action:z.literal(OWN_CLAIM_DRAFT_ACTION),operation:z.literal('discard'),confirmation:ClaimModuleActionRetirementRequest}).strict(),
+]);
+export type ClaimModuleActionBrowserPacket=z.infer<typeof ClaimModuleActionBrowserPacket>;
+export const ClaimModuleActionBrowserResult=z.discriminatedUnion('kind',[ClaimDraftEditResult,ClaimModuleActionReviewIndexResult,z.object({kind:z.literal('prepared'),review:ClaimModuleActionPreparedReview}).strict(),z.object({kind:z.literal('completed'),receipt:ClaimModuleActionCompletedReceipt}).strict(),z.object({kind:z.literal('retired'),receipt:ClaimModuleActionRetiredReceipt}).strict()]);
+export type ClaimModuleActionBrowserResult=z.infer<typeof ClaimModuleActionBrowserResult>;
+export function parseClaimModuleActionBrowserResult(packet:ClaimModuleActionBrowserPacket,value:unknown):ClaimModuleActionBrowserResult{
+ const result=ClaimModuleActionBrowserResult.parse(value),op=packet.operation,index=result.kind==='claim_module_review_index';
+ if(!(op==='read_draft'?result.kind==='draft_edit':op==='list'?index:op==='prepare'?result.kind==='prepared':op==='confirm'?result.kind==='completed'||result.kind==='retired':op==='discard'?result.kind==='retired':!index&&result.kind!=='draft_edit'))throw Error('Module action response unavailable.');
+ const id=result.kind==='prepared'?result.review.actionId:result.kind==='completed'||result.kind==='retired'?result.receipt.actionId:null,expected=op==='reopen'?packet.actionId:op==='confirm'||op==='discard'?packet.confirmation.actionId:null;
+ if(expected&&expected!==id)throw Error('Module action response unavailable.');
+ if(op==='read_draft'&&(result.kind!=='draft_edit'||result.draft.draftId!==packet.draftId||result.draft.employmentId!==packet.employmentId||result.draft.type.id!==result.draft.claimTypeId))throw Error('Module action response unavailable.');
+ if(result.kind==='draft_edit'&&(new Set(result.draft.receipts.map(row=>row.id)).size!==result.draft.receipts.length||Object.keys(result.draft.fieldValues).some(key=>!result.draft.type.fields.some(field=>field.fieldKey===key))))throw Error('Module action response unavailable.');
+ if(op==='prepare'&&(result.kind!=='prepared'||JSON.stringify(result.review.content)!==JSON.stringify(packet.input)))throw Error('Module action response unavailable.');
+ return result;
+}
+export const ClaimActionChoices=z.discriminatedUnion('kind',[
+ z.object({kind:z.literal('choices'),truncated:z.boolean(),employments:z.array(z.object({employmentId:z.guid(),employeeCode:z.string().max(100).nullable(),companyName:z.string().min(1).max(240)}).strict()).max(16),types:z.array(z.object({id:z.guid(),code:z.string().max(100),name:z.string().min(1).max(240),isMileage:z.boolean(),requiresReceipt:z.boolean(),items:z.array(z.object({id:z.guid(),code:z.string().max(100),name:z.string().min(1).max(240)}).strict()).max(128),fields:z.array(ClaimChoiceField).max(128).refine(rows=>new Set(rows.map(row=>row.fieldKey)).size===rows.length&&new Set(rows.map(row=>row.id)).size===rows.length)}).strict()).max(32),drafts:z.array(z.object({id:z.guid(),employmentId:z.guid(),claimTypeId:z.guid(),incurredOn:z.iso.date(),retainedAttachmentIds:z.array(z.guid()).max(25).refine(rows=>new Set(rows).size===rows.length)}).strict()).max(25)}).strict().superRefine((value,ctx)=>{for(const list of [value.employments.map(row=>row.employmentId),value.types.map(row=>row.id),value.drafts.map(row=>row.id)])if(new Set(list).size!==list.length)ctx.addIssue({code:'custom',message:'Duplicate choice'});if(value.drafts.some(row=>!value.employments.some(subject=>subject.employmentId===row.employmentId)))ctx.addIssue({code:'custom',message:'Unknown subject'});}),
+ z.object({kind:z.literal('unavailable')}).strict(),
+]);
+export type ClaimActionChoices=z.infer<typeof ClaimActionChoices>;
+type ClaimOwners<Session>=Readonly<{readDraft(session:Session,input:{employmentId:string;draftId:string}):Promise<unknown>;list(session:Session):Promise<unknown>;prepare(session:Session,input:z.infer<typeof ClaimModuleActionPrepare>):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:z.infer<typeof ClaimModuleActionConfirmation>):Promise<unknown>;discard(session:Session,input:z.infer<typeof ClaimModuleActionRetirementRequest>):Promise<unknown>}>;
+/** 4 x 16000 UTF-16 code units can JSON-escape to 384000 bytes. This closed Testing
+ * prepare envelope keeps the full native scope; other action/operation caps remain 20 KiB. */
+export const TESTING_ACTION_TRANSPORT_BYTES=524288;
+export const TestingActionChoices=z.discriminatedUnion('kind',[
+ z.object({kind:z.literal('choices'),truncated:z.boolean(),items:z.array(z.object({assignmentId:z.guid(),caseId:z.guid(),caseNo:z.number().int().positive(),title:z.string().min(1).max(240),versionId:z.guid(),instructionOrdinal:z.number().int().positive(),executionId:z.guid().nullable(),status:z.enum(EXECUTION_STATUSES)}).strict()).max(25).refine(rows=>new Set(rows.map(row=>row.assignmentId)).size===rows.length)}).strict(),z.object({kind:z.literal('unavailable')}).strict(),
+]);
+export type TestingActionChoices=z.infer<typeof TestingActionChoices>;
+export const TestingExecutionEditResult=z.object({kind:z.literal('testing_execution_edit'),source:z.object({caseId:z.guid(),caseNo:z.number().int().positive(),title:z.string().min(1).max(240),instructionOrdinal:z.number().int().positive(),observation:executionInputSchema}).strict()}).strict();
+export const TestingModuleActionBrowserPacket=z.discriminatedUnion('operation',[
+ z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),operation:z.literal('list')}).strict(),
+ z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),operation:z.literal('read_execution'),executionId:z.guid()}).strict(),
+ z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),operation:z.literal('prepare'),input:TestingModuleActionPrepare}).strict(),
+ z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),
+ z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),operation:z.literal('confirm'),confirmation:TestingModuleActionConfirmation}).strict(),
+ z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),operation:z.literal('discard'),confirmation:TestingModuleActionRetirementRequest}).strict(),
+]);
+export type TestingModuleActionBrowserPacket=z.infer<typeof TestingModuleActionBrowserPacket>;
+export const TestingModuleActionBrowserResult=z.discriminatedUnion('kind',[TestingExecutionEditResult,TestingModuleActionReviewIndexResult,z.object({kind:z.literal('prepared'),review:TestingModuleActionPreparedReview}).strict(),z.object({kind:z.literal('completed'),receipt:TestingModuleActionCompletedReceipt}).strict(),z.object({kind:z.literal('retired'),receipt:TestingModuleActionRetiredReceipt}).strict()]);
+export type TestingModuleActionBrowserResult=z.infer<typeof TestingModuleActionBrowserResult>;
+export function parseTestingModuleActionBrowserResult(packet:TestingModuleActionBrowserPacket,value:unknown):TestingModuleActionBrowserResult{
+ const result=TestingModuleActionBrowserResult.parse(value),op=packet.operation,index=result.kind==='testing_module_review_index';
+ if(!(op==='read_execution'?result.kind==='testing_execution_edit':op==='list'?index:op==='prepare'?result.kind==='prepared':op==='confirm'?result.kind==='completed'||result.kind==='retired':op==='discard'?result.kind==='retired':!index&&result.kind!=='testing_execution_edit'))throw Error('Module action response unavailable.');
+ const id=result.kind==='prepared'?result.review.actionId:result.kind==='completed'||result.kind==='retired'?result.receipt.actionId:null,expected=op==='reopen'?packet.actionId:op==='confirm'||op==='discard'?packet.confirmation.actionId:null;if(expected&&id!==expected)throw Error('Module action response unavailable.');
+ if(op==='read_execution'&&(result.kind!=='testing_execution_edit'||result.source.observation.executionId!==packet.executionId))throw Error('Module action response unavailable.');
+ if(result.kind==='prepared'){const source=result.review.review,human=source.humanObservation;if(source.executionId!==human.executionId||source.assignmentId!==human.assignmentId||source.versionId!==human.versionId)throw Error('Module action response unavailable.');}
+ if(op==='prepare'&&(result.kind!=='prepared'||JSON.stringify(result.review.review.humanObservation)!==JSON.stringify(packet.input.intent.observation)))throw Error('Module action response unavailable.');
+ return result;
+}
+type TestingOwners<Session>=Readonly<{list(session:Session):Promise<unknown>;readExecution(session:Session,id:string):Promise<unknown>;prepare(session:Session,input:z.infer<typeof TestingModuleActionPrepare>):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:z.infer<typeof TestingModuleActionConfirmation>):Promise<unknown>;discard(session:Session,input:z.infer<typeof TestingModuleActionRetirementRequest>):Promise<unknown>}>;
+/** Existing-draft submit is separate from draft save and every model nomination. Request is
+ * references + explicit human intent only; native source owns values, pricing, limits and receipts. */
+export const ClaimSubmissionModuleActionBrowserPacket=z.discriminatedUnion('operation',[
+ z.object({action:z.literal(OWN_CLAIM_SUBMISSION_ACTION),operation:z.literal('list')}).strict(),
+ z.object({action:z.literal(OWN_CLAIM_SUBMISSION_ACTION),operation:z.literal('prepare'),input:ClaimSubmissionModuleActionPrepare}).strict(),
+ z.object({action:z.literal(OWN_CLAIM_SUBMISSION_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),
+ z.object({action:z.literal(OWN_CLAIM_SUBMISSION_ACTION),operation:z.literal('confirm'),confirmation:ClaimSubmissionModuleActionConfirmation}).strict(),
+ z.object({action:z.literal(OWN_CLAIM_SUBMISSION_ACTION),operation:z.literal('discard'),confirmation:ClaimSubmissionModuleActionRetirementRequest}).strict(),
+]);
+export type ClaimSubmissionModuleActionBrowserPacket=z.infer<typeof ClaimSubmissionModuleActionBrowserPacket>;
+export const ClaimSubmissionModuleActionBrowserResult=z.discriminatedUnion('kind',[ClaimSubmissionModuleActionReviewIndexResult,z.object({kind:z.literal('prepared'),review:ClaimSubmissionModuleActionPreparedReview}).strict(),z.object({kind:z.literal('completed'),receipt:ClaimSubmissionModuleActionCompletedReceipt}).strict(),z.object({kind:z.literal('retired'),receipt:ClaimSubmissionModuleActionRetiredReceipt}).strict()]);
+export type ClaimSubmissionModuleActionBrowserResult=z.infer<typeof ClaimSubmissionModuleActionBrowserResult>;
+export function parseClaimSubmissionModuleActionBrowserResult(packet:ClaimSubmissionModuleActionBrowserPacket,value:unknown):ClaimSubmissionModuleActionBrowserResult{
+ const result=ClaimSubmissionModuleActionBrowserResult.parse(value),op=packet.operation,index=result.kind==='claim_submission_module_review_index';
+ if(!(op==='list'?index:op==='prepare'?result.kind==='prepared':op==='confirm'?result.kind==='completed'||result.kind==='retired':op==='discard'?result.kind==='retired':!index))throw Error('Module action response unavailable.');
+ const id=result.kind==='prepared'?result.review.actionId:result.kind==='completed'||result.kind==='retired'?result.receipt.actionId:null,expected=op==='reopen'?packet.actionId:op==='confirm'||op==='discard'?packet.confirmation.actionId:null;if(expected&&id!==expected)throw Error('Module action response unavailable.');
+ if(result.kind==='prepared'){const source=result.review.review,human=result.review.content;if(source.draftId!==human.draftId||source.employmentId!==human.employmentId||new Set(source.receipts.map(row=>row.id)).size!==source.receipts.length||JSON.stringify(source.receipts.map(row=>row.id).sort())!==JSON.stringify([...human.receiptIds].sort()))throw Error('Module action response unavailable.');}
+ if(op==='prepare'&&(result.kind!=='prepared'||JSON.stringify(result.review.content)!==JSON.stringify(packet.input)))throw Error('Module action response unavailable.');
+ return result;
+}
+/** ADR-0151 wave 1: own pending claim cancellation. References and explicit human intent only. */
+export const ClaimCancellationModuleActionBrowserPacket=z.discriminatedUnion('operation',[
+ z.object({action:z.literal(OWN_CLAIM_CANCELLATION_ACTION),operation:z.literal('choices')}).strict(),
+ z.object({action:z.literal(OWN_CLAIM_CANCELLATION_ACTION),operation:z.literal('list')}).strict(),
+ z.object({action:z.literal(OWN_CLAIM_CANCELLATION_ACTION),operation:z.literal('prepare'),input:ClaimCancellationReviewPrepare}).strict(),
+ z.object({action:z.literal(OWN_CLAIM_CANCELLATION_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),
+ z.object({action:z.literal(OWN_CLAIM_CANCELLATION_ACTION),operation:z.literal('confirm'),confirmation:ClaimCancellationReviewConfirmation}).strict(),
+ z.object({action:z.literal(OWN_CLAIM_CANCELLATION_ACTION),operation:z.literal('discard'),confirmation:ClaimCancellationReviewRetirement}).strict(),
+]);
+export type ClaimCancellationModuleActionBrowserPacket=z.infer<typeof ClaimCancellationModuleActionBrowserPacket>;
+export const ClaimCancellationModuleActionBrowserResult=z.union([OwnClaimCancellationChoices,ClaimCancellationReviewIndex,z.object({kind:z.literal('prepared'),review:ClaimCancellationPreparedReview}).strict(),z.object({kind:z.literal('completed'),receipt:ClaimCancellationCompletedReview}).strict(),z.object({kind:z.literal('retired'),receipt:ClaimCancellationRetiredReview}).strict()]);
+export type ClaimCancellationModuleActionBrowserResult=z.infer<typeof ClaimCancellationModuleActionBrowserResult>;
+export function parseClaimCancellationModuleActionBrowserResult(packet:ClaimCancellationModuleActionBrowserPacket,value:unknown):ClaimCancellationModuleActionBrowserResult{
+ const result=ClaimCancellationModuleActionBrowserResult.parse(value),op=packet.operation;
+ const fits=op==='choices'?result.kind==='choices'||result.kind==='unavailable':op==='list'?result.kind==='claim_cancellation_review_index':op==='prepare'?result.kind==='prepared':op==='reopen'?result.kind==='prepared'||result.kind==='completed'||result.kind==='retired':op==='confirm'?result.kind==='completed'||result.kind==='retired':result.kind==='retired';
+ if(!fits)throw Error('Module action response unavailable.');
+ const id=result.kind==='prepared'?result.review.actionId:result.kind==='completed'||result.kind==='retired'?result.receipt.actionId:null,expected=op==='reopen'?packet.actionId:op==='confirm'||op==='discard'?packet.confirmation.actionId:null;if(expected&&id!==expected)throw Error('Module action response unavailable.');
+ if(result.kind==='prepared'){const r=result.review;if(r.review.claimId!==r.content.claimId||r.review.employmentId!==r.content.employmentId||Date.parse(r.expiresAt)<=Date.parse(r.createdAt))throw Error('Module action response unavailable.');}
+ if(op==='prepare'&&(result.kind!=='prepared'||JSON.stringify(result.review.content)!==JSON.stringify(packet.input)))throw Error('Module action response unavailable.');
+ return result;
+}
+type ClaimCancellationOwners<Session>=Readonly<{choices(session:Session):Promise<unknown>;list(session:Session):Promise<unknown>;prepare(session:Session,input:z.infer<typeof ClaimCancellationReviewPrepare>):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:z.infer<typeof ClaimCancellationReviewConfirmation>):Promise<unknown>;discard(session:Session,input:z.infer<typeof ClaimCancellationReviewRetirement>):Promise<unknown>}>;
+/** ADR-0151 wave 1: own pending leave cancellation and edit. References and the person's own new values only. */
+const leaveChangePacket=<A extends string>(action:A,input:z.ZodType<unknown>,confirmation:z.ZodType<unknown>,retirement:z.ZodType<unknown>)=>z.discriminatedUnion('operation',[
+ z.object({action:z.literal(action),operation:z.literal('choices')}).strict(),
+ z.object({action:z.literal(action),operation:z.literal('list')}).strict(),
+ z.object({action:z.literal(action),operation:z.literal('prepare'),input}).strict(),
+ z.object({action:z.literal(action),operation:z.literal('reopen'),actionId:z.guid()}).strict(),
+ z.object({action:z.literal(action),operation:z.literal('confirm'),confirmation}).strict(),
+ z.object({action:z.literal(action),operation:z.literal('discard'),confirmation:retirement}).strict(),
+]);
+export const LeaveCancellationModuleActionBrowserPacket=leaveChangePacket(OWN_LEAVE_CANCELLATION_ACTION,OwnLeaveCancellationHumanContent,LeaveCancellationReviewConfirmation,LeaveCancellationReviewRetirement);
+export const LeaveEditModuleActionBrowserPacket=leaveChangePacket(OWN_LEAVE_EDIT_ACTION,OwnLeaveEditHumanContent,LeaveEditReviewConfirmation,LeaveEditReviewRetirement);
+export type LeaveChangeModuleActionBrowserPacket=z.infer<typeof LeaveCancellationModuleActionBrowserPacket>|z.infer<typeof LeaveEditModuleActionBrowserPacket>;
+const LeaveCancellationResult=z.union([OwnLeaveChangeChoices,LeaveCancellationReviewIndex,z.object({kind:z.literal('prepared'),review:LeaveCancellationPreparedReview}).strict(),z.object({kind:z.literal('completed'),receipt:LeaveCancellationCompletedReview}).strict(),z.object({kind:z.literal('retired'),receipt:LeaveCancellationRetiredReview}).strict()]);
+const LeaveEditResult=z.union([OwnLeaveChangeChoices,LeaveEditReviewIndex,z.object({kind:z.literal('prepared'),review:LeaveEditPreparedReview}).strict(),z.object({kind:z.literal('completed'),receipt:LeaveEditCompletedReview}).strict(),z.object({kind:z.literal('retired'),receipt:LeaveEditRetiredReview}).strict()]);
+export type LeaveChangeModuleActionBrowserResult=z.infer<typeof LeaveCancellationResult>|z.infer<typeof LeaveEditResult>;
+export function parseLeaveChangeModuleActionBrowserResult(packet:LeaveChangeModuleActionBrowserPacket,value:unknown):LeaveChangeModuleActionBrowserResult{
+ const result=(packet.action===OWN_LEAVE_EDIT_ACTION?LeaveEditResult:LeaveCancellationResult).parse(value) as LeaveChangeModuleActionBrowserResult,op=packet.operation;
+ const index=result.kind==='leave_cancellation_review_index'||result.kind==='leave_edit_review_index';
+ const fits=op==='choices'?result.kind==='choices'||result.kind==='unavailable':op==='list'?index:op==='prepare'?result.kind==='prepared':op==='reopen'?result.kind==='prepared'||result.kind==='completed'||result.kind==='retired':op==='confirm'?result.kind==='completed'||result.kind==='retired':result.kind==='retired';
+ if(!fits)throw Error('Module action response unavailable.');
+ const id=result.kind==='prepared'?result.review.actionId:result.kind==='completed'||result.kind==='retired'?result.receipt.actionId:null,expected=op==='reopen'?packet.actionId:op==='confirm'||op==='discard'?(packet.confirmation as {actionId:string}).actionId:null;if(expected&&id!==expected)throw Error('Module action response unavailable.');
+ if(result.kind==='prepared'){const r=result.review,subject='before' in r.review?r.review.before:r.review;if(subject.leaveRequestId!==r.content.leaveRequestId||subject.employmentId!==r.content.employmentId||Date.parse(r.expiresAt)<=Date.parse(r.createdAt))throw Error('Module action response unavailable.');}
+ if(op==='prepare'&&(result.kind!=='prepared'||JSON.stringify(result.review.content)!==JSON.stringify(packet.input)))throw Error('Module action response unavailable.');
+ return result;
+}
+type LeaveChangeOwner<Session>=Readonly<{choices(session:Session):Promise<unknown>;list(session:Session):Promise<unknown>;prepare(session:Session,input:unknown):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:{actionId:string;reviewedDigest:string}):Promise<unknown>;discard(session:Session,input:{actionId:string}):Promise<unknown>}>;
+type ClaimSubmissionOwners<Session>=Readonly<{list(session:Session):Promise<unknown>;prepare(session:Session,input:z.infer<typeof ClaimSubmissionModuleActionPrepare>):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:z.infer<typeof ClaimSubmissionModuleActionConfirmation>):Promise<unknown>;discard(session:Session,input:z.infer<typeof ClaimSubmissionModuleActionRetirementRequest>):Promise<unknown>}>;
+/** HR caller and target are distinct. Searches disclose only bounded authorised labels; no IDs
+ * typed as guess-fields, graph extraction, delegated authority or source fingerprints. */
+import {REVIEWED_REPORTING_LINE_ACTION as ORG_ACTION} from './reviewed-reporting-line-contract';
+import {OrgActionPrepare,OrgActionConfirmation,OrgActionRetirement,OrgActionPreparedReview,OrgActionCompletedReceipt,OrgActionRetirementReceipt,OrgActionReviewIndexResult} from './org-action-review-contract';
+export const OrgActionSearch=z.discriminatedUnion('role',[
+ z.object({role:z.literal('subordinate'),query:z.string().trim().min(2).max(80)}).strict(),
+ z.object({role:z.literal('manager'),query:z.string().trim().min(2).max(80),subordinateEmploymentId:z.guid()}).strict(),
+]);
+export const OrgEmployeeChoice=z.object({employmentId:z.guid(),employeeCode:z.string().max(100).nullable(),name:z.string().min(1).max(240),companyName:z.string().min(1).max(240)}).strict();
+const OrgLabels=z.object({subordinate:OrgEmployeeChoice,manager:OrgEmployeeChoice,previousManager:OrgEmployeeChoice.nullable()}).strict();
+export const OrgActionChoices=z.object({kind:z.literal('org_choices'),selection:OrgActionSearch,items:z.array(OrgEmployeeChoice).max(20).refine(rows=>new Set(rows.map(r=>r.employmentId)).size===rows.length),truncated:z.boolean()}).strict();
+export const OrgModuleActionBrowserPacket=z.discriminatedUnion('operation',[
+ z.object({action:z.literal(ORG_ACTION),operation:z.literal('choices'),selection:OrgActionSearch}).strict(),
+ z.object({action:z.literal(ORG_ACTION),operation:z.literal('list')}).strict(),
+ z.object({action:z.literal(ORG_ACTION),operation:z.literal('prepare'),input:OrgActionPrepare}).strict(),
+ z.object({action:z.literal(ORG_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),
+ z.object({action:z.literal(ORG_ACTION),operation:z.literal('confirm'),confirmation:OrgActionConfirmation}).strict(),
+ z.object({action:z.literal(ORG_ACTION),operation:z.literal('discard'),confirmation:OrgActionRetirement}).strict(),
+]);
+export type OrgModuleActionBrowserPacket=z.infer<typeof OrgModuleActionBrowserPacket>;
+export const OrgModuleActionBrowserResult=z.discriminatedUnion('kind',[OrgActionChoices,OrgActionReviewIndexResult,z.object({kind:z.literal('prepared'),review:OrgActionPreparedReview.extend({labels:OrgLabels})}).strict(),z.object({kind:z.literal('completed'),receipt:OrgActionCompletedReceipt.extend({labels:OrgLabels.pick({subordinate:true,manager:true})})}).strict(),z.object({kind:z.literal('retired'),receipt:OrgActionRetirementReceipt}).strict()]);
+export type OrgModuleActionBrowserResult=z.infer<typeof OrgModuleActionBrowserResult>;
+export function parseOrgModuleActionBrowserResult(packet:OrgModuleActionBrowserPacket,value:unknown):OrgModuleActionBrowserResult{
+ const result=OrgModuleActionBrowserResult.parse(value),op=packet.operation;
+ const allowed=op==='choices'?result.kind==='org_choices':op==='list'?result.kind==='org_module_review_index':op==='prepare'?result.kind==='prepared':op==='discard'?result.kind==='retired':op==='confirm'?result.kind==='completed'||result.kind==='retired':result.kind==='prepared'||result.kind==='completed'||result.kind==='retired';if(!allowed)throw Error('Module action response unavailable.');
+ const id=result.kind==='prepared'?result.review.actionId:result.kind==='completed'||result.kind==='retired'?result.receipt.actionId:null,expected=op==='reopen'?packet.actionId:op==='confirm'||op==='discard'?packet.confirmation.actionId:null;if(expected&&id!==expected)throw Error('Module action response unavailable.');
+ if(op==='choices'&&(result.kind!=='org_choices'||JSON.stringify(result.selection)!==JSON.stringify(packet.selection)))throw Error('Module action response unavailable.');
+ if(result.kind==='org_choices'&&result.selection.role==='manager'){const target=result.selection.subordinateEmploymentId;if(result.items.some(row=>row.employmentId===target))throw Error('Module action response unavailable.');}
+ if(result.kind==='org_module_review_index'&&result.reviews.some(row=>Date.parse(row.expiresAt)<=Date.parse(row.createdAt)))throw Error('Module action response unavailable.');
+ if(result.kind==='prepared'){const r=result.review;if(op==='prepare'&&JSON.stringify(r.content)!==JSON.stringify(packet.input)||r.review.subordinateEmploymentId!==r.content.subordinateEmploymentId||r.review.lineType!==r.content.lineType||r.review.after.managerEmploymentId!==r.content.managerEmploymentId||r.review.after.validFrom!==r.content.validFrom||r.labels.subordinate.employmentId!==r.content.subordinateEmploymentId||r.labels.manager.employmentId!==r.content.managerEmploymentId||(r.labels.previousManager?.employmentId??null)!==(r.review.before?.managerEmploymentId??null)||Date.parse(r.expiresAt)<=Date.parse(r.createdAt))throw Error('Module action response unavailable.');}
+ if(result.kind==='completed'){const r=result.receipt;if(r.labels.subordinate.employmentId!==r.receipt.subordinateEmploymentId||r.labels.manager.employmentId!==r.receipt.managerEmploymentId)throw Error('Module action response unavailable.');}
+ return result;
+}
+type OrgOwners<Session>=Readonly<{choices(session:Session,selection:z.infer<typeof OrgActionSearch>):Promise<unknown>;list(session:Session):Promise<unknown>;prepare(session:Session,input:z.infer<typeof OrgActionPrepare>):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:z.infer<typeof OrgActionConfirmation>):Promise<unknown>;discard(session:Session,input:z.infer<typeof OrgActionRetirement>):Promise<unknown>}>;
+/** KB human content has a native 24k JSON cap. Only its strict prepare discriminator receives
+ * a 32KiB envelope; all other actions keep their prior budgets. No upload or model body executor. */
+import {KNOWLEDGE_ARTICLE_ACTION} from './knowledge-article-contract';
+import {KnowledgeArticleReviewPrepare,KnowledgeArticleReviewConfirmation,KnowledgeArticleReviewRetirement,KnowledgeArticlePreparedReview,KnowledgeArticleCompletedReview,KnowledgeArticleRetiredReview,KnowledgeArticleReviewIndex} from './knowledge-article-review-contract';
+export const KNOWLEDGE_ACTION_TRANSPORT_BYTES=32768;
+export const KnowledgeActionAvailability=z.discriminatedUnion('kind',[z.object({kind:z.literal('available'),audiences:z.array(z.enum(['all','employee','manager','hr_admin'])).min(1).max(4).refine(rows=>new Set(rows).size===rows.length)}).strict(),z.object({kind:z.literal('unavailable')}).strict()]);
+export const KnowledgeModuleActionBrowserPacket=z.discriminatedUnion('operation',[
+ z.object({action:z.literal(KNOWLEDGE_ARTICLE_ACTION),operation:z.literal('list')}).strict(),
+ z.object({action:z.literal(KNOWLEDGE_ARTICLE_ACTION),operation:z.literal('prepare'),input:KnowledgeArticleReviewPrepare}).strict(),
+ z.object({action:z.literal(KNOWLEDGE_ARTICLE_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),
+ z.object({action:z.literal(KNOWLEDGE_ARTICLE_ACTION),operation:z.literal('confirm'),confirmation:KnowledgeArticleReviewConfirmation}).strict(),
+ z.object({action:z.literal(KNOWLEDGE_ARTICLE_ACTION),operation:z.literal('discard'),confirmation:KnowledgeArticleReviewRetirement}).strict(),
+]);
+export type KnowledgeModuleActionBrowserPacket=z.infer<typeof KnowledgeModuleActionBrowserPacket>;
+export const KnowledgeModuleActionBrowserResult=z.discriminatedUnion('kind',[KnowledgeArticleReviewIndex,z.object({kind:z.literal('prepared'),review:KnowledgeArticlePreparedReview}).strict(),z.object({kind:z.literal('completed'),receipt:KnowledgeArticleCompletedReview}).strict(),z.object({kind:z.literal('retired'),receipt:KnowledgeArticleRetiredReview}).strict()]);
+export type KnowledgeModuleActionBrowserResult=z.infer<typeof KnowledgeModuleActionBrowserResult>;
+export function parseKnowledgeModuleActionBrowserResult(packet:KnowledgeModuleActionBrowserPacket,value:unknown):KnowledgeModuleActionBrowserResult{
+ const result=KnowledgeModuleActionBrowserResult.parse(value),op=packet.operation;
+ const allowed=op==='list'?result.kind==='knowledge_article_review_index':op==='prepare'?result.kind==='prepared':op==='confirm'?result.kind==='completed'||result.kind==='retired':op==='discard'?result.kind==='retired':result.kind!=='knowledge_article_review_index';if(!allowed)throw Error('Module action response unavailable.');
+ const id=result.kind==='prepared'?result.review.actionId:result.kind==='completed'||result.kind==='retired'?result.receipt.actionId:null,expected=op==='reopen'?packet.actionId:op==='confirm'||op==='discard'?packet.confirmation.actionId:null;if(expected&&id!==expected)throw Error('Module action response unavailable.');
+ // Native category normalization is shown explicitly, never reimplemented in this transport.
+ // Exact human body/audience and whitespace-only title normalization prevent content substitution.
+ if(op==='prepare'&&(result.kind!=='prepared'||result.review.content.body!==packet.input.body||result.review.content.title!==packet.input.title.trim()||result.review.content.audience!==packet.input.audience))throw Error('Module action response unavailable.');
+ if(result.kind==='prepared'&&Date.parse(result.review.expiresAt)<=Date.parse(result.review.createdAt)||result.kind==='knowledge_article_review_index'&&result.reviews.some(row=>Date.parse(row.expiresAt)<=Date.parse(row.createdAt)))throw Error('Module action response unavailable.');return result;
+}
+type KnowledgeOwners<Session>=Readonly<{list(session:Session):Promise<unknown>;prepare(session:Session,input:z.infer<typeof KnowledgeArticleReviewPrepare>):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:z.infer<typeof KnowledgeArticleReviewConfirmation>):Promise<unknown>;discard(session:Session,input:z.infer<typeof KnowledgeArticleReviewRetirement>):Promise<unknown>}>;
+/** Own current email-linked equipment ACK, including unlinked prehire users. No posted login,
+ * person/employment or asset/provisioning executor; all native content fits the original20KiB lane. */
+import {OWN_LIFECYCLE_ACKNOWLEDGEMENT_ACTION as LIFECYCLE_ACK_ACTION} from './own-lifecycle-acknowledgement-contract';
+import {LifecycleAckReviewPrepare,LifecycleAckReviewConfirmation,LifecycleAckReviewRetirement,LifecycleAckPreparedReview,LifecycleAckCompletedReview,LifecycleAckRetiredReview,LifecycleAckReviewIndex} from './lifecycle-ack-review-contract';
+export const LifecycleAckActionAvailability=z.discriminatedUnion('kind',[z.object({kind:z.literal('available'),currentCase:z.object({caseId:z.guid(),caseNumber:z.string().min(1).max(100)}).strict()}).strict(),z.object({kind:z.literal('unavailable')}).strict()]);
+export const LifecycleAckModuleActionBrowserPacket=z.discriminatedUnion('operation',[
+ z.object({action:z.literal(LIFECYCLE_ACK_ACTION),operation:z.literal('list')}).strict(),
+ z.object({action:z.literal(LIFECYCLE_ACK_ACTION),operation:z.literal('prepare'),input:LifecycleAckReviewPrepare}).strict(),
+ z.object({action:z.literal(LIFECYCLE_ACK_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),
+ z.object({action:z.literal(LIFECYCLE_ACK_ACTION),operation:z.literal('confirm'),confirmation:LifecycleAckReviewConfirmation}).strict(),
+ z.object({action:z.literal(LIFECYCLE_ACK_ACTION),operation:z.literal('discard'),confirmation:LifecycleAckReviewRetirement}).strict(),
+]);
+export type LifecycleAckModuleActionBrowserPacket=z.infer<typeof LifecycleAckModuleActionBrowserPacket>;
+export const LifecycleAckModuleActionBrowserResult=z.discriminatedUnion('kind',[LifecycleAckReviewIndex,z.object({kind:z.literal('prepared'),review:LifecycleAckPreparedReview}).strict(),z.object({kind:z.literal('completed'),receipt:LifecycleAckCompletedReview}).strict(),z.object({kind:z.literal('retired'),receipt:LifecycleAckRetiredReview}).strict()]);
+export type LifecycleAckModuleActionBrowserResult=z.infer<typeof LifecycleAckModuleActionBrowserResult>;
+export function parseLifecycleAckModuleActionBrowserResult(packet:LifecycleAckModuleActionBrowserPacket,value:unknown):LifecycleAckModuleActionBrowserResult{
+ const result=LifecycleAckModuleActionBrowserResult.parse(value),op=packet.operation;
+ const allowed=op==='list'?result.kind==='lifecycle_ack_review_index':op==='prepare'?result.kind==='prepared':op==='confirm'?result.kind==='completed'||result.kind==='retired':op==='discard'?result.kind==='retired':result.kind!=='lifecycle_ack_review_index';if(!allowed)throw Error('Module action response unavailable.');
+ const id=result.kind==='prepared'?result.review.actionId:result.kind==='completed'||result.kind==='retired'?result.receipt.actionId:null,expected=op==='reopen'?packet.actionId:op==='confirm'||op==='discard'?packet.confirmation.actionId:null;if(expected&&id!==expected)throw Error('Module action response unavailable.');
+ if(op==='prepare'){if(result.kind!=='prepared')throw Error('Module action response unavailable.');const posted=packet.input,actual=result.review.content,optional=(v:string|null)=>v?.trim()||null;
+  // Lexical correspondence only: native normalizeMyAcknowledgement remains validation owner.
+  if(actual.caseId!==posted.caseId||actual.contactNumber!==posted.contactNumber.trim()||actual.serialNumber!==posted.serialNumber.trim()||actual.pcType!==optional(posted.pcType)||actual.accessories!==optional(posted.accessories)||actual.hasMonitor!==posted.hasMonitor||actual.monitorSerial!==(posted.hasMonitor?optional(posted.monitorSerial):null)||actual.receiptEmail!==(optional(posted.receiptEmail)?.toLowerCase()??null))throw Error('Module action response unavailable.');}
+ if(result.kind==='prepared'&&Date.parse(result.review.expiresAt)<=Date.parse(result.review.createdAt)||result.kind==='lifecycle_ack_review_index'&&result.reviews.some(row=>Date.parse(row.expiresAt)<=Date.parse(row.createdAt)))throw Error('Module action response unavailable.');return result;
+}
+type LifecycleAckOwners<Session>=Readonly<{list(session:Session):Promise<unknown>;prepare(session:Session,input:z.infer<typeof LifecycleAckReviewPrepare>):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:z.infer<typeof LifecycleAckReviewConfirmation>):Promise<unknown>;discard(session:Session,input:z.infer<typeof LifecycleAckReviewRetirement>):Promise<unknown>}>;
+/** Full32-row human TOIL declarations. Only strict prepare needs32KiB for a4000-character
+ * escaped reason. Its full source/content review may repeat that reason, so responses use64KiB. */
+import {OWN_TOIL_REPLACEMENT_ACTION as TOIL_ACTION} from './own-toil-replacement-contract';
+import {ToilRequestReviewPrepare,ToilRequestReviewConfirmation,ToilRequestReviewRetirement,ToilRequestPreparedReview,ToilRequestCompletedReview,ToilRequestRetiredReview,ToilRequestReviewIndex} from './toil-request-review-contract';
+export const TOIL_ACTION_PREPARE_BYTES=32768,TOIL_ACTION_RESPONSE_BYTES=65536;
+export const ToilRequestActionChoices=z.discriminatedUnion('kind',[z.object({kind:z.literal('choices'),today:z.iso.date(),employments:z.array(z.object({employmentId:z.guid(),employeeCode:z.string().max(100).nullable(),companyName:z.string().min(1).max(240),requiresFirstScheduleConsent:z.boolean(),ordinaryDayAllowed:z.boolean(),replacementType:z.object({id:z.guid(),name:z.string().min(1).max(240)}).strict().nullable()}).strict()).max(16).refine(rows=>new Set(rows.map(row=>row.employmentId)).size===rows.length)}).strict(),z.object({kind:z.literal('unavailable')}).strict()]);
+export const ToilModuleActionBrowserPacket=z.discriminatedUnion('operation',[
+ z.object({action:z.literal(TOIL_ACTION),operation:z.literal('list')}).strict(),
+ z.object({action:z.literal(TOIL_ACTION),operation:z.literal('prepare'),input:ToilRequestReviewPrepare}).strict(),
+ z.object({action:z.literal(TOIL_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),
+ z.object({action:z.literal(TOIL_ACTION),operation:z.literal('confirm'),confirmation:ToilRequestReviewConfirmation}).strict(),
+ z.object({action:z.literal(TOIL_ACTION),operation:z.literal('discard'),confirmation:ToilRequestReviewRetirement}).strict(),
+]);
+export type ToilModuleActionBrowserPacket=z.infer<typeof ToilModuleActionBrowserPacket>;
+export const ToilModuleActionBrowserResult=z.discriminatedUnion('kind',[ToilRequestReviewIndex,z.object({kind:z.literal('prepared'),review:ToilRequestPreparedReview}).strict(),z.object({kind:z.literal('completed'),receipt:ToilRequestCompletedReview}).strict(),z.object({kind:z.literal('retired'),receipt:ToilRequestRetiredReview}).strict()]);
+export type ToilModuleActionBrowserResult=z.infer<typeof ToilModuleActionBrowserResult>;
+export function parseToilModuleActionBrowserResult(packet:ToilModuleActionBrowserPacket,value:unknown):ToilModuleActionBrowserResult{
+ const result=ToilModuleActionBrowserResult.parse(value),op=packet.operation;
+ const allowed=op==='list'?result.kind==='toil_request_review_index':op==='prepare'?result.kind==='prepared':op==='confirm'?result.kind==='completed'||result.kind==='retired':op==='discard'?result.kind==='retired':result.kind!=='toil_request_review_index';if(!allowed)throw Error('Module action response unavailable.');
+ const id=result.kind==='prepared'?result.review.actionId:result.kind==='completed'||result.kind==='retired'?result.receipt.actionId:null,expected=op==='reopen'?packet.actionId:op==='confirm'||op==='discard'?packet.confirmation.actionId:null;if(expected&&id!==expected)throw Error('Module action response unavailable.');
+ if(op==='prepare'&&(result.kind!=='prepared'||JSON.stringify(result.review.content)!==JSON.stringify(packet.input)))throw Error('Module action response unavailable.');
+ if(result.kind==='prepared'){const {content,review}=result.review,inputDates=(content.engine==='leave_credit_rows'?content.rows:content.lines).map(row=>row.workedDate).sort(),sourceDates=review.lines.map(row=>row.workedDate).sort();if(content.employmentId!==review.employmentId||(content.leaveTypeId??null)!==review.leaveTypeId||content.firstScheduleConsent!==review.firstScheduleConsent||review.unit!==(content.engine==='leave_credit_rows'?'day':content.unit)||JSON.stringify(inputDates)!==JSON.stringify(sourceDates)||Date.parse(result.review.expiresAt)<=Date.parse(result.review.createdAt))throw Error('Module action response unavailable.');}
+ if(result.kind==='toil_request_review_index'&&result.reviews.some(row=>Date.parse(row.expiresAt)<=Date.parse(row.createdAt)))throw Error('Module action response unavailable.');return result;
+}
+type ToilOwners<Session>=Readonly<{list(session:Session):Promise<unknown>;prepare(session:Session,input:z.infer<typeof ToilRequestReviewPrepare>):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:z.infer<typeof ToilRequestReviewConfirmation>):Promise<unknown>;discard(session:Session,input:z.infer<typeof ToilRequestReviewRetirement>):Promise<unknown>}>;
+/** Assigned Leave is not an own-employee action. Human content stays20KiB; a native48KiB
+ * review plus escaped2000-character rejection content needs a closed64KiB response envelope. */
+import {REVIEWED_LEAVE_DECISION_ACTION as ASSIGNED_LEAVE_ACTION} from './reviewed-leave-decision-contract';
+import {LeaveDecisionReviewPrepare,LeaveDecisionReviewConfirmation,LeaveDecisionReviewRetirement,LeaveDecisionPreparedReview,LeaveDecisionCompletedReview,LeaveDecisionRetiredReview,LeaveDecisionReviewIndex} from './leave-decision-review-contract';
+export const ASSIGNED_LEAVE_ACTION_RESPONSE_BYTES=65536;
+export const AssignedLeaveActionChoices=z.discriminatedUnion('kind',[z.object({kind:z.literal('choices'),tasks:z.array(z.object({leaveRequestId:z.guid(),currentStepId:z.guid().nullable(),stepIndex:z.number().int().nonnegative().nullable(),applicantLabel:z.string().max(320).nullable(),createdAt:z.iso.datetime()}).strict()).max(100).refine(rows=>new Set(rows.map(row=>row.leaveRequestId)).size===rows.length),truncated:z.boolean()}).strict(),z.object({kind:z.literal('unavailable')}).strict()]);
+export const AssignedLeaveModuleActionBrowserPacket=z.discriminatedUnion('operation',[
+ z.object({action:z.literal(ASSIGNED_LEAVE_ACTION),operation:z.literal('list')}).strict(),
+ z.object({action:z.literal(ASSIGNED_LEAVE_ACTION),operation:z.literal('prepare'),input:LeaveDecisionReviewPrepare}).strict(),
+ z.object({action:z.literal(ASSIGNED_LEAVE_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),
+ z.object({action:z.literal(ASSIGNED_LEAVE_ACTION),operation:z.literal('confirm'),confirmation:LeaveDecisionReviewConfirmation}).strict(),
+ z.object({action:z.literal(ASSIGNED_LEAVE_ACTION),operation:z.literal('discard'),confirmation:LeaveDecisionReviewRetirement}).strict(),
+]);
+export type AssignedLeaveModuleActionBrowserPacket=z.infer<typeof AssignedLeaveModuleActionBrowserPacket>;
+export const AssignedLeaveModuleActionBrowserResult=z.discriminatedUnion('kind',[LeaveDecisionReviewIndex,z.object({kind:z.literal('prepared'),review:LeaveDecisionPreparedReview}).strict(),z.object({kind:z.literal('completed'),receipt:LeaveDecisionCompletedReview}).strict(),z.object({kind:z.literal('retired'),receipt:LeaveDecisionRetiredReview}).strict()]);
+export type AssignedLeaveModuleActionBrowserResult=z.infer<typeof AssignedLeaveModuleActionBrowserResult>;
+export function parseAssignedLeaveModuleActionBrowserResult(packet:AssignedLeaveModuleActionBrowserPacket,value:unknown):AssignedLeaveModuleActionBrowserResult{
+ const result=AssignedLeaveModuleActionBrowserResult.parse(value),op=packet.operation,allowed=op==='list'?result.kind==='leave_decision_review_index':op==='prepare'?result.kind==='prepared':op==='confirm'?result.kind==='completed'||result.kind==='retired':op==='discard'?result.kind==='retired':result.kind!=='leave_decision_review_index';if(!allowed)throw Error('Module action response unavailable.');
+ const id=result.kind==='prepared'?result.review.actionId:result.kind==='completed'||result.kind==='retired'?result.receipt.actionId:null,expected=op==='reopen'?packet.actionId:op==='confirm'||op==='discard'?packet.confirmation.actionId:null;if(expected&&id!==expected)throw Error('Module action response unavailable.');
+ if(op==='prepare'&&(result.kind!=='prepared'||JSON.stringify(result.review.content)!==JSON.stringify(packet.input)))throw Error('Module action response unavailable.');
+ if(result.kind==='prepared'){const {content,review}=result.review;if(content.leaveRequestId!==review.leaveRequestId||content.currentStepId!==review.currentStepId||content.decision!==review.decision||content.rejectReason!==review.rejectReason||(review.currentStepId===null)!==(review.stepIndex===null)||(content.decision==='rejected')!==(review.outcome==='rejection_if_confirmed')||Date.parse(result.review.expiresAt)<=Date.parse(result.review.createdAt))throw Error('Module action response unavailable.');}
+ if(result.kind==='completed'&&(result.receipt.receipt.decisionStepId===null)!==(result.receipt.receipt.stepIndex===null))throw Error('Module action response unavailable.');
+ if(result.kind==='leave_decision_review_index'&&result.reviews.some(row=>Date.parse(row.expiresAt)<=Date.parse(row.createdAt)))throw Error('Module action response unavailable.');return result;
+}
+type AssignedLeaveOwners<Session>=Readonly<{list(session:Session):Promise<unknown>;prepare(session:Session,input:z.infer<typeof LeaveDecisionReviewPrepare>):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:z.infer<typeof LeaveDecisionReviewConfirmation>):Promise<unknown>;discard(session:Session,input:z.infer<typeof LeaveDecisionReviewRetirement>):Promise<unknown>}>;
+/** The native intent already has a24,000-byte ceiling. Only closed Attendance prepare needs32KiB;
+ * its complete normalized review/current editable source also uses a bounded32KiB result lane. */
+import {ATTENDANCE_CORRECTION_REVIEW_ACTION as ATTENDANCE_ACTION,AttendanceCorrectionReviewPrepare,AttendanceCorrectionReviewConfirmation,AttendanceCorrectionReviewRetirement,AttendanceCorrectionPreparedReview,AttendanceCorrectionCompletedReview,AttendanceCorrectionRetiredReview,AttendanceCorrectionReviewIndex} from './attendance-correction-review-contract';
+import {OwnAttendanceCorrectionIntent} from './own-attendance-correction-contract';
+export const ATTENDANCE_ACTION_BYTES=32768;
+export const AttendanceActionChoices=z.discriminatedUnion('kind',[z.object({kind:z.literal('choices'),today:z.iso.date(),employments:z.array(z.object({employmentId:z.guid(),employeeCode:z.string().max(100).nullable(),companyName:z.string().min(1).max(240),clockChangesAllowed:z.boolean()}).strict()).max(16).refine(rows=>new Set(rows.map(row=>row.employmentId)).size===rows.length)}).strict(),z.object({kind:z.literal('unavailable')}).strict()]);
+export const AttendanceClockSelection=z.object({employmentId:z.guid(),date:z.iso.date()}).strict();
+export const AttendanceClockSource=z.object({kind:z.literal('attendance_clock_source'),employmentId:z.guid(),date:z.iso.date(),baseline:z.string().regex(/^[a-f0-9]{64}$/),rows:z.array(z.object({id:z.guid(),punchAt:z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/),direction:z.enum(['in','out']),voided:z.boolean()}).strict()).max(256).refine(rows=>new Set(rows.map(row=>row.id)).size===rows.length)}).strict();
+export const AttendanceModuleActionBrowserPacket=z.discriminatedUnion('operation',[
+ z.object({action:z.literal(ATTENDANCE_ACTION),operation:z.literal('clock_source'),selection:AttendanceClockSelection}).strict(),
+ z.object({action:z.literal(ATTENDANCE_ACTION),operation:z.literal('list')}).strict(),
+ z.object({action:z.literal(ATTENDANCE_ACTION),operation:z.literal('prepare'),input:AttendanceCorrectionReviewPrepare}).strict(),
+ z.object({action:z.literal(ATTENDANCE_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),
+ z.object({action:z.literal(ATTENDANCE_ACTION),operation:z.literal('confirm'),confirmation:AttendanceCorrectionReviewConfirmation}).strict(),
+ z.object({action:z.literal(ATTENDANCE_ACTION),operation:z.literal('discard'),confirmation:AttendanceCorrectionReviewRetirement}).strict(),
+]);
+export type AttendanceModuleActionBrowserPacket=z.infer<typeof AttendanceModuleActionBrowserPacket>;
+export const AttendanceModuleActionBrowserResult=z.discriminatedUnion('kind',[AttendanceClockSource,AttendanceCorrectionReviewIndex,z.object({kind:z.literal('prepared'),review:AttendanceCorrectionPreparedReview}).strict(),z.object({kind:z.literal('completed'),receipt:AttendanceCorrectionCompletedReview}).strict(),z.object({kind:z.literal('retired'),receipt:AttendanceCorrectionRetiredReview}).strict()]);
+export type AttendanceModuleActionBrowserResult=z.infer<typeof AttendanceModuleActionBrowserResult>;
+/** Response correspondence only, not an Attendance calculator. Permit native lexical/null/default
+ * normalization; never create a clock, OT amount, policy result or approval on the client. */
+export function attendanceCorrectionIntentMatches(posted:unknown,returned:unknown){const p=OwnAttendanceCorrectionIntent.parse(posted),r=OwnAttendanceCorrectionIntent.parse(returned),time=(v:string|null|undefined)=>v?.length===5?v+':00':v??null;
+ if(p.employmentId!==r.employmentId||p.date!==r.date||p.reason.trim()!==r.reason||(p.remark?.trim()||null)!==(r.remark??null)||(p.requestedOtMinutes==null?null:Math.trunc(p.requestedOtMinutes))!==(r.requestedOtMinutes??null)||(p.otReasonCategory??null)!==(r.otReasonCategory??null)||p.requestKind!=null&&p.requestKind!==r.requestKind)return false;
+ for(const field of ['checkIn','checkOut','plannedStartTime','plannedEndTime'] as const)if(time(p[field])!==time(r[field]))return false;
+ if(p.clockChanges){if(!r.clockChanges||p.clockChanges.baseline!==r.clockChanges.baseline||JSON.stringify(p.clockChanges.entries.map(entry=>({...entry,punchAt:time(entry.punchAt)})))!==JSON.stringify(r.clockChanges.entries.map(entry=>({...entry,punchAt:time(entry.punchAt)}))))return false;}else if(r.clockChanges)return false;
+ return JSON.stringify(p.unclockedWork??null)===JSON.stringify(r.unclockedWork??null);
+}
+export function parseAttendanceModuleActionBrowserResult(packet:AttendanceModuleActionBrowserPacket,value:unknown):AttendanceModuleActionBrowserResult{
+ const result=AttendanceModuleActionBrowserResult.parse(value),op=packet.operation,allowed=op==='clock_source'?result.kind==='attendance_clock_source':op==='list'?result.kind==='attendance_correction_review_index':op==='prepare'?result.kind==='prepared':op==='confirm'?result.kind==='completed'||result.kind==='retired':op==='discard'?result.kind==='retired':result.kind==='prepared'||result.kind==='completed'||result.kind==='retired';if(!allowed)throw Error('Module action response unavailable.');
+ if(op==='clock_source'&&(result.kind!=='attendance_clock_source'||result.employmentId!==packet.selection.employmentId||result.date!==packet.selection.date))throw Error('Module action response unavailable.');
+ const id=result.kind==='prepared'?result.review.actionId:result.kind==='completed'||result.kind==='retired'?result.receipt.actionId:null,expected=op==='reopen'?packet.actionId:op==='confirm'||op==='discard'?packet.confirmation.actionId:null;if(expected&&id!==expected)throw Error('Module action response unavailable.');
+ if(op==='prepare'&&(result.kind!=='prepared'||!attendanceCorrectionIntentMatches(packet.input.intent,result.review.review.request)))throw Error('Module action response unavailable.');
+ if(result.kind==='prepared'&&Date.parse(result.review.expiresAt)<=Date.parse(result.review.createdAt))throw Error('Module action response unavailable.');if(result.kind==='attendance_correction_review_index'&&result.reviews.some(row=>Date.parse(row.expiresAt)<=Date.parse(row.createdAt)))throw Error('Module action response unavailable.');return result;
+}
+type AttendanceOwners<Session>=Readonly<{clockSource(session:Session,input:z.infer<typeof AttendanceClockSelection>):Promise<unknown>;list(session:Session):Promise<unknown>;prepare(session:Session,input:z.infer<typeof AttendanceCorrectionReviewPrepare>):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:z.infer<typeof AttendanceCorrectionReviewConfirmation>):Promise<unknown>;discard(session:Session,input:z.infer<typeof AttendanceCorrectionReviewRetirement>):Promise<unknown>}>;
+/** Source plaintext is <=32KiB; public prepared view <=64KiB. The closed packet wrapper
+ * needs less than 1KiB extra, and JSON result wrapper less than 1KiB. Other lanes unchanged. */
+export const PAY_COMPONENT_ACTION_REQUEST_BYTES=33792;
+export const PAY_COMPONENT_ACTION_RESPONSE_BYTES=66560;
+export const PayComponentActionChoices=z.discriminatedUnion('kind',[
+ z.object({kind:z.literal('choices'),references:z.array(z.object({code:z.string().min(1).max(200),name:z.string().max(16000)}).strict()).max(256).refine(rows=>new Set(rows.map(row=>row.code)).size===rows.length),roundingMethods:z.array(z.enum(['none','up','down','nearest'])).min(1).max(4),displayCategories:z.array(z.enum(['basic','overtime','bonus','allowance','claim','deduction','bik','vola'])).max(8),eaLines:z.array(z.object({code:z.string().max(200),label:z.string().max(1000)}).strict()).max(128)}).strict(),z.object({kind:z.literal('unavailable')}).strict(),
+]);export type PayComponentActionChoices=z.infer<typeof PayComponentActionChoices>;
+export const PayComponentModuleActionBrowserPacket=z.discriminatedUnion('operation',[
+ z.object({action:z.literal(PAY_COMPONENT_ACTION),operation:z.literal('list')}).strict(),
+ z.object({action:z.literal(PAY_COMPONENT_ACTION),operation:z.literal('prepare'),input:PayComponentReviewPrepare}).strict(),
+ z.object({action:z.literal(PAY_COMPONENT_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),
+ z.object({action:z.literal(PAY_COMPONENT_ACTION),operation:z.literal('confirm'),confirmation:PayComponentReviewConfirmation}).strict(),
+ z.object({action:z.literal(PAY_COMPONENT_ACTION),operation:z.literal('discard'),confirmation:PayComponentReviewRetirement}).strict(),
+]);export type PayComponentModuleActionBrowserPacket=z.infer<typeof PayComponentModuleActionBrowserPacket>;
+export const PayComponentModuleActionBrowserResult=z.discriminatedUnion('kind',[PayComponentReviewIndex,z.object({kind:z.literal('prepared'),review:PayComponentPreparedReview}).strict(),z.object({kind:z.literal('completed'),receipt:PayComponentCompletedReview}).strict(),z.object({kind:z.literal('retired'),receipt:PayComponentRetiredReview}).strict()]);export type PayComponentModuleActionBrowserResult=z.infer<typeof PayComponentModuleActionBrowserResult>;
+export function parsePayComponentModuleActionBrowserResult(packet:PayComponentModuleActionBrowserPacket,value:unknown):PayComponentModuleActionBrowserResult{
+ const result=PayComponentModuleActionBrowserResult.parse(value),op=packet.operation,index=result.kind==='pay_component_review_index';
+ if(!(op==='list'?index:op==='prepare'?result.kind==='prepared':op==='confirm'?result.kind==='completed'||result.kind==='retired':op==='discard'?result.kind==='retired':!index))throw Error('Module action response unavailable.');
+ const id=result.kind==='prepared'?result.review.actionId:result.kind==='completed'||result.kind==='retired'?result.receipt.actionId:null,expected=op==='reopen'?packet.actionId:op==='confirm'||op==='discard'?packet.confirmation.actionId:null;
+ if(expected&&id!==expected)throw Error('Module action response unavailable.');
+ if(op==='prepare'&&(result.kind!=='prepared'||JSON.stringify(packet.input)!==JSON.stringify(result.review.content)))throw Error('Module action response unavailable.');
+ if(result.kind==='prepared'&&Date.parse(result.review.expiresAt)<=Date.parse(result.review.createdAt)||index&&result.reviews.some(row=>Date.parse(row.expiresAt)<=Date.parse(row.createdAt)))throw Error('Module action response unavailable.');return result;
+}
+type PayComponentOwners<Session>=Readonly<{list(session:Session):Promise<unknown>;prepare(session:Session,input:z.infer<typeof PayComponentReviewPrepare>):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:z.infer<typeof PayComponentReviewConfirmation>):Promise<unknown>;discard(session:Session,input:z.infer<typeof PayComponentReviewRetirement>):Promise<unknown>}>;
+/** Existing processed-run choices only. Native close permission and source checks are repeated
+ * by prepare/confirm; these labels never establish permission or contain financial inputs. */
+export const PayrollCloseActionChoices=z.discriminatedUnion('kind',[
+ z.object({kind:z.literal('choices'),truncated:z.boolean(),batches:z.array(z.object({batchId:z.guid(),companyName:z.string().min(1).max(1000),payPeriod:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),runType:z.enum(['regular','off_cycle','bonus','adjustment']),runSeq:z.number().int().positive(),cycleName:z.string().max(1000).nullable()}).strict()).max(20).refine(rows=>new Set(rows.map(row=>row.batchId)).size===rows.length)}).strict(),z.object({kind:z.literal('unavailable')}).strict(),
+]);export type PayrollCloseActionChoices=z.infer<typeof PayrollCloseActionChoices>;
+export const PayrollCloseModuleActionBrowserPacket=z.discriminatedUnion('operation',[
+ z.object({action:z.literal(PAYROLL_CLOSE_ACTION),operation:z.literal('list')}).strict(),z.object({action:z.literal(PAYROLL_CLOSE_ACTION),operation:z.literal('prepare'),input:PayrollCloseReviewPrepare}).strict(),z.object({action:z.literal(PAYROLL_CLOSE_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),z.object({action:z.literal(PAYROLL_CLOSE_ACTION),operation:z.literal('confirm'),confirmation:PayrollCloseReviewConfirmation}).strict(),z.object({action:z.literal(PAYROLL_CLOSE_ACTION),operation:z.literal('discard'),confirmation:PayrollCloseReviewRetirement}).strict(),
+]);export type PayrollCloseModuleActionBrowserPacket=z.infer<typeof PayrollCloseModuleActionBrowserPacket>;
+export const PayrollCloseModuleActionBrowserResult=z.discriminatedUnion('kind',[PayrollCloseReviewIndex,z.object({kind:z.literal('prepared'),review:PayrollClosePreparedReview}).strict(),z.object({kind:z.literal('completed'),receipt:PayrollCloseCompletedReview}).strict(),z.object({kind:z.literal('retired'),receipt:PayrollCloseRetiredReview}).strict()]);export type PayrollCloseModuleActionBrowserResult=z.infer<typeof PayrollCloseModuleActionBrowserResult>;
+export function parsePayrollCloseModuleActionBrowserResult(packet:PayrollCloseModuleActionBrowserPacket,value:unknown):PayrollCloseModuleActionBrowserResult{
+ const result=PayrollCloseModuleActionBrowserResult.parse(value),op=packet.operation,index=result.kind==='payroll_close_review_index';if(!(op==='list'?index:op==='prepare'?result.kind==='prepared':op==='confirm'?result.kind==='completed'||result.kind==='retired':op==='discard'?result.kind==='retired':!index))throw Error('Module action response unavailable.');
+ const id=result.kind==='prepared'?result.review.actionId:result.kind==='completed'||result.kind==='retired'?result.receipt.actionId:null,expected=op==='reopen'?packet.actionId:op==='confirm'||op==='discard'?packet.confirmation.actionId:null;if(expected&&id!==expected)throw Error('Module action response unavailable.');
+ if(result.kind==='prepared'){const r=result.review;if(r.content.batchId!==r.review.batchId||Date.parse(r.expiresAt)<=Date.parse(r.createdAt))throw Error('Module action response unavailable.');if(op==='prepare'&&JSON.stringify(packet.input)!==JSON.stringify(r.content))throw Error('Module action response unavailable.');}
+ if(index&&result.reviews.some(row=>Date.parse(row.expiresAt)<=Date.parse(row.createdAt)))throw Error('Module action response unavailable.');return result;
+}
+type PayrollCloseOwners<Session>=Readonly<{list(session:Session):Promise<unknown>;prepare(session:Session,input:z.infer<typeof PayrollCloseReviewPrepare>):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:z.infer<typeof PayrollCloseReviewConfirmation>):Promise<unknown>;discard(session:Session,input:z.infer<typeof PayrollCloseReviewRetirement>):Promise<unknown>}>;
+/** Native review rows/labels have no finite source cap. Keep the WHOLE masked view up to256KiB;
+ * larger units honestly use native Rewards, never a silently shortened confirmation. Request stays20KiB. */
+export const REWARDS_POST_ACTION_RESPONSE_BYTES=262144;
+export const RewardsPostActionChoices=z.discriminatedUnion('kind',[
+ z.object({kind:z.literal('choices'),truncated:z.boolean(),units:z.array(z.object({unitId:z.guid(),revision:z.number().int().nonnegative(),companyName:z.string().min(1).max(1000),name:z.string().min(1).max(1000),cycleName:z.string().min(1).max(1000),year:z.number().int(),kind:z.enum(['annual','adhoc','midyear']),batches:z.array(z.object({id:z.guid(),payPeriod:z.string().regex(/^\d{4}-\d{2}$/)}).strict()).max(20).refine(rows=>new Set(rows.map(row=>row.id)).size===rows.length),batchesTruncated:z.boolean()}).strict()).max(20).refine(rows=>new Set(rows.map(row=>row.unitId)).size===rows.length)}).strict(),z.object({kind:z.literal('unavailable')}).strict(),
+]);export type RewardsPostActionChoices=z.infer<typeof RewardsPostActionChoices>;
+export const RewardsPostModuleActionBrowserPacket=z.discriminatedUnion('operation',[
+ z.object({action:z.literal(REWARDS_POST_ACTION),operation:z.literal('list')}).strict(),z.object({action:z.literal(REWARDS_POST_ACTION),operation:z.literal('prepare'),input:RewardsPostReviewPrepare}).strict(),z.object({action:z.literal(REWARDS_POST_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),z.object({action:z.literal(REWARDS_POST_ACTION),operation:z.literal('confirm'),confirmation:RewardsPostReviewConfirmation}).strict(),z.object({action:z.literal(REWARDS_POST_ACTION),operation:z.literal('discard'),confirmation:RewardsPostReviewRetirement}).strict(),
+]);export type RewardsPostModuleActionBrowserPacket=z.infer<typeof RewardsPostModuleActionBrowserPacket>;
+export const RewardsPostModuleActionBrowserResult=z.discriminatedUnion('kind',[RewardsPostReviewIndex,z.object({kind:z.literal('prepared'),review:RewardsPostPreparedReview}).strict(),z.object({kind:z.literal('completed'),receipt:RewardsPostCompletedReview}).strict(),z.object({kind:z.literal('retired'),receipt:RewardsPostRetiredReview}).strict()]);export type RewardsPostModuleActionBrowserResult=z.infer<typeof RewardsPostModuleActionBrowserResult>;
+export function parseRewardsPostModuleActionBrowserResult(packet:RewardsPostModuleActionBrowserPacket,value:unknown):RewardsPostModuleActionBrowserResult{
+ const result=RewardsPostModuleActionBrowserResult.parse(value),op=packet.operation,index=result.kind==='rewards_post_review_index';if(!(op==='list'?index:op==='prepare'?result.kind==='prepared':op==='confirm'?result.kind==='completed'||result.kind==='retired':op==='discard'?result.kind==='retired':!index))throw Error('Module action response unavailable.');
+ const id=result.kind==='prepared'?result.review.actionId:result.kind==='completed'||result.kind==='retired'?result.receipt.actionId:null,expected=op==='reopen'?packet.actionId:op==='confirm'||op==='discard'?packet.confirmation.actionId:null;if(expected&&id!==expected)throw Error('Module action response unavailable.');
+ if(result.kind==='prepared'){const r=result.review;if(r.content.unitId!==r.review.unitId||r.content.revision!==r.review.revision||r.content.batchId!==(r.review.batch?.id??null)||Date.parse(r.expiresAt)<=Date.parse(r.createdAt))throw Error('Module action response unavailable.');if(op==='prepare'&&JSON.stringify(packet.input)!==JSON.stringify(r.content))throw Error('Module action response unavailable.');}
+ if(index&&result.reviews.some(row=>Date.parse(row.expiresAt)<=Date.parse(row.createdAt)))throw Error('Module action response unavailable.');return result;
+}
+type RewardsPostOwners<Session>=Readonly<{list(session:Session):Promise<unknown>;prepare(session:Session,input:z.infer<typeof RewardsPostReviewPrepare>):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:z.infer<typeof RewardsPostReviewConfirmation>):Promise<unknown>;discard(session:Session,input:z.infer<typeof RewardsPostReviewRetirement>):Promise<unknown>}>;
+/** Actual country-owned Personnel section only; person/country are server-derived read metadata. */
+export const COUNTRY_STATUTORY_ACTION_RESPONSE_BYTES=65536,COUNTRY_STATUTORY_ACTION_REQUEST_BYTES=25600;
+export const CountryStatutoryLabels=z.object({employmentId:z.guid(),personId:z.guid(),employeeCode:z.string().nullable(),name:z.string(),companyName:z.string()}).strict();
+export const CountryStatutoryActionChoices=z.discriminatedUnion('kind',[z.object({kind:z.literal('unavailable')}).strict(),z.object({kind:z.literal('choices'),items:z.array(CountryStatutoryLabels.omit({personId:true})).max(20).refine(rows=>new Set(rows.map(row=>row.employmentId)).size===rows.length),truncated:z.boolean()}).strict()]);export type CountryStatutoryActionChoices=z.infer<typeof CountryStatutoryActionChoices>;
+export const CountryStatutoryEditable=z.object({kind:z.literal('country_statutory_editable'),employmentId:z.guid(),personId:z.guid(),country:z.literal('MY'),fields:ReviewedCountryStatutoryAfter.omit({subjectToSocso:true,eisEligible:true}),labels:CountryStatutoryLabels}).strict().refine(value=>value.labels.employmentId===value.employmentId&&value.labels.personId===value.personId);
+export const CountryStatutoryModuleActionBrowserPacket=z.discriminatedUnion('operation',[z.object({action:z.literal(COUNTRY_STATUTORY_ACTION),operation:z.literal('list')}).strict(),z.object({action:z.literal(COUNTRY_STATUTORY_ACTION),operation:z.literal('read_editable'),employmentId:z.guid()}).strict(),z.object({action:z.literal(COUNTRY_STATUTORY_ACTION),operation:z.literal('prepare'),input:CountryStatutoryReviewPrepare}).strict(),z.object({action:z.literal(COUNTRY_STATUTORY_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),z.object({action:z.literal(COUNTRY_STATUTORY_ACTION),operation:z.literal('confirm'),confirmation:CountryStatutoryReviewConfirmation}).strict(),z.object({action:z.literal(COUNTRY_STATUTORY_ACTION),operation:z.literal('discard'),confirmation:CountryStatutoryReviewRetirement}).strict()]);export type CountryStatutoryModuleActionBrowserPacket=z.infer<typeof CountryStatutoryModuleActionBrowserPacket>;
+export const CountryStatutoryModuleActionBrowserResult=z.discriminatedUnion('kind',[CountryStatutoryReviewIndex,CountryStatutoryEditable,z.object({kind:z.literal('prepared'),review:CountryStatutoryPreparedReview,labels:CountryStatutoryLabels}).strict(),z.object({kind:z.literal('completed'),receipt:CountryStatutoryCompletedReview,labels:CountryStatutoryLabels}).strict(),z.object({kind:z.literal('retired'),receipt:CountryStatutoryRetiredReview}).strict()]);export type CountryStatutoryModuleActionBrowserResult=z.infer<typeof CountryStatutoryModuleActionBrowserResult>;
+export function parseCountryStatutoryModuleActionBrowserResult(packet:CountryStatutoryModuleActionBrowserPacket,value:unknown):CountryStatutoryModuleActionBrowserResult{const result=CountryStatutoryModuleActionBrowserResult.parse(value),op=packet.operation,index=result.kind==='country_statutory_review_index';if(!(op==='list'?index:op==='read_editable'?result.kind==='country_statutory_editable':op==='prepare'?result.kind==='prepared':op==='confirm'?result.kind==='completed'||result.kind==='retired':op==='discard'?result.kind==='retired':result.kind==='prepared'||result.kind==='completed'||result.kind==='retired'))throw Error('Module action response unavailable.');
+ if(result.kind==='country_statutory_editable'&&(op!=='read_editable'||result.employmentId!==packet.employmentId.toLowerCase()))throw Error('Module action response unavailable.');
+ const expected=op==='reopen'?packet.actionId:op==='confirm'||op==='discard'?packet.confirmation.actionId:null,id=result.kind==='prepared'?result.review.actionId:result.kind==='completed'||result.kind==='retired'?result.receipt.actionId:null;if(expected&&id!==expected.toLowerCase())throw Error('Module action response unavailable.');
+ if(result.kind==='prepared'){const r=result.review;if(r.content.employmentId.toLowerCase()!==r.review.employmentId||typeof r.content.input.personId!=='string'||r.content.input.personId.toLowerCase()!==r.review.personId||result.labels.employmentId!==r.review.employmentId||result.labels.personId!==r.review.personId||Date.parse(r.expiresAt)<=Date.parse(r.createdAt))throw Error('Module action response unavailable.');if(op==='prepare'&&JSON.stringify(packet.input)!==JSON.stringify(r.content))throw Error('Module action response unavailable.');}
+ if(result.kind==='completed'&&(result.labels.employmentId!==result.receipt.receipt.employmentId||result.labels.personId!==result.receipt.receipt.personId))throw Error('Module action response unavailable.');if(index&&result.reviews.some(row=>Date.parse(row.expiresAt)<=Date.parse(row.createdAt)))throw Error('Module action response unavailable.');return result;}
+type CountryStatutoryOwners<Session>=Readonly<{readEditable(session:Session,id:string):Promise<unknown>;list(session:Session):Promise<unknown>;prepare(session:Session,input:z.infer<typeof CountryStatutoryReviewPrepare>):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:z.infer<typeof CountryStatutoryReviewConfirmation>):Promise<unknown>;discard(session:Session,input:z.infer<typeof CountryStatutoryReviewRetirement>):Promise<unknown>}>;
+const SharedBrowserPacket=z.union([CountryStatutoryModuleActionBrowserPacket,ModuleActionBrowserPacket,ProfileModuleActionBrowserPacket,PerformanceModuleActionBrowserPacket,ClaimModuleActionBrowserPacket,TestingModuleActionBrowserPacket,ClaimSubmissionModuleActionBrowserPacket,ClaimCancellationModuleActionBrowserPacket,LeaveCancellationModuleActionBrowserPacket,LeaveEditModuleActionBrowserPacket,OrgModuleActionBrowserPacket,KnowledgeModuleActionBrowserPacket,LifecycleAckModuleActionBrowserPacket,ToilModuleActionBrowserPacket,AssignedLeaveModuleActionBrowserPacket,AttendanceModuleActionBrowserPacket,PayComponentModuleActionBrowserPacket,RewardsPostModuleActionBrowserPacket,PayrollCloseModuleActionBrowserPacket,MultiCycleRunModuleActionBrowserPacket]);
+type SharedBrowserPacket=z.infer<typeof SharedBrowserPacket>;
+export type ModuleActionBrowserOwners<Session>=Readonly<{
+ authenticate():Promise<Session>;
+ countryStatutory?:CountryStatutoryOwners<Session>;
+ multiCycleRun?:Readonly<{catalogue(session:Session,value:unknown):Promise<unknown>;scopeSearch(session:Session,value:unknown):Promise<unknown>;list(session:Session):Promise<unknown>;prepare(session:Session,value:unknown):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,value:unknown):Promise<unknown>;discard(session:Session,value:unknown):Promise<unknown>}>;
+ payrollClose?:PayrollCloseOwners<Session>;
+ rewardsPost?:RewardsPostOwners<Session>;
+ payComponent?:PayComponentOwners<Session>;
+ attendance?:AttendanceOwners<Session>;
+ assignedDecision?:AssignedLeaveOwners<Session>;
+ toil?:ToilOwners<Session>;
+ lifecycleAck?:LifecycleAckOwners<Session>;
+ knowledge?:KnowledgeOwners<Session>;
+ org?:OrgOwners<Session>;
+ testing?:TestingOwners<Session>;
+ claimSubmission?:ClaimSubmissionOwners<Session>;
+ claimCancellation?:ClaimCancellationOwners<Session>;
+ leaveCancellation?:LeaveChangeOwner<Session>;
+ leaveEdit?:LeaveChangeOwner<Session>;
+ claims?:ClaimOwners<Session>;
+ profile?:ProfileOwners<Session>;
+ performance?:PerformanceOwners<Session>;
+ list(session:Session):Promise<unknown>;
+ prepare(session:Session,input:z.infer<typeof ModuleActionPrepare>):Promise<unknown>;
+ reopen(session:Session,actionId:string):Promise<unknown>;
+ confirm(session:Session,input:z.infer<typeof ModuleActionConfirmation>):Promise<unknown>;
+ discard(session:Session,input:z.infer<typeof ModuleActionRetirementRequest>):Promise<unknown>;
+}>;
+const responseHeaders={'Cache-Control':'private, no-store','Vary':'Cookie, Authorization','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'};
+const unavailable=(status:number)=>Response.json({error:'unavailable'},{status,headers:responseHeaders});
+/** Fixed byte/fragment/time bounds before identity/source work. Once confirmation starts, transport
+ * loss is uncertain; the client must reopen the SAME saved action rather than create/retry effects. */
+async function packet(request:Request):Promise<SharedBrowserPacket>{
+ const length=request.headers.get('content-length');if(length!==null&&(!/^\d+$/.test(length)||!Number.isSafeInteger(Number(length))||Number(length)>TESTING_ACTION_TRANSPORT_BYTES))throw Error();
+ if(!request.body||request.signal.aborted)throw Error();
+ const reader=request.body.getReader(),chunks:Uint8Array[]=[];let bytes=0,fragments=0,rejectAbort!:()=>void;
+ const stopped=new Promise<never>((_,reject)=>{rejectAbort=()=>reject(Error());});void stopped.catch(()=>{});
+ const abort=()=>{rejectAbort();void reader.cancel().catch(()=>{});};request.signal.addEventListener('abort',abort,{once:true});if(request.signal.aborted)abort();const timer=setTimeout(abort,5000);
+ try{for(;;){if(++fragments>8192)throw Error();const part=await Promise.race([reader.read(),stopped]);if(part.done)break;bytes+=part.value.byteLength;if(bytes>TESTING_ACTION_TRANSPORT_BYTES)throw Error();chunks.push(part.value);}
+  if(request.signal.aborted)throw Error();const body=new Uint8Array(bytes);let offset=0;for(const chunk of chunks){body.set(chunk,offset);offset+=chunk.byteLength;}
+  const parsed=SharedBrowserPacket.parse(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(body)));const extended='action' in parsed&&parsed.action===MODULE_TESTING_EXECUTION_ACTION&&parsed.operation==='prepare',knowledge='action' in parsed&&parsed.action===KNOWLEDGE_ARTICLE_ACTION&&parsed.operation==='prepare',toil='action' in parsed&&parsed.action===TOIL_ACTION&&parsed.operation==='prepare',attendance='action' in parsed&&parsed.action===ATTENDANCE_ACTION&&parsed.operation==='prepare',countryStatutory='action' in parsed&&parsed.action===COUNTRY_STATUTORY_ACTION&&parsed.operation==='prepare',payComponent='action' in parsed&&parsed.action===PAY_COMPONENT_ACTION&&parsed.operation==='prepare',multiCycle='action' in parsed&&parsed.action===MULTI_CYCLE_RUN_ACTION&&parsed.operation==='prepare',bound=countryStatutory?COUNTRY_STATUTORY_ACTION_REQUEST_BYTES:multiCycle?MULTI_CYCLE_RUN_PREPARE_BYTES:payComponent?PAY_COMPONENT_ACTION_REQUEST_BYTES:knowledge?KNOWLEDGE_ACTION_TRANSPORT_BYTES:toil?TOIL_ACTION_PREPARE_BYTES:attendance?ATTENDANCE_ACTION_BYTES:20480,fragmentBound=countryStatutory||multiCycle||payComponent||knowledge||toil||attendance?1024:512;if(!extended&&(bytes>bound||fragments>fragmentBound||length!==null&&Number(length)>bound))throw Error();return parsed;
+ }catch{void reader.cancel().catch(()=>{});throw Error();}finally{clearTimeout(timer);request.signal.removeEventListener('abort',abort);reader.releaseLock();}
+}
+/** Trusted server construction only. Undefined/invalid configured origins refuse; request Host,
+ * Forwarded and URL never become an origin allow-list. No same-URL fallback or bearer caller. */
+export function createModuleActionBrowserHandler<Session>(owners:ModuleActionBrowserOwners<Session>,policy:Readonly<{publicOrigin:string|undefined}>){
+ const configured=policy.publicOrigin;
+ return async(request:Request):Promise<Response>=>{
+  if(request.method!=='POST')return unavailable(405);
+  try{const origin=configured?new URL(configured):null;if(!origin||!['https:','http:'].includes(origin.protocol)||origin.origin!==configured||request.headers.get('origin')!==configured||request.headers.has('authorization')||new URL(request.url).search)return unavailable(403);}catch{return unavailable(403);}
+  const site=request.headers.get('sec-fetch-site');if(site!==null&&site!=='same-origin')return unavailable(403);
+  if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('content-type')??''))return unavailable(415);
+  let input:SharedBrowserPacket;try{input=await packet(request);}catch{return unavailable(400);}
+  let session:Session;try{session=await owners.authenticate();}catch{return unavailable(401);}
+  if(request.signal.aborted)return unavailable(408);
+  try{if('action' in input&&input.action===MULTI_CYCLE_RUN_ACTION){const owner=owners.multiCycleRun;if(!owner)return unavailable(503);const result=input.operation==='catalogue'?await owner.catalogue(session,input.selection):input.operation==='scope_search'?await owner.scopeSearch(session,input.selection):input.operation==='list'?await owner.list(session):input.operation==='prepare'?await owner.prepare(session,input.input):input.operation==='reopen'?await owner.reopen(session,input.actionId):input.operation==='confirm'?await owner.confirm(session,input.confirmation):await owner.discard(session,input.confirmation);const checked=parseMultiCycleRunModuleActionBrowserResult(input,result);if(new TextEncoder().encode(JSON.stringify(checked)).byteLength>MULTI_CYCLE_RUN_RESPONSE_BYTES)return unavailable(503);return Response.json(checked,{status:200,headers:responseHeaders});}
+   if('action' in input&&input.action===PAYROLL_CLOSE_ACTION){const owner=owners.payrollClose;if(!owner)return unavailable(503);const result=input.operation==='list'?await owner.list(session):input.operation==='prepare'?await owner.prepare(session,input.input):input.operation==='reopen'?await owner.reopen(session,input.actionId):input.operation==='confirm'?await owner.confirm(session,input.confirmation):await owner.discard(session,input.confirmation);const checked=parsePayrollCloseModuleActionBrowserResult(input,result);if(new TextEncoder().encode(JSON.stringify(checked)).byteLength>20480)return unavailable(503);return Response.json(checked,{status:200,headers:responseHeaders});}
+   if('action' in input&&input.action===COUNTRY_STATUTORY_ACTION){const owner=owners.countryStatutory;if(!owner)return unavailable(503);const result=input.operation==='read_editable'?await owner.readEditable(session,input.employmentId):input.operation==='list'?await owner.list(session):input.operation==='prepare'?await owner.prepare(session,input.input):input.operation==='reopen'?await owner.reopen(session,input.actionId):input.operation==='confirm'?await owner.confirm(session,input.confirmation):await owner.discard(session,input.confirmation);const checked=parseCountryStatutoryModuleActionBrowserResult(input,result);if(new TextEncoder().encode(JSON.stringify(checked)).byteLength>COUNTRY_STATUTORY_ACTION_RESPONSE_BYTES)return unavailable(503);return Response.json(checked,{status:200,headers:responseHeaders});}
+   if('action' in input&&input.action===REWARDS_POST_ACTION){const owner=owners.rewardsPost;if(!owner)return unavailable(503);const result=input.operation==='list'?await owner.list(session):input.operation==='prepare'?await owner.prepare(session,input.input):input.operation==='reopen'?await owner.reopen(session,input.actionId):input.operation==='confirm'?await owner.confirm(session,input.confirmation):await owner.discard(session,input.confirmation);const checked=parseRewardsPostModuleActionBrowserResult(input,result);if(new TextEncoder().encode(JSON.stringify(checked)).byteLength>REWARDS_POST_ACTION_RESPONSE_BYTES)return unavailable(503);return Response.json(checked,{status:200,headers:responseHeaders});}
+   if('action' in input&&input.action===PAY_COMPONENT_ACTION){const owner=owners.payComponent;if(!owner)return unavailable(503);const result=input.operation==='list'?await owner.list(session):input.operation==='prepare'?await owner.prepare(session,input.input):input.operation==='reopen'?await owner.reopen(session,input.actionId):input.operation==='confirm'?await owner.confirm(session,input.confirmation):await owner.discard(session,input.confirmation);const checked=parsePayComponentModuleActionBrowserResult(input,result);if(new TextEncoder().encode(JSON.stringify(checked)).byteLength>PAY_COMPONENT_ACTION_RESPONSE_BYTES)return unavailable(503);return Response.json(checked,{status:200,headers:responseHeaders});}
+   if('action' in input&&input.action===ATTENDANCE_ACTION){const owner=owners.attendance;if(!owner)return unavailable(503);const result=input.operation==='clock_source'?await owner.clockSource(session,input.selection):input.operation==='list'?await owner.list(session):input.operation==='prepare'?await owner.prepare(session,input.input):input.operation==='reopen'?await owner.reopen(session,input.actionId):input.operation==='confirm'?await owner.confirm(session,input.confirmation):await owner.discard(session,input.confirmation);const checked=parseAttendanceModuleActionBrowserResult(input,result);if(new TextEncoder().encode(JSON.stringify(checked)).byteLength>ATTENDANCE_ACTION_BYTES)return unavailable(503);return Response.json(checked,{status:200,headers:responseHeaders});}
+   if('action' in input&&input.action===ASSIGNED_LEAVE_ACTION){const decision=owners.assignedDecision;if(!decision)return unavailable(503);const result=input.operation==='list'?await decision.list(session):input.operation==='prepare'?await decision.prepare(session,input.input):input.operation==='reopen'?await decision.reopen(session,input.actionId):input.operation==='confirm'?await decision.confirm(session,input.confirmation):await decision.discard(session,input.confirmation);const checked=parseAssignedLeaveModuleActionBrowserResult(input,result);if(new TextEncoder().encode(JSON.stringify(checked)).byteLength>ASSIGNED_LEAVE_ACTION_RESPONSE_BYTES)return unavailable(503);return Response.json(checked,{status:200,headers:responseHeaders});}
+   if('action' in input&&input.action===TOIL_ACTION){const toil=owners.toil;if(!toil)return unavailable(503);const result=input.operation==='list'?await toil.list(session):input.operation==='prepare'?await toil.prepare(session,input.input):input.operation==='reopen'?await toil.reopen(session,input.actionId):input.operation==='confirm'?await toil.confirm(session,input.confirmation):await toil.discard(session,input.confirmation);const checked=parseToilModuleActionBrowserResult(input,result);if(new TextEncoder().encode(JSON.stringify(checked)).byteLength>TOIL_ACTION_RESPONSE_BYTES)return unavailable(503);return Response.json(checked,{status:200,headers:responseHeaders});}
+   if('action' in input&&input.action===LIFECYCLE_ACK_ACTION){const ack=owners.lifecycleAck;if(!ack)return unavailable(503);const result=input.operation==='list'?await ack.list(session):input.operation==='prepare'?await ack.prepare(session,input.input):input.operation==='reopen'?await ack.reopen(session,input.actionId):input.operation==='confirm'?await ack.confirm(session,input.confirmation):await ack.discard(session,input.confirmation);const checked=parseLifecycleAckModuleActionBrowserResult(input,result);if(new TextEncoder().encode(JSON.stringify(checked)).byteLength>20480)return unavailable(503);return Response.json(checked,{status:200,headers:responseHeaders});}
+   if('action' in input&&input.action===KNOWLEDGE_ARTICLE_ACTION){const knowledge=owners.knowledge;if(!knowledge)return unavailable(503);const result=input.operation==='list'?await knowledge.list(session):input.operation==='prepare'?await knowledge.prepare(session,input.input):input.operation==='reopen'?await knowledge.reopen(session,input.actionId):input.operation==='confirm'?await knowledge.confirm(session,input.confirmation):await knowledge.discard(session,input.confirmation);const checked=parseKnowledgeModuleActionBrowserResult(input,result);if(new TextEncoder().encode(JSON.stringify(checked)).byteLength>KNOWLEDGE_ACTION_TRANSPORT_BYTES)return unavailable(503);return Response.json(checked,{status:200,headers:responseHeaders});}
+   if('action' in input&&input.action===ORG_ACTION){const org=owners.org;if(!org)return unavailable(503);const result=input.operation==='choices'?await org.choices(session,input.selection):input.operation==='list'?await org.list(session):input.operation==='prepare'?await org.prepare(session,input.input):input.operation==='reopen'?await org.reopen(session,input.actionId):input.operation==='confirm'?await org.confirm(session,input.confirmation):await org.discard(session,input.confirmation);const checked=parseOrgModuleActionBrowserResult(input,result);if(new TextEncoder().encode(JSON.stringify(checked)).byteLength>20480)return unavailable(503);return Response.json(checked,{status:200,headers:responseHeaders});}
+   if('action' in input&&(input.action===OWN_LEAVE_CANCELLATION_ACTION||input.action===OWN_LEAVE_EDIT_ACTION)){const owner=input.action===OWN_LEAVE_EDIT_ACTION?owners.leaveEdit:owners.leaveCancellation;if(!owner)return unavailable(503);const packet=input as LeaveChangeModuleActionBrowserPacket;const result=packet.operation==='choices'?await owner.choices(session):packet.operation==='list'?await owner.list(session):packet.operation==='prepare'?await owner.prepare(session,packet.input):packet.operation==='reopen'?await owner.reopen(session,packet.actionId):packet.operation==='confirm'?await owner.confirm(session,packet.confirmation as {actionId:string;reviewedDigest:string}):await owner.discard(session,packet.confirmation as {actionId:string});const checked=parseLeaveChangeModuleActionBrowserResult(packet,result);if(new TextEncoder().encode(JSON.stringify(checked)).byteLength>20480)return unavailable(503);return Response.json(checked,{status:200,headers:responseHeaders});}
+   if('action' in input&&input.action===OWN_CLAIM_CANCELLATION_ACTION){const owner=owners.claimCancellation;if(!owner)return unavailable(503);const result=input.operation==='choices'?await owner.choices(session):input.operation==='list'?await owner.list(session):input.operation==='prepare'?await owner.prepare(session,input.input):input.operation==='reopen'?await owner.reopen(session,input.actionId):input.operation==='confirm'?await owner.confirm(session,input.confirmation):await owner.discard(session,input.confirmation);const checked=parseClaimCancellationModuleActionBrowserResult(input,result);if(new TextEncoder().encode(JSON.stringify(checked)).byteLength>20480)return unavailable(503);return Response.json(checked,{status:200,headers:responseHeaders});}
+   if('action' in input&&input.action===OWN_CLAIM_SUBMISSION_ACTION){const submission=owners.claimSubmission;if(!submission)return unavailable(503);const result=input.operation==='list'?await submission.list(session):input.operation==='prepare'?await submission.prepare(session,input.input):input.operation==='reopen'?await submission.reopen(session,input.actionId):input.operation==='confirm'?await submission.confirm(session,input.confirmation):await submission.discard(session,input.confirmation);return Response.json(parseClaimSubmissionModuleActionBrowserResult(input,result),{status:200,headers:responseHeaders});}
+   if('action' in input&&input.action===MODULE_TESTING_EXECUTION_ACTION){const testing=owners.testing;if(!testing)return unavailable(503);const result=input.operation==='read_execution'?await testing.readExecution(session,input.executionId):input.operation==='list'?await testing.list(session):input.operation==='prepare'?await testing.prepare(session,input.input):input.operation==='reopen'?await testing.reopen(session,input.actionId):input.operation==='confirm'?await testing.confirm(session,input.confirmation):await testing.discard(session,input.confirmation);return Response.json(parseTestingModuleActionBrowserResult(input,result),{status:200,headers:responseHeaders});}
+   if('action' in input&&input.action===OWN_CLAIM_DRAFT_ACTION){const claims=owners.claims;if(!claims)return unavailable(503);const result=input.operation==='read_draft'?await claims.readDraft(session,{employmentId:input.employmentId,draftId:input.draftId}):input.operation==='list'?await claims.list(session):input.operation==='prepare'?await claims.prepare(session,input.input):input.operation==='reopen'?await claims.reopen(session,input.actionId):input.operation==='confirm'?await claims.confirm(session,input.confirmation):await claims.discard(session,input.confirmation);return Response.json(parseClaimModuleActionBrowserResult(input,result),{status:200,headers:responseHeaders});}
+   if('action' in input&&(input.action===MODULE_REVIEW_ACK_ACTION||input.action===MODULE_ONEHR_ACK_ACTION)){const performance=owners.performance;if(!performance)return unavailable(503);const result=input.operation==='list'?await performance.list(session,input.action):input.operation==='prepare'?await performance.prepare(session,input.input):input.operation==='reopen'?await performance.reopen(session,input.action,input.actionId):input.operation==='confirm'?await performance.confirm(session,input.confirmation):await performance.discard(session,input.confirmation);return Response.json(parsePerformanceModuleActionBrowserResult(input,result),{status:200,headers:responseHeaders});}
+   if('action' in input&&input.action==='ess.profile.request'){const profile=owners.profile;if(!profile)return unavailable(503);const result=input.operation==='list'?await profile.list(session):input.operation==='prepare'?await profile.prepare(session,input.input):input.operation==='reopen'?await profile.reopen(session,input.actionId):input.operation==='confirm'?await profile.confirm(session,input.confirmation):await profile.discard(session,input.confirmation);return Response.json(parseProfileModuleActionBrowserResult(input,result),{status:200,headers:responseHeaders});}
+   if('action' in input)return unavailable(400);
+   const result=input.operation==='list'?await owners.list(session):input.operation==='prepare'?await owners.prepare(session,input.input):input.operation==='reopen'?await owners.reopen(session,input.actionId):input.operation==='confirm'?await owners.confirm(session,input.confirmation):await owners.discard(session,input.confirmation);
+   return Response.json(parseModuleActionBrowserResult(input.operation,result),{status:200,headers:responseHeaders});
+  }catch{return unavailable(503);}
+ };
+}

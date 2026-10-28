@@ -26,6 +26,7 @@
 import { and, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { createDb, type Tx } from '../db/client';
 import { appendEvent } from '../db/events';
+import { lockAccessConfigurationTx } from '../core/access-configuration-lock';
 import { activatorsFor, mergeOutcomes, type ActivationOutcome } from '../core/module-activation';
 import { deactivationBlockers, unansweredBlockers } from '../core/module-deactivation';
 import { company, module_, moduleChangeRequest, subscriptionLine, tenantModule } from '../db/schema';
@@ -125,6 +126,22 @@ export async function assertActivatable(tx: Tx, req: Request): Promise<void> {
  * back together, so a half-installed module is not a state the system can be left in.
  */
 export async function applyModuleChange(tx: Tx, req: Request): Promise<ActivationOutcome> {
+  req = structuredClone(req);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.tenantId))
+    throw new ModuleChangeRefused('ownership', 'Module configuration ownership could not be confirmed.');
+  await lockAccessConfigurationTx(tx, req.tenantId);
+  // This runner owns an injected migration-role transaction, not an app principal carrier. Do not
+  // impersonate a customer or change app.tenant_id to satisfy an ordinary-command prerequisite.
+  // Join the exact canonical configuration key before catalogue/blocker/seeding reads. Only the
+  // physical table owner or an existing superuser can enter this owner-only path; it grants no role.
+  const [ownership] = await tx.execute<{ acquired: boolean }>(sql`select case when
+    current_setting('transaction_isolation')='read committed' and current_setting('transaction_read_only')='off'
+    and exists(select 1 from pg_catalog.pg_roles r join pg_catalog.pg_class c on c.oid='public.tenant_module'::regclass
+      where r.rolname=current_user and (r.rolsuper or c.relowner=r.oid))
+    then pg_try_advisory_xact_lock(hashtextextended(${'leave-dependency-configuration:' + req.tenantId},0))
+    else false end as acquired`);
+  if (ownership?.acquired !== true)
+    throw new ModuleChangeRefused('ownership', 'Module configuration is busy or unavailable; retry the request.');
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'operator-modules:' + req.tenantId},0))`);
   await assertActivatable(tx, req);
 

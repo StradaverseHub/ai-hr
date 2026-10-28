@@ -1,0 +1,15 @@
+// @vitest-environment jsdom
+/** Authored UNRUN: actual native editor controls; catalogue mode forbids every unrelated request. */
+import React from 'react';
+import {cleanup,fireEvent,render,screen} from '@testing-library/react';
+import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
+const actions=vi.hoisted(()=>({search:vi.fn(async()=>[]),preview:vi.fn(),draft:vi.fn()}));
+vi.mock('../app/admin/pay-components/actions',()=>({searchPreviewEmployeesAction:actions.search,previewPayRuleAction:actions.preview,draftPayRuleAction:actions.draft}));vi.mock('next-intl',()=>({useTranslations:()=>((key:string)=>key)}));
+import {PayRuleEditor} from '../app/admin/pay-components/pay-rule-editor';
+beforeEach(()=>{vi.clearAllMocks();vi.useFakeTimers();});afterEach(()=>{cleanup();vi.useRealTimers();});
+const props={code:'HUMAN',kind:'allowance',prorates:true,rule:null,aiEnabled:true,payItems:[{code:'OTHER',name:'Human other allowance'}],previewEmployees:[{employmentId:'10000000-0000-4000-8000-000000000001',name:'Private employee',employeeCode:'PRIVATE'}]};
+describe('native PayRuleEditor catalogueOnly boundary',()=>{
+ it('no employee auto-search on mount even when supplied employee/AI props; no preview/AI controls or private metadata',async()=>{render(<PayRuleEditor {...props} catalogueOnly/>);await vi.advanceTimersByTimeAsync(1000);expect(actions.search).not.toHaveBeenCalled();expect(actions.preview).not.toHaveBeenCalled();expect(actions.draft).not.toHaveBeenCalled();expect(screen.queryByText('Private employee')).toBeNull();expect(screen.queryByText('previewTitle')).toBeNull();expect(screen.queryByText('assistTitle')).toBeNull();});
+ it('retains all7 actual native rule selections and the hidden structured rule value without requests',async()=>{render(<PayRuleEditor {...props} catalogueOnly/>);const select=document.querySelector('select') as HTMLSelectElement;expect(Array.from(select.options).map(o=>o.value)).toEqual(['fixed','qty_rate','percent_of','per_day','per_hour','flat_capped','formula']);for(const kind of ['percent_of','per_day','per_hour','flat_capped','qty_rate','formula']){fireEvent.change(select,{target:{value:kind}});expect(JSON.parse((document.querySelector('input[name="rule"]') as HTMLInputElement).value).kind).toBe(kind);}await vi.advanceTimersByTimeAsync(1000);expect(actions.search).not.toHaveBeenCalled();expect(actions.preview).not.toHaveBeenCalled();expect(actions.draft).not.toHaveBeenCalled();});
+ it('preserves ordinary native default employee search when catalogueOnly is omitted',async()=>{render(<PayRuleEditor {...props}/>);await vi.advanceTimersByTimeAsync(251);expect(actions.search).toHaveBeenCalledWith('');});
+});

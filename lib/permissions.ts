@@ -59,11 +59,11 @@ export const MATRIX_ROLES: readonly Role[] = [
 ] as const;
 
 /** The page guard each screen is gated by — the single source of the access truth for that screen. */
-export type Guard = 'requireWorkforceAccess' | 'requireAccessConfiguration' | 'requireAdmin' | 'scopedAdmin' | 'scopedSession' | 'requireTeamAccess' | 'onboardingAccess' | 'onboardingParticipant' | 'onboardingMaster';
+export type Guard = 'assistantSession' | 'requireWorkforceAccess' | 'requireAccessConfiguration' | 'requireAdmin' | 'scopedAdmin' | 'scopedSession' | 'requireTeamAccess' | 'onboardingAccess' | 'onboardingParticipant' | 'onboardingMaster';
 
 /** Role eligibility. The effective-capability gate is rendered as conditional, never a role grant. */
 export function rolesForGuard(guard: Guard): ReadonlySet<Role> {
-  if(guard==='requireAccessConfiguration'||guard==='requireWorkforceAccess')return new Set<Role>(MATRIX_ROLES);
+  if(guard==='assistantSession'||guard==='requireAccessConfiguration'||guard==='requireWorkforceAccess')return new Set<Role>(MATRIX_ROLES);
   if (guard === 'requireTeamAccess') return new Set<Role>(['manager', 'hr_admin', 'super_admin']);
   // requireAdmin & scopedAdmin both gate on isAdmin → hr_admin + super_admin only.
   if (guard === 'requireAdmin' || guard === 'scopedAdmin' || guard === 'onboardingMaster') {
@@ -104,6 +104,8 @@ export interface ScreenEntry {
  * payroll surfaces. `routes` collapses parent+child pages that share one guard into a single column.
  */
 export const SCREENS: readonly ScreenEntry[] = [
+  // Shared authenticated shell; facts/effects additionally require current Assistant/native access.
+  {screenKey:'assistantWorkspace',href:'/assistant',labelKey:'nav.assistant',guard:'assistantSession',routes:['/assistant','/assistant/leave','/assistant/notifications','/assistant/profile','/assistant/performance','/assistant/claims','/assistant/testing','/assistant/org','/assistant/knowledge-base','/assistant/lifecycle','/assistant/toil','/assistant/approvals','/assistant/attendance','/assistant/pay-codes','/assistant/rewards','/assistant/payroll-close','/assistant/statutory','/assistant/payroll-runs'],hasScopeNote:true},
   {screenKey:'jobDescriptions',href:'/admin/job-descriptions',labelKey:'nav.jobDescriptions',guard:'requireAdmin',routes:['/admin/job-descriptions','/admin/job-descriptions/new','/admin/job-descriptions/configuration','/admin/job-descriptions/[id]','/admin/job-descriptions/[id]/print']},
   {screenKey:'rewardsAccess',href:'/admin/rewards/access',labelKey:'rewardsAccess.title',guard:'scopedAdmin',routes:['/admin/rewards/access']},
   {screenKey:'peopleGeneral',href:'/admin/settings/people-general',labelKey:'nav.peopleGeneral',guard:'requireAdmin',routes:['/admin/settings/people-general']},
@@ -111,12 +113,23 @@ export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'myEa',href:'/me/ea',labelKey:'nav.myEa',guard:'scopedSession',routes:['/me/ea'],hasScopeNote:true},
   {screenKey:'myTp1',href:'/me/tax-relief',labelKey:'nav.taxRelief',guard:'scopedSession',routes:['/me/tax-relief'],hasScopeNote:true},
   {screenKey:'myPayslip',href:'/me/payslip',labelKey:'nav.myPayslips',guard:'scopedSession',routes:['/me/payslip'],hasScopeNote:true},
+  {screenKey:'myLetters',href:'/me/letters',labelKey:'nav.myLetters',guard:'scopedSession',routes:['/me/letters','/me/letters/[letterId]'],hasScopeNote:true},
+  {screenKey:'letterReports',href:'/letters/reports',labelKey:'letters.reports.title',guard:'scopedSession',routes:['/letters/reports'],hasScopeNote:true},
+  {screenKey:'letterSettings',href:'/letters/settings',labelKey:'letters.settings.title',guard:'scopedSession',routes:['/letters/settings','/letters/settings/policy','/letters/settings/automation'],hasScopeNote:true},
+  {screenKey:'letterRegister',href:'/letters/register',labelKey:'letters.register.title',guard:'scopedSession',routes:['/letters/register','/letters/register/[letterId]'],hasScopeNote:true},
+  {screenKey:'letterApproval',href:'/letters/approval',labelKey:'letters.approval.title',guard:'scopedSession',routes:['/letters/approval','/letters/approval/[letterId]'],hasScopeNote:true},
+  {screenKey:'letterGenerate',href:'/letters/generate',labelKey:'letters.generate.page.title',guard:'scopedSession',routes:['/letters/generate','/letters/generate/new','/letters/generate/[batchId]'],hasScopeNote:true},
+  {screenKey:'letterTemplates',href:'/letters/templates',labelKey:'letters.templates.page.title',guard:'scopedSession',routes:['/letters/templates','/letters/templates/new','/letters/templates/[versionId]','/letters/templates/[versionId]/edit'],hasScopeNote:true},
+  {screenKey:'letterFields',href:'/letters/fields',labelKey:'letters.fields.title',guard:'scopedSession',routes:['/letters/fields','/letters/fields/[fieldId]'],hasScopeNote:true},
   // This is a capability gate, not a role grant. The reference grid renders it conditionally for all
   // roles; the page reads current SQL authority and a matching individual denial always wins.
   {screenKey:'accessConfiguration',href:'/admin/users/access',labelKey:'accessConfiguration.title',guard:'requireAccessConfiguration',routes:['/admin/users/access'],hasScopeNote:true},
   {screenKey:'myTasks',href:'/tasks',labelKey:'nav.myTasks',guard:'scopedSession',routes:['/tasks'],hasScopeNote:true},
   {screenKey:'employeeMasterReports',href:'/reports/employee-master',labelKey:'employeeMasterReports.title',guard:'scopedSession',routes:['/reports/employee-master','/reports/employee-master/[id]']},
-  {screenKey:'onehrAssignments',href:'/me/performance',labelKey:'onehr.assignments',guard:'scopedSession',routes:['/performance/workspace','/performance/assessment/feedback/[requestId]','/performance/assessment/calibration/[sessionId]'],hasScopeNote:true},
+  {screenKey:'performanceHome',href:'/performance/home',labelKey:'nav.performanceTalent',guard:'scopedSession',routes:['/performance/home'],hasScopeNote:true},
+  {screenKey:'onehrAssignments',href:'/me/performance',labelKey:'onehr.assignments',guard:'scopedSession',routes:['/performance/workspace','/performance/calibration','/performance/department','/performance/assessment/feedback/[requestId]','/performance/assessment/calibration/[sessionId]','/performance/led','/performance/calibration/talent-box'],hasScopeNote:true},
+  // D-P1-32 PT-X2: the Performance & Talent employee/leader tab routes. Each page adds its tab's gate (404 when hidden).
+  {screenKey:'performanceTabs',href:'/performance/my',labelKey:'nav.performanceTalent',guard:'scopedSession',routes:['/performance/my','/performance/my/kpis','/performance/team','/performance/team/kpis','/performance/team/[reviewId]','/performance/assessments','/performance/feedback','/performance/competency','/performance/competency/team','/performance/plan','/performance/plan/profile','/performance/plan/team']},
   {screenKey:'attendanceConfigurationDestinations',href:'/admin/attendance/settings/company-policy',labelKey:'attendanceSettingsHub.companyPolicy.title',guard:'scopedAdmin',routes:['/admin/attendance/settings/company-policy','/admin/attendance/settings/work-schedule-overtime','/admin/attendance/settings/registered-devices']},
   {screenKey:'attendanceApprovalWorkflow',href:'/admin/attendance/approval-workflow',labelKey:'nav.attendanceApprovalWorkflow',guard:'scopedAdmin',routes:['/admin/attendance/approval-workflow','/admin/attendance/approval-workflow/new','/admin/attendance/approval-workflow/[lineageId]','/admin/attendance/approval-workflow/[lineageId]/edit']},
   {screenKey:'attendanceApplicationHistory',href:'/attendance/application-history',labelKey:'nav.applicationHistory',guard:'scopedAdmin',routes:['/attendance/application-history','/attendance/application-history/[id]']},
@@ -129,6 +142,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   { screenKey: 'loginPresentation', href: '/admin/settings/login', labelKey: 'nav.loginPresentation', guard: 'scopedAdmin', routes: ['/admin/settings/login'], hasScopeNote: true },
   { screenKey: 'identityEmail', href: '/admin/settings/email', labelKey: 'nav.identityEmail', guard: 'scopedSession', routes: ['/admin/settings/email'], hasScopeNote: true },
   { screenKey: 'rewards', href: '/rewards', labelKey: 'nav.rewards', guard: 'scopedSession', routes: ['/rewards', '/rewards/[unitId]', '/rewards/[unitId]/people/[entryId]'] },
+  { screenKey: 'rewardsApprovals', href: '/rewards/approvals', labelKey: 'rewards.board.title', guard: 'scopedSession', routes: ['/rewards/approvals'] },
   { screenKey: 'rewardsAdmin', href: '/admin/rewards', labelKey: 'rewards.adminTitle', guard: 'scopedAdmin', routes: ['/admin/rewards','/admin/rewards/shared'] },
   { screenKey: 'rewardsPolicy', href: '/admin/rewards/[unitId]', labelKey: 'rewards.configuration', guard: 'scopedSession', routes: ['/admin/rewards/[unitId]'] },
   // ── Everyday screens (scopedSession: every role reaches, data is scoped) ──
@@ -407,7 +421,7 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/performance',
     labelKey: 'nav.performance',
     guard: 'scopedSession',
-    routes: ['/performance', '/performance/[cycleId]', '/performance/[cycleId]/records', '/performance/[cycleId]/reports'],
+    routes: ['/performance', '/performance/[cycleId]', '/performance/[cycleId]/records', '/performance/[cycleId]/reports', '/performance/leaders', '/performance/[cycleId]/release', '/performance/[cycleId]/[section]/[tab]'],
     hasScopeNote: true,
   },
   // ── Admin org / people (requireAdmin → hr_admin + super_admin) ──
@@ -1122,6 +1136,14 @@ export const SCREENS: readonly ScreenEntry[] = [
       // still, on isGroupAdmin, mirroring 0313's tenant_setting_write — this registry is the coarse
       // "may the role open the screen at all", by design.)
       '/control-tower/agents',
+      // AI management sub-menu: each section is its own page behind the same requireAdmin guard. The
+      // Provider page sits in the aiConfig column below, because it is the screen that column governs.
+      '/control-tower/agents/assistant',
+      '/control-tower/agents/features',
+      '/control-tower/agents/allowances',
+      '/control-tower/agents/spending',
+      '/control-tower/agents/orchestrator',
+      '/control-tower/agents/runs',
       // ADR-0074 r245 — the cross-run exceptions queue. Same requireAdmin guard as its siblings and the
       // per-run queue it complements, so it needs a column here or test/function-access.test.ts fails.
       '/control-tower/exceptions',
@@ -1150,6 +1172,8 @@ export const SCREENS: readonly ScreenEntry[] = [
       // Same scopedAdmin key as the rest of the hub: the screen shows per-employee salary differences.
       '/payroll/back-pay',
       '/payroll/history-import',
+      '/payroll/history-import/logs',
+      '/payroll/history-import/logs/[attemptId]',
       // 169e3c24: the pre-release Individual Payslip viewer. Registered on the SAME scopedAdmin key as
       // the rest of the hub, because it is the admin's review of a payslip before it is released — it
       // reads through `payslipForReview`, never the ESS gate, so it must be admin-scoped exactly like
@@ -1460,7 +1484,8 @@ export const SCREENS: readonly ScreenEntry[] = [
   { screenKey: 'analytics', href: '/analytics', labelKey: 'nav.analytics', guard: 'scopedAdmin', routes: ['/analytics'] },
   { screenKey: 'auditTrail', href: '/admin/audit', labelKey: 'nav.auditTrail', guard: 'requireAdmin', routes: ['/admin/audit'] },
   { screenKey: 'dataPrivacy', href: '/admin/privacy', labelKey: 'nav.dataPrivacy', guard: 'requireAdmin', routes: ['/admin/privacy'] },
-  { screenKey: 'aiConfig', href: '/admin/ai', labelKey: 'nav.aiConfig', guard: 'requireAdmin', routes: ['/admin/ai'] },
+  // Provider setup moved to AI management › Provider; /admin/ai is now a redirect-only segment.
+  { screenKey: 'aiConfig', href: '/control-tower/agents/provider', labelKey: 'nav.aiConfig', guard: 'requireAdmin', routes: ['/admin/ai', '/control-tower/agents/provider'] },
   { screenKey: 'usersRoles', href: '/admin/users', labelKey: 'nav.usersRoles', guard: 'requireAdmin', routes: ['/admin/users'] },
   {
     // System Analysis & Dependency Explorer (deec1691) — the record-relationship reference, moved from

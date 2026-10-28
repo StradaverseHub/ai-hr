@@ -1,0 +1,77 @@
+<meta charset="utf-8">
+<title>Email designer — build an email from blocks</title>
+<!-- Mockup for 16f192c5 revision 2 (contested: "overhaul the design, like an EDM"). Sample content only. -->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1}
+  *{box-sizing:border-box}
+  body{margin:0;padding:22px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+  h1{font-size:18px;margin:0}.sub{color:var(--mf);font-size:12.5px;margin:2px 0 0}
+  .btns{display:flex;gap:8px}.btn{padding:7px 14px;border-radius:8px;font-weight:600;font-size:12.5px;border:1px solid var(--border);background:#fff}.btn.p{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .grid{display:grid;grid-template-columns:200px 1fr 250px;gap:14px}
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px}
+  .ph{font-size:12px;font-weight:600;color:var(--mf);text-transform:uppercase;letter-spacing:.04em;margin:0 0 8px}
+  .blk{border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:6px;background:#fff;display:flex;gap:8px;align-items:center}
+  .ic{width:16px;height:16px;border-radius:4px;border:1.5px solid var(--mf);flex:none}
+  .canvas{background:#e9eaef;border-radius:14px;padding:18px;display:grid;place-items:start center}
+  .mail{width:560px;background:#fff;border-radius:6px;overflow:hidden;box-shadow:0 1px 3px rgb(0 0 0/.08)}
+  .b{position:relative}
+  .b.sel{outline:2px solid var(--primary);outline-offset:-2px}
+  .hero{height:150px;background:linear-gradient(135deg,#c2410c,#7c2d12);display:grid;place-items:center;color:#fff;font-size:22px;font-weight:800;letter-spacing:.02em}
+  .hdr{display:flex;align-items:center;gap:10px;padding:14px 22px;background:#1f1a4d;color:#fff;font-weight:700}
+  .logo{width:26px;height:26px;border-radius:7px;background:#c2410c;display:grid;place-items:center;font-size:11px}
+  .txt{padding:18px 22px}.txt h3{margin:0 0 6px;font-size:18px}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:0 22px 14px}
+  .col{background:#fff7ed;border-radius:8px;padding:12px;font-size:12.5px}
+  .lock{padding:6px 22px 18px}
+  .cta{display:inline-block;padding:11px 22px;border-radius:999px;background:#c2410c;color:#fff;font-weight:700}
+  .tag{position:absolute;top:6px;right:8px;font-size:11px;font-weight:700;background:#eef2ff;color:#4338ca;border-radius:999px;padding:2px 8px}
+  .foot{padding:14px 22px;background:#f6f6f8;font-size:12px;color:var(--mf)}
+  .row{display:flex;justify-content:space-between;align-items:center;margin:8px 0}
+  .sw{width:22px;height:22px;border-radius:6px;border:1px solid var(--border)}
+  .field{border:1px solid var(--border);border-radius:8px;padding:6px 8px;background:#fff;font-size:12.5px}
+  .hint{font-size:12px;color:var(--mf);margin-top:10px}
+</style>
+<div class="top">
+  <div><h1>Account invitation · Email designer</h1><p class="sub">System Settings › Email templates. Drag blocks in, rearrange them, and style everything.</p></div>
+  <div class="btns"><span class="btn">Desktop / Mobile preview</span><span class="btn">Send test to me</span><span class="btn">Restore default</span><span class="btn p">Save</span></div>
+</div>
+<div class="grid">
+  <div class="panel">
+    <p class="ph">Blocks</p>
+    <div class="blk"><span class="ic"></span>Header with logo</div>
+    <div class="blk"><span class="ic"></span>Banner image</div>
+    <div class="blk"><span class="ic"></span>Heading and text</div>
+    <div class="blk"><span class="ic"></span>Image</div>
+    <div class="blk"><span class="ic"></span>Button (your link)</div>
+    <div class="blk"><span class="ic"></span>Two columns</div>
+    <div class="blk"><span class="ic"></span>Divider</div>
+    <div class="blk"><span class="ic"></span>Spacer</div>
+    <div class="blk"><span class="ic"></span>Social links</div>
+    <div class="blk"><span class="ic"></span>Footer</div>
+    <p class="hint">Saved designs can be reused as a starting layout for the other emails.</p>
+  </div>
+  <div class="canvas">
+    <div class="mail">
+      <div class="b hdr"><span class="logo">AI</span>Sample Company Sdn Bhd</div>
+      <div class="b hero">WELCOME ABOARD</div>
+      <div class="b txt sel"><h3>You're invited, {first_name}</h3>Your organization code is {organization_code}. Use the button below to choose your username and password and set up your authenticator.</div>
+      <div class="b cols"><div class="col"><b>Step 1</b><br>Choose a username and password.</div><div class="col"><b>Step 2</b><br>Set up your authenticator app.</div></div>
+      <div class="b lock"><span class="tag">🔒 AIHR block</span><span class="cta">Activate my account</span><div style="color:var(--mf);margin-top:8px">This invitation expires after {expiry_days} days.</div></div>
+      <div class="b foot">Sample Company Sdn Bhd · Level 10, Sample Tower · This is an automated message from AIHR.</div>
+    </div>
+  </div>
+  <div class="panel">
+    <p class="ph">Style · Heading and text</p>
+    <div class="row">Background <span class="sw" style="background:#fff"></span></div>
+    <div class="row">Text colour <span class="sw" style="background:#1a1a22"></span></div>
+    <div class="row">Font <span class="field">Plus Jakarta Sans</span></div>
+    <div class="row">Size <span class="field">16 px</span></div>
+    <div class="row">Alignment <span class="field">Left</span></div>
+    <div class="row">Padding <span class="field">18 / 22</span></div>
+    <p class="ph" style="margin-top:14px">Insert detail</p>
+    <div class="row"><span class="field">{first_name}</span><span class="field">{company_name}</span></div>
+    <div class="row"><span class="field">{organization_code}</span><span class="field">{expiry_days}</span></div>
+    <p class="hint">The 🔒 AIHR block carries the activation link and expiry. You can move it and change its colours, but not remove it, change its link or edit its wording.</p>
+  </div>
+</div>

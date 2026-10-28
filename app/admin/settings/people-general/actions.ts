@@ -11,11 +11,11 @@ export async function savePeopleGeneralAction(form: FormData) {
   const t = await getTranslations('peopleGeneral');
   let error: string | undefined;
   try {
-    const values = form.getAll('allowDuplicatedNric');
-    if (values.length > 1 || values.some(value => value !== 'true')) throw new PeopleGeneralError('invalid');
+    const values = form.getAll('allowDuplicatedNric'), emailValues = form.getAll('allowDuplicatedEmail');
+    if ([values, emailValues].some(list => list.length > 1 || list.some(value => value !== 'true'))) throw new PeopleGeneralError('invalid');
     const revisions = form.getAll('revision');
     if (revisions.length !== 1 || typeof revisions[0] !== 'string') throw new PeopleGeneralError('invalid');
-    await savePeopleGeneral(s, { allowDuplicatedNric: values.length === 1, revision: revisions[0] || null });
+    await savePeopleGeneral(s, { allowDuplicatedNric: values.length === 1, allowDuplicatedEmail: emailValues.length === 1, revision: revisions[0] || null });
     revalidatePath(PAGE);
     revalidatePath('/admin/personnel/import');
   } catch (e) {

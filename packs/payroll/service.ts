@@ -27,7 +27,8 @@
  *     ADR-0020 statutory-pack distribution) — the COUNTRY axis, resolved through the registry.
  *
  * Server-only in practice (drags in db/client) — never import from client components; the pack's
- * client-safe declaration is `packs/payroll/index.ts`. Client widgets that need a payroll type
+ * client-safe declaration is `packs/payroll/index.ts`, and `packs/payroll/client.ts` exposes the
+ * pure pay-rule display formatter. Client widgets that need another payroll type
  * (e.g. `Tp1Row`, `LoanRow`) import the type directly and stay on the ratchet allowlist as debt
  * until a client-safe pack entry is cut, exactly like the country pack's `localization/my/client.ts`
  * split (rung 5b).
@@ -36,6 +37,8 @@ export * from '../../core/payroll';
 export * from '../../core/payroll-closed-runs';
 export * from '../../core/payroll-leave';
 export * from '../../core/payroll-cycle';
+export {lockPayrollPeriodsTx} from '../../core/payroll-period-lock';
+export {assertReviewedPayrollScopeCompanyTx} from '../../core/payroll-run-selection';
 export * from '../../core/payroll-config';
 export * from '../../core/payroll-policy';
 export * from '../../core/payroll-policy-config';
@@ -45,6 +48,7 @@ export * from '../../core/payroll-view';
 export * from '../../core/payroll-self-metadata';
 export * from '../../core/payroll-readiness';
 export * from '../../core/payroll-history-import';
+export * from '../../core/payroll-history-revisions';
 export * from '../../core/payroll-permissions-admin';
 export * from '../../core/pay-components';
 export * from '../../core/pay-rule';

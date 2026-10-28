@@ -1,3 +1,4 @@
+import { lockLeaveDependenciesTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
 /**
  * r424 (feedback 50ed39e1) — Attendance File Structure Mapping, Import Clocking Data, and Import Logs.
  *
@@ -47,7 +48,7 @@ import {
   type ClockingImportLineResult,
 } from '../db/schema';
 import { withAttendanceTenant as withTenant } from './module-gate';
-import { addImportedPunchesBatchTx, assignPunchBusinessDays, punchOrderKey } from './attendance';
+import { lockAttendanceLeaveDependenciesTx, addImportedPunchesBatchTx, assignPunchBusinessDays, punchOrderKey } from './attendance';
 // ADR-0080 D9 — payroll is consumed through its pack facade, never core/payroll directly.
 import {
   batchesCoveringAttendanceDates,
@@ -482,7 +483,7 @@ async function decideLines(tx: Tx, def: AnyMappingDef, text: string, lockTenantI
   // 1 · Match. Every employment the importer may see (RLS), terminated ones included, because "employed
   //     on the date" is decided per line. Card, then code, then IC digits; first level with an employment
   //     employed on that date wins; two at one level is ambiguous.
-  const emps: EmpRow[] = (
+  const readEmployments = async (): Promise<EmpRow[]> => (
     await tx
       .select({
         id: employment.id,
@@ -497,6 +498,7 @@ async function decideLines(tx: Tx, def: AnyMappingDef, text: string, lockTenantI
       .innerJoin(person, eq(person.id, employment.personId))
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
   ).map((r) => ({ ...r, start: String(r.start), end: r.end == null ? null : String(r.end) }));
+  const emps = await readEmployments();
   const index = (key: (e: EmpRow) => string | null) => {
     const m = new Map<string, EmpRow[]>();
     for (const e of emps) {
@@ -556,8 +558,13 @@ async function decideLines(tx: Tx, def: AnyMappingDef, text: string, lockTenantI
   if (matched.length === 0) return decided;
   // Commit shares the correction/clock lock before reading days or approved corrections.
   // Preview stays read-only. Stable order avoids two multi-employee imports deadlocking.
-  if (lockTenantId) for (const id of [...new Set(matched.map(d=>d.emp!.id))].sort()) {
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${lockTenantId + ':' + id}, 0))`);
+  if (lockTenantId) {
+    const ids=[...new Set(matched.map(d=>d.emp!.id))].sort();
+    await lockLeaveDependenciesTx(tx,lockTenantId,ids);
+    const fresh=await readEmployments();
+    const image=(rows:EmpRow[])=>JSON.stringify(rows.slice().sort((a,b)=>a.id.localeCompare(b.id)));
+    if(image(emps)!==image(fresh))throw new LeaveDependencyUnavailable();
+    for(const id of ids) await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${lockTenantId + ':' + id}, 0))`);
   }
 
 
@@ -811,6 +818,7 @@ export async function commitClockingImport(
   ctx: SessionContext,
   p: { mappingId: string; text: string; fileName: string; fileBytes: number },
 ): Promise<ClockingImportOutcome> {
+  p={...p};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   assertFile(p.text);
   const fileSha = sha256(p.text);
   const fileName = (p.fileName ?? '').slice(0, 255);
@@ -818,6 +826,7 @@ export async function commitClockingImport(
   let totalForFailure = 0;
   try {
     return await withTenant(ctx, async (tx) => {
+      await lockAttendanceLeaveDependenciesTx(tx,ctx,[]);
       const mapping = await resolveMapping(tx, p.mappingId);
       mappingForFailure = mapping;
       const decided = await decideLines(tx, mapping.def, p.text, ctx.tenantId);

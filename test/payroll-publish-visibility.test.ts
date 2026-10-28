@@ -163,6 +163,11 @@ describe('ef31d251 — a processed run is invisible in ESS, a closed one is visi
     await closeBatch(a, { batchId });
     expect(payrollPublicationState(await batchRow(batchId))).toBe('published');
 
+    // Granular payroll authority binds to the caller's ACTUAL current grants (51a5f3b51), so the
+    // super_admin this context claims is really held; an unheld claimed role is refused outright.
+    await owner.db
+      .insert(schema.roleAssignment)
+      .values({ tenantId: base.tenantId, appUserId: base.adminUserId, companyId: null, role: 'super_admin' });
     const su = await entitledCtx(base, ['hr_admin', 'super_admin']);
     await unlockClosedBatch(su, { batchId, reason: 'republish test' });
 

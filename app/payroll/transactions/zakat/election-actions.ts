@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
 import {
-  getStatutoryProfileMY,
+  withStatutoryProfileWriteMY,
   setStatutoryProfileMY,
   type ZakatMethod,
 } from '@/localization/my/statutory';
@@ -41,7 +41,7 @@ export async function saveZakatElectionAction(formData: FormData) {
   const backToForm = (extra: string) =>
     `/payroll/transactions/zakat/election?employmentId=${encodeURIComponent(employmentId)}&${extra}`;
   try {
-    const current = await getStatutoryProfileMY(s, personId);
+    await withStatutoryProfileWriteMY(s,personId,async(tx,current)=>{
     // The election lives on the MY statutory row; without one (no IC yet) there is nothing to attach it
     // to. The page hides the form in that state, so this guard only fires for stale/forged submissions.
     if (!current)
@@ -109,6 +109,7 @@ export async function saveZakatElectionAction(formData: FormData) {
       zakatFixed: formData.get('zakatFixed') ? Number(formData.get('zakatFixed')) : null,
       zakatEffectiveFrom: (formData.get('zakatEffectiveFrom') as string) || null,
       zakatEffectiveTo: (formData.get('zakatEffectiveTo') as string) || null,
+    },tx);
     });
   } catch (e) {
     redirect(backToForm(`error=${encodeURIComponent(publicErrorMessage(e))}`));

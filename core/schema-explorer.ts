@@ -1,3 +1,5 @@
+import type { Tx as AiReadTx } from '../db/client';
+import { withCanonicalAiReadTx } from './ai-read-transaction';
 /**
  * Record-relationship explorer (deec1691) — the schema topology, GENERATED on every request.
  *
@@ -201,10 +203,13 @@ export type SchemaOverview = {
  * belongs to no pack. The UI names it rather than leaving the cell blank, because a blank reads as
  * "we did not look".
  */
-export async function listSchemaTables(ctx: SessionContext): Promise<SchemaOverview> {
+export async function listSchemaTables(ctx: SessionContext, existingTx?: AiReadTx): Promise<SchemaOverview> {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+
+
   assertExplorerAccess(ctx);
   const owners = ownershipIndex();
-  return withTenant(ctx, async (tx) => {
+  return withCanonicalAiReadTx(ctx, existingTx, 'system_explorer', withTenant, async (tx) => {
     const rows = (await tx.execute(sql`
       select rel.relname as table_name
         from pg_class rel

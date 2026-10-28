@@ -72,6 +72,14 @@ describe('ADR-0080 rung 4: performance pack registration', () => {
       'performance_assessment_career_profile',
       'performance_assessment_rating_record',
       'performance_assessment_release',
+      'performance_calibration_group',
+      'performance_calibration_group_member',
+      'performance_leader_seat',
+      'performance_hod_assignment',
+      'performance_onehr_calibration_entry_retired',
+      'performance_assessment_unit_exclusion',
+      'performance_assessment_unit_exclusion_pin',
+      'performance_assessment_release_notice',
 
     ]);
   });
@@ -93,9 +101,12 @@ describe('ADR-0080 rung 4: nav parity with the pre-retrofit sidebar', () => {
   // single FLAT row in the Manage group (1b35f17b: per-row managerUp gate after the group's
   // whole-group flag was dropped):
   //   manage group: { href: '/performance', labelKey: 'performance', icon: Target, managerUp: true }
+  // D-P1-32 PT-X5 (APR-025 D4): EXACTLY TWO entries replace My Performance, Performance, Calibration, Talent and
+  // Development. Neither carries a role flag: Performance & Talent is gated by the module alone, Performance admin
+  // by canAdministerOnehr in canSeeChild (pinned below).
   const EXPECTED = [
-    { group: 'main', href: '/performance/workspace', labelKey: 'myPerformance', icon: Target },
-    { group: 'manage', href: '/performance', labelKey: 'performance', icon: Target, managerUp: true },
+    { group: 'main', href: '/performance/home', labelKey: 'performanceTalent', icon: Target },
+    { group: 'manage', href: '/performance', labelKey: 'performanceAdmin', icon: Target },
   ] as const;
 
   const links = performancePack.navLinks!;
@@ -108,7 +119,7 @@ describe('ADR-0080 rung 4: nav parity with the pre-retrofit sidebar', () => {
       expect(got.href, `row ${i} href`).toBe(want.href);
       expect(got.labelKey, `${want.href} labelKey`).toBe(want.labelKey);
       expect(got.icon, `${want.href} icon ref`).toBe(want.icon);
-      expect(got.managerUp, `${want.href} managerUp`).toBe('managerUp' in want?want.managerUp:undefined);
+      expect(got.managerUp, `${want.href} managerUp`).toBeUndefined();
       expect(got.adminOnly, `${want.href} adminOnly`).toBeUndefined();
     });
   });
@@ -128,8 +139,12 @@ describe('ADR-0080 rung 4: nav parity with the pre-retrofit sidebar', () => {
     expect(registerAll, 'registers the pack (static side-effect import)').toContain(`import '@/packs/performance'`);
     expect(sidebar, 'sidebar pulls in the shared pack wiring').toContain(`import '@/packs/register-all'`);
     expect(sidebar, 'resolves the row through the registry').toContain(`modulePackById('performance')`);
-    expect(sidebar.split('\n').some(line=>line.trim()==='PERSONAL_PERFORMANCE_ROW,')).toBe(true);
-    expect(sidebar.split('\n').some(line=>line.trim()==='PERFORMANCE_ROW,')).toBe(true);
+    expect(sidebar.split('\n').some(line=>line.trim()==='PERFORMANCE_TALENT_ROW,')).toBe(true);
+    expect(sidebar.split('\n').some(line=>line.trim()==='PERFORMANCE_ADMIN_ROW,')).toBe(true);
+    // Performance admin carries no role flag, so its ONE gate is this predicate in canSeeChild.
+    expect(sidebar).toContain('c.href === PERFORMANCE_ADMIN_ROW.href ? canAdministerOnehr :');
+    // The retired rows are gone, not hidden: no Calibration, Talent or Development descriptor or gate remains.
+    for (const retired of ['CALIBRATION_ROW', 'TALENT_HREF', 'DEVELOPMENT_HREF', 'PERSONAL_PERFORMANCE_ROW', 'canEnterCalibration', 'performanceNavigation']) expect(sidebar, retired).not.toContain(retired);
     for (const { href } of EXPECTED) {
       // Route-intent comparisons may name the path; they must never mint a second nav descriptor.
       const duplicates=[...sidebar.matchAll(/\bhref:\s*'([^']+)'/g)].filter(match=>match[1]===href);

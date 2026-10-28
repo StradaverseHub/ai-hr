@@ -7,83 +7,28 @@
  * join is invisible to year-end — so imported rows MUST land as real payslip rows under a real batch.
  * No parallel table.
  *
- * DESIGN (load-bearing decisions; verified against the codebase):
- *
- *  1. Records live in payslip + payroll_batch — same source the year-end/monthly readers consume.
- *
- *  2. Import-only-into-EMPTY months. The importer refuses any (company, period) that already has ANY
- *     batch. Every employee-month for such a period comes back as "Existing record / Needs action" and
- *     NOTHING is written for it. Rationale: a migration imports PRIOR history for months the live system
- *     never ran; a month with an existing batch is exactly the double-count trap, since loadBatchRows
- *     (reports.ts) SUMS payslips across every batch for the month with no run_type and no status filter,
- *     loadYearRows / eaStatement filter only on `pay_period LIKE '<year>-%'`, and core/payroll.ts replays
- *     prior-period payslips into the PCB accumulators with the same absence of a filter. A second load
- *     into an occupied month would therefore submit someone paid 5,000 as 10,000 AND distort the rest of
- *     that year's PCB. THIS CHECK IS THE WHOLE OF THE SAFETY — see the Override? note below.
- *
- *  3. OVERRIDE? IS PARSED AND VALIDATED, NEVER HONOURED AS A REPLACE. The reporter asked for Override=1
- *     to update the existing record. It cannot: on top of the double-count above there is no undo — an
- *     imported batch is inserted closed, and db/migrations/0011_payroll_immutability.sql blocks UPDATE
- *     and DELETE on a closed batch and its payslips at trigger level, while core/payroll.ts refuses
- *     deleteBatch unless the batch is draft. So the value must be 1 or 0 (anything else is an error) and
- *     an occupied month yields the reporter's OWN second branch: keep the existing record, flag the row.
- *     "Updated/overridden" in the summary is therefore always 0. A genuine replace — reversing or
- *     superseding the earlier batch — is a separate and considerably larger piece of work.
- *
- *  4. The importer owns its batch insert — it does NOT call createBatch (which throws on any existing
- *     batch for the period and always creates run_type='regular', colliding with the partial unique
- *     index payroll_batch_one_regular_uq). It inserts run_type='adjustment', run_seq=1 directly,
- *     find-or-creating the pay_period parent inline. 'adjustment' sidesteps the regular-uniqueness
- *     index without a new enum; the additional-remuneration "increment" math lives ONLY in
- *     generatePayslips (which the importer never calls — it inserts payslips directly), so there is no
- *     EA distortion: the EA reader reads stored payslip scalars regardless of run_type.
- *
- *  5. Create batch status='draft', insert payslips, set counters, THEN flip to 'closed'. The 0011
- *     immutability triggers are BEFORE UPDATE/DELETE only, so creating 'closed' up front would make
- *     employee_count/totals un-backfillable. Order: insert draft → insert payslips → UPDATE counters →
- *     UPDATE status='closed' → UPDATE pay_period status='closed' (so the period isn't orphaned 'open').
- *
- *  6. FIGURES ARE THE FILE'S OWN, AND THE ONLY ARITHMETIC IS ADDITION. The Malaysian statutory tables are
- *     never applied to a loaded month — a migration's numbers are whatever the prior system paid. Gross
- *     is the sum of the file's earning lines; net is that minus the file's own cash deductions. If the
- *     file ALSO states a GROSS or NETPAY line, it is cross-checked and a disagreement is a hard error
- *     rather than a silent preference for one figure over the other. The statutory JSONB carries every
- *     key the readers consume plus a `version` stamp set to the company's pack's built-in ruleset
- *     version, so versionOf reports the import provenance.
- *
- *  7. RESOLUTION IS BY EMPLOYEE CODE within the company named by the file's Company Code, effective for
- *     the period — not by email, which is what the wide contract used. Company Code resolves against
- *     company.company_label (plus id / legal name / registration no, mirroring core/import.ts) but,
- *     unlike the leave importer's case-insensitive first-writer-wins, an unknown OR ambiguous code is a
- *     hard error here: a mis-targeted payroll month cannot be taken back.
- *
- * THE FILE FORMAT IS LONG, NOT WIDE (4157a498). Seven columns, one line per figure, folded back into one
- * employee-month. See lib/payroll-history-import-schema.ts for the contract and the code vocabulary.
- *
- * Shape mirrors core/import.ts: one PRIVATE analyze(), two public exports
- * (validatePayrollHistoryImport dry-run, commitPayrollHistoryImport). Not atomic across periods: each
- * period writes in its OWN withTenant transaction so one failing period can't strand the others (a
- * single shared tx aborts on first failed insert).
+ * The analyzer below preserves the supported six-column vocabulary and dry-run compatibility.
+ * Public uploads use payroll-history-revisions: immutable attempts, whole-file validation, scoped
+ * company/cycle identity, append-only corrections/recovery and one effective canonical snapshot.
+ * The record-based compatibility writer at the end delegates there too; it owns no SQL writes.
  */
 import { and, eq, inArray } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
   company,
   employeeStatutoryMy,
   employment,
   payComponent,
-  payPeriod,
   payrollBatch,
   payrollCycle,
   payrollImportCode,
-  payslip,
 } from '../db/schema';
-import { appendEvent, actorOf } from '../db/events';
 // Rung 5a (ADR-0080 D1/D6): the provenance version stamp is the company's pack's built-in ruleset
 // version (`statutoryConfig.default.version`), resolved fail-loud in analyze() from company.country.
 import { requirePackFor } from '../localization/registry';
 import {
   PAYROLL_HISTORY_COLUMNS,
+  PAYROLL_HISTORY_HEADERS,
   PAYROLL_IMPORT_DESTINATIONS,
   STATUTORY_DESTINATIONS,
   STATUTORY_IMPORT_CODES,
@@ -170,7 +115,6 @@ type ParsedLine = {
   doeCode: string;
   companyCode: string;
   amount: number;
-  override: boolean;
   destination: PayrollImportDestination;
 };
 
@@ -244,8 +188,8 @@ const issue = (
  * Later layers win. An alias resolves ONE hop; an alias whose target is itself an alias, or unknown, is
  * dropped rather than chased, so a bad catalog row can never loop or silently retarget.
  */
-export async function resolveImportCodes(ctx: SessionContext): Promise<Map<string, ImportCodeEntry>> {
-  const { components, catalog } = await withTenant(ctx, async (tx) => {
+export async function resolveImportCodes(ctx: SessionContext, transaction?: Tx): Promise<Map<string, ImportCodeEntry>> {
+  const read = async (tx: Tx) => {
     const components = await tx
       .select({
         code: payComponent.code,
@@ -258,7 +202,8 @@ export async function resolveImportCodes(ctx: SessionContext): Promise<Map<strin
       .from(payComponent);
     const catalog = await tx.select().from(payrollImportCode);
     return { components, catalog };
-  });
+  };
+  const { components, catalog } = await (transaction ? read(transaction) : withTenant(ctx, read));
 
   const byCode = new Map<string, ImportCodeEntry>();
   for (const s of STATUTORY_IMPORT_CODES) byCode.set(up(s.code), { ...s });
@@ -325,15 +270,26 @@ export async function listImportCodes(ctx: SessionContext): Promise<ImportCodeEn
  * (RLS-scoped reads only; writes nothing). Returns the preview plus the resolved months the commit path
  * replays. PRIVATE — the two public exports are the only surface.
  */
+/** Same availability owner used by the public analysis and EACH actual period commit. */
+async function occupiedHistoryPeriodsTx(tx:Tx,companyId:string,periods:string[]):Promise<Set<string>>{
+    if (periods.length === 0) return new Set<string>();
+    const rows = await tx
+      .select({ period: payrollBatch.payPeriod })
+      .from(payrollBatch)
+      .where(and(eq(payrollBatch.companyId, companyId), inArray(payrollBatch.payPeriod, periods)));
+    return new Set(rows.map((r) => r.period));
+}
+
 async function analyze(
   ctx: SessionContext,
   companyId: string,
   records: PayrollHistoryRecord[],
+  options: { transaction?: Tx; prepareRevision?: boolean } = {},
 ): Promise<{ preview: HistoryImportPreview; months: ResolvedMonth[]; statutoryVersion: string }> {
-  const codes = await resolveImportCodes(ctx);
+  const codes = await resolveImportCodes(ctx, options.transaction);
+  const read = <T>(fn: (tx: Tx) => Promise<T>): Promise<T> => options.transaction ? fn(options.transaction) : withTenant(ctx, fn);
 
-  const { companyKeys, targetCompany, employees, cycles, statutoryVersion } = await withTenant(
-    ctx,
+  const { companyKeys, targetCompany, employees, cycles, statutoryVersion } = await read(
     async (tx) => {
       const companies = await tx
         .select({
@@ -378,6 +334,7 @@ async function analyze(
 
       const cycles = await tx
         .select({
+          id: payrollCycle.id,
           name: payrollCycle.name,
           code: payrollCycle.code,
           archivedAt: payrollCycle.archivedAt,
@@ -404,12 +361,12 @@ async function analyze(
 
   // ── Cycle lookup: the short code the reporter's file carries, OR the friendly name (a customer who has
   // not filled in the codes yet can still write "Monthly"). Archived cycles are not accepted.
-  const cycleKeys = new Map<string, number>();
+  const cycleKeys = new Map<string, Set<string>>();
   for (const c of cycles) {
     if (c.archivedAt != null) continue;
     for (const k of [c.code, c.name]) {
       const kk = up(k ?? '');
-      if (kk) cycleKeys.set(kk, (cycleKeys.get(kk) ?? 0) + 1);
+      if (kk) { const ids = cycleKeys.get(kk) ?? new Set<string>(); ids.add(c.id); cycleKeys.set(kk, ids); }
     }
   }
 
@@ -441,11 +398,10 @@ async function analyze(
     const doeCode = readHistoryField(rec, 'doe_code');
     const companyCode = readHistoryField(rec, 'company_code');
     const rawAmount = readHistoryField(rec, 'amount');
-    const rawOverride = readHistoryField(rec, 'override?');
     const ref = { rowNum, employeeNo, rawPeriod, doeCode };
 
     // "No completely blank data rows should be imported" — skipped in silence, not reported as an error.
-    if (!employeeNo && !rawPeriod && !cycle && !doeCode && !companyCode && !rawAmount && !rawOverride) {
+    if (!employeeNo && !rawPeriod && !cycle && !doeCode && !companyCode && !rawAmount) {
       blankLines += 1;
       return;
     }
@@ -512,7 +468,7 @@ async function analyze(
 
     // Payroll Cycle.
     if (cycle) {
-      const hits = cycleKeys.get(up(cycle)) ?? 0;
+      const hits = cycleKeys.get(up(cycle))?.size ?? 0;
       if (hits === 0) {
         issues.push(
           issue(ref, 'Invalid Payroll Cycle', `No active payroll cycle has the code or name “${cycle}” — add it under Admin → Payroll Cycle`),
@@ -532,14 +488,6 @@ async function analyze(
     const amount = rawAmount ? money(rawAmount) : null;
     if (rawAmount && amount == null) {
       issues.push(issue(ref, 'Invalid Amount', `Amount “${rawAmount}” is not a number (digits and one decimal point only)`));
-    }
-
-    // Override? — validated, never honoured as a replace (see the file header).
-    let override = true;
-    if (rawOverride !== '') {
-      if (rawOverride === '1') override = true;
-      else if (rawOverride === '0') override = false;
-      else issues.push(issue(ref, 'Invalid Override', `Override? must be 1 or 0 (got “${rawOverride}”)`));
     }
 
     // Duplicate on the reporter's five-part key.
@@ -581,7 +529,6 @@ async function analyze(
       doeCode,
       companyCode,
       amount,
-      override,
       destination: entry.destination,
     });
   });
@@ -630,14 +577,7 @@ async function analyze(
 
   // ── Which periods are already occupied. Read once for every period the file mentions.
   const periods = [...new Set([...buckets.values()].map((b) => b.period))];
-  const occupiedPeriods = await withTenant(ctx, async (tx) => {
-    if (periods.length === 0) return new Set<string>();
-    const rows = await tx
-      .select({ period: payrollBatch.payPeriod })
-      .from(payrollBatch)
-      .where(and(eq(payrollBatch.companyId, companyId), inArray(payrollBatch.payPeriod, periods)));
-    return new Set(rows.map((r) => r.period));
-  });
+  const occupiedPeriods=await read(tx=>occupiedHistoryPeriodsTx(tx,companyId,periods));
 
   // Tax numbers, for the CP39 readiness warning.
   const taxByCode = new Map<string, string | null>();
@@ -762,8 +702,8 @@ async function analyze(
       );
     }
 
-    // The double-count guard. NOTHING is written for an occupied period, whatever Override? said.
-    const existing = occupiedPeriods.has(b.period);
+    // The double-count guard. NOTHING is written for an occupied period by this path.
+    const existing = !options.prepareRevision && occupiedPeriods.has(b.period);
     if (existing) {
       existingMonths += 1;
       for (const l of b.lines) {
@@ -771,11 +711,25 @@ async function analyze(
           issue(
             { rowNum: l.rowNum, employeeNo: l.employeeNo, rawPeriod: l.rawPeriod, doeCode: l.doeCode },
             'Existing record',
-            `${b.period} already has payroll for this company — the existing record is kept and nothing is written. Override cannot replace it: a second load would be added to the first and submitted as double, and a loaded month cannot be deleted.`,
+            `${b.period} already has payroll for this company — the existing record is kept and nothing is written here. To replace an earlier import, upload the file on Import Payroll History and confirm the replacement.`,
             'Needs action',
           ),
         );
       }
+    }
+
+    // d28501b8: BASIC is built in, and a company may also have its own basic pay code. Both land in the
+    // same basic salary, so a month naming the two would add them together. Stop it rather than guess
+    // which one the file meant.
+    const basicCodes = [...new Set(b.lines.filter((l) => l.destination === 'basic').map((l) => up(l.doeCode)))];
+    if (basicCodes.length > 1) {
+      monthIssues.push(
+        issue(
+          { ...ref, doeCode: basicCodes.join(', ') },
+          'Duplicate record',
+          `${b.employeeNo} ${b.period} states basic salary under more than one code (${basicCodes.join(', ')}) — they would be added together. Keep one.`,
+        ),
+      );
     }
 
     const lineFailures = failedByMonth.get(b.key)?.rowNums.length ?? 0;
@@ -803,6 +757,7 @@ async function analyze(
       companyCode: b.companyCodes.join(', '),
       rowNums: b.rowNums,
       lineCount: b.lines.length,
+      codes: [...new Set(b.lines.map((l) => up(l.doeCode)))],
       ok,
       existing,
       gross,
@@ -857,6 +812,7 @@ async function analyze(
       companyCode: held.companyCodes.join(', '),
       rowNums: held.rowNums,
       lineCount: 0,
+      codes: [],
       ok: false,
       existing: false,
       gross: 0,
@@ -883,6 +839,12 @@ async function analyze(
   return { preview, months, statutoryVersion };
 }
 
+/** Pure preparation for the revision owner. Occupancy is adjudicated there against exact imported
+ * identities, inside this same transaction. This helper grants no write or replacement authority. */
+export function preparePayrollHistoryRevisionTx(ctx: SessionContext, tx: Tx, companyId: string, records: PayrollHistoryRecord[]) {
+  return analyze(ctx, companyId, records, {transaction: tx, prepareRevision: true});
+}
+
 /** Dry run: validate the file against the company's master data; writes nothing. */
 export async function validatePayrollHistoryImport(
   ctx: SessionContext,
@@ -892,154 +854,28 @@ export async function validatePayrollHistoryImport(
   return preview;
 }
 
-/**
- * Commit the importable employee-months. Re-analyzes server-side (never trusts a client preview), groups
- * them by period, and writes EACH period in its OWN transaction (a shared tx aborts on first failed
- * insert). Each period: find-or-create pay_period → insert draft batch (run_type='adjustment') → insert
- * one payslip per employee-month → UPDATE batch counters → UPDATE batch status='closed' → UPDATE
- * pay_period status='closed'. A failing period collects into the issue list without stranding the rest.
+/** Compatibility for trusted record-based callers. The original-file workflow is the public UI.
+ * Both paths now use the same immutable attempt, atomic commit, revision and effective-read owners.
+ * This legacy interface never authorises a replacement and remains confined to its target company.
  */
 export async function commitPayrollHistoryImport(
-  ctx: SessionContext,
-  p: { companyId: string; records: PayrollHistoryRecord[] },
-): Promise<HistoryImportResult> {
-  const { preview, months, statutoryVersion } = await analyze(ctx, p.companyId, p.records);
-  const issues = [...preview.issues];
-  let imported = 0;
-  let importedMonths = 0;
-
-  const byPeriod = new Map<string, ResolvedMonth[]>();
-  for (const m of months) {
-    const arr = byPeriod.get(m.period) ?? [];
-    arr.push(m);
-    byPeriod.set(m.period, arr);
-  }
-
-  for (const [period, rows] of byPeriod) {
-    try {
-      await withTenant(ctx, async (tx) => {
-        // Find-or-create the pay_period parent (mirror createBatch). Status starts 'open' here; it is
-        // flipped to 'closed' below within the same tx.
-        const [existingPeriod] = await tx
-          .select({ id: payPeriod.id })
-          .from(payPeriod)
-          .where(and(eq(payPeriod.companyId, p.companyId), eq(payPeriod.period, period)))
-          .limit(1);
-        let periodId = existingPeriod?.id;
-        if (!periodId) {
-          const [created] = await tx
-            .insert(payPeriod)
-            .values({ tenantId: ctx.tenantId, companyId: p.companyId, period, status: 'open', statutoryVersion })
-            .returning({ id: payPeriod.id });
-          periodId = created.id;
-        }
-
-        // Insert the historical batch as a DRAFT adjustment run (so counters are backfillable, and it
-        // never collides with payroll_batch_one_regular_uq).
-        const [batch] = await tx
-          .insert(payrollBatch)
-          .values({
-            tenantId: ctx.tenantId,
-            companyId: p.companyId,
-            payPeriodId: periodId,
-            runSeq: 1,
-            runType: 'adjustment',
-            payPeriod: period,
-            batchDate: `${period}-28`,
-            status: 'draft',
-            remarks: 'Imported payroll history',
-          })
-          .returning({ id: payrollBatch.id });
-
-        const totals = { gross: 0, net: 0, epfEmployee: 0, epfEmployer: 0, socsoEmployee: 0, socsoEmployer: 0, eisEmployee: 0, eisEmployer: 0, pcb: 0 };
-        for (const r of rows) {
-          await tx.insert(payslip).values({
-            tenantId: ctx.tenantId,
-            batchId: batch.id,
-            employmentId: r.employmentId,
-            basicSalary: r.basicSalary.toFixed(2),
-            allowance: r.allowance.toFixed(2),
-            overtimePay: r.overtimePay.toFixed(2),
-            bonus: r.bonus.toFixed(2),
-            grossPay: r.grossPay.toFixed(2),
-            statutory: r.statutory,
-            otherDeductions: r.otherDeductions.toFixed(2),
-            totalDeductions: r.totalDeductions.toFixed(2),
-            netPay: r.netPay.toFixed(2),
-            employerCost: r.employerCost.toFixed(2),
-          });
-          totals.gross = round2(totals.gross + r.grossPay);
-          totals.net = round2(totals.net + r.netPay);
-          totals.epfEmployee = round2(totals.epfEmployee + r.statutory.epfEmployee);
-          totals.epfEmployer = round2(totals.epfEmployer + r.statutory.epfEmployer);
-          totals.socsoEmployee = round2(totals.socsoEmployee + r.statutory.socsoEmployee);
-          totals.socsoEmployer = round2(totals.socsoEmployer + r.statutory.socsoEmployer);
-          totals.eisEmployee = round2(totals.eisEmployee + r.statutory.eisEmployee);
-          totals.eisEmployer = round2(totals.eisEmployer + r.statutory.eisEmployer);
-          totals.pcb = round2(totals.pcb + r.statutory.pcb);
-        }
-
-        // Backfill counters while still draft-and-mutable (the 0011 trigger only fires once closed).
-        await tx
-          .update(payrollBatch)
-          .set({ employeeCount: rows.length, totals })
-          .where(eq(payrollBatch.id, batch.id));
-        // Then flip batch + period to closed (immutability + out of the live draft→process→close UI).
-        await tx.update(payrollBatch).set({ status: 'closed' }).where(eq(payrollBatch.id, batch.id));
-        await tx.update(payPeriod).set({ status: 'closed' }).where(eq(payPeriod.id, periodId));
-      });
-      for (const r of rows) imported += r.month.lineCount;
-      importedMonths += rows.length;
-    } catch (e) {
-      // The whole period failed — none of its months were written.
-      for (const r of rows) {
-        issues.push({
-          rowNum: r.month.rowNums[0],
-          employeeNo: r.month.employeeNo,
-          period: r.month.period,
-          doeCode: '',
-          type: 'Incomplete month',
-          description: `${period} could not be written: ${(e as Error).message}`,
-          status: 'Failed',
-        });
-      }
-    }
-  }
-
-  // Substrate: one completion event summarizes the import (mirrors commitEmployeeImport). Per-payslip /
-  // per-batch inserts are intentionally NOT individually evented — they're the body of this one
-  // import flow, summarized here (documented skip, consistent with the employee importer).
-  await withTenant(ctx, (tx) =>
-    appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'payroll-history-import',
-      aggregateId: p.companyId,
-      eventType: 'payroll-history-import.completed',
-      actor: actorOf(ctx),
-      payload: {
-        companyId: p.companyId,
-        total: preview.total,
-        imported,
-        importedMonths,
-        existing: preview.existingMonths,
-        duplicates: preview.duplicates,
-        periods: [...byPeriod.keys()],
-      },
-    }),
-  );
-
-  return {
-    companyId: p.companyId,
-    total: preview.total,
-    valid: preview.valid,
-    invalid: preview.invalid,
-    imported,
-    importedMonths,
-    // Always 0 — an occupied month is never overwritten. See the type comment and the file header.
-    updated: 0,
-    duplicates: preview.duplicates,
-    existing: preview.existingMonths,
-    failed: preview.total - imported,
-    issues: issues.sort((a, b) => a.rowNum - b.rowNum),
-  };
+ ctx:SessionContext,p:{companyId:string;records:PayrollHistoryRecord[]},
+):Promise<HistoryImportResult>{
+ p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
+ const {preview}=await analyze(ctx,p.companyId,p.records);
+ const {previewPayrollHistoryUpload,confirmPayrollHistoryUpload,PayrollHistoryRevisionError}=await import('./payroll-history-revisions');
+ const {toCsv}=await import('../lib/csv');
+ const headers=[...PAYROLL_HISTORY_HEADERS];
+ const keys=['employee_no','payroll_period','payroll_cycle','doe_code','company_code','amount'];
+ const source=await previewPayrollHistoryUpload(ctx,{name:'normalised-records.csv',content:Buffer.from(toCsv([headers,...p.records.map(row=>keys.map(key=>readHistoryField(row,key)))]))});
+ let committed=false;const issues=[...preview.issues];
+ try{
+  await confirmPayrollHistoryUpload(ctx,{attemptId:source.attemptId,previewHash:source.plan.previewHash,confirmReplacement:false,expectedCompanyId:p.companyId});committed=true;
+ }catch(error){
+  if(!(error instanceof PayrollHistoryRevisionError))throw error;
+  issues.push({rowNum:1,employeeNo:'',period:'',doeCode:'',type:'Incomplete month',description:error.message,status:'Failed'});
+ }
+ const changed=committed?source.plan.rows.filter(row=>row.operation==='create'):[];
+ const imported=new Set(changed.flatMap(row=>row.rowNums)).size;
+ return {companyId:p.companyId,attemptId:source.attemptId,total:preview.total,valid:preview.valid,invalid:preview.invalid,imported,importedMonths:changed.length,updated:0,duplicates:preview.duplicates,existing:preview.existingMonths,failed:preview.total-imported,issues:issues.sort((a,b)=>a.rowNum-b.rowNum)};
 }

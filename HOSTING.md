@@ -3,9 +3,14 @@
 A quick way to let HR consultants try the app over the internet, served from your Mac. This is for
 **testing on demo data only** — see the safety notes at the bottom.
 
-> **Why a password gate?** The app doesn't have real login yet (the top-bar "act as" switcher is the
-> only identity). So anyone who can open the URL is effectively an admin. A shared password
-> (`SHARE_PASSWORD`) sits in front of the whole app so only people you give it to can get in.
+> **Scope: demo hosting, not customer sign-in.** This guide deliberately uses the demo identity
+> switcher behind a shared `SHARE_PASSWORD` gate. Anyone admitted can switch between seeded demo roles;
+> the shared password does not authenticate individual employees.
+>
+> Embedded HR login, MFA and recovery are implemented. For customer installations, follow
+> [customer deployment](deploy/CUSTOMER.md), [embedded authentication](deploy/internal-auth/README.md)
+> and [ADR-0117](docs/adr/0117-embedded-hr-authentication.md). Implementation does not establish that
+> authentication is activated or accepted on a particular installation.
 
 ---
 
@@ -18,7 +23,9 @@ A quick way to let HR consultants try the app over the internet, served from you
    ALLOW_DEMO_SESSION=true
    ```
 
-   - `SHARE_PASSWORD` turns on the access gate (`middleware.ts`).
+   - Use a separate demo-only environment with `AUTH_PROVIDER` unset. Preserve customer authentication
+     settings on their own installation; this guide is not an authentication cutover procedure.
+   - `SHARE_PASSWORD` turns on the demo access gate (`middleware.ts`).
    - `ALLOW_DEMO_SESSION=true` lets the production build run the demo identity (it's blocked otherwise).
 
 2. **Install a tunnel.** Two options — which one works depends on your network (see the note below):
@@ -60,8 +67,9 @@ cloudflared tunnel --url http://localhost:3000    # fine on home Wi-Fi / hotspot
 It prints a public `https://…` URL (`https://….ngrok-free.app` or `https://….trycloudflare.com`).
 **Share that URL** — not the `localhost`/`192.168.x.x` address (those only work on the same Wi-Fi).
 
-**Share with your consultants:** the `https://…` URL **+** the password. When they open it the browser
-asks for a login — they can type **any username** and the password.
+**Share with your consultants:** the `https://…` URL **+** the password. The browser's HTTP Basic
+prompt accepts **any username** and the shared password. This demo gate does not create or sign in
+an individual employee account.
 
 When you're done, press **Ctrl-C** in both terminals.
 
@@ -80,9 +88,9 @@ If you want a clean slate first: `pnpm db:seed` resets the demo data.
 
 ## Safety notes (please read)
 
-- **Demo data only.** There is no real authentication or production hardening yet — do **not** load real
-  client or employee PII into a hosted instance.
-- **The password is the only thing protecting it.** Use a strong one, share it privately, and rotate it
+- **Demo data only.** This setup uses shared access and demo role switching, not individual employee
+  authentication. Keep real client or employee PII out of this demo environment.
+- **Protect demo access.** Use a strong shared password, share it privately, and rotate it
   (change `SHARE_PASSWORD` and restart) after the test. Don't post the URL publicly.
 - **`/health` is the one path the password does NOT cover**, on purpose (readiness 1.6): an uptime monitor
   cannot hold the shared password, and most monitors read a 401 as "fine, just anonymous". Anyone who has
@@ -92,5 +100,9 @@ If you want a clean slate first: `pnpm db:seed` resets the demo data.
   terminals running). Closing the lid or losing Wi-Fi ends the session.
 - The tunnel URL changes each run (with the free `cloudflared`/`ngrok` tiers). Re-share the new URL when
   you restart.
-- This is a stop-gap for testing. The real fix for a durable, multi-user deployment is wiring proper auth
-  (WorkOS, already designed for) and deploying to a host with managed Postgres.
+- This is a temporary demo-hosting procedure. A durable customer installation needs the reviewed
+  customer deployment and embedded-authentication procedures, with TLS, owner enrollment, MFA,
+  recovery and operational acceptance verified for that installation. WorkOS and Keycloak are legacy
+  compatibility adapters, not the approved activation direction. See the
+  [repository/environment policy](docs/REPOSITORY-AND-ENVIRONMENTS.md) for staging acceptance and
+  the separate explicit production-deployment requirement.

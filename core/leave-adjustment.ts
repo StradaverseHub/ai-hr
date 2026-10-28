@@ -38,6 +38,7 @@ import {
 import { countOrgCriteriaTargets, resolveOrgCriteriaTargets, type OrgCriteria } from './org-criteria';
 import { isReplacementLeaveType } from './ess-view';
 import { leaveCreditRegisterLive } from './leave-credit-live';
+import { lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx } from './leave-dependency-lock';
 
 export class LeaveAdjustmentError extends Error {
   constructor(message: string) {
@@ -109,6 +110,12 @@ export async function applyLeaveAdjustmentBatch(
   ctx: SessionContext,
   p: ApplyAdjustmentInput,
 ): Promise<{ batchId: string; targeted: number; written: number; skipped: number }> {
+  // Capture the request before the first asynchronous boundary. OrgCriteria contains scalars and
+  // arrays; cloning those arrays keeps the nominated set and saved criteria tied to the same input.
+  const { effectiveOn, targetMode } = p;
+  const criteria: AdjustmentCriteria = Object.fromEntries(Object.entries(p.criteria ?? {})
+    .map(([key, value]) => [key, Array.isArray(value) ? [...value] : value]));
+  const employmentIds = Array.from(new Set((p.employmentIds ?? []).filter(Boolean)));
   const days = round2(Number(p.days));
   if (!Number.isFinite(days) || days === 0) {
     throw new LeaveAdjustmentError('Days must be a number other than zero — an adjustment of nothing is not an adjustment.');
@@ -124,11 +131,12 @@ export async function applyLeaveAdjustmentBatch(
   if (reason.startsWith('sys:')) {
     throw new LeaveAdjustmentError('A reason may not start with "sys:" — that prefix is reserved for automatic entries.');
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveOn)) throw new LeaveAdjustmentError('A valid effective date is required.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(effectiveOn)) throw new LeaveAdjustmentError('A valid effective date is required.');
   const leaveTypeIds = Array.from(new Set((p.leaveTypeIds ?? []).filter(Boolean)));
   if (!leaveTypeIds.length) throw new LeaveAdjustmentError('Choose at least one leave type.');
 
   return withTenant(ctx, async (tx) => {
+    await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
     // Leave types must exist and be visible to this session — RLS scopes the read, so an id from another
     // tenant simply does not come back and is refused here rather than silently skipped.
     const types = await tx
@@ -156,19 +164,23 @@ export async function applyLeaveAdjustmentBatch(
       );
     }
 
-    const targets =
-      p.targetMode === 'individual'
-        ? Array.from(new Set((p.employmentIds ?? []).filter(Boolean)))
-        : await resolveAdjustmentTargets(tx, { criteria: p.criteria ?? {}, effectiveOn: p.effectiveOn });
-    if (!targets.length) throw new LeaveAdjustmentError('No employees matched — nothing would be adjusted.');
-
-    // An explicitly-listed employment must still be one this session can see; RLS decides that.
-    const visible = await tx
-      .select({ id: employment.id })
-      .from(employment)
-      .where(inArray(employment.id, targets));
-    const targetIds = visible.map((v) => v.id);
-    if (!targetIds.length) throw new LeaveAdjustmentError('No employees matched — nothing would be adjusted.');
+    const resolveVisibleTargets = async (): Promise<string[]> => {
+      const targets = targetMode === 'individual' ? employmentIds
+        : await resolveAdjustmentTargets(tx, { criteria, effectiveOn });
+      if (!targets.length) return [];
+      // Preserve the existing RLS filtering of explicitly nominated employments.
+      const visible = await tx.select({ id: employment.id }).from(employment)
+        .where(inArray(employment.id, targets)).orderBy(employment.id);
+      return visible.map(row => row.id);
+    };
+    const nominated = await resolveVisibleTargets();
+    if (!nominated.length) throw new LeaveAdjustmentError('No employees matched — nothing would be adjusted.');
+    await lockLeaveDependenciesTx(tx, ctx.tenantId, nominated);
+    const targetIds = await resolveVisibleTargets();
+    if (targetIds.length !== nominated.length || targetIds.some((id, index) => id !== nominated[index])) {
+      // Refuse a changed audience; do not silently retarget or take additional locks out of order.
+      throw new LeaveAdjustmentError('The adjustment targets changed; review them again.');
+    }
 
     const [batch] = await tx
       .insert(leaveAdjustmentBatch)
@@ -176,10 +188,10 @@ export async function applyLeaveAdjustmentBatch(
         tenantId: ctx.tenantId,
         actorUserId: ctx.userId ?? null,
         days: days.toFixed(2),
-        effectiveOn: p.effectiveOn,
+        effectiveOn,
         reason,
-        targetMode: p.targetMode,
-        criteria: p.targetMode === 'criteria' ? ((p.criteria ?? {}) as unknown) : null,
+        targetMode,
+        criteria: targetMode === 'criteria' ? (criteria as unknown) : null,
         targetedCount: targetIds.length * leaveTypeIds.length,
       })
       .returning({ id: leaveAdjustmentBatch.id });
@@ -206,7 +218,7 @@ export async function applyLeaveAdjustmentBatch(
           leaveTypeId: r.leaveTypeId,
           entryType: 'adjustment' as const,
           days: days.toFixed(2),
-          effectiveOn: p.effectiveOn,
+          effectiveOn,
           reason,
           adjustmentBatchId: batch.id,
         })),
@@ -229,9 +241,9 @@ export async function applyLeaveAdjustmentBatch(
       payload: {
         leaveTypeIds,
         days,
-        effectiveOn: p.effectiveOn,
+        effectiveOn,
         reason,
-        targetMode: p.targetMode,
+        targetMode,
         targeted: targetIds.length * leaveTypeIds.length,
         written: rows.length,
       },
@@ -261,17 +273,36 @@ export async function reverseLeaveAdjustmentBatch(
   ctx: SessionContext,
   p: { batchId: string; reversedOn?: string },
 ): Promise<{ reversed: number }> {
+  const { batchId, reversedOn: requestedReversedOn } = p;
   return withTenant(ctx, async (tx) => {
-    const [batch] = await tx
-      .select({
-        id: leaveAdjustmentBatch.id,
-        reversedAt: leaveAdjustmentBatch.reversedAt,
-        reason: leaveAdjustmentBatch.reason,
-        effectiveOn: leaveAdjustmentBatch.effectiveOn,
-      })
-      .from(leaveAdjustmentBatch)
-      .where(eq(leaveAdjustmentBatch.id, p.batchId))
-      .limit(1);
+    // Participating order: shared configuration -> ordered employments -> batch row. The first
+    // ledger read nominates subjects only; rows and reversal state are reread after ownership.
+    // This does not protect against writers which have not joined the dependency protocol.
+    await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
+    const nominated = await tx.selectDistinct({ employmentId: leaveLedger.employmentId })
+      .from(leaveLedger).where(eq(leaveLedger.adjustmentBatchId, batchId))
+      .orderBy(leaveLedger.employmentId);
+    const protectedSubjects = new Set(nominated.map(row => row.employmentId));
+    if (protectedSubjects.size) await lockLeaveDependenciesTx(tx, ctx.tenantId, [...protectedSubjects]);
+    const batch = await (async () => {
+      try {
+        const [row] = await tx
+          .select({
+            id: leaveAdjustmentBatch.id,
+            reversedAt: leaveAdjustmentBatch.reversedAt,
+            reason: leaveAdjustmentBatch.reason,
+            effectiveOn: leaveAdjustmentBatch.effectiveOn,
+          })
+          .from(leaveAdjustmentBatch)
+          .where(eq(leaveAdjustmentBatch.id, batchId))
+          .limit(1).for('update', { noWait: true });
+        return row;
+      } catch {
+        // A NOWAIT refusal aborts the whole caller transaction, releasing any earlier advisory locks.
+        // Do not expose a raw database error or continue with a partially owned transaction.
+        throw new LeaveAdjustmentError('That adjustment is busy; review it again.');
+      }
+    })();
     if (!batch) throw new LeaveAdjustmentError('That adjustment could not be found.');
     if (batch.reversedAt) throw new LeaveAdjustmentError('That adjustment has already been reversed.');
 
@@ -288,12 +319,16 @@ export async function reverseLeaveAdjustmentBatch(
       .from(leaveLedger)
       .where(
         and(
-          eq(leaveLedger.adjustmentBatchId, p.batchId),
+          eq(leaveLedger.adjustmentBatchId, batchId),
           sql`${leaveLedger.reason} = ${batch.reason}`,
         ),
-      );
+      ).orderBy(leaveLedger.employmentId, leaveLedger.id);
+    if (original.some(row => !protectedSubjects.has(row.employmentId))) {
+      // Never acquire a newly discovered subject after taking the batch row: refuse and re-review.
+      throw new LeaveAdjustmentError('That adjustment changed; review it again.');
+    }
 
-    const reversedOn = p.reversedOn && /^\d{4}-\d{2}-\d{2}$/.test(p.reversedOn) ? p.reversedOn : batch.effectiveOn;
+    const reversedOn = requestedReversedOn && /^\d{4}-\d{2}-\d{2}$/.test(requestedReversedOn) ? requestedReversedOn : batch.effectiveOn;
     if (original.length) {
       await tx.insert(leaveLedger).values(
         original.map((r) => ({
@@ -306,7 +341,7 @@ export async function reverseLeaveAdjustmentBatch(
           // A HUMAN reason, not a sys: code — this was a person undoing a person's action, and
           // classifyLedgerAdjustment must keep counting it as a config adjustment like its original.
           reason: `Reversal of: ${batch.reason}`,
-          adjustmentBatchId: p.batchId,
+          adjustmentBatchId: batchId,
         })),
       );
     }
@@ -314,12 +349,12 @@ export async function reverseLeaveAdjustmentBatch(
     await tx
       .update(leaveAdjustmentBatch)
       .set({ reversedAt: sql`now()`, reversedByUserId: ctx.userId ?? null })
-      .where(eq(leaveAdjustmentBatch.id, p.batchId));
+      .where(eq(leaveAdjustmentBatch.id, batchId));
 
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'leave-adjustment-batch',
-      aggregateId: p.batchId,
+      aggregateId: batchId,
       eventType: 'leave.adjustment.reversed',
       actor: actorOf(ctx),
       payload: { reversed: original.length, reversedOn },

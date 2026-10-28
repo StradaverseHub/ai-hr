@@ -1,5 +1,7 @@
 # ADR-0031 — Bank salary-disbursement (IBG bulk-payment) files
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Status:** Proposed (foundation + data-entry implemented; byte-exact file builders gated on go-live inputs)
 - **Date:** 2026-06-20
 - **Context tags:** payroll, Layer-B, disbursement, Chin Hin go-live, #73 (P-73c)

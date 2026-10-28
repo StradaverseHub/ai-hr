@@ -1,4 +1,7 @@
-import {workforceEmploymentPredicate} from './workforce-access';
+import {assertReviewedPayrollScopeCompanyTx} from './payroll-run-selection';
+import {assertWorkforceCompanyTx,workforceEmploymentPredicate} from './workforce-access';
+import {isCalendarDate} from '../lib/calendar-date';
+import {lockPayrollHistoryReadTx,tryLockPayrollHistoryReadTx} from './payroll-history-lock';
 import {ownPersonPredicate} from './own-person';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {emergencyLeaveGroupOriginSql,cancellationSplitGroupSql} from './leave-group-origin-sql';
@@ -26,6 +29,16 @@ import {
 import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { assertModuleGate } from './module-gate';
+import { assertAiPrincipalTx } from './ai-principal';
+
+/** Optional caller-owned read seam. Supplied transactions must bind an actual current login;
+ * this is not a bootstrap, migration or owner-pool capability. Ordinary calls are unchanged. */
+async function withReadTx<T>(ctx: SessionContext, existingTx: Tx | undefined, read: (tx: Tx) => Promise<T>): Promise<T> {
+  if (!existingTx) return withTenant(ctx, read);
+  await assertAiPrincipalTx(existingTx, ctx);
+  return read(existingTx);
+}
+
 import { companyDeleteBlockSqlText } from './company-refs';
 import { isCompanyDeleteBlock, type CompanyDeleteBlock } from '../lib/company-delete';
 import {
@@ -162,6 +175,7 @@ import {
   reportingLineTypeEnum,
   toilAccrual,
 } from '../db/schema';
+import { payrollHistoryEffectiveBatch } from '../db/schema';
 import { ALL_ROW_CEILING } from '../lib/pagination';
 import { daysInMonth } from './payroll';
 import { filterDelegationOrgScopeTx } from './approvals';
@@ -182,8 +196,8 @@ import { todayInKualaLumpur } from '../lib/hr-date';
 // Unpaginated — returns the whole employee set (transfer-target dropdowns, the payroll batch picker,
 // etc.). Do NOT swap in the paginated `listEmployeesPage`: the payroll picker needs every active
 // employee, not a page, or the checkbox set would silently drop people past the page boundary.
-export function listEmployees(ctx: SessionContext, companyIds?: string[],purpose?:'workforce') {
-  return withTenant(ctx,async tx=>{if(purpose)await lockAccessConfigurationTx(tx,ctx.tenantId);return listEmployeesTx(tx,companyIds,purpose);});
+export function listEmployees(ctx: SessionContext, companyIds?: string[],purpose?:'workforce',existingTx?:Tx) {
+  return withReadTx(ctx,existingTx,async tx=>{if(purpose)await lockAccessConfigurationTx(tx,ctx.tenantId);return listEmployeesTx(tx,companyIds,purpose);});
 }
 export function listEmployeesTx(tx: Tx, companyIds?: string[],purpose?:'workforce') {
   return tx
@@ -421,17 +435,38 @@ const workforceListWhere = (p: EmployeeListFilters, columns: EmployeeListColumns
 
 /** Whole authorized Workforce picker population. Do not repurpose the independent payroll/clocking
  * picker or transfer its person/card identifiers into a new grant's screen props. */
+function workforcePickerColumns(){return {
+  employmentId: workforceListUuid('employmentId'), name: workforceListValue<string>('name'),
+  employeeCode: workforceListValue<string | null>('employeeCode'), companyId: workforceListUuid('companyId'),
+  company: workforceListValue<string>('company'), department: workforceListValue<string | null>('department'),
+  terminatedOn: workforceListValue<string | null>('terminatedOn'),
+};}
 export function listWorkforcePickOptions(ctx: SessionContext, companyIds?: string[]) {
   return withTenant(ctx, async tx => {
     await lockAccessConfigurationTx(tx, ctx.tenantId);
-    return tx.select({
-      employmentId: workforceListUuid('employmentId'), name: workforceListValue<string>('name'),
-      employeeCode: workforceListValue<string | null>('employeeCode'), companyId: workforceListUuid('companyId'),
-      company: workforceListValue<string>('company'), department: workforceListValue<string | null>('department'),
-      terminatedOn: workforceListValue<string | null>('terminatedOn'),
-    }).from(workforceListSource).where(workforceListWhere({ companyIds }, workforceListColumns()))
+    return tx.select(workforcePickerColumns()).from(workforceListSource).where(workforceListWhere({ companyIds }, workforceListColumns()))
       .orderBy(workforceListValue('name'), workforceListUuid('employmentId'));
   });
+}
+/** Resolve an explicit bounded identity set through the same current Workforce projection. */
+export async function readWorkforcePickRowsTx(ctx:SessionContext,tx:Tx,ids:string[]){
+ if(ids.length>500||ids.some(id=>!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)))throw new RangeError('Invalid workforce identity selection');
+ if(!ids.length)return [];await lockAccessConfigurationTx(tx,ctx.tenantId);const columns=workforcePickerColumns();
+ return tx.select(columns).from(workforceListSource).where(inArray(columns.employmentId,ids)).orderBy(columns.employmentId);
+}
+/** Bounded picker over the same purpose projection, reusable inside a caller's authorization transaction.
+ * Resolve a cursor only inside this exact authorized search; equal names are ordered by employment ID. */
+export async function listWorkforcePickPageTx(ctx:SessionContext,tx:Tx,input:{companyIds:string[];q?:string;after?:string;limit:number;departmentId?:string;departmentSearch?:string;branch?:string;hiredFrom?:string;hiredTo?:string}){
+  if(!Number.isInteger(input.limit)||input.limit<1||input.limit>100||(input.q?.length??0)>200||input.after&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.after))throw new RangeError('Invalid workforce picker');
+  if((input.departmentSearch?.length??0)>200||(input.branch?.length??0)>200||input.departmentId&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.departmentId)||input.hiredFrom&&!isCalendarDate(input.hiredFrom)||input.hiredTo&&!isCalendarDate(input.hiredTo)||input.hiredFrom&&input.hiredTo&&input.hiredFrom>input.hiredTo)throw new RangeError('Invalid workforce picker filters');
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  const source=sql`app.access_workforce_picker_rows(${input.branch?.trim()||null},${input.hiredFrom??null}::date,${input.hiredTo??null}::date) as workforce_row(value)`;
+  const departmentSearch=input.departmentSearch?.trim(),needle=departmentSearch?'%'+departmentSearch.replace(/[\\%_]/g,'\\$&')+'%':undefined;
+  const where=and(workforceListWhere({companyIds:input.companyIds,q:input.q,departmentId:input.departmentId},workforceListColumns()),needle?sql`${workforceListValue('department')} ilike ${needle}`:undefined),columns=workforcePickerColumns();
+  const [cursor]=input.after?await tx.select({name:columns.name}).from(source).where(and(where,eq(columns.employmentId,input.after))).limit(1):[];
+  if(input.after&&!cursor)return {rows:[],nextCursor:null};
+  const rows=await tx.select(columns).from(source).where(and(where,cursor?or(gt(columns.name,cursor.name),and(eq(columns.name,cursor.name),gt(columns.employmentId,input.after!))):undefined)).orderBy(columns.name,columns.employmentId).limit(input.limit+1);
+  return {rows:rows.slice(0,input.limit),nextCursor:rows.length>input.limit?rows[input.limit-1].employmentId:null};
 }
 
 
@@ -506,8 +541,9 @@ export function listEmployeesPage(
     offset: number;
   },
   purpose?:'workforce',
+  existingTx?: Tx,
 ): Promise<{ rows: EmployeeListRow[]; total: number }> {
-  return withTenant(ctx, async (tx) => {
+  const read = async (tx: Tx) => {
     if (purpose) {
       await lockAccessConfigurationTx(tx, ctx.tenantId);
       const columns = workforceListColumns();
@@ -599,7 +635,8 @@ export function listEmployeesPage(
       .leftJoin(assignment, currentAssignment)
       .where(where);
     return { rows, total: Number(count) };
-  });
+  };
+  return existingTx ? read(existingTx) : withTenant(ctx,read);
 }
 
 /**
@@ -679,9 +716,8 @@ export function getCompanyCurrency(ctx: SessionContext, companyId: string): Prom
 export function listCompanies(
   ctx: SessionContext,
   opts: { includeArchived?: boolean; adminOnly?: boolean } = {},
-) {
-  return withTenant(ctx, (tx) =>
-    tx
+ outerTx?:Tx) {
+  const run=(tx:Tx)=>tx
       .select({
         id: company.id,
         name: company.legalName,
@@ -728,8 +764,8 @@ export function listCompanies(
           opts.adminOnly ? sql`app.is_admin_for(company.id)` : undefined,
         ),
       )
-      .orderBy(company.legalName),
-  );
+      .orderBy(company.legalName);
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 /**
@@ -765,9 +801,8 @@ export function companyDeleteStatus(
 export function listDepartments(
   ctx: SessionContext,
   opts: { includeArchived?: boolean; companyIds?: string[] } = {},
-) {
-  return withTenant(ctx, (tx) =>
-    tx
+ outerTx?:Tx) {
+  const run=(tx:Tx)=>tx
       .select({
         id: department.id,
         name: department.name,
@@ -798,8 +833,8 @@ export function listDepartments(
             : undefined,
         ),
       )
-      .orderBy(department.name),
-  );
+      .orderBy(department.name);
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 export type PayrollRunEmployeeRow = {
@@ -841,6 +876,20 @@ export type PayrollRunEmployeeRow = {
  * predicate, so a status filter narrowing this list is a visible user choice, not a silent drop. Read-only
  * — no DomainEvent (derived recomputation, substrate's documented skip).
  */
+/** Exact original wizard membership, shared with the minimal human run selector. Current company
+ * IDs are intentional: do not offer historical-company subjects this CREATE source cannot accept. */
+export function payrollRunCurrentCompanyPeriodPredicate(companyIds:string[],payPeriod:string){
+ const [year,month1]=payPeriod.split('-').map(Number),periodStart=`${payPeriod}-01`,periodEnd=`${payPeriod}-${String(daysInMonth(year,month1)).padStart(2,'0')}`;
+ return and(inArray(employment.companyId,companyIds),lte(employment.hiredOn,periodEnd),or(isNull(employment.terminatedOn),gte(employment.terminatedOn,periodStart)));
+}
+/** Same-Tx minimal period candidates only AFTER the caller's fresh native company/field guard.
+ * Literal text search has no filter language/wildcard expansion, contact lookup or salary query. */
+export async function reviewedPayrollRunEmployeeChoicesTx(tx:Tx,supplied:SessionContext,input:{companyId:string;payPeriod:string;query:string}){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},p={...input};await assertReviewedPayrollScopeCompanyTx(tx,ctx,p.companyId);await assertWorkforceCompanyTx(tx,ctx,p.companyId,'view');const q='%'+p.query.trim().replace(/[\\%_]/g,'\\$&')+'%';
+ const rows=await tx.select({employmentId:employment.id,employeeCode:employment.employeeCode,fullName:person.fullName}).from(employment).innerJoin(person,eq(person.id,employment.personId))
+ .where(and(payrollRunCurrentCompanyPeriodPredicate([p.companyId],p.payPeriod),workforceEmploymentPredicate(sql`${employment.id}`,'view',[p.companyId]),sql`(${person.fullName} ilike ${q} escape ${'\\'} or ${employment.employeeCode} ilike ${q} escape ${'\\'})`)).orderBy(person.fullName,employment.employeeCode,employment.id).limit(21);
+ return{employees:rows.slice(0,20),truncated:rows.length>20};
+}
 export function listEmployeesForPayrollRun(
   ctx: SessionContext,
   companyIds: string | string[],
@@ -852,9 +901,6 @@ export function listEmployeesForPayrollRun(
   const ids = Array.isArray(companyIds) ? companyIds : [companyIds];
   return withTenant(ctx, async (tx) => {
     if (ids.length === 0) return [];
-    const [year, month1] = payPeriod.split('-').map(Number);
-    const periodStart = `${payPeriod}-01`;
-    const periodEnd = `${payPeriod}-${String(daysInMonth(year, month1)).padStart(2, '0')}`;
     const currentAssignment = and(
       eq(assignment.employmentId, employment.id),
       isNull(assignment.validTo),
@@ -899,11 +945,7 @@ export function listEmployeesForPayrollRun(
       .leftJoin(compensation, currentComp)
       .leftJoin(payrollPolicy, eq(payrollPolicy.id, employment.payrollPolicyId))
       .where(
-        and(
-          inArray(employment.companyId, ids),
-          lte(employment.hiredOn, periodEnd),
-          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
-        ),
+        payrollRunCurrentCompanyPeriodPredicate(ids,payPeriod),
       )
       .orderBy(company.legalName, person.fullName);
     return rows as PayrollRunEmployeeRow[];
@@ -1195,8 +1237,8 @@ const applyMenuEmpColumns = {
  * Answered AS AT TODAY, where `requestLeave` answers as at the leave's start date — see
  * `mayAppearInApplyMenu` above for why a menu has no other date to use and why the difference is safe.
  */
-export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: string, locale?: string) {
-  return withTenant(ctx, async (tx) => {
+export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: string, locale?: string, existingTx?: Tx) {
+  const perform = async (tx: Tx) => {
     const [types, [emp]] = await Promise.all([
       tx
         .select({
@@ -1271,7 +1313,8 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
           name: pickName(r.name, i18n, locale),
         }),
       );
-  });
+  };
+  return existingTx ? perform(existingTx) : withTenant(ctx, perform);
 }
 
 /**
@@ -1535,6 +1578,41 @@ export function listLeaveRequests(
 
 /** One row of the leave-request history table (shared projection + resolved workingDates). */
 export type LeaveRequestRow = Awaited<ReturnType<typeof listLeaveRequests>>[number];
+
+/** Minimal own-submission references for a server-side receipt reader. The caller must supply its
+ * current authenticated withTenant transaction; this neither establishes fresh Assistant authority
+ * nor reads an action record. Both canonical source rows must be visible through RLS, and the same
+ * delegation trim as the flat leave reader remains in force. Explicit own-person/actor predicates
+ * narrow that access even for HR admins. No reason, balance, status, approver or event payload is
+ * materialized. Returning references does not prove an enclosing command committed or authorize a
+ * new effect. The lifecycle owner must still bind them to its stored receipt/current identity. */
+export async function readOwnLeaveSubmissionReferenceTx(
+  tx: Tx, ctx: SessionContext, requestId: string, submittedEventId: string,
+) {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  if (!ctx.userId || !ctx.personId) return null;
+  const rows = await tx.select({
+    request: { id: leaveRequest.id, tenantId: leaveRequest.tenantId,
+      employmentId: leaveRequest.employmentId, personId: employment.personId, companyId: employment.companyId },
+    event: { id: domainEvent.id, tenantId: domainEvent.tenantId, aggregateType: domainEvent.aggregateType,
+      aggregateId: domainEvent.aggregateId, eventType: domainEvent.eventType, actorType: domainEvent.actorType,
+      actorId: domainEvent.actorId, subjectEmploymentId: domainEvent.subjectEmploymentId },
+  }).from(leaveRequest)
+    .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
+    .innerJoin(person, eq(person.id, employment.personId))
+    .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
+    .innerJoin(domainEvent, and(eq(domainEvent.id, submittedEventId),
+      eq(domainEvent.tenantId, ctx.tenantId), eq(domainEvent.aggregateId, leaveRequest.id),
+      eq(domainEvent.aggregateType, 'leave-request'), eq(domainEvent.eventType, 'leave-request.submitted'),
+      eq(domainEvent.actorType, 'user'), eq(domainEvent.actorId, ctx.userId),
+      eq(domainEvent.subjectEmploymentId, leaveRequest.employmentId)))
+    .where(and(ownPersonPredicate(ctx), sql`app.current_user_id()=${ctx.userId}::uuid`,
+      sql`app.current_tenant_id()=${ctx.tenantId}::uuid`,
+      eq(leaveRequest.id, requestId), eq(leaveRequest.tenantId, ctx.tenantId),
+      eq(employment.personId, ctx.personId))).limit(1);
+  const scoped = await filterDelegationOrgScopeTx(tx, ctx, rows, row => row.request.employmentId);
+  return scoped[0] ?? null;
+}
 
 /**
  * Advanced Search & Filter for Leave Management (feedback 0773bda9) — the paginated, filterable, sortable
@@ -1977,14 +2055,14 @@ export function plannedAbsences(
   companyIds: string[] | undefined,
   range: { from: string; to: string },
   today?: string,
-  opts?: { personIds?: string[] },
+  opts?: { personIds?: string[] }, existingTx?: Tx,
 ) {
   const personIds = opts?.personIds;
   const personScope =
     personIds === undefined
       ? undefined
       : inArray(employment.personId, personIds.length ? personIds : [NEVER_MATCHING_PERSON_ID]);
-  return withTenant(ctx, async (tx) => {
+  return withReadTx(ctx, existingTx, async (tx) => {
     const emps = await tx
       .select({
         personId: employment.personId,
@@ -2247,9 +2325,9 @@ export function awayTodayCount(
   ctx: SessionContext,
   companyIds: string[] | undefined,
   todayIso: string,
-  excludePersonId?: string | null,
+  excludePersonId?: string | null, existingTx?: Tx,
 ): Promise<number> {
-  return withTenant(ctx, async (tx) => {
+  return withReadTx(ctx, existingTx, async (tx) => {
     const [row] = await tx
       .select({ n: sql<number>`count(distinct ${employment.personId})::int` })
       .from(leaveRequest)
@@ -2330,8 +2408,8 @@ export function recentHires(
 }
 
 /** Upcoming public holidays in scope (for the dashboard Upcoming-events card). */
-export function upcomingHolidays(ctx: SessionContext, opts: { from: string; limit?: number }) {
-  return withTenant(ctx, (tx) =>
+export function upcomingHolidays(ctx: SessionContext, opts: { from: string; limit?: number }, existingTx?: Tx) {
+  return withReadTx(ctx, existingTx, (tx) =>
     tx
       .select({ id: holiday.id, name: holiday.name, date: holiday.holidayDate })
       .from(holiday)
@@ -2356,9 +2434,9 @@ export function upcomingHolidays(ctx: SessionContext, opts: { from: string; limi
  */
 export function holidayDatesForEmployment(
   ctx: SessionContext,
-  p: { employmentId: string; from: string; to: string },
+  p: { employmentId: string; from: string; to: string }, existingTx?: Tx,
 ): Promise<string[]> {
-  return withTenant(ctx, async (tx) =>
+  return withReadTx(ctx, existingTx, async (tx) =>
     [
       ...(await holidayDatesFor(tx, {
         employmentId: p.employmentId,
@@ -2458,8 +2536,8 @@ export function employmentCompanyEditable(ctx: SessionContext, employmentId: str
   });
 }
 
-export function employeeDetail(ctx: SessionContext, employmentId: string,purpose?:'workforce') {
-  return withTenant(ctx, async (tx) => {
+export function employeeDetail(ctx: SessionContext, employmentId: string,purpose?:'workforce', existingTx?: Tx) {
+  return withReadTx(ctx, existingTx, async (tx) => {
     if(purpose)await lockAccessConfigurationTx(tx,ctx.tenantId);
     const [row] = await tx
       .select({
@@ -2628,9 +2706,8 @@ export function employeeDetail(ctx: SessionContext, employmentId: string,purpose
 }
 
 /** ADR-0041 2E: the tenant grade catalog, most-senior first (rank asc), then name. */
-export function listJobGrades(ctx: SessionContext, opts: { includeArchived?: boolean } = {}) {
-  return withTenant(ctx, (tx) =>
-    tx
+export function listJobGrades(ctx: SessionContext, opts: { includeArchived?: boolean } = {}, outerTx?:Tx) {
+  const run=(tx:Tx)=>tx
       .select({
         id: jobGrade.id,
         code: jobGrade.code,
@@ -2672,8 +2749,8 @@ export function listJobGrades(ctx: SessionContext, opts: { includeArchived?: boo
       })
       .from(jobGrade)
       .where(opts.includeArchived ? undefined : isNull(jobGrade.archivedAt))
-      .orderBy(jobGrade.rank, jobGrade.name),
-  );
+      .orderBy(jobGrade.rank, jobGrade.name);
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 /**
@@ -2948,8 +3025,8 @@ export type LeaveBalanceReadOptions = {
    */
   asOf?: string;
 };
-export function leaveBalances(ctx: SessionContext, employmentId: string, locale?: string, opts: LeaveBalanceReadOptions = {}) {
-  return withTenant(ctx, tx => leaveBalancesTx(tx, ctx, employmentId, locale, opts));
+export function leaveBalances(ctx: SessionContext, employmentId: string, locale?: string, opts: LeaveBalanceReadOptions = {}, existingTx?: Tx) {
+  return withReadTx(ctx, existingTx, tx => leaveBalancesTx(tx, ctx, employmentId, locale, opts));
 }
 /** Explicit transaction seam for snapshot report consumers; the same canonical calculation and defaults. */
 export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId: string, locale?: string, opts: LeaveBalanceReadOptions = {}) {
@@ -3648,9 +3725,9 @@ export async function subordinateLeaveSummary(
   ctx: SessionContext,
   employmentId: string,
   todayIso: string,
-  locale?: string,
+  locale?: string, existingTx?: Tx,
 ): Promise<SubordinateLeaveSummaryRow[] | null> {
-  const managed = await withTenant(ctx, async (tx) => {
+  const managed = await withReadTx(ctx, existingTx, async (tx) => {
     const res = await tx.execute(sql`
       select exists (
         select 1 from employment me
@@ -3674,10 +3751,10 @@ export async function subordinateLeaveSummary(
   // above gives for `includeArchived`: this section's whole contract is that a manager and the employee
   // read the same numbers for the same leave type. HR's full picture lives on the Personnel profile and
   // Employee Balances, which both opt in; a manager is not who reverses a wrong grant.
-  const balances = await leaveBalances(ctx, employmentId, locale, { includeArchived: false });
+  const balances = await leaveBalances(ctx, employmentId, locale, { includeArchived: false }, existingTx);
   if (balances.length === 0) return [];
 
-  return withTenant(ctx, async (tx) => {
+  return withReadTx(ctx, existingTx, async (tx) => {
     const [pending, dated, spans] = await Promise.all([
       tx
         .select({ leaveTypeId: leaveRequest.leaveTypeId, n: sql<string>`count(*)` })
@@ -4012,9 +4089,9 @@ export function leaveEntitlementBreakdown(
   locale?: string,
   /** r303 (31492f74) — `derivation: true` attaches the per-line working HR's Leave Summary sentences read. Only
    *  the HR mounts ask; see `LeaveEntitlementBreakdown.derivation`. */
-  opts: { derivation?: boolean } = {},
+  opts: { derivation?: boolean } = {}, existingTx?: Tx,
 ): Promise<LeaveEntitlementBreakdown | null> {
-  return withTenant(ctx, (tx) => leaveEntitlementBreakdownTx(tx, employmentId, leaveTypeId, asOf, locale, opts));
+  return withReadTx(ctx, existingTx, (tx) => leaveEntitlementBreakdownTx(tx, employmentId, leaveTypeId, asOf, locale, opts));
 }
 
 /**
@@ -4730,8 +4807,10 @@ export type ReplacementLeaveLedger = {
   }[];
 };
 
-export function replacementLeaveLedger(ctx: SessionContext, employmentId: string): Promise<ReplacementLeaveLedger> {
-  return withTenant(ctx, async (tx) => {
+export function replacementLeaveLedger(ctx: SessionContext, employmentId: string, existingTx?: Tx): Promise<ReplacementLeaveLedger> {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+
+  return withReadTx(ctx, existingTx, async (tx) => {
     const rows = await tx
       .select({
         id: toilAccrual.id,
@@ -4963,8 +5042,8 @@ export function leaveBalancesAll(ctx: SessionContext, companyIds?: string[]) {
   });
 }
 
-export function leaveRequestsFor(ctx: SessionContext, employmentId: string, locale?: string) {
-  return withTenant(ctx, async (tx) => {
+export function leaveRequestsFor(ctx: SessionContext, employmentId: string, locale?: string, existingTx?: Tx) {
+  return withReadTx(ctx, existingTx, async (tx) => {
     const rows = await tx
       .select({
         id: leaveRequest.id,
@@ -5097,8 +5176,8 @@ export async function ownReportingManagersTx(tx: Tx, employmentId: string): Prom
  *  (it filters `valid_to IS NULL` and never checks `valid_from`), while 0498 answers only for the line
  *  in force today. Taking either one alone would REMOVE a row somebody can see today, and this round
  *  takes nothing away. */
-export function reportingLinesFor(ctx: SessionContext, employmentId: string) {
-  return withTenant(ctx, async (tx) => {
+export function reportingLinesFor(ctx: SessionContext, employmentId: string, existingTx?: Tx) {
+  return withReadTx(ctx, existingTx, async (tx) => {
     const visibleManagers = await tx
       .select({
         id: reportingLine.id,
@@ -5565,6 +5644,7 @@ export function orgChartData(ctx: SessionContext, companyIds?: string[]) {
  *  the dashboard is switcher-scoped ON PURPOSE and stays that way. */
 export function dashboardStats(ctx: SessionContext, companyIds?: string[]) {
   return withTenant(ctx, async (tx) => {
+    await lockPayrollHistoryReadTx(tx,ctx.tenantId);
     const one = sql<number>`count(*)::int`;
     const scopeIds = companyIds && companyIds.length ? companyIds : null;
     const scope = (col: AnyColumn) => (scopeIds ? inArray(col, scopeIds) : sql`true`);
@@ -5648,8 +5728,8 @@ export function dashboardStats(ctx: SessionContext, companyIds?: string[]) {
             status: payrollBatch.status,
             totals: payrollBatch.totals,
           })
-          .from(payrollBatch)
-          .where(scope(payrollBatch.companyId))
+          .from(payrollHistoryEffectiveBatch)
+          .where(and(scope(payrollBatch.companyId),or(isNull(payrollBatch.historyImportAttemptId),gt(payrollBatch.employeeCount,0))))
           .orderBy(desc(payrollBatch.payPeriod))
       : [];
     const head = latestRows[0];
@@ -6051,8 +6131,8 @@ export function employeeAudit(ctx: SessionContext, employmentId: string, limit =
 // Own-person proof is independent of RLS: an HR login also has wider general visibility.
 
 /** The current principal's active employment + profile (resolved from their linked person). */
-export function myEmployment(ctx: SessionContext, selected?: {employmentId:string}) {
-  return withTenant(ctx, async (tx) => {
+export function myEmployment(ctx: SessionContext, selected?: {employmentId:string}, existingTx?: Tx) {
+  return withReadTx(ctx, existingTx, async (tx) => {
     if (!ctx.personId) return null;
     if(selected&&(!ctx.userId||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(selected.employmentId)))return null;
     const [row] = await tx
@@ -6169,8 +6249,8 @@ export function profileEditEmploymentPredicate(ctx:SessionContext){
    OR LEAST(${employment.resignationDate},${employment.lastWorkingDate},${employment.terminatedOn})>=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
   AND EXISTS(SELECT 1 FROM app_user u WHERE u.id=${ctx.userId}::uuid AND u.tenant_id=${ctx.tenantId}::uuid AND u.person_id=${ctx.personId}::uuid AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))`;
 }
-export function myEmployments(ctx:SessionContext,opts:{profileEdit?:boolean}={}){
- return withTenant(ctx,tx=>myEmploymentsTx(tx,ctx,opts));
+export function myEmployments(ctx:SessionContext,opts:{profileEdit?:boolean}={}, existingTx?: Tx){
+ return withReadTx(ctx, existingTx,tx=>myEmploymentsTx(tx,ctx,opts));
 }
 export async function myEmploymentsTx(tx:Tx,ctx:SessionContext,opts:{profileEdit?:boolean}={}){
     if (!ctx.personId) return [];
@@ -6236,8 +6316,8 @@ export function myOwnEmploymentSubjects(ctx:SessionContext,opts:{profileEdit?:bo
  * this to the principal's own employments, so feeding the result to `myPayslips` only surfaces payslips
  * the principal owns. Used solely to build the /me EA document rows.
  */
-export function myEmploymentIdsAll(ctx: SessionContext) {
-  return withTenant(ctx, async (tx) => {
+export function myEmploymentIdsAll(ctx: SessionContext, existingTx?: Tx) {
+  return withReadTx(ctx, existingTx, async (tx) => {
     if (!ctx.personId) return [];
     return tx
       .select({ employmentId: employment.id, company: company.legalName })
@@ -6302,14 +6382,16 @@ export function concurrentEmploymentPersons(ctx: SessionContext) {
 }
 
 /** The current principal's payslips (RLS already restricts to own employment). */
-export function myPayslips(ctx: SessionContext, employmentIds: string[], ownOnly = false) {
-  return withTenant(ctx, async (tx) => {
+export function myPayslips(ctx: SessionContext, employmentIds: string[], ownOnly = false, existingTx?: Tx) {
+  return withReadTx(ctx, existingTx, async (tx) => {
+    if(existingTx)await tryLockPayrollHistoryReadTx(tx,ctx.tenantId);else await lockPayrollHistoryReadTx(tx,ctx.tenantId);
     if (employmentIds.length === 0) return [];
     const rows = await tx
       .select({
         id: payslip.id,
         employmentId:payslip.employmentId,
         company: company.legalName,
+        companyId:payrollBatch.companyId,
         payPeriod: payrollBatch.payPeriod,
         runType: payrollBatch.runType,
         runSeq: payrollBatch.runSeq,
@@ -6321,6 +6403,7 @@ export function myPayslips(ctx: SessionContext, employmentIds: string[], ownOnly
         // Step 6 (f3148da1) — the release instant, materialized at close time (RLS-safe via the batch, unlike
         // the admin-only company_payroll_config which the employee session cannot read).
         releasedAt: payrollBatch.releasedAt,
+        historyImportAttemptId: payrollBatch.historyImportAttemptId,
       })
       .from(payslip)
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
@@ -6334,7 +6417,8 @@ export function myPayslips(ctx: SessionContext, employmentIds: string[], ownOnly
     const now = new Date();
     return rows.map((r) => ({
       ...r,
-      released: payrollPublicationState(r,now)==='published',
+      released: r.historyImportAttemptId == null && payrollPublicationState(r,now)==='published',
+      historyImported: r.historyImportAttemptId != null,
     }));
   });
 }
@@ -6346,18 +6430,27 @@ export function myOwnPayslips(ctx:SessionContext,employmentIds:string[]) {
 }
 
 /** Own current/historical released run index. No caller-provided employment population. */
-export function myReleasedPayslipRuns(ctx:SessionContext) {
+export function myReleasedPayslipRuns(ctx:SessionContext, existingTx?: Tx) {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+
   assertModuleGate(ctx,'payroll');
-  return withTenant(ctx,async tx=>{
+  return withReadTx(ctx, existingTx,async tx=>{
+    if(existingTx)await tryLockPayrollHistoryReadTx(tx,ctx.tenantId);else await lockPayrollHistoryReadTx(tx,ctx.tenantId);
     if(!ctx.personId)return [];
-    return tx.select({payslipId:payslip.id,employmentId:employment.id,employeeCode:employment.employeeCode,
+    // d28501b8 r2 — the employee keeps the payslip they were ISSUED, even after Import Payroll History set it
+    // aside for HR (migration 0660; own adopted originals only). Switched on for this one query and off again,
+    // because a caller-supplied transaction may go on to read year-to-date figures.
+    await tx.execute(sql`select set_config('app.payslip_self_issued','on',true)`);
+    try{
+    return await tx.select({payslipId:payslip.id,employmentId:employment.id,employeeCode:employment.employeeCode,
       companyId:payrollBatch.companyId,company:company.legalName,payPeriod:payrollBatch.payPeriod,
       cycleId:payrollBatch.payrollCycleId,cycleName:payrollCycle.name,runType:payrollBatch.runType,runSeq:payrollBatch.runSeq})
       .from(payslip).innerJoin(employment,eq(employment.id,payslip.employmentId))
       .innerJoin(payrollBatch,eq(payrollBatch.id,payslip.batchId)).innerJoin(company,eq(company.id,payrollBatch.companyId))
       .leftJoin(payrollCycle,eq(payrollCycle.id,payrollBatch.payrollCycleId))
-      .where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId),sql`app.principal_snapshot_current() AND app.is_self_person(${employment.personId})`,eq(payrollBatch.status,'closed'),or(isNull(payrollBatch.releasedAt),lte(payrollBatch.releasedAt,new Date()))))
+      .where(and(isNull(payrollBatch.historyImportAttemptId),eq(employment.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId),sql`app.principal_snapshot_current() AND app.is_self_person(${employment.personId})`,eq(payrollBatch.status,'closed'),or(isNull(payrollBatch.releasedAt),lte(payrollBatch.releasedAt,new Date()))))
       .orderBy(desc(payrollBatch.payPeriod),asc(payrollBatch.companyId),asc(payrollBatch.runSeq),asc(payslip.id));
+    }finally{await tx.execute(sql`select set_config('app.payslip_self_issued','off',true)`);}
   });
 }
 
@@ -6458,8 +6551,10 @@ const checkOutSite = alias(clockingLocation, 'check_out_site');
 
 /** The current principal's recent attendance, including per-punch Clocking Location & Geofencing
  *  capture (ADR-0070): matched site name, distance, and pass/not-enforced status per punch. */
-export function myAttendance(ctx: SessionContext, employmentId: string, limit = 10) {
-  return withTenant(ctx, async (tx) => {
+export function myAttendance(ctx: SessionContext, employmentId: string, limit = 10, existingTx?: Tx) {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+
+  return withReadTx(ctx, existingTx, async (tx) => {
     const rows=await tx
       .select({
         id: attendance.id,
@@ -6494,8 +6589,10 @@ export function myAttendance(ctx: SessionContext, employmentId: string, limit = 
 
 /** Companies this principal may scope to (top-bar company context): group admin → all; otherwise
  *  the companies they're employed at + the companies of their company-scoped grants. */
-export function allowedCompanies(ctx: SessionContext) {
-  return withTenant(ctx, async (tx) => {
+export function allowedCompanies(ctx: SessionContext, existingTx?: Tx) {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+
+  return withReadTx(ctx, existingTx, async (tx) => {
     const isGroupAdmin =
       ctx.grants?.some((g) => (g.role === 'hr_admin' || g.role === 'super_admin') && !g.companyId) ??
       false;

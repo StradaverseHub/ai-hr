@@ -1,5 +1,7 @@
 # ADR-0094 — A tiered test gate: a faster full gate, and an affected tier for presentational diffs
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Date:** 2026-10-08
 - **Status:** Accepted. The owner approved the tiered gate on 2026-10-08 (round r417).
 - **Related:** ADR-0075 (sustainable verification gates; its §2 "a missing receipt falls through to running

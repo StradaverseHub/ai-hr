@@ -67,8 +67,10 @@ async function decisionReturnUrl(s: Awaited<ReturnType<typeof getSession>>, nav:
       const hasNextAssignment = isModuleEnabledOrFalse(s, 'attendance') && await hasPendingAttendanceParticipantAssignment(s);
       if (!hasNextAssignment) {
         const { scopeIds } = await scopedSession();
+        // WP-A1: Performance/Rewards task sources off — /approvals shows neither performance work nor a
+        // second copy of the Rewards queue read beside it (same reasoning as app/approvals/page.tsx).
         const [tasks,rewards]=await Promise.all([
-          listPendingTasks(s,scopeIds,{attendance:isModuleEnabledOrFalse(s,'attendance'),claims:isModuleEnabledOrFalse(s,'claims')}),
+          listPendingTasks(s,scopeIds,{attendance:isModuleEnabledOrFalse(s,'attendance'),claims:isModuleEnabledOrFalse(s,'claims'),performance:false,rewards:false}),
           isModuleEnabledOrFalse(s, 'rewards') ? pendingRewardReviews(s, scopeIds) : Promise.resolve([]),
         ]);
         if (!tasks.length&&!rewards.length) return neutralDestination();

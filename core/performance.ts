@@ -1,3 +1,9 @@
+import {assertPerformanceProviderSourceTx} from './performance-provider-source';
+import {withAiAdmissionCheck} from './ai-governance';
+import {draftInputDigest} from '../lib/ai/draft-input';
+import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
+import type { Tx as AiReadTx } from '../db/client';
+import { withCanonicalAiReadTx } from './ai-read-transaction';
 import { prepareAssessmentEvidenceFileTx, prepareAssessmentKpiFileTx, linkAssessmentAttachmentTx, configureAssessmentCycleTx, previewAssessmentParticipantsTx, snapshotAssessmentParticipantsTx } from '../packs/performance/service';
 /**
  * Performance & talent — Phase A (ADR-0013). The first config-driven, statute-free module.
@@ -15,7 +21,7 @@ import { prepareAssessmentEvidenceFileTx, prepareAssessmentKpiFileTx, linkAssess
  * event log, setCompensation (effective-dated merit) and setPayrollInput (bonus as additional-
  * remuneration MTD).
  */
-import { randomUUID } from 'node:crypto';
+import { randomUUID,createHash } from 'node:crypto';
 import { and, desc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { type SessionContext, type Tx } from '../db/client';
 // ADR-0077 D3 SERVICE GATE (r292). `withTenant` here is `withPerformanceTenant` — all 49 exported entry
@@ -24,6 +30,8 @@ import { type SessionContext, type Tx } from '../db/client';
 // keep working. See core/module-gate.ts.
 import { withPerformanceTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent } from '../db/events';
+import { assertModuleEnabled } from './entitlements';
+import { lockAccessConfigurationTx } from './access-configuration-lock';
 import {
   assignment,
   calibrationEntry,
@@ -655,28 +663,49 @@ export async function submitManagerReview(
   });
 }
 
+/** Minimal standard-cycle acknowledgement source. Caller owns Access before subject reads; cycle
+ * and review ownership precede current facts. No ratings, comments, recommendations or money leave
+ * this source projection. OneHR is a separate engine and is deliberately refused here. */
+export async function readOwnReviewAcknowledgementSourceTx(tx:Tx,ctx:SessionContext,reviewId:string){
+  assertModuleEnabled(ctx,'performance');if(!ctx.personId)throw new PerfError('Only the employee can acknowledge their own review');
+  const [nominated]=await tx.select({cycleId:performanceReview.cycleId}).from(performanceReview).innerJoin(employment,eq(employment.id,performanceReview.employmentId))
+    .where(and(eq(performanceReview.id,reviewId),eq(performanceReview.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId))).limit(1);
+  if(!nominated)throw new PerfError('Only the employee can acknowledge their own review');
+  // No row lock on review_cycle: under RLS any locking clause (FOR SHARE included) also applies the
+  // UPDATE policy, and an employee never passes review_cycle_write, so the lock silently filtered the
+  // subject's own tenant-readable cycle ("not found"). The cycle facts used here cannot regress inside
+  // the transaction: released_at is set once and never cleared, and the engine marker is fixed while the
+  // cycle is draft. Its xmin still binds the reviewed version; the own review row lock below serializes.
+  const [cycle]=await tx.select({id:reviewCycle.id,name:reviewCycle.name,releasedAt:reviewCycle.releasedAt,periodStart:reviewCycle.periodStart,periodEnd:reviewCycle.periodEnd,version:sql<string>`${reviewCycle}.xmin::text`})
+    .from(reviewCycle).where(and(eq(reviewCycle.id,nominated.cycleId),eq(reviewCycle.tenantId,ctx.tenantId)));
+  if(!cycle)throw new PerfError('Performance review not found (or not visible)');
+  await assertStandardCycleTx(tx,cycle.id);
+  const [review]=await tx.select({id:performanceReview.id,cycleId:performanceReview.cycleId,employmentId:performanceReview.employmentId,status:performanceReview.status,acknowledgedAt:performanceReview.acknowledgedAt,version:sql<string>`${performanceReview}.xmin::text`})
+    .from(performanceReview).where(and(eq(performanceReview.id,reviewId),eq(performanceReview.tenantId,ctx.tenantId))).for('update',{noWait:true});
+  if(!review||review.cycleId!==cycle.id)throw new PerfError('Performance review not found (or not visible)');
+  const [subject]=await tx.select({personId:employment.personId}).from(employment).where(and(eq(employment.id,review.employmentId),eq(employment.tenantId,ctx.tenantId))).limit(1);
+  if(!ctx.personId||subject?.personId!==ctx.personId)throw new PerfError('Only the employee can acknowledge their own review');
+  return {reviewId:review.id,employmentId:review.employmentId,cycleId:cycle.id,cycleName:cycle.name,periodStart:cycle.periodStart,periodEnd:cycle.periodEnd,
+    status:review.status,releasedAt:cycle.releasedAt,acknowledgedAt:review.acknowledgedAt,reviewVersion:review.version,cycleVersion:cycle.version};
+}
+export type ReviewedReviewAcknowledgementSource=Pick<Awaited<ReturnType<typeof readOwnReviewAcknowledgementSourceTx>>,'reviewId'|'employmentId'|'cycleId'|'reviewVersion'|'cycleVersion'>;
+/** Canonical acknowledgement joined to an enclosing human command. Expected source can only
+ * refuse changed facts; it cannot supply a status, rating, actor, approval or replacement effect. */
+export async function acknowledgeReviewTx(tx:Tx,ctx:SessionContext,p:{reviewId:string},expected?:ReviewedReviewAcknowledgementSource){
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};const reviewId=p.reviewId,checked=expected?{...expected}:undefined;
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  const current=await readOwnReviewAcknowledgementSourceTx(tx,ctx,reviewId);
+  if(checked&&(checked.reviewId!==current.reviewId||checked.employmentId!==current.employmentId||checked.cycleId!==current.cycleId||checked.reviewVersion!==current.reviewVersion||checked.cycleVersion!==current.cycleVersion))throw new PerfError('This review changed; review it again');
+  if(!current.releasedAt)throw new PerfError('This review has not been released yet');
+  if(current.status!=='submitted')throw new PerfError(`Cannot acknowledge a ${current.status} review`);
+  await tx.update(performanceReview).set({status:'acknowledged',acknowledgedAt:sql`now()`}).where(eq(performanceReview.id,current.reviewId));
+  const eventId=await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'performance-review',aggregateId:current.reviewId,eventType:'performance-review.acknowledged',actor:actorOf(ctx),subjectEmploymentId:current.employmentId},{returnId:true});
+  return {status:'acknowledged' as const,reviewId:current.reviewId,employmentId:current.employmentId,cycleId:current.cycleId,eventId};
+}
 /** Employee acknowledges their (released) review. Self only; only after the cycle is released. */
 export async function acknowledgeReview(ctx: SessionContext, p: { reviewId: string }) {
-  return withTenant(ctx, async (tx) => {
-    const { review, cycle, subjectPersonId } = await loadReview(tx, p.reviewId);
-    const isSelf = ctx.personId != null && ctx.personId === subjectPersonId;
-    if (!isSelf) throw new PerfError('Only the employee can acknowledge their own review');
-    if (!cycle.releasedAt) throw new PerfError('This review has not been released yet');
-    if (review.status !== 'submitted') throw new PerfError(`Cannot acknowledge a ${review.status} review`);
-    await tx
-      .update(performanceReview)
-      .set({ status: 'acknowledged', acknowledgedAt: sql`now()` })
-      .where(eq(performanceReview.id, review.id));
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'performance-review',
-      aggregateId: review.id,
-      eventType: 'performance-review.acknowledged',
-      actor: actorOf(ctx),
-      subjectEmploymentId: review.employmentId,
-    });
-    return { status: 'acknowledged' as const };
-  });
+  const current={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))},reviewId=p.reviewId;
+  return withTenant(current,async tx=>{await acknowledgeReviewTx(tx,current,{reviewId});return {status:'acknowledged' as const};});
 }
 
 /** Admin re-points a review at a new reviewer (e.g. the manager changed mid-cycle). */
@@ -1119,7 +1148,12 @@ export async function enactCompAction(
   ctx: SessionContext,
   p: { reviewId: string; meritEffectiveFrom?: string; bonusBatchId?: string },
 ) {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};p={...p};
   return withTenant(ctx, async (tx) => {
+    // A merit enact reads compensation before the leaf write; own the full interval before review,
+    // source/Payroll rows. Exclusive configuration also preserves transitive bonus/grade ordering.
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // Lock the review row first so two concurrent enacts can't both read 'recommended'.
     await tx.select({ id: performanceReview.id }).from(performanceReview).where(eq(performanceReview.id, p.reviewId)).for('update');
     const { review } = await loadReview(tx, p.reviewId);
@@ -1447,6 +1481,23 @@ export function listOnehrAdminCycles(ctx: SessionContext): Promise<OnehrAdminCyc
   });
 }
 
+/**
+ * D-P1-32 PT-X5 — the latest OneHR-native cycle this session administers (listOnehrAdminCycles' order: newest
+ * period first), or null. The sidebar's Performance admin entry opens that cycle's admin area. Same two gates as
+ * the list: app.onehr_cycle_admin per row and canAdminOnehrCtx. Ids only; no counts.
+ */
+export function latestOnehrAdminCycleId(ctx: SessionContext): Promise<string | null> {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({ id: reviewCycle.id, companyId: reviewCycle.companyId })
+      .from(reviewCycle)
+      .innerJoin(onehrCycle, eq(onehrCycle.cycleId, reviewCycle.id))
+      .where(sql`app.onehr_cycle_admin(${reviewCycle.id})`)
+      .orderBy(desc(reviewCycle.periodStart), reviewCycle.id);
+    return rows.find((r) => canAdminOnehrCtx(ctx, r.companyId))?.id ?? null;
+  });
+}
+
 /** ADR-0142 — ids of the companies this session administers for OneHR, subsidiaries included (DB-authoritative). */
 export function listOnehrAdminCompanyIds(ctx: SessionContext): Promise<Set<string>> {
   return withTenant(ctx, async (tx) => {
@@ -1729,8 +1780,11 @@ export function reviewForViewer(ctx: SessionContext, reviewId: string): Promise<
 }
 
 /** The signed-in employee's own reviews (for /me). Released-gated like reviewForViewer. */
-export function myReviews(ctx: SessionContext) {
-  return withTenant(ctx, async (tx) => {
+export function myReviews(ctx: SessionContext, existingTx?: AiReadTx) {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+
+
+  return withCanonicalAiReadTx(ctx, existingTx, 'performance', withTenant, async (tx) => {
     if (!ctx.personId) return [];
     return tx
       .select({
@@ -1765,13 +1819,17 @@ export function managerPendingReviews(ctx: SessionContext) {
     // Surface both 'manager_review' (employee self-submitted, your turn) and 'self_review' (employee
     // hasn't self-assessed — you can still finalize; the service allows it, so it must be findable).
     // Only on OPEN cycles (calibration/closed are frozen).
-    return tx
+    const own = await tx
       .select({
         reviewId: performanceReview.id,
         employee: person.fullName,
         employeeCode: employment.employeeCode,
         cycleName: reviewCycle.name,
         status: performanceReview.status,
+        // The shared task list (packs/performance/onehr/tasks.ts) projects THIS queue rather than
+        // re-deriving it: it needs the subject's company (the company switcher) and an owner timestamp.
+        companyId: employment.companyId,
+        createdAt: performanceReview.createdAt,
       })
       .from(performanceReview)
       .innerJoin(reviewCycle, eq(reviewCycle.id, performanceReview.cycleId))
@@ -1782,9 +1840,24 @@ export function managerPendingReviews(ctx: SessionContext) {
           inArray(performanceReview.reviewerEmploymentId, myEmploymentIds),
           inArray(performanceReview.status, ['manager_review', 'self_review']),
           eq(reviewCycle.status, 'open'),
+          // D-P1-22 (ADR-0150): a OneHR review whose stored reviewer's unit is left out of the cycle is not
+          // theirs while the rule stands (leader-off). Read through the pack's SQL predicate only.
+          sql`not app.onehr_reviewer_unit_out(${performanceReview.id})`,
         ),
       )
       .orderBy(reviewCycle.name, person.fullName);
+    // ...and the reviews this viewer now reviews one level up (competency and Career Plan work), from the pack's
+    // SQL projection. With no active rule it returns nothing and the queue is exactly as before.
+    const stepped = await tx.execute<{ review_id: string; employee: string; employee_code: string | null; cycle_name: string; status: string; company_id: string; created_at: string | Date }>(
+      sql`select review_id, employee, employee_code, cycle_name, status, company_id, created_at from app.onehr_effective_review_queue()`,
+    );
+    const seen = new Set(own.map((r) => r.reviewId));
+    const extra = stepped.filter((r) => !seen.has(r.review_id)).map((r) => ({
+      reviewId: r.review_id, employee: r.employee, employeeCode: r.employee_code, cycleName: r.cycle_name,
+      status: r.status as (typeof own)[number]['status'], companyId: r.company_id, createdAt: new Date(r.created_at),
+    }));
+    if (!extra.length) return own;
+    return [...own, ...extra].sort((a, b) => a.cycleName.localeCompare(b.cycleName) || a.employee.localeCompare(b.employee) || a.reviewId.localeCompare(b.reviewId));
   });
 }
 
@@ -2059,8 +2132,11 @@ export function listGoalsForEmployment(ctx: SessionContext, employmentId: string
 }
 
 /** The signed-in person's own goals across their employment(s) — the /me surface. */
-export function myGoals(ctx: SessionContext): Promise<GoalRow[]> {
-  return withTenant(ctx, async (tx) => {
+export function myGoals(ctx: SessionContext, existingTx?: AiReadTx): Promise<GoalRow[]> {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+
+
+  return withCanonicalAiReadTx(ctx, existingTx, 'performance', withTenant, async (tx) => {
     if (!ctx.personId) return [];
     const mine = await tx.select({ id: employment.id }).from(employment).where(eq(employment.personId, ctx.personId));
     const ids = mine.map((m) => m.id);
@@ -2816,7 +2892,8 @@ export function calibrationView(ctx: SessionContext, cycleId: string): Promise<C
 //
 // Draft-only, human-in-the-loop. A manager asks for a STARTING draft; we gather the signals already
 // on the review (the employee's self-assessment, linked goals, prior overall ratings, anonymized 360
-// feedback), redact direct identifiers, and ask the governed gateway (lib/ai) for prose. We never
+// feedback), mask emails/IC/phone runs with redactPII (names in that text are NOT masked), and ask the
+// governed gateway (lib/ai) for prose. We never
 // write a rating, a comment, or pay — the text lands in the manager's editable textarea and only a
 // human `submitManagerReview` changes state. The single write here is an audit event noting that a
 // draft was generated. Graceful degradation: with no API key the feature is OFF (PerfError), so the
@@ -2824,14 +2901,14 @@ export function calibrationView(ctx: SessionContext, cycleId: string): Promise<C
 
 export type DraftSignals = { hasSelf: boolean; goals: number; priorRatings: number; peerNotes: number };
 
-export async function draftManagerReview(
-  ctx: SessionContext,
-  p: { reviewId: string },
-): Promise<{ draft: string; signals: DraftSignals }> {
-  // 1) Authorize, resolve the tenant's AI config, and gather signals in a short read transaction. NO
-  //    provider call inside the tx (decryption is CPU only; the multi-second network call is outside).
-  const gathered = await withTenant(ctx, async (tx) => {
-    const { review, cycle } = await loadReview(tx, p.reviewId);
+/** Actual current manager/admin and module owner BEFORE private review fields. Same native source
+ * queries/preflight as the ordinary draft, reusable only inside the actual admission transaction. */
+async function managerReviewDraftSourceTx(tx:Tx,supplied:SessionContext,reviewId:string){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};
+ const fresh=await assertPerformanceProviderSourceTx(tx,ctx);
+ const [nomination]=await tx.select({employmentId:performanceReview.employmentId}).from(performanceReview).where(eq(performanceReview.id,reviewId)).limit(1);if(!nomination)throw new PerfError('Current review source is unavailable.');
+ await assertCanDecide(tx,fresh,nomination.employmentId,'AI review draft');
+    const { review, cycle } = await loadReview(tx, reviewId);
     if (cycle.status !== 'open') {
       throw new PerfError(`The cycle is ${cycle.status}; a draft can only be prepared while it is open`);
     }
@@ -2875,15 +2952,27 @@ export async function draftManagerReview(
       .from(peerFeedback)
       .where(eq(peerFeedback.subjectEmploymentId, review.employmentId));
 
-    // The tenant's active AI provider/model + decrypted key (or platform env fallback). Fail closed
-    // when an active config is present but undecryptable — never fall through to a shared env key.
-    const aiCfg = await resolveActiveAiConfig(tx, ctx, 'performance_pm');
-    if (!aiCfg) throw new PerfError('AI drafting is not configured for this tenant.');
 
-    return { review, cycle, scale, goals, prior, peers, aiCfg };
+ return {review,cycle,scale,goals,prior,peers};
+}
+function managerDraftSourceDigest(value:Awaited<ReturnType<typeof managerReviewDraftSourceTx>>){const sort=(rows:readonly unknown[])=>rows.map(row=>JSON.stringify(row)).sort();return createHash('sha256').update(JSON.stringify([value.review,value.cycle,value.scale,sort(value.goals),sort(value.prior),sort(value.peers)])).digest('hex');}
+
+export async function draftManagerReview(
+  ctx: SessionContext,
+  p: { reviewId: string },
+): Promise<{ draft: string; signals: DraftSignals }> {
+  // 1) Authorize, resolve the tenant's AI config, and gather signals in a short read transaction. NO
+  //    provider call inside the tx (decryption is CPU only; the multi-second network call is outside).
+  p={reviewId:p.reviewId};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
+  const gathered = await withTenant(ctx, async tx => {
+    const source=await managerReviewDraftSourceTx(tx,ctx,p.reviewId),aiCfg=await resolveActiveAiConfig(tx,ctx,'performance_pm');
+    if(!aiCfg)throw new PerfError('AI drafting is not configured for this tenant.');
+    return {...source,aiCfg};
   });
 
-  // 2) Build a redacted prompt — the employee is referred to generically; peer notes are anonymous.
+  // 2) Build the prompt — the employee is referred to generically and peer notes carry no author, but
+  //    free text (self-assessment, goals, peer notes) is sent with only emails/IC/phone runs masked; a
+  //    name written inside it is NOT masked.
   const { review, cycle, scale, goals, prior, peers, aiCfg } = gathered;
   const lines: string[] = [
     `Review cycle: ${redactPII(cycle.name)} (${cycle.periodStart} to ${cycle.periodEnd}).`,
@@ -2926,14 +3015,16 @@ export async function draftManagerReview(
   ].join(' ');
 
   // 3) Call the gateway OUTSIDE any DB transaction, against the resolved provider/model.
-  const draft = await generateDraft(aiCfg, {
-    system,
-    prompt: `Draft a manager-review narrative from these signals:\n\n${lines.join('\n')}`,
-    maxTokens: 1536,
+  const args=Object.freeze({system,prompt:`Draft a manager-review narrative from these signals:\n\n${lines.join('\n')}`,maxTokens:1536});
+  const expectedSource=managerDraftSourceDigest(gathered),expectedInput=draftInputDigest(args);
+  const bound=withAiAdmissionCheck(aiCfg,'performance_pm',async(tx,request)=>{
+    if(request.operation!=='draft'||request.inputDigest!==expectedInput||managerDraftSourceDigest(await managerReviewDraftSourceTx(tx,ctx,p.reviewId))!==expectedSource)throw new PerfError('Current review source is unavailable.');
   });
+  const draft=await generateDraft(bound,args);
 
   // 4) Audit that a draft was generated (AGENT actor, PII-free payload). No state was changed.
   await withTenant(ctx, async (tx) => {
+    if(managerDraftSourceDigest(await managerReviewDraftSourceTx(tx,ctx,p.reviewId))!==expectedSource)throw new PerfError('Current review source is unavailable.');
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'performance-review',

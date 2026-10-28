@@ -9,6 +9,7 @@ import {listRewardPolicyGroups,rewardPolicyGroupUsage,rewardSetupChoices,default
 import {Card,PageHeader} from '@/components/ui';
 import {RewardPolicyFields} from '@/app/rewards/[unitId]/policy-form';
 import {SharedRewardEditor} from './editor';
+import {RewardsAdminTabs} from '../admin-tabs';
 import {saveSharedRewardPolicyAction} from './actions';
 export default async function SharedRewardPolicyPage({searchParams}:{searchParams:Promise<{group?:string}>}){
  await requireModule('rewards');const {s}=await scopedAdmin(),t=await getTranslations('rewards.sharedPolicy'),{group:groupId}=await searchParams;
@@ -18,7 +19,7 @@ export default async function SharedRewardPolicyPage({searchParams}:{searchParam
  const policy=selected?.policy??defaultPolicy(Number(todayInKualaLumpur().slice(0,4)));
  const usage=selected?await rewardPolicyGroupUsage(s,selected.groupId):[];
  return <div className="mx-auto max-w-6xl space-y-6"><PageHeader title={t('title')} description={t('description')}/>
-  <Link href="/admin/rewards" className="text-sm text-primary hover:underline">{t('backToReviews')}</Link><p className="text-sm text-muted-foreground">{t('currencyHelp')}</p>
+  <RewardsAdminTabs current="shared"/><p className="text-sm text-muted-foreground">{t('currencyHelp')}</p>
   <Card className="space-y-3 p-4"><Link href="/admin/rewards/shared" className="text-sm font-medium text-primary hover:underline">{t('create')}</Link>
    {groups.length?<ul className="grid gap-2 sm:grid-cols-2">{groups.map(group=><li key={group.groupId}><Link href={`/admin/rewards/shared?group=${group.groupId}`} aria-current={selected?.groupId===group.groupId?'page':undefined} className="block rounded-md border px-3 py-2 text-sm hover:bg-muted">{group.name} · {t('version',{version:group.revision})}</Link></li>)}</ul>:<p className="text-sm text-muted-foreground">{t('empty')}</p>}
   </Card>

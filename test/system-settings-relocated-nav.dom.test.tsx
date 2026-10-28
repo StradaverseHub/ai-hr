@@ -30,7 +30,7 @@ function mount({admin = true, operator = false, manager = false, collapsed = fal
   modules = ['notifications'], locale = 'en' as keyof typeof catalogues} = {}) {
   const view = render(<NextIntlClientProvider locale={locale} messages={catalogues[locale]}>
     <Sidebar isAdmin={admin} canApprove={manager} canConfigureIdentityEmail={operator}
-      canPreviewIdentityEmail={admin} enabledModules={modules} defaultCollapsed={collapsed}/>
+      canPreviewIdentityEmail={admin} canAdministerAi={admin} enabledModules={modules} defaultCollapsed={collapsed}/>
   </NextIntlClientProvider>);
   return view;
 }

@@ -15,6 +15,7 @@
  * these dynamically, so the i18n static-key coverage test cannot see them).
  */
 import fs from 'node:fs';
+import ts from 'typescript';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { roleEnum } from '../db/schema';
@@ -68,16 +69,25 @@ function codeWithoutComments(src: string): string {
  *
  * A route belongs here ONLY if it reads no session and no data. Anything that reads gets a real guard.
  */
-const REDIRECT_ONLY_ROUTES = ['/payroll/transactions/tp1/[year]'] as const;
+// '/admin/ai' forwards to AI management › Provider, where the requireAdmin guard applies.
+const REDIRECT_ONLY_ROUTES = ['/admin/ai', '/payroll/transactions/tp1/[year]'] as const;
 
+/** An actual awaited call, not a comment/string bearing an auth helper's name. */
+function hasAssistantSessionGuard(source:string){
+ const ast=ts.createSourceFile('layout.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);let guarded=false;
+ const visit=(node:ts.Node)=>{if(ts.isAwaitExpression(node)&&ts.isCallExpression(node.expression)&&ts.isIdentifier(node.expression.expression)&&node.expression.expression.text==='getBrowserCommandSession')guarded=true;ts.forEachChild(node,visit);};visit(ast);return guarded;
+}
 /** Recursively collect every `page.tsx` under app/ whose CODE calls a page guard, as a normalized route. */
 function guardedRoutes(): string[] {
   const out: string[] = [];
+  // This actual layout call guards every descendant, including pages whose data guards live in
+  // server sections. A removed/renamed guard makes registered Assistant routes fail the stale set.
+  const layout=path.join(APP,'assistant/layout.tsx'),assistantGuard=fs.existsSync(layout)&&hasAssistantSessionGuard(fs.readFileSync(layout,'utf8'));
   const walk = (dir: string) => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const p = path.join(dir, e.name);
       if (e.isDirectory()) walk(p);
-      else if (e.name === 'page.tsx' && GUARD_RE.test(codeWithoutComments(fs.readFileSync(p, 'utf8')))) {
+      else if (e.name === 'page.tsx' && (GUARD_RE.test(codeWithoutComments(fs.readFileSync(p, 'utf8')))||assistantGuard&&path.relative(APP,p).split(path.sep)[0]==='assistant')) {
         // app/foo/bar/page.tsx -> /foo/bar ; app/page.tsx -> /
         const rel = path.relative(APP, p).replace(/\\/g, '/'); // e.g. "foo/bar/page.tsx" or "page.tsx"
         const route = rel.replace(/(^|\/)page\.tsx$/, '');
@@ -96,6 +106,13 @@ function getPath(obj: unknown, dotted: string): unknown {
 }
 
 describe('function-access registry (lib/permissions)', () => {
+  it('recognizes the real inherited Assistant guard and rejects inert prose or an unawaited call',()=>{
+    expect(hasAssistantSessionGuard('export default async function Layout(){await getBrowserCommandSession();return null;}')).toBe(true);
+    for(const source of ['', '// await getBrowserCommandSession();', 'const label="await getBrowserCommandSession()";', 'function Layout(){getBrowserCommandSession();return null;}'])expect(hasAssistantSessionGuard(source)).toBe(false);
+    const screen=SCREENS.find(row=>row.screenKey==='assistantWorkspace');expect(screen).toMatchObject({guard:'assistantSession',labelKey:'nav.assistant',hasScopeNote:true});
+    const actual=guardedRoutes().filter(route=>route==='/assistant'||route.startsWith('/assistant/')).sort();expect(screen?.routes.slice().sort()).toEqual(actual);expect(actual.length).toBeGreaterThan(1);
+  });
+
   it('MATRIX_ROLES is exactly the roleEnum set (a new role forces a new grid row)', () => {
     expect([...MATRIX_ROLES].sort()).toEqual([...roleEnum.enumValues].sort());
   });
@@ -127,6 +144,28 @@ describe('function-access registry (lib/permissions)', () => {
     ).toEqual([...REDIRECT_ONLY_ROUTES].sort());
   });
 
+  it('WP-C: the HOD department view is an onehrAssignments route behind scopedSession, and its page calls that guard', () => {
+    const screen = SCREENS.find((row) => row.screenKey === 'onehrAssignments');
+    expect(screen).toMatchObject({ guard: 'scopedSession', hasScopeNote: true });
+    expect(SCREENS.filter((row) => row.routes.includes('/performance/department')).map((row) => row.screenKey)).toEqual(['onehrAssignments']);
+    const page = codeWithoutComments(fs.readFileSync(path.join(APP, 'performance/department/page.tsx'), 'utf8'));
+    expect(page).toMatch(/await requireModule\('performance'\)/);
+    expect(page).toMatch(/await scopedSession\(\)/);
+    expect(guardedRoutes()).toContain('/performance/department');
+    expect(String(getPath(en, 'admin.users.scope.onehrAssignments'))).toMatch(/head-of-department assignment/);
+  });
+
+  // WP-B2 — the Leaders admin screen joins the performance column: it admits exactly the cycle administration
+  // set (requireOnehrAdminAccess, as /performance/[cycleId] does), and has no sidebar row of its own.
+  it('registers /performance/leaders under the performance column, guarded like the cycle pages', () => {
+    const performance = SCREENS.find((x) => x.screenKey === 'performance');
+    expect(performance?.routes).toContain('/performance/leaders');
+    expect(performance?.routes).toContain('/performance/[cycleId]');
+    const page = codeWithoutComments(fs.readFileSync(path.join(APP, 'performance/leaders/page.tsx'), 'utf8'));
+    expect(page).toMatch(/await requireOnehrAdminAccess\(\)/);
+    expect(SCREENS.filter((x) => x.href === '/performance/leaders')).toEqual([]);
+  });
+
   it('screenKeys are unique (no duplicate columns)', () => {
     const keys = SCREENS.map((s) => s.screenKey);
     expect(new Set(keys).size).toBe(keys.length);
@@ -138,7 +177,8 @@ describe('function-access registry (lib/permissions)', () => {
   // assertion that matters: neither operator nor performance_partner is an admin role, so the loop below
   // also proves neither reaches a requireAdmin/scopedAdmin screen.
   it('access is guard-derived and honest: admin/scopedAdmin → 2 admin roles, scopedSession → all 8', () => {
-    const guardExpect: Record<Guard, number> = { requireWorkforceAccess: 8, requireAccessConfiguration: 8, requireAdmin: 2, scopedAdmin: 2, scopedSession: 8, requireTeamAccess: 3, onboardingAccess: 8, onboardingParticipant: 8, onboardingMaster: 2 };
+    const guardExpect: Record<Guard, number> = { assistantSession: 8, requireWorkforceAccess: 8, requireAccessConfiguration: 8, requireAdmin: 2, scopedAdmin: 2, scopedSession: 8, requireTeamAccess: 3, onboardingAccess: 8, onboardingParticipant: 8, onboardingMaster: 2 };
+
     for (const g of Object.keys(guardExpect) as Guard[]) {
       expect(rolesForGuard(g).size, g).toBe(guardExpect[g]);
     }

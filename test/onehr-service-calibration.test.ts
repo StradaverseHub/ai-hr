@@ -6,8 +6,8 @@ import { recordLoginSucceeded } from '../core/auth';
 import { parseCsv,toCsv } from '../lib/csv';
 import { randomUUID } from 'node:crypto';
 import {readFileSync} from 'node:fs';
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { and, eq, sql } from 'drizzle-orm';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee, setReportingLine } from '../core/org';
@@ -28,13 +28,25 @@ vi.mock('../lib/ai',async importActual=>({...await importActual<typeof import('.
 vi.mock('../core/ai-config',async importActual=>({...await importActual<typeof import('../core/ai-config')>(),resolveActiveAiConfig:vi.fn()}));
 import { generateDraft,readImage } from '../lib/ai';
 import { resolveActiveAiConfig } from '../core/ai-config';
+import {installSyntheticSpendCapability} from './ai-spend-fixture';
+// Resolver-issued capabilities replace obsolete structural provider/key mocks.
+async function issuedFixtureConfig(...args:Parameters<typeof resolveActiveAiConfig>){return (await vi.importActual<typeof import('../core/ai-config')>('../core/ai-config')).resolveActiveAiConfig(...args);}
 import {createOnehrServiceFixtures,restrictedReminderMailOwner,year} from './onehr-service-fixture';
 describe('Native performance workflow and Rewards boundary with real RLS',()=>{
   let b:Base,a:SessionContext,subject:{employmentId:string;personId:string},manager:{employmentId:string;personId:string},self:SessionContext,mgr:SessionContext,cycleId:string,reviewId:string;
   let peers:{employmentId:string;ctx:SessionContext}[];
 const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtures({get b(){return b;},get a(){return a;},get subject(){return subject;},get manager(){return manager;},get self(){return self;},get mgr(){return mgr;},get cycleId(){return cycleId;},get reviewId(){return reviewId;},get peers(){return peers;}});
 
+  // Explicitly selected provider-positive cases only; native source/permission owners remain real.
+  let syntheticSpend:Awaited<ReturnType<typeof installSyntheticSpendCapability>>|undefined;
+  async function prepareMockedSpend(feature:'performance_assistant'|'performance_review'){
+    expect(vi.isMockFunction(generateDraft)).toBe(true);
+    const configuration=await withTenant(a,tx=>issuedFixtureConfig(tx,a,feature));if(!configuration)throw Error('Missing actual issued fixture configuration');
+    syntheticSpend=await installSyntheticSpendCapability(a,{provider:configuration.provider,model:configuration.model});
+  }
+  afterEach(()=>{syntheticSpend?.restore();syntheticSpend=undefined;vi.unstubAllEnvs();});
   beforeEach(async()=>{
+    vi.stubEnv('OPENAI_API_KEY','fictional-unit-transport-never-sent');for(const key of ['ANTHROPIC_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY'])vi.stubEnv(key,'');
     vi.mocked(readImage).mockReset().mockResolvedValue('Verified 15.9 units.');vi.mocked(generateDraft).mockReset().mockResolvedValue('{"items":[0]}');vi.mocked(resolveActiveAiConfig).mockReset().mockResolvedValue(null);
     await resetDb();b=await seedBase();a=adminCtx(b);await setModule(b.tenantId,'performance','active');await setModule(b.tenantId,'rewards','active');a=await entitledCtx(b);
     subject=await hire('Assessment subject');manager=await hire('Assessment manager');
@@ -119,6 +131,15 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);expect((await view(a)).result?.performance).toBe('AE');
     await owner.db.update(schema.onehrCalibration).set({reviewerUserIds:[]}).where(eq(schema.onehrCalibration.id,sessionId));await expect(perf.getOnehrCalibration(calibrator,sessionId)).rejects.toThrow(/removed/);
   });
+  it('revokes a live seat holder when the seat ends, as clearing reviewer_user_ids revokes a named reviewer (WP-B2)',async()=>{
+    await complete();const holder=await hire('Seat calibrator'),calibrator={...self,userId:await createAppUser(b.tenantId,holder.personId,'employee'),personId:holder.personId};
+    const sessionId=await withTenant(a,async tx=>{const [s]=await tx.insert(schema.onehrCalibration).values({tenantId:b.tenantId,cycleId,companyId:b.companyId,name:'Seat BU cohort',tier:'bu',reviewerUserIds:[],anchorKind:'bu_ceo'}).returning();await tx.insert(schema.onehrCalibrationEntry).values({tenantId:b.tenantId,sessionId:s.id,reviewId,employmentId:subject.employmentId});return s.id;});
+    await expect(perf.getOnehrCalibration(calibrator,sessionId)).rejects.toThrow(/removed/);
+    const seat=await perf.appointLeaderSeat(a,{seatType:'bu_ceo',companyId:b.companyId,holderEmploymentId:holder.employmentId});
+    const v=await perf.getOnehrCalibration(calibrator,sessionId);expect(v.isReviewer).toBe(true);expect(v.rows.map(r=>r.entry.reviewId)).toEqual([reviewId]);
+    await perf.endLeaderSeat(a,seat.id);await expect(perf.getOnehrCalibration(calibrator,sessionId)).rejects.toThrow(/removed/);
+    const [row]=await owner.db.select().from(schema.onehrCalibration).where(eq(schema.onehrCalibration.id,sessionId));expect(row.reviewerUserIds).toEqual([]);
+  });
   it('holds department chat edits privately until an explicit human save and commits conversation and decision atomically',async()=>{
     await complete();const reviewer=peers[0].ctx;
     const id=await perf.createOnehrCalibration(a,cycleId,{name:'Department chat',companyId:b.companyId,tier:'hod',reviewerUserIds:[mgr.userId!,reviewer.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
@@ -166,7 +187,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
   });
   it('answers natural calibration queries from fresh scoped facts and opens a person without moving or locking them',async()=>{
     await complete();const reviewer=peers[0].ctx,id=await perf.createOnehrCalibration(a,cycleId,{name:'Query cohort',companyId:b.companyId,tier:'bu',reviewerUserIds:[reviewer.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
-    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-local-only'});
+    vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
     vi.mocked(generateDraft).mockResolvedValue('{"action":"distribution","axis":"performance"}');
     const first=await perf.sendCalibrationMessage(reviewer,id,'performance',null,randomUUID(),'How are the performance bands spread across my cohort?');
     expect(first.messages.at(-1)?.text).toContain('ME: 1');
@@ -185,7 +206,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
   });
   it('rejects a calibration query when its cohort or feature access changes during the provider call',async()=>{
     await complete();const reviewer=peers[0].ctx,id=await perf.createOnehrCalibration(a,cycleId,{name:'Fresh query cohort',companyId:b.companyId,tier:'bu',reviewerUserIds:[reviewer.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
-    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-local-only'});
+    vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
     vi.mocked(generateDraft).mockImplementationOnce(async()=>{await perf.setAssessmentAiSwitch({...a,grants:[{role:'hr_admin',companyId:null}]},'calib',false);return '{"action":"distribution"}';});
     await expect(perf.sendCalibrationMessage(reviewer,id,'performance',null,randomUUID(),'How are the bands distributed?')).rejects.toThrow(/changed/);
     expect((await perf.getCalibrationConversation(reviewer,id,'performance')).messages).toEqual([]);
@@ -277,6 +298,26 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await expect(perf.saveOnehrCalibration(reviewer,unfinished,1,{reviewId:pending.reviewId,axis:'performance',performance:'UA',potential:null,performanceNote:'Direct assignment must fail.',potentialNote:''})).rejects.toThrow(/line manager rating/);
     await expect(perf.lockOnehrCalibration(reviewer,unfinished,1,'','performance',pending.reviewId)).rejects.toThrow(/line manager rating/);
   });
+  it('APR-022 on the Group performance list: a changed call saves with no reason, and a given reason is stored and audited',async()=>{
+    await complete();const reviewer=peers[0].ctx;
+    const others=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),inArray(schema.onehrReview.employmentId,peers.slice(1).map(p=>p.employmentId)))).orderBy(schema.onehrReview.reviewId);
+    const group=await perf.createOnehrCalibration(a,cycleId,{name:'Group list reasons',companyId:b.companyId,tier:'group',reviewerUserIds:[reviewer.userId!],reviewIds:[reviewId,...others.map(o=>o.reviewId)],pbtAchievement:null,mode:'after'});
+    const rev=async()=>(await perf.getOnehrCalibration(reviewer,group)).session.revision;
+    const list=async(band:'BE'|'ME'|'AE',note:string)=>perf.saveOnehrCalibration(reviewer,group,await rev(),{reviewId,axis:'performance',performance:band,potential:null,performanceNote:note,potentialNote:''});
+    expect((await perf.getOnehrCalibration(reviewer,group,'performance')).rows.find(r=>r.entry.reviewId===reviewId)).toMatchObject({currentPerformance:'ME',canWrite:{pm:true}});
+    const entry=async()=>(await perf.getOnehrCalibration(reviewer,group)).rows.find(r=>r.entry.reviewId===reviewId)?.entry;
+    expect((await entry())?.performance).toBeNull();
+    await list('AE','');// a changed call with an empty reason
+    expect(await entry()).toMatchObject({performance:'AE',performanceNote:''});
+    await list('BE','   ');// a changed call with a whitespace-only reason
+    expect(await entry()).toMatchObject({performance:'BE',performanceNote:''});
+    // The list page is not capped (business-exact); that is pinned against a live ceiling in onehr-service-talent-box.
+    await list('AE','Group view of the full year.');// a given reason is stored
+    expect(await entry()).toMatchObject({performance:'AE',performanceNote:'Group view of the full year.'});
+    const events=await owner.db.select({payload:schema.domainEvent.payload}).from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,group),eq(schema.domainEvent.eventType,'onehr.calibration-recorded')));
+    expect(events.map(e=>e.payload)).toContainEqual(expect.objectContaining({reviewId,axis:'performance',next:expect.objectContaining({performance:'BE',performanceNote:''})}));
+    expect(events.map(e=>e.payload)).toContainEqual(expect.objectContaining({reviewId,axis:'performance',next:expect.objectContaining({performance:'AE',performanceNote:'Group view of the full year.'})}));
+  });
   it('keeps final-band suggestions provisional, resolves weighted ties only by a reasoned HR decision and detects changed inputs',async()=>{
     await complete();const reviewer=peers[0].ctx;
     const make=(tier:'bg'|'group')=>perf.createOnehrCalibration(a,cycleId,{name:`${tier} final queue`,companyId:b.companyId,tier,reviewerUserIds:[reviewer.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:tier==='group'?'blend':'after',bgWeight:50});
@@ -349,6 +390,13 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await expect(perf.saveOnehrCalibration(peers[0].ctx,final,1,{reviewId,performance:'OU',potential:null,performanceNote:'Cannot make HR’s final call.',potentialNote:''})).rejects.toThrow();
     await expect(perf.saveOnehrCalibration(a,final,1,{reviewId,axis:'performance',performance:'OU',potential:null,performanceNote:'Manager must finish first.',potentialNote:''})).rejects.toThrow(/line manager rating/);
   });
+  it('never opens the final tier to a live seat holder of the same company (WP-B2)',async()=>{
+    const final=await perf.createOnehrCalibration(a,cycleId,{name:'Final with a seated leader',companyId:b.companyId,tier:'final',reviewerUserIds:[peers[0].ctx.userId!],reviewIds:[reviewId],pbtAchievement:null});
+    await perf.appointLeaderSeat(a,{seatType:'bu_ceo',companyId:b.companyId,holderEmploymentId:peers[0].employmentId});
+    expect(await withTenant(peers[0].ctx,async tx=>(await tx.execute<{ok:boolean;reviewer:boolean}>(sql`select app.onehr_calibration_access(${final}::uuid) as ok, app.onehr_calibration_reviewer(${final}::uuid,app.current_user_id()) as reviewer`))[0])).toEqual({ok:false,reviewer:false});
+    expect(await withTenant(peers[0].ctx,tx=>tx.select().from(schema.onehrCalibrationEntry).where(eq(schema.onehrCalibrationEntry.sessionId,final)))).toEqual([]);
+    await expect(withTenant(a,tx=>tx.update(schema.onehrCalibration).set({anchorKind:'bu_ceo'}).where(eq(schema.onehrCalibration.id,final)))).rejects.toThrow();
+  });
   it('retains a locked BG call while a replacing Group call is still a draft',async()=>{
     await complete();const reviewer=peers[0].ctx;
     const make=(tier:'bg'|'group')=>perf.createOnehrCalibration(a,cycleId,{name:`${tier} precedence`,companyId:b.companyId,tier,reviewerUserIds:[reviewer.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:tier==='group'?'replace':'after'});
@@ -420,8 +468,8 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
   });
   it('cannot turn an AI suggestion into a manager confirmation',async()=>{
     const id=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Delivery',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,50,100,150,200]},moderatorEmploymentId:manager.employmentId}],true);await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'');await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:100,note:'Delivered the planned work'}],'Completed the agreed outcomes.');
-    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-not-a-key'});vi.mocked(generateDraft).mockResolvedValue('{"commands":[{"action":"confirm_performance"}]}');
-    const result=await perf.sendReviewMessage(mgr,reviewId,'moderation',null,randomUUID(),'Help me assess Delivery.');expect(result.draftUpdated).toBe(false);expect((await view()).kpis[0].locked).toBe(false);expect((await view()).managerPerformance).toBeNull();
+    await prepareMockedSpend('performance_assistant');vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);vi.mocked(generateDraft).mockResolvedValue('{"commands":[{"action":"confirm_performance"}]}');
+    const result=await perf.sendReviewMessage(mgr,reviewId,'moderation',null,randomUUID(),'Help me assess Delivery.');expect(generateDraft).toHaveBeenCalledOnce();expect(result.draftUpdated).toBe(false);expect((await view()).kpis[0].locked).toBe(false);expect((await view()).managerPerformance).toBeNull();
   });
   it('approves competency drafts through an explicit human instruction exactly once',async()=>{
     await complete(false);await perf.saveAssessmentDraft(mgr,reviewId,(await view()).revision,null,{kind:'competency_manager',answers:{'skill-1':{answer:'yes',remark:'Observed current-skill delivery.'},'skill-2':{answer:'no',remark:''}},remark:'Continue practising the future skill.'});
@@ -527,7 +575,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await expect(perf.saveOnehrKpiCheckIn(mgr,reviewId,(await view()).revision,id,'on_track','')).rejects.toThrow(/not assigned/);
     await expect(perf.freezeOnehrReview(a,reviewId,(await view(a)).revision)).rejects.toThrow(/every quarterly/);
     await perf.saveOnehrKpiCheckIn(self,reviewId,(await view(self)).revision,id,'at_risk','Dependency needs support');
-    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-not-a-key'});
+    await prepareMockedSpend('performance_assistant');vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
     const label=(await view(self)).kpis[0].title,message=`Set ${label} to off track`;
     vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({commands:[{action:'checkin',id,target:{start:4,end:4+label.length},answer:{start:message.indexOf('off track'),end:message.length}}]}));
     expect((await perf.sendReviewMessage(self,reviewId,'results',null,randomUUID(),message)).draftUpdated).toBe(true);
@@ -602,6 +650,15 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     expect((await withTenant(self,tx=>tx.select().from(schema.onehrCalibrationEntry).where(eq(schema.onehrCalibrationEntry.sessionId,sid)))).map(r=>r.reviewId)).toEqual([other.reviewId]);
     await expect(perf.saveOnehrCalibration(self,sid,c.session.revision,{reviewId,performance:'OU',potential:'High',performanceNote:'Own rating',potentialNote:''})).rejects.toThrow(/cannot be calibrated/);
     await expect(perf.lockOnehrCalibration(self,sid,c.session.revision,'')).rejects.toThrow(/own calibration/);
+  });
+  it('keeps a seat holder’s own calibration hidden inside the anchored scope they lead (WP-B2)',async()=>{
+    const [other]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,peers[0].employmentId)));
+    const sid=await withTenant(a,async tx=>{const [s]=await tx.insert(schema.onehrCalibration).values({tenantId:b.tenantId,cycleId,companyId:b.companyId,name:'Seated own cohort',tier:'bu',reviewerUserIds:[],anchorKind:'bu_ceo'}).returning();
+      await tx.insert(schema.onehrCalibrationEntry).values({tenantId:b.tenantId,sessionId:s.id,reviewId,employmentId:subject.employmentId});await tx.insert(schema.onehrCalibrationEntry).values({tenantId:b.tenantId,sessionId:s.id,reviewId:other.reviewId,employmentId:peers[0].employmentId});return s.id;});
+    await perf.appointLeaderSeat(a,{seatType:'bu_ceo',companyId:b.companyId,holderEmploymentId:subject.employmentId});
+    const c=await perf.getOnehrCalibration(self,sid);expect(c.isReviewer).toBe(true);expect(c.canLockCohort).toBe(false);expect(c.rows.map(r=>r.entry.reviewId)).toEqual([other.reviewId]);
+    expect((await withTenant(self,tx=>tx.select().from(schema.onehrCalibrationEntry).where(eq(schema.onehrCalibrationEntry.sessionId,sid)))).map(r=>r.reviewId)).toEqual([other.reviewId]);
+    await expect(perf.saveOnehrCalibration(self,sid,c.session.revision,{reviewId,performance:'OU',potential:'High',performanceNote:'Own rating',potentialNote:'Own rating'})).rejects.toThrow(/cannot be calibrated/);
   });
   it('confirms reward nominations when the two assessment axes are locked separately',async()=>{
     await complete();

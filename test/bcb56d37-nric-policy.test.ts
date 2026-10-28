@@ -58,12 +58,12 @@ describe('bcb56d37 tenant NRIC policy: actual app role and atomic admission',()=
   it('defaults OFF, persists ON/OFF, audits, and gives the app no private-table or trigger access',async()=>{
     const roles=await withTenant(ctx,tx=>tx.execute<{role:string}>(sql`select current_user as role`));
     expect(roles[0].role).toBe('ai_hr_app');
-    expect(await getPeopleGeneral(ctx)).toEqual({allowDuplicatedNric:false,revision:null});
+    expect(await getPeopleGeneral(ctx)).toEqual({allowDuplicatedNric:false,allowDuplicatedEmail:false,revision:null});
     expect(await canConfigurePeopleGeneral(ctx)).toBe(true);
     await policy(true);expect((await getPeopleGeneral(ctx)).allowDuplicatedNric).toBe(true);
     await policy(false);expect((await getPeopleGeneral(ctx)).allowDuplicatedNric).toBe(false);
     const events=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.tenantId,b.tenantId),eq(schema.domainEvent.eventType,'people-general.changed'))).orderBy(schema.domainEvent.sequence);
-    expect(events).toHaveLength(2);expect(events[0].payload).toMatchObject({before:{allowDuplicatedNric:false},after:{allowDuplicatedNric:true}});
+    expect(events).toHaveLength(2);expect(events[0].payload).toMatchObject({before:{allowDuplicatedNric:false},after:{allowDuplicatedNric:true,allowDuplicatedEmail:false}});
     for(const query of [sql`select * from public.people_general_policy`,sql`select * from public.people_nric_admission`,sql`select app.guard_people_nric_admission()`])await refusal(withTenant(ctx,tx=>tx.execute(query)),'42501');
   });
 
@@ -73,9 +73,9 @@ describe('bcb56d37 tenant NRIC policy: actual app role and atomic admission',()=
     await owner.db.update(schema.roleAssignment).set({companyId:b.companyId}).where(eq(schema.roleAssignment.appUserId,userId));
     const forged={...ctx,userId,roles:['super_admin'],grants:[{role:'super_admin',companyId:null}]};
     expect(await canConfigurePeopleGeneral(forged)).toBe(false);
-    await expect(savePeopleGeneral(forged,{allowDuplicatedNric:true,revision:null})).rejects.toMatchObject({reason:'forbidden'});
+    await expect(savePeopleGeneral(forged,{allowDuplicatedNric:true,allowDuplicatedEmail:false,revision:null})).rejects.toMatchObject({reason:'forbidden'});
     const foreign=await seedBase();
-    await expect(savePeopleGeneral({...ctx,userId:foreign.adminUserId},{allowDuplicatedNric:true,revision:null})).rejects.toMatchObject({reason:'forbidden'});
+    await expect(savePeopleGeneral({...ctx,userId:foreign.adminUserId},{allowDuplicatedNric:true,allowDuplicatedEmail:false,revision:null})).rejects.toMatchObject({reason:'forbidden'});
     expect((await getPeopleGeneral(ctx)).allowDuplicatedNric).toBe(false);
   });
 
@@ -189,6 +189,26 @@ describe('bcb56d37 all employee entry paths use the current policy',()=>{
     expect((await validateEmployeeImport(ctx,{companyId:b.companyId,records:[fullRow('RESERVED',changedIdentity)]})).validCount).toBe(0);
     const next=[fullRow('IMPORT4')];expect((await validateEmployeeImport(ctx,{companyId:b.companyId,records:next})).validCount).toBe(1);
     await policy(false);const committed=await commitEmployeeImport(ctx,{companyId:b.companyId,records:next});expect(committed.imported).toBe(0);expect(await occupants()).toBe(2);
+  });
+
+  it('5e0b2154: Allow Duplicated Work Email or Personal Email saves beside NRIC and relaxes only the import email checks',async()=>{
+    const saved=await savePeopleGeneral(ctx,{...await getPeopleGeneral(ctx),allowDuplicatedEmail:true});
+    expect(await getPeopleGeneral(ctx)).toEqual({allowDuplicatedNric:false,allowDuplicatedEmail:true,revision:saved.revision});
+    // The 0594 two-argument SQL form still works and leaves the email switch alone.
+    await withTenant(ctx,async tx=>{await tx.execute(sql`select app.people_general_set(true,${saved.revision}::uuid)`);});
+    expect(await getPeopleGeneral(ctx)).toMatchObject({allowDuplicatedNric:true,allowDuplicatedEmail:true});
+    await policy(false);
+    const shared=[fullRow('MAILA'),{...fullRow('MAILB',changedIdentity),email:fullRow('MAILA').email}];
+    const allowed=await validateEmployeeImport(ctx,{companyId:b.companyId,records:shared});
+    expect(allowed.validCount).toBe(2);expect(allowed.rows[1].warnings).toContain('This email is also used by another row in this file');
+    // Employee ID uniqueness is not relaxed by the email switch.
+    const sameCode=await validateEmployeeImport(ctx,{companyId:b.companyId,records:[fullRow('SAMEID'),{...fullRow('SAMEID',changedIdentity),email:fullRow('SAMEID').email}]});
+    expect(sameCode.rows[1].ok).toBe(false);
+    await savePeopleGeneral(ctx,{...await getPeopleGeneral(ctx),allowDuplicatedEmail:false});
+    const blocked=await validateEmployeeImport(ctx,{companyId:b.companyId,records:shared});
+    expect(blocked.rows[1].errors).toContain('Duplicate email in this file');
+    const events=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'people-general.changed'));
+    expect(events.some(e=>(e.payload as {after?:{allowDuplicatedEmail?:boolean}}).after?.allowDuplicatedEmail===true)).toBe(true);
   });
 
   it('profile update import retains unchanged duplicate identities OFF; newly introduced conflicts block the whole employee row',async()=>{

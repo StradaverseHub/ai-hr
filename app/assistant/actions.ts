@@ -2,8 +2,10 @@
 
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { getSession } from '@/lib/session';
+import { getBrowserCommandSession } from '@/lib/session';
+import { AuthRequiredError } from '@/lib/auth-errors';
 import { askAssistant, AssistantError } from '@/core/assistant';
+import { AssistantClarificationError } from '@/core/assistant-clarification';
 
 /**
  * ADR-0082 slice 4 — ask one question.
@@ -17,20 +19,24 @@ import { askAssistant, AssistantError } from '@/core/assistant';
  * provider failure for the same reason.
  */
 export async function askAssistantAction(formData: FormData) {
-  const s = await getSession();
-  const question = String(formData.get('question') ?? '');
+  const submittedQuestion = String(formData.get('question') ?? '');
+  const clarificationExchangeId = formData.get('clarificationExchangeId');
+  const clarificationAnswer = formData.get('clarificationAnswer');
 
   let exchangeId: string;
   try {
-    const res = await askAssistant(s, { question });
+    const s = await getBrowserCommandSession();
+    if(clarificationExchangeId!==null&&(typeof clarificationExchangeId!=='string'||typeof clarificationAnswer!=='string'))throw new AssistantClarificationError();
+    const res = await askAssistant(s, clarificationExchangeId===null?{question:submittedQuestion}
+      : {question:clarificationAnswer as string,clarificationExchangeId:clarificationExchangeId as string});
     exchangeId = res.exchangeId;
   } catch (e) {
-    const code = e instanceof AssistantError ? e.code : 'provider_error';
+    const code = e instanceof AssistantClarificationError ? 'clarification_unavailable' : e instanceof AuthRequiredError ? 'ai_control' : e instanceof AssistantError ? e.code : 'provider_error';
     redirect(`/assistant?error=${encodeURIComponent(code)}`);
   }
 
   revalidatePath('/assistant');
-  // `e` highlights the new exchange in the list; the ANSWER itself is read back from the audit row, so
-  // the screen cannot show a sentence that differs from the one recorded.
+  // `e` selects the recorded exchange. The screen reauthorizes its sealed tool plan and renders
+  // current canonical cards; raw model prose remains audit-only.
   redirect(`/assistant?e=${encodeURIComponent(exchangeId)}`);
 }

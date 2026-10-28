@@ -1,5 +1,7 @@
 # ADR-0079 — Operator console: click-to-provision a new customer
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 **Status:** Accepted
 **Migrations:** 0294 (`operator` enum value), 0295 (predicate, policy tightening, request queue)
 

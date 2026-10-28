@@ -1,6 +1,6 @@
 import React, {isValidElement} from 'react';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-const m=vi.hoisted(()=>({session:vi.fn(),operator:vi.fn(),tasks:vi.fn(),pathname:'/admin/settings/email',onboarded:true}));
+const m=vi.hoisted(()=>({session:vi.fn(),operator:vi.fn(),tasks:vi.fn(),pathname:'/admin/settings/email',onboarded:true,scopeIds:[] as string[],module:vi.fn(),notifications:vi.fn(),unread:vi.fn()}));
 vi.mock('next/font/google',()=>{const font=()=>({variable:'fixture-font'});return {Plus_Jakarta_Sans:font,Geist_Mono:font,DM_Mono:font};});
 vi.mock('next/font/local',()=>({default:()=>({variable:'fixture-schibsted-font'})}));
 vi.mock('next/headers',()=>({headers:async()=>new Headers({'x-pathname':m.pathname}),cookies:async()=>({get:()=>undefined})}));
@@ -10,30 +10,33 @@ vi.mock('../lib/identity/email-settings',()=>({canConfigureIdentityEmail:m.opera
 vi.mock('../lib/viewer',()=>({viewerIdentity:async()=>({name:'Fixture',employeeCode:null,employed:false})}));
 vi.mock('../lib/principals',()=>({listPrincipals:async()=>[]}));
 vi.mock('../lib/demo-mode',()=>({demoSwitcherEnabled:()=>true,isDemoDeployment:()=>true}));
-vi.mock('../lib/scope',()=>({getScopeIds:async()=>[]}));
+vi.mock('../lib/scope',()=>({getScopeIds:async()=>m.scopeIds}));
 vi.mock('../lib/ui-theme-server',()=>({currentUiTheme:async()=>'monolith'}));
 vi.mock('../core/read',()=>({allowedCompanies:async()=>[],listApprovalHistory:async()=>[]}));
 vi.mock('../core/onboarding',()=>({getOnboardingStatus:async()=>m.onboarded}));
 vi.mock('../packs/lifecycle/service',()=>({onboardingTasks:async()=>[],onboardingUnreadNoticeCount:async()=>0,onboardingNotices:async()=>[],onboardingNavigation:async()=>({module:false,master:false,requisitions:false,joiners:0,checklists:0})}));
 vi.mock('../components/onboarding-tour',()=>({OnboardingTour:()=>null}));
+vi.mock('../core/assistant-launcher',()=>({assistantLauncherFor:async()=>null}));
+vi.mock('../core/assistant-grant',()=>({mayUseAssistant:async()=>({allowed:false,reason:'no_grant'})}));
 // New capability owners are independent of SMTP installation enrollment and the legacy rail.
 // This shell test controls those boundaries; their actual permission algebra is covered by DB cases.
 vi.mock('../core/access-configuration-editor',()=>({canConfigureAccess:async()=>false}));
 vi.mock('../core/workforce-access',()=>({workforceViewScope:async()=>({canOpen:false,companyIds:[]})}));
 vi.mock('../core/approvals-inbox',()=>({listPendingTasks:m.tasks}));
-vi.mock('../core/notifications',()=>({dispatchNotifications:async()=>{},listNotifications:async()=>[],unreadNotificationCount:async()=>0}));
-vi.mock('../core/entitlements',()=>({isModuleEnabled:()=>false,isModuleEnabledOrFalse:()=>false}));
+vi.mock('../core/notifications',()=>({dispatchNotifications:async()=>{},listNotifications:m.notifications,unreadNotificationCount:m.unread}));
+vi.mock('../core/entitlements',()=>({isModuleEnabled:m.module,isModuleEnabledOrFalse:m.module}));
 vi.mock('../components/command-bar',()=>({CommandBar:()=>null}));
 vi.mock('../components/notice/notice-surfaces',()=>({NoticePopupSlot:()=>null}));
 vi.mock('../components/user-menu',()=>({UserMenu:()=>null}));
 vi.mock('../components/dev-identity-switcher',()=>({DevIdentitySwitcher:()=>null}));
 vi.mock('../components/company-switcher',()=>({CompanySwitcher:()=>null}));
 import Layout from '../app/layout';
+import {NotificationCenter} from '../components/notification-center';
 import {Sidebar} from '../components/sidebar';
 import {OnboardingTour} from '../components/onboarding-tour';
 import {NoticePopupSlot} from '../components/notice/notice-surfaces';
 import {WELCOME_TOUR_ID} from '../lib/onboarding-tour';
-beforeEach(()=>{m.tasks.mockReset();m.tasks.mockResolvedValue([]);m.pathname='/admin/settings/email';m.onboarded=true;});
+beforeEach(()=>{m.scopeIds=[];m.module.mockReset();m.module.mockReturnValue(false);m.notifications.mockReset();m.notifications.mockResolvedValue([]);m.unread.mockReset();m.unread.mockResolvedValue(0);m.tasks.mockReset();m.tasks.mockResolvedValue([]);m.pathname='/admin/settings/email';m.onboarded=true;});
 function propsOf(node:React.ReactNode,target:unknown):Record<string,unknown>|undefined{
  if(Array.isArray(node)){for(const child of node){const found=propsOf(child,target);if(found)return found;}return;}
  if(!isValidElement<{children?:React.ReactNode}>(node))return;
@@ -108,4 +111,13 @@ describe('personal Home opens without automatic overlays',()=>{
    expect(propsOf(tree,OnboardingTour)?.autoStartTourId).toBe(WELCOME_TOUR_ID);expect(propsOf(tree,NoticePopupSlot)).toBeDefined();
   }
  });
+});
+
+it('loads account notifications for selected company entitlements without an employment or tenant-wide module',async()=>{
+ const active='00000000-0000-4000-8000-000000000001',inactive='00000000-0000-4000-8000-000000000002';m.scopeIds=[active,inactive];
+ m.module.mockImplementation((_ctx:unknown,code:string,companyId?:string)=>code==='notifications'&&companyId===active);
+ m.session.mockResolvedValue({tenantId:'tenant',userId:'account-only-reviewer',roles:['employee'],grants:[]});m.operator.mockResolvedValue(false);
+ const tree=await Layout({children:null});expect(propsOf(tree,NotificationCenter)).toBeDefined();
+ expect(m.notifications).toHaveBeenCalledTimes(3);for(const [,employmentId,opts]of m.notifications.mock.calls){expect(employmentId).toBeUndefined();expect(opts).toMatchObject({letterCompanyIds:[active]});}
+ expect(m.unread).toHaveBeenCalledTimes(2);for(const [,,opts]of m.unread.mock.calls)expect(opts).toMatchObject({letterCompanyIds:[active]});
 });

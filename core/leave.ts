@@ -6,9 +6,11 @@ import type {AssignedApprovalMetadata} from '../lib/assigned-work';
  */
 // `isNotNull` and `ne` left with the expireAgedLeave sweep (c459bff9) — it was the only caller of either.
 import { aliasedTable, and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, lte, or, sql, type SQL } from 'drizzle-orm';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import {cancellationSplitGroupSql} from './leave-group-origin-sql';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
 import { appendEvent, actorOf, type Actor } from '../db/events';
 import { assertCanDecide, assertAssignedWorkPrincipalTx, isApprovalDecisionRefusal } from './approvals';
 import {assertMyTeamSubjectTx} from './my-team-scope';
@@ -66,6 +68,7 @@ import {
 import {
   holidayDatesFor,
   effectiveHolidayState,
+  readHolidayCompletenessWarnings,
   warnIfHolidaysIncomplete,
   yearsSpanned,
   type HolidayCompletenessWarning,
@@ -3021,7 +3024,8 @@ async function insertLeaveRequest(
     // ⇒ nothing extra on the payload, so every existing assertion stays green.
     overrideAudit?: LeaveOverrideAudit | null;
   },
-): Promise<{ id: string }> {
+  includeSubmittedEventId = false,
+): Promise<{ id: string; submittedEventId?: string }> {
   const [row] = await tx
     .insert(leaveRequest)
     .values({
@@ -3048,7 +3052,7 @@ async function insertLeaveRequest(
       allowanceEligible: v.allowanceEligible ?? null,
     })
     .returning({ id: leaveRequest.id });
-  await appendEvent(tx, {
+  const submittedEventId = await appendEvent(tx, {
     tenantId: ctx.tenantId,
     aggregateType: 'leave-request',
     aggregateId: row.id,
@@ -3143,11 +3147,12 @@ async function insertLeaveRequest(
           }
         : {}),
     },
-  });
+  }, { returnId: includeSubmittedEventId });
+  if (includeSubmittedEventId && !submittedEventId) throw new Error('leave.submitted_reference_missing');
   // 2B-1/2B-2/ADR-0071: if the company runs a multi-step chain, generate the instance approval steps,
   // resolving the scoped rule matrix against this request's day count (fractional for hourly/partial).
   await generateApprovalSteps(tx, ctx.tenantId, row.id, v.employmentId, v.leaveTypeId, v.days);
-  return { id: row.id };
+  return { id: row.id, ...(submittedEventId ? { submittedEventId } : {}) };
 }
 
 /** requestLeave's result. `leaveRequestId` is the created request (the AL child, else the UPL child, for
@@ -3155,6 +3160,9 @@ async function insertLeaveRequest(
  *  every created request (one for an ordinary request; one or two for EL). */
 export type RequestLeaveResult = {
   leaveRequestId: string;
+  /** Present only for the bounded reviewed own-leave path. Exact canonical submitted event in
+   * the supplied transaction, not an action receipt, commit acknowledgment or approval. */
+  submittedEventId?: string;
   days: number;
   parentGroupId: string | null;
   children: { id: string; code: string; days: number }[];
@@ -3186,6 +3194,8 @@ const leaveTypeRequestColumns = {
   // code comparison that was already dead on this tenant.
   role: leaveType.role,
   name: leaveType.name,
+  paid: leaveType.paid,
+  archivedAt: leaveType.archivedAt,
   counting: leaveType.counting,
   eligibility: leaveType.eligibility,
   // Probation eligibility (d6bdbd55): merged into the eligibility object below so the probation gate
@@ -3314,6 +3324,31 @@ export function canApplyLeaveOnBehalf(ctx: SessionContext, companyId?: string | 
   return withTenant(ctx, (tx) => resolveApplyOnBehalfTx(tx, ctx, companyId ?? null));
 }
 
+/** Canonical stored remark for leave submission. Review consumers must not promise different text. */
+export function normalizeLeaveEmployeeRemark(value: string | undefined): string | null {
+  return value?.trim() || null;
+}
+
+/** Server-owned precondition for the bounded own-leave submission. Never take these values from a
+ * confirmation POST. This is not a lock, an authorization grant, or an action/consent receipt. */
+export type ReviewedOwnLeaveEffect = Readonly<{
+  employmentId: string;
+  companyId: string;
+  leaveTypeId: string;
+  date: string;
+  days: number;
+  /** Private source estimate, including pending reservations, even when hidden in ESS. */
+  availableBalance: number;
+  /** Exact canonical warnings shown at review, including an explicitly empty list. */
+  holidayWarnings: readonly Readonly<HolidayCompletenessWarning>[];
+}>;
+export class LeaveReviewedEffectError extends Error {
+  constructor(readonly reason: 'changed' | 'unsupported') {
+    super(`leave.reviewed_effect:${reason}`);
+    this.name = 'LeaveReviewedEffectError';
+  }
+}
+
 export async function requestLeave(
   ctx: SessionContext,
   p: {
@@ -3353,8 +3388,40 @@ export async function requestLeave(
     overrideConsent?: string | readonly string[];
   },
   existingTx?: Tx,
+  /** Additional refusal-only precondition. The enclosing command still owns concurrency control,
+   * live authority/dependency checks, consent and atomic lifecycle/receipt persistence. */
+  reviewedOwnLeave?: ReviewedOwnLeaveEffect,
 ): Promise<RequestLeaveResult> {
+  p = { ...p,
+    overrideConsent: Array.isArray(p.overrideConsent) ? p.overrideConsent.slice() : p.overrideConsent,
+    ...(p.document ? { document: { ...p.document } } : {}) };
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  if (reviewedOwnLeave) {
+    if (!Array.isArray(reviewedOwnLeave.holidayWarnings)) throw new LeaveReviewedEffectError('unsupported');
+    // Capture the server-owned inputs before any await; a caller retaining its object cannot change
+    // the expectation or nominal request while this submission is reading source facts.
+    reviewedOwnLeave = { ...reviewedOwnLeave,
+      holidayWarnings: reviewedOwnLeave.holidayWarnings.map(warning => ({ ...warning })) };
+    p = { ...p };
+    // Keep subject checks, HR-override decisions and written tenant/actor bound to the same
+    // supplied identity even if its caller mutates retained carriers during a database await.
+    // This captures inputs only; the enclosing command still owns the live principal proof.
+    ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+    if (!existingTx || !ctx.userId || !Number.isFinite(reviewedOwnLeave.days) || reviewedOwnLeave.days <= 0
+      || !Number.isFinite(reviewedOwnLeave.availableBalance) || reviewedOwnLeave.availableBalance < reviewedOwnLeave.days
+      || (p.durationType ?? 'full_day') !== 'full_day' || p.document !== undefined || p.hasDocument !== undefined
+      || p.hours !== undefined || p.fromTime !== undefined || p.toTime !== undefined || p.reasonCategory !== undefined
+      || p.unpaidConsent !== undefined || p.overrideConsent !== undefined || p.survivingChildren !== undefined
+      || p.confinementDate !== undefined) throw new LeaveReviewedEffectError('unsupported');
+    if (p.employmentId !== reviewedOwnLeave.employmentId || p.leaveTypeId !== reviewedOwnLeave.leaveTypeId
+      || p.startDate !== reviewedOwnLeave.date || p.endDate !== reviewedOwnLeave.date)
+      throw new LeaveReviewedEffectError('changed');
+  }
   const perform = async (tx: Tx) => {
+    // Rights first, then shared source configuration. An unauthorized subject is refused by the
+    // original gate before acquiring any employment lock or reading leave policy/balance facts.
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
     if (p.document) p = { ...p, hasDocument: true };
     // ── On-behalf gate (5206539f) — THE FIRST THING THIS FUNCTION DOES, and deliberately ────────────────
     // Submitting leave for an employment that is not the caller's own requires `leave.apply_on_behalf`.
@@ -3368,16 +3435,26 @@ export async function requestLeave(
     //
     // ABOVE the Emergency-Leave short-circuit below, which returns into a whole separate submission path,
     // and above every other gate: nothing is read or written on behalf of someone the caller may not act for.
-    const [subject] = await tx
-      .select({ personId: employment.personId, companyId: employment.companyId })
+    const readSubject = () => tx
+      .select({ personId: employment.personId, companyId: employment.companyId,
+        hiredOn: employment.hiredOn, terminatedOn: employment.terminatedOn,
+        resignationDate: employment.resignationDate, lastWorkingDate: employment.lastWorkingDate,
+        blacklistedAt: employment.blacklistedAt })
       .from(employment)
       .where(eq(employment.id, p.employmentId))
       .limit(1);
+    const [subject] = await readSubject();
     // Self is decided by PERSON, not by employment id: one person can hold several employments (multi-company
     // groups), and all of them are still their own leave. A caller with no personId (a service/admin context
     // not tied to an employee) can never satisfy this, and falls to the permission below — which is where an
     // HR administrator has always passed.
     const isSelfSubject = ctx.personId != null && subject?.personId != null && ctx.personId === subject.personId;
+    if (reviewedOwnLeave) {
+      const currentDate = todayInKualaLumpur();
+      if (!isSelfSubject || !subject || subject.companyId !== reviewedOwnLeave.companyId
+        || subject.hiredOn > currentDate || isEmploymentEnded(subject, currentDate)
+        || isEmploymentEnded(subject, p.startDate)) throw new LeaveReviewedEffectError('changed');
+    }
     // AN EMPLOYMENT THE CALLER CANNOT SEE IS REFUSED HERE, not thirty gates later by a policy violation. The
     // select above runs under the caller's own RLS, so `subject` is undefined for an employment outside their
     // scope — a company-scoped hr_admin naming another company's employee, say — and for one that does not
@@ -3393,6 +3470,15 @@ export async function requestLeave(
       throw new LeaveOnBehalfNotAllowedError();
     }
 
+    await lockLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId]);
+    const [currentSubject] = await readSubject();
+    // The initial row nominated/authorized a subject; use it only if the same canonical projection
+    // still holds after acquiring ownership. All selected facts are scalar/date values, fixed order.
+    if (!subject || !currentSubject || JSON.stringify(subject) !== JSON.stringify(currentSubject)) {
+      if (reviewedOwnLeave) throw new LeaveReviewedEffectError('changed');
+      throw new LeaveDependencyUnavailable();
+    }
+
     // Day count depends on the leave type: working-days (excl weekends + holidays) vs calendar.
     const [lt0] = await tx
       .select(leaveTypeRequestColumns)
@@ -3404,6 +3490,10 @@ export async function requestLeave(
     // conversion re-points BOTH so every gate after it is judged against the type the application actually
     // becomes, rather than a second submission path re-implementing them. Nothing else reassigns either.
     let lt = lt0;
+    if (reviewedOwnLeave && (!lt || !leaveTypeIs(lt, 'annual') || !lt.paid || lt.archivedAt !== null
+      || lt.requiresDocument || lt.balanceSourceTypeId !== null || lt.employeeCanApply === false)) {
+      throw new LeaveReviewedEffectError('unsupported');
+    }
     let overrideAudit: LeaveOverrideAudit | null = null;
     if (p.document && lt) validateLeaveDocument(lt, { mimeType: p.document.mimeType, sizeBytes: p.document.content.byteLength });
     // Match the existing action's first-child attachment ownership, inside this transaction.
@@ -3930,9 +4020,14 @@ export async function requestLeave(
     }
 
     // Doc-config: mandatory employee remark.
-    const employeeRemark = p.employeeRemark?.trim() || null;
+    const employeeRemark = normalizeLeaveEmployeeRemark(p.employeeRemark);
     if (lt?.employeeRemarkRequired && !employeeRemark) {
       throw new LeaveRemarkRequiredError(lt.name);
+    }
+    // The bounded action promises the exact human text shown at review. Keep the canonical
+    // normalization policy; refuse instead of silently saving a different remark from that review.
+    if (reviewedOwnLeave && employeeRemark !== (p.employeeRemark ?? null)) {
+      throw new LeaveReviewedEffectError('unsupported');
     }
 
     // Phase-B #13 (ADR-0062): EA s.37 maternity paid-ALLOWANCE eligibility. The 98-day LEAVE is granted
@@ -4020,7 +4115,28 @@ export async function requestLeave(
       // The request still goes through normally, just as one whole-span decision.
       unpaidDays === 0;
 
-    const { id } = await insertLeaveRequest(tx, ctx, {
+    if (reviewedOwnLeave) {
+      // Reuse THIS execution's calculations, not a second preview. This adds no lock or retry:
+      // the future action command must also protect against concurrent dependency/source changes.
+      if (today !== todayInKualaLumpur() || p.startDate < today || backdatedOverride || advanceOverride
+        || leaveYearOverride || overrideAudit !== null || unpaidDays !== 0 || maternity !== null
+        || maternityAllowanceWarning) throw new LeaveReviewedEffectError('unsupported');
+      const available = await availableLeaveBalance(tx, p.employmentId, p.leaveTypeId);
+      if (days !== reviewedOwnLeave.days || available !== reviewedOwnLeave.availableBalance)
+        throw new LeaveReviewedEffectError('changed');
+      const warnings = lt?.counting === 'working_days'
+        ? await leaveHolidayCompletenessTx(tx, p.employmentId, p.startDate, p.endDate) : [];
+      const reviewedWarnings = reviewedOwnLeave.holidayWarnings;
+      if (warnings.length !== reviewedWarnings.length
+        || warnings.some((warning, index) => {
+          const reviewed = reviewedWarnings[index];
+          return warning.country !== reviewed.country || warning.state !== reviewed.state
+            || warning.year !== reviewed.year || warning.loaded !== reviewed.loaded
+            || warning.required !== reviewed.required;
+        })) throw new LeaveReviewedEffectError('changed');
+    }
+
+    const { id, submittedEventId } = await insertLeaveRequest(tx, ctx, {
       employmentId: p.employmentId,
       leaveTypeId: p.leaveTypeId,
       startDate: p.startDate,
@@ -4060,7 +4176,7 @@ export async function requestLeave(
       // Override Leave Application (56910869): null on every application no rule changed, which is every
       // application until HR enables a rule — so the ordinary payload is byte-identical to before.
       overrideAudit,
-    });
+    }, reviewedOwnLeave !== undefined);
 
     // Replacement Leave deliberately has no per-date approval rows. Retain the canonical weights
     // computed by THIS submission so the earned-credit reader never guesses from a later calendar.
@@ -4124,11 +4240,12 @@ export async function requestLeave(
     // warn LOUDLY (domain event + returned warning) but do NOT block — the count may be wrong until HR loads
     // the rest of the state gazette. Only meaningful for working_days types (calendar types ignore holidays).
     const holidayWarnings = lt?.counting === 'working_days'
-      ? await warnLeaveHolidayCompleteness(tx, ctx, p.employmentId, p.startDate, p.endDate, id)
+      ? await leaveHolidayCompletenessTx(tx, p.employmentId, p.startDate, p.endDate, { ctx, leaveRequestId: id })
       : [];
 
     return {
       leaveRequestId: id,
+      ...(submittedEventId ? { submittedEventId } : {}),
       days,
       parentGroupId: null,
       children: [{ id, code: lt?.code ?? '', days }],
@@ -4162,6 +4279,11 @@ export async function previewLeaveDeduction(
      *  that produced `days` also returns its per-date detail as `dayRows`. Absent ⇒ byte-identical work, so
      *  every existing caller (notably app/me/actions.ts myPreviewLeaveDeduction) is untouched. */
     includeDayRows?: boolean;
+    /** Opt-in available estimate after pending reservations, from availableLeaveBalance. The legacy
+     * balanceAvailable/balanceAfter fields remain the raw-ledger preview for existing consumers. */
+    includeAvailableBalance?: boolean;
+    /** Opt-in read-only warning projection through the same dated-calendar owner as submission. */
+    includeHolidayWarnings?: boolean;
     /** Override Leave Application (56910869): the tenant-local "today" the advance-notice trigger is judged
      *  against — the same value the action layer passes to requestLeave, so the pop-out the employee is
      *  shown and the rule the submission applies can never describe different days. Defaults as requestLeave
@@ -4175,12 +4297,18 @@ export async function previewLeaveDeduction(
     toTime?: string;
     hours?: number;
   },
+  /** Caller-scoped transaction for a command's live recheck. This preview remains advisory:
+   * requestLeave owns eligibility, acceptance and the persisted deduction. */
+  existingTx?: Tx,
 ): Promise<{
   days: number;
   balanceAvailable: number;
   balanceAfter: number;
   hasHalfScheduleDate: boolean;
   isEmergencySplit: boolean;
+  availableBalance?: number;
+  availableAfter?: number;
+  holidayWarnings?: HolidayCompletenessWarning[];
   dayRows?: LeaveApplyDayRow[];
   /** Allow Unpaid Leave (a7fab30b): how many of `days` the balance will NOT cover, so the employee is told
    *  BEFORE submitting rather than discovering it on a payslip. 0 (and absent on every type that has not
@@ -4202,7 +4330,7 @@ export async function previewLeaveDeduction(
   // D5(c): resolved before the transaction, as requestLeave resolves the window before it counts a day.
   const hourlyDays =
     previewDurationType === 'hourly' && (p.fromTime || p.toTime || p.hours != null) ? hourlyLeaveDays(hourlyLeaveWindow(p).hours) : null;
-  return withTenant(ctx, async (tx) => {
+  const perform = async (tx: Tx) => {
     const durationType: LeaveDurationType = previewDurationType;
     const [lt] = await tx
       // Day Type Inclusion (feedback ef6d7146): projected so the preview's day-count matches what submission
@@ -4355,6 +4483,14 @@ export async function previewLeaveDeduction(
       }
     }
 
+    const availableBalance = p.includeAvailableBalance
+      ? await availableLeaveBalance(tx, p.employmentId, p.leaveTypeId)
+      : undefined;
+    const holidayWarnings = p.includeHolidayWarnings
+      ? lt?.counting === 'working_days'
+        ? await leaveHolidayCompletenessTx(tx, p.employmentId, p.startDate, p.endDate)
+        : []
+      : undefined;
     return {
       days,
       balanceAvailable,
@@ -4366,8 +4502,13 @@ export async function previewLeaveDeduction(
       ...(dayRows ? { dayRows } : {}),
       ...(unpaidDays > 0 ? { unpaidDays } : {}),
       ...(overrides.length ? { overrides } : {}),
+      ...(availableBalance !== undefined
+        ? { availableBalance, availableAfter: round2(availableBalance - (days - unpaidDays)) }
+        : {}),
+      ...(holidayWarnings !== undefined ? { holidayWarnings } : {}),
     };
-  });
+  };
+  return existingTx ? perform(existingTx) : withTenant(ctx, perform);
 }
 
 /** One rule the apply form must tell the employee about before they submit. Flat + serialisable: it crosses
@@ -4447,16 +4588,14 @@ async function resolveApplyDayRows(
   });
 }
 
-/** Phase-B #15: resolve the request's effective (country, state) and span years, then emit a non-blocking
- *  holiday-completeness warning event for any (state, year) below the s.60D minimum. Returns the warnings so
- *  the leave screen can surface them. Threaded onto the leave-request aggregate for the audit trail. */
-async function warnLeaveHolidayCompleteness(
+/** One dated-calendar owner for read-only previews and post-submission warning events. Passing an
+ * event target preserves the existing warning audit; omitting it performs only source reads. */
+async function leaveHolidayCompletenessTx(
   tx: Tx,
-  ctx: SessionContext,
   employmentId: string,
   startDate: string,
   endDate: string,
-  leaveRequestId: string,
+  event?: { ctx: SessionContext; leaveRequestId: string },
 ): Promise<HolidayCompletenessWarning[]> {
   const periods=(await holidayCalendarPeriodsByEmploymentTx(tx,[employmentId],startDate,endDate)).get(employmentId)??[];
   const segments=await companySegmentsForPeriod(tx,employmentId,startDate,endDate);
@@ -4467,10 +4606,13 @@ async function warnLeaveHolidayCompleteness(
     const years=yearsSpanned(window.from,window.to).filter(year=>{
       const key=JSON.stringify([eff.country,eff.state,year]);if(seen.has(key))return false;seen.add(key);return true;
     });
-    warnings.push(...await warnIfHolidaysIncomplete(tx,ctx,{
-      country:eff.country,state:eff.state,years,module:'leave',aggregateType:'leave-request',aggregateId:leaveRequestId,
-      subjectEmploymentId:employmentId,context:{leaveRequestId,startDate:window.from,endDate:window.to},
-    }));
+    const currentWarnings = event
+      ? await warnIfHolidaysIncomplete(tx,event.ctx,{
+        country:eff.country,state:eff.state,years,module:'leave',aggregateType:'leave-request',aggregateId:event.leaveRequestId,
+        subjectEmploymentId:employmentId,context:{leaveRequestId:event.leaveRequestId,startDate:window.from,endDate:window.to},
+      })
+      : await readHolidayCompletenessWarnings(tx,eff.country,eff.state,years);
+    warnings.push(...currentWarnings);
   }
   return warnings;
 }
@@ -5490,6 +5632,7 @@ async function finalizeLeaveApproval(
   mixed = false,
   perDateOutcome?: PerDateOutcome,
   payrollChangedDates?: readonly string[],
+  returnEventId = false,
 ) {
   // Unpaid-leave payroll-impact: fetch the type's code + payroll-signal gate once — plus (cdf9ca48) the
   // balance source, which the gate and the debit below both need. Both approval paths (multi-step final
@@ -5656,7 +5799,7 @@ async function finalizeLeaveApproval(
       effectiveOn: req.startDate,
     });
   }
-  await appendEvent(tx, {
+  return appendEvent(tx, {
     tenantId: ctx.tenantId,
     aggregateType: 'leave-request',
     aggregateId: req.id,
@@ -5693,7 +5836,7 @@ async function finalizeLeaveApproval(
           }
         : {}),
     },
-  });
+  }, { returnId: returnEventId });
 }
 
 /** Terminal rejection: status flip + event (no ledger write). */
@@ -5703,12 +5846,13 @@ async function finalizeLeaveRejection(
   req: DecidableLeave,
   deciderEmploymentId?: string,
   extra?: Record<string, unknown>,
+  returnEventId = false,
 ) {
   await tx
     .update(leaveRequest)
     .set({ status: 'rejected', decidedByEmploymentId: deciderEmploymentId ?? null, decidedAt: sql`now()` })
     .where(eq(leaveRequest.id, req.id));
-  await appendEvent(tx, {
+  return appendEvent(tx, {
     tenantId: ctx.tenantId,
     aggregateType: 'leave-request',
     aggregateId: req.id,
@@ -5716,7 +5860,7 @@ async function finalizeLeaveRejection(
     actor: actorOf(ctx),
     subjectEmploymentId: req.employmentId,
     payload: { decision: 'rejected', deciderEmploymentId: deciderEmploymentId ?? null, ...(extra ?? {}) },
-  });
+  }, { returnId: returnEventId });
 }
 
 /**
@@ -5812,6 +5956,44 @@ function withLeaveTx<T>(ctx: SessionContext, existingTx: Tx | undefined, run: (t
   return existingTx ? run(existingTx) : withTenant(ctx, run);
 }
 
+/** A cohort writer owns its complete ordered subject set before any calculation. These are
+ * nomination-only IDs; business facts are read afterward by the unchanged canonical engine.
+ * Read-only previews do not acquire employment-exclusive ownership. */
+async function lockLeaveCohortDependenciesTx(tx: Tx, ctx: SessionContext, scope: {
+  employmentIds?: readonly string[]; companyIds?: readonly string[]; gradeIds?: readonly string[];
+}, writes = true): Promise<void> {
+  await lockAccessConfigurationTx(tx, ctx.tenantId);
+  await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
+  if (!writes) return;
+  const ids = scope.employmentIds?.slice(), companies = scope.companyIds?.slice(), grades = scope.gradeIds?.slice();
+  const read = () => tx.select({ id: employment.id }).from(employment).where(and(
+    ids !== undefined ? (ids.length ? inArray(employment.id, [...ids]) : sql`false`) : undefined,
+    companies?.length ? inArray(employment.companyId, [...companies]) : undefined,
+    grades?.length ? inArray(employment.gradeId, [...grades]) : undefined,
+  )).orderBy(employment.id);
+  const nominated = await read();
+  if (!nominated.length) return;
+  await lockLeaveDependenciesTx(tx, ctx.tenantId, nominated.map(row => row.id));
+  const current = await read();
+  if (JSON.stringify(nominated) !== JSON.stringify(current)) throw new LeaveDependencyUnavailable();
+}
+
+/** Actual request mutation interval. Resolve only the RLS-visible subject before ownership, then
+ * reread that binding before the canonical owner takes its existing request/cancellation row locks. */
+/** Exported for the Assistant's leave-change review (ADR-0151), which takes this same lock before comparing
+ *  the reviewed values, so the comparison and the native write see one state. */
+export async function lockLeaveRequestDependenciesTx(tx: Tx, ctx: SessionContext, requestId: string): Promise<void> {
+  await lockAccessConfigurationTx(tx, ctx.tenantId);
+  await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
+  const read = () => tx.select({ employmentId: leaveRequest.employmentId }).from(leaveRequest)
+    .where(eq(leaveRequest.id, requestId)).limit(1);
+  const [nominated] = await read();
+  if (!nominated) throw new Error('leave request not found (or not visible)');
+  await lockLeaveDependenciesTx(tx, ctx.tenantId, [nominated.employmentId]);
+  const [current] = await read();
+  if (!current || current.employmentId !== nominated.employmentId) throw new LeaveDependencyUnavailable();
+}
+
 /** Decide a leave request. With a multi-step chain (2B-1) this advances the current step and only
  *  finalizes when the last step clears; a rejection at any step is terminal. Without a chain it is a
  *  single approval (the original behavior). */
@@ -5831,11 +6013,14 @@ export async function decideLeave(
   },
   existingTx?: Tx,
 ) {
+  p = structuredClone(p);
+  ctx = captureLeaveDecisionContext(ctx);
   // Partial Leave Approval (0131): refuse a blank reject reason BEFORE opening the transaction, so a missing
   // reason persists nothing (no status flip, no ledger row, no event). Trim to reject whitespace-only input.
   const rejectReason = p.rejectReason?.trim() || null;
   if (p.decision === 'rejected' && !rejectReason) throw new MissingRejectReasonError();
   return withLeaveTx(ctx, existingTx, async (tx) => {
+    await lockLeaveRequestDependenciesTx(tx, ctx, p.leaveRequestId);
     const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1).for('update');
     if (!req) throw new Error('leave request not found (or not visible)');
     if(p.teamScope)ctx=await assertMyTeamSubjectTx(tx,ctx,p.teamScope,req.employmentId);
@@ -5849,6 +6034,15 @@ export async function decideLeave(
       .orderBy(asc(leaveApprovalStep.stepIndex));
     assertExpectedLeaveStep(req.status, steps, p.expectedStepIndex);
 
+    return decideLeaveEffectTx(tx, ctx, p, rejectReason, req, steps);
+  });
+}
+
+/** One canonical effect owner for ordinary and human-reviewed decisions. Supplied rows are locked by
+ * the caller in this SAME transaction; this is not an exported callback or generic effect executor. */
+async function decideLeaveEffectTx(tx: Tx, ctx: SessionContext,
+ p: { decision: 'approved' | 'rejected'; deciderEmploymentId?: string }, rejectReason: string | null,
+ req: typeof leaveRequest.$inferSelect, steps: (typeof leaveApprovalStep.$inferSelect)[], returnEventId = false) {
     // Multi-step chain: decide the current step. r301 — the rule for WHICH step, WHO may clear it and WHAT
     // happens next lives in decideCurrentChainStep, shared with decideLeaveCancellation's copied chain, so
     // a cancellation walks its levels by this exact rule rather than a second copy of it.
@@ -5869,12 +6063,12 @@ export async function decideLeave(
       const { current } = stepOutcome;
       if (stepOutcome.outcome === 'rejected') {
         // Partial Leave Approval (0131): stamp the mandatory reject reason onto the rejected event payload.
-        await finalizeLeaveRejection(tx, ctx, req, p.deciderEmploymentId, { step: current.stepIndex, kind: current.approverKind, rejectReason });
-        return { status: 'rejected' as const };
+        const eventId = await finalizeLeaveRejection(tx, ctx, req, p.deciderEmploymentId, { step: current.stepIndex, kind: current.approverKind, rejectReason }, returnEventId);
+        return { status: 'rejected' as const, ...(returnEventId ? { eventId, stepId: current.id, stepIndex: current.stepIndex } : {}) };
       }
       if (stepOutcome.outcome === 'advanced') {
         const { next } = stepOutcome;
-        await appendEvent(tx, {
+        const eventId = await appendEvent(tx, {
           tenantId: ctx.tenantId,
           aggregateType: 'leave-request',
           aggregateId: req.id,
@@ -5882,20 +6076,110 @@ export async function decideLeave(
           actor: actorOf(ctx),
           subjectEmploymentId: req.employmentId,
           payload: { step: current.stepIndex, kind: current.approverKind, nextKind: next.approverKind },
-        });
-        return { status: 'pending' as const, advancedTo: next.approverKind };
+        }, { returnId: returnEventId });
+        return { status: 'pending' as const, advancedTo: next.approverKind, ...(returnEventId ? { eventId, stepId: current.id, stepIndex: current.stepIndex } : {}) };
       }
-      await finalizeLeaveApproval(tx, ctx, req, p.deciderEmploymentId);
-      return { status: 'approved' as const };
+      const eventId = await finalizeLeaveApproval(tx, ctx, req, p.deciderEmploymentId, undefined, false, undefined, undefined, returnEventId);
+      return { status: 'approved' as const, ...(returnEventId ? { eventId, stepId: current.id, stepIndex: current.stepIndex } : {}) };
     }
 
     // Single-step (no chain) — original behavior.
     await assertCanDecide(tx, ctx, req.employmentId, 'leave request', scopeOf('leave.application'));
-    if (p.decision === 'approved') await finalizeLeaveApproval(tx, ctx, req, p.deciderEmploymentId);
-    // Partial Leave Approval (0131): stamp the mandatory reject reason onto the rejected event payload.
-    else await finalizeLeaveRejection(tx, ctx, req, p.deciderEmploymentId, { rejectReason });
-    return { status: p.decision };
-  });
+    const eventId = p.decision === 'approved'
+      ? await finalizeLeaveApproval(tx, ctx, req, p.deciderEmploymentId, undefined, false, undefined, undefined, returnEventId)
+      : await finalizeLeaveRejection(tx, ctx, req, p.deciderEmploymentId, { rejectReason }, returnEventId);
+    return { status: p.decision, ...(returnEventId ? { eventId, stepId: null, stepIndex: null } : {}) };
+}
+
+/** UNMOUNTED reviewed assigned-work source. IDs nominate only; canonical authority is checked
+ * BEFORE private request facts or subject/row ownership. The enclosing human command owns this Tx. */
+export type ReviewedLeaveDecisionSelection = { leaveRequestId: string; currentStepId: string | null;
+ decision: 'approved' | 'rejected'; rejectReason: string | null };
+const captureLeaveDecisionContext = (ctx: SessionContext): SessionContext => ({ ...ctx,
+ roles: ctx.roles?.slice(), grants: ctx.grants?.map(g => ({ ...g })) });
+export async function lockReviewedLeaveDecisionSourceTx(tx: Tx, supplied: SessionContext, selection: {leaveRequestId:string;currentStepId:string|null}, mode:'pending'|'recorded') {
+ const ctx = captureLeaveDecisionContext(supplied), p = structuredClone(selection);
+ await lockAccessConfigurationTx(tx, ctx.tenantId);
+ await assertAssignedWorkPrincipalTx(tx, ctx);
+ await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
+ const nominate = async () => {
+  const [row] = await tx.select({ id: leaveRequest.id, employmentId: leaveRequest.employmentId, status: leaveRequest.status })
+   .from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
+  if (!row || mode==='pending' && row.status !== 'pending') throw new Error('Leave decision source unavailable');
+  const steps = await tx.select({ id: leaveApprovalStep.id, status: leaveApprovalStep.status, stepIndex: leaveApprovalStep.stepIndex, approverKind: leaveApprovalStep.approverKind, approverEmploymentId: leaveApprovalStep.approverEmploymentId, approverAlternates: leaveApprovalStep.approverAlternates }).from(leaveApprovalStep).where(eq(leaveApprovalStep.leaveRequestId, row.id)).orderBy(asc(leaveApprovalStep.stepIndex), asc(leaveApprovalStep.id));
+  const current = mode==='pending'?steps.find(step => step.status === 'pending'):steps.find(step=>step.id===p.currentStepId);
+  if (steps.length && !current || (current?.id ?? null) !== p.currentStepId || mode==='recorded' && current?.status==='pending') throw new Error('Leave decision source changed');
+  if (current) await assertCanDecideLeaveStep(tx, ctx, row.employmentId, current.approverKind, 'leave request', current.approverEmploymentId, current.approverAlternates);
+  else await assertCanDecide(tx, ctx, row.employmentId, 'leave request', scopeOf('leave.application'));
+  const permittedSteps = await tx.select().from(leaveApprovalStep).where(eq(leaveApprovalStep.leaveRequestId, row.id)).orderBy(asc(leaveApprovalStep.stepIndex), asc(leaveApprovalStep.id));
+  return { row, steps: permittedSteps };
+ };
+ const before = await nominate();
+ await lockLeaveDependenciesTx(tx, ctx.tenantId, [before.row.employmentId]);
+ // NOWAIT is reviewed-only. Ordinary decision waiting/return semantics remain unchanged.
+ const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1).for('update', { noWait: true });
+ if (!req || req.employmentId !== before.row.employmentId) throw new Error('Leave decision source changed');
+ await tx.select({ id: leaveApprovalStep.id }).from(leaveApprovalStep).where(eq(leaveApprovalStep.leaveRequestId, req.id)).orderBy(asc(leaveApprovalStep.stepIndex), asc(leaveApprovalStep.id)).for('update', { noWait: true });
+ const after = await nominate();
+ if (JSON.stringify(before) !== JSON.stringify(after)) throw new Error('Leave decision source changed');
+ const [subject]=await tx.select({personId:employment.personId,companyId:employment.companyId}).from(employment).where(and(eq(employment.id,req.employmentId),eq(employment.tenantId,ctx.tenantId))).limit(1);
+ if(!subject)throw new Error('Leave decision subject unavailable');
+ return {ctx,req,steps:after.steps,subject};
+}
+async function reviewedLeaveDecisionPreflightTx(tx: Tx, supplied: SessionContext, selection: ReviewedLeaveDecisionSelection) {
+ const p=structuredClone(selection),owned=await lockReviewedLeaveDecisionSourceTx(tx,supplied,p,'pending'),{ctx,req}=owned,after={steps:owned.steps};
+ if (p.decision === 'rejected' && !p.rejectReason?.trim() || p.decision === 'approved' && p.rejectReason !== null) throw new MissingRejectReasonError();
+ const [type] = await tx.select({ id: leaveType.id, name: leaveType.name, balanceSourceTypeId: leaveType.balanceSourceTypeId }).from(leaveType).where(eq(leaveType.id, req.leaveTypeId)).limit(1);
+ if (!type) throw new Error('Leave decision type unavailable');
+ const balance = await leaveBalance(tx, req.employmentId, type.balanceSourceTypeId ?? req.leaveTypeId);
+ const versions = await tx.execute(sql`select q.xmin::text as request_version, t.xmin::text as type_version,
+  (select jsonb_agg(jsonb_build_array(s.id,s.xmin::text) order by s.step_index,s.id) from public.leave_approval_step s where s.leave_request_id=q.id) as step_versions
+  from public.leave_request q join public.leave_type t on t.id=q.leave_type_id where q.id=${req.id}::uuid`);
+ const current = after.steps.find(step => step.status === 'pending');
+ const review = { leaveRequestId: req.id, employmentId: req.employmentId, leaveTypeId: req.leaveTypeId,
+  leaveTypeName: type.name, startDate: req.startDate, endDate: req.endDate, days: req.days,
+  durationType: req.durationType, hours: req.hours, fromTime: req.fromTime, toTime: req.toTime,
+  applicantReason: req.reason, employeeRemark: req.employeeRemark,
+  currentStepId: current?.id ?? null, stepIndex: current?.stepIndex ?? null,
+  decision: p.decision, rejectReason: p.rejectReason,
+  outcome: p.decision === 'rejected' ? 'rejection_if_confirmed' as const : after.steps.some(step => step.status === 'pending' && step.stepIndex > (current?.stepIndex ?? -1)) ? 'step_decision_if_confirmed' as const : 'approval_if_native_checks_pass' as const };
+ const reviewedDigest = createHash('sha256').update(JSON.stringify(['reviewed-leave-decision:v1',
+  { tenantId: ctx.tenantId, userId: ctx.userId, personId: ctx.personId ?? null }, p, req, after.steps, versions, balance, review])).digest('hex');
+ return { ctx, p, req, steps: after.steps, review: { ...review, reviewedDigest } };
+}
+export async function prepareReviewedLeaveDecisionTx(tx: Tx, ctx: SessionContext, p: ReviewedLeaveDecisionSelection) {
+ return (await reviewedLeaveDecisionPreflightTx(tx, ctx, p)).review;
+}
+export async function decideReviewedLeaveTx(tx: Tx, ctx: SessionContext, p: ReviewedLeaveDecisionSelection, reviewedDigest: string) {
+ const prepared = await reviewedLeaveDecisionPreflightTx(tx, ctx, p);
+ if (prepared.review.reviewedDigest !== reviewedDigest) throw new Error('Leave decision review changed');
+ const effect = await decideLeaveEffectTx(tx, prepared.ctx, { decision: prepared.p.decision }, prepared.p.rejectReason,
+  prepared.req, prepared.steps, true);
+ if (!effect.eventId) throw new Error('Leave decision event unavailable');
+ const reference = await readReviewedLeaveDecisionReferenceTx(tx, prepared.ctx, { leaveRequestId: prepared.req.id, decisionEventId: effect.eventId, decisionStepId: effect.stepId ?? null });
+ if (!reference || reference.currentStatus !== effect.status || reference.decision !== prepared.p.decision) throw new Error('Leave decision canonical reference unavailable');
+ return reference;
+}
+/** Exact original-actor/native event plus current permitted request status, never repeats an effect.
+ * Historical step snapshot authorizes its own recorded decision, not the next person's task. */
+export async function readReviewedLeaveDecisionReferenceTx(tx: Tx, supplied: SessionContext,
+ reference: { leaveRequestId: string; decisionEventId: string; decisionStepId: string | null }) {
+ const p=structuredClone(reference),owned=await lockReviewedLeaveDecisionSourceTx(tx,supplied,{leaveRequestId:p.leaveRequestId,currentStepId:p.decisionStepId},'recorded'),{ctx,steps}=owned,row={employmentId:owned.req.employmentId,status:owned.req.status};
+ const step=steps.find(s=>s.id===p.decisionStepId);
+ const [event] = await tx.execute<{ eventType: string }>(sql`select d.event_type as "eventType" from public.domain_event d
+  join public.leave_request q on q.id=d.aggregate_id and q.tenant_id=d.tenant_id
+  left join public.leave_approval_step s on s.id=${p.decisionStepId}::uuid and s.leave_request_id=q.id
+  where d.id=${p.decisionEventId}::uuid and q.id=${p.leaveRequestId}::uuid and d.tenant_id=${ctx.tenantId}::uuid
+   and d.actor_type='user' and d.actor_id=${ctx.userId}::uuid and d.aggregate_type='leave-request'
+   and d.subject_employment_id=q.employment_id and d.event_type in ('leave-request.approved','leave-request.rejected','leave-request.step.approved')
+   and d.occurred_at=coalesce(s.decided_at,q.decided_at)
+   and (s.id is null or s.status=case when d.event_type='leave-request.rejected' then 'rejected'::public.leave_request_status else 'approved'::public.leave_request_status end)
+   and (d.event_type not in ('leave-request.step.approved','leave-request.rejected') or s.id is null or (d.payload->>'step')::integer=s.step_index)
+   and (d.event_type<>'leave-request.approved' or s.id is null or not exists(select 1 from public.leave_approval_step later where later.leave_request_id=q.id and later.step_index>s.step_index))`);
+ if (!event) return null;
+ return { leaveRequestId: p.leaveRequestId, employmentId: row.employmentId, decisionEventId: p.decisionEventId,
+  decisionStepId: p.decisionStepId, stepIndex: step?.stepIndex ?? null,
+  decision: event.eventType === 'leave-request.rejected' ? 'rejected' as const : 'approved' as const, currentStatus: row.status };
 }
 
 // ═════════════ Partial Leave Approval — single-request per-date decision (ADR-0068) ═════════════
@@ -5999,6 +6283,7 @@ export async function decideLeaveDate(
   const rejectReason = p.rejectReason?.trim() || null;
   if (p.decision === 'rejected' && !rejectReason) throw new MissingRejectReasonError();
   return withTenant(ctx, async (tx) => {
+    await lockLeaveRequestDependenciesTx(tx, ctx, p.leaveRequestId);
     const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1).for('update');
     if (!req) throw new Error('leave request not found (or not visible)');
     if (req.status !== 'pending') throw new Error(`leave request is already ${req.status}`);
@@ -6127,6 +6412,7 @@ export async function decideLeaveDates(
     throw new Error('duplicate leave date in batch');
   }
   return withLeaveTx(ctx, existingTx, async (tx) => {
+    await lockLeaveRequestDependenciesTx(tx, ctx, p.leaveRequestId);
     const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1).for('update');
     if (!req) throw new Error('leave request not found (or not visible)');
     if(p.teamScope)ctx=await assertMyTeamSubjectTx(tx,ctx,p.teamScope,req.employmentId);
@@ -6500,6 +6786,7 @@ export async function requestLeaveCancellation(
 ) {
   const today = p.today ?? todayInKualaLumpur();
   return withLeaveTx(ctx, existingTx, async (tx) => {
+    await lockLeaveRequestDependenciesTx(tx, ctx, p.leaveRequestId);
     // r301 hand-fix (verifier defect 1) — LOCK THE LEAVE ROW. Everything below reads this row and the pending
     // cancellations on it to decide what may be given back, and an automatic approval then splits it in this
     // same transaction. Unlocked, two requests at the same moment (two tabs, or a crafted POST) each saw the
@@ -6769,6 +7056,8 @@ export async function decideLeaveCancellation(
   existingTx?: Tx,
 ) {
   return withLeaveTx(ctx, existingTx, async (tx) => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
     // r301 hand-fix (verifier defect 1) — LOCKS, leave row first, then the cancellation: the order
     // requestLeaveCancellation and adminCancelLeave take them in, so the three cannot deadlock. Two approvers
     // pressing Approve at once used to both read 'pending'; the second now waits and reads the first's outcome.
@@ -6778,6 +7067,7 @@ export async function decideLeaveCancellation(
       .where(eq(leaveCancellationRequest.id, p.cancellationRequestId))
       .limit(1);
     if (!peek) throw new Error('cancellation request not found (or not visible)');
+    await lockLeaveRequestDependenciesTx(tx, ctx, peek.leaveRequestId);
     await tx.select({ id: leaveRequest.id }).from(leaveRequest).where(eq(leaveRequest.id, peek.leaveRequestId)).for('update');
     const [cr] = await tx
       .select()
@@ -7303,6 +7593,7 @@ export async function adminCancelLeave(
       throw new LeaveCancellationNotAllowedError('only an HR administrator can cancel leave on behalf of an employee', 'admin_only');
     }
     const isSuper = ctx.roles?.includes('super_admin') ?? false;
+    await lockLeaveRequestDependenciesTx(tx, ctx, p.leaveRequestId);
 
     // r301 hand-fix — locked, in the same order as the employee's cancellation paths (leave row, then any
     // cancellation on it), so an HR cancellation and an employee's automatic one cannot both act on a stale row.
@@ -7506,7 +7797,30 @@ export async function editLeaveRequest(
     today?: string;
   },
 ): Promise<{ leaveRequestId: string; days: number }> {
-  return withTenant(ctx, async (tx) => {
+  const { leaveRequestId, days } = await withTenant(ctx, (tx) => editLeaveRequestTx(tx, ctx, p));
+  return { leaveRequestId, days };
+}
+
+/** editLeaveRequest in the caller's transaction (ADR-0151): returns the edited event id for the Assistant's
+ *  leave-edit review receipt. Same gates, same writes. */
+export async function editLeaveRequestTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: {
+    leaveRequestId: string;
+    leaveTypeId: string;
+    startDate: string;
+    endDate: string;
+    reason?: string;
+    employeeRemark?: string;
+    durationType?: LeaveDurationType;
+    fromTime?: string;
+    toTime?: string;
+    today?: string;
+  },
+): Promise<{ leaveRequestId: string; days: number; eventId: string }> {
+  {
+    await lockLeaveRequestDependenciesTx(tx, ctx, p.leaveRequestId);
     const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
     if (!req) throw new Error('leave request not found (or not visible)');
 
@@ -7844,7 +8158,7 @@ export async function editLeaveRequest(
         diff[k] = { before: (before as Record<string, unknown>)[k], after: (after as Record<string, unknown>)[k] };
       }
     }
-    await appendEvent(tx, {
+    const eventId = await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'leave-request',
       aggregateId: req.id,
@@ -7852,10 +8166,10 @@ export async function editLeaveRequest(
       actor: actorOf(ctx),
       subjectEmploymentId: req.employmentId,
       payload: { before, after, diff },
-    });
+    }, { returnId: true });
 
-    return { leaveRequestId: req.id, days };
-  });
+    return { leaveRequestId: req.id, days, eventId };
+  }
 }
 
 /**
@@ -7872,7 +8186,19 @@ export async function cancelOwnLeave(
   /** D5(a): a caller's transaction (the mobile command receipt). Omitted ⇒ its own, as before. */
   existingTx?: Tx,
 ): Promise<{ previousStatus: 'pending'; restoredDays: number }> {
-  return withLeaveTx(ctx, existingTx, async (tx) => {
+  const { previousStatus, restoredDays } = await withLeaveTx(ctx, existingTx, (tx) => cancelOwnLeaveTx(tx, ctx, p));
+  return { previousStatus, restoredDays };
+}
+
+/** cancelOwnLeave in the caller's transaction (ADR-0151): the Assistant's leave-cancellation review commits
+ *  the cancellation and its own receipt together, so the self-cancelled event id is returned for that receipt. */
+export async function cancelOwnLeaveTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { leaveRequestId: string },
+): Promise<{ previousStatus: 'pending'; restoredDays: number; eventId: string }> {
+  {
+    await lockLeaveRequestDependenciesTx(tx, ctx, p.leaveRequestId);
     const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
     if (!req) throw new Error('leave request not found (or not visible)');
 
@@ -7925,7 +8251,7 @@ export async function cancelOwnLeave(
 
     // Substrate: distinct self-cancelled event (audit + notification key). Carries the display fields the
     // approver/HR notification renderer needs (payload-only renderers).
-    await appendEvent(tx, {
+    const eventId = await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'leave-request',
       aggregateId: req.id,
@@ -7941,10 +8267,10 @@ export async function cancelOwnLeave(
         startDate: req.startDate,
         endDate: req.endDate,
       },
-    });
+    }, { returnId: true });
 
-    return { previousStatus: 'pending', restoredDays };
-  });
+    return { previousStatus: 'pending', restoredDays, eventId };
+  }
 }
 
 // ───────────────────── Leave-year boundary (STATUTORY-SOURCES §5) ─────────────────────
@@ -8465,7 +8791,10 @@ export async function openLeaveYear(
   const scopeTypeIds = (p.leaveTypeIds ?? []).filter(Boolean);
   const scopeEmpIds = (p.employmentIds ?? []).filter(Boolean);
   const dryRun = p.dryRun === true;
+  p = { ...p, leaveTypeIds: p.leaveTypeIds?.slice(), employmentIds: p.employmentIds?.slice() };
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   return withTenant(ctx, async (tx): Promise<OpenLeaveYearResult> => {
+    await lockLeaveCohortDependenciesTx(tx, ctx, { employmentIds: scopeEmpIds.length ? scopeEmpIds : undefined }, !dryRun);
     const yearStart = `${p.year}-01-01`;
     // r193 — the leave year is a WINDOW now, not the instant at its left edge. See `effectiveGrantStart`.
     const yearEnd = `${p.year}-12-31`;
@@ -9743,7 +10072,10 @@ export async function accrueEarnedLeave(
   const scopeEmpIds: string[] | null = p.employmentIds === undefined ? null : p.employmentIds.filter(Boolean);
   const dryRun = p.dryRun === true;
   const accrualPeriod = Number(p.asOf.slice(0, 4));
+  p = { ...p, companyIds: p.companyIds?.slice(), gradeIds: p.gradeIds?.slice(), leaveTypeIds: p.leaveTypeIds?.slice(), employmentIds: p.employmentIds?.slice() };
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   return withTenant(ctx, async (tx): Promise<EarnedAccrualResult> => {
+    await lockLeaveCohortDependenciesTx(tx, ctx, { employmentIds: scopeEmpIds === null ? undefined : scopeEmpIds, companyIds: scopeCompanyIds, gradeIds: scopeGradeIds }, !dryRun);
     const yearStart = `${p.asOf.slice(0, 4)}-01-01`;
 
     // ── feedback cf9dcb98 — the empty-preview explanation. Everything below this comment runs ONLY where
@@ -10711,6 +11043,11 @@ export async function reprojectA2cEntitlement(
     changeEffectiveOn?: string | null;
   },
 ): Promise<{ affected: number; totalDelta: number; packBlocked: PackBlockedEmployment[] }> {
+  p = { ...p, employmentIds: p.employmentIds?.slice(), ...(p.gradeBefore ? { gradeBefore: { ...p.gradeBefore } } : {}) };
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  // Preserve this owner's historical empty-scope meaning: [] is unscoped here, unlike earned accrual.
+  const protectedIds = (p.employmentIds ?? []).filter(Boolean);
+  await lockLeaveCohortDependenciesTx(tx, ctx, { employmentIds: protectedIds.length ? protectedIds : undefined });
   const none = { affected: 0, totalDelta: 0, packBlocked: [] as PackBlockedEmployment[] };
 
   const [type] = await tx
@@ -11002,11 +11339,15 @@ export async function reprojectEntitlementForEmployment(
    * retain their existing independent transaction and best-effort orchestration. */
   outerTx?: Tx,
 ): Promise<{ affected: number; totalDelta: number }> {
+  p = { ...p, ...(p.gradeBefore ? { gradeBefore: { ...p.gradeBefore } } : {}) };
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   const asOf = p.asOf ?? todayInKualaLumpur();
   const none = { affected: 0, totalDelta: 0 };
   const run=async(tx:Tx)=>{
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
     // 1. Resolve the employment + its company's country/leave-cycle context.
-    const [emp] = await tx
+    const readEmployment = () => tx
       .select({
         employmentId: employment.id,
         hiredOn: employment.hiredOn,
@@ -11020,7 +11361,13 @@ export async function reprojectEntitlementForEmployment(
       .innerJoin(company, eq(company.id, employment.companyId))
       .where(eq(employment.id, p.employmentId))
       .limit(1);
+    const [emp] = await readEmployment();
     if (!emp) return none;
+    await lockLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId]);
+    const [currentEmployment] = await readEmployment();
+    if (!currentEmployment || JSON.stringify(emp) !== JSON.stringify(currentEmployment)) {
+      throw new LeaveDependencyUnavailable();
+    }
     const pack = packFor(emp.country);
     if (!pack) return none;
     // Same live-in-cycle window guard the granting engines use: pre-hire or terminated-before-this-year
@@ -11536,7 +11883,10 @@ export function resolveCarryBreakdown(p: {
  * DomainEvent is appended below.
  */
 export async function expireCarriedLeave(ctx: SessionContext, p: { today: string }) {
+  p = { ...p };
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   return withTenant(ctx, async (tx) => {
+    await lockLeaveCohortDependenciesTx(tx, ctx, {});
     const todayYear = Number(p.today.slice(0, 4));
     const annualTypes = await tx
       // 9816a5ad step 2: the type's own carry-forward rules drive both the sweepable-year boundary and the
@@ -11873,6 +12223,35 @@ export async function allowanceLeaveTypesTx(tx:Tx,companyId:string,includeArchiv
 }
 
 
+/** Shared canonical assignment gate for the inbox and the bounded Assistant chooser. Names or
+ * private request bodies do not establish assignment; the CURRENT native step owner does. */
+async function assertPendingLeaveMetadataAssignmentTx(tx:Tx,ctx:SessionContext,employmentId:string,current:{kind:string;approverEmploymentId:string|null;alternates:unknown}|undefined){
+ if(current)await assertCanDecideLeaveStep(tx,ctx,employmentId,current.kind,'leave request',current.approverEmploymentId,current.alternates);
+ else await assertCanDecide(tx,ctx,employmentId,'leave request',scopeOf('leave.application'));
+}
+/** Bounded metadata-only chooser. At most1000 visible request nominations are examined and at most100
+ * assigned choices returned. An unknown scan remainder REFUSES; only an additional permitted task
+ * marks a truncated result. No unassigned candidate count or existence escapes the owner.
+ * Applicant labels are selected ONLY AFTER the same native assignment check as pendingLeaveTaskMetadata. */
+export async function pendingLeaveDecisionChoiceMetadataTx(tx:Tx,ctx:SessionContext){
+ await assertAssignedWorkPrincipalTx(tx,ctx);
+ const nominations=await tx.select({id:leaveRequest.id,employmentId:leaveRequest.employmentId,personId:employment.personId,createdAt:leaveRequest.createdAt})
+  .from(leaveRequest).innerJoin(employment,and(eq(employment.id,leaveRequest.employmentId),eq(employment.tenantId,leaveRequest.tenantId)))
+  .where(and(eq(leaveRequest.tenantId,ctx.tenantId),eq(leaveRequest.status,'pending'),sql`NOT app.is_self_person(${employment.personId})`))
+  .orderBy(desc(leaveRequest.createdAt),asc(leaveRequest.id)).limit(1001);
+ const tasks:{leaveRequestId:string;currentStepId:string|null;stepIndex:number|null;applicantLabel:string|null;createdAt:Date}[]=[];if(nominations.length>1000)throw Error('Assigned choices unavailable');let truncated=false;
+ for(const row of nominations.slice(0,1000)){
+  const steps=await tx.select({id:leaveApprovalStep.id,status:leaveApprovalStep.status,stepIndex:leaveApprovalStep.stepIndex,kind:leaveApprovalStep.approverKind,approverEmploymentId:leaveApprovalStep.approverEmploymentId,alternates:leaveApprovalStep.approverAlternates})
+   .from(leaveApprovalStep).where(eq(leaveApprovalStep.leaveRequestId,row.id)).orderBy(asc(leaveApprovalStep.stepIndex),asc(leaveApprovalStep.id));
+  const current=steps.find(step=>step.status==='pending');if(steps.length&&!current)continue;
+  try{await assertPendingLeaveMetadataAssignmentTx(tx,ctx,row.employmentId,current);}catch(error){if(isLeaveDecisionRefusal(error))continue;throw error;}
+  if(tasks.length>=100){truncated=true;break;}
+  const [applicant]=await tx.select({name:person.fullName}).from(person).where(and(eq(person.id,row.personId),eq(person.tenantId,ctx.tenantId))).limit(1);
+  tasks.push({leaveRequestId:row.id,currentStepId:current?.id??null,stepIndex:current?.stepIndex??null,applicantLabel:applicant?.name??null,createdAt:row.createdAt});
+ }
+ return{tasks,truncated};
+}
+
 export function pendingLeaveTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
  return withTenant(ctx,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,ctx);
@@ -11893,8 +12272,7 @@ export function pendingLeaveTaskMetadata(ctx:SessionContext,companyIds?:string[]
    for(const row of batch){
     const chain=chains.get(row.id)??[],current=chain.find(step=>step.status==='pending');if(chain.length&&!current)continue;
     try{
-     if(current)await assertCanDecideLeaveStep(tx,ctx,row.employmentId,current.kind,'leave request',current.approverEmploymentId,current.alternates);
-     else await assertCanDecide(tx,ctx,row.employmentId,'leave request',scopeOf('leave.application'));
+     await assertPendingLeaveMetadataAssignmentTx(tx,ctx,row.employmentId,current);
     }catch(error){if(isLeaveDecisionRefusal(error))continue;throw error;}
     result.push(row);
    }

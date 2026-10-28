@@ -47,6 +47,7 @@ import { seedPayrollCycleCatalog } from '../core/payroll-cycle';
 import { seedProfileOptions } from '../core/profile-options';
 import {seedEmployeeHomeCardCatalog} from '../core/dashboard-card-config';
 import { seedGuides } from './seed-guides';
+import { lockOwnerTenantCatalogsTx } from './provision-ownership';
 
 /** Mirrors core/auth.ts INVITE_TTL_DAYS and scripts/auth/bootstrap-invite.ts — one invitation lifetime. */
 export const INVITE_TTL_DAYS = 7;
@@ -115,6 +116,7 @@ export async function seedTenantCatalogs(
   tenantId: string,
   country = 'MY',
 ): Promise<Record<string, string>> {
+  await lockOwnerTenantCatalogsTx(tx, tenantId);
   // Rung 5c (ADR-0080 D5 / ADR-0079): the country-shaped reference data (statutory leave types +
   // national/state holiday calendar) is seeded BEHIND the pack interface via the registry, not by a
   // direct `localization/my` import. `requirePackFor` fails closed for an unknown country (D3); a

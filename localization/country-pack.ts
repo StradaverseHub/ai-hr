@@ -360,6 +360,8 @@ type MyTaxSelectionModule = typeof import('./my/tax-selection');
  * names a jurisdiction directly (enforced by the drift-guard ratchet, ADR-0080 D7).
  */
 export interface CountryPack {
+  /** Presentation of audit instants; the stored timestamp remains UTC. */
+  displayClock?: {timeZone:string;label:string};
   eaReporting?: readonly {code: string; section: string; destination: string; label: string; order: number; active: boolean; aliases?: readonly string[]}[];
   /** ISO alpha-2 country code (uppercase) — the registry key, matching `company.country`. */
   country: string;
@@ -385,6 +387,10 @@ export interface CountryPack {
    */
   statutory: {
     set: MyStatutoryModule['setStatutoryProfileMY'];
+    /** Actual country-owned one-Tx read/modify/write interval for split-card pass-through. */
+    withWrite?:MyStatutoryModule['withStatutoryProfileWriteMY'];
+    /** Optional trusted human full-row reviewed source; never a generic model executor. */
+    reviewed?:{readEditable:MyStatutoryModule['readReviewedStatutoryEditableMYTx'];choices:MyStatutoryModule['reviewedStatutoryChoiceMetadataMYTx'];labels:MyStatutoryModule['readReviewedStatutoryLabelsMYTx'];lockSubject:MyStatutoryModule['lockReviewedStatutoryProfileMYTx'];prepare:MyStatutoryModule['prepareReviewedStatutoryProfileMYTx'];confirm:MyStatutoryModule['confirmReviewedStatutoryProfileMYTx'];readReference:MyStatutoryModule['readReviewedStatutoryProfileReferenceMYTx']};
     get: MyStatutoryModule['getStatutoryProfileMY'];
     /** Exact country-owned row revision for masked ESS concurrency checks; never a value digest. */
     getEditSnapshot?: MyStatutoryModule['getStatutoryEditSnapshotMY'];

@@ -1,5 +1,7 @@
 # ADR-0082 — The AI Assistant: access-scoped tool calling over the governed read layer, not RAG
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Status:** Proposed (buildable specification — no code written yet)
 - **Date:** 2026-08-26
 - **Implements:** [ADR-0007](0007-ai-native-architecture.md) §1/§2/§3/§6 and the

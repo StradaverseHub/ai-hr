@@ -1,3 +1,4 @@
+import {assertReviewedPayrollScopeCompanyTx} from './payroll-run-selection';
 /**
  * Configurable Payroll Cycle master (ADR-0069). A COMPANY-scoped, admin-maintained catalog of the
  * friendly cycle names the Payroll Process wizard's "Payroll Cycle" dropdown offers, cloning the
@@ -11,7 +12,7 @@
  * Every state-changing method appends a DomainEvent inline in the same withTenant transaction (substrate
  * discipline). RLS confines reads to the tenant and writes to a payroll admin for the row's company.
  */
-import { and, asc, eq, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { employmentPayComponent, payrollBatch, payrollCycle, payrollIndividualTxn } from '../db/schema';
@@ -229,6 +230,15 @@ export function listPayrollCycles(
       }),
     );
   });
+}
+
+/** Minimal same-Tx active ADDITIONAL catalogue, after actual reviewed native company authority.
+ * Same archived/company rules as getActivePayrollCycle; current source still rechecks exact selected
+ * cycle/type/remarks before creation. The bounded picker never implies all options were returned. */
+export async function reviewedAdditionalPayrollCycleChoicesTx(tx:Tx,supplied:SessionContext,companyId:string){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},id=companyId;await assertReviewedPayrollScopeCompanyTx(tx,ctx,id);const rows=await tx.select({id:payrollCycle.id,name:payrollCycle.name,code:payrollCycle.code,runType:payrollCycle.runType,remarks:payrollCycle.remarks}).from(payrollCycle)
+ .where(and(eq(payrollCycle.companyId,id),isNull(payrollCycle.archivedAt),ne(payrollCycle.runType,'regular'))).orderBy(asc(payrollCycle.sortOrder),asc(payrollCycle.name),asc(payrollCycle.id)).limit(129);
+ return{cycles:rows.slice(0,128),truncated:rows.length>128};
 }
 
 /**

@@ -1,5 +1,7 @@
 # ADR-0029 — Cross-employer PCB (MTD) for concurrent employments
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: **Accepted.** (2026) Go-live gate **G2** (product plan v2). Anchor tenant: Chin Hin Group.
 
 > **Go-live posture:** the **designated-paymaster scope-out** is the DEFAULT operating model for the

@@ -9,7 +9,7 @@
  * PART B: the 2026 NATIONAL gazette is loaded into MY_HOLIDAYS_2026 — fixed-date holidays plain, lunar /
  * Islamic ones carry verify:true. Per-state holidays are NOT loaded (operator data-entry task).
  */
-import { eq } from 'drizzle-orm';
+import { count, eq } from 'drizzle-orm';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -17,7 +17,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
-import { requestLeave } from '../core/leave';
+import { previewLeaveDeduction, requestLeave } from '../core/leave';
 import { createBatch } from '../core/payroll';
 import {
   EA_S60D_MINIMUM_HOLIDAYS,
@@ -122,6 +122,42 @@ describe('Phase-B #15 Part A — loadedHolidayCount counts national ∪ state fo
 });
 
 describe('Phase-B #15 Part A — leave guard (warns when <11, silent when fully loaded)', () => {
+  it('opt-in preview reads the submission warning without creating requests or events', async () => {
+    await loadNationalHolidays(2026, 5);
+    const emp = await hire('Selangor');
+    const ctx = adminCtx(b);
+    const input = { employmentId: emp.employmentId, leaveTypeId: wdTypeId,
+      startDate: '2026-07-20', endDate: '2026-07-24' };
+    await withTenant(ctx, async tx => {
+      const counts = () => Promise.all([
+        tx.select({ count: count() }).from(schema.leaveRequest).where(eq(schema.leaveRequest.tenantId, b.tenantId)),
+        tx.select({ count: count() }).from(schema.domainEvent).where(eq(schema.domainEvent.tenantId, b.tenantId)),
+      ]);
+      const before = await counts();
+      expect(await previewLeaveDeduction(ctx, input, tx)).not.toHaveProperty('holidayWarnings');
+      const preview = await previewLeaveDeduction(ctx, { ...input, includeHolidayWarnings: true }, tx);
+      expect(preview.holidayWarnings).toEqual([
+        { country: 'MY', state: 'Selangor', year: 2026, loaded: 5, required: 11 },
+      ]);
+      // Inspect the still-open transaction: rollback cannot hide a writer used as a preview.
+      expect(await counts()).toEqual(before);
+      const submitted = await requestLeave(ctx, input, tx);
+      expect(submitted.holidayWarnings).toEqual(preview.holidayWarnings);
+    });
+  });
+
+  it('opt-in preview returns an empty warning list for a complete or calendar-counted source', async () => {
+    await loadNationalHolidays(2026, 11);
+    const emp = await hire('Selangor');
+    const ctx = adminCtx(b);
+    const input = { employmentId: emp.employmentId, leaveTypeId: wdTypeId,
+      startDate: '2026-07-20', endDate: '2026-07-24', includeHolidayWarnings: true };
+    expect((await previewLeaveDeduction(ctx, input)).holidayWarnings).toEqual([]);
+    await owner.db.delete(schema.holiday).where(eq(schema.holiday.tenantId, b.tenantId));
+    expect((await previewLeaveDeduction(ctx, { ...input, leaveTypeId: b.annualLeaveTypeId }))
+      .holidayWarnings).toEqual([]);
+  });
+
   it('an under-loaded (state, year) WARNS — domain event + returned warning, request still created', async () => {
     await loadNationalHolidays(2026, 5); // only 5 < 11 for any state-year
     const emp = await hire('Selangor');

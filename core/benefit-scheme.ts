@@ -1,3 +1,4 @@
+import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import { tenantMutation } from '../db/tenant-mutation';
 /**
  * Grade groups — the tenant's grade-banding vocabulary, read by leave APPROVAL ROUTING and, since
@@ -112,9 +113,12 @@ export async function createGradeGroup(
   p: { name: string; gradeIds?: string[] },
   existingTx?: Tx,
 ) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const name = cleanName(p.name, 'Grade group name');
   const gradeIds = [...new Set((p.gradeIds ?? []).filter(Boolean))];
   return tenantMutation(ctx, existingTx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [row] = await tx
       .insert(gradeGroup)
       .values({ tenantId: ctx.tenantId, name })
@@ -143,9 +147,12 @@ export async function updateGradeGroup(
   p: { id: string; name: string; gradeIds?: string[] },
   existingTx?: Tx,
 ): Promise<{ gradeIds: string[] }> {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const name = cleanName(p.name, 'Grade group name');
   const gradeIds = p.gradeIds === undefined ? undefined : [...new Set(p.gradeIds.filter(Boolean))];
   return tenantMutation(ctx, existingTx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // ae5b84d5: capture the BEFORE membership inside this tx — the action fires the cohort recalc over the
     // UNION of before/after grade ids, so both a grade that LEFT the group and one that JOINED are trued up
     // (the feedback's "employee transfers to another Grade Group" case, config-side).
@@ -177,7 +184,10 @@ export async function updateGradeGroup(
 }
 
 export async function deleteGradeGroup(ctx: SessionContext, p: { id: string }) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // 6e9a126e RELEASE THREE — THIS GUARD WAS REPOINTED, NOT DELETED, AND THAT IS THE WHOLE POINT.
     //
     // It used to block deletion when a benefit_scheme still referenced the group. That table is gone.

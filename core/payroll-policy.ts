@@ -19,6 +19,24 @@ import { companyPayrollConfig, employment, payComponent, payrollPolicy, type Pay
 import { assertPayComponentReady } from '../lib/pay-component-contract';
 import { validatePayRule, type PayRuleKind } from './pay-rule';
 import { cleanPayrollPolicyConfig } from './payroll-policy-config';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
+
+
+const capturePolicyContext=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
+/** Ordinary actual policy/assignment write scope is company HR-admin (native RLS), not Payroll partner.
+ * Existing entry callers are USER-backed. No new SYSTEM/marker/roles-only grant is introduced. */
+async function ownPolicyWriteTx(tx:Tx,ctx:SessionContext,target:{companyId:string}|{policyId:string}|{employmentId:string}){
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  const company='companyId' in target?sql`${target.companyId}::uuid`:'policyId' in target?
+    sql`(select p.company_id from public.payroll_policy p where p.id=${target.policyId}::uuid and p.tenant_id=${ctx.tenantId}::uuid)`:
+    sql`(select e.company_id from public.employment e where e.id=${target.employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid)`;
+  const [authority]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.app_user u
+    where u.id=${ctx.userId??null}::uuid and u.tenant_id=${ctx.tenantId}::uuid and u.id=app.current_user_id()
+     and u.tenant_id=app.current_tenant_id() and u.archived_at is null and not app.login_blocked(u.id)
+     and app.principal_snapshot_current() and exists(select 1 from public.company c
+      where c.id=${company} and c.tenant_id=u.tenant_id and app.is_admin_for(c.id))) as allowed`);
+  if(authority?.allowed!==true)throw new Error('Payroll policy unavailable.');
+}
 
 async function assertPolicyPayItemReadyTx(tx: Tx, config: PayrollPolicyConfig | null) {
   const handling = config?.overtime?.exceedHandling;
@@ -139,7 +157,9 @@ export async function createPolicy(
     // can be finished later. Defaults to 'active' (today's behaviour) when omitted.
     status?: PolicyStatus;
   },
+  outerTx?:Tx,
 ): Promise<{ id: string }> {
+  p=structuredClone(p);ctx=capturePolicyContext(ctx);
   const name = cleanName(p.name);
   const policyType = normalizeType(p.policyType);
   const payRule = resolveRule(policyType, p.payRule);
@@ -149,7 +169,8 @@ export async function createPolicy(
   const config = cleanPayrollPolicyConfig(p.config);
   const priority = cleanPriority(p.priority);
   const status: PolicyStatus = p.status && POLICY_STATUSES.includes(p.status) ? p.status : 'active';
-  return withTenant(ctx, async (tx) => {
+  const run=async(tx:Tx)=>{
+    await ownPolicyWriteTx(tx,ctx,{companyId:p.companyId});
     let id: string;
     await assertPolicyPayItemReadyTx(tx, config);
     try {
@@ -171,7 +192,8 @@ export async function createPolicy(
       payload: { companyId: p.companyId, name, code, policyType, payRule, config, priority, status },
     });
     return { id };
-  });
+  };
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 export async function updatePolicy(
@@ -192,7 +214,9 @@ export async function updatePolicy(
     status?: PolicyStatus;
   },
 ): Promise<{ id: string }> {
+  p=structuredClone(p);ctx=capturePolicyContext(ctx);
   return withTenant(ctx, async (tx) => {
+    await ownPolicyWriteTx(tx,ctx,{policyId:p.id});
     const [before] = await tx.select().from(payrollPolicy).where(eq(payrollPolicy.id, p.id)).limit(1);
     if (!before) throw new Error('Payroll policy not found');
     const policyType = p.policyType !== undefined ? normalizeType(p.policyType) : (before.policyType as PolicyType);
@@ -247,7 +271,10 @@ export async function copyPolicy(
   ctx: SessionContext,
   p: { sourceId: string; name: string },
 ): Promise<{ id: string }> {
-  const src = await getPolicy(ctx, p.sourceId);
+  p=structuredClone(p);ctx=capturePolicyContext(ctx);
+  return withTenant(ctx,async tx=>{
+  await ownPolicyWriteTx(tx,ctx,{policyId:p.sourceId});
+  const src = await getPolicy(ctx, p.sourceId,tx);
   if (!src) throw new Error('Payroll policy not found');
   return createPolicy(ctx, {
     companyId: src.companyId,
@@ -258,6 +285,7 @@ export async function copyPolicy(
     payRule: src.payRule,
     config: src.config,
     priority: src.priority,
+  },tx);
   });
 }
 
@@ -265,9 +293,11 @@ export async function setStatus(
   ctx: SessionContext,
   p: { id: string; status: string },
 ): Promise<{ id: string }> {
+  p=structuredClone(p);ctx=capturePolicyContext(ctx);
   if (!POLICY_STATUSES.includes(p.status as PolicyStatus)) throw new Error('Unknown status');
   const status = p.status as PolicyStatus;
   return withTenant(ctx, async (tx) => {
+    await ownPolicyWriteTx(tx,ctx,{policyId:p.id});
     const [policy] = await tx.select({ config: payrollPolicy.config }).from(payrollPolicy).where(eq(payrollPolicy.id, p.id)).limit(1);
     if (status === 'active' && policy) await assertPolicyPayItemReadyTx(tx, policy.config);
     await tx.update(payrollPolicy).set({ status, updatedAt: sql`now()` }).where(eq(payrollPolicy.id, p.id));
@@ -284,7 +314,9 @@ export async function setStatus(
 }
 
 export async function deletePolicy(ctx: SessionContext, p: { id: string }): Promise<{ id: string }> {
+  p=structuredClone(p);ctx=capturePolicyContext(ctx);
   return withTenant(ctx, async (tx) => {
+    await ownPolicyWriteTx(tx,ctx,{policyId:p.id});
     // Guard: a policy assigned to any employment cannot be deleted (delete only when unassigned/unreferenced).
     const [{ n }] = await tx
       .select({ n: count() })
@@ -317,7 +349,9 @@ export async function assignPolicy(
   p: { employmentId: string; policyId: string | null },
   outerTx?:Tx,
 ): Promise<{ id: string }> {
+  p=structuredClone(p);ctx=capturePolicyContext(ctx);
   const run=async(tx:Tx)=>{
+    await ownPolicyWriteTx(tx,ctx,{employmentId:p.employmentId});
     const [emp] = await tx
       .select({ id: employment.id, companyId: employment.companyId, before: employment.payrollPolicyId })
       .from(employment)

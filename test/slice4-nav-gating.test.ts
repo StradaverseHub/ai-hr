@@ -47,7 +47,7 @@ const sessionWith = (modules: Record<string, boolean>) => ({
 });
 
 describe('slice 4 — which modules the rail may advertise', () => {
-  it('every code it gates is a real, SELLABLE catalog module', () => {
+  it('every navigation owner is a real catalog module', () => {
     // A typo here would silently hide nothing (an unknown code is simply never matched), so the list is
     // checked against the catalog rather than trusted.
     for (const code of MODULE_CODES_WITH_NAV) {
@@ -66,7 +66,10 @@ describe('slice 4 — which modules the rail may advertise', () => {
     // worth writing down because "not pack-backed" has meant "owns nothing" for every earlier entry.
     // ADR-0095 — `lifecycle` joined: pack-backed (packs/lifecycle), two nav rows (the hub for everyone and Module
     // Config in Administration), mapped from the pack's navLinks like Claims.
+    // ADR-0082 — `assistant` joined: one hand-mapped row ('/assistant'). It was mapped in the sidebar but
+    // missing from this list, so a resolved snapshot hid the row even with the module active.
     expect(sellable.sort()).toEqual([
+      'assistant',
       'attendance',
       'claims',
       'lifecycle',
@@ -91,15 +94,28 @@ describe('slice 4 — which modules the rail may advertise', () => {
     expect(codes).toContain('claims');
   });
 
+  it('offers the Assistant row exactly when the assistant module is active', () => {
+    const on = visibleModuleCodes(sessionWith({ assistant: true, leave: true }));
+    expect(on, 'fixture resolves a real snapshot').not.toBeNull();
+    expect(on).toContain('assistant');
+    const off = visibleModuleCodes(sessionWith({ assistant: false, leave: true }));
+    expect(off, 'fixture resolves a real snapshot').not.toBeNull();
+    expect(off).not.toContain('assistant');
+    // The sidebar row is owned by this code; without the mapping no entitlement could reach it.
+    const sidebar = fs.readFileSync(path.resolve(__dirname, '../components/sidebar.tsx'), 'utf8');
+    expect(sidebar).toContain("['/assistant', 'assistant']");
+  });
+
   it('NEVER hides a core module, whatever the snapshot says', () => {
     // leave is core: a tenant cannot not-have it. Even an explicit disabled row must not remove it,
     // because a rail without My Absence is a broken product, not a downgraded one.
     const codes = visibleModuleCodes(
-      sessionWith({ attendance: false, claims: false, leave: false, payroll: false, performance: false }),
+      sessionWith({ employees: false, attendance: false, claims: false, leave: false, payroll: false, performance: false }),
     );
     expect(codes, 'fixture resolves a real snapshot').not.toBeNull();
     expect(codes).toContain('leave');
-    expect(codes).toEqual(['leave']);
+    expect(codes).toContain('employees');
+    expect(codes).toEqual(['employees','leave']);
   });
 
   it('FAILS OPEN: a session with no snapshot expresses no opinion, and null is not []', () => {
@@ -110,7 +126,7 @@ describe('slice 4 — which modules the rail may advertise', () => {
     expect(visibleModuleCodes(undefined)).toBeNull();
     // …and the empty set remains expressible, so the two are genuinely different values.
     const noneOn = visibleModuleCodes(
-      sessionWith({ attendance: false, claims: false, leave: false, payroll: false, performance: false }),
+      sessionWith({ employees: false, attendance: false, claims: false, leave: false, payroll: false, performance: false }),
     );
     expect(Array.isArray(noneOn), 'a resolved snapshot yields an array, never null').toBe(true);
   });
@@ -151,11 +167,28 @@ describe('slice 4 — the page-entry courtesy redirect', () => {
     system_testing: 'app/admin/system-testing/page.tsx',
   };
 
+  // ADR-0082 — the one entry page that must NOT redirect. With the module off, /assistant still renders
+  // so the owner can erase their own chat text, feedback and evaluation data (owner rule: own-clear
+  // survives access removal), and it says why the assistant is unavailable. Its control is
+  // mayUseAssistant (core/assistant-grant.ts), pinned here instead of requireModule.
+  const REFUSES_IN_PLACE: Record<string, { file: string; marks: string[] }> = {
+    assistant: { file: 'app/assistant/page.tsx', marks: ['if (!access.allowed)', 't(`denied_${access.reason}`)', 'AssistantHistoryPrivacy'] },
+  };
+
   it('every SELLABLE module with nav guards its entry page', () => {
     // Derived from the same list the rail gates, so adding a sellable module to MODULE_CODES_WITH_NAV
     // without guarding its page fails here rather than shipping a module you can walk into.
     const sellable = MODULE_CODES_WITH_NAV.filter((c) => !CORE_MODULE_CODES.includes(c as never));
     for (const code of sellable) {
+      const inPlace = REFUSES_IN_PLACE[code];
+      if (inPlace) {
+        const src = fs.readFileSync(path.resolve(__dirname, '..', inPlace.file), 'utf8');
+        for (const mark of inPlace.marks) expect(src, `${inPlace.file} refuses in place (${mark})`).toContain(mark);
+        expect(src, `${inPlace.file} must keep own-clear reachable, so no redirect`).not.toContain(`requireModule('${code}')`);
+        const grant = fs.readFileSync(path.resolve(__dirname, '../core/assistant-grant.ts'), 'utf8');
+        expect(grant).toContain("reason: 'module_off'");
+        continue;
+      }
       const file = ROOTS[code];
       expect(file, `${code} has a known entry page — add it to ROOTS`).toBeDefined();
       const src = fs.readFileSync(path.resolve(__dirname, '..', file), 'utf8');

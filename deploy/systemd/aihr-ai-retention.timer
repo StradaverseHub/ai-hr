@@ -1,0 +1,14 @@
+# Disabled source template. The combined release owns installation and verifies actual timer arrival.
+[Unit]
+Description=AI HR expired custody maintenance timer
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=5min
+AccuracySec=15s
+RandomizedDelaySec=15s
+Unit=aihr-ai-retention.service
+
+[Install]
+WantedBy=timers.target
+

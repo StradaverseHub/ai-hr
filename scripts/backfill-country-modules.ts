@@ -33,6 +33,7 @@
  */
 import { and, eq, isNull } from 'drizzle-orm';
 import { createDb } from '../db/client';
+import { lockOwnerTenantCatalogsTx } from '../db/provision-ownership';
 import { company, tenantModule } from '../db/schema';
 import { packFor } from '../localization/registry';
 
@@ -57,9 +58,19 @@ export async function backfillCountryModules(url: string): Promise<{
   unpacked: { company: string; country: string }[];
 }> {
   const owner = createDb(url);
-  const companies = await owner.db
+  // Nomination only: no country, grant or policy facts are carried into the owner interval.
+  const nominations = await owner.db.selectDistinct({ tenantId: company.tenantId }).from(company).orderBy(company.tenantId);
+  let granted = 0, alreadyPresent = 0;
+  const unpacked: { company: string; country: string }[] = [];
+  // The pool is NOT ended here: createDb caches pools by connection string, so this is the same client
+  // every other owner of `url` holds (the test harness's `owner` included). The CLI below exits the
+  // process; a library caller owns its own pool lifetime.
+    for (const { tenantId } of nominations) {
+      const result = await owner.db.transaction(async tx => {
+        await lockOwnerTenantCatalogsTx(tx, tenantId);
+  const companies = await tx
     .select({ id: company.id, tenantId: company.tenantId, name: company.legalName, country: company.country })
-    .from(company);
+    .from(company).where(eq(company.tenantId, tenantId));
 
   let granted = 0;
   let alreadyPresent = 0;
@@ -77,7 +88,7 @@ export async function backfillCountryModules(url: string): Promise<{
   }
 
   for (const { tenantId, code } of wanted.values()) {
-    const [existing] = await owner.db
+    const [existing] = await tx
       .select({ id: tenantModule.id })
       .from(tenantModule)
       .where(
@@ -88,9 +99,14 @@ export async function backfillCountryModules(url: string): Promise<{
       alreadyPresent += 1;
       continue;
     }
-    await owner.db.insert(tenantModule).values({ tenantId, moduleCode: code, companyId: null, status: 'active' });
+    await tx.insert(tenantModule).values({ tenantId, moduleCode: code, companyId: null, status: 'active' });
     granted += 1;
   }
+
+        return { granted, alreadyPresent, unpacked };
+      });
+      granted += result.granted; alreadyPresent += result.alreadyPresent; unpacked.push(...result.unpacked);
+    }
 
   return { granted, alreadyPresent, unpacked };
 }

@@ -185,6 +185,20 @@ describe('ADR-0072 — real auth (WorkOS AuthKit)', () => {
     expect(session.tenantId).toBe(base.tenantId);
   });
 
+  it('5e0b2154: two people may share a work email, but not a sign-in account', async () => {
+    const admin: SessionContext = { tenantId: base.tenantId, userId: base.adminUserId, roles: ['hr_admin'] };
+    const hire = (name: string) => hireEmployee(admin, { person: { fullName: name, primaryEmail: 'shared-inbox@acme.test' }, companyId: base.companyId,
+      departmentId: base.deptA, employmentType: 'full_time', hiredOn: '2026-01-01' });
+    const first = await hire('Shared inbox one'), second = await hire('Shared inbox two');
+    await inviteUser(admin, { email: 'shared-inbox@acme.test', role: 'employee', personId: first.personId }, fakeProvider());
+    // Re-inviting the same person still works (a resend is not a second account).
+    await inviteUser(admin, { email: 'Shared-Inbox@acme.test', role: 'employee', personId: first.personId }, fakeProvider());
+    await expect(inviteUser(admin, { email: 'shared-inbox@acme.test', role: 'employee', personId: second.personId }, fakeProvider()))
+      .rejects.toThrow(/Each sign-in account needs its own email address/);
+    const pending = await owner.db.select().from(schema.appInvitation).where(eq(schema.appInvitation.personId, second.personId));
+    expect(pending).toEqual([]);
+  });
+
   it('invitation token is single-use, expiring, and atomic under concurrency', async () => {
     const admin: SessionContext = { tenantId: base.tenantId, userId: base.adminUserId, roles: ['hr_admin'] };
     const provider = fakeProvider();

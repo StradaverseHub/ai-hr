@@ -14,8 +14,8 @@
  *            before save) + Save / Save-as-Template / export.
  *
  * All mutating operations are server actions; preview + AI drafting return data. Exports POST the current
- * spec to the export route. No employee data ever leaves the tenant via the AI path — only the field
- * catalogue + the redacted request (enforced server-side in core/report-ai.ts).
+ * spec to the export route. The AI path reads no employee rows: it sends the field catalogue + the
+ * request text, with emails/IC/phone runs masked but names NOT masked (core/report-ai.ts).
  */
 import { useMemo, useState, useTransition } from 'react';
 import { previewReport, draftReport, saveReportAction, saveAsTemplateAction } from './actions';

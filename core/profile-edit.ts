@@ -1,3 +1,4 @@
+import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {projectEssVisible,essFactVisible} from '../lib/personnel-ess-visibility';
 import {createHash} from 'node:crypto';
 /** Own-profile edits compose canonical owners in ONE authenticated caller transaction. */
@@ -98,8 +99,8 @@ function addressNeedsReview(master:typeof person.$inferSelect){
  });
 }
 /** Private workspace contains explicitly visible fields only; no admin-row spread crosses RSC. */
-export function readOwnProfileWorkspace(ctx:SessionContext,p:{employmentId?:string}={},presentation?:ProfilePresentationPolicy):Promise<EssWorkspace>{
- return withTenant(ctx,async tx=>{
+export function readOwnProfileWorkspace(ctx:SessionContext,p:{employmentId?:string}={},presentation?:ProfilePresentationPolicy,existingTx?:Tx):Promise<EssWorkspace>{
+ const run=async(tx:Tx)=>{
   const policy=presentation??await freshProfileEditPolicyTx(tx,ctx);const {subject,master}=await ownProfileSubjectTx(tx,policy.ctx,p.employmentId,false);
   const rows=await mastersTx(tx,policy.ctx,subject);
   const mayEdit=(await myOwnEmploymentSubjectsTx(tx,policy.ctx,{profileEdit:true})).some(row=>row.employmentId===subject.id);
@@ -131,11 +132,14 @@ export function readOwnProfileWorkspace(ctx:SessionContext,p:{employmentId?:stri
   const addressVisible=PERSONNEL_FIELDS.filter(field=>field.owner==='person'&&field.ownerField.startsWith('permanent')).every(field=>visible.has(field.id));
   const safe=safeValues(projectEssVisible(values,visible),id=>maskedProfileBaseline(policy.ctx,subject,rows,id));
   return {visible:[...visible],employmentId:subject.id,personId:subject.personId,country:subject.country,...safe,registers:registers.map(row=>({...row,values:projectEssVisible(row.values,visible),baselines:projectEssVisible(row.baselines,visible),primary:essFactVisible(visible,'emergency','priority')&&row.primary})).filter(row=>Object.keys(row.values).length>0),editable:mayEdit?[...policy.editable].filter(id=>visible.has(id)):[],legacyPrimaryEditable:mayEdit?[...policy.legacyPrimary].filter(id=>visible.has(id)):[],addressReview:addressVisible&&addressNeedsReview(master),legacyAddress:addressVisible?legacyAddress(master):{},statutoryAvailable:Boolean(rows.pack),fieldReadOnlyReasons:projectEssVisible(fieldReadOnlyReasons,visible)} satisfies EssWorkspace;
- });
+ };
+ return existingTx?run(existingTx):withTenant(ctx,run);
 }
 
 /** Validation and baseline comparison run again at approval, never trusting the editor or stored JSON. */
 export async function prepareProfileProposalTx(tx:Tx,ctx:SessionContext,employmentId:string,raw:unknown,approval=false,storedLegacy=false){
+ raw=structuredClone(raw); ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+ await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
  let proposal=storedLegacy?null:parseEssProfileProposal(raw);const policy=await freshProfileEditPolicyTx(tx,ctx);
  let subject:Awaited<ReturnType<typeof ownProfileSubjectTx>>['subject'],master:typeof person.$inferSelect;
  if(approval){
@@ -295,6 +299,7 @@ async function applyScalarFieldsTx(tx:Tx,prepared:Awaited<ReturnType<typeof prep
  * `existingTx` (optional, M13): run inside a caller's transaction (the mobile command receipt), so a refusal rolls
  * the receipt back with everything else. The web passes none and keeps its own transaction. */
 export function submitOwnProfileEdit(ctx:SessionContext,p:{employmentId:string;proposal:unknown},existingTx?:Tx){
+ p=structuredClone(p); ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  const run=async(tx:Tx)=>{
   const prepared=await prepareProfileProposalTx(tx,ctx,p.employmentId,p.proposal);
   const immediate=prepared.proposal.fields.filter(change=>personnelField(change.fieldId)!.ess.edit==='immediate');

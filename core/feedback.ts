@@ -5,6 +5,7 @@
  * transition appends a DomainEvent (user / agent actor). RLS scopes reads via can_see_employment; the
  * review authority (only the reporter approves/contests) is enforced here.
  */
+import { createHash } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
@@ -22,7 +23,10 @@ import {
   type FeedbackCategory,
   type FeedbackStatus,
 } from '../db/schema';
-import { settingEnabled } from './entitlements';
+import { resolveEntitlementsTx, settingEnabled } from './entitlements';
+import { assertAiPrincipalTx } from './ai-principal';
+import { withAiAdmissionCheck } from './ai-governance';
+import { draftInputDigest } from '../lib/ai/draft-input';
 
 export class FeedbackError extends Error {
   constructor(message: string) {
@@ -170,7 +174,11 @@ export async function setFeedbackPlan(
 ): Promise<void> {
   const plan = p.plan?.trim();
   if (!plan) throw new FeedbackError('A plan is required.');
-  await withTenant(ctx, async (tx) => {
+  await withTenant(ctx, tx => setFeedbackPlanTx(tx,ctx,p,plan));
+}
+
+/** Same canonical transition; only the AI caller adds a source-replay prerequisite. */
+async function setFeedbackPlanTx(tx:Tx,ctx:SessionContext,p:{feedbackId:string;plan:string;model?:string|null},plan:string):Promise<void>{
     const fb = await loadDecidable(tx, p.feedbackId);
     if (fb.status !== 'open' && fb.status !== 'contested') {
       throw new FeedbackError(`A plan can only be drafted while the item is open or contested (it is ${fb.status}).`);
@@ -217,30 +225,28 @@ export async function setFeedbackPlan(
       subjectEmploymentId: fb.reporterEmploymentId,
       payload: { revision: nextRevision, model: p.model ?? null },
     });
-  });
 }
 
 /**
- * FB-3 — the planning agent. Resolves the tenant's AI config, sends the (PII-redacted) feedback (and, on
+ * FB-3 — the planning agent. Resolves the tenant's AI config, sends the feedback with emails/IC/phone runs
+ * masked by redactPII — names are NOT masked — (and, on
  * a re-plan, the prior plan + the reporter's push-back) to the gateway, and stores the result via
  * setFeedbackPlan (agent actor). The provider call happens OUTSIDE any DB transaction. Gated: no AI config
  * ⇒ a clear error (the cron skips, the admin button surfaces it).
  */
 export async function generateFeedbackPlan(ctx: SessionContext, p: { feedbackId: string }): Promise<{ plan: string }> {
+  p={feedbackId:p.feedbackId};
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   // Disabled by default — planning now runs in the operator-side improvement loop (ADR-0044), which
   // drafts + adversarially refines the plan locally and pushes it back. Set FEEDBACK_AI_PLANNING_ENABLED
   // to use this single-shot in-app agent instead.
   if (!settingEnabled(ctx, 'feedback.ai_planning_enabled')) {
     throw new FeedbackError('In-app AI planning is disabled — plans are produced by the improvement loop.');
   }
-  const gathered = await withTenant(ctx, async (tx) => {
-    const [fb] = await tx.select().from(feedbackRequest).where(eq(feedbackRequest.id, p.feedbackId)).limit(1);
-    if (!fb) throw new FeedbackError('Feedback not found (or not visible).');
-    if (fb.status !== 'open' && fb.status !== 'contested') {
-      throw new FeedbackError(`A plan can only be drafted while the item is open or contested (it is ${fb.status}).`);
-    }
-    const aiCfg = await resolveActiveAiConfig(tx, ctx, 'feedback_planning');
-    return { fb, aiCfg };
+  const gathered = await withTenant(ctx, async tx => {
+    const fb=await feedbackPlanningSourceTx(tx,ctx,p.feedbackId);
+    const aiCfg=await resolveActiveAiConfig(tx,ctx,'feedback_planning');
+    return {fb,aiCfg};
   });
   const { fb, aiCfg } = gathered;
   if (!aiCfg) {
@@ -267,22 +273,43 @@ export async function generateFeedbackPlan(ctx: SessionContext, p: { feedbackId:
     lines.push(
       '',
       'A previous plan was sent back by the reporter. Previous plan:',
-      fb.plan,
+      redactPII(fb.plan),
       '',
       `The reporter asked for these changes: ${redactPII(fb.contestReason ?? '')}`,
       'Revise the plan to address that feedback.',
     );
   }
 
-  const plan = await generateDraft(aiCfg, {
-    system,
-    prompt: `Write an implementation plan for this product feedback:\n\n${lines.join('\n')}`,
-    maxTokens: 2048,
+  const args=Object.freeze({system,prompt:`Write an implementation plan for this product feedback:\n\n${lines.join('\n')}`,maxTokens:2048});
+  const sourceDigest=feedbackPlanningDigest(fb),inputDigest=draftInputDigest(args);
+  const bound=withAiAdmissionCheck(aiCfg,'feedback_planning',async(tx,request)=>{
+    if(request.operation!=='draft'||request.inputDigest!==inputDigest||feedbackPlanningDigest(await feedbackPlanningSourceTx(tx,ctx,fb.id,true))!==sourceDigest)throw new FeedbackError('Current feedback planning source could not be confirmed.');
   });
-
-  await setFeedbackPlan(ctx, { feedbackId: fb.id, plan, model: `${aiCfg.provider}/${aiCfg.model}` });
+  const plan=await generateDraft(bound,args);
+  if(!plan.trim())throw new FeedbackError('A plan is required.');
+  await withTenant(ctx,async tx=>{
+    // A provider result is not authority to overwrite a concurrently changed source or plan.
+    if(feedbackPlanningDigest(await feedbackPlanningSourceTx(tx,ctx,fb.id,true))!==sourceDigest)throw new FeedbackError('Current feedback planning source could not be confirmed.');
+    await setFeedbackPlanTx(tx,ctx,{feedbackId:fb.id,plan,model:`${aiCfg.provider}/${aiCfg.model}`},plan.trim());
+  });
   return { plan };
 }
+
+/** Exact readable source only; source facts are re-read in the actual admission transaction. */
+async function feedbackPlanningSourceTx(tx:Tx,ctx:SessionContext,id:string,lock=false){
+  await assertAiPrincipalTx(tx,ctx);
+  const fresh={...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId),entitlementsExempt:undefined,entitlementsError:undefined};
+  if(!settingEnabled(fresh,'feedback.ai_planning_enabled'))throw new FeedbackError('In-app AI planning is disabled.');
+  const query=tx.select({id:feedbackRequest.id,category:feedbackRequest.category,title:feedbackRequest.title,description:feedbackRequest.description,
+    expectedBehavior:feedbackRequest.expectedBehavior,expectedFunction:feedbackRequest.expectedFunction,status:feedbackRequest.status,
+    plan:feedbackRequest.plan,contestReason:feedbackRequest.contestReason,planRevision:feedbackRequest.planRevision,
+    reporterEmploymentId:feedbackRequest.reporterEmploymentId,reporterUserId:feedbackRequest.reporterUserId})
+    .from(feedbackRequest).where(eq(feedbackRequest.id,id)).limit(1);
+  const [fb]=await (lock?query.for('update',{noWait:true}):query);
+  if(!fb||!['open','contested'].includes(fb.status))throw new FeedbackError('Current feedback planning source could not be confirmed.');
+  return fb;
+}
+const feedbackPlanningDigest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
 /** Ids of items awaiting a (re)plan — the cron's work-list (newest first, capped). */
 export function listPlannableFeedback(ctx: SessionContext, limit = 50): Promise<string[]> {

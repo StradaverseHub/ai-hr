@@ -20,7 +20,8 @@ import en from '../messages/en.json';
 
 const read = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 const SERVICE = read('core/tenant-settings.ts');
-const PAGE = read('app/control-tower/agents/page.tsx');
+// The AI management sections share one screen; each sub-menu page only guards and picks its section.
+const PAGE = read('app/control-tower/agents/screen.tsx');
 const ACTION = read('app/control-tower/agents/actions.ts');
 const code = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 
@@ -118,7 +119,8 @@ describe('the write re-states the policy rather than leaning on it', () => {
     expect(c.includes("formData.get('key')"), 'the key must never be posted').toBe(false);
     const management = code(read('core/ai-management.ts'));
     expect(management, 'the key comes from the closed list, not the request').toContain('const entry = AI_FEATURES.find(f=>f.id===feature)!;');
-    expect(management).toContain('if(entry.setting) return setTenantSetting(ctx,{key:entry.setting,value:enabled});');
+    // 3a99b0abd: the closed-list key is written inside the transaction that first re-proves group administration.
+    expect(management).toContain('if(entry.setting) return withTenant(ctx, async tx => {\n    await currentControlAdminTx(tx, ctx, true);\n    await setTenantSetting(ctx, { key: entry.setting!, value: enabled }, tx);');
   });
 });
 

@@ -66,7 +66,7 @@ export function createOnehrServiceFixtures(fixtureState: {readonly b: Base; read
     const id=randomUUID();
     await perf.saveOnehrKpis(fixtureState.self,fixtureState.reviewId,(await view(fixtureState.self)).revision,[{id,title:'Agreed delivery',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:fixtureState.manager.employmentId}],true);
     await perf.approveOnehrScorecard(fixtureState.mgr,fixtureState.reviewId,(await view()).revision,true,'Targets verified');
-    vi.mocked(resolveActiveAiConfig).mockResolvedValue({provider:'anthropic',model:'fixture',apiKey:'fixture-local-only'});
+    vi.mocked(resolveActiveAiConfig).mockImplementation((await vi.importActual<typeof import('../core/ai-config')>('../core/ai-config')).resolveActiveAiConfig);
     return id;
   }
 

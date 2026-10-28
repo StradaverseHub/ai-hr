@@ -31,13 +31,14 @@ export async function assertWorkforcePersonTx(tx:Tx,ctx:SessionContext,personId:
  if(!row?.allowed)throw new WorkforceAccessError();
 }
 /** Scope metadata only. Actual reads/writes repeat their check under the same access lock. */
-export function workforceCompanies(ctx:SessionContext,operation:WorkforceOperation='view'){
- return withTenant(ctx,async tx=>{
+export function workforceCompanies(ctx:SessionContext,operation:WorkforceOperation='view', outerTx?:Tx){
+  const run=async (tx:Tx)=>{
   await lockAccessConfigurationTx(tx,ctx.tenantId);
   const allowed=operation==='view'?sql`app.access_workforce_projection_company(id)`:sql`app.access_workforce_company(id,'workforce.maintain')`;
   const rows=await tx.execute<{id:string}>(sql`select id from company where tenant_id=app.current_tenant_id() and ${allowed} order by id`);
   return rows.map(row=>row.id);
- });
+ };
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 export function workforceEmploymentAccess(ctx:SessionContext,employmentId:string,operation:WorkforceOperation){

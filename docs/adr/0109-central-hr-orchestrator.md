@@ -1,5 +1,7 @@
 # ADR-0109: Central HR orchestration and the Control Tower
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Date: 2026-10-13
 Status: Accepted — initial implementation
 

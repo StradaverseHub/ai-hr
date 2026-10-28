@@ -1,10 +1,15 @@
 import { talentCell,talentCell9,talentColumn,type PMBand,type PotentialBand } from './model';
 type Bands={performance:PMBand|null;potential:PotentialBand|null};
 type Origin={originalPerformance:string|null;originalPotential:string|null;performancePinned:boolean;potentialPinned:boolean;performance:string|null;potential:string|null};
+/** Where this tier found the person: the first move's origin on an adjusted axis, else the current incoming band. */
+export function talentOrigin(entry:Origin,current:Bands):Bands{
+ const pm=entry.performance!=null&&!entry.performancePinned,pot=entry.potential!=null&&!entry.potentialPinned;
+ return {performance:pm?entry.originalPerformance as PMBand|null:current.performance,potential:pot?entry.originalPotential as PotentialBand|null:current.potential};
+}
 /** The source keeps the first move's origin. An untouched axis follows its current incoming band. */
 export function talentMovement(entry:Origin,current:Bands){
  const pm=entry.performance!=null&&!entry.performancePinned,pot=entry.potential!=null&&!entry.potentialPinned;
- const from: Bands={performance:pm?entry.originalPerformance as PMBand|null:current.performance,potential:pot?entry.originalPotential as PotentialBand|null:current.potential};
+ const from=talentOrigin(entry,current);
  const fromCell=talentCell(from),toCell=talentCell(current);
  return {moved:!!((pm||pot)&&fromCell&&toCell&&fromCell!==toCell),fromCategory:from.performance&&from.potential?talentCell9(talentColumn(from.performance),from.potential):null};
 }

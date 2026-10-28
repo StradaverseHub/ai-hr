@@ -70,9 +70,9 @@ function currentPersonnelHeaders(column:string,sheet:PersonnelImportSheet,resolv
   return [...new Set(labels)];
 }
 /** Resolve BEFORE creating records: duplicate old/new headings must never overwrite a cell. */
-export function parsePersonnelImportCsv(text:string, options:{columns:readonly string[];sheet?:PersonnelImportSheet;resolvers?:readonly PersonnelLabelResolver[];generation?:number}) {
-  const rows=parsePersonnelCsv(text,options.sheet??'employee');
-  if(!rows.length)return {headers:[] as string[],records:[] as Record<string,string>[],warnings:[] as string[]};
+export type PersonnelImportHeaderOptions = {columns:readonly string[];sheet?:PersonnelImportSheet;resolvers?:readonly PersonnelLabelResolver[];generation?:number};
+/** Same whole-file grammar/alias owner as the strict parser. Suggestions are not validation. */
+export function personnelImportHeaderCandidates(headings:readonly string[], options:PersonnelImportHeaderOptions) {
   const sheet=options.sheet??'employee';
   // Generation 1 downloads used a complete technical-key header grammar. Recognise that FILE
   // only during its one-release compatibility window, never by preferring an individual exact key
@@ -80,7 +80,7 @@ export function parsePersonnelImportCsv(text:string, options:{columns:readonly s
   // key supplies explicit format evidence; every heading must belong to the same exact grammar.
   const legacyGeneration=(options.generation??PERSONNEL_TEMPLATE_GENERATION)===PERSONNEL_LEGACY_HEADER_GENERATION+1;
   const technicalKeys=new Set(options.columns);
-  const technicalHeadings=rows[0].map(raw=>raw.replace(/^\uFEFF/,'').trim());
+  const technicalHeadings=headings.map(raw=>raw.replace(/^\uFEFF/,'').trim());
   const legacyTechnicalFile=legacyGeneration && technicalHeadings.some(raw=>raw.includes('_'))
     && technicalHeadings.every(raw=>technicalKeys.has(raw));
   const aliases=new Map<string,Set<string>>();
@@ -106,15 +106,26 @@ export function parsePersonnelImportCsv(text:string, options:{columns:readonly s
       if(field){register(personnelFieldLabel(field),column);for(const resolve of options.resolvers??[])register(personnelFieldLabel(field,resolve),column);}
     }
   }
+  return headings.map((raw,index)=>{
+    const matches=[...(legacyTechnicalFile ? new Set([technicalHeadings[index]]) : aliases.get(normalized(raw)) ?? [])];
+    const current=matches.length===1 && !(matches[0] in LEGACY_COMPOUND_COLUMNS) &&
+      [...currentPersonnelHeaders(matches[0],sheet),...(options.resolvers??[]).flatMap(resolve=>currentPersonnelHeaders(matches[0],sheet,resolve))].some(label=>normalized(label)===normalized(raw));
+    return {index,raw,matches,current,legacyTechnicalFile};
+  });
+}
+
+export function parsePersonnelImportCsv(text:string, options:PersonnelImportHeaderOptions) {
+  const rows=parsePersonnelCsv(text,options.sheet??'employee');
+  if(!rows.length)return {headers:[] as string[],records:[] as Record<string,string>[],warnings:[] as string[]};
+  const sheet=options.sheet??'employee';
+  const candidates=personnelImportHeaderCandidates(rows[0],options);
   const warnings:string[]=[];const seen=new Set<string>();
-  const headers=rows[0].map((raw,index)=>{
-    const matches=legacyTechnicalFile ? new Set([technicalHeadings[index]]) : aliases.get(normalized(raw));
-    if(!matches || matches.size!==1)throw new PersonnelImportHeaderError(matches ? `Ambiguous column “${raw}”. Download the current template and use its complete heading.` : `Unrecognized or removed column “${raw}”. Download the current template; this column cannot be applied.`);
-    const column=[...matches][0];
+  const headers=candidates.map(({raw,matches,current})=>{
+    if(matches.length!==1)throw new PersonnelImportHeaderError(matches.length ? `Ambiguous column “${raw}”. Download the current template and use its complete heading.` : `Unrecognized or removed column “${raw}”. Download the current template; this column cannot be applied.`);
+    const column=matches[0];
     if(seen.has(column))throw new PersonnelImportHeaderError(`Column “${raw}” repeats “${personnelColumnLabel(column,sheet)}”. Keep one column; old and new headings cannot appear together.`);
     seen.add(column);
-    const current=[...currentPersonnelHeaders(column,sheet),...(options.resolvers??[]).flatMap(resolve=>currentPersonnelHeaders(column,sheet,resolve))];
-    if(column in LEGACY_COMPOUND_COLUMNS || !current.some(label=>normalized(label)===normalized(raw))) warnings.push(`Older header “${raw}”: use “${personnelColumnLabel(column,sheet)}” in the next template generation.`);
+    if(!current) warnings.push(`Older header “${raw}”: use “${personnelColumnLabel(column,sheet)}” in the next template generation.`);
     return column;
   });
   const records=rows.slice(1).map((row,index)=>{
@@ -172,7 +183,7 @@ export function personnelFieldChoices(field:PersonnelFieldDescriptor) {
   if(field.allowedValuesOwner==='person.maritalStatus')return MARITAL_STATUSES.map(value=>({value,labelKey:PERSON_MARITAL_LABEL_KEYS[value]}));
   return [];
 }
-function normalizePersonnelImportValue(column:string,raw:string,sheet:PersonnelImportSheet,resolvers:readonly PersonnelLabelResolver[]) {
+export function normalizePersonnelImportValue(column:string,raw:string,sheet:PersonnelImportSheet,resolvers:readonly PersonnelLabelResolver[]) {
   const field=personnelImportField(column,sheet);if(!field||!raw)return raw;
   const options=personnelFieldChoices(field);if(!options.length)return raw;
   const matches=options.filter(option=>normalized(option.value)===normalized(raw)||resolvers.some(resolve=>normalized(resolve(option.labelKey,option.value))===normalized(raw)));

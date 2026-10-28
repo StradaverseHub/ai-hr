@@ -1,0 +1,31 @@
+/** Authored UNRUN. Actual Criteria publication roots, whole-batch rollback and earlier source ownership. */
+import {randomUUID} from 'node:crypto';
+import {eq} from 'drizzle-orm';
+import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
+import {withTenant,type SessionContext} from '../db/client';
+import * as tenantDb from '../db/client';
+import * as schema from '../db/schema';
+import {hireEmployee} from '../core/org';
+import {bulkSaveLabels} from '../core/admin';
+import {setLabelCriteria,setLabelCriteriaBatch,assignLabelToCompanies,unassignLabelFromCompanies,setLabelGlobal} from '../core/system-labels';
+import {lockLeaveDependenciesTx} from '../core/leave-dependency-lock';
+import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+let b:Base;
+beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();b=await seedBase();});afterAll(closeAll);
+const group=():SessionContext=>({...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]});
+const subject=()=>hireEmployee(group(),{person:{fullName:'Fictional Criteria Source',primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
+async function state(){const result:Record<string,unknown>={};for(const table of ['department','position','cost_center','business_unit','label_company_assignment','assignment','employment','entitlement_eligibility_rule','leave_approval_policy','leave_request','leave_ledger','domain_event']){const [row]=await owner.client.unsafe<{rows:unknown}[]>(`select coalesce(jsonb_agg(to_jsonb(t) order by to_jsonb(t)::text),'[]'::jsonb) rows from ${table} t where tenant_id=$1`,[b.tenantId]);result[table]=row.rows;}return result;}
+async function held(id:string){let ready!:()=>void,failed!:(e:unknown)=>void,release!:()=>void;const started=new Promise<void>((yes,no)=>{ready=yes;failed=no;}),done=new Promise<void>(yes=>{release=yes;});const timer=setTimeout(()=>{failed(Error('owned Criteria interval timed out'));release();},10000);const pending=withTenant(group(),async tx=>{await lockLeaveDependenciesTx(tx,b.tenantId,[id]);ready();await done;});void pending.catch(failed);await started;return{async close(){release();clearTimeout(timer);await pending;}};}
+describe('label Criteria earliest publication intervals',()=>{
+ it.each(['single','batch','global','assign','unassign','batch-tx','bulk','bulk-tx'] as const)('%s refuses without graph/catalogue/criteria/HR/event effects, then publishes after release',async kind=>{
+  const a=await subject(),ctx=group(),[other]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional Criteria Other',country:'MY',currency:'MYR'}).returning({id:schema.company.id});await setLabelCriteria(ctx,{kind:'department',labelId:b.deptA,isGlobal:false,companyIds:kind==='unassign'?[b.companyId,other.id]:[b.companyId]});const [dep]=await owner.db.select().from(schema.department).where(eq(schema.department.id,b.deptA));
+  const change={kind:'department',labelId:b.deptA,isGlobal:true,companyIds:[]};const bulk={creates:[],updates:[{key:b.deptA,id:b.deptA,name:dep.name,label:'Fictional Changed Label',criteria:{isGlobal:true,companyIds:[]}}]};
+  const invoke=()=>kind==='single'?setLabelCriteria(ctx,change):kind==='batch'?setLabelCriteriaBatch(ctx,[change]):kind==='batch-tx'?withTenant(ctx,tx=>setLabelCriteriaBatch(ctx,[change],tx)):kind==='global'?setLabelGlobal(ctx,{kind:'department',labelId:b.deptA,isGlobal:true}):kind==='assign'?assignLabelToCompanies(ctx,{kind:'department',labelId:b.deptA,companyIds:[other.id]}):kind==='unassign'?unassignLabelFromCompanies(ctx,{kind:'department',labelId:b.deptA,companyIds:[other.id]}):kind==='bulk-tx'?withTenant(ctx,tx=>bulkSaveLabels(ctx,'department',bulk,tx)):bulkSaveLabels(ctx,'department',bulk);
+  const before=await state(),holder=await held(a.employmentId);try{await expect(invoke()).rejects.toThrow('Leave source is unavailable');expect(await state()).toEqual(before);}finally{await holder.close();}await invoke();const after=await state(),old=new Set((before.domain_event as {id:string}[]).map(row=>row.id)),added=(after.domain_event as {id:string;event_type:string}[]).filter(row=>!old.has(row.id)).map(row=>row.event_type).sort();expect(added).toEqual(kind.startsWith('bulk')?['department.criteria.changed','department.updated'].sort():['department.criteria.changed']);expect(after.leave_request).toEqual(before.leave_request);expect(after.leave_ledger).toEqual(before.leave_ledger);
+  const [fresh]=await owner.db.select().from(schema.department).where(eq(schema.department.id,b.deptA));const links=await owner.db.select().from(schema.labelCompanyAssignment).where(eq(schema.labelCompanyAssignment.labelId,b.deptA));if(kind==='assign'||kind==='unassign'){expect(fresh.isGlobal).toBe(false);expect(links.map(row=>row.companyId).sort()).toEqual((kind==='assign'?[b.companyId,other.id]:[b.companyId]).sort());}else{expect(fresh.isGlobal).toBe(true);expect(links).toEqual([]);}if(kind.startsWith('bulk'))expect(fresh.label).toBe('Fictional Changed Label');
+ });
+ it('captures the complete Criteria batch/company arrays and caller before asynchronous admission',async()=>{
+  await subject();const ctx=group();await setLabelCriteria(ctx,{kind:'department',labelId:b.deptA,isGlobal:false,companyIds:[b.companyId]});const changes=[{kind:'department',labelId:b.deptA,isGlobal:true,companyIds:[] as string[]}];let entered!:()=>void,release!:()=>void;const ready=new Promise<void>(yes=>{entered=yes;}),pause=new Promise<void>(yes=>{release=yes;});const actual=tenantDb.withTenant,boundary=vi.spyOn(tenantDb,'withTenant').mockImplementationOnce(async(c,fn)=>{entered();await pause;return actual(c,fn);});const pending=setLabelCriteriaBatch(ctx,changes);
+  try{await ready;changes[0].labelId=randomUUID();changes[0].isGlobal=false;changes[0].companyIds.push(randomUUID());changes.push({kind:'department',labelId:randomUUID(),isGlobal:false,companyIds:[]});ctx.userId=randomUUID();ctx.grants![0].role='employee';release();await pending;}finally{release();await pending.catch(()=>{});boundary.mockRestore();}const [fresh]=await owner.db.select().from(schema.department).where(eq(schema.department.id,b.deptA));expect(fresh.isGlobal).toBe(true);
+ });
+});

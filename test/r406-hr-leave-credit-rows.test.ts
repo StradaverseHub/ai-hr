@@ -30,6 +30,8 @@ import { assignDefaultShift, assignShift, createShift, setRestDay } from '../cor
 import { createBatch } from '../core/payroll';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import {
+  grantLeaveCredit,
+  reverseLeaveCredit,
   grantLeaveCreditRows,
   leaveCreditGrantContext,
   leaveCreditGrantDayFacts,
@@ -42,7 +44,8 @@ import {
 } from '../core/toil';
 import { LeaveCreditDayTypeMismatchError, submitLeaveCreditRequest, type LeaveCreditRowInput } from '../core/leave-credit-request';
 import { decideReplacementLeaveRequest, ReplacementRequestDisabledError } from '../core/replacement-request';
-import type { SessionContext } from '../db/client';
+import { withTenant, type SessionContext } from '../db/client';
+import { lockLeaveDependenciesTx } from '../packs/leave/service';
 
 let b: Base;
 let ctx: SessionContext;
@@ -428,5 +431,51 @@ describe('r406 · the audit names HR and the source', () => {
     }
     const rows = await accruals(e.employmentId);
     expect(rows.every((r) => r.source === 'hr_manual_grant' && r.note === 'Approved by management')).toBe(true);
+  });
+});
+
+/** Actual manual source owners; UNRUN pending coordinated local runtime. */
+describe('manual leave credit dependency participants', () => {
+  it.each(['single', 'rows', 'reverse'] as const)
+  ('%s refuses before credit/catalogue/ledger/event effects during a participating interval, then executes after release', async command => {
+    await setToilPolicy(adminCtx(b), policy());
+    const employee = await hire('Fictional Protected Credit Subject');
+    let accrualId: string | undefined;
+    if (command === 'reverse') {
+      await grantLeaveCredit(ctx, { employmentId: employee.employmentId, workedDate: REST_DAY,
+        days: 1, reason: 'Fictional initial credit', today: TODAY, approvedOn: APPROVED });
+      accrualId = (await accruals(employee.employmentId))[0].id;
+    }
+    const mutate = () => command === 'reverse' ? reverseLeaveCredit(ctx, { accrualId: accrualId!, reason: 'Fictional reversal', today: TODAY })
+      : command === 'single' ? grantLeaveCredit(ctx, { employmentId: employee.employmentId, workedDate: REST_DAY,
+        days: 1, reason: 'Fictional manual credit', today: TODAY, approvedOn: APPROVED })
+        : grantLeaveCreditRows(ctx, { employmentId: employee.employmentId, rows: [ROWS[0]],
+          reason: 'Fictional measured credit', today: TODAY, approvedOn: APPROVED });
+    const state = async () => ({
+      credits: await accruals(employee.employmentId),
+      ledger: await owner.db.select().from(schema.leaveLedger).where(eq(schema.leaveLedger.employmentId, employee.employmentId)).orderBy(schema.leaveLedger.id),
+      types: await owner.db.select().from(schema.leaveType).where(eq(schema.leaveType.tenantId, b.tenantId)).orderBy(schema.leaveType.id),
+      events: await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.tenantId, b.tenantId)).orderBy(schema.domainEvent.id),
+      attendance: await owner.db.select().from(schema.attendance).where(eq(schema.attendance.employmentId, employee.employmentId)).orderBy(schema.attendance.id),
+    });
+    const before = await state();
+    let ready!: () => void, fail!: (error: unknown) => void, release!: () => void;
+    const started = new Promise<void>((yes, no) => { ready = yes; fail = no; }), finish = new Promise<void>(yes => { release = yes; });
+    const watchdog = setTimeout(() => { fail(new Error('owned manual credit handshake timed out')); release(); }, 10_000);
+    const holder = withTenant(ctx, async tx => { await lockLeaveDependenciesTx(tx, b.tenantId, [employee.employmentId]); ready(); await finish; });
+    void holder.catch(fail);
+    try {
+      await started; await expect(mutate()).rejects.toThrow('Leave source is unavailable'); expect(await state()).toEqual(before);
+    } finally { release(); clearTimeout(watchdog); await holder; }
+    await mutate(); const after = await state();
+    if (command === 'reverse') {
+      expect(after.credits.find(row => row.id === accrualId)?.status).toBe('reversed');
+      expect(after.ledger.length).toBe(before.ledger.length + 1);
+      await expect(mutate()).rejects.toThrow(); expect(await state()).toEqual(after);
+    } else {
+      expect(after.credits).toHaveLength(1);
+      expect(Number(after.credits[0].daysCredited)).toBe(command === 'single' ? 1 : 0.5);
+      expect(after.ledger.length).toBe(before.ledger.length + 1);
+    }
   });
 });

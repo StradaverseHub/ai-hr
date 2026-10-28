@@ -128,6 +128,7 @@
 import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { lockLeaveDependenciesTx } from './leave-dependency-lock';
 import { appendEvent, actorOf } from '../db/events';
 import { markPayrollAfterLeaveApprovalTx } from '../packs/payroll/service';
 import {
@@ -279,12 +280,16 @@ async function analyze(
   ctx: SessionContext,
   rawRecords: LeaveHistoryRecord[],
   opts?: LeaveHistoryImportOptions,
+  outerTx?: Tx,
+  employmentScope?: string,
 ): Promise<{
   preview: LeaveHistoryImportPreview;
   resolved: ResolvedRow[];
   /** r367 - the ONE resolution of the run's options, shared by the preview and the write. */
   options: { openingBalancesAreNet: boolean };
 }> {
+  const read = <T>(query: (tx: Tx) => Promise<T>): Promise<T> =>
+    outerTx ? query(outerTx) : withTenant(ctx, query);
   const records = rawRecords.map(canonicalise);
   const options = resolveLeaveHistoryImportOptions(opts);
   const deducts = !options.openingBalancesAreNet;
@@ -292,7 +297,7 @@ async function analyze(
   const groupAdmin = isGroupAdmin(effective);
 
   // Leave types by code, case-insensitive, non-archived (listLeaveTypes excludes archived by default).
-  const types = await listLeaveTypes(ctx);
+  const types = await listLeaveTypes(ctx, {}, outerTx);
   const typeByCode = new Map(types.map((t) => [t.code.toLowerCase(), t.id]));
   /**
    * r367 - the two things a row needs BESIDE the id, off the read that already ran:
@@ -307,7 +312,7 @@ async function analyze(
   const balanceTypeOf = (leaveTypeId: string): string =>
     typeById.get(leaveTypeId)?.balanceSourceTypeId ?? leaveTypeId;
 
-  const { emps, existingRefs } = await withTenant(ctx, async (tx) => {
+  const { emps, existingRefs } = await read(async (tx) => {
     // Every employment the caller may see (RLS-scoped). NOT active-only: a migration's history is
     // mostly about people who were here then, including some who have since left.
     const rows = await tx
@@ -326,7 +331,8 @@ async function analyze(
       })
       .from(employment)
       .innerJoin(company, eq(company.id, employment.companyId))
-      .innerJoin(person, eq(person.id, employment.personId));
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(employmentScope ? eq(employment.id, employmentScope) : undefined);
     // Leave references already in the system. `employment_employee_code_uq` (tenant_id, employee_code)
     // and `leave_request_external_reference_uq` (tenant_id, external_reference) are the DB invariants
     // behind treating both of these as maps rather than as multimaps.
@@ -546,7 +552,7 @@ async function analyze(
   if (dayCheck.length > 0) {
     const minStart = dayCheck.reduce((a, r) => (r.start < a ? r.start : a), dayCheck[0].start);
     const maxEnd = dayCheck.reduce((a, r) => (r.end > a ? r.end : a), dayCheck[0].end);
-    await withTenant(ctx, async (tx) => {
+    await read(async (tx) => {
       const holidays = await holidayDatesByEmployment(tx, {
         employmentIds: dayCheck.map((r) => r.employmentId),
         startDate: minStart,
@@ -571,7 +577,7 @@ async function analyze(
 
   const rows = resolved.map((r) => r.result);
   const balanceImpact = deducts
-    ? await balanceImpactOf(ctx, resolved.filter((r) => r.result.status === 'valid'), codeById)
+    ? await balanceImpactOf(ctx, resolved.filter((r) => r.result.status === 'valid'), codeById, outerTx)
     : [];
   const preview: LeaveHistoryImportPreview = {
     total: records.length,
@@ -611,7 +617,10 @@ async function balanceImpactOf(
   ctx: SessionContext,
   writable: ResolvedRow[],
   codeById: Map<string, string>,
+  outerTx?: Tx,
 ): Promise<LeaveHistoryBalanceImpact[]> {
+  const read = <T>(query: (tx: Tx) => Promise<T>): Promise<T> =>
+    outerTx ? query(outerTx) : withTenant(ctx, query);
   if (writable.length === 0) return [];
 
   type Bucket = {
@@ -649,7 +658,7 @@ async function balanceImpactOf(
 
   const employmentIds = [...new Set([...buckets.values()].map((b) => b.employmentId))];
   const typeIds = [...new Set([...buckets.values()].map((b) => b.balanceTypeId))];
-  const balances = await withTenant(ctx, async (tx) => {
+  const balances = await read(async (tx) => {
     const rows = await tx
       .select({
         employmentId: leaveLedger.employmentId,
@@ -694,6 +703,17 @@ async function balanceImpactOf(
   );
 }
 
+/** Server-only transaction-local resolution prerequisite for future per-row dependency fencing.
+ * Joins the supplied caller transaction for catalogue, employment, calendar and balance reads.
+ * This neither acquires a dependency barrier nor authorizes/writes an import. Do not serialize the
+ * resolved identities as an AI tool result. Callers retain their own transaction boundaries. */
+export function resolveLeaveHistoryImportTx(
+  tx: Tx, ctx: SessionContext, records: LeaveHistoryRecord[], options?: LeaveHistoryImportOptions,
+  employmentScope?: string,
+) {
+  return analyze(ctx, records, options, tx, employmentScope);
+}
+
 /**
  * Dry run. Validates against the tenant's catalogue and existing references; writes nothing.
  *
@@ -719,6 +739,11 @@ export async function commitLeaveHistoryImport(
   ctx: SessionContext,
   p: { records: LeaveHistoryRecord[]; source?: LeaveHistoryImportSource } & LeaveHistoryImportOptions,
 ): Promise<LeaveHistoryImportResult> {
+  // Preserve this submitted file and its run options across row transactions. Later resolutions use
+  // the same raw row, never a mutable client preview or a newly selected employment identity.
+  p = { ...p, records: p.records.map(record => ({ ...record })),
+    ...(p.source ? { source: { ...p.source } } : {}) };
+  const recordsByRow = new Map(p.records.map((record, index) => [index + 1, record]));
   const { preview, resolved, options } = await analyze(ctx, p.records, p);
   const writable = resolved.filter((r) => r.result.status === 'valid');
   // r367 - RE-RESOLVED FROM THIS CALL'S OWN ARGUMENT by `analyze`, never taken from a preview the client
@@ -742,9 +767,23 @@ export async function commitLeaveHistoryImport(
   // on a reference inserted between analyze and now aborts THAT row and nothing else. A single shared
   // transaction would go into an aborted state on the first failure and lose every later row AND the
   // run-log write with it — the not-atomic-by-design requirement (see the header).
-  for (const r of writable) {
+  for (const nominated of writable) {
     try {
       await withTenant(ctx, async (tx) => {
+        // Actual participant interval: before fresh catalogue/reference/calendar/balance resolution,
+        // request/debit writes and the existing Payroll effects, all in this one row transaction.
+        await lockLeaveDependenciesTx(tx, ctx.tenantId, [nominated.employmentId]);
+        const sourceRecord = recordsByRow.get(nominated.result.rowNum);
+        if (!sourceRecord) throw new Error('That history row changed; review it again.');
+        const fresh = await resolveLeaveHistoryImportTx(tx, ctx, [sourceRecord], options, nominated.employmentId);
+        const r = fresh.resolved[0];
+        if (fresh.resolved.length !== 1 || !r || r.result.status !== 'valid'
+          || r.employmentId !== nominated.employmentId || r.leaveTypeId !== nominated.leaveTypeId
+          || r.balanceTypeId !== nominated.balanceTypeId || r.entitlementYear !== nominated.entitlementYear
+          || r.startDate !== nominated.startDate || r.endDate !== nominated.endDate
+          || r.days !== nominated.days || r.durationType !== nominated.durationType) {
+          throw new Error('That history row changed; review it again.');
+        }
         const [created] = await tx.insert(leaveRequest).values({
           tenantId: ctx.tenantId,
           employmentId: r.employmentId,
@@ -808,9 +847,9 @@ export async function commitLeaveHistoryImport(
       imported += 1;
     } catch (e) {
       writeFailures.push({
-        rowNum: r.result.rowNum,
-        employeeNo: r.result.employeeNo,
-        leaveReference: r.result.leaveReference,
+        rowNum: nominated.result.rowNum,
+        employeeNo: nominated.result.employeeNo,
+        leaveReference: nominated.result.leaveReference,
         errors: [(e as Error).message],
       });
     }

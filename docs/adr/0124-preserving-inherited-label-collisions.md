@@ -1,5 +1,7 @@
 # ADR-0124: Preserve inherited System Label collisions without permitting new ambiguity
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted implementation direction; runtime verification pending
 Date: 2026-10-16
 Deciders: Product architect / board integration owner

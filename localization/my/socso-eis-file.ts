@@ -56,7 +56,8 @@
  * Filename and encoding are NOT in either specification — confirm on the first ASSIST upload.
  */
 import { and, eq, inArray } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../../db/client';
+import { type SessionContext } from '../../db/client';
+import { withPayrollHistoryTenant as withTenant } from '../../core/payroll-history-lock';
 import {
   companyStatutoryMy,
   employeeStatutoryMy,

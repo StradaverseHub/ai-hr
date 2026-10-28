@@ -42,7 +42,8 @@
 //   cd /opt/ai-hr && set -a && . ./.env.production && set +a && \
 //     node --import tsx scripts/archive-duplicate-replacement-leave-type.ts --tenant=<uuid> --apply
 import { and, count, eq, isNull, sql } from 'drizzle-orm';
-import { createDb } from '../db/client';
+import { createDb, type Tx } from '../db/client';
+import { lockOwnerTenantCatalogsTx } from '../db/provision-ownership';
 import { leaveLedger, leaveRequest, leaveType, tenant, toilAccrual } from '../db/schema';
 
 type Candidate = {
@@ -76,17 +77,30 @@ async function main() {
     process.exit(1);
   }
 
+  const result = await runDuplicateReplacementArchive(ownerUrl, { apply, tenantId });
+  for (const line of result.lines) console.log(line);
+  process.exit(0);
+}
+
+/** Maintained owner repair. A write already requires one explicit tenant; authoritative source
+ * facts and the original in-use/role guards are read only after its owner interval is acquired. */
+export async function runDuplicateReplacementArchive(ownerUrl: string,
+  supplied: { apply: boolean; tenantId?: string },
+): Promise<{ archived: number; skipped: number; lines: string[] }> {
+  const apply = supplied.apply, tenantId = supplied.tenantId?.trim() ?? '';
+  if (apply && !tenantId) throw new Error('An explicit tenant is required for this repair.');
   const owner = createDb(ownerUrl);
-  const tenants = await owner.db
+  const perform = async (db: ReturnType<typeof createDb>['db'] | Tx) => {
+  const lines: string[] = [];
+  const tenants = await db
     .select({ id: tenant.id, name: tenant.name })
     .from(tenant)
     .where(tenantId ? eq(tenant.id, tenantId) : undefined);
   if (tenants.length === 0) {
-    console.error(tenantId ? `No tenant with id ${tenantId}.` : 'No tenants.');
-    process.exit(1);
+    throw new Error(tenantId ? `No tenant with id ${tenantId}.` : 'No tenants.');
   }
 
-  console.log(
+  lines.push(
     `archive-duplicate-replacement-leave-type — ${tenants.length} tenant(s), mode=${apply ? 'APPLY' : 'dry-run'}`,
   );
 
@@ -96,7 +110,7 @@ async function main() {
   for (const t of tenants) {
     // Every non-archived type this tenant has that either IS the replacement role or carries the seeded
     // code. Owner connection: RLS does not bind the owner role, so the tenant filter is explicit.
-    const rows: Candidate[] = await owner.db
+    const rows: Candidate[] = await db
       .select({
         id: leaveType.id,
         code: leaveType.code,
@@ -119,7 +133,7 @@ async function main() {
 
     const keep = rows.find((r) => r.role === 'replacement');
     if (!keep) {
-      console.log(
+      lines.push(
         `  ${t.name}: ${rows.length} replacement types but NONE marked role='replacement' — skipped.\n` +
           `    Classify the one the customer owns first (leave_type.role), or the fixed code has nothing to find.`,
       );
@@ -128,8 +142,8 @@ async function main() {
     }
 
     const duplicates = rows.filter((r) => r.id !== keep.id);
-    console.log(`  ${t.name}:`);
-    console.log(`    KEEP    ${keep.code.padEnd(12)} "${keep.name}"  role=${keep.role} counting=${keep.counting}`);
+    lines.push(`  ${t.name}:`);
+    lines.push(`    KEEP    ${keep.code.padEnd(12)} "${keep.name}"  role=${keep.role} counting=${keep.counting}`);
 
     for (const d of duplicates) {
       // THE PRECONDITION, checked per candidate and never assumed.
@@ -139,15 +153,15 @@ async function main() {
       // point at this row; the tenant-wide accrual count rides along as context, because "this tenant has
       // credits somewhere" is worth seeing on the same line even when none of them are on this type.
       const [[requests], [ledger], [accruals]] = await Promise.all([
-        owner.db.select({ n: count() }).from(leaveRequest).where(eq(leaveRequest.leaveTypeId, d.id)),
-        owner.db.select({ n: count() }).from(leaveLedger).where(eq(leaveLedger.leaveTypeId, d.id)),
-        owner.db.select({ n: count() }).from(toilAccrual).where(eq(toilAccrual.tenantId, t.id)),
+        db.select({ n: count() }).from(leaveRequest).where(eq(leaveRequest.leaveTypeId, d.id)),
+        db.select({ n: count() }).from(leaveLedger).where(eq(leaveLedger.leaveTypeId, d.id)),
+        db.select({ n: count() }).from(toilAccrual).where(eq(toilAccrual.tenantId, t.id)),
       ]);
       const used = requests.n + ledger.n;
       const detail = `leave_request=${requests.n} leave_ledger=${ledger.n} (tenant toil_accrual=${accruals.n})`;
 
       if (used > 0) {
-        console.log(
+        lines.push(
           `    IN USE  ${d.code.padEnd(12)} "${d.name}"  ${detail} — SKIPPED.\n` +
             `      Somebody's balance is built from this type. Archiving it would hide a real entitlement;\n` +
             `      merging the two types is a different job with a different answer.`,
@@ -157,20 +171,20 @@ async function main() {
       }
 
       if (!apply) {
-        console.log(`    WOULD ARCHIVE  ${d.code.padEnd(12)} "${d.name}"  ${detail} (empty) — dry run, nothing written.`);
+        lines.push(`    WOULD ARCHIVE  ${d.code.padEnd(12)} "${d.name}"  ${detail} (empty) — dry run, nothing written.`);
         continue;
       }
 
-      await owner.db
+      await db
         .update(leaveType)
         .set({ archivedAt: new Date() })
         .where(and(eq(leaveType.id, d.id), isNull(leaveType.archivedAt)));
       archived += 1;
-      console.log(`    ARCHIVED       ${d.code.padEnd(12)} "${d.name}"  ${detail} (empty)`);
+      lines.push(`    ARCHIVED       ${d.code.padEnd(12)} "${d.name}"  ${detail} (empty)`);
     }
 
     // Read back, so the run proves what it did rather than reporting what it intended.
-    const after = await owner.db
+    const after = await db
       .select({ code: leaveType.code, name: leaveType.name })
       .from(leaveType)
       .where(
@@ -180,16 +194,22 @@ async function main() {
           sql`(${leaveType.role} = 'replacement' or lower(${leaveType.code}) = 'replacement')`,
         ),
       );
-    console.log(`    AFTER   ${after.length} active replacement type(s): ${after.map((a) => `${a.code} "${a.name}"`).join(', ')}`);
+    lines.push(`    AFTER   ${after.length} active replacement type(s): ${after.map((a) => `${a.code} "${a.name}"`).join(', ')}`);
   }
 
-  console.log(
+  lines.push(
     `archive-duplicate-replacement-leave-type done — ${apply ? `archived ${archived}` : 'nothing written'}, ${skipped} skipped.`,
   );
-  process.exit(0);
+  return { archived, skipped, lines };
+  };
+  if (!apply) return perform(owner.db);
+  return owner.db.transaction(async tx => {
+    await lockOwnerTenantCatalogsTx(tx, tenantId);
+    return perform(tx);
+  });
 }
 
-main().catch((e) => {
+if (process.argv[1]?.endsWith('archive-duplicate-replacement-leave-type.ts')) main().catch((e) => {
   console.error(e);
   process.exit(1);
 });

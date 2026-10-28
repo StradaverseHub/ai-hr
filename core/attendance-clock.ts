@@ -7,8 +7,8 @@ import { attendance, attendanceClockCapture, attendancePunch, attendanceCorrecti
 import { actorOf, appendEvent } from '../db/events';
 import { withAttendanceTenant as withTenant } from './module-gate';
 import {resolveOwnClockEmployment,OwnClockEmploymentUnavailableError} from './attendance-clock-subject';
-import {myEmployments,myOwnEmploymentSubjectsTx} from './read';
-import { ClockConflictError, CorrectedClockConflictError, assertDayNotOwnedByCorrectionTx, appendGeofenceBlockedEvent, checkInTx, checkOutTx, clockPunchOrderRefusal, resolveGeofence, clockScheduleForTx, GeofenceQualityError, OutsideGeofenceError } from './attendance';
+import {myEmployments, myEmployment, myOwnEmploymentSubjectsTx} from './read';
+import { lockAttendanceLeaveDependenciesTx, ClockConflictError, CorrectedClockConflictError, assertDayNotOwnedByCorrectionTx, appendGeofenceBlockedEvent, checkInTx, checkOutTx, clockPunchOrderRefusal, resolveGeofence, clockScheduleForTx, GeofenceQualityError, OutsideGeofenceError } from './attendance';
 import { enforceDeviceGateTx, DeviceNotRegisteredError } from './attendance-device';
 import { ClockPhotoError, decodeClockPhoto } from '../lib/attendance-photo';
 import { clockCommandContext } from '../lib/clock-command-context';
@@ -125,6 +125,8 @@ type ClockSource = { source: 'web' | 'native_online' } | { source: 'mobile_offli
 type ClockSubject = { employmentId: string };
 
 async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, native?: NativeCarrier,joined?:JoinedCarrier) {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  p={...p,...(p.photo?{photo:Buffer.from(p.photo)}:{})}; native=native?{...native}:undefined;
   const me=native?(await (joined?myOwnEmploymentSubjectsTx(joined.tx,ctx,{profileEdit:true}):myEmployments(ctx))).find(e=>e.employmentId===native.employmentId):await resolveOwnClockEmployment(ctx,p.employmentId);
   if(!me)throw new OwnClockEmploymentUnavailableError();
   if(!native&&p.employmentId!==undefined&&p.clockContext==null)throw new ClockContextChangedError('Reopen the selected employee clock context.');
@@ -143,9 +145,21 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, nativ
   return joined?execute(joined.tx):withTenant(ctx,execute);
 }
 
-/** Every validation and typed refusal of a clocking, in the online order, with no write: locks and reads only. */
+/** Every validation and typed refusal of a clocking, in the online order, with no write: locks and reads only.
+ *  First in the transaction on EVERY carrier (web, native online, joined signed native, offline claim): the
+ *  Attendance→leave dependency ownership, then the in-transaction re-selection of the own employment through the
+ *  SAME selection owner the carrier used outside (or, for a joined/offline carrier, the owner it used in this Tx),
+ *  before the subject advisory lock, replay, device, policy, capture, schedule and legacy day locks. */
 async function planClockTx(tx:Tx,ctx:SessionContext,me:ClockSubject,p:ClockIntent,point:ReturnType<typeof clockLocation>,clock:ClockSource,native?:NativeCarrier,joined?:JoinedCarrier) {
     const offline=clock.source==='mobile_offline';
+    await lockAttendanceLeaveDependenciesTx(tx, ctx, [me.employmentId]);
+    // Outside-Tx selection nominates only. Repeat the SAME original selection owner after Access/
+    // configuration/subject ownership before replay, policy, capture, schedule or legacy day locks.
+    const fresh = joined ? (await myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:true})).find(row=>row.employmentId===me.employmentId)
+      : native ? (await myEmployments(ctx, {}, tx)).find(row=>row.employmentId===native.employmentId)
+      : p.employmentId !== undefined ? (await myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:true})).find(row=>row.employmentId===p.employmentId)
+      : await myEmployment(ctx, undefined, tx);
+    if (!fresh || fresh.employmentId !== me.employmentId) throw new OwnClockEmploymentUnavailableError();
     // Lock the subject even before its first attendance row exists. Concurrent tabs serialize here.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + me.employmentId}, 0))`);
     if(joined&&!(await myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:true})).some(e=>e.employmentId===me.employmentId))throw new OwnClockEmploymentUnavailableError();

@@ -1,5 +1,7 @@
 # ADR-0134: Execute dated attendance policies under one overtime source
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 **Status:** Accepted implementation direction; implementation and acceptance remain incomplete
 **Date:** 2026-10-21
 **Deciders:** Codex for implementation within the reporter-approved Schedule Group and central Overtime plans

@@ -37,13 +37,14 @@ import {
 // Test-only lookup over the whole registry. Production has none: dispatch resolves from toolsFor(ctx).
 const toolByName = (name: string): AssistantTool | undefined => ASSISTANT_TOOLS.find((t) => t.spec.name === name);
 import { hireEmployee, setReportingLine } from '../core/org';
+import { grantAssistant } from '../core/assistant-grant';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { closeBatch, createBatch, generatePayslips } from '../core/payroll';
 import {
   adminCtx,
   closeAll,
-  createAppUser,
+  createAppUser as createRawAppUser,
   entitledCtx,
   migrateTestDb,
   owner,
@@ -118,20 +119,19 @@ describe('ADR-0082 §2.3 — the registry cannot do what it must not do', () => 
     });
   }
 
-  it('reaches the database only through core/read.ts, and holds no database handle at runtime', () => {
+  it('reaches data only through canonical readers and holds no database handle at runtime', () => {
     // The type-only form is the property: at runtime this module imports nothing from db/client at all,
     // so there is no object through which a query could be issued outside a wrapped read.
     expect(SOURCE).toMatch(/import type \{ SessionContext \} from '\.\.\/db\/client';/);
     const dataImports = [...SOURCE.matchAll(/^import[\s\S]*?from '([^']+)';$/gm)]
       .map((m) => m[1])
       .filter((s) => s.startsWith('.'));
-    // entitlements is the module gate; read is the data; hr-date is the clock; ai/types is the contract.
-    // payslip-earning-lines is the fifth and does NOT weaken the property: it has ZERO imports of its own
-    // and no query surface at all — pure functions that read `statutory.componentLines` by SHAPE. It is
-    // how my_pay_change gets per-item figures without importing core/payroll and dragging the kernel into
-    // every assistant caller. Verify that emptiness before ever adding a sixth.
+    // Only the explicit read facade enters source services. Its opaque method set exposes no
+    // database handle, SQL builder, model caller or command. Pin this binding rather than allowing
+    // arbitrary service imports into tool implementations.
+    expect(SOURCE.match(/^import .* from '\.\/assistant-read-session';$/gm)).toEqual(["import { withAssistantRead, type AssistantReadSession } from './assistant-read-session';"]);
     expect(dataImports.sort()).toEqual(
-      ['../db/client', '../lib/ai/types', '../lib/hr-date', './entitlements', './payslip-earning-lines', './read'].sort(),
+      ['../db/client', '../lib/ai/types', '../lib/hr-date', './entitlements', './payslip-earning-lines', './assistant-read-session', '../lib/ai/assistant-public-replies', '../lib/ai/module-agents', './assistant-leave-projection'].sort(),
     );
   });
 });
@@ -141,7 +141,7 @@ describe('ADR-0082 §2.3 — the registry cannot do what it must not do', () => 
  * ══════════════════════════════════════════════════════════════════════════════════════════════════ */
 
 describe('ADR-0082 §2.2 mechanic 4 — every tool spec is strict-shaped', () => {
-  it('is exactly the nine tools, IN THIS ORDER', () => {
+  it('pins the append-only tool prefix and canonical module suffix, IN THIS ORDER', () => {
     // ORDER IS PINNED, not just membership. `tools` renders before `system` in the cacheable prefix and
     // caching is a PREFIX match, so a reordering silently multiplies the cost of every request while
     // changing no behaviour and failing no other assertion. New tools are APPENDED to this list.
@@ -157,6 +157,8 @@ describe('ADR-0082 §2.2 mechanic 4 — every tool spec is strict-shaped', () =>
       'my_payslip_summary',
       // ADR-0074 item 5 — APPENDED, never inserted. See the prefix-caching note this list guards.
       'my_pay_change',
+      'my_claim_statuses',
+      'my_module_work',
     ]);
   });
 
@@ -199,6 +201,7 @@ describe('ADR-0082 §2.2 mechanic 4 — every tool spec is strict-shaped', () =>
       // my_pay_change takes a PERIOD and no subject. A period cannot aim a tool at a person, which is
       // what keeps it in this set despite not being argument-free.
       'my_pay_change',
+      'my_claim_statuses',
     ]) {
       const props = Object.keys(toolByName(name)!.spec.inputSchema.properties);
       expect(props, `${name} must take no employee/person argument`).not.toContain('employment_id');
@@ -238,6 +241,12 @@ const hire = (name: string) =>
  * tenant's, not the admin's) — the identity fields are all overridden, so this is an ordinary employee
  * in every way the policies can observe.
  */
+async function createAppUser(...args: Parameters<typeof createRawAppUser>) {
+  const id = await createRawAppUser(...args);
+  await grantAssistant(adminCtx(base), { appUserId: id });
+  return id;
+}
+
 function sessionFor(userId: string, personId: string, roles: string[]): SessionContext {
   return { ...adminCtx(base), userId, personId, roles };
 }
@@ -263,6 +272,8 @@ describe('ADR-0082 §5 — a tool cannot see what its caller cannot see', () => 
   beforeEach(async () => {
     await resetDb();
     base = await seedBase();
+    await setModule(base.tenantId, 'assistant', 'active');
+    await grantAssistant(adminCtx(base), { appUserId: base.adminUserId });
   });
 
   it('employee_profile: a peer is refused with not_visible, and the SAME code covers a nonexistent id', async () => {
@@ -594,12 +605,17 @@ describe('ADR-0077 — a tool whose module the tenant does not hold is not offer
   beforeEach(async () => {
     await resetDb();
     base = await seedBase();
+    await setModule(base.tenantId, 'assistant', 'active');
+    await grantAssistant(adminCtx(base), { appUserId: base.adminUserId });
   });
 
-  it('drops my_payslip_summary when payroll is off, and keeps the other eight', async () => {
+  it('independently drops payroll and claims tools when their module is off', async () => {
+    await setModule(base.tenantId, 'claims', 'active');
     const withPayroll = await entitledCtx(base);
     expect(toolsFor(withPayroll).map((t) => t.spec.name)).toContain('my_payslip_summary');
-    expect(toolsFor(withPayroll)).toHaveLength(10);
+    expect(toolsFor(withPayroll)).toHaveLength(12);
+    expect(toolsFor(withPayroll).map(t=>t.spec.name)).toContain('my_module_work');
+    expect(toolsFor(withPayroll).map(t => t.spec.name)).toContain('my_claim_statuses');
 
     await setModule(base.tenantId, 'payroll', null);
     const without = await entitledCtx(base);
@@ -607,18 +623,22 @@ describe('ADR-0077 — a tool whose module the tenant does not hold is not offer
     expect(offered).not.toContain('my_payslip_summary');
     // ADR-0074 item 5 is payroll-gated too, so turning payroll off now drops TWO tools, not one.
     expect(offered).not.toContain('my_pay_change');
-    expect(offered).toHaveLength(8);
+    expect(offered).toHaveLength(10);
+    expect(offered).toContain('my_module_work');
+    expect(offered).toContain('my_claim_statuses');
     // The specs the gateway would send match the tools, and stay in registry order.
     expect(specsFor(without).map((s) => s.name)).toEqual(offered);
+    await setModule(base.tenantId, 'claims', null);
+    const neither = toolsFor(await entitledCtx(base));
+    expect(neither).toHaveLength(9);
+    expect(neither.map(t=>t.spec.name)).toContain('my_module_work');
+    expect(neither.map(t => t.spec.name)).not.toContain('my_claim_statuses');
   });
 
-  it('payroll is the ONLY axis the offered list varies on today, and that is worth knowing', () => {
-    // Eight of the ten name a CORE module, which answers enabled without consulting any snapshot. So
-    // ADR-0082 §2.8's "each tool is gated by its own module" is true of exactly two tools right now. It is
-    // not a defect — it is what keeps the cacheable prefix stable per tenant — but a reader who assumes
-    // seven live gates will design around one that does not exist.
+  it('declares the two independently gated optional module families', () => {
     const gated = ASSISTANT_TOOLS.filter((t) => t.module !== null).map((t) => t.module);
-    expect(new Set(gated)).toEqual(new Set(['leave', 'org', 'employees', 'payroll']));
+    expect(new Set(gated)).toEqual(new Set(['leave', 'org', 'employees', 'payroll', 'claims']));
     expect(ASSISTANT_TOOLS.filter((t) => t.module === 'payroll')).toHaveLength(2);
+    expect(ASSISTANT_TOOLS.filter((t) => t.module === 'claims')).toHaveLength(1);
   });
 });

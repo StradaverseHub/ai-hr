@@ -217,7 +217,7 @@ describe('r292 — a tenant that declined EVERY optional module still runs the c
     // The inbox fans out into claims and attendance. With both queues declared OFF it must answer a
     // number, not throw — that is the core-screen regression this change could cause.
     await expect(
-      pendingApprovalsCount(ctx, [b.companyId], { attendance: false, claims: false }),
+      pendingApprovalsCount(ctx, [b.companyId], { attendance: false, claims: false, performance: false, rewards: false }),
     ).resolves.toBeTypeOf('number');
     // …and the flag is LOAD-BEARING, not decoration: the two queues it switches off are the two the
     // service refuses for this tenant. Asserted on the queues DIRECTLY rather than by re-running the
@@ -498,13 +498,18 @@ describe('r294 — the audit is pinned in source, on both sides', () => {
     },
   };
 
-  it('each unbound file still takes the bare withTenant, and its core consumer still exists', () => {
+  it('each unbound file retains an ungated transaction owner, and its core consumer still exists', () => {
     for (const [file, { consumer, symbol }] of Object.entries(LEFT_UNBOUND)) {
       const src = fs.readFileSync(path.join(ROOT, file), 'utf8');
       expect(src, `${file} is deliberately NOT module-bound — ${consumer} would break`).not.toMatch(
         /Tenant as withTenant \} from '\.\/module-gate'/,
       );
-      expect(src, `${file} still takes withTenant from db/client`).toMatch(
+      if(file==='core/cp38.ts'){
+        // The shared history barrier serializes corrections; it does not add a module entitlement.
+        expect(src).toContain("import { withPayrollHistoryTenant as withTenant } from './payroll-history-lock'");
+        const barrier=fs.readFileSync(path.join(ROOT,'core/payroll-history-lock.ts'),'utf8');
+        expect(barrier).toMatch(/import \{withTenant.*from '\.\.\/db\/client'/);expect(barrier).not.toContain('module-gate');
+      }else expect(src, `${file} still takes withTenant from db/client`).toMatch(
         /import \{ withTenant.*from '\.\.\/db\/client'/,
       );
       // The other half of the ratchet: if the core consumer is ever removed or stops calling the

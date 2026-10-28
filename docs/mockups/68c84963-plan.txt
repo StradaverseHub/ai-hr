@@ -1,0 +1,41 @@
+VERDICT: Partly there already   ·   SIZE: Quick
+
+THE SITUATION TODAY
+
+On the Rewards access page, the "Search users" box only filters the people who already have Rewards access. When you click Add access, the "Existing login account" box is one long alphabetical list of every login in the system, with no way to type a name and nothing to show which company, business unit or job each person belongs to.
+
+WHAT WE'LL CHANGE
+
+- In Add access, replace the long list with a search box. Type part of a name, an employee number or an email and matching people appear as you type.
+
+- Each match shows the person's employee number, job title, company and business unit, taken from Ops › People › People Management, so you can tell two people with similar names apart.
+
+- Only active employees appear. People who have resigned past their last day, been terminated or had their login suspended are not offered.
+
+- People who are active employees but have no login yet are shown greyed out with "No login yet", so you know to ask HR to invite them first.
+
+- The "Search users" box above the assignments list will also match employee numbers, not just names and emails.
+
+WHAT YOU'LL GET
+
+You find the right person in a few keystrokes and can see at a glance that it is the right person in the right company and unit.
+
+GOOD TO KNOW
+
+- Rewards access is given to a login, not directly to an employee record, so a person must have been invited to AIHR before they can be given a Rewards role. This is deliberate: the system never creates or links logins automatically.
+
+- Who is allowed to give access does not change, and nothing about existing access changes.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACTS (origin/alpha 162a8f743): app/admin/rewards/access/access-editor.tsx renders the account picker as a plain select over value.users; the "search" field filters value.members by name/email only. packs/rewards/maintenance.ts rewardAccessAdministration returns users = app_user joined to person through app.access_workforce_person(person, 'workforce.view'), not archived, not app.login_blocked. Staging not reproduced: the sign-in for this session was not authorised; behaviour stated from source.
+
+1. Extend rewardAccessAdministration users with employeeCode, jobTitle, companyName, businessUnitName from the person's current primary employment and assignment (as of todayInKualaLumpur via lib/hr-date), plus a candidate list of active employments whose person has no app_user (hasLogin false). Keep the same RLS predicate (visibleCandidate); never widen person reads. Do not include salary.
+
+2. Replace the select with components/ui/combobox.tsx (see components/allowance-employee-picker.tsx for the pattern): search across name, employee code, email; disabled rows for hasLogin false with the "No login yet" hint. The server check in prepareAccess (account must be an active login) stays the authority.
+
+3. Members filter: also match employeeCode.
+
+4. New strings in all locales (rewardsAccess.person, noLogin, noLoginHelp). Tests: picker excludes login_blocked and archived users and terminated employments; no-login candidate cannot be submitted (server still refuses 'account'); search by employee code. No data change, no migration.

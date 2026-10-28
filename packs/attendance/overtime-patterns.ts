@@ -17,6 +17,7 @@ import { payComponentReferenceStamp } from '../../lib/pay-component-contract';
 /** OT configuration/storage owner. No Attendance, Payroll or TOIL implementation import: parent
  * binds the canonical input reader once; the pure owner alone resolves/evaluates definitions. */
 import {createHash,randomUUID} from 'node:crypto';
+import {lockLeaveDependencyConfigurationTx,LeaveDependencyUnavailable} from '../../core/leave-dependency-lock';
 import {and,asc,desc,eq,gt,gte,inArray,isNull,lt,lte,or,sql,type SQL} from 'drizzle-orm';
 import {type SessionContext,type Tx} from '../../db/client';
 import {actorOf,appendEvent,appendEvents} from '../../db/events';
@@ -53,7 +54,7 @@ export type CanonicalOvertimeSnapshot={input:CanonicalOvertimeInput;resolvedLega
 export type CanonicalOvertimeReader=(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string})=>Promise<CanonicalOvertimeSnapshot>;
 declare const preparedBrand:unique symbol;
 export type PreparedOvertimeCalculation={readonly [preparedBrand]:true};
-export class OvertimeOwnerError extends Error{constructor(readonly code:'permission'|'stale'|'invalid'|'unavailable'|'conflict'|'closed'|'limit',message:string){super(message);this.name='OvertimeOwnerError';}}
+export class OvertimeOwnerError extends Error{constructor(readonly code:'permission'|'stale'|'invalid'|'unavailable'|'conflict'|'closed'|'limit'|'busy',message:string){super(message);this.name='OvertimeOwnerError';}}
 function fail(code:OvertimeOwnerError['code'],message:string):never{throw new OvertimeOwnerError(code,message);}
 const json=(value:unknown)=>JSON.parse(JSON.stringify(value)) as Record<string,unknown>;
 const canonical=(value:unknown):unknown=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([key,v])=>[key,canonical(v)])):value;
@@ -65,7 +66,11 @@ const reason=(value:string)=>text(value,500);
 const bounded=<T>(rows:T[],max:number)=>{if(rows.length>max)fail('limit','Narrow the selection; the supported result bound was exceeded.');return rows;};
 const gate=(ctx:SessionContext)=>assertModuleGate(ctx,'attendance');
 async function event(tx:Tx,ctx:SessionContext,id:string,name:string,payload:unknown,employmentId?:string){await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'overtime-pattern',aggregateId:id,eventType:'overtime.'+name,actor:actorOf(ctx),subjectEmploymentId:employmentId,payload});}
-async function lockConfiguration(tx:Tx,ctx:SessionContext){gate(ctx);await tx.execute(sql`select app.lock_overtime_configuration(${ctx.tenantId}::uuid)`);}
+// Overtime definitions feed time-off-in-lieu credits, so configuration writers also join the leave-dependency
+// configuration lock (owner decision, 28 Oct 2026). The waiting overtime lock comes first; the leave lock never
+// waits, so a leave command holding it makes this save refuse as busy instead of deadlocking.
+async function lockConfiguration(tx:Tx,ctx:SessionContext){gate(ctx);await tx.execute(sql`select app.lock_overtime_configuration(${ctx.tenantId}::uuid)`);
+ try{await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);}catch(error){if(error instanceof LeaveDependencyUnavailable)fail('busy','Leave balances that depend on overtime are being updated. Try again shortly.');throw error;}}
 async function administerCompanies(tx:Tx,ctx:SessionContext,ids:readonly string[]){
  const unique=[...new Set(ids.map(uuid))];if(!unique.length||unique.length>500)fail('invalid','Choose between one and 500 companies.');
  const rows=await tx.select({id:s.company.id,currency:s.company.currency,allowed:sql<boolean>`app.is_admin_for(${s.company.id})`}).from(s.company).where(and(eq(s.company.tenantId,ctx.tenantId),inArray(s.company.id,unique),isNull(s.company.archivedAt)));
@@ -192,6 +197,22 @@ export function saveOvertimePatternDraft(ctx:SessionContext,p:{patternId?:string
  });}
 export function forkOvertimePatternDraft(ctx:SessionContext,p:{versionId:string;expectedPatternRevision:number}){return withAttendanceTenant(ctx,async tx=>{await lockConfiguration(tx,ctx);const old=await versionRow(tx,ctx,p.versionId,true),pattern=await assertVersionAdmin(tx,ctx,old);if(pattern.revision!==p.expectedPatternRevision||pattern.archivedAt)fail('stale','The pattern changed. Reload before creating a draft.');const companyIds=await companiesForVersion(tx,old.id),[last]=await tx.select({ordinal:s.overtimePatternVersion.ordinal}).from(s.overtimePatternVersion).where(eq(s.overtimePatternVersion.patternId,pattern.id)).orderBy(desc(s.overtimePatternVersion.ordinal)).limit(1);const [version]=await tx.insert(s.overtimePatternVersion).values({tenantId:ctx.tenantId,patternId:pattern.id,kind:'formula',creationCompanyId:pattern.creationCompanyId,ordinal:(last?.ordinal??0)+1,name:old.name,description:old.description,definition:old.definition,digest:old.digest}).returning();await tx.insert(s.overtimePatternVersionCompany).values(companyIds.map(companyId=>({tenantId:ctx.tenantId,versionId:version.id,companyId})));await tx.update(s.overtimePattern).set({revision:pattern.revision+1}).where(eq(s.overtimePattern.id,pattern.id));await event(tx,ctx,pattern.id,'draft.forked',{fromVersionId:old.id,versionId:version.id});return {patternId:pattern.id,versionId:version.id,revision:version.revision};});}
 
+/** Position catalogues can exceed the selection bound: page the choices, never reject the workspace. */
+async function positionChoicesTx(tx:Tx,ctx:SessionContext,companyIds:string[],p:{search?:string;cursor?:string;selectedIds?:string[]}={}){
+ if(p.cursor)uuid(p.cursor);if(p.selectedIds)bounded(p.selectedIds,500).forEach(uuid);
+ const search=(p.search??'').trim().slice(0,160);
+ const scope=and(eq(s.position.tenantId,ctx.tenantId),isNull(s.position.archivedAt),visibleLabelIdsCondition(s.position,'position',companyIds));
+ const columns={id:s.position.id,label:s.position.label,code:s.position.title,description:s.position.description};
+ const rows=await tx.select(columns).from(s.position).where(and(scope,p.cursor?gt(s.position.id,p.cursor):undefined,search?or(sql`${s.position.title} ilike ${'%'+search+'%'}`,sql`${s.position.label} ilike ${'%'+search+'%'}`,sql`${s.position.description} ilike ${'%'+search+'%'}`):undefined)).orderBy(asc(s.position.id)).limit(501);
+ const page=rows.slice(0,500);
+ const selected=p.selectedIds?.length?await tx.select(columns).from(s.position).where(and(scope,inArray(s.position.id,p.selectedIds))).orderBy(asc(s.position.id)).limit(500):[];
+ const options=organisationChoiceLabels([...new Map([...page,...selected].map(row=>[row.id,row])).values()]).map(row=>({id:row.id,label:row.displayLabel}));
+ return {items:options,nextCursor:rows.length>500?page.at(-1)!.id:null};
+}
+export function overtimePositionChoices(ctx:SessionContext,p:{companyIds:string[];search?:string;cursor?:string;selectedIds?:string[]}){
+ return withAttendanceTenant(ctx,async tx=>{await configurationReader(tx);if(!p.companyIds.length)return {items:[],nextCursor:null};await administerCompanies(tx,ctx,p.companyIds);return positionChoicesTx(tx,ctx,p.companyIds,p);});
+}
+
 export function overtimePatternSetup(ctx:SessionContext,p:{companyIds?:string[];employeeSearch?:string;employeeIds?:string[];employeeCursor?:string;limit?:number}={}):Promise<OvertimePatternSetup>{return withAttendanceTenant(ctx,async tx=>{
  await configurationReader(tx);if(p.limit!==undefined&&(!Number.isInteger(p.limit)||p.limit<1||p.limit>100))fail('invalid','Choose a whole-number page size from one to 100.');const companies=bounded(await tx.select({id:s.company.id,name:s.company.legalName,currency:s.company.currency}).from(s.company).where(and(eq(s.company.tenantId,ctx.tenantId),isNull(s.company.archivedAt),sql`app.is_admin_for(${s.company.id})`)).orderBy(asc(s.company.legalName),asc(s.company.id)).limit(501),500).map(company=>({...company,minorScale:currencyMinorScale(company.currency)}));
  const companyIds=p.companyIds??companies.map(c=>c.id);if(companyIds.length)await administerCompanies(tx,ctx,companyIds);if(p.employeeIds)bounded(p.employeeIds,500).forEach(uuid);if(p.employeeCursor)uuid(p.employeeCursor);const limit=Math.max(1,Math.min(100,p.limit??50)),search=(p.employeeSearch??'').trim().slice(0,160);
@@ -199,7 +220,8 @@ export function overtimePatternSetup(ctx:SessionContext,p:{companyIds?:string[];
  if(p.employeeIds&&rows.length!==new Set(p.employeeIds).size)fail('permission','A selected employee is unavailable in the selected company scope.');const employees=p.employeeIds?bounded(rows,500):rows.slice(0,limit);
  const earningItems=bounded(await tx.select({id:s.payComponent.id,label:s.payComponent.name}).from(s.payComponent).where(and(eq(s.payComponent.tenantId,ctx.tenantId),isNull(s.payComponent.archivedAt),isNull(s.payComponent.pendingInputKind),eq(s.payComponent.kind,'allowance'),eq(s.payComponent.isNonPayable,false))).orderBy(asc(s.payComponent.code),asc(s.payComponent.id)).limit(501),500);
  const choices:OvertimePatternSetup['choices']={companyId:companies.filter(c=>companyIds.includes(c.id)).map(c=>({id:c.id,label:c.name})),employmentId:employees.map(e=>({id:e.id,label:[e.employeeCode,e.name].filter(Boolean).join(' — ')})),employmentType:PERSONNEL_EMPLOYMENT_TYPES.map(id=>({id,label:id})),dayType:['workday','off_day','rest_day','holiday'].map(id=>({id,label:id})),attendanceStatus:s.attendanceStatusEnum.enumValues.map(id=>({id,label:id}))};
- for(const field of ['departmentId','businessUnitId','positionId'] as const){const table=UUID_FIELDS[field],kind={departmentId:'department',businessUnitId:'business_unit',positionId:'position'}[field] as 'department'|'business_unit'|'position';const code=field==='departmentId'?s.department.name:field==='businessUnitId'?s.businessUnit.code:s.position.title;const description=field==='departmentId'?s.department.description:field==='businessUnitId'?s.businessUnit.name:s.position.description;const candidates=bounded(await tx.select({id:table.id,label:table.label,code,description}).from(table).where(and(eq(table.tenantId,ctx.tenantId),isNull(table.archivedAt),visibleLabelIdsCondition(table,kind,companyIds))).orderBy(asc(table.id)).limit(501),500);choices[field]=organisationChoiceLabels(candidates).map(row=>({id:row.id,label:row.displayLabel}));}
+ choices.positionId=(await positionChoicesTx(tx,ctx,companyIds)).items;
+ for(const field of ['departmentId','businessUnitId'] as const){const table=UUID_FIELDS[field],kind={departmentId:'department',businessUnitId:'business_unit',positionId:'position'}[field] as 'department'|'business_unit'|'position';const code=field==='departmentId'?s.department.name:s.businessUnit.code;const description=field==='departmentId'?s.department.description:s.businessUnit.name;const candidates=bounded(await tx.select({id:table.id,label:table.label,code,description}).from(table).where(and(eq(table.tenantId,ctx.tenantId),isNull(table.archivedAt),visibleLabelIdsCondition(table,kind,companyIds))).orderBy(asc(table.id)).limit(501),500);choices[field]=organisationChoiceLabels(candidates).map(row=>({id:row.id,label:row.displayLabel}));}
  choices.gradeId=bounded(await tx.select({id:s.jobGrade.id,label:s.jobGrade.name}).from(s.jobGrade).where(and(eq(s.jobGrade.tenantId,ctx.tenantId),isNull(s.jobGrade.archivedAt))).orderBy(asc(s.jobGrade.id)).limit(501),500);
  choices.shiftId=bounded(await tx.select({id:s.shift.id,label:s.shift.name}).from(s.shift).where(and(eq(s.shift.tenantId,ctx.tenantId),isNull(s.shift.archivedAt))).orderBy(asc(s.shift.id)).limit(501),500);
  choices.scheduleGroupId=bounded(await tx.select({id:s.attendanceRule.id,label:s.attendanceRule.name}).from(s.attendanceRule).where(and(eq(s.attendanceRule.tenantId,ctx.tenantId),eq(s.attendanceRule.status,'active'))).orderBy(asc(s.attendanceRule.id)).limit(501),500);

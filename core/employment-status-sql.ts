@@ -61,7 +61,7 @@ const statusColumns: EmploymentStatusColumns = {
   blacklistedAt: sql`${employment.blacklistedAt}`,
 };
 export function confirmationDateSql(columns: EmploymentStatusColumns = statusColumns): SQL<string | null> {
-  return sql<string | null>`coalesce(${columns.finalConfirmationDate}, ${columns.confirmationDate}, ${columns.probationEndDate}, ${columns.provisionalEndOn})`;
+  return sql<string | null>`app.employment_confirmation_date((${columns.finalConfirmationDate})::date, (${columns.confirmationDate})::date, (${columns.probationEndDate})::date, (${columns.provisionalEndOn})::date)`;
 }
 
 /** True when the employment is still WITHIN its probation as at `asOf` — the status ladder's rule 5, alone. */

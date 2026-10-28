@@ -23,6 +23,7 @@ import { todayInKualaLumpur } from '../lib/hr-date';
 import {isCalendarDate} from '../lib/calendar-date';
 import {MOVEMENT_FLAT_FIELDS,MOVEMENT_PENDING_COMPARISON_FIELDS,MOVEMENT_PENDING_INPUT_FIELDS,movementPendingFormValues,type MovementFlatField,type MovementPendingFormValues} from '../lib/movement-pending-input';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
 import { appendEvent, actorOf, type MovementTag } from '../db/events';
 import {
   appUser,
@@ -1331,6 +1332,30 @@ export async function lastAppliedPromotionOnTx(tx: Tx, tenantId: string, employm
   const kinds = new Set(['promotion',...custom.map(r=>r.code)]);
   const dates = rows.filter(r=>kinds.has(r.kind)&&statusOf(r)==='applied').map(r=>r.effectiveDate).sort();
   return {known:true,date:dates.at(-1)??null};
+}
+
+/** Minimal canonical facts for a real, tenant-bound maintenance worker. A scheduled
+ * intent remains pending even after its date arrives if application failed. Advisory
+ * review decisions are not effective employment changes and cannot trigger letters. */
+export type MovementAutomationFact={
+ movementId:string;kind:'confirmation'|'promotion';effectiveDate:string;status:MovementStatus;
+ sourceEventId:string|null;sourceSequence:number|null;
+};
+export async function movementAutomationFactsTx(tx:Tx,input:{tenantId:string;companyId:string;employmentId:string;today?:string}):Promise<MovementAutomationFact[]>{
+ const [authority]=await tx.execute<{ok:boolean}>(sql`select app.current_tenant_id()=${input.tenantId}::uuid and app.current_user_id() is null and app.access_workforce_storage_owner() as ok`);
+ if(authority?.ok!==true)throw Error('Movement automation facts require a tenant-bound maintenance connection.');
+ if(input.today&&!isCalendarDate(input.today))throw Error('Invalid movement automation date.');
+ const [subject]=await tx.select({id:employment.id}).from(employment).where(and(eq(employment.id,input.employmentId),eq(employment.tenantId,input.tenantId),eq(employment.companyId,input.companyId)));
+ if(!subject)return [];
+ const {rows,events,statusOf,resolvedTypes}=await projectRows(tx,input.tenantId,input.employmentId,input.today);
+ const eventById=new Map(events.map(event=>[event.id,event])),applications=new Map<string,RawEvent>();
+ for(const event of events){if(event.eventType!=='employment.movement.applied'||!event.payload||typeof event.payload!=='object'||Array.isArray(event.payload))continue;const scheduledId=Reflect.get(event.payload,'scheduledId');if(typeof scheduledId==='string')applications.set(scheduledId,event);}
+ return rows.flatMap(row=>{
+  const kind=resolvedTypes.get(row.kind)?.behaviourKind,recorded=eventById.get(row.id);
+  if((kind!=='confirmation'&&kind!=='promotion')||!recorded||recorded.eventType==='employment-review.decided')return [];
+  const source=row.scheduled?applications.get(row.id):recorded;
+  return [{movementId:row.id,kind,effectiveDate:row.effectiveDate,status:statusOf(row),sourceEventId:source?.id??null,sourceSequence:source?.sequence??null}];
+ });
 }
 
 /** The Employment History list — a Hired-first, date-ascending projection over the event ledger. */
@@ -2712,10 +2737,6 @@ async function resolveInputTypeTx<T extends CreateMovementInput>(
   return { ...p, kind: resolved.behaviourKind, typeCode: resolved.code };
 }
 
-async function resolveInputType<T extends CreateMovementInput>(ctx:SessionContext,p:T,verb:'record'|'correct',opts?:{allowInactive?:boolean}):Promise<T>{
-  return withTenant(ctx,tx=>resolveInputTypeTx(tx,ctx,p,verb,opts));
-}
-
 /**
  * The single New Event entry point. Delegates every kind to the existing audited writer, so effective-
  * date semantics deliberately MATCH those writers (e.g. setEmploymentAssignment rejects dates before the
@@ -2738,7 +2759,11 @@ export function createMovementEvent(ctx: SessionContext, rawInput: CreateMovemen
 
 /** Canonical dispatcher in a caller-owned transaction; every writer/ledger leg shares this Tx. */
 export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateMovementInput){
+  rawInput = { ...rawInput };
   await assertWorkforceEmploymentTx(tx,ctx,rawInput.employmentId,'maintain');
+  // The tenant catalogue resolves custom codes to their actual effect. Own configuration before
+  // that resolution and before current-state planning, not merely when the termination leg writes.
+  await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
   return dispatchMovementEventTx(tx,ctx,rawInput);
 }
 
@@ -2878,6 +2903,10 @@ const sequenceInputKey = (input: CreateMovementInput) => JSON.stringify(Object.e
  * captures future comparison baselines, and they affect admission/conflict fields, never current masters.
  */
 export async function rehearseMovementSequenceTx<T>(tx:Tx,ctx:SessionContext,prepare:(shadowTx:Tx,create:MovementSequenceCreate)=>Promise<T>){
+  // Acquire in the OUTER transaction so rehearsal rollback cannot release dependency ownership
+  // before the bounded replay. Access precedes configuration, including the callback's source reads.
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
   const contextKey=()=>JSON.stringify({tenantId:ctx.tenantId,userId:ctx.userId,roles:ctx.roles,grants:ctx.grants});
   const originalContext=contextKey();
   const transactionIdentity=()=>tx.execute<{id:string;session:string}>(sql`select pg_current_xact_id()::text as id, concat_ws('|',current_setting('app.tenant_id',true),current_setting('app.user_id',true),current_setting('app.roles',true),current_setting('app.grants',true)) as session`);
@@ -2971,6 +3000,7 @@ export async function applyDueMovementsTx(
   today: string,
 ): Promise<ApplyDueResult> {
   await assertWorkforceEmploymentTx(tx,ctx,employmentId,'maintain');
+  await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
   const { events, rows, statusOf } = await projectRows(tx, ctx.tenantId, employmentId, today);
   const due = rows
     .filter((r) => r.scheduled && r.effectiveDate <= today && statusOf(r) === 'pending')
@@ -3500,6 +3530,7 @@ export async function reverseMovementEvent(
   }
   return withTenant(ctx, async (tx) => {
     await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, false);
     return { employmentId: p.employmentId };
   });
@@ -3532,80 +3563,168 @@ export async function editMovementEvent(ctx: SessionContext, rawEdit: EditMoveme
   // replays through the same writers, so it has to arrive carrying the same behaviour kind + code pair.
   // An INACTIVE type is allowed here — a movement already recorded under a type since switched off must
   // still be correctable, or switching a type off would strand its history.
-  const p = await resolveInputType(ctx, rawEdit, 'correct', { allowInactive: true });
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveDate ?? '')) {
-    throw new Error('A valid effective date (YYYY-MM-DD) is required.');
-  }
-  const reason = p.reason?.trim() || null;
-  // bd89ccd8 — same rule as a plain rollback, because a correction performs one. Checked before anything
-  // is written, alongside the effective-date format, so a half-applied rollback can never commit behind a
-  // missing-reason message.
-  if (!reason) {
-    throw new MovementReasonRequiredError('A reason is required. Record why this movement event is being corrected.');
-  }
-  const remarks = p.remarks?.trim() || null;
-  const endDate = p.endDate?.trim() || null;
+  rawEdit = { ...rawEdit };
+  return withTenant(ctx, async (tx) => {
+    await assertWorkforceEmploymentTx(tx,ctx,rawEdit.employmentId,'maintain');
+    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
+    const p = await resolveInputTypeTx(tx, ctx, rawEdit, 'correct', { allowInactive: true });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveDate ?? '')) {
+      throw new Error('A valid effective date (YYYY-MM-DD) is required.');
+    }
+    const reason = p.reason?.trim() || null;
+    // bd89ccd8 — same rule as a plain rollback, because a correction performs one. Checked before anything
+    // is written, alongside the effective-date format, so a half-applied rollback can never commit behind a
+    // missing-reason message.
+    if (!reason) {
+      throw new MovementReasonRequiredError('A reason is required. Record why this movement event is being corrected.');
+    }
+    const remarks = p.remarks?.trim() || null;
+    const endDate = p.endDate?.trim() || null;
 
-  const result=await withTenant(ctx, async (tx) => {
-    await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
-    const { events, rows, statusOf, today, resolvedTypes } = await projectRows(tx, ctx.tenantId, p.employmentId);
-    const row = rows.find((r) => r.id === p.movementId);
-    if (!row) throw new Error('Movement event not found.');
-    if (row.reversed) throw new Error('This movement event has already been rolled back.');
-    if (!resolvedTypes.get(row.kind)) throw new MovementNotCorrectableError('This event type cannot be edited from Employment History — use the screen that records it.');
-    const status = statusOf(row);
+    const result=await (async () => {
+      const { events, rows, statusOf, today, resolvedTypes } = await projectRows(tx, ctx.tenantId, p.employmentId);
+      const row = rows.find((r) => r.id === p.movementId);
+      if (!row) throw new Error('Movement event not found.');
+      if (row.reversed) throw new Error('This movement event has already been rolled back.');
+      if (!resolvedTypes.get(row.kind)) throw new MovementNotCorrectableError('This event type cannot be edited from Employment History — use the screen that records it.');
+      const status = statusOf(row);
 
-    /**
-     * 941c9dac — correcting a movement that has not taken effect yet.
-     *
-     * THIS IS THE IN-PLACE-EDIT INTERACTION, RESOLVED. The existing rule (only the most recent
-     * state-changing movement may be corrected in place) exists because a correction REPLAYS through
-     * writers that act on the OPEN dated row — replaying an older one would append its result on top of
-     * the chain instead of in its place. A PENDING movement is outside that rule entirely, because it has
-     * written nothing: no dated row, no flat column, nothing for a later movement to sit on top of. So it
-     * is always correctable, whatever else has happened since, and correcting it is not a reverse-and-
-     * replay at all — it is cancelling one intent and recording another.
-     *
-     * The converse half matters just as much and is handled in STATE_CHANGING_EVENT_TYPES: because a
-     * scheduled event is not state-changing, a pending movement does not count towards
-     * latestStateChangingSpanEnd. Keying a future-dated promotion therefore does NOT freeze editing of
-     * the movement that is genuinely latest in force today — "latest movement" and "latest APPLIED
-     * movement" diverge, and the in-place rule correctly follows the applied one.
-     */
-    if (row.scheduled && status === 'pending') {
-      // A partial correction retains only explicitly saved inputs. Submitted null/value wins;
-      // undefined is omission, not permission to replace a future target with today's baseline.
-      const payload=events.find(e=>e.id===row.id)?.payload;
-      const saved=payload&&typeof payload==='object'&&'input' in payload?payload.input:undefined;
-      const retained:Record<string,unknown>={};
-      if(saved&&typeof saved==='object'&&!Array.isArray(saved))for(const key of MOVEMENT_PENDING_INPUT_FIELDS){
-        const value:unknown=Reflect.get(saved,key);
-        if(value===null||typeof value==='string'||typeof value==='number'&&Number.isFinite(value))retained[key]=value;
-      }
-      const corrected={...retained,...Object.fromEntries(Object.entries(p).filter(([,value])=>value!==undefined)),
-        remarks:rawEdit.remarks===undefined?row.remarks:remarks,endDate:rawEdit.endDate===undefined?row.endDate:endDate} as typeof p;
-      if(row.kind==='resignation'||p.kind==='resignation'){
-        if(row.kind!=='resignation'||p.kind!=='resignation')throw new MovementNotCorrectableError('A correction cannot turn this movement into that event type.');
-        await reverseMovementTx(tx,ctx,p.employmentId,p.movementId,reason,true);
-        return recordResignationMovementTx(tx,ctx,corrected);
-      }
-      // ae9350f2 — a pending TERMINATION is correctable on exactly the same reasoning, and it has to be:
-      // scheduling made `canEdit` true for it (a scheduled event is not state-changing), so without this
-      // branch the Edit button would render and the service would refuse it — an affordance that lies.
-      // Only termination→termination: turning a pending exit into a transfer, or a transfer into an exit,
-      // is recording a different movement, not correcting this one.
-      if (row.kind === 'termination' || p.kind === 'termination') {
-        if (row.kind !== 'termination' || p.kind !== 'termination') {
+      /**
+       * 941c9dac — correcting a movement that has not taken effect yet.
+       *
+       * THIS IS THE IN-PLACE-EDIT INTERACTION, RESOLVED. The existing rule (only the most recent
+       * state-changing movement may be corrected in place) exists because a correction REPLAYS through
+       * writers that act on the OPEN dated row — replaying an older one would append its result on top of
+       * the chain instead of in its place. A PENDING movement is outside that rule entirely, because it has
+       * written nothing: no dated row, no flat column, nothing for a later movement to sit on top of. So it
+       * is always correctable, whatever else has happened since, and correcting it is not a reverse-and-
+       * replay at all — it is cancelling one intent and recording another.
+       *
+       * The converse half matters just as much and is handled in STATE_CHANGING_EVENT_TYPES: because a
+       * scheduled event is not state-changing, a pending movement does not count towards
+       * latestStateChangingSpanEnd. Keying a future-dated promotion therefore does NOT freeze editing of
+       * the movement that is genuinely latest in force today — "latest movement" and "latest APPLIED
+       * movement" diverge, and the in-place rule correctly follows the applied one.
+       */
+      if (row.scheduled && status === 'pending') {
+        // A partial correction retains only explicitly saved inputs. Submitted null/value wins;
+        // undefined is omission, not permission to replace a future target with today's baseline.
+        const payload=events.find(e=>e.id===row.id)?.payload;
+        const saved=payload&&typeof payload==='object'&&'input' in payload?payload.input:undefined;
+        const retained:Record<string,unknown>={};
+        if(saved&&typeof saved==='object'&&!Array.isArray(saved))for(const key of MOVEMENT_PENDING_INPUT_FIELDS){
+          const value:unknown=Reflect.get(saved,key);
+          if(value===null||typeof value==='string'||typeof value==='number'&&Number.isFinite(value))retained[key]=value;
+        }
+        const corrected={...retained,...Object.fromEntries(Object.entries(p).filter(([,value])=>value!==undefined)),
+          remarks:rawEdit.remarks===undefined?row.remarks:remarks,endDate:rawEdit.endDate===undefined?row.endDate:endDate} as typeof p;
+        if(row.kind==='resignation'||p.kind==='resignation'){
+          if(row.kind!=='resignation'||p.kind!=='resignation')throw new MovementNotCorrectableError('A correction cannot turn this movement into that event type.');
+          await reverseMovementTx(tx,ctx,p.employmentId,p.movementId,reason,true);
+          return recordResignationMovementTx(tx,ctx,corrected);
+        }
+        // ae9350f2 — a pending TERMINATION is correctable on exactly the same reasoning, and it has to be:
+        // scheduling made `canEdit` true for it (a scheduled event is not state-changing), so without this
+        // branch the Edit button would render and the service would refuse it — an affordance that lies.
+        // Only termination→termination: turning a pending exit into a transfer, or a transfer into an exit,
+        // is recording a different movement, not correcting this one.
+        if (row.kind === 'termination' || p.kind === 'termination') {
+          if (row.kind !== 'termination' || p.kind !== 'termination') {
+            throw new MovementNotCorrectableError('A correction cannot turn this movement into that event type.');
+          }
+          await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true);
+          // Planned AFTER the rollback, so the duplicate-termination rule sees the movement being corrected
+          // as already reversed rather than as a second termination competing with itself.
+          const plan = await planTerminationTx(tx, ctx, corrected, 'create');
+          return plan.effectiveDate > today
+            ? scheduleTerminationTx(tx, ctx, p.employmentId, plan)
+            : applyTerminationTx(tx, ctx, p.employmentId, plan);
+        }
+        if (
+          !isComparisonKind(p.kind) ||
+          crossesConfirmation(row.kind, p.kind) ||
+          crossesEntityTransfer(row.kind, p.kind)
+        ) {
           throw new MovementNotCorrectableError('A correction cannot turn this movement into that event type.');
         }
+        if (p.kind === 'employmentTypeChange' && !corrected.employmentType) {
+          throw new Error('Select the new employment type.');
+        }
         await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true);
-        // Planned AFTER the rollback, so the duplicate-termination rule sees the movement being corrected
-        // as already reversed rather than as a second termination competing with itself.
-        const plan = await planTerminationTx(tx, ctx, corrected, 'create');
-        return plan.effectiveDate > today
-          ? scheduleTerminationTx(tx, ctx, p.employmentId, plan)
-          : applyTerminationTx(tx, ctx, p.employmentId, plan);
+        // A correction may also move the date INTO the past — in which case the movement stops being a
+        // schedule and applies at once, exactly as keying it fresh with that date would.
+        return p.effectiveDate > today
+          ? scheduleMovementTx(tx, ctx, corrected, p.kind)
+          : applyComparisonMovementTx(tx, ctx, corrected, p.kind);
       }
+      if (status === 'superseded') {
+        throw new MovementNotCorrectableError(
+          'This movement was overtaken by a later one and never took effect, so there is nothing to correct.',
+        );
+      }
+
+      const group = groupEventsOf(events, row);
+      const spanEnd = group.length ? Math.max(...group.map((e) => e.sequence)) : -1;
+      const isLatest = spanEnd === latestStateChangingSpanEnd(events, rows);
+      const c = correctabilityOf(row, group, isLatest, resolvedTypes.get(row.kind)?.behaviourKind??null);
+      if (!c.canEdit) {
+        throw new MovementNotCorrectableError(
+          c.canReverse && c.stateChanging && !isLatest
+            ? 'Only the most recent movement can be edited. Roll back the later movements first, then correct this one.'
+            : 'This event type cannot be edited from Employment History — use the screen that records it.',
+        );
+      }
+
+      if(row.kind==='resignation'||p.kind==='resignation'){
+        if(row.kind!=='resignation'||p.kind!=='resignation')throw new MovementNotCorrectableError('A correction cannot turn this movement into that event type.');
+        const original=groupEventsOf(events,row).filter(event=>event.eventType==='employment.info.updated').sort((a,b)=>b.sequence-a.sequence)[0];
+        const originalAfter=(original?.payload as {after?:Record<string,unknown>})?.after;
+        const submitted={...p,endDate:p.endDate===undefined?row.endDate:p.endDate,remarks:rawEdit.remarks===undefined?row.remarks:p.remarks,tenderResignationDate:p.tenderResignationDate===undefined?originalAfter?.tenderResignationDate as string|null|undefined:p.tenderResignationDate,resignationEffectiveDate:p.resignationEffectiveDate===undefined?originalAfter?.resignationDate as string|null|undefined:p.resignationEffectiveDate};
+        if(submitted.effectiveDate===row.effectiveDate&&(submitted.endDate?.trim()||null)===row.endDate&&(submitted.remarks?.trim()||null)===row.remarks&&(submitted.tenderResignationDate??null)===(originalAfter?.tenderResignationDate??null)&&(submitted.resignationEffectiveDate??null)===(originalAfter?.resignationDate??null))throw new MovementNoChangeError();
+        await reverseMovementTx(tx,ctx,p.employmentId,p.movementId,reason,true);
+        return recordResignationMovementTx(tx,ctx,submitted);
+      }
+
+      // The unchanged-replay no-op, checked BEFORE anything is written — against the same date/remark fields
+      // the history shows and the same current values the comparison form pre-filled from.
+      // 476f23ed — compare the CATALOGUE CODE, not the behaviour. `row.kind` is what the projection read off
+      // the ledger (the code HR chose); `p.kind` has already been resolved to the built-in behaviour by
+      // resolveInputType. For a built-in type the two are equal, but for one of the organisation's own types
+      // ('regional_assignment' → secondment) comparing them would ALWAYS differ, so an unchanged re-save
+      // would slip past this guard and append a spurious reverse + re-record pair to the history.
+      const submittedCode = p.typeCode ?? p.kind;
+      const datesUnchanged =
+        submittedCode === row.kind &&
+        p.effectiveDate === row.effectiveDate &&
+        endDate === row.endDate &&
+        remarks === row.remarks;
+
+      if (!c.stateChanging) {
+        // Record-only movement: the rollback has nothing to undo, so the correction is the reversal plus a
+        // fresh record carrying the fixed dates / remarks.
+        if (datesUnchanged) throw new MovementNoChangeError();
+        await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true);
+        await appendEvent(tx, {
+          tenantId: ctx.tenantId,
+          aggregateType: 'employment',
+          aggregateId: p.employmentId,
+          eventType: 'employment.movement.recorded',
+          actor: actorOf(ctx),
+          subjectEmploymentId: p.employmentId,
+          // 476f23ed — record the CATALOGUE CODE, exactly as createMovementEvent does. The projection reads
+          // this field straight back as the history row's kind, so writing the behaviour here would silently
+          // re-label a corrected "Regional Assignment" as a plain Secondment.
+          payload: {
+            type: submittedCode,
+            effectiveDate: p.effectiveDate,
+            endDate,
+            remarks,
+            correctionOf: p.movementId,
+          },
+        });
+        return { employmentId: p.employmentId };
+      }
+
       if (
         !isComparisonKind(p.kind) ||
         crossesConfirmation(row.kind, p.kind) ||
@@ -3613,139 +3732,54 @@ export async function editMovementEvent(ctx: SessionContext, rawEdit: EditMoveme
       ) {
         throw new MovementNotCorrectableError('A correction cannot turn this movement into that event type.');
       }
-      if (p.kind === 'employmentTypeChange' && !corrected.employmentType) {
+      if (p.kind === 'employmentTypeChange' && !p.employmentType) {
         throw new Error('Select the new employment type.');
       }
+      const cur = await currentStateTx(tx, p.employmentId);
+      // Same `undefined = untouched, '' = explicit clear` reading as the dispatcher's delta rule, so the
+      // no-op test and the write agree on what "unchanged" means.
+      const same = (v: string | null | undefined, curVal: string | null) =>
+        v === undefined || (v === null ? null : v.trim() || null) === curVal;
+      const valuesUnchanged =
+        // b7b22514 — the destination company is part of what a correction can move. Without this line an Edit
+        // that changed ONLY the company (the fix for "we transferred them to the wrong entity") would read as
+        // an unchanged replay and be refused as a no-op.
+        same(p.companyId, cur.companyId) &&
+        same(p.departmentId, cur.departmentId) &&
+        same(p.positionId, cur.positionId) &&
+        same(p.businessUnitId, cur.businessUnitId) &&
+        same(p.locationId, cur.locationId) &&
+        same(p.gradeId, cur.gradeId) &&
+        same(p.managerEmploymentId, cur.managerEmploymentId) &&
+        same(p.currency, cur.currency) &&
+        same(p.payMode, cur.payMode) &&
+        same(p.paymentTerm, cur.paymentTerm) &&
+        (!p.employmentType || p.employmentType === cur.employmentType) &&
+        (p.basicSalary === undefined || Number(p.basicSalary) === Number(cur.basicSalary ?? NaN)) &&
+        MOVEMENT_FLAT_FIELDS.every((f) => same(p[f], cur[f]));
+      // 3ced1040 — a Confirmation's own field, the confirmation date, needs no line here: it IS the
+      // effective date, so `datesUnchanged` already covers every way it can move.
+      if (datesUnchanged && valuesUnchanged) throw new MovementNoChangeError();
+
       await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true);
-      // A correction may also move the date INTO the past — in which case the movement stops being a
-      // schedule and applies at once, exactly as keying it fresh with that date would.
-      return p.effectiveDate > today
-        ? scheduleMovementTx(tx, ctx, corrected, p.kind)
-        : applyComparisonMovementTx(tx, ctx, corrected, p.kind);
-    }
-    if (status === 'superseded') {
-      throw new MovementNotCorrectableError(
-        'This movement was overtaken by a later one and never took effect, so there is nothing to correct.',
-      );
-    }
-
-    const group = groupEventsOf(events, row);
-    const spanEnd = group.length ? Math.max(...group.map((e) => e.sequence)) : -1;
-    const isLatest = spanEnd === latestStateChangingSpanEnd(events, rows);
-    const c = correctabilityOf(row, group, isLatest, resolvedTypes.get(row.kind)?.behaviourKind??null);
-    if (!c.canEdit) {
-      throw new MovementNotCorrectableError(
-        c.canReverse && c.stateChanging && !isLatest
-          ? 'Only the most recent movement can be edited. Roll back the later movements first, then correct this one.'
-          : 'This event type cannot be edited from Employment History — use the screen that records it.',
-      );
-    }
-
-    if(row.kind==='resignation'||p.kind==='resignation'){
-      if(row.kind!=='resignation'||p.kind!=='resignation')throw new MovementNotCorrectableError('A correction cannot turn this movement into that event type.');
-      const original=groupEventsOf(events,row).filter(event=>event.eventType==='employment.info.updated').sort((a,b)=>b.sequence-a.sequence)[0];
-      const originalAfter=(original?.payload as {after?:Record<string,unknown>})?.after;
-      const submitted={...p,endDate:p.endDate===undefined?row.endDate:p.endDate,remarks:rawEdit.remarks===undefined?row.remarks:p.remarks,tenderResignationDate:p.tenderResignationDate===undefined?originalAfter?.tenderResignationDate as string|null|undefined:p.tenderResignationDate,resignationEffectiveDate:p.resignationEffectiveDate===undefined?originalAfter?.resignationDate as string|null|undefined:p.resignationEffectiveDate};
-      if(submitted.effectiveDate===row.effectiveDate&&(submitted.endDate?.trim()||null)===row.endDate&&(submitted.remarks?.trim()||null)===row.remarks&&(submitted.tenderResignationDate??null)===(originalAfter?.tenderResignationDate??null)&&(submitted.resignationEffectiveDate??null)===(originalAfter?.resignationDate??null))throw new MovementNoChangeError();
-      await reverseMovementTx(tx,ctx,p.employmentId,p.movementId,reason,true);
-      return recordResignationMovementTx(tx,ctx,submitted);
-    }
-
-    // The unchanged-replay no-op, checked BEFORE anything is written — against the same date/remark fields
-    // the history shows and the same current values the comparison form pre-filled from.
-    // 476f23ed — compare the CATALOGUE CODE, not the behaviour. `row.kind` is what the projection read off
-    // the ledger (the code HR chose); `p.kind` has already been resolved to the built-in behaviour by
-    // resolveInputType. For a built-in type the two are equal, but for one of the organisation's own types
-    // ('regional_assignment' → secondment) comparing them would ALWAYS differ, so an unchanged re-save
-    // would slip past this guard and append a spurious reverse + re-record pair to the history.
-    const submittedCode = p.typeCode ?? p.kind;
-    const datesUnchanged =
-      submittedCode === row.kind &&
-      p.effectiveDate === row.effectiveDate &&
-      endDate === row.endDate &&
-      remarks === row.remarks;
-
-    if (!c.stateChanging) {
-      // Record-only movement: the rollback has nothing to undo, so the correction is the reversal plus a
-      // fresh record carrying the fixed dates / remarks.
-      if (datesUnchanged) throw new MovementNoChangeError();
-      await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true);
-      await appendEvent(tx, {
-        tenantId: ctx.tenantId,
-        aggregateType: 'employment',
-        aggregateId: p.employmentId,
-        eventType: 'employment.movement.recorded',
-        actor: actorOf(ctx),
-        subjectEmploymentId: p.employmentId,
-        // 476f23ed — record the CATALOGUE CODE, exactly as createMovementEvent does. The projection reads
-        // this field straight back as the history row's kind, so writing the behaviour here would silently
-        // re-label a corrected "Regional Assignment" as a plain Secondment.
-        payload: {
-          type: submittedCode,
-          effectiveDate: p.effectiveDate,
-          endDate,
-          remarks,
-          correctionOf: p.movementId,
-        },
-      });
-      return { employmentId: p.employmentId };
-    }
-
-    if (
-      !isComparisonKind(p.kind) ||
-      crossesConfirmation(row.kind, p.kind) ||
-      crossesEntityTransfer(row.kind, p.kind)
-    ) {
-      throw new MovementNotCorrectableError('A correction cannot turn this movement into that event type.');
-    }
-    if (p.kind === 'employmentTypeChange' && !p.employmentType) {
-      throw new Error('Select the new employment type.');
-    }
-    const cur = await currentStateTx(tx, p.employmentId);
-    // Same `undefined = untouched, '' = explicit clear` reading as the dispatcher's delta rule, so the
-    // no-op test and the write agree on what "unchanged" means.
-    const same = (v: string | null | undefined, curVal: string | null) =>
-      v === undefined || (v === null ? null : v.trim() || null) === curVal;
-    const valuesUnchanged =
-      // b7b22514 — the destination company is part of what a correction can move. Without this line an Edit
-      // that changed ONLY the company (the fix for "we transferred them to the wrong entity") would read as
-      // an unchanged replay and be refused as a no-op.
-      same(p.companyId, cur.companyId) &&
-      same(p.departmentId, cur.departmentId) &&
-      same(p.positionId, cur.positionId) &&
-      same(p.businessUnitId, cur.businessUnitId) &&
-      same(p.locationId, cur.locationId) &&
-      same(p.gradeId, cur.gradeId) &&
-      same(p.managerEmploymentId, cur.managerEmploymentId) &&
-      same(p.currency, cur.currency) &&
-      same(p.payMode, cur.payMode) &&
-      same(p.paymentTerm, cur.paymentTerm) &&
-      (!p.employmentType || p.employmentType === cur.employmentType) &&
-      (p.basicSalary === undefined || Number(p.basicSalary) === Number(cur.basicSalary ?? NaN)) &&
-      MOVEMENT_FLAT_FIELDS.every((f) => same(p[f], cur[f]));
-    // 3ced1040 — a Confirmation's own field, the confirmation date, needs no line here: it IS the
-    // effective date, so `datesUnchanged` already covers every way it can move.
-    if (datesUnchanged && valuesUnchanged) throw new MovementNoChangeError();
-
-    await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true);
-    try {
-      return await applyComparisonMovementTx(tx, ctx, { ...p, remarks, endDate }, p.kind);
-    } catch (e) {
-      // The corrected movement would now change nothing at all — that is a Delete, not an Edit, and the
-      // half-applied rollback must not commit behind a message about "no changes to record".
-      if (e instanceof MovementNoChangeError) {
-        throw new MovementNoChangeError(
-          // bd89ccd8 — said "use Delete" until now. There has been no Delete since r88 (10fcf6df), so the
-          // one message that still named it was sending HR to look for a button that is not there.
-          'The corrected event would leave nothing changed — use Roll Back to undo the movement instead.',
-        );
+      try {
+        return await applyComparisonMovementTx(tx, ctx, { ...p, remarks, endDate }, p.kind);
+      } catch (e) {
+        // The corrected movement would now change nothing at all — that is a Delete, not an Edit, and the
+        // half-applied rollback must not commit behind a message about "no changes to record".
+        if (e instanceof MovementNoChangeError) {
+          throw new MovementNoChangeError(
+            // bd89ccd8 — said "use Delete" until now. There has been no Delete since r88 (10fcf6df), so the
+            // one message that still named it was sending HR to look for a button that is not there.
+            'The corrected event would leave nothing changed — use Roll Back to undo the movement instead.',
+          );
+        }
+        throw e;
       }
-      throw e;
-    }
+    })();
+    return {...result,behaviourKind:p.kind};
   });
-  return {...result,behaviourKind:p.kind};
 }
-
 
 export type ResignationInformation = Record<typeof RESIGNATION_INFO_FIELDS[number],{
   value:string|null;

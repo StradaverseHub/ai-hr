@@ -102,6 +102,7 @@
 import { fileURLToPath } from 'node:url';
 import { and, asc, eq, inArray, isNull, like, or, sql } from 'drizzle-orm';
 import { createDb, type Tx } from '../db/client';
+import { lockOwnerTenantCatalogsTx } from '../db/provision-ownership';
 import { appendEvent } from '../db/events';
 import {
   entitlementEligibilityRule,
@@ -354,6 +355,7 @@ export async function surveyTenants(url: string): Promise<TenantSurveyRow[]> {
 
 // ── THE STAGE RUNNER ──────────────────────────────────────────────────────────────────────────────────
 export async function runEntitlementReset(url: string, opts: ResetOptions): Promise<EntitlementResetReport> {
+  opts = { ...opts, ...(opts.testHooks ? { testHooks: { ...opts.testHooks } } : {}) };
   if (!STAGES.includes(opts.stage)) throw new Error(`unknown stage '${opts.stage}' — expected config | accruals`);
   const owner = createDb(url);
   const today = todayInKualaLumpur();
@@ -362,6 +364,10 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
   const refusals: string[] = [];
   const includeSys = opts.stage === 'accruals' && opts.includeSystemAdjustments === true;
 
+  // The actual apply owner admits before its census. Report-only retains the original read path;
+  // neither a dry run nor a refused report creates an archive/deletion/audit effect. The two stages
+  // remain separate commands, each with one transaction and the original archive verification hooks.
+  const perform = async (db: Db | Tx): Promise<EntitlementResetReport> => {
   // ── THE ONE SCOPE PREDICATE for the accruals stage, in drizzle form and in raw-SQL form (alias `ll`).
   //    Everything that selects, archives, deletes or checks survivors uses one of these two and nothing
   //    else, so the flag cannot widen one step and not another. Without the flag both read exactly
@@ -378,11 +384,11 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
   const scopeNoun = includeSys ? 'row(s) in scope (accruals or system-written adjustments)' : 'accrual row(s)';
 
   // ── 1. IDENTITY. The tenant is echoed back by NAME so a wrong uuid is caught by a human reading it. ──
-  const [t] = await owner.db.select({ id: tenant.id, name: tenant.name }).from(tenant).where(eq(tenant.id, tenantId));
+  const [t] = await db.select({ id: tenant.id, name: tenant.name }).from(tenant).where(eq(tenant.id, tenantId));
   if (!t) throw new Error(`tenant ${tenantId} does not exist — nothing was written.`);
 
   // ── 2. THE CENSUS, per leave type. This is the whole of the dry-run output. ─────────────────────────
-  const types = await owner.db
+  const types = await db
     .select({
       id: leaveType.id,
       code: leaveType.code,
@@ -399,17 +405,17 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
     .from(leaveType)
     .where(eq(leaveType.tenantId, tenantId))
     .orderBy(asc(leaveType.name), asc(leaveType.id));
-  const templates = await owner.db
+  const templates = await db
     .select()
     .from(entitlementTemplate)
     .where(eq(entitlementTemplate.tenantId, tenantId))
     .orderBy(asc(entitlementTemplate.leaveTypeId), asc(entitlementTemplate.lineageId), asc(entitlementTemplate.validFrom));
-  const rules = await owner.db
+  const rules = await db
     .select()
     .from(entitlementEligibilityRule)
     .where(eq(entitlementEligibilityRule.tenantId, tenantId))
     .orderBy(asc(entitlementEligibilityRule.lineageId), asc(entitlementEligibilityRule.validFrom));
-  const grades = await owner.db
+  const grades = await db
     .select({ id: jobGrade.id, name: jobGrade.name })
     .from(jobGrade)
     .where(and(eq(jobGrade.tenantId, tenantId), sql`${jobGrade.archivedAt} is null`));
@@ -418,7 +424,7 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
   const leaveTypeByLineage = new Map<string, string>();
   for (const tpl of templates) leaveTypeByLineage.set(tpl.lineageId, tpl.leaveTypeId);
 
-  const ledgerByKind = await owner.db
+  const ledgerByKind = await db
     .select({
       leaveTypeId: leaveLedger.leaveTypeId,
       entryType: leaveLedger.entryType,
@@ -429,7 +435,7 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
     .where(eq(leaveLedger.tenantId, tenantId))
     .groupBy(leaveLedger.leaveTypeId, leaveLedger.entryType)
     .orderBy(asc(leaveLedger.leaveTypeId), asc(leaveLedger.entryType));
-  const adjustmentsByBatch = await owner.db
+  const adjustmentsByBatch = await db
     .select({
       leaveTypeId: leaveLedger.leaveTypeId,
       batched: sql<boolean>`(${leaveLedger.adjustmentBatchId} is not null)`,
@@ -438,7 +444,7 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
     .from(leaveLedger)
     .where(and(eq(leaveLedger.tenantId, tenantId), eq(leaveLedger.entryType, 'adjustment')))
     .groupBy(leaveLedger.leaveTypeId, sql`(${leaveLedger.adjustmentBatchId} is not null)`);
-  const adjustmentsByReason = await owner.db
+  const adjustmentsByReason = await db
     .select({
       leaveTypeId: leaveLedger.leaveTypeId,
       reason: sql<string>`coalesce(${leaveLedger.reason}, '(no reason)')`,
@@ -452,7 +458,7 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
   // The three-way split, per type: batch id → batched; else reason like 'sys:%' → system; else human.
   const bucketSql = sql<string>`case when ${leaveLedger.adjustmentBatchId} is not null then 'batched'
     when ${leaveLedger.reason} like 'sys:%' then 'system' else 'human' end`;
-  const adjustmentsSplit = await owner.db
+  const adjustmentsSplit = await db
     .select({
       leaveTypeId: leaveLedger.leaveTypeId,
       bucket: bucketSql,
@@ -462,7 +468,7 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
     .from(leaveLedger)
     .where(and(eq(leaveLedger.tenantId, tenantId), eq(leaveLedger.entryType, 'adjustment')))
     .groupBy(leaveLedger.leaveTypeId, bucketSql);
-  const debitsOnApproved = await owner.db
+  const debitsOnApproved = await db
     .select({ leaveTypeId: leaveLedger.leaveTypeId, rows: sql<number>`count(*)::int` })
     .from(leaveLedger)
     .innerJoin(leaveRequest, eq(leaveRequest.id, leaveLedger.sourceRequestId))
@@ -473,7 +479,7 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
 
   // The stage-two scope, by id — what it archives and removes, and what the audit scope hangs off.
   // `scopeCond` is the accruals alone without the flag; with it, the system-written adjustments too.
-  const scopeRows = await owner.db
+  const scopeRows = await db
     .select({ id: leaveLedger.id, leaveTypeId: leaveLedger.leaveTypeId, entryType: leaveLedger.entryType })
     .from(leaveLedger)
     .where(and(eq(leaveLedger.tenantId, tenantId), scopeCond))
@@ -484,7 +490,7 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
   const audits =
     scopeIds.length === 0
       ? []
-      : await owner.db
+      : await db
           .select({ id: leaveEntitlementRecalcAudit.id, leaveTypeId: leaveEntitlementRecalcAudit.leaveTypeId })
           .from(leaveEntitlementRecalcAudit)
           .where(
@@ -496,12 +502,12 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
           .orderBy(asc(leaveEntitlementRecalcAudit.id));
   const auditIds = audits.map((a) => a.id);
 
-  const [ledgerTotalRow] = await owner.db
+  const [ledgerTotalRow] = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(leaveLedger)
     .where(eq(leaveLedger.tenantId, tenantId));
   const ledgerRowsBefore = Number(ledgerTotalRow?.n ?? 0);
-  const [approvedRow] = await owner.db
+  const [approvedRow] = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(leaveRequest)
     .where(and(eq(leaveRequest.tenantId, tenantId), eq(leaveRequest.status, 'approved')));
@@ -509,12 +515,12 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
 
   // ── 3. THE REFUSAL CHECKS — the r180 script's questions, asked again now, minus the two this plan
   //       answers differently (debits and approved requests exist BY DESIGN and are kept). ────────────
-  const [sourcedRow] = await owner.db
+  const [sourcedRow] = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(leaveLedger)
     .where(and(eq(leaveLedger.tenantId, tenantId), scopeCond, sql`${leaveLedger.sourceRequestId} is not null`));
   const requestSourcedAccruals = Number(sourcedRow?.n ?? 0);
-  const [toilRow] = (await owner.db.execute(
+  const [toilRow] = (await db.execute(
     // 3fb1a611 (migration 0469): toil_accrual now holds THREE foreign keys into leave_ledger — the credit, its
     // reversal and its expiry settlement. A reference through any of them blocks the delete.
     sql`select count(*)::int as n from toil_accrual ta
@@ -522,22 +528,22 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
         where ll.tenant_id = ${tenantId}::uuid and ${scopeSqlLl}`,
   )) as unknown as { n: number }[];
   const toilReferences = Number(toilRow?.n ?? 0);
-  const [snapRow] = (await owner.db.execute(
+  const [snapRow] = (await db.execute(
     sql`select count(*)::int as n from leave_encashment_snapshot where tenant_id = ${tenantId}::uuid`,
   )) as unknown as { n: number }[];
   const encashmentSnapshots = Number(snapRow?.n ?? 0);
   const [tagRow] =
     opts.stage === 'config'
-      ? await owner.db
+      ? await db
           .select({ n: sql<number>`count(*)::int` })
           .from(entitlementResetArchive)
           .where(and(eq(entitlementResetArchive.tenantId, tenantId), eq(entitlementResetArchive.captureTag, tag)))
-      : await owner.db
+      : await db
           .select({ n: sql<number>`count(*)::int` })
           .from(leaveLedgerResetArchive)
           .where(and(eq(leaveLedgerResetArchive.tenantId, tenantId), eq(leaveLedgerResetArchive.captureTag, tag)));
   const tagInUse = Number(tagRow?.n ?? 0);
-  const layerCheckBlocked = opts.stage === 'config' && !(await layerCheckAdmits(owner.db, ['template', 'rule'])) ? 1 : 0;
+  const layerCheckBlocked = opts.stage === 'config' && !(await layerCheckAdmits(db, ['template', 'rule'])) ? 1 : 0;
 
   if (opts.stage === 'accruals') {
     if (requestSourcedAccruals > 0) {
@@ -696,7 +702,8 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
       report.nothingInScope = true;
       return report;
     }
-    await owner.db.transaction(async (tx) => {
+    {
+      const tx = db as Tx;
       const typeById = new Map(types.map((x) => [x.id, x]));
       const catalogues = await loadCriteriaCatalogues(tx, tenantId);
       const sections = criteriaSectionsFor(catalogues, englishCriteriaLabels(EN_MESSAGES_PATH));
@@ -831,7 +838,7 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
         templateCount: h.templateCount,
         findings: [...h.findings],
       }));
-    });
+    }
     return report;
   }
 
@@ -843,7 +850,8 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
   const auditNote = includeSys
     ? 'Describes a ledger row (an accrual or a system-written adjustment) removed by the same reset (fe9c73bc).'
     : 'Describes an accrual row removed by the same reset (fe9c73bc).';
-  await owner.db.transaction(async (tx) => {
+  {
+    const tx = db as Tx;
     // ── LEDGER LAYER — migration 0416's rendering, copied, scoped to the accrual ids and nothing else. ──
     await tx.execute(sql`
       INSERT INTO leave_ledger_reset_archive (
@@ -1002,8 +1010,14 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
 
     report.archived = { ledger: archivedLedger, recalc_audit: archivedAudit };
     report.deleted = { ledger: deletedLedger.length, recalc_audit: deletedAudit.length };
-  });
+  }
   return report;
+  };
+  if (!opts.apply) return perform(owner.db);
+  return owner.db.transaction(async tx => {
+    await lockOwnerTenantCatalogsTx(tx, tenantId);
+    return perform(tx);
+  });
 }
 
 /** lib/leave-config-health.ts wants `{ days, maxBalanceDays? }[]`; a malformed JSONB reads as no bands. */

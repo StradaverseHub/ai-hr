@@ -18,8 +18,8 @@ import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedB
 
 let b: Base;
 beforeAll(migrateTestDb);
-beforeEach(async () => { await resetDb(); b = await seedBase(); vi.mocked(resolveActiveAiConfig).mockResolvedValue(null); vi.mocked(generateDraft).mockReset(); });
-afterAll(closeAll);
+beforeEach(async () => { vi.unstubAllEnvs(); await resetDb(); b = await seedBase(); vi.mocked(resolveActiveAiConfig).mockResolvedValue(null); vi.mocked(generateDraft).mockReset(); });
+afterAll(async () => { vi.unstubAllEnvs(); await closeAll(); });
 async function fixture() {
   const e = await hireEmployee(adminCtx(b), { person: { fullName: 'Correction employee', primaryEmail: `correction-${crypto.randomUUID()}@example.test` }, companyId: b.companyId,
     departmentId: b.deptA, employmentType: 'full_time', hiredOn: '2024-01-01' });
@@ -101,7 +101,13 @@ describe('approval-aware correction loop', () => {
   });
   it.each(['submission', 'permission', 'switch', 'source'] as const)('suppresses stale effects when %s changes during drafting', async change => {
     const { e, employee } = await fixture(); const admin = await nudgesOn();
-    vi.mocked(resolveActiveAiConfig).mockResolvedValue({ provider: 'anthropic', model: 'fixture', apiKey: 'test-only' });
+    // A real server-issued configuration (fictional platform key; generateDraft is mocked, nothing is sent).
+    // Readiness reminders bind their native spend root before admission, and that binding refuses a plain
+    // object, which would silently fall back to the template and never reach the drafting window.
+    vi.stubEnv('ANTHROPIC_API_KEY', 'test-only'); vi.stubEnv('AI_DRAFT_MODEL', '');
+    for (const key of ['OPENAI_API_KEY', 'GOOGLE_API_KEY', 'GEMINI_API_KEY']) vi.stubEnv(key, '');
+    const actual = await vi.importActual<typeof import('../core/ai-config')>('../core/ai-config');
+    vi.mocked(resolveActiveAiConfig).mockImplementation((tx, ctx, feature) => actual.resolveActiveAiConfig(tx, ctx, feature));
     vi.mocked(generateDraft).mockImplementation(async () => {
       if (change === 'submission') await bankRequest(employee, e.employmentId);
       if (change === 'permission') await setSetting(b.tenantId, 'ess.profile_change_fields', []);

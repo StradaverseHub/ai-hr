@@ -6,6 +6,9 @@ import { sweepOnboarding, refreshOnboardingPersonnel } from '../packs/lifecycle/
 import { sweepAssessmentReminders } from '../packs/performance/service';
 import { dispatchNotificationsFromSweep } from '../core/notifications';
 import { deliverNotificationEmails,deliverAttendanceCcEmails } from '../core/notification-email-delivery';
+import {deliverLetterEmailsFromSweep} from '../core/letter-email-delivery';
+import {sweepLetterAutomationFromSweep} from '../core/letter-automation';
+import {projectLetterNotificationsFromSweep} from '../core/letter-notifications';
 import {createNoticeSweepAccess} from '../core/notice-projection';
 async function main(){
  const url=process.env.MIGRATION_DATABASE_URL;if(!url)throw new Error('Migration database required');
@@ -17,12 +20,14 @@ async function main(){
     const entitlements=await owner.db.transaction(tx=>resolveEntitlementsTx(tx,tenant.id));
     const ctx:SessionContext={tenantId:tenant.id,roles:['hr_admin'],entitlements};
     if(isModuleEnabled(ctx,'lifecycle')){await refreshOnboardingPersonnel(ctx,owner.withTenant);await sweepOnboarding(ctx);}
+    const letterAutomation=await sweepLetterAutomationFromSweep(ctx,owner);if(letterAutomation.failed>0)failed++;console.log(JSON.stringify({tenantId:tenant.id,letterAutomation}));
     if(!isModuleEnabled(ctx,'notifications')&&!(entitlements.scopedModules.notifications??[]).some(companyId=>isModuleEnabled(ctx,'notifications',companyId)))continue;
     await sweepAssessmentReminders(ctx);
     const noticeSweep=await createNoticeSweepAccess(ctx,owner);
-    const projected=await dispatchNotificationsFromSweep(ctx,owner),delivered=await deliverNotificationEmails(ctx,undefined,{noticeSweep}),attendanceCc=await deliverAttendanceCcEmails(ctx);
+    const letters=await projectLetterNotificationsFromSweep(ctx,owner),letterMail=await deliverLetterEmailsFromSweep(ctx,owner),projected=await dispatchNotificationsFromSweep(ctx,owner),delivered=await deliverNotificationEmails(ctx,undefined,{noticeSweep}),attendanceCc=await deliverAttendanceCcEmails(ctx);
+    if(letters.failed>0||letterMail.failed>0)failed++;
     // Outcome details live in the delivery log. No addresses, frozen HR text, credentials or raw SMTP errors.
-    console.log(JSON.stringify({tenantId:tenant.id,projected:projected.created,...delivered,attendanceCc}));
+    console.log(JSON.stringify({tenantId:tenant.id,projected:projected.created,letters,letterMail,...delivered,attendanceCc}));
    }catch{failed++;console.error('Workflow email sweep failed for tenant '+tenant.id);}
   }
  }finally{await owner.client.end();}

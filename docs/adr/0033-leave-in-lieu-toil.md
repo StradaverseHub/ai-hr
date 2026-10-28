@@ -1,5 +1,7 @@
 # ADR-0033 — Leave-in-lieu (Time Off In Lieu / compensatory replacement leave)
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Status:** Proposed (design only — no code; gated `TOIL_ENABLED`, off by default)
 - **Date:** 2026-06-21
 - **Builds on:** ADR-0011 (attendance time engine), ADR-0032 (Phase C shift rosters — `rosterVariance` `rest_worked` + day-typed `otMinutes`), ADR-0019/0025 (OT pay pack + typed pay components), ADR-0006 (domain-event substrate)

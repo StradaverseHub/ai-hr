@@ -6,17 +6,16 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { canManagePerfComp, isAdmin, isOnehrOnlyPerformanceAdmin, requireModule } from '@/lib/authz';
-import { onehrAssignments } from '@/packs/performance/service';
+import { hasAssignedPerformanceWork, hasLedPeople, onehrAssignments } from '@/packs/performance/service';
 import { listCompanies } from '@/core/read';
 import { listCycles, listOnehrAdminCompanyIds, listOnehrAdminCycles, managerCheckIns, managerPendingReviews, type OnehrAdminCycleSummary } from '@/core/performance';
-import { Button, Card, EmployeeCode, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, inputCls } from '@/components/ui';
+import { Button, Card, EmployeeCode, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import {
   cancelCheckInAction,
   completeCheckInAction,
   scheduleCheckInAction,
 } from './actions';
-import { NewCycleForm } from './new-cycle-form';
-import { Pager } from '@/components/pager';
+import { PerformanceCyclesAdmin } from './onehr/admin-cycles';
 import { paginateRows, parsePageQuery } from '@/lib/pagination';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
@@ -40,7 +39,12 @@ export default async function PerformancePage({
   const onehrOnly = isOnehrOnlyPerformanceAdmin(s);
   const performanceAdmin = admin || onehrOnly;
   const manager = (s.roles ?? []).includes('manager');
-  if (!performanceAdmin && !manager) redirect('/');
+  // D-P1-03 — a person named on performance work (a reviewer, moderator, plan reviewer or calibration reviewer)
+  // gets tasks that land here, whatever their platform role. The bell's own projection decides who that is;
+  // reaching the page grants nothing (ADR-0132): every read below is fenced by its own service and RLS.
+  // WP-E — a leader (HOD, BU CEO, BG CEO or group chief seat) reaches "What you led" from here.
+  const leads = await hasLedPeople(s);
+  if (!performanceAdmin && !manager && !leads && !(await hasAssignedPerformanceWork(s, scopeIds))) redirect('/');
   const sp = await searchParams;
   const { error } = sp;
   const today = todayInKualaLumpur();
@@ -72,7 +76,8 @@ export default async function PerformancePage({
       {performanceAdmin&&<PerformanceAdminAssistant/>}
       {performanceAdmin&&<PerformanceOverview session={s}/>}
       {performanceAdmin&&<PerformanceGuideReportPanel companies={companies.map(c=>({id:c.id,name:c.name}))}/>}
-      <Link href="/performance/workspace" className="flex min-h-11 items-center justify-between rounded-lg border border-primary bg-primary/5 px-5 py-4 font-medium text-primary">{to('workspace.title')}<span className="text-sm font-normal">{to('workspace.description')} →</span></Link>
+      <Link href="/performance/workspace" className="flex min-h-11 flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-lg border border-primary bg-primary/5 px-5 py-4 font-medium text-primary">{to('workspace.title')}<span className="text-sm font-normal">{to('workspace.description')} →</span></Link>
+      {leads&&<Link href="/performance/led" className="flex min-h-11 flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-lg border border-border px-5 py-4 font-medium text-primary">{to('led.link')}<span className="text-sm font-normal">{to('led.linkHelp')} →</span></Link>}
       {(onehr.reviews.length>0||onehr.sessions.length>0)&&<Card className="space-y-3 p-5"><h2 className="font-semibold">{to('assignments')}</h2>{onehr.reviews.map(r=><p key={r.id}><Link className="text-primary hover:underline" href={`/performance/review/${r.id}`}>{r.name} · {r.cycle} · {r.periodEnd}</Link></p>)}{onehr.sessions.map(c=><p key={c.id}><Link className="text-primary hover:underline" href={`/performance/assessment/calibration/${c.id}`}>{c.name}</Link></p>)}</Card>}
 
       {pending.length > 0 && (
@@ -166,74 +171,7 @@ export default async function PerformancePage({
         </Card>
       )}
 
-      {performanceAdmin && (
-        <>
-          <Card className="overflow-hidden" data-tour="performance-cycles">
-            <SectionHeader title={t('reviewCycles')} count={cycles.length} />
-            {cycles.length === 0 ? (
-              <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-                {t('noCycles')}
-              </p>
-            ) : (
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-2 font-medium">{t('colCycle')}</th>
-                    <th className="px-4 py-2 font-medium">{t('colPeriod')}</th>
-                    <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
-                    <th className="px-4 py-2 text-right font-medium">{t('colProgress')}</th>
-                    {admin && <th className="px-4 py-2 text-right font-medium">{t('colPendingPay')}</th>}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {cyclePage.map((c) => (
-                    <tr key={c.id} className="hover:bg-muted/40">
-                      <td className="px-4 py-3">
-                        <Link href={`/performance/${c.id}`} className="font-medium text-foreground hover:text-primary">
-                          {c.name}
-                        </Link>
-                        <div className="text-xs text-muted-foreground">
-                          {c.companyId ? t('scopeCompany') : t('scopeGroup')}
-                          {c.releasedAt ? t('releasedSuffix') : ''}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                        {c.periodStart} → {c.periodEnd}
-                      </td>
-                      <td className="px-4 py-3">
-                        <StatusBadge status={c.status} />
-                      </td>
-                      <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
-                        {c.acknowledged}/{c.submitted}/{c.total}
-                        <div className="text-[10px] uppercase">{t('progressLegend')}</div>
-                      </td>
-                      {admin && (
-                        <td className="px-4 py-3 text-right tabular-nums">
-                          {(c.pendingComp ?? 0) > 0 ? (
-                            <span className="font-medium text-amber-600 dark:text-amber-400">{c.pendingComp}</span>
-                          ) : (
-                            '—'
-                          )}
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-            <Pager basePath="/performance" state={pgState} />
-          </Card>
-
-          {admin && (
-            <Card data-tour="performance-new-cycle">
-              <details>
-                <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium">{t('newCycle')}</summary>
-                <NewCycleForm companies={companies.filter(c=>scopeIds.includes(c.id))} today={today} />
-              </details>
-            </Card>
-          )}
-        </>
-      )}
+      {performanceAdmin && <PerformanceCyclesAdmin cycles={cycles} rows={cyclePage} pgState={pgState} basePath="/performance" admin={admin} companies={companies.filter(c=>scopeIds.includes(c.id))} today={today} />}
     </div>
   );
 }

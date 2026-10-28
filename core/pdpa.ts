@@ -1,3 +1,6 @@
+import {redactAssistantHistoryForEmploymentTx} from './assistant-history-retention';
+import {boundNativeOutcomeTransactionTx} from './module-native-outcome-bounds';
+import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 /**
  * PDPA erasure-equivalent service (ADR-0030 §2 erasePersonPii). Malaysia has NO GDPR-style erasure right,
  * so this is Retention-Principle destruction + breach minimisation, NOT a blanket delete:
@@ -10,7 +13,7 @@
  * Admin/DPO-gated via RLS. Atomic — everything runs in one transaction.
  */
 import { eq, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { employeeDependent, employeeStatutoryMy, employment, person, personEmergencyContact, personPhoto } from '../db/schema';
 import { shredSubjectInTx } from './pii-vault';
@@ -49,11 +52,18 @@ export type ErasureReport = {
   shreddedKeys: number;
 };
 
-export async function erasePersonPii(
-  ctx: SessionContext,
-  p: { subjectEmploymentId: string; scope: ErasureScope; reason: string; requestRef: string },
-): Promise<ErasureReport> {
-  return withTenant(ctx, async (tx) => {
+export type ErasePersonPiiInput={subjectEmploymentId:string;scope:ErasureScope;reason:string;requestRef:string};
+export async function erasePersonPii(ctx:SessionContext,p:ErasePersonPiiInput):Promise<ErasureReport>{
+ const input=structuredClone(p),captured={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+ return withTenant(captured,tx=>erasePersonPiiTx(tx,captured,input));
+}
+/** Actual canonical privacy owner for trusted caller-owned transactions. Same current authority,
+ * admission, protected facts, PII effects and exact audit; no alternate policy or model executor. */
+export async function erasePersonPiiTx(tx:Tx,ctx:SessionContext,p:ErasePersonPiiInput):Promise<ErasureReport>{
+ p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+    await boundNativeOutcomeTransactionTx(tx);
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // The canonical Access/privacy owner admits the original exact nullable effects first. Home's
     // wrapper adds only private greeting content and binds even an otherwise empty erasure to its audit.
     const [admission]=await tx.execute<{at:string}>(sql`select to_char(app.home_greeting_erasure_begin(${p.subjectEmploymentId}::uuid,${p.scope},${p.requestRef},${p.reason}) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as at`);
@@ -67,9 +77,29 @@ export async function erasePersonPii(
       .limit(1);
     if (!emp) throw new Error(`No employment ${p.subjectEmploymentId} for PII erasure`);
 
+    // Source-only pending Assistant reviews use separate action keys, not the statutory PII vault.
+    // This custody owner joins the existing admitted person erasure in THIS transaction and requires
+    // the canonical pii.erased audit at commit. No new employee access to pii_key is granted.
+    const [reviews] = await tx.execute<{ cleared: number }>(sql`select app.assistant_own_leave_reviews_redact(${p.subjectEmploymentId}::uuid) as cleared`);
+    if (!reviews || !Number.isSafeInteger(reviews.cleared) || reviews.cleared < 0)
+      throw new Error('Assistant review erasure unavailable.');
+
+    // Source-owned original effect-subject links cover HR/bulk actions where actor PERSON differs
+    // from the subject. This joins the existing admitted erasure and exact deferred pii.erased audit,
+    // removes learning metadata only, and never touches canonical/statutory records.
+    const [outcomes]=await tx.execute<{cleared:number}>(sql`select app.native_outcome_targets_redact(${p.subjectEmploymentId}::uuid) as cleared`);
+    const transcript=await redactAssistantHistoryForEmploymentTx(tx,ctx,p.subjectEmploymentId);
+    const [conversation]=await tx.execute<{cleared:number}>(sql`select app.assistant_conversation_metadata_redact(${p.subjectEmploymentId}::uuid) as cleared`);
+    if(!conversation||!Number.isSafeInteger(conversation.cleared)||conversation.cleared<0)throw new Error('Conversation metadata erasure unavailable.');
+    if(!outcomes||!Number.isSafeInteger(outcomes.cleared)||outcomes.cleared<0)throw new Error('Assistant outcome erasure unavailable.');
+
     // (2) retention guard
     const lifted = retentionLifted(emp.terminatedOn, erasureAt);
     const erased: string[] = [];
+    if (reviews.cleared > 0) erased.push('assistantPreparedReviews');
+    if(outcomes.cleared>0)erased.push('assistantOutcomeLearning');
+    if(conversation.cleared>0)erased.push('assistantConversationLearning');
+    if(transcript>0)erased.push('assistantChatContent');
     const withheld: { field: string; reason: string }[] = [];
     for (const f of PII_FIELDS) {
       if (!inScope(f, p.scope)) continue;
@@ -92,7 +122,11 @@ export async function erasePersonPii(
     // per-field event (that would just duplicate the erasure log).
     const personSet: Record<string, null> = {};
     const statSet: Record<string, null> = {};
-    for (const k of erased) (PII_FIELDS.find((f) => f.key === k)!.table === 'person' ? personSet : statSet)[k] = null;
+    // The report also contains non-column effects, such as retired Assistant reviews. Only the
+    // canonical field registry may supply columns; effect labels must never become UPDATE keys.
+    for (const f of PII_FIELDS) {
+      if (erased.includes(f.key)) (f.table === 'person' ? personSet : statSet)[f.key] = null;
+    }
     if (Object.keys(personSet).length) {
       await tx.update(person).set(personSet as Partial<typeof person.$inferInsert>).where(eq(person.id, emp.personId));
     }
@@ -180,5 +214,5 @@ export async function erasePersonPii(
     });
 
     return { erased, withheld, shreddedKeys: shredded };
-  });
+
 }

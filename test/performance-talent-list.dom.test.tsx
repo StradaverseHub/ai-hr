@@ -55,11 +55,20 @@ it('picks a nine-box move with an explicit band choice, preserves a refused reas
  ports.save.mockResolvedValueOnce({error:'This record changed. Reload before saving.'}).mockResolvedValueOnce({ok:true});const moved=vi.fn();
  render(<NextIntlClientProvider locale="en" messages={en}><TalentBoxMove person={people[0]} sessionId="scope" revision={7} onMoved={moved}/></NextIntlClientProvider>);
  fireEvent.click(screen.getByRole('button',{name:'Move Alice Tan'}));const dialog=screen.getByRole('dialog',{name:'Move Alice Tan'});
- expect(within(dialog).getByRole('button',{name:'Current box: Super Star, High potential, High performance'}).hasAttribute('disabled')).toBe(true);expect(within(dialog).getByRole('button',{name:'Save move'}).hasAttribute('disabled')).toBe(true);
+ expect(within(dialog).getByRole('button',{name:'Current box: Super Star, High potential, High performance'}).hasAttribute('disabled')).toBe(true);expect(within(dialog).getByRole('button',{name:'Save move'}).hasAttribute('disabled')).toBe(true);expect((within(dialog).getByRole('textbox',{name:en.onehr.talentMove.reason}) as HTMLTextAreaElement).required).toBe(false);
  fireEvent.click(within(dialog).getByRole('button',{name:'Move to PIP/Improvement, Mid potential, Low performance'}));expect(within(dialog).getByRole('button',{name:'BE'}).getAttribute('aria-pressed')).toBe('true');fireEvent.click(within(dialog).getByRole('button',{name:'UA'}));fireEvent.change(within(dialog).getByRole('textbox',{name:en.onehr.talentMove.reason}),{target:{value:'Keep the delivery evidence attached to this move.'}});
  fireEvent.click(within(dialog).getByRole('button',{name:'Save move'}));expect(await within(dialog).findByRole('alert')).toHaveProperty('textContent','This record changed. Reload before saving.');expect((within(dialog).getByRole('textbox') as HTMLTextAreaElement).value).toBe('Keep the delivery evidence attached to this move.');expect(ports.refresh).not.toHaveBeenCalled();expect(moved).not.toHaveBeenCalled();
  const data=ports.save.mock.calls[0][0] as FormData;expect(Object.fromEntries(data)).toEqual({sessionId:'scope',revision:'7',reviewId:'a',performance:'UA',potential:'Mid',performanceNote:'Keep the delivery evidence attached to this move.',potentialNote:'Keep the delivery evidence attached to this move.'});
  fireEvent.click(await within(dialog).findByRole('button',{name:'Save move'}));await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());expect(moved).toHaveBeenCalledOnce();expect(ports.refresh).toHaveBeenCalledOnce();
+});
+it('saves a nine-box move with the optional reason left empty (APR-022)',async()=>{
+ ports.save.mockResolvedValueOnce({ok:true});
+ render(<NextIntlClientProvider locale="en" messages={en}><TalentBoxMove person={people[0]} sessionId="scope" revision={7}/></NextIntlClientProvider>);
+ fireEvent.click(screen.getByRole('button',{name:'Move Alice Tan'}));const dialog=screen.getByRole('dialog',{name:'Move Alice Tan'});
+ fireEvent.click(within(dialog).getByRole('button',{name:'Move to Star, High potential, Mid performance'}));
+ const save=within(dialog).getByRole('button',{name:'Save move'});expect(save.hasAttribute('disabled')).toBe(false);fireEvent.click(save);
+ await waitFor(()=>expect(ports.save).toHaveBeenCalledOnce());
+ expect(Object.fromEntries(ports.save.mock.calls[0][0] as FormData)).toMatchObject({sessionId:'scope',revision:'7',reviewId:'a',potential:'High',performanceNote:'',potentialNote:''});
 });
 it('cancels a proposed move without saving and refuses a locked row',()=>{
  const ui=render(<NextIntlClientProvider locale="en" messages={en}><TalentBoxMove person={people[0]} sessionId="scope" revision={7}/></NextIntlClientProvider>);fireEvent.click(screen.getByRole('button',{name:'Move Alice Tan'}));fireEvent.click(screen.getByRole('button',{name:'Move to Star, High potential, Mid performance'}));fireEvent.click(screen.getByRole('button',{name:'Cancel'}));expect(screen.queryByRole('dialog')).toBeNull();expect(ports.save).not.toHaveBeenCalled();
@@ -77,4 +86,13 @@ it('dismisses a floating trail when its list is no longer the active view',()=>{
 });
 it('shows one band trail at a time even when another history button still has keyboard focus',()=>{
  render(<Harness/>);fireEvent.focus(screen.getByRole('button',{name:'Performance history for Alice Tan'}));expect(screen.getByRole('tooltip')).toBeTruthy();fireEvent.mouseEnter(screen.getByRole('button',{name:'Potential history for Bob Lim'}));expect(screen.getAllByRole('tooltip')).toHaveLength(1);expect(within(screen.getByRole('tooltip')).getByText('Potential history for Bob Lim')).toBeTruthy();expect(screen.queryByText('Performance history for Alice Tan')).toBeNull();
+});
+it('names the improvement box in full in the Box column, its filter menu and its sort labels (D-P1-26)',()=>{
+ render(<Harness/>);const table=screen.getByRole('region',{name:en.onehr.talentList.title});
+ expect(within(table).getAllByText('PIP/Improvement')).toHaveLength(1);expect(within(table).queryByText('PIP')).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'Box: sort and filter'}));const menu=screen.getByRole('dialog',{name:'Box: sort and filter'});
+ expect(within(menu).getByRole('checkbox',{name:'PIP/Improvement'})).toBeTruthy();expect(within(menu).queryByRole('checkbox',{name:'PIP'})).toBeNull();
+ expect(within(menu).getByRole('button',{name:'Sort PIP/Improvement → Super Star'})).toBeTruthy();
+ fireEvent.change(within(menu).getByRole('textbox',{name:'Search Box values'}),{target:{value:'Improvement'}});
+ expect(screen.getByText('1 of 3 people')).toBeTruthy();expect(within(table).getAllByRole('rowheader').map(h=>h.textContent)).toEqual(['Cara Lee']);
 });

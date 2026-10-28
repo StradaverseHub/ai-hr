@@ -1,13 +1,86 @@
 # ADR-0131: Acting HR agent, harness and process assessment
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Date: 2026-10-19
 Status: Accepted direction. Phase 1 (process assessment) implemented in this round; Phases 2–4 are
 future increments and are not claimed capabilities.
 
 Extends [ADR-0109](0109-central-hr-orchestrator.md) (central orchestrator), [ADR-0116](0116-central-ai-inventory-and-allowances.md)
-(AI allowances) and [ADR-0084](0084-propose-adjudicate-learn.md) (proposal ledger). Must integrate with
-ADR-0127 (session-bound assistant conversations and confirmed proposals), which is being built on a
-separate branch and is not yet on main.
+(AI allowances) and [ADR-0084](0084-propose-adjudicate-learn.md) (proposal ledger).
+
+Dependency reconciliation, 2026-10-23: the original dependency on ADR-0127's session-bound Assistant
+conversations and confirmed proposals referred to `codex/board16-home-ai`. The owner subsequently
+superseded that branch as reference only (see the `atelier-shell-r1` and `assistant-dispatch-offered` entries
+in [round history](../HANDOFF-HISTORY.md)). It must not be merged as a second conversation or confirmation
+owner. Main still has the read-only Assistant and its offered-tool dispatch fix. The replacement leave
+action-layer plan is not implemented and still awaits owner approval. Reconcile that plan with Phase 2
+before introducing one shared action/confirmation owner; do not create competing ledgers.
+
+The `ai-process-assessment` history records Phase 2 tasks 2–6 as held until the owner says go. On
+2026-10-23 the owner reaffirmed: "Keep Phase 2 held; strengthen the current harness." The direction
+below does not authorize held implementation. Replay coverage for the existing deterministic
+orchestrator is authorized separately from the future action registry, execution ledger, named
+principal and versioned model bundle.
+
+On 2026-10-23 the owner authorized **design only** for one human-confirmed leave action and explicitly
+kept implementation on hold. The proposed first-action contract below is preparation for that later
+decision. It does not lift the Phase 2 hold, allocate migrations or authorize new action code.
+
+Owner amendment, 2026-10-24: the hold is lifted **only for source-only development of
+human-confirmed own-leave submission**, in a separate worktree. The human explicitly retained the
+resource order: runtime checks wait for both Board 1 and Board 3 verified releases and explicit
+handbacks, and the current harness must release before Phase 2. This authorizes only the first-action
+slice below and its necessary shared preparation/confirmation lifecycle. It does not authorize an
+unattended principal, other actions, new autonomy, authentication changes or allowance changes.
+No migration number is allocated or database changed by this amendment. Source authored under this
+exception remains unvalidated until the granted runtime window and is not a shipped capability.
+
+## Owner amendment, 2026-10-25: delivery order and import evaluation
+
+The owner revised the sequence: release the current harness and the Assistant's human-confirmed
+own-leave action; add another API provider, with OpenRouter named as a candidate; then expand into
+orchestration and evaluate its capability and measurable improvement during production data imports.
+This supersedes the earlier roadmap order. It is a delivery direction, not evidence that any of these
+capabilities has shipped. Preserve the current harness's release precedence while completing the
+own-leave slice; provider expansion follows both releases.
+This feature order does not change the coordinated resource handback: Mobile retains its window
+after the current harness release, and own-leave runtime/release follows later coordination. The
+current harness release excludes own-leave, new providers and import orchestration.
+
+1. **Current harness and confirmed own leave.** Finish the existing exact-candidate integration and
+   acceptance, then complete the single own-leave action's confirmation, canonical effect/receipt,
+   concurrency, authorization, privacy and recovery boundaries. Submission is not approval. The
+   current release and runtime coordination remains in force.
+2. **Additional provider support.** Integrate OpenRouter as the first candidate through the existing
+   tenant provider configuration, encrypted key custody, model gateway, inventory, allowances and
+   pause controls. Verify its current API, model/tool behavior, routing and data-handling terms before
+   choosing the adapter contract. Record the selected provider/model and supported behavior; preserve
+   fail-closed configuration and bounded calls. A provider switch must not change HR permissions,
+   confirmation requirements or the owning business services. Compare capability, latency and usage
+   cost using the same reviewed scenarios. Provider connectivity, credentials and production HR data
+   transfer are separate acceptance steps, not implied by this roadmap amendment.
+3. **Orchestration evaluated through imports.** Select one concrete import workflow after reviewing
+   the production import needs. Start with source-backed mapping suggestions, ambiguity/duplicate
+   detection, validation explanations and correction proposals. Keep page/cell/row provenance where
+   the supported input permits it. The existing module preview, fresh server validation, human
+   review and canonical commit remain the owners of imported facts. Expand into durable multi-step
+   coordination only through the typed registry and the existing autonomy/approval rules. Never
+   bypass import validation or invent missing HR values to improve a benchmark.
+4. **Measure during the production import.** Establish a comparable manual or existing-flow baseline
+   and log the AI-assisted flow on reviewed, comparable batches. Measure elapsed preparation and
+   completion time; actual human handling time when recorded; manual corrections/interventions;
+   mapping acceptance and reviewed errors; validation failures, duplicates, rework and successfully
+   committed rows; and model usage, cost and latency where available. Separate model extraction or
+   suggestions from validated and committed outcomes. Retain batch/source references and evaluation
+   definitions so the comparison can be checked. Report observed improvements and regressions with
+   their sample limits; do not equate elapsed time with staff effort or invent headcount savings.
+
+The exact first production dataset, import module, supported file formats, provider/model selection
+and improvement targets are still **UNKNOWN**. Determine them from the actual import work before
+finalizing acceptance. The future live installation remains distinct from today's alpha/staging
+host under the repository/environment owner decision; this amendment does not deploy to either or
+authorize sending an existing production dataset to a new provider immediately.
 
 ## Request
 
@@ -123,8 +196,8 @@ default minutes, no removable-share percentage and no headcount reduction are in
 ## Future phases (not claimed)
 
 2. Registry, execution ledger, agent principal and harness v1 with about six actions. The assistant
-   proposes actions as confirmation cards, integrated with ADR-0127's confirmed-proposal flow rather
-   than a second mechanism.
+   proposes actions as confirmation cards, integrated with the reconciled Assistant action layer rather
+   than a second mechanism (see the dependency reconciliation above).
 3. Goal-driven orchestration agent (scheduled or requested from the Control Tower) planning only
    within the registry; deterministic plan validation; durable steps with leases, approval-bound
    resume and a dead-letter list.
@@ -133,3 +206,2887 @@ default minutes, no removable-share percentage and no headcount reduction are in
 
 Each phase is a separate round with its own acceptance evidence. New model callers register in the AI
 inventory (ADR-0116) and are governed by its allowances.
+
+## Design-only amendment, 2026-10-23: submit my leave
+
+Status: **Source-only development authorized on 2026-10-24; runtime and release deferred as above.** Source review used main `acfede39b`; this is not
+runtime acceptance or a production capability claim. The current harness increment remains separate
+and awaits both boards' explicit resource handovers before validation.
+
+### Outcome and first boundary
+
+An employee asks for leave, reviews an engine-produced effect, and explicitly confirms submission of
+their own request. Success means the canonical request was recorded and can be reopened. It does not
+mean the leave was approved, the absence occurred or a payroll outcome was achieved.
+
+Recommended first envelope: one eligible ordinary Annual Leave type, one explicitly selected own
+active employment, one prospective calendar date, and `full_day` duration. The engine determines the
+deductible weight; the model must not assume that a full-day application always deducts 1.0 days.
+Use the eligible type's ID and canonical semantics, never a guessed name or translated label. Resolve
+multiple employments or matching types with the person before preparing anything.
+
+Hand off to the existing Leave form for spans, half/hourly leave, emergency/maternity/replacement
+leave, required documents or extra statutory facts, unpaid portions, conversion/splitting overrides,
+and privileged policy exceptions. Required remarks must be supplied by the person or handed off;
+they are never invented. Do not silently broaden this envelope to make a request succeed. The Leave
+page already supports opening its form with `apply=1` and an optional `start`; no broader prefill or
+free-text-in-URL contract is established by this design.
+
+Options considered: using only the existing form is simplest and remains the fallback, but does not
+deliver the confirmed Assistant action. Writing inside the model tool loop is rejected because a
+tool call is not human confirmation and the current loop is concurrent. The recommended separate,
+human-only command adds a small durable lifecycle and transaction-scoped validation work, while
+preserving the leave owner and avoiding conversation threads or a general planner in this slice.
+
+### Existing owners and reconciliation
+
+FACT — the sources to reuse:
+
+| Fact / operation | Existing owner and relevant limit |
+| --- | --- |
+| Own employments and eligible types | `core/read.ts`; all applicable own employments must be considered |
+| Day/balance preview | `previewLeaveDeduction` through `packs/leave/service`; advisory, not every submission gate |
+| Submit and approval routing | `requestLeave` through `packs/leave/service`; accepts an explicit enclosing transaction |
+| Submission result | `RequestLeaveResult` references the request and possible children; it does not itself return approval status |
+| Atomic replay precedent | `core/mobile-leave-command.ts`: own-subject check, lock, intent digest, domain command and receipt in one transaction |
+| Assistant authorization | `core/assistant-grant.ts`; the source-only change accepts an optional caller transaction; module resolution remains separate |
+| Model work and allowances | `core/assistant.ts`, the governed gateway and ADR-0116 |
+| HR change history | `domain_event` and canonical leave records; no model-written HR facts |
+
+The earlier `ai-round1-action-layer-PLAN.md` revision 2 was read from the prior planning session's
+side-session notes. It remains unapproved and broader than this amendment: it included leave
+decisions, conversation threads and folding the anomaly action into a registry. Reuse its independent
+human-confirmation boundary and savepoint idea. Its old dispatch defect is already fixed on main;
+do not rebuild it. Do not merge `codex/board16-home-ai`, adopt its obsolete migrations, copy its broad
+authority-stamp function or create a parallel prepared-action mechanism.
+
+For the eventual implementation, choose one shared owner for prepared Assistant actions. Its lifecycle
+metadata owns preparation, confirmation and execution references; leave records own leave facts.
+`agent_proposal` remains derived evaluation evidence, never the execution receipt. The existing
+`close_fixed_upstream` anomaly workflow retains its own business owner; this slice does not migrate it.
+Mobile's receipt pattern is precedent, not permission to emit `mobile.leave.submitted` for Assistant
+actions or to add a second retry layer around a committed submission.
+
+### Graph and authority contract
+
+`authenticated user → own active employment → eligible leave type → prepared intent → explicit
+confirmation → requestLeave → canonical request + submission events → existing approval chain`.
+
+The proposed code-owned registry has only `leave.apply` at contract version 1 in this slice, tier
+**Confirm**, blast radius one submission. It names a strict schema, supported envelope, permission
+checks, deterministic preview, freshness dependencies and the canonical executor. No arbitrary service
+name, SQL, actor, tenant, approval decision or consent token is accepted from the model.
+Its proposed versioned bundle identifies the preparation prompt/schema, one-entry action set,
+confirmation policy and configured model revision. The receipt links the initiating exchange and
+governed model-run references without copying their content. This action bundle is distinct from the
+current deterministic `readiness-v2` harness; no versioned action bundle exists merely because this
+design names one.
+
+Preparation and confirmation require the live authenticated login, person linkage, own active subject,
+applicable company scope, Assistant grant, required modules and unpaused AI/action controls. A manager
+or HR role does not turn this into on-behalf submission. Keep the real user context; never synthesize
+`hr_admin` authority or discard grants to emulate another role. A company transfer, person relink,
+termination, revoked grant or lost module invalidates the old preparation.
+
+This confirmed self-service action records the human as the domain actor with separate Assistant
+provenance. A named unattended agent principal and unattended execution are outside this first slice;
+the broader Phase 2 principal decision is not treated as implemented.
+
+### Preparation, card and human confirmation
+
+1. The current ten Assistant read tools remain read-only and their offered-only dispatch stays intact.
+   A future bounded proposal adapter may nominate one structured intent after the model turn. Server
+   validation and persistence happen outside the concurrent read-tool loop. There is no model-callable
+   confirm, execute, discard or approval tool. No new conversation-thread store is required for this slice.
+2. Deterministic code resolves the own subject/type, checks the supported envelope and obtains the
+   source preview. Ambiguous or unsupported input yields a question or the existing form, not a card
+   with invented fields. A preview is not a promise that all submission gates will pass.
+3. Store one immutable, user-bound prepared intent with a server-issued action ID, version, creation
+   and expiry, exact input digest, effect digest and dependency references. Proposed expiry is ten
+   minutes; this is a design recommendation, not an existing customer rule. Expiry never replaces
+   live revalidation. A changed intent is a new preparation and requires a new confirmation.
+4. Render the card from validated fields and localized templates: company/employment, leave type,
+   weekday and full date, requested duration, engine-calculated deduction, available/after balance
+   labelled as a current estimate, the person's own reason/remark, warnings, and the approval handoff.
+   Unknown routing is labelled unknown. The button says **Submit leave request**; asking a question,
+   pressing Enter in chat, selecting a card or a model's assertion is never confirmation.
+5. The human-only authenticated POST accepts the opaque action ID and the reviewed digest/version,
+   not replacement business arguments. Apply the application's origin/CSRF protections. Bind the
+   action to the same login, tenant and person; replay by another login is refused even for the same
+   person. Discard and expiry create no leave request.
+
+The source-only candidate reader creates no action ID or durable preparation. It requires a separate
+human-selected employment/type pair matching the model nomination, uses the salary-free own-subject
+inventory and dated company proof, and delegates the eligible catalogue and deduction to their existing
+owners. Unknown company history, future company transfers, documents, non-Annual types, uncovered
+deductions and conversion/split previews hand off to the existing form. This narrows the Assistant
+envelope; it does not change what the canonical form or leave service permits.
+
+Available estimates must subtract pending reservations through `availableLeaveBalance`; the legacy
+preview's `balanceAvailable` is the raw ledger figure. The opt-in preview fields preserve that distinction
+without changing existing consumers. The own-leave card respects the canonical ESS `available` setting
+and omits both estimates when hidden. Full-day duration retains the engine's weight, including 0.5.
+These source paths remain unvalidated and internal. They do not check every submission gate or AI
+control and cannot be wired as a prepared/confirmable action until those owners are complete.
+The candidate reader captures validated copies of nomination, human selection and human text before
+its first database await, while withholding their refusal responses until after authorization. A
+retained input object cannot replace this invocation's human text or selection during actor reads.
+The corresponding real-transaction mutation regression is authored but unrun.
+
+Source-only preview work also adds opt-in `includeHolidayWarnings` to `previewLeaveDeduction`.
+Read-only projection and submission events share the leave owner's dated company/calendar traversal
+and the holidays owner's completeness calculation; the default preview output stays unchanged.
+The projection creates no request or warning event. Its new tests inspect the still-open transaction
+and compare preview/submission warnings, but remain unrun. The Assistant candidate now carries the
+exact canonical warning list, and the review digest binds each country/state/year/loaded/required
+field, including absence. The bounded one-date candidate accepts at most one warning; unexpected
+fan-out hands off to the Leave form. The schema describes evidence, not a second completeness rule.
+The future UI must actually render these fields before its confirmation is usable.
+
+One strict candidate schema is shared by the source reader and human-review digest. The review digest
+uses a separate domain from the immutable input digest and binds the exact labels, deduction and
+visible estimates to that input. Hidden estimates remain null together. This does not freeze or
+validate hidden source dependencies; the command still needs the authoritative effect check before
+writing. Neither hash encrypts protected content or proves consent.
+
+### Atomic execution and uncertain outcomes
+
+The intended confirm transaction locks the prepared action, checks its identity/final state/expiry,
+refreshes authority, and validates the exact current effect before executing. It calls
+`requestLeave(ctx, input, tx)` through the pack facade. A successful domain write, canonical event
+references and completed action receipt commit together. One action ID can produce at most one
+committed submission, including simultaneous double clicks and a lost HTTP response.
+
+The source-only bounded path now requests the canonical submitted event's ID directly from
+`appendEvent`'s own INSERT, and returns it with the request reference. A later holiday warning or
+other companion event cannot substitute for that reference. Existing event callers retain their
+insert-only/void path; ordinary leave callers do not receive the new field. The opt-in INSERT uses
+RETURNING under the caller's existing event policies; it does not add an access grant. Authored
+tests check an employee's own event, a later warning companion, the ordinary result and enclosing
+transaction rollback, but remain unrun. These are uncommitted source references, not an action
+receipt or acknowledgment of commit. The command, lifecycle storage and atomic completed receipt
+still do not exist.
+
+The source-only exception adds optional enclosing-transaction parameters to the existing preview and
+Assistant grant helpers. Their default paths still open their own transactions; passing the command's
+caller-scoped transaction is required for a shared recheck. These source changes and their rollback
+regression tests are not yet runtime-validated. The grant helper still consumes the supplied session's
+entitlement snapshot: that snapshot must be freshly resolved by the command's authority owner.
+Neither change establishes an atomic confirm command. The leave owner must expose/check the
+confirmed effect at the authoritative calculation
+point, with the relevant existing locks or dependency checks, before its first write. A second preview
+on a different snapshot is insufficient. Do not implement a preview by calling the write service and
+rolling it back, or duplicate the leave engine's policy math in the action registry.
+The source candidate now composes an internal `readOwnLeaveActorTx`: it joins the existing access
+configuration lock, checks the transaction's login/tenant/role carriers against the supplied context,
+verifies the live login/person link and `app.principal_snapshot_current()`, then resolves fresh entitlements and
+uses the canonical Assistant-grant gate in that transaction. It never replaces claimed roles with
+broader current grants. It refuses a transaction isolation other than Read Committed rather than
+calling an older report snapshot fresh. The shared access migration already joins identity/role/lifecycle
+writers to that lock. This is a bounded authority prerequisite; it does not fence Assistant grants, modules,
+leave policies or balances, and does not supply the missing AI pause check. Its refusal tests for a
+disabled module, relinked person, removed role, older snapshot and mismatched transaction/role claims
+remain unrun. No confirmation command or authority capability is created by this refreshed context.
+The actor reader copies identity and nested role carriers before its first await, so caller mutation
+cannot switch the context between its transaction proof and subsequent reads. Its unrun regression
+mutates the retained input while the real lock query is pending and checks the original binding.
+Source-only work now adds an optional server-owned `ReviewedOwnLeaveEffect` precondition to
+`requestLeave`, requiring an enclosing transaction. It captures the expected subject/company/type,
+one date, deduction and private pending-aware balance; it can only add a refusal. The ordinary calling
+path retains its existing policy. The guarded path excludes documents/consents/special facts and
+nonordinary types, checks own-subject/company binding, and compares this execution's deduction and
+canonical availability immediately before insertion. Existing HR bypass flags (including advance
+notice) are refused without fabricating another role context. Tests catch the typed refusal inside
+the still-open transaction and then check for unchanged requests/events, so rollback cannot conceal
+a guard placed after a write. These tests remain unrun.
+Source review found that the candidate's exact human remark could differ from the canonical
+request's stored text: submission trims the remark and stores an empty result as null. The bounded
+candidate now consumes that same normalization owner and hands such input to the existing form;
+the guarded write independently refuses a normalization change before insertion. It never silently
+rewrites the immutable intent or changes the ordinary form's storage policy. Missing required
+remarks still request human input. Internal whitespace and reason text remain exact when the
+canonical writer preserves them. Candidate/refusal/persistence regressions for these cases are
+authored but unrun; the prior whitespace candidate test was insufficient to prove stored text.
+The expected effect now also requires an explicit canonical warning list, copied before awaits and
+compared field-for-field with a read-only recheck before insertion. An unrun regression changes the
+loaded gazette count on another date while preserving deduction/balance, then requires refusal in
+the still-open transaction. This is a sequential recheck; calendar writers still need the eventual
+dependency concurrency protection, including the post-insertion warning-event path.
+The guarded path also reuses `isEmploymentEnded` for both the current day and requested date and
+requires the employment to have started. A last-day login retaining source visibility does not make
+a later absence an active-employment request. The unrun test asserts visibility before refusal.
+
+This precondition is not a concurrency solution. The command still needs a source/dependency strategy
+covering changes by existing form, approval, ledger and configuration writers; an action-ID mutex alone
+does not coordinate those writers. Hidden balance expectations belong in protected server-owned
+content, not in a posted review or public lifecycle metadata. No confirmation endpoint may rely on this
+precondition as an authorization, freshness or receipt mechanism by itself.
+Two additional authored regressions change actual source data after review: an ordinary canonical
+borrower submission reserves Annual availability while its raw ledger stays unchanged, and the
+public Attendance policy owner changes Full dates to Half while availability and holiday warnings
+stay unchanged. Each requires the stale reviewed effect to refuse inside a still-open transaction
+without adding requests/events. Both remain unrun and cover sequential revalidation only, not
+concurrent writer fencing or a completed confirm command.
+Source review confirms that `withTenant` passes no explicit write-isolation option and does not call
+`lockAccessConfigurationTx`. Its optional read-only report snapshot cannot be treated as a write
+dependency lock. Joining an explicit transaction is therefore only one prerequisite of confirmation.
+
+FACT (source only) — the balance dependency extends beyond the selected Annual type.
+`availableLeaveBalance` resolves its source ledger and subtracts pending requests for that source
+**and every type borrowing from it**, through `balanceSpenderTypeIds` and `pendingLeaveDays`.
+Excluding borrowing types from this Assistant's selectable menu does not exclude their reservations
+from the authoritative balance. A lock on only this action ID or selected request cannot protect that
+predicate, including insertion of a new pending borrower request.
+
+The existing approval owner takes `leave-balance:<tenant>:<employment>:<source type>` in
+`finalizeLeaveApproval`. Source inspection found additional direct ledger inserts in leave adjustments,
+opening-balance/history/ordinary imports, hiring, TOIL and the leave grant/year/reversal owners.
+The inspected adjustment and import services do not explicitly join that approval lock. The existing
+`guard_frozen_leave_balance` trigger checks an encashment hold; it does not acquire the balance lock.
+These findings do not establish an exhaustive transitive writer inventory or current database behavior.
+They rule out treating the approval mutex as an already universal reservation barrier.
+
+A bounded static inventory at the same runtime source base found 62 direct Drizzle writes to the
+named `leaveLedger`, `leaveRequest`, `leaveRequestDate` and `leaveType` bindings across 17 files in
+`core`, `packs`, `db` and `scripts`. This includes cancellation/edit and encashment paths as well as
+submission, approval, imports, adjustments, hiring, grants and source-type configuration. It is a
+starting set, not a complete dependency graph: aliases, raw SQL, stored procedures, historical
+migrations, external writers and transitive lock acquisition are outside that syntactic query.
+Finding a lock literal anywhere in an enclosing function does not prove that a particular branch
+acquires it; not finding one does not rule out a callee doing so.
+
+FACT (source only) — [`commitLeaveHistoryImport`](../../core/leave-history-import.ts) and
+[`commitLeaveBfImport`](../../core/leave-bf-import.ts) deliberately open a separate `withTenant`
+transaction per accepted row, then append their batch summary in another transaction. A barrier on
+an outer import wrapper or its final summary would not cover the actual row writes. Any participant
+integration must join the real per-row write transaction before that row's protected reads/effects;
+it must preserve the existing row-level failure isolation. Runtime interleaving and rollback behavior
+remain unverified.
+
+DECISION — settle and enforce the dependency barrier at the existing source owners before exposing
+confirmation, covering pending reservation inserts/status changes, ledger movements and source-type
+mapping changes. Do not add an Assistant-only mutex and call it protection from legacy writers.
+Prove the chosen strategy against actual legacy form submissions, approval/cancellation, negative
+adjustments/imports and a borrowing type reserving Annual balance, with the protected expectation
+either still valid at the serialized effect or refused for fresh review. The participant/lock order,
+predicate coverage, employee RLS behavior and deadlock handling still require design and runtime
+evidence; no new barrier, migration or isolation guarantee is implemented by this audit.
+
+Before implementing savepoint recovery, trace every command callee for effects outside the supplied
+transaction. A database rollback cannot undo a network delivery or a separately committed writer;
+such a path must be moved behind the existing transactional event owner or excluded from this action.
+
+FACT (source review only, own-leave source `61d5cce61a913faaf86e341cc034b8c1c88f1693`) — the inspected
+post-insertion path in [`requestLeave`](../../core/leave.ts) does not deliver a notification or open a
+second transaction. `insertLeaveRequest` receives the supplied `tx`, inserts the pending request,
+obtains the exact submitted event reference through `appendEvent(tx, ..., { returnId: true })`, and
+calls `generateApprovalSteps` with that same transaction. [`appendEvent`](../../db/events.ts) performs
+only the event insertion; returning its identifier is not a delivery acknowledgement.
+The final working-day warning path also retains that transaction: `leaveHolidayCompletenessTx`
+passes it to [`warnIfHolidaysIncomplete`](../../core/holidays.ts), which reads the holiday counts and
+appends `holiday.completeness.warned` through the same event owner. The dynamically imported
+[`frozenSnapshotFor`](../../core/leave-encashment.ts) is a supplied-transaction SELECT, not a separately
+committed encashment operation. The `withTenant` fallback at `requestLeave`'s return is not selected
+when the future command supplies `existingTx`.
+
+This narrows the effect audit; it does not establish an exhaustive transitive audit, trigger behavior,
+or a working savepoint boundary. The bounded reviewed path refuses attachments and conversion
+consent, requires Annual leave, and fixes both dates to one day; attachment, Emergency decomposition,
+replacement-credit and multi-date branches must stay unreachable rather than being assumed safe.
+One additional dependency is explicit: `generateApprovalSteps` resolves approval configuration and
+org/reporting facts **after** inserting the request. Those reads, and the final holiday-warning reads,
+must remain inside the eventual protected dependency interval. The earlier approval-chain read or
+pre-insertion holiday comparison cannot stand in for their protection. The review deliberately says
+`approvalRouting: unknown`; a submitted receipt must not claim a particular approver or approval.
+Runtime rollback/event/step atomicity and the remaining read dependencies are still unverified.
+A regression is now authored in `test/leave-reviewed-own-effect.test.ts` for that late-effect boundary:
+it configures a real two-level approval policy and working-day warning, submits through the existing
+guarded service inside a supplied transaction, first requires both actual approval steps plus submitted
+and warning events to exist, then throws an enclosing-command error and requires all request/step/event
+rows to be absent outside that transaction. It has not run. It checks rollback of those real callees,
+not savepoint recovery, concurrent-writer fencing, or a completed action receipt.
+A second unrun regression uses the actual `applyLeaveAdjustmentBatch` owner to subtract one Annual
+day after review, requires its canonical adjustment event and fresh balance change, and then requires
+the old reviewed expectation to refuse without adding requests/events in the still-open transaction.
+This covers a sequential HR adjustment, not an interleaving or participation in a shared lock.
+
+If a dependency or effect changed, refuse the old confirmation and offer a freshly reviewed proposal.
+If the service refuses, a savepoint may roll back its writes while the outer transaction records a
+bounded refusal code. Unexpected errors abort the transaction. Never silently add override/unpaid
+consent, substitute another type or change the date. Any unexpected split/child result is outside
+this first contract and must roll back before it can be labelled successful.
+
+Proposed durable states are `awaiting_confirmation → completed | refused | discarded | expired`.
+Executing is transient under the transaction lock; it is not advertised as durable progress before
+commit. A lost commit acknowledgement is still an **unknown client outcome**, even for a wholly
+database-owned command. A timeout must show **Checking submission**, not Failed or Submitted, and
+must not generate a fresh action ID. Reconcile by reading the same action under fresh authorization.
+The same ID can return its committed receipt or safely resume the locked, uncommitted intent after
+revalidation; it cannot bypass this owner by directly calling the service again. Recovery must not
+infer identity from similar dates/reasons. Never automatically cancel a committed request to undo an
+uncertain transport result.
+
+The completed receipt holds only source references, action/bundle version and bounded outcome codes.
+Reopening the request rechecks current source access; a frozen receipt does not preserve access after
+revocation. Display current canonical approval status separately from **Submission recorded**.
+Notifications remain owned by existing event projection; delivery failure cannot resubmit leave.
+
+Source preparation now makes that display boundary fail closed in
+`core/assistant-actions/own-leave-reconciliation.ts`: a completed lifecycle/receipt pair alone returns
+**Checking submission**. To name the recorded request, the interpreter additionally requires minimal
+server-only projections of the currently readable canonical request and its actual submitted event.
+The request must match the receipt reference and current tenant/person/employment/company binding;
+the exact event must match the receipt reference, request aggregate, submitting user and subject.
+Wrong event kinds/actors, missing evidence, transplanted references and extra private/status fields
+remain unconfirmed. Those projections are not a posted capability, and parsing does not establish
+authorization or provenance. The actual authorized canonical read owner and completed-state storage
+are still missing. New pure regressions are authored but unrun; prior 101-test evidence applies only
+to the earlier source. No endpoint, read transport, submission, retry or provider call is added.
+
+### Privacy, allowance and Control Tower boundaries
+
+The minimum proposed intent envelope contains the selected IDs, date/duration and user-authored
+reason/remark needed to submit. It is not a copy of balances, payroll, profiles, rosters or model tool
+results. Sensitive free text must not enter generic traces, action history, model-usage ledgers or
+metrics. Separate erasable, short-lived intent content from immutable metadata and digests; retention,
+erasure and protected-storage integration must be settled against the existing privacy owner before
+implementation. No new cryptographic storage or retention guarantee is claimed here.
+
+Model-assisted preparation uses the existing Assistant gateway and all current user/company daily
+request and monthly token policies, including the default-user replacement rule and cumulative
+company caps. Preserve the older Assistant business quotas and their documented periods too.
+Confirmation/reconciliation are deterministic and make no provider call or new token reservation;
+they neither refund nor reset earlier model usage. Recommendation: exhausted model allowances stop
+new model admissions, while a still-authorized prepared confirmation spends no extra model quota.
+Explicit pause/revocation stops new confirmations; the ordinary Leave form remains available. A future
+non-admitting control check must reuse the canonical governance owners, not invent a quota bypass.
+
+FACT (source only) — `0541_ai_control_centre.sql` and its replacement admission function in
+`0568_ai_user_default_allowance.sql` do not expose a non-admitting pause check. `app.ai_admit` inserts
+an `ai_model_run` for both allowed and blocked requests, including a zero-token reservation. An
+allowed zero-token run still participates in daily request counting. Calling it and settling zero
+tokens therefore cannot implement deterministic confirmation without changing accounting. The
+ordinary policy read is also insufficient: its RLS permits an employee to read feature/default/own
+user policies but not every applicable company policy. An absent visible company policy cannot mean
+that company is unpaused.
+
+DECISION — confirmation must consume a non-admitting answer from the canonical governance owner,
+with complete policy visibility and the same tenant `ai-control` lock used by policy writes. Extract
+the applicable pause predicate there when the centrally coordinated migration is available; do not
+duplicate the filtered policy query in the Assistant action owner or change existing admission
+accounting. Preserve the admission owner's applicable-company resolution and the individual-user
+replacement of the default policy, including disabled defaults. Checking only the nominated
+employment's company would silently narrow the existing control scope. This is a required owner
+integration, not an existing function or a claim that the full dependency concurrency problem is
+solved. No endpoint may execute while that answer is unavailable. Acceptance must show that an
+otherwise invisible applicable company pause refuses confirmation, and deterministic confirmation,
+replay and reconciliation leave model-run rows and allowance usage unchanged.
+
+FACT (source only) — `lib/ai/crypto.ts` provides master-key authenticated encryption; the per-subject
+erasure key custody is a separate owner in `core/pii-vault.ts`. Directly encrypting an action payload
+with the master key does not join subject erasure. The vault's existing seal/unseal wrappers open
+their own transactions and its key rows are admin/DPO-only. The confirmed employee flow must not
+expand those permissions, open a second transaction for private intent custody or claim that importing
+the crypto helpers supplies erasure. Protected intent storage still needs an explicitly scoped
+transactional owner, action/identity binding and integration with `erasePersonPii`; none exists in this
+source checkpoint. Keep private text and hidden balance expectations out of metadata and receipts
+while that integration is unresolved.
+
+The same action owner supplies the person's prepared card and status. Control Tower uses scoped
+metadata aggregates and authorized failure codes; it does not expose employee reasons, bank data or
+another user's confirmation button. Execution completion and approved HR outcomes stay separate.
+
+### Acceptance required before any implementation can be called complete
+
+| Outcome | Required evidence after explicit implementation authorization |
+| --- | --- |
+| Confirmed own submission | Actual ask → card → confirm → source request → reopen; single and multiple own employments |
+| Human intent and immutable effect | Forged input, another login/employee/company/tenant, altered date/type/digest, expired/discarded action and injected record text cannot execute |
+| Fresh authority and policy | Revocation, transfer, relink, module/pause changes, balance/roster/calendar/notice changes and KL midnight invalidate or recheck safely |
+| No duplicate committed effect | Parallel confirms, connection loss around commit and same-ID replay; source row/events and receipt agree; prove key assertions with isolated mutations |
+| Safe failure and recovery | Domain refusal saves no request; unexpected failure rolls back; uncertain outcome reconciles without blind retry or invented success |
+| Existing service contracts | Offered-only Assistant dispatch, read-only tools, Mobile receipts, leave approvals/notifications and governance consumers retain valid behavior |
+| Honest experience | Six locales, populated/empty/refused/changed/unknown states, desktop/mobile, keyboard confirmation, source links and runtime logs |
+| Privacy and accounting | No source/private text in traces; retention/erasure demonstrated; model admissions count normally and deterministic confirm makes no provider call |
+
+The original design created no action registry, table, endpoint, confirmation card, principal, prompt
+or migration. The 2026-10-24 exception permits only source development of this first action. Before
+runtime validation, refresh released source and reconcile the final shared lifecycle with the prior
+plan, coordinate any migration allocation centrally, and honor both predecessor handbacks. Complete
+and release the current harness before Phase 2 release work.
+
+### Adjacent candidates discussed, not part of the first action
+
+The same leave agent can later offer **withdraw my pending request** as a separate typed Confirm
+action through `cancelOwnLeave`. Its current service is pending-only, own-person-only and refuses
+grouped requests; it must be rechecked at confirmation. If approval wins the race, do not transform
+withdrawal into approved-leave cancellation. Approved cancellation remains the separate existing
+`requestLeaveCancellation` workflow, with its own eligibility and approval rules. Neither is added to
+this first submission contract.
+
+A future document import agent can extract and propose mappings from explicitly supported formats,
+retain page/cell evidence, flag ambiguity and duplicates, then submit a reviewed batch through each
+module's existing import owner. Broad-format extraction does not grant write access or justify guessed
+identity, bank, salary or policy values. This is a candidate scenario, not authorization to build it.
+
+## Amendment, 2026-10-25: remaining AI delivery and non-admitting controls
+
+The owner instructed AI dev 2 to work on all remaining AI parts and explicitly selected **Take over
+and coordinate directly** for AI dev, Board 3 and Mobile. This authorizes continuing the remaining
+design and implementation. It does not establish that any future phase is implemented, remove the
+existing human decision boundaries, or permit concurrent use of another chat's runtime window.
+
+Delivery order follows the dependencies: finish the existing harness and its production-mode outcome
+walkthrough first; complete the confirmed own-leave action with protected intent, fresh authority,
+source dependency protection and atomic receipt next; then expand the closed action registry and
+named non-login principal, durable orchestration/recovery, controlled bundle evaluation/rollout and
+before/after measurement. Each action must demonstrate its own canonical outcome and boundaries.
+Completing a shared runtime does not establish that every HR adapter is ready. Existing user/company
+daily request and monthly token controls remain authoritative. No invented savings or unattended
+consequential HR decisions are authorized.
+
+### A pause check is not a model admission
+
+FACT (source): `app.ai_admit` always inserts a model-run row. An allowed zero-token reservation still
+counts as a daily request, while an employee's ordinary policy query cannot see every applicable
+company policy. Neither operation is a suitable pause check for deterministic confirmation.
+
+DECISION: use a non-admitting boolean from the canonical governance owner within the command's
+caller-scoped transaction. It checks the same feature switches, applicable company scope and effective
+user policy as admission, including individual-user replacement of the tenant default. It reveals no
+policy rows or hidden company identity. New model admissions still enforce quotas; deterministic
+confirmation consumes no additional model request/tokens and does not refund prior usage. An explicit
+pause refuses a new effect even if the earlier proposal was admitted.
+
+The source draft extracts two **private** SQL helpers shared by model admission and this boolean:
+
+- Context validation, the existing tenant `ai-control` lock, authorized company attribution and canonical
+  feature setting resolution.
+- Applicable feature/company/user/default policy selection, in the existing `scope_key` order.
+
+Admission keeps its quota loop, attribution, reservation, run insertion and settlement contract. A
+feature pause retains its precedence over quota refusals. The action check considers enabled/paused
+state only; zero/exhausted quotas do not become pauses. The internal policy selectors are revoked from
+PUBLIC and the application role; only the boolean is exposed. The TypeScript wrapper shares the
+gateway's existing fresh entitlement/platform-kill calculation and treats absent/malformed answers
+as unavailable.
+
+This boolean is only a prerequisite. It does not grant Assistant, module, employment, action or
+approval authority; verify those through their canonical owners. The action owner must keep the same
+transaction open through the effect. The `ai-control` lock fences `ai_control_policy` writes, including
+removal of a user override. It does not by itself fence settings, membership, company transfers or
+other source changes. Those still require the action's existing access barrier and complete dependency
+strategy. A stale repeatable-read snapshot must not be presented as a fresh control read.
+
+### Draft integration and required acceptance
+
+> **Shipped state (28 October 2026):** see [Shipped state and known limits](#shipped-state-and-known-limits-28-october-2026). This draft was journaled as `db/migrations/0621_ai_action_controls.sql`; `db/migration-drafts/` no longer exists.
+
+`db/migration-drafts/ai-action-controls.sql` is deliberately outside the migration journal and must
+never be applied manually. Allocate a migration only after coordinating the current unpublished
+Board 3 reservations and their ascending release order. No existing applied migration is edited.
+No route, model tool, UI, principal or action executor calls this source-only check.
+
+The authored integration cases require an actually migrated, isolated database and app-role execution:
+hidden applicable company pause; full company scope; effective default/override replacement; feature,
+setting and platform pauses; no-login/default behavior and tenant isolation; inaccessible private
+helpers; invalid capability refusal; and byte-equivalent model-run rows before/after repeated checks.
+Admission must still enforce zero quotas and retain pending reservations. Also required before wiring:
+concurrent pause/confirmation ordering, source actor freshness, valid and invalid tenant contexts,
+unchanged allowance/accounting consumers, restricted-owner upgrade rehearsal and the final release
+gate. These cases are authored or specified, **not runtime-verified** by this source checkpoint.
+
+## Source amendment, 2026-10-25: private pending-review lifecycle
+
+The owner explicitly reaffirmed continuing the remaining AI **source changes** while waiting, with
+no shared runtime until handback. The own-leave branch now integrates the already-released main
+`573c01ff3`, including its Home/privacy wrapper; no unpublished Board 3 source is adopted. The
+current harness release candidate remains separate from this Phase 2 source.
+
+### Authoritative ownership and graph
+
+`human input + canonical read-only candidate → pending review metadata + private envelope → reopen |
+discard | expiry | canonical person erasure`. This increment creates no leave request, completion
+receipt, approval, model tool, route or submission executor. A stored review is not human confirmation
+or proof that current eligibility/dependencies still match.
+
+`app.assistant_own_leave_review` owns only the pending review's identity, immutable input/review
+digests, server creation/expiry and retirement state. Its companion private content row owns the
+encrypted nomination, exact human text, displayed review and hidden pending-aware balance expectation.
+The existing HR engine remains the owner of every source fact. No metadata, event or public card
+contains the hidden balance, encryption envelope, key custody or copied source records.
+
+The candidate now retains its private availability expectation separately from its display review.
+The public card uses one strict schema and explicitly maps its fields; it never serializes the
+server-only candidate result. Both displayed estimates remain null when ESS hides availability.
+The candidate/digest and card share one warning evidence shape; gazette thresholds remain owned by
+the holidays service.
+
+### Custody and lifecycle decisions
+
+- One random DEK per pending action, using the existing envelope primitives and master-key owner.
+  Authenticated bindings include action/version, tenant, login, person, company, employment and both
+  intent/review digests. This does not widen `pii_key` access or use the statutory subject key table.
+  The private row holds the wrapped action key and ciphertext together. Errors carrying encrypted
+  query parameters are replaced with a bounded error without their cause before leaving the store.
+- SQL owns creation and a ten-minute review lifetime. This is the lifetime of a confirmation review,
+  not an HR policy or a substitute for revalidation. The cipher binds immutable identity/digests;
+  provisional application timestamps are not trusted as persisted expiry.
+- Prepare and reopen refresh Assistant access through its owner and check the non-admitting AI pause
+  prerequisite in the caller transaction. No model run, provider call or quota reservation occurs.
+  Existing module/grant/dependency barriers are still required at eventual execution.
+- Discard requires current same-login/person/source custody and the exact reviewed digest. It remains
+  possible after an AI pause or removed Assistant grant, because it only removes private intent and
+  can never submit leave. Repeated discard returns the same terminal reference.
+- Read expiry and discard remove both private body and wrapped key in the same transaction as the
+  metadata transition. The private tables and full-record helpers have no application-role grants;
+  only the narrow custody functions are callable. No `completed` state/writer is exposed by this store.
+- A bounded group-administrator expiry primitive retires at most 1,000 expired reviews per call. No
+  scheduled caller is wired yet. Validity expiry therefore does **not** establish that unaccessed
+  ciphertext is automatically deleted on schedule. Scheduled cleanup must be integrated and observed
+  before exposing a production preparation endpoint.
+- Private preparation has its own deterministic storage admission, separate from provider/model
+  allowances: at most five unexpired pending reviews and twenty newly prepared reviews per login and
+  tenant in a rolling ten-minute window. These are technical storage/abuse limits, not HR policy or
+  consent. The existing tenant Access lock serializes the count and insertion; SQL owns creation and
+  expiry times. Retiring a review frees outstanding capacity but does not reset its creation-rate
+  budget. Other logins do not share that budget. A private owner/time index bounds the rolling lookup.
+  Pending/rate refusal uses the same non-content store error and changes no model accounting.
+  Runtime proof of concurrent admission ordering and endpoint request-rate control remain required.
+
+These are source contracts, not measured security guarantees. No KMS/HSM upgrade, irreversible
+deletion from retained backups/WAL/old exports or JavaScript-memory erasure is claimed.
+
+### Canonical person erasure
+
+The privacy service composes `assistant_own_leave_reviews_redact` after its existing Home/Access
+erasure admission, within the same transaction. The admission already owns the current subject,
+administrator scope, Access/privacy barriers and final canonical audit. Review erasure follows the
+**person**, across all their employments and logins, and clears untyped review content for every
+valid erasure scope, matching the existing private-message/vault treatment. It does not change the
+existing statutory retention rules.
+
+The new owner records an ephemeral transaction-bound erasure intent, removes action keys/bodies,
+retires pending reviews as unavailable and requires the real `pii.erased` event to report
+`assistantPreparedReviews` exactly when content was removed. Missing admission, forged/mismatched
+audit or unfinished effects refuse the transaction. The current-transaction marker survives forced
+early deferred-constraint evaluation, so a later preparation cannot recreate uncaptured private text
+in that erasure transaction. A later authorized custody call prunes completed older markers under
+the shared Access lock. No raw reason, review or key is copied to this erasure marker/audit.
+
+### Acceptance and remaining boundary
+
+Source integration review caught a concrete erasure/report boundary defect: the new
+`assistantPreparedReviews` report label reached the legacy field-to-column lookup, which assumed
+every report entry was a PII column. The column update now iterates the canonical field registry
+and selects only its erased members; private-review retirement remains a reported effect. Authored
+regression cases require contact NULLing and review/key retirement together, and ordinary contact
+erasure without a false review-erasure report. These cases remain UNRUN.
+
+New authored cases cover envelope round-trip/tamper/transplant/oversize/missing-key failures; actual
+save/reopen/discard/expiry; hidden balances/public-field exclusions; same-person different logins and
+tenant refusal; no model accounting or leave writes; private-table/helper ACLs; enclosing rollback;
+bounded cleanup; cross-employment person erasure and forged/unfinished erasure audits. All new tests,
+SQL application, types, builds and app journeys remain **UNRUN** under the resource restriction.
+
+Additional authored storage-admission cases distinguish the five-pending limit from a twenty-created
+rolling window, cover retired-review budget consumption, old-window release and separate-login
+capacity, and require zero model/request writes. Competing preparation calls must share five pending
+slots, and simultaneous discard deliveries must reconcile to the same terminal reference with no
+remaining private body. They remain UNRUN; no concurrent capacity guarantee or deployed rate-control
+claim follows from source review.
+
+Before wiring, demonstrate these cases on the actual restricted-owner/app-role database, forced
+constraint and concurrent erasure/prepare orderings, revocation/transfer/snapshot boundaries, scheduled
+cleanup and retained-backup limits, plus existing privacy/Assistant/leave consumers. Resolve any
+source-integration findings in the final released baseline. The two SQL drafts remain outside the
+migration journal without numbers; central allocation and ascending release order come later.
+
+The atomic confirmation command is still absent. It must protect legacy leave-writer dependencies,
+recheck the exact reviewed effect at the canonical write, commit the request/exact submitted event
+and completed action receipt together, and reconcile uncertain transport outcomes. It must not
+mistake this pending store or its digests for that missing authority, concurrency or execution proof.
+
+### Source-only canonical submission reference reader
+
+The canonical read owner now has an unmounted `readOwnLeaveSubmissionReferenceTx` draft. In the
+caller's transaction it joins the exact request and submitted-event IDs through the existing leave,
+employment, person and type sources, with RLS and the flat leave reader's delegation filter. It
+additionally narrows to the caller's own person and original human event actor, including for an HR
+admin. It selects only request identity/company references and submitted-event identity/actor/subject
+references; it never materializes reason, balance, status, approvers or event payload. An authored DB
+regression uses a real employee submission and fresh read, refuses another real login for the same
+person even with an HR role, and refuses a mismatched event reference. A second authored case creates
+another person's real submission, proves that the HR caller can read its canonical request, and
+requires the own-submission projection to refuse it and a cross-linked real event reference.
+Source review then found that comparing only the supplied context did not itself bind that context
+to the transaction login. The draft now composes the existing `ownPersonPredicate` and explicit
+current transaction user/tenant checks. Authored cases also borrow a different real context inside
+the HR caller's transaction, including another login for the same person; both must refuse. These
+cases remain unrun and do not establish the future adapter's complete freshness/authorization proof.
+
+This is **UNRUN** source preparation. Syntax parsing and diff checks are not database/RLS proof.
+The helper neither establishes fresh Assistant authority nor reads completed action storage; a
+future server-only lifecycle adapter must obtain that authority and bind these source projections to
+the same stored action/receipt. There is no mounted confirmation/reconciliation endpoint, new effect,
+provider call or migration. The existing concurrency/atomic-completion and security acceptance remain
+unfinished. The P branch's canonical read change must be integrated with the actually released
+baseline before runtime acceptance; it is excluded from the current H release and Mobile handback.
+
+### Source-only representative display
+
+`components/assistant/own-leave-review-card.tsx` consumes only the strict public card shape and is not
+mounted on any route. It renders exact source labels, selected KL date, requested full-day duration,
+canonical deduction (which can differ from one day), visible-only balance estimates, warnings and
+plain human text. Unknown approval routing and the saved estimate/expiry are explicit. There is no
+submit handler, form action, hidden command payload, local persistence or model/client/database import.
+The only navigation is the existing date-only Leave-form fallback; its copy explicitly asks the person
+to check the company, type and text in that governed form.
+
+The six catalogues contain matching new display keys/placeholders and existing keys are preserved.
+Authored DOM cases cover text escaping, hidden balances, malformed/private props, exact date/deduction,
+date-only fallback and each locale's warning. They remain UNRUN. No visual quality, translation review,
+keyboard/screen-reader behavior or real viewport/render evidence is claimed. Review the representative
+screen in the actual app before mounting/propagating the component or adding confirmed submission.
+
+
+## Owner expansion: AI workspace, providers and governed domain agents (2026-10-26 KL)
+
+**Decision:** After the current harness release, deliver a complete AI product plan covering
+provider/router configuration (OpenRouter as the first candidate), an AI home/workspace and chatbot,
+orchestration, and Import, Payroll, Leave and Attendance agents. The purpose includes measuring
+capability and improvement during real production imports. Access-right enforcement is a release
+condition, not a model instruction. This extends the earlier roadmap; it does not claim these agents
+are implemented or authorize unreviewed production data transfer. Current H release remains separate.
+The coordinated Mobile window still follows H; own-leave verification uses its later agreed window.
+
+### Existing surfaces and honest gaps
+
+Source inspection of the H candidate finds `/assistant` (question form, own recent exchanges, visible
+stop states/tool-use disclosure, module/grant checks), `/admin/ai` (admin tenant provider settings),
+`/control-tower/agents` and the orchestrator section of `/control-tower` (operations/agent management).
+`/me/home` is the employee home; do not silently replace it or expose HR operations there. The current
+Assistant is a basic ask/history screen, not the proposed complete conversational workspace. Source
+presence does not establish that a particular production user has the module, grant or configured
+provider. Confirm production entitlement and navigation through the authorized user's actual UI
+without publishing private grants or keys. Existing canonical tools include own leave balances and
+requests; extending that registry must preserve its explicit field projections and refusal semantics.
+
+Use the existing Assistant entry as the user AI workspace rather than create competing chat histories.
+The workspace should offer permitted tasks, a conversational thread, source links the caller can open,
+review cards, pending confirmations, run progress and honest terminal receipts. Show active company/
+employment when relevant, but never let a client selector grant access. Denied, unavailable, incomplete,
+stale and cancelled outcomes need distinct actionable messages. Keep admin provider controls and
+cross-workforce queues in their existing guarded operations surfaces. Review desktop/mobile and all
+six locales before propagating the final representative interface. Discoverability, grant denial and
+empty/unconfigured states are acceptance items, not merely route existence.
+
+### Delivery sequence and entry/exit conditions
+
+| Order | Deliverable | Required exit evidence |
+| --- | --- | --- |
+| 0 — current | Release the existing reviewed harness | Exact-candidate required local gate, outcome walkthrough, official deployment and arrival; preserve current baseline and peer changes. |
+| 1 | Human-confirmed own-leave Assistant | Complete the existing atomicity, legacy-writer fencing, current authority, receipt/reconciliation, CSRF, retention and DB security/concurrency work. Real submit/reopen and uncertain-response recovery must not duplicate requests. |
+| 2 | AI workspace and provider configuration | Extend existing surfaces/gateway; first provider adapter contract tests and fake-server security tests, then explicitly configured live connection verification. No production HR payload required for connection tests. |
+| 3 | Governed orchestration and first Import agent | Bounded planner/tool runner through the harness, reviewed dry-run import suggestions, canonical validation and human commit; demonstrate scope/privacy and actual measurement capture. |
+| 4 | Payroll, Leave and Attendance agent expansion | Domain-specific canonical tools and approval boundaries, security matrix, actual UI outcomes and fresh candidate release evidence for each increment. |
+| 5 | Controlled production-import evaluation | Approved exact dataset/module/provider/data policy, recorded baseline and assisted comparison, canonical commits and reconciliation; report measured outcomes and limitations. |
+
+Planning/source preparation may overlap these phases. Provider and additional agent execution does
+not bypass unfinished own-leave correctness or the coordinated release/resource order. Do not invent
+calendar delivery dates or classify an unrun adapter as ready.
+
+### Provider/router configuration
+
+Extend the tenant BYOK/configuration/gateway owners; do not create agent-specific key stores. Admin
+configuration covers provider, approved endpoint, model, supported tool/structured-output capabilities,
+privacy/routing policy, bounded timeout/retry, token/run/concurrency budgets and usage visibility.
+Store encrypted secrets server-side; return masked presence only. Rotate/revoke without exposing keys
+in the browser, tools, events, diagnostic errors or exports. Connection testing is explicit and uses a
+non-HR payload. Validate supported capabilities per selected model and fail visibly on incompatibility.
+
+An OpenAI-compatible URL is not evidence that every tool/stream/usage/error behavior is interchangeable.
+Implement a normalized provider contract and test malformed tool arguments, partial streams, refusal,
+truncation, cancellation, rate limits, timeout, usage reporting and provider failure. Tool writes are
+never replayed merely because the provider timed out. Bind receipts to the actual provider/model and
+policy version, not a silently substituted model.
+
+Allow only approved HTTPS endpoints; reject private/loopback/link-local/metadata destinations,
+redirect escape and DNS rebinding. Custom enterprise endpoints require deliberate allowlisting and
+must not convert provider configuration into an SSRF route. Routing/model fallback cannot loosen
+privacy, region, capability or cost constraints; refuse if no eligible endpoint remains. No automatic
+external search/plugins/subagent tools receiving HR data. An application agent can only invoke our
+registered, authorized tools. Provider credentials do not grant data access.
+
+Primary documentation checked 2026-10-26: [OpenRouter provider routing](https://github.com/OpenRouterTeam/docs/blob/main/guides/routing/provider-selection.mdx),
+[ZDR guidance](https://github.com/OpenRouterTeam/docs/blob/main/guides/features/zdr.mdx),
+and [retention boundaries](https://openrouter.ai/blog/insights/zero-data-retention/).
+Routing preferences, required parameters and retention filters need explicit adapter enforcement.
+Provider inference retention controls do not cover our logs or external tool services; audit those
+separately. Recheck current documentation, selected endpoint terms and account capabilities before
+implementation/live enablement. No pricing, residency or universal no-retention guarantee is assumed.
+
+### Agent boundaries
+
+| Agent | Allowed job within current user scope | Human/canonical boundary |
+| --- | --- | --- |
+| Import | Suggest column mappings, normalize proposed formats, explain validation errors, flag ambiguity/duplicates and assemble a reviewable correction plan. | Never invent missing HR facts. Existing module preview and fresh validation own admissibility; a human reviews exact rows/mappings and invokes canonical commit. |
+| Payroll | Explain authorized canonical payroll results, locate exceptions and propose investigation/correction steps. | Canonical payroll engine computes every amount. No model calculation, pay change, batch close, payment, export or sensitive-document disclosure without the real permissions and governed human action. |
+| Leave | Explain visible balances/policy and prepare an own-leave request; expand scoped HR assistance only through separate authorized tools. | Exact human confirmation for submission; canonical leave validation/approval routing remains authoritative. An employee cannot query another employee's balance by name or guessed ID. |
+| Attendance | Explain visible attendance/exceptions and prepare correction or import proposals. | Actual clock/evidence ownership, manager/HR attestations and approval workflows remain unchanged; no fabricated work times or autonomous overtime approval. |
+
+Agent names are task configurations over one governed harness, not new authority-bearing accounts.
+Adding more agents never enlarges the caller's tool set. For multi-step work, display the proposed
+plan, affected records and review checkpoints; bind each step to explicit typed tool contracts.
+Bound steps, wall time, tokens, concurrency, cost and result size. Pause/cancel must stop further
+admissions and reconcile in-flight canonical effects. Retries use domain-supported idempotency and
+stored receipts; no generic repeat-write loop. Record proposed/running/awaiting-human/completed/
+refused/failed/cancelled/uncertain states accurately. A model saying success is never a receipt.
+
+### Access and privacy invariants — release blocking
+
+Authenticate fresh on the server and derive tenant/user/person/employment, roles, grants, delegations
+and company scope there. Never accept these as authority from prompt, tool arguments or browser state.
+Each retrieval, tool call, download and eventual write rechecks current authorization through the
+canonical read/write owner and RLS. Filter before retrieval/provider dispatch: do not send broad rows
+to the model and ask it to hide unauthorized fields afterward. Use explicit allowlisted projections,
+field-level sensitive-data rules and least-data result limits.
+
+A manager sees only currently delegated/direct-report information allowed by the product; ordinary
+employees receive their own authorized records only. HR/admin labels alone do not mean unrestricted
+salary, medical, discipline or tenant access. Multi-employment/company selection preserves the exact
+underlying authorization. Unknown scope denies. Identifiers, names, file cells and model instructions
+cannot grant access. Refusals should not reveal whether an inaccessible employee or document exists.
+
+Conversation/run/attachment storage, source links, audit views, exports and background continuations
+must enforce their own current permissions. Permission revocation must invalidate queued work and
+prevent retained conversation or cached/RAG snippets from leaking now-inaccessible data. Cache/vector
+indexes must carry tenant, subject/field scope, authorization version and retention/deletion metadata;
+recheck source permission before reuse. Establish tenant/user isolation before introducing retrieval
+augmentation or long-lived memory. Logs should retain minimal operational metadata, not raw salary,
+identity documents, prompts or imported personal rows by default. Define retention, erasure and
+provider-dispatch records with the existing privacy owners.
+
+Imported documents, CSV cells, retrieved text and tool results are untrusted data, including embedded
+instructions to reveal records or call tools. Tool selection, strict schemas, authorization, egress
+policy and write confirmation remain deterministic. No free-form SQL, shell, generic HTTP, privileged
+service credential, credential-reading tool or cross-agent authority transfer is exposed to the model.
+
+Security acceptance covers own/other employee, manager in/out of reporting scope, delegated/expired
+scope, HR restricted company, group roles, foreign company/tenant, suspended/revoked user, guessed IDs,
+conversation/attachment replay, poisoned cache/RAG, malicious import cells, tool argument injection,
+indirect prompt injection, provider fallback, background retry and export/source links. Test result
+content AND absence of unauthorized database reads/provider payloads/cache hits/log entries. Exercise
+both direct endpoints and the actual chatbot UI; a prompt-only refusal is insufficient. Any proven
+unauthorized disclosure blocks release and requires fixing the canonical boundary and regression.
+
+### Production-import capability and improvement evaluation
+
+First identify the actual import module, supported formats, dataset ownership/size, sensitive columns,
+canonical validator and commit/reversal semantics. Start synthetic/redacted, then approved production
+samples in preview-only mode. Exact raw HR payload dispatch requires explicit tenant-authorized policy
+and provider approval; the roadmap itself is not that approval. Compare equivalent datasets/tasks and
+scope under the same canonical validation. Keep the baseline and AI-assisted attempt records separate;
+use fresh isolated evaluation copies where necessary so a prior commit cannot contaminate comparison.
+
+Record elapsed preview-to-success time, actual human handling time (separately from model/server wait),
+interventions, accepted/rejected suggestions, reviewed mapping accuracy, unresolved ambiguity,
+validation errors, duplicates, rework, successfully committed/reconciled rows, input/output tokens,
+cost and latency. Publish denominators, dataset/version, model/prompt/tool versions, failed attempts
+and quality tradeoffs. Calculate improvement only from comparable measured values; no guessed time
+savings or headcount claims. Acceptance requires no unauthorized disclosure, no invented accepted facts,
+canonical validation and exact commit reconciliation, then an owner-agreed quality/cost/time target
+based on the real baseline. Faster invalid imports do not count as improvement.
+
+### Implementation ownership and release discipline
+
+Existing AI configuration/gateway, Assistant registry, harness, canonical module services and privacy
+owners remain authoritative. Start with a source inventory and acceptance/security matrix for each
+increment; update the graph for identity, permission, tool, event, run, receipt and dependency edges.
+Allocate migrations centrally and preserve applied hashes. Validate representative desktop/mobile,
+localization, keyboard access, populated/empty/error/refusal/stale/uncertain states and actual save/reopen.
+Local verification is required in this session under the user's no-GitHub-Actions instruction.
+Run the classifier-selected exact-candidate release gate after outcome evidence; only then use the
+canonical release and verify service/build/source/ledger arrival. Keep main/alpha at the same VERIFIED
+commit per standing owner policy. These remain planned acceptance requirements, not current PASS claims.
+
+
+### Owner requirement: self-improving agents, orchestrator and shared harness
+
+**Decision (2026-10-26 KL):** Every domain agent, the orchestrator tied to the Assistant, and the
+shared harness must support measurable self-improvement. This is required product scope, not an
+optional later label. The Assistant remains the human interaction and confirmation boundary; the
+orchestrator plans and coordinates its scoped tools/agents behind that boundary. A separate chat,
+agent or improvement worker cannot inherit greater authority from orchestration.
+
+Use one versioned improvement loop: authorized feedback and verified run outcomes → categorized
+failure/opportunity → proposed candidate → isolated replay/evaluation → security and quality gates →
+controlled promotion → monitored outcomes → rollback when required. Capture user corrections,
+rejected suggestions, unresolved questions, canonical validation results, failed/refused/uncertain
+runs, import rework and measured cost/latency. A model self-rating or unverified user assertion is not
+a ground-truth label. Preserve provenance and distinguish observations from reviewed labels.
+
+- **Domain agents:** improve prompts, task plans, explanation clarity, mapping suggestions and tool
+  selection against domain-specific evaluation cases. Retain canonical financial/leave/attendance
+  rules; do not learn new policy or missing HR facts from an example. Learn from successful AND failed
+  cases and review error categories rather than simply optimize completion counts.
+- **Orchestrator:** evaluate routing, decomposition, handoff quality, tool ordering, recovery,
+  cancellation, repeated-work avoidance and budget use across the Assistant's actual end-to-end jobs.
+  No routing shortcut may bypass human confirmation, current permission checks or canonical validators.
+- **Harness:** turn observed failures into proposed regression cases and improve diagnostic coverage,
+  typed contracts, bounded retries, reconciliation and evaluation instrumentation. Harness/code/tool
+  changes use the repository's reviewed implementation and exact-candidate verification pipeline.
+  An executing model has no shell, repository-writing or deploy credential to patch its own guardrails.
+
+Version agent definitions, prompts, tool schemas, orchestration policy, model/provider configuration,
+evaluation datasets and harness code. Record which versions produced each result and improvement.
+Compare candidates with the same baseline and protected holdout cases, including adversarial security,
+not solely examples seen while learning. Check task accuracy, factual grounding, refusal correctness,
+canonical successful effects, duplicate prevention, human corrections, privacy, latency and cost.
+Reject regressions in mandatory access/privacy or money/data-integrity invariants even if average
+quality or speed improves. Include tests that deliberately attempt to weaken these invariants.
+
+Promotions are bounded by an independently owned policy: candidate generation and sandbox evaluation
+can run automatically within explicit tenant budgets; only the permitted change classes may use
+validated automatic promotion. Authorization rules, security/evaluation thresholds, tool capabilities,
+provider data policies, financial rules, production datasets and rollout eligibility cannot be relaxed
+by the candidate or evaluator itself. High-impact changes use the existing owner/review/release path.
+The improvement loop cannot approve its own security exception or remove a failing release test.
+No infinite self-modification/retry cycle: cap iterations, concurrency, spend and wall time, and pause
+on repeated failure, leakage suspicion, degraded outcomes or insufficient evidence.
+
+Use offline/redacted replays first, shadow recommendations next and a limited opted-in rollout only
+after eligibility. Promotion must have a reversible version pointer and a recorded reason/evidence;
+rollback or disable the new version when monitoring finds regressions. Shadow work cannot make
+business writes. Test actual rollback, interrupted promotion and in-flight version consistency.
+
+Learning data remains permission-scoped. Do not pool raw conversations, import rows, salary or
+employee facts into shared prompts, embeddings, memory, training sets or provider fine-tuning.
+Tenant/user authorization, consent where applicable, retention and erasure govern feedback storage
+and reuse. A current user may not retrieve another user's historical learning examples. Cross-tenant
+product improvements must use approved de-identified/synthetic cases and privacy review; a claimed
+anonymization is not evidence. Provider model training or fine-tuning requires a separate explicit
+approved data policy. Revocation and erasure must propagate to derived feedback and replay datasets.
+
+Acceptance for EACH agent AND the Assistant-linked orchestrator/harness includes: a reproducible
+baseline; one observed failure converted into a reviewed improvement candidate; measured before/after
+results on relevant held-out cases; unchanged negative access/security results; bounded evaluation
+cost; honest failure/uncertainty reporting; versioned promotion receipt; and verified rollback. A
+candidate must demonstrate improved outcomes without lowering security or silently reducing coverage.
+Until that loop is implemented and proven for a component, label it learning-capable/planned rather
+than claiming it is already self-improving. The current H release does not acquire these capabilities
+merely because this roadmap records them.
+
+
+### Owner clarification: one governed self-improving agent for every module
+
+**Decision (2026-10-26 KL):** Import, Payroll, Leave and Attendance are initial examples, not the
+complete agent scope. Every system module must have a self-improving module agent. Each agent talks
+to its own canonical module engine/service through registered typed adapters. The Assistant-linked
+orchestrator routes and coordinates these agents; it does not become a second business engine.
+
+Use `packs/catalog.ts`'s `MODULE_CATALOG`, the pack registry and actual canonical service owners to
+build the coverage matrix. Include core, HR, payroll and platform modules, submodule capabilities,
+and future additions. Do not infer that an entitlement flag already has a separate engine; identify
+its real owning service and explicitly map that capability. Non-pack-backed modules still need a
+named canonical owner. No omitted module may silently count as complete because it lacks a pack.
+Country/jurisdiction capabilities use their established country-pack rules, not model-derived law.
+
+For every module record: module/agent identity; canonical engine owner and public service boundary;
+permitted read/explain/prepare/confirm capabilities; input/output schemas and minimal projections;
+tenant/module entitlement and current user/scope checks; human approval requirements; audit/event/
+receipt ownership; idempotency and reconciliation behavior; dependency/version compatibility;
+provider/privacy/budget constraints; evaluation dataset and improvement version; pause/rollback
+control; implementation status and acceptance evidence. A coverage invariant must flag a new module
+or changed engine contract that has no matching declared agent capability/evaluation coverage.
+Unimplemented entries remain explicitly pending and unavailable, never generic unrestricted tools.
+
+An agent is a logical module capability on the shared harness, not a mandatory permanently running
+model process. It may be invoked on demand, conserving cost while preserving one accountable agent
+identity per module. Submodule agents can reuse their parent engine adapters only with explicit
+capability/entitlement mapping and their own relevant evaluation coverage. Reuse shared orchestration,
+provider and improvement machinery; do not duplicate records, balance calculations, workflows or
+policy rules into prompts or agent memory.
+
+The invocation path is: authenticated Assistant request → authorized orchestrator plan → permitted
+module-agent capability → typed canonical service/engine → source-derived result/receipt → scoped
+Assistant response. The server constructs the actor/scope at every boundary; a model cannot supply an
+admin context, arbitrary service name or SQL. Reads and effects must satisfy the same engine rules
+as the module UI. Permission revocation and scope changes are rechecked before handoffs and effects.
+
+Cross-module work composes independently authorized capabilities and canonical receipts. Permission
+to use one module never grants another module's records, sensitive fields or actions. Cross-agent
+messages contain only the minimum authorized references/results and do not transfer credentials or
+accumulate the union of service privileges. A Payroll→Attendance→Leave task must refuse any denied
+step without exposing denied facts; resume or reconciliation must not duplicate already committed
+work. Persistent/background work requires an explicit scoped delegation lifecycle and revocation
+checks, not an unbounded service-account identity.
+
+Every module agent participates in the versioned self-improvement loop above. The module's actual
+engine and deterministic business rules stay authoritative. Learned orchestration strategies and
+agent improvements must preserve ALL module permission, financial, workflow and privacy invariants.
+Platform agents cannot grant access, change security policy, send arbitrary notifications or mark
+release tests passed merely because those are platform functions. Their tools remain narrowly
+scoped and their high-impact actions stay under the established human/governed workflows.
+
+Deliver in measurable waves beginning with the existing own-leave and production-import goals, then
+expand through the complete module matrix. The final scope is system-wide; staged delivery changes
+sequence, not that requirement. A module agent is done only after its real engine integration, UI
+journey, denied-access/prompt-injection tests, audited effects where allowed, measured improvement
+loop and rollback are demonstrated. An empty registry entry or chatbot persona is not completion.
+
+
+### Owner clarification: one Assistant, enforced module specialisation
+
+**Decision (2026-10-27 KL):** The owner accepted one conversational Assistant with a shared
+orchestrator and typed module specialists. The twenty catalogue bindings are internal logical
+capabilities, not twenty permanently running model processes. Own-leave is an action of the Leave
+specialist; it must not be presented as a twenty-first independent agent.
+
+Specialisation is enforced through closed module tools, canonical service boundaries, minimal
+current-user context, domain-specific independent evaluations and versioned promotion/rollback.
+A role prompt alone proves no specialist competence. The same underlying model may serve several
+specialists; a separate model requires measured justification. Orchestration never unions authority.
+Access rights alone are insufficient for effects: the canonical owner also checks current subject
+and scope, state, dependencies, business rules, exact human-confirmed input, idempotency and receipts.
+Harness engineering may improve routing, context, tool use and prompts; it cannot change HR rules,
+compute payroll money, grant privileges, weaken security or treat model self-ratings as outcomes.
+Read bindings and declaration coverage alone do not complete the required action adapters or their
+human journeys. Explicitly read-only modules remain read-only rather than inventing mutations.
+
+### Owner requirements: low communication/token cost and responsive interaction
+
+**Decision (2026-10-26 KL):** Token use, communication cost and response latency are core acceptance
+criteria for every module agent, the Assistant, orchestrator and self-improving harness. Optimize
+cost per successfully completed, authorized task together with quality and responsiveness. Do not
+claim savings or response-time compliance before measuring a representative baseline and candidate.
+
+One logical agent per module does not require an LLM call per module or per handoff. Use deterministic
+intent routing and canonical engine queries for supported structured tasks; invoke a model only where
+interpretation, planning or explanation adds value. Avoid repeated model restatement/reasoning at each
+hop. Engine-to-agent structured results and internal service calls do not inherently need model tokens.
+Use compact typed messages, source references and versioned shared run state rather than forwarding
+whole transcripts, catalogs, schemas, imports or employee records between agents. Load only the
+relevant authorized tool definitions and minimal fields/rows, with bounded pagination/result sizes.
+
+Read bounded previews/summaries from canonical sources; do not send entire import files for a small
+mapping question. Preserve exact dates, identity, units, warnings, permissions and receipt references
+when compressing context. Summaries are derived context, not new HR facts or permission evidence.
+Coalesce identical authorized in-flight reads and cache only when subject/tenant/scope/source version,
+retention and revocation are correctly bound. Never reuse another user's sensitive response simply
+to save tokens. Provider prompt/result caching must meet the selected privacy policy; cache eligibility
+and actual billable discounts require provider-specific verification. No blanket cache or savings claim.
+
+Route suitable tasks to evaluated smaller/less expensive models and escalate only on defined quality
+or capability criteria. Escalation/fallback must retain tool support, privacy and authorization policy.
+Set per-task and per-tenant limits across ALL steps, retries, agents and improvement evaluations:
+input/output/context tokens, provider requests, tool calls, concurrency, elapsed time and spend. Stop
+with an honest partial/uncertain state when exhausted; never drop an access check or silently truncate
+a required validation to meet a budget. Bound retries and avoid duplicate provider/tool work after a
+transport error; effect reconciliation remains canonical and does not require another model request.
+
+For latency, define task classes: direct authorized lookup, conversational explanation, proposed action,
+and long-running import/orchestration. The first two take the shortest eligible path; do not launch
+multi-agent planning for a simple balance question. Provide an immediate honest acknowledgement for
+longer work, stream useful permitted answer content when safe, and show actual stage progress for
+background jobs. A spinner/acknowledgement is not a completed answer. Do not stream unvalidated,
+unauthorized or speculative sensitive content. Separate first acknowledgement, first useful result,
+final answer, confirmation and committed business effect in telemetry and user claims.
+
+Bound provider/tool deadlines, queue time, overall interactive time and background-job duration.
+Parallelize only independent authorized reads; preserve transaction/ordering and confirmation rules
+for effects. Use bounded queues/backpressure instead of unlimited agents competing for resources.
+The user can cancel or leave/reopen a long job and inspect its canonical progress/receipt; reconnecting
+must not restart paid work or repeat business writes. Timeouts disclose what completed, failed or is
+still being reconciled. Provider failure must produce a prompt actionable result, not an indefinite
+wait or a fabricated success. Degrade to available canonical UI/engine results when appropriate.
+
+Instrument p50/p95 latency and cold/warm behavior for the actual end-to-end task, including permission
+checks, retrieval, queueing, provider/tool time and retries. Record input/output and cached/reasoning
+usage only where actually reported, request counts, payload sizes, cost and successful completion.
+Distinguish measured usage from estimates and reconcile billing where supported. Agree numerical
+latency/cost budgets by task class using real baseline and production-import targets, not one arbitrary
+SLA for every workload. Alerts, hard budgets, regression gates, run inspection and tenant pause
+controls must make overruns visible and controllable.
+
+Every self-improvement candidate must report quality/security, human corrections, cost and latency
+against comparable baseline cases. Reject optimizations that save tokens/time by weakening scope,
+privacy, factual accuracy, financial rules, required review or evaluation coverage. Test cancellation,
+timeouts, rate limits, unavailable models, cold caches and large imports as well as the happy path.
+The acceptance matrix for each module includes these cost/responsiveness outcomes alongside its
+engine integration, access controls and improvement/rollback proof.
+
+
+### Current AI release verification: explicit owner retest exception
+
+On 2026-10-26 KL the owner explicitly instructed: “And only repair and retest those that fail,
+dont need to rerun. I give full permission for the exception”. For this AI release, retain authentic
+completed passing checks, repair and retest the failures, and execute required checks that have not
+yet run. Do not restart the whole suite merely because a repair changes the candidate commit.
+This direct owner exception overrides the general fresh-whole/reuse restriction for this release.
+
+Keep original raw outcomes, exact counted coverage, source/diff lineage, environment and failed-to-
+repaired retest results. A cancelled run, unexecuted check or still-failing assertion remains so;
+never manufacture a PASS receipt or relabel partial coverage as a completed whole run. If existing
+release verification cannot represent this authorized evidence composition, use an explicit reviewed
+exception validation path that verifies the real evidence and its scope. Do not silently bypass the
+operator's integrity checks. The exception does not authorize weakened permissions, financial or
+privacy rules, fake clocks, omitted outcomes or GitHub Actions in this session.
+
+
+### Initial complete module-to-agent coverage inventory
+
+Static source inventory at H `3c51317ea43ded103e782c37b55eccf9fdeae05c` identifies **20**
+`MODULE_CATALOG` entries. The table is an implementation work list, not proof of live agents or safe
+exportable tools. Listed files locate existing source owners; every concrete operation still needs
+its public boundary, permission/field projection, typed schema and evaluation reviewed before exposure.
+All full module-agent/improvement integrations below remain **planned**. Existing Assistant read
+tools and own-leave source drafts do not make a row complete. Reconcile this list against the actual
+released baseline and new catalogue entries during implementation.
+
+| Module / required logical agent | Existing owner entrypoints to audit for engine adapters | Status |
+| --- | --- | --- |
+| `employees` — Employees | `core/read.ts`, `core/org.ts` | Planned; adapter/security/improvement proof required |
+| `org` — Organization | `core/org.ts` | Planned; adapter/security/improvement proof required |
+| `leave` — Leave | `packs/leave/service.ts` | Planned; adapter/security/improvement proof required |
+| `ess` — Employee Self-Service | `core/employee-home.ts`, `core/employee-home-summary.ts` | Planned; adapter/security/improvement proof required |
+| `approvals` — Approvals | `core/approvals.ts`, `core/approvals-inbox.ts` | Planned; adapter/security/improvement proof required |
+| `knowledge_base` — Knowledge Base | `core/knowledge-base.ts` | Planned; adapter/security/improvement proof required |
+| `payroll` — Payroll | `packs/payroll/service.ts` | Planned; adapter/security/improvement proof required |
+| `attendance` — Attendance | `packs/attendance/service.ts` | Planned; adapter/security/improvement proof required |
+| `claims` — Claims | `packs/claims/service.ts` | Planned; adapter/security/improvement proof required |
+| `performance` — Performance | `packs/performance/service.ts` | Planned; adapter/security/improvement proof required |
+| `rewards` — Rewards | `packs/rewards/service.ts` | Planned; adapter/security/improvement proof required |
+| `lifecycle` — Onboarding, Offboarding & IT Assets | `packs/lifecycle/service.ts` | Planned; adapter/security/improvement proof required |
+| `toil` — Time Off In Lieu | `core/toil.ts`, `packs/leave/service.ts` | Planned; adapter/security/improvement proof required |
+| `multi_cycle_payroll` — Multi-Cycle Payroll | `packs/payroll/service.ts` | Planned; adapter/security/improvement proof required |
+| `typed_pay_components` — Typed Pay Components | `core/pay-components.ts`, `packs/payroll/service.ts` | Planned; adapter/security/improvement proof required |
+| `country-my` — Malaysia | `localization/registry.ts` | Planned; adapter/security/improvement proof required |
+| `notifications` — Notifications | `core/notifications.ts`, `core/notification-email.ts` | Planned; adapter/security/improvement proof required |
+| `system_explorer` — System Analysis & Dependency Explorer | `core/schema-explorer.ts` | Planned; adapter/security/improvement proof required |
+| `assistant` — AI Assistant | `core/assistant.ts`, `core/assistant-tools.ts` | Planned; adapter/security/improvement proof required |
+| `system_testing` — System Testing | `core/system-testing.ts`, `core/system-testing-library.ts` | Planned; adapter/security/improvement proof required |
+
+Submodules (`toil`, `multi_cycle_payroll`, `typed_pay_components`) are explicit entries even when
+reusing a parent engine; their entitlement and evaluation coverage remain distinct. The jurisdiction
+entry must call registered country-pack capabilities, never synthesize statutory policy. Employee
+Self-Service and Assistant coordinate existing owners rather than duplicate HR facts. Approvals,
+Notifications and System Testing agents must not approve themselves, send unauthorized messages or
+mark unrun checks passed. Schema Explorer access remains guarded product-reference access.
+
+Cross-cutting Import and orchestration capabilities are additional work streams, not invented new
+catalogue entries. Import adapters must map each actual domain preview/validation/commit owner
+(e.g. personnel, payroll history/transactions, leave and attendance imports) before selecting the
+production pilot. Pack/feature capabilities outside this catalogue, such as Job Descriptions, need
+an explicit module/engine relationship and agent coverage as well; catalogue counting alone cannot
+silently exclude a system feature. This inventory has not yet audited all exported functions, engine
+transitive dependencies or fine-grained data scopes and does not authorize generic service exports.
+
+
+### OpenRouter routing boundary: source-only preparation, 26 October 2026
+
+Current official [provider-routing documentation](https://openrouter.ai/docs/guides/routing/provider-selection)
+exposes an explicit allowlist, ordered preferences, fallback controls, parameter-support filtering,
+data-collection filtering, ZDR and price/latency sorting. Defaults permit fallback and do not require
+all requested parameters. DECISION: the unregistered policy builder always pins `only` alongside
+`order`, requires supported parameters, denies data collection and requests ZDR; fallback is off
+unless explicitly configured and remains within the approved set. Latency sorting is a preference,
+not a deadline or response-time guarantee. This does not establish compliance or authorize HR disclosure.
+
+The [client-tool documentation](https://openrouter.ai/docs/guides/features/tool-calling) places execution
+in the application and requires the tool schema on continuation requests. No provider server tools,
+plugins or remotely executed HR actions are admitted by this policy. The eventual adapter must preserve
+the local typed tool dispatcher and reauthorize every engine call.
+
+The [provider-logging documentation](https://openrouter.ai/docs/guides/privacy/provider-logging)
+distinguishes provider policies from OpenRouter's own policies and third-party tool policies. Its
+generic retention wording and the routing page's explicit ZDR support are not a universal retention
+guarantee. Account settings, actual endpoints and applicable terms still require verification before
+enabling confidential data. No credentials, API connection, provider registration, tenant enablement
+or production data transfer has occurred.
+
+IMPLEMENTED SOURCE ONLY: `lib/ai/providers/openrouter-policy.ts` rejects unknown policy fields, empty/
+duplicate/wildcard/URL provider identifiers and captures an immutable approved set. Authored tests
+cover default constraints, bounded fallback, policy-expansion attempts and mutation. Tests are UNRUN
+while Mobile owns the runtime window; static syntax and diff checks alone are not runtime/security
+proof. Own-leave remains the next effect capability and its dependency/atomicity work is unchanged.
+
+
+### OpenRouter accounting: distinguish actual usage from unknown metadata
+
+The current official [usage-accounting guide](https://openrouter.ai/docs/cookbook/administration/usage-accounting)
+reports native token counts and account cost in credits; upstream inference cost is a different measure.
+Cache reads and writes have separate fields. The [API response reference](https://openrouter.ai/docs/api_reference/overview)
+marks breakdowns/cost optional and includes reasoning within completion usage. DECISION: the unregistered
+accounting reader subtracts reported cache reads from prompt tokens once, does not add reasoning or
+cache writes again, checks safe-integer totals and retains missing/malformed values as unknown. No
+price lookup, extra generation API call or assumed zero charge is introduced. Reported credits are
+not labeled USD. Accounting validation is not provenance, billing reconciliation or permission to
+settle an allowance; the eventual governed adapter must bind the actual response to its admitted run.
+
+SOURCE ONLY: `lib/ai/providers/openrouter-accounting.ts` and authored regressions are unregistered and
+UNRUN. Static syntax/diff checks do not establish correct live-provider behavior or cost improvement.
+No app tests/compiler/build/DB or provider connection ran during Mobile's verification priority.
+
+
+### OpenRouter completion protocol: source-only boundary
+
+The official [API response reference](https://openrouter.ai/docs/api_reference/overview) documents
+normalized terminal labels and function calls. The [error guide](https://openrouter.ai/docs/api_reference/errors-and-debugging)
+requires inspecting body/choice errors as well as HTTP status. DECISION: the unregistered parser
+rejects either error location, duplicate call IDs, unsupported tool kinds, multiple choices and
+oversized fields with generic errors. Refusal, truncation and unknown terminal labels carry no
+executable calls. Invalid argument JSON remains explicitly invalid for the existing local validator,
+never repaired or guessed by this parser. Missing accounting retains `usageReported=false`; neutral
+placeholder zeros cannot settle actual usage. No provider registration, tool execution or fresh-access
+proof is established here. Authored regressions remain UNRUN during Mobile's runtime priority; only
+source syntax/diff checks have run.
+
+
+### Dependency inventory reassessment after released-baseline integration
+
+FACT (static source only, 26 October 2026) — a tracked-source scan at `6f3332862`
+reassessed the four balance/reservation/type bindings across `app`, `core`, `packs`, `db`
+and `scripts`, including schema import aliases and immutable direct aliases. It found 61
+direct Drizzle writes across 16 files (ledger 28, request 13, request-date 6, type 14).
+The earlier 62nd hit was an untracked development journey, not an additional tracked source
+owner. This count change is an inventory-scope distinction, not removal of a canonical writer.
+No additional literal SQL-template write was found by the bounded lexical query; dynamic
+SQL, indirect data flow, installed procedures/triggers and external writers remain UNKNOWN.
+A separate scan identified 13 historical migration SQL candidates affecting leave types;
+historical statements are not evidence that their former function bodies remain installed.
+
+The scan deliberately does not infer branch participation from an enclosing lock literal.
+The next barrier implementation must still enumerate each actual write transaction, acquire
+its compatible dependency protection before protected reads, preserve import row isolation,
+and cover configuration/authority/roster/calendar/late approval dependencies. File-wide alias
+resolution also is not a lexical binding proof. No database or concurrency check ran; this
+reassessment establishes neither a complete writer graph nor a universal lock guarantee.
+Confirmation stays unexposed.
+
+
+### Dependency barrier design: protect reads as well as final writes
+
+FACT — PostgreSQL 16 [row-lock documentation](https://www.postgresql.org/docs/16/explicit-locking.html)
+distinguishes `FOR UPDATE` from `FOR NO KEY UPDATE` and describes their different conflicts with
+key-share locks. Its [referential-integrity implementation](https://github.com/postgres/postgres/blob/REL_16_STABLE/src/backend/utils/adt/ri_triggers.c)
+checks referenced keys with a key-share query. The schema gives leave requests, ledger entries and
+request dates employment foreign keys. These facts suggest a parent-row insertion fence, but do
+not establish a complete business dependency interval.
+
+REJECTED SHORTCUT — locking only the employment parent is insufficient. A legacy request may read
+availability before it blocks at its later foreign-key check, then resume with stale validation.
+Existing request/status/date/ledger updates need not recheck an unchanged employment key. National
+holidays also have no non-null employment/company parent that would universally fence new dates.
+This is an inference from source/control flow, not a demonstrated database interleaving. Adding a
+privileged parent lock would also require separate employee-RLS and lock-order proof; it cannot be
+used as an Assistant-only replacement for writer participation.
+
+PROPOSED IMPLEMENTATION ORDER — a domain configuration barrier shared by ordinary leave commands
+and exclusive for dependency/configuration edits, followed by ordered exclusive employment barriers
+for balance/reservation changes. Take these before protected reads, including borrower mapping and
+late approval resolution. Keep them through the canonical event and receipt commit. The existing
+Access barrier must have a consistent order relative to these locks across every participant; audit
+transitive calls before selecting that order. A candidate acquired-lock token is not authorization.
+This design is not yet selected as a proven implementation or wired to an effect.
+
+For B/F and history import, the present commit analysis reads outside the individual row write
+transactions. A row-level lock inserted just before `insert` would still leave stale resolved source
+fields. Integrate the barrier and fresh row resolution inside EACH accepted row transaction, retaining
+independent row failure and summary transactions. Do not wrap the whole file in one write transaction.
+
+Before enabling confirmation, prove controlled two-connection interleavings against ordinary submit,
+borrower submit, cancel/edit/approval, negative adjustment and B/F/history import; source mapping,
+calendar/roster and authority changes; rollback/timeout/deadlock and retry-without-duplicate effects.
+Check meaningful current app-role behavior and actual lock waits, not elapsed sleeps or model ratings.
+No DB run, new lock, migration reservation or effect exposure is claimed by this design note.
+
+
+### Transaction-local canonical import resolution prerequisite
+
+SOURCE IMPLEMENTATION — B/F and history import analysis now accepts an existing transaction through
+server-only `resolveLeaveBfImportTx` / `resolveLeaveHistoryImportTx`. Catalogue, employment/reference,
+calendar/roster and balance-impact reads join that transaction through their existing canonical
+readers. Existing public preview and commit callers keep their original transaction behavior; no
+barrier, new import effect, whole-file transaction or Assistant exposure is wired. The future row
+command can now resolve authoritative source data inside its own protected interval rather than
+opening detached reads. Supplied context/transaction provenance remains the authenticated caller's
+responsibility; these helpers are not a posted or model-callable capability.
+
+Authored real-DB regressions compare the ordinary preview with transaction-local resolution, change
+an uncommitted catalogue with committed-read controls, and change a ledger with exact impact/rollback
+controls. They are UNRUN while Mobile owns verification priority. Static syntax/diff review alone
+does not prove transaction isolation, concurrency, authority or current import correctness. Universal
+writer/configuration participation and atomic confirmation/receipt still remain before enablement.
+
+
+### Participating dependency-lock primitive: source only, not universal protection
+
+`core/leave-dependency-lock.ts` now supplies an unmounted shared configuration/exclusive employment
+lock primitive and an exclusive configuration-writer primitive. Acquisition binds the transaction's
+tenant and Read Committed/write mode. Nonblocking advisory attempts refuse a busy source; there is
+no hidden retry or indefinite lock wait. Subject keys are captured, deduplicated and ordered before
+awaiting; all borrowing leave types share the employment barrier. A refusal requires the caller's
+whole transaction rollback, including partially acquired locks. These helpers neither authorize the
+subject nor establish protection against a nonparticipant.
+
+Actual legacy writer integration and consistent Access/annual-role/payroll/credit/row lock order are
+still required. No existing owner or Assistant effect calls the primitive yet. Authored two-connection
+DB cases cover same/different employment, both directions of configuration conflict, release and
+foreign/malformed carriers with bounded owned handshakes. They remain UNRUN. Random subject UUIDs
+in these lock-mode tests intentionally prove only advisory-key behavior, not real employee access,
+canonical writer participation or business interleavings. Those remain separate release blockers.
+
+
+### First actual participant: B/F import row writes (unreleased, unrun)
+
+B/F commit now captures submitted records before awaiting, joins the participating configuration/
+employment barrier inside each real row transaction, and resolves that same row again under the
+barrier before touching its ledger. The scoped read selects only the nominated employment rather
+than rescanning all employments for every row. A changed identity/type/source/cycle/effective date
+or newly invalid row is refused for another review; no silent retargeting occurs. The original
+one-based row number identifies the submitted record and any failure. Successful ledger-row counts
+advance after transaction completion, keeping aborted rows out of the summary. File rows, run header
+and summary retain their separate transactions.
+
+An authored real-employee two-connection regression holds one subject barrier, requires that row to
+fail without ledger writes while another employee row commits, and then retries the first after
+release. This and all affected B/F regressions remain UNRUN. Source syntax/diff checks do not prove
+concurrency or preserved import behavior. This first participant does not fence nonparticipating
+configuration/ledger/form/approval/history/reversal owners. Their integration, lock-order review and
+actual DB/security/rollback proof remain mandatory before universal protection or Assistant effect
+exposure can be claimed. No migration, provider call or staging change accompanies this source work.
+
+
+### B/F reversal joins source barriers and run ownership (unrun)
+
+Source review found reversal read `reversedAt` without a run-row lock before compensation. The
+unreleased owner now discovers subject IDs under a shared configuration phase, acquires ordered
+employment barriers, then locks the run `FOR UPDATE NOWAIT` before rereading its flag and original
+ledger rows. Newly discovered unprotected subjects cause refusal rather than a late reverse-order
+lock. Each loading row takes `FOR SHARE NOWAIT` on that same run after its subject barrier and refuses
+a reversed run. This avoids introducing a subject→run / run→subject wait cycle and keeps waiting
+bounded; it does not prove other canonical owners participate.
+
+An authored real-run two-connection regression holds the run, requires a bounded refusal with no
+compensation/flag change, releases it, reverses exactly once and checks a repeated refusal leaves
+ledger rows unchanged. It is UNRUN, as are affected import, lock-order, business-concurrency and
+security checks. The source change is unreleased and establishes no current staging defect or
+runtime guarantee. Historical rows are compensated on their original dates, never deleted.
+
+
+### Adjustment reversal joins employment barriers and batch ownership (unrun)
+
+The existing adjustment reversal now captures its input before awaiting, nominates subjects under a
+shared configuration phase, acquires ordered employment barriers, then locks the adjustment batch
+`FOR UPDATE NOWAIT`. It rereads the reversal flag and original ledger rows under that ownership and
+refuses a newly discovered unprotected subject rather than taking locks in reverse order. Compensation,
+flag and canonical event remain in the same transaction. Query failures are bounded generic refusals;
+the whole caller transaction rolls back and releases any earlier locks.
+
+Two authored two-connection cases hold either a real employee barrier or the actual batch row. They
+require refusal without ledger/flag changes, release the holder, reverse once, and require a repeated
+refusal to preserve history. These cases and the affected adjustment suite remain UNRUN. Static syntax
+and source comparison are not concurrency, app-role, security or runtime evidence. The apply-adjustment
+function is byte-identical; it and other remaining legacy writers still need participation. There is
+no universal barrier, new Assistant effect, migration or staging change in this source checkpoint.
+
+
+### Adjustment creation joins the participating interval (unrun)
+
+Adjustment creation captures its scalar/list criteria and selected employments before awaiting. It
+joins the shared configuration phase before reading types or nominating an audience, takes ordered
+employment barriers, and resolves the visible audience again in the same transaction. Any membership
+change refuses the whole command; it never silently retargets or acquires extra subjects after the
+ordered phase. Existing replacement-register refusal and frozen-snapshot skipping remain canonical.
+The batch, cross-product ledger rows and application event still share one transaction.
+
+Two authored real-employee two-connection cases hold configuration or the last sorted employment.
+They require no batch/ledger/application-event effects on refusal, verify the earlier subject lock
+was released after partial acquisition, then apply after release. They remain UNRUN, including all
+changed adjustment, criteria, entitlement, snapshot, authority and concurrency consumers. Source
+review/syntax checks are not runtime proof. Only participating writers are fenced: catalogue,
+assignment, entitlement, frozen-snapshot and other dependency writers still require integration and
+fresh Access/authority validation before Assistant effects can be exposed. Additional audience reads
+have no measured latency claim. No migration or provider/staging operation is part of this checkpoint.
+
+
+### History import joins each actual row transaction (unrun)
+
+The history importer now captures file records/source options before awaiting, nominates writable
+rows through its existing whole-file analysis, then acquires configuration/employment barriers inside
+each accepted row's own transaction. It re-resolves that exact raw row against the nominated employee
+and refuses invalid/duplicate rows or changed employee, filed type, balance source, entitlement year,
+span, days or duration. A fresh calendar warning remains nonblocking and the historical file figure
+remains authoritative, matching the existing import contract. The re-resolution uses the supplied
+transaction; employment lookup is restricted to the nominated ID and references stay tenant-scoped.
+
+Request, optional debit and existing Payroll effect owner remain in the same row transaction. The
+Payroll path retains its ordered NOWAIT coverage locks and existing closed-run policy; no Payroll SQL
+or arithmetic changed. Run-log and summary-event boundaries remain separate and later rows still run
+after a row refusal. Newly discovered duplicates during this interval remain write failures, matching
+the existing post-preview uniqueness race behavior rather than relabeling original coverage.
+
+Two authored real-employee two-connection cases cover record-only and charged modes: hold the first
+employee, require no first-row request while another row and its correct debit behavior commit,
+check run counts, release and retry only the refused row. These cases and affected history, reference,
+calendar, authorization and Payroll consumers are UNRUN. No runtime/security/latency or universal
+protection claim follows from static checks. Other request/form/approval/cancellation/configuration
+writers still need participation and full lock-order/Access review before Assistant effects.
+
+
+### Canonical catalogue mutation entry points join exclusively (unrun)
+
+The five leave-type mutation entry points in core/admin.ts — create, update, rule save, archive/restore
+and delete/cascade — now acquire exclusive dependency configuration ownership as the first operation
+inside their actual transaction. Source reads, annual-role checks/locks, existing ordered NOWAIT
+Payroll coverage, row writes/cascades and canonical events remain after that phase and otherwise
+unchanged. Participating imports/adjustments hold shared configuration ownership, so these catalogue
+commands refuse rather than modifying their configuration mid-interval. Pure request validation
+outside the transaction remains outside it; this is not a new authority check.
+
+Five authored real-employee two-connection cases hold a participating employee interval, require each
+catalogue command to refuse with identical catalogue/event state, release it and verify the original
+canonical operation succeeds. They and affected catalogue/role/rules/deletion/Payroll consumers remain
+UNRUN. Static source comparison only proves the bounded edit, not lock order under runtime, app-role
+permissions or security. Other direct catalogue writers, templates, policies, tenant module state,
+Access, assignments, calendar/roster, snapshot and request owners still need integration. No universal
+barrier, provider/Assistant activation, migration or deployment is established by this checkpoint.
+
+
+### Entitlement lineage and default writers join exclusively (unrun)
+
+The nine mutation entry points in core/entitlement-template.ts now take exclusive configuration
+ownership as their first transaction operation: template and eligibility-rule create/update/retire/
+delete, plus the leave-type default-table pointer. Lineage, usage and authority reads run afterward,
+followed by the existing canonical versioning, deletion guards, writes and event. The module's read
+and resolver paths do not acquire an exclusive lock. Existing business bodies are otherwise unchanged.
+
+Nine authored two-connection cases hold a real employee's participating interval, require each
+canonical command to refuse with identical template/rule/type/event state, release the interval and
+verify its original operation succeeds with exactly one event. The fixture uses future unused custom
+tables so deletion/versioning rules are exercised without manufacturing historical grants. All cases
+and affected entitlement, deletion, configuration and authorization consumers remain UNRUN; static
+source review proves neither actual app-role behavior nor lock-order/security guarantees. Remaining
+direct writers, policy/module/Access, organization, calendar, snapshot and request owners still need
+participation before a universal barrier or Assistant effect can be claimed. No migration or release.
+
+
+### Encashment policy and administrative snapshot overrides participate (unrun)
+
+The encashment-policy upsert now takes exclusive configuration ownership before reading or writing
+its policy. Administrative unfreeze/adjust capture the snapshot ID before awaiting, nominate its
+RLS-visible employment under shared configuration, acquire the employment barrier, then reread the
+snapshot with `FOR UPDATE NOWAIT`. Changed/missing subjects or busy rows refuse the whole transaction;
+existing status/override validation, snapshot change and canonical event stay together. No Payroll
+money calculation or canonical day rounding changed.
+
+Five authored real-employee two-connection cases freeze through the actual resignation approval
+workflow, hold either employment ownership or the real snapshot row, require both administrative
+commands to refuse with identical snapshot/event state, release and apply once. The fifth requires
+the policy writer to refuse during an employee interval, then records its change after release. They remain UNRUN,
+as do policy, resignation, snapshot, ledger-trigger, Payroll and authorization consumers. Snapshot
+CREATION and its parent offboarding/termination transaction are deliberately still pending dependency
+integration: this checkpoint does not fence the freeze writer or establish a universal barrier.
+No app-role, concurrency, erasure or security guarantee follows from static source checks; no release.
+
+
+### Resignation acceptance owns the dependency interval before termination (unrun)
+
+Acceptance now acquires the existing Access workforce-write lock before exclusive leave configuration
+ownership, because its termination changes assignment/reporting dependencies as well as the subject's
+leave state. It nominates the visible request's employment, takes that employment barrier, then rereads
+the request `FOR UPDATE NOWAIT` and repeats the canonical decision checks. Changed subjects or busy
+rows refuse rather than acquiring a new subject late. The existing SQL fixed-consequence intent,
+termination owner, snapshot creation, accepted status and immutable events remain in one transaction.
+The request-row ownership also covers rejection; no new permission or maintenance bypass is added.
+
+The freeze helper itself now shares configuration before policy/type reads, retains its documented
+policy-off/no-annual silent skip, and takes employment ownership before existing-snapshot/balance reads.
+Within resignation acceptance those locks are already owned. Other callers must still establish their
+own earlier dependency/Access interval; direct termination and all other organization writers remain
+pending, so no universal organization or leave barrier is claimed.
+
+Two authored real-employee two-connection cases hold either a participating employee interval or the
+actual resignation row. They require identical employment/assignment/request/snapshot/event state on
+refusal, then acceptance after release with one frozen snapshot and a repeated-decision refusal that
+leaves state unchanged. Dates derive from the real business clock; no fake clock or guard relaxation.
+These and all changed offboarding/termination/Access/snapshot/leave consumers remain UNRUN. Static
+syntax/source review is not authorization, app-role, lock-order or effect-completion runtime proof.
+
+
+### Direct termination and ordinary Movement creation participate (unrun)
+
+Source tracing found three production callers of terminateEmploymentTx: the direct wrapper, Movement's
+termination leg and accepted resignation. The leaf now takes existing Access workforce-write ownership,
+then exclusive configuration and its employment barrier before the canonical fixed-consequence guard,
+assignment/reporting reads/writes and events. Accepted resignation already owns that interval. Ordinary
+manual/caller-transaction Movement creation additionally takes exclusive configuration immediately
+after its canonical Workforce authorization, before custom type resolution or current-state planning.
+This protects the earlier planning interval for that entry, rather than adding only a late write lock.
+The existing type, closed-payroll, exit-date authority and canonical termination owners are unchanged.
+
+Three authored two-connection cases hold a real employee's participating interval and require direct,
+manual Movement and caller-transaction Movement termination to refuse with identical employment,
+assignment, reporting and event state. After release they require the real termination/closed assignment
+and exactly one canonical termination event. All cases and affected lifecycle/Movement/Access/Payroll
+consumers remain UNRUN. Scheduled apply, edit/reverse and prepared/future Movement paths still need their
+earlier source-read intervals integrated; the leaf alone is not proof that every caller planned under
+stable dependencies. Other organization writers remain pending. No universal barrier or security,
+performance, runtime or Assistant effect-completion claim follows from static checks; no release.
+
+
+### Scheduled apply, reversal and rehearsal outer ownership (unrun)
+
+Scheduled application now owns exclusive configuration after canonical Workforce authorization and
+before projecting due events; the sweep also acquires it before capturing the earlier grade value.
+Reversal owns it before its canonical projection/rollback. Rehearsal takes the existing Access lock
+then exclusive configuration in its OUTER transaction, before the preparation callback. Its nested
+savepoint's intentional rollback therefore cannot release ownership before the exact bounded replay.
+Existing replay/context/transaction bindings and canonical business bodies remain unchanged.
+
+An authored two-connection case runs the real rehearsal to rollback, pauses before replay, requires a
+canonical adjustment command to refuse without ledger/batch/event changes, then commits the exact
+replay and applies the adjustment after release. This and affected scheduled/reversal/rehearsal/sweep
+contracts remain UNRUN. Edit still resolves its catalogue before its write transaction: that source
+resolution must move inside a protected transaction rather than receive a late lock. Other direct
+organization, catalogue, authority and leave writers remain pending; no universal or security/runtime
+proof, no deployment, and no app/DB/compiler/test execution in this source checkpoint.
+
+
+### Movement correction resolves its catalogue inside the protected write transaction (unrun)
+
+Correction previously resolved a custom catalogue code in a separate transaction before planning its
+actual write. It now captures scalar input, performs canonical Workforce authorization, takes exclusive
+configuration ownership, and resolves the active/inactive-correction semantics in that SAME transaction.
+Existing validation, projection, rollback/replay and returned behavior classification stay under this
+interval. The now-unused separate-transaction resolver wrapper is removed. This closes the earlier
+correction-specific gap; configuration writers for the Movement catalogue and remaining organization /
+leave owners still require integration. All affected correction and transaction tests remain UNRUN.
+
+
+### Canonical request submission joins rights and dependency ownership (unrun)
+
+requestLeave now takes the existing Access lock, then shared leave configuration, before reading the
+subject. Its original self/on-behalf and reviewed-effect guards still run before any employment lock
+or policy/balance read. It then owns that authorized employment and rereads the exact canonical subject
+projection; a changed projection refuses instead of submitting against the earlier facts. Catalogue,
+calendar, balance and canonical request/event writes remain afterward in the same perform transaction,
+including when an enclosing own-leave command supplies its transaction. The reviewed-effect refusal
+contract and existing business engine are preserved; this is not a parallel Assistant submitter.
+
+Affected request, emergency/override, attachment, on-behalf, reviewed-effect, Access and concurrency
+checks remain UNRUN. Other request/approval/cancellation and dependency writers still need participation.
+The Access lock is existing authorization infrastructure; new leave barriers remain fail-fast and require
+whole-transaction rollback. This source checkpoint establishes no universal barrier or runtime proof.
+
+
+### Request approval and cancellation owners join before row ownership (unrun)
+
+Whole-request approval, single/batch date decisions, cancellation request, cancellation decision and
+HR cancellation now acquire Access and shared configuration before nominating the RLS-visible request's
+employment. They own that employment and recheck the binding before their existing request-then-
+cancellation row locks and business validation. Cancellation decision nominates the source request from
+its visible cancellation before entering that same helper. Existing approval, delegation, payroll,
+credit, compensation and event bodies are unchanged; the helper does not authorize a decision.
+
+Two additional authored real-employee cases require whole approval and HR cancellation to refuse
+without request/ledger/event changes during an employee interval, then perform their real one-day debit
+or compensation after release. All new cases and affected single/batch decisions, delegation, employee
+cancellation, split/group, Payroll and credit consumers are UNRUN. Other ledger and dependency writers
+remain pending. No universal barrier or runtime/security/effect-completion claim is established here.
+
+
+### Canonical Assistant grant/revoke writers join current actor ownership (unrun)
+
+The canonical grant and revocation services now acquire the existing tenant Access lock before their
+administrator/RLS guard, grant reads/writes and event. The own-leave actor reader already owns that
+same barrier before its live grant read, so participating permission transitions serialize with the
+actual actor interval. This adds no grant, bypass, provider call or new privilege. Other module/pause
+and storage writers remain separate dependencies and still require completion.
+
+Two authored two-connection cases hold Access, call the actual public grant/revoke service, positively
+observe its pending advisory lock through fixture-database lock metadata, require unchanged grant/event
+state, release the interval and verify exactly the intended live-grant state plus one event. They and
+all affected grant, actor, RLS and revocation-security checks are UNRUN. Source checks do not establish
+an installed database barrier or universal authority guarantee; no release is authorized by this alone.
+
+
+### Per-employment entitlement reprojection owns its actual calculation (unrun)
+
+The canonical per-employment reprojector now captures its carrier/input and acquires Access/shared
+configuration before nominating a visible employment. It owns that employment, rereads its exact
+company/grade/cycle projection, and refuses changes before catalogue/template/ledger reads and the
+canonical delta/audit/event. This works in both its independent transaction and an enclosing Movement
+transaction. Cohort enumeration remains read-only nomination; each actual employee calculation is fresh.
+
+An authored real correction case requires a busy interval to leave ledger/audit/events unchanged,
+then applies the canonical 12-to-14 delta after release and proves a second projection writes nothing.
+It and affected projection/Movement/cohort consumers remain UNRUN. Annual opening, earned/A2C sweeps,
+expiry, other ledger owners and remaining configuration participants still require completion. No
+universal fence, money computation by a model, performance claim or runtime proof is established.
+
+
+### Year-open, earned, expiry and A2C cohort calculations own their complete sets (unrun)
+
+The actual year-open, earned-accrual and carry-expiry transactions now acquire Access/shared source
+configuration and their complete ordered RLS-visible employment set before any business calculation.
+A nomination-only query respects company/grade/employee restrictions and is rechecked after ownership;
+all existing type/template/ledger computations run afterward. A2C's caller-transaction correction joins
+the same entry boundary. Read-only dry runs retain shared configuration but skip employee-exclusive
+ownership. Historical empty-scope meanings are preserved: explicit empty earned scope means nobody,
+while empty year-open/A2C scope retains their existing unscoped behavior. Source arrays/carriers are
+captured before awaiting. Employee request edit and own cancellation also join the request interval.
+
+No engine arithmetic, deliberate skips, row writes or canonical events were replaced. The existing
+opening, earned, expiry, A2C, cohort, same-Tx and scope acceptance suites are required and UNRUN; source
+syntax is not a runtime/concurrency/performance result. Ordered advisory sets are not a global table
+lock. Other organization/calendar/roster, old import, credit, raw storage and authority writers still
+need integration and actual security proof before universal protection or Assistant effects.
+
+
+Legacy ledger import participant — source preparation (UNRUN)
+
+`commitLeaveImport` captures the input file/context, then owns Access, shared leave
+configuration and the nominated employment inside each actual row transaction.
+Its existing analyzer can now join that transaction, including catalogue, visible
+identity and ledger reads. It freshly resolves the original raw row, refuses any
+invalid or changed identity/type/entry/days/date/dedupe binding, and skips a duplicate
+found under ownership. Counts advance only after commit. Rows and the summary keep
+separate transactions; a busy first employee must not strand an independent row.
+The authored actual two-employee regression checks that behavior and release/retry
+idempotency and summary counts. It and all existing import consumers remain UNRUN.
+No compiler, database, application or release verification is claimed. Tenant/module
+facts and other nonparticipating owners still require complete fencing and proof.
+
+
+Replacement policy source participant (UNRUN): `setToilPolicy` captures scalar
+input/context and acquires Access then exclusive leave configuration ownership
+before its existing upsert, replacement-type creation and canonical event. Its
+existing admin/module/input gates remain. A real employee two-connection case
+requires unchanged policy/catalogue/events while the shared interval is held,
+then the canonical save after release. Authored, not executed. Accrual, reversal,
+consumption/restoration and settlement paths have their own credit/Attendance/
+Payroll lock order; they still need caller-level integration before earlier
+protected reads, rather than a late lock added only at the ledger insertion.
+
+
+Canonical hire cohort participant (source-only, UNRUN): `hireEmployee` captures
+person/grant inputs and context, retains its fresh Workforce company/person gate,
+then takes exclusive leave configuration ownership before Criteria/reference
+locks, catalogue/template resolution, person/employment/assignment/reporting
+creation and initial ledger grants. A new invisible employment has no prior
+subject interval; the exclusive configuration phase protects cohort membership
+until the hire commits, rather than acquiring an unknown new ID after writes.
+Both direct and caller-transaction real employee interleavings are authored:
+held ordinary interval must leave the full hire graph/ledger/events unchanged,
+then release permits the canonical hire and its opening grant. Tests UNRUN;
+syntax/diff review only. Draft activation/import callers may have earlier work;
+those transitive intervals and remaining org/credit/config writers still require
+review and verification. No universal protection or Assistant effect is exposed.
+
+
+Confirmed delivery scope and completion-reference custody — 26 October 2026
+
+The human explicitly requested finishing all three delivery stages: (1) own-leave
+Assistant, (2) provider integration, and (3) AI workspace plus module agents. This
+continues the detailed roadmap above; source preparation alone completes none of
+these stages. Keep the local-only/no Actions and retain-valid-pass requirements.
+Release verified candidates autonomously under the existing authorization.
+Provider activation or production HR-data transfer is not inferred from coding.
+
+The unallocated review-store draft now permits a completed marker with one unique
+request and one unique submission-event reference, with an all-or-neither/state
+constraint. Its narrow completion function validates the current custody owner,
+exact reviewed digest, unexpired pending state and matching own request/event
+binding, and requires both source row versions to belong to the current top-level
+transaction. It retires encrypted review content in that same transaction.
+Repeated delivery can return only the same completed references. This primitive
+is not the consent owner, an Assistant grant, a pause check or an alternative leave
+engine: the eventual server command must freshly validate those, obtain its
+references directly from canonical `requestLeave`, and abort the whole transaction
+on any failure. Never accept request/event references from the human POST/model.
+
+PostgreSQL16 primary documentation confirms xid8-to-xid casting and that
+`pg_current_xact_id()` returns the top-level transaction ID even in savepoints:
+https://www.postgresql.org/docs/16/functions-info.html
+https://www.postgresql.org/docs/16/transaction-id.html
+Consequently the current narrow proof deliberately refuses source versions made
+inside a savepoint. The eventual command must use its supplied top-level transaction
+directly; this is a source constraint, not an assertion that all future callers are
+compatible. It also does not establish that arbitrary same-transaction SQL used the
+canonical engine; that provenance remains the server command owner's responsibility.
+
+Completed reopening now uses the existing current-user canonical minimal request/
+event reader and pure reconciliation before returning a reference receipt. Missing,
+substituted or no-longer-readable canonical evidence refuses; it does not execute
+again or claim approval. Four authored actual-DB cases cover canonical write plus
+completion/reopen/same-reference retry, whole-transaction rollback after completion,
+refusal of old committed references, and unsupported savepoint refusal. ALL UNRUN;
+only TypeScript syntax parsing and diff review performed. The SQL remains unallocated,
+unjournalled and unapplied. No submission/confirmation command or endpoint is mounted,
+and dependency/security/concurrency/retention/erasure acceptance remains incomplete.
+
+
+Unmounted confirmation owner source preparation (UNRUN)
+
+`confirmOwnLeaveReview` now owns a top-level `withTenant` transaction instead of
+exporting an execution callback that another caller might catch and partially
+commit. It accepts only the confirmation contract plus server session/locale,
+refreshes the actor/Assistant grant and non-admitting pause controls, nominates an
+owned stored subject without its row lock, acquires leave dependency ownership,
+then locks and rereads the review. Completed actions use canonical reconciliation;
+retired actions never execute. Pending content is decrypted only under custody.
+It freshly rebuilds the candidate from stored human selection/text, compares the
+exact reviewed/intent digests AND private balance, and calls canonical `requestLeave`
+with its refusal-only reviewed-effect precondition in the SAME transaction. Exact
+returned request/event IDs feed completion storage; a canonical current-user reread
+must succeed before returning. Every error is bounded only after transaction rollback.
+No new model admission, provider/network call or model-supplied effect fields exist.
+
+The narrow source-nomination SQL function returns only the owner's employment ID,
+under current identity/Access. Leave dependency primitives are exported through the
+existing leave service facade, preserving the pack boundary. Six additional authored
+actual command cases cover simultaneous duplicate confirmations, hidden-balance drift,
+grant/pause revocation, employee contention and a test-database completion-write fault
+that must roll back the canonical request/event and allow a later retry. ALL UNRUN;
+AST syntax/diff review only. This supersedes the statement that no command source
+exists, but NOT the absence of a mounted authenticated POST/CSRF owner, universal
+writer/authority/config protection, applied migrations or runtime/experience proof.
+Keep the command unmounted until those release-blocking requirements are demonstrated.
+
+
+Holiday/calendar configuration participants (source-only, UNRUN): national/state/
+company/group holiday create/update/delete, holiday-group create/update/delete and
+the shared group tick-list writer now own Access then exclusive leave configuration
+as their first actual transaction phase, before source validation/reference reads,
+row locks, cascades and events. Inputs/context, including state/holiday-ID arrays,
+are captured before awaits; the public tick-list wrapper captures before opening
+its transaction as well. Existing canonical business bodies remain in place.
+Seven authored actual real-employee two-connection cases hold an ordinary source
+interval, require exact unchanged holiday/group/link/event state on refusal, then
+release and require the intended canonical mutation and one event. All UNRUN.
+AST syntax/diff review only; replacement-calendar owners, assignments, country seed/
+raw writers and other earlier dependency intervals remain pending. This does not
+establish a universal installed barrier or current security/experience proof.
+
+
+Employment calendar selection intervals — source preparation, UNRUN
+
+Legacy `setEmploymentWorkState` and `setEmploymentHolidayCalendar` capture input/
+context and own the existing Access workforce-write barrier, shared leave configuration
+and the employee BEFORE their original subject/calendar reads and employment updates.
+The dated assignment owner captures its selection/context and takes Access before its
+original live admin predicate, then shared configuration/employee ownership BEFORE
+existing credit/Attendance advisory locks, employment row locks, calendar/replacement
+reconciliation and Payroll work. Original authority predicates, historical range rules,
+calculations and events remain unchanged. Three real-employee two-connection cases
+require no employment/calendar/replacement/attendance/event effect while held, then
+release and verify the intended legacy or dated selection. All authored UNRUN; only
+syntax/diff review. Replacement-calendar and other roster/source writers remain pending;
+no universal dependency barrier, security or concurrency runtime claim is established.
+
+
+Combined release sequence and replacement-calendar participants
+
+The human superseded the staged deployment recommendation: finish own-leave,
+provider integration, AI workspace and module agents, then run ONE combined final
+release gate on the complete clean candidate and deploy once verified. Focused
+development checks and required security/experience/type/build/migration proof
+remain necessary; retain authentic passing evidence and repair/retest only failures
+or changed inputs. No separate final gates or intermediate stage deployments.
+Local-only/no Actions and separate live-provider/data-transfer authorization persist.
+
+Replacement policy publication now captures inputs/context and takes Access before
+its original current-company permission predicate, then exclusive leave configuration
+before company row/history reads and publication. Reconciliation (public and supplied
+transaction kernel) captures context/window, Access, original admin predicate, then
+shared configuration/employee ownership before employment rows, calendar/roster facts,
+allocator/history writes and Payroll guards. The queue sweep commits its nomination
+claim separately before calling this kernel; dated calendar callers already own the
+same earlier interval. Manual adjustment captures inputs/context, takes Access before
+allocation nomination/authority, owns the nominated employee before row locks, and
+rereads the exact allocation/employee binding before existing eligibility/Payroll work.
+
+Four actual two-connection policy/public-reconcile/callerTx/manual cases are authored
+with unchanged allocation/revision/policy/queue/event checks while held, then release
+and canonical behavior. ALL UNRUN; only syntax/diff/source review. No allocator math,
+calendar eligibility, authority or historical rules were replaced. Roster/Attendance/
+TOIL and other earlier source writers still need integration and runtime proof; this
+is not universal protection, a completed gate or readiness for Assistant exposure.
+
+
+Manual roster write intervals — source preparation, UNRUN
+
+The canonical `assertDutyRosterWriteTx` now captures changes/context and acquires
+Access, shared leave configuration and the complete ordered employee set BEFORE
+its existing employment/rule row locks, schedule facts, Payroll guards and audit.
+Single assign/rest/clear and both bulk owners capture inputs/context before opening
+transactions. `copyRoster` additionally nominates distinct source/target employees
+under shared configuration, locks the ordered set and rereads exact membership
+BEFORE copying row facts; it refuses newly appearing unprotected subjects instead
+of acquiring them out of order. The same original manual-roster authority and rule
+checks still run. Schedule-group control edits take Access/exclusive configuration
+before the original rule lock, version/history and event writes.
+
+Seven actual real-employee interleavings (assign/rest/clear/both bulks/copy/control)
+are authored: last ordered employee held, no roster/rule/event effects, earlier
+partial ownership available after failed command rollback, release then original
+mutation. ALL UNRUN; AST syntax/diff review only. This does not cover every earlier
+roster derivation: template-generation source reads, fixed/dated shifts, schedule
+assignment/bulk controls and other config/Attendance/TOIL writers remain pending.
+No universal barrier, latency, concurrency or security readiness is established.
+
+
+OpenRouter bounded transport source preparation — UNREGISTERED / UNRUN
+
+The human reaffirmed completing all three stages before one combined final gate
+and one deployment, retaining valid development passes. Mobile currently owns the
+local runtime window; source preparation does not consume it.
+
+Fresh primary references checked on 26 October 2026:
+https://openrouter.ai/docs/api/api-reference/chat/create-a-chat-completion
+https://openrouter.ai/docs/guides/routing/provider-selection
+https://openrouter.ai/docs/guides/features/tool-calling
+The current API field reference marks `max_tokens` deprecated in favor of
+`max_completion_tokens`, although its introductory examples still use the former.
+The new unregistered boundary uses the explicit current field. Routing uses the
+existing approved-provider policy; policy filters are not a compliance guarantee.
+
+`buildOpenRouterRequest` emits a fixed non-streaming text/tool protocol with
+bounded messages/tools/token request and UTF-8 wire size, strict advertised local
+tool schemas, and exact pending call/result ID/name correlation. It rejects duplicate,
+unknown, orphaned or unfinished calls instead of silently repairing them. Routing,
+key, plugins, user/session identifiers, cache hints and opaque provider continuation
+state cannot enter through a generic input spread. Routing comes only from separate
+server configuration, with the existing privacy/filter constraints retained.
+
+`createOpenRouterTransport` takes only a server/test fetch dependency; it retains
+no key or tenant configuration at factory scope. Each invocation serializes before
+awaits and makes one POST to the fixed official endpoint, with redirect/error,
+no-store, no retries, per-round deadline and caller cancellation across headers and
+body reads. JSON response reading has byte/read-fragment limits, strict UTF-8 and
+content-type checks; raw provider/network failures are bounded generic errors without
+causes. The existing response and accounting readers return completion plus honest
+nullable account-credit/usage metadata and observed round-trip elapsed time. None of
+this establishes current calling-user authorization/redaction, provider capability,
+cost settlement, measured performance or permission to transfer an HR field.
+
+Authored mocked-only cases cover protocol/privacy fields, malformed tool histories,
+UTF-8 request bounds, prohibited endpoint/plugins/automatic model routing, exact one
+POST, explicit-zero versus unknown accounting, generic HTTP/body/network errors,
+oversized/non-JSON responses, pre-cancel, ignored-signal timeout, stalled body cancel
+and excessive empty fragments. ALL UNRUN; syntax AST/diff only. No credentials,
+provider API calls, registry/config/tenant enablement or HR data transfer occurred.
+Actual adapter registration, secure tenant routing/key configuration, pre-provider
+fresh permission/minimal-field enforcement, usage settlement, privacy/security tests,
+model/capability evaluation and workspace integration remain required before release.
+
+
+Employment fixed-shift / schedule-group source intervals (UNRUN)
+
+`assignEmployeeShift` and the supplied-transaction `setEmploymentScheduleGroupTx`
+now capture input/context and own the existing Access workforce-write barrier plus
+shared leave configuration/employee interval BEFORE original employment, shift,
+rule/eligibility facts and profile updates/events. The public group wrapper captures
+before opening its transaction. The bulk group owner captures its array/context and
+owns the complete ordered subject set before the first per-employee call, preserving
+its existing one-transaction behavior and canonical refusal rules. No work-week,
+rotation, eligibility, inheritance or audit calculation was replaced.
+Four actual real-employee fixed/public-group/callerTx/bulk cases are authored: held
+last subject, unchanged employment/events, earlier ownership free after rollback,
+release and intended update. ALL UNRUN; AST syntax/diff only. Dated shift arrangement,
+master shift/rule/rotation edits, generator source planning and other earlier writers
+remain pending. Existing bulk/backfill consumers still require verification. This is
+not universal protection, a runtime security pass or readiness to expose own-leave.
+
+
+### Dated shift arrangement interval (26 October 2026; source only)
+
+Both `assignEmployeeShiftDated` and `removeShiftArrangement` capture scalar input
+and actor context before awaiting. Their first transaction operations now take the
+existing Access workforce-write barrier followed by shared leave configuration and
+employment ownership, before any period/shift/eligibility/cache source read. Original
+period replacement, date constraints, removal refusals, cache refresh and events are
+unchanged. No employment is nominated from a posted arrangement ID: removal retains
+its original exact employment/arrangement binding and live-period guards.
+Two actual real-employee held-subject regressions are authored in the roster
+participation suite: unchanged periods/employment/events on refusal, then release,
+intended future assignment or newest-period removal, exact one event and unchanged
+today cache. Both are UNRUN, as are the affected existing arrangement/roster suites.
+Static AST syntax and scoped diff only; no compiler, app, test, database, build or
+provider execution. Master shifts/rules/rotations and generator earlier planning,
+TOIL/org/module/authority/retention and server exposure prerequisites remain pending.
+This does not establish universal writer coverage or runtime concurrency/security.
+
+
+### Master shift catalogue interval (26 October 2026; source only)
+
+The six canonical create/update/copy/delete/archive/unarchive shift owners now
+snapshot their scalar/nested input and actor context before awaiting, then take
+Access configuration ownership followed by exclusive leave configuration as the
+first transaction operations. This precedes original source reads, rotation-pool
+rule row locks, membership changes and catalogue/events. Existing normalization,
+date/week/break/eligibility/deletion/uniqueness and copy logic remain unchanged;
+static removal of the six entry additions reproduces the prior file exactly.
+Six real-employee two-connection cases are authored in the roster participation
+suite. Each holds an ordinary employee interval and requires identical shift,
+membership and event state on refusal; after release the original master command
+must succeed and append exactly one event. These and affected shift/rotation/roster
+consumers are UNRUN. Only two-file AST syntax and scoped diff checked; no compiler,
+app, tests, database, build, provider call or release. Other direct rule/week/rotation
+writers, generator earlier source planning and remaining authority/configuration
+owners still require integration. This is partial source coverage, not proof of a
+universal barrier, canonical app-role behavior, security or production readiness.
+
+
+### Versioned provider options storage boundary (26 October 2026; source only)
+
+> **Shipped state (28 October 2026):** see [Shipped state and known limits](#shipped-state-and-known-limits-28-october-2026). This draft was journaled as `db/migrations/0623_openrouter_provider_options.sql`.
+
+OpenRouter preparation now has one strict version-1 persisted-options reader with
+an explicit ordered approved provider list, conservative defaults and deeply frozen
+normalized output. It reuses the routing policy's canonical schema; unknown versions,
+fields, endpoint/plugins/key extensions and privacy overrides refuse. No inferred
+provider allowlist/model is created. Save and resolution owners must both validate
+through it before key use when integration is implemented.
+A THIRD unallocated draft, `db/migration-drafts/openrouter-provider-options.sql`, adds
+the enum value, nonsecret JSON options, normalized SQL shape checks, column-scoped
+options SELECT and a v2 active resolver retaining the existing ciphertext boundary,
+tenant filter and old resolver compatibility. Existing direct providers require empty
+options. No default route/key/active configuration is seeded. This draft is NOT
+journaled, applied or SQL-runtime checked; migration allocation remains coordinated,
+not guessed. SQL guards are structural, not provider-compliance or user-authorization
+proof. Four-file AST syntax/diff only. Pure malformed/options/immutability cases and
+three actual SQL shape/constraint/tenant/column-grant groups are authored UNRUN.
+Official API/provider-routing/key endpoint references were refreshed on 26 October:
+https://openrouter.ai/docs/api/api-reference/chat/create-a-chat-completion
+https://openrouter.ai/docs/guides/routing/provider-selection
+https://openrouter.ai/docs/api/api-reference/api-keys/get-current-api-key
+The key metadata endpoint does not prove model/routing/tools capability; no credential
+probe or provider call was made. Registry/adapter/gateway/admin configuration and
+calling-user/minimal-field admission remain incomplete and unexposed. No production
+HR transfer/provider activation, accounting settlement or performance proof follows.
+
+
+### Rule/pool/rotation configuration interval (26 October 2026; source only)
+
+Eight canonical attendance-rule owners (pool, Standard ensure, create, full update,
+section update, copy, status and delete) now capture nested input/context and acquire
+Access configuration then exclusive leave configuration before their first source
+read/row lock. Full and section update own the interval before the private shared
+update helper; no late lock inside that helper is substituted for earlier reads.
+Standard's original read-existing/no-op/creation semantics are retained. Its traced
+production caller is the schedule page, not an in-transaction leaf caller.
+Rotation save captures its cycle/pool/context, joins Access before the original fresh
+group-admin predicate and exclusive configuration immediately after it, before any
+rule/shift/version/membership/Payroll work. Original module gate, permission refusal,
+revision/date/pool/cycle immutability and Payroll calculations/events are unchanged.
+Static reversal of only import/entry/wrapper changes reproduces both old source
+files exactly. Nine actual real-employee two-connection cases are authored in
+`test/leave-schedule-dependency-participation.test.ts`: busy interval refuses with
+identical rules/bands/pool/versions/events, then release and canonical operation.
+All cases and affected consumers are UNRUN. Three-file AST syntax/diff only; no
+compiler/app/test/DB/build/provider/staging execution. Other policy/direct source
+writers, generator planning, TOIL/org/authority and retention/server exposure work
+remain pending. No universal protection or runtime/app-role/security claim.
+
+
+### Roster generator owns the complete source interval (26 October 2026; source only)
+
+Generator template/week and department discovery formerly committed in separate
+reads, followed by independent working-day and rest-day write transactions. A final
+leaf guard could therefore protect writes while consuming an older plan; a later
+rest-day failure could leave working rows committed. Generation now owns one top-level
+transaction: captured input/context, original admin gate, Access/shared configuration,
+canonical template/week read and department query, ordered complete employment ownership,
+exact department membership reread, then both existing canonical bulk operations in
+that same transaction. A truncated department page refuses rather than silently
+claiming a complete department. No new date/week/eligibility/Payroll calculation or
+query predicates were introduced. Working and rest rows/audits/summaries now commit or
+roll back together; this deliberate atomicity change does not change per-row import
+semantics elsewhere.
+`listEmployeesPage`, `assignShiftBulk` and `setRestDayBulk` accept an optional trusted
+existing carrier. Their original standalone behavior is retained; byte comparison
+reversing only carrier wrappers reproduces each prior query/write body. No posted
+transaction or model capability is added. Three actual explicit/department busy-source
+and injected rest-write-failure cases are authored in the roster participation suite;
+the latter requires already-written working rows and events to roll back, then a
+successful complete retry. ALL UNRUN. Three-file AST syntax/scoped diff only; compiler,
+app-role/DB/concurrency/performance/experience claims remain unproven. Other relevant
+org/cohort/policy/TOIL/authority writers still require coverage, so this is not a
+universal barrier or permission to expose Assistant effects.
+
+
+### Manual leave-credit source ownership (26 October 2026; source only)
+
+Manual single and measured-row grant commands capture nested rows/scalars/Date and
+actor context before awaiting, then Access, original fresh company-admin predicate,
+exclusive leave configuration and employment ownership BEFORE service/eligibility/
+formula/calendar/credit/Payroll source reads and the existing bank's locks. Exclusive
+configuration is deliberate: the canonical path can create a replacement-leave type,
+so ordinary shared configuration would leave that catalogue mutation unprotected.
+No concurrency/latency benefit is claimed for this conservative phase.
+Manual reversal joins Access/exclusive configuration before minimal RLS-visible
+credit identity/employee nomination, fresh company-admin gate and employee ownership,
+then the existing credit advisory and accrual row lock. A changed employee binding
+refuses before existing reversal calculations/compensation/events; original fresh
+permission/self/state/Payroll guards remain. Strip only those entry additions,
+minimal projection and binding guard and the original three bodies compare exact.
+Three real employee source-interval cases are authored in the existing measured-row
+suite: unchanged credit/catalogue/ledger/attendance/event state on refusal, release
+and canonical single/measured grant or reversal; repeated reversal must refuse with
+unchanged state. ALL UNRUN. Initial AST parsing caught an insertion-position syntax
+error, repaired before commit; corrected two-file AST syntax and diff only pass.
+Other automatic/employee accrual, bank/consume/restore/sweep and Attendance/Payroll
+parents still require transitive ownership BEFORE earlier reads/locks. These public
+manual commands alone do not establish universal source/authority protection or
+app-role/concurrency/security/readiness proof. No compiler/app/tests/DB/build or
+provider/release runtime was executed.
+
+
+### Own-leave browser protocol and canonical binding (26 October 2026; unmounted source)
+
+`own-leave-http.ts` owns an explicit POST-only browser protocol, same-origin request
+check (not a forwarded-host allowlist), same-origin Fetch Metadata when present, no
+query-string controls and JSON-only bounded/fatal-UTF8 parsing. Limits cover actual
+bytes, fragments, declared length and a five-second read deadline/cancellation before
+identity/database dispatch. Each operation has a strict schema: preparation retains
+separate nomination/human selection/text; confirmation posts only stored ID/version/
+reviewed digest. Tenant/session/locale/effect fields cannot be posted. No owner is
+called after failed authentication; there is no automatic effect retry. Once canonical
+confirmation starts, transport loss is uncertain: reopen the same action, never create
+a replacement or claim cancellation rolled back the effect.
+A strict public-result schema rejects accidental private fields before serialization;
+responses are private/no-store, vary by cookie/authorization, nosniff/no-referrer and
+bounded errors with no raw causes. Pure mocked protocol/CSRF/authority-injection/
+private-response/body-size/fatal-UTF8/pre-cancel/stalled-body/empty-fragment cases are
+AUTHORED UNRUN; they do not prove real cookie/session/DB authorization.
+`core/assistant-actions/own-leave-browser.ts` binds this transport to the canonical
+prepare/reopen/discard transaction owners and directly to top-level confirmation
+(no wrapping child transaction/savepoint). The authentication supplier is server-only.
+No route/page/model tool is mounted, no provider or network is invoked. Real route
+session/locale integration, UI, retention/erasure and actual role/RLS/CSRF/concurrency/
+experience acceptance remain release-blocking alongside remaining writer coverage.
+Only three-file AST syntax and diff checks; compiler/tests/app/DB/build remain UNRUN.
+
+
+### Provider gateway/configuration integration (26 October 2026; unreleased source)
+
+OpenRouter is now registered in the provider union/registry/gateway with an actual
+stateless adapter for bounded text generation and converse. It reuses the transport,
+strict versioned tenant routes, privacy constraints and honest usage accounting;
+generation requires governance, rejects incomplete/refused/tool-bearing drafts and
+records known charged token usage even when a draft is refused. Missing accounting
+stays unreported and does not become zero. No image method or environment-key/model
+fallback is offered. Exact explicit author/model IDs only: model-router namespaces,
+variant suffixes (including web-search shortcuts), additional slashes and trailing
+line terminators refuse before a request.
+The admin metadata probe performs only bounded official key/model-endpoint/ZDR GETs,
+checks exact approved endpoint tags with tool parameter metadata and returns only a
+boolean/generic reason. It has a total ten-second deadline, fixed destinations,
+no retries/redirects, bounded JSON and no completion/HR payload. Metadata success is
+NOT a real model/tool/quality/privacy certification or provider activation.
+Tenant BYOK save/read/activate/probe now carry normalized provider_options through
+the v2 resolver, preserve existing encrypted keys on model-only updates and reject
+unknown route configuration before key use. The unallocated options draft additionally
+pins model shape and strengthens tenant-wide configuration-write RLS to current
+principal plus group-wide admin. The application checks the same current login/carrier
+and group authority under Access ownership. Principal failure raises rather than
+silently falling through to platform credentials. Options are nonsecret; ciphertext
+column SELECT remains withheld. Audit adds only a normalized routing version/digest.
+A shared current-principal prerequisite now runs before config resolution and actual
+AI governance admission: exact Tx tenant/user/role/grant carrier, current canonical
+snapshot, unarchived/unblocked login and ReadCommitted; no synthetic exemption or
+statutory override. Carrier mismatch refuses before a foreign Access key is acquired.
+Governance captures context/routes and freezes the resolved configuration. This is
+NOT subject/module/disclosure authorization or a proof that prepared payload fields
+remain permitted: all feature/background consumers, current-config binding, typed
+minimal payload ownership and revocation/retrieval/cache barriers remain mandatory
+before the combined release. Userless background provider calls now fail this
+prerequisite and need an authorized initiating-login owner, not a new bypass.
+The existing settings card now supports explicit model IDs, ordered approved provider
+IDs, bounded fallback and latency/price preferences. New activation is unchecked by
+default; model selection, secret storage and live activation are never seeded. Visible
+labels, route-local blur errors/helper text, minimum touch targets and metadata-only
+feedback follow the targeted UI/UX skill guidance. Fourteen new copy keys exist in
+all six locales; actual translation/render/accessibility/viewport checks remain UNRUN.
+Pure mocked adapter/probe/HTTP/privacy regressions, actual SQL key/options/tenant/
+revoked-or-company-only-admin/RLS groups, five principal/admission groups and DOM
+settings cases are AUTHORED UNRUN. Existing AI config/governance/feature consumers,
+whole compiler, SQL/shadow migrations, build and browser journey remain UNRUN.
+Only changed-input AST syntax, six-locale JSON presence and diff checks were run;
+no app/DB/tests/build, authenticated provider request or staging action occurred.
+
+Official documentation finding: current ChatRequest OpenAPI exposes fourteen plugin
+IDs, and account defaults (including enforced defaults) may affect requests even when
+plugins are omitted. The builder therefore explicitly disables the eleven current
+data-expanding/routing/content-transforming processors; it leaves alignment, armor
+and moderation security guardrails unchanged. A model cannot supply plugins or server
+tools. Enforced account settings can override request controls, so independent account
+processor/security/capability review is REQUIRED before any live enablement. No
+request flag is a compliance guarantee and no production HR transfer was authorized.
+Primary references refreshed:
+https://openrouter.ai/openapi.json
+https://openrouter.ai/docs/api/api-reference/chat/create-a-chat-completion
+https://openrouter.ai/docs/api/api-reference/api-keys/get-current-api-key
+https://openrouter.ai/docs/api/api-reference/endpoints/list-all-endpoints-for-a-model
+https://openrouter.ai/docs/guides/features/plugins/overview
+The prose plugin page was search-readable but direct Markdown retrieval returned403;
+exact current IDs/fields were checked against the live official OpenAPI instead.
+
+Allocation coordination found tracked 0601_operator_customer_workspace.sql in the
+operator worktree/history. An early 0601–0603 proposal was withdrawn before any journal
+change. Replacement 0602–0604 has no bounded checkout/history filename hits, but is NOT
+allocated yet: efficiency cleared only its own reservation state and contacted the
+actual Operator owner. Await that acknowledgement; source absence is not reservation
+proof. All three drafts remain unjournaled/unapplied. Mobile still retains its release
+and restoration window; no resource handback has occurred.
+
+
+The actual Operator owner subsequently confirmed through the authorized efficiency
+coordination that it has no reservation for 0602–0604, retaining only its existing0601.
+As the AI delivery parent, this chat now reserves0602 ai_action_controls,
+0603 own_leave_review_store and0604 openrouter_provider_options. This source allocation
+does not authorize runtime or establish rollout ordering. Drafts remain unjournaled/
+unapplied until Operator0601 is either in the verified baseline or explicitly retired/
+reallocated by its actual owner. Do not edit peer files, silently include unrelated
+operator features, skip an applied lower migration or treat filename absence as a
+reservation receipt. The ordering dependency is being coordinated separately.
+
+
+The shared AI principal also binds the actual login's person link (including an
+explicit no-person binding); omission cannot be used to accept a newly relinked
+identity. An actual relink-refusal DB case is authored UNRUN. Current-config/payload
+version binding, account-default processor evaluation and typed module/disclosure
+ownership are still outstanding; this integration is not a live-provider capability
+or end-to-end security pass. The gateway continues to require canonical/human effect
+owners and honest unknown accounting, never model-computed HR/payroll facts.
+
+
+### Shared module-reader execution boundary (source only)
+
+The actual Assistant loop now consumes `captureAgentReadBatch` before any tool is
+dispatched. The complete proposal has at most 16 calls and 32 KiB of UTF-8 input;
+correlation IDs must be unique, arguments are captured and recursively frozen, and
+getters, opaque objects, cycles/deep structures and non-JSON values refuse. The
+provider's undefined-arguments contract remains an ordinary per-call input error.
+A malformed batch terminates before all reads rather than partially dispatching or
+repairing IDs. Existing offered-only lookup and canonical reader authorization stay
+in place. Each result is bounded to 64 KiB; oversized output becomes the existing
+generic lookup failure, without silent truncation or copying rows into the audit.
+
+This is an actual Assistant consumer plus a reusable read-only execution boundary,
+not completed module-agent coverage, effect authorization, field-disclosure proof,
+or a measured cost/latency benefit. It must never dispatch confirmation/effect
+commands. Seven pure cases and two actual Assistant consumer DB cases (scripted
+provider, real existing fixture/loop) are authored UNRUN, covering mutable input,
+getter avoidance, malformed/duplicate/oversized proposals, positive valid dispatch
+and oversized-output exclusion from subsequent model turns and audit rows. Static
+AST syntax and diff review only; executable tests and the compiler remain UNRUN
+while Mobile owns the complete runtime window. All twenty module workflows,
+independent agent evaluations, remaining source revocation/disclosure ownership,
+workspace UI and the combined release proof remain outstanding.
+
+
+### Claims specialist canonical read (source only)
+
+The actual Assistant registry appends `my_claim_statuses` under the Claims module.
+The module service owns the new `ownClaimStatuses` reader: captured caller context,
+current actual principal under Access ownership, freshly resolved Claims entitlement,
+actual own-employment inventory, and an explicit current person predicate on the
+claim query. Group-wide HR visibility does not widen this self-only reader. Input
+contains only a validated limit, never a subject selector. The single claim query
+uses deterministic newest-first ordering with a limit-plus-one sentinel; at most 25
+records are projected in total, with honest truncation and no fabricated full count.
+It selects only canonical IDs, type label, recorded status and dates. It never selects
+claim amounts, quantities, tax flags, private descriptions, custom answers, receipt
+metadata or file content. Creation time is not relabelled submission time: a saved
+draft stays a draft, and approved is not paid. No mutation, approval or payment path
+is exposed to the model. Existing Claims business bodies were independently compared
+byte-identical after removing only the two imports and new reader.
+
+The registry source guard now permits exactly the named own-status reader through
+the Claims service facade, with its import binding pinned. Database handles, session
+construction and command paths remain forbidden. Its append-only prefix and separate
+Claims/payroll offering gates are updated rather than broadly relaxing shape checks.
+Five actual DB/service/Assistant-tool cases are authored UNRUN: minimal projection
+including real private receipt content exclusion despite broad HR visibility; bounded
+complete/truncated results and input retarget refusal; draft timestamps; retained
+entitlement snapshot revocation/restoration; forged person/tenant, login relinking and
+role revocation. Only static AST syntax, diff and source-body comparison have run.
+This is one implemented module reader, not all twenty module agents or a full
+revocation/disclosure proof. Prepared data-to-provider version binding, universal
+relevant writer participation, workspace experience, governed improvement/evaluations
+and the other outstanding stage requirements remain release blocking.
+
+Migration coordination also confirms Operator 0601 remains an isolated unapplied
+draft without a verified rollout date or retirement/reallocation approval. Reserved
+AI 0602–0604 remain unjournaled/unapplied until that actual ordering is resolved;
+no peer migration or fixture is changed to work around it.
+
+
+### Assistant workspace and current-user discovery (source only)
+
+The existing `/assistant` page now consumes a single uncached `loadAiWorkspace`
+service for current-login/grant/entitlement checks, task discovery and its existing
+personal ten-exchange history. The service captures context, verifies the actual
+principal under Access ownership, resolves actual entitlements, and checks the live
+Assistant grant in the same transaction before selecting history. Its explicit
+actual app-user predicate remains mandatory despite broader HR visibility. Stable
+newest-first ordering is bounded to ten rows. No provider configuration, key,
+background work or generation enters the page read.
+
+Eight editable question starters are backed by actual registered read tools across
+Leave, Claims, Organization, Employees and Payroll. Multi-tool tasks require the
+entire offered set; unknown future modules do not manufacture support. The composer
+uses local state only on task selection, focuses the labeled editable question,
+and requires a separate explicit Ask. It posts only the question, never task-derived
+authority, scope, locale or identity. Pending status disables repeat submits and
+question replacement without automatic retries. Calendar starters interpolate the
+server's actual Kuala Lumpur date into the editable question, not a guessed model
+date or volatile system-cache prefix. New controls use existing design tokens,
+visible labels/headings, wrapping, 44px minimum targets and reduced-motion styles.
+All six locales have 21 new nonempty workspace keys and calendar placeholders.
+
+Pure discovery, actual DB login/grant/module/personal-history isolation and bounds,
+and mocked-pending DOM/task-selection/six-locale cases are authored UNRUN. Static
+AST syntax, diff and JSON/key-presence checks only; no compiler, executable tests,
+application, browser, database or provider calls ran. Actual locale/viewport/focus,
+accessibility and canonical journeys still require runtime evidence.
+
+IMPORTANT REMAINING PRIVACY REQUIREMENT: current-login history custody is not a
+proof that every source fact in an older model answer remains authorized after
+role, company, reporting, source or field-policy changes. The inherited stored-answer
+history has no sufficient field/source disclosure receipt yet. Source-provenance and
+current canonical reauthorization (or explicit retirement where it cannot be proven)
+are required before release, alongside source-to-provider version/revocation binding.
+This workspace checkpoint is not a historical-answer revocation pass. Nor are eight
+question starters all twenty module agents: remaining canonical workflows, governed
+feedback/improvement/evaluations, own-leave effect/retention protection and provider
+capability/account-policy/settlement proof remain necessary for the single combined
+final candidate. No interim deployment or final gate is authorized by this checkpoint.
+
+
+### Current provider snapshot at actual admission (source only)
+
+Canonical configuration resolution now issues a frozen request-memory provider
+snapshot only after the fresh actual principal and v2 tenant resolver checks.
+A private WeakSet rejects serialized copies and structural lookalikes. The snapshot
+binds the calling tenant/login/person/role-grant context and has a five-minute maximum
+preparation age; backward/expired clock observations refuse. It records only a private
+in-memory fingerprint of canonical configuration and origin, never a persisted or
+client-visible credential digest. Stored origin includes ciphertext and normalized
+routes; environment origin is distinct even if plaintext key/model happen to match.
+Resolver failure, malformed options or decryption failure cannot fall through to a
+platform key. OpenRouter still has no environment fallback or auto-selected model.
+
+Every actual governed admission rereads the current canonical provider state under
+fresh Access ownership before `ai_admit`. Changed model/key/routes/provider, absent
+current configuration or changed stored/environment origin refuses before a quota
+reservation and before the supplied transport callback. A new explicit preparation
+can use the new authorized configuration; an old request is never silently rerouted.
+This compares current configuration semantics/origin, not a promise to reject every
+no-op edit or a complete historical sequence of disable/re-enable decisions.
+
+The gateway captures only the outgoing provider/model/key/governance and strict
+normalized routing before awaiting admission for text, conversation and image paths;
+metadata probes capture too. Routing lists and config are frozen, and the actual
+captured outgoing configuration is passed to governance. Copying governance onto a
+retargeted key/model/route cannot merely validate the old closure. Mutation of a
+retained caller object while admission waits cannot change the captured transport.
+No network call holds the admission transaction; these checks authorize the actual
+admission boundary, not retroactive deletion of already transmitted provider bytes.
+
+Actual DB cases with fake keys and mocked callbacks/transports are authored UNRUN:
+unchanged admission/reported zero, each configured field change, fallback-origin
+change in both directions, environment rotation, expiry/lookalike refusal, copied
+governance and retained-input mutation during a controlled asynchronous admission
+pause. That pause is not claimed as a real two-connection lock/interleaving proof.
+Existing allowance/principal consumers now resolve real canonical fake configuration
+rather than fabricate governance; their login fixtures acquire actual role assignments.
+The old userless-success expectation is replaced by the required calling-login refusal,
+not a new background exemption. Static AST syntax/diff only; no compiler, executable
+suite, database, application, provider or staging call has run for this checkpoint.
+
+This does NOT authorize the prompt's HR fields or bind prepared source data, retrieval,
+attachments, background jobs, caches or historical answers to current canonical field
+permissions. Those provenance/revocation requirements remain separate release blockers,
+as do all remaining own-leave, provider evaluation/settlement, twenty-module agent and
+feedback/held-out evaluation requirements. All three stages still precede one combined
+final gate and one verified deployment. No H passing coverage is rerun.
+
+
+### Explicit reader transaction seams and first local compiler result
+
+Mobile explicitly returned both test slots and devdb after its verified release and
+fixture restoration. Normal atomic complete-set admission was acquired for each P
+development compiler attempt; owned leases were released at termination. No test,
+application, database connection, fixture reset, migration, native build or provider
+request was part of these compiler jobs. H checks were not repeated.
+
+Fourteen canonical Assistant reader entry points now accept an explicit optional
+caller transaction: absence/count/calendar/profile, balances/derivation/requests,
+reporting/self-employment inventory and released payslip readers. A supplied seam
+checks the actual current principal and transaction carrier before its source reads;
+ordinary calls retain their original transaction path. The subordinate summary
+propagates the same supplied transaction into its balance read. Targeted AST reversal
+confirmed all previous default-path bodies and unrelated source byte-identical after
+removing only the new signatures/wrappers, guard and child propagation. These are
+foundations for an explicit disclosure/history read owner; the Assistant registry is
+not yet using all these seams, and historical-answer revocation is NOT closed.
+Caller-Tx runtime/RLS/interleaving cases are still required; no implicit transaction
+joining or raw query capability is given to a model.
+
+The first strict local compiler completed on the current 7,102-input development
+snapshot with raw process exit 0. Exact source/dependency input content hashes matched
+before and after. Its private input, command, raw log and terminal result remain in
+owned scratchpad `ai-local-development-20261026/compiler-06`. This is a TypeScript
+PASS for that input, NOT an executable-test, security, experience, final-gate or
+release PASS. TypeScript's valid incremental cache was retained.
+
+Earlier failures are preserved: offline pnpm refused missing outer-workspace patch
+configuration (exit1, compiler unrun); default4GiB and repository-release6GiB Node
+attempts exhausted heap (raw child -6, controller1). The successful root dependency
+clone had a byte-identical installed lock. Mobile dependencies were separately cloned
+from an existing real tree with matching manifest/lock and noble2.4.0; no download,
+lockfile rewrite or lifecycle script ran. The local8GiB setting matches the existing
+whole-root compiler configuration; physical memory was read as18GiB. No cloud runner
+or OS swap change was used. Completed8GiB checks exposed actual diagnostics, repaired
+without exclusions or weaker assertions: the public canonical result field is
+`leaveRequestId` (not the private insertion helper's `id` or invented `requestId`),
+invalid-batch flow explicitly returns its never-result for narrowing, ES2017 tests use
+`BigInt(1)`, a fixture supplies its required fictional email, and review/header arrays
+have explicit types. The final failed-check repair reused valid dependencies and
+file-selection evidence, then the strict compiler passed.
+
+All runtime/security/concurrency/erasure/experience suites remain unrun. Reserved
+0602–0604 remain unjournaled/unapplied while actual0601 ordering is unresolved.
+Complete own-leave, provider and all-module workspace/agent requirements before one
+combined exact-candidate final gate and one verified deployment. Source provenance,
+historical-answer current authorization, actual read-owner consumers, provider
+capability/account-policy/settlement and governed independent agent evaluations
+remain unfinished; the compiler result does not replace them.
+
+
+### Actual Assistant tool read owner (runtime verification pending)
+
+The eleven existing read tools now consume a closed canonical method set, rather than
+opening independent source transactions. The actual Assistant tool batch owns one
+Read Committed transaction, sets it READ ONLY before source work, and checks actual
+login/tenant/current principal, live Assistant grant/module, each tool module and
+nonadmitting feature pause. Each nested tool explicitly receives the same privately
+registered method set. Forged copies, cross-principal reuse and use after callback
+completion refuse. No transaction/query handle, effect or provider caller is exposed.
+The own-claims projection can explicitly join that same actual transaction; its
+ordinary entry still owns its existing scoped path. Caller context/question/time are
+captured before asynchronous work. Tool specs/order and canonical projections stay
+unchanged; AST reversal of only owner/method binding reproduces all eleven original
+tool bodies. No provider call runs inside this read callback.
+
+Six real-database cases are authored for shared backend/read-only/current actor,
+peer RLS refusal, escaped/forged session refusal, actual denied DML with a positive
+ordinary-write control, observed Access-lock waiting and retained-context mutation,
+grant revocation ordering, and pause refusal without provider admission. Existing
+actual tool fixtures now acquire legitimate Assistant grants/module activation.
+ALL these cases are UNRUN. Eight changed TypeScript files parsed without syntax
+diagnostics. Initial diff checking caught trailing whitespace, which was repaired.
+Normal complete-set compiler admission refused occupied/uncertain leases while
+holding no slots; no compiler process or database job started. The earlier compiler
+PASS remains evidence for its earlier input only, not this changed source.
+
+This read owner is necessary but does not prove current authorization of previously
+stored answers or prepared provider fields. Historical canonical provenance/replay,
+remaining relevant writer protection, retention/erasure and authenticated own-leave
+exposure, provider capability/settlement evaluations and all-module governed agents
+remain required. No final gate, deployment or production-readiness claim is made.
+
+
+### Historical answer source receipts and actual workspace replay (unverified source)
+
+The actual Assistant now records a private list of canonical tool-result fingerprints
+while dispatching its bounded reads. Final persistence seals that evidence with the
+existing operator secret custody, domain-separated to tenant, login and server-generated
+exchange ID, and to a digest of the exact question/answer. Only captured lookup inputs
+and result fingerprints are sealed; result rows are not duplicated into the receipt or
+audit. Complete source-free exchanges can carry an explicit empty manifest. Unknown,
+unparseable or failed tool calls make the evidence incomplete and cannot receive a
+receipt. Missing secret custody, excessive evidence and sealing failure leave no proof.
+This is trusted-command provenance, not a claim that arbitrary model prose is true.
+
+A fourth draft, `assistant-disclosure.sql`, adds the nullable sealed receipt and matching
+size constraint, mirrored by the source schema. It is UNALLOCATED, UNJOURNALED and
+UNAPPLIED. No number is claimed and existing0601 ordering remains unresolved; CI received
+one compact coordination notice. Existing rows are deliberately not backfilled as
+proven. No database was contacted or changed for this source work.
+
+The actual workspace loader now owns a READ ONLY transaction and explicitly joins it to
+the closed read service. Every stored answer must authenticate its receipt and replay
+its canonical reads using current calling-user, module, Assistant grant/pause and RLS
+checks. Exact current result fingerprints must match. Changed facts, reduced scope,
+missing/legacy/corrupt/swapped receipts and unavailable readers withhold the answer.
+The audit remains unchanged. Page props contain neither the sealed receipt nor tool
+lookup inputs. One per-request replay cache deduplicates exact lookups/fingerprints,
+with a total128-read workspace budget; it is not shared across users or transactions.
+A fresh source-free receipt has no canonical-read dependency but still requires current
+Assistant access. Six locales explain unavailable saved answers and invite a new query.
+The explicit transaction join refuses write-mode callers and exposes no query handle.
+
+Authored UNRUN cases cover sealed body/owner/exchange swaps, malformed/unknown/oversized
+proof, missing custody after warm encryption, captured-input immutability and distinct
+ciphertexts. Actual DB cases cover positive canonical replay, reduced role scope,
+changed source facts, forged stored prose and legacy-body withholding without audit
+removal. The existing actual Assistant/payslip dispatch case now exercises real command
+persistence -> sealed receipt -> workspace replay -> payroll-module revocation. Only
+model responses are scripted there; actual canonical readers and RLS remain real.
+
+Static AST syntax and diff checks only. Normal complete-set admission for first pure
+receipt checks/changed-input compiler refused occupied or uncertain operator leases,
+holding none and starting no tests/compiler/DB work. The earlier7102-input compiler pass
+still applies only to its older source. These new tests/SQL/runtime paths remain UNRUN.
+Historical replay does not close prepared provider-field admission, all transitive
+writer races, raw storage/retention/erasure or deterministic adjudication of model facts.
+These and the remaining own-leave/provider/all-module governance requirements still
+block the one combined final gate and deployment; no production-readiness claim.
+
+
+### Exact prepared conversation admission and friendly refusals (source-only)
+
+The actual conversation gateway now captures an immutable, bounded protocol snapshot
+before asynchronous admission: system blocks, tool definitions, turns, arguments,
+results and opaque adapter-owned continuation data. It preserves protocol values and
+undefined malformed arguments, normalizes only existing token/timeout defaults and
+refuses accessors, opaque instances, cycles and excessive inputs. No caller-owned
+nested references survive into transport. An ephemeral digest of the exact captured
+request enters admission metadata, never the persistent model-run audit. No opaque
+continuation data is interpreted as authority, logged or persisted.
+
+Actual Assistant preparation matches every non-error outbound tool result to its
+captured canonical read fingerprint and exact call/input graph. Unrelated successful
+reads cannot authenticate substituted output. Error results admit only the three
+fixed public error sentences. Preparation binds an issued provider configuration to
+hr_assistant, the exact request digest and the captured source evidence. Inside the
+SAME actual provider admission transaction, after current provider/principal checking
+and before any reservation, it rechecks the current canonical tool catalogue and
+replays all relevant canonical source reads. Changed facts, source permissions,
+module offerings, payloads or principals refuse before the transport callback. The owning
+exchange deadline is checked before and after replay; provider-snapshot age is also
+rechecked after extra source checks. Added
+trusted checks compose; copied configs, feature substitution and replacing an earlier
+check refuse. Check failures expose only a bounded message, not their caught cause.
+Reservation and settlement stay with their existing canonical owner; provider transport
+begins only after the admission transaction commits.
+
+The admission owner deliberately has a write-mode transaction for its model-run
+reservation. Its source facade still exposes only named canonical read methods, but
+this path does NOT claim database-level READ ONLY. Historical/source read owners keep
+their separately enforced READ ONLY transaction. Fresh checks establish an admission
+boundary, not retroactive removal of already transmitted bytes, universal writer
+coverage, all-module prepared-field protection or adjudication of model facts.
+
+Human additionally requested lightly cheeky permission/error replies rather than raw
+technical messages. The shared public reply catalogue now gives inaccessible and
+missing records the SAME friendly access wording and a useful administrator next step.
+Internal refusal codes remain in server audit; the model receives only the public
+message. Unknown tools share one public reply; malformed arguments and failed lookups
+use fixed friendly sentences. Six locales have matching access/setup/error banners.
+The static system prompt instructs warm, light humour without blame, hidden-record
+confirmation, fabricated reasons, bypass advice or technical-error dumps. Its stable
+cache version advances to assistant-v2 for this intentional global wording change.
+Canonical calculations, permissions, refusal codes and audit semantics are unchanged.
+This tone is guidance, not evidence of evaluated live model behaviour.
+
+Authored UNRUN protocol cases cover immutable retained-input capture across actual
+gateway admission, opaque state preservation, undefined arguments, strict bounds and
+accessor/cycle refusal. Seven actual database cases exercise canonical source replay
+inside admission, positive committed reservation before mocked transport, source drift
+and fresh preparation, module removal, transcript retargeting, unrelated evidence,
+error-body substitution, the owning exchange deadline and composed/feature-bound checks. Existing actual Assistant
+cases now inject a private raw database cause and require only the friendly public
+message in provider material, with no cause in client result or audit; another checks
+that internal refusal codes stay out of model result material. Only provider transport
+is mocked in the admission cases; their DB/SQL paths remain genuinely UNRUN.
+
+Static syntax and diff checks only. First focused pure checks and changed-input
+compiler were prepared, but normal complete-set admission again refused occupied or
+uncertain operator leases, holding none and starting no compiler/tests/DB/application.
+No migrations, provider calls, cloud jobs, staging changes or foreign leases/signals
+were touched. Earlier passing compiler evidence is retained for its older input only.
+All three stages remain incomplete before one combined final gate and deployment.
+
+
+### Actual TOIL wind-down sweep ownership (unverified source)
+
+Both public settlement owners, runToilExpiry and closeReplacementLeaveYear, now capture
+scalar input and calling roles/grants before awaits. They preserve the original early
+admin refusal and deliberately ungated statutory wind-down behaviour. Their actual
+transaction acquires Access, then EXCLUSIVE leave dependency configuration before
+protected discovery: the shared settlement executor can create a replacement leave
+catalogue row, so a shared phase followed by a late upgrade would be insufficient.
+Visible settleable lot IDs/employment IDs are nominated without reading amounts, then
+the complete captured employment set is locked in order. The same ordered subjects
+join the existing Attendance/Payroll credit advisory key using TRY locks, without
+hidden waits/retries. Fresh lot rows are owned FOR UPDATE OF toil_accrual NOWAIT in
+employment/lot order, never accidentally locking joined company/employment tuples.
+Exact lot/subject membership is reread and compared; changed membership refuses the
+whole transaction rather than adding an unprotected subject or silently retargeting.
+
+The existing cash/statutory settlement executor is BYTE-IDENTICAL. AST reversal of
+only new capture, ownership, nomination and query-lock phases reproduces both prior
+canonical owner bodies, including marker grain, carry-forward, scoped residue counts,
+calendar/anniversary handling, calculations, ledger/status/event and re-fire rules.
+Production callers are the existing two admin actions, each entering the canonical
+owner's own transaction. Query lock refusal is bounded; it exposes no raw DB body.
+Partial employee/credit/lot acquisition requires the outer transaction to roll back.
+
+Eight actual two-connection cases are authored UNRUN in the existing replacement
+controls suite. Each banks two real credits through canonical attendance/accrual paths
+and proves nonzero starting balances. Held shared configuration, an isolated later
+employment key, the existing later credit key, or the actual later lot row must refuse
+without changes to credits/ledger/catalogue/events. While the holder remains, earlier
+partial configuration/employee/credit/lot ownership must already be released. After
+release, the actual command must settle both once, zero their replacement balances,
+record exactly one conversion per credit and preserve state on a repeated invocation.
+Isolated key tests deliberately do not hold shared config, which would otherwise only
+test the earlier exclusive-config refusal and make partial-subject coverage vacuous.
+
+Only static AST syntax/diff/source comparison has run here. All eight cases, full
+changed-input compiler, app-role/lock-order/security/concurrency and affected TOIL/
+Payroll/Attendance/leave consumers remain UNRUN. No database, application, provider,
+build, staging or cloud job ran. Automatic accrual/banking parents and other remaining
+owners still need integration; these sweeps are NOT universal dependency or fresh
+principal/revocation proof. Assistant confirmation remains unexposed, and all three
+stages still require completion before the one combined final gate/deployment.
+
+Repository context changed during this source work: the owner made the repository
+public; read-only GitHub API metadata independently confirmed its public visibility.
+Existing destination-specific AI source-push authorization continues to identify
+StradaverseHub/ai-hr. Only intended source changes are published; private evidence,
+fixtures, database/recovery inventories and verification logs remain outside Git.
+This does not authorize GitHub Actions/cloud work in this local-only session.
+
+
+### Manual accrual and request-decision owner integration (unverified source)
+
+The public manual accrueToil owner now captures its declared scalars, approval Date
+and calling roles/grants before awaits. Its original module gate remains; inside the
+actual transaction, Access -> exclusive leave configuration -> employment ownership
+-> TRY ownership of the existing credit key precedes canonical attendance/policy and
+credit derivation. The delegate still requires canonical decide authority. All57 other
+TOIL function declarations, including accrual/bank/calculation executors, are byte
+identical to the preceding source checkpoint.
+
+The actual decideReplacementLeaveRequest owner captures its declared inputs/Date and
+context, owns Access/exclusive configuration, nominates only a visible request subject,
+then owns employment and credit before the actual request FOR UPDATE NOWAIT. It freshly
+checks the employment binding and pending state before unchanged canonical authority,
+rejection or approval work. Approval additionally owns its actual dated lines NOWAIT
+before any derived credit or header/line update. The exclusive phase is required
+because banking can create the shared replacement catalogue entry. Original module-
+lapse rejection behaviour and self-grant/eligibility/First Schedule safeguards remain.
+AST structural reversal of only the new capture, ownership and physical query phases
+reproduces the original decision business AST; its17 other function declarations are
+byte-identical. No late lock is added to the shared banking leaf to pretend that earlier
+Attendance parents are protected.
+
+Three manual-accrual and five real request-decision two-connection cases are authored
+UNRUN. Held participating configuration, isolated employment/credit keys, the actual
+request row or a dated line must refuse without partial header/date/credit/ledger/
+catalogue/event changes. After release the canonical commands bank exactly once;
+repeating must preserve recorded state. Existing fixture paths produce real rostered
+work or human-submitted two-date claims, not invented accrual rows. Only static syntax,
+diff and source comparison checks ran; compiler/DB/runtime/security proof is pending.
+
+Source tracing found four automatic Attendance parents: checkOutTx, attendance-correction
+decision, approved-plan application and imported-punch batches. Their earlier source
+reads and locks still require owner integration, as do other remaining dependencies.
+(Superseded by the 28 October shipped state: all four, plus check-in and the clock
+command, now begin with `lockAttendanceLeaveDependenciesTx`; see the shipped-state section.)
+These changes are partial participation, not universal protection or fresh principal
+revocation proof, and do not expose Assistant effects.
+
+The human explicitly authorized parallel subagents. Three guard-created isolated
+source checkouts now own lifecycle/privacy/browser binding, provider evaluation/readiness,
+and workspace/module agents/read seams respectively; the parent owns shared integration,
+remaining ordinary writer protection and the one combined final gate. Future DB namespaces
+are distinct but no worker database or runtime job has been created. Source-only commits
+remain unverified until the shared checks are genuinely run. The human also explicitly
+authorized AI source-only publication to the now-public repository; private evidence,
+logs, fixtures and credentials remain outside Git.
+
+### Source integration: browser consent, module readers and shift window owners (26 October)
+
+Integrated isolated own-leave lifecycle, provider readiness and module-workspace source commits. Provider candidates stay inactive until explicit synthetic evaluation and receipt promotion; evaluation consent now binds the candidate ID and version actually displayed. Browser provider commands require an explicitly selected authenticated session, and issued provider snapshots are purpose-checked both at configuration creation and before admission. The closed Assistant reader facade now exposes the canonical module projections and a separately named write-carrier job join for bounded promotion accounting. Routing-only evaluation remains explicitly routing-only; prompt/model evaluation and full three-stage acceptance remain incomplete.
+
+AI feature/allowance/default-clear command transactions now check the current calling principal under Access ownership before policy writes; setting-backed AI feature changes perform that same check inside the actual setting transaction. Four archived-login refusal cases are authored, UNRUN. Other direct settings/module/authority owners still require their own reviewed coverage; this does not establish universal protection.
+
+The two standalone shift-pay source owners, `replaceShiftOtWindows` and `saveShiftPay`, now capture nested input/context and acquire Access then exclusive leave configuration before their existing source-row reads/locks, window replacement and events. Private window validation and canonical pay bodies remain unchanged; a reverse-edit comparison restored the previous source exactly. Two actual shared-interval/no-effect/release-and-save regressions are authored, UNRUN. Syntax parsing and diff checks only; no compiler, application, tests, database, build, provider calls or staging execution. No deployment or runtime security/readiness claim follows from this checkpoint.
+
+### Privileged module-change source interval (26 October, source only)
+
+`applyModuleChange` now snapshots the intent row and joins Access followed by the same exclusive leave-configuration advisory key before catalogue eligibility, deactivation blockers, entitlement writes and raw setting seeding. This is the existing injected owner-role path: it checks actual physical `tenant_module` table ownership or an already-existing superuser, Read Committed and write mode. It does not synthesize an app identity, alter tenant session settings, grant roles or make the runner callable by the app role. A busy refusal requires its existing complete caller transaction to roll back. The short queue claim remains separate and commits before execution, preserving existing intent/audit semantics.
+
+Two real authored cases cover an employee interval blocking owner activation without module/settings/event effects, release and successful activation, and app-role refusal without module effects. Both are UNRUN; PostgreSQL owner-role behavior and the actual deployed migration role remain unverified. Only syntax parsing/diff checks ran. This closes one concrete raw configuration writer in source, not all privileged provisioning, installation or direct SQL paths, and supplies no universal concurrency/security claim.
+
+### First authorized GitHub development evidence (26 October)
+
+The owner explicitly authorized GitHub Actions in place of waiting for local slots. Focused development run [40297571187](https://github.com/StradaverseHub/ai-hr/actions/runs/40297571187) checked exact `bc34e8917c159fc5241c31e150241bbc031febdc`: ten selected suites passed, 113 assertions, both raw batch exits zero. The candidate classifier assigned nine suites/103 assertions to NODB and the mocked provider protocol suite/10 assertions to DB setup. Those ten cases test mocked protocol behavior, not live provider capability or the pending domain security/migration acceptance. Authentic passing artifacts remain retained; they are not a final release receipt.
+
+The whole strict compiler in the same run exited 2 with four diagnostics: two inferred-array diagnostics in the routing evaluation harness and two diagnostics from incorrectly treating canonical `reportingLinesFor`'s `{managers,reports}` result as an array. The repair explicitly types baseline/exercised result arrays and projects the returned authorized `managers` collection. No compiler suppression or relaxed setting was introduced. Compiler repair verification is pending; the passing ten-suite set must not be rerun without changed inputs. Remaining three-stage implementation, migrations, domain/security/experience checks, one combined final gate and staging arrival remain incomplete.
+
+### Coordinated reservation and current verification limits (26 October)
+
+The migration coordinator confirmed source-only reservations 0613–0619 (indices613–619, timestamps1792997586565–1792997586571), after Operator0601 and frozen Standalone0612/idx612/1792997586564. Dependency order is action controls, own-leave review store, OpenRouter options, Assistant disclosure, provider readiness, module feedback, module improvement. Earlier unjournalled0602–0604 reservations are surrendered. Only draft reservation comments changed; SQL bodies remain byte-identical. No journal/schema/database/watermark change or permission to skip prerequisite0612 follows. Recheck actual canonical overlap and actual staging watermark before journalling/application.
+
+Compiler repair run40306179368 passed whole strict compilation on exact99c5368f333ed670e6536b6c0cef8f635d3d9e1b (raw exit0), plus four newly executed module-governance assertions (raw exit0). Subsequent source integrations are not covered by that compiler result. The original ten-suite113-assertion development pass remains retained.
+
+Canonical-writer development run40306803548 executed99 assertions:91 passed,8 failed; seven complete passing files comprise82 assertions. Both failing authority files were retained and repaired separately. The first failed-only retry40308115086 executed17 assertions:11 passed,6 failed. Remaining fixture faults were UUID-order event selection and revocation attempted from a peer blocked on the held Access lock. The source-only repair selects exactly the new event IDs and revokes inside the actual owned holder transaction, positively proving empty current principal grants before release. It changes no production permission guard and awaits targeted execution. None of these records is a full combined release-gate receipt.
+
+### Dormant-user expired custody runner — source only
+
+`retireExpiredAiCustodyTx` and the one-pass `scripts/ai-retention-runner.ts` supply an out-of-band maintenance owner without constructing an application tenant/admin/user session. The actual PostgreSQL connection identity must be the physical owner of all three custody tables or an already-existing superuser; the app role is explicitly refused. It erases only expired pending-review ciphertext/digests and expired closed-choice feedback, retaining completed references and all canonical HR rows/events. Fixed bounds are ten oldest tenant queues and100 rows per kind/tenant. Access TRY ownership skips busy intervals; partial errors require the whole owning transaction to roll back. Output contains aggregate counts only. The CLI accepts only its operator-provisioned migration connection, never an app credential fallback, and is not imported by an agent or HTTP route.
+
+The reserved feedback draft adds SELECT/DELETE policies for expired rows only when effective and session users are the actual non-app table owner. Existing app/group maintenance and own-user RLS rules remain. No role, BYPASSRLS, nonexpired visibility, INSERT/UPDATE or table privilege is granted. PostgreSQL16 distinguishes session and effective identities under SECURITY DEFINER ([identity documentation](https://www.postgresql.org/docs/16/functions-info.html)); FORCE RLS also subjects ordinary table owners to policies ([RLS documentation](https://www.postgresql.org/docs/16/ddl-rowsecurity.html)). The nonsuperuser fixture uses transaction-local session authorization, whose transaction behavior is described in the [official command documentation](https://www.postgresql.org/docs/16/sql-set-session-authorization.html).
+
+Five actual storage/interleaving cases are authored UNRUN: expired-only/idempotent cleanup, app rejection, complete rollback, held-Access skip/release, and a nonsuperuser physical-owner/FORCE-RLS fixture that deliberately rolls back every role/ownership change. Raw fictional storage bytes test erasure only, not canonical review provenance. Syntax/diff checks only. No SQL was applied, no timer installed and no credentials/DB touched. Deployment still needs coordinated migration application, actual role/RLS/rollback/capacity proof, a finite operator-owned scheduler binding and cleanup-lag/failure monitoring. No maximum retention lag or operational readiness is asserted by source code alone.
+
+Independent source review found two retention issues before execution: PostgreSQL applies UPDATE USING policies to SELECT FOR UPDATE, and unconditional timeout caps could loosen a stricter caller bound. The source repair adds expired-session-owner row-lock visibility with WITH CHECK(false), so UPDATE effects still refuse; it preserves the smaller existing nonzero timeout. The nonsuperuser fixture now positively checks both actual identities and absence of SUPERUSER/BYPASSRLS, attempts a denied update inside a controlled savepoint, and the sixth new case checks stricter timeout preservation. All remain UNRUN. The official [PostgreSQL16 policy table](https://www.postgresql.org/docs/16/sql-createpolicy.html) supports the row-lock/check distinction; source review is not a substitute for the actual role/RLS cases.
+
+
+### Canonical presentation and additional focused evidence (26 October)
+
+Focused development run40313798969 executed14selectedfiles/139assertions successfully on exact40d1128732ca363c13744666a14326e1f8dc56a5. Its separate strict compiler reported one test identifier inference error; explicit string typing repaired it without a suppression. Run[40315971281](https://github.com/StradaverseHub/ai-hr/actions/runs/40315971281) on exacta42b4ddb09fea6146be2ac44b933193e8cfb5e3f then passed the whole strict compiler (raw exit0) and five genuinely unrun files/89assertions (threeNODB/79 and twoDB/10, both raw exits0). Raw reports independently reconcile the complete selected assertion sets. These development passes are retained; subsequent integrations are not covered by that compiler result. No build, combined final gate, custody migration proof or deployment is claimed.
+
+The workspace now renders typed canonical cards for all20module jobs and six locales. Raw model prose remains audit-only and is removed from the exported ask result. A selected sealed exchange nominates exact prior tool lookups; current user/source/field guards and source fingerprints adjudicate the displayed canonical facts. Provenance alone never certifies model prose. Ambiguous legacy pay-change and team-summary presentations remain withheld with bounded canonical job links. Mine leave field visibility now applies before provider/context/history fingerprints, with unlabelled decomposition withheld when it could infer hidden summary fields. New executable tests remain UNRUN. Real nonempty business examples for every module, actual experience, multilingual independent quality and a user-facing governed candidate consumer remain incomplete; a20-name catalogue or fixed synthetic fixture is not completion evidence.
+
+Additional ordinary source owners now join Access then exclusive configuration before approval templates, grade groups, Criteria publication and15department/position/cost-centre/business-unit CRUD roots. Owner suspension, closure and reactivation acquire the same physical-owner interval before authoritative lifecycle reads. Dunning now freshly rechecks owned tenant/subscription rows and writes status, suspension window and exact audit event in the same transaction; it no longer commits status through an outer owner connection. Existing lifecycle decision arithmetic and guards remain. Authored interleaving/refusal/rollback cases are UNRUN, and source comparison is not universal installed writer or security proof.
+
+Expired custody maintenance now emits aggregate remaining-backlog and oldest-expired-age signals after its bounded pass. Disabled systemd source templates use a separate operator-provisioned identity and environment, a finite oneshot and inactive-relative timer. No service/timer/account/credential has been installed or activated. Actual role/RLS/erasure/capacity proof, installed-host unit validation, alert binding and observed timer runs remain required before exposure; source scheduling does not establish a maximum retention lag. The seven reserved AI SQL drafts remain unjournalled/unapplied, with deployment held behind frozen Standalone0612 and actual dependency handback.
+
+### Expiring AI commands, header-only imports and evidence custody
+
+Provider-backed commands must distinguish creating a new request from reopening an existing result. Employee import heading assistance uses separate authenticated preparation, execution and read-only reopening owners. Execution requires an existing server-issued attempt/version and never inserts missing custody. A dispatched or failed attempt does not automatically resend; erasing expired custody cannot turn an old execution/reopen command into a new admission. Only the invocation that actually claimed a dispatch may retire that dispatch on failure. The human-question planner uses an authenticated server-issued permit bound to the actual owner, source and database-issued expiry, checked before insertion and admission. A deleted proposal is not an indefinite idempotency tombstone; an expired permit must refuse its old POST instead.
+
+Employee master import is the human-selected first process assessment. Original workbook/CSV values, sheet identity, cell provenance and header revisions remain in browser memory. Optional provider assistance sends only the exact reviewed heading packet and static canonical field descriptors under explicit consent. Proposals contain closed canonical field choices; individual adoption and a separate header revision still precede the existing strict preview and explicit canonical commit. This preparation authorizes no developer provider call or production HR transfer. A heading proposal receipt is neither an import completion receipt nor evidence that a mapping is correct or caused a measured saving. Full import measurement must correlate the actual canonical completion event and committed rows in its own transaction; best-effort import history does not establish that correlation.
+
+Feedback selections attach at most ten explicitly chosen, verified own-job signals to immutable candidates. Missing provenance remains unknown, while verified empty provenance can report zero. Ratings are candidate inputs, not quality truth. Promoted human-question planning additionally requires independent fixed multilingual question holdouts alongside the existing routing suite, then explicit review of the proposed module labels before canonical reads. Those finite suites evaluate routing within the closed module contract, not general HR reasoning or financial accuracy.
+
+Trusted gateway lifecycle hooks correlate the actual admitted run inside admission and actual terminal accounting inside settlement; copied configurations, posted run IDs and model payloads cannot acquire the hook. Missing/conflicting usage and account charge remain NULL with a bounded observation status. OpenRouter account credits are distinct from upstream provider cost or an inferred currency. Expired private proposal, job, feedback, provenance and import custody require bounded physical-owner cleanup, explicit expired-only RLS and actual role/rollback/capacity verification. Source implementation and authored tests do not establish current runtime, erasure, security, experience or production-readiness acceptance; all three stages still precede the single combined final gate and verified deployment.
+
+### Saved-review recovery and private commitments
+
+A current authenticated login may list minimal metadata and retire its own noncompleted saved
+reviews after losing an action grant, module access or a person association. Cleanup must not reopen
+private content or recover action authority. Its source-specific closed SQL helper binds actual
+login/tenant/principal, captures original privacy associations, refuses completed retirement and
+atomically removes ciphertext and pending digest. Review and confirmation keep their fresh native
+source, current authority and exact human-content gates; login-only cleanup is not an effect path.
+The browser preserves a known uncertain action identity for reopening or retirement and does not
+replace that uncertainty with a second prepare or confirmation.
+
+Public review commitments that include private native fingerprints use a fresh secret32-byte nonce
+inside the existing encrypted body. The public digest alone must not permit enumeration of hidden
+source values. Nonces never appear in public contracts, metadata, receipts, provider packets or
+feedback; body retirement also retires the stored nonce. Pending reopen reuses that stored nonce,
+and an old nonconforming pending body refuses rather than silently acquiring a new commitment.
+Own-leave's separately defined digest remains limited to displayed fields and keeps its private
+balance comparison outside the public digest. This does not promise heap erasure or replace native
+freshness, authorization, transaction ownership or human confirmation.
+
+Assigned Leave decision review is an Approvals specialist handoff to the canonical Leave owner.
+The orchestrator may offer only the fixed human selection page. It cannot supply a request or step,
+approval/rejection, reason, consent or digest. Native assigned authority and current source state
+remain required; a recorded intermediate decision may leave the request pending. These source
+changes and authored regression cases require their actual migration, security, concurrency,
+erasure and browser verification before release.
+
+### Shared Assistant page authentication and access reference
+
+The Assistant workspace and its human review pages inherit one selected-browser-session layout.
+Local development therefore requires a selected login for these pages, matching the existing human
+command carrier; the convenience development identity is not their page identity. This uses the
+configured authentication provider and does not activate a different provider or environment.
+
+The access reference has one conditional Assistant column covering the actual descendant routes.
+Role eligibility is not an Assistant grant or native effect permission. Current grants, modules,
+pauses, company/record/field authority and source checks remain with each reader or command. A
+still-signed-in owner may discover or discard its own minimal saved-review metadata after effect
+access is revoked. The route-completeness check follows the actual awaited layout session call,
+so a new Assistant page or a removed layout guard cannot silently disappear from the reference.
+These source changes require their authored authentication, reference-grid and experience checks;
+static route/JSON/syntax inspection is not runtime authentication proof.
+
+### Orchestrator and specialist improvement acceptance
+
+The user-facing entry point is one Assistant/orchestrator. The twenty internal module specialists
+retain separate canonical capabilities, domain contracts and evaluation scope; own-leave belongs to
+the Leave specialist. Routing never unions privileges or supplies human action selections. Native
+readers, business engines and current calling-user authorization remain authoritative.
+
+Routing permutation and module-label holdouts evaluate orchestration only. They cannot establish
+specialist business quality, even when all twenty module labels occur. Each promoted specialist
+candidate must execute its actual supported behavior against independent domain expectations,
+preserve canonical facts and current visibility, and carry evaluation, bounded promotion and
+monitoring/rollback evidence for that same module, source and candidate. Human feedback proposes
+improvements; neither feedback ratings nor a model's self-rating establishes correctness. Concrete
+business regression suites remain necessary alongside the promotion harness. Missing module
+evaluation or unsupported behavior must remain explicitly unverified, without broadening authority.
+
+All three stages precede one combined final candidate gate and one verified staging deployment.
+Source completeness, focused development checks, migration installation, runtime security and the
+actual human experience are separate claims. An integrated catalogue or source manifest proves
+neither the latter claims nor readiness to release.
+
+Native leave disclosure is fieldwise: `withheld` means at least one ESS component is hidden,
+not that every displayed balance field is forbidden. The specialist preserves the existing
+`projectMineLeaveBalance` projection's permitted available/pending fields, retains the withholding
+notice and never reconstructs omitted components. Under partial disclosure the native projector
+omits legacy accrued/balance aliases; the specialist refuses those aliases rather than imposing
+an all-null rule on permitted summary fields. Independent native-policy cases cover both hiding
+available while showing pending and hiding pending while showing available. Their authored
+assertions are not runtime evidence until executed against the actual canonical owners.
+
+
+### Human-supplied missing import fields and independent specialist comparison
+
+The preparation owner now permits explicit human additions for fields absent from messy source
+records. They start blank and unreviewed; changing a value or destination clears review. Accepted
+additions retain `human_supplied` provenance with no manufactured original cell. Original source,
+coordinates and exclusions remain separate. Excluded records may retain incomplete added-field
+drafts; included records still require canonical field/scalar/identity validation and explicit
+review. Preparation never invokes native preview or commit. Paste, CSV and Excel browser journey
+sources now use the actual import UI and an independently authorized read-only native verifier.
+The fictional scenario declares its literal salary/category/date inputs; it does not discover or
+invent missing production HR values. Import history remains a separately verified post-commit
+record, not an atomic event receipt. These browser journeys remain UNRUN.
+
+Focused development run [40470563995](https://github.com/StradaverseHub/ai-hr/actions/runs/40470563995)
+verified exact `cef9571174538b589698e749078be792a2b67678`: three affected preparation/evidence suites,
+49 assertions passed, raw process exit0, and whole-repository TypeScript exit0 after route typegen.
+This evidence does not cover the later excluded-draft repair, browser verifier or diagnostic changes;
+it is neither a browser result nor a final release receipt. Unrelated authentic passes are retained.
+
+The closed `canonical_followup_v1` candidate adds prioritized source-record diagnostics while
+preserving the baseline's factual presentation, warnings and human boundaries. Independent mixed
+record tasks currently distinguish potential gains for Org, Leave, Attendance, Claims and
+Performance. The other fifteen modules have no demonstrated gain from this variant and cannot
+promote it merely because a new diagnostic field exists. No all-twenty improvement claim follows.
+All new comparisons, real promotion/consumer/rollback cases and migration-shape cases are UNRUN.
+The centrally reserved0642 filename remains a draft with journal index/timestamp unassigned.
+
+A native action can intentionally change the facts of an earlier read job. Its completed outcome
+must therefore use a distinct human-linked association, not weaken the opinion-feedback writer's
+unchanged-read guard. The historical job provenance boundary authenticates the actual owner,
+source/candidate/expiry and current entitlements without returning HR facts or admitting a new
+promoted job. Ordering is Access, shared release interval, shared signal interval, canonical native
+source interval, then association custody; refusal requires whole-transaction rollback. The separate
+outcome store/owner reconciliation and user journey are still being implemented. Such an association
+will prove neither causal AI benefit nor business correctness, approval, payment or measured savings.
+All three stages, actual experience/security evidence and the combined final gate remain required.
+
+
+### 27 October 2026 — source-only human-selected native candidate evidence
+
+Candidate creation now accepts one optional own native-outcome association in addition to human opinion signals. It reopens the actual own governed job and canonical completed source before sealing the association reference into candidate provenance. Specialist evidence must match that specialist module. Typed routing and prompt candidates can use an own completed action as a historical hypothesis input; this grants no source authority and supplies no quality, benefit or causal score. Independent held-out/security/quality evaluation and bounded promotion remain required. Opinion feedback retains its existing unchanged-result requirement.
+
+A v2 candidate provenance receipt binds the exact association/job/receipt/native digests, module/action and expiry. Empty-native candidates retain the v1 proof shape. Reviewers validate only the already-bound historical reference metadata under a guarded boolean surface and read fresh HR facts as themselves; they never impersonate the original actor or receive its private source. Association erasure/expiry/cascade invalidates candidate evidence. A competing custody holder is classified as transient busy, not a source-changed rollback. One native source per candidate avoids unordered native multi-subject ownership.
+
+The management UI defaults to no native evidence and labels the optional link as evidence rather than a rating. Server commands capture choices before awaiting authentication and use the existing browser Origin/CSRF owner; notification identity remains an opaque server capability resolved outside the business transaction. Own erasure will remove private source captures plus associations through the coordinated privacy helper, preserving native human receipts.
+
+All new candidate/DOM/DB cases are authored UNRUN. Static syntax/diff review only. Native association, target-custody, UI metadata and candidate-provenance fragments must become one normally installed centrally allocated migration before runtime checks; no prefix/index/timestamp is inferred. Source capture, retention/PDPA integration and representative browser/security/erasure proof remain unfinished. No combined final gate, staging deployment, current runtime security proof or completion claim.
+
+Source review correction: second-generation evidence now uses an explicitly named beginOwnNativeOutcomeJobProvenanceTx bridge. Its in-process, one-use WeakMap carrier binds the exact transaction/tenant/USER/PERSON and immutable original job/candidate proof. Existing typed/prompt/specialist candidate bindings and opinion evidence are checked first, with native custody deferred through both direct and planning-candidate paths. After the new actual completed-source read, the lower owner consumes the carrier and rechecks the prior native metadata before association custody/write/return. A copied/cross-transaction/different-PERSON/already-finished carrier refuses before new source work. Metadata-only discovery finishes the carrier before returning choices and performs no subsequent canonical source read in that transaction. This repairs a concrete custody-before-canonical inversion found by independent source review; runtime multigeneration/concurrency proof remains unrun.
+
+
+### 27 October 2026 — integrated native review and privacy source checkpoint
+
+Integrated the explicit completed-action selection/reopen/identity-only erase UI in all six locales, actual source-owned private subject capture in all19 typed review effects plus measured Employee import, bounded metadata retention, non-actor/original/current subject erasure and linked-association invalidation. Capture runs atomically before canonical completion clears its private snapshots. Native human receipts remain independent of learning capture, so unsupported historical learning refuses without inventing a replacement effect. The import capture includes actual hires even without EmployeeID and actual register/superior targets; it adds no public audit PERSON lists or artificial import limit.
+
+Independent review found and corrected two transitive second-generation custody ordering paths, a physical row-wait seam, and a same-Tx privacy resurrection gap after SET CONSTRAINTS ALL IMMEDIATE. The latter now uses the immutable actual current-top-level pii.erased event plus the retained canonical Assistant erasure barrier; applied0586/0622 are unchanged. The canonical PII erasure callback was extracted byte-identically into its supplied-Tx owner for the real interleaving regression. Original erasure body comparison:9683bytes, SHA256500cf0f6c60c3ab6b4978efb74146c0505e83a289e80a3cfb0e02c2686c90cf2. The new regression explicitly requires reaching capture after the real audit and immediate constraints; an earlier unrelated refusal cannot count as proof.
+
+Human module edits now clear old native evidence selections and show only matching-module choices. Metadata discovery omits missing/expired/incomplete/erased captures, but every human record/candidate POST still performs actual current canonical verification. Native source, target-custody, workspace discovery and candidate provenance SQL remain descriptive fragments for ONE centrally allocated consolidated migration; no new prefix/index/when has been inferred or journalled.
+
+New actual capture, rollback, bulk/privacy, bounded retention and two-generation specialist cases are authored UNRUN. Source AST/JSON/diff checks are not compiler, database, security, browser or runtime proof. Earlier authentic passing results remain retained at their original source/environment;40473602575 remains39DBPASS/3newdiagnosticFAIL plus323noDBPASS and compilerPASS on8e5, not proof of these later changes. Next focused checks cover only changed/new pure/DOM contracts plus the whole compiler; normal SQL/concurrency/erasure execution awaits the coordinated migration. Browser PR18 remains fenced and unrun. No combined final gate/deployment or full three-stage readiness claim.
+
+
+Development run40501218662 on exacte3e5669fe:10selectedNODBfiles59/59PASS, actualprocess0/signalnull; authenticated artifact ZIP digest verified. Wholecompiler raw2 with four genuine diagnostics acrossthree files: narrowed-never exhaustiveness expression, undefined PayComponent privacy action constant, and missing expires_at field in the selected import Row type. Repair uses the closed contract constant, retains exhaustive checking on the discriminated reference itself, and types the expiry already selected by native ownTx SELECT*. No unsafe cast, suppressed compiler error or source-effect test weakening. Original failed compiler log retained; no green compiler claim. Passing59 retained, compiler repair verification to follow; SQL/browser/final gate still pending.
+
+
+### Conversation answers and clarification, 28 October 2026
+
+The real Assistant model loop selects tools; a source receipt alone does not establish the meaning of
+its final prose. Terminal conversational output therefore proposes a bounded answer plan: ordered
+references to actual executed-read facts or available canonical explanation clauses, one missing
+selection to clarify, or a closed unsupported/human-review outcome. Code adjudicates selectors against
+the current canonical presentation. Null, hidden and unavailable facts cannot become statements;
+known explanation codes are not evidence that a clause applies. The model chooses relevance and order;
+canonical engines own values, calculations and the meaning of supported explanation clauses.
+
+A version-two disclosure seals the plan together with the existing exact principal, exchange, human
+question, terminal-body digest and executed source fingerprints. Legacy version-one disclosures retain
+card-only meaning. Reopening reauthorizes and rereads sources before resolving a conversational plan.
+A clarification continuation reloads only the caller's own authenticated clarification exchange and
+rechecks current Assistant access; it carries the original human question and new human response into
+a fresh real model turn. Historical model prose and historical HR rows are not reused as authority.
+This mechanism does not grant effects, bypass human confirmation, prove arbitrary causal explanations,
+or make source-only implementation a verified conversational experience. Runtime, current-role/RLS,
+revocation, persistence and rendered-journey checks remain required before release.
+
+
+The conversation compositor resolves selected explanation clauses from the freshly issued canonical
+view itself. Leave status and eligibility clauses preserve the engine's status, dated-rule and tested-axis
+semantics; unavailable derivations never become invented proration explanations. Specialist clauses
+retain the actual admitted playbook and diagnostic rather than recomputing a promoted result as a baseline.
+The model may choose which supported clauses and recorded facts answer the question, and their order;
+source-owned locale copy supplies their meaning. Human-review requests expose only the actual source
+view's verified hand-off pages. Opening a hand-off is not effect permission or confirmation.
+
+Clarification context is structured separately from the new human reply. Ordinary questions retain their
+2,000-character input limit; a valid full question can be followed by a 500-character clarification.
+History contains readable human text, with an 8,000-character bounded conversation and a fresh-question
+prompt before a further maximum-length reply would overflow. No text is silently truncated. Current
+principal/grant and sealed own-exchange custody are checked before that context is reused, with local
+non-increasing transaction wait bounds installed before the Access lock. Busy or invalid continuations
+produce a generic refresh outcome after rollback, not a fabricated pause/allowance explanation.
+
+
+### Optional monetary ceilings and readable replies — owner decisions, 28 October 2026
+
+The owner selected optional USD ceilings. Absence of an applicable monetary threshold is not a zero
+budget and carries no USD-ceiling promise. Authorization, privacy, pauses, request/token/concurrency
+controls, deadlines and existing mandatory native task ownership still apply. Any applicable finite
+monthly or task ceiling, including an explicit zero, retains verified monetary admission. Clearing one
+scope does not clear another scope, erase unknown costs, reset native task usage or release reservations.
+Unknown historical/unpriced usage must not silently become zero when a finite ceiling is later enabled.
+Provider activation and production-data transfer remain explicit operator decisions.
+
+Replies must be concise and structured around the user's question. The model selects relevant ordered
+source references; the trusted renderer presents short single-fact answers, comparable same-source
+records as tables, other facts as bullets and grounded explanations as numbered points. Tables preserve
+record/column order and actual units; they perform no currency conversion or HR calculations. A progress
+visual may show an already recorded, valid completion percentage; it never invents a denominator or uses
+model-calculated money. Long rule detail is expandable rather than an unstructured text dump. These
+presentation choices do not widen retrieval, effects or the supported explanation vocabulary.
+
+The conversation fact selector follows native Mine Leave field visibility: an aggregate `withheld`
+notice does not suppress a separately permitted non-null projected field. Hidden or omitted fields
+remain unavailable, and partial-card explanations remain refused. The reply retains its withholding
+notice and does not turn partial records into comparison tables. New regression cases are authored;
+runtime verification remains pending the exact-candidate development run.
+
+### Owner decision — chat-content retirement, 28 October 2026
+
+The owner selected **30 days** for automatic raw assistant chat-content retirement, with an
+identity-scoped own-clear action also available after Assistant permission revocation. Retirement
+must clear the question, raw answer, tool-input audit and disclosure receipt together. Exchange
+identity, timestamps, tokens, request counts, financial accounting and canonical HR records remain;
+deleting exchange rows would incorrectly reset the existing daily-question count. Original actor
+PERSON custody must use actual source evidence; historical unknown links and arbitrary free-text
+mentions are not invented identity evidence. In-flight conversation/evaluation ownership must be
+invalidated so a response finishing after retirement cannot recreate erased content or metadata.
+Source integration and focused checks are in progress; no migration application, runtime erasure
+proof or final-release acceptance follows from this decision alone.
+
+## Shipped state and known limits, 28 October 2026
+
+Recorded after the three-stage AI delivery reached staging (source `b30c562e4`; 529 applied
+migrations, watermark `1793130000023`). This describes what shipped; earlier "source only" and
+"unrun" sections above are historical.
+
+**Migrations.** The former drafts are journaled: `0621_ai_action_controls`, `0623_openrouter_provider_options`,
+and the AI series through `0657_ai_integration_repairs` (0622–0632, 0642, 0648–0657).
+
+**Attendance writers.** Check-in, check-out, the clock command, correction decision/application
+(`packs/attendance/day-adjustment.ts`, `lockAttendanceApplicationTx`) and imported-punch batches
+(`addImportedPunchesBatchTx`) all begin with `lockAttendanceLeaveDependenciesTx`
+(`core/attendance.ts`), which takes the tenant Access-configuration lock, the leave-dependency
+configuration lock and the employment locks. The "require owner integration" note above no longer applies.
+
+**Unsupported surfaces in the AI path.** No retrieval-augmented generation (RAG) over documents,
+no file attachments in Assistant conversations, and no exports produced by the AI path. Model-backed
+paths are verified by automated tests only. No provider is enabled on any installation, and no HR data
+has been sent to a provider.
+
+**Privacy wording.** `redactPII` masks emails, Malaysian IC numbers and phone-like runs only. It never
+masks names. Code comments were corrected to say so. The user-facing `admin.ai.privacyNote` already did.
+
+**Demo tenant shows 14 of 20 module specialists.** Not a defect. The workspace lists a module only when
+`isModuleEnabled` admits it (`core/ai-workspace.ts`; `system_explorer` also needs an administrator).
+On a seeded demo tenant: 6 core modules are always on (employees, org, leave, ess, approvals,
+knowledge_base). `db/seed.ts` adds `legacyEnabledModulesIn(env)` rows: payroll, attendance, claims,
+performance, plus notifications, multi_cycle_payroll and typed_pay_components when their env flags are on
+(they are in `.env.local`). The walkthrough recipe adds the `assistant` row. That makes 14. lifecycle,
+toil, country-my, rewards, system_explorer and system_testing have no `tenant_module` row: a missing row
+is disabled (C7). They appear once a tenant is entitled to them.
+
+**Known risks (accepted for staging; revisit before production).**
+- The tenant-wide Access-configuration advisory lock is exclusive. It serializes clock-ins within a tenant
+  and the AI principal checks that take the same lock. Busy periods will queue clock-ins behind each other.
+- Leave-dependency locks use `pg_try_advisory_xact_lock` (no waiting). A native statutory or other writer
+  that meets a held lock fails immediately with `LeaveDependencyUnavailable` and must be retried by the person.
+- PDPA erasure of Assistant transcripts runs under `lock_timeout` ≤ 500 ms
+  (`0656_assistant_transcript_retention.sql`). Under contention it refuses rather than waits.
+- `0654_ai_optional_usd_policy.sql` backfills `app.ai_spend_admission_scope` in one set-based pass under
+  SHARE ROW EXCLUSIVE locks on `ai_model_run` and its parents. Work is linear in `ai_model_run` rows; the
+  review estimate was about 10–30 s per million rows (not measured). Run it in a quiesced window.
+- `0648` and `0656` use plain `CREATE INDEX` (Drizzle applies each file in one transaction, so
+  `CONCURRENTLY` is unavailable). The index builds block writes to the table while they run.
+- Evaluation request budgets are chosen by the evaluating worker, not by a tenant setting. The review
+  recorded up to 72 provider calls per arm for a full batch; each invocation is consent-bounded (for
+  example `PROMPT_HOLDOUT_REQUEST_LIMIT` = 12).
+
+**Owner decisions (28 October 2026, answered in the known-gaps session).**
+- Named `specific_employee` leave approvers may see the requests they approve: yes, built as a separate task
+  (migration 0669, its own branch).
+- Overtime-pattern writers join the leave-dependency lock: yes. The pattern owner and the group-policy writer
+  take the non-waiting leave-dependency configuration lock after the overtime lock; a held lock refuses the
+  save as busy ("Leave balances that depend on overtime are being updated…") with nothing written.
+- Assistant clarifications carry earlier chat context: yes. `0658_assistant_exchange_continuation` adds
+  `assistant_exchange.continues_exchange_id` (same tenant and login, set once, nulled when the earlier row
+  is deleted). A reply carries up to six earlier human turns of its conversation, oldest first, within the
+  8,000-character history bound; only human text is sent, never a prior model answer. Each carried row must
+  still be own, unretired and inside its own 30 days, rechecked before every provider call; the chain starts
+  later at any gap. Only the new reply is stored, so no text outlives its own 30 days.
+- Live provider activation: not yet. Model-backed paths stay off until the owner enters a key.
+
+## Follow-up decisions, 28 October 2026 (owner-approved in the known-gaps session)
+
+**One place to manage AI.** Control Tower › AI management holds every AI control as sub-menu pages:
+Overview (an AI map of the provider, the HR assistant and its module specialists, the background agents,
+AI inside other screens and allowances, each with status and a link), Provider (moved from
+Administration › AI, which now forwards), Assistant (specialist availability, Assistant access, the
+floating button settings and the candidate reviews moved off the employee Assistant page), Agents &
+features (the only place for Performance AI switches), Allowances, Spending, Orchestrator and Recent
+model calls. Each page has its own requireAdmin guard and permission-matrix column.
+
+**Floating Assistant.** Group administrators switch on a button (default off) that opens a small chat,
+dockable as a side panel, on every page but the Assistant itself and any hidden area. It shows only with
+Assistant access while a provider is active. Page awareness is a closed area plus at most one record id
+from the address (`lib/ai/page-context.ts`), re-derived on the server and appended to the question in
+plain view; never screen text. Every question goes through `askAssistant`. Three catalog settings; no
+migration.
+
+**Bulk HR assistant access.** Grant or revoke for a company, department, role, ticked logins or everyone
+matching a search, after a review that shows the count. One transaction: per-login grant rows/stamps and
+events, plus one bulk event with scope and count; a changed count refuses. Group administrators only.
+
+**Group allowances (0662).** Rows of `ai_control_policy` with kinds `group_role`, `group_company` and
+`group_department`. Precedence: individual; else the most specific matching group tier (department,
+company, role), every row of that tier binding; else the tenant default; never additive; counted per
+login. Company/department membership is the current assignment. A row for a deleted company or
+department never matches (subject_id has no foreign key).
+
+**General AI gateway (0661).** Provider `ai_gateway` for any gateway accepting OpenAI-style requests at a
+public https address (`{version:1, baseUrl}`), checked in SQL and TypeScript; the host is resolved before
+every call and refused if any address is internal. It activates like the direct providers (no OpenRouter
+route-metadata evaluation exists for arbitrary gateways); cost is unverified, so spend-capped work stays
+refused.
+
+**Language.** Assistant answers are canonical cards rendered in the viewer's current locale; model prose
+is audit-only, so switching language re-renders past answers.
+
+## Amendment, 2026-10-28: Phase 2 design moved to ADR-0151
+
+The owner lifted the Phase 2 hold for design only. [ADR-0151](0151-orchestrator-action-layer-and-system-learning.md)
+proposes the registry, user-parity rule, inline confirmation, agent principal and system-learning loop. Until the
+owner accepts it, implementation of Phases 2–4 remains held as recorded above.

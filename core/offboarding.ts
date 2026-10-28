@@ -14,6 +14,7 @@ import { assertCanDecide, assertAssignedWorkPrincipalTx, isApprovalDecisionRefus
 import { freezeOnResignationApprovalTx } from './leave-encashment';
 import { validateLeaveDocument } from './leave';
 import { terminateEmploymentTx } from './org';
+import { lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
 import {isOwnPersonTx,ownPersonPredicate} from './own-person';
@@ -111,8 +112,32 @@ export async function decideResignation(
   ctx: SessionContext,
   p: { requestId: string; decision: 'accepted' | 'rejected'; deciderEmploymentId?: string },
 ) {
+  p = { ...p };
   return withTenant(ctx, async (tx) => {
-    const [req] = await tx.select().from(resignationRequest).where(eq(resignationRequest.id, p.requestId)).limit(1);
+    let nominatedEmployment: string | undefined;
+    if (p.decision === 'accepted') {
+      // Acceptance changes employment/assignment/reporting dependencies as well as leave state.
+      // Preserve Access-before-dependency order: the existing consequence guard repeats this lock.
+      await tx.execute(sql`select app.access_workforce_write_lock()`);
+      await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
+      const [nominated] = await tx.select({ employmentId: resignationRequest.employmentId })
+        .from(resignationRequest).where(eq(resignationRequest.id, p.requestId)).limit(1);
+      if (!nominated) throw new ResignationError('Resignation not found (or not visible).');
+      nominatedEmployment = nominated.employmentId;
+      await lockLeaveDependenciesTx(tx, ctx.tenantId, [nominatedEmployment]);
+    }
+    const req = await (async () => {
+      try {
+        const [row] = await tx.select().from(resignationRequest).where(eq(resignationRequest.id, p.requestId))
+          .limit(1).for('update', { noWait: true });
+        return row;
+      } catch {
+        throw new ResignationError('That resignation is busy; review it again.');
+      }
+    })();
+    if (req && nominatedEmployment && req.employmentId !== nominatedEmployment) {
+      throw new ResignationError('That resignation changed; review it again.');
+    }
     if (!req) throw new ResignationError('Resignation not found (or not visible).');
     if (req.status !== 'pending') throw new ResignationError(`This resignation is already ${req.status}.`);
     await assertResignationDecisionAuthorityTx(tx,ctx,req.employmentId);

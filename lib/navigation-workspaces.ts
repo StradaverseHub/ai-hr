@@ -1,24 +1,28 @@
 /** Navigation placement only. Callers supply already-authorized destinations; this file grants nothing. */
 export type NavigationWorkspace = 'ops' | 'strata';
-export type NavigationSection = 'mine' | 'team' | 'hr' | 'config';
-export type NavigationModule = 'controlTower' | 'people' | 'onboarding' | 'leave' | 'attendance' | 'claims' | 'payroll'
-  | 'performance' | 'talent' | 'development' | 'rewards' | 'workforceInsights';
+export type NavigationSection = 'mine' | 'team' | 'hr' | 'ai' | 'config';
+export type NavigationModule = 'controlTower' | 'people' | 'eLetter' | 'onboarding' | 'leave' | 'attendance' | 'claims' | 'payroll'
+  | 'performance' | 'performanceAdmin' | 'rewards' | 'workforceInsights';
 export type NavigationPlacement = {area:'shared' | 'system'} | {area:NavigationWorkspace;module:NavigationModule;section:NavigationSection};
 export const NAVIGATION_MODULES: readonly {id:NavigationModule;workspace:NavigationWorkspace;labelKey:string}[] = [
   {id:'controlTower',workspace:'ops',labelKey:'aiControlTower'},
   {id:'people',workspace:'ops',labelKey:'modulePeople'},
+  // 7baeb78e — Letters is its own module, beside People. Same pages and addresses; placement only.
+  {id:'eLetter',workspace:'ops',labelKey:'moduleELetter'},
   {id:'onboarding',workspace:'ops',labelKey:'moduleOnboarding'},
   {id:'leave',workspace:'ops',labelKey:'moduleLeave'},
   {id:'attendance',workspace:'ops',labelKey:'moduleAttendance'},
   {id:'claims',workspace:'ops',labelKey:'claims'},
   {id:'payroll',workspace:'ops',labelKey:'payroll'},
-  {id:'performance',workspace:'strata',labelKey:'performance'},
-  {id:'talent',workspace:'strata',labelKey:'talent'},
-  {id:'development',workspace:'strata',labelKey:'development'},
+  // D-P1-32 PT-X5 (APR-025 D4): Performance & Talent and Performance admin, one entry each. The former Talent and
+  // Development modules held the journey's ?module= entry points, which retired into the area's tabs.
+  {id:'performance',workspace:'strata',labelKey:'performanceTalent'},
+  {id:'performanceAdmin',workspace:'strata',labelKey:'performanceAdmin'},
   {id:'rewards',workspace:'strata',labelKey:'rewards'},
   {id:'workforceInsights',workspace:'strata',labelKey:'workforceInsights'},
 ];
-export const NAVIGATION_SECTIONS: readonly NavigationSection[] = ['mine','team','hr','config'];
+// 'ai' (28 Oct 2026, owner): AI management's own pages, headed "AI management" in the AI Control Tower menu.
+export const NAVIGATION_SECTIONS: readonly NavigationSection[] = ['mine','team','hr','ai','config'];
 const modulePlacement = (module:NavigationModule,section:NavigationSection):NavigationPlacement => ({
   area:NAVIGATION_MODULES.find(item=>item.id===module)!.workspace,module,section,
 });
@@ -31,6 +35,7 @@ const peopleConfig = new Set(['/admin/organization','/admin/settings/employee-id
 const leaveHr = new Set(['/admin/leave-config/adjustments','/admin/leave-config/data-import',
   '/admin/leave-config/generate','/admin/leave-config/earned-accrual','/admin/leave-config/balance-health',
   '/admin/leave-config/leave-credit','/leave/employee-balances']);
+const PERFORMANCE_CYCLE_PATH = /^\/performance\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\/|$)/i;
 const attendanceMine = new Set(['/attendance/clock','/attendance/my-records','/attendance/my-roster',
   '/attendance/requests','/attendance/plan-ot','/attendance/request-status']);
 
@@ -38,12 +43,16 @@ const attendanceMine = new Set(['/attendance/clock','/attendance/my-records','/a
 export function navigationPlacement(href:string):NavigationPlacement | undefined {
   const [path,query]=href.split('?'),params=new URLSearchParams(query);
   if(path==='/me'&&params.get('tab')==='payroll'||path==='/me/tax-relief'||path.startsWith('/me/payslip')||path==='/me/ea'||path==='/me/tp3')return modulePlacement('payroll','mine');
-  if(shared.has(path))return {area:'shared'};
+  if(shared.has(path)||path==='/reports'&&!params.has('cat'))return {area:'shared'};
   if(system.has(path))return {area:'system'};
   if(peopleConfig.has(path))return modulePlacement('people','config');
   if(path==='/personnel')return modulePlacement('people','mine');
+  if(path.startsWith('/me/letters'))return modulePlacement('eLetter','mine');
+  if(path.startsWith('/letters/settings'))return modulePlacement('eLetter','config');
+  if(path.startsWith('/letters'))return modulePlacement('eLetter','hr');
   if(path==='/manage/my-team')return modulePlacement('people','team');
   if(path.startsWith('/admin/personnel')||path.startsWith('/admin/job-descriptions')||path==='/admin/notice-board')return modulePlacement('people','hr');
+  if(path==='/control-tower/agents'||path.startsWith('/control-tower/agents/'))return modulePlacement('controlTower','ai');
   if(path.startsWith('/control-tower'))return modulePlacement('controlTower','hr');
   if(path.startsWith('/admin/lifecycle'))return modulePlacement('onboarding','config');
   if(path.startsWith('/lifecycle/onboarding')||path.startsWith('/lifecycle/requisitions'))return modulePlacement('onboarding','hr');
@@ -61,10 +70,9 @@ export function navigationPlacement(href:string):NavigationPlacement | undefined
   if(path.startsWith('/claims'))return modulePlacement('claims','mine');
   if(path.startsWith('/payroll/setup')||path.startsWith('/admin/pay-components'))return modulePlacement('payroll','config');
   if(path.startsWith('/payroll'))return modulePlacement('payroll','hr');
-  if(path==='/performance/workspace'&&params.get('module')==='tm')return modulePlacement('talent','team');
-  if(path==='/performance/workspace'&&params.get('module')==='idp')return modulePlacement('development','mine');
-  if(path==='/performance/workspace')return modulePlacement('performance','mine');
-  if(path.startsWith('/performance'))return modulePlacement('performance','team');
+  // Performance admin: the cycle list (no cycle yet) and the admin area of one cycle, /performance/<cycle>/….
+  if(path==='/performance'||PERFORMANCE_CYCLE_PATH.test(path))return modulePlacement('performanceAdmin','hr');
+  if(path.startsWith('/performance'))return modulePlacement('performance','mine');
   if(path.startsWith('/admin/rewards'))return modulePlacement('rewards','config');
   if(path.startsWith('/rewards'))return modulePlacement('rewards','mine');
   if(path==='/analytics'||path.startsWith('/reports'))return modulePlacement('workforceInsights','hr');

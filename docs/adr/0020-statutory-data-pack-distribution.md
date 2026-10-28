@@ -1,5 +1,7 @@
 # ADR-0020 — Vendor statutory data-pack distribution (hardened)
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: **Accepted** · Date: 2026-06-15 · Builds on [ADR-0019](0019-editable-statutory-config.md)
 · Revised after a 5-lens adversarial design review (security / correctness / RLS / operability / payroll).
 

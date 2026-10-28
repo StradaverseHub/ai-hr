@@ -1,0 +1,2 @@
+export const LETTER_REGISTER_LABEL_KEYS=['title','intro','ready','issued','search','category','issuedFrom','issuedTo','allStates','empty','open','openPdf','download','sealedHelp','voidHelp','issue','issueConfirm','void','voidConfirm','reason','working','saved','original','reissue','reissueHelp','retention','retainUntil','legalHold','saveRetention','audit','nextAudit','system','unavailable','noAccess','approvalHistory','signatory','approvalDate'] as const;
+export type LetterRegisterLabels=Record<typeof LETTER_REGISTER_LABEL_KEYS[number],string>;

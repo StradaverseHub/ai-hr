@@ -1,3 +1,7 @@
+import {withAiAdmissionCheck} from './ai-governance';
+import {draftInputDigest} from '../lib/ai/draft-input';
+import {assertAiPrincipalTx} from './ai-principal';
+import {resolveEntitlementsTx,assertModuleEnabled} from './entitlements';
 /**
  * ADR-0076 §2.6 — THE ANOMALY NARRATOR. The only place an LLM touches the payroll control tower.
  *
@@ -23,18 +27,18 @@
  *     — every one of them returns null and the screen renders exactly what it renders today. Nothing
  *     about evaluating, blocking or closing a run depends on this file.
  *  4. IT NEVER SEES A PERSON. The prompt carries a detector id and a bag of numbers. No name, no employee
- *     code, no employment id, no company. There is nothing in it to leak and nothing to inject with.
+ *     code, no employment id, no company. These remain sensitive Payroll facts, so current native source access is replayed before every dispatch.
  *
  * WHY ON DEMAND AND NOT IN THE SWEEP. The nightly sweep supersedes verdicts, so narrating there would
  * re-spend on every finding every night for prose nobody may ever read — on the tenant's own BYOK key
  * (ADR-0023). Generated when an operator asks, then persisted, so it is paid for once per finding and
  * only for findings someone actually opened.
  */
-import { and, eq, isNull } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { and, eq, isNull,sql } from 'drizzle-orm';
+import { withTenant, type SessionContext,type Tx } from '../db/client';
 import * as schema from '../db/schema';
 import { generateDraft } from '../lib/ai';
-import { recordProposal } from './agent-proposal';
+import { digestOf,recordProposal } from './agent-proposal';
 import { resolveActiveAiConfig } from './ai-config';
 
 /** Bounded hard: this is prose over at most a handful of numbers, never an essay. */
@@ -121,25 +125,21 @@ export type NarrateOutcome = {
  * Returns counts rather than the prose: the caller re-reads the queue, so a second source of the same
  * sentence cannot drift from the stored one.
  */
+/** Native current Payroll scope before finding facts, replayed in each actual admission. */
+async function narrationSourceTx(tx:Tx,supplied:SessionContext,verdictId:string){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};assertModuleEnabled(fresh,'payroll');
+ const [allowed]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.payroll_anomaly_verdict v join public.payroll_batch b on b.id=v.batch_id and b.tenant_id=v.tenant_id where v.id=${verdictId}::uuid and v.tenant_id=${ctx.tenantId}::uuid and app.can_admin_payroll_for(b.company_id) and app.can_admin_payroll_employment(v.employment_id)) as allowed`);if(allowed?.allowed!==true)throw Error('Current payroll source unavailable.');
+ const [verdict]=await tx.select({id:schema.payrollAnomalyVerdict.id,employmentId:schema.payrollAnomalyVerdict.employmentId,batchId:schema.payrollAnomalyVerdict.batchId,disposition:schema.payrollAnomalyVerdict.disposition,supersededAt:schema.payrollAnomalyVerdict.supersededAt,resolvedAt:schema.payrollAnomalyVerdict.resolvedAt,version:sql<string>`${schema.payrollAnomalyVerdict}.xmin::text`}).from(schema.payrollAnomalyVerdict).where(eq(schema.payrollAnomalyVerdict.id,verdictId));if(!verdict)throw Error('Current payroll source unavailable.');
+ const findings=await tx.select({id:schema.payrollAnomalyFinding.id,detectorId:schema.payrollAnomalyFinding.detectorId,facts:schema.payrollAnomalyFinding.facts,version:sql<string>`${schema.payrollAnomalyFinding}.xmin::text`}).from(schema.payrollAnomalyFinding).where(and(eq(schema.payrollAnomalyFinding.verdictId,verdictId),isNull(schema.payrollAnomalyFinding.narrative))).orderBy(schema.payrollAnomalyFinding.id);
+ return{verdict,findings};
+}
+
 export async function narrateVerdict(
   ctx: SessionContext,
   p: { verdictId: string },
 ): Promise<NarrateOutcome> {
-  const findings = await withTenant(ctx, (tx) =>
-    tx
-      .select({
-        id: schema.payrollAnomalyFinding.id,
-        detectorId: schema.payrollAnomalyFinding.detectorId,
-        facts: schema.payrollAnomalyFinding.facts,
-      })
-      .from(schema.payrollAnomalyFinding)
-      .where(
-        and(
-          eq(schema.payrollAnomalyFinding.verdictId, p.verdictId),
-          isNull(schema.payrollAnomalyFinding.narrative),
-        ),
-      ),
-  );
+  p={verdictId:p.verdictId};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
+  const source=await withTenant(ctx,tx=>narrationSourceTx(tx,ctx,p.verdictId)),findings=source.findings,sourceDigest=digestOf(source);
   if (findings.length === 0) return { narrated: 0, rejected: 0, notConfigured: false };
 
   const cfg = await withTenant(ctx, (tx) => resolveActiveAiConfig(tx, ctx, 'payroll_explanation'));
@@ -154,11 +154,7 @@ export async function narrateVerdict(
     let prose: string;
     try {
       prose = (
-        await generateDraft(cfg, {
-          system: SYSTEM,
-          prompt: `Check: ${f.detectorId}\nNumbers: ${factsAsText(f.facts)}`,
-          maxTokens: MAX_TOKENS,
-        })
+        await (()=>{const args=Object.freeze({system:SYSTEM,prompt:`Check: ${f.detectorId}\nNumbers: ${factsAsText(f.facts)}`,maxTokens:MAX_TOKENS}),expectedInput=draftInputDigest(args),bound=withAiAdmissionCheck(cfg,'payroll_explanation',async(tx,request)=>{if(request.operation!=='draft'||request.inputDigest!==expectedInput||digestOf(await narrationSourceTx(tx,ctx,p.verdictId))!==sourceDigest)throw Error('Current payroll source unavailable.');});return generateDraft(bound,args);})()
       ).trim();
     } catch {
       // Provider down, timed out, refused. The finding keeps its facts and can be asked again later.
@@ -200,6 +196,7 @@ export async function narrateVerdict(
 
   if (writes.length) {
     await withTenant(ctx, async (tx) => {
+      if(digestOf(await narrationSourceTx(tx,ctx,p.verdictId))!==sourceDigest)throw Error('Current payroll source unavailable.');
       for (const w of writes) {
         // Only the narrative column, and only where it is still null: a concurrent narration must not
         // overwrite prose an operator is already reading.

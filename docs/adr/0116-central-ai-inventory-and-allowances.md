@@ -1,5 +1,7 @@
 # ADR-0116: Central AI inventory and allowances
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: accepted. Local acceptance and experience verified on 2026-10-15; release checks remain separately required.
 
 ## Request and graph
@@ -118,7 +120,9 @@ than an accidental "no cap" exemption.
 Monitoring. Every company and user row shows usage against its effective limit: requests today and tokens
 this month, where tokens are recorded plus held reservations, i.e. exactly what admission counts. "Near
 limit" starts at 80% and "At limit" at 100% (a zero cap is at its limit). A "Needs attention" section lists
-companies and logins near or at a cap with usage, and logins with calls blocked today (Malaysia day).
+companies and logins near or at a cap with usage, companies and logins paused by a configured zero request,
+token or concurrency cap (listed even before any attempt; amended 28 October 2026, previously excluded),
+and logins with calls blocked today (Malaysia day).
 Company administrators see only their own companies there and no login identities. The user list is ordered
 by this month's counted tokens, highest first, computed over every matching login, so heavy users are not
 hidden behind an alphabetical first page. Group administrators can filter recent runs to blocked or failed

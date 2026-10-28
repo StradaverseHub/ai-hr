@@ -132,6 +132,9 @@ vi.mock('@/core/dashboard-card-config', () => ({
   ]),
 }));
 vi.mock('@/app/dashboard-layout-actions', () => ({ saveDashboardLayoutAction: vi.fn(), resetDashboardLayoutAction: vi.fn() }));
+// WP-A2 — the Performance block slot is an async server component with its own reads and its own DOM suite
+// (test/p1-wpa2-performance-home.dom.test.tsx); this administrator fixture has no open cycle, so it renders nothing.
+vi.mock('@/components/performance-home/performance-home', () => ({ PerformanceHomeSlot: () => null }));
 // The real slot is an async server component (its own reads); stand in with the real card it renders.
 vi.mock('@/components/notice/notice-surfaces', async () => {
   const { NoticeBoardCard } = await import('../components/notice/notice-board-card');
@@ -157,7 +160,14 @@ const PAYSLIPS = [
 vi.mock('@/core/loans', () => ({ listLoansForEmployment: vi.fn(async () => []) }));
 vi.mock('@/core/profile', () => ({ myProfileChangeRequests: vi.fn(async () => []) }));
 vi.mock('@/core/offboarding', () => ({ myResignation: vi.fn(async () => null) }));
-vi.mock('@/core/dependents', () => ({ isChildReliefEligible: () => false, childAgeYears: () => null }));
+// core/profile-options reads the dependents vocabulary at module load, so the mock carries the real
+// client-safe vocabulary and the category key (core/dependents re-exports both) beside its two stubs.
+vi.mock('@/core/dependents', async () => ({
+  ...(await import('../lib/dependent-vocabulary')),
+  DEPENDENT_RELATIONSHIP_CATEGORY: 'dependentRelationship',
+  isChildReliefEligible: () => false,
+  childAgeYears: () => null,
+}));
 vi.mock('@/packs/leave/service', () => ({ serviceYearsMonthsDaysAt: () => ({ years: 5, months: 7, days: 19 }) }));
 vi.mock('../app/me/review-card', () => ({ MeReviewCard: () => null }));
 vi.mock('../app/me/actions', () => ({

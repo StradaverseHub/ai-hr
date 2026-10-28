@@ -33,6 +33,8 @@ export const PAYROLL_PERMISSION_KEYS = [
   'payroll.unlock',
   'payroll.reprocess.selective',
   'payroll.close',
+  'payroll.history.import',
+  'payroll.history.revert',
   // 9066bd6c — remove ONE employee's calculated result from a processed run. Deliberately its OWN key
   // rather than a reuse of payroll.rollback: an operator trusted to take one person off a run is not
   // thereby trusted to zeroize the whole company's month, and the two actions have to be grantable
@@ -114,6 +116,8 @@ export const PAYROLL_PERMISSION_DEFAULTS: Record<PayrollPermissionKey, readonly 
   'payroll.rollback': ['hr_admin', 'super_admin'],
   'payroll.reprocess.selective': ['hr_admin', 'super_admin'],
   'payroll.close': ['hr_admin', 'super_admin'],
+  'payroll.history.import': ['hr_admin', 'super_admin'],
+  'payroll.history.revert': ['hr_admin', 'super_admin'],
   // Reopens a legally-frozen closed run — restricted to admins. hr_admin is the operator meant to run
   // unlock, so it defaults in line with its rollback/reprocess/close siblings; narrow back to
   // super_admin-only per company via an allowed=false hr_admin override when a tenant needs it.

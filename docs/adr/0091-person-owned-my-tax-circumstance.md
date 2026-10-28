@@ -1,5 +1,7 @@
 # ADR-0091 — Person-owned MY tax circumstance and saved PCB applicability
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Date:** 2026-10-03
 - **Status:** Accepted after verified release 90ae09d1.
 - **Raised by:** feedback `17a9b724-8e04-4e99-a099-de3c76f2a02a`, approved plan revision 1.

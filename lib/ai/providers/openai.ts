@@ -23,22 +23,25 @@ import {
   type ValidateResult,
 } from '../types';
 
-function client(apiKey: string): OpenAI {
-  return new OpenAI({ apiKey });
+/** A general AI gateway (provider 'ai_gateway') reuses this adapter at its own checked https address. */
+const gateway = (cfg: ResolvedAiConfig) => cfg.gatewayBaseUrl ? { baseURL: cfg.gatewayBaseUrl } : {};
+const instruction = (cfg: ResolvedAiConfig, content: string) => cfg.gatewayBaseUrl ? { role: 'system' as const, content } : { role: 'developer' as const, content };
+function client(cfg: ResolvedAiConfig): OpenAI {
+  return new OpenAI({ apiKey: cfg.apiKey, ...gateway(cfg) });
 }
 
 /** Conversation client — separate from `client()` so the drafting path keeps the SDK defaults it has
  *  always run with. Defaults are `timeout` = 10 minutes and `maxRetries` = 2 (client.d.ts:171,174),
  *  which an 8-turn loop turns into hours. */
-function converseClient(apiKey: string, timeoutMs: number | undefined, governed = false): OpenAI {
-  return new OpenAI({ apiKey, timeout: timeoutMs ?? 120_000, maxRetries: governed ? 0 : 1 });
+function converseClient(cfg: ResolvedAiConfig, timeoutMs: number | undefined, governed = false): OpenAI {
+  return new OpenAI({ apiKey: cfg.apiKey, ...gateway(cfg), timeout: timeoutMs ?? 120_000, maxRetries: governed ? 0 : 1 });
 }
 
 export const openaiAdapter: AiAdapter = {
   provider: 'openai',
   async readImage(cfg,args){
     try{
-      const result=await new OpenAI({apiKey:cfg.apiKey,timeout:args.timeoutMs,maxRetries:0}).chat.completions.create({model:cfg.model,max_completion_tokens:2500,messages:[{role:'developer',content:imageReadInstruction},{role:'user',content:[{type:'image_url',image_url:{url:`data:${args.mimeType};base64,${Buffer.from(args.data).toString('base64')}`,detail:'high'}}]}]},{signal:args.signal});
+      const result=await new OpenAI({apiKey:cfg.apiKey,...gateway(cfg),timeout:args.timeoutMs,maxRetries:0}).chat.completions.create({model:cfg.model,max_completion_tokens:2500,messages:[instruction(cfg,imageReadInstruction),{role:'user',content:[{type:'image_url',image_url:{url:`data:${args.mimeType};base64,${Buffer.from(args.data).toString('base64')}`,detail:'high'}}]}]},{signal:args.signal});
       if(hasTokenCounts(result.usage,['prompt_tokens','completion_tokens']))args.onUsage?.(usageFor(result.usage));
       if(result.choices[0]?.message.refusal)throw new AiImageReadError(false);
       return result.choices[0]?.message.content??'';
@@ -47,11 +50,11 @@ export const openaiAdapter: AiAdapter = {
 
   async generate(cfg: ResolvedAiConfig, args: GenerateArgs): Promise<string> {
     try {
-      const completion = await (args.signal?new OpenAI({apiKey:cfg.apiKey,timeout:args.timeoutMs,maxRetries:0}):cfg.governance?new OpenAI({apiKey:cfg.apiKey,maxRetries:0}):client(cfg.apiKey)).chat.completions.create({
+      const completion = await (args.signal?new OpenAI({apiKey:cfg.apiKey,...gateway(cfg),timeout:args.timeoutMs,maxRetries:0}):cfg.governance?new OpenAI({apiKey:cfg.apiKey,...gateway(cfg),maxRetries:0}):client(cfg)).chat.completions.create({
         model: cfg.model,
         max_completion_tokens: args.maxTokens ?? 2048,
         messages: [
-          { role: 'developer', content: args.system },
+          instruction(cfg, args.system),
           { role: 'user', content: args.prompt },
         ],
       },args.signal?{signal:args.signal}:undefined);
@@ -66,7 +69,7 @@ export const openaiAdapter: AiAdapter = {
   async validate(cfg: ResolvedAiConfig): Promise<ValidateResult> {
     try {
       // Metadata-only probe: validates the key (401) and the model id (404) with no generation cost.
-      await client(cfg.apiKey).models.retrieve(cfg.model);
+      await client(cfg).models.retrieve(cfg.model);
       return { ok: true };
     } catch (e) {
       return { ok: false, error: reason(e) };
@@ -91,11 +94,11 @@ export const openaiAdapter: AiAdapter = {
   async converse(cfg: ResolvedAiConfig, args: ConverseArgs): Promise<ConverseResult> {
     try {
       const tools = requestTools(args.tools);
-      const completion = await converseClient(cfg.apiKey, args.timeoutMs, Boolean(cfg.governance)).chat.completions.create({
+      const completion = await converseClient(cfg, args.timeoutMs, Boolean(cfg.governance)).chat.completions.create({
         model: cfg.model,
         max_completion_tokens: args.maxTokens ?? 2048,
         messages: [
-          { role: 'developer', content: args.system.join('\n\n') },
+          instruction(cfg, args.system.join('\n\n')),
           ...requestMessages(args.turns),
         ],
         ...(tools.length > 0 ? { tools, tool_choice: 'auto' as const, parallel_tool_calls: true } : {}),

@@ -1,5 +1,7 @@
 # ADR-0023 — Multi-provider AI configuration (per-tenant BYOK, encrypted at rest)
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: **Accepted** (building) · Date: 2026-06-17 · Builds on [ADR-0007](0007-ai-native-architecture.md), [ADR-0022](0022-performance-phase-b.md)
 
 ## Context

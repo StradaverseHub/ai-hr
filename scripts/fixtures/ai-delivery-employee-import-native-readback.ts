@@ -1,0 +1,108 @@
+/** PRIVATE fictional native readback, import-safe and read-only. No session/role fabrication,
+ * business writes, pool ownership, provider access or admission. Parent owns disposable DB/app.
+ * The human packet declares fictional values; it never infers missing HR values from the source.
+ * Native history is a separate best-effort transaction, NOT an atomic import-event receipt. */
+import {and,eq,sql} from 'drizzle-orm';
+import {z} from 'zod';
+import {client,withTenant,type createDb,type Grant,type SessionContext} from '../../db/client';
+import * as s from '../../db/schema';
+import {assertAiPrincipalTx} from '../../core/ai-principal';
+import {assertWorkforceCompanyTx} from '../../core/workforce-access';
+import {visibleLabelIdsCondition} from '../../core/system-labels';
+import {todayInKualaLumpur} from '../../lib/hr-date';
+import {isCalendarDate} from '../../lib/calendar-date';
+import type {populateAiDeliveryFullFixture} from './ai-delivery-full-fixture';
+type Fixture=Awaited<ReturnType<typeof populateAiDeliveryFullFixture>>;
+/** These are deliberately fictional literal inputs, not computed salary/date/defaults. Department
+ * and hire date MUST be separately chosen by the fixture author and checked against the native scope. */
+export const AiDeliveryEmployeeImportHuman=z.object({employeeCode:z.literal('AI-IMPORT-NEW'),fullName:z.literal('Fictional Imported Human'),email:z.literal('fictional-import@example.test'),department:z.string().min(1).max(200),employmentType:z.literal('full_time'),basicSalary:z.literal('3000.00'),hiredOn:z.string().refine(isCalendarDate)}).strict();
+export type AiDeliveryEmployeeImportSourceMode='paste'|'csv'|'xlsx';
+type Human=z.infer<typeof AiDeliveryEmployeeImportHuman>;
+type Phase='baseline'|'unresolved'|'prepared'|'previewed'|'committed'|'reopened';
+type Invocation={phase:Phase;expected:{userId:string;companyId:string;sourceMode:AiDeliveryEmployeeImportSourceMode;human:Human}};
+const unavailable=(code='unavailable'):never=>{throw Error('employee_import_native_readback:'+code);};
+const uuid=(v:unknown):v is string=>typeof v==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(v);
+const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
+function urls(){
+ const result=[process.env.DATABASE_URL,process.env.MIGRATION_DATABASE_URL].map(value=>{let u:URL;try{u=new URL(value??'');}catch{return unavailable();}if(!['postgres:','postgresql:'].includes(u.protocol)||!['localhost','127.0.0.1','[::1]'].includes(u.hostname)||u.port!=='5433'||!(u.pathname==='/aihr_ai_delivery_browser_v4_20261027'||/^\/aihr_assistant_browser_[a-f0-9]{16}$/.test(u.pathname))||u.hash||[...u.searchParams].some(([k,v])=>k!=='sslmode'||v!=='disable'))return unavailable();return u;});
+ if(result[0].pathname!==result[1].pathname||decodeURIComponent(result[0].username)!=='ai_hr_app'||result[0].username===result[1].username)return unavailable();return result;
+}
+/** Code-authored FICTIONAL scenario for the closed development controller. Missing production HR
+ * values are never inferred here. The department is an actual freshly permitted fixture reference;
+ * category, literal amount and next-month day15 are declared synthetic test inputs. */
+export async function createAiDeliveryEmployeeImportScenarioReadback({owner,fixture,sourceMode}:{owner:ReturnType<typeof createDb>;fixture:Fixture;sourceMode:AiDeliveryEmployeeImportSourceMode}){
+ const captured=structuredClone({fixture,sourceMode}),f=captured.fixture,mode=captured.sourceMode;
+ if(!['paste','csv','xlsx'].includes(mode))return unavailable('fictional_scenario_binding');
+ const configured=urls(),today=todayInKualaLumpur(),database=configured[0].pathname.slice(1);
+ if(f.today!==today||f.state!=='native_prerequisites_prepared_not_experienced'||![f.tenantId,f.companyId,f.departmentId,f.actors.operator.userId,f.actors.operator.personId].every(uuid))return unavailable('fictional_scenario_binding');
+ const ctx=await client.begin('isolation level read committed read only',async tx=>{
+  const [role]=await tx<{name:string;database:string;address:string;port:number;readonly:string;isolation:string;super:boolean;bypass:boolean}[]>`select current_user as name,current_database() as database,host(inet_server_addr()) as address,inet_server_port() as port,current_setting('transaction_read_only') as readonly,current_setting('transaction_isolation') as isolation,rolsuper as super,rolbypassrls as bypass from pg_roles where rolname=current_user`;
+  if(role.name!=='ai_hr_app'||role.database!==database||!['127.0.0.1','::1'].includes(role.address)||role.port!==5433||role.readonly!=='on'||role.isolation!=='read committed'||role.super||role.bypass)return unavailable();
+  const rows=await tx<{tenant_id:string;person_id:string|null;grants:Grant[]|null}[]>`select tenant_id,person_id,grants from app.principal(${f.actors.operator.userId}::uuid)`;const row=rows[0];
+  if(rows.length!==1||row.tenant_id!==f.tenantId||row.person_id!==f.actors.operator.personId||!Array.isArray(row.grants)||row.grants.some(g=>!g||typeof g.role!=='string'||g.companyId!==null&&!uuid(g.companyId)))return unavailable();
+  const grants=row.grants.map(g=>({...g}));return{tenantId:row.tenant_id,userId:f.actors.operator.userId,personId:row.person_id,grants,roles:[...new Set(grants.map(g=>g.role))]} satisfies SessionContext;
+ });
+ const department=await withTenant(ctx,async tx=>{
+  await tx.execute(sql`SET TRANSACTION READ ONLY`);await assertAiPrincipalTx(tx,ctx);await assertWorkforceCompanyTx(tx,ctx,f.companyId,'view');
+  const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.access_workforce_company(${f.companyId}::uuid,'workforce.maintain') and app.can_admin_payroll_for(${f.companyId}::uuid) and app.is_admin() as ok`);if(!allowed?.ok)return unavailable('current_operator_scope');
+  const rows=await tx.select({name:s.department.name,archivedAt:s.department.archivedAt}).from(s.department).where(and(eq(s.department.tenantId,f.tenantId),eq(s.department.companyId,f.companyId),eq(s.department.id,f.departmentId),visibleLabelIdsCondition(s.department,'department',[f.companyId]))).orderBy(s.department.id).limit(2);
+  if(rows.length!==1||rows[0].archivedAt!==null)return unavailable('department_binding');return rows[0].name;
+ });
+ const [year,month]=today.split('-').map(Number),hiredOn=new Date(Date.UTC(year,month,15)).toISOString().slice(0,10);
+ const human=AiDeliveryEmployeeImportHuman.parse({employeeCode:'AI-IMPORT-NEW',fullName:'Fictional Imported Human',email:'fictional-import@example.test',department,employmentType:'full_time',basicSalary:'3000.00',hiredOn});
+ return createAiDeliveryEmployeeImportNativeReadback({owner,fixture:f,human,sourceMode:mode});
+}
+/** Returns PRIVATE expected input and callback facts. Never serialize these as public artifacts.
+ * The browser module returns bounded named checks only. No native preview is called by this reader. */
+export async function createAiDeliveryEmployeeImportNativeReadback({owner,fixture,human:input,sourceMode}:{owner:ReturnType<typeof createDb>;fixture:Fixture;human:Human;sourceMode:AiDeliveryEmployeeImportSourceMode}){
+ const human=AiDeliveryEmployeeImportHuman.parse(structuredClone(input)),f=structuredClone({state:fixture.state,tenantId:fixture.tenantId,companyId:fixture.companyId,departmentId:fixture.departmentId,operator:fixture.actors.operator,today:fixture.today,period:fixture.period,source:fixture.workforce.employeeImport});
+ if(!['paste','csv','xlsx'].includes(sourceMode)||f.today!==todayInKualaLumpur()||f.state!=='native_prerequisites_prepared_not_experienced'||![f.tenantId,f.companyId,f.departmentId,f.operator.userId,f.operator.personId,f.operator.employmentId].every(uuid)||!isCalendarDate(f.today)||f.period!==f.today.slice(0,7)||human.hiredOn<=f.today||human.hiredOn.slice(0,7)<=f.period||f.source.source!=='synthetic_client_local_only'||f.source.requiresHumanResolution!==true)return unavailable();
+ const pastedText='Employee ID,Full Name,Personal Email,Join Date,Unresolved Heading\nAI-IMPORT-NEW,Fictional Imported Human,fictional-import@example.test,,human must map or exclude\n';
+ if(f.source.messyCsv!==pastedText)return unavailable('fictional_source_changed');
+ const fileName=sourceMode==='paste'?'':'fictional-messy-employees.'+sourceMode;
+ const expected={userId:f.operator.userId,companyId:f.companyId,sourceMode,human},configured=urls(),database=configured[0].pathname.slice(1),ownerName=decodeURIComponent(configured[1].username);
+ const phases:readonly Phase[]=['baseline','unresolved','prepared','previewed','committed','reopened'];let index=0,inFlight=false;let baseline:Record<string,number>|undefined,committedRefs:{employmentId:string;personId:string;hireEventId:string;importEventId:string;runId:string}|undefined;
+ function physical(row:{database:string;address:string;port:number;readonly:string;isolation:string}){if(row.database!==database||!['127.0.0.1','::1'].includes(row.address)||row.port!==5433||row.readonly!=='on'||row.isolation!=='read committed')return unavailable();}
+ async function counts(){return owner.client.begin('isolation level read committed read only',async tx=>{
+  const [role]=await tx<{name:string;database:string;address:string;port:number;readonly:string;isolation:string;full:boolean}[]>`select current_user as name,current_database() as database,host(inet_server_addr()) as address,inet_server_port() as port,current_setting('transaction_read_only') as readonly,current_setting('transaction_isolation') as isolation,rolsuper or rolbypassrls as full from pg_roles where rolname=current_user`;physical(role);if(role.name!==ownerName||role.name==='ai_hr_app'||!role.full)return unavailable();
+  // AGGREGATES ONLY under the fixture tenant. Never use owner rows to evade native visibility.
+  const [n]=await tx<{persons:number;employments:number;assignments:number;compensations:number;hireEvents:number;importEvents:number;runs:number}[]>`select (select count(*)::int from person where tenant_id=${f.tenantId}::uuid) as persons,(select count(*)::int from employment where tenant_id=${f.tenantId}::uuid) as employments,(select count(*)::int from assignment where tenant_id=${f.tenantId}::uuid) as assignments,(select count(*)::int from compensation where tenant_id=${f.tenantId}::uuid) as compensations,(select count(*)::int from domain_event where tenant_id=${f.tenantId}::uuid and event_type='employment.hired') as "hireEvents",(select count(*)::int from domain_event where tenant_id=${f.tenantId}::uuid and event_type='employee-import.completed') as "importEvents",(select count(*)::int from employee_import_run where tenant_id=${f.tenantId}::uuid) as runs`;
+  return n;
+ });}
+ async function context(){return client.begin('isolation level read committed read only',async tx=>{
+  const [role]=await tx<{name:string;database:string;address:string;port:number;readonly:string;isolation:string;super:boolean;bypass:boolean}[]>`select current_user as name,current_database() as database,host(inet_server_addr()) as address,inet_server_port() as port,current_setting('transaction_read_only') as readonly,current_setting('transaction_isolation') as isolation,rolsuper as super,rolbypassrls as bypass from pg_roles where rolname=current_user`;physical(role);if(role.name!=='ai_hr_app'||role.super||role.bypass)return unavailable();
+  const rows=await tx<{tenant_id:string;person_id:string|null;grants:Grant[]|null}[]>`select tenant_id,person_id,grants from app.principal(${expected.userId}::uuid)`;const r=rows[0];if(rows.length!==1||r.tenant_id!==f.tenantId||r.person_id!==f.operator.personId||!Array.isArray(r.grants)||r.grants.some(g=>!g||typeof g.role!=='string'||g.companyId!==null&&!uuid(g.companyId)))return unavailable();const grants=r.grants.map(g=>({...g}));return{tenantId:r.tenant_id,userId:expected.userId,personId:r.person_id,grants,roles:[...new Set(grants.map(g=>g.role))]} satisfies SessionContext;
+ });}
+ async function read(){const ctx=await context();return withTenant(ctx,async tx=>{
+  await tx.execute(sql`SET TRANSACTION READ ONLY`);
+  await assertAiPrincipalTx(tx,ctx);await assertWorkforceCompanyTx(tx,ctx,f.companyId,'view');
+  // Independently require actual native maintain/payroll/audit authority before these narrow facts.
+  const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.access_workforce_company(${f.companyId}::uuid,'workforce.maintain') and app.can_admin_payroll_for(${f.companyId}::uuid) and app.is_admin() as ok`);if(!allowed?.ok)return unavailable('current_operator_scope');
+  const [department]=await tx.select({id:s.department.id,name:s.department.name,archivedAt:s.department.archivedAt}).from(s.department).where(and(eq(s.department.tenantId,f.tenantId),eq(s.department.companyId,f.companyId),eq(s.department.id,f.departmentId),visibleLabelIdsCondition(s.department,'department',[f.companyId]))).orderBy(s.department.id);if(!department||department.archivedAt!==null||human.department!==department.name)return unavailable('department_binding');
+  const [company]=await tx.select({name:s.company.legalName}).from(s.company).where(and(eq(s.company.tenantId,f.tenantId),eq(s.company.id,f.companyId))).orderBy(s.company.id);const [operator]=await tx.select({name:s.person.fullName}).from(s.person).where(and(eq(s.person.tenantId,f.tenantId),eq(s.person.id,f.operator.personId))).orderBy(s.person.id);if(!company||!operator)return unavailable();
+  const rows=await tx.select({employmentId:s.employment.id,personId:s.person.id,employeeCode:s.employment.employeeCode,fullName:s.person.fullName,email:s.person.primaryEmail,companyId:s.employment.companyId,hiredOn:s.employment.hiredOn,version:sql<string>`${s.employment}.xmin::text`}).from(s.employment).innerJoin(s.person,and(eq(s.person.id,s.employment.personId),eq(s.person.tenantId,f.tenantId))).where(and(eq(s.employment.tenantId,f.tenantId),eq(s.employment.employeeCode,human.employeeCode))).orderBy(s.employment.id).limit(2);
+  const collisions=await tx.select({id:s.person.id}).from(s.person).where(and(eq(s.person.tenantId,f.tenantId),eq(s.person.primaryEmail,human.email))).orderBy(s.person.id).limit(2);
+  if(rows.length>1||collisions.length>1)return unavailable('duplicate_identity');const employee=rows[0]??null;if(!employee){if(collisions.length)return unavailable('existing_email');return{currentActorUserId:ctx.userId,companyName:company.name,operatorName:operator.name,employee:null,assignment:null,compensation:null,hireEvent:null,importEvent:null,run:null};}
+  if(employee.fullName!==human.fullName||employee.email!==human.email||employee.companyId!==f.companyId||employee.hiredOn!==human.hiredOn||collisions[0]?.id!==employee.personId)return unavailable('native_employee_mismatch');
+  const assignments=await tx.select({id:s.assignment.id,departmentId:s.assignment.departmentId,employmentType:s.assignment.employmentType,validFrom:s.assignment.validFrom,validTo:s.assignment.validTo,version:sql<string>`${s.assignment}.xmin::text`}).from(s.assignment).where(and(eq(s.assignment.tenantId,f.tenantId),eq(s.assignment.employmentId,employee.employmentId))).orderBy(s.assignment.id).limit(2);
+  const compensations=await tx.select({id:s.compensation.id,basicSalary:s.compensation.basicSalary,validFrom:s.compensation.validFrom,validTo:s.compensation.validTo,version:sql<string>`${s.compensation}.xmin::text`}).from(s.compensation).where(and(eq(s.compensation.tenantId,f.tenantId),eq(s.compensation.employmentId,employee.employmentId))).orderBy(s.compensation.id).limit(2);
+  const hireEvents=await tx.select({id:s.domainEvent.id,actorId:s.domainEvent.actorId,actorType:s.domainEvent.actorType,aggregateId:s.domainEvent.aggregateId,subjectEmploymentId:s.domainEvent.subjectEmploymentId,version:sql<string>`${s.domainEvent}.xmin::text`}).from(s.domainEvent).where(and(eq(s.domainEvent.tenantId,f.tenantId),eq(s.domainEvent.eventType,'employment.hired'),eq(s.domainEvent.aggregateType,'employment'),eq(s.domainEvent.aggregateId,employee.employmentId),eq(s.domainEvent.subjectEmploymentId,employee.employmentId),eq(s.domainEvent.actorType,'user'),eq(s.domainEvent.actorId,expected.userId))).orderBy(s.domainEvent.id).limit(2);
+  // The native event has no per-row IDs. Exact original actor/company/counts + the same actual
+  // canonical transaction are supplementary provenance, not a generic xmin-as-authority claim.
+  const events=await tx.select({id:s.domainEvent.id,actorId:s.domainEvent.actorId,actorType:s.domainEvent.actorType,aggregateId:s.domainEvent.aggregateId,version:sql<string>`${s.domainEvent}.xmin::text`,companyId:sql<string>`${s.domainEvent.payload}->>'companyId'`,imported:sql<string>`${s.domainEvent.payload}->>'imported'`,failed:sql<string>`${s.domainEvent.payload}->>'failed'`,skipped:sql<string>`${s.domainEvent.payload}->>'skipped'`}).from(s.domainEvent).where(and(eq(s.domainEvent.tenantId,f.tenantId),eq(s.domainEvent.eventType,'employee-import.completed'),eq(s.domainEvent.aggregateType,'employee-import'),eq(s.domainEvent.aggregateId,f.companyId),eq(s.domainEvent.actorType,'user'),eq(s.domainEvent.actorId,expected.userId),sql`${s.domainEvent}.xmin::text=${employee.version}`)).orderBy(s.domainEvent.id).limit(2);
+  const runs=await tx.select({id:s.employeeImportRun.id,totalRows:s.employeeImportRun.totalRows,importedRows:s.employeeImportRun.importedRows,failedRows:s.employeeImportRun.failedRows,fileName:s.employeeImportRun.fileName,createdByUserId:s.employeeImportRun.createdByUserId,createdByPersonId:s.employeeImportRun.createdByPersonId}).from(s.employeeImportRun).where(and(eq(s.employeeImportRun.tenantId,f.tenantId),eq(s.employeeImportRun.companyId,f.companyId),eq(s.employeeImportRun.createdByUserId,expected.userId),eq(s.employeeImportRun.createdByPersonId,f.operator.personId),eq(s.employeeImportRun.fileName,fileName))).orderBy(s.employeeImportRun.id).limit(2);
+  const assignment=assignments[0],compensation=compensations[0],hireEvent=hireEvents[0],importEvent=events[0],run=runs[0];
+  if(assignments.length!==1||compensations.length!==1||hireEvents.length!==1||events.length!==1||assignment.departmentId!==f.departmentId||assignment.employmentType!==human.employmentType||assignment.validFrom!==human.hiredOn||assignment.validTo!==null||compensation.basicSalary!==human.basicSalary||compensation.validFrom!==human.hiredOn||compensation.validTo!==null||[assignment,compensation,hireEvent,importEvent].some(row=>row.version!==employee.version)||importEvent.companyId!==f.companyId||importEvent.imported!=='1'||importEvent.failed!=='0'||importEvent.skipped!=='0'||runs.length!==1||!run||run.createdByUserId!==expected.userId||run.createdByPersonId!==f.operator.personId||run.totalRows!==1||run.importedRows!==1||run.failedRows!==0||run.fileName!==fileName)return unavailable('native_graph_or_separate_history_mismatch');
+  return{currentActorUserId:ctx.userId,companyName:company.name,operatorName:operator.name,employee,assignment,compensation,hireEvent,importEvent,run};
+ });}
+ const initial=await read();await counts();if(initial.employee!==null)return unavailable('target_already_exists');
+ return{input:{sourceMode,pastedText,human:structuredClone(human),expected:structuredClone(expected)},verifyCanonical:async(value:Invocation)=>{
+  if(inFlight)return unavailable('concurrent_readback');inFlight=true;
+  try{const p=structuredClone(value);if(p.phase!==phases[index]||!same(p.expected,expected)||!same(urls().map(u=>u.toString()),configured.map(u=>u.toString())))return unavailable('binding_or_phase');const facts=await read(),totals=await counts();
+   if(p.phase==='baseline'){baseline=totals;if(facts.employee!==null)return unavailable('existing_target');}
+   else if(index<4){if(!same(totals,baseline)||facts.employee!==null)return unavailable('effect_before_human_commit');}
+   else{if(!baseline||!facts.employee||!facts.hireEvent||!facts.importEvent||!facts.run||Object.keys(baseline).some(key=>totals[key as keyof typeof totals]!==baseline![key]+1))return unavailable('extra_or_missing_effect');const refs={employmentId:facts.employee.employmentId,personId:facts.employee.personId,hireEventId:facts.hireEvent.id,importEventId:facts.importEvent.id,runId:facts.run.id};if(committedRefs&&!same(refs,committedRefs))return unavailable('reopen_changed_refs');committedRefs=refs;}
+   index++;return{...facts,counts:totals};
+  }catch(error){if(error instanceof Error&&/^employee_import_native_readback:[a-z_]+$/.test(error.message))throw error;return unavailable();}finally{inFlight=false;}
+ }};
+}

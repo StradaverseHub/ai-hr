@@ -1,3 +1,5 @@
+import {assertAiPrincipalTx} from './ai-principal';
+import {resolveEntitlementsTx,assertModuleEnabled} from './entitlements';
 /**
  * ADR-0076 — the payroll anomaly engine. The ADR-0074 control-tower keystone, Phase 1a.
  *
@@ -31,6 +33,7 @@
 import { and, eq, inArray, isNull, lt, ne, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { recordDecision } from './agent-proposal';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
 import { appendEvent, actorOf } from '../db/events';
 import * as schema from '../db/schema';
 import { packFor } from '../localization/registry';
@@ -524,7 +527,21 @@ export async function evaluateBatchAnomalies(
   ctx: SessionContext,
   p: { batchId: string },
 ): Promise<BatchEvaluation> {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    // Existing server-owned scripts/anomaly-sweep.ts deliberately uses a null-user SYSTEM carrier.
+    // Preserve its original RLS/actor semantics; this does NOT verify those roles as USER authority,
+    // introduce a bypass marker, or admit any AI/provider action. Reviewed close requires real USER.
+    if(ctx.userId!=null){
+      const [authority]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.app_user u
+        where u.id=${ctx.userId}::uuid and u.tenant_id=${ctx.tenantId}::uuid
+         and u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id()
+         and u.archived_at is null and not app.login_blocked(u.id) and app.principal_snapshot_current()
+         and exists(select 1 from public.payroll_batch b where b.id=${p.batchId}::uuid and b.tenant_id=u.tenant_id
+          and app.can_admin_payroll_for(b.company_id))) as allowed`);
+      if(authority?.allowed!==true)throw new Error('Payroll anomaly unavailable.');
+    }
     const bc = await gatherContext(tx, ctx.tenantId, p.batchId);
     if (!bc) throw new Error('batch not found');
 
@@ -648,10 +665,22 @@ export async function evaluateBatchAnomalies(
  *
  * Null when the batch does not exist, matching `gatherContext`.
  */
+/** Provider source replay only, with the caller's ACTUAL admission transaction. This does not
+ * admit the historical null-user SYSTEM carrier or alter the ordinary detector evaluator/loader.
+ * Native Payroll batch/employment scope is required BEFORE any financial/bank-derived facts. */
+export async function loadBatchContextsTx(tx:Tx,supplied:SessionContext,input:{batchId:string}):Promise<DetectorContext[]|null>{
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},p={batchId:input.batchId};await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};assertModuleEnabled(fresh,'payroll');
+ const [authority]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.payroll_batch b where b.id=${p.batchId}::uuid and b.tenant_id=${ctx.tenantId}::uuid and app.can_admin_payroll_for(b.company_id)
+ and not exists(select 1 from public.payslip s where s.batch_id=b.id and s.tenant_id=b.tenant_id and app.can_admin_payroll_employment(s.employment_id) is not true)) as allowed`);if(authority?.allowed!==true)throw Error('Current payroll source unavailable.');
+ return (await gatherContext(tx,ctx.tenantId,p.batchId))?.contexts??null;
+}
+
 export async function loadBatchContexts(
   ctx: SessionContext,
   p: { batchId: string },
+  existingTx?:Tx,
 ): Promise<DetectorContext[] | null> {
+  if(existingTx)return(await gatherContext(existingTx,ctx.tenantId,p.batchId))?.contexts??null;
   return withTenant(ctx, async (tx) => (await gatherContext(tx, ctx.tenantId, p.batchId))?.contexts ?? null);
 }
 
@@ -758,7 +787,16 @@ export async function resolveAnomalyVerdict(
   ctx: SessionContext,
   p: { verdictId: string; resolution: 'accepted' | 'fixed_upstream' | 'false_positive'; note?: string },
 ): Promise<void> {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   const toStamp = await withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    const [authority]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.app_user u
+      where u.id=${ctx.userId??null}::uuid and u.tenant_id=${ctx.tenantId}::uuid
+       and u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id()
+       and u.archived_at is null and not app.login_blocked(u.id) and app.principal_snapshot_current()
+       and exists(select 1 from public.payroll_anomaly_verdict v where v.id=${p.verdictId}::uuid
+         and v.tenant_id=u.tenant_id and app.can_admin_payroll_employment(v.employment_id))) as allowed`);
+    if(authority?.allowed!==true)throw new Error('Payroll anomaly unavailable.');
     const [row] = await tx
       .select({
         id: schema.payrollAnomalyVerdict.id,
@@ -843,7 +881,15 @@ export type CircuitBreakerVerdict = {
   skippedReason: string | null;
 };
 
-export async function evaluateCircuitBreaker(tx: Tx, tenantId: string, batchId: string): Promise<CircuitBreakerVerdict> {
+/** Public verdict/API and tie/order semantics remain unchanged. */
+export async function evaluateCircuitBreaker(tx:Tx,tenantId:string,batchId:string):Promise<CircuitBreakerVerdict>{return(await evaluateCircuitBreakerWithSourceTx(tx,tenantId,batchId)).verdict;}
+
+/** Internal evidence accompanies the SAME actual selection, never a second selector or money engine. */
+export async function evaluateCircuitBreakerWithSourceTx(tx:Tx,tenantId:string,batchId:string){return evaluateCircuitBreakerSourceTx(tx,tenantId,batchId,false);}
+/** INTERNAL CLOSE-only complete stored inputs. Caller owns fresh configurable close authority and
+ * canonical period/Access interval. General/public evaluation retains its native caller RLS behavior. */
+export async function evaluateCircuitBreakerForCloseTx(tx:Tx,tenantId:string,batchId:string){return evaluateCircuitBreakerSourceTx(tx,tenantId,batchId,true);}
+async function evaluateCircuitBreakerSourceTx(tx:Tx,tenantId:string,batchId:string,completeClose:boolean){
   const [batch] = await tx
     .select({
       companyId: schema.payrollBatch.companyId,
@@ -855,6 +901,7 @@ export async function evaluateCircuitBreaker(tx: Tx, tenantId: string, batchId: 
 
   const cfgRows = await tx
     .select({
+      id:schema.payrollAnomalyConfig.id,
       companyId: schema.payrollAnomalyConfig.companyId,
       enabled: schema.payrollAnomalyConfig.enabled,
       params: schema.payrollAnomalyConfig.params,
@@ -876,6 +923,8 @@ export async function evaluateCircuitBreaker(tx: Tx, tenantId: string, batchId: 
     num((cfg?.params as Record<string, unknown>)?.batchSwingPct) ||
     num(UNTUNED_DEFAULT_PARAMS[CIRCUIT_BREAKER_ID]?.batchSwingPct);
 
+  let priorBatchId:string|null=null,completeSourceVersion:string|null=null,completeInputsVisible:boolean|null=null;
+  const observed=(verdict:CircuitBreakerVerdict)=>({verdict,source:{priorBatchId,configId:cfg?.id??null,completeSourceVersion,completeInputsVisible}});
   const blank: CircuitBreakerVerdict = {
     tripped: false,
     movementPct: null,
@@ -884,8 +933,8 @@ export async function evaluateCircuitBreaker(tx: Tx, tenantId: string, batchId: 
     priorNet: 0,
     skippedReason: null,
   };
-  if (!batch) return { ...blank, skippedReason: 'batch not found' };
-  if (cfg && cfg.enabled === false) return { ...blank, skippedReason: 'disabled by configuration' };
+  if (!batch) return observed({ ...blank, skippedReason: 'batch not found' });
+  if (cfg && cfg.enabled === false) return observed({ ...blank, skippedReason: 'disabled by configuration' });
 
   const netOf = async (id: string): Promise<number> => {
     const [row] = await tx
@@ -895,6 +944,14 @@ export async function evaluateCircuitBreaker(tx: Tx, tenantId: string, batchId: 
     return num(row?.total);
   };
 
+  let currentNet:number,priorNet:number;
+  if(completeClose){
+    const [inputs]=await tx.execute<{batch_id:string;company_id:string;prior_batch_id:string|null;current_net:number;prior_net:number;source_version:string;inputs_visible:boolean}>(sql`select * from app.payroll_close_circuit_inputs(${batchId}::uuid)`);
+    if(!inputs||inputs.batch_id!==batchId.toLowerCase()||inputs.company_id!==batch.companyId||typeof inputs.inputs_visible!=='boolean')throw new Error('Payroll circuit source unavailable.');
+    priorBatchId=inputs.prior_batch_id;completeSourceVersion=inputs.source_version;completeInputsVisible=inputs.inputs_visible;
+    if(priorBatchId===null)return observed({...blank,skippedReason:'no prior cycle to compare against'});
+    currentNet=num(inputs.current_net);priorNet=num(inputs.prior_net);
+  }else{
   const [priorBatch] = await tx
     .select({ id: schema.payrollBatch.id })
     .from(schema.payrollBatch)
@@ -903,21 +960,23 @@ export async function evaluateCircuitBreaker(tx: Tx, tenantId: string, batchId: 
     )
     .orderBy(sql`${schema.payrollBatch.payPeriod} desc`)
     .limit(1);
-  if (!priorBatch) return { ...blank, skippedReason: 'no prior cycle to compare against' };
+  if (!priorBatch) return observed({ ...blank, skippedReason: 'no prior cycle to compare against' });
 
-  const [currentNet, priorNet] = [await netOf(batchId), await netOf(priorBatch.id)];
+  priorBatchId=priorBatch.id;
+  [currentNet, priorNet] = [await netOf(batchId), await netOf(priorBatch.id)];
+  }
   // A prior cycle that paid nothing gives no meaningful percentage; the per-employee detectors own that.
-  if (priorNet === 0) return { ...blank, currentNet, skippedReason: 'prior cycle net was zero' };
+  if (priorNet === 0) return observed({ ...blank, currentNet, skippedReason: 'prior cycle net was zero' });
 
   const movementPct = ((currentNet - priorNet) / Math.abs(priorNet)) * 100;
-  return {
+  return observed({
     tripped: Math.abs(movementPct) > thresholdPct,
     movementPct: Math.round(movementPct * 10) / 10,
     thresholdPct,
     currentNet,
     priorNet,
     skippedReason: null,
-  };
+  });
 }
 
 /**

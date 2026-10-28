@@ -22,6 +22,8 @@ import { weekPatternWorkingDayCount,rotationVersionOn } from './week-pattern';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
+import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockLeaveDependencyConfigurationTx } from '../packs/leave/service';
 import {
   ATTENDANCE_OT_ROUNDING_MODES,
   attendancePolicy,
@@ -251,7 +253,11 @@ export async function countEmploymentsInRule(ctx: SessionContext, ruleId: string
 
 /** Replace only this group's allowed pool. A shared shift keeps every other membership and default. */
 export function setRuleShifts(ctx:SessionContext,p:{ruleId:string;shiftIds:readonly string[]}):Promise<{attached:number;detached:number}> {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  return withTenant(ctx,async tx=>{
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
   const [rule]=await tx.select().from(attendanceRule).where(eq(attendanceRule.id,p.ruleId)).for('update');
   if(!rule)throw new Error('Schedule Group not found');
   if(new Set(p.shiftIds).size!==p.shiftIds.length)throw new Error('Select each shift once.');
@@ -300,7 +306,10 @@ export function getAttendanceRule(ctx: SessionContext, ruleId: string): Promise<
  * path actually fires for it is the same row as before.
  */
 export function ensureStandardRule(ctx: SessionContext): Promise<{ id: string; created: boolean }> {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [existing] = await tx
       .select({ id: attendanceRule.id })
       .from(attendanceRule)
@@ -659,8 +668,12 @@ const isUniqueViolation = (e: unknown): boolean => {
 
 /** Create a (non-default) rule + its OT rows. Appends attendance-rule.created. */
 export function createAttendanceRule(ctx: SessionContext, p: AttendanceRuleInput): Promise<{ id: string }> {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const n = normalizeInput(p);
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     let ruleId: string;
     try {
       const [row] = await tx
@@ -724,7 +737,13 @@ export function createAttendanceRule(ctx: SessionContext, p: AttendanceRuleInput
  * attendance-rule.updated. is_default is never changed here (Standard stays Standard).
  * Full legacy forms remain full replacements; every update locks the rule before replacing bands. */
 export function updateAttendanceRule(ctx: SessionContext, p: { ruleId: string } & AttendanceRuleInput): Promise<{ id: string }> {
-  return withTenant(ctx, tx => updateAttendanceRuleTx(ctx, tx, p));
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  return withTenant(ctx, async tx => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+    return updateAttendanceRuleTx(ctx,tx,p);
+  });
 }
 
 export type AttendanceSectionFields = Pick<AttendanceRuleInput, 'lateGracePeriodMinutes' | 'lateAfterMinutes' | 'lateDeductMinutes' | 'includeGraceInLateness' | 'earlyGracePeriodMinutes' | 'earlyAfterMinutes' | 'earlyDeductMinutes' | 'includeGraceInEarlyOut'>;
@@ -741,7 +760,11 @@ export type AttendanceRuleSectionUpdate = { ruleId: string } & (
  * Overtime: early inclusion + rounding only, against the exact displayed ladder boundaries, pattern and rates (not generated row IDs).
  * No section can write the week, allowed shift pool or immutable rotations. */
 export function updateAttendanceRuleSection(ctx: SessionContext, p: AttendanceRuleSectionUpdate): Promise<{ id: string }> {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async tx => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [rule] = await tx.select().from(attendanceRule).where(eq(attendanceRule.id, p.ruleId)).limit(1).for('update');
     if (!rule) throw new Error('Rule not found.');
     const rows = await tx.select().from(attendanceRuleOtRow).where(eq(attendanceRuleOtRow.ruleId,p.ruleId)).orderBy(asc(attendanceRuleOtRow.sortOrder));
@@ -909,7 +932,11 @@ async function updateAttendanceRuleTx(ctx: SessionContext, tx: Tx, p: { ruleId: 
  * bands that made them duplicate in the first place.
  */
 export function copyAttendanceRule(ctx: SessionContext, p: { ruleId: string }): Promise<{ id: string }> {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [src] = await tx.select().from(attendanceRule).where(eq(attendanceRule.id, p.ruleId)).limit(1).for('update');
     if (!src) throw new Error('Rule not found.');
 
@@ -1035,8 +1062,12 @@ export function setAttendanceRuleStatus(
   ctx: SessionContext,
   p: { ruleId: string; status: 'active' | 'inactive' },
 ): Promise<{ id: string }> {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const status = p.status === 'inactive' ? 'inactive' : 'active';
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [rule] = await tx
       .select({ id: attendanceRule.id, name: attendanceRule.name })
       .from(attendanceRule)
@@ -1069,7 +1100,11 @@ export function setAttendanceRuleStatus(
 /** Delete a rule. Refuses the Standard (is_default) rule and any rule still assigned to a shift. Appends
  *  attendance-rule.deleted. OT rows cascade via the FK. */
 export function deleteAttendanceRule(ctx: SessionContext, p: { ruleId: string }): Promise<{ id: string }> {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [rule] = await tx
       .select({ id: attendanceRule.id, isDefault: attendanceRule.isDefault, name: attendanceRule.name })
       .from(attendanceRule)

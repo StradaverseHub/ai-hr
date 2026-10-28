@@ -1,0 +1,26 @@
+/** Authored UNRUN: real scoped Workforce purpose predicates, literal human search and fresh admission. */
+import {randomUUID} from 'node:crypto';
+import {eq} from 'drizzle-orm';
+import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
+vi.mock('server-only',()=>({}));
+import * as s from '../db/schema';
+import {hireEmployee} from '../core/org';
+import {assignRole} from '../core/admin';
+import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
+import {readOrgModuleActionChoices} from '../core/assistant-actions/module-action-server';
+import {setAiAllowance} from '../core/ai-management';
+import {todayInKualaLumpur} from '../lib/hr-date';
+import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import type {SessionContext} from '../db/client';
+let b:Base,ctx:SessionContext,employee:{employmentId:string};
+const group=()=>({...adminCtx(b),grants:[{role:'hr_admin' as const,companyId:null}]});
+const hire=(name:string,companyId=b.companyId,departmentId=b.deptA)=>hireEmployee(group(),{person:{fullName:name,primaryEmail:randomUUID()+'@fixture.test'},companyId,departmentId,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
+beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'assistant','active');employee=await hire('Literal % employee');const hr=await hire('Scoped HR');const [user]=await owner.db.insert(s.appUser).values({tenantId:b.tenantId,workosUserId:'fixture_'+randomUUID(),personId:hr.personId}).returning({id:s.appUser.id});await assignRole(group(),{appUserId:user.id,role:'hr_admin',companyId:b.companyId});await grantAssistant(group(),{appUserId:user.id});ctx={...await entitledCtx(b),userId:user.id,personId:hr.personId,grants:[{role:'hr_admin',companyId:b.companyId}]};});
+async function foreign(){const [co]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'PRIVATE OTHER',companyLabel:'OTHER'}).returning({id:s.company.id}),[d]=await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId:co.id,name:'Other department'}).returning({id:s.department.id});return hire('PRIVATE Literal % manager',co.id,d.id);}
+describe('bounded authorised Org human choices',()=>{
+ it('uses literal percent/underscore search, projects only four permitted label fields and excludes unauthorised company people',async()=>{await foreign();await hire('Literal underscore_employee');const percent=await readOrgModuleActionChoices(ctx,{role:'subordinate',query:'% e'});expect(percent.items).toHaveLength(1);expect(percent.items[0].employmentId).toBe(employee.employmentId);expect(Object.keys(percent.items[0]).sort()).toEqual(['companyName','employeeCode','employmentId','name']);const underscore=await readOrgModuleActionChoices(ctx,{role:'subordinate',query:'_e'});expect(underscore.items).toHaveLength(1);expect(underscore.items[0].name).toBe('Literal underscore_employee');expect(JSON.stringify(percent)).not.toContain('PRIVATE');});
+ it('requires maintain on the actual selected subordinate before manager candidates, and never returns a self-manager',async()=>{const other=await foreign();await expect(readOrgModuleActionChoices(ctx,{role:'manager',query:'Literal',subordinateEmploymentId:other.employmentId})).rejects.toThrow();const choices=await readOrgModuleActionChoices(ctx,{role:'manager',query:'Literal',subordinateEmploymentId:employee.employmentId});expect(choices.items.some(r=>r.employmentId===employee.employmentId)).toBe(false);expect(JSON.stringify(choices)).not.toContain('PRIVATE');});
+ it('returns at most20 in deterministic company/code/id order with truthful truncation, without listing all people',async()=>{for(let n=0;n<22;n++)await hire('Bounded Search '+String(n).padStart(2,'0'));const result=await readOrgModuleActionChoices(ctx,{role:'subordinate',query:'Bounded Search'});expect(result.items).toHaveLength(20);expect(result.truncated).toBe(true);const next=await readOrgModuleActionChoices(ctx,{role:'subordinate',query:'Bounded Search'});expect(next.items.map(r=>r.employmentId)).toEqual(result.items.map(r=>r.employmentId));});
+ it.each(['assistant_grant','assistant_module','pause'] as const)('refuses current %s revocation before returning any search labels',async kind=>{if(kind==='assistant_grant')await revokeAssistant(group(),{appUserId:ctx.userId!});else if(kind==='assistant_module')await setModule(b.tenantId,'assistant','disabled');else await setAiAllowance(group(),{kind:'user',subjectId:ctx.userId!,enabled:false,dailyRequests:null,monthlyTokens:null});await expect(readOrgModuleActionChoices(ctx,{role:'subordinate',query:'Literal'})).rejects.toThrow();});
+ it('does not let an employee login turn Assistant access into Workforce maintenance',async()=>{const own=await hire('Employee only'),userId=await createAppUser(b.tenantId,own.personId,'employee');await grantAssistant(group(),{appUserId:userId});const who={...await entitledCtx(b,['employee']),userId,personId:own.personId,grants:[{role:'employee' as const,companyId:null}]},result=await readOrgModuleActionChoices(who,{role:'subordinate',query:'Literal'});expect(result.items).toHaveLength(0);});
+});

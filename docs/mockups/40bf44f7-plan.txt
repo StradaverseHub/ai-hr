@@ -1,0 +1,53 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+When Group Rewards creates a unit review, the Snapshot date is filled in with today's date. AIHR reads the employees, their job details and their salaries as they stand on that date.
+
+The eligibility rules do not actually use the snapshot date as their "as of" date. Each review already has its own eligibility dates in its settings: Joined before (1 Oct of the reward year) and Confirmed by (31 Dec of the reward year), plus the Salary effective date (1 Jan of the next year). These are already separate settings that Group Rewards can change while the review is in Draft.
+
+The real gap is different: anything that happens in AIHR after the snapshot (a confirmation, a resignation, a grade or salary change) is not picked up unless someone presses "Refresh source records" in the Data centre. That refresh gives no summary of what changed, and it is refused outright if anyone has left the unit since the snapshot.
+
+WHAT WE'LL CHANGE
+
+- Snapshot date no longer defaults to today. Group Rewards must choose it.
+
+- Next to the snapshot date, the form shows the eligibility dates the review will be judged against (Joined before, Confirmed by, Salary effective date), so it is clear the snapshot is only "when the data was read".
+
+- "Refresh source records" first shows what will change before anything is changed: who joined, who left or moved out, who was confirmed, who has tendered a resignation, whose job grade changed and whose salary record changed. Each line opens the names. Group Rewards then confirms or cancels.
+
+- People who left or moved out stay on the list, clearly marked, and get no increase or bonus. Their earlier recommendation is kept for the record instead of the refresh being refused.
+
+- After a confirmed refresh, the review's snapshot date moves to the refresh date, and the people whose data changed need their data verified again.
+
+- Refresh stays available only while the review is in Draft, which means it is blocked once the BU CEO has submitted (this is already the rule).
+
+WHAT YOU'LL GET
+
+Group Rewards can take an early snapshot to start work, then refresh just before the BU CEO opens the review, seeing exactly who is affected. Eligibility is always judged against the year-end dates in the review settings.
+
+GOOD TO KNOW
+
+- The snapshot date cannot be a future date such as 31 Dec, because AIHR cannot read data that does not exist yet. A confirmation or resignation that is already recorded in People with a future date is already taken into account when judged against 31 Dec.
+
+- Refresh reads the same employee and salary records that Payroll uses, so there is one source of truth.
+
+- If a review is returned to Draft by an approver, refresh becomes available again; approvals restart after any refresh, as today.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACTS (origin/alpha 162a8f743): app/admin/rewards/create-review-form.tsx snapshotDate input has defaultValue=today and max=today. packs/rewards/engine.ts judges increment/bonus eligibility against policy.joinedBefore and policy.confirmedBy (defaultPolicy: year-10-01, year-12-31); notice is computed in snapshotEmployees from tenderResignationDate/resignationDate <= snapshotDate. refreshRewardSources (service.ts) is GR-only, draft-only (assertUnlocked), annual-only, re-runs snapshotEmployees with the unit's original snapshotDate (it never moves the date) and throws when any existing entry is no longer in the roster. Staging not reproduced (sign-in not authorised for this session); behaviour from source.
+
+1. Create form: remove defaultValue (keep max=today and server check). Show joinedBefore/confirmedBy/effectiveFrom read-only from the shared version policy or defaultPolicy(year).
+
+2. Split refresh into previewRewardSourceRefresh(unitId, revision, asOf) returning per-category employment ids (joined, left/moved, confirmed, notice, grade, salary/compensationId) plus a digest, and saveRewardSourceRefresh(..., digest). asOf defaults to todayInKualaLumpur and must be >= current snapshotDate and <= today.
+
+3. Leavers: keep the entry, set source.leftOn (date) and source.leftReason ('terminated' or 'moved'), engine sets incrementReason/bonusReason 'Left or moved out' and excludes from pool payroll, lump eligibility and inPool. Recommendation retained. Only entries actually changed get facts.reviewed=false. Update snapshotDate column to asOf; stamp 'sources-refreshed' with counts and asOf.
+
+4. reward_deletion_reason and posting checks unaffected. Payroll post still refuses stale compensation (currentRewardPostEmployeeTx).
+
+5. UI: Data centre refresh becomes preview → confirm panel; names per category limited to entries visible to the viewer (visibleEntry), counts for hidden ones not shown.
+
+6. Tests: preview categories with fixtures for each change type; leaver no longer throws and gets zero increase/bonus; snapshot date advances; refused after submit; digest mismatch refused. Possibly a schema check on reward_unit.snapshot_date update if a DB trigger forbids it; if a migration is needed, say so and get a number from docs/migrations/reservations.json owner; do not self-allocate.

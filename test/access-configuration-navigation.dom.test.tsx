@@ -17,6 +17,13 @@ describe('effective access is discoverable without misrepresenting a role grant'
   expect(screen.queryByRole('menuitem',{name:en.accessConfiguration.title})).toBeNull();
   view.rerender(tree(true));expect(screen.getByRole('menuitem',{name:en.accessConfiguration.title}).getAttribute('href')).toBe('/admin/users/access');
  });
+ it('describes Assistant availability as conditional for every role without implying native effect authority',()=>{
+  const note=en.admin.users.scope.assistantWorkspace;
+  render(<FunctionAccessGrid roleLabel={role=>role} screenLabel={entry=>entry.screenKey} scopeNote={entry=>entry.screenKey==='assistantWorkspace'?note:null} labels={{accessible:'Role allows screen',notAccessible:'Role refuses screen',screenColumn:'Screen'}}/>);
+  const row=screen.getByRole('rowheader',{name:/^assistantWorkspace/}).closest('tr')!;
+  expect(Array.from(row.querySelectorAll('td [title]')).map(node=>node.getAttribute('title'))).toEqual(MATRIX_ROLES.map(()=>note));
+  expect(row.querySelector('[title="Role allows screen"]')).toBeNull();
+ });
  it('shows a capability condition for every role instead of a green role-only grant',()=>{
   const note=en.admin.users.scope.accessConfiguration;
   render(<FunctionAccessGrid roleLabel={role=>role} screenLabel={entry=>entry.screenKey} scopeNote={entry=>entry.screenKey==='accessConfiguration'?note:null} labels={{accessible:'Role allows screen',notAccessible:'Role refuses screen',screenColumn:'Screen'}}/>);

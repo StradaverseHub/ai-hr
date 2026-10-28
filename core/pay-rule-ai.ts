@@ -15,13 +15,19 @@
  *
  * Mirrors generateFeedbackPlan / draftManagerReview exactly:
  *   - short read-tx to resolveActiveAiConfig (null ⇒ feature OFF when unconfigured → typed error);
- *   - a REDACTED prompt (redactPII over the admin's free-text description) — no employee PII leaves the tenant;
+ *   - the admin's free-text description through redactPII (emails, MY IC numbers, phone-like runs masked;
+ *     names and other prose are NOT) — no employee row data is read, but whatever the admin typed is sent;
  *   - generateDraft OUTSIDE any tx, maxTokens ~512;
  *   - ONE shot: an invalid/unparseable model output ⇒ a single typed PayRuleDraftError (no retry, no 2nd call);
  *   - NEVER writes the component — returns the rule object for the admin to review + save via upsertPayComponent;
  *   - appends a `pay-component.ai-rule-drafted` event (actor { type: 'agent' }, PII-free payload).
  */
-import { withTenant, type SessionContext } from '../db/client';
+import {sql} from 'drizzle-orm';
+import {assertAiPrincipalTx} from './ai-principal';
+import {assertModuleEnabled,resolveEntitlementsTx} from './entitlements';
+import {withAiAdmissionCheck} from './ai-governance';
+import {draftInputDigest} from '../lib/ai/draft-input';
+import { withTenant, type SessionContext,type Tx } from '../db/client';
 import { appendEvent } from '../db/events';
 import { generateDraft, redactPII } from '../lib/ai';
 import { resolveActiveAiConfig } from './ai-config';
@@ -69,6 +75,15 @@ function parseModelJson(text: string): { rule: unknown; explanation: unknown } |
   }
 }
 
+/** Same native tenant pay-catalogue admin predicate as the reviewed catalogue owner. Login,
+ * roles/grants and module authority are fresh before configuration lookup and actual admission. */
+async function assertPayRuleDraftAuthorTx(tx:Tx,ctx:SessionContext){
+ await assertAiPrincipalTx(tx,ctx);
+ const [authority]=await tx.execute<{allowed:boolean}>(sql`select app.is_admin() as allowed`);
+ if(authority?.allowed!==true)throw new PayRuleDraftError('invalid_output');
+ assertModuleEnabled({...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId),entitlementsExempt:undefined,entitlementsError:undefined},'payroll');
+}
+
 /**
  * Draft a pay-rule from a plain-language description. `componentProrates` is the prorates flag of the
  * component the admin is editing — passed so the proration-conflict validation matches what upsertPayComponent
@@ -79,11 +94,19 @@ export async function draftPayRule(
   ctx: SessionContext,
   p: { description: string; componentCode?: string | null; componentProrates?: boolean },
 ): Promise<DraftResult> {
-  // Short read-tx: resolve the tenant's active AI config. Null ⇒ the feature is OFF (unconfigured).
-  const cfg = await withTenant(ctx, (tx) => resolveActiveAiConfig(tx, ctx, 'pay_rule_draft'));
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  // Both fields are human authoring input, never a posted component identity or native HR value.
+  const captured={description:p?.description,componentCode:p?.componentCode,componentProrates:p?.componentProrates};
+  if(typeof captured.description!=='string'||!captured.description.trim()||captured.description.length>4000||
+    captured.componentCode!=null&&(typeof captured.componentCode!=='string'||captured.componentCode.length>100)||
+    captured.componentProrates!==undefined&&typeof captured.componentProrates!=='boolean')throw new PayRuleDraftError('invalid_output');
+  p=Object.freeze({description:redactPII(captured.description.trim()),componentCode:captured.componentCode?redactPII(captured.componentCode.trim()):null,componentProrates:captured.componentProrates});
+  // Administrative authority is established BEFORE configuration lookup, not inherited from a page.
+  const cfg = await withTenant(ctx, async tx=>{await assertPayRuleDraftAuthorTx(tx,ctx);return resolveActiveAiConfig(tx, ctx, 'pay_rule_draft');});
   if (!cfg) throw new PayRuleDraftError('not_configured');
 
-  // Redact PII from the admin's free text before it leaves the tenant (a description could name an employee).
+  // Mask emails/IC/phone runs in the admin's free text before it leaves the tenant. A name the admin types
+  // is NOT masked (redactPII does not detect names).
   const prompt = [
     'Configure a pay-component rule from this description:',
     redactPII(p.description),
@@ -93,7 +116,9 @@ export async function draftPayRule(
     .join('\n');
 
   // Provider call OUTSIDE any tx.
-  const raw = await generateDraft(cfg, { system: SYSTEM, prompt, maxTokens: 512 });
+  const args=Object.freeze({system:SYSTEM,prompt,maxTokens:512}),expected=draftInputDigest(args);
+  const bound=withAiAdmissionCheck(cfg,'pay_rule_draft',async(tx,request)=>{await assertPayRuleDraftAuthorTx(tx,ctx);if(request.operation!=='draft'||request.inputDigest!==expected)throw new PayRuleDraftError('invalid_output');});
+  let raw:string;try{raw=await generateDraft(bound,args);}catch{throw new PayRuleDraftError('invalid_output');}
 
   const parsed = parseModelJson(raw);
   const rule = parsed?.rule as PayRule | undefined;
@@ -126,8 +151,8 @@ export async function draftPayRule(
     type: 'pay_rule_draft',
     // No subject: nothing is written until the admin saves, so there is no row for this to be about.
     facts: { componentCode: p.componentCode ?? null, prorates: p.componentProrates ?? false },
-    // The DESCRIPTION never lands here — it is the admin's free text and is redacted before it even
-    // reaches the provider. Only the shape the model chose.
+    // The DESCRIPTION never lands here — it is the admin's free text (sent to the provider with only
+    // emails/IC/phone runs masked). Only the shape the model chose.
     proposal: { ruleKind: rule?.kind ?? null, hasExplanation: Boolean(explanation) },
     adjudication: reason === null ? { ok: true } : { ok: false, reason },
     provider: cfg.provider,

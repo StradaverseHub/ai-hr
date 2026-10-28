@@ -1,0 +1,37 @@
+VERDICT: Partly there already   ·   SIZE: Quick
+
+THE SITUATION TODAY
+
+The Bonus section is part of one unit review, and a unit review always belongs to exactly one company and one business unit. The unit multiplier and the lump-sum amount you save there are stored on that one review only. They are never applied to other companies or units, whatever is chosen in the company selector at the top of the screen. That selector only narrows the lists you see; it does not change what a save on this page applies to.
+
+The confusion is real, though: the page title shows the cycle and the business unit but not the company, and the buttons say "Save policy" and "Save unit amount", so with "All companies" selected it is not obvious which unit you are changing.
+
+WHAT WE'LL CHANGE
+
+- The review title always shows the company and the business unit, for example "2026 Annual Compensation Review · Sample Trading Sdn Bhd / Northern Sales".
+
+- Above the multiplier and lump-sum boxes, a line says "Applies only to this review" followed by the company and business unit.
+
+- The buttons name the unit: "Save unit multiplier for Northern Sales" and "Save lump sum for Northern Sales".
+
+WHAT YOU'LL GET
+
+Nobody can mistake which company and unit a multiplier or lump sum is being saved for.
+
+GOOD TO KNOW
+
+- We are not making the fields read-only under "All companies". Because a review is always one unit, locking them would only force people to change the top selector to reach the same page and save the same thing. If you still want the lock, reject this plan and say so.
+
+- The separate request on the unit multiplier (showing the basis, previewing the impact and requiring a reason) builds on this same screen.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACTS (origin/alpha 162a8f743): app/rewards/[unitId]/page.tsx PageHeader title = ${cycle.name} · ${v.name} (business unit only); bonusMultiplierAction and lumpAction post hidden unitId/revision and call saveRewardPolicy / setRewardUnitLump for that unit only; scopeIds from scopedSession are used only for rewardSetupChoices, not for the writes. Staging not reproduced (sign-in not authorised for this session); behaviour from source.
+
+1. getRewardUnit projection: add company legal name (reviewProjectionTx already joins what it needs for the board; add company.legalName).
+
+2. Title ${cycle} · ${company} / ${unit}; scope line above both forms; button labels rewards.saveUnitMultiplierFor {unit}, rewards.saveLumpFor {unit} in all locales (replaces savePolicy on this form only; policy form keeps its label).
+
+3. Tests: title includes company; buttons name the unit; saving with All companies scope still updates only that unit (existing behaviour, add a regression). No data change, no migration.
