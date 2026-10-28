@@ -520,3 +520,35 @@ in its own worktree), integrated on the Mobile work branch (catalogue and Me lin
   the web. (5) the team headline wording outside the current week.
 - **Process note:** the three builders could not use Write/Edit in worktrees under `.claude/` (a PreToolUse hook)
   and wrote through the shell inside their own worktree; reported to the owner for a ruling.
+
+### Phase F defaults and M10 push + D8 shift reminders — IMPLEMENTED; hosted checks green (29 October 2026)
+
+- **Phase F defaults (owner: "use your defaults").** (1) The web asks for a claim rejection reason (single reject
+  refuses without one; a bulk claim rejection without one is a skip, as leave's is) and `/claims` shows it through
+  `claimRecordFacts`; key `claims.rejectReasonShown` in all six locales. (2) The iOS camera permission text names
+  attendance photos and claim receipts (needs a native rebuild). (3) Corrections on a closed-payroll date stay as the
+  web: accepted at submission, refused at approval. (4) The 17-field simple profile set stands. (5) The team headline
+  wording stands. Commit `4c264b2bb`.
+- **Push (D6).** Draft migration `0673_mobile_push_tokens` — an UNRECORDED filename claim (AI GAPS, the registry
+  keeper, was disconnected; agreed directly with Open board items 2, who hold 0675/0676), NOT journaled, installed in
+  hosted test workers by `test/helpers/mobile-push-draft.ts`. Registration bound to (tenant, user, installation);
+  enrollment/revoke/status routes; a delivery sweep (`scripts/mobile-push-sweep.ts`) sending generic payloads directly
+  to APNs (token auth) and FCM (HTTP v1), at most once per (notification, registration), invalid tokens revoked, keys
+  from `AIHR_PUSH_*` env (a logged no-op without them), no cron entry. Native: expo-notifications ~57.0.21 (Expo SDK
+  57.0.26 bundled version), permission asked only from the Inbox/Me, revoked on sign-out.
+- **Shift reminders (D8).** Local notifications from the v2 roster for 7 days: 15 minutes before start, a
+  forgot-to-clock-out 30 minutes after end that is cancelled on clock-out; leave/holiday/rest days skipped from the v2
+  records; on by default with a switch on Me; only this app's reminders are ever cancelled.
+- **Evidence.** Run 40741972409 @ `c59bcbe82`, 24 files: 23 files passed, Linux build, native typecheck and both
+  bundles passed; failed `test/mobile-push.dom.test.tsx` (7 of 13) and one test-only type error. Cause: the test's
+  loader transpiled app modules with TypeScript's ES5 default, which spreads a `Set` into an empty array, so the push
+  stores never notified a screen (Metro/Hermes are unaffected). Repaired at `7322b53d4` (ES2022 target, mock typed);
+  run 40743755310: that file and the root typecheck passed.
+- **Known red, by design.** `test/migration-journal-ordering.test.ts` ("a journal entry for every .sql") fails on this
+  branch for 0636, 0647 and 0673 while the release hold keeps them unjournaled. Integration must journal all three
+  above the live watermark (after 0669 at idx 655); no exemption was added.
+- **DECISION REQUIRED.** Push enrollment does not require an attested integrity key (keys are issued only to
+  allowlisted Attendance users); the binding is the signed-in user plus the enrollment installation id.
+- **Not verifiable without real keys and devices:** delivery, token rotation, Android background taps, reminder
+  timing, Intl on Hermes. **Not built:** per-category push preferences, a tenant push switch, a notification icon,
+  ADR-0088 text, use of `notification_delivery`'s reserved `push` channel.
