@@ -140,6 +140,28 @@ def audit_archive(path, runtime=False, build=None, lock=None):
     return files
 
 
+BUILD_ALIAS = re.compile(r'\.next/node_modules/(sharp|fontkit)-[a-f0-9]{8,64}')
+
+
+def relativize_build_aliases(source, destination, directory):
+    """CI-installed builds (.github/ci/build-bundle.py) link Next's two external-package aliases to
+    absolute dependency paths under the installation directory. Repoint only those aliases to the same
+    dependency relative to the package; every other link, and any alias aimed elsewhere, is left for
+    audit_archive to refuse."""
+    prefix = posixpath.normpath(directory) + '/node_modules/'
+    rewritten = []
+    with tarfile.open(source, 'r:gz') as captured, \
+            tarfile.open(destination, 'w:gz', compresslevel=1, format=captured.format) as output:
+        for item in captured:
+            name = item.name.rstrip('/')
+            target = posixpath.normpath(item.linkname) if item.issym() else ''
+            if BUILD_ALIAS.fullmatch(name) and target.startswith(prefix):
+                item.linkname = posixpath.relpath('node_modules/' + target[len(prefix):], posixpath.dirname(name))
+                rewritten.append(name)
+            output.addfile(item, captured.extractfile(item) if item.isfile() else None)
+    return rewritten
+
+
 def staged_source(name):
     """Match official release rsync exclusions; all application/source files are still hashed."""
     parts = PurePosixPath(name).parts
@@ -516,13 +538,15 @@ def capture_and_publish(args, source_github, github, root):
         require(digest(source_path) == digest(source), 'Prepared source differs from exact commit')
         runtime = directory / 'runtime.tar.gz'
         if not state.get('archives'):
-            partial = directory / 'runtime.partial'
+            capture, partial = directory / 'runtime.capture', directory / 'runtime.partial'
             command = ('cd ' + shlex.quote(args.remote_directory) + ' && nice -n 15 tar '
                        '--exclude=.next/cache --exclude=.next/dev --exclude=.next/trace '
                        '--exclude=node_modules/.cache --use-compress-program="gzip -1" -cf - .next node_modules')
-            with partial.open('wb') as output:
+            with capture.open('wb') as output:
                 subprocess.run(ssh + [command], stdout=output, check=True, timeout=1800)
             require(snapshot() == before, 'Staging changed during runtime capture; retry after acceptance')
+            relativize_build_aliases(capture, partial, args.remote_directory)
+            capture.unlink()
             audit_archive(partial, runtime=True, build=before['buildId'], lock=lock)
             partial.replace(runtime)
             state['archives'] = {n: {'sha256': digest(directory / n), 'bytes': (directory / n).stat().st_size}

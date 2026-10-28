@@ -122,6 +122,34 @@ class Tests(unittest.TestCase):
             with self.subTest(name=name), self.assertRaises(ValueError):
                 release.audit_archive(self.runtime([(name,value)]), True,BUILD,'e'*64)
 
+    def test_ci_build_aliases_become_relative_and_other_absolute_links_still_refuse(self):
+        sharp = 'node_modules/.pnpm/sharp@0.35.5/node_modules/sharp'
+        fontkit = 'node_modules/.pnpm/fontkit@1.9.0/node_modules/fontkit'
+        captured = self.runtime([(sharp + '/package.json', '{}'), (fontkit + '/package.json', '{}'),
+                                 ('.next/node_modules/sharp-3e5442f104a9f950', ('/opt/ai-hr/' + sharp,)),
+                                 ('.next/node_modules/fontkit-386bd8d9fd7fd3ab', ('/opt/ai-hr/' + fontkit,))])
+        with self.assertRaisesRegex(ValueError, 'Absolute archive link'):
+            release.audit_archive(captured, True, BUILD, 'e'*64)
+        output = self.directory / 'relative.tar.gz'
+        self.assertEqual(release.relativize_build_aliases(captured, output, '/opt/ai-hr/'),
+                         ['.next/node_modules/sharp-3e5442f104a9f950', '.next/node_modules/fontkit-386bd8d9fd7fd3ab'])
+        self.assertIn(sharp + '/package.json', release.audit_archive(output, True, BUILD, 'e'*64))
+        with tarfile.open(output) as archive:
+            self.assertEqual(archive.getmember('.next/node_modules/sharp-3e5442f104a9f950').linkname, '../../' + sharp)
+            self.assertEqual(archive.getmember('.next/node_modules/fontkit-386bd8d9fd7fd3ab').linkname, '../../' + fontkit)
+            self.assertEqual(archive.extractfile(sharp + '/package.json').read(), b'{}')
+        # Only the two known aliases, and only into the installation's own dependencies, are repointed.
+        for name, target in [('.next/node_modules/sharp-3e5442f104a9f950', '/opt/other/' + sharp),
+                             ('.next/node_modules/sharp-3e5442f104a9f950', '/opt/ai-hr/node_modules/../../../etc'),
+                             ('.next/node_modules/sharp-3e5442f104a9f950', '/opt/ai-hr/.env.production'),
+                             ('.next/node_modules/other-3e5442f104a9f950', '/opt/ai-hr/' + sharp),
+                             ('node_modules/sharp-3e5442f104a9f950', '/opt/ai-hr/' + sharp)]:
+            with self.subTest(name=name, target=target):
+                output.unlink()
+                self.assertEqual(release.relativize_build_aliases(self.runtime([(name, (target,))]), output, '/opt/ai-hr'), [])
+                with self.assertRaisesRegex(ValueError, 'Absolute archive link'):
+                    release.audit_archive(output, True, BUILD, 'e'*64)
+
     def test_rejects_link_chain_into_private_data_and_duplicate(self):
         for entries in [[('node_modules/a',('b',)),('node_modules/b',('../../etc/passwd',))],
                         [('node_modules/a','first'),('node_modules/a','second')]]:
@@ -445,6 +473,22 @@ class CommandTests(unittest.TestCase):
         self.assertFalse(manifest['verification']['productionDeploymentPerformed'])
         before = len(self.github.calls); self.invoke(*self.approval)
         self.assertTrue(all(method == 'GET' for _, method in self.github.calls[before:]))
+        self.assertEqual(len(self.github.refs), 1)
+
+    def test_cli_packages_ci_installed_build_aliases_as_relative_links(self):
+        target = 'node_modules/.pnpm/sharp@0.35.5/node_modules/sharp'
+        raw = io.BytesIO()
+        with tarfile.open(fileobj=io.BytesIO(self.runtime)) as accepted, tarfile.open(fileobj=raw, mode='w:gz') as archive:
+            for item in accepted: archive.addfile(item, accepted.extractfile(item))
+            item = tarfile.TarInfo(target + '/package.json'); item.size = 2; archive.addfile(item, io.BytesIO(b'{}'))
+            item = tarfile.TarInfo('.next/node_modules/sharp-3e5442f104a9f950')
+            item.type = tarfile.SYMTYPE; item.linkname = '/opt/ai-hr/' + target; archive.addfile(item)
+        self.runtime = raw.getvalue()
+        self.invoke(*self.approval)
+        directory = next((self.root/'.improve/production-releases').glob(self.sha+'-*'))
+        self.assertFalse((directory/'runtime.capture').exists())
+        with tarfile.open(directory/'runtime.tar.gz') as runtime:
+            self.assertEqual(runtime.getmember('.next/node_modules/sharp-3e5442f104a9f950').linkname, '../../' + target)
         self.assertEqual(len(self.github.refs), 1)
 
     def test_runtime_or_branch_change_during_capture_refuses_before_tagging(self):
