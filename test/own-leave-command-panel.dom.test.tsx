@@ -7,12 +7,12 @@ import {beforeEach,afterEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
-import {OwnLeaveCommandPanel,readOwnLeaveCommandResponse,type OwnLeaveCommandMessages} from '../components/assistant/own-leave-command-panel';
+import {OwnLeaveCommandPanel,readOwnLeaveBusyRefusal,readOwnLeaveCommandResponse,type OwnLeaveCommandMessages} from '../components/assistant/own-leave-command-panel';
 vi.mock('next/link',()=>({default:({children,...props}:ComponentProps<'a'>)=><a {...props}>{children}</a>}));
 beforeEach(()=>vi.stubGlobal('crypto',webcrypto));
 afterEach(()=>{cleanup();vi.unstubAllGlobals();vi.restoreAllMocks();});
 const employmentId=randomUUID(),leaveTypeId=randomUUID();
-const messages:OwnLeaveCommandMessages={employment:'Employment',leaveType:'Leave type',chooseEmployment:'Choose employment',chooseLeaveType:'Choose leave type',date:'Leave date',reason:'Your reason',remark:'Your remark',prepare:'Prepare review',preparing:'Preparing review',confirm:'Confirm submission',confirming:'Submitting request',discard:'Discard review',discarding:'Discarding review',checking:'Checking the same action',reopen:'Check submission',explanation:'Select your own leave details.',confirmNote:'Review these details before submitting.',uncertain:'The result is uncertain. Check this same action.',prepareUncertain:'The preparation result is uncertain. Do not create another action.',submitted:'Request submitted',submittedNote:'Submitted for approval. This is not an approval.',discarded:'Review discarded',expired:'This review expired.',refused:'This review is unavailable.',unavailable:'That door is closed for now. Try the normal leave page.',invalidSelection:'Choose your own employment, leave type and date.',needsRemark:'Add your own remark before preparing this review.',openRequests:'Open leave requests',findReviews:'Find my saved reviews',findingReviews:'Finding saved reviews',savedReviews:'Saved reviews',noSavedReviews:'No saved reviews were found.',openSavedReview:'Open saved review',indexLimitNote:'Up to 25 recent reviews from the last 30 days.',savedPending:'Awaiting your confirmation',savedCompleted:'Submission recorded',savedDiscarded:'Discarded',savedExpired:'Expired',savedRefused:'Unavailable',savedCreated:'Created',savedExpires:'Review expires'};
+const messages:OwnLeaveCommandMessages={employment:'Employment',leaveType:'Leave type',chooseEmployment:'Choose employment',chooseLeaveType:'Choose leave type',date:'Leave date',reason:'Your reason',remark:'Your remark',prepare:'Prepare review',preparing:'Preparing review',confirm:'Confirm submission',confirming:'Submitting request',discard:'Discard review',discarding:'Discarding review',checking:'Checking the same action',reopen:'Check submission',explanation:'Select your own leave details.',confirmNote:'Review these details before submitting.',uncertain:'The result is uncertain. Check this same action.',prepareUncertain:'The preparation result is uncertain. Do not create another action.',busy:'Busy right now. Nothing was saved; try again shortly.',submitted:'Request submitted',submittedNote:'Submitted for approval. This is not an approval.',discarded:'Review discarded',expired:'This review expired.',refused:'This review is unavailable.',unavailable:'That door is closed for now. Try the normal leave page.',invalidSelection:'Choose your own employment, leave type and date.',needsRemark:'Add your own remark before preparing this review.',openRequests:'Open leave requests',findReviews:'Find my saved reviews',findingReviews:'Finding saved reviews',savedReviews:'Saved reviews',noSavedReviews:'No saved reviews were found.',openSavedReview:'Open saved review',indexLimitNote:'Up to 25 recent reviews from the last 30 days.',savedPending:'Awaiting your confirmation',savedCompleted:'Submission recorded',savedDiscarded:'Discarded',savedExpired:'Expired',savedRefused:'Unavailable',savedCreated:'Created',savedExpires:'Review expires'};
 const humanIntent=(text={reason:'Exact human reason',employeeRemark:'Exact human remark'},employee=employmentId,type=leaveTypeId)=>createHash('sha256').update(ownLeaveHumanIntentText({action:'leave.apply',contractVersion:1,employmentId:employee,leaveTypeId:type,date:'2026-12-15',durationType:'full_day'},{employmentId:employee,leaveTypeId:type},text)).digest('hex');
 function review(){const now=Date.now();return{actionId:randomUUID(),contractVersion:1 as const,reviewedDigest:'a'.repeat(64),humanIntentDigest:humanIntent(),createdAt:new Date(now-1000).toISOString(),expiresAt:new Date(now+600000).toISOString(),companyName:'<img src=x onerror=alert(1)> Fictional company',employeeCode:'FICT-1',leaveTypeName:'Annual',date:'2026-12-15',durationType:'full_day' as const,deductionDays:1,availableBalance:null,estimatedAvailableAfter:null,holidayWarnings:[],approvalRouting:'unknown' as const,humanText:{reason:'Exact human reason',employeeRemark:'Exact human remark'}};}
 const response=(value:unknown)=>Response.json(value);
@@ -100,6 +100,28 @@ describe('bounded own-leave browser response protocol',()=>{
   const cancel=vi.fn();const stream=new ReadableStream<Uint8Array>({start(c){c.enqueue(new Uint8Array(65537));},cancel});
   await expect(readOwnLeaveCommandResponse(new Response(stream,{headers:{'content-type':'application/json'}}))).rejects.toThrow('response unavailable');expect(cancel).toHaveBeenCalledTimes(1);
   await expect(readOwnLeaveCommandResponse(new Response('{',{headers:{'content-type':'application/json'}}))).rejects.toThrow('response unavailable');
+ });
+});
+
+describe('busy preparation refusal',()=>{
+ it('says nothing was saved, keeps the human draft for an explicit retry, and never shows the uncertain-save text',async()=>{
+  const fetchMock=vi.fn().mockResolvedValueOnce(Response.json({error:'busy'},{status:409}));vi.stubGlobal('fetch',fetchMock);show();fill();
+  fireEvent.click(screen.getByRole('button',{name:messages.prepare}));
+  expect((await screen.findByRole('alert')).textContent).toBe(messages.busy);
+  expect(screen.queryByText(messages.prepareUncertain)).toBeNull();expect(screen.queryByText(messages.unavailable)).toBeNull();
+  expect((screen.getByLabelText(messages.reason) as HTMLTextAreaElement).value).toBe('Exact human reason');expect(fetchMock).toHaveBeenCalledTimes(1);
+  fetchMock.mockResolvedValueOnce(response({kind:'prepared',review:review()}));fireEvent.click(screen.getByRole('button',{name:messages.prepare}));
+  await screen.findByRole('button',{name:messages.confirm});expect(fetchMock).toHaveBeenCalledTimes(2);expect(body(fetchMock,1)).toEqual(body(fetchMock,0));
+ });
+ it.each([[{error:'unavailable'},409],[{error:'busy',detail:'access-configuration lock'},409],[{error:'busy'},503]] as const)('treats %j with status %s as unconfirmed, never busy',async(value,status)=>{
+  const fetchMock=vi.fn().mockResolvedValueOnce(Response.json(value,{status}));vi.stubGlobal('fetch',fetchMock);show();fill();fireEvent.click(screen.getByRole('button',{name:messages.prepare}));
+  await screen.findByText(messages.prepareUncertain);expect(screen.queryByText(messages.busy)).toBeNull();expect(document.body.textContent).not.toContain('access-configuration');
+ });
+ it('accepts only the exact bounded busy body',async()=>{
+  expect(await readOwnLeaveBusyRefusal(Response.json({error:'busy'},{status:409}))).toBe(true);
+  for(const r of [Response.json({error:'busy'}),Response.json({error:'busy',extra:1},{status:409}),new Response('{"error":"busy"}',{status:409,headers:{'content-type':'text/plain'}}),
+   new Response('{',{status:409,headers:{'content-type':'application/json'}}),new Response(JSON.stringify({error:'busy',pad:'x'.repeat(300)}),{status:409,headers:{'content-type':'application/json'}})])
+   expect(await readOwnLeaveBusyRefusal(r)).toBe(false);
  });
 });
 

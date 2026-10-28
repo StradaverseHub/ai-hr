@@ -1,6 +1,6 @@
 /** Authored protocol/CSRF/privacy regressions. UNRUN; no real session/database/provider. */
 import { describe, expect, it, vi } from 'vitest';
-import { createOwnLeaveBrowserHandler,OWN_LEAVE_PREPARE_BYTES,OWN_LEAVE_RESPONSE_BYTES } from '../lib/assistant-actions/own-leave-http';
+import { createOwnLeaveBrowserHandler,isOwnLeaveBusyRefusal,OwnLeaveBusy,OWN_LEAVE_PREPARE_BYTES,OWN_LEAVE_RESPONSE_BYTES } from '../lib/assistant-actions/own-leave-http';
 const actionId = '11111111-1111-4111-8111-111111111111', employmentId = '22222222-2222-4222-8222-222222222222';
 const leaveTypeId = '33333333-3333-4333-8333-333333333333', requestId = '44444444-4444-4444-8444-444444444444';
 const eventId = '55555555-5555-4555-8555-555555555555', digest = 'a'.repeat(64);
@@ -117,3 +117,34 @@ describe('closed own-leave full input and output boundaries',()=>{
 });
 
 it('preserves the full escaped schema-valid public review when it fits the declared full-response budget',async()=>{const f=fixture(),humanText={reason:'\u0001'.repeat(2000),employeeRemark:'\u0001'.repeat(2000)},full={...review,review:{...review.review,humanText}},value={...prepare,humanText};const bytes=new TextEncoder().encode(JSON.stringify(full)).byteLength;expect(bytes).toBeGreaterThan(20480);expect(bytes).toBeLessThanOrEqual(OWN_LEAVE_RESPONSE_BYTES);f.owners.prepare.mockResolvedValueOnce(full);const result=await f.run(request(value));expect(result.status).toBe(200);expect(await result.json()).toEqual(full);});
+
+describe('busy preparation refusal classification', () => {
+  // The driver shape behind drizzle: PostgresError with SQLSTATE on .cause, SQL and params in the outer message.
+  const pg = (code: string) => Object.assign(Error('Failed query: select pg_advisory_xact_lock(PRIVATE_SQL) params: PRIVATE_PARAM'),
+    { cause: Object.assign(Error('canceling statement due to lock timeout'), { code }) });
+  it('answers a lock_not_available (55P03) preparation with a bounded 409 busy, not the unconfirmed 503', async () => {
+    const f=fixture();f.owners.prepare.mockRejectedValueOnce(pg('55P03'));
+    const response=await f.run(request(prepare)),text=await response.text();
+    expect(response.status).toBe(409);expect(JSON.parse(text)).toEqual({error:'busy'});expect(text).not.toContain('PRIVATE');expect(text).not.toContain('lock');
+    expect(response.headers.get('cache-control')).toBe('private, no-store');expect(response.headers.get('content-type')).toMatch(/^application\/json/);
+  });
+  it('answers the canonical owner busy refusal the same way', async () => {
+    const f=fixture();f.owners.prepare.mockRejectedValueOnce(new OwnLeaveBusy());
+    const response=await f.run(request(prepare));expect(response.status).toBe(409);expect(await response.json()).toEqual({error:'busy'});
+  });
+  it.each([['unknown error', Error('PRIVATE unknown')], ['statement timeout 57014', pg('57014')], ['unique violation 23505', pg('23505')], ['non-error value', 'PRIVATE thrown string']] as const)
+  ('keeps an %s during preparation at 503', async (_label, error) => {
+    const f=fixture();f.owners.prepare.mockRejectedValueOnce(error);
+    const response=await f.run(request(prepare));expect(response.status).toBe(503);expect(await response.json()).toEqual({error:'unavailable'});
+  });
+  it('never classifies confirmation as busy: its effect may be uncertain', async () => {
+    for (const error of [pg('55P03'), new OwnLeaveBusy()]) {
+      const f=fixture();f.owners.confirm.mockRejectedValueOnce(error);
+      const response=await f.run(request({operation:'confirm',confirmation}));expect(response.status).toBe(503);expect(await response.json()).toEqual({error:'unavailable'});
+    }
+  });
+  it('recognises 55P03 anywhere in the bounded cause chain and nothing else', () => {
+    expect(isOwnLeaveBusyRefusal(pg('55P03'))).toBe(true);expect(isOwnLeaveBusyRefusal(new OwnLeaveBusy())).toBe(true);
+    for (const value of [pg('57014'), pg('55000'), Error('55P03'), { message: '55P03' }, undefined, null]) expect(isOwnLeaveBusyRefusal(value)).toBe(false);
+  });
+});

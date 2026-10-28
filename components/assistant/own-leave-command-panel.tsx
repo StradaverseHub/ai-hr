@@ -9,13 +9,13 @@ import {useEffect,useId,useRef,useState,type FormEvent,type ReactNode} from 'rea
 import {useFormatter,useTranslations} from 'next-intl';
 import {z} from 'zod';
 import {Button,Card,inputCls} from '@/components/ui';
-import {OWN_LEAVE_RESPONSE_BYTES,OwnLeaveReviewIndexResult} from '@/lib/assistant-actions/own-leave-http';
+import {OWN_LEAVE_BUSY_STATUS,OWN_LEAVE_RESPONSE_BYTES,OwnLeaveBusyRefusal,OwnLeaveReviewIndexResult} from '@/lib/assistant-actions/own-leave-http';
 import {OwnLeaveFinalReceipt,OwnLeaveHumanText,OwnLeaveNomination,OwnLeavePreparedReview,type OwnLeaveConfirmation} from '@/lib/assistant-actions/own-leave-contract';
 
 export type OwnLeaveCommandMessages=Readonly<{
  employment:string;leaveType:string;chooseEmployment:string;chooseLeaveType:string;date:string;reason:string;remark:string;
  prepare:string;preparing:string;confirm:string;confirming:string;discard:string;discarding:string;checking:string;reopen:string;
- explanation:string;confirmNote:string;uncertain:string;prepareUncertain:string;submitted:string;submittedNote:string;
+ explanation:string;confirmNote:string;uncertain:string;prepareUncertain:string;busy:string;submitted:string;submittedNote:string;
  discarded:string;expired:string;refused:string;unavailable:string;invalidSelection:string;needsRemark:string;openRequests:string;
  findReviews:string;findingReviews:string;savedReviews:string;noSavedReviews:string;openSavedReview:string;indexLimitNote:string;
  savedPending:string;savedCompleted:string;savedDiscarded:string;savedExpired:string;savedRefused:string;savedCreated:string;savedExpires:string;
@@ -52,6 +52,17 @@ export async function readOwnLeaveCommandResponse(response:Response,expectedActi
  }catch{await reader.cancel().catch(()=>undefined);throw unavailable();}finally{reader.releaseLock();}
 }
 
+/** Exact bounded busy refusal of a preparation, which saved nothing. Any other body stays unconfirmed. */
+export async function readOwnLeaveBusyRefusal(response:Response):Promise<boolean>{
+ if(response.status!==OWN_LEAVE_BUSY_STATUS||response.headers.get('content-type')?.split(';')[0].trim().toLowerCase()!=='application/json'||!response.body){await response.body?.cancel().catch(()=>undefined);return false;}
+ const reader=response.body.getReader(),chunks:Uint8Array[]=[];let bytes=0;
+ try{
+  while(true){const part=await reader.read();if(part.done)break;bytes+=part.value.byteLength;if(bytes>256)return false;chunks.push(part.value);}
+  const joined=new Uint8Array(bytes);let offset=0;for(const chunk of chunks){joined.set(chunk,offset);offset+=chunk.byteLength;}
+  return OwnLeaveBusyRefusal.safeParse(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(joined))).success;
+ }catch{return false;}finally{await reader.cancel().catch(()=>undefined);reader.releaseLock();}
+}
+
 export function OwnLeaveCommandPanel({employments,messages:m,resumeActionId}:{
  employments:readonly OwnLeaveCommandEmployment[];messages:OwnLeaveCommandMessages;resumeActionId?:string;
 }){
@@ -76,6 +87,8 @@ export function OwnLeaveCommandPanel({employments,messages:m,resumeActionId}:{
    if(operation==='prepare'){const value=captured as {nomination:unknown;selection:unknown;humanText:unknown};expectedIntentDigest=await ownLeaveBrowserHumanIntentDigest(value.nomination,value.selection,value.humanText);if(abort.signal.aborted||!mounted.current)throw unavailable();}
    dispatched=true;
    const response=await fetch(endpoint,{method:'POST',mode:'same-origin',credentials:'same-origin',cache:'no-store',redirect:'error',signal:abort.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify(captured)});
+   // Busy preparation saved nothing: keep the human's draft for a later retry; never auto-retry.
+   if(operation==='prepare'&&response.status===OWN_LEAVE_BUSY_STATUS){if(!await readOwnLeaveBusyRefusal(response))throw unavailable();if(!mounted.current)return;setState({kind:'draft'});setError(m.busy);return;}
    const result=await readOwnLeaveCommandResponse(response,actionId);if(!mounted.current)return;
    if((operation==='list'&&result.kind!=='review_index')||(operation!=='list'&&result.kind==='review_index'))throw unavailable();
    if(expectedIntentDigest&&result.kind==='prepared'&&result.review.humanIntentDigest!==expectedIntentDigest)throw unavailable();

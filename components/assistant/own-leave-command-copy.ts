@@ -25,6 +25,7 @@ export async function ownLeaveCommandCopy(): Promise<OwnLeaveCommandMessages> {
     confirmNote: t('confirmNote'),
     uncertain: t('uncertain'),
     prepareUncertain: t('prepareUncertain'),
+    busy: t('busy'),
     submitted: t('submitted'),
     submittedNote: t('submittedNote'),
     discarded: t('discarded'),
