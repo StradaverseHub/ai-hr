@@ -1,0 +1,41 @@
+VERDICT: Not built yet   ·   SIZE: Quick
+
+THE SITUATION TODAY
+
+On the Rewards access page, the "Rewards configuration" link sits directly above the "Search users" box, so it reads like a field label. The count says "1 assignments". The Review scope column repeats the long cycle name followed by the year and "Annual review".
+
+WHAT WE'LL CHANGE
+
+- A row of tabs across the top of all three Rewards admin pages: Rewards configuration, Shared rewards configuration, Rewards access. The current page is highlighted. The loose links are removed.
+
+- Correct singular and plural: "1 assignment", "2 assignments".
+
+- Review scope shows the company and business unit on the first line and just the cycle name underneath, without the repeated year and "Annual review".
+
+- A new "Coverage" filter: show only reviews that are missing a required approval role.
+
+WHAT YOU'LL GET
+
+A tidier page that reads correctly and lets you jump straight to the reviews that still need people assigned.
+
+GOOD TO KNOW
+
+- This only changes what is shown on screen. Who can see or change access is not touched.
+
+- The Coverage filter uses the role-coverage check from the separate request on approval roles. If that request is not approved, the filter still works using the same rule AIHR already applies when the BU CEO submits.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACTS (origin/alpha 162a8f743): app/admin/rewards/access/page.tsx renders a Link to /admin/rewards under PageHeader; app/admin/rewards/page.tsx renders two Links (shared, access); messages en rewardsAccess.count = "{count} assignments" (no ICU plural); access-editor.tsx scope cell = company / unit + cycle · year · kinds.
+
+1. Shared RewardsAdminTabs component (aria-current) used by /admin/rewards, /admin/rewards/shared, /admin/rewards/access; remove the loose links.
+
+2. rewardsAccess.count → ICU "{count, plural, one {N assignment} other {N assignments} using the ICU hash placeholder}" in all six locales (check each locale's plural categories).
+
+3. Scope cell: second line cycle name only.
+
+4. Coverage filter: compute missing required roles client-side from value.members (active, not disabled) against the required-role list; share the list with cd72f915's rewardRequiredRoles when that lands (same owner, do not duplicate).
+
+5. Tests: tabs on all three pages; plural for 1 and 2; filter shows only reviews with gaps. No data change, no migration.

@@ -1,0 +1,37 @@
+VERDICT: Partly there already   ·   SIZE: Quick
+
+THE SITUATION TODAY
+
+Most of what you asked for already works. Shared rewards configurations are named and versioned: saving a change always creates a new version and never overwrites the old one. When a unit review is created it takes a copy of the version in force for that company, business unit and year, and later changes to the shared configuration never alter it. Once a review leaves Draft its settings are locked.
+
+What is missing is visibility. On the Create unit review form the field is plain text, there is no way to see what is inside the configuration, and "Individual review defaults" does not explain what it means.
+
+WHAT WE'LL CHANGE
+
+- The field shows the configuration name and version, for example "Group Standard 2026 · Version 3", with a "View settings" link.
+
+- "View settings" opens a read-only summary: merit matrix, Standard plan pools (merit, promotion, special), JG H plan pools, target bonus months, bonus months reference and whether a budget-cap exemption applies.
+
+- When there is no shared configuration, the field says so in plain words: none exists for this company, business unit and year, so the review starts from the standard settings, which Group Rewards can change while it is in Draft. A link takes you to create one.
+
+- On each review in the Rewards configuration list and on the review's own settings page, show which configuration and version it started from, and mark it "changed in this review" if Group Rewards has since edited that review's own settings.
+
+WHAT YOU'LL GET
+
+Before creating a review, and at any time afterwards, everyone can see exactly which matrices, pools and rules the review uses and know they will not shift under them.
+
+GOOD TO KNOW
+
+- We are not adding a choice of configurations. By design there is only ever one current configuration for each company, business unit and year, so a dropdown would always have a single entry; older versions cannot be picked, which prevents a review starting on outdated rules. If you want to be able to choose between several live configurations for the same unit, reject this plan and say so.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACTS (origin/alpha 162a8f743): ADR-0137 (shared policy versions) is implemented in packs/rewards/policy-groups.ts; createRewardUnit copies shared.policy into reward_unit.policy and stores policyGroupVersionId; app.reward_policy_unit_origin returns {versionId, revision, name, changed}; saveRewardPolicy enforces assertUnlocked (draft only). app/admin/rewards/create-review-form.tsx picks the single matching version and renders it as a <p>, else t('sharedPolicy.individualDefaults').
+
+1. Add a read-only policy summary component reusing the existing RewardPolicyFields in readOnly mode (app/rewards/[unitId]/page.tsx) or a compact summary; open it in a dialog from the create form (data: rewardSharedPolicyChoices already returns the version; add the policy content for versions the actor may consume, same authority as today) and from the defaults case using defaultPolicy(year).
+
+2. listRewardUnits: add policyOrigin via app.reward_policy_unit_origin; render name · version and a "changed in this review" badge in the configuration list.
+
+3. Strings: sharedPolicy.viewSettings, sharedPolicy.noneForPair, sharedPolicy.changedInReview in all locales. Tests: create form shows name/version and the none-case text; summary dialog renders matrix and pools; origin badge after a policy edit. No data change, no migration.

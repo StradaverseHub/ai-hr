@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { calculateRewards } from '../packs/rewards/engine';
-import { defaultPolicy, policySchema, emptyFacts, emptyRecommendation, transition, visibleEntry, type RewardEntry } from '../packs/rewards/model';
+import { calculateRewards, salaryReductionFlags } from '../packs/rewards/engine';
+import { isSalaryReductionAttempt, recommendationSchema, defaultPolicy, policySchema, emptyFacts, emptyRecommendation, transition, visibleEntry, type RewardEntry } from '../packs/rewards/model';
 
 const policy = () => ({ ...defaultPolicy(2026), patActual: 100, patTarget: 100, ranges: { '12': [300000, 500000, 700000] as [number, number, number], H: [100000, 200000, 300000] as [number, number, number] } });
 const entry = (id = 'a'): RewardEntry => ({ id, source: { employmentId: id, personId: `person-${id}`, compensationId: `comp-${id}`, gradeId: null, employeeCode: id, name: id, grade: '12', basicCents: 500000, currency: 'MYR', payMode: 'monthly', hiredOn: '2020-01-01', confirmedOn: '2020-04-01', notice: false, lastPayChange: null, confirmationPayChange: false, performanceReviewId: null, performanceRating: null }, facts: { ...emptyFacts(), reviewed: true, talent: 'SCORE', performance: 'ME' }, recommendation: emptyRecommendation() });
@@ -86,6 +86,22 @@ describe('Reward Desk deterministic calculation and confidentiality', () => {
     expect(historical.rows[0].bonusReason).toBe('Senior leadership plan');
     expect(calculateRewards([row], { ...saved, seniorMembershipMode: 'named-members' }).rows[0].bonusEligible).toBe(true);
   });
+  it('40bf44f7: a leaver keeps the recommendation but gets no increase, bonus or lump and leaves every pool', () => {
+    const stay = entry('stay'), left = entry('left'), ec = entry('ec');
+    left.source.leftOn = '2026-11-01'; left.source.leftReason = 'moved';
+    left.recommendation = { ...left.recommendation, meritBp: 800, promotionGrade: '13', promotionBp: 1000, reason: 'A retained business case for the record only' };
+    ec.facts.confidentiality = 'ec'; ec.source.leftOn = '2026-11-01'; ec.source.leftReason = 'terminated';
+    ec.recommendation = { ...ec.recommendation, meritBp: 900, bonusCents: 500000, lumpCents: 10000, specialBp: 100 };
+    const alone = calculateRewards([stay], policy()), r = calculateRewards([stay, left, ec], policy());
+    for (const x of r.rows.filter(x => x.id !== 'stay')) {
+      expect(x).toMatchObject({ incrementEligible: false, bonusEligible: false, lumpEligible: false, incrementReason: 'Left or moved out', bonusReason: 'Left or moved out', meritCents: 0, promotionCents: 0, specialCents: 0, bonusCents: 0, lumpCents: 0 });
+      expect(x.newBasicCents).toBe(x.source.basicCents);
+    }
+    expect(r.rows.find(x => x.id === 'left')!.recommendation.meritBp).toBe(800);
+    expect(r.budgets.standard.payrollCents).toBe(alone.budgets.standard.payrollCents);
+    expect(r.budgets.standard.bonusPayrollCents).toBe(alone.budgets.standard.bonusPayrollCents);
+    expect(r.flags.filter(f => f.entryId === 'left' || f.entryId === 'ec')).toEqual([]);
+  });
   it('keeps ER, senior leadership and EC out of the ordinary lump sum', () => {
     const er = entry('er'); er.facts.erCase = true;
     const senior = entry('senior'); senior.facts.seniorPlan = true;
@@ -130,5 +146,22 @@ describe('Reward Desk deterministic calculation and confidentiality', () => {
     expect(() => transition('draft', ['pbp'], 'submit')).toThrow();
     expect(() => transition('bg', ['ec'], 'approve')).toThrow();
     expect(transition('ctro', ['ctro'], 'return')).toBe('draft');
+  });
+});
+
+describe('328ebe84 no salary reduction', () => {
+  it('flags a forged row whose new basic is below the snapshot basic as a blocking SAL-01 check', () => {
+    const r = calculateRewards([entry('a'), entry('b')], policy());
+    expect(r.flags.some(f => f.code === 'SAL-01')).toBe(false);
+    const forged = r.rows.map(x => x.id === 'b' ? { ...x, newBasicCents: x.source.basicCents - 1 } : x);
+    expect(salaryReductionFlags(forged)).toEqual([{ severity: 'block', code: 'SAL-01', message: 'Salary reductions are not allowed in the salary review.', entryId: 'b' }]);
+    expect(salaryReductionFlags(r.rows.map(x => ({ ...x, newBasicCents: x.source.basicCents })))).toEqual([]);
+  });
+  it('recognises a negative merit, promotion, special or EC award as a reduction attempt, not other errors', () => {
+    const attempt = (patch: Record<string, unknown>) => { try { recommendationSchema.parse({ ...emptyRecommendation(), ...patch }); return false; } catch (e) { return isSalaryReductionAttempt(e); } };
+    for (const key of ['meritBp', 'promotionBp', 'specialBp', 'bonusCents', 'lumpCents']) expect(attempt({ [key]: -100 })).toBe(true);
+    expect(attempt({ meritBp: 100_001 })).toBe(false);
+    expect(attempt({ multiplierBp: -1 })).toBe(false);
+    expect(isSalaryReductionAttempt(new Error('meritBp too small'))).toBe(false);
   });
 });

@@ -1,0 +1,49 @@
+VERDICT: Partly there already   ·   SIZE: Large
+
+THE SITUATION TODAY
+
+Part of this already works: when a person's login is archived, suspended, or their resignation or last working date in People has passed, they automatically lose all Rewards access, show as "Disabled or suspended login" on the Rewards access page, and stop counting as cover for their role.
+
+What is missing: access has no start or end date, there is no proper way to appoint a stand-in for an approver who is away, and someone who has resigned but is still serving notice, or who has moved to another company or business unit, keeps access until their last day or until someone removes it.
+
+WHAT WE'LL CHANGE
+
+- Each assignment gets a "From" date and an optional "Until" date. Access counts only between those dates.
+
+- A proxy can be appointed: choose the role, the person being covered and the dates. The proxy acts in that seat only for that period. The existing "BG CEO / authorised proxy" role uses this.
+
+- Access is suspended automatically, checked every time the person uses Rewards, when People shows they have resigned and are serving notice, have been terminated, or (for a BU CEO) are no longer in the company or business unit of that review.
+
+- A suspended assignment shows "Suspended" with the reason and the date of the change in People. Group Rewards gets a notification.
+
+- If the suspended person was the only one in a required approval role, the review shows that role as missing.
+
+- Only Group Rewards can restore suspended access, with a written reason, and the restore needs a second approval.
+
+WHAT YOU'LL GET
+
+Access to reward data follows people's real employment status and planned absences without anyone having to remember to remove it.
+
+GOOD TO KNOW
+
+- In Rewards a review waits for a seat, not for a named person. So once a proxy or replacement holds the seat, any review waiting at that stage is theirs to action; nothing needs to be moved. Decisions already made stay recorded under the original person's name.
+
+- Checking on every use, rather than once a night, means there is never a gap of up to a day during which a leaver still has access.
+
+- The second approval for restoring access depends on the separate request for second approval on access changes.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACTS (origin/alpha 162a8f743): app.reward_roles (migration 0596, later revisions) filters archived and app.login_blocked users; app.login_blocked_on blocks after LEAST(resignation_date, last_working_date, terminated_on). decideRewardUnit coverage uses the same active-login predicate. reward_member has no dates. reporting_line 'delegate' exists for HR approvals (ADR-0052) but is a different owner; do not reuse it for Rewards seats.
+
+1. Needs a migration: reward_member add valid_from date not null default current date, valid_to date null, covers_user_id uuid null (proxy), suspended_reason/suspended_on computed not stored. Update app.reward_roles and the coverage predicate to require valid_from <= today <= coalesce(valid_to, today) and an eligibility function app.reward_member_eligible(member) = active login and no tendered resignation (tender_resignation_date <= today) and not terminated and, for role 'bu', a current assignment in the unit's company/business unit. Do not allocate a number; ask the migration reservation owner.
+
+2. Suspension is derived at read time (no batch job). Notification: emit reward-access.suspended once per member/reason transition when first observed by any read path or by the existing pending-tasks sweep (pendingRewardTasks) to notify gr seat holders; idempotent by (member, reason, date).
+
+3. Restore: explicit override row (reason, approved via 51f45fb0 request flow), valid until a new employment change.
+
+4. UI: dates and proxy fields in access editor; status column; HR date owner lib/hr-date for today.
+
+5. Tests: access window edges; notice-period suspension; BU transfer suspends bu seat only; group seats unaffected by BU transfer; coverage gap flagged; past decisions keep actor; restore needs second approver.

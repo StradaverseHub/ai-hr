@@ -56,7 +56,7 @@ describe('shared configuration pair picker',()=>{
   expect(JSON.parse(document.querySelector<HTMLInputElement>('input[name="targets"]')!.value)).toEqual(props.targets);
  });
  it('recomputes the automatic shared version and BU choices when company or year changes',()=>{
-  const shared=[{groupId:id(6),versionId:id(7),revision:2,name:'Fictional common policy',year,companyId:id(1),businessUnitId:id(3)}];
+  const shared=[{groupId:id(6),versionId:id(7),revision:2,name:'Fictional common policy',year,companyId:id(1),businessUnitId:id(3),policy:null}];
   render(wrap(<RewardReviewCreateForm actorUserId={id(9)} today={today} companies={companies} units={units} cycles={[]} shared={shared}/>));
   expect(document.querySelector<HTMLInputElement>('input[name="sharedPolicyVersionId"]')!.value).toBe(id(7));
   fireEvent.change(screen.getByRole('combobox',{name:en.rewards.company}),{target:{value:id(2)}});

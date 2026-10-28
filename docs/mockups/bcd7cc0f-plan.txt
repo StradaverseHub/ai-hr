@@ -1,0 +1,45 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+In the Bonus section, "Suggested" shows a multiplier with no explanation. Group Rewards can type an override and press "Save policy", with no reason and no preview of what it does to the bonus pool. The button name suggests a group-wide change, but it changes this one unit review only.
+
+Some of what you asked for is already in place: the multiplier applies to both the Standard plan and the JG H plan, and the suggestion is the highest multiplier both plans can afford. The box is already hidden when the review uses branch factors (PPCH structure). A review whose bonus spend goes above 100% of its pool already cannot be submitted unless the review has a budget-cap exemption. A suggestion of 0.00 usually means Actual PAT has not been entered yet.
+
+WHAT WE'LL CHANGE
+
+- Under "Suggested", show how it was worked out: PAT achievement (actual against target), target bonus months, the resulting pool multiplier, and the rule (highest multiplier both plans can afford, rounded down to 0.01). If Actual PAT is missing, it says so.
+
+- A line states that the multiplier applies to both the Standard plan and the JG H plan.
+
+- Before saving an override, a "Check impact" step shows pool used now and pool used with the new multiplier, for each plan.
+
+- An override needs a written reason. It cannot be saved if either plan would go above 100% of its pool, unless the review has a budget-cap exemption.
+
+- The button is renamed "Save unit multiplier".
+
+- When the review uses branch factors (PPCH structure), instead of the box simply disappearing, a line says the unit multiplier is not used because this review uses branch factors.
+
+- Every change records the user, date and time, old value, new value and reason.
+
+WHAT YOU'LL GET
+
+Everyone can see where the suggested multiplier comes from, what an override will do to the pool, and why it was changed.
+
+GOOD TO KNOW
+
+- Who can change it stays as today: Group Rewards, while the review is in Draft. We are not letting each approver change it during their own approval step, because each approval signs off the exact figures; changing them mid-way would undo the earlier sign-offs. An approver who disagrees returns the review to Draft with a reason, and the change is then made and re-approved. If you want approvers to edit directly, reject this plan and say so.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACTS (origin/alpha 162a8f743): engine.ts suggestedMultiplierBp = floor(min over standard/h of bonusPool x 10000 / cost / 100) x 100; bonusPoolCents = bonusPayroll x patActual/patTarget x targetMonthsBp; BUD-01 blocks bonus used > pool unless exemptReason (CFG-01). app/rewards/[unitId]/page.tsx renders the multiplier form only when canConfigure and bonusStructure==='standard', label t('savePolicy'); bonusMultiplierAction → saveRewardPolicy (GR + draft), event policy-updated without values or reason. defaultPolicy patActual=0 → suggestion 0.
+
+1. Projection: expose the suggestion inputs (achievementBp, targetMonthsBp, poolMultiplierBp, per-plan affordable bp) from calculateRewards; no money in the explanation beyond what the budget tab already shows to the same viewer.
+
+2. New service previewRewardMultiplier(unitId, revision, multiplierBp) runs calculateRewards with the candidate policy and returns per-plan utilisation (bonusUsed/bonusPool) now and after; saveRewardMultiplier(unitId, revision, multiplierBp or null, reason>=10, previewDigest) refuses when any plan > 100% and no exemptReason; event reward-unit.multiplier-updated {before, after, reason}.
+
+3. UI: explanation block, impact table, reason field, button rewards.saveUnitMultiplier; branch-structure notice. Strings in all locales.
+
+4. Tests: explanation values from fixtures; patActual 0 path; preview over-100% refused without exemption and allowed with; event payload has before/after/reason; non-GR and non-draft refused (existing). No migration.

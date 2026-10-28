@@ -1,0 +1,43 @@
+VERDICT: Already works   ·   SIZE: Quick
+
+THE SITUATION TODAY
+
+A salary review in AIHR already cannot reduce anyone's basic salary:
+
+- Merit %, promotion % and special adjustment % refuse negative values, both on screen and when saving. The lowest allowed value is 0%.
+
+- There is no box to type a new basic salary. It is always the current basic salary plus merit, promotion and special adjustment, so it can never be lower.
+
+- The data template only brings in ratings and classifications, not percentages or amounts, so nothing can come in through an import.
+
+- When the approved review is sent to payroll, AIHR checks again that each person's salary record is still exactly the one the review started from, and refuses if anything changed in between.
+
+The only real problem is the wording: when someone does try a negative value, the message is technical (for example "meritBp: Too small: expected number to be >=0").
+
+WHAT WE'LL CHANGE
+
+- Any attempt to enter a negative merit, promotion or special adjustment shows "Salary reductions are not allowed in the salary review."
+
+- A final check before the BU CEO can submit, at every approval, and before payroll handoff confirms that each person's new basic salary is at least their current basic salary. Any record that fails is flagged and blocks submission until it is corrected.
+
+WHAT YOU'LL GET
+
+The rule you need is guaranteed by the system at every step, and people get a clear message instead of a technical one.
+
+GOOD TO KNOW
+
+- We are not touching how anything is calculated. The extra final check is a safety net; with today's rules it should never trigger.
+
+- Bonuses and lump sums sent to payroll are always zero or positive amounts.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACTS (origin/alpha 162a8f743): packs/rewards/model.ts bpSchema = z.number().int().min(0); recommendationSchema meritBp/promotionBp/specialBp use it; people/[entryId]/page.tsx inputs min="0". engine.ts newBasicCents = basic + merit + promotion + special (all >= 0). importRewardFacts imports facts only. currentRewardPostEmployeeTx refuses when the current compensation id or basic differs from the snapshot. app/rewards/actions.ts errorText renders ZodError issues raw.
+
+1. Map the min(0) issue for meritBp/promotionBp/specialBp (and EC bonusCents/lumpCents) to rewards.errors.noReduction "Salary reductions are not allowed in the salary review." (all locales) in entryAction/errorText.
+
+2. Engine: add block flag SAL-01 when newBasicCents < source.basicCents (defensive invariant); decideRewardUnit already refuses on any block flag; prepareRewardPostTx already refuses on block flags.
+
+3. Tests: negative input message; SAL-01 flag via a forged entry fixture; post refused. No data change, no migration.

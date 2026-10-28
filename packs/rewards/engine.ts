@@ -18,10 +18,22 @@ export type CalculatedEntry = RewardEntry & {
   incrementReason: string; bonusReason: string; meritBp: number; promotionBp: number; specialBp: number;
   meritCents: number; promotionCents: number; specialCents: number; newBasicCents: number;
   bonusCents: number; standardBonusCents: number; lumpCents: number; bonusMultiplierBp: number;
+  /** 8ad87ae8 — the latest basic-salary change inside the exclusion window, and whether Group Rewards kept the
+   *  person eligible anyway. `bonusBasicCents` is the basic the bonus is worked on: the adjusted basic after
+   *  such a change, otherwise the snapshot basic. */
+  payChange: { on: string; kind: string | null } | null; payWindowKept: boolean; bonusBasicCents: number;
 };
-export type PlanBudget = { payrollCents: number; pools: number[]; used: number[]; bonusPayrollCents: number; bonusPoolCents: number; bonusUsedCents: number; standardBonusCents: number; increasesCents: number; reductionsCents: number; lumpCents: number; lumpCount: number; balanceCents: number };
-export const blankBudget = (): PlanBudget => ({ payrollCents: 0, pools: [0, 0, 0], used: [0, 0, 0], bonusPayrollCents: 0, bonusPoolCents: 0, bonusUsedCents: 0, standardBonusCents: 0, increasesCents: 0, reductionsCents: 0, lumpCents: 0, lumpCount: 0, balanceCents: 0 });
+/** 8ad87ae8 — the increment reasons that mean "salary adjusted inside the exclusion window". */
+export const payWindowReasons = ['Confirmation included a pay change', 'Pay change in the exclusion window'];
+export type PlanBudget = { excludedCount: number; excludedPayrollCents: number; payrollCents: number; pools: number[]; used: number[]; bonusPayrollCents: number; bonusPoolCents: number; bonusUsedCents: number; standardBonusCents: number; increasesCents: number; reductionsCents: number; lumpCents: number; lumpCount: number; balanceCents: number };
+export const blankBudget = (): PlanBudget => ({ excludedCount: 0, excludedPayrollCents: 0, payrollCents: 0, pools: [0, 0, 0], used: [0, 0, 0], bonusPayrollCents: 0, bonusPoolCents: 0, bonusUsedCents: 0, standardBonusCents: 0, increasesCents: 0, reductionsCents: 0, lumpCents: 0, lumpCount: 0, balanceCents: 0 });
 
+/** 328ebe84 — defensive invariant: a salary review never lowers basic salary. Every component is >= 0
+ *  today, so this only fires on a forged or corrupted row; any block flag refuses submit, approval and posting. */
+export const salaryReductionFlags = (rows: Pick<CalculatedEntry, 'id' | 'source' | 'newBasicCents'>[]): RewardFlag[] =>
+  rows.filter(x => x.newBasicCents < x.source.basicCents).map(x => ({ severity: 'block', code: 'SAL-01', message: 'Salary reductions are not allowed in the salary review.', entryId: x.id }));
+
+export type RewardMultiplierSuggestion = ReturnType<typeof calculateRewards>['suggestion'];
 export function calculateRewards(entries: RewardEntry[], input: RewardPolicy) {
   const policy = policySchema.parse(input);
   const flags: RewardFlag[] = [];
@@ -33,12 +45,22 @@ export function calculateRewards(entries: RewardEntry[], input: RewardPolicy) {
     const plan: Plan = f.confidentiality === 'ec' ? 'ec' : s.grade === 'H' ? 'h' : 'standard';
     if (!f.reviewed) add('block', 'DATA-01', 'Validate the reward classification and ratings before submission.', e.id);
     if (!s.compensationId || s.basicCents <= 0 || s.currency !== 'MYR' || !['monthly', 'custom_period'].includes(s.payMode)) add('block', 'DATA-02', 'A positive MYR monthly salary record is required for this reward policy.', e.id);
+    // 40bf44f7: a leaver keeps the entry and recommendation, but nothing is awarded or pooled.
+    const left = !!s.leftOn;
+    // 8ad87ae8: every in-window change when the snapshot carries the history; older snapshots only know the
+    // salary record in effect on the snapshot date.
+    const kept = !!policy.payWindowKeep?.[s.employmentId];
+    const inWindow = (on: string) => on >= policy.blockedFrom && on <= policy.blockedTo;
+    const windowChange = s.payChanges ? s.payChanges.filter(c => inWindow(c.on)).at(-1) ?? null
+      : s.lastPayChange && inWindow(s.lastPayChange) ? { on: s.lastPayChange, basicCents: s.basicCents, kind: null } : null;
+    const payChange = kept ? null : windowChange;
     let incrementReason = '';
-    if (s.notice) incrementReason = 'Serving notice';
+    if (left) incrementReason = 'Left or moved out';
+    else if (s.notice) incrementReason = 'Serving notice';
     else if (s.hiredOn >= policy.joinedBefore) incrementReason = 'Joined after the increment cutoff';
     else if (!s.confirmedOn || s.confirmedOn > policy.confirmedBy) incrementReason = 'Not confirmed by the cutoff';
-    else if (s.confirmationPayChange && s.confirmedOn >= policy.blockedFrom) incrementReason = 'Confirmation included a pay change';
-    else if (s.lastPayChange && s.lastPayChange >= policy.blockedFrom && s.lastPayChange <= policy.blockedTo) incrementReason = 'Pay change in the exclusion window';
+    else if (!kept && s.confirmationPayChange && s.confirmedOn >= policy.blockedFrom) incrementReason = 'Confirmation included a pay change';
+    else if (payChange) incrementReason = 'Pay change in the exclusion window';
     else if (!f.talent) incrementReason = 'No talent rating';
     else if (f.erCase && f.erDecision !== 'in') incrementReason = 'ER case held or awaiting decision';
     else if (f.pipCase && f.pipDecision !== 'lift') incrementReason = 'PIP confirmed or awaiting decision';
@@ -47,24 +69,24 @@ export function calculateRewards(entries: RewardEntry[], input: RewardPolicy) {
     if ((f.erCase && f.erDecision !== 'pending' || f.pipCase && f.pipDecision !== 'pending') && f.caseReason.length < 10) add('block', 'ELIG-02', 'Record the reason for the case decision.', e.id);
     const incrementEligible = !incrementReason;
     const senior = isSeniorPlanMember(policy, f, s.grade);
-    const bonusReason = senior ? 'Senior leadership plan' : s.notice ? 'Serving notice' : f.erCase ? 'ER case' : !s.confirmedOn || s.confirmedOn > policy.confirmedBy ? 'Not confirmed by the cutoff' : !f.performance ? 'No performance rating' : '';
+    const bonusReason = left ? 'Left or moved out' : senior ? 'Senior leadership plan' : s.notice ? 'Serving notice' : f.erCase ? 'ER case' : !s.confirmedOn || s.confirmedOn > policy.confirmedBy ? 'Not confirmed by the cutoff' : !f.performance ? 'No performance rating' : '';
     const bonusEligible = !bonusReason;
     const range = policy.ranges[r.promotionGrade ?? s.grade];
     if (!range && incrementEligible && plan !== 'ec') add('block', 'DATA-03', 'Configure the salary range for this grade.', e.id);
     if (bonusEligible && !policy.bonusMatrix[s.grade] && plan !== 'ec') add('block', 'DATA-04', 'Configure the bonus matrix for this grade.', e.id);
     const pos = range ? s.basicCents < range[0] ? 0 : s.basicCents > range[2] ? 2 : 1 : 1;
     const meritDefault = incrementEligible && f.talent ? policy.meritMatrix[f.talent][pos] : 0;
-    const meritBp = plan === 'ec' ? r.meritBp ?? meritDefault : incrementEligible ? r.meritBp ?? meritDefault : 0;
-    const promotionBp = (incrementEligible || plan === 'ec') && r.promotionGrade ? r.promotionBp ?? 1000 : 0;
-    if (r.promotionGrade) {
+    const meritBp = left ? 0 : plan === 'ec' ? r.meritBp ?? meritDefault : incrementEligible ? r.meritBp ?? meritDefault : 0;
+    const promotionBp = !left && (incrementEligible || plan === 'ec') && r.promotionGrade ? r.promotionBp ?? 1000 : 0;
+    if (r.promotionGrade && !left) {
       if (!incrementEligible && plan !== 'ec') add('block', 'PRO-03', 'This employee is not eligible for an annual promotion award.', e.id);
       const jump = Number(r.promotionGrade) - Number(s.grade);
       if (!Number.isInteger(jump) || jump < 1 || jump > 3) add('block', 'PRO-01', 'A promotion must advance one to three grades.', e.id);
       if (r.reason.length < 30) add('block', 'PRO-02', 'A promotion needs a business case of at least 30 characters.', e.id);
     }
-    if (r.meritBp != null && r.meritBp !== meritDefault && plan !== 'ec') add('exception', 'POOL-05', 'Individual merit differs from the matrix.', e.id);
-    if (r.promotionBp != null && r.promotionBp !== 1000 && r.promotionGrade) add('exception', 'POOL-05', 'Promotion differs from the standard 10%.', e.id);
-    return { ...e, facts: f, recommendation: r, plan, incrementEligible, bonusEligible, lumpEligible: !bonusEligible && !senior && plan !== 'ec' && !f.erCase, incrementReason, bonusReason, meritBp, promotionBp, specialBp: 0, meritCents: increase(s.basicCents, meritBp), promotionCents: increase(s.basicCents, promotionBp), specialCents: 0, newBasicCents: s.basicCents, bonusCents: 0, standardBonusCents: 0, lumpCents: 0, bonusMultiplierBp: 0 };
+    if (!left && r.meritBp != null && r.meritBp !== meritDefault && plan !== 'ec') add('exception', 'POOL-05', 'Individual merit differs from the matrix.', e.id);
+    if (!left && r.promotionBp != null && r.promotionBp !== 1000 && r.promotionGrade) add('exception', 'POOL-05', 'Promotion differs from the standard 10%.', e.id);
+    return { ...e, facts: f, recommendation: r, plan, incrementEligible, bonusEligible, lumpEligible: !left && !bonusEligible && !senior && plan !== 'ec' && !f.erCase, incrementReason, bonusReason, meritBp, promotionBp, specialBp: 0, payChange: windowChange && { on: windowChange.on, kind: windowChange.kind }, payWindowKept: kept && !!windowChange, bonusBasicCents: payChange ? payChange.basicCents : s.basicCents, meritCents: increase(s.basicCents, meritBp), promotionCents: increase(s.basicCents, promotionBp), specialCents: 0, newBasicCents: s.basicCents, bonusCents: 0, standardBonusCents: 0, lumpCents: 0, bonusMultiplierBp: 0 };
   });
   const budgets = { standard: blankBudget(), h: blankBudget(), ec: blankBudget() };
   const inPool = (x: CalculatedEntry) => x.incrementEligible || ['Nil increment rating', 'PIP confirmed or awaiting decision'].includes(x.incrementReason) && !(x.facts.pipCase && x.facts.pipDecision === 'pending');
@@ -73,7 +95,9 @@ export function calculateRewards(entries: RewardEntry[], input: RewardPolicy) {
     b.payrollCents = sum(group.filter(inPool).map(x => x.source.basicCents));
     const percentages = plan === 'h' ? policy.hPools : policy.standardPools;
     b.pools = percentages.map(bp => ratio(b.payrollCents, bp, 10000));
-    b.bonusPayrollCents = sum(group.filter(x => x.bonusEligible).map(x => x.source.basicCents));
+    b.bonusPayrollCents = sum(group.filter(x => x.bonusEligible).map(x => x.bonusBasicCents));
+    const excluded = group.filter(x => payWindowReasons.includes(x.incrementReason));
+    b.excludedCount = excluded.length; b.excludedPayrollCents = sum(excluded.map(x => x.source.basicCents));
     b.bonusPoolCents = ratio(ratio(b.bonusPayrollCents, policy.patActual, policy.patTarget), policy.targetMonthsBp, 10000);
     // Special pool funds the same half-percent catch-up cohort as the reference, within each plan.
     const stars = group.filter(x => x.incrementEligible && ['STAR', 'SSTAR'].includes(x.facts.talent ?? '') && policy.ranges[x.recommendation.promotionGrade ?? x.source.grade] && x.source.basicCents * 10 < policy.ranges[x.recommendation.promotionGrade ?? x.source.grade][1] * 9);
@@ -84,10 +108,10 @@ export function calculateRewards(entries: RewardEntry[], input: RewardPolicy) {
       const r = x.recommendation, range = policy.ranges[r.promotionGrade ?? x.source.grade];
       const catchUp = stars.includes(x) ? increase(x.source.basicCents, x.promotionBp ? cohortBp : Math.min(cohortBp, Math.max(0, 1000 - x.meritBp))) : 0;
       const topUp = range && x.incrementEligible ? Math.max(0, Math.ceil((range[0] - x.source.basicCents - x.meritCents - x.promotionCents - catchUp) / 100) * 100) : 0;
-      x.specialCents = plan === 'ec' ? increase(x.source.basicCents, r.specialBp ?? 0) : x.incrementEligible ? r.specialBp != null ? increase(x.source.basicCents, r.specialBp) : catchUp + topUp : 0;
+      x.specialCents = x.source.leftOn ? 0 : plan === 'ec' ? increase(x.source.basicCents, r.specialBp ?? 0) : x.incrementEligible ? r.specialBp != null ? increase(x.source.basicCents, r.specialBp) : catchUp + topUp : 0;
       x.specialBp = x.source.basicCents ? ratio(x.specialCents, 10000, x.source.basicCents, 'nearest') : 0;
       x.newBasicCents = sum([x.source.basicCents, x.meritCents, x.promotionCents, x.specialCents]);
-      if (r.specialBp != null && x.specialCents !== catchUp + topUp && plan !== 'ec') add('exception', 'POOL-05', 'Special adjustment differs from the calculated amount.', x.id);
+      if (!x.source.leftOn && r.specialBp != null && x.specialCents !== catchUp + topUp && plan !== 'ec') add('exception', 'POOL-05', 'Special adjustment differs from the calculated amount.', x.id);
       if (plan !== 'ec' && (x.recommendation.promotionGrade ? (x.newBasicCents - x.source.basicCents) * 10 >= x.source.basicCents * 3 : (x.newBasicCents - x.source.basicCents) * 10 > x.source.basicCents)) add('warning', 'INC-01', 'Increase exceeds the individual review threshold.', x.id);
       if (range && x.newBasicCents > range[2]) add('review', 'RANGE-01', 'New salary is above the range maximum.', x.id);
     }
@@ -96,11 +120,15 @@ export function calculateRewards(entries: RewardEntry[], input: RewardPolicy) {
     if (!x.bonusEligible || !x.facts.performance) return 0;
     const months = policy.bonusMatrix[x.source.grade]?.[performances.indexOf(x.facts.performance)] ?? 0;
     const days = Math.max(0, Math.min(yearDays, dateNumber(end) - Math.max(dateNumber(start), dateNumber(x.source.hiredOn)) + 1));
-    return ratio(ratio(x.source.basicCents, months, 10000), days, yearDays);
+    return ratio(ratio(x.bonusBasicCents, months, 10000), days, yearDays);
   };
   // A single unit multiplier must fit BOTH independently funded plans. EC never consumes either pot.
-  const affordable = (['standard', 'h'] as const).flatMap(plan => { const cost = sum(rows.filter(x => x.plan === plan).map(bonusBase)); return cost > 0 ? [ratio(budgets[plan].bonusPoolCents, 10000, cost)] : []; });
+  const affordableBy = Object.fromEntries((['standard', 'h'] as const).map(plan => { const cost = sum(rows.filter(x => x.plan === plan).map(bonusBase)); return [plan, cost > 0 ? ratio(budgets[plan].bonusPoolCents, 10000, cost) : null]; })) as Record<'standard' | 'h', number | null>;
+  const affordable = Object.values(affordableBy).filter((bp): bp is number => bp != null);
   const suggestedMultiplierBp = affordable.length ? Math.floor(Math.min(...affordable) / 100) * 100 : 0;
+  // bcd7cc0f: the inputs of the suggestion, as rates only (no money beyond the budget tab's own figures).
+  const suggestion = { patActualMissing: policy.patActual === 0, achievementBp: ratio(policy.patActual, 10000, policy.patTarget), targetMonthsBp: policy.targetMonthsBp,
+    poolMultiplierBp: ratio(policy.patActual, policy.targetMonthsBp, policy.patTarget), affordableBp: affordableBy };
   for (const x of rows) {
     const r = x.recommendation;
     let multiplier = policy.multiplierBp ?? suggestedMultiplierBp;
@@ -111,7 +139,7 @@ export function calculateRewards(entries: RewardEntry[], input: RewardPolicy) {
     }
     x.standardBonusCents = Math.floor(ratio(bonusBase(x), multiplier, 10000) / 100) * 100;
     x.bonusMultiplierBp = r.multiplierBp ?? multiplier;
-    x.bonusCents = x.plan === 'ec' && r.bonusCents != null ? r.bonusCents : Math.floor(ratio(bonusBase(x), x.bonusMultiplierBp, 10000) / 100) * 100;
+    x.bonusCents = x.source.leftOn ? 0 : x.plan === 'ec' && r.bonusCents != null ? r.bonusCents : Math.floor(ratio(bonusBase(x), x.bonusMultiplierBp, 10000) / 100) * 100;
     if (r.multiplierBp != null && r.multiplierBp !== multiplier && x.bonusEligible && x.plan !== 'ec') add('exception', 'BUD-02', 'Individual bonus differs from the unit multiplier.', x.id);
   }
   const lumpWorking = (['standard', 'h'] as const).flatMap(plan => {
@@ -123,9 +151,9 @@ export function calculateRewards(entries: RewardEntry[], input: RewardPolicy) {
   const suggestedLumpCents = lumpWorking.length ? Math.min(...lumpWorking.map(x => x.perPersonCents), policy.lumpCapCents ?? Number.MAX_SAFE_INTEGER) : 0;
   const lumpUnitCents = policy.lumpUnitCents ?? suggestedLumpCents;
   if (lumpUnitCents > suggestedLumpCents) add('warning', 'BUD-05', 'The unit lump sum exceeds the amount supported by the remaining budget.');
-  if (lumpUnitCents === 0 && rows.some(x => x.lumpEligible)) add('review', 'BUD-05', 'The unit lump-sum provision is withheld (RM 0).');
+  if (lumpUnitCents === 0 && rows.some(x => x.lumpEligible)) add('review', 'BUD-05', `The unit lump-sum provision is withheld (RM 0)${policy.lumpReason ? `: ${policy.lumpReason}` : '.'}`);
   for (const x of rows) {
-    x.lumpCents = x.plan === 'ec' ? x.recommendation.lumpCents ?? 0 : x.lumpEligible ? x.recommendation.lumpCents ?? lumpUnitCents : 0;
+    x.lumpCents = x.source.leftOn ? 0 : x.plan === 'ec' ? x.recommendation.lumpCents ?? 0 : x.lumpEligible ? x.recommendation.lumpCents ?? lumpUnitCents : 0;
     if (x.lumpEligible && x.recommendation.lumpCents != null && x.lumpCents !== lumpUnitCents) add('exception', 'BUD-05', 'Individual lump sum differs from the unit amount; RM 0 means withheld.', x.id);
   }
   for (const plan of ['standard', 'h', 'ec'] as const) {
@@ -144,5 +172,6 @@ export function calculateRewards(entries: RewardEntry[], input: RewardPolicy) {
     if (b.bonusUsedCents > b.bonusPoolCents) add(severity, policy.exemptReason ? 'CFG-01' : 'BUD-01', `${plan === 'h' ? 'JG H' : 'Standard'} bonus exceeds the 100% budget cap.`);
     if (b.bonusPoolCents > 0 && b.bonusUsedCents * 100 < b.bonusPoolCents * 80) add('warning', 'BUD-07', `${plan === 'h' ? 'JG H' : 'Standard'} bonus budget is less than 80% utilised.`);
   }
-  return { rows, budgets, flags, suggestedMultiplierBp, suggestedLumpCents, lumpUnitCents, lumpWorking };
+  flags.push(...salaryReductionFlags(rows));
+  return { rows, budgets, flags, suggestedMultiplierBp, suggestion, suggestedLumpCents, lumpUnitCents, lumpWorking };
 }

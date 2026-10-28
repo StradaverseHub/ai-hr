@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z, ZodError } from 'zod';
 
 export const rewardRoles = ['bu', 'bg', 'gr', 'ctro', 'ec', 'pbp', 'payroll'] as const;
 export type RewardRole = typeof rewardRoles[number];
@@ -25,6 +25,11 @@ export type RewardPolicy = {
   patActual: number; patTarget: number; targetMonthsBp: number; multiplierBp: number | null;
   bonusStructure: 'standard' | 'branch'; branchFactors: Record<string, Five>; branchRatings: Record<string, typeof performances[number]>;
   lumpStepCents: number; lumpShareBp: number; lumpCapCents: number | null; lumpUnitCents: number | null; exemptReason: string;
+  /** 4e3e1af7 — why the unit lump sum was set or withheld (required to withhold). Absent on older reviews. */
+  lumpReason?: string;
+  /** 8ad87ae8 — employments Group Rewards kept eligible despite a pay change in the exclusion window, with the reason.
+   *  Unit-specific: never part of a shared configuration. */
+  payWindowKeep?: Record<string, string>;
 };
 export type RewardFacts = {
   talent: typeof talents[number] | null; performance: typeof performances[number] | null;
@@ -63,6 +68,8 @@ export const policySchema: z.ZodType<RewardPolicy> = z.object({
   lumpCapCents: centsSchema.nullable(),
   lumpUnitCents: centsSchema.nullable(),
   exemptReason: z.string().trim().max(2000).refine(v => !v || v.length >= 10, 'Explain the exemption in at least 10 characters'),
+  lumpReason: z.string().trim().max(1000).optional(),
+  payWindowKeep: z.record(z.string().min(1).max(64), z.string().trim().min(10).max(1000)).optional(),
 }).strict().refine(p => p.blockedFrom <= p.blockedTo, 'Invalid off-cycle exclusion window');
 
 /** All monetary inputs are integer cents. Rates are integer basis points. */
@@ -82,6 +89,9 @@ export const recommendationSchema: z.ZodType<Recommendation> = z.object({
   reason: z.string().trim().max(4000),
   currentRoleSummary: z.string().trim().max(8000).default(''), proposedRoleSummary: z.string().trim().max(8000).default(''),
 }).strict();
+/** 328ebe84 — a negative increase or award is a salary reduction attempt, not a technical range error. */
+const reductionFields = ['meritBp', 'promotionBp', 'specialBp', 'bonusCents', 'lumpCents'];
+export const isSalaryReductionAttempt = (e: unknown) => e instanceof ZodError && e.issues.some(i => i.code === 'too_small' && reductionFields.includes(String(i.path[0])));
 export const emptyFacts = (): RewardFacts => ({ talent: null, performance: null, confidentiality: 'standard', seniorPlan: false, erCase: false, pipCase: false, erDecision: 'pending', pipDecision: 'pending', caseReason: '', segment: '', branch: '', reviewed: false });
 export const emptyRecommendation = (): Recommendation => ({ meritBp: null, promotionGrade: null, promotionBp: null, specialBp: null, multiplierBp: null, bonusCents: null, lumpCents: null, reason: '', currentRoleSummary: '', proposedRoleSummary: '' });
 
@@ -91,7 +101,16 @@ export type RewardSource = {
   basicCents: number; currency: string; payMode: string;
   hiredOn: string; confirmedOn: string | null; notice: boolean;
   lastPayChange: string | null; confirmationPayChange: boolean;
+  /** 8ad87ae8 — every change of basic salary effective in the reward year or the year after (including dates
+   *  after the snapshot), oldest first. A record re-saved with the same basic (a lateral transfer) is not a change.
+   *  `kind` is the movement behaviour recorded with it, when there was one. Absent on older snapshots. */
+  payChanges?: { on: string; basicCents: number; kind: string | null }[];
   performanceReviewId: string | null; performanceRating: number | null;
+  /** 40bf44f7 — set by a confirmed source refresh when the person left the company or moved out of the unit.
+   *  The entry and its recommendation are retained for the record; the engine awards nothing. */
+  leftOn?: string; leftReason?: 'terminated' | 'moved';
+  /** 6fd08f37 — derived from an administrative reporting line to the BG CEO or EC seat holder (see confidentiality.ts). */
+  confidentialityFloor?: 'bg' | 'ec'; confidentialityReason?: { seat: 'bg' | 'ec'; managerEmploymentId: string };
   onehrFactImport?: { resultId: string; digest: string; importedAt: string };
   onehr?: { id: string; reviewId: string; cycleId: string; digest: string; frozenAt: string;
     performance: typeof performances[number] | null; potential: 'Low'|'Mid'|'High'|null;
@@ -107,7 +126,7 @@ export function defaultPolicy(year: number): RewardPolicy {
   for (let g = 12; g <= 22; g++) bonusMatrix[String(g)] = g <= 15 ? [0, 5000, 15000, 22500, 30000] : g <= 19 ? [0, 5000, 25000, 35000, 45000] : g <= 21 ? [0, 5000, 30000, 40000, 50000] : [0, 5000, 40000, 50000, 60000];
   return {
     year, effectiveFrom: `${year + 1}-01-01`, joinedBefore: `${year}-10-01`, confirmedBy: `${year}-12-31`,
-    blockedFrom: `${year}-10-01`, blockedTo: `${year + 1}-01-31`,
+    blockedFrom: `${year}-10-01`, blockedTo: `${year}-12-31`,
     standardPools: [500, 100, 100], hPools: [500, 100, 100],
     meritMatrix: { SSTAR: [1000, 800, 800], STAR: [800, 600, 600], SCORE: [600, 450, 300], IMPRO: [0, 0, 0], PIP: [0, 0, 0] },
     bonusMatrix, ranges: {}, seniorGrades: [], seniorMembershipMode: 'named-members', patActual: 0, patTarget: 100,
@@ -119,6 +138,21 @@ export function defaultPolicy(year: number): RewardPolicy {
 /** Existing policy snapshots retain their historical grade rule until explicitly converted. */
 export function isSeniorPlanMember(policy: RewardPolicy, facts: RewardFacts, grade: string): boolean {
   return facts.seniorPlan || policy.seniorMembershipMode !== 'named-members' && policy.seniorGrades.includes(grade);
+}
+
+/** 6fd08f37 — confidentiality markings ordered from least to most restricted. */
+export const confidentialityRank: Record<RewardFacts['confidentiality'], number> = { standard: 0, bg: 1, ec: 2 };
+export const belowConfidentialityFloor = (facts: Pick<RewardFacts, 'confidentiality'>, source: Pick<RewardSource, 'confidentialityFloor'>) =>
+  confidentialityRank[facts.confidentiality] < confidentialityRank[source.confidentialityFloor ?? 'standard'];
+/** The effective marking when the floor moves: a manual marking stricter than the old floor is kept; one equal to
+ *  it is taken to be the derived marking, so it follows the new floor (up or down). Never below the new floor. */
+export function applyConfidentialityFloor(current: RewardFacts['confidentiality'], oldFloor: RewardSource['confidentialityFloor'], newFloor: RewardSource['confidentialityFloor']): RewardFacts['confidentiality'] {
+  const manual = confidentialityRank[current] > confidentialityRank[oldFloor ?? 'standard'] ? current : 'standard', floor = newFloor ?? 'standard';
+  return confidentialityRank[manual] >= confidentialityRank[floor] ? manual : floor;
+}
+export function withConfidentialityFloor(source: RewardSource, floor: { level: 'bg' | 'ec'; reason: NonNullable<RewardSource['confidentialityReason']> } | null): RewardSource {
+  const { confidentialityFloor: _floor, confidentialityReason: _reason, ...rest } = source;
+  return floor ? { ...rest, confidentialityFloor: floor.level, confidentialityReason: floor.reason } : rest;
 }
 
 export function visibleEntry(entry: RewardEntry, roles: readonly RewardRole[], personId?: string | null): boolean {

@@ -34,7 +34,7 @@ export function calculateOffcycle(entries: RewardEntry[], policy: RewardPolicy, 
     if (plan === 'ec' && !details.exceptionReason) add('block', 'OC-10', 'An EC-plan off-cycle award requires an ad-hoc budget exception.');
     budgets[plan].payrollCents = sum([budgets[plan].payrollCents, s.basicCents]);
     budgets[plan].used[0] = sum([budgets[plan].used[0], delta]);
-    return { ...e, facts: f, recommendation: r, plan, incrementEligible: true, bonusEligible: false, lumpEligible: false, incrementReason: '', bonusReason: 'Off-cycle salary review', meritBp, promotionBp, specialBp, meritCents, promotionCents, specialCents, newBasicCents: sum([s.basicCents, delta]), bonusCents: 0, standardBonusCents: 0, lumpCents: 0, bonusMultiplierBp: 0 };
+    return { ...e, facts: f, recommendation: r, plan, incrementEligible: true, bonusEligible: false, lumpEligible: false, incrementReason: '', bonusReason: 'Off-cycle salary review', meritBp, promotionBp, specialBp, meritCents, promotionCents, specialCents, newBasicCents: sum([s.basicCents, delta]), bonusCents: 0, standardBonusCents: 0, lumpCents: 0, bonusMultiplierBp: 0, payChange: null, payWindowKept: false, bonusBasicCents: s.basicCents };
   });
   for (const plan of ['standard', 'h'] as const) {
     budgets[plan].pools[0] = available[plan];
