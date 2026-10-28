@@ -107,6 +107,7 @@ import {
   // gate merges it in the same way requestLeave/editLeave do (core/leave.ts:2467 and :5356). The MERGE is
   // identical; the AS-OF is not — see mayAppearInApplyMenu.
   type ProbationEligibility,
+  namedApproverLeaveSubjectsTx,
 } from './leave';
 import {
   buildTemplateEntitlementResolver,
@@ -1578,6 +1579,40 @@ export function listLeaveRequests(
 
 /** One row of the leave-request history table (shared projection + resolved workingDates). */
 export type LeaveRequestRow = Awaited<ReturnType<typeof listLeaveRequests>>[number];
+
+/** 0669 — PENDING leave requests the viewer may read only because an approval step names them
+ *  (`specific_employee`). `listLeaveRequests` cannot return these: it joins the subject's employment and
+ *  person rows, which a named approver may not read. The rows come from the SAME projection, with those
+ *  two joins left open, so every employment/person-derived field is NULL (employee code, person id) and so is
+ *  every subquery RLS still hides (balance, maternity reason). The employee's display name is laid over the
+ *  row from the definer read. `namedApproverView` marks the row so the inbox does not offer a profile link or
+ *  decide controls the viewer cannot complete. */
+export function listNamedApproverLeaveRequests(ctx: SessionContext, companyIds?: string[], opts?: { requestId?: string }) {
+  return withTenant(ctx, async (tx) => {
+    const named = (await namedApproverLeaveSubjectsTx(tx)).filter(
+      (r) => !companyIds?.length || companyIds.includes(r.companyId),
+    );
+    if (!named.length) return [];
+    const names = new Map(named.map((r) => [r.leaveRequestId, r.employeeName]));
+    const rows = await tx
+      .select(leaveRequestSelection)
+      .from(leaveRequest)
+      .leftJoin(employment, eq(employment.id, leaveRequest.employmentId))
+      .leftJoin(person, eq(person.id, employment.personId))
+      .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
+      .where(
+        and(
+          inArray(leaveRequest.id, [...names.keys()]),
+          eq(leaveRequest.status, 'pending'),
+          opts?.requestId ? eq(leaveRequest.id, opts.requestId) : undefined,
+        ),
+      )
+      .orderBy(desc(leaveRequest.createdAt), asc(leaveRequest.id))
+      .limit(200);
+    const shaped = rows.map((r) => ({ ...r, employee: names.get(r.id) ?? '', namedApproverView: true as const }));
+    return resolveLeaveWorkingDates(tx, shaped);
+  });
+}
 
 /** Minimal own-submission references for a server-side receipt reader. The caller must supply its
  * current authenticated withTenant transaction; this neither establishes fresh Assistant authority

@@ -4967,6 +4967,8 @@
     "viewDocument": "View document",
     "stageManager": "Manager review",
     "stageHr": "HR review",
+    "stageNamedApprover": "Named approver",
+    "namedApproverViewOnly": "You were named to approve this request. You can view it here; HR records the decision.",
     "stepOfN": "{n} of {total}",
     "viewHistory": "View leave history",
     "teamCalendar": "Team calendar",

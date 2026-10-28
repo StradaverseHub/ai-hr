@@ -1,7 +1,9 @@
 import type {SessionContext} from '../db/client';
 /** Internal owner-to-inbox metadata. No request body, proposal, amount, reason or attachment belongs here. */
 export type AssignedApprovalMetadata={
- id:string;employmentId:string;personId:string;employee:string|null;createdAt:Date;dueDate?:string;
+ id:string;employmentId:string;
+ /** Null only when the viewer may not read the subject's person row (a 0669 named leave approver). */
+ personId:string|null;employee:string|null;createdAt:Date;dueDate?:string;
 };
 /** Personal action metadata. sourceUpdatedAt is an owner timestamp, never a guessed task age. */
 export type AssignedPersonalTaskMetadata={

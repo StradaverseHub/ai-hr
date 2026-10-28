@@ -4967,6 +4967,8 @@
     "viewDocument": "Lihat dokumen",
     "stageManager": "Semakan pengurus",
     "stageHr": "Semakan HR",
+    "stageNamedApprover": "Pelulus dinamakan",
+    "namedApproverViewOnly": "Anda dinamakan untuk meluluskan permohonan ini. Anda boleh melihatnya di sini; HR merekodkan keputusannya.",
     "stepOfN": "{n} daripada {total}",
     "viewHistory": "Lihat sejarah cuti",
     "teamCalendar": "Kalendar pasukan",

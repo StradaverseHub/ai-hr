@@ -4967,6 +4967,8 @@
     "viewDocument": "Xem tài liệu",
     "stageManager": "Quản lý xét duyệt",
     "stageHr": "HR xét duyệt",
+    "stageNamedApprover": "Người duyệt được chỉ định",
+    "namedApproverViewOnly": "Bạn được chỉ định duyệt yêu cầu này. Bạn có thể xem yêu cầu tại đây; HR sẽ ghi nhận quyết định.",
     "stepOfN": "{n}/{total}",
     "viewHistory": "Xem lịch sử nghỉ phép",
     "teamCalendar": "Lịch nhóm",

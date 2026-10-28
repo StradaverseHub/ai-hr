@@ -4967,6 +4967,8 @@
     "viewDocument": "ดูเอกสาร",
     "stageManager": "การพิจารณาของผู้จัดการ",
     "stageHr": "การพิจารณาของ HR",
+    "stageNamedApprover": "ผู้อนุมัติที่ระบุชื่อ",
+    "namedApproverViewOnly": "คุณได้รับการระบุชื่อให้อนุมัติคำขอนี้ คุณดูคำขอได้ที่นี่ ส่วน HR จะเป็นผู้บันทึกผลการพิจารณา",
     "stepOfN": "{n} จาก {total}",
     "viewHistory": "ดูประวัติการลา",
     "teamCalendar": "ปฏิทินทีม",

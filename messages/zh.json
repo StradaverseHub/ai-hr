@@ -4967,6 +4967,8 @@
     "viewDocument": "查看文件",
     "stageManager": "经理审批",
     "stageHr": "人力资源审批",
+    "stageNamedApprover": "指定审批人",
+    "namedApproverViewOnly": "您被指定审批此申请。您可以在此查看；审批结果由人力资源部门记录。",
     "stepOfN": "第 {n} / {total} 步",
     "viewHistory": "查看请假记录",
     "teamCalendar": "团队日历",

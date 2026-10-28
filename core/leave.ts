@@ -12137,16 +12137,37 @@ export async function pendingLeaveDecisionChoiceMetadataTx(tx:Tx,ctx:SessionCont
  return{tasks,truncated};
 }
 
+/** 0669 — the requests the caller may read because a step names them (`specific_employee`, current or
+ * past), with ONLY the employee's display name and the subject's company for the scope fence. The caller
+ * cannot read the subject's employment or person rows, so this definer read is the one place those two facts
+ * come from; nothing else about the employee crosses it. An empty list for anyone a step does not name. */
+export async function namedApproverLeaveSubjectsTx(tx:Tx):Promise<{leaveRequestId:string;employmentId:string;companyId:string;employeeName:string|null}[]>{
+ const rows=(await tx.execute(sql`select leave_request_id::text as leave_request_id, employment_id::text as employment_id,
+  company_id::text as company_id, employee_name from app.named_leave_approver_requests(app.named_leave_approver_request_ids())
+  order by leave_request_id`)) as unknown as {leave_request_id:string;employment_id:string;company_id:string;employee_name:string|null}[];
+ return rows.map(r=>({leaveRequestId:r.leave_request_id,employmentId:r.employment_id,companyId:r.company_id,employeeName:r.employee_name}));
+}
+
 export function pendingLeaveTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
  return withTenant(ctx,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,ctx);
-  const candidates=await tx.select({id:leaveRequest.id,employmentId:leaveRequest.employmentId,personId:employment.personId,
+  const visible=await tx.select({id:leaveRequest.id,employmentId:leaveRequest.employmentId,personId:employment.personId,
    employee:person.fullName,createdAt:leaveRequest.createdAt}).from(leaveRequest)
    .innerJoin(employment,and(eq(employment.id,leaveRequest.employmentId),eq(employment.tenantId,leaveRequest.tenantId)))
    .leftJoin(person,eq(person.id,employment.personId))
    .where(and(eq(leaveRequest.tenantId,ctx.tenantId),eq(leaveRequest.status,'pending'),sql`NOT app.is_self_person(${employment.personId})`,
     companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
    .orderBy(desc(leaveRequest.createdAt),asc(leaveRequest.id));
+  // 0669 — a named approver reads the request but not the subject's employment, so the join above drops it.
+  // Their rows join from the definer read instead. The assignment gate below still decides what is a task.
+  const seen=new Set(visible.map(row=>row.id));
+  const named=(await namedApproverLeaveSubjectsTx(tx)).filter(row=>!seen.has(row.leaveRequestId)&&(companyIds===undefined||companyIds.includes(row.companyId)));
+  const namedRequests=named.length?await tx.select({id:leaveRequest.id,createdAt:leaveRequest.createdAt}).from(leaveRequest)
+   .where(and(eq(leaveRequest.tenantId,ctx.tenantId),eq(leaveRequest.status,'pending'),inArray(leaveRequest.id,named.map(row=>row.leaveRequestId)))):[];
+  const namedById=new Map(named.map(row=>[row.leaveRequestId,row]));
+  const candidates:AssignedApprovalMetadata[]=[...visible,...namedRequests.map(row=>{const n=namedById.get(row.id)!;
+   return {id:row.id,employmentId:n.employmentId,personId:null,employee:n.employeeName,createdAt:row.createdAt};})]
+   .sort((a,b)=>b.createdAt.getTime()-a.createdAt.getTime()||a.id.localeCompare(b.id));
   const result:AssignedApprovalMetadata[]=[];
   for(let offset=0;offset<candidates.length;offset+=1000){
    const batch=candidates.slice(offset,offset+1000);

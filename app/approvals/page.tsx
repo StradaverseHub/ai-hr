@@ -11,7 +11,7 @@ import {isCurrentAssignedApproval} from '@/core/assigned-approval-focus';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
-import { listLeaveRequests, listPendingLeaveCancellations, leaveRequestDateBreakdown } from '@/core/read';
+import { listLeaveRequests, listNamedApproverLeaveRequests, listPendingLeaveCancellations, leaveRequestDateBreakdown } from '@/core/read';
 // 1e9145d4 adds dayTypesForPairs to this EXISTING direct import. app/approvals/page.tsx is already an
 // audited kernel-contract entry on the attendance pack's drift allowlist (the approvals inbox is
 // cross-module substrate awaiting an approvals contract, ADR-0080 open decision 6) — this widens no
@@ -239,11 +239,13 @@ export default async function ApprovalsPage({
   // b833a077 (r362) — `travel` stood between `corrections` and `profileChanges` in this destructuring and
   // `listTravelRequests` in the Promise.all below. My Travel was removed completely: no form can create a
   // travel request any more, so there is no queue to decide. The travel_request rows are kept for audit.
-  const [leave, leaveCancellations, replacementRequests, loadedCorrections, claims, resignations] = await Promise.all([
+  const [visibleLeave, namedLeave, leaveCancellations, replacementRequests, loadedCorrections, claims, resignations] = await Promise.all([
     // 8cb7b089 pre-fix: cap the 200-row limit over PENDING rows only. Without the status filter, a pending
     // request older than the 200 most recent rows of ANY status silently never reached this inbox — quietly
     // incomplete before, actively misleading once calendar pills deep-link straight to this section.
     attendanceOnly||!include('leave') ? Promise.resolve([]) : listLeaveRequests(s, queueScope, focus?1:200, { status: 'pending',requestId:focusedId('leave') }),
+    // 0669 — requests the viewer is NAMED to approve but cannot otherwise see (not their report, not HR).
+    attendanceOnly||!include('leave') ? Promise.resolve([]) : listNamedApproverLeaveRequests(s, queueScope, { requestId: focusedId('leave') }),
     attendanceOnly||!include('leaveCancellation') ? Promise.resolve([]) : listPendingLeaveCancellations(s, queueScope,undefined,focusedId('leaveCancellation')),
     // 5ff7daff: same reporting-line scope as every other queue on this page; RLS trims it further.
     attendanceOnly||!include('replacementLeave') ? Promise.resolve([]) : listPendingReplacementLeaveRequests(s, { companyIds: queueScope,requestId:focusedId('replacementLeave') }),
@@ -288,6 +290,10 @@ export default async function ApprovalsPage({
     admin&&include('hrReview')?listReviews(s,{status:'pending_hr',requestId:focusedId('hrReview')}):Promise.resolve([]),
   ]);
 
+  // 0669 — a row the viewer already sees through their normal access keeps that richer row.
+  const visibleLeaveIds = new Set(visibleLeave.map((r) => r.id));
+  const leave = [...visibleLeave, ...namedLeave.filter((r) => !visibleLeaveIds.has(r.id))];
+  const namedView = (r: (typeof leave)[number]) => 'namedApproverView' in r && !admin;
   const pendingLeave = leave.filter((r) => r.status === 'pending');
   // ADR-0068 §6: eagerly fetch the per-date breakdown for each visible PENDING leave row. A non-empty result
   // means this is a per-date-approval request → render the per-date decision modal trigger instead of the
@@ -333,7 +339,7 @@ export default async function ApprovalsPage({
   // r301 (83511d3b) — the approval-step kinds only an HR admin can clear (core/leave.ts assertCanDecideAsApprover).
   const HR_ONLY_STEP_KINDS = new Set(['hr_admin', 'hr_manager', 'custom_role']);
   const stageLabel = (kind: string | null) =>
-    kind === 'direct_manager' ? t('stageManager') : t('stageHr');
+    kind === 'direct_manager' ? t('stageManager') : kind === 'specific_employee' ? t('stageNamedApprover') : t('stageHr');
   const rm = (n: number) => `RM ${n.toLocaleString('en-MY', { minimumFractionDigits: 2 })}`;
 
   // Category panel (2dec6406) — ONE population per category, taken from the SAME in-memory lists the
@@ -410,6 +416,7 @@ export default async function ApprovalsPage({
   // provider rows by type, so a filtered select-all can never touch hidden rows of the other sub-type.
   const leaveBulkActionable = (r: (typeof sortedLeave)[number]) =>
     !mine(r.personId) &&
+    !namedView(r) &&
     !(r.currentStepKind && r.currentStepKind !== 'direct_manager' && !admin) &&
     (breakdowns.get(r.id)?.length ?? 0) === 0;
   const bulkRows: BulkRow[] = [
@@ -541,7 +548,8 @@ export default async function ApprovalsPage({
                   <td className="px-4 py-2.5">
                     <LeaveEmployeeCell
                       name={r.employee}
-                      href={`/personnel/${r.employmentId}`}
+                      // 0669 — a named approver reads this request only, never the employee's record.
+                      href={namedView(r) ? undefined : `/personnel/${r.employmentId}`}
                       linkTitle={t('viewHistory')}
                     />
                   </td>
@@ -628,6 +636,13 @@ export default async function ApprovalsPage({
                   <td className="px-4 py-2.5">
                     {mine(r.personId) ? (
                       <span className="flex justify-end text-xs text-muted-foreground">{decideLabels.yourRequest}</span>
+                    ) : namedView(r) ? (
+                      // 0669 — the named approver may READ this request (owner decision, 28 Oct 2026: view only);
+                      // HR records the decision, so say so rather than show controls that cannot complete.
+                      <span className="flex max-w-[14rem] flex-col items-end gap-0.5 text-right text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground/80">{t('stageNamedApprover')}</span>
+                        <span>{t('namedApproverViewOnly')}</span>
+                      </span>
                     ) : r.currentStepKind && r.currentStepKind !== 'direct_manager' && !admin ? (
                       // 6fadb036: any non-manager step (HR / HR Manager / Payroll / Dept-BU Head / Custom Role)
                       // is an admin/role-authority gate — a plain manager viewer sees the stage, not buttons.
