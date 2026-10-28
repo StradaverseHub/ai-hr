@@ -464,3 +464,22 @@ All runs are `alpha-focused-checks.yml` on standard runners at exact SHAs of `co
 Not verified: devices, screen readers, dark mode, real Play/Apple accounts, the Android share sheet, Malay copy review,
 and a dev-server render of any web route touched. Push and shift reminders are not built (migration number and
 APNs/FCM keys pending).
+
+## Owner decisions, 28 October 2026 (Phase F)
+
+Status of every item below: **DECIDED, not built yet.** Phase F covers M11, M12 and M13.
+
+- **D11 — DECIDED, not built yet.** Claim drafts are the server's existing `draft` claim rows (`saveClaimDraft`),
+  the same ones the web lists; a draft reserves no money. Nothing about a claim is persisted on the phone; a receipt
+  being captured lives only in memory and the protected temporary folder until it is uploaded.
+- **D12 — DECIDED, not built yet.** Expense claims join the native approval kinds (amends D2): approve, or reject
+  with a reason, through the kernel's `decideClaim`, confirmed, inside the mobile command receipt, self-approval
+  refused, receipts viewable. No bulk (D3 stands).
+- **D13 — DECIDED, not built yet.** Attendance in the app: read-only own records and application history, personal
+  roster, plus native missed-punch/correction requests (`requestAttendanceCorrection`; a raw punch is never edited)
+  and replacement-leave requests (the existing eligibility resolver and request owner). Overtime-plan application
+  stays on the web.
+- **D14 — DECIDED, not built yet.** Profile in the app: native change requests for simple personal and contact
+  fields through `submitOwnProfileEdit`, plus the status of pending requests. Addresses and the family, bank and
+  statutory registers open on the web. Notices, documents, onboarding, resignation and performance stay deferred.
+  Team availability gains date/week navigation over the existing My Team projection.
