@@ -312,6 +312,7 @@
     "approvals": "Item Kelulusan",
     "approvalsCount": "{count, plural, one {# item menunggu keputusan anda} other {# item menunggu keputusan anda}}",
     "performance": "Prestasi",
+    "performanceTalent": "Prestasi & Bakat",
     "admin": "Pentadbir",
     "organization": "Organisasi",
     "systemLabels": "Label Sistem",

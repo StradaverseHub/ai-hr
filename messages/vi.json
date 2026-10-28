@@ -312,6 +312,7 @@
     "approvals": "Mục phê duyệt",
     "approvalsCount": "{count, plural, one {# mục đang chờ bạn quyết định} other {# mục đang chờ bạn quyết định}}",
     "performance": "Đánh giá hiệu suất",
+    "performanceTalent": "Hiệu suất & Nhân tài",
     "admin": "Quản trị",
     "organization": "Tổ chức",
     "systemLabels": "Nhãn hệ thống",

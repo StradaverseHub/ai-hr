@@ -56,7 +56,9 @@ const HR_BRAND_BADGE = 'grid size-10 shrink-0 place-items-center rounded-2xl bg-
 
 describe('Monolith shell wiring', () => {
   it('the monolith: variant keys on <html data-ui-theme="monolith">, like the tokens', () => {
-    expect(CSS).toContain("@custom-variant monolith (&:where([data-ui-theme='monolith'] *));");
+    // D-P1-32 D3: updated, not replaced — the variant still keys on the same attribute, and an area theme
+    // (<div data-area-theme>, app/performance/area-theme.css) is excluded at zero specificity.
+    expect(CSS).toContain("@custom-variant monolith (&:where([data-ui-theme='monolith'] *):not(:where([data-area-theme], [data-area-theme] *)));");
     expect(CSS).toContain(":root[data-ui-theme='monolith'] {");
   });
 

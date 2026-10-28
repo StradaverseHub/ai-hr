@@ -312,6 +312,7 @@
     "approvals": "รายการอนุมัติ",
     "approvalsCount": "{count, plural, one {# รายการรอการตัดสินใจของคุณ} other {# รายการรอการตัดสินใจของคุณ}}",
     "performance": "ผลงาน",
+    "performanceTalent": "ผลงานและบุคลากรศักยภาพ",
     "admin": "ผู้ดูแลระบบ",
     "organization": "องค์กร",
     "systemLabels": "ป้ายระบบ",

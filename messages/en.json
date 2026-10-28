@@ -312,6 +312,7 @@
     "approvals": "Approval Items",
     "approvalsCount": "{count, plural, one {# item awaiting your decision} other {# items awaiting your decision}}",
     "performance": "Performance",
+    "performanceTalent": "Performance & Talent",
     "admin": "Admin",
     "organization": "Organization",
     "systemLabels": "System Labels",

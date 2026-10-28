@@ -312,6 +312,7 @@
     "approvals": "审批事项",
     "approvalsCount": "{count, plural, one {# 项待您处理} other {# 项待您处理}}",
     "performance": "绩效",
+    "performanceTalent": "绩效与人才",
     "admin": "管理后台",
     "organization": "组织",
     "systemLabels": "系统标签",
