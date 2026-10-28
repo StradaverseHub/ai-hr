@@ -73,6 +73,8 @@ describe('Talent Box moves (real RLS)',()=>{
   await expect(move(buCeo,hod,await reviewOf(cycleA,subjects[1]),{performance:'ME'})).rejects.toThrow(/belongs to the Talent Box/);
  });
 
+ // These two cases each drive many guarded writes under real RLS (box, form or chat at several tiers); GitHub runners
+ // vary about 0.6–1.5x in speed, so they get an explicit budget instead of the 30 s default.
  it('APR-022: saves a reasonless change on the generic calibration form at BU and BG, stores a given reason, and does not cap the form',async()=>{
   const reviewId=await reviewOf(cycleA,subjects[0]);
   const save=async(ctx:SessionContext,id:string,bands:{performance?:'UA'|'BE'|'ME'|'AE'|'OU';potential?:'Low'|'Mid'|'High'},note='')=>
@@ -98,7 +100,7 @@ describe('Talent Box moves (real RLS)',()=>{
   expect(refused,'the box refused a move once the allowance was used').not.toBeNull();
   await perf.saveOnehrCalibration(bgCeo,bg,await revision(bgCeo,bg),{reviewId:refused!,axis:'performance',performance:'ME',potential:null,performanceNote:'Form decision with its reason.',potentialNote:''});
   expect((await entry(bgCeo,bg,refused!)).performance).toBe('ME');
- });
+ },60_000);
 
  it('allows the Nth category change in a unit, refuses the next, and gives the allowance back when someone returns',async()=>{
   const id=await session(cycleA,'bg',b.companyId,bgCeo,subjects);// 10 people at 20% → 2 category changes
@@ -132,7 +134,7 @@ describe('Talent Box moves (real RLS)',()=>{
   expect(await band(ids[0])).toBe('AE');
   // One count: the box sees the chat's moves and refuses the third as well.
   await expect(move(bgCeo,id,ids[2],{performance:'ME'})).rejects.toThrow(/used up: 2 of 2/);
- });
+ },60_000);
 
  it('moves and locks both axes at Group, refusing a person’s locked call, and closes BU once BG locks',async()=>{
   const [r0,r1]=await Promise.all([reviewOf(cycleA,subjects[0]),reviewOf(cycleA,subjects[1])]);
