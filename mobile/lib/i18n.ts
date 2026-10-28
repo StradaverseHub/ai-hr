@@ -319,6 +319,9 @@ const en = {
   payrollOff: 'Payslips are not enabled for your company.',
   notificationsOff: 'Notifications are not enabled for your company.',
   loading: 'Loading…',
+  listEmpty: 'Nothing to show yet.',
+  listLoadingMore: 'Loading more…',
+  listMoreFailed: 'Couldn’t load more. Items already shown are kept.',
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -632,6 +635,9 @@ const ms: Record<MessageKey, string> = {
   payrollOff: 'Slip gaji tidak diaktifkan untuk syarikat anda.',
   notificationsOff: 'Pemberitahuan tidak diaktifkan untuk syarikat anda.',
   loading: 'Memuatkan…',
+  listEmpty: 'Belum ada apa-apa untuk dipaparkan.',
+  listLoadingMore: 'Memuatkan lagi…',
+  listMoreFailed: 'Tidak dapat memuatkan lagi. Item yang telah dipaparkan dikekalkan.',
 };
 
 const catalogues: Record<string, Record<MessageKey, string>> = { en, ms };

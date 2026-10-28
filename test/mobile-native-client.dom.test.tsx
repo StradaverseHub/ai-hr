@@ -11,6 +11,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { apiOriginProblem } from '../mobile/lib/config';
 import { SessionChangedError, SignInRequiredError, UnavailableError, RequestRejectedError, NetworkUnavailableError } from '../mobile/lib/errors';
 import * as offlineContract from '../lib/mobile-offline-contract';
+import * as v2Common from '../lib/mobile-api/v2/common';
+import { z } from 'zod';
 import {enrollmentFixture} from './helpers/mobile-enrollment-fixture';
 import {androidEnrollmentFixture} from './helpers/mobile-android-enrollment-fixture';
 
@@ -26,7 +28,11 @@ function clientFixture() {
     assertAuthGeneration(owner: number) { if (owner !== generation) throw new SessionChangedError(); },
     getAccessToken: vi.fn(async () => 'access-token'), refresh: vi.fn(async () => 'rotated-token') };
   const output = { exports: {} as { apiGet: (path: string, params?: Record<string, string>,signal?:AbortSignal) => Promise<unknown>; apiPost: (path:string,body:unknown,params?:Record<string,string>,operation?:{assertCurrent():void})=>Promise<unknown>;
-    useApi: (path: string, params: Record<string, string>, onSignInRequired: () => void) => { data: { person: {name:string} } | null } } };
+    useApi: (path: string, params: Record<string, string>, onSignInRequired: () => void) => { data: { person: {name:string} } | null };
+    v2Page: (path:string,item:z.ZodType)=>unknown; v2Download: (path:string,maxBytes?:number)=>unknown;
+    apiGetPage: (resource:unknown,cursor:string|null,params?:Record<string,string>,signal?:AbortSignal)=>Promise<{items:unknown[];nextCursor:string|null}>;
+    apiDownload: (resource:unknown,params?:Record<string,string>,signal?:AbortSignal)=>Promise<{outcome:string;code?:string;document?:{uri:string}}> } };
+  const written = vi.fn((bytes: Uint8Array, mimeType: string) => ({ uri: 'cache/aihr-protected/random.pdf', mimeType, size: bytes.byteLength, delete: vi.fn() }));
   const code = transpileModule(readFileSync('mobile/lib/api.ts', 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS } }).outputText;
   runInNewContext(code, { exports: output.exports, module: output, fetch: response, AbortController, FormData, TextDecoder, setTimeout, clearTimeout,
     require: (id: string) => {
@@ -42,9 +48,11 @@ function clientFixture() {
       if (id === './read-coordinator') return {retryAfterSeconds,createReadCoordinator:(ports:Parameters<typeof createReadCoordinator>[0])=>createReadCoordinator({...ports,now:()=>monotonic})};
       if (id === './errors') return { SessionChangedError, SignInRequiredError, UnavailableError, RequestRejectedError, NetworkUnavailableError };
       if (id === './i18n') return { appLocale: () => locale };
+      if (id === '../../lib/mobile-api/v2/common') return v2Common;
+      if (id === './protected-document') return { writeProtectedDocument: written };
       throw new Error(`Unexpected native client dependency: ${id}`);
     } });
-  return { api: output.exports, config, response, auth, appState, changeSession() { generation += 1; },changeConnection(){namespace='company-two';},changeLocale(){locale='ms';},advanceCooldown(ms:number){monotonic+=ms;} };
+  return { api: output.exports, config, response, auth, appState, written, changeSession() { generation += 1; },changeConnection(){namespace='company-two';},changeLocale(){locale='ms';},advanceCooldown(ms:number){monotonic+=ms;} };
 }
 afterEach(()=>{cleanup();vi.useRealTimers();});
 
@@ -333,5 +341,52 @@ describe('offline clocking transport',()=>{
     const form=new FormData();form.append('claim','{}');
     await expect(f.api.apiPost('v2/integrity/'+platform+'/offline/claim',form,{employmentId:id})).rejects.toBeInstanceOf(UnavailableError);
     await expect(f.api.apiPost('v2/integrity/'+platform+'/offline/claim',{} as never,{employmentId:id})).rejects.toThrow('saved attachment envelope');
+  });
+});
+
+describe('v2 cursor pages and protected downloads', () => {
+  const pdf = () => new Response(new TextEncoder().encode('%PDF-1.7 synthetic'), { headers: { 'content-type': 'application/pdf', 'content-disposition': 'attachment; filename="document.pdf"' } });
+  it('reads a page through the v2 path with its own schema and an opaque cursor parameter', async () => {
+    const f = clientFixture(), page = f.api.v2Page('v2/test-items', z.object({ id: z.string() }));
+    f.response.mockResolvedValueOnce(Response.json({ items: [{ id: 'a', salary: '9999.99' }], nextCursor: 'Q1' }));
+    expect(await f.api.apiGetPage(page, 'Q0', { employmentId: 'e1' })).toEqual({ items: [{ id: 'a' }], nextCursor: 'Q1' });
+    const sent = new URL(f.response.mock.calls[0][0]);
+    expect(sent.pathname).toBe('/api/mobile/v2/test-items');
+    expect(Object.fromEntries(sent.searchParams)).toEqual({ cursor: 'Q0', employmentId: 'e1' });
+    f.response.mockResolvedValueOnce(Response.json({ items: [{ id: 1 }], nextCursor: null }));
+    await expect(f.api.apiGetPage(page, null)).rejects.toBeInstanceOf(UnavailableError);
+    await expect(f.api.apiGetPage(page, null, { cursor: 'x' })).rejects.toThrow('cursor separately');
+  });
+  it('writes an allowed attachment to a protected file and returns its handle', async () => {
+    const f = clientFixture(), file = f.api.v2Download('v2/test-pdf');
+    f.response.mockResolvedValueOnce(pdf());
+    const result = await f.api.apiDownload(file, { id: 'p1' });
+    expect(result).toMatchObject({ outcome: 'file', document: { uri: 'cache/aihr-protected/random.pdf' } });
+    expect(f.written).toHaveBeenCalledOnce();
+    expect(new TextDecoder().decode(f.written.mock.calls[0][0])).toBe('%PDF-1.7 synthetic');
+    expect(f.written.mock.calls[0][1]).toBe('application/pdf');
+    expect(new URL(f.response.mock.calls[0][0]).pathname).toBe('/api/mobile/v2/test-pdf');
+  });
+  it('returns a JSON refusal and writes nothing', async () => {
+    const f = clientFixture();
+    f.response.mockResolvedValueOnce(Response.json({ outcome: 'refused', code: 'not_released' }));
+    expect(await f.api.apiDownload(f.api.v2Download('v2/test-pdf'))).toEqual({ outcome: 'refused', code: 'not_released' });
+    expect(f.written).not.toHaveBeenCalled();
+  });
+  it('refuses a disallowed type, an inline disposition, an oversized body, a backgrounded app and a superseded session', async () => {
+    const f = clientFixture(), file = f.api.v2Download('v2/test-pdf', 8);
+    f.response.mockResolvedValueOnce(new Response('<html>', { headers: { 'content-type': 'text/html', 'content-disposition': 'attachment' } }));
+    await expect(f.api.apiDownload(f.api.v2Download('v2/test-pdf'))).rejects.toBeInstanceOf(UnavailableError);
+    f.response.mockResolvedValueOnce(new Response('%PDF-1.7', { headers: { 'content-type': 'application/pdf', 'content-disposition': 'inline' } }));
+    await expect(f.api.apiDownload(f.api.v2Download('v2/test-pdf'))).rejects.toBeInstanceOf(UnavailableError);
+    f.response.mockResolvedValueOnce(pdf());
+    await expect(f.api.apiDownload(file)).rejects.toBeInstanceOf(UnavailableError);
+    f.appState.currentState = 'background';
+    f.response.mockResolvedValueOnce(pdf());
+    await expect(f.api.apiDownload(f.api.v2Download('v2/test-pdf'))).rejects.toBeInstanceOf(UnavailableError);
+    f.appState.currentState = 'active';
+    f.response.mockImplementationOnce(async () => { f.changeSession(); return pdf(); });
+    await expect(f.api.apiDownload(f.api.v2Download('v2/test-pdf'))).rejects.toBeInstanceOf(SessionChangedError);
+    expect(f.written).not.toHaveBeenCalled();
   });
 });

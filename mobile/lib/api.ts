@@ -28,6 +28,8 @@ import { apiOriginProblem, config, configProblem,identityNamespace } from './con
 import { SignInRequiredError, UnavailableError, RequestRejectedError,SessionChangedError,NetworkUnavailableError } from './errors';
 import {createReadCoordinator,retryAfterSeconds} from './read-coordinator';
 import { appLocale } from './i18n';
+import { MobileRefusal, pageOf, type Page } from '../../lib/mobile-api/v2/common';
+import { writeProtectedDocument, type ProtectedDocument, type ProtectedDocumentType } from './protected-document';
 
 export type { LeaveResponse, MeResponse, NotificationsResponse, PayslipsResponse };
 
@@ -91,13 +93,32 @@ const offlineCommands={
 };
 const commands = {...enrollmentCommands,...signedClockCommands,...offlineCommands,'v2/integrity/key-receipt':IntegrityKeyLookupResultV2,'v2/integrity/revoke':IntegrityRevocationResultV2,'integrity/key-receipt':IntegrityKeyLookupResult,'integrity/revoke':IntegrityRevocationResult,'clock-attempts':ClockAttemptReceipt,'clock-location':ClockLocationResponse, 'submission-abandon':SubmissionAbandonResponse, clock: ClockResult, 'clock-device': DeviceResponse, 'leave-requests': LeaveResult, 'leave-preview': LeavePreviewResponse };
 
+/**
+ * The v2 registry. A v2 resource is declared ONCE, as a descriptor carrying its contract schema (pages) or
+ * its byte policy (downloads), so a v2 body is never decoded by a v1 schema or by a guess. `url()` already
+ * routes a `v2/` path to /api/mobile/v2/. Identifiers travel as query parameters, never path segments.
+ */
+type V2Path=`v2/${string}`;
+export type V2Page<T>={kind:'page';path:V2Path;schema:z.ZodType<Page<T>>};
+export type V2Download={kind:'download';path:V2Path;maxBytes:number;types:readonly ProtectedDocumentType[]};
+export function v2Page<S extends z.ZodType>(path:V2Path,item:S):V2Page<z.output<S>>{
+  return {kind:'page',path,schema:pageOf(item) as unknown as z.ZodType<Page<z.output<S>>>};
+}
+/** A protected file. 10 MiB is the server's ceiling too (lib/mobile-api/handler.ts MOBILE_BINARY_MAX_BYTES). */
+export function v2Download(path:V2Path,maxBytes=10*1024*1024,types:readonly ProtectedDocumentType[]=['application/pdf']):V2Download{
+  if(!Number.isInteger(maxBytes)||maxBytes<1||maxBytes>10*1024*1024)throw new Error('Invalid download bound');
+  return {kind:'download',path,maxBytes,types};
+}
+type BinaryReply={outcome:'file';bytes:Uint8Array;mimeType:ProtectedDocumentType}|MobileRefusal;
+type RequestMode={schema?:z.ZodType;binary?:{maxBytes:number;types:readonly string[]}};
+
 const supportReference=(value:string|null)=>value?.length===36&&/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)?value.toLowerCase():undefined;
-async function apiRequest<T>(path:string,params:Record<string,string|undefined>,request?:{body:FormData|string;json:boolean},signal?:AbortSignal,operation?:{assertCurrent():void}):Promise<T> {
+async function apiRequest<T>(path:string,params:Record<string,string|undefined>,request?:{body:FormData|string;json:boolean},signal?:AbortSignal,operation?:{assertCurrent():void},mode:RequestMode={}):Promise<T> {
   if (!config.apiUrl || apiOriginProblem(config.apiUrl) || configProblem()) throw new UnavailableError('The company connection is not configured securely.');
   const owner = authGeneration();
   const origin=config.apiUrl,namespace=identityNamespace(),locale=appLocale();
   const assertCurrent=()=>{operation?.assertCurrent();assertAuthGeneration(owner);if(config.apiUrl!==origin||identityNamespace()!==namespace||appLocale()!==locale)throw new SessionChangedError();};
-  const schema = request ? commands[path as keyof typeof commands] : responses[path as keyof typeof responses];
+  const schema = mode.schema ?? (request ? commands[path as keyof typeof commands] : responses[path as keyof typeof responses]);
   let resource=path;
   const send = async (token: string) => {
     let responded=false;
@@ -120,6 +141,24 @@ async function apiRequest<T>(path:string,params:Record<string,string|undefined>,
       if (!response.ok) {
         void response.body?.cancel().catch(()=>{});
         return {status:response.status, data:undefined,retryAfter:retryAfterSeconds(response.headers.get('retry-after')),supportId:supportReference(response.headers.get('x-aihr-support-id'))};
+      }
+      if (mode.binary) {
+        // A protected file is the bytes of an allowed type sent as an attachment; a refusal is JSON at 200.
+        const type=(response.headers.get('content-type')??'').split(';')[0].trim().toLowerCase();
+        if (type==='application/json') {
+          const refusal=MobileRefusal.safeParse(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(await readBoundedBody(response,16384,15_000,controller.signal))));
+          assertCurrent();
+          if (!refusal.success) throw new UnavailableError('Invalid server response.');
+          return {status:response.status,data:refusal.data};
+        }
+        if (!mode.binary.types.includes(type)||!/^attachment(;|$)/i.test(response.headers.get('content-disposition')??'')) {
+          void response.body?.cancel().catch(()=>{});
+          throw new UnavailableError('Invalid server response.');
+        }
+        const file=await readBoundedBody(response,mode.binary.maxBytes,30_000,controller.signal);
+        assertCurrent();
+        if (!file.byteLength) throw new UnavailableError('Invalid server response.');
+        return {status:response.status,data:{outcome:'file',bytes:file,mimeType:type}};
       }
       const bytes = await readBoundedBody(response, 1024 * 1024, 15_000, controller.signal);
       assertCurrent();
@@ -166,6 +205,33 @@ export async function apiGet<P extends keyof Endpoints>(path:P,params:Record<str
     assertAuthGeneration(owner);if(identityNamespace()!==namespace||config.apiUrl!==origin||appLocale()!==locale)throw new SessionChangedError();
     return apiRequest<Endpoints[P]>(path,snapshot,undefined,sharedSignal);
   },signal);
+}
+/** One page of a v2 cursor list. Shares the read coordinator with apiGet: same dedupe, backoff and scope reset. */
+export async function apiGetPage<T>(resource:V2Page<T>,cursor:string|null,params:Record<string,string|undefined>={},signal?:AbortSignal):Promise<Page<T>>{
+  if('cursor' in params)throw new Error('Pass the cursor separately');
+  const owner=authGeneration(),namespace=identityNamespace(),origin=config.apiUrl,locale=appLocale(),snapshot=canonicalParams({...params,cursor:cursor??undefined});
+  const scope=JSON.stringify([owner,namespace,origin,locale]),key=JSON.stringify(['page',resource.path,snapshot]);
+  return reads.read(scope,key,sharedSignal=>{
+    assertAuthGeneration(owner);if(identityNamespace()!==namespace||config.apiUrl!==origin||appLocale()!==locale)throw new SessionChangedError();
+    return apiRequest<Page<T>>(resource.path,snapshot,undefined,sharedSignal,undefined,{schema:resource.schema});
+  },signal);
+}
+
+/**
+ * Download a protected file into a random-named cache file (protected-document.ts) and hand back its
+ * handle, or the server's refusal. Never shared between callers, never written while the app is not in
+ * the foreground (the background sweep has already run), never written for a superseded session. The
+ * caller deletes the handle when its confirmed use ends; the sweep catches everything else.
+ */
+export async function apiDownload(resource:V2Download,params:Record<string,string|undefined>={},signal?:AbortSignal):Promise<{outcome:'file';document:ProtectedDocument}|MobileRefusal>{
+  const owner=authGeneration(),namespace=identityNamespace(),origin=config.apiUrl;
+  const reply=await apiRequest<BinaryReply>(resource.path,canonicalParams(params),undefined,signal,undefined,{binary:{maxBytes:resource.maxBytes,types:resource.types}});
+  if(reply.outcome==='refused')return reply;
+  assertAuthGeneration(owner);
+  if(identityNamespace()!==namespace||config.apiUrl!==origin)throw new SessionChangedError();
+  if(signal?.aborted)throw new UnavailableError();
+  if(AppState.currentState!=='active')throw new UnavailableError('Unlock the app to continue.');
+  return {outcome:'file',document:writeProtectedDocument(reply.bytes,reply.mimeType)};
 }
 type Commands = {[P in keyof typeof commands]:z.infer<(typeof commands)[P]>};
 type EnrollmentBodies={

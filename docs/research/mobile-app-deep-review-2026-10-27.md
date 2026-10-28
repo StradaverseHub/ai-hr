@@ -271,3 +271,31 @@ honest unsupported/unavailable/human-review behavior before a real-data attendan
 Sources checked: [Huawei native development/SDK](https://developer.huawei.com/consumer/en/harmonyos/develop/),
 [Huawei HarmonyOS5+ application installation guidance](https://consumer.huawei.com/cn/support/content/zh-cn16061787/),
 [Huawei Android Safety Detect codelab](https://developer.huawei.com/consumer/en/codelab/HMSCoreSafetyDetect/).
+
+## Owner decisions, 28 October 2026 (Phase E)
+
+Status of every item below: **DECIDED, not built yet.** Each is an owner decision that binds the Phase E
+work; none is evidence that the behaviour exists. The shared v2 foundation (cursor pages, v2 refusal and
+command shapes, the actor-owned command receipt, the binary route wrapper, the paged list and the
+protected-document sweep) is the only Phase E code at the time of writing.
+
+- **D1 — DECIDED, not built yet.** Payslips and EA forms cover every employment of the signed-in login,
+  as the web does. No access once the login is blocked.
+- **D2 — DECIDED, not built yet.** Native decisions for leave (whole request and per date), leave
+  cancellation, attendance correction and overtime. Every other approval kind stays read-only in the app
+  with a link to the web. Claims follow after M11.
+- **D3 — DECIDED, not built yet.** Bulk approval is deferred.
+- **D4 — DECIDED, not built yet.** Self-approval is refused at mobile admission, even for super_admin.
+- **D5 — DECIDED, not built yet.** Kernel changes are approved, each pinned by tests: an optional
+  transaction on the leave approve and cancel services; an expected step for leave decisions; hourly
+  days in previewLeaveDeduction; keyset paging for notifications.
+- **D6 — DECIDED, not built yet.** Push uses expo-notifications with DIRECT APNs/FCM delivery (keys on
+  the server). Tokens are bound to (tenant, user, installation), amending ADR-0088 §3. Payloads are
+  generic only.
+- **D7 — DECIDED, not built yet.** A native payslip view, plus expo-sharing for an explicitly confirmed
+  and audited share of the PDF/EA. No in-app PDF viewer.
+- **D8 — DECIDED, not built yet.** Shift reminders are ON by default: 15 minutes before shift start; a
+  forgot-to-clock-out reminder 30 minutes after shift end; a 7-day scheduling horizon; refreshed when the
+  roster changes; the employee can turn them off.
+- **D9 — DECIDED, not built yet.** @react-native-community/datetimepicker for date and time entry.
+- **D10 — DECIDED, not built yet.** Drafts are held in memory only.
