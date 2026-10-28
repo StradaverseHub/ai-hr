@@ -11,6 +11,13 @@ import {setAiSpendBudget} from '@/core/ai-spend-management';
 import { AiControlError, clearUserAllowance, parseAiAllowance, setAiAllowance, setAiFeature, setAssistantPermission } from '@/core/ai-management';
 
 const PAGE = '/control-tower/agents';
+const ROW_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** A successful save returns to the saved row (or its section) instead of the top of this long page.
+ *  Refusals stay at the top, beside the error banner. Only a well-formed id ever reaches the fragment. */
+function savedAt(prefix:string, id:unknown, section:string): string {
+  const value = String(id ?? '');
+  return ROW_ID.test(value) ? `#${prefix}-${value}` : `#${section}`;
+}
 
 /** Only owned validation sentences or closed translated refusals cross this browser boundary. */
 async function commandError(error: unknown): Promise<string> {
@@ -30,7 +37,8 @@ export async function setAiFeatureAction(formData: FormData) {
   } catch (e) { redirect(`${PAGE}?error=${encodeURIComponent(await commandError(e))}`); }
   revalidatePath(PAGE);
   revalidatePath('/admin/ai');
-  redirect(`${PAGE}?toast=${encodeURIComponent(t('saved'))}`);
+  const saved = formData.get('feature');
+  redirect(`${PAGE}?toast=${encodeURIComponent(t('saved'))}${isAiFeature(saved) ? `#ai-feature-${saved}` : '#ai-features'}`);
 }
 
 export async function setAiAllowanceAction(formData: FormData) {
@@ -47,7 +55,10 @@ export async function setAiAllowanceAction(formData: FormData) {
       maxConcurrent:parseAiAllowance(String(formData.get('maxConcurrent')??''),1000000)});
   } catch (e) { redirect(`${PAGE}?${query}error=${encodeURIComponent(await commandError(e))}`); }
   revalidatePath(PAGE);
-  redirect(`${PAGE}?${query}toast=${encodeURIComponent(t('saved'))}`);
+  const kind = String(formData.get('kind'));
+  const anchor = kind === 'company' ? savedAt('ai-company', formData.get('subjectId'), 'company-limits')
+    : kind === 'user' ? savedAt('ai-user', formData.get('subjectId'), 'user-limits') : '#ai-user-default';
+  redirect(`${PAGE}?${query}toast=${encodeURIComponent(t('saved'))}${anchor}`);
 }
 
 
@@ -60,7 +71,7 @@ export async function setAssistantPermissionAction(formData:FormData){
   await setAssistantPermission(s,String(formData.get('userId')??''),enabled==='true');
  }catch(e){redirect(`${PAGE}?${query}error=${encodeURIComponent(await commandError(e))}`);}
  revalidatePath(PAGE);revalidatePath('/assistant');
- redirect(`${PAGE}?${query}toast=${encodeURIComponent(t('saved'))}`);
+ redirect(`${PAGE}?${query}toast=${encodeURIComponent(t('saved'))}${savedAt('ai-user',formData.get('userId'),'user-limits')}`);
 }
 
 export async function clearUserAllowanceAction(formData:FormData){
@@ -69,12 +80,12 @@ export async function clearUserAllowanceAction(formData:FormData){
  try{const s=await getBrowserCommandSession();await clearUserAllowance(s,String(formData.get('userId')??''));}
  catch(e){redirect(`${PAGE}?${query}error=${encodeURIComponent(await commandError(e))}`);}
  revalidatePath(PAGE);
- redirect(`${PAGE}?${query}toast=${encodeURIComponent(t('usesDefault'))}`);
+ redirect(`${PAGE}?${query}toast=${encodeURIComponent(t('usesDefault'))}${savedAt('ai-user',formData.get('userId'),'user-limits')}`);
 }
 
 export async function setAiSpendBudgetAction(formData:FormData){
  const t=await getTranslations('aiManagement');
  try{const session=await getBrowserCommandSession();await setAiSpendBudget(session,{kind:'tenant',monthlyUsd:String(formData.get('monthlyUsd')??''),rootUsd:String(formData.get('rootUsd')??'')});}
  catch(error){redirect(`${PAGE}?error=${encodeURIComponent(await commandError(error))}`);}
- revalidatePath(PAGE);redirect(`${PAGE}?toast=${encodeURIComponent(t('saved'))}`);
+ revalidatePath(PAGE);redirect(`${PAGE}?toast=${encodeURIComponent(t('saved'))}#ai-spend`);
 }
