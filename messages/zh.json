@@ -2092,7 +2092,7 @@
       "sectionStep4": "查看将会改变什么",
       "sectionStep5Hint": "先确认每一行对应哪位员工、改动了什么，再执行更新。记录从这一步开始被修改。",
       "sectionColumnsHeading": "此模板包含的列",
-      "sectionColumnsNotice": "文件中只能出现这些列。属于其他分项的列会被拒绝，拒绝提示会指出该列所属的分项。完整模板中的部分列 — 公司、部门、职位、成本中心、雇佣类型、入职日期、薪酬，以及 EPF、SOCSO、EIS 和税务居民身份 — 不属于任何分项，完全无法按分项导入；请在该员工的人事记录中修改。",
+      "sectionColumnsNotice": "文件中只能出现这些列。属于其他分项的列会被拒绝，拒绝提示会指出该列所属的分项。完整模板中的部分列 — 公司、部门、职位、成本中心、雇佣类型、入职日期和薪酬 — 不属于任何分项，完全无法按分项导入；请在该员工的人事记录中修改。",
       "sectionInstructionKey": "员工编号决定要更新哪一位员工。它必须对应系统中已有的员工 — 此模板无法创建新人。请先用完整员工模板添加新人。",
       "sectionInstructionBlank": "留空单元格即保留现有记录。空白绝不会清除数值。",
       "sectionInstructionOneRow": "每位员工一行。两行使用相同员工编号将被拒绝。",
@@ -2306,7 +2306,15 @@
           "invalid_filter": "此公司无法使用某个筛选项。请刷新选项并重新选择。",
           "invalid_file": "请选择原始 XLSX 工作簿或符合所选类型的有效 CSV。",
           "origin": "请重新加载页面，并通过此应用上传。",
-          "blacklist_input_required": "请选择“列入黑名单”状态或填写备注。仅填写员工编号并不表示要列入黑名单。"
+          "blacklist_input_required": "请选择“列入黑名单”状态或填写备注。仅填写员工编号并不表示要列入黑名单。",
+          "company_required": "必须填写公司编号。",
+          "company_unknown": "此公司编号与您可导入调动的公司不匹配。请使用 Reference 工作表中列出的公司编号。",
+          "company_ambiguous": "此公司编号与多家公司匹配。请使用 Reference 工作表中列出的公司编号。",
+          "unknown_system_field": "此事件类型不能更改该系统字段。请参阅 Reference 工作表。",
+          "duplicate_system_field": "同一系统字段在此调动中出现多次。",
+          "system_field_required": "请选择此行更改的系统字段，或将变更前和变更后留空。",
+          "before_mismatch": "变更前与员工当前记录不符；自准备文件以来记录已更改。该员工未被导入。",
+          "workbook_old_layout": "此文件使用旧的调动模板（每种调动类型一个工作表，仅限一家公司）。请下载新模板并将您的行复制进去。"
         },
         "v2": {
           "type": "人事异动类型",
@@ -2362,6 +2370,45 @@
           "employedScope": "试用期员工及通知期内员工仍会纳入。已结束或已列入黑名单的雇佣记录不会预填。",
           "referenceGuide": "下拉列表使用 Reference 中的准确系统代码，标签仅作说明。旧文件中的唯一标签仍受支持；预览会按行所属公司检查。",
           "baselineGuide": "当前工资为空时，绿色工资计算保持空白。检查和预览会提供权威工资基准，包括空白或重复的员工行。已记录的零工资仍作为工资基准。"
+        },
+        "sheet": {
+          "guideRows": "请使用 Movements 工作表。每个变更的字段填写一行。公司编号、员工编号、生效日期和事件类型相同的行将作为一项调动一起导入。",
+          "guideCompany": "公司编号是人员管理中显示的公司代码；公司没有代码时可使用注册号码。Reference 工作表列出了您可导入的每家公司的准确值。",
+          "guideFields": "事件类型和系统字段提供下拉列表。Reference 工作表显示每种事件类型可更改的系统字段以及每家公司允许的值。",
+          "guideBefore": "变更前是您预期员工当前的值。保存前会进行核对：如果自准备文件以来记录已更改，该员工将被停止导入并显示提示，不会覆盖任何内容。留空变更前即可跳过核对。",
+          "guideAfter": "变更后是新值。职级、部门、职位、地点及其他列表请使用 Reference 工作表中的代码。",
+          "guideDates": "日期格式：DD-MMM-YYYY（例如 01-Jan-2027）或 YYYY-MM-DD。黑名单使用吉隆坡当天日期。",
+          "guideLimits": "每个文件最多 200 行、50 名员工，每名员工最多 20 项调动。每名员工的调动要么全部保存，要么全部不保存；其他员工仍会继续导入。",
+          "guideNoRow": "没有字段变更的调动（例如没有调薪的转正）填写一行，系统字段、变更前和变更后留空。",
+          "referenceTypes": "事件类型及其可更改的系统字段",
+          "colEventType": "事件类型",
+          "colCode": "代码",
+          "colFields": "系统字段",
+          "noFields": "无字段变更（系统字段留空）",
+          "referenceCompanies": "每家公司应填写的公司编号",
+          "colCompany": "公司",
+          "referenceValues": "每家公司允许的值",
+          "colValue": "变更后应填写的值",
+          "colLabel": "含义",
+          "screenHint": "所有调动类型和公司共用一个模板。每个变更的字段填写一行；公司、员工、日期和事件类型相同的行构成一项调动。",
+          "downloadTemplate": "下载模板",
+          "history": "导入历史",
+          "wholeEmployee": "每名员工的调动要么全部导入，要么全部不导入。其他员工仍会继续导入。",
+          "included": "包含该员工",
+          "rows": "行",
+          "viewImport": "在导入历史中查看此次导入",
+          "companyId": "公司编号",
+          "templateFailed": "无法下载模板。请重试，或确认您至少可以维护一家公司且调动类型处于启用状态。",
+          "col": {
+            "companyId": "公司编号",
+            "employeeId": "员工编号",
+            "employeeName": "员工姓名",
+            "effectiveDate": "生效日期",
+            "eventType": "事件类型",
+            "systemField": "系统字段",
+            "before": "变更前",
+            "after": "变更后"
+          }
         }
       },
       "headerAssistance": {
@@ -2652,6 +2699,29 @@
         "exclusionsRetained": "被排除的字段与记录仍保留在原始证据中，不会悄悄合并或导入。",
         "limit": "已保留八个本地版本。请完成本次导入，或明确选择新来源重新审核；原始资料不会被悄悄移除。",
         "humanSupplied": "用户提供，原始数据中未包含。"
+      },
+      "importHistoryLink": "打开导入历史（原始文件、导入前后、撤销）",
+      "choiceYes": "是",
+      "choiceNo": "否",
+      "choiceHrdfDefault": "默认（按公司的 HRDF 登记）",
+      "instructionColumnsHeading": "各列说明 — 内容、是否必填及可接受的值",
+      "instructionAccepted": "可接受的值：{values}",
+      "bankStatutoryUploadFailed": "导入未能保存，未作任何更改。请重试，或打开导入历史查看。",
+      "viewImportHistoryEntry": "在导入历史中查看此次导入",
+      "employeeUploadFailed": "无法保存导入。未做任何更改。请重试，或打开导入历史查看。",
+      "instructionDuplicateEmail": "电子邮件：关闭“允许重复的工作邮箱或个人邮箱”（人员通用设置）时，已被其他员工使用的邮箱会被拒绝，与重复的 NRIC 相同。开启时，该行会带警告导入。",
+      "instructionStatutorySettings": "银行与法定：该标签页上的每项设置都可在此填写，列与“银行与法定”模板相同——EPF 类别及费率或金额和原因、雇主承担开关、SOCSO 和 EIS 类别、适用 SKBBK、HRDF（是、否或默认）、税务情况、所得税居民身份、OKU、子女减免方式及表格、雇主承担税款。勾选类设置填写“是”或“否”。每一行在保存前都会按与员工页面相同的规则检查；有任何错误的行不会创建任何内容。",
+      "instructionHireSettings": "入职时设置：与永久地址相同（“是”会将永久地址复制到通讯地址；请将通讯地址列留空）、排班组（名称），以及适用政策（该行公司的有效薪资政策，按名称或代码，仅在启用薪资时）。",
+      "instructionRevert": "导入历史会保存此文件、导入人以及所创建的员工编号。成功的导入可撤销一次，前提是其员工此后没有任何附加记录（薪资、请假、考勤、报销、文件、调动或登录账号）。被撤销的员工将从列表、人数统计和薪资中消失，但保留在审计记录中，其员工编号、邮箱和 NRIC 号码会被释放，以便重新导入更正后的文件。",
+      "notImported": {
+        "heading": "本模板不包含的内容及原因：",
+        "photos": "照片——在员工个人资料中上传，不在单元格中填写。",
+        "documents": "文件——在“文件”标签页上传。",
+        "leaveBalances": "假期余额——入职时按假期政策生成；期初余额使用假期余额导入。",
+        "delegations": "审批委托——需指定另一名员工和日期，由委托页面检查。",
+        "payItems": "基本工资和每月津贴以外的固定薪资项目——在“薪资”标签页或通过薪资项目导入添加。",
+        "openingTax": "年中入职员工的期初税款余额（TP3）——在“薪资”标签页填写。",
+        "holidayCalendar": "假日日历——带日期并有自身历史的分配；请在导入后于“考勤”标签页设置。"
       }
     },
     "wizard": {
@@ -2965,6 +3035,95 @@
       "gapNotAnErrorNote": "缺少类别并不是记录上的错误——这可能只是雇主从未获得的信息。",
       "gapNoBulkNote": "这里没有批量填写功能，也不应该有：子女的类别是关于该名子女的事实，只能在其本人的记录上设定。",
       "gapManualNote": "使用手动输入数字的员工不会列在此处。对他们而言以输入的数字为准，类别不会产生任何影响。"
+    },
+    "importHistory": {
+      "title": "导入历史",
+      "description": "每个人员导入文件：导入人、时间、涉及的公司、每位员工导入前后的数值，以及仅限一次的撤销。",
+      "back": "人员导入",
+      "filterLabel": "导入类型",
+      "filterAll": "全部导入",
+      "kinds": {
+        "cost_allocations": "成本中心分配",
+        "bank_statutory": "银行与法定",
+        "employee_full": "全部 — 新员工",
+        "movement": "人事变动"
+      },
+      "reference": "参考号",
+      "referenceLabel": "参考号 {reference}",
+      "type": "类型",
+      "file": "文件",
+      "time": "日期和时间",
+      "user": "导入人",
+      "unknownUser": "用户不可用",
+      "companies": "公司",
+      "records": "记录",
+      "status": "状态",
+      "counts": "成功 {succeeded} · 失败 {failed}",
+      "states": {
+        "validated": "已检查，未保存",
+        "invalid": "未导入（有错误）",
+        "succeeded": "成功",
+        "partial": "部分成功",
+        "failed": "失败",
+        "reverted": "已撤销"
+      },
+      "noAttempts": "尚无导入记录。",
+      "older": "更早的导入",
+      "downloadSource": "下载原始文件",
+      "sourceRestricted": "原始文件包含您无权查看的公司，因此无法在此下载。",
+      "fingerprint": "文件指纹（SHA-256）",
+      "fileIssues": "文件问题",
+      "audit": "审计记录",
+      "events": {
+        "previewed": "文件已检查",
+        "confirmed": "已导入",
+        "failed": "导入失败",
+        "reverted": "已撤销",
+        "revert_failed": "撤销被拒绝或失败"
+      },
+      "eventReason": "原因：{reason}",
+      "items": "按员工列出的更改",
+      "itemsHint": "仅显示您有权查看的公司的员工。",
+      "noItems": "此次导入未保存任何更改。",
+      "colRecord": "员工和日期",
+      "colCompany": "公司",
+      "colResult": "结果",
+      "colBefore": "导入前",
+      "colAfter": "导入后",
+      "itemApplied": "已保存",
+      "itemFailed": "未保存",
+      "allocation": {
+        "none": "无分配",
+        "clear": "已清除（无分配）"
+      },
+      "revert": {
+        "title": "撤销此次导入",
+        "hint": "恢复每条记录在此次导入前的内容。仅可执行一次，且仅在此次导入更改的内容此后未被更改时可用。导入记录和审计记录均保留。",
+        "review": "查看撤销内容",
+        "working": "处理中…",
+        "restoreTitle": "将恢复的内容",
+        "blocked": "无法撤销此次导入，因为以下记录在其后已被更改：",
+        "reason": "撤销原因",
+        "reasonHint": "必填（3 至 1,000 个字符），将记录在审计记录中。",
+        "acknowledge": "我了解此操作将恢复所列每条记录的先前数值，且只能执行一次。",
+        "confirm": "撤销导入",
+        "cancel": "取消",
+        "failed": "撤销未能完成，未做任何更改。",
+        "noPermission": "撤销此次导入需要对其中每家公司拥有人员维护权限。"
+      },
+      "bankStatutory": {
+        "blank": "（空白）"
+      },
+      "movementItem": {
+        "movement": "调动",
+        "noMovement": "无历史记录条目",
+        "scheduled": "已安排在生效日期执行",
+        "rows": "第 {rows} 行"
+      },
+      "employeeFull": {
+        "created": "已创建 {code} · {name}",
+        "willVoid": "该员工将被作废：从列表、人数统计和薪资中移除，保留在审计记录中。员工编号、邮箱和 NRIC 将被释放。"
+      }
     }
   },
   "leave": {
@@ -7283,7 +7442,7 @@
       "emptySheet": "该工作簿的第一个工作表为空。",
       "pasteToggle": "或改为粘贴数据行",
       "csvData": "粘贴的数据行",
-      "csvPlaceholder": "员工编号,薪资期间,薪资周期,DOE 代码,公司代码,金额,Override?",
+      "csvPlaceholder": "员工编号,薪资期间,薪资周期,薪资项目代码,公司代码,金额,Override?",
       "validate": "检查文件",
       "validating": "检查中…",
       "downloadTemplate": "下载模板",
@@ -7295,7 +7454,7 @@
       "cycleReference": "薪资周期",
       "noCycleCodes": "本公司尚无启用的薪资周期。",
       "cycleReferenceHint": "薪资周期列可以填代码或周期名称。代码在“管理 → 薪资周期”中设置。",
-      "codeReference": "可接受的 DOE 代码",
+      "codeReference": "可接受的薪资项目代码",
       "codeReferenceHint": "系统不认识的代码会以明确提示拦下该行，而不会被悄悄丢弃。",
       "colCode": "代码",
       "colCodeLabel": "含义",
@@ -7332,7 +7491,7 @@
       "noMonths": "此文件暂无可导入的内容。",
       "issuesTitle": "检查结果",
       "colRow": "Excel 行号",
-      "colDoeCode": "DOE 代码",
+      "colDoeCode": "薪资项目代码",
       "colErrorType": "错误类型",
       "colErrorDescription": "错误说明",
       "colImportStatus": "导入状态",
@@ -10699,7 +10858,8 @@
         "letterGenerate": "依据当前公司范围、信函生成与读取权限，以及当前员工资料和财务访问权限。",
         "letterApproval": "当前公司范围、信函读取及审批权限，以及当前分配的审批阶段。",
         "letterRegister": "当前公司范围及各操作所需的当前信函读取、签发、生成或设置权限。",
-        "letterSettings": "当前公司范围。设置权限可配置工作流；审批权限仅可管理您自己的签名图像。"
+        "letterSettings": "当前公司范围。设置权限可配置工作流；审批权限仅可管理您自己的签名图像。",
+        "importHistory": "当您对导入中至少一家公司拥有人员查看权限时会列出该导入，并且只显示您可查看公司的员工。下载原始文件需要对其中每家公司拥有查看权限；撤销需要对其中每家公司拥有人员维护权限。"
       },
       "scopedTo": "范围限定为 {company} 及其子公司",
       "screen": {
@@ -10711,7 +10871,8 @@
         "leaveEmployeeBalances": "員工結餘",
         "leaveEmployeeRecords": "員工休假記錄",
         "duplicatePersonRecords": "重复员工记录",
-        "childReliefReview": "子女税务减免检视（PCB）"
+        "childReliefReview": "子女税务减免检视（PCB）",
+        "importHistory": "导入历史"
       },
       "screenColumn": "屏幕",
       "sectionFunctionAccess": "功能访问",
@@ -26946,11 +27107,11 @@
     "superseded": "已被替代",
     "unset": "尚未记录分配。",
     "importTitle": "导入成本中心分配",
-    "importHelp": "更新现有员工，每个成本中心占一行。每组公司、员工编号及生效日期构成一个完整替换集合。",
+    "importHelp": "为现有员工更新成本中心分配，每个成本中心一行。每个公司代码、员工编号和生效日期构成一套完整的替换分配。一个文件可包含多家公司。",
     "referenceCompany": "代码参考所属公司",
     "downloadCsv": "下载分配 CSV",
     "downloadWorkbook": "下载分配工作簿及代码",
-    "upload": "上传 CSV 或工作簿",
+    "upload": "上传已填写的模板（.xlsx 或 .csv）",
     "csv": "分配 CSV",
     "employeeId": "员工编号",
     "sourceRows": "来源行",
@@ -26958,7 +27119,7 @@
     "ready": "就绪：替换完整集合",
     "saveImport": "保存 {count} 个有效集合",
     "companion": "附加分配工作表：{count} 组员工／日期集合。与完整新员工工作簿一并验证。",
-    "instructions": "可选重复行工作表。使用 Allocation Codes 中的 company_id 及员工工作表中的准确员工编号。每行填写 YYYY-MM-DD 日期及 replace 操作。比例须大于零、不超过 100，最多两位小数；合计允许低于 100。明确清空时，使用一行 clear，代码及比例留空。缺失或空白工作表不会更改数据。只接受 cost_center_code；描述仅供参考。现有员工使用专用分配导入。不会更改薪资金额。",
+    "instructions": "如何填写 Cost Center Allocations 工作表。Company Code：人员管理中显示的公司代码（公司尚无代码时也可使用其注册号）；Allocation Reference 工作表列出您可导入的所有公司。Employee ID：员工在生效日期当天于该公司的员工编号。Effective Date：YYYY-MM-DD；分配自该日期起生效，之前的历史将保留。Operation：一套分配的每一行均填 Replace；或在一行中填 Clear 并将 Cost Center Code 和 Percentage 留空，以清除该日期的整套分配。Cost Center Code：Allocation Reference 工作表中为该公司列出的代码。Percentage：大于 0 且不超过 100，最多两位小数；同一员工同一日期的合计不得超过 100，可以少于 100。每个成本中心一行。有错误的行不会导入，每个错误都会说明行号和原因。不会更改任何薪资数值。",
     "replace": "替换集合",
     "manual": "手动录入",
     "imported": "已导入",
@@ -26976,7 +27137,15 @@
       "transfer": "调动前，请在调动日期保存空集合，并清除之后已排定的集合。然后为目标公司保存新分配。"
     },
     "totalField": "分配总计",
-    "remainderField": "未分配余额"
+    "remainderField": "未分配余额",
+    "downloadTemplate": "下载模板",
+    "historyLink": "导入历史",
+    "companyCode": "公司代码",
+    "fileTooLarge": "请选择不超过 10 MB 的文件。",
+    "uploadFailed": "无法检查该文件，请重试。",
+    "saveFailed": "无法保存此次导入。未列为已保存的员工没有任何更改。",
+    "savedSummary": "已保存 {succeeded} · 未保存 {failed}",
+    "viewHistoryEntry": "在导入历史中打开此次导入"
   },
   "employeeHome": {
     "title": "主页",

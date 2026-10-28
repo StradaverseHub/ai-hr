@@ -26,6 +26,8 @@ import { absenceDaysLabel } from '@/core/payslip-absence-lines';
 // (never matched to them: see the component's own note on why a (code, amount) join would be worse).
 import type { PayslipSourceTxnRow } from '@/core/payroll-view';
 import { SourceTxnBlock } from './source-txn-block';
+// b240c0ff — imported payroll history reads "Monthly - By Import", never the stored "Adjustment".
+import { payrollRunLabel } from '@/core/payslip-cycle-label';
 
 /**
  * Transaction History grid (feedback 5f8d8395 — R24 5db3ae48's deferred Phase C) — a client component so each
@@ -195,8 +197,8 @@ export function HistoryTable({
                     )}
                   </td>
                   <td className="px-4 py-2.5">
-                    {t(`individual.cycle.${r.runType}`)}
-                    {r.runSeq > 1 ? ` #${r.runSeq}` : ''}
+                    {payrollRunLabel(r, t(`individual.cycle.${r.runType}`))}
+                    {r.runSeq > 1 && !r.historyImportAttemptId ? ` #${r.runSeq}` : ''}
                   </td>
                   {/* 1372d169 — thirteen columns is the worst case on this screen, and employee + company
                       were the two that wrapped onto a second line. They stay on one line; the wrapper's
@@ -375,6 +377,9 @@ export function HistoryTable({
                           {b.absence.showResidual && (
                             <Row label={tSlip('otherDeductions')} value={rm(b.absence.residual)} />
                           )}
+                          {/* b240c0ff — the named deduction items behind "Other deductions" (imported payroll
+                              history keeps each line), only when they add up to it. */}
+                          <SubLines lines={b.deductionLines} fmt={rm} />
                           {/* 6b4ca488 — no minus prefix; see the note on the same line in
                               app/payroll/individual-payslip/page.tsx. `b.totalDeductions` is a positive
                               magnitude, and this detail panel is the Transaction View half of the same

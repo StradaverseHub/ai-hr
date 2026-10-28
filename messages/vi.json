@@ -2092,7 +2092,7 @@
       "sectionStep4": "Kiểm tra những gì sẽ thay đổi",
       "sectionStep5Hint": "Kiểm tra mỗi dòng thuộc về ai và thay đổi những gì, rồi mới cập nhật. Hồ sơ bắt đầu bị thay đổi từ bước này.",
       "sectionColumnsHeading": "Các cột trong mẫu này",
-      "sectionColumnsNotice": "Tệp chỉ được chứa các cột này. Cột thuộc phần khác sẽ bị từ chối, và thông báo từ chối sẽ nêu tên phần sở hữu cột đó. Một số cột của mẫu đầy đủ — công ty, phòng ban, chức danh, trung tâm chi phí, loại hợp đồng, ngày vào làm, lương, cùng các thông tin EPF, SOCSO, EIS và cư trú thuế — không thuộc phần nào và hoàn toàn không thể nhập theo phần; hãy sửa chúng ngay trên hồ sơ Nhân sự của nhân viên.",
+      "sectionColumnsNotice": "Tệp chỉ được chứa các cột này. Cột thuộc phần khác sẽ bị từ chối, và thông báo từ chối nêu rõ phần sở hữu cột đó. Một số cột của mẫu đầy đủ — công ty, phòng ban, vị trí, trung tâm chi phí, loại hình làm việc, ngày vào làm và lương — không thuộc phần nào và hoàn toàn không thể nhập theo phần; hãy thay đổi chúng trên hồ sơ Personnel của nhân viên.",
       "sectionInstructionKey": "Mã nhân viên cho biết cập nhật cho ai. Mã phải khớp với một người đã có — mẫu này không tạo được người mới. Hãy thêm người mới bằng mẫu nhân viên đầy đủ trước.",
       "sectionInstructionBlank": "Để trống ô để giữ nguyên dữ liệu đã ghi nhận. Ô trống không bao giờ xóa giá trị.",
       "sectionInstructionOneRow": "Mỗi nhân viên một dòng. Hai dòng cùng một Mã nhân viên sẽ bị từ chối.",
@@ -2306,7 +2306,15 @@
           "invalid_filter": "Một bộ lọc không khả dụng trong công ty này. Hãy làm mới lựa chọn rồi chọn lại.",
           "invalid_file": "Chọn sổ làm việc XLSX gốc hoặc CSV hợp lệ cho loại đã chọn.",
           "origin": "Tải lại trang và tải tệp lên từ ứng dụng này.",
-          "blacklist_input_required": "Chọn trạng thái Danh sách đen hoặc nhập Ghi chú. Chỉ có mã nhân viên không phải là chỉ dẫn đưa vào danh sách đen."
+          "blacklist_input_required": "Chọn trạng thái Danh sách đen hoặc nhập Ghi chú. Chỉ có mã nhân viên không phải là chỉ dẫn đưa vào danh sách đen.",
+          "company_required": "Bắt buộc nhập Mã công ty.",
+          "company_unknown": "Mã công ty này không khớp với công ty nào bạn được phép nhập biến động. Dùng Mã công ty liệt kê trong trang Reference.",
+          "company_ambiguous": "Mã công ty này khớp với nhiều hơn một công ty. Dùng Mã công ty liệt kê trong trang Reference.",
+          "unknown_system_field": "Loại sự kiện này không thể thay đổi Trường hệ thống này. Xem trang Reference.",
+          "duplicate_system_field": "Cùng một Trường hệ thống xuất hiện nhiều lần trong biến động này.",
+          "system_field_required": "Chọn Trường hệ thống mà dòng này thay đổi, hoặc để trống Trước và Sau.",
+          "before_mismatch": "Giá trị Trước không khớp với hồ sơ hiện tại của nhân viên; hồ sơ đã thay đổi kể từ khi chuẩn bị tệp. Nhân viên này không được nhập.",
+          "workbook_old_layout": "Tệp này dùng mẫu Biến động cũ (mỗi loại biến động một trang, cho một công ty). Hãy tải mẫu mới và sao chép các dòng của bạn vào đó."
         },
         "v2": {
           "type": "Loại Biến động",
@@ -2362,6 +2370,45 @@
           "employedScope": "Vẫn bao gồm nhân viên đang thử việc hoặc đang trong thời gian báo trước nghỉ việc. Hồ sơ việc làm đã kết thúc hoặc bị đưa vào danh sách đen không được điền sẵn.",
           "referenceGuide": "Danh sách thả xuống dùng đúng mã hệ thống từ Reference. Nhãn giải thích từng mã. Nhãn riêng biệt trong tệp cũ vẫn được hỗ trợ; xem trước kiểm tra công ty của dòng.",
           "baselineGuide": "Khi lương hiện tại để trống, các phép tính lương màu xanh vẫn để trống. Bước Kiểm tra và xem trước cung cấp mức lương cơ sở từ dữ liệu chính thức, kể cả cho dòng nhân viên trống hoặc lặp lại. Giá trị 0 đã ghi nhận vẫn là mức lương cơ sở."
+        },
+        "sheet": {
+          "guideRows": "Sử dụng trang Movements. Nhập một dòng cho mỗi trường thay đổi. Các dòng có cùng Mã công ty, Mã nhân viên, Ngày hiệu lực và Loại sự kiện được nhập cùng nhau thành một biến động.",
+          "guideCompany": "Mã công ty là Mã công ty hiển thị trong Quản lý nhân sự, hoặc số đăng ký nếu công ty chưa có mã. Trang Reference liệt kê giá trị chính xác cho mọi công ty bạn được phép nhập.",
+          "guideFields": "Loại sự kiện và Trường hệ thống có danh sách thả xuống. Trang Reference cho biết mỗi loại sự kiện được thay đổi những Trường hệ thống nào và các giá trị được phép của từng công ty.",
+          "guideBefore": "Trước là giá trị bạn cho rằng nhân viên đang có. Giá trị này được kiểm tra trước khi lưu: nếu hồ sơ đã thay đổi kể từ khi bạn chuẩn bị tệp, nhân viên đó sẽ bị dừng kèm thông báo và không có gì bị ghi đè. Để trống Trước để bỏ qua kiểm tra.",
+          "guideAfter": "Sau là giá trị mới. Dùng mã trong trang Reference cho bậc, phòng ban, chức danh, địa điểm và các danh sách khác.",
+          "guideDates": "Ngày: DD-MMM-YYYY (ví dụ 01-Jan-2027) hoặc YYYY-MM-DD. Danh sách đen dùng ngày hiện tại tại Kuala Lumpur.",
+          "guideLimits": "Tối đa 200 dòng và 50 nhân viên mỗi tệp, 20 biến động mỗi nhân viên. Các biến động của mỗi nhân viên được lưu cùng nhau hoặc không lưu; các nhân viên khác vẫn được xử lý.",
+          "guideNoRow": "Biến động không thay đổi trường nào (ví dụ Xác nhận chính thức không điều chỉnh lương) là một dòng với Trường hệ thống, Trước và Sau để trống.",
+          "referenceTypes": "Các loại sự kiện và Trường hệ thống mỗi loại được thay đổi",
+          "colEventType": "Loại sự kiện",
+          "colCode": "Mã",
+          "colFields": "Trường hệ thống",
+          "noFields": "Không thay đổi trường (để trống Trường hệ thống)",
+          "referenceCompanies": "Mã công ty cần nhập cho từng công ty",
+          "colCompany": "Công ty",
+          "referenceValues": "Giá trị được phép cho từng công ty",
+          "colValue": "Giá trị nhập vào Sau",
+          "colLabel": "Ý nghĩa",
+          "screenHint": "Một mẫu cho mọi loại biến động và mọi công ty. Nhập một dòng cho mỗi trường thay đổi; các dòng cùng công ty, nhân viên, ngày và loại sự kiện là một biến động.",
+          "downloadTemplate": "Tải mẫu",
+          "history": "Lịch sử nhập",
+          "wholeEmployee": "Các biến động của mỗi nhân viên được nhập cùng nhau hoặc không nhập. Các nhân viên khác vẫn được xử lý.",
+          "included": "Bao gồm nhân viên",
+          "rows": "Dòng",
+          "viewImport": "Xem lần nhập này trong Lịch sử nhập",
+          "companyId": "Mã công ty",
+          "templateFailed": "Không thể tải mẫu. Hãy thử lại, hoặc kiểm tra rằng bạn có quyền quản lý ít nhất một công ty và các loại biến động đang hoạt động.",
+          "col": {
+            "companyId": "Mã công ty",
+            "employeeId": "Mã nhân viên",
+            "employeeName": "Tên nhân viên",
+            "effectiveDate": "Ngày hiệu lực",
+            "eventType": "Loại sự kiện",
+            "systemField": "Trường hệ thống",
+            "before": "Trước",
+            "after": "Sau"
+          }
         }
       },
       "headerAssistance": {
@@ -2652,6 +2699,29 @@
         "exclusionsRetained": "Trường và bản ghi bị loại trừ vẫn ở bằng chứng gốc; không bị âm thầm gộp hoặc nhập.",
         "limit": "Đã giữ tám phiên bản cục bộ. Hoàn tất lần nhập này hoặc chọn rõ nguồn mới để xem xét khác; không âm thầm xóa bản gốc.",
         "humanSupplied": "Do người dùng cung cấp — không có trong nguồn gốc."
+      },
+      "importHistoryLink": "Mở Lịch sử nhập (tệp gốc, trước và sau, hoàn tác)",
+      "choiceYes": "Có",
+      "choiceNo": "Không",
+      "choiceHrdfDefault": "Mặc định (theo đăng ký HRDF của công ty)",
+      "instructionColumnsHeading": "Các cột — nội dung, có bắt buộc không và các giá trị được chấp nhận",
+      "instructionAccepted": "Giá trị được chấp nhận: {values}",
+      "bankStatutoryUploadFailed": "Không thể lưu lần nhập. Không có gì thay đổi. Hãy thử lại hoặc mở Lịch sử nhập để kiểm tra.",
+      "viewImportHistoryEntry": "Xem lần nhập này trong Lịch sử nhập",
+      "employeeUploadFailed": "Không thể lưu lần nhập. Không có gì thay đổi. Hãy thử lại, hoặc mở Lịch sử nhập để kiểm tra.",
+      "instructionDuplicateEmail": "Email: khi tắt \"Cho phép trùng email công việc hoặc email cá nhân\" (cài đặt Nhân sự chung), email đã được nhân viên khác sử dụng sẽ bị từ chối, giống như NRIC trùng. Khi bật, dòng đó được nhập kèm cảnh báo.",
+      "instructionStatutorySettings": "Ngân hàng & Luật định: mọi cài đặt trên thẻ đều có thể điền tại đây, cùng các cột với mẫu Ngân hàng & Luật định — hạng mục EPF với tỷ lệ hoặc số tiền và lý do, các công tắc chủ lao động chịu, hạng mục SOCSO và EIS, Thuộc diện SKBBK, HRDF (Có, Không hoặc Mặc định), hoàn cảnh thuế, tình trạng cư trú thuế thu nhập, OKU, chế độ và bảng giảm trừ con, và Chủ lao động chịu thuế. Các cài đặt dạng ô đánh dấu nhận Có hoặc Không. Mỗi dòng được kiểm tra bằng cùng quy tắc với màn hình nhân viên trước khi lưu; dòng có lỗi sẽ không tạo gì.",
+      "instructionHireSettings": "Cài đặt khi tuyển: Giống địa chỉ thường trú (Có sẽ sao chép địa chỉ thường trú sang địa chỉ liên lạc; để trống các cột liên lạc), Nhóm lịch làm việc (tên nhóm), và Chính sách áp dụng (chính sách lương đang hoạt động của công ty trên dòng, theo tên hoặc mã, chỉ khi Lương được bật).",
+      "instructionRevert": "Lịch sử nhập lưu tệp này, người nhập và các Mã nhân viên đã tạo. Một lần nhập thành công có thể hoàn tác một lần, miễn là chưa nhân viên nào có dữ liệu gắn thêm kể từ đó (lương, nghỉ phép, chấm công, yêu cầu thanh toán, tài liệu, biến động hoặc tài khoản đăng nhập). Nhân viên bị hoàn tác biến mất khỏi danh sách, số lượng nhân sự và bảng lương nhưng vẫn còn trong nhật ký kiểm tra, và Mã nhân viên, email, số NRIC được giải phóng để có thể nhập lại tệp đã sửa.",
+      "notImported": {
+        "heading": "Không có trong mẫu này, và lý do:",
+        "photos": "Ảnh — ảnh được tải lên ở Hồ sơ nhân viên, không nhập vào ô.",
+        "documents": "Tài liệu — tệp được tải lên ở thẻ Tài liệu.",
+        "leaveBalances": "Số dư nghỉ phép — quyền lợi đến từ chính sách nghỉ phép khi tuyển; số dư đầu kỳ dùng chức năng nhập số dư nghỉ phép.",
+        "delegations": "Ủy quyền phê duyệt — nêu tên nhân viên khác và ngày tháng, được màn hình ủy quyền kiểm tra.",
+        "payItems": "Các khoản lương định kỳ ngoài lương cơ bản và phụ cấp hằng tháng — thêm ở thẻ Lương hoặc bằng chức năng nhập khoản lương.",
+        "openingTax": "Số dư thuế đầu kỳ cho người vào giữa năm (TP3) — nhập ở thẻ Lương.",
+        "holidayCalendar": "Lịch ngày nghỉ — một phân công có ngày hiệu lực với lịch sử riêng; đặt ở thẻ Chấm công sau khi nhập."
       }
     },
     "wizard": {
@@ -2965,6 +3035,95 @@
       "gapNotAnErrorNote": "Thiếu nhóm không phải là lỗi của hồ sơ — đó là thông tin mà người sử dụng lao động có thể chưa từng được cung cấp.",
       "gapNoBulkNote": "Không có chức năng điền hàng loạt, và cũng không nên có: nhóm của một người con là thông tin về chính người con đó và chỉ có thể đặt trên hồ sơ của họ.",
       "gapManualNote": "Nhân viên dùng con số nhập tay không xuất hiện ở đây. Với họ, con số đã nhập là quyết định, nên nhóm không thay đổi điều gì."
+    },
+    "importHistory": {
+      "title": "Lịch sử nhập",
+      "description": "Mọi tệp nhập nhân sự: ai nhập, khi nào, cho công ty nào, giá trị của từng nhân viên trước và sau, và Hoàn tác một lần duy nhất.",
+      "back": "Nhập nhân sự",
+      "filterLabel": "Loại nhập",
+      "filterAll": "Tất cả lần nhập",
+      "kinds": {
+        "cost_allocations": "Phân bổ trung tâm chi phí",
+        "bank_statutory": "Ngân hàng & Luật định",
+        "employee_full": "Tất cả — nhân viên mới",
+        "movement": "Biến động"
+      },
+      "reference": "Mã tham chiếu",
+      "referenceLabel": "Mã tham chiếu {reference}",
+      "type": "Loại",
+      "file": "Tệp",
+      "time": "Ngày giờ",
+      "user": "Người nhập",
+      "unknownUser": "Người dùng không khả dụng",
+      "companies": "Công ty",
+      "records": "Bản ghi",
+      "status": "Trạng thái",
+      "counts": "{succeeded} thành công · {failed} thất bại",
+      "states": {
+        "validated": "Đã kiểm tra, chưa lưu",
+        "invalid": "Chưa nhập (có lỗi)",
+        "succeeded": "Thành công",
+        "partial": "Thành công một phần",
+        "failed": "Thất bại",
+        "reverted": "Đã hoàn tác"
+      },
+      "noAttempts": "Chưa có lần nhập nào được ghi nhận.",
+      "older": "Lần nhập cũ hơn",
+      "downloadSource": "Tải tệp gốc",
+      "sourceRestricted": "Tệp gốc có công ty bạn không được xem, nên không thể tải xuống tại đây.",
+      "fingerprint": "Dấu vân tay tệp (SHA-256)",
+      "fileIssues": "Vấn đề với tệp",
+      "audit": "Nhật ký kiểm toán",
+      "events": {
+        "previewed": "Đã kiểm tra tệp",
+        "confirmed": "Đã nhập",
+        "failed": "Nhập thất bại",
+        "reverted": "Đã hoàn tác",
+        "revert_failed": "Hoàn tác bị từ chối hoặc thất bại"
+      },
+      "eventReason": "Lý do: {reason}",
+      "items": "Thay đổi theo nhân viên",
+      "itemsHint": "Chỉ hiển thị nhân viên của các công ty bạn được xem.",
+      "noItems": "Lần nhập này không lưu thay đổi nào.",
+      "colRecord": "Nhân viên và ngày",
+      "colCompany": "Công ty",
+      "colResult": "Kết quả",
+      "colBefore": "Trước",
+      "colAfter": "Sau",
+      "itemApplied": "Đã lưu",
+      "itemFailed": "Chưa lưu",
+      "allocation": {
+        "none": "Không có phân bổ",
+        "clear": "Đã xóa (không có phân bổ)"
+      },
+      "revert": {
+        "title": "Hoàn tác lần nhập này",
+        "hint": "Khôi phục giá trị của từng bản ghi trước lần nhập này. Chỉ được thực hiện một lần và chỉ khi những gì lần nhập này thay đổi chưa bị thay đổi sau đó. Lần nhập và nhật ký kiểm toán được giữ lại.",
+        "review": "Xem trước hoàn tác",
+        "working": "Đang xử lý…",
+        "restoreTitle": "Nội dung sẽ được khôi phục",
+        "blocked": "Không thể hoàn tác lần nhập này vì các bản ghi sau đã thay đổi sau đó:",
+        "reason": "Lý do hoàn tác",
+        "reasonHint": "Bắt buộc (3 đến 1.000 ký tự). Được ghi vào nhật ký kiểm toán.",
+        "acknowledge": "Tôi hiểu thao tác này khôi phục giá trị trước đó cho mọi bản ghi được liệt kê và chỉ thực hiện được một lần.",
+        "confirm": "Hoàn tác lần nhập",
+        "cancel": "Hủy",
+        "failed": "Không thể hoàn tất hoàn tác. Không có gì thay đổi.",
+        "noPermission": "Hoàn tác lần nhập này cần quyền duy trì Nhân sự cho mọi công ty trong đó."
+      },
+      "bankStatutory": {
+        "blank": "(trống)"
+      },
+      "movementItem": {
+        "movement": "Biến động",
+        "noMovement": "Không có mục lịch sử",
+        "scheduled": "Đã lên lịch cho ngày hiệu lực",
+        "rows": "Dòng {rows}"
+      },
+      "employeeFull": {
+        "created": "Đã tạo {code} · {name}",
+        "willVoid": "Nhân viên này sẽ bị vô hiệu: bị loại khỏi danh sách, số lượng nhân sự và bảng lương, vẫn giữ trong nhật ký kiểm tra. Mã nhân viên, email và NRIC được giải phóng."
+      }
     }
   },
   "leave": {
@@ -7283,7 +7442,7 @@
       "emptySheet": "Trang tính đầu tiên của sổ làm việc đó trống.",
       "pasteToggle": "Hoặc dán các dòng thay thế",
       "csvData": "Các dòng đã dán",
-      "csvPlaceholder": "Mã NV,Kỳ lương,Chu kỳ lương,Mã DOE,Mã công ty,Số tiền,Override?",
+      "csvPlaceholder": "Mã NV,Kỳ lương,Chu kỳ lương,Mã khoản lương,Mã công ty,Số tiền,Override?",
       "validate": "Kiểm tra tệp",
       "validating": "Đang kiểm tra…",
       "downloadTemplate": "Tải mẫu",
@@ -7295,7 +7454,7 @@
       "cycleReference": "Chu kỳ lương",
       "noCycleCodes": "Công ty này chưa có chu kỳ lương đang hoạt động.",
       "cycleReferenceHint": "Cột Chu kỳ lương có thể ghi mã hoặc tên chu kỳ. Mã được đặt tại Quản trị → Chu kỳ lương.",
-      "codeReference": "Các mã DOE được chấp nhận",
+      "codeReference": "Các mã khoản lương được chấp nhận",
       "codeReferenceHint": "Mã mà hệ thống không nhận ra sẽ dừng dòng đó kèm thông báo rõ ràng, thay vì bị bỏ qua trong im lặng.",
       "colCode": "Mã",
       "colCodeLabel": "Ý nghĩa",
@@ -7332,7 +7491,7 @@
       "noMonths": "Chưa có gì để nhập từ tệp này.",
       "issuesTitle": "Kết quả kiểm tra",
       "colRow": "Số dòng Excel",
-      "colDoeCode": "Mã DOE",
+      "colDoeCode": "Mã khoản lương",
       "colErrorType": "Loại lỗi",
       "colErrorDescription": "Mô tả lỗi",
       "colImportStatus": "Trạng thái nhập",
@@ -10699,7 +10858,8 @@
         "letterGenerate": "Theo ngữ cảnh công ty hiện tại, quyền tạo/đọc Thư và quyền truy cập Nhân sự và tài chính hiện tại.",
         "letterApproval": "Phạm vi công ty hiện tại, quyền đọc/phê duyệt thư và bước phê duyệt hiện tại được giao.",
         "letterRegister": "Phạm vi công ty hiện tại và quyền Thư hiện tại cần cho từng thao tác.",
-        "letterSettings": "Phạm vi công ty hiện tại. Quyền Cài đặt cấu hình quy trình; quyền Phê duyệt chỉ quản lý hình chữ ký của chính bạn."
+        "letterSettings": "Phạm vi công ty hiện tại. Quyền Cài đặt cấu hình quy trình; quyền Phê duyệt chỉ quản lý hình chữ ký của chính bạn.",
+        "importHistory": "Liệt kê lần nhập khi bạn có quyền xem Nhân sự cho ít nhất một công ty trong đó, và chỉ hiển thị nhân viên của các công ty bạn được xem. Tệp gốc cần quyền xem mọi công ty trong tệp; Hoàn tác cần quyền duy trì Nhân sự cho mọi công ty trong tệp."
       },
       "scopedTo": "Phạm vi đến {company} và các công ty con của nó",
       "screen": {
@@ -10711,7 +10871,8 @@
         "leaveEmployeeBalances": "Số dư của nhân viên",
         "leaveEmployeeRecords": "Hồ sơ nghỉ phép của nhân viên",
         "duplicatePersonRecords": "Hồ sơ nhân viên trùng",
-        "childReliefReview": "Rà soát giảm trừ cho con (PCB)"
+        "childReliefReview": "Rà soát giảm trừ cho con (PCB)",
+        "importHistory": "Lịch sử nhập"
       },
       "screenColumn": "Màn hình",
       "sectionFunctionAccess": "Quyền truy cập chức năng",
@@ -26946,11 +27107,11 @@
     "superseded": "Đã thay thế",
     "unset": "Chưa ghi nhận phân bổ.",
     "importTitle": "Nhập Phân bổ Trung tâm Chi phí",
-    "importHelp": "Cập nhật nhân viên hiện có với một dòng cho mỗi trung tâm chi phí. Mỗi công ty, mã nhân viên và ngày hiệu lực tạo thành một tập thay thế đầy đủ.",
+    "importHelp": "Cập nhật nhân viên hiện có với một dòng cho mỗi trung tâm chi phí. Mỗi Mã công ty, Mã nhân viên và Ngày hiệu lực tạo thành một bộ thay thế hoàn chỉnh. Một tệp có thể gồm nhiều công ty.",
     "referenceCompany": "Công ty cho bảng mã",
     "downloadCsv": "Tải CSV phân bổ",
     "downloadWorkbook": "Tải sổ làm việc và mã",
-    "upload": "Tải CSV hoặc sổ làm việc lên",
+    "upload": "Tải lên mẫu đã điền (.xlsx hoặc .csv)",
     "csv": "CSV phân bổ",
     "employeeId": "Mã nhân viên",
     "sourceRows": "Dòng nguồn",
@@ -26958,7 +27119,7 @@
     "ready": "Sẵn sàng: thay toàn bộ tập",
     "saveImport": "Lưu {count} tập hợp lệ",
     "companion": "Trang phân bổ kèm theo: {count} tập nhân viên/ngày. Được xác thực cùng sổ nhân viên mới đầy đủ.",
-    "instructions": "Trang nhiều dòng tùy chọn. Dùng company_id trong Allocation Codes và mã nhân viên chính xác trong trang nhân viên. Nhập ngày YYYY-MM-DD và thao tác replace ở mỗi dòng. Tỷ lệ phải dương, tối đa 100, có tối đa hai chữ số thập phân; tổng có thể dưới 100. Dùng một dòng clear với mã và tỷ lệ trống để chủ động xóa toàn bộ tập. Trang bị bỏ qua hoặc trống không thay đổi dữ liệu. Chỉ chấp nhận cost_center_code; mô tả chỉ để tham khảo. Nhân viên hiện có dùng luồng nhập phân bổ riêng. Không thay đổi giá trị lương.",
+    "instructions": "Cách điền trang Cost Center Allocations. Company Code: Mã công ty hiển thị trong Quản lý nhân sự (nếu công ty chưa có mã, có thể dùng số đăng ký); trang Allocation Reference liệt kê mọi công ty bạn được nhập. Employee ID: mã nhân viên trong công ty đó vào ngày hiệu lực. Effective Date: YYYY-MM-DD; tỷ lệ phân bổ áp dụng từ ngày này trở đi và lịch sử trước đó được giữ lại. Operation: Replace trên mọi dòng của một bộ, hoặc Clear trên một dòng để trống Cost Center Code và Percentage để xóa toàn bộ bộ phân bổ vào ngày đó. Cost Center Code: mã được liệt kê cho công ty đó trên trang Allocation Reference. Percentage: lớn hơn 0 và tối đa 100, tối đa hai chữ số thập phân; tổng của một nhân viên trong một ngày không được vượt quá 100 và có thể nhỏ hơn. Mỗi trung tâm chi phí một dòng. Dòng có lỗi sẽ không được nhập và mỗi lỗi nêu rõ dòng và lý do. Không thay đổi giá trị lương nào.",
     "replace": "Thay tập",
     "manual": "Nhập thủ công",
     "imported": "Đã nhập",
@@ -26976,7 +27137,15 @@
       "transfer": "Lưu tập rỗng vào ngày chuyển và xóa các tập lên lịch sau đó trước khi chuyển. Sau đó lưu phân bổ mới của công ty đích."
     },
     "totalField": "Tổng phân bổ",
-    "remainderField": "Phần chưa phân bổ"
+    "remainderField": "Phần chưa phân bổ",
+    "downloadTemplate": "Tải mẫu",
+    "historyLink": "Lịch sử nhập",
+    "companyCode": "Mã công ty",
+    "fileTooLarge": "Chọn tệp không quá 10 MB.",
+    "uploadFailed": "Không thể kiểm tra tệp. Vui lòng thử lại.",
+    "saveFailed": "Không thể lưu lần nhập. Không có thay đổi nào cho nhân viên không được liệt kê là đã lưu.",
+    "savedSummary": "Đã lưu {succeeded} · Chưa lưu {failed}",
+    "viewHistoryEntry": "Mở lần nhập này trong Lịch sử nhập"
   },
   "employeeHome": {
     "title": "Trang chủ",

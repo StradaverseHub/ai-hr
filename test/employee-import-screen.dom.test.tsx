@@ -1,4 +1,4 @@
-vi.mock('../app/admin/personnel/import/cost-allocation-actions',()=>({allocationWorkbookReferencesAction:async()=>({ok:true,rows:[]})}));
+vi.mock('../app/admin/personnel/import/cost-allocation-actions',()=>({allocationWorkbookReferencesAction:async()=>({ok:true,references:{companies:[],costCenters:[]}})}));
 /**
  * The Import Employees screen, PROVED BY RENDERING (item 2983802f).
  *

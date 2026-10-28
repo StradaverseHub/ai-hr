@@ -26,6 +26,7 @@ import {
 // The tenant catalogue is readable by every tenant member (migration 0065 `pay_component_rls`), so the
 // employee's own payslip can name its items correctly without any widening of what they may see.
 import { listPayComponents } from '@/core/pay-components';
+import { deductionLinesFor, displayComponentLines } from '@/core/payslip-imported-lines';
 
 /** The label key for each employer-borne component, exhaustive over EmployerBorneKey. */
 const EMPLOYER_BORNE_LABEL: Record<EmployerBorneKey, 'epf' | 'socso' | 'skbbk' | 'eis' | 'pcb'> = {
@@ -139,11 +140,14 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
   // below, so gross still reconciles. Named here because a96d320c rev 2 tests it for zero as well as
   // printing it, and the two must be the same number.
   const allowanceNet = disp.allowance - Number(st.otConvert?.amount ?? 0);
-  const stored = storedComponentLines(p.statutory);
+  // b240c0ff — plus an imported history month's own pay item lines (display only).
+  const stored = displayComponentLines(p.statutory);
   const otLines = payItemLinesForBuckets(stored, ['ot']);
   const bonusLines = payItemLinesForBuckets(stored, ['bonus']);
   const showOtLines = payItemLinesReconcile(otLines, disp.overtime);
   const showBonusLines = payItemLinesReconcile(bonusLines, disp.bonus);
+  // b240c0ff — the pay items behind "Other deductions", when they add up to it (empty otherwise).
+  const deductionLines = deductionLinesFor(p.statutory, absence.residual);
   // 417d4937 — code → today's pay item description, for the record-line label repair. Read only when
   // this payslip actually carries record lines, so the ordinary payslip costs no extra query.
   const payItemNames: Record<string, string> =
@@ -281,6 +285,8 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
             />
           )}
           {absence.showResidual && <Row label={t('otherDeductions')} value={rm(absence.residual)} />}
+          {/* b240c0ff — the named deduction items under the figure they explain, like the earnings above. */}
+          {absence.showResidual && deductionLines.length > 0 && <SubLines lines={deductionLines} />}
           {/* 6b4ca488 — no minus prefix. The ticket named the admin surfaces, but this ESS slip renders
               the SAME positive `totalDeductions` with the SAME literal U+2212, and leaving it here would
               mean the employee's copy and the admin copy of one payslip print the figure differently.

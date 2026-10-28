@@ -3449,16 +3449,35 @@ async function reverseLegTx(
   }
 }
 
-/** The shared rollback body. `corrected` distinguishes the first half of an Edit from a plain Rollback —
- *  both leave the same visible trace, and the history says which one happened. */
-async function reverseMovementTx(
-  tx: Tx,
-  ctx: SessionContext,
-  employmentId: string,
-  movementId: string,
-  reason: string | null,
-  corrected: boolean,
-): Promise<void> {
+/** ac6645ec — read-only: why this movement cannot be rolled back right now (null when it can). Runs the
+ *  very guards the rollback applies, so an import revert's preview and its commit cannot disagree. */
+export async function movementReversalBlockerTx(tx: Tx, ctx: SessionContext, employmentId: string, movementId: string): Promise<string|null> {
+  try { await reversalGuardTx(tx, ctx, employmentId, movementId); return null; }
+  catch (error) { if (error instanceof Error && !('query' in error) && !('cause' in error) && error.name !== 'DrizzleQueryError') return error.message; throw error; }
+}
+
+/** ac6645ec — the ledger position before an import records one movement; with movementRowsAfterSequenceTx
+ *  it captures exactly the history rows (movement ids) that movement created. */
+export async function movementLedgerMarkerTx(tx: Tx, ctx: SessionContext, employmentId: string): Promise<number> {
+  const [row] = await tx.select({ max: sql<string|null>`max(${domainEvent.sequence})` }).from(domainEvent).where(and(eq(domainEvent.tenantId, ctx.tenantId), eq(domainEvent.subjectEmploymentId, employmentId)));
+  return Number(row?.max ?? 0);
+}
+export async function movementRowsAfterSequenceTx(tx: Tx, ctx: SessionContext, employmentId: string, afterSequence: number) {
+  const { rows } = await projectRows(tx, ctx.tenantId, employmentId);
+  return rows.filter((r) => r.sequence > afterSequence).map((r) => ({ id: r.id, kind: r.kind, effectiveDate: r.effectiveDate, scheduled: r.scheduled }));
+}
+
+/** ac6645ec — a whole-import revert rolls each movement back through the one rollback body, with its reason. */
+export async function reverseMovementForImportTx(tx: Tx, ctx: SessionContext, employmentId: string, movementId: string, reason: string) {
+  assertMovementAdmin(ctx, 'roll back a movement');
+  if (!reason.trim()) throw new MovementReasonRequiredError('A reason is required. Record why this movement event is being rolled back.');
+  await assertWorkforceEmploymentTx(tx, ctx, employmentId, 'maintain');
+  await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
+  await reverseMovementTx(tx, ctx, employmentId, movementId, reason.trim(), false);
+}
+
+/** The rollback guards, shared by the rollback and by read-only eligibility checks. */
+async function reversalGuardTx(tx: Tx, ctx: SessionContext, employmentId: string, movementId: string) {
   const { events, rows, statusOf, resolvedTypes } = await projectRows(tx, ctx.tenantId, employmentId);
   const row = rows.find((r) => r.id === movementId);
   if (!row) throw new Error('Movement event not found.');
@@ -3486,6 +3505,20 @@ async function reverseMovementTx(
       throw new Error('A closed payroll run relied on this movement. Reopen that payroll before correcting the event.');
     }
   }
+  return { events, row, group };
+}
+
+/** The shared rollback body. `corrected` distinguishes the first half of an Edit from a plain Rollback —
+ *  both leave the same visible trace, and the history says which one happened. */
+async function reverseMovementTx(
+  tx: Tx,
+  ctx: SessionContext,
+  employmentId: string,
+  movementId: string,
+  reason: string | null,
+  corrected: boolean,
+): Promise<void> {
+  const { events, row, group } = await reversalGuardTx(tx, ctx, employmentId, movementId);
   // Undo the newest leg first: within one movement a later leg can sit on top of an earlier one.
   const tag: MovementTag = { type: row.kind, groupId: randomUUID(), secondary: true };
   const hireCorrections = events.filter((x) => x.eventType === HIRE_CORRECTED_EVENT).map((x) => x.payload);

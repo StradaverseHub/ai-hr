@@ -88,6 +88,8 @@ export default async function PayrollProcessPage({
         paymentDate: data.batch.batchDate ?? '',
         remarks: data.batch.remarks ?? '',
         scope,
+        historyImportAttemptId: data.batch.historyImportAttemptId,
+        historyImportCycleName: data.batch.historyImportCycleName,
       };
     }
   }
@@ -145,7 +147,7 @@ export default async function PayrollProcessPage({
           costCenters={organisationChoiceLabels(costCenters).map((c) => ({ id: c.id, name: c.displayLabel, companyId: c.companyId, isGlobal: c.isGlobal, assignedCompanyIds: c.assignedCompanyIds }))}
           jobGrades={organisationChoiceLabels(jobGrades).map((g) => ({ id: g.id, name: g.displayLabel }))}
           payDayByCompany={payDayByCompany}
-          existingRuns={allBatches.map((b) => ({ id: b.id, companyId: b.companyId, payPeriod: b.payPeriod, runType: b.runType, status: b.status, company: b.company }))}
+          existingRuns={allBatches.map((b) => ({ id: b.id, companyId: b.companyId, payPeriod: b.payPeriod, runType: b.runType, status: b.status, company: b.company, historyImportAttemptId: b.historyImportAttemptId, historyImportCycleName: b.historyImportCycleName }))}
           cyclesByCompany={cyclesByCompany}
           defaultCycleByCompany={defaultCycleByCompany}
           thisMonth={thisMonth}
