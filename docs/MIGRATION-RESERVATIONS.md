@@ -95,3 +95,7 @@ idx is assigned at journaling, after staging's idx 644 (0660) and the AI 0661/06
 ## 28 October 2026 — 0669 reserved for named leave approver visibility
 
 - `0669_leave_named_approver_read`, when 1793180000000. Owner decision relayed by the AI GAPS session: an employee named as a leave approval step's fixed approver (`specific_employee`) may read the requests they are or were asked to approve, and nothing else about that employee. One migration: SELECT-only RLS arms plus a name-only definer read. idx is assigned at journaling, after 0668 (idx 647) and whatever REA P1 wave 3 entries land first. If a later `when` is applied first, re-time it above the live watermark rather than journal below it.
+
+## AI DEV reservation (28 October 2026)
+
+**0670_ai_orchestrator_wave1_receipts** (`when` 1793190000000, idx at journaling) is reserved for AI DEV's ADR-0151 wave 1: new action kinds and generic receipt columns on `app.assistant_own_leave_review`.

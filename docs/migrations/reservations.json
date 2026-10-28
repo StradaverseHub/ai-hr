@@ -324,6 +324,18 @@
       "notes": [
         "when 1793180000000 sits above every recorded hold (REA 0663-0667 up to 1793170000005). If any later when is applied first, re-time above the live watermark before journaling (it is unapplied, so re-timing is safe)."
       ]
+    },
+    {
+      "tag": "0670_ai_orchestrator_wave1_receipts",
+      "owner": "AI DEV (ADR-0151 wave 1)",
+      "status": "reserved",
+      "idx": null,
+      "when": 1793190000000,
+      "allocatedBy": "AI delivery allocator on AI DEV's request, 28 October 2026",
+      "scope": "app.assistant_own_leave_review: new action kinds plus generic receipt columns (receipt_event_id, subject_kind, subject_id).",
+      "notes": [
+        "Final idx is assigned at journaling, after every applied or approved predecessor. when 1793190000000 is above every recorded reservation (max 1793180000000, 0669). Re-time if anything with a higher when journals first."
+      ]
     }
   ],
   "unallocatedAiLogicalGroups": [
