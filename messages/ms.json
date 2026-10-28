@@ -20011,6 +20011,9 @@
     }
   },
   "rewards": {
+    "unitBonus": {
+      "noReduction": "Pengurangan gaji tidak dibenarkan dalam semakan gaji."
+    },
     "bonusPresentation": {
       "separatePools": "Setiap pelan mempunyai kumpulan wang sendiri. Bayaran sekali gus dibayar daripada kumpulan wang pelan yang sama.",
       "over": "Melebihi bajet",

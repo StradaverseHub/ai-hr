@@ -20011,6 +20011,9 @@
     }
   },
   "rewards": {
+    "unitBonus": {
+      "noReduction": "薪资审核中不允许降低薪资。"
+    },
     "bonusPresentation": {
       "separatePools": "每个计划使用独立资金池，一次性奖金由同一计划的资金池支付。",
       "over": "超出预算",

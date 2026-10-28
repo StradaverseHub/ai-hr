@@ -22,6 +22,11 @@ export type CalculatedEntry = RewardEntry & {
 export type PlanBudget = { payrollCents: number; pools: number[]; used: number[]; bonusPayrollCents: number; bonusPoolCents: number; bonusUsedCents: number; standardBonusCents: number; increasesCents: number; reductionsCents: number; lumpCents: number; lumpCount: number; balanceCents: number };
 export const blankBudget = (): PlanBudget => ({ payrollCents: 0, pools: [0, 0, 0], used: [0, 0, 0], bonusPayrollCents: 0, bonusPoolCents: 0, bonusUsedCents: 0, standardBonusCents: 0, increasesCents: 0, reductionsCents: 0, lumpCents: 0, lumpCount: 0, balanceCents: 0 });
 
+/** 328ebe84 — defensive invariant: a salary review never lowers basic salary. Every component is >= 0
+ *  today, so this only fires on a forged or corrupted row; any block flag refuses submit, approval and posting. */
+export const salaryReductionFlags = (rows: Pick<CalculatedEntry, 'id' | 'source' | 'newBasicCents'>[]): RewardFlag[] =>
+  rows.filter(x => x.newBasicCents < x.source.basicCents).map(x => ({ severity: 'block', code: 'SAL-01', message: 'Salary reductions are not allowed in the salary review.', entryId: x.id }));
+
 export function calculateRewards(entries: RewardEntry[], input: RewardPolicy) {
   const policy = policySchema.parse(input);
   const flags: RewardFlag[] = [];
@@ -144,5 +149,6 @@ export function calculateRewards(entries: RewardEntry[], input: RewardPolicy) {
     if (b.bonusUsedCents > b.bonusPoolCents) add(severity, policy.exemptReason ? 'CFG-01' : 'BUD-01', `${plan === 'h' ? 'JG H' : 'Standard'} bonus exceeds the 100% budget cap.`);
     if (b.bonusPoolCents > 0 && b.bonusUsedCents * 100 < b.bonusPoolCents * 80) add('warning', 'BUD-07', `${plan === 'h' ? 'JG H' : 'Standard'} bonus budget is less than 80% utilised.`);
   }
+  flags.push(...salaryReductionFlags(rows));
   return { rows, budgets, flags, suggestedMultiplierBp, suggestedLumpCents, lumpUnitCents, lumpWorking };
 }

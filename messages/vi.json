@@ -20011,6 +20011,9 @@
     }
   },
   "rewards": {
+    "unitBonus": {
+      "noReduction": "Không được phép giảm lương trong đợt xét duyệt lương."
+    },
     "bonusPresentation": {
       "separatePools": "Mỗi chương trình có quỹ riêng. Khoản thưởng cố định được chi từ quỹ của cùng chương trình.",
       "over": "Vượt ngân sách",

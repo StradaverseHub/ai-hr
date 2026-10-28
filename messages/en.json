@@ -20011,6 +20011,9 @@
     }
   },
   "rewards": {
+    "unitBonus": {
+      "noReduction": "Salary reductions are not allowed in the salary review."
+    },
     "bonusPresentation": {
       "separatePools": "Each plan has its own pool. Lump sums are paid from the same plan’s pool.",
       "over": "Over budget",
