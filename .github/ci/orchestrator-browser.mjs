@@ -191,6 +191,8 @@ async function main() {
             for (const route of routes) {
               await page.goto(base + route); const t = catalogues[locale];
               if (actor.key.endsWith('-employee')) {
+                // A streamed response can carry requireAdmin's redirect to the client, after goto resolves.
+                await page.waitForURL(url => !routes.includes(url.pathname)).catch(() => {});
                 assert(!routes.includes(new URL(page.url()).pathname), 'Employee reached an administrative queue');
                 assert.equal(await page.getByRole('heading', {name: t.workTitle, exact: true}).count(), 0);
               } else {
