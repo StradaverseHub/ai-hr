@@ -6,9 +6,11 @@ import type {SessionContext} from '../db/client';
 import type {ImportKind} from '../lib/import-history';
 import {importAttemptKind,previewImportRevert,revertImport,ImportHistoryError,type ImportRevertHandler} from './import-history';
 import {costAllocationRevertHandler} from './cost-allocation-import';
+import {bankStatutoryRevertHandler} from './bank-statutory-import';
 
 export const IMPORT_REVERT_HANDLERS:Readonly<Partial<Record<ImportKind,ImportRevertHandler>>>={
  cost_allocations:costAllocationRevertHandler,
+ bank_statutory:bankStatutoryRevertHandler,
 };
 export const importKindRevertible=(kind:ImportKind)=>!!IMPORT_REVERT_HANDLERS[kind];
 async function handlerFor(ctx:SessionContext,attemptId:string){

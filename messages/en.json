@@ -2090,7 +2090,7 @@
       "sectionStep4": "Check what will change",
       "sectionStep5Hint": "Check who each row lands on and what it changes, then update. This is the point at which records are changed.",
       "sectionColumnsHeading": "Columns in this template",
-      "sectionColumnsNotice": "Only these columns may appear in the file. A column belonging to another section is refused, and the refusal names the section that owns it. Some columns of the full template — company, department, position, cost centre, employment type, join date, pay, and the EPF, SOCSO, EIS and tax-residency fields — belong to no section and cannot be imported per section at all; change those on the employee’s own Personnel record.",
+      "sectionColumnsNotice": "Only these columns may appear in the file. A column belonging to another section is refused, and the refusal names the section that owns it. Some columns of the full template — company, department, position, cost centre, employment type, join date and pay — belong to no section and cannot be imported per section at all; change those on the employee’s own Personnel record.",
       "sectionInstructionKey": "Employee ID says which person to update. It must match somebody who already exists — this template cannot create anybody. Add new people with the full employee template first.",
       "sectionInstructionBlank": "Leave a cell blank to keep what is already recorded. A blank never clears a value.",
       "sectionInstructionOneRow": "One row per employee. Two rows carrying the same Employee ID are refused.",
@@ -2651,7 +2651,14 @@
         "limit": "Eight local revisions are already preserved. Finish this import or explicitly pick a new source to start another review; originals are never silently evicted.",
         "humanSupplied": "Human supplied — absent from the original source."
       },
-      "importHistoryLink": "Open Import History (original files, before and after, revert)"
+      "importHistoryLink": "Open Import History (original files, before and after, revert)",
+      "choiceYes": "Yes",
+      "choiceNo": "No",
+      "choiceHrdfDefault": "Default (follow the company’s HRDF registration)",
+      "instructionColumnsHeading": "Columns — what each one holds, whether it is required, and the values it accepts",
+      "instructionAccepted": "Accepted values: {values}",
+      "bankStatutoryUploadFailed": "The import could not be saved. Nothing was changed. Try again, or open Import History to check.",
+      "viewImportHistoryEntry": "View this import in Import History"
     },
     "wizard": {
       "deleteRecord": "Delete Record",
@@ -3039,6 +3046,9 @@
         "cancel": "Cancel",
         "failed": "The revert could not be completed. Nothing was changed.",
         "noPermission": "Reverting this import needs Workforce maintain permission for every company in it."
+      },
+      "bankStatutory": {
+        "blank": "(blank)"
       }
     }
   },

@@ -2090,7 +2090,7 @@
       "sectionStep4": "Kiểm tra những gì sẽ thay đổi",
       "sectionStep5Hint": "Kiểm tra mỗi dòng thuộc về ai và thay đổi những gì, rồi mới cập nhật. Hồ sơ bắt đầu bị thay đổi từ bước này.",
       "sectionColumnsHeading": "Các cột trong mẫu này",
-      "sectionColumnsNotice": "Tệp chỉ được chứa các cột này. Cột thuộc phần khác sẽ bị từ chối, và thông báo từ chối sẽ nêu tên phần sở hữu cột đó. Một số cột của mẫu đầy đủ — công ty, phòng ban, chức danh, trung tâm chi phí, loại hợp đồng, ngày vào làm, lương, cùng các thông tin EPF, SOCSO, EIS và cư trú thuế — không thuộc phần nào và hoàn toàn không thể nhập theo phần; hãy sửa chúng ngay trên hồ sơ Nhân sự của nhân viên.",
+      "sectionColumnsNotice": "Tệp chỉ được chứa các cột này. Cột thuộc phần khác sẽ bị từ chối, và thông báo từ chối nêu rõ phần sở hữu cột đó. Một số cột của mẫu đầy đủ — công ty, phòng ban, vị trí, trung tâm chi phí, loại hình làm việc, ngày vào làm và lương — không thuộc phần nào và hoàn toàn không thể nhập theo phần; hãy thay đổi chúng trên hồ sơ Personnel của nhân viên.",
       "sectionInstructionKey": "Mã nhân viên cho biết cập nhật cho ai. Mã phải khớp với một người đã có — mẫu này không tạo được người mới. Hãy thêm người mới bằng mẫu nhân viên đầy đủ trước.",
       "sectionInstructionBlank": "Để trống ô để giữ nguyên dữ liệu đã ghi nhận. Ô trống không bao giờ xóa giá trị.",
       "sectionInstructionOneRow": "Mỗi nhân viên một dòng. Hai dòng cùng một Mã nhân viên sẽ bị từ chối.",
@@ -2651,7 +2651,14 @@
         "limit": "Đã giữ tám phiên bản cục bộ. Hoàn tất lần nhập này hoặc chọn rõ nguồn mới để xem xét khác; không âm thầm xóa bản gốc.",
         "humanSupplied": "Do người dùng cung cấp — không có trong nguồn gốc."
       },
-      "importHistoryLink": "Mở Lịch sử nhập (tệp gốc, trước và sau, hoàn tác)"
+      "importHistoryLink": "Mở Lịch sử nhập (tệp gốc, trước và sau, hoàn tác)",
+      "choiceYes": "Có",
+      "choiceNo": "Không",
+      "choiceHrdfDefault": "Mặc định (theo đăng ký HRDF của công ty)",
+      "instructionColumnsHeading": "Các cột — nội dung, có bắt buộc không và các giá trị được chấp nhận",
+      "instructionAccepted": "Giá trị được chấp nhận: {values}",
+      "bankStatutoryUploadFailed": "Không thể lưu lần nhập. Không có gì thay đổi. Hãy thử lại hoặc mở Lịch sử nhập để kiểm tra.",
+      "viewImportHistoryEntry": "Xem lần nhập này trong Lịch sử nhập"
     },
     "wizard": {
       "deleteRecord": "Xóa hồ sơ",
@@ -3039,6 +3046,9 @@
         "cancel": "Hủy",
         "failed": "Không thể hoàn tất hoàn tác. Không có gì thay đổi.",
         "noPermission": "Hoàn tác lần nhập này cần quyền duy trì Nhân sự cho mọi công ty trong đó."
+      },
+      "bankStatutory": {
+        "blank": "(trống)"
       }
     }
   },

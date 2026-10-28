@@ -125,7 +125,9 @@ export function importRunOutcome(r: {
  *  employee_code is OPTIONAL (38668d9b gives HR the ABILITY to key in an Employee ID, not an
  *  obligation): when the column is absent or a cell is blank, hireEmployee auto-generates the
  *  next code; when supplied it is validated (format + file/tenant uniqueness). */
-const employeeFields=PERSONNEL_FIELDS.filter(field=>field.import.column && field.import.section!=='family');
+// 0db97f14 — `updateOnly` columns (the Bank & Statutory settings with a merged section writer) are not yet
+// written by the create path; "Everything — new employees" (524303d9) adopts them by clearing the flag.
+const employeeFields=PERSONNEL_FIELDS.filter(field=>field.import.column && field.import.section!=='family' && !field.import.updateOnly);
 export const IMPORT_COLUMNS = {
   required: [...new Set(employeeFields.filter(field=>field.import.requiredCreate).map(field=>field.import.column!))],
   optional: [...new Set([...employeeFields.filter(field=>!field.import.requiredCreate).map(field=>field.import.column!),...PERSONNEL_IMPORT_COMPATIBILITY.map(adapter=>adapter.column)])],

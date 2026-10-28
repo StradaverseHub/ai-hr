@@ -6,6 +6,7 @@ import Link from 'next/link';
 import {getTranslations,getFormatter} from 'next-intl/server';
 import {IMPORT_KINDS,importAttemptCounts,importAttemptStatus,type ImportKind} from '@/lib/import-history';
 import type {ImportAttemptDetail,ImportAttemptListItem} from '@/core/import-history';
+import {personnelColumnLabel} from '@/lib/personnel-import-contract';
 export const IMPORT_HISTORY_PATH='/admin/personnel/import/history';
 const dateTime={dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'} as const;
 export async function ImportKindFilter({active}:{active?:ImportKind}){
@@ -60,6 +61,12 @@ async function ItemValue({kind,value}:{kind:ImportKind;value:unknown}){
   if(state.operation==='none')return <span className="text-muted-foreground">{t('allocation.none')}</span>;
   if(!state.rows?.length)return <span>{t('allocation.clear')}</span>;
   return <ul>{state.rows.map((r,i)=><li key={i}>{r.code}{r.label&&r.label!==r.code?` (${r.label})`:''} · {percent(r.hundredths)}%</li>)}</ul>;
+ }
+ if(kind==='bank_statutory'){
+  // 0db97f14 — each field the import changed, captioned as on the Bank & Statutory tab.
+  const root=await getTranslations();const fields=Object.entries((value as {fields?:Record<string,string>}).fields??{});
+  const resolve=(key:string,fallback:string)=>root.has(key)?root(key):fallback;
+  return <dl className="space-y-1">{fields.map(([column,v])=><div key={column}><dt className="inline text-muted-foreground">{personnelColumnLabel(column,'employee',resolve)}: </dt><dd className="inline break-all">{v===''?t('bankStatutory.blank'):v}</dd></div>)}</dl>;
  }
  // Kinds without a dedicated renderer show their recorded fields as plain pairs.
  if(typeof value==='object')return <dl className="space-y-1">{Object.entries(value as Record<string,unknown>).map(([k,v])=><div key={k}><dt className="inline text-muted-foreground">{k}: </dt><dd className="inline break-all">{typeof v==='object'?JSON.stringify(v):String(v)}</dd></div>)}</dl>;

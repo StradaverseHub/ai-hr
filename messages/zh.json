@@ -2090,7 +2090,7 @@
       "sectionStep4": "查看将会改变什么",
       "sectionStep5Hint": "先确认每一行对应哪位员工、改动了什么，再执行更新。记录从这一步开始被修改。",
       "sectionColumnsHeading": "此模板包含的列",
-      "sectionColumnsNotice": "文件中只能出现这些列。属于其他分项的列会被拒绝，拒绝提示会指出该列所属的分项。完整模板中的部分列 — 公司、部门、职位、成本中心、雇佣类型、入职日期、薪酬，以及 EPF、SOCSO、EIS 和税务居民身份 — 不属于任何分项，完全无法按分项导入；请在该员工的人事记录中修改。",
+      "sectionColumnsNotice": "文件中只能出现这些列。属于其他分项的列会被拒绝，拒绝提示会指出该列所属的分项。完整模板中的部分列 — 公司、部门、职位、成本中心、雇佣类型、入职日期和薪酬 — 不属于任何分项，完全无法按分项导入；请在该员工的人事记录中修改。",
       "sectionInstructionKey": "员工编号决定要更新哪一位员工。它必须对应系统中已有的员工 — 此模板无法创建新人。请先用完整员工模板添加新人。",
       "sectionInstructionBlank": "留空单元格即保留现有记录。空白绝不会清除数值。",
       "sectionInstructionOneRow": "每位员工一行。两行使用相同员工编号将被拒绝。",
@@ -2651,7 +2651,14 @@
         "limit": "已保留八个本地版本。请完成本次导入，或明确选择新来源重新审核；原始资料不会被悄悄移除。",
         "humanSupplied": "用户提供，原始数据中未包含。"
       },
-      "importHistoryLink": "打开导入历史（原始文件、导入前后、撤销）"
+      "importHistoryLink": "打开导入历史（原始文件、导入前后、撤销）",
+      "choiceYes": "是",
+      "choiceNo": "否",
+      "choiceHrdfDefault": "默认（按公司的 HRDF 登记）",
+      "instructionColumnsHeading": "各列说明 — 内容、是否必填及可接受的值",
+      "instructionAccepted": "可接受的值：{values}",
+      "bankStatutoryUploadFailed": "导入未能保存，未作任何更改。请重试，或打开导入历史查看。",
+      "viewImportHistoryEntry": "在导入历史中查看此次导入"
     },
     "wizard": {
       "deleteRecord": "删除记录",
@@ -3039,6 +3046,9 @@
         "cancel": "取消",
         "failed": "撤销未能完成，未做任何更改。",
         "noPermission": "撤销此次导入需要对其中每家公司拥有人员维护权限。"
+      },
+      "bankStatutory": {
+        "blank": "（空白）"
       }
     }
   },
