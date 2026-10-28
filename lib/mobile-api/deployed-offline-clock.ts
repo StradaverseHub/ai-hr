@@ -18,6 +18,7 @@ import {IntegrityConfigurationUnavailable} from './integrity-configuration';
 import {readDeployedPlayCredentials} from './play-credentials';
 import type {PlayAccessTokenProvider} from './play-integrity';
 import {createOfflineSyncIntegrityVerifier,OfflineSyncIntegrityError} from './offline-sync-integrity';
+import {OfflineClockProofUnavailable} from './offline-clock-proof';
 type Platform='ios'|'android';
 type Snapshot=OfflineContextIssuePorts['snapshot'];
 const uuid=z.string().uuid().transform(value=>value.toLowerCase());
@@ -40,6 +41,7 @@ function failure(error:unknown){
  if(error instanceof ModuleNotEnabledError)return {outcome:'unavailable',code:'module_unavailable'} as const;
  if(error instanceof OfflineIssuanceDrainingError)return {outcome:'unavailable',code:'draining'} as const;
  if(error instanceof OfflineAdjudicationError)return configurationUnavailable;
+ if(error instanceof OfflineClockProofUnavailable)return configurationUnavailable;
  if(error instanceof OwnClockEmploymentUnavailableError)return {outcome:'refused',code:'subject_unavailable'} as const;
  if(error instanceof OfflineSyncIntegrityError){
   const r=error.result;
@@ -61,7 +63,7 @@ async function run<T>(operation:()=>Promise<T>){try{return await operation();}ca
  * before reading the deployment, then re-reads it in its commit guard. */
 export function createDeployedOfflineClockOperations(platform:Platform,options:DeployedOfflineClockOptions={}){
  if(platform!=='ios'&&platform!=='android')throw new IntegrityConfigurationUnavailable('configuration_unavailable');
- const play=()=>{const value=options.androidPlay??readDeployedPlayCredentials;return typeof value==='function'?value():value;};
+ const play=():OfflineAndroidPlayAssembly=>{const value=options.androidPlay??readDeployedPlayCredentials;return typeof value==='function'?value():value;};
  async function forEmployment(ctx:SessionContext,employmentId:unknown){
   const companyId=await ownIntegrityEnrollmentCompany(ctx,uuid.parse(employmentId));
   const d=companyId?await readMobileOfflineDeployment(platform,ctx,companyId):null;

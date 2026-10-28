@@ -14,7 +14,7 @@ import {RequestBudgetExceeded} from '../lib/request-budget';
 import {withAttendanceTenant} from './module-gate';
 import {ownIntegrityEnrollmentCompanyTx} from './mobile-integrity-key';
 import {assertNoOfflineClockLeaseTx} from './mobile-offline-lease';
-import {requireRegisteredDeviceTx} from './attendance-device';
+import {requireRegisteredDeviceTx} from '../packs/attendance/service';
 import {OfflineContextIssueError} from '../lib/mobile-offline-errors';
 const uuid=z.string().uuid().transform(value=>value.toLowerCase());
 const Input=z.object({employmentId:uuid,request:OfflineClockContextRequest}).strict();

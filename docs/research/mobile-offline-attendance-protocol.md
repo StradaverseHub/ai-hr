@@ -793,8 +793,7 @@ deployment through the company the context was issued under, and so does claim u
 refusal `offline_disabled` for the case where the trusted snapshot reports offline as off; no rows are written.
 
 Platforms. iOS claim upload uses the claim's own App Attest assertion and creates no later transport assertion.
-Android claim upload answers `configuration_unavailable` until the transport task supplies the fresh,
-payload-bound Play preparer. The Android capabilities report says so (`claimUpload: unavailable`).
+Android claim upload runs the fresh, payload-bound Play preparer (see "Offline sync transport" below).
 
 Owner decisions (28 October 2026):
 1. Signing key custody. An environment secret (`AIHR_MOBILE_OFFLINE_SIGNING_KEY`) for the fictional-data pilot;
@@ -810,10 +809,80 @@ Owner decisions (28 October 2026):
    deployment is withdrawn; close requires the bearer session plus key ownership; a per-actor rollout allowlist;
    Android freshness means a payload-bound token plus `maxTokenAgeMs`.
 
-NOT done here: routes and transport; the Android Play preparer; delivering or refreshing the trusted registry to
-phones (capabilities expose no issuers); refusing issuance for a registered-device company (decision 5 is
-recorded, but its enforcement point is the snapshot owner or a later task, UNKNOWN which); wiring
-`offlineClockSnapshotPort(deployment)` from the snapshot branch into `deps.snapshot`; KMS custody. Operator
+NOT done here: KMS custody. The routes and transport, the Android Play preparer, the issuer registry in capabilities,
+the registered-device refusal and the snapshot wiring were done by the transport task below. Operator
 inputs still needed: an Ed25519 key pair generated off-repo, the issuer's `keyId`/`publicKey` and its
 `validFrom`/`validUntil` instants (validity must cover every context window that will be issued), and the actor
 allowlist together with matching clock-rollout entries.
+
+### Offline sync transport (28 October 2026; IMPLEMENTED, UNVERIFIED)
+
+Status: implemented on `claude/mobile-offline-claim-review`. No vitest, TypeScript, build or database command was run
+locally; hosted CI must verify it. Offline attendance stays off: every route answers HTTP 200
+`{outcome:'unavailable',code:'not_configured'}` until `AIHR_MOBILE_OFFLINE_POLICY` lists the actor, and a company whose
+`offline_clocking_enabled` is false is refused (`offline_disabled`) at capabilities and issuance and gets a refused
+receipt from the adjudicator at claim upload.
+
+Routes. All use `mobileRoute` (bearer session, no-store) and prove `?employmentId=` with `integrityEmployment` before
+reading a body or the deployment. Contracts are `lib/mobile-offline-contract.ts`; the HTTP layer is
+`lib/mobile-api/offline-sync-routes.ts`; the assembly is `lib/mobile-api/deployed-offline-clock.ts`.
+
+| Method and path (`/api/mobile/v2/integrity/{ios,android}/offline/...`) | Body (limit) | Success |
+| --- | --- | --- |
+| `GET capabilities` | none | `{outcome:'offline',enabled,apiOrigin,issuers,windowMs,permitCount}` |
+| `POST context` | JSON `OfflineClockContextRequest` (1 KiB) | `{outcome:'issued',context,contextId,authorization:'not_granted'}` |
+| `POST context/close` | JSON `{contextId,closeRequestId,consumedThrough}` (1 KiB) | `{outcome:'closed',...}` |
+| `POST claim` | multipart, 3 MiB total: `claim` JSON (16 KiB), `photo` (jpeg/png, 2 MiB), Android `playIntegrityToken` + `syncBuildVersion` | `{outcome:'processed',receipt}` |
+
+- `enabled` is false while the deployment drains; close and claim upload stay available. `issuers` is the deployment's
+  public context-signing registry, so a phone can verify a signed context.
+- Refresh is re-posting the same context request: the exact original signed bytes come back. A different nonce for the
+  same request id is `binding_conflict`; a second request while a context is open is `offline_pending`.
+- Framing and size violations are HTTP 400 `bad_request`, as on the online routes. A framed but malformed claim, or one
+  whose proof platform is not the route's, is the typed refusal `invalid_claim` and never reaches consumption.
+- Budgets: the existing per-actor write budget, plus a weighted claim allowance of 64 uploads per actor per hour
+  (`mobile-offline-claim` in `lib/mobile-api/handler.ts`; an engineering admission limit). `RequestBudgetExceeded`, from
+  that allowance or the issuance budget `maximumIssuesPerHour`, is HTTP 429 with `retry-after`.
+
+Error mapping. Refusals carry no receipt and change nothing. One code per service reason:
+
+| Source | Answer |
+| --- | --- |
+| `OfflineContextIssueError` | `refused` with its reason (`key_unavailable`, `binding_conflict`, `online_pending`, `context_closed`, `time_unavailable`, `offline_disabled`, `device_required`); `configuration_unavailable` is `unavailable` |
+| `OfflineContextCloseError` | `refused` with its reason (`context_unavailable`, `key_unavailable`, `context_closed`, `claims_pending`, `cursor_mismatch`, `binding_conflict`) |
+| `OfflineClaimError` | `refused` with its reason (`scope_unavailable`, `context_unavailable`, `key_unavailable`, `binding_conflict`, `chain_conflict`, `invalid_proof`, `attachment_mismatch`, `time_unavailable`); `configuration_unavailable` is `unavailable` |
+| `OfflineClockStreamError` | `offline_pending` refused, otherwise `configuration_unavailable` |
+| Android sync Play check | `refused` `sync_integrity` with `integrityReason`; provider problems are `unavailable` `proof_unavailable` (configuration: `configuration_unavailable`) |
+| Deployment | `not_configured`, `configuration_unavailable`, `module_unavailable`, `draining` (all `unavailable`) |
+| Subject | `subject_unavailable` (not own employment), `invalid_request` (assembly input parse) |
+
+Ordering (both platforms). The client sends claim N+1 only after claim N has a terminal receipt. Consumption verifies
+each claim's original proof against the stream cursor, so N+1 sent first is `chain_conflict` with nothing consumed. On
+iPhone the claim's own App Attest counter is verified and advanced inside consumption; no offline endpoint takes a
+transport assertion. An exact retry returns the terminal receipt without photo, token or provider call.
+
+Android sync integrity (`lib/mobile-api/offline-sync-integrity.ts`, owner decision 4). The standard token's requestHash
+is base64url(sha256(JSON `['aihr.mobile.integrity',1,'attendance.clock.offline.sync',claimDigest,signatureSha256,syncBuildVersion]`)):
+the receipt digest, the hex sha256 of the base64-decoded original signature and the uploading build. The verdict's
+versionCode must equal `syncBuildVersion` and be configured; the token must be no older than the clock rollout policy's
+`maxTokenAgeMs` (already in `AndroidClockIntegrityPolicy`, so no new policy field) and no further ahead than
+`allowedFutureSkewMs`. Package, certificates, app recognition, device integrity and licensing use the same policy;
+location-signal rules do not apply. The verdict describes the upload only. It does not authenticate capture-time build,
+integrity, location or time, and it is not stored. A failure is a refusal with no receipt; the phone keeps the claim
+queued. The check runs after receipt recovery and proof/chain verification, outside locks. The online verifier
+(`play-integrity.ts`) is unchanged; this sibling repeats its decode request and verdict shape. An Android deployment
+without a usable Google credential neither advertises nor issues (`configuration_unavailable`).
+
+Wiring. The assembly builds `offlineClockSnapshotPort({target,windowMs,permitCount})` per request from the resolved
+deployment and passes that same function to issuance and the adjudicator. The `deps.snapshot` override is gone, so
+window, permit count and target have one owner. Decision 5 is enforced in the issuance service: a company with
+`require_registered_device` gets `device_required`, after the offline-enabled check, before budget or writes. Exact
+recovery of an earlier request still works so the phone can close it. `OfflineContextIssueError` moved to
+`lib/mobile-offline-errors.ts` (re-exported, same class), so the attendance facade loads no `server-only` module.
+
+Tests: `test/mobile-offline-http.test.ts` (handler level) and `test/mobile-offline-deployment.test.ts` (mounted routes).
+`test/mobile-offline-deployment-config.test.ts` now observes the real port instead of injecting one.
+
+NOT done: the native client; storing the sync verdict or a sync audit event; delivering registry updates other than
+through capabilities; KMS custody; physical-device, vendor and airplane-mode witnesses; settings UI for the company
+switch.
