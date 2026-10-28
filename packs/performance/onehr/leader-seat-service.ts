@@ -77,7 +77,7 @@ async function guarded<T>(run: () => Promise<T>): Promise<T> {
     throw e;
   }
 }
-const live = (from: SQL | unknown, to: SQL | unknown, day: string) => sql`${from}<=${day}::date and (${to} is null or ${to}>${day}::date)`;
+const live = (from: unknown, to: unknown, day: string) => sql`${from}<=${day}::date and (${to} is null or ${to}>${day}::date)`;
 
 // ── Seats ───────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -105,7 +105,7 @@ export async function listLeaderSeats(ctx: SessionContext, raw: unknown = {}): P
       .leftJoin(company, eq(company.id, leaderSeat.companyId))
       .leftJoin(calibrationGroup, eq(calibrationGroup.id, leaderSeat.calibrationGroupId))
       .where(and(p.seatType ? eq(leaderSeat.seatType, p.seatType) : undefined, p.liveOnly ? live(leaderSeat.validFrom, leaderSeat.validTo, today) : undefined))
-      .orderBy(asc(leaderSeat.seatType), sql`coalesce(${company.legalName},${calibrationGroup.name})`, sql`${leaderSeat.validFrom} desc`, asc(leaderSeat.id));
+      .orderBy(asc(leaderSeat.seatType), sql`coalesce(${company.legalName},${calibrationGroup.name})`, sql`${leaderSeat.validFrom} desc`, sql`${leaderSeat.createdAt} desc`, asc(leaderSeat.id));
     return rows.map(({ seat, companyName, groupName, holderName, holderEmployeeCode }) => ({
       id: seat.id, seatType: seat.seatType as LeaderSeatType, companyId: seat.companyId, companyName: companyName ?? null,
       calibrationGroupId: seat.calibrationGroupId, groupName: groupName ?? null, holderEmploymentId: seat.holderEmploymentId,
@@ -186,10 +186,13 @@ export async function endLeaderSeat(ctx: SessionContext, seatId: string, raw: un
   const today = todayInKualaLumpur(), validTo = p.validTo ?? today;
   if (validTo < today) throw Error('A seat cannot end before today.');
   return withPerformanceTenant(ctx, (tx) => guarded(async () => {
+    // Read first (readers see the seat), decide authority, then lock: FOR UPDATE applies the write policy.
+    const [seen] = await tx.select().from(leaderSeat).where(eq(leaderSeat.id, seatId));
+    if (!seen) throw Error('Seat not found.');
+    if (!(await flag(tx, sql`app.onehr_leader_seat_writer(${seen.seatType}::text,${seen.companyId}::uuid)`))) throw Error('You cannot change this seat.');
     const [row] = await tx.select().from(leaderSeat).where(eq(leaderSeat.id, seatId)).for('update');
-    if (!row) throw Error('Seat not found.');
+    if (!row) throw Error('You cannot change this seat.');
     if (row.endedAt) throw Error('This seat has already ended.');
-    if (!(await flag(tx, sql`app.onehr_leader_seat_writer(${row.seatType}::text,${row.companyId}::uuid)`))) throw Error('You cannot change this seat.');
     if (row.validTo !== null && row.validTo <= validTo) throw Error('This seat already ends by that date.');
     await endSeatRowTx(tx, ctx, row, validTo, p.reason || null);
     return { id: row.id, validTo: validTo < row.validFrom ? row.validFrom : validTo };
@@ -280,7 +283,7 @@ async function hodPlanTx(tx: Tx, p: HodChangeInput, source: 'admin' | 'import', 
   const currentOf = new Map(assignments.filter((a) => a.validFrom <= validFrom).map((a) => [a.subjectEmploymentId, a.hodEmploymentId]));
   const { rows, unchanged, selfExcluded } = partitionHodPlan(people.map((x) => ({ employmentId: x.id, personId: x.personId, currentHodEmploymentId: currentOf.get(x.id) ?? null })), next, p.only);
   if (next && rows.length) {
-    const nodes = await tx.execute<{ id: string; node: string | null }>(sql`select e.id, app.onehr_business_group_node(e.company_id) as node from employment e where e.id = any(${ids([next.employmentId, ...rows.map((r) => r.subjectEmploymentId)])}) and e.tenant_id=app.current_tenant_id()`);
+    const nodes = await tx.execute<{ id: string; node: string | null }>(sql`select e.id, app.onehr_business_group_node(e.company_id) as node from app.onehr_employment e where e.id = any(${ids([next.employmentId, ...rows.map((r) => r.subjectEmploymentId)])}) and e.tenant_id=app.current_tenant_id()`);
     const nodeOf = new Map(nodes.map((n) => [n.id, n.node]));
     if (rows.some((r) => nodeOf.get(r.subjectEmploymentId) !== nodeOf.get(next!.employmentId))) throw Error('A head of department can span business units but not business groups.');
   }
@@ -603,7 +606,7 @@ export async function generateCalibrationScopes(ctx: SessionContext, cycleId: st
         const heads = hods.length ? await tx.execute<{ id: string; node: string | null; name: string | null; code: string | null }>(sql`
           select e.id, app.onehr_business_group_node(e.company_id) as node,
            (select l.full_name from app.onehr_person_labels(array[e.id]) l) as name, (select l.employee_code from app.onehr_person_labels(array[e.id]) l) as code
-          from employment e where e.id = any(${ids(hods)}) and e.tenant_id=app.current_tenant_id()`) : [];
+          from app.onehr_employment e where e.id = any(${ids(hods)}) and e.tenant_id=app.current_tenant_id()`) : [];
         const headOf = new Map(heads.map((h) => [h.id, h]));
         for (const r of reviews) { const h = hodOf.get(r.employmentId), head = h ? headOf.get(h) : undefined; if (h && head) add(h, head.node, head.name ?? head.code ?? h, r); }
       } else if (tier === 'bu') {
@@ -708,9 +711,9 @@ export async function importLeaders(ctx: SessionContext, raw: LeaderImportInput,
     const today = todayInKualaLumpur();
     for (const s of plan.seats) {
       if (s.holderEmploymentId === null) {
+        if (!(await flag(tx, sql`app.onehr_leader_seat_writer(${s.seatType}::text,${s.companyId}::uuid)`))) throw Error(`Seat row ${s.line}: you cannot change this seat.`);
         const current = await tx.select().from(leaderSeat).where(and(eq(leaderSeat.seatType, s.seatType), s.companyId ? eq(leaderSeat.companyId, s.companyId) : eq(leaderSeat.calibrationGroupId, s.calibrationGroupId!), isNull(leaderSeat.endedAt), sql`(${leaderSeat.validTo} is null or ${leaderSeat.validTo}>${today}::date)`)).for('update');
         if (!current.length) { result.seats.unchanged++; continue; }
-        if (!(await flag(tx, sql`app.onehr_leader_seat_writer(${s.seatType}::text,${s.companyId}::uuid)`))) throw Error(`Seat row ${s.line}: you cannot change this seat.`);
         for (const row of current) await endSeatRowTx(tx, ctx, row, today, 'import');
         result.seats.ended++;
         continue;
