@@ -5,10 +5,10 @@ import en from '../messages/en.json';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import { RewardAccessEditor } from '../app/admin/rewards/access/access-editor';
 import type { RewardAccessAdministration } from '../packs/rewards/service';
-const ports = vi.hoisted(() => ({ preview: vi.fn(), save: vi.fn(), refresh: vi.fn(), batchPreview: vi.fn(), batchSave: vi.fn(), copyPreview: vi.fn() }));
+const ports = vi.hoisted(() => ({ preview: vi.fn(), save: vi.fn(), refresh: vi.fn(), batchPreview: vi.fn(), batchSave: vi.fn(), copyPreview: vi.fn(),decide:vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: ports.refresh }) }));
 vi.mock('../app/rewards/actions', () => ({ previewRewardAccessAction: ports.preview, saveRewardAccessAction: ports.save }));
-vi.mock('../app/admin/rewards/access/actions', () => ({ previewRewardAccessBatchAction: ports.batchPreview, saveRewardAccessBatchAction: ports.batchSave, previewRewardAccessCopyAction: ports.copyPreview }));
+vi.mock('../app/admin/rewards/access/actions', () => ({ previewRewardAccessBatchAction: ports.batchPreview, saveRewardAccessBatchAction: ports.batchSave, previewRewardAccessCopyAction: ports.copyPreview,decideRewardAccessRequestAction:ports.decide }));
 const b = en.rewardsAccessBatch;
 const roles = ['bu', 'bg', 'gr', 'ctro', 'ec', 'pbp', 'payroll'] as const;
 const coverage = (unitId: string, holders: Partial<Record<(typeof roles)[number], string>>) => ({ unitId, roles: roles.map(role => ({ role, required: role !== 'pbp', activeHolders: holders[role] ? [{ userId: role, name: holders[role]!, email: null }] : [] })), missing: roles.filter(role => role !== 'pbp' && !holders[role]) });
@@ -90,7 +90,7 @@ describe('Central Rewards access journey', () => {
         expect((screen.getByRole('checkbox', { name: /Finance/ }) as HTMLInputElement).disabled).toBe(true);
         fireEvent.change(screen.getByLabelText(b.allDraftInCompany), { target: { value: 'company' } });
         expect(screen.getByText('2 reviews selected')).toBeTruthy();
-        const changes = [{ unitId: 'review', revision: 4, before: null, after: { userId: 'user', role: 'ctro' } }, { unitId: 'second', revision: 2, before: null, after: { userId: 'user', role: 'ctro' } }];
+        const changes = [{ unitId: 'review', revision: 4, before: null, after: { userId: 'user', role: 'ctro', validFrom:todayInKualaLumpur(),validTo:null,coversUserId:null } }, { unitId: 'second', revision: 2, before: null, after: { userId: 'user', role: 'ctro', validFrom:todayInKualaLumpur(),validTo:null,coversUserId:null } }];
         ports.batchPreview.mockResolvedValueOnce({ ok: true, preview: { changes: [changes[1]], alreadyPresent: [changes[0]], digest: 'c'.repeat(64) } });
         fireEvent.click(screen.getByRole('button', { name: 'Preview changes' }));
         const preview = await screen.findByRole('region', { name: en.rewardsAccess.previewTitle });
@@ -119,7 +119,7 @@ describe('Central Rewards access journey', () => {
         await waitFor(() => expect(within(preview).getByRole('button', { name: 'Confirm and save' }).hasAttribute('disabled')).toBe(false));
         fireEvent.click(within(preview).getByRole('button', { name: 'Confirm and save' }));
         expect(await screen.findByRole('alert')).toHaveProperty('textContent', en.rewardsAccess.errors.changed);
-        expect(ports.batchSave).toHaveBeenCalledWith({ changes: [{ unitId: 'review', revision: 4, before: null, after: { userId: 'user', role: 'pbp' } }] }, 'b'.repeat(64));
+        expect(ports.batchSave).toHaveBeenCalledWith({ changes: [{ unitId: 'review', revision: 4, before: null, after: { userId: 'user', role: 'pbp', validFrom:todayInKualaLumpur(),validTo:null,coversUserId:null } }] }, 'b'.repeat(64));
         expect(ports.refresh).not.toHaveBeenCalled();
     });
     it('f38e5d8e: offers the business-unit head as BU CEO only as an unticked suggestion', async () => {
@@ -131,10 +131,10 @@ describe('Central Rewards access journey', () => {
         expect(suggestion.checked).toBe(false);
         fireEvent.click(screen.getByRole('button', { name: 'Preview changes' }));
         await screen.findByRole('region', { name: en.rewardsAccess.previewTitle });
-        expect(ports.batchPreview).toHaveBeenLastCalledWith({ changes: [{ unitId: 'review', revision: 4, before: null, after: { userId: 'user', role: 'bu' } }] });
+        expect(ports.batchPreview).toHaveBeenLastCalledWith({ changes: [{ unitId: 'review', revision: 4, before: null, after: { userId: 'user', role: 'bu', validFrom:todayInKualaLumpur(),validTo:null,coversUserId:null } }] });
         fireEvent.click(suggestion);
         fireEvent.click(screen.getByRole('button', { name: 'Preview changes' }));
-        await waitFor(() => expect(ports.batchPreview).toHaveBeenLastCalledWith({ changes: [{ unitId: 'review', revision: 4, before: null, after: { userId: 'user', role: 'bu' } }, { unitId: 'review', revision: 4, before: null, after: { userId: 'admin', role: 'bu' } }] }));
+        await waitFor(() => expect(ports.batchPreview).toHaveBeenLastCalledWith({ changes: [{ unitId: 'review', revision: 4, before: null, after: { userId: 'user', role: 'bu', validFrom:todayInKualaLumpur(),validTo:null,coversUserId:null } }, { unitId: 'review', revision: 4, before: null, after: { userId: 'admin', role: 'bu' } }] }));
     });
     it('f38e5d8e: copies an earlier cycle with copied seats ticked, suggestions unticked and inactive logins listed', async () => {
         const copied = { unitId: 'second', revision: 2, before: null, after: { userId: 'user', role: 'bu' as const } }, suggested = { ...copied, after: { userId: 'admin', role: 'bu' as const } };
@@ -169,4 +169,17 @@ describe('Central Rewards access journey', () => {
         const panel = screen.getByRole('region', { name: en.rewardsAccess.coverageTitle });
         expect(within(panel).queryByText('Example Company / Finance · Annual cycle')).toBeNull();
     });
+});
+
+it('shows an exact pending request and gives only an independent checker the decision controls',async()=>{
+ const c=en.rewardsAccessControl;
+ const request={id:'pending',changes:[{unitId:'review',revision:4,before:null,after:{userId:'user',role:'ctro' as const}}],requestedBy:'requester',requestedName:'Fictional requester',requestedAt:'2026-10-29',status:'pending' as const,canDecide:true,decidedAt:null,reason:null};
+ ports.decide.mockResolvedValue({ok:true,result:{status:'approved'}});
+ const view=render(<NextIntlClientProvider locale="en" messages={en}><RewardAccessEditor value={value} requests={[request]}/></NextIntlClientProvider>);
+ fireEvent.click(screen.getByText(/Fictional requester requested/));
+ expect(screen.getByRole('button',{name:c.reject}).hasAttribute('disabled')).toBe(true);
+ fireEvent.click(screen.getByRole('button',{name:c.approve}));
+ await waitFor(()=>expect(ports.decide).toHaveBeenCalledWith('pending',true,''));
+ view.rerender(<NextIntlClientProvider locale="en" messages={en}><RewardAccessEditor value={value} requests={[{...request,canDecide:false}]}/></NextIntlClientProvider>);
+ expect(screen.queryByRole('button',{name:c.approve})).toBeNull();expect(screen.getByText(c.needsChecker)).toBeTruthy();
 });

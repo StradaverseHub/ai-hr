@@ -43,7 +43,9 @@ BEGIN
  IF m.id IS NULL THEN RETURN jsonb_build_object('reason','unavailable','on',day); END IF;
  SELECT * INTO u FROM public.app_user WHERE id=m.user_id AND tenant_id=m.tenant_id;
  SELECT * INTO r FROM public.reward_unit WHERE id=m.unit_id AND tenant_id=m.tenant_id;
- IF u.id IS NULL OR u.archived_at IS NOT NULL OR app.login_blocked(u.id) THEN RETURN jsonb_build_object('reason','login','on',COALESCE(u.archived_at::date,m.valid_from)); END IF;
+ IF u.id IS NULL OR u.archived_at IS NOT NULL OR app.login_blocked(u.id) THEN
+ SELECT least(min((e.blacklisted_at AT TIME ZONE 'Asia/Kuala_Lumpur')::date),min(least(e.resignation_date,e.last_working_date,e.terminated_on))) INTO changed FROM public.employment e WHERE e.tenant_id=m.tenant_id AND e.person_id=u.person_id;
+ RETURN jsonb_build_object('reason','login','on',COALESCE((u.archived_at AT TIME ZONE 'Asia/Kuala_Lumpur')::date,changed,m.valid_from)); END IF;
  IF m.valid_from>day THEN RETURN jsonb_build_object('reason','future','on',m.valid_from); END IF;
  IF m.valid_to<day THEN RETURN jsonb_build_object('reason','expired','on',m.valid_to); END IF;
  -- A restore never overrides a disabled login or an access window. It expires on any People change.
@@ -87,7 +89,8 @@ CREATE FUNCTION app.reward_access_request_authorised(wanted_request uuid) RETURN
  SELECT EXISTS(SELECT 1 FROM public.reward_access_request q WHERE q.id=wanted_request AND q.tenant_id=app.current_tenant_id()
  AND NOT EXISTS(SELECT 1 FROM jsonb_each(q.unit_revisions) k LEFT JOIN public.reward_unit r ON r.id=k.key::uuid AND r.tenant_id=q.tenant_id WHERE r.id IS NULL OR NOT app.reward_admin(r.company_id)));
 $$;
-REVOKE ALL ON FUNCTION app.reward_access_request_authorised(uuid) FROM PUBLIC,ai_hr_app;
+REVOKE ALL ON FUNCTION app.reward_access_request_authorised(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_access_request_authorised(uuid) TO ai_hr_app;
 CREATE POLICY reward_access_request_read ON reward_access_request FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.reward_access_request_authorised(id));
 GRANT SELECT ON reward_access_request TO ai_hr_app;
 --> statement-breakpoint
@@ -104,6 +107,7 @@ BEGIN
  END LOOP;
  FOR c IN SELECT value FROM jsonb_array_elements(p_changes) LOOP
  IF (c->>'revision')::int IS DISTINCT FROM (revisions->>(c->>'unitId'))::int THEN RAISE EXCEPTION 'access request changed' USING ERRCODE='40001'; END IF;
+ IF c->'after'->>'restoreReason' IS NOT NULL AND (c->'before'='null'::jsonb OR c->'before'->>'userId' IS DISTINCT FROM c->'after'->>'userId' OR c->'before'->>'role' IS DISTINCT FROM c->'after'->>'role' OR NOT EXISTS(SELECT 1 FROM public.reward_member m WHERE m.unit_id=(c->>'unitId')::uuid AND m.tenant_id=t AND m.user_id=(c->'before'->>'userId')::uuid AND m.role=c->'before'->>'role' AND app.reward_member_state(m.id)->>'reason' IN('notice','assignment'))) THEN RAISE EXCEPTION 'only a suspended existing assignment can be restored' USING ERRCODE='23514'; END IF;
  IF c->'after'->>'restoreReason' IS NOT NULL AND NOT EXISTS(SELECT 1 FROM app.reward_roles((c->>'unitId')::uuid) role WHERE role='gr') THEN RAISE EXCEPTION 'Group Rewards restore required' USING ERRCODE='42501'; END IF;
  IF c->'after'<>'null'::jsonb AND NOT EXISTS(SELECT 1 FROM public.app_user x WHERE x.id=(c->'after'->>'userId')::uuid AND x.tenant_id=t AND x.archived_at IS NULL AND NOT app.login_blocked(x.id)) THEN RAISE EXCEPTION 'access account unavailable' USING ERRCODE='42501'; END IF;
  END LOOP;
@@ -120,6 +124,41 @@ CREATE FUNCTION app.reward_required_access_roles(wanted_unit uuid) RETURNS text[
  SELECT CASE WHEN r.kind='annual' THEN ARRAY['bu','bg','gr','ctro','ec','payroll'] WHEN r.kind='midyear' THEN ARRAY['bu','bg','gr','payroll'] ELSE ARRAY['bg','gr','ctro','payroll']||CASE WHEN r.offcycle->>'bgOrigin'='true' THEN ARRAY[]::text[] ELSE ARRAY['bu'] END||CASE WHEN COALESCE(r.offcycle->>'exceptionReason','')<>'' THEN ARRAY['ec'] ELSE ARRAY[]::text[] END END FROM public.reward_unit r WHERE r.id=wanted_unit AND r.tenant_id=app.current_tenant_id();
 $$;
 REVOKE ALL ON FUNCTION app.reward_required_access_roles(uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+-- Canonical reporting-line floor projection, reused by snapshot readers and access enactment.
+CREATE FUNCTION app.reward_confidentiality_floors(wanted_unit uuid,wanted_employments uuid[],as_of date)
+ RETURNS TABLE(employment_id uuid,level text,manager_employment_id uuid) LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT DISTINCT ON (line.subordinate_employment_id) line.subordinate_employment_id,m.role,line.manager_employment_id
+ FROM public.reward_unit r JOIN public.reward_member m ON m.unit_id=r.id AND m.tenant_id=r.tenant_id AND m.role IN('bg','ec')
+ JOIN public.app_user u ON u.id=m.user_id AND u.tenant_id=m.tenant_id
+ JOIN public.employment manager ON manager.person_id=u.person_id AND manager.tenant_id=u.tenant_id AND manager.hired_on<=as_of AND (manager.terminated_on IS NULL OR as_of<manager.terminated_on)
+ JOIN public.reporting_line line ON line.manager_employment_id=manager.id AND line.tenant_id=manager.tenant_id AND line.line_type='administrative' AND line.superseded_at IS NULL AND line.valid_from<=as_of AND (line.valid_to IS NULL OR as_of<line.valid_to)
+ JOIN public.employment subject ON subject.id=line.subordinate_employment_id AND subject.tenant_id=r.tenant_id AND subject.company_id=r.company_id
+ WHERE r.id=wanted_unit AND r.tenant_id=app.current_tenant_id() AND r.deleted_at IS NULL AND line.subordinate_employment_id=ANY(wanted_employments) AND app.reward_access(r.id)
+ ORDER BY line.subordinate_employment_id,CASE m.role WHEN 'ec' THEN 0 ELSE 1 END,line.manager_employment_id;
+$$;
+REVOKE ALL ON FUNCTION app.reward_confidentiality_floors(uuid,uuid[],date) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_confidentiality_floors(uuid,uuid[],date) TO ai_hr_app;
+CREATE FUNCTION app.reward_access_refresh_confidentiality(wanted_unit uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE u public.reward_unit;e public.reward_entry;floor record;next_source jsonb;next_facts jsonb;current_rank int;old_rank int;new_rank int;next_conf text;
+BEGIN
+ SELECT * INTO u FROM public.reward_unit WHERE id=wanted_unit AND tenant_id=app.current_tenant_id();
+ IF u.id IS NULL OR u.status<>'draft' OR NOT app.reward_admin(u.company_id) THEN RAISE EXCEPTION 'Rewards confidentiality owner denied' USING ERRCODE='42501'; END IF;
+ FOR e IN SELECT * FROM public.reward_entry x WHERE x.unit_id=u.id AND x.tenant_id=u.tenant_id AND COALESCE(x.source->>'leftOn','')='' LOOP
+ SELECT * INTO floor FROM app.reward_confidentiality_floors(u.id,ARRAY[e.employment_id],u.snapshot_date);
+ IF e.source->>'confidentialityFloor' IS NOT DISTINCT FROM floor.level AND e.source->'confidentialityReason'->>'managerEmploymentId' IS NOT DISTINCT FROM floor.manager_employment_id::text THEN CONTINUE; END IF;
+ next_source:=e.source-ARRAY['confidentialityFloor','confidentialityReason'];
+ IF floor.level IS NOT NULL THEN next_source:=next_source||jsonb_build_object('confidentialityFloor',floor.level,'confidentialityReason',jsonb_build_object('seat',floor.level,'managerEmploymentId',floor.manager_employment_id)); END IF;
+ current_rank:=CASE e.facts->>'confidentiality' WHEN 'ec' THEN 2 WHEN 'bg' THEN 1 ELSE 0 END;
+ old_rank:=CASE e.source->>'confidentialityFloor' WHEN 'ec' THEN 2 WHEN 'bg' THEN 1 ELSE 0 END;
+ new_rank:=CASE floor.level WHEN 'ec' THEN 2 WHEN 'bg' THEN 1 ELSE 0 END;
+ next_conf:=CASE greatest(CASE WHEN current_rank>old_rank THEN current_rank ELSE 0 END,new_rank) WHEN 2 THEN 'ec' WHEN 1 THEN 'bg' ELSE 'standard' END;
+ next_facts:=jsonb_set(e.facts,'{confidentiality}',to_jsonb(next_conf));
+ IF next_conf IS DISTINCT FROM e.facts->>'confidentiality' THEN next_facts:=jsonb_set(next_facts,'{reviewed}','false'::jsonb); END IF;
+ UPDATE public.reward_entry SET source=next_source,facts=next_facts,updated_at=now() WHERE id=e.id;
+ END LOOP;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_access_refresh_confidentiality(uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.reward_access_request_decide(wanted_request uuid,p_approve boolean,p_reason text DEFAULT '') RETURNS text
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -159,6 +198,7 @@ BEGIN
  END LOOP;
  FOR k IN SELECT key::uuid FROM jsonb_each(q.unit_revisions) ORDER BY 1 LOOP
  IF NOT EXISTS(SELECT 1 FROM public.reward_member m WHERE m.unit_id=k AND m.tenant_id=t AND m.role='gr' AND app.reward_member_eligible(m.id)) OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(before_coverage->k::text) old_role(role) WHERE NOT EXISTS(SELECT 1 FROM public.reward_member m WHERE m.unit_id=k AND m.tenant_id=t AND m.role=old_role.role AND app.reward_member_eligible(m.id))) THEN RAISE EXCEPTION 'required Rewards role must remain covered' USING ERRCODE='23514'; END IF;
+ IF EXISTS(SELECT 1 FROM jsonb_array_elements(q.changes) change WHERE change->>'unitId'=k::text AND (change->'before'->>'role' IN('bg','ec') OR change->'after'->>'role' IN('bg','ec'))) THEN PERFORM app.reward_access_refresh_confidentiality(k); END IF;
  PERFORM set_config('app.reward_approving_request',q.id::text,true);
  UPDATE public.reward_unit SET revision=revision+1,approved_digest=NULL,updated_at=now() WHERE id=k AND tenant_id=t;
  FOR c IN SELECT value FROM jsonb_array_elements(q.changes) WHERE value->>'unitId'=k::text LOOP

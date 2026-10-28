@@ -8,7 +8,6 @@ import { appUser, assignment, businessUnit, company, employment, person, positio
 import { todayInKualaLumpur } from '../../lib/hr-date';
 import { withRewardsTenant } from '../../core/module-gate';
 import { rewardRoles, type RewardRole } from './model';
-import { rewardSeatConfidentialityTx } from './confidentiality';
 import { activeRewardLogin, rewardRequiredRoles, rewardRoleLabels, rewardUnitCoverage } from './coverage';
 export type RewardMaintenanceCode = 'scope' | 'changed' | 'locked' | 'account' | 'lastGr' | 'lastRequired' | 'membership' | 'preview' | 'confirmation' | 'used' | 'missing' | 'checker' | 'reason' | 'proxy' | 'dates';
 const errorMessages: Record<RewardMaintenanceCode, string> = { checker: 'Another independent Rewards administrator must decide this request.', reason: 'Give a reason of at least 10 characters.', proxy: 'Choose an existing holder of this role to cover, with an end date.', dates: 'Choose a valid access date range.', scope: 'Company administrator access is required.', changed: 'This review changed in another session. Reload before saving.', locked: 'Return the unit to draft before changing its approved inputs.', account: 'Choose an active existing login account in this tenant.', lastGr: 'Keep at least one active Group Rewards reviewer assigned.', lastRequired: 'Keep at least one active person in every required approval role; replace them in one edit.', membership: 'The selected membership changed. Reload before saving.', preview: 'Access or account eligibility changed. Preview it again before saving.', confirmation: 'Confirm the exact review before deleting.', used: 'This review is in use and its history must be retained.', missing: 'Reward unit not found or access has been removed.' };
@@ -209,7 +208,6 @@ export async function decideRewardAccessRequest(ctx:SessionContext,requestId:str
   const [live]=await tx.execute<{stale:boolean}>(sql`select app.reward_access_request_stale(${requestId}::uuid) as stale`);
   if(approve&&!live.stale)await prepareAccessBatch(tx,ctx,rewardAccessBatchSchema.parse({changes:q.changes}),true);
   const [result]=await tx.execute<{status:'approved'|'rejected'|'lapsed'}>(sql`select app.reward_access_request_decide(${requestId}::uuid,${approve},${reason}) as status`);
-  if(result.status==='approved')for(const change of q.changes){const unit=await adminUnit(tx,change.unitId);await rewardSeatConfidentialityTx(tx,unit,change);}
   return result;
  });
 }
