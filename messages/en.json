@@ -23606,7 +23606,7 @@
     "mapIntro": "Every AI piece in this system, whether it can run right now, and where to change it. None of them decides anything on its own; people do.",
     "mapProvider": "AI provider",
     "mapProviderHelp": "The service and key every AI piece uses. Without one, nothing is sent to any AI service.",
-    "mapAssistant": "HR assistant and Assistant capabilities",
+    "mapAssistant": "Assistant capabilities",
     "mapAssistantHelp": "One assistant with a capability for each HR module. A capability appears only when its module is on and the person has Assistant access.",
     "mapSpecialists": "{available} of {total} capabilities available",
     "mapAgents": "Background agents",
