@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAuthState } from '../mobile/lib/auth-state';
 import { createInstallationStore } from '../mobile/lib/installation-store';
 import { providerLogoutUrl, sessionIdFromToken } from '../mobile/lib/provider-logout';
-import { SessionChangedError, SignInRequiredError, UnavailableError } from '../mobile/lib/errors';
+import { NetworkUnavailableError, SessionChangedError, SignInRequiredError, UnavailableError } from '../mobile/lib/errors';
 import {readBoundedBody} from '../lib/bounded-body';
 
 function token(sid: string) {
@@ -34,6 +34,7 @@ function fixture(keycloak: boolean | "internal" = false) {
     beginSignIn: () => number; completeSignIn: (code: string, verifier: string, owner: number) => Promise<void>;
     signOut: () => Promise<void>; workosLogoutUrl: () => string | null } };
   const deviceModule = { exports: {} };
+  const endOfflineAnchor = vi.fn();
   runInNewContext(transpileModule(readFileSync('mobile/lib/device-registration.ts', 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS } }).outputText,
     { exports: deviceModule.exports, module: deviceModule, require: (id: string) => { if (id === 'expo-secure-store') return secure; throw new Error(id); } });
   const code = transpileModule(readFileSync('mobile/lib/auth.ts', 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS } }).outputText;
@@ -48,12 +49,13 @@ function fixture(keycloak: boolean | "internal" = false) {
       if (id === './auth-state') return { createAuthState };
       if (id === './installation-store') return { createInstallationStore };
       if (id === './submission-native') return { resetSubmissionInstallation: async()=>{} };
+      if (id === './offline-anchor') return { endOfflineAnchor };
       if (id === './provider-logout') return { providerLogoutUrl, sessionIdFromToken };
       if (id === './config') return { config: { authProvider: embedded ? 'internal' : keycloak ? 'keycloak' : 'workos', apiUrl: 'https://hr.test', issuer: 'https://identity.test/realms/test', workosClientId: 'public-client-id', scheme: 'aihr' }, configProblem: () => null, identityClientId: () => 'public-client-id', identityNamespace: () => namespace };
-      if (id === './errors') return { SignInRequiredError, UnavailableError };
+      if (id === './errors') return { SignInRequiredError, UnavailableError, NetworkUnavailableError };
       throw new Error(`Unexpected auth adapter dependency: ${id}`);
     } });
-  return { auth: output.exports, response, secure, files, initialRefresh, stored: () => stored };
+  return { auth: output.exports, response, secure, files, initialRefresh, stored: () => stored, endOfflineAnchor };
 }
 afterEach(() => vi.useRealTimers());
 
@@ -185,5 +187,20 @@ describe('native embedded exchange — shipped adapter', () => {
     expect(url).toBe('https://hr.test/login/api/logout');
     expect(JSON.parse(String(init?.body))).toEqual({ refresh_token: f.initialRefresh });
     expect(init?.credentials).toBe('omit'); expect(f.auth.workosLogoutUrl()).toBeNull();
+  });
+});
+
+describe('offline clocking hooks in the shipped auth adapter', () => {
+  it('logout ends the device-only offline identity anchor alongside the credential', async () => {
+    const f = fixture(); await f.auth.signOut();
+    expect(f.endOfflineAnchor).toHaveBeenCalledOnce(); expect(f.stored()).toBeNull();
+  });
+  it('a refresh with no HTTP response is the offline connectivity signal; an HTTP outage is not', async () => {
+    const f = fixture(); f.response.mockRejectedValueOnce(new TypeError('Network request failed'));
+    const offline = await f.auth.refresh().catch((error: unknown) => error);
+    expect(offline).toBeInstanceOf(NetworkUnavailableError); expect(offline).toBeInstanceOf(UnavailableError);
+    f.response.mockResolvedValueOnce(new Response('', { status: 503 }));
+    const outage = await f.auth.refresh().catch((error: unknown) => error);
+    expect(outage).toBeInstanceOf(UnavailableError); expect(outage).not.toBeInstanceOf(NetworkUnavailableError);
   });
 });

@@ -8,7 +8,7 @@ import {createEnrollmentJournal,parseEnrollmentSnapshot,EnrollmentScope,Enrollme
 import {createAndroidEnrollmentJournal,parseAndroidEnrollmentSnapshot,type AndroidEnrollmentPorts} from './android-enrollment-journal';
 import {createSignedClockJournal,parseSignedClockSnapshot,type SignedClockSnapshot,type SignedClockPorts} from './signed-clock-journal';
 import {OfflineClockClaimData} from '../../lib/mobile-offline-clock';
-import {offlineClockPhotoReference,isOfflineCaptureProgress} from './offline-clock-state';
+import {offlineClockPhotoReference,isOfflineCaptureProgress,isOfflineResolution,offlineClaimSettled} from './offline-clock-state';
 import NativeIntegrity from '../modules/aihr-integrity/src/AihrIntegrityModule';
 import {createIntegrityBridge} from './integrity-bridge';
 
@@ -201,8 +201,15 @@ async function nativeEnrollmentStorage<T extends {revision:number;pending:unknow
     if(!directory.exists)directory.create({intermediates:true});staged.write(sealed);assertCurrent();
     staged.moveSync(target,{overwrite:false});assertCurrent();await readPhoto(requestId,expected);return name;
   });}
+  /** Idempotent: an absent file (already deleted, or never retained) is success. The caller proves the claim settled. */
+  async function deletePhoto(requestId:string){return serializedKey(async()=>{
+    assertCurrent();if(domain!=='signed-clock-v1')throw new EnrollmentJournalUnavailable();
+    const name=offlineClockPhotoReference(requestId);
+    for(const f of [new File(directory,name),new File(directory,name+'.staging')])if(f.exists)f.delete();
+    assertCurrent();
+  });}
   return {
-    retainPhoto,readPhoto,
+    retainPhoto,readPhoto,deletePhoto,
     async read(){const s=await storage.read();if(s){try{reclaim(s.revision);}catch{/* Preserve the committed state. */}}assertCurrent();return s;},
     async commit(s:T){await storage.commit(s);try{reclaim(s.revision);}catch{/* Preserve the committed receipt. */}assertCurrent();},
     async digest(value:string,encoding:'hex'|'base64'){assertCurrent();const result=await digestStringAsync(CryptoDigestAlgorithm.SHA256,value,{encoding:encoding==='base64'?CryptoEncoding.BASE64:CryptoEncoding.HEX});assertCurrent();return result;},
@@ -221,7 +228,7 @@ export async function openNativeAndroidEnrollmentJournal(rawScope:EnrollmentScop
 export async function openNativeSignedClockJournal(rawScope:EnrollmentScope,assertCurrent:()=>void,ports:Omit<SignedClockPorts,'assertCurrent'|'read'|'commit'>){
  const scope=EnrollmentScope.parse(rawScope);let prior:SignedClockSnapshot|null=null;
  const storage=await nativeEnrollmentStorage(scope,assertCurrent,value=>parseSignedClockSnapshot(value,scope),'signed-clock-v1',
-  snapshot=>(!snapshot.pending&&!snapshot.offline)||snapshot.pending?.phase==='settled'||!snapshot.pending&&isOfflineCaptureProgress(prior?.offline,snapshot.offline));
+  snapshot=>(!snapshot.pending&&!snapshot.offline)||snapshot.pending?.phase==='settled'||!snapshot.pending&&(isOfflineCaptureProgress(prior?.offline,snapshot.offline)||isOfflineResolution(prior?.offline,snapshot.offline)));
  const read=async()=>{const value=await storage.read();prior=value;return value;};
  const commit=async(value:SignedClockSnapshot)=>{await storage.commit(value);prior=value;};
  const journal=createSignedClockJournal(scope,{...ports,assertCurrent,read,commit});
@@ -234,6 +241,45 @@ export async function openNativeSignedClockJournal(rawScope:EnrollmentScope,asse
  return {...journal,
   async retainOfflinePhoto(requestId:string,input:unknown,bytes:Uint8Array){try{await checkPhoto(requestId,input);const result=await storage.retainPhoto(requestId,input,bytes);assertCurrent();return result;}catch(error){assertCurrent();throw error;}},
   async readOfflinePhoto(requestId:string,input:unknown){try{await checkPhoto(requestId,input,true);const result=await storage.readPhoto(requestId,input);assertCurrent();return result;}catch(error){assertCurrent();throw error;}},
+  /** Guarded like checkPhoto: only the photo of a committed claim that is settled (its receipt saved, or the employee's
+   * confirmed removal of an undeliverable claim) in this account's own exchange. */
+  async deleteOfflinePhoto(requestId:string){try{
+   const state=await read();assertCurrent();const exchange=state?.offline,name=offlineClockPhotoReference(requestId);
+   if(!exchange||exchange.phase==='context_requested')throw new EnrollmentJournalUnavailable();
+   const entry=exchange.claims.find(value=>value.photoReference===name);
+   if(!entry||!offlineClaimSettled(entry))throw new EnrollmentJournalUnavailable();
+   await storage.deletePhoto(requestId);assertCurrent();
+  }catch(error){assertCurrent();throw error;}},
  };
 
+}
+
+/** Small device-only records sealed under the installation master (offline identity anchor, issuer registry cache).
+ * SecureStore item size limits are UNKNOWN, so these live as sealed files beside the journals. Staged then moved into
+ * place; an unreadable or tampered record reads as unavailable, never as another account's data. */
+export type SealedDeviceRecord='offline-anchor'|'offline-issuers';
+const RECORD_LIMIT=16384;
+const recordFile=(name:SealedDeviceRecord)=>new File(root(),`${name}.sealed`);
+const recordAad=(name:SealedDeviceRecord)=>new TextEncoder().encode(`aihr-device-record-v1:${name}`);
+export async function readSealedDeviceRecord(name:SealedDeviceRecord,assertCurrent:()=>void):Promise<unknown>{
+  assertCurrent();const f=recordFile(name);if(!f.exists)return null;
+  if(f.size<1||f.size>RECORD_LIMIT+64)throw new SubmissionJournalUnavailable('Invalid device record');
+  const key=await encryptionKey(assertCurrent),sealed=await f.bytes();assertCurrent();
+  const bytes=await aesDecryptAsync(AESSealedData.fromCombined(sealed),key,{additionalData:recordAad(name)});assertCurrent();
+  return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes)) as unknown;
+}
+export async function writeSealedDeviceRecord(name:SealedDeviceRecord,value:unknown,assertCurrent:()=>void){
+  assertCurrent();const bytes=new TextEncoder().encode(JSON.stringify(value));if(bytes.byteLength>RECORD_LIMIT)throw new SubmissionJournalUnavailable('Device record too large');
+  const key=await encryptionKey(assertCurrent),result=await aesEncryptAsync(bytes,key,{additionalData:recordAad(name)});assertCurrent();const sealed=await result.combined();assertCurrent();
+  return serializedKey(async()=>{
+    assertCurrent();const directory=root(),target=recordFile(name),staged=new File(directory,`${name}.sealed.staging`);
+    const used=directory.exists?directory.size:0;
+    if(used==null||!Number.isFinite(used)||used<0||used+sealed.byteLength>MAX_INSTALL_BYTES)throw new SubmissionJournalFull('Pending submission storage is full');
+    if(!directory.exists)directory.create({intermediates:true});staged.write(sealed);assertCurrent();
+    staged.moveSync(target,{overwrite:true});assertCurrent();
+  });
+}
+/** Synchronous file removal: usable from logout after session ownership is gone. Encrypted journals are untouched. */
+export function deleteSealedDeviceRecord(name:SealedDeviceRecord){
+  for(const f of [recordFile(name),new File(root(),`${name}.sealed.staging`)])if(f.exists)f.delete();
 }

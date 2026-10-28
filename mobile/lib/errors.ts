@@ -18,6 +18,15 @@ export class UnavailableError extends Error {
   }
 }
 
+/** The offline-clocking connectivity test (owner decision 1, 2026-10-28): the request produced NO HTTP response at all
+ * (the fetch rejected, or our own timeout fired before any status arrived). A 5xx, 429, malformed body or caller abort
+ * is a plain UnavailableError. Still an UnavailableError, so every existing online caller behaves exactly as before.
+ * A hung server that never answers within the timeout is indistinguishable from no network here. */
+export class NetworkUnavailableError extends UnavailableError {
+  constructor() { super(); this.name = 'NetworkUnavailableError'; }
+}
+export const isNoConnectivity = (error: unknown): boolean => error instanceof NetworkUnavailableError;
+
 /** An obsolete operation, not an authentication refusal for the current account. */
 export class SessionChangedError extends Error {
   constructor() {

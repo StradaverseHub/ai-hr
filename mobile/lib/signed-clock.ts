@@ -1,4 +1,5 @@
-/** Owned native assembly. Opening/status never signs or uploads an attendance command. */
+/** Owned native assembly. Opening/status never signs or uploads an attendance command. With the offline build switch
+ * off (the default) this is exactly the online assembly: no offline ports, no anchor read, no extra request. */
 import {AppState,Platform} from 'react-native';
 import {File} from 'expo-file-system';
 import {ClockCommand} from '../../lib/mobile-api/contract';
@@ -6,7 +7,7 @@ import {ClockSourceSignals,OnlineClockIntegrityData} from '../../lib/mobile-cloc
 import * as C from '../../lib/mobile-integrity-contract';
 import {apiGet,apiPost} from './api';
 import {authGeneration,assertAuthGeneration} from './auth';
-import {config,identityNamespace} from './config';
+import {config,identityNamespace,offlineClockingBuild} from './config';
 import {SessionChangedError,UnavailableError} from './errors';
 import {EnrollmentScope} from './enrollment-journal';
 import {ClockSigningKey} from './clock-signing-key';
@@ -20,6 +21,8 @@ import NativeIntegrity from '../modules/aihr-integrity/src/AihrIntegrityModule';
 import {appendAttachment} from './capture';
 import {SignedClockConflict,SignedClockUnavailable,type SignedClockReference} from './signed-clock-journal';
 import type {EvidenceFile,JournalEntry} from './submission-journal';
+import {createOfflineClockPorts,readOfflineCapabilities,offlineClockIdentity} from './offline-clock-ports';
+import type {OfflineClockContextTarget} from '../../lib/mobile-offline-context';
 
 export async function openOwnedSignedClock(employmentId:string,isUnlocked:()=>boolean){
  const owner=authGeneration(),namespace=identityNamespace(),apiOrigin=config.apiUrl,platform=Platform.OS;
@@ -30,9 +33,13 @@ export async function openOwnedSignedClock(employmentId:string,isUnlocked:()=>bo
  };
  async function owned<T>(run:()=>Promise<T>){check();try{const value=await run();check();return value;}catch(error){check();throw error;}}
  check();if(platform!=='ios'&&platform!=='android')throw new SignedClockUnavailable('unsupported');
- const me=await owned(()=>apiGet('me'));
- if(!me.actorId||!me.employments.some(value=>value.employmentId===employmentId))throw new SignedClockConflict();
- const actorId=me.actorId,appInstallationId=await owned(()=>nativeIntegrityInstallationId(check));
+ // Offline cold start (switch on, no HTTP response for `me`): this session's own device-only anchor, never another's.
+ const identity=await owned(()=>apiGet('me')).then(me=>({me,anchor:null}),async(error:unknown)=>{
+  const anchor=await offlineClockIdentity(error,{namespace,apiOrigin,employmentId},check);if(!anchor)throw error;check();return {me:null,anchor};
+ });
+ const me=identity.me;
+ if(me&&(!me.actorId||!me.employments.some(value=>value.employmentId===employmentId)))throw new SignedClockConflict();
+ const actorId=me?me.actorId!:identity.anchor!.actorId,appInstallationId=await owned(()=>nativeIntegrityInstallationId(check));
  const scope=EnrollmentScope.parse({namespace,apiOrigin,actorId,appInstallationId});
  const native=createIntegrityBridge(NativeIntegrity,check),signAndroid=createAndroidClockSigner(native,check,isUnlocked);
  const operation={assertCurrent:check};
@@ -73,8 +80,18 @@ export async function openOwnedSignedClock(employmentId:string,isUnlocked:()=>bo
   if(entry.digest!==reference.baseDigest||!entry.integrity)throw new SignedClockConflict();
   await owned(()=>journal.resolve('clock',reference.requestId));
  };
+ // Late-bound: the offline ports reach the store's guarded photo custody, which the opened journal owns.
+ let store:Awaited<ReturnType<typeof openNativeSignedClockJournal>>|null=null;
+ const custody=()=>{if(!store)throw new SignedClockUnavailable('storage');return store;};
+ const offline=offlineClockingBuild?createOfflineClockPorts({platform,employmentId,namespace,apiOrigin,check,operation,native,
+  isForeground:()=>AppState.currentState==='active'&&isUnlocked(),
+  photos:{read:(id,photo)=>custody().readOfflinePhoto(id,photo),retain:(id,photo,bytes)=>custody().retainOfflinePhoto(id,photo,bytes),remove:id=>custody().deleteOfflinePhoto(id)},
+  basePhoto:id=>withBase(employmentId,id,async(_entry,_command,file)=>{if(!file)throw new SignedClockUnavailable('saved_command');return new File(file.uri).bytes();}),
+  resolveBase,
+  cloudProject:async()=>{const value=C.IntegrityClockCapabilities.parse(await capabilities());return value.outcome==='capabilities'&&value.platform===platform?value.cloudProjectNumber:null;},
+ }):undefined;
  const journal=await owned(()=>openNativeSignedClockJournal(scope,check,{
-  base,key,capabilities,resolveBase,
+  base,key,capabilities,resolveBase,...(offline?{offline}:{}),
   receipt:(selected,id)=>owned(()=>apiGet('submission-receipt',{employmentId:selected,kind:'clock',requestId:id})),
   abandon:(selected,id)=>owned(()=>apiPost('submission-abandon',{kind:'clock',requestId:id},{employmentId:selected},operation)),
   begin:(pending,input)=>withBase(pending.employmentId,pending.requestId,async(entry,_command,file)=>{
@@ -107,8 +124,34 @@ export async function openOwnedSignedClock(employmentId:string,isUnlocked:()=>bo
    return owned(()=>native.requestPlayIntegrity(hash.replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')));
   },
  }));
+ store=journal;
+ /** The offline context target: the enrolled key's app, and on iPhone the stored receipt's App Attest environment. */
+ async function offlineTarget():Promise<OfflineClockContextTarget>{
+  const current=(await key()).key;
+  if(current.platform==='android')return {platform:'android',appId:current.appId,environment:null};
+  const controller=await owned(()=>openOwnedDeviceEnrollment(employmentId,isUnlocked));
+  if(!controller.signingEnvironment)throw new SignedClockUnavailable('unsupported');
+  return {platform:'ios',appId:current.appId,environment:await owned(()=>controller.signingEnvironment!())};
+ }
  return {
   platform,capabilities,key,
+  /** Identity this controller opened with: `anchored` means an offline cold start from the device-only anchor. */
+  identity:{namespace,apiOrigin,actorId,appInstallationId,employmentId,anchored:!me},
+  offline:offline?{
+   capabilities:()=>owned(()=>readOfflineCapabilities({platform,employmentId,namespace,apiOrigin,check})),
+   target:offlineTarget,
+   snapshot:()=>{const value=native.clockSnapshot();check();return value;},
+   reserve:(binding:unknown)=>owned(()=>journal.reserveOffline(binding)),
+   prepare:(requestId:string)=>owned(()=>journal.prepareOffline(requestId)),
+   abandon:(requestId:string,code:string)=>owned(()=>journal.abandonReservation(requestId,code)),
+   capture:(input:unknown)=>owned(()=>journal.captureOffline(input)),
+   sign:(requestId:string,contextId:string)=>owned(()=>journal.signOffline(requestId,contextId)),
+   uploadNext:()=>owned(()=>journal.uploadNextOffline()),
+   close:(closeRequestId:string)=>owned(()=>journal.closeOffline(closeRequestId)),
+   handback:(closeRequestId:string)=>owned(()=>journal.handbackUnusedContext(closeRequestId)),
+   removeUndeliverable:(requestId:string)=>owned(()=>journal.removeUndeliverable(requestId)),
+   claims:()=>owned(()=>journal.offlineClaims(employmentId)),
+  }:null,
   status:()=>owned(()=>journal.status(employmentId)),
   start:(requestId:string)=>owned(()=>journal.start(employmentId,requestId)),
   advance:(requestId?:string)=>owned(()=>journal.advance(employmentId,requestId)),

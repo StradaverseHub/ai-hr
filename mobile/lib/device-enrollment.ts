@@ -43,7 +43,7 @@ export async function openOwnedDeviceEnrollment(employmentId:string,isUnlocked:(
    prepare:(id,input)=>apiPost('integrity/enrollment/begin',C.IntegrityEnrollmentIntent.parse(input),{employmentId:id},{assertCurrent:check}),
    complete:(id,input)=>apiPost('integrity/enrollment/complete',C.IntegrityEnrollmentProof.parse(input),{employmentId:id},{assertCurrent:check}),
   }));
-  return {platform:'ios',supported,signingKey:()=>owned(()=>{requireSupport();return journal.signingKey(employmentId);}),status:()=>owned(()=>journal.status()),reconcile:()=>owned(()=>journal.reconcile(employmentId)),
+  return {platform:'ios',supported,signingKey:()=>owned(()=>{requireSupport();return journal.signingKey(employmentId);}),signingEnvironment:()=>owned(()=>journal.signingEnvironment()),status:()=>owned(()=>journal.status()),reconcile:()=>owned(()=>journal.reconcile(employmentId)),
    begin:()=>owned(()=>{requireSupport();return journal.begin(employmentId,randomUUID());}),advance:()=>owned(()=>journal.advance(employmentId)),
    revoke:()=>owned(()=>journal.revoke(employmentId)),replace:()=>owned(()=>{requireSupport();return journal.replace(employmentId,randomUUID());})};
  }

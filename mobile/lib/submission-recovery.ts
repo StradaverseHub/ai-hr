@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { apiGet,apiPost } from './api';
 import { assertAuthGeneration, authGeneration } from './auth';
-import { identityNamespace } from './config';
+import { config,identityNamespace } from './config';
 import { SessionChangedError } from './errors';
 import { openNativeSubmissionJournal,discardNativeSubmissionRestore } from './submission-native';
+import { anchoredIdentity } from './offline-anchor';
 import { SubmissionJournalUnavailable, type EvidenceFile, type JournalEntry, type SubmissionKind } from './submission-journal';
 import type {ClockSourceSignals} from '../../lib/mobile-clock-integrity';
 import {ClockPreparation} from '../../lib/clock-attempt';
@@ -56,9 +57,18 @@ async function ownedJournal(employmentId:string,owner:number,expectedActorId?:st
   const namespace=identityNamespace();
   if(activeGeneration!==owner||activeNamespace!==namespace){activeGeneration=owner;activeNamespace=namespace;identity=null;journals.clear();}
   if(!identity)identity=apiGet('me').catch(error=>{if(activeGeneration===owner&&activeNamespace===namespace)identity=null;throw error;});
-  const me=await identity;assertAuthGeneration(owner);
-  if(!me.actorId||expectedActorId!==undefined&&me.actorId!==expectedActorId||!me.employments.some(e=>e.employmentId===employmentId))throw new SubmissionJournalUnavailable('Submission ownership cannot be verified');
-  const scope={namespace,actorId:me.actorId,employmentId},key=JSON.stringify(scope);
+  let actorId:string;
+  try{
+    const me=await identity;assertAuthGeneration(owner);
+    if(!me.actorId||expectedActorId!==undefined&&me.actorId!==expectedActorId||!me.employments.some(e=>e.employmentId===employmentId))throw new SubmissionJournalUnavailable('Submission ownership cannot be verified');
+    actorId=me.actorId;
+  }catch(error){
+    // Offline cold start only (build flag on, no HTTP response): this session's own device-only anchor stands in for `me`.
+    const anchor=await anchoredIdentity(error,{namespace,apiOrigin:config.apiUrl,employmentId},()=>assertAuthGeneration(owner));
+    if(!anchor||expectedActorId!==undefined&&anchor.actorId!==expectedActorId)throw error;
+    assertAuthGeneration(owner);actorId=anchor.actorId;
+  }
+  const scope={namespace,actorId,employmentId},key=JSON.stringify(scope);
   const check=()=>{assertAuthGeneration(owner);if(identityNamespace()!==namespace)throw new SessionChangedError();};
   let journal=journals.get(key);
   if(!journal){journal=openNativeSubmissionJournal(scope,check).catch(error=>{if(journals.get(key)===journal)journals.delete(key);throw error;});journals.set(key,journal);}

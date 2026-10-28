@@ -164,6 +164,8 @@ export function createEnrollmentJournal(rawScope:EnrollmentScope,ports:Enrollmen
       return ClockSigningKey.parse({platform:'ios',apiOrigin:c.apiOrigin,actorId:c.actorId,appInstallationId:c.appInstallationId,
        installationId:c.installationId,tenantId:c.tenantId,keyId:record.key.keyId,appId:record.key.appId,nativeReference:record.vendorKeyId});
     }),
+    /** The stored receipt's App Attest environment, for the offline context target. No network or native call. */
+    signingEnvironment:()=>exclusive(queue,async()=>{const s=await read();if(!s.key||s.pending||revocationPending(s)||s.key.key.revokedAt!==null)throw new EnrollmentConflict();return s.key.key.environment;}),
     status:()=>exclusive(queue,async()=>{const s=await read();if(s.key)await release(s.key);return status(s);}),
     /** Exact receipt recovery only: no prepare, attestation, proof upload or revocation replay. */
     reconcile:(employmentId:string)=>exclusive(queue,async()=>{

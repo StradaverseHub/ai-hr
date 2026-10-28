@@ -5,9 +5,10 @@ import { File, Paths } from 'expo-file-system';
 import * as SecureStore from 'expo-secure-store';
 import { createAuthState, type TokenPair } from './auth-state';
 import { config, configProblem, identityClientId, identityNamespace } from './config';
-import { SignInRequiredError, UnavailableError } from './errors';
+import { SignInRequiredError, UnavailableError, NetworkUnavailableError } from './errors';
 import { createInstallationStore } from './installation-store';
 import { resetSubmissionInstallation } from './submission-native';
+import { endOfflineAnchor } from './offline-anchor';
 import { fetch as nativeFetch } from 'expo/fetch';
 import { readBoundedBody } from '../../lib/bounded-body';
 import { providerLogoutUrl, sessionIdFromToken } from './provider-logout';
@@ -26,6 +27,7 @@ async function authenticate(body: Record<string, string>): Promise<TokenPair> {
   if (configProblem()) throw new UnavailableError('Sign-in is not configured.');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
+  let responded = false;
   try {
     if (config.authProvider === 'internal' && body.grant_type !== 'refresh_token') throw new SignInRequiredError();
     const embedded = config.authProvider === 'internal';
@@ -39,6 +41,7 @@ async function authenticate(body: Record<string, string>): Promise<TokenPair> {
       redirect: 'error',
       credentials: 'omit',
     });
+    responded = true;
     if(!res.ok)void res.body?.cancel().catch(()=>{});
     // Throttling, bad configuration and outages preserve the credentials for a retry.
     if ([400, 401, 403].includes(res.status)) throw new SignInRequiredError();
@@ -57,7 +60,8 @@ async function authenticate(body: Record<string, string>): Promise<TokenPair> {
     return { access_token: json.access_token, refresh_token: json.refresh_token, ...('expires_in' in json && typeof json.expires_in === 'number' ? { expires_in: json.expires_in } : {}), ...('id_token' in json && typeof json.id_token === 'string' ? { id_token: json.id_token } : {}) };
   } catch (error) {
     if (error instanceof SignInRequiredError || error instanceof UnavailableError) throw error;
-    throw new UnavailableError();
+    // An expired access token refreshes first: no response here is the same offline connectivity signal as in api.ts.
+    throw responded ? new UnavailableError() : new NetworkUnavailableError();
   } finally { clearTimeout(timeout); }
 }
 
@@ -73,7 +77,9 @@ const storage = createInstallationStore({
   markLogoutPending: () => new File(Paths.document, 'aihr-installation-v1').write('signed-out'),
   read: () => SecureStore.getItemAsync(REFRESH_KEY, STORE),
   write: (value) => SecureStore.setItemAsync(REFRESH_KEY, value, STORE),
-  remove: async () => { await Promise.all([clearClockDevice(), SecureStore.deleteItemAsync(REFRESH_KEY, STORE)]); },
+  // Logout ends the device-only offline identity anchor (never the sealed offline queue or its photos): an offline cold
+  // start can then never open another account's queue. The same employee's next online open rebuilds it.
+  remove: async () => { await Promise.all([clearClockDevice(), Promise.resolve().then(endOfflineAnchor), SecureStore.deleteItemAsync(REFRESH_KEY, STORE)]); },
 });
 let sessionId: string | null = null;
 let idToken: string | null = null;

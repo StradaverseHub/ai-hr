@@ -11,6 +11,7 @@ import {IntegrityKeysResultV2,IntegrityRevocationResultV2,IntegrityKeyLookupResu
 import {IntegrityEnrollmentIntent,IntegrityEnrollmentProof,IntegrityEnrollmentPrepared,IntegrityEnrollmentResult,IntegrityAndroidEnrollmentProof,IntegrityAndroidEnrollmentPrepared,IntegrityAndroidEnrollmentResult} from '../../lib/mobile-integrity-contract';
 import {IntegrityClockCapabilities,IntegrityClockPrepared,IntegrityAndroidClockPrepared,IntegrityClockResult} from '../../lib/mobile-integrity-contract';
 import {IntegrityEnrollmentCapabilitiesV2} from '../../lib/mobile-integrity-contract';
+import {OfflineCapabilitiesResult,OfflineContextResult,OfflineCloseResult,OfflineClaimResult,type OfflineContextIssueRequest,type OfflineContextCloseRequest} from '../../lib/mobile-offline-contract';
 import { useCallback, useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 import { fetch as nativeFetch } from 'expo/fetch';
@@ -24,7 +25,7 @@ import {
 } from '../../lib/mobile-api/contract';
 import { assertAuthGeneration, authGeneration, getAccessToken, refresh } from './auth';
 import { apiOriginProblem, config, configProblem,identityNamespace } from './config';
-import { SignInRequiredError, UnavailableError, RequestRejectedError,SessionChangedError } from './errors';
+import { SignInRequiredError, UnavailableError, RequestRejectedError,SessionChangedError,NetworkUnavailableError } from './errors';
 import {createReadCoordinator,retryAfterSeconds} from './read-coordinator';
 import { appLocale } from './i18n';
 
@@ -35,6 +36,8 @@ type Endpoints = {
   'v2/integrity/android/clock/capabilities':z.infer<typeof IntegrityClockCapabilities>;
   'v2/integrity/ios/capabilities':z.infer<typeof IntegrityEnrollmentCapabilitiesV2>;
   'v2/integrity/android/capabilities':z.infer<typeof IntegrityEnrollmentCapabilitiesV2>;
+  'v2/integrity/ios/offline/capabilities':z.infer<typeof OfflineCapabilitiesResult>;
+  'v2/integrity/android/offline/capabilities':z.infer<typeof OfflineCapabilitiesResult>;
   'v2/integrity/keys':z.infer<typeof IntegrityKeysResultV2>;
   'integrity/keys':z.infer<typeof IntegrityKeysResult>;
   'clock-attempts':ClockAttemptsResponse;
@@ -62,6 +65,8 @@ const responses = {
   'v2/integrity/android/clock/capabilities':IntegrityClockCapabilities.refine(value=>value.outcome!=='capabilities'||value.platform==='android'),
   'v2/integrity/ios/capabilities':IntegrityEnrollmentCapabilitiesV2.refine(value=>value.outcome!=='capabilities'||value.platform==='ios'),
   'v2/integrity/android/capabilities':IntegrityEnrollmentCapabilitiesV2.refine(value=>value.outcome!=='capabilities'||value.platform==='android'),
+  'v2/integrity/ios/offline/capabilities':OfflineCapabilitiesResult,
+  'v2/integrity/android/offline/capabilities':OfflineCapabilitiesResult,
   'v2/integrity/keys':IntegrityKeysResultV2,
   'integrity/keys':IntegrityKeysResult,
   'clock-attempts':ClockAttemptsResponse,
@@ -77,8 +82,14 @@ const enrollmentCommands={
 const signedClockCommands={
  'v2/integrity/ios/clock/begin':IntegrityClockPrepared,'v2/integrity/ios/clock/complete':IntegrityClockResult,
  'v2/integrity/android/clock/begin':IntegrityAndroidClockPrepared,'v2/integrity/android/clock/complete':IntegrityClockResult,
+ // Offline claim upload: multipart claim + retained photo (+ Android sync Play token); never a JSON body.
+ 'v2/integrity/ios/offline/claim':OfflineClaimResult,'v2/integrity/android/offline/claim':OfflineClaimResult,
 };
-const commands = {...enrollmentCommands,...signedClockCommands,'v2/integrity/key-receipt':IntegrityKeyLookupResultV2,'v2/integrity/revoke':IntegrityRevocationResultV2,'integrity/key-receipt':IntegrityKeyLookupResult,'integrity/revoke':IntegrityRevocationResult,'clock-attempts':ClockAttemptReceipt,'clock-location':ClockLocationResponse, 'submission-abandon':SubmissionAbandonResponse, clock: ClockResult, 'clock-device': DeviceResponse, 'leave-requests': LeaveResult, 'leave-preview': LeavePreviewResponse };
+const offlineCommands={
+ 'v2/integrity/ios/offline/context':OfflineContextResult,'v2/integrity/android/offline/context':OfflineContextResult,
+ 'v2/integrity/ios/offline/context/close':OfflineCloseResult,'v2/integrity/android/offline/context/close':OfflineCloseResult,
+};
+const commands = {...enrollmentCommands,...signedClockCommands,...offlineCommands,'v2/integrity/key-receipt':IntegrityKeyLookupResultV2,'v2/integrity/revoke':IntegrityRevocationResultV2,'integrity/key-receipt':IntegrityKeyLookupResult,'integrity/revoke':IntegrityRevocationResult,'clock-attempts':ClockAttemptReceipt,'clock-location':ClockLocationResponse, 'submission-abandon':SubmissionAbandonResponse, clock: ClockResult, 'clock-device': DeviceResponse, 'leave-requests': LeaveResult, 'leave-preview': LeavePreviewResponse };
 
 const supportReference=(value:string|null)=>value?.length===36&&/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)?value.toLowerCase():undefined;
 async function apiRequest<T>(path:string,params:Record<string,string|undefined>,request?:{body:FormData|string;json:boolean},signal?:AbortSignal,operation?:{assertCurrent():void}):Promise<T> {
@@ -89,6 +100,7 @@ async function apiRequest<T>(path:string,params:Record<string,string|undefined>,
   const schema = request ? commands[path as keyof typeof commands] : responses[path as keyof typeof responses];
   let resource=path;
   const send = async (token: string) => {
+    let responded=false;
     assertCurrent();
     if(request&&AppState.currentState!=='active')throw new UnavailableError('Unlock the app to continue.');
     if(configProblem())throw new UnavailableError('The approved company connection is no longer valid.');
@@ -103,6 +115,7 @@ async function apiRequest<T>(path:string,params:Record<string,string|undefined>,
         ...(request ? {method:'POST',body:request.body} : {}),
         redirect: 'error', credentials: 'omit', signal: controller.signal,
       });
+      responded=true;
       assertCurrent();
       if (!response.ok) {
         void response.body?.cancel().catch(()=>{});
@@ -119,7 +132,8 @@ async function apiRequest<T>(path:string,params:Record<string,string|undefined>,
       controller.abort();
       assertCurrent();
       if (error instanceof UnavailableError) throw error;
-      throw new UnavailableError();
+      // No HTTP response at all (and not the caller's own abort): the offline connectivity test. Same class family.
+      throw responded||signal?.aborted?new UnavailableError():new NetworkUnavailableError();
     } finally { clearTimeout(timeout); signal?.removeEventListener('abort',abort); }
   };
   try{
@@ -159,6 +173,10 @@ type EnrollmentBodies={
   'integrity/enrollment/complete':z.infer<typeof IntegrityEnrollmentProof>;
   'v2/integrity/android/enrollment/begin':z.infer<typeof IntegrityEnrollmentIntent>;
   'v2/integrity/android/enrollment/complete':z.infer<typeof IntegrityAndroidEnrollmentProof>;
+  'v2/integrity/ios/offline/context':z.input<typeof OfflineContextIssueRequest>;
+  'v2/integrity/android/offline/context':z.input<typeof OfflineContextIssueRequest>;
+  'v2/integrity/ios/offline/context/close':z.input<typeof OfflineContextCloseRequest>;
+  'v2/integrity/android/offline/context/close':z.input<typeof OfflineContextCloseRequest>;
 };
 type LegacyCommandBody=FormData|LeaveCommand|ClockPreparation|{originChallengeId:string}|{keyId:string}|{lat:number;lng:number;accuracy:number;sampledAt:number}|{label:string}|{kind:'clock'|'leave';requestId:string};
 export async function apiPost<P extends keyof Commands>(path:P,body:P extends keyof EnrollmentBodies?EnrollmentBodies[P]:P extends keyof typeof signedClockCommands?FormData:LegacyCommandBody,params:Record<string,string|undefined>={},operation?:{assertCurrent():void}):Promise<Commands[P]>{
