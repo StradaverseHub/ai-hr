@@ -318,3 +318,47 @@ it('refuses persisted out-of-order proof state or native-cleanup claims before o
   expect(()=>parseSignedClockSnapshot({...snapshot,offline:{...snapshot.offline,claims}},f.scope)).toThrow('Signed clocking unavailable');
  }
 });
+
+describe('receipt, photo-deleted and closing states in the shared owner',()=>{
+ async function signed(){
+  const f=proofFixture();await f.captured();await f.journal().signOffline(id(20),f.context.id);
+  const snapshot=structuredClone(f.stored()!);if(snapshot.offline?.phase!=='context_ready')throw Error('missing');
+  const entry=snapshot.offline.claims[0],c=entry.claim;
+  const receipt={version:1 as const,purpose:'attendance.clock.offline.receipt' as const,id:id(70),contextId:c.context.id,requestId:c.command.requestId,sequence:1,digest:entry.digest,
+   outcome:'needs_review' as const,reason:'outside_geofence' as const,receivedAt:c.time.claimedAt+1,effectiveMinimum:null,effectiveMaximum:null,effectiveAt:null,captureId:null,
+   photo:c.command.photo?{sha256:c.command.photo.sha256,retainedUntil:c.time.claimedAt+2592000000}:null};
+  return {f,snapshot,entry,receipt};
+ }
+ it('admits only the exact receipt of a released proof, as a strict prefix',async()=>{
+  const {f,snapshot,entry,receipt}=await signed(),offline=snapshot.offline!;if(offline.phase!=='context_ready')throw Error('missing');
+  const withEntry=(change:object)=>({...snapshot,offline:{...offline,claims:[{...entry,...change}]}});
+  expect(parseSignedClockSnapshot(withEntry({phase:'receipt_saved',receipt}),f.scope).offline).toMatchObject({claims:[{phase:'receipt_saved',receipt:{requestId:id(20)}}]});
+  expect(parseSignedClockSnapshot(withEntry({phase:'photo_deleted',receipt}),f.scope).offline).toMatchObject({claims:[{phase:'photo_deleted'}]});
+  for(const change of [{phase:'receipt_saved',receipt:null},{phase:'proof_ready',receipt},{phase:'receipt_saved',receipt:{...receipt,digest:'c'.repeat(64)}},
+   {phase:'receipt_saved',receipt:{...receipt,sequence:2}},{phase:'receipt_saved',receipt:{...receipt,photo:null}},{phase:'receipt_saved',receipt,nativeReleased:false},
+   {phase:'receipt_saved',receipt,undeliverable:{reason:'invalid_proof',dismissed:false}},{undeliverable:{reason:'earlier_undeliverable',dismissed:true}}])
+   expect(()=>parseSignedClockSnapshot(withEntry(change),f.scope),JSON.stringify(change)).toThrow('Signed clocking unavailable');
+ });
+ it('admits a closing exchange only when every claim is settled and the cursor is its receipt count',async()=>{
+  const {f,snapshot,entry,receipt}=await signed(),offline=snapshot.offline!;if(offline.phase!=='context_ready')throw Error('missing');
+  const closing=(claims:object[],consumedThrough:number)=>({...snapshot,offline:{...offline,phase:'closing',claims,close:{requestId:id(71),consumedThrough}}});
+  expect(parseSignedClockSnapshot(closing([{...entry,phase:'photo_deleted',receipt}],1),f.scope).offline).toMatchObject({phase:'closing'});
+  expect(parseSignedClockSnapshot(closing([{...entry,undeliverable:{reason:'invalid_proof',dismissed:true}}],0),f.scope).offline).toMatchObject({phase:'closing'});
+  for(const [claims,cursor] of [[[entry],0],[[{...entry,phase:'photo_deleted',receipt}],0],[[{...entry,undeliverable:{reason:'invalid_proof',dismissed:false}}],0]] as const)
+   expect(()=>parseSignedClockSnapshot(closing([...claims],cursor),f.scope)).toThrow('Signed clocking unavailable');
+  // A closing exchange is neither re-requested nor captured into.
+  f.setStored(parseSignedClockSnapshot(closing([{...entry,phase:'photo_deleted',receipt}],1),f.scope));
+  expect(await f.journal().prepareOffline(f.binding.request.requestId)).toMatchObject({status:'offline_pending',phase:'closing'});
+  await expect(f.journal().captureOffline(f.input(id(21)))).rejects.toBeInstanceOf(SignedClockConflict);
+  expect(f.ports.offline!.request).toHaveBeenCalledOnce();
+ });
+ it('drops an unanswered reservation only for a refusal that proves nothing was issued',async()=>{
+  const f=fixture();await f.journal().reserveOffline(f.binding);
+  await expect(f.journal().abandonReservation(f.binding.request.requestId,'binding_conflict')).rejects.toBeInstanceOf(SignedClockConflict);
+  expect(await f.journal().abandonReservation(f.binding.request.requestId,'online_pending')).toEqual({status:'empty'});expect(f.stored()!.offline).toBeNull();
+  expect(f.ports.offline!.request).not.toHaveBeenCalled();
+ });
+ it('keeps online-only snapshots free of the offline outcome field',async()=>{
+  const f=fixture();await f.journal().start(id(7),id(20));expect(f.stored()).not.toHaveProperty('recent');
+ });
+});

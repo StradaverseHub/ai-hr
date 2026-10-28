@@ -190,7 +190,8 @@ export function createSignedClockJournal(rawScope:EnrollmentScope,ports:SignedCl
   const p=s.offline;if(!p||p.phase==='context_requested'||!p.claims.every(offlineClaimSettled))throw new SignedClockConflict();
   for(const entry of p.claims)if(entry.photoReference)await owned(()=>syncPorts().deletePhoto(entry.claim.command.requestId));
   const recent=p.claims.flatMap(entry=>entry.receipt?[{employmentId:entry.claim.scope.employmentId,action:entry.claim.command.action,claimedAt:entry.claim.time.claimedAt,receipt:entry.receipt}]:[]);
-  const next=parseSignedClockSnapshot({...s,version:2,revision:s.revision+1,offline:null,recent:recent.length?recent:s.recent},scope);
+  const cleared={...s,version:2 as const,revision:s.revision+1,offline:null};
+  const next=parseSignedClockSnapshot(recent.length?{...cleared,recent}:cleared,scope);
   await owned(()=>ports.commit(structuredClone(next)));return next;
  }
  async function markUndeliverable(s:State,p:Ready,index:number,reason:OfflineUndeliverableReason):Promise<OfflineUploadResult>{
@@ -290,8 +291,9 @@ export function createSignedClockJournal(rawScope:EnrollmentScope,ports:SignedCl
    const next=parseSignedClockSnapshot({...s,version:2,revision:s.revision+1,offline:null},scope);await owned(()=>ports.commit(structuredClone(next)));
    return status(next,p.binding.scope.employmentId);
   }),
-  /** Owner decision 2: the employee's confirmed removal of a claim that can never be delivered. The removal is committed
-   * before its photo is deleted; the claim is never sent. */
+  /** Owner decision 2: the employee's confirmed removal of a claim that can never be delivered. It is never sent again.
+   * Its photo is deleted when the exchange clears (E4): a close answered cursor_mismatch reopens the claim for an exact
+   * re-upload, which still needs the retained image. */
   removeUndeliverable:(requestId:string)=>exclusive(queue,async()=>{
    const id=uuid.parse(requestId);let s=await read();const p=s.offline;
    if(!p||p.phase!=='context_ready')throw new SignedClockConflict();
@@ -300,7 +302,6 @@ export function createSignedClockJournal(rawScope:EnrollmentScope,ports:SignedCl
    const reason=entry.undeliverable?.reason??(p.claims.slice(0,index).some(value=>value.undeliverable)?'earlier_undeliverable' as const:null);
    if(!reason)throw new SignedClockConflict();
    if(!entry.undeliverable?.dismissed)s=await saveOffline(s,withClaim(p,index,{...entry,undeliverable:{reason,dismissed:true}}));
-   if(entry.photoReference)await owned(()=>syncPorts().deletePhoto(id));
    return offlineView(s,entry.claim.scope.employmentId);
   }),
   /** Read-only view for the employee's own employment. */

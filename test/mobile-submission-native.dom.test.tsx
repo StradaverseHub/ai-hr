@@ -40,7 +40,7 @@ function fixture(nativeAvailable=true){
     get name(){return this.uri.split('/').at(-1)!;}
     async bytes(){return files.get(this.uri)!.slice();}
     write(value:Uint8Array){files.set(this.uri,value.slice());}
-    moveSync(destination:File){if(files.has(destination.uri))throw Error('destination exists');const value=files.get(this.uri);if(!value)throw Error('source missing');files.set(destination.uri,value);files.delete(this.uri);this.uri=destination.uri;}
+    moveSync(destination:File,options?:{overwrite?:boolean}){if(files.has(destination.uri)&&!options?.overwrite)throw Error('destination exists');const value=files.get(this.uri);if(!value)throw Error('source missing');files.set(destination.uri,value);files.delete(this.uri);this.uri=destination.uri;}
     delete(){files.delete(this.uri);}
   }
   const secure={WHEN_UNLOCKED_THIS_DEVICE_ONLY:'device-unlocked',
@@ -66,7 +66,10 @@ function fixture(nativeAvailable=true){
   function key(bytes:Buffer){return {bytes,encoded:async()=>bytes.toString('base64')};}
   // Keep native global declarations out of the server compiler; execute its implementation via VM.
   const output={exports:{} as {
-    openNativeSignedClockJournal:(scope:enrollment.EnrollmentScope,assertCurrent:()=>void,ports:Omit<signedClock.SignedClockPorts,'assertCurrent'|'read'|'commit'>)=>Promise<ReturnType<typeof signedClock.createSignedClockJournal>&{retainOfflinePhoto(requestId:string,photo:unknown,bytes:Uint8Array):Promise<string>;readOfflinePhoto(requestId:string,photo:unknown):Promise<Uint8Array>}>;
+    openNativeSignedClockJournal:(scope:enrollment.EnrollmentScope,assertCurrent:()=>void,ports:Omit<signedClock.SignedClockPorts,'assertCurrent'|'read'|'commit'>)=>Promise<ReturnType<typeof signedClock.createSignedClockJournal>&{retainOfflinePhoto(requestId:string,photo:unknown,bytes:Uint8Array):Promise<string>;readOfflinePhoto(requestId:string,photo:unknown):Promise<Uint8Array>;deleteOfflinePhoto(requestId:string):Promise<void>}>;
+    readSealedDeviceRecord:(name:'offline-anchor'|'offline-issuers',assertCurrent:()=>void)=>Promise<unknown>;
+    writeSealedDeviceRecord:(name:'offline-anchor'|'offline-issuers',value:unknown,assertCurrent:()=>void)=>Promise<void>;
+    deleteSealedDeviceRecord:(name:'offline-anchor'|'offline-issuers')=>void;
     openNativeSubmissionJournal:(scope:journal.SubmissionScope,assertCurrent:()=>void)=>Promise<ReturnType<typeof journal.createSubmissionJournal>>;
     resetSubmissionInstallation:()=>Promise<void>;
     nativeIntegrityInstallationId:(assertCurrent:()=>void)=>Promise<string>;
@@ -467,4 +470,54 @@ it('commits only the native-cache release flag at the storage cap and still refu
  const j=await f.open();await j.captureOffline(f.input());expect(await j.signOffline(requestId,requestId)).toMatchObject({status:'proof_ready'});
  const next='00000000-0000-4000-8000-000000000099';f.f.occupy(0);await f.stage(next,false);f.f.occupy(64*1024*1024);
  await expect((await f.open()).captureOffline(f.input(next))).rejects.toThrow();expect(await f.base.pending()).toHaveLength(1);
+});
+
+function processedReceipt(signed:{claim:OfflineClockClaimData},digest:string){
+ const c=signed.claim;
+ return {outcome:'processed',receipt:{version:1,purpose:'attendance.clock.offline.receipt',id:randomUUID(),contextId:c.context.id,requestId:c.command.requestId,sequence:c.chain.sequence,digest,
+  outcome:'accepted',reason:'clock_accepted',receivedAt:c.time.claimedAt+1000,effectiveMinimum:c.time.claimedAt,effectiveMaximum:c.time.claimedAt+1000,effectiveAt:c.time.claimedAt,captureId:randomUUID(),
+  photo:c.command.photo?{sha256:c.command.photo.sha256,retainedUntil:c.time.claimedAt+2592000000}:null}};
+}
+describe('offline receipt, photo custody end and close in the sealed store',()=>{
+ async function received(){
+  const f=await offlinePhotoFixture(),proof=Buffer.from('opaque proof').toString('base64');
+  f.s.ports.offline!.signing={inspect:async()=>({status:'evidence',evidence:{state:'absent'},verification:'not_verified'}),sign:async()=>({status:'evidence',evidence:proof,verification:'not_verified'}),
+   release:async()=>({status:'evidence',evidence:null,verification:'not_verified'}),verifyPhoto:async(id,photo)=>{await (await f.open()).readOfflinePhoto(id,photo);}};
+  let controller:Awaited<ReturnType<typeof f.open>>|null=null;
+  const sync={upload:vi.fn(async(signed:{claim:OfflineClockClaimData},entry:{digest:string})=>processedReceipt(signed,entry.digest)),
+   close:vi.fn(async(request:{contextId:string;closeRequestId:string;consumedThrough:number})=>({outcome:'closed',reason:'retired',closedAt:1793055760000,...request})),
+   deletePhoto:vi.fn(async(id:string)=>controller!.deleteOfflinePhoto(id))};
+  f.s.ports.offline!.sync=sync;
+  await f.stage();controller=await f.open();await controller.captureOffline(f.input());expect(await controller.signOffline(requestId,requestId)).toMatchObject({status:'proof_ready'});
+  const photo=()=>[...f.f.files.keys()].filter(path=>path.endsWith(offlineState.offlineClockPhotoReference(requestId)));
+  return {...f,sync,controller,photo};
+ }
+ it('refuses to delete the retained photo of a claim that has no receipt',async()=>{
+  const f=await received();
+  await expect(f.controller.deleteOfflinePhoto(requestId)).rejects.toThrow();expect(f.photo()).toHaveLength(1);
+ });
+ it('saves the exact receipt and ends photo custody at the installation cap, then closes and clears the exchange',async()=>{
+  const f=await received();f.f.occupy(64*1024*1024);
+  expect(await f.controller.uploadNextOffline()).toMatchObject({status:'processed',requestId,closed:false});
+  expect(f.photo()).toHaveLength(0);
+  const restarted=await f.open();expect(await restarted.offlineClaims(scope.employmentId)).toMatchObject({claims:[{requestId,state:'recorded'}]});
+  expect(await restarted.closeOffline(randomUUID())).toEqual({status:'closed'});
+  expect(f.sync.close).toHaveBeenCalledWith(expect.objectContaining({contextId:requestId,consumedThrough:1}));
+  expect(await (await f.open()).status(scope.employmentId)).toEqual({status:'empty'});
+  expect(await (await f.open()).offlineClaims(scope.employmentId)).toMatchObject({exchange:null,claims:[{requestId,state:'recorded'}]});
+ });
+});
+describe('sealed device-only records (offline anchor, issuer registry)',()=>{
+ it('seals, replaces, removes and refuses tampered records without exposing plaintext',async()=>{
+  const f=fixture(),value={version:1,actorId:scope.actorId,marker:'plaintext-marker'};
+  expect(await f.native.readSealedDeviceRecord('offline-anchor',()=>{})).toBeNull();
+  await f.native.writeSealedDeviceRecord('offline-anchor',value,()=>{});
+  const path='document/aihr-submissions-v1/offline-anchor.sealed';expect(Buffer.from(f.files.get(path)!).toString()).not.toContain('plaintext-marker');
+  expect(await f.native.readSealedDeviceRecord('offline-anchor',()=>{})).toEqual(value);
+  await f.native.writeSealedDeviceRecord('offline-anchor',{...value,marker:'next'},()=>{});expect(await f.native.readSealedDeviceRecord('offline-anchor',()=>{})).toMatchObject({marker:'next'});
+  expect(await f.native.readSealedDeviceRecord('offline-issuers',()=>{})).toBeNull();
+  const sealed=f.files.get(path)!.slice();sealed[sealed.length-1]^=1;f.files.set(path,sealed);
+  await expect(f.native.readSealedDeviceRecord('offline-anchor',()=>{})).rejects.toThrow();
+  f.native.deleteSealedDeviceRecord('offline-anchor');expect(f.files.has(path)).toBe(false);expect(await f.native.readSealedDeviceRecord('offline-anchor',()=>{})).toBeNull();
+ });
 });

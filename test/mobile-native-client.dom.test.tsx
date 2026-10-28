@@ -9,7 +9,8 @@ import {createReadCoordinator,retryAfterSeconds} from '../mobile/lib/read-coordi
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { apiOriginProblem } from '../mobile/lib/config';
-import { SessionChangedError, SignInRequiredError, UnavailableError, RequestRejectedError } from '../mobile/lib/errors';
+import { SessionChangedError, SignInRequiredError, UnavailableError, RequestRejectedError, NetworkUnavailableError } from '../mobile/lib/errors';
+import * as offlineContract from '../lib/mobile-offline-contract';
 import {enrollmentFixture} from './helpers/mobile-enrollment-fixture';
 import {androidEnrollmentFixture} from './helpers/mobile-android-enrollment-fixture';
 
@@ -35,10 +36,11 @@ function clientFixture() {
       if (id === '../../lib/bounded-body') return {readBoundedBody};
       if (id === '../../lib/mobile-integrity-contract') return integrity;
       if (id === '../../lib/mobile-api/contract') return contract;
+      if (id === '../../lib/mobile-offline-contract') return offlineContract;
       if (id === './auth') return auth;
       if (id === './config') return { config, apiOriginProblem, configProblem: () => null,identityNamespace:()=>namespace };
       if (id === './read-coordinator') return {retryAfterSeconds,createReadCoordinator:(ports:Parameters<typeof createReadCoordinator>[0])=>createReadCoordinator({...ports,now:()=>monotonic})};
-      if (id === './errors') return { SessionChangedError, SignInRequiredError, UnavailableError, RequestRejectedError };
+      if (id === './errors') return { SessionChangedError, SignInRequiredError, UnavailableError, RequestRejectedError, NetworkUnavailableError };
       if (id === './i18n') return { appLocale: () => locale };
       throw new Error(`Unexpected native client dependency: ${id}`);
     } });
@@ -299,4 +301,37 @@ describe('signed clock transport and operation ownership',()=>{
   await expect(f.api.apiPost('clock',new FormData(),{},{assertCurrent(){if(!live)throw new SessionChangedError();}})).rejects.toBeInstanceOf(SessionChangedError);
   expect(f.response).not.toHaveBeenCalled();
  });
+});
+
+describe('offline clocking transport',()=>{
+  const id='11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa',issuer={keyId:'a'.repeat(64),publicKey:'A'.repeat(43),validFrom:1,validUntil:2,revoked:false};
+  it('reports no HTTP response as the connectivity signal and keeps every HTTP outage a plain UnavailableError',async()=>{
+    const f=clientFixture();f.response.mockRejectedValueOnce(new TypeError('Network request failed'));
+    const offline=await f.api.apiGet('v2/integrity/ios/offline/capabilities',{employmentId:id}).catch((error:unknown)=>error);
+    expect(offline).toBeInstanceOf(NetworkUnavailableError);expect(offline).toBeInstanceOf(UnavailableError);
+    f.advanceCooldown(600000);
+    for(const status of [500,503,429]){
+      f.response.mockResolvedValueOnce(new Response('',{status,headers:{'retry-after':'7'}}));
+      const outage=await f.api.apiPost('v2/integrity/ios/offline/context/close',{contextId:id,closeRequestId:id,consumedThrough:0},{employmentId:id}).catch((error:unknown)=>error);
+      expect(outage,String(status)).toBeInstanceOf(UnavailableError);expect(outage,String(status)).not.toBeInstanceOf(NetworkUnavailableError);
+    }
+    f.response.mockResolvedValueOnce(Response.json({outcome:'garbage'}));
+    const malformed=await f.api.apiPost('v2/integrity/ios/offline/context/close',{contextId:id,closeRequestId:id,consumedThrough:0},{employmentId:id}).catch((error:unknown)=>error);
+    expect(malformed).toBeInstanceOf(UnavailableError);expect(malformed).not.toBeInstanceOf(NetworkUnavailableError);
+  });
+  it.each(['ios','android'] as const)('uses the exact %s offline URLs, JSON bodies and validated results',async platform=>{
+    const f=clientFixture(),base='/api/mobile/v2/integrity/'+platform+'/offline/';
+    f.response.mockResolvedValueOnce(Response.json({outcome:'offline',enabled:true,apiOrigin:'https://hr.example.com',companyId:id,issuers:[issuer],windowMs:86400000,permitCount:8}));
+    expect(await f.api.apiGet('v2/integrity/'+platform+'/offline/capabilities',{employmentId:id})).toMatchObject({outcome:'offline',companyId:id});
+    expect(new URL(f.response.mock.calls[0][0]).pathname).toBe(base+'capabilities');
+    f.response.mockResolvedValueOnce(Response.json({outcome:'refused',code:'online_pending'}));
+    const request={requestId:id,requestNonce:'A'.repeat(43),appInstallationId:id,keyId:id};
+    expect(await f.api.apiPost('v2/integrity/'+platform+'/offline/context',request,{employmentId:id})).toEqual({outcome:'refused',code:'online_pending'});
+    const init=f.response.mock.calls[1][1]!;expect(new URL(f.response.mock.calls[1][0]).pathname).toBe(base+'context');
+    expect(JSON.parse(String(init.body))).toEqual(request);expect((init.headers as Record<string,string>)['content-type']).toBe('application/json');
+    f.response.mockResolvedValueOnce(Response.json({outcome:'processed',receipt:{}}));
+    const form=new FormData();form.append('claim','{}');
+    await expect(f.api.apiPost('v2/integrity/'+platform+'/offline/claim',form,{employmentId:id})).rejects.toBeInstanceOf(UnavailableError);
+    await expect(f.api.apiPost('v2/integrity/'+platform+'/offline/claim',{} as never,{employmentId:id})).rejects.toThrow('saved attachment envelope');
+  });
 });

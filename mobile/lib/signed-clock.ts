@@ -33,6 +33,7 @@ export async function openOwnedSignedClock(employmentId:string,isUnlocked:()=>bo
  };
  async function owned<T>(run:()=>Promise<T>){check();try{const value=await run();check();return value;}catch(error){check();throw error;}}
  check();if(platform!=='ios'&&platform!=='android')throw new SignedClockUnavailable('unsupported');
+ const nativePlatform:'ios'|'android'=platform;
  // Offline cold start (switch on, no HTTP response for `me`): this session's own device-only anchor, never another's.
  const identity=await owned(()=>apiGet('me')).then(me=>({me,anchor:null}),async(error:unknown)=>{
   const anchor=await offlineClockIdentity(error,{namespace,apiOrigin,employmentId},check);if(!anchor)throw error;check();return {me:null,anchor};
@@ -83,7 +84,7 @@ export async function openOwnedSignedClock(employmentId:string,isUnlocked:()=>bo
  // Late-bound: the offline ports reach the store's guarded photo custody, which the opened journal owns.
  let store:Awaited<ReturnType<typeof openNativeSignedClockJournal>>|null=null;
  const custody=()=>{if(!store)throw new SignedClockUnavailable('storage');return store;};
- const offline=offlineClockingBuild?createOfflineClockPorts({platform,employmentId,namespace,apiOrigin,check,operation,native,
+ const offline=offlineClockingBuild?createOfflineClockPorts({platform:nativePlatform,employmentId,namespace,apiOrigin,check,operation,native,
   isForeground:()=>AppState.currentState==='active'&&isUnlocked(),
   photos:{read:(id,photo)=>custody().readOfflinePhoto(id,photo),retain:(id,photo,bytes)=>custody().retainOfflinePhoto(id,photo,bytes),remove:id=>custody().deleteOfflinePhoto(id)},
   basePhoto:id=>withBase(employmentId,id,async(_entry,_command,file)=>{if(!file)throw new SignedClockUnavailable('saved_command');return new File(file.uri).bytes();}),
@@ -138,7 +139,7 @@ export async function openOwnedSignedClock(employmentId:string,isUnlocked:()=>bo
   /** Identity this controller opened with: `anchored` means an offline cold start from the device-only anchor. */
   identity:{namespace,apiOrigin,actorId,appInstallationId,employmentId,anchored:!me},
   offline:offline?{
-   capabilities:()=>owned(()=>readOfflineCapabilities({platform,employmentId,namespace,apiOrigin,check})),
+   capabilities:()=>owned(()=>readOfflineCapabilities({platform:nativePlatform,employmentId,namespace,apiOrigin,check})),
    target:offlineTarget,
    snapshot:()=>{const value=native.clockSnapshot();check();return value;},
    reserve:(binding:unknown)=>owned(()=>journal.reserveOffline(binding)),

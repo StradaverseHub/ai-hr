@@ -16,7 +16,9 @@ function fixture(){
   const entry:any={kind:'clock',requestId:'request',command:'original command',createdAt:Date.now()};
   const journal={pending:vi.fn(async()=>[entry]),restore:vi.fn(async()=>({command:entry.command})),
     stage:vi.fn(async()=>entry),resolve:vi.fn(async()=>{}),prepareClock:vi.fn(async()=>entry),markAttemptReported:vi.fn(async()=>{}),clockAttempt:vi.fn(async()=>JSON.parse(entry.command))};
-  const open=vi.fn(async()=>journal),discard=vi.fn();
+  const open=vi.fn(async(_scope:unknown,_check:unknown)=>journal),discard=vi.fn();
+  // Offline cold-start fallback (offline-anchor.ts); the default answers null, i.e. today's behaviour.
+  const anchoredIdentity=vi.fn<(error:unknown,expected:{namespace:string;apiOrigin:string;employmentId:string})=>Promise<{actorId:string}|null>>(async()=>null);
   const output={exports:{} as {openOwnedClockJournal:(employmentId:string,actorId:string)=>Promise<typeof journal>;listOwnedPendingSubmissions:()=>Promise<any[]>;reconcileOwnedPendingSubmission:(item:any,action:string)=>Promise<any>;useSubmissionRecovery:(kind:string,employmentId:string,onRestore:(value:unknown)=>void)=>{
     ready:boolean;error:unknown;prepareClock:(action:string,id:string)=>Promise<unknown>;reportAttempt:(id:string)=>Promise<unknown>;stage:(command:string,file?:unknown,source?:unknown)=>Promise<unknown>;resolve:(id:string)=>Promise<void>;
   }}};
@@ -24,7 +26,8 @@ function fixture(){
     {exports:output.exports,module:output,require:(id:string)=>{
       if(id==='react')return React;if(id==='react-native')return native;
       if(id==='./api')return {apiGet,apiPost};if(id==='./auth')return {authGeneration:()=>owner,assertAuthGeneration:(value:number)=>{if(value!==owner)throw new errors.SessionChangedError();}};
-      if(id==='./config')return {identityNamespace:()=>namespace};
+      if(id==='./config')return {config:{apiUrl:'https://hr.example.com'},identityNamespace:()=>namespace};
+      if(id==='./offline-anchor')return {anchoredIdentity};
       if(id==='./errors')return errors;if(id==='./submission-native')return {openNativeSubmissionJournal:open,discardNativeSubmissionRestore:discard};
       if(id==='../../lib/clock-attempt')return attempt;
       if(id==='./submission-journal')return {SubmissionJournalUnavailable};throw new Error(id);
@@ -33,7 +36,7 @@ function fixture(){
     control=output.exports.useSubmissionRecovery('clock',employment,restored);
     return <span>{control.ready?'ready':control.error?'failed':'loading'}</span>;
   }
-  return {Probe,discard,apiGet,apiPost,open,journal,native,entry,restored,control:()=>control,changeAccount:()=>{owner++;},changeNamespace:()=>{namespace='https://another.example.com';},api:output.exports};
+  return {Probe,discard,apiGet,apiPost,open,journal,native,entry,restored,anchoredIdentity,control:()=>control,changeAccount:()=>{owner++;},changeNamespace:()=>{namespace='https://another.example.com';},api:output.exports};
 }
 afterEach(cleanup);
 describe('saved preparation recovery',()=>{
@@ -181,4 +184,22 @@ it('forwards the privacy/screen guard to attempt reporting and refuses an obsole
  const operation={assertCurrent:vi.fn()},receipt={requestId:f.entry.requestId,receivedAt:new Date().toISOString()};f.apiPost.mockResolvedValueOnce(receipt);
  await f.control().reportAttempt(f.entry.requestId,operation);
  expect(operation.assertCurrent).toHaveBeenCalled();expect(f.apiPost).toHaveBeenCalledWith('clock-attempts',JSON.parse(f.entry.command),{employmentId},operation);
+});
+
+describe('offline cold start: the device-only anchor stands in for an unreachable me',()=>{
+  it('keeps today\'s failure exactly when no anchor applies, and never consults it after a successful me',async()=>{
+    const f=fixture(),failure=new errors.UnavailableError();f.apiGet.mockRejectedValueOnce(failure);
+    await expect(f.api.openOwnedClockJournal(employmentId,actorId)).rejects.toBe(failure);
+    expect(f.anchoredIdentity).toHaveBeenCalledWith(failure,{namespace:'https://hr.example.com',apiOrigin:'https://hr.example.com',employmentId},expect.any(Function));expect(f.open).not.toHaveBeenCalled();
+    f.anchoredIdentity.mockClear();await f.api.openOwnedClockJournal(employmentId,actorId);expect(f.anchoredIdentity).not.toHaveBeenCalled();
+  });
+  it('opens the same actor\'s own base journal from the anchor when me got no HTTP response',async()=>{
+    const f=fixture();f.apiGet.mockRejectedValue(new errors.NetworkUnavailableError());f.anchoredIdentity.mockResolvedValue({actorId});
+    expect(await f.api.openOwnedClockJournal(employmentId,actorId)).toBe(f.journal);
+    expect(f.open.mock.calls[0][0]).toEqual({namespace:'https://hr.example.com',actorId,employmentId});
+  });
+  it('refuses an anchor for another actor than the caller expects',async()=>{
+    const f=fixture(),failure=new errors.NetworkUnavailableError();f.apiGet.mockRejectedValue(failure);f.anchoredIdentity.mockResolvedValue({actorId:employmentId});
+    await expect(f.api.openOwnedClockJournal(employmentId,actorId)).rejects.toBe(failure);expect(f.open).not.toHaveBeenCalled();
+  });
 });

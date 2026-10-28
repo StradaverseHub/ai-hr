@@ -110,6 +110,8 @@ export async function syncOffline(c:Controller,options:{manual?:boolean;rearm?:b
   view=await o.claims();const e=view.exchange;
   if(!e)return settled(c,rearm);
   if(e.phase==='context_requested')return rearm?armOffline(c):{state:'blocked',reason:'pending_online'};
+  // A ready context with no claims is the armed state itself: nothing to send, nothing to close.
+  if(e.phase==='context_ready'&&e.claimCount===0)return ready(view);
   const live=view.claims.filter(claim=>claim.contextId===e.contextId);
   if(e.phase==='closing'||live.every(claim=>claim.state!=='waiting')){
    if(live.some(claim=>claim.state==='undeliverable'))return {state:'blocked',reason:'needs_attention'};

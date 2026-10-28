@@ -829,7 +829,7 @@ reading a body or the deployment. Contracts are `lib/mobile-offline-contract.ts`
 
 | Method and path (`/api/mobile/v2/integrity/{ios,android}/offline/...`) | Body (limit) | Success |
 | --- | --- | --- |
-| `GET capabilities` | none | `{outcome:'offline',enabled,apiOrigin,issuers,windowMs,permitCount}` |
+| `GET capabilities` | none | `{outcome:'offline',enabled,apiOrigin,companyId,issuers,windowMs,permitCount}` |
 | `POST context` | JSON `OfflineClockContextRequest` (1 KiB) | `{outcome:'issued',context,contextId,authorization:'not_granted'}` |
 | `POST context/close` | JSON `{contextId,closeRequestId,consumedThrough}` (1 KiB) | `{outcome:'closed',...}` |
 | `POST claim` | multipart, 3 MiB total: `claim` JSON (16 KiB), `photo` (jpeg/png, 2 MiB), Android `playIntegrityToken` + `syncBuildVersion` | `{outcome:'processed',receipt}` |
@@ -886,3 +886,87 @@ Tests: `test/mobile-offline-http.test.ts` (handler level) and `test/mobile-offli
 NOT done: the native client; storing the sync verdict or a sync audit event; delivering registry updates other than
 through capabilities; KMS custody; physical-device, vendor and airplane-mode witnesses; settings UI for the company
 switch.
+
+### Native client sync engine (28 October 2026; IMPLEMENTED, UNVERIFIED)
+
+Status: implemented on `claude/mobile-offline-claim-review`; no vitest, TypeScript, Metro, Expo, build or device command was
+run locally (hosted CI must verify it). No screen calls it yet: the clock screen is unchanged, so online clocking behaves as
+before even with the switch on, until the UI task wires `beforeOnlinePunch`/`captureOfflinePunch`.
+
+Default off (owner decision 5). Unless `EXPO_PUBLIC_OFFLINE_CLOCKING==='1'` (`offlineClockingBuild` in `mobile/lib/config.ts`)
+`openOwnedSignedClock` supplies no offline ports, reads no anchor and sends nothing new, and every `mobile/lib/offline-sync.ts`
+function returns `off`/`online` before any storage, native or network work. With it on, offline also needs capabilities
+`{outcome:'offline',enabled:true,apiOrigin===config.apiUrl}`; `enabled:false` (drain) stops new arming while existing queues
+still upload and close.
+
+Server addition. Capabilities now return `companyId` (the selected employment's own company, the same owner the deployment
+lookup uses), so the phone can bind the context scope. The iPhone target environment is read from the stored key receipt
+(`signingEnvironment` on the Apple enrollment journal); Android's is null.
+
+State machine (one installed-account journal, `mobile/lib/signed-clock-journal.ts` + `offline-clock-state.ts`, sealed under the
+existing device-only master; every step commits before its side effect):
+
+| State | Meaning | Next |
+| --- | --- | --- |
+| E1 `context_requested` | binding + request-start snapshot saved before the context POST | E2; or none via `abandonReservation` only for `offline_pending`, `online_pending`, `offline_disabled`, `device_required`, `context_closed`, `key_unavailable` |
+| E2 `context_ready` | verified signed context + response snapshot; claims C1-C7 | E3, or E4 directly after the last permit's receipt (the server closed it as exhausted) |
+| E3 `closing` | `{close:{requestId,consumedThrough}}` saved before the close POST; only when every claim is settled | E4 on `closed`, or on `context_closed`/`key_unavailable`/`context_unavailable`; back to E2 on `cursor_mismatch` (unreceived claims requeued); held on `claims_pending`/`binding_conflict`; kept on `unavailable` or transport failure (identical resend) |
+| E4 closed | `offline:null`; the receipts move to the snapshot's `recent` list for the employee's view | re-arm |
+
+Claims: C1 `capture_requested`, C2 `photo_retained`, C3 `captured`, C4 `signing`, C5 `proof_ready` (+`nativeReleased`), C6
+`receipt_saved` (the exact receipt: request, context, sequence, digest and photo sha must match, else `SignedClockConflict` and
+nothing is saved), C7 `photo_deleted` (the retained photo deleted after C6 commits). Receipts form a strict prefix. A claim may
+carry `undeliverable:{reason,dismissed}`; the first undeliverable claim makes every later one undeliverable
+(`earlier_undeliverable`). `removeUndeliverable` records the employee's confirmed removal; removed claims' photos are deleted
+when the exchange clears (E4), because `cursor_mismatch` can reopen them for an exact re-upload. The installation quota admits
+receipt, photo-deletion, undeliverable and close transitions at the cap (`isOfflineResolution`); never a new claim or proof.
+
+Upload (`uploadNextOffline`, inside the serialized owner): the lowest claim without a receipt, only at C5 with native custody
+released; it never signs, and a retry resends the identical claim JSON and photo bytes. Mapping: `processed` -> C6/C7;
+`key_unavailable`, `context_closed`, `context_unavailable`, `binding_conflict`, `invalid_proof`, `attachment_mismatch`,
+`invalid_claim` and HTTP 400 -> undeliverable; `unavailable` codes, `chain_conflict`, network failures and 5xx -> queued with
+backoff (429 honours retry-after); `sync_integrity` with `stale_token`/`request_mismatch`/`invalid_token`/`token_missing` -> one
+immediate retry with a fresh token, other integrity reasons -> slow retry; 401 propagates and the queue stays. Other refusals
+(`scope_unavailable`, `time_unavailable`, ...) are a slow retry: they are not in the owner's undeliverable list.
+
+Transport (`mobile/lib/offline-clock-ports.ts`, wired by `openOwnedSignedClock`): the four endpoints in `mobile/lib/api.ts`;
+multipart claim upload with the retained photo bytes (no plaintext file); Android requests a fresh standard Play token per
+attempt with requestHash from `entry.digest` + hex sha256(base64-decoded original signature) + the RUNNING build's
+`capabilities().buildVersion` (`mobile/lib/offline-sync-hash.ts`, pinned to the server owner by
+`test/mobile-offline-sync-hash.test.ts`); iPhone makes no native call at upload. Photo deletion is guarded like `checkPhoto`
+(own exchange, settled claim). The issuer registry is a sealed cache replaced on every successful capabilities read and used to
+verify contexts, including offline at capture.
+
+Identity anchor (blocker b). `{namespace,apiOrigin,actorId,employmentId,companyId,platform}` is a sealed file
+(`mobile/lib/offline-anchor.ts`; SecureStore size limits are UNKNOWN), written before the reservation and on each online sync of
+an existing exchange, cleared with the exchange. Only after a request got no HTTP response does `openOwnedSignedClock` (and the
+base submission journal) open from it instead of `me`. Logout (`auth.ts` `remove`) deletes the anchor file and nothing else: the
+sealed queue and photos stay, the same employee's next online open uploads them, and another account signing in has a different
+journal scope and no anchor, so it never sees or sends them.
+
+Connectivity test (decision 1): `NetworkUnavailableError` (`mobile/lib/errors.ts`), thrown by `api.ts` and the token refresh in
+`auth.ts` only when no HTTP response arrived (fetch rejected or the 15 s timeout fired first); still an `UnavailableError`, so
+online callers are unchanged. The probe is the offline capabilities read made immediately before a punch. No device-reachability
+API is used (none is in the dependency set). A hung server is indistinguishable from no network.
+
+Driver (`mobile/lib/offline-sync.ts`): `armOffline` (keep a context ready when online and idle), `beforeOnlinePunch` (route:
+online / offline / blocked; hands back a zero-claim context with `consumedThrough` 0; uploads saved claims first, strictly in
+order, and closes before allowing online), `afterOnlinePunch` (re-arm), `captureOfflinePunch` (capture + local signing, no
+network; the base command must already be saved by the clock screen), `syncOffline` (foreground/manual; backoff; at most 64
+upload attempts per rolling hour per account on this device), `offlineClaims` (Recorded / Held for HR review / Not recorded /
+Couldn't be sent / waiting), `removeUndeliverable`, `subscribeOfflineForeground`. Expiry (decision 7): capture is refused
+(`SignedClockUnavailable('expired')`) once the proven elapsed lower bound since the response reaches the context window;
+unknown continuity is allowed.
+
+Needs physical devices (not available; must not be replaced with synthetic success): airplane mode across a shift; cold start
+offline after force quit and reboot; iOS App Attest cached assertions with no network; Android Keystore signing offline and a
+real Play standard token bound to the sync requestHash and accepted by Google; `expo/fetch` multipart with in-memory `bytes()`
+parts on both platforms; real timeout/no-response behaviour of the OS network stack; sealed-file atomic replace
+(`moveSync` overwrite) on device file systems; behaviour across app upgrade with a queue present.
+
+NOT done: the screens (clock-panel wiring, Couldn't-be-sent confirmation, outcome list, offline employment selection on an
+offline cold start); a second employment's exchange blocks online clocking for the other employment (`other_employment`) until
+that employment syncs; an E1 reservation answered `not_configured` (deployment removed) is kept, not abandoned, so it blocks
+online clocking on the phone (the server lease rules are unchanged); a network failure of the close POST in a handback leaves
+E3, which allows neither offline capture nor online clocking until it is resent; no HR-outcome fetch (decision 4).
+

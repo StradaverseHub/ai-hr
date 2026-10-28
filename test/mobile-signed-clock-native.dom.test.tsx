@@ -14,7 +14,8 @@ import * as errors from '../mobile/lib/errors';
 import {createIntegrityBridge} from '../mobile/lib/integrity-bridge';
 import {createAndroidClockSigner} from '../mobile/lib/android-clock-signing';
 const actorId='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',employmentId='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',requestId='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
-function fixture(platform:'ios'|'android'){
+type OfflineOptions={build:boolean;anchor?:{actorId:string}|null};
+function fixture(platform:'ios'|'android',offlineOptions:OfflineOptions={build:false}){
  let unlocked=true,generation=1,accepted=false,stored:journal.SignedClockSnapshot|null=null;
  const config={apiUrl:'https://hr.example.com'},files=new Map<string,Uint8Array>([['restored',new Uint8Array([1,2,3])]]);
  const source={provider:null,mock:false,simulated:null,accessory:null},command={requestId,action:'in' as const,lat:3,lng:101,accuracy:5,sampledAt:1793055753390};
@@ -45,7 +46,13 @@ function fixture(platform:'ios'|'android'){
   if(path.endsWith('/complete')){accepted=true;return {outcome:'accepted',receipt};}throw new Error(path);
  });
  class File{constructor(readonly uri:string){}get exists(){return files.has(this.uri);}delete(){files.delete(this.uri);}}
- const output={exports:{} as {openOwnedSignedClock:(employment:string,unlocked:()=>boolean)=>Promise<{key:()=>Promise<unknown>;status:()=>Promise<journal.SignedClockStatus>;start:(id:string)=>Promise<journal.SignedClockStatus>;advance:(requestId?:string)=>Promise<journal.SignedClockStatus>;recover:(abandon?:boolean,requestId?:string)=>Promise<journal.SignedClockStatus>}>}};
+ // Offline ports module (offline-clock-ports.ts): with the build switch off it must never be used.
+ const offlinePorts={createOfflineClockPorts:vi.fn((_deps:Record<string,unknown>)=>({snapshot:vi.fn(),request:vi.fn(),verify:vi.fn(),sync:{upload:vi.fn(),close:vi.fn(),deletePhoto:vi.fn()}})),
+  readOfflineCapabilities:vi.fn(async()=>({outcome:'unavailable',code:'not_configured'})),
+  offlineClockIdentity:vi.fn(async(error:unknown)=>offlineOptions.build&&error instanceof errors.NetworkUnavailableError?offlineOptions.anchor??null:null)};
+ let openedPorts:journal.SignedClockPorts|null=null,openedScope:enrollment.EnrollmentScope|null=null;
+ const deleteOfflinePhoto=vi.fn(async(_id:string)=>{});
+ const output={exports:{} as {openOwnedSignedClock:(employment:string,unlocked:()=>boolean)=>Promise<{key:()=>Promise<unknown>;offline:unknown;identity:{actorId:string;anchored:boolean};status:()=>Promise<journal.SignedClockStatus>;start:(id:string)=>Promise<journal.SignedClockStatus>;advance:(requestId?:string)=>Promise<journal.SignedClockStatus>;recover:(abandon?:boolean,requestId?:string)=>Promise<journal.SignedClockStatus>}>}};
  runInNewContext(transpileModule(readFileSync('mobile/lib/signed-clock.ts','utf8'),{compilerOptions:{module:ModuleKind.CommonJS}}).outputText,{
   exports:output.exports,module:output,FormData,structuredClone,require:(id:string)=>{
    if(id==='react-native')return {AppState:{currentState:'active'},Platform:{OS:platform}};
@@ -55,12 +62,14 @@ function fixture(platform:'ios'|'android'){
    if(id==='../../lib/mobile-integrity-contract')return C;
    if(id==='./api')return {apiGet,apiPost};
    if(id==='./auth')return {authGeneration:()=>generation,assertAuthGeneration:(n:number)=>{if(n!==generation)throw new errors.SessionChangedError();}};
-   if(id==='./config')return {config,identityNamespace:()=> 'company'};
+   if(id==='./config')return {config,identityNamespace:()=> 'company',offlineClockingBuild:offlineOptions.build};
+   if(id==='./offline-clock-ports')return offlinePorts;
    if(id==='./errors')return errors;if(id==='./enrollment-journal')return enrollment;if(id==='./clock-signing-key')return signingKey;
    if(id==='./device-enrollment')return {openOwnedDeviceEnrollment:async()=>enrollmentController};
    if(id==='./submission-recovery')return {openOwnedClockJournal:async()=>base};
    if(id==='./submission-native')return {nativeIntegrityInstallationId:async()=>actorId,
-    openNativeSignedClockJournal:async(scope:enrollment.EnrollmentScope,assertCurrent:()=>void,ports:journal.SignedClockPorts)=>journal.createSignedClockJournal(scope,{...ports,assertCurrent,read:async()=>stored,commit:async value=>{stored=structuredClone(value);}})};
+    openNativeSignedClockJournal:async(scope:enrollment.EnrollmentScope,assertCurrent:()=>void,ports:journal.SignedClockPorts)=>{openedPorts=ports;openedScope=scope;
+     return {...journal.createSignedClockJournal(scope,{...ports,assertCurrent,read:async()=>stored,commit:async value=>{stored=structuredClone(value);}}),deleteOfflinePhoto,readOfflinePhoto:vi.fn(),retainOfflinePhoto:vi.fn()};}};
    if(id==='./integrity-bridge')return {createIntegrityBridge};
    if(id==='./android-clock-signing')return {createAndroidClockSigner};
    if(id==='./clock-integrity')return {onlineClockClientDataHash:async(input:unknown,check:()=>void)=>{check();return createHash('sha256').update(clockIntegrity.onlineClockClientData(input)).digest('base64');}};
@@ -69,6 +78,7 @@ function fixture(platform:'ios'|'android'){
    if(id==='./signed-clock-journal')return journal;throw new Error(id);
   }});
  return {enrollmentController,open:()=>output.exports.openOwnedSignedClock(employmentId,()=>unlocked),apiGet,apiPost,base,native,append,files,handoff,context,stored:()=>stored,
+  offlinePorts,openedPorts:()=>openedPorts,openedScope:()=>openedScope,deleteOfflinePhoto,
   lock:()=>{unlocked=false;},changeOwner:()=>{generation++;}};
 }
 describe('owned signed-clock native assembly',()=>{
@@ -129,5 +139,33 @@ describe('native support outcomes before signing-key handoff',()=>{
   const f=fixture('ios');f.enrollmentController.supported=false;
   await expect((await f.open()).key()).rejects.toMatchObject({reason:'unsupported'});
   expect(f.handoff).not.toHaveBeenCalled();
+ });
+});
+
+describe('offline clocking wiring in the owned assembly',()=>{
+ it.each(['ios','android'] as const)('%s build switch off: no offline ports, no anchor fallback, the online path is unchanged',async platform=>{
+  const f=fixture(platform),controller=await f.open();
+  expect(controller.offline).toBeNull();expect(f.openedPorts()!.offline).toBeUndefined();expect(f.offlinePorts.createOfflineClockPorts).not.toHaveBeenCalled();
+  await controller.start(requestId);expect(await controller.advance()).toMatchObject({status:'accepted'});
+  expect(f.apiPost.mock.calls.map(call=>call[0])).toEqual(['v2/integrity/'+platform+'/clock/begin','v2/integrity/'+platform+'/clock/complete']);
+  const g=fixture(platform),failure=new errors.NetworkUnavailableError();g.apiGet.mockRejectedValueOnce(failure);
+  await expect(g.open()).rejects.toBe(failure);
+ });
+ it('build switch on: wires the offline ports for this employment and routes photo deletion to the guarded store',async()=>{
+  const f=fixture('android',{build:true}),controller=await f.open();
+  expect(controller.offline).not.toBeNull();expect(f.offlinePorts.createOfflineClockPorts).toHaveBeenCalledOnce();
+  const deps=f.offlinePorts.createOfflineClockPorts.mock.calls[0][0] as {employmentId:string;platform:string;photos:{remove(id:string):Promise<void>}};
+  expect(deps).toMatchObject({employmentId,platform:'android'});expect(f.openedPorts()!.offline).toBeDefined();
+  await deps.photos.remove(requestId);expect(f.deleteOfflinePhoto).toHaveBeenCalledWith(requestId);
+  // Online clocking is still the same path while no offline exchange exists.
+  await controller.start(requestId);expect(await controller.advance()).toMatchObject({status:'accepted'});
+ });
+ it('offline cold start opens this session\'s own journal from the anchor only after a no-response me',async()=>{
+  const f=fixture('ios',{build:true,anchor:{actorId}});f.apiGet.mockRejectedValueOnce(new errors.NetworkUnavailableError());
+  const controller=await f.open();expect(controller.identity).toMatchObject({actorId,anchored:true});expect(f.openedScope()).toMatchObject({actorId});
+  const g=fixture('ios',{build:true,anchor:{actorId}}),outage=new errors.UnavailableError();g.apiGet.mockRejectedValueOnce(outage);
+  await expect(g.open()).rejects.toBe(outage);
+  const h=fixture('ios',{build:true,anchor:null}),offline=new errors.NetworkUnavailableError();h.apiGet.mockRejectedValueOnce(offline);
+  await expect(h.open()).rejects.toBe(offline);
  });
 });
