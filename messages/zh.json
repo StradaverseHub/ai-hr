@@ -20671,6 +20671,26 @@
         "noRole": "您尚未获分配薪酬审核角色。请联系集团薪酬团队。",
         "otherScope": "您的薪酬审核位于当前公司筛选范围之外。请更改顶部筛选以查看。"
       }
+    },
+    "desk": {
+      "salary": "1 · 加薪",
+      "bonus": "2 · 奖金",
+      "ec": "3 · EC直属员工",
+      "where": "当前进度",
+      "flags": "待查事项",
+      "within": "预算内",
+      "over": "超出预算",
+      "notSet": "未设置",
+      "usedOf": "{used}，总额度 {pool}",
+      "goToSection": "前往该部分",
+      "approvalHistory": "审批记录",
+      "noDue": "未设置截止日期",
+      "total": "合计",
+      "payrollShare": "占工资总额 {percent}",
+      "amountOver": "超出 {amount}",
+      "amountLeft": "剩余 {amount}",
+      "cellsAdjusted": "已调整 {count} 个单元格",
+      "poolFormula": "PAT达成率 × 目标奖金月数 × 符合资格的工资总额。每个计划保持独立额度。"
     }
   },
   "identityEmail": {

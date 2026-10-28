@@ -20671,6 +20671,26 @@
         "noRole": "Anda belum mempunyai peranan semakan ganjaran. Hubungi Group Rewards untuk ditugaskan.",
         "otherScope": "Semakan ganjaran anda berada di syarikat di luar penapis semasa. Ubah penapis di atas untuk melihatnya."
       }
+    },
+    "desk": {
+      "salary": "1 · Kenaikan gaji",
+      "bonus": "2 · Bonus",
+      "ec": "3 · Laporan terus EC",
+      "where": "Kedudukan semasa",
+      "flags": "Perkara untuk diperiksa",
+      "within": "Dalam bajet",
+      "over": "Melebihi bajet",
+      "notSet": "Belum ditetapkan",
+      "usedOf": "{used} daripada {pool}",
+      "goToSection": "Pergi ke bahagian",
+      "approvalHistory": "Sejarah kelulusan",
+      "noDue": "Tarikh akhir belum ditetapkan",
+      "total": "Jumlah",
+      "payrollShare": "{percent} daripada gaji",
+      "amountOver": "Lebih {amount}",
+      "amountLeft": "Baki {amount}",
+      "cellsAdjusted": "{count} sel diubah",
+      "poolFormula": "Pencapaian PAT × bulan bonus sasaran × gaji yang layak. Setiap pelan mempunyai kumpulan dananya sendiri."
     }
   },
   "identityEmail": {

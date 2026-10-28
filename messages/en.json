@@ -20671,6 +20671,26 @@
         "noRole": "You don't have a rewards review role yet. Contact Group Rewards to be assigned.",
         "otherScope": "Your rewards reviews are in companies outside the current company filter. Change the filter at the top to see them."
       }
+    },
+    "desk": {
+      "salary": "1 · Salary increase",
+      "bonus": "2 · Bonus",
+      "ec": "3 · EC direct reports",
+      "where": "Where it is",
+      "flags": "Flags",
+      "within": "Within budget",
+      "over": "Over budget",
+      "notSet": "Not set",
+      "usedOf": "{used} of {pool}",
+      "goToSection": "Go to section",
+      "approvalHistory": "Approval history",
+      "noDue": "No due date set",
+      "total": "Total",
+      "payrollShare": "{percent} of payroll",
+      "amountOver": "{amount} over",
+      "amountLeft": "{amount} left",
+      "cellsAdjusted": "{count, plural, one {# cell adjusted} other {# cells adjusted}}",
+      "poolFormula": "PAT achievement × target bonus months × eligible payroll. Each plan keeps its own pool."
     }
   },
   "identityEmail": {
