@@ -213,6 +213,25 @@ Plus the inline review card (§4.3) for the existing 19 actions, which removes t
 changing their owners. Later waves: HR lifecycle cases and prepared personnel changes, leave administration,
 payroll preparation (inputs and checks, never close or unlock as Automatic), then scheduled agents under §4.5.
 
+### 5.1 Amendment, 29 Oct 2026: assigned decisions on the generic receipt shape (wave 1b)
+
+Items 3–6 use migration 0671. Overtime (item 3) is a generic OWN kind whose subject is the caller's own
+employment, because the native request row exists only after confirmation. The three decisions (items 4–6)
+add a second generic binding mode, **assigned**, modelled on the leave-decision custody:
+
+- The review row keeps the decider's login and nullable person, and the subject's employment, company and
+  person. The subject person lives in the existing `decision_subject_person_id` column, so the existing
+  privacy-erasure and outcome-capture owners cover it without change.
+- Authority is the native service's. The adapter asks it (`assertCanDecide`, the frozen attendance workflow)
+  before preparing and the service decides again when it writes. The decider can never decide their own
+  request, for any role: the adapter, the SQL binding and the completion verifier each refuse it, although
+  `assertCanDecide` itself lets a super admin decide their own item on the screen.
+- Completion still proves the native row and event were committed in this transaction, by this login, for
+  this subject. An attendance decision binds the pending workflow level (and participant slot) into the
+  reviewed digest; it may record one level and leave the request pending.
+- One pending review per item per decider, so one approver's open review neither blocks nor reveals itself
+  to another approver of the same item. Index and discard are bound to the login's current person.
+
 ## 6. Alternatives considered
 
 - **Give the agent its own broad role** (as the nightly sweep does today). Rejected: authority would no longer
