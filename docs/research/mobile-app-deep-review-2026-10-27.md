@@ -547,8 +547,8 @@ in its own worktree), integrated on the Mobile work branch (catalogue and Me lin
 - **Known red, by design.** `test/migration-journal-ordering.test.ts` ("a journal entry for every .sql") fails on this
   branch for 0636, 0647 and 0673 while the release hold keeps them unjournaled. Integration must journal all three
   above the live watermark (after 0669 at idx 655); no exemption was added.
-- **DECISION REQUIRED.** Push enrollment does not require an attested integrity key (keys are issued only to
-  allowlisted Attendance users); the binding is the signed-in user plus the enrollment installation id.
+- **D15 — DECIDED (owner, 29 October 2026).** Push enrollment does not require an attested integrity key (keys are
+  issued only to allowlisted Attendance users); the binding is the signed-in user plus the enrollment installation id.
 - **Not verifiable without real keys and devices:** delivery, token rotation, Android background taps, reminder
   timing, Intl on Hermes. **Not built:** per-category push preferences, a tenant push switch, a notification icon,
   ADR-0088 text, use of `notification_delivery`'s reserved `push` channel.
