@@ -1,3 +1,4 @@
+import {setRewardMember} from './rewards-access-fixture';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq, isNull } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
@@ -5,7 +6,7 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { createBatch, setPayrollInput } from '../packs/payroll/service';
-import { returnedRewardUnits, getRewardSeniorMembership, previewRewardSeniorMembership, saveRewardSeniorMembership, getRewardConfiguration, listRewardUnits, pendingRewardReviews, rewardSetupChoices, rewardNotificationRecipients, createOffcycleReview, createRewardUnit, getRewardUnit, saveRewardEntry, saveRewardPolicy, setRewardMember, decideRewardUnit, postRewardUnit } from '../packs/rewards/service';
+import { returnedRewardUnits, getRewardSeniorMembership, previewRewardSeniorMembership, saveRewardSeniorMembership, getRewardConfiguration, listRewardUnits, pendingRewardReviews, rewardSetupChoices, rewardNotificationRecipients, createOffcycleReview, createRewardUnit, getRewardUnit, saveRewardEntry, saveRewardPolicy, decideRewardUnit, postRewardUnit } from '../packs/rewards/service';
 import { emptyFacts, returnedState, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { dispatchNotificationsFromSweep, renderRewardRouted } from '../core/notifications';
@@ -19,7 +20,7 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
   const view = () => getRewardUnit(admin, unitId);
   beforeEach(async () => {
     await resetDb(); b = await seedBase(); await setModule(b.tenantId, 'rewards', 'active'); admin = await entitledCtx(b);
-    // New grants select an existing readable person-backed account; external reviewers need no employment.
+    // New grants select an existing readable person-backed account; only the BU seat also needs current People/BU scope.
     const [adminPerson] = await owner.db.insert(schema.person).values({ tenantId: b.tenantId, fullName: 'Rewards administrator', primaryEmail: 'administrator@rewards.test' }).returning();
     await owner.db.update(schema.appUser).set({ personId: adminPerson.id }).where(eq(schema.appUser.id, admin.userId!));
     admin = { ...admin, personId: adminPerson.id };
@@ -347,6 +348,8 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     const submit = async (who: RewardRole = 'bu', id = unitId) => decideRewardUnit(actors[who]!, id, (await getRewardUnit(actors[who]!, id)).unit.revision, 'submit', 'Reviewed recommendations');
     const giveEmployment = async (role: RewardRole, name: string) => {
       const hire = await hireEmployee(admin, { person: { fullName: name, primaryEmail: `${role}.employment@rewards.test` }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: `${year - 2}-01-01` });
+      const currentReview = await getRewardUnit(admin, unitId);
+      await owner.db.update(schema.assignment).set({ businessUnitId: currentReview.unit.businessUnitId }).where(eq(schema.assignment.employmentId, hire.employmentId));
       await owner.db.update(schema.appUser).set({ personId: hire.personId }).where(eq(schema.appUser.id, actors[role]!.userId!));
       actors[role] = { ...actors[role]!, personId: hire.personId };
       return hire;

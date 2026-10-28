@@ -1,3 +1,4 @@
+import {setRewardMember} from './rewards-access-fixture';
 /**
  * P1 WP-H1 (truthful Post) and WP-G (Rewards approvals board, reward calendar 0646). Fictional fixtures only.
  * Every service call runs through withTenant as the app role (ai_hr_app, NOBYPASSRLS); direct RLS probes too.
@@ -12,7 +13,7 @@ import { hireEmployee } from '../core/org';
 import { assignRole, createCompany } from '../core/admin';
 import { setCompensation } from '../core/comp';
 import { createBatch, setPayrollInput } from '../packs/payroll/service';
-import { canPostRewardUnit, createRewardUnit, decideRewardUnit, getRewardCalendar, getRewardUnit, listRewardReviewStatus, postRewardUnit, rewardApprovalsBoard, rewardDueWording, saveRewardCalendar, saveRewardEntry, saveRewardPolicy, sendReadyRewardUnits, setRewardMember, emptyRewardCalendar } from '../packs/rewards/service';
+import { canPostRewardUnit, createRewardUnit, decideRewardUnit, getRewardCalendar, getRewardUnit, listRewardReviewStatus, postRewardUnit, rewardApprovalsBoard, rewardDueWording, saveRewardCalendar, saveRewardEntry, saveRewardPolicy, sendReadyRewardUnits, emptyRewardCalendar } from '../packs/rewards/service';
 import { emptyFacts, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';

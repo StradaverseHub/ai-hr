@@ -28,12 +28,12 @@ import { emptyRewardCalendar, rewardCalendarSchema, rewardDaysUntil, rewardNextS
 export { rewardCalendarStages, rewardOffcycleSlaStages, emptyRewardCalendar, rewardDueWording, rewardNextSeat, rewardRouteProgress } from './calendar';
 export type { RewardCalendarValues, RewardCalendarStage, RewardOffcycleSlaStage, RewardRouteStep } from './calendar';
 import {changeRewardMember} from './maintenance';
-export {rewardAccessAdministration,previewRewardAccessChange,saveRewardAccessChange,rewardDeletionEligibility,deleteRewardReview,RewardMaintenanceError} from './maintenance';
-export type {RewardAccessChange,RewardAccessAdministration,RewardDeletionReason} from './maintenance';
+export {rewardAccessSingleAdminCompanies,rewardAccessRequests,decideRewardAccessRequest,rewardAccessAdministration,previewRewardAccessChange,saveRewardAccessChange,rewardDeletionEligibility,deleteRewardReview,RewardMaintenanceError} from './maintenance';
+export type {RewardAccessRequest,RewardAccessChange,RewardAccessAdministration,RewardDeletionReason} from './maintenance';
 export {previewRewardAccessBatch,saveRewardAccessBatch,previewRewardAccessCopy} from './maintenance';
 export type {RewardAccessBatch,RewardAccessCopyProposal} from './maintenance';
 import {activeRewardLogin,missingRewardRoles,rewardRequiredRoles,rewardRoleLabels,rewardUnitCoverage} from './coverage';
-export {rewardRequiredRoles,rewardUnitCoverage} from './coverage';
+export {rewardRoleLabels,rewardRequiredRoles,rewardUnitCoverage} from './coverage';
 export type {RewardUnitCoverage,RewardRoleCoverage} from './coverage';
 /** cd72f915 — required-role coverage for the configuration list's "roles missing" badge (same predicate as submission). */
 export async function rewardCoverageForUnits(ctx: SessionContext, unitIds: string[]) { return withRewardsTenant(ctx, tx => rewardUnitCoverage(tx, unitIds)); }
@@ -138,6 +138,7 @@ function returnedProjection(unit: typeof rewardUnit.$inferSelect, latest: Decisi
 
 /** The full pay-bearing review projection. Never return hidden internal entries or EC aggregates. */
 export async function getRewardUnit(ctx: SessionContext, unitId: string) {
+  await withRewardsTenant(ctx,tx=>tx.execute(sql`select app.reward_access_observe(${unitId}::uuid)`));
   return withRewardsTenant(ctx, tx => reviewProjectionTx(tx, ctx, unitId));
 }
 /**
@@ -244,6 +245,7 @@ const ANNUAL_ROUTE: RewardRole[] = ['bu', 'bg', 'gr', 'ctro', 'ec'];
 export async function listRewardUnits(ctx: SessionContext, companyIds: string[], existingTx?: AiReadTx) {
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   companyIds = companyIds.slice();
+  if(!existingTx)await withRewardsTenant(ctx,tx=>tx.execute(sql`select app.reward_access_observe(NULL::uuid)`));
 
   return withCanonicalAiReadTx(ctx, existingTx, 'rewards', withRewardsTenant, tx=>listRewardUnitsTx(tx,companyIds));
 }
@@ -268,7 +270,7 @@ async function listRewardUnitsTx(tx:Tx,companyIds:string[]){
     const holders = await tx.select({ unitId: rewardMember.unitId, role: rewardMember.role, name: person.fullName }).from(rewardMember)
       .innerJoin(appUser, and(eq(appUser.id, rewardMember.userId), isNull(appUser.archivedAt), sql`not app.login_blocked(${appUser.id})`))
       .leftJoin(person, and(eq(person.id, appUser.personId), visibleSeatHolder))
-      .where(inArray(rewardMember.unitId, ids)).orderBy(asc(person.fullName), asc(rewardMember.userId));
+      .where(and(inArray(rewardMember.unitId, ids),sql`app.reward_member_eligible(${rewardMember.id})`)).orderBy(asc(person.fullName), asc(rewardMember.userId));
     const calendars = new Map((await tx.select().from(rewardCalendar).where(inArray(rewardCalendar.cycleId, [...new Set(rows.map(r => r.cycleId))])))
       .map(c => [`${c.cycleId}:${c.companyId}`, calendarValues(c)]));
     const offcycle = rows.filter(r => r.kind !== 'annual').map(r => r.id);
@@ -771,7 +773,7 @@ export async function decideRewardUnit(ctx: SessionContext, unitId: string, revi
       if (!entries.length) throw new RewardError('A review needs at least one employee.');
       if (calculated.flags.some(f => f.severity === 'block')) throw new RewardError('Resolve all blocking checks, including restricted records, before proceeding.');
       if (calculated.flags.some(f => ['exception', 'warning'].includes(f.severity)) && reason.length < 10) throw new RewardError('Record why the exceptions and warnings are acceptable.');
-      const members = await tx.select({ role: rewardMember.role }).from(rewardMember).innerJoin(appUser, eq(appUser.id, rewardMember.userId)).where(and(eq(rewardMember.unitId, unitId), activeRewardLogin()));
+      const members = await tx.select({ role: rewardMember.role }).from(rewardMember).innerJoin(appUser, eq(appUser.id, rewardMember.userId)).where(and(eq(rewardMember.unitId, unitId),sql`app.reward_member_eligible(${rewardMember.id})`));
       const missing = missingRewardRoles(rewardRequiredRoles(unit, entries), members);
       if (missing.length) throw new RewardError(`Assign every approval role and the payroll handoff before submitting. Missing: ${missing.map(role => rewardRoleLabels[role]).join(', ')}.`);
       if (unit.status !== 'draft' && unit.approvedDigest !== hash) throw new RewardError('The inputs changed after submission. Return this review to draft.');
@@ -1033,8 +1035,8 @@ export async function createOffcycleReview(ctx: SessionContext, parentId: string
       kind: p.kind, parentUnitId: parent.id, offcycle: { exceptionReason: p.exceptionReason, bgOrigin },
       policy: { ...parent.policy, effectiveFrom: p.effectiveFrom }, snapshotDate: todayInKualaLumpur(),
     }).returning();
-    const members = await tx.select({ userId: rewardMember.userId, role: rewardMember.role }).from(rewardMember).innerJoin(appUser, eq(appUser.id, rewardMember.userId)).where(and(eq(rewardMember.unitId, parentId), isNull(appUser.archivedAt), sql`not app.login_blocked(${appUser.id})`));
-    for (const m of members) await tx.insert(rewardMember).values({ tenantId: ctx.tenantId, unitId: id, userId: m.userId, role: m.role });
+    const members = await tx.select({ userId: rewardMember.userId, role: rewardMember.role,validFrom:rewardMember.validFrom,validTo:rewardMember.validTo,coversUserId:rewardMember.coversUserId,restoredReason:rewardMember.restoredReason,restoredFingerprint:rewardMember.restoredFingerprint }).from(rewardMember).where(and(eq(rewardMember.unitId,parentId),sql`app.reward_member_eligible(${rewardMember.id})`));
+    for (const m of members) await tx.insert(rewardMember).values({ tenantId: ctx.tenantId, unitId: id,...m });
     for (const e of chosen) {
       const [record] = await tx.execute<{ source: Partial<RewardSource> | null }>(sql`select app.reward_current_source(${parentId}::uuid, ${e.employmentId}::uuid) as source`);
       if (!record.source) throw new RewardError('An employee has left this company or has no current salary.');
@@ -1064,6 +1066,16 @@ export async function rewardNotificationRecipients(tx: Tx, unitId: string, stage
   if (!(rewardRoles as readonly string[]).includes(role)) return [];
   const rows = await tx.execute<{ employmentId: string }>(sql`select app.reward_notification_recipients(${unitId}::uuid, ${stage}) as "employmentId"`);
   return rows.map(r => r.employmentId);
+}
+
+export async function rewardAccessSuspensionEventRecipients(tx:Tx,eventId:string|undefined):Promise<string[]>{
+ if(!eventId)return [];
+ const rows=await tx.execute<{employment_id:string}>(sql`select app.reward_access_suspension_event_recipients(${eventId}::uuid) as employment_id`);
+ return rows.map(row=>row.employment_id);
+}
+export async function rewardAccessSuspensionRecipients(tx:Tx,unitId:string):Promise<string[]>{
+ const rows=await tx.execute<{employment_id:string}>(sql`select app.reward_access_suspension_recipients(${unitId}::uuid) as employment_id`);
+ return rows.map(row=>row.employment_id);
 }
 
 /** Explicit Group Rewards import. Re-opens fact verification and invalidates approval digests. */
@@ -1109,6 +1121,7 @@ const REWARD_TASK_APPROVAL_STAGES = ['bg', 'gr', 'ctro', 'ec'] as const;
  * reason or actor.
  */
 export async function pendingRewardTasks(ctx: SessionContext, scopeIds: string[] | undefined): Promise<PackTaskItem[]> {
+  await withRewardsTenant(ctx,tx=>tx.execute(sql`select app.reward_access_observe(NULL::uuid)`));
   const readable = await withRewardsTenant(ctx, (tx) => tx
     .select({ id: rewardUnit.id, companyId: rewardUnit.companyId, status: rewardUnit.status, createdAt: rewardUnit.createdAt })
     .from(rewardUnit)
@@ -1268,6 +1281,7 @@ function boardRow(v: ReviewProjection, meta: { cycle: string; company: string },
  * review page's own read — so membership, entry visibility and flags cannot drift between the two screens.
  */
 export async function rewardApprovalsBoard(ctx: SessionContext, companyIds: string[]) {
+  await withRewardsTenant(ctx,tx=>tx.execute(sql`select app.reward_access_observe(NULL::uuid)`));
   return withRewardsTenant(ctx, async tx => {
     if (!companyIds.length) return [] as RewardBoardRow[];
     const units = await tx.select({ id: rewardUnit.id, cycle: rewardCycle.name, company: company.legalName })

@@ -1,10 +1,11 @@
+import {setRewardMember} from './rewards-access-fixture';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import type { SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
-import { cancelRewardReview, createRewardUnit, decideRewardUnit, emptyRewardCalendar, getRewardUnit, listRewardReviewStatus, listRewardUnits, pendingRewardTasks, rewardApprovalsBoard, saveRewardCalendar, saveRewardEntry, saveRewardPolicy, setRewardMember } from '../packs/rewards/service';
+import { cancelRewardReview, createRewardUnit, decideRewardUnit, emptyRewardCalendar, getRewardUnit, listRewardReviewStatus, listRewardUnits, pendingRewardTasks, rewardApprovalsBoard, saveRewardCalendar, saveRewardEntry, saveRewardPolicy } from '../packs/rewards/service';
 import { emptyFacts, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';

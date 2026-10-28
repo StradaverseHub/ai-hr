@@ -1,3 +1,4 @@
+import {setRewardMember} from './rewards-access-fixture';
 import type { NotificationEmailRequest } from '../lib/notification-email-model';
 import {leadershipPrinciples} from '../packs/performance/onehr/framework-model';
 import { kpiLibraryImportHeaders } from '../packs/performance/onehr/import-model';
@@ -16,7 +17,7 @@ import * as perf from '../packs/performance/service';
 import { defaultPolicy, type KPI } from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
 import sourceGolden from './fixtures/onehr/source-golden.json';
-import { createRewardUnit, getRewardUnit, importOnehrRewardResults, setRewardMember } from '../packs/rewards/service';
+import { createRewardUnit, getRewardUnit, importOnehrRewardResults } from '../packs/rewards/service';
 import { adminCtx, closeAll, createAppUser, entitledCtx, harnessSnapshot, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { saveNotificationEmailPolicy,saveNotificationEmailPreferences,retryNotificationEmail } from '../core/notification-email';
 import { deliverNotificationEmails,type NotificationEmailTransport } from '../core/notification-email-delivery';

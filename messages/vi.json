@@ -26586,7 +26586,7 @@
     "lastGrHelp": "Phải giữ người xét duyệt Thưởng Tập đoàn. Sửa để thay người xét duyệt này.",
     "empty": "Không có phân công phù hợp bộ lọc.",
     "noScopes": "Không có phạm vi xét duyệt được phép. Hãy tạo kỳ xét duyệt trong cấu hình Thưởng trước.",
-    "saved": "Đã lưu quyền truy cập. Các yêu cầu tiếp theo sử dụng phân công mới.",
+    "saved": "Đã gửi yêu cầu quyền. Thay đổi chờ quản trị viên độc lập duyệt.",
     "removeTitle": "Gỡ quyền truy cập",
     "editTitle": "Sửa quyền truy cập",
     "bounded": "Chọn tài khoản hiện có và một kỳ xét duyệt cụ thể. Thay đổi chỉ có hiệu lực sau khi xem trước và lưu.",
@@ -26634,7 +26634,11 @@
       "used": "Kỳ xét duyệt đang được sử dụng; giữ lại lịch sử.",
       "missing": "Kỳ xét duyệt không khả dụng hoặc quyền đã bị gỡ.",
       "system": "Không thể lưu thay đổi. Tải lại và thử lại.",
-      "lastRequired": "Giữ ít nhất một người đang hoạt động cho mỗi vai trò phê duyệt bắt buộc; thay thế họ trong một lần chỉnh sửa."
+      "lastRequired": "Giữ ít nhất một người đang hoạt động cho mỗi vai trò phê duyệt bắt buộc; thay thế họ trong một lần chỉnh sửa.",
+      "checker": "Cần quản trị viên độc lập khác",
+      "reason": "Lý do từ chối (ít nhất 10 ký tự)",
+      "proxy": "Người được đại diện",
+      "dates": "Đến ngày (không bắt buộc)"
     },
     "unavailable": "Tài khoản không khả dụng · {id}",
     "lastRequiredHelp": "Vai trò phê duyệt bắt buộc. Chỉnh sửa để thay thế người này.",
@@ -28723,6 +28727,46 @@
       "approved": "Đã duyệt",
       "rejected": "Bị từ chối",
       "cancelled": "Đã hủy"
+    }
+  },
+  "rewardsAccessControl": {
+    "waiting": "Chờ phê duyệt ({count})",
+    "independent": "Thay đổi chỉ có hiệu lực sau khi quản trị viên khác phê duyệt. Bạn không thể duyệt yêu cầu của mình hoặc thay đổi quyền của chính mình.",
+    "noPending": "Không có yêu cầu quyền truy cập chờ duyệt.",
+    "history": "Yêu cầu trước đây",
+    "administrator": "Quản trị viên",
+    "unavailable": "Không có trong phạm vi của bạn",
+    "openEnded": "không thời hạn",
+    "proxyFor": "Đại diện cho {name}",
+    "none": "Chưa phân công",
+    "requested": "{name} yêu cầu {count} thay đổi",
+    "before": "Trước",
+    "after": "Sau",
+    "restoreReason": "Lý do khôi phục quyền",
+    "rejectionReason": "Lý do từ chối (ít nhất 10 ký tự)",
+    "approve": "Phê duyệt các thay đổi",
+    "reject": "Từ chối yêu cầu",
+    "needsChecker": "Cần quản trị viên độc lập khác",
+    "decisionFailed": "Không thể xử lý yêu cầu. Tải lại và kiểm tra trạng thái hiện tại.",
+    "singleAdmin": "Các công ty này có dưới hai quản trị viên Thưởng đang hoạt động: {companies}. Cần quản trị viên thứ hai để duyệt quyền truy cập.",
+    "export": "Xuất danh sách quyền (CSV)",
+    "validFrom": "Từ ngày",
+    "validTo": "Đến ngày (không bắt buộc)",
+    "covers": "Người được đại diện",
+    "notProxy": "Không đại diện",
+    "restore": "Yêu cầu khôi phục quyền bị tạm ngưng",
+    "statuses": {
+      "approved": "Đã phê duyệt",
+      "rejected": "Đã từ chối",
+      "lapsed": "Hết hiệu lực — đánh giá hoặc quyền đã thay đổi"
+    },
+    "suspensions": {
+      "login": "Tạm ngưng: không thể đăng nhập từ {on}",
+      "future": "Bắt đầu ngày {on}",
+      "expired": "Hết hạn ngày {on}",
+      "notice": "Tạm ngưng: nộp đơn nghỉ việc ngày {on}",
+      "assignment": "Tạm ngưng: phân công trong People thay đổi ngày {on}",
+      "unavailable": "Quyền không khả dụng từ {on}"
     }
   }
 }

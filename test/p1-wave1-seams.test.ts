@@ -1,3 +1,4 @@
+import {setRewardMember} from './rewards-access-fixture';
 /**
  * P1 wave 1 (APR-020) — the seams between WP-F (returned Rewards reviews), WP-B1 (Calibration destination)
  * and WP-A1 (pack work in the shared task list), against real RLS as ai_hr_app.
@@ -25,7 +26,7 @@ import { listPendingTasks, type InboxModules, type PendingTaskItem } from '../co
 import * as perf from '../packs/performance/service';
 import { defaultPolicy } from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
-import { createRewardUnit, decideRewardUnit, getRewardUnit, returnedRewardUnits, saveRewardEntry, saveRewardPolicy, setRewardMember } from '../packs/rewards/service';
+import { createRewardUnit, decideRewardUnit, getRewardUnit, returnedRewardUnits, saveRewardEntry, saveRewardPolicy } from '../packs/rewards/service';
 import { emptyFacts } from '../packs/rewards/model';
 import { PACK_TASK_KINDS } from '../lib/assigned-work';
 import { HOME_TASK_KINDS, validateEmployeeHomeConfiguration } from '../lib/employee-home';
