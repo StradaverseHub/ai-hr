@@ -37,7 +37,7 @@ type Chain = { role: string; midYear: boolean; frozen: boolean; axes: { axis: 'p
 let b: Base, a: SessionContext, holding: string, cycleId: string, gradeId: string;
 const P = {} as Record<Leader, Hired>;
 const U = {} as Record<Leader, SessionContext>;
-let S: Hired[] = [];
+let S: Hired[] = [], SU: SessionContext[] = [];
 
 const hire = (name: string) => hireEmployee(a, { person: { fullName: name, primaryEmail: `${randomUUID()}@two-step.test` }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: `${year - 2}-01-01` });
 async function login(person: Hired, role: 'employee' | 'manager' = 'manager'): Promise<SessionContext> {
@@ -136,6 +136,9 @@ beforeEach(async () => {
   await perf.addCalibrationGroupMembers(a, groupId, { employmentIds: S.map((s) => s.employmentId) });
   await perf.appointLeaderSeat(a, { seatType: 'group_chief', calibrationGroupId: groupId, holderEmploymentId: P.chief.employmentId });
   for (const name of LEADERS) U[name] = await login(P[name]);
+  // The subjects sign in too: a person without a live login is never notified (app.onehr_release_people).
+  SU = [];
+  for (const s of S) SU.push(await login(s, 'employee'));
   cycleId = await openCycle('Annual assessment');
 });
 afterAll(closeAll);
@@ -304,7 +307,7 @@ describe('who reads what', () => {
   it('a person never sees a component before step 2', async () => {
     const review = await calibrated(cycleId, S[0]);
     await freeze(review);
-    const self = await login(S[0], 'employee');
+    const self = SU[0];
     const card = async () => withTenant(self, async (tx) => (await tx.execute<{ v: { result: Record<string, unknown> } | null }>(sql`select app.onehr_result_card(${review}::uuid) as v`))[0].v);
     await release([review], 'three', 'leaders');
     expect((await perf.getOnehrReview(self, review))!.result).toMatchObject({ performance: null, potential: null, talent: null });
@@ -350,7 +353,7 @@ describe('who reads what', () => {
     expect(lm!.axes[0].steps.find((s) => s.tier === 'bg')!.why).toBe('BG performance reason');
     expect(whys(await chainOf(U.buCeo, review))).toContain('performance.bg');
     // The person's own projection never carries a reason.
-    const self = await login(S[0], 'employee');
+    const self = SU[0];
     expect(JSON.stringify(await perf.getOnehrReview(self, review))).not.toMatch(/HOD performance reason|BU performance reason|BG performance reason/);
   });
 });
