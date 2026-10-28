@@ -4,7 +4,7 @@
  */
 import { todayInKualaLumpur } from '../../../lib/hr-date';
 import type { Policy, Tier, WindowCell } from './model';
-import { assessmentWorkWindowOpen, leaderPendingEntries, leaderWorkspaceParts, type CalibrationWorkEntry } from './workspace-model';
+import { assessmentWorkWindowOpen, leaderPendingEntries, leaderWorkspaceParts, type CalibrationWorkEntry, type WorkspaceAxis } from './workspace-model';
 
 /** Display order of the tier groups on the Calibration page: Group, BG, BU, Department (HOD), Final. */
 export const calibrationListTierOrder = ['group', 'bg', 'bu', 'hod', 'final'] as const satisfies readonly Tier[];
@@ -28,6 +28,8 @@ export type CalibrationListSession = {
   people: number;
   toDo: number;
   lock: CalibrationLockState;
+  /** D-P1-32 PT-X2: the axes this session calibrates (calibrationSessionAxes); 'both' is its Talent Box. */
+  axes: WorkspaceAxis[];
   href: string;
 };
 
@@ -62,6 +64,23 @@ export function calibrationToDo(policy: Pick<Policy, 'modules' | 'kind'>, tier: 
     for (const entry of leaderPendingEntries(policy, tier, part.axis, entries)) pending.add(entry.reviewId);
   }
   return pending.size;
+}
+
+/**
+ * D-P1-32 PT-X2: the axes a session calibrates, from the workspace's own parts (leaderWorkspaceParts), so the
+ * Calibration page's per-axis lists and the tab gates (tab-model.ts) read one derivation. Empty when the cycle
+ * runs no calibration (not Year-End, or calibration off).
+ */
+export function calibrationSessionAxes(policy: Pick<Policy, 'modules' | 'kind'>, tier: Tier, locks: { lockedAt: unknown; performanceLockedAt: unknown; potentialLockedAt: unknown }): WorkspaceAxis[] {
+  return [...new Set(leaderWorkspaceParts(policy, tier, locks).map((part) => part.axis))];
+}
+/**
+ * The Calibration tab's per-axis list: the sessions calibrating that axis. A BG session (its Talent Box
+ * calibrates both) is on both lists, read-only (DQ-8); a BU or Group Talent Box alone puts a session on
+ * neither. The same rule as the Performance / Potential tab gates.
+ */
+export function calibrationSessionsForAxis<T extends Pick<CalibrationListSession, 'tier' | 'axes'>>(sessions: readonly T[], axis: 'performance' | 'potential'): T[] {
+  return sessions.filter((session) => session.axes.includes(axis) || (session.tier === 'bg' && session.axes.includes('both')));
 }
 
 const windowRank: Record<CalibrationWindowState, number> = { open: 0, upcoming: 1, closed: 2 };

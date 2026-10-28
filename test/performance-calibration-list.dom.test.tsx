@@ -24,7 +24,7 @@ afterEach(cleanup);
 
 const row = (over: Partial<CalibrationListSession>): CalibrationListSession => ({
   id: over.name ?? 'id', name: 'Session', tier: 'hod', cycleId: 'c', cycleName: 'Annual 2026', cycleClosed: false, companyName: 'Acme Sdn Bhd',
-  window: 'open', opensOn: null, closesOn: null, people: 3, toDo: 2, lock: 'open', href: `/performance/assessment/calibration/${over.name ?? 'id'}`, ...over,
+  window: 'open', opensOn: null, closesOn: null, people: 3, toDo: 2, lock: 'open', axes: ['performance', 'potential'], href: `/performance/assessment/calibration/${over.name ?? 'id'}`, ...over,
 });
 
 function page(sessions: CalibrationListSession[]) {
