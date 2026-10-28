@@ -287,6 +287,12 @@ export const SETTING_CATALOG: SettingCatalogEntry[] = [
   {key:'ess.profile_photo_edit',moduleCode:'ess',scope:'tenant',valueType:'boolean',defaultValue:false,defaultOnInstall:null,customerVisible:true,description:'Whether an active employee may upload or replace their own profile photo. Does not grant photo deletion or other Personnel edits.',sortOrder:155},
   { key: 'ess.profile_change_fields', moduleCode: 'ess', scope: 'tenant', valueType: 'json', defaultValue: 'all', defaultOnInstall: null, customerVisible: true, description: 'Which fields of their own record an employee may ask to change. Legacy defaults retain the original request set and finite direct contacts. A saved complete policy explicitly lists employee-editable Personnel fields.', sortOrder: 150 },
   { key: 'ess.profile_change_approver', moduleCode: 'ess', scope: 'tenant', valueType: 'string', defaultValue: 'admin', defaultOnInstall: null, customerVisible: true, description: "Who decides an employee's request to change their own record: any HR administrator, or only a group administrator. One approver either way — never two levels, and never somebody deciding their own.", sortOrder: 160 },
+  // The floating Assistant button (ADR-0131 follow-up). Group administrators set it once for the tenant; it
+  // DEFAULTS OFF and, even when on, shows only to a login with Assistant access while a provider is active.
+  // Hidden areas are a comma-separated list of lib/ai/page-context.ts PAGE_AREAS keys.
+  { key: 'assistant.launcher_enabled', moduleCode: 'assistant', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: null, customerVisible: true, description: 'Show the floating Assistant button on other pages.', sortOrder: 310 },
+  { key: 'assistant.launcher_position', moduleCode: 'assistant', scope: 'tenant', valueType: 'string', defaultValue: 'bottom-right', defaultOnInstall: null, customerVisible: true, description: 'Corner of the floating Assistant button: bottom-right or bottom-left.', sortOrder: 311 },
+  { key: 'assistant.launcher_hidden_areas', moduleCode: 'assistant', scope: 'tenant', valueType: 'string', defaultValue: '', defaultOnInstall: null, customerVisible: true, description: 'Areas where the floating Assistant button is hidden.', sortOrder: 312 },
 ];
 
 /*
@@ -472,6 +478,10 @@ export const LEGACY_SETTING_ENV_GATES: Readonly<Record<string, string | null>> =
   'ess.profile_change_routing': null,
   'ess.profile_change_fields': null,
   'ess.profile_change_approver': null,
+  // New with the floating Assistant button; never came from an env flag.
+  'assistant.launcher_enabled': null,
+  'assistant.launcher_position': null,
+  'assistant.launcher_hidden_areas': null,
 };
 
 /**

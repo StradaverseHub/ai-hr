@@ -27,6 +27,8 @@ import { DevIdentitySwitcher } from '@/components/dev-identity-switcher';
 import { UserMenu } from '@/components/user-menu';
 import { CompanySwitcher } from '@/components/company-switcher';
 import { OnboardingTour } from '@/components/onboarding-tour';
+import { AssistantLauncher } from '@/components/assistant/assistant-launcher';
+import { assistantLauncherFor } from '@/core/assistant-launcher';
 import { NoticePopupSlot } from '@/components/notice/notice-surfaces';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
@@ -228,6 +230,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         }),
       )
     : [];
+  // The floating Assistant: null unless the tenant switched it on, this login may use the Assistant and a
+  // provider is active (core/assistant-launcher.ts). Presentation only; every question is re-checked.
+  const launcher = await assistantLauncherFor(session);
   return (
     <html
       lang={locale}
@@ -448,6 +453,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           </div>
           </NavIndexProvider>
           <OnboardingTour tours={tours} autoStartTourId={onboarded || (pathname==='/'&&!isAdmin(session)) ? null : WELCOME_TOUR_ID} />
+          {launcher && <AssistantLauncher position={launcher.position} hiddenAreas={launcher.hiddenAreas} />}
           {/* 6e122302 — the after-login notice popup, mounted beside the onboarding tour because that is
               the existing "show something once after login and remember the dismissal" surface. At most
               ONE notice, chosen server-side; the slot renders null when nothing is due, so this costs an
