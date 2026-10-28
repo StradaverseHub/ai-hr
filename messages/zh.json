@@ -19327,7 +19327,9 @@
       "movedFrom": "由 {band} 调整",
       "differsBg": "与业务集团 CEO 不同",
       "businessGroup": "业务集团",
-      "department": "部门"
+      "department": "部门",
+      "changeTitle": "Change the call for {name}",
+      "saveCall": "Save call"
     },
     "developmentSuggestions": {
       "title": "发展目标建议",

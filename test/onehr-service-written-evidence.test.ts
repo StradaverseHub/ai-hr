@@ -358,6 +358,21 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     const hod=await perf.createOnehrCalibration(a,cycleId,{name:'No department curve',companyId:b.companyId,tier:'hod',reviewerUserIds:[reviewer.userId!],reviewIds:[reviewId],pbtAchievement:100});await expect(perf.previewAssessmentCalibrationFit(reviewer,hod,'performance',b.companyId)).rejects.toThrow(/no curve/);
     const fresh=(await perf.getOnehrCycle(a,cycleId))!;await perf.updateOnehrWindows(a,cycleId,fresh.revision,{...fresh.policy.windows,pm_buceo:{opensAt:null,closesAt:new Date(Date.now()-60000).toISOString()}},'Close the preview window');await expect(perf.applyAssessmentCalibrationFit(reviewer,sessionId,'performance',b.companyId,preview.moves)).rejects.toThrow(/closed/);
   });
+  it('APR-011 on fit Apply: a move without a saved reason carries the server fit’s own reasons, and a move the server fit does not make is skipped',async()=>{
+    await complete();const reviewer=peers[0].ctx,[thin]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,peers[1].employmentId))),sessionId=await perf.createOnehrCalibration(a,cycleId,{name:'Fit reasons',companyId:b.companyId,tier:'bu',reviewerUserIds:[reviewer.userId!],reviewIds:[reviewId,thin.reviewId],pbtAchievement:100});
+    await perf.saveOnehrCalibration(reviewer,sessionId,1,{reviewId,axis:'performance',performance:'OU',potential:null,performanceNote:'Recorded with a reason.',potentialNote:''});
+    await perf.saveOnehrCalibration(reviewer,sessionId,2,{reviewId:thin.reviewId,axis:'performance',performance:'OU',potential:null,performanceNote:'Awaiting score.',potentialNote:''});
+    // Bands that carry no saved reason (recorded before the rule reached every surface).
+    await owner.db.update(schema.onehrCalibrationEntry).set({performanceNote:''}).where(eq(schema.onehrCalibrationEntry.sessionId,sessionId));
+    const preview=await perf.previewAssessmentCalibrationFit(reviewer,sessionId,'performance',b.companyId),fit=preview.moves.find(m=>m.id===reviewId)!;
+    expect(fit).toMatchObject({from:'OU',to:'AE'});expect(fit.reasons.length).toBeGreaterThan(0);expect(preview.moves.some(m=>m.id===thin.reviewId)).toBe(false);
+    // Client text never becomes the reason; the unscored person's crafted move has no server reason and is not written.
+    expect(await perf.applyAssessmentCalibrationFit(reviewer,sessionId,'performance',b.companyId,[{id:thin.reviewId,from:'OU',to:'AE'},{id:fit.id,from:fit.from,to:fit.to,reasons:['Client supplied wording.']}])).toMatchObject({applied:[reviewId],skipped:[thin.reviewId]});
+    const entries=await owner.db.select().from(schema.onehrCalibrationEntry).where(eq(schema.onehrCalibrationEntry.sessionId,sessionId));
+    expect(entries.find(e=>e.reviewId===reviewId)).toMatchObject({performance:'AE',performanceNote:`Distribution fit: ${fit.reasons.join('; ')}`});
+    expect(entries.find(e=>e.reviewId===thin.reviewId)).toMatchObject({performance:'OU',performanceNote:''});
+    expect(JSON.stringify(entries)).not.toContain('Client supplied wording.');
+  });
   it('curve fit holds invalid potential and independently checks each axis and revoked cohort access',async()=>{
     await complete();const reviewer=peers[0].ctx,[thin]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,peers[1].employmentId)));
     const [otherThin]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,peers[2].employmentId)));
