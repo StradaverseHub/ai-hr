@@ -1151,3 +1151,13 @@ installation, device key or origin, replayed permit, a context issued with no ke
 triggers), close, stream-storage (owner cannot rewrite the record), deployment-config, deployment, HTTP, clock-proof,
 context-journal, context-native (the shipped phone check, without Noble), sync, submission-native and native-client
 suites. NOT done: an ADR for D16 (the orchestrator decides), physical-device witnesses, journaling 0647.
+
+D16 hosted evidence (29 October 2026): run 40754796252 @ `c7e30c744` — all 37 selected offline/signed-clock files
+passed (16 DB, 21 no-DB), Linux build and both native bundles passed; root and native TypeScript failed once each
+(an ArrayBuffer-backed digest input on the phone; an uncast deliberately-invalid test target). Repaired at `8e6f6a92b`;
+run 40756216366: both type checks, both bundles and the three affected files passed. Context storage is plaintext:
+a context holds only ids, instants, nonces, policy facts, company clocking sites and an attendance fingerprint, all
+already stored unencrypted elsewhere. Claims and photos remain encrypted with the existing app secret
+(`AI_CONFIG_SECRET`), unchanged by D16; offline attendance needs no NEW secret. Pre-existing RISK, unchanged: after a
+database restore, already-receipted claims could be uploaded again and the phone's next claim waits on
+`chain_conflict`.
