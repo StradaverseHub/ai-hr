@@ -3788,6 +3788,13 @@
       "when": 1793210000000,
       "tag": "0671_ai_orchestrator_wave1b_decisions",
       "breakpoints": true
+    },
+    {
+      "idx": 656,
+      "version": "7",
+      "when": 1793290000000,
+      "tag": "0677_ai_hr_prepared_actions",
+      "breakpoints": true
     }
   ]
 }
