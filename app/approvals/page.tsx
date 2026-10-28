@@ -546,12 +546,16 @@ export default async function ApprovalsPage({
                   {/* 33bf1a2d: the SHARED employee cell (avatar + name), same as My Leave → Requests. The
                       /personnel link is Approval Items' own — an approver checking history — and stays. */}
                   <td className="px-4 py-2.5">
+                    {namedView(r) ? (
+                      // 0669 — a named approver reads this request only, never the employee's record.
+                      <LeaveEmployeeCell name={r.employee} />
+                    ) : (
                     <LeaveEmployeeCell
                       name={r.employee}
-                      // 0669 — a named approver reads this request only, never the employee's record.
-                      href={namedView(r) ? undefined : `/personnel/${r.employmentId}`}
+                      href={`/personnel/${r.employmentId}`}
                       linkTitle={t('viewHistory')}
                     />
+                    )}
                   </td>
                   <td className="px-4 py-2.5 text-muted-foreground">
                     {/* 33bf1a2d: the SHARED leave-type chip. Emergency Leave (0106) — EL children are

@@ -100,10 +100,14 @@ describe('0669 · the named approver reads the request routed to them', () => {
     expect(await reads(w.nora.ctx, id, w.emp.employmentId), 'premise: before naming, nothing').toMatchObject({ request: 0, steps: 0, dates: 0 });
 
     await w.nameStep0(id, w.nora.employmentId);
+    // A per-date row (ADR-0068), so the date read below is not vacuous for a whole-request request.
+    await owner.db.insert(schema.leaveRequestDate).values({ tenantId: b.tenantId, leaveRequestId: id, subjectEmploymentId: w.emp.employmentId, leaveDate: MON, days: '1.00' }).onConflictDoNothing();
     const r = await reads(w.nora.ctx, id, w.emp.employmentId);
     expect(r.request).toBe(1);
     expect(r.steps).toBe(2);
-    expect(r.dates).toBeGreaterThan(0);
+    const ownerDates = await owner.db.select({ id: schema.leaveRequestDate.id }).from(schema.leaveRequestDate).where(eq(schema.leaveRequestDate.leaveRequestId, id));
+    expect(ownerDates.length).toBeGreaterThan(0);
+    expect(r.dates, 'every per-date row the request has').toBe(ownerDates.length);
     // Nothing else about the employee: no employment, person, balance or event rows.
     expect({ employment: r.employment, person: r.person, ledger: r.ledger, events: r.events }).toEqual({ employment: 0, person: 0, ledger: 0, events: 0 });
 
