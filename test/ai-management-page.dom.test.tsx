@@ -128,7 +128,7 @@ describe('AI management sub-menu',()=>{
     const map=document.querySelector('#ai-map')!;
     expect(map.textContent).toContain(en.aiManagement.noProvider);
     // Independent expectation: three of the twenty modules are enabled in this fixture.
-    expect(map.textContent).toContain('3 of 20 specialists available');
+    expect(map.textContent).toContain('3 of 20 capabilities available');
     expect(map.textContent).toContain('1 of 2 ready');expect(map.textContent).toContain('0 of 1 ready');
     expect(within(map as HTMLElement).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/control-tower/agents/provider','/control-tower/agents/assistant','/control-tower/agents/features#ai-features','/control-tower/agents/features#ai-features','/control-tower/agents/allowances']);
   });
