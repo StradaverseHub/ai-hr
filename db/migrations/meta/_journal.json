@@ -3781,6 +3781,13 @@
       "when": 1793190000000,
       "tag": "0670_ai_orchestrator_wave1_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 655,
+      "version": "7",
+      "when": 1793220000000,
+      "tag": "0675_import_attempt_history",
+      "breakpoints": true
     }
   ]
 }

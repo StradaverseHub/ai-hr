@@ -153,3 +153,4 @@ Read only records relevant to the task. A newer decision supersedes an older one
 - [ADR-0150 — Units and departments not taking part in a cycle (the cycle exclusion rule)](0150-onehr-cycle-unit-exclusion.md)
 - [ADR-0149 — Two-step result release and leader reads](0149-two-step-result-release-and-leader-reads.md)
 - [ADR-0151 — Orchestrator action layer: user-parity actions and learning from the system](0151-orchestrator-action-layer-and-system-learning.md)
+- [ADR-0152 — Shared personnel import history and all-or-nothing revert](0152-shared-import-history-and-revert.md)
