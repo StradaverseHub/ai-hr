@@ -3736,6 +3736,13 @@
     {
       "idx": 648,
       "version": "7",
+      "when": 1793166000000,
+      "tag": "0658_assistant_exchange_continuation",
+      "breakpoints": true
+    },
+    {
+      "idx": 649,
+      "version": "7",
       "when": 1793180000000,
       "tag": "0669_leave_named_approver_read",
       "breakpoints": true

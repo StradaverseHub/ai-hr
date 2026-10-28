@@ -23863,7 +23863,8 @@
       "wageIneligible": "Semak asas gaji yang direkodkan untuk pengiraan ini.",
       "unsupportedRun": "Pilih proses Penggajian biasa untuk bayaran kerja lebih masa ini.",
       "coverage": "Pilih proses yang meliputi pekerja dan tarikh kerja lebih masa ini.",
-      "unknownHours": "Had jam memerlukan bukti jam bagi setiap input kerja lebih masa. Semak kerja lebih masa manual atau sekali sahaja."
+      "unknownHours": "Had jam memerlukan bukti jam bagi setiap input kerja lebih masa. Semak kerja lebih masa manual atau sekali sahaja.",
+      "busy": "Baki cuti yang bergantung pada lebih masa sedang dikemas kini. Tiada apa-apa disimpan; cuba lagi sebentar lagi."
     },
     "traceKinds": {
       "field": "Input direkodkan",
