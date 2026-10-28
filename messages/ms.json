@@ -27437,5 +27437,41 @@
       "reportReleased": "Laporan dikeluarkan",
       "notSet": "Belum ditetapkan"
     }
+  },
+  "rewardsConfig": {
+    "filters": {
+      "label": "Tapis semakan",
+      "cycle": "Kitaran semakan",
+      "company": "Syarikat",
+      "unit": "Unit perniagaan",
+      "stage": "Peringkat kelulusan",
+      "all": "Semua",
+      "apply": "Guna tapisan",
+      "clear": "Kosongkan tapisan",
+      "empty": "Tiada semakan sepadan dengan tapisan ini."
+    },
+    "columns": {
+      "cycle": "Kitaran semakan",
+      "companyUnit": "Syarikat / Unit perniagaan",
+      "people": "Orang",
+      "stage": "Peringkat kelulusan / pada",
+      "due": "Tarikh akhir peringkat",
+      "dataCheck": "Semakan data",
+      "action": "Tindakan"
+    },
+    "subline": "Tahun ganjaran {year} · berkuat kuasa {date}",
+    "sublineYear": "Tahun ganjaran {year}",
+    "with": "Pada {seat}: {names}",
+    "nobody": "Pada {seat}: tiada siapa memegang tempat ini",
+    "dueNotSet": "Tiada tarikh ditetapkan",
+    "notAvailable": "—",
+    "noPeople": "Tiada pekerja",
+    "allVerified": "Semua disahkan",
+    "verifiedOf": "{verified} daripada {total} disahkan",
+    "cancelled": "Dibatalkan",
+    "create": {
+      "defaultName": "Semakan Pampasan Tahunan {year}",
+      "effectiveHelp": "Tahun ganjaran ialah tahun prestasi yang diberi ganjaran; tarikh gaji berkuat kuasa diambil daripada tetapan semakan."
+    }
   }
 }

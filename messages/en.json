@@ -27437,5 +27437,41 @@
       "reportReleased": "Report released",
       "notSet": "Not set yet"
     }
+  },
+  "rewardsConfig": {
+    "filters": {
+      "label": "Filter reviews",
+      "cycle": "Review cycle",
+      "company": "Company",
+      "unit": "Business unit",
+      "stage": "Approval stage",
+      "all": "All",
+      "apply": "Apply filters",
+      "clear": "Clear filters",
+      "empty": "No reviews match these filters."
+    },
+    "columns": {
+      "cycle": "Review cycle",
+      "companyUnit": "Company / Business unit",
+      "people": "People",
+      "stage": "Approval stage / with",
+      "due": "Stage due",
+      "dataCheck": "Data check",
+      "action": "Action"
+    },
+    "subline": "Reward year {year} · effective {date}",
+    "sublineYear": "Reward year {year}",
+    "with": "With {seat}: {names}",
+    "nobody": "With {seat}: nobody holds this seat",
+    "dueNotSet": "No date set",
+    "notAvailable": "—",
+    "noPeople": "No employees",
+    "allVerified": "All verified",
+    "verifiedOf": "{verified} of {total} verified",
+    "cancelled": "Cancelled",
+    "create": {
+      "defaultName": "{year} Annual Compensation Review",
+      "effectiveHelp": "Reward year is the performance year being rewarded; the salary effective date comes from the review settings."
+    }
   }
 }

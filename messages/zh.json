@@ -27437,5 +27437,41 @@
       "reportReleased": "报告已发布",
       "notSet": "尚未设定"
     }
+  },
+  "rewardsConfig": {
+    "filters": {
+      "label": "筛选评审",
+      "cycle": "评审周期",
+      "company": "公司",
+      "unit": "业务单元",
+      "stage": "审批阶段",
+      "all": "全部",
+      "apply": "应用筛选",
+      "clear": "清除筛选",
+      "empty": "没有符合这些筛选条件的评审。"
+    },
+    "columns": {
+      "cycle": "评审周期",
+      "companyUnit": "公司 / 业务单元",
+      "people": "人数",
+      "stage": "审批阶段 / 当前处理人",
+      "due": "阶段截止",
+      "dataCheck": "数据核查",
+      "action": "操作"
+    },
+    "subline": "奖励年度 {year} · {date} 生效",
+    "sublineYear": "奖励年度 {year}",
+    "with": "由{seat}处理：{names}",
+    "nobody": "由{seat}处理：此席位无人担任",
+    "dueNotSet": "未设日期",
+    "notAvailable": "—",
+    "noPeople": "无员工",
+    "allVerified": "全部已核实",
+    "verifiedOf": "已核实 {verified}/{total}",
+    "cancelled": "已取消",
+    "create": {
+      "defaultName": "{year} 年度薪酬评审",
+      "effectiveHelp": "奖励年度是被奖励的绩效年度；薪资生效日期取自评审设置。"
+    }
   }
 }

@@ -27437,5 +27437,41 @@
       "reportReleased": "Report released",
       "notSet": "Not set yet"
     }
+  },
+  "rewardsConfig": {
+    "filters": {
+      "label": "กรองการทบทวน",
+      "cycle": "รอบการทบทวน",
+      "company": "บริษัท",
+      "unit": "หน่วยธุรกิจ",
+      "stage": "ขั้นการอนุมัติ",
+      "all": "ทั้งหมด",
+      "apply": "ใช้ตัวกรอง",
+      "clear": "ล้างตัวกรอง",
+      "empty": "ไม่มีการทบทวนที่ตรงกับตัวกรองนี้"
+    },
+    "columns": {
+      "cycle": "รอบการทบทวน",
+      "companyUnit": "บริษัท / หน่วยธุรกิจ",
+      "people": "จำนวนคน",
+      "stage": "ขั้นการอนุมัติ / อยู่กับ",
+      "due": "กำหนดของขั้น",
+      "dataCheck": "ตรวจข้อมูล",
+      "action": "การดำเนินการ"
+    },
+    "subline": "ปีผลตอบแทน {year} · มีผล {date}",
+    "sublineYear": "ปีผลตอบแทน {year}",
+    "with": "อยู่กับ {seat}: {names}",
+    "nobody": "อยู่กับ {seat}: ยังไม่มีผู้ดำรงตำแหน่งนี้",
+    "dueNotSet": "ยังไม่กำหนดวันที่",
+    "notAvailable": "—",
+    "noPeople": "ไม่มีพนักงาน",
+    "allVerified": "ตรวจสอบครบแล้ว",
+    "verifiedOf": "ตรวจสอบแล้ว {verified} จาก {total}",
+    "cancelled": "ยกเลิกแล้ว",
+    "create": {
+      "defaultName": "การทบทวนค่าตอบแทนประจำปี {year}",
+      "effectiveHelp": "ปีผลตอบแทนคือปีผลงานที่ได้รับผลตอบแทน ส่วนวันที่เงินเดือนมีผลมาจากการตั้งค่าการทบทวน"
+    }
   }
 }

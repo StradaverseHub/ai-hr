@@ -27437,5 +27437,41 @@
       "reportReleased": "Report released",
       "notSet": "Not set yet"
     }
+  },
+  "rewardsConfig": {
+    "filters": {
+      "label": "Lọc đợt xét duyệt",
+      "cycle": "Chu kỳ xét duyệt",
+      "company": "Công ty",
+      "unit": "Đơn vị kinh doanh",
+      "stage": "Bước phê duyệt",
+      "all": "Tất cả",
+      "apply": "Áp dụng bộ lọc",
+      "clear": "Xóa bộ lọc",
+      "empty": "Không có đợt xét duyệt nào khớp với bộ lọc này."
+    },
+    "columns": {
+      "cycle": "Chu kỳ xét duyệt",
+      "companyUnit": "Công ty / Đơn vị kinh doanh",
+      "people": "Số người",
+      "stage": "Bước phê duyệt / đang ở",
+      "due": "Hạn của bước",
+      "dataCheck": "Kiểm tra dữ liệu",
+      "action": "Thao tác"
+    },
+    "subline": "Năm thưởng {year} · hiệu lực {date}",
+    "sublineYear": "Năm thưởng {year}",
+    "with": "Đang ở {seat}: {names}",
+    "nobody": "Đang ở {seat}: chưa có ai giữ vai trò này",
+    "dueNotSet": "Chưa đặt ngày",
+    "notAvailable": "—",
+    "noPeople": "Không có nhân viên",
+    "allVerified": "Đã xác minh tất cả",
+    "verifiedOf": "Đã xác minh {verified}/{total}",
+    "cancelled": "Đã hủy",
+    "create": {
+      "defaultName": "Đợt xét duyệt lương thưởng năm {year}",
+      "effectiveHelp": "Năm thưởng là năm hiệu suất được khen thưởng; ngày lương mới có hiệu lực lấy từ thiết lập của đợt xét duyệt."
+    }
   }
 }
