@@ -3038,3 +3038,39 @@ is disabled (C7). They appear once a tenant is entitled to them.
 **Open owner decisions (not decided here).** Whether named `specific_employee` leave approvers may see the
 requests they approve; whether overtime-pattern writers join the leave-dependency lock; whether Assistant
 clarifications carry earlier chat context (needs a schema link); and live provider activation and choice.
+
+## Follow-up decisions, 28 October 2026 (owner-approved in the known-gaps session)
+
+**One place to manage AI.** Control Tower › AI management holds every AI control as sub-menu pages:
+Overview (an AI map of the provider, the HR assistant and its module specialists, the background agents,
+AI inside other screens and allowances, each with status and a link), Provider (moved from
+Administration › AI, which now forwards), Assistant (specialist availability, Assistant access, the
+floating button settings and the candidate reviews moved off the employee Assistant page), Agents &
+features (the only place for Performance AI switches), Allowances, Spending, Orchestrator and Recent
+model calls. Each page has its own requireAdmin guard and permission-matrix column.
+
+**Floating Assistant.** Group administrators switch on a button (default off) that opens a small chat,
+dockable as a side panel, on every page but the Assistant itself and any hidden area. It shows only with
+Assistant access while a provider is active. Page awareness is a closed area plus at most one record id
+from the address (`lib/ai/page-context.ts`), re-derived on the server and appended to the question in
+plain view; never screen text. Every question goes through `askAssistant`. Three catalog settings; no
+migration.
+
+**Bulk HR assistant access.** Grant or revoke for a company, department, role, ticked logins or everyone
+matching a search, after a review that shows the count. One transaction: per-login grant rows/stamps and
+events, plus one bulk event with scope and count; a changed count refuses. Group administrators only.
+
+**Group allowances (0662).** Rows of `ai_control_policy` with kinds `group_role`, `group_company` and
+`group_department`. Precedence: individual; else the most specific matching group tier (department,
+company, role), every row of that tier binding; else the tenant default; never additive; counted per
+login. Company/department membership is the current assignment. A row for a deleted company or
+department never matches (subject_id has no foreign key).
+
+**General AI gateway (0661).** Provider `ai_gateway` for any gateway accepting OpenAI-style requests at a
+public https address (`{version:1, baseUrl}`), checked in SQL and TypeScript; the host is resolved before
+every call and refused if any address is internal. It activates like the direct providers (no OpenRouter
+route-metadata evaluation exists for arbitrary gateways); cost is unverified, so spend-capped work stays
+refused.
+
+**Language.** Assistant answers are canonical cards rendered in the viewer's current locale; model prose
+is audit-only, so switching language re-renders past answers.
