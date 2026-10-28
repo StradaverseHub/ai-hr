@@ -286,13 +286,32 @@ CREATE FUNCTION app.onehr_reviewer_unit_out(wanted_review uuid) RETURNS boolean
   AND app.assessment_unit_excluded(r.cycle_id,r.reviewer_employment_id))
 $$;
 --> statement-breakpoint
+-- Public, narrow: the kernel review queue's rows for the reviews the caller now reviews one level up (competency
+-- and Career Plan work, D5) because the stored reviewer's unit is out, for a subject who takes part. Only open OneHR
+-- cycles with an active rule are read. The kernel queue drops the stored reviewer's own row through
+-- app.onehr_reviewer_unit_out; neither reads the rule table itself (ADR-0080).
+CREATE FUNCTION app.onehr_effective_review_queue()
+ RETURNS TABLE(review_id uuid, employee text, employee_code text, cycle_name text, status text, company_id uuid, created_at timestamptz)
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT r.id,p.full_name,e.employee_code,c.name,r.status::text,e.company_id,r.created_at
+ FROM review_cycle c JOIN performance_onehr_cycle cfg ON cfg.cycle_id=c.id AND cfg.tenant_id=c.tenant_id
+ JOIN performance_review r ON r.cycle_id=c.id AND r.tenant_id=c.tenant_id
+ JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id
+ JOIN person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+ WHERE c.tenant_id=app.current_tenant_id() AND c.status='open' AND r.status::text IN ('manager_review','self_review')
+  AND EXISTS(SELECT 1 FROM performance_assessment_unit_exclusion x WHERE x.tenant_id=c.tenant_id AND x.cycle_id=c.id AND x.ended_at IS NULL)
+  AND r.reviewer_employment_id IS NOT NULL AND app.assessment_unit_excluded(c.id,r.reviewer_employment_id)
+  AND app.onehr_effective_reviewer(r.id) AND app.assessment_review_participates(r.id)
+ ORDER BY c.name,p.full_name,r.id
+$$;
+--> statement-breakpoint
 REVOKE ALL ON FUNCTION app.assessment_unit_placement(uuid),app.assessment_unit_scope_matches(uuid,uuid,uuid),app.assessment_unit_excluded_as(uuid,uuid,uuid,uuid),
  app.assessment_unit_excluded(uuid,uuid),app.onehr_user_unit_excluded_as(uuid,uuid,uuid,uuid),app.onehr_user_unit_excluded(uuid,uuid),
  app.onehr_unit_step_up(uuid,uuid,uuid,uuid,uuid),app.onehr_effective_reviewer_of_as(uuid,uuid,uuid),app.onehr_effective_reviewer_of(uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION app.onehr_effective_reviewer(uuid),app.onehr_effective_reviewer_employment(uuid),app.assessment_unit_out(uuid,uuid),app.onehr_reviewer_unit_out(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION app.onehr_effective_reviewer(uuid),app.onehr_effective_reviewer_employment(uuid),app.assessment_unit_out(uuid,uuid),app.onehr_reviewer_unit_out(uuid),app.onehr_effective_review_queue() FROM PUBLIC;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.onehr_effective_reviewer(uuid),app.onehr_effective_reviewer_employment(uuid),app.assessment_unit_out(uuid,uuid),app.onehr_reviewer_unit_out(uuid) TO ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.onehr_effective_reviewer(uuid),app.onehr_effective_reviewer_employment(uuid),app.assessment_unit_out(uuid,uuid),app.onehr_reviewer_unit_out(uuid),app.onehr_effective_review_queue() TO ai_hr_app;
 --> statement-breakpoint
 
 -- ── 6. Pin at close (D8), called by the pack's closure hook inside the close transaction ────────────────

@@ -44,13 +44,8 @@ const iso = (value: Date | string) => (value instanceof Date ? value : new Date(
 
 /** The kernel review queue /performance shows as "Reviews awaiting you". */
 async function managerReviewTasks(ctx: SessionContext): Promise<Sourced[]> {
-  const rows = await managerPendingReviews(ctx);
-  // D-P1-22 (ADR-0150): the kernel queue lists a OneHR review under its stored reviewer. While that reviewer's
-  // unit is out of the cycle (leader-off), the review is not their work and is not projected. Nothing else changes.
-  const off = rows.length ? await withPerformanceTenant(ctx, async (tx) => new Set((await tx.execute<{ id: string }>(sql`
-    select pr.id::text as id from performance_review pr join performance_onehr_cycle oc on oc.cycle_id=pr.cycle_id and oc.tenant_id=pr.tenant_id
-    where pr.id=any(array[${sql.join(rows.map((r) => sql`${r.reviewId}::uuid`), sql`,`)}]::uuid[]) and app.onehr_reviewer_unit_out(pr.id)`)).map((r) => r.id))) : new Set<string>();
-  return rows.filter((r) => !off.has(r.reviewId)).map((r) => ({
+  // D-P1-22: the queue itself drops a review whose stored reviewer's unit is out and adds the one-level-up reviews.
+  return (await managerPendingReviews(ctx)).map((r) => ({
     id: r.reviewId, kind: 'performanceReview' as const, subjectName: r.employee, createdAt: iso(r.createdAt),
     linkPath: reviewHref(r.reviewId), companyId: r.companyId, reviewId: r.reviewId,
   }));
