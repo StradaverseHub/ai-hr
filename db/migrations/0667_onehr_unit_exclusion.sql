@@ -970,3 +970,31 @@ BEGIN
  talent_open:=leader IN ('bg','group') OR rel.talent_leader_released_at IS NOT NULL OR all_full;
  RETURN jsonb_build_object('role',leader,'midYear',mid,'frozen',f.id IS NOT NULL,'axes',axes,'talent',CASE WHEN talent_open THEN outcome->>'talent' END);
 END $$;
+-- ── X5. The screen's department choices (D-P1-22 X5, APR-024) ──────────────────────────────────────────
+-- Departments of a company in the cycle's scope that hold people today, with the count: the departments the
+-- "Units not taking part" card offers. Same placement and the same "active today" rule as the facts headcount
+-- (app.assessment_unit_placement, terminated_on after today), so a department offered here is never refused as
+-- empty and no department with people is missing. Rows only for a caller who may read that company's rules
+-- (the rule table's read predicate, app.onehr_admin) in their own tenant; nobody else gets a row.
+CREATE FUNCTION app.onehr_unit_exclusion_choices(wanted_cycle uuid, wanted_company uuid) RETURNS TABLE(department_id uuid, department_name text, people integer)
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ WITH today AS (SELECT (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AS d),
+ cyc AS (
+  SELECT c.tenant_id FROM review_cycle c JOIN performance_onehr_cycle cfg ON cfg.cycle_id=c.id AND cfg.tenant_id=c.tenant_id
+  WHERE c.id=wanted_cycle AND c.tenant_id=app.current_tenant_id() AND wanted_company IS NOT NULL
+   AND (c.company_id IS NULL OR c.company_id=wanted_company) AND app.onehr_admin(wanted_company)
+ )
+ SELECT d.id,d.name,count(DISTINCT e.id)::integer
+ FROM cyc CROSS JOIN today
+ JOIN employment e ON e.tenant_id=cyc.tenant_id AND (e.terminated_on IS NULL OR e.terminated_on>today.d)
+  AND (e.company_id=wanted_company OR EXISTS(SELECT 1 FROM assignment a WHERE a.employment_id=e.id AND a.tenant_id=e.tenant_id AND a.company_id=wanted_company))
+ CROSS JOIN LATERAL app.assessment_unit_placement(e.id) pl
+ JOIN department d ON d.id=pl.department_id AND d.tenant_id=e.tenant_id AND d.company_id=wanted_company
+ WHERE pl.company_id=wanted_company
+ GROUP BY d.id,d.name
+ ORDER BY d.name,d.id
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.onehr_unit_exclusion_choices(uuid,uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.onehr_unit_exclusion_choices(uuid,uuid) TO ai_hr_app;

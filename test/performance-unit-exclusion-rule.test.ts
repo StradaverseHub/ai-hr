@@ -11,7 +11,7 @@ import * as perf from '../packs/performance/service';
 import { defaultPolicy } from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
 import { adminCtx, closeAll, eventTypesFor, owner, seedBase } from './harness';
-import { bringBack, buildFixture, cycleRevision, exclude, refusal, rulesOf, year, type Fixture } from './performance-unit-exclusion-fixture';
+import { bringBack, buildFixture, cycleRevision, exclude, moveTo, refusal, rulesOf, terminateToday, year, type Fixture } from './performance-unit-exclusion-fixture';
 
 let f: Fixture;
 beforeEach(async () => { f = await buildFixture(); });
@@ -171,5 +171,67 @@ describe('the rule and its scope', () => {
   it('refuses a scope with nobody in it today', async () => {
     const empty = await createDepartment(f.a, { companyId: f.b.companyId, name: 'Nobody here' });
     expect(await refusal(perf.previewUnitExclusion(f.a, f.cycleId, { companyId: f.b.companyId, departmentId: empty.id }))).toMatch(/Nobody works in this unit today/);
+  });
+});
+
+// D-P1-22 X5: the department choices the "Units not taking part" card offers (app.onehr_unit_exclusion_choices).
+// Expected counts come from the fixture's homes: X = M0, Q, T, E1; Xc = P; Y = M2, M1, S, C, R, F, A; Z = E2.
+// seedBase's Finance and Operations departments of company A hold nobody.
+const choicesAs = (ctx: SessionContext, cycleId: string, companyId: string) =>
+  withTenant(ctx, (tx) => tx.execute<{ name: string; people: number }>(sql`select c.department_name as name, c.people
+    from app.onehr_unit_exclusion_choices(${cycleId}::uuid, ${companyId}::uuid) c order by c.department_name, c.department_id`))
+    .then((rows) => rows.map((r) => [r.name, Number(r.people)]));
+
+describe('the screen\'s department choices (X5)', () => {
+  it('offers only departments holding people today, with their counts, and follows moves and leavers', async () => {
+    await createDepartment(f.a, { companyId: f.b.companyId, name: 'Also empty' });
+    expect(await choicesAs(f.a, f.cycleId, f.b.companyId)).toEqual([['Left out', 4], ['Left out child', 1], ['Taking part', 7]]);
+    await moveTo(f.P.Q, f.dept.Y);
+    await terminateToday(f.P.T);
+    expect(await choicesAs(f.a, f.cycleId, f.b.companyId)).toEqual([['Left out', 2], ['Left out child', 1], ['Taking part', 8]]);
+    await terminateToday(f.P.P);
+    expect(await choicesAs(f.a, f.cycleId, f.b.companyId), 'a department whose only person left is no longer offered').toEqual([['Left out', 2], ['Taking part', 8]]);
+  });
+
+  it('every offered department previews without the empty-scope refusal', async () => {
+    const offered = await withTenant(f.a, (tx) => tx.execute<{ id: string }>(sql`select c.department_id::text as id from app.onehr_unit_exclusion_choices(${f.cycleId}::uuid, ${f.b.companyId}::uuid) c`));
+    expect(offered).toHaveLength(3);
+    for (const d of offered) expect((await perf.previewUnitExclusion(f.a, f.cycleId, { companyId: f.b.companyId, departmentId: d.id })).digest).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('keeps companies apart: each company lists only its own departments, and one person counts once per employment', async () => {
+    expect(await choicesAs(f.a, f.cycleId, f.companyB)).toEqual([['Second unit dept', 1]]);
+    expect((await choicesAs(f.a, f.cycleId, f.b.companyId)).map(([name]) => name)).not.toContain('Second unit dept');
+    const { cycleId: unitCycle } = await perf.createCycle(f.a, { name: 'Company A only', companyId: f.b.companyId, periodStart: `${year - 1}-01-01`, periodEnd: `${year - 1}-12-31` });
+    await perf.configureOnehrCycle(f.a, unitCycle, null, defaultPolicy(framework));
+    expect(await choicesAs(f.a, unitCycle, f.companyB), 'a company outside the cycle\'s scope offers nothing').toEqual([]);
+    expect((await choicesAs(f.a, unitCycle, f.b.companyId)).length).toBe(3);
+  });
+
+  it('a caller who may not read the company\'s rules gets nothing', async () => {
+    const hrB = await f.scoped(null, 'hr_admin', f.companyB);
+    expect(await choicesAs(hrB, f.cycleId, f.b.companyId)).toEqual([]);
+    expect(await choicesAs(hrB, f.cycleId, f.companyB), 'non-vacuous: its own company is listed').toEqual([['Second unit dept', 1]]);
+    const partner = await f.scoped(null, 'performance_partner', f.b.companyId);
+    expect((await choicesAs(partner, f.cycleId, f.b.companyId)).length, 'a reader of company A\'s rules').toBe(3);
+    expect(await choicesAs(f.U.M1, f.cycleId, f.b.companyId)).toEqual([]);
+    expect(await choicesAs(f.U.S, f.cycleId, f.b.companyId)).toEqual([]);
+    const other = await seedBase();
+    expect(await choicesAs(adminCtx(other), f.cycleId, f.b.companyId)).toEqual([]);
+    const [p] = await owner.db.execute<{ definer: boolean; app: boolean; pub: boolean }>(sql`select p.prosecdef as definer,
+      has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as app,
+      exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where a.grantee=0 and a.privilege_type='EXECUTE') as pub
+      from pg_proc p where p.oid=to_regprocedure('app.onehr_unit_exclusion_choices(uuid,uuid)')`);
+    expect(p).toEqual({ definer: true, app: true, pub: false });
+  });
+
+  it('the screen offers the choices to a writer only', async () => {
+    const screen = await perf.getUnitExclusionScreen(f.a, f.cycleId);
+    expect(screen.editable).toBe(true);
+    const unitA = screen.companies.find((c) => c.id === f.b.companyId);
+    expect(unitA?.departments.map((d) => [d.id, d.name, d.people])).toEqual([[f.dept.X, 'Left out', 4], [f.dept.Xc, 'Left out child', 1], [f.dept.Y, 'Taking part', 7]]);
+    expect(screen.companies.find((c) => c.id === f.companyB)?.departments.map((d) => d.id)).toEqual([f.dept.Z]);
+    const partner = await f.scoped(null, 'performance_partner', f.b.companyId);
+    expect(await perf.getUnitExclusionScreen(partner, f.cycleId)).toMatchObject({ canWrite: false, editable: false, companies: [] });
   });
 });
