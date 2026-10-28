@@ -83,7 +83,7 @@ const group: RunningLeaderStatus = {
   rows: [{ label: 'Batch A', people: 30, state: 'calibrating', lockedOn: null, in: 12, of: 30 }],
 };
 
-function running(p: { block: PerformanceHomeBlock | null; items: HomeWorkItem[]; leader?: LeaderStatus | null; notIn?: { cycleName: string; reason: NotInReason } | null; report?: PerformanceAreaFacts['ownFeedbackReport'] }): PerformanceHomeView {
+function running(p: { block: PerformanceHomeBlock | null; items: HomeWorkItem[]; leader?: LeaderStatus | null; notIn?: { cycleName: string; reason: NotInReason } | null; report?: PerformanceAreaFacts['ownFeedbackReport'] }): AreaHomeView {
   const facts = factsOf(p.items, p.report);
   return {
     mode: 'running', facts,
