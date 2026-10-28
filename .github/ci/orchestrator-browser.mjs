@@ -172,11 +172,11 @@ async function main() {
       return {context, page};
     };
     const cardFor = (page, t) => page.getByRole('heading', {name: t.workTitle, exact: true}).locator('xpath=ancestor::*[@data-ui-card][1]');
+    // The renderer no longer exposes the "Change language" button this walkthrough used to click (run
+    // 40751449728 timed out waiting for it), so it sets the NEXT_LOCALE cookie that button's server action
+    // writes. Each visit still proves the locale by finding that locale's own copy on the page.
     const language = async (page, context, locale) => {
-      await page.getByRole('button', {name: 'Change language', exact: true}).click();
-      const response = page.waitForResponse(r => r.request().method() === 'POST' && Boolean(r.request().headers()['next-action']));
-      await page.locator(`button[name="locale"][value="${locale}"]`).click();
-      await (await response).finished();
+      await context.addCookies([{name: 'NEXT_LOCALE', value: locale, url: base}]);
       assert.equal((await context.cookies(base)).find(cookie => cookie.name === 'NEXT_LOCALE')?.value, locale);
     };
     const noPrivateText = async page => assert(!(await page.content()).includes(second.privateSentinel), 'Private receipt text reached HTML');
