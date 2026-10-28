@@ -296,6 +296,18 @@
         "Journal strictly in 0663→0667 order, after 0661 and 0662 if those are applied first. Re-check the live ledger: if any later when is applied first, re-allocate rather than journal below the watermark.",
         "0663 and 0667 both redefine app.onehr_calibration_access: 0667 must restate the 0663 definition."
       ]
+    },
+    {
+      "tag": "0668_people_duplicate_email_policy",
+      "owner": "Board items (5e0b2154, session board-items-83f907)",
+      "status": "reserved",
+      "idx": null,
+      "when": 1793165000000,
+      "branch": "claude/board-items-83f907",
+      "notes": [
+        "28 October: one migration adding people_general_policy.allow_duplicated_email.",
+        "when 1793165000000 sits above the live watermark (1793160000000, 0662) and below REA P1 wave 3 (0663-0667, 1793170000000+). Valid only if released BEFORE those; if REA releases first, this entry is re-timed above REA's last applied when before journaling (it is unapplied, so re-timing is safe)."
+      ]
     }
   ],
   "unallocatedAiLogicalGroups": [
