@@ -25853,7 +25853,7 @@
     "allCycles": "Tất cả kỳ xét duyệt",
     "allUnits": "Tất cả đơn vị kinh doanh",
     "add": "Thêm quyền truy cập",
-    "count": "{count} phân công",
+    "count": "{count, plural, other {# phân công}}",
     "user": "Người dùng",
     "role": "Vai trò",
     "scope": "Phạm vi xét duyệt",
@@ -25925,7 +25925,10 @@
     "personSearch": "Tìm theo tên, mã nhân viên hoặc email",
     "noPeople": "Không có nhân viên đang làm việc phù hợp",
     "noLogin": "Chưa có tài khoản đăng nhập",
-    "noLoginHelp": "Những người được đánh dấu \"Chưa có tài khoản đăng nhập\" là nhân viên đang làm việc nhưng chưa được mời vào AIHR. Hãy đề nghị bộ phận nhân sự mời họ trước khi giao vai trò đãi ngộ."
+    "noLoginHelp": "Những người được đánh dấu \"Chưa có tài khoản đăng nhập\" là nhân viên đang làm việc nhưng chưa được mời vào AIHR. Hãy đề nghị bộ phận nhân sự mời họ trước khi giao vai trò đãi ngộ.",
+    "coverageFilter": "Mức độ đầy đủ",
+    "coverageAll": "Tất cả đợt xét duyệt",
+    "coverageMissingOnly": "Chỉ các đợt xét duyệt thiếu vai trò bắt buộc"
   },
   "rewardsDeletion": {
     "view": "Xem",
@@ -27452,5 +27455,11 @@
       "reportReleased": "Report released",
       "notSet": "Not set yet"
     }
+  },
+  "rewardsAdminTabs": {
+    "label": "Quản trị thưởng",
+    "configuration": "Cấu hình Thưởng",
+    "shared": "Cấu hình thưởng dùng chung",
+    "access": "Quyền truy cập Thưởng"
   }
 }

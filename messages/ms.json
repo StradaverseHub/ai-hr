@@ -25853,7 +25853,7 @@
     "allCycles": "Semua kitaran semakan",
     "allUnits": "Semua unit perniagaan",
     "add": "Tambah akses",
-    "count": "{count} penugasan",
+    "count": "{count, plural, other {# penugasan}}",
     "user": "Pengguna",
     "role": "Peranan",
     "scope": "Skop semakan",
@@ -25925,7 +25925,10 @@
     "personSearch": "Cari nama, nombor pekerja atau e-mel",
     "noPeople": "Tiada pekerja aktif yang sepadan",
     "noLogin": "Belum ada log masuk",
-    "noLoginHelp": "Orang bertanda \"Belum ada log masuk\" ialah pekerja aktif yang belum dijemput ke AIHR. Minta HR menjemput mereka sebelum memberikan peranan Ganjaran."
+    "noLoginHelp": "Orang bertanda \"Belum ada log masuk\" ialah pekerja aktif yang belum dijemput ke AIHR. Minta HR menjemput mereka sebelum memberikan peranan Ganjaran.",
+    "coverageFilter": "Liputan",
+    "coverageAll": "Semua semakan",
+    "coverageMissingOnly": "Hanya semakan yang kekurangan peranan wajib"
   },
   "rewardsDeletion": {
     "view": "Lihat",
@@ -27452,5 +27455,11 @@
       "reportReleased": "Laporan dikeluarkan",
       "notSet": "Belum ditetapkan"
     }
+  },
+  "rewardsAdminTabs": {
+    "label": "Pentadbiran Ganjaran",
+    "configuration": "Konfigurasi Ganjaran",
+    "shared": "Konfigurasi ganjaran dikongsi",
+    "access": "Akses Ganjaran"
   }
 }

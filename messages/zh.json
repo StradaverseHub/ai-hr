@@ -25853,7 +25853,7 @@
     "allCycles": "所有评审周期",
     "allUnits": "所有业务单位",
     "add": "添加访问权限",
-    "count": "{count} 项分配",
+    "count": "{count, plural, other {# 项分配}}",
     "user": "用户",
     "role": "角色",
     "scope": "评审范围",
@@ -25925,7 +25925,10 @@
     "personSearch": "搜索姓名、员工编号或电子邮件",
     "noPeople": "没有匹配的在职员工",
     "noLogin": "尚无登录账户",
-    "noLoginHelp": "标记为“尚无登录账户”的人员是尚未受邀加入 AIHR 的在职员工。请先让人力资源部邀请他们，再分配薪酬评审角色。"
+    "noLoginHelp": "标记为“尚无登录账户”的人员是尚未受邀加入 AIHR 的在职员工。请先让人力资源部邀请他们，再分配薪酬评审角色。",
+    "coverageFilter": "覆盖情况",
+    "coverageAll": "全部评审",
+    "coverageMissingOnly": "仅显示缺少必需角色的评审"
   },
   "rewardsDeletion": {
     "view": "查看",
@@ -27452,5 +27455,11 @@
       "reportReleased": "报告已发布",
       "notSet": "尚未设定"
     }
+  },
+  "rewardsAdminTabs": {
+    "label": "奖励管理",
+    "configuration": "奖励配置",
+    "shared": "共享奖励配置",
+    "access": "奖励访问权限"
   }
 }

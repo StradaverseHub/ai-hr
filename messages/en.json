@@ -25853,7 +25853,7 @@
     "allCycles": "All review cycles",
     "allUnits": "All business units",
     "add": "Add access",
-    "count": "{count} assignments",
+    "count": "{count, plural, one {# assignment} other {# assignments}}",
     "user": "User",
     "role": "Role",
     "scope": "Review scope",
@@ -25925,7 +25925,10 @@
     "personSearch": "Search name, employee number or email",
     "noPeople": "No matching active employees",
     "noLogin": "No login yet",
-    "noLoginHelp": "People marked \"No login yet\" are active employees who have not been invited to AIHR. Ask HR to invite them before giving them a Rewards role."
+    "noLoginHelp": "People marked \"No login yet\" are active employees who have not been invited to AIHR. Ask HR to invite them before giving them a Rewards role.",
+    "coverageFilter": "Coverage",
+    "coverageAll": "All reviews",
+    "coverageMissingOnly": "Only reviews missing a required role"
   },
   "rewardsDeletion": {
     "view": "View",
@@ -27452,5 +27455,11 @@
       "reportReleased": "Report released",
       "notSet": "Not set yet"
     }
+  },
+  "rewardsAdminTabs": {
+    "label": "Rewards administration",
+    "configuration": "Rewards configuration",
+    "shared": "Shared rewards configuration",
+    "access": "Rewards access"
   }
 }

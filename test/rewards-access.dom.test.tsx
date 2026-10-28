@@ -97,4 +97,20 @@ describe('Central Rewards access journey', () => {
         expect(await screen.findByRole('alert')).toHaveProperty('textContent', en.rewardsAccess.errors.changed);
         expect(ports.refresh).not.toHaveBeenCalled();
     });
+    it('086915a8: counts with plurals, shows the cycle name alone and filters to reviews missing a required role', () => {
+        show();
+        expect(screen.getByText('2 assignments')).toBeTruthy();
+        const table = screen.getAllByRole('table')[0];
+        const draft = within(table).getByText('Example Company / Operations').closest('td')!;
+        expect(draft.querySelector('span.block')?.textContent).toBe('Annual cycle');
+        fireEvent.change(screen.getByLabelText('Search users'), { target: { value: 'lead' } });
+        expect(screen.getByText('1 assignment')).toBeTruthy();
+        fireEvent.change(screen.getByLabelText('Search users'), { target: { value: '' } });
+        fireEvent.change(screen.getByLabelText(en.rewardsAccess.coverageFilter), { target: { value: 'missing' } });
+        expect(within(table).queryByText('Example Company / Finance')).toBeNull();
+        expect(within(table).getByText('Example Company / Operations')).toBeTruthy();
+        expect(screen.getByText('1 assignment')).toBeTruthy();
+        const panel = screen.getByRole('region', { name: en.rewardsAccess.coverageTitle });
+        expect(within(panel).queryByText('Example Company / Finance · Annual cycle')).toBeNull();
+    });
 });
