@@ -1,5 +1,7 @@
 # ADR-0081 — The LHDN TP1 (1/2026) as a complete e-form: pack catalogue, approval gate, printable output
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Status:** Accepted — landed with board item `7ad37961` (r201).
 - **Extends:** ADR-0050 (§1.1.3 self-service TP1, §0.1 the delta feed), ADR-0073 (the eight-key
   breakdown), ADR-0080 D6 (statutory vocabulary belongs to the country pack), ADR-0008 (no unsourced

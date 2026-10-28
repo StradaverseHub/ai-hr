@@ -1,5 +1,7 @@
 # ADR-0053 — Automated Probation / Contract / Internship Review Workflow
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted
 Date: 2026-06-27
 Migration: 0110

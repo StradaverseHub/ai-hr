@@ -1,5 +1,7 @@
 # ADR-0042 — Submit Resignation self-service (#29)
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted · 2026-06-23 · Consultant feedback #29 (High)
 
 ## Context

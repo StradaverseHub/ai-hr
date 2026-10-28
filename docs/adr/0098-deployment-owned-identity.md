@@ -1,5 +1,7 @@
 # ADR-0098: Deployment-owned identity for cloud and on-premise
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations. Authentication direction is superseded where applicable by [ADR-0117](0117-embedded-hr-authentication.md); legacy adapters do not establish deployment activation.
+
 Status: Superseded by ADR-0117 on 2026-10-15. The owner clarified that authentication must be implemented inside the HR app and explicitly cancelled Keycloak activation. The previous record described Keycloak as approved; that statement did not establish a shared understanding of embedded authentication. Historical implementation direction dated 2026-10-11 follows. The initial system administrator for each installation is yanli.lam@stradaverse.ai. Implementation and cutover require separately verified deployment evidence; approval is not evidence of a running service.
 
 ## Requirement and recommendation

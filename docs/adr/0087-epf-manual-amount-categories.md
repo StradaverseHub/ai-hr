@@ -1,5 +1,7 @@
 # ADR-0087 — Manual EPF contribution categories: a standing per-employee ringgit amount
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: **Accepted** (item 70b14723, round r365, migration 0491)
 
 Supersedes the **"Manual (By Fixed Amount) — DEFERRED"** section of

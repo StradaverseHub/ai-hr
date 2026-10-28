@@ -7,7 +7,7 @@
  * join is invisible to year-end — so imported rows MUST land as real payslip rows under a real batch.
  * No parallel table.
  *
- * The analyzer below preserves the supported seven-column vocabulary and dry-run compatibility.
+ * The analyzer below preserves the supported six-column vocabulary and dry-run compatibility.
  * Public uploads use payroll-history-revisions: immutable attempts, whole-file validation, scoped
  * company/cycle identity, append-only corrections/recovery and one effective canonical snapshot.
  * The record-based compatibility writer at the end delegates there too; it owns no SQL writes.
@@ -28,6 +28,7 @@ import {
 import { requirePackFor } from '../localization/registry';
 import {
   PAYROLL_HISTORY_COLUMNS,
+  PAYROLL_HISTORY_HEADERS,
   PAYROLL_IMPORT_DESTINATIONS,
   STATUTORY_DESTINATIONS,
   STATUTORY_IMPORT_CODES,
@@ -114,7 +115,6 @@ type ParsedLine = {
   doeCode: string;
   companyCode: string;
   amount: number;
-  override: boolean;
   destination: PayrollImportDestination;
 };
 
@@ -388,11 +388,10 @@ async function analyze(
     const doeCode = readHistoryField(rec, 'doe_code');
     const companyCode = readHistoryField(rec, 'company_code');
     const rawAmount = readHistoryField(rec, 'amount');
-    const rawOverride = readHistoryField(rec, 'override?');
     const ref = { rowNum, employeeNo, rawPeriod, doeCode };
 
     // "No completely blank data rows should be imported" — skipped in silence, not reported as an error.
-    if (!employeeNo && !rawPeriod && !cycle && !doeCode && !companyCode && !rawAmount && !rawOverride) {
+    if (!employeeNo && !rawPeriod && !cycle && !doeCode && !companyCode && !rawAmount) {
       blankLines += 1;
       return;
     }
@@ -481,14 +480,6 @@ async function analyze(
       issues.push(issue(ref, 'Invalid Amount', `Amount “${rawAmount}” is not a number (digits and one decimal point only)`));
     }
 
-    // Override? — validated, never honoured as a replace (see the file header).
-    let override = true;
-    if (rawOverride !== '') {
-      if (rawOverride === '1') override = true;
-      else if (rawOverride === '0') override = false;
-      else issues.push(issue(ref, 'Invalid Override', `Override? must be 1 or 0 (got “${rawOverride}”)`));
-    }
-
     // Duplicate on the reporter's five-part key.
     const dupKey = [up(employeeNo), rawPeriod, up(cycle), up(doeCode), up(companyCode)].join('|');
     if (employeeNo && rawPeriod && cycle && doeCode && companyCode) {
@@ -528,7 +519,6 @@ async function analyze(
       doeCode,
       companyCode,
       amount,
-      override,
       destination: entry.destination,
     });
   });
@@ -709,7 +699,7 @@ async function analyze(
       );
     }
 
-    // The double-count guard. NOTHING is written for an occupied period, whatever Override? said.
+    // The double-count guard. NOTHING is written for an occupied period by this path.
     const existing = !options.prepareRevision && occupiedPeriods.has(b.period);
     if (existing) {
       existingMonths += 1;
@@ -718,11 +708,25 @@ async function analyze(
           issue(
             { rowNum: l.rowNum, employeeNo: l.employeeNo, rawPeriod: l.rawPeriod, doeCode: l.doeCode },
             'Existing record',
-            `${b.period} already has payroll for this company — the existing record is kept and nothing is written. Override cannot replace it: a second load would be added to the first and submitted as double, and a loaded month cannot be deleted.`,
+            `${b.period} already has payroll for this company — the existing record is kept and nothing is written here. To replace an earlier import, upload the file on Import Payroll History and confirm the replacement.`,
             'Needs action',
           ),
         );
       }
+    }
+
+    // d28501b8: BASIC is built in, and a company may also have its own basic pay code. Both land in the
+    // same basic salary, so a month naming the two would add them together. Stop it rather than guess
+    // which one the file meant.
+    const basicCodes = [...new Set(b.lines.filter((l) => l.destination === 'basic').map((l) => up(l.doeCode)))];
+    if (basicCodes.length > 1) {
+      monthIssues.push(
+        issue(
+          { ...ref, doeCode: basicCodes.join(', ') },
+          'Duplicate record',
+          `${b.employeeNo} ${b.period} states basic salary under more than one code (${basicCodes.join(', ')}) — they would be added together. Keep one.`,
+        ),
+      );
     }
 
     const lineFailures = failedByMonth.get(b.key)?.rowNums.length ?? 0;
@@ -750,6 +754,7 @@ async function analyze(
       companyCode: b.companyCodes.join(', '),
       rowNums: b.rowNums,
       lineCount: b.lines.length,
+      codes: [...new Set(b.lines.map((l) => up(l.doeCode)))],
       ok,
       existing,
       gross,
@@ -804,6 +809,7 @@ async function analyze(
       companyCode: held.companyCodes.join(', '),
       rowNums: held.rowNums,
       lineCount: 0,
+      codes: [],
       ok: false,
       existing: false,
       gross: 0,
@@ -855,8 +861,8 @@ export async function commitPayrollHistoryImport(
  const {preview}=await analyze(ctx,p.companyId,p.records);
  const {previewPayrollHistoryUpload,confirmPayrollHistoryUpload,PayrollHistoryRevisionError}=await import('./payroll-history-revisions');
  const {toCsv}=await import('../lib/csv');
- const headers=['Employee No','Payroll Period','Payroll Cycle','DOE Code','Company Code','Amount','Override?'];
- const keys=['employee_no','payroll_period','payroll_cycle','doe_code','company_code','amount','override?'];
+ const headers=[...PAYROLL_HISTORY_HEADERS];
+ const keys=['employee_no','payroll_period','payroll_cycle','doe_code','company_code','amount'];
  const source=await previewPayrollHistoryUpload(ctx,{name:'normalised-records.csv',content:Buffer.from(toCsv([headers,...p.records.map(row=>keys.map(key=>readHistoryField(row,key)))]))});
  let committed=false;const issues=[...preview.issues];
  try{

@@ -1,5 +1,7 @@
 # ADR-0141 — OneHR 6e0a14e migration decisions (ADR-M01…M16)
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Date:** 2026-10-25
 - **Status:** Direction accepted by the owner as platform decisions (25 Oct 2026). Business-policy content awaits Chin Hin confirmation. Implementation pending; nothing released.
 - **Extends:** ADR-0103 and ADR-0115 (the native OneHR integration built from OneHR `a644fd6`).

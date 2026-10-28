@@ -1,5 +1,7 @@
 # ADR-0009: Multi-company group model (nested entities, scoped authz, consolidation)
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Status:** Accepted — *design agreed 2026-06-06; implemented in slices A–D (pending)*
 - **Date:** 2026-06-06
 - **Deciders:** Founder (solo) + Claude (acting architect)

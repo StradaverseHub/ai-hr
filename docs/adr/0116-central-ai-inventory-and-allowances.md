@@ -1,5 +1,7 @@
 # ADR-0116: Central AI inventory and allowances
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: accepted. Local acceptance and experience verified on 2026-10-15; release checks remain separately required.
 
 ## Request and graph

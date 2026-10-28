@@ -1,5 +1,7 @@
 # ADR-0078 — Employee-specific Pay Mode, Payment Term and Rate on the Basic Salary record
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: accepted (feedback 642ecc55, migration 0290)
 Supersedes: the "policy owns pay mode / surface, do not duplicate" decisions of ADR-0064 and R46 79eb7151
 

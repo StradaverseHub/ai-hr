@@ -1,5 +1,7 @@
 # ADR-0106: Fixed attendance allowance periods and owned payroll sources
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Date: 2026-10-12
 Status: Implemented for approved board item f75e13c6; verification pending the shared release gate
 

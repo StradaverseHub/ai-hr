@@ -1,5 +1,7 @@
 # ADR-0004: Authorization — RBAC + ABAC enforced in the database
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Status:** Accepted
 - **Date:** 2026-06-04
 - **Deciders:** Founder (solo) + Claude (acting architect)

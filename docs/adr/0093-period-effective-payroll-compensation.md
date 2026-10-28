@@ -1,5 +1,7 @@
 # ADR-0093 — Resolve payroll compensation by period and preserve its saved salary basis
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Date:** 2026-10-03
 - **Status:** Accepted after verified production arrival.
 - **Related:** Feedback de955416-6a4c-486a-bc16-ed17f86ec846; ADR-0036 snapshot immutability; ADR-0078 employee pay structure; core/comp.ts, core/payroll.ts, core/pay-components.ts, core/payroll-readiness.ts and core/back-pay.ts.

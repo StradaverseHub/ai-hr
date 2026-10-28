@@ -7038,7 +7038,23 @@
       "noIssues": "所有行均通过检查。",
       "downloadErrors": "下载结果（Excel）",
       "viewPayroll": "查看薪资 →",
-      "importAnother": "导入其他文件"
+      "importAnother": "导入其他文件",
+      "colCategory": "类别",
+      "colAmountType": "金额类型",
+      "sampleNote": "示例 — 非真实数据。虚构员工，用于展示每个代码的填写方式。请勿上传此工作表；请填写第一个工作表。",
+      "categories": {
+        "basic": "基本工资",
+        "earning": "收入",
+        "deduction": "扣款",
+        "employeeStatutory": "员工法定",
+        "employerStatutory": "雇主法定",
+        "payrollTotal": "工资合计"
+      },
+      "amountTypes": {
+        "employee": "员工金额",
+        "employer": "雇主金额",
+        "check": "仅核对 — 只比较，不累加"
+      }
     },
     "process": {
       "taxSchemeDeclarationRequired": "处理工资前，请记录此雇佣关系、雇主和工资期间获批准的税务计划，包括批准参考编号及人力资源部门的资格确认。",
@@ -8814,7 +8830,8 @@
         "create": "新增",
         "replace": "替换",
         "unchanged": "未变更",
-        "invalid": "无效"
+        "invalid": "无效",
+        "protected": "受保护"
       },
       "states": {
         "confirmed": "已导入",
@@ -8838,7 +8855,6 @@
       "failed": "操作未能完成。重试前请检查日志文件。不会提交部分薪资变更。",
       "atomicHint": "整个文件必须通过验证。确认时会再次检查权限、目标版本和依赖关系。导入历史会改变报表和年累计值，但不会计算薪资、发放工资单或启动付款。",
       "confirmation": "我已检查上述公司、期间、周期和金额，并授权完整导入。",
-      "replacementConfirmation": "我授权替换上述 {count} 条导入记录。原始已关闭快照将保留在审计历史中。",
       "success": "导入已提交。有效历史和审计记录已一并保存。请在日志文件中查看此次尝试。",
       "logHint": "原始文件、验证结果、已提交变更及恢复事件。每次尝试均保留独立历史。",
       "auditHint": "下方预览记录此文件在验证时提出的变更。事件显示是否已提交、被拒绝或已撤销；后续更正会有独立尝试记录。",
@@ -8871,7 +8887,13 @@
           "version": "源规则版本",
           "lp": "获批扣除项（TP1／可选）"
         }
-      }
+      },
+      "items": "项目",
+      "protectedHint": "该月工资已在 AIHR 中处理或申报，导入不会替换它。请从文件中删除这些行，或通过补发工资或调整运行更正该月。",
+      "overwriteTitle": "发现 {count} 个员工月份已有工资历史，包括已关闭工资期间的记录。是否覆盖现有记录？",
+      "overwriteReplace": "确认覆盖 — 替换之前导入的记录。原始数字保留在审计历史中，已关闭的期间保持关闭。",
+      "overwriteSkip": "仅导入新记录，现有记录保持不变。",
+      "successSkipped": "已按选择保留 {count} 条现有记录不变。"
     }
   },
   "admin": {

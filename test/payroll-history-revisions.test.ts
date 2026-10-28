@@ -20,8 +20,8 @@ import {closeAll,createAppUser,entitledCtx,owner,resetDb,seedBase,setModule,type
 let b:Base,ctx:SessionContext,employeeId:string,employeePersonId:string;
 const year=Number(todayInKualaLumpur().slice(0,4))-2,period=`${year}-01`;
 const rows=(amount='5000.00',company='000AC',employee='0007')=>[
- [employee,period,'ME','BASIC',company,amount,'1'],[employee,period,'ME','EEEPF',company,'0.00','1'],
- [employee,period,'ME','EESOCSO',company,'0.00','1'],[employee,period,'ME','EEEIS',company,'0.00','1'],[employee,period,'ME','PCB',company,'0.00','1'],
+ [employee,period,'ME','BASIC',company,amount],[employee,period,'ME','EEEPF',company,'0.00'],
+ [employee,period,'ME','EESOCSO',company,'0.00'],[employee,period,'ME','EEEIS',company,'0.00'],[employee,period,'ME','PCB',company,'0.00'],
 ];
 const upload=(amount='5000.00')=>previewPayrollHistoryUpload(ctx,{name:'history.csv',content:Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...rows(amount)])),operationKey:randomUUID()});
 const confirm=(preview:Awaited<ReturnType<typeof upload>>,replacement=true)=>confirmPayrollHistoryUpload(ctx,{attemptId:preview.attemptId,previewHash:preview.plan.previewHash,confirmReplacement:replacement});
@@ -54,6 +54,21 @@ describe('immutable payroll history correction and recovery',()=>{
   await expect(revertPayrollHistoryUpload(ctx,correction.attemptId,recovery.previewHash)).rejects.toThrow(/already been reverted/);
   await expect(owner.db.update(schema.payslip).set({grossPay:'1.00'}).where(eq(schema.payslip.id,initial.changes[0].snapshotId!))).rejects.toMatchObject({cause:{code:'23514',message:expect.stringMatching(/immutable/)}});
   expect((await owner.db.select().from(schema.payslip).where(eq(schema.payslip.id,original.id)))[0]).toEqual(original);
+ });
+ it('d28501b8: import-new-only writes the new record and leaves the earlier import exactly as it was',async()=>{
+  await confirm(await upload());
+  const hired=await hireEmployee(ctx,{person:{fullName:'Second fictional employee',primaryEmail:'history2@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',employeeCode:'0008',hiredOn:`${year-1}-01-01`});
+  const mixed=await previewPayrollHistoryUpload(ctx,{name:'mixed-new.csv',content:Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...rows('6000.00'),...rows('4000.00','000AC','0008')])),operationKey:randomUUID()});
+  expect(mixed.plan.counts).toEqual({created:1,replaced:1,unchanged:0,invalid:0});
+  expect(mixed.plan.rows.map(row=>[row.employeeNo,row.operation,row.codes])).toEqual([['0007','replace',['BASIC','EEEPF','EESOCSO','EEEIS','PCB']],['0008','create',['BASIC','EEEPF','EESOCSO','EEEIS','PCB']]]);
+  const result=await confirmPayrollHistoryUpload(ctx,{attemptId:mixed.attemptId,previewHash:mixed.plan.previewHash,confirmReplacement:false,skipReplacements:true});
+  expect(result).toMatchObject({skippedReplacements:1,alreadyCommitted:false});expect(result.changes).toHaveLength(1);
+  const money=(await effective()).map(row=>[row.employmentId,Number(row.grossPay)]).sort((x,y)=>Number(x[1])-Number(y[1]));
+  expect(money).toEqual([[hired.employmentId,4000],[employeeId,5000]]);
+  // Skipping needs something new to import; an all-replacement file must be confirmed or cancelled.
+  const only=await upload('7000.00');
+  await expect(confirmPayrollHistoryUpload(ctx,{attemptId:only.attemptId,previewHash:only.plan.previewHash,confirmReplacement:false,skipReplacements:true})).rejects.toThrow(/no new records/);
+  expect((await effective()).filter(row=>row.employmentId===employeeId).map(row=>Number(row.grossPay))).toEqual([5000]);
  });
  it('retires a newly created effective entry without erasing its physical snapshot or audit',async()=>{
   const first=await upload();await confirm(first);const recovery=await previewPayrollHistoryRevert(ctx,first.attemptId);await revertPayrollHistoryUpload(ctx,first.attemptId,recovery.previewHash);
@@ -132,6 +147,8 @@ describe('immutable payroll history correction and recovery',()=>{
   const next=`${year}-02`;const ordinary=await createBatch(ctx,{companyId:b.companyId,payPeriod:next});
   const content=Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...rows().map(row=>row.map((cell,index)=>index===1?next:cell))]));
   const preview=await previewPayrollHistoryUpload(ctx,{name:'ordinary.csv',content});expect(preview.plan.counts.invalid).toBeGreaterThan(0);
+  // d28501b8 — named Protected, not presented as a mistake in the file.
+  expect(preview.plan.rows.map(row=>[row.operation,row.protected])).toEqual([['invalid',true]]);
   await expect(confirm(preview)).rejects.toThrow();
   const [batch]=await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id,ordinary.batchId));expect(batch.status).toBe('draft');
  });

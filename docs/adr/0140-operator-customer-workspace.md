@@ -1,5 +1,7 @@
 # ADR-0140: Operator customer workspace
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Decision: 25 October 2026 (Asia/Kuala_Lumpur).
 
 The installation operator has its own shell and customer metadata APIs. An operator session enters

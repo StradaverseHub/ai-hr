@@ -1,5 +1,7 @@
 # ADR-0012 — Employee self-service: read-write profile with an approval gate
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: **Accepted** (Phase 1 + 2 implemented) · Date: 2026-06-10
 
 ## Context

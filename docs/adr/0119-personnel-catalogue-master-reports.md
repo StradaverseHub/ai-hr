@@ -1,5 +1,7 @@
 # ADR-0119: Shared Personnel declarations and Employee Master report reads
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Date: 2026-10-15. Status: accepted implementation direction under approved board items c44575e0 and 5f9c8062. Verification remains pending until the acceptance map is demonstrated.
 
 Personnel fields have one declaration owner: `lib/personnel-field-registry.ts`. Stable literal IDs survive label changes. Each declaration states the screen label, tab/section, machine owner/field, type/unit, grain, history coverage, sensitivity, reporting capabilities and import writer contract. Forms, import templates and report catalogues consume these declarations. A future stored scalar on an existing owner needs one declaration; it must not need a second report-specific field list. Derived fields and new registers still require an authoritative owner read, never guessed database access.

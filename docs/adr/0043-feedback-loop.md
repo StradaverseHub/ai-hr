@@ -1,5 +1,7 @@
 # ADR-0043 — In-product feedback → AI-plan → review → build loop
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted · 2026-06-24 · Owner request (new strategic module)
 
 ## Context

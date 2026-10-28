@@ -1,5 +1,7 @@
 # ADR-0125: shared Personnel facts, explicit employee permissions and atomic editing
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: implementation in progress; runtime verification pending.
 
 The approved cf588903 plan aligns My Profile with Personnel without turning administrative projections

@@ -1,5 +1,7 @@
 # ADR-0039 — Configurable leave approval policy (Leave 2.0 · 2B-2)
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted · 2026-06-23 · Sub-ADR of [ADR-0038](0038-leave-2.0.md) §2B
 
 ## Context

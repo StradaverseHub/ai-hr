@@ -45,7 +45,7 @@ After translating and reviewing a particular article, obtain its source hash fro
 node --import tsx --input-type=module -e 'import { loadGuides, guideSourceHash } from "./lib/guide-catalog.ts"; for (const {meta,body} of loadGuides()) console.log(meta.slug, guideSourceHash(meta.title,body));'
 ```
 
-Record the corresponding value under that article's locale only after reviewing both its localized title in `titles.json` and its `<slug>.<locale>.md` body. Do not stamp all old translations with new hashes to satisfy a check. The October 2026 refresh intentionally leaves the old translations unapproved; they remain on disk as translation source material. Operator article bodies are currently English, with localized section labels and an explicit language notice.
+Record the corresponding value under that article's locale only after reviewing both its localized title in `titles.json` and its `<slug>.<locale>.md` body. Do not stamp all old translations with new hashes to satisfy a check. The unapproved historical translation bodies were removed during the October 2026 context cleanup. Recover them from Git only as translation drafts; review against current English before restoring and approving each locale. English fallback is unchanged. Operator article bodies are currently English, with localized section labels and an explicit language notice.
 
 ## Coverage and source map
 

@@ -1,5 +1,7 @@
 # ADR-0136 — Photo approval and profile privacy share the existing request owner
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: source implementation in progress; unverified and undeployed.
 
 The approved Employee Change Requests revision2 replaces immediate own-photo writes with submission and HR decision. The existing profile_change_request and named routing owner remain canonical. Photo bytes belong in a request-bound side table, not proposal JSON, audit text or a general Personnel permission grant.

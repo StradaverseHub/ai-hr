@@ -1,149 +1,32 @@
 # AI HR
 
-> **Repository and environments:** [StradaverseHub/ai-hr](https://github.com/StradaverseHub/ai-hr) is the sole repository. `alpha` targets the existing staging server; `main` is reserved for the new live installation. Read [Repository and environments](docs/REPOSITORY-AND-ENVIRONMENTS.md) before building deployment automation.
+A multi-tenant HR application for people and organization records, leave, attendance, payroll, claims, performance, rewards and employee self-service. Tenant capabilities and installation configuration determine which journeys are available.
 
-A modern, AI-assisted Human Resource Management System (HRMS).
+Start with [CLAUDE.md](CLAUDE.md) for development and [repository policy](docs/REPOSITORY-AND-ENVIRONMENTS.md) for branches/releases. Verify the actual checkout and remote freshness before editing; local branch names and old status documents do not establish current source.
 
-> **Status:** Active development — the Malaysia payroll/compliance core is **built and tested**.
-> Implemented: org/identity + matrix reporting, leave (EA 1955), attendance/time, the full
-> payroll engine (EPF/SOCSO/EIS + the LHDN 2026 computerised PCB *with prior-month
-> accumulators*, all golden-tested), statutory reporting (EA, Form E/CP8D, CP22/CP22A worklist,
-> a DRAFT CP39 e-Data PCB file), employee self-service, and an append-only audit substrate.
-> Deliberately **not yet** built: real auth (WorkOS — still a dev shim), multi-country packs,
-> bank payment files, bulk import, performance/talent (designed in [ADR-0013](docs/adr/0013-performance-talent-management.md)).
-> Statutory tables ship as DRAFT pending a licensed accountant's sign-off (see
-> [STATUTORY-SOURCES.md](docs/architecture/STATUTORY-SOURCES.md)) and a June-2026 product review
-> is in [docs/REVIEW-2026-06-panel.md](docs/REVIEW-2026-06-panel.md).
+## Development
 
----
+Read `package.json` for supported runtimes and commands. Install with `pnpm install`; create a private `.env.local` from `.env.example` and configure disposable PostgreSQL using the current database scripts. Inspect targets before migration or seeding. The application role must be non-superuser and NOBYPASSRLS; migrations use a separate owner connection. Real worktree dependencies avoid external-symlink build failures.
 
-## What this is (and is not, yet)
+Use focused tests during development and the repository gate/resource policy before release. A build is separate from tests and rendered acceptance. Bundled statutory behavior requires source/provenance review and appropriate sign-off; passing calculations do not establish filing acceptance.
 
-`ai-hr` is being built as a **commercial, multi-tenant SaaS HRMS**, by a **solo founder**.
-Those two facts are in tension, and the architecture is shaped by resolving it honestly:
+## Source map
 
-- **Single-tenant in operation, multi-tenant in the schema.** Every table carries a
-  `tenant_id` and is protected by Postgres Row-Level Security from the first migration,
-  so the SaaS path stays open — but we do **not** build tenant provisioning, billing,
-  signup, or region routing for customers who don't exist yet.
-- **Go deep on one country, not wide on twenty.** The initial wedge is
-  **Malaysian / ASEAN SME HR + statutory compliance** (EPF / SOCSO / EIS / PCB).
-  The platform is *multi-country ready*; it is not *multi-country built*.
-- **Buy the undifferentiated heavy lifting.** Auth, directory sync, email, and payments
-  are managed services, not solo-maintained code.
+| Area | Source |
+| --- | --- |
+| Domain services and authorization | `core/`, `lib/` |
+| Installable business/country modules | `packs/`, `localization/` |
+| Web UI and routes | `app/`, `components/` |
+| Schema, RLS and migrations | `db/` |
+| Native employee application | [mobile](mobile/README.md) |
+| Published tenant/operator guidance | `content/guides/`, `content/operator-guides/` |
+| Verification | `test/`, `.github/ci/`, `scripts/` |
 
-See [`docs/architecture/slice-0-spec.md`](docs/architecture/slice-0-spec.md) for the v1 definition.
+## References
 
-## v1 scope — "Slice 0: the spine"
+- [Architecture decisions](docs/adr/README.md): decisions at their recorded date, with later amendments taking precedence.
+- [Embedded authentication](deploy/internal-auth/README.md): approved login direction; legacy WorkOS/Keycloak adapters still exist. Runtime activation requires installation evidence.
+- [Customer installation](deploy/CUSTOMER.md), [deployment](deploy/DEPLOY.md), [operator access](deploy/OPERATOR-ACCESS.md).
+- [Documentation maintenance](docs/KNOWLEDGE-BASE-MAINTENANCE.md), [domain vocabulary](GLOSSARY.md), [product direction](PRODUCT.md).
 
-A walking skeleton that proves the bets that **cannot be retrofitted**, with everything
-else deliberately deferred.
-
-**In scope**
-
-- Tenant isolation (`tenant_id` + RLS), one tenant operationally
-- Multi-**company** within a tenant (legal entity as a first-class citizen)
-- **Bitemporal effective dating** on the organizational core
-- Identity model: `Person → Employment → Assignment → Position`
-- **Matrix reporting** as a typed, effective-dated, cycle-guarded graph
-- Employee lifecycle as events: hire / transfer / terminate
-- Leave (Annual only): accrual ledger + request → approve workflow
-- AuthZ: RBAC + ABAC enforced in the database via RLS
-- Immutable domain-event log + audit trail
-
-> Note: the list above was Slice 0's original scope. Payroll, attendance, additional leave
-> types, statutory reporting, and self-service have since been **built** (see Status). Still
-> **deferred** (recorded, never silently dropped): biometrics, the AI feature suite,
-> multi-country, data-residency / region routing, billing, **SSO/SCIM wiring (WorkOS)**,
-> bank payment files, bulk import, performance & succession.
-
-## Architecture at a glance
-
-| Concern | Choice | Rationale (ADR) |
-|---|---|---|
-| Database | PostgreSQL | RLS + bitemporal SQL ([0005](docs/adr/0005-tech-stack.md)) |
-| Data access | Drizzle ORM | SQL-close, RLS- and temporal-friendly ([0005](docs/adr/0005-tech-stack.md)) |
-| App | Next.js (App Router) modular monolith | Solo velocity, extractable later ([0005](docs/adr/0005-tech-stack.md)) |
-| Auth & tenancy | WorkOS (AuthKit + Organizations) | Enterprise SSO/SCIM-ready ([0005](docs/adr/0005-tech-stack.md)) |
-| Time model | Bitemporal (valid-time now, full system-versioning when payroll lands) | [0001](docs/adr/0001-bitemporal-effective-dating.md) |
-| Isolation | `tenant_id` + Row-Level Security | [0002](docs/adr/0002-multitenancy-rls.md) |
-| Org/identity | Person / Employment / Assignment / Position + typed reporting graph | [0003](docs/adr/0003-organizational-model.md) |
-| Authorization | RBAC + ABAC in the DB | [0004](docs/adr/0004-authorization.md) |
-| Audit | Append-only domain-event substrate | [0006](docs/adr/0006-event-and-audit-substrate.md) |
-
-## Documentation
-
-- [**North Star**](docs/architecture/north-star.md) — the AI-native, self-improving end goal and how the foundation serves it
-- [Architecture Decision Records](docs/adr/) — the load-bearing decisions
-- [Domain model & ERD](docs/architecture/domain-model.md)
-- [Slice 0 specification](docs/architecture/slice-0-spec.md) — personas, use cases, acceptance criteria, test strategy
-- [Threat model](docs/architecture/threat-model.md) — STRIDE-lite for the v1 surface
-- [Malaysia localization](docs/architecture/my-localization.md) — country-pack spec mapping
-- [UI/UX enhancement plan](docs/architecture/ui-ux-plan.md) — UX audit + roadmap
-
-## Methodology
-
-We apply the full discovery → threat-modeling → data-modeling → API → test → implementation
-→ review cycle **per vertical slice**, not once for the whole platform. Big-design-up-front
-across all modules is itself a risk; each slice earns its own rigor.
-
-## Getting started
-
-Local dev runs against a dedicated **PostgreSQL 14** cluster on port **5433** (data dir
-`/opt/homebrew/var/aihr-pg14`). The app connects as the non-privileged `ai_hr_app` role so
-RLS is enforced; migrations run as the `postgres` owner. Databases: `ai_hr_dev`, `ai_hr_test`.
-
-```bash
-pnpm install
-cp .env.example .env.local   # local URLs (no secrets — localhost trust auth)
-pnpm db:start                # start the Postgres cluster (pg_ctl)
-pnpm db:migrate              # apply migrations to ai_hr_dev
-pnpm test                    # migrates ai_hr_test, runs the Slice 0 acceptance suite
-pnpm db:stop                 # stop the cluster
-```
-
-**Schema changes:** edit `db/schema.ts` → `pnpm db:generate` (table DDL) → hand-write any
-RLS / grant / constraint changes as a `drizzle-kit generate --custom` migration → `pnpm db:migrate`.
-
-> `db:start` / `db:stop` hardcode this machine's brew paths. Elsewhere, point them at your
-> PostgreSQL `pg_ctl` + a data dir (`initdb -U postgres`), or just set `DATABASE_URL` to any
-> Postgres (e.g. Neon). The app needs a non-superuser role; see `db/migrations/0001_*`.
-
-### Layout
-
-```
-db/        schema.ts (Drizzle), client.ts (RLS session wrapper), events.ts, migrations/
-core/      org.ts (hire/transfer/terminate/reporting), leave.ts (request/approve)
-test/      harness.ts + slice0.test.ts (UC2/4/6/8/9 acceptance tests)
-docs/      ADRs, domain model, Slice 0 spec, threat model, North Star
-```
-
-### Payroll period comparison reports
-
-In Reports → Payroll → New report, choose Period comparison. The default compares saved paid BASIC
-for the previous calendar month against the selected current month. Use **Create BASIC example** to
-create a private Payroll Basic Variance definition for the signed-in, authorised user. Repeating this
-explicit action reopens that user's existing definition with the same dataset and name; it does not
-replace saved settings or create a report for another user. No report is seeded on a page read or deploy.
-
-To add an Allowance comparison, create another Period comparison and change the selected pay item to
-its recorded code. BASIC uses saved paid basic, regardless of today's display classification. Other
-items require recorded component lines. An absent code is zero only with a saved complete-itemization
-stamp; a legacy or partial array cannot prove absence. Missing provenance is unavailable. Previous runs must be closed; current runs may be processed and
-provisional or closed. Stale and uncalculated runs must be resolved before comparison. The report
-reads results and applied Movement evidence; it does not calculate pay or approve payroll.
-
-Historical result currency stays with the paying employer. Missing historical currency is shown
-separately by employer with no asserted variance; today's currency is not substituted. Totals precede
-reason/minimum filters and pagination. Employer-owned coverage is distinct from paid tenure: only a
-recorded monthly Basic proration snapshot, including its actual salary cutoff window, supports a Prorated label; historical ownership dates alone do not. A different selected item needs its own item-level evidence before this report can assert proration. The saved salary window may cross calendar months; the report does not reconstruct it from current settings.
-Prorated hires remain New hire explanations and also appear in
-the Prorated filter; Increment / Promotion groups those two evidence-backed explanations.
-
-PDF and native Excel exports use the same validated filters and include all matching rows, not just
-the screen page. Company scope is limited to 100 companies, result reads to 20,000 saved rows, and
-historical evidence reads have explicit bounds. Exceeding a bound refuses the report rather than
-truncating it. Excel additionally refuses amounts beyond exact 15-digit precision and text beyond
-32,767 UTF-16 characters per cell. PDF uses continuation bands/pages for selected columns and wrapped
-rows, with a 1,000-page limit; unsupported characters are refused rather than replaced. Exports retain
-provisional, unavailable and provenance warnings and do not constitute payroll sign-off.
+Historical research, audits and handoffs are indexed summaries with Git recovery commands. They are not active task lists or proof of present deployment state.

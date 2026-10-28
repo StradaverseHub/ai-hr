@@ -1,5 +1,7 @@
 # ADR-0089 — Employer and period scoped PCB incentive declarations
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Date:** 2026-10-02
 - **Status:** Accepted; implemented and production-verified in r380–r381.
 - **Raised by:** feedback `2b9235f6-d0d1-4530-9118-ceea1cbf601a`.

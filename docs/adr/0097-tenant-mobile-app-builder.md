@@ -1,5 +1,7 @@
 # ADR-0097: One store app, tenant-owned presentation
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted by owner, 2026-10-10. Implementation and release verification are recorded in the round history.
 
 ## Context and decision

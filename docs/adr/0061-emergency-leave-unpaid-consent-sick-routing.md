@@ -1,5 +1,7 @@
 # ADR-0061 — Emergency Leave: consent for the unpaid portion + paid-SICK routing
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted (1.2.4)
 Date: 2026-06-28
 

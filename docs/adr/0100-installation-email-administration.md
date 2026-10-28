@@ -1,5 +1,7 @@
 # ADR-0100: Installation email administration
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Date: 2026-10-11
 Status: Accepted
 

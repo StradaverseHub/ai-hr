@@ -8,6 +8,9 @@ export type HistoryRevisionRow = {
  rowNums:number[];operation:'create'|'replace'|'unchanged'|'invalid';reasons:string[];
  recordId:string|null;expectedRevisionId:string|null;expectedSnapshotId:string|null;
  values:ImportedPayrollValues|null;beforeValues:ImportedPayrollValues|null;valueHash:string|null;overwrite:boolean;
+ /** d28501b8 — the DOE codes the month's lines used, and whether payroll run or reported in AIHR holds it.
+  *  Optional: plans saved before d28501b8 carry neither. */
+ codes?:string[];protected?:boolean;
 };
 export type HistoryRevisionPlan = {version:1;rows:HistoryRevisionRow[];issues:{rowNum:number;reason:string}[];
  counts:{created:number;replaced:number;unchanged:number;invalid:number};companyIds:string[];sourceHash:string;previewHash:string};

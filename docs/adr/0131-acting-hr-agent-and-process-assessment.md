@@ -1,5 +1,7 @@
 # ADR-0131: Acting HR agent, harness and process assessment
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Date: 2026-10-19
 Status: Accepted direction. Phase 1 (process assessment) implemented in this round; Phases 2–4 are
 future increments and are not claimed capabilities.

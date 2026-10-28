@@ -1,5 +1,7 @@
 # ADR-0142 — OneHR performance partner: performance administration without compensation
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Date:** 2026-10-25
 - **Status:** Direction accepted by the owner (25 Oct 2026). Implementation on a migration branch; not released (ADR-0141 M12).
 - **Refines:** ADR-0049 §3 (for OneHR-native cycles only) and ADR-0141 M04.

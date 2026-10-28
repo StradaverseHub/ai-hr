@@ -1,5 +1,7 @@
 # ADR-0118: Separate allowed shift membership from calculation defaults
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted — approved board items 25468aa3 and ba0dfca1, 2026-10-15.
 
 ## Context
