@@ -29,8 +29,16 @@ describe('complete AI management inventory and boundary',()=>{
   const coreFound:string[]=[];let packCalls=0;
   for(const file of [...walk('core'),...walk('packs'),...walk('app'),...walk('lib'),...walk('scripts')]){
    const src=read(file),tree=ts.createSourceFile(file,src,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
-   let calls=0;
-   const visit=(node:ts.Node)=>{if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&['generateDraft','readImage','converse',performanceSeam.call].includes(node.expression.text))calls++;ts.forEachChild(node,visit);};visit(tree);
+   let calls=0;const aliases=new Map<string,string>(),namespaces=new Set<string>();
+   for(const statement of tree.statements)if(ts.isImportDeclaration(statement)&&statement.importClause?.namedBindings){
+    const bindings=statement.importClause.namedBindings;
+    if(ts.isNamedImports(bindings))for(const name of bindings.elements)aliases.set(name.name.text,(name.propertyName??name.name).text);
+    else if(ts.isNamespaceImport(bindings)&&ts.isStringLiteral(statement.moduleSpecifier)&&/\/ai(?:\/index)?$/.test(statement.moduleSpecifier.text))namespaces.add(bindings.name.text);
+   }
+   const visit=(node:ts.Node)=>{if(ts.isCallExpression(node)){
+    const call=ts.isIdentifier(node.expression)?aliases.get(node.expression.text)??node.expression.text:ts.isPropertyAccessExpression(node.expression)&&ts.isIdentifier(node.expression.expression)&&namespaces.has(node.expression.expression.text)?node.expression.name.text:'';
+    if(['generateDraft','readImage','converse',performanceSeam.call].includes(call))calls++;
+   }ts.forEachChild(node,visit);};visit(tree);
    expect(aiBoundaryViolations(file,src),file).toEqual([]);
    if(!calls)continue;
    if(file.startsWith('core/')){coreFound.push(file);const governed=governedCallers[file];
