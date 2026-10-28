@@ -18769,7 +18769,9 @@
         "candidateNone": "No completed action evidence",
         "action_leave_cancel": "Pending leave withdrawn; nothing deducted",
         "action_leave_edit": "Pending leave changed; still not approved",
-        "action_claims_cancel": "Pending claim cancelled; nothing paid"
+        "action_claims_cancel": "Pending claim cancelled; nothing paid",
+        "action_leave_adjustment_apply": "HR leave adjustment recorded; balance changes from its effective date",
+        "action_employees_movement_transfer": "HR assignment movement recorded; applied now or pending until its date"
       },
       "conversation": {
         "answerLabel": "Answer from your records",

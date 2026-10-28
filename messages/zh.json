@@ -18769,7 +18769,9 @@
         "candidateNone": "不添加已完成操作的证据",
         "action_leave_cancel": "待审批请假已撤回；未扣除任何天数",
         "action_leave_edit": "待审批请假已修改；仍未批准",
-        "action_claims_cancel": "待审批报销已取消；未支付任何款项"
+        "action_claims_cancel": "待审批报销已取消；未支付任何款项",
+        "action_leave_adjustment_apply": "已记录人事假期调整；余额自生效日期起变化",
+        "action_employees_movement_transfer": "已记录人事岗位调动；立即生效或待到生效日期"
       },
       "conversation": {
         "answerLabel": "根据您的记录回答",

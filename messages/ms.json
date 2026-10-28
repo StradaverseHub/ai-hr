@@ -18769,7 +18769,9 @@
         "candidateNone": "Tiada bukti tindakan selesai",
         "action_leave_cancel": "Cuti belum selesai ditarik balik; tiada apa-apa ditolak",
         "action_leave_edit": "Cuti belum selesai diubah; masih belum diluluskan",
-        "action_claims_cancel": "Tuntutan belum selesai dibatalkan; tiada bayaran dibuat"
+        "action_claims_cancel": "Tuntutan belum selesai dibatalkan; tiada bayaran dibuat",
+        "action_leave_adjustment_apply": "Pelarasan cuti oleh HR direkodkan; baki berubah mulai tarikh berkuat kuasa",
+        "action_employees_movement_transfer": "Pergerakan tugasan oleh HR direkodkan; dilaksanakan sekarang atau menunggu tarikhnya"
       },
       "conversation": {
         "answerLabel": "Jawapan daripada rekod anda",

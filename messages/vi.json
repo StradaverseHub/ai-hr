@@ -18769,7 +18769,9 @@
         "candidateNone": "Không có bằng chứng thao tác hoàn tất",
         "action_leave_cancel": "Đã rút đơn nghỉ đang chờ; không trừ ngày nào",
         "action_leave_edit": "Đã thay đổi đơn nghỉ đang chờ; vẫn chưa được duyệt",
-        "action_claims_cancel": "Đã hủy yêu cầu đang chờ; không có khoản nào được thanh toán"
+        "action_claims_cancel": "Đã hủy yêu cầu đang chờ; không có khoản nào được thanh toán",
+        "action_leave_adjustment_apply": "Đã ghi nhận điều chỉnh nghỉ phép của nhân sự; số dư thay đổi từ ngày hiệu lực",
+        "action_employees_movement_transfer": "Đã ghi nhận thay đổi phân công của nhân sự; áp dụng ngay hoặc chờ đến ngày hiệu lực"
       },
       "conversation": {
         "answerLabel": "Câu trả lời từ hồ sơ của bạn",
