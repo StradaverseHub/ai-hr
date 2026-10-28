@@ -1,5 +1,5 @@
-/** ADR-0151 wave 1: own claim cancellation in the ONE prepared-action store, through the generic review
- * functions of migration 0670. Same custody as every other own review: sealed human content, digest-bound
+/** ADR-0151 wave 1: own claim cancellation in the ONE prepared-action store, through the generic SQL review
+ * functions of migration 0670 and its dedicated TypeScript custody adapter. Same custody as every other own review: sealed human content, digest-bound
  * human confirmation, the effect and its receipt in one transaction, completed retries never repeat. */
 import {createHash,randomUUID} from 'node:crypto';
 import {sql,type SQL} from 'drizzle-orm';

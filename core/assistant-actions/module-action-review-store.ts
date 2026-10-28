@@ -1,6 +1,6 @@
 import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
-/** UNMOUNTED shared custody extension. One existing physical review/body lifecycle; no second
+/** Human-reviewed shared custody extension. One existing physical review/body lifecycle; no second
  * execution ledger, model effect, provider, browser endpoint or client-supplied source receipt.
  * All commands own a top-level transaction and expose bounded errors only after whole rollback. */
 import {createHash,randomUUID} from 'node:crypto';

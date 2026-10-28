@@ -1,6 +1,6 @@
 import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
-/** UNMOUNTED own worked-date TOIL request in the SAME review/body lifecycle. No credit is granted by
+/** Human-reviewed own worked-date TOIL request in the SAME review/body lifecycle. No credit is granted by
  * submission, no model computes the entitlement, and completed retries never submit a new request. */
 import {createHash,randomUUID} from 'node:crypto';
 import {sql,type SQL} from 'drizzle-orm';

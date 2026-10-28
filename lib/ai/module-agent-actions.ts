@@ -69,7 +69,7 @@ const leaveCancellation:Action<'leave'>=Object.freeze({id:OWN_LEAVE_CANCELLATION
 const leaveEdit:Action<'leave'>=Object.freeze({id:OWN_LEAVE_EDIT_ACTION,owner:'leave',publicBoundary:'packs/leave/service.ts#editLeaveRequestTx',contractVersion:1,
  prepare:Object.freeze({status:'implemented',adapter:'module_leave_edit_review_v1',inputSchema:'OwnLeaveEditHumanContent',outputSchema:'LeaveEditPreparedReview'}),
  confirm:Object.freeze({status:'implemented',adapter:'module_leave_edit_review_v1',inputSchema:'LeaveEditReviewConfirmation',outputSchema:'LeaveEditCompletedReview'}),human:'canonical_workflow_required',outcome:'canonical_receipt_required'});
-/** ADR-0151 wave 1: own pending claim cancellation through the generic review store (migration 0670). */
+/** ADR-0151 wave 1: own pending claim cancellation through generic SQL functions (0670), with dedicated TS custody. */
 const claimCancellation:Action<'claims'>=Object.freeze({id:OWN_CLAIM_CANCELLATION_ACTION,owner:'claims',publicBoundary:'packs/claims/service.ts#cancelClaimTx',contractVersion:1,
  prepare:Object.freeze({status:'implemented',adapter:'module_claim_cancellation_review_v1',inputSchema:'ClaimCancellationReviewPrepare',outputSchema:'ClaimCancellationPreparedReview'}),
  confirm:Object.freeze({status:'implemented',adapter:'module_claim_cancellation_review_v1',inputSchema:'ClaimCancellationReviewConfirmation',outputSchema:'ClaimCancellationCompletedReview'}),human:'canonical_workflow_required',outcome:'canonical_receipt_required'});

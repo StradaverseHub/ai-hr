@@ -1,6 +1,6 @@
 import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
-/** UNMOUNTED Lifecycle acknowledgement in the same physical review/body lifecycle. Native email-owned
+/** Human-reviewed Lifecycle acknowledgement in the same physical review/body lifecycle. Native email-owned
  * prehire cases stay unlinked; caller person, case person and employment are distinct actual facts. */
 import {createHash,randomUUID} from 'node:crypto';
 import {sql,type SQL} from 'drizzle-orm';

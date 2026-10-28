@@ -253,7 +253,7 @@ export async function promoteRoutingAgentCandidate(ctx: SessionContext,input:{ca
     return {promotionId:id,candidateDigest:candidate.candidate_digest,coverage:'typed-routing-contract-only',maxJobs:p.maxJobs,expiresAt:clock.expires};
   });}catch{return fail();}
 }
-export async function rollbackRoutingAgent(ctx:SessionContext,input:{promotionId:string;reason:'human'|'security_regression'|'quality_regression'}) {
+export async function rollbackAssistantPromotion(ctx:SessionContext,input:{promotionId:string;reason:'human'|'security_regression'|'quality_regression'}) {
  const current=capture(ctx),p={...input};if(!exact(p,['promotionId','reason'])||!uuid(p.promotionId)||!['human','security_regression','quality_regression'].includes(p.reason))return fail();
  try{await withTenant(current,async tx=>{
   // A running canonical reader owns Access before its shared release interval. Refuse contention
@@ -1183,3 +1183,6 @@ export async function eraseOwnConversationStrategyMetadata(ctx:SessionContext){c
  * transaction rollback retains the opaque binding and pending DB marker for an honest retry; the
  * completed DB state already refuses reuse even before this in-memory retirement. */
 export function retireAssistantConversationStrategyCapability(capability:AssistantConversationStrategyCapability):void{conversationStrategyUses.delete(capability);}
+
+/** Compatibility for in-flight review callers; rollback applies to every candidate kind. */
+export const rollbackRoutingAgent=rollbackAssistantPromotion;

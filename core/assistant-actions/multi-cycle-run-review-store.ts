@@ -1,6 +1,6 @@
 import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
-/** UNMOUNTED Multi-cycle draft creation custody. One new native draft, no processing/closing/money/payment. */
+/** Human-reviewed Multi-cycle draft creation custody. One new native draft, no processing/closing/money/payment. */
 import {createHash,randomUUID} from 'node:crypto';
 import {sql,type SQL} from 'drizzle-orm';
 import {z} from 'zod';

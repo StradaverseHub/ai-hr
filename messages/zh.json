@@ -394,7 +394,7 @@
     "payrollStatutoryAdjustment": "法定金额调整",
     "payrollControlTower": "控制塔",
     "assistant": "智能助理",
-    "aiControlTower": "AI 控制塔",
+    "aiControlTower": "控制塔",
     "controlTowerOverview": "总览",
     "controlTowerHow": "运作方式",
     "controlTowerReadiness": "员工资料",
@@ -484,7 +484,7 @@
     "aiManagementFeatures": "功能与代理",
     "aiManagementAllowances": "额度",
     "aiManagementSpending": "支出",
-    "aiManagementOrchestrator": "中央 HR 编排器",
+    "aiManagementOrchestrator": "HR 工作队列",
     "aiManagementRuns": "最近模型调用",
     "moduleELetter": "电子信函"
   },
@@ -16768,7 +16768,7 @@
     "err_feedback": "暂时无法保存反馈，请重试。",
     "workspace": {
       "specialists": {
-        "title": "模块专家",
+        "title": "助手功能",
         "intro": "使用规范事实创建并评估模块指引。实际变更仍由人工流程掌控。",
         "module": "模块",
         "create": "创建候选版本",
@@ -16787,7 +16787,7 @@
         "hours": "有效期（小时）",
         "promotionScope": "人工启用仅适用于已记录的模块、版本、范围，以及所选的任务数和时间限制，不授予任何人事权限。",
         "rollback": "撤回启用",
-        "runTitle": "模块专家指引",
+        "runTitle": "助手功能指引",
         "runIntro": "读取您当前获准查看的事实，并解释其记录状态，不作任何变更。",
         "run": "读取当前模块事实",
         "chooseModule": "选择模块",
@@ -18982,7 +18982,7 @@
       "actionUnavailable": "下一步操作暂时无法显示"
     },
     "howAiTitle": "AI 组成部分及管理位置",
-    "howAiBody": "除了这个检查循环，系统还有一个为每个 HR 模块配备专家的 HR 助手、三个后台代理，以及嵌入其他页面的 AI。AI 管理会显示每一项、能否运行，以及在哪里修改。",
+    "howAiBody": "除了这个检查循环，系统还有一个为每个 HR 模块配备功能的 HR 助手、三个后台代理，以及嵌入其他页面的 AI。AI 管理会显示每一项、能否运行，以及在哪里修改。",
     "howAiLink": "打开 AI 概览"
   },
   "profileRequestSettings": {
@@ -23475,8 +23475,8 @@
     "spendBreach": "已确认费用超出上限。后续严格准入需要审核。",
     "spendMonthly": "整个组织每月额度（美元）",
     "spendRoot": "每项任务终身额度（美元）",
-    "orchestrator": "中央 HR 编排器",
-    "orchestratorHelp": "编排器协调资料准备、责任分配、审核与验证。其确定性检查不消耗模型令牌。在下方刷新协调证据；上方功能开关控制其 AI 代理。",
+    "orchestrator": "HR 工作队列",
+    "orchestratorHelp": "HR 工作队列通过确定性检查协调资料准备、责任分配、审核与验证。可在下方刷新证据。定时模型起草需要获准的执行主体；仅配置提供商并不会启用它。",
     "recentRuns": "最近模型调用",
     "runsHelp": "最近 50 次调用，包括被拦截和失败的尝试。仅显示元数据，不含提示词、回答、图像或凭证。刷新可查看新活动。",
     "runsScoped": "上方显示公司合计。详细调用历史仅供集团管理员查看。",
@@ -23487,10 +23487,10 @@
     "saved": "AI 控制已保存。",
     "invalid": "AI 控制无效。",
     "features": {
-      "module_agent_evaluation": "模块代理评估",
+      "module_agent_evaluation": "助手功能评估",
       "provider_evaluation": "提供商能力评估",
       "personnel_import_mapping": "员工导入标题建议",
-      "module_agent_planning": "模块代理任务规划",
+      "module_agent_planning": "助手功能任务规划",
       "hr_assistant": "HR 助手",
       "readiness_reminders": "资料准备提醒",
       "claims_triage": "报销分流",
@@ -23509,7 +23509,7 @@
     },
     "kinds": {
       "assistant": "助手",
-      "agent": "定时或事件触发代理",
+      "agent": "定时代理",
       "feature": "AI 功能",
       "platform": "平台工具"
     },
@@ -23606,9 +23606,9 @@
     "mapIntro": "系统中的每一项 AI、它现在能否运行，以及在哪里修改。没有任何一项会自行做决定，由人来决定。",
     "mapProvider": "AI 服务提供方",
     "mapProviderHelp": "所有 AI 功能使用的服务和密钥。未设置时，不会向任何 AI 服务发送内容。",
-    "mapAssistant": "HR 助手与模块专家",
-    "mapAssistantHelp": "一个助手，每个 HR 模块各有一位专家。只有在该模块已启用且此人有助手权限时，专家才会出现。",
-    "mapSpecialists": "{total} 位专家中有 {available} 位可用",
+    "mapAssistant": "HR 助手与助手功能",
+    "mapAssistantHelp": "一个助手，每个 HR 模块各有一项功能。只有在该模块已启用且此人有助手权限时，功能才会出现。",
+    "mapSpecialists": "{total} 项功能中有 {available} 位可用",
     "mapAgents": "后台代理",
     "mapAgentsHelp": "就绪提醒、报销分诊和薪资异常假设。它们按计划或事件运行，只为人准备工作。",
     "mapFeatures": "其他页面中的 AI",
@@ -23618,14 +23618,14 @@
     "mapLimitsHelp": "每个公司和登录账号的每日请求、每月令牌和并发上限。",
     "mapLimitsStatus": "{count, plural, =0 {没有接近上限的项目} other {# 个公司或登录账号需要关注}}",
     "mapManage": "管理",
-    "specialistsTitle": "模块专家",
-    "specialistsHelp": "每位专家只读取登录者在其模块中本来就能查看的记录并加以解释，绝不会自行更改任何内容。",
+    "specialistsTitle": "助手功能",
+    "specialistsHelp": "每项功能只读取登录者在其模块中本来就能查看的记录并加以解释，绝不会自行更改任何内容。",
     "specialistAvailable": "可用",
     "specialistUnavailable": "模块未启用",
     "assistantAccessNote": "可使用助手的人员在“额度”中按登录账号设置。",
     "assistantAccessLink": "管理助手权限",
     "reviewsTitle": "候选版本审核",
-    "reviewsHelp": "创建、评估并推广助手及其专家的改进版本。推广在任务数和时间上受限，且不授予任何 HR 权限。",
+    "reviewsHelp": "创建、评估并推广助手及其功能的改进版本。推广在任务数和时间上受限，且不授予任何 HR 权限。",
     "reviewsGroupOnly": "候选版本审核仅供集团管理员使用。",
     "launcherTitle": "悬浮助手按钮",
     "launcherHelp": "在其他每个页面显示一个按钮，可打开小型助手聊天窗口，并可停靠为侧边栏。它只知道用户打开的区域和记录，不知道屏幕上的内容。",
@@ -26211,7 +26211,7 @@
     "fields": {
       "analysisDetails": {
         "analyst": "岗位分析员 / 职务",
-        "manager": "经理 / 领域专家",
+        "manager": "经理 / 领域功能",
         "consulted": "咨询的在岗人员 / 角色（可选）",
         "analysisOn": "分析日期",
         "reason": "分析原因"

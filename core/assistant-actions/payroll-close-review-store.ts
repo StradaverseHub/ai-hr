@@ -1,6 +1,6 @@
 import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
-/** UNMOUNTED Payroll CLOSE custody. Human confirmation owns one canonical close; no model money/approval/payment. */
+/** Human-reviewed Payroll CLOSE custody. Human confirmation owns one canonical close; no model money/approval/payment. */
 import {createHash,randomUUID} from 'node:crypto';
 import {sql,type SQL} from 'drizzle-orm';
 import {z} from 'zod';

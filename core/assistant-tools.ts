@@ -220,7 +220,7 @@ const schema = (properties: Record<string, unknown>): AiJsonSchema => ({
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════════════════════════════
- * The nine tools
+ * The twelve read-only tools
  *
  * ORDER IS LOAD-BEARING AND MUST NOT BE SORTED AT CALL TIME. `tools` renders BEFORE `system` in the
  * cacheable prefix (ADR-0082 §2.2), and prompt caching is a PREFIX match: one reordered byte invalidates
@@ -232,7 +232,7 @@ const schema = (properties: Record<string, unknown>): AiJsonSchema => ({
  * union). `ToolOutcome`, `cap()` and the refusal codes are registry-level, so a ranked result set
  * inherits truncation and the refusal envelope for free. The only new work is its own slice's full-text
  * index and a ctx-first search read — neither of which exists in this codebase today, which is why it is
- * not among the nine.
+ * not in the current catalogue.
  * ══════════════════════════════════════════════════════════════════════════════════════════════════ */
 
 const myLeaveBalances: AssistantTool = {
@@ -1001,11 +1001,10 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
 /**
  * The tools this caller may be offered.
  *
- * Filtered BY MODULE ONLY — never by user — so the cacheable prefix stays stable per (tenant, role)
- * exactly as ADR-0082 §2.2 requires, and the per-user grant costs nothing per question.
+ * This baseline selector filters by module. The active conversation strategy may select a per-user
+ * prompt/tool description, so cache reuse also depends on that versioned strategy. Keep prefix order stable.
  *
- * Eight tools name core modules; two payslip tools require payroll, and own claim status
- * requires claims. This selection only determines the offered catalogue. The Claims source
+ * The twelve tools include core reads, two payroll reads, own claim status and the module-work read. This selection only determines the offered catalogue. The Claims source
  * reader independently rechecks its actual entitlement and principal before projecting data.
  * An offered name is never an authorization capability or an effect command.
  *

@@ -1,6 +1,6 @@
 import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
-/** UNMOUNTED Personnel EPF/SOCSO custody. No Identity/Tax/Bank/TP3/Zakat mutation or model calculations. */
+/** Human-reviewed Personnel EPF/SOCSO custody. No Identity/Tax/Bank/TP3/Zakat mutation or model calculations. */
 import {createHash,randomUUID} from 'node:crypto';
 import {sql,type SQL} from 'drizzle-orm';
 import {z} from 'zod';

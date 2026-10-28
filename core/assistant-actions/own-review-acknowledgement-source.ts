@@ -1,4 +1,4 @@
-/** UNMOUNTED standard-cycle action source. Shared custody owns human POST, top-level completion and
+/** Human-reviewed standard-cycle action source. Shared custody owns human POST, top-level completion and
  * completed retries. OneHR development-plan acknowledgement is a separate pending engine adapter. */
 import {createHash} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';

@@ -1,6 +1,6 @@
 import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
-/** UNMOUNTED human catalogue CREATE custody in the same physical review/body lifecycle.
+/** Human-reviewed human catalogue CREATE custody in the same physical review/body lifecycle.
  * No model-derived rate, employee assignment or payroll execution. Completed retries never create. */
 import {createHash,randomUUID} from 'node:crypto';
 import {sql,type SQL} from 'drizzle-orm';

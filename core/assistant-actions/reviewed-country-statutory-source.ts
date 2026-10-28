@@ -1,4 +1,4 @@
-/** UNMOUNTED human Personnel EPF/SOCSO section source. No country import, model arithmetic,
+/** Human-reviewed human Personnel EPF/SOCSO section source. No country import, model arithmetic,
  * default-country routing, direct Identity/Tax/Bank/TP3/Zakat edits, or automatic payroll calculation. */
 import {createHash} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';

@@ -1,6 +1,6 @@
 import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
-/** UNMOUNTED own Attendance correction custody; models never invent clocks/work or approve OT. */
+/** Human-reviewed own Attendance correction custody; models never invent clocks/work or approve OT. */
 import {createHash,randomUUID} from 'node:crypto';
 import {sql,type SQL} from 'drizzle-orm';
 import {z} from 'zod';
