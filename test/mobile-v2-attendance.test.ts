@@ -391,7 +391,13 @@ describe('replacement leave (Leave Credit)', () => {
     caller = refreshed(inside.ctx);
     expect((await call(rl.GET, '/replacement-leave')).body).toMatchObject({ allowed: false, reason: 'not_enabled' });
     await setToilPolicy(adminCtx(base), policy({ requestEligibility: { departmentIds: [base.deptA] } }));
-    // Allowed by the policy, but the tenant has no Replacement Leave type for a credit to land on (My Leave hides the button).
+    // Enabling the policy creates the tenant's Replacement Leave type (core/toil.ts ensureReplacementLeaveType), so the
+    // offer opens at once on that type.
+    const opened = (await call(rl.GET, '/replacement-leave')).body;
+    expect(opened).toMatchObject({ allowed: true, reason: null });
+    expect(opened.leaveType).toMatchObject({ name: 'Replacement Leave (in lieu)' });
+    // With that type archived there is no type for a credit to land on (My Leave hides the button).
+    await owner.db.update(schema.leaveType).set({ archivedAt: new Date() }).where(and(eq(schema.leaveType.tenantId, base.tenantId), eq(schema.leaveType.code, 'REPLACEMENT')));
     expect((await call(rl.GET, '/replacement-leave')).body).toMatchObject({ allowed: false, reason: 'no_leave_type' });
     await owner.db.insert(schema.leaveType).values({ tenantId: base.tenantId, code: 'REPLACEMENT', name: 'Replacement Leave', paid: true });
     const allowed = (await call(rl.GET, '/replacement-leave')).body;
