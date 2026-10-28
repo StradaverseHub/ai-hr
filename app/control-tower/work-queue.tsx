@@ -19,7 +19,8 @@ export async function OrchestrationWorkQueue({ view, refresh, canViewRuns = fals
   const run = view.lastRun;
   const runOutcome = run?.failed === true ? 'failed' : run?.failed === false ? 'succeeded' : 'unknown';
   const incompleteRun = run && (run.failed === null || run.harnessVersion === null || Object.values(run.steps).includes('unknown'));
-  // Display order only, so each person's gaps sit together: company, then name, then the gap as shown.
+  // The owner picks the oldest open issues (core/hr-orchestrator.ts, oldest first, at most 50) and the
+  // note below says so. Display order only, so each person's gaps sit together: company, then name, then gap.
   // The id tie-breaks keep two people with one name apart and the order deterministic.
   const gapLabel = (gap: string) => gaps.has(gap) ? gaps(gap) : gap;
   const rows = [...view.rows].sort((a, b) => (a.company ?? '').localeCompare(b.company ?? '') || (a.name ?? '').localeCompare(b.name ?? '')

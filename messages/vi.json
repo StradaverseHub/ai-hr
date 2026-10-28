@@ -18851,7 +18851,7 @@
       "reopened": "Đã mở lại {count} lần",
       "collect": "Thu thập thông tin nhân viên gửi",
       "review": "Nhân sự kiểm tra và cập nhật hồ sơ",
-      "shown": "Hiển thị {shown} trên {total} vấn đề.",
+      "shown": "Hiển thị {shown} vấn đề cũ nhất trên {total}, nhóm theo từng người.",
       "verificationNote": "Đóng nghĩa là thông tin đã được điền hoặc không còn bắt buộc tại thời điểm kiểm tra. Nhân sự vẫn chịu trách nhiệm xác minh độ chính xác. Quyết định về lương và quyền truy cập dùng quy trình phê duyệt hiện có.",
       "quality": "Chất lượng bảng lương và AI",
       "opportunities": "Cơ hội",

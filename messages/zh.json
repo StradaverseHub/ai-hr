@@ -18851,7 +18851,7 @@
       "reopened": "已重新打开 {count} 次",
       "collect": "收集员工提交的资料",
       "review": "由人力资源审核并更新记录",
-      "shown": "显示 {total} 个问题中的 {shown} 个。",
+      "shown": "显示 {total} 个问题中最早的 {shown} 个，按人员分组。",
       "verificationNote": "关闭表示检查时相关信息已填写或已不再需要。人力资源仍需验证其准确性。薪资和访问权限决定继续使用现有审批。",
       "quality": "薪资与 AI 质量",
       "opportunities": "机会",

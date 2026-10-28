@@ -18851,7 +18851,7 @@
       "reopened": "Dibuka semula {count} kali",
       "collect": "Dapatkan penyerahan pekerja",
       "review": "HR menyemak dan mengemas kini rekod",
-      "shown": "Memaparkan {shown} daripada {total} isu.",
+      "shown": "Memaparkan {shown} isu tertua daripada {total}, dikumpulkan mengikut orang.",
       "verificationNote": "Penutupan bermaksud maklumat telah diisi atau tidak lagi diperlukan semasa semakan yang direkodkan. HR bertanggungjawab mengesahkan ketepatannya. Keputusan gaji dan akses menggunakan kelulusan sedia ada.",
       "quality": "Kualiti gaji dan AI",
       "opportunities": "Peluang",
