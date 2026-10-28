@@ -86,14 +86,9 @@ describe('AI management page',()=>{
 });
 
 describe('AI management sub-menu',()=>{
-  const tabs=()=>screen.getByRole('navigation',{name:en.aiManagement.sections});
-  it('offers one sub-menu page per section, marks the current one and shows only that section',async()=>{
+  it('has no in-page section tab row; the sidebar\u2019s AI management menu chooses the page',async()=>{
     const {container}=await show({heldNanos:'0',confirmedNanos:null},'features');
-    const links=within(tabs()).getAllByRole('link');
-    expect(links.map(link=>link.textContent)).toEqual([en.aiManagement.overviewTab,en.aiManagement.providerTab,en.aiManagement.assistantTab,en.aiManagement.inventory,en.aiManagement.allowancesTab,en.aiManagement.spendTab,en.aiManagement.orchestrator,en.aiManagement.recentRuns]);
-    expect(links.map(link=>link.getAttribute('href'))).toEqual(['','/provider','/assistant','/features','/allowances','/spending','/orchestrator','/runs'].map(v=>`/control-tower/agents${v}`));
-    expect(within(tabs()).getByRole('link',{name:en.aiManagement.inventory}).getAttribute('aria-current')).toBe('page');
-    expect(links.filter(link=>link.getAttribute('aria-current')==='page')).toHaveLength(1);
+    expect(screen.queryByRole('navigation')).toBeNull();
     expect(container.querySelector('#ai-features')).not.toBeNull();
     for(const other of ['#ai-map','#ai-attention','#company-limits','#user-limits','#ai-spend','#orchestrator','#ai-runs'])expect(container.querySelector(other),other).toBeNull();
   });

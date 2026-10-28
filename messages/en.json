@@ -397,8 +397,8 @@
     "aiControlTower": "AI Control Tower",
     "controlTowerOverview": "Overview",
     "controlTowerHow": "How it works",
-    "controlTowerReadiness": "Record readiness",
-    "controlTowerActions": "Agent actions",
+    "controlTowerReadiness": "Employee data",
+    "controlTowerActions": "Approvals",
     "sectionHome": "Home",
     "schedule": "Schedule",
     "leaveCredit": "Leave Credit",
@@ -475,6 +475,17 @@
     "letterReports": "Letter Reports",
     "letterSettings": "Letter Settings",
     "calibration": "Calibration",
+    "controlTowerExceptions": "Payroll exceptions",
+    "aiManagement": "AI management",
+    "sectionAiManagement": "AI management",
+    "aiManagementOverview": "Overview",
+    "aiManagementProvider": "Provider",
+    "aiManagementAssistant": "Assistant",
+    "aiManagementFeatures": "Features and agents",
+    "aiManagementAllowances": "Allowances",
+    "aiManagementSpending": "Spending",
+    "aiManagementOrchestrator": "Central HR orchestrator",
+    "aiManagementRuns": "Recent model calls",
     "moduleELetter": "E-Letter"
   },
   "dashboard": {
@@ -18648,7 +18659,13 @@
       "myWork": "My work",
       "calendar": "Calendar",
       "noEmployment": "My work and Calendar appear once your login is linked to an employment record.",
-      "privacy": "Your Assistant data"
+      "privacy": "Your Assistant data",
+      "accessTitle": "Assistant access",
+      "grantSelf": "Give yourself access in AI management",
+      "privacyHelp": "Each of these asks before it erases. Your HR records are never changed.",
+      "dataTitle": "Your Assistant data",
+      "dataHelp": "Clear your saved chat text, feedback, ratings and other Assistant data, even if you no longer have access.",
+      "dataLink": "Manage your Assistant data"
     },
     "launcher": {
       "open": "Ask the Assistant",

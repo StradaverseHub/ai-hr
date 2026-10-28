@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
-import { ControlTowerNavigation } from './navigation';
 import { requireAdmin } from '@/lib/authz';
-import { isModuleEnabled } from '@/core/entitlements';
 
+/** Control Tower pages share the admin guard. Navigation between them is the AI Control Tower menu in the
+ * sidebar (28 Oct 2026, owner); the in-page tab row was retired so there is one menu, not two. */
 export default async function ControlTowerLayout({ children }: { children: ReactNode }) {
-  const session = await requireAdmin();
-  return <><ControlTowerNavigation payrollEnabled={isModuleEnabled(session, 'payroll')} />{children}</>;
+  await requireAdmin();
+  return <>{children}</>;
 }

@@ -29,6 +29,7 @@ import { CompanySwitcher } from '@/components/company-switcher';
 import { OnboardingTour } from '@/components/onboarding-tour';
 import { AssistantLauncher } from '@/components/assistant/assistant-launcher';
 import { assistantLauncherFor } from '@/core/assistant-launcher';
+import { mayUseAssistant } from '@/core/assistant-grant';
 import { NoticePopupSlot } from '@/components/notice/notice-surfaces';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
@@ -233,6 +234,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // The floating Assistant: null unless the tenant switched it on, this login may use the Assistant and a
   // provider is active (core/assistant-launcher.ts). Presentation only; every question is re-checked.
   const launcher = await assistantLauncherFor(session);
+  // The Assistant row is offered only with actual access; any failure hides it (never fails open).
+  const assistantAccess = await mayUseAssistant(session).then(access => access.allowed).catch(() => false);
   return (
     <html
       lang={locale}
@@ -294,6 +297,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               // opinion, show everything" and is what a degraded session produces on purpose — see
               // lib/nav-entitlements.ts for why nav fails OPEN while every service gate fails closed.
               enabledModules={visibleModuleCodes(session)}
+              assistantAccess={assistantAccess}
               defaultCollapsed={railCollapsed}
               // r398 — the Monolith rail's user line. Display only, the same identity the header shows.
               viewerName={viewer.name}

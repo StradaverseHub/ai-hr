@@ -1,6 +1,6 @@
 /** Navigation placement only. Callers supply already-authorized destinations; this file grants nothing. */
 export type NavigationWorkspace = 'ops' | 'strata';
-export type NavigationSection = 'mine' | 'team' | 'hr' | 'config';
+export type NavigationSection = 'mine' | 'team' | 'hr' | 'ai' | 'config';
 export type NavigationModule = 'controlTower' | 'people' | 'eLetter' | 'onboarding' | 'leave' | 'attendance' | 'claims' | 'payroll'
   | 'performance' | 'talent' | 'development' | 'rewards' | 'workforceInsights';
 export type NavigationPlacement = {area:'shared' | 'system'} | {area:NavigationWorkspace;module:NavigationModule;section:NavigationSection};
@@ -20,7 +20,8 @@ export const NAVIGATION_MODULES: readonly {id:NavigationModule;workspace:Navigat
   {id:'rewards',workspace:'strata',labelKey:'rewards'},
   {id:'workforceInsights',workspace:'strata',labelKey:'workforceInsights'},
 ];
-export const NAVIGATION_SECTIONS: readonly NavigationSection[] = ['mine','team','hr','config'];
+// 'ai' (28 Oct 2026, owner): AI management's own pages, headed "AI management" in the AI Control Tower menu.
+export const NAVIGATION_SECTIONS: readonly NavigationSection[] = ['mine','team','hr','ai','config'];
 const modulePlacement = (module:NavigationModule,section:NavigationSection):NavigationPlacement => ({
   area:NAVIGATION_MODULES.find(item=>item.id===module)!.workspace,module,section,
 });
@@ -49,6 +50,7 @@ export function navigationPlacement(href:string):NavigationPlacement | undefined
   if(path.startsWith('/letters'))return modulePlacement('eLetter','hr');
   if(path==='/manage/my-team')return modulePlacement('people','team');
   if(path.startsWith('/admin/personnel')||path.startsWith('/admin/job-descriptions')||path==='/admin/notice-board')return modulePlacement('people','hr');
+  if(path==='/control-tower/agents'||path.startsWith('/control-tower/agents/'))return modulePlacement('controlTower','ai');
   if(path.startsWith('/control-tower'))return modulePlacement('controlTower','hr');
   if(path.startsWith('/admin/lifecycle'))return modulePlacement('onboarding','config');
   if(path.startsWith('/lifecycle/onboarding')||path.startsWith('/lifecycle/requisitions'))return modulePlacement('onboarding','hr');

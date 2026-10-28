@@ -397,8 +397,8 @@
     "aiControlTower": "AI கட்டுப்பாட்டு மையம்",
     "controlTowerOverview": "மேலோட்டம்",
     "controlTowerHow": "இது எப்படி வேலை செய்கிறது",
-    "controlTowerReadiness": "பதிவுத் தயார்நிலை",
-    "controlTowerActions": "முகவர் நடவடிக்கைகள்",
+    "controlTowerReadiness": "பணியாளர் தரவு",
+    "controlTowerActions": "ஒப்புதல்கள்",
     "sectionHome": "முகப்பு",
     "schedule": "அட்டவணை",
     "leaveCredit": "விடுப்பு வரவு",
@@ -475,6 +475,17 @@
     "letterReports": "கடித அறிக்கைகள்",
     "letterSettings": "கடித அமைப்புகள்",
     "calibration": "Calibration",
+    "controlTowerExceptions": "ஊதிய விதிவிலக்குகள்",
+    "aiManagement": "AI நிர்வாகம்",
+    "sectionAiManagement": "AI நிர்வாகம்",
+    "aiManagementOverview": "மேலோட்டம்",
+    "aiManagementProvider": "வழங்குநர்",
+    "aiManagementAssistant": "உதவியாளர்",
+    "aiManagementFeatures": "அம்சங்களும் முகவர்களும்",
+    "aiManagementAllowances": "ஒதுக்கீடுகள்",
+    "aiManagementSpending": "செலவு",
+    "aiManagementOrchestrator": "மத்திய HR ஒருங்கிணைப்பாளர்",
+    "aiManagementRuns": "சமீபத்திய மாதிரி அழைப்புகள்",
     "moduleELetter": "மின்-கடிதம்"
   },
   "dashboard": {
@@ -18648,7 +18659,13 @@
       "myWork": "என் பணி",
       "calendar": "நாட்காட்டி",
       "noEmployment": "உங்கள் உள்நுழைவு ஒரு வேலைவாய்ப்புப் பதிவுடன் இணைக்கப்பட்டதும் என் பணியும் நாட்காட்டியும் தோன்றும்.",
-      "privacy": "உங்கள் உதவியாளர் தரவு"
+      "privacy": "உங்கள் உதவியாளர் தரவு",
+      "accessTitle": "உதவியாளர் அணுகல்",
+      "grantSelf": "AI நிர்வாகத்தில் உங்களுக்கு அணுகல் வழங்குங்கள்",
+      "privacyHelp": "ஒவ்வொன்றும் அழிப்பதற்கு முன் கேட்கும். உங்கள் HR பதிவுகள் ஒருபோதும் மாற்றப்படாது.",
+      "dataTitle": "உங்கள் உதவியாளர் தரவு",
+      "dataHelp": "உங்களுக்கு இனி அணுகல் இல்லாவிட்டாலும், சேமித்த உரையாடல் உரை, கருத்து, மதிப்பீடுகள் மற்றும் பிற உதவியாளர் தரவை அழிக்கலாம்.",
+      "dataLink": "உங்கள் உதவியாளர் தரவை நிர்வகிக்கவும்"
     },
     "launcher": {
       "open": "உதவியாளரிடம் கேளுங்கள்",

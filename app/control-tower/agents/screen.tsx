@@ -26,13 +26,12 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
   const f = await getFormatter();
   const runFilter:AiRunFilter = {state:AI_RUN_STATE_FILTERS.find(v=>v===sp.runs),feature:isAiFeature(sp.feature)?sp.feature:undefined};
   const view = await aiManagementView(s, sp.q, runFilter);
-  // The sub-menu: one section per page. A section this session cannot use goes to the Overview.
+  // One section per page, chosen in the sidebar's AI management menu. A section this session cannot use
+  // goes to the Overview.
   // Only the orchestrator page reads the work queue.
   const sections = availableAiManagementSections({spend:!!view.spend});
   if(!sections.includes(section)) redirect(aiManagementHref('overview'));
   const queue = section==='orchestrator' ? await orchestrationQueue(s) : null;
-  // Literal keys so the i18n coverage check can see every tab label.
-  const tabLabel:Record<typeof section,string> = {overview:t('overviewTab'),provider:t('providerTab'),assistant:t('assistantTab'),features:t('inventory'),allowances:t('allowancesTab'),spending:t('spendTab'),orchestrator:t('orchestrator'),runs:t('recentRuns')};
   // Closed save outcomes only: a query string can never put its own words on this screen.
   const toast = sp.toast==='saved' ? t('saved') : sp.toast==='default' ? t('usesDefault') : sp.toast==='bulk' ? t('bulkDone') : undefined;
   const numbers = (value:unknown) => f.number(Number(value??0));
@@ -134,10 +133,6 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
       <p className="min-w-0 break-words">{view.provider?t('provider',{provider:view.provider.provider,model:view.provider.model}):t('noProvider')}</p>
       <div className="flex flex-wrap gap-3"><Link href={aiManagementHref('provider')} className={btnGhost}>{t('configureProvider')}</Link><Link href={aiManagementHref(section)} className={btnGhost}>{t('refresh')}</Link></div>
     </div>
-    <nav aria-label={t('sections')} className="flex gap-1 overflow-x-auto border-b border-border">
-      {sections.map(key=><Link key={key} href={aiManagementHref(key)} aria-current={key===section?'page':undefined}
-        className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors ${key===section?'border-primary font-medium text-primary':'border-transparent text-muted-foreground hover:text-foreground'}`}>{tabLabel[key]}</Link>)}
-    </nav>
     {section==='overview'&&<Card id="ai-map" className="scroll-mt-4 p-5">
       <SectionHeader title={t('mapTitle')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{t('mapIntro')}</p>
       <ul className="mt-3 divide-y divide-border">{map.map(row=><li key={row.key} className="flex flex-wrap items-start justify-between gap-3 py-3">

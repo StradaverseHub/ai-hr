@@ -397,8 +397,8 @@
     "aiControlTower": "ศูนย์ควบคุม AI",
     "controlTowerOverview": "ภาพรวม",
     "controlTowerHow": "หลักการทำงาน",
-    "controlTowerReadiness": "ความพร้อมของข้อมูล",
-    "controlTowerActions": "การดำเนินการของเอเจนต์",
+    "controlTowerReadiness": "ข้อมูลพนักงาน",
+    "controlTowerActions": "การอนุมัติ",
     "sectionHome": "หน้าแรก",
     "schedule": "ตารางงาน",
     "leaveCredit": "เครดิตวันลา",
@@ -475,6 +475,17 @@
     "letterReports": "รายงานจดหมาย",
     "letterSettings": "การตั้งค่าจดหมาย",
     "calibration": "Calibration",
+    "controlTowerExceptions": "ข้อยกเว้นเงินเดือน",
+    "aiManagement": "จัดการ AI",
+    "sectionAiManagement": "จัดการ AI",
+    "aiManagementOverview": "ภาพรวม",
+    "aiManagementProvider": "ผู้ให้บริการ",
+    "aiManagementAssistant": "ผู้ช่วย",
+    "aiManagementFeatures": "คุณสมบัติและเอเจนต์",
+    "aiManagementAllowances": "โควตา",
+    "aiManagementSpending": "ค่าใช้จ่าย",
+    "aiManagementOrchestrator": "ตัวประสานงาน HR กลาง",
+    "aiManagementRuns": "การเรียกโมเดลล่าสุด",
     "moduleELetter": "จดหมายอิเล็กทรอนิกส์"
   },
   "dashboard": {
@@ -18648,7 +18659,13 @@
       "myWork": "งานของฉัน",
       "calendar": "ปฏิทิน",
       "noEmployment": "งานของฉันและปฏิทินจะแสดงเมื่อบัญชีของคุณเชื่อมกับข้อมูลการจ้างงานแล้ว",
-      "privacy": "ข้อมูลผู้ช่วยของคุณ"
+      "privacy": "ข้อมูลผู้ช่วยของคุณ",
+      "accessTitle": "สิทธิ์ใช้ผู้ช่วย",
+      "grantSelf": "ให้สิทธิ์ตนเองในการจัดการ AI",
+      "privacyHelp": "ทุกรายการจะถามก่อนลบ ข้อมูล HR ของคุณจะไม่ถูกเปลี่ยนแปลง",
+      "dataTitle": "ข้อมูลผู้ช่วยของคุณ",
+      "dataHelp": "ล้างข้อความแชต ความคิดเห็น คะแนน และข้อมูลผู้ช่วยอื่นที่บันทึกไว้ได้ แม้ว่าคุณจะไม่มีสิทธิ์ใช้แล้ว",
+      "dataLink": "จัดการข้อมูลผู้ช่วยของคุณ"
     },
     "launcher": {
       "open": "ถามผู้ช่วย",

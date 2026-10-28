@@ -397,8 +397,8 @@
     "aiControlTower": "Trung tâm điều hành AI",
     "controlTowerOverview": "Tổng quan",
     "controlTowerHow": "Cách hoạt động",
-    "controlTowerReadiness": "Mức sẵn sàng hồ sơ",
-    "controlTowerActions": "Hành động của tác nhân",
+    "controlTowerReadiness": "Dữ liệu nhân viên",
+    "controlTowerActions": "Phê duyệt",
     "sectionHome": "Trang chính",
     "schedule": "Lịch làm việc",
     "leaveCredit": "Tín dụng nghỉ phép",
@@ -475,6 +475,17 @@
     "letterReports": "Báo cáo thư",
     "letterSettings": "Cài đặt thư",
     "calibration": "Calibration",
+    "controlTowerExceptions": "Ngoại lệ bảng lương",
+    "aiManagement": "Quản lý AI",
+    "sectionAiManagement": "Quản lý AI",
+    "aiManagementOverview": "Tổng quan",
+    "aiManagementProvider": "Nhà cung cấp",
+    "aiManagementAssistant": "Trợ lý",
+    "aiManagementFeatures": "Chức năng và tác tử",
+    "aiManagementAllowances": "Hạn mức",
+    "aiManagementSpending": "Chi tiêu",
+    "aiManagementOrchestrator": "Bộ điều phối HR trung tâm",
+    "aiManagementRuns": "Lượt gọi mô hình gần đây",
     "moduleELetter": "Thư điện tử"
   },
   "dashboard": {
@@ -18648,7 +18659,13 @@
       "myWork": "Việc của tôi",
       "calendar": "Lịch",
       "noEmployment": "Việc của tôi và Lịch sẽ hiện khi tài khoản của bạn được liên kết với hồ sơ việc làm.",
-      "privacy": "Dữ liệu Trợ lý của bạn"
+      "privacy": "Dữ liệu Trợ lý của bạn",
+      "accessTitle": "Quyền dùng Trợ lý",
+      "grantSelf": "Tự cấp quyền trong Quản lý AI",
+      "privacyHelp": "Mỗi mục đều hỏi trước khi xóa. Hồ sơ nhân sự của bạn không bao giờ bị thay đổi.",
+      "dataTitle": "Dữ liệu Trợ lý của bạn",
+      "dataHelp": "Xóa nội dung trò chuyện, phản hồi, đánh giá và dữ liệu Trợ lý khác đã lưu, kể cả khi bạn không còn quyền dùng.",
+      "dataLink": "Quản lý dữ liệu Trợ lý của bạn"
     },
     "launcher": {
       "open": "Hỏi Trợ lý",

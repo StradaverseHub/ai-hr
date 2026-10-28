@@ -397,8 +397,8 @@
     "aiControlTower": "AI 控制塔",
     "controlTowerOverview": "总览",
     "controlTowerHow": "运作方式",
-    "controlTowerReadiness": "档案完备性",
-    "controlTowerActions": "智能体操作",
+    "controlTowerReadiness": "员工资料",
+    "controlTowerActions": "审批",
     "sectionHome": "首页",
     "schedule": "排班",
     "leaveCredit": "假期额度",
@@ -475,6 +475,17 @@
     "letterReports": "信函报表",
     "letterSettings": "信函设置",
     "calibration": "Calibration",
+    "controlTowerExceptions": "薪资异常",
+    "aiManagement": "AI 管理",
+    "sectionAiManagement": "AI 管理",
+    "aiManagementOverview": "概览",
+    "aiManagementProvider": "服务提供方",
+    "aiManagementAssistant": "助手",
+    "aiManagementFeatures": "功能与代理",
+    "aiManagementAllowances": "额度",
+    "aiManagementSpending": "支出",
+    "aiManagementOrchestrator": "中央 HR 编排器",
+    "aiManagementRuns": "最近模型调用",
     "moduleELetter": "电子信函"
   },
   "dashboard": {
@@ -18648,7 +18659,13 @@
       "myWork": "我的工作",
       "calendar": "日历",
       "noEmployment": "您的登录账号关联到雇佣记录后，这里会显示“我的工作”和“日历”。",
-      "privacy": "您的助手数据"
+      "privacy": "您的助手数据",
+      "accessTitle": "助手权限",
+      "grantSelf": "在 AI 管理中为自己开通权限",
+      "privacyHelp": "每一项在删除前都会先确认。您的人事记录不会被更改。",
+      "dataTitle": "您的助手数据",
+      "dataHelp": "即使您已不再拥有权限，也可以清除已保存的聊天内容、反馈、评分和其他助手数据。",
+      "dataLink": "管理您的助手数据"
     },
     "launcher": {
       "open": "询问助手",

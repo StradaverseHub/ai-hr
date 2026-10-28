@@ -17,6 +17,7 @@ vi.mock('../core/onboarding',()=>({getOnboardingStatus:async()=>m.onboarded}));
 vi.mock('../packs/lifecycle/service',()=>({onboardingTasks:async()=>[],onboardingUnreadNoticeCount:async()=>0,onboardingNotices:async()=>[],onboardingNavigation:async()=>({module:false,master:false,requisitions:false,joiners:0,checklists:0})}));
 vi.mock('../components/onboarding-tour',()=>({OnboardingTour:()=>null}));
 vi.mock('../core/assistant-launcher',()=>({assistantLauncherFor:async()=>null}));
+vi.mock('../core/assistant-grant',()=>({mayUseAssistant:async()=>({allowed:false,reason:'no_grant'})}));
 // New capability owners are independent of SMTP installation enrollment and the legacy rail.
 // This shell test controls those boundaries; their actual permission algebra is covered by DB cases.
 vi.mock('../core/access-configuration-editor',()=>({canConfigureAccess:async()=>false}));
