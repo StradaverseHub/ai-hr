@@ -151,7 +151,7 @@ describe('Rewards configuration list (7a8102a7) and review cancellation (62e743e
       expect(overview.roles).toEqual(who===actors.bu?['bu']:who===actors.bg?['bg']:['ec']);
     }
     expect((await listRewardReviewStatus(actors.ec!,[b.companyId])).rows[0].laterSeats).toEqual(['ec']);
-    const [p]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional no-seat admin'}).returning();
+    const [p]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional no-seat admin',primaryEmail:'no-seat-list@rewards-config.test'}).returning();
     const userId=await createAppUser(b.tenantId,p.id,'hr_admin');
     const [overview]=(await listRewardReviewStatus({...admin,userId,personId:p.id},[b.companyId])).rows;
     expect(overview).toMatchObject({roles:[],waiting:false,salary:null,bonus:null,blocking:null,exceptions:null});
@@ -161,7 +161,7 @@ describe('Rewards configuration list (7a8102a7) and review cancellation (62e743e
     const [other]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional empty company'}).returning();
     const empty=await listRewardReviewStatus(admin,[other.id]);expect(empty.rows).toEqual([]);expect(empty.emptyReason).toBe('noCycle');
     const outside=await listRewardReviewStatus(actors.ec!,[other.id]);expect(outside.rows).toEqual([]);expect(outside.emptyReason).toBe('otherScope');expect(JSON.stringify(outside)).not.toContain('Fictional Annual');
-    const [p]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional unassigned reviewer'}).returning();
+    const [p]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional unassigned reviewer',primaryEmail:'unassigned-list@rewards-config.test'}).returning();
     const userId=await createAppUser(b.tenantId,p.id,'employee');
     const none=await listRewardReviewStatus({...admin,userId,personId:p.id,roles:['employee'],grants:undefined},[b.companyId]);
     expect(none.rows).toEqual([]);expect(none.emptyReason).toBe('noRole');expect(JSON.stringify(none)).not.toContain('Fictional Annual');
