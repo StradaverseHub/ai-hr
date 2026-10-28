@@ -2,6 +2,7 @@
 import {readCompetencySections} from '@/packs/performance/onehr/competency-section-model';
 import { readKpiSettingForm } from '@/packs/performance/onehr/setting-form-model';
 import { assessmentReturnPath } from '@/lib/performance-navigation';
+import { adminReturnPath } from '@/packs/performance/onehr/admin-sections';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -91,7 +92,8 @@ export async function finalBandsAction(f:FormData){
  revalidatePath(`/performance/assessment/calibration/${id}`);revalidatePath('/performance/workspace');revalidatePath('/me/performance');redirect(url);
 }
 export async function onehrCycleAction(f:FormData){
-  const s=await getSession(),id=z.uuid().parse(str(f,'cycleId'));const url=`/performance/${id}`;
+  // D-P1-32 PT-X4: a form on an admin page comes back to that page (adminReturnPath accepts only this cycle's own).
+  const s=await getSession(),id=z.uuid().parse(str(f,'cycleId'));const url=adminReturnPath(str(f,'returnTo'),id)??`/performance/${id}`;
   try{
     const view=await perf.getOnehrCycle(s,id);if(!view)throw Error('Cycle not found.');
     if(str(f,'action')==='policy'){
@@ -121,7 +123,7 @@ export async function onehrCycleAction(f:FormData){
       await perf.createOnehrCalibration(s,id,{name:str(f,'name'),companyId:str(f,'companyId')||null,tier:str(f,'tier'),reviewerUserIds:ids(f,'reviewerIds'),reviewIds:ids(f,'reviewIds'),pbtAchievement:nullableNumber(f,'pbt'),mode:str(f,'mode'),bgWeight:nullableNumber(f,'bgWeight')??50});
     }else throw Error('Unknown action.');
   }catch(e){redirect(withError(url,e));}
-  revalidatePath(url.split('?')[0]);revalidatePath('/performance/workspace');redirect(url);
+  revalidatePath(url.split('?')[0]);revalidatePath(`/performance/${id}`);revalidatePath('/performance/workspace');redirect(url);
 }
 export async function onehrReviewAction(f:FormData){
   const s=await getSession(),id=z.uuid().parse(str(f,'reviewId'));const url=destination(f,`/performance/review/${id}`);

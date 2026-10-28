@@ -8,10 +8,13 @@ import { getLocale,getTranslations } from 'next-intl/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/session';
 import { publicErrorMessage } from '@/lib/public-error';
+import { adminReturnPath } from '@/packs/performance/onehr/admin-sections';
 import { getAssessmentReminders,queueAssessmentReminders,saveAssessmentReminderRules,saveAssessmentReminderWords,previewAssessmentReminder } from '@/packs/performance/service';
 
 export async function assessmentReminderAction(form:FormData){
- const ctx=await getSession(),cycleId=z.uuid().parse(form.get('cycleId')),path=`/performance/${cycleId}`,t=await getTranslations('onehr.reminders');
+ const ctx=await getSession(),cycleId=z.uuid().parse(form.get('cycleId')),path=adminReturnPath(form.get('returnTo'),cycleId)??`/performance/${cycleId}`,t=await getTranslations('onehr.reminders');
+ // An admin page's address may already carry `?sub=`.
+ const join=path.includes('?')?'&':'?';
  let toast='';
  try{
   await getAssessmentReminders(ctx,cycleId);
@@ -25,8 +28,8 @@ export async function assessmentReminderAction(form:FormData){
    const result=await queueAssessmentReminders(ctx,cycleId,action,Number(form.get('limit')??0));
    toast=t('result',{queued:result.queued,skipped:result.skipped,dry:result.dry});
   }
- }catch(error){redirect(`${path}?error=${encodeURIComponent(publicErrorMessage(error))}`);}
- revalidatePath(path);redirect(`${path}?toast=${encodeURIComponent(toast)}`);
+ }catch(error){redirect(`${path}${join}error=${encodeURIComponent(publicErrorMessage(error))}`);}
+ revalidatePath(path.split('?')[0]);revalidatePath(`/performance/${cycleId}`);redirect(`${path}${join}toast=${encodeURIComponent(toast)}`);
 }
 
 export async function assessmentReminderPreviewAction(form:FormData){

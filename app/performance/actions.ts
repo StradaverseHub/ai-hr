@@ -3,6 +3,7 @@
 import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { assessmentReturnPath } from '@/lib/performance-navigation';
+import { adminReturnPath } from '@/packs/performance/onehr/admin-sections';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import {
@@ -141,13 +142,17 @@ async function cycleLifecycle(
 ) {
   const s = await getSession();
   const cycleId = String(formData.get('cycleId'));
+  // D-P1-32 PT-X4 — the OneHR admin area's Cycle › Calendar sends its own address; only this cycle's admin pages
+  // are accepted (adminReturnPath), so every other caller still lands on /performance/[cycleId].
+  const back = adminReturnPath(formData.get('returnTo'), cycleId) ?? `/performance/${cycleId}`;
   try {
     await fn(s, { cycleId });
   } catch (e) {
-    redirect(`/performance/${cycleId}?error=${encodeURIComponent(publicErrorMessage(e))}`);
+    redirect(`${back}${back.includes('?') ? '&' : '?'}error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(`/performance/${cycleId}`);
-  redirect(`/performance/${cycleId}`);
+  if (back !== `/performance/${cycleId}`) revalidatePath(back.split('?')[0]);
+  redirect(back);
 }
 
 export async function openCycleAction(fd: FormData) {
