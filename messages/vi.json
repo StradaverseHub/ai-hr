@@ -20393,7 +20393,7 @@
       "futureOnly": "Lưu sẽ tạo phiên bản mới cho các đợt xét duyệt tương lai. Danh sách nhân viên, ngân sách, quyền truy cập và phê duyệt hiện có vẫn thuộc từng đợt riêng.",
       "name": "Tên cấu hình",
       "year": "Năm thưởng",
-      "search": "Tìm công ty hoặc đơn vị kinh doanh",
+      "search": "Tìm nhóm, công ty hoặc đơn vị",
       "unavailable": "Không khả dụng",
       "global": "Đơn vị kinh doanh toàn cục",
       "archived": "Đã lưu trữ",
@@ -20424,12 +20424,23 @@
         "invalid": "Kiểm tra chính sách, tên duy nhất và các cặp công ty/đơn vị tương thích.",
         "changed": "Cấu hình đã thay đổi hoặc không còn khả dụng. Tải lại trước khi lưu.",
         "scope": "Bạn không thể quản lý mọi công ty trong nhóm hiện tại hoặc nhóm đã chọn.",
-        "system": "Không thể lưu cấu hình. Tải lại trước khi thử lại."
+        "system": "Không thể lưu cấu hình. Tải lại trước khi thử lại.",
+        "overlap": "Một số đơn vị đã được gán cho cấu hình khác. Hãy bỏ các đơn vị đó hoặc tải lại phân bổ."
       },
       "ownershipHelp": "Mỗi cặp công ty/đơn vị dùng một cấu hình chung trong mỗi năm thưởng.",
       "currencyHelp": "Cấu hình dùng chung sử dụng chính sách Reward Desk MYR hiện có; không cung cấp chính sách tiền tệ khác tại đây.",
       "archive": "Lưu trữ cấu hình",
-      "archiveHelp": "Lưu mà không chọn cặp nào sẽ ngừng áp dụng cấu hình này cho đợt xét duyệt tương lai. Vẫn giữ các phiên bản đã lưu và đợt xét duyệt hiện có."
+      "archiveHelp": "Lưu mà không chọn cặp nào sẽ ngừng áp dụng cấu hình này cho đợt xét duyệt tương lai. Vẫn giữ các phiên bản đã lưu và đợt xét duyệt hiện có.",
+      "otherCompanies": "Công ty khác",
+      "selectAll": "Chọn tất cả",
+      "selectedCount": "Đã chọn: {companies} công ty, {units} đơn vị",
+      "assignedTo": "Thuộc {name}",
+      "noUnits": "Chưa thiết lập đơn vị kinh doanh.",
+      "manageUnits": "Thiết lập trong Quản lý nhân sự",
+      "loadingTaken": "Đang kiểm tra phân bổ cho năm thưởng này…",
+      "loadFailed": "Không thể kiểm tra phân bổ. Hãy thử lại trước khi tiếp tục.",
+      "retry": "Thử lại",
+      "conflict": "{unit} đã thuộc {name} cho năm {year}."
     },
     "returnedTo": {
       "bu": "Returned to BU CEO",

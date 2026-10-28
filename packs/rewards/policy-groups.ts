@@ -1,4 +1,5 @@
 /** Canonical reusable configuration owner. No employee roster or confidential review is read here. */
+import {z} from 'zod';
 import {sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../../db/client';
 import {withRewardsTenant} from '../../core/module-gate';
@@ -6,7 +7,7 @@ import {pgSqlState} from '../../lib/db-error';
 import {policySchema,type RewardPolicy} from './model';
 import {normalizedRewardTargets,parseRewardPolicyGroupVersion,rewardPgUuid,rewardPolicyGroupEditSchema,type RewardPolicyGroupVersion} from './policy-group-model';
 export class RewardPolicyGroupError extends Error{
- constructor(readonly code:'invalid'|'changed'|'scope'|'system'){super(`Reward shared configuration: ${code}`);this.name='RewardPolicyGroupError';}
+ constructor(readonly code:'invalid'|'changed'|'scope'|'system'|'overlap',readonly conflicts:RewardPolicyTaken[]=[]){super(`Reward shared configuration: ${code}`);this.name='RewardPolicyGroupError';}
 }
 function refusal(error:unknown):never{
  const state=pgSqlState(error);
@@ -15,10 +16,30 @@ function refusal(error:unknown):never{
  if(['23503','23505','23514','22P02'].includes(state??''))throw new RewardPolicyGroupError('invalid');
  throw error;
 }
+/** Existing company-scoped authority also admits partial administrators of a shared group.
+ * Only current heads are returned; archived configurations have no targets. No policy content is read. */
+export type RewardPolicyTaken={companyId:string;businessUnitId:string;groupId:string;name:string};
+async function rewardPolicyTakenTx(tx:Tx,companyIds:readonly string[],year:number):Promise<RewardPolicyTaken[]>{
+ const result:RewardPolicyTaken[]=[];
+ for(const companyId of [...new Set(companyIds)]){
+  const rows=await tx.execute<{group_id:string;business_unit_id:string;name:string;year:number}>(sql`select * from app.reward_policy_choices(${companyId}::uuid)`);
+  for(const row of rows)if(row.year===year)result.push({companyId,businessUnitId:rewardPgUuid.parse(row.business_unit_id),groupId:rewardPgUuid.parse(row.group_id),name:row.name});
+ }
+ return result;
+}
+export function rewardPolicyTaken(ctx:SessionContext,companyIds:readonly string[],year:number){
+ const ids=z.array(rewardPgUuid).max(500).parse(companyIds);z.number().int().min(2000).max(2200).parse(year);
+ return withRewardsTenant(ctx,tx=>rewardPolicyTakenTx(tx,ids,year));
+}
 export function saveRewardPolicyGroup(ctx:SessionContext,raw:unknown):Promise<RewardPolicyGroupVersion>{
  const p=rewardPolicyGroupEditSchema.parse(raw),targets=normalizedRewardTargets(p.targets);
  return withRewardsTenant(ctx,async tx=>{
   try{
+   // Share the commit's lock so a racing save yields named conflicts, without weakening SQL's guard.
+   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended('access-configuration:'||app.current_tenant_id()::text,0))`);
+   const taken=await rewardPolicyTakenTx(tx,targets.map(row=>row.companyId),p.policy.year);
+   const conflicts=taken.filter(row=>row.groupId!==p.groupId&&targets.some(target=>target.companyId===row.companyId&&target.businessUnitId===row.businessUnitId));
+   if(conflicts.length)throw new RewardPolicyGroupError('overlap',conflicts);
    const [row]=await tx.execute<{version:unknown}>(sql`select app.reward_policy_group_commit(${p.groupId}::uuid,${p.expectedRevision},${p.name},${JSON.stringify(p.policy)}::jsonb,${JSON.stringify(targets)}::jsonb) as version`);
    return parseRewardPolicyGroupVersion(row?.version);
   }catch(error){return refusal(error);}
