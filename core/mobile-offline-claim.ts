@@ -42,6 +42,8 @@ export class OfflineClaimError extends Error{
 const unavailable=()=>new OfflineClaimError('configuration_unavailable');
 const hash=(bytes:string|Buffer)=>createHash('sha256').update(bytes).digest('hex');
 const claimAAD=(r:Pick<ClaimRow,'tenantId'|'actorId'|'id'|'contextId'|'requestId'>)=>JSON.stringify(['mobile-offline-claim',1,r.tenantId,r.actorId,r.id,r.contextId,r.requestId]);
+/** The claim ciphertext's AAD, for the HR review reader (packs/attendance/mobile-offline-claim-review.ts). */
+export {claimAAD as offlineClaimAAD};
 export function offlineClaimPhotoAAD(row:{tenantId:string;actorId:string;claimId:string;employmentId:string;photoDigest:string;byteLength:number;mimeType:string}){
  return JSON.stringify(['mobile-offline-photo',1,row.tenantId,row.actorId,row.claimId,row.employmentId,row.photoDigest,row.byteLength,row.mimeType]);
 }

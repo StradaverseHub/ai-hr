@@ -664,6 +664,13 @@ export const mobileOfflinePhoto=pgTable('mobile_offline_photo',{
  photoDigest:text('photo_digest').notNull(),retainedUntil:timestamp('retained_until',{withTimezone:true}).notNull(),byteLength:integer('byte_length').notNull(),mimeType:text('mime_type').notNull().$type<'image/jpeg'|'image/png'>(),
  photoCiphertext:text('photo_ciphertext').notNull(),createdAt:timestamp('created_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),
 },t=>[index('mobile_offline_photo_expiry_idx').on(t.tenantId,t.retainedUntil)]);
+// Reserved 0647 draft: one immutable human resolution per held claim; an accept links its canonical capture.
+export const mobileOfflineClaimResolution=pgTable('mobile_offline_claim_resolution',{
+ claimId:uuid('claim_id').primaryKey().references(()=>mobileOfflineClaim.id),tenantId:tenantId(),actorId:uuid('actor_id').notNull(),employmentId:uuid('employment_id').notNull(),
+ decision:text('decision').notNull().$type<'accepted'|'rejected'>(),effectiveAt:timestamp('effective_at',{withTimezone:true}),captureId:uuid('capture_id').references(():AnyPgColumn=>attendanceClockCapture.id),
+ dayRevision:text('day_revision'),reason:text('reason').notNull(),inputDigest:text('input_digest').notNull(),
+ resolvedBy:uuid('resolved_by').notNull().references(()=>appUser.id),resolvedAt:timestamp('resolved_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),
+},t=>[uniqueIndex('mobile_offline_claim_resolution_capture_uq').on(t.captureId),index('mobile_offline_claim_resolution_subject_idx').on(t.tenantId,t.employmentId,t.resolvedAt)]);
 
 // Deployment identities are private to SECURITY DEFINER functions; they do not duplicate HR membership.
 export const appExternalIdentity = pgTable('app_external_identity', {

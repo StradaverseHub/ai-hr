@@ -13,9 +13,13 @@ export async function installOfflineDraftForWorker(){
  return async()=>{
   await owner.db.transaction(async tx=>{
    await tx.execute(sql`DROP TRIGGER mobile_offline_key_counter ON mobile_integrity_key`);
-   await tx.execute(sql`DROP TABLE mobile_offline_photo,mobile_offline_claim,mobile_offline_permit,mobile_offline_context CASCADE`);
+   // The resolution capture policy on the existing capture table names the draft's tables and effective_at: dropped
+   // explicitly (and checked below) rather than left to CASCADE. 0500's own insert policy is untouched.
+   await tx.execute(sql`DROP POLICY attendance_clock_capture_offline_resolution_insert ON attendance_clock_capture`);
+   await tx.execute(sql`DROP TABLE mobile_offline_claim_resolution,mobile_offline_photo,mobile_offline_claim,mobile_offline_permit,mobile_offline_context CASCADE`);
    for(const signature of ['mobile_offline_immutable()','mobile_offline_context_progress()','mobile_offline_inventory_complete()',
-    'mobile_offline_claim_ordered()','mobile_offline_key_counter()','mobile_offline_key_leased(uuid,uuid)','mobile_offline_claim_committed()','mobile_offline_permit_inventory()','mobile_offline_photo_expired()','mobile_offline_photo_committed()'])
+    'mobile_offline_claim_ordered()','mobile_offline_key_counter()','mobile_offline_key_leased(uuid,uuid)','mobile_offline_claim_committed()','mobile_offline_permit_inventory()','mobile_offline_photo_expired()','mobile_offline_photo_committed()',
+    'mobile_offline_claim_window(uuid)','mobile_offline_claim_resolution_bound()'])
     await tx.execute(sql.raw('DROP FUNCTION IF EXISTS app.'+signature));
    // Drops its CHECK with it. clock_method keeps 'mobile_offline': PostgreSQL cannot drop an enum value, and
    // 0647's ADD VALUE IF NOT EXISTS re-applies idempotently. The restored guard refuses it on any capture-linked punch.
@@ -26,8 +30,10 @@ export async function installOfflineDraftForWorker(){
   });
   const [after]=await owner.db.execute(sql`select to_regclass('public.mobile_offline_context') IS NOT NULL installed, to_regprocedure('app.mobile_offline_key_leased(uuid,uuid)') IS NOT NULL ready,
    EXISTS(select 1 from pg_attribute where attrelid='attendance_clock_capture'::regclass and attname='effective_at' and NOT attisdropped) effective,
-   EXISTS(select 1 from pg_attribute where attrelid='attendance_policy'::regclass and attname in ('offline_clocking_enabled','offline_max_proven_window_seconds') and NOT attisdropped) settings`);
+   EXISTS(select 1 from pg_attribute where attrelid='attendance_policy'::regclass and attname in ('offline_clocking_enabled','offline_max_proven_window_seconds') and NOT attisdropped) settings,
+   to_regclass('public.mobile_offline_claim_resolution') IS NOT NULL resolution,to_regprocedure('app.mobile_offline_claim_window(uuid)') IS NOT NULL claim_window,
+   EXISTS(select 1 from pg_policy where polrelid='attendance_clock_capture'::regclass and polname='attendance_clock_capture_offline_resolution_insert') capture_policy`);
   const [restored]=await guard();
-  if(after.installed||after.ready||after.effective||after.settings||restored?.source!==original.source||JSON.stringify(restored?.config)!==JSON.stringify(original.config))throw new Error('Offline worker schema restoration failed');
+  if(after.installed||after.ready||after.effective||after.settings||after.resolution||after.claim_window||after.capture_policy||restored?.source!==original.source||JSON.stringify(restored?.config)!==JSON.stringify(original.config))throw new Error('Offline worker schema restoration failed');
  };
 }

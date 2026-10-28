@@ -2162,3 +2162,20 @@ the draft worker restore now drops both settings columns. New 0647 SHA-256
 (`9063b27c0cc316b715d552561d636ffc6412e447ca9275758bf497870c995df7`) and the migration journal is unchanged.
 The adjudicator is unmounted: no route, no production snapshot port, no settings writer and no enabled
 company. Vendor proofs remain synthetic and no device ran.
+
+### HR review and resolution of held offline claims (28 October 2026)
+
+UNVERIFIED pending a hosted run: no vitest, TypeScript, build or database command was run for this change
+(only `git diff --check`). It implements owner decision 6 and a human resolution path in
+`packs/attendance/mobile-offline-claim-review.ts`, which is unmounted and not exported through the facade.
+Reserved 0647 gains HR SELECT policies on `mobile_offline_claim` (correction rights) and
+`mobile_offline_photo` (correction rights, unexpired, not a group admin), `UNIQUE(id,tenant_id,actor_id,employment_id)`
+on the claim, the immutable `mobile_offline_claim_resolution` table with GRANT SELECT and INSERT, forced RLS
+and a binding trigger, the definer `app.mobile_offline_claim_window`, and a permissive capture insert policy
+for the resolver's canonical capture. `captureOfflineClockTx`/`planOfflineClockTx` take an optional
+`resolution` subject (correction authority instead of own employment; the claim actor's abandonments).
+`offlineClaimAAD` is exported from `core/mobile-offline-claim.ts`. New suite:
+`test/mobile-offline-claim-review.test.ts`; the draft worker restore drops the new objects and checks each.
+New 0647 SHA-256 `30000abe0403786e704a575e02ddb990b421a46a472cb4e036e802effc4a86f1`; held 0636 is unchanged
+(`9063b27c0cc316b715d552561d636ffc6412e447ca9275758bf497870c995df7`) and the migration journal is unchanged.
+No route, screen or enabled company; vendor proofs remain synthetic and no device ran.
