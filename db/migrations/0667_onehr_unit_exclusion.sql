@@ -277,12 +277,13 @@ CREATE FUNCTION app.assessment_unit_out(wanted_cycle uuid, wanted_employment uui
  SELECT (app.assessment_dispatcher_scope() OR app.onehr_cycle_admin(wanted_cycle)) AND app.assessment_unit_excluded(wanted_cycle,wanted_employment)
 $$;
 --> statement-breakpoint
--- Public, narrow: is the review's stored reviewer out by the unit rule? For anyone who can open the review
--- (the completing lock stores the band only then, O1).
+-- Public, narrow: is the review's stored reviewer out by the unit rule? For anyone who can open the review (the
+-- completing lock stores the band only then, O1) and for the stored reviewer's own login (its task projection).
 CREATE FUNCTION app.onehr_reviewer_unit_out(wanted_review uuid) RETURNS boolean
  LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM performance_review r WHERE r.id=wanted_review AND r.tenant_id=app.current_tenant_id() AND r.reviewer_employment_id IS NOT NULL
-  AND app.onehr_review_header(r.id) IS NOT NULL AND app.assessment_unit_excluded(r.cycle_id,r.reviewer_employment_id))
+  AND (app.onehr_review_header(r.id) IS NOT NULL OR app.onehr_own_employment(r.reviewer_employment_id))
+  AND app.assessment_unit_excluded(r.cycle_id,r.reviewer_employment_id))
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.assessment_unit_placement(uuid),app.assessment_unit_scope_matches(uuid,uuid,uuid),app.assessment_unit_excluded_as(uuid,uuid,uuid,uuid),
@@ -642,7 +643,7 @@ CREATE OR REPLACE FUNCTION app.assessment_pending_work(wanted_cycle uuid) RETURN
  ), reviews AS MATERIALIZED (
   SELECT r.*,p.reviewer_employment_id,p.closed_at,e.person_id,person.full_name,
    (SELECT coalesce(jsonb_agg(mc ORDER BY mc->>'id'),'[]'::jsonb) FROM jsonb_array_elements(app.onehr_moderator_choices(r.review_id)) mc WHERE NOT app.assessment_unit_excluded(r.cycle_id,(mc->>'id')::uuid)) AS moderators,
-   app.onehr_effective_reviewer_of(r.review_id) AS effective_reviewer_employment_id,
+   CASE WHEN app.assessment_unit_excluded(r.cycle_id,p.reviewer_employment_id) THEN app.onehr_effective_reviewer_of(r.review_id) ELSE p.reviewer_employment_id END AS effective_reviewer_employment_id,
    EXISTS(SELECT 1 FROM performance_onehr_result f WHERE f.review_id=r.review_id AND f.tenant_id=r.tenant_id) AS frozen
   FROM cycle c JOIN performance_onehr_review r ON r.cycle_id=c.id AND r.tenant_id=c.tenant_id
   JOIN performance_review p ON p.id=r.review_id AND p.tenant_id=r.tenant_id
