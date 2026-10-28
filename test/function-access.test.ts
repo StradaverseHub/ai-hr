@@ -144,6 +144,17 @@ describe('function-access registry (lib/permissions)', () => {
     ).toEqual([...REDIRECT_ONLY_ROUTES].sort());
   });
 
+  // WP-B2 — the Leaders admin screen joins the performance column: it admits exactly the cycle administration
+  // set (requireOnehrAdminAccess, as /performance/[cycleId] does), and has no sidebar row of its own.
+  it('registers /performance/leaders under the performance column, guarded like the cycle pages', () => {
+    const performance = SCREENS.find((x) => x.screenKey === 'performance');
+    expect(performance?.routes).toContain('/performance/leaders');
+    expect(performance?.routes).toContain('/performance/[cycleId]');
+    const page = codeWithoutComments(fs.readFileSync(path.join(APP, 'performance/leaders/page.tsx'), 'utf8'));
+    expect(page).toMatch(/await requireOnehrAdminAccess\(\)/);
+    expect(SCREENS.filter((x) => x.href === '/performance/leaders')).toEqual([]);
+  });
+
   it('screenKeys are unique (no duplicate columns)', () => {
     const keys = SCREENS.map((s) => s.screenKey);
     expect(new Set(keys).size).toBe(keys.length);
