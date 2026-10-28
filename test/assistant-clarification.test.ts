@@ -45,8 +45,8 @@ describe('actual caller-bound Assistant clarification continuation',()=>{
   const [identity]=await withTenant(ctx,tx=>tx.execute<{role:string;user_id:string}>(sql`select current_user as role,app.current_user_id() as user_id`));
   expect(identity).toEqual({role:'ai_hr_app',user_id:ctx.userId});
   const answer=await ownAssistantClarification(ctx,stored.binding.exchangeId,'  My own current record  ');
-  expect(answer).toEqual({originalQuestion:stored.binding.question,slot,answer:'My own current record'});expect(Object.isFrozen(answer)).toBe(true);
-  expect(Object.keys(answer).sort()).toEqual(['answer','originalQuestion','slot']);
+  expect(answer).toEqual({originalQuestion:stored.binding.question,slot,answer:'My own current record',earlier:[]});expect(Object.isFrozen(answer)).toBe(true);
+  expect(Object.keys(answer).sort()).toEqual(['answer','earlier','originalQuestion','slot']);
   expect(JSON.stringify(answer)).not.toContain(terminal);expect(JSON.stringify(answer)).not.toContain(sourcePrivate);expect(JSON.stringify(answer)).not.toContain(stored.receipt);
   expect(await state()).toEqual(before);
  });
@@ -85,14 +85,14 @@ describe('actual caller-bound Assistant clarification continuation',()=>{
  it('accepts a full original 2000-character human question and 500-character clarification without serialization overhead or truncation',async()=>{
   const {ctx}=await actor(),question='q'.repeat(2000),answer='x'.repeat(500),stored=await exchange(ctx,undefined,question),before=await state();
   const result=await ownAssistantClarification(ctx,stored.binding.exchangeId,answer);
-  expect(result).toEqual({originalQuestion:question,slot:'period',answer});expect(Object.isFrozen(result)).toBe(true);
+  expect(result).toEqual({originalQuestion:question,slot:'period',answer,earlier:[]});expect(Object.isFrozen(result)).toBe(true);
   expect(await state()).toEqual(before);
  });
  it('enforces exact 8000-character human history and 500-character response bounds without truncation',async()=>{
   const {ctx}=await actor(),answer='x'.repeat(ASSISTANT_CONVERSATION_LIMITS.humanAnswer),length=ASSISTANT_CONVERSATION_LIMITS.history-2-answer.length;
   const stored=await exchange(ctx,undefined,'q'.repeat(length)),tooLong=await exchange(ctx,undefined,'q'.repeat(length+1));
   const before=await state(),exact=await ownAssistantClarification(ctx,stored.binding.exchangeId,answer);
-  expect(exact).toEqual({originalQuestion:stored.binding.question,slot:'period',answer});
+  expect(exact).toEqual({originalQuestion:stored.binding.question,slot:'period',answer,earlier:[]});
   expect((exact.originalQuestion+'\n\n'+exact.answer).length).toBe(8000);
   expect(canClarifyAssistantQuestion(stored.binding.question)).toBe(true);expect(canClarifyAssistantQuestion(tooLong.binding.question)).toBe(false);
   expect(canClarifyAssistantQuestion('q'.repeat(2000))).toBe(true);expect(canClarifyAssistantQuestion('q'.repeat(8000))).toBe(false);
@@ -118,7 +118,7 @@ describe('actual caller-bound Assistant clarification continuation',()=>{
    expect(waiting,'actual authority wait must be observed before caller mutation').toBe(true);
    supplied.userId=randomUUID();supplied.personId=randomUUID();supplied.roles!.splice(0,1,'super_admin');supplied.grants![0].role='super_admin';scalar='Retargeted';
   }finally{release();clearTimeout(watchdog);await holder;if(pending)result=await pending;}
-  expect(result).toEqual({originalQuestion:stored.binding.question,slot:'period',answer:'My original human answer'});expect(Object.isFrozen(result)).toBe(true);expect(await state()).toEqual(before);
+  expect(result).toEqual({originalQuestion:stored.binding.question,slot:'period',answer:'My original human answer',earlier:[]});expect(Object.isFrozen(result)).toBe(true);expect(await state()).toEqual(before);
  });
  it('bounds the real held Access wait, rolls back before a generic refusal, and continues after release',async()=>{
   const {ctx,admin}=await actor(),stored=await exchange(ctx),before=await state();
@@ -142,7 +142,7 @@ describe('actual caller-bound Assistant clarification continuation',()=>{
    if(pending)await pending.catch(()=>undefined);
   }
   const result=await ownAssistantClarification(ctx,stored.binding.exchangeId,'Original current period');
-  expect(result).toEqual({originalQuestion:stored.binding.question,slot:'period',answer:'Original current period'});
+  expect(result).toEqual({originalQuestion:stored.binding.question,slot:'period',answer:'Original current period',earlier:[]});
   expect(Object.isFrozen(result)).toBe(true);expect(await state()).toEqual(before);
  });
 

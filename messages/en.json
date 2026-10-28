@@ -23917,7 +23917,8 @@
       "wageIneligible": "Review the recorded wage basis required for this calculation.",
       "unsupportedRun": "Choose a regular Payroll run for this overtime payment.",
       "coverage": "Choose a run that covers this employee and overtime date.",
-      "unknownHours": "The hours cap needs evidenced hours for every overtime input. Review the manual or one-off overtime."
+      "unknownHours": "The hours cap needs evidenced hours for every overtime input. Review the manual or one-off overtime.",
+      "busy": "Leave balances that depend on overtime are being updated right now. Nothing was saved; try again in a moment."
     },
     "traceKinds": {
       "field": "Recorded input",

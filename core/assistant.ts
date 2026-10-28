@@ -34,7 +34,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { assistantSourceDigest, sealAssistantDisclosure, type AssistantSourceRead } from '../lib/ai/assistant-disclosure';
-import { ownAssistantClarification, assertOwnAssistantClarificationCurrentTx } from './assistant-clarification';
+import { ownAssistantClarification, assertOwnAssistantClarificationCurrentTx, assistantClarificationSourceExchangeId } from './assistant-clarification';
 import {buildAssistantConversationSystem} from '../lib/ai/assistant-conversation-system';
 import {prepareAssistantConversationStrategyTx,completeAssistantConversationStrategyTx,retireAssistantConversationStrategyCapability,type AssistantConversationStrategyCapability} from './module-agent-releases';
 import { parseAssistantAnswerPlan, adjudicateAssistantAnswerPlan, type AssistantAnswerPlan, type AssistantAnswerRead } from '../lib/ai/assistant-answer-plan';
@@ -204,6 +204,8 @@ export async function askAssistant(
   const humanQuestion = p.question.trim();
   if (!humanQuestion || humanQuestion.length > MAX_QUESTION_CHARS) throw new AssistantError('invalid_question');
   const clarification = p.clarificationExchangeId===undefined?null:await ownAssistantClarification(ctx,p.clarificationExchangeId,humanQuestion);
+  // 0658: the new row records which own exchange it answered, so a later reply can carry this one too.
+  const continuesExchangeId = assistantClarificationSourceExchangeId(clarification);
   // Stored history is human-readable. Each new clarification is loaded by the actual own-row owner,
   // and only human text enters context; no prior model answer or historical HR result is replayed.
   // RETENTION (owner rule: raw chat content lives 30 days from ITS OWN question). A continuation stores
@@ -260,9 +262,13 @@ export async function askAssistant(
   // a tool outside the tenant's modules cannot be reached by the model simply naming it.
   const offered = toolsFor(ctx);
   const tools = offered.map((t) => t.spec);
-  const turns: AiTurn[] = clarification ? [{role:'user',content:clarification.originalQuestion},
-    {role:'user',content:JSON.stringify({humanClarification:{slot:clarification.slot,answer:clarification.answer}})}]
-    : [{ role: 'user', content: question }];
+  // Human turns only: the first question of the carried conversation, then each human reply with the
+  // slot it answered, ending with this reply. No prior model answer is replayed.
+  const turns: AiTurn[] = clarification ? (()=>{
+    const steps=[...clarification.earlier,{question:clarification.originalQuestion,slot:clarification.slot}];
+    return [{role:'user',content:steps[0]!.question} as AiTurn,
+      ...steps.map((step,i)=>({role:'user',content:JSON.stringify({humanClarification:{slot:step.slot,answer:i+1<steps.length?steps[i+1]!.question:clarification.answer}})}) as AiTurn)];
+  })() : [{ role: 'user', content: question }];
   const audit: { name: string; input: unknown; rowCount: number | null; refusal?: string }[] = [];
 
   const sourceReads: AssistantSourceRead[] = [];
@@ -353,23 +359,24 @@ export async function askAssistant(
     }
   } catch (e) {
     if (e instanceof AiAllowanceError) {
-      await persist(ctx, { strategy:conversationStrategy.capability, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: 'ai_control' });
+      await persist(ctx, { strategy:conversationStrategy.capability, continuesExchangeId, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: 'ai_control' });
       throw new AssistantError('ai_control');
     }
     if (e instanceof AssistantError) {
       // A budget refusal mid-loop still records what was spent getting there.
       failure = e.code;
-      await persist(ctx, { strategy:conversationStrategy.capability, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: e.code });
+      await persist(ctx, { strategy:conversationStrategy.capability, continuesExchangeId, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: e.code });
       throw e;
     }
     failure = 'provider_error';
-    await persist(ctx, { strategy:conversationStrategy.capability, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: failure });
+    await persist(ctx, { strategy:conversationStrategy.capability, continuesExchangeId, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: failure });
     throw new AssistantError('provider_error');
   }
 
   // From here the question is ADMITTED: it counts against the allowance exactly once whatever happens.
   const recorded = await persist(ctx, {
     strategy:conversationStrategy.capability,
+    continuesExchangeId,
     appUserId,
     question,
     answer,
@@ -440,6 +447,8 @@ type PersistInput = {
   error: string | null;
   sourceReads?: readonly AssistantSourceRead[];
   answerPlan?: AssistantAnswerPlan;
+  /** The own exchange this one answered (0658); the guard refuses anything else. */
+  continuesExchangeId?: string | null;
 };
 
 /** `retained` is false when the exchange's raw content could not be kept; its accounting still was. */
@@ -503,6 +512,7 @@ async function persistWithContent(ctx: SessionContext, id: string, p: PersistInp
         outputTokens: p.spend.outputTokens,
         cachedInputTokens: p.spend.cachedInputTokens,
         error: p.error,
+        continuesExchangeId: p.continuesExchangeId ?? null,
       })
       .returning({ id: assistantExchange.id });
     await completeAssistantConversationStrategyTx(tx,ctx,p.strategy,row!.id);

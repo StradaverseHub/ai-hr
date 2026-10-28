@@ -16,7 +16,7 @@ import {Sidebar} from '../components/sidebar';
 
 const nav=messages.nav;
 const rail=(enabledModules:string[]|null)=>render(<NextIntlClientProvider locale="en" messages={messages}>
- <Sidebar isAdmin canApprove canAccessTeam enabledModules={enabledModules} defaultCollapsed={false}/>
+ <Sidebar isAdmin canAdministerAi canConfigureAiProvider canApprove canAccessTeam enabledModules={enabledModules} defaultCollapsed={false}/>
 </NextIntlClientProvider>);
 const openTower=()=>{fireEvent.click(screen.getByRole('button',{name:nav.aiControlTower}));return screen.getByRole('navigation',{name:nav.aiControlTower});};
 const hrefs=(panel:HTMLElement)=>within(panel).getAllByRole('link').map(link=>link.getAttribute('href'));

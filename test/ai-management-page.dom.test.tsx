@@ -7,13 +7,13 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import { createFormatter, createTranslator, NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 
-const data=vi.hoisted(()=>({view:undefined as unknown}));
+const data=vi.hoisted(()=>({view:undefined as unknown,groupAdmin:true}));
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
 vi.mock('next-intl/server',()=>({
   getTranslations:async(namespace:any)=>createTranslator({locale:'en',messages:en,namespace}),
   getFormatter:async()=>createFormatter({locale:'en',timeZone:'Asia/Kuala_Lumpur'}),
 }));
-vi.mock('../lib/authz',()=>({requireAdmin:async()=>({tenantId:'fixture-tenant',userId:'fixture-user',roles:['group_admin'],grants:[]}),isGroupAdmin:()=>true,isAdmin:()=>true}));
+vi.mock('../lib/authz',()=>({requireAdmin:async()=>({tenantId:'fixture-tenant',userId:'fixture-user',roles:['group_admin'],grants:[]}),isGroupAdmin:()=>data.groupAdmin,isAdmin:()=>true}));
 vi.mock('../core/entitlements',()=>({isModuleEnabledOrFalse:(_ctx:unknown,code:string)=>['employees','leave','payroll'].includes(code)}));
 vi.mock('../core/ai-management',()=>({AI_RUN_STATE_FILTERS:['blocked','failed'],aiManagementView:async()=>data.view,bulkAssistantDepartments:async()=>[{id:'44444444-4444-4444-8444-444444444444',label:'Fictional Finance · Fictional Zero Cap Sdn Bhd'}],previewBulkAssistantAccess:async()=>({matched:3,changing:2})}));
 vi.mock('../core/hr-orchestrator',()=>({orchestrationQueue:async()=>({})}));
@@ -24,6 +24,9 @@ import { AiManagementScreen } from '../app/control-tower/agents/screen';
 import type { AiManagementSection } from '../app/control-tower/agents/sections';
 const navigation=vi.hoisted(()=>({redirect:vi.fn((location:string)=>{throw Object.assign(Error('fixture redirect'),{location});})}));
 vi.mock('next/navigation',()=>({redirect:navigation.redirect}));
+const providerScreen=vi.hoisted(()=>vi.fn(async()=>null));
+vi.mock('../app/admin/ai/provider-screen',()=>({AiProviderScreen:providerScreen}));
+import AiManagementProviderPage from '../app/control-tower/agents/provider/page';
 import { usdDisplay } from '../app/control-tower/agents/usd-display';
 
 const ZERO='11111111-1111-4111-8111-111111111111',CAPPED='33333333-3333-4333-8333-333333333333';
@@ -97,6 +100,23 @@ describe('AI management sub-menu',()=>{
     expect(scoped.container.querySelector('#company-limits')).not.toBeNull();expect(scoped.container.querySelector('#user-limits')).toBeNull();scoped.unmount();
     data.view={...view({heldNanos:'0',confirmedNanos:null}),spend:null};
     await expect(AiManagementScreen({session:session as never,section:'spending',searchParams:Promise.resolve({})})).rejects.toMatchObject({location:'/control-tower/agents'});
+  });
+  it('withholds tenant-wide provider setup from a company administrator instead of linking to a refusal',async()=>{
+    data.groupAdmin=false;
+    try{
+      data.view={...view({heldNanos:'0',confirmedNanos:null}),spend:null,mayWriteUsers:false};
+      const page=await AiManagementScreen({session:session as never,section:'overview',searchParams:Promise.resolve({})});
+      render(<NextIntlClientProvider locale="en" messages={en}>{page}</NextIntlClientProvider>);
+      expect(screen.queryByRole('link',{name:en.aiManagement.configureProvider})).toBeNull();
+      expect(document.querySelector('a[href^="/control-tower/agents/provider"]')).toBeNull();
+      // The map still states which provider the company's calls would use.
+      expect(document.querySelector('#ai-map')!.textContent).toContain(en.aiManagement.mapProvider);
+      cleanup();
+      await expect(AiManagementScreen({session:session as never,section:'provider',searchParams:Promise.resolve({})})).rejects.toMatchObject({location:'/control-tower/agents'});
+      // The page itself leaves before the configuration read, which would refuse this administrator.
+      await expect(AiManagementProviderPage({searchParams:Promise.resolve({})})).rejects.toMatchObject({location:'/control-tower/agents'});
+      expect(providerScreen).not.toHaveBeenCalled();
+    }finally{data.groupAdmin=true;cleanup();}
   });
   it('shows the AI map: every piece, whether it can run, and a Manage link to where it is changed',async()=>{
     data.view={...view({heldNanos:'0',confirmedNanos:null}),provider:null,features:[
