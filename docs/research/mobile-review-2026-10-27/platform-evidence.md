@@ -2263,3 +2263,17 @@ TypeScript and the Linux Node 20 build. The open-context count candidate `c85483
 [40651915330](https://github.com/StradaverseHub/ai-hr/actions/runs/40651915330): 24 files, 371 cases, every suite that
 installs the draft, plus TypeScript and the build. A dev-server render check of both screens (CLAUDE.md section 8) has
 NOT been run; nor has a browser walkthrough of multi-level accept. 0636 and the journal are unchanged.
+
+### Native offline sync client and clock states (28 October 2026)
+
+Engine candidate `9e6fa57e9` ([40665641583](https://github.com/StradaverseHub/ai-hr/actions/runs/40665641583)) passed
+756 cases in 43 mobile and offline files (including offline sync 88, context journal 49, native client 38, submission
+native 38, sync-hash 6), root TypeScript and both production Metro/Hermes bundles; native TypeScript failed TS2749 in
+`mobile/lib/signed-clock.ts:130`. Repair `66347586a` ([40666634025](https://github.com/StradaverseHub/ai-hr/actions/runs/40666634025))
+passed root and native TypeScript and both bundles. Clock-states candidate `c46fd6848`
+([40668795261](https://github.com/StradaverseHub/ai-hr/actions/runs/40668795261)) passed all 44 selected files (24 DB,
+20 no-DB), native TypeScript and both bundles; root TypeScript failed TS2493 in a journey-screen test. Repair
+`1a92b11c0` ([40669619007](https://github.com/StradaverseHub/ai-hr/actions/runs/40669619007)) passed root TypeScript and
+that suite. The build switch `EXPO_PUBLIC_OFFLINE_CLOCKING` is unset everywhere, so shipped behaviour is unchanged.
+UNVERIFIED without devices: airplane-mode cold start, App Attest and Keystore offline signing, real Play sync tokens,
+expo/fetch multipart, foreground sync timing, live-region announcements and dark-mode status colour contrast.
