@@ -1,7 +1,7 @@
 /** Human-entered correction data, not an approval or generated clock/work evidence. Canonical owner
  * retains complete validation. HR-only clockChanges/unclocked work stay explicit, never dropped. */
 import {z} from 'zod';
-const uuid=z.uuid().transform(value=>value.toLowerCase());
+const uuid=z.guid().transform(value=>value.toLowerCase());
 const time=z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/),interval=z.object({fromEpochMillisecond:z.number().int(),toEpochMillisecond:z.number().int()}).strict();
 export const OwnAttendanceCorrectionIntent=z.object({version:z.literal(1),employmentId:uuid,date:z.iso.date(),
  checkIn:time.nullable().optional(),checkOut:time.nullable().optional(),requestedOtMinutes:z.number().finite().nullable().optional(),

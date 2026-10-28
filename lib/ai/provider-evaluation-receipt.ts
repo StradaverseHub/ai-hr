@@ -2,7 +2,7 @@
 import { z } from 'zod';
 import { decryptSecret, encryptSecret, isSecretStorable } from './crypto';
 export const PROVIDER_ACCOUNT_REVIEW_VERSION = 1;
-const Receipt = z.object({ version: z.literal(1), evaluationId: z.string().uuid(), candidateId: z.string().uuid(), candidateVersion: z.string().uuid(),
+const Receipt = z.object({ version: z.literal(1), evaluationId: z.guid(), candidateId: z.guid(), candidateVersion: z.guid(),
   candidateFingerprint: z.string().regex(/^[a-f0-9]{64}$/), principalFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
   suiteVersion: z.literal(1), accountReviewVersion: z.literal(1), issuedAt: z.string().datetime(), expiresAt: z.string().datetime() }).strict();
 export type ProviderEvaluationReceipt = z.infer<typeof Receipt>;

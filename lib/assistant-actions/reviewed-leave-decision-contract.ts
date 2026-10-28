@@ -2,7 +2,7 @@
 import {z} from 'zod';
 import {isCalendarDate} from '../calendar-date';
 export const REVIEWED_LEAVE_DECISION_ACTION='approvals.leave.decide' as const;
-const base={action:z.literal(REVIEWED_LEAVE_DECISION_ACTION),contractVersion:z.literal(1)},id=z.uuid(),digest=z.string().regex(/^[a-f0-9]{64}$/),decision=z.enum(['approved','rejected']),date=z.string().refine(isCalendarDate);
+const base={action:z.literal(REVIEWED_LEAVE_DECISION_ACTION),contractVersion:z.literal(1)},id=z.guid(),digest=z.string().regex(/^[a-f0-9]{64}$/),decision=z.enum(['approved','rejected']),date=z.string().refine(isCalendarDate);
 export const ReviewedLeaveDecisionNomination=z.object({...base,leaveRequestId:id,currentStepId:id.nullable()}).strict();
 export const ReviewedLeaveDecisionHumanContent=z.object({...base,leaveRequestId:id,currentStepId:id.nullable(),decision,rejectReason:z.string().trim().min(1).max(2000).nullable(),confirmAssignedDecision:z.literal(true)}).strict().refine(v=>v.decision==='rejected'?v.rejectReason!==null:v.rejectReason===null);
 export type ReviewedLeaveDecisionHumanContent=z.infer<typeof ReviewedLeaveDecisionHumanContent>;

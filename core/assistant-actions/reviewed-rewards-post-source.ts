@@ -38,5 +38,5 @@ async function bounded<T>(tx:Tx,work:()=>Promise<T>):Promise<T>{
 /** Real authority/funding-parent/unit ownership, valid before pending or completed custody. The
  * pending command must ALSO run actual full native preflight before custody row NOWAIT. */
 export async function withReviewedRewardsPostIntervalTx<T>(tx:Tx,supplied:SessionContext,unitId:string,work:(fresh:SessionContext,binding:{unitId:string;companyId:string})=>Promise<T>):Promise<T>{
- const ctx=capture(supplied),id=z.uuid().parse(unitId);return bounded(tx,async()=>{const fresh=await assertReviewedRewardsPostActorTx(tx,ctx),owned=await lockReviewedRewardPostSourceTx(tx,fresh,id);return work(fresh,{unitId:owned.unit.id,companyId:owned.unit.companyId});});
+ const ctx=capture(supplied),id=z.guid().parse(unitId);return bounded(tx,async()=>{const fresh=await assertReviewedRewardsPostActorTx(tx,ctx),owned=await lockReviewedRewardPostSourceTx(tx,fresh,id);return work(fresh,{unitId:owned.unit.id,companyId:owned.unit.companyId});});
 }

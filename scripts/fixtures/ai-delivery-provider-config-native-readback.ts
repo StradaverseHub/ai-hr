@@ -9,7 +9,7 @@ import {providerCandidatesTx} from '../../core/ai-provider-readiness';
 import {currentAiProviderAdminTx} from '../../core/ai-provider-authority';
 import {readOpenRouterOptions} from '../../lib/ai/providers/openrouter-configuration';
 import {OpenRouterModel} from '../../lib/ai/providers/openrouter-transport';
-const uuid=z.string().uuid(),Expected=z.object({model:OpenRouterModel,providerOptions:z.unknown()}).strict();
+const uuid=z.guid(),Expected=z.object({model:OpenRouterModel,providerOptions:z.unknown()}).strict();
 const Phase=z.object({phase:z.enum(['baseline','invalid_routes','saved','reloaded'])}).strict();
 const unavailable=():never=>{throw Error('provider_config_native_readback:unavailable');};
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);

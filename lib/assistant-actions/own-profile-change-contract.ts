@@ -4,7 +4,7 @@ import {z} from 'zod';
 import {parseEssProfileProposal} from '../personnel-ess-contract';
 import {personnelField} from '../personnel-field-registry';
 export const OWN_PROFILE_CHANGE_ACTION='ess.profile.request' as const;
-const UUID=z.string().uuid(),Digest=z.string().regex(/^[a-f0-9]{64}$/);
+const UUID=z.guid(),Digest=z.string().regex(/^[a-f0-9]{64}$/);
 const HumanProposal=z.unknown().transform((value,ctx)=>{try{return parseEssProfileProposal(value);}catch{ctx.addIssue({code:z.ZodIssueCode.custom,message:'The profile proposal is unavailable.'});return z.NEVER;}});
 export const OwnProfileChangeNomination=z.object({action:z.literal(OWN_PROFILE_CHANGE_ACTION),contractVersion:z.literal(1),employmentId:UUID,fieldIds:z.array(z.string().min(1).max(200)).min(1).max(128)}).strict().superRefine((value,ctx)=>{if(new Set(value.fieldIds).size!==value.fieldIds.length||value.fieldIds.some(id=>{const field=personnelField(id);return !field||field.ess.visibility!=='visible'||!field.ess.binding||field.ess.edit!=='approval';}))ctx.addIssue({code:z.ZodIssueCode.custom,message:'The profile nomination is unavailable.'});});
 export type OwnProfileChangeNomination=z.infer<typeof OwnProfileChangeNomination>;

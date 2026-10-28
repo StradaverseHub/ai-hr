@@ -7,7 +7,7 @@ import { OwnLeaveRetirementRequest, OwnLeaveConfirmation, OwnLeaveFinalReceipt, 
   OwnLeaveNomination, OwnLeavePreparedReview } from './own-leave-contract';
 
 /** Metadata discovery only. No business text, digests, subjects or source-record references. */
-export const OwnLeaveReviewIndexEntry = z.object({actionId:z.string().uuid(),
+export const OwnLeaveReviewIndexEntry = z.object({actionId:z.guid(),
   state:z.enum(['awaiting_confirmation','discarded','expired','refused','completed']),
   createdAt:z.string().datetime(),expiresAt:z.string().datetime()}).strict()
   .refine(row=>Date.parse(row.expiresAt)>Date.parse(row.createdAt));
@@ -19,7 +19,7 @@ const Packet = z.discriminatedUnion('operation', [
   z.object({ operation: z.literal('list') }).strict(),
   z.object({ operation: z.literal('prepare'), nomination: OwnLeaveNomination,
     selection: OwnLeaveHumanSelection, humanText: OwnLeaveHumanText }).strict(),
-  z.object({ operation: z.literal('reopen'), actionId: z.string().uuid() }).strict(),
+  z.object({ operation: z.literal('reopen'), actionId: z.guid() }).strict(),
   z.object({ operation: z.literal('confirm'), confirmation: OwnLeaveConfirmation }).strict(),
   z.object({ operation: z.literal('discard'), confirmation: OwnLeaveRetirementRequest }).strict(),
 ]);

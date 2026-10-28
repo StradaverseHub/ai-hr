@@ -6,7 +6,7 @@ import {z} from 'zod';
 import type {SessionContext,Tx} from '../db/client';
 import {NATIVE_OUTCOME_ACTIONS,type NativeOutcomeAction} from '../lib/ai/module-native-outcomes';
 import {boundNativeOutcomeTransactionTx} from './module-native-outcome-bounds';
-const Id=z.uuid().transform(value=>value.toLowerCase());
+const Id=z.guid().transform(value=>value.toLowerCase());
 const Target=z.object({kind:z.enum(['person','employment','lifecycle_case']),id:Id}).strict();
 const Source=z.object({action:z.enum(Object.keys(NATIVE_OUTCOME_ACTIONS) as [NativeOutcomeAction,...NativeOutcomeAction[]]),sourceId:Id,eventId:Id}).strict();
 export type NativeOutcomePrivacyTarget=Readonly<z.infer<typeof Target>>;

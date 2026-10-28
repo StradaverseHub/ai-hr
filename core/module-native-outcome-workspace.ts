@@ -6,7 +6,7 @@ import {withTenant,type SessionContext} from '../db/client';
 import {boundNativeOutcomeTransactionTx} from './module-native-outcome-bounds';
 import {beginOwnNativeOutcomeJobProvenanceTx} from './module-agent-releases';
 import {NATIVE_OUTCOME_ACTIONS,NATIVE_REVIEW_ACTIONS,NativeOutcomeReference,type NativeOutcomeAction} from '../lib/ai/module-native-outcomes';
-const Id=z.uuid().transform(v=>v.toLowerCase());
+const Id=z.guid().transform(v=>v.toLowerCase());
 const capture=(ctx:SessionContext)=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
 const date=(value:Date|string)=>new Date(value).toISOString();
 export type NativeOutcomeChoice=Readonly<{reference:NativeOutcomeReference;createdAt:string}>;

@@ -15,8 +15,8 @@ export const OwnLeaveDigest = z.string().regex(/^[a-f0-9]{64}$/);
 export const OwnLeaveNomination = z.object({
   action: z.literal(OWN_LEAVE_ACTION),
   contractVersion: z.literal(OWN_LEAVE_CONTRACT_VERSION),
-  employmentId: z.string().uuid(),
-  leaveTypeId: z.string().uuid(),
+  employmentId: z.guid(),
+  leaveTypeId: z.guid(),
   date: calendarDate,
   durationType: z.literal('full_day'),
 }).strict();
@@ -33,13 +33,13 @@ export type OwnLeaveHumanText = z.infer<typeof OwnLeaveHumanText>;
 /** The person's explicit selection, captured outside model nomination. As with human text, parsing
  * cannot establish provenance: the authenticated UI/command owner must supply this separately. */
 export const OwnLeaveHumanSelection = z.object({
-  employmentId: z.string().uuid(),
-  leaveTypeId: z.string().uuid(),
+  employmentId: z.guid(),
+  leaveTypeId: z.guid(),
 }).strict();
 
 /** The human POST cannot replace any business argument in the immutable prepared intent. */
 export const OwnLeaveConfirmation = z.object({
-  actionId: z.string().uuid(),
+  actionId: z.guid(),
   contractVersion: z.literal(OWN_LEAVE_CONTRACT_VERSION),
   reviewedDigest: OwnLeaveDigest,
 }).strict();
@@ -65,12 +65,12 @@ export type OwnLeaveState = z.infer<typeof OwnLeaveState>;
 /** A terminal action receipt records submission, never approval or an HR outcome. These references
  * must be obtained from the canonical write in the same transaction as the completed lifecycle. */
 const receiptIdentity = {
-  actionId: z.string().uuid(),
+  actionId: z.guid(),
   contractVersion: z.literal(OWN_LEAVE_CONTRACT_VERSION),
 };
 export const OwnLeaveFinalReceipt = z.discriminatedUnion('state', [
   z.object({ ...receiptIdentity, state: z.literal('completed'),
-    leaveRequestId: z.string().uuid(), submissionEventId: z.string().uuid() }).strict(),
+    leaveRequestId: z.guid(), submissionEventId: z.guid() }).strict(),
   z.object({ ...receiptIdentity, state: z.literal('refused'), code: OwnLeaveRefusalCode }).strict(),
   z.object({ ...receiptIdentity, state: z.literal('discarded') }).strict(),
   z.object({ ...receiptIdentity, state: z.literal('expired') }).strict(),
@@ -94,7 +94,7 @@ export const OwnLeaveReviewWarning = z.object({
 /** The sole public card shape. It deliberately excludes hidden balances, key custody, model output
  * and login/person/tenant bindings. Confirmation still posts only ID/version/reviewed digest. */
 export const OwnLeavePreparedReview = z.object({
-  actionId: z.string().uuid(), contractVersion: z.literal(OWN_LEAVE_CONTRACT_VERSION),
+  actionId: z.guid(), contractVersion: z.literal(OWN_LEAVE_CONTRACT_VERSION),
   reviewedDigest: OwnLeaveDigest, humanIntentDigest: OwnLeaveDigest, createdAt: z.string().datetime(), expiresAt: z.string().datetime(),
   companyName: z.string().min(1), employeeCode: z.string().nullable(), leaveTypeName: z.string().min(1),
   date: calendarDate, durationType: z.literal('full_day'), deductionDays: z.number().finite().positive(),

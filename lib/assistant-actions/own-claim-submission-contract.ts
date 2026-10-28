@@ -2,7 +2,7 @@
  * their native UI owners; no model amount, hasReceipt assertion, receipt bytes or approval input. */
 import {z} from 'zod';
 export const OWN_CLAIM_SUBMISSION_ACTION='claims.submit' as const;
-const base={action:z.literal(OWN_CLAIM_SUBMISSION_ACTION),contractVersion:z.literal(1)},uuid=z.uuid(),digest=z.string().regex(/^[a-f0-9]{64}$/),scalar=z.union([z.string().max(4000),z.number().finite(),z.boolean(),z.null()]);
+const base={action:z.literal(OWN_CLAIM_SUBMISSION_ACTION),contractVersion:z.literal(1)},uuid=z.guid(),digest=z.string().regex(/^[a-f0-9]{64}$/),scalar=z.union([z.string().max(4000),z.number().finite(),z.boolean(),z.null()]);
 export const OwnClaimSubmissionNomination=z.object({...base,employmentId:uuid,draftId:uuid}).strict();
 export const OwnClaimSubmissionHumanContent=z.object({...base,employmentId:uuid,draftId:uuid,receiptIds:z.array(uuid).max(25).refine(ids=>new Set(ids).size===ids.length),submitForApproval:z.literal(true)}).strict();
 export type OwnClaimSubmissionHumanContent=z.infer<typeof OwnClaimSubmissionHumanContent>;

@@ -30,7 +30,7 @@ export async function reconcileOwnClaimSubmissionSourceTx(tx:Tx,supplied:Session
  * already own this SAME key. Pending/completed callbacks must use their actual canonical source.
  * Any refusal/partial ownership requires whole enclosing top-level transaction rollback. */
 export async function withOwnClaimSubmissionIntervalTx<T>(tx:Tx,supplied:SessionContext,draftId:string,work:(fresh:SessionContext,own:{draftId:string;employmentId:string;companyId:string})=>Promise<T>):Promise<T>{
- const ctx=capture(supplied),id=z.uuid().parse(draftId);try{
+ const ctx=capture(supplied),id=z.guid().parse(draftId);try{
   const fresh=await actor(tx,ctx);
   const [nominee]=await tx.execute<{employmentId:string;claimTypeId:string;companyId:string}>(sql`select q.employment_id as "employmentId",q.claim_type_id as "claimTypeId",e.company_id as "companyId" from public.claim_request q join public.employment e on e.id=q.employment_id and e.tenant_id=q.tenant_id where q.id=${id}::uuid and q.tenant_id=${fresh.tenantId}::uuid and e.person_id=${fresh.personId}::uuid`);
   if(!nominee)throw new OwnClaimSubmissionUnavailable();

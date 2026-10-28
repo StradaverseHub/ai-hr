@@ -2,7 +2,7 @@
 import {z} from 'zod';
 import type {ModuleEffectActionId} from './module-agent-actions';
 import type {AgentModuleCode} from './module-agents';
-const Id=z.uuid().transform(value=>value.toLowerCase());
+const Id=z.guid().transform(value=>value.toLowerCase());
 const entry=<M extends AgentModuleCode>(module:M,semantics:string)=>Object.freeze({module,semantics});
 export const NATIVE_OUTCOME_ACTIONS=Object.freeze({
  'employees.import':entry('employees','canonical_import_committed_not_quality_certified'),

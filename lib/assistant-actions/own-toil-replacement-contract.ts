@@ -2,7 +2,7 @@
 import {z} from 'zod';
 import {LEAVE_CREDIT_DAY_TYPES} from '../leave-credit-day-type';
 export const OWN_TOIL_REPLACEMENT_ACTION='toil.replacement.request' as const;
-const uuid=z.uuid(),date=z.string().regex(/^\d{4}-\d{2}-\d{2}$/),time=z.string().regex(/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/),digest=z.string().regex(/^[a-f0-9]{64}$/);
+const uuid=z.guid(),date=z.string().regex(/^\d{4}-\d{2}-\d{2}$/),time=z.string().regex(/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/),digest=z.string().regex(/^[a-f0-9]{64}$/);
 const base={action:z.literal(OWN_TOIL_REPLACEMENT_ACTION),contractVersion:z.literal(1),employmentId:uuid,leaveTypeId:uuid.nullable().optional(),firstScheduleConsent:z.boolean()};
 export const OwnToilReplacementNomination=z.object({action:z.literal(OWN_TOIL_REPLACEMENT_ACTION),contractVersion:z.literal(1),employmentId:uuid}).strict();
 export const OwnToilReplacementHumanContent=z.discriminatedUnion('engine',[

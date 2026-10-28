@@ -1,6 +1,6 @@
 /** Employee Master workflow metadata only. Reported effort/quality never becomes canonical HR truth. */
 import {z} from 'zod';
-const UUID=z.string().uuid(),Count=z.number().int().min(0).max(1000000),Digest=z.string().regex(/^[a-f0-9]{64}$/),Version=z.number().int().min(1).max(1000000);
+const UUID=z.guid(),Count=z.number().int().min(0).max(1000000),Digest=z.string().regex(/^[a-f0-9]{64}$/),Version=z.number().int().min(1).max(1000000);
 export const EmployeeImportEvaluationBindingSchema=z.object({attemptId:UUID,attemptVersion:Version}).strict();
 export type EmployeeImportEvaluationBinding=z.infer<typeof EmployeeImportEvaluationBindingSchema>;
 /** Begins BEFORE dirty data is cleaned; sourceRevision is the client's declared source fingerprint. */

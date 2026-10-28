@@ -21,7 +21,7 @@ import {ModuleActionPrepare,ModuleActionConfirmation,ModuleActionPreparedReview,
 export const ModuleActionBrowserPacket=z.discriminatedUnion('operation',[
  z.object({operation:z.literal('list')}).strict(),
  z.object({operation:z.literal('prepare'),input:ModuleActionPrepare}).strict(),
- z.object({operation:z.literal('reopen'),actionId:z.uuid()}).strict(),
+ z.object({operation:z.literal('reopen'),actionId:z.guid()}).strict(),
  z.object({operation:z.literal('confirm'),confirmation:ModuleActionConfirmation}).strict(),
  z.object({operation:z.literal('discard'),confirmation:ModuleActionRetirementRequest}).strict(),
 ]);
@@ -44,7 +44,7 @@ export function parseModuleActionBrowserResult(operation:ModuleActionBrowserPack
 export const ProfileModuleActionBrowserPacket=z.discriminatedUnion('operation',[
  z.object({action:z.literal('ess.profile.request'),operation:z.literal('list')}).strict(),
  z.object({action:z.literal('ess.profile.request'),operation:z.literal('prepare'),input:ProfileModuleActionPrepare}).strict(),
- z.object({action:z.literal('ess.profile.request'),operation:z.literal('reopen'),actionId:z.uuid()}).strict(),
+ z.object({action:z.literal('ess.profile.request'),operation:z.literal('reopen'),actionId:z.guid()}).strict(),
  z.object({action:z.literal('ess.profile.request'),operation:z.literal('confirm'),confirmation:ProfileModuleActionConfirmation}).strict(),
  z.object({action:z.literal('ess.profile.request'),operation:z.literal('discard'),confirmation:ProfileModuleActionRetirementRequest}).strict(),
 ]);
@@ -66,7 +66,7 @@ export function parseProfileModuleActionBrowserResult(packet:ProfileModuleAction
 }
 /** Metadata-only first text-control slice. Availability is still freshly checked by native owners. */
 export const ProfileActionChoices=z.discriminatedUnion('kind',[
- z.object({kind:z.literal('choices'),employments:z.array(z.object({employmentId:z.uuid(),employeeCode:z.string().max(100).nullable(),companyName:z.string().min(1).max(240),manualPending:z.boolean(),fields:z.array(z.object({fieldId:z.string().min(1).max(200),baseline:z.string().regex(/^sha256:[a-f0-9]{64}$/),type:z.literal('text')}).strict()).max(32).refine(rows=>new Set(rows.map(row=>row.fieldId)).size===rows.length)}).strict()).max(16).refine(rows=>new Set(rows.map(row=>row.employmentId)).size===rows.length)}).strict(),
+ z.object({kind:z.literal('choices'),employments:z.array(z.object({employmentId:z.guid(),employeeCode:z.string().max(100).nullable(),companyName:z.string().min(1).max(240),manualPending:z.boolean(),fields:z.array(z.object({fieldId:z.string().min(1).max(200),baseline:z.string().regex(/^sha256:[a-f0-9]{64}$/),type:z.literal('text')}).strict()).max(32).refine(rows=>new Set(rows.map(row=>row.fieldId)).size===rows.length)}).strict()).max(16).refine(rows=>new Set(rows.map(row=>row.employmentId)).size===rows.length)}).strict(),
  z.object({kind:z.literal('unavailable')}).strict(),
 ]);
 export type ProfileActionChoices=z.infer<typeof ProfileActionChoices>;
@@ -74,14 +74,14 @@ type ProfileOwners<Session>=Readonly<{list(session:Session):Promise<unknown>;pre
 export const ReviewModuleActionBrowserPacket=z.discriminatedUnion('operation',[
  z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),operation:z.literal('list')}).strict(),
  z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),operation:z.literal('prepare'),input:ReviewModuleActionPrepare}).strict(),
- z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),operation:z.literal('reopen'),actionId:z.uuid()}).strict(),
+ z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),
  z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),operation:z.literal('confirm'),confirmation:ReviewModuleActionConfirmation}).strict(),
  z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),operation:z.literal('discard'),confirmation:ReviewModuleActionRetirementRequest}).strict(),
 ]);
 export const OnehrModuleActionBrowserPacket=z.discriminatedUnion('operation',[
  z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),operation:z.literal('list')}).strict(),
  z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),operation:z.literal('prepare'),input:OnehrModuleActionPrepare}).strict(),
- z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),operation:z.literal('reopen'),actionId:z.uuid()}).strict(),
+ z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),
  z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),operation:z.literal('confirm'),confirmation:OnehrModuleActionConfirmation}).strict(),
  z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),operation:z.literal('discard'),confirmation:OnehrModuleActionRetirementRequest}).strict(),
 ]);
@@ -101,8 +101,8 @@ export function parsePerformanceModuleActionBrowserResult(packet:PerformanceModu
 }
 export const PerformanceActionChoices=z.discriminatedUnion('kind',[
  z.object({kind:z.literal('choices'),truncated:z.boolean(),items:z.array(z.discriminatedUnion('action',[
-  z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),sourceId:z.uuid(),employmentId:z.uuid(),cycleName:z.string().min(1).max(240),periodStart:z.iso.date(),periodEnd:z.iso.date()}).strict(),
-  z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),sourceId:z.uuid(),employmentId:z.uuid(),reviewId:z.uuid(),planYear:z.number().int(),conversationHeldOn:z.iso.date().nullable()}).strict(),
+  z.object({action:z.literal(MODULE_REVIEW_ACK_ACTION),sourceId:z.guid(),employmentId:z.guid(),cycleName:z.string().min(1).max(240),periodStart:z.iso.date(),periodEnd:z.iso.date()}).strict(),
+  z.object({action:z.literal(MODULE_ONEHR_ACK_ACTION),sourceId:z.guid(),employmentId:z.guid(),reviewId:z.guid(),planYear:z.number().int(),conversationHeldOn:z.iso.date().nullable()}).strict(),
  ])).max(25).refine(rows=>new Set(rows.map(row=>row.action+':'+row.sourceId)).size===rows.length)}).strict(),z.object({kind:z.literal('unavailable')}).strict(),
 ]);
 export type PerformanceActionChoices=z.infer<typeof PerformanceActionChoices>;
@@ -113,13 +113,13 @@ type PerformanceOwners<Session>=Readonly<{
  confirm(session:Session,input:z.infer<typeof ReviewModuleActionConfirmation>|z.infer<typeof OnehrModuleActionConfirmation>):Promise<unknown>;
  discard(session:Session,input:z.infer<typeof ReviewModuleActionRetirementRequest>|z.infer<typeof OnehrModuleActionRetirementRequest>):Promise<unknown>;
 }>;
-const ClaimChoiceField=z.object({id:z.uuid(),fieldKey:z.string().min(1).max(200),label:z.string().min(1).max(240),kind:z.enum(['text','number','money','date','select','boolean']),required:z.boolean(),options:z.array(z.string().max(240)).max(128),sortOrder:z.number().int()}).strict();
-export const ClaimDraftEditResult=z.object({kind:z.literal('draft_edit'),draft:z.object({type:z.object({id:z.uuid(),code:z.string().max(100),name:z.string().min(1).max(240),isMileage:z.boolean(),requiresReceipt:z.boolean(),items:z.array(z.object({id:z.uuid(),code:z.string().max(100),name:z.string().min(1).max(240)}).strict()).max(128),fields:z.array(ClaimChoiceField).max(128).refine(rows=>new Set(rows.map(row=>row.fieldKey)).size===rows.length&&new Set(rows.map(row=>row.id)).size===rows.length)}).strict(),draftId:z.uuid(),employmentId:z.uuid(),claimTypeId:z.uuid(),claimItemId:z.uuid().nullable(),draftRevision:z.string().regex(/^[0-9]+$/),enteredAmount:z.number().finite(),quantityKm:z.number().finite().nullable(),incurredOn:z.iso.date(),description:z.string().max(4000).nullable(),fieldValues:z.record(z.string().max(200),z.union([z.string().max(4000),z.number().finite(),z.boolean(),z.null()])),receipts:z.array(z.object({id:z.uuid(),fileName:z.string().max(1000),mimeType:z.string().max(240),sizeBytes:z.number().int().nonnegative()}).strict()).max(25)}).strict()}).strict();
+const ClaimChoiceField=z.object({id:z.guid(),fieldKey:z.string().min(1).max(200),label:z.string().min(1).max(240),kind:z.enum(['text','number','money','date','select','boolean']),required:z.boolean(),options:z.array(z.string().max(240)).max(128),sortOrder:z.number().int()}).strict();
+export const ClaimDraftEditResult=z.object({kind:z.literal('draft_edit'),draft:z.object({type:z.object({id:z.guid(),code:z.string().max(100),name:z.string().min(1).max(240),isMileage:z.boolean(),requiresReceipt:z.boolean(),items:z.array(z.object({id:z.guid(),code:z.string().max(100),name:z.string().min(1).max(240)}).strict()).max(128),fields:z.array(ClaimChoiceField).max(128).refine(rows=>new Set(rows.map(row=>row.fieldKey)).size===rows.length&&new Set(rows.map(row=>row.id)).size===rows.length)}).strict(),draftId:z.guid(),employmentId:z.guid(),claimTypeId:z.guid(),claimItemId:z.guid().nullable(),draftRevision:z.string().regex(/^[0-9]+$/),enteredAmount:z.number().finite(),quantityKm:z.number().finite().nullable(),incurredOn:z.iso.date(),description:z.string().max(4000).nullable(),fieldValues:z.record(z.string().max(200),z.union([z.string().max(4000),z.number().finite(),z.boolean(),z.null()])),receipts:z.array(z.object({id:z.guid(),fileName:z.string().max(1000),mimeType:z.string().max(240),sizeBytes:z.number().int().nonnegative()}).strict()).max(25)}).strict()}).strict();
 export const ClaimModuleActionBrowserPacket=z.discriminatedUnion('operation',[
- z.object({action:z.literal(OWN_CLAIM_DRAFT_ACTION),operation:z.literal('read_draft'),employmentId:z.uuid(),draftId:z.uuid()}).strict(),
+ z.object({action:z.literal(OWN_CLAIM_DRAFT_ACTION),operation:z.literal('read_draft'),employmentId:z.guid(),draftId:z.guid()}).strict(),
  z.object({action:z.literal(OWN_CLAIM_DRAFT_ACTION),operation:z.literal('list')}).strict(),
  z.object({action:z.literal(OWN_CLAIM_DRAFT_ACTION),operation:z.literal('prepare'),input:ClaimModuleActionPrepare.refine(value=>value.draftId===null||typeof value.expectedDraftRevision==='string','Load the current draft first')}).strict(),
- z.object({action:z.literal(OWN_CLAIM_DRAFT_ACTION),operation:z.literal('reopen'),actionId:z.uuid()}).strict(),
+ z.object({action:z.literal(OWN_CLAIM_DRAFT_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),
  z.object({action:z.literal(OWN_CLAIM_DRAFT_ACTION),operation:z.literal('confirm'),confirmation:ClaimModuleActionConfirmation}).strict(),
  z.object({action:z.literal(OWN_CLAIM_DRAFT_ACTION),operation:z.literal('discard'),confirmation:ClaimModuleActionRetirementRequest}).strict(),
 ]);
@@ -137,7 +137,7 @@ export function parseClaimModuleActionBrowserResult(packet:ClaimModuleActionBrow
  return result;
 }
 export const ClaimActionChoices=z.discriminatedUnion('kind',[
- z.object({kind:z.literal('choices'),truncated:z.boolean(),employments:z.array(z.object({employmentId:z.uuid(),employeeCode:z.string().max(100).nullable(),companyName:z.string().min(1).max(240)}).strict()).max(16),types:z.array(z.object({id:z.uuid(),code:z.string().max(100),name:z.string().min(1).max(240),isMileage:z.boolean(),requiresReceipt:z.boolean(),items:z.array(z.object({id:z.uuid(),code:z.string().max(100),name:z.string().min(1).max(240)}).strict()).max(128),fields:z.array(ClaimChoiceField).max(128).refine(rows=>new Set(rows.map(row=>row.fieldKey)).size===rows.length&&new Set(rows.map(row=>row.id)).size===rows.length)}).strict()).max(32),drafts:z.array(z.object({id:z.uuid(),employmentId:z.uuid(),claimTypeId:z.uuid(),incurredOn:z.iso.date(),retainedAttachmentIds:z.array(z.uuid()).max(25).refine(rows=>new Set(rows).size===rows.length)}).strict()).max(25)}).strict().superRefine((value,ctx)=>{for(const list of [value.employments.map(row=>row.employmentId),value.types.map(row=>row.id),value.drafts.map(row=>row.id)])if(new Set(list).size!==list.length)ctx.addIssue({code:'custom',message:'Duplicate choice'});if(value.drafts.some(row=>!value.employments.some(subject=>subject.employmentId===row.employmentId)))ctx.addIssue({code:'custom',message:'Unknown subject'});}),
+ z.object({kind:z.literal('choices'),truncated:z.boolean(),employments:z.array(z.object({employmentId:z.guid(),employeeCode:z.string().max(100).nullable(),companyName:z.string().min(1).max(240)}).strict()).max(16),types:z.array(z.object({id:z.guid(),code:z.string().max(100),name:z.string().min(1).max(240),isMileage:z.boolean(),requiresReceipt:z.boolean(),items:z.array(z.object({id:z.guid(),code:z.string().max(100),name:z.string().min(1).max(240)}).strict()).max(128),fields:z.array(ClaimChoiceField).max(128).refine(rows=>new Set(rows.map(row=>row.fieldKey)).size===rows.length&&new Set(rows.map(row=>row.id)).size===rows.length)}).strict()).max(32),drafts:z.array(z.object({id:z.guid(),employmentId:z.guid(),claimTypeId:z.guid(),incurredOn:z.iso.date(),retainedAttachmentIds:z.array(z.guid()).max(25).refine(rows=>new Set(rows).size===rows.length)}).strict()).max(25)}).strict().superRefine((value,ctx)=>{for(const list of [value.employments.map(row=>row.employmentId),value.types.map(row=>row.id),value.drafts.map(row=>row.id)])if(new Set(list).size!==list.length)ctx.addIssue({code:'custom',message:'Duplicate choice'});if(value.drafts.some(row=>!value.employments.some(subject=>subject.employmentId===row.employmentId)))ctx.addIssue({code:'custom',message:'Unknown subject'});}),
  z.object({kind:z.literal('unavailable')}).strict(),
 ]);
 export type ClaimActionChoices=z.infer<typeof ClaimActionChoices>;
@@ -146,15 +146,15 @@ type ClaimOwners<Session>=Readonly<{readDraft(session:Session,input:{employmentI
  * prepare envelope keeps the full native scope; other action/operation caps remain 20 KiB. */
 export const TESTING_ACTION_TRANSPORT_BYTES=524288;
 export const TestingActionChoices=z.discriminatedUnion('kind',[
- z.object({kind:z.literal('choices'),truncated:z.boolean(),items:z.array(z.object({assignmentId:z.uuid(),caseId:z.uuid(),caseNo:z.number().int().positive(),title:z.string().min(1).max(240),versionId:z.uuid(),instructionOrdinal:z.number().int().positive(),executionId:z.uuid().nullable(),status:z.enum(EXECUTION_STATUSES)}).strict()).max(25).refine(rows=>new Set(rows.map(row=>row.assignmentId)).size===rows.length)}).strict(),z.object({kind:z.literal('unavailable')}).strict(),
+ z.object({kind:z.literal('choices'),truncated:z.boolean(),items:z.array(z.object({assignmentId:z.guid(),caseId:z.guid(),caseNo:z.number().int().positive(),title:z.string().min(1).max(240),versionId:z.guid(),instructionOrdinal:z.number().int().positive(),executionId:z.guid().nullable(),status:z.enum(EXECUTION_STATUSES)}).strict()).max(25).refine(rows=>new Set(rows.map(row=>row.assignmentId)).size===rows.length)}).strict(),z.object({kind:z.literal('unavailable')}).strict(),
 ]);
 export type TestingActionChoices=z.infer<typeof TestingActionChoices>;
-export const TestingExecutionEditResult=z.object({kind:z.literal('testing_execution_edit'),source:z.object({caseId:z.uuid(),caseNo:z.number().int().positive(),title:z.string().min(1).max(240),instructionOrdinal:z.number().int().positive(),observation:executionInputSchema}).strict()}).strict();
+export const TestingExecutionEditResult=z.object({kind:z.literal('testing_execution_edit'),source:z.object({caseId:z.guid(),caseNo:z.number().int().positive(),title:z.string().min(1).max(240),instructionOrdinal:z.number().int().positive(),observation:executionInputSchema}).strict()}).strict();
 export const TestingModuleActionBrowserPacket=z.discriminatedUnion('operation',[
  z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),operation:z.literal('list')}).strict(),
- z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),operation:z.literal('read_execution'),executionId:z.uuid()}).strict(),
+ z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),operation:z.literal('read_execution'),executionId:z.guid()}).strict(),
  z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),operation:z.literal('prepare'),input:TestingModuleActionPrepare}).strict(),
- z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),operation:z.literal('reopen'),actionId:z.uuid()}).strict(),
+ z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),
  z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),operation:z.literal('confirm'),confirmation:TestingModuleActionConfirmation}).strict(),
  z.object({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),operation:z.literal('discard'),confirmation:TestingModuleActionRetirementRequest}).strict(),
 ]);
@@ -176,7 +176,7 @@ type TestingOwners<Session>=Readonly<{list(session:Session):Promise<unknown>;rea
 export const ClaimSubmissionModuleActionBrowserPacket=z.discriminatedUnion('operation',[
  z.object({action:z.literal(OWN_CLAIM_SUBMISSION_ACTION),operation:z.literal('list')}).strict(),
  z.object({action:z.literal(OWN_CLAIM_SUBMISSION_ACTION),operation:z.literal('prepare'),input:ClaimSubmissionModuleActionPrepare}).strict(),
- z.object({action:z.literal(OWN_CLAIM_SUBMISSION_ACTION),operation:z.literal('reopen'),actionId:z.uuid()}).strict(),
+ z.object({action:z.literal(OWN_CLAIM_SUBMISSION_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),
  z.object({action:z.literal(OWN_CLAIM_SUBMISSION_ACTION),operation:z.literal('confirm'),confirmation:ClaimSubmissionModuleActionConfirmation}).strict(),
  z.object({action:z.literal(OWN_CLAIM_SUBMISSION_ACTION),operation:z.literal('discard'),confirmation:ClaimSubmissionModuleActionRetirementRequest}).strict(),
 ]);
@@ -198,16 +198,16 @@ import {REVIEWED_REPORTING_LINE_ACTION as ORG_ACTION} from './reviewed-reporting
 import {OrgActionPrepare,OrgActionConfirmation,OrgActionRetirement,OrgActionPreparedReview,OrgActionCompletedReceipt,OrgActionRetirementReceipt,OrgActionReviewIndexResult} from './org-action-review-contract';
 export const OrgActionSearch=z.discriminatedUnion('role',[
  z.object({role:z.literal('subordinate'),query:z.string().trim().min(2).max(80)}).strict(),
- z.object({role:z.literal('manager'),query:z.string().trim().min(2).max(80),subordinateEmploymentId:z.uuid()}).strict(),
+ z.object({role:z.literal('manager'),query:z.string().trim().min(2).max(80),subordinateEmploymentId:z.guid()}).strict(),
 ]);
-export const OrgEmployeeChoice=z.object({employmentId:z.uuid(),employeeCode:z.string().max(100).nullable(),name:z.string().min(1).max(240),companyName:z.string().min(1).max(240)}).strict();
+export const OrgEmployeeChoice=z.object({employmentId:z.guid(),employeeCode:z.string().max(100).nullable(),name:z.string().min(1).max(240),companyName:z.string().min(1).max(240)}).strict();
 const OrgLabels=z.object({subordinate:OrgEmployeeChoice,manager:OrgEmployeeChoice,previousManager:OrgEmployeeChoice.nullable()}).strict();
 export const OrgActionChoices=z.object({kind:z.literal('org_choices'),selection:OrgActionSearch,items:z.array(OrgEmployeeChoice).max(20).refine(rows=>new Set(rows.map(r=>r.employmentId)).size===rows.length),truncated:z.boolean()}).strict();
 export const OrgModuleActionBrowserPacket=z.discriminatedUnion('operation',[
  z.object({action:z.literal(ORG_ACTION),operation:z.literal('choices'),selection:OrgActionSearch}).strict(),
  z.object({action:z.literal(ORG_ACTION),operation:z.literal('list')}).strict(),
  z.object({action:z.literal(ORG_ACTION),operation:z.literal('prepare'),input:OrgActionPrepare}).strict(),
- z.object({action:z.literal(ORG_ACTION),operation:z.literal('reopen'),actionId:z.uuid()}).strict(),
+ z.object({action:z.literal(ORG_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),
  z.object({action:z.literal(ORG_ACTION),operation:z.literal('confirm'),confirmation:OrgActionConfirmation}).strict(),
  z.object({action:z.literal(ORG_ACTION),operation:z.literal('discard'),confirmation:OrgActionRetirement}).strict(),
 ]);
@@ -235,7 +235,7 @@ export const KnowledgeActionAvailability=z.discriminatedUnion('kind',[z.object({
 export const KnowledgeModuleActionBrowserPacket=z.discriminatedUnion('operation',[
  z.object({action:z.literal(KNOWLEDGE_ARTICLE_ACTION),operation:z.literal('list')}).strict(),
  z.object({action:z.literal(KNOWLEDGE_ARTICLE_ACTION),operation:z.literal('prepare'),input:KnowledgeArticleReviewPrepare}).strict(),
- z.object({action:z.literal(KNOWLEDGE_ARTICLE_ACTION),operation:z.literal('reopen'),actionId:z.uuid()}).strict(),
+ z.object({action:z.literal(KNOWLEDGE_ARTICLE_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),
  z.object({action:z.literal(KNOWLEDGE_ARTICLE_ACTION),operation:z.literal('confirm'),confirmation:KnowledgeArticleReviewConfirmation}).strict(),
  z.object({action:z.literal(KNOWLEDGE_ARTICLE_ACTION),operation:z.literal('discard'),confirmation:KnowledgeArticleReviewRetirement}).strict(),
 ]);
@@ -256,11 +256,11 @@ type KnowledgeOwners<Session>=Readonly<{list(session:Session):Promise<unknown>;p
  * person/employment or asset/provisioning executor; all native content fits the original20KiB lane. */
 import {OWN_LIFECYCLE_ACKNOWLEDGEMENT_ACTION as LIFECYCLE_ACK_ACTION} from './own-lifecycle-acknowledgement-contract';
 import {LifecycleAckReviewPrepare,LifecycleAckReviewConfirmation,LifecycleAckReviewRetirement,LifecycleAckPreparedReview,LifecycleAckCompletedReview,LifecycleAckRetiredReview,LifecycleAckReviewIndex} from './lifecycle-ack-review-contract';
-export const LifecycleAckActionAvailability=z.discriminatedUnion('kind',[z.object({kind:z.literal('available'),currentCase:z.object({caseId:z.uuid(),caseNumber:z.string().min(1).max(100)}).strict()}).strict(),z.object({kind:z.literal('unavailable')}).strict()]);
+export const LifecycleAckActionAvailability=z.discriminatedUnion('kind',[z.object({kind:z.literal('available'),currentCase:z.object({caseId:z.guid(),caseNumber:z.string().min(1).max(100)}).strict()}).strict(),z.object({kind:z.literal('unavailable')}).strict()]);
 export const LifecycleAckModuleActionBrowserPacket=z.discriminatedUnion('operation',[
  z.object({action:z.literal(LIFECYCLE_ACK_ACTION),operation:z.literal('list')}).strict(),
  z.object({action:z.literal(LIFECYCLE_ACK_ACTION),operation:z.literal('prepare'),input:LifecycleAckReviewPrepare}).strict(),
- z.object({action:z.literal(LIFECYCLE_ACK_ACTION),operation:z.literal('reopen'),actionId:z.uuid()}).strict(),
+ z.object({action:z.literal(LIFECYCLE_ACK_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),
  z.object({action:z.literal(LIFECYCLE_ACK_ACTION),operation:z.literal('confirm'),confirmation:LifecycleAckReviewConfirmation}).strict(),
  z.object({action:z.literal(LIFECYCLE_ACK_ACTION),operation:z.literal('discard'),confirmation:LifecycleAckReviewRetirement}).strict(),
 ]);
@@ -282,11 +282,11 @@ type LifecycleAckOwners<Session>=Readonly<{list(session:Session):Promise<unknown
 import {OWN_TOIL_REPLACEMENT_ACTION as TOIL_ACTION} from './own-toil-replacement-contract';
 import {ToilRequestReviewPrepare,ToilRequestReviewConfirmation,ToilRequestReviewRetirement,ToilRequestPreparedReview,ToilRequestCompletedReview,ToilRequestRetiredReview,ToilRequestReviewIndex} from './toil-request-review-contract';
 export const TOIL_ACTION_PREPARE_BYTES=32768,TOIL_ACTION_RESPONSE_BYTES=65536;
-export const ToilRequestActionChoices=z.discriminatedUnion('kind',[z.object({kind:z.literal('choices'),today:z.iso.date(),employments:z.array(z.object({employmentId:z.uuid(),employeeCode:z.string().max(100).nullable(),companyName:z.string().min(1).max(240),requiresFirstScheduleConsent:z.boolean(),ordinaryDayAllowed:z.boolean(),replacementType:z.object({id:z.uuid(),name:z.string().min(1).max(240)}).strict().nullable()}).strict()).max(16).refine(rows=>new Set(rows.map(row=>row.employmentId)).size===rows.length)}).strict(),z.object({kind:z.literal('unavailable')}).strict()]);
+export const ToilRequestActionChoices=z.discriminatedUnion('kind',[z.object({kind:z.literal('choices'),today:z.iso.date(),employments:z.array(z.object({employmentId:z.guid(),employeeCode:z.string().max(100).nullable(),companyName:z.string().min(1).max(240),requiresFirstScheduleConsent:z.boolean(),ordinaryDayAllowed:z.boolean(),replacementType:z.object({id:z.guid(),name:z.string().min(1).max(240)}).strict().nullable()}).strict()).max(16).refine(rows=>new Set(rows.map(row=>row.employmentId)).size===rows.length)}).strict(),z.object({kind:z.literal('unavailable')}).strict()]);
 export const ToilModuleActionBrowserPacket=z.discriminatedUnion('operation',[
  z.object({action:z.literal(TOIL_ACTION),operation:z.literal('list')}).strict(),
  z.object({action:z.literal(TOIL_ACTION),operation:z.literal('prepare'),input:ToilRequestReviewPrepare}).strict(),
- z.object({action:z.literal(TOIL_ACTION),operation:z.literal('reopen'),actionId:z.uuid()}).strict(),
+ z.object({action:z.literal(TOIL_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),
  z.object({action:z.literal(TOIL_ACTION),operation:z.literal('confirm'),confirmation:ToilRequestReviewConfirmation}).strict(),
  z.object({action:z.literal(TOIL_ACTION),operation:z.literal('discard'),confirmation:ToilRequestReviewRetirement}).strict(),
 ]);
@@ -307,11 +307,11 @@ type ToilOwners<Session>=Readonly<{list(session:Session):Promise<unknown>;prepar
 import {REVIEWED_LEAVE_DECISION_ACTION as ASSIGNED_LEAVE_ACTION} from './reviewed-leave-decision-contract';
 import {LeaveDecisionReviewPrepare,LeaveDecisionReviewConfirmation,LeaveDecisionReviewRetirement,LeaveDecisionPreparedReview,LeaveDecisionCompletedReview,LeaveDecisionRetiredReview,LeaveDecisionReviewIndex} from './leave-decision-review-contract';
 export const ASSIGNED_LEAVE_ACTION_RESPONSE_BYTES=65536;
-export const AssignedLeaveActionChoices=z.discriminatedUnion('kind',[z.object({kind:z.literal('choices'),tasks:z.array(z.object({leaveRequestId:z.uuid(),currentStepId:z.uuid().nullable(),stepIndex:z.number().int().nonnegative().nullable(),applicantLabel:z.string().max(320).nullable(),createdAt:z.iso.datetime()}).strict()).max(100).refine(rows=>new Set(rows.map(row=>row.leaveRequestId)).size===rows.length),truncated:z.boolean()}).strict(),z.object({kind:z.literal('unavailable')}).strict()]);
+export const AssignedLeaveActionChoices=z.discriminatedUnion('kind',[z.object({kind:z.literal('choices'),tasks:z.array(z.object({leaveRequestId:z.guid(),currentStepId:z.guid().nullable(),stepIndex:z.number().int().nonnegative().nullable(),applicantLabel:z.string().max(320).nullable(),createdAt:z.iso.datetime()}).strict()).max(100).refine(rows=>new Set(rows.map(row=>row.leaveRequestId)).size===rows.length),truncated:z.boolean()}).strict(),z.object({kind:z.literal('unavailable')}).strict()]);
 export const AssignedLeaveModuleActionBrowserPacket=z.discriminatedUnion('operation',[
  z.object({action:z.literal(ASSIGNED_LEAVE_ACTION),operation:z.literal('list')}).strict(),
  z.object({action:z.literal(ASSIGNED_LEAVE_ACTION),operation:z.literal('prepare'),input:LeaveDecisionReviewPrepare}).strict(),
- z.object({action:z.literal(ASSIGNED_LEAVE_ACTION),operation:z.literal('reopen'),actionId:z.uuid()}).strict(),
+ z.object({action:z.literal(ASSIGNED_LEAVE_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),
  z.object({action:z.literal(ASSIGNED_LEAVE_ACTION),operation:z.literal('confirm'),confirmation:LeaveDecisionReviewConfirmation}).strict(),
  z.object({action:z.literal(ASSIGNED_LEAVE_ACTION),operation:z.literal('discard'),confirmation:LeaveDecisionReviewRetirement}).strict(),
 ]);
@@ -332,14 +332,14 @@ type AssignedLeaveOwners<Session>=Readonly<{list(session:Session):Promise<unknow
 import {ATTENDANCE_CORRECTION_REVIEW_ACTION as ATTENDANCE_ACTION,AttendanceCorrectionReviewPrepare,AttendanceCorrectionReviewConfirmation,AttendanceCorrectionReviewRetirement,AttendanceCorrectionPreparedReview,AttendanceCorrectionCompletedReview,AttendanceCorrectionRetiredReview,AttendanceCorrectionReviewIndex} from './attendance-correction-review-contract';
 import {OwnAttendanceCorrectionIntent} from './own-attendance-correction-contract';
 export const ATTENDANCE_ACTION_BYTES=32768;
-export const AttendanceActionChoices=z.discriminatedUnion('kind',[z.object({kind:z.literal('choices'),today:z.iso.date(),employments:z.array(z.object({employmentId:z.uuid(),employeeCode:z.string().max(100).nullable(),companyName:z.string().min(1).max(240),clockChangesAllowed:z.boolean()}).strict()).max(16).refine(rows=>new Set(rows.map(row=>row.employmentId)).size===rows.length)}).strict(),z.object({kind:z.literal('unavailable')}).strict()]);
-export const AttendanceClockSelection=z.object({employmentId:z.uuid(),date:z.iso.date()}).strict();
-export const AttendanceClockSource=z.object({kind:z.literal('attendance_clock_source'),employmentId:z.uuid(),date:z.iso.date(),baseline:z.string().regex(/^[a-f0-9]{64}$/),rows:z.array(z.object({id:z.uuid(),punchAt:z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/),direction:z.enum(['in','out']),voided:z.boolean()}).strict()).max(256).refine(rows=>new Set(rows.map(row=>row.id)).size===rows.length)}).strict();
+export const AttendanceActionChoices=z.discriminatedUnion('kind',[z.object({kind:z.literal('choices'),today:z.iso.date(),employments:z.array(z.object({employmentId:z.guid(),employeeCode:z.string().max(100).nullable(),companyName:z.string().min(1).max(240),clockChangesAllowed:z.boolean()}).strict()).max(16).refine(rows=>new Set(rows.map(row=>row.employmentId)).size===rows.length)}).strict(),z.object({kind:z.literal('unavailable')}).strict()]);
+export const AttendanceClockSelection=z.object({employmentId:z.guid(),date:z.iso.date()}).strict();
+export const AttendanceClockSource=z.object({kind:z.literal('attendance_clock_source'),employmentId:z.guid(),date:z.iso.date(),baseline:z.string().regex(/^[a-f0-9]{64}$/),rows:z.array(z.object({id:z.guid(),punchAt:z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/),direction:z.enum(['in','out']),voided:z.boolean()}).strict()).max(256).refine(rows=>new Set(rows.map(row=>row.id)).size===rows.length)}).strict();
 export const AttendanceModuleActionBrowserPacket=z.discriminatedUnion('operation',[
  z.object({action:z.literal(ATTENDANCE_ACTION),operation:z.literal('clock_source'),selection:AttendanceClockSelection}).strict(),
  z.object({action:z.literal(ATTENDANCE_ACTION),operation:z.literal('list')}).strict(),
  z.object({action:z.literal(ATTENDANCE_ACTION),operation:z.literal('prepare'),input:AttendanceCorrectionReviewPrepare}).strict(),
- z.object({action:z.literal(ATTENDANCE_ACTION),operation:z.literal('reopen'),actionId:z.uuid()}).strict(),
+ z.object({action:z.literal(ATTENDANCE_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),
  z.object({action:z.literal(ATTENDANCE_ACTION),operation:z.literal('confirm'),confirmation:AttendanceCorrectionReviewConfirmation}).strict(),
  z.object({action:z.literal(ATTENDANCE_ACTION),operation:z.literal('discard'),confirmation:AttendanceCorrectionReviewRetirement}).strict(),
 ]);
@@ -372,7 +372,7 @@ export const PayComponentActionChoices=z.discriminatedUnion('kind',[
 export const PayComponentModuleActionBrowserPacket=z.discriminatedUnion('operation',[
  z.object({action:z.literal(PAY_COMPONENT_ACTION),operation:z.literal('list')}).strict(),
  z.object({action:z.literal(PAY_COMPONENT_ACTION),operation:z.literal('prepare'),input:PayComponentReviewPrepare}).strict(),
- z.object({action:z.literal(PAY_COMPONENT_ACTION),operation:z.literal('reopen'),actionId:z.uuid()}).strict(),
+ z.object({action:z.literal(PAY_COMPONENT_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),
  z.object({action:z.literal(PAY_COMPONENT_ACTION),operation:z.literal('confirm'),confirmation:PayComponentReviewConfirmation}).strict(),
  z.object({action:z.literal(PAY_COMPONENT_ACTION),operation:z.literal('discard'),confirmation:PayComponentReviewRetirement}).strict(),
 ]);export type PayComponentModuleActionBrowserPacket=z.infer<typeof PayComponentModuleActionBrowserPacket>;
@@ -389,10 +389,10 @@ type PayComponentOwners<Session>=Readonly<{list(session:Session):Promise<unknown
 /** Existing processed-run choices only. Native close permission and source checks are repeated
  * by prepare/confirm; these labels never establish permission or contain financial inputs. */
 export const PayrollCloseActionChoices=z.discriminatedUnion('kind',[
- z.object({kind:z.literal('choices'),truncated:z.boolean(),batches:z.array(z.object({batchId:z.uuid(),companyName:z.string().min(1).max(1000),payPeriod:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),runType:z.enum(['regular','off_cycle','bonus','adjustment']),runSeq:z.number().int().positive(),cycleName:z.string().max(1000).nullable()}).strict()).max(20).refine(rows=>new Set(rows.map(row=>row.batchId)).size===rows.length)}).strict(),z.object({kind:z.literal('unavailable')}).strict(),
+ z.object({kind:z.literal('choices'),truncated:z.boolean(),batches:z.array(z.object({batchId:z.guid(),companyName:z.string().min(1).max(1000),payPeriod:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),runType:z.enum(['regular','off_cycle','bonus','adjustment']),runSeq:z.number().int().positive(),cycleName:z.string().max(1000).nullable()}).strict()).max(20).refine(rows=>new Set(rows.map(row=>row.batchId)).size===rows.length)}).strict(),z.object({kind:z.literal('unavailable')}).strict(),
 ]);export type PayrollCloseActionChoices=z.infer<typeof PayrollCloseActionChoices>;
 export const PayrollCloseModuleActionBrowserPacket=z.discriminatedUnion('operation',[
- z.object({action:z.literal(PAYROLL_CLOSE_ACTION),operation:z.literal('list')}).strict(),z.object({action:z.literal(PAYROLL_CLOSE_ACTION),operation:z.literal('prepare'),input:PayrollCloseReviewPrepare}).strict(),z.object({action:z.literal(PAYROLL_CLOSE_ACTION),operation:z.literal('reopen'),actionId:z.uuid()}).strict(),z.object({action:z.literal(PAYROLL_CLOSE_ACTION),operation:z.literal('confirm'),confirmation:PayrollCloseReviewConfirmation}).strict(),z.object({action:z.literal(PAYROLL_CLOSE_ACTION),operation:z.literal('discard'),confirmation:PayrollCloseReviewRetirement}).strict(),
+ z.object({action:z.literal(PAYROLL_CLOSE_ACTION),operation:z.literal('list')}).strict(),z.object({action:z.literal(PAYROLL_CLOSE_ACTION),operation:z.literal('prepare'),input:PayrollCloseReviewPrepare}).strict(),z.object({action:z.literal(PAYROLL_CLOSE_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),z.object({action:z.literal(PAYROLL_CLOSE_ACTION),operation:z.literal('confirm'),confirmation:PayrollCloseReviewConfirmation}).strict(),z.object({action:z.literal(PAYROLL_CLOSE_ACTION),operation:z.literal('discard'),confirmation:PayrollCloseReviewRetirement}).strict(),
 ]);export type PayrollCloseModuleActionBrowserPacket=z.infer<typeof PayrollCloseModuleActionBrowserPacket>;
 export const PayrollCloseModuleActionBrowserResult=z.discriminatedUnion('kind',[PayrollCloseReviewIndex,z.object({kind:z.literal('prepared'),review:PayrollClosePreparedReview}).strict(),z.object({kind:z.literal('completed'),receipt:PayrollCloseCompletedReview}).strict(),z.object({kind:z.literal('retired'),receipt:PayrollCloseRetiredReview}).strict()]);export type PayrollCloseModuleActionBrowserResult=z.infer<typeof PayrollCloseModuleActionBrowserResult>;
 export function parsePayrollCloseModuleActionBrowserResult(packet:PayrollCloseModuleActionBrowserPacket,value:unknown):PayrollCloseModuleActionBrowserResult{
@@ -406,10 +406,10 @@ type PayrollCloseOwners<Session>=Readonly<{list(session:Session):Promise<unknown
  * larger units honestly use native Rewards, never a silently shortened confirmation. Request stays20KiB. */
 export const REWARDS_POST_ACTION_RESPONSE_BYTES=262144;
 export const RewardsPostActionChoices=z.discriminatedUnion('kind',[
- z.object({kind:z.literal('choices'),truncated:z.boolean(),units:z.array(z.object({unitId:z.uuid(),revision:z.number().int().nonnegative(),companyName:z.string().min(1).max(1000),name:z.string().min(1).max(1000),cycleName:z.string().min(1).max(1000),year:z.number().int(),kind:z.enum(['annual','adhoc','midyear']),batches:z.array(z.object({id:z.uuid(),payPeriod:z.string().regex(/^\d{4}-\d{2}$/)}).strict()).max(20).refine(rows=>new Set(rows.map(row=>row.id)).size===rows.length),batchesTruncated:z.boolean()}).strict()).max(20).refine(rows=>new Set(rows.map(row=>row.unitId)).size===rows.length)}).strict(),z.object({kind:z.literal('unavailable')}).strict(),
+ z.object({kind:z.literal('choices'),truncated:z.boolean(),units:z.array(z.object({unitId:z.guid(),revision:z.number().int().nonnegative(),companyName:z.string().min(1).max(1000),name:z.string().min(1).max(1000),cycleName:z.string().min(1).max(1000),year:z.number().int(),kind:z.enum(['annual','adhoc','midyear']),batches:z.array(z.object({id:z.guid(),payPeriod:z.string().regex(/^\d{4}-\d{2}$/)}).strict()).max(20).refine(rows=>new Set(rows.map(row=>row.id)).size===rows.length),batchesTruncated:z.boolean()}).strict()).max(20).refine(rows=>new Set(rows.map(row=>row.unitId)).size===rows.length)}).strict(),z.object({kind:z.literal('unavailable')}).strict(),
 ]);export type RewardsPostActionChoices=z.infer<typeof RewardsPostActionChoices>;
 export const RewardsPostModuleActionBrowserPacket=z.discriminatedUnion('operation',[
- z.object({action:z.literal(REWARDS_POST_ACTION),operation:z.literal('list')}).strict(),z.object({action:z.literal(REWARDS_POST_ACTION),operation:z.literal('prepare'),input:RewardsPostReviewPrepare}).strict(),z.object({action:z.literal(REWARDS_POST_ACTION),operation:z.literal('reopen'),actionId:z.uuid()}).strict(),z.object({action:z.literal(REWARDS_POST_ACTION),operation:z.literal('confirm'),confirmation:RewardsPostReviewConfirmation}).strict(),z.object({action:z.literal(REWARDS_POST_ACTION),operation:z.literal('discard'),confirmation:RewardsPostReviewRetirement}).strict(),
+ z.object({action:z.literal(REWARDS_POST_ACTION),operation:z.literal('list')}).strict(),z.object({action:z.literal(REWARDS_POST_ACTION),operation:z.literal('prepare'),input:RewardsPostReviewPrepare}).strict(),z.object({action:z.literal(REWARDS_POST_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),z.object({action:z.literal(REWARDS_POST_ACTION),operation:z.literal('confirm'),confirmation:RewardsPostReviewConfirmation}).strict(),z.object({action:z.literal(REWARDS_POST_ACTION),operation:z.literal('discard'),confirmation:RewardsPostReviewRetirement}).strict(),
 ]);export type RewardsPostModuleActionBrowserPacket=z.infer<typeof RewardsPostModuleActionBrowserPacket>;
 export const RewardsPostModuleActionBrowserResult=z.discriminatedUnion('kind',[RewardsPostReviewIndex,z.object({kind:z.literal('prepared'),review:RewardsPostPreparedReview}).strict(),z.object({kind:z.literal('completed'),receipt:RewardsPostCompletedReview}).strict(),z.object({kind:z.literal('retired'),receipt:RewardsPostRetiredReview}).strict()]);export type RewardsPostModuleActionBrowserResult=z.infer<typeof RewardsPostModuleActionBrowserResult>;
 export function parseRewardsPostModuleActionBrowserResult(packet:RewardsPostModuleActionBrowserPacket,value:unknown):RewardsPostModuleActionBrowserResult{
@@ -421,10 +421,10 @@ export function parseRewardsPostModuleActionBrowserResult(packet:RewardsPostModu
 type RewardsPostOwners<Session>=Readonly<{list(session:Session):Promise<unknown>;prepare(session:Session,input:z.infer<typeof RewardsPostReviewPrepare>):Promise<unknown>;reopen(session:Session,id:string):Promise<unknown>;confirm(session:Session,input:z.infer<typeof RewardsPostReviewConfirmation>):Promise<unknown>;discard(session:Session,input:z.infer<typeof RewardsPostReviewRetirement>):Promise<unknown>}>;
 /** Actual country-owned Personnel section only; person/country are server-derived read metadata. */
 export const COUNTRY_STATUTORY_ACTION_RESPONSE_BYTES=65536,COUNTRY_STATUTORY_ACTION_REQUEST_BYTES=25600;
-export const CountryStatutoryLabels=z.object({employmentId:z.uuid(),personId:z.uuid(),employeeCode:z.string().nullable(),name:z.string(),companyName:z.string()}).strict();
+export const CountryStatutoryLabels=z.object({employmentId:z.guid(),personId:z.guid(),employeeCode:z.string().nullable(),name:z.string(),companyName:z.string()}).strict();
 export const CountryStatutoryActionChoices=z.discriminatedUnion('kind',[z.object({kind:z.literal('unavailable')}).strict(),z.object({kind:z.literal('choices'),items:z.array(CountryStatutoryLabels.omit({personId:true})).max(20).refine(rows=>new Set(rows.map(row=>row.employmentId)).size===rows.length),truncated:z.boolean()}).strict()]);export type CountryStatutoryActionChoices=z.infer<typeof CountryStatutoryActionChoices>;
-export const CountryStatutoryEditable=z.object({kind:z.literal('country_statutory_editable'),employmentId:z.uuid(),personId:z.uuid(),country:z.literal('MY'),fields:ReviewedCountryStatutoryAfter.omit({subjectToSocso:true,eisEligible:true}),labels:CountryStatutoryLabels}).strict().refine(value=>value.labels.employmentId===value.employmentId&&value.labels.personId===value.personId);
-export const CountryStatutoryModuleActionBrowserPacket=z.discriminatedUnion('operation',[z.object({action:z.literal(COUNTRY_STATUTORY_ACTION),operation:z.literal('list')}).strict(),z.object({action:z.literal(COUNTRY_STATUTORY_ACTION),operation:z.literal('read_editable'),employmentId:z.uuid()}).strict(),z.object({action:z.literal(COUNTRY_STATUTORY_ACTION),operation:z.literal('prepare'),input:CountryStatutoryReviewPrepare}).strict(),z.object({action:z.literal(COUNTRY_STATUTORY_ACTION),operation:z.literal('reopen'),actionId:z.uuid()}).strict(),z.object({action:z.literal(COUNTRY_STATUTORY_ACTION),operation:z.literal('confirm'),confirmation:CountryStatutoryReviewConfirmation}).strict(),z.object({action:z.literal(COUNTRY_STATUTORY_ACTION),operation:z.literal('discard'),confirmation:CountryStatutoryReviewRetirement}).strict()]);export type CountryStatutoryModuleActionBrowserPacket=z.infer<typeof CountryStatutoryModuleActionBrowserPacket>;
+export const CountryStatutoryEditable=z.object({kind:z.literal('country_statutory_editable'),employmentId:z.guid(),personId:z.guid(),country:z.literal('MY'),fields:ReviewedCountryStatutoryAfter.omit({subjectToSocso:true,eisEligible:true}),labels:CountryStatutoryLabels}).strict().refine(value=>value.labels.employmentId===value.employmentId&&value.labels.personId===value.personId);
+export const CountryStatutoryModuleActionBrowserPacket=z.discriminatedUnion('operation',[z.object({action:z.literal(COUNTRY_STATUTORY_ACTION),operation:z.literal('list')}).strict(),z.object({action:z.literal(COUNTRY_STATUTORY_ACTION),operation:z.literal('read_editable'),employmentId:z.guid()}).strict(),z.object({action:z.literal(COUNTRY_STATUTORY_ACTION),operation:z.literal('prepare'),input:CountryStatutoryReviewPrepare}).strict(),z.object({action:z.literal(COUNTRY_STATUTORY_ACTION),operation:z.literal('reopen'),actionId:z.guid()}).strict(),z.object({action:z.literal(COUNTRY_STATUTORY_ACTION),operation:z.literal('confirm'),confirmation:CountryStatutoryReviewConfirmation}).strict(),z.object({action:z.literal(COUNTRY_STATUTORY_ACTION),operation:z.literal('discard'),confirmation:CountryStatutoryReviewRetirement}).strict()]);export type CountryStatutoryModuleActionBrowserPacket=z.infer<typeof CountryStatutoryModuleActionBrowserPacket>;
 export const CountryStatutoryModuleActionBrowserResult=z.discriminatedUnion('kind',[CountryStatutoryReviewIndex,CountryStatutoryEditable,z.object({kind:z.literal('prepared'),review:CountryStatutoryPreparedReview,labels:CountryStatutoryLabels}).strict(),z.object({kind:z.literal('completed'),receipt:CountryStatutoryCompletedReview,labels:CountryStatutoryLabels}).strict(),z.object({kind:z.literal('retired'),receipt:CountryStatutoryRetiredReview}).strict()]);export type CountryStatutoryModuleActionBrowserResult=z.infer<typeof CountryStatutoryModuleActionBrowserResult>;
 export function parseCountryStatutoryModuleActionBrowserResult(packet:CountryStatutoryModuleActionBrowserPacket,value:unknown):CountryStatutoryModuleActionBrowserResult{const result=CountryStatutoryModuleActionBrowserResult.parse(value),op=packet.operation,index=result.kind==='country_statutory_review_index';if(!(op==='list'?index:op==='read_editable'?result.kind==='country_statutory_editable':op==='prepare'?result.kind==='prepared':op==='confirm'?result.kind==='completed'||result.kind==='retired':op==='discard'?result.kind==='retired':result.kind==='prepared'||result.kind==='completed'||result.kind==='retired'))throw Error('Module action response unavailable.');
  if(result.kind==='country_statutory_editable'&&(op!=='read_editable'||result.employmentId!==packet.employmentId.toLowerCase()))throw Error('Module action response unavailable.');

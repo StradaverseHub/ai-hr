@@ -11,17 +11,17 @@ import {
 
 /** Must come from fresh authenticated source reads, never from a posted/model object. */
 export const OwnLeaveBinding = z.object({
-  tenantId: z.string().uuid(),
-  userId: z.string().uuid(),
-  personId: z.string().uuid(),
-  companyId: z.string().uuid(),
-  employmentId: z.string().uuid(),
+  tenantId: z.guid(),
+  userId: z.guid(),
+  personId: z.guid(),
+  companyId: z.guid(),
+  employmentId: z.guid(),
 }).strict();
 export type OwnLeaveBinding = z.infer<typeof OwnLeaveBinding>;
 
 /** References and digests only: this object must not store the reason, preview or tool output. */
 export const OwnLeavePreparedMetadata = z.object({
-  actionId: z.string().uuid(),
+  actionId: z.guid(),
   action: z.literal(OWN_LEAVE_ACTION),
   contractVersion: z.literal(OWN_LEAVE_CONTRACT_VERSION),
   binding: OwnLeaveBinding,
@@ -36,7 +36,7 @@ export const OwnLeavePreparedMetadata = z.object({
  * terminal digest is explicitly absent proof, never a fabricated original integrity digest. */
 export const OwnLeaveCustodyMetadata = z.union([
   OwnLeavePreparedMetadata.refine(value => value.state === 'awaiting_confirmation'),
-  z.object({ actionId: z.string().uuid(), action: z.literal(OWN_LEAVE_ACTION),
+  z.object({ actionId: z.guid(), action: z.literal(OWN_LEAVE_ACTION),
     contractVersion: z.literal(OWN_LEAVE_CONTRACT_VERSION), binding: OwnLeaveBinding,
     intentDigest: z.null(), reviewedDigest: z.null(),
     state: OwnLeaveState.exclude(['awaiting_confirmation']),

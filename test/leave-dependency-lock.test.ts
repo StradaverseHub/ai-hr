@@ -4,7 +4,7 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant, type Tx } from '../db/client';
 import { lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx, lockLeaveDependencyReadConfigurationTx,lockLeaveReadOnlySourceConfigurationTx,lockLeaveReadOnlySourceDependenciesTx, LeaveDependencyUnavailable } from '../core/leave-dependency-lock';
-import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, harnessSnapshot, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
 const signal = () => {
   let resolve!: () => void, reject!: (error: unknown) => void;
@@ -110,6 +110,19 @@ describe('participating leave dependency locks, not universal fencing', () => {
   it('refuses malformed/foreign read-only source ownership without widening the actual carrier or snapshot',async()=>{
     for(const [tenant,ids] of [[randomUUID(),[randomUUID()]],[base.tenantId,[]],[base.tenantId,['invalid']]] as [string,string[]][]){await expect(readonlySource(tx=>lockLeaveReadOnlySourceDependenciesTx(tx,tenant,ids))).rejects.toThrow(LeaveDependencyUnavailable);}
     await expect(withTenant(adminCtx(base),tx=>lockLeaveReadOnlySourceDependenciesTx(tx,base.tenantId,[randomUUID()]),{readOnlySnapshot:true})).rejects.toThrow(LeaveDependencyUnavailable);
+  });
+  it('admits the demo/staging fixture ids, which PostgreSQL accepts but RFC 9562 does not (db:seed setLeaveTypeRules)', async () => {
+    // db/seed.ts uses tenant 11111111-… and users 22222222-…: valid PostgreSQL uuid, no RFC version/variant.
+    // A strict zod uuid() here refused the demo tenant, so pnpm db:seed failed at setLeaveTypeRules.
+    const demo = '11111111-1111-1111-1111-111111111111', employment = '22222222-2222-2222-2222-222222222222';
+    const ctx = { ...adminCtx(base), tenantId: demo, entitlements: harnessSnapshot(demo) };
+    for (const tenant of [demo, demo.toUpperCase()]) {
+      await withTenant(ctx, tx => lockLeaveDependencyConfigurationTx(tx, tenant));
+      await withTenant(ctx, tx => lockLeaveDependencyReadConfigurationTx(tx, tenant));
+      await withTenant(ctx, tx => lockLeaveDependenciesTx(tx, tenant, [employment, employment.toUpperCase()]));
+    }
+    await expect(withTenant(ctx, tx => lockLeaveDependencyConfigurationTx(tx, '11111111-1111-1111-1111-11111111111g')))
+      .rejects.toThrow(LeaveDependencyUnavailable);
   });
   it('refuses a foreign tenant carrier and empty or malformed subject sets', async () => {
     for (const [tenant, subjects] of [[randomUUID(), [randomUUID()]], [base.tenantId, []],

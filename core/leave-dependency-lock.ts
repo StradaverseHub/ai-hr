@@ -9,7 +9,7 @@ import type { Tx } from '../db/client';
 export class LeaveDependencyUnavailable extends Error {
   constructor() { super('Leave source is unavailable; review it again.'); this.name = 'LeaveDependencyUnavailable'; }
 }
-const uuid = z.string().uuid();
+const uuid = z.guid();
 
 async function acquire(tx: Tx, tenantId: string, key: string, shared: boolean): Promise<void> {
   // CASE prevents a mismatched carrier from acquiring a foreign tenant's advisory lock. No waiting:

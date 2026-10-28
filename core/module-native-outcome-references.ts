@@ -24,7 +24,7 @@ function requireJobCarrier(tx:Tx,ctx:SessionContext,job:NativeOutcomeJobProvenan
 /** With no further canonical source reads, a metadata-only GET may finish this immediately. */
 export async function finishNativeOutcomeJobRecheckTx(tx:Tx,ctx:SessionContext,job:NativeOutcomeJobProvenance){const carrier=requireJobCarrier(tx,ctx,job);jobRechecks.delete(job);await carrier.check();}
 
-const Id=z.uuid(),Digest=z.string().regex(/^[a-f0-9]{64}$/),Time=z.union([z.string(),z.date()]);
+const Id=z.guid(),Digest=z.string().regex(/^[a-f0-9]{64}$/),Time=z.union([z.string(),z.date()]);
 const Row=z.object({id:Id,tenant_id:Id,user_id:Id,person_id:Id.nullable(),job_id:Id,request_nonce:Id,request_digest:Digest,action:z.string(),source_kind:z.enum(['review','employee_import']),review_id:Id.nullable(),import_attempt_id:Id.nullable(),event_id:Id,native_digest:Digest,job_receipt_digest:Digest,receipt:z.string().min(1).max(16384),consented:z.literal(true),created_at:Time,expires_at:Time,fresh:z.literal(true)}).strict();
 type Row=z.infer<typeof Row>;
 const Sealed=z.object({version:z.literal(1),tenantId:Id,userId:Id,personId:Id.nullable(),jobId:Id,requestNonce:Id,reference:NativeOutcomeReference,jobReceiptDigest:Digest,candidateDigest:Digest,sourceDigest:Digest,native:NativeOutcomeEvidence,proofNonce:Id,consented:z.literal(true),createdAt:z.iso.datetime(),expiresAt:z.iso.datetime()}).strict();

@@ -23,10 +23,10 @@ export class ModuleActionReviewUnavailable extends Error{constructor(){super('Th
 const fail=():never=>{throw new ModuleActionReviewUnavailable();};
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const digest=z.string().regex(/^[a-f0-9]{64}$/);
-const Binding=z.object({tenantId:z.uuid(),userId:z.uuid(),personId:z.uuid(),employmentId:z.uuid(),companyId:z.uuid()}).strict();
-const Metadata=z.object({actionId:z.uuid(),action:z.literal(MODULE_NOTIFICATION_ACTION),contractVersion:z.literal(1),binding:Binding,
+const Binding=z.object({tenantId:z.guid(),userId:z.guid(),personId:z.guid(),employmentId:z.guid(),companyId:z.guid()}).strict();
+const Metadata=z.object({actionId:z.guid(),action:z.literal(MODULE_NOTIFICATION_ACTION),contractVersion:z.literal(1),binding:Binding,
  intentDigest:digest.nullable(),reviewedDigest:digest.nullable(),state:z.enum(['awaiting_confirmation','completed','discarded','expired','refused']),createdAt:z.iso.datetime(),expiresAt:z.iso.datetime()}).strict();
-const Stored=z.object({metadata:Metadata,sealed:OwnLeaveSealedReview.nullable(),eventId:z.uuid().nullable()}).strict().refine(value=>
+const Stored=z.object({metadata:Metadata,sealed:OwnLeaveSealedReview.nullable(),eventId:z.guid().nullable()}).strict().refine(value=>
  (value.metadata.state==='awaiting_confirmation')===(value.sealed!==null&&value.metadata.intentDigest!==null&&value.metadata.reviewedDigest!==null)
  &&(value.metadata.state==='completed')===(value.eventId!==null)
  &&(value.metadata.state==='awaiting_confirmation'||(value.sealed===null&&value.metadata.intentDigest===null&&value.metadata.reviewedDigest===null)));
@@ -49,7 +49,7 @@ function retired(stored:Stored){return {kind:'retired' as const,receipt:ModuleAc
 async function completed(tx:Tx,ctx:SessionContext,stored:Stored,cap:OwnNotificationServerIdentity){if(stored.metadata.state!=='completed'||!stored.eventId)return fail();
  const actual=await reopenOwnNotificationPreferencesEventTx(tx,ctx,{employmentId:stored.metadata.binding.employmentId,eventId:stored.eventId},cap);if(actual.proof!=='historical_event_current_values'||actual.version!==1||actual.kind!=='own_notification_preferences')return fail();
  return {kind:'completed' as const,receipt:ModuleActionCompletedReceipt.parse({action:MODULE_NOTIFICATION_ACTION,contractVersion:1,actionId:stored.metadata.actionId,state:'completed',sourceEventId:actual.eventId,employmentId:actual.employmentId,enabledCategories:actual.enabledCategories,locale:actual.locale,semantics:'recorded_effect_current_values'})};}
-async function subject(tx:Tx,id:string){const [row]=await tx.execute<{subject:unknown}>(sql`select app.assistant_module_action_review_subject(${id}::uuid,${MODULE_NOTIFICATION_ACTION}) as subject`);return z.uuid().parse(row?.subject);}
+async function subject(tx:Tx,id:string){const [row]=await tx.execute<{subject:unknown}>(sql`select app.assistant_module_action_review_subject(${id}::uuid,${MODULE_NOTIFICATION_ACTION}) as subject`);return z.guid().parse(row?.subject);}
 /** Capability is resolved afresh by the eventual HTTP owner outside this transaction. It is never
  * part of the human input, encrypted body or persisted completion. No hidden identity/network call. */
 export async function prepareModuleActionReview(supplied:SessionContext,input:unknown,cap:OwnNotificationServerIdentity){const ctx=capture(supplied),parsed=ModuleActionPrepare.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{
@@ -73,7 +73,7 @@ export async function confirmModuleActionReview(supplied:SessionContext,input:un
  const done=await read(tx,sql`select app.assistant_module_action_review_complete(${p.actionId}::uuid,${MODULE_NOTIFICATION_ACTION},${p.reviewedDigest},${native.eventId}::uuid) as review`);bound(done,fresh,p.actionId,nominated);if(done.eventId!==native.eventId)return fail();return completed(tx,fresh,done,cap);
  });}catch{return fail();}}
 /** Reopen is read/reconciliation only, never an effect or automatic confirmation retry. */
-export async function reopenModuleActionReview(supplied:SessionContext,actionId:unknown,cap:OwnNotificationServerIdentity){const ctx=capture(supplied),parsed=z.uuid().safeParse(actionId);if(!parsed.success)return fail();const id=parsed.data;try{return await withTenant(ctx,async tx=>{
+export async function reopenModuleActionReview(supplied:SessionContext,actionId:unknown,cap:OwnNotificationServerIdentity){const ctx=capture(supplied),parsed=z.guid().safeParse(actionId);if(!parsed.success)return fail();const id=parsed.data;try{return await withTenant(ctx,async tx=>{
  const fresh=await guard(tx,ctx);await lockLeaveDependencyReadConfigurationTx(tx,fresh.tenantId);const nominated=await subject(tx,id);await lockLeaveDependenciesTx(tx,fresh.tenantId,[nominated]);const stored=await read(tx,sql`select app.assistant_module_action_review_read(${id}::uuid,${MODULE_NOTIFICATION_ACTION}) as review`);bound(stored,fresh,id,nominated);return stored.metadata.state==='awaiting_confirmation'?pending(stored):stored.metadata.state==='completed'?completed(tx,fresh,stored,cap):retired(stored);
  });}catch{return fail();}}
 /** Retirement has fresh actual caller/custody authority but no Assistant grant/pause requirement. */
@@ -89,7 +89,7 @@ import {OWN_PROFILE_CHANGE_ACTION,OwnProfileChangeHumanContent} from '../../lib/
 import {ProfileModuleActionPrepare,ProfileModuleActionConfirmation,ProfileModuleActionRetirementRequest,ProfileModuleActionPreparedReview,ProfileModuleActionCompletedReceipt,ProfileModuleActionRetiredReceipt,ProfileModuleActionReviewIndexResult} from '../../lib/assistant-actions/module-action-review-contract';
 import {prepareOwnProfileChangeSourceTx,confirmOwnProfileChangeSourceTx,reconcileOwnProfileChangeSourceTx} from './own-profile-change-source';
 const ProfileMetadata=Metadata.extend({action:z.literal(OWN_PROFILE_CHANGE_ACTION)});
-const ProfileStored=z.object({metadata:ProfileMetadata,sealed:OwnLeaveSealedReview.nullable(),eventId:z.uuid().nullable(),requestId:z.uuid().nullable()}).strict().refine(value=>
+const ProfileStored=z.object({metadata:ProfileMetadata,sealed:OwnLeaveSealedReview.nullable(),eventId:z.guid().nullable(),requestId:z.guid().nullable()}).strict().refine(value=>
  (value.metadata.state==='awaiting_confirmation')===(value.sealed!==null&&value.metadata.intentDigest!==null&&value.metadata.reviewedDigest!==null)
  &&(value.metadata.state==='completed')===(value.eventId!==null&&value.requestId!==null)
  &&((value.eventId===null)===(value.requestId===null))
@@ -112,7 +112,7 @@ async function completedProfile(tx:Tx,ctx:SessionContext,stored:ProfileStored){i
  // current source status. No proposal or old identity/source fingerprint is stored in completion.
  const current=await reconcileOwnProfileChangeSourceTx(tx,ctx,{kind:'submitted',requestId:stored.requestId,requestedEventId:stored.eventId,employmentId:stored.metadata.binding.employmentId,currentStatus:'pending',replayed:true});
  return {kind:'completed' as const,receipt:ProfileModuleActionCompletedReceipt.parse({action:OWN_PROFILE_CHANGE_ACTION,contractVersion:1,actionId:stored.metadata.actionId,state:'completed',requestId:current.requestId,requestedEventId:current.requestedEventId,employmentId:current.employmentId,currentStatus:current.currentStatus,semantics:'submitted_not_approved'})};}
-async function profileSubject(tx:Tx,id:string){const [row]=await tx.execute<{subject:unknown}>(sql`select app.assistant_module_action_review_subject(${id}::uuid,${OWN_PROFILE_CHANGE_ACTION}) as subject`);return z.uuid().parse(row?.subject);}
+async function profileSubject(tx:Tx,id:string){const [row]=await tx.execute<{subject:unknown}>(sql`select app.assistant_module_action_review_subject(${id}::uuid,${OWN_PROFILE_CHANGE_ACTION}) as subject`);return z.guid().parse(row?.subject);}
 async function ownProfileSubject(tx:Tx,ctx:SessionContext,id:string){if(!ctx.personId)return fail();const nominate=()=>tx.select({id:employment.id,companyId:employment.companyId}).from(employment).where(and(eq(employment.id,id),eq(employment.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId!))).limit(1);const [nominated]=await nominate();if(!nominated)return fail();await lockLeaveDependenciesTx(tx,ctx.tenantId,[nominated.id]);const [fresh]=await nominate();if(!fresh||fresh.id!==nominated.id||fresh.companyId!==nominated.companyId)return fail();return fresh;}
 export async function prepareProfileModuleActionReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied);let captured:unknown;try{captured=structuredClone(input);}catch{return fail();}const parsed=ProfileModuleActionPrepare.safeParse(captured);if(!parsed.success)return fail();const content=parsed.data;try{return await withTenant(ctx,async tx=>{
  const actor=await guard(tx,ctx,'ess');await lockLeaveDependencyConfigurationTx(tx,actor.tenantId);const own=await ownProfileSubject(tx,actor,content.employmentId);
@@ -129,7 +129,7 @@ export async function confirmProfileModuleActionReview(supplied:SessionContext,i
  });}catch{return fail();}}
 /** Current-source reconciliation only; approval/rejection changes the reported native status but
  * never reexecutes the human proposal, recreates an erased review or creates another native event. */
-export async function reopenProfileModuleActionReview(supplied:SessionContext,value:unknown){const ctx=capture(supplied),parsed=z.uuid().safeParse(value);if(!parsed.success)return fail();const id=parsed.data;try{return await withTenant(ctx,async tx=>{
+export async function reopenProfileModuleActionReview(supplied:SessionContext,value:unknown){const ctx=capture(supplied),parsed=z.guid().safeParse(value);if(!parsed.success)return fail();const id=parsed.data;try{return await withTenant(ctx,async tx=>{
  const actor=await guard(tx,ctx,'ess');await lockLeaveDependencyConfigurationTx(tx,actor.tenantId);const nominated=await profileSubject(tx,id);await lockLeaveDependenciesTx(tx,actor.tenantId,[nominated]);const stored=await readProfile(tx,sql`select app.assistant_module_action_review_read(${id}::uuid,${OWN_PROFILE_CHANGE_ACTION}) as review`);boundProfile(stored,actor,id,nominated);
  if(stored.metadata.state==='awaiting_confirmation'){const body=unsealProfile(stored),fresh=await prepareOwnProfileChangeSourceTx(tx,actor,body.content);if(fresh.reviewedDigest!==body.nativeReviewedDigest||JSON.stringify(fresh.content)!==JSON.stringify(body.content))return fail();return pendingProfile(stored);}
  return stored.metadata.state==='completed'?completedProfile(tx,actor,stored):retiredProfile(stored);
@@ -142,7 +142,7 @@ import {OWN_CLAIM_DRAFT_ACTION,OwnClaimDraftHumanContent} from '../../lib/assist
 import {ClaimModuleActionPrepare,ClaimModuleActionConfirmation,ClaimModuleActionRetirementRequest,ClaimModuleActionPreparedReview,ClaimModuleActionCompletedReceipt,ClaimModuleActionRetiredReceipt,ClaimModuleActionReviewIndexResult} from '../../lib/assistant-actions/module-action-review-contract';
 import {prepareOwnClaimDraftSourceTx,confirmOwnClaimDraftSourceTx,reconcileOwnClaimDraftSourceTx} from './own-claim-source';
 const ClaimMetadata=Metadata.extend({action:z.literal(OWN_CLAIM_DRAFT_ACTION)});
-const ClaimStored=z.object({metadata:ClaimMetadata,sealed:OwnLeaveSealedReview.nullable(),eventId:z.uuid().nullable(),draftId:z.uuid().nullable()}).strict().refine(value=>
+const ClaimStored=z.object({metadata:ClaimMetadata,sealed:OwnLeaveSealedReview.nullable(),eventId:z.guid().nullable(),draftId:z.guid().nullable()}).strict().refine(value=>
  (value.metadata.state==='awaiting_confirmation')===(value.sealed!==null&&value.metadata.intentDigest!==null&&value.metadata.reviewedDigest!==null)
  &&(value.metadata.state==='completed')===(value.eventId!==null&&value.draftId!==null)
  &&((value.eventId===null)===(value.draftId===null))
@@ -165,7 +165,7 @@ async function completedClaim(tx:Tx,ctx:SessionContext,stored:ClaimStored){if(st
  // current source status. No proposal or old identity/source fingerprint is stored in completion.
  const current=await reconcileOwnClaimDraftSourceTx(tx,ctx,{kind:'draft_saved',draftId:stored.draftId,savedEventId:stored.eventId,employmentId:stored.metadata.binding.employmentId,currentStatus:'draft',replayed:true});
  return {kind:'completed' as const,receipt:ClaimModuleActionCompletedReceipt.parse({action:OWN_CLAIM_DRAFT_ACTION,contractVersion:1,actionId:stored.metadata.actionId,state:'completed',draftId:current.draftId,savedEventId:current.savedEventId,employmentId:current.employmentId,currentStatus:current.currentStatus,semantics:'draft_saved_not_submitted_or_reimbursed'})};}
-async function claimSubject(tx:Tx,id:string){const [row]=await tx.execute<{subject:unknown}>(sql`select app.assistant_module_action_review_subject(${id}::uuid,${OWN_CLAIM_DRAFT_ACTION}) as subject`);return z.uuid().parse(row?.subject);}
+async function claimSubject(tx:Tx,id:string){const [row]=await tx.execute<{subject:unknown}>(sql`select app.assistant_module_action_review_subject(${id}::uuid,${OWN_CLAIM_DRAFT_ACTION}) as subject`);return z.guid().parse(row?.subject);}
 async function ownClaimSubject(tx:Tx,ctx:SessionContext,id:string){if(!ctx.personId)return fail();const nominate=()=>tx.select({id:employment.id,companyId:employment.companyId}).from(employment).where(and(eq(employment.id,id),eq(employment.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId!))).limit(1);const [nominated]=await nominate();if(!nominated)return fail();await lockLeaveDependenciesTx(tx,ctx.tenantId,[nominated.id]);const [fresh]=await nominate();if(!fresh||fresh.id!==nominated.id||fresh.companyId!==nominated.companyId)return fail();return fresh;}
 export async function prepareClaimModuleActionReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied);let captured:unknown;try{captured=structuredClone(input);}catch{return fail();}const parsed=ClaimModuleActionPrepare.safeParse(captured);if(!parsed.success)return fail();const content=parsed.data;try{return await withTenant(ctx,async tx=>{
  const actor=await guard(tx,ctx,'claims');await lockLeaveDependencyReadConfigurationTx(tx,actor.tenantId);const own=await ownClaimSubject(tx,actor,content.employmentId);
@@ -182,7 +182,7 @@ export async function confirmClaimModuleActionReview(supplied:SessionContext,inp
  });}catch{return fail();}}
 /** Current-source reconciliation only; approval/rejection changes the reported native status but
  * never reexecutes the human proposal, recreates an erased review or creates another native event. */
-export async function reopenClaimModuleActionReview(supplied:SessionContext,value:unknown){const ctx=capture(supplied),parsed=z.uuid().safeParse(value);if(!parsed.success)return fail();const id=parsed.data;try{return await withTenant(ctx,async tx=>{
+export async function reopenClaimModuleActionReview(supplied:SessionContext,value:unknown){const ctx=capture(supplied),parsed=z.guid().safeParse(value);if(!parsed.success)return fail();const id=parsed.data;try{return await withTenant(ctx,async tx=>{
  const actor=await guard(tx,ctx,'claims');await lockLeaveDependencyReadConfigurationTx(tx,actor.tenantId);const nominated=await claimSubject(tx,id);await lockLeaveDependenciesTx(tx,actor.tenantId,[nominated]);const stored=await readClaim(tx,sql`select app.assistant_module_action_review_read(${id}::uuid,${OWN_CLAIM_DRAFT_ACTION}) as review`);boundClaim(stored,actor,id,nominated);
  if(stored.metadata.state==='awaiting_confirmation'){const body=unsealClaim(stored),fresh=await prepareOwnClaimDraftSourceTx(tx,actor,body.content);if(fresh.reviewedDigest!==body.nativeReviewedDigest||JSON.stringify(fresh.content)!==JSON.stringify(body.content))return fail();return pendingClaim(stored);}
  return stored.metadata.state==='completed'?completedClaim(tx,actor,stored):retiredClaim(stored);
@@ -199,7 +199,7 @@ import {prepareOwnOnehrPlanAcknowledgementTx,confirmOwnOnehrPlanAcknowledgementT
 import {MODULE_REVIEW_ACK_ACTION,MODULE_ONEHR_ACK_ACTION,ReviewModuleActionPrepare,ReviewModuleActionConfirmation,ReviewModuleActionRetirementRequest,ReviewModuleActionPreparedReview,ReviewModuleActionCompletedReceipt,ReviewModuleActionRetiredReceipt,ReviewModuleActionReviewIndexResult,OnehrModuleActionPrepare,OnehrModuleActionConfirmation,OnehrModuleActionRetirementRequest,OnehrModuleActionPreparedReview,OnehrModuleActionCompletedReceipt,OnehrModuleActionRetiredReceipt,OnehrModuleActionReviewIndexResult} from '../../lib/assistant-actions/module-action-review-contract';
 const PerformanceKind=z.enum([MODULE_REVIEW_ACK_ACTION,MODULE_ONEHR_ACK_ACTION]);type PerformanceKind=z.infer<typeof PerformanceKind>;
 const PerformanceMetadata=Metadata.extend({action:PerformanceKind});type PerformanceMetadata=z.infer<typeof PerformanceMetadata>;
-const PerformanceStored=z.object({metadata:PerformanceMetadata,sealed:OwnLeaveSealedReview.nullable(),eventId:z.uuid().nullable()}).strict().refine(value=>
+const PerformanceStored=z.object({metadata:PerformanceMetadata,sealed:OwnLeaveSealedReview.nullable(),eventId:z.guid().nullable()}).strict().refine(value=>
  (value.metadata.state==='awaiting_confirmation')===(value.sealed!==null&&value.metadata.intentDigest!==null&&value.metadata.reviewedDigest!==null)
  &&(value.metadata.state==='completed')===(value.eventId!==null)
  &&(value.metadata.state==='awaiting_confirmation'||(value.sealed===null&&value.metadata.intentDigest===null&&value.metadata.reviewedDigest===null)));
@@ -218,7 +218,7 @@ function boundPerformance(stored:PerformanceStored,ctx:SessionContext,id:string,
 function pendingPerformance(stored:PerformanceStored){const body=unsealPerformance(stored),m=stored.metadata,{reviewDigest:privateFingerprint,...review}=body.review;void privateFingerprint;const value={action:m.action,contractVersion:1,actionId:m.actionId,reviewedDigest:m.reviewedDigest,createdAt:m.createdAt,expiresAt:m.expiresAt,review};return{kind:'prepared' as const,review:m.action===MODULE_REVIEW_ACK_ACTION?ReviewModuleActionPreparedReview.parse(value):OnehrModuleActionPreparedReview.parse(value)};}
 function retiredPerformance(stored:PerformanceStored){const value={action:stored.metadata.action,contractVersion:1,actionId:stored.metadata.actionId,state:stored.metadata.state};return{kind:'retired' as const,receipt:stored.metadata.action===MODULE_REVIEW_ACK_ACTION?ReviewModuleActionRetiredReceipt.parse(value):OnehrModuleActionRetiredReceipt.parse(value)};}
 async function completedPerformance(tx:Tx,ctx:SessionContext,stored:PerformanceStored){if(stored.metadata.state!=='completed'||!stored.eventId)return fail();const reference={employmentId:stored.metadata.binding.employmentId,eventId:stored.eventId},receipt=stored.metadata.action===MODULE_REVIEW_ACK_ACTION?await reopenOwnReviewAcknowledgementEventTx(tx,ctx,reference):await reopenOwnOnehrPlanAcknowledgementEventTx(tx,ctx,reference),value={action:stored.metadata.action,contractVersion:1,actionId:stored.metadata.actionId,state:'completed',receipt};return{kind:'completed' as const,receipt:stored.metadata.action===MODULE_REVIEW_ACK_ACTION?ReviewModuleActionCompletedReceipt.parse(value):OnehrModuleActionCompletedReceipt.parse(value)};}
-async function performanceSubject(tx:Tx,id:string,kind:PerformanceKind){const [row]=await tx.execute<{subject:unknown}>(sql`select app.assistant_module_action_review_subject(${id}::uuid,${kind}) as subject`);return z.uuid().parse(row?.subject);}
+async function performanceSubject(tx:Tx,id:string,kind:PerformanceKind){const [row]=await tx.execute<{subject:unknown}>(sql`select app.assistant_module_action_review_subject(${id}::uuid,${kind}) as subject`);return z.guid().parse(row?.subject);}
 async function performanceNomination(tx:Tx,ctx:SessionContext,kind:PerformanceKind,input:unknown){if(!ctx.personId)return fail();const query=kind===MODULE_REVIEW_ACK_ACTION?sql`select q.employment_id as "employmentId" from public.performance_review q join public.employment e on e.id=q.employment_id and e.tenant_id=q.tenant_id where q.id=${OwnReviewAcknowledgementIntent.parse(input).reviewId}::uuid and q.tenant_id=${ctx.tenantId}::uuid and e.person_id=${ctx.personId}::uuid`:sql`select q.employment_id as "employmentId" from public.performance_onehr_plan q join public.employment e on e.id=q.employment_id and e.tenant_id=q.tenant_id where q.id=${OwnOnehrPlanAcknowledgementIntent.parse(input).planId}::uuid and q.tenant_id=${ctx.tenantId}::uuid and e.person_id=${ctx.personId}::uuid`;const [row]=await tx.execute<{employmentId:string}>(query);if(!row)return fail();return ownClaimSubject(tx,ctx,row.employmentId);}
 async function preparePerformanceBody(tx:Tx,ctx:SessionContext,kind:PerformanceKind,input:unknown,reviewNonce=newPrivateReviewNonce()):Promise<PerformanceBody>{return kind===MODULE_REVIEW_ACK_ACTION?PerformanceBody.parse({reviewNonce,engine:'standard_cycle_only',intent:input,review:await prepareOwnReviewAcknowledgementTx(tx,ctx,input)}):PerformanceBody.parse({reviewNonce,engine:'onehr_plan',intent:input,review:await prepareOwnOnehrPlanAcknowledgementTx(tx,ctx,input)});}
 async function preparePerformanceCustody(supplied:SessionContext,input:unknown,kind:PerformanceKind){const ctx=capture(supplied);let value:unknown;try{value=structuredClone(input);}catch{return fail();}const parsed=(kind===MODULE_REVIEW_ACK_ACTION?ReviewModuleActionPrepare:OnehrModuleActionPrepare).safeParse(value);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{
@@ -232,7 +232,7 @@ async function confirmPerformanceCustody(supplied:SessionContext,input:unknown,k
  await captureNativeOutcomeTargetsTx(tx,actor,{action:stored.metadata.action,sourceId:p.actionId,eventId:native.eventId,targets:[{kind:'employment',id:nominated}]});
  const done=await readPerformance(tx,sql`select app.assistant_performance_action_review_complete(${p.actionId}::uuid,${kind},${p.reviewedDigest},${native.eventId}::uuid) as review`);boundPerformance(done,actor,p.actionId,kind,nominated);if(done.eventId!==native.eventId)return fail();return completedPerformance(tx,actor,done);
  });}catch{return fail();}}
-async function reopenPerformanceCustody(supplied:SessionContext,value:unknown,kind:PerformanceKind){const ctx=capture(supplied),parsed=z.uuid().safeParse(value);if(!parsed.success)return fail();const id=parsed.data;try{return await withTenant(ctx,async tx=>{
+async function reopenPerformanceCustody(supplied:SessionContext,value:unknown,kind:PerformanceKind){const ctx=capture(supplied),parsed=z.guid().safeParse(value);if(!parsed.success)return fail();const id=parsed.data;try{return await withTenant(ctx,async tx=>{
  const actor=await guard(tx,ctx,'performance');await lockLeaveDependencyReadConfigurationTx(tx,actor.tenantId);const nominated=await performanceSubject(tx,id,kind);await lockLeaveDependenciesTx(tx,actor.tenantId,[nominated]);const stored=await readPerformance(tx,sql`select app.assistant_module_action_review_read(${id}::uuid,${kind}) as review`);boundPerformance(stored,actor,id,kind,nominated);
  if(stored.metadata.state==='awaiting_confirmation'){const body=unsealPerformance(stored),fresh=await preparePerformanceBody(tx,actor,kind,body.intent,body.reviewNonce);if(JSON.stringify(fresh)!==JSON.stringify(body))return fail();return pendingPerformance(stored);}return stored.metadata.state==='completed'?completedPerformance(tx,actor,stored):retiredPerformance(stored);
  });}catch{return fail();}}
@@ -254,10 +254,10 @@ export const listOnehrModuleActionReviews=(ctx:SessionContext)=>listPerformanceC
 import {OwnTestingExecutionIntent,OwnTestingExecutionReview} from '../../lib/assistant-actions/own-testing-execution-contract';
 import {MODULE_TESTING_EXECUTION_ACTION,TestingModuleActionPrepare,TestingModuleActionConfirmation,TestingModuleActionRetirementRequest,TestingModuleActionPreparedReview,TestingModuleActionCompletedReceipt,TestingModuleActionRetiredReceipt,TestingModuleActionReviewIndexResult} from '../../lib/assistant-actions/module-action-review-contract';
 import {prepareOwnTestingExecutionTx,confirmOwnTestingExecutionTx,reopenOwnTestingExecutionEventTx,withOwnTestingExecutionIntervalTx} from './own-testing-execution-source';
-const TestingBinding=z.object({tenantId:z.uuid(),userId:z.uuid(),personId:z.uuid().nullable(),employmentId:z.null(),companyId:z.null(),executionId:z.uuid()}).strict();
+const TestingBinding=z.object({tenantId:z.guid(),userId:z.guid(),personId:z.guid().nullable(),employmentId:z.null(),companyId:z.null(),executionId:z.guid()}).strict();
 const TestingMetadata=Metadata.extend({action:z.literal(MODULE_TESTING_EXECUTION_ACTION),binding:TestingBinding});type TestingMeta=z.infer<typeof TestingMetadata>;
 const TestingSealedReview=z.object({formatVersion:z.literal(1),kid:z.string().regex(/^[a-f0-9]{16}$/),wrappedDek:z.string().min(1).max(512).regex(/^[A-Za-z0-9_-]+$/),ciphertext:z.string().min(1).max(819200).regex(/^[a-f0-9]{16}\.[A-Za-z0-9+/]+={0,2}\.[A-Za-z0-9+/]+={0,2}\.[A-Za-z0-9+/]+={0,2}$/)}).strict().refine(value=>value.ciphertext.split('.')[0]===value.kid);
-const TestingStored=z.object({metadata:TestingMetadata,sealed:TestingSealedReview.nullable(),runId:z.uuid().nullable(),eventId:z.uuid().nullable()}).strict().refine(value=>
+const TestingStored=z.object({metadata:TestingMetadata,sealed:TestingSealedReview.nullable(),runId:z.guid().nullable(),eventId:z.guid().nullable()}).strict().refine(value=>
  (value.metadata.state==='awaiting_confirmation')===(value.sealed!==null&&value.metadata.intentDigest!==null&&value.metadata.reviewedDigest!==null)
  &&(value.metadata.state==='completed')===(value.eventId!==null&&value.runId!==null)
  &&((value.runId===null)===(value.eventId===null))
@@ -274,7 +274,7 @@ function boundTesting(stored:TestingStored,ctx:SessionContext,id:string,executio
 function pendingTesting(stored:TestingStored){const body=unsealTesting(stored),m=stored.metadata,{reviewDigest:privateSource,...review}=body.review;void privateSource;return {kind:'prepared' as const,review:TestingModuleActionPreparedReview.parse({action:MODULE_TESTING_EXECUTION_ACTION,contractVersion:1,actionId:m.actionId,reviewedDigest:m.reviewedDigest,createdAt:m.createdAt,expiresAt:m.expiresAt,review:{...review,humanObservation:body.intent.observation}})};}
 function retiredTesting(stored:TestingStored){return {kind:'retired' as const,receipt:TestingModuleActionRetiredReceipt.parse({action:MODULE_TESTING_EXECUTION_ACTION,contractVersion:1,actionId:stored.metadata.actionId,state:stored.metadata.state})};}
 async function completedTesting(tx:Tx,ctx:SessionContext,stored:TestingStored){if(stored.metadata.state!=='completed'||!stored.eventId||!stored.runId)return fail();const receipt=await reopenOwnTestingExecutionEventTx(tx,ctx,{runId:stored.runId,eventId:stored.eventId});if(receipt.executionId!==stored.metadata.binding.executionId)return fail();return {kind:'completed' as const,receipt:TestingModuleActionCompletedReceipt.parse({action:MODULE_TESTING_EXECUTION_ACTION,contractVersion:1,actionId:stored.metadata.actionId,state:'completed',receipt})};}
-async function testingSubject(tx:Tx,id:string){const [row]=await tx.execute<{subject:unknown}>(sql`select app.assistant_testing_action_review_subject(${id}::uuid) as subject`);return z.uuid().parse(row?.subject);}
+async function testingSubject(tx:Tx,id:string){const [row]=await tx.execute<{subject:unknown}>(sql`select app.assistant_testing_action_review_subject(${id}::uuid) as subject`);return z.guid().parse(row?.subject);}
 export async function prepareTestingModuleActionReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=TestingModuleActionPrepare.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,tx=>withOwnTestingExecutionIntervalTx(tx,ctx,p.intent.observation.executionId,async actor=>{
  const nativeReview=await prepareOwnTestingExecutionTx(tx,actor,p.intent),{humanObservation:capturedHuman,...privateReview}=nativeReview;void capturedHuman;const body=TestingBody.parse({reviewNonce:newPrivateReviewNonce(),intent:p.intent,review:privateReview}),binding=TestingBinding.parse({tenantId:actor.tenantId,userId:actor.userId,personId:actor.personId??null,employmentId:null,companyId:null,executionId:p.intent.observation.executionId});
  const now=new Date(),m=TestingMetadata.parse({actionId:randomUUID(),action:MODULE_TESTING_EXECUTION_ACTION,contractVersion:1,binding,intentDigest:hash(body.intent),reviewedDigest:testingReviewed(binding,body),state:'awaiting_confirmation',createdAt:now.toISOString(),expiresAt:new Date(now.getTime()+600000).toISOString()}),sealed=sealTesting(m,body);
@@ -287,7 +287,7 @@ export async function confirmTestingModuleActionReview(supplied:SessionContext,i
  await captureNativeOutcomeTargetsTx(tx,actor,{action:MODULE_TESTING_EXECUTION_ACTION,sourceId:p.actionId,eventId:native.eventId,targets:[]});
  const done=await readTesting(tx,sql`select app.assistant_testing_action_review_complete(${p.actionId}::uuid,${p.reviewedDigest},${native.runId}::uuid,${native.eventId}::uuid) as review`);boundTesting(done,actor,p.actionId,executionId);if(done.runId!==native.runId||done.eventId!==native.eventId)return fail();return completedTesting(tx,actor,done);
  });});}catch{return fail();}}
-export async function reopenTestingModuleActionReview(supplied:SessionContext,value:unknown){const ctx=capture(supplied),parsed=z.uuid().safeParse(value);if(!parsed.success)return fail();const id=parsed.data;try{return await withTenant(ctx,async tx=>{
+export async function reopenTestingModuleActionReview(supplied:SessionContext,value:unknown){const ctx=capture(supplied),parsed=z.guid().safeParse(value);if(!parsed.success)return fail();const id=parsed.data;try{return await withTenant(ctx,async tx=>{
  await assertAiPrincipalTx(tx,ctx);const executionId=await testingSubject(tx,id);return withOwnTestingExecutionIntervalTx(tx,ctx,executionId,async actor=>{
  const stored=await readTesting(tx,sql`select app.assistant_testing_action_review_read(${id}::uuid) as review`);boundTesting(stored,actor,id,executionId);
  if(stored.metadata.state==='awaiting_confirmation'){const body=unsealTesting(stored),fresh=await prepareOwnTestingExecutionTx(tx,actor,body.intent);if(JSON.stringify(fresh)!==JSON.stringify(OwnTestingExecutionReview.parse({...body.review,humanObservation:body.intent.observation})))return fail();return pendingTesting(stored);}return stored.metadata.state==='completed'?completedTesting(tx,actor,stored):retiredTesting(stored);
@@ -305,7 +305,7 @@ import {OWN_CLAIM_SUBMISSION_ACTION,OwnClaimSubmissionHumanContent,OwnClaimSubmi
 import {ClaimSubmissionModuleActionPrepare,ClaimSubmissionModuleActionConfirmation,ClaimSubmissionModuleActionRetirementRequest,ClaimSubmissionModuleActionPreparedReview,ClaimSubmissionModuleActionCompletedReceipt,ClaimSubmissionModuleActionRetiredReceipt,ClaimSubmissionModuleActionReviewIndexResult} from '../../lib/assistant-actions/module-action-review-contract';
 import {prepareOwnClaimSubmissionSourceTx,confirmOwnClaimSubmissionSourceTx,reconcileOwnClaimSubmissionSourceTx,withOwnClaimSubmissionIntervalTx} from './own-claim-submission-source';
 const ClaimSubmissionMetadata=Metadata.extend({action:z.literal(OWN_CLAIM_SUBMISSION_ACTION)});type ClaimSubmissionMeta=z.infer<typeof ClaimSubmissionMetadata>;
-const ClaimSubmissionStored=z.object({metadata:ClaimSubmissionMetadata,sealed:OwnLeaveSealedReview.nullable(),claimId:z.uuid(),eventId:z.uuid().nullable()}).strict().refine(value=>
+const ClaimSubmissionStored=z.object({metadata:ClaimSubmissionMetadata,sealed:OwnLeaveSealedReview.nullable(),claimId:z.guid(),eventId:z.guid().nullable()}).strict().refine(value=>
  (value.metadata.state==='awaiting_confirmation')===(value.sealed!==null&&value.metadata.intentDigest!==null&&value.metadata.reviewedDigest!==null)
  &&(value.metadata.state==='completed')===(value.eventId!==null)
  &&(value.metadata.state==='awaiting_confirmation'||(value.sealed===null&&value.metadata.intentDigest===null&&value.metadata.reviewedDigest===null)));
@@ -321,7 +321,7 @@ function boundSubmission(stored:ClaimSubmissionStored,ctx:SessionContext,id:stri
 function pendingSubmission(stored:ClaimSubmissionStored){const body=unsealSubmission(stored),m=stored.metadata;return {kind:'prepared' as const,review:ClaimSubmissionModuleActionPreparedReview.parse({action:OWN_CLAIM_SUBMISSION_ACTION,contractVersion:1,actionId:m.actionId,reviewedDigest:m.reviewedDigest,createdAt:m.createdAt,expiresAt:m.expiresAt,content:body.content,review:body.review,consequence:'submitted_for_approval_not_approved_or_reimbursed'})};}
 function retiredSubmission(stored:ClaimSubmissionStored){return {kind:'retired' as const,receipt:ClaimSubmissionModuleActionRetiredReceipt.parse({action:OWN_CLAIM_SUBMISSION_ACTION,contractVersion:1,actionId:stored.metadata.actionId,state:stored.metadata.state})};}
 async function completedSubmission(tx:Tx,ctx:SessionContext,stored:ClaimSubmissionStored){if(stored.metadata.state!=='completed'||!stored.eventId)return fail();const receipt=await reconcileOwnClaimSubmissionSourceTx(tx,ctx,{claimId:stored.claimId,submittedEventId:stored.eventId});if(receipt.employmentId!==stored.metadata.binding.employmentId)return fail();return {kind:'completed' as const,receipt:ClaimSubmissionModuleActionCompletedReceipt.parse({action:OWN_CLAIM_SUBMISSION_ACTION,contractVersion:1,actionId:stored.metadata.actionId,state:'completed',receipt,semantics:'submitted_not_approved_or_reimbursed'})};}
-async function submissionSubject(tx:Tx,id:string){const [row]=await tx.execute<{subject:unknown}>(sql`select app.assistant_claim_submission_review_subject(${id}::uuid) as subject`);return z.uuid().parse(row?.subject);}
+async function submissionSubject(tx:Tx,id:string){const [row]=await tx.execute<{subject:unknown}>(sql`select app.assistant_claim_submission_review_subject(${id}::uuid) as subject`);return z.guid().parse(row?.subject);}
 export async function prepareClaimSubmissionModuleActionReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=ClaimSubmissionModuleActionPrepare.safeParse(input);if(!parsed.success)return fail();const human=parsed.data;try{return await withTenant(ctx,tx=>withOwnClaimSubmissionIntervalTx(tx,ctx,human.draftId,async(actor,own)=>{
  if(human.employmentId!==own.employmentId)return fail();const source=await prepareOwnClaimSubmissionSourceTx(tx,actor,human),body=ClaimSubmissionBody.parse({reviewNonce:newPrivateReviewNonce(),content:source.content,review:source.review,nativeReviewedDigest:source.reviewedDigest}),binding=Binding.parse({tenantId:actor.tenantId,userId:actor.userId,personId:actor.personId,employmentId:own.employmentId,companyId:own.companyId});
  const now=new Date(),m=ClaimSubmissionMetadata.parse({actionId:randomUUID(),action:OWN_CLAIM_SUBMISSION_ACTION,contractVersion:1,binding,intentDigest:hash(body.content),reviewedDigest:submissionReviewed(binding,body),state:'awaiting_confirmation',createdAt:now.toISOString(),expiresAt:new Date(now.getTime()+600000).toISOString()}),sealed=sealSubmission(m,body);
@@ -334,7 +334,7 @@ export async function confirmClaimSubmissionModuleActionReview(supplied:SessionC
  await captureNativeOutcomeTargetsTx(tx,actor,{action:OWN_CLAIM_SUBMISSION_ACTION,sourceId:p.actionId,eventId:native.submittedEventId,targets:[{kind:'employment',id:own.employmentId}]});
  const done=await readSubmission(tx,sql`select app.assistant_claim_submission_review_complete(${p.actionId}::uuid,${p.reviewedDigest},${native.claimId}::uuid,${native.submittedEventId}::uuid) as review`);boundSubmission(done,actor,p.actionId,claimId,own.employmentId);if(done.eventId!==native.submittedEventId)return fail();return completedSubmission(tx,actor,done);
  });});}catch{return fail();}}
-export async function reopenClaimSubmissionModuleActionReview(supplied:SessionContext,value:unknown){const ctx=capture(supplied),parsed=z.uuid().safeParse(value);if(!parsed.success)return fail();const id=parsed.data;try{return await withTenant(ctx,async tx=>{
+export async function reopenClaimSubmissionModuleActionReview(supplied:SessionContext,value:unknown){const ctx=capture(supplied),parsed=z.guid().safeParse(value);if(!parsed.success)return fail();const id=parsed.data;try{return await withTenant(ctx,async tx=>{
  await assertAiPrincipalTx(tx,ctx);const claimId=await submissionSubject(tx,id);return withOwnClaimSubmissionIntervalTx(tx,ctx,claimId,async(actor,own)=>{
  const stored=await readSubmission(tx,sql`select app.assistant_claim_submission_review_read(${id}::uuid) as review`);boundSubmission(stored,actor,id,claimId,own.employmentId);
  if(stored.metadata.state==='awaiting_confirmation'){const body=unsealSubmission(stored),fresh=await prepareOwnClaimSubmissionSourceTx(tx,actor,body.content);if(fresh.reviewedDigest!==body.nativeReviewedDigest||JSON.stringify(fresh.review)!==JSON.stringify(body.review)||JSON.stringify(fresh.content)!==JSON.stringify(body.content))return fail();return pendingSubmission(stored);}return stored.metadata.state==='completed'?completedSubmission(tx,actor,stored):retiredSubmission(stored);
@@ -347,62 +347,62 @@ export async function listClaimSubmissionModuleActionReviews(supplied:SessionCon
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
 export async function readCompletedNotificationOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown,cap:OwnNotificationServerIdentity){
- const ctx=capture(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);
+ const ctx=capture(supplied),id=z.guid().parse(value);await boundNativeOutcomeTransactionTx(tx);
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'notifications.email_preferences.save'},${id}::uuid) as completed`);
  if(terminal?.completed!==true)return fail();
- const fresh=await guard(tx,ctx);await lockLeaveDependencyReadConfigurationTx(tx,fresh.tenantId);const nominated=await subject(tx,id);await lockLeaveDependenciesTx(tx,fresh.tenantId,[nominated]);const stored=await read(tx,sql`select app.assistant_module_action_review_read(${id}::uuid,${MODULE_NOTIFICATION_ACTION}) as review`);bound(stored,fresh,id,nominated);const completion=await completed(tx,fresh,stored,cap);return{completion,eventId:z.uuid().parse(stored.eventId)};
+ const fresh=await guard(tx,ctx);await lockLeaveDependencyReadConfigurationTx(tx,fresh.tenantId);const nominated=await subject(tx,id);await lockLeaveDependenciesTx(tx,fresh.tenantId,[nominated]);const stored=await read(tx,sql`select app.assistant_module_action_review_read(${id}::uuid,${MODULE_NOTIFICATION_ACTION}) as review`);bound(stored,fresh,id,nominated);const completion=await completed(tx,fresh,stored,cap);return{completion,eventId:z.guid().parse(stored.eventId)};
 }
 
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
 export async function readCompletedProfileOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=capture(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);
+ const ctx=capture(supplied),id=z.guid().parse(value);await boundNativeOutcomeTransactionTx(tx);
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'ess.profile.request'},${id}::uuid) as completed`);
  if(terminal?.completed!==true)return fail();
- const actor=await guard(tx,ctx,'ess');await lockLeaveDependencyConfigurationTx(tx,actor.tenantId);const nominated=await profileSubject(tx,id);await lockLeaveDependenciesTx(tx,actor.tenantId,[nominated]);const stored=await readProfile(tx,sql`select app.assistant_module_action_review_read(${id}::uuid,${OWN_PROFILE_CHANGE_ACTION}) as review`);boundProfile(stored,actor,id,nominated);const completion=await completedProfile(tx,actor,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};
+ const actor=await guard(tx,ctx,'ess');await lockLeaveDependencyConfigurationTx(tx,actor.tenantId);const nominated=await profileSubject(tx,id);await lockLeaveDependenciesTx(tx,actor.tenantId,[nominated]);const stored=await readProfile(tx,sql`select app.assistant_module_action_review_read(${id}::uuid,${OWN_PROFILE_CHANGE_ACTION}) as review`);boundProfile(stored,actor,id,nominated);const completion=await completedProfile(tx,actor,stored);return{completion,eventId:z.guid().parse(stored.eventId)};
 }
 
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
 export async function readCompletedClaimDraftOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=capture(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);
+ const ctx=capture(supplied),id=z.guid().parse(value);await boundNativeOutcomeTransactionTx(tx);
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'claims.draft.save'},${id}::uuid) as completed`);
  if(terminal?.completed!==true)return fail();
- const actor=await guard(tx,ctx,'claims');await lockLeaveDependencyReadConfigurationTx(tx,actor.tenantId);const nominated=await claimSubject(tx,id);await lockLeaveDependenciesTx(tx,actor.tenantId,[nominated]);const stored=await readClaim(tx,sql`select app.assistant_module_action_review_read(${id}::uuid,${OWN_CLAIM_DRAFT_ACTION}) as review`);boundClaim(stored,actor,id,nominated);const completion=await completedClaim(tx,actor,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};
+ const actor=await guard(tx,ctx,'claims');await lockLeaveDependencyReadConfigurationTx(tx,actor.tenantId);const nominated=await claimSubject(tx,id);await lockLeaveDependenciesTx(tx,actor.tenantId,[nominated]);const stored=await readClaim(tx,sql`select app.assistant_module_action_review_read(${id}::uuid,${OWN_CLAIM_DRAFT_ACTION}) as review`);boundClaim(stored,actor,id,nominated);const completion=await completedClaim(tx,actor,stored);return{completion,eventId:z.guid().parse(stored.eventId)};
 }
 
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
 export async function readCompletedTestingOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=capture(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);
+ const ctx=capture(supplied),id=z.guid().parse(value);await boundNativeOutcomeTransactionTx(tx);
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'system_testing.execution.save'},${id}::uuid) as completed`);
  if(terminal?.completed!==true)return fail();
- await assertAiPrincipalTx(tx,ctx);const executionId=await testingSubject(tx,id);return withOwnTestingExecutionIntervalTx(tx,ctx,executionId,async actor=>{const stored=await readTesting(tx,sql`select app.assistant_testing_action_review_read(${id}::uuid) as review`);boundTesting(stored,actor,id,executionId);const completion=await completedTesting(tx,actor,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};});
+ await assertAiPrincipalTx(tx,ctx);const executionId=await testingSubject(tx,id);return withOwnTestingExecutionIntervalTx(tx,ctx,executionId,async actor=>{const stored=await readTesting(tx,sql`select app.assistant_testing_action_review_read(${id}::uuid) as review`);boundTesting(stored,actor,id,executionId);const completion=await completedTesting(tx,actor,stored);return{completion,eventId:z.guid().parse(stored.eventId)};});
 }
 
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
 export async function readCompletedClaimSubmissionOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=capture(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);
+ const ctx=capture(supplied),id=z.guid().parse(value);await boundNativeOutcomeTransactionTx(tx);
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'claims.submit'},${id}::uuid) as completed`);
  if(terminal?.completed!==true)return fail();
- await assertAiPrincipalTx(tx,ctx);const claimId=await submissionSubject(tx,id);return withOwnClaimSubmissionIntervalTx(tx,ctx,claimId,async(actor,own)=>{const stored=await readSubmission(tx,sql`select app.assistant_claim_submission_review_read(${id}::uuid) as review`);boundSubmission(stored,actor,id,claimId,own.employmentId);const completion=await completedSubmission(tx,actor,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};});
+ await assertAiPrincipalTx(tx,ctx);const claimId=await submissionSubject(tx,id);return withOwnClaimSubmissionIntervalTx(tx,ctx,claimId,async(actor,own)=>{const stored=await readSubmission(tx,sql`select app.assistant_claim_submission_review_read(${id}::uuid) as review`);boundSubmission(stored,actor,id,claimId,own.employmentId);const completion=await completedSubmission(tx,actor,stored);return{completion,eventId:z.guid().parse(stored.eventId)};});
 }
 
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
 export async function readCompletedStandardReviewOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=capture(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);
+ const ctx=capture(supplied),id=z.guid().parse(value);await boundNativeOutcomeTransactionTx(tx);
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'performance.review.acknowledge'},${id}::uuid) as completed`);
  if(terminal?.completed!==true)return fail();
- const actor=await guard(tx,ctx,'performance');await lockLeaveDependencyReadConfigurationTx(tx,actor.tenantId);const nominated=await performanceSubject(tx,id,MODULE_REVIEW_ACK_ACTION);await lockLeaveDependenciesTx(tx,actor.tenantId,[nominated]);const stored=await readPerformance(tx,sql`select app.assistant_module_action_review_read(${id}::uuid,${MODULE_REVIEW_ACK_ACTION}) as review`);boundPerformance(stored,actor,id,MODULE_REVIEW_ACK_ACTION,nominated);const completion=await completedPerformance(tx,actor,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};
+ const actor=await guard(tx,ctx,'performance');await lockLeaveDependencyReadConfigurationTx(tx,actor.tenantId);const nominated=await performanceSubject(tx,id,MODULE_REVIEW_ACK_ACTION);await lockLeaveDependenciesTx(tx,actor.tenantId,[nominated]);const stored=await readPerformance(tx,sql`select app.assistant_module_action_review_read(${id}::uuid,${MODULE_REVIEW_ACK_ACTION}) as review`);boundPerformance(stored,actor,id,MODULE_REVIEW_ACK_ACTION,nominated);const completion=await completedPerformance(tx,actor,stored);return{completion,eventId:z.guid().parse(stored.eventId)};
 }
 
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
 export async function readCompletedOnehrPlanOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=capture(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);
+ const ctx=capture(supplied),id=z.guid().parse(value);await boundNativeOutcomeTransactionTx(tx);
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'performance.onehr.plan.acknowledge'},${id}::uuid) as completed`);
  if(terminal?.completed!==true)return fail();
- const actor=await guard(tx,ctx,'performance');await lockLeaveDependencyReadConfigurationTx(tx,actor.tenantId);const nominated=await performanceSubject(tx,id,MODULE_ONEHR_ACK_ACTION);await lockLeaveDependenciesTx(tx,actor.tenantId,[nominated]);const stored=await readPerformance(tx,sql`select app.assistant_module_action_review_read(${id}::uuid,${MODULE_ONEHR_ACK_ACTION}) as review`);boundPerformance(stored,actor,id,MODULE_ONEHR_ACK_ACTION,nominated);const completion=await completedPerformance(tx,actor,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};
+ const actor=await guard(tx,ctx,'performance');await lockLeaveDependencyReadConfigurationTx(tx,actor.tenantId);const nominated=await performanceSubject(tx,id,MODULE_ONEHR_ACK_ACTION);await lockLeaveDependenciesTx(tx,actor.tenantId,[nominated]);const stored=await readPerformance(tx,sql`select app.assistant_module_action_review_read(${id}::uuid,${MODULE_ONEHR_ACK_ACTION}) as review`);boundPerformance(stored,actor,id,MODULE_ONEHR_ACK_ACTION,nominated);const completion=await completedPerformance(tx,actor,stored);return{completion,eventId:z.guid().parse(stored.eventId)};
 }

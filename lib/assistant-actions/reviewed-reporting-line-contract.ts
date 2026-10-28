@@ -3,7 +3,7 @@
 import {z} from 'zod';
 import {isCalendarDate} from '../calendar-date';
 export const REVIEWED_REPORTING_LINE_ACTION='org.reporting.change' as const;
-const base={action:z.literal(REVIEWED_REPORTING_LINE_ACTION),contractVersion:z.literal(1)},uuid=z.uuid(),lineType=z.enum(['administrative','functional']),date=z.string().refine(isCalendarDate),digest=z.string().regex(/^[a-f0-9]{64}$/);
+const base={action:z.literal(REVIEWED_REPORTING_LINE_ACTION),contractVersion:z.literal(1)},uuid=z.guid(),lineType=z.enum(['administrative','functional']),date=z.string().refine(isCalendarDate),digest=z.string().regex(/^[a-f0-9]{64}$/);
 export const ReviewedReportingLineNomination=z.object({...base,subordinateEmploymentId:uuid,managerEmploymentId:uuid,lineType}).strict();
 export const ReviewedReportingLineHumanContent=z.object({...base,subordinateEmploymentId:uuid,managerEmploymentId:uuid,lineType,validFrom:date,confirmReportingChange:z.literal(true)}).strict();
 export type ReviewedReportingLineHumanContent=z.infer<typeof ReviewedReportingLineHumanContent>;

@@ -2,7 +2,7 @@
  * This is an UNMOUNTED private source protocol; private source fingerprints need nonce custody. */
 import {z} from 'zod';
 export const REVIEWED_COUNTRY_STATUTORY_ACTION='country-my.statutory.update' as const;
-const base={action:z.literal(REVIEWED_COUNTRY_STATUTORY_ACTION),contractVersion:z.literal(1)},id=z.uuid(),digest=z.string().regex(/^[a-f0-9]{64}$/);
+const base={action:z.literal(REVIEWED_COUNTRY_STATUTORY_ACTION),contractVersion:z.literal(1)},id=z.guid(),digest=z.string().regex(/^[a-f0-9]{64}$/);
 export const ReviewedCountryStatutoryNomination=z.object({...base,employmentId:id}).strict();
 export const ReviewedCountryStatutoryHumanContent=z.object({...base,employmentId:id,input:z.record(z.string(),z.json()),confirmSharedPersonWrite:z.literal(true)}).strict().refine(value=>new TextEncoder().encode(JSON.stringify(value)).length<=24576);
 export const ReviewedCountryStatutoryConfirmation=z.object({...base,reviewedDigest:digest}).strict();

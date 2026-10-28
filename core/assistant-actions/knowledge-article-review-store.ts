@@ -18,9 +18,9 @@ export class KnowledgeArticleReviewUnavailable extends Error{constructor(){super
 const fail=():never=>{throw new KnowledgeArticleReviewUnavailable();};
 const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex'),digest=z.string().regex(/^[a-f0-9]{64}$/);
-const Binding=z.object({tenantId:z.uuid(),userId:z.uuid(),personId:z.uuid().nullable(),employmentId:z.null(),companyId:z.null()}).strict();
-const Metadata=z.object({actionId:z.uuid(),action:z.literal(KNOWLEDGE_ARTICLE_ACTION),contractVersion:z.literal(1),binding:Binding,intentDigest:digest.nullable(),reviewedDigest:digest.nullable(),state:z.enum(['awaiting_confirmation','completed','discarded','expired','refused']),createdAt:z.iso.datetime(),expiresAt:z.iso.datetime()}).strict();type Meta=z.infer<typeof Metadata>;
-const Stored=z.object({metadata:Metadata,sealed:OwnLeaveSealedReview.nullable(),articleId:z.uuid().nullable(),eventId:z.uuid().nullable()}).strict().refine(value=>
+const Binding=z.object({tenantId:z.guid(),userId:z.guid(),personId:z.guid().nullable(),employmentId:z.null(),companyId:z.null()}).strict();
+const Metadata=z.object({actionId:z.guid(),action:z.literal(KNOWLEDGE_ARTICLE_ACTION),contractVersion:z.literal(1),binding:Binding,intentDigest:digest.nullable(),reviewedDigest:digest.nullable(),state:z.enum(['awaiting_confirmation','completed','discarded','expired','refused']),createdAt:z.iso.datetime(),expiresAt:z.iso.datetime()}).strict();type Meta=z.infer<typeof Metadata>;
+const Stored=z.object({metadata:Metadata,sealed:OwnLeaveSealedReview.nullable(),articleId:z.guid().nullable(),eventId:z.guid().nullable()}).strict().refine(value=>
  (value.metadata.state==='awaiting_confirmation')===(value.sealed!==null&&value.metadata.intentDigest!==null&&value.metadata.reviewedDigest!==null)
  &&(value.metadata.state==='completed')===(value.articleId!==null&&value.eventId!==null)
  &&((value.articleId===null)===(value.eventId===null))
@@ -49,7 +49,7 @@ export async function confirmKnowledgeArticleReview(supplied:SessionContext,inpu
  const done=await read(tx,sql`select app.assistant_knowledge_article_review_complete(${p.actionId}::uuid,${p.reviewedDigest},${native.articleId}::uuid,${native.createdEventId}::uuid) as review`);bound(done,fresh,p.actionId);if(done.articleId!==native.articleId||done.eventId!==native.createdEventId)return fail();return completed(tx,fresh,done);
  });}catch{return fail();}}
 /** Fresh author/Assistant/module/pause BEFORE custody read or crypto, including completed receipts. */
-export async function reopenKnowledgeArticleReview(supplied:SessionContext,value:unknown){const ctx=capture(supplied),parsed=z.uuid().safeParse(value);if(!parsed.success)return fail();const id=parsed.data;try{return await withTenant(ctx,async tx=>{
+export async function reopenKnowledgeArticleReview(supplied:SessionContext,value:unknown){const ctx=capture(supplied),parsed=z.guid().safeParse(value);if(!parsed.success)return fail();const id=parsed.data;try{return await withTenant(ctx,async tx=>{
  const fresh=await assertKnowledgeArticleActorTx(tx,ctx),stored=await read(tx,sql`select app.assistant_knowledge_article_review_read(${id}::uuid) as review`);bound(stored,fresh,id);
  if(stored.metadata.state==='awaiting_confirmation'){const body=unseal(stored),current=await prepareKnowledgeArticleSourceTx(tx,fresh,body.content);if(current.reviewedDigest!==body.nativeReviewedDigest||JSON.stringify(current.content)!==JSON.stringify(body.content))return fail();return pending(stored);}return stored.metadata.state==='completed'?completed(tx,fresh,stored):retired(stored);
  });}catch{return fail();}}
@@ -60,8 +60,8 @@ export async function listKnowledgeArticleReviews(supplied:SessionContext){const
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
 export async function readCompletedKnowledgeArticleOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=capture(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);
+ const ctx=capture(supplied),id=z.guid().parse(value);await boundNativeOutcomeTransactionTx(tx);
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'knowledge_base.article.create'},${id}::uuid) as completed`);
  if(terminal?.completed!==true)return fail();
- const fresh=await assertKnowledgeArticleActorTx(tx,ctx),stored=await read(tx,sql`select app.assistant_knowledge_article_review_read(${id}::uuid) as review`);bound(stored,fresh,id);const completion=await completed(tx,fresh,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};
+ const fresh=await assertKnowledgeArticleActorTx(tx,ctx),stored=await read(tx,sql`select app.assistant_knowledge_article_review_read(${id}::uuid) as review`);bound(stored,fresh,id);const completion=await completed(tx,fresh,stored);return{completion,eventId:z.guid().parse(stored.eventId)};
 }

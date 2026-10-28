@@ -52,7 +52,7 @@ export async function saveOpenRouterCandidateTx(tx: Tx, ctx: SessionContext,
   } catch { return unavailable(); }
 }
 
-const Consent = z.object({ provider: z.literal('openrouter'), candidateId: z.string().uuid(), candidateVersion: z.string().uuid(), review: z.object({ version: z.literal(1),
+const Consent = z.object({ provider: z.literal('openrouter'), candidateId: z.guid(), candidateVersion: z.guid(), review: z.object({ version: z.literal(1),
   accountDefaultsReviewed: z.literal(true), externalProcessingReviewed: z.literal(true) }).strict(), syntheticProbeConsent: z.literal(true) }).strict();
 export type ProviderEvaluationConsent = z.infer<typeof Consent>;
 export type ProviderEvaluationResult = Readonly<{ receipt: string; expiresAt: string; candidateId: string; candidateVersion: string; summary: ProviderProtocolSummary }>;

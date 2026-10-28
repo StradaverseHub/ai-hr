@@ -17,9 +17,9 @@ export class PayComponentReviewUnavailable extends Error{constructor(){super('Th
 const fail=():never=>{throw new PayComponentReviewUnavailable();};
 const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex'),digest=z.string().regex(/^[a-f0-9]{64}$/);
-const Binding=z.object({tenantId:z.uuid(),userId:z.uuid(),personId:z.uuid().nullable(),employmentId:z.null(),companyId:z.null()}).strict();
-const Metadata=z.object({actionId:z.uuid(),action:z.literal(REVIEWED_PAY_COMPONENT_ACTION),contractVersion:z.literal(1),binding:Binding,intentDigest:digest.nullable(),reviewedDigest:digest.nullable(),state:z.enum(['awaiting_confirmation','completed','discarded','expired','refused']),createdAt:z.iso.datetime(),expiresAt:z.iso.datetime()}).strict();type Meta=z.infer<typeof Metadata>;
-const Stored=z.object({metadata:Metadata,sealed:OwnLeaveSealedReview.nullable(),componentId:z.uuid().nullable(),eventId:z.uuid().nullable()}).strict().refine(value=>
+const Binding=z.object({tenantId:z.guid(),userId:z.guid(),personId:z.guid().nullable(),employmentId:z.null(),companyId:z.null()}).strict();
+const Metadata=z.object({actionId:z.guid(),action:z.literal(REVIEWED_PAY_COMPONENT_ACTION),contractVersion:z.literal(1),binding:Binding,intentDigest:digest.nullable(),reviewedDigest:digest.nullable(),state:z.enum(['awaiting_confirmation','completed','discarded','expired','refused']),createdAt:z.iso.datetime(),expiresAt:z.iso.datetime()}).strict();type Meta=z.infer<typeof Metadata>;
+const Stored=z.object({metadata:Metadata,sealed:OwnLeaveSealedReview.nullable(),componentId:z.guid().nullable(),eventId:z.guid().nullable()}).strict().refine(value=>
  (value.metadata.state==='awaiting_confirmation')===(value.sealed!==null&&value.metadata.intentDigest!==null&&value.metadata.reviewedDigest!==null)
  &&(value.metadata.state==='completed')===(value.componentId!==null&&value.eventId!==null)
  &&((value.componentId===null)===(value.eventId===null))
@@ -47,7 +47,7 @@ export async function confirmPayComponentReview(supplied:SessionContext,input:un
  await captureNativeOutcomeTargetsTx(tx,fresh,{action:REVIEWED_PAY_COMPONENT_ACTION,sourceId:p.actionId,eventId:native.createdEventId,targets:[]});
  const done=await read(tx,sql`select app.assistant_pay_component_review_complete(${p.actionId}::uuid,${p.reviewedDigest},${native.componentId}::uuid,${native.createdEventId}::uuid) as review`);bound(done,fresh,p.actionId);if(done.componentId!==native.componentId||done.eventId!==native.createdEventId)return fail();return completed(tx,fresh,done);
  }));}catch{return fail();}}
-export async function reopenPayComponentReview(supplied:SessionContext,value:unknown){const ctx=capture(supplied),parsed=z.uuid().safeParse(value);if(!parsed.success)return fail();const id=parsed.data;try{return await withTenant(ctx,tx=>withReviewedPayComponentIntervalTx(tx,ctx,async fresh=>{
+export async function reopenPayComponentReview(supplied:SessionContext,value:unknown){const ctx=capture(supplied),parsed=z.guid().safeParse(value);if(!parsed.success)return fail();const id=parsed.data;try{return await withTenant(ctx,tx=>withReviewedPayComponentIntervalTx(tx,ctx,async fresh=>{
  const stored=await read(tx,sql`select app.assistant_pay_component_review_read(${id}::uuid) as review`);bound(stored,fresh,id);if(stored.metadata.state==='awaiting_confirmation'){const body=unseal(stored);return pending(stored,await prepareReviewedPayComponentSourceTx(tx,fresh,body.content));}return stored.metadata.state==='completed'?completed(tx,fresh,stored):retired(stored);
  }));}catch{return fail();}}
 /** Privacy cleanup needs the actual current login, never the lost action digest or catalogue grant. */
@@ -57,8 +57,8 @@ export async function listPayComponentReviews(supplied:SessionContext){const ctx
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
 export async function readCompletedPayComponentOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=capture(supplied),id=z.uuid().parse(value);await boundNativeOutcomeTransactionTx(tx);
+ const ctx=capture(supplied),id=z.guid().parse(value);await boundNativeOutcomeTransactionTx(tx);
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'typed_pay_components.create'},${id}::uuid) as completed`);
  if(terminal?.completed!==true)return fail();
- return withReviewedPayComponentIntervalTx(tx,ctx,async fresh=>{const stored=await read(tx,sql`select app.assistant_pay_component_review_read(${id}::uuid) as review`);bound(stored,fresh,id);const completion=await completed(tx,fresh,stored);return{completion,eventId:z.uuid().parse(stored.eventId)};});
+ return withReviewedPayComponentIntervalTx(tx,ctx,async fresh=>{const stored=await read(tx,sql`select app.assistant_pay_component_review_read(${id}::uuid) as review`);bound(stored,fresh,id);const completion=await completed(tx,fresh,stored);return{completion,eventId:z.guid().parse(stored.eventId)};});
 }

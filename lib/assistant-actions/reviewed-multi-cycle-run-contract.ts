@@ -2,7 +2,7 @@
  * processing, closing, payslips or payment. Persistent human custody is REQUIRED before mounting. */
 import {z} from 'zod';
 export const REVIEWED_MULTI_CYCLE_RUN_ACTION='multi_cycle_payroll.create_run' as const;
-const uuid=z.uuid().transform(value=>value.toLowerCase());
+const uuid=z.guid().transform(value=>value.toLowerCase());
 const base={action:z.literal(REVIEWED_MULTI_CYCLE_RUN_ACTION),contractVersion:z.literal(1)},digest=z.string().regex(/^[a-f0-9]{64}$/),ids=z.array(uuid).max(256).refine(rows=>new Set(rows).size===rows.length),scope=z.object({departmentIds:ids.optional(),employmentIds:ids.optional()}).strict();
 export const ReviewedMultiCycleRunNomination=z.object({...base,companyId:uuid}).strict();
 export const ReviewedMultiCycleRunInput=z.object({companyId:uuid,payPeriod:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),runType:z.enum(['off_cycle','bonus','adjustment']),paymentDate:z.iso.date().optional(),remarks:z.string().max(4000).optional(),scope:scope.optional(),payrollCycleId:uuid}).strict();

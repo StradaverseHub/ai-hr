@@ -10,7 +10,7 @@ import { checkOwnLeaveConfirmation, OwnLeaveBinding, OwnLeaveCustodyMetadata } f
  * The eventual read owner must obtain these from the current canonical leave reader and actual
  * event row under the caller's authority. Parsing cannot establish that provenance. No reason,
  * balance, event payload, request status or approver information belongs in this evidence. */
-const uuid = z.string().uuid();
+const uuid = z.guid();
 const SubmissionReadEvidence = z.object({
   request: z.object({ id: uuid, tenantId: uuid, employmentId: uuid, personId: uuid, companyId: uuid }).strict(),
   event: z.object({ id: uuid, tenantId: uuid, aggregateType: z.literal('leave-request'), aggregateId: uuid,

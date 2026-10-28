@@ -2,7 +2,7 @@
  * amounts, receipt contents or other employee facts. A digest is not a human click or custody. */
 import {z} from 'zod';
 export const OWN_CLAIM_DRAFT_ACTION='claims.draft.save' as const;
-const UUID=z.string().uuid(),Digest=z.string().regex(/^[a-f0-9]{64}$/);
+const UUID=z.guid(),Digest=z.string().regex(/^[a-f0-9]{64}$/);
 const Scalar=z.union([z.string().max(4000),z.number().finite(),z.boolean(),z.null()]);
 const Answers=z.record(z.string().min(1).max(200),Scalar).refine(value=>Object.keys(value).length<=128).nullable();
 export const OwnClaimDraftNomination=z.object({action:z.literal(OWN_CLAIM_DRAFT_ACTION),contractVersion:z.literal(1),employmentId:UUID,draftId:UUID.nullable(),claimTypeId:UUID,claimItemId:UUID.nullable()}).strict();

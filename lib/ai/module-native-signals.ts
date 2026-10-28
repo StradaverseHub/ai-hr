@@ -3,7 +3,7 @@
 import {z} from 'zod';
 import {NATIVE_OUTCOME_ACTIONS} from './module-native-outcomes';
 import {isAgentModuleCode} from './module-agents';
-const Id=z.uuid().transform(value=>value.toLowerCase()),Digest=z.string().regex(/^[a-f0-9]{64}$/);
+const Id=z.guid().transform(value=>value.toLowerCase()),Digest=z.string().regex(/^[a-f0-9]{64}$/);
 const Ref=z.object({associationId:Id,jobId:Id,associationReceiptDigest:Digest,nativeDigest:Digest,jobReceiptDigest:Digest,
  action:z.string().refine(value=>Object.hasOwn(NATIVE_OUTCOME_ACTIONS,value)),module:z.string().refine(isAgentModuleCode),expiresAt:z.iso.datetime()}).strict()
  .refine(value=>Object.hasOwn(NATIVE_OUTCOME_ACTIONS,value.action)&&NATIVE_OUTCOME_ACTIONS[value.action as keyof typeof NATIVE_OUTCOME_ACTIONS].module===value.module);

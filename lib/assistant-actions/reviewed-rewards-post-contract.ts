@@ -2,7 +2,7 @@
  * No budgets, recommendations, performance ratings, salaries or money can be posted as model input. */
 import {z} from 'zod';
 export const REVIEWED_REWARDS_POST_ACTION='rewards.post' as const;
-const base={action:z.literal(REVIEWED_REWARDS_POST_ACTION),contractVersion:z.literal(1)},id=z.uuid(),revision=z.number().int().nonnegative(),digest=z.string().regex(/^[a-f0-9]{64}$/),cents=z.number().int().safe();
+const base={action:z.literal(REVIEWED_REWARDS_POST_ACTION),contractVersion:z.literal(1)},id=z.guid(),revision=z.number().int().nonnegative(),digest=z.string().regex(/^[a-f0-9]{64}$/),cents=z.number().int().safe();
 export const ReviewedRewardsPostNomination=z.object({...base,unitId:id}).strict();
 export const ReviewedRewardsPostHumanContent=z.object({...base,unitId:id,revision,batchId:id.nullable(),confirmWholeApprovedUnit:z.literal(true)}).strict();
 export type ReviewedRewardsPostHumanContent=z.infer<typeof ReviewedRewardsPostHumanContent>;

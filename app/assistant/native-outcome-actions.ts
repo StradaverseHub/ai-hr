@@ -10,7 +10,7 @@ import {loadOwnNativeOutcomeWorkspace} from '@/core/module-native-outcome-worksp
 import {resolveOwnNotificationServerIdentity} from '@/core/assistant-actions/own-notification-preferences-source';
 // Next Server Actions enforce POST and matching Origin/Host. These commands additionally use
 // the strict selected browser session and the canonical owner; rendered controls are not authority.
-const Id=z.uuid().transform(v=>v.toLowerCase());
+const Id=z.guid().transform(v=>v.toLowerCase());
 const capture=(ctx:SessionContext)=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
 const path=(jobId:string,status:string,link?:string)=>'/assistant?governed='+encodeURIComponent(jobId)+'&nativeOutcome='+status+(link?'&nativeLink='+encodeURIComponent(link):'');
 /** Form values are captured before authentication awaits. Neither actor nor native facts are posted. */

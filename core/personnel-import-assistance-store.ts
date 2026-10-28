@@ -17,7 +17,7 @@ type Prepare=Readonly<{companyId:string;operationNonce:string;sourceRevision:str
 type Row={evaluation_id:string|null;evaluation_version:number|null;operation_nonce:string;id:string;company_id:string;version:number;source_revision:string;registry_digest:string;headers_digest:string;input_digest:string;header_indexes:number[];mode:'deterministic'|'ai';state:'ready'|'dispatched'|'completed'|'failed';ai_run_id:string|null;receipt:string|null;fresh:boolean};
 const capture=(ctx:SessionContext)=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))});
 const fail=():never=>{throw new AiGatewayError('Let’s review those headings again before trying this import.');};
-const uuid=(v:unknown):v is string=>typeof v==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(v);
+const uuid=(v:unknown):v is string=>typeof v==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(v);
 const digest=(v:unknown):v is string=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
 const aad=(ctx:SessionContext,id:string)=>JSON.stringify(['ai-hr.personnel-import-header.v1',ctx.tenantId,ctx.userId,id]);
 async function guard(tx:Tx,ctx:SessionContext,companyId:string){
