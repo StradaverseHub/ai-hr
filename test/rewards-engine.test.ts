@@ -86,6 +86,22 @@ describe('Reward Desk deterministic calculation and confidentiality', () => {
     expect(historical.rows[0].bonusReason).toBe('Senior leadership plan');
     expect(calculateRewards([row], { ...saved, seniorMembershipMode: 'named-members' }).rows[0].bonusEligible).toBe(true);
   });
+  it('40bf44f7: a leaver keeps the recommendation but gets no increase, bonus or lump and leaves every pool', () => {
+    const stay = entry('stay'), left = entry('left'), ec = entry('ec');
+    left.source.leftOn = '2026-11-01'; left.source.leftReason = 'moved';
+    left.recommendation = { ...left.recommendation, meritBp: 800, promotionGrade: '13', promotionBp: 1000, reason: 'A retained business case for the record only' };
+    ec.facts.confidentiality = 'ec'; ec.source.leftOn = '2026-11-01'; ec.source.leftReason = 'terminated';
+    ec.recommendation = { ...ec.recommendation, meritBp: 900, bonusCents: 500000, lumpCents: 10000, specialBp: 100 };
+    const alone = calculateRewards([stay], policy()), r = calculateRewards([stay, left, ec], policy());
+    for (const x of r.rows.filter(x => x.id !== 'stay')) {
+      expect(x).toMatchObject({ incrementEligible: false, bonusEligible: false, lumpEligible: false, incrementReason: 'Left or moved out', bonusReason: 'Left or moved out', meritCents: 0, promotionCents: 0, specialCents: 0, bonusCents: 0, lumpCents: 0 });
+      expect(x.newBasicCents).toBe(x.source.basicCents);
+    }
+    expect(r.rows.find(x => x.id === 'left')!.recommendation.meritBp).toBe(800);
+    expect(r.budgets.standard.payrollCents).toBe(alone.budgets.standard.payrollCents);
+    expect(r.budgets.standard.bonusPayrollCents).toBe(alone.budgets.standard.bonusPayrollCents);
+    expect(r.flags.filter(f => f.entryId === 'left' || f.entryId === 'ec')).toEqual([]);
+  });
   it('keeps ER, senior leadership and EC out of the ordinary lump sum', () => {
     const er = entry('er'); er.facts.erCase = true;
     const senior = entry('senior'); senior.facts.seniorPlan = true;

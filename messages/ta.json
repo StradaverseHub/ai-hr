@@ -20184,6 +20184,37 @@
     "import": "Import verified inputs",
     "refreshHelp": "Refresh the original snapshot date from Personnel. This clears input verification and requires another review. If an employee left the roster, the refresh is refused rather than silently deleting an award.",
     "refresh": "Refresh source records",
+    "confidentialityFloor": {
+      "bg": "தானாக BG இரகசியம் எனக் குறிக்கப்பட்டது: பணியாளர் பதிவில் BG CEO இருக்கை வகிப்பவருக்கு நேரடியாக அறிக்கையிடுகிறார். கடுமையாக்கலாம், குறைக்க முடியாது.",
+      "ec": "தானாக EC இரகசியம் எனக் குறிக்கப்பட்டது: பணியாளர் பதிவில் செயல் தலைவர் இருக்கை வகிப்பவருக்கு நேரடியாக அறிக்கையிடுகிறார். குறைக்க முடியாது."
+    },
+    "sourceRefresh": {
+      "title": "மூலப் பதிவுகளைப் புதுப்பி",
+      "help": "தற்போதைய நிலைப்படத் தேதி: {date}. எதையும் மாற்றுவதற்கு முன், அதன் பின் பணியாளர் மற்றும் ஊதியப் பதிவுகளில் மாறியவற்றை முன்னோட்டமிடுங்கள்.",
+      "asOf": "புதுப்பிக்கும் தேதி",
+      "preview": "மாற்றங்களை முன்னோட்டமிடு",
+      "willChange": "{date} வரை புதுப்பித்தால் என்ன மாறும்",
+      "category": {
+        "joined": "பிரிவில் சேர்ந்தவர்கள்",
+        "left": "விலகியவர்கள் அல்லது வெளியே மாற்றப்பட்டவர்கள் (பட்டியலில் தொடர்வர், குறிக்கப்படுவர், உயர்வு அல்லது போனஸ் இல்லை)",
+        "confirmed": "புதிதாக உறுதிப்படுத்தப்பட்டவர்கள்",
+        "notice": "ராஜினாமா சமர்ப்பித்தவர்கள் (அறிவிப்புக் காலத்தில்)",
+        "grade": "பணித் தரம் மாறியது",
+        "salary": "ஊதியப் பதிவு மாறியது",
+        "other": "பிற பதிவு விவரங்கள் மாறின"
+      },
+      "confirmHelp": "பெயர்களைப் பார்க்க ஒரு வரிசையைத் திறக்கவும். உறுதிப்படுத்தினால் நிலைப்படத் தேதி இந்தத் தேதிக்கு நகரும்; மாறியவர்களின் தரவுச் சரிபார்ப்பு அழிக்கப்படும்.",
+      "confirm": "புதுப்பித்தலை உறுதிப்படுத்து",
+      "cancel": "ரத்து செய்",
+      "leftMarker": "விலகியது அல்லது வெளியே மாற்றப்பட்டது {date}",
+      "left": {
+        "terminated": "{date} அன்று நிறுவனத்தை விட்டு விலகினார். பதிவுக்காக வைக்கப்பட்டுள்ளது; உயர்வு அல்லது போனஸ் இல்லை.",
+        "moved": "{date} அன்று இந்தப் பிரிவிலிருந்து வெளியே மாற்றப்பட்டார். பதிவுக்காக வைக்கப்பட்டுள்ளது; உயர்வு அல்லது போனஸ் இல்லை."
+      },
+      "eligibilityTitle": "தகுதி இவற்றின் அடிப்படையில் மதிப்பிடப்படுகிறது",
+      "eligibilityDates": "{joinedBefore}க்கு முன் சேர்ந்தவர் · {confirmedBy}க்குள் உறுதிப்படுத்தப்பட்டவர் · ஊதிய அமலாக்கத் தேதி {effectiveFrom}",
+      "eligibilityShared": "பகிர்ந்த அமைப்பு {name} இல் உள்ள தேதிகள். உருவாக்கிய பின் மதிப்பாய்வு அமைப்புகளில் அவற்றைச் சரிபார்க்கலாம்."
+    },
     "export": "Export visible recommendations",
     "rulePools": "Standard and JG H merit, promotion and special-adjustment pools are funded separately. No pool, plan or business unit may fund another. Nil-recommended eligible payroll remains in the pool base.",
     "ruleBonus": "Bonus utilisation equals standard bonus plus individual increases, less individual reductions, plus lump sums. Spending above 100% blocks approval, including positive spending against a zero budget. Less than 80% utilisation raises a warning.",
@@ -25929,6 +25960,15 @@
     "history": "மற்ற ஒதுக்கீடுகள், முந்தைய முடிவுகள் மற்றும் தணிக்கை வரலாறு பாதுகாக்கப்படும்.",
     "save": "உறுதிப்படுத்திச் சேமி",
     "permissionsTitle": "ஒவ்வொரு வெகுமதி பங்கின் அனுமதிகள்",
+    "confidentialityRules": {
+      "title": "இரகசிய விதிகள்",
+      "own": "யாரும் தங்கள் சொந்த வெகுமதி வரியைப் பார்க்க முடியாது, ஒப்புதல் அளிப்பவரும் கூட.",
+      "ec": "EC இரகசியம் எனக் குறிக்கப்பட்டவர்களை குழு வெகுமதிகள், CTRO மற்றும் செயல் தலைவர் மட்டுமே பார்க்க முடியும்.",
+      "bg": "BG இரகசியம் எனக் குறிக்கப்பட்டவர்கள் BU CEO மற்றும் PBP இடமிருந்து மறைக்கப்படுவர்.",
+      "pbp": "PBP படிக்கலாம், ஆனால் எதையும் மாற்றவோ ஒப்புதல் அளிக்கவோ முடியாது.",
+      "totals": "பிரிவின் மொத்தங்களும் வரவுசெலவுகளும் எப்போதும் மறைக்கப்பட்டவர்களை உள்ளடக்கும்.",
+      "derived": "BG CEO அல்லது செயல் தலைவர் இருக்கையில் உள்ளவருக்கு நேரடியாக அறிக்கையிடும் எவரும் பணியாளர் பதிவிலிருந்து தானாகக் குறிக்கப்படுவர். குழு வெகுமதிகள் குறியீட்டைக் கடுமையாக்கலாம், ஒருபோதும் குறைக்க முடியாது."
+    },
     "unnamed": "பெயரிடப்படாத உள்நுழைவு கணக்கு",
     "permissions": {
       "bu": "பரிந்துரைகளைத் தயாரித்து வரைவு மதிப்பாய்வைச் சமர்ப்பிக்கலாம்.",

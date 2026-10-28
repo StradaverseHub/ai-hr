@@ -6,7 +6,7 @@ import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
 import { getRewardUnit } from '@/packs/rewards/service';
-import { performances, talents } from '@/packs/rewards/model';
+import { belowConfidentialityFloor, performances, talents } from '@/packs/rewards/model';
 import { Button, Card, Field, PageHeader, inputCls } from '@/components/ui';
 import { entryAction } from '../../../actions';
 
@@ -22,6 +22,7 @@ export default async function RewardPersonPage({ params }: { params: Promise<{ u
   return <div className="mx-auto max-w-5xl space-y-5">
     <Link href={`/rewards/${unitId}`} className="text-sm text-primary hover:underline">← {t('review')}</Link>
     <PageHeader title={e.source.name} description={`${e.source.employeeCode} · ${t('grade')} ${e.source.grade} · ${t(e.plan === 'ec' ? 'ecPlan' : e.plan)}`} />
+    {e.source.leftOn && <p className="text-sm text-muted-foreground">{t(`sourceRefresh.left.${e.source.leftReason ?? 'moved'}`, { date: e.source.leftOn })}</p>}
     <Card className="p-5"><dl className="grid gap-4 text-sm sm:grid-cols-3">{[[t('currentPay'), rm(e.source.basicCents)], [t('newPay'), rm(e.newBasicCents)], [t('bonus'), rm(e.bonusCents)], [t('lumpSum'), rm(e.lumpCents)], [t('incrementEligibility'), e.incrementReason || t('eligible')], [t('bonusEligibility'), e.bonusReason || t('eligible')]].map(([label, value]) => <div key={label}><dt className="text-muted-foreground">{label}</dt><dd className="mt-1 font-medium tabular-nums">{value}</dd></div>)}</dl></Card>
     <form action={entryAction} className="space-y-6">
       <input type="hidden" name="unitId" value={unitId} /><input type="hidden" name="revision" value={v.unit.revision} /><input type="hidden" name="entryId" value={entryId} />
@@ -43,7 +44,7 @@ export default async function RewardPersonPage({ params }: { params: Promise<{ u
           <div className="grid gap-4 sm:grid-cols-3">
             <Field label={t('talent')}><select name="talent" defaultValue={f.talent ?? ''} className={inputCls}><option value="">{t('notAvailable')}</option>{talents.map(k => <option key={k}>{k}</option>)}</select></Field>
             <Field label={t('performance')}><select name="performance" defaultValue={f.performance ?? ''} className={inputCls}><option value="">{t('notAvailable')}</option>{performances.map(k => <option key={k}>{k}</option>)}</select></Field>
-            <Field label={t('confidentiality')}><select name="confidentiality" defaultValue={f.confidentiality} className={inputCls}>{['standard', 'bg', 'ec'].map(k => <option key={k} value={k}>{t(`visibility.${k}`)}</option>)}</select></Field>
+            <Field label={t('confidentiality')}><select name="confidentiality" defaultValue={f.confidentiality} className={inputCls}>{(['standard', 'bg', 'ec'] as const).map(k => <option key={k} value={k} disabled={belowConfidentialityFloor({ confidentiality: k }, e.source)}>{t(`visibility.${k}`)}</option>)}</select>{e.source.confidentialityFloor && <p className="mt-1 text-xs text-muted-foreground">{t(`confidentialityFloor.${e.source.confidentialityFloor}`)}</p>}</Field>
             <Field label={t('branch')}><input name="branch" defaultValue={f.branch} maxLength={100} className={inputCls} /></Field><Field label={t('segment')}><input name="segment" defaultValue={f.segment} maxLength={80} className={inputCls} /></Field>
           </div><div className="flex flex-wrap gap-5 text-sm">{(['seniorPlan', 'erCase', 'pipCase', 'reviewed'] as const).map(key => <label key={key} className="flex items-center gap-2"><input type="checkbox" name={key} defaultChecked={f[key]} />{t(key)}</label>)}</div>
         </>}

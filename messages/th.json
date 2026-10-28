@@ -20184,6 +20184,37 @@
     "import": "Import verified inputs",
     "refreshHelp": "Refresh the original snapshot date from Personnel. This clears input verification and requires another review. If an employee left the roster, the refresh is refused rather than silently deleting an award.",
     "refresh": "Refresh source records",
+    "confidentialityFloor": {
+      "bg": "กำหนดเป็นความลับระดับ BG โดยอัตโนมัติ: รายงานตรงต่อผู้ดำรงตำแหน่ง CEO ของ BG ในข้อมูลบุคลากร เพิ่มความเข้มงวดได้ แต่ลดลงไม่ได้",
+      "ec": "กำหนดเป็นความลับระดับ EC โดยอัตโนมัติ: รายงานตรงต่อผู้ดำรงตำแหน่งประธานกรรมการบริหารในข้อมูลบุคลากร ลดระดับไม่ได้"
+    },
+    "sourceRefresh": {
+      "title": "รีเฟรชข้อมูลต้นทาง",
+      "help": "วันที่สแนปช็อตปัจจุบัน: {date} ดูตัวอย่างสิ่งที่เปลี่ยนแปลงในข้อมูลบุคลากรและค่าตอบแทนตั้งแต่วันนั้นก่อนมีการเปลี่ยนแปลงใด ๆ",
+      "asOf": "รีเฟรชถึงวันที่",
+      "preview": "ดูตัวอย่างการเปลี่ยนแปลง",
+      "willChange": "สิ่งที่จะเปลี่ยนแปลงหากรีเฟรชถึงวันที่ {date}",
+      "category": {
+        "joined": "เข้าร่วมหน่วยงาน",
+        "left": "ลาออกหรือย้ายออก (ยังอยู่ในรายการ มีเครื่องหมาย ไม่ได้รับการขึ้นเงินเดือนหรือโบนัส)",
+        "confirmed": "ผ่านการบรรจุใหม่",
+        "notice": "ยื่นใบลาออก (อยู่ระหว่างแจ้งล่วงหน้า)",
+        "grade": "ระดับงานเปลี่ยน",
+        "salary": "ข้อมูลเงินเดือนเปลี่ยน",
+        "other": "รายละเอียดข้อมูลอื่นเปลี่ยน"
+      },
+      "confirmHelp": "เปิดแถวเพื่อดูรายชื่อ การยืนยันจะเลื่อนวันที่สแนปช็อตมาเป็นวันนี้ และล้างการตรวจสอบข้อมูลของผู้ที่มีการเปลี่ยนแปลง",
+      "confirm": "ยืนยันการรีเฟรช",
+      "cancel": "ยกเลิก",
+      "leftMarker": "ลาออกหรือย้ายออก {date}",
+      "left": {
+        "terminated": "ออกจากบริษัทเมื่อ {date} เก็บไว้เป็นหลักฐาน ไม่ได้รับการขึ้นเงินเดือนหรือโบนัส",
+        "moved": "ย้ายออกจากหน่วยงานนี้เมื่อ {date} เก็บไว้เป็นหลักฐาน ไม่ได้รับการขึ้นเงินเดือนหรือโบนัส"
+      },
+      "eligibilityTitle": "การพิจารณาสิทธิ์อ้างอิงวันที่",
+      "eligibilityDates": "เข้าทำงานก่อน {joinedBefore} · บรรจุภายใน {confirmedBy} · วันที่เงินเดือนมีผล {effectiveFrom}",
+      "eligibilityShared": "วันที่ตามการตั้งค่าที่ใช้ร่วมกัน {name} ตรวจสอบได้ในการตั้งค่าการทบทวนหลังสร้างแล้ว"
+    },
     "export": "Export visible recommendations",
     "rulePools": "Standard and JG H merit, promotion and special-adjustment pools are funded separately. No pool, plan or business unit may fund another. Nil-recommended eligible payroll remains in the pool base.",
     "ruleBonus": "Bonus utilisation equals standard bonus plus individual increases, less individual reductions, plus lump sums. Spending above 100% blocks approval, including positive spending against a zero budget. Less than 80% utilisation raises a warning.",
@@ -25929,6 +25960,15 @@
     "history": "การมอบหมายอื่น การตัดสินใจที่ผ่านมา และประวัติการตรวจสอบจะยังคงอยู่",
     "save": "ยืนยันและบันทึก",
     "permissionsTitle": "สิทธิ์ของแต่ละบทบาทรางวัล",
+    "confidentialityRules": {
+      "title": "กฎการรักษาความลับ",
+      "own": "ไม่มีใครเห็นรายการรางวัลของตนเอง แม้แต่ผู้อนุมัติ",
+      "ec": "ผู้ที่กำหนดเป็นความลับระดับ EC มองเห็นได้เฉพาะ Group Rewards, CTRO และประธานกรรมการบริหาร",
+      "bg": "ผู้ที่กำหนดเป็นความลับระดับ BG จะถูกซ่อนจาก CEO ของ BU และ PBP",
+      "pbp": "PBP อ่านได้ แต่เปลี่ยนแปลงหรืออนุมัติสิ่งใดไม่ได้",
+      "totals": "ยอดรวมและงบประมาณของหน่วยงานรวมผู้ที่ถูกซ่อนเสมอ",
+      "derived": "ผู้ที่รายงานตรงต่อผู้ดำรงตำแหน่ง CEO ของ BG หรือประธานกรรมการบริหาร จะถูกกำหนดโดยอัตโนมัติจากข้อมูลบุคลากร Group Rewards เพิ่มความเข้มงวดได้ แต่ลดลงไม่ได้"
+    },
     "unnamed": "บัญชีเข้าสู่ระบบที่ไม่มีชื่อ",
     "permissions": {
       "bu": "จัดเตรียมข้อเสนอแนะและส่งการพิจารณาฉบับร่าง",

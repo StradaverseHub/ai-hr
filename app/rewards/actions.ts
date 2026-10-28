@@ -7,7 +7,7 @@ import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { publicErrorMessage } from '@/lib/public-error';
 import {rewardPolicyFromForm} from './policy-input';
-import { rewardCalendarStages, rewardOffcycleSlaStages, saveRewardCalendar, RewardMaintenanceError, previewRewardAccessChange, saveRewardAccessChange, deleteRewardReview, RewardPolicyGroupError, previewRewardSeniorMembership, saveRewardSeniorMembership, importOnehrRewardResults, createOffcycleReview, createRewardUnit, decideRewardUnit, getRewardUnit, importRewardFacts, postRewardUnit, refreshRewardSources, saveRewardEntry, saveRewardPolicy, previewRewardMultiplier, saveRewardMultiplier, setRewardMember, setRewardUnitLump } from '@/packs/rewards/service';
+import { rewardCalendarStages, rewardOffcycleSlaStages, saveRewardCalendar, RewardMaintenanceError, previewRewardAccessChange, saveRewardAccessChange, deleteRewardReview, RewardPolicyGroupError, previewRewardSeniorMembership, saveRewardSeniorMembership, importOnehrRewardResults, createOffcycleReview, createRewardUnit, decideRewardUnit, getRewardUnit, importRewardFacts, postRewardUnit, saveRewardEntry, saveRewardPolicy, previewRewardMultiplier, saveRewardMultiplier, setRewardMember, setRewardUnitLump, previewRewardSourceRefresh, saveRewardSourceRefresh } from '@/packs/rewards/service';
 import { emptyFacts, isSalaryReductionAttempt, performances, talents, type RewardPolicy, type RewardRole } from '@/packs/rewards/model';
 
 const str = (f: FormData, key: string) => String(f.get(key) ?? '').trim();
@@ -33,7 +33,18 @@ export async function createRewardAction(f: FormData) {
 }
 export async function memberAction(f: FormData) { return change(f, (s, id, rev) => setRewardMember(s, id, rev, str(f, 'userId'), str(f, 'role') as RewardRole, str(f, 'remove') === 'true'), true); }
 export async function lumpAction(f: FormData) { return change(f, (s, id, rev) => setRewardUnitLump(s, id, rev, scaled(f, 'lump'))); }
-export async function refreshAction(f: FormData) { return change(f, (s, id, rev) => refreshRewardSources(s, id, rev)); }
+/** 40bf44f7: refresh is preview → confirm; the confirm carries the previewed date and digest. */
+export async function previewSourceRefreshAction(unitId: string, revision: number, asOf: string) {
+  try { return { ok: true as const, preview: await previewRewardSourceRefresh(await getSession(), unitId, revision, asOf || undefined) }; }
+  catch (error) { return { ok: false as const, error: errorText(error) }; }
+}
+export async function saveSourceRefreshAction(unitId: string, revision: number, asOf: string, previewDigest: string) {
+  try {
+    await saveRewardSourceRefresh(await getSession(), unitId, revision, asOf, previewDigest);
+    revalidatePath('/rewards', 'layout'); revalidatePath('/admin/rewards', 'layout');
+    return { ok: true as const };
+  } catch (error) { return { ok: false as const, error: errorText(error) }; }
+}
 export async function decideAction(f: FormData) { return change(f, (s, id, rev) => decideRewardUnit(s, id, rev, str(f, 'action') as 'submit' | 'approve' | 'return' | 'reject' | 'withdraw', str(f, 'reason'), f.has('acknowledged'))); }
 export async function postAction(f: FormData) { return change(f, (s, id, rev) => postRewardUnit(s, id, rev, str(f, 'batchId') || undefined)); }
 /** Reward calendar (migration 0646). `revision` is the calendar's own revision (0 when not yet created). */

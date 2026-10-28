@@ -95,6 +95,11 @@ export type RewardSource = {
   hiredOn: string; confirmedOn: string | null; notice: boolean;
   lastPayChange: string | null; confirmationPayChange: boolean;
   performanceReviewId: string | null; performanceRating: number | null;
+  /** 40bf44f7 — set by a confirmed source refresh when the person left the company or moved out of the unit.
+   *  The entry and its recommendation are retained for the record; the engine awards nothing. */
+  leftOn?: string; leftReason?: 'terminated' | 'moved';
+  /** 6fd08f37 — derived from an administrative reporting line to the BG CEO or EC seat holder (see confidentiality.ts). */
+  confidentialityFloor?: 'bg' | 'ec'; confidentialityReason?: { seat: 'bg' | 'ec'; managerEmploymentId: string };
   onehrFactImport?: { resultId: string; digest: string; importedAt: string };
   onehr?: { id: string; reviewId: string; cycleId: string; digest: string; frozenAt: string;
     performance: typeof performances[number] | null; potential: 'Low'|'Mid'|'High'|null;
@@ -122,6 +127,21 @@ export function defaultPolicy(year: number): RewardPolicy {
 /** Existing policy snapshots retain their historical grade rule until explicitly converted. */
 export function isSeniorPlanMember(policy: RewardPolicy, facts: RewardFacts, grade: string): boolean {
   return facts.seniorPlan || policy.seniorMembershipMode !== 'named-members' && policy.seniorGrades.includes(grade);
+}
+
+/** 6fd08f37 — confidentiality markings ordered from least to most restricted. */
+export const confidentialityRank: Record<RewardFacts['confidentiality'], number> = { standard: 0, bg: 1, ec: 2 };
+export const belowConfidentialityFloor = (facts: Pick<RewardFacts, 'confidentiality'>, source: Pick<RewardSource, 'confidentialityFloor'>) =>
+  confidentialityRank[facts.confidentiality] < confidentialityRank[source.confidentialityFloor ?? 'standard'];
+/** The effective marking when the floor moves: a manual marking stricter than the old floor is kept; one equal to
+ *  it is taken to be the derived marking, so it follows the new floor (up or down). Never below the new floor. */
+export function applyConfidentialityFloor(current: RewardFacts['confidentiality'], oldFloor: RewardSource['confidentialityFloor'], newFloor: RewardSource['confidentialityFloor']): RewardFacts['confidentiality'] {
+  const manual = confidentialityRank[current] > confidentialityRank[oldFloor ?? 'standard'] ? current : 'standard', floor = newFloor ?? 'standard';
+  return confidentialityRank[manual] >= confidentialityRank[floor] ? manual : floor;
+}
+export function withConfidentialityFloor(source: RewardSource, floor: { level: 'bg' | 'ec'; reason: NonNullable<RewardSource['confidentialityReason']> } | null): RewardSource {
+  const { confidentialityFloor: _floor, confidentialityReason: _reason, ...rest } = source;
+  return floor ? { ...rest, confidentialityFloor: floor.level, confidentialityReason: floor.reason } : rest;
 }
 
 export function visibleEntry(entry: RewardEntry, roles: readonly RewardRole[], personId?: string | null): boolean {

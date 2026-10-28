@@ -18,10 +18,11 @@ import { calculateRewards, ratio } from './engine';
 import { onehrRewardResultTx } from '../performance/service';
 import { decisionActorRole, factsFromOnehr, isSeniorPlanMember, returnedState } from './model';
 import {rewardPolicyForReviewTx} from './policy-groups';
+import { deriveConfidentialityTx, sourceWithFloor } from './confidentiality';
 export {saveRewardPolicyGroup,listRewardPolicyGroups,rewardSharedPolicyChoices,rewardPolicyGroupUsage,RewardPolicyGroupError} from './policy-groups';
 export type {RewardSharedChoice,RewardPolicySummary} from './policy-groups';
 import { calculateOffcycle, offcycleRoute, offcycleTransition, type Funding } from './offcycle';
-import { bpSchema, canEditStage, defaultPolicy, emptyFacts, emptyRecommendation, factsSchema, isoDateSchema, policySchema, recommendationSchema, rewardRoles, transition, visibleEntry, type RewardEntry, type RewardFacts, type RewardPolicy, type RewardRole, type RewardSource } from './model';
+import { applyConfidentialityFloor, belowConfidentialityFloor, bpSchema, canEditStage, defaultPolicy, emptyFacts, emptyRecommendation, factsSchema, isoDateSchema, policySchema, recommendationSchema, rewardRoles, transition, visibleEntry, type RewardEntry, type RewardFacts, type RewardPolicy, type RewardRole, type RewardSource } from './model';
 
 import { emptyRewardCalendar, rewardCalendarSchema, rewardDaysUntil, rewardNextSeat, rewardRouteProgress, rewardStageDue, rewardStageSeat, rewardStageStep, type RewardCalendarValues, type RewardRouteStep } from './calendar';
 export { rewardCalendarStages, rewardOffcycleSlaStages, emptyRewardCalendar, rewardDueWording, rewardNextSeat, rewardRouteProgress } from './calendar';
@@ -302,20 +303,19 @@ export async function getRewardConfiguration(ctx: SessionContext, unitId: string
   });
 }
 
-async function snapshotEmployees(tx: Tx, ctx: SessionContext, unit: typeof rewardUnit.$inferSelect) {
+/** The unit's roster as Personnel and Compensation stand on `at`. Read-only; refresh preview and save share it. */
+async function snapshotRoster(tx: Tx, unit: typeof rewardUnit.$inferSelect, at: string) {
   await requireAdmin(tx, unit.companyId);
-  const at = unit.snapshotDate;
   const records = await tx.select({ employmentId: employment.id, personId: employment.personId, companyId: employment.companyId, employeeCode: employment.employeeCode, name: person.fullName, grade: jobGrade.code, gradeId: employment.gradeId, hiredOn: employment.hiredOn, confirmedOn: employment.confirmationDate, tenderDate: employment.tenderResignationDate, resignedOn: employment.resignationDate, assignmentId: assignment.id })
     .from(employment).innerJoin(person, eq(person.id, employment.personId)).innerJoin(assignment, eq(assignment.employmentId, employment.id)).leftJoin(jobGrade, eq(jobGrade.id, employment.gradeId))
     .where(and(eq(employment.companyId, unit.companyId), eq(assignment.businessUnitId, unit.businessUnitId), lte(employment.hiredOn, at), or(isNull(employment.terminatedOn), gt(employment.terminatedOn, at)), lte(assignment.validFrom, at), or(isNull(assignment.validTo), gt(assignment.validTo, at)), isNull(assignment.supersededAt)))
     .orderBy(asc(employment.employeeCode), asc(employment.id));
-  const seen = new Set<string>();
+  const roster = new Map<string, RewardSource>();
   for (const e of records) {
-    if (seen.has(e.employmentId)) throw new RewardError('An employee has overlapping assignments. Correct Personnel before importing.');
-    seen.add(e.employmentId);
+    if (roster.has(e.employmentId)) throw new RewardError('An employee has overlapping assignments. Correct Personnel before importing.');
     const [comp] = await tx.select().from(compensation).where(and(eq(compensation.employmentId, e.employmentId), lte(compensation.validFrom, at), or(isNull(compensation.validTo), gt(compensation.validTo, at)), isNull(compensation.supersededAt))).orderBy(desc(compensation.validFrom)).limit(1);
     const [review] = await tx.select({ id: performanceReview.id, rating: performanceReview.overallRating }).from(performanceReview).innerJoin(reviewCycle, eq(reviewCycle.id, performanceReview.cycleId)).where(and(eq(performanceReview.employmentId, e.employmentId), lte(reviewCycle.periodStart, `${unit.policy.year}-12-31`), sql`${reviewCycle.periodEnd} >= ${`${unit.policy.year}-01-01`}`, sql`${performanceReview.closedAt} is not null`)).orderBy(desc(performanceReview.closedAt), desc(performanceReview.id)).limit(1);
-    const source: RewardSource = {
+    roster.set(e.employmentId, {
       employmentId: e.employmentId, personId: e.personId, compensationId: comp?.id ?? null,
       employeeCode: e.employeeCode ?? e.employmentId, name: e.name, grade: (e.grade ?? '').replace(/^JG\s*/i, ''), gradeId: e.gradeId,
       basicCents: comp ? moneyToCents(comp.basicSalary) : 0, currency: comp?.currency ?? 'MYR', payMode: comp?.payMode ?? 'monthly',
@@ -324,14 +324,20 @@ async function snapshotEmployees(tx: Tx, ctx: SessionContext, unit: typeof rewar
       confirmationPayChange: !!(comp && e.confirmedOn && comp.validFrom === e.confirmedOn && comp.validFrom > e.hiredOn),
       performanceReviewId: review?.id ?? null, performanceRating: review?.rating ?? null,
       onehr: await onehrRewardResultTx(tx, e.employmentId, unit.policy.year, unit.id),
-    };
-    const [existing] = await tx.select({ id: rewardEntry.id, source: rewardEntry.source, facts: rewardEntry.facts }).from(rewardEntry).where(and(eq(rewardEntry.unitId, unit.id), eq(rewardEntry.employmentId, e.employmentId)));
-    if (existing) {
-      // Refresh is explicit and invalidates data verification and all earlier approvals.
-      await tx.update(rewardEntry).set({ source: {...source, ...(existing.source.onehrFactImport?{onehrFactImport:existing.source.onehrFactImport}:{})}, facts: { ...existing.facts, reviewed: false }, updatedAt: new Date() }).where(eq(rewardEntry.id, existing.id));
-    } else await tx.insert(rewardEntry).values({ tenantId: ctx.tenantId, unitId: unit.id, employmentId: e.employmentId, source, facts: emptyFacts(), recommendation: emptyRecommendation() });
+    });
   }
-  return seen;
+  return roster;
+}
+/** Creation snapshot. A later refresh goes through previewRewardSourceRefresh/saveRewardSourceRefresh. */
+async function snapshotEmployees(tx: Tx, ctx: SessionContext, unit: typeof rewardUnit.$inferSelect) {
+  const roster = await snapshotRoster(tx, unit, unit.snapshotDate);
+  // 6fd08f37: derived confidentiality floor (BG/EC seats assigned later re-derive through the access commit).
+  const floors = await deriveConfidentialityTx(tx, unit.id, [...roster.keys()], unit.snapshotDate);
+  for (const raw of roster.values()) {
+    const source = sourceWithFloor(raw, floors.get(raw.employmentId));
+    await tx.insert(rewardEntry).values({ tenantId: ctx.tenantId, unitId: unit.id, employmentId: source.employmentId, source, facts: { ...emptyFacts(), confidentiality: source.confidentialityFloor ?? 'standard' }, recommendation: emptyRecommendation() });
+  }
+  return new Set(roster.keys());
 }
 
 export async function createRewardUnit(ctx: SessionContext, raw: { name?: string; year: number; companyId: string; businessUnitId: string; cycleId?: string; snapshotDate: string;sharedPolicyVersionId?:string }) {
@@ -505,6 +511,7 @@ export async function setRewardMember(ctx: SessionContext, unitId: string, revis
   return changeRewardMember(ctx,unitId,revision,userId,role,remove);
 }
 
+const confidentialityFloorMessage = 'This person is marked confidential from their reporting line in People. Group Rewards can make the marking stricter, never lower.';
 export async function saveRewardEntry(ctx: SessionContext, unitId: string, revision: number, entryId: string, recommendation: unknown, facts?: unknown) {
   idSchema.parse(entryId); const rec = recommendationSchema.parse(recommendation);
   const validatedFacts = facts === undefined ? undefined : factsSchema.parse(facts);
@@ -520,6 +527,7 @@ export async function saveRewardEntry(ctx: SessionContext, unitId: string, revis
       const { erDecision: _newEr, pipDecision: _newPip, caseReason: _newReason, ...newClassification } = validatedFacts;
       if (!roles.includes('bu') || !isDeepStrictEqual(oldClassification, newClassification)) throw new RewardError('Only Group Rewards may verify employee inputs.');
     }
+    if (validatedFacts && belowConfidentialityFloor(validatedFacts, entry.source)) throw new RewardError(confidentialityFloorMessage);
     await tx.update(rewardEntry).set({ recommendation: rec, ...(validatedFacts ? { facts: validatedFacts } : {}), updatedAt: new Date() }).where(eq(rewardEntry.id, entryId));
     await touch(tx, unitId); await stamp(tx, ctx, unitId, 'recommendation-updated', { entryId, revision: unit.revision + 1 });
   });
@@ -535,21 +543,103 @@ export async function importRewardFacts(ctx: SessionContext, unitId: string, rev
       const e = entries.find(e => e.employmentId === row.employmentId);
       if (!e || !visibleEntry(e, roles, ctx.personId) || seen.has(row.employmentId)) throw new RewardError('The import contains a duplicate or unavailable employee. Nothing was imported.');
       seen.add(row.employmentId);
+      if (belowConfidentialityFloor(row.facts, e.source)) throw new RewardError(`${confidentialityFloorMessage} Nothing was imported.`);
       await tx.update(rewardEntry).set({ facts: row.facts, updatedAt: new Date() }).where(eq(rewardEntry.id, e.id));
     }
     await touch(tx, unitId); await stamp(tx, ctx, unitId, 'facts-imported', { count: input.length, revision: unit.revision + 1 });
   });
 }
 
-export async function refreshRewardSources(ctx: SessionContext, unitId: string, revision: number) {
+/** 40bf44f7 — what a source refresh changes, by category. `other` is a source change outside the six named
+ *  categories (for example a newly closed performance review); it is shown so no person loses verification silently. */
+export const rewardRefreshCategories = ['joined', 'left', 'confirmed', 'notice', 'grade', 'salary', 'other'] as const;
+export type RewardRefreshCategory = typeof rewardRefreshCategories[number];
+type RefreshChange = { entry: typeof rewardEntry.$inferSelect | null; employmentId: string; source: RewardSource; categories: RewardRefreshCategory[] };
+/** The facts a refresh writes: verification cleared, confidentiality moved with the derived floor (6fd08f37). */
+const refreshedFacts = (c: RefreshChange): RewardFacts => c.entry
+  ? { ...c.entry.facts, confidentiality: applyConfidentialityFloor(c.entry.facts.confidentiality, c.entry.source.confidentialityFloor, c.source.confidentialityFloor), reviewed: false }
+  : { ...emptyFacts(), confidentiality: c.source.confidentialityFloor ?? 'standard' };
+
+async function planSourceRefreshTx(tx: Tx, ctx: SessionContext, unit: typeof rewardUnit.$inferSelect, roles: RewardRole[], entries: (typeof rewardEntry.$inferSelect)[], revision: number, rawAsOf: unknown) {
+  assertRevision(unit, revision); assertUnlocked(unit);
+  if (!roles.includes('gr')) throw new RewardError('Only Group Rewards may refresh the roster.');
+  if (unit.kind !== 'annual') throw new RewardError('Create a replacement off-cycle request if its salary snapshot is stale.');
+  const today = todayInKualaLumpur(), asOf = rawAsOf == null || rawAsOf === '' ? today : isoDateSchema.parse(rawAsOf);
+  if (asOf > today) throw new RewardError('The snapshot date cannot be in the future.');
+  if (asOf < unit.snapshotDate) throw new RewardError('Refresh to a date on or after the current snapshot date.');
+  const roster = await snapshotRoster(tx, unit, asOf);
+  const floors = await deriveConfidentialityTx(tx, unit.id, [...roster.keys()], asOf);
+  for (const [id, source] of roster) roster.set(id, sourceWithFloor(source, floors.get(id)));
+  const changes: RefreshChange[] = [];
+  for (const entry of entries) {
+    const old = entry.source, next = roster.get(entry.employmentId);
+    if (!next) {
+      if (old.leftOn) continue;
+      // Terminated on or before asOf; otherwise moved out of this business unit while still employed.
+      const [emp] = await tx.select({ terminatedOn: employment.terminatedOn }).from(employment).where(eq(employment.id, entry.employmentId));
+      const terminatedOn = emp?.terminatedOn && emp.terminatedOn <= asOf ? emp.terminatedOn : null;
+      const [moved] = terminatedOn ? [] : await tx.select({ on: sql<string | null>`max(${assignment.validTo})` }).from(assignment).where(and(eq(assignment.employmentId, entry.employmentId), eq(assignment.businessUnitId, unit.businessUnitId), isNull(assignment.supersededAt), lte(assignment.validTo, asOf)));
+      changes.push({ entry, employmentId: entry.employmentId, source: { ...old, leftOn: terminatedOn ?? moved?.on ?? asOf, leftReason: terminatedOn ? 'terminated' : 'moved' }, categories: ['left'] });
+      continue;
+    }
+    const source: RewardSource = { ...next, ...(old.onehrFactImport ? { onehrFactImport: old.onehrFactImport } : {}) };
+    if (isDeepStrictEqual(source, old)) continue;
+    const categories: RewardRefreshCategory[] = [];
+    if (old.leftOn) categories.push('joined');
+    if (next.confirmedOn && next.confirmedOn !== old.confirmedOn) categories.push('confirmed');
+    if (next.notice && !old.notice) categories.push('notice');
+    if (next.gradeId !== old.gradeId || next.grade !== old.grade) categories.push('grade');
+    if (next.compensationId !== old.compensationId || next.basicCents !== old.basicCents || next.currency !== old.currency || next.payMode !== old.payMode) categories.push('salary');
+    changes.push({ entry, employmentId: entry.employmentId, source, categories: categories.length ? categories : ['other'] });
+  }
+  const existing = new Set(entries.map(e => e.employmentId));
+  for (const [employmentId, source] of roster) if (!existing.has(employmentId)) changes.push({ entry: null, employmentId, source, categories: ['joined'] });
+  const token = createHash('sha256').update(JSON.stringify({
+    actor: { userId: ctx.userId, personId: ctx.personId }, unitId: unit.id, revision: unit.revision, from: unit.snapshotDate, asOf,
+    snapshot: digest(unit, entries), changes: changes.map(c => [c.employmentId, c.categories, c.source]),
+  })).digest('hex');
+  return { asOf, changes, token };
+}
+
+export type RewardRefreshPerson = { employmentId: string; name: string; employeeCode: string };
+/** Read-only preview. Names are limited to what visibleEntry lets this viewer see; hidden people are not counted. */
+export async function previewRewardSourceRefresh(ctx: SessionContext, unitId: string, revision: number, asOf?: string) {
   return withRewardsTenant(ctx, async tx => {
-    const { unit, roles, entries } = await load(tx, unitId, true); assertRevision(unit, revision); assertUnlocked(unit);
-    if (!roles.includes('gr')) throw new RewardError('Only Group Rewards may refresh the roster.');
-    if (unit.kind !== 'annual') throw new RewardError('Create a replacement off-cycle request if its salary snapshot is stale.');
-    const seen = await snapshotEmployees(tx, ctx, unit);
-    if (entries.some(e => !seen.has(e.employmentId))) throw new RewardError('The roster changed since this cycle was created. Create a replacement unit review to avoid silently dropping a recommendation.');
-    await touch(tx, unitId); await stamp(tx, ctx, unitId, 'sources-refreshed', { revision: unit.revision + 1 });
+    const { unit, roles, entries } = await load(tx, unitId);
+    const plan = await planSourceRefreshTx(tx, ctx, unit, roles, entries, revision, asOf);
+    const people = Object.fromEntries(rewardRefreshCategories.map(c => [c, [] as RewardRefreshPerson[]])) as Record<RewardRefreshCategory, RewardRefreshPerson[]>;
+    for (const c of plan.changes) {
+      const shown: RewardEntry = { id: c.entry?.id ?? c.employmentId, source: c.source, facts: refreshedFacts(c), recommendation: c.entry?.recommendation ?? emptyRecommendation() };
+      if (!visibleEntry({ ...shown, facts: { ...shown.facts, reviewed: true } }, roles, ctx.personId)) continue;
+      for (const category of c.categories) people[category].push({ employmentId: c.employmentId, name: c.source.name, employeeCode: c.source.employeeCode });
+    }
+    return { unitId, revision, from: unit.snapshotDate, asOf: plan.asOf, digest: plan.token, people };
   });
+}
+
+/** Applies exactly the previewed refresh. Leavers are kept and marked; only changed entries need verification again. */
+export async function saveRewardSourceRefresh(ctx: SessionContext, unitId: string, revision: number, asOf: string, previewDigest: string) {
+  z.string().regex(/^[a-f0-9]{64}$/).parse(previewDigest);
+  const date = isoDateSchema.parse(asOf);
+  return withRewardsTenant(ctx, async tx => {
+    const { unit, roles, entries } = await load(tx, unitId, true);
+    const plan = await planSourceRefreshTx(tx, ctx, unit, roles, entries, revision, date);
+    if (plan.token !== previewDigest) throw new RewardError('The source records or the review changed. Preview the refresh again before confirming.');
+    for (const c of plan.changes) {
+      if (c.entry) await tx.update(rewardEntry).set({ source: c.source, facts: refreshedFacts(c), updatedAt: new Date() }).where(eq(rewardEntry.id, c.entry.id));
+      else await tx.insert(rewardEntry).values({ tenantId: ctx.tenantId, unitId, employmentId: c.employmentId, source: c.source, facts: refreshedFacts(c), recommendation: emptyRecommendation() });
+    }
+    await tx.update(rewardUnit).set({ snapshotDate: plan.asOf }).where(eq(rewardUnit.id, unitId));
+    await touch(tx, unitId);
+    const counts = Object.fromEntries(rewardRefreshCategories.map(c => [c, plan.changes.filter(x => x.categories.includes(c)).length]));
+    await stamp(tx, ctx, unitId, 'sources-refreshed', { revision: unit.revision + 1, from: unit.snapshotDate, asOf: plan.asOf, counts, changed: plan.changes.length });
+  });
+}
+
+/** Preview and confirm in one call (scripts and tests). The Data centre always shows the preview first. */
+export async function refreshRewardSources(ctx: SessionContext, unitId: string, revision: number, asOf?: string) {
+  const preview = await previewRewardSourceRefresh(ctx, unitId, revision, asOf);
+  await saveRewardSourceRefresh(ctx, unitId, revision, preview.asOf, preview.digest);
 }
 
 export async function setRewardUnitLump(ctx: SessionContext, unitId: string, revision: number, cents: number | null) {
@@ -668,7 +758,8 @@ async function postRewardEffectTx(tx:Tx,ctx:SessionContext,unitId:string,revisio
         const comp = await setCompensation(ctx, { employmentId: emp.id, basicSalary: e.newBasicCents / 100, effectiveFrom: unit.policy.effectiveFrom, remarks: `Approved Reward Desk review ${unitId}` }, tx);
         await tx.update(rewardEntry).set({ enactedCompensationId: comp.compensationId }).where(eq(rewardEntry.id, e.id));
       }
-      if (e.recommendation.promotionGrade) {
+      // 40bf44f7: a leaver's retained recommendation is a record only; it never changes their grade.
+      if (e.recommendation.promotionGrade && !e.source.leftOn) {
         // Grade is currently an undated employment attribute: do not silently apply a future promotion today.
         if (unit.policy.effectiveFrom !== todayInKualaLumpur()) throw new RewardError('A promotion must be posted on its effective date because Job Grade is not effective-dated.');
         const grades = await tx.select().from(jobGrade).where(isNull(jobGrade.archivedAt));
