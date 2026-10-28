@@ -82,7 +82,7 @@ export async function sendCalibrationMessage(ctx:SessionContext,id:string,axis:'
   let held=heldCalibrationSchema.parse(row?.held??emptyHeldCalibration),reply='',kind:ReviewMessage['kind']='guide';
   if(command){
    // A leader's chat move keeps the box's movement ceiling (source: the box and its chat share one move). It is not a
-   // box move: the command names one axis, and its reason is required by the parser and again by the writer.
+   // box move: the command names one axis. Its reason is optional for a BU or BG CEO (APR-022); the HOD's is required.
    const target=view.rows.find(r=>r.entry.reviewId===command.reviewId)!;
    if(target.finalized||view.session.lockedAt||command.axis==='performance'&&(view.session.performanceLockedAt||target.entry.performanceLockedAt)||command.axis==='potential'&&(view.session.potentialLockedAt||target.entry.potentialLockedAt))throw Error('This assessment axis is locked.');
    if(view.session.tier==='hod'&&!command.submit){
@@ -99,7 +99,7 @@ export async function sendCalibrationMessage(ctx:SessionContext,id:string,axis:'
    reply=queryReply(view,axis,query);
    if(query.action==='person'&&!['group','final'].includes(view.session.tier))held={...held,focus:query.reviewId,requestId,navigation:true};
   }else if(help)reply=help;
-  else reply=['Use the cohort filters and band distribution to review your scope. Open a person for evidence and the review controls.',view.session.tier==='group'||view.session.tier==='final'?'This conversation explains the current bands. Record decisions and locks with the review controls.':`To ${view.session.tier==='hod'?'prepare':'save'} a change, type “Set performance: exact name: ME: your explanation” or “Set potential: exact name: Mid: your explanation”.`,view.session.tier==='hod'?'Set prepares a private edit on the review sheet. “Save department performance: exact name: ME: your explanation” explicitly confirms that department decision.':'', '“Show distribution” lists the current bands. “Explain: exact name” shows the band journey. Locking calibration remains a separate confirmation.'].filter(Boolean).join('\n\n');
+  else reply=['Use the cohort filters and band distribution to review your scope. Open a person for evidence and the review controls.',view.session.tier==='group'||view.session.tier==='final'?'This conversation explains the current bands. Record decisions and locks with the review controls.':view.session.tier==='hod'?'To prepare a change, type “Set performance: exact name: ME: your explanation” or “Set potential: exact name: Mid: your explanation”.':'To save a change, type “Set performance: exact name: ME” or “Set potential: exact name: Mid”, optionally followed by “: your explanation”.',view.session.tier==='hod'?'Set prepares a private edit on the review sheet. “Save department performance: exact name: ME: your explanation” explicitly confirms that department decision.':'', '“Show distribution” lists the current bands. “Explain: exact name” shows the band journey. Locking calibration remains a separate confirmation.'].filter(Boolean).join('\n\n');
   reply=reply.length>5900?reply.slice(0,5800)+'\n\nChoose a specific business unit for the remaining details.':reply;
   const at=new Date().toISOString(),next:ReviewMessage[]=[...messages,{id:requestId,role:'user',kind:'message',text:words,at},{id:randomUUID(),role:'assistant',kind,text:reply,at}];
   const data={messages:next,held,updatedAt:new Date()};

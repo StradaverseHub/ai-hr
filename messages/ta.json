@@ -21643,8 +21643,7 @@
       "failed": "மாற்றத்தைச் சேமிக்க முடியவில்லை. மீண்டும் முயலவும்.",
       "saving": "சேமிக்கிறது…",
       "save": "மாற்றத்தைச் சேமி",
-      "cancel": "ரத்துசெய்",
-      "reasonRequired": "Reason (required) · the tier above reads it"
+      "cancel": "ரத்துசெய்"
     },
     "talentCurve": {
       "title": "{axis} பகிர்வு — {unit}",

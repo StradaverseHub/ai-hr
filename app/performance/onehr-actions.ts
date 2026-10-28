@@ -195,7 +195,7 @@ export async function lockGroupPeopleAction(f:FormData){
  try{await perf.lockAssessmentGroupPeople(s,id,num(f,'revision'),ids(f,'reviewId'));}catch(error){redirect(withError(url,error));}
  revalidatePath('/performance/workspace');revalidatePath(url.split('?')[0]);redirect(url);
 }
-/** The Group performance list: a changed call carries the Group Chief's reason (APR-011); the writer enforces it. */
+/** The Group performance list: a changed call may carry the Group Chief's reason (optional under APR-022); a given one is stored. */
 export async function changeGroupBandAction(sessionId:string,revision:number,reviewId:string,band:PMBand,reason:string){
  const s=await getSession();
  try{const v=await perf.getOnehrCalibration(s,sessionId);if(v.session.tier!=='group')throw Error('This action belongs to Group calibration.');await perf.saveOnehrCalibration(s,sessionId,revision,{reviewId,axis:'performance',performance:band,potential:null,performanceNote:reason,potentialNote:''});revalidatePath('/performance/workspace');return {ok:true as const};}catch(error){return {error:await actionError(error)};}

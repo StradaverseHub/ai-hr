@@ -21643,8 +21643,7 @@
       "failed": "Perpindahan tidak dapat disimpan. Cuba lagi.",
       "saving": "Menyimpan…",
       "save": "Simpan perpindahan",
-      "cancel": "Batal",
-      "reasonRequired": "Reason (required) · the tier above reads it"
+      "cancel": "Batal"
     },
     "talentCurve": {
       "title": "Taburan {axis} — {unit}",
