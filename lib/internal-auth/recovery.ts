@@ -62,7 +62,7 @@ export async function sendInternalRecovery(email: string, context?: { deliveryId
   const [principal]=await client.unsafe('select app_user_id,tenant_id from app.principal_by_identity($1,$2)',[binding.issuer,binding.subject]);
   if(principal?.tenant_id!==binding.tenantId||!principal.app_user_id)throw new AccountEmailDeliveryError('notEligible');
   const design=await recoveryEmailDesign({tenantId:binding.tenantId,userId:principal.app_user_id},binding.locale??'en'),link=`${internalConfig().origin}/reset-password#token=${token}`;
-  await sendInternalMail({to:email,...renderEmailDesign(design.document,'recovery',design.locale,{...recoveryEmailContent(link),link},{...design.data,expiry_minutes:'30'})},transport);
+  await sendInternalMail({to:email,...renderEmailDesign(design.document,'recovery',design.locale,{...recoveryEmailContent(link,design.locale),link},{...design.data,expiry_minutes:'30'})},transport);
 }
 export async function completeRecovery(raw: string, password: string, code: string) {
   if (!validOpaque(raw)) throw new InternalAuthError('invalidChallenge');

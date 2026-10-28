@@ -1,3 +1,4 @@
+import {invitationEmailContent,recoveryEmailContent} from '../lib/account-email-content';
 import {describe,it,expect} from 'vitest';
 import {emailDocument,defaultEmailDocument,emailKinds,type EmailDocument} from '../lib/email-design/model';
 import {workflowEmailMessage} from '../deploy/identity-email/notification-message';
@@ -37,6 +38,13 @@ describe('validated email designs',()=>{
  });
  it('provides safe defaults for every known kind and preserves all system wording',()=>{
   for(const kind of emailKinds){const message=renderEmailDesign(null,kind,'ms',system);expect(message.subject).toBe(system.subject);expect(message.text).toContain(system.text);expect(message.html).toContain('lang="ms"');}
+ });
+ it('generates localized protected account blocks without changing their code-owned destinations',()=>{
+  for(const locale of ['en','ms','zh','vi','ta','th'] as const){
+   const invitation=invitationEmailContent('FICTIONAL','https://example.com/activate',locale),recovery=recoveryEmailContent('https://example.com/reset',locale);
+   expect(invitation.text).toContain('FICTIONAL');expect(invitation.text).toContain('https://example.com/activate');expect(recovery.text).toContain('https://example.com/reset');
+   if(locale!=='en'){expect(invitation.subject).not.toBe(invitationEmailContent('FICTIONAL','https://example.com/activate').subject);expect(recovery.subject).not.toBe(recoveryEmailContent('https://example.com/reset').subject);}
+  }
  });
  it('accepts bounded raster assets and rejects a forged type or excessive size',async()=>{
   const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jL1sAAAAASUVORK5CYII=','base64');
