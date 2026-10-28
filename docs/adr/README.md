@@ -150,3 +150,4 @@ Read only records relevant to the task. A newer decision supersedes an older one
 - [ADR-0140: Operator customer workspace](0140-operator-customer-workspace.md)
 - [ADR-0141 — OneHR 6e0a14e migration decisions (ADR-M01…M16)](0141-onehr-6e0a14e-migration-decisions.md)
 - [ADR-0142 — OneHR performance partner: performance administration without compensation](0142-onehr-performance-partner.md)
+- [ADR-0151 — Orchestrator action layer: user-parity actions and learning from the system](0151-orchestrator-action-layer-and-system-learning.md)

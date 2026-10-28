@@ -2,6 +2,7 @@
  * The group/shift catalogue remains tenant-wide; execution and formula bindings are per employer.
  * Saving here does not approve a request, recalculate attendance or transfer a payment. */
 import {and,asc,desc,eq,inArray,lte,sql} from 'drizzle-orm';
+import { lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
 import type {SessionContext,Tx} from '../db/client';
 import {withAttendanceTenant} from './module-gate';
 import {attendanceGroupPolicyRevision,attendanceRule,company,overtimePatternVersion,overtimePatternVersionCompany} from '../db/schema';
@@ -86,6 +87,8 @@ export async function scheduleAttendanceGroupPolicy(ctx:SessionContext,p:{compan
   await adminCompany(tx,ctx,p.companyId);
   // Same serial configuration lock as the central pattern owner and its DB trigger.
   await tx.execute(sql`select app.lock_overtime_configuration(${ctx.tenantId}::uuid)`);
+  // Joins the leave-dependency configuration lock like the pattern owner (non-waiting; busy refuses).
+  await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
   const [previous]=await tx.select({ordinal:attendanceGroupPolicyRevision.ordinal,effectiveFrom:attendanceGroupPolicyRevision.effectiveFrom})
    .from(attendanceGroupPolicyRevision).where(and(eq(attendanceGroupPolicyRevision.tenantId,ctx.tenantId),
     eq(attendanceGroupPolicyRevision.companyId,p.companyId),eq(attendanceGroupPolicyRevision.ruleId,p.ruleId)))

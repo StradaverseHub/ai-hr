@@ -23989,7 +23989,8 @@
       "wageIneligible": "Kiểm tra cơ sở tiền lương đã ghi nhận cho phép tính này.",
       "unsupportedRun": "Chọn kỳ tính lương thường xuyên để trả khoản làm thêm giờ này.",
       "coverage": "Chọn kỳ bao gồm nhân viên và ngày làm thêm giờ này.",
-      "unknownHours": "Giới hạn giờ cần có bằng chứng về số giờ cho mọi khoản làm thêm. Hãy kiểm tra khoản nhập thủ công hoặc khoản một lần."
+      "unknownHours": "Giới hạn giờ cần có bằng chứng về số giờ cho mọi khoản làm thêm. Hãy kiểm tra khoản nhập thủ công hoặc khoản một lần.",
+      "busy": "Số dư nghỉ phép phụ thuộc vào làm thêm giờ đang được cập nhật. Chưa có gì được lưu; vui lòng thử lại sau giây lát."
     },
     "traceKinds": {
       "field": "Đầu vào đã ghi",
