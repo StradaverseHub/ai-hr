@@ -14,7 +14,8 @@ const coreCallers:Record<string,string>={'core/assistant.ts':'hr_assistant','cor
 // owner, handed only to the two synthetic harnesses, which admit every call under that same feature) and the
 // personnel import header assistant (resolveActiveAiConfig through its FEATURE constant). Every entry names
 // registered features and must show each listed seam; an unregistered caller still fails above.
-const governedCallers:Record<string,{features:readonly string[];seams:readonly RegExp[];issuedBy?:string}>={
+const governedCallers:Record<string,{features:readonly string[];seams:readonly RegExp[];issuedBy?:string;issuerImport?:string}>={
+ 'lib/ai/provider-protocol.ts':{features:['provider_evaluation'],seams:[/if \(configuration\.provider !== 'openrouter' \|\| !configuration\.governance\) return unavailable\(\);/,/return await governance\.run\(request, async/],issuedBy:'core/ai-provider-readiness.ts',issuerImport:"from '../lib/ai/provider-protocol'"},
  'core/assistant-conversation-harness.ts':{features:['module_agent_evaluation'],seams:[/withAiAdmissionLifecycle\(cfg,\s*'module_agent_evaluation'/],issuedBy:'core/module-agent-releases.ts'},
  'core/module-agent-prompt-harness.ts':{features:['module_agent_evaluation'],seams:[/withAiAdmissionLifecycle\(cfg,\s*'module_agent_evaluation'/],issuedBy:'core/module-agent-releases.ts'},
  'core/module-agent-releases.ts':{features:['module_agent_evaluation','module_agent_planning'],seams:[/governedAiConfig\([^()]*'module_agent_evaluation'\)/,/governedAiConfig\([^()]*'module_agent_planning'\)/,/withAiAdmissionLifecycle\([^,()]*,\s*'module_agent_planning'/]},
@@ -41,11 +42,11 @@ describe('complete AI management inventory and boundary',()=>{
    }ts.forEachChild(node,visit);};visit(tree);
    expect(aiBoundaryViolations(file,src),file).toEqual([]);
    if(!calls)continue;
-   if(file.startsWith('core/')){coreFound.push(file);const governed=governedCallers[file];
+   if(file.startsWith('core/')||governedCallers[file]){coreFound.push(file);const governed=governedCallers[file];
     if(governed){
      for(const feature of governed.features)expect(AI_FEATURES.some(f=>f.id===feature),`${file}:${feature}`).toBe(true);
      for(const seam of governed.seams)expect(src,`${file} ${seam}`).toMatch(seam);
-     if(governed.issuedBy){const issuer=read(governed.issuedBy);expect(issuer,`${governed.issuedBy} issues ${file}`).toContain(`from './${file.slice('core/'.length,-'.ts'.length)}'`);
+     if(governed.issuedBy){const issuer=read(governed.issuedBy);expect(issuer,`${governed.issuedBy} issues ${file}`).toContain(governed.issuerImport??`from './${file.slice('core/'.length,-'.ts'.length)}'`);
       for(const feature of governed.features)expect(issuer).toMatch(new RegExp(`governedAiConfig\\([^()]*'${feature}'\\)`));}
     }else{expect(coreCallers[file],`${file} needs a registered capability`).toBeTruthy();expect(src,`${file} resolves ${coreCallers[file]}`).toMatch(new RegExp(`resolveActiveAiConfig\\(tx,\\s*ctx,\\s*'${coreCallers[file]}'\\)`));}}
    else{expect(file.startsWith('packs/performance/onehr/'),`${file} needs a governed configuration seam`).toBe(true);if(file===performanceSeam.file)expect(src).toMatch(performanceSeam.admission);else {
