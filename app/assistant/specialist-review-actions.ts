@@ -6,8 +6,12 @@ import {resolveOwnNotificationServerIdentity} from '@/core/assistant-actions/own
 import {isAgentModuleCode} from '@/lib/ai/module-agents';
 import {createCanonicalSpecialistCandidate,evaluateCanonicalSpecialistCandidate,promoteCanonicalSpecialistCandidate,rollbackRoutingAgent,runGovernedSpecialistJob} from '@/core/module-agent-releases';
 
-const fail=():never=>redirect('/assistant?error=agent_review');
-const finish=():never=>{revalidatePath('/assistant');redirect('/assistant');};
+// Specialist candidate review lives on AI management › Assistant; running a specialist job stays on the
+// employee Assistant page.
+const REVIEW_PAGE='/control-tower/agents/assistant';
+const fail=():never=>redirect(REVIEW_PAGE+'?error=agent_review');
+const finish=():never=>{revalidatePath(REVIEW_PAGE);revalidatePath('/assistant');redirect(REVIEW_PAGE);};
+const jobFail=():never=>redirect('/assistant?error=agent_review');
 /** Posted choices nominate a closed module only. Every owner rechecks actual current authority. */
 export async function createSpecialistCandidateAction(form:FormData){
  const choice=String(form.get('moduleVersion')??'').split(':'),module=choice[0],version=Number(choice[1]);
@@ -30,8 +34,8 @@ export async function rollbackSpecialistCandidateAction(form:FormData){
  try{const ctx=await getBrowserCommandSession();await rollbackRoutingAgent(ctx,{promotionId,reason:'human'});}catch{fail();}finish();
 }
 export async function runSpecialistJobAction(form:FormData){
- const module=String(form.get('module')??''),nonce=String(form.get('commandNonce')??'');if(!isAgentModuleCode(module))return fail();
+ const module=String(form.get('module')??''),nonce=String(form.get('commandNonce')??'');if(!isAgentModuleCode(module))return jobFail();
  let jobId:string;
- try{const ctx=await getBrowserCommandSession(),result=await runGovernedSpecialistJob(ctx,{module},{nonce});jobId=result.jobId;}catch{return fail();}
+ try{const ctx=await getBrowserCommandSession(),result=await runGovernedSpecialistJob(ctx,{module},{nonce});jobId=result.jobId;}catch{return jobFail();}
  revalidatePath('/assistant');redirect('/assistant?governed='+encodeURIComponent(jobId));
 }

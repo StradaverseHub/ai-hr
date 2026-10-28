@@ -1,7 +1,7 @@
 import { requireAdmin } from '@/lib/authz';
 import { AiManagementScreen, type AiManagementSearch } from './screen';
 
-export default async function AiManagementAttentionPage({searchParams}:{searchParams:Promise<AiManagementSearch>}) {
+export default async function AiManagementOverviewPage({searchParams}:{searchParams:Promise<AiManagementSearch>}) {
   const session = await requireAdmin();
-  return AiManagementScreen({session,section:'attention',searchParams});
+  return AiManagementScreen({session,section:'overview',searchParams});
 }

@@ -13,18 +13,7 @@ import {
 } from '@/core/ai-config';
 import { evaluateProviderCandidate } from '@/core/ai-provider-readiness';
 import { getTranslations } from 'next-intl/server';
-import { ASSESSMENT_AI_FEATURES, setAssessmentAiSwitch, type AssessmentAiFeature } from '@/packs/performance/service';
 
-export async function setAssessmentAiSwitchAction(formData: FormData) {
-  const t = await getTranslations('admin.ai.assessment');
-  try {
-    const feature=String(formData.get('feature')) as AssessmentAiFeature,on=String(formData.get('on'));
-    if(!ASSESSMENT_AI_FEATURES.includes(feature)||!['true','false'].includes(on))throw Error();
-    const s=await getBrowserCommandSession();await setAssessmentAiSwitch(s,feature,on==='true');
-  }catch{await commandFailure();}
-  revalidatePath('/performance', 'layout');
-  back(undefined, t('saved'));
-}
 
 const str = (v: FormDataEntryValue | null) => {
   const s = String(v ?? '').trim();
@@ -42,9 +31,9 @@ function providerOptions(value: string | undefined): unknown {
 async function commandFailure():Promise<never>{const t=await getTranslations('admin.ai');return back(t('commandFailed'));}
 
 function back(error?: string, toast?: string): never {
-  if (error) redirect(`/admin/ai?error=${encodeURIComponent(error)}`);
-  revalidatePath('/admin/ai');
-  redirect(`/admin/ai?toast=${encodeURIComponent(toast ?? 'Saved')}`);
+  if (error) redirect(`/control-tower/agents/provider?error=${encodeURIComponent(error)}`);
+  revalidatePath('/control-tower/agents', 'layout');
+  redirect(`/control-tower/agents/provider?toast=${encodeURIComponent(toast ?? 'Saved')}`);
 }
 
 export async function saveAiProviderConfigAction(formData: FormData) {

@@ -38,8 +38,9 @@ export async function setAiFeatureAction(formData: FormData) {
     if (!isAiFeature(feature) || !['true','false'].includes(String(enabled))) throw new AiControlError(t('invalid'));
     await setAiFeature(s, feature, enabled === 'true');
   } catch (e) { redirect(failedAt('features', await commandError(e))); }
-  revalidatePath(PAGE);
-  revalidatePath('/admin/ai');
+  revalidatePath(PAGE, 'layout');
+  // Performance AI switches are managed only here; their screens read the same settings.
+  revalidatePath('/performance', 'layout');
   const saved = formData.get('feature');
   redirect(aiManagementHref('features', {toast:'saved', anchor:isAiFeature(saved) ? `#ai-feature-${saved}` : '#ai-features'}));
 }
@@ -47,7 +48,7 @@ export async function setAiFeatureAction(formData: FormData) {
 export async function setAiAllowanceAction(formData: FormData) {
   const t = await getTranslations('aiManagement');
   const search = String(formData.get('q') ?? '').slice(0,100);
-  const section:AiManagementSection = formData.get('kind') === 'company' ? 'companies' : 'users';
+  const section:AiManagementSection = 'allowances';
   try {
     const s = await getBrowserCommandSession();
     const kind = String(formData.get('kind'));
@@ -72,17 +73,17 @@ export async function setAssistantPermissionAction(formData:FormData){
   const s=await getBrowserCommandSession();
   const enabled=formData.get('enabled');if(enabled!=='true'&&enabled!=='false')throw new AiControlError(t('invalid'));
   await setAssistantPermission(s,String(formData.get('userId')??''),enabled==='true');
- }catch(e){redirect(failedAt('users',await commandError(e),search));}
+ }catch(e){redirect(failedAt('allowances',await commandError(e),search));}
  revalidatePath(PAGE);revalidatePath('/assistant');
- redirect(aiManagementHref('users',{q:search,toast:'saved',anchor:savedAt('ai-user',formData.get('userId'),'user-limits')}));
+ redirect(aiManagementHref('allowances',{q:search,toast:'saved',anchor:savedAt('ai-user',formData.get('userId'),'user-limits')}));
 }
 
 export async function clearUserAllowanceAction(formData:FormData){
  const search=String(formData.get('q')??'').slice(0,100);
  try{const s=await getBrowserCommandSession();await clearUserAllowance(s,String(formData.get('userId')??''));}
- catch(e){redirect(failedAt('users',await commandError(e),search));}
+ catch(e){redirect(failedAt('allowances',await commandError(e),search));}
  revalidatePath(PAGE);
- redirect(aiManagementHref('users',{q:search,toast:'default',anchor:savedAt('ai-user',formData.get('userId'),'user-limits')}));
+ redirect(aiManagementHref('allowances',{q:search,toast:'default',anchor:savedAt('ai-user',formData.get('userId'),'user-limits')}));
 }
 
 export async function setAiSpendBudgetAction(formData:FormData){

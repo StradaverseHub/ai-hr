@@ -1,16 +1,17 @@
-/** AI management sub-menu. Each section is its own page under /control-tower/agents (the Needs attention
- * page keeps the original address), all behind the same requireAdmin guard and listed in lib/permissions.ts.
- * A section the session cannot use (user allowances without user-write scope, spending without a spend
- * policy) is not offered, and opening it goes to Needs attention rather than rendering an empty page. */
-export const AI_MANAGEMENT_SECTIONS = ['attention','features','companies','users','spending','orchestrator','runs'] as const;
+/** AI management: the one place to manage AI. Each section is its own sub-menu page under
+ * /control-tower/agents (the Overview keeps the original address), all behind the same requireAdmin guard
+ * and listed in lib/permissions.ts. Provider setup moved here from Administration › AI, and the Assistant
+ * reviews moved here from the employee Assistant page. A section the session cannot use (spending without a
+ * spend policy) is not offered, and opening it goes to the Overview rather than rendering an empty page. */
+export const AI_MANAGEMENT_SECTIONS = ['overview','provider','assistant','features','allowances','spending','orchestrator','runs'] as const;
 export type AiManagementSection = (typeof AI_MANAGEMENT_SECTIONS)[number];
 export const AI_MANAGEMENT_PAGE = '/control-tower/agents';
-export function availableAiManagementSections(scope:{mayWriteUsers:boolean;spend:boolean}):AiManagementSection[]{
-  return AI_MANAGEMENT_SECTIONS.filter(s=>(s!=='users'||scope.mayWriteUsers)&&(s!=='spending'||scope.spend));
+export function availableAiManagementSections(scope:{spend:boolean}):AiManagementSection[]{
+  return AI_MANAGEMENT_SECTIONS.filter(s=>s!=='spending'||scope.spend);
 }
 /** Path suffix of each section's page. */
 export const AI_MANAGEMENT_PATHS: Readonly<Record<AiManagementSection,string>> = {
-  attention:'',features:'/features',companies:'/companies',users:'/users',spending:'/spending',orchestrator:'/orchestrator',runs:'/runs',
+  overview:'',provider:'/provider',assistant:'/assistant',features:'/features',allowances:'/allowances',spending:'/spending',orchestrator:'/orchestrator',runs:'/runs',
 };
 /** Closed save outcomes; the page translates them. Free text from a query string is never displayed. */
 export type AiManagementToast='saved'|'default';

@@ -15,29 +15,29 @@ function form(){const value=new FormData();for(const [key,text] of Object.entrie
 async function location(invoke:()=>Promise<unknown>){try{await invoke();throw Error('Expected redirect');}catch(error){const value=(error as {location?:unknown}).location;if(typeof value!=='string')throw error;return value;}}
 describe('explicit synthetic evaluation browser commands',()=>{
  it('bounds session and owner failures without exposing raw auth/provider strings',async()=>{
-  for(const action of actions){boundary.session.mockRejectedValueOnce(Error('PRIVATE_SESSION_TOKEN_OR_SQL'));expect(await location(()=>action(form()))).toBe('/assistant?error=agent_review');}
+  for(const action of actions){boundary.session.mockRejectedValueOnce(Error('PRIVATE_SESSION_TOKEN_OR_SQL'));expect(await location(()=>action(form()))).toBe('/control-tower/agents/assistant?error=agent_review');}
   for(const owner of [boundary.create,boundary.evaluate,boundary.promote,boundary.rollback,boundary.trial])expect(owner).not.toHaveBeenCalled();
   for(const owner of [boundary.create,boundary.evaluate,boundary.promote,boundary.rollback,boundary.trial])owner.mockRejectedValueOnce(Error('PRIVATE_PROVIDER_KEY_OR_SQL'));
-  for(const action of actions)expect(await location(()=>action(form()))).toBe('/assistant?error=agent_review');
+  for(const action of actions)expect(await location(()=>action(form()))).toBe('/control-tower/agents/assistant?error=agent_review');
  });
  it('requires explicit consent before synthetic admission and sends only the fixed bounded count',async()=>{
-  const missing=form();missing.delete('consented');expect(await location(()=>evaluateAgentCandidateAction(missing))).toBe('/assistant?error=agent_review');
-  expect(await location(()=>tryAgentCandidateAction(missing))).toBe('/assistant?error=agent_review');expect(boundary.session).not.toHaveBeenCalled();
-  expect(await location(()=>evaluateAgentCandidateAction(form()))).toBe('/assistant');
+  const missing=form();missing.delete('consented');expect(await location(()=>evaluateAgentCandidateAction(missing))).toBe('/control-tower/agents/assistant?error=agent_review');
+  expect(await location(()=>tryAgentCandidateAction(missing))).toBe('/control-tower/agents/assistant?error=agent_review');expect(boundary.session).not.toHaveBeenCalled();
+  expect(await location(()=>evaluateAgentCandidateAction(form()))).toBe('/control-tower/agents/assistant');
   expect(boundary.evaluate).toHaveBeenCalledWith(ctx,{candidateId:'candidate',consent:expect.objectContaining({synthetic:true,maxRequests:PROMPT_HOLDOUT_REQUEST_LIMIT})});
-  expect(await location(()=>tryAgentCandidateAction(form()))).toBe('/assistant');
+  expect(await location(()=>tryAgentCandidateAction(form()))).toBe('/control-tower/agents/assistant');
   expect(boundary.trial).toHaveBeenCalledWith(ctx,{fixtureId:'own-leave',consent:expect.objectContaining({synthetic:true,maxRequests:1})});
  });
  it('captures explicitly selected own signal IDs before session authentication',async()=>{
   let entered!:()=>void,release!:()=>void;const ready=new Promise<void>(yes=>{entered=yes;}),resume=new Promise<void>(yes=>{release=yes;});
   boundary.session.mockImplementationOnce(async()=>{entered();await resume;return ctx;});const input=form();input.append('signalId','original');const pending=location(()=>createAgentCandidateAction(input));
-  await ready;input.set('signalId','retargeted');release();expect(await pending).toBe('/assistant');
+  await ready;input.set('signalId','retargeted');release();expect(await pending).toBe('/control-tower/agents/assistant');
   expect(boundary.create).toHaveBeenCalledWith(ctx,{version:2,configuration:{kind:'read_plan_prompt_v1',variant:'explicit_scope_v1'},signalIds:['original']});
  });
  it('captures selection and limits before the authenticated session await',async()=>{
   let entered!:()=>void,release!:()=>void;const ready=new Promise<void>(yes=>{entered=yes;}),resume=new Promise<void>(yes=>{release=yes;});
   boundary.session.mockImplementationOnce(async()=>{entered();await resume;return ctx;});const input=form(),pending=location(()=>promoteAgentCandidateAction(input));
-  await ready;input.set('candidateId','retargeted');input.set('hours','24');input.set('maxJobs','100');release();expect(await pending).toBe('/assistant');
+  await ready;input.set('candidateId','retargeted');input.set('hours','24');input.set('maxJobs','100');release();expect(await pending).toBe('/control-tower/agents/assistant');
   expect(boundary.promote).toHaveBeenCalledWith(ctx,{candidateId:'candidate',maxJobs:2,hours:1});
  });
 });

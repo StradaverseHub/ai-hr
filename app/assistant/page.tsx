@@ -10,10 +10,9 @@ import { loadAiWorkspace } from '@/core/ai-workspace';
 import {CanonicalModuleJob,ModuleJobChooser,GroundedWorkspaceReply,GovernedModuleJobComposer,GovernedWorkspaceJob} from '@/components/assistant/module-jobs';
 import {loadCanonicalModuleJob} from '@/core/workspace-module-jobs';
 import {allowedModuleActionEntries} from '@/core/assistant-actions/module-action-entries';
-import {ModuleQuestionPlanner,HumanPlannerEvaluation} from '@/components/assistant/module-plan';
+import {ModuleQuestionPlanner} from '@/components/assistant/module-plan';
 import {eraseModuleProposalsAction} from './module-plan-actions';
-import {ModuleAgentReview} from '@/components/assistant/module-agent-review';
-import {ModuleSpecialistReview,SpecialistJobComposer} from '@/components/assistant/module-specialist-review';
+import {SpecialistJobComposer} from '@/components/assistant/module-specialist-review';
 import { WorkspaceComposer } from '@/components/assistant/workspace-composer';
 import { MAX_TURNS } from '@/core/assistant';
 import { Card, ErrorBanner, PageHeader } from '@/components/ui';
@@ -53,7 +52,7 @@ export default async function AssistantPage({
   const sp = await searchParams;
   const errorMessage=sp.error==='clarification_unavailable'?t('workspace.conversation.unavailable'):
     sp.error&&/^[a-z_]{1,40}$/.test(sp.error)&&t.has(`err_${sp.error}`)?t(`err_${sp.error}`):undefined;
-  const workspace = await loadAiWorkspace(s,{includeHistory:sp.job===undefined&&sp.governed===undefined&&sp.proposal===undefined,includeGovernance:sp.job===undefined&&sp.governed===undefined&&sp.proposal===undefined,selectedExchangeId:sp.e,governedJobId:sp.governed,proposalId:sp.proposal});
+  const workspace = await loadAiWorkspace(s,{includeHistory:sp.job===undefined&&sp.governed===undefined&&sp.proposal===undefined,includeGovernance:false,selectedExchangeId:sp.e,governedJobId:sp.governed,proposalId:sp.proposal});
   const access = workspace.access;
 
   if (!access.allowed) {
@@ -100,7 +99,6 @@ export default async function AssistantPage({
       <GovernedModuleJobComposer modules={workspace.jobModules}/>
       <SpecialistJobComposer modules={workspace.jobModules}/>
       <ModuleQuestionPlanner permit={workspace.planningPermit} availability={workspace.planningAvailability} view={workspace.proposal} status={sp.planning??(sp.proposal&&!workspace.proposal?'unavailable':undefined)}/>
-      {workspace.agentReview&&<HumanPlannerEvaluation candidates={workspace.agentReview.candidates}/>}
 
       <Card className="p-5">
         <WorkspaceComposer action={askAssistantAction} tasks={tasks} labels={{
@@ -109,8 +107,7 @@ export default async function AssistantPage({
         }} />
       </Card>
 
-      {'agentReview' in workspace&&workspace.agentReview&&<ModuleAgentReview view={workspace.agentReview}/>}
-      {workspace.specialistReview&&<ModuleSpecialistReview view={workspace.specialistReview}/>}
+      {/* Candidate reviews for group administrators live on AI management › Assistant. */}
 
       {!selectedJob&&!workspace.governedJob&&history.length > 0 && <section aria-labelledby="assistant-history-heading" className="space-y-5">
       <h2 id="assistant-history-heading" className="text-sm font-medium">{t('workspace.history')}</h2>

@@ -14,5 +14,5 @@ export async function proposeModulePlanAction(form:FormData){
 export async function eraseModuleProposalsAction(){try{const ctx=await getBrowserCommandSession();await eraseOwnModulePlanProposals(ctx);}catch{redirect('/assistant?ownClear=unavailable');}redirect('/assistant?ownClear=proposals');}
 export async function evaluateHumanPlannerAction(form:FormData){
  const candidateId=String(form.get('candidateId')??''),consented=form.get('consented')==='yes';
- try{if(!consented)throw Error();const ctx=await getBrowserCommandSession();await evaluateHumanQuestionPlannerCandidate(ctx,{candidateId,consent:{synthetic:true,maxRequests:12,sourceDigest:MODULE_AGENT_SOURCE_DIGEST}});}catch{redirect('/assistant?planning=unavailable');}redirect('/assistant?planning=evaluated');
+ try{if(!consented)throw Error();const ctx=await getBrowserCommandSession();await evaluateHumanQuestionPlannerCandidate(ctx,{candidateId,consent:{synthetic:true,maxRequests:12,sourceDigest:MODULE_AGENT_SOURCE_DIGEST}});}catch{redirect('/control-tower/agents/assistant?planning=unavailable');}redirect('/control-tower/agents/assistant?planning=evaluated');
 }

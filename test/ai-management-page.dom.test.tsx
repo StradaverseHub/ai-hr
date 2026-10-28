@@ -13,7 +13,8 @@ vi.mock('next-intl/server',()=>({
   getTranslations:async(namespace:any)=>createTranslator({locale:'en',messages:en,namespace}),
   getFormatter:async()=>createFormatter({locale:'en',timeZone:'Asia/Kuala_Lumpur'}),
 }));
-vi.mock('../lib/authz',()=>({requireAdmin:async()=>({tenantId:'fixture-tenant',userId:'fixture-user',roles:['group_admin'],grants:[]}),isGroupAdmin:()=>true}));
+vi.mock('../lib/authz',()=>({requireAdmin:async()=>({tenantId:'fixture-tenant',userId:'fixture-user',roles:['group_admin'],grants:[]}),isGroupAdmin:()=>true,isAdmin:()=>true}));
+vi.mock('../core/entitlements',()=>({isModuleEnabledOrFalse:(_ctx:unknown,code:string)=>['employees','leave','payroll'].includes(code)}));
 vi.mock('../core/ai-management',()=>({AI_RUN_STATE_FILTERS:['blocked','failed'],aiManagementView:async()=>data.view}));
 vi.mock('../core/hr-orchestrator',()=>({orchestrationQueue:async()=>({})}));
 vi.mock('../app/control-tower/work-queue',()=>({OrchestrationWorkQueue:()=>null}));
@@ -72,15 +73,15 @@ describe('AI management page',()=>{
     const spend={heldNanos:'0',confirmedNanos:null};
     // Once in "Needs attention" (linking to the company's row) and once on the company's own row; the
     // company with a positive cap has none.
-    const attention=await show(spend,'attention');
+    const attention=await show(spend,'overview');
     expect(screen.getAllByText(en.aiManagement.zeroCapPaused)).toHaveLength(1);
-    expect(screen.getByRole('link',{name:'Fictional Zero Cap Sdn Bhd'}).getAttribute('href')).toBe(`/control-tower/agents/companies#ai-company-${ZERO}`);attention.unmount();
-    const companies=await show(spend,'companies');
+    expect(screen.getByRole('link',{name:'Fictional Zero Cap Sdn Bhd'}).getAttribute('href')).toBe(`/control-tower/agents/allowances#ai-company-${ZERO}`);attention.unmount();
+    const companies=await show(spend,'allowances');
     expect(screen.getAllByText(en.aiManagement.zeroCapPaused)).toHaveLength(1);
     expect(companies.container.querySelector(`#ai-company-${ZERO}`)).not.toBeNull();
     expect(companies.container.querySelector(`#ai-company-${CAPPED}`)).not.toBeNull();companies.unmount();
     expect((await show(spend)).container.querySelector('#ai-spend')).not.toBeNull();cleanup();
-    expect((await show(spend,'users')).container.querySelector('#ai-user-default')).not.toBeNull();
+    expect((await show(spend,'allowances')).container.querySelector('#ai-user-default')).not.toBeNull();
   });
 });
 
@@ -89,23 +90,37 @@ describe('AI management sub-menu',()=>{
   it('offers one sub-menu page per section, marks the current one and shows only that section',async()=>{
     const {container}=await show({heldNanos:'0',confirmedNanos:null},'features');
     const links=within(tabs()).getAllByRole('link');
-    expect(links.map(link=>link.textContent)).toEqual([en.aiManagement.attention,en.aiManagement.inventory,en.aiManagement.companyLimits,en.aiManagement.userLimits,en.aiManagement.spendTab,en.aiManagement.orchestrator,en.aiManagement.recentRuns]);
-    expect(links.map(link=>link.getAttribute('href'))).toEqual(['','/features','/companies','/users','/spending','/orchestrator','/runs'].map(v=>`/control-tower/agents${v}`));
+    expect(links.map(link=>link.textContent)).toEqual([en.aiManagement.overviewTab,en.aiManagement.providerTab,en.aiManagement.assistantTab,en.aiManagement.inventory,en.aiManagement.allowancesTab,en.aiManagement.spendTab,en.aiManagement.orchestrator,en.aiManagement.recentRuns]);
+    expect(links.map(link=>link.getAttribute('href'))).toEqual(['','/provider','/assistant','/features','/allowances','/spending','/orchestrator','/runs'].map(v=>`/control-tower/agents${v}`));
     expect(within(tabs()).getByRole('link',{name:en.aiManagement.inventory}).getAttribute('aria-current')).toBe('page');
     expect(links.filter(link=>link.getAttribute('aria-current')==='page')).toHaveLength(1);
     expect(container.querySelector('#ai-features')).not.toBeNull();
-    for(const other of ['#ai-attention','#company-limits','#user-limits','#ai-spend','#orchestrator','#ai-runs'])expect(container.querySelector(other),other).toBeNull();
+    for(const other of ['#ai-map','#ai-attention','#company-limits','#user-limits','#ai-spend','#orchestrator','#ai-runs'])expect(container.querySelector(other),other).toBeNull();
   });
-  it('sends a session that cannot use a section to Needs attention, and hides that section from the sub-menu',async()=>{
-    await expect(show({heldNanos:'0',confirmedNanos:null},'users',{},false)).rejects.toMatchObject({location:'/control-tower/agents'});
-    await show({heldNanos:'0',confirmedNanos:null},'attention',{},false);
-    expect(within(tabs()).queryByRole('link',{name:en.aiManagement.userLimits})).toBeNull();
-    expect(document.querySelector('#ai-attention')).not.toBeNull();
+  it('keeps user allowances off the Allowances page for a company administrator, and sends an unavailable section to the Overview',async()=>{
+    const scoped=await show({heldNanos:'0',confirmedNanos:null},'allowances',{},false);
+    expect(scoped.container.querySelector('#company-limits')).not.toBeNull();expect(scoped.container.querySelector('#user-limits')).toBeNull();scoped.unmount();
+    data.view={...view({heldNanos:'0',confirmedNanos:null}),spend:null};
+    await expect(AiManagementScreen({session:session as never,section:'spending',searchParams:Promise.resolve({})})).rejects.toMatchObject({location:'/control-tower/agents'});
+  });
+  it('shows the AI map: every piece, whether it can run, and a Manage link to where it is changed',async()=>{
+    data.view={...view({heldNanos:'0',confirmedNanos:null}),provider:null,features:[
+      {id:'hr_assistant',kind:'assistant',state:'provider',enabled:true,mayWrite:true},
+      {id:'readiness_reminders',kind:'agent',state:'ready',enabled:true,mayWrite:true},{id:'claims_triage',kind:'agent',state:'paused',enabled:false,mayWrite:true},
+      {id:'payroll_explanation',kind:'feature',state:'provider',enabled:true,mayWrite:true}]};
+    const page=await AiManagementScreen({session:session as never,section:'overview',searchParams:Promise.resolve({})});
+    render(<NextIntlClientProvider locale="en" messages={en}>{page}</NextIntlClientProvider>);
+    const map=document.querySelector('#ai-map')!;
+    expect(map.textContent).toContain(en.aiManagement.noProvider);
+    // Independent expectation: three of the twenty modules are enabled in this fixture.
+    expect(map.textContent).toContain('3 of 20 specialists available');
+    expect(map.textContent).toContain('1 of 2 ready');expect(map.textContent).toContain('0 of 1 ready');
+    expect(within(map as HTMLElement).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/control-tower/agents/provider','/control-tower/agents/assistant','/control-tower/agents/features#ai-features','/control-tower/agents/features#ai-features','/control-tower/agents/allowances']);
   });
   it('shows only closed save outcomes, never words carried in the address',async()=>{
-    const saved=await show({heldNanos:'0',confirmedNanos:null},'companies',{toast:'saved'});
+    const saved=await show({heldNanos:'0',confirmedNanos:null},'allowances',{toast:'saved'});
     expect(screen.getByRole('status')).toHaveTextContent(en.aiManagement.saved);saved.unmount();
-    await show({heldNanos:'0',confirmedNanos:null},'companies',{toast:'Your account is locked. Call 555-0100.'});
+    await show({heldNanos:'0',confirmedNanos:null},'allowances',{toast:'Your account is locked. Call 555-0100.'});
     expect(screen.queryByText(/account is locked/)).toBeNull();expect(screen.queryByRole('status')).toBeNull();
   });
 });

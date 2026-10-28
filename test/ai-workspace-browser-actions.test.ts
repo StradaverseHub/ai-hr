@@ -34,7 +34,7 @@ describe('workspace browser command authentication',()=>{
     if(mode==='absent')expect((await getSession()).userId).toBe(base.adminUserId);else browser.selected=randomUUID();
     expect(await locationOf(()=>askAssistantAction(form()))).toBe('/assistant?error=ai_control');
     // Each refusal returns to the AI management sub-menu page that owns the control.
-    const pages=new Map<unknown,string>([[setAiFeatureAction,'/control-tower/agents/features'],[setAiAllowanceAction,'/control-tower/agents/companies'],[setAssistantPermissionAction,'/control-tower/agents/users'],[clearUserAllowanceAction,'/control-tower/agents/users']]);
+    const pages=new Map<unknown,string>([[setAiFeatureAction,'/control-tower/agents/features'],[setAiAllowanceAction,'/control-tower/agents/allowances'],[setAssistantPermissionAction,'/control-tower/agents/allowances'],[clearUserAllowanceAction,'/control-tower/agents/allowances']]);
     for(const action of controls){
       const location=await locationOf(()=>action(form())),target=new URL(location,'https://fixture.test');
       expect(target.pathname).toBe(pages.get(action));expect(target.searchParams.get('error')).toBe('assistant.denied_no_user');

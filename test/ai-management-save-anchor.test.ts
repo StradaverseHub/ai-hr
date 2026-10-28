@@ -22,11 +22,11 @@ beforeEach(()=>{for(const spy of Object.values(owners))spy.mockReset();});
 describe('AI management saves return to the saved form',()=>{
   it('anchors each successful save on its own row or section and keeps the toast',async()=>{
     const cases:[()=>Promise<unknown>,string,string,string][]=[
-      [()=>setAiAllowanceAction(form({kind:'company',subjectId:COMPANY})),`#ai-company-${COMPANY}`,'companies','saved'],
-      [()=>setAiAllowanceAction(form({kind:'user',subjectId:USER})),`#ai-user-${USER}`,'users','saved'],
-      [()=>setAiAllowanceAction(form({kind:'user_default'})),'#ai-user-default','users','saved'],
-      [()=>setAssistantPermissionAction(form({userId:USER})),`#ai-user-${USER}`,'users','saved'],
-      [()=>clearUserAllowanceAction(form({userId:USER})),`#ai-user-${USER}`,'users','default'],
+      [()=>setAiAllowanceAction(form({kind:'company',subjectId:COMPANY})),`#ai-company-${COMPANY}`,'allowances','saved'],
+      [()=>setAiAllowanceAction(form({kind:'user',subjectId:USER})),`#ai-user-${USER}`,'allowances','saved'],
+      [()=>setAiAllowanceAction(form({kind:'user_default'})),'#ai-user-default','allowances','saved'],
+      [()=>setAssistantPermissionAction(form({userId:USER})),`#ai-user-${USER}`,'allowances','saved'],
+      [()=>clearUserAllowanceAction(form({userId:USER})),`#ai-user-${USER}`,'allowances','default'],
       [()=>setAiFeatureAction(form({feature:'hr_assistant'})),'#ai-feature-hr_assistant','features','saved'],
       [()=>setAiSpendBudgetAction(form({monthlyUsd:'5',rootUsd:''})),'#ai-spend','spending','saved'],
     ];
@@ -45,7 +45,7 @@ describe('AI management saves return to the saved form',()=>{
   it('keeps refusals at the top, beside the error banner',async()=>{
     owners.allowance.mockRejectedValueOnce(new errors.AiControlError('Owned validation sentence'));
     const url=await target(()=>setAiAllowanceAction(form({kind:'company',subjectId:COMPANY})));
-    expect(url.searchParams.get('error')).toBe('Owned validation sentence');expect(url.hash).toBe('');expect(url.pathname).toBe('/control-tower/agents/companies');
+    expect(url.searchParams.get('error')).toBe('Owned validation sentence');expect(url.hash).toBe('');expect(url.pathname).toBe('/control-tower/agents/allowances');
     owners.spend.mockRejectedValueOnce(new errors.AiControlError('Owned spend sentence'));
     const spend=await target(()=>setAiSpendBudgetAction(form({monthlyUsd:'x',rootUsd:''})));
     expect(spend.searchParams.get('error')).toBe('Owned spend sentence');expect(spend.hash).toBe('');expect(spend.pathname).toBe('/control-tower/agents/spending');

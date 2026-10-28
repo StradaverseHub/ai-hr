@@ -55,7 +55,7 @@ describe('consolidated Control Tower', () => {
   });
   it('keeps AI management current on each of its sub-menu pages, and only there', () => {
     try {
-      for (const path of ['/control-tower/agents', '/control-tower/agents/users', '/control-tower/agents/runs']) {
+      for (const path of ['/control-tower/agents', '/control-tower/agents/allowances', '/control-tower/agents/runs']) {
         route.pathname = path;
         const view = show(<ControlTowerNavigation />);
         const current = screen.getAllByRole('link').filter((link) => link.getAttribute('aria-current') === 'page');

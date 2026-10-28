@@ -66,3 +66,21 @@ export async function loadAiWorkspace(ctx: SessionContext, options:{includeHisto
     return { access, taskIds, history,agentReview,specialistReview,jobModules,governedJob,proposal,planningPermit,planningAvailability };
   });}catch{return {access:{allowed:false as const,reason:'unavailable' as const},taskIds:[],history:[],jobModules:[],agentReview:null,specialistReview:null,governedJob:null,proposal:null,planningPermit:null,planningAvailability:'resting' as const};}
 }
+
+/** AI management › Assistant: the group-administrator reviews (routing and conversation candidates,
+ * module specialists, planner evaluation) that used to sit on the employee Assistant page. Same owners and
+ * the same gates as before: a current AI principal, Assistant access, then group administration inside
+ * each owner. Read-only; never widens who may see or change them. */
+export async function loadAiGovernance(ctx: SessionContext) {
+  const captured = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  const none = (access: AssistantAccess | { allowed: false; reason: 'unavailable' }) => ({ access, agentReview: null, specialistReview: null });
+  if (!captured.userId) return none({ allowed: false, reason: 'no_user' });
+  try{return await withTenant(captured, async tx => {
+    await tx.execute(sql`SET TRANSACTION READ ONLY`);
+    await assertAiPrincipalTx(tx, captured);
+    const fresh = { ...captured, entitlements: await resolveEntitlementsTx(tx, captured.tenantId) };
+    const access = await mayUseAssistant(fresh, tx);
+    if (!access.allowed) return none(access);
+    return { access, agentReview: await agentReviewWorkspaceTx(tx, fresh), specialistReview: await specialistReviewWorkspaceTx(tx, fresh) };
+  });}catch{return none({allowed:false as const,reason:'unavailable' as const});}
+}

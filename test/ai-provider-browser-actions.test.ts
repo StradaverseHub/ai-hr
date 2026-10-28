@@ -16,7 +16,7 @@ vi.mock('../packs/performance/service',()=>({ASSESSMENT_AI_FEATURES:['review_sum
 import {redirect} from 'next/navigation';
 import {AiConfigError} from '../core/ai-config';
 import { getSession } from '../lib/session';
-import { disableAiAction, evaluateProviderCandidateAction, removeAiProviderConfigAction, saveAiProviderConfigAction, setActiveProviderAction, setAssessmentAiSwitchAction, testConnectionAction } from '../app/admin/ai/actions';
+import { disableAiAction, evaluateProviderCandidateAction, removeAiProviderConfigAction, saveAiProviderConfigAction, setActiveProviderAction, testConnectionAction } from '../app/admin/ai/actions';
 import { closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 let base:Base;
 const candidateId='11111111-1111-4111-8111-111111111111',candidateVersion='22222222-2222-4222-8222-222222222222';
@@ -35,7 +35,7 @@ describe('provider browser selected-session boundary',()=>{
   it.each(['absent','unknown'] as const)('refuses %s cookie on every mutation and RPC before calling an owner',async mode=>{
     if(mode==='absent')expect((await getSession()).userId).toBe(base.adminUserId);
     else browser.selected=randomUUID();
-    for(const invoke of [()=>saveAiProviderConfigAction(form()),()=>setActiveProviderAction(form()),()=>removeAiProviderConfigAction(form()),()=>disableAiAction(),()=>setAssessmentAiSwitchAction(form())]) {
+    for(const invoke of [()=>saveAiProviderConfigAction(form()),()=>setActiveProviderAction(form()),()=>removeAiProviderConfigAction(form()),()=>disableAiAction()]) {
       await expect(invoke()).rejects.toThrow();
     }
     expect(await testConnectionAction({provider:'openrouter',model:'fictional/model'})).toEqual({ok:false,error:'testFail'});
@@ -54,7 +54,7 @@ describe('provider browser selected-session boundary',()=>{
 
 /** Authored UNRUN: typed error constructors never authorize arbitrary browser disclosure. */
 describe('provider commands keep bounded localized failure boundaries',()=>{
- it('maps absent strict sessions to a friendly settings redirect without calling any owner',async()=>{browser.selected=undefined;vi.mocked(redirect).mockClear();await expect(saveAiProviderConfigAction(form())).rejects.toThrow('fixture redirect');expect(redirect).toHaveBeenLastCalledWith('/admin/ai?error=commandFailed');expect(owners.save).not.toHaveBeenCalled();});
- it.each(['typed','raw'] as const)('never exposes %s owner error messages, API-key text or causes in redirects',async kind=>{browser.selected=base.adminUserId;owners.save.mockRejectedValueOnce(kind==='typed'?new AiConfigError('PRIVATE provider-key SECRET'):Error('PRIVATE SQL credential'));await expect(saveAiProviderConfigAction(form())).rejects.toThrow('fixture redirect');expect(redirect).toHaveBeenLastCalledWith('/admin/ai?error=commandFailed');expect(JSON.stringify(vi.mocked(redirect).mock.calls)).not.toContain('PRIVATE');});
+ it('maps absent strict sessions to a friendly settings redirect without calling any owner',async()=>{browser.selected=undefined;vi.mocked(redirect).mockClear();await expect(saveAiProviderConfigAction(form())).rejects.toThrow('fixture redirect');expect(redirect).toHaveBeenLastCalledWith('/control-tower/agents/provider?error=commandFailed');expect(owners.save).not.toHaveBeenCalled();});
+ it.each(['typed','raw'] as const)('never exposes %s owner error messages, API-key text or causes in redirects',async kind=>{browser.selected=base.adminUserId;owners.save.mockRejectedValueOnce(kind==='typed'?new AiConfigError('PRIVATE provider-key SECRET'):Error('PRIVATE SQL credential'));await expect(saveAiProviderConfigAction(form())).rejects.toThrow('fixture redirect');expect(redirect).toHaveBeenLastCalledWith('/control-tower/agents/provider?error=commandFailed');expect(JSON.stringify(vi.mocked(redirect).mock.calls)).not.toContain('PRIVATE');});
  it('never forwards a returned metadata reason or exception message to the RPC browser result',async()=>{browser.selected=base.adminUserId;owners.metadata.mockResolvedValueOnce({ok:false,error:'PRIVATE provider response'});expect(await testConnectionAction({provider:'openrouter',model:'fictional/model'})).toEqual({ok:false,error:'testFail'});owners.metadata.mockRejectedValueOnce(Error('PRIVATE network'));expect(await testConnectionAction({provider:'openrouter',model:'fictional/model'})).toEqual({ok:false,error:'testFail'});});
 });

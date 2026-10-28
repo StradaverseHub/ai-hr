@@ -69,7 +69,8 @@ function codeWithoutComments(src: string): string {
  *
  * A route belongs here ONLY if it reads no session and no data. Anything that reads gets a real guard.
  */
-const REDIRECT_ONLY_ROUTES = ['/payroll/transactions/tp1/[year]'] as const;
+// '/admin/ai' forwards to AI management › Provider, where the requireAdmin guard applies.
+const REDIRECT_ONLY_ROUTES = ['/admin/ai', '/payroll/transactions/tp1/[year]'] as const;
 
 /** An actual awaited call, not a comment/string bearing an auth helper's name. */
 function hasAssistantSessionGuard(source:string){

@@ -1133,10 +1133,11 @@ export const SCREENS: readonly ScreenEntry[] = [
       // still, on isGroupAdmin, mirroring 0313's tenant_setting_write — this registry is the coarse
       // "may the role open the screen at all", by design.)
       '/control-tower/agents',
-      // AI management sub-menu: each section is its own page behind the same requireAdmin guard.
+      // AI management sub-menu: each section is its own page behind the same requireAdmin guard. The
+      // Provider page sits in the aiConfig column below, because it is the screen that column governs.
+      '/control-tower/agents/assistant',
       '/control-tower/agents/features',
-      '/control-tower/agents/companies',
-      '/control-tower/agents/users',
+      '/control-tower/agents/allowances',
       '/control-tower/agents/spending',
       '/control-tower/agents/orchestrator',
       '/control-tower/agents/runs',
@@ -1480,7 +1481,8 @@ export const SCREENS: readonly ScreenEntry[] = [
   { screenKey: 'analytics', href: '/analytics', labelKey: 'nav.analytics', guard: 'scopedAdmin', routes: ['/analytics'] },
   { screenKey: 'auditTrail', href: '/admin/audit', labelKey: 'nav.auditTrail', guard: 'requireAdmin', routes: ['/admin/audit'] },
   { screenKey: 'dataPrivacy', href: '/admin/privacy', labelKey: 'nav.dataPrivacy', guard: 'requireAdmin', routes: ['/admin/privacy'] },
-  { screenKey: 'aiConfig', href: '/admin/ai', labelKey: 'nav.aiConfig', guard: 'requireAdmin', routes: ['/admin/ai'] },
+  // Provider setup moved to AI management › Provider; /admin/ai is now a redirect-only segment.
+  { screenKey: 'aiConfig', href: '/control-tower/agents/provider', labelKey: 'nav.aiConfig', guard: 'requireAdmin', routes: ['/admin/ai', '/control-tower/agents/provider'] },
   { screenKey: 'usersRoles', href: '/admin/users', labelKey: 'nav.usersRoles', guard: 'requireAdmin', routes: ['/admin/users'] },
   {
     // System Analysis & Dependency Explorer (deec1691) — the record-relationship reference, moved from
