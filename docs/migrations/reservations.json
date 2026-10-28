@@ -344,6 +344,32 @@
       "notes": [
         "Final idx is assigned at journaling, after every applied or approved predecessor. when 1793190000000 is above every recorded reservation (max 1793180000000, 0669). Re-time if anything with a higher when journals first."
       ]
+    },
+    {
+      "tag": "0679_email_templates_r2",
+      "owner": "Email designer (16f192c5)",
+      "status": "reserved_filename_only",
+      "idx": null,
+      "when": null,
+      "branch": "codex/email-designer-16f192c5",
+      "notes": [
+        "29 October 2026: owner-authorized coordination via Open board items. AI DEV proposed this filename; Open board items 2 reports its unpublished holds are only 0675_import_attempt_history and 0676_employment_import_void, with no collision.",
+        "No matching filename found in fetched canonical main/alpha at 1fd2076e124660915ee12f7f72644cef9ee39816 or locally reachable migration filename history. This does not prove absence of other unpublished claims.",
+        "Assign idx/when at canonical source freeze above both canonical and actual staging maxima, preserving dependency order and every applied SQL byte. No SQL, journal, database or deployment change authorized."
+      ]
+    },
+    {
+      "tag": "0680_rewards_exclusions_history",
+      "owner": "Rewards shared governance (c087a302/df0eb31a)",
+      "status": "reserved_filename_only",
+      "idx": null,
+      "when": null,
+      "branch": "codex/rewards-shared-governance-20261029",
+      "notes": [
+        "29 October 2026: owner-authorized coordination via Open board items. AI DEV proposed this filename; Open board items 2 reports its unpublished holds are only 0675_import_attempt_history and 0676_employment_import_void, with no collision.",
+        "No matching filename found in fetched canonical main/alpha at 1fd2076e124660915ee12f7f72644cef9ee39816 or locally reachable migration filename history. This does not prove absence of other unpublished claims.",
+        "Assign idx/when at canonical source freeze above both canonical and actual staging maxima, preserving dependency order and every applied SQL byte. No SQL, journal, database or deployment change authorized."
+      ]
     }
   ],
   "unallocatedAiLogicalGroups": [

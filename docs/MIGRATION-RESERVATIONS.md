@@ -106,3 +106,18 @@ idx is assigned at journaling, after staging's idx 644 (0660) and the AI 0661/06
 ## 28 October 2026 — P1 wave 3 applied on staging
 
 The P1 wave 3 release `5cb79457a` applied 0663 (idx 649), 0664 (650), 0665 (651), 0667 (652) and 0666 (653), `when` 1793170000000…005. Ledger 534 → 539, watermark 1793170000005. 0667 was amended once before application (a performance-only fast path); the applied hash is the amended file's. The next journal entry must use idx 654 and a `when` above 1793170000005.
+
+## 29 October 2026 — Rewards/email filename reconciliation
+
+Refreshed canonical main and alpha both resolve to `1fd2076e124660915ee12f7f72644cef9ee39816`; the register base is `e74d0f7e3`. This update reserves filenames only:
+
+| Filename | Owner branch | idx / when |
+| --- | --- | --- |
+| `0679_email_templates_r2.sql` | `codex/email-designer-16f192c5` (16f192c5) | Unassigned |
+| `0680_rewards_exclusions_history.sql` | `codex/rewards-shared-governance-20261029` (c087a302/df0eb31a) | Unassigned |
+
+**Collision: `0678_rewards_approval_participation.sql` is NOT reserved.** Canonical main/alpha already contain `db/migrations/0678_ai_connection_probe_ledger.sql`. The approval-participation draft (51f45fb0/fa2af559, branch `codex/rewards-access-approval-20261029`) needs a fresh coordinated filename before integration; preserve the canonical SQL unchanged.
+
+AI DEV proposed these three draft names. Open board items 2 reports that its unpublished holds are only `0675_import_attempt_history.sql` and `0676_employment_import_void.sql`. Canonical trees and locally reachable migration filename history show no 0679/0680 collision; other unpublished claims remain subject to owner reconciliation. This update does not retrospectively allocate 0671–0677 or assert the historical ledger snapshot is current.
+
+At source freeze, reconcile all pending owners and assign executable journal indices/timestamps above canonical and actual staging maxima in dependency order. Preserve the applied prefix and SQL bytes. No SQL, journal, database, service or deployment changes are made or authorized here.
