@@ -20,8 +20,12 @@ describe('8e830f17 login layout', () => {
     await page.viewport(width, height); const view = mount();
     expect(visible(view.container.querySelector('.login-welcome'))).toBe(false);
     expect(visible(view.container.querySelector('.login-mobile-brand'))).toBe(true);
+    // The form keeps its designed reading width (it is capped), but it is whole: not squeezed into half the
+    // screen beside the welcome panel and not cut off at either edge.
     const form = view.getByTestId('form').getBoundingClientRect();
-    expect(form.width).toBeGreaterThan(width * 0.6);
+    expect(form.left).toBeGreaterThanOrEqual(0);
+    expect(form.right).toBeLessThanOrEqual(width + 0.5);
+    expect(form.width).toBeGreaterThanOrEqual(Math.min(width - 64, 400));
     expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
   });
   it('keeps the two-panel welcome layout on a desktop', async () => {
