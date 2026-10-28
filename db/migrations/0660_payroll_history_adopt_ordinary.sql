@@ -76,7 +76,10 @@ END $$;
 -- An adopted payslip is frozen: the unlock/regenerate paths may not change what a revert would restore.
 CREATE FUNCTION app.payroll_history_guard_adopted_payslip() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
- IF EXISTS(SELECT 1 FROM public.payroll_history_import_snapshot s WHERE s.id=OLD.id) THEN
+ -- Imported snapshots are already immutable through their closed batch (0011/0602); this guards the
+ -- adopted processed payslips, whose run can be unlocked.
+ IF EXISTS(SELECT 1 FROM public.payroll_history_import_snapshot s JOIN public.payroll_batch b ON b.id=OLD.batch_id
+  WHERE s.id=OLD.id AND b.history_import_attempt_id IS NULL) THEN
   RAISE EXCEPTION 'This payslip was overwritten by Import Payroll History; revert that import before changing it'
    USING ERRCODE='check_violation';
  END IF;

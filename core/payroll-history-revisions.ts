@@ -275,7 +275,7 @@ export async function confirmPayrollHistoryUpload(ctx:SessionContext,input:{atte
   if(selected?.size&&!input.confirmReplacement)fail('Confirm replacement of the existing imported history before continuing.');
   const applies=(row:HistoryRevisionRow)=>row.operation==='create'||(row.operation==='replace'&&!skip&&(selected?selected.has(historyRecordKey(row)):input.confirmReplacement));
   if(skip&&!source.plan.counts.created)fail('This file has no new records. Confirm the replacement or cancel.');
-  if(!source.plan.rows.some(applies))fail('Nothing is selected to import. Tick the records to overwrite, or cancel.');
+  if(source.plan.counts.replaced&&!source.plan.rows.some(applies))fail('Nothing is selected to import. Tick the records to overwrite, or cancel.');
   if(source.plan.rows.some(row=>applies(row)&&row.warnings?.length)&&!input.acknowledgeWarnings)fail('Acknowledge what has already gone out for these months before continuing.');
   if(source.companyIds.length)await tx.select({id:company.id}).from(company).where(inArray(company.id,source.companyIds)).orderBy(asc(company.id)).for('share');
   const employmentIds=[...new Set(source.plan.rows.map(row=>row.employmentId).filter(Boolean))].sort(),cycleIds=[...new Set(source.plan.rows.map(row=>row.cycleId).filter(Boolean))].sort();

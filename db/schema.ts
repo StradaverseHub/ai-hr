@@ -11045,7 +11045,7 @@ export const payrollHistoryImportSnapshot=pgTable('payroll_history_import_snapsh
 export const payrollHistoryImportRevision=pgTable('payroll_history_import_revision',{
  id:id(),tenantId:tenantId(),recordId:uuid('record_id').notNull().references(()=>payrollHistoryImportRecord.id),ordinal:integer('ordinal').notNull(),
  attemptId:uuid('attempt_id').notNull().references(()=>payrollHistoryImportAttempt.id),snapshotId:uuid('snapshot_id').references(()=>payrollHistoryImportSnapshot.id),
- previousRevisionId:uuid('previous_revision_id'),kind:text('kind').notNull().$type<'import'|'correction'|'revert'>(),cycleName:text('cycle_name').notNull(),createdAt:createdAt(),
+ previousRevisionId:uuid('previous_revision_id'),kind:text('kind').notNull().$type<'import'|'correction'|'revert'|'adopted'>(),cycleName:text('cycle_name').notNull(),createdAt:createdAt(),
 },t=>[uniqueIndex('payroll_history_revision_ordinal_uq').on(t.recordId,t.ordinal),index('payroll_history_revision_attempt_idx').on(t.tenantId,t.attemptId)]);
 export const payrollHistoryImportEvent=pgTable('payroll_history_import_event',{
  id:id(),tenantId:tenantId(),attemptId:uuid('attempt_id').notNull().references(()=>payrollHistoryImportAttempt.id),
