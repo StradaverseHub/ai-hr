@@ -114,6 +114,14 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
       from ai_model_run r join app_user u on u.id=r.user_id left join person p on p.id=u.person_id
       where r.tenant_id=${ctx.tenantId}::uuid and r.started_at>=${MONTH_START}
       group by r.user_id,u.workos_user_id,p.full_name order by r.user_id`)) : [];
+    // A login paused by its own zero cap belongs in attention even if it never tried a call this month,
+    // so it is not found only through this month's activity. Bounded by the individual policies saved.
+    const quietCapped = isGroupAdmin(ctx) ? policies.filter(p=>p.scopeKey.startsWith('user:')&&p.enabled!==false&&isZeroCapped({daily:{limit:p.dailyRequests},tokens:{limit:p.monthlyTokens},maxConcurrent:p.maxConcurrent??null}))
+      .map(p=>p.scopeKey.slice(5)).filter(id=>!activity.some(r=>r.id===id)) : [];
+    const quietRows = quietCapped.length ? Array.from(await tx.execute<UserUsageRow>(sql`
+      select u.id,coalesce(p.full_name,u.workos_user_id) as label,0 as daily_requests,0 as monthly_tokens,0 as held_tokens,0 as blocked_today,null as last_reason
+      from app_user u left join person p on p.id=u.person_id
+      where u.tenant_id=${ctx.tenantId}::uuid and u.id::text = any(${quietCapped}::text[]) order by u.id`)) : [];
     const runs = isGroupAdmin(ctx) ? await tx.select({id:aiModelRun.id,actor:sql<string|null>`coalesce(${person.fullName},${appUser.workosUserId})`,feature:aiModelRun.featureId,operation:aiModelRun.operation,provider:aiModelRun.provider,model:aiModelRun.model,state:aiModelRun.state,reason:aiModelRun.reason,actual:aiModelRun.actualTokens,reserved:aiModelRun.reservedTokens,startedAt:aiModelRun.startedAt,finishedAt:aiModelRun.finishedAt,reportedCredits:aiModelRun.openrouterAccountCostCredits,roundTripMs:aiModelRun.observedRoundTripMs,observationStatus:aiModelRun.providerObservationStatus})
       .from(aiModelRun).leftJoin(appUser,eq(aiModelRun.userId,appUser.id)).leftJoin(person,eq(appUser.personId,person.id))
       .where(and(runFilter.state?eq(aiModelRun.state,runFilter.state):undefined,runFilter.feature?eq(aiModelRun.featureId,runFilter.feature):undefined))
@@ -122,7 +130,7 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
     // Company administrators see only their own companies' aggregates here: no login identities.
     const attention = {
       companies: companies.filter(pressing),
-      users: activity.map(toUser).filter(pressing).sort((a,b)=>b.tokens.used-a.tokens.used||b.daily.used-a.daily.used||a.label.localeCompare(b.label)),
+      users: [...activity,...quietRows].map(toUser).filter(pressing).sort((a,b)=>b.tokens.used-a.tokens.used||b.daily.used-a.daily.used||a.label.localeCompare(b.label)),
       blocked: activity.filter(r=>Number(r.blocked_today)>0).map(r=>({id:r.id,label:r.label,count:Number(r.blocked_today),reason:r.last_reason}))
         .sort((a,b)=>b.count-a.count||a.label.localeCompare(b.label)),
     };

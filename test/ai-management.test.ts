@@ -268,6 +268,14 @@ describe('tenant default user allowance, usage against limits and attention',()=
   const view=await aiManagementView(group);const [co]=view.companies;
   expect(co.daily).toEqual({used:4,limit:5,level:'near'});expect(co.tokens.limit).toBeNull();expect(view.attention.companies.map(c=>c.id)).toEqual([base.companyId]);
  });
+ it('lists a login paused by its own zero cap in attention even before it makes a call, and not one paused by its switch',async()=>{
+  const quiet=await login('quiet-zero');const switched=await login('quiet-switched');const capped=await login('quiet-capped');
+  await limit('user',quiet.id,0,null);await setAiAllowance(group,{kind:'user',subjectId:switched.id,dailyRequests:0,monthlyTokens:null,enabled:false});await limit('user',capped.id,5,null);
+  const view=await aiManagementView(group);
+  // Independent expectation: only the enabled login with a zero cap, and none of them has a run this month.
+  expect(view.attention.users.map(u=>u.id)).toEqual([quiet.id]);
+  expect(view.attention.users[0]).toMatchObject({label:'quiet-zero',daily:{used:0,limit:0}});
+ });
  it('sorts heavy users first and finds them beyond the first fifty names, with attention for near limits and blocks today',async()=>{
   for(let i=0;i<55;i++)await owner.db.insert(schema.appUser).values({tenantId:base.tenantId,workosUserId:`aa-light-${String(i).padStart(2,'0')}`});
   const heavy=await login('zz-heavy');const medium=await login('zz-medium');
