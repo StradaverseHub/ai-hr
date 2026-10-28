@@ -25,6 +25,7 @@ import {
   PERFORMANCE_STRIP_LABEL_KEYS,
   type PerformanceAreaFacts,
   type PerformanceAreaItem,
+  type PerformanceCalibrationHint,
   type PerformanceTabId,
   type PerformanceTabState,
 } from '../packs/performance/onehr/tab-model';
@@ -34,7 +35,7 @@ const item = (kind: PerformanceAreaItem['kind'], view: PerformanceAreaItem['view
 const review = (view: PerformanceAreaItem['view'], module: PerformanceAreaItem['module'], stage: string, extra: Partial<PerformanceAreaItem> = {}) => item('review', view, module, stage, extra);
 const calibration = (view: PerformanceAreaItem['view'], stage: string, axis: 'performance' | 'potential' | 'both') => item('calibration', view, 'cal', stage, { axis });
 const rateColleague = item('feedback', 'mine', 'tm', 'feedback');
-const facts = (items: PerformanceAreaItem[], extra: Partial<PerformanceAreaFacts> = {}): PerformanceAreaFacts => ({ performanceOn: true, items, ownFeedbackReport: false, ...extra });
+const facts = (items: PerformanceAreaItem[], extra: Partial<PerformanceAreaFacts> = {}): PerformanceAreaFacts => ({ performanceOn: true, items, ownFeedbackReport: 'none', ...extra });
 
 /** Every tab the viewer is offered, across every strip, with its state. */
 function offered(f: PerformanceAreaFacts): Partial<Record<PerformanceTabId, PerformanceTabState>> {
@@ -45,7 +46,7 @@ type Persona = { name: string; facts: PerformanceAreaFacts; expected: Partial<Re
 const ownResults = review('mine', 'pm', 'results');
 const PERSONAS: Persona[] = [
   {
-    name: 'employee: results stage, competency, locked own plan, asked to rate a colleague, no report yet',
+    name: 'employee: results stage, competency, locked own plan, asked to rate a colleague, not a 360 subject',
     facts: facts([ownResults, review('mine', 'tm', 'competency'), review('mine', 'idp', 'career', { locked: true }), rateColleague]),
     expected: { home: 'open', 'pm.my': 'open', 'feedback.assessments': 'open', 'competency.my': 'open', 'plan.my': 'disabled', 'plan.profile': 'disabled' },
   },
@@ -55,8 +56,13 @@ const PERSONAS: Persona[] = [
     expected: { home: 'open', 'pm.setting': 'open' },
   },
   {
+    name: 'employee: a confirmed 360 subject whose report is not released yet still gets Feedback (the source rule)',
+    facts: facts([ownResults], { ownFeedbackReport: 'confirmed' }),
+    expected: { home: 'open', 'pm.my': 'open', 'feedback.feedback': 'open' },
+  },
+  {
     name: 'employee: quarterly check-in with a released report from an earlier cycle',
-    facts: facts([review('mine', 'pm', 'checkin')], { ownFeedbackReport: true }),
+    facts: facts([review('mine', 'pm', 'checkin')], { ownFeedbackReport: 'released' }),
     expected: { home: 'open', 'pm.my': 'open', 'feedback.feedback': 'open' },
   },
   {
@@ -64,7 +70,7 @@ const PERSONAS: Persona[] = [
     facts: facts([
       ownResults, review('mine', 'tm', 'competency'), review('mine', 'idp', 'career'),
       review('team', 'pm', 'setting'), review('team', 'pm', 'moderation'), review('team', 'tm', 'competency'), review('team', 'idp', 'career'),
-    ], { ownFeedbackReport: true }),
+    ], { ownFeedbackReport: 'released' }),
     expected: {
       home: 'open', 'pm.my': 'open', 'pm.approve': 'open', 'pm.team': 'open', 'feedback.feedback': 'open',
       'competency.my': 'open', 'competency.team': 'open', 'plan.my': 'open', 'plan.profile': 'open', 'plan.team': 'open',
@@ -77,18 +83,19 @@ const PERSONAS: Persona[] = [
   },
   {
     name: 'BU CEO: own review, BU calibration on both axes and the Talent Box, own report',
-    facts: facts([ownResults, calibration('bu', 'calibration', 'performance'), calibration('bu', 'potential_calibration', 'potential'), calibration('bu', 'talent_box', 'both')], { ownFeedbackReport: true }),
+    facts: facts([ownResults, calibration('bu', 'calibration', 'performance'), calibration('bu', 'potential_calibration', 'potential'), calibration('bu', 'talent_box', 'both')], { ownFeedbackReport: 'released' }),
     expected: { home: 'open', 'pm.my': 'open', 'feedback.feedback': 'open', 'calibration.performance': 'open', 'calibration.potential': 'open', 'calibration.talentBox': 'open' },
   },
   {
-    name: 'BG CEO: no own review (dropped), owes a colleague feedback, the BG Talent Box only',
+    name: 'BG CEO: no own review (dropped), owes a colleague feedback; the BG Talent Box opens both per-axis lists (DQ-8)',
     facts: facts([rateColleague, calibration('bg', 'talent_box', 'both')]),
-    expected: { home: 'open', 'feedback.assessments': 'open', 'calibration.talentBox': 'open' },
+    expected: { home: 'open', 'feedback.assessments': 'open', 'calibration.performance': 'open', 'calibration.potential': 'open', 'calibration.talentBox': 'open' },
   },
   {
     name: 'Group Chief: group calibration and the Talent Box; the Calibration strip shows (DQ-7)',
     facts: facts([calibration('group', 'group_calibration', 'performance'), calibration('group', 'talent_box', 'both')]),
-    expected: { home: 'open', 'calibration.performance': 'open', 'calibration.talentBox': 'open' },
+    // A both-axes item satisfies both axis gates (DQ-8), so the Group Chief's Talent Box also opens Potential.
+    expected: { home: 'open', 'calibration.performance': 'open', 'calibration.potential': 'open', 'calibration.talentBox': 'open' },
   },
   {
     name: 'admin with no review of their own: the Dashboard only',
@@ -97,7 +104,7 @@ const PERSONAS: Persona[] = [
   },
   {
     name: 'Performance module off: nothing, whatever the worklist holds',
-    facts: facts([ownResults, review('team', 'pm', 'setting'), rateColleague, calibration('bu', 'talent_box', 'both')], { performanceOn: false, ownFeedbackReport: true }),
+    facts: facts([ownResults, review('team', 'pm', 'setting'), rateColleague, calibration('bu', 'talent_box', 'both')], { performanceOn: false, ownFeedbackReport: 'released' }),
     expected: {},
   },
 ];
@@ -128,10 +135,27 @@ describe('Talent box is never an HOD tab', () => {
   it('an HOD department view carrying a talent_box item is still refused', () => {
     const hod = facts([calibration('dept', 'department_review', 'performance'), calibration('dept', 'talent_box', 'both')]);
     expect(performanceTabState(hod, 'calibration.talentBox')).toBe('hidden');
-    expect(performanceAreaStrip(hod, 'calibration').map(view => view.id)).toEqual(['calibration.performance']);
+    expect(performanceAreaStrip(hod, 'calibration').map(view => view.id)).toEqual(['calibration.performance', 'calibration.potential']);
   });
   it('an HOD who also holds a BU seat gets it through the BU item', () => {
     expect(performanceTabState(facts([calibration('dept', 'department_review', 'performance'), calibration('bu', 'talent_box', 'both')]), 'calibration.talentBox')).toBe('open');
+  });
+});
+
+describe('DQ-8: a both-axes calibration item', () => {
+  it('opens Performance and Potential; Talent box only through a talent_box stage', () => {
+    const both = facts([calibration('bg', 'talent_box', 'both')]);
+    expect(performanceAreaStrip(both, 'calibration').map(view => view.id)).toEqual(['calibration.performance', 'calibration.potential', 'calibration.talentBox']);
+    const onlyPerformance = facts([calibration('bu', 'calibration', 'performance')]);
+    expect(performanceAreaStrip(onlyPerformance, 'calibration').map(view => view.id)).toEqual(['calibration.performance']);
+    const onlyPotential = facts([calibration('bu', 'potential_calibration', 'potential')]);
+    expect(performanceAreaStrip(onlyPotential, 'calibration').map(view => view.id)).toEqual(['calibration.potential']);
+  });
+});
+
+describe('Feedback: own report confirmed or released (the source rule), never without one (DQ-5)', () => {
+  it.each([['none', 'hidden'], ['confirmed', 'open'], ['released', 'open']] as const)('own report %s: Feedback %s', (report, expected) => {
+    expect(performanceTabState(facts([ownResults, review('team', 'pm', 'results')], { ownFeedbackReport: report }), 'feedback.feedback')).toBe(expected);
   });
 });
 
@@ -174,8 +198,8 @@ describe('the gates read the words the workspace actually emits', () => {
   it.each<[Tier, PerformanceTabId[]]>([
     ['hod', ['calibration.performance', 'calibration.potential']],
     ['bu', ['calibration.performance', 'calibration.potential', 'calibration.talentBox']],
-    ['bg', ['calibration.talentBox']],
-    ['group', ['calibration.performance', 'calibration.talentBox']],
+    ['bg', ['calibration.performance', 'calibration.potential', 'calibration.talentBox']],
+    ['group', ['calibration.performance', 'calibration.potential', 'calibration.talentBox']],
   ])('the %s tier calibration items give the strip %j', (tier, expected) => {
     const view = (tier === 'hod' ? 'dept' : tier) as PerformanceAreaItem['view'];
     const parts = leaderWorkspaceParts(policy, tier, { lockedAt: null, performanceLockedAt: null, potentialLockedAt: null });
@@ -211,6 +235,17 @@ describe('active tab ("stays lit")', () => {
     ['home', '/performance', null, null],
   ])('%s strip at %s?%s lights %s', (strip, path, search, expected) => {
     expect(activePerformanceTab(strip, path, search)).toBe(expected);
+  });
+  it.each<[string, PerformanceCalibrationHint | undefined, PerformanceTabId | null]>([
+    ['/performance/assessment/calibration/s1', 'performance', 'calibration.performance'],
+    ['/performance/assessment/calibration/s1', 'potential', 'calibration.potential'],
+    ['/performance/assessment/calibration/s1', 'talent_box', 'calibration.talentBox'],
+    ['/performance/onehr/calibration/s1', 'potential', 'calibration.potential'],
+    ['/performance/assessment/calibration/s1', undefined, null],
+    ['/performance/calibration', 'potential', 'calibration.performance'],
+    ['/performance/team/s1', 'potential', null],
+  ])('a calibration session page %s with hint %s lights %s', (path, hint, expected) => {
+    expect(activePerformanceTab('calibration', path, null, hint)).toBe(expected);
   });
   it('every tab lights itself at its own href, and only its own strip', () => {
     for (const entry of PERFORMANCE_AREA_TABS) {

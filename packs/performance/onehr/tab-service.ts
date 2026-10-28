@@ -3,26 +3,35 @@
  * "may open" check the tab route pages use to refuse a crafted URL for a hidden tab.
  *
  * The facts are the same workspace projection the tab routes resolve (performanceWorkspaceTx), read once in
- * one transaction, plus one existence read: whether the viewer holds a released 360 report of their own.
+ * one transaction, plus one read of the viewer's own 360 report: confirmed (a 360 subject of an open cycle) or
+ * released (any cycle).
  * The gates themselves are pure (tab-model.ts).
  */
 import { eq, sql } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../../../db/client';
-import { onehrReview, reviewCycle } from '../../../db/schema';
+import { onehrCycle, onehrReview, reviewCycle } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
 import { isModuleEnabled } from '../../../core/entitlements';
 import { performanceWorkspaceTx } from './service';
-import { performanceTabState, type PerformanceAreaFacts, type PerformanceTabState } from './tab-model';
+import { performanceTabState, type OwnFeedbackReport, type PerformanceAreaFacts, type PerformanceTabState } from './tab-model';
 
-const noFacts: PerformanceAreaFacts = { performanceOn: false, items: [], ownFeedbackReport: false };
+const noFacts: PerformanceAreaFacts = { performanceOn: false, items: [], ownFeedbackReport: 'none' };
 
-/** The viewer's own review with a released 360 report, in any cycle past draft (history included). */
-async function ownFeedbackReportTx(tx: Tx) {
-  const [row] = await tx.select({ id: onehrReview.reviewId }).from(onehrReview)
+/**
+ * The viewer's own 360 report, over their own reviews past draft. Released: any own review whose report is
+ * released (history included). Confirmed: an own review in a cycle that is not closed, with the 360 (TM) on,
+ * that participates and carries 360 statements, i.e. the person is a confirmed 360 subject, before any panel
+ * or release (the review gets its statements when the cycle opens with TM on).
+ */
+async function ownFeedbackReportTx(tx: Tx): Promise<OwnFeedbackReport> {
+  const [row] = await tx.select({
+    released: sql<boolean | null>`bool_or((app.onehr_result_card(${onehrReview.reviewId})->>'feedbackReleasedAt') is not null)`,
+    confirmed: sql<boolean | null>`bool_or(${reviewCycle.status}<>'closed' and coalesce((${onehrCycle.policy}->'modules'->>'tm')::boolean,false) and jsonb_array_length(${onehrReview.statements})>0 and app.assessment_review_participates(${onehrReview.reviewId}))`,
+  }).from(onehrReview)
     .innerJoin(reviewCycle, eq(reviewCycle.id, onehrReview.cycleId))
-    .where(sql`${reviewCycle.status}<>'draft' and exists(select 1 from employment e where e.id=${onehrReview.employmentId} and app.is_self_person(e.person_id)) and (app.onehr_result_card(${onehrReview.reviewId})->>'feedbackReleasedAt') is not null`)
-    .limit(1);
-  return !!row;
+    .innerJoin(onehrCycle, eq(onehrCycle.cycleId, onehrReview.cycleId))
+    .where(sql`${reviewCycle.status}<>'draft' and exists(select 1 from employment e where e.id=${onehrReview.employmentId} and app.is_self_person(e.person_id))`);
+  return row?.released ? 'released' : row?.confirmed ? 'confirmed' : 'none';
 }
 
 /**

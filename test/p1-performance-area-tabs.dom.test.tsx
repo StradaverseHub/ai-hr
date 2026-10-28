@@ -18,6 +18,7 @@ import {
   type PerformanceAreaFacts,
   type PerformanceAreaItem,
   type PerformanceAreaStrip,
+  type PerformanceCalibrationHint,
 } from '../packs/performance/onehr/tab-model';
 
 afterEach(() => { cleanup(); location.path = '/performance'; location.search = ''; });
@@ -28,7 +29,7 @@ const item = (view: PerformanceAreaItem['view'], module: PerformanceAreaItem['mo
 /** A viewer who holds every kind of work, so every tab of every strip passes its gate. */
 const everything: PerformanceAreaFacts = {
   performanceOn: true,
-  ownFeedbackReport: true,
+  ownFeedbackReport: 'released',
   items: [
     item('mine', 'pm', 'setting'), item('mine', 'pm', 'results'), item('team', 'pm', 'setting'), item('team', 'pm', 'moderation'),
     { ...item('mine', 'tm', 'feedback'), kind: 'feedback' }, item('mine', 'tm', 'competency'), item('team', 'tm', 'competency'),
@@ -37,9 +38,9 @@ const everything: PerformanceAreaFacts = {
     { ...item('bu', 'cal', 'talent_box'), kind: 'calibration', axis: 'both' },
   ],
 };
-function draw(strip: PerformanceAreaStrip, facts: PerformanceAreaFacts) {
+function draw(strip: PerformanceAreaStrip, facts: PerformanceAreaFacts, hint?: PerformanceCalibrationHint) {
   return render(<NextIntlClientProvider locale="en" messages={messages} onError={error => { throw error; }}>
-    <PerformanceTabStrip strip={strip} facts={facts} />
+    <PerformanceTabStrip strip={strip} facts={facts} hint={hint} />
   </NextIntlClientProvider>);
 }
 const nav = (strip: PerformanceAreaStrip) => screen.getByRole('navigation', { name: label(PERFORMANCE_STRIP_LABEL_KEYS[strip]) });
@@ -55,21 +56,22 @@ describe('every registry tab is drawn by the strip with its label', () => {
 });
 
 describe('a tab is drawn exactly when its gate passes', () => {
-  const hod: PerformanceAreaFacts = { performanceOn: true, ownFeedbackReport: false, items: [
+  const hod: PerformanceAreaFacts = { performanceOn: true, ownFeedbackReport: 'none', items: [
     item('mine', 'pm', 'results'), item('team', 'pm', 'results'),
     { ...item('dept', 'cal', 'department_review'), kind: 'calibration', axis: 'performance' },
     { ...item('dept', 'cal', 'talent_box'), kind: 'calibration', axis: 'both' },
   ] };
-  it('an HOD sees Performance only in Calibration, never Talent box, and no Feedback tab', () => {
+  it('an HOD sees the per-axis tabs in Calibration, never Talent box, and no Feedback tab', () => {
     draw('calibration', hod);
-    expect(within(nav('calibration')).getAllByRole('link').map(link => link.textContent)).toEqual([messages.performanceArea.tabs.cal.performance]);
+    expect(within(nav('calibration')).getAllByRole('link').map(link => link.textContent)).toEqual([messages.performanceArea.tabs.cal.performance, messages.performanceArea.tabs.cal.potential]);
     expect(screen.queryByText(messages.performanceArea.tabs.cal.talentBox)).toBeNull();
     cleanup();
     draw('feedback', hod);
     expect(screen.queryByRole('navigation')).toBeNull();
   });
   it.each(performanceAreaStrips)('the %s strip draws the same tabs as the registry says, for every persona', strip => {
-    for (const facts of [everything, hod, { ...everything, performanceOn: false }, { performanceOn: true, items: [], ownFeedbackReport: false }]) {
+    const cases: PerformanceAreaFacts[] = [everything, hod, { ...everything, performanceOn: false }, { performanceOn: true, items: [], ownFeedbackReport: 'none' }];
+    for (const facts of cases) {
       const { unmount } = draw(strip, facts);
       const expected = performanceAreaStrip(facts, strip).map(view => label(PERFORMANCE_AREA_TABS.find(entry => entry.id === view.id)!.labelKey));
       const drawn = screen.queryByRole('navigation') ? within(nav(strip)).getAllByRole('listitem').map(li => li.textContent) : [];
@@ -85,7 +87,7 @@ describe('a tab is drawn exactly when its gate passes', () => {
 
 describe('a locked own plan', () => {
   it('draws My plan and Career profile as disabled, non-link rows', () => {
-    draw('plan', { performanceOn: true, ownFeedbackReport: false, items: [item('mine', 'idp', 'career', { locked: true }), item('team', 'idp', 'career')] });
+    draw('plan', { performanceOn: true, ownFeedbackReport: 'none', items: [item('mine', 'idp', 'career', { locked: true }), item('team', 'idp', 'career')] });
     for (const word of [messages.performanceArea.tabs.idp.my, messages.performanceArea.tabs.idp.career]) {
       const row = screen.getByText(word).closest('[aria-disabled="true"]');
       expect(row, word).not.toBeNull();
@@ -110,6 +112,20 @@ describe('active tab', () => {
     location.path = path; location.search = search;
     draw(strip, everything);
     expect(lit()).toEqual([word]);
+  });
+  it.each([
+    ['performance', messages.performanceArea.tabs.cal.performance],
+    ['potential', messages.performanceArea.tabs.cal.potential],
+    ['talent_box', messages.performanceArea.tabs.cal.talentBox],
+  ] as const)('a calibration session page with hint %s lights %s', (hint, word) => {
+    location.path = '/performance/assessment/calibration/s1';
+    draw('calibration', everything, hint);
+    expect(lit()).toEqual([word]);
+  });
+  it('a calibration session page without a hint lights nothing', () => {
+    location.path = '/performance/assessment/calibration/s1';
+    draw('calibration', everything);
+    expect(lit()).toEqual([]);
   });
   it('lights nothing off the strip\'s routes', () => {
     location.path = '/performance/workspace';
