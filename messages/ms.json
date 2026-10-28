@@ -6469,7 +6469,8 @@
       "reprocessOutcomeRemarksHeading": "Catatan",
       "reprocessLegacyOutcomeUnavailable": "Tugas terdahulu ini tidak merekodkan hasil individu. Sejarah pengiraan yang disimpan masih tersedia di bawah.",
       "publishStateHistory": "Sejarah diimport",
-      "historyNoPayment": "Import sejarah tidak merekodkan tarikh bayaran."
+      "historyNoPayment": "Import sejarah tidak merekodkan tarikh bayaran.",
+      "unlockOverwrittenByImport": "Slip gaji dalam larian ini telah ditulis ganti oleh Import Sejarah Gaji. Batalkan import itu daripada Log File sebelum membuka kunci larian."
     },
     "transactions": {
       "title": "Kemasukan Transaksi",
@@ -9075,8 +9076,8 @@
       "unchanged": "Tidak berubah",
       "invalid": "Tidak sah",
       "amount": "Amaun",
-      "before": "Sebelum",
-      "after": "Nilai diimport",
+      "before": "Dalam fail sekarang",
+      "after": "Daripada fail anda",
       "company": "Syarikat",
       "companies": "Syarikat",
       "employee": "No. Pekerja",
@@ -9116,10 +9117,10 @@
       "reviewRevert": "Semak pemulihan",
       "cancel": "Batal",
       "operations": {
-        "create": "Cipta",
-        "replace": "Ganti",
+        "create": "Rekod baharu",
+        "replace": "Pengesahan tulis ganti diperlukan",
         "unchanged": "Tidak berubah",
-        "invalid": "Tidak sah",
+        "invalid": "Ditolak",
         "protected": "Dilindungi"
       },
       "states": {
@@ -9179,10 +9180,17 @@
       },
       "items": "Item",
       "protectedHint": "Gaji bulan ini telah diproses atau dilaporkan dalam AIHR dan tidak akan diganti oleh import. Buang baris ini daripada fail, atau betulkan bulan itu melalui Back Pay atau larian pelarasan.",
-      "overwriteTitle": "Sejarah gaji sedia ada ditemui untuk {count} bulan-pekerja, termasuk rekod dalam tempoh gaji Ditutup. Adakah anda mahu menulis ganti rekod sedia ada?",
-      "overwriteReplace": "Sahkan tulis ganti — gantikan rekod yang diimport sebelum ini. Angka asal kekal dalam sejarah audit dan tempoh Ditutup kekal Ditutup.",
-      "overwriteSkip": "Import rekod baharu sahaja dan biarkan rekod sedia ada seperti sedia kala.",
-      "successSkipped": "{count} rekod sedia ada dibiarkan tanpa perubahan, seperti yang dipilih."
+      "successSkipped": "{count} rekod sedia ada dibiarkan tanpa perubahan, seperti yang dipilih.",
+      "selectAll": "Pilih semua rekod untuk ditulis ganti",
+      "tickRow": "Tulis ganti {employee} {period}",
+      "sourceProcessed": "Diproses dalam AIHR",
+      "sourceImported": "Diimport sebelum ini",
+      "warningsTitle": "Sebelum anda sahkan, ambil perhatian perkara yang telah dikeluarkan untuk bulan-bulan ini:",
+      "tickedTitle": "Anda telah menanda {count} bulan-pekerja untuk ditulis ganti. Amaun dalam fail anda menggantikan rekod sedia ada tepat seperti ditulis. Tiada pengiraan semula, tiada larian gaji dan tiada slip gaji dijana.",
+      "tickHint": "Gaji sudah wujud untuk sesetengah rekod. Tandakan rekod yang ingin ditulis ganti; rekod yang tidak ditanda kekal seperti sedia ada.",
+      "acknowledge": "Saya faham. Gantikan rekod yang ditanda dengan nilai fail saya. Nilai asal kekal dalam sejarah audit dan tulis ganti boleh dibatalkan daripada Log File.",
+      "confirmOverwrite": "Sahkan tulis ganti dan import",
+      "importNewOnly": "Import rekod baharu sahaja"
     }
   },
   "admin": {

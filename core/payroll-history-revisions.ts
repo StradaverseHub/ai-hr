@@ -1,7 +1,7 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {and,asc,desc,eq,getTableColumns,gte,inArray,isNull,like,ne,or,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
-import {company,employment,payrollCycle,payrollBatch,payPeriod,payslip,statutoryReport,
+import {company,employment,person,payrollCycle,payrollBatch,payPeriod,payslip,statutoryReport,
  payrollHistoryImportAttempt as attempt,payrollHistoryImportRecord as record,payrollHistoryImportSnapshot as snapshot,
  payrollHistoryImportRevision as revision,payrollHistoryImportEvent as historyEvent} from '../db/schema';
 import {actorOf,appendEvent} from '../db/events';
@@ -13,7 +13,7 @@ import {preparePayrollHistoryRevisionTx,toIsoPeriod} from './payroll-history-imp
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {parseCsvRecords} from '../lib/csv';
 import {readHistoryField,type PayrollHistoryRecord} from '../lib/payroll-history-import-schema';
-import type {HistoryRevisionPlan,HistoryRevisionRow,ImportedPayrollValues,HistoryRevisionChange} from '../lib/payroll-history-revisions';
+import {historyRecordKey,type HistoryRevisionPlan,type HistoryRevisionRow,type ImportedPayrollValues,type HistoryRevisionChange} from '../lib/payroll-history-revisions';
 
 export class PayrollHistoryRevisionError extends Error{constructor(message:string){super(message);this.name='PayrollHistoryRevisionError';}}
 function fail(message:string):never{throw new PayrollHistoryRevisionError(message);}
@@ -95,6 +95,28 @@ async function dependencies(tx:Tx,row:Pick<HistoryRevisionRow,'companyId'|'emplo
  }
  return reasons;
 }
+/** d28501b8 r2 — what has already gone out from the payroll an overwrite would replace. Shown for the
+ * user to acknowledge; never a refusal. The figures were final when these were produced, and nothing here
+ * redoes them. */
+async function overwriteWarnings(tx:Tx,row:Pick<HistoryRevisionRow,'companyId'|'period'>,targetPayslipId:string|null|undefined):Promise<string[]>{
+ const warnings:string[]=[],year=row.period.slice(0,4);
+ const later=await tx.select({id:payrollBatch.id}).from(payrollBatch)
+  .where(and(eq(payrollBatch.companyId,row.companyId),gte(payrollBatch.payPeriod,row.period),like(payrollBatch.payPeriod,year+'-%'),ne(payrollBatch.status,'draft'),isNull(payrollBatch.historyImportAttemptId))).limit(1);
+ if(later.length)warnings.push(`Payroll processed in AIHR for ${row.period} or a later month of ${year} was worked out from the figures now on file. Tax (PCB) already deducted is not recalculated.`);
+ const reports=await tx.select({id:statutoryReport.id}).from(statutoryReport)
+  .where(and(eq(statutoryReport.companyId,row.companyId),or(eq(statutoryReport.periodKey,year),and(gte(statutoryReport.periodKey,row.period),like(statutoryReport.periodKey,year+'-%'))))).limit(1);
+ if(reports.length)warnings.push(`A statutory return or report was already generated for ${row.period} or later in ${year}. It is not regenerated or resubmitted.`);
+ if(targetPayslipId){
+  const [batch]=await tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId,payPeriod:payrollBatch.payPeriod,history:payrollBatch.historyImportAttemptId})
+   .from(payslip).innerJoin(payrollBatch,eq(payrollBatch.id,payslip.batchId)).where(eq(payslip.id,targetPayslipId));
+  if(batch){
+   const downstream=await batchDownstreamWarnings(tx,{batchId:batch.id,companyId:batch.companyId,payPeriod:batch.payPeriod});
+   if(downstream.paymentDisbursed)warnings.push('A bank payment file was already exported for this payroll. It is not re-sent.');
+   if(!batch.history)warnings.push('The employee was issued a payslip for this month. It stays as issued; HR records and reports use the overwritten figures.');
+  }
+ }
+ return warnings;
+}
 function emptyBatchTotals(){return {gross:BigInt(0),net:BigInt(0),epfEmployee:BigInt(0),epfEmployer:BigInt(0),socsoEmployee:BigInt(0),socsoEmployer:BigInt(0),eisEmployee:BigInt(0),eisEmployer:BigInt(0),pcb:BigInt(0)};}
 type BatchTotals=ReturnType<typeof emptyBatchTotals>;
 /** Match the existing batch accumulator in both preview and commit, with integer cents. */
@@ -143,7 +165,8 @@ async function planRows(tx:Tx,ctx:SessionContext,records:PayrollHistoryRecord[],
    if(values&&Object.entries(values).some(([name,value])=>name!=='statutory'&&(!Number.isFinite(Number(value))||Math.abs(Number(value))>9999999999.99)))reasons.push('An accumulated payroll amount exceeds the supported range.');
    const row:HistoryRevisionRow={companyId:group.company.id,companyName:group.company.name,currency:group.company.currency,employmentId:resolved?.employmentId??'',employeeNo:month.employeeNo,period:month.period,cycleId:group.cycle.id,cycleName:group.cycle.name,rowNums,
     operation:resolved&&!reasons.length?'create':'invalid',reasons,recordId:null,expectedRevisionId:null,expectedSnapshotId:null,values,beforeValues:null,valueHash:values?hash(canonical(values)):null,
-    overwrite:true,codes:month.codes,protected:false};
+    overwrite:true,codes:month.codes,protected:false,employeeName:resolved?(await tx.select({name:person.fullName}).from(employment).innerJoin(person,eq(person.id,employment.personId)).where(eq(employment.id,resolved.employmentId)))[0]?.name??null:null,
+    overwriteSource:null,expectedOrdinaryPayslipId:null,warnings:[]};
    if(resolved){
     const [existing]=await tx.select().from(record).where(and(eq(record.companyId,row.companyId),eq(record.employmentId,row.employmentId),eq(record.period,row.period),eq(record.cycleId,row.cycleId)));
     const [latest]=existing?await tx.select().from(revision).where(eq(revision.recordId,existing.id)).orderBy(desc(revision.ordinal)).limit(1):[];
@@ -153,15 +176,37 @@ async function planRows(tx:Tx,ctx:SessionContext,records:PayrollHistoryRecord[],
      row.beforeValues=current?.values??null;
      row.operation=current?.valueHash===row.valueHash?'unchanged':'replace';
     }
-    const collisions=await tx.select({id:payslip.id}).from(payslip).innerJoin(payrollBatch,eq(payrollBatch.id,payslip.batchId))
+    // d28501b8 r2 — payroll on file for this identity. Read under the effective-only policy, so a processed
+    // payslip that an earlier import already set aside is not seen again.
+    const collisions=await tx.select({id:payslip.id,history:payrollBatch.historyImportAttemptId,status:payrollBatch.status,releasedAt:payrollBatch.releasedAt,batchId:payrollBatch.id,
+     basicSalary:payslip.basicSalary,allowance:payslip.allowance,overtimePay:payslip.overtimePay,bonus:payslip.bonus,grossPay:payslip.grossPay,statutory:payslip.statutory,
+     otherDeductions:payslip.otherDeductions,totalDeductions:payslip.totalDeductions,netPay:payslip.netPay,employerCost:payslip.employerCost})
+     .from(payslip).innerJoin(payrollBatch,eq(payrollBatch.id,payslip.batchId))
      .where(and(eq(payslip.employmentId,row.employmentId),eq(payrollBatch.companyId,row.companyId),eq(payrollBatch.payPeriod,row.period),or(isNull(payrollBatch.payrollCycleId),eq(payrollBatch.payrollCycleId,row.cycleId))));
-    if(collisions.some(p=>p.id!==row.expectedSnapshotId)){row.reasons.push('An ordinary, legacy or competing payroll result already occupies this identity.');row.protected=true;}
-    const ordinary=await tx.select({id:payrollBatch.id}).from(payrollBatch).where(and(eq(payrollBatch.companyId,row.companyId),eq(payrollBatch.payPeriod,row.period),isNull(payrollBatch.historyImportAttemptId),or(isNull(payrollBatch.payrollCycleId),eq(payrollBatch.payrollCycleId,row.cycleId)))).limit(1);
-    if(ordinary.length){row.reasons.push('An ordinary payroll run already occupies this Pay Cycle and period.');row.protected=true;}
-    // d28501b8: payroll processed or reported on in AIHR is never replaced by a spreadsheet. Marked so the
-    // screen can say "Protected" rather than present it as a mistake in the file.
-    if(row.operation!=='unchanged'){const blocked=await dependencies(tx,row);if(blocked.length){row.reasons.push(...blocked);row.protected=true;}}
-   }
+    const others=collisions.filter(p=>p.id!==row.expectedSnapshotId);
+    const open=await tx.select({id:payrollBatch.id}).from(payrollBatch).where(and(eq(payrollBatch.companyId,row.companyId),eq(payrollBatch.payPeriod,row.period),isNull(payrollBatch.historyImportAttemptId),ne(payrollBatch.status,'closed'),or(isNull(payrollBatch.payrollCycleId),eq(payrollBatch.payrollCycleId,row.cycleId)))).limit(1);
+    if(open.length)row.reasons.push('Payroll for this period and Pay Cycle is still open in Payroll. Finish or discard it there before importing.');
+    else if(others.length>1)row.reasons.push('More than one payroll result is on file for this employee, period and Pay Cycle, so the record to overwrite cannot be identified safely.');
+    else if(others.length===1){
+     const target=others[0];
+     if(target.history||row.recordId)row.reasons.push('An earlier imported result for this identity predates import history and cannot be overwritten safely.');
+     else{
+      const before:ImportedPayrollValues={basicSalary:target.basicSalary,allowance:target.allowance,overtimePay:target.overtimePay,bonus:target.bonus,grossPay:target.grossPay,statutory:target.statutory as Record<string,unknown>,
+       otherDeductions:target.otherDeductions,totalDeductions:target.totalDeductions,netPay:target.netPay,employerCost:target.employerCost};
+      row.expectedOrdinaryPayslipId=target.id;row.beforeValues=before;row.overwriteSource='processed';
+      row.operation=hash(canonical(before))===row.valueHash?'unchanged':'replace';
+     }
+    }else if(row.recordId){
+     const [first]=await tx.select({kind:revision.kind}).from(revision).where(and(eq(revision.recordId,row.recordId),eq(revision.ordinal,1)));
+     row.overwriteSource=first?.kind==='adopted'?'processed':'imported';
+    }
+    if(!row.reasons.length&&row.operation!=='unchanged'){
+     row.warnings=await overwriteWarnings(tx,row,row.expectedOrdinaryPayslipId??row.expectedSnapshotId);
+     if(row.operation==='create'&&!others.length){
+      const ordinaryRun=await tx.select({id:payrollBatch.id}).from(payrollBatch).where(and(eq(payrollBatch.companyId,row.companyId),eq(payrollBatch.payPeriod,row.period),isNull(payrollBatch.historyImportAttemptId),or(isNull(payrollBatch.payrollCycleId),eq(payrollBatch.payrollCycleId,row.cycleId)))).limit(1);
+      if(ordinaryRun.length)row.warnings.push('A payroll run was processed in AIHR for this period without this employee. The imported record is added beside it.');
+     }
+    }
    if(row.reasons.length||!values)row.operation='invalid';
    plan.rows.push(row);
   }
@@ -209,8 +254,10 @@ async function failureEvent(ctx:SessionContext,id:string,kind:'failed'|'revert_f
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'payroll-history-import',aggregateId:id,eventType:'payroll-history-import.'+kind,actor:actorOf(ctx),payload:{reason}});
  });}catch(recordError){console.error('[payroll history failure audit]',recordError);}
 }
-/** `skipReplacements` (d28501b8) imports only the new records and leaves every earlier import as it is. */
-export async function confirmPayrollHistoryUpload(ctx:SessionContext,input:{attemptId:string;previewHash:string;confirmReplacement:boolean;skipReplacements?:boolean;expectedCompanyId?:string}){
+/** `skipReplacements` (d28501b8) imports only the new records and leaves every earlier result as it is.
+ * `selectedRecordKeys` (r2) replaces only the ticked records; `acknowledgeWarnings` is required when any
+ * applied record carries warnings about what has already gone out. */
+export async function confirmPayrollHistoryUpload(ctx:SessionContext,input:{attemptId:string;previewHash:string;confirmReplacement:boolean;skipReplacements?:boolean;selectedRecordKeys?:string[];acknowledgeWarnings?:boolean;expectedCompanyId?:string}){
  assertModuleGate(ctx,'payroll');if(!uuid.test(input.attemptId))fail('Import attempt unavailable.');
  try{return await withTenant(ctx,async tx=>{
   await lockPayrollHistoryWriteTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);await principal(tx,ctx);
@@ -222,8 +269,13 @@ export async function confirmPayrollHistoryUpload(ctx:SessionContext,input:{atte
   const confirmed=events.find(event=>event.kind==='confirmed');if(confirmed)return {attemptId:source.id,counts:source.plan.counts,changes:confirmed.changes,alreadyCommitted:true};
   if(input.previewHash!==source.plan.previewHash||source.plan.counts.invalid||source.plan.issues.length)fail('Correct the file and validate a new attempt before confirming.');
   const skip=!!input.skipReplacements&&!input.confirmReplacement;
-  if(source.plan.counts.replaced&&!input.confirmReplacement&&!skip)fail('Confirm replacement of the existing imported history before continuing.');
+  const selected=input.selectedRecordKeys?new Set(input.selectedRecordKeys):null;
+  if(source.plan.counts.replaced&&!input.confirmReplacement&&!skip&&!selected)fail('Confirm replacement of the existing imported history before continuing.');
+  if(selected?.size&&!input.confirmReplacement)fail('Confirm replacement of the existing imported history before continuing.');
+  const applies=(row:HistoryRevisionRow)=>row.operation==='create'||(row.operation==='replace'&&!skip&&(selected?selected.has(historyRecordKey(row)):input.confirmReplacement));
   if(skip&&!source.plan.counts.created)fail('This file has no new records. Confirm the replacement or cancel.');
+  if(!source.plan.rows.some(applies))fail('Nothing is selected to import. Tick the records to overwrite, or cancel.');
+  if(source.plan.rows.some(row=>applies(row)&&row.warnings?.length)&&!input.acknowledgeWarnings)fail('Acknowledge what has already gone out for these months before continuing.');
   if(source.companyIds.length)await tx.select({id:company.id}).from(company).where(inArray(company.id,source.companyIds)).orderBy(asc(company.id)).for('share');
   const employmentIds=[...new Set(source.plan.rows.map(row=>row.employmentId).filter(Boolean))].sort(),cycleIds=[...new Set(source.plan.rows.map(row=>row.cycleId).filter(Boolean))].sort();
   if(employmentIds.length)await tx.select({id:employment.id}).from(employment).where(inArray(employment.id,employmentIds)).orderBy(asc(employment.id)).for('share');
@@ -232,7 +284,7 @@ export async function confirmPayrollHistoryUpload(ctx:SessionContext,input:{atte
   if(fresh.previewHash!==source.plan.previewHash||fresh.counts.invalid)fail('The source, master data, permissions or target revisions changed. Validate a new attempt.');
   const changes:HistoryRevisionChange[]=[];
   const groups=new Map<string,HistoryRevisionRow[]>();
-  for(const row of fresh.rows)if(row.operation!=='unchanged'&&!(skip&&row.operation==='replace')){
+  for(const row of fresh.rows)if(applies(row)){
    const groupKey=[row.companyId,row.period,row.cycleId].join(':');
    const group=groups.get(groupKey)??[];group.push(row);groups.set(groupKey,group);
   }
@@ -249,8 +301,15 @@ export async function confirmPayrollHistoryUpload(ctx:SessionContext,input:{atte
     if(!row.values||!row.valueHash||row.operation==='invalid')fail('The file contains an invalid record.');
     let recordId=row.recordId;
     if(!recordId){const [created]=await tx.insert(record).values({tenantId:ctx.tenantId,companyId:row.companyId,employmentId:row.employmentId,period:row.period,cycleId:row.cycleId}).returning({id:record.id});recordId=created.id;}
-    const [current]=await tx.select().from(revision).where(eq(revision.recordId,recordId)).orderBy(desc(revision.ordinal)).limit(1);
+    let [current]=await tx.select().from(revision).where(eq(revision.recordId,recordId)).orderBy(desc(revision.ordinal)).limit(1);
     if((current?.id??null)!==row.expectedRevisionId)fail('A target revision changed. Validate a new attempt.');
+    // d28501b8 r2 — the processed payslip enters history as the record's first revision, set aside by the
+    // correction below. The database checks the adopted values are that payslip's own columns.
+    if(row.expectedOrdinaryPayslipId){
+     if(!row.beforeValues)fail('The payroll on file could not be read. Validate a new attempt.');
+     await tx.insert(snapshot).values({id:row.expectedOrdinaryPayslipId,tenantId:ctx.tenantId,recordId,valueHash:hash(canonical(row.beforeValues)),values:row.beforeValues});
+     [current]=await tx.insert(revision).values({tenantId:ctx.tenantId,recordId,ordinal:1,attemptId:source.id,snapshotId:row.expectedOrdinaryPayslipId,previousRevisionId:null,kind:'adopted',cycleName:row.cycleName}).returning();
+    }
     const [slip]=await tx.insert(payslip).values({tenantId:ctx.tenantId,batchId:batch.id,employmentId:row.employmentId,...row.values}).returning({id:payslip.id});
     addBatchTotals(totals,row.values);
     if(batchTotalsOverflow(totals))fail('An accumulated batch total exceeds the supported range. Split the source file.');
@@ -261,11 +320,11 @@ export async function confirmPayrollHistoryUpload(ctx:SessionContext,input:{atte
    for(const item of pending){
     const {row,recordId,slipId,previous}=item;
     await tx.insert(snapshot).values({id:slipId,tenantId:ctx.tenantId,recordId,valueHash:row.valueHash!,values:row.values!});
-    const [createdRevision]=await tx.insert(revision).values({tenantId:ctx.tenantId,recordId,ordinal:(previous?.ordinal??0)+1,attemptId:source.id,snapshotId:slipId,previousRevisionId:previous?.id??null,kind:row.expectedSnapshotId?'correction':'import',cycleName:row.cycleName}).returning({id:revision.id});
+    const [createdRevision]=await tx.insert(revision).values({tenantId:ctx.tenantId,recordId,ordinal:(previous?.ordinal??0)+1,attemptId:source.id,snapshotId:slipId,previousRevisionId:previous?.id??null,kind:row.expectedSnapshotId||row.expectedOrdinaryPayslipId?'correction':'import',cycleName:row.cycleName}).returning({id:revision.id});
     changes.push({recordId,revisionId:createdRevision.id,previousRevisionId:previous?.id??null,snapshotId:slipId});
    }
   }
-  const skippedReplacements=skip?fresh.counts.replaced:0;
+  const skippedReplacements=fresh.rows.filter(row=>row.operation==='replace'&&!applies(row)).length;
   await tx.insert(historyEvent).values({tenantId:ctx.tenantId,attemptId:source.id,kind:'confirmed',actorId:ctx.userId!,changes,detail:{counts:fresh.counts,skippedReplacements}});
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'payroll-history-import',aggregateId:source.id,eventType:'payroll-history-import.committed',actor:actorOf(ctx),payload:{counts:fresh.counts,skippedReplacements,changes}});
   return {attemptId:source.id,counts:fresh.counts,changes,skippedReplacements,alreadyCommitted:false};
@@ -281,8 +340,11 @@ async function revertTargetsTx(tx:Tx,ctx:SessionContext,source:RevertSource,lock
  for(const change of confirmed.changes){
   const query=tx.select().from(record).where(eq(record.id,change.recordId)),[identity]=lock?await query.for('update'):await query;if(!identity)fail('An imported record is unavailable.');
   const [current]=await tx.select().from(revision).where(eq(revision.recordId,identity.id)).orderBy(desc(revision.ordinal)).limit(1);if(current?.id!==change.revisionId)fail('A later correction or revert changed this record. Revert is no longer safe.');
-  const blocked=await dependencies(tx,{companyId:identity.companyId,employmentId:identity.employmentId,period:identity.period,expectedSnapshotId:current.snapshotId});if(blocked.length)fail(blocked.join(' '));
-  const [previous]=change.previousRevisionId?await tx.select().from(revision).where(and(eq(revision.id,change.previousRevisionId),eq(revision.recordId,identity.id))):[];if(change.previousRevisionId&&!previous)fail('The prior revision is unavailable.');targets.push({change,identity,current,previous});
+  const [previous]=change.previousRevisionId?await tx.select().from(revision).where(and(eq(revision.id,change.previousRevisionId),eq(revision.recordId,identity.id))):[];if(change.previousRevisionId&&!previous)fail('The prior revision is unavailable.');
+  // d28501b8 r2 — restoring an adopted processed payslip returns every reader to the figures that
+  // payments, returns and later months were produced from, so those are no reason to refuse it.
+  if(previous?.kind!=='adopted'){const blocked=await dependencies(tx,{companyId:identity.companyId,employmentId:identity.employmentId,period:identity.period,expectedSnapshotId:current.snapshotId});if(blocked.length)fail(blocked.join(' '));}
+  targets.push({change,identity,current,previous});
  }
  const previewHash=hash(canonical({attemptId:source.id,actorId:ctx.userId,eventId:confirmed.id,targets:targets.map(target=>({recordId:target.identity.id,currentRevisionId:target.current.id,restoreSnapshotId:target.previous?.snapshotId??null})).sort((a,b)=>a.recordId.localeCompare(b.recordId))}));
  return {targets,previewHash};

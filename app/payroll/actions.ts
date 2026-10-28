@@ -15,6 +15,7 @@ import {
   BatchNotDraftError,
   BatchNotResettableError,
   BatchNotUnlockableError,
+  BatchOverwrittenByImportError,
   PayrollPermissionDeniedError,
   PreProcessBlockedError,
   RemoveNoEmployeesError,
@@ -635,6 +636,8 @@ export async function unlockAction(formData: FormData) {
         ? t('unlockPermissionDenied')
         : e instanceof UnlockReasonRequiredError
           ? t('unlockReasonRequired')
+          : e instanceof BatchOverwrittenByImportError
+            ? t('unlockOverwrittenByImport')
           : e instanceof BatchNotUnlockableError
             ? t('unlockNotClosed')
             : publicErrorMessage(e);
