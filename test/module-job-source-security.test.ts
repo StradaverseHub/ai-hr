@@ -38,7 +38,10 @@ describe('actual canonical module-job carrier and independent authorization cont
   const f=await fixture(),transactions=vi.spyOn(tenantDb,'withTenant');
   const view=await loadCanonicalModuleJob(f.ctx,{module});
   expect(view.state).toBe('ready');assertCanonicalModuleJobView(view,f.ctx);expect(transactions).toHaveBeenCalledTimes(1);
-  const text=JSON.stringify(view);for(const marker of ['PRIVATE_PEER_','PRIVATE_OTHER_COMPANY_PERSON','PRIVATE_NOTIFICATION_','PRIVATE_MANAGER_FEEDBACK','/private/embedded-link','9999'])expect(text).not.toContain(marker);
+  const text=JSON.stringify(view);for(const marker of ['PRIVATE_PEER_','PRIVATE_OTHER_COMPANY_PERSON','PRIVATE_NOTIFICATION_','PRIVATE_MANAGER_FEEDBACK','/private/embedded-link'])expect(text).not.toContain(marker);
+  // The peer's workedMinutes as a standalone number. A bare substring check failed whenever a millisecond
+  // timestamp or UUID in the view happened to contain the same four digits.
+  expect(text).not.toMatch(/(?<![0-9a-fA-F])9999(?![0-9a-fA-F])/);
   // Rewards/schema/case metadata are permitted administrative scopes, not an invented own-record claim.
   if(!['rewards','system_explorer','system_testing'].includes(module))expect(text).not.toContain('PRIVATE_OTHER_COMPANY_SENTINEL');
   const [runs]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from public.ai_model_run`);expect(runs.n).toBe(0);
