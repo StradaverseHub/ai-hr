@@ -10376,6 +10376,9 @@ export const onehrCalibration = pgTable('performance_onehr_calibration', {
   reviewerUserIds: uuid('reviewer_user_ids').array().notNull(), pbtAchievement: numeric('pbt_achievement',{precision:12,scale:2}),
   mode:text('mode').notNull().default('after'), bgWeight:integer('bg_weight').notNull().default(50), performanceLockedAt:timestamp('performance_locked_at',{withTimezone:true}),potentialLockedAt:timestamp('potential_locked_at',{withTimezone:true}), lockedAt: timestamp('locked_at',{withTimezone:true}), revision:integer('revision').notNull().default(1), createdAt:createdAt(),
   pipLockedAt:timestamp('pip_locked_at',{withTimezone:true}), promotionLockedAt:timestamp('promotion_locked_at',{withTimezone:true}),
+  // WP-B2 (0663): generated scopes carry an anchor; hand-built sessions keep all three NULL (explicit grants only).
+  anchorKind:text('anchor_kind'), anchorEmploymentId:uuid('anchor_employment_id').references(()=>employment.id),
+  calibrationGroupId:uuid('calibration_group_id').references(():AnyPgColumn=>calibrationGroup.id),
 },t=>[index('performance_onehr_calibration_cycle_idx').on(t.cycleId)]);
 export const onehrCalibrationEntry = pgTable('performance_onehr_calibration_entry', {
   id:id(),tenantId:tenantId(),sessionId:uuid('session_id').notNull().references(()=>onehrCalibration.id),
@@ -10387,6 +10390,58 @@ export const onehrCalibrationEntry = pgTable('performance_onehr_calibration_entr
   pip:boolean('pip').notNull().default(false),promotion:boolean('promotion').notNull().default(false),specialReward:boolean('special_reward').notNull().default(false),
   pipReason:text('pip_reason').notNull().default(''),promotionReason:text('promotion_reason').notNull().default(''),specialRewardReason:text('special_reward_reason').notNull().default(''),
 },t=>[uniqueIndex('performance_onehr_calibration_entry_uq').on(t.sessionId,t.reviewId)]);
+/** WP-B2 (0663): an HOD-tier entry moved out of a department review when the person's HOD changed, decision kept. */
+export const onehrCalibrationEntryRetired = pgTable('performance_onehr_calibration_entry_retired', {
+  id:uuid('id').primaryKey(),tenantId:tenantId(),sessionId:uuid('session_id').notNull(),reviewId:uuid('review_id').notNull(),employmentId:uuid('employment_id').notNull(),
+  performance:text('performance'),potential:text('potential'),performanceNote:text('performance_note').notNull(),potentialNote:text('potential_note').notNull(),
+  performanceLockedAt:timestamp('performance_locked_at',{withTimezone:true}),potentialLockedAt:timestamp('potential_locked_at',{withTimezone:true}),lockedAt:timestamp('locked_at',{withTimezone:true}),
+  retiredAt:timestamp('retired_at',{withTimezone:true}).notNull(),retiredBy:uuid('retired_by').notNull().references(()=>appUser.id),retiredReason:text('retired_reason').notNull(),
+});
+/** WP-B2 (0663): a named calibration group, the group chief's anchor. Retired, never deleted. */
+export const calibrationGroup = pgTable('performance_calibration_group', {
+  id:id(),tenantId:tenantId(),name:text('name').notNull(),
+  createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+  retiredBy:uuid('retired_by').references(()=>appUser.id),retiredAt:timestamp('retired_at',{withTimezone:true}),
+});
+/** WP-B2 (0663): dated calibration group membership, one live group per employment. Ended, never deleted. */
+export const calibrationGroupMember = pgTable('performance_calibration_group_member', {
+  id:id(),tenantId:tenantId(),groupId:uuid('group_id').notNull().references(()=>calibrationGroup.id),
+  employmentId:uuid('employment_id').notNull().references(()=>employment.id),segment:text('segment'),source:text('source').notNull(),
+  validFrom:date('valid_from').notNull(),validTo:date('valid_to'),
+  createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+  endedBy:uuid('ended_by').references(()=>appUser.id),endedAt:timestamp('ended_at',{withTimezone:true}),
+},t=>[index('performance_calibration_group_member_group_idx').on(t.groupId)]);
+/** WP-B2 (0663): business unit CEO (unit company), business group CEO (group node company) and group chief seats. */
+export const leaderSeat = pgTable('performance_leader_seat', {
+  id:id(),tenantId:tenantId(),seatType:text('seat_type').notNull(),
+  companyId:uuid('company_id').references(()=>company.id),calibrationGroupId:uuid('calibration_group_id').references(()=>calibrationGroup.id),
+  holderEmploymentId:uuid('holder_employment_id').notNull().references(()=>employment.id),
+  validFrom:date('valid_from').notNull(),validTo:date('valid_to'),source:text('source').notNull(),sourceRef:text('source_ref'),
+  createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+  endedBy:uuid('ended_by').references(()=>appUser.id),endedAt:timestamp('ended_at',{withTimezone:true}),endReason:text('end_reason'),
+},t=>[index('performance_leader_seat_holder_idx').on(t.holderEmploymentId)]);
+/** WP-B2 (0663): the per-person head of department. Never department.head_employment_id. */
+export const hodAssignment = pgTable('performance_hod_assignment', {
+  id:id(),tenantId:tenantId(),subjectEmploymentId:uuid('subject_employment_id').notNull().references(()=>employment.id),
+  hodEmploymentId:uuid('hod_employment_id').notNull().references(()=>employment.id),
+  validFrom:date('valid_from').notNull(),validTo:date('valid_to'),source:text('source').notNull(),sourceRef:text('source_ref'),overrideReason:text('override_reason'),
+  createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+  endedBy:uuid('ended_by').references(()=>appUser.id),endedAt:timestamp('ended_at',{withTimezone:true}),
+},t=>[index('performance_hod_assignment_hod_idx').on(t.hodEmploymentId)]);
+/** D-P1-22 (0667): a unit (company, optional exact department) not taking part in a cycle. Ended, never deleted. */
+export const assessmentUnitExclusion = pgTable('performance_assessment_unit_exclusion', {
+  id:id(),tenantId:tenantId(),cycleId:uuid('cycle_id').notNull().references(()=>reviewCycle.id),
+  companyId:uuid('company_id').notNull().references(()=>company.id),departmentId:uuid('department_id').references(()=>department.id),
+  createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+  endedBy:uuid('ended_by').references(()=>appUser.id),endedAt:timestamp('ended_at',{withTimezone:true}),endReason:text('end_reason'),
+},t=>[index('performance_assessment_unit_exclusion_company_idx').on(t.companyId)]);
+/** D-P1-22 (0667): the employments a closed cycle's rules covered on its close day (D8). Written by a definer only. */
+export const assessmentUnitExclusionPin = pgTable('performance_assessment_unit_exclusion_pin', {
+  tenantId:tenantId(),cycleId:uuid('cycle_id').notNull().references(()=>reviewCycle.id),
+  employmentId:uuid('employment_id').notNull().references(()=>employment.id),
+  ruleId:uuid('rule_id').notNull().references(()=>assessmentUnitExclusion.id),
+  pinnedOn:date('pinned_on').notNull(),createdAt:createdAt(),
+},t=>[primaryKey({columns:[t.cycleId,t.employmentId]})]);
 // One shared optional BG remark per person/cohort; never part of employee or higher-tier projections.
 export const assessmentTalentRemark = pgTable('performance_assessment_talent_remark', {
  tenantId:tenantId(),sessionId:uuid('session_id').notNull().references(()=>onehrCalibration.id),reviewId:uuid('review_id').notNull().references(()=>onehrReview.reviewId),
@@ -10416,8 +10471,19 @@ export const assessmentRelease = pgTable('performance_assessment_release', {
   reviewId:uuid('review_id').primaryKey().references(()=>onehrReview.reviewId),tenantId:tenantId(),
   performanceReleasedAt:timestamp('performance_released_at',{withTimezone:true}),potentialReleasedAt:timestamp('potential_released_at',{withTimezone:true}),
   talentReleasedAt:timestamp('talent_released_at',{withTimezone:true}),feedbackReleasedAt:timestamp('feedback_released_at',{withTimezone:true}),
+  // WP-E (0665): release 1, to the person's leaders. Never mirrored into onehrResult; the release service owns order.
+  performanceLeaderReleasedAt:timestamp('performance_leader_released_at',{withTimezone:true}),potentialLeaderReleasedAt:timestamp('potential_leader_released_at',{withTimezone:true}),
+  talentLeaderReleasedAt:timestamp('talent_leader_released_at',{withTimezone:true}),
   updatedBy:uuid('updated_by').references(()=>appUser.id),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
 });
+/** WP-E (0665): append-only ledger; a (review, component, step, recipient) is told about a release once, ever. No band. */
+export const assessmentReleaseNotice = pgTable('performance_assessment_release_notice', {
+  id:id(),tenantId:tenantId(),reviewId:uuid('review_id').notNull().references(()=>onehrReview.reviewId),
+  component:text('component').notNull(),step:text('step').notNull(),
+  recipientEmploymentId:uuid('recipient_employment_id').notNull().references(()=>employment.id),
+  eventId:uuid('event_id').notNull(),notifiedBy:uuid('notified_by').notNull().references(()=>appUser.id),
+  notifiedAt:timestamp('notified_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('performance_assessment_release_notice_once').on(t.reviewId,t.component,t.step,t.recipientEmploymentId),index('performance_assessment_release_notice_recipient_idx').on(t.recipientEmploymentId)]);
 // Last sign-off/lock snapshot, sealed at cycle archive. HR reads the record without recomputing it.
 export const assessmentRatingRecord = pgTable('performance_assessment_rating_record', {
   reviewId:uuid('review_id').primaryKey().references(()=>onehrReview.reviewId),tenantId:tenantId(),

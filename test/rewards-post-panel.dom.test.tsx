@@ -16,6 +16,16 @@ describe('H1: the review page Post control follows the posting predicate', () =>
     expect(document.body.textContent).toBe(en.rewards.postNeedsAdmin);
     expect(screen.queryByRole('button', { name: en.rewards.post })).toBeNull();
   });
+  it('DR-13 (APR-022): a payroll seat holder who cannot post sees the explanatory line and no Post control', () => {
+    // The payroll seat is the hand-off recipient of an approved review; enactment stays administrator-owned.
+    const { container } = render(wrap(<RewardPostPanel posting="needs-admin" batches={[{ id: 'b1', period: '2026-10' }]} fields={<input name="revision" defaultValue="1" />} action={action} />));
+    expect(en.rewards.postNeedsAdmin.length).toBeGreaterThan(0);
+    expect(container.textContent).toBe(en.rewards.postNeedsAdmin);
+    expect(screen.queryByRole('button', { name: en.rewards.post })).toBeNull();
+    expect(container.querySelector('form')).toBeNull();
+    expect(container.querySelector('select[name="batchId"]')).toBeNull();
+    expect(container.querySelector('input[name="revision"]')).toBeNull();
+  });
   it('an HR administrator with the seat sees Post; an empty batch list explains itself', () => {
     render(wrap(<RewardPostPanel posting="allowed" batches={[]} fields={null} action={action} />));
     expect(screen.getByRole('button', { name: en.rewards.post })).toBeTruthy();

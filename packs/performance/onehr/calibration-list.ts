@@ -3,8 +3,8 @@
  *
  * Authority is not re-implemented here. A row is listed only when performance_onehr_calibration RLS lets the
  * viewer read it AND app.onehr_calibration_access(id) admits them — the same predicate the calibration page's
- * entry policies use (final tier → cycle administrators; other tiers → the company's OneHR administrators or
- * a named reviewer). Per-person facts come from app.assessment_calibration_work, the narrow routing
+ * entry policies use (final tier → cycle administrators; other tiers → the company's OneHR administrators,
+ * a named reviewer, or the live holder of the session anchor's leader seat — WP-B2). Per-person facts come from app.assessment_calibration_work, the narrow routing
  * projection the workspace and reminders already consume: no bands, notes or names leave it.
  *
  * "To do" is the workspace's own derivation (workspace-model leaderWorkspaceParts + leaderPendingEntries):
@@ -56,7 +56,8 @@ export async function listMyCalibrationSessions(ctx: SessionContext, now = new D
 }
 
 /**
- * Sidebar flag: is the viewer a named reviewer on at least one non-final session they may enter?
+ * Sidebar flag: is the viewer a named reviewer (explicitly, or as the live holder of the session anchor's
+ * leader seat: app.onehr_calibration_reviewer, WP-B2) on at least one non-final session they may enter?
  *
  * ONE existence query per request. Administrators are not asked here: the sidebar already holds
  * canAdministerOnehr from the session grants and ORs it in. Final-tier sessions are excluded because only
@@ -70,7 +71,7 @@ export async function hasCalibrationAssignment(ctx: SessionContext): Promise<boo
     const [row] = await tx.execute<{ ok: boolean }>(sql`select exists(
       select 1 from performance_onehr_calibration s
       where s.tenant_id = app.current_tenant_id() and s.tier <> 'final'
-        and app.current_user_id() = any(s.reviewer_user_ids)
+        and app.onehr_calibration_reviewer(s.id, app.current_user_id())
         and app.onehr_calibration_access(s.id)) as ok`);
     return !!row?.ok;
   });
@@ -82,7 +83,8 @@ export type CalibrationTask = PackTaskItem & { kind: 'calibration'; companyId: s
 /**
  * Calibration work awaiting the viewer, for the shared task list (packs/performance/onehr/tasks.ts).
  *
- * A task only where the viewer is a NAMED reviewer (`reviewer_user_ids`): an HR administrator or performance
+ * A task only where the viewer is a NAMED reviewer (`reviewer_user_ids`, or the live holder of the session
+ * anchor's leader seat — app.onehr_calibration_reviewer, WP-B2): an HR administrator or performance
  * partner who can open a session only because they administer the cycle has no calibration task for it —
  * their entry point is the Calibration page. Beyond that, the same gates the Calibration page reads: not the
  * final tier (cycle administrators only), `app.onehr_calibration_access`, the cycle's calibration module, a
@@ -109,7 +111,7 @@ export async function pendingCalibrationTasks(ctx: SessionContext, now = new Dat
       .innerJoin(reviewCycle, eq(reviewCycle.id, onehrCalibration.cycleId))
       .innerJoin(onehrCycle, and(eq(onehrCycle.cycleId, onehrCalibration.cycleId), eq(onehrCycle.tenantId, onehrCalibration.tenantId)))
       .where(and(
-        sql`app.current_user_id() = any(${onehrCalibration.reviewerUserIds})`,
+        sql`app.onehr_calibration_reviewer(${onehrCalibration.id}, app.current_user_id())`,
         ne(onehrCalibration.tier, 'final'),
         ne(reviewCycle.status, 'closed'),
         sql`coalesce((${onehrCycle.policy}->'modules'->>'calibration')::boolean,true)`,
