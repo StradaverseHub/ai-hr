@@ -115,10 +115,10 @@ export async function getPerformanceHomeBlock(ctx: SessionContext, scopeIds: str
     const team = await tx.select({ reviewId: onehrReview.reviewId, managerPerformance: onehrReview.managerPerformance }).from(onehrReview)
       .where(and(eq(onehrReview.cycleId, own.cycleId), ne(onehrReview.reviewId, own.reviewId), sql`app.onehr_manager(${onehrReview.reviewId})`,
         sql`not exists(select 1 from employment e where e.id=${onehrReview.employmentId} and app.is_self_person(e.person_id))`));
-    // Named-reviewer sessions in THIS cycle, by hasCalibrationAssignment's predicates (no per-session work read).
+    // Named-reviewer sessions in THIS cycle (explicit or live seat holder), by hasCalibrationAssignment's predicates (no per-session work read).
     const sessions = await tx.select({ id: onehrCalibration.id, lockedAt: onehrCalibration.lockedAt }).from(onehrCalibration)
       .where(and(eq(onehrCalibration.cycleId, own.cycleId), ne(onehrCalibration.tier, 'final'),
-        sql`app.current_user_id() = any(${onehrCalibration.reviewerUserIds})`, sql`app.onehr_calibration_access(${onehrCalibration.id})`));
+        sql`app.onehr_calibration_reviewer(${onehrCalibration.id}, app.current_user_id())`, sql`app.onehr_calibration_access(${onehrCalibration.id})`));
     const inCycle = linkedReviewIds.length ? await tx.select({ id: onehrReview.reviewId }).from(onehrReview)
       .where(and(eq(onehrReview.cycleId, own.cycleId), inArray(onehrReview.reviewId, linkedReviewIds))) : [];
     return { panels, team, sessions, inCycle: new Set(inCycle.map((r) => r.id)) };

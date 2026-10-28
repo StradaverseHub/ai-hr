@@ -529,10 +529,15 @@ function boxBands(result:Awaited<ReturnType<typeof resolved>>,tier:string,axis:'
   potentialSource:potentialBand?result.potential.source:box&&result.input.selfPotential?'self':box?'default':null,
  };
 }
+/** The cycle preconditions every calibration assignment shares: hand-built scopes and generated ones (WP-B2). */
+export async function calibrationAssignableCycleTx(tx:Tx,cycleId:string) {
+  const cycle=await loadCycle(tx,cycleId,true);await requireAdmin(tx,cycleId);if(cycle.policy.modules.calibration===false)throw Error('Calibration is disabled.');if(cycle.policy.kind!=='year_end')throw Error('Calibration is available only in year-end cycles.');if(!ratedPerformance(cycle.policy)&&!cycle.policy.modules.tm)throw Error('This cycle has no rating axes to calibrate.');if(!['open','calibration'].includes(cycle.native.status))throw Error('Open the cycle before assigning calibration.');
+  return cycle;
+}
 export async function createOnehrCalibration(ctx:SessionContext,cycleId:string,raw:unknown) {
   const p=z.object({name:z.string().trim().min(1).max(300),companyId:uuid.nullable(),tier:z.enum(tiers),reviewerUserIds:z.array(uuid).min(1).max(100),reviewIds:z.array(uuid).min(1).max(10000),pbtAchievement:z.number().finite().nullable(),mode:z.enum(['after','replace','blend']).default('after'),bgWeight:z.number().int().min(1).max(99).default(50)}).parse(raw);
   return withPerformanceTenant(ctx,async tx=>{
-    const cycle=await loadCycle(tx,cycleId,true);await requireAdmin(tx,cycleId);if(cycle.policy.modules.calibration===false)throw Error('Calibration is disabled.');if(cycle.policy.kind!=='year_end')throw Error('Calibration is available only in year-end cycles.');if(!ratedPerformance(cycle.policy)&&!cycle.policy.modules.tm)throw Error('This cycle has no rating axes to calibrate.');if(!['open','calibration'].includes(cycle.native.status))throw Error('Open the cycle before assigning calibration.');
+    await calibrationAssignableCycleTx(tx,cycleId);
     if(new Set(p.reviewIds).size!==p.reviewIds.length)throw Error('Duplicate assessment.');
     const reviews=await tx.select().from(onehrReview).where(and(eq(onehrReview.cycleId,cycleId),inArray(onehrReview.reviewId,p.reviewIds)));
     if(reviews.length!==p.reviewIds.length||!(await tx.execute<{ok:boolean}>(sql`select bool_and(app.assessment_review_participates(r)) as ok from unnest(array[${sql.join(p.reviewIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) r`))[0]?.ok)throw Error('Every assessment must belong to this cycle and your scope.');
@@ -901,6 +906,8 @@ export async function getOnehrCalibrationTx(tx:Tx,ctx:SessionContext,sessionId:s
       rows.push(await calibrationRow(tx,ctx,entry,cycle.policy,session,cycle.native.status,viewAxis,resolveAssessment(assessmentFromInputs(source.input,cycle.policy),source.decisions??[]),detail==='all'||!!session.lockedAt));
     }
     const [own]=await tx.execute<{present:boolean}>(sql`select app.onehr_cohort_own(${sessionId}::uuid) as present`);
+    // Named reviewer or live seat holder: the one SQL owner of that notion (app.onehr_calibration_reviewer, WP-B2).
+    const [reviewerRow]=await tx.execute<{ok:boolean}>(sql`select app.onehr_calibration_reviewer(${sessionId}::uuid,app.current_user_id()) as ok`);
     const companyIds=[...new Set(rows.map(r=>r.companyId))];
     const companies=companyIds.length?await tx.select({id:company.id,name:company.legalName,parent:company.parentCompanyId}).from(company).where(inArray(company.id,companyIds)):[];
     const profitFigures=await profitAchievementsTx(tx,session.cycleId,[...companyIds,...companies.flatMap(c=>c.parent?[c.parent]:[])]);
@@ -909,7 +916,7 @@ export async function getOnehrCalibrationTx(tx:Tx,ctx:SessionContext,sessionId:s
     const cohortCompanyId=session.companyId??(companyIds.length===1?companyIds[0]:commonParent),cohortCompany=companies.find(c=>c.id===cohortCompanyId),cohortProfit=profitCurveFor(cohortCompanyId??'',cohortCompany?.parent??null,profitFigures);
     const conversations=await tx.select({axis:calibrationConversation.axis,held:calibrationConversation.held}).from(calibrationConversation).where(and(eq(calibrationConversation.sessionId,sessionId),eq(calibrationConversation.actorUserId,ctx.userId!)));
     const held=Object.fromEntries(conversations.map(c=>{const saved=heldCalibrationSchema.parse(c.held),lines=saved.lines.filter(l=>['open','calibration'].includes(cycle.native.status)&&l.sessionRevision===session.revision&&rows.some(r=>r.entry.reviewId===l.reviewId&&!r.finalized&&!(l.axis==='performance'?r.entry.performanceLockedAt||session.performanceLockedAt:r.entry.potentialLockedAt||session.potentialLockedAt)));return [c.axis,{...saved,lines,focus:(saved.navigation?rows.some(r=>r.entry.reviewId===saved.focus):lines.some(l=>l.reviewId===saved.focus))?saved.focus:null,requestId:lines.length||saved.navigation&&rows.some(r=>r.entry.reviewId===saved.focus)?saved.requestId:null}];})) as Partial<Record<Axis,typeof emptyHeldCalibration>>;
-    return {canSubmit:{pm:rows.length>0&&rows.every(r=>r.openAxes.pm&&(session.tier!=='hod'||!!r.entry.performanceLockedAt)&&(!r.finalized||!!r.entry.performanceLockedAt)),pot:rows.length>0&&rows.every(r=>r.openAxes.pot&&(session.tier!=='hod'||!!r.entry.potentialLockedAt)&&(!r.finalized||!!r.entry.potentialLockedAt))},held,actorUserId:ctx.userId,units,session,canReopen:await isAdmin(tx,session.cycleId)&&['open','calibration'].includes(cycle.native.status),canLockCohort:!own?.present,cycle:{id:cycle.native.id,name:cycle.native.name,status:cycle.native.status},modules:{...cycle.policy.modules,pm:ratedPerformance(cycle.policy)},axes:needsAxes(cycle.policy,viewAxis,session.tier),rows,curvePolicy:{curveToleranceMode:cycle.policy.curveToleranceMode,curveTolerancePct:cycle.policy.curveTolerancePct,curveTolerancePeople:cycle.policy.curveTolerancePeople},reference:cohortCompanyId?cohortProfit.reference:null,talentBox:{grid:talentBoxSettings(cycle.policy).grid,cap:['bu','bg','group'].includes(session.tier)?await talentCapUsageTx(tx,session,cycle.policy):null}};
+    return {isReviewer:!!reviewerRow?.ok,canSubmit:{pm:rows.length>0&&rows.every(r=>r.openAxes.pm&&(session.tier!=='hod'||!!r.entry.performanceLockedAt)&&(!r.finalized||!!r.entry.performanceLockedAt)),pot:rows.length>0&&rows.every(r=>r.openAxes.pot&&(session.tier!=='hod'||!!r.entry.potentialLockedAt)&&(!r.finalized||!!r.entry.potentialLockedAt))},held,actorUserId:ctx.userId,units,session,canReopen:await isAdmin(tx,session.cycleId)&&['open','calibration'].includes(cycle.native.status),canLockCohort:!own?.present,cycle:{id:cycle.native.id,name:cycle.native.name,status:cycle.native.status},modules:{...cycle.policy.modules,pm:ratedPerformance(cycle.policy)},axes:needsAxes(cycle.policy,viewAxis,session.tier),rows,curvePolicy:{curveToleranceMode:cycle.policy.curveToleranceMode,curveTolerancePct:cycle.policy.curveTolerancePct,curveTolerancePeople:cycle.policy.curveTolerancePeople},reference:cohortCompanyId?cohortProfit.reference:null,talentBox:{grid:talentBoxSettings(cycle.policy).grid,cap:['bu','bg','group'].includes(session.tier)?await talentCapUsageTx(tx,session,cycle.policy):null}};
 }
 
 /** Selected-person detail uses the same resolver and rechecks membership on every open. */
@@ -1650,7 +1657,8 @@ async function calibrationWorkspaceItemsTx(tx:Tx,ctx:SessionContext,sessions:Wor
 }
 async function bgLeaderCyclesTx(tx:Tx,ctx:SessionContext,sessions:WorkspaceSessionRow[]) {
   const bgLeaderCycles=new Set<string>();
-  for(const {session} of sessions)if(session.tier==='bg'&&session.reviewerUserIds.includes(ctx.userId!)&&!await isAdmin(tx,session.cycleId))bgLeaderCycles.add(session.cycleId);
+  // A BG leader is a named reviewer or the live BG CEO seat holder (app.onehr_calibration_reviewer, WP-B2).
+  for(const {session} of sessions)if(session.tier==='bg'&&!bgLeaderCycles.has(session.cycleId)&&(await tx.execute<{ok:boolean}>(sql`select app.onehr_calibration_reviewer(${session.id}::uuid,app.current_user_id()) as ok`))[0]?.ok&&!await isAdmin(tx,session.cycleId))bgLeaderCycles.add(session.cycleId);
   return bgLeaderCycles;
 }
 function visibleWorkspaceItems(items:PerformanceWorkspaceItem[],bgLeaderCycles:Set<string>) {
