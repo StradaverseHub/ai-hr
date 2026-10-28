@@ -8,14 +8,20 @@
  * JPEG and PNG are sent here with their own signatures checked (lib/mobile-api/binary-types.ts); every other binary
  * route stays PDF-only. A stored file of any other type, or whose bytes do not match its label, is
  * `unsupported_document`.
+ *
+ * GET /api/mobile/v2/tasks/claim/{id}/document?attachment={receipt id} — D12 (M11). One receipt of a pending claim the
+ * caller is currently assigned (the claim detail's admission), through getClaimAttachment; the claim receipt types
+ * are the same three. A claim carries several receipts, so the receipt is named; a leave request carries one.
  */
-import { taskDocumentV2 } from '@/core/mobile-approvals';
+import { taskClaimReceiptV2, taskDocumentV2 } from '@/core/mobile-approvals';
 import { MOBILE_ATTACHMENT_TYPES, mobileBinaryRoute, MobileBadRequest } from '@/lib/mobile-api/handler';
+import { attachmentOf } from '@/lib/mobile-api/claim-routes';
 import { taskOf } from '@/lib/mobile-api/task-routes';
 import { TaskDocumentRefusal } from '@/lib/mobile-api/v2/tasks';
 
 export const GET = mobileBinaryRoute(TaskDocumentRefusal, async (s, req) => {
   const { kind, id } = taskOf(req);
-  if (kind !== 'leave') throw new MobileBadRequest('Only a leave request carries a document here');
+  if (kind === 'claim') return taskClaimReceiptV2(s, id, attachmentOf(req));
+  if (kind !== 'leave') throw new MobileBadRequest('Only a leave request or a claim carries a document here');
   return taskDocumentV2(s, id);
 }, { types: MOBILE_ATTACHMENT_TYPES });

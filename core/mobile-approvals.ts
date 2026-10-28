@@ -14,6 +14,9 @@
  *              with requested_ot_minutes (lib/approvals-bulk.ts isOvertimeCorrection), decided by that one decider.
  *   cover      resolveMyTeamScope + myTeamLeaveProjection, as the v1 team route reads them (names, dates, status)
  *   document   getLeaveAttachment, after the same admission
+ *   claim      (D12, M11) listPendingClaims {requestId} + claimRecordFacts (custom answers) · getClaimAttachment for
+ *              one of its receipts · decideClaim (one step: pending → approved | rejected, the rejection reason stamped
+ *              on its event), in the receipt's transaction. A claim has no chain, so its expected state is `pending`.
  *
  * ADMISSION (D4). Self-approval is refused before any decider runs, even for super_admin, whom the kernel would
  * let decide their own request (core/approvals.ts assertCanDecide). An item that is not the caller's current
@@ -33,7 +36,7 @@
  */
 import { and, eq } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
-import { attendanceCorrection, employment, leaveCancellationRequest, leaveRequest, leaveRequestDate } from '../db/schema';
+import { attendanceCorrection, claimRequest, employment, leaveCancellationRequest, leaveRequest, leaveRequestDate } from '../db/schema';
 import { listPendingTasks } from './approvals-inbox';
 import { isCurrentAssignedApproval } from './assigned-approval-focus';
 import { isApprovalDecisionRefusal } from './approvals';
@@ -42,6 +45,9 @@ import { MyTeamAuthorizationError, resolveMyTeamScope } from './my-team-scope';
 import { leaveRequestDateBreakdown, listLeaveRequests, listPendingLeaveCancellations, myEmployment } from './read';
 import { MobileCommandOwnerRequired, withMobileCommandReceipt } from './mobile-command-receipt';
 import * as leave from '../packs/leave/service';
+import * as claims from '../packs/claims/service';
+import { claimAnswers, currencyOfClaim, decimalText, receiptFile } from './mobile-claims';
+import { moneyText } from '../lib/mobile-api/money-text';
 import { dayTypesForPairs, decideAttendanceCorrection, listAttendanceCorrections, MissingAttendanceRejectReasonError } from '../packs/attendance/service';
 import { LeavePayrollBusyError, LeavePayrollClosedError } from '../packs/payroll/service';
 import { AttendanceWorkflowError } from '../lib/attendance-workflow';
@@ -105,7 +111,9 @@ async function rawRowTx(tx: Tx, kind: NativeTaskKind, id: string): Promise<{ emp
     ? await tx.select({ employmentId: leaveRequest.employmentId, status: leaveRequest.status }).from(leaveRequest).where(eq(leaveRequest.id, id)).limit(1)
     : kind === 'leaveCancellation'
       ? await tx.select({ employmentId: leaveCancellationRequest.employmentId, status: leaveCancellationRequest.status }).from(leaveCancellationRequest).where(eq(leaveCancellationRequest.id, id)).limit(1)
-      : await tx.select({ employmentId: attendanceCorrection.employmentId, status: attendanceCorrection.status }).from(attendanceCorrection).where(eq(attendanceCorrection.id, id)).limit(1);
+      : kind === 'claim'
+        ? await tx.select({ employmentId: claimRequest.employmentId, status: claimRequest.status }).from(claimRequest).where(eq(claimRequest.id, id)).limit(1)
+        : await tx.select({ employmentId: attendanceCorrection.employmentId, status: attendanceCorrection.status }).from(attendanceCorrection).where(eq(attendanceCorrection.id, id)).limit(1);
   return row ? { employmentId: row.employmentId, status: String(row.status) } : null;
 }
 /** One of the caller's own employments. Own employments are always readable to their person. */
@@ -119,6 +127,8 @@ async function classifyTx(tx: Tx, ctx: SessionContext, kind: NativeTaskKind, id:
   const row = await rawRowTx(tx, kind, id);
   if (!row) return 'not_assigned';
   if (await isOwnEmploymentTx(tx, ctx, row.employmentId)) return 'self_approval';
+  // A claim DRAFT is readable to a manager under RLS but was never filed: it is nobody's task, not a decided one.
+  if (kind === 'claim' && row.status === 'draft') return 'not_assigned';
   return row.status === 'pending' ? 'not_assigned' : 'already_decided';
 }
 const classify = (ctx: SessionContext, kind: NativeTaskKind, id: string) => withTenant(ctx, (tx) => classifyTx(tx, ctx, kind, id));
@@ -127,6 +137,7 @@ const classify = (ctx: SessionContext, kind: NativeTaskKind, id: string) => with
 async function admission(ctx: SessionContext, kind: NativeTaskKind, id: string): Promise<AdmissionCode | null> {
   const modules = modulesOf(ctx);
   if (kind === 'attendance' && !modules.attendance) return 'not_assigned';
+  if (kind === 'claim' && !modules.claims) return 'not_assigned';
   if (!(await isCurrentAssignedApproval(ctx, { kind, id }, modules))) return classify(ctx, kind, id);
   // D4: the owners exclude self rows today; this keeps it true if one ever stops (super_admin included).
   return (await withTenant(ctx, async (tx) => { const row = await rawRowTx(tx, kind, id); return !!row && isOwnEmploymentTx(tx, ctx, row.employmentId); })) ? 'self_approval' : null;
@@ -178,6 +189,24 @@ export async function taskDetailV2(ctx: SessionContext, kind: NativeTaskKind, id
       teamCover: await teamCover(ctx, r.employmentId, r.startDate, r.endDate),
     } };
   }
+  if (kind === 'claim') {
+    const [c] = await claims.listPendingClaims(ctx, { requestId: id });
+    if (!c) return gone();
+    const [facts, currency] = await Promise.all([claims.claimRecordFacts(ctx, [c.id]), currencyOfClaim(ctx, c.id)]);
+    const f = facts.get(c.id);
+    const amount = moneyText(c.amount);
+    if (amount === null) throw new Error('Claim amount is not a recorded amount');
+    return { outcome: 'found', task: {
+      kind, id: c.id, subject: { name: c.claimantName ?? null, code: c.employeeCode ?? null }, createdAt: f?.submittedAt ?? iso(c.createdAt),
+      // D12: the app asks a reason to reject; decideClaim stamps it on the rejection event (the web asks none).
+      reasonRequiredToReject: true,
+      claimType: c.typeName.slice(0, 300), claimItem: c.itemName?.slice(0, 300) ?? null, amount, currency,
+      quantityKm: decimalText(c.quantityKm), incurredOn: c.incurredOn, employeeReason: c.description?.slice(0, 2000) ?? null,
+      fields: claimAnswers(f),
+      receipts: c.attachments.slice(0, 50).map((a) => ({ id: a.id, fileName: a.fileName.slice(0, 300), sizeBytes: a.sizeBytes })),
+      expected: { status: 'pending' },
+    } };
+  }
   if (kind === 'leaveCancellation') {
     const [c] = await listPendingLeaveCancellations(ctx, undefined, locale, id);
     if (!c) return gone();
@@ -224,12 +253,29 @@ export async function taskDocumentV2(ctx: SessionContext, id: string): Promise<T
   return { outcome: 'file', contentType: type, fileName: file.fileName, bytes };
 }
 
+/**
+ * D12 — one receipt of a pending claim the caller is CURRENTLY assigned (the detail's admission), through
+ * getClaimAttachment: PDF, JPEG or PNG whose bytes match the label, else `unsupported_document`. A receipt id that is
+ * not this claim's is `no_document`.
+ */
+export async function taskClaimReceiptV2(ctx: SessionContext, id: string, attachmentId: string): Promise<TaskDocument | TaskDocumentRefusal> {
+  const refusal = await admission(ctx, 'claim', id);
+  if (refusal) return refused(refusal);
+  const [c] = await claims.listPendingClaims(ctx, { requestId: id });
+  if (!c) return refused(await classify(ctx, 'claim', id));
+  if (!c.attachments.some((a) => a.id === attachmentId)) return refused('no_document');
+  return receiptFile(ctx, attachmentId, refused('no_document'));
+}
+
 // ── Decision ───────────────────────────────────────────────────────────────────────────────────────────────
 
 /** Leave-pack refusal classes, by the export-name allowlist core/mobile-leave-history.ts uses. */
 const isLeaveDomainError = (e: unknown) => Object.entries(leave).some(([n, v]) =>
   /^(Leave|ReplacementCredit|InsufficientLeave|NegativeLeave|HourlyLeave|MissingReject).*Error$/.test(n) && typeof v === 'function' && e instanceof (v as typeof Error));
-const LABELS = ['leave request', 'leave cancellation'];
+const LABELS = ['leave request', 'leave cancellation', 'claim'];
+/** decideClaim's own sentences for a claim that is no longer pending, or not readable (core/claims.ts). */
+const CLAIM_NOT_PENDING = 'Only a pending claim can be decided';
+const CLAIM_NOT_FOUND = 'Claim not found';
 const ALREADY = /^(leave request|cancellation request|correction request) is already \w+$/;
 /** A leave chain step's per-kind authority refusal (core/leave.ts assertCanDecideAsApprover). */
 const STEP_AUTHORITY = /^Only .+ can decide this (leave request|leave cancellation)$/;
@@ -250,6 +296,12 @@ export function decisionRefusal(e: unknown): TaskDecisionRefusal {
   if (e instanceof AttendanceWorkflowError && e.code === 'notApprover') return refused(/your own/.test(e.message) ? 'self_approval' : 'not_assigned');
   // AttendanceLevelError's message is a problem code, not a sentence: no message.
   if (e instanceof AttendanceLevelError) return refused('decision_refused');
+  // D12: decideClaim's refusals. A limit the approval would breach carries the kernel's own sentence.
+  if (e instanceof claims.ClaimError) {
+    if (e.message === CLAIM_NOT_PENDING) return refused('already_decided');
+    if (e.message === CLAIM_NOT_FOUND) return refused('not_assigned');
+    return { ...refused('decision_refused'), message: publicErrorMessage(e).slice(0, 4000) };
+  }
   const sentence = e instanceof AttendanceWorkflowError || e instanceof LeavePayrollBusyError || e instanceof LeavePayrollClosedError || isLeaveDomainError(e)
     || (e instanceof Error && e.constructor === Error && !isDatabaseError(e));
   if (sentence) return { ...refused('decision_refused'), message: publicErrorMessage(e).slice(0, 4000) };
@@ -301,6 +353,16 @@ export async function decideTaskV2(ctx: SessionContext, kind: NativeTaskKind, id
       if (kind === 'leaveCancellation') {
         const out = await leave.decideLeaveCancellation(ctx, { cancellationRequestId: id, decision, deciderEmploymentId: me.employmentId, expectedStepIndex: expected.stepIndex ?? null }, tx);
         return { outcome: 'accepted' as const, status: statusOf(out.status) };
+      }
+      if (kind === 'claim') {
+        // One step, no chain: the only state the approver can have seen is `pending` (the expected state); a reason is
+        // required to reject (D12) and recorded on the rejection event; decideClaim re-checks the limits on approval.
+        if (row.status !== 'pending') throw new TaskRefused('already_decided');
+        if (!approve && !reason) throw new TaskRefused('reason_required');
+        await claims.decideClaim(ctx, {
+          claimRequestId: id, decision: approve ? 'approve' : 'reject', deciderEmploymentId: me.employmentId, ...(approve ? {} : { rejectReason: reason }),
+        }, tx);
+        return { outcome: 'accepted' as const, status: approve ? 'approved' as const : 'rejected' as const };
       }
       const out = await decideAttendanceCorrection(ctx, {
         correctionId: id, decision, deciderEmploymentId: me.employmentId,

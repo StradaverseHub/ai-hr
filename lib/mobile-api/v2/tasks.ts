@@ -10,6 +10,7 @@
  *   GET  /api/mobile/v2/tasks?cursor&limit                        → TasksPageV2
  *   GET  /api/mobile/v2/tasks/{kind}/{id}                         → TaskDetailResult
  *   GET  /api/mobile/v2/tasks/leave/{id}/document                 → the attachment bytes, or TaskDocumentRefusal
+ *   GET  /api/mobile/v2/tasks/claim/{id}/document?attachment      → one receipt's bytes, or TaskDocumentRefusal (M11)
  *   POST /api/mobile/v2/tasks/{kind}/{id}/decision {requestId, decision, reason?, dates?, expected}
  *                                                                 → TaskDecisionResult
  *
@@ -17,9 +18,13 @@
  * attendance applications (clock corrections and overtime, which the kernel decides as one kind); every other
  * kind is listed read-only with its web path. D3 no bulk. D4 self-approval is refused at mobile admission even
  * for super_admin. Online only, explicit confirmation, a rejection reason where the kernel records one.
+ * D12 (2026-10-28, amends D2): expense claims are decided natively too — approve, or reject with a reason, through
+ * core/claims.ts decideClaim; receipts viewable through the task-scoped document route; no bulk.
  */
 import { z } from 'zod';
 import { commandOf, pageOf, refusalOf } from './common';
+import { MoneyV2 } from './pay';
+import { ClaimFieldAnswerV2, ClaimReceiptV2 } from './claims';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const calendarDate = isoDate.refine((v) => { const d = new Date(v + 'T00:00:00Z'); return Number.isFinite(d.getTime()) && d.toISOString().slice(0, 10) === v; });
@@ -31,8 +36,8 @@ const clock = z.string().regex(/^\d{2}:\d{2}$/);
 export const TASK_KINDS = ['leave', 'leaveCancellation', 'replacementLeave', 'attendance', 'profile', 'claim', 'resignation', 'managerReview', 'hrReview', 'noticeAcknowledgement'] as const;
 export const TaskKind = z.enum(TASK_KINDS);
 export type TaskKind = z.infer<typeof TaskKind>;
-/** D2: the kinds decided natively. Attendance covers clock corrections AND overtime (one decider). */
-export const NATIVE_TASK_KINDS = ['leave', 'leaveCancellation', 'attendance'] as const;
+/** D2: the kinds decided natively. Attendance covers clock corrections AND overtime (one decider). D12 adds claims. */
+export const NATIVE_TASK_KINDS = ['leave', 'leaveCancellation', 'attendance', 'claim'] as const;
 export const NativeTaskKind = z.enum(NATIVE_TASK_KINDS);
 export type NativeTaskKind = z.infer<typeof NativeTaskKind>;
 export const isNativeTaskKind = (kind: string): kind is NativeTaskKind => (NATIVE_TASK_KINDS as readonly string[]).includes(kind);
@@ -70,6 +75,11 @@ export type TeamCoverV2 = z.infer<typeof TeamCoverV2>;
 const leaveExpected = z.object({ stepIndex: z.number().int().nonnegative().nullable() });
 /** The attendance workflow's current stage and participant slot (both null: no workflow). */
 const attendanceExpected = z.object({ stageIndex: z.number().int().nonnegative().nullable(), participantSlot: z.string().min(1).max(64).nullable() });
+/**
+ * A claim is decided in ONE step (decideClaim: pending → approved | rejected; no chain), so the only state the
+ * approver can have seen is `pending`; decideClaim itself refuses any other (`already_decided`).
+ */
+const claimExpected = z.object({ status: z.literal('pending') });
 
 const common = {
   id: z.string().uuid(),
@@ -123,7 +133,24 @@ export const AttendanceTaskDetailV2 = z.object({
   hasAttachment: z.boolean(),
   expected: attendanceExpected,
 });
-export const TaskDetailV2 = z.discriminatedUnion('kind', [LeaveTaskDetailV2, LeaveCancellationTaskDetailV2, AttendanceTaskDetailV2]);
+/** D12 — a pending expense claim as listPendingClaims reads it. Amounts are two-place decimal strings. */
+export const ClaimTaskDetailV2 = z.object({
+  kind: z.literal('claim'), ...common,
+  claimType: name,
+  claimItem: name.nullable(),
+  amount: MoneyV2,
+  /** The claimant's company's one currency (claims carry none of their own), or null. */
+  currency: z.string().max(8).nullable(),
+  quantityKm: z.string().regex(/^\d{1,12}(\.\d{1,6})?$/).nullable(),
+  incurredOn: isoDate,
+  /** The employee's own description of the expense. */
+  employeeReason: z.string().max(2000).nullable(),
+  fields: z.array(ClaimFieldAnswerV2).max(100),
+  /** Each opens through GET …/tasks/claim/{id}/document?attachment={receipt id}. */
+  receipts: z.array(ClaimReceiptV2).max(50),
+  expected: claimExpected,
+});
+export const TaskDetailV2 = z.discriminatedUnion('kind', [LeaveTaskDetailV2, LeaveCancellationTaskDetailV2, AttendanceTaskDetailV2, ClaimTaskDetailV2]);
 export type TaskDetailV2 = z.infer<typeof TaskDetailV2>;
 
 /**
@@ -150,7 +177,7 @@ export const TaskDecisionCommand = commandOf({
   decision: z.enum(['approve', 'reject']),
   reason: z.string().trim().max(1000).optional(),
   dates: z.array(calendarDate).min(1).max(400).optional(),
-  expected: z.union([leaveExpected.strict(), attendanceExpected.strict()]),
+  expected: z.union([leaveExpected.strict(), attendanceExpected.strict(), claimExpected.strict()]),
 });
 export type TaskDecisionCommand = z.infer<typeof TaskDecisionCommand>;
 
