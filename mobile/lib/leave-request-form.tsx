@@ -29,7 +29,7 @@ const fromPicker=(mode:'date'|'time',d:Date)=>mode==='date'?`${d.getFullYear()}-
  * D9 — the platform's own date/time control instead of free text. Android opens the system dialog; iOS shows the
  * spinner under the field and commits on Done, so a value is never set by merely looking at it.
  */
-function PickerField({label,mode,value,today,disabled,onChange}:{label:string;mode:'date'|'time';value:string|undefined;today:string;disabled:boolean;onChange:(value:string)=>void}){
+export function PickerField({label,mode,value,today,disabled,onChange}:{label:string;mode:'date'|'time';value:string|undefined;today:string;disabled:boolean;onChange:(value:string)=>void}){
   const {palette}=useTenantDesign();const [open,setOpen]=useState<Date|null>(null);
   function show(){
     if(disabled)return;const seed=toPicker(mode,value,today);

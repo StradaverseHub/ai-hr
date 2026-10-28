@@ -93,6 +93,8 @@ export const AttendanceRecordsV2 = z.object({
   enabled: z.boolean(),
   employmentId: z.string().uuid().nullable(),
   timeZone,
+  /** The kernel's business day today (todayInKualaLumpur), so the app never asks the device what day it is. */
+  today: isoDate,
   from: isoDate,
   to: isoDate,
   /** Ascending by date, one per calendar day of the window. */
@@ -283,6 +285,8 @@ export type ReplacementUnavailable = z.infer<typeof ReplacementUnavailable>;
 export const ReplacementLeaveOfferV2 = z.object({
   employmentId: z.string().uuid().nullable(),
   timeZone,
+  /** The kernel's business day today; a worked date after it is refused by the kernel. */
+  today: isoDate,
   allowed: z.boolean(),
   reason: ReplacementUnavailable.nullable(),
   requiresFirstScheduleConsent: z.boolean(),

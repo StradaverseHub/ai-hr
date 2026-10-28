@@ -56,6 +56,7 @@ export default function Me() {
 
       <SectionLabel>{t('payslips')}</SectionLabel>
       <Button title={t('payOpen')} onPress={() => router.push('/pay')} />
+      <Button title={t('attOpen')} onPress={() => router.push('/attendance')} kind="quiet" />
 
       <Button title={t('integrityKeysTitle')} onPress={()=>router.push('/integrity-keys')} kind="quiet"/>
       <Button title={t('pendingTitle')} onPress={()=>router.push('/pending-submissions')} kind="quiet"/>

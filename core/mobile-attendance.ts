@@ -103,14 +103,14 @@ export function attendanceDayOf(r: RangeRow, punches: PunchMap, today: string): 
 
 /** The caller's own days over [from, to] (≤ 31, checked by the route), ascending. */
 export async function ownAttendanceRecords(ctx: SessionContext, employmentId: string | null, w: { from: string; to: string }): Promise<AttendanceRecordsV2> {
-  const base = { timeZone: HR_LOCAL_TZ, from: w.from, to: w.to };
+  const today = todayInKualaLumpur();
+  const base = { timeZone: HR_LOCAL_TZ, today, from: w.from, to: w.to };
   if (!attendanceEnabled(ctx)) return { enabled: false, employmentId: null, ...base, days: [] };
   if (!employmentId) return { enabled: true, employmentId: null, ...base, days: [] };
   const [rows, punches] = await Promise.all([
     att.attendanceForEmploymentRange(ctx, employmentId, w.from, w.to),
     att.attendancePunchesForRange(ctx, employmentId, w.from, w.to),
   ]);
-  const today = todayInKualaLumpur();
   return { enabled: true, employmentId, ...base, days: rows.map((r) => attendanceDayOf(r, punches, today)) };
 }
 
@@ -315,9 +315,10 @@ export async function withdrawOwnAttendanceApplicationV2(ctx: SessionContext, em
 
 /** My Leave's own three reads: may this employee ask, which type a credit lands on, and the company's ladder. */
 export async function replacementLeaveOfferV2(ctx: SessionContext, employmentId: string | null, locale: string): Promise<ReplacementLeaveOfferV2> {
-  const base = { employmentId, timeZone: HR_LOCAL_TZ, requiresFirstScheduleConsent: false, leaveType: null, tiers: null, ordinaryDayAllowed: false };
+  const today = todayInKualaLumpur();
+  const base = { employmentId, timeZone: HR_LOCAL_TZ, today, requiresFirstScheduleConsent: false, leaveType: null, tiers: null, ordinaryDayAllowed: false };
   if (!employmentId) return { ...base, allowed: false, reason: 'no_employment' };
-  const availability = await leave.replacementRequestAvailability(ctx, employmentId, todayInKualaLumpur());
+  const availability = await leave.replacementRequestAvailability(ctx, employmentId, today);
   if (!availability.allowed) return { ...base, allowed: false, reason: availability.reason ?? 'not_eligible' };
   const [types, offer] = await Promise.all([listLeaveTypes(ctx, { locale, includeArchived: false }), leave.leaveCreditOfferForEmployment(ctx, employmentId)]);
   const type = pickReplacementLeaveType(types);
