@@ -988,3 +988,13 @@ offline cold start); no HR-outcome fetch (decision 4).
 Still by design: no HR-outcome fetch on the phone (decision 4). HR resolves a held punch through an attendance
 correction, which the employee sees in My attendance > applications (M12, 29 October 2026).
 
+
+## Owner decision D16 — keyless server (29 October 2026) — DECIDED, not built yet
+
+The product runs on customer premises and in our cloud, so offline attendance must not depend on a server-held
+key or a particular KMS. Decision: the server signs no offline context. It accepts a claim only when it matches the
+context the server itself recorded (`mobile_offline_context`: digest, nonce, device lease, permits, expiry) and is
+signed by the phone's own hardware key (App Attest / Android Keystore), which never leaves the phone. Removed: the
+`AIHR_MOBILE_OFFLINE_SIGNING_KEY` signer, the issuer registry and its rotation, and the phone's Ed25519 verification.
+Contexts are stored without the shared master secret if they contain nothing sensitive (verified during the build).
+Supersedes owner decision 1 (signing key custody) of 28 October 2026. Default off; 0647 remains an unapplied draft.
