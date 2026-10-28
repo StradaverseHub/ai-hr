@@ -20425,7 +20425,8 @@
         "changed": "Cấu hình đã thay đổi hoặc không còn khả dụng. Tải lại trước khi lưu.",
         "scope": "Bạn không thể quản lý mọi công ty trong nhóm hiện tại hoặc nhóm đã chọn.",
         "system": "Không thể lưu cấu hình. Tải lại trước khi thử lại.",
-        "overlap": "Một số đơn vị đã được gán cho cấu hình khác. Hãy bỏ các đơn vị đó hoặc tải lại phân bổ."
+        "overlap": "Một số đơn vị đã được gán cho cấu hình khác. Hãy bỏ các đơn vị đó hoặc tải lại phân bổ.",
+        "excluded": "Công ty đã chọn đã được lưu trữ hoặc bị loại trừ trong năm thưởng này. Hãy bỏ công ty đó trước khi lưu."
       },
       "ownershipHelp": "Mỗi cặp công ty/đơn vị dùng một cấu hình chung trong mỗi năm thưởng.",
       "currencyHelp": "Cấu hình dùng chung sử dụng chính sách Reward Desk MYR hiện có; không cung cấp chính sách tiền tệ khác tại đây.",
@@ -20441,7 +20442,8 @@
       "loadFailed": "Không thể kiểm tra phân bổ. Hãy thử lại trước khi tiếp tục.",
       "retry": "Thử lại",
       "conflict": "{unit} đã thuộc {name} cho năm {year}.",
-      "excludedCompany": "Loại trừ cho năm"
+      "excludedCompany": "Loại trừ cho năm",
+      "companyArchived": "Đã lưu trữ"
     },
     "returnedTo": {
       "bu": "Returned to BU CEO",

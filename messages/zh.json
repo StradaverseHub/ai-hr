@@ -20425,7 +20425,8 @@
         "changed": "配置已更改或不再可用。请重新加载后再保存。",
         "scope": "您不能管理现有或所选分组中的所有公司。",
         "system": "无法保存配置。请重新加载后再试。",
-        "overlap": "部分单位已分配给其他配置。请移除这些单位或重新加载分配。"
+        "overlap": "部分单位已分配给其他配置。请移除这些单位或重新加载分配。",
+        "excluded": "所选公司已归档或被排除于此奖励年度之外。请先移除再保存。"
       },
       "ownershipHelp": "每个公司／业务单位组合在同一奖励年度使用一份共享配置。",
       "currencyHelp": "共享配置使用现有的 MYR 奖励政策；此处不提供其他币种政策。",
@@ -20441,7 +20442,8 @@
       "loadFailed": "无法检查分配。请重试后再继续。",
       "retry": "重试",
       "conflict": "{unit} 在 {year} 年已纳入 {name}。",
-      "excludedCompany": "年已排除公司"
+      "excludedCompany": "年已排除公司",
+      "companyArchived": "已归档"
     },
     "returnedTo": {
       "bu": "Returned to BU CEO",

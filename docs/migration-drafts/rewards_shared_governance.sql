@@ -29,7 +29,15 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  AND NOT EXISTS(SELECT 1 FROM public.reward_company_exclusion e WHERE e.tenant_id=app.current_tenant_id() AND e.company_id=p_company AND e.year=p_year AND e.ended_at IS NULL)
 $$;
 REVOKE ALL ON FUNCTION app.reward_company_available(uuid,integer) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.reward_company_available(uuid,integer) TO ai_hr_app;
+REVOKE ALL ON FUNCTION app.reward_company_available(uuid,integer) FROM ai_hr_app;
+--> statement-breakpoint
+-- The application may ask about a company it administers; native guards use the private predicate.
+CREATE FUNCTION app.reward_company_admin_available(p_company uuid,p_year integer) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.reward_admin(p_company) AND app.reward_company_available(p_company,p_year)
+$$;
+REVOKE ALL ON FUNCTION app.reward_company_admin_available(uuid,integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_company_admin_available(uuid,integer) TO ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.reward_company_exclusion_change(p_company uuid,p_year integer,p_reason text,p_end_id uuid DEFAULT NULL) RETURNS uuid
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -102,3 +110,13 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.reward_policy_group_hidden_count() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.reward_policy_group_hidden_count() TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.reward_company_exclusion_audit_owner() RETURNS trigger
+LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF (NEW.aggregate_type='reward-company-exclusion' OR NEW.event_type IN ('reward.company-excluded','reward.company-exclusion-ended')) AND NOT app.acting_as_owner()
+ THEN RAISE EXCEPTION 'Reward exclusion audit requires its native writer' USING ERRCODE='42501'; END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_company_exclusion_audit_owner() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER reward_company_exclusion_audit_owner BEFORE INSERT ON domain_event FOR EACH ROW EXECUTE FUNCTION app.reward_company_exclusion_audit_owner();

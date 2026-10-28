@@ -20425,7 +20425,8 @@
         "changed": "The configuration changed or is no longer available. Reload before saving.",
         "scope": "You cannot manage every company in the existing or selected group.",
         "system": "The configuration could not be saved. Reload before trying again.",
-        "overlap": "Some units are already assigned to another configuration. Remove them or reload the assignments."
+        "overlap": "Some units are already assigned to another configuration. Remove them or reload the assignments.",
+        "excluded": "A selected company is archived or excluded from this reward year. Remove it before saving."
       },
       "ownershipHelp": "A company/unit pair uses one shared configuration per reward year.",
       "currencyHelp": "Shared configurations use the existing MYR Reward Desk policy; other currency policies are not offered here.",
@@ -20441,7 +20442,8 @@
       "loadFailed": "Assignments could not be checked. Try again before continuing.",
       "retry": "Try again",
       "conflict": "{unit} is already in {name} for {year}.",
-      "excludedCompany": "Excluded for"
+      "excludedCompany": "Excluded for",
+      "companyArchived": "Archived"
     },
     "returnedTo": {
       "bu": "Returned to BU CEO",

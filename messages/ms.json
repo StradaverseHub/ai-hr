@@ -20425,7 +20425,8 @@
         "changed": "Konfigurasi berubah atau tidak lagi tersedia. Muat semula sebelum menyimpan.",
         "scope": "Anda tidak boleh mengurus semua syarikat dalam kumpulan sedia ada atau dipilih.",
         "system": "Konfigurasi tidak dapat disimpan. Muat semula sebelum mencuba lagi.",
-        "overlap": "Sesetengah unit sudah ditetapkan kepada konfigurasi lain. Alih keluar atau muat semula penetapan."
+        "overlap": "Sesetengah unit sudah ditetapkan kepada konfigurasi lain. Alih keluar atau muat semula penetapan.",
+        "excluded": "Syarikat yang dipilih diarkibkan atau dikecualikan bagi tahun ganjaran ini. Alih keluarnya sebelum menyimpan."
       },
       "ownershipHelp": "Setiap pasangan syarikat/unit menggunakan satu konfigurasi dikongsi bagi setiap tahun ganjaran.",
       "currencyHelp": "Konfigurasi dikongsi menggunakan dasar Reward Desk MYR sedia ada; dasar mata wang lain tidak ditawarkan di sini.",
@@ -20441,7 +20442,8 @@
       "loadFailed": "Penetapan tidak dapat disemak. Cuba lagi sebelum meneruskan.",
       "retry": "Cuba lagi",
       "conflict": "{unit} sudah dalam {name} bagi {year}.",
-      "excludedCompany": "Dikecualikan bagi"
+      "excludedCompany": "Dikecualikan bagi",
+      "companyArchived": "Diarkibkan"
     },
     "returnedTo": {
       "bu": "Returned to BU CEO",

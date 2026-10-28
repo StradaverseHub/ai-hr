@@ -383,6 +383,8 @@ export async function createRewardUnit(ctx: SessionContext, raw: { name?: string
   return withRewardsTenant(ctx, async tx => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended('access-configuration:'||app.current_tenant_id()::text,0))`);
     await requireAdmin(tx, p.companyId);
+    const [available]=await tx.execute<{ok:boolean}>(sql`select app.reward_company_admin_available(${p.companyId}::uuid,${p.year}) as ok`);
+    if(!available?.ok)throw new RewardError('This company is archived or excluded from rewards for the selected year.');
     const shared=await rewardPolicyForReviewTx(tx,p.sharedPolicyVersionId,p.companyId,p.businessUnitId,p.year);
     if(shared&&shared.policy.year!==p.year)throw new RewardError('The shared configuration belongs to a different reward year.');
     let cycleId = p.cycleId;

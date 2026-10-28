@@ -16,7 +16,7 @@ export function rewardCompanyExclusions(ctx:SessionContext,year?:number){
    left join app_user u on u.id=e.created_by and u.tenant_id=e.tenant_id left join person p on p.id=u.person_id and p.tenant_id=e.tenant_id
    where e.tenant_id=app.current_tenant_id() and app.reward_admin(e.company_id) and ${year===undefined?sql`true`:sql`e.year=${year}`}
    order by c.legal_name,e.created_at desc,e.id`);
-  return rows.map(row=>({id:row.id,companyId:row.company_id,company:row.company,year:row.year,reason:row.reason,createdBy:row.created_by,createdAt:row.created_at,endedAt:row.ended_at,endReason:row.end_reason})) satisfies RewardCompanyExclusion[];
+  return rows.map(row=>({id:row.id,companyId:row.company_id,company:row.company,year:row.year,reason:row.reason,createdBy:row.created_by,createdAt:new Date(row.created_at).toISOString(),endedAt:row.ended_at?new Date(row.ended_at).toISOString():null,endReason:row.end_reason})) satisfies RewardCompanyExclusion[];
  });
 }
 export function changeRewardCompanyExclusion(ctx:SessionContext,raw:unknown){

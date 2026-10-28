@@ -65,7 +65,7 @@ describe('shared configuration pair picker',()=>{
   const view=render(wrap(<SharedRewardEditor {...props}/>));
   expect(screen.queryByRole('checkbox',{name:/Fictional Company/})).toBeNull();
   view.rerender(wrap(<SharedRewardEditor {...props} groupId={id(6)} revision={1} targets={[{companyId:id(1),businessUnitId:id(3)}]}/>));
-  expect(screen.getByRole('checkbox',{name:`Fictional Company A · ${en.rewards.sharedPolicy.archived}`})).toBeTruthy();
+  expect(screen.getByRole('checkbox',{name:`Fictional Company A · ${en.rewards.sharedPolicy.companyArchived}`})).toBeTruthy();
   expect(screen.getByRole<HTMLButtonElement>('button',{name:en.rewards.sharedPolicy.preview}).disabled).toBe(true);
   expect(screen.getByRole('button',{name:en.rewards.sharedPolicy.removeUnavailable})).toBeTruthy();
  });
