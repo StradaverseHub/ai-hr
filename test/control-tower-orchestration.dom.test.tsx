@@ -24,7 +24,6 @@ vi.mock('../app/control-tower/orchestrator-actions', () => ({ refreshOrchestrati
 vi.mock('../core/readiness-actions', () => ({ myReadinessActions: vi.fn() }));
 import { myReadinessActions } from '../core/readiness-actions';
 import { MyReadinessWork } from '../app/me/readiness-work';
-import { ControlTowerNavigation } from '../app/control-tower/navigation';
 import { OrchestrationWorkQueue } from '../app/control-tower/work-queue';
 
 const show = (element: React.ReactNode) => render(<NextIntlClientProvider locale={renderLocale} messages={catalogues[renderLocale]}>{element}</NextIntlClientProvider>);
@@ -45,28 +44,6 @@ function populatedQueue(): Awaited<ReturnType<typeof orchestrationQueue>> {
 afterEach(() => { cleanup(); renderLocale = 'en'; });
 
 describe('consolidated Control Tower', () => {
-  it('keeps the existing queues and controls in one navigation with the active route identified', () => {
-    show(<ControlTowerNavigation />);
-    expect(screen.getByRole('link', { name: 'Employee data' }).getAttribute('aria-current')).toBe('page');
-    expect(screen.getByRole('link', { name: 'Approvals' }).getAttribute('href')).toBe('/control-tower/actions');
-    expect(screen.getByRole('link', { name: 'AI management' }).getAttribute('href')).toBe('/control-tower/agents');
-    expect(screen.getByRole('link', { name: 'Opportunities' }).getAttribute('href')).toBe('/control-tower/opportunities');
-    expect(screen.getAllByRole('link')).toHaveLength(7);
-  });
-  it('keeps AI management current on each of its sub-menu pages, and only there', () => {
-    try {
-      for (const path of ['/control-tower/agents', '/control-tower/agents/allowances', '/control-tower/agents/runs']) {
-        route.pathname = path;
-        const view = show(<ControlTowerNavigation />);
-        const current = screen.getAllByRole('link').filter((link) => link.getAttribute('aria-current') === 'page');
-        expect(current.map((link) => link.textContent), path).toEqual(['AI management']);
-        view.unmount();
-      }
-      route.pathname = '/control-tower/agentsX';
-      show(<ControlTowerNavigation />);
-      expect(screen.getAllByRole('link').filter((link) => link.getAttribute('aria-current') === 'page')).toEqual([]);
-    } finally { route.pathname = '/control-tower/readiness'; }
-  });
   it('does not present an unobserved queue as a successful clean check', async () => {
     show(await OrchestrationWorkQueue({ view: empty }));
     expect(screen.getByText(en.controlTower.orchestrator.unobserved)).toBeTruthy();
@@ -77,13 +54,6 @@ describe('consolidated Control Tower', () => {
   it('offers the system execution log only when the parent authorizes that view', async () => {
     show(await OrchestrationWorkQueue({ view: empty, canViewRuns: true }));
     expect(screen.getByRole('link', { name: 'Execution history' }).getAttribute('href')).toBe('/admin/scheduled-actions');
-  });
-  it('keeps core HR available without advertising payroll-specific queues', () => {
-    show(<ControlTowerNavigation payrollEnabled={false} />);
-    expect(screen.getByRole('link', { name: 'Overview' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Employee data' })).toBeTruthy();
-    expect(screen.queryByRole('link', { name: 'Payroll exceptions' })).toBeNull();
-    expect(screen.queryByRole('link', { name: 'Approvals' })).toBeNull();
   });
   it('shows failed execution separately from verified absence of open cases', async () => {
     const now = new Date();

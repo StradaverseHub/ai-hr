@@ -236,6 +236,7 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
   // exceptions, so without payroll this row is a permanently empty screen. It stops being payroll's when
   // an action type lands whose subject is not a payroll finding.
   ['/control-tower/actions', 'payroll'] as const,
+  ['/control-tower/exceptions', 'payroll'] as const,
   // NOT payroll-gated: record completeness is not a payroll question (see CONTROL_DOMAINS). Absent from
   // this map entirely, which is how a row says "always offered".
   ...(modulePackById('payroll')!.navLinks ?? []).map((l) => [l.href, 'payroll'] as const),
@@ -289,6 +290,27 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
 // Reports node (c440b365) — the single "Report" parent that centralises all reporting. Its six children
 // map to the reporter's categories; each opens the Reports hub filtered to that category, where the
 // predefined reports AND the custom report builder live. Admin-only (every report surface is admin-gated).
+// AI management (28 Oct 2026, owner): one place to manage AI, each section its own page under
+// /control-tower/agents. A sub-menu in the AI Control Tower group rather than a tab row inside the page.
+// Overview is exact so it is not also current on the other sections. Spending opens only where a spend
+// policy exists; elsewhere its page returns to the Overview.
+const AI_MANAGEMENT_NODE: CollapsibleGroupItem = {
+  collapsible: true,
+  labelKey: 'aiManagement',
+  icon: Sparkles,
+  activeMatch: 'children',
+  defaultHref: '/control-tower/agents',
+  children: [
+    { href: '/control-tower/agents', labelKey: 'aiManagementOverview', icon: Gauge, adminOnly: true, exactHref: true },
+    { href: '/control-tower/agents/provider', labelKey: 'aiManagementProvider', icon: Settings2, adminOnly: true },
+    { href: '/control-tower/agents/assistant', labelKey: 'aiManagementAssistant', icon: MessageSquareText, adminOnly: true },
+    { href: '/control-tower/agents/features', labelKey: 'aiManagementFeatures', icon: ListChecks, adminOnly: true },
+    { href: '/control-tower/agents/allowances', labelKey: 'aiManagementAllowances', icon: Users, adminOnly: true },
+    { href: '/control-tower/agents/spending', labelKey: 'aiManagementSpending', icon: Wallet, adminOnly: true },
+    { href: '/control-tower/agents/orchestrator', labelKey: 'aiManagementOrchestrator', icon: Network, adminOnly: true },
+    { href: '/control-tower/agents/runs', labelKey: 'aiManagementRuns', icon: ScrollText, adminOnly: true },
+  ],
+};
 const REPORTS_NODE: CollapsibleGroupItem = {
   collapsible: true,
   labelKey: 'reports',
@@ -469,9 +491,14 @@ const GROUPS: Group[] = [
       // ADR-0083 §3 item 2 — the shift-left half. Sits ABOVE the explainer because it is a working screen
       // and the explainer is a reference one.
       { href: '/control-tower/readiness', labelKey: 'controlTowerReadiness', icon: ClipboardCheck, adminOnly: true },
+      // ADR-0074 r245 — the cross-run payroll exceptions queue; payroll-gated through MODULE_OF_HREF.
+      { href: '/control-tower/exceptions', labelKey: 'controlTowerExceptions', icon: Receipt, adminOnly: true },
       // ADR-0083 §2.5 — the approval queue. The only screen in the product where a person authorises an
       // agent to write, which is why it is a row of its own rather than a panel on another page.
       { href: '/control-tower/actions', labelKey: 'controlTowerActions', icon: Wand2, adminOnly: true },
+      // 28 Oct 2026 (owner) — this group IS the Control Tower menu; the in-page tab rows were retired, so the
+      // payroll exceptions queue and AI management live here too, in the same order the tabs used.
+      AI_MANAGEMENT_NODE,
       // ADR-0131 Phase 1 — where agents could take work off HR, measured from the records. A working
       // screen, so it sits above the reference explainer.
       { href: '/control-tower/opportunities', labelKey: 'controlTowerOpportunities', icon: TrendingUp, adminOnly: true },
@@ -794,7 +821,7 @@ export function Sidebar({
   </div> : null;
   const sectionLabel = (href:string) => {
     const placement=navigationPlacement(href);
-    return placement && 'section' in placement ? `section${placement.section==='hr'?'HR':placement.section==='config'?'Configuration':placement.section==='mine'?'Mine':'Team'}` : undefined;
+    return placement && 'section' in placement ? `section${placement.section==='hr'?'HR':placement.section==='ai'?'AiManagement':placement.section==='config'?'Configuration':placement.section==='mine'?'Mine':'Team'}` : undefined;
   };
 
   const childCaption=(child:{href:string;labelKey:string})=>{
