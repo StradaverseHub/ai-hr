@@ -16,6 +16,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_MOBILE_DESIGN, mobilePalette } from '../lib/mobile-design';
 import * as errors from '../mobile/lib/errors';
 import * as v2tasks from '../lib/mobile-api/v2/tasks';
+import * as v2claims from '../lib/mobile-api/v2/claims';
 
 const ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 type Ports = Record<string, unknown>;
@@ -69,8 +70,11 @@ function fixture() {
   };
   const api = { apiGetPage, apiGetV2, apiPostV2, v2Page: (path: string) => ({ kind: 'page', path, schema: null }) };
   const paged = load('mobile/lib/paged-list.tsx', { ...base, './api': api });
+  // M11 (D12): the claim pieces are exercised in test/mobile-claims.dom.test.tsx; inert here.
+  const claimParts = { ClaimAnswers: () => null, ReceiptLink: () => null, claimMoney: (a: string | null, c: string | null) => [c, a].filter(Boolean).join(' ') };
   const screens = load('mobile/lib/approval-decision.tsx', {
     ...base, './api': api, './paged-list': paged, '../../lib/mobile-api/v2/tasks': v2tasks,
+    './claim-parts': claimParts, '../../lib/mobile-api/v2/claims': v2claims,
     'react-native-safe-area-context': { SafeAreaView: View }, 'expo-router': { router: { push, back } },
     'expo-crypto': { randomUUID: () => `${String(++seq).padStart(8, '0')}-bbbb-4bbb-8bbb-bbbbbbbbbbbb` },
     './design': { DesignText: Text, useTenantDesign: () => ({ design: DEFAULT_MOBILE_DESIGN, palette: mobilePalette(DEFAULT_MOBILE_DESIGN, 'dark') }) },
@@ -89,23 +93,25 @@ describe('approvals list', () => {
     const f = fixture();
     f.apiGetPage.mockResolvedValueOnce({ items: [
       item(),
-      item({ id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', kind: 'claim', subject: { name: 'Chong', code: null }, nativeDecision: false, webPath: '/approvals?category=claim&task=claim&requestId=cccccccc-cccc-4ccc-8ccc-cccccccccccc#row' }),
+      // D12 made claims native; a resignation is still read-only in the app.
+      item({ id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', kind: 'resignation', subject: { name: 'Chong', code: null }, nativeDecision: false, webPath: '/approvals?category=resignation&task=resignation&requestId=cccccccc-cccc-4ccc-8ccc-cccccccccccc#row' }),
     ], nextCursor: null });
     render(<f.ApprovalsScreen />);
-    await screen.findByText('task_claim');
+    await screen.findByText('task_resignation');
     expect((f.apiGetPage.mock.calls[0][0] as { path: string }).path).toBe('v2/tasks');
     expect(screen.getAllByRole('link')).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'task_leave · Aisyah' }));
     expect(f.push).toHaveBeenCalledWith({ pathname: '/approvals/[kind]/[id]', params: { kind: 'leave', id: ID } });
-    fireEvent.click(screen.getByRole('link', { name: 'openOnWeb: task_claim · Chong' }));
-    expect(f.openURL).toHaveBeenCalledWith('https://hr.test/approvals?category=claim&task=claim&requestId=cccccccc-cccc-4ccc-8ccc-cccccccccccc#row');
+    fireEvent.click(screen.getByRole('link', { name: 'openOnWeb: task_resignation · Chong' }));
+    expect(f.openURL).toHaveBeenCalledWith('https://hr.test/approvals?category=resignation&task=resignation&requestId=cccccccc-cccc-4ccc-8ccc-cccccccccccc#row');
     expect(f.push).toHaveBeenCalledTimes(1);
     expect(f.apiPostV2).not.toHaveBeenCalled();
   });
 
   it('never builds a path or a web URL from anything but a native kind, a UUID and a relative path', () => {
     const f = fixture();
-    expect(() => f.taskPath('claim', ID)).toThrow();
+    expect(() => f.taskPath('profile', ID)).toThrow();
+    expect(f.taskPath('claim', ID, 'document')).toBe(`v2/tasks/claim/${ID}/document`);
     expect(() => f.taskPath('leave', '../me')).toThrow();
     expect(f.taskPath('attendance', ID.toUpperCase(), 'decision')).toBe(`v2/tasks/attendance/${ID}/decision`);
     expect(f.webUrl('//evil.test/x')).toBeNull();

@@ -122,7 +122,8 @@ describe('the task list', () => {
     expect(seen.map((t) => `${t.kind}:${t.id}`)).toEqual(canonical.map((t) => `${t.kind}:${t.id}`));
     expect(seen.filter((t) => t.kind === 'leave').map((t) => t.id).sort()).toEqual([...ids].sort());
     expect(seen.filter((t) => t.kind === 'leave').every((t) => t.nativeDecision && t.webPath === null)).toBe(true);
-    expect(seen.every((t) => t.nativeDecision === ['leave', 'leaveCancellation', 'attendance'].includes(t.kind) && (t.nativeDecision === (t.webPath === null)))).toBe(true);
+    // D12 (M11) added claims to the natively decided kinds; every other kind still carries its web path.
+    expect(seen.every((t) => t.nativeDecision === ['leave', 'leaveCancellation', 'attendance', 'claim'].includes(t.kind) && (t.nativeDecision === (t.webPath === null)))).toBe(true);
     expect((await get('?cursor=garbage!')).status).toBe(400);
     caller = employee.ctx;
     expect((await get('')).body.items.map((t: { id: string }) => t.id), 'an own request is never a task').not.toContain(ids[0]);
@@ -164,7 +165,9 @@ describe('admission', () => {
     for (const kind of ['leave', 'leaveCancellation', 'attendance'] as const) expect((await detail(manager, kind, guessed)).body).toEqual({ outcome: 'refused', code: 'not_assigned' });
     expect((await post(manager, 'leave', guessed, { requestId: randomUUID(), decision: 'approve', expected: { stepIndex: 0 } })).body).toEqual({ outcome: 'refused', code: 'not_assigned' });
     caller = manager.ctx;
-    expect((await get(`/claim/${guessed}`)).status).toBe(400);
+    // D12: a claim is a native kind now, so a guessed claim id is `not_assigned`; a kind the app never decides is a 400.
+    expect((await get(`/claim/${guessed}`)).body).toEqual({ outcome: 'refused', code: 'not_assigned' });
+    expect((await get(`/profile/${guessed}`)).status).toBe(400);
     expect((await get('/leave/not-a-uuid')).status).toBe(400);
     const mine = await apply(employee, 1);
     expect((await post(manager, 'leave', mine, { requestId: randomUUID(), decision: 'approve', expected: { stageIndex: 0, participantSlot: null } })).status, 'expected state of another kind').toBe(400);
