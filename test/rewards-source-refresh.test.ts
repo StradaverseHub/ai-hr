@@ -38,6 +38,7 @@ describe('Rewards source refresh preview and confirm', () => {
     const userId = await createAppUser(b.tenantId, p.id, 'employee');
     bu = { ...admin, userId, personId: p.id, roles: ['employee'], grants: undefined };
     await setRewardMember(admin, unitId, (await view()).unit.revision, userId, 'bu');
+    const [reviewerEmployment]=await owner.db.select().from(schema.employment).where(eq(schema.employment.personId,p.id));ids.reviewer=reviewerEmployment.id;
     for (const row of (await view()).rows) {
       const recommendation = row.source.employmentId === ids.moved ? { ...row.recommendation, meritBp: 800, reason: 'Retained for the record' } : row.recommendation;
       await saveRewardEntry(admin, unitId, (await view()).unit.revision, row.id, recommendation, { ...emptyFacts(), reviewed: true, talent: 'SCORE', performance: 'ME' });
@@ -59,7 +60,7 @@ describe('Rewards source refresh preview and confirm', () => {
     const p = await previewRewardSourceRefresh(admin, unitId, before.unit.revision);
     expect(p).toMatchObject({ from: earlier, asOf: today });
     const names = (c: keyof typeof p.people) => p.people[c].map(x => x.employmentId);
-    expect(names('joined')).toEqual([ids.joined]);
+    expect(names('joined').sort()).toEqual([ids.joined,ids.reviewer].sort());
     expect(names('left').sort()).toEqual([ids.terminated, ids.moved].sort());
     expect(names('confirmed')).toEqual([ids.confirmed]);
     expect(names('notice')).toEqual([ids.notice]);
@@ -76,17 +77,17 @@ describe('Rewards source refresh preview and confirm', () => {
     await saveRewardSourceRefresh(admin, unitId, rev, p.asOf, p.digest);
     const v = await view(), row = (key: string) => v.rows.find(r => r.source.employmentId === ids[key])!;
     expect(v.unit.snapshotDate).toBe(today);
-    expect(v.rows).toHaveLength(8);
+    expect(v.rows).toHaveLength(9);
     expect(row('terminated').source).toMatchObject({ leftOn: today, leftReason: 'terminated' });
     expect(row('moved').source).toMatchObject({ leftOn: today, leftReason: 'moved' });
     expect(row('moved')).toMatchObject({ incrementReason: 'Left or moved out', bonusReason: 'Left or moved out', meritCents: 0, bonusCents: 0, lumpCents: 0 });
     expect(row('moved').recommendation.meritBp).toBe(800);
     expect(row('same').facts.reviewed).toBe(true);
-    for (const key of ['joined', 'terminated', 'moved', 'confirmed', 'notice', 'grade', 'salary']) expect(row(key).facts.reviewed, key).toBe(false);
+    for (const key of ['joined','reviewer', 'terminated', 'moved', 'confirmed', 'notice', 'grade', 'salary']) expect(row(key).facts.reviewed, key).toBe(false);
     expect(row('salary').source.basicCents).toBe(600000);
     expect(row('notice').source.notice).toBe(true);
     const [event] = await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId, unitId), eq(schema.domainEvent.eventType, 'reward-unit.sources-refreshed')));
-    expect(event.payload).toMatchObject({ from: earlier, asOf: today, changed: 7, counts: { joined: 1, left: 2, confirmed: 1, notice: 1, grade: 1, salary: 1, other: 0 } });
+    expect(event.payload).toMatchObject({ from: earlier, asOf: today, changed: 8, counts: { joined: 2, left: 2, confirmed: 1, notice: 1, grade: 1, salary: 1, other: 0 } });
     // A second refresh finds nothing new: leavers are not re-counted.
     const again = await previewRewardSourceRefresh(admin, unitId, v.unit.revision);
     expect(Object.values(again.people).flat()).toEqual([]);

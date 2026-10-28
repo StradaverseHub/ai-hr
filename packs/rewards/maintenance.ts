@@ -102,7 +102,8 @@ async function applyAccess(tx: Tx, ctx: SessionContext, unit: typeof rewardUnit.
     const eligibilityKey=(m:AccessRow)=>JSON.stringify({userId:m.userId,role:m.role,validFrom:m.validFrom??today,validTo:m.validTo??null,coversUserId:m.coversUserId??null});
     for(const member of [...current,...next]){
       if((member.validFrom&&member.validFrom>today)||(member.validTo&&member.validTo<today))continue;
-      const [eligible]=await tx.execute<{ok:boolean}>(sql`select app.reward_access_candidate_eligible(${unit.id}::uuid,${member.userId}::uuid,${member.role}) as ok`);
+      const existing=current.find(row=>pairKey(row)===pairKey(member));
+      const [eligible]=member.id?await tx.execute<{ok:boolean}>(sql`select app.reward_member_eligible(${member.id}::uuid) as ok`):await tx.execute<{ok:boolean}>(sql`select app.reward_access_candidate_eligible(${unit.id}::uuid,${member.userId}::uuid,${member.role}) or ${existing?.id?sql`app.reward_member_eligible(${existing.id}::uuid)`:sql`false`} as ok`);
       const restored=input.after?.restoreReason&&pairKey(input.after)===pairKey(member);
       if(eligible?.ok||restored)active.push(eligibilityKey(member));
     }

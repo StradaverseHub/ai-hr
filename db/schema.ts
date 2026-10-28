@@ -10280,6 +10280,24 @@ export const rewardMember = pgTable('reward_member', {
   validTo: date('valid_to'), coversUserId: uuid('covers_user_id').references(() => appUser.id),
   restoredReason: text('restored_reason'), restoredFingerprint: text('restored_fingerprint'),
 });
+/** Two-person access custody; only native functions write these RLS-protected records. */
+export const rewardAccessRequest=pgTable('reward_access_request',{
+ id:id(),tenantId:tenantId(),changes:jsonb('changes').notNull(),unitRevisions:jsonb('unit_revisions').$type<Record<string,number>>().notNull(),
+ beforeMembers:jsonb('before_members').notNull(),peopleFingerprints:jsonb('people_fingerprints').$type<Record<string,string>>().notNull(),
+ requestedBy:uuid('requested_by').notNull().references(()=>appUser.id),requestedAt:timestamp('requested_at',{withTimezone:true}).notNull().defaultNow(),
+ status:text('status').$type<'pending'|'approved'|'rejected'|'lapsed'>().notNull().default('pending'),
+ decidedBy:uuid('decided_by').references(()=>appUser.id),decidedAt:timestamp('decided_at',{withTimezone:true}),reason:text('reason'),
+});
+export const rewardAccessObservation=pgTable('reward_access_observation',{
+ tenantId:tenantId(),memberId:uuid('member_id').notNull().references(()=>rewardMember.id,{onDelete:'cascade'}),stateKey:text('state_key').notNull(),observedAt:timestamp('observed_at',{withTimezone:true}).notNull().defaultNow(),
+},table=>[primaryKey({columns:[table.tenantId,table.memberId,table.stateKey]})]);
+/** Soft unit pointer: internal transaction authorization must not block deletion of an unused review. */
+export const rewardAccessBootstrap=pgTable('reward_access_bootstrap',{
+ tenantId:tenantId(),unitId:uuid('unit_id').primaryKey(),transactionId:bigint('transaction_id',{mode:'bigint'}).notNull(),creatorId:uuid('creator_id').notNull().references(()=>appUser.id),
+});
+export const rewardAccessSourceEpoch=pgTable('reward_access_source_epoch',{
+ tenantId:tenantId(),sourceKind:text('source_kind').$type<'person'|'user'>().notNull(),sourceId:uuid('source_id').notNull(),generation:bigint('generation',{mode:'bigint'}).notNull().default(sql`1`),
+},table=>[primaryKey({columns:[table.tenantId,table.sourceKind,table.sourceId]})]);
 export const rewardEntry = pgTable('reward_entry', {
   id: id(), tenantId: tenantId(), unitId: uuid('unit_id').notNull().references(() => rewardUnit.id),
   employmentId: uuid('employment_id').notNull().references(() => employment.id),
