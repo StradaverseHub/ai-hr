@@ -1,3 +1,4 @@
+import {captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
 /** Actual screen component, fictional data owners. Optional HTML capture supports rendered review. */
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,render,screen,fireEvent} from '@testing-library/react';
@@ -35,13 +36,16 @@ describe('approved AI vocabulary in six rendered locales',()=>{
    return render(<NextIntlClientProvider locale={locale} messages={copies[locale] as any}><div className="flex min-h-screen"><div className="h-screen shrink-0"><Sidebar isAdmin canAdministerAi canConfigureAiProvider canApprove canAccessTeam enabledModules={null} defaultCollapsed={false}/></div><main className="min-w-0 flex-1 p-4">{page}</main></div></NextIntlClientProvider>);
   };
   await renderSection('overview');expect(screen.getByText(copies[locale].aiManagement.mapAssistant)).toBeInTheDocument();
+  const overview=document.body.innerHTML;
+  await captureAiReviewScreenshots(overview,locale,'overview');
   fireEvent.click(screen.getByRole('button',{name:copies[locale].nav.aiControlTower}));
   expect(screen.queryByRole('link',{name:copies[locale].nav.aiConfig})).toBeNull();
-  const overview=document.body.innerHTML;cleanup();
+  cleanup();
   await renderSection('orchestrator');expect(screen.getByRole('heading',{level:2,name:queueNames[locale]})).toBeInTheDocument();
   expect(screen.getByText(copies[locale].aiManagement.orchestratorHelp)).toBeInTheDocument();
   if(locale==='en')expect(document.body.textContent).not.toMatch(/feature switches above|module agent|specialist/i);
+  await captureAiReviewScreenshots(document.body.innerHTML,locale,'queue');
   const out=process.env.AIHR_SCREENSHOT_HTML_DIR;
   if(out){mkdirSync(out,{recursive:true});for(const [name,html] of [['overview',overview],['queue',document.body.innerHTML]])writeFileSync(`${out}/${locale}-${name}.html`,`<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/styles.css"></head><body class="bg-background text-foreground p-4">${html}</body></html>`);}
- });
+ },60000);
 });
