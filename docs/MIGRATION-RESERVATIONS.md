@@ -100,3 +100,7 @@ idx is assigned at journaling, after staging's idx 644 (0660) and the AI 0661/06
 
 **0670_ai_orchestrator_wave1_receipts** (`when` 1793190000000, idx at journaling) is reserved for AI DEV's ADR-0151 wave 1: new action kinds and generic receipt columns on `app.assistant_own_leave_review`.
 - Update (later, 28 October): staging has 0658 at idx 648. REA P1 wave 3 takes idx 649–653 in the next window, and **0669 journals after them** (expected idx 654). Its branch carries a provisional idx 649 that will be re-indexed by merging alpha once P1 lands. `when` 1793180000000 stays above P1's.
+
+## 28 October 2026 — P1 wave 3 applied on staging
+
+The P1 wave 3 release `5cb79457a` applied 0663 (idx 649), 0664 (650), 0665 (651), 0667 (652) and 0666 (653), `when` 1793170000000…005. Ledger 534 → 539, watermark 1793170000005. 0667 was amended once before application (a performance-only fast path); the applied hash is the amended file's. The next journal entry must use idx 654 and a `when` above 1793170000005.
