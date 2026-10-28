@@ -20,7 +20,10 @@ const employeePreview:ImportPreview={companyId:'c1',total:1,validCount:1,missing
 function deferred<T>(){let resolve!:(v:T)=>void;let reject!:(e:Error)=>void;const promise=new Promise<T>((r,j)=>{resolve=r;reject=j});return{promise,resolve,reject};}
 function pick(name:string){fireEvent.change(document.querySelector('input[type="file"]')!,{target:{files:[new File(['fixture'],name,{type:'text/csv'})]}});}
 function mount(kind:'section'|'employee') {render(<NextIntlClientProvider locale="en" messages={messages}>{kind==='section'?<SectionImport section="qualification" reference={reference}/>:<EmployeeImport companies={[{id:'c1',name:'Fixture'}]} defaultCompanyId="c1" reference={reference}/>}</NextIntlClientProvider>);}
-beforeEach(()=>{vi.resetAllMocks();mocks.read.mockImplementation(async(file:File)=>({name:file.name,text:file.name,dependentsText:'',extraTexts:{}}));});
+beforeEach(()=>{vi.resetAllMocks();mocks.read.mockImplementation(async(file:File)=>({name:file.name,text:file.name,dependentsText:'',extraTexts:{}}));
+  // 524303d9 — an employee file upload posts its original bytes to the Import History upload route; the
+  // fixture answers that route with the same commit mock, so success and failure stay the commit's own.
+  vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify(await mocks.commit()),{status:200})));});
 describe.each(['section','employee'] as const)('%s import input ownership',kind=>{
   const preview=kind==='section'?sectionPreview:employeePreview;
   it('removes an old ready preview while reading a replacement and after its server validation refuses',async()=>{

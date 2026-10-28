@@ -12,7 +12,8 @@
  *      inserted/updated row, which is the right cost), and does on 34 policies.
  *   2. the policies 0515 rewrote are exactly the fixture's 57 (test/fixtures/r395-policy-quals.json,
  *      generated from pg_policies before and after 0515), each with the fixture's post-0515 USING text and
- *      its WITH CHECK text UNCHANGED from before 0515, except the explicitly pinned 0540 assessment-file, 0560 own-Profile and 0561 user-only Feedback extensions.
+ *      its WITH CHECK text UNCHANGED from before 0515, except the explicitly pinned 0540 assessment-file, 0560 own-Profile and 0561 user-only Feedback extensions,
+ *      and the 0676 import-void narrowing (ADR-0157) of employment_rls/person_rls USING.
  *   3. the migration file's ALTER POLICY statements name exactly those 57 and set no WITH CHECK.
  *   4. the set form really is planned as an InitPlan (the `(SELECT …)` wrapper is load-bearing).
  */
@@ -32,6 +33,11 @@ const assessmentAttachment = {
  qual: '((tenant_id = app.current_tenant_id()) AND ((employment_id = ANY (( SELECT app.visible_employment_ids() AS visible_employment_ids)::uuid[])) OR app.can_admin_perfcomp_employment(employment_id) OR COALESCE(app.assessment_file_read(review_id, evidence_id, id, uploaded_by_user_id, removed_at), false)))',
  withCheck: '((tenant_id = app.current_tenant_id()) AND ((employment_id = ANY (( SELECT app.visible_employment_ids() AS visible_employment_ids)::uuid[])) OR app.can_admin_perfcomp_employment(employment_id) OR COALESCE(app.assessment_file_write(review_id, evidence_id, uploaded_by_user_id), false)))',
 };
+
+// 0676 (ADR-0157) deliberately hides a voided employment/person from every ordinary read. It may only NARROW
+// visibility: the live USING must be exactly `(voided_at IS NULL) AND (<0515 USING>)`, WITH CHECK unchanged.
+const importVoidNarrowed = new Set(['employment.employment_rls', 'person.person_rls']);
+const voidNarrowedQual = (qual: string) => `((voided_at IS NULL) AND ${qual})`;
 
 afterAll(async () => {
   await closeAll();
@@ -77,10 +83,12 @@ describe('r395 — per-row visibility functions are gone from every policy USING
         const r = live.get(historicalKey);
         expect(r, `${historicalKey} exists`).toBeTruthy();
         const attachment=p.table==='performance_attachment'&&p.policy==='performance_attachment_rls';
-        expect(r!.qual, `${historicalKey} USING`).toBe(attachment?assessmentAttachment.qual:p.newQual);
+        const expectedQual=attachment?assessmentAttachment.qual:importVoidNarrowed.has(historicalKey)?voidNarrowedQual(p.newQual):p.newQual;
+        expect(r!.qual, `${historicalKey} USING`).toBe(expectedQual);
         expect(r!.with_check ?? null, `${historicalKey} WITH CHECK`).toBe(attachment?assessmentAttachment.withCheck:p.withCheck);
       }
     }
+    expect(FIXTURE.policies.filter((p)=>importVoidNarrowed.has(key(p.table,p.policy))).length,'both 0676 void-narrowed policies are fixture entries').toBe(2);
     expect([...reconciledFeedbackKeys].sort(), 'exactly five historical entries receive the explicit 0560/0561 reconciliation')
       .toEqual([...testingFeedbackHistoricalKeys,profileHistoricalPolicyKey].sort());
     await assertTestingFeedbackPolicyGraph();

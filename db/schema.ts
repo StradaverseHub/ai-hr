@@ -866,6 +866,10 @@ export const person = pgTable(
     // remuneration runs for PCB when they hold concurrent employments across the group's companies.
     // FK to employment is added in migration 0069 (avoids the person↔employment cycle in TS).
     designatedPaymasterEmploymentId: uuid('designated_paymaster_employment_id'),
+    // 524303d9 (ADR-0157, migration 0676) — the person of a voided import employment. Leaves every ordinary
+    // read through `person_rls`, which releases the work email; the statutory IC moves to `voidedIcNumber`.
+    voidedAt: timestamp('voided_at', { withTimezone: true }),
+    voidedIcNumber: text('voided_ic_number'),
     createdAt: createdAt(),
   },
   (t) => [index('person_tenant_idx').on(t.tenantId)],
@@ -1254,6 +1258,14 @@ export const employment = pgTable(
     // Explicit HR classification; false means unmarked, never inferred or certified real.
     // Only new Direct Superior selection in Movement imports consumes this flag.
     isTestRecord: boolean('is_test_record').notNull().default(false),
+    // 524303d9 (ADR-0157, migration 0676) — VOID: an employment created in error by an import and reverted.
+    // Final and one-way (trigger `employment_void_guard`); a voided row leaves every ordinary read through
+    // `employment_rls`. `employeeCode` is cleared (the original kept in `voidedEmployeeCode`) so the ID re-imports.
+    voidedAt: timestamp('voided_at', { withTimezone: true }),
+    voidedBy: uuid('voided_by'),
+    voidReason: text('void_reason'),
+    voidedImportAttemptId: uuid('voided_import_attempt_id'),
+    voidedEmployeeCode: text('voided_employee_code'),
     createdAt: createdAt(),
   },
   (t) => [
@@ -11236,6 +11248,25 @@ export const payrollHistoryImportEvent=pgTable('payroll_history_import_event',{
  kind:text('kind').notNull().$type<'confirmed'|'failed'|'reverted'|'revert_failed'>(),actorId:uuid('actor_id').notNull().references(()=>appUser.id),
  changes:jsonb('changes').notNull().$type<import('../lib/payroll-history-revisions').HistoryRevisionChange[]>(),detail:jsonb('detail').notNull().$type<Record<string,unknown>>(),createdAt:createdAt(),
 },t=>[uniqueIndex('payroll_history_confirm_once_uq').on(t.attemptId).where(sql`${t.kind}='confirmed'`),uniqueIndex('payroll_history_revert_once_uq').on(t.attemptId).where(sql`${t.kind}='reverted'`)]);
+/** Shared personnel import history (0675, ADR-0155). Append-only; writes only through core/import-history. */
+export const importAttempt=pgTable('import_attempt',{
+ id:id(),tenantId:tenantId(),kind:text('kind').notNull().$type<import('../lib/import-history').ImportKind>(),
+ createdBy:uuid('created_by').notNull().references(()=>appUser.id),operationKey:uuid('operation_key').notNull(),
+ sourceName:text('source_name').notNull(),mimeType:text('mime_type').notNull(),sourceHash:text('source_hash').notNull(),
+ sourceContent:bytea('source_content').notNull(),companyIds:uuid('company_ids').array().notNull(),
+ plan:jsonb('plan').notNull().$type<Record<string,unknown>>(),createdAt:createdAt(),
+},t=>[uniqueIndex('import_attempt_tenant_id_created_by_operation_key_key').on(t.tenantId,t.createdBy,t.operationKey),index('import_attempt_kind_created_idx').on(t.tenantId,t.kind,t.createdAt,t.id),index('import_attempt_created_idx').on(t.tenantId,t.createdAt,t.id)]);
+export const importAttemptItem=pgTable('import_attempt_item',{
+ id:id(),tenantId:tenantId(),attemptId:uuid('attempt_id').notNull().references(()=>importAttempt.id),companyId:uuid('company_id').notNull().references(()=>company.id),
+ employmentId:uuid('employment_id').references(()=>employment.id),itemKey:text('item_key').notNull(),label:text('label').notNull().default(''),ordinal:integer('ordinal').notNull(),
+ status:text('status').notNull().$type<'applied'|'failed'>(),before:jsonb('before').$type<unknown>(),after:jsonb('after').$type<unknown>(),
+ errors:jsonb('errors').notNull().default([]).$type<string[]>(),createdAt:createdAt(),
+},t=>[uniqueIndex('import_attempt_item_attempt_id_item_key_key').on(t.attemptId,t.itemKey),index('import_attempt_item_attempt_idx').on(t.tenantId,t.attemptId,t.ordinal)]);
+export const importAttemptEvent=pgTable('import_attempt_event',{
+ id:id(),tenantId:tenantId(),attemptId:uuid('attempt_id').notNull().references(()=>importAttempt.id),
+ kind:text('kind').notNull().$type<import('../lib/import-history').ImportEventKind>(),actorId:uuid('actor_id').notNull().references(()=>appUser.id),
+ reason:text('reason'),detail:jsonb('detail').notNull().default({}).$type<Record<string,unknown>>(),createdAt:createdAt(),
+},t=>[index('import_attempt_event_attempt_idx').on(t.tenantId,t.attemptId,t.createdAt),uniqueIndex('import_attempt_confirm_once_uq').on(t.attemptId).where(sql`${t.kind}='confirmed'`),uniqueIndex('import_attempt_revert_once_uq').on(t.attemptId).where(sql`${t.kind}='reverted'`)]);
 /** Current import amounts for batch dashboards; original closed batch counters stay immutable. */
 const payrollHistoryBatchView=pgView('payroll_history_effective_batch').as(qb=>qb.select({
  ...getTableColumns(payrollBatch),

@@ -37,6 +37,10 @@ function registerRecords(texts:PersonnelRegisterTexts={}):PersonnelRegisterRecor
   return result;
 }
 
+/** 524303d9 — Import History keeps what was imported. A file upload posts its original bytes to
+ *  ./employee/upload; these actions carry a paste or a prepared text, so that text is the recorded source. */
+const pastedSource=(csv:string,fileName?:string)=>({name:fileName||'pasted-employees.csv',content:Buffer.from(csv,'utf8')});
+
 /** Dry-run validation. Returns a per-row preview; writes nothing. */
 export async function validateImportAction(
   csv: string,
@@ -78,6 +82,7 @@ export async function commitImportAction(
     registerRecords:registerRecords(registers),
     allocationRecords:parseCostAllocationCsv(allocationsCsv??''),allocationToken,
     fileName: fileName ?? '',
+    source:pastedSource(csv,fileName),
   });
   revalidatePath('/admin/personnel');
   revalidatePath('/admin/personnel/import');

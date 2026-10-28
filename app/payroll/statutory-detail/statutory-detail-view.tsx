@@ -53,6 +53,7 @@ import { formatMoney } from '@/lib/money';
 // `isSetByHand` is the derivation's OWN predicate over `provenance` — imported rather than re-spelled as
 // `source !== 'computed'` here, so 70b14723's second source is recognised by this screen automatically.
 import { isSetByHand, type StatutoryProvenanceSource } from '@/core/statutory-explain';
+import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import type { StatutoryExplainKey, StatutoryExplanation, StatutoryItemExplanation } from '@/core/statutory-explain';
 
 export type StatutoryDetailContext = {
@@ -66,6 +67,9 @@ export type StatutoryDetailContext = {
   runType: string;
   runSeq: number;
   currency: string | null;
+  /** b240c0ff — imported payroll history is named by its Pay Cycle ("Monthly - By Import"). */
+  historyImportAttemptId?: string | null;
+  historyImportCycleName?: string | null;
 };
 
 /** STATIC keys, exhaustively mapped. A computed `t()` key is invisible to the i18n coverage scan, which
@@ -247,7 +251,11 @@ export async function StatutoryDetailView({
         <Row label={t('fieldPeriod')} value={ctx.periodLabel} />
         <Row
           label={t('fieldCycle')}
-          value={`${cycleKey ? t(cycleKey) : ctx.runType}${ctx.runSeq > 1 ? ` #${ctx.runSeq}` : ''}`}
+          value={
+            ctx.historyImportAttemptId
+              ? payrollRunLabel(ctx, cycleKey ? t(cycleKey) : ctx.runType)
+              : `${cycleKey ? t(cycleKey) : ctx.runType}${ctx.runSeq > 1 ? ` #${ctx.runSeq}` : ''}`
+          }
         />
         <Row
           label={t('fieldRuleset')}

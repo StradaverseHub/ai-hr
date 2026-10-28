@@ -161,6 +161,14 @@ type RunType = (typeof payrollRunTypeEnum.enumValues)[number];
 const cleanRunType = (v: unknown): RunType | undefined =>
   payrollRunTypeEnum.enumValues.includes(v as RunType) ? (v as RunType) : undefined;
 
+/**
+ * b240c0ff — THE RUN TYPE A PAYROLL-CYCLE FILTER SHOULD MATCH. Imported payroll history is stored as an
+ * `adjustment` run on purpose (core/payroll-history-revisions.ts) but is shown as its Pay Cycle
+ * ("Monthly - By Import"), so a reader filtering by cycle must find it under that cycle's run type, not
+ * under "Adjustment". Every other run answers its own `run_type`, byte-identical to before.
+ */
+const filterRunTypeSql = sql`(case when ${payrollBatch.historyImportAttemptId} is not null then coalesce((select pc.run_type from payroll_cycle pc where pc.id = ${payrollBatch.payrollCycleId}), ${payrollBatch.runType}) else ${payrollBatch.runType} end)`;
+
 /** Optional period narrowing on a 'YYYY-MM' pay-period column (default payroll_batch.pay_period; the
  *  Individual inquiry passes the txn row's own pay_period so unattached rows filter too): year+month →
  *  exact month; year only → that year; month only → that month across years. */
@@ -957,6 +965,11 @@ export type ProcessedPayslipViewRow = {
   runType: RunType;
   runSeq: number;
   batchStatus: string;
+  /** b240c0ff — set on a run written by the payroll-history import, with the Pay Cycle name the file used,
+   *  so every surface labels it through `payrollRunLabel` ("Monthly - By Import"). OPTIONAL for the same
+   *  reason `currency` is: hand-built test rows omit it, and absent means "not imported". */
+  historyImportAttemptId?: string | null;
+  historyImportCycleName?: string | null;
   /**
    * 3c88d593 (r206) — WHICH DAYS OF THE PERIOD THIS SLIP CLAIMS (columns added by 0446). Read them
    * through `payslipSegmentOf` / `payslipCoverage` (core/payslip-segment.ts), NEVER directly: that reader
@@ -1054,6 +1067,9 @@ export function listProcessedPayslipsAcross(
         runType: payrollBatch.runType,
         runSeq: payrollBatch.runSeq,
         batchStatus: payrollBatch.status,
+        // b240c0ff — what the run is CALLED when it is imported history (see `payrollRunLabel`).
+        historyImportAttemptId: payrollBatch.historyImportAttemptId,
+        historyImportCycleName: payrollBatch.historyImportCycleName,
         // 3c88d593 (r206) — the coverage window (0446), so Transaction View can show a transferred
         // employee's month as the two employer segments it was actually paid on instead of one summed
         // cell. Two columns off a table already joined; nothing about any FIGURE changes.
@@ -1083,7 +1099,8 @@ export function listProcessedPayslipsAcross(
           inArray(payrollBatch.companyId, p.companyIds),
           periodFilter(p.year, p.month),
           p.employmentId ? eq(payslip.employmentId, p.employmentId) : undefined,
-          cycle ? eq(payrollBatch.runType, cycle) : undefined,
+          // b240c0ff — imported history filters under its real Pay Cycle (see `filterRunTypeSql`).
+          cycle ? sql`${filterRunTypeSql} = ${cycle}` : undefined,
         ),
       )
       .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(person.fullName))
@@ -1141,6 +1158,9 @@ export type PayslipRunRow = {
   /** Unique WITHIN a pay period (`payroll_batch_period_run_uq`), so company + period + runSeq names
    *  exactly one run — which is what lets one dropdown choice resolve to one payslip. */
   runSeq: number;
+  /** b240c0ff — see `ProcessedPayslipViewRow.historyImportAttemptId`. */
+  historyImportAttemptId?: string | null;
+  historyImportCycleName?: string | null;
 };
 
 export function listPayslipRunsFor(
@@ -1156,6 +1176,8 @@ export function listPayslipRunsFor(
         payPeriod: payrollBatch.payPeriod,
         runType: payrollBatch.runType,
         runSeq: payrollBatch.runSeq,
+        historyImportAttemptId: payrollBatch.historyImportAttemptId,
+        historyImportCycleName: payrollBatch.historyImportCycleName,
       })
       .from(payslip)
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
@@ -1183,6 +1205,10 @@ export type PayrollRegisterRow = {
   payPeriod: string;
   payrollCycle: RunType;
   runSeq: number;
+  /** b240c0ff — see `ProcessedPayslipViewRow.historyImportAttemptId`. `payrollCycle` stays the stored run
+   *  type (the batch export matches rows on it); a renderer labels the run through `payrollRunLabel`. */
+  historyImportAttemptId: string | null;
+  historyImportCycleName: string | null;
   daysWorked: string | null;
   // Earnings
   basic: string;
@@ -1276,6 +1302,8 @@ export function listPayrollRegisterAcross(
         payPeriod: payrollBatch.payPeriod,
         payrollCycle: payrollBatch.runType,
         runSeq: payrollBatch.runSeq,
+        historyImportAttemptId: payrollBatch.historyImportAttemptId,
+        historyImportCycleName: payrollBatch.historyImportCycleName,
         daysWorked: payslip.daysWorked,
         basic: payslip.basicSalary,
         allowance: payslip.allowance,
@@ -1500,6 +1528,9 @@ export function payslipForReview(
         runType: payrollBatch.runType,
         runSeq: payrollBatch.runSeq,
         batchStatus: payrollBatch.status,
+        // b240c0ff — see ProcessedPayslipViewRow.historyImportAttemptId.
+        historyImportAttemptId: payrollBatch.historyImportAttemptId,
+        historyImportCycleName: payrollBatch.historyImportCycleName,
         releasedAt: payrollBatch.releasedAt,
         version: payslip.version,
         basic: payslip.basicSalary,

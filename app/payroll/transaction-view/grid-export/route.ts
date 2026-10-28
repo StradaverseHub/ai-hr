@@ -15,6 +15,7 @@
  * never cross the company fence.
  */
 import { getLocale, getTranslations } from 'next-intl/server';
+import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import { scopedAdmin } from '@/lib/scope';
 import { listEmployees } from '@/core/read';
 import { listPayComponents } from '@/core/pay-components';
@@ -144,7 +145,8 @@ export async function GET(req: Request) {
       // payslip stored. test/history-pivot.test.ts asserts every synthetic key resolves in en.json, which is
       // the coverage a computed t() key cannot get from the static i18n scan.
       r.labelKey ? r.name || t(`view.grid.row.${r.labelKey}`) : r.name,
-      t(`individual.cycle.${r.runType}`),
+      // b240c0ff — the same label the screen prints ("Monthly - By Import" for imported history).
+      payrollRunLabel(r, t(`individual.cycle.${r.runType}`)),
       r.company,
       // EMPTY, never a substituted whole-month range, for a row nobody split: the month columns already
       // say which months it covers, and inventing a range here would put a claim in the file that no

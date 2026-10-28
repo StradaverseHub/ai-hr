@@ -18,6 +18,7 @@
  * are unit-testable against real payslips without an HTTP round trip.
  */
 import type { PayrollRegisterRow } from '@/core/payroll-view';
+import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import type { ReportData } from '@/lib/report-export';
 
 /**
@@ -110,7 +111,9 @@ export function transactionDetailReport(
     columns: TRANSACTION_DETAIL_COLUMNS.map((c) => c.label),
     rows: rows.map((r) =>
       TRANSACTION_DETAIL_COLUMNS.map((c) => {
-        const v = r[c.key];
+        // b240c0ff — the Payroll Cycle cell names imported history by its Pay Cycle ("Monthly - By Import");
+        // `r.payrollCycle` itself stays the stored run type, which `rowsForRun` above matches on.
+        const v = c.key === 'payrollCycle' ? payrollRunLabel(r, r.payrollCycle) : r[c.key];
         // null stays null (an empty cell, not the string "null"); everything else is passed through as
         // the register produced it — the numeric strings keep their stored precision, and the
         // serializers' own numeric heuristic right-aligns them.

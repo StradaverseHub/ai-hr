@@ -160,3 +160,6 @@ Read only records relevant to the task. A newer decision supersedes an older one
 - [ADR-0149 — Two-step result release and leader reads](0149-two-step-result-release-and-leader-reads.md)
 - [ADR-0151 — Orchestrator action layer: user-parity actions and learning from the system](0151-orchestrator-action-layer-and-system-learning.md)
 - [ADR-0152 — Performance & Talent area theme (one scoped palette across app themes)](0152-performance-talent-area-theme.md)
+- [ADR-0155 — Shared personnel import history and all-or-nothing revert](0155-shared-import-history-and-revert.md)
+- [ADR-0156 — Single-sheet Movement import, per-row company and whole-import revert](0156-single-sheet-movement-import.md)
+- [ADR-0157 — Voiding employments created in error by an import](0157-employment-import-void.md)

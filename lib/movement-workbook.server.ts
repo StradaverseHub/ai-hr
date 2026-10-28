@@ -1,162 +1,106 @@
 import 'server-only';
+/**
+ * ac6645ec (ADR-0156) — the Movement import template: Instructions, ONE Movements sheet with the eight
+ * approved columns, a Reference sheet (event types × allowed System Fields, the exact Company ID for every
+ * company the user may import for, and per-company allowed values) and hidden drop-down lists. The workbook
+ * is signed to the tenant and the movement-type catalogue; it binds no company and carries no internal id.
+ * The retired per-type workbooks (one sheet per type, bound to one company) are refused with a message to
+ * download the new template.
+ */
 import {createHash} from 'node:crypto';
 import {SaxesParser} from 'saxes';
 import type {MovementImportCatalog,MovementImportOption} from '../core/movement-import';
 import {readSpreadsheetArchive,decodeSpreadsheetXml} from './spreadsheet-archive';
-import {movementWorkbookLayout,movementTabNames,movementWorkbookRequirements,movementWorkbookScalarChoices,type MovementWorkbookColumn,type MovementWorkbookType} from './movement-workbook-layout';
-import {signMovementWorkbook,verifyMovementWorkbook,type MovementWorkbookMetadata,type MovementWorkbookBinding} from './movement-workbook-metadata.server';
-import {movementInputRecord,movementRecordLimits} from './movement-type-csv';
-import {MOVEMENT_IMPORT_LIMITS,type MovementImportRecord,type MovementImportEmployee} from './movement-import-contract';
+import {movementWorkbookScalarChoices,type MovementWorkbookType} from './movement-workbook-layout';
+import {signMovementTemplate,verifyMovementTemplate} from './movement-workbook-metadata.server';
+import {MOVEMENT_IMPORT_LIMITS,type MovementImportRecord} from './movement-import-contract';
+import {MOVEMENT_COLUMNS,MOVEMENT_SHEET,movementColumnCaptions,movementHeaderIssue,movementRowsToRecords,movementSystemFields,movementTypeDisplay,type MovementSheetRow} from './movement-import-rows';
+import type {MovementFormField} from './movement-form-contract';
 import type {PersonnelLabelResolver} from './personnel-import-contract';
 import {personnelImportLabelResolvers} from './personnel-import-labels.server';
-import {todayInKualaLumpur} from './hr-date';
-import {movementImportIssueText} from './movement-import-issues';
+import {parseCsv} from './csv';
 export const MOVEMENT_WORKBOOK_LIMITS={maxBytes:5_000_000,maxExpandedBytes:64_000_000,maxEntries:6000} as const;
 const UUID=/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 const xml=(s:string)=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
 function business(value:unknown){const s=value==null?'':String(value);if(s.length>32767||UUID.test(s))throw new Error('workbook_business_value_invalid');return s;}
-export function movementWorkbookCatalogue(catalog:MovementImportCatalog){return createHash('sha256').update(JSON.stringify({version:2,types:catalog.types})).digest('hex');}
+/** Binds the tenant's active movement types (code, label, behaviour); a changed catalogue needs a new download. */
+export function movementWorkbookCatalogue(catalog:Pick<MovementImportCatalog,'types'>){return createHash('sha256').update(JSON.stringify({version:2,types:catalog.types})).digest('hex');}
 const col=(n:number)=>{let s='';for(n++;n;n=Math.floor((n-1)/26))s=String.fromCharCode(65+(n-1)%26)+s;return s;};
-function formula(column:MovementWorkbookColumn,columns:MovementWorkbookColumn[],row:number){
- const find=(key:string)=>{const i=columns.findIndex(c=>c.key===key);if(i<0)throw new Error('workbook_layout_invalid');return col(i)+row;};
- if(column.key==='calculated.basicSalary')return `IF(OR(${find('incrementAmount')}="",${find('current.basicSalary')}=""),"",${find('current.basicSalary')}+${find('incrementAmount')})`;
- if(column.key==='calculated.changePercent')return `IF(OR(${find('incrementAmount')}="",${find('current.basicSalary')}="",${find('current.basicSalary')}=0),"",${find('incrementAmount')}/${find('current.basicSalary')})`;
- return `IF(OR(${find('basicSalary')}="",${find('current.basicSalary')}=""),"",${find('basicSalary')}-${find('current.basicSalary')})`;
-}
-type ReferenceChoice={code:string;label:string;company:string};
-// Company retains this workbook's existing legal-name identifier; other reference cells carry canonical codes.
-function referenceCode(option:MovementImportOption,company=false){return option.codes?.[0]??(company?option.label:UUID.test(option.value)?'':option.value);}
-function referenceSheetName(tabs:string[]){const used=new Set(tabs.map(name=>name.toLowerCase()));let name='Reference',n=1;while(used.has(name.toLowerCase()))name='Reference ('+(++n)+')';return name;}
-type Subject={employeeCode:string;name:string;current:Record<string,string|null>;managerExclusions?:string[]};
-export type MovementWorkbookDownload={tenantId:string;companyId:string;companyName:string;catalog:MovementImportCatalog;destinationCatalogs?:Record<string,MovementImportCatalog>;typeCode?:string;sourceBindings?:MovementWorkbookBinding[];subjects:Subject[];resolve:PersonnelLabelResolver;records?:MovementImportRecord[];employees?:MovementImportEmployee[]};
-/** Generate business-only cells, then apply this format's explicit OOXML presentation policy. */
-export async function buildMovementWorkbook(p:MovementWorkbookDownload){
+const ALLOWED_SHEETS=['Instructions',MOVEMENT_SHEET,'Reference','Lists','_meta'];
+export type MovementTemplateCompany={code:string;name:string;catalog:MovementImportCatalog;companyId:string};
+export type MovementTemplateInput={tenantId:string;types:MovementWorkbookType[];companies:MovementTemplateCompany[];resolve:PersonnelLabelResolver};
+const optionCode=(option:MovementImportOption)=>option.codes?.[0]??(UUID.test(option.value)?'':option.value);
+/** Builds the single-sheet template. Every cell is business text; no internal id leaves the server. */
+export async function buildMovementWorkbook(p:MovementTemplateInput){
  const XLSX=await import('xlsx'),{default:JSZip}=await import('jszip');
- const words=(key:string,fallback:string)=>p.resolve('people.import.movement.v2.'+key,fallback);
- const baselineGuide=words('baselineGuide','When current salary is blank, green salary calculations stay blank. Check and preview supplies the authoritative salary baseline, including blank or repeated employee rows. A recorded zero remains a salary baseline.');
- const types=p.sourceBindings?p.sourceBindings.map(binding=>{const type=p.catalog.types.find(t=>t.code===binding.code&&t.behaviour===binding.behaviour);if(!type)throw new Error('workbook_catalogue_changed');return type;}):p.typeCode?p.catalog.types.filter(t=>t.code===p.typeCode):p.catalog.types;
- if(!types.length)throw new Error('unknown_or_inactive_event_type');
- const names=p.sourceBindings?.map(b=>b.sheet)??movementTabNames(types,p.resolve),layouts=types.map((t,i)=>movementWorkbookLayout(t,p.resolve).map((c,index)=>({...c,label:p.sourceBindings?.[i].captions[index]??c.label})));
- const wb=XLSX.utils.book_new(),now=new Date(),bindings=types.map((t,i)=>({sheet:names[i],code:t.code,behaviour:t.behaviour,columns:layouts[i].map(c=>c.key),captions:layouts[i].map(c=>business(c.label)),annotationCaption:p.employees?p.resolve('people.import.movement.errors','Errors'):undefined,identities:p.sourceBindings?.[i].identities??(p.typeCode?p.subjects.map((s,index)=>({row:index+6,employeeCode:s.employeeCode})):[])}));
- const meta=signMovementWorkbook({tenantId:p.tenantId,companyId:p.companyId,companyName:p.companyName,downloadedAt:now.toISOString(),catalogue:movementWorkbookCatalogue(p.catalog),sheets:bindings});
- const instructions=[[p.resolve('people.import.movement.title','Movement Import')],[p.resolve('people.import.movement.v2.workbookHint','Grey: current records. Yellow: your entries. Green: display calculations. Current values and pay are checked again before saving.')],[words('dateGuide','Dates: DD-MMM-YYYY or YYYY-MM-DD. Blacklist uses the current Kuala Lumpur day.')],[words('sequenceGuide','Each employee’s complete sequence saves together. Unused tabs and untouched prefilled rows are skipped.')],[words('exampleGuide','Examples are guidance only; no example employee is an import row.')],[words('incrementExample','Example: increment of 100.00 on an existing employee; enter the effective day and leave other changes blank.')],[words('zeroBaselineGuide','Change % stays blank when the salary baseline is missing or zero. Review the salary history in Check and preview.')],[baselineGuide],[words('referenceGuide','Dropdowns use exact system codes from Reference. Labels explain each code. A distinct label from an older file remains supported; preview checks the row company.')],[words('type','Movement type'),words('requiredInputs','Required inputs'),words('optionalInputs','Optional inputs')],...types.map((_t,i)=>{const guide=movementWorkbookRequirements(types[i],layouts[i]);return [names[i],[...guide.required,...(guide.requiredEither.length?[p.resolve('people.import.movement.issues.blacklist_input_required','Choose Blacklisted or enter Remarks. Employee ID alone is not a blacklist instruction.')]:[])].join(' · '),guide.optional.join(' · ')];})];
+ const words=(key:string,fallback:string)=>p.resolve('people.import.movement.sheet.'+key,fallback);
+ if(!p.types.length)throw new Error('unknown_or_inactive_event_type');
+ const captions=movementColumnCaptions(p.resolve).map(business),now=new Date();
+ const meta=signMovementTemplate({tenantId:p.tenantId,downloadedAt:now.toISOString(),catalogue:movementWorkbookCatalogue({types:p.types}),captions});
+ const wb=XLSX.utils.book_new();
+ const instructions=[
+  [p.resolve('people.import.movement.title','Movement Import')],
+  [words('guideRows','Use the Movements sheet. Enter one row for each field that changes. Rows with the same Company ID, Employee ID, Effective Date and Event Type are imported together as one movement.')],
+  [words('guideCompany','Company ID is the Company Code shown in People Management, or the registration number where a company has no code. The Reference sheet lists the exact value for every company you may import for.')],
+  [words('guideFields','Event Type and System Fields have drop-down lists. The Reference sheet shows which System Fields each event type may change and the allowed values for each company.')],
+  [words('guideBefore','Before is the value you expect the employee to have now. It is checked before anything is saved: if the record has changed since you prepared the file, that employee is stopped with a message and nothing is overwritten. Leave Before blank to skip the check.')],
+  [words('guideAfter','After is the new value. Use the code from the Reference sheet for grades, departments, positions, locations and other lists.')],
+  [words('guideDates','Dates: DD-MMM-YYYY (for example 01-Jan-2027) or YYYY-MM-DD. Blacklist uses the current Kuala Lumpur day.')],
+  [words('guideLimits','At most 200 rows and 50 employees per file, and 20 movements per employee. Each employee’s movements are saved together or not at all; other employees still go through.')],
+  [words('guideNoRow','A movement with no field change (for example a Confirmation with no salary change) is one row with System Fields, Before and After left blank.')],
+ ];
  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(instructions.map(row=>row.map(business))),'Instructions');
- const referenceRows:string[][]=[[],[]],referenceGroups=new Set<string>(),referenceName=referenceSheetName(names);
- const addReference=(label:string,choices:ReferenceChoice[])=>{
-  const key=JSON.stringify([label,choices]);if(referenceGroups.has(key))return;referenceGroups.add(key);
-  const c=referenceRows[0].length;referenceRows[0].push(business(label),'','');referenceRows[1].push(p.resolve('admin.systemLabels.col.code','Code'),p.resolve('admin.systemLabels.col.label','Label'),p.resolve('people.import.colCompany','Company'));
-  choices.forEach((choice,row)=>{referenceRows[row+2]??=[];referenceRows[row+2][c]=business(choice.code);referenceRows[row+2][c+1]=business(choice.label);referenceRows[row+2][c+2]=business(choice.company);});
- };
- const lists:string[][]=[[]];const listColumns=new Map<string,{column:number;name:string}>();const validations:{sheet:number;column:number;name:string;start:number;end:number}[]=[];
- for(const [i,type]of types.entries()){
-  const columns=layouts[i],matched=p.records?.filter(r=>r.cells.kind===type.code)??[];
-  const rowCount=MOVEMENT_IMPORT_LIMITS.rows;
-  if(p.subjects.length>rowCount||(p.sourceBindings?.[i].identities??[]).some(identity=>identity.row<6||identity.row>rowCount+5)||matched.some(record=>(record.source?.row??6)<6||(record.source?.row??6)>rowCount+5))throw new Error('too_many_rows');
-  const rows:unknown[][]=[[business(type.label??p.resolve('people.detail.movement.eventType.'+type.behaviour,type.code))],[words('colourGuide','Grey = current · Yellow = input · Green = calculation')],[words('downloaded','Downloaded')+' '+todayInKualaLumpur(now)],columns.map(c=>c.other?words('otherChanges','Other changes (optional)'):''),columns.map(c=>business(c.label))];
-  for(let r=0;r<rowCount;r++){
-   const subject=p.typeCode?p.subjects[r]:undefined,record=matched.find(x=>(x.source?.row??0)===r+6);
-   rows.push(columns.map(column=>column.key==='employeeCode'?business(record?.employeeCode??subject?.employeeCode??p.sourceBindings?.[i].identities?.find(identity=>identity.row===r+6)?.employeeCode):column.key==='employeeName'?business(subject?.name):column.role==='current'?business(subject?.current[column.key.slice(8)]):column.role==='input'?business(column.key==='incrementAmount'?record?.incrementAmount:column.field?record?.cells[column.field]:undefined):''));
-  }
-  const sheet=XLSX.utils.aoa_to_sheet(rows);
-  for(let r=5;r<rowCount+5;r++)for(let c=0;c<columns.length;c++){
-   const address=col(c)+(r+1),column=columns[c],cell=sheet[address]??={t:'s',v:''};
-   if(column.role==='formula'){cell.t='n';cell.f=formula(column,columns,r+1);delete cell.v;cell.z=column.key.endsWith('changePercent')?'0.00%':'0.00';cell.c=[{a:'AIHR',t:words('formulaNote','Display only. The server recalculates from authoritative records; percentage is blank for a missing/zero baseline.')+' '+baselineGuide}];cell.c.hidden=true;}
-   else if(column.field&&['effectiveDate','endDate','resignationDate','tenderResignationDate','resignationEffectiveDate'].includes(column.field)||column.role==='current'&&/Date|hiredOn/.test(column.key)){
-    cell.z='dd-mmm-yyyy';const raw=String(cell.v??'');if(/^\d{4}-\d{2}-\d{2}$/.test(raw)){cell.t='n';cell.v=(Date.parse(raw+'T00:00:00Z')-Date.UTC(1899,11,30))/86400000;}
-   }else cell.z='@';
-  }
-  if(p.employees){
-   const errors=new Map(p.employees.flatMap(e=>e.rows.map(r=>[r.row,movementImportIssueText(r.errors,p.resolve)] as const)));
-   sheet[col(columns.length)+'5']={t:'s',v:p.resolve('people.import.movement.errors','Errors')};sheet['!rows']=[];sheet['!rows'][4]={hpt:30};
-   for(const record of matched){const row=record.source?.row??6,text=business(errors.get(record.row));sheet[col(columns.length)+row]={t:'s',v:text};if(text)sheet['!rows'][row-1]={hpt:Math.max(30,Math.min(240,Math.ceil(text.length/60)*15))};}
-   sheet['!ref']=`A1:${col(columns.length)}${rowCount+5}`;
-  }
-  sheet['!cols']=[...columns.map(c=>({wch:c.key==='employeeName'?28:c.role==='current'?23:27})),...(p.employees?[{wch:72}]:[])];
-  XLSX.utils.book_append_sheet(wb,sheet,names[i]);
-  for(const [c,column]of columns.entries()){
-   if(column.role!=='input'||!column.field)continue;
-   const field=column.field,entityTransfer=type.behaviour==='entityTransfer';
-   const eligible=(option:MovementImportOption,companyId:string)=>field!=='managerEmploymentId'||!option.isTestRecord&&option.eligible&&option.companyId===companyId;
-   const sourceOptions=field==='companyId'?p.catalog.companies:p.catalog.fields[field]??[];
-   const scopedOptions=entityTransfer&&p.destinationCatalogs&&field!=='companyId'
-    ?Object.entries(p.destinationCatalogs).flatMap(([companyId,catalog])=>(catalog.fields[field]??[]).filter(option=>eligible(option,companyId)).map(option=>({option,companyId})))
-    :sourceOptions.filter(option=>field!=='managerEmploymentId'||!option.isTestRecord&&option.eligible&&(entityTransfer?p.catalog.companies.some(company=>company.value===option.companyId):option.companyId===p.companyId)).map(option=>({option,companyId:option.companyId??p.companyId}));
-   let choices:ReferenceChoice[]=scopedOptions.map(({option,companyId})=>{const code=referenceCode(option,field==='companyId');return {code,label:option.label||code,company:p.catalog.companies.find(company=>company.value===(field==='companyId'?option.value:companyId))?.label??p.companyName};}).filter(choice=>choice.code.trim()!=='');
-   if(!choices.length)choices=movementWorkbookScalarChoices(field).map(option=>({code:option.value,label:p.resolve(option.labelKey,option.value),company:''}));
-   if(!choices.length)continue;if(choices.length>10000)throw new Error('movement_reference_catalog_too_large');
-   addReference(column.label,choices);
-   const values=[...new Set(choices.map(choice=>choice.code))];
-   const register=(entries:string[],first:number,last:number)=>{
-    if(!entries.length)return;const listKey=JSON.stringify(entries);let reference=listColumns.get(listKey);
-    if(!reference){const listColumn=lists[0].length,name='AIHR_Movement_List_'+listColumn;lists[0].push(business(column.label));for(let row=0;row<entries.length;row++){lists[row+1]??=[];lists[row+1][listColumn]=business(entries[row]);}reference={column:listColumn,name};listColumns.set(listKey,reference);wb.Workbook??={};wb.Workbook.Names??=[];wb.Workbook.Names.push({Name:name,Ref:`'Lists'!$${col(listColumn)}$2:$${col(listColumn)}$${entries.length+1}`});}
-    validations.push({sheet:i+1,column:c,name:reference.name,start:first,end:last});
-   };
-   if(column.field==='managerEmploymentId'&&p.typeCode&&p.subjects.length){
-    for(const [row,subject]of p.subjects.entries()){
-     const excluded=new Set(subject.managerExclusions??[]);
-     const entries=[...new Set(scopedOptions.filter(({option})=>!excluded.has(option.value)).map(({option})=>referenceCode(option)).filter(code=>code.trim()!==''))];
-     register(entries,row+6,row+6);
-    }
-    // Rows without a bound subject allow repeated IDs; canonical preview checks their self/cycle references.
-    if(p.subjects.length<rowCount)register(values,p.subjects.length+6,rowCount+5);
-   }else register(values,6,rowCount+5);
-  }
+ const rows=MOVEMENT_IMPORT_LIMITS.rows;
+ const data:string[][]=[captions,...Array.from({length:rows},()=>MOVEMENT_COLUMNS.map(()=>''))];
+ const sheet=XLSX.utils.aoa_to_sheet(data);
+ for(let r=1;r<=rows;r++)for(let c=0;c<MOVEMENT_COLUMNS.length;c++){const address=col(c)+(r+1),cell=sheet[address]??={t:'s',v:''};cell.z='@';}
+ sheet['!cols']=MOVEMENT_COLUMNS.map(column=>({wch:column==='employeeName'||column==='systemField'?26:column==='before'||column==='after'?30:18}));
+ XLSX.utils.book_append_sheet(wb,sheet,MOVEMENT_SHEET);
+ // Reference: event types × System Fields, Company IDs, then each company's allowed values.
+ const reference:string[][]=[[words('referenceTypes','Event types and the System Fields each may change')],[words('colEventType','Event Type'),words('colCode','Code'),words('colFields','System Fields')]];
+ const fieldLabels=new Map<string,string>();
+ for(const type of p.types){const fields=movementSystemFields(type,p.resolve);for(const f of fields)if(!fieldLabels.has(f.key))fieldLabels.set(f.key,f.label);reference.push([movementTypeDisplay(p.types,type,p.resolve),type.code,fields.map(f=>f.label).join(' · ')||words('noFields','No field change (leave System Fields blank)')].map(business));}
+ reference.push([],[words('referenceCompanies','Company ID to enter for each company')],[captions[0],words('colCompany','Company')]);
+ for(const company of p.companies)reference.push([company.code,company.name].map(business));
+ reference.push([],[words('referenceValues','Allowed values for each company')],[captions[0],captions[5],words('colValue','Value to enter in After'),words('colLabel','Meaning')]);
+ const referenceFields:MovementFormField[]=['businessUnitId','departmentId','positionId','gradeId','locationId','managerEmploymentId','orgDivision','employmentCategory','orgRegion','orgBranch','orgTeam','orgSection','orgLine','orgBase'];
+ for(const company of p.companies)for(const field of referenceFields){
+  if(!fieldLabels.has(field))continue;
+  const options=(company.catalog.fields[field]??[]).filter(option=>field!=='managerEmploymentId'||!option.isTestRecord&&option.eligible&&option.companyId===company.companyId);
+  for(const option of options){const code=optionCode(option);if(code.trim())reference.push([company.code,fieldLabels.get(field)!,code,option.label||code].map(business));}
  }
- if(lists[0].length>256||lists.reduce((n,r)=>n+r.length,0)>180000)throw new Error('movement_reference_catalog_too_large');
- const referenceSheet=XLSX.utils.aoa_to_sheet(referenceRows);referenceSheet['!cols']=referenceRows[0].map((_,i)=>({wch:i%3===0?28:36}));
+ if(fieldLabels.has('companyId'))for(const company of p.companies)reference.push(['',fieldLabels.get('companyId')!,company.code,company.name].map(business));
+ for(const [field,label]of fieldLabels){
+  if(referenceFields.includes(field as MovementFormField)||field==='companyId'||field==='incrementAmount')continue;
+  for(const choice of movementWorkbookScalarChoices(field as MovementFormField))reference.push(['',label,choice.value,p.resolve(choice.labelKey,choice.value)].map(business));
+ }
+ if(reference.length>200000)throw new Error('movement_reference_catalog_too_large');
+ const referenceSheet=XLSX.utils.aoa_to_sheet(reference);referenceSheet['!cols']=[{wch:24},{wch:28},{wch:28},{wch:40}];
  for(const [address,cell]of Object.entries(referenceSheet))if(!address.startsWith('!'))(cell as import('xlsx').CellObject).z='@';
- XLSX.utils.book_append_sheet(wb,referenceSheet,referenceName);
+ XLSX.utils.book_append_sheet(wb,referenceSheet,'Reference');
+ const lists:string[][]=[[captions[0],captions[4],captions[5]]];
+ const columns=[p.companies.map(c=>c.code),p.types.map(type=>movementTypeDisplay(p.types,type,p.resolve)),[...fieldLabels.values()]].map(values=>[...new Set(values.filter(v=>v.trim()))]);
+ columns.forEach((values,c)=>values.forEach((value,r)=>{lists[r+1]??=[];lists[r+1][c]=business(value);}));
  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(lists),'Lists');
- if(Object.values(wb.Sheets).reduce((n,sheet)=>n+Object.keys(sheet).filter(key=>!key.startsWith('!')).length,0)>649900)throw new Error('movement_reference_catalog_too_large');
+ wb.Workbook??={};wb.Workbook.Names=columns.map((values,c)=>({Name:'AIHR_Movement_List_'+c,Ref:`'Lists'!$${col(c)}$2:$${col(c)}$${Math.max(2,values.length+1)}`}));
  const json=JSON.stringify(meta);XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(Array.from({length:Math.ceil(json.length/16000)},(_,i)=>[json.slice(i*16000,(i+1)*16000)])),'_meta');
- wb.Workbook??={};wb.Workbook.Sheets=wb.SheetNames.map(name=>({name,Hidden:name==='Lists'||name==='_meta'?1:0}));
+ wb.Workbook.Sheets=wb.SheetNames.map(name=>({name,Hidden:name==='Lists'||name==='_meta'?1:0}));
  const zip=await JSZip.loadAsync(XLSX.write(wb,{type:'buffer',bookType:'xlsx',compression:true}));
- const styleEntry=zip.file('xl/styles.xml');if(!styleEntry)throw new Error('workbook_layout_invalid');let styles=await styleEntry.async('string');
- // SheetJS registers formats from cell.z; use the explicit custom date format instead of locale-dependent built-in14.
- const usedNumberFormats=new Set<number>();let dateFormatId:number|undefined,declaredFormats=0;
- const formatParser=new SaxesParser({xmlns:true});formatParser.on('opentag',tag=>{
-  const attrs=Object.fromEntries(Object.values(tag.attributes).map(a=>[a.local,a.value]));
-  if(attrs.numFmtId!=null){const id=Number(attrs.numFmtId);if(!Number.isSafeInteger(id)||id<0||id>65535)throw new Error('workbook_layout_invalid');usedNumberFormats.add(id);}
-  if(tag.local==='numFmt'){declaredFormats++;if(attrs.formatCode==='dd-mmm-yyyy'&&Number(attrs.numFmtId)>=164)dateFormatId=Number(attrs.numFmtId);}
- });formatParser.write(styles).close();
- if(dateFormatId==null){
-  dateFormatId=164;while(usedNumberFormats.has(dateFormatId)&&dateFormatId<=65535)dateFormatId++;if(dateFormatId>65535)throw new Error('workbook_layout_invalid');
-  const format=`<numFmt numFmtId="${dateFormatId}" formatCode="dd-mmm-yyyy"/>`,open=/<numFmts\b[^>]*>/.exec(styles);
-  if(open){if(/\/>$/.test(open[0]))styles=styles.replace(open[0],`<numFmts count="${declaredFormats+1}">${format}</numFmts>`);else{if(!styles.includes('</numFmts>'))throw new Error('workbook_layout_invalid');styles=styles.replace(open[0],`<numFmts count="${declaredFormats+1}">`).replace('</numFmts>',format+'</numFmts>');}}
-  else styles=styles.replace(/<styleSheet\b[^>]*>/,open=>open+`<numFmts count="1">${format}</numFmts>`);
- }
- const xfs=/<cellXfs count="(\d+)"[^>]*>/,fills=/<fills count="(\d+)"[^>]*>/;const xf=xfs.exec(styles),fill=fills.exec(styles);if(!xf||!fill)throw new Error('workbook_layout_invalid');const base=Number(xf[1]),fillBase=Number(fill[1]);
- styles=styles.replace(fills,`<fills count="${fillBase+3}">`).replace('</fills>',['FFE5E7EB','FFFEF3C7','FFD1FAE5'].map(color=>`<fill><patternFill patternType="solid"><fgColor rgb="${color}"/><bgColor indexed="64"/></patternFill></fill>`).join('')+'</fills>');
- styles=styles.replace(xfs,`<cellXfs count="${base+9}">`).replace('</cellXfs>',[0,1,2,3,4,5,6,7,8].map(i=>`<xf numFmtId="${[49,49,2,dateFormatId,dateFormatId,2,2,10,49][i]}"${[3,4].includes(i)?' applyNumberFormat="1"':''} fontId="0" fillId="${i===8?0:fillBase+[0,1,2,1,0,0,1,2][i]}" borderId="0" xfId="0" applyFill="1" applyProtection="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/><protection locked="${[1,3,6].includes(i)?0:1}"/></xf>`).join('')+'</cellXfs>');zip.file('xl/styles.xml',styles);
- for(let i=0;i<types.length;i++){
-  const path=`xl/worksheets/sheet${i+2}.xml`,entry=zip.file(path);if(!entry)throw new Error('workbook_layout_invalid');let text=await entry.async('string');const columns=layouts[i];
-  text=text.replace(/<c\b([^>]*\br="([A-Z]+)(\d+)"[^>]*)>/g,(whole,attrs:string,letters:string,r:string)=>{
-   let c=0;for(const letter of letters)c=c*26+letter.charCodeAt(0)-64;
-   const annotation=!!p.employees&&c===columns.length+1&&Number(r)>=5;if(Number(r)<6&&!annotation)return whole;
-   let style:number;
-   if(annotation)style=base+8;
-   else{const column=columns[c-1];if(!column)return whole;
-    const unlocked=column.role==='input'||column.role==='identity'&&!bindings[i].identities.some(identity=>identity.row===Number(r));
-    const date=column.field&&['effectiveDate','endDate','resignationDate','tenderResignationDate','resignationEffectiveDate'].includes(column.field)||column.role==='current'&&/Date|hiredOn/.test(column.key);const money=/basicSalary|incrementAmount/.test(column.key);
-    style=column.role==='formula'?base+(column.key.endsWith('changePercent')?7:2):unlocked?base+(date?3:money?6:1):base+(date?4:money?5:0);
-   }
-   return '<c'+attrs.replace(/\s+s="[^" ]*"/,'')+` s="${style}">`;
-  });
-  const currentEnd=Math.max(0,columns.findIndex(c=>c.role==='input'));
-  text=text.replace(/<sheetViews>[\s\S]*?<\/sheetViews>/,`<sheetViews><sheetView workbookViewId="0"><pane xSplit="${currentEnd}" ySplit="5" topLeftCell="${col(currentEnd)}6" activePane="bottomRight" state="frozen"/></sheetView></sheetViews>`);
-  const protection='<sheetProtection sheet="1" objects="1" scenarios="1" selectLockedCells="0" selectUnlockedCells="0"/>';
-  text=text.replace('</sheetData>','</sheetData>'+protection);
-  const choices=validations.filter(v=>v.sheet===i+1);if(choices.length){const validation=`<dataValidations count="${choices.length}">${choices.map(v=>`<dataValidation type="list" allowBlank="1" showErrorMessage="0" sqref="${col(v.column)}${v.start}:${col(v.column)}${v.end}"><formula1>${xml(v.name)}</formula1></dataValidation>`).join('')}</dataValidations>`;const at=text.search(/<(?:hyperlinks|printOptions|pageMargins|pageSetup|headerFooter|rowBreaks|colBreaks|customProperties|cellWatches|ignoredErrors|smartTags|drawing|legacyDrawing|picture|oleObjects|controls|webPublishItems|tableParts|extLst)\b|<\/worksheet>/);if(at<0)throw new Error('workbook_layout_invalid');text=text.slice(0,at)+validation+text.slice(at);}
-  zip.file(path,text);
- }
+ const path='xl/worksheets/sheet2.xml',entry=zip.file(path);if(!entry)throw new Error('workbook_layout_invalid');let text=await entry.async('string');
+ text=text.replace(/<sheetViews>[\s\S]*?<\/sheetViews>/,'<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>');
+ if(!text.includes('<sheetViews>'))text=text.replace(/<sheetFormatPr\b|<cols>|<sheetData/,match=>'<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'+match);
+ const validated=[[0,0],[4,1],[5,2]].filter(([,list])=>columns[list].length);
+ const validation=`<dataValidations count="${validated.length}">${validated.map(([c,list])=>`<dataValidation type="list" allowBlank="1" showErrorMessage="0" sqref="${col(c)}2:${col(c)}${rows+1}"><formula1>${xml('AIHR_Movement_List_'+list)}</formula1></dataValidation>`).join('')}</dataValidations>`;
+ const at=text.search(/<(?:hyperlinks|printOptions|pageMargins|pageSetup|headerFooter|rowBreaks|colBreaks|customProperties|cellWatches|ignoredErrors|smartTags|drawing|legacyDrawing|picture|oleObjects|controls|webPublishItems|tableParts|extLst)\b|<\/worksheet>/);if(at<0)throw new Error('workbook_layout_invalid');
+ if(validated.length)text=text.slice(0,at)+validation+text.slice(at);
+ zip.file(path,text);
  const bytes=await zip.generateAsync({type:'nodebuffer',compression:'DEFLATE'});readSpreadsheetArchive(bytes,MOVEMENT_WORKBOOK_LIMITS);return bytes;
 }
 
-/** Strict bounded workbook structure BEFORE SheetJS parses user bytes. Protection is never authority. */
+/** Strict bounded workbook structure BEFORE SheetJS parses user bytes. */
 function inspect(bytes:Buffer){
  const archive=readSpreadsheetArchive(bytes,MOVEMENT_WORKBOOK_LIMITS);let totalCells=0;
  for(const [name,data]of archive.parts){
-  // Shared archive admission resolves content types against actual parts and rejects macro/embedded relationships.
   if(!name.endsWith('.xml'))continue;const text=decodeSpreadsheetXml(data);
   const parser=new SaxesParser({xmlns:true});let validationFormula=false,validationText='';const cellAddresses=new Set<string>();parser.on('doctype',()=>{throw new Error('workbook_structure_invalid');});
   parser.on('opentag',tag=>{
@@ -173,41 +117,54 @@ function inspect(bytes:Buffer){
  }
  return archive;
 }
-export async function readMovementWorkbook(bytes:Buffer,p:{tenantId:string;companyId:string;catalog:MovementImportCatalog;resolve:PersonnelLabelResolver}){
+const DATE_COLUMNS=new Set([3,6,7]);
+/** Reads the Movements sheet rows of a signed template. Throws a finite workbook_* code on refusal. */
+export async function readMovementWorkbookRows(bytes:Buffer,p:{tenantId:string;types:MovementWorkbookType[]}):Promise<MovementSheetRow[]>{
  inspect(bytes);const XLSX=await import('xlsx');const wb=XLSX.read(bytes,{type:'buffer',cellFormula:true,cellDates:false,cellNF:true,sheetRows:10006});
  if(new Set(wb.SheetNames.map(n=>n.toLowerCase())).size!==wb.SheetNames.length)throw new Error('workbook_structure_invalid');
- for(const name of ['Instructions','Lists','_meta'])if(Object.values(wb.Sheets[name]??{}).some(c=>c&&typeof c==='object'&&'f'in c&&c.f))throw new Error('formula_input');
- for(const name of wb.Workbook?.Names??[]){if(!/^AIHR_Movement_List_\d+$/.test(name.Name)||!/^(?:'Lists'|Lists)!\$[A-Z]{1,3}\$2:\$[A-Z]{1,3}\$[1-9]\d{0,4}$/.test(name.Ref))throw new Error('workbook_structure_invalid');}
- const metaSheet=wb.Sheets._meta;if(!metaSheet)throw new Error('workbook_metadata_invalid');
- const raw=XLSX.utils.sheet_to_json<unknown[]>(metaSheet,{header:1,raw:true,blankrows:false});if(raw.length>100||raw.some(r=>r.length!==1||typeof r[0]!=='string'))throw new Error('workbook_metadata_invalid');
- let metadata:MovementWorkbookMetadata;try{metadata=verifyMovementWorkbook(JSON.parse(raw.map(r=>r[0]).join('')),p.tenantId,p.companyId);}catch(error){throw error instanceof Error?error:new Error('workbook_metadata_invalid');}
- if(metadata.catalogue!==movementWorkbookCatalogue(p.catalog))throw new Error('workbook_catalogue_changed');
- const referenceName=referenceSheetName(metadata.sheets.map(sheet=>sheet.sheet));
- if(Object.values(wb.Sheets[referenceName]??{}).some(cell=>cell&&typeof cell==='object'&&'f'in cell&&cell.f))throw new Error('formula_input');
- const allowed=new Set(['Instructions','Lists','_meta',referenceName,...metadata.sheets.map(s=>s.sheet)]);if(wb.SheetNames.some(name=>!allowed.has(name)&&Object.values(wb.Sheets[name]).some(c=>c&&typeof c==='object'&&(('v'in c&&String(c.v??'').trim())||('f'in c&&c.f)))))throw new Error('workbook_unexpected_sheet');
- const records:MovementImportRecord[]=[];
- for(const binding of metadata.sheets){
-  const sheet=wb.Sheets[binding.sheet],type=p.catalog.types.find(t=>t.code===binding.code&&t.behaviour===binding.behaviour);if(!sheet||!type)throw new Error('workbook_catalogue_changed');
-  const columns=movementWorkbookLayout(type,p.resolve);if(JSON.stringify(columns.map(c=>c.key))!==JSON.stringify(binding.columns))throw new Error('workbook_columns_changed');
-  for(let c=0;c<columns.length;c++){const header=sheet[XLSX.utils.encode_cell({r:4,c})];if(header?.f||String(header?.v??'')!==binding.captions[c])throw new Error('workbook_columns_changed');}
-  const range=XLSX.utils.decode_range(sheet['!ref']??'A1');if(range.e.r>MOVEMENT_IMPORT_LIMITS.rows+4||range.e.c>=columns.length+Number(!!binding.annotationCaption))throw new Error('workbook_structure_invalid');
-  if(binding.annotationCaption&&String(sheet[col(columns.length)+'5']?.v??'')!==binding.annotationCaption)throw new Error('workbook_columns_changed');
-  const read=(r:number,c:number)=>{const cell=sheet[XLSX.utils.encode_cell({r,c})];if(!cell||cell.v==null)return '';if(cell.t==='n'&&columns[c]?.field&&['effectiveDate','endDate','resignationDate','tenderResignationDate','resignationEffectiveDate'].includes(columns[c].field!)){const d=XLSX.SSF.parse_date_code(Number(cell.v));if(!d)return '';return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;}return String(cell.v);};
-  for(const [address,cell]of Object.entries(sheet)){
-   if(address.startsWith('!')||!cell||typeof cell!=='object'||!('f'in cell)||!cell.f)continue;
-   const a=XLSX.utils.decode_cell(address),column=columns[a.c];if(a.r<5||column?.role!=='formula'||cell.f!==formula(column,columns,a.r+1)||('F'in cell&&cell.F))throw new Error('formula_input:'+binding.sheet+':'+address);
-  }
-  for(let r=5;r<=range.e.r;r++){
-   const values=columns.map((_,c)=>read(r,c));
-   if(values.some(v=>v.length>32767))throw new Error('workbook_structure_invalid');
-   const entered=columns.some((column,c)=>column.role==='input'&&values[c].trim());
-   const identity=binding.identities?.find(i=>i.row===r+1);
-   if(identity&&values[0]!==identity.employeeCode)throw new Error('workbook_identity_changed');
-   if(!entered&&(identity||!values[0].trim()))continue;
-   const record=movementInputRecord(type,columns,values,records.length+1,{sheet:binding.sheet,row:r+1},personnelImportLabelResolvers);
-   if(values.some((v,c)=>['input','identity'].includes(columns[c].role)&&UUID.test(v)))record.errors.push('internal_reference_not_allowed');
-   records.push(record);
-  }
+ const metaSheet=wb.Sheets._meta;
+ if(!metaSheet||!wb.Sheets[MOVEMENT_SHEET]){
+  // The retired per-type workbook has a signed _meta of version 2 and one sheet per movement type.
+  if(metaSheet){const raw=XLSX.utils.sheet_to_json<unknown[]>(metaSheet,{header:1,raw:true,blankrows:false});try{const parsed=JSON.parse(raw.map(r=>String(r[0]??'')).join(''));if(parsed?.version===2)throw new Error('workbook_old_layout');}catch(error){if(error instanceof Error&&error.message==='workbook_old_layout')throw error;}}
+  throw new Error(metaSheet?'workbook_metadata_invalid':'workbook_old_layout');
  }
- return {records,fileErrors:movementRecordLimits(records),metadata};
+ for(const name of wb.Workbook?.Names??[]){if(!/^AIHR_Movement_List_\d+$/.test(name.Name)||!/^(?:'Lists'|Lists)!\$[A-Z]{1,3}\$2:\$[A-Z]{1,3}\$[1-9]\d{0,4}$/.test(name.Ref))throw new Error('workbook_structure_invalid');}
+ const raw=XLSX.utils.sheet_to_json<unknown[]>(metaSheet,{header:1,raw:true,blankrows:false});if(raw.length>100||raw.some(r=>r.length!==1||typeof r[0]!=='string'))throw new Error('workbook_metadata_invalid');
+ let parsed:unknown;try{parsed=JSON.parse(raw.map(r=>r[0]).join(''));}catch{throw new Error('workbook_metadata_invalid');}
+ const metadata=verifyMovementTemplate(parsed,p.tenantId);
+ if(metadata.catalogue!==movementWorkbookCatalogue({types:p.types}))throw new Error('workbook_catalogue_changed');
+ for(const name of wb.SheetNames){const sheet=wb.Sheets[name];if(Object.values(sheet).some(c=>c&&typeof c==='object'&&'f'in c&&c.f))throw new Error('formula_input');if(!ALLOWED_SHEETS.includes(name)&&Object.values(sheet).some(c=>c&&typeof c==='object'&&'v'in c&&String(c.v??'').trim()))throw new Error('workbook_unexpected_sheet');}
+ const sheet=wb.Sheets[MOVEMENT_SHEET],range=XLSX.utils.decode_range(sheet['!ref']??'A1');
+ for(let c=0;c<MOVEMENT_COLUMNS.length;c++){const header=sheet[XLSX.utils.encode_cell({r:0,c})];if(String(header?.v??'')!==metadata.captions[c])throw new Error('workbook_columns_changed');}
+ const read=(r:number,c:number)=>{const cell=sheet[XLSX.utils.encode_cell({r,c})];if(!cell||cell.v==null)return '';
+  if(cell.t==='n'&&DATE_COLUMNS.has(c)&&(c===3||/[dy]/i.test(String(cell.z??''))&&!/^General$/i.test(String(cell.z??'')))){const d=XLSX.SSF.parse_date_code(Number(cell.v));if(d)return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;}
+  return String(cell.v);};
+ const rows:MovementSheetRow[]=[];
+ for(let r=1;r<=range.e.r;r++){
+  for(let c=MOVEMENT_COLUMNS.length;c<=range.e.c;c++)if(String(sheet[XLSX.utils.encode_cell({r,c})]?.v??'').trim())throw new Error('workbook_columns_changed');
+  const values=MOVEMENT_COLUMNS.map((_,c)=>read(r,c));if(values.some(v=>v.length>32767))throw new Error('workbook_structure_invalid');
+  if(values.some(v=>v.trim()))rows.push({row:r+1,values});
+ }
+ return rows;
+}
+/** The same eight columns as CSV (no signature: the CSV is a transport only, and every row is re-checked). */
+export function readMovementCsvRows(text:string,resolvers:PersonnelLabelResolver[]):MovementSheetRow[]{
+ const grid=parseCsv(text.replace(/^﻿/,''));if(!grid.length)throw new Error('empty_file');
+ const issue=movementHeaderIssue(grid[0],resolvers);if(issue)throw new Error(issue);
+ return grid.slice(1).map((values,index)=>{if(values.slice(MOVEMENT_COLUMNS.length).some(v=>v.trim()))throw new Error('workbook_columns_changed');return{row:index+2,values:MOVEMENT_COLUMNS.map((_,c)=>values[c]??'')};}).filter(row=>row.values.some(v=>v.trim()));
+}
+export const MOVEMENT_FILE_CODES=['file_too_large','empty_file','invalid_file','workbook_old_layout','workbook_columns_changed','workbook_metadata_invalid','workbook_catalogue_changed','workbook_structure_invalid','workbook_password_not_supported','workbook_unexpected_sheet','workbook_key_unavailable','formula_input','malformed_csv'] as const;
+/** Reads an uploaded file (signed .xlsx template or the same columns as UTF-8 .csv) into movement records. */
+export async function readMovementSource(name:string,content:Buffer,p:{tenantId:string;types:MovementWorkbookType[];resolve:PersonnelLabelResolver}):Promise<{records:MovementImportRecord[];fileErrors:string[]}>{
+ const resolvers=[p.resolve,...personnelImportLabelResolvers];
+ const lower=name.toLowerCase();let rows:MovementSheetRow[];
+ try{
+  if(lower.endsWith('.xlsx')){if(content.length>MOVEMENT_WORKBOOK_LIMITS.maxBytes)throw new Error('file_too_large');rows=await readMovementWorkbookRows(content,p);}
+  else if(lower.endsWith('.csv')){if(content.length>MOVEMENT_IMPORT_LIMITS.bytes)throw new Error('file_too_large');let text:string;try{text=new TextDecoder('utf-8',{fatal:true}).decode(content);}catch{throw new Error('invalid_file');}rows=readMovementCsvRows(text,resolvers);}
+  else throw new Error('invalid_file');
+ }catch(error){
+  const code=error instanceof Error?error.message:'';
+  return{records:[],fileErrors:[(MOVEMENT_FILE_CODES as readonly string[]).includes(code)?code:'workbook_structure_invalid']};
+ }
+ return movementRowsToRecords(rows,p.types,resolvers);
 }
