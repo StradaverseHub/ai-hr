@@ -2545,7 +2545,13 @@ export async function decideClaim(
  * claim is no longer pending instead of silently overwriting the winner.
  */
 export async function cancelClaim(ctx: SessionContext, claimRequestId: string,expectedEmploymentId?:string): Promise<void> {
-  await withTenant(ctx, async (tx) => {
+  await withTenant(ctx, (tx) => cancelClaimTx(tx, ctx, claimRequestId, expectedEmploymentId));
+}
+
+/** cancelClaim in the caller's transaction (ADR-0151): the Assistant's claim-cancellation review commits
+ *  the cancellation and its own receipt together. Returns the cancelled event for that receipt. */
+export async function cancelClaimTx(tx: Tx, ctx: SessionContext, claimRequestId: string,expectedEmploymentId?:string): Promise<{ eventId: string; employmentId: string }> {
+  {
     // Row lock FIRST (no limit read here, so no advisory lock is needed — and taking one would invert the
     // advisory-before-row ordering decideClaim relies on).
     const [locked] = await tx
@@ -2568,15 +2574,16 @@ export async function cancelClaim(ctx: SessionContext, claimRequestId: string,ex
     const isOwner = ctx.personId != null && claim.personId === ctx.personId;
     if (!isAdmin && !isOwner) throw new ClaimError('Only the claimant or an admin can cancel this claim');
     await tx.update(claimRequest).set({ status: 'cancelled' }).where(eq(claimRequest.id, claim.id));
-    await appendEvent(tx, {
+    const eventId = await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'claim-request',
       aggregateId: claim.id,
       eventType: 'claim-request.cancelled',
       actor: actorOf(ctx),
       subjectEmploymentId: claim.employmentId,
-    });
-  });
+    }, { returnId: true });
+    return { eventId, employmentId: claim.employmentId };
+  }
 }
 
 // ─────────────────────────── Draft claims (e7eb5d83 stage 1) ───────────────────────────

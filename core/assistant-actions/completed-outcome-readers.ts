@@ -15,6 +15,8 @@ import {readCompletedCountryStatutoryOutcomeTx} from './country-statutory-review
 import {readCompletedLeaveDecisionOutcomeTx} from './leave-decision-review-store';
 import {readCompletedLifecycleAckOutcomeTx} from './lifecycle-ack-review-store';
 import {readCompletedToilRequestOutcomeTx} from './toil-request-review-store';
+import {readCompletedClaimCancellationOutcomeTx} from './claim-cancellation-review-store';
+import {leaveCancellationReviews,leaveEditReviews} from './leave-change-review-store';
 import {readCompletedMultiCycleRunOutcomeTx} from './multi-cycle-run-review-store';
 import {readCompletedPayComponentOutcomeTx} from './pay-component-review-store';
 import {readCompletedPayrollCloseOutcomeTx} from './payroll-close-review-store';
@@ -41,6 +43,9 @@ export async function readCompletedNativeOutcomeTx(tx:Tx,supplied:SessionContext
   case 'notifications.email_preferences.save':if(!capability)return unavailable();result=await readCompletedNotificationOutcomeTx(tx,ctx,id,capability);break;
   case 'claims.draft.save':result=await readCompletedClaimDraftOutcomeTx(tx,ctx,id);break;
   case 'claims.submit':result=await readCompletedClaimSubmissionOutcomeTx(tx,ctx,id);break;
+  case 'claims.cancel':result=await readCompletedClaimCancellationOutcomeTx(tx,ctx,id);break;
+  case 'leave.cancel':result=await leaveCancellationReviews.readCompletedOutcomeTx(tx,ctx,id);break;
+  case 'leave.edit':result=await leaveEditReviews.readCompletedOutcomeTx(tx,ctx,id);break;
   case 'performance.review.acknowledge':result=await readCompletedStandardReviewOutcomeTx(tx,ctx,id);break;
   case 'performance.onehr.plan.acknowledge':result=await readCompletedOnehrPlanOutcomeTx(tx,ctx,id);break;
   case 'system_testing.execution.save':result=await readCompletedTestingOutcomeTx(tx,ctx,id);break;

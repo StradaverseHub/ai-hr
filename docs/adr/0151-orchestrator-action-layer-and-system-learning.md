@@ -197,8 +197,9 @@ usage ledger beyond existing retention (ADR-0116).
 Six entries chosen for reach and low risk, each Confirm or Approve:
 
 1. Edit or cancel own pending leave (Confirm) — `editLeaveRequest` / `cancelOwnLeave` /
-   `requestLeaveCancellation` in `core/leave.ts`; these are not yet exported through `packs/leave/service`,
-   which the kernel-consumer rule requires first.
+   `requestLeaveCancellation` in `core/leave.ts`, reached through `packs/leave/service` (which re-exports
+   `core/leave` wholesale). Correction, 28 Oct 2026: an earlier draft said these needed new pack exports;
+   they do not.
 2. Cancel own claim (Confirm) — `cancelClaim`, `core/claims.ts`.
 3. Request overtime (Confirm) — `requestAttendanceCorrection` with the overtime kind, as `myRequestOvertime` does.
 4. Decide a claim (Approve: the assigned approver confirms) — `decideClaim`, `core/claims.ts`.

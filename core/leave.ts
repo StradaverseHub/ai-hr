@@ -5929,7 +5929,9 @@ async function lockLeaveCohortDependenciesTx(tx: Tx, ctx: SessionContext, scope:
 
 /** Actual request mutation interval. Resolve only the RLS-visible subject before ownership, then
  * reread that binding before the canonical owner takes its existing request/cancellation row locks. */
-async function lockLeaveRequestDependenciesTx(tx: Tx, ctx: SessionContext, requestId: string): Promise<void> {
+/** Exported for the Assistant's leave-change review (ADR-0151), which takes this same lock before comparing
+ *  the reviewed values, so the comparison and the native write see one state. */
+export async function lockLeaveRequestDependenciesTx(tx: Tx, ctx: SessionContext, requestId: string): Promise<void> {
   await lockAccessConfigurationTx(tx, ctx.tenantId);
   await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
   const read = () => tx.select({ employmentId: leaveRequest.employmentId }).from(leaveRequest)
@@ -7717,7 +7719,29 @@ export async function editLeaveRequest(
     today?: string;
   },
 ): Promise<{ leaveRequestId: string; days: number }> {
-  return withTenant(ctx, async (tx) => {
+  const { leaveRequestId, days } = await withTenant(ctx, (tx) => editLeaveRequestTx(tx, ctx, p));
+  return { leaveRequestId, days };
+}
+
+/** editLeaveRequest in the caller's transaction (ADR-0151): returns the edited event id for the Assistant's
+ *  leave-edit review receipt. Same gates, same writes. */
+export async function editLeaveRequestTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: {
+    leaveRequestId: string;
+    leaveTypeId: string;
+    startDate: string;
+    endDate: string;
+    reason?: string;
+    employeeRemark?: string;
+    durationType?: LeaveDurationType;
+    fromTime?: string;
+    toTime?: string;
+    today?: string;
+  },
+): Promise<{ leaveRequestId: string; days: number; eventId: string }> {
+  {
     await lockLeaveRequestDependenciesTx(tx, ctx, p.leaveRequestId);
     const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
     if (!req) throw new Error('leave request not found (or not visible)');
@@ -8056,7 +8080,7 @@ export async function editLeaveRequest(
         diff[k] = { before: (before as Record<string, unknown>)[k], after: (after as Record<string, unknown>)[k] };
       }
     }
-    await appendEvent(tx, {
+    const eventId = await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'leave-request',
       aggregateId: req.id,
@@ -8064,10 +8088,10 @@ export async function editLeaveRequest(
       actor: actorOf(ctx),
       subjectEmploymentId: req.employmentId,
       payload: { before, after, diff },
-    });
+    }, { returnId: true });
 
-    return { leaveRequestId: req.id, days };
-  });
+    return { leaveRequestId: req.id, days, eventId };
+  }
 }
 
 /**
@@ -8082,7 +8106,18 @@ export async function cancelOwnLeave(
   ctx: SessionContext,
   p: { leaveRequestId: string },
 ): Promise<{ previousStatus: 'pending'; restoredDays: number }> {
-  return withTenant(ctx, async (tx) => {
+  const { previousStatus, restoredDays } = await withTenant(ctx, (tx) => cancelOwnLeaveTx(tx, ctx, p));
+  return { previousStatus, restoredDays };
+}
+
+/** cancelOwnLeave in the caller's transaction (ADR-0151): the Assistant's leave-cancellation review commits
+ *  the cancellation and its own receipt together, so the self-cancelled event id is returned for that receipt. */
+export async function cancelOwnLeaveTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { leaveRequestId: string },
+): Promise<{ previousStatus: 'pending'; restoredDays: number; eventId: string }> {
+  {
     await lockLeaveRequestDependenciesTx(tx, ctx, p.leaveRequestId);
     const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
     if (!req) throw new Error('leave request not found (or not visible)');
@@ -8136,7 +8171,7 @@ export async function cancelOwnLeave(
 
     // Substrate: distinct self-cancelled event (audit + notification key). Carries the display fields the
     // approver/HR notification renderer needs (payload-only renderers).
-    await appendEvent(tx, {
+    const eventId = await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'leave-request',
       aggregateId: req.id,
@@ -8152,10 +8187,10 @@ export async function cancelOwnLeave(
         startDate: req.startDate,
         endDate: req.endDate,
       },
-    });
+    }, { returnId: true });
 
-    return { previousStatus: 'pending', restoredDays };
-  });
+    return { previousStatus: 'pending', restoredDays, eventId };
+  }
 }
 
 // ───────────────────── Leave-year boundary (STATUTORY-SOURCES §5) ─────────────────────
