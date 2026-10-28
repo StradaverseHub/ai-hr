@@ -2650,7 +2650,8 @@
         "exclusionsRetained": "Medan dan rekod dikecualikan kekal dalam bukti asal ini; ia tidak digabungkan atau diimport secara senyap.",
         "limit": "Lapan semakan setempat telah disimpan. Selesaikan import ini atau pilih sumber baharu secara jelas untuk semakan lain; asal tidak dibuang secara senyap.",
         "humanSupplied": "Dibekalkan pengguna — tiada dalam sumber asal."
-      }
+      },
+      "importHistoryLink": "Buka Sejarah Import (fail asal, sebelum dan selepas, kembalikan)"
     },
     "wizard": {
       "deleteRecord": "Padam Rekod",
@@ -2963,6 +2964,82 @@
       "gapNotAnErrorNote": "Kategori yang tiada bukan kesilapan pada rekod — ia maklumat yang mungkin tidak pernah diberikan kepada majikan.",
       "gapNoBulkNote": "Tiada pengisian pukal, dan memang tidak sepatutnya ada: kategori seorang anak ialah fakta tentang anak itu dan hanya boleh ditetapkan pada rekodnya sendiri.",
       "gapManualNote": "Pekerja dengan angka yang ditaip tidak disenaraikan di sini. Bagi mereka angka yang ditaip menentukan, jadi kategori tidak mengubah apa-apa."
+    },
+    "importHistory": {
+      "title": "Sejarah Import",
+      "description": "Setiap fail import kakitangan: siapa yang mengimport, bila, untuk syarikat mana, nilai setiap pekerja sebelum dan selepas, dan Kembalikan sekali sahaja.",
+      "back": "Import kakitangan",
+      "filterLabel": "Jenis import",
+      "filterAll": "Semua import",
+      "kinds": {
+        "cost_allocations": "Peruntukan Pusat Kos",
+        "bank_statutory": "Bank & Berkanun",
+        "employee_full": "Semua — pekerja baharu",
+        "movement": "Pergerakan"
+      },
+      "reference": "Rujukan",
+      "referenceLabel": "Rujukan {reference}",
+      "type": "Jenis",
+      "file": "Fail",
+      "time": "Tarikh dan masa",
+      "user": "Diimport oleh",
+      "unknownUser": "Pengguna tidak tersedia",
+      "companies": "Syarikat",
+      "records": "Rekod",
+      "status": "Status",
+      "counts": "{succeeded} berjaya · {failed} gagal",
+      "states": {
+        "validated": "Disemak, belum disimpan",
+        "invalid": "Tidak diimport (ralat)",
+        "succeeded": "Berjaya",
+        "partial": "Berjaya sebahagian",
+        "failed": "Gagal",
+        "reverted": "Dikembalikan"
+      },
+      "noAttempts": "Belum ada import direkodkan.",
+      "older": "Import lebih lama",
+      "downloadSource": "Muat turun fail asal",
+      "sourceRestricted": "Fail asal meliputi syarikat yang tidak boleh anda lihat, jadi ia tidak boleh dimuat turun di sini.",
+      "fingerprint": "Cap jari fail (SHA-256)",
+      "fileIssues": "Masalah pada fail",
+      "audit": "Jejak audit",
+      "events": {
+        "previewed": "Fail disemak",
+        "confirmed": "Diimport",
+        "failed": "Import gagal",
+        "reverted": "Dikembalikan",
+        "revert_failed": "Pengembalian ditolak atau gagal"
+      },
+      "eventReason": "Sebab: {reason}",
+      "items": "Perubahan mengikut pekerja",
+      "itemsHint": "Hanya pekerja syarikat yang boleh anda lihat dipaparkan.",
+      "noItems": "Import ini tidak menyimpan sebarang perubahan.",
+      "colRecord": "Pekerja dan tarikh",
+      "colCompany": "Syarikat",
+      "colResult": "Keputusan",
+      "colBefore": "Sebelum",
+      "colAfter": "Selepas",
+      "itemApplied": "Disimpan",
+      "itemFailed": "Tidak disimpan",
+      "allocation": {
+        "none": "Tiada peruntukan",
+        "clear": "Dikosongkan (tiada peruntukan)"
+      },
+      "revert": {
+        "title": "Kembalikan import ini",
+        "hint": "Memulihkan nilai setiap rekod sebelum import ini. Dibenarkan sekali sahaja, dan hanya jika tiada apa yang diubah oleh import ini telah diubah sejak itu. Import dan jejak audit dikekalkan.",
+        "review": "Semak pengembalian",
+        "working": "Sedang diproses…",
+        "restoreTitle": "Apa yang akan dipulihkan",
+        "blocked": "Import ini tidak boleh dikembalikan kerana rekod berikut berubah selepasnya:",
+        "reason": "Sebab pengembalian",
+        "reasonHint": "Wajib (3 hingga 1,000 aksara). Direkodkan dalam jejak audit.",
+        "acknowledge": "Saya faham ini memulihkan nilai terdahulu bagi setiap rekod yang disenaraikan dan hanya boleh dilakukan sekali.",
+        "confirm": "Kembalikan import",
+        "cancel": "Batal",
+        "failed": "Pengembalian tidak dapat diselesaikan. Tiada apa yang diubah.",
+        "noPermission": "Mengembalikan import ini memerlukan kebenaran penyelenggaraan Tenaga Kerja bagi setiap syarikat di dalamnya."
+      }
     }
   },
   "leave": {
@@ -10696,7 +10773,8 @@
         "letterGenerate": "Konteks syarikat semasa, kebenaran jana/baca Surat serta akses Tenaga Kerja dan kewangan semasa.",
         "letterApproval": "Konteks syarikat semasa, akses baca/lulus Surat dan peringkat kelulusan semasa yang ditugaskan.",
         "letterRegister": "Konteks syarikat semasa dan kebenaran Surat semasa untuk setiap tindakan.",
-        "letterSettings": "Konteks syarikat semasa. Kebenaran Tetapan mengurus aliran kerja; kebenaran Lulus mengurus imej tandatangan anda sendiri."
+        "letterSettings": "Konteks syarikat semasa. Kebenaran Tetapan mengurus aliran kerja; kebenaran Lulus mengurus imej tandatangan anda sendiri.",
+        "importHistory": "Menyenaraikan import apabila anda mempunyai kebenaran lihat Tenaga Kerja bagi sekurang-kurangnya satu syarikatnya, dan hanya memaparkan pekerja syarikat yang boleh anda lihat. Fail asal memerlukan kebenaran lihat bagi setiap syarikat di dalamnya; Kembalikan memerlukan kebenaran penyelenggaraan Tenaga Kerja bagi setiap syarikat di dalamnya."
       },
       "scopedTo": "Diskopkan kepada {company} dan anak syarikatnya",
       "screen": {
@@ -10708,7 +10786,8 @@
         "leaveEmployeeBalances": "Baki Pekerja",
         "leaveEmployeeRecords": "Rekod Cuti Pekerja",
         "duplicatePersonRecords": "Rekod pekerja berganda",
-        "childReliefReview": "Semakan pelepasan anak (PCB)"
+        "childReliefReview": "Semakan pelepasan anak (PCB)",
+        "importHistory": "Sejarah Import"
       },
       "screenColumn": "Skrin",
       "sectionFunctionAccess": "Akses fungsi",
@@ -26628,11 +26707,11 @@
     "superseded": "Diganti",
     "unset": "Tiada peruntukan direkodkan.",
     "importTitle": "Import Peruntukan Pusat Kos",
-    "importHelp": "Kemas kini pekerja sedia ada dengan satu baris berulang bagi setiap pusat kos. Setiap syarikat, ID Pekerja dan tarikh membentuk satu set penggantian lengkap.",
+    "importHelp": "Kemas kini pekerja sedia ada dengan satu baris bagi setiap pusat kos. Setiap Kod Syarikat, ID Pekerja dan Tarikh Berkuat Kuasa membentuk satu set gantian yang lengkap. Satu fail boleh meliputi beberapa syarikat.",
     "referenceCompany": "Syarikat untuk rujukan kod",
     "downloadCsv": "Muat turun CSV peruntukan",
     "downloadWorkbook": "Muat turun buku kerja dan kod",
-    "upload": "Muat naik CSV atau buku kerja",
+    "upload": "Muat naik templat yang telah diisi (.xlsx atau .csv)",
     "csv": "CSV peruntukan",
     "employeeId": "ID Pekerja",
     "sourceRows": "Baris sumber",
@@ -26640,7 +26719,7 @@
     "ready": "Sedia: ganti set lengkap",
     "saveImport": "Simpan {count} set sah",
     "companion": "Lembaran peruntukan tambahan: {count} set pekerja/tarikh. Disahkan bersama buku kerja pekerja baharu.",
-    "instructions": "Lembaran baris berulang pilihan. Gunakan company_id daripada Allocation Codes dan ID Pekerja tepat daripada lembaran pekerja. Masukkan tarikh YYYY-MM-DD dan operasi replace pada setiap baris. Peratus mesti positif, sehingga 100, maksimum dua tempat perpuluhan; jumlah boleh kurang daripada 100. Gunakan satu baris clear dengan kod dan peratus kosong untuk mengosongkan seluruh set secara jelas. Lembaran tiada atau kosong tidak mengubah data. Hanya cost_center_code diterima; huraian adalah rujukan. Pekerja sedia ada menggunakan import peruntukan khusus. Nilai penggajian tidak berubah.",
+    "instructions": "Cara mengisi helaian Cost Center Allocations. Company Code: Kod Syarikat yang dipaparkan dalam Pengurusan Kakitangan (jika syarikat belum mempunyai kod, nombor pendaftarannya juga boleh digunakan); helaian Allocation Reference menyenaraikan setiap syarikat yang boleh anda import. Employee ID: ID pekerja dalam syarikat itu pada tarikh berkuat kuasa. Effective Date: YYYY-MM-DD; pembahagian terpakai mulai tarikh ini dan sejarah terdahulu dikekalkan. Operation: Replace pada setiap baris set, atau Clear pada satu baris dengan Cost Center Code dan Percentage kosong untuk membuang seluruh set pada tarikh itu. Cost Center Code: kod yang disenaraikan bagi syarikat itu dalam helaian Allocation Reference. Percentage: lebih daripada 0 dan paling banyak 100, dengan sehingga dua tempat perpuluhan; jumlah peratusan seorang pekerja pada satu tarikh tidak boleh melebihi 100 dan boleh kurang. Gunakan satu baris bagi setiap pusat kos. Baris yang mempunyai ralat tidak diimport dan setiap ralat menyatakan baris dan sebabnya. Tiada nilai gaji diubah.",
     "replace": "Ganti set",
     "manual": "Entri manual",
     "imported": "Diimport",
@@ -26658,7 +26737,15 @@
       "transfer": "Simpan set kosong pada tarikh pertukaran dan kosongkan set terjadual kemudian sebelum berpindah. Kemudian simpan peruntukan syarikat destinasi."
     },
     "totalField": "Jumlah peruntukan",
-    "remainderField": "Baki belum diperuntukkan"
+    "remainderField": "Baki belum diperuntukkan",
+    "downloadTemplate": "Muat turun templat",
+    "historyLink": "Sejarah Import",
+    "companyCode": "Kod Syarikat",
+    "fileTooLarge": "Pilih fail tidak melebihi 10 MB.",
+    "uploadFailed": "Fail tidak dapat disemak. Cuba lagi.",
+    "saveFailed": "Import tidak dapat disimpan. Tiada perubahan bagi pekerja yang tidak disenaraikan sebagai disimpan.",
+    "savedSummary": "{succeeded} disimpan · {failed} tidak disimpan",
+    "viewHistoryEntry": "Buka import ini dalam Sejarah Import"
   },
   "employeeHome": {
     "title": "Laman Utama",
