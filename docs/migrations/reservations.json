@@ -323,12 +323,13 @@
       "owner": "Named leave approver visibility (session local_333024cb child, branch claude/practical-panini-1bf6ec)",
       "status": "reserved",
       "idx": null,
-      "when": 1793180000000,
+      "when": 1793200000000,
       "allocatedBy": "Owner decision 28 October 2026 relayed by the AI GAPS session (named approvers must see the requests they are asked to approve)",
       "scope": "SELECT-only RLS arm on leave_request / leave_approval_step / leave_request_date / leave_request_attachment for the named (specific_employee) approver of a step, plus a definer function returning the employee display name for those requests only",
       "notes": [
         "when 1793180000000 sits above every recorded hold (REA 0663-0667 up to 1793170000005). If any later when is applied first, re-time above the live watermark before journaling (it is unapplied, so re-timing is safe).",
-        "28 October 2026 (later): staging has 0658 at idx 648 (alpha/main 4bf7c7eb3). REA P1 wave 3 has the next window and takes idx 649-653. 0669 journals AFTER them: branch claude/practical-panini-1bf6ec carries a provisional idx 649 and will merge alpha and re-index (expected idx 654) once P1 wave 3 lands. Its when 1793180000000 already sits above P1's 1793170000000-005."
+        "28 October 2026 (later): staging has 0658 at idx 648 (alpha/main 4bf7c7eb3). REA P1 wave 3 has the next window and takes idx 649-653. 0669 journals AFTER them: branch claude/practical-panini-1bf6ec carries a provisional idx 649 and will merge alpha and re-index (expected idx 654) once P1 wave 3 lands. Its when 1793180000000 already sits above P1's 1793170000000-005.",
+        "29 October 2026: yields idx 654 to 0670 (AI DEV, PR #31, next staging window). Re-timed when 1793180000000 -> 1793200000000 so it sits above 0670's 1793190000000 (unapplied; SQL bytes unchanged). Journals after 0670, expected idx 655. If PR #31 slips, 0669 may take 654 with the same when."
       ]
     },
     {
