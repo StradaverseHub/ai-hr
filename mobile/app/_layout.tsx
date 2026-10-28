@@ -8,12 +8,13 @@ import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { t } from '../lib/i18n';
 import { SessionProvider, useSession } from '../lib/session';
+import { PushLifecycle, PushSessionWatcher } from '../lib/push';
 import {authGeneration} from '../lib/auth';
 import { Button, colors } from '../lib/ui';
 
 function ThemedStack() {
   const { palette } = useTenantDesign();
-  return <><StatusBar style={palette.text === '#111111' ? 'dark' : 'light'} /><Stack screenOptions={{ headerShown: false }} /></>;
+  return <><StatusBar style={palette.text === '#111111' ? 'dark' : 'light'} /><PushLifecycle /><Stack screenOptions={{ headerShown: false }} /></>;
 }
 
 function Gate() {
@@ -48,6 +49,7 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <StatusBar style="dark" />
       <CompanyConnectionProvider><SessionProvider>
+        <PushSessionWatcher />
         <JourneyDraftProvider><WorkplaceReviewBoundary><Gate /></WorkplaceReviewBoundary></JourneyDraftProvider>
       </SessionProvider></CompanyConnectionProvider>
     </SafeAreaProvider>

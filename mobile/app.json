@@ -67,7 +67,14 @@
           "microphonePermission": false
         }
       ],
-      "expo-document-picker"
+      "expo-document-picker",
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "aihr-updates",
+          "enableBackgroundRemoteNotifications": false
+        }
+      ]
     ],
     "scheme": "aihr",
     "experiments": {

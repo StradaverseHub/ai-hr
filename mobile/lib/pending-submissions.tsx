@@ -11,10 +11,11 @@ import {t,appLocale} from './i18n';
 import {useJourneyDrafts,removeLocalFile} from './journey-drafts';
 import {Button,Card,LoadState,Muted,Row,Screen,Title} from './ui';
 import {useQueuedOfflinePunches} from './offline-clock';
+import {releasePushOnExit} from './push-core';
 
 /** Read/reconcile pending intents before a voluntary exit. Forced logout never enters this screen. */
 export function PendingSubmissions({intent='review'}:{intent?:'review'|'logout'|'company'}){
-  const {signOut,setEmploymentId}=useSession(),{palette}=useTenantDesign();
+  const {signOut,setEmploymentId,employmentId}=useSession(),{palette}=useTenantDesign();
   const drafts=useJourneyDrafts();
   const owner=authGeneration(),namespace=identityNamespace(),key=JSON.stringify([owner,namespace]);
   const current=useRef(key);current.current=key;
@@ -32,7 +33,9 @@ export function PendingSubmissions({intent='review'}:{intent?:'review'|'logout'|
   useEffect(()=>{flight.current=null;exiting.current=false;setBusy(false);setMessage('');},[key]);
   function continueExit(){
     if(!stillCurrent()||exiting.current)return;exiting.current=true;
-    if(intent==='company')router.replace('/company');else void signOut();
+    // M10/D8: a company change revokes this phone's push binding and drops its reminders first (bounded, best effort);
+    // sign-out does the same inside the session's signOut.
+    if(intent==='company'){void releasePushOnExit('company',employmentId??null);router.replace('/company');}else void signOut();
   }
   useEffect(()=>{
     let active=true;setItems(null);setError(null);

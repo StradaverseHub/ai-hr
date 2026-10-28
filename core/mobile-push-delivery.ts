@@ -20,7 +20,7 @@
  *
  * KEYS ABSENT ⇒ NO-OP. A provider without a transport is skipped entirely and records nothing.
  *
- * THE CONNECTION. The registration tables are RLS-enabled, not forced (0671 says why): the sweep must run as their
+ * THE CONNECTION. The registration tables are RLS-enabled, not forced (0673 says why): the sweep must run as their
  * owning migration role. On the application role it would see no registrations and silently send nothing, so it
  * refuses to run there instead.
  */

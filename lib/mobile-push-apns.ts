@@ -4,7 +4,8 @@
  *
  *   provider token  ES256 JWT {alg:'ES256', kid:<key id>} . {iss:<team id>, iat:<seconds>}, signature as raw r||s
  *   request         POST {origin}/3/device/{token}; apns-topic = the app's bundle id; apns-push-type alert
- *   payload         {aps:{alert:{title, body}, sound:'default'}, notificationId} — generic only (mobile-push-message.ts)
+ *   payload         {aps:{alert:{title, body}, sound:'default'}, body:{notificationId}} — generic only (mobile-push-message.ts);
+ *                   expo-notifications reads a remote notification's data from the `body` key (its NotificationRecords)
  *
  * Outcomes. 200 sent. 410 Unregistered, and 400 BadDeviceToken, are `invalid_token`: the sweep revokes the binding.
  * BadDeviceToken is also what APNs answers when a sandbox token meets the production host (or the reverse), so
@@ -79,7 +80,7 @@ export function apnsRequest(config: Pick<ApnsConfig, 'bundleId' | 'environment'>
       'apns-expiration': String(nowSeconds + PUSH_EXPIRY_SECONDS),
       'content-type': 'application/json',
     },
-    body: JSON.stringify({ aps: { alert: { title: message.title, body: message.body }, sound: 'default' }, notificationId: message.notificationId }),
+    body: JSON.stringify({ aps: { alert: { title: message.title, body: message.body }, sound: 'default' }, body: { notificationId: message.notificationId } }),
   };
 }
 

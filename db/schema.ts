@@ -5568,7 +5568,7 @@ export const notificationDelivery = pgTable(
   ],
 );
 
-// Reserved 0671 draft (M10, D6): one native push token bound to (tenant, user, installation); revoked, never rewritten.
+// Reserved 0673 draft (M10, D6): one native push token bound to (tenant, user, installation); revoked, never rewritten.
 // RLS own-row for ai_hr_app; the delivery sweep reads as the owning migration role (the migration says why).
 export const mobilePushRegistration = pgTable('mobile_push_registration', {
   id: id(), tenantId: tenantId(), userId: uuid('user_id').notNull().references(() => appUser.id),
@@ -5584,7 +5584,7 @@ export const mobilePushRegistration = pgTable('mobile_push_registration', {
   uniqueIndex('mobile_push_registration_token_uq').on(t.provider, t.token).where(sql`${t.revokedAt} IS NULL`),
   index('mobile_push_registration_user_idx').on(t.tenantId, t.userId).where(sql`${t.revokedAt} IS NULL`),
 ]);
-// Reserved 0671 draft: at most one push per (notification, registration). Outcome and provider code only, no content.
+// Reserved 0673 draft: at most one push per (notification, registration). Outcome and provider code only, no content.
 export const mobilePushDelivery = pgTable('mobile_push_delivery', {
   id: id(), tenantId: tenantId(),
   notificationId: uuid('notification_id').notNull().references((): AnyPgColumn => notification.id, { onDelete: 'cascade' }),

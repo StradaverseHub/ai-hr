@@ -15,7 +15,7 @@
  *
  * Nothing is kept: rows, counts and read marks live in this screen's memory only.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -84,7 +84,8 @@ export function NotificationRow({ item, read, busy, onPress }: { item: Notificat
   </Pressable>;
 }
 
-export function InboxScreen() {
+/** `prompt`: the route's push control (mobile/lib/push.tsx PushPrompt), shown under the counts; the list never needs it. */
+export function InboxScreen({ prompt }: { prompt?: ReactNode } = {}) {
   const { palette } = useTenantDesign();
   const { signOut } = useSession();
   const { list, scope, enabled, unreadCount, setUnreadCount } = useNotificationIndex(signOut);
@@ -138,6 +139,7 @@ export function InboxScreen() {
           <Button title={t('inboxMarkAll')} kind="quiet" disabled={unreadCount === 0 || busyId !== null} onPress={() => void markAll()} />
         </View> : null}
         {shownNotice ? <Text accessibilityRole="alert" style={{ color: palette.text }}>{t(shownNotice)}</Text> : null}
+        {prompt ?? null}
       </View>}
       renderItem={(item) => <NotificationRow item={item} read={read?.has(item.id) ?? false} busy={busyId !== null} onPress={() => void open(item)} />} />
   </SafeAreaView>;

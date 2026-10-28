@@ -268,8 +268,8 @@ root and additional `aihr-sudoers` entries for `daemon-reload` and `enable`.
 
 `scripts/mobile-push-sweep.ts` turns unread in-app notifications into ONE generic push per installation, sent direct
 to APNs (iOS) and FCM (Android): title "AI HR", a fixed "you have a new update" body in the installation's language
-(en/ms) and the notification id — never its text. It needs the reserved 0671 draft tables, so **it cannot run on a
-server until 0671 is journaled and applied**; until then it is not in any crontab and nothing schedules it. It reads
+(en/ms) and the notification id — never its text. It needs the reserved 0673 draft tables, so **it cannot run on a
+server until 0673 is journaled and applied**; until then it is not in any crontab and nothing schedules it. It reads
 notifications that the workflow-notification sweep has already projected; it projects none itself.
 
 Keys live in `.env.production` (server-only; never `EXPO_PUBLIC_`). A provider whose variables are absent or

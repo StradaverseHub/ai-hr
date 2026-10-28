@@ -6,8 +6,12 @@
  *              at https://oauth2.googleapis.com/token (jwt-bearer grant); the access token is reused until 60 s before
  *              it expires, within this process only.
  *   send       POST https://fcm.googleapis.com/v1/projects/{project}/messages:send
- *              {message:{token, notification:{title, body}, data:{notificationId},
- *                        android:{priority:'HIGH', ttl:'3600s', notification:{channel_id, visibility:'PRIVATE'}}}}
+ *              {message:{token, data:{title, message, body:'{"notificationId":…}', channelId}, android:{priority:'HIGH',
+ *              ttl:'3600s'}}} — a DATA-ONLY message in expo-notifications' own Android payload form (its NotificationData:
+ *              title, message, body as a JSON string, channelId). expo-notifications then presents it itself on the
+ *              `aihr-updates` channel, which the app creates with PRIVATE lock-screen visibility (ADR-0088 §3), and a tap
+ *              reaches the app's response listener with data {notificationId} (its NotificationSerializer parses `body`).
+ *              A `notification` block would instead be drawn by the Firebase SDK while the app is in the background.
  *
  * Outcomes. 200 sent. errorCode UNREGISTERED (404), and INVALID_ARGUMENT whose field violation names `message.token`,
  * are `invalid_token`: the sweep revokes the binding. SENDER_ID_MISMATCH is `failed` — it means the token belongs to
@@ -47,9 +51,8 @@ export function fcmMessage(message: PushMessage) {
   return {
     message: {
       token: message.token,
-      notification: { title: message.title, body: message.body },
-      data: { notificationId: message.notificationId },
-      android: { priority: 'HIGH', ttl: `${PUSH_EXPIRY_SECONDS}s`, notification: { channel_id: PUSH_ANDROID_CHANNEL, visibility: 'PRIVATE' } },
+      data: { title: message.title, message: message.body, body: JSON.stringify({ notificationId: message.notificationId }), channelId: PUSH_ANDROID_CHANNEL },
+      android: { priority: 'HIGH', ttl: `${PUSH_EXPIRY_SECONDS}s` },
     },
   };
 }

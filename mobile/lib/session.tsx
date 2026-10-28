@@ -7,6 +7,7 @@ import { assertAuthGeneration, hasStoredSession, redirectUri, signOut as clearTo
 import { t } from './i18n';
 import { createSessionState, type Visibility } from './session-state';
 import { sweepProtectedDocuments } from './protected-document';
+import { releasePushOnExit } from './push-core';
 
 type Controller = ReturnType<typeof createSessionState>;
 type Session = ReturnType<Controller['getSnapshot']> & {
@@ -71,6 +72,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     ...snapshot, setEmploymentId, unlock: state.unlock,
     async signOut() {
       const logoutUrl = workosLogoutUrl();
+      // M10/D8: revoke this phone's push binding and drop its shift reminders while the tokens still exist (bounded).
+      await releasePushOnExit('logout', state.getSnapshot().employmentId);
       await state.signOut(); // local removal is independent of provider reachability
       if (logoutUrl) {
         try { await WebBrowser.openAuthSessionAsync(logoutUrl, redirectUri()); }

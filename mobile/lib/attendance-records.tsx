@@ -8,13 +8,14 @@
  * zone, which the server names and the screen says. Held in memory only; offline, rows already shown stay labelled
  * stale (LoadState) and a cold start says the connection is needed — never an old copy presented as current.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import { DesignText as Text, useTenantDesign } from './design';
 import { useApiV2 } from './api';
 import { t } from './i18n';
 import { useSession } from './session';
+import { requestShiftReminderRefresh } from './shift-reminder-signal';
 import { Button, Card, LoadState, Muted, Row, Screen, SectionLabel, Title } from './ui';
 import {
   APPLICATION_STATUS, DAY_STATUS, EXCEPTION, addMonths, applicationKindText, askedText, fmtCalendarDate, fmtMinutes,
@@ -96,6 +97,8 @@ function RosterTab({ month, onMonth }: { month: string | null; onMonth: (m: stri
   const { signOut, employmentId } = useSession();
   const roster = useApiV2('v2/attendance/roster', AttendanceRosterV2, { employmentId: employmentId ?? undefined, ...(month ? monthWindow(month) : {}) }, signOut);
   const data = roster.data;
+  // D8: a fresh roster answer re-plans the shift reminders (they read their own 7-day window).
+  useEffect(() => { if (data) requestShiftReminderRefresh(); }, [data]);
   const shown = month ?? data?.from.slice(0, 7) ?? null;
   return <>
     <MonthStepper month={shown} onMonth={onMonth} />

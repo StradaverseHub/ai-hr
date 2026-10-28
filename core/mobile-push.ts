@@ -1,6 +1,6 @@
 /**
- * M10 (D6) — push enrollment for one installation of the app: enroll, revoke and status, COMPOSITION over the 0671
- * draft tables (db/migrations/0671_mobile_push_tokens.sql) and the mobile command receipt.
+ * M10 (D6) — push enrollment for one installation of the app: enroll, revoke and status, COMPOSITION over the 0673
+ * draft tables (db/migrations/0673_mobile_push_tokens.sql) and the mobile command receipt.
  *
  * THE BINDING IS (tenant, user, installation). Tenant and user are the bearer session's, never a body field; the
  * receipt's subject is the caller's own selected employment (core/mobile-command-receipt.ts), which the binding does

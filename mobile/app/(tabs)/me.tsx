@@ -15,6 +15,7 @@ import { useApi } from '../../lib/api';
 import { t } from '../../lib/i18n';
 import { useSession } from '../../lib/session';
 import { useQueuedOfflinePunches } from '../../lib/offline-clock';
+import { ShiftReminderSetting } from '../../lib/push';
 import { Button, Card, LoadState, Muted, Screen, SectionLabel, Title } from '../../lib/ui';
 
 export default function Me() {
@@ -59,6 +60,7 @@ export default function Me() {
       <Button title={t('claimsOpen')} onPress={() => router.push('/claims')} />
       <Button title={t('attOpen')} onPress={() => router.push('/attendance')} kind="quiet" />
       <Button title={t('profileOpen')} onPress={() => router.push('/profile')} kind="quiet" />
+      <ShiftReminderSetting />
 
       <Button title={t('integrityKeysTitle')} onPress={()=>router.push('/integrity-keys')} kind="quiet"/>
       <Button title={t('pendingTitle')} onPress={()=>router.push('/pending-submissions')} kind="quiet"/>

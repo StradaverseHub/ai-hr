@@ -4,6 +4,7 @@ import { Alert,AppState,Image,Platform,Pressable,View,Linking } from 'react-nati
 import { DesignText as Text } from './design';
 import { randomUUID } from 'expo-crypto';
 import { apiGet,apiPost,useApi } from './api';
+import { requestShiftReminderRefresh } from './shift-reminder-signal';
 import { assertAuthGeneration,authGeneration } from './auth';
 import { capturePhoto,capturePosition,appendAttachment } from './capture';
 import { readClockDevice,writeClockDevice,clearClockDevice } from './device-registration';
@@ -29,6 +30,8 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
   const attempts=useApi('clock-attempts',{employmentId:employmentId??undefined},signOut);
   useFocusEffect(useCallback(()=>{clock.reload();attempts.reload();},[clock.reload,attempts.reload]));
   useEffect(()=>{if(refreshToken){clock.reload();attempts.reload();}},[refreshToken,clock.reload,attempts.reload]);
+  // D8: every fresh clock answer (after a punch, a refresh or a return) re-plans the shift reminders.
+  useEffect(()=>{if(clock.data)requestShiftReminderRefresh();},[clock.data]);
   const {clock:draft,putClock}=useJourneyDrafts();
   const {palette,design}=useTenantDesign();
   const flight=useRef(false),offlineRoute=useRef<string|null>(null);
