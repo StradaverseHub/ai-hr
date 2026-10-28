@@ -99,11 +99,15 @@ export async function readMobileOfflineDeployment(platform:Platform,ctx:SessionC
 }
 /** The company an own context was issued under: the anchor for its claim upload and close deployment lookup, so a
  * later company change still reaches the deployment that authorized it (its claims then adjudicate scope_changed). */
-export async function ownOfflineContextCompany(ctx:SessionContext,contextId:string){
- const id=z.string().uuid().safeParse(contextId);if(!id.success||!ctx.userId)return null;
+export async function ownOfflineContextCompany(ctx:SessionContext,contextId:string,employmentId?:string){
+ const id=z.string().uuid().safeParse(contextId),selected=employmentId===undefined?null:z.string().uuid().safeParse(employmentId);
+ if(!id.success||!ctx.userId||selected&&!selected.success)return null;
+ // employmentId (the transport's ?employmentId= selector): a context issued under another employment reads as absent.
+ const own=and(eq(mobileOfflineContext.id,id.data.toLowerCase()),eq(mobileOfflineContext.tenantId,ctx.tenantId),eq(mobileOfflineContext.actorId,ctx.userId),
+  ...(selected?.success?[eq(mobileOfflineContext.employmentId,selected.data.toLowerCase())]:[]));
  return withAttendanceTenant(ctx,async tx=>{
   if(!await mobileOfflineStorageReadyTx(tx))throw unavailable();
-  const [row]=await tx.select({companyId:mobileOfflineContext.companyId}).from(mobileOfflineContext).where(and(eq(mobileOfflineContext.id,id.data.toLowerCase()),eq(mobileOfflineContext.tenantId,ctx.tenantId),eq(mobileOfflineContext.actorId,ctx.userId!))).limit(1);
+  const [row]=await tx.select({companyId:mobileOfflineContext.companyId}).from(mobileOfflineContext).where(own).limit(1);
   return row?.companyId??null;
  });
 }

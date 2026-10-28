@@ -121,7 +121,7 @@ describe('production offline clock snapshot: values from their owners',()=>{
   const matched:string[]=[];
   for(const site of [kept,archived,unassigned,radiusless,closed]){
    const hit=await withAttendanceTenant(f.ctx,tx=>resolveGeofence(tx,{employmentId,date:todayInKualaLumpur(),time:'09:00',lat:site.lat,lng:site.lng,accuracy:1,punch:'in'})
-    .then(r=>r.clockingLocationId??null,error=>{if(error instanceof OutsideGeofenceError)return null;throw error;}));
+    .then(r=>r.enforced?r.clockingLocationId:null,error=>{if(error instanceof OutsideGeofenceError)return null;throw error;}));
    if(hit)matched.push(hit);
   }
   expect(matched).toEqual(snapshot.sites.map(s=>s.id));

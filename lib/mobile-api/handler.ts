@@ -87,7 +87,11 @@ export function mobileRoute<S extends z.ZodType>(
       const write = req.method !== 'GET' && req.method !== 'HEAD';
       releaseActor = admitActor(JSON.stringify([s.tenantId, s.userId ?? s.personId ?? 'unbound']));
       await budget(['mobile-actor', s.tenantId, s.userId ?? s.personId ?? 'unbound', write ? 'write' : 'read'], write ? 30 : 180, 60);
-      if (new URL(req.url).pathname.endsWith('/clock-device')) await budget(['mobile-enrollment', s.tenantId, s.userId ?? 'unbound'], 5, 3600);
+      const pathname = new URL(req.url).pathname;
+      if (pathname.endsWith('/clock-device')) await budget(['mobile-enrollment', s.tenantId, s.userId ?? 'unbound'], 5, 3600);
+      // Offline claim upload carries up to 3 MiB (photo and proof): a weighted hourly allowance per actor, beside the
+      // per-minute write budget. Engineering admission limit, not attendance policy; retries of a receipt count too.
+      if (pathname.endsWith('/offline/claim')) await budget(['mobile-offline-claim', s.tenantId, s.userId ?? 'unbound'], 64, 3600);
       let out: unknown;
       try {
         out = await fn(s, req);

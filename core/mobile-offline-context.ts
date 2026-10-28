@@ -14,17 +14,16 @@ import {RequestBudgetExceeded} from '../lib/request-budget';
 import {withAttendanceTenant} from './module-gate';
 import {ownIntegrityEnrollmentCompanyTx} from './mobile-integrity-key';
 import {assertNoOfflineClockLeaseTx} from './mobile-offline-lease';
+import {requireRegisteredDeviceTx} from './attendance-device';
+import {OfflineContextIssueError} from '../lib/mobile-offline-errors';
 const uuid=z.string().uuid().transform(value=>value.toLowerCase());
 const Input=z.object({employmentId:uuid,request:OfflineClockContextRequest}).strict();
 const Snapshot=z.object({policy:OfflineClockContextData.shape.policy,sites:OfflineClockContextData.shape.sites,attendance:OfflineClockContextData.shape.attendance,target:OfflineClockContextData.shape.target,permitCount:z.number().int().min(1).max(32)}).strict();
 export type OfflineContextSnapshot=z.infer<typeof Snapshot>;
 type KeyRow=typeof mobileIntegrityKey.$inferSelect;
 export type IssuedOfflineContextRow=typeof mobileOfflineContext.$inferSelect;
-export class OfflineContextIssueError extends Error{
- constructor(readonly reason:'configuration_unavailable'|'key_unavailable'|'binding_conflict'|'online_pending'|'context_closed'|'time_unavailable'|'offline_disabled'){
-  super('Offline context unavailable');this.name='OfflineContextIssueError';
- }
-}
+// The class lives in a server-agnostic module so the attendance facade's load graph stays free of 'server-only'.
+export {OfflineContextIssueError};
 export class OfflineContextCloseError extends Error{
  constructor(readonly reason:'context_unavailable'|'key_unavailable'|'context_closed'|'claims_pending'|'cursor_mismatch'|'binding_conflict'){
   super('Offline context close unavailable');this.name='OfflineContextCloseError';
@@ -111,6 +110,10 @@ export function createOfflineContextIssueService(settings:unknown,ports:OfflineC
     const snapshot=Snapshot.safeParse(await ports.snapshot(tx,ctx,{employmentId:input.employmentId,companyId,key:enrolled}));if(!snapshot.success)throw unavailable();
     // The trusted owner says offline is off for this company: a clean refusal, nothing written.
     if(!snapshot.data.policy.offlineEnabled)throw new OfflineContextIssueError('offline_disabled');
+    // Owner decision 5 (2026-10-28): a company that requires a registered device gets no new context. A claim carries no
+    // legacy device token, so the canonical writer would only ever hold it for review. New issuance only: an exact
+    // recovery above still returns the original bytes, so the phone can learn the context id and close it.
+    if(await requireRegisteredDeviceTx(tx,input.employmentId))throw new OfflineContextIssueError('device_required');
     const p=snapshot.data;
     if(p.target.platform!==enrolled.platform||p.target.appId!==enrolled.appId||p.target.environment!==enrolled.environment)throw new OfflineContextIssueError('key_unavailable');
     const minted=await stamp(tx),issuedAt=minted.getTime(),expiresAt=Math.min(issuedAt+p.policy.windowMs,config.issuer.validUntil);
