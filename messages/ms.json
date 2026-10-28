@@ -18623,7 +18623,20 @@
       }
     },
     "denied_unavailable": "Ada sedikit masalah di pihak saya. Sila cuba lagi sebentar nanti.",
-    "err_governed_job": "Larian tugasan itu tersangkut sedikit. Semak pilihan tugasan anda dan cuba lagi."
+    "err_governed_job": "Larian tugasan itu tersangkut sedikit. Semak pilihan tugasan anda dan cuba lagi.",
+    "home": {
+      "morning": "Selamat pagi, {name}",
+      "afternoon": "Selamat petang, {name}",
+      "evening": "Selamat malam, {name}",
+      "morningNoName": "Selamat pagi",
+      "afternoonNoName": "Selamat petang",
+      "eveningNoName": "Selamat malam",
+      "tabs": "Kerja dan kalendar anda",
+      "myWork": "Kerja saya",
+      "calendar": "Kalendar",
+      "noEmployment": "Kerja saya dan Kalendar akan muncul sebaik sahaja log masuk anda dipautkan kepada rekod pekerjaan.",
+      "privacy": "Data Pembantu anda"
+    }
   },
   "controlTower": {
     "howTitle": "Cara Menara Kawalan berfungsi",

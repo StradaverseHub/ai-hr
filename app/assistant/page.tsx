@@ -17,6 +17,12 @@ import { WorkspaceComposer } from '@/components/assistant/workspace-composer';
 import { MAX_TURNS } from '@/core/assistant';
 import { Card, ErrorBanner, PageHeader } from '@/components/ui';
 import { askAssistantAction } from './actions';
+import { viewerIdentity } from '@/lib/viewer';
+import { readEmployeeHomeIdentity } from '@/core/employee-home';
+import { homeDisplayClock } from '@/lib/employee-home';
+import { AssistantHomeTabs } from '@/components/assistant/assistant-home-tabs';
+import { HomeTasksCard } from '@/components/employee-home/tasks-card';
+import { HomeCalendarCard } from '@/components/employee-home/calendar-card';
 import {eraseGovernedJobFeedbackAction} from './job-feedback-actions';
 import { saveAgentFeedbackAction, eraseAgentFeedbackAction } from './feedback-actions';
 
@@ -83,14 +89,31 @@ export default async function AssistantPage({
   const tasks = workspace.taskIds.map(id => ({
     id, label: t(`workspace.${id}_label`), prompt: t(`workspace.${id}_prompt`, { date: today }),
   }));
+  // Home: a greeting, the question box, then "My work" and "Calendar". Both panels are the existing home
+  // cards, each reading its own authorized facts for the signed-in person's selected employment. A login
+  // with no employment (or an unreadable one) simply sees a short note instead of the two panels.
+  const clock = homeDisplayClock(new Date(), 'Asia/Kuala_Lumpur');
+  const name = await viewerIdentity(s).then(viewer => viewer.name?.trim() || null).catch(() => null);
+  const greeting = clock.hour < 12 ? (name ? t('home.morning', { name }) : t('home.morningNoName'))
+    : clock.hour < 18 ? (name ? t('home.afternoon', { name }) : t('home.afternoonNoName'))
+    : (name ? t('home.evening', { name }) : t('home.eveningNoName'));
+  const employmentId = await readEmployeeHomeIdentity(s).then(identity => identity.selectedEmploymentId).catch(() => null);
 
   return (
-    <div data-tour="intelligence-assistant" className="mx-auto max-w-5xl space-y-5">
-      <PageHeader title={t('title')} description={t('description')} />
-      <AssistantHistoryPrivacy status={sp.historyPrivacy}/>
-      <OwnClearStatus status={sp.ownClear}/>
-      <OwnClearForm kind="conversation" action={eraseConversationMetadataAction} label={t('workspace.conversationGovernance.erase')}/>
-      <ErrorBanner message={errorMessage} />
+    <div data-tour="intelligence-assistant" className="mx-auto max-w-5xl space-y-6">
+      <div className="mx-auto max-w-3xl space-y-4 pt-2">
+        <PageHeader title={greeting} description={t('description')} />
+        <OwnClearStatus status={sp.ownClear}/>
+        <ErrorBanner message={errorMessage} />
+        <WorkspaceComposer layout="hero" action={askAssistantAction} tasks={tasks} labels={{
+          tasks: t('workspace.tasks'), taskHint: t('workspace.taskHint'), question: t('workspace.question'),
+          placeholder: t('placeholder'), ask: t('ask'), working: t('workspace.working'), scope: t('scopeNote'),
+        }} />
+        {employmentId ? <AssistantHomeTabs labels={{tabs:t('home.tabs'),work:t('home.myWork'),calendar:t('home.calendar')}}
+          work={<HomeTasksCard employmentId={employmentId}/>}
+          calendar={<HomeCalendarCard employmentId={employmentId} initialMonth={clock.date.slice(0,7)}/>}/>
+          : <p className="text-center text-sm text-muted-foreground">{t('home.noEmployment')}</p>}
+      </div>
 
       <ModuleJobChooser modules={workspace.jobModules} selected={sp.job} actions={actionEntries}/>
       {selectedJob&&<CanonicalModuleJob view={selectedJob} ctx={s}/>}
@@ -99,13 +122,6 @@ export default async function AssistantPage({
       <GovernedModuleJobComposer modules={workspace.jobModules}/>
       <SpecialistJobComposer modules={workspace.jobModules}/>
       <ModuleQuestionPlanner permit={workspace.planningPermit} availability={workspace.planningAvailability} view={workspace.proposal} status={sp.planning??(sp.proposal&&!workspace.proposal?'unavailable':undefined)}/>
-
-      <Card className="p-5">
-        <WorkspaceComposer action={askAssistantAction} tasks={tasks} labels={{
-          tasks: t('workspace.tasks'), taskHint: t('workspace.taskHint'), question: t('workspace.question'),
-          placeholder: t('placeholder'), ask: t('ask'), working: t('workspace.working'), scope: t('scopeNote'),
-        }} />
-      </Card>
 
       {/* Candidate reviews for group administrators live on AI management › Assistant. */}
 
@@ -157,7 +173,13 @@ export default async function AssistantPage({
           <p className="text-sm text-muted-foreground">{t('empty')}</p>
         </Card>
       )}
-      <ImportPreparationPrivacy status={sp.importHistory}/><NativeOutcomePrivacy status={sp.nativeOutcome}/>
+      {/* Own-data privacy controls sit together at the end; each still asks first and reports its outcome. */}
+      <section id="assistant-privacy" aria-labelledby="assistant-privacy-heading" className="scroll-mt-4 space-y-2 border-t border-border pt-4">
+        <h2 id="assistant-privacy-heading" className="text-sm font-medium">{t('home.privacy')}</h2>
+        <AssistantHistoryPrivacy status={sp.historyPrivacy}/>
+        <OwnClearForm kind="conversation" action={eraseConversationMetadataAction} label={t('workspace.conversationGovernance.erase')}/>
+        <ImportPreparationPrivacy status={sp.importHistory}/><NativeOutcomePrivacy status={sp.nativeOutcome}/>
+      </section>
     </div>
   );
 }

@@ -8,6 +8,6 @@ import {eraseOwnImportEvaluationMetadata} from '@/core/personnel-import-evaluati
  * one's own preparation metadata. The canonical owner grants no read or employee-write capability. */
 export async function eraseImportPreparationHistoryAction(){
  try{const ctx=await getBrowserCommandSession();await eraseOwnImportEvaluationMetadata(ctx);}
- catch{redirect('/assistant?importHistory=unavailable');}
- revalidatePath('/assistant');redirect('/assistant?importHistory=erased');
+ catch{redirect('/assistant?importHistory=unavailable#assistant-privacy');}
+ revalidatePath('/assistant');redirect('/assistant?importHistory=erased#assistant-privacy');
 }

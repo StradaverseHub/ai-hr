@@ -41,6 +41,6 @@ export async function reopenNativeOutcomeAction(form:FormData){
 /** Identity-only erasure has no posted target and survives Assistant/native grant loss. */
 export async function eraseNativeOutcomesAction(){
  try{await eraseOwnNativeOutcomeAssociations(capture(await getBrowserCommandSession()));}
- catch{redirect('/assistant?nativeOutcome=erase_unavailable');}
- revalidatePath('/assistant');redirect('/assistant?nativeOutcome=erased');
+ catch{redirect('/assistant?nativeOutcome=erase_unavailable#assistant-privacy');}
+ revalidatePath('/assistant');redirect('/assistant?nativeOutcome=erased#assistant-privacy');
 }

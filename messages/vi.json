@@ -18623,7 +18623,20 @@
       }
     },
     "denied_unavailable": "Phía tôi gặp chút trục trặc. Vui lòng thử lại sau giây lát.",
-    "err_governed_job": "Lần chạy gặp chút trục trặc. Kiểm tra các tác vụ đã chọn rồi thử lại."
+    "err_governed_job": "Lần chạy gặp chút trục trặc. Kiểm tra các tác vụ đã chọn rồi thử lại.",
+    "home": {
+      "morning": "Chào buổi sáng, {name}",
+      "afternoon": "Chào buổi chiều, {name}",
+      "evening": "Chào buổi tối, {name}",
+      "morningNoName": "Chào buổi sáng",
+      "afternoonNoName": "Chào buổi chiều",
+      "eveningNoName": "Chào buổi tối",
+      "tabs": "Công việc và lịch của bạn",
+      "myWork": "Việc của tôi",
+      "calendar": "Lịch",
+      "noEmployment": "Việc của tôi và Lịch sẽ hiện khi tài khoản của bạn được liên kết với hồ sơ việc làm.",
+      "privacy": "Dữ liệu Trợ lý của bạn"
+    }
   },
   "controlTower": {
     "howTitle": "Trung tâm điều hành hoạt động thế nào",

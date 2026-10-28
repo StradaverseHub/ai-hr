@@ -18623,7 +18623,20 @@
       }
     },
     "denied_unavailable": "A little snag on my side. Please try again in a moment.",
-    "err_governed_job": "That task run hit a little speed bump. Check your task choices and try again."
+    "err_governed_job": "That task run hit a little speed bump. Check your task choices and try again.",
+    "home": {
+      "morning": "Good morning, {name}",
+      "afternoon": "Good afternoon, {name}",
+      "evening": "Good evening, {name}",
+      "morningNoName": "Good morning",
+      "afternoonNoName": "Good afternoon",
+      "eveningNoName": "Good evening",
+      "tabs": "Your work and calendar",
+      "myWork": "My work",
+      "calendar": "Calendar",
+      "noEmployment": "My work and Calendar appear once your login is linked to an employment record.",
+      "privacy": "Your Assistant data"
+    }
   },
   "controlTower": {
     "howTitle": "How the Control Tower works",
