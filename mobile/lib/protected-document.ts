@@ -5,6 +5,12 @@
  *
  * The folder is swept whole on launch, on going to the background, on logout and on an employment switch
  * (session.tsx). A sweep cannot fail a caller: an undeletable file is retried at the next sweep.
+ *
+ * M09 — ONE EXEMPTION, FROM ONE SWEEP. Android opens the OS share sheet as another activity, so the app goes to the
+ * background while the person is still choosing where the file goes; the background sweep would delete the very
+ * file being shared. A document handed to `shareProtectedDocument` is therefore skipped by the BACKGROUND sweep
+ * (`keepSharing`) until its share promise settles, and is deleted the moment it does, whichever way it settles. The
+ * launch, logout and employment-switch sweeps still take it.
  */
 import { Directory, File, Paths } from 'expo-file-system';
 import { randomUUID } from 'expo-crypto';
@@ -30,8 +36,34 @@ export function writeProtectedDocument(bytes: Uint8Array, mimeType: ProtectedDoc
   };
 }
 
-/** Delete every leftover protected document. Synchronous, idempotent, never throws. */
-export function sweepProtectedDocuments(): void {
-  try { const directory = new Directory(Paths.cache, FOLDER); if (directory.exists) directory.delete(); }
+/** File names (the random part) of documents in an OS share right now. In memory only: a killed process shares nothing. */
+const sharing = new Set<string>();
+const nameOf = (uri: string) => uri.slice(uri.lastIndexOf('/') + 1);
+
+/**
+ * Hand one document to `share` (the OS share sheet), exempt from the background sweep until the promise settles,
+ * then delete it — on success, on cancel and on failure alike. Returns what `share` returned.
+ */
+export async function shareProtectedDocument<T>(document: ProtectedDocument, share: (uri: string) => Promise<T>): Promise<T> {
+  const name = nameOf(document.uri);
+  sharing.add(name);
+  try { return await share(document.uri); }
+  finally { sharing.delete(name); document.delete(); }
+}
+
+/**
+ * Delete every leftover protected document. Synchronous, idempotent, never throws. `keepSharing` (the background
+ * sweep only) spares the documents in an OS share right now and deletes everything else.
+ */
+export function sweepProtectedDocuments(options: { keepSharing?: boolean } = {}): void {
+  try {
+    const directory = new Directory(Paths.cache, FOLDER);
+    if (!directory.exists) return;
+    if (!options.keepSharing || sharing.size === 0) { directory.delete(); return; }
+    for (const entry of directory.list()) {
+      if (sharing.has(entry.name || nameOf(entry.uri))) continue;
+      try { entry.delete(); } catch { /* retried at the next sweep */ }
+    }
+  }
   catch { /* retried at the next launch, background, logout or switch */ }
 }

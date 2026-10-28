@@ -55,7 +55,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     sweepProtectedDocuments(); // launch: leftovers of a killed process
     const change = AppState.addEventListener('change', (value) => {
       const next = visibility(value);
-      if (next === 'background') sweepProtectedDocuments();
+      if (next === 'background') sweepProtectedDocuments({ keepSharing: true }); // a document in an OS share is spared (M09)
       state.setVisibility(next);
     });
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', state.blur) : null;
