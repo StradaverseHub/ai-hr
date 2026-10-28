@@ -51,7 +51,7 @@ ssh -F /ABSOLUTE/PRIVATE/ssh_config aihr-staging \
 
 Verify `state=ok`, matching accepted source/built refs and build IDs, `stale_build=0`, active service, restart after the build, loopback health, canonical source arrival, and the complete ordered migration hashes/watermark. Perform the changed rendered journeys and relevant permission/failure checks. A successful build or HTTP 200 alone is insufficient. Preserve staging data; separately verify any required one-shot data script.
 
-**Complete when:** the release owner accepts the exact full SHA and running build ID, with original gate/arrival/walkthrough evidence retained privately. A rebuild of the same SHA creates a different acceptance target. Keep the acceptance/capture window exclusive so another deploy cannot replace it during packaging.
+**Complete when:** the release owner accepts the exact full SHA and running build ID, with original gate/arrival/walkthrough evidence retained privately. A rebuild of the same SHA creates a different acceptance target. For a CI-installed build, the original validated witness, installation grant and launch record are under the release controller's ignored `scratchpad/validated-ci-<run>-<uuid>/` directory written by `operator-release.mjs`; use those originals as acceptance evidence. Keep the acceptance/capture window exclusive so another deploy cannot replace it during packaging.
 
 ## 3. Publish the accepted build using the existing publisher
 
@@ -107,6 +107,9 @@ Retain the actual prior release and matching database/key/configuration backups.
 | --- | --- |
 | Private release repository cannot be resolved | Check the selected account's existing access and repository identity; use the private destination required by package policy. |
 | Staging SHA matches but build ID changed | Inspect the new build and obtain acceptance for it before publication. |
+| Staging was redeployed to another SHA after acceptance | The earlier acceptance can no longer be packaged. Accept the build now running, or coordinate a redeploy of the accepted candidate and accept that new build. |
+| Default `gh` account gets 404 for the private release repository | Pass `--github-account` for an already authenticated account with access; do not switch the shared login. |
+| Publisher refuses `Absolute archive link` | Inspect the link on staging. CI-installed builds (`.github/ci/build-bundle.py`) link Next's `sharp`/`fontkit` aliases under `.next/node_modules` to absolute paths. Do not edit the accepted staging build; repair the publisher or installer through the gate, then rerun with the same acceptance if the build is unchanged. |
 | Deploy is running or connection drops | Reconnect to deployment state/logs; establish whether the existing detached operation finished before starting another. |
 | Deploy is failed, stale or incomplete | Preserve logs, diagnose and repair; establish a complete compatible build before restart. |
 | Publisher interrupted | Resume with identical SHA, build ID, evidence, approval kind and output root. Preserve the checkpoint and prepared bytes. |
