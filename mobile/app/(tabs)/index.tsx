@@ -9,7 +9,8 @@ import { useTenantDesign } from '../../lib/design';
 import { useApi } from '../../lib/api';
 import { t } from '../../lib/i18n';
 import { useSession } from '../../lib/session';
-import { Card, LoadState, Muted, Row, Screen, SectionLabel, Title, fmtDays, fmtMoney } from '../../lib/ui';
+import { Button, Card, LoadState, Muted, Row, Screen, SectionLabel, Title, fmtDays, fmtMoney } from '../../lib/ui';
+import { router } from 'expo-router';
 
 export default function Home() {
   const { design } = useTenantDesign();
@@ -36,6 +37,8 @@ function LegacyHome() {
       {design.homeOrder.map(id => <Fragment key={id}>
         {id === 'clock' ? <ClockPanel refreshToken={refreshToken}/> : id === 'team' ? <TeamPanel refreshToken={refreshToken}/> : id === 'tasks' ? <><SectionLabel>{t('needsYou')}</SectionLabel><Card>
           {inbox.data?.enabled && inbox.data.unread > 0 ? <Row label={t('tabInbox')} value={t('unreadCount', { n: inbox.data.unread })} strong /> : <Muted>{t('nothingNeedsYou')}</Muted>}
+          {/* M08: the approver's tasks, decided natively or opened on the web. The list itself says when nothing waits. */}
+          <Button title={t('openApprovals')} kind="quiet" onPress={() => router.push('/approvals')} />
         </Card></> : <><SectionLabel>{t('tabLeave')}</SectionLabel>
           <LoadState loading={leave.loading} hasData={leave.data!=null} error={leave.error} onRetry={leave.reload} />
           {leave.data?.cards.map(c => <Card key={c.leaveTypeId}><Row label={c.leaveType} value={fmtDays(c.takenOnly ? c.taken : c.isCurrentCycle ? c.canApplyFor : c.balance)} strong />{c.sharedPool && <Muted>{t('sharedPool')}</Muted>}</Card>)}

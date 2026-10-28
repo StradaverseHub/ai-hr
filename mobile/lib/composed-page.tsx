@@ -38,7 +38,7 @@ function Messages({ block }: { block: MobileBlock }) {
 }
 function Tasks({ block }: { block: MobileBlock }) {
   const { signOut } = useSession(), tasks = useApi('tasks', {}, signOut);
-  return <><LoadState loading={tasks.loading} hasData={tasks.data!=null} error={tasks.error} onRetry={tasks.reload} />{tasks.data?.items.slice(0, block.detail === 'compact' ? 4 : 20).map(item => <View key={item.id} style={{ marginBottom: 12 }}><Row label={t(`task_${item.kind}`)} value={item.subject || '—'} /></View>)}{tasks.data?.total === 0 && <Muted>{t('nothingNeedsYou')}</Muted>}{tasks.data && tasks.data.total > 0 && <Muted>{t('tasksOnWeb')}</Muted>}</>;
+  return <><LoadState loading={tasks.loading} hasData={tasks.data!=null} error={tasks.error} onRetry={tasks.reload} />{tasks.data?.items.slice(0, block.detail === 'compact' ? 4 : 20).map(item => <View key={item.id} style={{ marginBottom: 12 }}><Row label={t(`task_${item.kind}`)} value={item.subject || '—'} /></View>)}{tasks.data?.total === 0 && <Muted>{t('nothingNeedsYou')}</Muted>}{tasks.data && tasks.data.total > 0 && <Button title={t('openApprovals')} kind="quiet" onPress={() => router.push('/approvals')} />}</>;
 }
 function Requests({ block }: { block: MobileBlock }) {
   const { signOut, employmentId } = useSession(), requests = useApi('leave-requests', { employmentId: employmentId ?? undefined }, signOut);
