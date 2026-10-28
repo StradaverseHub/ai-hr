@@ -33,18 +33,17 @@
 -- app.onehr_calibration_access: a seat holder cannot read another tier's sessions under RLS.
 
 -- ── 1. Internal helpers (no app privilege) ─────────────────────────────────────────────────────────────
--- The cycle's counted people, never the caller's own person: a frozen result, or the participation snapshot
--- (as app.onehr_leader_result decides it; a leaver of a running cycle drops out).
+-- The cycle's counted people, never the caller's own person: a frozen result, or participation without the caller-
+-- visibility arm (app.assessment_review_eligible, as app.onehr_leader_result decides it: the snapshot, a leaver of a
+-- running cycle drops out, and since 0667 a person whose unit is out of the cycle drops out too, E1; frozen results
+-- stay, D7).
 CREATE FUNCTION app.onehr_leader_status_people(wanted_cycle uuid) RETURNS TABLE(review_id uuid, employment_id uuid, company_id uuid, manager_performance text)
  LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
  SELECT o.review_id,o.employment_id,o.company_id,o.manager_performance
- FROM performance_onehr_review o JOIN review_cycle c ON c.id=o.cycle_id AND c.tenant_id=o.tenant_id
- JOIN employment s ON s.id=o.employment_id AND s.tenant_id=o.tenant_id
+ FROM performance_onehr_review o JOIN employment s ON s.id=o.employment_id AND s.tenant_id=o.tenant_id
  WHERE o.cycle_id=wanted_cycle AND o.tenant_id=app.current_tenant_id() AND NOT app.is_self_person(s.person_id)
   AND (EXISTS(SELECT 1 FROM performance_onehr_result f WHERE f.review_id=o.review_id AND f.tenant_id=o.tenant_id)
-   OR EXISTS(SELECT 1 FROM performance_assessment_participation p WHERE p.cycle_id=o.cycle_id AND p.employment_id=o.employment_id AND p.tenant_id=o.tenant_id
-    AND (c.status='closed' OR s.terminated_on IS NULL OR s.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
-    AND CASE WHEN p.override='add' THEN true WHEN p.override='remove' THEN false ELSE p.eligible_at_open END))
+   OR app.assessment_review_eligible(o.review_id))
 $$;
 --> statement-breakpoint
 -- An employment's current department name (the label the department list shows).

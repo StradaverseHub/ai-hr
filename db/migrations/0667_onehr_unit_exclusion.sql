@@ -806,10 +806,14 @@ $$;
 -- acting employment is out of the review's cycle by the unit rule (D9). Administrators are never stopped: the
 -- administrator arms (app.onehr_cycle_admin, app.onehr_release_admin) are unchanged. The line-manager arms of
 -- app.onehr_leader_role and app.onehr_led_tabs read app.onehr_manager, which carries leader-off since section 9;
--- app.onehr_release_leaders reads the stored reviewer directly and gains the arm. Readers of these helpers follow without
--- restatement: app.onehr_frozen_visible, app.onehr_leader_result and app.onehr_led_people (app.onehr_leader_role),
+-- app.onehr_release_leaders reads the stored reviewer directly and gains the arm. Readers of these helpers follow on the
+-- leader side: app.onehr_frozen_visible, app.onehr_leader_result and app.onehr_led_people (app.onehr_leader_role),
 -- app.onehr_led_people and app.onehr_led_cycles (app.onehr_led_tabs), and the release notices and release board
 -- (app.onehr_release_leaders). 0666 (after this one) carries the same arm in app.onehr_leader_status.
+-- The subject arm (E1, frozen results exempt by D7) reaches the leader reads too: a person whose unit is out has no
+-- review of their own, so they leave What you led (app.onehr_led_tabs) and have no working result to read
+-- (app.onehr_leader_result), both through app.assessment_review_eligible as restated in section 8. The release
+-- writer and board already follow participation through app.onehr_result_card (app.assessment_review_participates).
 -- Restates app.onehr_leader_role (latest: 0665:108-135): leader-off on the BG CEO, group chief and BU CEO seat arms and the HOD arm.
 CREATE OR REPLACE FUNCTION app.onehr_leader_role(wanted_review uuid) RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
  WITH today AS (SELECT (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AS d),
@@ -863,7 +867,7 @@ CREATE OR REPLACE FUNCTION app.onehr_release_leaders(wanted_reviews uuid[]) RETU
  ORDER BY x.review_id,array_position(ARRAY['lm','hod','bu'],x.leader_role),x.employment_id
 $$;
 --> statement-breakpoint
--- Restates app.onehr_led_tabs (latest: 0665:313-341): leader-off on the department, business unit, calibration group and business group tabs.
+-- Restates app.onehr_led_tabs (latest: 0665:313-341): leader-off on the department, business unit, calibration group and business group tabs; the subject arm (E1): a led person counts only with a frozen result or while app.assessment_review_eligible (participation with the unit rule), so an excluded person leaves What you led and its counts.
 CREATE OR REPLACE FUNCTION app.onehr_led_tabs(wanted_cycle uuid) RETURNS TABLE(review_id uuid, tabs text[]) LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
  WITH today AS (SELECT (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AS d),
  me AS (SELECT u.id,u.person_id,u.tenant_id FROM app_user u
@@ -892,4 +896,77 @@ CREATE OR REPLACE FUNCTION app.onehr_led_tabs(wanted_cycle uuid) RETURNS TABLE(r
    AND st.company_id=app.onehr_business_group_node(r.company_id) AND st.valid_from<=today.d AND (st.valid_to IS NULL OR st.valid_to>today.d)
    WHERE st.holder_employment_id IN (SELECT id FROM mine) AND NOT app.assessment_unit_excluded(wanted_cycle,st.holder_employment_id))
  SELECT t.review_id,array_agg(DISTINCT t.tab ORDER BY t.tab) FROM tabbed t GROUP BY t.review_id
+ HAVING EXISTS(SELECT 1 FROM performance_onehr_result f WHERE f.review_id=t.review_id AND f.tenant_id=app.current_tenant_id()) OR app.assessment_review_eligible(t.review_id)
 $$;
+--> statement-breakpoint
+-- Restates app.onehr_leader_result (latest: 0665:229-301): the subject arm (E1): counted through app.assessment_review_eligible (participation with the unit rule) instead of the snapshot alone.
+CREATE OR REPLACE FUNCTION app.onehr_leader_result(wanted_review uuid) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE leader text; r performance_onehr_review; mid boolean; rel performance_assessment_release; f performance_onehr_result; snap jsonb; outcome jsonb;
+ counted boolean; axis text; axes jsonb:='[]'::jsonb; upto text; fully boolean; hidden boolean; before text; steps jsonb; s record; st text; final_band text;
+ released boolean; self_pot text; pct numeric; w numeric; talent_open boolean; all_full boolean:=true;
+BEGIN
+ leader:=app.onehr_leader_role(wanted_review);
+ IF leader IS NULL THEN RETURN NULL; END IF;
+ SELECT * INTO r FROM performance_onehr_review WHERE review_id=wanted_review AND tenant_id=app.current_tenant_id();
+ SELECT coalesce(c.policy->>'kind','year_end')='mid_year' INTO mid FROM performance_onehr_cycle c WHERE c.cycle_id=r.cycle_id AND c.tenant_id=r.tenant_id;
+ SELECT * INTO rel FROM performance_assessment_release WHERE review_id=r.review_id AND tenant_id=r.tenant_id;
+ SELECT * INTO f FROM performance_onehr_result WHERE review_id=r.review_id AND tenant_id=r.tenant_id;
+ -- Participation without the caller-visibility arm (app.assessment_review_participates also asks whether the
+ -- caller can see the person, which a seat holder need not): app.assessment_review_eligible, the same snapshot,
+ -- terminated and override arms plus the unit rule (E1). A person taken out of the cycle, alone or with their unit,
+ -- has no working result to read; a frozen result is read as before (D7).
+ counted:=app.assessment_review_eligible(r.review_id);
+ IF f.id IS NULL AND NOT counted THEN
+  RETURN jsonb_build_object('role',leader,'midYear',mid,'frozen',false,'axes','[]'::jsonb,'talent',NULL);
+ END IF;
+ SELECT snapshot INTO snap FROM performance_assessment_rating_record WHERE review_id=r.review_id AND tenant_id=r.tenant_id;
+ outcome:=CASE WHEN f.id IS NOT NULL THEN f.result ELSE app.assessment_working_result(r.review_id) END;
+ -- Self potential, from the recorded 360 percentage and the person's own competency answers (model.potential).
+ w:=coalesce((snap->'configuration'->>'weight360')::numeric,10000);
+ IF coalesce((snap->>'valid')::boolean,false) AND snap->>'potential360Pct' IS NOT NULL AND snap->>'competencySelf' IS NOT NULL AND coalesce((snap->>'competencyMax')::numeric,0)>0 THEN
+  pct:=CASE WHEN w<10000 THEN ((snap->>'potential360Pct')::numeric*w+100*(snap->>'competencySelf')::numeric/(snap->>'competencyMax')::numeric*(10000-w))/10000 ELSE (snap->>'potential360Pct')::numeric END;
+  self_pot:=CASE WHEN pct<=(snap->'configuration'->>'lowMaxPct')::numeric THEN 'Low' WHEN pct<=(snap->'configuration'->>'midMaxPct')::numeric THEN 'Mid' ELSE 'High' END;
+ END IF;
+ upto:=CASE leader WHEN 'lm' THEN 'lm' WHEN 'hod' THEN 'hod' WHEN 'bu' THEN CASE WHEN mid THEN 'hod' ELSE 'bu' END END;
+ FOREACH axis IN ARRAY ARRAY['performance','potential'] LOOP
+  final_band:=outcome->>axis;
+  released:=CASE axis WHEN 'performance' THEN rel.performance_leader_released_at IS NOT NULL ELSE rel.potential_leader_released_at IS NOT NULL END;
+  fully:=leader IN ('bg','group') OR coalesce(released,false) OR final_band IS NULL;
+  IF final_band IS NOT NULL AND NOT fully THEN all_full:=false; END IF;
+  hidden:=false; before:=NULL; steps:='[]'::jsonb;
+  FOR s IN
+   SELECT q.tier,q.ord,q.band,q.why FROM (
+    SELECT 'self'::text AS tier,1 AS ord,CASE axis WHEN 'performance' THEN snap->>'selfBand' ELSE self_pot END AS band,''::text AS why
+    UNION ALL
+    SELECT 'lm',2,CASE axis WHEN 'performance' THEN r.manager_performance
+     ELSE CASE WHEN coalesce((snap->>'valid')::boolean,false) AND coalesce(snap->>'competencyStatus','reviewed')='reviewed' THEN snap->>'computedPotential' END END,''
+    UNION ALL
+    SELECT t.tier,t.ord,(SELECT CASE axis WHEN 'performance' THEN ce.performance ELSE ce.potential END
+      FROM performance_onehr_calibration_entry ce JOIN performance_onehr_calibration cs ON cs.id=ce.session_id AND cs.tenant_id=ce.tenant_id
+      WHERE ce.review_id=r.review_id AND ce.tenant_id=r.tenant_id AND cs.tier=t.tier AND NOT (cs.tier='group' AND cs.mode='blend')
+       AND (cs.tier='final' OR CASE axis WHEN 'performance' THEN app.assessment_calibration_axis_confirmed(cs.tier,ce.performance_locked_at,cs.performance_locked_at)
+        ELSE app.assessment_calibration_axis_confirmed(cs.tier,ce.potential_locked_at,cs.potential_locked_at) END)
+      ORDER BY ce.id LIMIT 1),
+     coalesce((SELECT CASE axis WHEN 'performance' THEN ce.performance_note ELSE ce.potential_note END
+      FROM performance_onehr_calibration_entry ce JOIN performance_onehr_calibration cs ON cs.id=ce.session_id AND cs.tenant_id=ce.tenant_id
+      WHERE ce.review_id=r.review_id AND ce.tenant_id=r.tenant_id AND cs.tier=t.tier AND NOT (cs.tier='group' AND cs.mode='blend')
+      ORDER BY ce.id LIMIT 1),'')
+    FROM (VALUES ('hod',3),('bu',4),('bg',5),('group',6),('final',7)) t(tier,ord)
+   ) q ORDER BY q.ord
+  LOOP
+   IF mid AND s.tier IN ('bu','bg','group') THEN CONTINUE; END IF;
+   IF s.tier IN ('group','final') AND (s.band IS NULL OR hidden) THEN CONTINUE; END IF;
+   IF hidden THEN
+    steps:=steps||jsonb_build_object('tier',s.tier,'band',NULL,'state','hidden','why','');
+    CONTINUE;
+   END IF;
+   st:=CASE WHEN s.band IS NULL THEN 'none' WHEN before IS NULL THEN 'set' WHEN s.band=before THEN 'kept' ELSE 'moved' END;
+   steps:=steps||jsonb_build_object('tier',s.tier,'band',s.band,'state',st,'why',CASE WHEN s.tier IN ('self','lm') OR s.band IS NULL THEN '' ELSE btrim(coalesce(s.why,'')) END);
+   before:=coalesce(s.band,before);
+   IF NOT fully AND upto=s.tier THEN hidden:=true; END IF;
+  END LOOP;
+  axes:=axes||jsonb_build_array(jsonb_build_object('axis',axis,'steps',steps,'final',CASE WHEN fully THEN final_band END,'full',fully,'hasResult',final_band IS NOT NULL));
+ END LOOP;
+ talent_open:=leader IN ('bg','group') OR rel.talent_leader_released_at IS NOT NULL OR all_full;
+ RETURN jsonb_build_object('role',leader,'midYear',mid,'frozen',f.id IS NOT NULL,'axes',axes,'talent',CASE WHEN talent_open THEN outcome->>'talent' END);
+END $$;

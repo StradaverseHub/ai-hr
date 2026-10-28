@@ -297,6 +297,30 @@ describe('W3-F6: leader-off while a unit is out of the cycle (D-P1-22 E7)', () =
     await bringBack(a, cycleId, saved.ruleId);
     expect(await status(U.buB, cycleId)).toEqual(beta0);
   }, 120_000);
+
+  it('E1: a person whose unit is out leaves every running count unless their result is frozen; Bring back returns them', async () => {
+    // A2's result is frozen first, as the release tests freeze one: the line manager's band, the rating record and
+    // locked HOD, BU and BG decisions written by the HR administrator, then the freeze service.
+    await owner.db.update(schema.onehrReview).set({ managerPerformance: 'ME' }).where(eq(schema.onehrReview.reviewId, R.A2));
+    await owner.db.insert(schema.assessmentRatingRecord).values({ reviewId: R.A2, tenantId: b.tenantId, lastEvent: 'admin_capture', recordedBy: b.adminUserId,
+      snapshot: { selfBand: 'BE', managerBand: 'ME', valid: true, computedPotential: 'Mid', competencyStatus: null, potential360Pct: 50, competencySelf: null, competencyMax: null, configuration: { weight360: 4000, lowMaxPct: 40, midMaxPct: 74.29 } } });
+    for (const tier of ['hod', 'bu', 'bg'] as const) await scope(cycleId, { tier, performanceLockedAt: new Date(), potentialLockedAt: new Date() }, [{ reviewId: R.A2, employmentId: P.A2.employmentId, performance: 'AE', potential: 'Mid' }]);
+    await perf.freezeOnehrReview(a, R.A2, (await perf.getOnehrReview(a, R.A2))!.revision);
+    expect(await owner.db.select({ id: schema.onehrResult.id }).from(schema.onehrResult).where(eq(schema.onehrResult.reviewId, R.A2)), 'A2 is frozen').toHaveLength(1);
+    const counts = async () => {
+      const bu = (await status(U.buA, cycleId)) as unknown as { units: { companyId: string; people: number }[] };
+      const bg = (await status(U.bgCeo, cycleId)) as unknown as { rows: { companyId: string; people: number }[] };
+      const chief = (await status(U.chief, cycleId)) as unknown as { rows: { people: number }[] };
+      return { bu: bu.units.find((u) => u.companyId === b.companyId)!.people, bg: bg.rows.find((r) => r.companyId === b.companyId)!.people, chief: chief.rows.reduce((n, r) => n + r.people, 0) };
+    };
+    expect(await counts(), 'non-vacuous: Acme has five people, the group three').toEqual({ bu: 5, bg: 5, chief: 3 });
+    const out = (await createDepartment(a, { companyId: b.companyId, name: 'Left out' })).id;
+    for (const p of [P.A1, P.A2]) await moveTo(p, out);
+    const { saved } = await exclude(a, cycleId, b.companyId, out);
+    expect(await counts(), 'A1 leaves (E1); A2 stays with a frozen result (D7)').toEqual({ bu: 4, bg: 4, chief: 2 });
+    await bringBack(a, cycleId, saved.ruleId);
+    expect(await counts()).toEqual({ bu: 5, bg: 5, chief: 3 });
+  }, 180_000);
 });
 
 describe('between cycles', () => {
@@ -304,9 +328,11 @@ describe('between cycles', () => {
    * Final bands: A1 ME/Mid (Solid Core), A2 OU/High (Super Star), A3 AE/Low (Solid Core), B1 ME/Mid, B2 BE/Mid.
    * Released to leaders: A1's performance and talent status. A2's performance was released, then revoked.
    */
-  async function closedWithReleases() {
+  async function closedWithReleases(afterFinals?: () => Promise<void>) {
     const finals: Record<string, [string, string]> = { A1: ['ME', 'Mid'], A2: ['OU', 'High'], A3: ['AE', 'Low'], B1: ['ME', 'Mid'], B2: ['BE', 'Mid'] };
     await scope(cycleId, { tier: 'final', companyId: holding }, (['A1', 'A2', 'A3', 'B1', 'B2'] as const).map((n) => ({ reviewId: R[n], employmentId: P[n].employmentId, performance: finals[n][0], potential: finals[n][1] })));
+    // A calibration entry needs a participating review, so a unit rule is saved after the final decisions.
+    if (afterFinals) await afterFinals();
     const release = (reviewIds: string[], result: 'performance' | 'talent', action: 'release' | 'revoke') => perf.releaseOnehrResults(a, { cycleId, reviewIds, result, step: 'leaders', action });
     await release([R.A1, R.A2], 'performance', 'release');
     await release([R.A2], 'performance', 'revoke');
@@ -342,6 +368,25 @@ describe('between cycles', () => {
     expect(await status(U.hodA, cycleId)).toBeNull();
     expect(await raw(U.hodA, cycleId)).toBeNull();
     expect(await status(U.buA, cycleId)).toMatchObject({ seat: 'bu', mode: 'record', performance: { released: 1 } });
+  }, 120_000);
+
+  it('E1: a person whose unit was out on the close day is in no tally and no band count (the pin, D8)', async () => {
+    await closedWithReleases(async () => {
+      const out = (await createDepartment(a, { companyId: b.companyId, name: 'Left out' })).id;
+      await moveTo(P.A1, out);
+      await exclude(a, cycleId, b.companyId, out);
+      await withTenant(a, (tx) => tx.execute(sql`select app.assessment_unit_exclusion_pin(${cycleId}::uuid)`));
+    });
+    // As the first tally test, without A1 (ME/Mid, Solid Core, the only person released to leaders): A1 has no card,
+    // so the releases in closedWithReleases skip A1 too.
+    expect(await status(U.buA, cycleId)).toEqual({ seat: 'bu', mode: 'record', cycleId, midYear: false, gated: true, people: 4,
+      performance: { released: 0, waiting: 2, bands: pm(0, 0, 0, 0, 0) },
+      potential: { released: 0, waiting: 2, bands: pot(0, 0, 0) },
+      talent: { released: 0, waiting: 2, bands: [] },
+      departmentReviews: { in: 0, of: 2 } });
+    expect(await status(U.hodA, cycleId)).toEqual({ seat: 'hod', mode: 'record', cycleId, midYear: false, gated: true, people: 1,
+      performance: { released: 0, waiting: 1, bands: pm(0, 0, 0, 0, 0) },
+      potential: { released: 0, waiting: 1, bands: null }, talent: { released: 0, waiting: 1, bands: null }, departmentReviews: null });
   }, 120_000);
 
   it('a person not yet released to the viewer is absent from every band count, though their band exists', async () => {

@@ -442,6 +442,39 @@ describe('W3-F6: leader-off while a unit is out of the cycle (D-P1-22 E7)', () =
     expect(await roleOf(U.buCeo, review)).toBe('bu');
     expect(await reach(review)).toEqual([['bu', second.employmentId], ['hod', second.employmentId], ['lm', P.lm.employmentId]]);
   }, 120_000);
+
+  it('E1: a person whose unit is out leaves What you led and its counts unless their result is frozen; Bring back returns them', async () => {
+    const frozen = await calibrated(cycleId, S[0]);
+    await freeze(frozen);
+    const working = await calibrated(cycleId, S[1]);
+    const out = await leftOut();
+    const counts = async (ctx: SessionContext) => {
+      const led = await perf.listOnehrLedPeople(ctx, { cycleId });
+      return { cycle: led.cycles.find((c) => c.id === cycleId)?.people ?? 0, tabs: Object.fromEntries(led.tabs.map((t) => [t.key, t.n])) };
+    };
+    const before = { lm: await counts(U.lm), bu: await counts(U.buCeo) };
+    expect(before, 'non-vacuous: the four subjects (and, for the BU CEO, the leaders) before the rule').toMatchObject({ lm: { cycle: 4, tabs: { direct: 4 } }, bu: { tabs: { bu: before.bu.cycle } } });
+    for (const ctx of [U.lm, U.buCeo]) expect(await ledReviews(ctx)).toEqual(expect.arrayContaining([frozen, working]));
+    expect((await chainOf(U.lm, working))!.axes.map((x) => x.axis), 'non-vacuous: the working result is read before the rule').toEqual(['performance', 'potential']);
+    for (const s of [S[0], S[1]]) await moveTo(s, out);
+    const { saved } = await exclude(a, cycleId, b.companyId, out);
+    for (const ctx of [U.lm, U.buCeo]) {
+      const led = await ledReviews(ctx);
+      expect(led, 'the frozen result stays (D7)').toContain(frozen);
+      expect(led, 'no review of their own (E1)').not.toContain(working);
+    }
+    expect(await counts(U.lm)).toEqual({ cycle: 3, tabs: { direct: 3 } });
+    expect(await counts(U.buCeo)).toEqual({ cycle: before.bu.cycle - 1, tabs: { bu: before.bu.cycle - 1 } });
+    // The leader still leads them, but there is no working result to read: no step, no band.
+    const chain = await chainOf(U.lm, working);
+    expect(chain).toMatchObject({ role: 'lm', frozen: false, axes: [], talent: null });
+    expect(JSON.stringify(chain)).not.toMatch(BAND);
+    expect((await chainOf(U.lm, frozen))!.frozen).toBe(true);
+    await bringBack(a, cycleId, saved.ruleId);
+    expect({ lm: await counts(U.lm), bu: await counts(U.buCeo) }).toEqual(before);
+    for (const ctx of [U.lm, U.buCeo]) expect(await ledReviews(ctx)).toEqual(expect.arrayContaining([frozen, working]));
+    expect((await chainOf(U.lm, working))!.axes.map((x) => x.axis)).toEqual(['performance', 'potential']);
+  }, 120_000);
 });
 
 describe('the release writer', () => {
