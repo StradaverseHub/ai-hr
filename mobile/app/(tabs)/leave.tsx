@@ -1,6 +1,6 @@
 /** Requests keep every eligible leave balance visible, including masked values and shared pools. */
 import { useCallback } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { router,useFocusEffect } from 'expo-router';
 import { Pressable,View } from 'react-native';
 import { DesignText as Text } from '../../lib/design';
 import { randomUUID } from 'expo-crypto';
@@ -10,7 +10,7 @@ import { useJourneyDrafts,removeLocalFile } from '../../lib/journey-drafts';
 import { LeaveRequestForm } from '../../lib/leave-request-form';
 import { t } from '../../lib/i18n';
 import { useSession } from '../../lib/session';
-import { LoadState,Muted,Screen,Title,fmtDays } from '../../lib/ui';
+import { Button,LoadState,Muted,Screen,Title,fmtDays } from '../../lib/ui';
 export default function Leave(){
   const {palette,design}=useTenantDesign();const {signOut,employmentId}=useSession();
   const leave=useApi('leave',{employmentId:employmentId??undefined},signOut);
@@ -31,13 +31,15 @@ export default function Leave(){
     </View>
     {leave.data?.cards.length===0&&<Muted>{t('noLeaveTypes')}</Muted>}
     <LoadState loading={options.loading} hasData={options.data!=null} error={options.error} onRetry={options.reload}/>
-    {options.data&&leave.data&&<LeaveRequestForm options={options.data} today={leave.data.today} onSubmitted={reload}/>}
+    {options.data&&leave.data&&<LeaveRequestForm options={options.data} today={leave.data.today} onSubmitted={reload} notices={Object.fromEntries(leave.data.cards.flatMap(c=>c.entitlementNoticeText?[[c.leaveTypeId,c.entitlementNoticeText]]:[]))}/>}
     <View style={{gap:14,marginTop:22,borderTopWidth:1,borderColor:palette.border,paddingTop:20}}>
       <Text style={{color:palette.text,fontSize:21,fontWeight:'600'}}>{t('requestHistory')}</Text>
       <LoadState loading={requests.loading} hasData={requests.data!=null} error={requests.error} onRetry={requests.reload}/>
-      {requests.data?.items.map(r=><View key={r.id} style={{paddingVertical:14,borderBottomWidth:1,borderColor:palette.border,gap:6}}><Text style={{color:palette.text,fontSize:17,fontWeight:'600'}}>{r.type}</Text><Muted>{r.from} → {r.to}</Muted><Text style={{color:palette.accent}}>{r.status==='approved'?t('approved'):r.status==='pending'?t('pending'):r.status==='rejected'?t('rejected'):r.status==='cancelled'?t('cancelled'):r.status}</Text>{r.partial&&<Muted>{t('partialDecision')}</Muted>}</View>)}
+      {/* M07: each row opens its detail (mobile/app/leave/[id].tsx); the full paged list is one tap away. */}
+      {requests.data?.items.map(r=><Pressable key={r.id} accessibilityRole="button" accessibilityLabel={`${r.type}. ${r.from} → ${r.to}`} onPress={()=>router.push({pathname:'/leave/[id]',params:{id:r.id}})} style={{paddingVertical:14,borderBottomWidth:1,borderColor:palette.border,gap:6}}><Text style={{color:palette.text,fontSize:17,fontWeight:'600'}}>{r.type}</Text><Muted>{r.from} → {r.to}</Muted><Text style={{color:palette.accent}}>{r.status==='approved'?t('approved'):r.status==='pending'?t('pending'):r.status==='rejected'?t('rejected'):r.status==='cancelled'?t('cancelled'):r.status}</Text>{r.partial&&<Muted>{t('partialDecision')}</Muted>}</Pressable>)}
       {requests.data?.items.length===0&&<Muted>{t('noRequests')}</Muted>}
       {requests.data&&<Muted>{t('historyCount',{n:requests.data.items.length,total:requests.data.total})}</Muted>}
+      <Button title={t('seeAllRequests')} kind="quiet" onPress={()=>router.push('/leave/history')}/>
     </View>
   </Screen>;
 }

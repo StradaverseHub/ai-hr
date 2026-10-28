@@ -22,6 +22,9 @@ function fixture(platform:'ios'|'android'='ios'){
   const View=({children}:any)=><div>{children}</div>,Text=({children,accessibilityRole}:any)=><span role={accessibilityRole==='alert'?'alert':undefined}>{children}</span>;
   const Pressable=(p:any)=><button disabled={p.disabled} role={p.accessibilityRole??'button'} aria-label={p.accessibilityLabel} aria-checked={p.accessibilityState?.checked} onClick={p.onPress}>{p.children}</button>;
   const alert=vi.fn();
+  // D9 date/time control: the spinner is an input whose change is the picked local wall value; Android opens a dialog.
+  const androidOpen=vi.fn();
+  const picker={default:(p:any)=><input aria-label={p.accessibilityLabel} value={p.mode==='date'?`${p.value.getFullYear()}-${String(p.value.getMonth()+1).padStart(2,'0')}-${String(p.value.getDate()).padStart(2,'0')}`:`${String(p.value.getHours()).padStart(2,'0')}:${String(p.value.getMinutes()).padStart(2,'0')}`} onChange={e=>{const v=e.target.value;const d=p.mode==='date'?new Date(Number(v.slice(0,4)),Number(v.slice(5,7))-1,Number(v.slice(8,10))):new Date(2000,0,1,Number(v.slice(0,2)),Number(v.slice(3,5)));p.onChange({type:'set'},d);}}/>,DateTimePickerAndroid:{open:androidOpen}};
   const native={Alert:{alert},View,Text,Pressable,TextInput:(p:any)=><input aria-label={p.accessibilityLabel} disabled={!p.editable} value={p.value} onChange={e=>p.onChangeText(e.target.value)}/>,Image:()=>null,AppState:{currentState:'active'},Platform:{OS:platform}};
   const base={'react-native':native,'./session':{useSession:()=>session},'./auth':{authGeneration:()=>1,assertAuthGeneration:()=>{}},'./design':{DesignText:Text,useTenantDesign:()=>({design:DEFAULT_MOBILE_DESIGN,palette:mobilePalette(DEFAULT_MOBILE_DESIGN,'dark')})},'./errors':errors,'./i18n':{appLocale:()=>'en',t:(s:string,v?:any)=>s==='awayToday'?`${s} ${v.n}/${v.total}`:s},'expo-crypto':{randomUUID:()=>`${String(++sequence).padStart(8,'0')}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`},'expo-router':{useFocusEffect:()=>{},router:{push:vi.fn()}}};
   const provider=load('mobile/lib/journey-drafts.tsx',{...base,'expo-file-system':{File:class{exists=false},Directory:class{exists=false},Paths:{cache:'cache'}}});
@@ -50,12 +53,12 @@ function fixture(platform:'ios'|'android'='ios'){
   const shared={...base,'./submission-journal':journal,'../../lib/mobile-api/contract':contract,'./enrollment-journal':enrollment,'./signed-clock-journal':{SignedClockUnavailable},'./signed-clock':{openOwnedSignedClock:openSigned},'./submission-recovery':{useSubmissionRecovery:(_kind:string,_id:string,onRestore:(value:unknown)=>void)=>{
     React.useEffect(()=>{if(restoredClock){const value=restoredClock;if(value.entry.integrity)retained.add(value.entry.requestId);onRestore(value);}},[]);
     return {ready:true,error:null,reload:()=>{},stage,resolve,prepareClock,reportAttempt,hasSignedAttempt};
-  }},'./journey-drafts':{...provider,removeLocalFile:remove},'./ui':ui,'./api':{apiGet:get,apiPost:(path:string,...args:unknown[])=>path==='clock-location'?preview(...args):post(path,...args),useApi:(path:string)=>({data:path==='clock-attempts'?attemptsState:path==='team'?teamState:clockState,reload:path==='clock-attempts'?reloadAttempts:reload,loading:false,error:null})},'./capture':{capturePosition:capture,capturePhoto:photo,appendAttachment:()=>{}},'./device-registration':{readClockDevice:async()=>null,writeClockDevice:async()=>{},clearClockDevice:async()=>{}},'./slide-confirm':{SlideConfirm:(p:any)=><button disabled={p.disabled} onClick={p.onConfirm}>{p.label}</button>},'./offline-clock':offlineUi,'expo-document-picker':{getDocumentAsync:async()=>({canceled:true})},'expo-file-system':{}};
+  }},'./journey-drafts':{...provider,removeLocalFile:remove},'./ui':ui,'./api':{apiGet:get,apiPost:(path:string,...args:unknown[])=>path==='clock-location'?preview(...args):post(path,...args),useApi:(path:string)=>({data:path==='clock-attempts'?attemptsState:path==='team'?teamState:clockState,reload:path==='clock-attempts'?reloadAttempts:reload,loading:false,error:null})},'./capture':{capturePosition:capture,capturePhoto:photo,appendAttachment:()=>{}},'./device-registration':{readClockDevice:async()=>null,writeClockDevice:async()=>{},clearClockDevice:async()=>{}},'./slide-confirm':{SlideConfirm:(p:any)=><button disabled={p.disabled} onClick={p.onConfirm}>{p.label}</button>},'./offline-clock':offlineUi,'expo-document-picker':{getDocumentAsync:async()=>({canceled:true})},'expo-file-system':{},'@react-native-community/datetimepicker':picker};
   const {ClockPanel}=load('mobile/lib/clock-panel.tsx',shared),{LeaveRequestForm}=load('mobile/lib/leave-request-form.tsx',shared),{TeamPanel}=load('mobile/lib/team-panel.tsx',shared);
   function Probe(){drafts=provider.useJourneyDrafts();return null;}
   const options={employmentId:'own',items:[{id:'annual',name:'Annual leave',durations:['full_day','half_day_am','hourly'],allowedMimeTypes:[],maxDocBytes:10485760,requiresDocument:false,emergencySplit:false}]};
-  function App({kind,refreshToken=0,visible=true}:{kind:'clock'|'leave'|'team';refreshToken?:number;visible?:boolean}){return <provider.JourneyDraftProvider><Probe/>{!visible?null:kind==='clock'?<ClockPanel refreshToken={refreshToken}/>:kind==='team'?<TeamPanel refreshToken={refreshToken}/>:<LeaveRequestForm options={options} today="2026-01-01" onSubmitted={reload}/>}</provider.JourneyDraftProvider>;}
-  return {App,engine,anchorRead,session,post,signed,openSigned,alert,hasSignedAttempt,setSignedState:(value:SignedClockStatus)=>{signedState=value;},restoreClock:(value:unknown)=>{restoredClock=value;},preview,get,capture,reload,stage,resolve,prepareClock,reportAttempt,remove,teamState,clockState,photo,attemptsState,reloadAttempts,drafts:()=>drafts};
+  function App({kind,refreshToken=0,visible=true,notices}:{kind:'clock'|'leave'|'team';refreshToken?:number;visible?:boolean;notices?:Record<string,{label:string;detail:string|null}>}){return <provider.JourneyDraftProvider><Probe/>{!visible?null:kind==='clock'?<ClockPanel refreshToken={refreshToken}/>:kind==='team'?<TeamPanel refreshToken={refreshToken}/>:<LeaveRequestForm options={options} today="2026-01-01" onSubmitted={reload} notices={notices}/>}</provider.JourneyDraftProvider>;}
+  return {App,androidOpen,engine,anchorRead,session,post,signed,openSigned,alert,hasSignedAttempt,setSignedState:(value:SignedClockStatus)=>{signedState=value;},restoreClock:(value:unknown)=>{restoredClock=value;},preview,get,capture,reload,stage,resolve,prepareClock,reportAttempt,remove,teamState,clockState,photo,attemptsState,reloadAttempts,drafts:()=>drafts};
 }
 afterEach(cleanup);
 describe('native clock job',()=>{
@@ -155,8 +158,37 @@ describe('native leave job',()=>{
     fireEvent.click(screen.getByRole('checkbox'));expect(screen.getByText('submitRequest')).not.toBeDisabled();f.post.mockRejectedValueOnce(new errors.UnavailableError());fireEvent.click(screen.getByText('submitRequest'));await screen.findByText('leaveUncertain');
     const original=(f.post.mock.calls[1][1] as FormData).get('command');f.post.mockResolvedValueOnce({outcome:'accepted',id:'receipt'});fireEvent.click(screen.getByText('retrySameClock'));await screen.findByText('requestRecorded');expect((f.post.mock.calls[2][1] as FormData).get('command')).toBe(original);expect(f.reload).toHaveBeenCalledTimes(1);
   });
-  it('shows half/hour inputs from eligibility, and cancellation never submits',()=>{
-    const f=fixture();render(<f.App kind="leave"/>);fireEvent.click(screen.getByText('Annual leave'));fireEvent.click(screen.getByText('hourly'));expect(screen.getByRole('textbox',{name:'fromTime'})).toBeTruthy();expect(screen.getByRole('textbox',{name:'toTime'})).toBeTruthy();expect(screen.queryByRole('textbox',{name:'endDate'})).toBeNull();fireEvent.click(screen.getByText('cancel'));expect(f.post).not.toHaveBeenCalled();expect(f.drafts().leave).toBeNull();
+  it('shows half/hour pickers from eligibility, and cancellation never submits',()=>{
+    const f=fixture();render(<f.App kind="leave"/>);fireEvent.click(screen.getByText('Annual leave'));fireEvent.click(screen.getByText('hourly'));expect(screen.getByText('fromTime')).toBeTruthy();expect(screen.getByText('toTime')).toBeTruthy();expect(screen.queryByText('endDate')).toBeNull();expect(screen.queryByRole('textbox',{name:'fromTime'})).toBeNull();fireEvent.click(screen.getByText('cancel'));expect(f.post).not.toHaveBeenCalled();expect(f.drafts().leave).toBeNull();
+  });
+  it('D9: a picked time is the local wall value, set only on Done, and the hourly preview figure is shown',async()=>{
+    const f=fixture();render(<f.App kind="leave"/>);fireEvent.click(screen.getByText('Annual leave'));fireEvent.click(screen.getByText('hourly'));
+    // iOS: opening the spinner sets nothing; Done commits what it shows.
+    fireEvent.click(screen.getAllByText('pickerChoose')[0]);expect(f.drafts().leave.command.fromTime).toBeUndefined();
+    fireEvent.change(screen.getByRole('textbox',{name:'fromTime'}),{target:{value:'09:30'}});expect(f.drafts().leave.command.fromTime).toBeUndefined();
+    fireEvent.click(screen.getByText('pickerDone'));expect(f.drafts().leave.command.fromTime).toBe('09:30');
+    fireEvent.click(screen.getByText('pickerChoose'));fireEvent.change(screen.getByRole('textbox',{name:'toTime'}),{target:{value:'11:30'}});fireEvent.click(screen.getByText('pickerDone'));
+    expect(f.drafts().leave.command).toMatchObject({durationType:'hourly',fromTime:'09:30',toTime:'11:30',startDate:'2026-01-01',endDate:'2026-01-01'});
+    f.post.mockResolvedValueOnce({days:0.25,unpaidDays:0,emergencySplit:false,overrides:[]});fireEvent.click(screen.getByText('reviewRequest'));await screen.findByText('submitRequest');
+    expect(f.post.mock.calls[0][0]).toBe('leave-preview');expect(f.post.mock.calls[0][1]).toMatchObject({fromTime:'09:30',toTime:'11:30'});
+    expect(screen.getByText('deductedDays: 0.25')).toBeTruthy();expect(screen.queryByText('hourlyReview')).toBeNull();
+  });
+  it('D9: an older server that previews no hourly figure keeps the server-checks sentence',async()=>{
+    const f=fixture();render(<f.App kind="leave"/>);fireEvent.click(screen.getByText('Annual leave'));fireEvent.click(screen.getByText('hourly'));
+    f.post.mockResolvedValueOnce({days:null,unpaidDays:null,emergencySplit:false,overrides:[]});fireEvent.click(screen.getByText('reviewRequest'));await screen.findByText('submitRequest');
+    expect(screen.getByText('hourlyReview')).toBeTruthy();expect(screen.queryByText(/deductedDays/)).toBeNull();
+  });
+  it('D9: Android opens the system dialog and a dismissed dialog changes nothing',()=>{
+    const f=fixture('android');render(<f.App kind="leave"/>);fireEvent.click(screen.getByText('Annual leave'));
+    fireEvent.click(screen.getByText('2026-01-01',{selector:'button'}));expect(f.androidOpen).toHaveBeenCalledTimes(1);
+    const opened=f.androidOpen.mock.calls[0][0];expect(opened.mode).toBe('date');
+    act(()=>opened.onChange({type:'dismissed'},new Date(2026,0,9)));expect(f.drafts().leave.command.startDate).toBe('2026-01-01');
+    act(()=>opened.onChange({type:'set'},new Date(2026,0,9)));expect(f.drafts().leave.command.startDate).toBe('2026-01-09');
+  });
+  it('shows the server-translated entitlement notice for the selected type',()=>{
+    const f=fixture();render(<f.App kind="leave" notices={{annual:{label:'Entitlement not generated',detail:'HR has not generated it yet.'}}}/>);
+    expect(screen.queryByText('Entitlement not generated')).toBeNull();fireEvent.click(screen.getByText('Annual leave'));
+    expect(screen.getByText('Entitlement not generated')).toBeTruthy();expect(screen.getByText('HR has not generated it yet.')).toBeTruthy();
   });
 });
 

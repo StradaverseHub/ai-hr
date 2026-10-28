@@ -890,6 +890,32 @@ export function hoursBetween(fromTime: string, toTime: string): number {
   return Math.round((span / 60) * 100) / 100;
 }
 
+/**
+ * D5(c), 2026-10-28 — THE hourly deduction rule, factored out of requestLeave so previewLeaveDeduction runs the
+ * same code and the preview cannot describe a different figure from the one submission deducts.
+ * `hourlyLeaveWindow` resolves the hours exactly as requestLeave always did: a From/To window (both halves
+ * required, derived through hoursBetween, persisted as HH:MM), else the importer/legacy raw `hours`, else
+ * HourlyLeaveTimeRangeError. `hourlyLeaveDays` applies the 0129 bounds (> 0, at most 24 elapsed hours on the
+ * single day) and the DEFAULT_STANDARD_HOURS denominator. No schedule is read: the window is elapsed wall time.
+ */
+export function hourlyLeaveWindow(p: { fromTime?: string | null; toTime?: string | null; hours?: number | null }): {
+  hours: number;
+  fromTime: string | null;
+  toTime: string | null;
+} {
+  if (p.fromTime || p.toTime) {
+    return { hours: hoursBetween(p.fromTime ?? '', p.toTime ?? ''), fromTime: (p.fromTime ?? '').slice(0, 5), toTime: (p.toTime ?? '').slice(0, 5) };
+  }
+  if (p.hours != null) return { hours: p.hours, fromTime: null, toTime: null };
+  throw new HourlyLeaveTimeRangeError();
+}
+export function hourlyLeaveDays(hours: number | null): number {
+  const h = hours ?? 0;
+  // Elapsed wall time (09:00–18:00 is 9h), so never capped at DEFAULT_STANDARD_HOURS; a single day holds at most 24.
+  if (!(h > 0 && h <= 24)) throw new Error('Hourly leave must be more than 0 and at most 24 hours');
+  return Math.round((h / DEFAULT_STANDARD_HOURS) * 100) / 100;
+}
+
 export class LeaveDurationNotAllowedError extends Error {
   constructor() {
     super('This leave type does not allow the selected duration (full day / half day / hourly)');
@@ -3659,18 +3685,9 @@ export async function requestLeave(
     let toTime: string | null = null;
     let hours: number | null = null;
     if (durationType === 'hourly') {
-      if (p.fromTime || p.toTime) {
-        // A window was supplied: both halves are required and hours is derived from the elapsed span.
-        hours = hoursBetween(p.fromTime ?? '', p.toTime ?? '');
-        fromTime = (p.fromTime ?? '').slice(0, 5);
-        toTime = (p.toTime ?? '').slice(0, 5);
-      } else if (p.hours != null) {
-        // Back-compat: importer/legacy caller passed a raw hours figure with no window.
-        hours = p.hours;
-      } else {
-        // Neither a window nor a raw figure — the mandatory window is missing.
-        throw new HourlyLeaveTimeRangeError();
-      }
+      // A window (both halves required, hours derived from the span), else the raw back-compat figure, else
+      // HourlyLeaveTimeRangeError — hourlyLeaveWindow, the rule previewLeaveDeduction shares (D5(c)).
+      ({ hours, fromTime, toTime } = hourlyLeaveWindow(p));
     }
 
     // ADR-0048: a non-full-day duration must be enabled on the leave type's allow-list, and confined to a
@@ -3724,17 +3741,10 @@ export async function requestLeave(
         throw new LeaveNoDaysInRangeError();
       }
       if (durationType === 'hourly') {
-        const h = hours ?? 0;
-        // Semantic shift (0129): the old guard capped at DEFAULT_STANDARD_HOURS (8) because the legacy input
-        // was a NET-work figure. A From/To window is ELAPSED wall time — 09:00–18:00 is 9 elapsed hours (8
-        // work + 1 lunch) and is a legitimate request — so we must NOT cap at 8. Lower bound (> 0) is already
-        // enforced by hoursBetween for the window path; keep it for the back-compat raw-hours path too. Sanity
-        // cap at 24h: hourly leave is single-day (the startDate === endDate guard above), so a single calendar
-        // day cannot exceed 24 elapsed hours.
-        if (!(h > 0 && h <= 24)) {
-          throw new Error('Hourly leave must be more than 0 and at most 24 hours');
-        }
-        days = Math.round((h / DEFAULT_STANDARD_HOURS) * 100) / 100;
+        // Semantic shift (0129): a From/To window is ELAPSED wall time, so the old cap at DEFAULT_STANDARD_HOURS
+        // (8) is gone; the bounds (> 0, at most 24 on the single day) and the denominator live in
+        // hourlyLeaveDays, which previewLeaveDeduction calls too (D5(c)).
+        days = hourlyLeaveDays(hours);
       } else {
         days = 0.5; // half_day_am / half_day_pm
       }
@@ -4157,6 +4167,13 @@ export async function previewLeaveDeduction(
      *  shown and the rule the submission applies can never describe different days. Defaults as requestLeave
      *  does, so every existing caller is untouched. */
     today?: string;
+    /** D5(c), 2026-10-28 — an hourly request's From/To window (or the raw legacy hours). When present on an
+     *  hourly duration, `days` is the figure requestLeave deducts (hourlyLeaveWindow + hourlyLeaveDays, the
+     *  shared rule, which also throws HourlyLeaveTimeRangeError for a malformed window). Absent ⇒ the 0.5
+     *  placeholder this preview always returned for a non-full day, so every existing caller is untouched. */
+    fromTime?: string;
+    toTime?: string;
+    hours?: number;
   },
 ): Promise<{
   days: number;
@@ -4181,8 +4198,12 @@ export async function previewLeaveDeduction(
    *  fill the whole thing in first. */
   overrides?: LeaveOverridePreview[];
 }> {
+  const previewDurationType: LeaveDurationType = p.durationType ?? 'full_day';
+  // D5(c): resolved before the transaction, as requestLeave resolves the window before it counts a day.
+  const hourlyDays =
+    previewDurationType === 'hourly' && (p.fromTime || p.toTime || p.hours != null) ? hourlyLeaveDays(hourlyLeaveWindow(p).hours) : null;
   return withTenant(ctx, async (tx) => {
-    const durationType: LeaveDurationType = p.durationType ?? 'full_day';
+    const durationType: LeaveDurationType = previewDurationType;
     const [lt] = await tx
       // Day Type Inclusion (feedback ef6d7146): projected so the preview's day-count matches what submission
       // will deduct (both run through workingDaysWeighted with the same inclusion vector — no preview drift).
@@ -4228,12 +4249,12 @@ export async function previewLeaveDeduction(
         const incl = normalizeDayTypeInclusion(lt?.dayTypeInclusion);
         days = workingDaysWeighted(p.startDate, p.endDate, hols, sched, incl);
       } else {
-        days = 0.5; // half_day_am / half_day_pm — D4: unaffected by the half-schedule toggle
+        days = hourlyDays ?? 0.5; // half_day_am / half_day_pm — D4: unaffected by the half-schedule toggle; hourly: D5(c)
       }
     } else if (durationType === 'full_day' || isEmergencySplit) {
       days = dayCount(p.startDate, p.endDate);
     } else {
-      days = 0.5;
+      days = hourlyDays ?? 0.5;
     }
 
     // ── Employee apply-popup day-by-day rows (opt-in) ────────────────────────────────────────────────
@@ -5761,6 +5782,36 @@ async function decideCurrentChainStep<S extends ChainStepRow>(
   return { outcome: 'final', current };
 }
 
+/**
+ * D5(b), 2026-10-28 — the approval step a caller decided against has moved. Raised only when the caller passed
+ * an expected step (the native approver, T3); the web passes none and keeps its existing refusals.
+ */
+export class LeaveStaleStepError extends Error {
+  readonly code = 'stale_step' as const;
+  constructor() {
+    super('This request has moved on since you opened it. Reload it before deciding.');
+    this.name = 'LeaveStaleStepError';
+  }
+}
+/**
+ * The expected-step check. `expected` undefined ⇒ not checked. Otherwise it is the `stepIndex` of the lowest
+ * pending step the caller saw, or null for "no pending step row" (a single-level chain). A request that is no
+ * longer pending, or whose current step differs, is stale.
+ */
+function assertExpectedLeaveStep(
+  status: string,
+  steps: readonly { stepIndex: number; status: string }[],
+  expected: number | null | undefined,
+): void {
+  if (expected === undefined) return;
+  const current = [...steps].sort((a, b) => a.stepIndex - b.stepIndex).find((st) => st.status === 'pending')?.stepIndex ?? null;
+  if (status !== 'pending' || current !== expected) throw new LeaveStaleStepError();
+}
+/** D5(a) — run in the caller's transaction when one is passed (a mobile command receipt), else in a new one. */
+function withLeaveTx<T>(ctx: SessionContext, existingTx: Tx | undefined, run: (tx: Tx) => Promise<T>): Promise<T> {
+  return existingTx ? run(existingTx) : withTenant(ctx, run);
+}
+
 /** Decide a leave request. With a multi-step chain (2B-1) this advances the current step and only
  *  finalizes when the last step clears; a rejection at any step is terminal. Without a chain it is a
  *  single approval (the original behavior). */
@@ -5775,16 +5826,20 @@ export async function decideLeave(
     // Partial Leave Approval (0131): a reason is MANDATORY whenever a date is rejected (so the employee knows
     // why). Enforced uniformly here for whole-request, single-day, half/hourly, and per-date-child rejections.
     rejectReason?: string;
+    /** D5(b): the pending step the caller saw (null: no step rows). Stale ⇒ LeaveStaleStepError. */
+    expectedStepIndex?: number | null;
   },
+  existingTx?: Tx,
 ) {
   // Partial Leave Approval (0131): refuse a blank reject reason BEFORE opening the transaction, so a missing
   // reason persists nothing (no status flip, no ledger row, no event). Trim to reject whitespace-only input.
   const rejectReason = p.rejectReason?.trim() || null;
   if (p.decision === 'rejected' && !rejectReason) throw new MissingRejectReasonError();
-  return withTenant(ctx, async (tx) => {
+  return withLeaveTx(ctx, existingTx, async (tx) => {
     const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1).for('update');
     if (!req) throw new Error('leave request not found (or not visible)');
     if(p.teamScope)ctx=await assertMyTeamSubjectTx(tx,ctx,p.teamScope,req.employmentId);
+    if (p.expectedStepIndex !== undefined && req.status !== 'pending') throw new LeaveStaleStepError();
     if (req.status !== 'pending') throw new Error(`leave request is already ${req.status}`);
 
     const steps = await tx
@@ -5792,6 +5847,7 @@ export async function decideLeave(
       .from(leaveApprovalStep)
       .where(eq(leaveApprovalStep.leaveRequestId, req.id))
       .orderBy(asc(leaveApprovalStep.stepIndex));
+    assertExpectedLeaveStep(req.status, steps, p.expectedStepIndex);
 
     // Multi-step chain: decide the current step. r301 — the rule for WHICH step, WHO may clear it and WHAT
     // happens next lives in decideCurrentChainStep, shared with decideLeaveCancellation's copied chain, so
@@ -6050,7 +6106,10 @@ export async function decideLeaveDates(
     teamScope?: MyTeamQuery;
     decisions: { leaveDate: string; decision: 'approved' | 'rejected'; rejectReason?: string }[];
     deciderEmploymentId?: string;
+    /** D5(b): the pending step the caller saw (null: no step rows, the per-date case). */
+    expectedStepIndex?: number | null;
   },
+  existingTx?: Tx,
 ) {
   // Normalize + validate reject reasons BEFORE opening the transaction — a blank reason on any rejected date
   // aborts the whole batch and persists nothing (no status flip, no ledger row, no event).
@@ -6067,10 +6126,18 @@ export async function decideLeaveDates(
   if (new Set(decisions.map((d) => d.leaveDate)).size !== decisions.length) {
     throw new Error('duplicate leave date in batch');
   }
-  return withTenant(ctx, async (tx) => {
+  return withLeaveTx(ctx, existingTx, async (tx) => {
     const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1).for('update');
     if (!req) throw new Error('leave request not found (or not visible)');
     if(p.teamScope)ctx=await assertMyTeamSubjectTx(tx,ctx,p.teamScope,req.employmentId);
+    if (p.expectedStepIndex !== undefined) {
+      // Read only when asked, so the web path issues exactly the queries it always did.
+      const steps = await tx
+        .select({ stepIndex: leaveApprovalStep.stepIndex, status: leaveApprovalStep.status })
+        .from(leaveApprovalStep)
+        .where(eq(leaveApprovalStep.leaveRequestId, req.id));
+      assertExpectedLeaveStep(req.status, steps, p.expectedStepIndex);
+    }
     if (req.status !== 'pending') throw new Error(`leave request is already ${req.status}`);
     // Single-step authority (§4C): per-date rows only exist for single-step companies.
     await assertCanDecide(tx, ctx, req.employmentId, 'leave request', scopeOf('leave.application'));
@@ -6428,9 +6495,11 @@ export async function requestLeaveCancellation(
   // R5 Build #2 (Fix B — MYT boundary): `today` is injectable (default MYT, mirroring requestLeave) so the
   // "hasn't started yet" per-date gate uses Malaysia time, not a UTC-skewed global clock near midnight.
   p: { leaveRequestId: string; cancelDates: string[]; reason?: string; today?: string },
+  /** D5(a): a caller's transaction (the mobile command receipt). Omitted ⇒ its own, as before. */
+  existingTx?: Tx,
 ) {
   const today = p.today ?? todayInKualaLumpur();
-  return withTenant(ctx, async (tx) => {
+  return withLeaveTx(ctx, existingTx, async (tx) => {
     // r301 hand-fix (verifier defect 1) — LOCK THE LEAVE ROW. Everything below reads this row and the pending
     // cancellations on it to decide what may be given back, and an automatic approval then splits it in this
     // same transaction. Unlocked, two requests at the same moment (two tabs, or a crafted POST) each saw the
@@ -6690,9 +6759,16 @@ export async function requestLeaveCancellation(
  */
 export async function decideLeaveCancellation(
   ctx: SessionContext,
-  p: { cancellationRequestId: string; decision: 'approved' | 'rejected'; deciderEmploymentId?: string },
+  p: {
+    cancellationRequestId: string;
+    decision: 'approved' | 'rejected';
+    deciderEmploymentId?: string;
+    /** D5(b): the pending copied step the caller saw (null: a single-level chain). */
+    expectedStepIndex?: number | null;
+  },
+  existingTx?: Tx,
 ) {
-  return withTenant(ctx, async (tx) => {
+  return withLeaveTx(ctx, existingTx, async (tx) => {
     // r301 hand-fix (verifier defect 1) — LOCKS, leave row first, then the cancellation: the order
     // requestLeaveCancellation and adminCancelLeave take them in, so the three cannot deadlock. Two approvers
     // pressing Approve at once used to both read 'pending'; the second now waits and reads the first's outcome.
@@ -6710,6 +6786,7 @@ export async function decideLeaveCancellation(
       .limit(1)
       .for('update');
     if (!cr) throw new Error('cancellation request not found (or not visible)');
+    if (p.expectedStepIndex !== undefined && cr.status !== 'pending') throw new LeaveStaleStepError();
     if (cr.status !== 'pending') throw new Error(`cancellation request is already ${cr.status}`);
 
     const steps = await tx
@@ -6717,6 +6794,7 @@ export async function decideLeaveCancellation(
       .from(leaveCancellationStep)
       .where(eq(leaveCancellationStep.cancellationRequestId, cr.id))
       .orderBy(asc(leaveCancellationStep.stepIndex));
+    assertExpectedLeaveStep(cr.status, steps, p.expectedStepIndex);
     const stepOutcome = await decideCurrentChainStep(tx, ctx, {
       steps,
       subjectEmploymentId: cr.employmentId,
@@ -7791,8 +7869,10 @@ export async function editLeaveRequest(
 export async function cancelOwnLeave(
   ctx: SessionContext,
   p: { leaveRequestId: string },
+  /** D5(a): a caller's transaction (the mobile command receipt). Omitted ⇒ its own, as before. */
+  existingTx?: Tx,
 ): Promise<{ previousStatus: 'pending'; restoredDays: number }> {
-  return withTenant(ctx, async (tx) => {
+  return withLeaveTx(ctx, existingTx, async (tx) => {
     const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
     if (!req) throw new Error('leave request not found (or not visible)');
 

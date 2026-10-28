@@ -4,6 +4,7 @@
   "main": "expo-router/entry",
   "dependencies": {
     "@noble/curves": "2.4.0",
+    "@react-native-community/datetimepicker": "9.1.0",
     "decode-uri-component": "file:vendor/decode-uri-component",
     "expo": "~57.0.26",
     "expo-auth-session": "~57.0.13",

@@ -1581,6 +1581,8 @@ function leaveRequestPageWhere(p: LeaveRequestPageFilter) {
     p.departmentIds?.length ? inArray(assignment.departmentId, p.departmentIds) : undefined,
     p.locationIds?.length ? inArray(assignment.locationId, p.locationIds) : undefined,
     p.employmentIds?.length ? inArray(leaveRequest.employmentId, p.employmentIds) : undefined,
+    // M07 (mobile v2 detail): exactly these requests. An empty list matches nothing, never everything.
+    p.ids ? (p.ids.length ? inArray(leaveRequest.id, p.ids) : sql`false`) : undefined,
     validDurations.length ? inArray(leaveRequest.durationType, validDurations) : undefined,
     p.leaveTypeIds && p.leaveTypeIds.length ? inArray(leaveRequest.leaveTypeId, p.leaveTypeIds) : undefined,
     validStatuses.length ? inArray(leaveRequest.status, validStatuses) : undefined,
@@ -1671,6 +1673,16 @@ export type LeaveRequestPageOptions = {
     dir?: string; // default: applied desc (today's order)
     limit: number;
     offset: number;
+    /** M07 (mobile v2 detail): narrow to these request ids (rows AND count). Empty ⇒ nothing. */
+    ids?: string[];
+    /**
+     * M07 (mobile v2 history paging): KEYSET page start — the rows strictly after this one in the start-desc
+     * order (start_date desc, created_at desc, id desc). The cursor row's own created_at is read in SQL, so
+     * no microsecond is lost to a JS Date. Rows only; `total` stays the filter's whole count. Requires
+     * sort 'start' + dir 'desc' and offset 0. A cursor row the caller can no longer read falls back to the
+     * dates strictly before its start date.
+     */
+    before?: { startDate: string; id: string };
   };
 export function listLeaveRequestsPage(ctx: SessionContext, p: LeaveRequestPageOptions): Promise<{ rows: (LeaveRequestRow & { company: string; department: string | null })[]; total: number }> {
   return withTenant(ctx, tx => listLeaveRequestsPageTx(tx, ctx, p));
@@ -1688,6 +1700,11 @@ export async function listLeaveRequestsPageTx(tx: Tx, ctx: SessionContext, p: Le
     };
     const col = sortCol[p.sort ?? 'applied'] ?? leaveRequest.createdAt;
     const dir = p.dir === 'asc' ? asc : desc;
+    if (p.before && (p.sort !== 'start' || p.dir !== 'desc' || p.offset !== 0)) throw new Error('A keyset page needs the start-desc order and offset 0');
+    const keyset = p.before
+      ? sql`((${leaveRequest.startDate}, ${leaveRequest.createdAt}, ${leaveRequest.id}) < (select r.start_date, r.created_at, r.id from leave_request r where r.id = ${p.before.id}::uuid)
+          or (not exists (select 1 from leave_request r where r.id = ${p.before.id}::uuid) and ${leaveRequest.startDate} < ${p.before.startDate}::date))`
+      : undefined;
     const rows = await tx
       .select({ ...leaveRequestSelection, company: sql<string>`(select c.legal_name from company c where c.id = ${employment.companyId})`, department: department.name })
       .from(leaveRequest)
@@ -1696,7 +1713,7 @@ export async function listLeaveRequestsPageTx(tx: Tx, ctx: SessionContext, p: Le
       .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
       .leftJoin(assignment, currentAssignment)
       .leftJoin(department, eq(department.id, assignment.departmentId))
-      .where(where)
+      .where(keyset ? and(where, keyset) : where)
       .orderBy(dir(col), desc(leaveRequest.createdAt), desc(leaveRequest.id))
       .limit(p.limit)
       .offset(p.offset);

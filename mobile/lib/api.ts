@@ -218,6 +218,25 @@ export async function apiGetPage<T>(resource:V2Page<T>,cursor:string|null,params
 }
 
 /**
+ * M07 — one v2 JSON read decoded by its OWN contract schema (a detail, not a page). Shares the read coordinator
+ * with apiGet/apiGetPage: same dedupe, backoff and scope reset. A path segment is only ever a validated UUID
+ * (the caller builds it, e.g. leave-history.tsx leaveRequestPath); identity and policy never travel in it.
+ */
+export async function apiGetV2<S extends z.ZodType>(path:V2Path,schema:S,params:Record<string,string|undefined>={},signal?:AbortSignal):Promise<z.output<S>>{
+  const owner=authGeneration(),namespace=identityNamespace(),origin=config.apiUrl,locale=appLocale(),snapshot=canonicalParams(params);
+  const scope=JSON.stringify([owner,namespace,origin,locale]),key=JSON.stringify(['v2',path,snapshot]);
+  return reads.read(scope,key,sharedSignal=>{
+    assertAuthGeneration(owner);if(identityNamespace()!==namespace||config.apiUrl!==origin||appLocale()!==locale)throw new SessionChangedError();
+    return apiRequest<z.output<S>>(path,snapshot,undefined,sharedSignal,undefined,{schema});
+  },signal);
+}
+/** M07 — one v2 JSON command decoded by its own result schema. Never coordinated or retried here: one call, one POST. */
+export async function apiPostV2<S extends z.ZodType>(path:V2Path,schema:S,body:Record<string,unknown>,params:Record<string,string|undefined>={},operation?:{assertCurrent():void}):Promise<z.output<S>>{
+  operation?.assertCurrent();
+  return apiRequest<z.output<S>>(path,canonicalParams(params),{body:JSON.stringify(body),json:true},undefined,operation,{schema});
+}
+
+/**
  * Download a protected file into a random-named cache file (protected-document.ts) and hand back its
  * handle, or the server's refusal. Never shared between callers, never written while the app is not in
  * the foreground (the background sweep has already run), never written for a superseded session. The

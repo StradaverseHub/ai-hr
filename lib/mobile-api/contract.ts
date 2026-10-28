@@ -94,6 +94,12 @@ export const LeaveCard = z.object({
   sharedPool: z.boolean(),
   /** Message key suffix under `leave.table` for the entitlement notice, or null when none is due. */
   entitlementNotice: z.string().nullable(),
+  /**
+   * M07, additive — that notice as text in the caller's language (the web's `me.leaveBalanceTable` label and its
+   * explanation), so the app shows it without a catalogue of its own. Optional: an older server omits it, and an
+   * older app's schema (z.object, not strict) strips it.
+   */
+  entitlementNoticeText: z.object({ label: z.string(), detail: z.string().nullable() }).nullable().optional(),
 });
 
 export const LeaveResponse = z.object({

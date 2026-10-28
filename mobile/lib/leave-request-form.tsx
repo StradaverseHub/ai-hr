@@ -1,5 +1,6 @@
-import { useRef } from 'react';
-import { AppState,Pressable,TextInput,View } from 'react-native';
+import { useRef,useState } from 'react';
+import { AppState,Platform,Pressable,TextInput,View } from 'react-native';
+import DateTimePicker,{ DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { DesignText as Text } from './design';
 import * as DocumentPicker from 'expo-document-picker';
 import { File,Directory,Paths } from 'expo-file-system';
@@ -17,7 +18,34 @@ import { useJourneyDrafts,removeLocalFile,type LeaveDraft,type LocalAttachment }
 import { useSession } from './session';
 import { Button,Card,Muted,Row,fmtDays } from './ui';
 const durationLabels:Record<LeaveCommand['durationType'],MessageKey>={full_day:'fullDay',half_day_am:'halfAM',half_day_pm:'halfPM',hourly:'hourly'};
-export function LeaveRequestForm({options,today,onSubmitted}:{options:LeaveOptionsResponse;today:string;onSubmitted:()=>void}){
+const pad=(n:number)=>String(n).padStart(2,'0');
+/** A calendar date or clock time is the device's LOCAL wall value the person picked; it never passes through UTC. */
+const toPicker=(mode:'date'|'time',value:string|undefined,today:string)=>{
+  if(mode==='date'){const [y,m,d]=(value&&/^\d{4}-\d{2}-\d{2}$/.test(value)?value:today).split('-').map(Number);return new Date(y,m-1,d);}
+  const [h,min]=(value&&/^\d{2}:\d{2}$/.test(value)?value:'09:00').split(':').map(Number);return new Date(2000,0,1,h,min);
+};
+const fromPicker=(mode:'date'|'time',d:Date)=>mode==='date'?`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`:`${pad(d.getHours())}:${pad(d.getMinutes())}`;
+/**
+ * D9 — the platform's own date/time control instead of free text. Android opens the system dialog; iOS shows the
+ * spinner under the field and commits on Done, so a value is never set by merely looking at it.
+ */
+function PickerField({label,mode,value,today,disabled,onChange}:{label:string;mode:'date'|'time';value:string|undefined;today:string;disabled:boolean;onChange:(value:string)=>void}){
+  const {palette}=useTenantDesign();const [open,setOpen]=useState<Date|null>(null);
+  function show(){
+    if(disabled)return;const seed=toPicker(mode,value,today);
+    if(Platform.OS==='android')DateTimePickerAndroid.open({value:seed,mode,is24Hour:true,onChange:(event,picked)=>{if(event.type==='set'&&picked)onChange(fromPicker(mode,picked));}});
+    else setOpen(open?null:seed);
+  }
+  return <View style={{gap:6,flex:1}}>
+    <Text style={{color:palette.muted,fontSize:14}}>{label}</Text>
+    <Button title={value||t('pickerChoose')} accessibilityLabel={label} kind="quiet" disabled={disabled} onPress={show}/>
+    {open&&Platform.OS!=='android'&&<>
+      <DateTimePicker accessibilityLabel={label} value={open} mode={mode} display="spinner" onChange={(_event,picked)=>{if(picked)setOpen(picked);}}/>
+      <Button title={t('pickerDone')} onPress={()=>{onChange(fromPicker(mode,open));setOpen(null);}}/>
+    </>}
+  </View>;
+}
+export function LeaveRequestForm({options,today,onSubmitted,notices={}}:{options:LeaveOptionsResponse;today:string;onSubmitted:()=>void;notices?:Record<string,{label:string;detail:string|null}>}){
   const {palette,design}=useTenantDesign();const {signOut}=useSession();
   const {leave:draft,putLeave}=useJourneyDrafts();const flight=useRef(false);
   const recovery=useSubmissionRecovery('leave',options.employmentId??undefined,({command,file})=>{
@@ -98,10 +126,13 @@ export function LeaveRequestForm({options,today,onSubmitted}:{options:LeaveOptio
   return <View style={{gap:16}}>
     <Text style={{color:palette.text,fontSize:23,fontWeight:'600'}}>{selected?.name??t('leaveType')}</Text>
     {selected?.notice&&<Muted>{selected.notice}</Muted>}
+    {selected&&notices[selected.id]&&<View style={{gap:4}}><Text style={{color:palette.text,fontWeight:'600'}}>{notices[selected.id].label}</Text>{notices[selected.id].detail&&<Muted>{notices[selected.id].detail}</Muted>}</View>}
     {draft.message&&<Text accessibilityRole="alert" style={{color:palette.text,lineHeight:23}}>{draft.message}</Text>}
     {reviewMode?<>
       <Row label={t('startDate')} value={draft.command.startDate}/><Row label={t('endDate')} value={draft.command.endDate}/><Row label={t('leaveType')} value={t(durationLabels[draft.command.durationType])}/>
-      {draft.command.durationType==='hourly'?<><Row label={t('fromTime')} value={draft.command.fromTime??'—'}/><Row label={t('toTime')} value={draft.command.toTime??'—'}/><Muted>{t('hourlyReview')}</Muted></>:<Row label={t('deductedDays')} value={fmtDays(draft.preview?.days??null)}/>}
+      {draft.command.durationType==='hourly'&&<><Row label={t('fromTime')} value={draft.command.fromTime??'—'}/><Row label={t('toTime')} value={draft.command.toTime??'—'}/></>}
+      {/* The server previews an hourly window through the rule submission deducts by; an older server sends null. */}
+      {draft.command.durationType==='hourly'&&draft.preview?.days==null?<Muted>{t('hourlyReview')}</Muted>:<Row label={t('deductedDays')} value={fmtDays(draft.preview?.days??null)}/>}
       {!!draft.preview?.unpaidDays&&<Row label={t('unpaidDays')} value={fmtDays(draft.preview.unpaidDays)}/>}
       {draft.document&&<Row label={t('supportingDocument')} value={draft.document.name}/>}
       {draft.command.reason&&<Muted>{draft.command.reason}</Muted>}
@@ -114,12 +145,12 @@ export function LeaveRequestForm({options,today,onSubmitted}:{options:LeaveOptio
       {draft.phase==='uncertain'?<Button title={t('checkReceipt')} onPress={()=>void recover()} kind="quiet"/>:<Button title={t('editRequest')} disabled={!!pending} kind="quiet" onPress={()=>putLeave({...draft,phase:'edit',command:{...draft.command,requestId:randomUUID(),overrideConsent:[]}})}/>}
     </>:<>
       <View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>{selected?.durations.map(d=><Button key={d} title={t(durationLabels[d])} kind={d===draft.command.durationType?'primary':'quiet'} disabled={!!disabled} onPress={()=>edit({durationType:d,endDate:d==='full_day'?draft.command.endDate:draft.command.startDate})}/>)}</View>
-      {field(t('startDate'),draft.command.startDate,v=>edit({startDate:v,...(draft.command.durationType!=='full_day'?{endDate:v}:{})}))}
-      {draft.command.durationType==='full_day'&&field(t('endDate'),draft.command.endDate,v=>edit({endDate:v}))}
-      {draft.command.durationType==='hourly'&&<View style={{flexDirection:'row',gap:10}}>{field(t('fromTime'),draft.command.fromTime??'',v=>edit({fromTime:v}))}{field(t('toTime'),draft.command.toTime??'',v=>edit({toTime:v}))}</View>}
+      <PickerField label={t('startDate')} mode="date" value={draft.command.startDate} today={today} disabled={!!disabled} onChange={v=>edit({startDate:v,...(draft.command.durationType!=='full_day'?{endDate:v}:{})})}/>
+      {draft.command.durationType==='full_day'&&<PickerField label={t('endDate')} mode="date" value={draft.command.endDate} today={today} disabled={!!disabled} onChange={v=>edit({endDate:v})}/>}
+      {draft.command.durationType==='hourly'&&<View style={{flexDirection:'row',gap:10}}><PickerField label={t('fromTime')} mode="time" value={draft.command.fromTime} today={today} disabled={!!disabled} onChange={v=>edit({fromTime:v})}/><PickerField label={t('toTime')} mode="time" value={draft.command.toTime} today={today} disabled={!!disabled} onChange={v=>edit({toTime:v})}/></View>}
       {field(t('reason'),draft.command.reason??'',v=>edit({reason:v}),true)}
       {selected?.emergencySplit&&<><Text style={{color:palette.muted}}>{t('emergencyCategory')}</Text><View style={{gap:6}}>{(['illness','personal','other'] as const).map(c=><Button key={c} title={t(c)} kind={draft.command.reasonCategory===c?'primary':'quiet'} disabled={!!disabled} onPress={()=>edit({reasonCategory:c})}/>)}</View>{checkbox(t('unpaidConsent'),!!draft.command.unpaidConsent,()=>edit({unpaidConsent:!draft.command.unpaidConsent}))}</>}
-      {selected?.maternity&&<>{field(t('survivingChildren'),draft.command.survivingChildren==null?'':String(draft.command.survivingChildren),v=>edit({survivingChildren:v===''?undefined:Number(v)}))}{field(t('confinementDate'),draft.command.confinementDate??'',v=>edit({confinementDate:v||undefined}))}</>}
+      {selected?.maternity&&<>{field(t('survivingChildren'),draft.command.survivingChildren==null?'':String(draft.command.survivingChildren),v=>edit({survivingChildren:v===''?undefined:Number(v)}))}<PickerField label={t('confinementDate')} mode="date" value={draft.command.confinementDate} today={today} disabled={!!disabled} onChange={v=>edit({confinementDate:v})}/></>}
       {<View style={{gap:8}}><Text style={{color:palette.text,fontSize:16,fontWeight:'600'}}>{t('supportingDocument')}{selected?.requiresDocument?` · ${selected.mandatoryAfterDays?t('documentAfterDays',{n:selected.mandatoryAfterDays}):t('required')}`:''}</Text><Muted>{t('documentLimit',{n:Math.min(selected?.maxDocBytes??10485760,10485760)/1048576})}</Muted>{draft.document&&<><Muted>{draft.document.name}</Muted><Button title={t('removeDocument')} disabled={!!disabled} kind="quiet" onPress={()=>{removeLocalFile(draft.document);putLeave({...draft,document:undefined,command:{...draft.command,requestId:randomUUID(),overrideConsent:[]}});}}/></>}<Button title={t('chooseDocument')} disabled={!!disabled} kind="quiet" onPress={()=>void pickDocument()}/>{field(t('employeeRemark')+(selected?.employeeRemarkRequired?` · ${t('required')}`:''),draft.command.employeeRemark??'',v=>edit({employeeRemark:v}),true)}</View>}
       <Button title={pending?t('loading'):t('reviewRequest')} disabled={!!pending} onPress={()=>void review()}/>
       <Button title={t('cancel')} disabled={!!pending} kind="quiet" onPress={()=>{removeLocalFile(draft.document);putLeave(null);}}/>
