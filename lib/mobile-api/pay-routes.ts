@@ -43,10 +43,18 @@ export function payslipIdOf(req: Request): string {
  * Formatting, not arithmetic: the figure is the owner's.
  */
 export function moneyText(n: unknown): string | null {
-  const v = typeof n === 'string' ? Number(n) : typeof n === 'number' ? n : Number.NaN;
-  if (!Number.isFinite(v)) return null;
-  const fixed = Math.abs(v).toFixed(2);
-  return v < 0 && fixed !== '0.00' ? `-${fixed}` : fixed;
+  // An owner decimal string is padded as text, never through a float; an empty or non-decimal string is absent
+  // (Number('') is 0, and an absent box must never print as 0.00).
+  if (typeof n === 'string') {
+    // Database numeric text may carry trailing zero scale ("12.3400"); a non-zero third place is not a sen amount.
+    const m = /^(-?)(\d+)(?:\.(\d{1,2})(0*))?$/.exec(n.trim());
+    if (!m) return null;
+    const fixed = `${m[2].replace(/^0+(?=\d)/, '')}.${(m[3] ?? '').padEnd(2, '0')}`;
+    return m[1] && fixed !== '0.00' ? `-${fixed}` : fixed;
+  }
+  if (typeof n !== 'number' || !Number.isFinite(n)) return null;
+  const fixed = Math.abs(n).toFixed(2);
+  return n < 0 && fixed !== '0.00' ? `-${fixed}` : fixed;
 }
 /** A total the document always carries; a missing one is a contract fault (a logged 500), never a printed zero. */
 function totalText(n: unknown): string {

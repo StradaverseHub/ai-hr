@@ -265,6 +265,10 @@ describe('the payslip detail', () => {
     expect(moneyText(0)).toBe('0.00');
     expect(moneyText(-0.001)).toBe('0.00');
     for (const absent of [null, undefined, '', 'x', Number.NaN, {}]) expect(moneyText(absent)).toBeNull();
+    expect(moneyText('12.3400')).toBe('12.34');
+    expect(moneyText('007.1')).toBe('7.10');
+    expect(moneyText('12.345')).toBeNull();
+    expect(moneyText('-0.00')).toBe('0.00');
   });
 });
 
