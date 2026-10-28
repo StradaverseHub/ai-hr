@@ -147,7 +147,7 @@ describe('offline sync routes stay inert until the deployment and the company en
  });
  it('drain: no new issuance; exact recovery, claim upload and close stay available',async()=>{
   await offlineOn();const f=await enrolled('ios');f.configure({mode:'drain'});
-  expect((await call('ios','capabilities',f.e.employmentId)).body).toEqual({outcome:'offline',enabled:false,apiOrigin,issuers:[f.s.issuer],windowMs:86400000,permitCount:2});
+  expect((await call('ios','capabilities',f.e.employmentId)).body).toEqual({outcome:'offline',enabled:false,apiOrigin,companyId:base.companyId,issuers:[f.s.issuer],windowMs:86400000,permitCount:2});
   expect((await post(f,'context',{json:f.request.request})).body).toEqual(f.issued.body);
   await settled(f.context);expect((await post(f,'claim',upload(f.signed()))).body).toMatchObject({outcome:'processed',receipt:{sequence:1}});
   expect((await post(f,'close',{json:{contextId:f.context.id,closeRequestId:randomUUID(),consumedThrough:1}})).body).toMatchObject({outcome:'closed',reason:'retired',consumedThrough:1});
@@ -161,7 +161,7 @@ describe('context issuance, refresh and close',()=>{
  it('issues a signed context with the deployment window and permit count, and re-posting returns the exact bytes',async()=>{
   await offlineOn();const f=await enrolled('ios');
   const capabilities=await call('ios','capabilities',f.e.employmentId);expect(capabilities.headers.get('cache-control')).toBe('no-store');
-  expect(capabilities.body).toEqual({outcome:'offline',enabled:true,apiOrigin,issuers:[f.s.issuer],windowMs:86400000,permitCount:2});
+  expect(capabilities.body).toEqual({outcome:'offline',enabled:true,apiOrigin,companyId:base.companyId,issuers:[f.s.issuer],windowMs:86400000,permitCount:2});
   expect(f.issued.body).toEqual({outcome:'issued',context:f.raw,contextId:f.context.id,authorization:'not_granted'});
   expect(verifyOfflineClockContextSignature(f.raw,[f.s.issuer],f.context.scope)).toMatchObject({outcome:'signature_valid'});
   expect(f.context.policy.windowMs).toBe(86400000);expect(f.context.permits).toHaveLength(2);expect(f.context.target).toEqual({platform:'ios',appId,environment:'production'});

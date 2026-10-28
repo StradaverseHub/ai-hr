@@ -161,7 +161,7 @@ describe('offline deployment configuration',()=>{
 describe('deployed offline clock assembly',()=>{
  it('issues with the deployment window, permit count and clock-rollout target, and recovers exact retries',async()=>{
   const f=await fixture(),s=signer();configure(f,s);await offlineOn();
-  expect(await f.ops.capabilities(f.ctx,f.e.employmentId)).toEqual({outcome:'offline',enabled:true,apiOrigin,issuers:[s.issuer],windowMs:86400000,permitCount:2});
+  expect(await f.ops.capabilities(f.ctx,f.e.employmentId)).toEqual({outcome:'offline',enabled:true,apiOrigin,companyId:base.companyId,issuers:[s.issuer],windowMs:86400000,permitCount:2});
   const input=f.request(),issued=await f.ops.issue(f.ctx,input);if(issued.outcome!=='issued')throw new Error('Not issued: '+JSON.stringify(issued));
   const context=contextOf(issued.context);
   expect(context.policy.windowMs).toBe(86400000);expect(context.expiresAt-context.issuedAt).toBe(86400000);expect(context.permits).toHaveLength(2);

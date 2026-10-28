@@ -80,7 +80,7 @@ export function createDeployedOfflineClockOperations(platform:Platform,options:D
    const {d,companyId}=found;if(!playReady())return configurationUnavailable;
    const company=await withAttendanceTenant(ctx,tx=>readOfflineClockingPolicyTx(tx,companyId));
    if(!company.enabled)return {outcome:'refused',code:'offline_disabled'} as const;
-   return {outcome:'offline',enabled:d.mode==='active',apiOrigin:d.apiOrigin,issuers:d.issuers.map(issuer=>({...issuer})),windowMs:d.windowMs,permitCount:d.permitCount} as const;
+   return {outcome:'offline',enabled:d.mode==='active',apiOrigin:d.apiOrigin,companyId,issuers:d.issuers.map(issuer=>({...issuer})),windowMs:d.windowMs,permitCount:d.permitCount} as const;
   }),
   /** Issue, or the exact recovery of an earlier request (the refresh). */
   issue:(ctx:SessionContext,raw:unknown)=>run(async()=>{

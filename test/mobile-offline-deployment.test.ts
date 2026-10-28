@@ -88,7 +88,7 @@ describe.each(['ios','android'] as const)('%s mounted offline sync routes',platf
    caller=ctx;issuer=configure(ctx.userId!);if(platform==='android')vi.stubEnv('AIHR_MOBILE_GOOGLE_SERVICE_ACCOUNT',credential);
    const r=await call(platform,'context',input.employmentId,input.request);if(r.body.outcome!=='issued')throw new Error('Not issued: '+JSON.stringify(r.body));return {raw:r.body.context};
   }});
-  expect((await call(platform,'capabilities',f.e.employmentId)).body).toEqual({outcome:'offline',enabled:true,apiOrigin,issuers:[issuer],windowMs:86400000,permitCount:2});
+  expect((await call(platform,'capabilities',f.e.employmentId)).body).toEqual({outcome:'offline',enabled:true,apiOrigin,companyId:base.companyId,issuers:[issuer],windowMs:86400000,permitCount:2});
   expect(f.context.target.platform).toBe(platform);expect(f.context.permits).toHaveLength(2);
   const signed=f.signed();await settled(f.context);
   if(platform==='android'){

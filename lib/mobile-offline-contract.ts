@@ -43,8 +43,10 @@ export const OfflineUnavailable=z.object({outcome:z.literal('unavailable'),code:
  integrityReason:OfflineSyncIntegrityUnavailable.optional()});
 const result=<S extends z.ZodType>(success:S)=>z.union([success,OfflineRefused,OfflineUnavailable]);
 /** enabled: new issuance is open (deployment active). false while draining: close and claim upload stay available.
- * issuers: the deployment's trusted context-signing registry (public keys), for verifying signed contexts. */
-export const OfflineCapabilitiesResult=result(z.object({outcome:z.literal('offline'),enabled:z.boolean(),apiOrigin:AppleEnrollmentSettings.shape.apiOrigin,
+ * issuers: the deployment's trusted context-signing registry (public keys), for verifying signed contexts.
+ * companyId: the selected employment's own company (the same owner the deployment lookup used), which the phone
+ * binds into the context request scope; additive, a scope fact the session can already read, never an authorization. */
+export const OfflineCapabilitiesResult=result(z.object({outcome:z.literal('offline'),enabled:z.boolean(),apiOrigin:AppleEnrollmentSettings.shape.apiOrigin,companyId:uuid,
  issuers:z.array(OfflineClockContextIssuer).min(1).max(16),windowMs:z.number().int().min(60000).max(OFFLINE_CLOCK_MAX_WINDOW_MS),permitCount:z.number().int().min(1).max(OFFLINE_CLOCK_CONTEXT_CLAIM_LIMIT)}));
 /** context: the exact signed envelope JSON (OfflineClockContextEnvelope); verify it against `issuers` before use. */
 export const OfflineContextResult=result(z.object({outcome:z.literal('issued'),context:z.string().min(2).max(OFFLINE_CLOCK_CONTEXT_MAX_BYTES),contextId:uuid,authorization:z.literal('not_granted')}));
