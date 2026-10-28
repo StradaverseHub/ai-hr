@@ -1,0 +1,31 @@
+'use server';
+import {revalidatePath} from 'next/cache';
+import {getSession} from '@/lib/session';
+import {currentProviderSession} from '@/lib/identity/provider';
+import {internalSelected} from '@/lib/internal-auth/config';
+import {sendInternalMail} from '@/lib/internal-auth/mail';
+import {listEmailDesigns,saveEmailDesign,emailDesignHistory,uploadEmailAsset} from '@/core/email-design/service';
+import {emailKind,emailLocale,emailDocument,type EmailDocument} from '@/lib/email-design/model';
+import {renderEmailDesign} from '@/lib/email-design/render';
+import {sampleEmailSystem,sampleEmailData} from '@/lib/email-design/catalogue';
+import {internalConfig} from '@/lib/internal-auth/config';
+export async function saveEmailDesignAction(kind:string,locale:string,document:unknown|null,revision:number){
+ const ctx=await getSession();const next=await saveEmailDesign(ctx,emailKind.parse(kind),emailLocale.parse(locale),document,revision);
+ revalidatePath('/admin/settings/email-templates');return next;
+}
+export async function loadEmailDesignHistoryAction(kind:string,locale:string){return emailDesignHistory(await getSession(),emailKind.parse(kind),emailLocale.parse(locale));}
+export async function uploadEmailDesignAssetAction(form:FormData){
+ const file=form.get('image');if(!(file instanceof File))throw Error('Choose an image.');
+ const token=await uploadEmailAsset(await getSession(),file.type,new Uint8Array(await file.arrayBuffer()));
+ const origin=internalConfig().origin;return origin+'/email-assets/'+token;
+}
+export async function sendEmailDesignTestAction(kind:string,locale:string,raw:unknown){
+ const ctx=await getSession();await listEmailDesigns(ctx); // Live group-admin database admission.
+ const identity=await currentProviderSession();
+ if(!internalSelected()||!identity?.emailVerified||!identity.email)throw Error('A verified email address and configured mail connection are required.');
+ const k=emailKind.parse(kind),l=emailLocale.parse(locale),document:EmailDocument=emailDocument.parse(raw);
+ if(document.kind!==k)throw Error('Wrong email design kind.');
+ const message=renderEmailDesign(document,k,l,sampleEmailSystem(k,l),sampleEmailData);
+ await sendInternalMail({to:identity.email,...message});
+ return {sent:true};
+}

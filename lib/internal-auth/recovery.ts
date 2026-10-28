@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import {accountEmailDesign} from '../email-design/delivery';
+import {renderEmailDesign} from '../email-design/render';
 import {recoveryEmailContent} from '../account-email-content';
 import { client } from '../../db/client';
 import { internalConfig } from './config';
@@ -55,7 +57,8 @@ export async function sendInternalRecovery(email: string, context?: { deliveryId
     await writeRecord(tx, `recovery-active:${c.subject}`, { key }, c.subject);
     return raw;
   });
-  await sendInternalMail({to:email,...recoveryEmailContent(`${internalConfig().origin}/reset-password#token=${token}`)},transport);
+  const design=await accountEmailDesign(context!.deliveryId,context!.leaseToken),link=`${internalConfig().origin}/reset-password#token=${token}`;
+  await sendInternalMail({to:email,...renderEmailDesign(design.document,'recovery',design.locale,{...recoveryEmailContent(link),link},{expiry_minutes:'30'})},transport);
 }
 export async function completeRecovery(raw: string, password: string, code: string) {
   if (!validOpaque(raw)) throw new InternalAuthError('invalidChallenge');

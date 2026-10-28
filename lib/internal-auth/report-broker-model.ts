@@ -1,4 +1,5 @@
 /** Closed, key-free managed-report IPC contract. No caller identity or arbitrary record/path input. */
+import {emailDesignEnvelope} from '../email-design/model';
 import {z} from 'zod';
 import {masterRenderContext} from '../../deploy/identity-email/render-context';
 import {masterArtifactFingerprint} from '../employee-master-artifact-model';
@@ -21,7 +22,7 @@ export const reportBrokerResponse=z.union([
  z.object({available:z.boolean()}).strict(),
  z.object({ok:z.literal(false),reason:reportBrokerFailureReason}).strict(),
  z.object({ok:z.literal(true),phase:z.literal('inspect'),target:reportBrokerTarget,inspectionProof:z.string().min(1).max(REPORT_INSPECTION_MAX_CHARS).regex(/^[A-Za-z0-9_-]+$/)}).strict(),
- z.object({ok:z.literal(true),phase:z.literal('start'),target:reportBrokerTarget,artifact:masterArtifactFingerprint,relay:reportBrokerRelay}).strict(),
+ z.object({ok:z.literal(true),phase:z.literal('start'),target:reportBrokerTarget,artifact:masterArtifactFingerprint,relay:reportBrokerRelay,design:emailDesignEnvelope.optional()}).strict(),
 ]);
 export type ReportBrokerRequest=z.infer<typeof reportBrokerRequest>;
 export type ReportBrokerResponse=z.infer<typeof reportBrokerResponse>;
