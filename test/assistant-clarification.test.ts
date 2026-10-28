@@ -46,7 +46,7 @@ describe('actual caller-bound Assistant clarification continuation',()=>{
   expect(identity).toEqual({role:'ai_hr_app',user_id:ctx.userId});
   const answer=await ownAssistantClarification(ctx,stored.binding.exchangeId,'  My own current record  ');
   expect(answer).toEqual({originalQuestion:stored.binding.question,slot,answer:'My own current record',earlier:[]});expect(Object.isFrozen(answer)).toBe(true);
-  expect(Object.keys(answer).sort()).toEqual(['answer','originalQuestion','slot']);
+  expect(Object.keys(answer).sort()).toEqual(['answer','earlier','originalQuestion','slot']);
   expect(JSON.stringify(answer)).not.toContain(terminal);expect(JSON.stringify(answer)).not.toContain(sourcePrivate);expect(JSON.stringify(answer)).not.toContain(stored.receipt);
   expect(await state()).toEqual(before);
  });
