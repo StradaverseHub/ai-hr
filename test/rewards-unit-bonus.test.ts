@@ -5,7 +5,7 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { createBatch } from '../packs/payroll/service';
-import { createRewardUnit, getRewardUnit, saveRewardEntry, saveRewardPolicy, setRewardMember, decideRewardUnit, postRewardUnit } from '../packs/rewards/service';
+import { createRewardUnit, getRewardUnit, saveRewardEntry, saveRewardPolicy, setRewardMember, setRewardUnitLump, decideRewardUnit, postRewardUnit } from '../packs/rewards/service';
 import { emptyFacts, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -86,6 +86,32 @@ describe('Rewards unit bonus inputs (fictional fixtures)', () => {
       expect(Number(comp.basicSalary)).toBe(5000);
       expect(await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.batchId, batch.batchId))).toEqual([]);
       expect((await view()).unit.status).toBe('approved');
+    });
+  });
+
+  describe('9070acae one review is one company and one unit', () => {
+    it('names the company and business unit of the review', async () => {
+      const [co] = await owner.db.select().from(schema.company).where(eq(schema.company.id, b.companyId));
+      const v = await view();
+      expect(v.companyName).toBe(co.legalName);
+      expect(v.companyName.length).toBeGreaterThan(0);
+      expect(v.name).toBe('NS');
+    });
+    it('saving a multiplier and a lump sum changes only that review, never another unit of the same scope', async () => {
+      const [other] = await owner.db.insert(schema.businessUnit).values({ tenantId: b.tenantId, companyId: b.companyId, code: 'SS', name: 'Southern Sales' }).returning();
+      const otherId = await createRewardUnit(admin, { name: 'Annual rewards', year, companyId: b.companyId, businessUnitId: other.id, snapshotDate: today });
+      const [beforeOther] = await owner.db.select().from(schema.rewardUnit).where(eq(schema.rewardUnit.id, otherId));
+      const v = await view();
+      await saveRewardPolicy(admin, unitId, v.unit.revision, { ...v.unit.policy, multiplierBp: 12000 });
+      await setRewardUnitLump(admin, unitId, v.unit.revision + 1, 50000);
+      const after = await view();
+      expect(after.unit.policy.multiplierBp).toBe(12000);
+      expect(after.unit.policy.lumpUnitCents).toBe(50000);
+      const [afterOther] = await owner.db.select().from(schema.rewardUnit).where(eq(schema.rewardUnit.id, otherId));
+      expect(afterOther.policy).toEqual(beforeOther.policy);
+      expect(afterOther.revision).toBe(beforeOther.revision);
+      expect(afterOther.businessUnitId).toBe(other.id);
+      expect(buId).not.toBe(other.id);
     });
   });
 });

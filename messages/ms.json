@@ -20012,7 +20012,10 @@
   },
   "rewards": {
     "unitBonus": {
-      "noReduction": "Pengurangan gaji tidak dibenarkan dalam semakan gaji."
+      "noReduction": "Pengurangan gaji tidak dibenarkan dalam semakan gaji.",
+      "appliesOnlyTo": "Hanya terpakai untuk semakan ini: {company} / {unit}",
+      "saveUnitMultiplierFor": "Simpan pengganda unit untuk {unit}",
+      "saveLumpFor": "Simpan bayaran sekali gus untuk {unit}"
     },
     "bonusPresentation": {
       "separatePools": "Setiap pelan mempunyai kumpulan wang sendiri. Bayaran sekali gus dibayar daripada kumpulan wang pelan yang sama.",

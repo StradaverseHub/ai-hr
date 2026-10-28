@@ -20012,7 +20012,10 @@
   },
   "rewards": {
     "unitBonus": {
-      "noReduction": "Không được phép giảm lương trong đợt xét duyệt lương."
+      "noReduction": "Không được phép giảm lương trong đợt xét duyệt lương.",
+      "appliesOnlyTo": "Chỉ áp dụng cho đợt xét duyệt này: {company} / {unit}",
+      "saveUnitMultiplierFor": "Lưu hệ số đơn vị cho {unit}",
+      "saveLumpFor": "Lưu khoản trả một lần cho {unit}"
     },
     "bonusPresentation": {
       "separatePools": "Mỗi chương trình có quỹ riêng. Khoản thưởng cố định được chi từ quỹ của cùng chương trình.",

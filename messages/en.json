@@ -20012,7 +20012,10 @@
   },
   "rewards": {
     "unitBonus": {
-      "noReduction": "Salary reductions are not allowed in the salary review."
+      "noReduction": "Salary reductions are not allowed in the salary review.",
+      "appliesOnlyTo": "Applies only to this review: {company} / {unit}",
+      "saveUnitMultiplierFor": "Save unit multiplier for {unit}",
+      "saveLumpFor": "Save lump sum for {unit}"
     },
     "bonusPresentation": {
       "separatePools": "Each plan has its own pool. Lump sums are paid from the same plan’s pool.",

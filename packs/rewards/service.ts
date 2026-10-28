@@ -148,6 +148,8 @@ async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string) {
     if (hiddenBlocks) flags.push({ severity: 'block', code: 'ACCESS-01', message: 'A restricted record needs review by its authorised reviewer.' });
     const [cycle] = await tx.select().from(rewardCycle).where(eq(rewardCycle.id, unit.cycleId));
     const [bu] = await tx.select({ name: businessUnitDisplayName }).from(businessUnit).where(eq(businessUnit.id, unit.businessUnitId));
+    // 9070acae: a review is always one company and one unit; the page names both on every save.
+    const [co] = await tx.select({ name: company.legalName }).from(company).where(eq(company.id, unit.companyId));
     const members = await tx.select({ id: rewardMember.id, role: rewardMember.role, userId: rewardMember.userId }).from(rewardMember).where(eq(rewardMember.unitId, unitId)).orderBy(asc(rewardMember.role), asc(rewardMember.userId));
     const decisions = await decisionHistory(tx, unitId, members);
     const returned = returnedProjection(unit, decisions[0]);
@@ -169,7 +171,7 @@ async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string) {
         reductions: group.filter(e => e.bonusCents < e.standardBonusCents).length,
         lump: group.filter(e => e.lumpCents > 0).length };
     };
-    return { unit, cycle, route, due, payrollDue, name: bu?.name ?? 'Business unit', roles, members, decisions, returned,
+    return { unit, cycle, route, due, payrollDue, name: bu?.name ?? 'Business unit', companyName: co?.name ?? '', roles, members, decisions, returned,
       rows: visible, flags, hiddenCount: entries.length - visible.length,
       budgets: { standard: calculated.budgets.standard, h: calculated.budgets.h },
       bonusCounts: { standard: bonusCounts('standard'), h: bonusCounts('h') },

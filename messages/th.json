@@ -20012,7 +20012,10 @@
   },
   "rewards": {
     "unitBonus": {
-      "noReduction": "ไม่อนุญาตให้ลดเงินเดือนในการทบทวนเงินเดือน"
+      "noReduction": "ไม่อนุญาตให้ลดเงินเดือนในการทบทวนเงินเดือน",
+      "appliesOnlyTo": "ใช้กับการทบทวนนี้เท่านั้น: {company} / {unit}",
+      "saveUnitMultiplierFor": "บันทึกตัวคูณของหน่วยสำหรับ {unit}",
+      "saveLumpFor": "บันทึกเงินก้อนสำหรับ {unit}"
     },
     "bonusPresentation": {
       "separatePools": "แต่ละแผนมีวงเงินแยกกัน เงินก้อนจ่ายจากวงเงินของแผนเดียวกัน",

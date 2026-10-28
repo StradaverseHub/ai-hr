@@ -20012,7 +20012,10 @@
   },
   "rewards": {
     "unitBonus": {
-      "noReduction": "薪资审核中不允许降低薪资。"
+      "noReduction": "薪资审核中不允许降低薪资。",
+      "appliesOnlyTo": "仅适用于本次审核：{company} / {unit}",
+      "saveUnitMultiplierFor": "保存 {unit} 的单位系数",
+      "saveLumpFor": "保存 {unit} 的一次性奖金"
     },
     "bonusPresentation": {
       "separatePools": "每个计划使用独立资金池，一次性奖金由同一计划的资金池支付。",
