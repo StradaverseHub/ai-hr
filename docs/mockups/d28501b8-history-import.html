@@ -1,0 +1,93 @@
+<meta charset="utf-8">
+<title>Import Payroll History — codes, validation and overwrite confirmation</title>
+<!--
+  Mockup for d28501b8. Tokens from app/globals.css; everything inline. Deliberately carries NO money figures:
+  amounts on a payroll mockup read as promises about calculation, and this item changes no calculation.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 4px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 9px;background:var(--muted)}
+  td{padding:7px 9px;border-top:1px solid var(--border)}
+  .mono{font-family:ui-monospace,Menlo,monospace;font-weight:600}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600}
+  .ok{background:#d1fae5;color:#065f46}
+  .warn{background:#fef3c7;color:#92400e}
+  .bad{background:#fee2e2;color:#991b1b}
+  .lock{background:var(--muted);color:var(--mf)}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
+  .tile{border:1px solid var(--border);border-radius:10px;padding:10px}
+  .tile .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600}
+  .tile .v{font-size:12px;margin-top:4px}
+  .banner{border:1px solid #fcd34d;background:#fffbeb;border-radius:10px;padding:12px;margin-top:12px}
+  .banner b{display:block;margin-bottom:4px}
+  .btns{margin-top:10px;display:flex;gap:8px}
+  .btn{padding:7px 14px;border-radius:8px;font-weight:600;font-size:12.5px;border:1px solid var(--border);background:#fff}
+  .btn.p{background:#b45309;color:#fff;border-color:#b45309}
+  .btn.s{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .note{font-size:11.5px;color:var(--mf);margin-top:8px}
+  .tag{font-size:10px;color:var(--mf);float:right}
+</style>
+
+<div class="two">
+  <div class="card">
+    <h2>Template · Codes sheet <span class="chip new">proposed</span></h2>
+    <p class="sub">Built from the system's own code list every time it is downloaded. Excerpt.</p>
+    <table>
+      <tr><th>Code</th><th>Description</th><th>Category</th><th>Amount type</th></tr>
+      <tr><td class="mono">BASIC</td><td>Basic salary</td><td>Basic Salary</td><td>Employee amount</td></tr>
+      <tr><td class="mono">ALLOWANCE</td><td>Allowance</td><td>Earning</td><td>Employee amount</td></tr>
+      <tr><td class="mono">EEEPF</td><td>Employee EPF</td><td>Employee Statutory</td><td>Employee amount</td></tr>
+      <tr><td class="mono">EREPF</td><td>Employer EPF</td><td>Employer Statutory</td><td>Employer amount</td></tr>
+      <tr><td class="mono">EESOCSOSKBBK</td><td>Employee SOCSO (SKBBK)</td><td>Employee Statutory</td><td>Employee amount</td></tr>
+      <tr><td class="mono">PCB</td><td>Monthly tax deduction</td><td>Employee Statutory</td><td>Employee amount</td></tr>
+      <tr><td class="mono">ZAKAT</td><td>Zakat via salary</td><td>Employee Statutory</td><td>Employee amount</td></tr>
+      <tr><td class="mono">GROSS</td><td>Gross pay</td><td>Payroll Total</td><td>Check only</td></tr>
+      <tr><td class="mono">NETPAY</td><td>Net pay</td><td>Payroll Total</td><td>Check only</td></tr>
+      <tr><td colspan="4" class="note">…plus every earning and deduction code set up in this company.</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Template · data sheet <span class="chip new">proposed</span></h2>
+    <p class="sub">Six columns. The Overwrite column is gone.</p>
+    <table>
+      <tr><th>Employee No</th><th>Payroll Period</th><th>Payroll Cycle</th><th>DOE Code</th><th>Company Code</th><th>Amount</th></tr>
+      <tr><td colspan="6" class="note">(empty — the Sample sheet shows a worked example using only codes from the Codes sheet, marked SAMPLE — NOT REAL DATA)</td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Import Payroll History · after Validate <span class="chip new">proposed</span></h2>
+  <p class="sub">One row per employee per month. Nothing has been saved yet.</p>
+  <div class="tiles">
+    <div class="tile"><div class="k">New</div><div class="v">Will be added</div></div>
+    <div class="tile"><div class="k">Will replace</div><div class="v">Previously imported — needs your confirmation</div></div>
+    <div class="tile"><div class="k">Protected</div><div class="v">Month was run in this system — not changed</div></div>
+    <div class="tile"><div class="k">Errors</div><div class="v">Fix in Excel and upload again</div></div>
+  </div>
+  <table>
+    <tr><th>Employee</th><th>Company</th><th>Period</th><th>Pay Cycle</th><th>Items</th><th>Result</th><th>Detail</th></tr>
+    <tr><td>A1001 · Sample Employee One</td><td>ABCDE</td><td>2025-01</td><td>ME</td><td class="mono">BASIC, ALLOWANCE, EEEPF …</td><td><span class="chip ok">New</span></td><td></td></tr>
+    <tr><td>A1002 · Sample Employee Two</td><td>ABCDE</td><td>2024-12</td><td>ME</td><td class="mono">BASIC, EEEPF, PCB …</td><td><span class="chip warn">Will replace</span></td><td>Imported earlier · period Closed</td></tr>
+    <tr><td>A1003 · Sample Employee Three</td><td>ABCDE</td><td>2025-06</td><td>ME</td><td class="mono">BASIC, EEEPF …</td><td><span class="chip lock">Protected</span></td><td>Payroll for this month was processed in AIHR. Correct it with Back Pay or an adjustment run.</td></tr>
+    <tr><td>A1004 · Sample Employee Four</td><td>ABCDE</td><td>2025-01</td><td>ME</td><td class="mono">BASIC, BONUSX</td><td><span class="chip bad">Error</span></td><td>Row 14 · code <span class="mono">BONUSX</span> is not on the Codes sheet</td></tr>
+  </table>
+
+  <div class="banner">
+    <b>Existing payroll history was found for 1 employee-month, including records in Closed payroll periods.</b>
+    Do you want to replace the previously imported records? The old figures are kept in the audit trail. Months
+    processed in AIHR are never replaced.
+    <div class="btns"><span class="btn p">Confirm overwrite and import</span><span class="btn">Cancel — import only new records</span><span class="btn">Cancel</span></div>
+  </div>
+</div>

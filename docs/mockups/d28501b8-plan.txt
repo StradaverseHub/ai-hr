@@ -1,0 +1,63 @@
+VERDICT: Partly there already   ·   SIZE: Large
+
+THE SITUATION TODAY
+
+When HR downloads the Import Payroll History template, the Codes sheet already lists the statutory codes (EEEPF, EREPF, PCB and so on) and every earning and deduction set up in the company. But Basic Salary is only on that list if the company happened to set up its basic pay item with the code BASIC. In your company it is set up under a different code, so a file using BASIC is rejected as "not a known earning, deduction or statutory code".
+
+The template also asks you to fill an Overwrite column on every row, even though the system has not yet checked whether anything already exists. And in practice that column does nothing today: any month that already has payroll is always held back, so a mistake in an earlier import can never be corrected by importing again.
+
+WHAT WE'LL CHANGE
+
+- BASIC becomes a standard code that every company can use, always meaning Basic Salary. It is accepted in any letter case (Basic, BASIC, basic). If your company's own basic pay code is also used in the same month for the same employee, the row is flagged so Basic Salary is never counted twice.
+
+- The amount you import for BASIC is the basic salary actually paid in that historical month. We will not substitute the employee's current profile salary, because an employee's salary in January 2025 is often not what is on their profile today.
+
+- The Overwrite column is removed from the template. Older files that still have it will continue to upload; the column is simply ignored.
+
+- The Codes sheet gains two columns: Category (Basic Salary, Earning, Deduction, Employee Statutory, Employer Statutory, Payroll Total) and Amount Type (employee amount, employer amount, or check only). It continues to be built from the system's own code list each time it is downloaded, so new codes appear automatically and nothing is typed in by hand.
+
+- The Sample sheet is expanded to show every statutory code (including SOCSO SKBBK, Zakat, CP38 and gross and net pay), clearly headed SAMPLE - NOT REAL DATA. A built-in check ensures every code on the Sample sheet is also on the Codes sheet and passes the importer.
+
+- After you press Validate, each employee-month is shown with its company, period, pay cycle and the codes it contains, and is marked as one of: New, Will replace, Protected, or Error. Errors show the Excel row number and the exact code that was rejected.
+
+- If any rows are marked Will replace, the system asks: "Existing payroll history was found ... Do you want to replace the previously imported records, including records in Closed payroll periods?" You can Confirm overwrite, import only the new records, or cancel entirely. Nothing is replaced without that confirmation.
+
+- Will replace applies to months that were loaded through this import screen, including Closed periods. Closed periods stay Closed. The old figures are kept in the audit trail along with who replaced them, when, and in which import.
+
+WHAT YOU'LL GET
+
+A template that explains itself, a Basic Salary code that simply works, and the ability to fix an earlier history import by re-importing it, with a clear confirmation step and a full record of what was changed.
+
+GOOD TO KNOW
+
+- One deliberate limit: months that were actually processed as payroll inside AIHR are marked Protected and are never replaced by an import. Their payslips have been issued, and their EPF, SOCSO, EIS and tax returns may already have been filed from them. Overwriting them from a spreadsheet would make the system disagree with what was paid and submitted. Corrections to those months continue to go through Back Pay or an adjustment run, where the change is calculated and reported properly. If you need spreadsheet overwrite of processed payroll months as well, reject this plan and say so, and we will plan that as a separate, larger piece of work.
+
+- Replacing an imported month changes the figures that feed EA forms, CP8D and the monthly statutory reports for that month. Re-download any of those you had already produced for that period.
+
+- Only users who can import payroll history today can confirm an overwrite.
+
+- This changes no payroll calculation, and starts no payment or statutory submission.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Root cause of the BASIC error (inferred, UNKNOWN until verified on the box): resolveImportCodes (core/payroll-history-import.ts) builds codes from STATUTORY_IMPORT_CODES + pay_component + payroll_import_code. BASIC is not in the statutory floor; it only resolves if a pay_component is literally coded BASIC. Matching is already case-insensitive via up(). Verify the tenant's basic component code before building (prod read was classifier-denied in planning).
+
+1. lib/payroll-history-import-schema.ts: add { code: 'BASIC', destination: 'basic', direction: 'earning', source: 'statutory' } to the built-in floor; component/catalog layers still override. Add category + amountType derivation from destination/direction (pure function; no stored column). In analyze, warn/fail when one employee-month has more than one line resolving to destination basic from different codes (Duplicate record).
+
+2. Drop 'Override?' from PAYROLL_HISTORY_HEADERS, PAYROLL_HISTORY_COLUMNS.optional, PAYROLL_HISTORY_SAMPLE_ROWS and the xlsx text-column indexes; keep the header aliases so old files parse; stop validating the value (remove Invalid Override). Update test/payroll-history-import-template.test.ts round-trip.
+
+3. Codes sheet: buildImportCodeRows gains Category and Amount Type columns (translated headings, six locales). Sample sheet: add EESOCSOSKBBK, ZAKAT, CP38, LP, GROSS, NETPAY lines, a SAMPLE - NOT REAL DATA banner row, and fictional employee codes. New guard test: every sample code resolves via the built-in floor and the sample month validates clean through analyze with no tenant catalog.
+
+4. Overwrite. Migration (number allocated at build): payroll_batch.source text null, check in ('history_import'); backfill rows where run_type='adjustment' and remarks='Imported payroll history'; importer sets it on insert. Occupancy is reclassified per employee-month: a period whose batches are all source='history_import' yields Will replace for employees present in those batches and New for others; any other batch in the period yields Protected for the whole company-period (unchanged safety for live payroll, see the header's double-count analysis).
+
+   Replace path: amend 0011 guards so DELETE of payslips in a closed batch is permitted only when the batch has source='history_import' AND a transaction-local setting app.history_overwrite = '<batch id>' is set by the importer (set_config(..., true)). Everything else stays immutable. In one withTenant tx per period: capture before-values of the replaced payslips into an appendEvent payload (payroll.history.overwritten with import batch id, actor, affected employment ids, before rows), delete those payslips, insert new ones into the same import batch, recompute batch counters via the same guarded path. pay_period status untouched. Readers need no change because the replaced rows are gone rather than summed.
+
+   Commit takes confirmOverwrite boolean; without it Will replace months are skipped (import-new-only) and the result reports them. Server re-derives the classification at commit (never trusts the preview). HistoryImportResult.updated reports months replaced. Permission: the existing import action's guard; no new screen.
+
+5. UI app/payroll/history-import/history-import.tsx: result chips New / Will replace / Protected / Error, items column, row-level detail, confirmation banner with three actions. Messages in all six locales.
+
+Tests: BASIC accepted with no component; BASIC + tenant basic code same month flagged; template has six columns; overwrite replaces an imported closed month and leaves pay_period closed; overwrite refused on a regular processed batch; trigger still blocks DELETE without the setting and on non-import batches (DB test); event carries before-values; cancel path writes nothing for Will replace months; cross-tenant RLS on the new path. Gate is full (database + financial owner).
+
+NOT doing: overwriting months processed by the live payroll engine; changing any statutory reader.
