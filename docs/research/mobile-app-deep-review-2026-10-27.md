@@ -402,3 +402,41 @@ verifies). Nothing below is evidence that it works until that run reports.
   closing event that cannot be delivered after one same-reference retry is lost; the audit then shows a
   `confirmed` with no close.
 - **Tests written, not yet run.** `test/mobile-v2-documents.test.ts`, `test/mobile-pay-documents.dom.test.tsx`.
+
+### M10 (inbox part) and M14 (Home essentials) — IMPLEMENTED, UNVERIFIED (28 October 2026)
+
+Built on the branch; no test, type check, build or device run has been executed by the builder (hosted CI
+verifies). Nothing below is evidence that it works until that run reports. **Push (D6) and shift reminders (D8)
+are still pending**: no push enrollment, token, payload or reminder code exists.
+
+- **D5 kernel change.** `core/notifications.ts`: `listNotifications` now orders `created_at desc, id desc` (a
+  deterministic tie order; same rows and filters for every web caller) and takes an optional `after` keyset
+  (`NotificationCursor`, the instant as microsecond UTC text plus id). Sibling `listNotificationsPage` returns the
+  same order with each row's exact cursor text (`cursorAt`) and an optional `ids` narrowing. No web caller changed.
+- **Endpoints (v2, contracts in `lib/mobile-api/v2/notifications.ts`, composition in `core/mobile-notifications.ts`),
+  behind the Notifications module gate.** `GET /api/mobile/v2/notifications?cursor&limit&unread=true` (own rows,
+  recipient-only RLS, keyset-paged, `unreadCount`); `POST …/notifications/read {ids ≤ 50} | {all: true}`
+  (markNotificationRead / markAllNotificationsRead; answers the fresh count and each still-owned id with its
+  destination re-derived; idempotent, no receipt); `GET /api/mobile/v2/home/summary` (the v2 task list's count via
+  `pendingTaskCountV2` and the unread count, each settled on its own; `unavailable` is never zero).
+- **No link leaves the server.** `link_path` is never sent. `lib/mobile-api/notification-destination.ts` maps the
+  registry kind to one of four list screens — `leaveHistory` (leave approved/rejected/admin-cancelled, cancellation
+  approved/rejected), `leave` (toil accrued/converted/lapsed), `approvals` (cancellation requested, leave escalation,
+  overtime requested, review started/manager-evaluated/reminder), `pay` (payslip ready, only while Payroll is on).
+  Every other kind is `null`. Destinations carry no record id: a notification holds no business-record reference the
+  recipient may read, and each list screen re-reads under the caller's session.
+- **Native.** `mobile/app/(tabs)/inbox.tsx` → `mobile/lib/inbox.tsx` `InboxScreen` on the shared paged list: "{n}
+  unread · Mark all read", unread dot rows (title, muted body, time, "Open … ›" for a known destination). A tap marks
+  the row read, then opens the destination the server re-derived; a gone row or one whose destination no longer
+  applies says "This item is no longer available". Legacy Home's "Needs you" is `HomeNeeds`: loading shows loading, a
+  part that could not be read shows "Couldn't check — retry", "Nothing needs you" only when both counts were read,
+  are zero and are not refreshing; the task count links to approvals (the button shows when tasks are waiting or could
+  not be checked, as the composed Tasks widget shows it when tasks are waiting). Routes are reachable only unlocked
+  (the root Gate renders no route while locked). en and ms copy.
+- **Not done / follow-ups.** Push and reminders (above). No record-level deep link (a notification has no readable
+  record reference; DECISION REQUIRED if the owner wants one, which needs a reference column written at dispatch).
+  The composed (schema 2) Tasks widget still reads v1 `tasks`, which omits replacement leave and notice
+  acknowledgements, so it can say "nothing needs you" while those wait (its DOM test pins the v1 read; follow-up).
+  The composed Messages widget still reads v1. Stored titles/bodies that are message keys (letters, Home greetings)
+  are shown as stored, as v1 does.
+- **Tests written, not yet run.** `test/mobile-v2-notifications.test.ts`, `test/mobile-inbox.dom.test.tsx`.
