@@ -86,6 +86,7 @@ BEGIN
   wanted_company:=NEW.company_id;
   SELECT (v.policy->>'year')::integer INTO wanted_year FROM public.reward_policy_group_version v WHERE v.id=NEW.version_id AND v.tenant_id=NEW.tenant_id;
  END IF;
+ PERFORM 1 FROM public.company c WHERE c.id=wanted_company AND c.tenant_id=NEW.tenant_id FOR SHARE;
  IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT app.reward_company_available(wanted_company,wanted_year)
  THEN RAISE EXCEPTION 'Company is archived or excluded from this reward year' USING ERRCODE='23514'; END IF;
  RETURN NEW;
@@ -129,3 +130,11 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.reward_company_exclusion_audit_owner() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER reward_company_exclusion_audit_owner BEFORE INSERT ON domain_event FOR EACH ROW EXECUTE FUNCTION app.reward_company_exclusion_audit_owner();
+
+--> statement-breakpoint
+-- Participation changes invalidate already-pinned write snapshots, including a previously absent rule.
+-- Reuse the canonical custody generation; this is not a new role grant or a user-facing access revision.
+CREATE TRIGGER reward_company_participation_generation AFTER INSERT OR UPDATE ON reward_company_exclusion
+FOR EACH ROW EXECUTE FUNCTION app.access_profile_access_generation();
+CREATE TRIGGER reward_shared_participation_generation AFTER INSERT OR UPDATE ON reward_policy_group
+FOR EACH ROW EXECUTE FUNCTION app.access_profile_access_generation();

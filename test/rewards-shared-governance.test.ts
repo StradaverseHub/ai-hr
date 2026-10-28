@@ -3,7 +3,7 @@ import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
-import {withTenant,type SessionContext} from '../db/client';
+import {client as applicationClient,withTenant,type SessionContext} from '../db/client';
 import {migrateTestDb,resetDb,seedBase,setModule,entitledCtx,owner,closeAll,type Base} from './harness';
 import {createOffcycleReview,changeRewardCompanyExclusion,rewardCompanyExclusions,rewardPolicyHistory,rewardPolicyHiddenCount,saveRewardPolicyGroup,defaultPolicy,createRewardUnit,rewardSetupChoices} from '../packs/rewards/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -61,6 +61,14 @@ describe('shared Rewards company participation and history',()=>{
    await expect.poll(async()=>{const [row]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from pg_stat_activity where datname=current_database() and state='active' and wait_event_type='Lock' and query like '%select app.access_workforce_write_lock()%'`);return row.n;},{timeout:5000}).toBeGreaterThan(0);
   }finally{release();await holder;}
   expect((await attempt).ok).toBe(false);
+ });
+ it('refuses an old repeatable-read snapshot after a new company exclusion is committed',async()=>{
+  await expect(applicationClient.begin('isolation level repeatable read',async tx=>{
+   await tx`select set_config('app.tenant_id',${admin.tenantId},true),set_config('app.user_id',${admin.userId!},true),set_config('app.roles','hr_admin',true),set_config('app.grants',${JSON.stringify(admin.grants??[{role:'hr_admin',companyId:null}])},true)`;
+   await tx`select count(*) from reward_company_exclusion`;
+   await changeRewardCompanyExclusion(admin,{companyId:b.companyId,year,reason:'Company excluded after snapshot was pinned',endId:null});
+   await tx`select app.reward_policy_group_commit(NULL,0,'Stale snapshot must not save',${JSON.stringify(defaultPolicy(year))}::jsonb,${JSON.stringify([{companyId:b.companyId,businessUnitId:buA}])}::jsonb)`;
+  })).rejects.toMatchObject({code:'40001'});
  });
  it('orders versions newest first and derives archived and locked states from stored owners',async()=>{
   const v=await group();const review=await createRewardUnit(admin,{name:'Locked history cycle',year,companyId:b.companyId,businessUnitId:buA,snapshotDate:today,sharedPolicyVersionId:v.versionId});
