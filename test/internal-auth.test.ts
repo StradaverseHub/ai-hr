@@ -1,3 +1,5 @@
+import {saveEmailDesign} from '../core/email-design/service';
+import {defaultEmailDocument} from '../lib/email-design/model';
 import { randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { generate } from 'otplib';
@@ -212,8 +214,12 @@ describe('first-party authentication with real private storage and existing HR b
   it('recovery keeps MFA, consumes its link once and invalidates every prior session', async () => {
     const { signedIn } = await enroll(); const c = (await credentialByLogin('alpha', 'owner'))!;
     await writeRecord(client, 'email-state', { active: { config: { host: 'smtp.invalid' } }, revision: 'test', drafts: {} }, null);
-    let sentText = '';
-    await requestRecovery('alpha', 'owner', async (_relay, mail) => { sentText = mail.text; });
+    const design=defaultEmailDocument('recovery');design.blocks[0]={...design.blocks[0],type:'header',label:'Fictional account-tenant design',style:{}};
+    await saveEmailDesign(adminCtx(base),'recovery','en',design,0);
+    let sentText = '',sentHtml='';
+    await requestRecovery('alpha', 'owner', async (_relay, mail) => { sentText = mail.text;sentHtml=mail.html??''; });
+    expect(sentText).toContain('Fictional account-tenant design');expect(sentHtml).toContain('Fictional account-tenant design');
+    expect(sentText).toContain('Your authenticator or a recovery code is still required');
     const rows = await owner.client`select id,status from account_email_delivery where kind='recovery'`;
     expect(rows).toHaveLength(1); expect(rows[0].status).toBe('sent');
     const token = sentText.match(/#token=([A-Za-z0-9_-]{43})/)![1];
