@@ -13,7 +13,7 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
-import { performanceWorkspace, getAssessmentPersonalRecord, getOnehrReview, getOnehrFeedback, getOnehrCalibration, getReviewConversation, getFeedbackConversation, getCalibrationConversation, type ConversationStage, type PerformanceWorkspaceItem } from '@/packs/performance/service';
+import { hasDepartmentView, performanceWorkspace, getAssessmentPersonalRecord, getOnehrReview, getOnehrFeedback, getOnehrCalibration, getReviewConversation, getFeedbackConversation, getCalibrationConversation, type ConversationStage, type PerformanceWorkspaceItem } from '@/packs/performance/service';
 import { ErrorBanner, inputCls } from '@/components/ui';
 import { OnehrReviewView } from '../onehr/review-view';
 import { FeedbackView } from '../onehr/feedback-view';
@@ -22,7 +22,8 @@ import { WorkspaceRail } from './workspace-rail';
 type Query={cycle?:string;view?:string;module?:string;review?:string;feedback?:string;calibration?:string;stage?:string;record?:string;recordTab?:string;planYear?:string;error?:string};
 export default async function PerformanceWorkspacePage({searchParams}:{searchParams:Promise<Query>}) {
  await requireModule('performance');const {s}=await scopedSession(),query=await searchParams;
- const [items,t]=await Promise.all([performanceWorkspace(s),getTranslations('onehr')]);
+ // WP-C — the department view link shows only to a live head of department in an open or calibrating cycle.
+ const [items,t,department]=await Promise.all([performanceWorkspace(s),getTranslations('onehr'),hasDepartmentView(s)]);
  // One resolver for cycle, view and module: a locked plan or a module the viewer does not hold is never selected.
  const {cycleIds,cycle,availableViews,view,availableModules,lockedModules,module}=resolveWorkspaceSelection(items,query);
  const inView=items.filter(i=>i.cycleId===cycle&&i.view===view);
@@ -48,10 +49,10 @@ export default async function PerformanceWorkspacePage({searchParams}:{searchPar
  const stage=query.stage==='record'?'record':query.stage==='evidence'&&review?.policy.modules.evidence?'evidence':module;
  const personalRecord=stage==='record'&&review?.self?await getAssessmentPersonalRecord(s,review.reviewId,query.record,query.planYear?Number(query.planYear):undefined):null;
  const conversationStage:ConversationStage|'calibration'=calibration?'calibration':feedback?'feedback':stage==='evidence'?'evidence':module==='tm'?'competency':module==='idp'?'career':selected?.stage==='setting'?'setting':selected?.stage==='moderation'?'moderation':'results';
- const conversation=calibration&&calibration.modules.review!==false?await getCalibrationConversation(s,calibration.session.id,selected?.axis??'both'):review&&review.policy.modules.review!==false&&(review.self||review.manager||review.moderator)&&stage!=='record'&&!selected?.locked?await getReviewConversation(s,review.reviewId,conversationStage as ConversationStage):feedback&&feedback.guidedReview!==false?await getFeedbackConversation(s,feedback.reviewId,feedback.requestId):null;
+ const conversation=calibration&&calibration.modules.review!==false?await getCalibrationConversation(s,calibration.session.id,selected?.axis??'both'):review&&review.policy.modules.review!==false&&(review.self||review.manager||review.moderator||review.reviewer&&(conversationStage==='competency'||conversationStage==='career'))&&stage!=='record'&&!selected?.locked?await getReviewConversation(s,review.reviewId,conversationStage as ConversationStage):feedback&&feedback.guidedReview!==false?await getFeedbackConversation(s,feedback.reviewId,feedback.requestId):null;
  const conversationAiEnabled=(review?review.aiFeatures[conversationStage==='competency'?'tc':conversationStage==='career'?'idp':'pm']:undefined)??(!!conversation&&'aiEnabled' in conversation&&conversation.aiEnabled===true);
  const conversationLabels=Object.fromEntries(['title','you','draft','guide','action','message','next','preparing','help','updated','send','starter','starterHelp','saveReflection','reflectionSaved'].map(key=>[key,t(`conversation.${key}`)]));
- if(review&&(review.manager||review.moderator))conversationLabels.help=t('conversation.managerHelp');
+ if(review&&(review.manager||review.moderator||review.reviewer))conversationLabels.help=t('conversation.managerHelp');
  if(calibration)conversationLabels.help=t('conversation.calibrationHelp');
  conversationLabels.starterQuota=t('conversation.starterQuota',{remaining:'{remaining}',limit:'{limit}'});
  const pending=cards.filter(c=>c.state==='open').length,done=cards.filter(c=>c.state==='done').length;
@@ -65,7 +66,7 @@ export default async function PerformanceWorkspacePage({searchParams}:{searchPar
  if(calibration)navigation.push(...calibration.rows.map(r=>({id:`assessment-${r.entry.reviewId}`,title:r.name,meta:r.grade,done:!!(selected?.axis==='performance'?r.entry.performanceLockedAt:selected?.axis==='potential'?r.entry.potentialLockedAt:r.entry.lockedAt)})));
  if(review?.self&&module==='pm'&&selected?.stage!=='setting'&&review.policy.kind!=='quarterly')navigation.push({id:'assessment-overall-remark',title:t('overallRemark'),meta:'',done:!!(privateResults?.remark??review.selfRemark)},{id:'assessment-submit-results',title:t('submitResults'),meta:'',done:review.resultsSubmitted});
  const partSwitcher=(module==='tm'||module==='cal')&&parts.length>1?<nav aria-label={t('workspace.parts')} className="flex gap-1 border-b border-border p-2">{parts.map(p=><Link key={p} href={href({stage:p})} className={`flex min-h-11 flex-1 items-center justify-center rounded-md px-2 text-xs ${part===p?'bg-primary/10 font-semibold text-primary':'hover:bg-muted'}`}>{t(`workspace.stages.${p}`)}</Link>)}</nav>:null;
- const activeDraft=review?.drafts.find(d=>d.kind===(module==='tm'?(review.manager?'competency_manager':'competency_self'):review.manager||review.moderator?'moderation':'results'))?.payload??feedback?.draft?.payload;
+ const activeDraft=review?.drafts.find(d=>d.kind===(module==='tm'?(review.manager||review.reviewer?'competency_manager':'competency_self'):review.manager||review.moderator?'moderation':'results'))?.payload??feedback?.draft?.payload;
  const activeStatements=feedback?.statements??review?.competencies??[];
  const activeKpis=review?.kpis.filter(k=>!k.hrOwned&&(review.self||review.canModerateIds.includes(k.id)))??[];
  const total=module==='tm'?activeStatements.length:activeKpis.length;
@@ -79,7 +80,7 @@ export default async function PerformanceWorkspacePage({searchParams}:{searchPar
 
  return <JourneyProgressProvider key={`${selected?.key}.${stage}.${review?.revision}.${review?.drafts.map(d=>d.revision).join(".")}`} initial={stepProgress} labels={journeyLabels}><div className="mx-auto max-w-[100rem] space-y-3">
   <h1 className="sr-only">{t('workspace.title')}</h1>
-  <ErrorBanner message={query.error}/><div className="flex justify-end"><PerformanceGuide key={`${s.tenantId}.${s.userId}`}/></div>
+  <ErrorBanner message={query.error}/><div className="flex flex-wrap items-center justify-end gap-x-6">{department&&<Link href="/performance/department" className="inline-flex min-h-11 items-center text-sm text-primary underline">{t('department.link')}</Link>}<PerformanceGuide key={`${s.tenantId}.${s.userId}`}/></div>
   {!items.length?<section className="rounded-lg border border-border p-8"><h2 className="font-semibold">{t('workspace.empty')}</h2><p className="mt-2 text-sm text-muted-foreground">{t('workspace.emptyHelp')}</p><Link href="/me/performance" className="mt-4 mr-6 inline-flex min-h-11 items-center text-sm text-primary underline">{t('workspace.record')}</Link><Link href="/performance" className="mt-4 inline-flex min-h-11 items-center text-sm text-primary underline">{t('workspace.manageCycles')}</Link></section>:<>
    <div className="grid gap-3 lg:grid-cols-[224px_minmax(0,1fr)]">
     <nav aria-label={t('workspace.viewsLabel')} className="flex gap-1 rounded-lg border border-border p-1">{availableViews.map(v=><Link key={v} href={href({view:v,module:undefined,stage:undefined})} aria-current={view===v?'page':undefined} className={`flex min-h-11 min-w-0 flex-1 items-center justify-center whitespace-nowrap rounded-md px-1 text-xs ${view===v?'bg-foreground text-background':'hover:bg-muted'}`}>{t(`workspace.views.${v}`)}</Link>)}</nav>

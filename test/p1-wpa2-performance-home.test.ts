@@ -115,6 +115,19 @@ describe('the Performance block for a line manager and an employee (PM only)', (
     expect(blk.team?.href).toBe(`/performance/workspace?cycle=${cycleId}&view=team`);
   });
 
+  it('counts a department review the manager leads as its HOD anchor, with no explicit grant (WP-B2)', async () => {
+    const sessionId = await withTenant(a, async (tx) => {
+      const [s] = await tx.insert(schema.onehrCalibration).values({ tenantId: b.tenantId, cycleId, companyId: b.companyId, name: 'WP-B2 anchored department', tier: 'hod', reviewerUserIds: [], anchorKind: 'hod', anchorEmploymentId: manager.employmentId }).returning();
+      for (const p of [subject, plain]) await tx.insert(schema.onehrCalibrationEntry).values({ tenantId: b.tenantId, sessionId: s.id, reviewId: await reviewIdFor(cycleId, p), employmentId: p.employmentId });
+      return s.id;
+    });
+    expect((await perf.pendingCalibrationTasks(mgr)).map((t) => t.id)).toEqual([sessionId]);
+    expect(await perf.hasCalibrationAssignment(mgr)).toBe(true);
+    const blk = must(await block(mgr), 'manager block');
+    expect(stepOf(blk, 'calibration')).toEqual({ key: 'calibration', state: 'waiting', count: 1 });
+    expect(must(blk.team, 'team row').chips).toContainEqual({ kind: 'calibration', count: 1 });
+  });
+
   it('an unreleased result shows no band anywhere; after release it appears', async () => {
     await perf.saveOnehrKpis(self, reviewId, await rev(self), [kpi(manager)], true);
     await perf.approveOnehrScorecard(mgr, reviewId, await rev(mgr), true, 'Objectives agreed.');
@@ -206,9 +219,15 @@ describe('the Performance block for a line manager and an employee (PM only)', (
     expect(await perf.hasAssignedPerformanceWork(matrixCtx, undefined)).toBe(true);
     expect(await perf.hasAssignedPerformanceWork(plainCtx, undefined)).toBe(false);
     expect(await perf.hasAssignedPerformanceWork(self, undefined)).toBe(false); // their own review is not work assigned to them
-    // The page consults exactly this predicate before its redirect (contract across the two files).
+    // WP-E: a leader (HOD or a BU / BG / group seat) also reaches the page for "What you led". Neither employee leads
+    // anyone, so a plain employee is still redirected: no admin, no manager role, no assigned work, no led people.
+    expect(await perf.hasLedPeople(plainCtx)).toBe(false);
+    expect(await perf.hasLedPeople(self)).toBe(false);
+    expect(await perf.hasLedPeople(mgr)).toBe(true); // the control: the line manager leads their reports in this cycle
+    // The page consults exactly these predicates before its redirect (contract across the two files).
     const page = fs.readFileSync(path.resolve(__dirname, '../app/performance/page.tsx'), 'utf8');
-    expect(page).toMatch(/if \(!performanceAdmin && !manager && !\(await hasAssignedPerformanceWork\(s, scopeIds\)\)\) redirect\('\/'\);/);
+    expect(page).toMatch(/const leads = await hasLedPeople\(s\);/);
+    expect(page).toMatch(/if \(!performanceAdmin && !manager && !leads && !\(await hasAssignedPerformanceWork\(s, scopeIds\)\)\) redirect\('\/'\);/);
   });
 });
 

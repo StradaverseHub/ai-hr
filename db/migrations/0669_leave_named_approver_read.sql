@@ -49,9 +49,10 @@
 -- PUBLIC and granted to ai_hr_app. No session, an unknown id, another tenant's id and a colleague's
 -- request all return the empty set / no rows, never an error, so neither function can probe which ids exist.
 --
--- ⚠️ NUMBERING. Filename 0669 reserved in the claude/migration-inventory-20261027 registry (ebe6304ae), when
--- 1793180000000, above every recorded hold (REA 0663–0667 up to 1793170000005). The journal idx is assigned at
--- integration: if a later `when` is applied first, re-time this (unapplied) entry above the live watermark.
+-- ⚠️ NUMBERING. Filename 0669 reserved in the claude/migration-inventory-20261027 registry (ebe6304ae). It journals
+-- AFTER 0670_ai_orchestrator_wave1_receipts (idx 654, when 1793190000000, applied first on staging): idx 655, when
+-- re-timed to 1793200000000 (registry 00b903bef). The filename sorts below 0670, but the migrator orders by journal
+-- idx/when, never by filename. If a later `when` is applied first, re-time this (unapplied) entry again.
 --
 -- Rollback:
 --   DROP POLICY leave_request_named_approver_read ON public.leave_request;
