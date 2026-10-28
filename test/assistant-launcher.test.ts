@@ -9,7 +9,8 @@ vi.mock('../lib/session',()=>({getBrowserCommandSession:owner.session}));
 vi.mock('../core/assistant',()=>({askAssistant:owner.ask,AssistantError:class extends Error{constructor(readonly code:string){super(code);}}}));
 vi.mock('../core/ai-workspace',()=>({loadAiWorkspace:owner.workspace}));
 vi.mock('../components/assistant/module-jobs',()=>({GroundedWorkspaceReply:owner.reply}));
-vi.mock('../core/entitlements',()=>({getSettingOrFallback:(_ctx:unknown,key:string,fallback:unknown)=>key in owner.settings?owner.settings[key]:fallback}));
+const DEFAULTS:Record<string,unknown>={'assistant.launcher_enabled':false,'assistant.launcher_position':'bottom-right','assistant.launcher_hidden_areas':''};
+vi.mock('../core/entitlements',()=>({getSetting:(_ctx:unknown,key:string)=>{if(owner.settings.__broken)throw Error('PRIVATE snapshot');return key in owner.settings?owner.settings[key]:DEFAULTS[key];}}));
 vi.mock('../core/assistant-grant',()=>({mayUseAssistant:owner.access}));
 vi.mock('../core/ai-config',()=>({resolveActiveAiConfig:owner.provider}));
 vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,work:(tx:unknown)=>unknown)=>work({})}));
@@ -48,6 +49,8 @@ describe('floating button settings fail closed',()=>{
   owner.access.mockResolvedValueOnce({allowed:false,reason:'no_grant'});expect(await assistantLauncherFor(ctx as never)).toBeNull();
   owner.provider.mockResolvedValueOnce(null);expect(await assistantLauncherFor(ctx as never)).toBeNull();
   owner.access.mockRejectedValueOnce(Error('PRIVATE'));expect(await assistantLauncherFor(ctx as never)).toBeNull();
+  // An unreadable settings snapshot hides the button rather than failing open.
+  owner.settings={__broken:true};expect(await assistantLauncherFor(ctx as never)).toBeNull();
  });
  it('writes all three settings together and refuses anything outside the closed values',async()=>{
   await setAssistantLauncher(ctx as never,{enabled:true,position:'bottom-left',hiddenAreas:['people','payroll']});

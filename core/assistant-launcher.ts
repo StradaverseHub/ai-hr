@@ -3,7 +3,7 @@
  * module, the per-login grant, the pause switch, allowances and the provider exactly as the Assistant page
  * does. Hiding the button is presentation only. */
 import { withTenant, type SessionContext } from '../db/client';
-import { getSettingOrFallback } from './entitlements';
+import { getSetting } from './entitlements';
 import { resolveActiveAiConfig } from './ai-config';
 import { mayUseAssistant } from './assistant-grant';
 import { setTenantSetting } from './tenant-settings';
@@ -15,13 +15,14 @@ export type LauncherSettings = { enabled: boolean; position: LauncherPosition; h
 
 const parseAreas = (value: unknown): PageArea[] => typeof value !== 'string' ? [] : [...new Set(value.split(',').map(part => part.trim()).filter(isPageArea))];
 
-/** The saved settings, falling back to the catalog defaults (off, bottom-right, nothing hidden). */
+/** The saved settings (catalog defaults: off, bottom-right, nothing hidden). Throws when the tenant's
+ * settings cannot be read; callers decide what that means (the shell hides the button). */
 export function readLauncherSettings(ctx: SessionContext): LauncherSettings {
-  const position = getSettingOrFallback<unknown>(ctx, 'assistant.launcher_position', 'bottom-right');
+  const position = getSetting<unknown>(ctx, 'assistant.launcher_position');
   return {
-    enabled: getSettingOrFallback<unknown>(ctx, 'assistant.launcher_enabled', false) === true,
+    enabled: getSetting<unknown>(ctx, 'assistant.launcher_enabled') === true,
     position: LAUNCHER_POSITIONS.find(p => p === position) ?? 'bottom-right',
-    hiddenAreas: parseAreas(getSettingOrFallback<unknown>(ctx, 'assistant.launcher_hidden_areas', '')),
+    hiddenAreas: parseAreas(getSetting<unknown>(ctx, 'assistant.launcher_hidden_areas')),
   };
 }
 

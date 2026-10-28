@@ -21,11 +21,17 @@ export function AssistantLauncher({ position, hiddenAreas }: { position: 'bottom
   const [question, setQuestion] = React.useState(''), [turns, setTurns] = React.useState<Turn[]>([]), [pending, setPending] = React.useState(false);
   const button = React.useRef<HTMLButtonElement>(null), box = React.useRef<HTMLTextAreaElement>(null), log = React.useRef<HTMLDivElement>(null);
   const titleId = React.useId();
-  React.useEffect(() => { if (open) box.current?.focus(); }, [open, docked]);
-  React.useEffect(() => { log.current?.scrollTo({ top: log.current.scrollHeight }); }, [turns]);
+  const wasOpen = React.useRef(false);
+  React.useEffect(() => {
+    if (open) box.current?.focus();
+    // The button is re-mounted when the window closes, so focus returns after that render.
+    else if (wasOpen.current) button.current?.focus();
+    wasOpen.current = open;
+  }, [open, docked]);
+  React.useEffect(() => { if (log.current) log.current.scrollTop = log.current.scrollHeight; }, [turns]);
   // Never on the Assistant itself, outside the closed area list, or in an area the administrator hid.
   if (pathname === '/assistant' || pathname.startsWith('/assistant/') || !context || hiddenAreas.includes(context.area)) return null;
-  const close = () => { setOpen(false); button.current?.focus(); };
+  const close = () => setOpen(false);
   async function send() {
     const text = question.trim();
     if (!text || pending) return;

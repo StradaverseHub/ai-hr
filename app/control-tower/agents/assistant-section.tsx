@@ -27,7 +27,10 @@ export async function AiAssistantSection({session:s,searchParams}:{session:Sessi
   // Closed codes only; a query string never puts its own words on this page.
   const status = sp.planning==='evaluated' ? planning('evaluated') : undefined;
   const alert = sp.error==='agent_review' ? assistant('err_agent_review') : sp.error==='launcher' ? t('launcherFailed') : sp.planning==='unavailable' ? planning('unavailable') : undefined;
-  const launcher = readLauncherSettings(s), mayWrite = isGroupAdmin(s);
+  // An unreadable settings snapshot shows the switch as off; saving still goes through the owner's checks.
+  let launcher: ReturnType<typeof readLauncherSettings> = { enabled: false, position: 'bottom-right', hiddenAreas: [] };
+  try { launcher = readLauncherSettings(s); } catch { /* shown as off */ }
+  const mayWrite = isGroupAdmin(s);
   return <div className="space-y-5">
     {status && <p role="status" className="rounded-md border border-border p-3 text-sm">{status}</p>}
     {alert && <p role="alert" className="rounded-md border border-border p-3 text-sm">{alert}</p>}
