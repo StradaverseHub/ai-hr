@@ -20529,6 +20529,78 @@
       "readOnly": "Group Rewards or a company HR administrator maintains this calendar.",
       "notSet": "Not set",
       "days": "{days, plural, one {# day} other {# days}}"
+    },
+    "excluded": "调薪排除",
+    "showAllChecks": "显示所有检查",
+    "payWindow": {
+      "tag": "{from}–{to} 已调薪：不符合加薪资格",
+      "keptTag": "{from}–{to} 已调薪：Group Rewards 保留资格",
+      "effective": "{date} 生效",
+      "excludedFromBase": "从基数中排除：{count} 名员工，薪资 {amount}",
+      "viewList": "查看名单",
+      "listTitle": "在排除期内调薪的员工",
+      "listHelp": "基本工资在 {from} 至 {to} 之间发生变动的所有员工。他们不获得绩效加薪、晋升加薪或特别调整，其工资不计入加薪预算池。他们仍参与奖金发放，奖金按调整后的基本工资计算。",
+      "export": "导出名单",
+      "columns": {
+        "employee": "员工",
+        "change": "变动",
+        "effectiveOn": "生效日期",
+        "currentBasic": "快照日基本工资",
+        "adjustedBasic": "调整后基本工资（用于奖金）",
+        "status": "加薪"
+      },
+      "excluded": "不符合资格（期内调薪）",
+      "keptReason": "保留资格：“{reason}”",
+      "reason": "原因（必填）",
+      "keepEligible": "保留资格",
+      "excludeAgain": "重新排除",
+      "none": "排除期内没有员工的基本工资发生变动。",
+      "bonusBasic": "用于奖金的调整后基本工资",
+      "kinds": {
+        "promotion": "晋升",
+        "increment": "加薪",
+        "confirmation": "转正调整",
+        "salaryAdjustment": "工资调整",
+        "other": "工资变动",
+        "unrecorded": "工资变动（未记录类型）"
+      }
+    },
+    "lumpChoice": {
+      "auto": "使用建议金额（{amount}）",
+      "autoHelp": "预算变化时随建议金额调整。",
+      "set": "设定金额",
+      "setHelp": "为本业务单位所有符合资格者设定至少 RM 0.01 的固定金额。",
+      "withhold": "本业务单位不发放",
+      "withholdHelp": "本业务单位无人获得一次性奖励。",
+      "aboveSuggestion": "该金额超出剩余预算可支持的金额（建议 {amount}）。",
+      "reasonRequired": "原因（必填）",
+      "reasonOptional": "原因（选填）",
+      "reasonHelp": "不发放须填写至少 10 个字符的原因。",
+      "confirm": "确定不向 {unit} 的 {count} 人发放一次性奖励？",
+      "confirmAll": "确定不向 {unit} 所有符合资格者发放一次性奖励？",
+      "cancel": "取消",
+      "withheldNote": "{name} 于 {date} 决定本业务单位不发放一次性奖励。",
+      "someone": "一名审核人"
+    },
+    "lumpImpact": {
+      "title": "每人 {amount} 的影响",
+      "people": "获得奖励人数",
+      "cost": "一次性奖励总成本",
+      "balance": "发放后奖金余额",
+      "used": "奖金池使用率",
+      "amendments": "个别修改",
+      "viewList": "{count} · 查看名单",
+      "overExempt": "有计划将超过其奖金池的 100%；本次评审有预算上限豁免。",
+      "overBlocked": "有计划将超过其奖金池的 100%。没有预算上限豁免时，超过 100% 的评审无法提交。",
+      "amendmentsHelp": "个别修改指一次性奖励金额与单位金额不同的员工。他们进入例外审核并保留各自金额。"
+    },
+    "branchGrid": {
+      "factors": "分行系数（PPCH）：奖金分段 × 评级",
+      "segment": "奖金分段",
+      "ratings": "分行评级",
+      "branch": "分行",
+      "rating": "分行评级",
+      "empty": "尚未配置分行系数。"
     }
   },
   "identityEmail": {

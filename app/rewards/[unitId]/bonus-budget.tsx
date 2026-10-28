@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import type { getRewardUnit } from '@/packs/rewards/service';
 import { Card } from '@/components/ui';
 import { formatMoney } from '@/lib/money';
@@ -6,7 +5,8 @@ import { formatMoney } from '@/lib/money';
 type RewardView=Awaited<ReturnType<typeof getRewardUnit>>;
 type BudgetView=Pick<RewardView,'budgets'|'bonusCounts'|'suggestedMultiplierBp'> & {unit:Pick<RewardView['unit'],'policy'>};
 /** Presentation of the canonical calculated pools; no award or policy is calculated here. */
-export function BonusBudgetCards({value:v,t,locale,adjustment}:{value:BudgetView;t:(key:string)=>string;locale:string;adjustment?:ReactNode}) {
+/** The unit multiplier has its own card on the page (8296a4d9); this section is the two plans' pools only. */
+export function BonusBudgetCards({value:v,t,locale}:{value:BudgetView;t:(key:string)=>string;locale:string}) {
   const money=(cents:number)=>formatMoney(cents/100,'MYR');
   const decimal=(number:number,digits=2)=>new Intl.NumberFormat(locale,{minimumFractionDigits:digits,maximumFractionDigits:digits}).format(number);
   const percent=(amount:number,pool:number)=>pool>0?`${decimal(amount/pool*100,1)}%`:'—';
@@ -45,6 +45,6 @@ export function BonusBudgetCards({value:v,t,locale,adjustment}:{value:BudgetView
         </Card>;
       })}
     </div>
-    <div className="space-y-3 border-t border-border pt-4">{adjustment??<p className="text-sm">{t('suggested')}: <strong className="tabular-nums">{decimal(v.suggestedMultiplierBp/10000)}</strong>{policy.bonusStructure==='branch'&&<span className="ml-2 text-muted-foreground">{t('branchStructure')}</span>}</p>}{policy.exemptReason&&<p className="text-sm">{t('exemptionReason')}: {policy.exemptReason}</p>}</div>
+    {policy.exemptReason&&<div className="border-t border-border pt-4"><p className="text-sm">{t('exemptionReason')}: {policy.exemptReason}</p></div>}
   </section>;
 }

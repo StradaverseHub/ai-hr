@@ -9,6 +9,8 @@ import { getRewardUnit } from '@/packs/rewards/service';
 import { belowConfidentialityFloor, performances, talents } from '@/packs/rewards/model';
 import { Button, Card, Field, PageHeader, inputCls } from '@/components/ui';
 import { entryAction } from '../../../actions';
+import { payWindowReasons } from '@/packs/rewards/engine';
+import { PayWindowTag } from '../../pay-window';
 
 export default async function RewardPersonPage({ params }: { params: Promise<{ unitId: string; entryId: string }> }) {
   await requireModule('rewards'); const { s } = await scopedSession(); const { unitId, entryId } = await params;
@@ -17,18 +19,20 @@ export default async function RewardPersonPage({ params }: { params: Promise<{ u
   if (!e) notFound();
   const canEdit = v.unit.status === 'draft' && (v.canEdit || e.plan === 'ec' && v.roles.some(r => ['gr', 'ctro', 'ec'].includes(r)));
   const gr = v.roles.includes('gr'), r = e.recommendation, f = e.facts;
+  const payWindowLocked = !!e.payChange && payWindowReasons.includes(e.incrementReason);
   const rm = (cents: number) => new Intl.NumberFormat('en-MY', { style: 'currency', currency: 'MYR' }).format(cents / 100);
   const numeric = (name: string, label: string, value: number | null, scale = 100) => <Field label={label}><input type="number" min="0" step="0.01" name={name} defaultValue={value == null ? '' : value / scale} placeholder={t('automatic')} className={inputCls} /></Field>;
   return <div className="mx-auto max-w-5xl space-y-5">
     <Link href={`/rewards/${unitId}`} className="text-sm text-primary hover:underline">← {t('review')}</Link>
     <PageHeader title={e.source.name} description={`${e.source.employeeCode} · ${t('grade')} ${e.source.grade} · ${t(e.plan === 'ec' ? 'ecPlan' : e.plan)}`} />
     {e.source.leftOn && <p className="text-sm text-muted-foreground">{t(`sourceRefresh.left.${e.source.leftReason ?? 'moved'}`, { date: e.source.leftOn })}</p>}
-    <Card className="p-5"><dl className="grid gap-4 text-sm sm:grid-cols-3">{[[t('currentPay'), rm(e.source.basicCents)], [t('newPay'), rm(e.newBasicCents)], [t('bonus'), rm(e.bonusCents)], [t('lumpSum'), rm(e.lumpCents)], [t('incrementEligibility'), e.incrementReason || t('eligible')], [t('bonusEligibility'), e.bonusReason || t('eligible')]].map(([label, value]) => <div key={label}><dt className="text-muted-foreground">{label}</dt><dd className="mt-1 font-medium tabular-nums">{value}</dd></div>)}</dl></Card>
+    <PayWindowTag row={e} window={{ from: v.unit.policy.blockedFrom, to: v.unit.policy.blockedTo }} />
+    <Card className="p-5"><dl className="grid gap-4 text-sm sm:grid-cols-3">{[[t('currentPay'), rm(e.source.basicCents)], [t('newPay'), rm(e.newBasicCents)], [t('bonus'), rm(e.bonusCents)], [t('lumpSum'), rm(e.lumpCents)], ...(e.bonusBasicCents !== e.source.basicCents ? [[t('payWindow.bonusBasic'), rm(e.bonusBasicCents)]] : []), [t('incrementEligibility'), e.incrementReason || t('eligible')], [t('bonusEligibility'), e.bonusReason || t('eligible')]].map(([label, value]) => <div key={label}><dt className="text-muted-foreground">{label}</dt><dd className="mt-1 font-medium tabular-nums">{value}</dd></div>)}</dl></Card>
     <form action={entryAction} className="space-y-6">
       <input type="hidden" name="unitId" value={unitId} /><input type="hidden" name="revision" value={v.unit.revision} /><input type="hidden" name="entryId" value={entryId} />
       <fieldset disabled={!canEdit} className="space-y-4"><legend className="mb-3 text-base font-semibold">{t('recommendation')}</legend>
         <p className="max-w-3xl text-sm text-muted-foreground">{t('overrideHelp')}</p>
-        <div className="grid gap-4 sm:grid-cols-3">{numeric('merit', `${t('merit')} (%)`, r.meritBp)}{numeric('promotion', `${t('promotion')} (%)`, r.promotionBp)}{numeric('special', `${t('special')} (%)`, r.specialBp)}
+        <div className="grid gap-4 sm:grid-cols-3">{/* 8ad87ae8: a pay change in the exclusion window fixes the increase at 0%. */}<fieldset disabled={payWindowLocked} className="contents">{numeric('merit', `${t('merit')} (%)`, r.meritBp)}{numeric('promotion', `${t('promotion')} (%)`, r.promotionBp)}{numeric('special', `${t('special')} (%)`, r.specialBp)}</fieldset>
           <Field label={t('promotionGrade')}><input name="promotionGrade" defaultValue={r.promotionGrade ?? ''} maxLength={30} className={inputCls} /></Field>
           {v.unit.kind === 'annual' && numeric('multiplier', t('bonusMultiplier'), r.multiplierBp, 10000)}
           {(e.lumpEligible || e.plan === 'ec') && numeric('lump', t('lumpSum'), r.lumpCents)}

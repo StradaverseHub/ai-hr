@@ -104,7 +104,7 @@ describe('Rewards unit bonus inputs (fictional fixtures)', () => {
       const v = await view();
       const preview = await previewRewardMultiplier(admin, unitId, v.unit.revision, 12000);
       await saveRewardMultiplier(admin, unitId, v.unit.revision, 12000, 'Fictional unit-only override', preview.digest);
-      await setRewardUnitLump(admin, unitId, v.unit.revision + 1, 50000);
+      await setRewardUnitLump(admin, unitId, v.unit.revision + 1, { mode: 'set', cents: 50000 });
       const after = await view();
       expect(after.unit.policy.multiplierBp).toBe(12000);
       expect(after.unit.policy.lumpUnitCents).toBe(50000);

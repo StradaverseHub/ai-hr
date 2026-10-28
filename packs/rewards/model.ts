@@ -25,6 +25,11 @@ export type RewardPolicy = {
   patActual: number; patTarget: number; targetMonthsBp: number; multiplierBp: number | null;
   bonusStructure: 'standard' | 'branch'; branchFactors: Record<string, Five>; branchRatings: Record<string, typeof performances[number]>;
   lumpStepCents: number; lumpShareBp: number; lumpCapCents: number | null; lumpUnitCents: number | null; exemptReason: string;
+  /** 4e3e1af7 — why the unit lump sum was set or withheld (required to withhold). Absent on older reviews. */
+  lumpReason?: string;
+  /** 8ad87ae8 — employments Group Rewards kept eligible despite a pay change in the exclusion window, with the reason.
+   *  Unit-specific: never part of a shared configuration. */
+  payWindowKeep?: Record<string, string>;
 };
 export type RewardFacts = {
   talent: typeof talents[number] | null; performance: typeof performances[number] | null;
@@ -63,6 +68,8 @@ export const policySchema: z.ZodType<RewardPolicy> = z.object({
   lumpCapCents: centsSchema.nullable(),
   lumpUnitCents: centsSchema.nullable(),
   exemptReason: z.string().trim().max(2000).refine(v => !v || v.length >= 10, 'Explain the exemption in at least 10 characters'),
+  lumpReason: z.string().trim().max(1000).optional(),
+  payWindowKeep: z.record(z.string().min(1).max(64), z.string().trim().min(10).max(1000)).optional(),
 }).strict().refine(p => p.blockedFrom <= p.blockedTo, 'Invalid off-cycle exclusion window');
 
 /** All monetary inputs are integer cents. Rates are integer basis points. */
@@ -94,6 +101,10 @@ export type RewardSource = {
   basicCents: number; currency: string; payMode: string;
   hiredOn: string; confirmedOn: string | null; notice: boolean;
   lastPayChange: string | null; confirmationPayChange: boolean;
+  /** 8ad87ae8 — every change of basic salary effective in the reward year or the year after (including dates
+   *  after the snapshot), oldest first. A record re-saved with the same basic (a lateral transfer) is not a change.
+   *  `kind` is the movement behaviour recorded with it, when there was one. Absent on older snapshots. */
+  payChanges?: { on: string; basicCents: number; kind: string | null }[];
   performanceReviewId: string | null; performanceRating: number | null;
   /** 40bf44f7 — set by a confirmed source refresh when the person left the company or moved out of the unit.
    *  The entry and its recommendation are retained for the record; the engine awards nothing. */
@@ -115,7 +126,7 @@ export function defaultPolicy(year: number): RewardPolicy {
   for (let g = 12; g <= 22; g++) bonusMatrix[String(g)] = g <= 15 ? [0, 5000, 15000, 22500, 30000] : g <= 19 ? [0, 5000, 25000, 35000, 45000] : g <= 21 ? [0, 5000, 30000, 40000, 50000] : [0, 5000, 40000, 50000, 60000];
   return {
     year, effectiveFrom: `${year + 1}-01-01`, joinedBefore: `${year}-10-01`, confirmedBy: `${year}-12-31`,
-    blockedFrom: `${year}-10-01`, blockedTo: `${year + 1}-01-31`,
+    blockedFrom: `${year}-10-01`, blockedTo: `${year}-12-31`,
     standardPools: [500, 100, 100], hPools: [500, 100, 100],
     meritMatrix: { SSTAR: [1000, 800, 800], STAR: [800, 600, 600], SCORE: [600, 450, 300], IMPRO: [0, 0, 0], PIP: [0, 0, 0] },
     bonusMatrix, ranges: {}, seniorGrades: [], seniorMembershipMode: 'named-members', patActual: 0, patTarget: 100,

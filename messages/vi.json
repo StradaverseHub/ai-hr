@@ -20529,6 +20529,78 @@
       "readOnly": "Group Rewards or a company HR administrator maintains this calendar.",
       "notSet": "Not set",
       "days": "{days, plural, one {# day} other {# days}}"
+    },
+    "excluded": "Loại trừ do điều chỉnh lương",
+    "showAllChecks": "Hiện tất cả kiểm tra",
+    "payWindow": {
+      "tag": "Đã điều chỉnh lương {from}–{to}: không đủ điều kiện tăng lương",
+      "keptTag": "Đã điều chỉnh lương {from}–{to}: Group Rewards giữ đủ điều kiện",
+      "effective": "hiệu lực {date}",
+      "excludedFromBase": "Loại khỏi cơ sở: {count} nhân viên, quỹ lương {amount}",
+      "viewList": "Xem danh sách",
+      "listTitle": "Điều chỉnh lương trong khoảng loại trừ",
+      "listHelp": "Tất cả nhân viên có lương cơ bản thay đổi từ {from} đến {to}. Họ không nhận tăng lương theo thành tích, thăng chức hay điều chỉnh đặc biệt, và lương của họ không tính vào quỹ tăng lương. Họ vẫn được xét thưởng, với thưởng tính trên lương cơ bản đã điều chỉnh.",
+      "export": "Xuất danh sách",
+      "columns": {
+        "employee": "Nhân viên",
+        "change": "Thay đổi",
+        "effectiveOn": "Hiệu lực",
+        "currentBasic": "Lương cơ bản ngày chốt",
+        "adjustedBasic": "Lương cơ bản đã điều chỉnh (tính thưởng)",
+        "status": "Tăng lương"
+      },
+      "excluded": "Không đủ điều kiện (đã điều chỉnh lương trong khoảng)",
+      "keptReason": "Giữ đủ điều kiện: “{reason}”",
+      "reason": "Lý do (bắt buộc)",
+      "keepEligible": "Giữ đủ điều kiện",
+      "excludeAgain": "Loại trừ lại",
+      "none": "Không ai có thay đổi lương cơ bản trong khoảng loại trừ.",
+      "bonusBasic": "Lương cơ bản đã điều chỉnh để tính thưởng",
+      "kinds": {
+        "promotion": "Thăng chức",
+        "increment": "Tăng lương",
+        "confirmation": "Điều chỉnh khi chính thức",
+        "salaryAdjustment": "Điều chỉnh lương",
+        "other": "Thay đổi lương",
+        "unrecorded": "Thay đổi lương (không ghi loại)"
+      }
+    },
+    "lumpChoice": {
+      "auto": "Dùng số tiền đề xuất ({amount})",
+      "autoHelp": "Theo đề xuất nếu ngân sách thay đổi.",
+      "set": "Đặt số tiền",
+      "setHelp": "Số tiền cố định tối thiểu RM 0.01 cho mọi người đủ điều kiện trong BU này.",
+      "withhold": "Không chi cho BU này",
+      "withholdHelp": "Không ai trong BU này nhận khoản thưởng một lần.",
+      "aboveSuggestion": "Số tiền này vượt mức ngân sách còn lại cho phép (đề xuất {amount}).",
+      "reasonRequired": "Lý do (bắt buộc)",
+      "reasonOptional": "Lý do (không bắt buộc)",
+      "reasonHelp": "Nhập lý do ít nhất 10 ký tự để không chi.",
+      "confirm": "Không chi khoản một lần cho {count} người trong {unit}?",
+      "confirmAll": "Không chi khoản một lần cho mọi người đủ điều kiện trong {unit}?",
+      "cancel": "Hủy",
+      "withheldNote": "{name} đã quyết định không chi khoản một lần cho BU này ngày {date}.",
+      "someone": "một người duyệt"
+    },
+    "lumpImpact": {
+      "title": "Tác động của {amount} mỗi người",
+      "people": "Số người nhận",
+      "cost": "Tổng chi phí khoản một lần",
+      "balance": "Số dư thưởng sau khi chi",
+      "used": "Mức dùng quỹ thưởng",
+      "amendments": "Điều chỉnh cá nhân",
+      "viewList": "{count} · xem danh sách",
+      "overExempt": "Một gói sẽ vượt 100% quỹ thưởng; đợt xét này có miễn trừ trần ngân sách.",
+      "overBlocked": "Một gói sẽ vượt 100% quỹ thưởng. Không thể gửi đợt xét vượt 100% nếu không có miễn trừ trần ngân sách.",
+      "amendmentsHelp": "Điều chỉnh cá nhân là những người có khoản một lần khác số tiền của đơn vị. Họ được xét ngoại lệ và giữ số tiền riêng."
+    },
+    "branchGrid": {
+      "factors": "Hệ số chi nhánh (PPCH): nhóm thưởng theo xếp loại",
+      "segment": "Nhóm thưởng",
+      "ratings": "Xếp loại chi nhánh",
+      "branch": "Chi nhánh",
+      "rating": "Xếp loại chi nhánh",
+      "empty": "Chưa cấu hình hệ số chi nhánh."
     }
   },
   "identityEmail": {

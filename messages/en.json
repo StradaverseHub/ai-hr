@@ -20529,6 +20529,78 @@
       "readOnly": "Group Rewards or a company HR administrator maintains this calendar.",
       "notSet": "Not set",
       "days": "{days, plural, one {# day} other {# days}}"
+    },
+    "excluded": "Pay-change exclusions",
+    "showAllChecks": "Show all checks",
+    "payWindow": {
+      "tag": "Salary adjusted {from}–{to}: not eligible for salary increase",
+      "keptTag": "Salary adjusted {from}–{to}: kept eligible by Group Rewards",
+      "effective": "effective {date}",
+      "excludedFromBase": "Excluded from base: {count, plural, one {# employee} other {# employees}}, {amount} payroll",
+      "viewList": "View list",
+      "listTitle": "Salary adjusted in the exclusion window",
+      "listHelp": "Everyone whose basic salary changed between {from} and {to}. They get no merit, promotion or special adjustment, and their salary is left out of the salary increase pools. They stay in the bonus run, with the bonus worked on the adjusted basic salary.",
+      "export": "Export list",
+      "columns": {
+        "employee": "Employee",
+        "change": "Change",
+        "effectiveOn": "Effective",
+        "currentBasic": "Basic on snapshot date",
+        "adjustedBasic": "Adjusted basic (for bonus)",
+        "status": "Salary increase"
+      },
+      "excluded": "Not eligible (salary adjusted in the window)",
+      "keptReason": "Kept eligible: “{reason}”",
+      "reason": "Reason (required)",
+      "keepEligible": "Keep eligible",
+      "excludeAgain": "Exclude again",
+      "none": "No one has a basic salary change in the exclusion window.",
+      "bonusBasic": "Adjusted basic for bonus",
+      "kinds": {
+        "promotion": "Promotion",
+        "increment": "Increment",
+        "confirmation": "Confirmation adjustment",
+        "salaryAdjustment": "Salary adjustment",
+        "other": "Salary change",
+        "unrecorded": "Salary change (type not recorded)"
+      }
+    },
+    "lumpChoice": {
+      "auto": "Use suggested amount ({amount})",
+      "autoHelp": "Follows the suggestion if the budget changes.",
+      "set": "Set amount",
+      "setHelp": "A fixed amount of at least RM 0.01 for everyone eligible in this BU.",
+      "withhold": "Withhold for this BU",
+      "withholdHelp": "No one in this BU receives the lump-sum token.",
+      "aboveSuggestion": "This is more than the remaining budget supports (suggested {amount}).",
+      "reasonRequired": "Reason (required)",
+      "reasonOptional": "Reason (optional)",
+      "reasonHelp": "Give a reason of at least 10 characters to withhold.",
+      "confirm": "Withhold the lump sum for {count, plural, one {# person} other {# people}} in {unit}?",
+      "confirmAll": "Withhold the lump sum for everyone eligible in {unit}?",
+      "cancel": "Cancel",
+      "withheldNote": "Lump sum withheld for this BU by {name} on {date}.",
+      "someone": "a reviewer"
+    },
+    "lumpImpact": {
+      "title": "Effect of {amount} per person",
+      "people": "People receiving the token",
+      "cost": "Total lump-sum cost",
+      "balance": "Bonus balance after the token",
+      "used": "Bonus pool used",
+      "amendments": "Individual amendments",
+      "viewList": "{count} · view list",
+      "overExempt": "A plan would go above 100% of its bonus pool; this review has a budget-cap exemption.",
+      "overBlocked": "A plan would go above 100% of its bonus pool. The review cannot be submitted over 100% without a budget-cap exemption.",
+      "amendmentsHelp": "Individual amendments are people whose lump sum differs from the unit amount. They go to exception review and keep their own amount."
+    },
+    "branchGrid": {
+      "factors": "Branch factors (PPCH): bonus segment by rating",
+      "segment": "Bonus segment",
+      "ratings": "Branch ratings",
+      "branch": "Branch",
+      "rating": "Branch rating",
+      "empty": "No branch factors are configured yet."
     }
   },
   "identityEmail": {

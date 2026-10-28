@@ -7,7 +7,7 @@ import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { publicErrorMessage } from '@/lib/public-error';
 import {rewardPolicyFromForm} from './policy-input';
-import { rewardCalendarStages, rewardOffcycleSlaStages, saveRewardCalendar, RewardMaintenanceError, previewRewardAccessChange, saveRewardAccessChange, deleteRewardReview, RewardPolicyGroupError, previewRewardSeniorMembership, saveRewardSeniorMembership, importOnehrRewardResults, createOffcycleReview, createRewardUnit, decideRewardUnit, getRewardUnit, importRewardFacts, postRewardUnit, saveRewardEntry, saveRewardPolicy, previewRewardMultiplier, saveRewardMultiplier, setRewardMember, setRewardUnitLump, previewRewardSourceRefresh, saveRewardSourceRefresh } from '@/packs/rewards/service';
+import { rewardCalendarStages, rewardOffcycleSlaStages, saveRewardCalendar, RewardMaintenanceError, previewRewardAccessChange, saveRewardAccessChange, deleteRewardReview, RewardPolicyGroupError, previewRewardSeniorMembership, saveRewardSeniorMembership, importOnehrRewardResults, createOffcycleReview, createRewardUnit, decideRewardUnit, getRewardUnit, importRewardFacts, postRewardUnit, saveRewardEntry, saveRewardPolicy, previewRewardMultiplier, saveRewardMultiplier, setRewardMember, setRewardUnitLump, previewRewardLump, setRewardPayWindowKeep, previewRewardSourceRefresh, saveRewardSourceRefresh } from '@/packs/rewards/service';
 import { emptyFacts, isSalaryReductionAttempt, performances, talents, type RewardPolicy, type RewardRole } from '@/packs/rewards/model';
 
 const str = (f: FormData, key: string) => String(f.get(key) ?? '').trim();
@@ -32,7 +32,23 @@ export async function createRewardAction(f: FormData) {
   revalidatePath('/rewards'); revalidatePath('/admin/rewards'); redirect(`/admin/rewards/${unitId}`);
 }
 export async function memberAction(f: FormData) { return change(f, (s, id, rev) => setRewardMember(s, id, rev, str(f, 'userId'), str(f, 'role') as RewardRole, str(f, 'remove') === 'true'), true); }
-export async function lumpAction(f: FormData) { return change(f, (s, id, rev) => setRewardUnitLump(s, id, rev, scaled(f, 'lump'))); }
+/** 4e3e1af7: Use suggested amount / Set amount / Withhold for this BU, with a reason (required to withhold). */
+export async function lumpAction(f: FormData) {
+  const mode = str(f, 'mode'), reason = str(f, 'reason');
+  return change(f, (s, id, rev) => setRewardUnitLump(s, id, rev, mode === 'set' ? { mode, cents: scaled(f, 'lump') ?? 0, reason } : { mode: mode === 'withhold' ? 'withhold' : 'auto', reason }));
+}
+/** c28db2f0: per-plan effect of a candidate unit lump sum, recalculated as the amount is typed. */
+export async function previewRewardLumpAction(unitId: string, revision: number, cents: number | null) {
+  try { return { ok: true as const, preview: await previewRewardLump(await getSession(), unitId, revision, cents) }; }
+  catch (error) { return { ok: false as const, error: errorText(error) }; }
+}
+/** 8ad87ae8: keep (or stop keeping) one person eligible despite a pay change in the exclusion window. */
+export async function payWindowKeepAction(f: FormData) {
+  const s = await getSession(), unitId = str(f, 'unitId'), url = `/rewards/${encodeURIComponent(unitId)}?view=excluded`;
+  try { await setRewardPayWindowKeep(s, unitId, number(f, 'revision'), str(f, 'entryId'), str(f, 'keep') === 'true', str(f, 'reason')); }
+  catch (e) { redirect(`${url}&error=${encodeURIComponent(await rewardErrorText(e))}`); }
+  revalidatePath('/rewards', 'layout'); redirect(url);
+}
 /** 40bf44f7: refresh is preview → confirm; the confirm carries the previewed date and digest. */
 export async function previewSourceRefreshAction(unitId: string, revision: number, asOf: string) {
   try { return { ok: true as const, preview: await previewRewardSourceRefresh(await getSession(), unitId, revision, asOf || undefined) }; }

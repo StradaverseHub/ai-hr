@@ -20529,6 +20529,78 @@
       "readOnly": "Group Rewards or a company HR administrator maintains this calendar.",
       "notSet": "Not set",
       "days": "{days, plural, one {# day} other {# days}}"
+    },
+    "excluded": "Pengecualian perubahan gaji",
+    "showAllChecks": "Tunjukkan semua semakan",
+    "payWindow": {
+      "tag": "Gaji diselaraskan {from}–{to}: tidak layak untuk kenaikan gaji",
+      "keptTag": "Gaji diselaraskan {from}–{to}: dikekalkan layak oleh Group Rewards",
+      "effective": "berkuat kuasa {date}",
+      "excludedFromBase": "Dikecualikan daripada asas: {count, plural, one {# pekerja} other {# pekerja}}, gaji {amount}",
+      "viewList": "Lihat senarai",
+      "listTitle": "Gaji diselaraskan dalam tempoh pengecualian",
+      "listHelp": "Semua pekerja yang gaji pokoknya berubah antara {from} dan {to}. Mereka tidak menerima merit, kenaikan pangkat atau pelarasan khas, dan gaji mereka dikecualikan daripada kumpulan kenaikan gaji. Mereka kekal dalam pusingan bonus, dengan bonus dikira pada gaji pokok yang diselaraskan.",
+      "export": "Eksport senarai",
+      "columns": {
+        "employee": "Pekerja",
+        "change": "Perubahan",
+        "effectiveOn": "Berkuat kuasa",
+        "currentBasic": "Gaji pokok pada tarikh syot",
+        "adjustedBasic": "Gaji pokok diselaraskan (untuk bonus)",
+        "status": "Kenaikan gaji"
+      },
+      "excluded": "Tidak layak (gaji diselaraskan dalam tempoh)",
+      "keptReason": "Dikekalkan layak: “{reason}”",
+      "reason": "Sebab (wajib)",
+      "keepEligible": "Kekalkan layak",
+      "excludeAgain": "Kecualikan semula",
+      "none": "Tiada pekerja dengan perubahan gaji pokok dalam tempoh pengecualian.",
+      "bonusBasic": "Gaji pokok diselaraskan untuk bonus",
+      "kinds": {
+        "promotion": "Kenaikan pangkat",
+        "increment": "Kenaikan gaji",
+        "confirmation": "Pelarasan pengesahan",
+        "salaryAdjustment": "Pelarasan gaji",
+        "other": "Perubahan gaji",
+        "unrecorded": "Perubahan gaji (jenis tidak direkodkan)"
+      }
+    },
+    "lumpChoice": {
+      "auto": "Guna jumlah dicadangkan ({amount})",
+      "autoHelp": "Mengikut cadangan jika bajet berubah.",
+      "set": "Tetapkan jumlah",
+      "setHelp": "Jumlah tetap sekurang-kurangnya RM 0.01 untuk semua yang layak dalam BU ini.",
+      "withhold": "Tahan untuk BU ini",
+      "withholdHelp": "Tiada sesiapa dalam BU ini menerima token sekaligus.",
+      "aboveSuggestion": "Jumlah ini melebihi apa yang disokong oleh baki bajet (cadangan {amount}).",
+      "reasonRequired": "Sebab (wajib)",
+      "reasonOptional": "Sebab (pilihan)",
+      "reasonHelp": "Beri sebab sekurang-kurangnya 10 aksara untuk menahan.",
+      "confirm": "Tahan bayaran sekaligus untuk {count, plural, one {# orang} other {# orang}} dalam {unit}?",
+      "confirmAll": "Tahan bayaran sekaligus untuk semua yang layak dalam {unit}?",
+      "cancel": "Batal",
+      "withheldNote": "Bayaran sekaligus ditahan untuk BU ini oleh {name} pada {date}.",
+      "someone": "seorang penyemak"
+    },
+    "lumpImpact": {
+      "title": "Kesan {amount} setiap orang",
+      "people": "Penerima token",
+      "cost": "Jumlah kos bayaran sekaligus",
+      "balance": "Baki bonus selepas token",
+      "used": "Penggunaan kumpulan bonus",
+      "amendments": "Pindaan individu",
+      "viewList": "{count} · lihat senarai",
+      "overExempt": "Satu pelan akan melebihi 100% kumpulan bonusnya; semakan ini mempunyai pengecualian had bajet.",
+      "overBlocked": "Satu pelan akan melebihi 100% kumpulan bonusnya. Semakan tidak boleh dihantar melebihi 100% tanpa pengecualian had bajet.",
+      "amendmentsHelp": "Pindaan individu ialah pekerja yang bayaran sekaligusnya berbeza daripada jumlah unit. Mereka melalui semakan pengecualian dan mengekalkan jumlah sendiri."
+    },
+    "branchGrid": {
+      "factors": "Faktor cawangan (PPCH): segmen bonus mengikut penarafan",
+      "segment": "Segmen bonus",
+      "ratings": "Penarafan cawangan",
+      "branch": "Cawangan",
+      "rating": "Penarafan cawangan",
+      "empty": "Belum ada faktor cawangan dikonfigurasikan."
     }
   },
   "identityEmail": {

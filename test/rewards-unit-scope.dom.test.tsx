@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider, createTranslator } from 'next-intl';
 import en from '../messages/en.json';
@@ -7,7 +7,9 @@ import zh from '../messages/zh.json';
 import ta from '../messages/ta.json';
 import th from '../messages/th.json';
 import viMessages from '../messages/vi.json';
-import { rewardReviewTitle, UnitLumpForm } from '../app/rewards/[unitId]/unit-scope';
+vi.mock('../app/rewards/actions', () => ({ lumpAction: vi.fn(), previewRewardLumpAction: vi.fn(() => new Promise(() => {})) }));
+import { rewardReviewTitle } from '../app/rewards/[unitId]/unit-scope';
+import { UnitLumpSum } from '../app/rewards/[unitId]/lump-sum';
 
 const catalogues = { en, ms, zh, ta, th, vi: viMessages };
 afterEach(cleanup);
@@ -18,8 +20,8 @@ describe('9070acae unit scope on the review', () => {
   it('states the scope above the lump-sum box and names the unit on its button', () => {
     const t = createTranslator({ locale: 'en', messages: en, namespace: 'rewards' });
     render(<NextIntlClientProvider locale="en" messages={en} onError={error => { throw error; }}>
-      <UnitLumpForm action={async () => {}} fields={null} defaultValue="" label={t('unitAmount')} placeholder={t('automatic')}
-        scope={t('unitBonus.appliesOnlyTo', { company: 'Sample Trading Sdn Bhd', unit: 'Northern Sales' })} submit={t('unitBonus.saveLumpFor', { unit: 'Northern Sales' })} />
+      <UnitLumpSum value={{ unitId: 'unit-01', revision: 1, unitName: 'Northern Sales', editable: true, suggestedLumpCents: 30000, lumpUnitCents: null, reason: null, decision: null,
+        scope: t('unitBonus.appliesOnlyTo', { company: 'Sample Trading Sdn Bhd', unit: 'Northern Sales' }) }} />
     </NextIntlClientProvider>);
     expect(screen.getByText('Applies only to this review: Sample Trading Sdn Bhd / Northern Sales')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Save lump sum for Northern Sales' })).toBeVisible();

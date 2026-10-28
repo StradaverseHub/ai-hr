@@ -6,7 +6,7 @@ import { and, asc, desc, eq, inArray, isNull, lte, or, gt, sql } from 'drizzle-o
 import { z } from 'zod';
 import type { SessionContext, Tx } from '../../db/client';
 import { actorOf, appendEvent } from '../../db/events';
-import { appUser, assignment, businessUnit, company, compensation, domainEvent, employment, jobGrade, payrollBatch, payrollInput, performanceReview, reviewCycle, person, rewardCalendar, rewardCycle, rewardDecision, rewardEntry, rewardMember, rewardUnit } from '../../db/schema';
+import { appUser, assignment, businessUnit, company, compensation, domainEvent, employment, jobGrade, movementEventType, payrollBatch, payrollInput, performanceReview, reviewCycle, person, rewardCalendar, rewardCycle, rewardDecision, rewardEntry, rewardMember, rewardUnit } from '../../db/schema';
 import { assertModuleGate, withRewardsTenant } from '../../core/module-gate';
 import { setCompensation } from '../../core/comp';
 import { setEmploymentGrade } from '../../core/org';
@@ -179,10 +179,19 @@ async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string) {
         reductions: group.filter(e => e.bonusCents < e.standardBonusCents).length,
         lump: group.filter(e => e.lumpCents > 0).length };
     };
+    // 8ad87ae8: people left out of the salary-increase base for a pay change, under the same hidden-record rule.
+    const payWindow = (plan: 'standard' | 'h') => calculated.rows.some(e => e.plan === plan && !visibleIds.has(e.id)) ? null
+      : { count: calculated.budgets[plan].excludedCount, payrollCents: calculated.budgets[plan].excludedPayrollCents };
+    // 4e3e1af7: who withheld the unit lump sum and when; the name only where the viewer may see that person.
+    const [lumpDecision] = unit.policy.lumpUnitCents === 0 ? await tx.select({ at: domainEvent.occurredAt, actorName: person.fullName }).from(domainEvent)
+      .leftJoin(appUser, eq(appUser.id, domainEvent.actorId)).leftJoin(person, and(eq(person.id, appUser.personId), visibleSeatHolder))
+      .where(and(eq(domainEvent.aggregateType, 'reward-unit'), eq(domainEvent.aggregateId, unitId), eq(domainEvent.eventType, 'reward-unit.lump-updated'))).orderBy(desc(domainEvent.occurredAt)).limit(1) : [];
     return { unit, cycle, route, due, payrollDue, name: bu?.name ?? 'Business unit', companyName: co?.name ?? '', roles, members, decisions, returned,
       rows: visible, flags, hiddenCount: entries.length - visible.length,
       budgets: { standard: calculated.budgets.standard, h: calculated.budgets.h },
       bonusCounts: { standard: bonusCounts('standard'), h: bonusCounts('h') },
+      payWindow: { standard: payWindow('standard'), h: payWindow('h') },
+      lumpDecision: unit.policy.lumpUnitCents === 0 ? { at: lumpDecision ? todayInKualaLumpur(new Date(lumpDecision.at)) : null, actorName: lumpDecision?.actorName ?? null, reason: unit.policy.lumpReason ?? null } : null,
       ec: roles.some(r => ['gr', 'ctro', 'ec'].includes(r)) ? { count: ecRows.length, referenceCents: Math.round(ecRows.reduce((v, e) => v + e.source.basicCents, 0) * .07), incrementCents: ecRows.reduce((v, e) => v + e.newBasicCents - e.source.basicCents, 0), bonusCents: ecRows.reduce((v, e) => v + e.bonusCents + e.lumpCents, 0) } : null,
       suggestedLumpCents: calculated.suggestedLumpCents, lumpUnitCents: calculated.lumpUnitCents,
       suggestedMultiplierBp: calculated.suggestedMultiplierBp, suggestion: ('suggestion' in calculated ? calculated.suggestion : null) as RewardMultiplierSuggestion | null, lumpWorking: calculated.lumpWorking,
@@ -318,6 +327,7 @@ async function snapshotRoster(tx: Tx, unit: typeof rewardUnit.$inferSelect, at: 
     .where(and(eq(employment.companyId, unit.companyId), eq(assignment.businessUnitId, unit.businessUnitId), lte(employment.hiredOn, at), or(isNull(employment.terminatedOn), gt(employment.terminatedOn, at)), lte(assignment.validFrom, at), or(isNull(assignment.validTo), gt(assignment.validTo, at)), isNull(assignment.supersededAt)))
     .orderBy(asc(employment.employeeCode), asc(employment.id));
   const roster = new Map<string, RewardSource>();
+  const kinds = new Map((await tx.select({ code: movementEventType.code, behaviourKind: movementEventType.behaviourKind }).from(movementEventType)).map(k => [k.code, k.behaviourKind]));
   for (const e of records) {
     if (roster.has(e.employmentId)) throw new RewardError('An employee has overlapping assignments. Correct Personnel before importing.');
     const [comp] = await tx.select().from(compensation).where(and(eq(compensation.employmentId, e.employmentId), lte(compensation.validFrom, at), or(isNull(compensation.validTo), gt(compensation.validTo, at)), isNull(compensation.supersededAt))).orderBy(desc(compensation.validFrom)).limit(1);
@@ -329,11 +339,28 @@ async function snapshotRoster(tx: Tx, unit: typeof rewardUnit.$inferSelect, at: 
       hiredOn: e.hiredOn, confirmedOn: e.confirmedOn, notice: !!((e.tenderDate && e.tenderDate <= at) || (e.resignedOn && e.resignedOn <= at)),
       lastPayChange: comp && comp.validFrom > e.hiredOn ? comp.validFrom : null,
       confirmationPayChange: !!(comp && e.confirmedOn && comp.validFrom === e.confirmedOn && comp.validFrom > e.hiredOn),
+      payChanges: await payChangesTx(tx, e.employmentId, e.hiredOn, unit.policy.year, kinds),
       performanceReviewId: review?.id ?? null, performanceRating: review?.rating ?? null,
       onehr: await onehrRewardResultTx(tx, e.employmentId, unit.policy.year, unit.id),
     });
   }
   return roster;
+}
+/**
+ * 8ad87ae8 — basic-salary changes effective from 1 January of the reward year to the end of the next year, oldest
+ * first, including records dated after the snapshot. The engine applies the review's exclusion window, so Group
+ * Rewards can move the window without a refresh. A record whose basic equals the one before it (a lateral transfer
+ * or a re-save) is not a change. The kind is the movement behaviour tagged on the compensation event, if any.
+ */
+async function payChangesTx(tx: Tx, employmentId: string, hiredOn: string, year: number, kinds: Map<string, string>) {
+  const rows = await tx.select({ id: compensation.id, validFrom: compensation.validFrom, basicSalary: compensation.basicSalary }).from(compensation)
+    .where(and(eq(compensation.employmentId, employmentId), isNull(compensation.supersededAt), lte(compensation.validFrom, `${year + 1}-12-31`))).orderBy(asc(compensation.validFrom), asc(compensation.id));
+  const changed = rows.filter((row, i) => i > 0 && row.validFrom > hiredOn && row.validFrom >= `${year}-01-01` && moneyToCents(row.basicSalary) !== moneyToCents(rows[i - 1].basicSalary));
+  if (!changed.length) return [];
+  const tags = await tx.select({ id: domainEvent.aggregateId, type: sql<string | null>`${domainEvent.payload}->'movement'->>'type'` }).from(domainEvent)
+    .where(and(eq(domainEvent.aggregateType, 'compensation'), eq(domainEvent.eventType, 'compensation.set'), inArray(domainEvent.aggregateId, changed.map(row => row.id))));
+  const tagOf = new Map(tags.filter(t => t.type).map(t => [t.id, t.type!]));
+  return changed.map(row => { const type = tagOf.get(row.id); return { on: row.validFrom, basicCents: moneyToCents(row.basicSalary), kind: type ? kinds.get(type) ?? type : null }; });
 }
 /** Creation snapshot. A later refresh goes through previewRewardSourceRefresh/saveRewardSourceRefresh. */
 async function snapshotEmployees(tx: Tx, ctx: SessionContext, unit: typeof rewardUnit.$inferSelect) {
@@ -371,7 +398,10 @@ export async function saveRewardPolicy(ctx: SessionContext, unitId: string, revi
   return withRewardsTenant(ctx, async tx => {
     const { unit, roles } = await load(tx, unitId, true); assertRevision(unit, revision); assertUnlocked(unit);
     // bcd7cc0f: the unit multiplier has one writer (saveRewardMultiplier), which previews it and records a reason.
-    const policy = { ...parsed, multiplierBp: unit.policy.multiplierBp };
+    // 4e3e1af7 / 8ad87ae8: the lump reason and pay-window decisions also have their own writers.
+    const { lumpReason: _lr, payWindowKeep: _pk, ...settings } = parsed;
+    const policy: RewardPolicy = { ...settings, multiplierBp: unit.policy.multiplierBp,
+      ...(unit.policy.lumpReason ? { lumpReason: unit.policy.lumpReason } : {}), ...(unit.policy.payWindowKeep ? { payWindowKeep: unit.policy.payWindowKeep } : {}) };
     if (!roles.includes('gr')) throw new RewardError('Only Group Rewards may change policy.');
     if (unit.kind !== 'annual') throw new RewardError('Off-cycle reviews inherit their annual policy.');
     if (policy.year !== unit.policy.year) throw new RewardError('The reward year cannot change after the roster is created.');
@@ -563,7 +593,7 @@ export const rewardRefreshCategories = ['joined', 'left', 'confirmed', 'notice',
 export type RewardRefreshCategory = typeof rewardRefreshCategories[number];
 type RefreshChange = { entry: typeof rewardEntry.$inferSelect | null; employmentId: string; source: RewardSource; categories: RewardRefreshCategory[] };
 /** The facts a refresh writes: verification cleared, confidentiality moved with the derived floor (6fd08f37). */
-const refreshedFacts = (c: RefreshChange): RewardFacts => c.entry
+const refreshedFacts = (c: RefreshChange): RewardFacts => c.entry && !c.categories.length ? c.entry.facts : c.entry
   ? { ...c.entry.facts, confidentiality: applyConfidentialityFloor(c.entry.facts.confidentiality, c.entry.source.confidentialityFloor, c.source.confidentialityFloor), reviewed: false }
   : { ...emptyFacts(), confidentiality: c.source.confidentialityFloor ?? 'standard' };
 
@@ -591,12 +621,16 @@ async function planSourceRefreshTx(tx: Tx, ctx: SessionContext, unit: typeof rew
     }
     const source: RewardSource = { ...next, ...(old.onehrFactImport ? { onehrFactImport: old.onehrFactImport } : {}) };
     if (isDeepStrictEqual(source, old)) continue;
+    // 8ad87ae8: a snapshot taken before pay-change history was recorded gains an empty history silently;
+    // nothing about the person changed, so their verification stands.
+    const { payChanges, ...rest } = source;
+    if (old.payChanges === undefined && !payChanges?.length && isDeepStrictEqual(rest, old)) { changes.push({ entry, employmentId: entry.employmentId, source, categories: [] }); continue; }
     const categories: RewardRefreshCategory[] = [];
     if (old.leftOn) categories.push('joined');
     if (next.confirmedOn && next.confirmedOn !== old.confirmedOn) categories.push('confirmed');
     if (next.notice && !old.notice) categories.push('notice');
     if (next.gradeId !== old.gradeId || next.grade !== old.grade) categories.push('grade');
-    if (next.compensationId !== old.compensationId || next.basicCents !== old.basicCents || next.currency !== old.currency || next.payMode !== old.payMode) categories.push('salary');
+    if (next.compensationId !== old.compensationId || next.basicCents !== old.basicCents || next.currency !== old.currency || next.payMode !== old.payMode || !isDeepStrictEqual(next.payChanges, old.payChanges)) categories.push('salary');
     changes.push({ entry, employmentId: entry.employmentId, source, categories: categories.length ? categories : ['other'] });
   }
   const existing = new Set(entries.map(e => e.employmentId));
@@ -649,13 +683,75 @@ export async function refreshRewardSources(ctx: SessionContext, unitId: string, 
   await saveRewardSourceRefresh(ctx, unitId, revision, preview.asOf, preview.digest);
 }
 
-export async function setRewardUnitLump(ctx: SessionContext, unitId: string, revision: number, cents: number | null) {
-  const value = z.number().int().min(0).max(100_000_000_000).nullable().parse(cents);
+/**
+ * 4e3e1af7 — the unit lump sum is one of three explicit choices, so a cleared box or a typed 0 can no longer
+ * withhold the token for a whole unit: follow the suggestion, set a positive amount, or withhold with a reason.
+ * Every change records the old and new amount, the choice and the reason.
+ */
+const lumpReasonSchema = z.string().trim().max(1000).default('');
+const lumpChoiceSchema = z.discriminatedUnion('mode', [
+  z.object({ mode: z.literal('auto'), reason: lumpReasonSchema }).strict(),
+  z.object({ mode: z.literal('set'), cents: z.number().int().min(1).max(100_000_000_000), reason: lumpReasonSchema }).strict(),
+  z.object({ mode: z.literal('withhold'), reason: lumpReasonSchema }).strict(),
+]);
+export type RewardLumpChoice = z.input<typeof lumpChoiceSchema>;
+export async function setRewardUnitLump(ctx: SessionContext, unitId: string, revision: number, raw: RewardLumpChoice) {
+  const choice = lumpChoiceSchema.parse(raw);
+  if (choice.mode === 'withhold' && choice.reason.length < 10) throw new RewardError('Explain why the lump sum is withheld, in at least 10 characters.');
+  const value = choice.mode === 'auto' ? null : choice.mode === 'set' ? choice.cents : 0;
   return withRewardsTenant(ctx, async tx => {
     const { unit, roles } = await load(tx, unitId, true); assertRevision(unit, revision); assertUnlocked(unit);
     if (!canEditStage(unit.status, roles)) throw new RewardError('You cannot change this unit recommendation.');
-    await tx.update(rewardUnit).set({ policy: { ...unit.policy, lumpUnitCents: value } }).where(eq(rewardUnit.id, unitId));
-    await touch(tx, unitId); await stamp(tx, ctx, unitId, 'lump-updated', { revision: unit.revision + 1 });
+    const { lumpReason: _old, ...rest } = unit.policy;
+    await tx.update(rewardUnit).set({ policy: { ...rest, lumpUnitCents: value, ...(choice.reason ? { lumpReason: choice.reason } : {}) } }).where(eq(rewardUnit.id, unitId));
+    await touch(tx, unitId);
+    await stamp(tx, ctx, unitId, 'lump-updated', { revision: unit.revision + 1, mode: choice.mode, before: unit.policy.lumpUnitCents, after: value, reason: choice.reason || null });
+  });
+}
+
+/**
+ * c28db2f0 — what a candidate unit lump sum does to each plan, before it is saved. Read-only: the same engine
+ * calculation the review uses, with only the unit amount replaced. Headcounts follow bonusCounts' rule and are
+ * withheld when the plan holds a record this viewer may not see; amounts are plan totals the budget tab shows.
+ */
+export async function previewRewardLump(ctx: SessionContext, unitId: string, revision: number, cents: number | null) {
+  const value = z.number().int().min(0).max(100_000_000_000).nullable().parse(cents);
+  return withRewardsTenant(ctx, async tx => {
+    const { unit, roles, entries } = await load(tx, unitId); assertRevision(unit, revision);
+    if (unit.kind !== 'annual') throw new RewardError('Off-cycle reviews have no unit lump sum.');
+    const result = calculateRewards(entries, { ...unit.policy, lumpUnitCents: value });
+    const plans = (['standard', 'h'] as const).map(plan => {
+      const group = result.rows.filter(x => x.plan === plan), b = result.budgets[plan];
+      const hidden = group.some(x => !visibleEntry(x, roles, ctx.personId));
+      return { plan, count: hidden ? null : group.filter(x => x.lumpEligible).length,
+        amendments: hidden ? null : group.filter(x => x.lumpEligible && x.recommendation.lumpCents != null && x.lumpCents !== result.lumpUnitCents).length,
+        lumpCents: b.lumpCents, balanceCents: b.balanceCents, usedBp: b.bonusPoolCents > 0 ? ratio(b.bonusUsedCents, 10000, b.bonusPoolCents, 'nearest') : null, over: b.bonusUsedCents > b.bonusPoolCents };
+    });
+    return { unitId, revision: unit.revision, lumpUnitCents: result.lumpUnitCents, suggestedLumpCents: result.suggestedLumpCents, exempt: !!unit.policy.exemptReason, plans };
+  });
+}
+
+/**
+ * 8ad87ae8 — Group Rewards keeps one person eligible for the salary increase despite a basic-salary change in
+ * the exclusion window (for example a payroll correction), or removes that decision. Both need a reason and are
+ * recorded. Stored on the review, so a refresh or an input import never loses it.
+ */
+export async function setRewardPayWindowKeep(ctx: SessionContext, unitId: string, revision: number, entryId: string, keep: boolean, reason: string) {
+  idSchema.parse(entryId); z.boolean().parse(keep);
+  const why = z.string().trim().max(1000).parse(reason);
+  if (why.length < 10) throw new RewardError('Explain the decision in at least 10 characters.');
+  return withRewardsTenant(ctx, async tx => {
+    const { unit, roles, entries } = await load(tx, unitId, true); assertRevision(unit, revision); assertUnlocked(unit);
+    if (!roles.includes('gr') || unit.kind !== 'annual' || unit.status !== 'draft') throw new RewardError('Only Group Rewards may change pay-change eligibility in a draft annual review.');
+    const entry = entries.find(e => e.id === entryId);
+    if (!entry || !visibleEntry(entry, roles, ctx.personId)) throw new RewardError('This reward record is not available to you.');
+    if (!calculateRewards([entry], unit.policy).rows[0].payChange) throw new RewardError('This person has no salary change in the exclusion window.');
+    const kept = { ...(unit.policy.payWindowKeep ?? {}) }, before = entry.employmentId in kept;
+    if (keep) kept[entry.employmentId] = why; else delete kept[entry.employmentId];
+    const { payWindowKeep: _old, ...rest } = unit.policy;
+    await tx.update(rewardUnit).set({ policy: { ...rest, ...(Object.keys(kept).length ? { payWindowKeep: kept } : {}) } }).where(eq(rewardUnit.id, unitId));
+    await touch(tx, unitId);
+    await stamp(tx, ctx, unitId, 'pay-window-updated', { revision: unit.revision + 1, entryId, before, after: keep, reason: why });
   });
 }
 
