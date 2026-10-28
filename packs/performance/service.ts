@@ -72,5 +72,8 @@ export {listMyCalibrationSessions,hasCalibrationAssignment,pendingCalibrationTas
 // WP-B2 — leader seat registry (BU CEO, BG CEO, group chief), HOD assignment, calibration groups, generated scopes.
 export {listLeaderSeats,appointLeaderSeat,endLeaderSeat,listHodAssignments,previewHodChange,applyHodChange,listCalibrationGroups,createCalibrationGroup,renameCalibrationGroup,retireCalibrationGroup,listCalibrationGroupMembers,addCalibrationGroupMembers,endCalibrationGroupMember,generateCalibrationScopes,importLeaders,type LeaderSeatRow,type HodAssignmentRow,type HodPlan,type HodPreviewRow,type GeneratedScopes} from './onehr/leader-seat-service';
 export {LEADER_SEAT_TYPES,mapLeaderImport,partitionHodPlan,hodPlanFingerprint,type LeaderSeatType,type HodBlocker,type HodWarning,type LeaderImportInput,type LeaderImportPlan} from './onehr/leader-seat-model';
+// WP-E (CF-08) — two-step result release (the one release writer), the release board and the leader read.
+export {releaseOnehrResult,releaseOnehrResults,getOnehrReleaseBoard,listOnehrLedPeople,getOnehrLedPerson,hasLedPeople,type BulkReleaseInput,type BulkReleaseResult,type ReleaseBoardFilters,type ReleaseBoardRow,type ReleaseBoardCell} from './onehr/release-service';
+export {releaseResults,releaseSteps,releaseStatuses,ledTabs,type ReleaseComponent,type ReleaseStep,type ReleaseResult,type ReleaseStatus,type LedTab,type LeaderRole,type ChainTier} from './onehr/release-model';
 export {pendingPerformanceTasks} from './onehr/tasks';
 export {getPerformanceHomeBlock,hasAssignedPerformanceWork,type PerformanceHomeBlock,type HomeStep,type HomeStepKey,type HomeStepState,type HomeNextStep,type HomeStanding,type HomeTeam} from './onehr/home-cards';
