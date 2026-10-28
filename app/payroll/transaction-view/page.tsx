@@ -1,4 +1,5 @@
 import { organisationFilterChoices } from '@/lib/organisation-choice-label';
+import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
@@ -991,8 +992,8 @@ export default async function TransactionViewPage({
                                 : 'border-border hover:bg-muted'
                             }`}
                           >
-                            {m.payPeriod} · {t(`individual.cycle.${m.runType}`)}
-                            {m.runSeq > 1 ? ` #${m.runSeq}` : ''}
+                            {m.payPeriod} · {payrollRunLabel(m, t(`individual.cycle.${m.runType}`))}
+                            {m.runSeq > 1 && !m.historyImportAttemptId ? ` #${m.runSeq}` : ''}
                           </Link>
                         ))}
                       </div>
@@ -1015,6 +1016,8 @@ export default async function TransactionViewPage({
                       periodLabel: statutoryRow.payPeriod,
                       payPeriod: statutoryRow.payPeriod,
                       runType: statutoryRow.runType,
+                      historyImportAttemptId: statutoryRow.historyImportAttemptId,
+                      historyImportCycleName: statutoryRow.historyImportCycleName,
                       runSeq: statutoryRow.runSeq,
                       currency: statutoryRow.currency ?? null,
                     }}

@@ -1,4 +1,5 @@
 import type { ProcessedPayslipViewRow } from '@/core/payroll-view';
+import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import type { ColAlign, ReportData } from '@/lib/report-export';
 // 417d4937 — the shared read-time repair for RECORD-line labels. Pure and dependency-free, so this pure
 // builder stays pure; it is the SAME rule history-table.tsx and history-pivot.ts apply, which is what
@@ -274,7 +275,8 @@ export function buildHistoryExport(input: HistoryExportInput): ReportData {
     const recorded = amountsByCode(b.recordLines);
     return [
       row.payPeriod,
-      cycleLabels[row.runType] ?? row.runType,
+      // b240c0ff — imported payroll history is labelled by its Pay Cycle ("Monthly - By Import").
+      payrollRunLabel(row, cycleLabels[row.runType] ?? row.runType),
       row.employeeCode ?? '',
       row.employeeName,
       row.runSeq,
