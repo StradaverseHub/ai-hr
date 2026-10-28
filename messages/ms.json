@@ -27454,5 +27454,75 @@
       "reportReleased": "Laporan dikeluarkan",
       "notSet": "Belum ditetapkan"
     }
+  },
+  "rewardsConfig": {
+    "filters": {
+      "label": "Tapis semakan",
+      "cycle": "Kitaran semakan",
+      "company": "Syarikat",
+      "unit": "Unit perniagaan",
+      "stage": "Peringkat kelulusan",
+      "all": "Semua",
+      "apply": "Guna tapisan",
+      "clear": "Kosongkan tapisan",
+      "empty": "Tiada semakan sepadan dengan tapisan ini."
+    },
+    "columns": {
+      "cycle": "Kitaran semakan",
+      "companyUnit": "Syarikat / Unit perniagaan",
+      "people": "Orang",
+      "stage": "Peringkat kelulusan / pada",
+      "due": "Tarikh akhir peringkat",
+      "dataCheck": "Semakan data",
+      "action": "Tindakan"
+    },
+    "subline": "Tahun ganjaran {year} · berkuat kuasa {date}",
+    "sublineYear": "Tahun ganjaran {year}",
+    "with": "Pada {seat}: {names}",
+    "nobody": "Pada {seat}: tiada siapa memegang tempat ini",
+    "dueNotSet": "Tiada tarikh ditetapkan",
+    "notAvailable": "—",
+    "noPeople": "Tiada pekerja",
+    "allVerified": "Semua disahkan",
+    "verifiedOf": "{verified} daripada {total} disahkan",
+    "cancelled": "Dibatalkan",
+    "create": {
+      "defaultName": "Semakan Pampasan Tahunan {year}",
+      "effectiveHelp": "Tahun ganjaran ialah tahun prestasi yang diberi ganjaran; tarikh gaji berkuat kuasa diambil daripada tetapan semakan."
+    },
+    "shared": {
+      "noneForPair": "Tiada untuk syarikat, unit perniagaan dan tahun ini. Semakan bermula daripada tetapan standard, yang boleh diubah oleh Group Rewards semasa dalam Draf.",
+      "createOne": "Cipta konfigurasi kongsi",
+      "originLine": "{name} · Versi {version}",
+      "changedInReview": "diubah dalam semakan ini"
+    },
+    "summary": {
+      "viewSettings": "Lihat tetapan",
+      "readOnly": "baca sahaja",
+      "close": "Tutup",
+      "help": "Ini ialah tetapan yang disalin oleh semakan baharu. Perubahan kemudian pada konfigurasi kongsi tidak sesekali mengubah semakan sedia ada.",
+      "defaultsTitle": "Tetapan standard untuk {year}",
+      "setting": "Tetapan",
+      "value": "Nilai",
+      "merit": "Matriks merit (bawah / dalam / atas julat)",
+      "standardPools": "Peruntukan pelan standard (merit / kenaikan pangkat / khas)",
+      "hPools": "Peruntukan pelan JG H (merit / kenaikan pangkat / khas)",
+      "targetMonths": "Bulan bonus sasaran",
+      "bonusReference": "Rujukan bulan bonus",
+      "bonusByGrade": "Mengikut gred dan penarafan ({count, plural, other {# gred}})",
+      "exemption": "Pengecualian had bajet",
+      "noExemption": "Tiada (had dikenakan)"
+    },
+    "actions": {
+      "editDeadlines": "Edit tarikh akhir",
+      "cancel": "Batalkan semakan",
+      "keep": "Kekalkan semakan",
+      "cancelTitle": "Batalkan semakan ini?",
+      "cancelHelp": "Cadangan dan kelulusan disimpan sebagai baca sahaja. Tiada apa-apa dihantar ke penggajian daripada semakan yang dibatalkan, dan ia keluar daripada senarai tugas semua orang.",
+      "reason": "Sebab (wajib, sekurang-kurangnya 10 aksara)",
+      "cancelledBy": "Dibatalkan {date} oleh {name}: {reason}",
+      "cancelledOn": "Dibatalkan {date}: {reason}",
+      "cancelledSaved": "Semakan dibatalkan. Cadangan dan kelulusannya disimpan sebagai baca sahaja."
+    }
   }
 }

@@ -5,7 +5,7 @@ import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
-import {defaultPolicy,createRewardUnit,listRewardPolicyGroups,rewardSharedPolicyChoices,saveRewardPolicyGroup,rewardPolicyGroupUsage,getRewardConfiguration} from '../packs/rewards/service';
+import {defaultPolicy,createRewardUnit,listRewardUnits,saveRewardPolicy,listRewardPolicyGroups,rewardSharedPolicyChoices,saveRewardPolicyGroup,rewardPolicyGroupUsage,getRewardConfiguration} from '../packs/rewards/service';
 import type {RewardPolicy} from '../packs/rewards/model';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {pgSqlState} from '../lib/db-error';
@@ -130,5 +130,18 @@ describe('shared reward configuration versions',()=>{
   finally{await owner.db.execute(sql.raw('DROP TRIGGER test_reward_shared_audit_refusal ON domain_event'));await owner.db.execute(sql.raw('DROP FUNCTION app.test_reward_shared_audit_refusal()'));}
   expect((await listRewardPolicyGroups(admin)).find(g=>g.groupId===v.groupId)).toEqual(v);
   const events=await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,v.groupId),eq(schema.domainEvent.eventType,'reward-policy-group.version-saved')));expect(events).toHaveLength(1);
+ });
+ it('56595838: offers the version contents read-only and shows the origin and a later review edit in the list',async()=>{
+  const v=await createGroup();
+  const [choice]=await rewardSharedPolicyChoices(admin,[b.companyId]);
+  expect(choice).toMatchObject({versionId:v.versionId,policy:{effectiveFrom:policy.effectiveFrom,standardPools:policy.standardPools,hPools:policy.hPools,targetMonthsBp:policy.targetMonthsBp,exemptReason:''}});
+  // Summary only: no salary ranges or profit figures reach the create form.
+  expect(Object.keys(choice.policy!).sort()).toEqual(['bonusMatrix','effectiveFrom','exemptReason','hPools','meritMatrix','standardPools','targetMonthsBp']);
+  const id=await unit(b.companyId,buA,v.versionId);
+  const origin=async()=>(await listRewardUnits(admin,[b.companyId])).find(r=>r.id===id)!.policyOrigin;
+  expect(await origin()).toMatchObject({versionId:v.versionId,revision:1,name:v.name,changed:false});
+  const c=await getRewardConfiguration(admin,id);
+  await saveRewardPolicy(admin,id,c.unit.revision,{...c.unit.policy,standardPools:[700,100,100]});
+  expect(await origin()).toMatchObject({revision:1,changed:true});
  });
 });

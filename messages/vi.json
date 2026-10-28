@@ -27454,5 +27454,75 @@
       "reportReleased": "Report released",
       "notSet": "Not set yet"
     }
+  },
+  "rewardsConfig": {
+    "filters": {
+      "label": "Lọc đợt xét duyệt",
+      "cycle": "Chu kỳ xét duyệt",
+      "company": "Công ty",
+      "unit": "Đơn vị kinh doanh",
+      "stage": "Bước phê duyệt",
+      "all": "Tất cả",
+      "apply": "Áp dụng bộ lọc",
+      "clear": "Xóa bộ lọc",
+      "empty": "Không có đợt xét duyệt nào khớp với bộ lọc này."
+    },
+    "columns": {
+      "cycle": "Chu kỳ xét duyệt",
+      "companyUnit": "Công ty / Đơn vị kinh doanh",
+      "people": "Số người",
+      "stage": "Bước phê duyệt / đang ở",
+      "due": "Hạn của bước",
+      "dataCheck": "Kiểm tra dữ liệu",
+      "action": "Thao tác"
+    },
+    "subline": "Năm thưởng {year} · hiệu lực {date}",
+    "sublineYear": "Năm thưởng {year}",
+    "with": "Đang ở {seat}: {names}",
+    "nobody": "Đang ở {seat}: chưa có ai giữ vai trò này",
+    "dueNotSet": "Chưa đặt ngày",
+    "notAvailable": "—",
+    "noPeople": "Không có nhân viên",
+    "allVerified": "Đã xác minh tất cả",
+    "verifiedOf": "Đã xác minh {verified}/{total}",
+    "cancelled": "Đã hủy",
+    "create": {
+      "defaultName": "Đợt xét duyệt lương thưởng năm {year}",
+      "effectiveHelp": "Năm thưởng là năm hiệu suất được khen thưởng; ngày lương mới có hiệu lực lấy từ thiết lập của đợt xét duyệt."
+    },
+    "shared": {
+      "noneForPair": "Không có cho công ty, đơn vị kinh doanh và năm này. Đợt xét duyệt bắt đầu từ thiết lập chuẩn, Group Rewards có thể thay đổi khi còn ở trạng thái Nháp.",
+      "createOne": "Tạo cấu hình dùng chung",
+      "originLine": "{name} · Phiên bản {version}",
+      "changedInReview": "đã thay đổi trong đợt này"
+    },
+    "summary": {
+      "viewSettings": "Xem thiết lập",
+      "readOnly": "chỉ xem",
+      "close": "Đóng",
+      "help": "Đây là thiết lập mà đợt xét duyệt mới sẽ sao chép. Thay đổi sau này của cấu hình dùng chung không bao giờ ảnh hưởng đến đợt xét duyệt đã có.",
+      "defaultsTitle": "Thiết lập chuẩn năm {year}",
+      "setting": "Thiết lập",
+      "value": "Giá trị",
+      "merit": "Ma trận tăng lương (dưới / trong / trên khung)",
+      "standardPools": "Ngân sách gói chuẩn (thành tích / thăng chức / đặc biệt)",
+      "hPools": "Ngân sách gói JG H (thành tích / thăng chức / đặc biệt)",
+      "targetMonths": "Số tháng thưởng mục tiêu",
+      "bonusReference": "Bảng tham chiếu số tháng thưởng",
+      "bonusByGrade": "Theo bậc và xếp loại ({count, plural, other {# bậc}})",
+      "exemption": "Miễn trừ trần ngân sách",
+      "noExemption": "Không (áp dụng trần)"
+    },
+    "actions": {
+      "editDeadlines": "Sửa hạn chót",
+      "cancel": "Hủy đợt xét duyệt",
+      "keep": "Giữ đợt xét duyệt",
+      "cancelTitle": "Hủy đợt xét duyệt này?",
+      "cancelHelp": "Đề xuất và phê duyệt được giữ ở chế độ chỉ xem. Đợt đã hủy không gửi gì sang bảng lương và sẽ biến khỏi danh sách việc của mọi người.",
+      "reason": "Lý do (bắt buộc, ít nhất 10 ký tự)",
+      "cancelledBy": "Đã hủy ngày {date} bởi {name}: {reason}",
+      "cancelledOn": "Đã hủy ngày {date}: {reason}",
+      "cancelledSaved": "Đã hủy đợt xét duyệt. Đề xuất và phê duyệt được giữ ở chế độ chỉ xem."
+    }
   }
 }

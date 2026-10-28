@@ -6,7 +6,7 @@ import { and, asc, desc, eq, inArray, isNull, lte, or, gt, sql } from 'drizzle-o
 import { z } from 'zod';
 import type { SessionContext, Tx } from '../../db/client';
 import { actorOf, appendEvent } from '../../db/events';
-import { appUser, assignment, businessUnit, company, compensation, employment, jobGrade, payrollBatch, payrollInput, performanceReview, reviewCycle, person, rewardCalendar, rewardCycle, rewardDecision, rewardEntry, rewardMember, rewardUnit } from '../../db/schema';
+import { appUser, assignment, businessUnit, company, compensation, domainEvent, employment, jobGrade, payrollBatch, payrollInput, performanceReview, reviewCycle, person, rewardCalendar, rewardCycle, rewardDecision, rewardEntry, rewardMember, rewardUnit } from '../../db/schema';
 import { assertModuleGate, withRewardsTenant } from '../../core/module-gate';
 import { setCompensation } from '../../core/comp';
 import { setEmploymentGrade } from '../../core/org';
@@ -19,7 +19,7 @@ import { onehrRewardResultTx } from '../performance/service';
 import { decisionActorRole, factsFromOnehr, isSeniorPlanMember, returnedState } from './model';
 import {rewardPolicyForReviewTx} from './policy-groups';
 export {saveRewardPolicyGroup,listRewardPolicyGroups,rewardSharedPolicyChoices,rewardPolicyGroupUsage,RewardPolicyGroupError} from './policy-groups';
-export type {RewardSharedChoice} from './policy-groups';
+export type {RewardSharedChoice,RewardPolicySummary} from './policy-groups';
 import { calculateOffcycle, offcycleRoute, offcycleTransition, type Funding } from './offcycle';
 import { canEditStage, defaultPolicy, emptyFacts, emptyRecommendation, factsSchema, isoDateSchema, policySchema, recommendationSchema, rewardRoles, transition, visibleEntry, type RewardEntry, type RewardFacts, type RewardPolicy, type RewardRole, type RewardSource } from './model';
 
@@ -213,15 +213,59 @@ export async function returnedRewardUnits(ctx: SessionContext, companyIds?: stri
   });
 }
 
+// Seat holders' names use the canonical workforce read (as Reward access administration does), never general person RLS.
+const visibleSeatHolder = sql<boolean>`app.access_workforce_person(${person.id}, 'workforce.view')`;
+const ANNUAL_ROUTE: RewardRole[] = ['bu', 'bg', 'gr', 'ctro', 'ec'];
+/**
+ * The Rewards configuration list (7a8102a7). Besides the row it returns, per review: the current seat and its
+ * active holders (a name only where the viewer may read that person), the calendar due date, and totals only
+ * — people and verified counts — read through reward_entry RLS: null when the viewer holds no seat on the
+ * review, never a partial count, and never any pay or a per-category count.
+ */
 export async function listRewardUnits(ctx: SessionContext, companyIds: string[], existingTx?: AiReadTx) {
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   companyIds = companyIds.slice();
 
   return withCanonicalAiReadTx(ctx, existingTx, 'rewards', withRewardsTenant, async tx => {
     if (!companyIds.length) return [];
-    return tx.select({ id: rewardUnit.id, cycleId: rewardCycle.id, cycle: rewardCycle.name, kind: rewardUnit.kind, year: rewardCycle.year, company: company.legalName, unit: businessUnitDisplayName, status: rewardUnit.status, returnedTo: returnedSeatSql, revision: rewardUnit.revision, canConfigure:sql<boolean>`${rewardUnit.status}='draft' and ${rewardUnit.kind}='annual' and 'gr' in (select app.reward_roles(${rewardUnit.id}))`, deletionReason:sql<import('./maintenance').RewardDeletionReason|null>`case when app.reward_admin(${rewardUnit.companyId}) then app.reward_deletion_reason(${rewardUnit.id}) else 'locked' end` })
+    const seated = sql`exists(select 1 from app.reward_roles(${rewardUnit.id}))`;
+    const rows = await tx.select({ id: rewardUnit.id, cycleId: rewardCycle.id, cycle: rewardCycle.name, kind: rewardUnit.kind, year: rewardCycle.year, companyId: rewardUnit.companyId, company: company.legalName, businessUnitId: rewardUnit.businessUnitId, unit: businessUnitDisplayName, status: rewardUnit.status, returnedTo: returnedSeatSql, revision: rewardUnit.revision, canConfigure:sql<boolean>`${rewardUnit.status}='draft' and ${rewardUnit.kind}='annual' and 'gr' in (select app.reward_roles(${rewardUnit.id}))`, deletionReason:sql<import('./maintenance').RewardDeletionReason|null>`case when app.reward_admin(${rewardUnit.companyId}) then app.reward_deletion_reason(${rewardUnit.id}) else 'locked' end`,
+      bgOrigin: sql<boolean>`coalesce(${rewardUnit.offcycle}->>'bgOrigin','false')='true'`,
+      effectiveFrom: sql<string | null>`${rewardUnit.policy}->>'effectiveFrom'`,
+      people: sql<number | null>`case when ${seated} then (select count(*)::int from reward_entry e where e.unit_id=${rewardUnit.id}) end`,
+      verified: sql<number | null>`case when ${seated} then (select count(*)::int from reward_entry e where e.unit_id=${rewardUnit.id} and e.facts->>'reviewed'='true') end`,
+      // 56595838: the shared configuration version the review started from, and whether its own settings changed since.
+      policyOrigin: sql<{ versionId: string; revision: number; name: string; changed: boolean } | null>`app.reward_policy_unit_origin(${rewardUnit.id})`,
+      // 62e743ed: cancelRewardReview's guard, projected for the row actions (the service still decides).
+      canCancel: sql<boolean>`${rewardUnit.status} not in ('posted','withdrawn','rejected') and (app.reward_admin(${rewardUnit.companyId}) or 'gr' in (select app.reward_roles(${rewardUnit.id})))` })
       .from(rewardUnit).innerJoin(rewardCycle, eq(rewardCycle.id, rewardUnit.cycleId)).innerJoin(company, eq(company.id, rewardUnit.companyId)).innerJoin(businessUnit, eq(businessUnit.id, rewardUnit.businessUnitId))
       .where(and(inArray(rewardUnit.companyId, companyIds),isNull(rewardUnit.deletedAt))).orderBy(desc(rewardCycle.year), asc(rewardCycle.name), asc(businessUnitDisplayName), asc(rewardUnit.id));
+    if (!rows.length) return [];
+    const ids = rows.map(r => r.id);
+    // Off-cycle seats: only the first seat depends on the request's route; later stages are their own seat.
+    const routeOf = (r: typeof rows[number]): RewardRole[] => r.kind === 'annual' ? ANNUAL_ROUTE : [r.bgOrigin ? 'bg' : 'bu', 'bg', 'gr', 'ctro', 'ec'];
+    const holders = await tx.select({ unitId: rewardMember.unitId, role: rewardMember.role, name: person.fullName }).from(rewardMember)
+      .innerJoin(appUser, and(eq(appUser.id, rewardMember.userId), isNull(appUser.archivedAt), sql`not app.login_blocked(${appUser.id})`))
+      .leftJoin(person, and(eq(person.id, appUser.personId), visibleSeatHolder))
+      .where(inArray(rewardMember.unitId, ids)).orderBy(asc(person.fullName), asc(rewardMember.userId));
+    const calendars = new Map((await tx.select().from(rewardCalendar).where(inArray(rewardCalendar.cycleId, [...new Set(rows.map(r => r.cycleId))])))
+      .map(c => [`${c.cycleId}:${c.companyId}`, calendarValues(c)]));
+    const offcycle = rows.filter(r => r.kind !== 'annual').map(r => r.id);
+    const decisions = offcycle.length ? await tx.select({ unitId: rewardDecision.unitId, toStage: rewardDecision.toStage, createdAt: rewardDecision.createdAt }).from(rewardDecision).where(inArray(rewardDecision.unitId, offcycle)).orderBy(desc(rewardDecision.createdAt), desc(rewardDecision.id)) : [];
+    // Who cancelled, when and why: the audit event (domain_event RLS: administrators), the actor's name only where readable.
+    const withdrawn = rows.filter(r => r.status === 'withdrawn').map(r => r.id);
+    const cancellations = withdrawn.length ? await tx.select({ unitId: domainEvent.aggregateId, at: domainEvent.occurredAt, reason: sql<string | null>`${domainEvent.payload}->>'reason'`, actorName: person.fullName }).from(domainEvent)
+      .leftJoin(appUser, eq(appUser.id, domainEvent.actorId)).leftJoin(person, and(eq(person.id, appUser.personId), visibleSeatHolder))
+      .where(and(eq(domainEvent.aggregateType, 'reward-unit'), eq(domainEvent.eventType, 'reward-unit.cancelled'), inArray(domainEvent.aggregateId, withdrawn))).orderBy(desc(domainEvent.occurredAt)) : [];
+    const today = todayInKualaLumpur();
+    return rows.map(r => {
+      const seat = rewardStageSeat(r.status, routeOf(r));
+      const latest = decisions.find(d => d.unitId === r.id);
+      const due = rewardStageDue(calendars.get(`${r.cycleId}:${r.companyId}`) ?? null, { kind: r.kind, status: r.status, returned: !!r.returnedTo, enteredOn: latest && latest.toStage === r.status ? todayInKualaLumpur(new Date(latest.createdAt)) : null });
+      const c = cancellations.find(x => x.unitId === r.id);
+      return { ...r, seat, holders: seat ? holders.filter(h => h.unitId === r.id && h.role === seat).map(h => h.name ?? null) : [], due, daysUntilDue: due ? rewardDaysUntil(due, today) : null,
+        cancellation: c ? { on: todayInKualaLumpur(new Date(c.at)), reason: c.reason ?? '', by: c.actorName ?? null } : null };
+    });
   });
 }
 
@@ -288,8 +332,9 @@ async function snapshotEmployees(tx: Tx, ctx: SessionContext, unit: typeof rewar
   return seen;
 }
 
-export async function createRewardUnit(ctx: SessionContext, raw: { name: string; year: number; companyId: string; businessUnitId: string; cycleId?: string; snapshotDate: string;sharedPolicyVersionId?:string }) {
-  const p = z.object({ name: z.string().trim().min(1).max(160), year: z.number().int().min(2000).max(2200), companyId: idSchema, businessUnitId: idSchema, cycleId: idSchema.optional(), snapshotDate: isoDateSchema,sharedPolicyVersionId:idSchema.optional() }).parse(raw);
+export async function createRewardUnit(ctx: SessionContext, raw: { name?: string; year: number; companyId: string; businessUnitId: string; cycleId?: string; snapshotDate: string;sharedPolicyVersionId?:string }) {
+  // The cycle name is asked for only when a new cycle is created; an existing cycle keeps its own name.
+  const p = z.object({ name: z.string().trim().max(160).default(''), year: z.number().int().min(2000).max(2200), companyId: idSchema, businessUnitId: idSchema, cycleId: idSchema.optional(), snapshotDate: isoDateSchema,sharedPolicyVersionId:idSchema.optional() }).parse(raw);
   if (p.snapshotDate > todayInKualaLumpur()) throw new RewardError('The snapshot date cannot be in the future.');
   return withRewardsTenant(ctx, async tx => {
     await requireAdmin(tx, p.companyId);
@@ -297,7 +342,7 @@ export async function createRewardUnit(ctx: SessionContext, raw: { name: string;
     if(shared&&shared.policy.year!==p.year)throw new RewardError('The shared configuration belongs to a different reward year.');
     let cycleId = p.cycleId;
     if (cycleId) { const [cycle] = await tx.select().from(rewardCycle).where(eq(rewardCycle.id, cycleId)); if (!cycle || cycle.year !== p.year) throw new RewardError('Select a cycle in the same reward year.'); }
-    else { const [cycle] = await tx.insert(rewardCycle).values({ tenantId: ctx.tenantId, name: p.name, year: p.year, createdBy: ctx.userId! }).returning(); cycleId = cycle.id; }
+    else { if (!p.name) throw new RewardError('Name the new review cycle.'); const [cycle] = await tx.insert(rewardCycle).values({ tenantId: ctx.tenantId, name: p.name, year: p.year, createdBy: ctx.userId! }).returning(); cycleId = cycle.id; }
     const [unit] = await tx.insert(rewardUnit).values({ tenantId: ctx.tenantId, createdBy: ctx.userId!, cycleId, companyId: p.companyId, businessUnitId: p.businessUnitId, policy: shared?.policy??defaultPolicy(p.year),policyGroupVersionId:shared?.versionId??null, snapshotDate: p.snapshotDate }).returning();
     await tx.insert(rewardMember).values({ tenantId: ctx.tenantId, unitId: unit.id, userId: ctx.userId!, role: 'gr' });
     const employees = await snapshotEmployees(tx, ctx, unit);
@@ -318,7 +363,9 @@ export async function saveRewardPolicy(ctx: SessionContext, unitId: string, revi
       throw new RewardError('Preview and confirm named Senior Plan membership before changing the legacy eligibility rule.');
     }
     await tx.update(rewardUnit).set({ policy }).where(eq(rewardUnit.id, unitId)); await touch(tx, unitId);
-    await stamp(tx, ctx, unitId, 'policy-updated', { revision: unit.revision + 1 });
+    // Field-level before/after of the changed policy keys (62e743ed); policy inputs only, never employee pay.
+    const changed = (Object.keys(policy) as (keyof RewardPolicy)[]).filter(k => !isDeepStrictEqual(policy[k], unit.policy[k]));
+    await stamp(tx, ctx, unitId, 'policy-updated', { revision: unit.revision + 1, before: Object.fromEntries(changed.map(k => [k, unit.policy[k] ?? null])), after: Object.fromEntries(changed.map(k => [k, policy[k] ?? null])) });
   });
 }
 
@@ -493,6 +540,36 @@ export async function decideRewardUnit(ctx: SessionContext, unitId: string, revi
     await tx.update(rewardUnit).set({ status: next, approvedDigest: ['return', 'reject', 'withdraw'].includes(action) ? null : hash, ...(action === 'return' ? { revision: revision + 1 } : {}), ...(unit.kind !== 'annual' ? { reservedCents: { standard: calculated.budgets.standard.used[0], h: calculated.budgets.h.used[0] } } : {}), updatedAt: new Date() }).where(eq(rewardUnit.id, unitId));
     await stamp(tx, ctx, unitId, next === 'approved' ? 'approved' : 'routed', { from: unit.status, to: next, revision });
     return next;
+  });
+}
+
+/**
+ * Cancel a review that has started (62e743ed). Authority: the company's Rewards administrator or the review's
+ * Group Rewards seat. A posted review cannot be cancelled (salaries already changed; corrections go through an
+ * off-cycle review). The review keeps every entry and decision read-only; status 'withdrawn' (shown as Cancelled
+ * for an annual review) leaves the approval route, the task list, the board and posting. For an off-cycle request,
+ * reward_funding stops counting a withdrawn request's reservation, exactly as the off-cycle withdraw path does.
+ */
+export async function cancelRewardReview(ctx: SessionContext, unitId: string, revision: number, reason: string) {
+  idSchema.parse(unitId); reason = z.string().trim().max(4000).parse(reason);
+  if (reason.length < 10) throw new RewardError('Explain why the review is being cancelled (at least 10 characters).');
+  return withRewardsTenant(ctx, async tx => {
+    const [unit] = await tx.select().from(rewardUnit).where(eq(rewardUnit.id, unitId)).for('update');
+    if (!unit || unit.deletedAt) throw new RewardError('Reward unit not found or access has been removed.');
+    const roles = await rolesFor(tx, unitId);
+    const [admin] = await tx.execute<{ ok: boolean }>(sql`select app.reward_admin(${unit.companyId}::uuid) as ok`);
+    if (!admin?.ok && !roles.includes('gr')) throw new RewardError('Only the company Rewards administrator or Group Rewards may cancel this review.');
+    assertRevision(unit, revision);
+    if (['posted', 'withdrawn', 'rejected'].includes(unit.status)) throw new RewardError('This review can no longer be cancelled.');
+    // Serialize with sibling off-cycle submissions against the same annual funding.
+    if (unit.parentUnitId) await tx.select({ id: rewardUnit.id }).from(rewardUnit).where(eq(rewardUnit.id, unit.parentUnitId)).for('update');
+    await tx.update(rewardUnit).set({ status: 'withdrawn', approvedDigest: null, revision: revision + 1, updatedAt: new Date() }).where(eq(rewardUnit.id, unitId));
+    // reward_decision RLS admits only a seat holder; an administrator without a seat is recorded by the audit event.
+    if (roles.some(r => r !== 'pbp')) {
+      const entries = await tx.select().from(rewardEntry).where(eq(rewardEntry.unitId, unitId)).orderBy(asc(rewardEntry.id));
+      await tx.insert(rewardDecision).values({ tenantId: ctx.tenantId, unitId, actorId: ctx.userId!, revision, action: 'withdraw', fromStage: unit.status, toStage: 'withdrawn', reason, digest: digest(unit, entries) });
+    }
+    await stamp(tx, ctx, unitId, 'cancelled', { fromStage: unit.status, reason, revision, before: { status: unit.status, revision }, after: { status: 'withdrawn', revision: revision + 1 } });
   });
 }
 
@@ -870,7 +947,8 @@ export async function saveRewardCalendar(ctx: SessionContext, unitId: string, re
     const [saved] = existing
       ? await tx.update(rewardCalendar).set({ ...columns, revision: existing.revision + 1 }).where(eq(rewardCalendar.id, existing.id)).returning({ id: rewardCalendar.id, revision: rewardCalendar.revision })
       : await tx.insert(rewardCalendar).values({ tenantId: ctx.tenantId, cycleId: unit.cycleId, companyId: unit.companyId, ...columns }).returning({ id: rewardCalendar.id, revision: rewardCalendar.revision });
-    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'reward-calendar', aggregateId: saved.id, eventType: 'reward-calendar.updated', actor: actorOf(ctx), payload: { cycleId: unit.cycleId, companyId: unit.companyId, revision: saved.revision, values } });
+    // Deadlines stay editable after launch (62e743ed): the audit carries the dates before and after.
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'reward-calendar', aggregateId: saved.id, eventType: 'reward-calendar.updated', actor: actorOf(ctx), payload: { cycleId: unit.cycleId, companyId: unit.companyId, revision: saved.revision, values, before: existing ? calendarValues(existing) : null, after: values } });
     return saved.revision;
   });
 }

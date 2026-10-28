@@ -27454,5 +27454,75 @@
       "reportReleased": "Report released",
       "notSet": "Not set yet"
     }
+  },
+  "rewardsConfig": {
+    "filters": {
+      "label": "Filter reviews",
+      "cycle": "Review cycle",
+      "company": "Company",
+      "unit": "Business unit",
+      "stage": "Approval stage",
+      "all": "All",
+      "apply": "Apply filters",
+      "clear": "Clear filters",
+      "empty": "No reviews match these filters."
+    },
+    "columns": {
+      "cycle": "Review cycle",
+      "companyUnit": "Company / Business unit",
+      "people": "People",
+      "stage": "Approval stage / with",
+      "due": "Stage due",
+      "dataCheck": "Data check",
+      "action": "Action"
+    },
+    "subline": "Reward year {year} · effective {date}",
+    "sublineYear": "Reward year {year}",
+    "with": "With {seat}: {names}",
+    "nobody": "With {seat}: nobody holds this seat",
+    "dueNotSet": "No date set",
+    "notAvailable": "—",
+    "noPeople": "No employees",
+    "allVerified": "All verified",
+    "verifiedOf": "{verified} of {total} verified",
+    "cancelled": "Cancelled",
+    "create": {
+      "defaultName": "{year} Annual Compensation Review",
+      "effectiveHelp": "Reward year is the performance year being rewarded; the salary effective date comes from the review settings."
+    },
+    "shared": {
+      "noneForPair": "None for this company, business unit and year. The review starts from the standard settings, which Group Rewards can change while it is in Draft.",
+      "createOne": "Create a shared configuration",
+      "originLine": "{name} · Version {version}",
+      "changedInReview": "changed in this review"
+    },
+    "summary": {
+      "viewSettings": "View settings",
+      "readOnly": "read only",
+      "close": "Close",
+      "help": "These are the settings a new review copies. Later changes to a shared configuration never alter a review that already exists.",
+      "defaultsTitle": "Standard settings for {year}",
+      "setting": "Setting",
+      "value": "Value",
+      "merit": "Merit matrix (below / within / above range)",
+      "standardPools": "Standard plan pools (merit / promotion / special)",
+      "hPools": "JG H plan pools (merit / promotion / special)",
+      "targetMonths": "Target bonus months",
+      "bonusReference": "Bonus months reference",
+      "bonusByGrade": "By grade and rating ({count, plural, one {# grade} other {# grades}})",
+      "exemption": "Budget-cap exemption",
+      "noExemption": "None (caps apply)"
+    },
+    "actions": {
+      "editDeadlines": "Edit deadlines",
+      "cancel": "Cancel review",
+      "keep": "Keep review",
+      "cancelTitle": "Cancel this review?",
+      "cancelHelp": "Recommendations and approvals are kept read-only. Nothing is sent to payroll from a cancelled review, and it leaves everyone’s task list.",
+      "reason": "Reason (required, at least 10 characters)",
+      "cancelledBy": "Cancelled {date} by {name}: {reason}",
+      "cancelledOn": "Cancelled {date}: {reason}",
+      "cancelledSaved": "Review cancelled. Its recommendations and approvals are kept read-only."
+    }
   }
 }
