@@ -26,8 +26,10 @@ export function createOwnLeaveBrowserCommandHandler(authenticate: () => Promise<
         return await withTenant(session.ctx, tx => prepareOwnLeaveReviewTx(tx, session.ctx, packet.nomination, packet.selection, packet.humanText, session.locale));
       } catch (error) {
         // The non-waiting leave dependency locks refuse a busy source before the review is written,
-        // inside this one transaction, which rolled back. Report busy; nothing was saved.
-        if (error instanceof LeaveDependencyUnavailable) throw new OwnLeaveBusy();
+        // inside this one transaction, which rolled back. Only a held lock is "busy, try again"; a
+        // source that changed between reads would be refused again, so it takes the ordinary
+        // "review it again" path. Nothing was saved either way.
+        if (error instanceof LeaveDependencyUnavailable && error.reason === 'busy') throw new OwnLeaveBusy();
         throw error;
       }
     },

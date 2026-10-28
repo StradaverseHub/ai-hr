@@ -6,8 +6,11 @@ import { sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Tx } from '../db/client';
 
+/** `busy`: another writer holds a dependency lock right now, so retrying shortly can succeed.
+ * `changed` (default): the nominated source changed between reads or is malformed, so the same request
+ * will be refused again; the person must review their choice. Either way nothing was written. */
 export class LeaveDependencyUnavailable extends Error {
-  constructor() { super('Leave source is unavailable; review it again.'); this.name = 'LeaveDependencyUnavailable'; }
+  constructor(readonly reason: 'busy' | 'changed' = 'changed') { super('Leave source is unavailable; review it again.'); this.name = 'LeaveDependencyUnavailable'; }
 }
 const uuid = z.guid();
 
@@ -21,7 +24,7 @@ async function acquire(tx: Tx, tenantId: string, key: string, shared: boolean): 
     then ${shared ? sql`pg_try_advisory_xact_lock_shared(hashtextextended(${key},0))`
       : sql`pg_try_advisory_xact_lock(hashtextextended(${key},0))`}
     else false end as acquired`);
-  if (row?.acquired !== true) throw new LeaveDependencyUnavailable();
+  if (row?.acquired !== true) throw new LeaveDependencyUnavailable('busy');
 }
 
 /** Shared configuration phase for a bounded server-owned target discovery, followed by subject locks
@@ -67,7 +70,7 @@ async function acquireReadOnlySource(tx:Tx,tenantId:string,key:string):Promise<v
   when app.current_tenant_id()=${tenantId}::uuid and current_setting('transaction_isolation')='read committed'
    and current_setting('transaction_read_only')='on'
   then pg_try_advisory_xact_lock_shared(hashtextextended(${key},0)) else false end as acquired`);
- if(row?.acquired!==true)throw new LeaveDependencyUnavailable();
+ if(row?.acquired!==true)throw new LeaveDependencyUnavailable('busy');
 }
 export async function lockLeaveReadOnlySourceConfigurationTx(tx:Tx,tenantId:string):Promise<void>{
  if(!uuid.safeParse(tenantId).success)throw new LeaveDependencyUnavailable();tenantId=tenantId.toLowerCase();

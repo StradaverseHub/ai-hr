@@ -48,9 +48,14 @@ beforeEach(() => {
 
 describe('own-leave preparation busy refusal', () => {
   it('reports a non-waiting leave dependency refusal inside preparation as busy', async () => {
-    owners.prepare.mockRejectedValueOnce(new LeaveDependencyUnavailable());
+    owners.prepare.mockRejectedValueOnce(new LeaveDependencyUnavailable('busy'));
     await expectBusy(await post(packets.prepare));
     expect(owners.prepare).toHaveBeenCalledOnce();
+  });
+  it('does not say "busy, try again" when the leave source changed between reads: a retry would be refused too', async () => {
+    owners.prepare.mockRejectedValueOnce(new LeaveDependencyUnavailable());
+    const response = await post(packets.prepare);
+    expect(response.status).toBe(503); expect(await response.json()).toEqual({ error: 'unavailable' });
   });
   it('reports an Access lock wait cut short by lock_timeout (55P03) inside preparation as busy', async () => {
     owners.prepare.mockRejectedValueOnce(lockTimeout());
@@ -68,7 +73,7 @@ describe('own-leave preparation busy refusal', () => {
     expect(response.status).toBe(503); expect(await response.json()).toEqual({ error: 'unavailable' });
   });
   it.each(['confirm', 'reopen', 'discard', 'list'] as const)('keeps %s at the unconfirmed 503 even when a lock was busy', async operation => {
-    for (const error of [lockTimeout(), new LeaveDependencyUnavailable(), new OwnLeaveBusy()]) {
+    for (const error of [lockTimeout(), new LeaveDependencyUnavailable('busy'), new LeaveDependencyUnavailable(), new OwnLeaveBusy()]) {
       vi.clearAllMocks(); owners.expire.mockResolvedValue(0);
       if (operation === 'confirm') owners.confirm.mockRejectedValueOnce(error);
       else owners[operation].mockRejectedValueOnce(error);
