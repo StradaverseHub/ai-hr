@@ -20632,6 +20632,34 @@
       "branch": "Branch",
       "rating": "Branch rating",
       "empty": "No branch factors are configured yet."
+    },
+    "reviewList": {
+      "waiting": "Waiting for my action: {count}",
+      "upcoming": "{count, plural, one {# review is} other {# reviews are}} in progress and will reach you at the {stage} stage.",
+      "filters": "Filter reviews",
+      "all": "All",
+      "returned": "Returned",
+      "waitingOnly": "Waiting for me",
+      "apply": "Apply filters",
+      "clear": "Clear filters",
+      "myRole": "My role",
+      "with": "With",
+      "due": "Stage due",
+      "salary": "Salary increase used",
+      "bonus": "Bonus used",
+      "blocks": "Blocks and exceptions",
+      "unavailable": "Not available for your role",
+      "restrictedName": "Assigned reviewer",
+      "blocking": "{count, plural, one {# block} other {# blocks}}",
+      "exceptions": "{count, plural, one {# exception} other {# exceptions}}",
+      "noMatches": "No reviews match these filters.",
+      "create": "Create unit review",
+      "empty": {
+        "noScope": "No companies are available in your current scope. Contact your administrator.",
+        "noCycle": "No review cycle has been created for {year} in the selected companies.",
+        "noRole": "You don't have a rewards review role yet. Contact Group Rewards to be assigned.",
+        "otherScope": "Your rewards reviews are in companies outside the current company filter. Change the filter at the top to see them."
+      }
     }
   },
   "identityEmail": {

@@ -4,7 +4,7 @@ import type { SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
-import { cancelRewardReview, createRewardUnit, decideRewardUnit, emptyRewardCalendar, getRewardUnit, listRewardUnits, pendingRewardTasks, rewardApprovalsBoard, saveRewardCalendar, saveRewardEntry, saveRewardPolicy, setRewardMember } from '../packs/rewards/service';
+import { cancelRewardReview, createRewardUnit, decideRewardUnit, emptyRewardCalendar, getRewardUnit, listRewardReviewStatus, listRewardUnits, pendingRewardTasks, rewardApprovalsBoard, saveRewardCalendar, saveRewardEntry, saveRewardPolicy, setRewardMember } from '../packs/rewards/service';
 import { emptyFacts, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -140,4 +140,41 @@ describe('Rewards configuration list (7a8102a7) and review cancellation (62e743e
     expect(policy.payload).toMatchObject({ before: { patActual: 0, effectiveFrom: `${year + 1}-01-01` }, after: { patActual: 100, effectiveFrom: today } });
     expect(Object.keys((policy.payload as { after: object }).after)).not.toContain('meritMatrix');
   });
+  it('9040c2eb: carries the exact board projection for BU and EC seats and metadata only for a seatless admin',async()=>{
+    await submit();
+    const due=addDays(today,-2);await saveRewardCalendar(admin,unitId,0,{...emptyRewardCalendar(),due:{...emptyRewardCalendar().due,bg:due}});
+    for(const who of [actors.bu!,actors.bg!,actors.ec!]){
+      const [overview]=(await listRewardReviewStatus(who,[b.companyId])).rows;
+      const [board]=await rewardApprovalsBoard(who,[b.companyId]);
+      expect(overview).toBeDefined();expect(board).toBeDefined();
+      expect(overview).toMatchObject({waiting:board.waiting,salary:board.salary,bonus:board.bonus,blocking:board.blocking,exceptions:board.exceptions,due,daysUntilDue:-2});
+      expect(overview.roles).toEqual(who===actors.bu?['bu']:who===actors.bg?['bg']:['ec']);
+    }
+    expect((await listRewardReviewStatus(actors.ec!,[b.companyId])).rows[0].laterSeats).toEqual(['ec']);
+    const [p]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional no-seat admin'}).returning();
+    const userId=await createAppUser(b.tenantId,p.id,'hr_admin');
+    const [overview]=(await listRewardReviewStatus({...admin,userId,personId:p.id},[b.companyId])).rows;
+    expect(overview).toMatchObject({roles:[],waiting:false,salary:null,bonus:null,blocking:null,exceptions:null});
+  });
+  it('b4729de7: gives scope-safe empty reasons without another company or cycle name',async()=>{
+    expect((await listRewardReviewStatus(admin,[])).emptyReason).toBe('noScope');
+    const [other]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional empty company'}).returning();
+    const empty=await listRewardReviewStatus(admin,[other.id]);expect(empty.rows).toEqual([]);expect(empty.emptyReason).toBe('noCycle');
+    const outside=await listRewardReviewStatus(actors.ec!,[other.id]);expect(outside.rows).toEqual([]);expect(outside.emptyReason).toBe('otherScope');expect(JSON.stringify(outside)).not.toContain('Fictional Annual');
+    const [p]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional unassigned reviewer'}).returning();
+    const userId=await createAppUser(b.tenantId,p.id,'employee');
+    const none=await listRewardReviewStatus({...admin,userId,personId:p.id,roles:['employee'],grants:undefined},[b.companyId]);
+    expect(none.rows).toEqual([]);expect(none.emptyReason).toBe('noRole');expect(JSON.stringify(none)).not.toContain('Fictional Annual');
+  });
+  it('9040c2eb: measures one projection per review with a 50-review fixture',async()=>{
+    const first=await row();
+    for(let i=1;i<50;i++){
+      const [bu]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:`OVERVIEW-${i}`,label:`Fictional unit ${i}`,name:`Fictional unit ${i}`}).returning();
+      await createRewardUnit(admin,{cycleId:first.cycleId,year,companyId:b.companyId,businessUnitId:bu.id,snapshotDate:today});
+    }
+    const started=performance.now(),overview=await listRewardReviewStatus(admin,[b.companyId]),elapsed=performance.now()-started;
+    expect(overview.rows).toHaveLength(50);expect(new Set(overview.rows.map(row=>row.id)).size).toBe(50);
+    console.info(`Rewards review list 50-review fixture: ${elapsed.toFixed(1)} ms`);
+  });
+
 });
