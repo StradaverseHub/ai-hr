@@ -207,6 +207,7 @@ async function planRows(tx:Tx,ctx:SessionContext,records:PayrollHistoryRecord[],
       if(ordinaryRun.length)row.warnings.push('A payroll run was processed in AIHR for this period without this employee. The imported record is added beside it.');
      }
     }
+   }
    if(row.reasons.length||!values)row.operation='invalid';
    plan.rows.push(row);
   }
