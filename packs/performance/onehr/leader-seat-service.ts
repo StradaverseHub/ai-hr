@@ -588,7 +588,12 @@ export async function generateCalibrationScopes(ctx: SessionContext, cycleId: st
     const reviews = await tx.select({ reviewId: onehrReview.reviewId, employmentId: onehrReview.employmentId, companyId: onehrReview.companyId }).from(onehrReview)
       .where(and(eq(onehrReview.cycleId, cycleId), sql`app.assessment_review_participates(${onehrReview.reviewId})`)).orderBy(asc(onehrReview.reviewId));
     if (!reviews.length) return out;
-    const companies = await tx.select({ id: company.id, name: company.legalName, parent: company.parentCompanyId, hasUnits: sql<boolean>`exists(select 1 from company ch where ch.parent_company_id=${company.id} and ch.tenant_id=${company.tenantId})` }).from(company);
+    // A business group node is a company with units under it (the parent of the units), its own staff included.
+    // Decided from the company rows here, not a correlated subquery: drizzle strips the table prefix from columns
+    // inside a single-table selection, so `company.id` inside `from company ch` would have meant `ch.id`.
+    const companyRows = await tx.select({ id: company.id, name: company.legalName, parent: company.parentCompanyId }).from(company);
+    const nodes = new Set(companyRows.map((c) => c.parent).filter((id): id is string => !!id));
+    const companies = companyRows.map((c) => ({ ...c, hasUnits: nodes.has(c.id) }));
     const companyOf = new Map(companies.map((c) => [c.id, c]));
     for (const tier of GENERATED_TIERS.filter((t) => p.tiers.includes(t))) {
       // anchor id → { companyId of the scope, name, reviews }
