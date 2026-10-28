@@ -9,6 +9,8 @@ import {z} from 'zod';
 import {Button,inputCls} from '@/components/ui';
 import {OWN_LEAVE_CANCELLATION_ACTION as cancelAction,OWN_LEAVE_EDIT_ACTION as editAction,OwnLeaveChangeChoices,type OwnPendingLeave} from '@/lib/assistant-actions/own-leave-change-contract';
 import {LeaveCancellationModuleActionBrowserPacket,LeaveEditModuleActionBrowserPacket,parseLeaveChangeModuleActionBrowserResult,type LeaveChangeModuleActionBrowserPacket,type LeaveChangeModuleActionBrowserResult} from '@/lib/assistant-actions/module-action-http';
+import {leaveProposalMatches,resolveProposalChoice} from '@/lib/ai/assistant-action-proposal-hints';
+import {ProposalResolutionNote} from './proposal-resolution-note';
 type Action=typeof cancelAction|typeof editAction;
 type Prepared=Extract<LeaveChangeModuleActionBrowserResult,{kind:'prepared'}>['review'];type Completed=Extract<LeaveChangeModuleActionBrowserResult,{kind:'completed'}>['receipt'];type Retired=Extract<LeaveChangeModuleActionBrowserResult,{kind:'retired'}>['receipt'];
 type Row={action:Action;actionId:string;state:string;createdAt:string};
@@ -23,10 +25,17 @@ export async function readOwnLeaveChangeResponse(response:Response,packet:LeaveC
   return parseLeaveChangeModuleActionBrowserResult(packet,JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(data)));
  }catch{await reader.cancel().catch(()=>undefined);throw fail();}finally{reader.releaseLock();}
 }
-export function OwnLeaveChangePanel({choices:raw,resumeActionId,resumeAction}:{choices:OwnLeaveChangeChoices;resumeActionId?:string;resumeAction?:Action}){
+/** ADR-0151 §4.3 inline card: the change and dates the person named in chat. The request is preselected
+ * only when exactly one of the caller's own pending requests starts on the named date (or, with no date,
+ * when only one is pending). Stored reason and remark are shown as they are and sent only if edited. */
+export type OwnLeaveChangeProposalPrefill=Readonly<{action:Action;startDate?:string;newStartDate?:string;newEndDate?:string}>;
+export function OwnLeaveChangePanel({choices:raw,resumeActionId,resumeAction,prefill}:{choices:OwnLeaveChangeChoices;resumeActionId?:string;resumeAction?:Action;prefill?:OwnLeaveChangeProposalPrefill}){
  const parsed=OwnLeaveChangeChoices.safeParse(raw),choices=parsed.success?parsed.data:{kind:'unavailable' as const},t=useTranslations('ownLeaveChange'),f=useFormatter(),id=useId();
+ const proposedDates=prefill?.action===editAction?prefill:undefined;
+ // Resolved once against the caller's own fresh choices; the result is a preselection or a question.
+ const [proposal]=useState(()=>prefill&&choices.kind==='choices'?resolveProposalChoice(choices.requests,leaveProposalMatches(prefill)):null),proposed=proposal?.kind==='one'?proposal.row:undefined;
  const [state,setState]=useState<State>(()=>resumeActionId&&resumeAction?{kind:'uncertain',actionId:z.uuid().safeParse(resumeActionId).success?resumeActionId:null,action:resumeAction}:{kind:'selection'});
- const [requestId,setRequestId]=useState(''),[mode,setMode]=useState<Action>(cancelAction),[start,setStart]=useState(''),[end,setEnd]=useState(''),[reason,setReason]=useState(''),[remark,setRemark]=useState('');
+ const [requestId,setRequestId]=useState(proposed?.leaveRequestId??''),[mode,setMode]=useState<Action>(prefill?.action??cancelAction),[start,setStart]=useState(proposed?proposedDates?.newStartDate??proposed.startDate:''),[end,setEnd]=useState(proposed?proposedDates?.newEndDate??proposed.endDate:''),[reason,setReason]=useState(proposed?.reason??''),[remark,setRemark]=useState(proposed?.employeeRemark??'');
  const [consent,setConsent]=useState(false),[confirm,setConfirm]=useState(false),[busy,setBusy]=useState<string|null>(null),[error,setError]=useState(''),[index,setIndex]=useState<Row[]|null>(null),[now,setNow]=useState(()=>Date.now());
  const flight=useRef(false),alive=useRef(true),sequence=useRef(0),abort=useRef<AbortController|null>(null),status=useRef<HTMLParagraphElement>(null);
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;sequence.current++;abort.current?.abort();};},[]);
@@ -34,7 +43,7 @@ export function OwnLeaveChangePanel({choices:raw,resumeActionId,resumeAction}:{c
  useEffect(()=>{if(!busy&&state.kind!=='selection')status.current?.focus();},[state,busy]);
  useEffect(()=>{setNow(Date.now());if(!review)return;const timer=setTimeout(()=>setNow(Date.now()),Math.min(2147483647,Math.max(0,Date.parse(review.expiresAt)-Date.now())));return()=>clearTimeout(timer);},[review]);
  const selected=choices.kind==='choices'?choices.requests.find(row=>row.leaveRequestId===requestId):undefined;
- const choose=(value:string)=>{setRequestId(value);const row=choices.kind==='choices'?choices.requests.find(item=>item.leaveRequestId===value):undefined;setStart(row?.startDate??'');setEnd(row?.endDate??'');setReason(row?.reason??'');setRemark(row?.employeeRemark??'');setConsent(false);};
+ const choose=(value:string)=>{setRequestId(value);const row=choices.kind==='choices'?choices.requests.find(item=>item.leaveRequestId===value):undefined;setStart(row?proposedDates?.newStartDate??row.startDate:'');setEnd(row?proposedDates?.newEndDate??row.endDate:'');setReason(row?.reason??'');setRemark(row?.employeeRemark??'');setConsent(false);};
  const clear=()=>{setRequestId('');setStart('');setEnd('');setReason('');setRemark('');setConsent(false);setConfirm(false);};
  async function dispatch(value:unknown){
   if(flight.current)return;const action=(value as {action?:unknown})?.action,schema=action===editAction?LeaveEditModuleActionBrowserPacket:LeaveCancellationModuleActionBrowserPacket,checked=schema.safeParse(structuredClone(value));
@@ -67,7 +76,7 @@ export function OwnLeaveChangePanel({choices:raw,resumeActionId,resumeAction}:{c
  return <section className="min-w-0 space-y-4" aria-label={t('title')} aria-busy={busy!==null}>
   <p ref={status} tabIndex={-1} role="status" aria-live="polite" className="text-sm outline-none">{busy?t('working'):state.kind==='review'?t('reviewNote'):state.kind==='completed'?t(state.receipt.action===editAction?'editDone':'cancelDone'):state.kind==='retired'?t('retired'):state.kind==='uncertain'?t('uncertain'):''}</p>
   {error&&<p role="alert" className="text-sm">{error}</p>}
-  {state.kind==='selection'&&(choices.kind==='unavailable'?<p role="alert">{t('unavailable')}</p>:choices.requests.length===0?<p className="text-sm">{t('none')}</p>:<form onSubmit={prepare} className="space-y-4"><fieldset disabled={busy!==null} className="space-y-4">
+  {state.kind==='selection'&&(choices.kind==='unavailable'?<p role="alert">{t('unavailable')}</p>:choices.requests.length===0?<p className="text-sm">{t('none')}</p>:<form onSubmit={prepare} className="space-y-4">{proposal&&<ProposalResolutionNote kind={proposal.kind}/>}<fieldset disabled={busy!==null} className="space-y-4">
    <div><label htmlFor={`${id}-request`} className="block text-sm font-medium">{t('choose')}</label><select id={`${id}-request`} required value={requestId} className={`${inputCls} mt-1`} onChange={event=>choose(event.target.value)}><option value="">{t('choosePrompt')}</option>{choices.requests.map(row=><option key={row.leaveRequestId} value={row.leaveRequestId}>{describe(row)}</option>)}</select></div>
    <fieldset className="space-y-2"><legend className="text-sm font-medium">{t('modeLabel')}</legend>
     <label className="flex items-center gap-2 text-sm"><input type="radio" name={`${id}-mode`} checked={mode===cancelAction} onChange={()=>{setMode(cancelAction);setConsent(false);}}/>{t('modeCancel')}</label>

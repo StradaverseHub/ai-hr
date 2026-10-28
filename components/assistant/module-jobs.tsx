@@ -16,6 +16,9 @@ import type {GroundedWorkspaceAnswer,AssistantConversationSegment} from '../../c
 import {MODULE_JOBS} from '../../lib/ai/module-jobs';
 import type {ModuleActionEntry} from '../../lib/assistant-actions/module-action-entries';
 import {ConversationReviewLinks} from './conversation-review-links';
+import {ConversationActionProposal} from './conversation-action-proposal';
+import {moduleHumanActionHandoffs} from '../../lib/ai/module-human-handoffs';
+import {ASSISTANT_PROPOSAL_MODULE,isAssistantProposableAction} from '../../lib/ai/assistant-action-proposal-hints';
 import {ConversationExplanation} from './conversation-explanation';
 import {ModuleSpecialistFindings} from './module-specialist-findings';
 import {OwnClearForm} from './own-clear';
@@ -105,6 +108,13 @@ async function ConversationReplyBody({conversation,ctx,exchangeId}:{conversation
      <button type="submit" className="min-h-11 rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{copy('continue')}</button>
     </form>:<p role="status" className="text-sm text-muted-foreground">{copy('reopenBeforeReply')}</p>}
    </section>;
+  }
+  // ADR-0151 §4.3: an adjudicated proposal renders the inline review card. It is a suggestion only: the
+  // card's panels read the caller's own fresh choices, and only the person's own click prepares anything.
+  if(plan.mode==='propose'){
+   if(!closedConversationFields(plan,['version','mode','action','hints'])||conversation.facts.length!==0||!isAssistantProposableAction(plan.action))return unavailable();
+   if(!moduleHumanActionHandoffs(ASSISTANT_PROPOSAL_MODULE[plan.action]).some(handoff=>handoff.action===plan.action))return unavailable();
+   return <ConversationActionProposal action={plan.action} hints={plan.hints}/>;
   }
   if(plan.mode==='insufficient'||plan.mode==='refuse'){
    const codes=plan.mode==='insufficient'?['no_verified_facts','unsupported_explanation']:['unsupported_request','human_review_required'];

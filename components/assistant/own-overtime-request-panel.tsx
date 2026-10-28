@@ -10,18 +10,24 @@ import {Button,inputCls} from '@/components/ui';
 import {formatMinutesToHM} from '@/lib/overtime-duration';
 import {OWN_OVERTIME_REQUEST_ACTION as action,OwnOvertimeChoices,OvertimeRequestPreparedReview,OvertimeRequestCompletedReview,OvertimeRequestRetiredReview,OvertimeRequestReviewIndex} from '@/lib/assistant-actions/own-overtime-request-contract';
 import {checkGenericPacket,packetActionId,sendGenericModuleAction} from './generic-module-action-transport';
+import {resolveProposalChoice,type ProposalResolutionKind} from '@/lib/ai/assistant-action-proposal-hints';
+import {ProposalResolutionNote} from './proposal-resolution-note';
 type Review=z.infer<typeof OvertimeRequestPreparedReview>;type Receipt=z.infer<typeof OvertimeRequestCompletedReview>;type Retired=z.infer<typeof OvertimeRequestRetiredReview>;type Row=z.infer<typeof OvertimeRequestReviewIndex>['reviews'][number];
 type Choices=OwnOvertimeChoices|{kind:'loading'};
 type State={kind:'selection'}|{kind:'review';review:Review}|{kind:'completed';receipt:Receipt}|{kind:'retired';receipt:Retired}|{kind:'uncertain';actionId:string|null};
 const TIME=/^(?:[01]\d|2[0-3]):[0-5]\d$/;
 const fail=()=>Error('Overtime request unavailable.');
-export function OwnOvertimeRequestPanel({resumeActionId}:{resumeActionId?:string}){
+/** ADR-0151 §4.3 inline card: the date and planned window the person named in chat. The employment is
+ * preselected only when the caller's own fresh choices hold exactly one; the reason and remark stay empty. */
+export type OwnOvertimeProposalPrefill=Readonly<{date:string;plannedStartTime:string;plannedEndTime:string}>;
+export function OwnOvertimeRequestPanel({resumeActionId,prefill}:{resumeActionId?:string;prefill?:OwnOvertimeProposalPrefill}){
  const t=useTranslations('assistant.workspace.overtimeActions'),f=useFormatter(),id=useId();
  const [choices,setChoices]=useState<Choices>({kind:'loading'});
  const [state,setState]=useState<State>(()=>resumeActionId?{kind:'uncertain',actionId:z.uuid().safeParse(resumeActionId).success?resumeActionId:null}:{kind:'selection'});
- const [employmentId,setEmploymentId]=useState(''),[date,setDate]=useState(''),[start,setStart]=useState(''),[end,setEnd]=useState(''),[reason,setReason]=useState(''),[remark,setRemark]=useState('');
+ const [employmentId,setEmploymentId]=useState(''),[date,setDate]=useState(prefill?.date??''),[start,setStart]=useState(prefill?.plannedStartTime??''),[end,setEnd]=useState(prefill?.plannedEndTime??''),[reason,setReason]=useState(''),[remark,setRemark]=useState('');
  const [consent,setConsent]=useState(false),[confirm,setConfirm]=useState(false),[busy,setBusy]=useState<string|null>(null),[error,setError]=useState(''),[index,setIndex]=useState<Row[]|null>(null),[now,setNow]=useState(()=>Date.now());
  const flight=useRef(false),alive=useRef(true),sequence=useRef(0),abort=useRef<AbortController|null>(null),status=useRef<HTMLParagraphElement>(null);
+ const prefilled=useRef(false),[resolution,setResolution]=useState<ProposalResolutionKind|null>(null);
  const review=state.kind==='review'?state.review:null;
  useEffect(()=>{if(!busy&&state.kind!=='selection')status.current?.focus();},[state,busy]);
  useEffect(()=>{setNow(Date.now());if(!review)return;const timer=setTimeout(()=>setNow(Date.now()),Math.min(2147483647,Math.max(0,Date.parse(review.expiresAt)-Date.now())));return()=>clearTimeout(timer);},[review]);
@@ -32,7 +38,10 @@ export function OwnOvertimeRequestPanel({resumeActionId}:{resumeActionId?:string
   flight.current=true;setBusy(op);setError('');setIndex(null);const controller=new AbortController();abort.current=controller;
   try{
    const result=await sendGenericModuleAction(packet,controller.signal);if(!alive.current||sequence.current!==token)return;
-   if(op==='choices'){setChoices(OwnOvertimeChoices.parse(result));return;}
+   if(op==='choices'){const loaded=OwnOvertimeChoices.parse(result);setChoices(loaded);
+    // A chat proposal is applied once, to the first fresh choices: never to a later reload.
+    if(prefill&&!prefilled.current&&loaded.kind==='choices'){prefilled.current=true;const found=resolveProposalChoice(loaded.employments,()=>true);setResolution(found.kind);if(found.kind==='one')setEmploymentId(found.row.employmentId);}
+    return;}
    if(op==='list'){setIndex(OvertimeRequestReviewIndex.parse(result).reviews);return;}
    if(result.kind==='prepared'){const prepared=OvertimeRequestPreparedReview.parse((result as {review:unknown}).review);clear();setState({kind:'review',review:prepared});return;}
    if(result.kind==='completed'){const receipt=OvertimeRequestCompletedReview.parse((result as {receipt:unknown}).receipt);if(state.kind==='review'&&receipt.receipt.employmentId!==state.review.content.employmentId)throw fail();clear();setState({kind:'completed',receipt});return;}
@@ -63,7 +72,7 @@ export function OwnOvertimeRequestPanel({resumeActionId}:{resumeActionId?:string
  return <section className="min-w-0 space-y-4" aria-label={t('title')} aria-busy={busy!==null}>
   <p ref={status} tabIndex={-1} role="status" aria-live="polite" className="text-sm outline-none">{statusText}</p>
   {error&&<p role="alert" className="text-sm">{error}</p>}
-  {state.kind==='selection'&&choices.kind!=='loading'&&(choices.kind==='unavailable'?<div className="space-y-2"><p className="text-sm">{t('choicesUnavailable')}</p><Link href="/attendance/requests" className="inline-flex min-h-11 items-center text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('manual')}</Link></div>:list.length===0?<p className="text-sm">{t('none')}</p>:<form onSubmit={prepare} className="space-y-4"><p className="text-sm text-muted-foreground">{t('intro')}</p><fieldset disabled={busy!==null} className="space-y-4">
+  {state.kind==='selection'&&choices.kind!=='loading'&&(choices.kind==='unavailable'?<div className="space-y-2"><p className="text-sm">{t('choicesUnavailable')}</p><Link href="/attendance/requests" className="inline-flex min-h-11 items-center text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('manual')}</Link></div>:list.length===0?<p className="text-sm">{t('none')}</p>:<form onSubmit={prepare} className="space-y-4">{resolution&&<ProposalResolutionNote kind={resolution}/>}<p className="text-sm text-muted-foreground">{t('intro')}</p><fieldset disabled={busy!==null} className="space-y-4">
    <div><label htmlFor={`${id}-employment`} className="block text-sm font-medium">{t('employment')}</label><select id={`${id}-employment`} required value={employmentId} className={`${inputCls} mt-1`} onChange={event=>{setEmploymentId(event.target.value);setConsent(false);}}><option value="">{t('chooseEmployment')}</option>{list.map(row=><option key={row.employmentId} value={row.employmentId}>{employment(row)}</option>)}</select></div>
    <div><label htmlFor={`${id}-date`} className="block text-sm font-medium">{t('date')}</label><input id={`${id}-date`} type="date" required value={date} className={`${inputCls} mt-1`} onChange={event=>setDate(event.target.value)}/></div>
    <div className="grid gap-3 sm:grid-cols-2"><div><label htmlFor={`${id}-start`} className="block text-sm font-medium">{t('plannedStart')}</label><input id={`${id}-start`} type="time" required value={start} className={`${inputCls} mt-1`} onChange={event=>setStart(event.target.value)}/></div>
