@@ -299,6 +299,34 @@ describe('moderation, calibration and administrators', () => {
   });
 });
 
+describe('work lists (the kernel /performance queue and the assignments list)', () => {
+  const queue = async (ctx: SessionContext) => (await perf.managerPendingReviews(ctx)).map((r) => r.reviewId);
+  const assigned = async (ctx: SessionContext) => (await perf.onehrAssignments(ctx)).reviews.map((r) => r.id);
+
+  it('drops the review for the stored reviewer whose unit is out and lists it for the reviewer one level up', async () => {
+    expect([(await queue(f.U.M0)).includes(rid.S), (await queue(f.U.M1)).includes(rid.S)], 'non-vacuous: the stored reviewer before the rule').toEqual([true, false]);
+    const { saved } = await ruleX();
+    expect((await queue(f.U.M0)).includes(rid.S)).toBe(false);
+    expect((await queue(f.U.M1)).includes(rid.S)).toBe(true);
+    const row = (await perf.managerPendingReviews(f.U.M1)).find((r) => r.reviewId === rid.S)!;
+    expect(row).toMatchObject({ status: 'self_review', companyId: f.b.companyId });
+    expect(row.createdAt).toBeInstanceOf(Date);
+    expect(await perf.getOnehrReview(f.U.M0, rid.S), 'the review page no longer opens for the stored reviewer').toBeNull();
+    expect(await perf.getOnehrReview(f.U.M1, rid.S)).toMatchObject({ reviewer: true, manager: false, planReviewer: true });
+    await bringBack(f.a, f.cycleId, saved.ruleId);
+    expect([(await queue(f.U.M0)).includes(rid.S), (await queue(f.U.M1)).includes(rid.S)]).toEqual([true, false]);
+  });
+
+  it('does not list a subject who is out for the reviewer one level up, and the assignments list follows the effective reviewer', async () => {
+    await ruleX();
+    const q = await reviewOf(f.cycleId, f.P.Q);
+    expect(await effective(f.U.M1, q), 'non-vacuous: M1 is the walk\'s answer for Q too').toBe(true);
+    expect((await queue(f.U.M1)).includes(q), 'Q is out: no review of their own to work on').toBe(false);
+    expect((await assigned(f.U.M1)).includes(rid.S)).toBe(true);
+    expect((await assigned(f.U.M0)).includes(rid.S)).toBe(false);
+  });
+});
+
 describe('guards', () => {
   it('a cycle without an active rule keeps onehr_manager and the effective reviewer identical', async () => {
     const reviews = await owner.db.select({ id: schema.onehrReview.reviewId }).from(schema.onehrReview).where(eq(schema.onehrReview.cycleId, f.cycleId)).orderBy(asc(schema.onehrReview.reviewId));
