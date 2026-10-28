@@ -1,5 +1,6 @@
 import { AiGatewayError, type AiUsage, type AiRunObservation, type ResolvedAiConfig } from './types';
 import { readOpenRouterOptions } from './providers/openrouter-configuration';
+import { readGatewayOptions } from './providers/gateway-options';
 export type AiOperation='draft'|'conversation'|'image';
 export type AiAdmission={operation:AiOperation;reservedTokens:number;inputDigest?:string};
 export type AiGovernance={run<T>(request:AiAdmission,call:(record:(usage:AiUsage)=>void,observe?:(observation:AiRunObservation)=>void)=>Promise<T>,configuration?:ResolvedAiConfig):Promise<T>};
@@ -19,7 +20,10 @@ export function captureAiConfig(cfg: ResolvedAiConfig): ResolvedAiConfig {
   const run:AiGovernance['run']|undefined=source?.run.bind(source);
   const providerOptions=provider==='openrouter'?readOpenRouterOptions(cfg.providerOptions):undefined;
   if(provider!=='openrouter'&&cfg.providerOptions!==undefined)throw Error();
-  return Object.freeze({provider,model,apiKey,...(providerOptions?{providerOptions}:{}),
+  // 0661: only an ai_gateway carries an address, and it is re-validated here like OpenRouter's routes.
+  const gatewayBaseUrl=provider==='ai_gateway'?readGatewayOptions({version:1,baseUrl:cfg.gatewayBaseUrl}).baseUrl:undefined;
+  if(provider!=='ai_gateway'&&cfg.gatewayBaseUrl!==undefined)throw Error();
+  return Object.freeze({provider,model,apiKey,...(providerOptions?{providerOptions}:{}),...(gatewayBaseUrl?{gatewayBaseUrl}:{}),
    ...(run?{governance:Object.freeze({run})}:{})});
  }catch{throw new AiGatewayError('The current AI configuration could not be confirmed.');}
 }

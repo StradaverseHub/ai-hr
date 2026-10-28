@@ -59,7 +59,10 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
   useEffect(()=>{alive.current=true;return()=>{alive.current=false;evaluationSequence.current++;metadataSequence.current++;};},[]);
   function invalidateEvaluation(){evaluationSequence.current++;metadataSequence.current++;setEvaluation(null);setEvaluationFailed(false);}
 
-  const router=p.provider==='openrouter', routeId=useId();
+  const router=p.provider==='openrouter', gateway=p.provider==='ai_gateway', routeId=useId();
+  // 0661: a general gateway's https address; re-checked on save and before every call.
+  const [baseUrl,setBaseUrl]=useState(p.gatewayBaseUrl??'');
+  const gatewayOptions=gateway&&baseUrl.trim()?{version:1 as const,baseUrl:baseUrl.trim()}:undefined;
   const [routes,setRoutes]=useState(p.providerOptions?.routing.allowedProviders.join('\n')??'');
   const [fallbacks,setFallbacks]=useState(p.providerOptions?.routing.allowFallbacks??false);
   const [sort,setSort]=useState<'price'|'latency'>(p.providerOptions?.routing.sort??'latency');
@@ -71,7 +74,7 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
   function onTest() {
     if(metadataFlight.current)return;metadataFlight.current=true;const sequence=++metadataSequence.current;
     startTest(async()=>{
-      try{const res=await testConnectionAction({provider:p.provider,model,apiKey:key,...(router?{providerOptions:options}:{})});
+      try{const res=await testConnectionAction({provider:p.provider,model,apiKey:key,...(router?{providerOptions:options}:{}),...(gatewayOptions?{providerOptions:gatewayOptions}:{})});
         if(!alive.current||sequence!==metadataSequence.current)return;
         if(res.ok===true)toast.success(t(router?'metadataOk':'testOk'));else toast.error(t('testFail'));
       }catch{if(alive.current&&sequence===metadataSequence.current)toast.error(t('commandFailed'));}
@@ -95,8 +98,8 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
     });
   }
 
-  const canSave = (storable || p.configured) && (!router || Boolean(options&&model.trim())); // need the secret set to store a NEW key
-  const canTest = !testing && (Boolean(key) || p.isActive || router && p.candidateSaved) && (!router || Boolean(options&&model.trim())); // typed key, or test the active stored key
+  const canSave = (storable || p.configured) && (!router || Boolean(options&&model.trim())) && (!gateway || Boolean(gatewayOptions&&model.trim())); // need the secret set to store a NEW key
+  const canTest = !testing && (Boolean(key) || p.isActive || router && p.candidateSaved) && (!router || Boolean(options&&model.trim())) && (!gateway || Boolean(gatewayOptions&&model.trim())); // typed key, or test the active stored key
 
   return (
     <Card className="p-5">
@@ -119,7 +122,7 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
         <input type="hidden" name="provider" value={p.provider} />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label={t('model')}>
-            {router?<input name="model" required value={model} onChange={e=>{invalidateEvaluation();setModel(e.target.value);}}
+            {router||gateway?<input name="model" required value={model} onChange={e=>{invalidateEvaluation();setModel(e.target.value);}}
               autoComplete="off" spellCheck={false} className={inputCls+' min-h-11'} aria-describedby={routeId+'-model-help'}/>:<select name="model" value={model} onChange={(e)=>{invalidateEvaluation();setModel(e.target.value);}} className={inputCls}>
               {p.models.map((m) => (
                 <option key={m} value={m}>
@@ -128,6 +131,7 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
               ))}
             </select>}
             {router&&<p id={routeId+'-model-help'} className="mt-1 text-xs text-muted-foreground">{t('explicitRouterModel')}</p>}
+            {gateway&&<p id={routeId+'-model-help'} className="mt-1 text-xs text-muted-foreground">{t('gatewayModelHelp')}</p>}
           </Field>
           <Field label={t('apiKey')}>
             <input
@@ -142,6 +146,14 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
             />
           </Field>
         </div>
+        {gateway&&<div className="space-y-2">
+          <label htmlFor={routeId+'-gateway'} className="text-sm font-medium">{t('gatewayAddress')}</label>
+          <input id={routeId+'-gateway'} type="url" inputMode="url" required value={baseUrl} onChange={e=>{invalidateEvaluation();setBaseUrl(e.target.value);}}
+            placeholder="https://router.flatkey.ai/v1" autoComplete="off" spellCheck={false} aria-describedby={routeId+'-gateway-help'} className={inputCls+' min-h-11'}/>
+          <input type="hidden" name="providerOptions" value={gatewayOptions?JSON.stringify(gatewayOptions):''}/>
+          <p id={routeId+'-gateway-help'} className="text-xs text-muted-foreground">{t('gatewayAddressHelp')}</p>
+          <button type="button" onClick={()=>{invalidateEvaluation();setBaseUrl('https://router.flatkey.ai/v1');}} className="min-h-11 text-xs font-medium text-primary hover:underline">{t('gatewayPresetFlatkey')}</button>
+        </div>}
         {router&&<fieldset className="space-y-3 rounded-md border border-border p-3">
           <legend className="px-1 text-sm font-medium">{t('routingTitle')}</legend>
           <input type="hidden" name="providerOptions" value={options?JSON.stringify(options):''}/>

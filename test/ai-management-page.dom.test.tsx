@@ -15,7 +15,7 @@ vi.mock('next-intl/server',()=>({
 }));
 vi.mock('../lib/authz',()=>({requireAdmin:async()=>({tenantId:'fixture-tenant',userId:'fixture-user',roles:['group_admin'],grants:[]}),isGroupAdmin:()=>true,isAdmin:()=>true}));
 vi.mock('../core/entitlements',()=>({isModuleEnabledOrFalse:(_ctx:unknown,code:string)=>['employees','leave','payroll'].includes(code)}));
-vi.mock('../core/ai-management',()=>({AI_RUN_STATE_FILTERS:['blocked','failed'],aiManagementView:async()=>data.view}));
+vi.mock('../core/ai-management',()=>({AI_RUN_STATE_FILTERS:['blocked','failed'],aiManagementView:async()=>data.view,bulkAssistantDepartments:async()=>[{id:'44444444-4444-4444-8444-444444444444',label:'Fictional Finance · Fictional Zero Cap Sdn Bhd'}],previewBulkAssistantAccess:async()=>({matched:3,changing:2})}));
 vi.mock('../core/hr-orchestrator',()=>({orchestrationQueue:async()=>({})}));
 vi.mock('../app/control-tower/work-queue',()=>({OrchestrationWorkQueue:()=>null}));
 vi.mock('../lib/ai/spend-allocation',()=>({nanosToUsd:(value:string)=>value}));
@@ -30,7 +30,7 @@ const ZERO='11111111-1111-4111-8111-111111111111',CAPPED='33333333-3333-4333-833
 const use=(daily:number|null,maxConcurrent:number|null=null)=>({daily:{used:0,limit:daily,level:daily===0?'at':null},tokens:{used:0,limit:null,level:null},recorded:0,held:0,enabled:true,maxConcurrent,blocked:0,failed:0});
 function view(spend:{heldNanos:string;confirmedNanos:string|null}){
   const zero={id:ZERO,label:'Fictional Zero Cap Sdn Bhd',...use(0)},capped={id:CAPPED,label:'Fictional Capped Sdn Bhd',...use(5)};
-  return {provider:null,mayWriteUsers:true,features:[],usage:[],policies:[],userDefault:null,companies:[zero,capped],companyUsage:[],users:[],moreUsers:false,
+  return {provider:null,mayWriteUsers:true,features:[],usage:[],policies:[],userDefault:null,companies:[zero,capped],companyUsage:[],users:[],moreUsers:false,groups:[],
     attention:{companies:[zero],users:[],blocked:[]},runs:[],runFilter:{},legacyBudget:null,
     spend:{currency:'USD',unit:'nano_usd',semantics:'application_inference_allocation',certifiedLiveRoutes:0,reviewedCarrierRecords:0,liveCapability:'not_verified_here',
       budgets:[{scopeKey:'tenant',monthlyNanos:null,rootNanos:null}],unpricedUnknownRuns:0,breached:false,...spend}};
@@ -117,7 +117,17 @@ describe('AI management sub-menu',()=>{
     expect(map.textContent).toContain('1 of 2 ready');expect(map.textContent).toContain('0 of 1 ready');
     expect(within(map as HTMLElement).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/control-tower/agents/provider','/control-tower/agents/assistant','/control-tower/agents/features#ai-features','/control-tower/agents/features#ai-features','/control-tower/agents/allowances']);
   });
-  it('shows only closed save outcomes, never words carried in the address',async()=>{
+  it('names the group allowance a login follows, and reviews a bulk change with its count before anything is written',async()=>{
+  data.view={...view({heldNanos:'0',confirmedNanos:null}),users:[{id:'55555555-5555-4555-8555-555555555555',label:'Fictional Grouped Person',source:'group',group:{kind:'group_department',count:1,scopeKey:'group_department:44444444-4444-4444-8444-444444444444'},...use(10),assistantGranted:false}],
+   groups:[{kind:'group_department',scopeKey:'group_department:44444444-4444-4444-8444-444444444444',subjectId:'44444444-4444-4444-8444-444444444444',enabled:true,dailyRequests:10,monthlyTokens:null,maxConcurrent:null}]};
+  const page=await AiManagementScreen({session:session as never,section:'allowances',searchParams:Promise.resolve({bulk:'grant',bulkWho:'role:manager'})});
+  render(<NextIntlClientProvider locale="en" messages={en}>{page}</NextIntlClientProvider>);
+  expect(screen.getByText('Follows the Fictional Finance · Fictional Zero Cap Sdn Bhd (department) allowance')).toBeTruthy();
+  expect(screen.getByText('This will give 2 people access to the HR assistant.')).toBeTruthy();
+  const confirm=screen.getByRole('button',{name:'Give 2 people access'}).closest('form')!;
+  expect(JSON.parse(String(new FormData(confirm).get('scope')))).toEqual({kind:'role',role:'manager'});expect(new FormData(confirm).get('confirmed')).toBe('2');
+ });
+ it('shows only closed save outcomes, never words carried in the address',async()=>{
     const saved=await show({heldNanos:'0',confirmedNanos:null},'allowances',{toast:'saved'});
     expect(screen.getByRole('status')).toHaveTextContent(en.aiManagement.saved);saved.unmount();
     await show({heldNanos:'0',confirmedNanos:null},'allowances',{toast:'Your account is locked. Call 555-0100.'});

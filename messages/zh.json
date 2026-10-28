@@ -10965,7 +10965,11 @@
       "evaluationReportedUsage": "报告了令牌用量的调用：3 次中的 {count} 次",
       "evaluationCredits": "报告的账户点数：{value}",
       "evaluationUnknown": "未知",
-      "evaluationAccountingHelp": "这些是三次合成调用的供应商观测，并非发票、报价或支出上限。未知费用仍显示为未知。"
+      "evaluationAccountingHelp": "这些是三次合成调用的供应商观测，并非发票、报价或支出上限。未知费用仍显示为未知。",
+      "gatewayAddress": "网关地址",
+      "gatewayAddressHelp": "接受 OpenAI 风格请求的网关的 https 地址，以其 API 路径结尾（通常为 /v1）。仅限公网地址。每次调用前都会再次检查该地址。",
+      "gatewayPresetFlatkey": "使用 Flatkey 的地址",
+      "gatewayModelHelp": "请按网关列出的名称准确输入模型名。"
     },
     "attendancePolicy": {
       "pageTitle": "班次设置",
@@ -23017,7 +23021,18 @@
     "bulkSelectedChange": "针对下方勾选的人员",
     "bulkSelectedButton": "审核所选人员",
     "bulkAllMatching": "审核所有匹配“{q}”的人员",
-    "bulkDone": "HR 助手权限已更新。"
+    "bulkDone": "HR 助手权限已更新。",
+    "sourceGroup": "沿用 {group} 额度",
+    "groupRole": "{name} 角色",
+    "groupCompany": "{name}（公司）",
+    "groupDepartment": "{name}（部门）",
+    "groupUnknown": "已删除的分组",
+    "groupsTitle": "分组额度",
+    "groupsHelp": "为某个角色、某个公司或某个部门中的所有人设置同一额度。每个登录账号各自拥有一份上限，既不共享也不叠加。",
+    "groupsNone": "尚无分组额度。",
+    "groupRemove": "删除分组额度",
+    "groupAdd": "添加或更新分组",
+    "groupsPrecedence": "登录账号适用的额度：其个人额度；否则依次为所在部门、公司、角色的额度（同一层级有多个匹配时，适用最严格的上限）；否则为下方的默认额度。"
   },
   "accountEmail": {
     "title": "账户邮件发送记录",

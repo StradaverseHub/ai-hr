@@ -21,6 +21,7 @@ import { anthropicAdapter } from './providers/anthropic';
 import { googleAdapter } from './providers/google';
 import { openaiAdapter } from './providers/openai';
 import { openrouterAdapter } from './providers/openrouter';
+import { gatewayAdapter } from './providers/gateway';
 import { AiImageReadError,imageReadError,validImageBytes } from './image-protocol';
 import type { ImageReadArgs } from './types';
 export { AiImageReadError } from './image-protocol';
@@ -58,6 +59,7 @@ const ADAPTERS: Record<AiProvider, AiAdapter> = {
   openai: openaiAdapter,
   google: googleAdapter,
   openrouter: openrouterAdapter,
+  ai_gateway: gatewayAdapter,
 };
 
 function adapterFor(provider: AiProvider): AiAdapter {

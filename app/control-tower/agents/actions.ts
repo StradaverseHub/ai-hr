@@ -9,7 +9,7 @@ import { AuthRequiredError } from '@/lib/auth-errors';
 import { isAiFeature } from '@/lib/ai/features';
 import {setAiSpendBudget} from '@/core/ai-spend-management';
 import { aiManagementHref, type AiManagementSection } from './sections';
-import { applyBulkAssistantAccess, AiControlError, clearUserAllowance, parseAiAllowance, setAiAllowance, setAiFeature, setAssistantPermission } from '@/core/ai-management';
+import { applyBulkAssistantAccess, clearGroupAllowance, setGroupAllowance, AiControlError, clearUserAllowance, parseAiAllowance, setAiAllowance, setAiFeature, setAssistantPermission } from '@/core/ai-management';
 
 const PAGE = '/control-tower/agents';
 /** Refusals return to the section the admin was on, beside its error banner. */
@@ -105,4 +105,27 @@ export async function applyBulkAssistantAction(formData: FormData) {
   } catch (e) { redirect(failedAt('allowances', await commandError(e))); }
   revalidatePath(PAGE, 'layout'); revalidatePath('/assistant');
   redirect(aiManagementHref('allowances', { toast: 'bulk', anchor: '#ai-bulk' }));
+}
+
+/** A group allowance for a role, company or department ('kind:subject' from a closed select). */
+export async function setGroupAllowanceAction(formData: FormData) {
+  try {
+    const s = await getBrowserCommandSession();
+    const [kind, subject] = String(formData.get('group') ?? '').split('|');
+    await setGroupAllowance(s, { kind, subject, enabled: formData.get('enabled') === 'true',
+      dailyRequests: parseAiAllowance(String(formData.get('dailyRequests') ?? ''), 1000000),
+      monthlyTokens: parseAiAllowance(String(formData.get('monthlyTokens') ?? ''), 1000000000000),
+      maxConcurrent: parseAiAllowance(String(formData.get('maxConcurrent') ?? ''), 1000000) });
+  } catch (e) { redirect(failedAt('allowances', await commandError(e))); }
+  revalidatePath(PAGE, 'layout');
+  redirect(aiManagementHref('allowances', { toast: 'saved', anchor: '#ai-groups' }));
+}
+export async function clearGroupAllowanceAction(formData: FormData) {
+  try {
+    const s = await getBrowserCommandSession();
+    const [kind, subject] = String(formData.get('group') ?? '').split('|');
+    await clearGroupAllowance(s, { kind, subject });
+  } catch (e) { redirect(failedAt('allowances', await commandError(e))); }
+  revalidatePath(PAGE, 'layout');
+  redirect(aiManagementHref('allowances', { toast: 'saved', anchor: '#ai-groups' }));
 }

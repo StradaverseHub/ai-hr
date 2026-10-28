@@ -149,7 +149,7 @@ export const checkinStatusEnum = pgEnum('checkin_status', ['scheduled', 'complet
 export const feedbackRequestStatusEnum = pgEnum('feedback_request_status', ['pending', 'submitted', 'declined']);
 // Calibration session lifecycle (ADR-0022, Phase B slice 4). Advisory: admins propose, then COMMIT.
 export const calibrationStatusEnum = pgEnum('calibration_status', ['open', 'committed']);
-export const aiProviderEnum = pgEnum('ai_provider', ['anthropic', 'openai', 'google', 'openrouter']);
+export const aiProviderEnum = pgEnum('ai_provider', ['anthropic', 'openai', 'google', 'openrouter', 'ai_gateway']);
 // Performance lifecycle (ADR-0022 lifecycle extension). Goal-setting lock + closure classification.
 export const goalStageStatusEnum = pgEnum('perf_goal_stage_status', ['pending', 'locked']);
 export const goalApprovalEnum = pgEnum('perf_goal_approval', ['draft', 'proposed', 'approved']);

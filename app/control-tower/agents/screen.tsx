@@ -14,7 +14,7 @@ import { isZeroCapped } from '@/core/ai-zero-cap';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { MODULE_JOBS } from '@/lib/ai/module-jobs';
 import { aiManagementHref, availableAiManagementSections, type AiManagementSection } from './sections';
-import { applyBulkAssistantAction, clearUserAllowanceAction, setAiSpendBudgetAction, setAiAllowanceAction, setAiFeatureAction, setAssistantPermissionAction } from './actions';
+import { applyBulkAssistantAction, clearGroupAllowanceAction, setGroupAllowanceAction, clearUserAllowanceAction, setAiSpendBudgetAction, setAiAllowanceAction, setAiFeatureAction, setAssistantPermissionAction } from './actions';
 
 export type AiManagementSearch = {error?:string;toast?:string;q?:string;refresh?:string;runs?:string;feature?:string;planning?:string;bulk?:string;bulkWho?:string;bulkUser?:string|string[]};
 
@@ -72,7 +72,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
     {/* A login following the default is prefilled with the default's values: saving it creates an individual copy, never an accidental "no cap". */}
     <form action={setAiAllowanceAction} className={formGrid}>
       <input type="hidden" name="q" value={query}/><input type="hidden" name="kind" value="user"/><input type="hidden" name="subjectId" value={u.id}/>
-      <div className="min-w-0 md:col-span-2 xl:col-span-1"><p className="break-words font-medium">{u.label}</p>{meters(u)}{u.source&&<p className="text-xs text-muted-foreground">{t(u.source==='individual'?'sourceIndividual':'sourceDefault')}</p>}</div>
+      <div className="min-w-0 md:col-span-2 xl:col-span-1"><p className="break-words font-medium">{u.label}</p>{meters(u)}{u.source&&<p className="text-xs text-muted-foreground">{u.source==='group'&&u.group?t('sourceGroup',{group:groupLabel(u.group.scopeKey)}):t(u.source==='individual'?'sourceIndividual':'sourceDefault')}</p>}</div>
       {limitFields(u.label,u)}
     </form>
     <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
@@ -114,6 +114,13 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
   }
   const departments = section==='allowances' && view.mayWriteUsers ? await bulkAssistantDepartments(s).catch(()=>[]) : [];
   const roleLabels = await getTranslations('reports.permRole');
+  const ROLES = ['employee','manager','hr_admin','super_admin','payroll_partner','performance_comp_partner','performance_partner'] as const;
+  const groupLabel = (scopeKey:string) => {
+    const [kind, subject] = [scopeKey.slice(0, scopeKey.indexOf(':')), scopeKey.slice(scopeKey.indexOf(':') + 1)];
+    if (kind==='group_role') return t('groupRole',{name:(ROLES as readonly string[]).includes(subject)?roleLabels(subject as typeof ROLES[number]):subject});
+    if (kind==='group_company') return t('groupCompany',{name:view.companies.find(c=>c.id===subject)?.label??t('groupUnknown')});
+    return t('groupDepartment',{name:departments.find(d=>d.id===subject)?.label??t('groupUnknown')});
+  };
   const attentionEmpty = attention.companies.length+attention.users.length+attention.blocked.length===0;
   const filtered = !!(runFilter.state||runFilter.feature);
   const defaultUse = {daily:{used:0,limit:view.userDefault?.dailyRequests??null,level:null},tokens:{used:0,limit:view.userDefault?.monthlyTokens??null,level:null},enabled:view.userDefault?.enabled!==false,maxConcurrent:view.userDefault?.maxConcurrent??null};
@@ -190,6 +197,27 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
           <label className="text-xs">{t('bulkChange')}<select name="bulk" defaultValue="grant" className={`${inputCls} mt-1`}><option value="grant">{t('bulkGrant')}</option><option value="revoke">{t('bulkRevoke')}</option></select></label>
           <button type="submit" className={btnGhost}>{t('bulkReviewButton')}</button>
         </form>
+      </section>
+      <section id="ai-groups" aria-labelledby="ai-groups-heading" className="mt-4 scroll-mt-4 rounded-lg border border-border p-4">
+        <h3 id="ai-groups-heading" className="text-sm font-medium">{t('groupsTitle')}</h3><p className="mt-1 max-w-4xl text-xs text-muted-foreground">{t('groupsHelp')}</p>
+        {view.groups.length===0?<p className="mt-2 text-xs text-muted-foreground">{t('groupsNone')}</p>:<ul className="mt-2 divide-y divide-border">{view.groups.map(g=>{const key=`${g.kind}|${g.kind==='group_role'?g.scopeKey.slice('group_role:'.length):g.subjectId}`;const label=groupLabel(g.scopeKey);return <li key={g.scopeKey} id={`ai-group-${g.scopeKey.replace(/[^a-z0-9_-]/gi,'-')}`} className="scroll-mt-4 py-3">
+          <form action={setGroupAllowanceAction} className={formGrid}>
+            <input type="hidden" name="group" value={key}/>
+            <div className="min-w-0 md:col-span-2 xl:col-span-1"><p className="break-words text-sm font-medium">{label}</p></div>
+            {limitFields(label,{daily:{used:0,limit:g.dailyRequests,level:null},tokens:{used:0,limit:g.monthlyTokens,level:null},enabled:g.enabled,maxConcurrent:g.maxConcurrent??null})}
+          </form>
+          <form action={clearGroupAllowanceAction} className="mt-2"><input type="hidden" name="group" value={key}/><button type="submit" className="text-xs font-medium text-primary hover:underline" aria-label={`${label} · ${t('groupRemove')}`}>{t('groupRemove')}</button></form>
+        </li>;})}</ul>}
+        <form action={setGroupAllowanceAction} className={`mt-3 ${formGrid}`}>
+          <label className="min-w-0 text-xs md:col-span-2 xl:col-span-1">{t('groupAdd')}<select name="group" required defaultValue="" className={`${inputCls} mt-1 w-full`}>
+            <option value="" disabled>{t('bulkChoose')}</option>
+            {departments.length>0&&<optgroup label={t('bulkDepartment')}>{departments.map(d=><option key={d.id} value={`group_department|${d.id}`}>{d.label}</option>)}</optgroup>}
+            <optgroup label={t('bulkCompany')}>{view.companies.map(c=><option key={c.id} value={`group_company|${c.id}`}>{c.label}</option>)}</optgroup>
+            <optgroup label={t('bulkRole')}>{ROLES.map(r=><option key={r} value={`group_role|${r}`}>{roleLabels(r)}</option>)}</optgroup>
+          </select></label>
+          {limitFields(t('groupAdd'),{daily:{used:0,limit:null,level:null},tokens:{used:0,limit:null,level:null},enabled:true,maxConcurrent:null})}
+        </form>
+        <p className="mt-2 text-xs text-muted-foreground">{t('groupsPrecedence')}</p>
       </section>
       <section aria-labelledby="ai-user-default" className="mt-4 rounded-lg border border-border p-4">
         <h3 id="ai-user-default" className="scroll-mt-4 text-sm font-medium">{t('defaultAllowance')}</h3><p className="mt-1 max-w-4xl text-xs text-muted-foreground">{t('defaultHelp')}</p>

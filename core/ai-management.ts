@@ -52,6 +52,15 @@ export type AiRunFilter = {state?:typeof AI_RUN_STATE_FILTERS[number];feature?:A
 const DAY_START=sql`(date_trunc('day',now() at time zone 'Asia/Kuala_Lumpur') at time zone 'Asia/Kuala_Lumpur')`;
 const MONTH_START=sql`(date_trunc('month',now() at time zone 'Asia/Kuala_Lumpur') at time zone 'Asia/Kuala_Lumpur')`;
 type UserUsageRow = {id:string;label:string;daily_requests:string;monthly_tokens:string;held_tokens:string;blocked_today:string;last_reason:string|null};
+export const AI_GROUP_KINDS = ['group_department','group_company','group_role'] as const;
+export type AiGroupKind = (typeof AI_GROUP_KINDS)[number];
+const isGroupKind = (kind:string): kind is AiGroupKind => (AI_GROUP_KINDS as readonly string[]).includes(kind);
+type PolicyLimits = {enabled:boolean;dailyRequests:number|null;monthlyTokens:number|null;maxConcurrent?:number|null};
+/** Every row of one group tier binds, so for display the strictest value of each limit applies. */
+const strictest = (rows:readonly PolicyLimits[]):PolicyLimits => {
+  const least = (values:(number|null|undefined)[]) => { const set = values.filter((v):v is number=>v!=null); return set.length ? Math.min(...set) : null; };
+  return {enabled:rows.every(r=>r.enabled),dailyRequests:least(rows.map(r=>r.dailyRequests)),monthlyTokens:least(rows.map(r=>r.monthlyTokens)),maxConcurrent:least(rows.map(r=>r.maxConcurrent))};
+};
 export async function aiManagementView(ctx: SessionContext, search = '', runFilter: AiRunFilter = {}) {
   ctx=captureControlContext(ctx);assertAdmin(ctx);
   // Tenant key/routing configuration needs fresh group-wide authority (getAiConfigView). A company
@@ -85,12 +94,22 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
       return {...c,blocked:sum('blocked'),failed:sum('failed'),...allowanceUse(sum('daily_requests'),sum('monthly_tokens'),sum('held_tokens'),policies.find(p=>p.scopeKey===`company:${c.id}`))};
     });
     const userDefault = policies.find(p=>p.scopeKey==='user_default') ?? null;
-    // An individual policy REPLACES the tenant default for its login; the two never stack.
+    // Display mirror of app._ai_applicable_policies (0662), which admission applies: an individual policy;
+    // else the most specific matching group tier (department, company, role), every row of that tier
+    // binding so the strictest limit wins; else the tenant default. They never stack.
+    const groups = policies.filter(p=>isGroupKind(p.kind));
+    let memberships = new Map<string,{roles:string[];departments:string[];companies:string[]}>();
     const effectiveUserPolicy = (id:string) => {
       const own = policies.find(p=>p.scopeKey===`user:${id}`);
-      return own ? {source:'individual' as const,policy:own} : userDefault ? {source:'default' as const,policy:userDefault} : {source:null,policy:undefined};
+      if (own) return {source:'individual' as const,policy:own,group:null};
+      const m = memberships.get(id);
+      if (m) for (const [kind,subjects] of [['group_department',m.departments],['group_company',m.companies],['group_role',m.roles.map(role=>`role:${role}`)]] as const) {
+        const tier = groups.filter(g=>g.kind===kind&&(kind==='group_role'?subjects.includes(g.scopeKey.slice('group_'.length)):subjects.includes(g.subjectId??'')));
+        if (tier.length) return {source:'group' as const,policy:strictest(tier),group:{kind,count:tier.length,scopeKey:tier[0].scopeKey}};
+      }
+      return userDefault ? {source:'default' as const,policy:userDefault,group:null} : {source:null,policy:undefined,group:null};
     };
-    const toUser = (r:UserUsageRow) => {const {source,policy}=effectiveUserPolicy(r.id);return {id:r.id,label:r.label,source,...allowanceUse(Number(r.daily_requests),Number(r.monthly_tokens),Number(r.held_tokens),policy)};};
+    const toUser = (r:UserUsageRow) => {const {source,policy,group}=effectiveUserPolicy(r.id);return {id:r.id,label:r.label,source,group,...allowanceUse(Number(r.daily_requests),Number(r.monthly_tokens),Number(r.held_tokens),policy)};};
     const pattern = `%${search.trim().slice(0,100).replace(/[\\%_]/g, '\\$&')}%`;
     // Heaviest users first, computed over every matching login rather than an alphabetical first page.
     const userRows = isGroupAdmin(ctx) ? Array.from(await tx.execute<UserUsageRow & {assistant_granted:boolean}>(sql`
@@ -103,7 +122,6 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
         from ai_model_run r where r.tenant_id=u.tenant_id and r.user_id=u.id and r.state<>'blocked' and r.started_at>=${MONTH_START}) a on true
       where u.tenant_id=${ctx.tenantId}::uuid and(p.full_name ilike ${pattern} or u.workos_user_id ilike ${pattern})
       order by coalesce(a.monthly_tokens+a.held_tokens,0) desc,coalesce(a.daily_requests,0) desc,p.full_name asc,u.id asc limit 51`)) : [];
-    const users = userRows.slice(0,50).map(r=>({...toUser(r),assistantGranted:r.assistant_granted===true}));
     // Every login active this month, so attention is never limited to the visible page.
     const activity = isGroupAdmin(ctx) ? Array.from(await tx.execute<UserUsageRow>(sql`
       select r.user_id as id,coalesce(p.full_name,u.workos_user_id) as label,
@@ -123,6 +141,19 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
       select u.id,coalesce(p.full_name,u.workos_user_id) as label,0 as daily_requests,0 as monthly_tokens,0 as held_tokens,0 as blocked_today,null as last_reason
       from app_user u left join person p on p.id=u.person_id
       where u.tenant_id=${ctx.tenantId}::uuid and u.id in (${sql.join(quietCapped.map(id=>sql`${id}::uuid`),sql`,`)}) order by u.id`)) : [];
+    // Group memberships for every login shown or listed in attention, read the way 0662 admission reads them.
+    const shownIds = [...new Set([...userRows.slice(0,50),...activity,...quietRows].map(r=>r.id))];
+    if (groups.length && shownIds.length) memberships = new Map(Array.from(await tx.execute<{id:string;roles:string[];departments:string[];companies:string[]}>(sql`
+      select u.id,
+       array(select r.role::text from role_assignment r where r.tenant_id=u.tenant_id and r.app_user_id=u.id order by 1) as roles,
+       array(select a.department_id::text from employment e join assignment a on a.employment_id=e.id and a.tenant_id=e.tenant_id
+        where e.tenant_id=u.tenant_id and e.person_id=u.person_id and a.superseded_at is null and a.valid_from<=(now() at time zone 'Asia/Kuala_Lumpur')::date
+        and (a.valid_to is null or a.valid_to>=(now() at time zone 'Asia/Kuala_Lumpur')::date) order by 1) as departments,
+       array(select coalesce(a.company_id,e.company_id)::text from employment e join assignment a on a.employment_id=e.id and a.tenant_id=e.tenant_id
+        where e.tenant_id=u.tenant_id and e.person_id=u.person_id and a.superseded_at is null and a.valid_from<=(now() at time zone 'Asia/Kuala_Lumpur')::date
+        and (a.valid_to is null or a.valid_to>=(now() at time zone 'Asia/Kuala_Lumpur')::date) order by 1) as companies
+      from app_user u where u.tenant_id=${ctx.tenantId}::uuid and u.id in (${sql.join(shownIds.map(id=>sql`${id}::uuid`),sql`,`)})`)).map(r=>[r.id,{roles:r.roles??[],departments:r.departments??[],companies:r.companies??[]}]));
+    const users = userRows.slice(0,50).map(r=>({...toUser(r),assistantGranted:r.assistant_granted===true}));
     const runs = isGroupAdmin(ctx) ? await tx.select({id:aiModelRun.id,actor:sql<string|null>`coalesce(${person.fullName},${appUser.workosUserId})`,feature:aiModelRun.featureId,operation:aiModelRun.operation,provider:aiModelRun.provider,model:aiModelRun.model,state:aiModelRun.state,reason:aiModelRun.reason,actual:aiModelRun.actualTokens,reserved:aiModelRun.reservedTokens,startedAt:aiModelRun.startedAt,finishedAt:aiModelRun.finishedAt,reportedCredits:aiModelRun.openrouterAccountCostCredits,roundTripMs:aiModelRun.observedRoundTripMs,observationStatus:aiModelRun.providerObservationStatus})
       .from(aiModelRun).leftJoin(appUser,eq(aiModelRun.userId,appUser.id)).leftJoin(person,eq(appUser.personId,person.id))
       .where(and(runFilter.state?eq(aiModelRun.state,runFilter.state):undefined,runFilter.feature?eq(aiModelRun.featureId,runFilter.feature):undefined))
@@ -135,7 +166,7 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
       blocked: activity.filter(r=>Number(r.blocked_today)>0).map(r=>({id:r.id,label:r.label,count:Number(r.blocked_today),reason:r.last_reason}))
         .sort((a,b)=>b.count-a.count||a.label.localeCompare(b.label)),
     };
-    return {spend:await aiSpendStatusTx(tx,ctx),features,policies,userDefault,companies,companyUsage,usage:Array.from(usage),users,moreUsers:userRows.length>50,attention,runs,runFilter,provider:selectedProvider,mayWriteUsers:isGroupAdmin(ctx),legacyBudget:legacyBudgets[0]??null};
+    return {spend:await aiSpendStatusTx(tx,ctx),features,policies,userDefault,companies,companyUsage,usage:Array.from(usage),users,moreUsers:userRows.length>50,attention,groups:isGroupAdmin(ctx)?groups:[],runs,runFilter,provider:selectedProvider,mayWriteUsers:isGroupAdmin(ctx),legacyBudget:legacyBudgets[0]??null};
   });
 }
 
@@ -310,5 +341,48 @@ export async function bulkAssistantDepartments(ctx: SessionContext): Promise<{ i
       from public.department d join public.company c on c.id=d.company_id and c.tenant_id=d.tenant_id
       where d.tenant_id=${ctx.tenantId}::uuid and d.archived_at is null order by c.legal_name, coalesce(nullif(trim(d.label),''),d.name), d.id limit 500`);
     return Array.from(rows);
+  });
+}
+
+/** A group allowance: one per role, company or department, applied to each login in it (0662). Group
+ * administrators only; the database write policy and guard re-check the scope and the subject. */
+const groupScopeKey = (kind:AiGroupKind,subject:string) => `${kind}:${subject}`;
+function groupTarget(kind:unknown,subject:unknown):{kind:AiGroupKind;subject:string}{
+  if (kind==='group_role' && typeof subject==='string' && (BULK_ROLES as readonly string[]).includes(subject)) return {kind,subject};
+  if ((kind==='group_company'||kind==='group_department') && typeof subject==='string' && UUID.test(subject)) return {kind,subject:subject.toLowerCase()};
+  throw new AiControlError('Unknown allowance scope.');
+}
+export async function setGroupAllowance(ctx:SessionContext,p:{kind:unknown;subject:unknown;dailyRequests:number|null;monthlyTokens:number|null;maxConcurrent?:number|null;enabled:boolean}){
+  ctx = captureControlContext(ctx);
+  assertAdmin(ctx);
+  if(!isGroupAdmin(ctx))throw new AiControlError('Only a group administrator may change group allowances.');
+  const target = groupTarget(p.kind,p.subject);
+  if(typeof p.enabled!=='boolean')throw new AiControlError('Unknown allowance scope.');
+  for(const [value,max] of [[p.dailyRequests,1000000],[p.monthlyTokens,1000000000000],[p.maxConcurrent??null,1000000]] as const){if(value!==null&&(!Number.isSafeInteger(value)||value<0||value>max))throw new AiControlError('Invalid AI allowance.');}
+  await withTenant(ctx,async tx=>{
+    await currentControlAdminTx(tx, ctx, true);
+    if(target.kind!=='group_role'){
+      const [found]=await tx.execute<{ok:boolean}>(target.kind==='group_company'
+        ?sql`select exists(select 1 from public.company where id=${target.subject}::uuid and tenant_id=${ctx.tenantId}::uuid) as ok`
+        :sql`select exists(select 1 from public.department where id=${target.subject}::uuid and tenant_id=${ctx.tenantId}::uuid and archived_at is null) as ok`);
+      if(found?.ok!==true)throw new AiControlError('This company or department is outside your administrative scope.');
+    }
+    const values={enabled:p.enabled,dailyRequests:p.dailyRequests,monthlyTokens:p.monthlyTokens,maxConcurrent:p.maxConcurrent??null,updatedByUserId:ctx.userId??null,updatedAt:sql`now()`};
+    await tx.insert(aiControlPolicy).values({tenantId:ctx.tenantId,scopeKey:groupScopeKey(target.kind,target.subject),kind:target.kind,subjectId:target.kind==='group_role'?null:target.subject,...values})
+      .onConflictDoUpdate({target:[aiControlPolicy.tenantId,aiControlPolicy.scopeKey],set:values});
+    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'ai-control',aggregateId:target.kind==='group_role'?ctx.tenantId:target.subject,eventType:'ai-control.allowance-changed',actor:actorOf(ctx),payload:{kind:target.kind,subject:target.subject,enabled:p.enabled,dailyRequests:p.dailyRequests,monthlyTokens:p.monthlyTokens,maxConcurrent:p.maxConcurrent??null}});
+  });
+}
+/** Removes a group allowance; its logins fall back to the next tier. The values stay in the event history. */
+export async function clearGroupAllowance(ctx:SessionContext,p:{kind:unknown;subject:unknown}){
+  ctx = captureControlContext(ctx);
+  assertAdmin(ctx);
+  if(!isGroupAdmin(ctx))throw new AiControlError('Only a group administrator may change group allowances.');
+  const target = groupTarget(p.kind,p.subject);
+  await withTenant(ctx,async tx=>{
+    await currentControlAdminTx(tx, ctx, true);
+    const [removed]=await tx.delete(aiControlPolicy).where(and(eq(aiControlPolicy.tenantId,ctx.tenantId),eq(aiControlPolicy.scopeKey,groupScopeKey(target.kind,target.subject)),eq(aiControlPolicy.kind,target.kind))).returning();
+    if(!removed)throw new AiControlError('There is no allowance for this group.');
+    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'ai-control',aggregateId:target.kind==='group_role'?ctx.tenantId:target.subject,eventType:'ai-control.allowance-cleared',actor:actorOf(ctx),payload:{kind:target.kind,subject:target.subject,enabled:removed.enabled,dailyRequests:removed.dailyRequests,monthlyTokens:removed.monthlyTokens,maxConcurrent:removed.maxConcurrent}});
   });
 }

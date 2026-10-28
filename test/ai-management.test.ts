@@ -6,7 +6,7 @@ import * as schema from '../db/schema';
 import { resolveActiveAiConfig } from '../core/ai-config';
 import { bindAiSpendTaskTx } from '../core/ai-spend-task';
 import type { AiFeatureId } from '../lib/ai/features';
-import { aiManagementView, allowanceLevel, applyBulkAssistantAccess, clearUserAllowance, parseAiAllowance, previewBulkAssistantAccess, setAiAllowance, setAiFeature, setAssistantPermission } from '../core/ai-management';
+import { aiManagementView, allowanceLevel, applyBulkAssistantAccess, clearGroupAllowance, setGroupAllowance, clearUserAllowance, parseAiAllowance, previewBulkAssistantAccess, setAiAllowance, setAiFeature, setAssistantPermission } from '../core/ai-management';
 import { generateDraft, converse, readImage } from '../lib/ai';
 import { openaiAdapter } from '../lib/ai/providers/openai';
 import { askAssistant } from '../core/assistant';
@@ -387,5 +387,53 @@ describe('bulk HR assistant access',()=>{
   await expect(previewBulkAssistantAccess(scoped,{kind:'role',role:'employee'},true)).rejects.toThrow('group administrator');
   await expect(applyBulkAssistantAccess(scoped,{kind:'role',role:'employee'},true,0)).rejects.toThrow('group administrator');
   for(const bad of [{kind:'role',role:'operator'},{kind:'company',companyId:'not-a-uuid'},{kind:'users',userIds:[]},{kind:'search',q:'  '},{kind:'everyone'}])await expect(previewBulkAssistantAccess(group,bad,true)).rejects.toThrow('Choose who');
+ });
+});
+
+describe('group allowances (0662): individual, then department, company, role, then default',()=>{
+ const person=async(name:string,departmentId:string,role:'employee'|'manager'='employee')=>{
+  const employment=await hireEmployee(group,{person:{fullName:name,primaryEmail:`${name.toLowerCase().replace(/[^a-z]/g,'')}@fixture.test`},companyId:base.companyId,departmentId,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
+  const id=await createAppUser(base.tenantId,employment.personId,role);
+  return {id,ctx:{tenantId:base.tenantId,userId:id,roles:[role],grants:[{role,companyId:null}],entitlements:group.entitlements} as SessionContext};
+ };
+ const groupLimit=(kind:string,subject:string,daily:number|null)=>setGroupAllowance(group,{kind,subject,dailyRequests:daily,monthlyTokens:null,enabled:true});
+ it('applies the most specific matching tier, ignoring looser ones, and the strictest row within a tier',async()=>{
+  const a=await person('Group Alpha',base.deptA);
+  await setAiAllowance(group,{kind:'user_default',dailyRequests:100,monthlyTokens:null,enabled:true});
+  await groupLimit('group_role','employee',5);await groupLimit('group_company',base.companyId,3);await groupLimit('group_department',base.deptA,1);
+  // Department (1/day) wins over company (3) and role (5); the default (100) is not consulted.
+  await expect(call(a.ctx)).resolves.toBe('draft');await expect(call(a.ctx)).rejects.toThrow('daily');
+  await clearGroupAllowance(group,{kind:'group_department',subject:base.deptA});
+  // Company tier next: two more calls today (3 in total), then refused.
+  await expect(call(a.ctx)).resolves.toBe('draft');await expect(call(a.ctx)).resolves.toBe('draft');await expect(call(a.ctx)).rejects.toThrow('daily');
+  // An individual allowance replaces every group.
+  await setAiAllowance(group,{kind:'user',subjectId:a.id,dailyRequests:10,monthlyTokens:null,enabled:true});
+  await expect(call(a.ctx)).resolves.toBe('draft');
+ });
+ it('counts each login separately under the same group, and binds the strictest of two matching role groups',async()=>{
+  const one=await person('Group Beta One',base.deptB),two=await person('Group Beta Two',base.deptB,'manager');
+  await owner.db.insert(schema.roleAssignment).values({tenantId:base.tenantId,appUserId:two.id,role:'employee',companyId:null});
+  await groupLimit('group_role','employee',2);await groupLimit('group_role','manager',1);
+  await expect(call(one.ctx)).resolves.toBe('draft');await expect(call(one.ctx)).resolves.toBe('draft');await expect(call(one.ctx)).rejects.toThrow('daily');
+  // The manager-and-employee login: both role rows bind, so the stricter one (1) stops the second call.
+  await expect(call(two.ctx)).resolves.toBe('draft');await expect(call(two.ctx)).rejects.toThrow('daily');
+  const view=await aiManagementView(group,'Group Beta');
+  expect(view.users.find(u=>u.id===two.id)).toMatchObject({source:'group',daily:{limit:1}});
+  expect(view.users.find(u=>u.id===one.id)).toMatchObject({source:'group',daily:{limit:2}});
+ });
+ it('falls back to the default when the group is removed, and refuses company administrators, unknown scopes and outside subjects',async()=>{
+  const c=await person('Group Gamma',base.deptA);
+  await setAiAllowance(group,{kind:'user_default',dailyRequests:1,monthlyTokens:null,enabled:true});
+  await groupLimit('group_department',base.deptA,5);await clearGroupAllowance(group,{kind:'group_department',subject:base.deptA});
+  await expect(call(c.ctx)).resolves.toBe('draft');await expect(call(c.ctx)).rejects.toThrow('daily');
+  const scoped:SessionContext={...group,grants:[{role:'hr_admin',companyId:base.companyId}]};
+  await expect(setGroupAllowance(scoped,{kind:'group_company',subject:base.companyId,dailyRequests:1,monthlyTokens:null,enabled:true})).rejects.toThrow('group administrator');
+  await expect(withTenant(scoped,tx=>tx.insert(schema.aiControlPolicy).values({tenantId:base.tenantId,kind:'group_company',subjectId:base.companyId,scopeKey:`group_company:${base.companyId}`,dailyRequests:0}))).rejects.toMatchObject({cause:{code:'42501'}});
+  const foreign=await seedBase();
+  await expect(groupLimit('group_company',foreign.companyId,1)).rejects.toThrow('outside your administrative scope');
+  for(const [kind,subject] of [['group_role','operator'],['group_company','not-a-uuid'],['group_everyone','x']])await expect(groupLimit(kind,subject,1)).rejects.toThrow('Unknown allowance scope');
+  await expect(owner.db.insert(schema.aiControlPolicy).values({tenantId:base.tenantId,kind:'group_role',scopeKey:'group_role:operator'})).rejects.toMatchObject({cause:{code:'23514'}});
+  const events=Array.from(await owner.db.execute<{event_type:string;payload:{kind:string}}>(sql`select event_type,payload from domain_event where tenant_id=${base.tenantId}::uuid and aggregate_type='ai-control' and payload->>'kind' like 'group_%' order by occurred_at,id`));
+  expect(events.map(e=>e.event_type)).toEqual(['ai-control.allowance-changed','ai-control.allowance-cleared']);
  });
 });

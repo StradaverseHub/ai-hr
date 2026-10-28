@@ -3711,6 +3711,20 @@
       "when": 1793140000000,
       "tag": "0660_payroll_history_adopt_ordinary",
       "breakpoints": true
+    },
+    {
+      "idx": 645,
+      "version": "7",
+      "when": 1793150000000,
+      "tag": "0661_ai_gateway_provider",
+      "breakpoints": true
+    },
+    {
+      "idx": 646,
+      "version": "7",
+      "when": 1793160000000,
+      "tag": "0662_ai_group_allowance",
+      "breakpoints": true
     }
   ]
 }

@@ -8,6 +8,7 @@ import { AiGatewayError, type ResolvedAiConfig } from '../lib/ai/types';
 import { decryptSecret } from '../lib/ai/crypto';
 import { envFallbackConfig, isProvider } from '../lib/ai/registry';
 import { readOpenRouterOptions } from '../lib/ai/providers/openrouter-configuration';
+import { readGatewayOptions } from '../lib/ai/providers/gateway-options';
 import { OpenRouterTransportConfiguration } from '../lib/ai/providers/openrouter-transport';
 import { assertAiPrincipalTx } from './ai-principal';
 import { currentAiProviderAdminTx } from './ai-provider-authority';
@@ -29,6 +30,7 @@ const principal = (ctx: SessionContext) => digest([ctx.tenantId, ctx.userId, ctx
 const parameters = (cfg: ResolvedAiConfig) => digest([
   cfg.provider, cfg.model, cfg.apiKey,
   cfg.provider === 'openrouter' ? readOpenRouterOptions(cfg.providerOptions) : cfg.providerOptions ?? null,
+  cfg.gatewayBaseUrl ?? null,
 ]);
 
 /** Fresh actual login and v2 resolver checks precede decryption or environment fallback. Resolver
@@ -48,12 +50,15 @@ export async function resolveAiProviderSnapshotTx(tx: Tx, ctx: SessionContext): 
     if (!isProvider(row.provider) || typeof row.model !== 'string' || !row.model.trim() || row.model !== row.model.trim()) return refuse();
     let providerOptions: ResolvedAiConfig['providerOptions'];
     try {
+      let gatewayBaseUrl: string | undefined;
       if (row.provider === 'openrouter') providerOptions = readOpenRouterOptions(row.provider_options);
+      // 0661: the gateway's address is its only option; it is re-validated on read and before every call.
+      else if (row.provider === 'ai_gateway') gatewayBaseUrl = readGatewayOptions(row.provider_options).baseUrl;
       else if (!row.provider_options || typeof row.provider_options !== 'object' || Array.isArray(row.provider_options) || Object.keys(row.provider_options).length) return refuse();
       const apiKey = decryptSecret(row.api_key_ciphertext, ctx.tenantId);
       if (row.provider === 'openrouter' && !OpenRouterTransportConfiguration.safeParse({ model: row.model, apiKey, routing: providerOptions!.routing }).success) return refuse();
-      configuration = Object.freeze({ provider: row.provider, model: row.model, apiKey, ...(providerOptions ? { providerOptions } : {}) });
-      fingerprint = digest(['stored-v1', ctx.tenantId, row.provider, row.model, row.api_key_ciphertext, providerOptions ?? {}]);
+      configuration = Object.freeze({ provider: row.provider, model: row.model, apiKey, ...(providerOptions ? { providerOptions } : {}), ...(gatewayBaseUrl ? { gatewayBaseUrl } : {}) });
+      fingerprint = digest(['stored-v1', ctx.tenantId, row.provider, row.model, row.api_key_ciphertext, providerOptions ?? gatewayBaseUrl ?? {}]);
     } catch { return refuse(); }
   } else {
     const fallback = envFallbackConfig();

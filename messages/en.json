@@ -10965,7 +10965,11 @@
       "evaluationReportedUsage": "Calls with reported token usage: {count} of 3",
       "evaluationCredits": "Reported account credits: {value}",
       "evaluationUnknown": "Unknown",
-      "evaluationAccountingHelp": "These are provider observations for the three synthetic calls, not an invoice, price quote or spending cap. Unknown cost remains unknown."
+      "evaluationAccountingHelp": "These are provider observations for the three synthetic calls, not an invoice, price quote or spending cap. Unknown cost remains unknown.",
+      "gatewayAddress": "Gateway address",
+      "gatewayAddressHelp": "The https address of a gateway that accepts OpenAI-style requests, ending in its API path (often /v1). Public addresses only. The address is checked again before every call.",
+      "gatewayPresetFlatkey": "Use Flatkey’s address",
+      "gatewayModelHelp": "Enter the model name exactly as the gateway lists it."
     },
     "attendancePolicy": {
       "pageTitle": "Shift settings",
@@ -23017,7 +23021,18 @@
     "bulkSelectedChange": "For the people ticked below",
     "bulkSelectedButton": "Review for selected",
     "bulkAllMatching": "Review for everyone matching “{q}”",
-    "bulkDone": "HR assistant access was updated."
+    "bulkDone": "HR assistant access was updated.",
+    "sourceGroup": "Follows the {group} allowance",
+    "groupRole": "{name} role",
+    "groupCompany": "{name} (company)",
+    "groupDepartment": "{name} (department)",
+    "groupUnknown": "a removed group",
+    "groupsTitle": "Group allowances",
+    "groupsHelp": "Set one allowance for everyone with a role, in a company or in a department. Each login gets its own copy of the limits; they are never shared or added together.",
+    "groupsNone": "No group allowances yet.",
+    "groupRemove": "Remove group allowance",
+    "groupAdd": "Add or update a group",
+    "groupsPrecedence": "Which allowance applies to a login: its individual allowance; otherwise its department’s, then its company’s, then its role’s (when several match at the same level, the strictest limit applies); otherwise the default below."
   },
   "accountEmail": {
     "title": "Account email deliveries",

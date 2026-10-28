@@ -10965,7 +10965,11 @@
       "evaluationReportedUsage": "Cuộc gọi có báo cáo token: {count} trên 3",
       "evaluationCredits": "Tín dụng tài khoản đã báo cáo: {value}",
       "evaluationUnknown": "Chưa biết",
-      "evaluationAccountingHelp": "Đây là quan sát nhà cung cấp cho ba cuộc gọi tổng hợp, không phải hóa đơn, báo giá hay giới hạn chi tiêu. Chi phí chưa biết vẫn là chưa biết."
+      "evaluationAccountingHelp": "Đây là quan sát nhà cung cấp cho ba cuộc gọi tổng hợp, không phải hóa đơn, báo giá hay giới hạn chi tiêu. Chi phí chưa biết vẫn là chưa biết.",
+      "gatewayAddress": "Địa chỉ cổng",
+      "gatewayAddressHelp": "Địa chỉ https của cổng nhận yêu cầu kiểu OpenAI, kết thúc bằng đường dẫn API (thường là /v1). Chỉ địa chỉ công khai. Địa chỉ được kiểm tra lại trước mỗi lần gọi.",
+      "gatewayPresetFlatkey": "Dùng địa chỉ của Flatkey",
+      "gatewayModelHelp": "Nhập tên mô hình đúng như cổng liệt kê."
     },
     "attendancePolicy": {
       "pageTitle": "Cài đặt ca làm việc",
@@ -23017,7 +23021,18 @@
     "bulkSelectedChange": "Cho những người được đánh dấu bên dưới",
     "bulkSelectedButton": "Xem lại cho người đã chọn",
     "bulkAllMatching": "Xem lại cho mọi người khớp “{q}”",
-    "bulkDone": "Đã cập nhật quyền dùng trợ lý HR."
+    "bulkDone": "Đã cập nhật quyền dùng trợ lý HR.",
+    "sourceGroup": "Theo hạn mức {group}",
+    "groupRole": "Vai trò {name}",
+    "groupCompany": "{name} (công ty)",
+    "groupDepartment": "{name} (phòng ban)",
+    "groupUnknown": "một nhóm đã bị xóa",
+    "groupsTitle": "Hạn mức nhóm",
+    "groupsHelp": "Đặt một hạn mức cho mọi người có cùng vai trò, trong một công ty hoặc một phòng ban. Mỗi tài khoản có bản giới hạn riêng; không dùng chung và không cộng dồn.",
+    "groupsNone": "Chưa có hạn mức nhóm.",
+    "groupRemove": "Xóa hạn mức nhóm",
+    "groupAdd": "Thêm hoặc cập nhật nhóm",
+    "groupsPrecedence": "Hạn mức áp dụng cho một tài khoản: hạn mức riêng; nếu không có thì của phòng ban, rồi công ty, rồi vai trò (nếu nhiều nhóm cùng cấp khớp, áp dụng giới hạn chặt nhất); nếu không có thì dùng mặc định bên dưới."
   },
   "accountEmail": {
     "title": "Lịch sử gửi email tài khoản",

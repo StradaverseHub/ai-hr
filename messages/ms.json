@@ -10965,7 +10965,11 @@
       "evaluationReportedUsage": "Panggilan dengan penggunaan token dilaporkan: {count} daripada 3",
       "evaluationCredits": "Kredit akaun dilaporkan: {value}",
       "evaluationUnknown": "Tidak diketahui",
-      "evaluationAccountingHelp": "Ini ialah pemerhatian penyedia bagi tiga panggilan sintetik, bukan invois, sebut harga atau had perbelanjaan. Kos tidak diketahui kekal tidak diketahui."
+      "evaluationAccountingHelp": "Ini ialah pemerhatian penyedia bagi tiga panggilan sintetik, bukan invois, sebut harga atau had perbelanjaan. Kos tidak diketahui kekal tidak diketahui.",
+      "gatewayAddress": "Alamat gerbang",
+      "gatewayAddressHelp": "Alamat https gerbang yang menerima permintaan gaya OpenAI, berakhir dengan laluan API-nya (selalunya /v1). Alamat awam sahaja. Alamat disemak semula sebelum setiap panggilan.",
+      "gatewayPresetFlatkey": "Guna alamat Flatkey",
+      "gatewayModelHelp": "Masukkan nama model tepat seperti yang disenaraikan oleh gerbang."
     },
     "attendancePolicy": {
       "pageTitle": "Tetapan syif",
@@ -23017,7 +23021,18 @@
     "bulkSelectedChange": "Untuk orang yang ditanda di bawah",
     "bulkSelectedButton": "Semak untuk yang dipilih",
     "bulkAllMatching": "Semak untuk semua yang sepadan dengan “{q}”",
-    "bulkDone": "Akses pembantu HR telah dikemas kini."
+    "bulkDone": "Akses pembantu HR telah dikemas kini.",
+    "sourceGroup": "Mengikut peruntukan {group}",
+    "groupRole": "Peranan {name}",
+    "groupCompany": "{name} (syarikat)",
+    "groupDepartment": "{name} (jabatan)",
+    "groupUnknown": "kumpulan yang telah dibuang",
+    "groupsTitle": "Peruntukan kumpulan",
+    "groupsHelp": "Tetapkan satu peruntukan untuk semua orang dengan sesuatu peranan, dalam sesebuah syarikat atau jabatan. Setiap log masuk mendapat salinan hadnya sendiri; had tidak dikongsi atau dicampur.",
+    "groupsNone": "Belum ada peruntukan kumpulan.",
+    "groupRemove": "Buang peruntukan kumpulan",
+    "groupAdd": "Tambah atau kemas kini kumpulan",
+    "groupsPrecedence": "Peruntukan yang terpakai bagi log masuk: peruntukan individunya; jika tiada, peruntukan jabatannya, kemudian syarikatnya, kemudian peranannya (jika beberapa sepadan pada tahap yang sama, had paling ketat terpakai); jika tiada, lalai di bawah."
   },
   "accountEmail": {
     "title": "Penghantaran e-mel akaun",

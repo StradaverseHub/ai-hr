@@ -36,6 +36,7 @@ import { encryptSecret, keyLast4 } from '../lib/ai/crypto';
 import { currentAiProviderAdminTx } from './ai-provider-authority';
 import { activateOpenRouterCandidateTx, providerCandidatesTx, removeOpenRouterCandidateTx, saveOpenRouterCandidateTx } from './ai-provider-readiness';
 import { readOpenRouterOptions, type OpenRouterOptions } from '../lib/ai/providers/openrouter-configuration';
+import { readGatewayOptions } from '../lib/ai/providers/gateway-options';
 import { OpenRouterModel } from '../lib/ai/providers/openrouter-transport';
 
 export class AiConfigError extends Error {
@@ -78,6 +79,8 @@ export type AiProviderView = {
   keyLast4: string | null;
   isActive: boolean;
   providerOptions: OpenRouterOptions | null;
+  /** ai_gateway only (0661): the stored https address. */
+  gatewayBaseUrl: string | null;
   candidateSaved: boolean;
   candidateId: string | null;
   candidateVersion: string | null;
@@ -122,6 +125,7 @@ export function getAiConfigView(ctx: SessionContext): Promise<AiConfigView> {
         keyLast4: draft?.keyLast4 ?? row?.keyLast4 ?? null,
         isActive: row?.isActive ?? false,
         providerOptions: draft?.providerOptions ?? (p==='openrouter'&&row?routingOptions(row.providerOptions):null),
+        gatewayBaseUrl: p==='ai_gateway'&&row ? (()=>{ try { return readGatewayOptions(row.providerOptions).baseUrl; } catch { return null; } })() : null,
         candidateSaved: Boolean(draft),
         candidateId: draft?.id ?? null,
         candidateVersion: draft?.version ?? null,
@@ -208,8 +212,12 @@ export async function saveAiProviderConfig(
           routingVersion: 1, routingDigest: createHash('sha256').update(JSON.stringify(providerOptions)).digest('hex') } });
       return;
     }
-    const providerOptions = {};
-    if(p.providerOptions!==undefined&&JSON.stringify(p.providerOptions)!=='{}')throw new AiConfigError('Routing options are only supported for OpenRouter.');
+    // 0661: an AI gateway stores exactly {version:1, baseUrl}; every other direct provider stores none.
+    let providerOptions: Record<string, unknown> = {};
+    if (p.provider === 'ai_gateway') {
+      try { providerOptions = readGatewayOptions(p.providerOptions === undefined ? existing?.providerOptions : p.providerOptions); }
+      catch { throw new AiConfigError('Enter the gateway\u2019s https address, for example https://router.flatkey.ai/v1. Internal addresses are not allowed.'); }
+    } else if(p.providerOptions!==undefined&&JSON.stringify(p.providerOptions)!=='{}')throw new AiConfigError('Routing options are only supported for OpenRouter.');
 
     let cipherFields: { apiKeyCiphertext: string; keyLast4: string } | null = null;
     if (apiKey) {
@@ -361,7 +369,9 @@ export async function testConnection(
     await assertConfigurationAdminTx(tx,ctx);
     let cfg: ResolvedAiConfig;
     if (typed) {
-      cfg = { provider: p.provider as AiProvider, model, apiKey: typed, ...(p.provider==='openrouter'?{providerOptions:routingOptions(p.providerOptions)}:{}) };
+      let gatewayBaseUrl: string | undefined;
+      if (p.provider === 'ai_gateway') { try { gatewayBaseUrl = readGatewayOptions(p.providerOptions).baseUrl; } catch { return { ok: false, error: 'Enter a public https gateway address.' }; } }
+      cfg = { provider: p.provider as AiProvider, model, apiKey: typed, ...(p.provider==='openrouter'?{providerOptions:routingOptions(p.providerOptions)}:{}), ...(gatewayBaseUrl?{gatewayBaseUrl}:{}) };
     } else {
       // Stored-key path: resolveActiveAiConfig fails closed (throws) if the ciphertext can't be
       // decrypted (e.g. AI_CONFIG_SECRET rotated). Keep the Test result a clean generic reason.
@@ -376,7 +386,9 @@ export async function testConnection(
       if (!active || active.provider !== p.provider) {
         return { ok: false, error: 'Enter the API key to test, or activate this provider first.' };
       }
-      cfg = { ...active, model, ...(active.provider==='openrouter'&&p.providerOptions!==undefined?{providerOptions:routingOptions(p.providerOptions)}:{}) };
+      let gatewayBaseUrl = active.gatewayBaseUrl;
+      if (active.provider === 'ai_gateway' && p.providerOptions !== undefined) { try { gatewayBaseUrl = readGatewayOptions(p.providerOptions).baseUrl; } catch { return { ok: false, error: 'Enter a public https gateway address.' }; } }
+      cfg = { ...active, model, ...(active.provider==='openrouter'&&p.providerOptions!==undefined?{providerOptions:routingOptions(p.providerOptions)}:{}), ...(gatewayBaseUrl?{gatewayBaseUrl}:{}) };
     }
     return validateConfig(cfg);
   });
