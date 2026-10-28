@@ -2,7 +2,8 @@
 --
 -- Population: the people whose LIVE performance_hod_assignment (0663; [valid_from, valid_to) in Malaysia
 -- time) names one of the caller's active employments as HOD, in one OneHR-native rated cycle that is open
--- or in calibration, who take part in it (app.assessment_review_participates) and have KPI lines. Never
+-- or in calibration, who take part in it (participation eligibility only, app.assessment_review_eligible:
+-- never whether the caller could otherwise see them) and have KPI lines. Never
 -- department.head_employment_id, never the caller's own person, never 360 panel or rater rows. The person and
 -- the HOD share a business group (the 0663 assignment rule, restated here so forced data cannot widen it).
 --
@@ -14,7 +15,24 @@
 -- Only the declared columns leave these functions: identity for display, the live administrative manager
 -- when that manager is in the same population (for the row order), Direct/Indirect, and the overall.
 
--- ── 1. One cycle: the people the caller heads ─────────────────────────────────────────────────────────
+-- ── 1. Participation eligibility only (internal) ──────────────────────────────────────────────────────
+-- The eligibility half of app.assessment_review_participates (latest definition 0540:40-50): the person is
+-- not terminated (unless the cycle is closed), then the per-person override, then the opening snapshot. Its
+-- caller-visibility arm is deliberately absent: in the department view the live HOD assignment is the
+-- authorization, so who the HOD could otherwise see never changes the population. Reached only from the
+-- definer projection below; no app privilege.
+CREATE FUNCTION app.assessment_review_eligible(wanted_review uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM performance_review r JOIN review_cycle c ON c.id=r.cycle_id AND c.tenant_id=r.tenant_id
+  JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id
+  JOIN performance_assessment_participation p ON p.cycle_id=r.cycle_id AND p.employment_id=r.employment_id AND p.tenant_id=r.tenant_id
+  WHERE r.id=wanted_review AND r.tenant_id=app.current_tenant_id()
+   AND (c.status='closed' OR e.terminated_on IS NULL OR e.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
+   AND CASE WHEN p.override='add' THEN true WHEN p.override='remove' THEN false ELSE p.eligible_at_open END)
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.assessment_review_eligible(uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+-- ── 2. One cycle: the people the caller heads ─────────────────────────────────────────────────────────
 CREATE FUNCTION app.onehr_department_view(wanted_cycle uuid)
  RETURNS TABLE(employment_id uuid, parent_employment_id uuid, full_name text, department_name text, job_title text,
                direct boolean, finalized boolean, overall_band text, overall_score numeric, mechanism text)
@@ -40,7 +58,7 @@ CREATE FUNCTION app.onehr_department_view(wanted_cycle uuid)
    AND coalesce((cfg.policy->'modules'->>'pm')::boolean,false) AND coalesce(cfg.policy->>'kind','')<>'quarterly'
    AND jsonb_array_length(r.kpis)>0
    AND NOT app.is_self_person(e.person_id)
-   AND app.assessment_review_participates(r.review_id)
+   AND app.assessment_review_eligible(r.review_id)
  ),
  facts AS (
   SELECT p.*,
@@ -74,7 +92,7 @@ CREATE FUNCTION app.onehr_department_view(wanted_cycle uuid)
  ORDER BY person.full_name,f.employment_id
 $$;
 --> statement-breakpoint
--- ── 2. The cycles the caller heads someone in: the cycle choice and the navigation gate ───────────────
+-- ── 3. The cycles the caller heads someone in: the cycle choice and the navigation gate ───────────────
 -- Open cycles first, then cycles in calibration; newest period end first inside each. Counts only.
 CREATE FUNCTION app.onehr_department_cycles()
  RETURNS TABLE(cycle_id uuid, cycle_name text, period_end date, people integer, finalized integer)

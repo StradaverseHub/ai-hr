@@ -9,7 +9,8 @@
  * todayInKualaLumpur().
  *
  * Org: Holding ← Acme (seedBase unit) and Sister (unit); Other group ← Other unit. One group-wide OneHR cycle.
- * Lines: Mia → Head; Ian → Mia; Sam (Sister) → Head; Xin → Head (but Xin's HOD is Hoda); Oz (Other unit) → Head.
+ * Lines: Mia → Head; Ian → Mia; Sam (Sister) → Head; Xin → Head (but Xin's HOD is Hoda); Oz (Other unit) → Head;
+ * Rae (Operations) → Hoda, outside Head's line and department.
  */
 import { randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
@@ -31,7 +32,7 @@ type Hired = { employmentId: string; personId: string };
 const COLUMNS = ['employment_id', 'parent_employment_id', 'full_name', 'department_name', 'job_title', 'direct', 'finalized', 'overall_band', 'overall_score', 'mechanism'];
 
 let b: Base, a: SessionContext, sister: string, other: string, cycle: string;
-let head: Hired, headSecond: Hired, hoda: Hired, mia: Hired, ian: Hired, sam: Hired, xin: Hired, oz: Hired, plain: Hired;
+let head: Hired, headSecond: Hired, hoda: Hired, mia: Hired, ian: Hired, sam: Hired, xin: Hired, oz: Hired, plain: Hired, rae: Hired;
 let H: SessionContext, HODA: SessionContext, PLAIN: SessionContext;
 
 const hire = (name: string, companyId: string, departmentId: string, positionId?: string, personId?: string) =>
@@ -91,16 +92,17 @@ beforeEach(async () => {
   ian = await hire('Ian', b.companyId, b.deptB);
   xin = await hire('Xin', b.companyId, b.deptA, b.positionId);
   plain = await hire('Plain', b.companyId, b.deptA);
+  rae = await hire('Rae', b.companyId, b.deptB);
   sam = await hire('Sam', sister, sisterDept.id);
   oz = await hire('Oz', other, otherDept.id);
   headSecond = await hire('Head', sister, sisterDept.id, undefined, head.personId);
   const [grade] = await owner.db.insert(schema.jobGrade).values({ tenantId: b.tenantId, code: '12', name: 'Grade 12' }).returning();
   await owner.db.update(schema.employment).set({ gradeId: grade.id }).where(eq(schema.employment.tenantId, b.tenantId));
-  for (const [sub, mgr] of [[mia, head], [ian, mia], [sam, head], [xin, head], [oz, head]] as const) await line(sub, mgr);
+  for (const [sub, mgr] of [[mia, head], [ian, mia], [sam, head], [xin, head], [oz, head], [rae, hoda]] as const) await line(sub, mgr);
   ({ cycleId: cycle } = await perf.createCycle(a, { name: 'Group annual', companyId: null, periodStart: `${year}-01-01`, periodEnd: `${year}-12-31` }));
   await perf.configureOnehrCycle(a, cycle, null, defaultPolicy(framework));
   await perf.openCycle(a, { cycleId: cycle });
-  for (const e of [head, headSecond, hoda, mia, ian, xin, plain, sam, oz]) await setResult(e, [kpi('Delivery', 3, false), kpi('Quality', 4, false)], null);
+  for (const e of [head, headSecond, hoda, mia, ian, xin, plain, sam, oz, rae]) await setResult(e, [kpi('Delivery', 3, false), kpi('Quality', 4, false)], null);
   H = await login(head); HODA = await login(hoda); PLAIN = await login(plain);
 });
 afterAll(closeAll);
@@ -122,6 +124,24 @@ describe('population: the live per-person HOD assignment, and nothing else', () 
     const service = await perf.getDepartmentView(H);
     expect(service?.rows.map((r) => [r.fullName, r.depth])).toEqual([['Mia', 0], ['Ian', 1], ['Sam', 0]]);
     expect(service?.cycle).toMatchObject({ id: cycle, name: 'Group annual', people: 3, finalized: 0 });
+  });
+
+  it('does not depend on what the HOD could otherwise see: an assigned person outside the line and department is listed; a removed participant is not', async () => {
+    await assignHod([rae, mia], head);
+    // Rae works in Operations (Head is in Finance), reports to Hoda, and sits in no calibration scope of Head's:
+    // the caller-visibility arm of app.assessment_review_participates would drop her; eligibility alone keeps her.
+    const visible = await withTenant(H, (tx) => tx.execute<{ ok: boolean }>(sql`select app.can_see_employment(${rae.employmentId}::uuid) as ok`));
+    expect(visible[0]?.ok, 'non-vacuous: Head cannot otherwise see Rae').toBe(false);
+    expect(await names(H)).toEqual(['Mia', 'Rae']);
+    const row = (await view(H)).find((r) => r.employment_id === rae.employmentId)!;
+    expect([row.direct, row.parent_employment_id, row.department_name]).toEqual([false, null, 'Operations']);
+    // Removing Mia from the cycle's participants drops her; the assignment itself is untouched.
+    const [part] = await owner.db.select().from(schema.assessmentParticipationSnapshot).where(and(eq(schema.assessmentParticipationSnapshot.cycleId, cycle), eq(schema.assessmentParticipationSnapshot.employmentId, mia.employmentId)));
+    expect(part, 'the opened cycle snapshotted Mia as a participant').toBeDefined();
+    const config = await perf.getOnehrCycle(a, cycle);
+    await perf.setAssessmentParticipation(a, cycle, config!.revision, mia.employmentId, part.revision, 'remove');
+    expect(await names(H)).toEqual(['Rae']);
+    expect((await perf.listHodAssignments(a, { subjectEmploymentId: mia.employmentId, liveOnly: true })).map((h) => h.hodEmploymentId)).toEqual([head.employmentId]);
   });
 
   it('never returns a person in another business group, even with forced data and a line to the HOD', async () => {
@@ -193,6 +213,10 @@ describe('projection shape and privileges', () => {
     });
     const [cyc] = await owner.db.execute<{ app: boolean; pub: boolean }>(sql`select has_function_privilege('ai_hr_app','app.onehr_department_cycles()','EXECUTE') as app, has_function_privilege('public','app.onehr_department_cycles()','EXECUTE') as pub`);
     expect(cyc).toEqual({ app: true, pub: false });
+    // The eligibility helper is internal: only the definer projection reaches it.
+    const [helper] = await owner.db.execute<{ app: boolean; pub: boolean; definer: boolean }>(sql`select has_function_privilege('ai_hr_app','app.assessment_review_eligible(uuid)','EXECUTE') as app,
+      has_function_privilege('public','app.assessment_review_eligible(uuid)','EXECUTE') as pub, p.prosecdef as definer from pg_proc p where p.oid='app.assessment_review_eligible(uuid)'::regprocedure`);
+    expect(helper).toEqual({ app: false, pub: false, definer: true });
   });
 });
 
