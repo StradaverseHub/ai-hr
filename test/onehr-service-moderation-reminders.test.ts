@@ -233,11 +233,20 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     expect(new Set(notices.filter(n=>n.kind==='performance.feedback-request').map(n=>n.recipientEmploymentId))).toEqual(new Set(peers.map(p=>p.employmentId)));
     await complete();await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);await perf.releaseOnehrResult(a,reviewId,'performance',true);await dispatchNotifications(a);
     notices=await owner.db.select().from(schema.notification);
-    // WP-E: one notice per person per release action (the per-person panel releases both steps at once), plus one
-    // count-only notice to the line manager the release reached; never a band.
-    expect(notices.filter(n=>n.kind==='performance.update'&&n.recipientEmploymentId===subject.employmentId)).toHaveLength(1);
-    expect(notices.filter(n=>n.kind==='performance.update'&&n.recipientEmploymentId===manager.employmentId).map(n=>n.linkPath)).toEqual(['/performance/led']);
+    // WP-E (source rule: one notice per leader with a count, one per person naming what is ready, never a band,
+    // nothing on revoke). The subject's two update notices are the earlier scorecard approval (complete()) and ONE
+    // release notice for this release action; the per-person panel releases both steps at once, so the line
+    // manager it reached gets ONE count-only notice. Each notice is identified by its source event.
+    const sourceOf=new Map((await owner.db.select({id:schema.domainEvent.id,type:schema.domainEvent.eventType}).from(schema.domainEvent)).map(e=>[e.id,e.type]));
+    const updates=notices.filter(n=>n.kind==='performance.update').map(n=>({recipient:n.recipientEmploymentId,source:sourceOf.get(n.sourceEventId??''),title:n.title,body:n.body,linkPath:n.linkPath}));
+    expect(updates.filter(u=>u.recipient===subject.employmentId).map(u=>u.source).sort()).toEqual(['onehr.results-to-person','onehr.scorecard-approved']);
+    expect(updates.filter(u=>u.source==='onehr.results-to-person')).toEqual([{recipient:subject.employmentId,source:'onehr.results-to-person',title:'Your results are released',body:'HR has released your performance band to you. Open your performance record to see them.',linkPath:'/me/performance'}]);
+    expect(updates.filter(u=>u.recipient===manager.employmentId)).toEqual([{recipient:manager.employmentId,source:'onehr.results-to-leader',title:'Results released to you',body:'HR has released the results of 1 person you lead to you. They can see their own results as well. Open What you led to see them.',linkPath:'/performance/led'}]);
+    expect(updates.filter(u=>u.source==='onehr.results-to-leader'||u.source==='onehr.results-to-person')).toHaveLength(2);
     expect(notices.map(n=>`${n.title} ${n.body}`).join(' ')).not.toMatch(/Assessment subject|ME|High|Star|5000/);
+    // A revoke announces nothing.
+    await perf.releaseOnehrResult(a,reviewId,'performance',false);await dispatchNotifications(a);
+    expect(await owner.db.select().from(schema.notification)).toHaveLength(notices.length);
   });
   it('rejects AI access before contacting a provider or recording a proposal',async()=>{
     await expect(perf.draftOnehrNarrative(peers[0].ctx,reviewId,'Invent a pay award')).rejects.toThrow(/Only the employee/);

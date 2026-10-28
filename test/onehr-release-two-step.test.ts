@@ -365,6 +365,10 @@ describe('the release writer', () => {
     const b2 = await seedBase(); await setModule(b2.tenantId, 'performance', 'active');
     const a2 = await entitledCtx(b2);
     const foreigner = await hireEmployee(a2, { person: { fullName: 'Foreign person', primaryEmail: `${randomUUID()}@two-step.test` }, companyId: b2.companyId, departmentId: b2.deptA, employmentType: 'full_time', hiredOn: `${year - 2}-01-01` });
+    // Every person opened into a cycle needs a grade that matches exactly one leadership framework track (frameworkFor),
+    // as the first tenant's fixture gives every employment in beforeEach.
+    const [foreignGrade] = await owner.db.insert(schema.jobGrade).values({ tenantId: b2.tenantId, code: '12', name: 'Grade 12' }).returning();
+    await owner.db.update(schema.employment).set({ gradeId: foreignGrade.id }).where(eq(schema.employment.tenantId, b2.tenantId));
     const { cycleId: foreignCycle } = await perf.createCycle(a2, { name: 'Foreign annual', companyId: b2.companyId, periodStart: `${year}-01-01`, periodEnd: `${year}-12-31` });
     await perf.configureOnehrCycle(a2, foreignCycle, null, defaultPolicy(framework)); await perf.openCycle(a2, { cycleId: foreignCycle });
     const [foreignReview] = await owner.db.select().from(schema.performanceReview).where(eq(schema.performanceReview.employmentId, foreigner.employmentId));

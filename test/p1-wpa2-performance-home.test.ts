@@ -219,9 +219,15 @@ describe('the Performance block for a line manager and an employee (PM only)', (
     expect(await perf.hasAssignedPerformanceWork(matrixCtx, undefined)).toBe(true);
     expect(await perf.hasAssignedPerformanceWork(plainCtx, undefined)).toBe(false);
     expect(await perf.hasAssignedPerformanceWork(self, undefined)).toBe(false); // their own review is not work assigned to them
-    // The page consults exactly this predicate before its redirect (contract across the two files).
+    // WP-E: a leader (HOD or a BU / BG / group seat) also reaches the page for "What you led". Neither employee leads
+    // anyone, so a plain employee is still redirected: no admin, no manager role, no assigned work, no led people.
+    expect(await perf.hasLedPeople(plainCtx)).toBe(false);
+    expect(await perf.hasLedPeople(self)).toBe(false);
+    expect(await perf.hasLedPeople(mgr)).toBe(true); // the control: the line manager leads their reports in this cycle
+    // The page consults exactly these predicates before its redirect (contract across the two files).
     const page = fs.readFileSync(path.resolve(__dirname, '../app/performance/page.tsx'), 'utf8');
-    expect(page).toMatch(/if \(!performanceAdmin && !manager && !\(await hasAssignedPerformanceWork\(s, scopeIds\)\)\) redirect\('\/'\);/);
+    expect(page).toMatch(/const leads = await hasLedPeople\(s\);/);
+    expect(page).toMatch(/if \(!performanceAdmin && !manager && !leads && !\(await hasAssignedPerformanceWork\(s, scopeIds\)\)\) redirect\('\/'\);/);
   });
 });
 
