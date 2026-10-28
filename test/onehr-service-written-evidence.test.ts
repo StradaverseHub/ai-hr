@@ -369,7 +369,8 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     // Client text never becomes the reason; the unscored person's crafted move has no server reason and is not written.
     expect(await perf.applyAssessmentCalibrationFit(reviewer,sessionId,'performance',b.companyId,[{id:thin.reviewId,from:'OU',to:'AE'},{id:fit.id,from:fit.from,to:fit.to,reasons:['Client supplied wording.']}])).toMatchObject({applied:[reviewId],skipped:[thin.reviewId]});
     const entries=await owner.db.select().from(schema.onehrCalibrationEntry).where(eq(schema.onehrCalibrationEntry.sessionId,sessionId));
-    expect(entries.find(e=>e.reviewId===reviewId)).toMatchObject({performance:'AE',performanceNote:`Distribution fit: ${fit.reasons.join('; ')}`});
+    expect(entries.find(e=>e.reviewId===reviewId)).toMatchObject({performance:'AE',performanceNote:`Distribution fit: ${fit.reasons.filter(r=>!r.startsWith('AI insight:')).join('; ')}`});
+    expect(JSON.stringify(entries),'an AI verdict is never stored as a person’s reason').not.toContain('AI insight');
     expect(entries.find(e=>e.reviewId===thin.reviewId)).toMatchObject({performance:'OU',performanceNote:''});
     expect(JSON.stringify(entries)).not.toContain('Client supplied wording.');
   });

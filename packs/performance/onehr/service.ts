@@ -982,7 +982,9 @@ export async function applyAssessmentCalibrationFit(ctx:SessionContext,sessionId
  if(new Set(moves.map(m=>m.id)).size!==moves.length)throw Error('Select each person once.');
  return withPerformanceTenant(ctx,async tx=>{
   const {session,cycle,data,result:fit}=await calibrationFitTx(tx,ctx,sessionId,axis,companyId);let expected=session.revision;const applied:string[]=[],skipped:string[]=[];
-  const fitReason=(move:{id:string;from:string;to:string})=>{const m=fit.moves.find(f=>f.id===move.id&&f.from===move.from&&f.to===move.to);return m?.reasons.length?`Distribution fit: ${m.reasons.join('; ')}`.slice(0,4000):'';};
+  // The stored reason keeps only the fit's deterministic facts: an AI verdict line is advice shown in the preview, never
+  // a person's recorded justification.
+  const fitReason=(move:{id:string;from:string;to:string})=>{const m=fit.moves.find(f=>f.id===move.id&&f.from===move.from&&f.to===move.to),facts=(m?.reasons??[]).filter(r=>!r.startsWith('AI insight:'));return facts.length?`Distribution fit: ${facts.join('; ')}`.slice(0,4000):'';};
   for(const move of moves){
    const found=data.find(d=>d.row.entry.reviewId===move.id);if(!found){skipped.push(move.id);continue;}
    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${move.id},0))`);
