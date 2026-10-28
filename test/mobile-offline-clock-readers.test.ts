@@ -51,7 +51,8 @@ describe('attendance punch readers on a database without draft 0647',()=>{
  it('read online punches by their server instant without naming the absent effective_at column',async()=>{
   expect(await effectiveColumn()).toBe(false);
   const {employmentId,ctx}=await employee();await online(ctx,employmentId,'in');
-  await new Promise(resolve=>setTimeout(resolve,20));await online(ctx,employmentId,'out');
+  // punch_at is whole seconds and punch readers break ties by random id: the out must land in a later second.
+  await new Promise(resolve=>setTimeout(resolve,1100));await online(ctx,employmentId,'out');
   const date=todayInKualaLumpur(),times=[...(await received(employmentId)).values()];expect(times).toHaveLength(2);
   const live=await ownClockToday(ctx,undefined,employmentId);
   expect(live.captures.map(c=>[c.direction,c.recordedAt,c.removalBlocked])).toEqual([['in',times[0].toISOString(),false],['out',times[1].toISOString(),false]]);
