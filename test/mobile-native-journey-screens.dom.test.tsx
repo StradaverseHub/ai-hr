@@ -9,6 +9,7 @@ import {afterEach,describe,expect,it,vi} from 'vitest';
 import {DEFAULT_MOBILE_DESIGN,mobilePalette} from '../lib/mobile-design';
 import * as errors from '../mobile/lib/errors';
 import * as contract from '../lib/mobile-api/contract';
+import * as v2team from '../lib/mobile-api/v2/team';
 import * as enrollment from '../mobile/lib/enrollment-journal';
 import {SignedClockUnavailable,type SignedClockStatus} from '../mobile/lib/signed-clock-journal';
 import * as journal from '../mobile/lib/submission-journal';
@@ -30,7 +31,7 @@ function fixture(platform:'ios'|'android'='ios'){
   const provider=load('mobile/lib/journey-drafts.tsx',{...base,'expo-file-system':{File:class{exists=false},Directory:class{exists=false},Paths:{cache:'cache'}}});
   const ui={Button:(p:any)=><button disabled={p.disabled} onClick={p.onPress}>{p.title}</button>,Card:View,Muted:Text,Row:({label,value}:any)=><p>{label}: {value}</p>,LoadState:()=>null,fmtDays:(n:unknown)=>n==null?'—':String(n)};
   const clockState={enabled:true,employmentId:'own',state:{date:'2026-01-01',clockedIn:false,geofencingRequired:false,workedSeconds:0,shift:{code:null,start:null,end:null},attendancePhotoSetting:'not_required',deviceRequired:false,captures:[],legacy:[]}};
-  const teamState={enabled:true,today:'2026-01-01',items:[{employmentId:'a',name:'Approved Away',dates:[{date:'2026-01-01',status:'approved',session:'full_day'}]},{employmentId:'b',name:'Pending Colleague',dates:[{date:'2026-01-01',status:'pending',session:'AM'}]}]};
+  const teamState={enabled:true,today:'2026-01-01',from:'2026-01-01',to:'2026-01-07',scope:'my_team',companies:1,memberCount:2,truncated:false,items:[{employmentId:'a',name:'Approved Away',dates:[{date:'2026-01-01',status:'approved',session:'full_day'}]},{employmentId:'b',name:'Pending Colleague',dates:[{date:'2026-01-01',status:'pending',session:'AM'}]}]};
   let signedState:SignedClockStatus={status:'empty'},restoredClock:any;
   const retained=new Set<string>();
   const signed={
@@ -53,7 +54,7 @@ function fixture(platform:'ios'|'android'='ios'){
   const shared={...base,'./submission-journal':journal,'../../lib/mobile-api/contract':contract,'./enrollment-journal':enrollment,'./signed-clock-journal':{SignedClockUnavailable},'./signed-clock':{openOwnedSignedClock:openSigned},'./submission-recovery':{useSubmissionRecovery:(_kind:string,_id:string,onRestore:(value:unknown)=>void)=>{
     React.useEffect(()=>{if(restoredClock){const value=restoredClock;if(value.entry.integrity)retained.add(value.entry.requestId);onRestore(value);}},[]);
     return {ready:true,error:null,reload:()=>{},stage,resolve,prepareClock,reportAttempt,hasSignedAttempt};
-  }},'./journey-drafts':{...provider,removeLocalFile:remove},'./ui':ui,'./api':{apiGet:get,apiPost:(path:string,...args:unknown[])=>path==='clock-location'?preview(...args):post(path,...args),useApi:(path:string)=>({data:path==='clock-attempts'?attemptsState:path==='team'?teamState:clockState,reload:path==='clock-attempts'?reloadAttempts:reload,loading:false,error:null})},'./capture':{capturePosition:capture,capturePhoto:photo,appendAttachment:()=>{}},'./device-registration':{readClockDevice:async()=>null,writeClockDevice:async()=>{},clearClockDevice:async()=>{}},'./slide-confirm':{SlideConfirm:(p:any)=><button disabled={p.disabled} onClick={p.onConfirm}>{p.label}</button>},'./offline-clock':offlineUi,'expo-document-picker':{getDocumentAsync:async()=>({canceled:true})},'expo-file-system':{},'@react-native-community/datetimepicker':picker};
+  }},'./journey-drafts':{...provider,removeLocalFile:remove},'./ui':ui,'./api':{apiGet:get,apiPost:(path:string,...args:unknown[])=>path==='clock-location'?preview(...args):post(path,...args),useApi:(path:string)=>({data:path==='clock-attempts'?attemptsState:path==='team'?teamState:clockState,reload:path==='clock-attempts'?reloadAttempts:reload,loading:false,error:null}),useApiV2:(path:string)=>({data:path==='v2/team/availability'?teamState:null,reload,loading:false,error:null})},'../../lib/mobile-api/v2/team':v2team,'./capture':{capturePosition:capture,capturePhoto:photo,appendAttachment:()=>{}},'./device-registration':{readClockDevice:async()=>null,writeClockDevice:async()=>{},clearClockDevice:async()=>{}},'./slide-confirm':{SlideConfirm:(p:any)=><button disabled={p.disabled} onClick={p.onConfirm}>{p.label}</button>},'./offline-clock':offlineUi,'expo-document-picker':{getDocumentAsync:async()=>({canceled:true})},'expo-file-system':{},'@react-native-community/datetimepicker':picker};
   const {ClockPanel}=load('mobile/lib/clock-panel.tsx',shared),{LeaveRequestForm}=load('mobile/lib/leave-request-form.tsx',shared),{TeamPanel}=load('mobile/lib/team-panel.tsx',shared);
   function Probe(){drafts=provider.useJourneyDrafts();return null;}
   const options={employmentId:'own',items:[{id:'annual',name:'Annual leave',durations:['full_day','half_day_am','hourly'],allowedMimeTypes:[],maxDocBytes:10485760,requiresDocument:false,emergencySplit:false}]};
