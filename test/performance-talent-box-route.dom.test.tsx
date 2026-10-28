@@ -1,6 +1,6 @@
 /**
  * D-P1-26/27 — the standalone Talent Box (/performance/calibration/talent-box): which session it opens and for whom
- * (BU, BG and Group Talent Box parts only; an HOD or a crafted session gets notFound), the Calibration strip, the
+ * (BU, BG and Group Talent Box parts only; an HOD or a crafted session gets notFound), the area's Calibration strip, the
  * board's look and wording, the BG read-only per-axis lists (DQ-8), and that a move from the board still goes
  * through the one existing writer.
  */
@@ -13,11 +13,16 @@ import { defaultPolicy } from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
 import { profitCurveFor } from '../packs/performance/onehr/calibration-curve-model';
 const ports=vi.hoisted(()=>({workspace:vi.fn(),calibration:vi.fn(),module:vi.fn(),session:vi.fn(),move:vi.fn()}));
+const nav=vi.hoisted(()=>({path:'/performance/calibration/talent-box',search:''}));
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>createTranslator({locale:'en',messages:en,namespace:namespace as never})}));
-vi.mock('next/navigation',async importActual=>({...await importActual<typeof import('next/navigation')>(),useRouter:()=>({refresh:vi.fn()}),notFound:()=>{throw new Error('NEXT_NOT_FOUND');}}));
+vi.mock('next/navigation',async importActual=>({...await importActual<typeof import('next/navigation')>(),useRouter:()=>({refresh:vi.fn()}),usePathname:()=>nav.path,useSearchParams:()=>new URLSearchParams(nav.search),notFound:()=>{throw new Error('NEXT_NOT_FOUND');}}));
 vi.mock('../lib/authz',()=>({requireModule:ports.module}));
 vi.mock('../lib/scope',()=>({scopedSession:ports.session}));
-vi.mock('../packs/performance/service',()=>({performanceWorkspace:ports.workspace,getOnehrCalibration:ports.calibration}));
+// The page reads the worklist and the strip's gate facts in one call; the facts are the items' projection, as in tab-service.ts.
+vi.mock('../packs/performance/service',()=>({getOnehrCalibration:ports.calibration,getPerformanceAreaFactsAndItems:async()=>{
+ const items=await ports.workspace() as PerformanceWorkspaceItem[];
+ return {items,facts:{performanceOn:true,ownFeedbackReport:'none',items:items.map(({kind,cycleId,view,module,stage,axis,locked})=>({kind,cycleId,view,module,stage,axis,locked}))}};
+}}));
 vi.mock('../app/performance/onehr-actions',()=>({saveCalibrationBandAction:ports.move,onehrCalibrationAction:vi.fn(),agreeDepartmentAction:vi.fn(),assessmentInsightAction:vi.fn(),assessmentCalibrationPersonAction:vi.fn(),assessmentTalentPersonAction:vi.fn().mockResolvedValue({error:'No person frame in this fixture.'}),assessmentTalentInsightAction:vi.fn().mockResolvedValue({pending:true,source:null,data:null}),changeGroupBandAction:vi.fn(),lockGroupPeopleAction:vi.fn(),previewCalibrationFitAction:vi.fn(),applyCalibrationFitAction:vi.fn()}));
 import TalentBoxPage from '../app/performance/calibration/talent-box/page';
 import { TalentAxisList } from '../app/performance/calibration/talent-box/axis-list';
@@ -26,12 +31,13 @@ import { talentCategoryColours } from '../app/performance/onehr/talent-board';
 import type { PerformanceWorkspaceItem } from '../packs/performance/service';
 
 type Part={id:string;view:string;stage:string;kind?:string;module?:string;title?:string};
-const item=(p:Part)=>({key:`${p.id}.${p.stage}`,id:p.id,kind:p.kind??'calibration',cycleId:'c1',cycle:'Annual',periodEnd:'2026-12-31',view:p.view,module:p.module??'cal',axis:'both',state:'open',title:p.title??'BU review',stage:p.stage,locked:false}) as PerformanceWorkspaceItem;
+/** Each part carries the axis leaderWorkspaceParts gives it, which the strip's gates read. */
+const axisOf=(stage:string)=>stage==='talent_box'?'both':stage==='potential_calibration'||stage==='department_potential_review'?'potential':'performance';
+const item=(p:Part)=>({key:`${p.id}.${p.stage}`,id:p.id,kind:p.kind??'calibration',cycleId:'c1',cycle:'Annual',periodEnd:'2026-12-31',view:p.view,module:p.module??'cal',axis:axisOf(p.stage),state:'open',title:p.title??'BU review',stage:p.stage,locked:false}) as PerformanceWorkspaceItem;
 const hod=[item({id:'d',view:'dept',stage:'department_review'}),item({id:'d',view:'dept',stage:'department_potential_review'}),item({id:'r',view:'mine',kind:'review',module:'pm',stage:'results'})];
 const bu=[item({id:'session',view:'bu',stage:'calibration'}),item({id:'session',view:'bu',stage:'potential_calibration'}),item({id:'session',view:'bu',stage:'talent_box'})];
 const bg=[item({id:'session',view:'bg',stage:'talent_box',title:'BG review'})];
 const group=[item({id:'session',view:'group',stage:'group_calibration',title:'Group review'}),item({id:'session',view:'group',stage:'talent_box',title:'Group review'})];
-const workspace=(stage:string,view='bu')=>`/performance/workspace?cycle=c1&view=${view}&module=cal&stage=${stage}&calibration=session`;
 
 const normal={UA:5,BE:10,ME:70,AE:10,OU:5};
 const entry=(reviewId:string)=>({id:`entry-${reviewId}`,reviewId,performance:null,potential:null,performanceLockedAt:null,potentialLockedAt:null,lockedAt:null,performanceNote:'',potentialNote:'',pip:false,promotion:false,specialReward:false});
@@ -51,11 +57,13 @@ async function resolved(node:React.ReactNode):Promise<React.ReactNode>{
  return React.cloneElement(el,undefined,...(Array.isArray(children)?children:[children]));
 }
 async function open(searchParams:Record<string,string>={}){
+ nav.search=new URLSearchParams(searchParams).toString();
  const page=await TalentBoxPage({searchParams:Promise.resolve(searchParams)});
  render(<NextIntlClientProvider locale="en" messages={en}>{await resolved(page)}</NextIntlClientProvider>);
 }
 const board=()=>screen.getByRole('region',{name:en.onehr.talentBoard.title});
-const strip=()=>screen.getByRole('navigation',{name:en.onehr.talentBoard.calibrationTabs});
+/** The area's one Calibration strip (PT-X1's PerformanceTabStrip). */
+const strip=()=>screen.getByRole('navigation',{name:en.performanceArea.admin.sections.calibration});
 beforeEach(()=>{vi.clearAllMocks();ports.session.mockResolvedValue({s:{tenantId:'tenant'}});ports.move.mockResolvedValue({ok:true});});
 afterEach(cleanup);
 
@@ -81,7 +89,8 @@ describe('the standalone Talent Box page',()=>{
   const tabs=within(strip()).getAllByRole('link');
   expect(tabs.map(tab=>tab.textContent)).toEqual(['Performance','Potential','Talent box']);
   expect(tabs.map(tab=>tab.getAttribute('aria-current'))).toEqual([null,null,'page']);
-  expect(tabs[0].getAttribute('href')).toBe(workspace('calibration'));
+  // BU keeps the registry's per-axis lists; the board link stays on this session.
+  expect(tabs.map(tab=>tab.getAttribute('href'))).toEqual(['/performance/calibration?axis=performance','/performance/calibration?axis=potential','/performance/calibration/talent-box?session=session']);
   const region=board();
   expect(within(region).getByText('Talent Box ▸ Business unit')).toBeTruthy();
   expect(within(region).getByRole('heading',{name:'BU review'})).toBeTruthy();

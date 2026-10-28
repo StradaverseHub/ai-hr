@@ -84,6 +84,10 @@ describe('save actions return to the tab the user came from', () => {
     for (const value of ['https://example.com', '//example.com', '/performance/workspace/../outside', '/performance/workspace.evil?review=a', '/performance/workspace']) expect(assessmentReturnPath(value, fallback)).toBe(fallback);
     expect(assessmentReturnPath('/performance/workspace?view=team&module=pm&review=abc&unsafe=yes', fallback)).toBe('/performance/workspace?view=team&module=pm&review=abc');
   });
+  it('the standalone Talent Box returns to the same session, keeping only its session selector', () => {
+    expect(assessmentReturnPath(`/performance/calibration/talent-box?session=s-1&axis=performance&review=r1&unsafe=x`, fallback)).toBe('/performance/calibration/talent-box?session=s-1');
+    for (const value of ['/performance/calibration/talent-box', '/performance/calibration/talent-box/x?session=s-1', '/performance/calibration/talent-boxx?session=s-1']) expect(assessmentReturnPath(value, fallback), value).toBe(fallback);
+  });
   it('nothing else is accepted', () => {
     for (const value of [
       '/performance/my', // no query: the same rule as the workspace
@@ -140,7 +144,12 @@ describe('function access and loading shells', () => {
     expect(page).toMatch(/workspaceTabRoute\(s,|performanceTabAccess\(s,/);
     expect(fs.readFileSync(path.join(dir, 'loading.tsx'), 'utf8').trim()).toBe("export { default } from '@/components/route-loading';");
   });
-  it('the home and Talent Box routes are left to their own packages', () => {
-    for (const route of ['home', 'calibration/talent-box']) expect(fs.existsSync(path.join(process.cwd(), 'app/performance', route, 'page.tsx')), route).toBe(false);
+  it('the home and Talent Box routes are their own packages\' pages, outside performanceTabs', () => {
+    // PT-X3 and PT-TB landed them with their own guards and SCREENS entries (performanceHome, onehrAssignments).
+    for (const route of ['home', 'calibration/talent-box']) {
+      const page = fs.readFileSync(path.join(process.cwd(), 'app/performance', route, 'page.tsx'), 'utf8');
+      expect(page, route).toMatch(/await requireModule\('performance'\)/);
+      expect(SCREENS.find(screen => screen.screenKey === 'performanceTabs')!.routes, route).not.toContain(`/performance/${route}`);
+    }
   });
 });

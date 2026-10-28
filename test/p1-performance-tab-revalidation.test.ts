@@ -11,21 +11,21 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ session: vi.fn(), revalidate: vi.fn(), evidence: vi.fn(), keep: vi.fn(), attach: vi.fn() }));
+const mocks = vi.hoisted(() => ({ session: vi.fn(), revalidate: vi.fn(), evidence: vi.fn(), keep: vi.fn(), attach: vi.fn(), lock: vi.fn() }));
 vi.mock('../lib/session', () => ({ getSession: mocks.session }));
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidate }));
 vi.mock('next/navigation', () => ({ redirect: (url: string) => { throw new Error(`REDIRECT:${url}`); } }));
 vi.mock('next-intl/server', () => ({ getTranslations: async () => (key: string) => key }));
-vi.mock('../packs/performance/service', () => ({ changeOnehrEvidenceState: mocks.evidence, keepCompetencyReflection: mocks.keep }));
+vi.mock('../packs/performance/service', () => ({ changeOnehrEvidenceState: mocks.evidence, keepCompetencyReflection: mocks.keep, lockOnehrCalibration: mocks.lock }));
 vi.mock('../core/performance', () => ({ addPerformanceAttachment: mocks.attach, ALL_STAGE_KINDS: [] }));
 
-import { keepCompetencyReflectionAction, onehrReviewAction } from '../app/performance/onehr-actions';
+import { keepCompetencyReflectionAction, onehrCalibrationAction, onehrReviewAction } from '../app/performance/onehr-actions';
 import { uploadAttachmentAction } from '../app/performance/actions';
 import { WORKSPACE_TAB_PATHS } from '../packs/performance/onehr/tab-route-model';
 
 const reviewId = '0f9b4c1e-2d3a-4b5c-8d7e-6f5a4b3c2d1e';
 const ctx = { tenantId: 'tenant', userId: 'viewer' };
-beforeEach(() => { vi.clearAllMocks(); mocks.session.mockResolvedValue(ctx); mocks.evidence.mockResolvedValue(undefined); mocks.keep.mockResolvedValue({ ok: true }); mocks.attach.mockResolvedValue(undefined); });
+beforeEach(() => { vi.clearAllMocks(); mocks.session.mockResolvedValue(ctx); mocks.evidence.mockResolvedValue(undefined); mocks.keep.mockResolvedValue({ ok: true }); mocks.attach.mockResolvedValue(undefined); mocks.lock.mockResolvedValue(undefined); });
 
 function evidenceForm(returnTo: string) {
   const f = new FormData();
@@ -50,6 +50,14 @@ describe('a form save returns to, and refreshes, the tab it came from', () => {
     expect(revalidated()).toContain(`/performance/review/${reviewId}`);
     expect(revalidated()).not.toContain('/performance/calibration');
   });
+  it('a lock on the standalone Talent Box returns to, and refreshes, the same session\'s board', async () => {
+    const sessionId = '5d1e2f3a-4b5c-4d6e-8f70-81a2b3c4d5e6';
+    const f = new FormData();
+    for (const [key, value] of Object.entries({ sessionId, revision: '2', action: 'lock', reason: '', returnTo: `/performance/calibration/talent-box?session=${sessionId}&review=x&unsafe=y` })) f.set(key, value);
+    await expect(onehrCalibrationAction(f)).rejects.toThrow(`REDIRECT:/performance/calibration/talent-box?session=${sessionId}`);
+    expect(mocks.lock).toHaveBeenCalledWith(ctx, sessionId, 2, '', 'both', undefined, undefined);
+    expect(revalidated()).toContain('/performance/calibration/talent-box');
+  });
   it('an attachment upload refreshes the tab it returns to', async () => {
     const f = new FormData();
     f.set('reviewId', reviewId); f.set('returnTo', `/performance/team/${reviewId}?`); f.set('file', new File(['x'], 'evidence.pdf', { type: 'application/pdf' }));
@@ -62,6 +70,6 @@ describe('a form save returns to, and refreshes, the tab it came from', () => {
 describe('a client-called save with no return path refreshes every workspace route', () => {
   it('keepCompetencyReflectionAction', async () => {
     expect(await keepCompetencyReflectionAction(reviewId, 'm-1')).toEqual({ ok: true });
-    expect(revalidated().sort()).toEqual(['/performance/workspace', ...WORKSPACE_TAB_PATHS, '/performance/team/[reviewId] page'].sort());
+    expect(revalidated().sort()).toEqual(['/performance/workspace', ...WORKSPACE_TAB_PATHS, '/performance/team/[reviewId] page', '/performance/calibration/talent-box'].sort());
   });
 });

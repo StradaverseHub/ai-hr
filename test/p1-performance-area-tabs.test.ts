@@ -235,6 +235,11 @@ describe('active tab ("stays lit")', () => {
     ['calibration', '/performance/calibration', 'axis=other', 'calibration.performance'],
     ['calibration', '/performance/calibration/talent-box', null, 'calibration.talentBox'],
     ['calibration', '/performance/calibration/talent-box/s1', 'axis=potential', 'calibration.talentBox'],
+    // PT-TB: the board's BG read-only per-axis list lights its axis (DQ-8); any other query stays on Talent box.
+    ['calibration', '/performance/calibration/talent-box', 'session=s1&axis=performance', 'calibration.performance'],
+    ['calibration', '/performance/calibration/talent-box', 'session=s1&axis=potential', 'calibration.potential'],
+    ['calibration', '/performance/calibration/talent-box', 'session=s1', 'calibration.talentBox'],
+    ['calibration', '/performance/calibration/talent-box', 'axis=both', 'calibration.talentBox'],
     ['home', '/performance/home', null, 'home'],
     ['home', '/performance', null, null],
   ])('%s strip at %s?%s lights %s', (strip, path, search, expected) => {

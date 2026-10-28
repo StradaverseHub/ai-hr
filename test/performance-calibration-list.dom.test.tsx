@@ -27,8 +27,8 @@ const row = (over: Partial<CalibrationListSession>): CalibrationListSession => (
   window: 'open', opensOn: null, closesOn: null, people: 3, toDo: 2, lock: 'open', axes: ['performance', 'potential'], href: `/performance/assessment/calibration/${over.name ?? 'id'}`, ...over,
 });
 
-function page(sessions: CalibrationListSession[]) {
-  return render(<NextIntlClientProvider locale="en" messages={en}><CalibrationList sessions={sessions} /></NextIntlClientProvider>);
+function page(sessions: CalibrationListSession[], boards?: Record<string, string>) {
+  return render(<NextIntlClientProvider locale="en" messages={en}><CalibrationList sessions={sessions} boards={boards} /></NextIntlClientProvider>);
 }
 
 describe('Calibration list screen', () => {
@@ -59,6 +59,14 @@ describe('Calibration list screen', () => {
     expect(within(bu).getByText(t.lock.partial)).toBeTruthy();
     expect(within(screen.getByRole('region', { name: t.tiers.group })).getByText(t.groupWide)).toBeTruthy();
     expect(screen.getByRole('link', { name: 'BG box' }).getAttribute('href')).toBe('/performance/assessment/calibration/BG box');
+  });
+
+  it('links a session whose Talent Box the viewer holds to its standalone board, and only that row (PT-TB)', () => {
+    page([row({ name: 'BG box', tier: 'bg', axes: ['both'] }), row({ name: 'BU cohort', tier: 'bu' })], { 'BG box': '/performance/calibration/talent-box?session=BG%20box' });
+    const board = screen.getByRole('link', { name: en.performanceArea.tabs.cal.talentBox });
+    expect(board.getAttribute('href')).toBe('/performance/calibration/talent-box?session=BG%20box');
+    expect(within(screen.getByRole('region', { name: t.tiers.bg })).getAllByRole('link').map((a) => a.textContent)).toEqual(['BG box', en.performanceArea.tabs.cal.talentBox]);
+    expect(within(screen.getByRole('region', { name: t.tiers.bu })).getAllByRole('link').map((a) => a.textContent)).toEqual(['BU cohort']);
   });
 
   it('offers no write control: links into the session are the only interactive elements', () => {

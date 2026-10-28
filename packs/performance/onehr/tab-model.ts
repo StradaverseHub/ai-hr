@@ -51,6 +51,11 @@ export type PerformanceAreaStrip = (typeof performanceAreaStrips)[number];
  */
 export const performanceCalibrationHints = ['performance', 'potential', 'talent_box'] as const;
 export type PerformanceCalibrationHint = (typeof performanceCalibrationHints)[number];
+/**
+ * The standalone Talent Box (PT-TB). Its `?axis=performance|potential` view is the BG CEO's read-only per-axis list
+ * of the BG session (DQ-8), so that view lights the axis tab, not Talent box.
+ */
+export const TALENT_BOX_PATH = '/performance/calibration/talent-box';
 /** Per-session calibration routes; the tab they light comes from the page's hint. */
 export const CALIBRATION_SESSION_PATHS = ['/performance/assessment/calibration', '/performance/onehr/calibration'] as const;
 
@@ -135,11 +140,11 @@ export const PERFORMANCE_AREA_TABS = [
   tab('plan.team', 'plan', 'tabs.idp.team', '/performance/plan/team', [{ path: '/performance/plan/team', prefix: true }], facts => plan(facts, 'team')),
 
   tab('calibration.performance', 'calibration', 'tabs.cal.performance', '/performance/calibration?axis=performance',
-    [{ path: '/performance/calibration', query: { axis: 'performance' } }, { path: '/performance/calibration' }, ...sessionRules('performance')], axis('performance')),
+    [{ path: '/performance/calibration', query: { axis: 'performance' } }, { path: '/performance/calibration' }, { path: TALENT_BOX_PATH, query: { axis: 'performance' } }, ...sessionRules('performance')], axis('performance')),
   tab('calibration.potential', 'calibration', 'tabs.cal.potential', '/performance/calibration?axis=potential',
-    [{ path: '/performance/calibration', query: { axis: 'potential' } }, ...sessionRules('potential')], axis('potential')),
-  tab('calibration.talentBox', 'calibration', 'tabs.cal.talentBox', '/performance/calibration/talent-box',
-    [{ path: '/performance/calibration/talent-box', prefix: true }, ...sessionRules('talent_box')],
+    [{ path: '/performance/calibration', query: { axis: 'potential' } }, { path: TALENT_BOX_PATH, query: { axis: 'potential' } }, ...sessionRules('potential')], axis('potential')),
+  tab('calibration.talentBox', 'calibration', 'tabs.cal.talentBox', TALENT_BOX_PATH,
+    [{ path: TALENT_BOX_PATH, prefix: true }, ...sessionRules('talent_box')],
     facts => holds(facts, item => item.module === 'cal' && item.stage === 'talent_box' && item.view !== 'dept')),
 ] as const;
 

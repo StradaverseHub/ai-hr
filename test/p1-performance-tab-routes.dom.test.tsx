@@ -9,9 +9,10 @@
  * section; Team PM's per-review route refuses a review the viewer does not lead.
  *
  * Non-vacuity: removing `if(!mayOpen)notFound()` from tab-route.tsx turns every hidden-tab case red (the
- * workspace stub would render); the same line in feedback/page.tsx, team/[reviewId]/page.tsx and the axis
- * branch of calibration/page.tsx turns their refusal cases red; dropping calibrationSessionsForAxis turns the
- * axis-list rows red; passing no hint from the session page turns the lit-tab cases red.
+ * workspace stub would render); the same line in feedback/page.tsx and team/[reviewId]/page.tsx, and the axis
+ * tab check in calibration/page.tsx, turn their refusal cases red; dropping calibrationSessionsForAxis turns the
+ * axis-list rows red; passing no hint from the session page turns the lit-tab cases red; dropping the Talent
+ * box tab check from the board links turns the board-link case red.
  */
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -25,6 +26,8 @@ const state = vi.hoisted(() => ({
   path: '/', search: '',
   facts: { performanceOn: false, items: [], ownFeedbackReport: 'none' } as unknown as PerformanceAreaFacts,
   sessions: [] as unknown[],
+  /** Workspace items with ids (the page's talentBoxSessionIds reads them); the facts above carry no ids. */
+  boards: [] as unknown[],
 }));
 const mock = vi.hoisted(() => ({
   requireModule: vi.fn(async () => undefined),
@@ -43,6 +46,8 @@ vi.mock('../packs/performance/service', async () => {
     performanceAreaTab: tabs.performanceAreaTab,
     performanceTabAccess: async (_s: unknown, id: string) => { const tabState = tabs.performanceTabState(state.facts, id); return { state: tabState, mayOpen: tabState === 'open', facts: state.facts }; },
     getPerformanceAreaFacts: async () => state.facts,
+    getPerformanceAreaFactsAndItems: async () => ({ facts: state.facts, items: state.boards }),
+    performanceTabState: tabs.performanceTabState,
     listMyCalibrationSessions: mock.sessions,
     getOnehrReview: mock.review, myReviews: mock.reviews, onehrAssignments: mock.assignments, getAssessmentPersonalRecord: mock.record,
     getOnehrCalibration: mock.calibration, getAssessmentFinalBands: mock.finalBands,
@@ -77,7 +82,7 @@ import PerformanceCalibrationPage from '../app/performance/calibration/page';
 import AssessmentCalibrationPage from '../app/performance/assessment/calibration/[sessionId]/page';
 import PerformanceWorkspacePage from '../app/performance/workspace/page';
 
-afterEach(() => { cleanup(); vi.clearAllMocks(); state.path = '/'; state.search = ''; });
+afterEach(() => { cleanup(); vi.clearAllMocks(); state.path = '/'; state.search = ''; state.boards = []; });
 
 const area = messages.performanceArea;
 const draw = (node: React.ReactNode) => render(<NextIntlClientProvider locale="en" messages={messages} onError={error => { throw error; }}>{node}</NextIntlClientProvider>);
@@ -258,6 +263,18 @@ describe('Calibration: per-axis lists and session pages', () => {
     expect(await open(PerformanceCalibrationPage as never, `/performance/calibration?axis=${axis}`, query({ axis }))).toBe('rendered');
     expect(lit()).toEqual([`calibration.${axis}`]);
     expect(sessionLinks()).toEqual(ids.map(id => `/performance/assessment/calibration/${id}?axis=${axis}`).sort());
+  });
+  it('a session whose Talent Box the viewer holds also links to its standalone board (PT-TB); others do not', async () => {
+    state.facts = bgCeo;
+    state.boards = [{ id: 'bg', kind: 'calibration', module: 'cal', stage: 'talent_box', view: 'bg', cycleId: 'cycle-1' }, { id: 'hod', kind: 'calibration', module: 'cal', stage: 'department_review', view: 'dept', cycleId: 'cycle-1' }];
+    expect(await open(PerformanceCalibrationPage as never, '/performance/calibration', query())).toBe('rendered');
+    const boards = () => [...document.querySelectorAll('[data-talent-box-link]')].map(link => link.getAttribute('href'));
+    expect(boards()).toEqual(['/performance/calibration/talent-box?session=bg']);
+    cleanup();
+    // Without the Talent box tab (no talent_box fact), no board link, even for a held id.
+    state.facts = facts([calibration('bu', 'calibration', 'performance')]);
+    expect(await open(PerformanceCalibrationPage as never, '/performance/calibration', query())).toBe('rendered');
+    expect(boards()).toEqual([]);
   });
   it('a hidden axis tab is refused by URL (Group Chief has no Potential), before the session list is read', async () => {
     state.facts = groupChief;

@@ -10,6 +10,7 @@ import {
   PERFORMANCE_STRIP_LABEL_KEYS,
   type PerformanceAreaStrip,
   type PerformanceCalibrationHint,
+  type PerformanceTabId,
   type PerformanceTabView,
 } from '@/packs/performance/onehr/tab-model';
 
@@ -19,7 +20,7 @@ import {
  * area theme (a separate package) supplies their values. The strip scrolls sideways inside itself on a narrow
  * screen rather than wrapping or widening the page.
  */
-export function PerformanceTabNav({ strip, tabs, hint }: { strip: PerformanceAreaStrip; tabs: readonly PerformanceTabView[]; hint?: PerformanceCalibrationHint }) {
+export function PerformanceTabNav({ strip, tabs, hint, targets }: { strip: PerformanceAreaStrip; tabs: readonly PerformanceTabView[]; hint?: PerformanceCalibrationHint; targets?: Partial<Record<PerformanceTabId, string>> }) {
   const t = useTranslations('performanceArea');
   const tWorkspace = useTranslations('onehr.workspace');
   const pathname = usePathname() ?? '';
@@ -46,7 +47,7 @@ export function PerformanceTabNav({ strip, tabs, hint }: { strip: PerformanceAre
                 </span>
               ) : (
                 <Link
-                  href={entry.href}
+                  href={targets?.[entry.id as PerformanceTabId] ?? entry.href}
                   data-tab={entry.id}
                   aria-current={on ? 'page' : undefined}
                   className={cn(base, on ? 'bg-card font-semibold text-primary' : 'font-medium text-muted-foreground hover:text-foreground')}

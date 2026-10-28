@@ -22292,11 +22292,9 @@
       "rowLow": "1 – Low",
       "legendSame": "adjusted, same box",
       "adjustedSame": "Adjusted, same box",
-      "calibrationTabs": "Calibration",
       "tabs": {
         "performance": "Performance",
-        "potential": "Potential",
-        "box": "Talent box"
+        "potential": "Potential"
       },
       "sessions": "Talent Box sessions",
       "axisListHelp": "Read only: each person's current {axis, select, performance {performance} other {potential}} band in this scope. Moves and the lock are made on the Talent box.",
