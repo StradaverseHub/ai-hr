@@ -3,6 +3,7 @@ import {requireAdmin} from '@/lib/authz';
 import {commitBankStatutoryUpload} from '@/core/bank-statutory-upload';
 import {BankStatutoryImportError} from '@/core/bank-statutory-import';
 import {ImportHistoryError,IMPORT_SOURCE_MAX_BYTES} from '@/core/import-history';
+import {publicErrorMessage} from '@/lib/public-error';
 export const runtime='nodejs';
 /**
  * 0db97f14 — Bank & Statutory Import: the ORIGINAL file bytes, so Import History keeps the file and its
@@ -26,6 +27,6 @@ export async function POST(request:Request){
  }catch(error){
   const known=error instanceof ImportHistoryError||error instanceof BankStatutoryImportError;
   if(!known)console.error('[bank statutory upload]',error);
-  return Response.json({error:known?(error as Error).message:null},{status:400,headers:{'Cache-Control':'private, no-store'}});
+  return Response.json({error:known?publicErrorMessage(error):null},{status:400,headers:{'Cache-Control':'private, no-store'}});
  }finally{reader.releaseLock();}
 }

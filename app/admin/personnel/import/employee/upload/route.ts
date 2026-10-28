@@ -34,6 +34,6 @@ export async function POST(request:Request){
  }catch(error){
   const known=error instanceof ImportHistoryError;
   if(!known)console.error('[employee import upload]',error);
-  return Response.json({error:known?(error as Error).message:publicErrorMessage(error)},{status:400,headers:{'Cache-Control':'private, no-store'}});
+  return Response.json({error:publicErrorMessage(error)},{status:400,headers:{'Cache-Control':'private, no-store'}});
  }finally{reader.releaseLock();}
 }
