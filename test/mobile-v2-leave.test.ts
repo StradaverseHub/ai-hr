@@ -286,8 +286,8 @@ describe('v1 additive: hourly preview and the entitlement notice text', () => {
   it('server text comes from the web catalogue in the caller’s language, English when a key is missing, null when absent', async () => {
     const key = ENTITLEMENT_STATUS_LABEL_KEY.not_generated;
     const ms = await mobileTranslator('ms', 'me.leaveBalanceTable');
-    const msText = (msCatalogue as { me: { leaveBalanceTable: Record<string, string> } }).me.leaveBalanceTable[key];
-    const enText = (enCatalogue as { me: { leaveBalanceTable: Record<string, string> } }).me.leaveBalanceTable[key];
+    const msText = (msCatalogue as unknown as { me: { leaveBalanceTable: Record<string, string> } }).me.leaveBalanceTable[key];
+    const enText = (enCatalogue as unknown as { me: { leaveBalanceTable: Record<string, string> } }).me.leaveBalanceTable[key];
     expect(enText).toMatch(/\S/);
     expect(ms(key)).toBe(msText || enText);
     expect(ms('no.such.key')).toBeNull();

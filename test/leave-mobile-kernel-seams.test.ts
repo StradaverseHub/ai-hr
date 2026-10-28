@@ -37,7 +37,7 @@ const SENTINEL = new Error('caller rolls back');
 const hire = (name: string) => hireEmployee(adminCtx(b), {
   person: { fullName: name, primaryEmail: `seam_${randomUUID().slice(0, 8)}@t.local` }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: '2024-01-01',
 });
-const ctxOf = async (e: { personId: string }, role: string): Promise<SessionContext> => ({ tenantId: b.tenantId, userId: await createAppUser(b.tenantId, e.personId, role), personId: e.personId, roles: [role] });
+const ctxOf = async (e: { personId: string }, role: Parameters<typeof createAppUser>[2]): Promise<SessionContext> => ({ tenantId: b.tenantId, userId: await createAppUser(b.tenantId, e.personId, role), personId: e.personId, roles: [role] });
 const status = async (id: string) => (await owner.db.select({ s: schema.leaveRequest.status }).from(schema.leaveRequest).where(eq(schema.leaveRequest.id, id)))[0]?.s;
 const steps = (id: string) => owner.db.select({ stepIndex: schema.leaveApprovalStep.stepIndex, status: schema.leaveApprovalStep.status }).from(schema.leaveApprovalStep).where(eq(schema.leaveApprovalStep.leaveRequestId, id)).orderBy(schema.leaveApprovalStep.stepIndex);
 const cancellations = (id: string) => owner.db.select({ id: schema.leaveCancellationRequest.id, status: schema.leaveCancellationRequest.status }).from(schema.leaveCancellationRequest).where(eq(schema.leaveCancellationRequest.leaveRequestId, id));
