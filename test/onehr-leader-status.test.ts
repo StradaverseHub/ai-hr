@@ -260,7 +260,7 @@ describe('between cycles', () => {
    */
   async function closedWithReleases() {
     const finals: Record<string, [string, string]> = { A1: ['ME', 'Mid'], A2: ['OU', 'High'], A3: ['AE', 'Low'], B1: ['ME', 'Mid'], B2: ['BE', 'Mid'] };
-    await scope(cycleId, { tier: 'final' }, (['A1', 'A2', 'A3', 'B1', 'B2'] as const).map((n) => ({ reviewId: R[n], employmentId: P[n].employmentId, performance: finals[n][0], potential: finals[n][1] })));
+    await scope(cycleId, { tier: 'final', companyId: holding }, (['A1', 'A2', 'A3', 'B1', 'B2'] as const).map((n) => ({ reviewId: R[n], employmentId: P[n].employmentId, performance: finals[n][0], potential: finals[n][1] })));
     const release = (reviewIds: string[], result: 'performance' | 'talent', action: 'release' | 'revoke') => perf.releaseOnehrResults(a, { cycleId, reviewIds, result, step: 'leaders', action });
     await release([R.A1, R.A2], 'performance', 'release');
     await release([R.A2], 'performance', 'revoke');
@@ -330,7 +330,7 @@ describe('what the projection carries', () => {
     await owner.db.update(schema.onehrReview).set({ managerPerformance: 'OU' }).where(inArray(schema.onehrReview.reviewId, Object.values(R)));
     await hodReview(cycleId, P.hodA, { performance: true, potential: true });
     await scope(cycleId, { tier: 'group' }, [{ reviewId: R.A1, employmentId: P.A1.employmentId, performance: 'OU', performanceLockedAt: new Date() }]);
-    await scope(cycleId, { tier: 'final' }, (['A1', 'A2', 'A3', 'B1', 'B2', 'hodA', 'hodB'] as const).map((n) => ({ reviewId: R[n], employmentId: P[n].employmentId, performance: 'OU', potential: 'High' })));
+    await scope(cycleId, { tier: 'final', companyId: holding }, (['A1', 'A2', 'A3', 'B1', 'B2', 'hodA', 'hodB'] as const).map((n) => ({ reviewId: R[n], employmentId: P[n].employmentId, performance: 'OU', potential: 'High' })));
     await perf.releaseOnehrResults(a, { cycleId, reviewIds: [R.A1, R.B1], result: 'three', step: 'leaders', action: 'release' });
     const running = await Promise.all([U.buA, U.buB, U.bgCeo, U.chief, U.hodA2].map((ctx) => status(ctx, cycleId)));
     await owner.db.update(schema.reviewCycle).set({ status: 'closed' }).where(eq(schema.reviewCycle.id, cycleId));
