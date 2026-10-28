@@ -7,15 +7,16 @@
  *
  * - getUnitExclusionScreen: the rules (listUnitExclusionRules) with the names of who set and ended them, whether
  *   the viewer may change them now, and, for a writer in an open or calibration cycle only, the companies in the
- *   cycle's scope with their departments.
+ *   cycle's scope with the departments that hold people today and their counts (app.onehr_unit_exclusion_choices,
+ *   0667: the facts headcount's placement rule, so an offered department is never refused as empty).
  * - previewUnitExclusionScreen: previewUnitExclusion's plan unchanged (digest, revision and counts as returned),
  *   reduced to what the screen shows, with names for the employment ids it lists. The per-seat-type counts and
  *   the submitted places are counts of the plan's own rows, never computed from anything else.
  */
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { SessionContext, Tx } from '../../../db/client';
-import { appUser, company, department, reviewCycle } from '../../../db/schema';
+import { appUser, company, reviewCycle } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
 import { onehrLabel } from './person-labels';
 import { listUnitExclusionRules, previewUnitExclusion, type UnitExclusionScope } from './unit-exclusion-service';
@@ -29,7 +30,7 @@ export type UnitExclusionRuleView = {
   createdByName: string | null; createdAt: string; endedByName: string | null; endedAt: string | null;
   endReason: 'brought_back' | 'subsumed' | null; active: boolean;
 };
-export type UnitExclusionChoice = { id: string; name: string; departments: { id: string; name: string }[] };
+export type UnitExclusionChoice = { id: string; name: string; departments: { id: string; name: string; people: number }[] };
 export type UnitExclusionScreen = {
   cycle: { id: string; name: string; status: string; revision: number };
   /** The backend's writer flag (a tenant-wide HR administrator). */
@@ -37,7 +38,7 @@ export type UnitExclusionScreen = {
   /** canWrite and the cycle is open or in calibration: the only state with write controls. */
   editable: boolean;
   rules: UnitExclusionRuleView[];
-  /** Companies in the cycle's scope with their departments; empty unless editable. */
+  /** Companies in the cycle's scope with their departments that hold people today; empty unless editable. */
   companies: UnitExclusionChoice[];
 };
 export type UnitExclusionPreviewView = {
@@ -78,18 +79,17 @@ export async function getUnitExclusionScreen(ctx: SessionContext, cycleId: strin
   const editable = listed.canWrite && WRITABLE_STATUSES.includes(listed.cycle.status);
   return withPerformanceTenant(ctx, async (tx) => {
     const users = await userNames(tx, listed.rules.flatMap((r) => [r.createdBy, ...(r.endedBy ? [r.endedBy] : [])]));
-    let companies: UnitExclusionChoice[] = [];
+    const companies: UnitExclusionChoice[] = [];
     if (editable) {
       const [cycle] = await tx.select({ companyId: reviewCycle.companyId }).from(reviewCycle).where(eq(reviewCycle.id, cycleId));
       const units = await tx.select({ id: company.id, name: company.legalName }).from(company)
         .where(and(sql`app.onehr_admin(${company.id})`, cycle?.companyId ? eq(company.id, cycle.companyId) : undefined))
         .orderBy(asc(company.legalName), asc(company.id));
-      const departments = units.length
-        ? await tx.select({ id: department.id, name: department.name, companyId: department.companyId }).from(department)
-          .where(and(inArray(department.companyId, units.map((u) => u.id)), isNull(department.archivedAt)))
-          .orderBy(asc(department.name), asc(department.id))
-        : [];
-      companies = units.map((u) => ({ id: u.id, name: u.name, departments: departments.filter((d) => d.companyId === u.id).map(({ id, name }) => ({ id, name })) }));
+      for (const u of units) {
+        const departments = await tx.execute<{ id: string; name: string; people: number }>(sql`select c.department_id::text as id, c.department_name as name, c.people
+          from app.onehr_unit_exclusion_choices(${cycleId}::uuid, ${u.id}::uuid) c order by c.department_name, c.department_id`);
+        companies.push({ id: u.id, name: u.name, departments: departments.map((d) => ({ id: d.id, name: d.name, people: Number(d.people) })) });
+      }
     }
     return {
       cycle: { id: listed.cycle.id, name: listed.cycle.name, status: listed.cycle.status, revision: listed.cycle.revision },

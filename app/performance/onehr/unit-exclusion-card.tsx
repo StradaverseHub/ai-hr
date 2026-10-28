@@ -158,7 +158,7 @@ export function UnitExclusionCard({ screen }: { screen: UnitExclusionScreen }) {
                 {chosen.departments.map((d) => (
                   <label key={d.id} className="inline-flex cursor-pointer items-center rounded-full border border-border px-3 py-1 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary/10 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring">
                     <input type="radio" name="unit-exclusion-department" value={d.id} checked={departmentId === d.id} onChange={() => { setDepartmentId(d.id); reset(); }} className="sr-only" />
-                    {d.name}
+                    {t('departmentPeople', { name: d.name, count: d.people })}
                   </label>
                 ))}
               </div>

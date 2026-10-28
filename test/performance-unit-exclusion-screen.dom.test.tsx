@@ -33,7 +33,7 @@ function screenData(over: Partial<UnitExclusionScreen> = {}): UnitExclusionScree
       { id: 'rule-active', companyId: NORTH, companyName: 'Northwind Sdn Bhd', departmentId: FINANCE, departmentName: 'Finance', createdByName: 'Hana Lee', createdAt: '2026-10-20T02:00:00.000Z', endedByName: null, endedAt: null, endReason: null, active: true },
       { id: 'rule-ended', companyId: 'south', companyName: 'Southwind Bhd', departmentId: null, departmentName: null, createdByName: 'Hana Lee', createdAt: '2026-10-01T02:00:00.000Z', endedByName: 'Hana Lee', endedAt: '2026-10-05T02:00:00.000Z', endReason: 'brought_back', active: false },
     ],
-    companies: [{ id: NORTH, name: 'Northwind Sdn Bhd', departments: [{ id: FINANCE, name: 'Finance' }, { id: SALES, name: 'Sales' }] }],
+    companies: [{ id: NORTH, name: 'Northwind Sdn Bhd', departments: [{ id: FINANCE, name: 'Finance', people: 1 }, { id: SALES, name: 'Sales', people: 12 }] }],
     ...over,
   };
 }
@@ -56,7 +56,9 @@ async function previewSales() {
   ports.preview.mockResolvedValue({ ok: true, data: plan });
   fireEvent.change(screen.getByRole('combobox', { name: t.company }), { target: { value: NORTH } });
   fireEvent.click(screen.getByLabelText(t.departments, { selector: 'input[name="unit-exclusion-scope"]' }));
-  fireEvent.click(screen.getByLabelText('Sales'));
+  // Chips carry the backend's people count (app.onehr_unit_exclusion_choices): picked, never typed.
+  expect(screen.getAllByRole('radio').filter((r) => r.getAttribute('name') === 'unit-exclusion-department').map((r) => r.closest('label')?.textContent)).toEqual(['Finance · 1 person', 'Sales · 12 people']);
+  fireEvent.click(screen.getByLabelText('Sales · 12 people'));
   fireEvent.click(screen.getByRole('button', { name: t.preview }));
   return screen.findByRole('region', { name: t.previewTitle });
 }
