@@ -17,7 +17,8 @@ vi.mock('next-intl/server', () => ({
   getFormatter: async () => createFormatter({ locale: 'en', timeZone: 'UTC' }),
 }));
 const load = vi.fn<() => Promise<PerformanceHomeBlock | null>>();
-vi.mock('@/packs/performance/service', () => ({ getPerformanceHomeBlock: () => load() }));
+// PT-X3: without a block the slot asks whether any performance work is assigned; here none is.
+vi.mock('@/packs/performance/service', () => ({ getPerformanceHomeBlock: () => load(), hasAssignedPerformanceWork: async () => false }));
 import { PerformanceHomeSlot, PerformanceHomeView } from '../components/performance-home/performance-home';
 
 afterEach(() => { cleanup(); delete document.documentElement.dataset.uiTheme; load.mockReset(); });

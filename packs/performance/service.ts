@@ -86,7 +86,9 @@ export {releaseResults,releaseSteps,releaseStatuses,ledTabs,type ReleaseComponen
 // WP-A3 — leader status data for the home cards (counts, states and dates only; the cards are drawn elsewhere).
 export {getLeaderStatus,leaderStatusSchema,type LeaderStatus,type LeaderStatusSeat} from './onehr/leader-status-service';
 export {pendingPerformanceTasks} from './onehr/tasks';
-export {getPerformanceHomeBlock,hasAssignedPerformanceWork,type PerformanceHomeBlock,type HomeStep,type HomeStepKey,type HomeStepState,type HomeNextStep,type HomeStanding,type HomeTeam} from './onehr/home-cards';
+export {getPerformanceHomeBlock,hasAssignedPerformanceWork,WHERE_YOU_STAND_RULE,standingPerformance,leaderRailSteps,type WhereYouStandRule,type PerformanceHomeBlock,type HomeStep,type HomeStepKey,type HomeStepState,type HomeNextStep,type HomeStanding,type HomeTeam} from './onehr/home-cards';
 // D-P1-32 PT-X1 — the Performance & Talent tab registry (pure), its one facts builder and the per-tab route check.
 export {PERFORMANCE_AREA_TABS,PERFORMANCE_STRIP_LABEL_KEYS,performanceAreaStrips,performanceAreaStrip,performanceAreaTab,performanceTabState,activePerformanceTab,type PerformanceAreaFacts,type PerformanceAreaItem,type PerformanceAreaStrip,type PerformanceAreaTab,type PerformanceTabId,type PerformanceTabState,type PerformanceTabView,type PerformanceTabMatch,type OwnFeedbackReport,type PerformanceCalibrationHint,performanceCalibrationHints,CALIBRATION_SESSION_PATHS} from './onehr/tab-model';
-export {getPerformanceAreaFacts,performanceTabAccess} from './onehr/tab-service';
+export {getPerformanceAreaFacts,getPerformanceAreaFactsAndItems,performanceTabAccess} from './onehr/tab-service';
+export {getPerformanceHome} from './onehr/performance-home-service';
+export {performanceHomeLayout,homeNext,homeSlot,notInReason,teamCounts,toolDoors,pastJourney,type PerformanceHomeView,type PerformanceHomeLayout,type PerformanceHomeCardId,type HomeNext,type HomeRow,type HomeSlot,type HomeRail,type NotInReason,type TeamCounts,type HomeToolGroup,type RunningLeaderStatus,type RecordLeaderStatus} from './onehr/performance-home-model';

@@ -10681,6 +10681,7 @@
         "onboardingRequisitions": "配置的履行组、审批组和系统添加组、模块用户及公司人事可查看申请。操作仍受当前团队、审批步骤或项目权限限制。仅被提及只能查看相应讨论。",
         "onboardingSettings": "入职模块用户维护政策、目录、审批流程和路由。未获模块权限的主管理员只能管理分配组和授权。",
         "onboardingV31": "需要单独授予入职模块访问权，与人事角色无关。人事专用身份字段还需要相应公司的人员管理权限。",
+        "performanceHome": "Everyone signed in reaches it while Performance is on. Each card shows only the viewer's own work and the results released to them; a leader seat adds aggregate counts for the people it leads, never one person's band.",
         "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked. The department view lists only the people whose current head-of-department assignment names you, read-only.",
         "payrollConfig": "所有人都可打开；只有公司的管理员才能更改。",
         "people": "所有人都可打开；列表仅限于你有权查看的人员。",
@@ -28318,6 +28319,57 @@
     },
     "homeCard": {
       "title": "Your review"
+    },
+    "homeHelp": {
+      "homeCard": {
+        "line": "Your cycle, your next step and where you stand, on one page."
+      },
+      "next": {
+        "nothingLine": "If a colleague asks for your 360 feedback, or your team needs something from you, it will show here."
+      },
+      "notIn": {
+        "why": "Your own review is not part of {cycle}: {reason}.",
+        "reasons": {
+          "unitOut": "your unit is not taking part in this cycle",
+          "joinedAfterOpen": "you joined after the cycle opened",
+          "confirmedAfterOpen": "your confirmation came after the cycle opened",
+          "probation": "you are still on probation",
+          "notPart": "you are not on its list of participants"
+        },
+        "leads": "Your team's review still runs, and you lead it.",
+        "nothingOwn": "You have no KPI check-in, competency or result this time.",
+        "foot": "Your own review starts with your first full cycle. If something here looks wrong, contact HR."
+      },
+      "people": "{count, plural, one {# person} other {# people}}",
+      "stand": {
+        "lineManagerApproved": "Approved by your line manager. Calibration can still change it."
+      },
+      "leader": {
+        "midYear": "Mid-Year",
+        "buMeta": "{people, plural, one {# person} other {# people}} · {departments, plural, one {# department} other {# departments}}",
+        "units": "Your units",
+        "inOf": "{in} of {of} in",
+        "reviewsLine": "{in} of {of} department reviews in",
+        "scrolls": "{label}, scrolls",
+        "bgMeta": "{ready} of {total} ready · {locked} locked",
+        "bgMetaMidYear": "{ready} of {total} with every review in"
+      },
+      "led": {
+        "people": "{count, plural, one {# person led} other {# people led}}",
+        "line": "{released} released · {waiting} still waiting"
+      },
+      "results": {
+        "emptyLine": "Your released results, your 360 report and your Career Plan will show here after your first cycle."
+      },
+      "plan": {
+        "goals": "{count, plural, one {# goal} other {# goals}}"
+      },
+      "history": {
+        "emptyLine": "Your past cycles show here once you have one, with your final results once they are released."
+      },
+      "tools": {
+        "emptyLine": "Doors to your Performance & Talent pages show here as work reaches you."
+      }
     }
   },
   "rewardsConfig": {
