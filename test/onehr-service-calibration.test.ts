@@ -7,7 +7,7 @@ import { parseCsv,toCsv } from '../lib/csv';
 import { randomUUID } from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee, setReportingLine } from '../core/org';
@@ -276,6 +276,23 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     const unfinished=await make('group',[pending.reviewId]);v=await perf.getOnehrCalibration(reviewer,unfinished,'performance');expect(v.rows[0]).toMatchObject({currentPerformance:null,canWrite:{pm:false,pot:false}});
     await expect(perf.saveOnehrCalibration(reviewer,unfinished,1,{reviewId:pending.reviewId,axis:'performance',performance:'UA',potential:null,performanceNote:'Direct assignment must fail.',potentialNote:''})).rejects.toThrow(/line manager rating/);
     await expect(perf.lockOnehrCalibration(reviewer,unfinished,1,'','performance',pending.reviewId)).rejects.toThrow(/line manager rating/);
+  });
+  it('APR-011 on the Group performance list: a changed call needs its reason and is audited with it',async()=>{
+    await complete();const reviewer=peers[0].ctx;
+    const others=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),inArray(schema.onehrReview.employmentId,peers.slice(1).map(p=>p.employmentId)))).orderBy(schema.onehrReview.reviewId);
+    const group=await perf.createOnehrCalibration(a,cycleId,{name:'Group list reasons',companyId:b.companyId,tier:'group',reviewerUserIds:[reviewer.userId!],reviewIds:[reviewId,...others.map(o=>o.reviewId)],pbtAchievement:null,mode:'after'});
+    const rev=async()=>(await perf.getOnehrCalibration(reviewer,group)).session.revision;
+    const list=async(band:'BE'|'ME'|'AE',note:string)=>perf.saveOnehrCalibration(reviewer,group,await rev(),{reviewId,axis:'performance',performance:band,potential:null,performanceNote:note,potentialNote:''});
+    expect((await perf.getOnehrCalibration(reviewer,group,'performance')).rows.find(r=>r.entry.reviewId===reviewId)).toMatchObject({currentPerformance:'ME',canWrite:{pm:true}});
+    await expect(list('AE','')).rejects.toThrow(/Explain each changed band/);
+    await expect(list('AE','   ')).rejects.toThrow(/Explain each changed band/);
+    expect((await perf.getOnehrCalibration(reviewer,group)).rows.find(r=>r.entry.reviewId===reviewId)?.entry.performance).toBeNull();
+    await list('ME','');// the line manager's band it already shows: no reason needed
+    // The list page is not capped (business-exact); that is pinned against a live ceiling in onehr-service-talent-box.
+    await list('AE','Group view of the full year.');
+    expect((await perf.getOnehrCalibration(reviewer,group)).rows.find(r=>r.entry.reviewId===reviewId)?.entry).toMatchObject({performance:'AE',performanceNote:'Group view of the full year.'});
+    const events=await owner.db.select({payload:schema.domainEvent.payload}).from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,group),eq(schema.domainEvent.eventType,'onehr.calibration-recorded')));
+    expect(events.map(e=>e.payload)).toContainEqual(expect.objectContaining({reviewId,axis:'performance',next:expect.objectContaining({performance:'AE',performanceNote:'Group view of the full year.'})}));
   });
   it('keeps final-band suggestions provisional, resolves weighted ties only by a reasoned HR decision and detects changed inputs',async()=>{
     await complete();const reviewer=peers[0].ctx;

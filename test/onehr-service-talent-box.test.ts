@@ -1,7 +1,7 @@
 /**
  * P1 WP-D — the Talent Box writer against real RLS (every call is the persona's app-role session via the service).
  * Pins: APR-011 reason on every changed band at BU, BG and Group (C4); the source's movement ceiling, enforced in the
- * writer; the Group box over both axes with its own per-person lock; BU closing after the BG lock; no self move; no
+ * writer and on the leader's chat move (D-P1-11); the generic leader form needing the same reason; the Group box over both axes with its own per-person lock; BU closing after the BG lock; no self move; no
  * move outside the reviewer's session.
  */
 import { randomUUID } from 'node:crypto';
@@ -68,6 +68,31 @@ describe('Talent Box moves (real RLS)',()=>{
   await expect(move(buCeo,hod,await reviewOf(cycleA,subjects[1]),{performance:'ME'})).rejects.toThrow(/belongs to the Talent Box/);
  });
 
+ it('demands the same reason on the generic calibration form at BU and BG, leaves an unchanged band free, and does not cap the form',async()=>{
+  const reviewId=await reviewOf(cycleA,subjects[0]);
+  const save=async(ctx:SessionContext,id:string,bands:{performance?:'UA'|'BE'|'ME'|'AE'|'OU';potential?:'Low'|'Mid'|'High'},note='')=>
+   perf.saveOnehrCalibration(ctx,id,await revision(ctx,id),{reviewId,axis:'both',performance:bands.performance??null,potential:bands.potential??null,performanceNote:note,potentialNote:note});
+  // One BG scope per person per cycle: the BG checks run on a session over all ten (20% → 2 category changes).
+  const ids=await Promise.all(subjects.map(s=>reviewOf(cycleA,s))),bg=await session(cycleA,'bg',b.companyId,bgCeo,subjects);
+  const entry=async(ctx:SessionContext,id:string,r=reviewId)=>(await perf.getOnehrCalibration(ctx,id)).rows.find(x=>x.entry.reviewId===r)!.entry;
+  for(const [tier,ctx] of [['bu',buCeo],['bg',bgCeo]] as const){
+   const id=tier==='bu'?await session(cycleA,'bu',b.companyId,ctx,[subjects[0]]):bg;
+   await expect(save(ctx,id,{performance:'ME'}),tier).rejects.toThrow(/Explain each changed band/);
+   await expect(save(ctx,id,{potential:'High'},'  '),tier).rejects.toThrow(/Explain each changed band/);
+   expect(await entry(ctx,id),tier).toMatchObject({performance:null,potential:null});
+   await save(ctx,id,{performance:'UA',potential:'Low'});// the bands it already shows: no reason needed
+   await save(ctx,id,{performance:'ME',potential:'High'},'Discussed in the calibration meeting.');
+   expect(await entry(ctx,id),tier).toMatchObject({performance:'ME',potential:'High',performanceNote:'Discussed in the calibration meeting.'});
+  }
+  // The ceiling belongs to the box and its chat, not to the form: the box spends the unit's allowance (2 of 2) until
+  // it refuses a move, and the form then saves that same change with its reason.
+  let refused:string|null=null;
+  for(const id of ids.slice(1)){try{await move(bgCeo,bg,id,{performance:'ME'});}catch(e){expect(String(e)).toMatch(/used up: 2 of 2/);refused=id;break;}}
+  expect(refused,'the box refused a move once the allowance was used').not.toBeNull();
+  await perf.saveOnehrCalibration(bgCeo,bg,await revision(bgCeo,bg),{reviewId:refused!,axis:'performance',performance:'ME',potential:null,performanceNote:'Form decision with its reason.',potentialNote:''});
+  expect((await entry(bgCeo,bg,refused!)).performance).toBe('ME');
+ });
+
  it('allows the Nth category change in a unit, refuses the next, and gives the allowance back when someone returns',async()=>{
   const id=await session(cycleA,'bg',b.companyId,bgCeo,subjects);// 10 people at 20% → 2 category changes
   const ids=await Promise.all(subjects.map(s=>reviewOf(cycleA,s)));
@@ -84,6 +109,22 @@ describe('Talent Box moves (real RLS)',()=>{
   // Without the policy block there is no ceiling (the source ships it paused).
   const other=await session(cycleB,'bu',coB,reviewerB,[subjectB]);
   expect((await perf.getOnehrCalibration(reviewerB,other)).talentBox.cap).toBeNull();
+ });
+
+ it('holds the box ceiling on a BG CEO’s chat move (the box and its chat share one move), within and past the allowance',async()=>{
+  const id=await session(cycleA,'bg',b.companyId,bgCeo,subjects);// 10 people at 20% → 2 category changes
+  const ids=await Promise.all(subjects.map(s=>reviewOf(cycleA,s)));
+  const chat=async(text:string)=>perf.sendCalibrationMessage(bgCeo,id,'both',(await perf.getCalibrationConversation(bgCeo,id,'both')).revision,randomUUID(),text);
+  const band=async(reviewId:string)=>(await perf.getOnehrCalibration(bgCeo,id)).rows.find(r=>r.entry.reviewId===reviewId)?.entry.performance;
+  await chat('Set performance: Box subject 0: ME: Verified delivery in the calibration meeting.');// PIP → Solid Core
+  await chat('Set performance: Box subject 1: ME: Verified delivery in the calibration meeting.');
+  expect([await band(ids[0]),await band(ids[1])]).toEqual(['ME','ME']);
+  await expect(chat('Set performance: Box subject 2: ME: Verified delivery in the calibration meeting.')).rejects.toThrow(/limit .* used up: 2 of 2 \(20% of 10 people\)/);
+  expect(await band(ids[2])).toBeNull();
+  await chat('Set performance: Box subject 0: AE: A correction inside the category.');// free, as on the box
+  expect(await band(ids[0])).toBe('AE');
+  // One count: the box sees the chat's moves and refuses the third as well.
+  await expect(move(bgCeo,id,ids[2],{performance:'ME'})).rejects.toThrow(/used up: 2 of 2/);
  });
 
  it('moves and locks both axes at Group, refusing a person’s locked call, and closes BU once BG locks',async()=>{

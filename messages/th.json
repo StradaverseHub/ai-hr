@@ -19349,7 +19349,9 @@
       "movedFrom": "ย้ายจาก {band}",
       "differsBg": "ต่างจาก CEO กลุ่มธุรกิจ",
       "businessGroup": "กลุ่มธุรกิจ",
-      "department": "แผนก"
+      "department": "แผนก",
+      "changeTitle": "Change the call for {name}",
+      "saveCall": "Save call"
     },
     "developmentSuggestions": {
       "title": "ข้อเสนอเป้าหมาย",

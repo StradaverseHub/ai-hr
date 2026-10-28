@@ -19349,7 +19349,9 @@
       "movedFrom": "Dipindahkan daripada {band}",
       "differsBg": "Berbeza daripada CEO kumpulan perniagaan",
       "businessGroup": "Kumpulan perniagaan",
-      "department": "Jabatan"
+      "department": "Jabatan",
+      "changeTitle": "Change the call for {name}",
+      "saveCall": "Save call"
     },
     "developmentSuggestions": {
       "title": "Cadangan matlamat",
