@@ -317,3 +317,39 @@ export function useApi<P extends keyof Endpoints>(
   return result?.key === key ? { data: result.data, error: result.error, loading: result.loading, reload } :
     { data: null, error: null, loading: true, reload };
 }
+
+/**
+ * useApi for one v2 JSON read decoded by its OWN contract schema (apiGetV2): the same scoping (identity, connection,
+ * locale, auth generation, params), the same stale-on-outage / drop-on-refusal rule. `schema` must be a module
+ * constant. M14: the composed Tasks widget reads the canonical v2 task list through this.
+ */
+export function useApiV2<S extends z.ZodType>(
+  path: V2Path,
+  schema: S,
+  params: Record<string, string | undefined>,
+  onSignInRequired: () => void,
+): Loadable<z.output<S>> {
+  const [result, setResult] = useState<{ key: string; data: z.output<S> | null; error: Error | null; loading: boolean } | null>(null);
+  const [tick, setTick] = useState(0);
+  const paramsKey = JSON.stringify(canonicalParams(params));
+  const namespace=identityNamespace(),origin=config.apiUrl,locale=appLocale(),owner=authGeneration();
+  const key = JSON.stringify([namespace,origin, path, paramsKey, locale, owner]);
+
+  useEffect(() => {
+    let live = true;
+    const belongs=()=>live&&authGeneration()===owner&&identityNamespace()===namespace&&config.apiUrl===origin&&appLocale()===locale;
+    const controller = new AbortController();
+    setResult(prior => ({ key, data: prior?.key === key ? prior.data : null, error: null, loading: true }));
+    apiGetV2(path, schema, JSON.parse(paramsKey) as Record<string, string | undefined>, controller.signal)
+      .then((d) => { if (belongs()) setResult({ key, data: d, error: null, loading: false }); })
+      .catch((e: Error) => {
+        if (!belongs()) return;
+        if (e instanceof SignInRequiredError) onSignInRequired();
+        setResult(prior => ({ key, data: e instanceof RequestRejectedError || e instanceof SignInRequiredError ? null : prior?.key === key ? prior.data : null, error: e, loading: false }));
+      });
+    return () => { live = false; controller.abort(); };
+  }, [path, key, paramsKey, tick, onSignInRequired]); // `schema` is a module constant
+  const reload = useCallback(() => setTick((n) => n + 1), []);
+  return result?.key === key ? { data: result.data, error: result.error, loading: result.loading, reload } :
+    { data: null, error: null, loading: true, reload };
+}

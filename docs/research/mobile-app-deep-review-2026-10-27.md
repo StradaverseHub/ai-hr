@@ -431,12 +431,15 @@ are still pending**: no push enrollment, token, payload or reminder code exists.
   applies says "This item is no longer available". Legacy Home's "Needs you" is `HomeNeeds`: loading shows loading, a
   part that could not be read shows "Couldn't check — retry", "Nothing needs you" only when both counts were read,
   are zero and are not refreshing; the task count links to approvals (the button shows when tasks are waiting or could
-  not be checked, as the composed Tasks widget shows it when tasks are waiting). Routes are reachable only unlocked
+  not be checked, as the composed Tasks widget shows it when tasks are waiting). The composed (schema 2) Tasks widget
+  now reads the v2 task list (`useApiV2('v2/tasks')`, every kind the approvals screen lists, replacement leave and
+  notice acknowledgements included) and says "nothing needs you" only for a settled, successful, empty answer; v1
+  `tasks` stays for installed clients. Routes are reachable only unlocked
   (the root Gate renders no route while locked). en and ms copy.
 - **Not done / follow-ups.** Push and reminders (above). No record-level deep link (a notification has no readable
   record reference; DECISION REQUIRED if the owner wants one, which needs a reference column written at dispatch).
-  The composed (schema 2) Tasks widget still reads v1 `tasks`, which omits replacement leave and notice
-  acknowledgements, so it can say "nothing needs you" while those wait (its DOM test pins the v1 read; follow-up).
   The composed Messages widget still reads v1. Stored titles/bodies that are message keys (letters, Home greetings)
   are shown as stored, as v1 does.
-- **Tests written, not yet run.** `test/mobile-v2-notifications.test.ts`, `test/mobile-inbox.dom.test.tsx`.
+- **Tests written, not yet run.** `test/mobile-v2-notifications.test.ts`, `test/mobile-inbox.dom.test.tsx`;
+  `test/mobile-native-composition.dom.test.tsx` and `test/mobile-composer-tasks.test.ts` updated to pin the v2 widget
+  source (v1 pins kept).

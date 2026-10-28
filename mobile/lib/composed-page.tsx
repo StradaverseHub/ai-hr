@@ -4,7 +4,8 @@ import { View } from 'react-native';
 import { router, type Href } from 'expo-router';
 import type { MobileBlock, MobileDesignV2 } from '../../lib/mobile-design';
 import { MOBILE_DESTINATIONS } from '../../lib/mobile-composition';
-import { useApi } from './api';
+import { useApi, useApiV2 } from './api';
+import { TasksPageV2 } from '../../lib/mobile-api/v2/tasks';
 import { ClockPanel } from './clock-panel';
 import { TeamPanel } from './team-panel';
 import { DesignText as Text, TenantSurface, useTenantDesign } from './design';
@@ -36,9 +37,12 @@ function Messages({ block }: { block: MobileBlock }) {
   if (inbox.data && !inbox.data.enabled) return null;
   return <><LoadState loading={inbox.loading} hasData={inbox.data!=null} error={inbox.error} onRetry={inbox.reload} /><>{inbox.data?.items.slice(0, block.detail === 'compact' ? 3 : 20).map(n => <View key={n.id} style={{ gap: 6, marginBottom: 12 }}><Text style={{ color: palette.text, fontWeight: n.readAt ? '400' : '700' }}>{n.title}</Text><Muted>{n.body}</Muted></View>)}{inbox.data?.items.length === 0 && <Muted>{t('inboxEmpty')}</Muted>}</></>;
 }
+/** M14 — the canonical v2 task list (every kind the approvals screen lists; v1 `tasks` stays for installed clients).
+ *  "Nothing needs you" only for a settled, successful, empty first page: never while loading, failed or stale. */
 function Tasks({ block }: { block: MobileBlock }) {
-  const { signOut } = useSession(), tasks = useApi('tasks', {}, signOut);
-  return <><LoadState loading={tasks.loading} hasData={tasks.data!=null} error={tasks.error} onRetry={tasks.reload} />{tasks.data?.items.slice(0, block.detail === 'compact' ? 4 : 20).map(item => <View key={item.id} style={{ marginBottom: 12 }}><Row label={t(`task_${item.kind}`)} value={item.subject || '—'} /></View>)}{tasks.data?.total === 0 && <Muted>{t('nothingNeedsYou')}</Muted>}{tasks.data && tasks.data.total > 0 && <Button title={t('openApprovals')} kind="quiet" onPress={() => router.push('/approvals')} />}</>;
+  const { signOut } = useSession(), tasks = useApiV2('v2/tasks', TasksPageV2, { limit: block.detail === 'compact' ? '4' : '20' }, signOut);
+  const items = tasks.data?.items ?? [], settled = tasks.data != null && !tasks.loading && !tasks.error;
+  return <><LoadState loading={tasks.loading} hasData={tasks.data!=null} error={tasks.error} onRetry={tasks.reload} />{items.map(item => <View key={`${item.kind}:${item.id}`} style={{ marginBottom: 12 }}><Row label={t(`task_${item.kind}`)} value={item.subject.name || '—'} /></View>)}{settled && items.length === 0 && <Muted>{t('nothingNeedsYou')}</Muted>}{items.length > 0 && <Button title={t('openApprovals')} kind="quiet" onPress={() => router.push('/approvals')} />}</>;
 }
 function Requests({ block }: { block: MobileBlock }) {
   const { signOut, employmentId } = useSession(), requests = useApi('leave-requests', { employmentId: employmentId ?? undefined }, signOut);
