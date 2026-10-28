@@ -2860,7 +2860,8 @@ export function calibrationView(ctx: SessionContext, cycleId: string): Promise<C
 //
 // Draft-only, human-in-the-loop. A manager asks for a STARTING draft; we gather the signals already
 // on the review (the employee's self-assessment, linked goals, prior overall ratings, anonymized 360
-// feedback), redact direct identifiers, and ask the governed gateway (lib/ai) for prose. We never
+// feedback), mask emails/IC/phone runs with redactPII (names in that text are NOT masked), and ask the
+// governed gateway (lib/ai) for prose. We never
 // write a rating, a comment, or pay — the text lands in the manager's editable textarea and only a
 // human `submitManagerReview` changes state. The single write here is an audit event noting that a
 // draft was generated. Graceful degradation: with no API key the feature is OFF (PerfError), so the
@@ -2937,7 +2938,9 @@ export async function draftManagerReview(
     return {...source,aiCfg};
   });
 
-  // 2) Build a redacted prompt — the employee is referred to generically; peer notes are anonymous.
+  // 2) Build the prompt — the employee is referred to generically and peer notes carry no author, but
+  //    free text (self-assessment, goals, peer notes) is sent with only emails/IC/phone runs masked; a
+  //    name written inside it is NOT masked.
   const { review, cycle, scale, goals, prior, peers, aiCfg } = gathered;
   const lines: string[] = [
     `Review cycle: ${redactPII(cycle.name)} (${cycle.periodStart} to ${cycle.periodEnd}).`,

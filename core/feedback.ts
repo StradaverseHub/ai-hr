@@ -228,7 +228,8 @@ async function setFeedbackPlanTx(tx:Tx,ctx:SessionContext,p:{feedbackId:string;p
 }
 
 /**
- * FB-3 — the planning agent. Resolves the tenant's AI config, sends the (PII-redacted) feedback (and, on
+ * FB-3 — the planning agent. Resolves the tenant's AI config, sends the feedback with emails/IC/phone runs
+ * masked by redactPII — names are NOT masked — (and, on
  * a re-plan, the prior plan + the reporter's push-back) to the gateway, and stores the result via
  * setFeedbackPlan (agent actor). The provider call happens OUTSIDE any DB transaction. Gated: no AI config
  * ⇒ a clear error (the cron skips, the admin button surfaces it).

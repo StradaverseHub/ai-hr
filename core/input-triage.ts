@@ -38,8 +38,9 @@ import {draftInputDigest} from '../lib/ai/draft-input';
  * ⚠️ **THIS IS THE FIRST SURFACE IN THE PRODUCT THAT SENDS EMPLOYEE-AUTHORED FREE TEXT TO A PROVIDER.**
  * `report-ai.ts`'s posture is *schema out, never data*, and the narrator sends only a bag of numbers. Here
  * the description IS the thing being read, so it cannot be withheld. What is withheld: the employee's
- * name, their employment id, their company, and anything `redactPII` can find (email, IC, phone). What is
- * sent: the claim type, the item, the amount, two dates and the redacted description. It is the tenant's
+ * name FIELD, their employment id, their company, and anything `redactPII` can find (email, IC, phone).
+ * What is sent: the claim type, the item, the amount, two dates and the description. `redactPII` does not
+ * detect names, so a name written INSIDE the description (the claimant's or anyone else's) is sent. It is the tenant's
  * own key (ADR-0023), and the switch below is off until they say otherwise.
  */
 import { and, desc, eq, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
@@ -222,7 +223,8 @@ const SYSTEM = [
   'No markdown, no code fences, no preamble.',
 ].join(' ');
 
-/** What the model is shown. No name, no employment id, no company — and the description is redacted. */
+/** What the model is shown. No name field, no employment id, no company — and the description with
+ * emails/IC/phone runs masked (a name written in it is not). */
 const claimAsText = (f: ClaimFacts) =>
   [
     `Claim type: ${f.type}`,

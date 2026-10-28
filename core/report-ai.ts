@@ -5,8 +5,9 @@
  * Mirrors core/pay-rule-ai.ts line for line:
  *   - short read-tx to resolveActiveAiConfig (null ⇒ feature OFF when unconfigured → typed error → the
  *     UI button simply doesn't light up: the feature FAILS CLOSED when no provider is configured);
- *   - the prompt contains ONLY the closed field catalogue + the admin's REDACTED sentence — NO employee
- *     row data ever leaves the tenant (the PDPA story: schema out, never data);
+ *   - the prompt contains ONLY the closed field catalogue + the admin's sentence through redactPII — NO
+ *     employee row data is read for it (schema out, never data). redactPII masks emails, MY IC numbers and
+ *     phone-like runs only, so a name the admin types into the request still leaves the tenant;
  *   - generateDraft OUTSIDE any tx, small maxTokens;
  *   - ONE shot: an invalid/unparseable output ⇒ a single typed error (no retry, no 2nd call);
  *   - NEVER writes a report — returns the spec + one-line explanation for the human to review/adjust/save;
@@ -96,7 +97,8 @@ export async function draftReportSpec(
   const cfg = await withTenant(ctx, (tx) => resolveActiveAiConfig(tx, ctx, 'report_insight'));
   if (!cfg) throw new ReportDraftError('not_configured');
 
-  // Only the catalogue for the chosen dataset + the redacted request leaves the tenant. No employee data.
+  // Only the catalogue for the chosen dataset + the request (emails/IC/phone masked; names are not) leaves
+  // the tenant. No employee rows are read for the prompt.
   const prompt = [
     catalogueFor(p.datasetId),
     'The report request is:',

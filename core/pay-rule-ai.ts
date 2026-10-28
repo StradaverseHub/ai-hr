@@ -15,7 +15,8 @@
  *
  * Mirrors generateFeedbackPlan / draftManagerReview exactly:
  *   - short read-tx to resolveActiveAiConfig (null ⇒ feature OFF when unconfigured → typed error);
- *   - a REDACTED prompt (redactPII over the admin's free-text description) — no employee PII leaves the tenant;
+ *   - the admin's free-text description through redactPII (emails, MY IC numbers, phone-like runs masked;
+ *     names and other prose are NOT) — no employee row data is read, but whatever the admin typed is sent;
  *   - generateDraft OUTSIDE any tx, maxTokens ~512;
  *   - ONE shot: an invalid/unparseable model output ⇒ a single typed PayRuleDraftError (no retry, no 2nd call);
  *   - NEVER writes the component — returns the rule object for the admin to review + save via upsertPayComponent;
@@ -104,7 +105,8 @@ export async function draftPayRule(
   const cfg = await withTenant(ctx, async tx=>{await assertPayRuleDraftAuthorTx(tx,ctx);return resolveActiveAiConfig(tx, ctx, 'pay_rule_draft');});
   if (!cfg) throw new PayRuleDraftError('not_configured');
 
-  // Redact PII from the admin's free text before it leaves the tenant (a description could name an employee).
+  // Mask emails/IC/phone runs in the admin's free text before it leaves the tenant. A name the admin types
+  // is NOT masked (redactPII does not detect names).
   const prompt = [
     'Configure a pay-component rule from this description:',
     redactPII(p.description),
@@ -149,8 +151,8 @@ export async function draftPayRule(
     type: 'pay_rule_draft',
     // No subject: nothing is written until the admin saves, so there is no row for this to be about.
     facts: { componentCode: p.componentCode ?? null, prorates: p.componentProrates ?? false },
-    // The DESCRIPTION never lands here — it is the admin's free text and is redacted before it even
-    // reaches the provider. Only the shape the model chose.
+    // The DESCRIPTION never lands here — it is the admin's free text (sent to the provider with only
+    // emails/IC/phone runs masked). Only the shape the model chose.
     proposal: { ruleKind: rule?.kind ?? null, hasExplanation: Boolean(explanation) },
     adjudication: reason === null ? { ok: true } : { ok: false, reason },
     provider: cfg.provider,

@@ -4,8 +4,9 @@
  * this dispatches to the right adapter. Draft-only by contract — nothing here writes a review or pay.
  *
  * Two rails baked in:
- *  1. redactPII() — scrub direct identifiers from any free text before it leaves the tenant, for
- *     EVERY provider (employee PII now potentially travels to a tenant-chosen third party).
+ *  1. redactPII() — mask emails, Malaysian IC numbers and phone-like runs in free text before it leaves
+ *     the tenant, for EVERY provider. It does NOT mask names or other identifying prose; employee
+ *     personal data can still reach a tenant-chosen third party through any free text a caller sends.
  *  2. Generic errors — adapters map provider SDK errors to AiGatewayError, so no key fragment or raw
  *     provider body ever reaches a log, a server-action return, or the browser.
  *
@@ -158,10 +159,11 @@ export async function converse(cfg: ResolvedAiConfig, args: ConverseArgs): Promi
 }
 
 /**
- * Scrub direct identifiers before any free text leaves the tenant for a model. Conservative — only
+ * Mask a few direct identifiers before free text leaves the tenant for a model. Conservative — only
  * high-precision patterns (emails, Malaysian IC numbers, long phone-like runs), so ordinary prose is
- * untouched. Names are handled at the prompt level (the employee is referred to generically; peer
- * feedback is anonymous).
+ * untouched. It NEVER masks names: a name typed into free text passes through, and some prompt builders
+ * deliberately send a first name or a structured name field. Callers that must withhold a name have to
+ * leave it out of the prompt themselves; this function is not a PII guarantee.
  */
 export function redactPII(text: string | null | undefined): string {
   if (!text) return '';
