@@ -145,6 +145,7 @@ export async function openOwnedSignedClock(employmentId:string,isUnlocked:()=>bo
    reserve:(binding:unknown)=>owned(()=>journal.reserveOffline(binding)),
    prepare:(requestId:string)=>owned(()=>journal.prepareOffline(requestId)),
    abandon:(requestId:string,code:string)=>owned(()=>journal.abandonReservation(requestId,code)),
+   release:()=>owned(()=>journal.releaseUnusedContext()),
    capture:(input:unknown)=>owned(()=>journal.captureOffline(input)),
    sign:(requestId:string,contextId:string)=>owned(()=>journal.signOffline(requestId,contextId)),
    uploadNext:()=>owned(()=>journal.uploadNextOffline()),

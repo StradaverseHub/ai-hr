@@ -964,9 +964,23 @@ real Play standard token bound to the sync requestHash and accepted by Google; `
 parts on both platforms; real timeout/no-response behaviour of the OS network stack; sealed-file atomic replace
 (`moveSync` overwrite) on device file systems; behaviour across app upgrade with a queue present.
 
+Orchestrator decisions (28 October 2026), implemented:
+1. Removed deployment. `unavailable/not_configured` after offline was enabled means the deployment was removed (drain is the
+   graceful path). An E1 reservation answered `not_configured` (context POST or a later capabilities read) is abandoned;
+   an E2/E3 context with zero claims gets a best-effort close (same persisted closeRequestId) and is then dropped locally
+   (`releaseUnusedContext`). If a server lease really remains, the online punch receives the server's own `offline_pending`
+   refusal; the phone does not block itself. Saved claims stay sealed. `configuration_unavailable`, `module_unavailable` and
+   network failures stay transient (retry and hold).
+2. E3 with no answer. `beforeOnlinePunch`, `syncOffline` and the foreground subscription (`keepOfflineSynced`) resend the
+   persisted close with the same closeRequestId; online clocking resumes once it is answered `closed`.
+3. Another employment. The installed account has one exchange. `beforeOnlinePunch(c,{open})` opens the holding employment
+   (the exchange view exposes only its employmentId to the same actor, never its claims), hands back an unused context or
+   uploads its saved claims first, in order, and closes it, before the punching employment clocks online. Without `open` it is
+   `blocked: other_employment`. Offline capture is offered only to the employment that holds the ready context.
+
+`keepOfflineSynced(c)` subscribes to the foreground and runs `syncOffline` on every return to `active` (backoff respected),
+uploading saved claims, resending a saved close and re-arming without user action.
+
 NOT done: the screens (clock-panel wiring, Couldn't-be-sent confirmation, outcome list, offline employment selection on an
-offline cold start); a second employment's exchange blocks online clocking for the other employment (`other_employment`) until
-that employment syncs; an E1 reservation answered `not_configured` (deployment removed) is kept, not abandoned, so it blocks
-online clocking on the phone (the server lease rules are unchanged); a network failure of the close POST in a handback leaves
-E3, which allows neither offline capture nor online clocking until it is resent; no HR-outcome fetch (decision 4).
+offline cold start); no HR-outcome fetch (decision 4).
 

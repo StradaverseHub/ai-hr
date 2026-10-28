@@ -18,7 +18,7 @@ import {getRandomBytes,randomUUID} from 'expo-crypto';
 import {assertAuthGeneration,authGeneration} from './auth';
 import {config,offlineClockingBuild} from './config';
 import {SignInRequiredError,SessionChangedError,UnavailableError,isNoConnectivity} from './errors';
-import {OFFLINE_NOTHING_ISSUED,type OfflineExchangeView,type OfflineClaimView} from './signed-clock-journal';
+import {OFFLINE_NOTHING_ISSUED,OFFLINE_DEPLOYMENT_REMOVED,type OfflineExchangeView,type OfflineClaimView,type OfflineCloseOutcome} from './signed-clock-journal';
 import {OfflineServerAnswer} from './offline-clock-ports';
 import {base64url} from './offline-sync-hash';
 import {clearOfflineAnchor,writeOfflineAnchor} from './offline-anchor';
@@ -47,6 +47,22 @@ function spend(c:Controller){
  p.attempts.push(now);return true;
 }
 const nonce=()=>base64url(getRandomBytes(32));
+type Caps=Awaited<ReturnType<NonNullable<Controller['offline']>['capabilities']>>;
+const removedDeployment=(caps:Caps)=>caps.outcome==='unavailable'&&caps.code===OFFLINE_DEPLOYMENT_REMOVED;
+/** Deployment removed (not_configured after offline was enabled; orchestrator decision 2026-10-28): drop an unanswered
+ * reservation, or an unused context after a best-effort close (same persisted closeRequestId). Saved claims stay sealed.
+ * Returns whether no exchange remains for this account. */
+async function dropRemoved(c:Controller):Promise<boolean>{
+ const o=c.offline!,e=(await o.claims()).exchange;if(!e)return true;if(!e.own)return false;
+ if(e.phase==='context_requested'){
+  const saved=await c.status();if(saved.status!=='offline_pending')return false;
+  await o.abandon(saved.requestId,OFFLINE_DEPLOYMENT_REMOVED);await clearOfflineAnchor(c.identity,owner());return true;
+ }
+ if(e.claimCount!==0)return false;
+ try{await o.handback(randomUUID());}catch(error){if(error instanceof SignInRequiredError||error instanceof SessionChangedError)throw error;}
+ if((await o.claims()).exchange)await o.release();
+ await clearOfflineAnchor(c.identity,owner());return true;
+}
 function owner(){const generation=authGeneration();return ()=>assertAuthGeneration(generation);}
 /** Owner decision 1: keep a context ready while online and idle. Never arms while drain, another exchange, or any online
  * pending work exists. The anchor is saved before the reservation; a refusal proving nothing was issued drops both. */
@@ -58,6 +74,7 @@ export async function armOffline(c:Controller):Promise<OfflineSyncState>{
  if(view.exchange?.phase==='closing')return {state:'blocked',reason:'closing'};
  if(view.exchange?.phase==='context_ready')return ready(view);
  const caps=await o.capabilities();
+ if(removedDeployment(caps)&&view.exchange)await dropRemoved(c);
  if(caps.outcome!=='offline')return {state:'off',reason:'unavailable',code:caps.code};
  if(caps.apiOrigin!==config.apiUrl)return {state:'off',reason:'origin_mismatch'};
  let requestId:string;
@@ -78,6 +95,9 @@ export async function armOffline(c:Controller):Promise<OfflineSyncState>{
  catch(error){
   if(error instanceof OfflineServerAnswer&&error.answer.outcome==='refused'&&(OFFLINE_NOTHING_ISSUED as readonly string[]).includes(error.answer.code)){
    await o.abandon(requestId,error.answer.code);await clearOfflineAnchor(id,check);return {state:'off',reason:'refused',code:error.answer.code};
+  }
+  if(error instanceof OfflineServerAnswer&&error.answer.outcome==='unavailable'&&error.answer.code===OFFLINE_DEPLOYMENT_REMOVED){
+   await o.abandon(requestId,OFFLINE_DEPLOYMENT_REMOVED);await clearOfflineAnchor(id,check);return {state:'off',reason:'unavailable',code:OFFLINE_DEPLOYMENT_REMOVED};
   }
   if(error instanceof OfflineServerAnswer)return defer(c,error.answer.outcome==='refused'?'slow':'backoff',undefined,error.answer.code);
   throw error;
@@ -100,7 +120,7 @@ export async function syncOffline(c:Controller,options:{manual?:boolean;rearm?:b
  if(!view.exchange.own)return {state:'blocked',reason:'other_employment'};
  let caps:Awaited<ReturnType<typeof o.capabilities>>;
  try{caps=await o.capabilities();}catch(error){if(isNoConnectivity(error))return {state:'offline'};throw error;}
- if(caps.outcome!=='offline')return {state:'off',reason:'unavailable',code:caps.code};
+ if(caps.outcome!=='offline'){if(removedDeployment(caps))await dropRemoved(c);return {state:'off',reason:'unavailable',code:caps.code};}
  if(caps.apiOrigin!==config.apiUrl)return {state:'off',reason:'origin_mismatch'};
  const id=c.identity;
  // The same employee, verified online: (re)write this session's anchor so an offline cold start can open the queue.
@@ -148,21 +168,38 @@ function transport(c:Controller,error:unknown):OfflineSyncState{
  throw error;
 }
 /** Owner decision 1, before every online punch: the route to take. `offline` only when the probe got no HTTP response and
- * a ready context with a free permit exists; `online` once no exchange remains (a zero-claim context is handed back,
- * saved claims are uploaded first). Flag off: always `online`, with no call at all. */
-export async function beforeOnlinePunch(c:Controller):Promise<PunchRoute>{
+ * the punching employment holds a ready context with a free permit; `online` once no exchange remains. The installed account
+ * has ONE exchange, which may belong to another employment of the same actor: pass `open` (openOwnedSignedClock for that
+ * employment) so it is handed back, or its saved claims uploaded first and then closed, before this employment clocks
+ * online. A closing exchange (E3) resends its persisted close. Flag off: always `online`, with no call at all. */
+export async function beforeOnlinePunch(c:Controller,options:{open?:(employmentId:string)=>Promise<Controller>}={}):Promise<PunchRoute>{
  const o=c.offline;if(!offlineClockingBuild||!o)return {route:'online'};
- let e=(await o.claims()).exchange;if(!e)return {route:'online'};
- if(!e.own)return {route:'blocked',reason:'other_employment'};
- try{await o.capabilities();}
+ const e=(await o.claims()).exchange;if(!e)return {route:'online'};
+ let caps:Caps;
+ try{caps=await o.capabilities();}
  catch(error){
   if(!isNoConnectivity(error))throw error;
-  return e.phase==='context_ready'&&e.contextId&&(e.permitsRemaining??0)>0?{route:'offline',contextId:e.contextId}:{route:'blocked',reason:'offline_unavailable'};
+  return e.own&&e.phase==='context_ready'&&e.contextId&&(e.permitsRemaining??0)>0?{route:'offline',contextId:e.contextId}:{route:'blocked',reason:'offline_unavailable'};
  }
- // An unanswered reservation is recovered first (exact retry), so it can be handed back like any unused context.
+ const holder=e.own?c:options.open?await options.open(e.employmentId):null;
+ if(!holder?.offline)return {route:'blocked',reason:'other_employment'};
+ const route=await handBack(holder,e.own?caps:undefined);
+ if(route.route!=='online')return route;
+ return (await o.claims()).exchange===null?{route:'online'}:{route:'blocked',reason:'pending'};
+}
+/** Clear the holder's exchange for an online punch: hand back an unused context (E1 recovered first; E3 resends its saved
+ * close), or upload its saved claims first, strictly in order, and close. A removed deployment drops an unused one. */
+async function handBack(c:Controller,known?:Caps):Promise<PunchRoute>{
+ const o=c.offline!;let e=(await o.claims()).exchange;if(!e)return {route:'online'};
+ let caps:Caps;
+ try{caps=known??await o.capabilities();}catch(error){if(isNoConnectivity(error))return {route:'blocked',reason:'offline_unavailable'};throw error;}
+ if(removedDeployment(caps))return await dropRemoved(c)?{route:'online'}:{route:'blocked',reason:'unavailable'};
  if(e.phase==='context_requested'){await armOffline(c);e=(await o.claims()).exchange;if(!e)return {route:'online'};}
- if(e.phase==='context_ready'&&e.claimCount===0){
-  const handed=await o.handback(randomUUID());
+ if(e.claimCount===0&&e.phase!=='context_requested'){
+  let handed:OfflineCloseOutcome;
+  try{handed=await o.handback(randomUUID());}
+  // No answer: E3 is saved; the next punch, foreground or manual sync resends the same closeRequestId.
+  catch(error){if(error instanceof UnavailableError)return {route:'blocked',reason:'closing'};throw error;}
   if(handed.status==='closed'){await clearOfflineAnchor(c.identity,owner());return {route:'online'};}
   return {route:'blocked',reason:handed.status==='held'?handed.reason:handed.status};
  }
@@ -199,5 +236,10 @@ export function subscribeOfflineForeground(run:()=>void){
  if(!offlineClockingBuild)return ()=>{};
  const subscription=AppState.addEventListener('change',state=>{if(state==='active')run();});
  return ()=>subscription.remove();
+}
+/** Decision 6 without user action: every return to the foreground runs syncOffline (backoff respected), which uploads saved
+ * claims, resends a saved close and re-arms. `report` receives each result or error (a 401 is the UI's to handle). */
+export function keepOfflineSynced(c:Controller,report:(result:OfflineSyncState|Error)=>void=()=>{}){
+ return subscribeOfflineForeground(()=>{void syncOffline(c).then(report,(error:unknown)=>report(error instanceof Error?error:new Error(String(error))));});
 }
 export type {OfflineClaimView};

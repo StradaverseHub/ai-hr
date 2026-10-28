@@ -44,6 +44,11 @@ export type SignedClockStatus={status:'empty'}|{status:'other_pending'}|
 /** Context-request refusals that prove nothing was issued for this request: the reservation may be dropped (E1 -> none).
  * binding_conflict, time_unavailable and every `unavailable` answer keep the reservation for an exact retry. */
 export const OFFLINE_NOTHING_ISSUED=['offline_pending','online_pending','offline_disabled','device_required','context_closed','key_unavailable'] as const;
+/** Orchestrator decision 2026-10-28: `unavailable/not_configured` after offline was enabled means the deployment was removed
+ * (drain is the graceful path). An unanswered reservation is dropped; if a server lease really remains, the online punch gets
+ * the server's own offline_pending refusal instead of the phone blocking itself. configuration_unavailable,
+ * module_unavailable and network failures stay transient (retry and hold). */
+export const OFFLINE_DEPLOYMENT_REMOVED='not_configured';
 /** Claim-upload refusals that can never succeed for this claim (owner decision 2); a 400 is bad_request. */
 const UNDELIVERABLE=['key_unavailable','context_closed','context_unavailable','binding_conflict','invalid_proof','attachment_mismatch','invalid_claim'] as const;
 /** A fresh Play token is the remedy: retry now with a new token (the next attempt always requests one). */
@@ -56,7 +61,7 @@ type ClaimBase={requestId:string;contextId:string;sequence:number;action:'in'|'o
 /** What the employee sees per claim (owner decision 4): only the server outcome, or that it is waiting or cannot be sent. */
 export type OfflineClaimView=ClaimBase&({state:'waiting'}|{state:'recorded';effectiveAt:number;receivedAt:number}|
  {state:'held';reason:string;receivedAt:number}|{state:'not_recorded';reason:string;receivedAt:number}|{state:'undeliverable';reason:OfflineUndeliverableReason});
-export type OfflineExchangeView={exchange:null|{phase:OfflineClockExchange['phase'];own:boolean;contextId:string|null;expiresAt:number|null;permitsRemaining:number|null;claimCount:number|null};claims:OfflineClaimView[]};
+export type OfflineExchangeView={exchange:null|{phase:OfflineClockExchange['phase'];own:boolean;employmentId:string;contextId:string|null;expiresAt:number|null;permitsRemaining:number|null;claimCount:number|null};claims:OfflineClaimView[]};
 export type OfflineSignResult={status:'proof_ready';requestId:string;acceptance:'not_granted'}|{status:'pending';requestId:string;reason:'earlier_claim'|'native_unavailable'|'unsupported'|'invalid_evidence'|'recovery_required'};
 export type SignedClockPorts={
  assertCurrent():void;read():Promise<SignedClockSnapshot|null>;commit(value:SignedClockSnapshot):Promise<void>;
@@ -214,7 +219,9 @@ export function createSignedClockJournal(rawScope:EnrollmentScope,ports:SignedCl
    else if(!entry.undeliverable?.dismissed)claims.push(reason?{...base,state:'undeliverable',reason}:{...base,state:'waiting'});
   }
   const context=p&&own&&p.phase!=='context_requested'?contextOf(p):null;
-  return {exchange:p?{phase:p.phase,own,contextId:context?.id??null,expiresAt:context?.expiresAt??null,
+  // employmentId: the exchange's own employment of this same installed account (a reference, never its claims), so the
+  // driver can open that employment to upload and hand it back before another employment clocks online.
+  return {exchange:p?{phase:p.phase,own,employmentId:p.binding.scope.employmentId,contextId:context?.id??null,expiresAt:context?.expiresAt??null,
    permitsRemaining:context&&p.phase!=='context_requested'?context.permits.length-p.claims.length:null,
    claimCount:own&&p.phase!=='context_requested'?p.claims.length:null}:null,claims};
  }
@@ -287,7 +294,16 @@ export function createSignedClockJournal(rawScope:EnrollmentScope,ports:SignedCl
   /** E1 -> none, only for a refusal proving no context was issued for this exact request. */
   abandonReservation:(requestId:string,code:string)=>exclusive(queue,async()=>{
    const id=uuid.parse(requestId),s=await read(),p=s.offline;
-   if(!p||p.phase!=='context_requested'||p.binding.request.requestId!==id||!(OFFLINE_NOTHING_ISSUED as readonly string[]).includes(code))throw new SignedClockConflict();
+   if(!p||p.phase!=='context_requested'||p.binding.request.requestId!==id||!(OFFLINE_NOTHING_ISSUED as readonly string[]).includes(code)&&code!==OFFLINE_DEPLOYMENT_REMOVED)throw new SignedClockConflict();
+   const next=parseSignedClockSnapshot({...s,version:2,revision:s.revision+1,offline:null},scope);await owned(()=>ports.commit(structuredClone(next)));
+   return status(next,p.binding.scope.employmentId);
+  }),
+  /** E2/E3 with zero claims -> none, locally, after the deployment was removed (not_configured) and a best-effort close
+   * did not answer `closed`. Never with a claim: saved claims stay sealed until they can be delivered. */
+  releaseUnusedContext:()=>exclusive(queue,async()=>{
+   const s=await read(),p=s.offline;
+   if(!p)return {status:'empty'} as SignedClockStatus;
+   if(p.phase==='context_requested'||p.claims.length>0)throw new SignedClockConflict();
    const next=parseSignedClockSnapshot({...s,version:2,revision:s.revision+1,offline:null},scope);await owned(()=>ports.commit(structuredClone(next)));
    return status(next,p.binding.scope.employmentId);
   }),

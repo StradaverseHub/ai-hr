@@ -33,7 +33,8 @@ function compile<T>(path:string,modules:Record<string,unknown>,globals:Record<st
  return output.exports as T;
 }
 /* eslint-disable @typescript-eslint/no-explicit-any */
-type Driver={armOffline(c:unknown):Promise<any>;syncOffline(c:unknown,options?:{manual?:boolean;rearm?:boolean}):Promise<any>;beforeOnlinePunch(c:unknown):Promise<any>;
+type Driver={armOffline(c:unknown):Promise<any>;syncOffline(c:unknown,options?:{manual?:boolean;rearm?:boolean}):Promise<any>;beforeOnlinePunch(c:unknown,options?:{open?:(employmentId:string)=>Promise<unknown>}):Promise<any>;
+ keepOfflineSynced(c:unknown,report?:(result:unknown)=>void):()=>void;
  afterOnlinePunch(c:unknown):Promise<any>;captureOfflinePunch(c:unknown,requestId:string):Promise<any>;offlineClaims(c:unknown):Promise<any[]>;removeUndeliverable(c:unknown,requestId:string):Promise<any>;
  subscribeOfflineForeground(run:()=>void):()=>void};
 type Receipt=Record<string,unknown>;
@@ -94,9 +95,11 @@ function world(options:{platform?:'ios'|'android';permits?:number;build?:boolean
  const appState={currentState:'active',addEventListener:vi.fn((_event:string,_listener:(state:string)=>void)=>({remove:vi.fn()}))};
  const driver=compile<Driver>('mobile/lib/offline-sync.ts',{'react-native':{AppState:appState},'expo-crypto':{getRandomBytes:(n:number)=>Uint8Array.from(randomBytes(n)),randomUUID},
   './auth':{authGeneration:()=>1,assertAuthGeneration:()=>{}},'./config':{config:{apiUrl:apiOrigin},offlineClockingBuild:options.build??true},'./errors':errors,
-  './signed-clock-journal':journalModule,'./offline-clock-ports':{OfflineServerAnswer:ServerAnswer},'./offline-sync-hash':hashModule,'./offline-anchor':anchor});
+  './signed-clock-journal':journalModule,'./offline-clock-ports':{OfflineServerAnswer:ServerAnswer},'./offline-sync-hash':hashModule,'./offline-anchor':anchor},
+  // The test realm's Date, so a test can move the driver's clock past a backoff.
+  {Date});
  const offline=<T,>(run:()=>T)=>{if(net.offline)throw new errors.NetworkUnavailableError();return run();};
- function account(actorId=id(6)){
+ function account(actorId=id(6),employment=employmentId){
   const scope={namespace:'company',apiOrigin,actorId,appInstallationId:id(8)},storeKey=JSON.stringify(scope);
   const key={platform,apiOrigin,actorId,appInstallationId:id(8),installationId:id(3),tenantId:id(4),keyId:id(9),appId:platform==='ios'?'ABCDEFGHIJ.ai.hr':'ai.hr',
    nativeReference:platform==='ios'?Buffer.alloc(32,7).toString('base64'):'aihr_'+'a'.repeat(64)};
@@ -117,12 +120,12 @@ function world(options:{platform?:'ios'|'android';permits?:number;build?:boolean
     capture:{capabilities:()=>({status:'evidence',evidence:NativeCapabilities.parse(capability),verification:'not_verified'}),digest:async canonical=>createHash('sha256').update(canonical).digest('hex'),
      retainPhoto:vi.fn(async requestId=>offlineClockPhotoReference(requestId)),releaseBase:vi.fn(async()=>{})},sync}};
   const journal=createSignedClockJournal(scope,ports);
-  const c={platform,identity:{namespace:'company',apiOrigin,actorId,appInstallationId:id(8),employmentId,anchored:false},status:()=>journal.status(employmentId),key:async()=>({key,capability}),
+  const c={platform,identity:{namespace:'company',apiOrigin,actorId,appInstallationId:id(8),employmentId:employment,anchored:false},status:()=>journal.status(employment),key:async()=>({key,capability}),
    offline:{capabilities:vi.fn(async()=>offline(()=>server.caps)),target:async()=>platform==='ios'?{platform:'ios',appId:key.appId,environment:'production'}:{platform:'android',appId:key.appId,environment:null},
     snapshot:()=>({status:'evidence',evidence:snap(),verification:'not_verified'}),reserve:(binding:unknown)=>journal.reserveOffline(binding),prepare:(requestId:string)=>journal.prepareOffline(requestId),
-    abandon:(requestId:string,code:string)=>journal.abandonReservation(requestId,code),capture:(input:unknown)=>journal.captureOffline(input),sign:(requestId:string,contextId:string)=>journal.signOffline(requestId,contextId),
+    abandon:(requestId:string,code:string)=>journal.abandonReservation(requestId,code),release:()=>journal.releaseUnusedContext(),capture:(input:unknown)=>journal.captureOffline(input),sign:(requestId:string,contextId:string)=>journal.signOffline(requestId,contextId),
     uploadNext:()=>journal.uploadNextOffline(),close:(closeRequestId:string)=>journal.closeOffline(closeRequestId),handback:(closeRequestId:string)=>journal.handbackUnusedContext(closeRequestId),
-    removeUndeliverable:(requestId:string)=>journal.removeUndeliverable(requestId),claims:()=>journal.offlineClaims(employmentId)}};
+    removeUndeliverable:(requestId:string)=>journal.removeUndeliverable(requestId),claims:()=>journal.offlineClaims(employment)}};
   return {scope,key,ports,sync,journal,c,stored:()=>store.get(storeKey)??null};
  }
  const a=account();
@@ -537,5 +540,94 @@ describe('device-only identity anchor (offline-anchor.ts)',()=>{
   expect(await a.module.readIssuerRegistry({namespace:'company',apiOrigin,platform:'ios'},()=>{})).toEqual([issuer]);
   expect(await a.module.readIssuerRegistry({namespace:'company',apiOrigin,platform:'android'},()=>{})).toBeNull();
   expect(await a.module.readIssuerRegistry({namespace:'company',apiOrigin:'https://other.example.com',platform:'ios'},()=>{})).toBeNull();
+ });
+});
+
+describe('a removed deployment (not_configured) never blocks online clocking (orchestrator decision 2026-10-28)',()=>{
+ it('drops an unanswered reservation answered not_configured',async()=>{
+  const w=world();w.server.issueAnswer={outcome:'unavailable',code:'not_configured'};
+  expect(await w.driver.armOffline(w.a.c)).toEqual({state:'off',reason:'unavailable',code:'not_configured'});
+  expect(w.a.stored()!.offline).toBeNull();expect(w.anchor.clearOfflineAnchor).toHaveBeenCalled();
+  expect(await w.a.journal.start(employmentId,id(40))).toMatchObject({status:'pending'});
+ });
+ it('drops a held reservation once capabilities say not_configured; a transient answer keeps it',async()=>{
+  const w=world();w.server.issueAnswer={outcome:'unavailable',code:'configuration_unavailable'};
+  expect(await w.driver.armOffline(w.a.c)).toMatchObject({state:'waiting'});expect(w.a.stored()!.offline!.phase).toBe('context_requested');
+  w.server.caps={outcome:'unavailable',code:'configuration_unavailable'};expect(await w.driver.armOffline(w.a.c)).toMatchObject({state:'off'});expect(w.a.stored()!.offline!.phase).toBe('context_requested');
+  w.server.caps={outcome:'unavailable',code:'not_configured'};expect(await w.driver.armOffline(w.a.c)).toMatchObject({state:'off',code:'not_configured'});
+  expect(w.a.stored()!.offline).toBeNull();
+ });
+ it('drops an unused context after a best-effort close, by sync or before a punch; saved claims stay sealed',async()=>{
+  const w=world();await w.ready();w.server.caps={outcome:'unavailable',code:'not_configured'};w.server.closeScript.push(()=>({outcome:'unavailable',code:'not_configured'}));
+  expect(await w.driver.syncOffline(w.a.c,{manual:true})).toMatchObject({state:'off',code:'not_configured'});
+  expect(w.server.calls.filter(call=>call.op==='close')).toHaveLength(1);expect(w.a.stored()!.offline).toBeNull();
+  const v=world();await v.ready();v.server.caps={outcome:'unavailable',code:'not_configured'};v.server.closeScript.push(()=>({outcome:'unavailable',code:'not_configured'}));
+  expect(await v.driver.beforeOnlinePunch(v.a.c)).toEqual({route:'online'});expect(await v.a.journal.start(employmentId,id(40))).toMatchObject({status:'pending'});
+  const u=world();await u.ready();await u.captureOffline(id(20));u.server.caps={outcome:'unavailable',code:'not_configured'};const sealed=structuredClone(u.a.stored());
+  expect(await u.driver.beforeOnlinePunch(u.a.c)).toMatchObject({route:'blocked'});expect(await u.driver.syncOffline(u.a.c,{manual:true})).toMatchObject({state:'off'});
+  expect(u.a.stored()).toEqual(sealed);expect(u.uploads()).toEqual([]);
+ });
+ it('configuration_unavailable is transient: the unused context is kept',async()=>{
+  const w=world();await w.ready();w.server.caps={outcome:'unavailable',code:'configuration_unavailable'};
+  expect(await w.driver.syncOffline(w.a.c,{manual:true})).toMatchObject({state:'off',code:'configuration_unavailable'});
+  expect(w.exchange().phase).toBe('context_ready');expect(w.server.calls.filter(call=>call.op==='close')).toEqual([]);
+ });
+});
+
+describe('a closing exchange with no answer is resent with the same closeRequestId',()=>{
+ function lostClose(w:ReturnType<typeof world>){
+  w.a.sync.close.mockImplementationOnce(async request=>{w.server.close(request);throw new errors.NetworkUnavailableError();});
+ }
+ it('the next punch resends the saved close and online clocking resumes',async()=>{
+  const w=world();await w.ready();lostClose(w);
+  expect(await w.driver.beforeOnlinePunch(w.a.c)).toEqual({route:'blocked',reason:'closing'});expect(w.exchange().phase).toBe('closing');
+  await expect(w.a.journal.start(employmentId,id(40))).rejects.toBeInstanceOf(SignedClockConflict);
+  expect(await w.driver.beforeOnlinePunch(w.a.c)).toEqual({route:'online'});
+  const bodies=w.server.calls.filter(call=>call.op==='close').map(call=>call.body);expect(bodies).toHaveLength(2);expect(bodies[1]).toBe(bodies[0]);
+  expect(w.a.stored()!.offline).toBeNull();expect(await w.a.journal.start(employmentId,id(40))).toMatchObject({status:'pending'});
+ });
+ it('a crash after the closing commit (before the POST) also resends the same request',async()=>{
+  const w=world();await w.ready();const commit=vi.mocked(w.a.ports.commit),original=commit.getMockImplementation()!;
+  commit.mockImplementationOnce(async value=>{await original(value);throw new Error('crash after closing commit');});
+  await expect(w.driver.beforeOnlinePunch(w.a.c)).rejects.toThrow('crash after closing commit');
+  const saved=w.exchange();if(saved.phase!=='closing')throw new Error('not closing');
+  expect(await w.driver.beforeOnlinePunch(w.a.c)).toEqual({route:'online'});
+  expect(w.server.calls.filter(call=>call.op==='close').map(call=>JSON.parse(call.body).closeRequestId)).toEqual([saved.close.requestId]);
+ });
+ it('returning to the foreground resends it and re-arms with no user action',async()=>{
+  const w=world();await w.ready();await w.captureOffline(id(20));
+  lostClose(w);expect(await w.driver.syncOffline(w.a.c,{manual:true})).toEqual({state:'offline'});expect(w.exchange().phase).toBe('closing');
+  let stop=()=>{};const result=new Promise(resolve=>{stop=w.driver.keepOfflineSynced(w.a.c,resolve);});
+  const listener=w.appState.addEventListener.mock.calls[0][1];
+  // The no-response failure set a backoff; advance past it as time would.
+  const now=Date.now(),clock=vi.spyOn(Date,'now').mockReturnValue(now+3600000);
+  try{listener('active');expect(await result).toMatchObject({state:'ready'});}finally{clock.mockRestore();stop();}
+  const bodies=w.server.calls.filter(call=>call.op==='close').map(call=>call.body);expect(bodies).toHaveLength(2);expect(bodies[1]).toBe(bodies[0]);
+ });
+ it('foreground sync uploads saved claims without user action',async()=>{
+  const w=world();await w.ready();await w.captureOffline(id(20),id(21));
+  let stop=()=>{};const result=new Promise(resolve=>{stop=w.driver.keepOfflineSynced(w.a.c,resolve);});
+  w.appState.addEventListener.mock.calls[0][1]('active');expect(await result).toMatchObject({state:'ready'});stop();
+  expect(w.uploads()).toHaveLength(2);expect(w.server.receipts.size).toBe(2);
+ });
+});
+
+describe('the one installed-account exchange held by another employment',()=>{
+ it('hands back an unused context of another employment before this one clocks online',async()=>{
+  const w=world();await w.ready();const other=w.account(id(6),id(77));
+  expect(await w.driver.beforeOnlinePunch(other.c)).toEqual({route:'blocked',reason:'other_employment'});
+  await expect(other.journal.start(id(77),id(40))).rejects.toBeInstanceOf(SignedClockConflict);
+  const open=vi.fn(async(employment:string)=>employment===employmentId?w.a.c:other.c);
+  expect(await w.driver.beforeOnlinePunch(other.c,{open})).toEqual({route:'online'});expect(open).toHaveBeenCalledWith(employmentId);
+  expect(w.server.calls.filter(call=>call.op==='close').map(call=>JSON.parse(call.body).consumedThrough)).toEqual([0]);
+  expect(await other.journal.start(id(77),id(40))).toMatchObject({status:'pending'});
+ });
+ it('uploads another employment\'s saved claims first, in order, closes, then allows online; never captures into it',async()=>{
+  const w=world();await w.ready();await w.captureOffline(id(20),id(21));const other=w.account(id(6),id(77));
+  w.net.offline=true;expect(await w.driver.beforeOnlinePunch(other.c,{open:async()=>w.a.c})).toEqual({route:'blocked',reason:'offline_unavailable'});w.net.offline=false;
+  expect(await w.driver.offlineClaims(other.c)).toEqual([]);
+  expect(await w.driver.beforeOnlinePunch(other.c,{open:async()=>w.a.c})).toEqual({route:'online'});
+  expect(w.uploads().map(call=>(JSON.parse(call.body) as OfflineClockSignedClaim).claim.chain.sequence)).toEqual([1,2]);
+  expect(w.a.stored()!.offline).toBeNull();expect(await other.journal.start(id(77),id(40))).toMatchObject({status:'pending'});
  });
 });
