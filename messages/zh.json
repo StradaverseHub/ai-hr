@@ -2304,7 +2304,15 @@
           "invalid_filter": "此公司无法使用某个筛选项。请刷新选项并重新选择。",
           "invalid_file": "请选择原始 XLSX 工作簿或符合所选类型的有效 CSV。",
           "origin": "请重新加载页面，并通过此应用上传。",
-          "blacklist_input_required": "请选择“列入黑名单”状态或填写备注。仅填写员工编号并不表示要列入黑名单。"
+          "blacklist_input_required": "请选择“列入黑名单”状态或填写备注。仅填写员工编号并不表示要列入黑名单。",
+          "company_required": "必须填写公司编号。",
+          "company_unknown": "此公司编号与您可导入调动的公司不匹配。请使用 Reference 工作表中列出的公司编号。",
+          "company_ambiguous": "此公司编号与多家公司匹配。请使用 Reference 工作表中列出的公司编号。",
+          "unknown_system_field": "此事件类型不能更改该系统字段。请参阅 Reference 工作表。",
+          "duplicate_system_field": "同一系统字段在此调动中出现多次。",
+          "system_field_required": "请选择此行更改的系统字段，或将变更前和变更后留空。",
+          "before_mismatch": "变更前与员工当前记录不符；自准备文件以来记录已更改。该员工未被导入。",
+          "workbook_old_layout": "此文件使用旧的调动模板（每种调动类型一个工作表，仅限一家公司）。请下载新模板并将您的行复制进去。"
         },
         "v2": {
           "type": "人事异动类型",
@@ -2360,6 +2368,45 @@
           "employedScope": "试用期员工及通知期内员工仍会纳入。已结束或已列入黑名单的雇佣记录不会预填。",
           "referenceGuide": "下拉列表使用 Reference 中的准确系统代码，标签仅作说明。旧文件中的唯一标签仍受支持；预览会按行所属公司检查。",
           "baselineGuide": "当前工资为空时，绿色工资计算保持空白。检查和预览会提供权威工资基准，包括空白或重复的员工行。已记录的零工资仍作为工资基准。"
+        },
+        "sheet": {
+          "guideRows": "请使用 Movements 工作表。每个变更的字段填写一行。公司编号、员工编号、生效日期和事件类型相同的行将作为一项调动一起导入。",
+          "guideCompany": "公司编号是人员管理中显示的公司代码；公司没有代码时可使用注册号码。Reference 工作表列出了您可导入的每家公司的准确值。",
+          "guideFields": "事件类型和系统字段提供下拉列表。Reference 工作表显示每种事件类型可更改的系统字段以及每家公司允许的值。",
+          "guideBefore": "变更前是您预期员工当前的值。保存前会进行核对：如果自准备文件以来记录已更改，该员工将被停止导入并显示提示，不会覆盖任何内容。留空变更前即可跳过核对。",
+          "guideAfter": "变更后是新值。职级、部门、职位、地点及其他列表请使用 Reference 工作表中的代码。",
+          "guideDates": "日期格式：DD-MMM-YYYY（例如 01-Jan-2027）或 YYYY-MM-DD。黑名单使用吉隆坡当天日期。",
+          "guideLimits": "每个文件最多 200 行、50 名员工，每名员工最多 20 项调动。每名员工的调动要么全部保存，要么全部不保存；其他员工仍会继续导入。",
+          "guideNoRow": "没有字段变更的调动（例如没有调薪的转正）填写一行，系统字段、变更前和变更后留空。",
+          "referenceTypes": "事件类型及其可更改的系统字段",
+          "colEventType": "事件类型",
+          "colCode": "代码",
+          "colFields": "系统字段",
+          "noFields": "无字段变更（系统字段留空）",
+          "referenceCompanies": "每家公司应填写的公司编号",
+          "colCompany": "公司",
+          "referenceValues": "每家公司允许的值",
+          "colValue": "变更后应填写的值",
+          "colLabel": "含义",
+          "screenHint": "所有调动类型和公司共用一个模板。每个变更的字段填写一行；公司、员工、日期和事件类型相同的行构成一项调动。",
+          "downloadTemplate": "下载模板",
+          "history": "导入历史",
+          "wholeEmployee": "每名员工的调动要么全部导入，要么全部不导入。其他员工仍会继续导入。",
+          "included": "包含该员工",
+          "rows": "行",
+          "viewImport": "在导入历史中查看此次导入",
+          "companyId": "公司编号",
+          "templateFailed": "无法下载模板。请重试，或确认您至少可以维护一家公司且调动类型处于启用状态。",
+          "col": {
+            "companyId": "公司编号",
+            "employeeId": "员工编号",
+            "employeeName": "员工姓名",
+            "effectiveDate": "生效日期",
+            "eventType": "事件类型",
+            "systemField": "系统字段",
+            "before": "变更前",
+            "after": "变更后"
+          }
         }
       },
       "headerAssistance": {
@@ -3039,6 +3086,12 @@
         "cancel": "取消",
         "failed": "撤销未能完成，未做任何更改。",
         "noPermission": "撤销此次导入需要对其中每家公司拥有人员维护权限。"
+      },
+      "movementItem": {
+        "movement": "调动",
+        "noMovement": "无历史记录条目",
+        "scheduled": "已安排在生效日期执行",
+        "rows": "第 {rows} 行"
       }
     }
   },

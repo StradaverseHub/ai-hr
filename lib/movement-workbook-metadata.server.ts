@@ -45,4 +45,27 @@ export function verifyMovementErrorReceipt(token:string,context:{tenantId:string
  return p.rows as {row:number;errors:string[]}[];
 }
 
+/**
+ * ac6645ec (ADR-0153) — the single-sheet template is signed to the TENANT and the movement-type catalogue,
+ * not to a company: Company ID is a per-row cell resolved and authorized by the server. The MAC is context
+ * binding only; it never authorizes a company, employee or value.
+ */
+export type MovementTemplateMetadata={version:3;keyId:string;tenantReference:string;downloadedAt:string;catalogue:string;captions:string[];signature:string};
+function templatePayload(m:Omit<MovementTemplateMetadata,'signature'>){return {version:m.version,keyId:m.keyId,tenantReference:m.tenantReference,downloadedAt:m.downloadedAt,catalogue:m.catalogue,captions:m.captions};}
+export function signMovementTemplate(p:{tenantId:string;downloadedAt:string;catalogue:string;captions:string[]}):MovementTemplateMetadata{
+ const base=templatePayload({version:3,keyId:key().id,tenantReference:'t1_'+mac('tenant',[p.tenantId,3]),downloadedAt:p.downloadedAt,catalogue:p.catalogue,captions:p.captions});
+ return {...base,signature:mac('template',base)};
+}
+export function verifyMovementTemplate(raw:unknown,tenantId:string):MovementTemplateMetadata{
+ if(!raw||typeof raw!=='object')throw new Error('workbook_metadata_invalid');
+ const m=raw as MovementTemplateMetadata;
+ // A per-type workbook (version 2) is a retired layout, not a corrupt file: say so plainly.
+ if((raw as {version?:unknown}).version===2)throw new Error('workbook_old_layout');
+ if(m.version!==3||m.keyId!==key().id||typeof m.tenantReference!=='string'||typeof m.downloadedAt!=='string'||!/^\d{4}-\d{2}-\d{2}T/.test(m.downloadedAt)||typeof m.catalogue!=='string'||!Array.isArray(m.captions)||m.captions.length>20||m.captions.some(c=>typeof c!=='string'||c.length>200)||typeof m.signature!=='string')throw new Error('workbook_metadata_invalid');
+ const base=templatePayload(m);
+ if(!same(m.signature,mac('template',base)))throw new Error('workbook_metadata_invalid');
+ if(!same(m.tenantReference,'t1_'+mac('tenant',[tenantId,3])))throw new Error('workbook_metadata_invalid');
+ return {...base,signature:m.signature};
+}
+
 export function movementWorkbookSigningReady(){try{key();return true;}catch{return false;}}

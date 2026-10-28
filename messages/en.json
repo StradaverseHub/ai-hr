@@ -2304,7 +2304,15 @@
           "invalid_filter": "A filter is unavailable in this company. Refresh the choices and select again.",
           "invalid_file": "Choose an original XLSX workbook or a valid CSV for the selected type.",
           "origin": "Reload the page and upload from this application.",
-          "blacklist_input_required": "Choose Blacklisted or enter Remarks. Employee ID alone is not a blacklist instruction."
+          "blacklist_input_required": "Choose Blacklisted or enter Remarks. Employee ID alone is not a blacklist instruction.",
+          "company_required": "Company ID is required.",
+          "company_unknown": "This Company ID does not match a company you can import movements for. Use the Company ID listed on the Reference sheet.",
+          "company_ambiguous": "This Company ID matches more than one company. Use the Company ID listed on the Reference sheet.",
+          "unknown_system_field": "This System Field cannot be changed by this event type. See the Reference sheet.",
+          "duplicate_system_field": "The same System Field appears more than once for this movement.",
+          "system_field_required": "Choose the System Field this row changes, or leave Before and After blank.",
+          "before_mismatch": "Before does not match the employee’s current record; it has changed since the file was prepared. This employee is not imported.",
+          "workbook_old_layout": "This file uses the old Movement template (one sheet per movement type for one company). Download the new template and copy your rows into it."
         },
         "v2": {
           "type": "Movement type",
@@ -2360,6 +2368,45 @@
           "employedScope": "Employees on probation or serving notice remain included. Ended or blacklisted employments are excluded from prefill.",
           "referenceGuide": "Dropdowns use exact system codes from Reference. Labels explain each code. A distinct label from an older file remains supported; preview checks the row company.",
           "baselineGuide": "When current salary is blank, green salary calculations stay blank. Check and preview supplies the authoritative salary baseline, including blank or repeated employee rows. A recorded zero remains a salary baseline."
+        },
+        "sheet": {
+          "guideRows": "Use the Movements sheet. Enter one row for each field that changes. Rows with the same Company ID, Employee ID, Effective Date and Event Type are imported together as one movement.",
+          "guideCompany": "Company ID is the Company Code shown in People Management, or the registration number where a company has no code. The Reference sheet lists the exact value for every company you may import for.",
+          "guideFields": "Event Type and System Fields have drop-down lists. The Reference sheet shows which System Fields each event type may change and the allowed values for each company.",
+          "guideBefore": "Before is the value you expect the employee to have now. It is checked before anything is saved: if the record has changed since you prepared the file, that employee is stopped with a message and nothing is overwritten. Leave Before blank to skip the check.",
+          "guideAfter": "After is the new value. Use the code from the Reference sheet for grades, departments, positions, locations and other lists.",
+          "guideDates": "Dates: DD-MMM-YYYY (for example 01-Jan-2027) or YYYY-MM-DD. Blacklist uses the current Kuala Lumpur day.",
+          "guideLimits": "At most 200 rows and 50 employees per file, and 20 movements per employee. Each employee’s movements are saved together or not at all; other employees still go through.",
+          "guideNoRow": "A movement with no field change (for example a Confirmation with no salary change) is one row with System Fields, Before and After left blank.",
+          "referenceTypes": "Event types and the System Fields each may change",
+          "colEventType": "Event Type",
+          "colCode": "Code",
+          "colFields": "System Fields",
+          "noFields": "No field change (leave System Fields blank)",
+          "referenceCompanies": "Company ID to enter for each company",
+          "colCompany": "Company",
+          "referenceValues": "Allowed values for each company",
+          "colValue": "Value to enter in After",
+          "colLabel": "Meaning",
+          "screenHint": "One template for every movement type and company. Enter one row per field that changes; rows with the same company, employee, date and event type are one movement.",
+          "downloadTemplate": "Download template",
+          "history": "Import history",
+          "wholeEmployee": "Each employee’s movements are imported together or not at all. Other employees still go through.",
+          "included": "Include employee",
+          "rows": "Rows",
+          "viewImport": "View this import in Import History",
+          "companyId": "Company ID",
+          "templateFailed": "The template could not be downloaded. Retry, or check that you can maintain at least one company and that movement types are active.",
+          "col": {
+            "companyId": "Company ID",
+            "employeeId": "Employee ID",
+            "employeeName": "Employee Name",
+            "effectiveDate": "Effective Date",
+            "eventType": "Event Type",
+            "systemField": "System Fields",
+            "before": "Before",
+            "after": "After"
+          }
         }
       },
       "headerAssistance": {
@@ -3039,6 +3086,12 @@
         "cancel": "Cancel",
         "failed": "The revert could not be completed. Nothing was changed.",
         "noPermission": "Reverting this import needs Workforce maintain permission for every company in it."
+      },
+      "movementItem": {
+        "movement": "Movement",
+        "noMovement": "No history entry",
+        "scheduled": "Scheduled for its effective date",
+        "rows": "Rows {rows}"
       }
     }
   },

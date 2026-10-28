@@ -2304,7 +2304,15 @@
           "invalid_filter": "Penapis tidak tersedia dalam syarikat ini. Muat semula pilihan dan pilih sekali lagi.",
           "invalid_file": "Pilih buku kerja XLSX asal atau CSV yang sah untuk jenis yang dipilih.",
           "origin": "Muat semula halaman dan muat naik melalui aplikasi ini.",
-          "blacklist_input_required": "Pilih status Disenarai hitam atau masukkan Catatan. ID Pekerja sahaja bukan arahan untuk menyenaraihitamkan."
+          "blacklist_input_required": "Pilih status Disenarai hitam atau masukkan Catatan. ID Pekerja sahaja bukan arahan untuk menyenaraihitamkan.",
+          "company_required": "ID Syarikat diperlukan.",
+          "company_unknown": "ID Syarikat ini tidak sepadan dengan syarikat yang boleh anda import pergerakan. Gunakan ID Syarikat yang disenaraikan dalam helaian Reference.",
+          "company_ambiguous": "ID Syarikat ini sepadan dengan lebih daripada satu syarikat. Gunakan ID Syarikat yang disenaraikan dalam helaian Reference.",
+          "unknown_system_field": "Medan Sistem ini tidak boleh diubah oleh jenis peristiwa ini. Lihat helaian Reference.",
+          "duplicate_system_field": "Medan Sistem yang sama muncul lebih daripada sekali bagi pergerakan ini.",
+          "system_field_required": "Pilih Medan Sistem yang diubah oleh baris ini, atau biarkan Sebelum dan Selepas kosong.",
+          "before_mismatch": "Sebelum tidak sepadan dengan rekod semasa pekerja; ia telah berubah sejak fail disediakan. Pekerja ini tidak diimport.",
+          "workbook_old_layout": "Fail ini menggunakan templat Pergerakan lama (satu helaian bagi setiap jenis pergerakan untuk satu syarikat). Muat turun templat baharu dan salin baris anda ke dalamnya."
         },
         "v2": {
           "type": "Jenis Pergerakan",
@@ -2360,6 +2368,45 @@
           "employedScope": "Pekerja dalam tempoh percubaan atau sedang menjalani tempoh notis tetap disertakan. Rekod pekerjaan yang telah tamat atau disenarai hitam tidak diisi terlebih dahulu.",
           "referenceGuide": "Senarai juntai menggunakan kod sistem tepat daripada Reference. Label menerangkan setiap kod. Label unik daripada fail lama masih disokong; pratonton menyemak syarikat baris.",
           "baselineGuide": "Apabila gaji semasa kosong, pengiraan gaji hijau kekal kosong. Semak dan pratonton menyediakan asas gaji yang berautoriti, termasuk bagi baris pekerja kosong atau berulang. Nilai sifar yang direkodkan tetap menjadi asas gaji."
+        },
+        "sheet": {
+          "guideRows": "Gunakan helaian Movements. Masukkan satu baris bagi setiap medan yang berubah. Baris dengan ID Syarikat, ID Pekerja, Tarikh Berkuat Kuasa dan Jenis Peristiwa yang sama diimport bersama sebagai satu pergerakan.",
+          "guideCompany": "ID Syarikat ialah Kod Syarikat yang dipaparkan dalam Pengurusan Orang, atau nombor pendaftaran jika syarikat tiada kod. Helaian Reference menyenaraikan nilai tepat bagi setiap syarikat yang boleh anda import.",
+          "guideFields": "Jenis Peristiwa dan Medan Sistem mempunyai senarai juntai bawah. Helaian Reference menunjukkan Medan Sistem yang boleh diubah oleh setiap jenis peristiwa dan nilai yang dibenarkan bagi setiap syarikat.",
+          "guideBefore": "Sebelum ialah nilai yang anda jangka pekerja miliki sekarang. Ia disemak sebelum apa-apa disimpan: jika rekod telah berubah sejak fail disediakan, pekerja itu dihentikan dengan mesej dan tiada apa-apa ditulis ganti. Biarkan Sebelum kosong untuk melangkau semakan.",
+          "guideAfter": "Selepas ialah nilai baharu. Gunakan kod daripada helaian Reference untuk gred, jabatan, jawatan, lokasi dan senarai lain.",
+          "guideDates": "Tarikh: DD-MMM-YYYY (contohnya 01-Jan-2027) atau YYYY-MM-DD. Senarai hitam menggunakan hari semasa Kuala Lumpur.",
+          "guideLimits": "Paling banyak 200 baris dan 50 pekerja bagi setiap fail, dan 20 pergerakan bagi setiap pekerja. Pergerakan setiap pekerja disimpan bersama atau tidak langsung; pekerja lain tetap diteruskan.",
+          "guideNoRow": "Pergerakan tanpa perubahan medan (contohnya Pengesahan tanpa perubahan gaji) ialah satu baris dengan Medan Sistem, Sebelum dan Selepas dibiarkan kosong.",
+          "referenceTypes": "Jenis peristiwa dan Medan Sistem yang boleh diubah oleh setiap satu",
+          "colEventType": "Jenis Peristiwa",
+          "colCode": "Kod",
+          "colFields": "Medan Sistem",
+          "noFields": "Tiada perubahan medan (biarkan Medan Sistem kosong)",
+          "referenceCompanies": "ID Syarikat yang perlu dimasukkan bagi setiap syarikat",
+          "colCompany": "Syarikat",
+          "referenceValues": "Nilai yang dibenarkan bagi setiap syarikat",
+          "colValue": "Nilai untuk dimasukkan dalam Selepas",
+          "colLabel": "Maksud",
+          "screenHint": "Satu templat untuk setiap jenis pergerakan dan syarikat. Masukkan satu baris bagi setiap medan yang berubah; baris dengan syarikat, pekerja, tarikh dan jenis peristiwa yang sama ialah satu pergerakan.",
+          "downloadTemplate": "Muat turun templat",
+          "history": "Sejarah import",
+          "wholeEmployee": "Pergerakan setiap pekerja diimport bersama atau tidak langsung. Pekerja lain tetap diteruskan.",
+          "included": "Sertakan pekerja",
+          "rows": "Baris",
+          "viewImport": "Lihat import ini dalam Sejarah Import",
+          "companyId": "ID Syarikat",
+          "templateFailed": "Templat tidak dapat dimuat turun. Cuba lagi, atau pastikan anda boleh menyelenggara sekurang-kurangnya satu syarikat dan jenis pergerakan adalah aktif.",
+          "col": {
+            "companyId": "ID Syarikat",
+            "employeeId": "ID Pekerja",
+            "employeeName": "Nama Pekerja",
+            "effectiveDate": "Tarikh Berkuat Kuasa",
+            "eventType": "Jenis Peristiwa",
+            "systemField": "Medan Sistem",
+            "before": "Sebelum",
+            "after": "Selepas"
+          }
         }
       },
       "headerAssistance": {
@@ -3039,6 +3086,12 @@
         "cancel": "Batal",
         "failed": "Pengembalian tidak dapat diselesaikan. Tiada apa yang diubah.",
         "noPermission": "Mengembalikan import ini memerlukan kebenaran penyelenggaraan Tenaga Kerja bagi setiap syarikat di dalamnya."
+      },
+      "movementItem": {
+        "movement": "Pergerakan",
+        "noMovement": "Tiada entri sejarah",
+        "scheduled": "Dijadualkan pada tarikh berkuat kuasa",
+        "rows": "Baris {rows}"
       }
     }
   },

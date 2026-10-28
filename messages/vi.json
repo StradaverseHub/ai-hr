@@ -2304,7 +2304,15 @@
           "invalid_filter": "Một bộ lọc không khả dụng trong công ty này. Hãy làm mới lựa chọn rồi chọn lại.",
           "invalid_file": "Chọn sổ làm việc XLSX gốc hoặc CSV hợp lệ cho loại đã chọn.",
           "origin": "Tải lại trang và tải tệp lên từ ứng dụng này.",
-          "blacklist_input_required": "Chọn trạng thái Danh sách đen hoặc nhập Ghi chú. Chỉ có mã nhân viên không phải là chỉ dẫn đưa vào danh sách đen."
+          "blacklist_input_required": "Chọn trạng thái Danh sách đen hoặc nhập Ghi chú. Chỉ có mã nhân viên không phải là chỉ dẫn đưa vào danh sách đen.",
+          "company_required": "Bắt buộc nhập Mã công ty.",
+          "company_unknown": "Mã công ty này không khớp với công ty nào bạn được phép nhập biến động. Dùng Mã công ty liệt kê trong trang Reference.",
+          "company_ambiguous": "Mã công ty này khớp với nhiều hơn một công ty. Dùng Mã công ty liệt kê trong trang Reference.",
+          "unknown_system_field": "Loại sự kiện này không thể thay đổi Trường hệ thống này. Xem trang Reference.",
+          "duplicate_system_field": "Cùng một Trường hệ thống xuất hiện nhiều lần trong biến động này.",
+          "system_field_required": "Chọn Trường hệ thống mà dòng này thay đổi, hoặc để trống Trước và Sau.",
+          "before_mismatch": "Giá trị Trước không khớp với hồ sơ hiện tại của nhân viên; hồ sơ đã thay đổi kể từ khi chuẩn bị tệp. Nhân viên này không được nhập.",
+          "workbook_old_layout": "Tệp này dùng mẫu Biến động cũ (mỗi loại biến động một trang, cho một công ty). Hãy tải mẫu mới và sao chép các dòng của bạn vào đó."
         },
         "v2": {
           "type": "Loại Biến động",
@@ -2360,6 +2368,45 @@
           "employedScope": "Vẫn bao gồm nhân viên đang thử việc hoặc đang trong thời gian báo trước nghỉ việc. Hồ sơ việc làm đã kết thúc hoặc bị đưa vào danh sách đen không được điền sẵn.",
           "referenceGuide": "Danh sách thả xuống dùng đúng mã hệ thống từ Reference. Nhãn giải thích từng mã. Nhãn riêng biệt trong tệp cũ vẫn được hỗ trợ; xem trước kiểm tra công ty của dòng.",
           "baselineGuide": "Khi lương hiện tại để trống, các phép tính lương màu xanh vẫn để trống. Bước Kiểm tra và xem trước cung cấp mức lương cơ sở từ dữ liệu chính thức, kể cả cho dòng nhân viên trống hoặc lặp lại. Giá trị 0 đã ghi nhận vẫn là mức lương cơ sở."
+        },
+        "sheet": {
+          "guideRows": "Sử dụng trang Movements. Nhập một dòng cho mỗi trường thay đổi. Các dòng có cùng Mã công ty, Mã nhân viên, Ngày hiệu lực và Loại sự kiện được nhập cùng nhau thành một biến động.",
+          "guideCompany": "Mã công ty là Mã công ty hiển thị trong Quản lý nhân sự, hoặc số đăng ký nếu công ty chưa có mã. Trang Reference liệt kê giá trị chính xác cho mọi công ty bạn được phép nhập.",
+          "guideFields": "Loại sự kiện và Trường hệ thống có danh sách thả xuống. Trang Reference cho biết mỗi loại sự kiện được thay đổi những Trường hệ thống nào và các giá trị được phép của từng công ty.",
+          "guideBefore": "Trước là giá trị bạn cho rằng nhân viên đang có. Giá trị này được kiểm tra trước khi lưu: nếu hồ sơ đã thay đổi kể từ khi bạn chuẩn bị tệp, nhân viên đó sẽ bị dừng kèm thông báo và không có gì bị ghi đè. Để trống Trước để bỏ qua kiểm tra.",
+          "guideAfter": "Sau là giá trị mới. Dùng mã trong trang Reference cho bậc, phòng ban, chức danh, địa điểm và các danh sách khác.",
+          "guideDates": "Ngày: DD-MMM-YYYY (ví dụ 01-Jan-2027) hoặc YYYY-MM-DD. Danh sách đen dùng ngày hiện tại tại Kuala Lumpur.",
+          "guideLimits": "Tối đa 200 dòng và 50 nhân viên mỗi tệp, 20 biến động mỗi nhân viên. Các biến động của mỗi nhân viên được lưu cùng nhau hoặc không lưu; các nhân viên khác vẫn được xử lý.",
+          "guideNoRow": "Biến động không thay đổi trường nào (ví dụ Xác nhận chính thức không điều chỉnh lương) là một dòng với Trường hệ thống, Trước và Sau để trống.",
+          "referenceTypes": "Các loại sự kiện và Trường hệ thống mỗi loại được thay đổi",
+          "colEventType": "Loại sự kiện",
+          "colCode": "Mã",
+          "colFields": "Trường hệ thống",
+          "noFields": "Không thay đổi trường (để trống Trường hệ thống)",
+          "referenceCompanies": "Mã công ty cần nhập cho từng công ty",
+          "colCompany": "Công ty",
+          "referenceValues": "Giá trị được phép cho từng công ty",
+          "colValue": "Giá trị nhập vào Sau",
+          "colLabel": "Ý nghĩa",
+          "screenHint": "Một mẫu cho mọi loại biến động và mọi công ty. Nhập một dòng cho mỗi trường thay đổi; các dòng cùng công ty, nhân viên, ngày và loại sự kiện là một biến động.",
+          "downloadTemplate": "Tải mẫu",
+          "history": "Lịch sử nhập",
+          "wholeEmployee": "Các biến động của mỗi nhân viên được nhập cùng nhau hoặc không nhập. Các nhân viên khác vẫn được xử lý.",
+          "included": "Bao gồm nhân viên",
+          "rows": "Dòng",
+          "viewImport": "Xem lần nhập này trong Lịch sử nhập",
+          "companyId": "Mã công ty",
+          "templateFailed": "Không thể tải mẫu. Hãy thử lại, hoặc kiểm tra rằng bạn có quyền quản lý ít nhất một công ty và các loại biến động đang hoạt động.",
+          "col": {
+            "companyId": "Mã công ty",
+            "employeeId": "Mã nhân viên",
+            "employeeName": "Tên nhân viên",
+            "effectiveDate": "Ngày hiệu lực",
+            "eventType": "Loại sự kiện",
+            "systemField": "Trường hệ thống",
+            "before": "Trước",
+            "after": "Sau"
+          }
         }
       },
       "headerAssistance": {
@@ -3039,6 +3086,12 @@
         "cancel": "Hủy",
         "failed": "Không thể hoàn tất hoàn tác. Không có gì thay đổi.",
         "noPermission": "Hoàn tác lần nhập này cần quyền duy trì Nhân sự cho mọi công ty trong đó."
+      },
+      "movementItem": {
+        "movement": "Biến động",
+        "noMovement": "Không có mục lịch sử",
+        "scheduled": "Đã lên lịch cho ngày hiệu lực",
+        "rows": "Dòng {rows}"
       }
     }
   },

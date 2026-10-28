@@ -111,7 +111,7 @@ export function ImportWorkbench({
       {choice==='cost_allocations'?<CostAllocationImport onCommitPendingChange={setCommitting}/>:choice === 'full' ? (
         <EmployeeImport companies={companies} defaultCompanyId={defaultCompanyId} reference={reference} onCommitPendingChange={setCommitting} />
       ) : choice==='movement' ? (
-        <MovementImport companies={companies} defaultCompanyId={defaultCompanyId} onCommitPendingChange={setCommitting}/>
+        <MovementImport onCommitPendingChange={setCommitting}/>
       ) : (
         // Keyed on the choice so switching sections REMOUNTS the island: the loaded file, the preview
         // and the result all belong to one column contract and must not survive a change of contract.

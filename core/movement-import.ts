@@ -18,7 +18,9 @@ import {MOVEMENT_FORM_IDS,type MovementFormField} from '../lib/movement-form-con
 import {personnelFormField,personnelFormChoices} from '../lib/personnel-form-contract';
 import {personnelImportOptionLookup} from '../lib/personnel-import-lookup';
 import {MOVEMENT_IMPORT_LIMITS,parseMovementImport,movementImportCellIssues,movementImportDate,type MovementImportRecord,type MovementImportRow,type MovementImportEmployee,type MovementImportPreview,type MovementImportResult} from '../lib/movement-import-contract';
-import {createMovementEventTx,movementCurrentStateTx,applyDueMovementsTx,rehearseMovementSequenceTx,type MovementSequenceCreate,type CreateMovementInput} from './movement';
+import {createMovementEventTx,movementCurrentStateTx,applyDueMovementsTx,rehearseMovementSequenceTx,movementLedgerMarkerTx,movementRowsAfterSequenceTx,type MovementSequenceCreate,type CreateMovementInput} from './movement';
+import {allocationCompanyCode,matchAllocationCompany} from './cost-allocation-import';
+import {recordImportItemTx} from './import-history';
 import {isComparisonKind,movementNeedsEntitlementReprojection} from './movement-kinds';
 import {resolveMovementEventTypeTx,activeMovementEventTypeChoicesTx,lockMovementTypeCatalogueTx} from './movement-type';
 import {lockEmploymentStatutoryOwnerTx} from './org';
@@ -43,7 +45,8 @@ async function assertCompany(tx:Tx,ctx:SessionContext,id:string){
 async function catalogTx(tx:Tx,ctx:SessionContext,companyId:string):Promise<MovementImportCatalog>{
  await assertCompany(tx,ctx,companyId);
  const types=(await activeMovementEventTypeChoicesTx(tx,ctx.tenantId)).map(type=>({code:type.code,label:type.label,behaviour:type.behaviourKind}));
- const companies=await tx.select({value:company.id,label:company.legalName}).from(company).where(and(eq(company.tenantId,ctx.tenantId),isNull(company.archivedAt),sql`app.is_admin_for(${company.id}) and app.access_workforce_company(${company.id},'workforce.view') and app.access_workforce_company(${company.id},'workforce.maintain')`)).orderBy(asc(company.legalName),asc(company.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
+ // ac6645ec — the destination of an Entity Transfer may be named by the same Company ID as the row's company.
+ const companies=(await tx.select({value:company.id,label:company.legalName,code:company.companyLabel,registration:company.registrationNo}).from(company).where(and(eq(company.tenantId,ctx.tenantId),isNull(company.archivedAt),sql`app.is_admin_for(${company.id}) and app.access_workforce_company(${company.id},'workforce.view') and app.access_workforce_company(${company.id},'workforce.maintain')`)).orderBy(asc(company.legalName),asc(company.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1)).map(({code,registration,...row})=>({...row,codes:[code,registration].filter((v):v is string=>!!v?.trim())}));
  const departments=await tx.select({value:department.id,label:department.label,code:department.name}).from(department).where(and(eq(department.tenantId,ctx.tenantId),isNull(department.archivedAt),visibleLabelIdsCondition(department,'department',[companyId]))).orderBy(asc(department.name),asc(department.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
  const positions=await tx.select({value:position.id,label:position.label,code:position.title}).from(position).where(and(eq(position.tenantId,ctx.tenantId),isNull(position.archivedAt),visibleLabelIdsCondition(position,'position',[companyId]))).orderBy(asc(position.title),asc(position.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
  const units=await tx.select({value:businessUnit.id,label:businessUnit.label,code:businessUnit.code,name:businessUnit.name}).from(businessUnit).where(and(eq(businessUnit.tenantId,ctx.tenantId),isNull(businessUnit.archivedAt),visibleLabelIdsCondition(businessUnit,'business_unit',[companyId]))).orderBy(asc(businessUnit.name),asc(businessUnit.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
@@ -142,19 +145,63 @@ function message(error:unknown){
  if(!(error instanceof Error)||['code','query','params','cause'].some(key=>key in error)||error.name==='DrizzleQueryError')return 'change_refused';
  return error.message.slice(0,1000);
 }
-function rowView(record:MovementImportRecord):MovementImportRow{return {row:record.row,employeeCode:record.employeeCode,eventType:record.cells.kind??'',effectiveDate:movementImportDate(record.cells.effectiveDate??'')??record.cells.effectiveDate??'',status:'excluded',errors:[...record.errors],source:record.source};}
+function rowView(record:MovementImportRecord):MovementImportRow{return {row:record.row,employeeCode:record.employeeCode,eventType:record.cells.kind??'',effectiveDate:movementImportDate(record.cells.effectiveDate??'')??record.cells.effectiveDate??'',status:'excluded',errors:[...record.errors],source:record.source,...(record.sourceRows?{sourceRows:record.sourceRows}:{}),...(record.companyCode!==undefined?{companyCode:record.companyCode}:{})};}
 function selectionFor(records:MovementImportRecord[],selection?:number[]){
  if(selection===undefined)return records.map(row=>row.row);
  if(!Array.isArray(selection)||selection.length>MOVEMENT_IMPORT_LIMITS.rows||new Set(selection).size!==selection.length||selection.some(row=>!Number.isSafeInteger(row)||!records.some(record=>record.row===row)))throw new Error('invalid_selection');
  return [...selection].sort((a,b)=>a-b);
 }
-function groupsFor(records:MovementImportRecord[]){const groups=new Map<string,MovementImportRecord[]>();for(const row of records)groups.set(row.employeeCode,[...(groups.get(row.employeeCode)??[]),row]);return groups;}
+/** One group per employee OF ONE COMPANY. A legacy single-company record keeps the Employee ID as its key. */
+export function movementRecordKey(record:Pick<MovementImportRecord,'employeeCode'|'companyCode'|'companyId'>){
+ return record.companyCode===undefined?record.employeeCode:`${record.companyId??'?'+record.companyCode.trim().toUpperCase()}|${record.employeeCode}`;
+}
+function groupsFor(records:MovementImportRecord[]){const groups=new Map<string,MovementImportRecord[]>();for(const row of records){const key=movementRecordKey(row);groups.set(key,[...(groups.get(key)??[]),row]);}return groups;}
+type ImportCompany={id:string;name:string;label:string|null;registration:string|null};
+/** Companies the actor may import movements for: live, administered, Workforce view and maintain. */
+export async function movementImportCompaniesTx(tx:Tx,ctx:SessionContext):Promise<ImportCompany[]>{
+ return tx.select({id:company.id,name:company.legalName,label:company.companyLabel,registration:company.registrationNo}).from(company).where(and(eq(company.tenantId,ctx.tenantId),isNull(company.archivedAt),sql`app.is_admin_for(${company.id}) and app.access_workforce_company(${company.id},'workforce.view') and app.access_workforce_company(${company.id},'workforce.maintain')`)).orderBy(asc(company.legalName),asc(company.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
+}
+/** ac6645ec — Company ID per record, with the cost-allocation matcher (Company Code, registration number or
+ * legal name; unknown, ambiguous and not-permitted companies refused). Returns copies; inputs stay intact. */
+async function resolveRecordCompanies(ctx:SessionContext,records:MovementImportRecord[]){
+ const names=new Map<string,string>();
+ if(!records.some(r=>r.companyCode!==undefined))return{records,names};
+ const companies=await withTenant(ctx,async tx=>{await limits(tx);return movementImportCompaniesTx(tx,ctx);});
+ for(const c of companies)names.set(c.id,`${allocationCompanyCode(c)} · ${c.name}`);
+ return{names,records:records.map(record=>{
+  if(record.companyCode===undefined)return record;
+  const matched=matchAllocationCompany(companies,record.companyCode);
+  if('error' in matched)return{...record,companyId:undefined,errors:[...new Set([...record.errors,matched.error==='missing'?'company_required':matched.error==='ambiguous'?'company_ambiguous':'company_unknown'])]};
+  return{...record,companyId:matched.company.id};
+ })};
+}
+const pick=(values:Record<string,string|null>|undefined,keys:string[])=>Object.fromEntries(keys.map(key=>[key,values?.[key]??null]));
+const CHECKED_REFERENCES=['companyId','departmentId','positionId','businessUnitId','locationId','gradeId','managerEmploymentId'];
+const normal=(value:string|null|undefined)=>(value??'').trim().toLowerCase();
+/** ac6645ec — Before is what the preparer saw. It must still be the as-of value immediately before this
+ * movement (the current record, after any earlier movement of the same employee in the file). */
+function checkBefore(record:MovementImportRecord,state:Record<string,string|null>,shown:Record<string,string|null>,catalog:MovementImportCatalog){
+ for(const [field,expected]of Object.entries(record.before??{})){
+  if(!(field in state)||!expected.trim())continue;
+  const raw=state[field],display=shown[field];
+  let same:boolean;
+  if(raw==null)same=['-','—','none'].includes(normal(expected));
+  else if(CHECKED_REFERENCES.includes(field)){
+   const options=field==='companyId'?catalog.companies:catalog.fields[field as MovementFormField]??[];
+   let resolved:string|undefined;try{resolved=lookup(expected,options,field);}catch{resolved=undefined;}
+   same=resolved===raw||normal(expected)===normal(display)||(options.find(o=>o.value===raw)?.codes??[]).some(code=>normal(code)===normal(expected));
+  }else if(field==='basicSalary'){const n=Number(expected.replace(/,/g,''));same=Number.isFinite(n)&&Math.round(n*100)===Math.round(Number(raw)*100);}
+  else if(/Date$|hiredOn/.test(field))same=movementImportDate(expected)===raw;
+  else{const options=catalog.fields[field as MovementFormField];const viaLabel=options?.find(o=>normal(o.label)===normal(expected))?.value;same=normal(expected)===normal(raw)||normal(expected)===normal(display)||viaLabel===raw;}
+  if(!same)throw new Error('before_mismatch:'+field);
+ }
+}
 function recordDay(row:MovementImportRecord){return row.importVersion===2&&row.cells.kind==='blacklist'?todayInKualaLumpur():movementImportDate(row.cells.effectiveDate??'')??'9999';}
 function sortSequence(rows:MovementImportRecord[]){return [...rows].sort((a,b)=>recordDay(a).localeCompare(recordDay(b))||a.row-b.row);}
 async function lifecycleTx(tx:Tx,id:string){
  const [row]=await tx.select({hiredOn:employment.hiredOn,joinDate:employment.joinDate,confirmationDate:employment.confirmationDate,extendedConfirmationDate:employment.extendedConfirmationDate,resignationDate:employment.resignationDate,tenderResignationDate:employment.tenderResignationDate,lastWorkingDate:employment.lastWorkingDate,terminatedOn:employment.terminatedOn,blacklistedAt:employment.blacklistedAt}).from(employment).where(eq(employment.id,id)).limit(1);return row??{};
 }
-type RehearsedRow={view:MovementImportRow;input:CreateMovementInput;changedFields:string[];references:MovementManagerEvidence[]};
+type RehearsedRow={view:MovementImportRow;input:CreateMovementInput;changedFields:string[];references:MovementManagerEvidence[];rawAfter:Record<string,string|null>};
 function readable(values:Record<string,string|null>,catalog:MovementImportCatalog):Record<string,string|null>{
  return Object.fromEntries(Object.entries(values).map(([key,value])=>{
   const options=key==='companyId'?catalog.companies:catalog.fields[key as MovementFormField];
@@ -179,6 +226,7 @@ async function applyRowTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,i
  if(policy){await recheckMovementManagerEvidenceTx(tx,ctx,policy.references);if(behaviour==='blacklist'&&resolved.effectiveDate!==todayInKualaLumpur())throw new Error('preview_stale_revalidate');}
  const input=adapted.input;
  const catalogBefore=prepared?.source??await catalogTx(tx,ctx,before.companyId);
+ if(record.before&&Object.keys(record.before).length)checkBefore(record,before,readable(before,catalogBefore),catalogBefore);
  const catalogAfter=prepared?.catalog??(input.companyId&&input.companyId!==before.companyId?await catalogTx(tx,ctx,input.companyId):catalogBefore);
  const result=await (create?create(input):createMovementEventTx(tx,ctx,input));
  if('changed' in result&&result.changed===false)throw new Error('movement_has_no_changes');
@@ -191,8 +239,8 @@ async function applyRowTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,i
  const afterValues:Record<string,string|null>=after;
  const changedFields=Object.entries(before).filter(([key,value])=>afterValues[key]!==value).map(([key])=>key);
  const extra=Object.fromEntries(Object.entries(input).filter(([key])=>!['employmentId','kind','effectiveDate','typeCode'].includes(key)&&!(key in after)).map(([key,value])=>[key,value==null?null:String(value)]));
- const view:MovementImportRow={...rowView(record),eventType:input.kind,effectiveDate:input.effectiveDate,status:'valid',errors:[],warnings:adapted.warnings,baselineDate:adapted.baselineDate,before:readable(before,catalogBefore),proposed:{...readable(after,catalogAfter),...extra},scheduled,payrollFlaggedPeriods:'payrollFlaggedPeriods' in result&&Array.isArray(result.payrollFlaggedPeriods)?result.payrollFlaggedPeriods:[]};
- return {view,input,changedFields,references:adapted.references};
+ const view:MovementImportRow={...rowView(record),...(record.sourceRows?{sourceRows:record.sourceRows}:{}),...(record.companyCode!==undefined?{companyCode:record.companyCode}:{}),eventType:input.kind,effectiveDate:input.effectiveDate,status:'valid',errors:[],warnings:adapted.warnings,baselineDate:adapted.baselineDate,before:readable(before,catalogBefore),proposed:{...readable(after,catalogAfter),...extra},scheduled,payrollFlaggedPeriods:'payrollFlaggedPeriods' in result&&Array.isArray(result.payrollFlaggedPeriods)?result.payrollFlaggedPeriods:[]};
+ return {view,input,changedFields,references:adapted.references,rawAfter:afterValues};
 }
 async function rehearseSequenceTx(tx:Tx,ctx:SessionContext,records:MovementImportRecord[],id:string,deadline:number){
  return rehearseMovementSequenceTx(tx,ctx,async(rehearsalTx,create)=>{
@@ -202,17 +250,25 @@ async function rehearseSequenceTx(tx:Tx,ctx:SessionContext,records:MovementImpor
  });
 }
 class PreviewRollback extends Error{constructor(readonly employee:MovementImportEmployee){super('movement_preview_rollback');}}
-export async function previewMovementImport(ctx:SessionContext,p:{companyId:string;csv:string;selection?:number[];records?:MovementImportRecord[];sourceHash?:string;catalogueHash?:string}):Promise<MovementImportPreview>{
+/** The employee a group of records names: its company (per record, or the legacy single company) and code. */
+function employeeFor(key:string,records:MovementImportRecord[],fallbackCompanyId:string|undefined,names:Map<string,string>){
+ const first=records[0],perRow=first.companyCode!==undefined,companyId=perRow?first.companyId:fallbackCompanyId;
+ const employee:MovementImportEmployee={employeeCode:first.employeeCode,employmentId:null,name:null,rows:sortSequence(records).map(rowView),fingerprint:null,...(perRow?{key,companyId:companyId??null,companyName:companyId?names.get(companyId)??null:null}:{})};
+ return{employee,companyId};
+}
+export async function previewMovementImport(ctx:SessionContext,p:{companyId?:string;csv:string;selection?:number[];records?:MovementImportRecord[];sourceHash?:string;catalogueHash?:string}):Promise<MovementImportPreview>{
  assertAdmin(ctx);const parsed=p.records?{records:p.records,fileErrors:movementRecordLimits(p.records)}:parseMovementImport(p.csv);const selection=selectionFor(parsed.records,p.selection);const inputHash=digest({companyId:p.companyId,csv:p.csv,records:p.records,sourceHash:p.sourceHash});
  const result:MovementImportPreview={inputHash,selection,fileErrors:parsed.fileErrors,employees:[],excluded:0,valid:0};if(parsed.fileErrors.length)return result;
  const deadline=Date.now()+MOVEMENT_IMPORT_LIMITS.requestMs;
- for(const [code,records] of groupsFor(parsed.records)){
-  budget(deadline);let employee:MovementImportEmployee={employeeCode:code,employmentId:null,name:null,rows:sortSequence(records).map(rowView),fingerprint:null};
+ const {records:resolved,names}=await resolveRecordCompanies(ctx,parsed.records);
+ for(const [key,records] of groupsFor(resolved)){
+  budget(deadline);const code=records[0].employeeCode,start=employeeFor(key,records,p.companyId,names),companyId=start.companyId;let employee=start.employee;
+  if(!companyId){employee={...employee,rows:employee.rows.map(row=>selection.includes(row.row)?{...row,status:'invalid',errors:row.errors.length?row.errors:['company_not_available']}:row)};result.employees.push(employee);continue;}
   try{
    await withTenant(ctx,async tx=>{
     await limits(tx);await lockAccessConfigurationTx(tx,ctx.tenantId);
-    const employeeDeadline=Math.min(deadline,Date.now()+MOVEMENT_IMPORT_LIMITS.employeeMs);await lockMovementImportReferenceAdmissionTx(tx,ctx.tenantId);await lockMovementTypeCatalogueTx(tx,ctx.tenantId);await assertCompany(tx,ctx,p.companyId);if(p.catalogueHash&&digest({version:2,types:(await catalogTx(tx,ctx,p.companyId)).types})!==p.catalogueHash)throw new Error('workbook_catalogue_changed');
-    const subject=await subjectTx(tx,ctx,p.companyId,code);employee={...employee,employmentId:subject.id,name:subject.name,fingerprint:await fingerprintTx(tx,ctx,subject.id,p.companyId,inputHash,selection,records,employeeDeadline)};
+    const employeeDeadline=Math.min(deadline,Date.now()+MOVEMENT_IMPORT_LIMITS.employeeMs);await lockMovementImportReferenceAdmissionTx(tx,ctx.tenantId);await lockMovementTypeCatalogueTx(tx,ctx.tenantId);await assertCompany(tx,ctx,companyId);if(p.catalogueHash&&digest({version:2,types:(await catalogTx(tx,ctx,companyId)).types})!==p.catalogueHash)throw new Error('workbook_catalogue_changed');
+    const subject=await subjectTx(tx,ctx,companyId,code);employee={...employee,employmentId:subject.id,name:subject.name,fingerprint:await fingerprintTx(tx,ctx,subject.id,companyId,inputHash,selection,records,employeeDeadline)};
     const baseFingerprint=employee.fingerprint;const rows:MovementImportRow[]=[];const previous:RehearsedRow[]=[];
     for(const record of sortSequence(records)){
      budget(employeeDeadline);
@@ -237,34 +293,51 @@ export async function previewMovementImport(ctx:SessionContext,p:{companyId:stri
  for(const employee of result.employees)for(const row of employee.rows)row.status==='valid'?result.valid++:result.excluded++;
  return result;
 }
-export async function commitMovementImport(ctx:SessionContext,p:{companyId:string;csv:string;selection:number[];inputHash:string;fingerprints:Record<string,string>;acknowledgeExcluded:boolean;records?:MovementImportRecord[];sourceHash?:string;catalogueHash?:string}):Promise<MovementImportResult>{
+/** ac6645ec — with `attemptId`, every movement an employee's transaction creates is recorded as an import
+ * history item (its movement id, the values before and after) in that SAME transaction. */
+export type MovementCommitHistory={attemptId:string};
+export async function commitMovementImport(ctx:SessionContext,p:{companyId?:string;csv:string;selection:number[];inputHash:string;fingerprints:Record<string,string>;acknowledgeExcluded:boolean;records?:MovementImportRecord[];sourceHash?:string;catalogueHash?:string;history?:MovementCommitHistory}):Promise<MovementImportResult>{
  assertAdmin(ctx);const parsed=p.records?{records:p.records,fileErrors:movementRecordLimits(p.records)}:parseMovementImport(p.csv);if(parsed.fileErrors.length)throw new Error(parsed.fileErrors.join('; '));const selection=selectionFor(parsed.records,p.selection);
  if(!selection.length)throw new Error('select_valid_rows');const inputHash=digest({companyId:p.companyId,csv:p.csv,records:p.records,sourceHash:p.sourceHash});if(inputHash!==p.inputHash)throw new Error('preview_changed');
  if(selection.length!==parsed.records.length&&p.acknowledgeExcluded!==true)throw new Error('confirm_excluded_rows');
- for(const records of groupsFor(parsed.records).values()){const picked=records.filter(r=>selection.includes(r.row)).length;if(picked&&picked!==records.length)throw new Error('whole_employee_selection_required');}
- const result:MovementImportResult={employees:[],imported:0,failed:0,excluded:parsed.records.length-selection.length,byEventType:[],batchId:randomUUID()};const deadline=Date.now()+MOVEMENT_IMPORT_LIMITS.requestMs;
- for(const [code,records] of groupsFor(parsed.records)){
-  const chosen=sortSequence(records.filter(row=>selection.includes(row.row)));if(!chosen.length){result.employees.push({employeeCode:code,employmentId:null,name:null,rows:records.map(rowView),fingerprint:null});continue;}
-  let employee:MovementImportEmployee={employeeCode:code,employmentId:null,name:null,rows:sortSequence(records).map(rowView),fingerprint:null};
+ const {records:resolved,names}=await resolveRecordCompanies(ctx,parsed.records);
+ for(const records of groupsFor(resolved).values()){const picked=records.filter(r=>selection.includes(r.row)).length;if(picked&&picked!==records.length)throw new Error('whole_employee_selection_required');}
+ const result:MovementImportResult={employees:[],imported:0,failed:0,excluded:parsed.records.length-selection.length,byEventType:[],batchId:p.history?.attemptId??randomUUID(),...(p.history?{attemptId:p.history.attemptId}:{})};const deadline=Date.now()+MOVEMENT_IMPORT_LIMITS.requestMs;
+ for(const [key,records] of groupsFor(resolved)){
+  const code=records[0].employeeCode,start=employeeFor(key,records,p.companyId,names),companyId=start.companyId;
+  const chosen=sortSequence(records.filter(row=>selection.includes(row.row)));if(!chosen.length){result.employees.push({...start.employee,rows:records.map(rowView)});continue;}
+  let employee:MovementImportEmployee=start.employee;
   try{
-   budget(deadline);
+   budget(deadline);if(!companyId)throw new Error('company_not_available');
    employee=await withTenant(ctx,async tx=>{
     await limits(tx);await lockAccessConfigurationTx(tx,ctx.tenantId);
-    const employeeDeadline=Math.min(deadline,Date.now()+MOVEMENT_IMPORT_LIMITS.employeeMs);await lockMovementImportReferenceAdmissionTx(tx,ctx.tenantId);await lockMovementTypeCatalogueTx(tx,ctx.tenantId);await assertCompany(tx,ctx,p.companyId);if(p.catalogueHash&&digest({version:2,types:(await catalogTx(tx,ctx,p.companyId)).types})!==p.catalogueHash)throw new Error('workbook_catalogue_changed');const subject=await subjectTx(tx,ctx,p.companyId,code);
+    const employeeDeadline=Math.min(deadline,Date.now()+MOVEMENT_IMPORT_LIMITS.employeeMs);await lockMovementImportReferenceAdmissionTx(tx,ctx.tenantId);await lockMovementTypeCatalogueTx(tx,ctx.tenantId);await assertCompany(tx,ctx,companyId);const catalog=await catalogTx(tx,ctx,companyId);if(p.catalogueHash&&digest({version:2,types:catalog.types})!==p.catalogueHash)throw new Error('workbook_catalogue_changed');const subject=await subjectTx(tx,ctx,companyId,code);
     employee={...employee,employmentId:subject.id,name:subject.name};
-    const fingerprint=await fingerprintTx(tx,ctx,subject.id,p.companyId,inputHash,selection,records,employeeDeadline);
+    const fingerprint=await fingerprintTx(tx,ctx,subject.id,companyId,inputHash,selection,records,employeeDeadline);
     const rehearsed=await rehearseSequenceTx(tx,ctx,records,subject.id,employeeDeadline);
     const combined=digest({base:fingerprint,references:rehearsed.value.flatMap(row=>row.references)});
-    if(!p.fingerprints||p.fingerprints[code]!==combined)throw new Error('preview_stale_revalidate');
-    if(await fingerprintTx(tx,ctx,subject.id,p.companyId,inputHash,selection,records,employeeDeadline)!==fingerprint)throw new Error('preview_stale_revalidate');
-    const rows:MovementImportRow[]=[];
+    if(!p.fingerprints||p.fingerprints[key]!==combined)throw new Error('preview_stale_revalidate');
+    if(await fingerprintTx(tx,ctx,subject.id,companyId,inputHash,selection,records,employeeDeadline)!==fingerprint)throw new Error('preview_stale_revalidate');
+    const rows:MovementImportRow[]=[],applied:{record:MovementImportRecord;plan:RehearsedRow;row:RehearsedRow;movementIds:string[]}[]=[];
     for(const record of sortSequence(records)){
      if(!selection.includes(record.row)){rows.push(rowView(record));continue;}
      budget(employeeDeadline);const plan=rehearsed.value.find(row=>row.view.row===record.row);if(!plan)throw new Error('movement_sequence_changed');
+     const marker=p.history?await movementLedgerMarkerTx(tx,ctx,subject.id):0;
      const row=await applyRowTx(tx,ctx,record,subject.id,false,plan.input,rehearsed.replay,plan);rows.push({...plan.view,status:'imported',scheduled:row.view.scheduled,payrollFlaggedPeriods:row.view.payrollFlaggedPeriods});budget(employeeDeadline);
+     if(p.history)applied.push({record,plan,row,movementIds:(await movementRowsAfterSequenceTx(tx,ctx,subject.id,marker)).map(created=>created.id)});
     }
-    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'movement-import',aggregateId:result.batchId!,eventType:'movement-import.employee.applied',actor:actorOf(ctx),subjectEmploymentId:subject.id,payload:{companyId:p.companyId,eventCount:chosen.length,sourceRows:chosen.map(row=>({key:row.row,sheet:row.source?.sheet??'CSV',row:row.source?.row??row.row})),eventTypes:[...new Set(chosen.map(row=>row.cells.kind))]}});
-    return {employeeCode:code,employmentId:subject.id,name:subject.name,rows,fingerprint:combined};
+    if(p.history){
+     const labels=new Map(catalog.types.map(type=>[type.code,type.label??type.code]));
+     for(const [sequence,{record,plan,row,movementIds}]of applied.entries()){
+      const shown=[...new Set([...Object.keys(plan.view.before??{}),...Object.keys(plan.view.proposed??{})])].filter(field=>field!=='companyName'&&plan.view.before?.[field]!==plan.view.proposed?.[field]);
+      const base={employeeCode:code,eventType:plan.input.kind,eventLabel:labels.get(plan.input.kind)??plan.input.kind,effectiveDate:plan.input.effectiveDate,sourceRows:record.sourceRows??[record.source?.row??record.row]};
+      for(const movementId of movementIds.length?movementIds:[null])await recordImportItemTx(tx,ctx,{attemptId:p.history.attemptId,companyId,employmentId:subject.id,itemKey:`${record.row}|${movementId??'none'}`,label:`${code} · ${subject.name} · ${base.eventLabel} · ${base.effectiveDate}`,ordinal:record.row,status:'applied',
+       before:{...base,movementId,values:pick(plan.view.before,shown)} satisfies MovementImportItemState,
+       after:{...base,movementId,sequence,scheduled:row.view.scheduled===true,values:pick(plan.view.proposed,shown),raw:pick(row.rawAfter,row.changedFields)} satisfies MovementImportItemState});
+     }
+    }
+    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'movement-import',aggregateId:result.batchId!,eventType:'movement-import.employee.applied',actor:actorOf(ctx),subjectEmploymentId:subject.id,payload:{companyId,eventCount:chosen.length,sourceRows:chosen.map(row=>({key:row.row,sheet:row.source?.sheet??'CSV',row:row.source?.row??row.row})),eventTypes:[...new Set(chosen.map(row=>row.cells.kind))]}});
+    return {...employee,employmentId:subject.id,name:subject.name,rows,fingerprint:combined};
    });
    result.imported+=chosen.length;
   }catch(error){employee={...employee,rows:employee.rows.map(row=>selection.includes(row.row)?{...row,status:'failed',errors:[message(error)]}:row)};result.failed+=chosen.length;}
@@ -274,7 +347,27 @@ export async function commitMovementImport(ctx:SessionContext,p:{companyId:strin
  for(const employee of result.employees)for(const row of employee.rows){const count=counts.get(row.eventType)??{eventType:row.eventType,imported:0,failed:0,excluded:0};row.status==='imported'?count.imported++:row.status==='failed'?count.failed++:count.excluded++;counts.set(row.eventType,count);}
  result.byEventType=[...counts.values()].sort((a,b)=>a.eventType.localeCompare(b.eventType));return result;
 }
+/** What an applied movement item stores (before/after). `raw` holds the state values the movement left for
+ * the fields it changed; a revert is blocked while any of them has since been changed again. */
+export type MovementImportItemState={employeeCode:string;eventType:string;eventLabel:string;effectiveDate:string;sourceRows:number[];movementId:string|null;values:Record<string,string|null>;sequence?:number;scheduled?:boolean;raw?:Record<string,string|null>};
+/** Raw current state for the revert check (the same projection the import compares and writes through). */
+export async function movementImportStateTx(tx:Tx,employmentId:string):Promise<Record<string,string|null>>{return{...await movementCurrentStateTx(tx,employmentId),...await lifecycleTx(tx,employmentId)};}
 
+/** ac6645ec — one template for every company the actor may import movements for: the tenant's active types,
+ * each company's Company ID (Company Code, else registration number) and its allowed values. */
+export async function movementImportTemplateData(ctx:SessionContext){
+ assertAdmin(ctx);return withTenant(ctx,async tx=>{
+  await limits(tx);await lockAccessConfigurationTx(tx,ctx.tenantId);
+  const types=(await activeMovementEventTypeChoicesTx(tx,ctx.tenantId)).map(type=>({code:type.code,label:type.label,behaviour:type.behaviourKind}));
+  const companies=[];
+  for(const c of await movementImportCompaniesTx(tx,ctx))companies.push({companyId:c.id,code:allocationCompanyCode(c),name:c.name,catalog:await catalogTx(tx,ctx,c.id)});
+  return{types,companies};
+ });
+}
+/** The tenant's active movement types (the catalogue a template is signed to). */
+export async function movementImportTypes(ctx:SessionContext){
+ assertAdmin(ctx);return withTenant(ctx,async tx=>{await limits(tx);return (await activeMovementEventTypeChoicesTx(tx,ctx.tenantId)).map(type=>({code:type.code,label:type.label,behaviour:type.behaviourKind}));});
+}
 export type MovementImportFilters={departmentIds?:string[];businessUnitIds?:string[];gradeIds?:string[];locationIds?:string[];probationOnly?:boolean};
 /** Server-only download projection. Internal identities never leave this owner in workbook metadata. */
 export async function movementImportDownloadData(ctx:SessionContext,p:{companyId:string;typeCode?:string;filters?:MovementImportFilters}){
