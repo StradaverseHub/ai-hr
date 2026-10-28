@@ -10668,7 +10668,7 @@
         "onboardingRequisitions": "Operational fulfilment, approval and configured add-system groups, module users and company HR can read requisitions. Actions remain restricted to the current team, step or item rights. A mention alone grants only its discussion context.",
         "onboardingSettings": "Onboarding module users maintain policies, catalogues, workflows and routing. A Master Admin without module access manages groups and grants only.",
         "onboardingV31": "Requires an explicit Onboarding module grant, independent of HR role. HR-only identity fields also require company HR access.",
-        "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked.",
+        "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked. The department view lists only the people whose current head-of-department assignment names you, read-only.",
         "payrollConfig": "Everyone can open this; only admins for the company can change it.",
         "people": "Everyone can open this; the list is limited to the people you are allowed to see.",
         "performance": "Managers and above, and Performance Partners for their companies’ OneHR cycles only; what appears follows your actual reporting lines and scope.",
@@ -22137,6 +22137,38 @@
       "pickUnitToLock": "Choose a business unit above to lock it.",
       "categoryHelp": "Everyone here whose performance and potential place them in {category}.",
       "categoryEmpty": "No one here is in {category} right now."
+    },
+    "department": {
+      "link": "My department",
+      "title": "My department",
+      "description": "{cycle} · everyone you head, direct and indirect. View only: KPI lines are acted on in your performance workspace.",
+      "cycle": "Cycle",
+      "spreadTitle": "Final rating distribution",
+      "spreadRow": "{count} · {pct}",
+      "finalizedCount": "{finalized} of {total} people are finalized (every KPI line locked). The others are still in progress.",
+      "search": "Search",
+      "searchPlaceholder": "Name, department or job title",
+      "columns": {
+        "name": "Name",
+        "department": "Department",
+        "jobTitle": "Job title",
+        "relationship": "Relationship",
+        "overall": "Overall rating"
+      },
+      "relationship": {
+        "direct": "Direct",
+        "indirect": "Indirect"
+      },
+      "pending": "Pending",
+      "overall": "{score} · {band}",
+      "noMatch": "No people match your search.",
+      "bands": {
+        "UA": "Unacceptable",
+        "BE": "Below Expectation",
+        "ME": "Meet Expectation",
+        "AE": "Above Expectation",
+        "OU": "Outstanding"
+      }
     }
   },
   "allowanceV2": {

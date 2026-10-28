@@ -10668,7 +10668,7 @@
         "onboardingRequisitions": "配置的履行组、审批组和系统添加组、模块用户及公司人事可查看申请。操作仍受当前团队、审批步骤或项目权限限制。仅被提及只能查看相应讨论。",
         "onboardingSettings": "入职模块用户维护政策、目录、审批流程和路由。未获模块权限的主管理员只能管理分配组和授权。",
         "onboardingV31": "需要单独授予入职模块访问权，与人事角色无关。人事专用身份字段还需要相应公司的人员管理权限。",
-        "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked.",
+        "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked. The department view lists only the people whose current head-of-department assignment names you, read-only.",
         "payrollConfig": "所有人都可打开；只有公司的管理员才能更改。",
         "people": "所有人都可打开；列表仅限于你有权查看的人员。",
         "performance": "经理及以上，以及绩效合作伙伴（仅限其公司的 OneHR 周期）；显示内容取决于你实际的汇报线和权限范围。",
@@ -22137,6 +22137,38 @@
       "pickUnitToLock": "Choose a business unit above to lock it.",
       "categoryHelp": "Everyone here whose performance and potential place them in {category}.",
       "categoryEmpty": "No one here is in {category} right now."
+    },
+    "department": {
+      "link": "My department",
+      "title": "My department",
+      "description": "{cycle} · everyone you head, direct and indirect. View only: KPI lines are acted on in your performance workspace.",
+      "cycle": "Cycle",
+      "spreadTitle": "Final rating distribution",
+      "spreadRow": "{count} · {pct}",
+      "finalizedCount": "{finalized} of {total} people are finalized (every KPI line locked). The others are still in progress.",
+      "search": "Search",
+      "searchPlaceholder": "Name, department or job title",
+      "columns": {
+        "name": "Name",
+        "department": "Department",
+        "jobTitle": "Job title",
+        "relationship": "Relationship",
+        "overall": "Overall rating"
+      },
+      "relationship": {
+        "direct": "Direct",
+        "indirect": "Indirect"
+      },
+      "pending": "Pending",
+      "overall": "{score} · {band}",
+      "noMatch": "No people match your search.",
+      "bands": {
+        "UA": "Unacceptable",
+        "BE": "Below Expectation",
+        "ME": "Meet Expectation",
+        "AE": "Above Expectation",
+        "OU": "Outstanding"
+      }
     }
   },
   "allowanceV2": {

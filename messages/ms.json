@@ -10668,7 +10668,7 @@
         "onboardingRequisitions": "Kumpulan penyediaan, kelulusan dan penambahan sistem yang ditetapkan, pengguna modul serta HR syarikat boleh membaca permintaan. Tindakan mengikut hak pasukan, langkah atau item semasa. Sebutan hanya memberi konteks perbincangannya.",
         "onboardingSettings": "Pengguna modul Onboarding mengurus dasar, katalog, aliran kelulusan dan penghalaan. Pentadbir Utama tanpa akses modul hanya mengurus kumpulan dan kebenaran.",
         "onboardingV31": "Memerlukan kebenaran modul Onboarding yang jelas, berasingan daripada peranan HR. Medan identiti HR juga memerlukan akses HR syarikat.",
-        "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked.",
+        "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked. The department view lists only the people whose current head-of-department assignment names you, read-only.",
         "payrollConfig": "Semua orang boleh membukanya; hanya pentadbir syarikat boleh mengubahnya.",
         "people": "Semua orang boleh membukanya; senarai dihadkan kepada orang yang anda dibenarkan lihat.",
         "performance": "Pengurus dan ke atas, serta Rakan Prestasi untuk kitaran OneHR syarikat mereka sahaja; apa yang dipaparkan mengikut garis pelaporan dan skop sebenar anda.",
@@ -22137,6 +22137,38 @@
       "pickUnitToLock": "Choose a business unit above to lock it.",
       "categoryHelp": "Everyone here whose performance and potential place them in {category}.",
       "categoryEmpty": "No one here is in {category} right now."
+    },
+    "department": {
+      "link": "My department",
+      "title": "My department",
+      "description": "{cycle} · everyone you head, direct and indirect. View only: KPI lines are acted on in your performance workspace.",
+      "cycle": "Cycle",
+      "spreadTitle": "Final rating distribution",
+      "spreadRow": "{count} · {pct}",
+      "finalizedCount": "{finalized} of {total} people are finalized (every KPI line locked). The others are still in progress.",
+      "search": "Search",
+      "searchPlaceholder": "Name, department or job title",
+      "columns": {
+        "name": "Name",
+        "department": "Department",
+        "jobTitle": "Job title",
+        "relationship": "Relationship",
+        "overall": "Overall rating"
+      },
+      "relationship": {
+        "direct": "Direct",
+        "indirect": "Indirect"
+      },
+      "pending": "Pending",
+      "overall": "{score} · {band}",
+      "noMatch": "No people match your search.",
+      "bands": {
+        "UA": "Unacceptable",
+        "BE": "Below Expectation",
+        "ME": "Meet Expectation",
+        "AE": "Above Expectation",
+        "OU": "Outstanding"
+      }
     }
   },
   "allowanceV2": {

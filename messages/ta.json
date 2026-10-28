@@ -10668,7 +10668,7 @@
         "onboardingRequisitions": "அமைக்கப்பட்ட வழங்கல், ஒப்புதல் மற்றும் அமைப்பு சேர்க்கும் குழுக்கள், தொகுதி பயனர்கள் மற்றும் நிறுவன HR கோரிக்கைகளைப் படிக்கலாம். செயல்கள் தற்போதைய குழு, படி அல்லது உருப்படி உரிமைகளுக்கு உட்பட்டவை. குறிப்பிடப்படுவது அந்த உரையாடலை மட்டும் அணுக அனுமதிக்கும்.",
         "onboardingSettings": "தொகுதி பயனர்கள் கொள்கைகள், பட்டியல்கள், ஒப்புதல் ஓட்டங்கள் மற்றும் வழித்தடங்களை நிர்வகிக்கிறார்கள். தொகுதி அணுகல் இல்லாத முதன்மை நிர்வாகி குழுக்கள் மற்றும் அனுமதிகளை மட்டும் நிர்வகிக்கலாம்.",
         "onboardingV31": "HR பாத்திரத்திலிருந்து தனியாக வெளிப்படையான பணிச்சேர்ப்பு தொகுதி அனுமதி தேவை. HR அடையாளப் புலங்களுக்கு நிறுவன HR அணுகலும் தேவை.",
-        "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked.",
+        "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked. The department view lists only the people whose current head-of-department assignment names you, read-only.",
         "payrollConfig": "அனைவரும் இதைத் திறக்கலாம்; நிறுவனத்தின் நிர்வாகிகள் மட்டுமே இதை மாற்ற முடியும்.",
         "people": "அனைவரும் இதைத் திறக்கலாம்; பட்டியல் நீங்கள் பார்க்க அனுமதிக்கப்பட்டவர்களுக்கு மட்டுமே.",
         "performance": "மேலாளர்கள் மற்றும் அதற்கு மேல், மேலும் செயல்திறன் பங்காளர்கள் தங்கள் நிறுவனங்களின் OneHR சுழற்சிகளுக்கு மட்டும்; காட்டப்படுவது உங்கள் உண்மையான அறிக்கை வரிசைகளையும் வரம்பையும் பின்பற்றுகிறது.",
@@ -22137,6 +22137,38 @@
       "pickUnitToLock": "Choose a business unit above to lock it.",
       "categoryHelp": "Everyone here whose performance and potential place them in {category}.",
       "categoryEmpty": "No one here is in {category} right now."
+    },
+    "department": {
+      "link": "My department",
+      "title": "My department",
+      "description": "{cycle} · everyone you head, direct and indirect. View only: KPI lines are acted on in your performance workspace.",
+      "cycle": "Cycle",
+      "spreadTitle": "Final rating distribution",
+      "spreadRow": "{count} · {pct}",
+      "finalizedCount": "{finalized} of {total} people are finalized (every KPI line locked). The others are still in progress.",
+      "search": "Search",
+      "searchPlaceholder": "Name, department or job title",
+      "columns": {
+        "name": "Name",
+        "department": "Department",
+        "jobTitle": "Job title",
+        "relationship": "Relationship",
+        "overall": "Overall rating"
+      },
+      "relationship": {
+        "direct": "Direct",
+        "indirect": "Indirect"
+      },
+      "pending": "Pending",
+      "overall": "{score} · {band}",
+      "noMatch": "No people match your search.",
+      "bands": {
+        "UA": "Unacceptable",
+        "BE": "Below Expectation",
+        "ME": "Meet Expectation",
+        "AE": "Above Expectation",
+        "OU": "Outstanding"
+      }
     }
   },
   "allowanceV2": {

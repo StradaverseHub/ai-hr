@@ -10668,7 +10668,7 @@
         "onboardingRequisitions": "Các nhóm thực hiện, phê duyệt và thêm hệ thống đã cấu hình, người dùng mô-đun và HR công ty được đọc yêu cầu. Thao tác vẫn giới hạn theo nhóm, bước hoặc quyền mục hiện tại. Việc được nhắc đến chỉ cấp quyền xem cuộc thảo luận tương ứng.",
         "onboardingSettings": "Người dùng mô-đun quản lý chính sách, danh mục, quy trình phê duyệt và định tuyến. Quản trị viên chính chưa có quyền mô-đun chỉ quản lý nhóm và cấp quyền.",
         "onboardingV31": "Cần được cấp quyền mô-đun hội nhập riêng, độc lập với vai trò HR. Trường định danh dành cho HR còn yêu cầu quyền HR tại công ty.",
-        "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked.",
+        "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked. The department view lists only the people whose current head-of-department assignment names you, read-only.",
         "payrollConfig": "Mọi người đều có thể mở; chỉ quản trị viên của công ty mới có thể thay đổi.",
         "people": "Mọi người đều có thể mở; danh sách chỉ giới hạn ở những người bạn được phép xem.",
         "performance": "Quản lý trở lên, và Đối tác Hiệu suất chỉ cho các chu kỳ OneHR của công ty mình; nội dung hiển thị theo tuyến báo cáo và phạm vi thực tế của bạn.",
@@ -22137,6 +22137,38 @@
       "pickUnitToLock": "Choose a business unit above to lock it.",
       "categoryHelp": "Everyone here whose performance and potential place them in {category}.",
       "categoryEmpty": "No one here is in {category} right now."
+    },
+    "department": {
+      "link": "My department",
+      "title": "My department",
+      "description": "{cycle} · everyone you head, direct and indirect. View only: KPI lines are acted on in your performance workspace.",
+      "cycle": "Cycle",
+      "spreadTitle": "Final rating distribution",
+      "spreadRow": "{count} · {pct}",
+      "finalizedCount": "{finalized} of {total} people are finalized (every KPI line locked). The others are still in progress.",
+      "search": "Search",
+      "searchPlaceholder": "Name, department or job title",
+      "columns": {
+        "name": "Name",
+        "department": "Department",
+        "jobTitle": "Job title",
+        "relationship": "Relationship",
+        "overall": "Overall rating"
+      },
+      "relationship": {
+        "direct": "Direct",
+        "indirect": "Indirect"
+      },
+      "pending": "Pending",
+      "overall": "{score} · {band}",
+      "noMatch": "No people match your search.",
+      "bands": {
+        "UA": "Unacceptable",
+        "BE": "Below Expectation",
+        "ME": "Meet Expectation",
+        "AE": "Above Expectation",
+        "OU": "Outstanding"
+      }
     }
   },
   "allowanceV2": {
