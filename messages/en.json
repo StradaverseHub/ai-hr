@@ -10698,7 +10698,7 @@
         "letterApproval": "Current company context, Letters read/approve access and the assigned current approval stage.",
         "letterRegister": "Current company context and current Letters read, issue, generate or settings permissions for each action.",
         "letterSettings": "Current company context. Settings permission configures workflows; Approve permission manages only your own signing images.",
-        "emailTemplates": "Design automated emails. AIHR keeps essential links, deadlines and security messages protected."
+        "emailTemplates": "Only administrators with organization-wide HR or system access can manage email designs. Company-only administrators cannot."
       },
       "scopedTo": "Scoped to {company} and its sub-companies",
       "screen": {

@@ -10698,7 +10698,7 @@
         "letterApproval": "Phạm vi công ty hiện tại, quyền đọc/phê duyệt thư và bước phê duyệt hiện tại được giao.",
         "letterRegister": "Phạm vi công ty hiện tại và quyền Thư hiện tại cần cho từng thao tác.",
         "letterSettings": "Phạm vi công ty hiện tại. Quyền Cài đặt cấu hình quy trình; quyền Phê duyệt chỉ quản lý hình chữ ký của chính bạn.",
-        "emailTemplates": "Thiết kế email tự động. AIHR bảo vệ các liên kết, thời hạn và thông báo bảo mật cần thiết."
+        "emailTemplates": "Chỉ quản trị viên nhân sự hoặc hệ thống có quyền toàn tổ chức mới được quản lý thiết kế email. Quản trị viên chỉ có quyền tại công ty không được phép."
       },
       "scopedTo": "Phạm vi đến {company} và các công ty con của nó",
       "screen": {
