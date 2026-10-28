@@ -299,3 +299,36 @@ protected-document sweep) is the only Phase E code at the time of writing.
   roster changes; the employee can turn them off.
 - **D9 — DECIDED, not built yet.** @react-native-community/datetimepicker for date and time entry.
 - **D10 — DECIDED, not built yet.** Drafts are held in memory only.
+
+### M07 · complete leave management — IMPLEMENTED, UNVERIFIED (28 October 2026)
+
+Built on the branch; no test, type check, build or device run has been executed by the builder (hosted CI
+verifies). Nothing below is evidence that it works until that run reports.
+
+- **Endpoints (v2, contracts in `lib/mobile-api/v2/leave.ts`).** `GET /api/mobile/v2/leave/requests`
+  (own selected employment, start date descending, keyset cursor, stored-status filter, overlap window,
+  per-status counts); `GET …/requests/{id}` (the row must belong to the selected OWN employment, else
+  `not_found`; per-date outcome, approval levels with names, rejection, cancellation, pending give-back,
+  actions from the web's own predicates); `POST …/{id}/withdraw` (cancelOwnLeave) and
+  `POST …/{id}/cancellation` (requestLeaveCancellation, tenant-local today), both inside the mobile
+  command receipt; refusals carry the service's LeaveCancellationRefusal codes. Composition in
+  `core/mobile-leave-history.ts`.
+- **v1, additive.** Leave cards carry an optional server-translated `entitlementNoticeText`; the v1
+  preview passes an hourly From/To window through to the shared rule (an incomplete or overnight window
+  keeps `days: null`).
+- **D5 kernel changes.** (a) optional trailing `existingTx` on cancelOwnLeave, requestLeaveCancellation,
+  decideLeave, decideLeaveDates and decideLeaveCancellation; (b) optional `expectedStepIndex` on the three
+  decisions, refusing `LeaveStaleStepError` (`stale_step`); (c) previewLeaveDeduction accepts
+  fromTime/toTime/hours and uses `hourlyLeaveWindow` + `hourlyLeaveDays`, factored out of requestLeave.
+  Keyset (`before`) and id (`ids`) options on listLeaveRequestsPage. Web callers pass none of them.
+- **D9.** `@react-native-community/datetimepicker` 9.1.0 — the version Expo SDK 57.0.26's
+  `bundledNativeModules.json` names; lockfile entry from the registry's published metadata.
+- **D10.** Withdraw/cancel are online-only, confirmed, and held in memory; a lost answer is retried with the
+  same requestId and the server's receipt replays it. The persisted submission journal is NOT extended to
+  these commands (it is closed to clock/leave-submit kinds); see the round's report.
+- **Native.** `mobile/app/leave/history.tsx`, `mobile/app/leave/[id].tsx`, `mobile/lib/leave-history.tsx`;
+  the leave tab links to every request and opens each row's detail; the form uses the platform pickers and
+  shows the entitlement notice and the hourly preview figure.
+- **Tests written, not yet run.** `test/mobile-v2-leave.test.ts`, `test/leave-mobile-kernel-seams.test.ts`,
+  `test/mobile-leave-history.dom.test.tsx`; `test/mobile-native-journey-screens.dom.test.tsx` updated for the
+  pickers.
