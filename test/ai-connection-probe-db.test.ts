@@ -19,6 +19,7 @@ describe('connection probe ledger (R9)',()=>{
   const stored=await rows();expect(stored).toHaveLength(1);expect(stored[0]).toMatchObject({featureId:'provider_evaluation',operation:'probe',state:ok?'completed':'failed',actualTokens:null});
   expect(JSON.stringify(stored)).not.toContain('fictional-probe-key');
   const usage=await withTenant(adminCtx(base),tx=>tx.execute(sql`select * from app.ai_feature_usage()`));expect(usage).toHaveLength(0);
+  const [money]=await withTenant(adminCtx(base),tx=>tx.execute<{unknown:string}>(sql`select app.ai_optional_spend_status()->>'unpricedUnknownRuns' as unknown`));expect(money.unknown).toBe('0');
  });
  it('refuses a no-login actor and direct app-role receipt forgery',async()=>{
   const ctx={...adminCtx(base),userId:undefined},validate=vi.spyOn(openaiAdapter,'validate');
