@@ -15,7 +15,8 @@ const base = 'http://127.0.0.1:3174';
 const tenant = '11111111-1111-1111-1111-111111111111';
 const target = 'ai_hr_orchestrator_browser';
 const locales = ['en', 'ms', 'zh', 'vi', 'th', 'ta'];
-const routes = ['/control-tower', '/control-tower/agents'];
+// /control-tower/agents became the AI administration area (1c868f527) and no longer holds the work queue.
+const routes = ['/control-tower'];
 const postgres = fileURLToPath(new URL('./postgres.sh', import.meta.url));
 const uuid = value => typeof value === 'string' && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(value);
 const git = (...args) => execFileSync('git', args, {encoding: 'utf8'}).trim();
