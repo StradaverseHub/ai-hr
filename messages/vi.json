@@ -313,6 +313,7 @@
     "approvalsCount": "{count, plural, one {# mục đang chờ bạn quyết định} other {# mục đang chờ bạn quyết định}}",
     "performance": "Đánh giá hiệu suất",
     "performanceTalent": "Hiệu suất & Nhân tài",
+    "performanceAdmin": "Performance admin",
     "admin": "Quản trị",
     "organization": "Tổ chức",
     "systemLabels": "Nhãn hệ thống",
@@ -28091,10 +28092,6 @@
     }
   },
   "performanceArea": {
-    "nav": {
-      "performanceTalent": "Performance & Talent",
-      "performanceAdmin": "Performance admin"
-    },
     "tabs": {
       "home": "Dashboard",
       "pm": {

@@ -313,6 +313,7 @@
     "approvalsCount": "{count, plural, one {# รายการรอการตัดสินใจของคุณ} other {# รายการรอการตัดสินใจของคุณ}}",
     "performance": "ผลงาน",
     "performanceTalent": "ผลงานและบุคลากรศักยภาพ",
+    "performanceAdmin": "Performance admin",
     "admin": "ผู้ดูแลระบบ",
     "organization": "องค์กร",
     "systemLabels": "ป้ายระบบ",
@@ -28091,10 +28092,6 @@
     }
   },
   "performanceArea": {
-    "nav": {
-      "performanceTalent": "Performance & Talent",
-      "performanceAdmin": "Performance admin"
-    },
     "tabs": {
       "home": "Dashboard",
       "pm": {

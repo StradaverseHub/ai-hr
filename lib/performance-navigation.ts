@@ -21,3 +21,15 @@ export function assessmentReturnPath(raw:unknown,fallback:string):string {
  }
  return `${path}?${params}`;
 }
+
+const ADMIN_AREA_PATH = /^\/performance\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[^/]+\/[^/]+$/i;
+/**
+ * D-P1-32 PT-X5 — the Performance & Talent routes where Monolith's intent bar stands down (components/intent-bar.tsx),
+ * as it always has on the review workspace: the workspace, each tab route over it and Team PM's per-review route
+ * (they carry the workspace's own conversation composer), the Performance home, and the admin area's tab pages
+ * (/performance/<cycle>/<section>/<tab>, which carry the admin assistant). The global palette stays on ⌘K.
+ */
+export function performanceAreaOwnsComposer(pathname:string|null|undefined):boolean {
+ if(!pathname)return false;
+ return pathname==='/performance/workspace'||pathname==='/performance/home'||WORKSPACE_TAB_PATHS.includes(pathname)||TEAM_REVIEW_PATH.test(pathname)||ADMIN_AREA_PATH.test(pathname);
+}

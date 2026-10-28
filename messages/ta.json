@@ -313,6 +313,7 @@
     "approvalsCount": "{count, plural, one {# உருப்படி உங்கள் முடிவுக்காகக் காத்திருக்கிறது} other {# உருப்படிகள் உங்கள் முடிவுக்காகக் காத்திருக்கின்றன}}",
     "performance": "செயல்திறன்",
     "performanceTalent": "செயல்திறன் & திறமை",
+    "performanceAdmin": "Performance admin",
     "admin": "நிர்வாகம்",
     "organization": "நிறுவனம்",
     "systemLabels": "அமைப்பு லேபிள்கள்",
@@ -28091,10 +28092,6 @@
     }
   },
   "performanceArea": {
-    "nav": {
-      "performanceTalent": "Performance & Talent",
-      "performanceAdmin": "Performance admin"
-    },
     "tabs": {
       "home": "Dashboard",
       "pm": {

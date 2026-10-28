@@ -313,6 +313,7 @@
     "approvalsCount": "{count, plural, one {# item menunggu keputusan anda} other {# item menunggu keputusan anda}}",
     "performance": "Prestasi",
     "performanceTalent": "Prestasi & Bakat",
+    "performanceAdmin": "Performance admin",
     "admin": "Pentadbir",
     "organization": "Organisasi",
     "systemLabels": "Label Sistem",
@@ -28091,10 +28092,6 @@
     }
   },
   "performanceArea": {
-    "nav": {
-      "performanceTalent": "Performance & Talent",
-      "performanceAdmin": "Performance admin"
-    },
     "tabs": {
       "home": "Dashboard",
       "pm": {

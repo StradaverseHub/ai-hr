@@ -18,11 +18,14 @@ describe('Personnel navigation retains its independent audience boundaries',()=>
   expect(lineFor('/admin/personnel')).toMatch(/adminOnly:\s*true/);
   expect(navigationPlacement('/admin/personnel')).toEqual({area:'ops',module:'people',section:'hr'});
  });
- it('keeps Approvals and team Performance manager-up independently of the workspace selection',()=>{
+ it('keeps Approvals manager-up and Performance admin OneHR-administrator-only, independently of the workspace selection',()=>{
   expect(lineFor('/approvals')).toMatch(/managerUp:\s*true/);
+  // D-P1-32 PT-X5: the former manager-up Performance row is Performance admin, gated by canAdministerOnehr alone.
   const row=performance.split('\n').find(line=>line.includes("href: '/performance'"));
-  expect(row).toMatch(/managerUp:\s*true/);
+  expect(row).toContain("labelKey: 'performanceAdmin'");
+  expect(row).not.toMatch(/managerUp|adminOnly/);
+  expect(source).toContain('c.href === PERFORMANCE_ADMIN_ROW.href ? canAdministerOnehr :');
   expect(navigationPlacement('/approvals')).toEqual({area:'shared'});
-  expect(navigationPlacement('/performance')).toEqual({area:'strata',module:'performance',section:'team'});
+  expect(navigationPlacement('/performance')).toEqual({area:'strata',module:'performanceAdmin',section:'hr'});
  });
 });

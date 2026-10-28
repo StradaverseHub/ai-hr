@@ -313,6 +313,7 @@
     "approvalsCount": "{count, plural, one {# 项待您处理} other {# 项待您处理}}",
     "performance": "绩效",
     "performanceTalent": "绩效与人才",
+    "performanceAdmin": "Performance admin",
     "admin": "管理后台",
     "organization": "组织",
     "systemLabels": "系统标签",
@@ -28091,10 +28092,6 @@
     }
   },
   "performanceArea": {
-    "nav": {
-      "performanceTalent": "Performance & Talent",
-      "performanceAdmin": "Performance admin"
-    },
     "tabs": {
       "home": "Dashboard",
       "pm": {

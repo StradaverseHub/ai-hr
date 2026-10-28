@@ -1481,6 +1481,23 @@ export function listOnehrAdminCycles(ctx: SessionContext): Promise<OnehrAdminCyc
   });
 }
 
+/**
+ * D-P1-32 PT-X5 — the latest OneHR-native cycle this session administers (listOnehrAdminCycles' order: newest
+ * period first), or null. The sidebar's Performance admin entry opens that cycle's admin area. Same two gates as
+ * the list: app.onehr_cycle_admin per row and canAdminOnehrCtx. Ids only; no counts.
+ */
+export function latestOnehrAdminCycleId(ctx: SessionContext): Promise<string | null> {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({ id: reviewCycle.id, companyId: reviewCycle.companyId })
+      .from(reviewCycle)
+      .innerJoin(onehrCycle, eq(onehrCycle.cycleId, reviewCycle.id))
+      .where(sql`app.onehr_cycle_admin(${reviewCycle.id})`)
+      .orderBy(desc(reviewCycle.periodStart), reviewCycle.id);
+    return rows.find((r) => canAdminOnehrCtx(ctx, r.companyId))?.id ?? null;
+  });
+}
+
 /** ADR-0142 — ids of the companies this session administers for OneHR, subsidiaries included (DB-authoritative). */
 export function listOnehrAdminCompanyIds(ctx: SessionContext): Promise<Set<string>> {
   return withTenant(ctx, async (tx) => {

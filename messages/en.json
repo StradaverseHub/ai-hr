@@ -313,6 +313,7 @@
     "approvalsCount": "{count, plural, one {# item awaiting your decision} other {# items awaiting your decision}}",
     "performance": "Performance",
     "performanceTalent": "Performance & Talent",
+    "performanceAdmin": "Performance admin",
     "admin": "Admin",
     "organization": "Organization",
     "systemLabels": "System Labels",
@@ -28091,10 +28092,6 @@
     }
   },
   "performanceArea": {
-    "nav": {
-      "performanceTalent": "Performance & Talent",
-      "performanceAdmin": "Performance admin"
-    },
     "tabs": {
       "home": "Dashboard",
       "pm": {
