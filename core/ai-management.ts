@@ -119,19 +119,19 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
       from app_user u left join person p on p.id=u.person_id
       left join lateral(select count(*) filter(where r.started_at>=${DAY_START}) as daily_requests,coalesce(sum(r.actual_tokens),0) as monthly_tokens,
         coalesce(sum(r.reserved_tokens) filter(where r.actual_tokens is null),0) as held_tokens
-        from ai_model_run r where r.tenant_id=u.tenant_id and r.user_id=u.id and r.state<>'blocked' and r.started_at>=${MONTH_START}) a on true
+        from ai_model_run r where r.tenant_id=u.tenant_id and r.user_id=u.id and r.operation<>'probe' and r.state<>'blocked' and r.started_at>=${MONTH_START}) a on true
       where u.tenant_id=${ctx.tenantId}::uuid and(p.full_name ilike ${pattern} or u.workos_user_id ilike ${pattern})
       order by coalesce(a.monthly_tokens+a.held_tokens,0) desc,coalesce(a.daily_requests,0) desc,p.full_name asc,u.id asc limit 51`)) : [];
     // Every login active this month, so attention is never limited to the visible page.
     const activity = isGroupAdmin(ctx) ? Array.from(await tx.execute<UserUsageRow>(sql`
       select r.user_id as id,coalesce(p.full_name,u.workos_user_id) as label,
-      count(*) filter(where r.state<>'blocked' and r.started_at>=${DAY_START}) as daily_requests,
-      coalesce(sum(r.actual_tokens) filter(where r.state<>'blocked'),0) as monthly_tokens,
-      coalesce(sum(r.reserved_tokens) filter(where r.state<>'blocked' and r.actual_tokens is null),0) as held_tokens,
+      count(*) filter(where r.operation<>'probe' and r.state<>'blocked' and r.started_at>=${DAY_START}) as daily_requests,
+      coalesce(sum(r.actual_tokens) filter(where r.operation<>'probe' and r.state<>'blocked'),0) as monthly_tokens,
+      coalesce(sum(r.reserved_tokens) filter(where r.operation<>'probe' and r.state<>'blocked' and r.actual_tokens is null),0) as held_tokens,
       count(*) filter(where r.state='blocked' and r.started_at>=${DAY_START}) as blocked_today,
       (array_agg(r.reason order by r.started_at desc,r.id desc) filter(where r.state='blocked' and r.started_at>=${DAY_START}))[1] as last_reason
       from ai_model_run r join app_user u on u.id=r.user_id left join person p on p.id=u.person_id
-      where r.tenant_id=${ctx.tenantId}::uuid and r.started_at>=${MONTH_START}
+      where r.operation<>'probe' and r.tenant_id=${ctx.tenantId}::uuid and r.started_at>=${MONTH_START}
       group by r.user_id,u.workos_user_id,p.full_name order by r.user_id`)) : [];
     // A login paused by its own zero cap belongs in attention even if it never tried a call this month,
     // so it is not found only through this month's activity. Bounded by the individual policies saved.

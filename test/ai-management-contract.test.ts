@@ -1,3 +1,5 @@
+import {aiBoundaryViolations} from '../scripts/ai-caller-drift';
+import {guardFiles} from '../scripts/gate-affected-plan';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import ts from 'typescript';
@@ -25,11 +27,11 @@ const performanceSeam={file:'packs/performance/onehr/provider-source-draft.ts',c
 describe('complete AI management inventory and boundary',()=>{
  it('registers every production AI workload caller and keeps providers behind the shared gateway',()=>{
   const coreFound:string[]=[];let packCalls=0;
-  for(const file of [...walk('core'),...walk('packs'),...walk('app')]){
+  for(const file of [...walk('core'),...walk('packs'),...walk('app'),...walk('lib'),...walk('scripts')]){
    const src=read(file),tree=ts.createSourceFile(file,src,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
    let calls=0;
    const visit=(node:ts.Node)=>{if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&['generateDraft','readImage','converse',performanceSeam.call].includes(node.expression.text))calls++;ts.forEachChild(node,visit);};visit(tree);
-   for(const statement of tree.statements)if(ts.isImportDeclaration(statement)&&ts.isStringLiteral(statement.moduleSpecifier))expect(['openai','@anthropic-ai/sdk','@google/genai']).not.toContain(statement.moduleSpecifier.text);
+   expect(aiBoundaryViolations(file,src),file).toEqual([]);
    if(!calls)continue;
    if(file.startsWith('core/')){coreFound.push(file);const governed=governedCallers[file];
     if(governed){
@@ -38,13 +40,28 @@ describe('complete AI management inventory and boundary',()=>{
      if(governed.issuedBy){const issuer=read(governed.issuedBy);expect(issuer,`${governed.issuedBy} issues ${file}`).toContain(`from './${file.slice('core/'.length,-'.ts'.length)}'`);
       for(const feature of governed.features)expect(issuer).toMatch(new RegExp(`governedAiConfig\\([^()]*'${feature}'\\)`));}
     }else{expect(coreCallers[file],`${file} needs a registered capability`).toBeTruthy();expect(src,`${file} resolves ${coreCallers[file]}`).toMatch(new RegExp(`resolveActiveAiConfig\\(tx,\\s*ctx,\\s*'${coreCallers[file]}'\\)`));}}
-   else{expect(file.startsWith('packs/performance/onehr/'),`${file} needs a governed configuration seam`).toBe(true);if(file===performanceSeam.file)expect(src).toMatch(performanceSeam.admission);else expect(src,`${file} resolves through assessmentAiConfigTx`).toContain('assessmentAiConfigTx');packCalls+=calls;}
+   else{expect(file.startsWith('packs/performance/onehr/'),`${file} needs a governed configuration seam`).toBe(true);if(file===performanceSeam.file)expect(src).toMatch(performanceSeam.admission);else {
+     const imported=new Set<string>();let admission=false,shared=false;
+     for(const statement of tree.statements)if(ts.isImportDeclaration(statement)&&ts.isStringLiteral(statement.moduleSpecifier)&&statement.importClause?.namedBindings&&ts.isNamedImports(statement.importClause.namedBindings))
+      for(const binding of statement.importClause.namedBindings.elements){const name=(binding.propertyName??binding.name).text;if(name==='withAiAdmissionCheck'&&statement.moduleSpecifier.text.endsWith('core/ai-governance')||name===performanceSeam.call&&statement.moduleSpecifier.text==='./provider-source-draft')imported.add(binding.name.text);}
+     const check=(node:ts.Node)=>{if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&imported.has(node.expression.text)){if(node.expression.text===performanceSeam.call)shared=true;else admission=true;}ts.forEachChild(node,check);};check(tree);
+     expect(admission||shared,`${file} must call an imported admission owner or the governed Performance wrapper`).toBe(true);
+    }packCalls+=calls;}
   }
   expect(coreFound.sort()).toEqual([...Object.keys(coreCallers),...Object.keys(governedCallers)].sort());expect(packCalls).toBeGreaterThan(15);
   // Since the provider snapshot owner (ADR-0131, 64651f101) the tenant row and platform fallback are one
   // snapshot, so the active resolver issues exactly one governed configuration and nothing ungoverned.
   const config=read('core/ai-config.ts');expect(config.match(/governedAiConfig\(/g)?.length).toBe(1);
   expect(config).toMatch(/const snapshot\s*=\s*await resolveAiProviderSnapshotTx\(tx,\s*ctx\);\s*return snapshot\s*\?\s*governedAiConfig\(ctx,\s*snapshot,\s*feature\)\s*:\s*null;/);
+ });
+ it('rejects injected raw provider fetches and SDK imports in lib and scripts',()=>{
+  for(const file of ['lib/rogue.ts','scripts/rogue.ts']){
+   expect(aiBoundaryViolations(file,"const endpoint='https://api.openai.com/v1/chat/completions'; fetch(endpoint,{method:'POST'});" )).toContain('raw provider fetch outside gateway transport');
+   expect(aiBoundaryViolations(file,"import OpenAI from 'openai';")).toContain('provider SDK outside adapter');
+   expect(aiBoundaryViolations(file,"import {createUngovernedProbe as bypass} from './governance'; bypass(cfg,run);")).toContain('probe capability outside connection test');
+   expect(aiBoundaryViolations(file,"globalThis.fetch(url,{headers:{Authorization:'Bearer '+apiKey},body:JSON.stringify({model:model,messages:messages})});")).toContain('raw provider fetch outside gateway transport');
+  }
+  expect(guardFiles(['test/ai-management-contract.test.ts','test/unrelated.test.ts'])).toEqual(['test/ai-management-contract.test.ts']);
  });
  it('keeps the SQL inventory, module catalogue and canonical switches consistent',()=>{
   // The live definition of a function is its LAST redefinition in journal (apply) order; 0568, 0621 and 0648 replaced ai_admit.

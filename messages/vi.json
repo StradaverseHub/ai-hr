@@ -23529,7 +23529,8 @@
     "operations": {
       "draft": "Bản nháp",
       "conversation": "Trao đổi mô hình",
-      "image": "Đọc ảnh"
+      "image": "Đọc ảnh",
+      "probe": "Kiểm tra kết nối"
     },
     "reasons": {
       "paused": "Truy cập AI tạm dừng",

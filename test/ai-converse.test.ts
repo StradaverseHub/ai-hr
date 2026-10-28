@@ -107,9 +107,11 @@ import {
 
 /* ---------------------------------------------------------------------------------------------- */
 
-const ANTHROPIC: ResolvedAiConfig = { provider: 'anthropic', model: 'claude-opus-4-8', apiKey: 'sk-ant-test' };
-const OPENAI: ResolvedAiConfig = { provider: 'openai', model: 'gpt-5.5', apiKey: 'sk-oai-test' };
-const GOOGLE: ResolvedAiConfig = { provider: 'google', model: 'gemini-2.5-flash', apiKey: 'sk-goo-test' };
+// Explicit fixture admission: these tests exercise adapter protocol, not production authority.
+const fixtureGovernance:NonNullable<ResolvedAiConfig['governance']>={async run(_request,call){return call(()=>{});}};
+const ANTHROPIC: ResolvedAiConfig = { governance:fixtureGovernance, provider: 'anthropic', model: 'claude-opus-4-8', apiKey: 'sk-ant-test' };
+const OPENAI: ResolvedAiConfig = { governance:fixtureGovernance, provider: 'openai', model: 'gpt-5.5', apiKey: 'sk-oai-test' };
+const GOOGLE: ResolvedAiConfig = { governance:fixtureGovernance, provider: 'google', model: 'gemini-2.5-flash', apiKey: 'sk-goo-test' };
 
 const SYSTEM = ['You are the ai-hr assistant.', 'Answer only from tool results.'];
 

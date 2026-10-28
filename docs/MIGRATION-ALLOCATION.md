@@ -98,3 +98,14 @@ Routine coordinator: CI/efficiency `01a16cee-9004-72c2-aaf0-932d4d0a1582`; AI de
 `01a16f03-759a-7630-ab49-3fe0c7d69699`. Allocation decisions remain in that coordinating chat. Before
 any future journal append, obtain the final coordinated index/timestamp set from the actual source
 freeze and preserve the exact applied prefix. No human migration or deployed record is changed here.
+
+## WP4 probe ledger reservation — 29 October 2026
+
+Owner: `codex/ai-review-wp4-gateway-20261029`. Claim **0678_ai_connection_probe_ledger**;
+0677 remains reserved for the HR-admin action owner. Refetched matching alpha/main at `b5758c54c`;
+alpha journal ends at index 654 / `when` 1793190000000. Read-only staging watermark query returned
+540 rows / max(created_at) 1793190000000. Active worktree journals were inspected; largest observed
+unmerged `when` is 1793280000000 (agent principal). This branch appends index 655 with
+`when` **1793300000000**, above all those observations. Reconcile append indices/order against any
+intervening merged migrations before integration; never deploy a higher watermark while omitting
+allocated predecessors. This reservation authorizes no migration application or deployment.
