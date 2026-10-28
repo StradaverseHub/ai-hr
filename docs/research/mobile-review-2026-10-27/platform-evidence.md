@@ -2251,3 +2251,15 @@ one TS2322 in `lib/mobile-api/offline-sync-integrity.ts`. Repair `bc6fd1ab4`
 Node 20 production build and the two transport suites (19 cases). Routes answer `not_configured` until
 `AIHR_MOBILE_OFFLINE_POLICY` and the signing key are configured; no key is configured anywhere. Synthetic Play and
 vendor proofs only; no device, no native client.
+
+### Offline settings card and HR review tab (28 October 2026)
+
+Screens candidate `d7ec22b76cd12691af631dad1a7ac6ee6d9a618e` passed
+[40650889526](https://github.com/StradaverseHub/ai-hr/actions/runs/40650889526): 49 files, 1,062 cases (no-DB 32/642,
+DB 17/420), including the new card (11), review table and drawer (17), settings service (6) and resolve actions (7),
+plus function-access, i18n-coverage, the sidebar and navigation suites and the attendance-workflow suites, with root
+TypeScript and the Linux Node 20 build. The open-context count candidate `c854831dcdc6f32fe1d620f0ead2762b289becdd`
+(draft 0647 `af76a374922e2ba079c86fcc1d47526af8b5ad552f3ab9f844ce737b5ce8e687`) passed
+[40651915330](https://github.com/StradaverseHub/ai-hr/actions/runs/40651915330): 24 files, 371 cases, every suite that
+installs the draft, plus TypeScript and the build. A dev-server render check of both screens (CLAUDE.md section 8) has
+NOT been run; nor has a browser walkthrough of multi-level accept. 0636 and the journal are unchanged.
