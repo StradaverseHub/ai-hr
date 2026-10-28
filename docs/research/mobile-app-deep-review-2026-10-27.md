@@ -332,3 +332,35 @@ verifies). Nothing below is evidence that it works until that run reports.
 - **Tests written, not yet run.** `test/mobile-v2-leave.test.ts`, `test/leave-mobile-kernel-seams.test.ts`,
   `test/mobile-leave-history.dom.test.tsx`; `test/mobile-native-journey-screens.dom.test.tsx` updated for the
   pickers.
+
+### M08 · approvals that can finish the job — IMPLEMENTED, UNVERIFIED (28 October 2026)
+
+Built on the branch; no test, type check, build or device run has been executed by the builder (hosted CI
+verifies). Nothing below is evidence that it works until that run reports.
+
+- **Endpoints (v2, contracts in `lib/mobile-api/v2/tasks.ts`, composition in `core/mobile-approvals.ts`).**
+  `GET /api/mobile/v2/tasks` pages `listPendingTasks` in the inbox's own order (createdAt desc, kind, id),
+  replacement leave and notice acknowledgements included; `nativeDecision` is true for leave, leave cancellation
+  and attendance, every other kind carries its web path (D2). `GET …/tasks/{kind}/{id}` admits through
+  `isCurrentAssignedApproval`, refuses the caller's own request even for super_admin (`self_approval`, D4), and
+  answers `not_assigned` for anything else (other tenant, other company, guessed id, manager change, expired
+  delegation, reassigned stage); a row the caller can already read under RLS that is no longer pending is
+  `already_decided`. Facts come from the inbox's readers (listLeaveRequests, leaveRequestDateBreakdown,
+  listPendingLeaveCancellations, listAttendanceCorrections, dayTypesForPairs); team cover from
+  resolveMyTeamScope + myTeamLeaveProjection (names, dates, approved/pending; never the subject, no type, no
+  reason). `POST …/decision` runs decideLeave / decideLeaveDates / decideLeaveCancellation /
+  decideAttendanceCorrection inside the mobile command receipt with the expected step/stage; the decider's
+  employment is the caller's own. `GET …/tasks/leave/{id}/document` sends getLeaveAttachment's PDF, JPEG or PNG
+  (signatures checked; the binary allowlist is widened for this route only, `lib/mobile-api/binary-types.ts`).
+- **Overtime is an attendance application.** A self-overtime / Plan OT request is an attendance_correction with
+  requested minutes and is decided by decideAttendanceCorrection; the detail labels it `overtime`.
+- **No bulk (D3). Online only.** A decision is confirmed in a dialog that repeats it; a lost answer is retried with
+  the same requestId and the receipt replays the first answer; a refusal reloads the task (`stale_step` included).
+- **Native.** `mobile/app/approvals/index.tsx`, `mobile/app/approvals/[kind]/[id].tsx`,
+  `mobile/lib/approval-decision.tsx`; the composed Tasks widget and the legacy Home tasks card link to approvals.
+  The tenant composition destinations enum was not changed (the links are fixed, not tenant-configured).
+- **Not done.** No native document viewer (no viewer module is installed; the detail says to open the request
+  on the web). List items carry the subject's name only (`code: null`): the inbox projection drops the
+  employment, and widening `PendingTaskItem` breaks exact-equality pins on it. A leave-cancellation rejection asks
+  no reason because decideLeaveCancellation records none (DECISION REQUIRED if the owner wants one stored).
+- **Tests written, not yet run.** `test/mobile-v2-approvals.test.ts`, `test/mobile-approvals.dom.test.tsx`.
