@@ -207,10 +207,10 @@ END; $$;
 CREATE FUNCTION app.email_design_assessment_words() RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT jsonb_build_object('subject',d.document->>'subject','opening',b.value#>>'{runs,0,text}')
- FROM public.email_design d CROSS JOIN LATERAL jsonb_array_elements(d.document->'blocks') b(value)
+ FROM public.email_design d CROSS JOIN LATERAL jsonb_array_elements(d.document->'blocks') WITH ORDINALITY b(value,position)
  WHERE d.tenant_id=app.current_tenant_id() AND d.kind='assessment_reminder' AND d.locale='en'
  AND d.document IS NOT NULL AND b.value->>'type'='text'
- ORDER BY (b.value->>'id'='00000000-0000-4000-8000-000000000003') DESC LIMIT 1; $$;
+ ORDER BY (b.value->>'id'='00000000-0000-4000-8000-000000000003') DESC,b.position LIMIT 1; $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.email_design_assessment_words() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.email_design_assessment_words() TO ai_hr_app;
