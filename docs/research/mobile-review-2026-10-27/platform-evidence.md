@@ -2195,3 +2195,23 @@ resolution's `capture_id`, and the `resolution` subject of `captureOfflineClockT
 policy and now checks the binding function is gone. New 0647 SHA-256 `bd89b2e0a3342e1f4d24bf0c7a4e79ab37ccc9718b9dad70c2c1bad57eb0f991`;
 held 0636 is unchanged (`9063b27c0cc316b715d552561d636ffc6412e447ca9275758bf497870c995df7`) and the migration
 journal is unchanged. Unmounted: no route, screen or enabled company; vendor proofs remain synthetic.
+
+### Offline readers, adjudicator and HR review slice (28 October 2026)
+
+Slice candidate `596fb9c0f448ff44c1bf2318518aee6d6ffab2ec` ran three hosted parts.
+[40631379799](https://github.com/StradaverseHub/ai-hr/actions/runs/40631379799) passed 571 cases in 34 files plus root
+TypeScript. [40631394419](https://github.com/StradaverseHub/ai-hr/actions/runs/40631394419) passed 502 of 503 in 34
+files: the online reader fixture clocked twice within one second, so the whole-second punch_at tied and the
+correction-order read broke the tie by random id (a test fault, repaired at `76f00341b`).
+[40631387407](https://github.com/StradaverseHub/ai-hr/actions/runs/40631387407) was cancelled by the workflow's
+one-pending-run concurrency rule before any job started, so it is no evidence either way.
+
+Candidate `76f00341b1176f30501dfcfbb6b4580fe1164cc1` adds the owner decision that HR accepts a held claim through the
+attendance-correction owner (`a3aa32a9e`) and the fixture repair. It passed
+[40633857618](https://github.com/StradaverseHub/ai-hr/actions/runs/40633857618) (the never-run third part, 34 files,
+820 cases, plus root TypeScript) and [40633888464](https://github.com/StradaverseHub/ai-hr/actions/runs/40633888464)
+(32 files, 489 cases: every draft-0647 offline suite including adjudicator 27, consumption 28 and claim review 15, the
+attendance-workflow correction suites, the readers and clock-data suites). No failures or skips. The passing files of
+40631379799 and 40631394419 that the HR-accept change does not reach are retained. Draft 0647 is
+`bd89b2e0a3342e1f4d24bf0c7a4e79ab37ccc9718b9dad70c2c1bad57eb0f991`; 0636 and the journal are unchanged. Still
+unmounted: no route, production snapshot port, settings or HR screen; synthetic vendor proofs, no device.
