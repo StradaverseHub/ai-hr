@@ -23609,7 +23609,7 @@
     "mapAssistant": "Assistant capabilities",
     "mapAssistantHelp": "One assistant with a capability for each HR module. A capability appears only when its module is on and the person has Assistant access.",
     "mapSpecialists": "{available} of {total} capabilities available",
-    "mapAgents": "Background agents",
+    "mapAgents": "Scheduled agents",
     "mapAgentsHelp": "Readiness reminders, claims triage and payroll anomaly hypotheses. They run on a schedule or an event and only prepare work for a person.",
     "mapFeatures": "AI inside other screens",
     "mapFeaturesHelp": "Explanations, drafts and suggestions offered where people already work, such as payroll, performance and reports.",

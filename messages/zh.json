@@ -23609,7 +23609,7 @@
     "mapAssistant": "助手功能",
     "mapAssistantHelp": "一个助手，每个 HR 模块各有一项功能。只有在该模块已启用且此人有助手权限时，功能才会出现。",
     "mapSpecialists": "{total} 项功能中有 {available} 位可用",
-    "mapAgents": "后台代理",
+    "mapAgents": "定时代理",
     "mapAgentsHelp": "就绪提醒、报销分诊和薪资异常假设。它们按计划或事件运行，只为人准备工作。",
     "mapFeatures": "其他页面中的 AI",
     "mapFeaturesHelp": "在大家日常工作的地方提供解释、草稿和建议，例如薪资、绩效和报表。",

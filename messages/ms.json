@@ -23609,7 +23609,7 @@
     "mapAssistant": "Keupayaan Pembantu",
     "mapAssistantHelp": "Satu pembantu dengan keupayaan bagi setiap modul HR. Keupayaan hanya muncul apabila modulnya dihidupkan dan orang itu mempunyai akses Pembantu.",
     "mapSpecialists": "{available} daripada {total} keupayaan tersedia",
-    "mapAgents": "Ejen latar belakang",
+    "mapAgents": "Ejen berjadual",
     "mapAgentsHelp": "Peringatan kesediaan, saringan tuntutan dan hipotesis anomali gaji. Ia berjalan mengikut jadual atau peristiwa dan hanya menyediakan kerja untuk seseorang.",
     "mapFeatures": "AI dalam skrin lain",
     "mapFeaturesHelp": "Penjelasan, draf dan cadangan yang ditawarkan di tempat orang sudah bekerja, seperti gaji, prestasi dan laporan.",

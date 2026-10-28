@@ -23609,7 +23609,7 @@
     "mapAssistant": "Khả năng của Trợ lý",
     "mapAssistantHelp": "Một trợ lý với một khả năng đọc cho mỗi mô-đun HR. Khả năng đọc chỉ xuất hiện khi mô-đun đó được bật và người dùng có quyền dùng Trợ lý.",
     "mapSpecialists": "{available} trên {total} khả năng đọc khả dụng",
-    "mapAgents": "Tác tử chạy nền",
+    "mapAgents": "Các tác tử theo lịch",
     "mapAgentsHelp": "Nhắc việc sẵn sàng, phân loại yêu cầu bồi hoàn và giả thuyết bất thường lương. Chúng chạy theo lịch hoặc sự kiện và chỉ chuẩn bị việc cho con người.",
     "mapFeatures": "AI trong các màn hình khác",
     "mapFeaturesHelp": "Giải thích, bản nháp và gợi ý ngay tại nơi mọi người đang làm việc, như lương, hiệu suất và báo cáo.",
