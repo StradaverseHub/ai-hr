@@ -5,7 +5,16 @@ import {Field,inputCls} from '@/components/ui';
 import {RewardSubmit} from '@/app/rewards/submit-button';
 import {createRewardAction} from '@/app/rewards/actions';
 import type {RewardSharedChoice} from '@/packs/rewards/service';
+import {defaultPolicy} from '@/packs/rewards/model';
 type Props={actorUserId:string;today:string;companies:readonly{id:string;name:string}[];units:readonly{id:string;companyId:string;name:string;global:boolean}[];cycles:readonly{id:string;name:string;year:number}[];shared:readonly RewardSharedChoice[]};
+/** 40bf44f7: the snapshot only says when data is read; eligibility is judged against the review's policy dates. */
+function EligibilityDates({year,shared}:{year:number;shared:string|null}){
+ const t=useTranslations('rewards.sourceRefresh');
+ if(!Number.isInteger(year)||year<2000||year>2200)return null;
+ const p=defaultPolicy(year);
+ return <div className="rounded-md border border-border p-3 text-sm sm:col-span-2 lg:col-span-3" aria-label={t('eligibilityTitle')}><p className="font-medium">{t('eligibilityTitle')}</p>
+  <p className="text-muted-foreground">{shared?t('eligibilityShared',{name:shared}):t('eligibilityDates',{joinedBefore:p.joinedBefore,confirmedBy:p.confirmedBy,effectiveFrom:p.effectiveFrom})}</p></div>;
+}
 export function RewardReviewCreateForm(props:Props){return <RewardReviewCreateDraft key={props.actorUserId+':'+JSON.stringify([props.companies,props.units,props.shared])} {...props}/>;}
 function RewardReviewCreateDraft({today,companies,units,cycles,shared}:Props){
  const t=useTranslations('rewards');
@@ -19,7 +28,8 @@ function RewardReviewCreateDraft({today,companies,units,cycles,shared}:Props){
   <Field label={t('year')}><input name="year" type="number" min={2000} max={2200} required value={year} className={inputCls} onChange={event=>{setYear(Number(event.target.value));setCycle('');}}/></Field>
   <Field label={t('company')}><select name="companyId" required className={inputCls} value={companyId} onChange={event=>{const id=event.target.value;setCompany(id);setUnit(units.find(u=>u.companyId===id||u.global)?.id??'');}}>{companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
   <Field label={t('unit')}><select name="businessUnitId" required className={inputCls} value={unitId} onChange={event=>{setUnit(event.target.value);}}>{compatible.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></Field>
-  <Field label={t('snapshotDate')}><input name="snapshotDate" type="date" max={today} required defaultValue={today} className={inputCls}/></Field>
+  <Field label={t('snapshotDate')}><input name="snapshotDate" type="date" max={today} required className={inputCls}/></Field>
+  <EligibilityDates year={year} shared={versions.length===1?versions[0].name:null}/>
   <Field label={t('sharedPolicy.title')} className="sm:col-span-2"><input type="hidden" name="sharedPolicyVersionId" value={versionId}/><p className="rounded-md border px-3 py-2 text-sm">{versions.length===1?`${versions[0].name} · ${t('sharedPolicy.version',{version:versions[0].revision})}`:t('sharedPolicy.individualDefaults')}</p></Field>
   <p className="max-w-3xl text-sm text-muted-foreground sm:col-span-2 lg:col-span-3">{versionId?t('sharedPolicy.reviewSnapshotHelp'):t('createHelp')}</p>
   <RewardSubmit type="submit" className="w-fit" disabled={!unitId||versions.length>1}>{t('createUnit')}</RewardSubmit>

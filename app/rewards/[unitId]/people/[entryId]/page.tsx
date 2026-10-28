@@ -22,6 +22,7 @@ export default async function RewardPersonPage({ params }: { params: Promise<{ u
   return <div className="mx-auto max-w-5xl space-y-5">
     <Link href={`/rewards/${unitId}`} className="text-sm text-primary hover:underline">← {t('review')}</Link>
     <PageHeader title={e.source.name} description={`${e.source.employeeCode} · ${t('grade')} ${e.source.grade} · ${t(e.plan === 'ec' ? 'ecPlan' : e.plan)}`} />
+    {e.source.leftOn && <p className="text-sm text-muted-foreground">{t(`sourceRefresh.left.${e.source.leftReason ?? 'moved'}`, { date: e.source.leftOn })}</p>}
     <Card className="p-5"><dl className="grid gap-4 text-sm sm:grid-cols-3">{[[t('currentPay'), rm(e.source.basicCents)], [t('newPay'), rm(e.newBasicCents)], [t('bonus'), rm(e.bonusCents)], [t('lumpSum'), rm(e.lumpCents)], [t('incrementEligibility'), e.incrementReason || t('eligible')], [t('bonusEligibility'), e.bonusReason || t('eligible')]].map(([label, value]) => <div key={label}><dt className="text-muted-foreground">{label}</dt><dd className="mt-1 font-medium tabular-nums">{value}</dd></div>)}</dl></Card>
     <form action={entryAction} className="space-y-6">
       <input type="hidden" name="unitId" value={unitId} /><input type="hidden" name="revision" value={v.unit.revision} /><input type="hidden" name="entryId" value={entryId} />

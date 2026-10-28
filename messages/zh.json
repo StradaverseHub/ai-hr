@@ -20142,6 +20142,33 @@
     "import": "Import verified inputs",
     "refreshHelp": "Refresh the original snapshot date from Personnel. This clears input verification and requires another review. If an employee left the roster, the refresh is refused rather than silently deleting an award.",
     "refresh": "Refresh source records",
+    "sourceRefresh": {
+      "title": "刷新源记录",
+      "help": "当前快照日期：{date}。在做出任何更改之前，先预览自该日期以来人员和薪酬记录中的变化。",
+      "asOf": "刷新至日期",
+      "preview": "预览变化",
+      "willChange": "若刷新至 {date} 将发生的变化",
+      "category": {
+        "joined": "加入本单位",
+        "left": "已离职或调出（保留在名单中并标注，不获加薪或奖金）",
+        "confirmed": "新转正",
+        "notice": "已提交辞呈（正在通知期）",
+        "grade": "职级变更",
+        "salary": "薪资记录变更",
+        "other": "其他记录详情变更"
+      },
+      "confirmHelp": "展开一行可查看姓名。确认后，快照日期将移至此日期，并清除有变化人员的数据核验。",
+      "confirm": "确认刷新",
+      "cancel": "取消",
+      "leftMarker": "已离职或调出 {date}",
+      "left": {
+        "terminated": "已于 {date} 离开公司。保留作记录；不获加薪或奖金。",
+        "moved": "已于 {date} 调出本单位。保留作记录；不获加薪或奖金。"
+      },
+      "eligibilityTitle": "资格评定依据",
+      "eligibilityDates": "入职早于 {joinedBefore} · 于 {confirmedBy} 前转正 · 薪资生效日期 {effectiveFrom}",
+      "eligibilityShared": "采用共享配置 {name} 中的日期。创建后可在评审设置中查看。"
+    },
     "export": "Export visible recommendations",
     "rulePools": "Standard and JG H merit, promotion and special-adjustment pools are funded separately. No pool, plan or business unit may fund another. Nil-recommended eligible payroll remains in the pool base.",
     "ruleBonus": "Bonus utilisation equals standard bonus plus individual increases, less individual reductions, plus lump sums. Spending above 100% blocks approval, including positive spending against a zero budget. Less than 80% utilisation raises a warning.",

@@ -20142,6 +20142,33 @@
     "import": "Import verified inputs",
     "refreshHelp": "Refresh the original snapshot date from Personnel. This clears input verification and requires another review. If an employee left the roster, the refresh is refused rather than silently deleting an award.",
     "refresh": "Refresh source records",
+    "sourceRefresh": {
+      "title": "Refresh source records",
+      "help": "Current snapshot date: {date}. Preview what changed in People and Compensation since then before anything is changed.",
+      "asOf": "Refresh to date",
+      "preview": "Preview changes",
+      "willChange": "What will change if you refresh to {date}",
+      "category": {
+        "joined": "Joined the unit",
+        "left": "Left or moved out (kept on the list, marked, no increase or bonus)",
+        "confirmed": "Newly confirmed",
+        "notice": "Resignation tendered (now serving notice)",
+        "grade": "Job grade changed",
+        "salary": "Salary record changed",
+        "other": "Other record details changed"
+      },
+      "confirmHelp": "Open a row to see the names. Confirming moves the snapshot date to this date and clears data verification for the people who changed.",
+      "confirm": "Confirm refresh",
+      "cancel": "Cancel",
+      "leftMarker": "Left or moved out {date}",
+      "left": {
+        "terminated": "Left the company on {date}. Kept for the record; no increase or bonus.",
+        "moved": "Moved out of this unit on {date}. Kept for the record; no increase or bonus."
+      },
+      "eligibilityTitle": "Eligibility is judged against",
+      "eligibilityDates": "Joined before {joinedBefore} · Confirmed by {confirmedBy} · Salary effective date {effectiveFrom}",
+      "eligibilityShared": "The dates in the shared configuration {name}. You can review them in the review settings after creating it."
+    },
     "export": "Export visible recommendations",
     "rulePools": "Standard and JG H merit, promotion and special-adjustment pools are funded separately. No pool, plan or business unit may fund another. Nil-recommended eligible payroll remains in the pool base.",
     "ruleBonus": "Bonus utilisation equals standard bonus plus individual increases, less individual reductions, plus lump sums. Spending above 100% blocks approval, including positive spending against a zero budget. Less than 80% utilisation raises a warning.",

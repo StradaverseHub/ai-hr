@@ -20142,6 +20142,33 @@
     "import": "Import verified inputs",
     "refreshHelp": "Refresh the original snapshot date from Personnel. This clears input verification and requires another review. If an employee left the roster, the refresh is refused rather than silently deleting an award.",
     "refresh": "Refresh source records",
+    "sourceRefresh": {
+      "title": "Muat semula rekod sumber",
+      "help": "Tarikh petikan semasa: {date}. Pratonton perubahan dalam Kakitangan dan Pampasan sejak tarikh itu sebelum apa-apa diubah.",
+      "asOf": "Muat semula hingga tarikh",
+      "preview": "Pratonton perubahan",
+      "willChange": "Apa yang akan berubah jika anda muat semula hingga {date}",
+      "category": {
+        "joined": "Menyertai unit",
+        "left": "Berhenti atau berpindah keluar (kekal dalam senarai, ditanda, tiada kenaikan atau bonus)",
+        "confirmed": "Baru disahkan",
+        "notice": "Meletak jawatan (sedang dalam tempoh notis)",
+        "grade": "Gred jawatan berubah",
+        "salary": "Rekod gaji berubah",
+        "other": "Butiran rekod lain berubah"
+      },
+      "confirmHelp": "Buka baris untuk melihat nama. Pengesahan memindahkan tarikh petikan ke tarikh ini dan mengosongkan pengesahan data bagi mereka yang berubah.",
+      "confirm": "Sahkan muat semula",
+      "cancel": "Batal",
+      "leftMarker": "Berhenti atau berpindah keluar {date}",
+      "left": {
+        "terminated": "Meninggalkan syarikat pada {date}. Disimpan untuk rekod; tiada kenaikan atau bonus.",
+        "moved": "Berpindah keluar dari unit ini pada {date}. Disimpan untuk rekod; tiada kenaikan atau bonus."
+      },
+      "eligibilityTitle": "Kelayakan dinilai berdasarkan",
+      "eligibilityDates": "Menyertai sebelum {joinedBefore} · Disahkan selewat-lewatnya {confirmedBy} · Tarikh kuat kuasa gaji {effectiveFrom}",
+      "eligibilityShared": "Tarikh dalam konfigurasi kongsi {name}. Anda boleh menyemaknya dalam tetapan semakan selepas menciptanya."
+    },
     "export": "Export visible recommendations",
     "rulePools": "Standard and JG H merit, promotion and special-adjustment pools are funded separately. No pool, plan or business unit may fund another. Nil-recommended eligible payroll remains in the pool base.",
     "ruleBonus": "Bonus utilisation equals standard bonus plus individual increases, less individual reductions, plus lump sums. Spending above 100% blocks approval, including positive spending against a zero budget. Less than 80% utilisation raises a warning.",

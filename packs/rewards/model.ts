@@ -92,6 +92,9 @@ export type RewardSource = {
   hiredOn: string; confirmedOn: string | null; notice: boolean;
   lastPayChange: string | null; confirmationPayChange: boolean;
   performanceReviewId: string | null; performanceRating: number | null;
+  /** 40bf44f7 — set by a confirmed source refresh when the person left the company or moved out of the unit.
+   *  The entry and its recommendation are retained for the record; the engine awards nothing. */
+  leftOn?: string; leftReason?: 'terminated' | 'moved';
   onehrFactImport?: { resultId: string; digest: string; importedAt: string };
   onehr?: { id: string; reviewId: string; cycleId: string; digest: string; frozenAt: string;
     performance: typeof performances[number] | null; potential: 'Low'|'Mid'|'High'|null;
