@@ -339,7 +339,7 @@ describe('offline clocking switch off (the default)',()=>{
   f.post.mockResolvedValueOnce({outcome:'accepted',receipt:contract.ClockReceipt.parse({id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',direction:'in',date:'2026-01-01',recordedAt:'2026-01-01T01:00:00Z',photoAvailable:false})});
   fireEvent.click(screen.getByText('slideRecord'));await screen.findByText('clockRecorded');
   for(const spy of Object.values(f.engine))expect(spy).not.toHaveBeenCalled();
-  expect(f.anchorRead).not.toHaveBeenCalled();expect(f.openSigned.mock.calls.every(([employment])=>employment==='own')).toBe(true);
+  expect(f.anchorRead).not.toHaveBeenCalled();expect(f.openSigned.mock.calls.every(call=>(call as unknown[])[0]==='own')).toBe(true);
  });
  it('keeps the session-employment check unchanged when no employment is picked (the offline relaxation is switch-on only)',async()=>{
   const f=fixture();f.session.employmentId=null as unknown as string;render(<f.App kind="clock"/>);
