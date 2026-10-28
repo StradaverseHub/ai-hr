@@ -6,13 +6,13 @@ import { activationLoginHref } from '@/lib/internal-auth/login-navigation';
 import { Eye, EyeOff } from 'lucide-react';
 import { LoginShell } from './login-shell';
 import type { LoginPresentation } from '@/lib/login-presentation';
-import { useTranslations } from 'next-intl';
+import { useTranslations,useLocale } from 'next-intl';
 
 type Reply = { step: string; organization?: string; challenge?: string; secret?: string; qr?: string; account?: string; recoveryCodes?: string[]; error?: string };
 export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'login', invitation = '', presentation }: {
   presentation?: LoginPresentation; organization?: string; returnTo?: string; mode?: 'login' | 'recovery' | 'invite' | 'accept'; invitation?: string;
 }) {
-  const t = useTranslations('internalAuth');
+  const t = useTranslations('internalAuth'),locale=useLocale();
   const router = useRouter();
   const copy = useTranslations('loginPresentation');
   const passwordId = useId();
@@ -40,7 +40,7 @@ export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'lo
       const operation = state.step === 'enroll' || state.step === 'mfa' ? 'mfa' : state.step === 'accept' ? 'accept-invite' : state.step;
       const response = await fetch(`/login/api/${operation}`, { method: 'POST', credentials: 'same-origin', redirect: 'error',
         headers: { 'content-type': 'application/json' }, body: JSON.stringify({
-          ...Object.fromEntries(data.entries()), ...(state.challenge ? { challenge: state.challenge } : {}),
+          ...Object.fromEntries(data.entries()),locale, ...(state.challenge ? { challenge: state.challenge } : {}),
           ...(resetToken ? { token: resetToken } : {}), ...(invitation ? { token: invitation } : {}),
         }) });
       const reply: Reply = await response.json();

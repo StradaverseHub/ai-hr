@@ -1,4 +1,6 @@
 -- UNALLOCATED SOURCE DRAFT. Do not journal or apply until the migration coordinator allocates its slot.
+ALTER TABLE app_invitation ADD COLUMN email_locale text NOT NULL DEFAULT 'en' CHECK(email_locale IN ('en','ms','zh','vi','ta','th'));
+--> statement-breakpoint
 CREATE TABLE email_design (
  tenant_id uuid NOT NULL REFERENCES tenant(id),kind text NOT NULL CHECK(length(kind) BETWEEN 1 AND 80),
  locale text NOT NULL CHECK(locale IN ('en','ms','zh','vi','ta','th')),
@@ -15,7 +17,7 @@ CREATE TABLE email_design_version (
 --> statement-breakpoint
 CREATE TABLE email_asset (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),
- token text NOT NULL UNIQUE DEFAULT encode(gen_random_bytes(32),'hex'),
+ token text NOT NULL UNIQUE DEFAULT replace(gen_random_uuid()::text||gen_random_uuid()::text,'-',''),
  sha256 text NOT NULL,mime text NOT NULL CHECK(mime IN ('image/png','image/jpeg','image/gif','image/webp')),
  bytes bytea NOT NULL CHECK(octet_length(bytes) BETWEEN 1 AND 2097152),
  uploaded_by uuid NOT NULL REFERENCES app_user(id),uploaded_at timestamptz NOT NULL DEFAULT now()
@@ -123,7 +125,7 @@ REVOKE ALL ON FUNCTION app.email_design_notification_data(uuid,uuid,uuid) FROM P
 --> statement-breakpoint
 CREATE FUNCTION app.email_design_account(p_id uuid,p_token uuid) RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.email_design_delivery(d.tenant_id,d.kind,'en')||jsonb_build_object('data',jsonb_strip_nulls(jsonb_build_object('first_name',coalesce(p.first_name,split_part(p.full_name,' ',1)),'company_name',coalesce(c.legal_name,t.name)))) FROM public.account_email_delivery d JOIN public.app_invitation i ON i.id=d.invitation_id AND i.tenant_id=d.tenant_id JOIN public.tenant t ON t.id=d.tenant_id LEFT JOIN public.person p ON p.id=i.person_id AND p.tenant_id=i.tenant_id LEFT JOIN public.company c ON c.id=i.company_id AND c.tenant_id=i.tenant_id
+ SELECT app.email_design_delivery(d.tenant_id,d.kind,i.email_locale)||jsonb_build_object('data',jsonb_strip_nulls(jsonb_build_object('first_name',coalesce(p.first_name,split_part(p.full_name,' ',1)),'company_name',coalesce(c.legal_name,t.name)))) FROM public.account_email_delivery d JOIN public.app_invitation i ON i.id=d.invitation_id AND i.tenant_id=d.tenant_id JOIN public.tenant t ON t.id=d.tenant_id LEFT JOIN public.person p ON p.id=i.person_id AND p.tenant_id=i.tenant_id LEFT JOIN public.company c ON c.id=i.company_id AND c.tenant_id=i.tenant_id
  WHERE d.id=p_id AND d.status='pending' AND d.lease_token=p_token AND d.lease_until>now() AND d.kind='invitation'; $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.email_design_account(uuid,uuid) FROM PUBLIC;
@@ -174,6 +176,7 @@ BEGIN
  ELSE
   SELECT * INTO target FROM identity_email.delivery_target(p_id,p_token,p_issuer);
   IF NOT FOUND OR p_locale IS DISTINCT FROM target.locale OR p_kind NOT IN ('workflow.'||target.category,'assessment_reminder') THEN RETURN NULL; END IF;
+  IF p_kind='assessment_reminder' AND NOT EXISTS(SELECT 1 FROM identity_email.delivery_summary(p_id,p_token,p_issuer) x WHERE x.required) THEN RETURN NULL; END IF;
   SELECT tenant_id INTO t FROM public.app_user WHERE id=target.user_id;u:=target.user_id;
  END IF;
  IF t IS NULL THEN RETURN NULL; END IF;
@@ -248,3 +251,14 @@ END; $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.email_design_legacy_words_retired() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER email_design_legacy_words_retired BEFORE INSERT OR UPDATE OR DELETE ON tenant_setting FOR EACH ROW EXECUTE FUNCTION app.email_design_legacy_words_retired();
+
+--> statement-breakpoint
+CREATE FUNCTION app.email_design_audit_owner() RETURNS trigger
+LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF (NEW.aggregate_type='email-design' OR NEW.event_type LIKE 'email-design.%') AND NOT app.acting_as_owner() THEN RAISE EXCEPTION 'Email design audit owner required' USING ERRCODE='42501'; END IF;
+ RETURN NEW;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.email_design_audit_owner() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER email_design_audit_owner BEFORE INSERT ON domain_event FOR EACH ROW EXECUTE FUNCTION app.email_design_audit_owner();

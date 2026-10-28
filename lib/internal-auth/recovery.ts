@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import {emailLocale,type EmailLocale} from '../email-design/model';
 import {recoveryEmailDesign} from '../email-design/delivery';
 import {renderEmailDesign} from '../email-design/render';
 import {recoveryEmailContent} from '../account-email-content';
@@ -11,10 +12,11 @@ import { sendInternalMail, type MailTransport } from './mail';
 import { AccountEmailDeliveryError } from '../account-email-model';
 import { attemptAccountEmail } from '../../core/account-email';
 type Recovery = { subject: string; version: string };
-export type RecoveryContext = { subject: string; issuer: string; tenantId: string; version: string; email: string; organization: string; username: string };
+export type RecoveryContext = { locale?:EmailLocale;subject: string; issuer: string; tenantId: string; version: string; email: string; organization: string; username: string };
 /** Public request confirmation never discloses account existence or SMTP readiness. */
 export async function requestRecovery(organization: string, username: string, transport?: MailTransport,
-  dispatch: (attempt: () => Promise<void>) => void | Promise<void> = attempt => attempt()) {
+  dispatch: (attempt: () => Promise<void>) => void | Promise<void> = attempt => attempt(),language:EmailLocale='en') {
+  const locale=emailLocale.parse(language);
   await takeRate('recovery-global', 120, 3600_000);
   await takeRate(`recovery:${canonicalOrg(organization)}:${username.trim().toLowerCase()}`, 3, 3600_000);
   const c = await credentialByLogin(organization, username);
@@ -27,7 +29,7 @@ export async function requestRecovery(organization: string, username: string, tr
     const rows = await tx.unsafe('select * from app.account_email_request_recovery($1)', [current.email]);
     const job = rows[0]; if (!job) return null;
     await writeRecord(tx, `recovery-mail:${job.id}`, { subject: current.subject, issuer: current.issuer, tenantId: current.tenantId,
-      version: current.version, email: current.email, organization: current.organization, username: current.username } satisfies RecoveryContext, current.subject);
+      version: current.version,locale, email: current.email, organization: current.organization, username: current.username } satisfies RecoveryContext, current.subject);
     return { id: job.id as string, lease: job.lease_token as string };
   });
   if (delivery) await dispatch(async () => attemptAccountEmail(delivery.id, delivery.lease, {
@@ -59,7 +61,7 @@ export async function sendInternalRecovery(email: string, context?: { deliveryId
   });
   const [principal]=await client.unsafe('select app_user_id,tenant_id from app.principal_by_identity($1,$2)',[binding.issuer,binding.subject]);
   if(principal?.tenant_id!==binding.tenantId||!principal.app_user_id)throw new AccountEmailDeliveryError('notEligible');
-  const design=await recoveryEmailDesign({tenantId:binding.tenantId,userId:principal.app_user_id}),link=`${internalConfig().origin}/reset-password#token=${token}`;
+  const design=await recoveryEmailDesign({tenantId:binding.tenantId,userId:principal.app_user_id},binding.locale??'en'),link=`${internalConfig().origin}/reset-password#token=${token}`;
   await sendInternalMail({to:email,...renderEmailDesign(design.document,'recovery',design.locale,{...recoveryEmailContent(link),link},{...design.data,expiry_minutes:'30'})},transport);
 }
 export async function completeRecovery(raw: string, password: string, code: string) {

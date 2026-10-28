@@ -648,6 +648,7 @@ export const roleAssignment = pgTable(
 export const appInvitation = pgTable(
   'app_invitation',
   {
+    emailLocale:text('email_locale').notNull().default('en'),
     id: id(),
     tenantId: tenantId(),
     companyId: uuid('company_id').references(() => company.id),
@@ -11228,6 +11229,6 @@ export const emailDesignVersion=pgTable('email_design_version',{
  createdBy:uuid('created_by').references(()=>appUser.id),createdAt:createdAt(),
 },t=>[primaryKey({columns:[t.tenantId,t.kind,t.locale,t.revision]})]);
 export const emailAsset=pgTable('email_asset',{
- id:id(),tenantId:tenantId(),token:text('token').notNull().default(sql`encode(gen_random_bytes(32),'hex')`),sha256:text('sha256').notNull(),mime:text('mime').notNull(),bytes:bytea('bytes').notNull(),
+ id:id(),tenantId:tenantId(),token:text('token').notNull().default(sql`replace(gen_random_uuid()::text||gen_random_uuid()::text,'-','')`),sha256:text('sha256').notNull(),mime:text('mime').notNull(),bytes:bytea('bytes').notNull(),
  uploadedBy:uuid('uploaded_by').notNull().references(()=>appUser.id),uploadedAt:timestamp('uploaded_at',{withTimezone:true}).defaultNow().notNull(),
 },t=>[uniqueIndex('email_asset_token_key').on(t.token)]);

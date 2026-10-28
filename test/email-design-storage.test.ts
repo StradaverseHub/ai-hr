@@ -3,9 +3,13 @@ import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
-import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {closeAll,entitledCtx,adminCtx,createAppUser,harnessSnapshot,setModule,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import * as schema from '../db/schema';
 import {listEmailDesigns,saveEmailDesign,emailDesignHistory,uploadEmailAsset} from '../core/email-design/service';
+import {hireEmployee} from '../core/org';
+import {todayInKualaLumpur} from '../lib/hr-date';
+import {saveNotificationEmailPolicy,saveNotificationEmailPreferences} from '../core/notification-email';
+import {dispatchNotifications} from '../core/notifications';
 import {defaultEmailDocument} from '../lib/email-design/model';
 let b:Base,admin:SessionContext;
 beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();b=await seedBase();admin=await entitledCtx(b);});afterAll(closeAll);
@@ -37,6 +41,26 @@ describe('email design native ownership',()=>{
   const actor={...admin,userId:user.id};await saveEmailDesign(actor,'invitation','en',defaultEmailDocument('invitation'),0);
   await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.id,grant.id));
   await expect(saveEmailDesign(actor,'invitation','en',null,1)).rejects.toThrow();await expect(listEmailDesigns(actor)).rejects.toThrow();
+ });
+ it('refuses fabricated design audit events from an ordinary application actor',async()=>{
+  await saveEmailDesign(admin,'invitation','en',defaultEmailDocument('invitation'),0);
+  const [user]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,workosUserId:'fictional_email_audit_'+randomUUID()}).returning({id:schema.appUser.id});
+  const employee={...admin,userId:user.id,roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]};
+  await expect(withTenant(employee,tx=>tx.insert(schema.domainEvent).values({tenantId:b.tenantId,aggregateType:'email-design',aggregateId:user.id,eventType:'email-design.saved',actorType:'user',actorId:user.id,payload:{revision:999}}))).rejects.toThrow();
+ });
+ it('a real ordinary workflow lease cannot read an assessment design through the compatibility adapter',async()=>{
+  await setModule(b.tenantId,'notifications','active');
+  await saveEmailDesign(admin,'assessment_reminder','en',{...defaultEmailDocument('assessment_reminder'),subject:'Fictional private assessment design'},0);
+  const e=await hireEmployee(adminCtx(b),{person:{fullName:'Fictional email recipient',primaryEmail:'recipient@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
+  const userId=await createAppUser(b.tenantId,e.personId,'employee'),issuer='https://hr.test/identity/realms/ai-hr',subject=randomUUID();
+  await owner.db.insert(schema.appExternalIdentity).values({issuer,subject,appUserId:userId});
+  await saveNotificationEmailPolicy(adminCtx(b),['leave']);
+  await saveNotificationEmailPreferences({tenantId:b.tenantId,userId,personId:e.personId,roles:['employee'],entitlements:harnessSnapshot(b.tenantId)},e.employmentId,['leave'],'en',{issuer,subject,email:'recipient@example.test',emailVerified:true});
+  await owner.db.insert(schema.domainEvent).values({tenantId:b.tenantId,aggregateType:'test',aggregateId:randomUUID(),eventType:'leave-request.approved',actorType:'system',subjectEmploymentId:e.employmentId,payload:{}});
+  await dispatchNotifications(adminCtx(b));const jobs=await owner.db.select().from(schema.notificationDelivery);expect(jobs).toHaveLength(1);
+  const token=randomUUID();await owner.db.update(schema.notificationDelivery).set({leaseToken:token,leaseUntil:new Date(Date.now()+30000)}).where(eq(schema.notificationDelivery.id,jobs[0].id));
+  const [right]=await owner.client`select identity_email.delivery_design(${jobs[0].id}::uuid,${token}::uuid,${issuer},'workflow.leave','en',false) as design`;expect(right.design).toMatchObject({kind:'workflow.leave',locale:'en'});
+  const [wrong]=await owner.client`select identity_email.delivery_design(${jobs[0].id}::uuid,${token}::uuid,${issuer},'assessment_reminder','en',false) as design`;expect(wrong.design).toBeNull();
  });
  it('restoring default does not copy another language’s customized wording',async()=>{
   await saveEmailDesign(admin,'invitation','en',{...defaultEmailDocument('invitation'),subject:'Fictional English design'},0);
