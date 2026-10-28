@@ -1,0 +1,47 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+The risk you describe is already blocked. Delete only works on a Draft review that has never been used: no recommendations, verified data, decisions or payroll handoff. For any other review the Delete button is greyed out with the reason shown underneath. Delete asks for confirmation, keeps the review's history, and records who removed it and when. Edit only works for the assigned Group Rewards person while the review is in Draft.
+
+What is missing: there is no way to stop a review that has already started, renaming or moving deadlines after launch is not possible, and the history does not record before and after values for edits.
+
+WHAT WE'LL CHANGE
+
+- Each row offers only the actions its stage allows, instead of showing greyed-out buttons. Unused Draft: View, Edit, Delete. Draft with work in it, or any approval stage: View, Edit name and deadlines, Cancel review. Posted to payroll: View only.
+
+- New "Cancel review" action. It needs a written reason and a confirmation. A cancelled review keeps every recommendation and approval read-only, nothing is ever sent to payroll from it, and the list shows who cancelled it, when and why.
+
+- After launch, "Edit" opens only the review cycle name and the stage deadlines. Anything that affects results stays locked, as today.
+
+- Every create, edit, cancel and delete is recorded with the user, date and time, and the before and after values.
+
+WHAT YOU'LL GET
+
+Nobody can lose work by deleting a live review, a review that should not continue can be stopped cleanly with a reason, and the history shows exactly what changed.
+
+GOOD TO KNOW
+
+- A review that has been posted to payroll cannot be cancelled, because salaries have already changed. Corrections after posting go through an off-cycle review, as today.
+
+- The review cycle name is shared by every unit review in that cycle, so renaming it renames it for all of them. The edit screen will say so.
+
+- Who may cancel: the company's Rewards administrator or the review's Group Rewards person.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACTS (origin/alpha 162a8f743): app/admin/rewards/review-actions.tsx always renders Edit and Delete; Delete is a ConfirmSubmit disabled when listRewardUnits.deletionReason is set. app.reward_deletion_reason (migration 0596) returns 'locked' for status<>'draft' and refuses any used review; deleteRewardReview soft-deletes (deleted_at/deleted_by) and appends reward-unit.deleted. Edit is canConfigure = draft and annual and GR seat. decideRewardUnit refuses reject/withdraw for annual reviews.
+
+1. Actions by state: hide instead of disable; keep the server guards as the authority.
+
+2. Cancel: new service cancelRewardReview(ctx, unitId, revision, reason>=10). Allowed when status not in (posted, withdrawn, rejected) and actor is app.reward_admin(company) or holds the gr seat. Reuse status 'withdrawn' (exists in rewardStages) with a "Cancelled" label for annual reviews; stamp reward-unit.cancelled {fromStage, reason}; write a reward_decision row (action 'withdraw'). Release reserved off-cycle funding the way the off-cycle withdraw path does. Pending tasks/notifications for the unit must disappear (pendingRewardTasks, approvals board BOARD_STAGES).
+
+3. Edit after launch: cycle name (reward_cycle.name, all units in the cycle; require admin of every company with a unit in that cycle or refuse) and calendar deadlines via saveRewardCalendar; check whether saveRewardCalendar currently requires draft and relax only for due dates.
+
+4. Audit before/after: include {before, after} in payloads for cycle rename, calendar change, policy-updated (field-level diff of policy keys, no salaries), access-changed (already has before/after), cancelled, deleted.
+
+5. If a DB status-transition trigger refuses annual → withdrawn, a migration is needed: note it and get a number from the migration reservation owner; do not self-allocate.
+
+6. Tests: actions per status; cancel needs reason; cancelled review not postable and not on the board; rename audit before/after; delete still refused for used drafts.
