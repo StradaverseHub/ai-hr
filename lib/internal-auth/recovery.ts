@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import {accountEmailDesign} from '../email-design/delivery';
+import {recoveryEmailDesign} from '../email-design/delivery';
 import {renderEmailDesign} from '../email-design/render';
 import {recoveryEmailContent} from '../account-email-content';
 import { client } from '../../db/client';
@@ -57,8 +57,10 @@ export async function sendInternalRecovery(email: string, context?: { deliveryId
     await writeRecord(tx, `recovery-active:${c.subject}`, { key }, c.subject);
     return raw;
   });
-  const design=await accountEmailDesign(context!.deliveryId,context!.leaseToken),link=`${internalConfig().origin}/reset-password#token=${token}`;
-  await sendInternalMail({to:email,...renderEmailDesign(design.document,'recovery',design.locale,{...recoveryEmailContent(link),link},{expiry_minutes:'30'})},transport);
+  const [principal]=await client.unsafe('select app_user_id,tenant_id from app.principal_by_identity($1,$2)',[binding.issuer,binding.subject]);
+  if(principal?.tenant_id!==binding.tenantId||!principal.app_user_id)throw new AccountEmailDeliveryError('notEligible');
+  const design=await recoveryEmailDesign({tenantId:binding.tenantId,userId:principal.app_user_id}),link=`${internalConfig().origin}/reset-password#token=${token}`;
+  await sendInternalMail({to:email,...renderEmailDesign(design.document,'recovery',design.locale,{...recoveryEmailContent(link),link},{...design.data,expiry_minutes:'30'})},transport);
 }
 export async function completeRecovery(raw: string, password: string, code: string) {
   if (!validOpaque(raw)) throw new InternalAuthError('invalidChallenge');

@@ -18,7 +18,7 @@ export async function sendInternalInvitation(email: string, activationPath: stri
   const org = invitation ? await readRecord<Organization>(client, `tenant:${invitation.tenant_id}`) : null;
   if (!org || invitation.email !== email) throw new AccountEmailDeliveryError('notEligible');
   const design=await accountEmailDesign(context.deliveryId,context.leaseToken),link=internalConfig().origin+activationPath;
-  await sendInternalMail({to:email,...renderEmailDesign(design.document,'invitation',design.locale,{...invitationEmailContent(org.code,link),link},{organization_code:org.code,expiry_days:'7'})},transport);
+  await sendInternalMail({to:email,...renderEmailDesign(design.document,'invitation',design.locale,{...invitationEmailContent(org.code,link),link},{...design.data,company_name:design.data?.company_name??org.name,organization_code:org.code,expiry_days:'7'})},transport);
   return { invitationId: 'internal' };
 }
 export async function startInvitation(token: string, username: string, password: string, native = false): Promise<AuthReply> {

@@ -21,7 +21,7 @@ const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 export async function sendInternalEmployeeMasterSmtp(relay:Relay,target:MasterDeliveryTarget,attachment:MasterPreparedAttachment,messageId:string,rawDesign?:EmailDesignEnvelope){
  const payload=xlsxEmailAttachment.parse({bytes:attachment.bytes,filename:attachment.filename,contentType:attachment.contentType});
  const design=rawDesign?emailDesignEnvelope.parse(rawDesign):null;if(design&&(design.kind!=='employee_master_report'||design.locale!==target.locale))throw Error('Email design binding changed.');
- await sendSmtp(relay,{to:target.email,...renderEmailDesign(design?.document??null,'employee_master_report',target.locale,employeeMasterMailMessage(target.locale)),messageId,
+ await sendSmtp(relay,{to:target.email,...renderEmailDesign(design?.document??null,'employee_master_report',target.locale,employeeMasterMailMessage(target.locale),design?.data),messageId,
   attachment:payload});
 }
 export function createInternalMasterReportDeliveryService(d:InternalReportDependencies){

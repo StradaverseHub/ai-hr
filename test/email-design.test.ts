@@ -1,5 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {emailDocument,defaultEmailDocument,emailKinds,type EmailDocument} from '../lib/email-design/model';
+import {workflowEmailMessage} from '../deploy/identity-email/notification-message';
 import {renderEmailDesign} from '../lib/email-design/render';
 import {validateEmailAsset} from '../lib/email-design/assets';
 const system={subject:'Account invitation',text:'Open your account.\nhttps://example.com/activate\nExpires in seven days.',link:'https://example.com/activate'};
@@ -28,6 +29,11 @@ describe('validated email designs',()=>{
   expect(output.html).toContain('role="presentation"');expect(output.html).toContain('max-width:600px');
   // Preview and send use this exact deterministic function, including the text alternative.
   expect(renderEmailDesign(doc,'invitation','en',system,data)).toEqual(output);
+ });
+ it('makes the isolated sender reject malformed design documents and wrong bindings',()=>{
+  const mail={category:'leave' as const,locale:'en' as const,link:'https://example.com/app',action:true,messageId:'<fixture@example.com>'};
+  expect(()=>workflowEmailMessage({...mail,design:{kind:'workflow.leave',locale:'en',document:{rawHtml:'<script/>'} as never}})).toThrow();
+  expect(()=>workflowEmailMessage({...mail,design:{kind:'invitation',locale:'en',document:defaultEmailDocument('invitation')}})).toThrow('binding changed');
  });
  it('provides safe defaults for every known kind and preserves all system wording',()=>{
   for(const kind of emailKinds){const message=renderEmailDesign(null,kind,'ms',system);expect(message.subject).toBe(system.subject);expect(message.text).toContain(system.text);expect(message.html).toContain('lang="ms"');}
