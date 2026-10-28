@@ -54,7 +54,7 @@ export async function compilerBenchmark(){
   releaseAuthorized:false,startedAt:new Date().toISOString(),cacheWasAbsent:true,phases:[],exitCode:1,
   orderCaveat:'Warm follows cold on one VM; this measures compiler state plus normal OS/dependency warming. It does not prove cross-run cache restore speed or complete release timing.'};
  const args=['-v',process.execPath,join(cwd,'node_modules/typescript/lib/tsc.js'),'--noEmit','--pretty','false','--extendedDiagnostics','--tsBuildInfoFile',cache];
- const env={...process.env,NODE_OPTIONS:'--max-old-space-size=8192'};
+ const env={...process.env,NODE_OPTIONS:'--max-old-space-size=12288'};
  let createdFixture=false;
  const phase=async(name,expectedErrorPath=null)=>{
   const row={name,startedAt:new Date().toISOString(),expectedErrorPath,processExitCode:null};report.phases.push(row);

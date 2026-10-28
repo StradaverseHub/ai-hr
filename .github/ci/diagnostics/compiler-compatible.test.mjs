@@ -6,7 +6,7 @@ import {compatibleCompilerState} from '../../../scripts/ci-compiler-cache-policy
 const hash=v=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
 const originSha='a'.repeat(40),head='b'.repeat(40),d='c'.repeat(64);
 const invoked=()=>({options:['--noEmit','--pretty','false','--extendedDiagnostics','--tsBuildInfoFile','.next/cache/compiler-transport/whole-project.tsbuildinfo'],
- nodeOptions:'--max-old-space-size=8192',sourcePath:'/home/runner/work/ai-hr/ai-hr/source',generatedTypes:[{path:'validator.ts',bytes:100,sha256:d}],
+ nodeOptions:'--max-old-space-size=12288',sourcePath:'/home/runner/work/ai-hr/ai-hr/source',generatedTypes:[{path:'validator.ts',bytes:100,sha256:d}],
  actualCompiler:Object.fromEntries(['package.json','lib/tsc.js','lib/_tsc.js','lib/typescript.js'].map(k=>[k,d])),sourceInvocation:d,
  mobileInputs:{'mobile/package.json':d,'mobile/package-lock.json':d}});
 const identity=source=>{const value=invoked();return {source,controller:originSha,runId:'123',attempt:'1',

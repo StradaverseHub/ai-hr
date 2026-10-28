@@ -35,7 +35,7 @@ function context(value:CompilerCacheContext){
  const invoked=value.invoked;
  keys(invoked,['options','nodeOptions','sourcePath','generatedTypes','actualCompiler','sourceInvocation','mobileInputs']);
  assert(isDeepStrictEqual(invoked.options,['--noEmit','--pretty','false','--extendedDiagnostics','--tsBuildInfoFile','.next/cache/compiler-transport/whole-project.tsbuildinfo']),'Full original compiler options required');
- assert(invoked.nodeOptions==='--max-old-space-size=8192'&&typeof invoked.sourcePath==='string'&&invoked.sourcePath.startsWith('/home/runner/work/'),'Actual hosted compiler path/heap required');
+ assert(invoked.nodeOptions==='--max-old-space-size=12288'&&typeof invoked.sourcePath==='string'&&invoked.sourcePath.startsWith('/home/runner/work/'),'Actual hosted compiler path/heap required');
  assert(digest(invoked.sourceInvocation)&&value.inputs.compilerCli===hash(invoked),'Actual invocation context not bound');
  assert(Array.isArray(invoked.generatedTypes)&&invoked.generatedTypes.length>0&&invoked.generatedTypes.length<10000,'Fresh generated type inventory required');
  for(const row of invoked.generatedTypes)assert(typeof row.path==='string'&&row.path.length>0&&Number.isSafeInteger(row.bytes)&&row.bytes>=0&&digest(row.sha256),'Generated type member differs');
