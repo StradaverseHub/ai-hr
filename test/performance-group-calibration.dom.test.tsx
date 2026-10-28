@@ -28,12 +28,27 @@ it('uses source Group table, hierarchical filters and only current lockable call
  expect(screen.queryByText('Alice Tan')).toBeNull();expect(screen.getByText('Dan Ng')).toBeTruthy();expect(screen.queryByRole('group',{name:en.onehr.groupCalibration.department})).toBeNull();
  expect(screen.getByRole('button',{name:'Lock selected (1)'})).toBeTruthy();
 });
-it('saves a reversible row call and refreshes only after the canonical writer succeeds',async()=>{
+it('saves a changed row call only with its reason (APR-011), and refreshes only after the canonical writer succeeds',async()=>{
  ports.change.mockResolvedValueOnce({ok:true}).mockResolvedValueOnce({error:'This record changed. Reload before saving.'});show();
+ const reason=en.onehr.talentMove.reasonRequired,save=en.onehr.groupCalibration.saveCall;
  fireEvent.change(screen.getByRole('combobox',{name:'Your call for Alice Tan'}),{target:{value:'OU'}});
- await waitFor(()=>expect(ports.change).toHaveBeenCalledWith('session',3,'alice','OU'));await waitFor(()=>expect(ports.refresh).toHaveBeenCalledOnce());expect(ports.lock).not.toHaveBeenCalled();
+ const dialog=await screen.findByRole('dialog',{name:'Change the call for Alice Tan'});expect(within(dialog).getByText('ME → OU')).toBeTruthy();
+ expect(within(dialog).getByRole('button',{name:save})).toHaveProperty('disabled',true);
+ fireEvent.change(within(dialog).getByRole('textbox',{name:reason}),{target:{value:'   '}});expect(within(dialog).getByRole('button',{name:save})).toHaveProperty('disabled',true);
+ fireEvent.click(within(dialog).getByRole('button',{name:save}));expect(ports.change).not.toHaveBeenCalled();
+ fireEvent.change(within(dialog).getByRole('textbox',{name:reason}),{target:{value:'Group view of the full year.'}});fireEvent.click(within(dialog).getByRole('button',{name:save}));
+ await waitFor(()=>expect(ports.change).toHaveBeenCalledWith('session',3,'alice','OU','Group view of the full year.'));await waitFor(()=>expect(ports.refresh).toHaveBeenCalledOnce());expect(ports.lock).not.toHaveBeenCalled();
+ await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());
+ // Cancelling writes nothing.
  fireEvent.change(screen.getByRole('combobox',{name:'Your call for Bob Lim'}),{target:{value:'BE'}});
- expect(await screen.findByRole('alert')).toHaveProperty('textContent','This record changed. Reload before saving.');expect(ports.refresh).toHaveBeenCalledOnce();
+ fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button',{name:en.onehr.talentMove.cancel}));
+ await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());expect(ports.change).toHaveBeenCalledOnce();
+ // A refused save keeps the dialog open with the writer's message.
+ fireEvent.change(screen.getByRole('combobox',{name:'Your call for Bob Lim'}),{target:{value:'BE'}});
+ const again=await screen.findByRole('dialog',{name:'Change the call for Bob Lim'});
+ fireEvent.change(within(again).getByRole('textbox',{name:reason}),{target:{value:'Below the agreed outcomes.'}});fireEvent.click(within(again).getByRole('button',{name:save}));
+ expect(await within(again).findByRole('alert')).toHaveProperty('textContent','This record changed. Reload before saving.');expect(ports.refresh).toHaveBeenCalledOnce();
+ expect(ports.change).toHaveBeenLastCalledWith('session',3,'bob','BE','Below the agreed outcomes.');
 });
 it('requires a human confirmation to lock selected people and explains unfinished ratings',()=>{
  show();expect(screen.getByText(en.onehr.calibrationRoster.notFinal)).toBeTruthy();expect(screen.queryByRole('checkbox',{name:'Select Dan Ng to lock'})).toBeNull();expect(screen.queryByRole('checkbox',{name:'Select Cara Lee to lock'})).toBeNull();
