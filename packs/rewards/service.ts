@@ -19,6 +19,8 @@ import { onehrRewardResultTx } from '../performance/service';
 import { decisionActorRole, factsFromOnehr, isSeniorPlanMember, returnedState } from './model';
 import {rewardPolicyForReviewTx} from './policy-groups';
 import { deriveConfidentialityTx, sourceWithFloor } from './confidentiality';
+export {rewardCompanyExclusions,changeRewardCompanyExclusion,rewardPolicyHistory,rewardPolicyHiddenCount} from './shared-governance';
+export type {RewardCompanyExclusion,RewardPolicyHistory} from './shared-governance';
 export {rewardPolicyTaken,saveRewardPolicyGroup,listRewardPolicyGroups,rewardSharedPolicyChoices,rewardPolicyGroupUsage,RewardPolicyGroupError} from './policy-groups';
 export type {RewardPolicyTaken,RewardSharedChoice,RewardPolicySummary} from './policy-groups';
 import { calculateOffcycle, offcycleRoute, offcycleTransition, type Funding } from './offcycle';
@@ -293,7 +295,8 @@ async function listRewardUnitsTx(tx:Tx,companyIds:string[]){
 
 export async function rewardSetupChoices(ctx: SessionContext, companyIds: string[],options:{includeArchived?:boolean;sharedPolicy?:boolean}={}) {
   return withRewardsTenant(ctx, async tx => {
-    const companies = companyIds.length ? await tx.select({ id: company.id, name: company.legalName }).from(company).where(and(inArray(company.id, companyIds),sql`app.reward_admin(${company.id})`,options.sharedPolicy?eq(company.currency,'MYR'):undefined)).orderBy(asc(company.legalName)) : [];
+    // Outer qualifiers stay literal: Drizzle strips Column qualifiers in single-table SELECT fields.
+    const companies = companyIds.length ? await tx.select({ id: company.id, name: company.legalName,archived:sql<boolean>`${company.archivedAt} is not null`,excludedYears:sql<number[]>`array(select e.year from reward_company_exclusion e where e.tenant_id="company"."tenant_id" and e.company_id="company"."id" and e.ended_at is null order by e.year)` }).from(company).where(and(options.sharedPolicy?undefined:isNull(company.archivedAt),inArray(company.id, companyIds),sql`app.reward_admin(${company.id})`,options.sharedPolicy?eq(company.currency,'MYR'):undefined)).orderBy(asc(company.legalName)) : [];
     if (!companies.length) return { companies: [], units: [], users: [], cycles: [] };
     const units = await tx.select({ id: businessUnit.id, companyId: businessUnit.companyId, name:businessUnitDisplayName, global: businessUnit.isGlobal,archived:sql<boolean>`${businessUnit.archivedAt} is not null` }).from(businessUnit).where(and(options.includeArchived?undefined:isNull(businessUnit.archivedAt), or(inArray(businessUnit.companyId, companies.map(c => c.id)), eq(businessUnit.isGlobal, true)))).orderBy(asc(businessUnit.code),asc(businessUnit.id));
     const users = await tx.select({ id: appUser.id, name: person.fullName, email: person.primaryEmail }).from(appUser).innerJoin(person, and(eq(person.id, appUser.personId),sql`app.access_workforce_person(${person.id}, 'workforce.view')`)).where(and(isNull(appUser.archivedAt), sql`not app.login_blocked(${appUser.id})`)).orderBy(asc(person.fullName), asc(appUser.id));
@@ -382,7 +385,10 @@ export async function createRewardUnit(ctx: SessionContext, raw: { name?: string
   const p = z.object({ name: z.string().trim().max(160).default(''), year: z.number().int().min(2000).max(2200), companyId: idSchema, businessUnitId: idSchema, cycleId: idSchema.optional(), snapshotDate: isoDateSchema,sharedPolicyVersionId:idSchema.optional() }).parse(raw);
   if (p.snapshotDate > todayInKualaLumpur()) throw new RewardError('The snapshot date cannot be in the future.');
   return withRewardsTenant(ctx, async tx => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
     await requireAdmin(tx, p.companyId);
+    const [available]=await tx.execute<{ok:boolean}>(sql`select app.reward_company_admin_available(${p.companyId}::uuid,${p.year}) as ok`);
+    if(!available?.ok)throw new RewardError('This company is archived or excluded from rewards for the selected year.');
     const shared=await rewardPolicyForReviewTx(tx,p.sharedPolicyVersionId,p.companyId,p.businessUnitId,p.year);
     if(shared&&shared.policy.year!==p.year)throw new RewardError('The shared configuration belongs to a different reward year.');
     let cycleId = p.cycleId;
@@ -1021,6 +1027,7 @@ export async function createOffcycleReview(ctx: SessionContext, parentId: string
   if (new Set(p.entryIds).size !== p.entryIds.length) throw new RewardError('Select each employee only once.');
   if (p.exceptionReason && (p.kind !== 'adhoc' || p.exceptionReason.length < 30)) throw new RewardError('A budget exception is available only for an ad-hoc request and needs a reason of at least 30 characters.');
   return withRewardsTenant(ctx, async tx => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
     const { unit: parent, roles, entries } = await load(tx, parentId, true);
     if (parent.kind !== 'annual' || parent.status !== 'posted') throw new RewardError('Use a posted annual review as the funding source.');
     if (!roles.some(r => ['bu', 'bg', 'gr'].includes(r))) throw new RewardError('BU, BG or Group Rewards access is required.');
