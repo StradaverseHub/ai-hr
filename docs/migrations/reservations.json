@@ -178,6 +178,19 @@
       "notes": [
         "Free; record a claim here before use."
       ]
+    },
+    {
+      "tag": "0660_payroll_history_adopt_ordinary",
+      "owner": "Board items (d28501b8 r2, Import Payroll History overwrite)",
+      "status": "journaled_on_branch_unapplied",
+      "idx": null,
+      "when": 1793140000000,
+      "branch": "claude/board-items-83f907",
+      "notes": [
+        "28 October: allocated when 1793140000000, above the AI journal end (0657, when 1793130000023). Agreed with AI delivery: the AI release reaches staging first; 0660 is journaled after it (expected idx644).",
+        "Any later migration (Mobile 0613, 0633-0636, 0647, ...) must take a when strictly above 1793140000000 if it is journaled after 0660, or be released before 0660 with a when below it.",
+        "0659 is not claimed by this entry."
+      ]
     }
   ],
   "unallocatedAiLogicalGroups": [
