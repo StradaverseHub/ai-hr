@@ -1,6 +1,6 @@
 # Production deployment record
 
-Prepared for the owner and Claude on 28 October 2026. This records the production commissioning and re-release performed on 25–26 October, using retained deployment evidence. It is a historical installation record; query the installation before reporting its current version or health.
+Prepared for the owner and Claude on 28 October 2026. This records the production commissioning and re-release performed on 25–26 October and the 28 October upgrade to `prod-2026-10-28.1`, using retained deployment evidence. It is a historical installation record; query the installation before reporting its current version or health.
 
 This is the public summary. The full record, including open commissioning and security items and post-installation repairs, is private: `.improve/production-deployment-record-20261026-full.md` in the preserved operator checkout, beside the evidence listed below. Read it before planning production work.
 
@@ -21,6 +21,16 @@ Production was installed on two dedicated VMs, separately from staging. The init
 | Package location | [Private production release](https://github.com/StradaverseHub/ai-hr-releases/releases/tag/prod-2026-10-26.1) |
 
 The staging evidence retains incomplete/cancelled gate results and unknown original process exits. The production commissioning checks did **not** turn that evidence into an ordinary full-gate PASS. Preserve that distinction when discussing this release or selecting a future baseline.
+
+## 28 October 2026 upgrade to prod-2026-10-28.1
+
+The first data-preserving upgrade of this installation, requested explicitly by the owner after normal staging acceptance of `1272f02b9e29214d4788909ba88affa71d4732f3` / build `Y8mObcSevyCTF07Q8iVl5`.
+
+1. **Rehearsed first.** A pre-upgrade database backup was restored into an owned scratch database on the database VM and verified identical to live by per-table row counts. The release's full database sequence ran on that copy: audit-chain gate, 36 migrations (496 → 532, zero hash mismatches), catalogs and both backfills. Every existing table except the migration ledger and setting catalog kept identical row contents. The new release booted on the installation's Node 24 against the copy. The scratch database was then dropped.
+2. **Cut over with the service stopped.** A second backup was taken after stopping the web service, the previous release was retained for code rollback, and the package files were installed with zero checksum differences. The same database sequence then ran on production and passed. Downtime was about two minutes; the database was not reset.
+3. **Verified.** `/health` returns `{"status":"ok"}` on loopback, origin and public endpoint; login 200 and protected root 307; native image/canvas modules render on Node 24; tenant, company, employment, person, user and role counts are unchanged. The owner then signed in and accepted the release.
+
+The installation still has no deploy-state receipt. Backups, rollback copy, logs and the full record stay private (`.improve/production-release-prod-2026-10-28.1.json`). Email delivery, maintenance timers and Reports were not configured by this upgrade.
 
 ## Installation layout
 
