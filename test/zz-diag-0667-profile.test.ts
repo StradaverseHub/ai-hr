@@ -20,28 +20,32 @@ import { todayInKualaLumpur } from '../lib/hr-date';
 const year=Number(todayInKualaLumpur().slice(0,4));
 type Hired={employmentId:string;personId:string};
 const file=(name:string)=>readFileSync(new URL(`../db/migrations/${name}`,import.meta.url),'utf8');
-/** The CREATE [OR REPLACE] FUNCTION app.<name>(...) AS $$ ... $$; statement that starts on `line` of `name`. */
-function statement(name:string,fn:string,line:number){
+/** The CREATE [OR REPLACE] FUNCTION app.<name>(...) AS $$ ... $$; statement of `name` (the one on `line`, else the last). */
+function statement(name:string,fn:string,line?:number){
  const text=file(name),re=new RegExp(`CREATE (?:OR REPLACE )?FUNCTION app\\.${fn}\\([\\s\\S]*?AS \\$\\$[\\s\\S]*?\\$\\$;`,'g');
- for(const m of text.matchAll(re)){const at=text.slice(0,m.index).split('\n').length;if(at===line)return m[0].replace(/^CREATE FUNCTION/,'CREATE OR REPLACE FUNCTION');}
- throw Error(`${fn} not found at ${name}:${line}`);
+ const all=[...text.matchAll(re)].filter(m=>line===undefined||text.slice(0,m.index).split('\n').length===line);
+ if(!all.length)throw Error(`${fn} not found in ${name}${line?`:${line}`:''}`);
+ return all[all.length-1][0].replace(/^CREATE FUNCTION/,'CREATE OR REPLACE FUNCTION');
 }
+function swap(text:string,from:string,to:string){if(text.split(from).length!==2)throw Error(`not exactly once: ${from}`);return text.split(from).join(to);}
 const U='0667_onehr_unit_exclusion.sql';
-const current={participates:statement(U,'assessment_review_participates',444),manager:statement(U,'onehr_manager',471),moderator:statement(U,'onehr_moderator',476),header:statement(U,'onehr_review_header',482),inputs:statement(U,'onehr_assessment_inputs',621),seats:statement(U,'onehr_calibration_seat_users',629),reviewer:statement(U,'onehr_calibration_reviewer',648)};
-const pre0667=[statement('0540_performance_journey_parity.sql','assessment_review_participates',40),statement('0529_onehr_native.sql','onehr_manager',22),statement('0540_performance_journey_parity.sql','onehr_moderator',345),statement('0529_onehr_native.sql','onehr_review_header',33),statement('0540_performance_journey_parity.sql','onehr_assessment_inputs',370),statement('0663_onehr_leader_seats.sql','onehr_calibration_seat_users',439),statement('0663_onehr_leader_seats.sql','onehr_calibration_reviewer',461)];
-function swap(text:string,from:string,to:string){if(!text.includes(from))throw Error(`missing: ${from}`);return text.split(from).join(to);}
-const G=(c:string)=>`(EXISTS(SELECT 1 FROM performance_assessment_unit_exclusion ux WHERE ux.tenant_id=app.current_tenant_id() AND ux.cycle_id=${c} AND ux.ended_at IS NULL) OR EXISTS(SELECT 1 FROM performance_assessment_unit_exclusion_pin up WHERE up.tenant_id=app.current_tenant_id() AND up.cycle_id=${c}))`;
-const offset0=[swap(current.inputs,') AS ok) pm',') AS ok OFFSET 0) pm')];
-const guards=[
- swap(swap(current.inputs,') AS ok) pm',') AS ok OFFSET 0) pm'),'(pm.ok OR app.onehr_effective_reviewer(r.review_id))',`(pm.ok OR ${G('r.cycle_id')} AND app.onehr_effective_reviewer(r.review_id))`),
- swap(swap(current.participates,'(NOT app.assessment_unit_excluded(r.cycle_id,r.employment_id) OR',`(NOT ${G('r.cycle_id')} OR NOT app.assessment_unit_excluded(r.cycle_id,r.employment_id) OR`),'OR app.onehr_effective_reviewer(r.id) OR',`OR ${G('r.cycle_id')} AND app.onehr_effective_reviewer(r.id) OR`),
- swap(current.reviewer,'AND NOT app.onehr_user_unit_excluded(s.cycle_id,u.id)',`AND (NOT ${G('s.cycle_id')} OR NOT app.onehr_user_unit_excluded(s.cycle_id,u.id))`),
- swap(current.seats,'AND NOT app.assessment_unit_excluded(s.cycle_id,e.id)',`AND (NOT ${G('s.cycle_id')} OR NOT app.assessment_unit_excluded(s.cycle_id,e.id))`),
- swap(current.manager,'AND NOT app.assessment_unit_excluded(r.cycle_id,e.id))',`AND (NOT ${G('r.cycle_id')} OR NOT app.assessment_unit_excluded(r.cycle_id,e.id)))`),
- swap(current.moderator,'AND NOT app.assessment_unit_excluded(r.cycle_id,m.id)',`AND (NOT ${G('r.cycle_id')} OR NOT app.assessment_unit_excluded(r.cycle_id,m.id))`),
+// The amended 0667 as committed (what the migration installs).
+const final={participates:statement(U,'assessment_review_participates'),inputs:statement(U,'onehr_assessment_inputs'),reviewer:statement(U,'onehr_calibration_reviewer')};
+const G=(t:string)=>`(EXISTS(SELECT 1 FROM performance_assessment_unit_exclusion x WHERE x.tenant_id=${t}.tenant_id AND x.cycle_id=${t}.cycle_id AND x.ended_at IS NULL) OR EXISTS(SELECT 1 FROM performance_assessment_unit_exclusion_pin xp WHERE xp.tenant_id=${t}.tenant_id AND xp.cycle_id=${t}.cycle_id))`;
+// The 0667 bytes before the amendment, rebuilt by reversing exactly the three edits.
+const originalInputs=swap(final.inputs,') AS ok OFFSET 0) pm',') AS ok) pm');
+const original0667=[
+ swap(swap(final.participates,`(NOT ${G('r')}\n    OR NOT app.assessment_unit_excluded(r.cycle_id,r.employment_id) OR`,'(NOT app.assessment_unit_excluded(r.cycle_id,r.employment_id) OR'),
+  `OR app.onehr_manager(r.id)\n    OR ${G('r')} AND app.onehr_effective_reviewer(r.id)\n    OR app.onehr_moderator(r.id)`,'OR app.onehr_manager(r.id) OR app.onehr_effective_reviewer(r.id) OR app.onehr_moderator(r.id)'),
+ originalInputs,
+ swap(final.reviewer,`AND (NOT ${G('s')}\n     OR NOT app.onehr_user_unit_excluded(s.cycle_id,u.id))`,'AND NOT app.onehr_user_unit_excluded(s.cycle_id,u.id)'),
 ];
-const restore=Object.values(current);
-const variants:Record<string,string[]>={current:[],pre0667,offset0,guards};
+// Only the OFFSET 0 part of the amendment.
+const offset0only=[original0667[0],final.inputs,original0667[2]];
+const pre0667=[statement('0540_performance_journey_parity.sql','assessment_review_participates',40),statement('0540_performance_journey_parity.sql','onehr_assessment_inputs',370),statement('0663_onehr_leader_seats.sql','onehr_calibration_reviewer',461),
+ statement('0529_onehr_native.sql','onehr_manager',22),statement('0540_performance_journey_parity.sql','onehr_moderator',345),statement('0529_onehr_native.sql','onehr_review_header',33),statement('0663_onehr_leader_seats.sql','onehr_calibration_seat_users',439)];
+const restore=[...Object.values(final),statement(U,'onehr_manager'),statement(U,'onehr_moderator'),statement(U,'onehr_review_header'),statement(U,'onehr_calibration_seat_users')];
+const variants:Record<string,string[]>={final:[],original0667,offset0only,pre0667};
 class Rollback extends Error {}
 
 describe('DIAG 0667 hot path (temporary)',()=>{
