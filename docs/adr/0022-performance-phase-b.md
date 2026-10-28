@@ -1,5 +1,7 @@
 # ADR-0022 — Performance Phase B: the continuous talent layer (goals, check-ins, 360, calibration, AI draft)
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: **Accepted** (building) · Date: 2026-06-17 · Builds on [ADR-0013](0013-performance-talent-management.md)
 
 ## Context

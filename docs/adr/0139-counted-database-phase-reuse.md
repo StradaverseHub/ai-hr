@@ -1,5 +1,7 @@
 # ADR-0139: counted database phase reuse for the Board 1 fixture repair
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Accepted 2026-10-24. The owner explicitly requested safe reuse after all eight database chunks pass and the local fixture is restored, followed by the test-only Home repair and verified Board 1 release. This is a bounded verification policy enhancement under impact policy version 3.
 
 The original 65ee43f full attempt remains FAIL: its no-database phase had three failures in one synthetic Home session fixture. All eight database phases completed naturally and independently passed. The preservation wrapper compared the complete fixture identity, database OIDs, configuration hashes and logical contents before and after the run. A phase-reuse receipt records these facts separately from newly executed tests; it never becomes a full PASS baseline or resets full-regression history.

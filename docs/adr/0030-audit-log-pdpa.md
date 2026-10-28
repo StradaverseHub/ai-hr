@@ -1,5 +1,7 @@
 # ADR-0030 — Append-only audit log vs PDPA (Layer 0: redact-to-reference)
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: **Accepted.** (2026) Go-live gate **G3** (product plan v2). Closes security finding **S1**.
 
 > **Layer 0 (redact-to-reference) ships in the gate slice** — it closes S1 with **no crypto**. Layer 1

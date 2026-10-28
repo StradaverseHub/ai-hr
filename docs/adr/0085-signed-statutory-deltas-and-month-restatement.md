@@ -1,5 +1,7 @@
 # ADR-0085 — Signed statutory deltas: letting a month correct itself before it is filed
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Status:** PARTLY BUILT. Steps 1, 2, 4 and 5 are shipped (r330, r337); **step 3 — signed deltas — is
   not started**, and §7.4 states exactly which figure is still wrong because of it.
 - **Date:** 2026-09-22

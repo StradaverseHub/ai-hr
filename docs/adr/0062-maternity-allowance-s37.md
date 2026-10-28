@@ -1,5 +1,7 @@
 # ADR-0062 — Maternity: separate the unconditional 98-day LEAVE from the conditional paid ALLOWANCE (EA s.37)
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted (1.2.5)
 Date: 2026-06-28
 

@@ -1,5 +1,7 @@
 # ADR-0068: Partial Leave Approval — single-request model
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted
 Supersedes: ADR-0131 (child-row split), migration 0131
 Feedback: "Partial Leave Approval — single-request model (rebuild)" · references commit d827aa6

@@ -1,5 +1,7 @@
 # ADR-0007: AI-native architecture & the self-improvement loop
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Status:** Accepted — *stances binding now; implementation deferred to Phases B–E*
 - **Date:** 2026-06-05
 - **Deciders:** Founder (solo) + Claude (acting architect)

@@ -1,5 +1,7 @@
 # ADR-0132 — Group navigation by module and job
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - Date: 2026-10-19
 - Status: Direction accepted in approved board item 7de1a0d7; source implementation and verification pending.
 - Scope: Navigation presentation. No page permission, record, calculation or workflow authority changes.

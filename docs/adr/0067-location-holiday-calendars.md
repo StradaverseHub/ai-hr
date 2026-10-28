@@ -1,5 +1,7 @@
 # ADR-0067 — Configurable Public-Holiday Calendars by Location/Subsidiary
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: **Superseded in part by [ADR-0086](0086-retiring-location-holiday-calendars.md)** (2026-09-23)
 Date: 2026-06-29
 

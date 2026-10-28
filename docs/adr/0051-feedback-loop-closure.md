@@ -1,5 +1,7 @@
 # ADR-0051 — Feedback module v2: close the loop (post-deploy refute) + bulk review + dashboard
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 **Status:** Accepted · **Date:** 2026-06-26 · **Supersedes:** none (extends ADR-0043 feedback module, ADR-0044/0045 improvement loop)
 
 ## Context

@@ -1,5 +1,7 @@
 # ADR-0122: One Criteria owner for System Labels availability
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 **Status:** Accepted direction — approved board item6d26c915,2026-10-15. Implementation and verification pending.
 **Date:** 2026-10-15
 **Deciders:** Reporter-approved plan; implementation owned by the board integration task.

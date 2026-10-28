@@ -1,5 +1,7 @@
 # ADR-0090 — Employment-owned MY tax selection and saved statutory provenance
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - **Date:** 2026-10-03
 - **Status:** Accepted; production verified in r382–r383.
 - **Supersedes:** ADR-0089 prospectively; its historical declaration facts remain retained.

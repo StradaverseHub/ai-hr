@@ -1,5 +1,7 @@
 # ADR-0036 — Payslip PDF + template (#22)
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted · 2026-06-23 · Consultant feedback #22 (High)
 
 ## Context

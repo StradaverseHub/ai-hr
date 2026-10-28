@@ -1,5 +1,7 @@
 # ADR-0056 — Individual Transaction (dated one-off payroll transaction ledger)
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted
 Date: 2026-06-27
 Feature: 1.2.2 Individual Transaction

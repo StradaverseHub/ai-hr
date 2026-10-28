@@ -1,5 +1,7 @@
 # ADR-0059 — EA Data Overwrite (EA-only amendment layer)
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted (1.2.6)
 Date: 2026-06-27
 

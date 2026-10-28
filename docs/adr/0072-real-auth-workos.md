@@ -1,5 +1,7 @@
 # ADR-0072 — Real per-user authentication (WorkOS AuthKit)
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations. Authentication direction is superseded where applicable by [ADR-0117](0117-embedded-hr-authentication.md); legacy adapters do not establish deployment activation.
+
 - **Status:** Accepted
 - **Date:** 2026-07-05
 - **Deciders:** Founder (solo) + Claude (acting architect)

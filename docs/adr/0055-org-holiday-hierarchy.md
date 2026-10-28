@@ -1,5 +1,7 @@
 # ADR-0055 — Organization-based public-holiday hierarchy
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 **Status:** Accepted · **Date:** 2026-06-26 · **Extends:** ADR (state-specific holidays, "2C")
 
 ## Context

@@ -1,5 +1,7 @@
 # ADR-0102: Correct attendance punches without destroying their evidence
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Date: 2026-10-12
 Status: Accepted for the approved clock-data round (c15086a4, revision 2)
 

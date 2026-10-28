@@ -1,5 +1,7 @@
 # ADR-0112 — Date corrections preserve schedule and application ownership
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 - Date: 2026-10-13
 - Status: Accepted
 - Related: ADR-0069, ADR-0102, ADR-0105, ADR-0107; approved feedback 16c8bf4d revision 1.

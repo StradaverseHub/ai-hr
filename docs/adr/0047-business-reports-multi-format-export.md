@@ -1,5 +1,7 @@
 # ADR-0047 — Business-decision reports + multi-format export
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted
 Date: 2026-06-25
 Supersedes / relates: extends Wave 4 HR analytics (`core/analytics.ts`, ADR-pending consultant #3).

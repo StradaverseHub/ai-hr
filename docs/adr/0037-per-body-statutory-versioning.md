@@ -1,5 +1,7 @@
 # ADR-0037 — Per-body statutory versioning (overlay model)
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted · 2026-06-24 · Consultant feedback #6 (High)
 
 ## Context

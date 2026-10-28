@@ -1,5 +1,7 @@
 # ADR-0115: Native Performance journey parity and retained decisions
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted architecture, 2026-10-15. Extends ADR-0103.
 
 ## Decision

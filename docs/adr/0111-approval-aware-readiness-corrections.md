@@ -1,5 +1,7 @@
 # ADR-0111: Approval-aware readiness corrections
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Date: 2026-10-13
 Status: Accepted — next increment of ADR-0109
 

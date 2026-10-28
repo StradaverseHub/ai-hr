@@ -1,5 +1,7 @@
 # ADR-0050 — Self Personal Tax Relief (LHDN TP1), yearly self-service + PCB divisor fix
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted · 2026-06-26 · Feedback #1.1.3 (panel-refined)
 
 ## Context

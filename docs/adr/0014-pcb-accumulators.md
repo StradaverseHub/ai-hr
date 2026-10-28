@@ -1,5 +1,7 @@
 # ADR-0014 — PCB accumulators: derived from payslip history, seeded by TP3 opening balances
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: **Accepted** (implemented) · Date: 2026-06-11
 
 ## Context

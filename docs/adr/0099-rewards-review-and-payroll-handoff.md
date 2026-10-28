@@ -1,5 +1,7 @@
 # ADR-0099 — Rewards reviews and payroll handoff
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: accepted and deployed, 2026-10-11. Subsequently enabled tenant-wide for Demo Group at the owner's request.
 
 ## Evidence and scope

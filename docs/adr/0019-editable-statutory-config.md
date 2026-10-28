@@ -1,5 +1,7 @@
 # ADR-0019 — Editable statutory / payroll configuration
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: **Accepted** · Date: 2026-06-15
 
 ## Context

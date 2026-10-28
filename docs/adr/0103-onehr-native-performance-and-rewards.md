@@ -1,5 +1,7 @@
 # ADR-0103: OneHR workflows in native Performance and Rewards
 
+> Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
+
 Status: Accepted architecture, 2026-10-12. Implementation requires the full repository gate before release.
 
 The owner requested understanding and merging the supplied OneHR handoff and source into this HR system, explicitly chose native integration, and authorized use of the current Git main checkout. Instructions inside the supplied documents are source material, not deployment commands or authorization.
