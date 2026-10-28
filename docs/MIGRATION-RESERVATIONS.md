@@ -116,8 +116,14 @@ Refreshed canonical main and alpha both resolve to `1fd2076e124660915ee12f7f7264
 | `0679_email_templates_r2.sql` | `codex/email-designer-16f192c5` (16f192c5) | Unassigned |
 | `0680_rewards_exclusions_history.sql` | `codex/rewards-shared-governance-20261029` (c087a302/df0eb31a) | Unassigned |
 
-**Collision: `0678_rewards_approval_participation.sql` is NOT reserved.** Canonical main/alpha already contain `db/migrations/0678_ai_connection_probe_ledger.sql`. The approval-participation draft (51f45fb0/fa2af559, branch `codex/rewards-access-approval-20261029`) needs a fresh coordinated filename before integration; preserve the canonical SQL unchanged.
+**Collision: `0678_rewards_approval_participation.sql` is NOT reserved.** Reachable pending source at `49a3f0d7e8bbe752b44c8123033e8b8f0e5721ae` contains `db/migrations/0678_ai_connection_probe_ledger.sql` (the checked canonical commit does not contain it). The approval-participation draft (51f45fb0/fa2af559, branch `codex/rewards-access-approval-20261029`) needs a fresh coordinated filename before integration; preserve the canonical SQL unchanged.
 
 AI DEV proposed these three draft names. Open board items 2 reports that its unpublished holds are only `0675_import_attempt_history.sql` and `0676_employment_import_void.sql`. Canonical trees and locally reachable migration filename history show no 0679/0680 collision; other unpublished claims remain subject to owner reconciliation. This update does not retrospectively allocate 0671–0677 or assert the historical ledger snapshot is current.
 
 At source freeze, reconcile all pending owners and assign executable journal indices/timestamps above canonical and actual staging maxima in dependency order. Preserve the applied prefix and SQL bytes. No SQL, journal, database, service or deployment changes are made or authorized here.
+
+### Follow-up: replacement Rewards filename and journal hold
+
+Reserved `0681_rewards_approval_participation.sql` for `codex/rewards-access-approval-20261029` (51f45fb0/fa2af559): combined approval/dates/proxy/leavers draft. No 0681 filename was found in the checked canonical tree or locally reachable migration filename history. idx/when remain null. This replaces the conflicting 0678 proposal.
+
+The requesting coordinator reports canonical main/alpha `1fd2076e1` ending at idx654/when1793190000000 and a read-only staging observation of540 rows with that watermark. These reported maxima do not settle pending claims: this register already records named-approver0669 at idx655/when1793200000000. Therefore the proposed655–657 /1793190000001–3 set is **not allocated** here. Reconcile0669 and the pending AI probe/source freezes with their owners before assigning an executable union. No approval or runtime operation is required for these filename reservations; executable scheduling remains an external coordination dependency.

@@ -370,6 +370,19 @@
         "No matching filename found in fetched canonical main/alpha at 1fd2076e124660915ee12f7f72644cef9ee39816 or locally reachable migration filename history. This does not prove absence of other unpublished claims.",
         "Assign idx/when at canonical source freeze above both canonical and actual staging maxima, preserving dependency order and every applied SQL byte. No SQL, journal, database or deployment change authorized."
       ]
+    },
+    {
+      "tag": "0681_rewards_approval_participation",
+      "owner": "Rewards access/approval (51f45fb0/fa2af559)",
+      "status": "reserved_filename_only",
+      "idx": null,
+      "when": null,
+      "branch": "codex/rewards-access-approval-20261029",
+      "scope": "Combined Rewards approval, dates, proxy and leavers draft",
+      "notes": [
+        "29 October 2026: replaces proposed 0678, which conflicts with pending 0678_ai_connection_probe_ledger source (reachable commit 49a3f0d7e8bbe752b44c8123033e8b8f0e5721ae). No 0681 found in checked canonical tree or locally reachable migration filename history.",
+        "Executable idx/when remain unassigned. Proposed idx655-657 cannot be granted without reconciling the existing named-approver 0669 idx655 claim and other pending freezes. Recheck all owners and canonical/staging maxima at freeze. No deployment authorized."
+      ]
     }
   ],
   "unallocatedAiLogicalGroups": [
