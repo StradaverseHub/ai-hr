@@ -5568,6 +5568,36 @@ export const notificationDelivery = pgTable(
   ],
 );
 
+// Reserved 0671 draft (M10, D6): one native push token bound to (tenant, user, installation); revoked, never rewritten.
+// RLS own-row for ai_hr_app; the delivery sweep reads as the owning migration role (the migration says why).
+export const mobilePushRegistration = pgTable('mobile_push_registration', {
+  id: id(), tenantId: tenantId(), userId: uuid('user_id').notNull().references(() => appUser.id),
+  installationId: uuid('installation_id').notNull(),
+  platform: text('platform').notNull().$type<'ios' | 'android'>(), provider: text('provider').notNull().$type<'apns' | 'fcm'>(),
+  token: text('token').notNull(), locale: text('locale').notNull().$type<'en' | 'ms'>(),
+  appVersion: text('app_version'), appBuild: text('app_build'),
+  createdAt: createdAt(), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  revokeReason: text('revoke_reason').$type<'logout' | 'turned_off' | 'company_switch' | 'permission_denied' | 'replaced' | 'rebound' | 'invalid_token'>(),
+}, (t) => [
+  uniqueIndex('mobile_push_registration_installation_uq').on(t.tenantId, t.installationId).where(sql`${t.revokedAt} IS NULL`),
+  uniqueIndex('mobile_push_registration_token_uq').on(t.provider, t.token).where(sql`${t.revokedAt} IS NULL`),
+  index('mobile_push_registration_user_idx').on(t.tenantId, t.userId).where(sql`${t.revokedAt} IS NULL`),
+]);
+// Reserved 0671 draft: at most one push per (notification, registration). Outcome and provider code only, no content.
+export const mobilePushDelivery = pgTable('mobile_push_delivery', {
+  id: id(), tenantId: tenantId(),
+  notificationId: uuid('notification_id').notNull().references((): AnyPgColumn => notification.id, { onDelete: 'cascade' }),
+  registrationId: uuid('registration_id').notNull().references(() => mobilePushRegistration.id),
+  outcome: text('outcome').notNull().default('pending').$type<'pending' | 'sent' | 'invalid_token' | 'failed' | 'skipped'>(),
+  providerStatus: integer('provider_status'), providerReason: text('provider_reason'),
+  claimedAt: timestamp('claimed_at', { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('mobile_push_delivery_once_uq').on(t.notificationId, t.registrationId),
+  index('mobile_push_delivery_registration_idx').on(t.registrationId),
+]);
+
 // Tenant-wide category permission is independent of a recipient's explicit preference.
 export const notificationEmailPolicy = pgTable('notification_email_policy', {
   id: id(), tenantId: tenantId(), category: text('category').notNull(),
