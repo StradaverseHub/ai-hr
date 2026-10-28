@@ -45,7 +45,7 @@ export default async function RewardApprovalsPage({ searchParams }: { searchPara
     switch (key) {
       case 'unit': return <><BoardUnitLink r={r} /><div className="text-xs text-muted-foreground">{r.company}</div></>;
       case 'stage': return <>
-        <Badge className="normal-case" variant={r.returnedTo ? 'warning' : r.waiting ? 'accent' : 'default'}>{r.returnedTo ? t(`returnedTo.${r.returnedTo}`) : r.seat ? t('board.with', { seat: t(`board.seat.${r.seat}`) }) : t(`stages.${r.status}`)}</Badge>
+        <Badge className="whitespace-nowrap normal-case" variant={r.returnedTo ? 'warning' : r.waiting ? 'accent' : 'default'}>{r.returnedTo ? t(`returnedTo.${r.returnedTo}`) : r.seat ? t('board.with', { seat: t(`board.seat.${r.seat}`) }) : t(`stages.${r.status}`)}</Badge>
         {r.step && <div className="mt-1 text-xs text-muted-foreground">{t('board.stepOf', r.step)}</div>}
       </>;
       case 'due': return r.due && r.daysUntilDue !== null ? <>

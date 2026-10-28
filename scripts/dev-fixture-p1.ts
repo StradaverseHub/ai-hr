@@ -1,6 +1,7 @@
 /**
  * P1 parity render fixture (WP-0): OneHR performance journey with PM and TM on, calibration at every tier
- * (HOD, BU, BG, Group, final), Career Plans, and Rewards units at every stage, all FICTIONAL.
+ * (HOD, BU, BG, Group, final; plus an open Group session for the Beta cohort), Career Plans, and Rewards
+ * units at every stage, all FICTIONAL.
  *
  * It builds on scripts/dev-fixture-onehr.ts: that fixture runs first (in a child process, so its own
  * process.exit ends only itself) and its manifest is embedded under `base`. Everything P1 adds lives in
@@ -89,9 +90,9 @@ const REVIEW_STATES: Record<string, string> = {
   a7: 'scorecard proposed, awaiting the line manager (mgr-a)',
   a8: 'scorecard proposed, awaiting the line manager (mgr-a)',
   a9: 'results submitted, awaiting the line manager moderation (mgr-a)',
-  b1: 'manager rating confirmed; in HOD Beta and BU Beta (both open) and BG (unit Beta open)',
-  b2: 'manager rating confirmed; in HOD Beta and BU Beta (both open) and BG (unit Beta open)',
-  b3: 'manager rating confirmed; in HOD Beta and BU Beta (both open) and BG (unit Beta open)',
+  b1: 'manager rating confirmed; in HOD Beta and BU Beta (both open) and BG (unit Beta open); in the open Group session (group-chief-open)',
+  b2: 'manager rating confirmed; in HOD Beta and BU Beta (both open) and BG (unit Beta open); in the open Group session (group-chief-open)',
+  b3: 'manager rating confirmed; in HOD Beta and BU Beta (both open) and BG (unit Beta open); in the open Group session (group-chief-open)',
   b4: 'scorecard draft saved, not proposed',
   b5: 'not started',
 };
@@ -130,6 +131,7 @@ async function build() {
   const buceo = await hire('bu-ceo', 'P1 BU Reviewer', atH, 'manager', grade.id);
   const bgceo = await hire('bg-ceo', 'P1 BG Reviewer', atH, 'manager', grade.id);
   const chief = await hire('group-chief', 'P1 Group Reviewer', atH, 'manager', grade.id);
+  const chiefOpen = await hire('group-chief-open', 'P1 Open Group Reviewer', atH, 'manager', grade.id);
   const partner = await hire('perf-partner', 'P1 Performance Partner', atH, 'employee', grade.id);
   await assignRole(a, { appUserId: partner.userId!, role: 'performance_partner', companyId: A });
 
@@ -234,6 +236,10 @@ async function build() {
   if (!['low', 'mid', 'high'].every(c => columns.has(c as never)) || !potentialBands.every(b => rows.has(b))) throw Error(`Fixture: Talent Box coverage incomplete: ${JSON.stringify(box)}`);
   const group = await perf.createOnehrCalibration(a, cycleId, { name: 'P1 Group', companyId: null, tier: 'group', reviewerUserIds: [chief.userId!], reviewIds: ids(CALIBRATED_A), pbtAchievement: null, mode: 'after' });
   await perf.lockOnehrCalibration(chief, group, await crev(chief, group), reason, 'both');
+  // An OPEN Group Talent Box (the session above is locked): the Beta cohort, rated by their line manager and
+  // still open at HOD, BU and BG, so the Group reviewer can move each of them. Its own reviewer keeps the
+  // locked Group session's to-do counts unchanged.
+  await perf.createOnehrCalibration(a, cycleId, { name: 'P1 Group (open)', companyId: null, tier: 'group', reviewerUserIds: [chiefOpen.userId!], reviewIds: ids(CALIBRATED_B), pbtAchievement: null, mode: 'after' });
   // Final tier: HR decides a1's final band from the locked BG and Group calls (creates the final scope).
   const queue = await perf.getAssessmentFinalBands(a, group);
   const row = must(queue.rows.find(r => r.reviewId === rid.a1), 'a1 final-band row');
