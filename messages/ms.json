@@ -20142,6 +20142,10 @@
     "import": "Import verified inputs",
     "refreshHelp": "Refresh the original snapshot date from Personnel. This clears input verification and requires another review. If an employee left the roster, the refresh is refused rather than silently deleting an award.",
     "refresh": "Refresh source records",
+    "confidentialityFloor": {
+      "bg": "Ditanda sulit BG secara automatik: melapor terus kepada pemegang kerusi CEO BG dalam Kakitangan. Boleh dijadikan lebih ketat, bukan lebih rendah.",
+      "ec": "Ditanda sulit EC secara automatik: melapor terus kepada pemegang kerusi Pengerusi Eksekutif dalam Kakitangan. Tidak boleh direndahkan."
+    },
     "sourceRefresh": {
       "title": "Muat semula rekod sumber",
       "help": "Tarikh petikan semasa: {date}. Pratonton perubahan dalam Kakitangan dan Pampasan sejak tarikh itu sebelum apa-apa diubah.",
@@ -25914,6 +25918,15 @@
     "history": "Penugasan lain, keputusan lalu dan sejarah audit dikekalkan.",
     "save": "Sahkan dan simpan",
     "permissionsTitle": "Kebenaran setiap peranan Ganjaran",
+    "confidentialityRules": {
+      "title": "Peraturan kerahsiaan",
+      "own": "Tiada sesiapa melihat baris ganjaran sendiri, termasuk pelulus.",
+      "ec": "Orang yang ditanda sulit EC hanya dapat dilihat oleh Ganjaran Kumpulan, CTRO dan Pengerusi Eksekutif.",
+      "bg": "Orang yang ditanda sulit BG disembunyikan daripada CEO BU dan PBP.",
+      "pbp": "PBP boleh membaca tetapi tidak boleh mengubah atau meluluskan apa-apa.",
+      "totals": "Jumlah dan bajet unit sentiasa merangkumi orang yang disembunyikan.",
+      "derived": "Sesiapa yang melapor terus kepada pemegang kerusi CEO BG atau Pengerusi Eksekutif ditanda secara automatik daripada Kakitangan. Ganjaran Kumpulan boleh menjadikan tanda lebih ketat, tidak pernah lebih rendah."
+    },
     "unnamed": "Akaun tanpa nama",
     "permissions": {
       "bu": "Sediakan cadangan dan hantar semakan draf.",

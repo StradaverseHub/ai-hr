@@ -20142,6 +20142,10 @@
     "import": "Import verified inputs",
     "refreshHelp": "Refresh the original snapshot date from Personnel. This clears input verification and requires another review. If an employee left the roster, the refresh is refused rather than silently deleting an award.",
     "refresh": "Refresh source records",
+    "confidentialityFloor": {
+      "bg": "Marked BG confidential automatically: reports directly to the BG CEO seat holder in People. It can be made stricter, not lower.",
+      "ec": "Marked EC confidential automatically: reports directly to the Executive Chairman seat holder in People. It cannot be lowered."
+    },
     "sourceRefresh": {
       "title": "Refresh source records",
       "help": "Current snapshot date: {date}. Preview what changed in People and Compensation since then before anything is changed.",
@@ -25914,6 +25918,15 @@
     "history": "Other assignments, past decisions and audit history are retained.",
     "save": "Confirm and save",
     "permissionsTitle": "What each Rewards role permits",
+    "confidentialityRules": {
+      "title": "Confidentiality rules",
+      "own": "Nobody sees their own reward line, not even an approver.",
+      "ec": "People marked EC confidential are visible only to Group Rewards, CTRO and the Executive Chairman.",
+      "bg": "People marked BG confidential are hidden from the BU CEO and the PBP.",
+      "pbp": "The PBP can read but cannot change or approve anything.",
+      "totals": "Unit totals and budgets always include the hidden people.",
+      "derived": "Anyone who reports directly to the person in the BG CEO or Executive Chairman seat is marked automatically from People. Group Rewards can make a marking stricter, never lower."
+    },
     "unnamed": "Unnamed login account",
     "permissions": {
       "bu": "Prepare recommendations and submit a draft review.",

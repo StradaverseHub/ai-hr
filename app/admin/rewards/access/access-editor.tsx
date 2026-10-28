@@ -2,6 +2,7 @@
 import { useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
+import { RewardConfidentialityRules } from './confidentiality-rules';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { Button, Card, Field, SectionHeader, inputCls, tableWrapCls, theadCls, thCls, tbodyCls } from '@/components/ui';
 import { rewardRoles, type RewardRole } from '@/packs/rewards/model';
@@ -89,6 +90,6 @@ export function RewardAccessEditor({ value }: {
                     }
                 })}>{t('save')}</Button></section>}
   </Card>}</div>
-  <details className="rounded-lg border p-4"><summary className="cursor-pointer text-sm font-semibold">{t('permissionsTitle')}</summary><dl className="mt-4 grid gap-4 sm:grid-cols-2">{rewardRoles.map(x => <div key={x}><dt className="text-sm font-medium">{r(`roles.${x}`)}</dt><dd className="mt-1 text-sm text-muted-foreground">{t(`permissions.${x}`)}</dd></div>)}</dl></details>
+  <details className="rounded-lg border p-4"><summary className="cursor-pointer text-sm font-semibold">{t('permissionsTitle')}</summary><dl className="mt-4 grid gap-4 sm:grid-cols-2">{rewardRoles.map(x => <div key={x}><dt className="text-sm font-medium">{r(`roles.${x}`)}</dt><dd className="mt-1 text-sm text-muted-foreground">{t(`permissions.${x}`)}</dd></div>)}</dl><RewardConfidentialityRules /></details>
  </div>;
 }

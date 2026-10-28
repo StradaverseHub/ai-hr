@@ -20142,6 +20142,10 @@
     "import": "Import verified inputs",
     "refreshHelp": "Refresh the original snapshot date from Personnel. This clears input verification and requires another review. If an employee left the roster, the refresh is refused rather than silently deleting an award.",
     "refresh": "Refresh source records",
+    "confidentialityFloor": {
+      "bg": "已自动标记为 BG 保密：在人员记录中直接向 BG CEO 席位持有人汇报。可设为更严格，但不能降低。",
+      "ec": "已自动标记为 EC 保密：在人员记录中直接向执行主席席位持有人汇报。不能降低。"
+    },
     "sourceRefresh": {
       "title": "刷新源记录",
       "help": "当前快照日期：{date}。在做出任何更改之前，先预览自该日期以来人员和薪酬记录中的变化。",
@@ -25914,6 +25918,15 @@
     "history": "其他角色分配、过往决定和审计历史会保留。",
     "save": "确认并保存",
     "permissionsTitle": "各奖励角色的权限",
+    "confidentialityRules": {
+      "title": "保密规则",
+      "own": "任何人都看不到自己的奖励记录，审批人也不例外。",
+      "ec": "标记为 EC 保密的人员仅对集团奖励、CTRO 和执行主席可见。",
+      "bg": "标记为 BG 保密的人员对 BU CEO 和 PBP 隐藏。",
+      "pbp": "PBP 可以查看，但不能更改或审批任何内容。",
+      "totals": "单位总额和预算始终包含被隐藏的人员。",
+      "derived": "凡在人员记录中直接向 BG CEO 或执行主席席位持有人汇报的人员，均会自动标记。集团奖励可将标记设为更严格，但绝不能降低。"
+    },
     "unnamed": "未命名登录账户",
     "permissions": {
       "bu": "准备建议并提交草稿评审。",

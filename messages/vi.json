@@ -20142,6 +20142,10 @@
     "import": "Import verified inputs",
     "refreshHelp": "Refresh the original snapshot date from Personnel. This clears input verification and requires another review. If an employee left the roster, the refresh is refused rather than silently deleting an award.",
     "refresh": "Refresh source records",
+    "confidentialityFloor": {
+      "bg": "Tự động đánh dấu bảo mật BG: báo cáo trực tiếp cho người giữ vị trí CEO BG trong Nhân sự. Có thể nâng mức, không thể hạ.",
+      "ec": "Tự động đánh dấu bảo mật EC: báo cáo trực tiếp cho người giữ vị trí Chủ tịch điều hành trong Nhân sự. Không thể hạ mức."
+    },
     "sourceRefresh": {
       "title": "Làm mới dữ liệu nguồn",
       "help": "Ngày chụp dữ liệu hiện tại: {date}. Xem trước những gì đã thay đổi trong Nhân sự và Lương kể từ ngày đó trước khi thay đổi bất cứ điều gì.",
@@ -25914,6 +25918,15 @@
     "history": "Các phân công khác, quyết định trước đây và lịch sử kiểm toán được giữ lại.",
     "save": "Xác nhận và lưu",
     "permissionsTitle": "Quyền của từng vai trò Thưởng",
+    "confidentialityRules": {
+      "title": "Quy tắc bảo mật",
+      "own": "Không ai thấy dòng thưởng của chính mình, kể cả người phê duyệt.",
+      "ec": "Người được đánh dấu bảo mật EC chỉ hiển thị với Group Rewards, CTRO và Chủ tịch điều hành.",
+      "bg": "Người được đánh dấu bảo mật BG bị ẩn khỏi CEO BU và PBP.",
+      "pbp": "PBP có thể xem nhưng không thể thay đổi hay phê duyệt.",
+      "totals": "Tổng số và ngân sách của đơn vị luôn bao gồm những người bị ẩn.",
+      "derived": "Bất kỳ ai báo cáo trực tiếp cho người giữ vị trí CEO BG hoặc Chủ tịch điều hành đều được tự động đánh dấu từ Nhân sự. Group Rewards có thể nâng mức đánh dấu, không bao giờ hạ."
+    },
     "unnamed": "Tài khoản chưa đặt tên",
     "permissions": {
       "bu": "Chuẩn bị đề xuất và gửi kỳ xét duyệt nháp.",

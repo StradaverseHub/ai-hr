@@ -18,10 +18,11 @@ import { calculateRewards } from './engine';
 import { onehrRewardResultTx } from '../performance/service';
 import { decisionActorRole, factsFromOnehr, isSeniorPlanMember, returnedState } from './model';
 import {rewardPolicyForReviewTx} from './policy-groups';
+import { deriveConfidentialityTx, sourceWithFloor } from './confidentiality';
 export {saveRewardPolicyGroup,listRewardPolicyGroups,rewardSharedPolicyChoices,rewardPolicyGroupUsage,RewardPolicyGroupError} from './policy-groups';
 export type {RewardSharedChoice} from './policy-groups';
 import { calculateOffcycle, offcycleRoute, offcycleTransition, type Funding } from './offcycle';
-import { canEditStage, defaultPolicy, emptyFacts, emptyRecommendation, factsSchema, isoDateSchema, policySchema, recommendationSchema, rewardRoles, transition, visibleEntry, type RewardEntry, type RewardFacts, type RewardPolicy, type RewardRole, type RewardSource } from './model';
+import { applyConfidentialityFloor, belowConfidentialityFloor, canEditStage, defaultPolicy, emptyFacts, emptyRecommendation, factsSchema, isoDateSchema, policySchema, recommendationSchema, rewardRoles, transition, visibleEntry, type RewardEntry, type RewardFacts, type RewardPolicy, type RewardRole, type RewardSource } from './model';
 
 import { emptyRewardCalendar, rewardCalendarSchema, rewardDaysUntil, rewardNextSeat, rewardRouteProgress, rewardStageDue, rewardStageSeat, rewardStageStep, type RewardCalendarValues, type RewardRouteStep } from './calendar';
 export { rewardCalendarStages, rewardOffcycleSlaStages, emptyRewardCalendar, rewardDueWording, rewardNextSeat, rewardRouteProgress } from './calendar';
@@ -284,7 +285,12 @@ async function snapshotRoster(tx: Tx, unit: typeof rewardUnit.$inferSelect, at: 
 /** Creation snapshot. A later refresh goes through previewRewardSourceRefresh/saveRewardSourceRefresh. */
 async function snapshotEmployees(tx: Tx, ctx: SessionContext, unit: typeof rewardUnit.$inferSelect) {
   const roster = await snapshotRoster(tx, unit, unit.snapshotDate);
-  for (const source of roster.values()) await tx.insert(rewardEntry).values({ tenantId: ctx.tenantId, unitId: unit.id, employmentId: source.employmentId, source, facts: emptyFacts(), recommendation: emptyRecommendation() });
+  // 6fd08f37: derived confidentiality floor (BG/EC seats assigned later re-derive through the access commit).
+  const floors = await deriveConfidentialityTx(tx, unit.id, [...roster.keys()], unit.snapshotDate);
+  for (const raw of roster.values()) {
+    const source = sourceWithFloor(raw, floors.get(raw.employmentId));
+    await tx.insert(rewardEntry).values({ tenantId: ctx.tenantId, unitId: unit.id, employmentId: source.employmentId, source, facts: { ...emptyFacts(), confidentiality: source.confidentialityFloor ?? 'standard' }, recommendation: emptyRecommendation() });
+  }
   return new Set(roster.keys());
 }
 
@@ -410,6 +416,7 @@ export async function setRewardMember(ctx: SessionContext, unitId: string, revis
   return changeRewardMember(ctx,unitId,revision,userId,role,remove);
 }
 
+const confidentialityFloorMessage = 'This person is marked confidential from their reporting line in People. Group Rewards can make the marking stricter, never lower.';
 export async function saveRewardEntry(ctx: SessionContext, unitId: string, revision: number, entryId: string, recommendation: unknown, facts?: unknown) {
   idSchema.parse(entryId); const rec = recommendationSchema.parse(recommendation);
   const validatedFacts = facts === undefined ? undefined : factsSchema.parse(facts);
@@ -425,6 +432,7 @@ export async function saveRewardEntry(ctx: SessionContext, unitId: string, revis
       const { erDecision: _newEr, pipDecision: _newPip, caseReason: _newReason, ...newClassification } = validatedFacts;
       if (!roles.includes('bu') || !isDeepStrictEqual(oldClassification, newClassification)) throw new RewardError('Only Group Rewards may verify employee inputs.');
     }
+    if (validatedFacts && belowConfidentialityFloor(validatedFacts, entry.source)) throw new RewardError(confidentialityFloorMessage);
     await tx.update(rewardEntry).set({ recommendation: rec, ...(validatedFacts ? { facts: validatedFacts } : {}), updatedAt: new Date() }).where(eq(rewardEntry.id, entryId));
     await touch(tx, unitId); await stamp(tx, ctx, unitId, 'recommendation-updated', { entryId, revision: unit.revision + 1 });
   });
@@ -440,6 +448,7 @@ export async function importRewardFacts(ctx: SessionContext, unitId: string, rev
       const e = entries.find(e => e.employmentId === row.employmentId);
       if (!e || !visibleEntry(e, roles, ctx.personId) || seen.has(row.employmentId)) throw new RewardError('The import contains a duplicate or unavailable employee. Nothing was imported.');
       seen.add(row.employmentId);
+      if (belowConfidentialityFloor(row.facts, e.source)) throw new RewardError(`${confidentialityFloorMessage} Nothing was imported.`);
       await tx.update(rewardEntry).set({ facts: row.facts, updatedAt: new Date() }).where(eq(rewardEntry.id, e.id));
     }
     await touch(tx, unitId); await stamp(tx, ctx, unitId, 'facts-imported', { count: input.length, revision: unit.revision + 1 });
@@ -451,6 +460,10 @@ export async function importRewardFacts(ctx: SessionContext, unitId: string, rev
 export const rewardRefreshCategories = ['joined', 'left', 'confirmed', 'notice', 'grade', 'salary', 'other'] as const;
 export type RewardRefreshCategory = typeof rewardRefreshCategories[number];
 type RefreshChange = { entry: typeof rewardEntry.$inferSelect | null; employmentId: string; source: RewardSource; categories: RewardRefreshCategory[] };
+/** The facts a refresh writes: verification cleared, confidentiality moved with the derived floor (6fd08f37). */
+const refreshedFacts = (c: RefreshChange): RewardFacts => c.entry
+  ? { ...c.entry.facts, confidentiality: applyConfidentialityFloor(c.entry.facts.confidentiality, c.entry.source.confidentialityFloor, c.source.confidentialityFloor), reviewed: false }
+  : { ...emptyFacts(), confidentiality: c.source.confidentialityFloor ?? 'standard' };
 
 async function planSourceRefreshTx(tx: Tx, ctx: SessionContext, unit: typeof rewardUnit.$inferSelect, roles: RewardRole[], entries: (typeof rewardEntry.$inferSelect)[], revision: number, rawAsOf: unknown) {
   assertRevision(unit, revision); assertUnlocked(unit);
@@ -460,6 +473,8 @@ async function planSourceRefreshTx(tx: Tx, ctx: SessionContext, unit: typeof rew
   if (asOf > today) throw new RewardError('The snapshot date cannot be in the future.');
   if (asOf < unit.snapshotDate) throw new RewardError('Refresh to a date on or after the current snapshot date.');
   const roster = await snapshotRoster(tx, unit, asOf);
+  const floors = await deriveConfidentialityTx(tx, unit.id, [...roster.keys()], asOf);
+  for (const [id, source] of roster) roster.set(id, sourceWithFloor(source, floors.get(id)));
   const changes: RefreshChange[] = [];
   for (const entry of entries) {
     const old = entry.source, next = roster.get(entry.employmentId);
@@ -499,7 +514,7 @@ export async function previewRewardSourceRefresh(ctx: SessionContext, unitId: st
     const plan = await planSourceRefreshTx(tx, ctx, unit, roles, entries, revision, asOf);
     const people = Object.fromEntries(rewardRefreshCategories.map(c => [c, [] as RewardRefreshPerson[]])) as Record<RewardRefreshCategory, RewardRefreshPerson[]>;
     for (const c of plan.changes) {
-      const shown: RewardEntry = c.entry ? { ...c.entry, source: c.source } : { id: c.employmentId, source: c.source, facts: emptyFacts(), recommendation: emptyRecommendation() };
+      const shown: RewardEntry = { id: c.entry?.id ?? c.employmentId, source: c.source, facts: refreshedFacts(c), recommendation: c.entry?.recommendation ?? emptyRecommendation() };
       if (!visibleEntry({ ...shown, facts: { ...shown.facts, reviewed: true } }, roles, ctx.personId)) continue;
       for (const category of c.categories) people[category].push({ employmentId: c.employmentId, name: c.source.name, employeeCode: c.source.employeeCode });
     }
@@ -516,8 +531,8 @@ export async function saveRewardSourceRefresh(ctx: SessionContext, unitId: strin
     const plan = await planSourceRefreshTx(tx, ctx, unit, roles, entries, revision, date);
     if (plan.token !== previewDigest) throw new RewardError('The source records or the review changed. Preview the refresh again before confirming.');
     for (const c of plan.changes) {
-      if (c.entry) await tx.update(rewardEntry).set({ source: c.source, facts: { ...c.entry.facts, reviewed: false }, updatedAt: new Date() }).where(eq(rewardEntry.id, c.entry.id));
-      else await tx.insert(rewardEntry).values({ tenantId: ctx.tenantId, unitId, employmentId: c.employmentId, source: c.source, facts: emptyFacts(), recommendation: emptyRecommendation() });
+      if (c.entry) await tx.update(rewardEntry).set({ source: c.source, facts: refreshedFacts(c), updatedAt: new Date() }).where(eq(rewardEntry.id, c.entry.id));
+      else await tx.insert(rewardEntry).values({ tenantId: ctx.tenantId, unitId, employmentId: c.employmentId, source: c.source, facts: refreshedFacts(c), recommendation: emptyRecommendation() });
     }
     await tx.update(rewardUnit).set({ snapshotDate: plan.asOf }).where(eq(rewardUnit.id, unitId));
     await touch(tx, unitId);

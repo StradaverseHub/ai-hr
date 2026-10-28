@@ -7,6 +7,7 @@ import { actorOf, appendEvent } from '../../db/events';
 import { appUser, businessUnit, company, person, rewardCycle, rewardMember, rewardUnit } from '../../db/schema';
 import { withRewardsTenant } from '../../core/module-gate';
 import { rewardRoles, type RewardRole } from './model';
+import { rewardSeatConfidentialityTx } from './confidentiality';
 export type RewardMaintenanceCode = 'scope' | 'changed' | 'locked' | 'account' | 'lastGr' | 'membership' | 'preview' | 'confirmation' | 'used' | 'missing';
 const errorMessages: Record<RewardMaintenanceCode, string> = { scope: 'Company administrator access is required.', changed: 'This review changed in another session. Reload before saving.', locked: 'Return the unit to draft before changing its approved inputs.', account: 'Choose an active existing login account in this tenant.', lastGr: 'Keep at least one active Group Rewards reviewer assigned.', membership: 'The selected membership changed. Reload before saving.', preview: 'Access or account eligibility changed. Preview it again before saving.', confirmation: 'Confirm the exact review before deleting.', used: 'This review is in use and its history must be retained.', missing: 'Reward unit not found or access has been removed.' };
 export class RewardMaintenanceError extends Error {
@@ -80,6 +81,7 @@ async function commitAccessTx(tx: Tx, ctx: SessionContext, input: RewardAccessCh
         await tx.insert(rewardMember).values({ tenantId: ctx.tenantId, unitId: p.unit.id, ...input.after });
     if (input.before && (!input.after || pairKey(input.before) !== pairKey(input.after)))
         await tx.delete(rewardMember).where(and(eq(rewardMember.unitId, p.unit.id), eq(rewardMember.userId, input.before.userId), eq(rewardMember.role, input.before.role)));
+    await rewardSeatConfidentialityTx(tx, p.unit, input); // 6fd08f37: a BG/EC seat change re-derives markings (draft only).
     await tx.update(rewardUnit).set({ revision: p.unit.revision + 1, approvedDigest: null, updatedAt: new Date() }).where(eq(rewardUnit.id, p.unit.id));
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'reward-unit', aggregateId: p.unit.id, eventType: 'reward-unit.access-changed', actor: actorOf(ctx), payload: { before: input.before, after: input.after, revision: p.unit.revision + 1 } });
 }
