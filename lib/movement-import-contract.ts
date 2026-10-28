@@ -9,11 +9,15 @@ export const MOVEMENT_IMPORT_LIMITS={bytes:900000,rows:200,perEmployee:20,employ
 export const MOVEMENT_IMPORT_FIELDS=Object.keys(MOVEMENT_FORM_IDS).filter((key):key is MovementFormField=>key!=='reason');
 export const MOVEMENT_IMPORT_COLUMNS=['employee_code',...MOVEMENT_IMPORT_FIELDS.map(field=>field==='kind'?'event_type':field.replace(/[A-Z]/g,c=>'_'+c.toLowerCase()))];
 export const MOVEMENT_IMPORT_HEADERS=['Employee ID',...MOVEMENT_IMPORT_FIELDS.map(field=>field==='kind'?'EventType':field==='effectiveDate'?'EffectiveDate':field.replace(/([a-z])([A-Z])/g,'$1 $2').replace(/^./,c=>c.toUpperCase()))];
-export type MovementImportRecord={row:number;employeeCode:string;cells:Partial<Record<MovementFormField,string>>;errors:string[];incrementAmount?:string;importVersion?:2;source?:{sheet:string;row:number}};
-export type MovementImportRow={row:number;employeeCode:string;eventType:string;effectiveDate:string;status:'valid'|'invalid'|'excluded'|'imported'|'failed';errors:string[];warnings?:string[];source?:{sheet:string;row:number};baselineDate?:string;before?:Record<string,string|null>;proposed?:Record<string,string|null>;scheduled?:boolean;payrollFlaggedPeriods?:string[]};
-export type MovementImportEmployee={employeeCode:string;employmentId:string|null;name:string|null;rows:MovementImportRow[];fingerprint:string|null};
+/** ac6645ec — `companyCode` (Company ID cell) is resolved per record by the server into `companyId`; `before`
+ * holds the Before cells by System Field key; `sourceRows` lists every sheet row of one grouped movement. */
+export type MovementImportRecord={row:number;employeeCode:string;cells:Partial<Record<MovementFormField,string>>;errors:string[];incrementAmount?:string;importVersion?:2;source?:{sheet:string;row:number};companyCode?:string;companyId?:string;employeeName?:string;before?:Record<string,string>;sourceRows?:number[]};
+export type MovementImportRow={row:number;employeeCode:string;eventType:string;effectiveDate:string;status:'valid'|'invalid'|'excluded'|'imported'|'failed';errors:string[];warnings?:string[];source?:{sheet:string;row:number};sourceRows?:number[];companyCode?:string;baselineDate?:string;before?:Record<string,string|null>;proposed?:Record<string,string|null>;scheduled?:boolean;payrollFlaggedPeriods?:string[]};
+/** `key` identifies one employee of one company in a multi-company file (selection and fingerprints). */
+export type MovementImportEmployee={employeeCode:string;employmentId:string|null;name:string|null;rows:MovementImportRow[];fingerprint:string|null;key?:string;companyId?:string|null;companyName?:string|null};
 export type MovementImportPreview={inputHash:string;selection:number[];fileErrors:string[];employees:MovementImportEmployee[];excluded:number;valid:number};
-export type MovementImportResult={employees:MovementImportEmployee[];imported:number;failed:number;excluded:number;byEventType:{eventType:string;imported:number;failed:number;excluded:number}[];batchId?:string};
+export type MovementImportResult={employees:MovementImportEmployee[];imported:number;failed:number;excluded:number;byEventType:{eventType:string;imported:number;failed:number;excluded:number}[];batchId?:string;attemptId?:string};
+export const movementEmployeeKey=(employee:Pick<MovementImportEmployee,'employeeCode'|'key'>)=>employee.key??employee.employeeCode;
 const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 export function movementImportDate(raw:string):string|null{
  if(isCalendarDate(raw))return raw;

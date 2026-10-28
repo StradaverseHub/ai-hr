@@ -139,6 +139,9 @@ export type PayslipRun = {
   payPeriod: string;
   runType: string;
   runSeq: number;
+  /** b240c0ff — set on imported payroll history, so the chooser can name it "Monthly - By Import". */
+  historyImportAttemptId?: string | null;
+  historyImportCycleName?: string | null;
 };
 
 /** What the URL asked for, already scope-guarded by the page. Every field is optional: absent means
@@ -168,7 +171,14 @@ export type PayslipSelection = {
  *  [r363 (e0b6e3b8) REWORDED THIS LINE, which read "One entry in the Payroll-cycle list". The control is
  *  labelled "Run type" now; "Payroll cycle" was also the label of the payslip field below it, and since
  *  r360 that field prints the configured cycle NAME. Nothing about this type or its producer changed.] */
-export type PayslipRunChoice = { value: string; runType: string; runSeq: number };
+export type PayslipRunChoice = {
+  value: string;
+  runType: string;
+  runSeq: number;
+  /** b240c0ff — carried from the run, for `payrollRunLabel`. Absent on everything but imported history. */
+  historyImportAttemptId?: string | null;
+  historyImportCycleName?: string | null;
+};
 
 /** The cycle option's value: the run type AND the run number, because the type alone does not name a run.
  *  `:` is safe — run types are the `payroll_run_type` enum literals, none of which contains one. */
@@ -298,7 +308,14 @@ export function payslipRunChoices(
     const value = runOptionValue(r.runType, r.runSeq);
     if (seen.has(value)) continue;
     seen.add(value);
-    choices.push({ value, runType: r.runType, runSeq: r.runSeq });
+    choices.push({
+      value,
+      runType: r.runType,
+      runSeq: r.runSeq,
+      ...(r.historyImportAttemptId
+        ? { historyImportAttemptId: r.historyImportAttemptId, historyImportCycleName: r.historyImportCycleName ?? null }
+        : {}),
+    });
   }
   const parsed = selectedValue && !seen.has(selectedValue) ? parseRunOption(selectedValue) : undefined;
   if (parsed) choices.push({ value: selectedValue!, runType: parsed.runType, runSeq: parsed.runSeq ?? 1 });
