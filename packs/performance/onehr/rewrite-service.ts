@@ -41,7 +41,8 @@ async function rewriteContextTx(tx:Tx,ctx:SessionContext,reviewId:string,target:
  const isIdp=target.kind==='idp_action',isTc=target.kind.startsWith('tc_'),feature:AssessmentAiFeature=isIdp?'idp':isTc?'tc':'pm';
  if(!v.policy.modules[isTc?'tm':isIdp?'idp':'pm']||!isIdp&&v.finalized)throw Error('This assessment module is read-only.');
  const manager=['kpi_justification','pm_manager_remark','tc_manager_remark','tc_manager_item','tc_manager_section'].includes(target.kind);
- if(manager?v.self||!v.manager&&!v.moderator:!v.self)throw Error('This drafting field is not assigned to you.');
+ // D-P1-22: the competency fields of the review one level up belong to the effective reviewer (v.reviewer).
+ if(manager?v.self||!v.manager&&!v.moderator&&!(isTc&&v.reviewer):!v.self)throw Error('This drafting field is not assigned to you.');
  let label='',fieldKey=`${target.kind}:${reviewId}`;
  if(isIdp){
   if(target.kind!=='idp_action'||v.policy.kind!=='year_end')throw Error('Choose an active development action.');
@@ -49,7 +50,7 @@ async function rewriteContextTx(tx:Tx,ctx:SessionContext,reviewId:string,target:
   assertWindow(v.policy,'idp_self');fieldKey=`idp:${v.cycle.id}`;
   label=`${{onJob:'Work experience',fromOthers:'Learning from others',formalLearning:'Formal learning'}[target.mode]} for ${target.area||'this development plan'}`;
  }else if(isTc){
-  if(!v.competencies.length||manager&&(!v.manager||v.competencyStatus!=='submitted')||!manager&&v.competencyStatus!=='pending')throw Error('The competency field is read-only.');
+  if(!v.competencies.length||manager&&(!v.manager&&!v.reviewer||v.competencyStatus!=='submitted')||!manager&&v.competencyStatus!=='pending')throw Error('The competency field is read-only.');
   assertWindow(v.policy,manager?'tc_approve':'tc_self');
   if('id' in target){const skill=v.competencies.find(c=>c.id===target.id);if(!skill)throw Error('Choose an assigned competency.');label=skill.text;fieldKey+=`:${short(target.id)}`;}
   else if('principle' in target){if(!v.competencies.some(c=>c.principle===target.principle))throw Error('Choose an assigned competency section.');label=target.principle;fieldKey+=`:${short(target.principle)}`;}

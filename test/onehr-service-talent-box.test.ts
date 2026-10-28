@@ -1,8 +1,9 @@
 /**
  * P1 WP-D — the Talent Box writer against real RLS (every call is the persona's app-role session via the service).
- * Pins: APR-011 reason on every changed band at BU, BG and Group (C4); the source's movement ceiling, enforced in the
- * writer and on the leader's chat move (D-P1-11); the generic leader form needing the same reason; the Group box over both axes with its own per-person lock; BU closing after the BG lock; no self move; no
- * move outside the reviewer's session.
+ * Pins: APR-022 (reverses APR-011) — no reason is required for a changed band at BU, BG and Group, on the box or the
+ * generic leader form, and a given reason is still stored; the source's movement ceiling, enforced in the writer and on
+ * the leader's chat move (D-P1-11); the Group box over both axes with its own per-person lock; BU closing after the BG
+ * lock; no self move; no move outside the reviewer's session.
  */
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
@@ -51,24 +52,28 @@ describe('Talent Box moves (real RLS)',()=>{
  });
  afterAll(closeAll);
 
- it('demands a reason for every changed band on the box at BU, BG and Group, and leaves an unchanged move free',async()=>{
+ it('APR-022: saves a changed band on the box at BU, BG and Group with no reason (empty note), stores a given reason, and leaves an unchanged move free',async()=>{
   const reviewId=await reviewOf(cycleA,subjects[0]);
   for(const [tier,ctx] of [['bu',buCeo],['bg',bgCeo],['group',chief]] as const){
    const id=await session(cycleA,tier,tier==='group'?null:b.companyId,ctx,[subjects[0]]);
-   await expect(move(ctx,id,reviewId,{performance:'ME'},''),tier).rejects.toThrow(/Explain each changed band/);
-   await expect(move(ctx,id,reviewId,{potential:'High'},'   '),tier).rejects.toThrow(/Explain each changed band/);
-   expect((await perf.getOnehrCalibration(ctx,id)).rows[0].entry,tier).toMatchObject({performance:null,potential:null});
+   const entry=async()=>(await perf.getOnehrCalibration(ctx,id)).rows[0].entry;
    await move(ctx,id,reviewId,{performance:'UA',potential:'Low'},'');// the defaults it already sits on: nothing is decided
    expect(await revision(ctx,id),tier).toBe(1);
-   await move(ctx,id,reviewId,{performance:'ME',potential:'High'});
-   expect((await perf.getOnehrCalibration(ctx,id)).rows[0].entry,tier).toMatchObject({performance:'ME',potential:'High',performanceNote:'Discussed in the calibration meeting.',potentialNote:'Discussed in the calibration meeting.'});
+   expect(await entry(),tier).toMatchObject({performance:null,potential:null});
+   await move(ctx,id,reviewId,{performance:'ME'},'');// empty reason
+   expect(await entry(),tier).toMatchObject({performance:'ME',performanceNote:'',potential:null});
+   await move(ctx,id,reviewId,{potential:'High'},'   ');// whitespace-only reason
+   expect(await entry(),tier).toMatchObject({performance:'ME',performanceNote:'',potential:'High',potentialNote:''});
+   expect(await revision(ctx,id),tier).toBe(3);
+   await move(ctx,id,reviewId,{performance:'AE',potential:'Mid'});// a given reason is still stored
+   expect(await entry(),tier).toMatchObject({performance:'AE',potential:'Mid',performanceNote:'Discussed in the calibration meeting.',potentialNote:'Discussed in the calibration meeting.'});
   }
   // HOD keeps its own path: the box writer is not theirs.
   const hod=await session(cycleA,'hod',b.companyId,buCeo,[subjects[1]]);
   await expect(move(buCeo,hod,await reviewOf(cycleA,subjects[1]),{performance:'ME'})).rejects.toThrow(/belongs to the Talent Box/);
  });
 
- it('demands the same reason on the generic calibration form at BU and BG, leaves an unchanged band free, and does not cap the form',async()=>{
+ it('APR-022: saves a reasonless change on the generic calibration form at BU and BG, stores a given reason, and does not cap the form',async()=>{
   const reviewId=await reviewOf(cycleA,subjects[0]);
   const save=async(ctx:SessionContext,id:string,bands:{performance?:'UA'|'BE'|'ME'|'AE'|'OU';potential?:'Low'|'Mid'|'High'},note='')=>
    perf.saveOnehrCalibration(ctx,id,await revision(ctx,id),{reviewId,axis:'both',performance:bands.performance??null,potential:bands.potential??null,performanceNote:note,potentialNote:note});
@@ -77,15 +82,17 @@ describe('Talent Box moves (real RLS)',()=>{
   const entry=async(ctx:SessionContext,id:string,r=reviewId)=>(await perf.getOnehrCalibration(ctx,id)).rows.find(x=>x.entry.reviewId===r)!.entry;
   for(const [tier,ctx] of [['bu',buCeo],['bg',bgCeo]] as const){
    const id=tier==='bu'?await session(cycleA,'bu',b.companyId,ctx,[subjects[0]]):bg;
-   await expect(save(ctx,id,{performance:'ME'}),tier).rejects.toThrow(/Explain each changed band/);
-   await expect(save(ctx,id,{potential:'High'},'  '),tier).rejects.toThrow(/Explain each changed band/);
    expect(await entry(ctx,id),tier).toMatchObject({performance:null,potential:null});
-   await save(ctx,id,{performance:'UA',potential:'Low'});// the bands it already shows: no reason needed
-   await save(ctx,id,{performance:'ME',potential:'High'},'Discussed in the calibration meeting.');
-   expect(await entry(ctx,id),tier).toMatchObject({performance:'ME',potential:'High',performanceNote:'Discussed in the calibration meeting.'});
+   await save(ctx,id,{performance:'UA',potential:'Low'});// the bands it already shows
+   await save(ctx,id,{performance:'ME'});// a changed band with an empty reason
+   expect(await entry(ctx,id),tier).toMatchObject({performance:'ME',performanceNote:''});
+   await save(ctx,id,{potential:'High'},'  ');// a changed band with a whitespace-only reason
+   expect(await entry(ctx,id),tier).toMatchObject({performance:'ME',potential:'High',potentialNote:''});
+   await save(ctx,id,{performance:'AE',potential:'Mid'},'Discussed in the calibration meeting.');// a given reason is stored
+   expect(await entry(ctx,id),tier).toMatchObject({performance:'AE',potential:'Mid',performanceNote:'Discussed in the calibration meeting.',potentialNote:'Discussed in the calibration meeting.'});
   }
   // The ceiling belongs to the box and its chat, not to the form: the box spends the unit's allowance (2 of 2) until
-  // it refuses a move, and the form then saves that same change with its reason.
+  // it refuses a move, and the form then saves that same change.
   let refused:string|null=null;
   for(const id of ids.slice(1)){try{await move(bgCeo,bg,id,{performance:'ME'});}catch(e){expect(String(e)).toMatch(/used up: 2 of 2/);refused=id;break;}}
   expect(refused,'the box refused a move once the allowance was used').not.toBeNull();

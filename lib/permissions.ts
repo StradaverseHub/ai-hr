@@ -126,7 +126,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'accessConfiguration',href:'/admin/users/access',labelKey:'accessConfiguration.title',guard:'requireAccessConfiguration',routes:['/admin/users/access'],hasScopeNote:true},
   {screenKey:'myTasks',href:'/tasks',labelKey:'nav.myTasks',guard:'scopedSession',routes:['/tasks'],hasScopeNote:true},
   {screenKey:'employeeMasterReports',href:'/reports/employee-master',labelKey:'employeeMasterReports.title',guard:'scopedSession',routes:['/reports/employee-master','/reports/employee-master/[id]']},
-  {screenKey:'onehrAssignments',href:'/me/performance',labelKey:'onehr.assignments',guard:'scopedSession',routes:['/performance/workspace','/performance/calibration','/performance/assessment/feedback/[requestId]','/performance/assessment/calibration/[sessionId]'],hasScopeNote:true},
+  {screenKey:'onehrAssignments',href:'/me/performance',labelKey:'onehr.assignments',guard:'scopedSession',routes:['/performance/workspace','/performance/calibration','/performance/department','/performance/assessment/feedback/[requestId]','/performance/assessment/calibration/[sessionId]','/performance/led'],hasScopeNote:true},
   {screenKey:'attendanceConfigurationDestinations',href:'/admin/attendance/settings/company-policy',labelKey:'attendanceSettingsHub.companyPolicy.title',guard:'scopedAdmin',routes:['/admin/attendance/settings/company-policy','/admin/attendance/settings/work-schedule-overtime','/admin/attendance/settings/registered-devices']},
   {screenKey:'attendanceApprovalWorkflow',href:'/admin/attendance/approval-workflow',labelKey:'nav.attendanceApprovalWorkflow',guard:'scopedAdmin',routes:['/admin/attendance/approval-workflow','/admin/attendance/approval-workflow/new','/admin/attendance/approval-workflow/[lineageId]','/admin/attendance/approval-workflow/[lineageId]/edit']},
   {screenKey:'attendanceApplicationHistory',href:'/attendance/application-history',labelKey:'nav.applicationHistory',guard:'scopedAdmin',routes:['/attendance/application-history','/attendance/application-history/[id]']},
@@ -418,7 +418,7 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/performance',
     labelKey: 'nav.performance',
     guard: 'scopedSession',
-    routes: ['/performance', '/performance/[cycleId]', '/performance/[cycleId]/records', '/performance/[cycleId]/reports'],
+    routes: ['/performance', '/performance/[cycleId]', '/performance/[cycleId]/records', '/performance/[cycleId]/reports', '/performance/leaders', '/performance/[cycleId]/release'],
     hasScopeNote: true,
   },
   // ── Admin org / people (requireAdmin → hr_admin + super_admin) ──

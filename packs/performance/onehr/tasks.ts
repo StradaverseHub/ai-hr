@@ -44,6 +44,7 @@ const iso = (value: Date | string) => (value instanceof Date ? value : new Date(
 
 /** The kernel review queue /performance shows as "Reviews awaiting you". */
 async function managerReviewTasks(ctx: SessionContext): Promise<Sourced[]> {
+  // D-P1-22: the queue itself drops a review whose stored reviewer's unit is out and adds the one-level-up reviews.
   return (await managerPendingReviews(ctx)).map((r) => ({
     id: r.reviewId, kind: 'performanceReview' as const, subjectName: r.employee, createdAt: iso(r.createdAt),
     linkPath: reviewHref(r.reviewId), companyId: r.companyId, reviewId: r.reviewId,
@@ -61,7 +62,8 @@ async function assessmentTasks(ctx: SessionContext): Promise<Sourced[]> {
     // Read exactly as /performance/workspace reads (onehr_review, cycle and config only): the kernel
     // performance_review row is NOT joined, because its RLS hides it from a matrix approver who still
     // owes work on the assessment. The approval-step test on the KPI JSON is a cheap NECESSARY condition
-    // of app.onehr_moderator; together with app.onehr_manager (one indexed EXISTS) it decides which rows
+    // of app.onehr_moderator; together with app.onehr_effective_reviewer (the competency and Career Plan reviewer,
+    // which is app.onehr_manager unless the stored reviewer's unit is out: D-P1-22) it decides which rows
     // ever reach the expensive moderator function. The SECURITY DEFINER functions remain the authority.
     const rows = await tx
       .select({
@@ -70,7 +72,7 @@ async function assessmentTasks(ctx: SessionContext): Promise<Sourced[]> {
         resultsSubmittedAt: onehrReview.resultsSubmittedAt, managerPerformance: onehrReview.managerPerformance,
         createdAt: onehrReview.createdAt, periodEnd: reviewCycle.periodEnd, policy: onehrCycle.policy,
         header: sql<{ name: string; ownEmploymentIds: string[] } | null>`app.onehr_review_header(${onehrReview.reviewId})`,
-        manager: sql<boolean>`app.onehr_manager(${onehrReview.reviewId})`,
+        manager: sql<boolean>`app.onehr_effective_reviewer(${onehrReview.reviewId})`,
       })
       .from(onehrReview)
       .innerJoin(reviewCycle, eq(reviewCycle.id, onehrReview.cycleId))
@@ -78,7 +80,7 @@ async function assessmentTasks(ctx: SessionContext): Promise<Sourced[]> {
       .where(and(
         inArray(reviewCycle.status, ['open', 'calibration']),
         sql`not exists(select 1 from employment e where e.id=${onehrReview.employmentId} and app.is_self_person(e.person_id))`,
-        sql`(app.onehr_manager(${onehrReview.reviewId}) or (exists(select 1 from jsonb_array_elements(${onehrReview.kpis}) k where k->>'moderatorEmploymentId' = any(${ids}) or exists(select 1 from jsonb_array_elements(coalesce(k->'approvalChain','[]'::jsonb)) step where step->>'employmentId' = any(${ids}))) and app.onehr_moderator(${onehrReview.reviewId})))`,
+        sql`(app.onehr_effective_reviewer(${onehrReview.reviewId}) or (exists(select 1 from jsonb_array_elements(${onehrReview.kpis}) k where k->>'moderatorEmploymentId' = any(${ids}) or exists(select 1 from jsonb_array_elements(coalesce(k->'approvalChain','[]'::jsonb)) step where step->>'employmentId' = any(${ids}))) and app.onehr_moderator(${onehrReview.reviewId})))`,
         sql`app.assessment_review_participates(${onehrReview.reviewId})`,
       ))
       .orderBy(desc(reviewCycle.periodEnd), asc(onehrReview.reviewId));

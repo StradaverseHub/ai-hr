@@ -49,9 +49,10 @@ it('shows no reference shares without a single reference, and a move counter whe
 async function save(reason:string){
  const dialog=await screen.findByRole('dialog',{name:'Move Person 0'});
  const button=within(dialog).getByRole('button',{name:en.onehr.talentMove.save}) as HTMLButtonElement;
- expect(button.disabled).toBe(true);// a reason is required before anything is saved
- fireEvent.change(within(dialog).getByLabelText(en.onehr.talentMove.reasonRequired),{target:{value:reason}});
- expect(button.disabled).toBe(false);fireEvent.click(button);
+ const box=within(dialog).getByLabelText(en.onehr.talentMove.reason) as HTMLTextAreaElement;
+ expect(box.required).toBe(false);expect(button.disabled).toBe(false);// the reason is optional (APR-022): a picked box saves as it is
+ if(reason)fireEvent.change(box,{target:{value:reason}});
+ fireEvent.click(button);
  await waitFor(()=>expect(saveCalibrationBandAction).toHaveBeenCalled());
  const form=vi.mocked(saveCalibrationBandAction).mock.calls.at(-1)![0] as FormData;return Object.fromEntries(form.entries());
 }
@@ -70,6 +71,12 @@ it('submits the same payload whether the box is reached by dragging or from the 
  expect(dragged).toEqual({sessionId:'session',revision:'3',reviewId:'p0',performance:'AE',potential:'High',performanceNote:'Agreed in the calibration room.',potentialNote:'Agreed in the calibration room.'});
  expect(keyed).toEqual(dragged);
 });
+it('saves a box move with no reason, sending empty notes (APR-022)',async()=>{
+ show();
+ fireEvent.click(screen.getByRole('button',{name:'Move Person 0 to another box'}));
+ fireEvent.click(within(await screen.findByRole('dialog',{name:'Move Person 0'})).getByRole('button',{name:/^Move to Super Star, High potential/}));
+ expect(await save('')).toEqual({sessionId:'session',revision:'3',reviewId:'p0',performance:'AE',potential:'High',performanceNote:'',potentialNote:''});
+});
 
 it('offers no drag or move on a locked board, for a read-only viewer, or onto the person’s own box',()=>{
  show({locked:true});
@@ -84,7 +91,8 @@ it('offers no drag or move on a locked board, for a read-only viewer, or onto th
 });
 
 const entry={id:'entry',reviewId:'review',performance:null,potential:null,performanceLockedAt:null,potentialLockedAt:null,lockedAt:null,performanceNote:'',potentialNote:'',pip:false,promotion:false,specialReward:false};
-const view=(tm:boolean,tier='bu')=>({session:{id:'session',name:'BU review',tier,revision:2,reviewerUserIds:['me'],performanceLockedAt:null,potentialLockedAt:null,lockedAt:null},actorUserId:'me',cycle:{name:'Annual'},axes:{pm:true,pot:tm},units:[{id:'x',name:'Unit X',locked:false,profit:{reference:normal}}],modules:{pm:true,tm},reference:normal,talentBox:{grid:9,cap:null},canSubmit:{pm:true,pot:tm},canLockCohort:true,rows:[{companyId:'x',canWrite:{pm:true,pot:tm},talent:null,name:'Employee',grade:'12',finalized:false,managerPerformance:'ME',managerPotential:'High',currentPerformance:'ME',currentPotential:'High',movement:{moved:false,fromCategory:null,from:{performance:'ME',potential:'High'}},entry}]});
+// isReviewer is decided in SQL (app.onehr_calibration_reviewer: named reviewer or live seat holder, WP-B2).
+const view=(tm:boolean,tier='bu')=>({isReviewer:true,session:{id:'session',name:'BU review',tier,revision:2,reviewerUserIds:['me'],performanceLockedAt:null,potentialLockedAt:null,lockedAt:null},actorUserId:'me',cycle:{name:'Annual'},axes:{pm:true,pot:tm},units:[{id:'x',name:'Unit X',locked:false,profit:{reference:normal}}],modules:{pm:true,tm},reference:normal,talentBox:{grid:9,cap:null},canSubmit:{pm:true,pot:tm},canLockCohort:true,rows:[{companyId:'x',canWrite:{pm:true,pot:tm},talent:null,name:'Employee',grade:'12',finalized:false,managerPerformance:'ME',managerPotential:'High',currentPerformance:'ME',currentPotential:'High',movement:{moved:false,fromCategory:null,from:{performance:'ME',potential:'High'}},entry}]});
 it('renders the board on the session page with both modules on and no board for a PM-only cycle',async()=>{
  const page=async(tm:boolean,tier='bu')=>render(<NextIntlClientProvider locale="en" messages={en}>{await AssessmentCalibrationView({v:view(tm,tier) as unknown as Parameters<typeof AssessmentCalibrationView>[0]['v']})}</NextIntlClientProvider>);
  await page(true);
