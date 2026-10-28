@@ -144,6 +144,8 @@ export const performancePack: ModulePack = {
     { table: 'performance_leader_seat', note: 'dated BU CEO, BG CEO and group chief seats that grant calibration access (WP-B2)' },
     { table: 'performance_hod_assignment', note: 'dated per-person head of department; never department.head_employment_id (WP-B2)' },
     { table: 'performance_onehr_calibration_entry_retired', note: 'department-review entries retired when a person changes HOD, decisions kept (WP-B2)' },
+    { table: 'performance_assessment_unit_exclusion', note: 'cycle exclusion rule: a company or exact department not taking part in a cycle; ended, never deleted (D-P1-22, ADR-0150)' },
+    { table: 'performance_assessment_unit_exclusion_pin', note: 'employments a closed cycle\'s exclusion rules covered on its close day (D-P1-22 D8)' },
 
 
   ],

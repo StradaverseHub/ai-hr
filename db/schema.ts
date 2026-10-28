@@ -10424,6 +10424,20 @@ export const hodAssignment = pgTable('performance_hod_assignment', {
   createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
   endedBy:uuid('ended_by').references(()=>appUser.id),endedAt:timestamp('ended_at',{withTimezone:true}),
 },t=>[index('performance_hod_assignment_hod_idx').on(t.hodEmploymentId)]);
+/** D-P1-22 (0667): a unit (company, optional exact department) not taking part in a cycle. Ended, never deleted. */
+export const assessmentUnitExclusion = pgTable('performance_assessment_unit_exclusion', {
+  id:id(),tenantId:tenantId(),cycleId:uuid('cycle_id').notNull().references(()=>reviewCycle.id),
+  companyId:uuid('company_id').notNull().references(()=>company.id),departmentId:uuid('department_id').references(()=>department.id),
+  createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+  endedBy:uuid('ended_by').references(()=>appUser.id),endedAt:timestamp('ended_at',{withTimezone:true}),endReason:text('end_reason'),
+},t=>[index('performance_assessment_unit_exclusion_company_idx').on(t.companyId)]);
+/** D-P1-22 (0667): the employments a closed cycle's rules covered on its close day (D8). Written by a definer only. */
+export const assessmentUnitExclusionPin = pgTable('performance_assessment_unit_exclusion_pin', {
+  tenantId:tenantId(),cycleId:uuid('cycle_id').notNull().references(()=>reviewCycle.id),
+  employmentId:uuid('employment_id').notNull().references(()=>employment.id),
+  ruleId:uuid('rule_id').notNull().references(()=>assessmentUnitExclusion.id),
+  pinnedOn:date('pinned_on').notNull(),createdAt:createdAt(),
+},t=>[primaryKey({columns:[t.cycleId,t.employmentId]})]);
 // One shared optional BG remark per person/cohort; never part of employee or higher-tier projections.
 export const assessmentTalentRemark = pgTable('performance_assessment_talent_remark', {
  tenantId:tenantId(),sessionId:uuid('session_id').notNull().references(()=>onehrCalibration.id),reviewId:uuid('review_id').notNull().references(()=>onehrReview.reviewId),

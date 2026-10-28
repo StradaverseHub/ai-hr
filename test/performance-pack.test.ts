@@ -77,6 +77,8 @@ describe('ADR-0080 rung 4: performance pack registration', () => {
       'performance_leader_seat',
       'performance_hod_assignment',
       'performance_onehr_calibration_entry_retired',
+      'performance_assessment_unit_exclusion',
+      'performance_assessment_unit_exclusion_pin',
 
     ]);
   });
