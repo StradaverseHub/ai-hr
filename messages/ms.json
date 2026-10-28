@@ -312,6 +312,8 @@
     "approvals": "Item Kelulusan",
     "approvalsCount": "{count, plural, one {# item menunggu keputusan anda} other {# item menunggu keputusan anda}}",
     "performance": "Prestasi",
+    "performanceTalent": "Prestasi & Bakat",
+    "performanceAdmin": "Performance admin",
     "admin": "Pentadbir",
     "organization": "Organisasi",
     "systemLabels": "Label Sistem",
@@ -2090,7 +2092,7 @@
       "sectionStep4": "Semak apa yang akan berubah",
       "sectionStep5Hint": "Semak siapa yang terlibat bagi setiap baris dan apa yang berubah, kemudian kemas kini. Di sinilah rekod mula diubah.",
       "sectionColumnsHeading": "Lajur dalam templat ini",
-      "sectionColumnsNotice": "Hanya lajur ini dibenarkan dalam fail. Lajur milik bahagian lain akan ditolak, dan penolakan itu menamakan bahagian yang memilikinya. Sesetengah lajur templat penuh — syarikat, jabatan, jawatan, pusat kos, jenis pekerjaan, tarikh mula, gaji, serta nombor KWSP, PERKESO, SIP dan status pemastautin cukai — tidak dimiliki mana-mana bahagian dan langsung tidak boleh diimport mengikut bahagian; ubah yang itu pada rekod Personel pekerja berkenaan.",
+      "sectionColumnsNotice": "Hanya lajur ini dibenarkan dalam fail. Lajur milik bahagian lain akan ditolak, dan penolakan itu menamakan bahagian yang memilikinya. Sesetengah lajur templat penuh — syarikat, jabatan, jawatan, pusat kos, jenis pekerjaan, tarikh mula dan gaji — tidak dimiliki mana-mana bahagian dan langsung tidak boleh diimport mengikut bahagian; ubah yang itu pada rekod Personel pekerja berkenaan.",
       "sectionInstructionKey": "ID Pekerja menyatakan siapa yang hendak dikemas kini. Ia mesti sepadan dengan seseorang yang sudah wujud — templat ini tidak boleh mencipta sesiapa. Tambah orang baharu dengan templat pekerja penuh terlebih dahulu.",
       "sectionInstructionBlank": "Biarkan sel kosong untuk mengekalkan apa yang sudah direkodkan. Sel kosong tidak sekali-kali memadamkan nilai.",
       "sectionInstructionOneRow": "Satu baris bagi setiap pekerja. Dua baris dengan ID Pekerja yang sama akan ditolak.",
@@ -2304,7 +2306,15 @@
           "invalid_filter": "Penapis tidak tersedia dalam syarikat ini. Muat semula pilihan dan pilih sekali lagi.",
           "invalid_file": "Pilih buku kerja XLSX asal atau CSV yang sah untuk jenis yang dipilih.",
           "origin": "Muat semula halaman dan muat naik melalui aplikasi ini.",
-          "blacklist_input_required": "Pilih status Disenarai hitam atau masukkan Catatan. ID Pekerja sahaja bukan arahan untuk menyenaraihitamkan."
+          "blacklist_input_required": "Pilih status Disenarai hitam atau masukkan Catatan. ID Pekerja sahaja bukan arahan untuk menyenaraihitamkan.",
+          "company_required": "ID Syarikat diperlukan.",
+          "company_unknown": "ID Syarikat ini tidak sepadan dengan syarikat yang boleh anda import pergerakan. Gunakan ID Syarikat yang disenaraikan dalam helaian Reference.",
+          "company_ambiguous": "ID Syarikat ini sepadan dengan lebih daripada satu syarikat. Gunakan ID Syarikat yang disenaraikan dalam helaian Reference.",
+          "unknown_system_field": "Medan Sistem ini tidak boleh diubah oleh jenis peristiwa ini. Lihat helaian Reference.",
+          "duplicate_system_field": "Medan Sistem yang sama muncul lebih daripada sekali bagi pergerakan ini.",
+          "system_field_required": "Pilih Medan Sistem yang diubah oleh baris ini, atau biarkan Sebelum dan Selepas kosong.",
+          "before_mismatch": "Sebelum tidak sepadan dengan rekod semasa pekerja; ia telah berubah sejak fail disediakan. Pekerja ini tidak diimport.",
+          "workbook_old_layout": "Fail ini menggunakan templat Pergerakan lama (satu helaian bagi setiap jenis pergerakan untuk satu syarikat). Muat turun templat baharu dan salin baris anda ke dalamnya."
         },
         "v2": {
           "type": "Jenis Pergerakan",
@@ -2360,6 +2370,45 @@
           "employedScope": "Pekerja dalam tempoh percubaan atau sedang menjalani tempoh notis tetap disertakan. Rekod pekerjaan yang telah tamat atau disenarai hitam tidak diisi terlebih dahulu.",
           "referenceGuide": "Senarai juntai menggunakan kod sistem tepat daripada Reference. Label menerangkan setiap kod. Label unik daripada fail lama masih disokong; pratonton menyemak syarikat baris.",
           "baselineGuide": "Apabila gaji semasa kosong, pengiraan gaji hijau kekal kosong. Semak dan pratonton menyediakan asas gaji yang berautoriti, termasuk bagi baris pekerja kosong atau berulang. Nilai sifar yang direkodkan tetap menjadi asas gaji."
+        },
+        "sheet": {
+          "guideRows": "Gunakan helaian Movements. Masukkan satu baris bagi setiap medan yang berubah. Baris dengan ID Syarikat, ID Pekerja, Tarikh Berkuat Kuasa dan Jenis Peristiwa yang sama diimport bersama sebagai satu pergerakan.",
+          "guideCompany": "ID Syarikat ialah Kod Syarikat yang dipaparkan dalam Pengurusan Orang, atau nombor pendaftaran jika syarikat tiada kod. Helaian Reference menyenaraikan nilai tepat bagi setiap syarikat yang boleh anda import.",
+          "guideFields": "Jenis Peristiwa dan Medan Sistem mempunyai senarai juntai bawah. Helaian Reference menunjukkan Medan Sistem yang boleh diubah oleh setiap jenis peristiwa dan nilai yang dibenarkan bagi setiap syarikat.",
+          "guideBefore": "Sebelum ialah nilai yang anda jangka pekerja miliki sekarang. Ia disemak sebelum apa-apa disimpan: jika rekod telah berubah sejak fail disediakan, pekerja itu dihentikan dengan mesej dan tiada apa-apa ditulis ganti. Biarkan Sebelum kosong untuk melangkau semakan.",
+          "guideAfter": "Selepas ialah nilai baharu. Gunakan kod daripada helaian Reference untuk gred, jabatan, jawatan, lokasi dan senarai lain.",
+          "guideDates": "Tarikh: DD-MMM-YYYY (contohnya 01-Jan-2027) atau YYYY-MM-DD. Senarai hitam menggunakan hari semasa Kuala Lumpur.",
+          "guideLimits": "Paling banyak 200 baris dan 50 pekerja bagi setiap fail, dan 20 pergerakan bagi setiap pekerja. Pergerakan setiap pekerja disimpan bersama atau tidak langsung; pekerja lain tetap diteruskan.",
+          "guideNoRow": "Pergerakan tanpa perubahan medan (contohnya Pengesahan tanpa perubahan gaji) ialah satu baris dengan Medan Sistem, Sebelum dan Selepas dibiarkan kosong.",
+          "referenceTypes": "Jenis peristiwa dan Medan Sistem yang boleh diubah oleh setiap satu",
+          "colEventType": "Jenis Peristiwa",
+          "colCode": "Kod",
+          "colFields": "Medan Sistem",
+          "noFields": "Tiada perubahan medan (biarkan Medan Sistem kosong)",
+          "referenceCompanies": "ID Syarikat yang perlu dimasukkan bagi setiap syarikat",
+          "colCompany": "Syarikat",
+          "referenceValues": "Nilai yang dibenarkan bagi setiap syarikat",
+          "colValue": "Nilai untuk dimasukkan dalam Selepas",
+          "colLabel": "Maksud",
+          "screenHint": "Satu templat untuk setiap jenis pergerakan dan syarikat. Masukkan satu baris bagi setiap medan yang berubah; baris dengan syarikat, pekerja, tarikh dan jenis peristiwa yang sama ialah satu pergerakan.",
+          "downloadTemplate": "Muat turun templat",
+          "history": "Sejarah import",
+          "wholeEmployee": "Pergerakan setiap pekerja diimport bersama atau tidak langsung. Pekerja lain tetap diteruskan.",
+          "included": "Sertakan pekerja",
+          "rows": "Baris",
+          "viewImport": "Lihat import ini dalam Sejarah Import",
+          "companyId": "ID Syarikat",
+          "templateFailed": "Templat tidak dapat dimuat turun. Cuba lagi, atau pastikan anda boleh menyelenggara sekurang-kurangnya satu syarikat dan jenis pergerakan adalah aktif.",
+          "col": {
+            "companyId": "ID Syarikat",
+            "employeeId": "ID Pekerja",
+            "employeeName": "Nama Pekerja",
+            "effectiveDate": "Tarikh Berkuat Kuasa",
+            "eventType": "Jenis Peristiwa",
+            "systemField": "Medan Sistem",
+            "before": "Sebelum",
+            "after": "Selepas"
+          }
         }
       },
       "headerAssistance": {
@@ -2650,6 +2699,29 @@
         "exclusionsRetained": "Medan dan rekod dikecualikan kekal dalam bukti asal ini; ia tidak digabungkan atau diimport secara senyap.",
         "limit": "Lapan semakan setempat telah disimpan. Selesaikan import ini atau pilih sumber baharu secara jelas untuk semakan lain; asal tidak dibuang secara senyap.",
         "humanSupplied": "Dibekalkan pengguna — tiada dalam sumber asal."
+      },
+      "importHistoryLink": "Buka Sejarah Import (fail asal, sebelum dan selepas, kembalikan)",
+      "choiceYes": "Ya",
+      "choiceNo": "Tidak",
+      "choiceHrdfDefault": "Lalai (ikut pendaftaran HRDF syarikat)",
+      "instructionColumnsHeading": "Lajur — kandungan setiap lajur, sama ada wajib, dan nilai yang diterima",
+      "instructionAccepted": "Nilai yang diterima: {values}",
+      "bankStatutoryUploadFailed": "Import tidak dapat disimpan. Tiada apa-apa yang diubah. Cuba lagi, atau buka Sejarah Import untuk menyemak.",
+      "viewImportHistoryEntry": "Lihat import ini dalam Sejarah Import",
+      "employeeUploadFailed": "Import tidak dapat disimpan. Tiada apa-apa yang diubah. Cuba lagi, atau buka Sejarah Import untuk menyemak.",
+      "instructionDuplicateEmail": "E-mel: apabila \"Benarkan E-mel Kerja atau E-mel Peribadi Berulang\" dimatikan (tetapan Am Kakitangan), e-mel yang sudah digunakan oleh pekerja lain ditolak, sama seperti NRIC berulang. Apabila dihidupkan, baris diimport dengan amaran.",
+      "instructionStatutorySettings": "Bank & Berkanun: setiap tetapan pada tab boleh diisi di sini, lajur yang sama seperti templat Bank & Berkanun — kategori KWSP dengan kadar atau amaun dan sebab, suis majikan menanggung, kategori PERKESO dan SIP, Tertakluk kepada SKBBK, HRDF (Ya, Tidak atau Lalai), keadaan cukai, status pemastautin cukai pendapatan, OKU, mod dan jadual pelepasan anak, dan Majikan menanggung cukai. Tetapan kotak tanda menerima Ya atau Tidak. Setiap baris disemak dengan peraturan yang sama seperti skrin pekerja sebelum apa-apa disimpan; baris yang mempunyai ralat tidak mencipta apa-apa.",
+      "instructionHireSettings": "Tetapan semasa pengambilan: Sama seperti alamat tetap (Ya menyalin alamat tetap ke alamat surat-menyurat; biarkan lajur surat-menyurat kosong), Kumpulan jadual (namanya), dan Polisi yang digunakan (polisi gaji aktif syarikat baris itu, mengikut nama atau kod, hanya jika Gaji dihidupkan).",
+      "instructionRevert": "Sejarah Import menyimpan fail ini, siapa yang mengimportnya dan ID Pekerja yang dicipta. Import yang berjaya boleh dibatalkan sekali, selagi tiada pekerjanya mempunyai apa-apa yang dilampirkan sejak itu (gaji, cuti, kehadiran, tuntutan, dokumen, pergerakan atau log masuk). Pekerja yang dibatalkan hilang daripada senarai, bilangan pekerja dan gaji tetapi kekal dalam jejak audit, dan ID Pekerja, e-mel serta nombor NRIC mereka dibebaskan supaya fail yang dibetulkan boleh diimport semula.",
+      "notImported": {
+        "heading": "Tiada dalam templat ini, dan sebabnya:",
+        "photos": "Foto — gambar dimuat naik pada Profil pekerja, bukan ditaip dalam sel.",
+        "documents": "Dokumen — fail dimuat naik pada tab Dokumen.",
+        "leaveBalances": "Baki cuti — kelayakan datang daripada polisi cuti semasa pengambilan; baki pembukaan menggunakan import baki Cuti.",
+        "delegations": "Delegasi kelulusan — ia menamakan pekerja lain dan tarikh, disemak oleh skrin delegasi.",
+        "payItems": "Item gaji berulang selain gaji pokok dan elaun bulanan — tambah pada tab Gaji atau dengan import item gaji.",
+        "openingTax": "Baki cukai pembukaan untuk pekerja yang menyertai pertengahan tahun (TP3) — dimasukkan pada tab Gaji.",
+        "holidayCalendar": "Kalendar cuti umum — tugasan bertarikh dengan sejarahnya sendiri; tetapkan pada tab Kehadiran selepas import."
       }
     },
     "wizard": {
@@ -2963,6 +3035,95 @@
       "gapNotAnErrorNote": "Kategori yang tiada bukan kesilapan pada rekod — ia maklumat yang mungkin tidak pernah diberikan kepada majikan.",
       "gapNoBulkNote": "Tiada pengisian pukal, dan memang tidak sepatutnya ada: kategori seorang anak ialah fakta tentang anak itu dan hanya boleh ditetapkan pada rekodnya sendiri.",
       "gapManualNote": "Pekerja dengan angka yang ditaip tidak disenaraikan di sini. Bagi mereka angka yang ditaip menentukan, jadi kategori tidak mengubah apa-apa."
+    },
+    "importHistory": {
+      "title": "Sejarah Import",
+      "description": "Setiap fail import kakitangan: siapa yang mengimport, bila, untuk syarikat mana, nilai setiap pekerja sebelum dan selepas, dan Kembalikan sekali sahaja.",
+      "back": "Import kakitangan",
+      "filterLabel": "Jenis import",
+      "filterAll": "Semua import",
+      "kinds": {
+        "cost_allocations": "Peruntukan Pusat Kos",
+        "bank_statutory": "Bank & Berkanun",
+        "employee_full": "Semua — pekerja baharu",
+        "movement": "Pergerakan"
+      },
+      "reference": "Rujukan",
+      "referenceLabel": "Rujukan {reference}",
+      "type": "Jenis",
+      "file": "Fail",
+      "time": "Tarikh dan masa",
+      "user": "Diimport oleh",
+      "unknownUser": "Pengguna tidak tersedia",
+      "companies": "Syarikat",
+      "records": "Rekod",
+      "status": "Status",
+      "counts": "{succeeded} berjaya · {failed} gagal",
+      "states": {
+        "validated": "Disemak, belum disimpan",
+        "invalid": "Tidak diimport (ralat)",
+        "succeeded": "Berjaya",
+        "partial": "Berjaya sebahagian",
+        "failed": "Gagal",
+        "reverted": "Dikembalikan"
+      },
+      "noAttempts": "Belum ada import direkodkan.",
+      "older": "Import lebih lama",
+      "downloadSource": "Muat turun fail asal",
+      "sourceRestricted": "Fail asal meliputi syarikat yang tidak boleh anda lihat, jadi ia tidak boleh dimuat turun di sini.",
+      "fingerprint": "Cap jari fail (SHA-256)",
+      "fileIssues": "Masalah pada fail",
+      "audit": "Jejak audit",
+      "events": {
+        "previewed": "Fail disemak",
+        "confirmed": "Diimport",
+        "failed": "Import gagal",
+        "reverted": "Dikembalikan",
+        "revert_failed": "Pengembalian ditolak atau gagal"
+      },
+      "eventReason": "Sebab: {reason}",
+      "items": "Perubahan mengikut pekerja",
+      "itemsHint": "Hanya pekerja syarikat yang boleh anda lihat dipaparkan.",
+      "noItems": "Import ini tidak menyimpan sebarang perubahan.",
+      "colRecord": "Pekerja dan tarikh",
+      "colCompany": "Syarikat",
+      "colResult": "Keputusan",
+      "colBefore": "Sebelum",
+      "colAfter": "Selepas",
+      "itemApplied": "Disimpan",
+      "itemFailed": "Tidak disimpan",
+      "allocation": {
+        "none": "Tiada peruntukan",
+        "clear": "Dikosongkan (tiada peruntukan)"
+      },
+      "revert": {
+        "title": "Kembalikan import ini",
+        "hint": "Memulihkan nilai setiap rekod sebelum import ini. Dibenarkan sekali sahaja, dan hanya jika tiada apa yang diubah oleh import ini telah diubah sejak itu. Import dan jejak audit dikekalkan.",
+        "review": "Semak pengembalian",
+        "working": "Sedang diproses…",
+        "restoreTitle": "Apa yang akan dipulihkan",
+        "blocked": "Import ini tidak boleh dikembalikan kerana rekod berikut berubah selepasnya:",
+        "reason": "Sebab pengembalian",
+        "reasonHint": "Wajib (3 hingga 1,000 aksara). Direkodkan dalam jejak audit.",
+        "acknowledge": "Saya faham ini memulihkan nilai terdahulu bagi setiap rekod yang disenaraikan dan hanya boleh dilakukan sekali.",
+        "confirm": "Kembalikan import",
+        "cancel": "Batal",
+        "failed": "Pengembalian tidak dapat diselesaikan. Tiada apa yang diubah.",
+        "noPermission": "Mengembalikan import ini memerlukan kebenaran penyelenggaraan Tenaga Kerja bagi setiap syarikat di dalamnya."
+      },
+      "bankStatutory": {
+        "blank": "(kosong)"
+      },
+      "movementItem": {
+        "movement": "Pergerakan",
+        "noMovement": "Tiada entri sejarah",
+        "scheduled": "Dijadualkan pada tarikh berkuat kuasa",
+        "rows": "Baris {rows}"
+      },
+      "employeeFull": {
+        "created": "Dicipta {code} · {name}",
+        "willVoid": "Pekerja ini akan dibatalkan: dikeluarkan daripada senarai, bilangan pekerja dan gaji, disimpan dalam jejak audit. ID Pekerja, e-mel dan NRIC dibebaskan."
+      }
     }
   },
   "leave": {
@@ -7281,7 +7442,7 @@
       "emptySheet": "Helaian pertama buku kerja itu kosong.",
       "pasteToggle": "Atau tampal baris sebagai ganti",
       "csvData": "Baris yang ditampal",
-      "csvPlaceholder": "No Pekerja,Tempoh Gaji,Kitaran Gaji,Kod DOE,Kod Syarikat,Amaun,Override?",
+      "csvPlaceholder": "No Pekerja,Tempoh Gaji,Kitaran Gaji,Kod Item Gaji,Kod Syarikat,Amaun,Override?",
       "validate": "Semak fail",
       "validating": "Menyemak…",
       "downloadTemplate": "Muat turun templat",
@@ -7293,7 +7454,7 @@
       "cycleReference": "Kitaran gaji",
       "noCycleCodes": "Syarikat ini belum mempunyai kitaran gaji yang aktif.",
       "cycleReferenceHint": "Lajur Kitaran Gaji boleh menamakan kod atau nama kitaran. Kod ditetapkan di bawah Admin → Kitaran Gaji.",
-      "codeReference": "Kod DOE yang diterima",
+      "codeReference": "Kod Item Gaji yang diterima",
       "codeReferenceHint": "Kod yang tidak dikenali sistem akan menghentikan barisnya dengan mesej yang jelas, bukan digugurkan secara senyap.",
       "colCode": "Kod",
       "colCodeLabel": "Maksud",
@@ -7330,7 +7491,7 @@
       "noMonths": "Belum ada apa-apa untuk diimport daripada fail ini.",
       "issuesTitle": "Keputusan semakan",
       "colRow": "No. Baris Excel",
-      "colDoeCode": "Kod DOE",
+      "colDoeCode": "Kod Item Gaji",
       "colErrorType": "Jenis Ralat",
       "colErrorDescription": "Keterangan Ralat",
       "colImportStatus": "Status Import",
@@ -10680,6 +10841,7 @@
         "onboardingRequisitions": "Kumpulan penyediaan, kelulusan dan penambahan sistem yang ditetapkan, pengguna modul serta HR syarikat boleh membaca permintaan. Tindakan mengikut hak pasukan, langkah atau item semasa. Sebutan hanya memberi konteks perbincangannya.",
         "onboardingSettings": "Pengguna modul Onboarding mengurus dasar, katalog, aliran kelulusan dan penghalaan. Pentadbir Utama tanpa akses modul hanya mengurus kumpulan dan kebenaran.",
         "onboardingV31": "Memerlukan kebenaran modul Onboarding yang jelas, berasingan daripada peranan HR. Medan identiti HR juga memerlukan akses HR syarikat.",
+        "performanceHome": "Everyone signed in reaches it while Performance is on. Each card shows only the viewer's own work and the results released to them; a leader seat adds aggregate counts for the people it leads, never one person's band.",
         "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked. The department view lists only the people whose current head-of-department assignment names you, read-only.",
         "payrollConfig": "Semua orang boleh membukanya; hanya pentadbir syarikat boleh mengubahnya.",
         "people": "Semua orang boleh membukanya; senarai dihadkan kepada orang yang anda dibenarkan lihat.",
@@ -10696,7 +10858,8 @@
         "letterGenerate": "Konteks syarikat semasa, kebenaran jana/baca Surat serta akses Tenaga Kerja dan kewangan semasa.",
         "letterApproval": "Konteks syarikat semasa, akses baca/lulus Surat dan peringkat kelulusan semasa yang ditugaskan.",
         "letterRegister": "Konteks syarikat semasa dan kebenaran Surat semasa untuk setiap tindakan.",
-        "letterSettings": "Konteks syarikat semasa. Kebenaran Tetapan mengurus aliran kerja; kebenaran Lulus mengurus imej tandatangan anda sendiri."
+        "letterSettings": "Konteks syarikat semasa. Kebenaran Tetapan mengurus aliran kerja; kebenaran Lulus mengurus imej tandatangan anda sendiri.",
+        "importHistory": "Menyenaraikan import apabila anda mempunyai kebenaran lihat Tenaga Kerja bagi sekurang-kurangnya satu syarikatnya, dan hanya memaparkan pekerja syarikat yang boleh anda lihat. Fail asal memerlukan kebenaran lihat bagi setiap syarikat di dalamnya; Kembalikan memerlukan kebenaran penyelenggaraan Tenaga Kerja bagi setiap syarikat di dalamnya."
       },
       "scopedTo": "Diskopkan kepada {company} dan anak syarikatnya",
       "screen": {
@@ -10708,7 +10871,8 @@
         "leaveEmployeeBalances": "Baki Pekerja",
         "leaveEmployeeRecords": "Rekod Cuti Pekerja",
         "duplicatePersonRecords": "Rekod pekerja berganda",
-        "childReliefReview": "Semakan pelepasan anak (PCB)"
+        "childReliefReview": "Semakan pelepasan anak (PCB)",
+        "importHistory": "Sejarah Import"
       },
       "screenColumn": "Skrin",
       "sectionFunctionAccess": "Akses fungsi",
@@ -21032,8 +21196,8 @@
     "promotion": "Confirm promotion nomination",
     "specialReward": "Confirm special reward nomination",
     "overrideReason": "Reason for a distribution exception",
-    "lockConfirm": "Lock this calibration cohort?",
-    "lockCalibration": "Lock calibration cohort",
+    "lockConfirm": "Lock this calibration?",
+    "lockCalibration": "Lock calibration",
     "enableHelp": "Set up KPI scoring, technical competencies, 360 feedback, calibration and development planning. Review the policy before opening the cycle.",
     "enable": "Set up performance and talent review",
     "rewardImportHelp": "Import finalized results for this reward year. The immutable assessment reference is retained and fact verification is reset. Pay recommendations and approvals remain with Rewards. An improvement category does not confirm a PIP case.",
@@ -22284,7 +22448,7 @@
       "referenceTitle": "Reference guideline",
       "showDetails": "Show details",
       "hideDetails": "Hide details",
-      "onTarget": "On target in every category",
+      "onTarget": "On target across every category",
       "onTargetShort": "On target",
       "deltaTitle": "{actual} now, {target} at the reference share",
       "noReference": "This scope has no single performance reference, so no reference shares are shown.",
@@ -22305,7 +22469,7 @@
       "movedDown": "Moved down from {category}",
       "moveTo": "Move {name} to another box",
       "moveMenu": "Move to…",
-      "legendUp": "moved up a box in this calibration",
+      "legendUp": "moved up a box this calibration",
       "legendDown": "moved down a box",
       "potentialAxis": "Potential",
       "performanceAxis": "Performance →",
@@ -22314,7 +22478,20 @@
       "footerLocked": "Calibration locked for {scope}: performance and potential are final.",
       "pickUnitToLock": "Choose a business unit above to lock it.",
       "categoryHelp": "Everyone here whose performance and potential place them in {category}.",
-      "categoryEmpty": "No one here is in {category} right now."
+      "categoryEmpty": "No one here is in {category} right now.",
+      "breadcrumb": "Talent Box ▸ {tier, select, bu {Business unit} bg {Business group} other {Calibration group}}",
+      "rowHigh": "3 – High",
+      "rowMid": "2 – Medium",
+      "rowLow": "1 – Low",
+      "legendSame": "adjusted, same box",
+      "adjustedSame": "Adjusted, same box",
+      "tabs": {
+        "performance": "Performance",
+        "potential": "Potential"
+      },
+      "sessions": "Talent Box sessions",
+      "axisListHelp": "Read only: each person's current {axis, select, performance {performance} other {potential}} band in this scope. Moves and the lock are made on the Talent box.",
+      "axisListEmpty": "No one is in this scope yet."
     },
     "department": {
       "link": "My department",
@@ -26703,11 +26880,11 @@
     "superseded": "Diganti",
     "unset": "Tiada peruntukan direkodkan.",
     "importTitle": "Import Peruntukan Pusat Kos",
-    "importHelp": "Kemas kini pekerja sedia ada dengan satu baris berulang bagi setiap pusat kos. Setiap syarikat, ID Pekerja dan tarikh membentuk satu set penggantian lengkap.",
+    "importHelp": "Kemas kini pekerja sedia ada dengan satu baris bagi setiap pusat kos. Setiap Kod Syarikat, ID Pekerja dan Tarikh Berkuat Kuasa membentuk satu set gantian yang lengkap. Satu fail boleh meliputi beberapa syarikat.",
     "referenceCompany": "Syarikat untuk rujukan kod",
     "downloadCsv": "Muat turun CSV peruntukan",
     "downloadWorkbook": "Muat turun buku kerja dan kod",
-    "upload": "Muat naik CSV atau buku kerja",
+    "upload": "Muat naik templat yang telah diisi (.xlsx atau .csv)",
     "csv": "CSV peruntukan",
     "employeeId": "ID Pekerja",
     "sourceRows": "Baris sumber",
@@ -26715,7 +26892,7 @@
     "ready": "Sedia: ganti set lengkap",
     "saveImport": "Simpan {count} set sah",
     "companion": "Lembaran peruntukan tambahan: {count} set pekerja/tarikh. Disahkan bersama buku kerja pekerja baharu.",
-    "instructions": "Lembaran baris berulang pilihan. Gunakan company_id daripada Allocation Codes dan ID Pekerja tepat daripada lembaran pekerja. Masukkan tarikh YYYY-MM-DD dan operasi replace pada setiap baris. Peratus mesti positif, sehingga 100, maksimum dua tempat perpuluhan; jumlah boleh kurang daripada 100. Gunakan satu baris clear dengan kod dan peratus kosong untuk mengosongkan seluruh set secara jelas. Lembaran tiada atau kosong tidak mengubah data. Hanya cost_center_code diterima; huraian adalah rujukan. Pekerja sedia ada menggunakan import peruntukan khusus. Nilai penggajian tidak berubah.",
+    "instructions": "Cara mengisi helaian Cost Center Allocations. Company Code: Kod Syarikat yang dipaparkan dalam Pengurusan Kakitangan (jika syarikat belum mempunyai kod, nombor pendaftarannya juga boleh digunakan); helaian Allocation Reference menyenaraikan setiap syarikat yang boleh anda import. Employee ID: ID pekerja dalam syarikat itu pada tarikh berkuat kuasa. Effective Date: YYYY-MM-DD; pembahagian terpakai mulai tarikh ini dan sejarah terdahulu dikekalkan. Operation: Replace pada setiap baris set, atau Clear pada satu baris dengan Cost Center Code dan Percentage kosong untuk membuang seluruh set pada tarikh itu. Cost Center Code: kod yang disenaraikan bagi syarikat itu dalam helaian Allocation Reference. Percentage: lebih daripada 0 dan paling banyak 100, dengan sehingga dua tempat perpuluhan; jumlah peratusan seorang pekerja pada satu tarikh tidak boleh melebihi 100 dan boleh kurang. Gunakan satu baris bagi setiap pusat kos. Baris yang mempunyai ralat tidak diimport dan setiap ralat menyatakan baris dan sebabnya. Tiada nilai gaji diubah.",
     "replace": "Ganti set",
     "manual": "Entri manual",
     "imported": "Diimport",
@@ -26733,7 +26910,15 @@
       "transfer": "Simpan set kosong pada tarikh pertukaran dan kosongkan set terjadual kemudian sebelum berpindah. Kemudian simpan peruntukan syarikat destinasi."
     },
     "totalField": "Jumlah peruntukan",
-    "remainderField": "Baki belum diperuntukkan"
+    "remainderField": "Baki belum diperuntukkan",
+    "downloadTemplate": "Muat turun templat",
+    "historyLink": "Sejarah Import",
+    "companyCode": "Kod Syarikat",
+    "fileTooLarge": "Pilih fail tidak melebihi 10 MB.",
+    "uploadFailed": "Fail tidak dapat disemak. Cuba lagi.",
+    "saveFailed": "Import tidak dapat disimpan. Tiada perubahan bagi pekerja yang tidak disenaraikan sebagai disimpan.",
+    "savedSummary": "{succeeded} disimpan · {failed} tidak disimpan",
+    "viewHistoryEntry": "Buka import ini dalam Sejarah Import"
   },
   "employeeHome": {
     "title": "Laman Utama",
@@ -28150,6 +28335,298 @@
       "notSet": "Belum ditetapkan"
     }
   },
+  "performanceArea": {
+    "tabs": {
+      "home": "Dashboard",
+      "pm": {
+        "setting": "Set my KPIs",
+        "my": "My PM",
+        "approve": "Approve KPIs",
+        "team": "Team PM"
+      },
+      "f360": {
+        "assessments": "My Assessments",
+        "feedback": "Feedback"
+      },
+      "competency": {
+        "my": "My assessment",
+        "team": "Team view"
+      },
+      "idp": {
+        "my": "My plan",
+        "career": "Career profile",
+        "team": "My team"
+      },
+      "cal": {
+        "performance": "Performance",
+        "potential": "Potential",
+        "talentBox": "Talent box"
+      }
+    },
+    "admin": {
+      "groups": {
+        "modules": "Modules",
+        "org": "Organisation"
+      },
+      "sections": {
+        "home": "Home",
+        "cycle": "Cycle",
+        "pm": "Performance",
+        "f360": "360 Feedback",
+        "competency": "Competency",
+        "calibration": "Calibration & Talent",
+        "idp": "Career Plan",
+        "leaders": "Leaders and admins",
+        "email": "Email",
+        "reports": "Reports"
+      },
+      "tabs": {
+        "calendar": "Calendar",
+        "participants": "Participants",
+        "release": "Release results",
+        "cycles": "All cycles",
+        "overview": "Overview",
+        "run": "Run",
+        "settings": "Settings",
+        "leaders": "Leaders",
+        "schedule": "Schedule",
+        "reports": "Reports"
+      },
+      "pages": {
+        "list": "List",
+        "progress": "Progress",
+        "importKpiTargets": "Import KPI targets",
+        "fillBuKpi": "Fill BU KPI",
+        "scoring": "Scoring",
+        "people": "People",
+        "raterProgress": "Rater progress",
+        "panels": "Panels",
+        "importPanels": "Import panels",
+        "clearPanels": "Clear panels",
+        "framework": "Framework",
+        "assignCompetencies": "Assign competencies",
+        "importJobCodes": "Import job codes",
+        "competencyLibrary": "Competency library",
+        "catalogue": "Catalogue",
+        "lockStatus": "Lock status",
+        "finalBands": "Final bands",
+        "patAchievement": "PAT achievement",
+        "calibrationGroups": "Calibration groups",
+        "careerRoutes": "Career routes",
+        "everyoneReminder": "Everyone's reminder",
+        "leaderProgress": "Leader progress",
+        "resultsAnalysis": "Results analysis",
+        "ratingsRecord": "Ratings record"
+      },
+      "state": {
+        "on": "On",
+        "off": "Off"
+      },
+      "cycle": {
+        "thisCycle": "This cycle",
+        "editCycle": "Edit cycle",
+        "modules": "Modules on this cycle"
+      },
+      "participants": {
+        "unitsOut": "Units and departments not taking part"
+      }
+    },
+    "home": {
+      "title": "Your dashboard",
+      "rail": {
+        "progress": "{done} of {total} done",
+        "nothing": "Nothing for you to do in it",
+        "past": "{cycle}: your journey through it",
+        "pastState": {
+          "complete": "Complete · {done} of {total} steps",
+          "closed": "Closed · {done} of {total} steps"
+        },
+        "states": {
+          "turn": "Your turn",
+          "open": "To do",
+          "waiting": "Waiting",
+          "locked": "Locked",
+          "later": "Not yet",
+          "closed": "Closed",
+          "done": "Done",
+          "progress": "In progress"
+        }
+      },
+      "next": {
+        "title": "Your next step",
+        "here": "You are here",
+        "none": "Nothing needs you right now",
+        "headOne": "One thing needs you",
+        "headMany": "{count} things need you",
+        "headCaughtUp": "You're all caught up",
+        "waiting": "Waiting · {who}"
+      },
+      "bu": {
+        "title": "Where your BU is",
+        "columns": {
+          "department": "Department",
+          "performance": "Performance",
+          "potential": "Potential"
+        },
+        "in": "✓ in {date}",
+        "toSubmit": "to submit",
+        "midYearDepartmentReviews": "Department reviews",
+        "midYearNoHodReview": "No HOD review"
+      },
+      "axis": {
+        "locked": "Locked {date}",
+        "ready": "Ready to lock",
+        "notReady": "Not ready to lock"
+      },
+      "bg": {
+        "title": "Where the group is",
+        "columns": {
+          "businessUnit": "Business unit",
+          "buCalibration": "BU calibration",
+          "batch": "Batch",
+          "ratings": "ratings",
+          "departmentReviews": "department reviews",
+          "talentBox": "Talent Box",
+          "reviewsIn": "Reviews in"
+        },
+        "calibrating": "Calibrating"
+      },
+      "group": {
+        "title": "Where your group is"
+      },
+      "notIn": {
+        "title": "Not in this cycle's review",
+        "team": "Your team this cycle",
+        "department": "Your department's review",
+        "yours": "Still yours this cycle",
+        "counts": {
+          "waitingOnYou": "waiting on you",
+          "stillWriting": "still writing theirs",
+          "done": "done"
+        }
+      },
+      "stand": {
+        "title": "Where you stand",
+        "details": "Details →",
+        "rows": {
+          "kpis": "Your KPIs",
+          "performance": "Performance",
+          "competency": "Competency",
+          "f360": "360 feedback",
+          "careerTarget": "Career target"
+        },
+        "values": {
+          "awaitingManager": "Awaiting your manager",
+          "withManager": "With your manager",
+          "notSubmitted": "Not submitted yet",
+          "demonstrated": "{done} of {total} demonstrated",
+          "reportReleased": "Report released",
+          "notReleased": "Not released yet",
+          "notSet": "Not set yet"
+        }
+      },
+      "await": {
+        "reviewNothing": "Your review: nothing to do yet",
+        "nothing": "Nothing to do yet",
+        "notOpened": "Your {cycle} hasn't opened yet",
+        "nothingIn": "Nothing for you in the {cycle} yet",
+        "notOpen": "Not open yet"
+      },
+      "led": {
+        "title": "What you led",
+        "people": "See your people ›"
+      },
+      "box": {
+        "title": "The Talent Box · {unit}",
+        "unitsOne": "Your business unit",
+        "unitsMany": "Your business units",
+        "axes": "Final performance → · potential ↑"
+      },
+      "results": {
+        "title": "Your {cycle} results",
+        "tiles": {
+          "performance": "Final performance",
+          "potential": "Final potential",
+          "talent": "Talent status"
+        },
+        "aiRead": "AI read of this cycle",
+        "record": "Open this cycle's record ›",
+        "report": "Your 360 report ›",
+        "empty": "Your record starts here"
+      },
+      "plan": {
+        "title": "This year: your {year} plan",
+        "empty": "Your Career Plan",
+        "checkIn": "Check in on your plan",
+        "open": "Open your Career Plan"
+      },
+      "history": {
+        "titleMine": "Your history",
+        "titleLed": "Cycles you led",
+        "full": "Full record →"
+      },
+      "tools": {
+        "title": "Your tools",
+        "careerPlan": "Career Plan",
+        "report360": "My 360 report",
+        "checkIns": "Sesi semakan"
+      }
+    },
+    "homeCard": {
+      "title": "Your review"
+    },
+    "homeHelp": {
+      "homeCard": {
+        "line": "Your cycle, your next step and where you stand, on one page."
+      },
+      "next": {
+        "nothingLine": "If a colleague asks for your 360 feedback, or your team needs something from you, it will show here."
+      },
+      "notIn": {
+        "why": "Your own review is not part of {cycle}: {reason}.",
+        "reasons": {
+          "unitOut": "your unit is not taking part in this cycle",
+          "joinedAfterOpen": "you joined after the cycle opened",
+          "confirmedAfterOpen": "your confirmation came after the cycle opened",
+          "probation": "you are still on probation",
+          "notPart": "you are not on its list of participants"
+        },
+        "leads": "Your team's review still runs, and you lead it.",
+        "nothingOwn": "You have no KPI check-in, competency or result this time.",
+        "foot": "Your own review starts with your first full cycle. If something here looks wrong, contact HR."
+      },
+      "people": "{count, plural, one {# person} other {# people}}",
+      "stand": {
+        "lineManagerApproved": "Approved by your line manager. Calibration can still change it."
+      },
+      "leader": {
+        "midYear": "Mid-Year",
+        "buMeta": "{people, plural, one {# person} other {# people}} · {departments, plural, one {# department} other {# departments}}",
+        "units": "Your units",
+        "inOf": "{in} of {of} in",
+        "reviewsLine": "{in} of {of} department reviews in",
+        "scrolls": "{label}, scrolls",
+        "bgMeta": "{ready} of {total} ready · {locked} locked",
+        "bgMetaMidYear": "{ready} of {total} with every review in"
+      },
+      "led": {
+        "people": "{count, plural, one {# person led} other {# people led}}",
+        "line": "{released} released · {waiting} still waiting"
+      },
+      "results": {
+        "emptyLine": "Your released results, your 360 report and your Career Plan will show here after your first cycle."
+      },
+      "plan": {
+        "goals": "{count, plural, one {# goal} other {# goals}}"
+      },
+      "history": {
+        "emptyLine": "Your past cycles show here once you have one, with your final results once they are released."
+      },
+      "tools": {
+        "emptyLine": "Doors to your Performance & Talent pages show here as work reaches you."
+      }
+    }
+  },
   "rewardsConfig": {
     "filters": {
       "label": "Tapis semakan",
@@ -28255,6 +28732,83 @@
     "noProposals": "Tiada apa untuk disalin bagi kitaran ini.",
     "skippedTitle": "Dilangkau: log masuk tidak lagi aktif",
     "unmatched": "{count, plural, other {# semakan Draf}} dalam kitaran sasaran tiada semakan sepadan untuk disalin."
+  },
+  "performanceAdmin": {
+    "title": "Performance admin",
+    "nav": {
+      "sections": "Admin",
+      "pages": "Pages"
+    },
+    "groups": {
+      "modules": "Modules"
+    },
+    "sections": {
+      "cycle": "Cycle",
+      "performance": "Performance",
+      "feedback": "360 Feedback",
+      "competency": "Competency",
+      "calibration": "Calibration & Talent",
+      "career": "Career Plan",
+      "email": "Email",
+      "reports": "Reports"
+    },
+    "tabs": {
+      "calendar": "Calendar",
+      "participants": "Participants",
+      "release": "Release results",
+      "cycles": "All cycles",
+      "overview": "Overview",
+      "run": "Run",
+      "settings": "Settings",
+      "schedule": "Schedule",
+      "reports": "Reports"
+    },
+    "pages": {
+      "calendar": "Calendar",
+      "participants": "Participants",
+      "release": "Release results",
+      "cycles": "All cycles",
+      "overview": "Overview",
+      "progress": "Progress",
+      "importKpiTargets": "Import KPI targets",
+      "fillBuKpi": "Fill BU KPI",
+      "settings": "Settings",
+      "people": "People",
+      "raterProgress": "Rater progress",
+      "panels": "Panels",
+      "framework": "Framework",
+      "assignCompetencies": "Assign competencies",
+      "importJobCodes": "Import job codes",
+      "competencyLibrary": "Competency library",
+      "lockStatus": "Lock status",
+      "patAchievement": "PAT achievement",
+      "calibrationGroups": "Calibration groups",
+      "careerRoutes": "Career routes",
+      "everyonesReminder": "Everyone's reminder",
+      "ratingsRecord": "Ratings record",
+      "builtByAgent": "Built by the agent"
+    },
+    "state": {
+      "on": "On for {cycle}",
+      "off": "Off for {cycle}"
+    },
+    "empty": "Nothing on this page applies to the cycle at its current stage.",
+    "policyPointer": "This module's settings are part of the cycle policy, which stays whole on",
+    "overview": {
+      "title": "Overview",
+      "stages": "Stages",
+      "people": "{count, plural, one {# person} other {# people}}",
+      "opens": "Opens {date}",
+      "closes": "Closes {date}",
+      "closed": "Closed {date}",
+      "noDates": "No dates set",
+      "off": "This module is off for {cycle}.",
+      "late": "Late",
+      "notYet": "No one is late until the module's window closes.",
+      "noneLate": "No one is late.",
+      "submitted": "{done} of {assigned} submitted",
+      "more": "{count, plural, one {# more} other {# more}} in Run"
+    }
   },
   "ownLeaveChange": {
     "title": "Ubah permohonan cuti yang belum selesai",

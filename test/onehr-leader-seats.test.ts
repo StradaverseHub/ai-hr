@@ -23,7 +23,10 @@ import { addDaysIso } from '../packs/performance/onehr/leader-seat-model';
 import { closeAll, createAppUser, entitledCtx, eventTypesFor, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
+// Only the year is read at load (a run across New Year is out of scope); every HR day is read where it is used.
 const year = Number(todayInKualaLumpur().slice(0, 4));
+/** A date the service stamped between two reads of the HR day: one of them, so a run across midnight still passes. */
+const hrDayBetween = (before: string, after: string) => expect.stringMatching(new RegExp(`^(${before}|${after})$`));
 type Hired = { employmentId: string; personId: string };
 type Kind = 'hod' | 'bu_ceo' | 'bg_ceo' | 'group_chief';
 const tierOf = { hod: 'hod', bu_ceo: 'bu', bg_ceo: 'bg', group_chief: 'group' } as const;
@@ -117,7 +120,8 @@ describe('seat access follows the live seat', () => {
     expect(await listed(U.buCeo)).toEqual([bu]);
     const bgSeat = await perf.appointLeaderSeat(a, { seatType: 'bg_ceo', companyId: holding, holderEmploymentId: P.bgCeo.employmentId });
     expect(await access(U.bgCeo, bg)).toBe(true);
-    await perf.endLeaderSeat(a, bgSeat.id, { validTo: today });
+    // No validTo: the seat ends on the service's own HR day, so a run across midnight cannot ask for yesterday.
+    await perf.endLeaderSeat(a, bgSeat.id);
     expect(await access(U.bgCeo, bg)).toBe(false);
     expect(await listed(U.bgCeo)).toEqual([]);
     expect(await perf.hasCalibrationAssignment(U.bgCeo)).toBe(false);
@@ -126,6 +130,7 @@ describe('seat access follows the live seat', () => {
   it('a successor gains access with no rewrite of the scope, sees the saved calls and can write; the predecessor cannot', async () => {
     const bu = await anchored(cycleA, 'bu_ceo', { companyId: b.companyId }, 'Acme unit', [P.s1]);
     const rid = await reviewOf(cycleA, P.s1);
+    const dayBefore = todayInKualaLumpur();
     await seatBu(P.buCeo);
     const first = await perf.getOnehrCalibration(U.buCeo, bu);
     expect(first.isReviewer).toBe(true);
@@ -144,8 +149,8 @@ describe('seat access follows the live seat', () => {
     expect(seen.rows.map((r) => [r.entry.reviewId, r.entry.performance, r.entry.potential])).toEqual([[rid, 'AE', 'High']]);
     await perf.saveOnehrCalibration(U.successor, bu, seen.session.revision, { reviewId: rid, axis: 'both', performance: 'ME', potential: 'Mid', performanceNote: 'Successor review.', potentialNote: 'Successor review.' });
     const seats = (await perf.listLeaderSeats(a, { seatType: 'bu_ceo' })).map((s) => [s.holderEmploymentId, s.validFrom, s.validTo, s.endReason]);
-    const today = todayInKualaLumpur();
-    expect(seats.sort((x, y) => String(x[0]).localeCompare(String(y[0])))).toEqual([[P.buCeo.employmentId, today, today, 'replaced'], [P.successor.employmentId, today, null, null]].sort((x, y) => String(x[0]).localeCompare(String(y[0]))));
+    const dayAfter = todayInKualaLumpur(), day = hrDayBetween(dayBefore, dayAfter);
+    expect(seats.sort((x, y) => String(x[0]).localeCompare(String(y[0])))).toEqual([[P.buCeo.employmentId, day, day, 'replaced'], [P.successor.employmentId, day, null, null]].sort((x, y) => String(x[0]).localeCompare(String(y[0]))));
   });
 
   it('a seat in one company opens nothing in another company or another business group', async () => {
@@ -192,11 +197,12 @@ describe('seat access follows the live seat', () => {
 
   it('keeps an ended seat readable as history while the former holder loses the scope', async () => {
     const bu = await anchored(cycleA, 'bu_ceo', { companyId: b.companyId }, 'Acme unit', [P.s1]);
+    const dayBefore = todayInKualaLumpur();
     const seat = await seatBu(P.buCeo);
     await perf.endLeaderSeat(a, seat.id, { reason: 'Left the unit' });
-    const today = todayInKualaLumpur();
+    const dayAfter = todayInKualaLumpur(), day = hrDayBetween(dayBefore, dayAfter);
     const [history] = await perf.listLeaderSeats(a, { seatType: 'bu_ceo' });
-    expect(history).toMatchObject({ id: seat.id, holderEmploymentId: P.buCeo.employmentId, holderName: 'Person buCeo', companyName: 'Acme Sdn Bhd', validFrom: today, validTo: today, endReason: 'Left the unit', live: false, source: 'admin' });
+    expect(history).toMatchObject({ id: seat.id, holderEmploymentId: P.buCeo.employmentId, holderName: 'Person buCeo', companyName: 'Acme Sdn Bhd', validFrom: day, validTo: day, endReason: 'Left the unit', live: false, source: 'admin' });
     expect(history.endedAt).toBeInstanceOf(Date);
     expect(await perf.listLeaderSeats(a, { seatType: 'bu_ceo', liveOnly: true })).toEqual([]);
     expect(await eventTypesFor(b.tenantId, seat.id)).toEqual(['performance.leader-seat.appointed', 'performance.leader-seat.ended']);

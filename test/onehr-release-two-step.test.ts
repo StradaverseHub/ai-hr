@@ -296,7 +296,8 @@ describe('who reads what', () => {
   it('an ended seat loses the leader read and the release reach at once; the successor gets both with no rewrite', async () => {
     const review = await calibrated(cycleId, S[0]);
     const [seat] = await perf.listLeaderSeats(a, { seatType: 'bu_ceo', liveOnly: true });
-    await perf.endLeaderSeat(a, seat.id, { validTo: todayInKualaLumpur() });
+    // No validTo: the seat ends on the service's own HR day, so a run across midnight cannot ask for yesterday.
+    await perf.endLeaderSeat(a, seat.id);
     expect(await roleOf(U.buCeo, review)).toBeNull();
     expect(await chainOf(U.buCeo, review)).toBeNull();
     const reach = async () => withTenant(a, (tx) => tx.execute<{ leader_role: string; employment_id: string }>(sql`select leader_role, employment_id from app.onehr_release_leaders(array[${review}::uuid]) order by leader_role, employment_id`));

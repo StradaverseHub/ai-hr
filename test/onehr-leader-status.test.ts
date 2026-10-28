@@ -29,8 +29,10 @@ import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModu
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { bringBack, exclude, moveTo } from './performance-unit-exclusion-fixture';
 
-const today = todayInKualaLumpur();
-const year = Number(today.slice(0, 4));
+// Only the year is read at load (a run across New Year is out of scope); every HR day is read where it is used.
+const year = Number(todayInKualaLumpur().slice(0, 4));
+/** A date the service stamped between two reads of the HR day: one of them, so a run across midnight still passes. */
+const hrDayBetween = (before: string, after: string) => expect.stringMatching(new RegExp(`^(${before}|${after})$`));
 const BAND = /\b(UA|BE|ME|AE|OU|Low|Mid|High|Super Star|Star|Solid Core|PIP)\b/;
 /** Every key the projection may carry, at any depth. Anything else is a leak by construction. */
 const ALLOWED_KEYS = new Set([
@@ -162,17 +164,21 @@ describe('while the cycle runs', () => {
       axes: [{ axis: 'performance', ...waiting(2) }, { axis: 'potential', ...waiting(2) }],
       depts: [{ name: 'Finance', performanceInOn: null, potentialInOn: null }, { name: 'Operations', performanceInOn: null, potentialInOn: null }],
     }] });
+    let before = todayInKualaLumpur();
     await hodReview(cycleId, P.hodA, { performance: true, potential: true });
+    let after = todayInKualaLumpur();
     let unit = (await status(U.buA, cycleId)) as Extract<perf.LeaderStatus, { seat: 'bu'; mode: 'running' }>;
     expect(unit.units[0].axes).toEqual([{ axis: 'performance', ...waiting(2, 1) }, { axis: 'potential', ...waiting(2, 1) }]);
-    expect(unit.units[0].depts).toEqual([{ name: 'Operations', performanceInOn: null, potentialInOn: null }, { name: 'Finance', performanceInOn: today, potentialInOn: today }]);
+    expect(unit.units[0].depts).toEqual([{ name: 'Operations', performanceInOn: null, potentialInOn: null }, { name: 'Finance', performanceInOn: hrDayBetween(before, after), potentialInOn: hrDayBetween(before, after) }]);
     await hodReview(cycleId, P.hodA2, { performance: true });
     unit = (await status(U.buA, cycleId)) as typeof unit;
     expect(unit.units[0].axes).toEqual([{ axis: 'performance', state: 'ready', lockedOn: null, in: 2, of: 2 }, { axis: 'potential', ...waiting(2, 1) }]);
     expect(unit.units[0].depts.map((d) => d.name)).toEqual(['Operations', 'Finance']);
+    before = todayInKualaLumpur();
     await scope(cycleId, { tier: 'bu', companyId: b.companyId, performanceLockedAt: new Date() });
+    after = todayInKualaLumpur();
     unit = (await status(U.buA, cycleId)) as typeof unit;
-    expect(unit.units[0]).toMatchObject({ state: 'part', axes: [{ axis: 'performance', state: 'locked', lockedOn: today, in: 2, of: 2 }, { axis: 'potential', state: 'waiting', in: 1, of: 2 }] });
+    expect(unit.units[0]).toMatchObject({ state: 'part', axes: [{ axis: 'performance', state: 'locked', lockedOn: hrDayBetween(before, after), in: 2, of: 2 }, { axis: 'potential', state: 'waiting', in: 1, of: 2 }] });
     // Cross-company: the other unit's CEO sees their own unit, and neither sees the other's labels.
     const other = await status(U.buB, cycleId);
     expect(other).toEqual({ seat: 'bu', mode: 'running', cycleId, midYear: false, units: [{
@@ -188,12 +194,14 @@ describe('while the cycle runs', () => {
       { companyId: b.companyId, label: 'Acme Sdn Bhd', people: 5, state: 'calibrating', lockedOn: null, in: 0, of: 2 },
       { companyId: beta, label: 'Beta Sdn Bhd', people: 3, state: 'calibrating', lockedOn: null, in: 0, of: 1 },
     ] });
+    const before = todayInKualaLumpur();
     await scope(cycleId, { tier: 'bu', companyId: beta, performanceLockedAt: new Date(), potentialLockedAt: new Date() });
     const acme = (['hodA', 'hodA2', 'A1', 'A2', 'A3'] as const).map((n) => ({ reviewId: R[n], employmentId: P[n].employmentId, lockedAt: new Date() }));
     await scope(cycleId, { tier: 'bg', companyId: holding }, acme);
+    const after = todayInKualaLumpur();
     expect(await status(U.bgCeo, cycleId)).toEqual({ seat: 'bg', mode: 'running', cycleId, midYear: false, ready: 1, locked: 1, total: 2, rows: [
-      { companyId: beta, label: 'Beta Sdn Bhd', people: 3, state: 'ready', lockedOn: today, in: 0, of: 1 },
-      { companyId: b.companyId, label: 'Acme Sdn Bhd', people: 5, state: 'locked', lockedOn: today, in: 0, of: 2 },
+      { companyId: beta, label: 'Beta Sdn Bhd', people: 3, state: 'ready', lockedOn: hrDayBetween(before, after), in: 0, of: 1 },
+      { companyId: b.companyId, label: 'Acme Sdn Bhd', people: 5, state: 'locked', lockedOn: hrDayBetween(before, after), in: 0, of: 2 },
     ] });
   }, 120_000);
 
@@ -203,10 +211,12 @@ describe('while the cycle runs', () => {
       { label: 'North', people: 1, state: 'calibrating', lockedOn: null, in: 0, of: 1 },
     ] });
     await owner.db.update(schema.onehrReview).set({ managerPerformance: 'ME' }).where(eq(schema.onehrReview.reviewId, R.B1));
+    const before = todayInKualaLumpur();
     await scope(cycleId, { tier: 'group' }, (['A1', 'A2'] as const).map((n) => ({ reviewId: R[n], employmentId: P[n].employmentId, performanceLockedAt: new Date() })));
+    const after = todayInKualaLumpur();
     expect(await status(U.chief, cycleId)).toEqual({ seat: 'group', mode: 'running', cycleId, midYear: false, ready: 1, locked: 1, total: 2, rows: [
       { label: 'North', people: 1, state: 'ready', lockedOn: null, in: 1, of: 1 },
-      { label: 'Finance', people: 2, state: 'locked', lockedOn: today, in: 0, of: 2 },
+      { label: 'Finance', people: 2, state: 'locked', lockedOn: hrDayBetween(before, after), in: 0, of: 2 },
     ] });
   }, 120_000);
 
@@ -240,7 +250,8 @@ describe('while the cycle runs', () => {
 
   it('an ended seat shows nothing at once; the successor sees the unit with no rewrite, never counting themself', async () => {
     const seat = (await perf.listLeaderSeats(a, { seatType: 'bu_ceo', liveOnly: true })).find((s) => s.companyId === b.companyId)!;
-    await perf.endLeaderSeat(a, seat.id, { validTo: today });
+    // No validTo: the seat ends on the service's own HR day, so a run across midnight cannot ask for yesterday.
+    await perf.endLeaderSeat(a, seat.id);
     expect(await status(U.buA, cycleId)).toBeNull();
     await seatOn('bu_ceo', b.companyId, P.A3);
     expect(await status(await login(P.A3), cycleId)).toMatchObject({ seat: 'bu', units: [{ companyId: b.companyId, people: 4, departments: 1, depts: [{ name: 'Finance' }] }] });
@@ -402,7 +413,7 @@ describe('between cycles', () => {
     // Non-vacuity on the one ungated path the source has: a BG CEO who takes the unit's BU CEO seat reads their own
     // business group at once (dash_led passes no viewer), so the same person's bands are counted.
     const acmeSeat = (await perf.listLeaderSeats(a, { seatType: 'bu_ceo', liveOnly: true })).find((x) => x.companyId === b.companyId)!;
-    await perf.endLeaderSeat(a, acmeSeat.id, { validTo: today });
+    await perf.endLeaderSeat(a, acmeSeat.id);
     await seatOn('bu_ceo', b.companyId, P.bgCeo);
     expect(await status(U.bgCeo, cycleId)).toEqual({ seat: 'bu', mode: 'record', cycleId, midYear: false, gated: false, people: 5,
       performance: { released: 3, waiting: 0, bands: pm(0, 0, 1, 1, 1) },
@@ -418,7 +429,7 @@ describe('between cycles', () => {
       performance: { released: 0, waiting: 0, bands: pm(0, 0, 0, 0, 0) }, potential: { released: 0, waiting: 0, bands: pot(0, 0, 0) },
       talent: { released: 0, waiting: 0, bands: [] }, departmentReviews: { in: 0, of: 0 } });
     const gammaSeat = (await perf.listLeaderSeats(a, { seatType: 'bu_ceo', liveOnly: true })).find((x) => x.companyId === gamma)!;
-    await perf.endLeaderSeat(a, gammaSeat.id, { validTo: today });
+    await perf.endLeaderSeat(a, gammaSeat.id);
     expect(await status(U.bgCeo, cycleId)).toEqual({ seat: 'bg', mode: 'record', cycleId, midYear: false, gated: false, people: 8 });
     expect(await raw(U.bgCeo, cycleId)).toEqual({ seat: 'bg', mode: 'record', cycleId, midYear: false, gated: false, people: 8 });
   }, 120_000);

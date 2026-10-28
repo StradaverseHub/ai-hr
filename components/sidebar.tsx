@@ -167,18 +167,14 @@ const LIFECYCLE_CONFIG_ROW: ChildItem = LIFECYCLE_LINKS.find((l) => l.group === 
 const ONBOARDING_NODE:CollapsibleGroupItem={...modulePackById('lifecycle')!.navNodes![0]!,collapsible:true};
 const ONBOARDING_REQUISITIONS_NODE:CollapsibleGroupItem={collapsible:true,labelKey:'onboardingRequisitions',icon:ONBOARDING_NODE.icon,defaultHref:'/lifecycle/requisitions/onboarding',children:[{...LIFECYCLE_LINKS.find(l=>l.href==='/lifecycle/requisitions/onboarding')!,labelKey:'allOnboardingRequisitions',exactHref:true,ownedSubpaths:['/lifecycle/requisitions/onboarding']}]};
 
-// Performance nav row (ADR-0080 rung 4): the single manager-up row the performance pack
-// contributes (packs/performance/index.ts, PERFORMANCE_NAV_LINKS — provenance comments moved with
-// it), placed at its pre-rung-4 position in the Manage group below, after Approvals. The `group`
-// tag is the pack's placement declaration; position WITHIN the group stays this file's concern.
-const PERSONAL_PERFORMANCE_ROW: ChildItem = modulePackById('performance')!.navLinks!.find((l) => l.group === 'main')!;
-const PERFORMANCE_ROW: ChildItem = modulePackById('performance')!.navLinks!.find((l) => l.group === 'manage' && l.labelKey === 'performance')!;
-// WP-B1 (APR-020) — Calibration. No role flag on the descriptor: canSeeChild gates it by canEnterCalibration
-// (a named reviewer on a session they may enter) OR canAdministerOnehr.
-// The review journey's Talent and Development entry points: the workspace resolves each request itself.
-const TALENT_HREF = '/performance/workspace?module=tm';
-const DEVELOPMENT_HREF = '/performance/workspace?module=idp';
-const CALIBRATION_ROW: ChildItem = modulePackById('performance')!.navLinks!.find((l) => l.group === 'manage' && l.labelKey === 'calibration')!;
+// Performance nav rows (ADR-0080 rung 4; D-P1-32 PT-X5, APR-025 D4): EXACTLY TWO entries the performance pack
+// contributes (packs/performance/index.ts, PERFORMANCE_NAV_LINKS — provenance comments moved with them).
+// Performance & Talent (every employee with the module; the area's tabs sit below it) and Performance admin
+// (canAdministerOnehr only, pointed at the admin area's first tab for the latest cycle by `performanceAdminHref`).
+// The former My Performance, Performance, Calibration, Talent and Development rows retired into the area's tabs.
+const REVIEW_WORKSPACE_PATH = '/performance/workspace';
+const PERFORMANCE_TALENT_ROW: ChildItem = modulePackById('performance')!.navLinks!.find((l) => l.group === 'main' && l.labelKey === 'performanceTalent')!;
+const PERFORMANCE_ADMIN_ROW: ChildItem = modulePackById('performance')!.navLinks!.find((l) => l.group === 'manage' && l.labelKey === 'performanceAdmin')!;
 
 // Leave nav rows (ADR-0080 rung 6): two flat rows the leave pack contributes (packs/leave/index.ts,
 // LEAVE_NAV_LINKS — provenance comments moved with them), placed at their pre-rung-6 positions below:
@@ -269,8 +265,6 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
   ['/me/tp3', 'payroll'] as const,
   ['/admin/claims/reimbursements', 'claims'] as const,
   ['/admin/work-locations', 'attendance'] as const,
-  [TALENT_HREF, 'performance'] as const,
-  [DEVELOPMENT_HREF, 'performance'] as const,
   // ADR-0082 — `assistant` is the SECOND hand-written entry and for the same reason as the first: it is
   // a catalog module with `packBacked: false`, so there is no pack descriptor to derive the href from.
   // Without this line the row would advertise a module the tenant has not bought. The per-user
@@ -438,7 +432,7 @@ const GROUPS: Group[] = [
       // a324a4b3 rev3: My Attendance carries the two self-service rows (Clock in/out, Records). The
       // Attendance CONFIG menu moved into Administration — see the admin group below.
       MY_ATTENDANCE_NODE,
-      PERSONAL_PERFORMANCE_ROW,
+      PERFORMANCE_TALENT_ROW,
       CLAIMS_ROW,
       LIFECYCLE_ROW,
       { href: '/feedback', labelKey: 'feedback', icon: MessageSquareText },
@@ -469,8 +463,7 @@ const GROUPS: Group[] = [
       LEAVE_TRACKER_ROW,
       MY_TEAM_ROW,
       { href: '/approvals', labelKey: 'approvals', icon: ListChecks, tour: 'nav-approvals', managerUp: true },
-      PERFORMANCE_ROW,
-      CALIBRATION_ROW,
+      PERFORMANCE_ADMIN_ROW,
       ...modulePackById('rewards')!.navLinks!.filter(l => l.group === 'manage'),
       // a324a4b3 rev3: Roster + Import come back here as FLAT rows. rev2 put them inside the Attendance
       // node, which was safe while that node sat in the ungated group; it is not safe now the node has
@@ -601,7 +594,7 @@ export function Sidebar({
   canAccessTeam = false,
   letterDestinations = [],
   canAdministerOnehr = false,
-  canEnterCalibration = false,
+  performanceAdminHref,
   approvalCount = 0,
   taskCount = 0,
   onboardingAccess = false,
@@ -611,7 +604,6 @@ export function Sidebar({
   onboardingChecklistCount,
   enabledModules = null,
   assistantAccess = true,
-  performanceNavigation = { tm: false, idp: 'none' },
   defaultCollapsed,
   viewerName = null,
   viewerCode = null,
@@ -639,14 +631,14 @@ export function Sidebar({
   letterDestinations?: readonly string[];
   /**
    * ADR-0142 — OneHR performance administration (admins, perf-comp partners, OneHR performance partners).
-   * Shows ONLY the manager-up Performance row; it never opens the admin rail, approvals or My Team.
+   * The ONLY gate of the Performance admin entry (D-P1-32 PT-X5); it never opens the admin rail, approvals or My Team.
    */
   canAdministerOnehr?: boolean;
   /**
-   * WP-B1 — the viewer is a named reviewer on at least one non-final calibration session they may enter
-   * (packs/performance hasCalibrationAssignment: one existence query per request). Shows ONLY the Calibration row.
+   * D-P1-32 PT-X5 — where Performance admin opens: the admin area's first tab for the latest cycle the viewer
+   * administers (app/layout.tsx). Absent means the pack's own address, /performance (no cycle yet).
    */
-  canEnterCalibration?: boolean;
+  performanceAdminHref?: string;
   /**
    * ADR-0077 slice 4 — module codes whose rows may be shown. `null` means "no opinion, show
    * everything", which is NOT the same as `[]` ("show nothing"): a session whose entitlement snapshot
@@ -659,12 +651,6 @@ export function Sidebar({
    * grant). app/layout.tsx computes it and passes false on any failure. Own-data controls stay reachable from
    * My workspace, and /assistant itself still refuses and explains on its own. */
   assistantAccess?: boolean;
-  /**
-   * The review journey's module offer (packs/performance performanceNavigationOffer, computed once in
-   * app/layout.tsx): Talent only with TM work, Development only with IDP work, and Development disabled while
-   * the viewer's own plan is locked. Absent means neither row; every workspace request re-resolves on its own.
-   */
-  performanceNavigation?: { tm: boolean; idp: 'none' | 'open' | 'locked' };
   /** Pending items awaiting THIS viewer's decision (feedback 836118c4) — badge on the
    *  "Approval Items" row. Computed once in app/layout.tsx as listPendingTasks(...).length; the rail
    *  never queries. 0 (or a viewer without the row) renders no badge. */
@@ -701,7 +687,6 @@ export function Sidebar({
   const [workspaceChoice, setWorkspaceChoice] = useState<NavigationWorkspace | null>(null);
   const atelier = useUiTheme() === 'atelier';
   const tBar = useTranslations('commandBar');
-  const collapsed = monolith ? false : collapsedPref;
   const locale = useLocale();
   // r398 — Monolith shows a module's children INLINE (no flyout panel). An explicit open/close per module
   // overrides "open while you are inside it"; the default is the active module open, every other closed.
@@ -711,6 +696,9 @@ export function Sidebar({
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const mobileNavigationTrigger = useRef<HTMLButtonElement | null>(null);
+  // D-P1-28 — Classic's phone drawer shows the rail with its labels whatever the desktop collapse preference is
+  // (an icon strip is no menu on a phone). Atelier's own phone navigation keeps its rules.
+  const collapsed = monolith ? false : collapsedPref && !(mobileNavigationOpen && !atelier);
   /**
    * WHICH SECTIONS ARE EXPANDED — the fix for a rail that did not fit.
    *
@@ -763,7 +751,7 @@ export function Sidebar({
   // Per-child visibility for flyout nodes (per-child gating vs. whole-group gating). Role gating and
   // module gating are ANDed: a row needs both the role AND the module to appear.
   const canSeeChild = (c: ChildItem) =>
-    moduleAllows(c.href) && (c.href !== '/assistant' || assistantAccess) && (c.href !== TALENT_HREF || performanceNavigation.tm) && (c.href !== DEVELOPMENT_HREF || performanceNavigation.idp !== 'none') && (!c.href.startsWith('/letters/')||letterDestinations.includes(c.href)) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === CALIBRATION_ROW.href ? canEnterCalibration || canAdministerOnehr : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.href === AI_PROVIDER_HREF ? canConfigureAiProvider : isAiAdministrationHref(c.href) ? canAdministerAi : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) || c.href === PERFORMANCE_ROW.href && canAdministerOnehr : true);
+    moduleAllows(c.href) && (c.href !== '/assistant' || assistantAccess) && (!c.href.startsWith('/letters/')||letterDestinations.includes(c.href)) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === PERFORMANCE_ADMIN_ROW.href ? canAdministerOnehr : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.href === AI_PROVIDER_HREF ? canConfigureAiProvider : isAiAdministrationHref(c.href) ? canAdministerAi : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) : true);
   // The former audience inventory still supplies its original visibility boundaries.
   // Only authorized rows are handed to the workspace placement owner below.
   const authorizedGroups = GROUPS
@@ -780,7 +768,10 @@ export function Sidebar({
 
   const authorizedRows = authorizedGroups.flatMap(group => group.items.flatMap(row =>
     isCollapsible(row) ? row.children.filter(canSeeChild) : [row],
-  )).filter(row => row.href !== '/mobile-preview' || isAdmin);
+  )).filter(row => row.href !== '/mobile-preview' || isAdmin)
+    // Gated on the pack's address above; only then pointed at the latest cycle's admin area. It keeps owning every
+    // other /performance route through its ownedSubpaths, so the cycle pages and admin tabs light it.
+    .map(row => row === PERFORMANCE_ADMIN_ROW && performanceAdminHref ? {...row, href: performanceAdminHref} : row);
   const additionalRows: ChildItem[] = [
     ...LETTER_NAV_ITEMS.map(item=>({href:item.href,labelKey:item.labelKey,icon:FileBarChart,ownedSubpaths:[item.href]})),
     {href:'/admin/personnel/profile-changes',labelKey:'profileChanges',icon:ListChecks,adminOnly:true},
@@ -792,8 +783,6 @@ export function Sidebar({
     {href:'/admin/claims/reimbursements',labelKey:'reimbursementsDue',icon:Receipt,adminOnly:true},
     {href:'/admin/work-locations',labelKey:'workLocations',icon:Building2,adminOnly:true},
     {href:'/reports',labelKey:'reports',icon:FileBarChart,adminOnly:true,exactHref:true},
-    {href:TALENT_HREF,labelKey:'talent',icon:Users},
-    {href:DEVELOPMENT_HREF,labelKey:'development',icon:Target,disabled:performanceNavigation.idp==='locked'},
   ];
   const destinations = [...authorizedRows, ...additionalRows.filter(canSeeChild)];
   const navigation = placeNavigation(destinations);
@@ -1101,8 +1090,10 @@ export function Sidebar({
     </>
   );
 
-  // The review journey owns its 224px navigator and floating route back to the dashboard.
-  if (pathname === modulePackById('performance')?.navLinks?.find(link => link.labelKey === 'myPerformance')?.href) return null;
+  // The review journey owns its 224px navigator and floating route back to the dashboard. Since D-P1-32 PT-X5 the
+  // workspace is no longer a nav row of its own (its tab routes sit under Performance & Talent), so its address is
+  // named here.
+  if (pathname === REVIEW_WORKSPACE_PATH) return null;
 
   /* ── Atelier round 1 — THE ASSISTANT-FIRST RAIL (brief: .impeccable/surfaces/app-layout-tsx.md). Rendering
      only, like Monolith's: the SAME `groups`, `canSeeChild`, `isRowActive` and section state, so which rows
@@ -1237,17 +1228,35 @@ export function Sidebar({
     );
   }
 
+  // D-P1-28 — below 640px Classic and Monolith used to hide the rail with no way to open it. A menu button (the label
+  // and icon Atelier's phone toggle uses) opens the same rail as a drawer over the page; Escape, the backdrop or a
+  // destination closes it, and focus returns to the button. The rail itself, and every breakpoint above 640px
+  // (My Team's 900px included), is unchanged.
+  const closeMobileNavigation = () => { setMobileNavigationOpen(false); mobileNavigationTrigger.current?.focus(); };
   return (
-    // Wrapper (fdc20776): the aside is overflow-hidden, so the flyout panel cannot live inside it —
-    // it anchors to this relative wrapper instead, which takes over the aside's responsive/flex-item
-    // classes (a bare wrapper would stay a visible zero-width flex item below sm and add a phantom
-    // layout gutter, and the aside's h-full needs the wrapper to have height). While a panel is open
-    // the wrapper is raised to z-50 so the rail rows stay clickable above the z-40 backdrop (module
-    // swap in one click); the raise is conditional so onboarding-tour stacking is unaffected otherwise.
-    <div className={cn('relative hidden h-full shrink-0', pathname === '/manage/my-team' ? 'min-[900px]:block' : 'sm:block', openNode && 'z-50')}>
+    <div className="contents" onKeyDown={event => {
+      if (event.key === 'Escape' && !openNode && mobileNavigationOpen) { event.preventDefault(); closeMobileNavigation(); }
+    }}>
+    <button ref={mobileNavigationTrigger} type="button" data-mobile-navigation-toggle aria-expanded={mobileNavigationOpen} aria-controls="app-mobile-navigation"
+      onClick={() => { setMobileNavigationOpen(open => !open); setOpenKey(null); }}
+      className={cn('flex min-h-11 shrink-0 items-center gap-2.5 rounded-[1.25rem] border border-border bg-card px-4 text-left text-sm font-medium text-foreground shadow-[var(--shadow-card)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring monolith:mx-4 monolith:mt-4 monolith:rounded-none monolith:border-0 monolith:border-b monolith:border-hairline monolith:bg-background monolith:px-0 monolith:shadow-none sm:hidden')}>
+      <PanelLeftOpen aria-hidden className="size-4 shrink-0" /><span>{t('workspaceSwitch')}</span>
+    </button>
+    {mobileNavigationOpen && <div aria-hidden="true" data-mobile-navigation-backdrop onClick={closeMobileNavigation}
+      className="fixed inset-0 z-40 bg-black/40 sm:hidden" />}
+    {/* Wrapper (fdc20776): the aside is overflow-hidden, so the flyout panel cannot live inside it —
+        it anchors to this relative wrapper instead, which takes over the aside's responsive/flex-item
+        classes (a bare wrapper would stay a visible zero-width flex item below sm and add a phantom
+        layout gutter, and the aside's h-full needs the wrapper to have height). While a panel is open
+        the wrapper is raised to z-50 so the rail rows stay clickable above the z-40 backdrop (module
+        swap in one click); the raise is conditional so onboarding-tour stacking is unaffected otherwise. */}
+    <div className={cn('relative hidden h-full shrink-0', pathname === '/manage/my-team' ? 'min-[900px]:block' : 'sm:block', openNode && 'z-50',
+      // D-P1-28 — open on a phone: the same wrapper, fixed over the page above the backdrop.
+      mobileNavigationOpen && 'max-sm:fixed max-sm:inset-y-0 max-sm:left-0 max-sm:z-50 max-sm:block max-sm:h-auto max-sm:p-3 monolith:max-sm:p-0')}>
     {/* r398 (parent): the Monolith rail follows Classic's breakpoints. The README hides it below 900px, but the app
         has no other way to open navigation at those widths, so hiding it would leave a tablet with no navigation. */}
       <aside
+        id="app-mobile-navigation"
         data-app-sidebar
         className={cn(
           'flex h-full flex-col overflow-hidden rounded-[1.25rem] border border-border bg-sidebar py-4 shadow-[var(--shadow-card)] transition-[width] duration-200 ease-snappy',
@@ -1423,6 +1432,8 @@ export function Sidebar({
           className={cn(
             rowBase,
             'mt-2 text-muted-foreground hover:bg-accent/60 hover:text-foreground',
+            // The desktop collapse preference does nothing in the phone drawer (D-P1-28).
+            mobileNavigationOpen && 'max-sm:hidden',
             collapsed ? 'size-11 justify-center' : 'w-full gap-3 px-3 py-2',
           )}
         >
@@ -1452,6 +1463,7 @@ export function Sidebar({
           }}
         />
       )}
+    </div>
     </div>
   );
 }

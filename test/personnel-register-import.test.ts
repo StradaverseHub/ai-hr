@@ -158,7 +158,11 @@ describe('Qualification and Emergency Contact register imports',()=>{
   });
   it('rolls back newly created employee, family and canonical events when a later register writer refuses',async()=>{
     // Real DB refusal after hire, statutory, compensation and Family owners have written in this Tx.
-    const beforeEvents=(await owner.db.select().from(schema.domainEvent)).length;
+    // ADR-0155 §5: the rolled-back attempt still appends its own import-attempt audit events (previewed,
+    // failed). Every OTHER domain event — the hire, family and canonical events — must be rolled back.
+    const canonicalEvents=async()=>(await owner.db.select().from(schema.domainEvent)).filter(e=>e.aggregateType!=='import-attempt');
+    const attemptEvents=async()=>(await owner.db.select().from(schema.domainEvent)).filter(e=>e.aggregateType==='import-attempt');
+    const beforeEvents=(await canonicalEvents()).length,beforeAttemptIds=new Set((await attemptEvents()).map(e=>e.id));
     const beforeCompensation=(await owner.db.select().from(schema.compensation)).length;
     await owner.client.unsafe(`create function public.test_register_refusal() returns trigger language plpgsql as $$ begin raise exception 'test register refusal'; end $$`);
     await owner.client.unsafe('create trigger test_register_refusal before insert on employee_qualification for each row execute function public.test_register_refusal()');
@@ -169,7 +173,8 @@ describe('Qualification and Emergency Contact register imports',()=>{
       expect(await owner.db.select().from(schema.employeeDependent)).toEqual([]);
       expect(await owner.db.select().from(schema.employeeQualification)).toEqual([]);
       expect((await owner.db.select().from(schema.compensation)).length).toBe(beforeCompensation);
-      expect((await owner.db.select().from(schema.domainEvent)).length).toBe(beforeEvents);
+      expect((await canonicalEvents()).length).toBe(beforeEvents);
+      expect((await attemptEvents()).filter(e=>!beforeAttemptIds.has(e.id)).map(e=>e.eventType).sort()).toEqual(['import-attempt.failed','import-attempt.previewed']);
     }finally {await owner.client.unsafe('drop trigger test_register_refusal on employee_qualification');await owner.client.unsafe('drop function public.test_register_refusal()');}
   });
   it('refuses over-limit rows before consulting the database and refuses unknown register columns',async()=>{

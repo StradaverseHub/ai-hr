@@ -18,7 +18,7 @@ import { withPerformanceTenant } from '../../../core/module-gate';
 import { isModuleEnabled } from '../../../core/entitlements';
 import { policySchema, type Tier } from './model';
 import { assessmentWorkWindowOpen, type CalibrationWorkEntry } from './workspace-model';
-import { calibrationToDo, calibrationWindowCells, calibrationWindowState, sortCalibrationSessions, type CalibrationListSession } from './calibration-list-model';
+import { calibrationSessionAxes, calibrationToDo, calibrationWindowCells, calibrationWindowState, sortCalibrationSessions, type CalibrationListSession } from './calibration-list-model';
 import type { PackTaskItem } from '../../../lib/assigned-work';
 
 export { calibrationListTierOrder, type CalibrationListSession } from './calibration-list-model';
@@ -47,6 +47,7 @@ export async function listMyCalibrationSessions(ctx: SessionContext, now = new D
         people: entries.length,
         toDo: cycleClosed ? 0 : calibrationToDo(policy, tier, session, entries),
         lock: session.lockedAt ? 'locked' : session.performanceLockedAt || session.potentialLockedAt ? 'partial' : 'open',
+        axes: calibrationSessionAxes(policy, tier, session),
         href: `/performance/assessment/calibration/${session.id}`,
       });
     }

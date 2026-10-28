@@ -1,5 +1,5 @@
--- ADR-0151 §4.6c: outcome measurement per Assistant action kind. Claimed as 0674 (when 1793240000000) with the
--- active sessions on 29 Oct 2026; the journal index is assigned at journaling.
+-- ADR-0151 §4.6c: outcome measurement per Assistant action kind. Claimed as 0674 with the active sessions on 29 Oct
+-- 2026; journaled at when 1793300000000, above board imports 0675/0676 on alpha.
 --
 -- The prepared-action store is closed to ai_hr_app (0622 revokes it; 0657 admits only non-app definers that
 -- are administrators of the row's company). This adds ONE read-only definer that returns counts, never rows:

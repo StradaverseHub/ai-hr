@@ -1,3 +1,12 @@
+## REA P1 D-P1-32 Performance & Talent shell (+ wave 3 midnight test fix) — staging release 29 October 2026
+
+- Staging source `1fd2076e124660915ee12f7f72644cef9ee39816` (alpha and main fast-forwarded together from `b5758c54c`), build `u7hACeJGwWtynmI0wYyIh` (the CI build), deploy state ok, stale_build=0, service active, `/` 307 to login, `/login` 200. Owner approvals: APR-023 (labels), APR-025 (D-P1-32 incl. OneHR look), APR-027 (coordinated automatic staging deploys).
+- Migrations: none; ledger 540, watermark 1793190000000 (unchanged).
+- Contents: Performance & Talent area theme (OneHR look, scoped, navy dark mode; ADR-0152); one tab registry and strip with OneHR labels in six locales; 12 tab routes; `/performance/home` with OneHR's dashboard cards and leader cards; admin area (Cycle + per-module Overview · Run · Settings); standalone Talent Box board at `/performance/calibration/talent-box`; sidebar "Performance & Talent" + "Performance admin" and a mobile rail button; wave 3 tests made safe across midnight MYT.
+- Verification: candidate on the 12 GB compiler controller (PR #32); full run 40752053765 green except one test type error, fixed and confirmed by focused run 40755021507; witness runs 40756296010 and 40756360793 on 1fd2076e1 green on the first attempt; `operator-release verify` PASS (34,201 tests).
+- Deploy: build activated and service restarted; the final step refused with "Source checksum arrival differs" (known false refusal); canonical `rsync -azic --omit-dir-times --dry-run`: 0 differences. `STAGING_DEPLOYED_SHA` set to 1fd2076e1.
+- Not done: render comparison against the OneHR baseline (signed-in walkthrough); DQ-1 (Where you stand rule) open; production untouched.
+
 ## ADR-0151 wave 1 (own claim cancellation, own pending leave cancel/edit, migration 0670) — staging release 29 October 2026
 
 - Staging source `7bdc10f66ed9b3b170ff2fa852b08f924547271d` (alpha, fast-forward from `83044606e`), build `mTPi2Vsyxg1pKVrGFneg4` (the CI build), deploy state ok, stale_build=0, service restarted after the build, installed arrival health 200, `/` 307 to login, `/login` 200, `/assistant/claims?flow=cancel`, `/assistant/leave?flow=change` and `/control-tower/agents` 307 to login. Witness: first-attempt `alpha-staging` run 40732795602 (controller `8f2751c57`; 2,465 suite files, 63 browser files, 33,658 assertions) through the operator adapter. Migration ledger exact at 540 rows; 0670_ai_orchestrator_wave1_receipts applied at idx 654, when 1793190000000.

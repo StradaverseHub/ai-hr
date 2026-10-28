@@ -103,6 +103,8 @@ export default async function StatutoryDetailPage({
               payPeriod: row.payPeriod,
               runType: row.runType,
               runSeq: row.runSeq,
+              historyImportAttemptId: row.historyImportAttemptId,
+              historyImportCycleName: row.historyImportCycleName,
               currency: row.currency ?? null,
             }}
             explanation={explanation}

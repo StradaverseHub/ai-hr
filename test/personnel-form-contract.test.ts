@@ -92,7 +92,8 @@ describe('Personnel shared form contract',()=>{
     for(const field of cells){
       expect(field.ownerField).toBe('childReliefTable');
       expect(field.report.enabled).toBe(true);
-      expect(field.import.disabledReason).toContain('tax election');
+      // 0db97f14 — each cell is a Bank & Statutory import column, written by the merged statutory writer.
+      expect(field.import).toMatchObject({column:'child_relief_'+field.childReliefCell!.category+'_'+field.childReliefCell!.share,writer:'statutory',section:'bank_statutory'});
       expect(field.form!.name).toBe('childRelief_'+field.childReliefCell!.category+'_'+field.childReliefCell!.share);
       for(const locale of ['en','ms','ta','th','vi','zh']){
         const messages=JSON.parse(readFileSync(new URL('../messages/'+locale+'.json',import.meta.url),'utf8'));

@@ -116,6 +116,10 @@ type ParsedLine = {
   companyCode: string;
   amount: number;
   destination: PayrollImportDestination;
+  /** b240c0ff — the code as the catalogue spells it, and its description, so the folded month can keep
+   *  the line itself (`statutory.componentLines`) and not only the category total it was added into. */
+  itemCode: string;
+  itemName: string;
 };
 
 /** A folded employee-month ready for the writer. */
@@ -152,7 +156,64 @@ type ImportedStat = {
   /** CP38 — the LHDN/court instalment, DISTINCT from MTD. Stamped only when > 0 (mirrors the kernel), so
    *  cp39FileForBatch sums the instalment into the e-Data file's CP38 column. */
   cp38?: number;
+  /** b240c0ff — the file's own pay item lines, in the kernel's `componentLines` shape, under their own key so
+   *  no EA / statutory evidence reader sees them. See `importedComponentLines`. Absent when the month carried
+   *  no allowance / overtime / bonus / deduction line. */
+  importedLines?: ImportedComponentLine[];
 };
+
+/** One imported pay item line, in the shape the kernel stamps (core/payroll.ts `PayComponentLine`), so every
+ *  existing payslip surface itemises it with no importer-specific reader. */
+type ImportedComponentLine = {
+  code: string;
+  name: string;
+  amount: number;
+  buckets: { bucket: 'wage' | 'ot' | 'bonus' | 'deduct'; amount: number }[];
+};
+
+/**
+ * b240c0ff — WHICH IMPORTED LINES ARE KEPT AS LINES, AND UNDER WHICH FIGURE.
+ *
+ * Only the pay item destinations whose figure the payslip already itemises from `componentLines`:
+ * allowance → `wage` (inside Allowances), overtime → `ot`, bonus → `bonus`, other deduction → `deduct`
+ * (inside Other deductions). The bucket names are the kernel's stored contract
+ * (core/payslip-earning-lines.ts `EarningBucket`).
+ *
+ * NOT KEPT AS LINES: basic pay (the kernel never itemises it — the Basic salary row IS the line), the
+ * statutory figures (each already has its own row: EPF, SOCSO, EIS, PCB, CP38, zakat, HRDF), the LP relief
+ * and the GROSS / NETPAY cross-check lines (totals, not pay items).
+ *
+ * NOTHING HERE IS ARITHMETIC ON A FIGURE. Each line's amount is the file's amount; the category totals
+ * stored beside the lines are still `b.totals`, computed exactly as before, so every summary column, the
+ * statutory figures and the EA form read the same numbers they always did. Two lines with the same code in
+ * one month (possible only across two cycles folded into one month) are one pay item and are summed into
+ * one line; lines with different codes are never merged.
+ */
+const COMPONENT_BUCKET_OF: Partial<Record<PayrollImportDestination, ImportedComponentLine['buckets'][number]['bucket']>> = {
+  allowance: 'wage',
+  overtime: 'ot',
+  bonus: 'bonus',
+  other_deduction: 'deduct',
+};
+
+export function importedComponentLines(
+  lines: readonly { itemCode: string; itemName: string; amount: number; destination: PayrollImportDestination }[],
+): ImportedComponentLine[] {
+  const out = new Map<string, ImportedComponentLine>();
+  for (const l of lines) {
+    const bucket = COMPONENT_BUCKET_OF[l.destination];
+    if (!bucket) continue;
+    const key = `${up(l.itemCode)}|${bucket}`;
+    const line = out.get(key);
+    if (line) {
+      line.amount = round2(line.amount + l.amount);
+      line.buckets[0].amount = round2(line.buckets[0].amount + l.amount);
+    } else {
+      out.set(key, { code: l.itemCode, name: l.itemName, amount: round2(l.amount), buckets: [{ bucket, amount: round2(l.amount) }] });
+    }
+  }
+  return [...out.values()];
+}
 
 const issue = (
   line: { rowNum: number; employeeNo: string; rawPeriod: string; doeCode: string },
@@ -411,7 +472,7 @@ async function analyze(
       ['employee_no', employeeNo, 'Employee No'],
       ['payroll_period', rawPeriod, 'Payroll Period'],
       ['payroll_cycle', cycle, 'Payroll Cycle'],
-      ['doe_code', doeCode, 'DOE Code'],
+      ['doe_code', doeCode, 'Pay Items Code'],
       ['company_code', companyCode, 'Company Code'],
       ['amount', rawAmount, 'Amount'],
     ] as const).filter(([, v]) => v === '');
@@ -478,10 +539,10 @@ async function analyze(
       }
     }
 
-    // DOE Code.
+    // Pay Items Code (b240c0ff; the contract key is still `doe_code`).
     const entry = doeCode ? codes.get(up(doeCode)) : undefined;
     if (doeCode && !entry) {
-      issues.push(issue(ref, 'Invalid DOE Code', `“${doeCode}” is not a known earning, deduction or statutory code`));
+      issues.push(issue(ref, 'Invalid Pay Items Code', `“${doeCode}” is not a known earning, deduction or statutory code`));
     }
 
     // Amount.
@@ -496,7 +557,7 @@ async function analyze(
       if (seenKeys.has(dupKey)) {
         duplicates += 1;
         issues.push(
-          issue(ref, 'Duplicate record', `The same Employee No, Payroll Period, Payroll Cycle, DOE Code and Company Code already appears earlier in this file`),
+          issue(ref, 'Duplicate record', `The same Employee No, Payroll Period, Payroll Cycle, Pay Items Code and Company Code already appears earlier in this file`),
         );
       } else {
         seenKeys.add(dupKey);
@@ -530,6 +591,8 @@ async function analyze(
       companyCode,
       amount,
       destination: entry.destination,
+      itemCode: entry.code,
+      itemName: entry.label,
     });
   });
 
@@ -768,6 +831,7 @@ async function analyze(
     monthSummaries.push(summary);
 
     if (!ok) continue;
+    const componentLines = importedComponentLines(b.lines);
     months.push({
       month: summary,
       employmentId: employmentByCode.get(up(b.employeeNo))!,
@@ -795,6 +859,10 @@ async function analyze(
         hrdf: t.hrdf,
         version: statutoryVersion,
         ...(t.cp38 > 0 ? { cp38: t.cp38 } : {}),
+        // b240c0ff — the lines themselves, under their own key (core/payslip-imported-lines.ts says why not
+        // `componentLines`). Written on the payslip AND its revision snapshot by the same `values` object,
+        // so the 0602 snapshot-equality trigger holds by construction.
+        ...(componentLines.length ? { importedLines: componentLines } : {}),
       },
     });
   }

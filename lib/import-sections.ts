@@ -110,17 +110,24 @@ const PROFILE_COLUMNS = [
 const RETIRED_EMPLOYMENT_COLUMNS=['probation_months','probation_days','confirmation_date','resignation_notice_months','resignation_notice_days','direct_superior',...PERSONNEL_EMPLOYMENT_IMPORT_FIELDS.map(field=>field.import.column!)] as const;
 
 /**
- * BANK AND STATUTORY — the salary-payment destination and the tax inputs.
+ * BANK AND STATUTORY — every editable setting on the employee's Bank & Statutory tab (0db97f14).
  *
- * ALSO DELIBERATELY NARROW, and for a reason worth writing down: the EPF/SOCSO numbers, the EIS flag,
- * EPF citizenship and tax residency have NO partial writer. Their only writer is the full-row
- * statutory setter, which rewrites every column on the row from its arguments — so a file supplying
- * an EPF number alone would clear the employee's zakat election, TP3 opening balances, SOCSO category
- * and employer-bears flags. That is the exact catastrophe rule 1 exists to prevent, so those columns
- * are fenced out rather than written through an unsafe setter. `setBank` and `setTax` are the two
- * narrow setters that DO exist, and this list is exactly what they cover.
+ * Until 0db97f14 this section was deliberately narrow: EPF citizenship, the SOCSO/EIS categories, the
+ * employer-bears flags and tax residency had no partial writer, only the full-row statutory setter, so a
+ * file supplying one of them would have cleared the rest of the row. Those columns now go through ONE
+ * merged writer (`core/bank-statutory-import.ts`): it reads the locked statutory row, overlays only the
+ * cells the file supplied, validates the result with the tab's own rules and then calls the country
+ * pack's setters with the whole merged row. A blank cell still keeps the stored value.
+ *
+ * Order follows the tab (registry `import.order`). `eis_eligible` and `is_resident` are accepted as
+ * bounded legacy adapters onto EIS category and income tax residency, but are not on the template.
  */
-const BANK_STATUTORY_COLUMNS = [...PERSONNEL_FIELDS.filter(field=>field.import.writer==='operational' && field.import.section==='bank_statutory').map(field=>field.import.column!),'tax_number', 'tax_category', 'num_children',...PERSONNEL_FIELDS.filter(field=>['statutory-registration','bank'].includes(field.import.writer??'')).map(field=>field.import.column!)] as const;
+export const BANK_STATUTORY_LEGACY_COLUMNS = ['eis_eligible', 'is_resident'] as const;
+const BANK_STATUTORY_COLUMNS = [
+  ...PERSONNEL_FIELDS.filter(field=>field.import.section==='bank_statutory' && field.import.column && ['operational','bank','statutory-registration','statutory'].includes(field.import.writer??'') || ['tax_number','tax_category','num_children'].includes(field.import.column??''))
+    .sort((a,b)=>a.import.order-b.import.order).map(field=>field.import.column!),
+  ...BANK_STATUTORY_LEGACY_COLUMNS,
+] as const;
 
 export const IMPORT_SECTION_DEFS: Record<ImportSection, ImportSectionDef> = {
   qualification:{key:'qualification',register:'qualification',required:[],optional:personnelRegisterColumns('qualification').filter(c=>c!=='employee_code'),family:false},
@@ -163,10 +170,10 @@ export const UNSECTIONED_COLUMNS: Record<string, string> = {
   // basic salary it cannot see. It travels with the wide template, beside the amount it explains.
   salary_remarks:
     'the reason ONE salary revision has no basic amount; a section file carries no effective date, so it cannot name which revision it would be explaining (see basic_salary)',
-  eis_eligible: 'no partial writer — the only setter rewrites the whole statutory row',
-  epf_citizenship: 'no partial writer — the only setter rewrites the whole statutory row',
-  is_resident:
-    'tax residency is a four-way status (resident + three incentive statuses); a yes/no cell cannot express it',
+  // 524303d9 — single-value settings the full Employee import sets at hire; later changes have their own owner screens.
+  schedule_group: 'the full Employee import sets the initial Schedule Group at hire; later changes use the Attendance tab, whose owner re-checks the employee\'s current shifts',
+  payroll_policy: 'the full Employee import sets the initial Payroll Policy at hire; later reassignment uses the Payroll tab policy owner',
+  correspondence_same_as_permanent: 'a hire-time copy instruction, not a stored value: the full Employee import copies the permanent address into the correspondence address at hire',
 };
 
 /** Every accepted column, including bounded previous-generation adapters, key first. */
@@ -175,7 +182,13 @@ export function sectionColumns(section: ImportSection): string[] {
   return [SECTION_KEY_COLUMN, ...def.required, ...def.optional];
 }
 
-export function sectionTemplateColumns(section:ImportSection):string[] {return sectionColumns(section).filter(column=>!RETIRED_PERSONNEL_TEMPLATE_COLUMNS.includes(column));}
+/** Columns an uploaded section file's headings are resolved against: the full template's (so a column of
+ *  another section is recognised and refused by the fence) plus this section's own update-only columns. */
+export function sectionParseColumns(section:ImportSection):string[]{
+  return [...new Set([...IMPORT_COLUMNS.required,...IMPORT_COLUMNS.optional,...sectionColumns(section)])];
+}
+
+export function sectionTemplateColumns(section:ImportSection):string[] {return sectionColumns(section).filter(column=>!RETIRED_PERSONNEL_TEMPLATE_COLUMNS.includes(column)&&!(BANK_STATUTORY_LEGACY_COLUMNS as readonly string[]).includes(column));}
 
 /**
  * THE FENCE, as a pure function so the server and a test can ask the same question.
@@ -194,6 +207,9 @@ export function foreignColumns(section: ImportSection, present: readonly string[
     ...DEPENDENT_IMPORT_COLUMNS.required,
     ...DEPENDENT_IMPORT_COLUMNS.optional,
     ...personnelRegisterColumns('qualification'),...personnelRegisterColumns('emergency'),
+    // Section-only columns (e.g. the Bank & Statutory settings) are recognised too, so a Profile file
+    // carrying one is refused and pointed at its section rather than silently ignored.
+    ...Object.values(IMPORT_SECTION_DEFS).flatMap(def=>[...def.required,...def.optional]),
   ]);
   const out: string[] = [];
   for (const c of present) {
@@ -330,6 +346,8 @@ export type SectionImportResult = {
   /** cf43c909 — the history row this run wrote, so the screen can link to it. Null when the history
    *  write itself failed: recording a run must never fail an update that already happened. */
   runId: string | null;
+  /** 0db97f14 — the Import History attempt (ADR-0155) this run recorded, when it recorded one. */
+  attemptId?: string;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────

@@ -37,6 +37,7 @@ import {
   toIsoPeriod,
 } from '../core/payroll-history-import';
 import { PAYROLL_HISTORY_HEADERS } from '../lib/payroll-history-import-schema';
+import { payrollRunLabel } from '../core/payslip-cycle-label';
 import { parseCsvRecords } from '../lib/csv';
 import {
   adminCtx,
@@ -233,7 +234,7 @@ describe('import payroll history — the long (seven-column) contract', () => {
     const records = file(...completeMonth('A1001', '202401'), line('A1001', '202401', 'NOSUCHCODE', '99.00'));
 
     const dry = await validatePayrollHistoryImport(a, { companyId: b.companyId, records });
-    const bad = dry.issues.filter((i) => i.type === 'Invalid DOE Code');
+    const bad = dry.issues.filter((i) => i.type === 'Invalid Pay Items Code');
     expect(bad).toHaveLength(1);
     expect(bad[0].doeCode).toBe('NOSUCHCODE');
     expect(bad[0].status).toBe('Failed');
@@ -509,7 +510,7 @@ describe('import payroll history — the long (seven-column) contract', () => {
       companyId: b.companyId,
       records: file(...completeMonth('A1001', '202401')),
     });
-    expect(dry.issues.filter((i) => i.type === 'Invalid DOE Code')).toEqual([]);
+    expect(dry.issues.filter((i) => i.type === 'Invalid Pay Items Code')).toEqual([]);
     expect(dry.months.map((m) => [m.ok, m.gross, m.codes.includes('BASIC')])).toEqual([[true, 5300, true]]);
     // Letter case is not a reason to reject it.
     const lower = await validatePayrollHistoryImport(a, {
@@ -574,6 +575,9 @@ describe('import payroll history — the long (seven-column) contract', () => {
     expect(batch.status).toBe('closed');
     expect(batch.employeeCount).toBe(2);
     expect(batch.remarks).toBe('Imported payroll history');
+    // b240c0ff — still an adjustment run in storage, but every screen names it by the file's Pay Cycle.
+    expect(batch.historyImportCycleName).toBe('Monthly');
+    expect(payrollRunLabel(batch, 'Adjustment')).toBe('Monthly - By Import');
     const totals = batch.totals as { gross: number; net: number };
     expect(totals.gross).toBeCloseTo(10600, 2);
     expect(totals.net).toBeCloseTo(9064.7, 2);

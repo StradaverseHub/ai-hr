@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import { notFound } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
@@ -126,7 +127,10 @@ export default async function ResetPayrollPage({
     { label: t('summaryPeriod'), value: batch.payPeriod },
     {
       label: t('summaryCycle'),
-      value: `${tl(`runType.${batch.runType}`)}${batch.remarks ? ` — ${batch.remarks}` : ''}`,
+      // b240c0ff — imported payroll history reads "Monthly - By Import", never "Adjustment — Imported payroll history".
+      value: batch.historyImportAttemptId
+        ? payrollRunLabel(batch, tl(`runType.${batch.runType}`))
+        : `${tl(`runType.${batch.runType}`)}${batch.remarks ? ` — ${batch.remarks}` : ''}`,
     },
     { label: t('summaryPaymentDate'), value: paymentDate },
     { label: tl('colEmployees'), value: String(slips.length) },
