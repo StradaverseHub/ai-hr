@@ -6,17 +6,19 @@ const fetchOwners=new Set(['lib/ai/providers/openrouter.ts','lib/ai/providers/op
 const endpoint=/(?:api\.openai\.com|api\.anthropic\.com|generativelanguage\.googleapis\.com|openrouter\.ai|ai-gateway\.[^/\s'"]+)/i;
 export function aiBoundaryViolations(file:string,source:string):string[]{
  const tree=ts.createSourceFile(file,source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX),errors:string[]=[];
- const imports=new Map<string,string>();let hasFetch=false;
+ const imports=new Map<string,string>(),fetchAliases=new Set(['fetch']);let hasFetch=false;
+ const aliases=(node:ts.Node)=>{if(ts.isVariableDeclaration(node)&&ts.isIdentifier(node.name)&&node.initializer){const init=node.initializer;if(ts.isIdentifier(init)&&fetchAliases.has(init.text)||ts.isPropertyAccessExpression(init)&&init.name.text==='fetch')fetchAliases.add(node.name.text);}ts.forEachChild(node,aliases);};aliases(tree);
  function visit(node:ts.Node){
   if(ts.isImportDeclaration(node)&&ts.isStringLiteral(node.moduleSpecifier)){
    const module=node.moduleSpecifier.text;
    if(sdks.has(module)&&!sdkOwners.has(file))errors.push('provider SDK outside adapter');
+   if(/\/providers\/(?:anthropic|google|openai|openrouter|gateway)$/.test(module)&&file!=='lib/ai/index.ts')errors.push('provider adapter outside gateway');
    const bindings=node.importClause?.namedBindings;
    if(bindings&&ts.isNamedImports(bindings))for(const name of bindings.elements)imports.set(name.name.text,(name.propertyName??name.name).text);
   }
   if(ts.isCallExpression(node)){
    const name=ts.isIdentifier(node.expression)?node.expression.text:ts.isPropertyAccessExpression(node.expression)?node.expression.name.text:'';
-   if(/fetch/i.test(name))hasFetch=true;
+   if(/fetch/i.test(name)||fetchAliases.has(name))hasFetch=true;
    if(['require','import'].includes(node.expression.getText(tree))&&node.arguments.some(a=>ts.isStringLiteral(a)&&sdks.has(a.text))&&!sdkOwners.has(file))errors.push('provider SDK outside adapter');
    if((imports.get(name)??name)==='createUngovernedProbe'&&file!=='core/ai-config.ts'&&file!=='lib/ai/governance.ts')errors.push('probe capability outside connection test');
   }

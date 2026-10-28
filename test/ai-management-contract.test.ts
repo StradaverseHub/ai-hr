@@ -66,6 +66,9 @@ describe('complete AI management inventory and boundary',()=>{
   for(const file of ['lib/rogue.ts','scripts/rogue.ts']){
    expect(aiBoundaryViolations(file,"const endpoint='https://api.openai.com/v1/chat/completions'; fetch(endpoint,{method:'POST'});" )).toContain('raw provider fetch outside gateway transport');
    expect(aiBoundaryViolations(file,"import OpenAI from 'openai';")).toContain('provider SDK outside adapter');
+   expect(aiBoundaryViolations(file,"import {openaiAdapter} from '../lib/ai/providers/openai';")).toContain('provider adapter outside gateway');
+   expect(aiBoundaryViolations(file,"const endpoint='https://'+'api.openai.com'+'/v1/chat/completions'; const f=fetch; f(endpoint,{body:JSON.stringify({model,messages}),headers:{Authorization:key}});")).toContain('raw provider fetch outside gateway transport');
+   expect(aiBoundaryViolations(file,"const endpoint='https://'+'api.openai.com'+'/v1/chat/completions'; fetch(endpoint,{body:JSON.stringify({model,messages}),headers:{Authorization:key}});")).toContain('raw provider fetch outside gateway transport');
    expect(aiBoundaryViolations(file,"import {createUngovernedProbe as bypass} from './governance'; bypass(cfg,run);")).toContain('probe capability outside connection test');
    expect(aiBoundaryViolations(file,"globalThis.fetch(url,{headers:{Authorization:'Bearer '+apiKey},body:JSON.stringify({model:model,messages:messages})});")).toContain('raw provider fetch outside gateway transport');
   }
