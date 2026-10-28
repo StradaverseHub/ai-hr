@@ -8,7 +8,7 @@ import { assertAuthGeneration,authGeneration } from './auth';
 import { capturePhoto,capturePosition,appendAttachment } from './capture';
 import { readClockDevice,writeClockDevice,clearClockDevice } from './device-registration';
 import { useTenantDesign } from './design';
-import { SignInRequiredError,RequestRejectedError,LocationCaptureError,SessionChangedError,UnavailableError } from './errors';
+import { SignInRequiredError,RequestRejectedError,LocationCaptureError,SessionChangedError,UnavailableError,isNoConnectivity } from './errors';
 import { useJourneyDrafts,removeLocalFile,type ClockDraft } from './journey-drafts';
 import { useSession } from './session';
 import { SlideConfirm } from './slide-confirm';
@@ -20,6 +20,7 @@ import { useSubmissionRecovery } from './submission-recovery';
 import { ClockCommand,ClockPreparation } from '../../lib/mobile-api/contract';
 import {SubmissionJournalFull,PendingSubmissionConflict} from './submission-journal';
 import { Button,Card,LoadState,Muted,Row } from './ui';
+import {useOfflineClock,offlineClocking,offlineBlockedMessage,OfflineClockBanner,SavedOfflinePunches} from './offline-clock';
 const refusals={corrected_day:'correctedDay',clock_conflict:'clockConflict',location_required:'locationPermission',outside_geofence:'outsideGeofence',photo_required:'photoRequired',photo_invalid:'photoTooLarge',device_required:'registerDevice',mock_location:'mockLocation',integrity_required:'clockIntegrityRequired'} as const;
 const locationRefusals={location_required:'locationPermission',invalid_location:'locationInvalid',poor_accuracy:'locationPoorAccuracy',no_assigned_site:'locationNoSite',outside_site:'locationOutsideSite',stale_fix:'locationExpired',future_fix:'locationFuture'} as const;
 export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
@@ -30,11 +31,20 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
   useEffect(()=>{if(refreshToken){clock.reload();attempts.reload();}},[refreshToken,clock.reload,attempts.reload]);
   const {clock:draft,putClock}=useJourneyDrafts();
   const {palette,design}=useTenantDesign();
-  const flight=useRef(false);
-  const current=clock.data?.state;
-  const action=draft?.action??(current?.clockedIn?'out':'in');
-  const identity=clock.data?.employmentId;
+  const flight=useRef(false),offlineRoute=useRef<string|null>(null);
   const mounted=useRef(true),session=useRef({employmentId,status:sessionStatus});session.current={employmentId,status:sessionStatus};
+  /** Switch on only: a session that has not picked an employment acts as the employment on screen (an offline cold start
+   * has no `me` to pick from). Switch off: exactly the session's own employment, as before. */
+  function sessionHolds(selected:string|null|undefined){const value=session.current.employmentId;return value===selected||offlineClocking&&value===null&&!!selected;}
+  const offline=useOfflineClock({employmentId:clock.data?.employmentId??employmentId??null,
+    connected:clock.error?isNoConnectivity(clock.error)?false:null:clock.data&&!clock.loading?true:null,
+    paused:!!draft&&['preparing','review','submitting','uncertain'].includes(draft.phase),
+    isUnlocked:selected=>mounted.current&&session.current.status==='signedIn'&&sessionHolds(selected),onSignInRequired:()=>void signOut(),onRecorded:clock.reload});
+  const current=clock.data?.state;
+  /** Offline cold start: no server clock read, and the driver holds a ready offline context for this employment. */
+  const coldStart=!current&&offline.mode==='offline';
+  const action=draft?.action??((offline.clockedIn??current?.clockedIn)?'out':'in');
+  const identity=clock.data?.employmentId??(coldStart?offline.employmentId:undefined);
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
   const [signedStatus,setSignedStatus]=useState<SignedClockStatus|null>(null);
   const [registrationNeeded,setRegistrationNeeded]=useState(false);
@@ -42,10 +52,10 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
   async function signedClock(){
     if(!identity)throw new Error(t('signedClockUnavailable'));
     const selected=identity;
-    return openOwnedSignedClock(selected,()=>mounted.current&&session.current.employmentId===selected&&session.current.status==='signedIn');
+    return openOwnedSignedClock(selected,()=>mounted.current&&sessionHolds(selected)&&session.current.status==='signedIn');
   }
   function operation(owner:number){
-    return {assertCurrent(){assertAuthGeneration(owner);if(!mounted.current||session.current.status!=='signedIn'||session.current.employmentId!==identity||AppState.currentState!=='active')throw new SessionChangedError();}};
+    return {assertCurrent(){assertAuthGeneration(owner);if(!mounted.current||session.current.status!=='signedIn'||!sessionHolds(identity)||AppState.currentState!=='active')throw new SessionChangedError();}};
   }
   const recovery=useSubmissionRecovery('clock',identity??undefined,({entry,command,file})=>{
     if(entry.stage==='preparation'){
@@ -97,7 +107,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
     return t('signedClockEvidenceRefused');
   }
   async function prepare(){
-    if(flight.current||!identity||!current||pending||!recovery.ready)return;
+    if(flight.current||!identity||!(current||coldStart)||pending||!recovery.ready)return;
     flight.current=true;
     const owner=authGeneration();
     let photo=draft?.photo;
@@ -108,7 +118,26 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
       next={...next,requestId:saved.requestId,attemptStartedAt:saved.createdAt,attemptReceiptTime:saved.attemptReceipt?.receivedAt};
       if(!putClock(next))return;
       operation(owner).assertCurrent();
-      const controller=await signedClock(),savedStatus=await controller.status();assertAuthGeneration(owner);setSignedStatus(savedStatus);
+      const controller=await signedClock();
+      offlineRoute.current=null;
+      if(offlineClocking){
+        // Owner decision 1: the driver chooses the route before every punch (it may hand back or upload first).
+        const route=await offline.before();assertAuthGeneration(owner);
+        if(route.route==='blocked'){putClock({...next,phase:'idle',message:offlineBlockedMessage(route.reason)});return;}
+        if(route.route==='offline'){
+          // Local only: no server discovery, key check or location preview. The context's policy is the server's to apply.
+          offlineRoute.current=saved.requestId;next={...next,clockProtocol:'signed'};
+          operation(owner).assertCurrent();const geo=await capturePosition(operation(owner).assertCurrent);assertAuthGeneration(owner);
+          if(!putClock({...next,geo}))return;
+          if(current?.attendancePhotoSetting==='required'&&!photo){photo=await capturePhoto(operation(owner).assertCurrent)??undefined;assertAuthGeneration(owner);if(!photo)throw new Error(t('photoRequired'));}
+          const deviceToken=await readClockDevice(identity);assertAuthGeneration(owner);
+          if(!putClock({...next,phase:'review',geo,photo,deviceToken}))removeLocalFile(photo);
+          return;
+        }
+      }
+      // Unreachable with the switch off (the guard above requires a server read); a cold start that came back online reloads.
+      if(!current){putClock({...next,phase:'idle'});clock.reload();return;}
+      const savedStatus=await controller.status();assertAuthGeneration(owner);setSignedStatus(savedStatus);
       if(savedStatus.status!=='empty'){
         if(savedStatus.status==='pending')putClock({employmentId:identity,action:savedStatus.action,requestId:savedStatus.requestId,clockProtocol:'signed',phase:'uncertain',message:t('signedClockPending')});
         else putClock({...next,phase:'idle',message:t('signedClockOtherPending')});
@@ -158,7 +187,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
   function signedResult(result:SignedClockStatus,saved:ClockDraft){
     setSignedStatus(result);
     if(result.status==='accepted'){
-      removeLocalFile(saved.photo);putClock({...saved,photo:undefined,phase:'done',receiptTime:result.receipt.recordedAt,message:undefined},saved.requestId);clock.reload();return true;
+      removeLocalFile(saved.photo);putClock({...saved,photo:undefined,phase:'done',receiptTime:result.receipt.recordedAt,message:undefined},saved.requestId);clock.reload();if(offlineClocking)offline.after();return true;
     }
     if(result.status==='abandoned'){
       removeLocalFile(saved.photo);putClock({employmentId:identity??undefined,action:saved.action,phase:'idle',message:t('pendingDiscarded')},saved.requestId);clock.reload();return true;
@@ -183,16 +212,33 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
     const result=await controller.advance(saved.requestId);assertAuthGeneration(owner);
     if(!signedResult(result,saved))putClock({...saved,phase:'uncertain',message:signedPendingMessage(result)},saved.requestId);
   }
+  /** Offline route: save the base command (same requestId) and hand it to the driver's local capture. No network. */
+  async function submitOffline(saved:ClockDraft,owner:number){
+    try{
+      if(!await recovery.hasSignedAttempt(saved.requestId!)){
+        if(!saved.geo?.source)throw new Error(t('signedClockSavedUnavailable'));
+        const staged=await recovery.stage(JSON.stringify({action:saved.action,requestId:saved.requestId,lat:saved.geo.lat,lng:saved.geo.lng,accuracy:saved.geo.accuracy,sampledAt:saved.geo.sampledAt,deviceToken:saved.deviceToken}),saved.photo,saved.geo.source);
+        removeLocalFile(staged.file);assertAuthGeneration(owner);
+      }
+      await offline.capture(saved.requestId!);assertAuthGeneration(owner);
+      offlineRoute.current=null;removeLocalFile(saved.photo);
+      putClock({employmentId:identity??undefined,action:saved.action==='in'?'out':'in',phase:'idle',message:t('offlinePunchSaved')},saved.requestId);
+    }catch(e){
+      putClock({...saved,phase:'review',message:t(e instanceof SignedClockUnavailable&&e.reason==='expired'?'offlineExpired':'offlineCaptureFailed')},saved.requestId);
+      if(e instanceof SignInRequiredError)void signOut();
+    }
+  }
   async function submit(){
-    if(flight.current||!identity||!draft?.requestId||(!draft.geo&&draft.clockProtocol!=='signed')||!current||AppState.currentState!=='active')return;
+    if(flight.current||!identity||!draft?.requestId||(!draft.geo&&draft.clockProtocol!=='signed')||!(current||offlineRoute.current===draft.requestId)||AppState.currentState!=='active')return;
     if(draft.phase!=='uncertain'&&draft.geo&&Math.abs(Date.now()-draft.geo.sampledAt)>120000){putClock({...draft,phase:'idle',message:t('locationExpired')});return;}
-    if(current.deviceRequired&&!draft.deviceToken&&draft.clockProtocol!=='signed')return;
+    if(current?.deviceRequired&&!draft.deviceToken&&draft.clockProtocol!=='signed')return;
     flight.current=true;const owner=authGeneration();
     let sent=false;
     let reportingAttempt=false;
     let uploadFile:ClockDraft['photo'];
     putClock({...draft,phase:'submitting',message:undefined});
     try{
+      if(offlineRoute.current===draft.requestId){await submitOffline(draft,owner);return;}
       if(draft.clockProtocol==='signed'){await submitSigned(draft,owner);return;}
       if(!draft.geo)throw new Error(t('locationInvalid'));
       const staged=await recovery.stage(JSON.stringify({action:draft.action,requestId:draft.requestId,lat:draft.geo.lat,lng:draft.geo.lng,accuracy:draft.geo.accuracy,sampledAt:draft.geo.sampledAt,deviceToken:draft.deviceToken}),draft.photo);assertAuthGeneration(owner);
@@ -203,7 +249,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
       const form=new FormData();form.append('command',staged.command);if(staged.file)appendAttachment(form,'photo',staged.file);
       sent=true;const result=await apiPost('clock',form,{employmentId:identity},operation(owner));assertAuthGeneration(owner);
       await recovery.resolve(draft.requestId);assertAuthGeneration(owner);
-      if(result.outcome==='accepted'){removeLocalFile(draft.photo);putClock({...draft,photo:undefined,phase:'done',receiptTime:result.receipt.recordedAt});}
+      if(result.outcome==='accepted'){removeLocalFile(draft.photo);putClock({...draft,photo:undefined,phase:'done',receiptTime:result.receipt.recordedAt});if(offlineClocking)offline.after();}
       else{if(result.code==='device_required')await clearClockDevice();removeLocalFile(draft.photo);putClock({employmentId:identity,action,phase:'idle',message:t(result.locationReason?locationRefusals[result.locationReason]:refusals[result.code])});}
       clock.reload();
     }catch(e){
@@ -253,20 +299,21 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
   }
   if(clock.data&&!clock.data.enabled)return <Muted>{t('attendanceOff')}</Muted>;
   return <View style={{gap:16}}>
-    <LoadState loading={clock.loading} hasData={current!=null} error={clock.error} onRetry={clock.reload}/>
+    <OfflineClockBanner offline={offline} server={offline.mode==='offline'&&current?{clockedIn:current.clockedIn,openSince:current.openSince,lastOutAt:[...current.captures].reverse().find(c=>c.direction==='out')?.recordedAt??null}:null}/>
+    {!coldStart&&<LoadState loading={clock.loading} hasData={current!=null} error={clock.error} onRetry={clock.reload}/>}
     {!!recovery.error&&<><Muted>{t('genericError')}</Muted><Button title={t('retry')} onPress={recovery.reload}/></>}
     {registrationNeeded&&<><Muted>{t('signedClockRegistrationRequired')}</Muted><Button title={t('integrityEnrollmentTitle')} onPress={()=>router.push('/integrity-keys')}/></>}
-    {signedStatus?.status==='offline_pending'&&<Muted>{t('signedClockOfflinePending')}</Muted>}
-    {signedStatus?.status==='other_pending'&&<Muted>{t('signedClockOtherPending')}</Muted>}
-    {current&&<>
-      <View style={{borderBottomWidth:1,borderColor:palette.border,paddingBottom:18,gap:10}}>
+    {signedStatus?.status==='offline_pending'&&!offlineClocking&&<Muted>{t('signedClockOfflinePending')}</Muted>}
+    {signedStatus?.status==='other_pending'&&!offline.otherExchange&&<Muted>{t('signedClockOtherPending')}</Muted>}
+    {(current||coldStart)&&<>
+      {current&&<View style={{borderBottomWidth:1,borderColor:palette.border,paddingBottom:18,gap:10}}>
         <Text style={{color:palette.muted,fontSize:14}}>{current.date} · {current.shift.code??t('workday')}</Text>
         <Text style={{color:palette.text,fontSize:32,fontWeight:'700'}}>{current.clockedIn?t('onTheClock'):t('offTheClock')}</Text>
         <View style={{flexDirection:design.clockLayout==='rail'?'column':'row',justifyContent:'space-between',gap:8}}>
           <Muted>{current.shift.start&&current.shift.end?`${current.shift.start.slice(0,5)} → ${current.shift.end.slice(0,5)}`:t('noShift')}</Muted>
           <Text style={{color:palette.accent,fontVariant:['tabular-nums']}}>{t('workedTime',{hours:Math.floor(current.workedSeconds/3600),minutes:Math.floor(current.workedSeconds%3600/60).toString().padStart(2,'0')})}</Text>
         </View>
-      </View>
+      </View>}
       {draft?.phase==='done'?<Card><Text accessibilityRole="header" style={{color:palette.text,fontSize:22,fontWeight:'700'}}>{t('clockRecorded')}</Text><Muted>{draft.receiptTime?new Date(draft.receiptTime).toLocaleString(appLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'}):''}</Muted><Button title={t('backToClock')} onPress={cancel}/></Card>:<>
         {(!draft||draft.phase==='idle')&&<View style={{flexDirection:'row',gap:12}}>{(['in','out'] as const).map(a=><Pressable key={a} accessibilityRole="button" accessibilityState={{selected:a===action}} onPress={()=>putClock({action:a,phase:'idle'})} style={{flex:1,minHeight:48,justifyContent:'center',borderBottomWidth:2,borderColor:a===action?palette.accent:palette.border}}><Text style={{color:a===action?palette.accent:palette.muted,textAlign:'center',fontWeight:'600'}}>{a==='in'?t('clockIn'):t('clockOut')}</Text></Pressable>)}</View>}
         {draft?.message&&<Text accessibilityRole="alert" style={{color:palette.text,lineHeight:22}}>{draft.message}</Text>}
@@ -289,19 +336,20 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
         {draft?.geo&&(draft.phase==='review'||draft.phase==='uncertain'||draft.phase==='submitting')&&<Card>
           <Text style={{color:palette.text,fontSize:21,fontWeight:'600'}}>{label}</Text>
           <Row label={t('locationAccuracy')} value={`± ${Math.round(draft.geo.accuracy)} m`}/>
-          <Muted>{current.geofencingRequired?t('geofenceRechecked'):t('locationRecorded')}</Muted>
+          <Muted>{current?.geofencingRequired?t('geofenceRechecked'):t('locationRecorded')}</Muted>
           <Muted>{t('serverTime')}</Muted>
           {draft.photo&&<Image source={{uri:draft.photo.uri}} style={{width:96,height:96,borderRadius:8}} accessibilityLabel={t('attendancePhoto')}/>}
-          {current.attendancePhotoSetting==='optional'&&draft.phase==='review'&&<Button title={draft.photo?t('retakePhoto'):t('addPhoto')} kind="quiet" onPress={()=>void takePhoto()}/>}
-          {current.deviceRequired&&!draft.deviceToken&&<><Muted>{t('registrationNotice')}</Muted><Button title={t('registerDevice')} onPress={()=>void register()}/></>}
+          {current?.attendancePhotoSetting==='optional'&&draft.phase==='review'&&<Button title={draft.photo?t('retakePhoto'):t('addPhoto')} kind="quiet" onPress={()=>void takePhoto()}/>}
+          {current?.deviceRequired&&!draft.deviceToken&&<><Muted>{t('registrationNotice')}</Muted><Button title={t('registerDevice')} onPress={()=>void register()}/></>}
         </Card>}
         {draft?.phase==='uncertain'?<><Muted>{t('retrySameClock')}</Muted><Button title={t('checkReceipt')} onPress={()=>void recover()}/><Button title={t('retrySameClock')} disabled={!recovery.ready} onPress={()=>void submit()}/>
           {draft.clockProtocol==='signed'&&<Button title={t('pendingDiscard')} kind="quiet" onPress={()=>Alert.alert(t('pendingDiscard'),t('pendingDiscardConfirm'),[{text:t('cancel'),style:'cancel'},{text:t('pendingDiscard'),style:'destructive',onPress:()=>void recover(true)}])}/>}
-        </>:<SlideConfirm label={pending?t('preparingClock'):draft?.phase==='review'?t('slideRecord',{action:label}):t('slidePrepare',{action:label})} disabled={!current||pending||!recovery.ready||(signedStatus?.status==='other_pending'||signedStatus?.status==='offline_pending')||(draft?.phase==='review'&&current.deviceRequired&&!draft.deviceToken)} onConfirm={()=>void(draft?.phase==='review'?submit():prepare())}/>}
+        </>:<SlideConfirm label={pending?t('preparingClock'):draft?.phase==='review'?t('slideRecord',{action:label}):t('slidePrepare',{action:label})} disabled={(!current&&!coldStart)||pending||!recovery.ready||offline.mode==='sending'||(signedStatus?.status==='other_pending'&&!offline.otherExchange||signedStatus?.status==='offline_pending'&&!offlineClocking)||(draft?.phase==='review'&&current?.deviceRequired&&!draft.deviceToken)} onConfirm={()=>void(draft?.phase==='review'?submit():prepare())}/>}
         {draft&&draft.phase==='review'&&<Button title={t('cancel')} kind="quiet" onPress={cancel}/>}
-        <Muted>{t('onlineClockOnly')}</Muted>
+        {offline.mode!=='offline'&&<Muted>{t('onlineClockOnly')}</Muted>}
       </>}
-      <View style={{gap:8,marginTop:8}}><Text style={{color:palette.text,fontSize:17,fontWeight:'600'}}>{t('clockHistory')}</Text>
+      <SavedOfflinePunches offline={offline}/>
+      {current&&<><View style={{gap:8,marginTop:8}}><Text style={{color:palette.text,fontSize:17,fontWeight:'600'}}>{t('clockHistory')}</Text>
         {current.legacy.map((c,i)=><Row key={`${c.direction}-${c.time}-${i}`} label={c.direction==='in'?t('clockIn'):t('clockOut')} value={c.time.slice(0,5)}/>)}
         {current.captures.map(c=><Row key={c.id} label={c.direction==='in'?t('clockIn'):t('clockOut')} value={new Date(c.recordedAt).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kuala_Lumpur'})}/>)}
         {!current.captures.length&&!current.legacy.length&&<Muted>{t('noClockHistory')}</Muted>}
@@ -317,7 +365,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
           <Text selectable style={{color:palette.text}}>{item.requestId}</Text>
         </Card>)}
         {attempts.data&&!attempts.data.items.length&&<Muted>{t('noReportedAttempts')}</Muted>}
-      </View>
+      </View></>}
     </>}
   </View>;
 }

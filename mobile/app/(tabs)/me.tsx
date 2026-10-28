@@ -3,6 +3,7 @@ import { useTenantDesign } from '../../lib/design';
  * Me — who I am, which employment I am acting as (the picker, when there is more than one), my released
  * payslips, and sign out.
  */
+import { useEffect, useRef } from 'react';
 import { Pressable } from 'react-native';
 import { router } from 'expo-router';
 import { companyCopy, useCompanyConnection } from '../../lib/company-connection';
@@ -10,12 +11,18 @@ import { DesignText as Text } from '../../lib/design';
 import { useApi } from '../../lib/api';
 import { t } from '../../lib/i18n';
 import { useSession } from '../../lib/session';
+import { useQueuedOfflinePunches } from '../../lib/offline-clock';
 import { Button, Card, LoadState, Muted, Row, Screen, SectionLabel, Title, colors, fmtMoney } from '../../lib/ui';
 
 export default function Me() {
   const company=useCompanyConnection();
   const { palette } = useTenantDesign();
-  const { signOut, employmentId, setEmploymentId } = useSession();
+  const { signOut, employmentId, setEmploymentId, status } = useSession();
+  const signedIn = useRef(status === 'signedIn'); signedIn.current = status === 'signedIn';
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  // Offline punches stay on this phone across sign-out; shown as information beside Sign out, never as a blocker.
+  const queued = useQueuedOfflinePunches(() => mounted.current && signedIn.current);
   const me = useApi('me', {}, signOut);
   const payslips = useApi('payslips', {}, signOut);
   const employments = me.data?.employments ?? [];
@@ -59,6 +66,7 @@ export default function Me() {
 
       <Button title={t('integrityKeysTitle')} onPress={()=>router.push('/integrity-keys')} kind="quiet"/>
       <Button title={t('pendingTitle')} onPress={()=>router.push('/pending-submissions')} kind="quiet"/>
+      {queued > 0 && <Muted>{t(queued === 1 ? 'offlineSignOutNoteOne' : 'offlineSignOutNote', { n: queued })}</Muted>}
       <Button title={t('signOut')} onPress={() => router.push({pathname:'/pending-submissions',params:{intent:'logout'}})} kind="quiet" />
       {company&&<Button title={companyCopy().change} onPress={()=>router.push({pathname:'/pending-submissions',params:{intent:'company'}})} kind="quiet"/>}
     </Screen>

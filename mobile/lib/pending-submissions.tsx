@@ -10,6 +10,7 @@ import {identityNamespace} from './config';
 import {t,appLocale} from './i18n';
 import {useJourneyDrafts,removeLocalFile} from './journey-drafts';
 import {Button,Card,LoadState,Muted,Row,Screen,Title} from './ui';
+import {useQueuedOfflinePunches} from './offline-clock';
 
 /** Read/reconcile pending intents before a voluntary exit. Forced logout never enters this screen. */
 export function PendingSubmissions({intent='review'}:{intent?:'review'|'logout'|'company'}){
@@ -22,6 +23,8 @@ export function PendingSubmissions({intent='review'}:{intent?:'review'|'logout'|
   const [attempt,setAttempt]=useState(0),[message,setMessage]=useState(''),[busy,setBusy]=useState(false);
   const alive=useRef(true),flight=useRef<symbol|null>(null),exiting=useRef(false);
   function stillCurrent(){return alive.current&&current.current===key&&authGeneration()===owner&&identityNamespace()===namespace;}
+  // Saved offline punches stay on this phone across sign-out (the driver keeps them): information, never discardable here.
+  const queued=useQueuedOfflinePunches(stillCurrent);
   function setItems(value:PendingSubmissionSummary[]|null|((previous:PendingSubmissionSummary[]|null)=>PendingSubmissionSummary[]|null)){
     if(stillCurrent())setInventory(previous=>stillCurrent()?{key,items:typeof value==='function'?value(previous.key===key?previous.items:null):value}:previous);
   }
@@ -82,6 +85,7 @@ export function PendingSubmissions({intent='review'}:{intent?:'review'|'logout'|
       <Button title={t('pendingReview')} disabled={busy} kind="quiet" onPress={()=>review(item)}/>
       <Button title={t('pendingDiscard')} disabled={busy} kind="quiet" onPress={()=>confirmDiscard(item)}/>
     </Card>)}
+    {intent==='logout'&&queued>0&&<Muted>{t(queued===1?'offlineSignOutNoteOne':'offlineSignOutNote',{n:queued})}</Muted>}
     {intent!=='review'&&<Button title={t(intent==='company'?'pendingKeepCompany':'pendingKeepLogout')} onPress={continueExit}/>}
     <Button title={t('back')} kind="quiet" onPress={()=>router.back()}/>
   </Screen>;

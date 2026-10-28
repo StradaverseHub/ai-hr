@@ -8,7 +8,7 @@ import {afterEach,describe,expect,it,vi} from 'vitest';
 import {SignInRequiredError} from '../mobile/lib/errors';
 
 function fixture(){
-  let owner=1;
+  let owner=1,queued=0;
   const handlers=new Map<string,()=>void>();
   const item={employmentId:'own',company:'Own company',kind:'clock',requestId:'pending-reference',createdAt:Date.now(),hasEvidence:true};
   const list=vi.fn(async()=>[item]);
@@ -25,7 +25,8 @@ function fixture(){
     './session':{useSession:()=>({signOut,setEmploymentId})},'./errors':{SignInRequiredError},
     './auth':{authGeneration:()=>owner},'./config':{identityNamespace:()=>'https://hr.example.com'},
     './journey-drafts':{useJourneyDrafts:()=>drafts,removeLocalFile:remove},
-    './i18n':{appLocale:()=>'en',t:(key:string,values?:{n:number})=>key==='pendingCount'?`${key} ${values?.n}`:key},
+    './i18n':{appLocale:()=>'en',t:(key:string,values?:{n:number})=>key==='pendingCount'||key==='offlineSignOutNote'?`${key} ${values?.n}`:key},
+    './offline-clock':{useQueuedOfflinePunches:(isUnlocked:()=>boolean)=>{expect(typeof isUnlocked).toBe('function');return queued;}},
     './ui':{Screen:Container,Card:Container,Muted:Text,Row:()=>null,Title:({children}:React.PropsWithChildren)=><h1>{children}</h1>,
       LoadState:({loading,error}:any)=><span>{loading?'loading':error?'load error':''}</span>,
       Button:({title,onPress,disabled}:any)=>{handlers.set(title,onPress);return <button disabled={disabled} onClick={onPress}>{title}</button>;}},
@@ -33,7 +34,7 @@ function fixture(){
   const output={exports:{} as {PendingSubmissions:React.ComponentType<{intent?:'review'|'logout'|'company'}>}};
   runInNewContext(transpileModule(readFileSync('mobile/lib/pending-submissions.tsx','utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX}}).outputText,
     {module:output,exports:output.exports,Date,require:(name:string)=>{if(name in ports)return ports[name];throw new Error(name);}});
-  return {View:output.exports.PendingSubmissions,item,list,reconcile,signOut,setEmploymentId,remove,router,drafts,handlers,changeAccount:()=>{owner++;},dialog:()=>dialog};
+  return {View:output.exports.PendingSubmissions,item,list,reconcile,signOut,setEmploymentId,remove,router,drafts,handlers,changeAccount:()=>{owner++;},dialog:()=>dialog,queue:(n:number)=>{queued=n;}};
 }
 afterEach(cleanup);
 describe('pending-aware voluntary exit',()=>{
@@ -75,5 +76,20 @@ describe('pending-aware voluntary exit',()=>{
     const f=fixture();render(<f.View intent="company"/>);await screen.findByText('pendingCount 1');
     fireEvent.click(screen.getByText('pendingReview'));expect(f.setEmploymentId).toHaveBeenCalledWith('own');expect(f.router.replace).toHaveBeenCalledWith('/');
     fireEvent.click(screen.getByText('pendingKeepCompany'));expect(f.router.replace).toHaveBeenCalledWith('/company');expect(f.signOut).not.toHaveBeenCalled();
+  });
+  it('notes saved offline punches before sign-out as information: not counted, not discardable, not a blocker',async()=>{
+    const f=fixture();f.queue(2);render(<f.View intent="logout"/>);await screen.findByText('pendingCount 1');
+    expect(screen.getByText('offlineSignOutNote 2')).toBeTruthy();expect(screen.getAllByText('pendingDiscard')).toHaveLength(1);
+    fireEvent.click(screen.getByText('pendingKeepLogout'));expect(f.signOut).toHaveBeenCalledOnce();expect(f.reconcile).not.toHaveBeenCalled();
+  });
+  it('uses the singular note for one punch and shows none outside sign-out or when nothing is queued',async()=>{
+    const f=fixture();f.queue(1);const ui=render(<f.View intent="logout"/>);await screen.findByText('pendingCount 1');
+    expect(screen.getByText('offlineSignOutNoteOne')).toBeTruthy();ui.unmount();
+    render(<f.View intent="company"/>);await screen.findByText('pendingCount 1');expect(screen.queryByText(/^offlineSignOutNote/)).toBeNull();cleanup();
+    const g=fixture();render(<g.View intent="logout"/>);await screen.findByText('pendingCount 1');expect(screen.queryByText(/^offlineSignOutNote/)).toBeNull();
+  });
+  it('still signs out on its own when no request is pending, even with offline punches queued',async()=>{
+    const f=fixture();f.queue(3);f.list.mockResolvedValueOnce([]);render(<f.View intent="logout"/>);
+    await waitFor(()=>expect(f.signOut).toHaveBeenCalledOnce());
   });
 });

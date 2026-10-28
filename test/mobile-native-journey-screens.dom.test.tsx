@@ -43,15 +43,19 @@ function fixture(platform:'ios'|'android'='ios'){
   const stage=vi.fn(async(command:string,file?:unknown,source?:unknown)=>{if(source)retained.add(JSON.parse(command).requestId);return {command,file};}),resolve=vi.fn(async()=>{});
   const prepareClock=vi.fn(async(action:string,requestId:string)=>({requestId,kind:'clock',stage:'preparation',createdAt:Date.now(),command:JSON.stringify({action,requestId,claimedAt:Date.now()})}));
   const reportAttempt=vi.fn(async(requestId:string,_operation?:{assertCurrent():void})=>({requestId,receivedAt:new Date().toISOString()}));
+  // The shipped offline UI module with the build switch OFF (the default); every driver and anchor entry is a spy.
+  const engine={armOffline:vi.fn(),syncOffline:vi.fn(),beforeOnlinePunch:vi.fn(),afterOnlinePunch:vi.fn(),captureOfflinePunch:vi.fn(),offlineClaims:vi.fn(),removeUndeliverable:vi.fn(),subscribeOfflineForeground:vi.fn(),keepOfflineSynced:vi.fn()};
+  const anchorRead=vi.fn(async()=>null);
+  const offlineUi=load('mobile/lib/offline-clock.tsx',{...base,'./config':{offlineClockingBuild:false,config:{apiUrl:'https://hr.example.com'},identityNamespace:()=>'company'},'./offline-sync':engine,'./offline-anchor':{readOfflineAnchor:anchorRead},'./signed-clock':{openOwnedSignedClock:openSigned},'expo-symbols':{SymbolView:()=>null},'./ui':{...ui,colors:{warn:'#9A5B00',danger:'#B42318'}}});
   const shared={...base,'./submission-journal':journal,'../../lib/mobile-api/contract':contract,'./enrollment-journal':enrollment,'./signed-clock-journal':{SignedClockUnavailable},'./signed-clock':{openOwnedSignedClock:openSigned},'./submission-recovery':{useSubmissionRecovery:(_kind:string,_id:string,onRestore:(value:unknown)=>void)=>{
     React.useEffect(()=>{if(restoredClock){const value=restoredClock;if(value.entry.integrity)retained.add(value.entry.requestId);onRestore(value);}},[]);
     return {ready:true,error:null,reload:()=>{},stage,resolve,prepareClock,reportAttempt,hasSignedAttempt};
-  }},'./journey-drafts':{...provider,removeLocalFile:remove},'./ui':ui,'./api':{apiGet:get,apiPost:(path:string,...args:unknown[])=>path==='clock-location'?preview(...args):post(path,...args),useApi:(path:string)=>({data:path==='clock-attempts'?attemptsState:path==='team'?teamState:clockState,reload:path==='clock-attempts'?reloadAttempts:reload,loading:false,error:null})},'./capture':{capturePosition:capture,capturePhoto:photo,appendAttachment:()=>{}},'./device-registration':{readClockDevice:async()=>null,writeClockDevice:async()=>{},clearClockDevice:async()=>{}},'./slide-confirm':{SlideConfirm:(p:any)=><button disabled={p.disabled} onClick={p.onConfirm}>{p.label}</button>},'expo-document-picker':{getDocumentAsync:async()=>({canceled:true})},'expo-file-system':{}};
+  }},'./journey-drafts':{...provider,removeLocalFile:remove},'./ui':ui,'./api':{apiGet:get,apiPost:(path:string,...args:unknown[])=>path==='clock-location'?preview(...args):post(path,...args),useApi:(path:string)=>({data:path==='clock-attempts'?attemptsState:path==='team'?teamState:clockState,reload:path==='clock-attempts'?reloadAttempts:reload,loading:false,error:null})},'./capture':{capturePosition:capture,capturePhoto:photo,appendAttachment:()=>{}},'./device-registration':{readClockDevice:async()=>null,writeClockDevice:async()=>{},clearClockDevice:async()=>{}},'./slide-confirm':{SlideConfirm:(p:any)=><button disabled={p.disabled} onClick={p.onConfirm}>{p.label}</button>},'./offline-clock':offlineUi,'expo-document-picker':{getDocumentAsync:async()=>({canceled:true})},'expo-file-system':{}};
   const {ClockPanel}=load('mobile/lib/clock-panel.tsx',shared),{LeaveRequestForm}=load('mobile/lib/leave-request-form.tsx',shared),{TeamPanel}=load('mobile/lib/team-panel.tsx',shared);
   function Probe(){drafts=provider.useJourneyDrafts();return null;}
   const options={employmentId:'own',items:[{id:'annual',name:'Annual leave',durations:['full_day','half_day_am','hourly'],allowedMimeTypes:[],maxDocBytes:10485760,requiresDocument:false,emergencySplit:false}]};
   function App({kind,refreshToken=0,visible=true}:{kind:'clock'|'leave'|'team';refreshToken?:number;visible?:boolean}){return <provider.JourneyDraftProvider><Probe/>{!visible?null:kind==='clock'?<ClockPanel refreshToken={refreshToken}/>:kind==='team'?<TeamPanel refreshToken={refreshToken}/>:<LeaveRequestForm options={options} today="2026-01-01" onSubmitted={reload}/>}</provider.JourneyDraftProvider>;}
-  return {App,session,post,signed,openSigned,alert,hasSignedAttempt,setSignedState:(value:SignedClockStatus)=>{signedState=value;},restoreClock:(value:unknown)=>{restoredClock=value;},preview,get,capture,reload,stage,resolve,prepareClock,reportAttempt,remove,teamState,clockState,photo,attemptsState,reloadAttempts,drafts:()=>drafts};
+  return {App,engine,anchorRead,session,post,signed,openSigned,alert,hasSignedAttempt,setSignedState:(value:SignedClockStatus)=>{signedState=value;},restoreClock:(value:unknown)=>{restoredClock=value;},preview,get,capture,reload,stage,resolve,prepareClock,reportAttempt,remove,teamState,clockState,photo,attemptsState,reloadAttempts,drafts:()=>drafts};
 }
 afterEach(cleanup);
 describe('native clock job',()=>{
@@ -324,4 +328,23 @@ it('blocks online clock preparation while the shared owner retains an offline co
  const f=fixture();f.setSignedState({status:'offline_pending',requestId:'saved-context',phase:'context_requested'});render(<f.App kind="clock"/>);
  await screen.findByText('signedClockOfflinePending');expect(screen.getByText('slidePrepare')).toBeDisabled();
  expect(f.capture).not.toHaveBeenCalled();expect(f.signed.start).not.toHaveBeenCalled();
+});
+
+describe('offline clocking switch off (the default)',()=>{
+ it('renders and clocks exactly as before: no driver or anchor call, no offline banner or saved-punch list',async()=>{
+  const f=fixture();render(<f.App kind="clock"/>);
+  expect(screen.getByText('onlineClockOnly')).toBeTruthy();expect(screen.getByText('clockHistory')).toBeTruthy();
+  expect(screen.queryByText('offlineNoConnection')).toBeNull();expect(screen.queryByText('offlineSavedPunches')).toBeNull();
+  fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('slideRecord');
+  f.post.mockResolvedValueOnce({outcome:'accepted',receipt:contract.ClockReceipt.parse({id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',direction:'in',date:'2026-01-01',recordedAt:'2026-01-01T01:00:00Z',photoAvailable:false})});
+  fireEvent.click(screen.getByText('slideRecord'));await screen.findByText('clockRecorded');
+  for(const spy of Object.values(f.engine))expect(spy).not.toHaveBeenCalled();
+  expect(f.anchorRead).not.toHaveBeenCalled();expect(f.openSigned.mock.calls.every(([employment])=>employment==='own')).toBe(true);
+ });
+ it('keeps the session-employment check unchanged when no employment is picked (the offline relaxation is switch-on only)',async()=>{
+  const f=fixture();f.session.employmentId=null as unknown as string;render(<f.App kind="clock"/>);
+  fireEvent.click(screen.getByText('slidePrepare'));await waitFor(()=>expect(f.drafts().clock?.phase).toBe('idle'));
+  expect(f.capture).not.toHaveBeenCalled();expect(f.post).not.toHaveBeenCalled();
+  for(const spy of Object.values(f.engine))expect(spy).not.toHaveBeenCalled();
+ });
 });
