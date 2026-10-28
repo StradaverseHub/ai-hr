@@ -10,6 +10,7 @@ import { resolveEntitlementsTx,isModuleEnabled } from './entitlements';
 import { toolsFor } from './assistant-tools';
 import { workspaceTasksFor } from '../lib/ai/workspace-tasks';
 import { withAssistantReadTx } from './assistant-read-session';
+import { resolveAiProviderSnapshotTx } from './ai-provider-snapshot';
 import { agentReviewWorkspaceTx,specialistReviewWorkspaceTx,reopenOwnModulePlanTx,issueOwnModulePlanPermitTx,type OwnModulePlanView } from './module-agent-releases';
 import {loadGovernedWorkspaceJobTx} from './workspace-module-jobs';
 import {workspaceGroundedAnswers} from './workspace-grounded-answers';
@@ -17,7 +18,7 @@ import {workspaceGroundedAnswers} from './workspace-grounded-answers';
 export async function loadAiWorkspace(ctx: SessionContext, options:{includeHistory?:boolean;includeGovernance?:boolean;selectedExchangeId?:string;governedJobId?:string;proposalId?:string}={}) {
   const includeHistory=options.includeHistory!==false,includeGovernance=options.includeGovernance!==false,selectedExchangeId=options.selectedExchangeId,governedJobId=options.governedJobId,proposalId=options.proposalId;
   const captured = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
-  if (!captured.userId) return { access: { allowed: false, reason: 'no_user' } as AssistantAccess, taskIds: [], history: [],jobModules:[],agentReview:null,specialistReview:null,governedJob:null,proposal:null,planningPermit:null };
+  if (!captured.userId) return { access: { allowed: false, reason: 'no_user' } as AssistantAccess, taskIds: [], history: [],jobModules:[],agentReview:null,specialistReview:null,governedJob:null,proposal:null,planningPermit:null,planningAvailability:'resting' as const };
   const userId = captured.userId;
   try{return await withTenant(captured, async tx => {
     await tx.execute(sql`SET TRANSACTION READ ONLY`);
@@ -25,8 +26,13 @@ export async function loadAiWorkspace(ctx: SessionContext, options:{includeHisto
     const entitlements = await resolveEntitlementsTx(tx, captured.tenantId);
     const fresh = { ...captured, entitlements };
     const access = await mayUseAssistant(fresh, tx);
-    if (!access.allowed) return { access, taskIds: [], history: [],jobModules:[],agentReview:null,specialistReview:null,governedJob:null,proposal:null,planningPermit:null };
-    let planningPermit:string|null=null;try{planningPermit=await issueOwnModulePlanPermitTx(tx,fresh);}catch{/* Issuance never falls back to a browser nonce. */}
+    if (!access.allowed) return { access, taskIds: [], history: [],jobModules:[],agentReview:null,specialistReview:null,governedJob:null,proposal:null,planningPermit:null,planningAvailability:'resting' as const };
+    // A suggestion needs a configured provider. Without one the planner is not broken, it is not set up:
+    // say so calmly and issue no permit for a request that could never be sent. The savepoint keeps a
+    // failed provider read from aborting the rest of this read; unknown is never "configured".
+    let planningProvider:boolean|null=null;try{planningProvider=await tx.transaction(async savepoint=>(await resolveAiProviderSnapshotTx(savepoint,fresh))!==null);}catch{/* Unknown provider state. */}
+    let planningPermit:string|null=null;if(planningProvider!==false)try{planningPermit=await issueOwnModulePlanPermitTx(tx,fresh);}catch{/* Issuance never falls back to a browser nonce. */}
+    const planningAvailability=planningPermit?'ready' as const:planningProvider===false?'no_provider' as const:'resting' as const;
     const governedJob=governedJobId?await loadGovernedWorkspaceJobTx(fresh,tx,governedJobId):null;
     let proposal:OwnModulePlanView|null=null;if(proposalId)try{proposal=await reopenOwnModulePlanTx(tx,fresh,proposalId);}catch{/* Bounded current-owner refusal; no existence oracle. */}
     const taskIds = workspaceTasksFor(toolsFor(fresh).map(tool => tool.spec.name));
@@ -57,6 +63,6 @@ export async function loadAiWorkspace(ctx: SessionContext, options:{includeHisto
     const agentReview=includeGovernance?await agentReviewWorkspaceTx(tx,fresh):null;
     const specialistReview=includeGovernance?await specialistReviewWorkspaceTx(tx,fresh):null;
     const jobModules=MODULE_JOBS.filter(([code])=>isModuleEnabled(fresh,code)&&(code!=='system_explorer'||isAdmin(fresh))).map(([code])=>code);
-    return { access, taskIds, history,agentReview,specialistReview,jobModules,governedJob,proposal,planningPermit };
-  });}catch{return {access:{allowed:false as const,reason:'unavailable' as const},taskIds:[],history:[],jobModules:[],agentReview:null,specialistReview:null,governedJob:null,proposal:null,planningPermit:null};}
+    return { access, taskIds, history,agentReview,specialistReview,jobModules,governedJob,proposal,planningPermit,planningAvailability };
+  });}catch{return {access:{allowed:false as const,reason:'unavailable' as const},taskIds:[],history:[],jobModules:[],agentReview:null,specialistReview:null,governedJob:null,proposal:null,planningPermit:null,planningAvailability:'resting' as const};}
 }

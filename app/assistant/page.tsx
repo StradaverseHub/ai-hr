@@ -8,6 +8,7 @@ import { getSession } from '@/lib/session';
 import { loadAiWorkspace } from '@/core/ai-workspace';
 import {CanonicalModuleJob,ModuleJobChooser,GroundedWorkspaceReply,GovernedModuleJobComposer,GovernedWorkspaceJob} from '@/components/assistant/module-jobs';
 import {loadCanonicalModuleJob} from '@/core/workspace-module-jobs';
+import {allowedModuleActionEntries} from '@/core/assistant-actions/module-action-entries';
 import {ModuleQuestionPlanner,HumanPlannerEvaluation} from '@/components/assistant/module-plan';
 import {eraseModuleProposalsAction} from './module-plan-actions';
 import {ModuleAgentReview} from '@/components/assistant/module-agent-review';
@@ -77,6 +78,8 @@ export default async function AssistantPage({
 
   const { history } = workspace;
   const selectedJob=sp.job===undefined||sp.governed!==undefined?null:await loadCanonicalModuleJob(s,{module:sp.job});
+  // Shortcuts are offered only where the target's own authorization rules admit this session.
+  const actionEntries=await allowedModuleActionEntries(s,workspace.jobModules);
   const today = todayInKualaLumpur();
   const tasks = workspace.taskIds.map(id => ({
     id, label: t(`workspace.${id}_label`), prompt: t(`workspace.${id}_prompt`, { date: today }),
@@ -89,13 +92,13 @@ export default async function AssistantPage({
       <form action={eraseConversationMetadataAction}><button type="submit" className="min-h-11 text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.conversationGovernance.erase')}</button></form>
       <ErrorBanner message={errorMessage} />
 
-      <ModuleJobChooser modules={workspace.jobModules} selected={sp.job}/>
+      <ModuleJobChooser modules={workspace.jobModules} selected={sp.job} actions={actionEntries}/>
       {selectedJob&&<CanonicalModuleJob view={selectedJob} ctx={s}/>}
       {workspace.governedJob&&<GovernedWorkspaceJob view={workspace.governedJob} ctx={s}/>}
       {workspace.governedJob&&sp.governed&&<NativeOutcomes jobId={sp.governed} status={sp.nativeOutcome} selectedLink={sp.nativeLink}/>}
       <GovernedModuleJobComposer modules={workspace.jobModules}/>
       <SpecialistJobComposer modules={workspace.jobModules}/>
-      <ModuleQuestionPlanner permit={workspace.planningPermit} view={workspace.proposal} status={sp.planning??(sp.proposal&&!workspace.proposal?'unavailable':undefined)}/>
+      <ModuleQuestionPlanner permit={workspace.planningPermit} availability={workspace.planningAvailability} view={workspace.proposal} status={sp.planning??(sp.proposal&&!workspace.proposal?'unavailable':undefined)}/>
       {workspace.agentReview&&<HumanPlannerEvaluation candidates={workspace.agentReview.candidates}/>}
 
       <Card className="p-5">

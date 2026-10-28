@@ -25,6 +25,7 @@ import {withAssistantRead} from '../core/assistant-read-session';
 import {loadCanonicalModuleJob,loadCanonicalToolJob,type CanonicalModuleJobView} from '../core/workspace-module-jobs';
 import {CanonicalModuleJob,ModuleJobChooser,GroundedWorkspaceReply,GovernedModuleJobComposer} from '../components/assistant/module-jobs';
 import {AGENT_MODULE_CODES,MODULE_AGENT_CAPABILITIES} from '../lib/ai/module-agents';
+import {MODULE_ACTION_ENTRIES} from '../lib/assistant-actions/module-action-entries';
 import {moduleHumanActionHandoffs} from '../lib/ai/module-human-handoffs';
 import {assistantSourceDigest} from '../lib/ai/assistant-disclosure';
 import {compactSpecialistWork,executeCanonicalSpecialist} from '../lib/ai/module-specialists';
@@ -34,6 +35,26 @@ const copies:Record<string,unknown>={en,ms,zh,ta,th,vi:viMessages};
 const ctx:SessionContext={tenantId:'fictional-tenant',userId:'fictional-user',personId:'fictional-person',roles:['employee'],grants:[{role:'employee',companyId:null}]};
 beforeEach(()=>{vi.clearAllMocks();state.locale='en';state.fail=false;state.tools=[];state.data={rows:[{employeeCode:'CANONICAL-01',company:'Canonical employer',hiredOn:'2020-01-01',terminatedOn:null,status:'active'}],truncated:false};});
 afterEach(()=>{cleanup();vi.restoreAllMocks();});
+describe('native-action shortcuts follow the target action authorization',()=>{
+ const gated=['/admin/personnel/import','/assistant/org','/assistant/payroll-close','/assistant/knowledge-base','/assistant/payroll-runs','/assistant/pay-codes','/assistant/approvals','/assistant/statutory'];
+ const hrefs=(container:HTMLElement)=>Array.from(container.querySelectorAll<HTMLAnchorElement>('a')).map(link=>link.getAttribute('href'));
+ it('hides every administrative shortcut from an ordinary employee and keeps own-record shortcuts',async()=>{
+  const view=render(await ModuleJobChooser({modules:AGENT_MODULE_CODES}));const shown=hrefs(view.container);
+  for(const href of gated)expect(shown).not.toContain(href);
+  for(const href of ['/assistant/leave','/assistant/profile','/assistant/claims','/assistant/attendance','/assistant/notifications'])expect(shown).toContain(href);
+  expect(screen.queryByRole('link',{name:en.people.import.title})).toBeNull();expect(screen.queryByRole('link',{name:en.assistant.workspace.orgActions.title})).toBeNull();
+  expect(screen.queryByRole('link',{name:en.assistant.workspace.payComponentActions.title})).toBeNull();expect(screen.queryByRole('link',{name:en.assistant.workspace.approvalActions.title})).toBeNull();
+  expect(withAssistantRead).not.toHaveBeenCalled();
+ });
+ it('shows a manager only the assigned-decision shortcut it was granted, and HR admin every one',async()=>{
+  const manager=render(await ModuleJobChooser({modules:AGENT_MODULE_CODES,actions:['assigned_leave']}));const managerLinks=hrefs(manager.container);
+  expect(managerLinks).toContain('/assistant/approvals');for(const href of gated.filter(href=>href!=='/assistant/approvals'))expect(managerLinks).not.toContain(href);manager.unmount();
+  const admin=render(await ModuleJobChooser({modules:AGENT_MODULE_CODES,actions:MODULE_ACTION_ENTRIES}));for(const href of gated)expect(hrefs(admin.container)).toContain(href);
+ });
+ it('never offers a shortcut for a task card that is not shown',async()=>{
+  const view=render(await ModuleJobChooser({modules:['leave'],actions:MODULE_ACTION_ENTRIES}));for(const href of gated)expect(hrefs(view.container)).not.toContain(href);
+ });
+});
 describe('deterministic current-user job cards',()=>{
  it.each(['en','ms','zh','ta','th','vi'])('%s presents meaningful canonical facts with accessible headings and refresh controls',async locale=>{
   state.locale=locale;const view=await loadCanonicalModuleJob(ctx,{module:'employees'});render(await CanonicalModuleJob({view,ctx}));
@@ -44,7 +65,7 @@ describe('deterministic current-user job cards',()=>{
   expect(new FormData(refresh).get('job')).toBe('employees');expect(screen.queryByText('fictional-user')).toBeNull();
  });
  it('discovers20 real tasks without reading any of them or placing HR facts/subjects into links',async()=>{
-  const view=render(await ModuleJobChooser({modules:AGENT_MODULE_CODES,selected:'leave'}));
+  const view=render(await ModuleJobChooser({modules:AGENT_MODULE_CODES,selected:'leave',actions:MODULE_ACTION_ENTRIES}));
   expect(screen.getAllByRole('link').map(link=>link.getAttribute('href')).sort()).toEqual([
    ...AGENT_MODULE_CODES.map(module=>'/assistant?job='+encodeURIComponent(module)),
    '/assistant/payroll-runs','/assistant/statutory','/assistant/payroll-close','/admin/personnel/import','/assistant/rewards','/assistant/pay-codes','/assistant/attendance','/assistant/approvals','/assistant/leave','/assistant/profile','/assistant/notifications','/assistant/performance','/assistant/claims','/assistant/testing','/assistant/org','/assistant/knowledge-base','/assistant/lifecycle','/assistant/toil',
