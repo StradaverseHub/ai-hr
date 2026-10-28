@@ -4,7 +4,7 @@ Owner: repository/release owner. Use for release planning, staging acceptance, p
 
 ## Start here
 
-Read this checkout's `CLAUDE.md` and [repository/environment policy](REPOSITORY-AND-ENVIRONMENTS.md). That policy owns authority; [production packages](PRODUCTION-PACKAGES.md) owns publication; [operator access](../deploy/OPERATOR-ACCESS.md) owns private connections. Resolve disagreements through those owners and current code before acting.
+Read this checkout's `CLAUDE.md` and [repository/environment policy](REPOSITORY-AND-ENVIRONMENTS.md). That policy owns authority; [production packages](PRODUCTION-PACKAGES.md) owns publication; [operator access](../deploy/OPERATOR-ACCESS.md) owns private connections. For the actual two-VM installation performed on 25–26 October, read the [production deployment record](PRODUCTION-DEPLOYMENT-RECORD.md). Resolve disagreements through those owners and current code before acting.
 
 The implemented flow is:
 
@@ -91,7 +91,7 @@ The publisher checks source/build/service/dependency identity, captures Linux ru
 
 ## 4. Install production only for the separately authorized live release
 
-First verify the target exists, its private SSH alias/origin, service identity, installed SHA/build, Node compatibility, authentication provider, migration ledger and backup/restore readiness. Repository policy describes a separately provisioned future live installation; verify actual runtime state before claiming that installation now exists.
+First verify the target's private SSH alias/origin, service identity, installed SHA/build, Node compatibility, authentication provider, migration ledger and backup/restore readiness. The [production deployment record](PRODUCTION-DEPLOYMENT-RECORD.md) documents a separate live installation commissioned on 25–26 October; verify its current runtime state before selecting an update baseline.
 
 Prepare a target-specific maintenance, installation, rollback and acceptance plan from the exact package manifest. [DEPLOY.md](../deploy/DEPLOY.md) describes legacy demo operations; [CUSTOMER.md](../deploy/CUSTOMER.md) contains older Keycloak commissioning steps. Resolve authentication through `CLAUDE.md`, [ADR-0117](adr/0117-embedded-hr-authentication.md) and the [embedded-auth guide](../deploy/internal-auth/README.md): the owner-selected direction is `AUTH_PROVIDER=internal`. Inspect the actual candidate preflight/tooling for compatibility before executing an older installer. A guide's existence does not prove its Linux installation path passed acceptance.
 

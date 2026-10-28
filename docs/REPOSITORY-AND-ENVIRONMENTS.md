@@ -23,7 +23,7 @@ Worktree paths are local state discovered through Git. A folder name or an old M
 | Branch | Role |
 | --- | --- |
 | alpha | Existing staging/internal-acceptance installation; private SSH alias aihr-staging, application /opt/ai-hr, service aihr. |
-| main | Source for the separately provisioned future live installation; branch alignment does not create that installation. |
+| main | Source for the separate production installation; see the [25–26 October commissioning record](PRODUCTION-DEPLOYMENT-RECORD.md). Branch alignment does not deploy that installation. |
 | Work branches | Isolated candidates based on a verified current integration ref. |
 
 Deploy verified changes to staging first. Verify exact source/build arrival, migration ledger, restart/health and acceptance. **Production requires a subsequent explicit owner request.** A test result, tag, package or aligned branch is not deployment authorization. `.env.production` and Next production mode do not identify the live environment.
