@@ -1,0 +1,51 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+Most of these rules already apply automatically, whatever role a person has been given:
+
+- Nobody sees their own reward line, not even an approver.
+
+- People marked "EC confidential" are visible only to Group Rewards, CTRO and the Executive Chairman.
+
+- People marked "BG confidential" are hidden from the BU CEO and the PBP.
+
+- The PBP can read but cannot change or approve anything.
+
+- Unit totals and budgets always include the hidden people.
+
+The gap is how a person gets marked BG or EC confidential: today Group Rewards sets it by hand for each person during data verification or through the data template. Nothing works it out from the reporting lines in AIHR, so a missed marking means a BU CEO could see a BG CEO's direct report. The "What each Rewards role permits" panel also does not mention these rules.
+
+WHAT WE'LL CHANGE
+
+- When a review is created or refreshed, AIHR marks people automatically from their reporting line in People: anyone reporting directly to the person in the BG CEO seat becomes "BG confidential", and anyone reporting directly to the person in the Executive Chairman seat becomes "EC confidential".
+
+- Group Rewards can make a person more restricted than the automatic marking, but never less restricted. The data verification screen shows why each marking was set.
+
+- If the BG CEO or Executive Chairman seat changes person, the markings are worked out again.
+
+- The "What each Rewards role permits" panel gets a second part, "Confidentiality rules", listing the four rules above in plain words.
+
+WHAT YOU'LL GET
+
+The confidentiality rules no longer depend on someone remembering to tick a box for each sensitive person.
+
+GOOD TO KNOW
+
+- AIHR has no separate "EC direct report" flag on the employee record. Using the reporting line to the person in the Executive Chairman seat gives the same result and stays correct when reporting lines change. If someone should be EC confidential without reporting directly to the Executive Chairman, Group Rewards can still mark them by hand.
+
+- Reporting lines must be kept up to date in People for this to work; people with no reporting line recorded stay as they are and Group Rewards marks them by hand.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACTS (origin/alpha 162a8f743): packs/rewards/model.ts visibleEntry hides own personId, ec → gr/ctro/ec only, bg → hidden from bu/pbp-only viewers, unreviewed → gr only; canEditStage excludes pbp. reviewProjectionTx budgets use calculated.budgets over all entries (hidden included); hiddenCount shown. facts.confidentiality is set via saveRewardEntry (GR) or importRewardFacts. reporting_line (administrative, effective-dated) exists; no EC flag field in schema.
+
+1. deriveConfidentiality(tx, unit, entries, asOf=snapshotDate): seat holders for 'bg' and 'ec' (reward_member → app_user.person_id → active employments) and reporting_line rows (line_type administrative, valid on asOf, not delegate) whose manager is one of those employments. Result per entry: 'ec' > 'bg' > 'standard'.
+
+2. Apply in snapshotEmployees (create and refresh) and on access commit when a bg/ec seat changes (draft only, touch revision). Store derived floor in source.confidentialityFloor plus reason; facts.confidentiality = max(floor, facts.confidentiality). saveRewardEntry/importRewardFacts refuse lowering below the floor.
+
+3. UI: reason text on the data verification row; rules section in access-editor permissions panel. Strings in all locales.
+
+4. Tests: direct report of BG seat hidden from BU CEO and PBP but in totals; EC direct report visible only to gr/ctro/ec; GR cannot lower; seat change re-derives; own line still hidden. No migration (jsonb fields on existing entry source/facts).

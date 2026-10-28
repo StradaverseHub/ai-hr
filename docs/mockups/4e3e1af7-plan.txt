@@ -1,0 +1,47 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+The unit amount box treats a blank as "use the suggested amount", while RM 0 withholds the token for everyone in the BU. The two look almost the same, so clearing the box or typing 0 by mistake could withhold the token for a whole BU.
+
+Some safeguards exist already: when the amount is RM 0, approvers see a review note that the lump sum is withheld, and an amount above the suggestion raises a warning. Each save is recorded, but without the old and new amount or a reason.
+
+WHAT WE'LL CHANGE
+
+- The box becomes a clear choice of three: "Use suggested amount" (shows today's suggestion), "Set amount", or "Withhold for this BU".
+
+- "Set amount" requires an amount above RM 0. Typing an amount above the suggestion shows a warning straight away that it is more than the remaining budget supports.
+
+- "Withhold for this BU" asks you to confirm, shows how many people will not receive the token, and needs a written reason.
+
+- Approvers see a review note with who withheld it, when, and the reason.
+
+- Every change keeps a record of who made it, the date and time, the old and new setting, and the reason.
+
+WHAT YOU'LL GET
+
+Withholding the token for a whole BU can only happen on purpose, with a reason that approvers can see.
+
+GOOD TO KNOW
+
+- No change to existing records - reviews that already have an amount saved keep it exactly as it is.
+
+- A reason is required for withholding. For "Set amount" a reason is optional, but it is recorded when given.
+
+- Who can change the amount stays as today: the BU CEO and Group Rewards while the review is in Draft, and each approver during their own approval step.
+
+- A companion request (headcount, total cost and balance beside the amount) changes the same card. We will build them together.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACTS (origin/alpha a5dbc80d0): policy.lumpUnitCents null = automatic, 0 = withheld (engine.ts: BUD-05 review flag "withheld (RM 0)"; BUD-05 warning when unit amount exceeds suggestion). setRewardUnitLump (service.ts 460) takes cents or null, gated by canEditStage, event reward-unit.lump-updated with revision only. lumpAction in app/rewards/actions.ts uses scaled(f, 'lump') so blank becomes null.
+
+1. setRewardUnitLump(ctx, unitId, revision, {mode: auto, set or withhold; cents; reason}): set requires cents >= 1; withhold stores 0 and requires reason trimmed >= 10 chars; store policy.lumpReason (optional string, max 1000) alongside lumpUnitCents (policySchema optional field, jsonb; no migration). Event lump-updated payload {revision, before: {cents}, after: {cents}, mode, reason}.
+
+2. Engine: the withheld review flag message includes the stored reason; approvers already see review flags in Checks.
+
+3. UI: radio group with three options; amount field enabled only for set; live warning when amount > suggestedLumpCents (display only, comparison against server-provided suggestion); withhold opens a confirm step showing lumpWorking total count and the reason field.
+
+4. Strings in six locales. Tests: blank can no longer save withhold; set 0 refused; withhold without reason refused; event carries before/after/reason; non-editor refused (existing canEditStage). Coordinate with c28db2f0 (same card).

@@ -1,0 +1,51 @@
+VERDICT: Not built yet   ·   SIZE: Large
+
+THE SITUATION TODAY
+
+On the Rewards access page, one administrator can add, change or remove access, including their own, and it takes effect as soon as they confirm. AIHR already shows a before-and-after preview and records who made each change and when, but nobody else has to agree to it, and there is no export of the access list for periodic reviews.
+
+WHAT WE'LL CHANGE
+
+- Saving an access change (add, edit or remove) creates a request marked "Pending". Nothing changes until it is approved.
+
+- A "Waiting for approval" section on the Rewards access page lists pending requests with the before and after, who asked and when.
+
+- Another person who manages Rewards access for that company approves or rejects it. Rejecting needs a reason.
+
+- Nobody can approve their own request, and nobody can approve a request that changes their own access.
+
+- A request lapses automatically if the review leaves Draft or the review's access changes in some other way before approval, so an approval always applies to what was actually shown.
+
+- Every request, approval and rejection is recorded with requester, approver, dates and times, and before and after values.
+
+- New "Export access list" button: downloads every assignment in your companies with person, role, review, status and the last change, for periodic access review.
+
+WHAT YOU'LL GET
+
+No single person can grant or widen access to reward data on their own, and you have a ready-made list for access reviews.
+
+GOOD TO KNOW
+
+- A company needs at least two people who can manage Rewards access, otherwise requests cannot be approved. The page will warn when a company has only one.
+
+- When someone creates a new unit review, they are still given the Group Rewards seat on it automatically so that setup can start; this is recorded and shows in the export. Everything added after that needs the second approval.
+
+- The approver is any other person who manages Rewards access for that company. A separate named "checker" role is not part of this plan; if you need one, reject and say so.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACTS (origin/alpha 162a8f743): packs/rewards/maintenance.ts commitAccessTx applies the change immediately after a digest-checked preview; event reward-unit.access-changed carries before/after/actor. Authority is app.reward_admin(company). createRewardUnit inserts the creator as 'gr'.
+
+1. Needs a migration (new table reward_access_request: id, tenant_id, unit_id, unit_revision, before jsonb, after jsonb, batch_id, status pending, approved, rejected or lapsed, requested_by, requested_at, decided_by, decided_at, reason; RLS by tenant plus app.reward_admin(company); GRANTs to ai_hr_app). Do not allocate a number; get it from the migration reservation owner (docs/migrations/reservations.json on claude/migration-inventory-20261027).
+
+2. saveRewardAccessChange → requestRewardAccessChange (validates with prepareAccess, stores request). approveRewardAccessRequest: actor != requested_by, actor not in before/after userId, actor app.reward_admin(company), unit revision unchanged and draft; then run commitAccessTx inside the same tx; append events reward-access.requested/approved/rejected/lapsed with before/after. Lapse pending requests whenever the unit revision moves (touch/decide/commit).
+
+3. changeRewardMember compatibility entry point (legacy configuration forms) must also go through the request path; audit callers.
+
+4. Export: route handler under app/admin/rewards/access/export (CSV, scoped by rewardAccessAdministration's companies; no salary data); formula-injection-safe cells.
+
+5. Interaction with f38e5d8e (batch) and fa2af559 (restore): one request per batch.
+
+6. Tests: self-approval refused; approving own access refused; lapse on revision change; single-admin warning; export scope and escaping; RLS isolation across tenants.

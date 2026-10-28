@@ -1,0 +1,45 @@
+VERDICT: Not built yet   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+In the Rewards configuration list, the Review cycle column shows the cycle name followed by "Annual review" and the year, so a cycle named "2026 Annual Compensation Review Cycle" reads twice. The list shows only the approval stage, not who has the review, when it is due or whether the data has been checked, and there are no filters.
+
+In "Create unit review", the Review cycle name box stays visible even after you choose "Add to an existing cycle", and the name has to be typed by hand. Only the reward year is shown, not the date the new salaries take effect.
+
+WHAT WE'LL CHANGE
+
+- The Review cycle column shows the cycle name once, with a smaller line underneath: reward year and salary effective date (for example reward year 2026, effective 01/01/2027).
+
+- New columns: People (how many employees are in the review), Approval stage with who it is with now (for example "Draft, with BU CEO: name"), Stage due date from the reward calendar, and Data check (for example "30 of 42 verified" or "All verified").
+
+- Filters above the list for Review cycle, Company, Business unit and Approval stage.
+
+- In Create unit review, the Review cycle name box appears only when "Create a new cycle" is chosen, and it is filled in automatically as "[Year] Annual Compensation Review". You can still change it before saving.
+
+- The form also shows the Salary effective date next to the Reward year, read from the review settings, so it is clear which performance year is being rewarded and when the pay change happens.
+
+WHAT YOU'LL GET
+
+One look at the list tells you where every review is, who is holding it, when it is due and whether it is ready.
+
+GOOD TO KNOW
+
+- The approval order shown is the one AIHR uses today: BU CEO, BG CEO / authorised proxy, Group Rewards, CTRO, Executive Chairman, then Payroll handoff.
+
+- Where several people hold the same seat, all their names are shown. If nobody holds it, the cell says so (see the separate request on role coverage).
+
+- This only changes what is shown on screen, not any numbers or calculations.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACTS (origin/alpha 162a8f743): app/admin/rewards/page.tsx renders ${u.cycle} · ${t('kinds.'+u.kind)} ${u.year}; columns cycle/company/unit/stage/action; no filters. create-review-form.tsx always renders the name input (required); server createRewardUnit requires name even with cycleId. Due date, seat and route progress already exist for the approvals board (service.ts boardRow, calendar.ts rewardNextSeat/rewardDueWording, calendarTx).
+
+1. listRewardUnits: add headcount (count reward_entry), verifiedCount (facts->>'reviewed'='true'), effectiveFrom (policy->>'effectiveFrom'), current seat via rewardStageSeat(status, route) and the seat holders' names (reward_member + person via the existing visibleCandidate predicate; fall back to role label when the name is not readable), due date from calendarTx. Counts only, never salaries; config admins already see the review; confirm counts do not reveal hidden-category membership (use total entries only).
+
+2. Page: drop the kind label for annual, add subline, new columns, client-side filters (searchParams to keep server render).
+
+3. Create form: render name only when cycleId=''; default ${year} Annual Compensation Review and update on year change unless edited; server: name optional when cycleId set. Show effectiveFrom from the shared version or defaultPolicy(year) read-only.
+
+4. Strings in all locales. Tests: name hidden for existing cycle; default name; list columns from fixtures; filters. No data change, no migration.

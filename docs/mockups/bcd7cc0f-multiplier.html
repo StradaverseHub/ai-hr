@@ -1,0 +1,27 @@
+<!doctype html><meta charset="utf-8"><title>Unit multiplier: basis, impact check and reason</title><style>
+:root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1;--warn:#b45309;--bad:#b91c1c;--ok:#15803d}
+*{box-sizing:border-box}body{margin:0;padding:24px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+.banner{font-size:12px;color:var(--mf);margin:0 0 12px}.banner b{color:var(--fg)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}.one{display:grid;gap:16px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px}
+h2{font-size:15px;margin:0 0 4px}.sub{font-size:12.5px;color:var(--mf);margin:0 0 12px}
+h3{font-size:13.5px;margin:12px 0 6px}
+.chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:600;margin-left:6px}
+.now{background:#fee2e2;color:#991b1b}.new{background:#e0e7ff;color:var(--primary)}
+.okc{background:#dcfce7;color:var(--ok)}.badc{background:#fee2e2;color:var(--bad)}.warnc{background:#fef3c7;color:var(--warn)}.grey{background:var(--muted);color:var(--mf)}
+table{width:100%;border-collapse:collapse;font-size:12.5px}th{background:var(--muted);text-align:left;font-weight:600;padding:7px 8px;color:#3b3b45}td{padding:8px;border-top:1px solid var(--border);vertical-align:top}
+.m{color:var(--mf);font-size:11.5px;display:block}
+.f{display:inline-block;margin:0 10px 10px 0;vertical-align:top}.f label{display:block;font-size:11.5px;font-weight:600;margin-bottom:3px}
+.in{border:1px solid #d4d6e2;border-radius:8px;padding:6px 9px;min-width:150px;background:#fff;display:inline-block}
+.in.ro{background:var(--muted);color:var(--mf)}
+.btn{display:inline-block;border-radius:8px;padding:6px 12px;font-weight:600;font-size:12.5px;background:var(--primary);color:#fff;margin-right:6px}
+.btn.sec{background:#eef0fb;color:var(--primary)}.btn.dis{background:#e5e7eb;color:#9ca3af}.btn.red{background:#fee2e2;color:var(--bad)}
+.link{color:var(--primary);font-size:12.5px}
+.hl{outline:2px dashed #f59e0b;outline-offset:2px;border-radius:6px}.add{outline:2px dashed var(--primary);outline-offset:2px;border-radius:6px}
+.note{font-size:12px;color:var(--mf);margin-top:8px}.err{color:var(--bad);font-size:12.5px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:12px}.tab{padding:7px 12px;font-size:12.5px;color:var(--mf);border-radius:8px 8px 0 0}.tab.on{color:var(--primary);font-weight:600;background:#eef0fb}
+.box{border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:8px}
+.list div{padding:5px 8px;border-radius:6px}.list div:hover{background:var(--muted)}
+</style>
+<p class="banner"><b>Sketch only</b> &middot; board item bcd7cc0f &middot; Unit multiplier: basis, impact check and reason &middot; not the final design; names are fictional; no pay figures shown.</p>
+<div class="two"><div class="card"><h2>Bonus budget <span class="chip now">today</span></h2><p class="sub">A bare suggestion, a free number box and a "Save policy" button.</p><p>Suggested: <b>0.00</b></p><div class="f"><label>Unit multiplier (blank = calculated)</label><span class="in ">&nbsp;</span></div><span class="btn sec hl">Save policy</span></div><div class="card"><h2>Bonus budget <span class="chip new">proposed</span></h2><p class="sub">How the suggestion is worked out, the effect on each plan, then save with a reason.</p><div class="box"><b>Suggested unit multiplier: 1.10</b><table><tr><td>PAT achievement (actual / target)</td><td>110%</td></tr><tr><td>Target bonus months</td><td>2.00</td></tr><tr><td>Pool multiplier &middot; achievement &times; target months</td><td>2.20</td></tr><tr><td>Rule</td><td>Highest multiplier both plans can afford, rounded down to 0.01</td></tr></table><p class="note">If Actual PAT has not been entered, this box says so instead (that is why the suggestion shows 0.00 today).</p></div><p class="note">Applies to both the Standard plan and the JG H plan. Not used when this review uses branch factors (PPCH structure).</p><div class="f"><label>Unit multiplier</label><span class="in add">1.20</span></div><div class="f"><label>Reason (required)</label><span class="in add">BU exceeded PAT target after Q4 revision</span></div><div class="box add"><b>Check impact</b><table><tr><th>Plan</th><th>Pool used now</th><th>With 1.20</th></tr><tr><td>Standard plan</td><td>84%</td><td><span class="chip okc">97%</span></td></tr><tr><td>JG H plan</td><td>79%</td><td><span class="chip badc">104%: over budget</span></td></tr></table><p class="err">Cannot save: the JG H plan would exceed 100% of its pool (no budget-cap exemption).</p></div><span class="btn dis">Save unit multiplier</span></div></div>

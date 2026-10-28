@@ -1,0 +1,43 @@
+VERDICT: Not built yet   ·   SIZE: Quick
+
+THE SITUATION TODAY
+
+In the Bonus section, "Suggested: 0.00" and the unit multiplier box sit on their own, with no heading, just above the Lump sum card. It is easy to read "Suggested" as part of the lump sum.
+
+When a review uses branch factors (PPCH structure), the Bonus months reference shows only the grade-by-rating grid. The branch factors that actually drive each person's bonus are only visible in the review settings.
+
+WHAT WE'LL CHANGE
+
+- The suggested multiplier and the multiplier box move into their own card titled "Unit multiplier", in the same style as the Lump sum card, placed above it.
+
+- The card says the multiplier applies to both the Standard plan and the JG H plan of this unit review.
+
+- When the review uses branch factors (PPCH), the Unit multiplier card stays in place and says it is not used, because each person's multiplier comes from their branch rating and bonus segment.
+
+- In that case the Bonus months reference also shows the branch-factor grid (bonus segment by rating) and the rating given to each branch.
+
+WHAT YOU'LL GET
+
+Every number in the Bonus section sits under a clear heading, so nobody mistakes the suggested multiplier for the lump sum. PPCH reviews show the figures that really drive the bonus.
+
+GOOD TO KNOW
+
+- This only changes what's shown on screen, not any numbers or calculations, and not who can see or change anything.
+
+- Your earlier request about the unit multiplier (showing how the suggestion is worked out, an impact check, a required reason and the "Save unit multiplier" button) is already approved. Its content will go inside this new card. We will build the two together so the screen changes once.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACTS (origin/alpha a5dbc80d0): app/rewards/[unitId]/bonus-budget.tsx renders the "Suggested" line and the adjustment slot (the multiplier form passed from page.tsx line 45, shown only when canConfigure and bonusStructure === 'standard') loosely under the two plan cards. The lump-sum block and the "Bonus months reference" details (bonusMatrix only) are in page.tsx lines 46-50. Branch factors live in policy.branchFactors (segment to five factors in basis points, order = performances UA BE ME AE OU) and policy.branchRatings (branch to rating); today they are shown only in policy-form.tsx.
+
+1. Move the suggested line plus the adjustment slot out of BonusBudgetCards into a titled "Unit multiplier" block styled like the lump-sum block (h3 + help text). Help text rewards.unitMultiplierHelp ("Applies to the Standard plan and the JG H plan of this unit review.").
+
+2. For bonusStructure === 'branch': render the block with rewards.unitMultiplierBranch notice instead of omitting it; no input.
+
+3. Bonus months reference: when branch, add a segment x performance table from branchFactors (value / 10000, two decimals) and a branch to rating table from branchRatings. Same viewers as the existing details.
+
+4. Sequence with bcd7cc0f (approved; same area): bcd7cc0f's basis/impact/reason content goes inside this block. Build them in one change if possible.
+
+5. Strings in all six locales. Tests: DOM test that the block heading exists for standard and the notice plus both branch tables render for branch; no form for branch. Display only; no data change.

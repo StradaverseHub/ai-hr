@@ -18564,8 +18564,6 @@
         "action_employees_import": "员工导入已提交；质量未经认证",
         "action_org_reporting_change": "汇报关系变更已记录",
         "action_leave_apply": "请假已提交；尚未批准",
-        "action_leave_cancel": "待审批请假已撤回；未扣除任何天数",
-        "action_leave_edit": "待审批请假已修改；仍未批准",
         "action_ess_profile_request": "资料申请已提交；尚未批准或应用",
         "action_approvals_leave_decide": "请假决定已记录；当前状态另行核对",
         "action_knowledge_base_article_create": "文章已创建；内容未经认证",
@@ -18573,7 +18571,6 @@
         "action_attendance_correction_request": "考勤更正已申请；尚未批准",
         "action_claims_draft_save": "报销草稿已保存；尚未提交或报销",
         "action_claims_submit": "报销已提交；尚未批准或报销",
-        "action_claims_cancel": "待审批报销已取消；未支付任何款项",
         "action_performance_review_acknowledge": "评审已确认；不代表认同评分",
         "action_performance_onehr_plan_acknowledge": "职业对话已确认；不代表认同评分",
         "action_rewards_post": "奖励已录入薪资输入；尚未处理或付款",
@@ -18586,7 +18583,10 @@
         "action_system_testing_execution_save": "人工测试观察已保存；并非独立验证",
         "candidateTitle": "已完成操作的证据（可选）",
         "candidateIntro": "选择您之前关联的操作。添加到此候选版本前，我们会再次核对。这不是质量评分，也不能替代独立评估。",
-        "candidateNone": "不添加已完成操作的证据"
+        "candidateNone": "不添加已完成操作的证据",
+        "action_leave_cancel": "待审批请假已撤回；未扣除任何天数",
+        "action_leave_edit": "待审批请假已修改；仍未批准",
+        "action_claims_cancel": "待审批报销已取消；未支付任何款项"
       },
       "conversation": {
         "answerLabel": "根据您的记录回答",
@@ -20059,6 +20059,31 @@
     }
   },
   "rewards": {
+    "unitBonus": {
+      "noReduction": "薪资审核中不允许降低薪资。",
+      "appliesOnlyTo": "仅适用于本次审核：{company} / {unit}",
+      "saveUnitMultiplierFor": "保存 {unit} 的单位系数",
+      "saveLumpFor": "保存 {unit} 的一次性奖金",
+      "suggestedTitle": "建议单位系数",
+      "achievement": "PAT 达成率（实际 / 目标）",
+      "targetMonths": "目标奖金月数",
+      "poolMultiplier": "资金池系数 · 达成率 × 目标月数",
+      "rule": "规则",
+      "ruleText": "两个计划都能承受的最高系数，向下取整至 0.01",
+      "patMissing": "尚未输入实际 PAT，因此建议值为 0.00。",
+      "bothPlans": "单位系数同时适用于标准计划和 JG H 计划。",
+      "reason": "原因（必填）",
+      "reasonHelp": "保存前请填写至少 10 个字符的原因。",
+      "checkImpact": "检查影响",
+      "plan": "计划",
+      "usedNow": "当前资金池使用率",
+      "usedWith": "使用 {multiplier} 后",
+      "overBudget": "超出预算",
+      "overBlocked": "无法保存：某个计划将超过其资金池的 100%，且本次审核没有预算上限豁免。",
+      "overExempt": "某个计划将超过其资金池的 100%；本次审核有预算上限豁免。",
+      "branchNotUsed": "本次审核使用分行系数（PPCH 结构），因此不使用单位系数。",
+      "multiplierSaved": "单位系数已保存。"
+    },
     "bonusPresentation": {
       "separatePools": "每个计划使用独立资金池，一次性奖金由同一计划的资金池支付。",
       "over": "超出预算",
@@ -20190,6 +20215,37 @@
     "import": "Import verified inputs",
     "refreshHelp": "Refresh the original snapshot date from Personnel. This clears input verification and requires another review. If an employee left the roster, the refresh is refused rather than silently deleting an award.",
     "refresh": "Refresh source records",
+    "confidentialityFloor": {
+      "bg": "已自动标记为 BG 保密：在人员记录中直接向 BG CEO 席位持有人汇报。可设为更严格，但不能降低。",
+      "ec": "已自动标记为 EC 保密：在人员记录中直接向执行主席席位持有人汇报。不能降低。"
+    },
+    "sourceRefresh": {
+      "title": "刷新源记录",
+      "help": "当前快照日期：{date}。在做出任何更改之前，先预览自该日期以来人员和薪酬记录中的变化。",
+      "asOf": "刷新至日期",
+      "preview": "预览变化",
+      "willChange": "若刷新至 {date} 将发生的变化",
+      "category": {
+        "joined": "加入本单位",
+        "left": "已离职或调出（保留在名单中并标注，不获加薪或奖金）",
+        "confirmed": "新转正",
+        "notice": "已提交辞呈（正在通知期）",
+        "grade": "职级变更",
+        "salary": "薪资记录变更",
+        "other": "其他记录详情变更"
+      },
+      "confirmHelp": "展开一行可查看姓名。确认后，快照日期将移至此日期，并清除有变化人员的数据核验。",
+      "confirm": "确认刷新",
+      "cancel": "取消",
+      "leftMarker": "已离职或调出 {date}",
+      "left": {
+        "terminated": "已于 {date} 离开公司。保留作记录；不获加薪或奖金。",
+        "moved": "已于 {date} 调出本单位。保留作记录；不获加薪或奖金。"
+      },
+      "eligibilityTitle": "资格评定依据",
+      "eligibilityDates": "入职早于 {joinedBefore} · 于 {confirmedBy} 前转正 · 薪资生效日期 {effectiveFrom}",
+      "eligibilityShared": "采用共享配置 {name} 中的日期。创建后可在评审设置中查看。"
+    },
     "export": "Export visible recommendations",
     "rulePools": "Standard and JG H merit, promotion and special-adjustment pools are funded separately. No pool, plan or business unit may fund another. Nil-recommended eligible payroll remains in the pool base.",
     "ruleBonus": "Bonus utilisation equals standard bonus plus individual increases, less individual reductions, plus lump sums. Spending above 100% blocks approval, including positive spending against a zero budget. Less than 80% utilisation raises a warning.",
@@ -20504,6 +20560,78 @@
       "readOnly": "Group Rewards or a company HR administrator maintains this calendar.",
       "notSet": "Not set",
       "days": "{days, plural, one {# day} other {# days}}"
+    },
+    "excluded": "调薪排除",
+    "showAllChecks": "显示所有检查",
+    "payWindow": {
+      "tag": "{from}–{to} 已调薪：不符合加薪资格",
+      "keptTag": "{from}–{to} 已调薪：Group Rewards 保留资格",
+      "effective": "{date} 生效",
+      "excludedFromBase": "从基数中排除：{count} 名员工，薪资 {amount}",
+      "viewList": "查看名单",
+      "listTitle": "在排除期内调薪的员工",
+      "listHelp": "基本工资在 {from} 至 {to} 之间发生变动的所有员工。他们不获得绩效加薪、晋升加薪或特别调整，其工资不计入加薪预算池。他们仍参与奖金发放，奖金按调整后的基本工资计算。",
+      "export": "导出名单",
+      "columns": {
+        "employee": "员工",
+        "change": "变动",
+        "effectiveOn": "生效日期",
+        "currentBasic": "快照日基本工资",
+        "adjustedBasic": "调整后基本工资（用于奖金）",
+        "status": "加薪"
+      },
+      "excluded": "不符合资格（期内调薪）",
+      "keptReason": "保留资格：“{reason}”",
+      "reason": "原因（必填）",
+      "keepEligible": "保留资格",
+      "excludeAgain": "重新排除",
+      "none": "排除期内没有员工的基本工资发生变动。",
+      "bonusBasic": "用于奖金的调整后基本工资",
+      "kinds": {
+        "promotion": "晋升",
+        "increment": "加薪",
+        "confirmation": "转正调整",
+        "salaryAdjustment": "工资调整",
+        "other": "工资变动",
+        "unrecorded": "工资变动（未记录类型）"
+      }
+    },
+    "lumpChoice": {
+      "auto": "使用建议金额（{amount}）",
+      "autoHelp": "预算变化时随建议金额调整。",
+      "set": "设定金额",
+      "setHelp": "为本业务单位所有符合资格者设定至少 RM 0.01 的固定金额。",
+      "withhold": "本业务单位不发放",
+      "withholdHelp": "本业务单位无人获得一次性奖励。",
+      "aboveSuggestion": "该金额超出剩余预算可支持的金额（建议 {amount}）。",
+      "reasonRequired": "原因（必填）",
+      "reasonOptional": "原因（选填）",
+      "reasonHelp": "不发放须填写至少 10 个字符的原因。",
+      "confirm": "确定不向 {unit} 的 {count} 人发放一次性奖励？",
+      "confirmAll": "确定不向 {unit} 所有符合资格者发放一次性奖励？",
+      "cancel": "取消",
+      "withheldNote": "{name} 于 {date} 决定本业务单位不发放一次性奖励。",
+      "someone": "一名审核人"
+    },
+    "lumpImpact": {
+      "title": "每人 {amount} 的影响",
+      "people": "获得奖励人数",
+      "cost": "一次性奖励总成本",
+      "balance": "发放后奖金余额",
+      "used": "奖金池使用率",
+      "amendments": "个别修改",
+      "viewList": "{count} · 查看名单",
+      "overExempt": "有计划将超过其奖金池的 100%；本次评审有预算上限豁免。",
+      "overBlocked": "有计划将超过其奖金池的 100%。没有预算上限豁免时，超过 100% 的评审无法提交。",
+      "amendmentsHelp": "个别修改指一次性奖励金额与单位金额不同的员工。他们进入例外审核并保留各自金额。"
+    },
+    "branchGrid": {
+      "factors": "分行系数（PPCH）：奖金分段 × 评级",
+      "segment": "奖金分段",
+      "ratings": "分行评级",
+      "branch": "分行",
+      "rating": "分行评级",
+      "empty": "尚未配置分行系数。"
     }
   },
   "identityEmail": {
@@ -26366,7 +26494,7 @@
     "allCycles": "所有评审周期",
     "allUnits": "所有业务单位",
     "add": "添加访问权限",
-    "count": "{count} 项分配",
+    "count": "{count, plural, other {# 项分配}}",
     "user": "用户",
     "role": "角色",
     "scope": "评审范围",
@@ -26400,6 +26528,15 @@
     "history": "其他角色分配、过往决定和审计历史会保留。",
     "save": "确认并保存",
     "permissionsTitle": "各奖励角色的权限",
+    "confidentialityRules": {
+      "title": "保密规则",
+      "own": "任何人都看不到自己的奖励记录，审批人也不例外。",
+      "ec": "标记为 EC 保密的人员仅对集团奖励、CTRO 和执行主席可见。",
+      "bg": "标记为 BG 保密的人员对 BU CEO 和 PBP 隐藏。",
+      "pbp": "PBP 可以查看，但不能更改或审批任何内容。",
+      "totals": "单位总额和预算始终包含被隐藏的人员。",
+      "derived": "凡在人员记录中直接向 BG CEO 或执行主席席位持有人汇报的人员，均会自动标记。集团奖励可将标记设为更严格，但绝不能降低。"
+    },
     "unnamed": "未命名登录账户",
     "permissions": {
       "bu": "准备建议并提交草稿评审。",
@@ -26421,9 +26558,27 @@
       "confirmation": "请确认所选评审。",
       "used": "此评审已在使用，须保留历史。",
       "missing": "评审不可用或权限已被移除。",
-      "system": "无法保存更改。请重新加载后再试。"
+      "system": "无法保存更改。请重新加载后再试。",
+      "lastRequired": "每个必需的审批角色至少保留一名有效人员；请在一次编辑中完成替换。"
     },
-    "unavailable": "不可用账户 · {id}"
+    "unavailable": "不可用账户 · {id}",
+    "lastRequiredHelp": "必需的审批角色。请通过编辑替换此人。",
+    "coverageTitle": "审批角色覆盖情况",
+    "coverageHelp": "每项评审的审批路线上每个角色以及薪资交接都需要一名有效人员。已停用、已暂停或已离职的登录账户不计入。",
+    "coverageRule": "在没有缺失角色之前，BU CEO 无法提交。移除必需角色中最后一名有效人员将被拒绝；请使用编辑进行替换。",
+    "rolesMissing": "{count, plural, other {缺少 # 个角色}}",
+    "coverageComplete": "所有角色均已分配",
+    "assigned": "已分配",
+    "missingRole": "缺失",
+    "optionalNone": "可选，无",
+    "person": "人员",
+    "personSearch": "搜索姓名、员工编号或电子邮件",
+    "noPeople": "没有匹配的在职员工",
+    "noLogin": "尚无登录账户",
+    "noLoginHelp": "标记为“尚无登录账户”的人员是尚未受邀加入 AIHR 的在职员工。请先让人力资源部邀请他们，再分配薪酬评审角色。",
+    "coverageFilter": "覆盖情况",
+    "coverageAll": "全部评审",
+    "coverageMissingOnly": "仅显示缺少必需角色的评审"
   },
   "rewardsDeletion": {
     "view": "查看",
@@ -27950,6 +28105,112 @@
       "reportReleased": "报告已发布",
       "notSet": "尚未设定"
     }
+  },
+  "rewardsConfig": {
+    "filters": {
+      "label": "筛选评审",
+      "cycle": "评审周期",
+      "company": "公司",
+      "unit": "业务单元",
+      "stage": "审批阶段",
+      "all": "全部",
+      "apply": "应用筛选",
+      "clear": "清除筛选",
+      "empty": "没有符合这些筛选条件的评审。"
+    },
+    "columns": {
+      "cycle": "评审周期",
+      "companyUnit": "公司 / 业务单元",
+      "people": "人数",
+      "stage": "审批阶段 / 当前处理人",
+      "due": "阶段截止",
+      "dataCheck": "数据核查",
+      "action": "操作"
+    },
+    "subline": "奖励年度 {year} · {date} 生效",
+    "sublineYear": "奖励年度 {year}",
+    "with": "由{seat}处理：{names}",
+    "nobody": "由{seat}处理：此席位无人担任",
+    "dueNotSet": "未设日期",
+    "notAvailable": "—",
+    "noPeople": "无员工",
+    "allVerified": "全部已核实",
+    "verifiedOf": "已核实 {verified}/{total}",
+    "cancelled": "已取消",
+    "create": {
+      "defaultName": "{year} 年度薪酬评审",
+      "effectiveHelp": "奖励年度是被奖励的绩效年度；薪资生效日期取自评审设置。"
+    },
+    "shared": {
+      "noneForPair": "此公司、业务单元和年度没有共享配置。评审将从标准设置开始，Group Rewards 可在草稿阶段修改。",
+      "createOne": "创建共享配置",
+      "originLine": "{name} · 版本 {version}",
+      "changedInReview": "已在本评审中修改"
+    },
+    "summary": {
+      "viewSettings": "查看设置",
+      "readOnly": "只读",
+      "close": "关闭",
+      "help": "这些是新评审将复制的设置。之后对共享配置的修改不会改变已存在的评审。",
+      "defaultsTitle": "{year} 年标准设置",
+      "setting": "设置",
+      "value": "值",
+      "merit": "绩效加薪矩阵（低于 / 位于 / 高于区间）",
+      "standardPools": "标准计划预算池（绩效 / 晋升 / 特别）",
+      "hPools": "JG H 计划预算池（绩效 / 晋升 / 特别）",
+      "targetMonths": "目标奖金月数",
+      "bonusReference": "奖金月数参考",
+      "bonusByGrade": "按职级和评级（{count, plural, other {# 个职级}}）",
+      "exemption": "预算上限豁免",
+      "noExemption": "无（适用上限）"
+    },
+    "actions": {
+      "editDeadlines": "编辑截止日期",
+      "cancel": "取消评审",
+      "keep": "保留评审",
+      "cancelTitle": "取消此评审？",
+      "cancelHelp": "建议和审批将以只读方式保留。已取消的评审不会向薪资发送任何内容，并会从所有人的待办列表中移除。",
+      "reason": "原因（必填，至少 10 个字符）",
+      "cancelledBy": "{date} 由 {name} 取消：{reason}",
+      "cancelledOn": "{date} 已取消：{reason}",
+      "cancelledSaved": "评审已取消。其建议和审批以只读方式保留。"
+    }
+  },
+  "rewardsAdminTabs": {
+    "label": "奖励管理",
+    "configuration": "奖励配置",
+    "shared": "共享奖励配置",
+    "access": "奖励访问权限"
+  },
+  "rewardsAccessBatch": {
+    "bounded": "选择一个现有登录账户、一个角色以及一个或多个草稿评审。预览并保存之前不会授予任何权限。",
+    "searchReviews": "搜索评审",
+    "allDraftInCycle": "某周期内的全部草稿评审",
+    "allDraftInCompany": "某公司内的全部草稿评审",
+    "chooseShortcut": "全选…",
+    "clear": "清除选择",
+    "selected": "{count, plural, other {已选择 # 项评审}}",
+    "lockedReview": "已锁定",
+    "suggestionsTitle": "建议的 BU CEO",
+    "suggestionsHelp": "来自 People 中记录的业务单元负责人。只有勾选后才会添加建议。",
+    "suggestFor": "{name} 担任 {scope} 的 BU CEO",
+    "suggestedTag": "建议",
+    "newCount": "{count, plural, other {# 项新分配}}",
+    "presentCount": "{count, plural, other {# 项已存在}}",
+    "presentTitle": "已存在（无变更）",
+    "allOrNone": "确认并保存将全部添加，或全部不添加。",
+    "tooMany": "每次保存最多选择 500 项变更。",
+    "copyOpen": "从以往周期复制",
+    "copyTitle": "从以往周期复制访问权限",
+    "copyHelp": "按公司和业务单元匹配年度评审，并为相同人员建议相同角色。只有目标周期中的草稿评审会获得权限。登录已失效的人员会被列出并跳过。",
+    "from": "从",
+    "to": "到",
+    "chooseCycle": "选择周期",
+    "findMatches": "查找匹配的评审",
+    "proposalsTitle": "建议的分配",
+    "noProposals": "这些周期没有可复制的内容。",
+    "skippedTitle": "已跳过：登录已失效",
+    "unmatched": "目标周期中有 {count, plural, other {# 项草稿评审}}没有可复制的匹配评审。"
   },
   "ownLeaveChange": {
     "title": "修改待审批的请假申请",

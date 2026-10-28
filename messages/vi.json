@@ -18564,8 +18564,6 @@
         "action_employees_import": "Đã ghi nhận nhập nhân viên; chưa xác nhận chất lượng",
         "action_org_reporting_change": "Đã ghi nhận thay đổi tuyến báo cáo",
         "action_leave_apply": "Đã gửi nghỉ phép; chưa phê duyệt",
-        "action_leave_cancel": "Đã rút đơn nghỉ đang chờ; không trừ ngày nào",
-        "action_leave_edit": "Đã thay đổi đơn nghỉ đang chờ; vẫn chưa được duyệt",
         "action_ess_profile_request": "Đã gửi yêu cầu hồ sơ; chưa phê duyệt hoặc áp dụng",
         "action_approvals_leave_decide": "Đã ghi nhận quyết định nghỉ; kiểm tra trạng thái hiện tại riêng",
         "action_knowledge_base_article_create": "Đã tạo bài viết; chưa xác nhận nội dung",
@@ -18573,7 +18571,6 @@
         "action_attendance_correction_request": "Đã yêu cầu sửa chấm công; chưa phê duyệt",
         "action_claims_draft_save": "Đã lưu nháp yêu cầu chi; chưa gửi hoặc hoàn trả",
         "action_claims_submit": "Đã gửi yêu cầu chi; chưa phê duyệt hoặc hoàn trả",
-        "action_claims_cancel": "Đã hủy yêu cầu đang chờ; không có khoản nào được thanh toán",
         "action_performance_review_acknowledge": "Đã xác nhận xem đánh giá; không xác nhận điểm số",
         "action_performance_onehr_plan_acknowledge": "Đã xác nhận trao đổi nghề nghiệp; không xác nhận điểm số",
         "action_rewards_post": "Đã đưa thưởng vào đầu vào lương; chưa xử lý hoặc thanh toán",
@@ -18586,7 +18583,10 @@
         "action_system_testing_execution_save": "Đã lưu quan sát kiểm thử của người dùng; chưa kiểm chứng độc lập",
         "candidateTitle": "Bằng chứng thao tác hoàn tất (tùy chọn)",
         "candidateIntro": "Chọn thao tác bạn đã liên kết trước đây. Chúng tôi sẽ kiểm tra lại trước khi gắn vào ứng viên này. Việc này không chấm chất lượng hay thay thế đánh giá độc lập.",
-        "candidateNone": "Không có bằng chứng thao tác hoàn tất"
+        "candidateNone": "Không có bằng chứng thao tác hoàn tất",
+        "action_leave_cancel": "Đã rút đơn nghỉ đang chờ; không trừ ngày nào",
+        "action_leave_edit": "Đã thay đổi đơn nghỉ đang chờ; vẫn chưa được duyệt",
+        "action_claims_cancel": "Đã hủy yêu cầu đang chờ; không có khoản nào được thanh toán"
       },
       "conversation": {
         "answerLabel": "Câu trả lời từ hồ sơ của bạn",
@@ -20059,6 +20059,31 @@
     }
   },
   "rewards": {
+    "unitBonus": {
+      "noReduction": "Không được phép giảm lương trong đợt xét duyệt lương.",
+      "appliesOnlyTo": "Chỉ áp dụng cho đợt xét duyệt này: {company} / {unit}",
+      "saveUnitMultiplierFor": "Lưu hệ số đơn vị cho {unit}",
+      "saveLumpFor": "Lưu khoản trả một lần cho {unit}",
+      "suggestedTitle": "Hệ số đơn vị đề xuất",
+      "achievement": "Mức đạt PAT (thực tế / mục tiêu)",
+      "targetMonths": "Số tháng thưởng mục tiêu",
+      "poolMultiplier": "Hệ số quỹ · mức đạt × số tháng mục tiêu",
+      "rule": "Quy tắc",
+      "ruleText": "Hệ số cao nhất mà cả hai chương trình đều đáp ứng được, làm tròn xuống đến 0.01",
+      "patMissing": "Chưa nhập PAT thực tế, vì vậy đề xuất là 0.00.",
+      "bothPlans": "Hệ số đơn vị áp dụng cho cả chương trình Standard và chương trình JG H.",
+      "reason": "Lý do (bắt buộc)",
+      "reasonHelp": "Nhập lý do ít nhất 10 ký tự trước khi lưu.",
+      "checkImpact": "Kiểm tra tác động",
+      "plan": "Chương trình",
+      "usedNow": "Quỹ đã dùng hiện tại",
+      "usedWith": "Với {multiplier}",
+      "overBudget": "vượt ngân sách",
+      "overBlocked": "Không thể lưu: một chương trình sẽ vượt 100% quỹ và đợt xét duyệt này không có miễn trừ trần ngân sách.",
+      "overExempt": "Một chương trình sẽ vượt 100% quỹ; đợt xét duyệt này có miễn trừ trần ngân sách.",
+      "branchNotUsed": "Hệ số đơn vị không được dùng vì đợt xét duyệt này dùng hệ số chi nhánh (cấu trúc PPCH).",
+      "multiplierSaved": "Đã lưu hệ số đơn vị."
+    },
     "bonusPresentation": {
       "separatePools": "Mỗi chương trình có quỹ riêng. Khoản thưởng cố định được chi từ quỹ của cùng chương trình.",
       "over": "Vượt ngân sách",
@@ -20190,6 +20215,37 @@
     "import": "Import verified inputs",
     "refreshHelp": "Refresh the original snapshot date from Personnel. This clears input verification and requires another review. If an employee left the roster, the refresh is refused rather than silently deleting an award.",
     "refresh": "Refresh source records",
+    "confidentialityFloor": {
+      "bg": "Tự động đánh dấu bảo mật BG: báo cáo trực tiếp cho người giữ vị trí CEO BG trong Nhân sự. Có thể nâng mức, không thể hạ.",
+      "ec": "Tự động đánh dấu bảo mật EC: báo cáo trực tiếp cho người giữ vị trí Chủ tịch điều hành trong Nhân sự. Không thể hạ mức."
+    },
+    "sourceRefresh": {
+      "title": "Làm mới dữ liệu nguồn",
+      "help": "Ngày chụp dữ liệu hiện tại: {date}. Xem trước những gì đã thay đổi trong Nhân sự và Lương kể từ ngày đó trước khi thay đổi bất cứ điều gì.",
+      "asOf": "Làm mới đến ngày",
+      "preview": "Xem trước thay đổi",
+      "willChange": "Những gì sẽ thay đổi nếu làm mới đến {date}",
+      "category": {
+        "joined": "Gia nhập đơn vị",
+        "left": "Đã nghỉ hoặc chuyển đi (vẫn trong danh sách, được đánh dấu, không tăng lương hay thưởng)",
+        "confirmed": "Mới được chính thức hóa",
+        "notice": "Đã nộp đơn nghỉ việc (đang trong thời gian báo trước)",
+        "grade": "Bậc công việc thay đổi",
+        "salary": "Hồ sơ lương thay đổi",
+        "other": "Chi tiết hồ sơ khác thay đổi"
+      },
+      "confirmHelp": "Mở một dòng để xem tên. Xác nhận sẽ chuyển ngày chụp dữ liệu sang ngày này và xóa xác minh dữ liệu của những người có thay đổi.",
+      "confirm": "Xác nhận làm mới",
+      "cancel": "Hủy",
+      "leftMarker": "Đã nghỉ hoặc chuyển đi {date}",
+      "left": {
+        "terminated": "Đã rời công ty ngày {date}. Giữ lại để lưu hồ sơ; không tăng lương hay thưởng.",
+        "moved": "Đã chuyển khỏi đơn vị này ngày {date}. Giữ lại để lưu hồ sơ; không tăng lương hay thưởng."
+      },
+      "eligibilityTitle": "Điều kiện được xét theo",
+      "eligibilityDates": "Gia nhập trước {joinedBefore} · Chính thức hóa trước {confirmedBy} · Ngày hiệu lực lương {effectiveFrom}",
+      "eligibilityShared": "Các ngày trong cấu hình dùng chung {name}. Bạn có thể xem lại trong phần cài đặt đánh giá sau khi tạo."
+    },
     "export": "Export visible recommendations",
     "rulePools": "Standard and JG H merit, promotion and special-adjustment pools are funded separately. No pool, plan or business unit may fund another. Nil-recommended eligible payroll remains in the pool base.",
     "ruleBonus": "Bonus utilisation equals standard bonus plus individual increases, less individual reductions, plus lump sums. Spending above 100% blocks approval, including positive spending against a zero budget. Less than 80% utilisation raises a warning.",
@@ -20504,6 +20560,78 @@
       "readOnly": "Group Rewards or a company HR administrator maintains this calendar.",
       "notSet": "Not set",
       "days": "{days, plural, one {# day} other {# days}}"
+    },
+    "excluded": "Loại trừ do điều chỉnh lương",
+    "showAllChecks": "Hiện tất cả kiểm tra",
+    "payWindow": {
+      "tag": "Đã điều chỉnh lương {from}–{to}: không đủ điều kiện tăng lương",
+      "keptTag": "Đã điều chỉnh lương {from}–{to}: Group Rewards giữ đủ điều kiện",
+      "effective": "hiệu lực {date}",
+      "excludedFromBase": "Loại khỏi cơ sở: {count} nhân viên, quỹ lương {amount}",
+      "viewList": "Xem danh sách",
+      "listTitle": "Điều chỉnh lương trong khoảng loại trừ",
+      "listHelp": "Tất cả nhân viên có lương cơ bản thay đổi từ {from} đến {to}. Họ không nhận tăng lương theo thành tích, thăng chức hay điều chỉnh đặc biệt, và lương của họ không tính vào quỹ tăng lương. Họ vẫn được xét thưởng, với thưởng tính trên lương cơ bản đã điều chỉnh.",
+      "export": "Xuất danh sách",
+      "columns": {
+        "employee": "Nhân viên",
+        "change": "Thay đổi",
+        "effectiveOn": "Hiệu lực",
+        "currentBasic": "Lương cơ bản ngày chốt",
+        "adjustedBasic": "Lương cơ bản đã điều chỉnh (tính thưởng)",
+        "status": "Tăng lương"
+      },
+      "excluded": "Không đủ điều kiện (đã điều chỉnh lương trong khoảng)",
+      "keptReason": "Giữ đủ điều kiện: “{reason}”",
+      "reason": "Lý do (bắt buộc)",
+      "keepEligible": "Giữ đủ điều kiện",
+      "excludeAgain": "Loại trừ lại",
+      "none": "Không ai có thay đổi lương cơ bản trong khoảng loại trừ.",
+      "bonusBasic": "Lương cơ bản đã điều chỉnh để tính thưởng",
+      "kinds": {
+        "promotion": "Thăng chức",
+        "increment": "Tăng lương",
+        "confirmation": "Điều chỉnh khi chính thức",
+        "salaryAdjustment": "Điều chỉnh lương",
+        "other": "Thay đổi lương",
+        "unrecorded": "Thay đổi lương (không ghi loại)"
+      }
+    },
+    "lumpChoice": {
+      "auto": "Dùng số tiền đề xuất ({amount})",
+      "autoHelp": "Theo đề xuất nếu ngân sách thay đổi.",
+      "set": "Đặt số tiền",
+      "setHelp": "Số tiền cố định tối thiểu RM 0.01 cho mọi người đủ điều kiện trong BU này.",
+      "withhold": "Không chi cho BU này",
+      "withholdHelp": "Không ai trong BU này nhận khoản thưởng một lần.",
+      "aboveSuggestion": "Số tiền này vượt mức ngân sách còn lại cho phép (đề xuất {amount}).",
+      "reasonRequired": "Lý do (bắt buộc)",
+      "reasonOptional": "Lý do (không bắt buộc)",
+      "reasonHelp": "Nhập lý do ít nhất 10 ký tự để không chi.",
+      "confirm": "Không chi khoản một lần cho {count} người trong {unit}?",
+      "confirmAll": "Không chi khoản một lần cho mọi người đủ điều kiện trong {unit}?",
+      "cancel": "Hủy",
+      "withheldNote": "{name} đã quyết định không chi khoản một lần cho BU này ngày {date}.",
+      "someone": "một người duyệt"
+    },
+    "lumpImpact": {
+      "title": "Tác động của {amount} mỗi người",
+      "people": "Số người nhận",
+      "cost": "Tổng chi phí khoản một lần",
+      "balance": "Số dư thưởng sau khi chi",
+      "used": "Mức dùng quỹ thưởng",
+      "amendments": "Điều chỉnh cá nhân",
+      "viewList": "{count} · xem danh sách",
+      "overExempt": "Một gói sẽ vượt 100% quỹ thưởng; đợt xét này có miễn trừ trần ngân sách.",
+      "overBlocked": "Một gói sẽ vượt 100% quỹ thưởng. Không thể gửi đợt xét vượt 100% nếu không có miễn trừ trần ngân sách.",
+      "amendmentsHelp": "Điều chỉnh cá nhân là những người có khoản một lần khác số tiền của đơn vị. Họ được xét ngoại lệ và giữ số tiền riêng."
+    },
+    "branchGrid": {
+      "factors": "Hệ số chi nhánh (PPCH): nhóm thưởng theo xếp loại",
+      "segment": "Nhóm thưởng",
+      "ratings": "Xếp loại chi nhánh",
+      "branch": "Chi nhánh",
+      "rating": "Xếp loại chi nhánh",
+      "empty": "Chưa cấu hình hệ số chi nhánh."
     }
   },
   "identityEmail": {
@@ -26366,7 +26494,7 @@
     "allCycles": "Tất cả kỳ xét duyệt",
     "allUnits": "Tất cả đơn vị kinh doanh",
     "add": "Thêm quyền truy cập",
-    "count": "{count} phân công",
+    "count": "{count, plural, other {# phân công}}",
     "user": "Người dùng",
     "role": "Vai trò",
     "scope": "Phạm vi xét duyệt",
@@ -26400,6 +26528,15 @@
     "history": "Các phân công khác, quyết định trước đây và lịch sử kiểm toán được giữ lại.",
     "save": "Xác nhận và lưu",
     "permissionsTitle": "Quyền của từng vai trò Thưởng",
+    "confidentialityRules": {
+      "title": "Quy tắc bảo mật",
+      "own": "Không ai thấy dòng thưởng của chính mình, kể cả người phê duyệt.",
+      "ec": "Người được đánh dấu bảo mật EC chỉ hiển thị với Group Rewards, CTRO và Chủ tịch điều hành.",
+      "bg": "Người được đánh dấu bảo mật BG bị ẩn khỏi CEO BU và PBP.",
+      "pbp": "PBP có thể xem nhưng không thể thay đổi hay phê duyệt.",
+      "totals": "Tổng số và ngân sách của đơn vị luôn bao gồm những người bị ẩn.",
+      "derived": "Bất kỳ ai báo cáo trực tiếp cho người giữ vị trí CEO BG hoặc Chủ tịch điều hành đều được tự động đánh dấu từ Nhân sự. Group Rewards có thể nâng mức đánh dấu, không bao giờ hạ."
+    },
     "unnamed": "Tài khoản chưa đặt tên",
     "permissions": {
       "bu": "Chuẩn bị đề xuất và gửi kỳ xét duyệt nháp.",
@@ -26421,9 +26558,27 @@
       "confirmation": "Xác nhận kỳ xét duyệt đã chọn.",
       "used": "Kỳ xét duyệt đang được sử dụng; giữ lại lịch sử.",
       "missing": "Kỳ xét duyệt không khả dụng hoặc quyền đã bị gỡ.",
-      "system": "Không thể lưu thay đổi. Tải lại và thử lại."
+      "system": "Không thể lưu thay đổi. Tải lại và thử lại.",
+      "lastRequired": "Giữ ít nhất một người đang hoạt động cho mỗi vai trò phê duyệt bắt buộc; thay thế họ trong một lần chỉnh sửa."
     },
-    "unavailable": "Tài khoản không khả dụng · {id}"
+    "unavailable": "Tài khoản không khả dụng · {id}",
+    "lastRequiredHelp": "Vai trò phê duyệt bắt buộc. Chỉnh sửa để thay thế người này.",
+    "coverageTitle": "Mức độ đầy đủ vai trò phê duyệt",
+    "coverageHelp": "Mỗi đợt xét duyệt cần một người đang hoạt động cho mỗi vai trò phê duyệt trên quy trình và bàn giao bảng lương. Tài khoản bị vô hiệu hóa, tạm ngưng hoặc đã nghỉ việc không được tính.",
+    "coverageRule": "BU CEO không thể gửi cho đến khi không còn vai trò nào thiếu. Việc gỡ người đang hoạt động cuối cùng của một vai trò bắt buộc sẽ bị từ chối; hãy dùng Chỉnh sửa để thay thế.",
+    "rolesMissing": "{count, plural, other {Thiếu # vai trò}}",
+    "coverageComplete": "Đã phân công đủ vai trò",
+    "assigned": "Người được phân công",
+    "missingRole": "Còn thiếu",
+    "optionalNone": "Không bắt buộc, chưa có",
+    "person": "Người",
+    "personSearch": "Tìm theo tên, mã nhân viên hoặc email",
+    "noPeople": "Không có nhân viên đang làm việc phù hợp",
+    "noLogin": "Chưa có tài khoản đăng nhập",
+    "noLoginHelp": "Những người được đánh dấu \"Chưa có tài khoản đăng nhập\" là nhân viên đang làm việc nhưng chưa được mời vào AIHR. Hãy đề nghị bộ phận nhân sự mời họ trước khi giao vai trò đãi ngộ.",
+    "coverageFilter": "Mức độ đầy đủ",
+    "coverageAll": "Tất cả đợt xét duyệt",
+    "coverageMissingOnly": "Chỉ các đợt xét duyệt thiếu vai trò bắt buộc"
   },
   "rewardsDeletion": {
     "view": "Xem",
@@ -27950,6 +28105,112 @@
       "reportReleased": "Report released",
       "notSet": "Not set yet"
     }
+  },
+  "rewardsConfig": {
+    "filters": {
+      "label": "Lọc đợt xét duyệt",
+      "cycle": "Chu kỳ xét duyệt",
+      "company": "Công ty",
+      "unit": "Đơn vị kinh doanh",
+      "stage": "Bước phê duyệt",
+      "all": "Tất cả",
+      "apply": "Áp dụng bộ lọc",
+      "clear": "Xóa bộ lọc",
+      "empty": "Không có đợt xét duyệt nào khớp với bộ lọc này."
+    },
+    "columns": {
+      "cycle": "Chu kỳ xét duyệt",
+      "companyUnit": "Công ty / Đơn vị kinh doanh",
+      "people": "Số người",
+      "stage": "Bước phê duyệt / đang ở",
+      "due": "Hạn của bước",
+      "dataCheck": "Kiểm tra dữ liệu",
+      "action": "Thao tác"
+    },
+    "subline": "Năm thưởng {year} · hiệu lực {date}",
+    "sublineYear": "Năm thưởng {year}",
+    "with": "Đang ở {seat}: {names}",
+    "nobody": "Đang ở {seat}: chưa có ai giữ vai trò này",
+    "dueNotSet": "Chưa đặt ngày",
+    "notAvailable": "—",
+    "noPeople": "Không có nhân viên",
+    "allVerified": "Đã xác minh tất cả",
+    "verifiedOf": "Đã xác minh {verified}/{total}",
+    "cancelled": "Đã hủy",
+    "create": {
+      "defaultName": "Đợt xét duyệt lương thưởng năm {year}",
+      "effectiveHelp": "Năm thưởng là năm hiệu suất được khen thưởng; ngày lương mới có hiệu lực lấy từ thiết lập của đợt xét duyệt."
+    },
+    "shared": {
+      "noneForPair": "Không có cho công ty, đơn vị kinh doanh và năm này. Đợt xét duyệt bắt đầu từ thiết lập chuẩn, Group Rewards có thể thay đổi khi còn ở trạng thái Nháp.",
+      "createOne": "Tạo cấu hình dùng chung",
+      "originLine": "{name} · Phiên bản {version}",
+      "changedInReview": "đã thay đổi trong đợt này"
+    },
+    "summary": {
+      "viewSettings": "Xem thiết lập",
+      "readOnly": "chỉ xem",
+      "close": "Đóng",
+      "help": "Đây là thiết lập mà đợt xét duyệt mới sẽ sao chép. Thay đổi sau này của cấu hình dùng chung không bao giờ ảnh hưởng đến đợt xét duyệt đã có.",
+      "defaultsTitle": "Thiết lập chuẩn năm {year}",
+      "setting": "Thiết lập",
+      "value": "Giá trị",
+      "merit": "Ma trận tăng lương (dưới / trong / trên khung)",
+      "standardPools": "Ngân sách gói chuẩn (thành tích / thăng chức / đặc biệt)",
+      "hPools": "Ngân sách gói JG H (thành tích / thăng chức / đặc biệt)",
+      "targetMonths": "Số tháng thưởng mục tiêu",
+      "bonusReference": "Bảng tham chiếu số tháng thưởng",
+      "bonusByGrade": "Theo bậc và xếp loại ({count, plural, other {# bậc}})",
+      "exemption": "Miễn trừ trần ngân sách",
+      "noExemption": "Không (áp dụng trần)"
+    },
+    "actions": {
+      "editDeadlines": "Sửa hạn chót",
+      "cancel": "Hủy đợt xét duyệt",
+      "keep": "Giữ đợt xét duyệt",
+      "cancelTitle": "Hủy đợt xét duyệt này?",
+      "cancelHelp": "Đề xuất và phê duyệt được giữ ở chế độ chỉ xem. Đợt đã hủy không gửi gì sang bảng lương và sẽ biến khỏi danh sách việc của mọi người.",
+      "reason": "Lý do (bắt buộc, ít nhất 10 ký tự)",
+      "cancelledBy": "Đã hủy ngày {date} bởi {name}: {reason}",
+      "cancelledOn": "Đã hủy ngày {date}: {reason}",
+      "cancelledSaved": "Đã hủy đợt xét duyệt. Đề xuất và phê duyệt được giữ ở chế độ chỉ xem."
+    }
+  },
+  "rewardsAdminTabs": {
+    "label": "Quản trị thưởng",
+    "configuration": "Cấu hình Thưởng",
+    "shared": "Cấu hình thưởng dùng chung",
+    "access": "Quyền truy cập Thưởng"
+  },
+  "rewardsAccessBatch": {
+    "bounded": "Chọn một tài khoản hiện có, một vai trò và một hoặc nhiều đợt xét duyệt Nháp. Chưa có quyền nào được cấp cho đến khi bạn xem trước và lưu.",
+    "searchReviews": "Tìm đợt xét duyệt",
+    "allDraftInCycle": "Tất cả đợt xét duyệt Nháp trong một chu kỳ",
+    "allDraftInCompany": "Tất cả đợt xét duyệt Nháp trong một công ty",
+    "chooseShortcut": "Chọn tất cả trong…",
+    "clear": "Bỏ chọn",
+    "selected": "{count, plural, other {Đã chọn # đợt xét duyệt}}",
+    "lockedReview": "đã khóa",
+    "suggestionsTitle": "BU CEO được đề xuất",
+    "suggestionsHelp": "Lấy từ trưởng đơn vị kinh doanh được ghi nhận trong People. Đề xuất chỉ được thêm khi bạn đánh dấu chọn.",
+    "suggestFor": "{name} làm BU CEO cho {scope}",
+    "suggestedTag": "đề xuất",
+    "newCount": "{count, plural, other {# phân công mới}}",
+    "presentCount": "{count, plural, other {# đã có sẵn}}",
+    "presentTitle": "Đã có sẵn (không thay đổi)",
+    "allOrNone": "Xác nhận và lưu sẽ thêm tất cả hoặc không thêm gì.",
+    "tooMany": "Chọn tối đa 500 thay đổi trong một lần lưu.",
+    "copyOpen": "Sao chép từ chu kỳ trước",
+    "copyTitle": "Sao chép quyền truy cập từ chu kỳ trước",
+    "copyHelp": "Ghép các đợt xét duyệt hằng năm theo công ty và đơn vị kinh doanh, rồi đề xuất cùng người với cùng vai trò. Chỉ các đợt xét duyệt Nháp trong chu kỳ đích được cấp quyền. Những người có tài khoản không còn hoạt động sẽ được liệt kê và bỏ qua.",
+    "from": "Từ",
+    "to": "Đến",
+    "chooseCycle": "Chọn chu kỳ",
+    "findMatches": "Tìm đợt xét duyệt tương ứng",
+    "proposalsTitle": "Phân công được đề xuất",
+    "noProposals": "Không có gì để sao chép cho các chu kỳ này.",
+    "skippedTitle": "Bỏ qua: tài khoản không còn hoạt động",
+    "unmatched": "{count, plural, other {# đợt xét duyệt Nháp}} trong chu kỳ đích không có đợt tương ứng để sao chép."
   },
   "ownLeaveChange": {
     "title": "Thay đổi đơn nghỉ phép đang chờ",
