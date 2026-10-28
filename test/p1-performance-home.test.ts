@@ -165,7 +165,7 @@ describe('the pure composition', () => {
   it('layout per mode, as approved: rail on top, main and side columns, history below', () => {
     const view = (o: Partial<PerformanceHomeView>): PerformanceHomeView => ({
       mode: 'running', facts: facts([]), rail: { cycleId: CYCLE, cycleName: 'Fictional', closesOn: null, steps: [], done: 0, total: 0 }, next: { primary: null, rows: [], nextDate: null },
-      slot: null, past: null, results: null, led: null, plan: null, talentBox: null, history: { rows: [], fullHref: null }, tools: [], ...o,
+      slot: null, past: null, results: null, led: null, plan: null, talentBox: null, history: { rows: [], fullHref: null }, tools: [], checkIns: null, ...o,
     });
     expect(performanceHomeLayout(view({ slot: { kind: 'stand', standing: block().standing, detailsHref: '/me/performance' } }))).toEqual({ top: ['rail'], main: ['next'], side: ['stand', 'tools'], bottom: ['history'] });
     expect(performanceHomeLayout(view({ slot: { kind: 'leader', status: bu } }))).toEqual({ top: ['rail'], main: ['next', 'leader'], side: ['tools'], bottom: ['history'] });
@@ -286,7 +286,29 @@ describe('getPerformanceHome against real RLS: no unreleased band, for the emplo
 
   it('someone with nothing in Performance: between cycles, no record, no doors', async () => {
     const view = await perf.getPerformanceHome(a, undefined);
-    expect(view).toMatchObject({ mode: 'record', rail: null, slot: null, results: null, plan: null, talentBox: null, tools: [] });
+    expect(view).toMatchObject({ mode: 'record', rail: null, slot: null, results: null, plan: null, talentBox: null, tools: [], checkIns: null });
     expect(performanceHomeLayout(view).main).toEqual(['results']);
+  });
+});
+
+describe('getPerformanceHome against real RLS: the Check-ins door to /performance (DQ-11)', () => {
+  let b: Base, a: SessionContext;
+  const year = () => Number(todayInKualaLumpur().slice(0, 4));
+  beforeEach(async () => { await resetDb(); b = await seedBase(); await setModule(b.tenantId, 'performance', 'active'); a = await entitledCtx(b); });
+
+  it('a manager with a pending check-in sees the door; the employee does not', async () => {
+    const hire = (name: string) => hireEmployee(a, { person: { fullName: name, primaryEmail: `${randomUUID()}@pt-x5.test` }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: `${year() - 2}-01-01` });
+    const subject = await hire('Check-in subject'), manager = await hire('Check-in manager');
+    await setReportingLine(a, { subordinateEmploymentId: subject.employmentId, managerEmploymentId: manager.employmentId, lineType: 'administrative', validFrom: `${year() - 2}-01-01` });
+    const self: SessionContext = { ...a, userId: await createAppUser(b.tenantId, subject.personId, 'employee'), personId: subject.personId, roles: ['employee'], grants: [{ role: 'employee', companyId: null }] };
+    const mgr: SessionContext = { ...a, userId: await createAppUser(b.tenantId, manager.personId, 'manager'), personId: manager.personId, roles: ['manager'], grants: [{ role: 'manager', companyId: null }] };
+    // Before any check-in or review, neither gets the door (non-vacuous: the door follows the work, not the role).
+    expect((await perf.getPerformanceHome(mgr, undefined)).checkIns).toBeNull();
+    await perf.scheduleCheckIn(a, { subjectEmploymentId: subject.employmentId, scheduledOn: todayInKualaLumpur() });
+    // The page's own read sees it for the manager, under the manager's session.
+    expect((await perf.managerCheckIns(mgr)).checkins.map((c) => c.status)).toEqual(['scheduled']);
+    expect((await perf.getPerformanceHome(mgr, undefined)).checkIns).toBe('/performance');
+    expect((await perf.managerCheckIns(self)).checkins).toEqual([]);
+    expect((await perf.getPerformanceHome(self, undefined)).checkIns).toBeNull();
   });
 });

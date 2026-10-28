@@ -93,7 +93,7 @@ function running(p: { block: PerformanceHomeBlock | null; items: HomeWorkItem[];
     slot: homeSlot({ block: p.block, leader: p.leader ?? null, notIn: p.notIn ?? null, items: p.items, cycleId: CYCLE }),
     past: null, results: null, led: null, plan: null, talentBox: null,
     history: { rows: [{ id: 'old-1', name: 'Fictional 2025 year-end', performance: 'ME', potential: null, talent: null }], fullHref: '/me/performance?recordFor=own&record=current' },
-    tools: toolDoors(facts),
+    tools: toolDoors(facts), checkIns: null,
   };
 }
 const own = () => item({ kind: 'review', view: 'mine', module: 'pm', stage: 'results' });
@@ -168,6 +168,25 @@ describe('card order, conditions, the one solid button and the doors, per person
     await draw(PERSONAS.bgCeo!());
     expect(document.querySelector('[data-home-card="notIn"]')).toBeNull();
     expect(solid()[0]?.getAttribute('href')).toMatch(/^\/performance\/assessment\/calibration\/item-\d+$/);
+  });
+});
+
+describe('Your tools: the Check-ins door to /performance (DQ-11)', () => {
+  it('a manager with check-ins waiting there gets the door; an employee does not', async () => {
+    const { unmount } = await draw({ ...PERSONAS.lineManager!(), checkIns: '/performance' });
+    const door = card('tools').querySelector<HTMLAnchorElement>('[data-door="checkIns"]');
+    expect(door?.getAttribute('href')).toBe('/performance');
+    expect(door?.textContent).toContain(A.home.tools.checkIns);
+    expect(doors()).toEqual(['pm.my', 'pm.team', 'checkIns']);
+    unmount();
+    await draw(PERSONAS.employee!());
+    expect(card('tools').querySelector('[data-door="checkIns"]')).toBeNull();
+    expect(screen.queryByText(A.home.tools.checkIns)).toBeNull();
+  });
+  it('the door alone still fills Your tools (no empty line)', async () => {
+    await draw({ ...PERSONAS.admin!(), checkIns: '/performance' });
+    expect(doors()).toEqual(['checkIns']);
+    expect(card('tools').textContent).not.toContain(A.homeHelp.tools.emptyLine);
   });
 });
 

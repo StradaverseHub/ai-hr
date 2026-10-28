@@ -15,6 +15,7 @@ import { getLeaderStatus } from './leader-status-service';
 import { getAssessmentPersonalRecord } from './personal-record-service';
 import { getOnehrReview } from './service';
 import { getPerformanceAreaFactsAndItems } from './tab-service';
+import { checkInsDoor } from './check-ins-door';
 import { performanceTabState } from './tab-model';
 import {
   homeNext, homeSlot, notInReason, pastJourney, toolDoors,
@@ -70,11 +71,16 @@ export async function getPerformanceHome(ctx: SessionContext, scopeIds: string[]
   const { facts, items } = area;
   const view: PerformanceHomeView = {
     mode: 'record', facts, rail: null, next: null, slot: null, past: null, results: null, led: null, plan: null, talentBox: null,
-    history: { rows: [], fullHref: null }, tools: toolDoors(facts),
+    history: { rows: [], fullHref: null }, tools: toolDoors(facts), checkIns: null,
   };
   if (!ctx.userId || !facts.performanceOn || !isModuleEnabled(ctx, 'performance')) return view;
 
-  const own = await withPerformanceTenant(ctx, ownReviewsTx);
+  // DQ-11: the door to /performance for a viewer with check-ins or reviews waiting there. A failed read leaves no door.
+  const [own, checkIns] = await Promise.all([
+    withPerformanceTenant(ctx, ownReviewsTx),
+    checkInsDoor(ctx).catch((error: unknown) => { console.error('[performance-home] check-ins door unavailable', error); return null; }),
+  ]);
+  view.checkIns = checkIns;
   const openOwn = own.find((r) => r.status === 'open' || r.status === 'calibration') ?? null;
   // The running cycle: the own participating review's (the block), else the newest cycle the viewer holds work in,
   // else the cycle of an own review they are not taking part in.

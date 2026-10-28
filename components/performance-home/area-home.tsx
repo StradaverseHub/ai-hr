@@ -361,7 +361,7 @@ export async function PerformanceAreaHome({ view, unit }: { view: PerformanceHom
     return (
       <Card key="tools" data-home-card="tools" className={cn(CARD, 'space-y-3')}>
         <h2 className="font-semibold">{t('home.tools.title')}</h2>
-        {view.tools.length ? view.tools.map((group) => (
+        {view.tools.length || view.checkIns ? <>{view.tools.map((group) => (
           <div key={group.strip} data-tools={group.strip} className="space-y-1">
             <p className={cn('text-xs text-muted-foreground', MONO_LABEL)}>{t(PERFORMANCE_STRIP_LABEL_KEYS[group.strip])}</p>
             <ul className="divide-y divide-border monolith:divide-hairline">
@@ -374,7 +374,17 @@ export async function PerformanceAreaHome({ view, unit }: { view: PerformanceHom
               ))}
             </ul>
           </div>
-        )) : <p className="text-sm text-muted-foreground">{t('homeHelp.tools.emptyLine')}</p>}
+        ))}
+        {view.checkIns && (
+          // DQ-11: manager check-ins and "awaiting you" stay on /performance.
+          <ul data-tools="checkIns" className="divide-y divide-border monolith:divide-hairline">
+            <li>
+              <Link href={view.checkIns} data-door="checkIns" className="flex min-h-11 items-center justify-between gap-3 text-sm hover:text-primary">
+                <span>{t('home.tools.checkIns')}</span><span aria-hidden="true">›</span>
+              </Link>
+            </li>
+          </ul>
+        )}</> : <p className="text-sm text-muted-foreground">{t('homeHelp.tools.emptyLine')}</p>}
       </Card>
     );
   }

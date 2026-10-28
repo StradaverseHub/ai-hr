@@ -175,6 +175,11 @@ export type PerformanceHomeView = {
   talentBox: null;
   history: { rows: HomeHistoryRow[]; fullHref: string | null };
   tools: HomeToolGroup[];
+  /**
+   * DQ-11: Your tools' door to the legacy /performance page (manager check-ins and "awaiting you"), or null. Set only
+   * when the viewer has manager check-ins or pending manager reviews there (check-ins-door.ts).
+   */
+  checkIns: string | null;
 };
 
 export type PerformanceHomeCardId = 'rail' | 'past' | 'next' | 'leader' | 'notIn' | 'stand' | 'results' | 'led' | 'plan' | 'history' | 'tools';
