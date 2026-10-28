@@ -35,6 +35,11 @@ describe('Reward Desk step 1',()=>{
   expect(screen.getByRole('link',{name:/Fictional person/}).getAttribute('href')).toBe('/rewards/unit/people/entry');
   expect(screen.getByRole('link',{name:/Bonus exceeds/}).getAttribute('href')).toBe('#bonus');expect(screen.queryByText('SAL-01')).toBeNull();
  });
+ it('links exempted pool warnings to the actual salary or bonus section',()=>{
+  render(wrap(<FlagsPanel unitId="unit" filtered={false} flags={[{severity:'review',code:'CFG-01',message:'Standard merit exceeds its separate pool.'},{severity:'review',code:'CFG-01',message:'JG H bonus exceeds the 100% budget cap.'}]}/>));
+  expect(screen.getByRole('link',{name:/Standard merit/}).getAttribute('href')).toBe('#salary-increase');
+  expect(screen.getByRole('link',{name:/JG H bonus/}).getAttribute('href')).toBe('#bonus');
+ });
  it('shows the pool working after the pool cards without changing the canonical pool amount',()=>{
   render(wrap(<BonusPoolWorking value={view}/>));expect(screen.getByText(en.rewards.desk.poolFormula)).toBeTruthy();expect(screen.getAllByText('MYR 2,000.00')).toHaveLength(1);expect(screen.getAllByText('90%')).toHaveLength(2);
  });
