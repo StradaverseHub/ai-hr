@@ -100,8 +100,28 @@ it('renders the board on the session page with both modules on and no board for 
  expect(within(board).getByRole('button',{name:'Move Employee to another box'})).toBeTruthy();
  expect(within(board).getByRole('button',{name:en.onehr.lockCalibration})).toBeTruthy();// the lock sits in the board's footer
  expect(screen.getAllByRole('button',{name:en.onehr.lockCalibration})).toHaveLength(1);
+ expect(en.onehr.lockCalibration).toBe('Lock calibration');// the source's words, not "Lock calibration cohort"
+ expect(within(board).getByText('Talent Box ▸ Business unit')).toBeTruthy();
  cleanup();await page(false);
  expect(screen.queryByRole('region',{name:en.onehr.talentBoard.title})).toBeNull();expect(screen.queryByText(en.onehr.talentGrid)).toBeNull();
  cleanup();await page(true,'hod');// a department review reads the board but cannot move on it
  expect(screen.getByRole('region',{name:en.onehr.talentBoard.title})).toBeTruthy();expect(screen.queryByRole('button',{name:/to another box/})).toBeNull();
+ expect(screen.getByText(en.onehr.talentBoard.title)).toBeTruthy();expect(screen.queryByText(/Talent Box ▸/)).toBeNull();// no breadcrumb tier below BU
+});
+
+it('paints each cell in its category colour, two name chips a row on wide screens, and marks moved and adjusted people',()=>{
+ const people=[{...row(0,'Sales'),id:'up',name:'Up Person',from:{performance:'ME' as const,potential:'Mid' as const},performance:'AE' as const,potential:'High' as const},{...row(1,'Sales'),id:'same',name:'Same Box',moved:true,from:{performance:'ME' as const,potential:'Mid' as const}},row(2,'Sales')];
+ render(<NextIntlClientProvider locale="en" messages={en}><TalentBoard rows={people} sessionId="session" revision={3} grid={9} scope={{name:'Unit X',cycle:'Annual'}} tier="bg" locked={false} units={[{id:'x',name:'Unit X'}]} showUnits={false} reference={normal} cap={null} movable/></NextIntlClientProvider>);
+ expect(screen.getByText('Talent Box ▸ Business group')).toBeTruthy();
+ const solid=screen.getByRole('group',{name:'Solid Core, Mid potential, Mid performance: 2'}),star=screen.getByRole('group',{name:'Super Star, High potential, High performance: 1'});
+ expect(solid.getAttribute('data-talent-category')).toBe('solid-core');expect(solid.querySelector('[data-board-cell-head]')!.className).toContain('bg-[var(--talent-solid-core)]');
+ expect(star.getAttribute('data-talent-category')).toBe('super-star');expect(star.querySelector('[data-board-cell-head]')!.className).toContain('bg-[var(--talent-super-star)]');
+ expect(solid.querySelector('[data-board-cell-body]')!.className).toContain('min-[1081px]:grid-cols-2');
+ // Rows: High, Medium, Low, as numbered levels.
+ expect([...document.querySelectorAll('[data-board-row]')].map(r=>r.textContent)).toEqual(['3 – High','2 – Medium','1 – Low']);
+ const up=document.querySelector('[data-board-person="up"]')!,same=document.querySelector('[data-board-person="same"]')!,still=document.querySelector('[data-board-person="p2"]')!;
+ expect(up.className).toContain('shadow-[inset_3px_0_0_var(--primary)]');expect(same.className).toContain('shadow-[inset_3px_0_0_var(--primary)]');expect(still.className).not.toContain('shadow-[inset');
+ expect(within(same as HTMLElement).getByText(en.onehr.talentBoard.adjustedSame)).toBeTruthy();expect(up.querySelector('[data-board-adjusted]')).toBeNull();
+ expect(within(screen.getByRole('button',{name:'Same Box'})).queryByText('●')).toBeNull();// the marker is not part of the name
+ expect(document.body.textContent).toContain(en.onehr.talentBoard.legendSame);
 });
