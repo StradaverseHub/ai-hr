@@ -10467,8 +10467,19 @@ export const assessmentRelease = pgTable('performance_assessment_release', {
   reviewId:uuid('review_id').primaryKey().references(()=>onehrReview.reviewId),tenantId:tenantId(),
   performanceReleasedAt:timestamp('performance_released_at',{withTimezone:true}),potentialReleasedAt:timestamp('potential_released_at',{withTimezone:true}),
   talentReleasedAt:timestamp('talent_released_at',{withTimezone:true}),feedbackReleasedAt:timestamp('feedback_released_at',{withTimezone:true}),
+  // WP-E (0665): release 1, to the person's leaders. Never mirrored into onehrResult; the release service owns order.
+  performanceLeaderReleasedAt:timestamp('performance_leader_released_at',{withTimezone:true}),potentialLeaderReleasedAt:timestamp('potential_leader_released_at',{withTimezone:true}),
+  talentLeaderReleasedAt:timestamp('talent_leader_released_at',{withTimezone:true}),
   updatedBy:uuid('updated_by').references(()=>appUser.id),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
 });
+/** WP-E (0665): append-only ledger; a (review, component, step, recipient) is told about a release once, ever. No band. */
+export const assessmentReleaseNotice = pgTable('performance_assessment_release_notice', {
+  id:id(),tenantId:tenantId(),reviewId:uuid('review_id').notNull().references(()=>onehrReview.reviewId),
+  component:text('component').notNull(),step:text('step').notNull(),
+  recipientEmploymentId:uuid('recipient_employment_id').notNull().references(()=>employment.id),
+  eventId:uuid('event_id').notNull(),notifiedBy:uuid('notified_by').notNull().references(()=>appUser.id),
+  notifiedAt:timestamp('notified_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('performance_assessment_release_notice_once').on(t.reviewId,t.component,t.step,t.recipientEmploymentId),index('performance_assessment_release_notice_recipient_idx').on(t.recipientEmploymentId)]);
 // Last sign-off/lock snapshot, sealed at cycle archive. HR reads the record without recomputing it.
 export const assessmentRatingRecord = pgTable('performance_assessment_rating_record', {
   reviewId:uuid('review_id').primaryKey().references(()=>onehrReview.reviewId),tenantId:tenantId(),

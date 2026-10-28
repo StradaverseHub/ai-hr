@@ -640,10 +640,35 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
     recipients:(tx,ev,payload)=>payload?.phase==='setting'||payload?.phase==='results'?assessmentReviewTaskRecipientsTx(tx,ev.aggregateId,payload.phase):Promise.resolve([]),
     render:()=>({severity:'action',title:'Performance review task',body:'A KPI approval is awaiting your review. Open your performance tasks.',linkPath:'/me/performance'}),
   },
-  ...Object.fromEntries(['scorecard-approved','scorecard-returned','result-released','plan-reviewed','plan-closed'].map(event=>[`onehr.${event}`,{
+  // WP-E: a release is announced once per person per release action (onehr.results-to-person below), not once
+  // per component; onehr.result-released stays an audit event.
+  ...Object.fromEntries(['scorecard-approved','scorecard-returned','plan-reviewed','plan-closed'].map(event=>[`onehr.${event}`,{
     kind:'performance.update',category:'performance' as const,
     render:()=>({severity:'info' as const,title:'Performance assessment update',body:'There is an update to your assessment or development plan. Open your performance tasks.',linkPath:'/me/performance'}),
   }])),
+  // WP-E (CF-08) — release notices. The event's subject is the recipient (a leader, or the person). The release
+  // service's ledger already decided who is newly told; the copy carries a count or the kinds released, never a
+  // band and never another person's name. Delivery: the bell always; email under the tenant's performance
+  // category policy and the recipient's own consent (E-6).
+  'onehr.results-to-leader': {
+    kind:'performance.update',category:'performance',
+    render:(p)=>{
+      const count=typeof p?.count==='number'&&p.count>0?p.count:1,moved=typeof p?.moved==='number'&&p.moved>0?p.moved:0;
+      const people=count===1?'1 person you lead':`${count} people you lead`;
+      return {severity:'info',title:'Results released to you',
+        body:`HR has released the results of ${people} to you.${p?.both===true?' They can see their own results as well.':' They cannot see their own results yet, so you can talk them through first.'}${moved?` The business group CEO moved ${moved===1?'1 of them':`${moved} of them`}.`:''} Open What you led to see them.`,
+        linkPath:'/performance/led'};
+    },
+  },
+  'onehr.results-to-person': {
+    kind:'performance.update',category:'performance',
+    render:(p)=>{
+      const words:Record<string,string>={performance:'your performance band',potential:'your potential band',talent:'your talent status',feedback:'your 360 feedback report'};
+      const raw:unknown=p?.kinds,kinds=Array.isArray(raw)?raw.filter((k):k is string=>typeof k==='string'&&k in words).map(k=>words[k]):[];
+      const list=kinds.length>1?`${kinds.slice(0,-1).join(', ')} and ${kinds.at(-1)}`:kinds[0]??'your results';
+      return {severity:'info',title:'Your results are released',body:`HR has released ${list} to you. Open your performance record to see them.`,linkPath:'/me/performance'};
+    },
+  },
   // Performance closure (lifecycle G4). Release-safe: closeReview asserts the cycle is released before
   // closing, and the body says only that the review was finalized — never the score or ABC class (the
   // /me review surface gates the actual figures behind the existing release/showManager rules).

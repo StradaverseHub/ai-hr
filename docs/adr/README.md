@@ -151,3 +151,4 @@ Read only records relevant to the task. A newer decision supersedes an older one
 - [ADR-0141 — OneHR 6e0a14e migration decisions (ADR-M01…M16)](0141-onehr-6e0a14e-migration-decisions.md)
 - [ADR-0142 — OneHR performance partner: performance administration without compensation](0142-onehr-performance-partner.md)
 - [ADR-0150 — Units and departments not taking part in a cycle (the cycle exclusion rule)](0150-onehr-cycle-unit-exclusion.md)
+- [ADR-0149 — Two-step result release and leader reads](0149-two-step-result-release-and-leader-reads.md)

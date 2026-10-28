@@ -78,5 +78,10 @@ export {getLeaderRoster,type LeaderRoster,type LeaderRosterPerson,type LeaderRos
 export {LEADER_SEAT_TYPES,mapLeaderImport,partitionHodPlan,hodPlanFingerprint,type LeaderSeatType,type HodBlocker,type HodWarning,type LeaderImportInput,type LeaderImportPlan} from './onehr/leader-seat-model';
 // WP-C (APR-022) — the HOD department view (read-only) and its link flag.
 export {getDepartmentView,hasDepartmentView,type DepartmentView} from './onehr/department-view';
+// WP-E (CF-08) — two-step result release (the one release writer), the release board and the leader read.
+export {releaseOnehrResult,releaseOnehrResults,getOnehrReleaseBoard,listOnehrLedPeople,getOnehrLedPerson,hasLedPeople,type BulkReleaseInput,type BulkReleaseResult,type ReleaseBoardFilters,type ReleaseBoardRow,type ReleaseBoardCell} from './onehr/release-service';
+export {releaseResults,releaseSteps,releaseStatuses,ledTabs,type ReleaseComponent,type ReleaseStep,type ReleaseResult,type ReleaseStatus,type LedTab,type LeaderRole,type ChainTier} from './onehr/release-model';
+// WP-A3 — leader status data for the home cards (counts, states and dates only; the cards are drawn elsewhere).
+export {getLeaderStatus,leaderStatusSchema,type LeaderStatus,type LeaderStatusSeat} from './onehr/leader-status-service';
 export {pendingPerformanceTasks} from './onehr/tasks';
 export {getPerformanceHomeBlock,hasAssignedPerformanceWork,type PerformanceHomeBlock,type HomeStep,type HomeStepKey,type HomeStepState,type HomeNextStep,type HomeStanding,type HomeTeam} from './onehr/home-cards';

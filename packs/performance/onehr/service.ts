@@ -27,6 +27,7 @@ import { anonymousFeedbackReport } from './feedback-report';
 import { assertOverallRemark } from './journey-model';
 import { onehrLabel } from './person-labels';
 import { onehrEmployment } from './employment-projection';
+import { frozenVisibilityOneTx,frozenVisibilityTx } from './frozen-visibility';
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -1075,28 +1076,7 @@ export async function freezeOnehrReview(ctx:SessionContext,reviewId:string,expec
     await audit(tx,ctx,reviewId,'assessment-frozen',{resultId:frozen.id,digest:frozen.digest});return frozen.id;
   });
 }
-export async function releaseOnehrResult(ctx:SessionContext,reviewId:string,component:'performance'|'potential'|'talent'|'feedback',release:boolean) {
-  z.enum(['performance','potential','talent','feedback']).parse(component);z.boolean().parse(release);
-  return withPerformanceTenant(ctx,async tx=>{
-    const r=await loadReview(tx,reviewId,true);await requireAdmin(tx,r.row.cycleId);
-    if(await isSelf(tx,r.row.employmentId))throw Error('Ask another administrator to release your results.');
-    const [card]=await tx.execute<{value:ResultCard|null}>(sql`select app.onehr_result_card(${reviewId}::uuid) as value`);
-    if(release){
-      if(!card?.value)throw Error('This assessment is not available for release.');
-      if(component==='feedback'){
-        const panels=await tx.select({id:onehrPanel.requestId}).from(onehrPanel).where(and(eq(onehrPanel.reviewId,reviewId),isNull(onehrPanel.archivedAt),sql`${onehrPanel.submittedAt} is not null`));
-        const minimum=/^\d+$/.test(r.row.grade.replace(/^JG\s*/i,'').trim())?r.cycle.policy.minValid:1;
-        if(panels.length<minimum)throw Error('Enough valid feedback submissions are required before releasing the report.');
-      }else if(!card.value.result[component])throw Error('There is no result to release for this component yet.');
-    }
-    const field={performance:'performanceReleasedAt',potential:'potentialReleasedAt',talent:'talentReleasedAt',feedback:'feedbackReleasedAt'}[component];
-    const at=release?new Date():null;
-    await tx.insert(assessmentRelease).values({tenantId:ctx.tenantId,reviewId,[field]:at,updatedBy:ctx.userId!,updatedAt:new Date()}).onConflictDoUpdate({target:assessmentRelease.reviewId,set:{[field]:at,updatedBy:ctx.userId!,updatedAt:new Date()}});
-    // Compatibility projection for frozen-result readers; the release grant owns visibility.
-    await tx.update(onehrResult).set({[field]:at}).where(eq(onehrResult.reviewId,reviewId));
-    await audit(tx,ctx,reviewId,release?'result-released':'result-revoked',{component,interim:!card?.value?.frozen});
-  });
-}
+// WP-E: the release writer (both steps, the bulk page and the notices) lives in release-service.ts.
 
 async function careerArchitectureTx(tx:Tx,r:Awaited<ReturnType<typeof loadReview>>,career:ReturnType<typeof careerSchema.parse>,self=false,ownAnswers?:AssessmentDraft|null) {
  const [history]=await tx.execute<{value:{reviewId:string;status:string;competencies:Competency[]}[]}>(sql`select app.assessment_skill_history(${r.row.reviewId}::uuid) as value`);
@@ -1381,6 +1361,9 @@ export async function getOnehrReviewTx(tx:Tx,ctx:SessionContext,reviewId:string)
     const [card]=self||admin?await tx.execute<{value:ResultCard|null}>(sql`select app.onehr_result_card(${reviewId}::uuid) as value`):[];
     const record=self||admin?card?.value:stored?{...stored,frozen:true}:null;
     const result=record?.result as ResultCard['result']|undefined;
+    // WP-E (E-1): a leader who is not a cycle administrator reads a frozen band only once it is released to
+    // leaders. RLS still admits the row (the frozen-guards need it); the projection masks it.
+    const leaderSees=!self&&!admin&&stored?await frozenVisibilityOneTx(tx,reviewId):null;
     const [participant]=await tx.execute<{ok:boolean}>(sql`select app.assessment_review_participates(${reviewId}::uuid) as ok`);
     const leadership=(manager||reviewer||admin)&&participant?.ok?await assessment(tx,reviewId,r.cycle.policy):null;
     const planYear=Number(r.cycle.native.periodEnd.slice(0,4))+(r.cycle.policy.kind==='year_end'?1:0);
@@ -1410,7 +1393,7 @@ export async function getOnehrReviewTx(tx:Tx,ctx:SessionContext,reviewId:string)
     const visiblePolicy={...r.cycle.policy,profiles:r.cycle.policy.profiles.map(reviewProfile)};
     return {developmentQuota,careerDraftQuota,participating:!!participant?.ok,careerProfile:careerProfile?{...careerProfile,career:careerSchema.parse(careerProfile.career)}:null,careerRoutes:careerGraph.routes.map(route=>({...route,profile:reviewProfile(route.profile)})),careerDirections:careerGraph.directions.map(reviewProfile),careerTargetGap:careerGraph.targetGap?{...careerGraph.targetGap,profile:reviewProfile(careerGraph.targetGap.profile)}:null,profile:profile?reviewProfile(profile):null,profileMatch:r.row.profileMatch,companyId:r.row.companyId,kpiLibrary,ownReviewerRemark,reviewerRemarks,drafts:drafts.map(d=>{const payload=assessmentDraftSchema.parse(d.payload);return {...d,payload:payload.kind==='moderation'?{...payload,remark:ownReviewerRemark}:payload};}),attachmentLinks,calculatedPerformance:pmHidden?null:scorecard(r.kpis,r.cycle.policy,r.row.companyId,true).band,selfRemark:pmHidden?'':r.row.selfRemark,competencySelfSections:tmHidden?{}:r.row.competencySelfSections,competencyManagerSections:tmHidden?{}:r.row.competencyManagerSections,competencySelfRemark:tmHidden?'':r.row.competencySelfRemark,competencyManagerRemark:tmHidden?'':r.row.competencyManagerRemark,aiEnabled,aiFeatures,viewerUserId:ctx.userId,reviewId,name:name?.name??'',cycle:{id:r.cycle.native.id,name:r.cycle.native.name,status:r.cycle.native.status},policy:pmHidden?{...visiblePolicy,modules:{pm:moderator,tm:reviewer&&visiblePolicy.modules.tm,idp:visiblePolicy.modules.idp,evidence:false}}:visiblePolicy,grade:r.row.grade,revision:r.row.revision,self,manager,planReviewer:manager||moderator||reviewer,planLocked:self&&ownPlanLocked(r.cycle.policy,{kpis:r.kpis,competenciesAssigned:r.competencies.length>0,competencyStatus:r.row.competencyStatus,resultsSubmitted:!!r.row.resultsSubmittedAt,managerPerformance:r.row.managerPerformance}),planRemarkWriter:await canWritePlanRemark(tx,reviewId),admin,moderator,reviewer,moderators:self||manager||admin?moderators.map(({id,name})=>({id,name})):[],mechanism:r.cycle.policy.bBands.some(b=>b.companyId===r.row.companyId)?'B' as const:'A' as const,reviewerEmploymentId:r.native.reviewerEmploymentId,assignedKpiIds:r.kpis.filter(k=>!k.hrOwned&&kpiApprovers(k).some(id=>r.native.ownEmploymentIds.includes(id))).map(k=>k.id),canApproveSettingIds:r.kpis.filter(k=>{const next=pendingSettingApprover(k);return next&&r.native.ownEmploymentIds.includes(next)&&moderators.some(m=>m.id===next);}).map(k=>k.id),canModerateIds:r.kpis.filter(k=>{const next=pendingKpiApprover(k);return next&&r.native.ownEmploymentIds.includes(next)&&moderators.some(m=>m.id===next);}).map(k=>k.id),
       kpis:pmHidden?r.kpis.filter(k=>kpiApprovers(k).some(id=>r.native.ownEmploymentIds.includes(id))):r.kpis,competencies:tmHidden?[]:r.competencies,competencyStatus:r.row.competencyStatus,resultsSubmitted:!!r.row.resultsSubmittedAt,managerPerformance:pmHidden?null:r.row.managerPerformance,managerScore:pmHidden||r.row.managerScore==null?null:Number(r.row.managerScore),managerRemark:pmHidden?'':reviewerRemarks.find(n=>n.role==='Line manager')?.remark??'',
-      potential:leadership?.potential.band??null,finalized:!!record?.frozen||!!r.native.closedAt||r.cycle.native.status==='closed'||!participant?.ok,result:result?{id:record!.id,digest:record!.digest,interim:!record!.frozen,performance:!self||record!.performanceReleasedAt?result.performance:null,potential:!self||record!.potentialReleasedAt?result.potential:null,talent:!self||record!.talentReleasedAt?result.talent:null,performanceReleased:!!record!.performanceReleasedAt,potentialReleased:!!record!.potentialReleasedAt,talentReleased:!!record!.talentReleasedAt,feedbackReleased:!!record!.feedbackReleasedAt}:null,plans,planYear,feedbackReport,anonymousFeedback:result&&record!.feedbackReleasedAt?result.anonymousFeedback??null:null,evidence:evidence.map(e=>({...e,authorName:evidencePeople?.names[e.authorUserId]??'',files:attachments.filter(a=>a.evidenceId===e.id),details:evidenceDetailsSchema.parse(e.details),links:evidenceLinkSchema.array().parse(e.links),citations:evidenceCitationSchema.array().parse(e.citations).map(c=>({...c,name:evidencePeople?.names[c.userId]??''})),responses:standingResponses(evidenceResponseSchema.array().parse(e.responses)).map(c=>({...c,name:evidencePeople?.names[c.userId]??''}))})),attachments,peers,choices};
+      potential:leadership?.potential.band??null,finalized:!!record?.frozen||!!r.native.closedAt||r.cycle.native.status==='closed'||!participant?.ok,result:result?{id:record!.id,digest:record!.digest,interim:!record!.frozen,performance:self?(record!.performanceReleasedAt?result.performance:null):leaderSees&&!leaderSees.performance?null:result.performance,potential:self?(record!.potentialReleasedAt?result.potential:null):leaderSees&&!leaderSees.potential?null:result.potential,talent:self?(record!.talentReleasedAt?result.talent:null):leaderSees&&!leaderSees.talent?null:result.talent,performanceReleased:!!record!.performanceReleasedAt,potentialReleased:!!record!.potentialReleasedAt,talentReleased:!!record!.talentReleasedAt,feedbackReleased:!!record!.feedbackReleasedAt}:null,plans,planYear,feedbackReport,anonymousFeedback:result&&record!.feedbackReleasedAt?result.anonymousFeedback??null:null,evidence:evidence.map(e=>({...e,authorName:evidencePeople?.names[e.authorUserId]??'',files:attachments.filter(a=>a.evidenceId===e.id),details:evidenceDetailsSchema.parse(e.details),links:evidenceLinkSchema.array().parse(e.links),citations:evidenceCitationSchema.array().parse(e.citations).map(c=>({...c,name:evidencePeople?.names[c.userId]??''})),responses:standingResponses(evidenceResponseSchema.array().parse(e.responses)).map(c=>({...c,name:evidencePeople?.names[c.userId]??''}))})),attachments,peers,choices};
 }
 export async function getOnehrCycle(ctx:SessionContext,cycleId:string) {
   return withPerformanceTenant(ctx,async tx=>{uuid.parse(cycleId);const [config]=await tx.select().from(onehrCycle).where(eq(onehrCycle.cycleId,cycleId));if(!config)return null;await requireAdmin(tx,cycleId);const cycle=await loadCycle(tx,cycleId);
@@ -1526,11 +1509,13 @@ export async function reassignOnehrReviewer(ctx:SessionContext,reviewId:string,e
  });
 }
 
-/** Canonical final labels for native report consumers, with result RLS and module policy unchanged. */
+/** Canonical final labels for native report consumers, with result RLS and module policy unchanged. WP-E (E-1):
+ * a row the caller reads only as the line manager shows a band once it is released to leaders. */
 export async function onehrReportResultsTx(tx:Tx,reviewIds:string[]) {
  if(!reviewIds.length)return new Map<string,{performance:PMBand|null;potential:PotentialBand|null;talent:FrozenResult['talent'];id:string;digest:string}>();
  const results=await tx.select().from(onehrResult).where(inArray(onehrResult.reviewId,reviewIds));
- return new Map(results.map(r=>{const f=r.result as FrozenResult;return [r.reviewId,{performance:f.performance,potential:f.potential,talent:f.talent,id:r.id,digest:r.digest}];}));
+ const visible=await frozenVisibilityTx(tx,results.map(r=>r.reviewId));
+ return new Map(results.map(r=>{const f=r.result as FrozenResult,v=visible.get(r.reviewId);return [r.reviewId,{performance:v?.performance?f.performance:null,potential:v?.potential?f.potential:null,talent:v?.talent?f.talent:null,id:r.id,digest:r.digest}];}));
 }
 
 async function clearAssessmentDraftTx(tx:Tx,ctx:SessionContext,reviewId:string,kind:DraftKind,contextId=reviewId) {
