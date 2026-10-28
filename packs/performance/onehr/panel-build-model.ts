@@ -1,5 +1,6 @@
 import { parseCsvRecords } from '../../../lib/csv';
-export type PanelPerson={id:string;personId:string;code:string;name:string;companyId:string;groupId:string;department:string;grade:number|null;service:number;joinedOn:string|null;managerId:string|null;participates:boolean;canAssess?:boolean};
+/** unitOut: the cycle exclusion rule covers the person (D-P1-22); such a person never rates (canAssess false). */
+export type PanelPerson={id:string;personId:string;code:string;name:string;companyId:string;groupId:string;department:string;grade:number|null;service:number;joinedOn:string|null;managerId:string|null;participates:boolean;canAssess?:boolean;unitOut?:boolean};
 export const panelImportHeaders=['Subject Employee ID','Assessor Employee ID','Relationship'];
 export type PanelRelationship='line_manager'|'matrix_manager'|'peer'|'direct_report';
 export function panelImportRows(csv:string){

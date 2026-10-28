@@ -115,6 +115,19 @@ describe('the Performance block for a line manager and an employee (PM only)', (
     expect(blk.team?.href).toBe(`/performance/workspace?cycle=${cycleId}&view=team`);
   });
 
+  it('counts a department review the manager leads as its HOD anchor, with no explicit grant (WP-B2)', async () => {
+    const sessionId = await withTenant(a, async (tx) => {
+      const [s] = await tx.insert(schema.onehrCalibration).values({ tenantId: b.tenantId, cycleId, companyId: b.companyId, name: 'WP-B2 anchored department', tier: 'hod', reviewerUserIds: [], anchorKind: 'hod', anchorEmploymentId: manager.employmentId }).returning();
+      for (const p of [subject, plain]) await tx.insert(schema.onehrCalibrationEntry).values({ tenantId: b.tenantId, sessionId: s.id, reviewId: await reviewIdFor(cycleId, p), employmentId: p.employmentId });
+      return s.id;
+    });
+    expect((await perf.pendingCalibrationTasks(mgr)).map((t) => t.id)).toEqual([sessionId]);
+    expect(await perf.hasCalibrationAssignment(mgr)).toBe(true);
+    const blk = must(await block(mgr), 'manager block');
+    expect(stepOf(blk, 'calibration')).toEqual({ key: 'calibration', state: 'waiting', count: 1 });
+    expect(must(blk.team, 'team row').chips).toContainEqual({ kind: 'calibration', count: 1 });
+  });
+
   it('an unreleased result shows no band anywhere; after release it appears', async () => {
     await perf.saveOnehrKpis(self, reviewId, await rev(self), [kpi(manager)], true);
     await perf.approveOnehrScorecard(mgr, reviewId, await rev(mgr), true, 'Objectives agreed.');

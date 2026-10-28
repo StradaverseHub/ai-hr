@@ -3732,6 +3732,27 @@
       "when": 1793165000000,
       "tag": "0668_people_duplicate_email_policy",
       "breakpoints": true
+    },
+    {
+      "idx": 648,
+      "version": "7",
+      "when": 1793170000000,
+      "tag": "0663_onehr_leader_seats",
+      "breakpoints": true
+    },
+    {
+      "idx": 649,
+      "version": "7",
+      "when": 1793170000001,
+      "tag": "0664_onehr_hod_department_view",
+      "breakpoints": true
+    },
+    {
+      "idx": 651,
+      "version": "7",
+      "when": 1793170000004,
+      "tag": "0667_onehr_unit_exclusion",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { assertOverallRemark } from './journey-model';
-export type ManagerCommandFacts={stage:string;self:boolean;manager:boolean;moderator:boolean;finalized:boolean;kpis:{id:string;title:string}[];competencyStatus:string;planRemarkWriter?:boolean;plan:{id:string;status:string;goals:{id:string;area:string}[]}|null};
+/** reviewer: the competency and Career Plan reviewer one level up while the stored reviewer's unit is out (D-P1-22). */
+export type ManagerCommandFacts={stage:string;self:boolean;manager:boolean;moderator:boolean;reviewer?:boolean;finalized:boolean;kpis:{id:string;title:string}[];competencyStatus:string;planRemarkWriter?:boolean;plan:{id:string;status:string;goals:{id:string;area:string}[]}|null};
 export type ManagerCommand=
  |{action:'confirm_kpi';id:string}
  |{action:'confirm_performance'}
@@ -25,9 +26,9 @@ export function readManagerCommand(text:string,facts:ManagerCommandFacts):Manage
   else if(close)command={action:'close_plan',heldOn:close[1]?z.iso.date().parse(close[1]):null,text:close[2]?.trim()??null};
  }
  if(!command)return null;
- if(facts.self||!facts.manager&&!facts.moderator)throw Error('Only an assigned reviewer can use this action.');if(facts.finalized)throw Error('This assessment is read-only.');
- if(command.action==='confirm_kpi'||command.action==='confirm_performance'){if(facts.stage!=='moderation')throw Error('Confirm KPI results from the KPI moderation step.');}
- else if(command.action==='approve_competencies'){if(facts.stage!=='competency'||!facts.manager||facts.competencyStatus!=='submitted')throw Error('The competency review is not awaiting your approval.');}
+ if(facts.self||!facts.manager&&!facts.moderator&&!facts.reviewer)throw Error('Only an assigned reviewer can use this action.');if(facts.finalized)throw Error('This assessment is read-only.');
+ if(command.action==='confirm_kpi'||command.action==='confirm_performance'){if(!facts.manager&&!facts.moderator)throw Error('Only an assigned reviewer can use this action.');if(facts.stage!=='moderation')throw Error('Confirm KPI results from the KPI moderation step.');}
+ else if(command.action==='approve_competencies'){if(facts.stage!=='competency'||!facts.manager&&!facts.reviewer||facts.competencyStatus!=='submitted')throw Error('The competency review is not awaiting your approval.');}
  else{
   if(facts.stage!=='career')throw Error('Use the development-plan review step for this action.');
   if('text' in command&&command.text!=null)z.string().trim().min(1).max(command.action==='comment_goal'?1000:4000).parse(command.text);

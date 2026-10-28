@@ -6,6 +6,10 @@
  * promises — HOD only their HOD session, BU CEO only theirs, nobody else's company, final tier for cycle
  * administrators only, and a performance partner only in-scope cycles.
  *
+ * The reviewer arm has two sources (WP-B2, app.onehr_calibration_reviewer): an explicit name in
+ * reviewer_user_ids (the hand-built sessions below) and the live holder of an anchored session's leader seat
+ * (the seat case below). No persona below holds a seat unless that case gives one.
+ *
  * Sessions are written directly as the HR administrator (the creation service's year-end / ratings
  * preconditions are not what is under test here); every READ is the persona's app-role session via the service.
  */
@@ -143,6 +147,28 @@ describe('Calibration destination: sessions the viewer may enter (real RLS)', ()
     expect(h).toMatchObject({ window: 'closed', lock: 'partial', toDo: 0, people: 2, closesOn: todayInKualaLumpur(new Date(past)) });
     const [u] = await perf.listMyCalibrationSessions(bu);
     expect(u).toMatchObject({ window: 'upcoming', opensOn: todayInKualaLumpur(new Date(future)) });
+  });
+
+  it('a live BU CEO seat holder enters the anchored BU session without being named, only in their company, until the seat ends (WP-B2)', async () => {
+    const holderPerson = await hire('Seated unit chief', b.companyId, b.deptA);
+    const holder = await userCtx(holderPerson.personId, 'manager');
+    const anchoredBu = await withTenant(a, async (tx) => {
+      const [s] = await tx.insert(schema.onehrCalibration).values({ tenantId: b.tenantId, cycleId: cycleA, companyId: b.companyId, name: 'A seated unit', tier: 'bu', reviewerUserIds: [], anchorKind: 'bu_ceo' }).returning();
+      await tx.insert(schema.onehrCalibrationEntry).values({ tenantId: b.tenantId, sessionId: s.id, reviewId: await reviewOf(cycleA, hodPerson), employmentId: hodPerson.employmentId });
+      return s.id;
+    });
+    expect(await perf.listMyCalibrationSessions(holder)).toEqual([]); // non-vacuous: no seat, nothing
+    const seat = await perf.appointLeaderSeat(a, { seatType: 'bu_ceo', companyId: b.companyId, holderEmploymentId: holderPerson.employmentId });
+    const rows = await perf.listMyCalibrationSessions(holder);
+    // Never the hand-built BU session of the same company (no retro-anchoring), never company B.
+    expect(rows.map((r) => r.id)).toEqual([anchoredBu]);
+    expect(rows[0]).toMatchObject({ tier: 'bu', people: 1 });
+    expect(await perf.hasCalibrationAssignment(holder)).toBe(true);
+    // The explicit BU reviewer keeps their hand-built session and does not reach the anchored one.
+    expect((await perf.listMyCalibrationSessions(bu)).map((r) => r.id)).toEqual([buSession]);
+    await perf.endLeaderSeat(a, seat.id);
+    expect(await perf.listMyCalibrationSessions(holder)).toEqual([]);
+    expect(await perf.hasCalibrationAssignment(holder)).toBe(false);
   });
 
   it('refuses when the tenant does not have the performance module', async () => {

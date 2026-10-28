@@ -144,6 +144,17 @@ describe('function-access registry (lib/permissions)', () => {
     ).toEqual([...REDIRECT_ONLY_ROUTES].sort());
   });
 
+  it('WP-C: the HOD department view is an onehrAssignments route behind scopedSession, and its page calls that guard', () => {
+    const screen = SCREENS.find((row) => row.screenKey === 'onehrAssignments');
+    expect(screen).toMatchObject({ guard: 'scopedSession', hasScopeNote: true });
+    expect(SCREENS.filter((row) => row.routes.includes('/performance/department')).map((row) => row.screenKey)).toEqual(['onehrAssignments']);
+    const page = codeWithoutComments(fs.readFileSync(path.join(APP, 'performance/department/page.tsx'), 'utf8'));
+    expect(page).toMatch(/await requireModule\('performance'\)/);
+    expect(page).toMatch(/await scopedSession\(\)/);
+    expect(guardedRoutes()).toContain('/performance/department');
+    expect(String(getPath(en, 'admin.users.scope.onehrAssignments'))).toMatch(/head-of-department assignment/);
+  });
+
   it('screenKeys are unique (no duplicate columns)', () => {
     const keys = SCREENS.map((s) => s.screenKey);
     expect(new Set(keys).size).toBe(keys.length);

@@ -72,6 +72,13 @@ describe('ADR-0080 rung 4: performance pack registration', () => {
       'performance_assessment_career_profile',
       'performance_assessment_rating_record',
       'performance_assessment_release',
+      'performance_calibration_group',
+      'performance_calibration_group_member',
+      'performance_leader_seat',
+      'performance_hod_assignment',
+      'performance_onehr_calibration_entry_retired',
+      'performance_assessment_unit_exclusion',
+      'performance_assessment_unit_exclusion_pin',
 
     ]);
   });

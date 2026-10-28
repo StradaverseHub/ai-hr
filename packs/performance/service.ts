@@ -19,6 +19,9 @@ export { getReviewConversation, sendReviewMessage, keepCompetencyReflection, typ
 export { getCalibrationConversation,sendCalibrationMessage } from './onehr/calibration-conversation';
 
 export { previewAssessmentParticipantsTx, snapshotAssessmentParticipantsTx, assessmentParticipantsTx, setAssessmentParticipation } from './onehr/participation-service';
+// D-P1-22 (ADR-0150): the cycle exclusion rule (service functions only; the administration screen waits for X5).
+export { listUnitExclusionRules, previewUnitExclusion, saveUnitExclusion, endUnitExclusion, unitExclusionPlanTx, type UnitExclusionScope } from './onehr/unit-exclusion-service';
+export { planUnitExclusion, planKpiLine, dedupeChain, fullPanelTarget, type UnitExclusionPlan, type UnitExclusionFacts } from './onehr/unit-exclusion-model';
 
 export * from './onehr/rating-record-service';
 export type { RatingRecordSnapshot } from './onehr/rating-record-model';
@@ -69,5 +72,10 @@ export {getAssessmentOverview} from './onehr/overview-service';
 
 // WP-B1 (APR-020) — the Calibration destination (read-only list + the sidebar flag).
 export {listMyCalibrationSessions,hasCalibrationAssignment,pendingCalibrationTasks,calibrationListTierOrder,type CalibrationListSession} from './onehr/calibration-list';
+// WP-B2 — leader seat registry (BU CEO, BG CEO, group chief), HOD assignment, calibration groups, generated scopes.
+export {listLeaderSeats,appointLeaderSeat,endLeaderSeat,listHodAssignments,previewHodChange,applyHodChange,listCalibrationGroups,createCalibrationGroup,renameCalibrationGroup,retireCalibrationGroup,listCalibrationGroupMembers,addCalibrationGroupMembers,endCalibrationGroupMember,generateCalibrationScopes,importLeaders,type LeaderSeatRow,type HodAssignmentRow,type HodPlan,type HodPreviewRow,type GeneratedScopes} from './onehr/leader-seat-service';
+export {LEADER_SEAT_TYPES,mapLeaderImport,partitionHodPlan,hodPlanFingerprint,type LeaderSeatType,type HodBlocker,type HodWarning,type LeaderImportInput,type LeaderImportPlan} from './onehr/leader-seat-model';
+// WP-C (APR-022) — the HOD department view (read-only) and its link flag.
+export {getDepartmentView,hasDepartmentView,type DepartmentView} from './onehr/department-view';
 export {pendingPerformanceTasks} from './onehr/tasks';
 export {getPerformanceHomeBlock,hasAssignedPerformanceWork,type PerformanceHomeBlock,type HomeStep,type HomeStepKey,type HomeStepState,type HomeNextStep,type HomeStanding,type HomeTeam} from './onehr/home-cards';

@@ -10680,7 +10680,7 @@
         "onboardingRequisitions": "กลุ่มจัดเตรียม กลุ่มอนุมัติและกลุ่มเพิ่มระบบที่กำหนด ผู้ใช้โมดูลและ HR บริษัทอ่านคำขอได้ การดำเนินการยังจำกัดตามทีม ขั้นตอนหรือสิทธิ์รายการปัจจุบัน การถูกกล่าวถึงให้สิทธิ์เฉพาะการสนทนานั้น",
         "onboardingSettings": "ผู้ใช้โมดูลดูแลนโยบาย แค็ตตาล็อก ขั้นตอนอนุมัติและการส่งต่อ ผู้ดูแลหลักที่ไม่มีสิทธิ์โมดูลจัดการได้เฉพาะกลุ่มและการให้สิทธิ์",
         "onboardingV31": "ต้องได้รับสิทธิ์โมดูลการเริ่มงานโดยเฉพาะ แยกจากบทบาท HR ข้อมูลระบุตัวตนเฉพาะ HR ต้องมีสิทธิ์ HR ของบริษัทด้วย",
-        "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked.",
+        "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked. The department view lists only the people whose current head-of-department assignment names you, read-only.",
         "payrollConfig": "ทุกคนเปิดได้ เฉพาะผู้ดูแลของบริษัทเท่านั้นที่เปลี่ยนได้",
         "people": "ทุกคนเปิดได้ รายการจำกัดเฉพาะบุคคลที่คุณได้รับอนุญาตให้เห็น",
         "performance": "ผู้จัดการขึ้นไป และพาร์ทเนอร์ผลงานเฉพาะรอบ OneHR ของบริษัทตนเท่านั้น สิ่งที่แสดงเป็นไปตามสายการรายงานและขอบเขตจริงของคุณ",
@@ -22154,6 +22154,38 @@
       "pickUnitToLock": "Choose a business unit above to lock it.",
       "categoryHelp": "Everyone here whose performance and potential place them in {category}.",
       "categoryEmpty": "No one here is in {category} right now."
+    },
+    "department": {
+      "link": "My department",
+      "title": "My department",
+      "description": "{cycle} · everyone you head, direct and indirect. View only: KPI lines are acted on in your performance workspace.",
+      "cycle": "Cycle",
+      "spreadTitle": "Final rating distribution",
+      "spreadRow": "{count} · {pct}",
+      "finalizedCount": "{finalized} of {total} people are finalized (every KPI line locked). The others are still in progress.",
+      "search": "Search",
+      "searchPlaceholder": "Name, department or job title",
+      "columns": {
+        "name": "Name",
+        "department": "Department",
+        "jobTitle": "Job title",
+        "relationship": "Relationship",
+        "overall": "Overall rating"
+      },
+      "relationship": {
+        "direct": "Direct",
+        "indirect": "Indirect"
+      },
+      "pending": "Pending",
+      "overall": "{score} · {band}",
+      "noMatch": "No people match your search.",
+      "bands": {
+        "UA": "Unacceptable",
+        "BE": "Below Expectation",
+        "ME": "Meet Expectation",
+        "AE": "Above Expectation",
+        "OU": "Outstanding"
+      }
     }
   },
   "allowanceV2": {

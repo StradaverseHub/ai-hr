@@ -1,8 +1,11 @@
 /** Source participation(): adding/removing somebody never changes their right to rate colleagues. */
 export type ParticipationOverride = 'add' | 'remove' | null;
-export type ParticipationReason = 'added' | 'removed' | 'confirmed' | 'not_confirmed' | 'confirmed_after_open' | 'left' | 'native_rule' | 'existing_review';
-export function assessmentParticipation(input:{left:boolean;yearsOfService:number|null;confirmationDate:string|null;override?:ParticipationOverride},openedOn:string):{takingPart:boolean;reason:ParticipationReason} {
+/** D-P1-22: 'unit_out' is the cycle exclusion rule (company or exact department not taking part). */
+export type ParticipationReason = 'added' | 'removed' | 'confirmed' | 'not_confirmed' | 'confirmed_after_open' | 'left' | 'native_rule' | 'existing_review' | 'unit_out';
+/** Precedence (ADR-0150): left, then the unit rule, then the per-person override, then the opening rule. */
+export function assessmentParticipation(input:{left:boolean;yearsOfService:number|null;confirmationDate:string|null;override?:ParticipationOverride;unitOut?:boolean},openedOn:string):{takingPart:boolean;reason:ParticipationReason} {
  if(input.left)return {takingPart:false,reason:'left'};
+ if(input.unitOut)return {takingPart:false,reason:'unit_out'};
  if(input.override)return {takingPart:input.override==='add',reason:input.override==='add'?'added':'removed'};
  if((input.yearsOfService??0)>1)return {takingPart:true,reason:'confirmed'};
  if(!input.confirmationDate)return {takingPart:false,reason:'not_confirmed'};

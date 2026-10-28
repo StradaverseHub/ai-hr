@@ -139,6 +139,13 @@ export const performancePack: ModulePack = {
     { table: 'performance_assessment_career_profile', note: 'current career profile with yearly plan snapshots retained separately; ADR-0103' },
     { table: 'performance_assessment_rating_record', note: 'sign-off and calibration record sealed at cycle archive; ADR-0103' },
     { table: 'performance_assessment_release', note: 'component visibility grants independent of finalization; ADR-0103' },
+    { table: 'performance_calibration_group', note: 'named calibration group, the group chief seat anchor; retired, never deleted (WP-B2)' },
+    { table: 'performance_calibration_group_member', note: 'dated calibration group membership, one live group per employment (WP-B2)' },
+    { table: 'performance_leader_seat', note: 'dated BU CEO, BG CEO and group chief seats that grant calibration access (WP-B2)' },
+    { table: 'performance_hod_assignment', note: 'dated per-person head of department; never department.head_employment_id (WP-B2)' },
+    { table: 'performance_onehr_calibration_entry_retired', note: 'department-review entries retired when a person changes HOD, decisions kept (WP-B2)' },
+    { table: 'performance_assessment_unit_exclusion', note: 'cycle exclusion rule: a company or exact department not taking part in a cycle; ended, never deleted (D-P1-22, ADR-0150)' },
+    { table: 'performance_assessment_unit_exclusion_pin', note: 'employments a closed cycle\'s exclusion rules covered on its close day (D-P1-22 D8)' },
 
 
   ],

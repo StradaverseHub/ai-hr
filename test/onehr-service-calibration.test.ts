@@ -131,6 +131,15 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);expect((await view(a)).result?.performance).toBe('AE');
     await owner.db.update(schema.onehrCalibration).set({reviewerUserIds:[]}).where(eq(schema.onehrCalibration.id,sessionId));await expect(perf.getOnehrCalibration(calibrator,sessionId)).rejects.toThrow(/removed/);
   });
+  it('revokes a live seat holder when the seat ends, as clearing reviewer_user_ids revokes a named reviewer (WP-B2)',async()=>{
+    await complete();const holder=await hire('Seat calibrator'),calibrator={...self,userId:await createAppUser(b.tenantId,holder.personId,'employee'),personId:holder.personId};
+    const sessionId=await withTenant(a,async tx=>{const [s]=await tx.insert(schema.onehrCalibration).values({tenantId:b.tenantId,cycleId,companyId:b.companyId,name:'Seat BU cohort',tier:'bu',reviewerUserIds:[],anchorKind:'bu_ceo'}).returning();await tx.insert(schema.onehrCalibrationEntry).values({tenantId:b.tenantId,sessionId:s.id,reviewId,employmentId:subject.employmentId});return s.id;});
+    await expect(perf.getOnehrCalibration(calibrator,sessionId)).rejects.toThrow(/removed/);
+    const seat=await perf.appointLeaderSeat(a,{seatType:'bu_ceo',companyId:b.companyId,holderEmploymentId:holder.employmentId});
+    const v=await perf.getOnehrCalibration(calibrator,sessionId);expect(v.isReviewer).toBe(true);expect(v.rows.map(r=>r.entry.reviewId)).toEqual([reviewId]);
+    await perf.endLeaderSeat(a,seat.id);await expect(perf.getOnehrCalibration(calibrator,sessionId)).rejects.toThrow(/removed/);
+    const [row]=await owner.db.select().from(schema.onehrCalibration).where(eq(schema.onehrCalibration.id,sessionId));expect(row.reviewerUserIds).toEqual([]);
+  });
   it('holds department chat edits privately until an explicit human save and commits conversation and decision atomically',async()=>{
     await complete();const reviewer=peers[0].ctx;
     const id=await perf.createOnehrCalibration(a,cycleId,{name:'Department chat',companyId:b.companyId,tier:'hod',reviewerUserIds:[mgr.userId!,reviewer.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
@@ -380,6 +389,13 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     expect(await withTenant(peers[0].ctx,tx=>tx.select().from(schema.onehrCalibrationEntry).where(eq(schema.onehrCalibrationEntry.sessionId,final)))).toEqual([]);
     await expect(perf.saveOnehrCalibration(peers[0].ctx,final,1,{reviewId,performance:'OU',potential:null,performanceNote:'Cannot make HR’s final call.',potentialNote:''})).rejects.toThrow();
     await expect(perf.saveOnehrCalibration(a,final,1,{reviewId,axis:'performance',performance:'OU',potential:null,performanceNote:'Manager must finish first.',potentialNote:''})).rejects.toThrow(/line manager rating/);
+  });
+  it('never opens the final tier to a live seat holder of the same company (WP-B2)',async()=>{
+    const final=await perf.createOnehrCalibration(a,cycleId,{name:'Final with a seated leader',companyId:b.companyId,tier:'final',reviewerUserIds:[peers[0].ctx.userId!],reviewIds:[reviewId],pbtAchievement:null});
+    await perf.appointLeaderSeat(a,{seatType:'bu_ceo',companyId:b.companyId,holderEmploymentId:peers[0].employmentId});
+    expect(await withTenant(peers[0].ctx,async tx=>(await tx.execute<{ok:boolean;reviewer:boolean}>(sql`select app.onehr_calibration_access(${final}::uuid) as ok, app.onehr_calibration_reviewer(${final}::uuid,app.current_user_id()) as reviewer`))[0])).toEqual({ok:false,reviewer:false});
+    expect(await withTenant(peers[0].ctx,tx=>tx.select().from(schema.onehrCalibrationEntry).where(eq(schema.onehrCalibrationEntry.sessionId,final)))).toEqual([]);
+    await expect(withTenant(a,tx=>tx.update(schema.onehrCalibration).set({anchorKind:'bu_ceo'}).where(eq(schema.onehrCalibration.id,final)))).rejects.toThrow();
   });
   it('retains a locked BG call while a replacing Group call is still a draft',async()=>{
     await complete();const reviewer=peers[0].ctx;
@@ -634,6 +650,15 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     expect((await withTenant(self,tx=>tx.select().from(schema.onehrCalibrationEntry).where(eq(schema.onehrCalibrationEntry.sessionId,sid)))).map(r=>r.reviewId)).toEqual([other.reviewId]);
     await expect(perf.saveOnehrCalibration(self,sid,c.session.revision,{reviewId,performance:'OU',potential:'High',performanceNote:'Own rating',potentialNote:''})).rejects.toThrow(/cannot be calibrated/);
     await expect(perf.lockOnehrCalibration(self,sid,c.session.revision,'')).rejects.toThrow(/own calibration/);
+  });
+  it('keeps a seat holder’s own calibration hidden inside the anchored scope they lead (WP-B2)',async()=>{
+    const [other]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,peers[0].employmentId)));
+    const sid=await withTenant(a,async tx=>{const [s]=await tx.insert(schema.onehrCalibration).values({tenantId:b.tenantId,cycleId,companyId:b.companyId,name:'Seated own cohort',tier:'bu',reviewerUserIds:[],anchorKind:'bu_ceo'}).returning();
+      await tx.insert(schema.onehrCalibrationEntry).values({tenantId:b.tenantId,sessionId:s.id,reviewId,employmentId:subject.employmentId});await tx.insert(schema.onehrCalibrationEntry).values({tenantId:b.tenantId,sessionId:s.id,reviewId:other.reviewId,employmentId:peers[0].employmentId});return s.id;});
+    await perf.appointLeaderSeat(a,{seatType:'bu_ceo',companyId:b.companyId,holderEmploymentId:subject.employmentId});
+    const c=await perf.getOnehrCalibration(self,sid);expect(c.isReviewer).toBe(true);expect(c.canLockCohort).toBe(false);expect(c.rows.map(r=>r.entry.reviewId)).toEqual([other.reviewId]);
+    expect((await withTenant(self,tx=>tx.select().from(schema.onehrCalibrationEntry).where(eq(schema.onehrCalibrationEntry.sessionId,sid)))).map(r=>r.reviewId)).toEqual([other.reviewId]);
+    await expect(perf.saveOnehrCalibration(self,sid,c.session.revision,{reviewId,performance:'OU',potential:'High',performanceNote:'Own rating',potentialNote:'Own rating'})).rejects.toThrow(/cannot be calibrated/);
   });
   it('confirms reward nominations when the two assessment axes are locked separately',async()=>{
     await complete();

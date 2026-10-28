@@ -89,7 +89,7 @@ export async function getAssessmentAdminReadiness(ctx:SessionContext,cycleId?:st
   const ratio=(module:string,label:string,n:number,total:number,noun:string,anchor:string)=>steps.push({module,label,detail:total?`${n} of ${total} ${noun}`:'Nothing yet',done:total>0&&n>=total,href:target(anchor)});
   has('Foundation','Business groups and companies',companies.length,'companies','policy');has('Foundation','An active cycle',['open','calibration'].includes(cycle.status)?1:0,cycle.name,'policy');has('Foundation','People loaded',participants.length,'people','participants');
   const [counts]=await tx.execute<{subjects:number;assignments:number;submitted:number;reports:number;locked:number;released:number}>(sql`
-   with visible as (select * from performance_onehr_review r where r.cycle_id=${cycleId}::uuid and r.tenant_id=app.current_tenant_id() and app.onehr_admin(r.company_id)),
+   with visible as (select * from performance_onehr_review r where r.cycle_id=${cycleId}::uuid and r.tenant_id=app.current_tenant_id() and app.onehr_admin(r.company_id) and app.assessment_review_participates(r.review_id)),
    panels as (select p.* from performance_onehr_panel p join visible v on v.review_id=p.review_id where p.tenant_id=app.current_tenant_id() and p.archived_at is null)
    select (select count(distinct review_id)::int from panels) as subjects,(select count(*)::int from panels) as assignments,(select count(*)::int from panels where submitted_at is not null) as submitted,
    (select count(*)::int from performance_assessment_release r join visible v on v.review_id=r.review_id where r.feedback_released_at is not null) as reports,
@@ -97,7 +97,7 @@ export async function getAssessmentAdminReadiness(ctx:SessionContext,cycleId?:st
    (select count(*)::int from performance_assessment_release r join visible v on v.review_id=r.review_id where r.performance_released_at is not null or r.potential_released_at is not null or r.talent_released_at is not null) as released`);
   if(policy.modules.tm){has('360 feedback','Leadership framework',policy.framework.flatMap(t=>t.statements).length,'behaviours','framework');has('360 feedback','Assessor panels built',counts.subjects,'people with panels','panels');ratio('360 feedback','Responses in',counts.submitted,counts.assignments,'assessments','?progressModule=feedback&progressKind=assessors#progress');ratio('360 feedback','Reports released',counts.reports,counts.subjects,'people','assessments');}
   if(policy.modules.pm){
-   const reviews=await tx.select({kpis:onehrReview.kpis,submitted:onehrReview.resultsSubmittedAt}).from(onehrReview).where(and(eq(onehrReview.cycleId,cycleId),sql`app.onehr_admin(${onehrReview.companyId})`));
+   const reviews=await tx.select({kpis:onehrReview.kpis,submitted:onehrReview.resultsSubmittedAt}).from(onehrReview).where(and(eq(onehrReview.cycleId,cycleId),sql`app.onehr_admin(${onehrReview.companyId})`,sql`app.assessment_review_participates(${onehrReview.reviewId})`));
    const lines=reviews.flatMap(r=>kpiSchema.array().parse(r.kpis).map(k=>({k,submitted:!!r.submitted&&k.actual!==null})));
    ratio('Performance','Scoring mechanism per company',companies.length,companies.length,'companies','policy');
    const b=policy.bBands.filter(b=>companies.some(c=>c.id===b.companyId));if(b.length)ratio('Performance','Achievement rating cutoffs',b.length,b.length,'companies','policy');

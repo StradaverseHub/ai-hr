@@ -234,6 +234,12 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     vi.mocked(generateDraft).mockImplementationOnce(async()=>{await owner.db.update(schema.onehrCalibration).set({reviewerUserIds:[]}).where(eq(schema.onehrCalibration.id,sid));return raw;});
     await expect(perf.getAssessmentPerformanceInsight(peers[0].ctx,reviewId,sid,{generate:true})).rejects.toThrow(/not assigned/);
     expect(await owner.db.select().from(schema.assessmentInsight).where(eq(schema.assessmentInsight.contextId,sid))).toEqual([]);
+    // WP-B2: a live seat is revoked the same way. The seat ends during the provider call; the reply is discarded.
+    const seated=peers[1],seatScope=await withTenant(a,async tx=>{const [s]=await tx.insert(schema.onehrCalibration).values({tenantId:b.tenantId,cycleId,companyId:b.companyId,name:'Seat insight revocation',tier:'bu',reviewerUserIds:[],anchorKind:'bu_ceo'}).returning();await tx.insert(schema.onehrCalibrationEntry).values({tenantId:b.tenantId,sessionId:s.id,reviewId,employmentId:subject.employmentId});return s.id;});
+    const seat=await perf.appointLeaderSeat(a,{seatType:'bu_ceo',companyId:b.companyId,holderEmploymentId:seated.employmentId});
+    vi.mocked(generateDraft).mockImplementationOnce(async()=>{await perf.endLeaderSeat(a,seat.id);return raw;});
+    await expect(perf.getAssessmentPerformanceInsight(seated.ctx,reviewId,seatScope,{generate:true})).rejects.toThrow(/not assigned/);
+    expect(await owner.db.select().from(schema.assessmentInsight).where(eq(schema.assessmentInsight.contextId,seatScope))).toEqual([]);
   });
   it('projects insight facts and file text only for the assigned reviewer, retaining decimals and excluding private drafts',async()=>{
     const id=randomUUID(),scoring={mechanism:'A' as const,method:'more' as const,rates:[0,50,100,150,200] as [number,number,number,number,number]};
