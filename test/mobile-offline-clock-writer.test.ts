@@ -35,7 +35,8 @@ const myt=(at:number)=>new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kuala_Lum
 const sha=(value:string)=>createHash('sha256').update(value).digest('hex');
 const command=(employmentId:string,action:'in'|'out',at:number,extra:Partial<OfflineClockCommand>={}):OfflineClockCommand=>
  ({employmentId,requestId:randomUUID(),action,lat:3,lng:101,accuracy:5,effectiveAt:new Date(at),claimDigest:sha(randomUUID()),...extra});
-const online=(ctx:SessionContext,employmentId:string,action:'in'|'out',requestId=randomUUID())=>
+// `string`, as ClockIntent.requestId is: a bare default would infer randomUUID()'s template type and refuse a command's ID.
+const online=(ctx:SessionContext,employmentId:string,action:'in'|'out',requestId:string=randomUUID())=>
  captureEmployeeClock(ctx,{action,requestId,lat:3,lng:101,accuracy:5,employmentId,clockContext:clockCommandContext(ctx.tenantId,ctx.userId,employmentId)});
 type PunchRow={direction:string;method:string;date:string;time:string;effectiveMs:string|null;later:boolean|null;digest:string|null};
 /** The subject's punches with their captures' provenance, read as the owner (outside RLS). */
@@ -93,8 +94,11 @@ describe('canonical offline attendance writer',()=>{
   const [day]=await owner.db.select({id:S.attendance.id,date:S.attendance.attendanceDate}).from(S.attendance).where(eq(S.attendance.employmentId,employmentId));
   const capture=async(effective:string|null)=>{const id=randomUUID();await owner.db.execute(sql`insert into attendance_clock_capture(id,tenant_id,employment_id,attendance_date,direction,request_id,server_recorded_at,command_digest,effective_at)
    values(${id}::uuid,${base.tenantId}::uuid,${employmentId}::uuid,${day.date}::date,'out',${randomUUID()}::uuid,clock_timestamp(),${'d'.repeat(64)},${effective}::timestamptz)`);return id;};
-  const punch=(method:string,captureId:string|null,time:string)=>owner.db.execute(sql`insert into attendance_punch(tenant_id,attendance_id,employment_id,attendance_date,punch_at,direction,method,clock_capture_id)
-   values(${base.tenantId}::uuid,${day.id}::uuid,${employmentId}::uuid,${day.date}::date,${time}::time,'out',${method}::clock_method,${captureId}::uuid)`);
+  // The current-day check-in above recorded this day's overtime source (core/attendance.ts first-in capture), so 0592's
+  // input guard requires tenant and subject authority even of the owner: still the owner role, with HR's session context.
+  const hr=adminCtx(base);
+  const punch=(method:string,captureId:string|null,time:string)=>owner.withTenant(hr,tx=>tx.execute(sql`insert into attendance_punch(tenant_id,attendance_id,employment_id,attendance_date,punch_at,direction,method,clock_capture_id)
+   values(${base.tenantId}::uuid,${day.id}::uuid,${employmentId}::uuid,${day.date}::date,${time}::time,'out',${method}::clock_method,${captureId}::uuid)`));
   const offlineCapture=await capture(new Date(at).toISOString()),onlineCapture=await capture(null);
   expect(await failure(punch('mobile_offline',null,'23:59:57'))).toMatch(/Offline clocking requires its attendance capture/);
   expect(await failure(punch('web',offlineCapture,'23:59:58'))).toMatch(/Invalid attendance capture reference/);
