@@ -1,0 +1,39 @@
+VERDICT: Not built yet   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+Letters already works as its own set of screens, but in the menu it sits inside People: My Letters under People's Mine section; Letter templates, Merge Field Library, Generate letters, Letter Approval, Issued Letter Register and Letter Reports under People's HR section; and Letter Settings under People's configuration. That mixes letter work in with employee records and People settings.
+
+WHAT WE'LL CHANGE
+
+- Add a dedicated E-Letter module to the main menu, next to People.
+
+- Move every Letter screen out of People into E-Letter, in the same three groups: My Letters (for employees), the six HR letter screens, and Letter Settings.
+
+- Remove the Letter entries from People, so People keeps only employee records and People settings.
+
+- Nothing else moves or changes: every letter screen keeps its features, templates, settings, issued letters, approvals and history exactly as they are.
+
+WHAT YOU'LL GET
+
+One clear place for everything to do with letters, and a tidier People module.
+
+GOOD TO KNOW
+
+- Who can see and do what does not change. Each person sees only the E-Letter screens their current letter permissions allow; someone with no letter access will not see the module at all, except My Letters for their own letters.
+
+- Saved links and bookmarks to letter pages keep working, because the pages keep their addresses.
+
+- This changes only where Letters appears in the menu. No letter data, template or setting is changed or moved.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACTS: lib/navigation-workspaces.ts places /me/letters in people/mine, /letters/settings in people/config and the other /letters pages in people/hr; components/sidebar.tsx adds LETTER_NAV_ITEMS (lib/letter-navigation.ts) and My Letters to the People node; visibility comes from server letterDestinations (company-scoped capabilities) and lib/permissions.ts SCREENS rows (myLetters, letterTemplates, letterFields, letterGenerate, letterApproval, letterRegister, letterReports, letterSettings).
+
+1. Add NavigationModule 'eLetter' (ops workspace, labelKey moduleELetter, six locales) to NAVIGATION_MODULES; route /me/letters → eLetter/mine, /letters/settings → eLetter/config, the other /letters pages → eLetter/hr.
+
+2. Sidebar: a collapsible E-Letter node (all three themes: Classic, Atelier, Monolith) built from the same LETTER_NAV_ITEMS and the existing letterDestinations filter; remove those entries and My Letters from the People node; hide the node when no destination is visible (My Letters follows the existing self-service rule). Routes, pages and guards unchanged; no permission change.
+
+3. Tests: update exact-set nav guards (not loosened) for People and the new module; navigation-workspaces placement truth table; per-theme render showing E-Letter with the right entries for a letter admin, only My Letters for an employee, and no Letter entries under People; active-row highlighting on the other /letters pages and /me/letters; route ownership guard (test/system-settings-relocated-nav, p1 nav guards) updated.
