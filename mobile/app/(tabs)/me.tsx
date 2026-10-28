@@ -58,6 +58,7 @@ export default function Me() {
       <Button title={t('payOpen')} onPress={() => router.push('/pay')} />
       <Button title={t('claimsOpen')} onPress={() => router.push('/claims')} />
       <Button title={t('attOpen')} onPress={() => router.push('/attendance')} kind="quiet" />
+      <Button title={t('profileOpen')} onPress={() => router.push('/profile')} kind="quiet" />
 
       <Button title={t('integrityKeysTitle')} onPress={()=>router.push('/integrity-keys')} kind="quiet"/>
       <Button title={t('pendingTitle')} onPress={()=>router.push('/pending-submissions')} kind="quiet"/>

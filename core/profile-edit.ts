@@ -291,9 +291,11 @@ async function applyScalarFieldsTx(tx:Tx,prepared:Awaited<ReturnType<typeof prep
   else {if(!stat)throw new EssProfileError('unavailable',fields.map(field=>field.fieldId));await pack.statutory.setTax(ctx,{personId:master.id,taxNumber:values.taxNumber===undefined?stat.taxNumber:text(values,'taxNumber'),taxCategory:number(values,'taxCategory')??stat.taxCategory,numChildren:number(values,'numChildren')??stat.numChildren,taxResidency:stat.taxResidency,childReliefMode:stat.childReliefMode,employerBearsTax:stat.employerBearsTax,disabledIndividual:stat.disabledIndividual,disabledSpouse:stat.disabledSpouse,childReliefTable:stat.childReliefTable},tx);}
  }
 }
-/** No-op/cancel do not call this owner. Omitted facts retain; explicit clears are validated. */
-export function submitOwnProfileEdit(ctx:SessionContext,p:{employmentId:string;proposal:unknown}){
- return withTenant(ctx,async tx=>{
+/** No-op/cancel do not call this owner. Omitted facts retain; explicit clears are validated.
+ * `existingTx` (optional, M13): run inside a caller's transaction (the mobile command receipt), so a refusal rolls
+ * the receipt back with everything else. The web passes none and keeps its own transaction. */
+export function submitOwnProfileEdit(ctx:SessionContext,p:{employmentId:string;proposal:unknown},existingTx?:Tx){
+ const run=async(tx:Tx)=>{
   const prepared=await prepareProfileProposalTx(tx,ctx,p.employmentId,p.proposal);
   const immediate=prepared.proposal.fields.filter(change=>personnelField(change.fieldId)!.ess.edit==='immediate');
   const waiting={v:2 as const,fields:prepared.proposal.fields.filter(change=>personnelField(change.fieldId)!.ess.edit==='approval'),registers:prepared.proposal.registers};
@@ -302,7 +304,8 @@ export function submitOwnProfileEdit(ctx:SessionContext,p:{employmentId:string;p
   for(const row of prepared.immediateRegisters)await applyRegisterTx(tx,prepared.ctx,prepared.subject,row);
   const result=waiting.fields.length||waiting.registers.length?await requestProfileChange(prepared.ctx,{employmentId:prepared.subject.id,proposed:waiting},tx):null;
   return {saved:immediate.map(field=>field.fieldId).concat(prepared.immediateRegisters.flatMap(row=>row.fields.map(field=>field.fieldId))),waiting:waiting.fields.map(field=>field.fieldId).concat(waiting.registers.flatMap(row=>row.fields.map(field=>field.fieldId))),requestId:result?.requestId??null};
- });
+ };
+ return existingTx?run(existingTx):withTenant(ctx,run);
 }
 
 /** Approver-only review facts for exact submitted identities. This read grants no edit/decision authority. */
