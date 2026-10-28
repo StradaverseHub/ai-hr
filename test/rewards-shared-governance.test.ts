@@ -35,7 +35,8 @@ describe('shared Rewards company participation and history',()=>{
   expect(events.map(row=>row.type).sort()).toEqual(['reward.company-excluded','reward.company-exclusion-ended']);
  });
  it('keeps scope, immutable versions, hidden counts and current-group authority separate',async()=>{
-  const hired=await hireEmployee(admin,{person:{fullName:'Private creator in company B',primaryEmail:'private-creator@example.test'},companyId:companyB,employmentType:'full_time',hiredOn:`${year-2}-01-01`});
+  const [departmentB]=await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId:companyB,name:'Private company B department'}).returning();
+  const hired=await hireEmployee(admin,{person:{fullName:'Private creator in company B',primaryEmail:'private-creator@example.test'},companyId:companyB,departmentId:departmentB.id,employmentType:'full_time',hiredOn:`${year-2}-01-01`});
   await owner.db.update(s.appUser).set({personId:hired.personId}).where(eq(s.appUser.id,admin.userId!));
   const v1=await group([{companyId:b.companyId,businessUnitId:buA},{companyId:companyB,businessUnitId:buB}]);
   await saveRewardPolicyGroup(admin,{groupId:v1.groupId,expectedRevision:1,name:v1.name,policy:v1.policy,targets:[{companyId:b.companyId,businessUnitId:buA}]});
