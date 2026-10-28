@@ -1,6 +1,7 @@
 /** Walkthrough 28 October 2026: every save on /control-tower/agents returned the admin to the top of a very
- * long page. A successful save now returns to the saved row (or its section) and keeps the toast; a refusal
- * stays at the top beside the error banner. Owners are spies; no database is touched.
+ * long page. A successful save now returns to the saved row on its own sub-menu tab (?view=) with a closed
+ * toast code; a refusal stays at the top of that tab beside the error banner. Owners are spies; no database
+ * is touched.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const owners=vi.hoisted(()=>({feature:vi.fn(),allowance:vi.fn(),permission:vi.fn(),clear:vi.fn(),spend:vi.fn()}));
@@ -20,19 +21,22 @@ beforeEach(()=>{for(const spy of Object.values(owners))spy.mockReset();});
 
 describe('AI management saves return to the saved form',()=>{
   it('anchors each successful save on its own row or section and keeps the toast',async()=>{
-    const cases:[()=>Promise<unknown>,string][]=[
-      [()=>setAiAllowanceAction(form({kind:'company',subjectId:COMPANY})),`#ai-company-${COMPANY}`],
-      [()=>setAiAllowanceAction(form({kind:'user',subjectId:USER})),`#ai-user-${USER}`],
-      [()=>setAiAllowanceAction(form({kind:'user_default'})),'#ai-user-default'],
-      [()=>setAssistantPermissionAction(form({userId:USER})),`#ai-user-${USER}`],
-      [()=>clearUserAllowanceAction(form({userId:USER})),`#ai-user-${USER}`],
-      [()=>setAiFeatureAction(form({feature:'hr_assistant'})),'#ai-feature-hr_assistant'],
-      [()=>setAiSpendBudgetAction(form({monthlyUsd:'5',rootUsd:''})),'#ai-spend'],
+    const cases:[()=>Promise<unknown>,string,string,string][]=[
+      [()=>setAiAllowanceAction(form({kind:'company',subjectId:COMPANY})),`#ai-company-${COMPANY}`,'companies','saved'],
+      [()=>setAiAllowanceAction(form({kind:'user',subjectId:USER})),`#ai-user-${USER}`,'users','saved'],
+      [()=>setAiAllowanceAction(form({kind:'user_default'})),'#ai-user-default','users','saved'],
+      [()=>setAssistantPermissionAction(form({userId:USER})),`#ai-user-${USER}`,'users','saved'],
+      [()=>clearUserAllowanceAction(form({userId:USER})),`#ai-user-${USER}`,'users','default'],
+      [()=>setAiFeatureAction(form({feature:'hr_assistant'})),'#ai-feature-hr_assistant','features','saved'],
+      [()=>setAiSpendBudgetAction(form({monthlyUsd:'5',rootUsd:''})),'#ai-spend','spending','saved'],
     ];
-    for(const [invoke,hash] of cases){
+    for(const [invoke,hash,view,toast] of cases){
       const url=await target(invoke);
-      expect(url.pathname).toBe('/control-tower/agents');expect(url.hash).toBe(hash);expect(url.searchParams.has('toast')).toBe(true);
+      expect(url.pathname).toBe('/control-tower/agents');expect(url.hash).toBe(hash);
+      expect(url.searchParams.get('view')).toBe(view);expect(url.searchParams.get('toast')).toBe(toast);
     }
+    // The user search survives a save on the users tab.
+    expect((await target(()=>setAiAllowanceAction(form({kind:'user',subjectId:USER})))).searchParams.get('q')).toBe('fictional search');
   });
   it('never puts an unexpected identifier into the fragment; it falls back to the section',async()=>{
     expect((await target(()=>setAiAllowanceAction(form({kind:'company',subjectId:'"><script>'})))).hash).toBe('#company-limits');
@@ -41,9 +45,9 @@ describe('AI management saves return to the saved form',()=>{
   it('keeps refusals at the top, beside the error banner',async()=>{
     owners.allowance.mockRejectedValueOnce(new errors.AiControlError('Owned validation sentence'));
     const url=await target(()=>setAiAllowanceAction(form({kind:'company',subjectId:COMPANY})));
-    expect(url.searchParams.get('error')).toBe('Owned validation sentence');expect(url.hash).toBe('');
+    expect(url.searchParams.get('error')).toBe('Owned validation sentence');expect(url.hash).toBe('');expect(url.searchParams.get('view')).toBe('companies');
     owners.spend.mockRejectedValueOnce(new errors.AiControlError('Owned spend sentence'));
     const spend=await target(()=>setAiSpendBudgetAction(form({monthlyUsd:'x',rootUsd:''})));
-    expect(spend.searchParams.get('error')).toBe('Owned spend sentence');expect(spend.hash).toBe('');
+    expect(spend.searchParams.get('error')).toBe('Owned spend sentence');expect(spend.hash).toBe('');expect(spend.searchParams.get('view')).toBe('spending');
   });
 });
