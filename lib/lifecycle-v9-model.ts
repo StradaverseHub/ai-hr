@@ -360,6 +360,21 @@ function recipients(c: Case, config: Config, role: Role): string[] {
   const id = role === 'employee' ? c.facts.employeeUserId : role === 'supervisor' ? c.facts.supervisorUserId : role === 'pbp' ? resolvePbp(config, c.facts) : role === 'ta' ? c.facts.taUserId : role === 'hrSignatory' ? config.companies?.find(company => company.companyId === c.facts.company)?.signatoryUserId : role === 'starter' ? c.facts.starterUserId ?? c.log.find(log => log.action === 'case.submitted')?.actor.id : null;
   return id ? [id] : [];
 }
+function recipientLabel(role: Role, config: Config, env: Pick<Environment, 'userName'>): string {
+  if (role.startsWith('group:')) return config.groups.find(group => group.id === role.slice(6))?.name ?? 'Unavailable group';
+  if (role.startsWith('person:')) return env.userName(role.slice(7));
+  return ({ employee: 'Employee', supervisor: 'Line manager', pbp: 'PBP', ta: 'TA', peopleOps: 'GBS People Ops', taskOwners: 'Task owners', hrSignatory: 'HR signatory', starter: 'Whoever started it' } as Partial<Record<Role,string>>)[role] ?? 'Unavailable recipient';
+}
+function acceptanceDeliveryHold(c: Case, emailId: string): string | null {
+  if (c.module !== 'off' || emailId !== 'e3') return null;
+  const document = activeDocument(c, 't4');
+  if (!document) return null;
+  const mail = c.mails.find(mail => !mail.test && mail.workflowId === null && mail.key.startsWith(`acceptance:${document.id}:`));
+  if (!mail) return null;
+  if (mail.status === 'sent') return 'The acceptance email has already been sent for this document.';
+  if (['pending','sending'].includes(mail.status)) return 'The acceptance email is already queued or sending. Review its delivery history.';
+  return 'Review the previous acceptance delivery before sending another copy.';
+}
 export function workflowMatches(c: Case, workflow: Workflow, today: string): boolean {
   return c.module === workflow.module && workflow.conditions.every(condition => {
     if (condition.field === 'joinWithin') { if (!validDate(c.facts.joinDate)) return false; const days = (Date.parse(c.facts.joinDate) - Date.parse(today)) / DAY; return condition.op === 'lt' ? days < Number(condition.value) : condition.op === 'gte' && days >= Number(condition.value); }
@@ -400,6 +415,7 @@ export function previewEmail(c: Case, config: Config, emailId: string, env: Envi
   const subject = merge(edit.subject, values), body = merge(edit.body, values);
   if (c.state !== 'submitted') holds.push('Submit or reopen the case before sending.');
   if (!email.active) holds.push('This email template is inactive.');
+  const acceptanceHold = acceptanceDeliveryHold(c, emailId); if (acceptanceHold) holds.push(acceptanceHold);
   if (v9ImageTokens(body.text).some(id => !email.images?.some(image => image.id === id))) holds.push('Insert an available inline image before sending.');
   const missing = [...new Set([...subject.missing, ...body.missing])];
   if (missing.length) holds.push(`Complete missing merge fields: ${missing.join(', ')}.`);
@@ -413,6 +429,7 @@ export function previewEmail(c: Case, config: Config, emailId: string, env: Envi
   const caseFileCount = c.files.filter(file => email.slots.some(slot => file.slot === `${email.id}:${slot.id}`)).length;
   if ((email.files?.length ?? 0) + imageCount + email.attachments.length + caseFileCount > MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT) holds.push('Keep the total attached files and inline images within 20.');
   if ([...(email.files ?? []), ...(email.images ?? []).filter(image => body.text.includes('{image:' + image.id + '}'))].reduce((sum, asset) => sum + asset.size, 0) > MANAGED_EMAIL_ATTACHMENT_MAX_BYTES) holds.push('Keep the total attached files and inline images within 20 MB.');
+  for (const role of email.cc) { const ids = recipients(c, config, role); if (!ids.length || ids.some(id => !env.eligibleUser(id))) holds.push(`Resolve the CC recipient: ${recipientLabel(role, config, env)}.`); }
   const cc = [...new Set(email.cc.flatMap(role => recipients(c, config, role)))].filter(id => id !== target && env.eligibleUser(id)).map(id => ({ id, name: env.userName(id) }));
   const documents = [...new Set([...email.links, ...email.attachments])].flatMap(templateId => {
     const template = config.templates.find(template => template.id === templateId && template.module === c.module), document = activeDocument(c, templateId);
@@ -458,6 +475,10 @@ function enqueue(c: Case, config: Config, step: Extract<Step, { type: 'email' | 
   const perOwner = roles.includes('taskOwners');
   const to = test ? [env.actor.id] : perOwner ? targets : targets.slice(0, 1);
   const groupCc = !test && !perOwner && step.type === 'notify' ? targets.slice(1) : [];
+  const ccRoles = [...step.cc, ...(email?.cc ?? [])];
+  if (!test) for (const role of ccRoles) { const ids = recipients(c, config, role); if (!ids.length || ids.some(id => !env.eligibleUser(id))) throw new V9Error(`Resolve the CC recipient: ${recipientLabel(role, config, env)}.`); }
+  const ccTargets = [...new Set([...groupCc, ...ccRoles.flatMap(role => recipients(c, config, role))])];
+  if (!test && (ccTargets.some(id => !env.eligibleUser(id)) || !contact && to.some(id => !env.eligibleUser(id)))) throw new V9Error('A selected recipient is no longer eligible for delivery. Review the recipients before continuing.');
   const sensitive = emailSensitiveKeys(config);
   for (const target of to) {
     const itemKey = `${key}:${target}`; if (c.mails.some(m => m.key === itemKey)) continue;
@@ -474,7 +495,7 @@ function enqueue(c: Case, config: Config, step: Extract<Step, { type: 'email' | 
       if ((d.hrStep ?? template?.hrStep) === 'before' && d.status === 'draft' && !test) throw new V9Error('HR must sign the letter before it can be sent.');
       return [d];
     });
-    const cc = test ? [] : [...new Set([...groupCc, ...[...step.cc, ...(email?.cc ?? [])].flatMap(role => recipients(c, config, role))])].filter(id => id !== target && env.eligibleUser(id));
+    const cc = test ? [] : ccTargets.filter(id => id !== target);
     const assetCount = (email?.files?.length ?? 0) + (email?.images ?? []).filter(image => body.text.includes('{image:' + image.id + '}')).length;
     if (assetCount + (email?.attachments.length ?? 0) + c.files.filter(file => email?.slots.some(slot => file.slot === `${email.id}:${slot.id}`)).length > MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT) throw new V9Error('Keep the total attached files and inline images within 20.');
     const sender = email?.sender ?? 'noreply';
@@ -492,6 +513,7 @@ export function queueEmail(c: Case, config: Config, emailId: string, env: Enviro
   if (!email) throw new V9Error('Email template not found.', 'not_found');
   const acceptance = c.module === 'off' && emailId === 'e3';
   const doc = acceptance ? activeDocument(c, 't4') : null;
+  if (!test) { const hold = acceptanceDeliveryHold(c, emailId); if (hold) throw new V9Error(hold, 'conflict'); }
   if (acceptance && !test && (!doc || !doc.hrSignature)) throw new V9Error('HR must review and sign the acceptance letter before sending.');
   const key = test ? `test:${env.nextId()}` : acceptance ? `acceptance:${doc!.id}` : `manual:${env.nextId()}`;
   const held = enqueue(c, config, { id: key, type: 'email', template: emailId, to: 'employee', cc: [] }, key, null, env, test);

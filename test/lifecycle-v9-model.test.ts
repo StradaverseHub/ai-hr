@@ -403,7 +403,7 @@ it('resolves the actual case submitter and company signatory without using the w
  const {c,config,environment}=fixture();c.facts.starterUserId='actual-submitter';config.companies=[{companyId:c.facts.company,signatoryUserId:'company-signatory',signatoryTitle:'HR'}];environment.actor={id:'maintenance-worker',name:'Worker'};environment.eligibleUser=id=>['actual-submitter','company-signatory'].includes(id);
  const definition=workflow({trigger:{event:'manual',days:0,workdays:false,repeat:false,skipIf:''},steps:[{id:'notify',type:'notify',to:'starter',cc:['hrSignatory'],subject:'Fictional routing',body:'Body'}]});
  M.runWorkflow(c,config,definition,environment,'manual');expect(c.mails[0]).toMatchObject({to:['actual-submitter'],cc:['company-signatory'],delivery:{queuedBy:environment.actor}});
- const historical=fixture();historical.c.log.push({id:'submission',at:historical.environment.now,actor:{id:'actual-historical-submitter',name:'Submitter'},action:'case.submitted',detail:'Submitted'});M.runWorkflow(historical.c,historical.config,definition,historical.environment,'manual');expect(historical.c.mails[0].to).toEqual(['actual-historical-submitter']);
+ const historical=fixture();historical.config.companies=structuredClone(config.companies);historical.c.log.push({id:'submission',at:historical.environment.now,actor:{id:'actual-historical-submitter',name:'Submitter'},action:'case.submitted',detail:'Submitted'});M.runWorkflow(historical.c,historical.config,definition,historical.environment,'manual');expect(historical.c.mails[0].to).toEqual(['actual-historical-submitter']);
  const missing=fixture();expect(M.runWorkflow(missing.c,missing.config,definition,missing.environment,'manual')?.status).toBe('failed');expect(missing.c.mails).toEqual([]);
  const submitted=fixture();submitted.c.state='pending';submitted.c.facts.starterUserId='wrong';M.submit(submitted.c,submitted.config,submitted.environment);expect(submitted.c.facts.starterUserId).toBe(submitted.environment.actor.id);
 });
@@ -434,4 +434,31 @@ it('retains a captured event decision through resume and requires a reason befor
   expect(M.runWorkflow(c, config, definition, environment, 'resume')?.status).toBe('done');
   expect(c.mails.filter(mail => mail.workflowId === definition.id)).toMatchObject([{ subject: 'Recorded action' }]);
   expect(M.unresolvedSourceRuns(c)).toEqual([]);
+});
+
+it('holds unresolved selected CC roles before any recipient is queued and exposes the same hold in previews', () => {
+  const { c, config, environment } = fixture();
+  config.companies = [{ companyId: c.facts.company, signatoryUserId: null, signatoryTitle: '' }];
+  config.emails = [{ id: 'cc-review', name: 'CC review', module: 'off', active: true, sender: 'hr', subject: 'Reviewed', body: '', cc: ['hrSignatory'], links: [], attachments: [], slots: [] }];
+  expect(M.previewEmail(c, config, 'cc-review', environment).holds).toContain('Resolve the CC recipient: HR signatory.');
+  expect(() => M.queueEmail(c, config, 'cc-review', environment)).toThrow('CC recipient'); expect(c.mails).toEqual([]);
+  config.groups[0].members = ['hr', 'hr2']; environment.eligibleUser = id => id !== 'hr2';
+  const definition = workflow({ trigger: { event: 'manual', days: 0, workdays: false, repeat: false, skipIf: '' }, steps: [{ id: 'notice', type: 'notify', to: 'peopleOps', cc: [], subject: 'Group review', body: '' }] });
+  expect(M.runWorkflow(c, config, definition, environment, 'manual')?.status).toBe('failed'); expect(c.mails).toEqual([]);
+  config.emails[0].cc = []; M.queueEmail(c, config, 'cc-review', environment); expect(c.mails).toHaveLength(1);
+});
+it('reports the existing acceptance delivery instead of pretending to queue a second copy', () => {
+  const { c, config, environment } = fixture();
+  const definition = template(); definition.id = 't4'; definition.type = 'Letter'; definition.hrStep = 'before'; definition.versions[0].fields = [];
+  config.templates = [definition]; environment.signatoryUserId = environment.actor.id;
+  config.emails = [{ id: 'e3', name: 'Acceptance email', module: 'off', active: true, sender: 'hr', subject: 'Acceptance', body: '', cc: [], links: ['t4'], attachments: ['t4'], slots: [] }];
+  const document = M.generate(c, config, 't4', environment); M.signDocument(c, config, document.id, 'hr', { by: environment.actor, at: environment.now, method: 'typed', value: 'Fictional HR', consent: true }, environment);
+  M.queueEmail(c, config, 'e3', environment); expect(c.mails).toHaveLength(1);
+  for (const status of ['pending','sending','uncertain','failed','cancelled','sent'] as const) {
+    c.mails[0].status = status;
+    expect(M.previewEmail(c, config, 'e3', environment).canSend).toBe(false);
+    expect(() => M.queueEmail(c, config, 'e3', environment)).toThrow(/already|previous/);
+    expect(c.mails).toHaveLength(1);
+  }
+  M.queueEmail(c, config, 'e3', environment, true); expect(c.mails).toHaveLength(2); expect(c.mails[1].test).toBe(true);
 });
