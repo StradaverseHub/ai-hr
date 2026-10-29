@@ -41,8 +41,8 @@ function contract<A extends AssignedDecisionAction,I extends z.ZodObject>(action
  } as const;
 }
 const optionalNote=z.string().max(1000).optional();
-/** A claim decision carries no note: the native claim decision has nowhere to keep one. */
-export const AssignedClaimDecision=contract(ASSIGNED_CLAIM_DECISION_ACTION,AssignedClaimItem,'assigned_claim_decided_payment_by_payroll_or_reimbursement','claim_decision_review_index',z.never().optional());
+/** Optional on the stored wire for old sealed reviews; new rejections require the human reason. */
+export const AssignedClaimDecision=contract(ASSIGNED_CLAIM_DECISION_ACTION,AssignedClaimItem,'assigned_claim_decided_payment_by_payroll_or_reimbursement','claim_decision_review_index',optionalNote);
 /** A rejected attendance request needs the decider's 1–1000 character explanation (native rule). */
 export const AssignedAttendanceDecision=contract(ASSIGNED_ATTENDANCE_DECISION_ACTION,AssignedAttendanceItem,'assigned_attendance_decision_may_remain_pending','attendance_decision_review_index',optionalNote);
 export const AssignedToilDecision=contract(ASSIGNED_TOIL_DECISION_ACTION,AssignedToilItem,'assigned_toil_decided_credit_minted_on_approval','toil_decision_review_index',optionalNote);

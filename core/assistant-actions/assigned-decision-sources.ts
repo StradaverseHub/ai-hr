@@ -57,7 +57,7 @@ export async function confirmAssignedClaimSourceTx(tx:Tx,fresh:SessionContext,hu
  if(digestOf(await claimReview(tx,fresh,human))!==reviewedDigest)return fail();
  const decider=(await myOwnEmploymentSubjectsTx(tx,fresh))[0]?.employmentId??null;
  // decideClaimTx takes the limit lock, then the row lock, and re-reads the claim before deciding.
- const done=await decideClaimTx(tx,fresh,{claimRequestId:human.subjectId,decision:human.decision==='approved'?'approve':'reject',deciderEmploymentId:decider});
+ const done=await decideClaimTx(tx,fresh,{claimRequestId:human.subjectId,decision:human.decision==='approved'?'approve':'reject',deciderEmploymentId:decider,...human.decision==='rejected'&&human.note!==undefined?{rejectReason:human.note}:{}});
  if(done.employmentId!==human.employmentId||done.status!==human.decision)return fail();
  return{eventId:done.eventId,receipt:await reconcileAssignedClaimSourceTx(tx,fresh,{subjectId:human.subjectId,eventId:done.eventId,employmentId:human.employmentId})};
 }
