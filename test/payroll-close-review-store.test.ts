@@ -1,6 +1,8 @@
 /** Authored UNRUN: actual fictional Payroll CLOSE/native custody. Coordinated drafts required.
  * No fixture represents production data, a model capability test, or a passing security gate. */
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
+import * as dbClient from '../db/client';
+import {newPrivateReviewNonce,privateReviewCommitment} from '../core/assistant-actions/private-review-commitment';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
@@ -17,7 +19,7 @@ import {setPayrollConfig} from '../core/payroll-config';
 import {erasePersonPii} from '../core/pdpa';
 import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
 import {createBatch,generatePayslips,unlockClosedBatch,setPayrollPermissionGrant} from '../packs/payroll/service';
-import {prepareReviewedPayrollCloseSourceTx,confirmReviewedPayrollCloseSourceTx} from '../core/assistant-actions/reviewed-payroll-close-source';
+import {withReviewedPayrollCloseSourceIntervalTx,prepareReviewedPayrollCloseSourceTx,confirmReviewedPayrollCloseSourceTx} from '../core/assistant-actions/reviewed-payroll-close-source';
 import {preparePayrollCloseReview,confirmPayrollCloseReview,reopenPayrollCloseReview,discardPayrollCloseReview,listPayrollCloseReviews} from '../core/assistant-actions/payroll-close-review-store';
 import {PayrollClosePreparedReview,PayrollCloseReviewConfirmation,PayrollCloseReviewRetirement} from '../lib/assistant-actions/payroll-close-review-contract';
 import {REVIEWED_PAYROLL_CLOSE_ACTION as action} from '../lib/assistant-actions/reviewed-payroll-close-contract';
@@ -74,4 +76,24 @@ describe('Payroll close encrypted review custody',()=>{
 
  it('app role cannot directly SELECT/UPDATE physical custody or content tables',async()=>{for(const table of ['assistant_own_leave_review','assistant_own_leave_review_content'])await expect(withTenant(ctx,tx=>tx.execute(sql.raw('select * from app.'+table)))).rejects.toThrow();const before=await financial();await expect(withTenant(ctx,tx=>tx.execute(sql`update app.assistant_own_leave_review set state='completed'`))).rejects.toThrow();expect(await financial()).toEqual(before);});
 
+});
+
+async function retainedPayrollCloseReview(){return withTenant(ctx,tx=>withReviewedPayrollCloseSourceIntervalTx(tx,ctx,batchId,async(fresh,source)=>{
+ const native=await prepareReviewedPayrollCloseSourceTx(tx,fresh,human()),body={reviewNonce:newPrivateReviewNonce(),content:native.content,nativeReviewedDigest:native.reviewedDigest};
+ const binding={tenantId:fresh.tenantId,userId:fresh.userId!,personId:fresh.personId??null,employmentId:null,companyId:source.companyId,batchId:source.batchId,payPeriodId:source.payPeriodId},actionId=randomUUID();
+ const intentDigest=createHash('sha256').update(JSON.stringify(body.content)).digest('hex'),reviewedDigest=privateReviewCommitment([1,action,binding],body),identity=JSON.stringify([1,action,actionId,binding,intentDigest,reviewedDigest]),dek=vault.newDek(),uuids=(ids:readonly string[])=>sql`ARRAY[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
+ try{const kid=vault.newKid();await tx.execute(sql`select app.assistant_payroll_close_review_prepare(${actionId}::uuid,${binding.personId}::uuid,${binding.batchId}::uuid,${binding.companyId}::uuid,${binding.payPeriodId}::uuid,${uuids(native.erasurePersonIds)},${native.erasureSource.priorBatchId}::uuid,${uuids(native.erasureSource.coverageEmploymentIds)},${intentDigest},${reviewedDigest},${kid},${vault.wrapDek(dek,'assistant:module-action:key:'+identity)},${vault.sealUnderDek(dek,kid,JSON.stringify(body),'assistant:module-action:body:'+identity)})`);return{actionId,reviewedDigest};}finally{dek.fill(0);}
+}));}
+describe('WP9 retained Payroll close custody',()=>{
+ it('opens and completes the original writer format once with independent digest refusal',async()=>{
+  const old=await retainedPayrollCloseReview();expect((await reopenPayrollCloseReview(ctx,old.actionId)).kind).toBe('prepared');await expect(confirm({...old,reviewedDigest:'0'.repeat(64)})).rejects.toThrow();
+  const done=await confirm(old);expect(done.kind).toBe('completed');const after=await financial();expect(await confirm(old)).toEqual(done);expect(await reopenPayrollCloseReview(ctx,old.actionId)).toEqual(done);expect(await financial()).toEqual(after);
+ });
+ it('retires old pending Payroll custody after grant removal without crypto or close',async()=>{
+  const old=await retainedPayrollCloseReview();await revokeAssistant(ctx,{appUserId:ctx.userId!});const before=await financial(),unwrap=vi.spyOn(vault,'unwrapDek');unwrap.mockClear();expect((await discardPayrollCloseReview(ctx,retirement(old))).receipt.state).toBe('discarded');expect(unwrap).not.toHaveBeenCalled();expect(await financial()).toEqual(before);
+ });
+ it('reconciles a committed close whose actual transaction reply was lost',async()=>{
+  const r=await prepare(),real=dbClient.withTenant;const lost:typeof withTenant=async(who,work,options)=>{await real(who,work,options);throw Error('Fictional lost reply after commit');};const spy=vi.spyOn(dbClient,'withTenant').mockImplementationOnce(lost);try{await expect(confirm(r)).rejects.toThrow();}finally{spy.mockRestore();}
+  const after=await financial(),done=await reopenPayrollCloseReview(ctx,r.actionId);expect(done.kind).toBe('completed');expect(await confirm(r)).toEqual(done);expect(await financial()).toEqual(after);
+ });
 });

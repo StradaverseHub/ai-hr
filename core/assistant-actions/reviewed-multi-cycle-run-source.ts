@@ -4,15 +4,13 @@
  * No money, payroll processing/closing, employee pay preview, payslip or payment is performed. */
 import {z} from 'zod';
 import type {SessionContext,Tx} from '../../db/client';
-import {assertAiPrincipalTx} from '../ai-principal';
-import {assertMayUseAssistant} from '../assistant-grant';
-import {assertAiActionUnpausedTx} from '../ai-governance';
-import {assertModuleEnabled,resolveEntitlementsTx} from '../entitlements';
+import {withAgentActionGuard} from './agent-action-guard';
+import {assertModuleEnabled} from '../entitlements';
 import {prepareReviewedAdditionalRunTx,createReviewedAdditionalRunTx,readReviewedAdditionalRunReferenceTx,withReviewedAdditionalRunIntervalTx} from '../../packs/payroll/service';
 import {ReviewedMultiCycleRunHumanContent as Human,ReviewedMultiCycleRunConfirmation as Confirmation,ReviewedMultiCycleRunPreparedSource as Prepared,ReviewedMultiCycleRunSourceReceipt as Receipt} from '../../lib/assistant-actions/reviewed-multi-cycle-run-contract';
 export class ReviewedMultiCycleRunUnavailable extends Error{constructor(){super('That payroll draft needs another look. Please reopen Payroll Process.');this.name='ReviewedMultiCycleRunUnavailable';}}
 const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
-export async function assertReviewedMultiCycleRunActorTx(tx:Tx,supplied:SessionContext){const ctx=capture(supplied);await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlementsError:undefined,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};await assertMayUseAssistant(fresh,tx);assertModuleEnabled(fresh,'payroll');assertModuleEnabled(fresh,'multi_cycle_payroll');await assertAiActionUnpausedTx(tx,fresh,'hr_assistant');return fresh;}
+export async function assertReviewedMultiCycleRunActorTx(tx:Tx,supplied:SessionContext){const fresh=await withAgentActionGuard(tx,capture(supplied),'multi_cycle_payroll.create_run','approve');assertModuleEnabled(fresh,'payroll');return fresh;}
 export async function withReviewedMultiCycleRunSourceIntervalTx<T>(tx:Tx,supplied:SessionContext,selection:{companyId:string;payPeriod:string;payrollCycleId:string},run:(ctx:SessionContext,source:{companyId:string;payPeriod:string;payrollCycleId:string})=>Promise<T>):Promise<T>{const fresh=await assertReviewedMultiCycleRunActorTx(tx,supplied);return withReviewedAdditionalRunIntervalTx(tx,fresh,selection,run);}
 const receipt=(native:NonNullable<Awaited<ReturnType<typeof readReviewedAdditionalRunReferenceTx>>>,replayed:boolean)=>Receipt.parse({kind:'created',...native,proof:'historical_create_current_run',semantics:'draft_created_not_processed_closed_paid_or_payslip',replayed});
 export async function prepareReviewedMultiCycleRunSourceTx(tx:Tx,supplied:SessionContext,value:unknown):Promise<z.infer<typeof Prepared>>{

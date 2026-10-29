@@ -595,3 +595,47 @@ remain separate evidence.
 ### WP9 store 2 amendment — retained TOIL own-request custody (30 October 2026)
 
 The employee replacement-leave request now uses the generic own review owner with a typed compatibility repository for its installed SQL protocol. The repository translates projection names only: existing sealed bodies, binding order, encryption purposes, commitments, request/event columns and native SQL verifiers stay unchanged. Completion still runs the canonical native request service in the same top-level transaction; no credit or cash is granted by submission. Source authority composes the current registry guard and retains its own-employment and leave dependency interval. Retained old-writer rows and uncertain committed replies require real database evidence, and the action joins the screen/Assistant role matrix. No migration is required.
+
+### WP9 — login-bound publication compatibility (30 October 2026)
+
+Knowledge article publication uses the generic own compatibility lifecycle. Its binding remains the real author login/current person with null employment and company; source author and audience checks remain canonical. The generic owner controls the same ten-minute metadata, sealed body, private commitment, digest-bound confirmation, atomic native effect/completion and completed-only reconciliation. Installed SQL functions and row/ciphertext formats are retained through typed adapters, including existing creation provenance fences. Login-only privacy retirement remains separate from source authority. No migration or row rewrite is required.
+
+### WP9 — pay catalogue creation compatibility (30 October 2026)
+
+Typed pay-component catalogue creation uses the generic own compatibility lifecycle, bound to the actual current login with null employment/company. The source retains current payroll and typed-pay-component module gates, canonical catalogue locking and native administrator authority. Human content, installed SQL/ciphertext formats, 32KiB sealed-body limit, 64KiB outward-review cap, atomic created-event proof and historical-create reconciliation remain unchanged. No employee assignment, payroll run or model-calculated value is introduced; no migration is required.
+
+### WP9 — additional payroll draft compatibility (30 October 2026)
+
+Multi-cycle draft creation uses the generic own compatibility lifecycle with its exact installed company/month/cycle/run-type binding, 45KB sealed-body cap and source-owned erasure targets. Its explicit peek protocol keeps current actor and canonical source interval before encrypted nomination, full native preflight before custody NOWAIT, and an exact snapshot reread before execution. Completed rows reconcile without preparing or creating another run. Sensitive Approve-tier authority stays explicit; no payroll processing, closing, payslip or payment is performed. No migration or ciphertext rewrite is required.
+
+### WP9 — statutory profile compatibility (30 October 2026)
+
+The Personnel EPF/SOCSO review uses the generic assigned compatibility lifecycle, retaining the actual actor/target/person/statutory/company/country binding and installed encrypted row format. Workforce write admission, granular native field/company authority, native PERSON/statutory tuple ownership, pending preflight before custody NOWAIT, exact snapshot reread and complete erasure targets remain source-owned. The country pack remains the sole statutory writer; no Identity/Tax/Bank/TP3/Zakat or payroll calculation authority is added. Existing uppercase action-ID reopening remains supported through a protocol-local normalization option. No migration is required.
+
+### WP9 — equipment acknowledgement compatibility (30 October 2026)
+
+Lifecycle acknowledgement uses the generic own compatibility lifecycle with an explicit exact-wire body protocol. The old caseNumber field stays in the private commitment and ciphertext in its original position; it is not dropped or re-created as public metadata. The current login/person, native case person, employment and company remain distinct and nullable as before, including email-owned unlinked prehire cases. Native case readiness, equipment normalization, actual submission SQL and completed historical receipt remain canonical. Complete case/person/employment privacy targets and login-only retirement remain intact. No migration is required.
+
+### WP9 — reporting graph compatibility (30 October 2026)
+
+Reporting-line change custody uses the generic assigned compatibility lifecycle with its exact original metadata, cached-review body, manager/previous-manager person snapshots and org-specific AAD/key purposes. The protocol does not add a contractVersion field to installed metadata or substitute the module-action commitment. Native Workforce graph/field/company authority, prior/new manager views, original target capture and canonical set-event proof remain unchanged. Current source preparation revalidates every cached graph fact before pending disclosure. Completed retries reconcile instead of executing; no migration or ciphertext rewrite is required.
+
+### WP9 — attendance request compatibility (30 October 2026)
+
+Own attendance correction custody uses the generic own compatibility lifecycle with an exact legacy intent-wire codec. Its private commitment/encryption still serialize `intent`, never a renamed content field. Existing own-employee/configuration/credit ownership, bounded canonical policy/day/payroll preparation before custody NOWAIT, exact encrypted snapshot reread and native correction/request binding remain unchanged. Completed retries lock and reconcile only the existing correction without pending preparation. The public action/version/intent packet and digest-bound confirmation are unchanged; native clock and other-HR rules still adjudicate every request. No migration is required.
+
+### WP9 assigned Leave decision custody
+
+The Leave decision adapter uses generic ASSIGNED compatibility custody. Its original sealed content, actor/subject binding, pending versus recorded source nomination, native step/event provenance, privacy targets and installed SQL remain authoritative. The shared guard requests Approve explicitly; the model cannot decide. No migration or ciphertext rewrite is needed.
+
+### WP9 Payroll close custody
+
+Payroll close uses generic OWN compatibility custody while the payroll pack retains Access/period/OT/batch locks, preflight-before-custody ordering, completion provenance, configured payslip release semantics and exact post-close privacy targets. Original SQL and sealed wire stay unchanged; explicit human Approve is required.
+
+### WP9 Rewards post custody
+
+Rewards post uses generic ASSIGNED compatibility custody with its original actor/company/unit binding, sealed content, posted revision/batch/event proof and full native preflight before custody NOWAIT. Rewards retains funding, cohort, compensation and payroll authority; shared guard requires human Approve. Existing SQL and ciphertext are unchanged.
+
+### WP9 default family foundation
+
+The default 0670 OWN and 0671 ASSIGNED factories are protocol adapters to the shared custody engine, rather than separate sealing/lifecycle implementations. Their public APIs, strict binding/row validation, self-decision refusal, SQL verifiers and optional OwnReviewPersistence/nativeRequestId compatibility are retained. The seven legacy module variants and own-leave remain separate pending their explicit protocol adapters; this foundation does not claim those have already collapsed.

@@ -1,7 +1,9 @@
 /** Authored UNRUN. Requires the coordinated shared review-store migration; never applies drafts. */
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
+import * as dbClient from '../db/client';
+import {newPrivateReviewNonce,privateReviewCommitment} from '../core/assistant-actions/private-review-commitment';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import * as vault from '../lib/pii/vault';
@@ -57,4 +59,29 @@ describe('shared current-author Knowledge article publication custody',()=>{
  it('captures the actual human content before asynchronous author admission',async()=>{const input:KnowledgeArticleHumanContent=human(),original=input.body,pending=prepare(ctx,input);input.body='Retargeted after await';input.audience='all';const review=await pending;expect(review.content.body).toBe(original);expect(review.content.audience).toBe('employee');await confirm(review);expect((await state()).articles.find(row=>row.title===review.content.title)?.body).toBe(original);});
  it('retains login-only metadata/discard after actual author-role revocation with a fresh narrowed role carrier',async()=>{const r=await prepare(),before=await state();await owner.db.update(s.roleAssignment).set({role:'employee'}).where(eq(s.roleAssignment.appUserId,ctx.userId!));const current={...ctx,roles:['employee'],grants:[{role:'employee' as const,companyId:null}]},unwrap=vi.spyOn(vault,'unwrapDek');unwrap.mockClear();await expect(reopenKnowledgeArticleReview(current,r.actionId)).rejects.toThrow();await expect(confirm(r,current)).rejects.toThrow();expect(unwrap).not.toHaveBeenCalled();const index=await listKnowledgeArticleReviews(current);expect(index.reviews.map(row=>row.actionId)).toEqual([r.actionId]);expect(JSON.stringify(index)).not.toMatch(/PRIVATE|articleId|createdEventId|title|audience|personId/);expect((await discardKnowledgeArticleReview(current,retirement(r))).receipt.state).toBe('discarded');expect(unwrap).not.toHaveBeenCalled();expect(await state()).toEqual(before);});
 
+});
+
+/** The pre-WP9 writer's actual SQL and sealed identity, deliberately independent of generic custody. */
+async function retainedArticleReview(){return withTenant(ctx,async tx=>{
+ const native=await prepareKnowledgeArticleSourceTx(tx,ctx,human()),body={reviewNonce:newPrivateReviewNonce(),content:native.content,nativeReviewedDigest:native.reviewedDigest};
+ const binding={tenantId:ctx.tenantId,userId:ctx.userId!,personId:ctx.personId??null,employmentId:null,companyId:null},actionId=randomUUID();
+ const intentDigest=createHash('sha256').update(JSON.stringify(body.content)).digest('hex'),reviewedDigest=privateReviewCommitment([1,action,binding],body),identity=JSON.stringify([1,action,actionId,binding,intentDigest,reviewedDigest]);
+ const dek=vault.newDek();try{const kid=vault.newKid();await tx.execute(sql`select app.assistant_knowledge_article_review_prepare(${actionId}::uuid,${binding.personId}::uuid,${intentDigest},${reviewedDigest},${kid},${vault.wrapDek(dek,'assistant:module-action:key:'+identity)},${vault.sealUnderDek(dek,kid,JSON.stringify(body),'assistant:module-action:body:'+identity)})`);return{actionId,reviewedDigest};}finally{dek.fill(0);}
+});}
+describe('WP9 retained Knowledge article custody',()=>{
+ it('opens a retained old-writer review, confirms its digest and publishes once',async()=>{
+  const old=await retainedArticleReview();expect((await reopenKnowledgeArticleReview(ctx,old.actionId)).kind).toBe('prepared');
+  const packet={action,contractVersion:1,...old};await expect(confirmKnowledgeArticleReview(ctx,{...packet,reviewedDigest:'0'.repeat(64)})).rejects.toThrow();
+  const done=await confirmKnowledgeArticleReview(ctx,packet);expect(done.kind).toBe('completed');expect(await confirmKnowledgeArticleReview(ctx,packet)).toEqual(done);expect(await reopenKnowledgeArticleReview(ctx,old.actionId)).toEqual(done);expect((await state()).articles).toHaveLength(1);
+ });
+ it('retires a retained review after grant removal without decrypting the body',async()=>{
+  const old=await retainedArticleReview();await revokeAssistant(ctx,{appUserId:ctx.userId!});const unwrap=vi.spyOn(vault,'unwrapDek');unwrap.mockClear();
+  expect((await discardKnowledgeArticleReview(ctx,{action,contractVersion:1,actionId:old.actionId})).receipt.state).toBe('discarded');expect(unwrap).not.toHaveBeenCalled();expect((await state()).articles).toHaveLength(0);
+ });
+ it('reconciles a lost reply after a real commit without publishing again',async()=>{
+  const review=await prepare(),real=dbClient.withTenant;
+  const lost:typeof withTenant=async(who,work,options)=>{await real(who,work,options);throw Error('Fictional lost reply after commit');};
+  const spy=vi.spyOn(dbClient,'withTenant').mockImplementationOnce(lost);try{await expect(confirm(review)).rejects.toThrow();}finally{spy.mockRestore();}
+  const done=await reopenKnowledgeArticleReview(ctx,review.actionId);expect(done.kind).toBe('completed');expect(await confirm(review)).toEqual(done);expect((await state()).articles).toHaveLength(1);expect((await state()).events).toHaveLength(1);
+ });
 });

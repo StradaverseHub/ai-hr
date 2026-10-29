@@ -2,7 +2,9 @@ import {configureRewardFixture,refreshRewardFixtureBudget,changeRewardFixtureInp
 import {setRewardMember} from './rewards-access-fixture';
 import {expectNativeSourceCapture} from './native-outcome-source-capture.helpers';
 /** Authored UNRUN: actual approved fictional units/native financial owners, coordinated drafts required. */
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
+import * as dbClient from '../db/client';
+import {newPrivateReviewNonce,privateReviewCommitment} from '../core/assistant-actions/private-review-commitment';
 import {and,eq,isNull,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
@@ -15,7 +17,7 @@ import {setAiAllowance} from '../core/ai-management';
 import {createBatch,setPayrollInput} from '../packs/payroll/service';
 import { createRewardUnit, getRewardUnit, saveRewardPolicy, saveRewardEntry, decideRewardUnit, refreshRewardSources } from '../packs/rewards/service';
 import {emptyFacts,type RewardRole} from '../packs/rewards/model';
-import {prepareReviewedRewardsPostSourceTx,confirmReviewedRewardsPostSourceTx} from '../core/assistant-actions/reviewed-rewards-post-source';
+import {withReviewedRewardsPostIntervalTx,prepareReviewedRewardsPostSourceTx,confirmReviewedRewardsPostSourceTx} from '../core/assistant-actions/reviewed-rewards-post-source';
 import {REVIEWED_REWARDS_POST_ACTION as action,type ReviewedRewardsPostHumanContent as Human} from '../lib/assistant-actions/reviewed-rewards-post-contract';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -92,4 +94,24 @@ it('captures every actual posted Rewards PERSON and EMPLOYMENT, independently of
  const [first]=await owner.db.select({personId:s.employment.personId}).from(s.employment).where(eq(s.employment.id,employmentId));
  await expectNativeSourceCapture(r.actionId,done.receipt.receipt.postedEventId,[{kind:'person',id:caller.personId!},{kind:'person',id:first.personId},{kind:'employment',id:employmentId},{kind:'person',id:second.personId},{kind:'employment',id:second.employmentId}]);
  expect(await custody(r.actionId)).toMatchObject({rewards_review_person_ids:null});
+});
+
+async function retainedRewardsPostReview(){return withTenant(caller,tx=>withReviewedRewardsPostIntervalTx(tx,caller,unitId,async(fresh,source)=>{
+ const native=await prepareReviewedRewardsPostSourceTx(tx,fresh,human),body={reviewNonce:newPrivateReviewNonce(),content:native.content,nativeReviewedDigest:native.reviewedDigest};
+ const binding={tenantId:fresh.tenantId,userId:fresh.userId!,personId:fresh.personId??null,employmentId:null,companyId:source.companyId,unitId:source.unitId},actionId=randomUUID();
+ const intentDigest=createHash('sha256').update(JSON.stringify(body.content)).digest('hex'),reviewedDigest=privateReviewCommitment([1,action,binding],body),identity=JSON.stringify([1,action,actionId,binding,intentDigest,reviewedDigest]),dek=vault.newDek();
+ try{const kid=vault.newKid();await tx.execute(sql`select app.assistant_rewards_post_review_prepare(${actionId}::uuid,${binding.personId}::uuid,${binding.unitId}::uuid,${binding.companyId}::uuid,${intentDigest},${reviewedDigest},${kid},${vault.wrapDek(dek,'assistant:module-action:key:'+identity)},${vault.sealUnderDek(dek,kid,JSON.stringify(body),'assistant:module-action:body:'+identity)})`);return{actionId,reviewedDigest};}finally{dek.fill(0);}
+}));}
+describe('WP9 retained Rewards post custody',()=>{
+ it('opens and completes the old writer format once and refuses a wrong review digest',async()=>{
+  const old=await retainedRewardsPostReview(),packet={action,contractVersion:1,...old};expect((await reopenRewardsPostReview(caller,old.actionId)).kind).toBe('prepared');await expect(confirmRewardsPostReview(caller,{...packet,reviewedDigest:'0'.repeat(64)})).rejects.toThrow();
+  const done=await confirmRewardsPostReview(caller,packet);expect(done.kind).toBe('completed');const after=await state();expect(await confirmRewardsPostReview(caller,packet)).toEqual(done);expect(await reopenRewardsPostReview(caller,old.actionId)).toEqual(done);expect(await state()).toEqual(after);
+ });
+ it('retires original pending custody after grant removal without opening or posting',async()=>{
+  const old=await retainedRewardsPostReview();await revokeAssistant(admin,{appUserId:caller.userId!});const before=await state(),unwrap=vi.spyOn(vault,'unwrapDek');unwrap.mockClear();expect((await discardRewardsPostReview(caller,retirement(old))).receipt.state).toBe('discarded');expect(unwrap).not.toHaveBeenCalled();expect(await state()).toEqual(before);
+ });
+ it('reconciles a real committed post after transaction reply loss',async()=>{
+  const r=await prepare(),real=dbClient.withTenant;const lost:typeof withTenant=async(who,work,options)=>{await real(who,work,options);throw Error('Fictional lost reply after commit');};const spy=vi.spyOn(dbClient,'withTenant').mockImplementationOnce(lost);try{await expect(confirm(r)).rejects.toThrow();}finally{spy.mockRestore();}
+  const after=await state(),done=await reopenRewardsPostReview(caller,r.actionId);expect(done.kind).toBe('completed');expect(await confirm(r)).toEqual(done);expect(await state()).toEqual(after);
+ });
 });

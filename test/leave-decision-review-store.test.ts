@@ -1,5 +1,7 @@
 /** Authored UNRUN: requires coordinated shared review/AI-control SQL; no inline migration or guard bypass. */
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
+import * as dbClient from '../db/client';
+import {newPrivateReviewNonce,privateReviewCommitment} from '../core/assistant-actions/private-review-commitment';
 import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
@@ -9,7 +11,7 @@ import {requestLeave,decideLeave} from '../core/leave';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {setAiAllowance} from '../core/ai-management';
 import {lockLeaveDependenciesTx} from '../core/leave-dependency-lock';
-import {prepareReviewedLeaveDecisionSourceTx,confirmReviewedLeaveDecisionSourceTx,reconcileReviewedLeaveDecisionSourceTx,ReviewedLeaveDecisionUnavailable} from '../core/assistant-actions/reviewed-leave-decision-source';
+import {withReviewedLeaveDecisionIntervalTx,prepareReviewedLeaveDecisionSourceTx,confirmReviewedLeaveDecisionSourceTx,reconcileReviewedLeaveDecisionSourceTx,ReviewedLeaveDecisionUnavailable} from '../core/assistant-actions/reviewed-leave-decision-source';
 import {REVIEWED_LEAVE_DECISION_ACTION as action,ReviewedLeaveDecisionHumanContent,type ReviewedLeaveDecisionPreparedSource} from '../lib/assistant-actions/reviewed-leave-decision-contract';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,seedEntitlement,setModule,type Base} from './harness';
@@ -68,4 +70,29 @@ describe('same physical non-own assigned Leave decision custody',()=>{
  it.each(['named','alternate'] as const)('reuses the native %s snapshot authority and refuses changed assignment before any body decryption',async kind=>{const primary=await hire('Fictional named approver'),alternate=await hire('Fictional alternate approver');await owner.db.delete(s.leaveApprovalStep).where(eq(s.leaveApprovalStep.leaveRequestId,human.leaveRequestId));const [step]=await owner.db.insert(s.leaveApprovalStep).values({tenantId:b.tenantId,leaveRequestId:human.leaveRequestId,subjectEmploymentId:subject.employmentId,stepIndex:0,approverKind:'specific_employee',approverEmploymentId:primary.employmentId,approverAlternates:kind==='alternate'?[{kind:'specific_employee',employmentId:alternate.employmentId}]:[]}).returning();human.currentStepId=step.id;const selected=kind==='named'?primary:alternate,userId=await createAppUser(b.tenantId,selected.personId,'employee');/* A named step grants decision authority, never visibility: native decideLeave reads the request under RLS (can_see_employment) and refuses an approver who cannot see it. Give the selected approver real current visibility as the subject's administrative manager; the specific_employee step stays the only decision authority. */await setReportingLine(group(),{subordinateEmploymentId:subject.employmentId,managerEmploymentId:selected.employmentId,lineType:'administrative',validFrom:todayInKualaLumpur()});await grantAssistant(group(),{appUserId:userId});const who={...await entitledCtx(b,['employee']),userId,personId:selected.personId,grants:[{role:'employee' as const,companyId:null}]},r=await prepare(human,who);await owner.db.update(s.leaveApprovalStep).set({approverEmploymentId:subject.employmentId,approverAlternates:[]}).where(eq(s.leaveApprovalStep.id,step.id));const before=await state(),unwrap=vi.spyOn(vault,'unwrapDek');unwrap.mockClear();await expect(confirm(r,who)).rejects.toThrow();await expect(reopenLeaveDecisionReview(who,r.actionId)).rejects.toThrow();expect(unwrap).not.toHaveBeenCalled();await discardLeaveDecisionReview(who,retirement(r));expect(await state()).toEqual(before);});
  it('captures the actual original applicant actor person for audited private-digest erasure',async()=>{const submitter=await hire('Fictional on-behalf applicant actor'),userId=await createAppUser(b.tenantId,submitter.personId,'hr_admin'),who={...await entitledCtx(b,['hr_admin']),userId,personId:submitter.personId,grants:[{role:'hr_admin' as const,companyId:null}]},date=new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+86400000*9).toISOString().slice(0,10),request=await requestLeave(who,{employmentId:subject.employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:date,endDate:date,durationType:'full_day',reason:'Fictional private on-behalf applicant text'}),steps=await owner.db.select().from(s.leaveApprovalStep).where(eq(s.leaveApprovalStep.leaveRequestId,request.leaveRequestId));const r=await prepare({...human,leaveRequestId:request.leaveRequestId,currentStepId:steps.find(step=>step.status==='pending')?.id??null});expect(await custody(r.actionId)).toMatchObject({decision_applicant_person_id:submitter.personId});await erasePersonPii(group(),{subjectEmploymentId:submitter.employmentId,scope:'contact',requestRef:'FICTIONAL-DECISION-AUTHOR-ERASURE',reason:'Fictional original actor erasure'});expect(await custody(r.actionId)).toMatchObject({state:'refused',bodies:0,intent_digest:null,reviewed_digest:null});});
 
+});
+
+/** Installed writer fixture deliberately bypasses the new custody factory. */
+async function retainedLeaveDecisionReview(){return withTenant(ctx,tx=>withReviewedLeaveDecisionIntervalTx(tx,ctx,{leaveRequestId:human.leaveRequestId,currentStepId:human.currentStepId},'pending',async(fresh,source)=>{
+ const native=await prepareReviewedLeaveDecisionSourceTx(tx,fresh,human),body={reviewNonce:newPrivateReviewNonce(),content:native.content,nativeReviewedDigest:native.reviewedDigest};
+ const binding={tenantId:fresh.tenantId,userId:fresh.userId!,personId:fresh.personId??null,employmentId:source.employmentId,companyId:source.companyId,subjectPersonId:source.subjectPersonId},actionId=randomUUID();
+ const intentDigest=createHash('sha256').update(JSON.stringify(body.content)).digest('hex'),reviewedDigest=privateReviewCommitment([1,action,binding],body),identity=JSON.stringify([1,action,actionId,binding,intentDigest,reviewedDigest]),dek=vault.newDek();
+ try{const kid=vault.newKid();await tx.execute(sql`select app.assistant_leave_decision_review_prepare(${actionId}::uuid,${binding.personId}::uuid,${binding.employmentId}::uuid,${binding.companyId}::uuid,${binding.subjectPersonId}::uuid,${human.leaveRequestId}::uuid,${human.currentStepId}::uuid,${intentDigest},${reviewedDigest},${kid},${vault.wrapDek(dek,'assistant:module-action:key:'+identity)},${vault.sealUnderDek(dek,kid,JSON.stringify(body),'assistant:module-action:body:'+identity)})`);return{actionId,reviewedDigest};}finally{dek.fill(0);}
+}));}
+describe('WP9 retained assigned Leave decision custody',()=>{
+ it('opens and completes an original writer row once and refuses a forged digest',async()=>{
+  const old=await retainedLeaveDecisionReview(),packet={action,contractVersion:1,...old};expect((await reopenLeaveDecisionReview(ctx,old.actionId)).kind).toBe('prepared');
+  await expect(confirmLeaveDecisionReview(ctx,{...packet,reviewedDigest:'0'.repeat(64)})).rejects.toThrow();
+  const done=await confirmLeaveDecisionReview(ctx,packet);expect(done.kind).toBe('completed');const after=await state();expect(await confirmLeaveDecisionReview(ctx,packet)).toEqual(done);expect(await reopenLeaveDecisionReview(ctx,old.actionId)).toEqual(done);expect(await state()).toEqual(after);
+ });
+ it('retires an original row after grant removal without decrypting or deciding',async()=>{
+  const old=await retainedLeaveDecisionReview();await revokeAssistant(group(),{appUserId:ctx.userId!});const before=await state(),unwrap=vi.spyOn(vault,'unwrapDek');unwrap.mockClear();
+  expect((await discardLeaveDecisionReview(ctx,{action,contractVersion:1,actionId:old.actionId})).receipt.state).toBe('discarded');expect(unwrap).not.toHaveBeenCalled();expect(await state()).toEqual(before);
+ });
+ it('reconciles a genuinely committed decision after its reply was lost',async()=>{
+  const review=await prepare(),real=dbClient.withTenant;
+  const lost:typeof withTenant=async(who,work,options)=>{await real(who,work,options);throw Error('Fictional lost reply after commit');};
+  const spy=vi.spyOn(dbClient,'withTenant').mockImplementationOnce(lost);try{await expect(confirm(review)).rejects.toThrow();}finally{spy.mockRestore();}
+  const after=await state(),done=await reopenLeaveDecisionReview(ctx,review.actionId);expect(done.kind).toBe('completed');expect(await confirm(review)).toEqual(done);expect(await state()).toEqual(after);
+ });
 });

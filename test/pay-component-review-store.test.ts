@@ -1,7 +1,10 @@
 /** Authored UNRUN: requires coordinated custody/controls migrations; never installs draft SQL. */
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
+import * as dbClient from '../db/client';
+import {newPrivateReviewNonce,privateReviewCommitment} from '../core/assistant-actions/private-review-commitment';
+import {withAgentActionGuard} from '../core/assistant-actions/agent-action-guard';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
@@ -14,7 +17,7 @@ import {REVIEWED_PAY_COMPONENT_ACTION as action,type ReviewedPayComponentHumanCo
 import {PayComponentPreparedReview,PayComponentReviewRetirement,PayComponentReviewConfirmation} from '../lib/assistant-actions/pay-component-review-contract';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base,ctx:SessionContext;
-beforeAll(async()=>{await migrateTestDb();const [row]=await owner.db.execute<{ok:boolean}>(sql`select to_regprocedure('app.assistant_pay_component_review_prepare(uuid,uuid,text,text,text,text,text)') is not null as ok`);expect(row.ok,'Coordinated Pay Component review custody must be installed.').toBe(true);});afterAll(closeAll);afterEach(()=>vi.unstubAllEnvs());
+beforeAll(async()=>{await migrateTestDb();const [row]=await owner.db.execute<{ok:boolean}>(sql`select to_regprocedure('app.assistant_pay_component_review_prepare(uuid,uuid,text,text,text,text,text)') is not null as ok`);expect(row.ok,'Coordinated Pay Component review custody must be installed.').toBe(true);});afterAll(closeAll);afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
 beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-pay-catalog-review-key-123456789');await resetDb();b=await seedBase();for(const module of ['assistant','payroll','typed_pay_components'])await setModule(b.tenantId,module,'active');ctx={...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]};await grantAssistant(ctx,{appUserId:b.adminUserId});});
 const human=():ReviewedPayComponentHumanContent=>({action,contractVersion:1,input:{code:'FIC_HUMAN',name:'Fictional human pay code',label:'Human label',description:'PRIVATE literal human catalogue text',kind:'allowance',includedInEpf:false,includedInSocsoEis:false,includedInPcb:false,includedInHrdfBase:false,isNonPayable:false,prorates:false,eaFormLine:null,roundingMethod:'none',rule:null,epfBonus2012:false,pcbRemunerationType:null,pcbExemptionCode:null,displayCategory:'allowance',orpOvertime:false,orpUnpaidLeave:false},confirmCatalogCreate:true});
 async function prepare(value:unknown=human()){const out=await preparePayComponentReview(ctx,value);expect(out.kind).toBe('prepared');return PayComponentPreparedReview.parse(out.review);}
@@ -50,4 +53,35 @@ describe('human catalogue CREATE custody',()=>{
  it('refuses old committed native refs even when they belong to this exact caller',async()=>{const old=await createPayComponent(ctx,{...human().input,code:'FIC_OLD'}),[event]=await owner.db.select({id:s.domainEvent.id}).from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,old.id),eq(s.domainEvent.eventType,'pay-component.created'))).orderBy(s.domainEvent.id);expect(event).toBeTruthy();const r=await prepare(),before=await state();await expect(withTenant(ctx,tx=>tx.execute(sql`select app.assistant_pay_component_review_complete(${r.actionId}::uuid,${r.reviewedDigest},${old.id}::uuid,${event.id}::uuid)`))).rejects.toThrow();expect(await state()).toEqual(before);expect(await custody(r.actionId)).toMatchObject({state:'awaiting_confirmation',component:null,event:null,bodies:1});});
  it('refuses child-savepoint source refs and rolls the whole attempted create back',async()=>{const r=await prepare(),before=await state();await expect(withTenant(ctx,async tx=>{const native=await prepareReviewedPayComponentSourceTx(tx,ctx,human()),created=await tx.transaction(child=>confirmReviewedPayComponentSourceTx(child,ctx,native.content,{action,contractVersion:1,reviewedDigest:native.reviewedDigest}));await tx.execute(sql`select app.assistant_pay_component_review_complete(${r.actionId}::uuid,${r.reviewedDigest},${created.componentId}::uuid,${created.createdEventId}::uuid)`);})).rejects.toThrow();expect(await state()).toEqual(before);expect(await custody(r.actionId)).toMatchObject({state:'awaiting_confirmation',component:null,event:null,bodies:1});expect((await confirmPayComponentReview(ctx,confirmation(r))).kind).toBe('completed');});
  it('refuses unsupported confirmation fields and permits only login-bound minimal retirement packets',async()=>{const r=await prepare();for(const extra of [{input:human().input},{force:true},{actorId:randomUUID()},{componentId:randomUUID()}])expect(PayComponentReviewConfirmation.safeParse({...confirmation(r),...extra}).success).toBe(false);expect(PayComponentReviewRetirement.safeParse(retirement(r)).success).toBe(true);expect(PayComponentReviewRetirement.safeParse({...retirement(r),reviewedDigest:r.reviewedDigest}).success).toBe(false);const before=await state();await expect(confirmPayComponentReview(ctx,{...confirmation(r),force:true})).rejects.toThrow();expect(await state()).toEqual(before);await discardPayComponentReview(ctx,retirement(r));});
+});
+
+async function retainedPayComponentReview(){return withTenant(ctx,async tx=>{
+ const native=await prepareReviewedPayComponentSourceTx(tx,ctx,human()),body={reviewNonce:newPrivateReviewNonce(),content:native.content,nativeReviewedDigest:native.reviewedDigest};
+ const binding={tenantId:ctx.tenantId,userId:ctx.userId!,personId:ctx.personId??null,employmentId:null,companyId:null},actionId=randomUUID();
+ const intentDigest=createHash('sha256').update(JSON.stringify(body.content)).digest('hex'),reviewedDigest=privateReviewCommitment([1,action,binding],body),identity=JSON.stringify([1,action,actionId,binding,intentDigest,reviewedDigest]);
+ const dek=vault.newDek();try{const kid=vault.newKid();await tx.execute(sql`select app.assistant_pay_component_review_prepare(${actionId}::uuid,${binding.personId}::uuid,${intentDigest},${reviewedDigest},${kid},${vault.wrapDek(dek,'assistant:module-action:key:'+identity)},${vault.sealUnderDek(dek,kid,JSON.stringify(body),'assistant:module-action:body:'+identity)})`);return{actionId,reviewedDigest};}finally{dek.fill(0);}
+});}
+describe('WP9 retained pay component custody',()=>{
+ it('completes an old sealed catalogue review exactly once',async()=>{
+  const before=await state(),old=await retainedPayComponentReview(),packet={action,contractVersion:1,...old};expect((await reopenPayComponentReview(ctx,old.actionId)).kind).toBe('prepared');
+  await expect(confirmPayComponentReview(ctx,{...packet,reviewedDigest:'0'.repeat(64)})).rejects.toThrow();
+  const done=await confirmPayComponentReview(ctx,packet);expect(done.kind).toBe('completed');expect(await confirmPayComponentReview(ctx,packet)).toEqual(done);expect(await reopenPayComponentReview(ctx,old.actionId)).toEqual(done);expect((await state()).components.length-before.components.length).toBe(1);
+ });
+ it('retires an old pending catalogue review after the Assistant grant is removed',async()=>{
+  const before=await state(),old=await retainedPayComponentReview();await revokeAssistant(ctx,{appUserId:ctx.userId!});const unwrap=vi.spyOn(vault,'unwrapDek');unwrap.mockClear();
+  expect((await discardPayComponentReview(ctx,{action,contractVersion:1,actionId:old.actionId})).receipt.state).toBe('discarded');expect(unwrap).not.toHaveBeenCalled();expect(await state()).toEqual(before);
+ });
+ it('reconciles a committed create after a lost reply without another component',async()=>{
+  const before=await state(),review=await prepare(),real=dbClient.withTenant;
+  const lost:typeof withTenant=async(who,work,options)=>{await real(who,work,options);throw Error('Fictional lost reply after commit');};
+  const spy=vi.spyOn(dbClient,'withTenant').mockImplementationOnce(lost);try{await expect(confirmPayComponentReview(ctx,confirmation(review))).rejects.toThrow();}finally{spy.mockRestore();}
+  const done=await reopenPayComponentReview(ctx,review.actionId);expect(done.kind).toBe('completed');expect(await confirmPayComponentReview(ctx,confirmation(review))).toEqual(done);expect((await state()).components.length-before.components.length).toBe(1);
+ });
+});
+
+describe('shared registry guard retains approve-tier boundary',()=>{
+ it('refuses Confirm for pay catalogue creation and accepts explicit human Approve',async()=>{
+  await expect(withTenant(ctx,tx=>withAgentActionGuard(tx,ctx,'typed_pay_components.create','confirm'))).rejects.toThrow();
+  const fresh=await withTenant(ctx,tx=>withAgentActionGuard(tx,ctx,'typed_pay_components.create','approve'));expect(fresh.userId).toBe(ctx.userId);
+ });
 });
