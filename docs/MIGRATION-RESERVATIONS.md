@@ -151,3 +151,20 @@ Owner-authorized WP2/WP4/WP15 release coordination requests a new0678 position. 
 Allocate **idx671 / when1793330000004 / `0678_ai_connection_probe_ledger.sql`**, exact SQL SHA256 `e96851f0b09ba117f9cec03852b9c270da456c36b69a5199a588f483e1a9772a`, after all three Board entries668–670/1793330000001–3. Its old655/1793300000000 metadata remains invalid. Named-approver0669 remains unallocated and is not a prerequisite.
 
 **Dependency/window hold:** wait for Board's source and release handoff. Do not journal or integrate a candidate omitting its allocated predecessors, do not advance staging's watermark past them, and do not import unrelated unmerged WIP merely to build a journal. After Board integration, refresh canonical/actual live ledger and all intervening claims; if anything differs, reconcile/reissue before journal commit and gate. This register allocates source metadata only, does not clear the runtime window, and authorizes no deployment from this chat.
+
+## 29 October 2026 — agreed superseding order: probe before Board DB48
+
+**Supersedes prior Board668–670 / probe671 allocations and predecessor holds.** Both owners explicitly agree. All four remain unapplied, SQL bytes unchanged; Board reports no journaled DB48 CI candidate published. Fresh main/alpha remain `46049dead200d6f436d10f5984c06634502a6286` through idx667/when1793330000000.
+
+| idx | when | Filename |
+| ---: | ---: | --- |
+| 668 | 1793330000004 | `0678_ai_connection_probe_ledger.sql` |
+| 669 | 1793330000005 | `0679_email_templates_r2.sql` |
+| 670 | 1793330000006 | `0680_rewards_exclusions_history.sql` |
+| 671 | 1793330000007 | `0681_rewards_approval_participation.sql` |
+
+Frozen probe receipt: source `7bcbe939c4423884d9209a4c098128754835d2b7`, path `db/migrations/0678_ai_connection_probe_ledger.sql`, SHA256 `e96851f0b09ba117f9cec03852b9c270da456c36b69a5199a588f483e1a9772a`, independently recomputed from the Git blob. Board draft source/hashes remain as recorded. Do not reuse0001–0003 or any superseded index/timestamp set.
+
+Board UI43 retains the current no-SQL staging window. AI42/45/46 canonical/staging writes wait for its exact installed handoff, then re-read canonical/live/all claims before appending probe0678. Board DB48 source/CI stays held until the new probe prefix is coherent and bases on that canonical/applied prefix. Neither party imports unrelated unmerged application WIP or skips allocated predecessors. Any intervening change requires reconciliation. Named-approver0669 remains unallocated.
+
+Register documentation only: no applied SQL/journal changes or deployment authority. Each release requires its own human authority, exact-candidate verification and actual runtime handoff.
